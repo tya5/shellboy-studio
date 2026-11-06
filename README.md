@@ -31,3 +31,19 @@ capabilities and JSON Schema export, Shellboy #244).
 ## License
 
 MIT. See [LICENSE](LICENSE).
+
+## Planned usage (not usable yet)
+
+```sh
+shellboy serve &      # an owner must already run (a TUI owner also works)
+shellboy-web          # prints http://127.0.0.1:8751/#token=…; open it once
+shellboy-web --debug  # also enables the separate /debug page (off by default)
+```
+
+- The bridge connects to a running owner only; if none runs it says to start `shellboy serve`.
+- It listens on localhost by default. For a phone, expose it privately with
+  `tailscale serve` (HTTPS, needed for the PWA) or an SSH tunnel; LAN binding needs
+  an explicit setting and warns.
+- Config and the token live in the OS config directory, separate from Shellboy's data directory.
+- A future desktop app bundles owner, bridge, UI and CLI into one binary, so none of
+  the above is needed there (see `docs/design/architecture.md` §11).
