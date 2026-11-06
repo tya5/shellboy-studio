@@ -23,7 +23,7 @@ not expanded automatically.
 - The bridge is a thin client: no agent logic, no model calls, no direct access
   to Shellboy's database or data-directory files, no copied protocol types. Use
   `shellboy::protocol` and `shellboy::ipc` from the pinned git tag.
-- The browser talks only to the bridge; the bridge talks only to the owner's
+- The browser (data layer) talks only to the bridge; the bridge talks only to the owner's
   public RPC. If the Web needs something the RPC lacks, propose a general
   external-client surface in Shellboy instead of a workaround here. No polling
   stand-ins for missing core features.
@@ -32,8 +32,11 @@ not expanded automatically.
   and shutdown path. No unbounded per-client buffers.
 - Security: loopback bind and token by default; LAN binding only by explicit
   configuration; stricter behaviour is an opt-out setting, not a prompt.
-- Reuse Shellboy's state words and marks for the same concepts. New glyphs or
-  renamed states need the user's approval.
+- Reuse Shellboy's state words (meanings) for the same concepts. The Web UI
+  uses no text glyph marks; renamed states need the user's approval.
+- Keep the layers separate: bridge, data layer (the tested UX boundary),
+  swappable presentation, debug page. Presentation must not touch the bridge
+  or data layer; layout/visual design waits for the user's brainstorm.
 - Few dependencies, exact versions, committed lockfiles. Record the reason,
   bound and validation for each new dependency or toolchain change.
 - Do not state wall-clock guarantees or estimated numbers (tokens, sizes,

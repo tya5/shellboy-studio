@@ -19,7 +19,9 @@ capabilities and JSON Schema export, Shellboy #244).
   conversations. shellboy-web does not access Shellboy's database.
 - shellboy-web is a small Rust bridge on the same machine as the owner. It
   talks to the owner over Shellboy's existing local IPC RPC, like
-  `shellboy chat`, and serves the TypeScript frontend over HTTP and WebSocket.
+  `shellboy chat`, and serves the TypeScript frontend over HTTP and WebSocket. The frontend is
+  layered: a tested data layer, a swappable presentation, and an opt-in debug
+  page. A desktop app (Tauri) is a possible later step.
 - It listens on localhost and requires a token by default. For phone or remote
   access, put it behind Tailscale (`tailscale serve`) or an SSH tunnel; LAN
   binding is available only when explicitly configured.

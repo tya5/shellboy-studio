@@ -4,7 +4,9 @@ Status: design proposal, not implemented. Written 2026-11-06 against Shellboy
 `origin/main` `740a50f7df` (v0.9.0, protocol 2) and the Shellboy study
 `docs/design/events-and-external-protocol.md` (#243, #244), which is adopted in
 principle but not yet implemented. Statements about Shellboy refer to that
-revision; re-check them when the pinned Shellboy tag changes.
+revision; re-check them when the pinned Shellboy tag changes. The decisions of
+2026-11-06 in §15 refine this document; where text and §15 differ, §15 wins
+until the text is updated.
 
 ## 1. Goals and non-goals
 
@@ -17,6 +19,9 @@ User decisions (2026-11-06):
 2. **Phone access**: responsive layout and installable PWA. Remote use goes
    through Tailscale or an SSH tunnel; the bridge binds to localhost by default,
    checks a token, and binds to a LAN address only when explicitly configured.
+3. **Layered, swappable UI**: a heavily tested data layer is the UX boundary;
+   presentation can be redesigned or replaced without touching it (§2.1).
+4. **Non-server users**: a desktop app and a GUI first-run setup (§11, §12).
 
 Non-goals:
 
@@ -53,8 +58,37 @@ Non-goals:
 | Component | Language | Owns | Never does |
 |---|---|---|---|
 | Bridge (`shellboy-web` binary) | Rust | HTTP listener, auth cookie, WebSocket sessions, the single `events.wait` loop and its fan-out, an operation allowlist, bounded concurrency toward the owner, embedded static assets | agent logic, DB reads, rendering decisions, caching saved facts beyond one in-flight read, starting or stopping the owner |
-| Frontend (`web/`) | TypeScript | view state, Markdown/code rendering, layout, offline shell (PWA), per-tab subscriptions | talking to the owner directly, inventing facts not returned by an RPC |
+| Data layer (`web/data`) | TypeScript, framework-agnostic | normalized state, operations, the view-model API (§2.1) | DOM, layout, talking to the owner directly, inventing facts not returned by an RPC |
+| Presentation (`web/ui-*`) | TypeScript + a UI library | layout, visual design, Markdown/code rendering, offline shell (PWA) | state derivation, protocol knowledge |
+| Debug page (`web/debug`) | TypeScript | raw inspection (§2.2) | being enabled by default |
 | Shellboy owner | Rust (separate repo) | all saved facts and their ordering, receipts, cancellation, change hints | knowing that a browser exists |
+
+### 2.1 Layers and the UX boundary
+
+1. **Bridge (Rust)**: owner RPC, one multiplexed `events.wait` long-poll fanned
+   out to all tabs, streaming, auth. No view logic.
+2. **Data layer (TypeScript, framework-agnostic)**: builds normalized state
+   from RPC results and events (Threads, Turns, nodes, tool runs, deliveries,
+   in-progress streamed text) and exposes a **view-model API** (read-only
+   signals) plus **operations**: send, stop, open Thread, rewind (including the
+   one-key rewind/confirm/undo of Shellboy #246), create Thread, connection and
+   folder setup (§12). This API is the UX boundary and is tested heavily
+   (Vitest against recorded owner payloads and a real owner in integration).
+   State is reactive: signals updated by WebSocket push; no page reload, no
+   client polling. Transport sits behind an adapter interface (WebSocket now,
+   Tauri IPC later, §11); the layer has no browser-only assumptions (URL
+   routing, cookie auth live in the adapter or presentation).
+3. **Presentation**: swappable. Several layouts/designs may coexist and be
+   selected by setting or URL. Rebuilding it must not touch layers 1 and 2.
+   Layout and visual design start only after the foundation works end to end;
+   at that point stop and brainstorm the look with the user.
+
+### 2.2 Debug page
+
+A separate entry and bundle, shipped in production builds but enabled only by
+an explicit debug startup option (off by default; the route is not registered
+otherwise). Same token check as the app. It shows raw events, data-layer state,
+RPC round trips with timings, and buttons for send, stop and create Thread.
 
 The bridge is a thin client in the same sense as `shellboy chat`
 (`src/chat_client.rs`): it calls the public RPC through `shellboy::ipc::call`
@@ -84,11 +118,18 @@ with typed `shellboy::protocol::Command` values and no Origin (sender kind
   - transport error / owner unreachable: tell sessions `owner: unreachable`,
     retry with capped exponential backoff, restart from `after: None`, then
     send `resync`.
-  This holds one of the owner's 24 ordinary IPC permits permanently, as the
-  study requires ("a bridge must multiplex one long-poll for all browser tabs").
-- **Reads after a hint are issued by the browser**, through the proxy (§3.2).
+  Long-polls share the owner's 24 ordinary slots; the bridge keeps ONE for all
+  tabs (the study requires multiplexing), so it holds one permit permanently.
+  There is no durable change log for now: after `resync` clients re-read saved
+  facts, and conversation content is fully persisted as today.
+- **Live text streaming (option A).** Shellboy core returns model text written
+  since a cursor through the same long-poll (no persistence; core stage E, A
+  part). The bridge forwards it as `stream` frames (§3.2) and keeps no history
+  of it; the saved result replaces it when the Turn settles. Option B (a
+  streaming response) is considered only if A is not smooth enough.
+- **Reads after a hint are issued by the data layer**, through the proxy (§3.2).
   The bridge does not decide which RPCs a view needs; that keeps view logic in
-  one place (the frontend) and the bridge free of projection code.
+  one place (the data layer) and the bridge free of projection code.
 - **Concurrency bound toward the owner:** one global semaphore for proxied
   calls (initial bound 8, plus the long-poll) and a per-session in-flight bound
   (initial bound 4). Both are limits, not performance claims; revisit after
@@ -121,10 +162,12 @@ Bridge → browser:
 | `hello` | bridge version, owner `{protocol_version, instance_id, capabilities}` or `unreachable` | first frame; frontend enables features by capability |
 | `result` | `id`, owner `Response` or bridge error `{code, message}` | reply to `call` |
 | `changed` | `thread_ids`, `list` | coalesced dirty set since the last `changed` frame |
+| `stream` | `thread_id`, `cursor`, `text`, `gap: bool` | live model text since the last frame; bounded, lossy with an explicit gap (the data layer then waits for saved output) |
 | `resync` | — | re-read everything shown |
 | `owner` | `connected` / `unreachable` / `restarted` | owner reachability |
 
-Hints are not queued per message. Each session holds a dirty set
+Hints and stream text are not queued per message (stream text keeps only the
+latest bounded span per watched Thread, marking `gap` when it overflows). Each session holds a dirty set
 (≤ subscribed Threads + a list flag) and one pending-flush flag; a slow tab
 gets one larger `changed` frame, never a growing backlog. This mirrors the
 owner's own coalescing and needs no extra buffer.
@@ -138,7 +181,8 @@ shows "result unconfirmed" and offers `operation.get`, exactly like the CLI's
 **Allowlist (M1).** Reads: `status`, `model.list`, `thread.list`, `thread.get`,
 `run.get`, `turn.get`, `message.get`, `shell.list`, `shell.get`, `shell.read`,
 `history.list`, `history.get`, `operation.get`. Mutations: `thread.create`,
-`message.send`, `run.stop`, `message.cancel`. `events.wait` is bridge-internal.
+`message.send`, `run.stop`, `message.cancel`, plus the rewind operations of
+Shellboy #246 once available. `events.wait` is bridge-internal.
 Everything else (`owner.shutdown`, deletion, prune, storage, index, compaction)
 is rejected with a bridge error until a milestone adds a UI for it. The list
 is the set of operations the UI implements, so the browser cannot be used as a
@@ -155,7 +199,9 @@ not a registry.
 | `GET /ws` | WebSocket upgrade (cookie + Origin + Host checks) |
 | `GET /healthz` | unauthenticated `ok` only, no owner data |
 
-## 4. Frontend behaviour (M1)
+## 4. UI behaviour (M1)
+
+Views below are data-layer view models; their layout belongs to presentation.
 
 ### 4.1 Views
 
@@ -165,35 +211,32 @@ not a registry.
   Markdown rendering of model and user text, code blocks with highlighting and
   a copy button. Tool calls render as collapsible rows (collapsed by default
   once settled, expanded while running); body from `shell.get`/`shell.read`.
-- **Live progress**: Run/Turn state from `thread.get` → `run.get`/`turn.get`,
+- **Live progress**: streamed model text (§3.1) while a Turn runs, then the saved output; Run/Turn state from `thread.get` → `run.get`/`turn.get`,
   tool start/finish from `shell.list`, re-read on each `changed` for the open
   Thread. Elapsed time ticks client-side from saved `started_at`; it is a
   display tick, not a data poll.
 - **Composer**: send (`message.send`, `deliver` default) and stop (`run.stop`).
   Held/queued input shows the owner's delivery state from `message.get`.
 
-### 4.2 Vocabulary and glyphs
+### 4.2 Vocabulary (no text glyphs)
 
-The Web UI reuses Shellboy's decided state words and marks (`◉ ⁂ $ ↳ ⋯ ├─ └─`)
-with the same meanings as in the TUI wherever it shows the same concept; check
-the Shellboy User Guide and TUI code at the pinned tag for each meaning. It does not introduce new glyphs for concepts
-the TUI already names; a new mark needs the user's approval, as in Shellboy.
-Richer presentation (colour, typography, collapsing) is the Web's advantage;
-different words for the same state are not.
+The Web UI does not use the TUI's text glyph marks. It expresses state with
+richer, clearer means: colour, icons, shape and motion. It does keep Shellboy's
+state *meanings and words* consistent (same names for the same states, from the
+owner's fields); the glyph vocabulary is a TUI concern only.
 
 ### 4.3 Live shell output in M1
 
 `events.wait` deliberately excludes shell output bytes (study §2.3). M1 shows
 "running, last output at …" from `shell.get` and reads the output so far with
-`shell.read` when a row is expanded and on each Thread hint. Continuous tail of
-a running shell without a hint is deferred to M2 (open question Q4); the bridge
-will not poll `shell.read` on a timer.
+`shell.read` when a row is expanded and on change hints. Live tail of a running
+shell is M2; the bridge will not poll `shell.read` on a timer.
 
 ### 4.4 Sender identity
 
 The bridge sends `message.send` with `human: true` and `sender_label: "web"`.
 Shellboy records `human` as an unverified client claim, which is accurate: the
-person behind the authenticated browser session typed it. (Open question Q5.)
+person behind the authenticated browser session typed it.
 
 ## 5. Security model
 
@@ -221,7 +264,8 @@ Defaults (convenient):
    name (e.g. the Tailscale MagicDNS name); `Origin` must match `Host`. This
    blocks cross-site WebSocket hijacking and DNS rebinding.
 4. **Operation allowlist** (§3.2) limits the surface to what the UI offers.
-5. The bridge never logs message text, tokens or cookies; logs contain
+5. The debug page (§2.2) is not routed unless the debug option is given.
+6. The bridge never logs message text, tokens or cookies; logs contain
    operation names, durations and error codes only.
 
 Remote and phone access (recommended path):
@@ -254,7 +298,9 @@ M1; a tunnel provides it.
   later owner that has the same protocol version; features added after X are
   simply unused. A bridge newer than the owner checks capabilities before
   sending a newer field or operation and hides the feature.
-- The frontend never sees the protocol version directly; it reads
+- Decided: the owner accepts one protocol version with handshake capabilities
+  (protocol 3); no version range.
+- The data layer never sees the protocol version directly; it reads
   `capabilities` from `hello`. Bridge and frontend ship in one binary, so they
   never skew with each other.
 - Owner restart: Hello gives a new `instance_id`, `events.wait` reports
@@ -278,13 +324,17 @@ reason, bound and validation (same rule as Shellboy's AGENTS.md).
 | static assets embedded by a `build.rs` that generates an `include_bytes!` table from `web/dist` | no extra crate; one binary; hashed names give cache safety |
 | No TLS crate, no templating, no database, no tracing stack in M1 | not needed; tunnels terminate TLS; `eprintln!` style structured lines suffice until a need is shown |
 
-Cost of the git dependency: building the bridge compiles Shellboy's full
+Types come from the git dependency on the `shellboy` crate; the frontend gets
+them via JSON Schema (§7.2). Cost of the git dependency: building the bridge compiles Shellboy's full
 dependency tree (Ratatui, bundled SQLite, sqlite-vec, reqwest, …) although the
 bridge only uses `protocol` and `ipc`. Measure clean build time and binary
-size once and record them; if the cost matters, propose a small protocol crate
-in Shellboy (study Q5). The bridge must not copy protocol types to avoid it.
+size once and record them; split a protocol crate in Shellboy only if the cost is large. The bridge must not copy protocol types to avoid it.
 
 ### 7.2 Frontend (TypeScript)
+
+The data layer (§2.1) uses only `@preact/signals-core` (framework-agnostic
+signals). The table below is the presentation stack of the first design; it is
+replaceable.
 
 | Choice | Reason | Rejected |
 |---|---|---|
@@ -323,27 +373,34 @@ tree in M1.
 | Tolerant result records, tolerant `Welcome`/`Endpoint`, `Welcome.capabilities`, protocol 3 | #244 stage A2 | M1 release (bridge must survive owner field additions) |
 | `shellboy protocol schema` + committed `protocol.schema.json` + drift test | #244 stage D | frontend type generation (M1) |
 | Typed results for operations still returning `json!`/`Value` (`thread.get`, `history.*`, `shell.*`, …), ordered by what the Web reads | follow-ups to #244 D, one issue per family | type quality; M1 can start with opaque fields |
-| Live model text deltas over RPC (bounded, lossy with explicit gap, falls back to saved output) and a persistent multi-frame stream | #243 stage E2/E3 (future, needs its own decision) | M2 streaming |
+| Text written since a cursor, returned through `events.wait` (option A; no persistence; bounded, lossy with explicit gap) | #243 core stage E, A part (to be filed) | M1 streaming |
+| Streaming response (option B) | only if A is not smooth enough | nothing now |
+| Rewind operations (one-key rewind/confirm/undo) | #246 | M1 rewind UI when available |
 | Possibly a per-Thread digest in `changes` | stage E1, only if measurement shows follow-up reads dominate | nothing; optimisation |
-| Possibly a shell-output hint or receipt-free output wait | not filed (Q4) | M2 live shell tail |
+| Possibly a shell-output hint or receipt-free output wait | not filed | M2 live shell tail |
+| Connection config write, working-folder selection and related setup operations, model/provider validation, in-app update trigger | future core needs (§12) | first-run GUI |
+| `serve` startup exposed as a library function; owner location accepting an in-process owner | future core needs (§11) | desktop app |
 
 The bridge does not ask core for Web-specific behaviour; each item is a
 general external-client surface also usable by `shellboy chat` and scripts.
 
 ## 9. Milestones
 
-**M1 — conversation view (desktop first, phone usable).** Thread list;
-conversation with Markdown/code rendering and collapsible tool rows; live
-Run/Turn/tool state via hints; send and stop; new Thread; owner
-unreachable/restart handling; token auth; localhost default; responsive
-layout. Requires #243 B and #244 A1, A2, D. Done when the integration suite
-passes on macOS, Linux and Windows CI and the acceptance record lists what
-was tested where.
+**M1 — conversation view with live streaming (desktop first, responsive).**
+Thread list; conversation with Markdown/code rendering and collapsible tool
+rows; live Run/Turn/tool state via hints; live model text streaming (option A);
+send, stop, new Thread (and rewind when #246 is available); owner
+unreachable/restart handling; token auth; localhost default; responsive layout
+baseline; debug page. Depends on Shellboy #244 A1 (typed errors), #243 B
+(`events.wait`), the streaming-text addition (core stage E, A part), and the
+protocol 3 / schema items in §8. Visual design is deferred until the
+foundation works end to end (§2.1). Done when the integration suite passes on
+macOS, Linux and Windows CI and the acceptance record lists what was tested
+where.
 
-**M2 — streaming and phone polish.** Token streaming of model text (requires
-core stage E2/E3); live shell output tail (Q4); PWA install, offline shell
-page, touch-sized controls, safe-area layout; reconnect-on-resume for mobile
-browsers; Tailscale/SSH setup guide verified on at least one real phone.
+**M2 — phone polish and live shell tail.** Live shell output tail; PWA install,
+offline shell page, touch-sized controls, safe-area layout; reconnect-on-resume
+for mobile browsers; Tailscale/SSH setup guide verified on a real phone.
 
 **M3 — beyond the TUI.** Branch graph (`thread.branches`), search
 (`history.search`), compaction markers (`compact.list`), attachments
@@ -355,20 +412,56 @@ Each adds its operations to the allowlist and its own tests.
 - Separate repository and release cadence. A shellboy-web release states the
   Shellboy release (tag) it was built against and therefore the protocol
   version it speaks.
+- Release binaries are the supported install. Node is required at build time;
+  built assets are not committed.
 - One binary `shellboy-web` per OS/CPU, frontend embedded. Release assets and
   installer follow Shellboy's pattern (archives with SHA-256, `install.sh` /
   `install.ps1`, no sudo, `~/.local/bin`) so users install both the same way.
 - Until the first binary release: `cargo install --locked --git
-  https://github.com/tya5/shellboy-web --tag <tag>` (requires the frontend
-  build output to be committed or built by `build.rs`; decide with the first
-  release, see Q7).
+  https://github.com/tya5/shellboy-web --tag <tag>` (documents the Node
+  requirement; `build.rs` builds the frontend).
 - Before protocol 3: users must pair releases exactly. From protocol 3: any
-  owner with the same protocol version works; new features appear when both
+  owner with the same (single) protocol version works; new features appear when both
   sides support them.
 - Tags, published releases and binaries need the user's explicit approval, as
   in Shellboy.
 
-## 11. Risks
+## 11. Desktop app (future)
+
+Order: Web UI, then PWA install (near-zero work), then Tauri when OS
+integration is needed.
+
+Preferred form B: ONE binary that runs the owner in-process (Shellboy core
+exposes the headless `serve` startup as a library function) plus the bridge
+library and the frontend. The same executable acts as the `shellboy` CLI when
+invoked with arguments (multicall), and the owner puts it on the PATH of model
+shells as `shellboy`, so the agent's shells call the CLI. One owner per data
+dir stays: the TUI and CLI connect to the app's owner over IPC.
+
+- Window close keeps the app running in the tray while work is live (decide
+  later).
+- A UI crash takes the owner down; owner recovery is interruption-safe.
+- No version skew inside the app.
+- Needs macOS signing/notarization, Windows signing and auto-update.
+- Fallback form A: sidecar (app launches a separate owner process).
+
+Design-now constraints: the bridge is a library crate plus a thin HTTP binary;
+the data-layer transport is behind an adapter interface (WebSocket vs Tauri
+IPC); no browser-only assumptions in the data layer; the bridge library accepts
+the owner location (external IPC owner or in-process owner).
+
+## 12. First-run experience (desktop and web)
+
+For people who don't know servers: GUI connection setup (pick provider or
+LiteLLM endpoint and model, enter the key; the key is stored in the OS
+keychain), a folder picker for the working directory, a clear explanation that
+the agent runs shell commands locally (convenient default plus a stricter
+opt-in setting), and in-app updates. Connection and folder setup are
+data-layer operations usable by both web and desktop. Future core needs: write
+connection config, set the working folder, validate provider/model, keychain
+access for the key, trigger an update (§8).
+
+## 13. Risks
 
 - **Core prerequisites slip** (#243 B, #244 A2/D): M1 cannot ship. Mitigation:
   build the bridge skeleton, auth and frontend rendering against a pinned
@@ -387,38 +480,17 @@ Each adds its operations to the allowlist and its own tests.
   Mitigation: measure, then propose a protocol crate split in Shellboy.
 - **`Value` fields**: generated types are only as precise as the Rust types;
   opaque fields need careful frontend handling until typed.
-- **No token streaming in M1**: the Web looks less live than the TUI during
-  long model replies; the Turn state and elapsed time remain visible.
+- **Streaming smoothness**: option A (long-poll text since cursor) may not be
+  smooth enough; fall back to option B only after measuring.
 - **Phone browsers** suspend background tabs and drop WebSockets; reconnect
   must resync, which is the same path as owner restart.
 
-## 12. Open questions for the user
+## 14. Open questions
 
-1. **Port and config location**: a fixed default loopback port (any unused
-   number; proposal 8751) and config/token
-   in the OS config directory (`~/.config/shellboy-web/` etc.), separate from
-   Shellboy's data directory — acceptable?
-2. **Owner lifecycle**: should the bridge only connect to a running owner
-   (proposal), or offer to start `shellboy serve` when none is running?
-3. **Allowlist**: is the M1 mutation set (`thread.create`, `message.send`,
-   `run.stop`, `message.cancel`) right? Deletion and `owner.shutdown` stay out
-   until there is UI and confirmation for them.
-4. **Live shell output**: is "output so far on expand and on hint" enough for
-   M1, with continuous tail in M2 via a new core hint (unfiled), or is live
-   tail an M1 requirement?
-5. **Sender**: record Web messages as `human: true, sender_label: "web"`?
-6. **Language**: these documents follow Shellboy's current policy (English by
-   default). Should the Web UI's own labels be English, Japanese, or follow the
-   Shellboy UI language once that is decided?
-7. **Frontend build in `cargo install`**: commit built assets for tagged
-   releases, or require Node in `build.rs`? (Proposal: release binaries are the
-   supported path; `cargo install` documents the Node requirement.)
-8. **Protocol crate split** in Shellboy if the git-dependency cost measured in
-   M1 is large — wanted, or keep the single crate?
-9. **Shellboy study Q2** affects this project directly: should the owner accept
-   a small protocol range so a bridge can lag one Shellboy release?
+None. The first design brainstorm with the user is the look of the UI, once
+the foundation works end to end (§2.1).
 
-## 13. Decisions recorded here
+## 15. Decisions recorded here
 
 | Decision | Reason | Revisit when |
 |---|---|---|
@@ -427,3 +499,15 @@ Each adds its operations to the allowlist and its own tests.
 | No polling stand-in before `events.wait` | avoids the cost #243 removes and receipt writes from `wait` | never for M1; a development-only stand-in may exist behind a dev flag |
 | Preact + Vite + markdown-it + highlight.js | smallest familiar stack that covers M1–M2 | streaming or rendering measured too slow on phones |
 | Token in URL fragment + HttpOnly cookie | not sent to servers/proxies; scripts on the page cannot read the cookie | a tunnel or browser breaks fragment handling |
+| No text glyph marks in the Web UI; state words stay consistent (2026-11-06, user decision) | richer, clearer visual expression; meanings matter, not TUI glyphs | never without approval |
+| Layers: bridge / data layer (UX boundary) / swappable presentation / debug page; layout deferred, brainstorm with user after end-to-end works (2026-11-06, user decision) | redesign without touching tested logic | the data-layer API proves wrong |
+| Debug page: separate bundle, shipped, enabled only by explicit startup option (2026-11-06, user decision) | inspectability without default exposure | — |
+| Streaming in M1 via option A (text since cursor in `events.wait`); option B only if not smooth (2026-11-06, user decision) | reuses the one long-poll; no persistence | measured smoothness |
+| Shellboy side: long-polls share 24 slots, one bridge long-poll; no durable change log; one protocol version with capabilities (protocol 3); models may use `events.wait`; name `events.wait`; types via git dependency, frontend via JSON Schema (2026-11-06, user decision) | smallest owner surface | measured permit pressure |
+| Port 8751; config/token in OS config dir; bridge connects to a running owner only (except the desktop app) (2026-11-06, user decision) | simple, predictable | — |
+| M1 writes: `thread.create`, `message.send`, `run.stop`, `message.cancel` (+ #246 rewind); shell output read on expand/change, live tail M2 (2026-11-06, user decision) | scope | UI for deletion exists |
+| Web sends recorded as human, `sender_label: "web"`; UI language follows Shellboy's (En/Ja) (2026-11-06, user decision) | accurate and consistent | — |
+| Release binaries are the supported install; Node at build time; built assets not committed; measure the whole-crate dependency first, split a protocol crate only if large (2026-11-06, user decision) | simple release path | measured cost |
+| Reactive state via signals with WebSocket push; responsive baseline in M1, PWA/phone polish in M2 verified on a real phone (2026-11-06, user decision) | no reload or polling | — |
+| Desktop app future: Web, then PWA, then Tauri form B (single binary, in-process owner, multicall CLI); sidecar A fallback; design-now constraints in §11 (2026-11-06, user decision) | non-server users | OS integration needed |
+| First-run GUI setup for connection, folder, security explanation, in-app updates; needs new core operations (§12) (2026-11-06, user decision) | non-server users | — |
