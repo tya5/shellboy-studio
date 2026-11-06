@@ -275,4 +275,23 @@ mod tests {
         assert!(send.human);
         assert_eq!(send.sender_label.as_deref(), Some("web"));
     }
+
+    #[test]
+    fn data_layer_mutations_are_allowed_and_unarchive_is_not() {
+        assert!(build_command("run.retry", Some(json!({"run_id":"r"}))).is_ok());
+        assert!(
+            build_command("thread.archive", Some(json!({"thread_ids":["a"],"descendants":true})))
+                .is_ok()
+        );
+        assert!(
+            build_command("thread.list", Some(json!({"archived":"only"})))
+                .is_ok()
+        );
+        assert_eq!(
+            build_command("thread.unarchive", Some(json!({"thread_ids":["a"]})))
+                .unwrap_err()
+                .code,
+            "not_allowed"
+        );
+    }
 }

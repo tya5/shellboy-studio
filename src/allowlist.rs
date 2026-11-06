@@ -27,7 +27,9 @@ pub fn access(command: &Command) -> Access {
         Command::ThreadCreate(..)
         | Command::MessageSend(..)
         | Command::RunStop(..)
-        | Command::MessageCancel(..) => Access::Mutation,
+        | Command::MessageCancel(..)
+        | Command::RunRetry(..)
+        | Command::ThreadArchive(..) => Access::Mutation,
         // `events.wait` is bridge-internal (one shared long-poll). The rest has no UI yet.
         Command::OwnerShutdown(..)
         | Command::ThreadBranches(..)
@@ -38,11 +40,9 @@ pub fn access(command: &Command) -> Access {
         | Command::ThreadDeletePreview(..)
         | Command::ThreadPrune(..)
         | Command::ThreadRewind(..)
-        | Command::ThreadArchive(..)
         | Command::ThreadUnarchive(..)
         | Command::ThreadSet(..)
         | Command::MessageReply(..)
-        | Command::RunRetry(..)
         | Command::Wait(..)
         | Command::EventsWait(..)
         | Command::HistorySearch(..)

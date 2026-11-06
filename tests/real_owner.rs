@@ -16,9 +16,19 @@ use std::{
 };
 use tokio_tungstenite::tungstenite::{Message, client::IntoClientRequest};
 
+/// Owns the `shellboy serve` child. Dropping it (normal end, failed assertion, panic) kills and
+/// reaps the process, so a failed test never leaves an owner holding resources such as the
+/// build-slot lock inherited from the test runner.
 struct Serve {
     child: Child,
     instance: String,
+}
+
+impl Drop for Serve {
+    fn drop(&mut self) {
+        let _ = self.child.kill(); // no-op error if it already exited
+        let _ = self.child.wait();
+    }
 }
 
 fn start_owner(bin: &Path, root: &Path, data: &Path) -> Serve {
@@ -32,7 +42,7 @@ fn start_owner(bin: &Path, root: &Path, data: &Path) -> Serve {
         "default_connection = \"local\"\ndefault_model = \"mock\"\n[connections.local]\nbase_url = \"http://127.0.0.1:9/v1\"\n",
     )
     .unwrap();
-    let mut child = Command::new(bin)
+    let child = Command::new(bin)
         .args(["serve", "--config"])
         .arg(&config)
         .arg("--data-dir")
@@ -49,7 +59,12 @@ fn start_owner(bin: &Path, root: &Path, data: &Path) -> Serve {
         .stderr(Stdio::inherit())
         .spawn()
         .expect("spawn shellboy serve");
-    let mut lines = BufReader::new(child.stdout.take().unwrap()).lines();
+    // Guard from the moment of spawn: any panic below still kills the child.
+    let mut serve = Serve {
+        child,
+        instance: String::new(),
+    };
+    let mut lines = BufReader::new(serve.child.stdout.take().unwrap()).lines();
     let ready: Value = loop {
         let line = lines.next().expect("serve stdout").expect("line");
         let value: Value = serde_json::from_str(&line).expect("serve prints JSON rows");
@@ -59,10 +74,8 @@ fn start_owner(bin: &Path, root: &Path, data: &Path) -> Serve {
     };
     // Keep draining stdout so the owner never blocks on a full pipe.
     std::thread::spawn(move || for _ in lines {});
-    Serve {
-        child,
-        instance: ready["instance_id"].as_str().unwrap().to_owned(),
-    }
+    serve.instance = ready["instance_id"].as_str().unwrap().to_owned();
+    serve
 }
 
 async fn stop_owner(bin: &Path, data: &Path, mut serve: Serve) {
