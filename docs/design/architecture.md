@@ -426,6 +426,10 @@ Each adds its operations to the allowlist and its own tests.
 - Tags, published releases and binaries need the user's explicit approval, as
   in Shellboy.
 
+## 10.1 Release target: one binary, one command (user decision 2026-11-06)
+
+M1 is developed with two separately started processes (owner via `shellboy serve`, then the bridge). The release target is a single `shellboy-web` binary: connect to a running owner if one holds the data dir; otherwise start the owner in-process through Shellboy's headless `serve` exposed as a library function; act as the `shellboy` CLI when invoked with arguments (multicall) and put itself on model shells' PATH as `shellboy`; open the browser (setting to disable). This is the desktop form B (§11) without the Tauri window, so the core prerequisites are shared. Constraint: while shellboy-web or `serve` owns the data dir, the TUI cannot run on it, because the TUI is itself an owner today; attaching the TUI to an existing owner is a future Shellboy feature (study issue).
+
 ## 11. Desktop app (future)
 
 Order: Web UI, then PWA install (near-zero work), then Tauri when OS

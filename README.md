@@ -34,6 +34,14 @@ MIT. See [LICENSE](LICENSE).
 
 ## Planned usage (not usable yet)
 
+During development (M1) the owner and the bridge are started separately, as below.
+The release target is one `shellboy-web` binary and one command: it connects to a
+running owner if there is one, otherwise starts the owner in-process (Shellboy's
+headless `serve` as a library), doubles as the `shellboy` CLI when called with
+arguments (multicall, so model shells find `shellboy`), and opens the browser.
+Using the TUI at the same time needs the TUI to attach to an existing owner, which
+Shellboy does not support yet (tracked as a Shellboy issue).
+
 ```sh
 shellboy serve &      # an owner must already run (a TUI owner also works)
 shellboy-web          # prints http://127.0.0.1:8751/#token=…; open it once
