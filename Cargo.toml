@@ -1,0 +1,35 @@
+[package]
+name = "shellboy-web"
+version = "0.0.1"
+edition = "2024"
+rust-version = "1.99"
+publish = false
+description = "Browser UI bridge for Shellboy"
+license = "MIT"
+repository = "https://github.com/tya5/shellboy-web"
+
+[lib]
+name = "shellboy_web"
+path = "src/lib.rs"
+
+[[bin]]
+name = "shellboy-web"
+path = "src/main.rs"
+
+[dependencies]
+# Pinned to a commit on Shellboy origin/main that has `events.wait` (#243 B, C).
+# No release tag contains it yet; replace by the tag when one does (docs/design/bridge.md).
+shellboy = { git = "https://github.com/tya5/shellboy", rev = "fa7bec02c07fc9f4ed8590b4b21a3644a973b606" }
+tokio = { version = "=1.54.1", features = ["rt-multi-thread", "macros", "sync", "time", "net", "signal"] }
+tokio-util = { version = "=0.7.20", features = ["rt"] }
+axum = { version = "=0.8.9", default-features = false, features = ["http1", "tokio", "ws", "json"] }
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.154"
+uuid = { version = "=1.29.0", features = ["v4"] }
+clap = { version = "=4.6.7", features = ["derive"] }
+getrandom = "=0.3.4"
+
+[dev-dependencies]
+tokio-tungstenite = "=0.28.0"
+tower = { version = "=0.5.3", features = ["util"] }
+futures-util = "=0.3.34"

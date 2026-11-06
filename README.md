@@ -7,7 +7,8 @@ progress, Thread list) and to make Shellboy usable from a phone.
 
 ## Status
 
-**Design stage. Not usable yet.** There is no code. The proposed design is in
+**Foundation in progress.** The Rust bridge and the `--debug` page exist (see
+[docs/design/bridge.md](docs/design/bridge.md)); there is no real UI yet. The proposed design is in
 [docs/design/architecture.md](docs/design/architecture.md). The first milestone
 depends on Shellboy features that are designed but not implemented yet
 (change notification `events.wait`, Shellboy #243; external RPC contract with

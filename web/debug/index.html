@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>shellboy-web debug</title>
+<style>
+  :root { color-scheme: light dark; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 13px; }
+  body { margin: 0; padding: 12px; }
+  h1 { font-size: 15px; margin: 0 0 8px; }
+  h2 { font-size: 13px; margin: 0 0 6px; }
+  section { border: 1px solid #8884; border-radius: 4px; padding: 8px; margin-bottom: 10px; }
+  .row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-bottom: 6px; }
+  input[type=text], textarea, select { font: inherit; padding: 3px; min-width: 12em; }
+  textarea { width: 100%; box-sizing: border-box; min-height: 4.5em; }
+  button { font: inherit; padding: 3px 8px; }
+  pre { margin: 0; white-space: pre-wrap; word-break: break-all; }
+  #log { max-height: 55vh; overflow: auto; }
+  #log details { border-top: 1px solid #8883; padding: 2px 0; }
+  #log summary { cursor: pointer; }
+  .out { color: #1a6; } .in { color: #36c; } .err { color: #c33; } .sys { color: #888; }
+  .ok { color: #1a6; } .bad { color: #c33; }
+</style>
+</head>
+<body>
+<h1>shellboy-web debug</h1>
+
+<section id="login" hidden>
+  <h2>Token</h2>
+  <div class="row">
+    <input type="text" id="token" placeholder="paste the token (or open the printed URL)" size="70" autocomplete="off">
+    <button id="login-go">Authenticate</button>
+  </div>
+</section>
+
+<section>
+  <h2>Connection</h2>
+  <div class="row">
+    <span>bridge: <b id="st-ws">closed</b></span>
+    <span>owner: <b id="st-owner">?</b></span>
+    <button id="reconnect">Reconnect</button>
+  </div>
+  <pre id="hello"></pre>
+</section>
+
+<section>
+  <h2>Watch (hints)</h2>
+  <div class="row">
+    <input type="text" id="watch-ids" placeholder="thread ids, comma separated" size="50">
+    <label><input type="checkbox" id="watch-list" checked> thread list</label>
+    <button id="watch-go">Apply watch</button>
+  </div>
+  <div class="row">
+    <label><input type="checkbox" id="auto-read" checked> after a hint, re-read (thread.list / thread.get)</label>
+  </div>
+  <div class="row">hints seen: <span id="hint-count">0</span>; last: <span id="hint-last">-</span></div>
+</section>
+
+<section>
+  <h2>Call</h2>
+  <div class="row">
+    <select id="cmd"></select>
+    <button id="send">Send call</button>
+    <label><input type="checkbox" id="auto-op" checked> operation_id for mutations</label>
+    <button id="cancel-last">Cancel last</button>
+  </div>
+  <textarea id="args" spellcheck="false">{}</textarea>
+  <div class="row">
+    <button data-quick="thread.list">thread.list</button>
+    <button data-quick="status">status</button>
+    <button data-quick="thread.create">new thread</button>
+  </div>
+  <div class="row">
+    thread <input type="text" id="send-thread" size="30" placeholder="thread id">
+    text <input type="text" id="send-text" size="30" placeholder="message">
+    <button id="send-msg">message.send</button>
+  </div>
+  <div class="row">
+    run <input type="text" id="stop-run" size="30" placeholder="run id">
+    <button id="stop-go">run.stop</button>
+  </div>
+</section>
+
+<section>
+  <h2>Frames and round trips <button id="clear">clear</button> <span id="log-count"></span></h2>
+  <div id="log"></div>
+</section>
+
+<script>
+"use strict";
+const MAX_LOG = 500;
+const $ = (id) => document.getElementById(id);
+const TEMPLATES = {
+  "thread.list": {}, "status": {}, "model.list": {}, "thread.create": {},
+  "thread.get": { thread_id: "" }, "history.list": { thread_id: "" },
+  "message.send": { thread_id: "", text: "" }, "message.get": { message_id: "" },
+  "message.cancel": { message_ids: [] }, "run.get": { run_id: "" }, "run.stop": { run_id: "" },
+  "turn.get": { turn_id: "" }, "shell.list": {}, "shell.get": { execution_id: "" },
+  "shell.read": { execution_id: "" }, "history.get": {}, "operation.get": { operation_id: "" },
+};
+const MUTATIONS = new Set(["thread.create", "message.send", "run.stop", "message.cancel"]);
+let ws = null, nextId = 1, lastId = null, hints = 0, retry = 1000, retryTimer = null;
+const pending = new Map(); // id -> { command, t0 }
+
+for (const name of Object.keys(TEMPLATES)) {
+  const o = document.createElement("option"); o.value = o.textContent = name; $("cmd").append(o);
+}
+$("cmd").addEventListener("change", () => { $("args").value = JSON.stringify(TEMPLATES[$("cmd").value] ?? {}, null, 1); });
+
+function uuid() {
+  if (crypto.randomUUID) return crypto.randomUUID();
+  return "op-" + Date.now() + "-" + Math.random().toString(16).slice(2);
+}
+function log(kind, summary, raw, ms) {
+  const d = document.createElement("details");
+  const s = document.createElement("summary");
+  s.className = kind;
+  s.textContent = `${(performance.now() / 1000).toFixed(3)}s ${kind} ${summary}` + (ms != null ? ` (${ms.toFixed(1)} ms)` : "");
+  const p = document.createElement("pre");
+  p.textContent = typeof raw === "string" ? raw : JSON.stringify(raw, null, 1);
+  d.append(s, p);
+  $("log").prepend(d);
+  while ($("log").children.length > MAX_LOG) $("log").lastChild.remove();
+  $("log-count").textContent = `(newest ${$("log").children.length} of at most ${MAX_LOG})`;
+}
+function setOwner(o) {
+  $("st-owner").textContent = o.state === "connected"
+    ? `connected (instance ${o.info.instance_id ?? "?"}, protocol ${o.info.protocol_version}, capabilities [${o.info.capabilities}])`
+    : o.state;
+  $("st-owner").className = o.state === "connected" ? "ok" : "bad";
+}
+function send(frame) {
+  if (!ws || ws.readyState !== WebSocket.OPEN) { log("err", "not connected"); return null; }
+  const text = JSON.stringify(frame);
+  ws.send(text);
+  log("out", frame.t + (frame.command ? " " + frame.command : ""), frame);
+  return frame;
+}
+function call(command, args, operationId) {
+  const id = nextId++;
+  const frame = { t: "call", id, command, args };
+  if (operationId) frame.operation_id = operationId;
+  if (send(frame)) { pending.set(id, { command, t0: performance.now() }); lastId = id; }
+  return id;
+}
+function mutationOp(command) { return MUTATIONS.has(command) && $("auto-op").checked ? uuid() : undefined; }
+
+function onFrame(text) {
+  let f; try { f = JSON.parse(text); } catch { log("err", "unparseable frame", text); return; }
+  switch (f.t) {
+    case "hello":
+      $("hello").textContent = JSON.stringify(f, null, 1); setOwner(f.owner); log("in", "hello", f); break;
+    case "owner":
+      setOwner(f.owner); log("in", "owner " + f.event, f); break;
+    case "result": {
+      const p = pending.get(f.id); pending.delete(f.id);
+      const ms = p ? performance.now() - p.t0 : null;
+      const status = f.error ? "bridge error " + f.error.code : (f.response?.ok ? "ok" : "owner error");
+      log(f.error || !f.response?.ok ? "err" : "in", `result #${f.id} ${p?.command ?? ""} ${status}`, f, ms);
+      break;
+    }
+    case "changed": noteHint(f); log("in", "changed " + JSON.stringify(f), f);
+      if ($("auto-read").checked) {
+        if (f.list) call("thread.list", {});
+        for (const id of f.thread_ids) call("thread.get", { thread_id: id });
+      } break;
+    case "resync": noteHint(f); log("in", "resync", f);
+      if ($("auto-read").checked) call("thread.list", {}); break;
+    case "stream": log("in", "stream " + f.thread_id, f); break;
+    default: log("in", f.t ?? "?", f);
+  }
+}
+function noteHint(f) { hints++; $("hint-count").textContent = hints; $("hint-last").textContent = f.t + " " + new Date().toLocaleTimeString(); }
+
+function connect() {
+  clearTimeout(retryTimer);
+  if (ws) { ws.onclose = null; ws.close(); }
+  ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws");
+  $("st-ws").textContent = "connecting"; $("st-ws").className = "";
+  ws.onopen = () => { $("st-ws").textContent = "open"; $("st-ws").className = "ok"; retry = 1000; $("login").hidden = true; applyWatch(); };
+  ws.onmessage = (e) => onFrame(e.data);
+  ws.onclose = () => {
+    $("st-ws").textContent = "closed"; $("st-ws").className = "bad";
+    pending.clear(); log("sys", "socket closed; retrying in " + retry + " ms");
+    $("login").hidden = false; // a refused upgrade (no session) looks the same as a drop
+    retryTimer = setTimeout(connect, retry); retry = Math.min(retry * 2, 10000);
+  };
+}
+async function authenticate(token) {
+  const r = await fetch("/auth", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ token }) });
+  log(r.ok ? "sys" : "err", "POST /auth -> " + r.status);
+  return r.ok;
+}
+function applyWatch() {
+  const ids = $("watch-ids").value.split(",").map((s) => s.trim()).filter(Boolean);
+  send({ t: "watch", thread_ids: ids, list: $("watch-list").checked });
+}
+function parseArgs() { try { return JSON.parse($("args").value || "{}"); } catch (e) { log("err", "args are not JSON: " + e.message); return null; } }
+
+$("login-go").onclick = async () => { if (await authenticate($("token").value.trim())) { $("token").value = ""; connect(); } };
+$("reconnect").onclick = () => { retry = 1000; connect(); };
+$("watch-go").onclick = applyWatch;
+$("send").onclick = () => { const a = parseArgs(); if (a) { const c = $("cmd").value; call(c, a, mutationOp(c)); } };
+$("cancel-last").onclick = () => { if (lastId != null) { send({ t: "cancel", id: lastId }); pending.delete(lastId); } };
+$("clear").onclick = () => { $("log").replaceChildren(); $("log-count").textContent = ""; };
+document.querySelectorAll("[data-quick]").forEach((b) => b.onclick = () => call(b.dataset.quick, {}, mutationOp(b.dataset.quick)));
+$("send-msg").onclick = () => call("message.send", { thread_id: $("send-thread").value.trim(), text: $("send-text").value }, mutationOp("message.send"));
+$("stop-go").onclick = () => call("run.stop", { run_id: $("stop-run").value.trim() }, mutationOp("run.stop"));
+
+(async () => {
+  $("args").value = "{}";
+  const m = /token=([0-9a-f]+)/.exec(location.hash);
+  if (m) { history.replaceState(null, "", location.pathname + location.search); await authenticate(m[1]); }
+  connect();
+})();
+</script>
+</body>
+</html>
