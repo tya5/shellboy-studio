@@ -171,6 +171,7 @@ a{color:var(--accent)}
 .md .code pre{margin:0;padding:var(--space-8) var(--space-12);padding-right:72px;overflow-x:auto;font:var(--type-log)}
 .md .code .btn{position:absolute;top:var(--space-4);right:var(--space-4);background:var(--panel)}
 .more{align-self:flex-start}
+.jump-newest{position:sticky;bottom:var(--space-8);align-self:center;z-index:5;width:max-content}
 
 /* Composer */
 .composer{border:1px solid var(--line-strong);border-radius:var(--radius);background:var(--panel)}
