@@ -58,6 +58,12 @@ Limit: this costs some discipline, and a shared `ui-core` change can affect all 
 
 `web/data` → `web/ui-core` → optional `web/ui-parts` → `web/designs/<name>/`. Layout variants (A conversation, B monitor, C inbox, phone) are screens within a design and aren't design systems.
 
+## Decided (user, 2026-11-07)
+
+- Keep Console (default), Light and Terminal as the first systems. Light must keep text at readable contrast.
+- Default UI language is English; Japanese stays available as in the TUI.
+- The app opens on Conversation.
+
 ## Not decided
 
 Component technology for the production UI, icon set, whether users can load a custom token file from settings, Japanese and English font pairing.
