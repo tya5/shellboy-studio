@@ -4,6 +4,7 @@ import { computed, effect, signal, type ReadonlySignal, type Signal } from "@pre
 import type { Handle, Operations, OpError, ShellboyData, ShellEntry, ThreadDetails, ThreadHandle } from "../../data/src";
 import { branchRowMarks, projectConversation, type ConversationRow, type StepRow } from "./conversation";
 import { translator, type Lang, type Translate } from "./i18n";
+import { AppsModel } from "./apps";
 import { branchMarks } from "./branches";
 import { Branches, readWholeFamily, ThreadOrg } from "./branching";
 import { Insights } from "./insights";
@@ -75,6 +76,7 @@ export class AppModel {
   readonly insights: Insights;
   readonly branches: Branches;
   readonly org: ThreadOrg;
+  readonly apps: AppsModel;
   /** Conversation: node id to branches leaving there, for the open Thread. Empty when it has no family. */
   readonly marks: Signal<ReadonlyMap<string, number>> = signal(new Map());
   /** Conversation row id to the mark it shows. */
@@ -133,6 +135,7 @@ export class AppModel {
     this.t = computed(() => translator(this.lang.value));
     this.branches = new Branches(this.ops);
     this.org = new ThreadOrg(this.ops);
+    this.apps = new AppsModel(this.ops);
 
     const pendingByThread = computed(() => {
       const map = new Map<string, number>();
@@ -197,6 +200,15 @@ export class AppModel {
         const threadId = this.selectedId.value;
         if (route.view === "analytics") this.insights.ensureAnalytics(analyticsSection(route), threadId);
         else if (route.view === "settings") this.insights.ensureSettings(settingsSection(route), threadId);
+      }),
+    );
+    // Apps read on opening the view. Open tabs stay open while other views show.
+    this.disposers.push(
+      effect(() => {
+        const route = this.route.value;
+        if (route.view !== "apps" || this.connection.value !== "connected") return;
+        this.apps.ensure();
+        if (route.appName !== undefined) void this.apps.open(route.appName);
       }),
     );
     // Both views follow the list: a list hint re-reads it, and each change here re-reads once.

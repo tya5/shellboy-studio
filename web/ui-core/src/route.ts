@@ -1,5 +1,5 @@
 // Location of the UI, as a fragment. `#token=` belongs to the entry point, not to routing.
-export type ViewName = "conversation" | "monitor" | "inbox" | "analytics" | "settings" | "branches" | "threads";
+export type ViewName = "conversation" | "monitor" | "inbox" | "analytics" | "settings" | "branches" | "threads" | "apps";
 export const SETTINGS_SECTIONS = ["connections", "models", "embeddings", "shell", "storage", "compaction", "appearance"] as const;
 export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
 export const ANALYTICS_SECTIONS = ["overview", "tokens", "compaction", "threads", "storage", "memory", "index"] as const;
@@ -9,6 +9,8 @@ export interface Route {
   threadId?: string;
   /** Branches only: the point chosen on that Thread's path. */
   nodeId?: string;
+  /** Apps only: the open tab. Absent shows the list. */
+  appName?: string;
   /** Settings and Analytics. Absent means the first section. */
   section?: SettingsSection | AnalyticsSection;
 }
@@ -24,6 +26,7 @@ export function parseRoute(hash: string): Route {
   if (parts[0] === "monitor") return { view: "monitor" };
   if (parts[0] === "inbox") return { view: "inbox" };
   if (parts[0] === "threads") return { view: "threads" };
+  if (parts[0] === "apps") return parts[1] ? { view: "apps", appName: decodeURIComponent(parts[1]) } : { view: "apps" };
   if (parts[0] === "branches") {
     if (!parts[1]) return { view: "branches" };
     const threadId = decodeURIComponent(parts[1]);
@@ -44,6 +47,7 @@ export function parseRoute(hash: string): Route {
 export function formatRoute(route: Route): string {
   if (route.view === "conversation")
     return route.threadId ? `#/conversation/${encodeURIComponent(route.threadId)}` : "#/conversation";
+  if (route.view === "apps" && route.appName) return `#/apps/${encodeURIComponent(route.appName)}`;
   if (route.view === "branches" && route.threadId) {
     const thread = `#/branches/${encodeURIComponent(route.threadId)}`;
     return route.nodeId ? `${thread}/${encodeURIComponent(route.nodeId)}` : thread;

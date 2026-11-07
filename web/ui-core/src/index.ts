@@ -1,4 +1,5 @@
 export * from "./analytics";
+export * from "./apps";
 export * from "./branches";
 export * from "./branching";
 export * from "./commands";

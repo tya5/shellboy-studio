@@ -282,6 +282,10 @@ export function answerInsights(db: FakeOwnerDb, usage: Record<string, unknown> =
   db.answer = (c) => {
     const a = (c.args ?? {}) as Record<string, unknown>;
     switch (c.command) {
+      case "apps.list":
+        return { ok: true, result: { dir: "/tmp/x/apps", guide: "/tmp/x/apps/README.md", apps: [{ name: "board", title: "Board", entry: "index.html", thread: "lead", problem: null }, { name: "half", title: "Half made", entry: "index.html", thread: null, problem: "app.json can't be read: expected value" }] } };
+      case "apps.open":
+        return { ok: true, result: { name: a.name, title: "Board", origin: "http://127.0.0.1:8752", url: "http://127.0.0.1:8752/?_sb_ticket=t1", thread: "lead" } };
       case "thread.branches":
         return { ok: true, result: fixtureBranches };
       case "thread.rewind":

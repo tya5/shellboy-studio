@@ -188,6 +188,14 @@ export class Operations {
   threadRewindPreview(args: ThreadRewindArgs): Promise<Outcome<Record<string, unknown>>> {
     return this.run("thread.rewind", { ...args, dry_run: true }, decodeRecord);
   }
+  /** The gateway's own: apps found in the apps folder. Doesn't reach the owner. */
+  appsList(): Promise<Outcome<Record<string, unknown>>> {
+    return this.run("apps.list", {}, decodeRecord);
+  }
+  /** A one-time URL that opens an app on its own origin. */
+  appsOpen(name: string): Promise<Outcome<Record<string, unknown>>> {
+    return this.run("apps.open", { name }, decodeRecord);
+  }
   /** Look up a mutation's receipt, e.g. after an `unconfirmed` error. */
   operationGet(operationId: string): Promise<Outcome<Record<string, unknown>>> {
     return this.run("operation.get", { operation_id: operationId }, decodeRecord);
