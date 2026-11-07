@@ -228,6 +228,7 @@ export function Chart({
       <details class="chart-table">
         <summary>{tableLabel}</summary>
         <DataTable
+          flat
           caption={title}
           columns={[{ label: categoryLabel }, ...series.map((s) => ({ label: s.label, numeric: true }))]}
           rows={points.map((p) => ({

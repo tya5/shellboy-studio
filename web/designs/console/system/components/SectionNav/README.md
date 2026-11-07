@@ -1,1 +1,1 @@
-The list of sections inside one view, such as Settings. A column beside the content on a wide frame; wrapped rows above it at phone width, each at least 44px high. Each item is a link, so a section can be opened directly.
+The sections inside one view, such as Settings or Analytics. Use it through SubView. A column of links on a wide frame, so a section can be opened directly and its location stays in the URL hash. At phone width it becomes one compact selector with the same sections, at least 44px high, so it takes one row and never scrolls sideways.

@@ -6,15 +6,15 @@ export interface DataColumn {
   numeric?: boolean;
 }
 
-export function DataTable({ caption, columns, rows }: { caption: string; columns: DataColumn[]; rows: { key: string; cells: ComponentChildren[] }[] }) {
+export function DataTable({ caption, columns, rows, flat }: { caption: string; columns: DataColumn[]; rows: { key: string; cells: ComponentChildren[] }[]; /** Keep columns on a phone: only for tables known to fit. */ flat?: boolean }) {
   return (
-    <div class="tbl-wrap" tabIndex={0} role="group" aria-label={caption}>
-      <table class="tbl">
+    <div class="tbl-wrap">
+      <table class={flat ? "tbl" : "tbl stack"}>
         <caption class="vh">{caption}</caption>
         <thead>
           <tr>
-            {columns.map((c) => (
-              <th key={c.label} scope="col" class={c.numeric ? "num" : undefined}>{c.label}</th>
+            {columns.map((c, i) => (
+              <th key={i} scope="col" class={c.numeric ? "num" : undefined}>{c.label}</th>
             ))}
           </tr>
         </thead>
@@ -22,7 +22,9 @@ export function DataTable({ caption, columns, rows }: { caption: string; columns
           {rows.map((r) => (
             <tr key={r.key}>
               {r.cells.map((cell, i) => (
-                <td key={i} class={columns[i]?.numeric ? "num" : undefined}>{cell}</td>
+                <td key={i} class={columns[i]?.numeric ? "num" : undefined} data-label={columns[i]?.label}>
+                  <div class="cell">{cell}</div>
+                </td>
               ))}
             </tr>
           ))}

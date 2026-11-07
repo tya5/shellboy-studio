@@ -1,0 +1,1 @@
+The frame for a view split into sections, used by Settings and Analytics. Prefer panes to one long scroll when a view holds subjects read separately. Keep the selected section in the URL hash and read a section's data only when it opens. Each pane starts with a `pagehead`, so the section's name stays visible when the list collapses to a selector on a phone.

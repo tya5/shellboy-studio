@@ -28,3 +28,5 @@ export { RangeBar } from "./RangeBar";
 export { SectionNav, type SectionNavItem } from "./SectionNav";
 export { FactList, type Fact } from "./FactList";
 export { ButtonGroup } from "./ButtonGroup";
+export { SubView } from "./SubView";
+export { MoreMenu } from "./MoreMenu";
