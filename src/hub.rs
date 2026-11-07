@@ -9,6 +9,7 @@
 //!
 //! Owner of all state: the `Hub` (dropped with the server). No task is spawned here.
 use crate::envelope::{OwnerEvent, OwnerInfo, OwnerState};
+use crate::live::{self, Seen};
 use std::{
     collections::{BTreeSet, HashMap, HashSet},
     sync::{Arc, Mutex},
@@ -39,12 +40,16 @@ struct Session {
     list: bool,
     pending: Pending,
     wake: Arc<Notify>,
+    /// Live text: what this tab has been sent per watched Thread, and which Threads to look at.
+    live_seen: HashMap<String, Seen>,
+    live_dirty: BTreeSet<String>,
 }
 
 struct Inner {
     next: u64,
     owner: OwnerState,
     sessions: HashMap<u64, Session>,
+    live: live::Store,
 }
 
 pub struct Hub {
@@ -71,6 +76,7 @@ impl Hub {
                 next: 0,
                 owner: OwnerState::Unreachable,
                 sessions: HashMap::new(),
+                live: live::Store::default(),
             }),
         })
     }
@@ -96,6 +102,8 @@ impl Hub {
                 list: false,
                 pending: Pending::default(),
                 wake: wake.clone(),
+                live_seen: HashMap::new(),
+                live_dirty: BTreeSet::new(),
             },
         );
         let owner = inner.owner.clone();
@@ -134,11 +142,23 @@ impl Hub {
             return Err("thread_ids must be non-empty and short".into());
         }
         let mut inner = self.lock();
-        if let Some(session) = inner.sessions.get_mut(&guard.id) {
+        let Inner { sessions, live, .. } = &mut *inner;
+        if let Some(session) = sessions.get_mut(&guard.id) {
             session.watch = thread_ids.into_iter().collect();
             session.list = list;
             let watch = &session.watch;
             session.pending.threads.retain(|id| watch.contains(id));
+            session.live_seen.retain(|id, _| watch.contains(id));
+            session.live_dirty.retain(|id| watch.contains(id));
+            // A tab that starts watching a Thread mid-attempt is sent what is held.
+            for id in watch {
+                if live.holds(id)
+                    && !session.live_seen.contains_key(id)
+                    && session.live_dirty.insert(id.clone())
+                {
+                    session.wake.notify_one();
+                }
+            }
             if !list {
                 session.pending.list = false;
             }
@@ -169,10 +189,19 @@ impl Hub {
     /// Everything a tab shows must be re-read; supersedes dirty marks.
     pub fn resync(&self) {
         let mut inner = self.lock();
-        for session in inner.sessions.values_mut() {
+        let Inner { sessions, live, .. } = &mut *inner;
+        for session in sessions.values_mut() {
             session.pending.threads.clear();
             session.pending.list = false;
             session.pending.resync = true;
+            // The tab discards its previews on `resync`, so it is sent what is held again.
+            session.live_seen.clear();
+            session.live_dirty = session
+                .watch
+                .iter()
+                .filter(|id| live.holds(id))
+                .cloned()
+                .collect();
             session.wake.notify_one();
         }
     }
@@ -185,6 +214,59 @@ impl Hub {
             session.pending.owner = Some(event);
             session.wake.notify_one();
         }
+    }
+
+    /// Live text the owner listed in one reply (`reset`: a baseline or resync, which forgets
+    /// what was held). Tabs watching a changed Thread are woken.
+    pub fn live_apply(&self, entries: Vec<live::Entry>, reset: bool) {
+        let mut inner = self.lock();
+        let changed = inner.live.apply(entries, reset);
+        Self::mark_live(&mut inner, &changed);
+    }
+
+    /// The owner is gone: nothing it held can be trusted. Tabs discard on the `owner` frame.
+    pub fn live_clear(&self) {
+        let mut inner = self.lock();
+        inner.live.clear();
+        for session in inner.sessions.values_mut() {
+            session.live_seen.clear();
+            session.live_dirty.clear();
+        }
+    }
+
+    fn mark_live(inner: &mut Inner, changed: &[String]) {
+        for session in inner.sessions.values_mut() {
+            let mut touched = false;
+            for id in changed {
+                if session.watch.contains(id) {
+                    touched |= session.live_dirty.insert(id.clone());
+                }
+            }
+            if touched {
+                session.wake.notify_one();
+            }
+        }
+    }
+
+    /// Frames for the Threads whose live text changed since the session was last told.
+    pub fn take_live(&self, guard: &SessionGuard) -> Vec<live::Out> {
+        let mut inner = self.lock();
+        let Inner { sessions, live, .. } = &mut *inner;
+        let Some(session) = sessions.get_mut(&guard.id) else {
+            return Vec::new();
+        };
+        std::mem::take(&mut session.live_dirty)
+            .into_iter()
+            .filter_map(|id| {
+                let mut seen = session.live_seen.get(&id).copied();
+                let out = live.out(&id, &mut seen);
+                match seen {
+                    Some(s) => session.live_seen.insert(id, s),
+                    None => session.live_seen.remove(&id),
+                };
+                out
+            })
+            .collect()
     }
 
     /// Take (and clear) what the session has not been told, with the owner state to send.
@@ -281,5 +363,47 @@ mod tests {
         let (p, _) = hub.take(&a);
         assert_eq!(p.threads, BTreeSet::from(["t2".to_owned()]));
         assert!(!p.list);
+    }
+
+    #[test]
+    fn live_text_follows_the_subscription_and_a_late_tab_gets_what_is_held() {
+        use crate::live::{Delta, Entry, Out};
+        let entry = |text: &str, offset: u64| Entry {
+            thread_id: "t1".into(),
+            attempt_id: "a".into(),
+            gap: false,
+            deltas: vec![Delta {
+                offset,
+                reasoning: false,
+                text: text.into(),
+            }],
+        };
+        let hub = Hub::new();
+        let (a, _) = hub.register().unwrap();
+        let (b, _) = hub.register().unwrap();
+        hub.watch(&a, vec!["t1".into()], false).unwrap();
+        hub.watch(&b, vec!["t2".into()], false).unwrap();
+        for i in 0..1000 {
+            hub.live_apply(vec![entry("x", i)], i == 0);
+        }
+        let frames = hub.take_live(&a);
+        assert_eq!(frames.len(), 1, "1000 deltas are one frame");
+        let Out::Text { deltas, .. } = &frames[0] else {
+            panic!()
+        };
+        assert_eq!(deltas.len(), 1000);
+        assert!(hub.take_live(&b).is_empty(), "not watching t1");
+        hub.watch(&b, vec!["t1".into()], false).unwrap();
+        assert_eq!(hub.take_live(&b).len(), 1, "late tab: what is held");
+        hub.live_apply(vec![], false);
+        assert_eq!(
+            hub.take_live(&a),
+            vec![Out::End {
+                thread_id: "t1".into()
+            }]
+        );
+        hub.live_apply(vec![entry("y", 0)], false);
+        hub.live_clear();
+        assert!(hub.take_live(&a).is_empty());
     }
 }

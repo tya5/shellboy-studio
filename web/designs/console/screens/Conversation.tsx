@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import { formatClock, formatDuration, formatRoute, formatTokens, parseTime, statusLabel, type AppModel, type ConversationRow, type StepRow as Step } from "../../../ui-core/src";
+import { LiveMessage } from "./LiveMessage";
 import { BranchMark, Button, Composer, LoadingRows, EmptyState, Icon, KeyValue, LogBlock, Message, Notice, StatusMark, StepRow, SummaryStrip } from "../system/components";
 
 const stepDuration = (s: Step, now: number): string | undefined => {
@@ -156,13 +157,12 @@ export function Conversation({ model }: { model: AppModel }) {
   const scroller = useRef<HTMLDivElement>(null);
   const pinned = useRef(true);
   const history = handle?.history.value;
-  const preview = handle?.preview.value;
-  const previewText = preview?.kind === "live" ? preview.text : undefined;
-
-  useLayoutEffect(() => {
+  const follow = () => {
     const el = scroller.current;
     if (el && pinned.current) el.scrollTop = el.scrollHeight;
-  }, [rows, previewText]);
+  };
+
+  useLayoutEffect(follow, [rows]);
   useEffect(() => {
     pinned.current = true;
   }, [handle]);
@@ -209,9 +209,7 @@ export function Conversation({ model }: { model: AppModel }) {
           {rows.map((row) => (
             <RowView key={row.id} model={model} row={row} />
           ))}
-          {previewText !== undefined ? (
-            <Message bot who={t("convo.shellboy")} at={t("convo.live")} text={previewText} copyLabel={t("code.copy")} copiedLabel={t("code.copied")} />
-          ) : null}
+          <LiveMessage model={model} handle={handle} follow={follow} />
           {rows.length === 0 && !history?.error ? (
             loading ? <LoadingRows label={t("convo.loading")} rows={5} /> : <EmptyState icon="chat" title={t("convo.empty")} body={t("convo.emptyBody")} />
           ) : null}

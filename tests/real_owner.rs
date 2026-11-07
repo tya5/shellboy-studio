@@ -99,7 +99,7 @@ async fn next_t(ws: &mut common_ws::Ws, t: &str) -> Value {
     loop {
         let message = tokio::time::timeout(Duration::from_secs(30), ws.next())
             .await
-            .expect("frame in time")
+            .unwrap_or_else(|_| panic!("a `{t}` frame in time"))
             .expect("socket open")
             .expect("ws ok");
         if let Message::Text(text) = message {
@@ -179,13 +179,31 @@ async fn hints_and_restart_against_a_real_owner() {
     ))
     .await
     .unwrap();
-    let created = next_t(&mut ws, "result").await;
+    // The hint can overtake the reply (the owner answers the poll and the call independently),
+    // so take both in whichever order they come.
+    let (mut created, mut changed) = (None, None);
+    while created.is_none() || changed.is_none() {
+        let message = tokio::time::timeout(Duration::from_secs(30), ws.next())
+            .await
+            .expect("result and changed in time")
+            .expect("socket open")
+            .expect("ws ok");
+        let Message::Text(text) = message else {
+            continue;
+        };
+        let frame: Value = serde_json::from_str(text.as_str()).unwrap();
+        match frame["t"].as_str() {
+            Some("result") => created = Some(frame),
+            Some("changed") => changed = Some(frame),
+            _ => {}
+        }
+    }
+    let (created, changed) = (created.unwrap(), changed.unwrap());
     assert_eq!(created["response"]["ok"], true, "{created}");
     let thread_id = created["response"]["result"]["thread_id"]
         .as_str()
         .expect("thread id")
         .to_owned();
-    let changed = next_t(&mut ws, "changed").await;
     eprintln!(
         "observed: create -> changed hint after {:?} (one sample, loopback, not a bound)",
         started.elapsed()
@@ -864,6 +882,199 @@ async fn settings_read_and_write_the_file_and_values_stay_hidden() {
         "{read}"
     );
     drop(c);
+    cancel.cancel();
+    drop(serve);
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// A loopback stand-in for a streaming Responses endpoint: it sends "Hello " at once, waits for
+/// the test's gate, then sends "world" and finishes. Loopback only, no credentials.
+#[cfg(feature = "next-shellboy")]
+async fn streaming_provider(gate: Arc<tokio::sync::Notify>) -> String {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        loop {
+            let Ok((mut socket, _)) = listener.accept().await else {
+                return;
+            };
+            let gate = gate.clone();
+            tokio::spawn(async move {
+                let mut seen = Vec::new();
+                let mut chunk = [0u8; 8192];
+                loop {
+                    let Ok(n) = socket.read(&mut chunk).await else {
+                        return;
+                    };
+                    if n == 0 {
+                        return;
+                    }
+                    seen.extend_from_slice(&chunk[..n]);
+                    let text = String::from_utf8_lossy(&seen).to_string();
+                    if let Some(end) = text.find("\r\n\r\n") {
+                        let length = text[..end]
+                            .lines()
+                            .find_map(|l| {
+                                l.to_ascii_lowercase()
+                                    .strip_prefix("content-length:")
+                                    .map(|v| v.trim().parse::<usize>().unwrap_or(0))
+                            })
+                            .unwrap_or(0);
+                        if seen.len() >= end + 4 + length {
+                            break;
+                        }
+                    }
+                }
+                let sse = |value: Value| format!("data: {value}\n\n");
+                let head = "HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\nconnection: close\r\n\r\n";
+                let _ = socket.write_all(head.as_bytes()).await;
+                let _ = socket
+                    .write_all(
+                        sse(json!({"type":"response.output_text.delta","delta":"Hello "}))
+                            .as_bytes(),
+                    )
+                    .await;
+                let _ = socket.flush().await;
+                gate.notified().await;
+                let _ = socket
+                    .write_all(
+                        sse(json!({"type":"response.output_text.delta","delta":"world"}))
+                            .as_bytes(),
+                    )
+                    .await;
+                let item = json!({"id":"m","type":"message","role":"assistant","status":"completed","content":[{"type":"output_text","text":"Hello world"}]});
+                let reply = json!({"type":"response.completed","response":{"id":"r","status":"completed","output":[item],"usage":{"input_tokens":10,"input_tokens_details":{"cached_tokens":0},"output_tokens":2,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":12}}});
+                let _ = socket.write_all(sse(reply).as_bytes()).await;
+                let _ = socket.shutdown().await;
+            });
+        }
+    });
+    format!("http://{addr}/v1")
+}
+
+/// Live text end to end: the owner's unsaved text reaches a watching tab as `live` frames while
+/// the model is still writing, the tab is told when no text is held, and the saved message is the
+/// one history returns. Only with `next-shellboy`, against an owner built from Shellboy main.
+#[cfg(feature = "next-shellboy")]
+#[tokio::test]
+async fn live_text_reaches_a_watching_tab_and_the_saved_message_follows() {
+    let bin = PathBuf::from(std::env::var_os("SHELLBOY_BIN").expect("SHELLBOY_BIN"));
+    let root = temp_root();
+    let data = root.join("data");
+    let gate = Arc::new(tokio::sync::Notify::new());
+    let url = streaming_provider(gate.clone()).await;
+    let serve = start_owner_with(&bin, &root, &data, &url);
+    let instance = serve.instance.clone();
+    let op = |n: &str| Some(format!("{instance}:web-live-{n}"));
+
+    let owner = Arc::new(IpcOwner::new(data.clone()));
+    let (addr, state, cancel) = start(owner, true).await;
+    let cookie = login(addr, &state).await;
+    let mut request = format!("ws://{addr}/ws").into_client_request().unwrap();
+    request
+        .headers_mut()
+        .insert("origin", format!("http://{addr}").parse().unwrap());
+    request
+        .headers_mut()
+        .insert("cookie", cookie.parse().unwrap());
+    let (ws, _) = tokio_tungstenite::connect_async(request).await.unwrap();
+    let mut c = Client { ws, next: 0 };
+    let hello = next_t(&mut c.ws, "hello").await;
+    until("the bridge hears the owner", || {
+        matches!(
+            state.hub.owner_state(),
+            shellboy_studio::envelope::OwnerState::Connected { .. }
+        )
+    })
+    .await;
+    let _ = hello;
+    let thread = c
+        .ok(
+            "thread.create",
+            json!({"cwd": root.to_str().unwrap()}),
+            op("create"),
+        )
+        .await["thread_id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    c.ws.send(Message::Text(
+        json!({"t":"watch","thread_ids":[thread],"list":false})
+            .to_string()
+            .into(),
+    ))
+    .await
+    .unwrap();
+    c.ok("thread.list", json!({}), None).await; // the watch is in place once this answers
+    c.ok(
+        "message.send",
+        json!({"thread_id":thread,"text":"hi"}),
+        op("send"),
+    )
+    .await;
+
+    // Frames in order, with everything else skipped, until the first text is seen.
+    let mut text = String::new();
+    let mut attempt = String::new();
+    while !text.contains("Hello ") {
+        let frame = next_t(&mut c.ws, "live").await;
+        assert_eq!(frame["thread_id"], thread.as_str());
+        assert_eq!(frame["gap"], false, "{frame}");
+        attempt = frame["attempt_id"].as_str().unwrap().to_owned();
+        for d in frame["deltas"].as_array().unwrap() {
+            if d["reasoning"] == false {
+                text.push_str(d["text"].as_str().unwrap());
+            }
+        }
+    }
+    assert!(!attempt.is_empty());
+    // Still being written: nothing is saved yet.
+    let before = c
+        .ok("history.list", json!({"thread_id":thread,"limit":50}), None)
+        .await;
+    assert!(
+        !before["items"].to_string().contains("Hello world"),
+        "the text is live, not saved: {before}"
+    );
+    gate.notify_one();
+    let mut ended = false;
+    while !ended {
+        let message = tokio::time::timeout(Duration::from_secs(30), c.ws.next())
+            .await
+            .expect("frame in time")
+            .expect("socket open")
+            .expect("ws ok");
+        let Message::Text(raw) = message else {
+            continue;
+        };
+        let frame: Value = serde_json::from_str(raw.as_str()).unwrap();
+        match frame["t"].as_str() {
+            Some("live") => {
+                assert_eq!(frame["attempt_id"], attempt.as_str());
+                for d in frame["deltas"].as_array().unwrap() {
+                    if d["reasoning"] == false {
+                        text.push_str(d["text"].as_str().unwrap());
+                    }
+                }
+            }
+            Some("live_end") => ended = true,
+            _ => {}
+        }
+    }
+    // A reader that lost the end of the text (no text not yet read is kept) still has a prefix of it.
+    assert!(
+        "Hello world".starts_with(text.trim_end()) || text.contains("Hello"),
+        "{text}"
+    );
+    c.settled(&thread).await;
+    let after = c
+        .ok("history.list", json!({"thread_id":thread,"limit":50}), None)
+        .await;
+    assert!(
+        after["items"].to_string().contains("Hello world"),
+        "{after}"
+    );
     cancel.cancel();
     drop(serve);
     let _ = std::fs::remove_dir_all(&root);

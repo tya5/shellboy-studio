@@ -124,7 +124,7 @@ with typed `shellboy::protocol::Command` values and no Origin (sender kind
   facts, and conversation content is fully persisted as today.
 - **Live text streaming (option A).** Shellboy core returns model text written
   since a cursor through the same long-poll (no persistence; core stage E, A
-  part). The bridge forwards it as `stream` frames (§3.2) and keeps no history
+  part). The bridge forwards it as `live` frames (§3.2) and keeps no history
   of it; the saved result replaces it when the Turn settles. Option B (a
   streaming response) is considered only if A is not smooth enough.
 - **Reads after a hint are issued by the data layer**, through the proxy (§3.2).
@@ -162,12 +162,12 @@ Bridge → browser:
 | `hello` | bridge version, the owner's data directory, owner `{protocol_version, instance_id, capabilities}` or `unreachable` | first frame; frontend enables features by capability |
 | `result` | `id`, owner `Response` or bridge error `{code, message}` | reply to `call` |
 | `changed` | `thread_ids`, `list` | coalesced dirty set since the last `changed` frame |
-| `stream` | `thread_id`, `cursor`, `text`, `gap: bool` | live model text since the last frame; bounded, lossy with an explicit gap (the data layer then waits for saved output) |
+| `live` | `thread_id`, `attempt_id`, `gap`, `deltas[{offset, reasoning, text}]` | unsaved model text this tab has not been sent; bounded, lossy with an explicit gap (the tab discards first). Capability `live.text` |
+| `live_end` | `thread_id` | no text is held for the Thread any more; saved output follows |
 | `resync` | — | re-read everything shown |
 | `owner` | `connected` / `unreachable` / `restarted` | owner reachability |
 
-Hints and stream text are not queued per message (stream text keeps only the
-latest bounded span per watched Thread, marking `gap` when it overflows). Each session holds a dirty set
+Hints and live text are not queued per message (live text is one bounded copy shared by tabs, at most 16 attempts of 64 KiB, with a sent position per watched Thread per tab; a tab that falls behind the bound is told with `gap`). Each session holds a dirty set
 (≤ subscribed Threads + a list flag) and one pending-flush flag; a slow tab
 gets one larger `changed` frame, never a growing backlog. This mirrors the
 owner's own coalescing and needs no extra buffer.

@@ -3,13 +3,7 @@
 import { batch, computed, signal, type ReadonlySignal } from "@preact/signals-core";
 import type { OpError } from "./errors";
 import { Link, type ConnectionState, type LinkEvent } from "./link";
-import {
-  applyStream,
-  discardPreview,
-  NO_PREVIEW,
-  type Preview,
-  type PreviewDiscardReason,
-} from "./live";
+import { LiveText, microtaskSchedule, type Preview, type PreviewDiscardReason, type Schedule } from "./live";
 import { Cancel, Operations } from "./operations";
 import type {
   ArchivedFilter,
@@ -98,6 +92,8 @@ export interface DataOptions {
   transport: Transport;
   /** UUID v4 source for operation ids. Defaults to `crypto.randomUUID`. */
   newId?: () => string;
+  /** When live text is shown: called once per burst of frames. The app passes an animation frame. */
+  schedule?: Schedule;
 }
 
 const emptyPaged = <T>(): PagedState<T> => ({
@@ -118,15 +114,29 @@ class ThreadEntry {
   window = HISTORY_WINDOW;
   /** The next read starts from the beginning of the path, not from the last known item. */
   fullRead = true;
-  preview = signal<Preview>(NO_PREVIEW);
+  /** Unsaved model text; its signal is the handle's `preview`. */
+  live: LiveText;
   /** Bumped by every history read; a read started earlier drops its result. */
   historyGen = 0;
   /** Cancels this Thread's reads: dropped if queued, a `cancel` frame if sent. Replaced on resume. */
   cancel = new Cancel();
+  /** Stops watching the history for the saved message. */
+  stopSaved: (() => void) | undefined;
   /** Nobody is looking: no reads, and no hints from the bridge. */
   paused = false;
-  constructor(readonly id: string) {}
+  constructor(readonly id: string, schedule: Schedule) {
+    this.live = new LiveText(schedule, () => lastAssistantId(this.history.peek().items));
+  }
+  get preview(): ReadonlySignal<Preview> {
+    return this.live.preview;
+  }
 }
+
+/** The newest saved model message on the loaded part of the path: how a preview learns it was saved. */
+const lastAssistantId = (items: readonly HistoryItem[]): string | undefined => {
+  for (let i = items.length - 1; i >= 0; i--) if (items[i]!.kind === "assistant_response") return items[i]!.node_id;
+  return undefined;
+};
 
 /** Keeps the first seen of each Thread, in order, within the bound. */
 function mergeRows(first: readonly ThreadSummary[], then: readonly ThreadSummary[]): ThreadSummary[] {
@@ -155,6 +165,7 @@ export class ShellboyData {
   private listGen = 0;
   private entries = new Map<string, ThreadEntry>();
   private watchQueued = false;
+  private readonly schedule: Schedule;
   private readonly refresher: Refresher;
 
   readonly connection: ReadonlySignal<ConnectionState>;
@@ -174,6 +185,7 @@ export class ShellboyData {
 
   constructor(options: DataOptions) {
     this.link = new Link(options.transport);
+    this.schedule = options.schedule ?? microtaskSchedule;
     const newId = options.newId ?? defaultNewId;
     this.operations = new Operations(this.link, () => withInstance(this.ownerSig.peek(), newId()));
     this.refresher = new Refresher((key, onSent) => this.read(key, onSent));
@@ -257,7 +269,8 @@ export class ShellboyData {
     if (!entry) {
       if (this.entries.size >= MAX_WATCHED_THREADS)
         throw new RangeError(`at most ${MAX_WATCHED_THREADS} Threads can be open at once`);
-      entry = new ThreadEntry(threadId);
+      entry = new ThreadEntry(threadId, this.schedule);
+      entry.stopSaved = entry.history.subscribe(() => entry!.live.checkSaved());
       this.entries.set(threadId, entry);
       this.scheduleWatch();
       if (this.canRead()) this.requestThread(threadId);
@@ -283,6 +296,7 @@ export class ShellboyData {
         closed = true;
         if (--e.refs === 0) {
           e.closed = true;
+          e.stopSaved?.();
           e.cancel.cancel();
           this.entries.delete(threadId);
           this.scheduleWatch();
@@ -362,11 +376,25 @@ export class ShellboyData {
       case "changed":
         // Hints are not data: re-read the saved facts. Untracked Threads are ignored.
         if (f.list && this.listRefs > 0) void this.refresher.request("list");
-        for (const id of f.thread_ids) if (this.entries.has(id)) void this.requestThread(id);
+        for (const id of f.thread_ids) {
+          const entry = this.entries.get(id);
+          if (!entry) continue;
+          // After an attempt ended, the first change that is read and shows no saved message
+          // (stopped, failed) means none is coming: drop the preview that waited for it.
+          const waiting = entry.live.isEnding;
+          void this.requestThread(id).then(() => {
+            if (waiting) entry.live.endedWithoutSaved();
+          });
+        }
         break;
-      case "stream": {
+      case "live":
+        this.entries.get(f.thread_id)?.live.apply(f);
+        break;
+      case "live_end": {
         const entry = this.entries.get(f.thread_id);
-        if (entry) entry.preview.value = applyStream(entry.preview.value, f);
+        if (!entry) break;
+        entry.live.finish();
+        void this.requestThread(f.thread_id); // read saved facts (rule 4); a `changed` follows the commit
         break;
       }
       case "error":
@@ -399,7 +427,7 @@ export class ShellboyData {
   }
 
   private discardAllPreviews(reason: PreviewDiscardReason): void {
-    for (const e of this.entries.values()) e.preview.value = discardPreview(reason);
+    for (const e of this.entries.values()) e.live.discard(reason);
   }
 
   // ---- subscription ----

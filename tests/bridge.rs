@@ -435,6 +435,79 @@ async fn hints_reach_only_the_tabs_that_watch_and_resync_reaches_all() {
 }
 
 #[tokio::test]
+async fn live_text_frames_reach_only_the_tab_that_watches_and_are_one_frame_per_burst() {
+    use shellboy_studio::live::{Delta, Entry};
+    let (owner, _tx) = mock(list_handler);
+    let (addr, state, cancel) = start(owner.clone(), false).await;
+    let cookie = login(addr, &state).await;
+    let origin = format!("http://{addr}");
+    let mut watching = connect(addr, Some(&cookie), Some(&origin)).await.unwrap();
+    let mut other = connect(addr, Some(&cookie), Some(&origin)).await.unwrap();
+    for ws in [&mut watching, &mut other] {
+        next_t(ws, "hello").await;
+    }
+    put(
+        &mut watching,
+        json!({"t":"watch","thread_ids":["t1"],"list":false}),
+    )
+    .await;
+    put(
+        &mut watching,
+        json!({"t":"call","id":1,"command":"thread.list","args":{}}),
+    )
+    .await;
+    next_t(&mut watching, "result").await;
+    let entry = |offset: u64, text: &str| Entry {
+        thread_id: "t1".into(),
+        attempt_id: "a1".into(),
+        gap: false,
+        deltas: vec![Delta {
+            offset,
+            reasoning: false,
+            text: text.into(),
+        }],
+    };
+    state.hub.live_apply(vec![entry(0, "Hel")], true);
+    let first = next_t(&mut watching, "live").await;
+    assert_eq!(first["thread_id"], "t1");
+    assert_eq!(first["attempt_id"], "a1");
+    assert_eq!(first["gap"], false);
+    assert_eq!(
+        first["deltas"],
+        json!([{"offset":0,"reasoning":false,"text":"Hel"}])
+    );
+    state.hub.live_apply(vec![entry(0, "Hel")], false);
+    state.hub.live_apply(
+        vec![Entry {
+            deltas: vec![Delta {
+                offset: 3,
+                reasoning: false,
+                text: "lo".into(),
+            }],
+            ..entry(0, "")
+        }],
+        false,
+    );
+    let second = next_t(&mut watching, "live").await;
+    assert_eq!(
+        second["deltas"],
+        json!([{"offset":3,"reasoning":false,"text":"lo"}]),
+        "only what the tab has not seen"
+    );
+    state.hub.live_apply(vec![], false);
+    let end = next_t(&mut watching, "live_end").await;
+    assert_eq!(end["thread_id"], "t1");
+    // The other tab never watched t1, so it heard nothing and the next frame it gets is its own.
+    put(
+        &mut other,
+        json!({"t":"call","id":2,"command":"thread.list","args":{}}),
+    )
+    .await;
+    assert_eq!(next(&mut other).await["t"], "result");
+    cancel.cancel();
+}
+
+#[tokio::test]
 async fn new_tabs_start_from_the_current_owner_state_and_hear_about_changes() {
     let (owner, tx) = mock(list_handler);
     let (addr, state, cancel) = start(owner.clone(), false).await;
@@ -451,7 +524,13 @@ async fn new_tabs_start_from_the_current_owner_state_and_hear_about_changes() {
     let event = next_t(&mut early, "owner").await;
     assert_eq!(event["event"], "connected");
     assert_eq!(event["owner"]["info"]["instance_id"], "inst1");
-    assert_eq!(event["owner"]["info"]["capabilities"], json!([]));
+    // What this build was made to send: nothing in a normal build, pinned to the tag.
+    let expected = if cfg!(feature = "next-shellboy") {
+        json!(["thread.reparent", "config.edit", "live.text"])
+    } else {
+        json!([])
+    };
+    assert_eq!(event["owner"]["info"]["capabilities"], expected);
     let mut late = connect(addr, Some(&cookie), Some(&origin)).await.unwrap();
     assert_eq!(
         next_t(&mut late, "hello").await["owner"]["state"],

@@ -60,17 +60,36 @@ instance differs, taken from the operation-ID prefix of the reply as `shellboy c
 does) followed by `resync`. The loop never reads Thread facts and there is no polling
 fallback.
 
+## Live text
+
+With `next-shellboy` the one `events.wait` loop sends `include_text: true` from its first (baseline)
+call. Nothing else polls. The result's `live_text` goes into `live::Store` inside the `Hub`; tabs are
+woken only for Threads they watch whose text changed, and receive `live` / `live_end` frames with
+only what they have not seen. Rules, from the core's client rule (events-and-external-protocol 2.5):
+
+- `baseline` and `resync_required` forget what was held, then take the reply. `resync` frames
+  clear each tab's sent positions and mark its held Threads for sending again.
+- An attempt absent from `live_text` is no longer held: `live_end` to tabs that were sent it. A Thread
+  past the owner's 16-attempt cap simply has no text; that is normal.
+- A new `attempt_id` or `gap: true` replaces the attempt (the tab is told `gap` and discards first).
+  A tab whose position fell behind what the bridge kept is told `gap` too.
+- "Local IPC work capacity is busy" (`invalid_state`, details `phase: admission`,
+  `request_may_have_been_applied: false`) is a routine retry with the same cursor after the poll
+  backoff. It is not `unreachable` and drops nothing. Other errors stay `unreachable`, and drop the held text.
+- Bounds: 16 attempts, 64 KiB per attempt counting 40 bytes per delta (the owner's own, oldest whole
+  deltas dropped), shared by all tabs; per tab one position and one dirty mark per watched Thread (64
+  at most). They are not a memory measurement.
+
 ## Seams
 
 `src/seam.rs` is the only place that knows about work not on Shellboy main:
 
 - Protocol 3 / `Welcome.capabilities` (#244 A2): `owner_capabilities()` returns an empty
   list now. `hello` and `owner` frames already carry `capabilities`.
-- Live text deltas (E3): `decode_events_result()` decodes the long-poll result strictly as
-  `EventsWaitResult` and returns `(result, Vec<StreamChunk>)` with an always-empty vector.
-  The browser `stream` frame exists in `envelope.rs` but nothing sends it. The wire shape
-  on the owner side is deliberately not guessed: a new field currently fails decoding
-  loudly (the bridge reports the owner unreachable with the reason on stderr).
+- Live text (E3, Shellboy #243, on main, in no release): `events_args()` asks with `include_text`
+  and `decode_events_result()` returns the attempts the owner lists as holding text, both only with
+  the Cargo feature `next-shellboy`. A normal build never asks, never decodes it, and does not
+  advertise the capability `live.text`.
 
 ## Decisions
 
@@ -130,3 +149,31 @@ covered by the bridge tests. Not tested: Linux, Windows, phone, LAN binding, TLS
 hundred hints per second, concurrent real tabs, `message.send` with a real provider.
 
 `thread.branches` (read), `thread.fork`, `thread.rewind` and `thread.unarchive` (mutations) serve the Branches and Threads views (`branches-threads.md`). A rewind dry run is the same command with `dry_run: true` and no operation id. `tests/real_owner.rs` drives them against a real owner with a loopback provider.
+
+## Live text validation record (2026-11-07)
+
+Environment: macOS (Darwin 25.3, arm64), toolchain 1.99.1, debug builds, via rust-slot. The feature
+build used a copy of the `shellboy` dependency patched in (`[patch]` to a source export of Shellboy
+`a602ec6b27`, the main commit with E3 and without `history.window`; the patch was not committed). Main's
+tip `8bdba5a27b` (adds `Command::HistoryWindow`) does not compile against the allowlist's exhaustive
+match yet.
+
+- Default build (pinned tag): clippy `-D warnings` clean; `cargo test` passes. No `live.text`, no
+  `include_text`, no `live_text` decoding.
+- `--features next-shellboy` against that copy: clippy clean; `cargo test` passes including a
+  scripted owner (baseline mid-attempt, deltas, gap, timeout listing without deltas, absence as end,
+  capacity-busy retry with the same cursor, owner loss dropping text) and a WebSocket test of
+  `live` / `live_end` frames (one frame for 1000 deltas, only the watching tab, only unseen deltas).
+- Real owner: `shellboy` built from `a602ec6b27`, `shellboy serve` with a temporary data dir and
+  temporary HOME/XDG, a loopback streaming stand-in for the provider (no network, no key). A tab
+  watching a Thread received `live` frames ("Hello ") while the provider was held back and nothing
+  was in `history.list`; after release it received the rest and `live_end`, and `history.list` held the
+  saved "Hello world" (`tests/real_owner.rs`, `live_text_reaches_a_watching_tab_and_the_saved_message_follows`).
+- Not tested: a browser (the data layer and Conversation are tested with a fake owner and happy-dom,
+  not Chrome), reasoning deltas from a real provider, a real provider, more than one attempt at once,
+  the 16-attempt cap on a real owner, two tabs on a real owner, Windows, Linux, Markdown rendering cost
+  of a very long live reply.
+- `hints_and_restart_against_a_real_owner` failed in about 3 of 10 parallel runs with the live text
+  poll: its `changed` hint can arrive before the reply of the call that caused it, and the test
+  discarded frames while waiting for the reply. The test now takes both in either order (12 of 12
+  passed after). No fault of the owner or bridge was found.

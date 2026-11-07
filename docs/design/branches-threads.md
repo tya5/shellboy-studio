@@ -34,7 +34,7 @@ Display modes: tree (the default, real parents across directories), by directory
 
 **Moving a Thread.** `thread set --parent` is on Shellboy main (`5806aa77`), not in v0.10.0, whose strict decoding would refuse the field, and protocol 2 has no way to ask an owner what it can do. So the capability `thread.reparent` says what this bridge was built to send (`seam::owner_capabilities`), and the UI reads only that:
 
-- A normal build, pinned to v0.10.0, doesn't have it. Threads says moving isn't available and why, draws no control and no drag, and the bridge denies `thread.set`. **The pin wasn't moved.**
+- A normal build, pinned to v0.10.0, doesn't have it (nor `live.text`, which follows the same pattern: `bridge.md`, `data-layer.md`). Threads says moving isn't available and why, draws no control and no drag, and the bridge denies `thread.set`. **The pin wasn't moved.**
 - With the Cargo feature `next-shellboy`, in a copy with a `[patch]` of the dependency to Shellboy main, the bridge allows `thread.set` carrying only `parent_id` and nothing else `thread.set` can do. `tests/real_owner.rs` covers it under that feature. When the pin passes that commit, the feature goes and the arm stays.
 - A picker (filter, and "No parent") or a drag onto another row leads to the same preview. There is no owner dry run, so the preview states what will change and what won't. Nothing moves until Move. A cycle is left to the owner, whose refusal shows as it wrote it. A result with `parent_change.live_run_id` says the Run keeps its previous owner. Drag is mouse only; phones use the picker.
 

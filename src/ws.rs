@@ -145,11 +145,36 @@ pub async fn session<O: Owner>(
                         thread_ids: pending.threads.into_iter().collect(),
                         list: pending.list,
                     }).await { break }
+                let mut open = true;
+                for out in state.hub.take_live(&guard) {
+                    open = send(&mut socket, &out.into()).await;
+                    if !open { break }
+                }
+                if !open { break }
             }
             Some(_) = tasks.join_next(), if !tasks.is_empty() => {}
         }
     }
     // Dropping `tasks` aborts every outstanding call and closes its owner connection.
+}
+
+impl From<crate::live::Out> for ServerFrame {
+    fn from(out: crate::live::Out) -> Self {
+        match out {
+            crate::live::Out::Text {
+                thread_id,
+                attempt_id,
+                gap,
+                deltas,
+            } => ServerFrame::Live {
+                thread_id,
+                attempt_id,
+                gap,
+                deltas,
+            },
+            crate::live::Out::End { thread_id } => ServerFrame::LiveEnd { thread_id },
+        }
+    }
 }
 
 fn error_frame(code: &'static str, message: &str) -> ServerFrame {

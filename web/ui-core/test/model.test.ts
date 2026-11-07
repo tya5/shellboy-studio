@@ -164,10 +164,11 @@ describe("AppModel over the fake transport", () => {
     expect(model.counts.value.awaiting).toBe(2);
   });
 
-  it("the live preview signal stays connected to the data layer's stream frame", async () => {
+  it("the live preview signal stays connected to the data layer's live frames", async () => {
     const { model, t } = await fixtureModel();
-    t.push({ t: "stream", thread_id: "lead", cursor: "c", text: "partial", gap: false });
-    expect(model.handle.value!.preview.value).toEqual({ kind: "live", text: "partial", cursor: "c" });
+    t.push({ t: "live", thread_id: "lead", attempt_id: "a1", gap: false, deltas: [{ offset: 0, reasoning: false, text: "partial" }] });
+    await flush();
+    expect(model.handle.value!.preview.value).toMatchObject({ kind: "live", text: "partial", attemptId: "a1" });
   });
 
   it("leaving the Conversation stops reading its Thread, and returning reads only what's new", async () => {

@@ -3,7 +3,7 @@
 //! `docs/design/bridge.md`.
 //!
 //! Layers in this crate: `owner` (the only way to reach the owner), `events` (the single
-//! `events.wait` loop), `hub` (bounded fan-out of hints to tabs), `allowlist`, `envelope`
+//! `events.wait` loop), `hub` (bounded fan-out of hints to tabs), `live` (bounded copy of unsaved model text), `allowlist`, `envelope`
 //! (browser frames), `auth`, `server`/`ws` (HTTP and WebSocket) and `seam` (the places
 //! that wait for Shellboy protocol 3 and live text deltas).
 
@@ -14,6 +14,7 @@ pub mod auth;
 pub mod envelope;
 pub mod events;
 pub mod hub;
+pub mod live;
 pub mod owner;
 pub mod process;
 pub mod seam;

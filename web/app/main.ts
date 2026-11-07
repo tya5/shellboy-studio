@@ -47,7 +47,11 @@ async function main(): Promise<void> {
     document.documentElement.lang = prefs.value.lang;
   });
 
-  const data = new ShellboyData({ transport: new WebSocketTransport({ url: defaultBridgeUrl }) });
+  // Live text is shown once per animation frame, however many frames arrived in between.
+  const data = new ShellboyData({
+    transport: new WebSocketTransport({ url: defaultBridgeUrl }),
+    schedule: (callback) => void requestAnimationFrame(() => callback()),
+  });
   const model = new AppModel({
     data,
     lang: prefs.value.lang,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyOwnerLiveText, LiveTextWireUnknownError, MAX_PREVIEW_CHARS } from "../src/live";
+import { MAX_PREVIEW_CHARS, type Preview } from "../src/live";
 import { MAX_LIST_ROWS, PAGE_LIMIT, HISTORY_WINDOW, MAX_WATCHED_THREADS, ShellboyData } from "../src/store";
 import { connected, details, FakeOwnerDb, FakeTransport, flush, settle, summary } from "./harness";
 
@@ -329,53 +329,155 @@ describe("paging", () => {
 });
 
 describe("live text preview", () => {
-  const frame = (text: string, gap = false, thread_id = "a") => ({ t: "stream" as const, thread_id, cursor: `c-${text}`, text, gap });
-
-  it("appends text since the last frame for open Threads only", async () => {
-    const { t, data } = await setup();
+  type Delta = { offset: number; reasoning: boolean; text: string };
+  const d = (offset: number, text: string, reasoning = false): Delta => ({ offset, reasoning, text });
+  const live = (deltas: Delta[], attempt_id = "a1", gap = false, thread_id = "a") => ({ t: "live" as const, thread_id, attempt_id, gap, deltas });
+  const end = (thread_id = "a") => ({ t: "live_end" as const, thread_id });
+  /** A hand-driven animation frame: nothing is published until `frame()`. */
+  const frames = () => {
+    const queue: (() => void)[] = [];
+    return { schedule: (cb: () => void) => void queue.push(cb), frame: () => queue.splice(0).forEach((cb) => cb()), count: () => queue.length };
+  };
+  const asst = (node_id: string, excerpt: string) => ({ node_id, kind: "assistant_response", excerpt });
+  async function open(saved: Record<string, unknown>[] = []) {
+    const f = frames();
+    const t = new FakeTransport();
+    const owner = new FakeOwnerDb();
+    owner.history["a"] = saved;
+    const data = new ShellboyData({ transport: t, newId: () => "op", schedule: f.schedule });
+    data.start();
+    t.open();
+    t.push({ t: "hello", bridge_version: "0", owner: connected });
+    await settle(t, owner);
     const h = data.openThread("a");
-    t.push(frame("Hel"));
-    t.push(frame("lo"));
-    t.push(frame("ignored", false, "other"));
-    expect(h.preview.value).toEqual({ kind: "live", text: "Hello", cursor: "c-lo" });
+    await settle(t, owner);
+    return { t, owner, data, h, f };
+  }
+  const text = (h: { preview: { value: Preview } }) => (h.preview.value.kind === "live" ? h.preview.value.text : undefined);
+
+  it("a baseline starts from the retained tail and says it is incomplete", async () => {
+    const { t, h, f } = await open();
+    t.push(live([d(5, "tail")]));
+    f.frame();
+    expect(h.preview.value).toMatchObject({ kind: "live", attemptId: "a1", text: "tail", incomplete: true, ending: false });
   });
 
-  it("discards on gap and stays on saved output afterwards", async () => {
-    const { t, data } = await setup();
-    const h = data.openThread("a");
-    t.push(frame("abc"));
-    t.push(frame("dropped middle", true));
-    expect(h.preview.value).toEqual({ kind: "none", discarded: "gap" });
-    t.push(frame("tail"));
-    expect(h.preview.value).toEqual({ kind: "none", discarded: "gap" });
+  it("deltas append, several frames publish once per animation frame, and only open Threads show text", async () => {
+    const { t, h, f } = await open();
+    t.push(live([d(0, "Hel")]));
+    t.push(live([d(3, "lo")]));
+    t.push(live([d(5, " wörld😀")]));
+    t.push(live([d(0, "ignored")], "x", false, "other"));
+    expect(text(h), "nothing is published between animation frames").toBeUndefined();
+    expect(f.count()).toBe(1);
+    f.frame();
+    expect(h.preview.value).toMatchObject({ kind: "live", text: "Hello wörld😀", incomplete: false });
   });
 
-  it("discards on resync, restart, unreachable and socket close", async () => {
+  it("reasoning advances the offset but is not shown; a repeated or overlapping delta is not doubled", async () => {
+    const { t, h, f } = await open();
+    t.push(live([d(0, "ab"), d(2, "think", true), d(7, "cd")]));
+    t.push(live([d(7, "cd"), d(8, "de")]));
+    f.frame();
+    expect(h.preview.value).toMatchObject({ text: "abcde", incomplete: false });
+  });
+
+  it("a gap discards first, then shows the tail as incomplete; a missing stretch inside an attempt does too", async () => {
+    const { t, h, f } = await open();
+    t.push(live([d(0, "abc")]));
+    f.frame();
+    t.push(live([d(40, "after")], "a1", true));
+    f.frame();
+    expect(h.preview.value).toMatchObject({ text: "after", incomplete: true });
+    t.push(live([d(45, "x"), d(99, "y")]));
+    f.frame();
+    expect(h.preview.value).toMatchObject({ text: "afterxy", incomplete: true });
+  });
+
+  it("a new attempt starts a fresh preview", async () => {
+    const { t, h, f } = await open();
+    t.push(live([d(0, "first")]));
+    t.push(live([d(0, "second")], "a2"));
+    f.frame();
+    expect(h.preview.value).toMatchObject({ attemptId: "a2", text: "second", incomplete: false });
+  });
+
+  it("the saved message replaces the text: it stays after the attempt ends until the message is read", async () => {
+    const { t, owner, h, f } = await open([asst("n1", "earlier")]);
+    t.push(live([d(0, "Hello")]));
+    f.frame();
+    t.push(end());
+    expect(h.preview.value).toMatchObject({ kind: "live", text: "Hello", ending: true });
+    await settle(t, owner);
+    expect(h.preview.value.kind, "no saved message yet, so the text stays").toBe("live");
+    owner.history["a"] = [asst("n1", "earlier"), asst("n2", "Hello there")];
+    t.push({ t: "changed", thread_ids: ["a"], list: false });
+    await settle(t, owner);
+    expect(h.preview.value).toEqual({ kind: "none", discarded: "saved" });
+  });
+
+  it("when the saved message is already there at the end, the text goes at once", async () => {
+    const { t, owner, h, f } = await open([asst("n1", "earlier")]);
+    t.push(live([d(0, "Hello")]));
+    f.frame();
+    owner.history["a"] = [asst("n1", "earlier"), asst("n2", "Hello")];
+    t.push({ t: "changed", thread_ids: ["a"], list: false });
+    await settle(t, owner);
+    expect(text(h), "the live text is still the attempt's own until it ends").toBe("Hello");
+    t.push(end());
+    expect(h.preview.value).toEqual({ kind: "none", discarded: "saved" });
+  });
+
+  it("stop: an ended attempt that saves nothing is dropped after the next change is read", async () => {
+    const { t, owner, h, f } = await open([asst("n1", "earlier")]);
+    t.push(live([d(0, "partial")]));
+    f.frame();
+    t.push(end());
+    await settle(t, owner);
+    expect(text(h)).toBe("partial");
+    t.push({ t: "changed", thread_ids: ["a"], list: false });
+    await settle(t, owner);
+    expect(h.preview.value).toEqual({ kind: "none", discarded: "ended" });
+  });
+
+  it("a Thread with no held text shows nothing and a stray end changes nothing", async () => {
+    const { t, h, f } = await open();
+    t.push(end());
+    f.frame();
+    expect(h.preview.value).toEqual({ kind: "none" });
+  });
+
+  it("discards on resync, restart, unreachable and socket close, and a later frame starts a marked-incomplete tail", async () => {
     for (const [push, reason] of [
       [(t: FakeTransport) => t.push({ t: "resync" }), "resync"],
       [(t: FakeTransport) => t.push({ t: "owner", event: "restarted", owner: connected }), "owner_restarted"],
       [(t: FakeTransport) => t.push({ t: "owner", event: "unreachable", owner: { state: "unreachable" } }), "owner_unreachable"],
       [(t: FakeTransport) => t.drop(), "connection_closed"],
     ] as const) {
-      const { t, data } = await setup();
-      const h = data.openThread("a");
-      t.push(frame("abc"));
+      const { t, h, f } = await open();
+      t.push(live([d(0, "abc")]));
+      f.frame();
       push(t);
       expect(h.preview.value, reason).toEqual({ kind: "none", discarded: reason });
     }
+    const { t, h, f } = await open();
+    t.push(live([d(0, "abc")]));
+    f.frame();
+    t.push({ t: "resync" });
+    t.push(live([d(3, "def")]));
+    f.frame();
+    expect(h.preview.value).toMatchObject({ text: "def", incomplete: true });
   });
 
-  it("discards instead of growing past the bound", async () => {
-    const { t, data } = await setup();
-    const h = data.openThread("a");
-    t.push(frame("x".repeat(MAX_PREVIEW_CHARS)));
-    expect(h.preview.value.kind).toBe("live");
-    t.push(frame("y"));
-    expect(h.preview.value).toEqual({ kind: "none", discarded: "overflow" });
-  });
-
-  it("owner-wire rules (attempt_id, live_text membership, baseline, resync_required) are a loud stub", () => {
-    expect(() => applyOwnerLiveText({ anything: 1 })).toThrow(LiveTextWireUnknownError);
+  it("keeps the newest text past the bound and says it is incomplete", async () => {
+    const { t, h, f } = await open();
+    t.push(live([d(0, "x".repeat(MAX_PREVIEW_CHARS))]));
+    t.push(live([d(MAX_PREVIEW_CHARS, "yz")]));
+    f.frame();
+    const p = h.preview.value;
+    expect(p.kind === "live" && p.text.length).toBe(MAX_PREVIEW_CHARS);
+    expect(p.kind === "live" && p.text.endsWith("xyz")).toBe(true);
+    expect(p.kind === "live" && p.incomplete).toBe(true);
   });
 });
 

@@ -14,7 +14,7 @@ use crate::{
     owner::{Owner, instance_of},
     seam,
 };
-use shellboy::protocol::{Command, EventsWaitArgs, EventsWaitStatus};
+use shellboy::protocol::{ApiError, Command, ErrorCode, EventsWaitStatus};
 use std::{sync::Arc, time::Duration};
 use tokio_util::sync::CancellationToken;
 
@@ -49,30 +49,41 @@ pub async fn run<O: Owner>(
     let mut last_instance: Option<String> = None;
     let mut backoff = config.backoff_min;
     loop {
-        let args = EventsWaitArgs {
-            after: cursor.clone(),
-            thread_ids: Vec::new(),
-            timeout_ms: if more { 0 } else { config.long_poll_ms },
-        };
+        let args = seam::events_args(cursor.clone(), if more { 0 } else { config.long_poll_ms });
         let outcome = tokio::select! {
             biased;
             _ = cancel.cancelled() => return,
             outcome = owner.call(Command::EventsWait(args), None, None) => outcome,
         };
+        // "Local IPC work capacity is busy": nothing was applied. Routine for a looping client:
+        // keep the cursor and the connection state, wait, and poll again (events-and-external-protocol 2.5).
+        let refusal = match &outcome {
+            Err(error) => Some(error),
+            Ok(response) if !response.ok => response.error.as_ref(),
+            Ok(_) => None,
+        };
+        if refusal.is_some_and(is_capacity_busy) {
+            tokio::select! {
+                _ = cancel.cancelled() => return,
+                _ = tokio::time::sleep(backoff) => {}
+            }
+            backoff = (backoff * 2).min(config.backoff_max);
+            continue;
+        }
         let decoded = match outcome {
             Ok(response) if response.ok => response
                 .result
                 .clone()
                 .ok_or_else(|| "events.wait reply has no result".to_owned())
                 .and_then(seam::decode_events_result)
-                .map(|(result, _chunks)| (instance_of(&response), result)),
+                .map(|(result, text)| (instance_of(&response), result, text)),
             Ok(response) => Err(response
                 .error
                 .map(|e| format!("{:?}: {}", e.code, e.message))
                 .unwrap_or_else(|| "owner refused events.wait".into())),
             Err(error) => Err(format!("{:?}: {}", error.code, error.message)),
         };
-        let (instance, result) = match decoded {
+        let (instance, result, text) = match decoded {
             Ok(ok) => ok,
             Err(reason) => {
                 if !announced_unreachable {
@@ -81,6 +92,7 @@ pub async fn run<O: Owner>(
                     announced_unreachable = true;
                 }
                 connected_now = false;
+                hub.live_clear(); // the owner is gone, and with it the text it held
                 cursor = None;
                 more = false;
                 tokio::select! {
@@ -111,12 +123,34 @@ pub async fn run<O: Owner>(
         last_instance = instance;
         cursor = Some(result.cursor);
         more = result.more;
+        let reset = matches!(
+            result.status,
+            EventsWaitStatus::Baseline | EventsWaitStatus::ResyncRequired
+        );
         match result.status {
             EventsWaitStatus::Baseline | EventsWaitStatus::Timeout => {}
+            // Only text is new; the text itself is applied below.
+            #[cfg(feature = "next-shellboy")]
+            EventsWaitStatus::Text => {}
             EventsWaitStatus::Changed => {
                 hub.hint(result.changes.iter().map(|c| c.thread_id.as_str()));
             }
             EventsWaitStatus::ResyncRequired => hub.resync(),
         }
+        if let Some(entries) = text {
+            hub.live_apply(entries, reset);
+        }
     }
+}
+
+/// The owner's refusal when its ordinary slots are full: `invalid_state`, phase `admission`,
+/// `request_may_have_been_applied: false` (Shellboy `src/ipc/server.rs`).
+fn is_capacity_busy(error: &ApiError) -> bool {
+    error.code == ErrorCode::InvalidState
+        && error.details.as_ref().is_some_and(|d| {
+            d.get("phase").and_then(|v| v.as_str()) == Some("admission")
+                && d.get("request_may_have_been_applied")
+                    .and_then(|v| v.as_bool())
+                    == Some(false)
+        })
 }

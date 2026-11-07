@@ -89,13 +89,17 @@ pub enum ServerFrame {
         thread_ids: Vec<String>,
         list: bool,
     },
-    /// Live model text. Defined by the design; nothing produces it until E3 (see `seam`).
-    #[allow(dead_code)]
-    Stream {
+    /// Unsaved model text since the tab was last told (events-and-external-protocol 2.5, rule 3):
+    /// a new `attempt_id` or `gap: true` means discard the preview first, then append.
+    Live {
         thread_id: String,
-        cursor: String,
-        text: String,
+        attempt_id: String,
         gap: bool,
+        deltas: Vec<crate::live::Delta>,
+    },
+    /// No text is held for the Thread any more (its attempt ended).
+    LiveEnd {
+        thread_id: String,
     },
     Resync,
     Owner {

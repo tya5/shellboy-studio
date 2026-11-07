@@ -43,7 +43,8 @@ export type ServerFrame =
   | { t: "hello"; bridge_version: string; data_dir?: string; owner: OwnerState }
   | { t: "result"; id: number; response?: OwnerResponse; error?: BridgeError }
   | { t: "changed"; thread_ids: string[]; list: boolean }
-  | { t: "stream"; thread_id: string; cursor: string; text: string; gap: boolean }
+  | { t: "live"; thread_id: string; attempt_id: string; gap: boolean; deltas: { offset: number; reasoning: boolean; text: string }[] }
+  | { t: "live_end"; thread_id: string }
   | { t: "resync" }
   | { t: "owner"; event: OwnerEvent; owner: OwnerState }
   | { t: "error"; error: BridgeError };
@@ -82,14 +83,20 @@ export function parseServerFrame(text: string): ParsedFrame {
     case "changed":
       if (!isStrings(v.thread_ids) || typeof v.list !== "boolean") return bad("bad fields");
       return { ok: true, frame: v as unknown as ServerFrame };
-    case "stream":
+    case "live":
       if (
         typeof v.thread_id !== "string" ||
-        typeof v.cursor !== "string" ||
-        typeof v.text !== "string" ||
-        typeof v.gap !== "boolean"
+        typeof v.attempt_id !== "string" ||
+        typeof v.gap !== "boolean" ||
+        !Array.isArray(v.deltas) ||
+        !v.deltas.every(
+          (d) => isObject(d) && Number.isSafeInteger(d.offset) && typeof d.reasoning === "boolean" && typeof d.text === "string",
+        )
       )
         return bad("bad fields");
+      return { ok: true, frame: v as unknown as ServerFrame };
+    case "live_end":
+      if (typeof v.thread_id !== "string") return bad("bad fields");
       return { ok: true, frame: v as unknown as ServerFrame };
     case "resync":
       return { ok: true, frame: { t: "resync" } };

@@ -15,7 +15,7 @@ only browser API, behind the `Transport` interface (`transport.ts`).
 | `operations.ts` | typed operations (the request side of the UX boundary) |
 | `refresher.ts` | per-target read coalescing |
 | `store.ts` | `ShellboyData`: signals (view model), tracking handles, hint and resync handling |
-| `live.ts` | live text preview rules and the E3 stub |
+| `live.ts` | `LiveText`: one Thread's live text preview (attempt, offsets, incomplete, ending), published once per scheduled tick |
 | `errors.ts` | `OpError` kinds and `Outcome<T>` |
 
 ## Rules
@@ -38,7 +38,7 @@ only browser API, behind the `Transport` interface (`transport.ts`).
 - **Bounds** (limits, not performance claims): 4 calls on the wire (= the bridge's per-session
   running bound, so `busy` should not occur), 256 outstanding calls then local `busy`,
   64 open Threads (= the bridge's watch bound; `openThread` throws `RangeError`), pages of 50 up to 1000 rows held,
-  live preview 262144 UTF-16 code units, reconnect delay 1 s doubling to 10 s.
+  live preview 262144 UTF-16 code units (the newest text is kept past it), reconnect delay 1 s doubling to 10 s.
 - **History is a window over the end of the path.** Observed on the real owner: `history.list`
   runs oldest to newest, `next_cursor` moves towards the newest, there is no way to start at the
   end, and any append expires cursors (`cursor_expired`). So the first read walks the path in
@@ -69,7 +69,7 @@ User requirement (2026-11-07): many Threads must not mean all data in memory, an
 | Message bodies, step output | 64 entries each, oldest dropped; 8 pages of 64 KiB per entry at most | Oldest first; also on Thread change for output watch |
 | Shell facts | 200 per Thread | Thread change |
 | Branch marks | One map per open Thread; one family read per open | Thread change |
-| Live preview | 262144 UTF-16 code units per open Thread | Discard rules below |
+| Live preview | 262144 UTF-16 code units per open Thread (newest kept, marked incomplete) | Discard rules in Live text |
 | Analytics walks | Days: at most 32 groups. By Thread: 2000 groups (`MAX_GROUPS`), then stops and says so; 64 windows per run | New period or Refresh |
 | Compaction events | 50 rows for one Thread | New Thread or period |
 | Resource reads | One value each | Replaced on Refresh |
@@ -143,17 +143,37 @@ threadCreate(args, opId?) messageSend({thread_id,text,deliver?}, opId?) runStop(
 threadArchive(ids, {descendants?}, opId?)
 ```
 
-## Live text (E3): what is stubbed
+## Live text (E3)
 
-The browser `stream` frame is handled: text since the last frame is appended per open Thread;
-`gap: true`, resync, restart, unreachable, socket close and exceeding the bound discard the
-preview (saved output is shown). The owner-wire rules (new `attempt_id`, Thread missing from
-`live_text`, baseline, `resync_required`) need the E3 wire and are not detectable from the
-browser frame; `discardPreview(reason)` already accepts those reasons and
-`applyOwnerLiveText()` is a stub that throws `LiveTextWireUnknownError`.
-After a discard the preview stays discarded: cursors are opaque, so a later frame cannot be told
-apart from the middle of the same attempt. Needed to resume and to drop the preview when the
-Turn settles: an attempt boundary from the owner (see the hand-off report).
+Behind the capability `live.text` (`ui-core/src/livetext.ts`), which the bridge advertises only
+when built with the Cargo feature `next-shellboy` (`bridge.md`). Without it no `live` frame ever
+arrives and the Conversation shows saved messages only, as on v0.10.0.
+
+Frames: `live {thread_id, attempt_id, gap, deltas:[{offset, reasoning, text}]}` carries only what
+this tab has not been sent; `live_end {thread_id}` says no text is held for the Thread. They follow
+the client rule of `events-and-external-protocol` 2.5 (Shellboy):
+
+- A new `attempt_id` or `gap: true` discards the preview, then deltas are appended. After a gap the
+  preview is marked `incomplete`, and the Conversation says the text is not saved and a part was
+  missed.
+- Offsets count Unicode scalar values of the attempt, reasoning included. Reasoning text advances
+  the offset and is not shown. A delta already held is skipped, one that overlaps is trimmed, and
+  one that starts past what is held (or a preview that starts partway, as after a resync or for a tab
+  that opens mid-attempt) marks the preview `incomplete`. Nothing is patched over.
+- `live_end` keeps the text on screen (`ending`) until the saved message is there: the newest
+  `assistant_response` of the loaded history differs from what it was when the attempt began. The
+  core drops its text before the message is committed, so discarding at once would blank the answer
+  and then show it. If the end arrives after the message was read, the text goes at once. If no
+  message comes (Stop, a failure), the first `changed` read after the end drops the text (`ended`).
+  The `live_end` itself also asks for one read of the Thread.
+- Resync, `owner: restarted` or `unreachable` and socket close discard the preview. The bridge sends
+  what it holds again after a `resync` (`bridge.md`), as the baseline rule says.
+- Applying a frame updates the preview state at once; the signal is published once per `schedule`
+  tick (`DataOptions.schedule`; the app passes `requestAnimationFrame`, tests a manual queue), so a
+  burst of frames is one render. The Conversation does not read the preview: `LiveMessage` does, so
+  text re-renders only that message (a smoke test counts Conversation renders).
+- The preview shows the message as Markdown while it is written, like a saved one. Cost of that for
+  a very long reply was not measured.
 
 ## Decisions
 
@@ -164,4 +184,5 @@ Turn settles: an attempt boundary from the owner (see the hand-off report).
 | Debug page stays plain JS and is not connected to the data layer | it has no build step; connecting it needs the bundle | the app bundle and Vite exist |
 | `run.retry` and `thread.archive` added to the bridge allowlist | requested data-layer operations | — |
 | The first data-layer version assumed newest-first history pages; replaced by the window above (2026-11-07) | checking a real owner showed oldest-first pages, so a Thread over 50 nodes showed only its beginning | the owner offers a reverse read |
-| Preview stays discarded after any discard until the owner wire defines an attempt boundary | cannot tell a resumed attempt from its middle | E3 wire exists |
+| The `stream` frame (cursor, text) is replaced by `live` / `live_end` (2026-11-07) | the owner's wire is known now: attempts, offsets, gaps and reasoning need to reach the tab | — |
+| Live text is kept past the bound by dropping the oldest, marked incomplete (was: discard the whole preview) | with attempt boundaries a long answer can stay visible and honest | measured use shows otherwise |

@@ -2,14 +2,16 @@
 // One smoke test per view on the shared fixture, through the real components.
 import "@preact/signals";
 import { signal } from "@preact/signals-core";
-import { render } from "preact";
+import { options, render } from "preact";
 import { act } from "preact/test-utils";
 import { afterEach, describe, expect, it } from "vitest";
 import { fixtureModel, fixturePendingAdapter } from "../../../ui-core/test/fixture";
+import type { ServerFrame } from "../../../data/src";
 import { settle } from "../../../data/test/harness";
 import { type AnalyticsSection, type AppModel, type DesignContext, type Prefs } from "../../../ui-core/src";
 import { DESIGNS } from "../../registry";
 import { App } from "../screens/App";
+import { Conversation } from "../screens/Conversation";
 
 let host: HTMLElement | undefined;
 afterEach(() => {
@@ -36,7 +38,81 @@ function draw(model: AppModel, prefs: Partial<Prefs> = {}) {
   return host;
 }
 
+const flushPromises = async () => {
+  for (let i = 0; i < 8; i++) await Promise.resolve();
+};
 const text = (el: Element) => el.textContent ?? "";
+
+describe("Conversation live text", () => {
+  const liveFrame = (text: string, offset = 0, extra: { gap?: boolean } = {}): ServerFrame =>
+    ({ t: "live", thread_id: "lead", attempt_id: "a1", gap: false, deltas: [{ offset, reasoning: false, text }], ...extra });
+
+  it("shows the unsaved text in a message once per animation frame, and the saved message replaces it", async () => {
+    const { model, t, db } = await fixtureModel({ capabilities: ["live.text"] });
+    const el = draw(model);
+    const bodies = () => [...el.querySelectorAll(".msg")].map((m) => m.textContent ?? "");
+    expect(bodies().some((b) => b.includes("Writing"))).toBe(false);
+    act(() => {
+      t.push(liveFrame("Streaming "));
+      t.push(liveFrame("words", 10));
+    });
+    await act(async () => flushPromises());
+    const live = bodies().find((b) => b.includes("Writing"));
+    expect(live).toContain("Streaming words");
+    expect(el.textContent).not.toContain("missed");
+    act(() => t.push(liveFrame("later", 500, { gap: true })));
+    await act(async () => flushPromises());
+    expect(el.textContent).toContain("Part of this text was missed");
+    expect(el.textContent).toContain("later");
+    // The attempt ends and its message is saved: the text goes, the saved message stays.
+    db.history["lead"] = [...(db.history["lead"] ?? []), { node_id: "saved-1", kind: "assistant_response", excerpt: "Final saved answer", provenance: { created_at: "2099-01-01T00:00:00+09:00", sender: { kind: "shellboy" } } }];
+    act(() => {
+      t.push({ t: "changed", thread_ids: ["lead"], list: false });
+      t.push({ t: "live_end", thread_id: "lead" });
+    });
+    await act(async () => {
+      await settle(t, db);
+    });
+    expect(bodies().some((b) => b.includes("Writing"))).toBe(false);
+    expect(el.textContent).toContain("Final saved answer");
+  });
+
+  it("a Thread with no held text shows no message, and without the capability nothing is shown at all", async () => {
+    const plain = await fixtureModel({ capabilities: ["live.text"] });
+    const el = draw(plain.model);
+    act(() => plain.t.push({ t: "live_end", thread_id: "lead" }));
+    expect(el.textContent).not.toContain("Writing");
+    render(null, host!);
+    host?.remove();
+    const off = await fixtureModel();
+    const el2 = draw(off.model);
+    act(() => off.t.push(liveFrame("hidden words")));
+    await act(async () => flushPromises());
+    expect(el2.textContent).not.toContain("hidden words");
+    expect(el2.textContent).not.toContain("Writing");
+  });
+
+  it("text arriving does not re-render the Conversation, only the live message", async () => {
+    const { model, t } = await fixtureModel({ capabilities: ["live.text"] });
+    const el = draw(model);
+    let conversation = 0;
+    const previous = options.diffed;
+    options.diffed = (vnode) => {
+      if (vnode.type === Conversation) conversation++;
+      previous?.(vnode);
+    };
+    try {
+      for (let i = 0; i < 20; i++) {
+        act(() => t.push(liveFrame("word ", i * 5)));
+        await act(async () => flushPromises());
+      }
+    } finally {
+      options.diffed = previous;
+    }
+    expect(el.textContent).toContain("word word word");
+    expect(conversation).toBe(0);
+  });
+});
 
 describe("Conversation", () => {
   it("shows the Thread, its steps and measured context, and hides bookkeeping", async () => {
