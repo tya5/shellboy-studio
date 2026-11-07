@@ -78,7 +78,7 @@ function RowView({ model, row }: { model: AppModel; row: ConversationRow }) {
   if (row.type === "note")
     return (
       <>
-        <SummaryStrip label={row.kind} text={row.text} />
+        <SummaryStrip label={row.kind === "spill" ? t("compact.spill") : row.kind} text={row.text} />
         {mark ? <div class="scroll-mark">{mark}</div> : null}
       </>
     );
