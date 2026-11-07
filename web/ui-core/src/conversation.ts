@@ -8,6 +8,8 @@ import { statusOfShell, type StatusKey } from "./status";
 export interface StepRow {
   executionId: string;
   command: string;
+  /** The model's one-line account of the call, when the owner reports it. */
+  description?: string;
   commandTruncated: boolean;
   status: StatusKey | undefined;
   state: string | undefined;
@@ -67,6 +69,7 @@ export function projectConversation(items: HistoryItem[], shells: ReadonlyMap<st
         addStep(id, {
           executionId: e.execution_id,
           command: e.command_excerpt ?? fact?.command_excerpt ?? "",
+          ...(typeof e.description === "string" && e.description !== "" ? { description: e.description } : {}),
           commandTruncated: e.command_truncated === true || fact?.command_excerpt_truncated === true,
           status: statusOfShell(state, fact?.exit_code),
           state,

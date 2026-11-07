@@ -37,7 +37,7 @@ function StepView({ model, step }: { model: AppModel; step: Step }) {
   return (
     <StepRow
       open={open}
-      command={step.command}
+      command={step.description ?? step.command}
       status={step.status ? <StatusMark status={step.status} label={statusLabel(t, step.status)} /> : null}
       duration={stepDuration(step, model.now.value)}
       exit={exitText(step)}
@@ -45,6 +45,7 @@ function StepView({ model, step }: { model: AppModel; step: Step }) {
         if (next !== open) setChoice(next);
       }}
     >
+      {step.description ? <div class="mono muted caption">{step.command}</div> : null}
       <Output model={model} id={step.executionId} />
     </StepRow>
   );

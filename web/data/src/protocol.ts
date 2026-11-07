@@ -160,6 +160,8 @@ export interface HistoryExecution {
   execution_id: string;
   command_excerpt?: string;
   command_truncated?: boolean;
+  /** The model's one-line account of the call. Newer owners only. */
+  description?: string;
   /** Saved native shell state: starting, running, stopping, exited, failed, stopped. */
   state?: string;
   call_state?: string;

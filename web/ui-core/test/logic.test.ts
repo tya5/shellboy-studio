@@ -182,3 +182,14 @@ describe("routes, prefs, commands, words", () => {
     expect(await noPending.answer("x", "y")).toMatchObject({ ok: false, error: { code: "not_available" } });
   });
 });
+
+describe("tool rows", () => {
+  it("carries the call's description when the owner reports one, and the command either way", () => {
+    const rows = projectConversation([
+      { node_id: "n", kind: "assistant_response", executions: [{ execution_id: "e", command_excerpt: "cargo test", description: "Run the tests" }] },
+      { node_id: "m", kind: "assistant_response", executions: [{ execution_id: "f", command_excerpt: "ls" }] },
+    ] as never);
+    const steps = rows.flatMap((r) => (r.type === "steps" ? r.steps : []));
+    expect(steps.map((s) => [s.description, s.command])).toEqual([["Run the tests", "cargo test"], [undefined, "ls"]]);
+  });
+});
