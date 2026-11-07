@@ -105,6 +105,7 @@ describe("conversation projection", () => {
     const one = (sender: Record<string, unknown>) => projectConversation([{ node_id: "1", kind: "user", excerpt: "x", provenance: { sender: sender as { kind: string } } }])[0]!;
     expect(one({ kind: "human" })).toMatchObject({ speaker: { kind: "you" } });
     expect(one({ kind: "external_cli" })).toMatchObject({ speaker: { kind: "cli" } });
+    expect(one({ kind: "external_cli", label: "app:board" })).toMatchObject({ speaker: { kind: "other", label: "CLI: app:board" } });
     expect(one({ kind: "thread", label: "worker" })).toMatchObject({ speaker: { kind: "other", label: "worker" } });
   });
   it("flags a message cut at the excerpt limit, counted in characters", () => {
