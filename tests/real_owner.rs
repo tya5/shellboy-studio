@@ -837,6 +837,63 @@ async fn settings_read_and_write_the_file_and_values_stay_hidden() {
         "{hello}"
     );
 
+    let saved = c
+        .ok(
+            "credentials.set",
+            json!({"connection":"local", "value":"synthetic-test-key"}),
+            op("key"),
+        )
+        .await;
+    assert_eq!(saved["stored"], true, "{saved}");
+    assert!(saved["credentials_path"].is_string(), "{saved}");
+    let checked = c
+        .ok("connection.test", json!({"connection":"local"}), None)
+        .await;
+    assert!(checked["sent"].is_boolean(), "{checked}");
+    assert!(checked["credential"].is_object(), "{checked}");
+    let cleared = c
+        .ok(
+            "credentials.clear",
+            json!({"connection":"local"}),
+            op("clear"),
+        )
+        .await;
+    assert_eq!(cleared["cleared"], true, "{cleared}");
+    let thread = c
+        .ok(
+            "thread.create",
+            json!({"cwd":root.to_str().unwrap()}),
+            op("thread"),
+        )
+        .await;
+    let id = thread["thread_id"].as_str().unwrap();
+    let tags = c
+        .ok(
+            "thread.tag",
+            json!({"thread_ids":[id],"add":["wire-test"]}),
+            op("tag"),
+        )
+        .await;
+    assert!(tags["changed"].to_string().contains(id));
+    let listed = c.ok("thread.tags", json!({"limit":20}), None).await;
+    assert!(
+        listed["items"].to_string().contains("wire-test"),
+        "{listed}"
+    );
+    let cwds = c.ok("thread.cwds", json!({"limit":20}), None).await;
+    assert!(
+        cwds["items"].to_string().contains(root.to_str().unwrap()),
+        "{cwds}"
+    );
+    let window = c
+        .ok(
+            "history.window",
+            json!({"thread_id":id,"before":20,"after":0}),
+            None,
+        )
+        .await;
+    assert!(window.is_object(), "{window}");
+
     let read = c.ok("config.get", json!({}), None).await;
     assert!(
         !read.to_string().contains(hidden),
