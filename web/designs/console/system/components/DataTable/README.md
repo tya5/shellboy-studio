@@ -1,0 +1,1 @@
+Rows of facts that compare down a column. Numeric columns align right in the mono face. The table scrolls inside its own frame on a narrow screen; the page never does. Text that came from the owner goes in as children, so it is never parsed as markup.

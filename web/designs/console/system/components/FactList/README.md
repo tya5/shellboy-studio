@@ -1,0 +1,1 @@
+Read-only settings and resource values, label beside value. Machine values use `mono`. A value the owner has no read for shows the `missing` wording and never a dash, a guess or a placeholder input; a documented default may go in `note`, marked as such. It stacks at phone width. Unlike KeyValue, its rows may be absent on purpose and it has room for a note.

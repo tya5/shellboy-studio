@@ -18,7 +18,7 @@ afterEach(() => {
 });
 
 function draw(model: AppModel, prefs: Partial<Prefs> = {}) {
-  const value = signal<Prefs>({ design: "console", theme: "console", lang: "en", ...prefs });
+  const value = signal<Prefs>({ design: "console", theme: "console", lang: "en", weights: { cached: 0.1, output: 5 }, ...prefs });
   const context: DesignContext = {
     model,
     designs: DESIGNS,

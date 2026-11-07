@@ -24,6 +24,9 @@
   --need-bg: #fdf6e8;
   --err-bg: #fdf0f0;
   --scrim: #16202b66;
+  --chart-1: #2a78d6;
+  --chart-2: #16976a;
+  --chart-3: #eb6834;
   --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   --font-sans: Inter, "Noto Sans JP", "Hiragino Sans", "Yu Gothic UI", system-ui, sans-serif;
   --type-title: 700 24px/30px var(--font-sans);
