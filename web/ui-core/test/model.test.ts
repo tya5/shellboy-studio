@@ -20,6 +20,19 @@ describe("AppModel over the fake transport", () => {
     expect(model.monitorRows.value.map((r) => r.summary.thread_id)).toEqual(["done"]);
   });
 
+  it("applies one monitor selection for state, pins, query and order", async () => {
+    const { model } = await fixtureModel({ route: "monitor" });
+    model.monitorPins.value = ["lead", "child"];
+    model.monitorPinnedOnly.value = true;
+    model.monitorQuery.value = "REVIEW";
+    expect(model.monitorRows.value.map((r) => r.summary.thread_id)).toEqual(["child"]);
+    model.monitorFilter.value = "completed";
+    expect(model.monitorRows.value).toEqual([]);
+    model.monitorFilter.value = "running";
+    expect(model.monitorRows.value.map((r) => r.summary.thread_id)).toEqual(["child"]);
+    model.dispose();
+  });
+
   it("keeps existing monitor rows in place across hints and appends new rows", async () => {
     const { model, t, db } = await fixtureModel({ route: "monitor" });
     const ids = () => model.monitorRows.value.map((row) => row.summary.thread_id);
