@@ -213,7 +213,7 @@ describe("Conversation", () => {
     expect(text(el)).toContain("Improve history search");
     expect(text(el)).toContain("Tools:");
     expect(text(el)).not.toContain("cargo test history::search");
-    act(() => el.querySelector<HTMLButtonElement>('.steps button[aria-expanded="false"]')!.click());
+    act(() => el.querySelector<HTMLButtonElement>('.steps summary')!.click());
     expect(text(el)).toContain("cargo test history::search");
     expect(text(el)).toContain("exit 0");
     expect(text(el)).toContain("2.4s");

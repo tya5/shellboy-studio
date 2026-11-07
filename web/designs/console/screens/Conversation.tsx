@@ -84,10 +84,9 @@ function RowView({ model, row }: { model: AppModel; row: ConversationRow }) {
     return (
       <>
         <section class="steps">
-          <Button aria-expanded={opened} onClick={() => { const next = new Set(model.openToolGroups.peek()); if (opened) next.delete(row.id); else next.add(row.id); model.openToolGroups.value = next; }}>
-            {t("tools.group", { n: row.steps.length, nonzero })} {active ? active.description ?? active.command : failed ? t("status.failed") : t("status.completed")}
-          </Button>
-          {opened ? row.steps.map((s) => <StepView key={s.executionId} model={model} step={s} />) : null}
+          <StepRow open={opened} command={`${t("tools.group", { n: row.steps.length, nonzero })}${active ? ` ${active.description ?? active.command}` : ""}`} status={<StatusMark status={active ? "running" : failed ? "failed" : "completed"} label={statusLabel(t, active ? "running" : failed ? "failed" : "completed")} />} onToggle={(open) => { const next = new Set(model.openToolGroups.peek()); if (open) next.add(row.id); else next.delete(row.id); model.openToolGroups.value = next; }}>
+            {row.steps.map((s) => <StepView key={s.executionId} model={model} step={s} />)}
+          </StepRow>
         </section>
         {mark ? <div class="scroll-mark">{mark}</div> : null}
       </>

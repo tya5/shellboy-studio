@@ -108,6 +108,20 @@ describe("conversation projection", () => {
     expect(one({ kind: "external_cli", label: "app:board" })).toMatchObject({ speaker: { kind: "other", label: "CLI: app:board" } });
     expect(one({ kind: "thread", label: "worker" })).toMatchObject({ speaker: { kind: "other", label: "worker" } });
   });
+  it("joins tool calls across invisible and empty nodes but not visible speech", () => {
+    const calls = Array.from({ length: 12 }, (_, i) => ({ execution_id: `e${i}`, command_excerpt: `command ${i}` }));
+    const rows = projectConversation([
+      { node_id: "a", kind: "assistant_response", excerpt: "", executions: calls },
+      { node_id: "hidden", kind: "tool_result", excerpt: "result" },
+      { node_id: "empty", kind: "assistant_response", excerpt: "" },
+      { node_id: "b", kind: "assistant_response", excerpt: "", executions: [{ execution_id: "next", command_excerpt: "next" }] },
+      { node_id: "speech", kind: "user", excerpt: "Hello" },
+      { node_id: "c", kind: "assistant_response", excerpt: "", executions: [{ execution_id: "last", command_excerpt: "last" }] },
+    ]);
+    expect(rows.map((r) => r.type)).toEqual(["steps", "message", "steps"]);
+    expect(rows[0]).toMatchObject({ steps: expect.arrayContaining([expect.objectContaining({ executionId: "next" })]) });
+    expect(rows[0]?.type === "steps" && rows[0].steps).toHaveLength(13);
+  });
   it("flags a message cut at the excerpt limit, counted in characters", () => {
     const rows = projectConversation([{ node_id: "1", kind: "assistant_response", excerpt: "x".repeat(4096) }, { node_id: "2", kind: "assistant_response", excerpt: "short" }]);
     expect(rows[0]).toMatchObject({ truncated: true });

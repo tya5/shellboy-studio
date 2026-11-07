@@ -7,13 +7,21 @@ import { Button, EmptyState, LoadingRows, Notice, VirtualGap, VirtualSpace } fro
 
 import { ScrollIntent } from "./scrollIntent";
 
+export function heldRange(visible: { first: number; last: number }, total: number, held: (index: number) => boolean): { first: number; last: number } {
+  const range = { ...visible };
+  while (range.first > 0 && held(range.first - 1)) range.first--;
+  while (range.last + 1 < total && held(range.last + 1)) range.last++;
+  return range;
+}
+
 export function WindowedScroll({ model, win, renderRow, live }: { model: AppModel; win: ConversationWindow; renderRow: (row: ConversationRow) => VNode; live: ComponentChildren }) {
   const t = model.t.value;
   win.version.value; // redraw on every change the window reports
   const status = win.status.value;
   const shells = model.shells.value;
   const el = useRef<HTMLDivElement>(null);
-  const range = win.renderRange();
+  const visible = win.renderRange();
+  const range = visible && heldRange(visible, win.total, (index) => win.itemAt(index) !== undefined);
   const intent = useRef(new ScrollIntent());
 
   // After each draw: report measured heights (the window corrects the offset for rows above the
@@ -46,9 +54,25 @@ export function WindowedScroll({ model, win, renderRow, live }: { model: AppMode
         i = end + 1;
         continue;
       }
-      const row = projectConversation([item], shells)[0];
-      if (row) parts.push(<div key={item.node_id ?? i} data-o={i} class="vrow">{renderRow(row)}</div>);
-      i++;
+      // Project a contiguous loaded run together. Unloaded gaps are hard boundaries:
+      // once the adjacent window loads, the next render joins the two groups.
+      let end = i;
+      const items = [item];
+      while (end + 1 <= range.last) {
+        const next = win.itemAt(end + 1);
+        if (next === undefined) break;
+        items.push(next);
+        end++;
+      }
+      const rows = projectConversation(items, shells);
+      const positions = new Map(items.map((entry, index) => [entry.node_id, i + index]));
+      const rowAt = new Map(rows.map((row) => [positions.get(row.id), row]));
+      for (let position = i; position <= end; position++) {
+        const row = rowAt.get(position);
+        parts.push(row ? <div key={row.id} data-o={position} class="vrow">{renderRow(row)}</div>
+          : <div key={`empty${position}`} data-o={position} />);
+      }
+      i = end + 1;
     }
   }
 
