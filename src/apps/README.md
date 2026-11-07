@@ -143,3 +143,11 @@ render(JSON.parse(out.stdout));
 ## Checking your work
 
 You can't open a browser from the Thread. Keep logic in small functions, test `actions/` by running them directly, and ask the person to open the app under Apps and press the send button if an error shows.
+
+## Named instances
+
+After `await shellboy.ready`, `shellboy.instance` is the selected instance name,
+or `null` for an ordinary app. Instance names use ASCII letters, digits, `_`,
+and `-`. By convention, put per-instance files under `data/<instance>/` and
+use `data.onChange` to observe that instance's files. Data paths are not an
+authorization boundary; the app can still access other app data.

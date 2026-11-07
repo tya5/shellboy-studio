@@ -270,13 +270,19 @@ export class Operations {
   appsList(): Promise<Outcome<Record<string, unknown>>> {
     return this.run("apps.list", {}, decodeRecord);
   }
+  appsInstances(name: string): Promise<Outcome<Record<string, unknown>>> {
+    return this.run("apps.instances", { name }, decodeRecord);
+  }
+  appsCreateInstance(name: string, instance: string): Promise<Outcome<Record<string, unknown>>> {
+    return this.run("apps.instance.create", { name, instance }, decodeRecord);
+  }
   /** A one-time URL that opens an app on its own origin. */
   appsOpen(name: string): Promise<Outcome<Record<string, unknown>>> {
     return this.run("apps.open", { name }, decodeRecord);
   }
   /** One API call from an app's page, for the app the caller named. */
-  appsCall(name: string, op: string, args: unknown, read?: ReadOptions): Promise<Outcome<Record<string, unknown>>> {
-    return this.run("apps.call", { name, op, args }, decodeRecord, undefined, read);
+  appsCall(name: string, op: string, args: unknown, read?: ReadOptions, instance?: string): Promise<Outcome<Record<string, unknown>>> {
+    return this.run("apps.call", { name, op, args, ...(instance ? { instance } : {}) }, decodeRecord, undefined, read);
   }
   /** Look up a mutation's receipt, e.g. after an `unconfirmed` error. */
   operationGet(operationId: string): Promise<Outcome<Record<string, unknown>>> {

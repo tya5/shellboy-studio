@@ -286,7 +286,7 @@ export class AppModel {
         const route = this.route.value;
         if (route.view !== "apps" || this.connection.value !== "connected") return;
         this.apps.ensure();
-        if (route.appName !== undefined) void this.apps.open(route.appName);
+        if (route.appName !== undefined) void this.apps.open(route.appName, route.appInstance);
       }),
     );
     // Both views follow the list: a list hint re-reads it, and each change here re-reads once.

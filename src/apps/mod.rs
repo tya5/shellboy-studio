@@ -29,6 +29,16 @@ pub use host::AppHost;
 const GUIDE: &str = include_str!("README.md");
 const RUNS: usize = 4;
 const MAX_SESSIONS: usize = 256;
+const MAX_INSTANCES: usize = 128;
+
+/// A portable data directory component. Keep aligned with the Web route parser.
+pub fn valid_instance_name(name: &str) -> bool {
+    !name.is_empty()
+        && name.len() <= 40
+        && name
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+}
 
 /// The one place that decides where an app's files are. A path on whatever host the Web UI was reached
 /// by, so a tunnel that forwards one port carries apps too. Apps use relative URLs, so changing this
@@ -44,6 +54,7 @@ pub struct Apps<O> {
     pub(crate) global: Arc<Semaphore>,
     pub(crate) runs: Semaphore,
     hosts: tokio::sync::Mutex<HashMap<String, Arc<AppHost<O>>>>,
+    instance_writes: tokio::sync::Mutex<()>,
     /// Which app a file session belongs to. In memory: a restart ends them, and the Web UI opens again.
     sessions: Mutex<VecDeque<(String, String)>>,
     tasks: Mutex<Vec<tokio::task::JoinHandle<()>>>,
@@ -74,6 +85,7 @@ impl<O: Owner> Apps<O> {
             global,
             runs: Semaphore::new(RUNS),
             hosts: tokio::sync::Mutex::new(HashMap::new()),
+            instance_writes: tokio::sync::Mutex::new(()),
             sessions: Mutex::new(VecDeque::new()),
             tasks: Mutex::new(Vec::new()),
             cancel,
@@ -104,6 +116,69 @@ impl<O: Owner> Apps<O> {
         Ok(host)
     }
 
+    /// Persist a bounded list independently of app data; names are never paths supplied verbatim.
+    pub async fn instances(
+        self: &Arc<Self>,
+        name: &str,
+    ) -> Result<Vec<String>, (&'static str, String)> {
+        self.host(name).await?;
+        let path = self.dir.join(".instances").join(format!("{name}.json"));
+        use tokio::io::AsyncReadExt;
+        let file = match tokio::fs::File::open(path).await {
+            Ok(file) => file,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+            Err(e) => return Err(("io_failed", e.to_string())),
+        };
+        let mut bytes = Vec::new();
+        file.take(8193)
+            .read_to_end(&mut bytes)
+            .await
+            .map_err(|e| ("io_failed", e.to_string()))?;
+        if bytes.len() > 8192 {
+            return Err(("invalid_instances", "Instance registry is too large".into()));
+        }
+        let names: Vec<String> =
+            serde_json::from_slice(&bytes).map_err(|e| ("invalid_instances", e.to_string()))?;
+        if names.len() > MAX_INSTANCES || names.iter().any(|n| !valid_instance_name(n)) {
+            return Err(("invalid_instances", "Invalid instance registry".into()));
+        }
+        Ok(names)
+    }
+
+    pub async fn add_instance(
+        self: &Arc<Self>,
+        name: &str,
+        instance: &str,
+    ) -> Result<Value, (&'static str, String)> {
+        if !valid_instance_name(instance) {
+            return Err(("invalid_instance", "Invalid instance name".into()));
+        }
+        let _guard = self.instance_writes.lock().await;
+        let mut names = self.instances(name).await?;
+        if !names.iter().any(|n| n == instance) {
+            if names.len() >= MAX_INSTANCES {
+                return Err(("too_many_instances", "Too many instances".into()));
+            }
+            names.push(instance.to_owned());
+            names.sort();
+            let dir = self.dir.join(".instances");
+            tokio::fs::create_dir_all(&dir)
+                .await
+                .map_err(|e| ("io_failed", e.to_string()))?;
+            let path = dir.join(format!("{name}.json"));
+            let tmp = dir.join(format!(".{}.tmp", uuid::Uuid::new_v4()));
+            let bytes = serde_json::to_vec(&names).map_err(|e| ("io_failed", e.to_string()))?;
+            tokio::fs::write(&tmp, bytes)
+                .await
+                .map_err(|e| ("io_failed", e.to_string()))?;
+            if let Err(e) = tokio::fs::rename(&tmp, &path).await {
+                let _ = tokio::fs::remove_file(&tmp).await;
+                return Err(("io_failed", e.to_string()));
+            }
+        }
+        Ok(json!({"items": names}))
+    }
+
     /// A relative URL that serves the app: a fresh session in the path.
     pub async fn open(self: &Arc<Self>, name: &str) -> Result<Value, (&'static str, String)> {
         self.host(name).await?;
@@ -125,8 +200,18 @@ impl<O: Owner> Apps<O> {
 
     /// One API call, with the app named by the parent frame and never by the page.
     pub async fn call(self: &Arc<Self>, name: &str, op: &str, args: Value) -> Value {
+        self.call_instance(name, op, args, None).await
+    }
+
+    pub async fn call_instance(
+        self: &Arc<Self>,
+        name: &str,
+        op: &str,
+        args: Value,
+        instance: Option<&str>,
+    ) -> Value {
         match self.host(name).await {
-            Ok(host) => host.call(op, args).await,
+            Ok(host) => host.call(op, args, instance).await,
             Err((code, message)) => {
                 json!({"ok": false, "error": {"code": code, "message": message}})
             }
@@ -197,6 +282,17 @@ impl<O: Owner> Apps<O> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn instance_names_are_safe_path_components() {
+        for name in ["a", "A_2", "x-y"] {
+            assert!(valid_instance_name(name));
+        }
+        for name in ["", ".", "..", "a/b", "a\\b", "%2f", "a.b", "日本"] {
+            assert!(!valid_instance_name(name), "{name}");
+        }
+        assert!(!valid_instance_name(&"a".repeat(41)));
+    }
+
     #[test]
     fn a_url_is_a_path_so_any_host_or_tunnel_carries_it() {
         assert_eq!(
