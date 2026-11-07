@@ -58,17 +58,23 @@ function RowView({ model, row }: { model: AppModel; row: ConversationRow }) {
   const point = threadId !== undefined ? formatRoute({ view: "branches", threadId, nodeId: row.id }) : undefined;
   const found = model.rowMarks.value.get(row.id);
   const mark = found && threadId !== undefined ? <BranchMark href={formatRoute({ view: "branches", threadId, nodeId: found.nodeId })} label={found.branches === 1 ? t("branches.markOne") : t("branches.mark", { n: found.branches })} /> : null;
-  if (row.type === "steps")
+  if (row.type === "steps") {
+    const opened = model.openToolGroups.value.has(row.id);
+    const active = row.steps.find((s) => s.status === "running");
+    const nonzero = row.steps.filter((s) => typeof s.exitCode === "number" && s.exitCode !== 0).length;
+    const failed = row.steps.some((s) => s.status === "failed" || s.status === "recovery");
     return (
       <>
-        <div class="steps">
-          {row.steps.map((s) => (
-            <StepView key={s.executionId} model={model} step={s} />
-          ))}
-        </div>
+        <section class="steps">
+          <Button aria-expanded={opened} onClick={() => { const next = new Set(model.openToolGroups.peek()); if (opened) next.delete(row.id); else next.add(row.id); model.openToolGroups.value = next; }}>
+            {t("tools.group", { n: row.steps.length, nonzero })} {active ? active.description ?? active.command : failed ? t("status.failed") : t("status.completed")}
+          </Button>
+          {opened ? row.steps.map((s) => <StepView key={s.executionId} model={model} step={s} />) : null}
+        </section>
         {mark ? <div class="scroll-mark">{mark}</div> : null}
       </>
     );
+  }
   if (row.type === "note")
     return (
       <>
