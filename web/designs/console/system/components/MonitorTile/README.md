@@ -1,1 +1,1 @@
-A compact, non-scrolling link to a conversation. Use with a status mark and a bounded number of one-line activity summaries. Place pin controls outside the link.
+A border-separated monitor pane. The header contains a conversation link and independent pin control. The flexible body links to the conversation, clips overflowing lines from the top, and keeps the supplied status at the bottom. Use inside a fixed-size pane grid; no pane scrolling or rounded card styling.
