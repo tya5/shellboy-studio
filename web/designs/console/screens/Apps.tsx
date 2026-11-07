@@ -130,6 +130,8 @@ export function AppsHost({ context }: { context: DesignContext }) {
             current: tab.name === current,
             alert: tab.errors.length > 0,
             closeLabel: t("apps.close", { name: tab.title }),
+            reloadLabel: t("apps.reloadTab", { name: tab.title }),
+            onReload: () => void apps.reload(tab.name),
             onClose: () => {
               apps.close(tab.name);
               if (tab.name === current) model.navigate({ view: "apps" });
@@ -137,6 +139,7 @@ export function AppsHost({ context }: { context: DesignContext }) {
           })),
         ]}
       />
+      {open && apps.openError.value?.name === open.name ? <Notice tone="bad">{t("apps.openFailed", { name: open.name, message: apps.openError.value.message })}</Notice> : null}
       {open ? <Alerts model={model} tab={open} /> : null}
       {current === undefined || !open ? <AppList model={model} /> : null}
       {tabs.map((tab) => (

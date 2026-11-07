@@ -773,6 +773,19 @@ describe("Apps", () => {
     expect(frame(el)).toBe(before);
     expect(el.querySelector(".apps-host.off")).toBeNull();
   });
+  it("manually reloads the open app with a fresh file session", async () => {
+    const { el, model, t, db } = await open("board");
+    const before = frame(el);
+    const plain = db.answer;
+    db.answer = (call) => call.command === "apps.open" ? { ok: true, result: { name: "board", title: "Board", url: "/a/s2/index.html", thread: "lead" } } : plain(call);
+    const button = el.querySelector<HTMLButtonElement>('button[aria-label="Reload Board"]')!;
+    await act(async () => { button.click(); await settle(t, db); });
+    expect(t.calls("apps.open")).toHaveLength(2);
+    expect(frame(el)).not.toBe(before);
+    expect(frame(el).getAttribute("src")).toBe("/a/s2/index.html");
+    expect(model.route.value).toEqual({ view: "apps", appName: "board" });
+    expect(t.calls("apps.call")).toHaveLength(0);
+  });
   it("closing a tab removes its page and returns to the list", async () => {
     const { el, model } = await open("board");
     await act(async () => {

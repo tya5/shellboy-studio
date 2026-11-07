@@ -122,9 +122,18 @@ export class AppsModel {
 
   /** A fresh ticket, for when the session ended. */
   async reload(name: string): Promise<void> {
-    this.cancelCalls(name);
-    const made = await this.mint(name);
-    if (made) this.tabs.value = this.tabs.peek().map((t) => (t.name === name ? made : t));
+    if (this.opening.has(name) || !this.tabs.peek().some((tab) => tab.name === name)) return;
+    this.opening.add(name);
+    try {
+      this.cancelCalls(name);
+      const made = await this.mint(name);
+      if (made && this.tabs.peek().some((tab) => tab.name === name)) {
+        this.tabs.value = this.tabs.peek().map((t) => (t.name === name ? made : t));
+        this.openError.value = undefined;
+      }
+    } finally {
+      this.opening.delete(name);
+    }
   }
 
   private async mint(name: string): Promise<OpenApp | undefined> {
