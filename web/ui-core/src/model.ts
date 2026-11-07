@@ -99,6 +99,7 @@ export class AppModel {
   readonly rowMarks: ReadonlySignal<ReadonlyMap<string, { nodeId: string; branches: number }>>;
   readonly lang: Signal<Lang>;
   readonly now: Signal<number>;
+  readonly openToolGroups: Signal<ReadonlySet<string>> = signal(new Set());
   /** For ages in long lists: it moves every 30 s, so a list doesn't re-render all its rows per tick. */
   readonly coarseNow: Signal<number>;
   /** Thread rows by ID, built once per list change. */

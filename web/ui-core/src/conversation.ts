@@ -34,7 +34,7 @@ function speakerOf(item: HistoryItem): Speaker {
   if (item.kind === "assistant_response") return { kind: "shellboy" };
   const sender = item.provenance?.sender;
   if (sender?.kind === "human") return { kind: "you" };
-  if (sender?.kind === "external_cli") return { kind: "cli" };
+  if (sender?.kind === "external_cli") return typeof sender.label === "string" && sender.label.trim() ? { kind: "other", label: `CLI: ${sender.label}` } : { kind: "cli" };
   const label = typeof sender?.label === "string" ? sender.label : sender?.kind;
   return label ? { kind: "other", label } : { kind: "you" };
 }
