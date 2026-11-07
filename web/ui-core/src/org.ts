@@ -3,8 +3,12 @@ import type { ThreadSummary } from "../../data/src";
 import { statusOfActivity, STATUS_KEYS, type StatusKey } from "./status";
 import { threadTree, type ThreadRow } from "./threads";
 
-/** Tags (stage 3) would join this list as another grouping; re-parent (not in v0.10.0) as a bar action. */
-export const THREAD_GROUPINGS = ["directory", "state"] as const;
+export const THREAD_GROUPINGS = ["tree", "directory", "state", "tag"] as const;
+
+/** What a bridge and owner can do beyond the pinned contract. Protocol 2 has no way to ask an owner. */
+export const CAPABILITY_REPARENT = "thread.reparent";
+/** Tags are Shellboy #222 stage 3, whose wire doesn't exist yet. Nothing here assumes it. */
+export const CAPABILITY_TAGS = "thread.tags";
 export type ThreadGrouping = (typeof THREAD_GROUPINGS)[number];
 
 export interface ThreadGroup {
@@ -17,7 +21,9 @@ export interface ThreadGroup {
  * parent is elsewhere stays a root, with `parentTitle` naming it.
  */
 export function groupThreads(items: readonly ThreadSummary[], by: ThreadGrouping): ThreadGroup[] {
+  if (by === "tag") return [];
   const titles = new Map(items.map((s) => [s.thread_id, s.title]));
+  if (by === "tree") return items.length === 0 ? [] : [{ key: "", rows: threadTree([...items]) }];
   const groups = new Map<string, ThreadSummary[]>();
   const keyOf = (s: ThreadSummary): string => (by === "directory" ? s.cwd : (statusOfActivity(s.activity) ?? "idle"));
   for (const s of items) {

@@ -10,7 +10,7 @@ import {
   type Preview,
   type PreviewDiscardReason,
 } from "./live";
-import { Operations } from "./operations";
+import { Cancel, Operations } from "./operations";
 import type {
   ArchivedFilter,
   HistoryItem,
@@ -89,6 +89,9 @@ export interface ThreadHandle extends Handle {
   loadOlderHistory(): Promise<void>;
   /** False when the window reached its maximum. */
   canShowEarlier(): boolean;
+  /** Stops reads and hints for this Thread, keeping what it has. */
+  pause(): void;
+  resume(): void;
 }
 
 export interface DataOptions {
@@ -118,6 +121,10 @@ class ThreadEntry {
   preview = signal<Preview>(NO_PREVIEW);
   /** Bumped by every history read; a read started earlier drops its result. */
   historyGen = 0;
+  /** Cancels this Thread's reads: dropped if queued, a `cancel` frame if sent. Replaced on resume. */
+  cancel = new Cancel();
+  /** Nobody is looking: no reads, and no hints from the bridge. */
+  paused = false;
   constructor(readonly id: string) {}
 }
 
@@ -209,9 +216,11 @@ export class ShellboyData {
     };
   }
 
+  /** A read for the old filter is no use: it's cancelled, and one for the new filter follows. */
   setListFilter(filter: ListFilter): void {
     this.filterSig.value = { ...filter };
-    if (this.listRefs > 0 && this.canRead()) void this.refresher.request("list");
+    this.listCancel?.cancel();
+    if (this.listRefs > 0 && this.canRead()) void this.refresher.requestFresh("list");
   }
 
   refreshThreadList(): Promise<void> {
@@ -263,16 +272,36 @@ export class ShellboyData {
       refresh: () => this.requestThread(threadId),
       loadOlderHistory: () => this.loadOlder(e),
       canShowEarlier: () => e.window < HISTORY_WINDOW_MAX,
+      pause: () => this.pauseEntry(e),
+      resume: () => this.resumeEntry(e),
       close: () => {
         if (closed) return;
         closed = true;
         if (--e.refs === 0) {
           e.closed = true;
+          e.cancel.cancel();
           this.entries.delete(threadId);
           this.scheduleWatch();
         }
       },
     };
+  }
+
+  /** Stops reading a Thread nobody is looking at, and keeps what it has. */
+  private pauseEntry(entry: ThreadEntry): void {
+    if (entry.paused || entry.closed) return;
+    entry.paused = true;
+    entry.cancel.cancel();
+    this.scheduleWatch();
+  }
+
+  /** A later read asks only for what's new, unless a first walk was cancelled before it finished. */
+  private resumeEntry(entry: ThreadEntry): void {
+    if (!entry.paused || entry.closed) return;
+    entry.paused = false;
+    entry.cancel = new Cancel();
+    this.scheduleWatch();
+    if (this.canRead()) this.requestThread(entry.id);
   }
 
   /** Re-read everything tracked (what `resync` and `owner: restarted` trigger). */
@@ -380,7 +409,8 @@ export class ShellboyData {
   }
 
   private flushWatch(): void {
-    this.link.watch([...this.entries.keys()], this.listRefs > 0);
+    const watched = [...this.entries.values()].filter((e) => !e.paused).map((e) => e.id);
+    this.link.watch(watched, this.listRefs > 0);
   }
 
   // ---- reads ----
@@ -390,6 +420,7 @@ export class ShellboyData {
   }
 
   private requestThread(id: string): Promise<void> {
+    if (this.entries.get(id)?.paused) return Promise.resolve();
     return Promise.all([this.refresher.request(`thread:${id}`), this.refresher.request(`history:${id}`)]).then(
       () => undefined,
     );
@@ -406,13 +437,15 @@ export class ShellboyData {
   }
 
   private listFilterRead: ListFilter | undefined;
+  private listCancel: Cancel | undefined;
 
   private async readList(onSent: () => void): Promise<void> {
     if (this.listRefs === 0) return;
     const gen = ++this.listGen;
     const filter = this.filterSig.value;
     this.listSig.value = { ...this.listSig.value, loading: true, loadingMore: false };
-    const out = await this.operations.threadList(listArgs(filter), { onSent });
+    this.listCancel = new Cancel();
+    const out = await this.operations.threadList(listArgs(filter), { onSent, cancel: this.listCancel });
     if (gen !== this.listGen || filter !== this.filterSig.value) return; // superseded; a newer read follows
     const cur = this.listSig.value;
     if (!out.ok) {
@@ -436,9 +469,13 @@ export class ShellboyData {
 
   private async readDetail(entry: ThreadEntry, onSent: () => void): Promise<void> {
     entry.detail.value = { ...entry.detail.value, loading: true };
-    const out = await this.operations.threadGet(entry.id, { onSent });
+    const out = await this.operations.threadGet(entry.id, { onSent, cancel: entry.cancel });
     if (entry.closed) return;
     const cur = entry.detail.value;
+    if (!out.ok && out.error.kind === "cancelled") {
+      entry.detail.value = { ...cur, loading: false };
+      return;
+    }
     entry.detail.value = out.ok
       ? { value: out.value, loading: false, stale: false, error: undefined }
       : { ...cur, loading: false, stale: cur.value !== undefined, error: out.error };
@@ -450,6 +487,10 @@ export class ShellboyData {
     const out = await this.walkHistory(entry, gen, onSent);
     if (entry.closed || gen !== entry.historyGen) return;
     const cur = entry.history.value;
+    if (!out.ok && out.error.kind === "cancelled") {
+      entry.history.value = { ...cur, loading: false, loadingMore: false };
+      return;
+    }
     entry.history.value = out.ok
       ? { items: out.items, earlierHidden: out.earlierHidden, loaded: true, loading: false, loadingMore: false, stale: false, error: undefined }
       : { ...cur, loading: false, loadingMore: false, stale: cur.loaded, error: out.error };
@@ -491,7 +532,7 @@ export class ShellboyData {
           ...(anchor?.since !== undefined && { since: anchor.since }),
           ...(cursor !== undefined && { cursor }),
         },
-        first ? { onSent } : undefined,
+        first ? { onSent, cancel: entry.cancel } : { cancel: entry.cancel },
       );
       first = false;
       if (entry.closed || gen !== entry.historyGen) return { ok: true, items: [], earlierHidden: false };

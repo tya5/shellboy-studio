@@ -171,52 +171,52 @@ export class Operations {
   historyList(args: HistoryListArgs, read?: ReadOptions): Promise<Outcome<Page<HistoryItem>>> {
     return this.run("history.list", args, decodeHistoryPage, undefined, read);
   }
-  historyGet(args: HistoryGetArgs): Promise<Outcome<HistoryBody>> {
-    return this.run("history.get", args, decodeBody);
+  historyGet(args: HistoryGetArgs, read?: ReadOptions): Promise<Outcome<HistoryBody>> {
+    return this.run("history.get", args, decodeBody, undefined, read);
   }
-  shellList(args: ShellListArgs): Promise<Outcome<Page<ShellEntry>>> {
-    return this.run("shell.list", args, decodeShellPage);
+  shellList(args: ShellListArgs, read?: ReadOptions): Promise<Outcome<Page<ShellEntry>>> {
+    return this.run("shell.list", args, decodeShellPage, undefined, read);
   }
-  shellRead(args: ShellReadArgs): Promise<Outcome<ShellOutput>> {
-    return this.run("shell.read", args, decodeShellOutput);
+  shellRead(args: ShellReadArgs, read?: ReadOptions): Promise<Outcome<ShellOutput>> {
+    return this.run("shell.read", args, decodeShellOutput, undefined, read);
   }
   /** Saved usage totals, or one page of a grouped scan when `group_by` is set. No provider call. */
-  usageGet(args: UsageGetArgs): Promise<Outcome<Record<string, unknown>>> {
-    return this.run("usage.get", args, decodeRecord);
+  usageGet(args: UsageGetArgs, read?: ReadOptions): Promise<Outcome<Record<string, unknown>>> {
+    return this.run("usage.get", args, decodeRecord, undefined, read);
   }
   /** Compaction observations of one Thread, newest first. */
-  compactList(args: CompactListArgs): Promise<Outcome<Record<string, unknown>>> {
-    return this.run("compact.list", args, decodeRecord);
+  compactList(args: CompactListArgs, read?: ReadOptions): Promise<Outcome<Record<string, unknown>>> {
+    return this.run("compact.list", args, decodeRecord, undefined, read);
   }
-  storageStatus(): Promise<Outcome<Record<string, unknown>>> {
-    return this.run("storage.status", {}, decodeRecord);
+  storageStatus(read?: ReadOptions): Promise<Outcome<Record<string, unknown>>> {
+    return this.run("storage.status", {}, decodeRecord, undefined, read);
   }
-  indexStatus(): Promise<Outcome<Record<string, unknown>>> {
-    return this.run("index.status", {}, decodeRecord);
+  indexStatus(read?: ReadOptions): Promise<Outcome<Record<string, unknown>>> {
+    return this.run("index.status", {}, decodeRecord, undefined, read);
   }
   /** `status --memory`: owner cache accounting and process memory, taken on request. */
-  memoryStatus(): Promise<Outcome<Record<string, unknown>>> {
-    return this.run("status", { memory: true }, decodeRecord);
+  memoryStatus(read?: ReadOptions): Promise<Outcome<Record<string, unknown>>> {
+    return this.run("status", { memory: true }, decodeRecord, undefined, read);
   }
   /** Activity status, for `receipt_budget`. One row is enough; the rows are not used. */
-  statusSummary(): Promise<Outcome<Record<string, unknown>>> {
-    return this.run("status", { limit: 1 }, decodeRecord);
+  statusSummary(read?: ReadOptions): Promise<Outcome<Record<string, unknown>>> {
+    return this.run("status", { limit: 1 }, decodeRecord, undefined, read);
   }
   /** Asks the connection's endpoint for its model list (one GET). No conversation request. */
   modelList(args: ModelListArgs = {}): Promise<Outcome<ModelListResult>> {
     return this.run("model.list", args, decodeModelList);
   }
   /** One page of a Thread's family: ancestors, then breadth first. */
-  threadBranches(args: ThreadBranchesArgs): Promise<Outcome<Record<string, unknown>>> {
-    return this.run("thread.branches", args, decodeRecord);
+  threadBranches(args: ThreadBranchesArgs, read?: ReadOptions): Promise<Outcome<Record<string, unknown>>> {
+    return this.run("thread.branches", args, decodeRecord, undefined, read);
   }
   /** `dry_run`: runs in a rolled-back savepoint and writes nothing, so it carries no operation id. */
   threadRewindPreview(args: ThreadRewindArgs): Promise<Outcome<Record<string, unknown>>> {
     return this.run("thread.rewind", { ...args, dry_run: true }, decodeRecord);
   }
   /** The gateway's own process memory, as the OS reports it. */
-  bridgeMemory(): Promise<Outcome<Record<string, unknown>>> {
-    return this.run("bridge.memory", {}, decodeRecord);
+  bridgeMemory(read?: ReadOptions): Promise<Outcome<Record<string, unknown>>> {
+    return this.run("bridge.memory", {}, decodeRecord, undefined, read);
   }
   /** The gateway's own: apps found in the apps folder. Doesn't reach the owner. */
   appsList(): Promise<Outcome<Record<string, unknown>>> {
@@ -251,6 +251,10 @@ export class Operations {
   }
   threadFork(args: ThreadForkArgs, operationId = this.newId()): Promise<Outcome<ThreadDetails>> {
     return this.run("thread.fork", args, decodeDetails, { operationId });
+  }
+  /** `parent: ""` detaches. Needs an owner and bridge with the `thread.reparent` capability. */
+  threadSetParent(threadId: string, parent: string, operationId = this.newId()): Promise<Outcome<ThreadDetails>> {
+    return this.run("thread.set", { thread_id: threadId, parent }, decodeDetails, { operationId });
   }
   threadRewind(args: ThreadRewindArgs, operationId = this.newId()): Promise<Outcome<MutationResult>> {
     return this.run("thread.rewind", args, decodeRecord, { operationId });

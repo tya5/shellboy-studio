@@ -169,4 +169,44 @@ describe("AppModel over the fake transport", () => {
     t.push({ t: "stream", thread_id: "lead", cursor: "c", text: "partial", gap: false });
     expect(model.handle.value!.preview.value).toEqual({ kind: "live", text: "partial", cursor: "c" });
   });
+
+  it("leaving the Conversation stops reading its Thread, and returning reads only what's new", async () => {
+    const { model, t, db } = await fixtureModel();
+    const reads = () => t.calls("history.list").length;
+    model.applyRoute({ view: "monitor" });
+    await flush();
+    expect(t.watches().at(-1)!.thread_ids).toEqual([]);
+    const away = reads();
+    t.push({ t: "changed", thread_ids: ["lead"], list: false });
+    await settle(t, db);
+    expect(reads()).toBe(away);
+    expect(model.conversation.value.length).toBeGreaterThan(0);
+    model.applyRoute({ view: "conversation", threadId: "lead" });
+    await settle(t, db);
+    expect(t.watches().at(-1)!.thread_ids).toEqual(["lead"]);
+    expect(reads()).toBe(away + 1);
+    expect((t.calls("history.list").at(-1)!.args as { since?: string }).since).toBeDefined();
+  });
+
+  it("switching Thread cancels the old one's reads and closing a step cancels its output read", async () => {
+    const { model, t, db } = await fixtureModel();
+    const stop = model.watchOutput("exec-1");
+    await flush();
+    const read = t.calls("shell.read").at(-1)!;
+    stop();
+    await flush();
+    expect(t.cancels()).toContain(read.id);
+    db.answered.add(read.id);
+    expect(model.outputs.value.has("exec-1")).toBe(false);
+    model.openThread("broken");
+    await flush();
+    const sent = t.calls("history.list").at(-1)!;
+    model.openThread("lead");
+    await flush();
+    expect(t.cancels()).toContain(sent.id);
+    db.answered.add(sent.id);
+    await settle(t, db);
+    expect(model.selectedId.value).toBe("lead");
+    expect(model.conversation.value.length).toBeGreaterThan(0);
+  });
 });

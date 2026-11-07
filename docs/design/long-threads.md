@@ -32,6 +32,10 @@ Wire details wait for #268 and aren't guessed here. This assumes only what the i
 
 **A path change.** When the revision differs (compaction, rewind, prune), every window is dropped and the visible position re-reads by the anchor node if it still exists, otherwise at the nearest ordinal, with a small note. A rewind seen while reading doesn't jump to the end.
 
+**Cancelling (user requirement, 2026-11-07).** Reads follow what's showing, with the machinery already in the data layer (`Cancel`, `data-layer.md`). A window is requested only when it comes within the margin, after a short pause in fast scrolling, so a fling across the Thread starts no reads for rows passed over. A window that leaves the margin before its reply is cancelled: dropped if queued, a `cancel` frame if sent. At most 2 are in flight, the newest wanted first, and queued ones that are no longer wanted never go out. Leaving the view or switching Thread cancels all of them. Reads already started at the owner run to the end of their page (`data-layer.md`), so a window should stay small.
+
+To measure when #268 lands, on the same 100,000-node seed: calls per wheel notch, calls and cancels for a drag from one end to the other, calls for a jump to the middle and back, and that a Thread left mid-scroll sends nothing more.
+
 **Never freezing.** Rendering is at most the visible rows per frame. Markdown rendering runs when a row first enters the margin, not for the whole window, and long bodies stay collapsed as now.
 
 ## Needs from core

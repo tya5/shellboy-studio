@@ -455,3 +455,72 @@ describe("the Thread list stays bounded however many Threads exist", () => {
     expect(x.t.calls("thread.list").length).toBe(before);
   });
 });
+
+describe("reads nobody needs are cancelled", () => {
+  async function opened() {
+    const t = new FakeTransport();
+    const db = new FakeOwnerDb();
+    db.details.a = details("a");
+    db.history.a = Array.from({ length: 450 }, (_, i) => ({ node_id: `n${i}`, kind: "user", excerpt: "x", provenance: { created_at: `2026-11-07T00:00:${String(i % 60).padStart(2, "0")}+00:00` }, selection: { ordinal: i } }));
+    const data = new ShellboyData({ transport: t, newId: () => "x" });
+    data.start();
+    t.open();
+    t.push({ t: "hello", bridge_version: "0", owner: connected });
+    await flush();
+    const h = data.openThread("a");
+    await flush();
+    return { t, db, data, h };
+  }
+  it("closing a Thread cancels what's on the wire and starts nothing more", async () => {
+    const { t, h } = await opened();
+    const sent = t.calls().filter((c) => c.command === "history.list" || c.command === "thread.get");
+    expect(sent.length).toBeGreaterThan(0);
+    h.close();
+    await flush();
+    expect(t.cancels()).toEqual(expect.arrayContaining(sent.map((c) => c.id)));
+    const before = t.calls("history.list").length;
+    await flush();
+    expect(t.calls("history.list").length).toBe(before);
+  });
+  it("pausing stops the walk and hints; resuming reads again, and a first walk starts over", async () => {
+    const { t, db, h } = await opened();
+    t.ok(t.calls("thread.get")[0]!.id, db.details.a);
+    db.answered.add(t.calls("thread.get")[0]!.id);
+    db.answered.add(t.calls("history.list")[0]!.id);
+    t.ok(t.calls("history.list")[0]!.id, { items: db.history.a!.slice(0, 100), next_cursor: "100" });
+    await flush();
+    expect(t.calls("history.list")).toHaveLength(2);
+    h.pause();
+    await flush();
+    expect(t.cancels()).toContain(t.calls("history.list")[1]!.id);
+    expect(t.calls("history.list")).toHaveLength(2);
+    expect(t.watches().at(-1)!.thread_ids).toEqual([]);
+    t.push({ t: "changed", thread_ids: ["a"], list: false });
+    await flush();
+    expect(t.calls("history.list")).toHaveLength(2);
+    expect(h.history.value.loading).toBe(false);
+    h.resume();
+    await flush();
+    await settle(t, db);
+    expect(t.watches().at(-1)!.thread_ids).toEqual(["a"]);
+    expect(h.history.value.items).toHaveLength(HISTORY_WINDOW);
+    expect(h.history.value.error).toBeUndefined();
+  });
+  it("a new search cancels the read for the old one, and reads again even if that was still queued", async () => {
+    const t = new FakeTransport();
+    const db = new FakeOwnerDb();
+    const data = new ShellboyData({ transport: t, newId: () => "x" });
+    data.trackThreadList();
+    data.start();
+    t.open();
+    t.push({ t: "hello", bridge_version: "0", owner: connected });
+    await flush();
+    const first = t.calls("thread.list")[0]!;
+    data.setListFilter({ query: "q" });
+    await flush();
+    expect(t.cancels()).toContain(first.id);
+    await settle(t, db);
+    expect((t.calls("thread.list").at(-1)!.args as { query?: string }).query).toBe("q");
+    expect(data.threadList.value.loaded).toBe(true);
+  });
+});

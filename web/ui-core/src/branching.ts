@@ -1,7 +1,7 @@
 // Screen logic of the Branches and Threads views: reads when a view opens or a hint says the list changed,
 // one at a time, with one trailing read. Mutations are explicit and never optimistic.
 import { batch, signal, type Signal } from "@preact/signals-core";
-import type { ArchiveResult, ArchivedFilter, Operations, OpError, ThreadSummary } from "../../data/src";
+import { Cancel, type ArchiveResult, type ArchivedFilter, type Operations, type OpError, type ThreadSummary } from "../../data/src";
 import { branchLayout, readFamily, readRewind, type BranchFamily, type RewindFacts } from "./branches";
 import type { ThreadGrouping } from "./org";
 
@@ -23,13 +23,13 @@ export interface FamilyState {
 }
 
 /** One family read to its end. Also used for the marks in a conversation. */
-export async function readWholeFamily(ops: Operations, threadId: string): Promise<{ ok: true; family: BranchFamily } | { ok: false; error: OpError }> {
+export async function readWholeFamily(ops: Operations, threadId: string, cancel?: Cancel): Promise<{ ok: true; family: BranchFamily } | { ok: false; error: OpError }> {
   for (let attempt = 0; ; attempt++) {
     const pages: Record<string, unknown>[] = [];
     let cursor: string | undefined;
     let expired = false;
     for (let n = 0; n < BRANCH_PAGES; n++) {
-      const out = await ops.threadBranches({ thread_id: threadId, limit: BRANCH_PAGE, ...(cursor !== undefined && { cursor }) });
+      const out = await ops.threadBranches({ thread_id: threadId, limit: BRANCH_PAGE, ...(cursor !== undefined && { cursor }) }, cancel ? { cancel } : undefined);
       if (!out.ok) {
         if (out.error.kind === "owner" && out.error.code === "cursor_expired" && attempt < BRANCH_RESTARTS) {
           expired = true;
@@ -73,13 +73,22 @@ export class Branches {
   readonly target: Signal<BranchTarget | undefined> = signal(undefined);
   private running = false;
   private again = false;
+  private cancel = new Cancel();
 
   constructor(private readonly ops: Operations) {}
+
+  /** Nobody is looking: cancels the read. The family read so far stays. */
+  leave(): void {
+    this.again = false;
+    this.cancel.cancel();
+    if (this.state.peek().loading) this.state.value = { ...this.state.peek(), loading: false };
+  }
 
   /** The view opened on this Thread, or a hint arrived. One read at a time, one trailing. */
   async read(threadId: string): Promise<void> {
     const had = this.state.peek();
     if (had.threadId !== threadId) {
+      this.cancel.cancel();
       this.state.value = { threadId, loading: true, family: undefined, error: undefined };
       this.clearActions();
     } else this.state.value = { ...had, loading: true };
@@ -92,9 +101,14 @@ export class Branches {
       do {
         this.again = false;
         const id = this.state.peek().threadId as string;
-        const out = await readWholeFamily(this.ops, id);
+        this.cancel = new Cancel();
+        const out = await readWholeFamily(this.ops, id, this.cancel);
         if (this.state.peek().threadId !== id) {
           this.again = true;
+          continue;
+        }
+        if (!out.ok && out.error.kind === "cancelled") {
+          if (!this.again) this.state.value = { ...this.state.peek(), loading: false };
           continue;
         }
         // A failed re-read keeps the last family, marked with the error.
@@ -173,22 +187,40 @@ export interface OrgState {
   error: OpError | undefined;
 }
 
+/** Choosing a new parent. `parent` is "" for no parent. There's no dry run: the owner decides on Move. */
+export type MoveState =
+  | { kind: "idle" }
+  | { kind: "picking"; threadId: string }
+  | { kind: "preview"; threadId: string; parent: string }
+  | { kind: "moving"; threadId: string; parent: string }
+  | { kind: "moved"; threadId: string; parent: string; liveRun: boolean }
+  | { kind: "refused"; threadId: string; parent: string; message: string };
+
 export type OrgAction = { kind: "idle" } | { kind: "running" } | { kind: "done"; verb: "archive" | "unarchive"; result: ArchiveResult } | { kind: "failed"; error: OpError };
 
 export class ThreadOrg {
   readonly state: Signal<OrgState> = signal({ mode: "exclude", query: "", loading: false, items: [], nextCursor: undefined, loaded: false, error: undefined });
-  readonly groupBy: Signal<ThreadGrouping> = signal("directory");
+  readonly groupBy: Signal<ThreadGrouping> = signal("tree");
+  readonly move: Signal<MoveState> = signal({ kind: "idle" });
   readonly selected: Signal<ReadonlySet<string>> = signal(new Set());
   readonly descendants: Signal<boolean> = signal(true);
   readonly action: Signal<OrgAction> = signal({ kind: "idle" });
   private running = false;
   private again = false;
   private pages = 1;
+  private cancel = new Cancel();
 
   constructor(private readonly ops: Operations) {}
 
   ensure(): void {
     if (!this.state.peek().loaded && !this.state.peek().loading) void this.read();
+  }
+
+  /** Nobody is looking: cancels the read. What's listed stays. */
+  leave(): void {
+    this.again = false;
+    this.cancel.cancel();
+    if (this.state.peek().loading) this.state.value = { ...this.state.peek(), loading: false };
   }
 
   /** Reads again up to the pages shown. A cursor bound to another mode or list starts over. */
@@ -203,11 +235,13 @@ export class ThreadOrg {
       do {
         this.again = false;
         const { mode, query } = this.state.peek();
+        this.cancel = new Cancel();
+        const cancel = this.cancel;
         const items: ThreadSummary[] = [];
         let cursor: string | undefined;
         let error: OpError | undefined;
         for (let page = 0; page < this.pages; page++) {
-          const out = await this.ops.threadList({ limit: ORG_PAGE, archived: mode, ...(query ? { query } : {}), ...(cursor !== undefined && { cursor }) });
+          const out = await this.ops.threadList({ limit: ORG_PAGE, archived: mode, ...(query ? { query } : {}), ...(cursor !== undefined && { cursor }) }, { cancel });
           if (!out.ok) {
             error = out.error;
             break;
@@ -219,6 +253,10 @@ export class ThreadOrg {
         const now = this.state.peek();
         if (now.mode !== mode || now.query !== query) {
           this.again = true;
+          continue;
+        }
+        if (error?.kind === "cancelled") {
+          if (!this.again) this.state.value = { ...now, loading: false };
           continue;
         }
         const known = new Set(items.map((s) => s.thread_id));
@@ -245,6 +283,7 @@ export class ThreadOrg {
   /** Active or Archived. Selection doesn't carry over: the action differs. */
   setMode(mode: ArchiveMode): void {
     if (this.state.peek().mode === mode) return;
+    this.cancel.cancel();
     this.pages = 1;
     batch(() => {
       this.state.value = { ...this.state.peek(), mode, items: [], nextCursor: undefined, loaded: false };
@@ -256,9 +295,37 @@ export class ThreadOrg {
 
   setQuery(query: string): void {
     if (this.state.peek().query === query) return;
+    this.cancel.cancel();
     this.pages = 1;
     this.state.value = { ...this.state.peek(), query };
     void this.read();
+  }
+
+  pickParent(threadId: string): void {
+    this.move.value = { kind: "picking", threadId };
+  }
+
+  /** From the picker or a drop. Nothing moves until `confirmMove`. */
+  previewMove(threadId: string, parent: string): void {
+    this.move.value = { kind: "preview", threadId, parent };
+  }
+
+  cancelMove(): void {
+    this.move.value = { kind: "idle" };
+  }
+
+  async confirmMove(): Promise<void> {
+    const m = this.move.peek();
+    if (m.kind !== "preview") return;
+    this.move.value = { kind: "moving", threadId: m.threadId, parent: m.parent };
+    const out = await this.ops.threadSetParent(m.threadId, m.parent);
+    if (!out.ok) {
+      this.move.value = { kind: "refused", threadId: m.threadId, parent: m.parent, message: out.error.message };
+      return;
+    }
+    const change = out.value.parent_change as { live_run_id?: unknown } | undefined;
+    this.move.value = { kind: "moved", threadId: m.threadId, parent: m.parent, liveRun: typeof change?.live_run_id === "string" };
+    await this.read();
   }
 
   toggle(id: string): void {

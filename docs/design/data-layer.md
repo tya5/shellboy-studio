@@ -94,6 +94,33 @@ Five list hints with 1000 rows expanded: 5 `thread.list` calls, no long task, no
 
 What needs core: the only remaining thing that scales with the data is opening a long Thread, which walks the whole path and takes 30 s for 100,000 nodes, though the page stays responsive and only 400 items are kept. That is Shellboy #268, and `long-threads.md` is the plan. By-Thread usage has the same shape in `usage.get` (`analytics-settings.md`), and needs a seek by date.
 
+## Cancelling what nobody needs
+
+User requirement (2026-11-07): requests made unnecessary are cancelled. `Cancel` (`operations.ts`) goes with a read. A call still queued in the Link is dropped and never sent; a call on the wire gets a `cancel` frame. At the bridge that aborts the task, whether waiting on a semaphore or running, which closes its owner connection. A cancelled read resolves with kind `cancelled`, which no screen shows as an error, and nothing is left marked as loading.
+
+| Event | What stops |
+|---|---|
+| Another Thread opens | Its reads, its walk, step lists, output, full bodies, branch marks |
+| The Conversation is left | The same, and its Thread leaves the bridge's watch, so no hints and no re-reads arrive. What's held stays. On return, a read asks only for what's new, and a first walk that didn't finish starts over |
+| A step's row closes | Its output read |
+| A search changes | The list read for the old one; a read for the new one always follows |
+| An Analytics section is left | Walks not shown pause: their call is cancelled, what's read stays, and they carry on from the same cursor when shown again. Compaction and resource reads are cancelled, and read again on return |
+| Stop or a new period | The walk's call |
+| Branches or Threads is left, or their Thread, filter or mode changes | The read in progress, including later pages |
+| An app's tab closes or reloads | Its calls, including long polls |
+| The socket closes | Everything |
+
+Mutations are never cancelled.
+
+**What can't be stopped at the owner, read from the v0.10.0 source and not measured.** Every cancel closes the owner connection, and what that does depends on the command (`runtime_cancellable`, `protocol/command.rs`):
+
+- Stops being waited for: `status --memory`, `model.list`, `history.search`, `shell.get`, `shell.read`, `events.wait`, `storage.status`, `index.preview` and index work. The owner drops the future at once. `history.search` also interrupts SQLite (`index/search/reader.rs`). For the others, cleanup is the reader's own, and whether a blocking step already running ends early wasn't checked.
+- Runs to its end, and the reply is discarded: `thread.list`, `thread.get`, `thread.branches`, `history.list`, `history.get`, `history.relations`, `usage.get`, `compact.list`, `shell.list`, `index.status`, and the other commands the same match lists as false. Each also holds one of the owner's 24 work slots until it finishes (`MAX_IPC_WORK`, and the test `disconnected_accepted_work_keeps_all_slots_until_consumer_completion`).
+
+So a cancelled walk costs at most the one page in progress, and later pages never start. Mutations are outside this: they aren't cancelled by design.
+
+Core would need, for the second group: a check of the caller's token (`Invocation.disconnected`, which already exists) before a queued read starts, and an `interrupt` or SQLite progress handler tied to it for one already running, as search has. Positional reads (#268) make the pages small enough that this matters less.
+
 ## Public API (short)
 
 ```ts

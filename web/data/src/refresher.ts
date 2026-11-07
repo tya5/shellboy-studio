@@ -36,6 +36,16 @@ export class Refresher {
     return job.done;
   }
 
+  /** Like `request`, when a read already queued has become useless too: another always follows it. */
+  requestFresh(key: string): Promise<void> {
+    const existing = this.jobs.get(key);
+    if (existing) {
+      existing.rerun = true;
+      return existing.done;
+    }
+    return this.request(key);
+  }
+
   /** Keys with a read queued or running (for tests and diagnostics). */
   get active(): number {
     return this.jobs.size;

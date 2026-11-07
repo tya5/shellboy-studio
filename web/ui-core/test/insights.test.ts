@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { settle } from "../../data/test/harness";
+import { flush, settle } from "../../data/test/harness";
 import {
   addSum, ANALYTICS_SECTIONS, analyticsSection, cacheRate, dayFacts, effectiveTokens, formatBytes, formatRoute, loadPrefs, MAX_GROUPS, MAX_WINDOWS, meanInput, mergeGroups, niceMax, parseRoute, periodOf, periodTotals,
   readCompactionEvent, readGroup, readIndex, readMemory, readStorage, readSum, readThreadSettings, settingsSection, SETTINGS_SECTIONS, splitParts, totalGroups, zoneOf, type Prefs,
@@ -234,6 +234,60 @@ describe("Insights over the fake transport", () => {
     model.insights.refreshRead("bridge");
     await settle(t, db);
     expect(model.insights.bridge.value.value).toEqual({ rssBytes: undefined, reason: "Not read on this platform" });
+  });
+
+  it("leaving what shows a walk cancels its call, keeps its data and carries on from the same window", async () => {
+    const endless: Record<string, unknown> = { first: usagePage([usageItem("2026-11-07", { input: 10, cached: 5, output: 1 })], "w1"), w1: usagePage([usageItem("2026-11-07", { input: 10, cached: 5, output: 1 })], "w2"), w2: usagePage([usageItem("2026-11-06", { input: 1, cached: 0, output: 1 })]) };
+    const { t, db, model } = await fixtureModel({ usage: endless });
+    model.applyRoute({ view: "analytics", section: "tokens" });
+    await flush();
+    const answer = (id: number, result: unknown) => {
+      db.answered.add(id);
+      t.ok(id, result);
+    };
+    answer(t.calls("usage.get")[0]!.id, endless.first);
+    await flush();
+    const second = t.calls("usage.get")[1]!;
+    expect((second.args as { cursor: string }).cursor).toBe("w1");
+    model.applyRoute({ view: "analytics", section: "storage" });
+    await flush();
+    expect(t.cancels()).toContain(second.id);
+    db.answered.add(second.id);
+    expect(model.insights.daily.state.value.coverage.windows).toBe(1);
+    await settle(t, db);
+    expect(t.calls("usage.get")).toHaveLength(2);
+    model.applyRoute({ view: "monitor" });
+    model.applyRoute({ view: "analytics", section: "overview" });
+    await settle(t, db);
+    const cursors = t.calls("usage.get").map((c) => (c.args as { cursor?: string }).cursor);
+    expect(cursors).toEqual([undefined, "w1", "w1", "w2"]);
+    expect(model.insights.daily.state.value).toMatchObject({ status: "done" });
+    expect(model.insights.daily.state.value.coverage.windows).toBe(3);
+  });
+
+  it("switching sections cancels a read for the one left, and reads it again on return", async () => {
+    const { t, db, model } = await fixtureModel();
+    model.applyRoute({ view: "analytics", section: "storage" });
+    await flush();
+    const first = t.calls("storage.status")[0]!;
+    model.applyRoute({ view: "analytics", section: "memory" });
+    await flush();
+    expect(t.cancels()).toContain(first.id);
+    db.answered.add(first.id);
+    await settle(t, db);
+    expect(model.insights.storage.value).toMatchObject({ loading: false, value: undefined, error: undefined });
+    model.applyRoute({ view: "analytics", section: "storage" });
+    await settle(t, db);
+    expect(model.insights.storage.value.value).toBeDefined();
+  });
+
+  it("the same section re-running doesn't cancel its own reads", async () => {
+    const { t, db, model } = await fixtureModel({ route: "analytics", section: "memory" });
+    await settle(t, db);
+    model.insights.refreshRead("memory");
+    model.applyRoute({ view: "analytics", section: "memory" });
+    await settle(t, db);
+    expect(t.cancels()).toHaveLength(0);
   });
 
   it("walked data survives switching sections, also while a walk runs", async () => {

@@ -294,6 +294,8 @@ export function answerInsights(db: FakeOwnerDb, usage: Record<string, unknown> =
         return { ok: true, result: fixtureBranches };
       case "thread.rewind":
         return { ok: true, result: a.dry_run ? fixtureRewind : { ...fixtureRewind, dry_run: false, branch_thread_id: "kept" } };
+      case "thread.set":
+        return { ok: true, result: details(String(a.thread_id), { parent_id: a.parent || undefined }) };
       case "thread.fork":
         return { ok: true, result: details("forked", { title: "Forked", parent_id: a.thread_id }) };
       case "thread.archive":
@@ -320,7 +322,7 @@ export function answerInsights(db: FakeOwnerDb, usage: Record<string, unknown> =
   };
 }
 
-export async function fixtureModel(options: { pending?: PendingAdapter; route?: ViewName; section?: Route["section"]; usage?: Record<string, unknown> } = {}) {
+export async function fixtureModel(options: { pending?: PendingAdapter; route?: ViewName; section?: Route["section"]; usage?: Record<string, unknown>; capabilities?: string[] } = {}) {
   const t = new FakeTransport();
   const db = fixtureDb();
   answerInsights(db, options.usage);
@@ -329,7 +331,7 @@ export async function fixtureModel(options: { pending?: PendingAdapter; route?: 
   if (options.route) model.applyRoute({ view: options.route, ...(options.section && { section: options.section }) });
   model.start();
   t.open();
-  t.push({ t: "hello", bridge_version: "0.0.1", owner: connected });
+  t.push({ t: "hello", bridge_version: "0.0.1", owner: options.capabilities ? { state: "connected", info: { protocol_version: 2, instance_id: "i1", capabilities: options.capabilities } } : connected });
   // `settle` gives up after 50 rounds; a test that walks further keeps answering itself.
   await settle(t, db).catch(() => undefined);
   return { t, db, model, data };

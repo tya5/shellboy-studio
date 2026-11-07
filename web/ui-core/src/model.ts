@@ -1,7 +1,7 @@
 // Screen logic over the data layer: which Thread is open, what the views show, the send, stop,
 // retry and archive flows. Saved facts stay in the data layer; nothing here is optimistic.
 import { computed, effect, signal, type ReadonlySignal, type Signal } from "@preact/signals-core";
-import type { Handle, Operations, OpError, ShellboyData, ShellEntry, ThreadDetails, ThreadHandle } from "../../data/src";
+import { Cancel, type Handle, type Operations, type OpError, type ShellboyData, type ShellEntry, type ThreadDetails, type ThreadHandle } from "../../data/src";
 import { branchRowMarks, projectConversation, type ConversationRow, type StepRow } from "./conversation";
 import { translator, type Lang, type Translate } from "./i18n";
 import { AppsModel } from "./apps";
@@ -122,8 +122,13 @@ export class AppModel {
   private readonly nowMs: () => number;
   private readonly onNavigate: ((hash: string) => void) | undefined;
   private listHandle: Handle | undefined;
+  private handlePaused = false;
   private disposers: (() => void)[] = [];
   private shellRead: { running: boolean; again: boolean } = { running: false, again: false };
+  /** Cancels reads for the open Thread (steps, bodies, marks) when another opens or the view is left. */
+  private threadReads = new Cancel();
+  /** A step's output read, cancelled when its row closes. */
+  private outputReads = new Map<string, Cancel>();
 
   constructor(options: AppModelOptions) {
     this.data = options.data;
@@ -203,6 +208,10 @@ export class AppModel {
       effect(() => {
         const route = this.route.value;
         this.insights.period.value;
+        // Whatever is no longer showing stops being read.
+        if (route.view !== "analytics" && route.view !== "settings") this.insights.showing(undefined);
+        if (route.view !== "branches") this.branches.leave();
+        if (route.view !== "threads") this.org.leave();
         if (this.connection.value !== "connected") return;
         const threadId = this.selectedId.value;
         if (route.view === "analytics") this.insights.ensureAnalytics(analyticsSection(route), threadId);
@@ -258,8 +267,12 @@ export class AppModel {
         const stamp = `${h.threadId}:${childCount}`;
         if (stamp === marksFor) return;
         marksFor = stamp;
-        void readWholeFamily(this.ops, h.threadId).then((out) => {
+        void readWholeFamily(this.ops, h.threadId, this.threadReads).then((out) => {
           if (marksFor !== stamp) return;
+          if (!out.ok && out.error.kind === "cancelled") {
+            marksFor = undefined;
+            return;
+          }
           this.marks.value = out.ok ? branchMarks(out.family, h.threadId) : new Map();
         });
       }),
@@ -317,14 +330,35 @@ export class AppModel {
     this.navigate({ view: "conversation", threadId });
   }
 
+  private cancelThreadReads(): void {
+    this.threadReads.cancel();
+    this.threadReads = new Cancel();
+    this.shellRead = { running: false, again: false };
+  }
+
   private syncOpenThread(): void {
     const id = this.selectedId.value;
     const view = this.route.value.view;
     const current = this.handle.peek();
-    if (view !== "conversation" || id === undefined || current?.threadId === id) {
-      if (id !== undefined && view === "conversation") this.lastThread.value = id;
+    // Away from the Conversation, its Thread stops being read and keeps what it has.
+    if (view !== "conversation") {
+      if (current && !this.handlePaused) {
+        this.handlePaused = true;
+        current.pause();
+        this.cancelThreadReads();
+      }
       return;
     }
+    if (current && this.handlePaused && (current.threadId === id || id === undefined)) {
+      this.handlePaused = false;
+      current.resume();
+    }
+    if (id === undefined || current?.threadId === id) {
+      if (id !== undefined) this.lastThread.value = id;
+      return;
+    }
+    this.handlePaused = false;
+    this.cancelThreadReads();
     current?.close();
     this.lastThread.value = id;
     this.shells.value = new Map();
@@ -346,7 +380,7 @@ export class AppModel {
     try {
       do {
         this.shellRead.again = false;
-        const out = await this.ops.shellList({ thread_id: threadId, limit: SHELL_LIST_LIMIT });
+        const out = await this.ops.shellList({ thread_id: threadId, limit: SHELL_LIST_LIMIT }, { cancel: this.threadReads });
         if (this.handle.peek()?.threadId !== threadId) return;
         // A failed read keeps the last facts; the step shows the state saved in history.
         if (out.ok) {
@@ -371,10 +405,27 @@ export class AppModel {
   watchOutput(executionId: string): () => void {
     this.watchedOutputs.set(executionId, this.shells.peek().get(executionId)?.state);
     void this.readOutput(executionId);
-    return () => this.watchedOutputs.delete(executionId);
+    return () => {
+      this.watchedOutputs.delete(executionId);
+      this.outputReads.get(executionId)?.cancel();
+      this.outputReads.delete(executionId);
+    };
   }
 
   private async readOutput(executionId: string): Promise<void> {
+    this.outputReads.get(executionId)?.cancel();
+    const cancel = new Cancel();
+    this.outputReads.set(executionId, cancel);
+    const forget = this.threadReads.add(() => cancel.cancel());
+    try {
+      await this.readOutputPages(executionId, cancel);
+    } finally {
+      forget();
+      if (this.outputReads.get(executionId) === cancel) this.outputReads.delete(executionId);
+    }
+  }
+
+  private async readOutputPages(executionId: string, cancel: Cancel): Promise<void> {
     const cur = this.outputs.peek().get(executionId);
     this.outputs.value = setBounded(this.outputs.peek() as Map<string, OutputState>, executionId, {
       text: cur?.text ?? "",
@@ -391,8 +442,15 @@ export class AppModel {
         cutOff = true;
         break;
       }
-      const out = await this.ops.shellRead({ execution_id: executionId, ...(cursor !== undefined && { cursor }) });
+      const out = await this.ops.shellRead({ execution_id: executionId, ...(cursor !== undefined && { cursor }) }, { cancel });
       if (!out.ok) {
+        if (out.error.kind === "cancelled") {
+          // Nobody is looking. Reopening the row reads again.
+          const next = new Map(this.outputs.peek());
+          next.delete(executionId);
+          this.outputs.value = next;
+          return;
+        }
         error = errorMessage(out.error);
         break;
       }
@@ -417,9 +475,9 @@ export class AppModel {
     let text = "";
     let cursor: string | undefined;
     for (let page = 0; page < MAX_PAGES; page++) {
-      const out = await this.ops.historyGet({ node_id: nodeId, ...(cursor !== undefined && { cursor }) });
+      const out = await this.ops.historyGet({ node_id: nodeId, ...(cursor !== undefined && { cursor }) }, { cancel: this.threadReads });
       if (!out.ok) {
-        set({ text: undefined, loading: false, error: errorMessage(out.error) });
+        set({ text: undefined, loading: false, error: out.error.kind === "cancelled" ? undefined : errorMessage(out.error) });
         return;
       }
       text += out.value.text;

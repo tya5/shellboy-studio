@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { settle } from "../../data/test/harness";
+import { details, flush, settle } from "../../data/test/harness";
 import { branchLayout, branchMarks, branchRowMarks, branchTitle, formatRoute, groupThreads, listedDescendants, parseRoute, projectConversation, readFamily, readRewind, readWholeFamily } from "../src";
 import type { HistoryItem, ThreadSummary } from "../../data/src";
 import { fixtureBranches, fixtureModel, fixtureRewind } from "./fixture";
@@ -319,6 +319,87 @@ describe("Threads over the fake transport", () => {
     await running;
     expect(model.org.selected.value.has("lead")).toBe(true);
     expect(model.org.action.value).toMatchObject({ kind: "failed", error: { code: "input_limit" } });
+  });
+});
+
+describe("leaving these views cancels their reads", () => {
+  it("Branches: leaving, and then a hint does nothing; returning reads", async () => {
+    const { t, db, model } = await fixtureModel();
+    model.applyRoute({ view: "branches" });
+    await flush();
+    const first = t.calls("thread.branches").at(-1)!;
+    model.applyRoute({ view: "monitor" });
+    await flush();
+    expect(t.cancels()).toContain(first.id);
+    db.answered.add(first.id);
+    await settle(t, db);
+    expect(model.branches.state.value).toMatchObject({ loading: false, family: undefined, error: undefined });
+    model.applyRoute({ view: "branches" });
+    await settle(t, db);
+    expect(model.branches.state.value.family).toBeDefined();
+  });
+  it("Threads: a changed filter or leaving cancels the read", async () => {
+    const { t, db, model } = await fixtureModel();
+    model.applyRoute({ view: "threads" });
+    await flush();
+    const big = () => t.calls("thread.list").filter((c) => (c.args as { limit?: number }).limit === 200);
+    const first = big()[0]!;
+    model.org.setQuery("x");
+    await flush();
+    expect(t.cancels()).toContain(first.id);
+    db.answered.add(first.id);
+    await settle(t, db);
+    expect((big().at(-1)!.args as { query?: string }).query).toBe("x");
+    model.org.setQuery("y");
+    await flush();
+    const second = big().at(-1)!;
+    model.applyRoute({ view: "monitor" });
+    await flush();
+    expect(t.cancels()).toContain(second.id);
+    db.answered.add(second.id);
+    await settle(t, db);
+    expect(model.org.state.value.loading).toBe(false);
+  });
+});
+
+describe("moving a Thread", () => {
+  it("never moves on a choice or a drop, only on Move, with an operation id", async () => {
+    const { t, db, model } = await fixtureModel({ route: "threads" });
+    await settle(t, db);
+    const org = model.org;
+    org.previewMove("done", "broken");
+    await settle(t, db);
+    expect(t.calls("thread.set")).toHaveLength(0);
+    void org.confirmMove();
+    await settle(t, db);
+    const call = t.calls("thread.set")[0]!;
+    expect(call.args).toEqual({ thread_id: "done", parent: "broken" });
+    expect(call.operation_id).toBeTruthy();
+    expect(org.move.value).toMatchObject({ kind: "moved", liveRun: false });
+  });
+  it("shows the owner's refusal as it wrote it, and says when a live Run keeps its owner", async () => {
+    const { t, db, model } = await fixtureModel({ route: "threads" });
+    const plain = db.answer;
+    db.answer = (c) => (c.command === "thread.set" ? { ok: false, code: "would make T its own ancestor" } : plain(c));
+    model.org.previewMove("lead", "done");
+    void model.org.confirmMove();
+    await settle(t, db);
+    expect(model.org.move.value).toMatchObject({ kind: "refused", message: "would make T its own ancestor" });
+    db.answer = (c) => (c.command === "thread.set" ? { ok: true, result: details("lead", { parent_change: { live_run_id: "r" } }) } : plain(c));
+    model.org.previewMove("lead", "");
+    void model.org.confirmMove();
+    await settle(t, db);
+    expect(t.calls("thread.set").at(-1)!.args).toEqual({ thread_id: "lead", parent: "" });
+    expect(model.org.move.value).toMatchObject({ kind: "moved", liveRun: true });
+  });
+});
+
+describe("display modes", () => {
+  const rows = [summaryOf("p", {}), summaryOf("c", { parent_id: "p", cwd: "/b" })];
+  it("tree keeps real parents across directories; tag has nothing until the wire exists", () => {
+    expect(groupThreads(rows, "tree")[0]!.rows.map((r) => [r.summary.thread_id, r.depth])).toEqual([["p", 0], ["c", 1]]);
+    expect(groupThreads(rows, "directory").map((g) => g.key)).toEqual(["/a", "/b"]);
+    expect(groupThreads(rows, "tag")).toEqual([]);
   });
 });
 

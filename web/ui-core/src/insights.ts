@@ -1,7 +1,7 @@
 // Screen logic of Analytics, Resources and Settings: which owner reads run, and when. Reads run on
 // opening a view or on request, never per render, and each has a stated bound.
 import { batch, signal, type Signal } from "@preact/signals-core";
-import type { ModelListResult, Operations, OpError, Outcome } from "../../data/src";
+import { Cancel, type ModelListResult, type Operations, type OpError, type Outcome, type ReadOptions } from "../../data/src";
 import {
   addCoverage,
   EMPTY_COVERAGE,
@@ -52,6 +52,9 @@ export class UsageWalk {
   readonly state: Signal<WalkState> = signal(emptyWalk);
   private generation = 0;
   private cursor: string | undefined;
+  private cancel = new Cancel();
+  /** Stopped because nobody is looking, not by the person: reading continues on return. */
+  private paused = false;
 
   constructor(
     private readonly ops: Operations,
@@ -61,6 +64,8 @@ export class UsageWalk {
 
   reset(): void {
     this.generation++;
+    this.cancel.cancel();
+    this.paused = false;
     this.cursor = undefined;
     this.state.value = emptyWalk;
   }
@@ -70,11 +75,26 @@ export class UsageWalk {
     return this.run();
   }
 
-  /** Stops after the call on the wire. Values read so far stay. */
+  /** Cancels the call on the wire. Values read so far stay. */
   stop(): void {
     this.generation++;
+    this.cancel.cancel();
     const s = this.state.peek();
     if (s.status === "loading") this.state.value = { ...s, status: "stopped", canContinue: true };
+  }
+
+  /** Leaving what shows this: stop, keep what's read, and carry on from the same place on return. */
+  pause(): void {
+    if (this.state.peek().status !== "loading") return;
+    this.stop();
+    this.paused = true;
+  }
+
+  /** If the walk was paused, carries on. */
+  resume(): void {
+    if (!this.paused) return;
+    this.paused = false;
+    void this.run();
   }
 
   /** Reads further windows from where the walk stopped. */
@@ -84,10 +104,12 @@ export class UsageWalk {
 
   private async run(): Promise<void> {
     const generation = ++this.generation;
+    this.cancel = new Cancel();
+    const cancel = this.cancel;
     const p = this.period();
     this.state.value = { ...this.state.peek(), status: "loading", error: undefined, canContinue: false };
     for (let read = 0; read < MAX_WINDOWS; read++) {
-      const out = await this.ops.usageGet({ group_by: this.groupBy, timezone: p.zone, since: p.since, until: p.until, limit: GROUP_LIMIT, ...(this.cursor !== undefined && { cursor: this.cursor }) });
+      const out = await this.ops.usageGet({ group_by: this.groupBy, timezone: p.zone, since: p.since, until: p.until, limit: GROUP_LIMIT, ...(this.cursor !== undefined && { cursor: this.cursor }) }, { cancel });
       if (generation !== this.generation) return;
       if (!out.ok) {
         // A cursor doesn't survive an owner restart: continuing can't help, only a new walk can.
@@ -128,9 +150,15 @@ export interface ReadState<T> {
 
 const nothing: ReadState<never> = { loading: false, value: undefined, error: undefined };
 
+/** The newest read of each value: a reply to an older one, cancelled or not, is dropped. */
+const latestRead = new WeakMap<object, number>();
+
 async function readInto<T>(target: Signal<ReadState<T>>, read: () => Promise<Outcome<Record<string, unknown>>>, parse: (v: Record<string, unknown>) => T): Promise<void> {
+  const me = (latestRead.get(target) ?? 0) + 1;
+  latestRead.set(target, me);
   target.value = { ...target.peek(), loading: true };
   const out = await read();
+  if (latestRead.get(target) !== me || (!out.ok && out.error.kind === "cancelled")) return;
   // A failed read keeps the last value, marked with the error.
   target.value = out.ok ? { loading: false, value: parse(out.value), error: undefined } : { ...target.peek(), loading: false, error: out.error };
 }
@@ -181,7 +209,11 @@ export class Insights {
   /** Model catalog: an explicit request only, because it makes a network request. */
   readonly catalog: Signal<ReadState<ModelListResult>> = signal(nothing);
 
+  private shown: string | undefined;
   private compactionGeneration = 0;
+  private compactionCancel = new Cancel();
+  /** Reads for whatever is showing. Replaced when it's cancelled. */
+  private reads = new Cancel();
   private compactionPeriod: Period | undefined;
   private threadGeneration = 0;
 
@@ -198,8 +230,41 @@ export class Insights {
     return periodOf(days, this.options.nowMs(), this.options.offsetMinutes());
   }
 
+  /**
+   * What's showing changed. Reads for anything no longer showing are cancelled, and walks carry on from
+   * where they were when shown again. `undefined` means neither Analytics nor Settings is showing.
+   */
+  showing(section: string | undefined): void {
+    if (section === this.shown) return;
+    this.shown = section;
+    if (section !== "overview" && section !== "tokens" && section !== "compaction") this.daily.pause();
+    if (section !== "threads") this.byThread.pause();
+    if (section !== "compaction") this.cancelCompaction();
+    this.cancelReads();
+  }
+
+  private cancelReads(): void {
+    this.reads.cancel();
+    this.reads = new Cancel();
+    this.threadGeneration++;
+    if (this.thread.peek().loading) this.thread.value = { ...this.thread.peek(), threadId: undefined, loading: false };
+    // Not loading any more: if the same thing is shown again it must read again.
+    for (const target of [this.memory, this.storage, this.index, this.receipts, this.bridge] as Signal<ReadState<unknown>>[]) {
+      if (target.peek().loading) target.value = { ...target.peek(), loading: false };
+    }
+  }
+
+  private cancelCompaction(): void {
+    if (!this.compaction.peek().loading) return;
+    this.compactionGeneration++;
+    this.compactionCancel.cancel();
+    this.compactionPeriod = undefined;
+    this.compaction.value = { ...this.compaction.peek(), loading: false };
+  }
+
   /** A section opened or the owner came back: reads what that section shows, once. */
   ensureAnalytics(section: AnalyticsSection, threadId: string | undefined): void {
+    this.showing(section);
     switch (section) {
       case "overview":
       case "tokens":
@@ -227,6 +292,7 @@ export class Insights {
   }
 
   private ensureWalk(walk: UsageWalk): void {
+    walk.resume();
     const s = walk.state.peek();
     if (s.status === "idle" || (s.status === "failed" && lostConnection(s.error))) void walk.start();
   }
@@ -260,10 +326,13 @@ export class Insights {
   /** One `compact.list` of one Thread, within the period. The owner has no list across Threads. */
   async showCompaction(threadId: string): Promise<void> {
     const generation = ++this.compactionGeneration;
+    this.compactionCancel.cancel();
+    const cancel = new Cancel();
+    this.compactionCancel = cancel;
     const p = this.period.peek();
     this.compactionPeriod = p;
     this.compaction.value = { ...this.compaction.peek(), threadId, loading: true, error: undefined };
-    const out = await this.ops.compactList({ thread_id: threadId, since: p.since, until: p.until, limit: COMPACTION_ROWS });
+    const out = await this.ops.compactList({ thread_id: threadId, since: p.since, until: p.until, limit: COMPACTION_ROWS }, { cancel });
     if (generation !== this.compactionGeneration) return;
     if (!out.ok) {
       this.compaction.value = { threadId, loading: false, events: [], limited: false, more: false, error: out.error };
@@ -292,27 +361,29 @@ export class Insights {
 
   /** One finite owner read, when a section opens and on request. There is no periodic sampling. */
   refreshRead(kind: ResourceRead): void {
+    const read: ReadOptions = { cancel: this.reads };
     switch (kind) {
       case "memory":
-        void readInto(this.memory, () => this.ops.memoryStatus(), readMemory);
+        void readInto(this.memory, () => this.ops.memoryStatus(read), readMemory);
         return;
       case "storage":
-        void readInto(this.storage, () => this.ops.storageStatus(), readStorage);
+        void readInto(this.storage, () => this.ops.storageStatus(read), readStorage);
         return;
       case "index":
-        void readInto(this.index, () => this.ops.indexStatus(), readIndex);
+        void readInto(this.index, () => this.ops.indexStatus(read), readIndex);
         return;
       case "receipts":
-        void readInto(this.receipts, () => this.ops.statusSummary(), readReceipts);
+        void readInto(this.receipts, () => this.ops.statusSummary(read), readReceipts);
         return;
       case "bridge":
-        void readInto(this.bridge, () => this.ops.bridgeMemory(), readBridgeMemory);
+        void readInto(this.bridge, () => this.ops.bridgeMemory(read), readBridgeMemory);
         return;
     }
   }
 
   /** A Settings section opened. `thread.get` doesn't open the Thread's history. */
   ensureSettings(section: SettingsSection, threadId: string | undefined): void {
+    this.showing(`settings:${section}`);
     switch (section) {
       case "embeddings":
         this.ensureRead("index");
@@ -332,7 +403,7 @@ export class Insights {
   async readThread(threadId: string): Promise<void> {
     const generation = ++this.threadGeneration;
     this.thread.value = { ...this.thread.peek(), threadId, loading: true };
-    const out = await this.ops.threadGet(threadId);
+    const out = await this.ops.threadGet(threadId, { cancel: this.reads });
     if (generation !== this.threadGeneration) return;
     this.thread.value = out.ok ? { threadId, loading: false, value: readThreadSettings(out.value), error: undefined } : { threadId, loading: false, value: undefined, error: out.error };
   }
