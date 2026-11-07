@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   activityLabel, byUrgency, composerAction, contextFacts, countByStatus, folderName, formatAge, plainExcerpt, formatDuration, formatRoute, formatTokens,
   LANGS, loadPrefs, MESSAGES, noPending, parseRoute, projectConversation, recoveryFacts, savePrefs, statusOfActivity, statusOfShell, threadTree,
-  translator, usageFacts, viewShortcut,
+  translator, usageFacts, viewShortcut, navShortcut,
 } from "../src";
 import { details, summary } from "../../data/test/harness";
 import type { ThreadSummary, ThreadDetails } from "../../data/src";
@@ -146,10 +146,12 @@ describe("routes, prefs, commands, words", () => {
   it("prefs default to the first design, English; damaged or removed values fall back", () => {
     const designs = [{ name: "console", themes: [{ name: "console" }, { name: "light" }] }];
     const store = (v: string | null) => ({ read: () => v, write() {} });
-    expect(loadPrefs(store(null), designs)).toEqual({ design: "console", theme: "console", lang: "en", monitorSort: "stable", weights: { cached: 0.1, output: 5 } });
-    expect(loadPrefs(store("{oops"), designs)).toEqual({ design: "console", theme: "console", lang: "en", monitorSort: "stable", weights: { cached: 0.1, output: 5 } });
-    expect(loadPrefs(store('{"design":"gone","theme":"light","lang":"ja"}'), designs)).toEqual({ design: "console", theme: "light", lang: "ja", monitorSort: "stable", weights: { cached: 0.1, output: 5 } });
+    expect(loadPrefs(store(null), designs)).toEqual({ design: "console", theme: "console", lang: "en", navCollapsed: false, monitorSort: "stable", weights: { cached: 0.1, output: 5 } });
+    expect(loadPrefs(store("{oops"), designs)).toEqual({ design: "console", theme: "console", lang: "en", navCollapsed: false, monitorSort: "stable", weights: { cached: 0.1, output: 5 } });
+    expect(loadPrefs(store('{"design":"gone","theme":"light","lang":"ja"}'), designs)).toEqual({ design: "console", theme: "light", lang: "ja", navCollapsed: false, monitorSort: "stable", weights: { cached: 0.1, output: 5 } });
     expect(loadPrefs(store('{"theme":"gone"}'), designs).theme).toBe("console");
+    expect(loadPrefs(store('{"navCollapsed":true}'), designs).navCollapsed).toBe(true);
+    expect(loadPrefs(store('{"navCollapsed":"true"}'), designs).navCollapsed).toBe(false);
     expect(loadPrefs(store('{"monitorSort":"recent"}'), designs).monitorSort).toBe("recent");
     expect(loadPrefs(store('{"monitorSort":"invalid"}'), designs).monitorSort).toBe("stable");
   });
@@ -161,6 +163,9 @@ describe("routes, prefs, commands, words", () => {
     expect(composerAction({ key: "Enter", isComposing: true })).toBe("none");
     expect(composerAction({ key: "Enter", shiftKey: true })).toBe("none");
     expect(composerAction({ key: "a" })).toBe("none");
+    expect(navShortcut({ key: "0", altKey: true })).toBe(true);
+    expect(navShortcut({ key: "0", altKey: true, shiftKey: true })).toBe(false);
+    expect(navShortcut({ key: "0", altKey: true, isComposing: true })).toBe(false);
     expect(viewShortcut({ key: "2", altKey: true })).toBe("monitor");
     expect(viewShortcut({ key: "2" })).toBeUndefined();
   });
