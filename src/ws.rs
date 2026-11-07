@@ -298,7 +298,10 @@ mod tests {
             ("index.probe", json!({})),
             ("index.rebuild", json!({})),
             ("index.backfill", json!({})),
-            ("thread.prune", json!({"thread_id":"t","before_node_id":"n"})),
+            (
+                "thread.prune",
+                json!({"thread_id":"t","before_node_id":"n"}),
+            ),
             ("thread.set", json!({"thread_id":"t","model":"m"})),
             ("compact", json!({"thread_id":"t"})),
         ] {

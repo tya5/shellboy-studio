@@ -204,6 +204,61 @@ async fn hints_and_restart_against_a_real_owner() {
         "{listed}"
     );
 
+    // The Analytics and Settings reads pass the allowlist and the owner decodes them: strict
+    // decoding on both sides, so a wrong argument name here would fail.
+    let reads = [
+        (
+            "usage.get",
+            json!({"group_by":"day","timezone":"+09:00","since":"2026-11-01T00:00:00.000Z","until":"2026-11-08T00:00:00.000Z","limit":168}),
+        ),
+        (
+            "usage.get",
+            json!({"group_by":"thread","timezone":"+09:00","since":"2026-11-01T00:00:00.000Z","until":"2026-11-08T00:00:00.000Z","limit":168}),
+        ),
+        ("compact.list", json!({"thread_id":thread_id,"limit":50})),
+        ("storage.status", json!({})),
+        ("index.status", json!({})),
+        ("status", json!({"memory":true})),
+        ("status", json!({"limit":1})),
+    ];
+    let mut replies = Vec::new();
+    for (n, (command, args)) in reads.iter().enumerate() {
+        ws.send(Message::Text(
+            json!({"t":"call","id":100 + n,"command":command,"args":args})
+                .to_string()
+                .into(),
+        ))
+        .await
+        .unwrap();
+        let reply = next_t(&mut ws, "result").await;
+        assert_eq!(reply["id"], 100 + n, "{reply}");
+        assert_eq!(reply["response"]["ok"], true, "{command}: {reply}");
+        replies.push(reply["response"]["result"].clone());
+    }
+    assert_eq!(replies[0]["group_by"], "day");
+    assert_eq!(replies[0]["more"], false);
+    assert!(replies[2]["items"].is_array());
+    assert!(replies[3]["logical_live_bytes"].is_u64());
+    assert!(replies[3]["warning"].is_boolean());
+    assert!(replies[4]["spaces"].is_array());
+    assert!(replies[5]["caches"]["replay"]["limit_bytes"].is_u64());
+    assert!(replies[6]["receipt_budget"]["limit_bytes"].is_u64());
+    // Nothing the owner returned here names a credential.
+    for reply in &replies {
+        let text = reply.to_string().to_lowercase();
+        assert!(!text.contains("api_key"), "{text}");
+    }
+    // Collection has no preview at this version, so the bridge refuses it.
+    ws.send(Message::Text(
+        json!({"t":"call","id":200,"command":"storage.collect","args":{"category":"raw"},"operation_id": format!("{first_instance}:web-it-2")})
+            .to_string()
+            .into(),
+    ))
+    .await
+    .unwrap();
+    let refused = next_t(&mut ws, "result").await;
+    assert_eq!(refused["error"]["code"], "not_allowed", "{refused}");
+
     // Owner restart on the same data directory: restarted + resync, new instance.
     stop_owner(&bin, &data, first).await;
     let unreachable = next_t(&mut ws, "owner").await;
