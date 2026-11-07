@@ -133,3 +133,33 @@ describe("Operations added for the presentation", () => {
     expect(await list).toMatchObject({ ok: false, error: { kind: "invalid_response" } });
   });
 });
+
+describe("Reads for Analytics and Settings", () => {
+  it("send the owner's argument names and never an operation id", async () => {
+    const { t, ops } = setup();
+    void ops.usageGet({ group_by: "day", timezone: "+09:00", since: "s", until: "u", limit: 168 });
+    void ops.compactList({ thread_id: "a", limit: 50 });
+    void ops.storageStatus();
+    void ops.indexStatus();
+    void ops.memoryStatus();
+    void ops.modelList();
+    // Four on the wire at once; the rest go out as replies arrive.
+    for (const c of t.calls().slice(0, 4)) t.ok(c.id, {});
+    await flush();
+    expect(t.calls().map((c) => [c.command, c.args])).toEqual([
+      ["usage.get", { group_by: "day", timezone: "+09:00", since: "s", until: "u", limit: 168 }],
+      ["compact.list", { thread_id: "a", limit: 50 }],
+      ["storage.status", {}],
+      ["index.status", {}],
+      ["status", { memory: true }],
+      ["model.list", {}],
+    ]);
+    expect(t.calls().every((c) => c.operation_id === undefined)).toBe(true);
+  });
+  it("model.list needs a connection and a model array", async () => {
+    const { t, ops } = setup();
+    const p = ops.modelList();
+    t.ok(t.calls()[0]!.id, { models: "nope" });
+    expect(await p).toMatchObject({ ok: false, error: { kind: "invalid_response" } });
+  });
+});

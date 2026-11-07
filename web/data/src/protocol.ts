@@ -197,6 +197,39 @@ export interface ShellEntry {
   [extra: string]: unknown;
 }
 
+/** `usage.get` arguments the UI uses. The owner rejects a grouped period over 31 days. */
+export interface UsageGetArgs {
+  group_by?: "day" | "hour" | "thread";
+  /** `local`, `UTC` or a fixed `+HH:MM`/`-HH:MM`. */
+  timezone?: string;
+  since?: string;
+  until?: string;
+  thread_id?: string;
+  limit?: number;
+  cursor?: string;
+}
+
+export interface CompactListArgs {
+  thread_id: string;
+  since?: string;
+  until?: string;
+  /** 1 to 200. */
+  limit: number;
+}
+
+export interface ModelListArgs {
+  connection?: string;
+  thread_id?: string;
+}
+
+export interface ModelListResult {
+  connection: string;
+  models: string[];
+  api?: string;
+  unavailable_features?: string[];
+  [extra: string]: unknown;
+}
+
 /** `shell.read` page. `cursor` continues after this page; `output_complete` ends it. */
 export interface ShellOutput {
   execution_id: string;

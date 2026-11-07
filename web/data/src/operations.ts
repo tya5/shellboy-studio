@@ -3,11 +3,14 @@
 import { fromApiError, type Outcome } from "./errors";
 import type { Link } from "./link";
 import type {
+  CompactListArgs,
   HistoryBody,
   HistoryGetArgs,
   HistoryItem,
   HistoryListArgs,
   MessageSendArgs,
+  ModelListArgs,
+  ModelListResult,
   OwnerResponse,
   Page,
   ShellEntry,
@@ -18,6 +21,7 @@ import type {
   ThreadDetails,
   ThreadListArgs,
   ThreadSummary,
+  UsageGetArgs,
 } from "./protocol";
 
 const isObject = (v: unknown): v is Record<string, unknown> =>
@@ -67,6 +71,11 @@ const decodeShellOutput: Decoder<ShellOutput> = (v) =>
     : { ok: false, reason: "shell.read result lacks execution_id or text" };
 const decodeRecord: Decoder<Record<string, unknown>> = (v) =>
   isObject(v) ? { ok: true, value: v } : { ok: false, reason: "expected an object result" };
+
+const decodeModelList: Decoder<ModelListResult> = (v) =>
+  isObject(v) && typeof v.connection === "string" && Array.isArray(v.models)
+    ? { ok: true, value: v as unknown as ModelListResult }
+    : { ok: false, reason: "model.list result lacks connection or models" };
 
 export type MutationResult = Record<string, unknown>;
 export interface ArchiveResult {
@@ -140,6 +149,32 @@ export class Operations {
   }
   shellRead(args: ShellReadArgs): Promise<Outcome<ShellOutput>> {
     return this.run("shell.read", args, decodeShellOutput);
+  }
+  /** Saved usage totals, or one page of a grouped scan when `group_by` is set. No provider call. */
+  usageGet(args: UsageGetArgs): Promise<Outcome<Record<string, unknown>>> {
+    return this.run("usage.get", args, decodeRecord);
+  }
+  /** Compaction observations of one Thread, newest first. */
+  compactList(args: CompactListArgs): Promise<Outcome<Record<string, unknown>>> {
+    return this.run("compact.list", args, decodeRecord);
+  }
+  storageStatus(): Promise<Outcome<Record<string, unknown>>> {
+    return this.run("storage.status", {}, decodeRecord);
+  }
+  indexStatus(): Promise<Outcome<Record<string, unknown>>> {
+    return this.run("index.status", {}, decodeRecord);
+  }
+  /** `status --memory`: owner cache accounting and process memory, taken on request. */
+  memoryStatus(): Promise<Outcome<Record<string, unknown>>> {
+    return this.run("status", { memory: true }, decodeRecord);
+  }
+  /** Activity status, for `receipt_budget`. One row is enough; the rows are not used. */
+  statusSummary(): Promise<Outcome<Record<string, unknown>>> {
+    return this.run("status", { limit: 1 }, decodeRecord);
+  }
+  /** Asks the connection's endpoint for its model list (one GET). No conversation request. */
+  modelList(args: ModelListArgs = {}): Promise<Outcome<ModelListResult>> {
+    return this.run("model.list", args, decodeModelList);
   }
   /** Look up a mutation's receipt, e.g. after an `unconfirmed` error. */
   operationGet(operationId: string): Promise<Outcome<Record<string, unknown>>> {
