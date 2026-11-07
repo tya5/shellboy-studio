@@ -254,7 +254,7 @@ export class Operations {
   }
   /** `parent: ""` detaches. Needs an owner and bridge with the `thread.reparent` capability. */
   threadSetParent(threadId: string, parent: string, operationId = this.newId()): Promise<Outcome<ThreadDetails>> {
-    return this.run("thread.set", { thread_id: threadId, parent }, decodeDetails, { operationId });
+    return this.run("thread.set", { thread_id: threadId, parent_id: parent }, decodeDetails, { operationId });
   }
   threadRewind(args: ThreadRewindArgs, operationId = this.newId()): Promise<Outcome<MutationResult>> {
     return this.run("thread.rewind", args, decodeRecord, { operationId });

@@ -373,7 +373,7 @@ describe("moving a Thread", () => {
     void org.confirmMove();
     await settle(t, db);
     const call = t.calls("thread.set")[0]!;
-    expect(call.args).toEqual({ thread_id: "done", parent: "broken" });
+    expect(call.args).toEqual({ thread_id: "done", parent_id: "broken" });
     expect(call.operation_id).toBeTruthy();
     expect(org.move.value).toMatchObject({ kind: "moved", liveRun: false });
   });
@@ -389,7 +389,7 @@ describe("moving a Thread", () => {
     model.org.previewMove("lead", "");
     void model.org.confirmMove();
     await settle(t, db);
-    expect(t.calls("thread.set").at(-1)!.args).toEqual({ thread_id: "lead", parent: "" });
+    expect(t.calls("thread.set").at(-1)!.args).toEqual({ thread_id: "lead", parent_id: "" });
     expect(model.org.move.value).toMatchObject({ kind: "moved", liveRun: true });
   });
 });

@@ -41,6 +41,9 @@ pub fn access(command: &Command) -> Access {
         | Command::ThreadFork(..)
         | Command::ThreadRewind(..)
         | Command::ThreadUnarchive(..) => Access::Mutation,
+        // Moving a Thread, and nothing else `thread.set` can do. Needs an owner newer than the pin.
+        #[cfg(feature = "next-shellboy")]
+        Command::ThreadSet(args) if only_parent(args) => Access::Mutation,
         // `events.wait` is bridge-internal (one shared long-poll). The rest has no UI yet.
         Command::OwnerShutdown(..)
         | Command::ThreadDelete(..)
@@ -67,5 +70,15 @@ pub fn access(command: &Command) -> Access {
         | Command::IndexRebuild(..)
         | Command::IndexProbe(..)
         | Command::StorageCollect(..) => Access::Denied,
+        #[cfg(feature = "next-shellboy")]
+        Command::IndexShrink(..) | Command::IndexRemove(..) => Access::Denied,
     }
+}
+
+#[cfg(feature = "next-shellboy")]
+fn only_parent(args: &shellboy::protocol::ThreadSetArgs) -> bool {
+    let mut rest = args.clone();
+    rest.thread_id = None;
+    let has_parent = rest.parent_id.take().is_some();
+    has_parent && rest == Default::default()
 }

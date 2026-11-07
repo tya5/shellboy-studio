@@ -404,12 +404,21 @@ describe("Threads", () => {
     });
     return { ...made, el };
   };
-  it("groups by directory and by state, with real parent links and no fake controls", async () => {
+  it("offers four display modes; on v0.10.0 moving and tags say why they aren't there, with no fake controls", async () => {
     const { el } = await open();
-    expect(el.querySelectorAll(".tgroup").length).toBeGreaterThan(0);
+    expect(el.querySelectorAll(".tgroup").length).toBe(1);
     expect(el.querySelector("[draggable]")).toBeNull();
+    expect(el.querySelector(".srow-act")).toBeNull();
+    expect(text(el)).toContain("Moving a Thread under another isn't available");
     expect(text(el)).toContain("Token totals per directory aren't shown");
-    const state = [...el.querySelectorAll<HTMLButtonElement>(".org button")].find((b) => text(b) === "State")!;
+    const mode = (name: string) => [...el.querySelectorAll<HTMLButtonElement>(".org button")].find((b) => text(b) === name)!;
+    expect(["Tree", "Directory", "State", "Tag"].every((m) => mode(m))).toBe(true);
+    act(() => mode("Tag").click());
+    expect(text(el)).toContain("Tags aren't available");
+    expect(el.querySelector(".tgroup")).toBeNull();
+    act(() => mode("Directory").click());
+    expect(el.querySelectorAll(".tgroup").length).toBeGreaterThan(0);
+    const state = mode("State");
     act(() => state.click());
     expect(text(el.querySelector(".tgroup")!)).toContain("Recovery wait");
   });
@@ -443,6 +452,27 @@ describe("Threads", () => {
       await settle(t, db);
     });
     expect(t.calls("thread.unarchive")).toHaveLength(1);
+  });
+  it("with the capability: picker, preview, then Move; a refusal shows the owner's words", async () => {
+    const made = await fixtureModel({ route: "threads", capabilities: ["thread.reparent"] });
+    const el = draw(made.model);
+    await act(async () => {
+      await settle(made.t, made.db);
+    });
+    expect(el.querySelector("[draggable=true]")).toBeTruthy();
+    expect(text(el)).not.toContain("isn't available: this Shellboy (v0.10.0)");
+    const button = (name: string) => [...el.querySelectorAll<HTMLButtonElement>("button")].find((b) => text(b) === name);
+    act(() => el.querySelector<HTMLButtonElement>(".srow-act")!.click());
+    expect(text(el)).toContain("New parent for");
+    act(() => button("No parent (independent)")!.click());
+    expect(made.t.calls("thread.set")).toHaveLength(0);
+    expect(text(el)).toContain("independent, with no parent");
+    await act(async () => {
+      button("Move")!.click();
+      await settle(made.t, made.db);
+    });
+    expect(made.t.calls("thread.set")).toHaveLength(1);
+    expect(text(el)).toContain("Moved");
   });
   it("a group's checkbox selects its rows", async () => {
     const { el, model } = await open();

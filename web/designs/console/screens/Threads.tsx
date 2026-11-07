@@ -1,10 +1,51 @@
 import { useEffect, useMemo, useState } from "preact/hooks";
-import { formatAge, formatRoute, groupThreads, listedDescendants, statusLabel, THREAD_GROUPINGS, type AppModel, type StatusKey, type Translate } from "../../../ui-core/src";
-import { Button, ButtonGroup, EmptyState, Field, Icon, Notice, SelectionBar, SelectRow, StatusMark, ThreadGroup } from "../system/components";
+import { CAPABILITY_REPARENT, formatAge, formatRoute, groupThreads, listedDescendants, statusLabel, THREAD_GROUPINGS, type AppModel, type StatusKey, type ThreadGrouping, type Translate } from "../../../ui-core/src";
+import { Button, ButtonGroup, EmptyState, Field, Icon, Notice, Section, SelectionBar, SelectRow, StatusMark, ThreadGroup } from "../system/components";
 
 const SEARCH_DEBOUNCE_MS = 200;
 
-const groupLabel = (t: Translate, by: "directory" | "state", key: string): string => (by === "directory" ? key : statusLabel(t, key as StatusKey));
+const groupLabel = (t: Translate, by: ThreadGrouping, key: string): string => (by === "state" ? statusLabel(t, key as StatusKey) : by === "tree" ? t("org.allThreads") : key);
+
+/** Choosing a parent, then the same preview a drop leads to. The owner decides, and its refusal shows as it wrote it. */
+function MovePanel({ model }: { model: AppModel }) {
+  const t = model.t.value;
+  const org = model.org;
+  const move = org.move.value;
+  const [filter, setFilter] = useState("");
+  if (move.kind === "idle") return null;
+  const rows = model.org.state.value.items;
+  const titleOf = (id: string) => rows.find((r) => r.thread_id === id)?.title ?? id.slice(0, 8);
+  const self = rows.find((r) => r.thread_id === move.threadId);
+  const title = titleOf(move.threadId);
+  const close = <Button variant="link" onClick={() => org.cancelMove()}>{t("common.close")}</Button>;
+  if (move.kind === "picking") {
+    const shown = rows.filter((r) => r.thread_id !== move.threadId && r.title.toLowerCase().includes(filter.trim().toLowerCase())).slice(0, 50);
+    return (
+      <Section title={t("org.moveTitle", { title })} actions={close}>
+        <Field ariaLabel={t("org.moveFilter")} placeholder={t("org.moveFilter")} value={filter} onInput={(e) => setFilter(e.currentTarget.value)} />
+        <div class="band">
+          <Button onClick={() => org.previewMove(move.threadId, "")}>{t("org.noParent")}</Button>
+          {shown.map((r) => (
+            <Button key={r.thread_id} aria-pressed={self?.parent_id === r.thread_id} onClick={() => org.previewMove(move.threadId, r.thread_id)}>{r.title}</Button>
+          ))}
+        </div>
+      </Section>
+    );
+  }
+  const text = move.parent === "" ? t("org.previewDetach", { title }) : t("org.previewUnder", { title, parent: titleOf(move.parent) });
+  if (move.kind === "moved")
+    return <Notice actions={close}>{t("org.moved", { title })}{move.liveRun ? ` ${t("org.movedLive")}` : ""}</Notice>;
+  return (
+    <Section title={text} sub={t("org.previewNote")} actions={close}>
+      {move.kind === "refused" ? <Notice tone="bad">{t("org.moveRefused", { message: move.message })}</Notice> : null}
+      {move.kind !== "refused" ? (
+        <div class="band">
+          <Button variant="warn" disabled={move.kind === "moving"} onClick={() => void org.confirmMove()}>{t("org.confirmMove")}</Button>
+        </div>
+      ) : null}
+    </Section>
+  );
+}
 
 export function Threads({ model }: { model: AppModel }) {
   const t = model.t.value;
@@ -22,6 +63,9 @@ export function Threads({ model }: { model: AppModel }) {
   }, [org, query]);
   useEffect(() => setArmed(false), [selected, state.mode]);
   const groups = useMemo(() => groupThreads(state.items, by), [state.items, by]);
+  const canMove = model.data.capabilities.value.includes(CAPABILITY_REPARENT);
+  const [dragging, setDragging] = useState<string | undefined>(undefined);
+  const [over, setOver] = useState<string | undefined>(undefined);
   const extra = descendants ? listedDescendants(state.items, selected) : 0;
   const archiving = state.mode === "exclude";
   const run = () => {
@@ -52,6 +96,9 @@ export function Threads({ model }: { model: AppModel }) {
           </ButtonGroup>
         </div>
       </div>
+      {canMove ? <div class="muted caption">{t("org.dragHint")}</div> : <Notice>{t("org.moveUnavailable")}</Notice>}
+      <MovePanel model={model} />
+      {by === "tag" ? <Notice>{t("org.tagsUnavailable")}</Notice> : null}
       <Field ariaLabel={t("org.filter")} placeholder={t("org.filter")} leading={<Icon name="search" small />} value={query} onInput={(e) => setQuery(e.currentTarget.value)} />
       {selected.size > 0 ? (
         <SelectionBar text={extra > 0 ? t("org.selectedWith", { n: selected.size, extra }) : t("org.selected", { n: selected.size })} option={{ label: t("org.descendants"), checked: descendants, onChange: (on) => (org.descendants.value = on) }}>
@@ -94,6 +141,21 @@ export function Threads({ model }: { model: AppModel }) {
                   onToggle={() => org.toggle(s.thread_id)}
                   note={notes || undefined}
                   age={formatAge(s.updated_at, model.coarseNow.value)}
+                  action={canMove ? <button type="button" class="srow-act" onClick={() => org.pickParent(s.thread_id)}>{t("org.move")}</button> : undefined}
+                  drag={
+                    canMove
+                      ? {
+                          over: over === s.thread_id && dragging !== s.thread_id,
+                          onDragStart: () => setDragging(s.thread_id),
+                          onOver: (on) => setOver(on ? s.thread_id : undefined),
+                          onDrop: () => {
+                            if (dragging && dragging !== s.thread_id) org.previewMove(dragging, s.thread_id);
+                            setDragging(undefined);
+                            setOver(undefined);
+                          },
+                        }
+                      : undefined
+                  }
                 />
               );
             })}
@@ -101,7 +163,7 @@ export function Threads({ model }: { model: AppModel }) {
         );
       })}
       {org.canLoadMore() ? <span class="more"><Button disabled={state.loading} onClick={() => org.loadMore()}>{t("threads.more")}</Button></span> : state.nextCursor ? <div class="muted caption">{t("threads.capped")}</div> : null}
-      <div class="muted caption">{t("org.seam")}</div>
+      <div class="muted caption">{t("org.totals")}</div>
       <div class="sect-source">{t("common.source", { source: "" })}<code>thread.list</code></div>
     </div>
   );

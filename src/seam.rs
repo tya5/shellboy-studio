@@ -23,7 +23,12 @@ pub struct StreamChunk {
 }
 
 pub fn owner_capabilities() -> Vec<String> {
-    Vec::new()
+    // Protocol 2 has no way to ask, so this says what this bridge was built to send.
+    let mut capabilities = Vec::new();
+    if cfg!(feature = "next-shellboy") {
+        capabilities.push("thread.reparent".to_owned());
+    }
+    capabilities
 }
 
 /// Decode one `events.wait` result. The second element is always empty until E3 exists.

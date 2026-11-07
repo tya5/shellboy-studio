@@ -295,7 +295,7 @@ export function answerInsights(db: FakeOwnerDb, usage: Record<string, unknown> =
       case "thread.rewind":
         return { ok: true, result: a.dry_run ? fixtureRewind : { ...fixtureRewind, dry_run: false, branch_thread_id: "kept" } };
       case "thread.set":
-        return { ok: true, result: details(String(a.thread_id), { parent_id: a.parent || undefined }) };
+        return { ok: true, result: details(String(a.thread_id), { parent_id: a.parent_id || undefined }) };
       case "thread.fork":
         return { ok: true, result: details("forked", { title: "Forked", parent_id: a.thread_id }) };
       case "thread.archive":

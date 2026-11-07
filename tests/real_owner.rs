@@ -677,3 +677,89 @@ async fn an_app_message_is_recorded_as_from_the_app() {
     drop(serve_owner);
     let _ = std::fs::remove_dir_all(&root);
 }
+
+/// Only with `next-shellboy`, against an owner built from Shellboy main.
+#[cfg(feature = "next-shellboy")]
+#[tokio::test]
+async fn a_thread_moves_and_the_owner_refuses_a_cycle() {
+    let bin = PathBuf::from(std::env::var_os("SHELLBOY_BIN").expect("SHELLBOY_BIN"));
+    let root = temp_root();
+    let data = root.join("data");
+    let serve = start_owner(&bin, &root, &data);
+    let instance = serve.instance.clone();
+    let op = |n: &str| Some(format!("{instance}:web-it-{n}"));
+    let owner = Arc::new(IpcOwner::new(data.clone()));
+    let (addr, state, cancel) = start(owner, true).await;
+    let cookie = login(addr, &state).await;
+    let mut request = format!("ws://{addr}/ws").into_client_request().unwrap();
+    request
+        .headers_mut()
+        .insert("origin", format!("http://{addr}").parse().unwrap());
+    request
+        .headers_mut()
+        .insert("cookie", cookie.parse().unwrap());
+    let (ws, _) = tokio_tungstenite::connect_async(request).await.unwrap();
+    let mut c = Client { ws, next: 0 };
+    let hello = next_t(&mut c.ws, "hello").await;
+    assert!(
+        hello.to_string().contains("thread.reparent") || !hello["owner"]["info"].is_object(),
+        "{hello}"
+    );
+    let cwd = root.to_str().unwrap();
+    let a = c.ok("thread.create", json!({"cwd": cwd}), op("a")).await["thread_id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let b = c.ok("thread.create", json!({"cwd": cwd}), op("b")).await["thread_id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let moved = c
+        .ok(
+            "thread.set",
+            json!({"thread_id": b, "parent_id": a}),
+            op("move"),
+        )
+        .await;
+    assert_eq!(moved["parent_id"], a.as_str(), "{moved}");
+    let cycle = c
+        .call(
+            "thread.set",
+            json!({"thread_id": a, "parent_id": b}),
+            op("cycle"),
+        )
+        .await;
+    assert_eq!(cycle["response"]["ok"], false, "{cycle}");
+    assert_eq!(
+        cycle["response"]["error"]["code"], "invalid_state",
+        "{cycle}"
+    );
+    assert!(
+        cycle["response"]["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("ancestor"),
+        "{cycle}"
+    );
+    let detached = c
+        .ok(
+            "thread.set",
+            json!({"thread_id": b, "parent_id": ""}),
+            op("detach"),
+        )
+        .await;
+    assert!(detached["parent_id"].is_null(), "{detached}");
+    // Anything else thread.set can do stays denied.
+    let other = c
+        .call(
+            "thread.set",
+            json!({"thread_id": b, "title": "x"}),
+            op("title"),
+        )
+        .await;
+    assert_eq!(other["error"]["code"], "not_allowed", "{other}");
+    drop(c);
+    cancel.cancel();
+    drop(serve);
+    let _ = std::fs::remove_dir_all(&root);
+}

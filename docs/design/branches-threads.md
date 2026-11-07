@@ -30,7 +30,15 @@ Status: implemented (2026-11-07), local only. From Shellboy `v0.10.0`: `thread b
 
 `thread.list` in `exclude` or `only` mode, `query` sent to the owner, up to 200 per page. Grouped by directory or state, with the tree from real `parent_id`s; a parent in another group is named. Multi-select archive and unarchive call the real operations, with `descendants` on by default (the owner's bound applies: 200 IDs, 256 in a subtree, refused as `input_limit`). Archive needs a second press, as in Monitor, and states that nothing is deleted. Unarchive is one press. Nothing is optimistic: the list is read again afterwards.
 
-Left out, with a seam: re-parent (Shellboy branch `issue-222/reparent-r4`, not in v0.10.0; no drag handle is drawn) and tags (stage 3). `THREAD_GROUPINGS` in `org.ts` takes another grouping; SelectionBar takes another action. Per-directory token totals are omitted: no bounded read gives them, since by-Thread usage is a walk of all history.
+Display modes: tree (the default, real parents across directories), by directory, by state, by tag. Per-directory token totals are omitted: no bounded read gives them, since by-Thread usage is a walk of all history.
+
+**Moving a Thread.** `thread set --parent` is on Shellboy main (`5806aa77`), not in v0.10.0, whose strict decoding would refuse the field, and protocol 2 has no way to ask an owner what it can do. So the capability `thread.reparent` says what this bridge was built to send (`seam::owner_capabilities`), and the UI reads only that:
+
+- A normal build, pinned to v0.10.0, doesn't have it. Threads says moving isn't available and why, draws no control and no drag, and the bridge denies `thread.set`. **The pin wasn't moved.**
+- With the Cargo feature `next-shellboy`, in a copy with a `[patch]` of the dependency to Shellboy main, the bridge allows `thread.set` carrying only `parent_id` and nothing else `thread.set` can do. `tests/real_owner.rs` covers it under that feature. When the pin passes that commit, the feature goes and the arm stays.
+- A picker (filter, and "No parent") or a drag onto another row leads to the same preview. There is no owner dry run, so the preview states what will change and what won't. Nothing moves until Move. A cycle is left to the owner, whose refusal shows as it wrote it. A result with `parent_change.live_run_id` says the Run keeps its previous owner. Drag is mouse only; phones use the picker.
+
+**Tags** (#222 stage 3) have no wire yet, so the Tag mode says so. `CAPABILITY_TAGS` and `groupThreads` are the seam, and nothing assumes a shape.
 
 ## Validation record (2026-11-07)
 

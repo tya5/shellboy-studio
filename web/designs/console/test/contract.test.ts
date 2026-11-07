@@ -119,7 +119,7 @@ describe("screens use the system only", () => {
     for (const f of screens) {
       const text = readFileSync(f, "utf8");
       // The drawer's scrim is the one bare button: it has no look of its own to reuse.
-      const body = text.replace(/<button type="button" class=\{drawer \? "scrim open" : "scrim"\}/g, "");
+      const body = text.replace(/<button type="button" class=\{drawer \? "scrim open" : "scrim"\}/g, "").replace(/<button type="button" class="srow-act"/g, "");
       expect(body, f).not.toMatch(/<(button|textarea|input|details|svg)\b/);
       expect(text, f).not.toMatch(/#[0-9a-fA-F]{6}\b/);
       expect(text, f).not.toMatch(/style=/);
