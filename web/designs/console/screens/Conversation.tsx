@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import { formatClock, formatDuration, formatRoute, formatTokens, parseTime, statusLabel, type AppModel, type ConversationRow, type StepRow as Step } from "../../../ui-core/src";
+import { ScrollIntent } from "./scrollIntent";
 import { LiveMessage } from "./LiveMessage";
 import { WindowedScroll } from "./WindowedScroll";
 import { BranchMark, Button, Composer, LoadingRows, EmptyState, Icon, KeyValue, LogBlock, Message, Notice, QuestionCard, StatusMark, StepRow, SummaryStrip, WorkSheet } from "../system/components";
@@ -175,18 +176,18 @@ export function Conversation({ model }: { model: AppModel }) {
   const rows = model.conversation.value;
   const win = model.longReader.value;
   const scroller = useRef<HTMLDivElement>(null);
-  const pinned = useRef(true);
+  const pinned = useRef(new ScrollIntent());
   const history = handle?.history.value;
   // Keep the bottom in view while following, on either reader. The live message passes itself
   // so the scroll box is found from it (the windowed reader owns its box).
   const follow = (from?: Element | null) => {
     const el = from?.closest<HTMLElement>(".scroll") ?? scroller.current;
-    if (el && (win ? win.following.peek() : pinned.current)) el.scrollTop = el.scrollHeight;
+    if (el && (win ? win.following.peek() : pinned.current.following)) pinned.current.program(el, el.scrollHeight);
   };
 
   useLayoutEffect(() => follow(), [rows]);
   useEffect(() => {
-    pinned.current = true;
+    pinned.current = new ScrollIntent();
     setSheetOpen(false);
   }, [handle]);
 
@@ -218,10 +219,11 @@ export function Conversation({ model }: { model: AppModel }) {
           <div
             class="scroll"
             ref={scroller}
-            onScroll={(e) => {
-              const el = e.currentTarget;
-              pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
-            }}
+            onWheel={(e) => pinned.current.wheel(e.deltaY)}
+            onTouchStart={(e) => { if (e.touches[0]) pinned.current.touchStart(e.touches[0].clientY); }}
+            onTouchMove={(e) => { if (e.touches[0]) pinned.current.touchMove(e.touches[0].clientY); }}
+            onKeyDown={(e) => pinned.current.key(e.key)}
+            onScroll={(e) => { pinned.current.scroll(e.currentTarget); }}
           >
             {history?.earlierHidden ? (
               <span class="more">

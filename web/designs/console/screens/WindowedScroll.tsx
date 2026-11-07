@@ -5,7 +5,7 @@ import { useLayoutEffect, useRef } from "preact/hooks";
 import { projectConversation, type AppModel, type ConversationRow, type ConversationWindow } from "../../../ui-core/src";
 import { Button, EmptyState, LoadingRows, Notice, VirtualGap, VirtualSpace } from "../system/components";
 
-const BOTTOM_PX = 48;
+import { ScrollIntent } from "./scrollIntent";
 
 export function WindowedScroll({ model, win, renderRow, live }: { model: AppModel; win: ConversationWindow; renderRow: (row: ConversationRow) => VNode; live: ComponentChildren }) {
   const t = model.t.value;
@@ -14,6 +14,7 @@ export function WindowedScroll({ model, win, renderRow, live }: { model: AppMode
   const shells = model.shells.value;
   const el = useRef<HTMLDivElement>(null);
   const range = win.renderRange();
+  const intent = useRef(new ScrollIntent());
 
   // After each draw: report measured heights (the window corrects the offset for rows above the
   // anchor), apply the scroll it asks for, keep the bottom while following, then report the view.
@@ -25,9 +26,9 @@ export function WindowedScroll({ model, win, renderRow, live }: { model: AppMode
       changes.push([Number(child.dataset.o), child.getBoundingClientRect().height]);
     if (changes.length > 0) win.measure(changes);
     const want = win.takeScroll();
-    if (want !== undefined) box.scrollTop = want;
-    else if (win.following.peek()) box.scrollTop = box.scrollHeight;
-    win.view(box.scrollTop, box.clientHeight, box.scrollHeight - box.scrollTop - box.clientHeight < BOTTOM_PX);
+    if (want !== undefined) intent.current.program(box, want);
+    else if (win.following.peek() && intent.current.following) intent.current.program(box, box.scrollHeight);
+    win.view(box.scrollTop, box.clientHeight, win.following.peek() && intent.current.following);
   });
 
   const parts: VNode[] = [];
@@ -56,9 +57,13 @@ export function WindowedScroll({ model, win, renderRow, live }: { model: AppMode
     <div
       class="scroll"
       ref={el}
+      onWheel={(e) => { intent.current.wheel(e.deltaY); if (!intent.current.following) win.following.value = false; }}
+      onTouchStart={(e) => { if (e.touches[0]) intent.current.touchStart(e.touches[0].clientY); }}
+      onTouchMove={(e) => { if (e.touches[0]) intent.current.touchMove(e.touches[0].clientY); if (!intent.current.following) win.following.value = false; }}
+      onKeyDown={(e) => { intent.current.key(e.key); if (!intent.current.following) win.following.value = false; }}
       onScroll={(e) => {
         const b = e.currentTarget;
-        win.view(b.scrollTop, b.clientHeight, b.scrollHeight - b.scrollTop - b.clientHeight < BOTTOM_PX);
+        win.view(b.scrollTop, b.clientHeight, intent.current.scroll(b));
       }}
     >
       {win.pathChanged.value ? <Notice tone="wait">{t("convo.pathChanged")}</Notice> : null}
@@ -77,7 +82,7 @@ export function WindowedScroll({ model, win, renderRow, live }: { model: AppMode
     </div>
       {!win.following.value ? (
         <div class="jump-newest">
-          <Button variant="primary" onClick={() => win.jumpToEnd()}>{t("convo.newer")}</Button>
+          <Button variant="primary" onClick={() => { intent.current.following = true; win.jumpToEnd(); }}>{t("convo.newer")}</Button>
         </div>
       ) : null}
     </div>
