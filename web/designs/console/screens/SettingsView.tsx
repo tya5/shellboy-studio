@@ -206,7 +206,6 @@ export function SettingsView({ context }: { context: DesignContext }) {
     <SubView
       title={t("set.title")}
       items={SETTINGS_SECTIONS.map((s) => ({ key: s, href: formatRoute({ view: "settings", section: s }), icon: ICONS[s], label: t(`set.section.${s}`), current: s === section }))}
-      onSelect={(key) => model.navigate({ view: "settings", section: key as SettingsSection })}
     >
       <div class="pagehead">
         <h1>{t(`set.section.${section}`)}</h1>

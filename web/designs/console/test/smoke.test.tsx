@@ -196,20 +196,10 @@ describe("Analytics", () => {
     const { el } = await open("overview");
     expect([...el.querySelectorAll(".secnav-item")].map(text)).toEqual(["Overview", "Tokens", "Compaction", "By Thread", "Storage", "Memory", "Index"]);
     expect(el.querySelector('.secnav-item[aria-current="page"]')!.getAttribute("href")).toBe("#/analytics/overview");
-    expect([...el.querySelectorAll(".secnav-pick option")].map(text)).toHaveLength(7);
+    expect(el.querySelector(".secnav select")).toBeNull();
     expect(el.querySelectorAll("figure.chart svg").length).toBe(1);
     expect(text(el)).not.toContain("Owner memory");
     expect(text(el)).toContain("aren't prices");
-  });
-  it("the phone selector navigates like the list", async () => {
-    const { el, model } = await open("overview");
-    const pick = el.querySelector<HTMLSelectElement>(".secnav-pick select")!;
-    expect(pick.value).toBe("overview");
-    await act(async () => {
-      pick.value = "memory";
-      pick.dispatchEvent(new Event("change", { bubbles: true }));
-    });
-    expect(model.route.value).toEqual({ view: "analytics", section: "memory" });
   });
   it("Tokens draws to its data, with sources, and shows no money", async () => {
     const { el } = await open("tokens");

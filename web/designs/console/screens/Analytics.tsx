@@ -350,7 +350,6 @@ export function Analytics({ context }: { context: DesignContext }) {
     <SubView
       title={t("view.analytics")}
       items={ANALYTICS_SECTIONS.map((s) => ({ key: s, href: formatRoute({ view: "analytics", section: s }), icon: ICONS[s], label: t(`ana.section.${s}`), current: s === section }))}
-      onSelect={(key) => model.navigate({ view: "analytics", section: key as AnalyticsSection })}
     >
       {section === "overview" || section === "tokens" || section === "compaction" ? (
         <UsagePane context={context} section={section} />

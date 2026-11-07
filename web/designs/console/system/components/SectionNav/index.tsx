@@ -8,7 +8,7 @@ export interface SectionNavItem {
   current: boolean;
 }
 
-export function SectionNav({ title, items, onSelect }: { title: string; items: SectionNavItem[]; onSelect: (key: string) => void }) {
+export function SectionNav({ title, items }: { title: string; items: SectionNavItem[] }) {
   return (
     <nav class="secnav" aria-label={title}>
       <h2>{title}</h2>
@@ -20,14 +20,6 @@ export function SectionNav({ title, items, onSelect }: { title: string; items: S
           </a>
         ))}
       </div>
-      <label class="secnav-pick">
-        <span class="vh">{title}</span>
-        <select value={items.find((i) => i.current)?.key} onChange={(e) => onSelect(e.currentTarget.value)}>
-          {items.map((i) => (
-            <option key={i.key} value={i.key}>{i.label}</option>
-          ))}
-        </select>
-      </label>
     </nav>
   );
 }

@@ -280,8 +280,6 @@ a{color:var(--accent)}
 .secnav-item{display:flex;align-items:center;gap:var(--space-8);min-height:40px;padding:0 var(--space-8);border-radius:var(--radius-s);color:var(--muted);text-decoration:none;font:var(--type-label)}
 .secnav-item:hover{background:var(--raised)}
 .secnav-item[aria-current=page]{background:var(--accent-bg);color:var(--fg)}
-.secnav-pick{display:none}
-.secnav-pick select{width:100%;min-height:var(--size-touch);padding:0 var(--space-8);border:1px solid var(--line-strong);border-radius:var(--radius-s);background:var(--inset);color:var(--fg);font:var(--type-label)}
 
 /* FactList */
 .facts{margin:0;display:flex;flex-direction:column}
@@ -403,8 +401,10 @@ a{color:var(--accent)}
   .bmark{min-height:var(--size-touch)}
   .msg-acts .quiet{opacity:1}
   .selbar label{min-height:var(--size-touch)}
-  .secnav h2,.secnav-list{display:none}
-  .secnav-pick{display:block}
+  .secnav h2{display:none}
+  .secnav-list{flex-direction:row;flex-wrap:wrap;gap:var(--space-4)}
+  .secnav-item{flex:0 1 auto;padding:0 var(--space-12);border:1px solid var(--line);border-radius:var(--radius-s)}
+  .secnav-item[aria-current=page]{border-color:var(--accent)}
   .tbl.stack thead{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
   .tbl.stack,.tbl.stack tbody,.tbl.stack tr{display:block;width:100%}
   .tbl.stack tr{padding:var(--space-8) 0;border-bottom:1px solid var(--line)}
