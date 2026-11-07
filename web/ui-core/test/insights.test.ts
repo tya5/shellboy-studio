@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { settle } from "../../data/test/harness";
 import {
-  addSum, cacheRate, effectiveTokens, formatBytes, formatRoute, loadPrefs, MAX_WINDOWS, meanInput, mergeGroups, niceMax, parseRoute, periodOf,
+  addSum, cacheRate, dayFacts, effectiveTokens, formatBytes, formatRoute, loadPrefs, MAX_WINDOWS, meanInput, mergeGroups, niceMax, parseRoute, periodOf, periodTotals,
   readCompactionEvent, readGroup, readIndex, readMemory, readStorage, readSum, readThreadSettings, splitParts, totalGroups, zoneOf, type Prefs,
 } from "../src";
 import { fixtureCompaction, fixtureIndex, fixtureMemory, fixtureModel, fixtureStorage, NOW, usageItem, usagePage } from "./fixture";
@@ -296,5 +296,47 @@ describe("Insights over the fake transport", () => {
     await settle(t, db);
     expect(t.calls().filter((c) => c.operation_id !== undefined)).toHaveLength(0);
     for (const c of ["storage.collect", "thread.set", "thread.prune", "index.rebuild"]) expect(t.calls(c)).toHaveLength(0);
+  });
+});
+
+describe("what the charts draw", () => {
+  const group = (key: string, f: Parameters<typeof usageItem>[1]) => readGroup(usageItem(key, f))!;
+  it("a day the owner didn't return is absent, not zero", () => {
+    const days = dayFacts(["2026-11-05", "2026-11-06"], new Map([["2026-11-06", group("2026-11-06", { input: 1000, cached: 750, output: 20 })]]), WEIGHTS);
+    expect(days[0]).toMatchObject({ recorded: false, uncached: undefined, effective: undefined, rate: undefined });
+    expect(days[1]).toMatchObject({ recorded: true, uncached: 250, cached: 750, output: 20, rate: 0.75 });
+    expect(days[1]!.effective).toBeCloseTo(425);
+  });
+  it("adds summary requests to effective tokens and keeps them readable apart", () => {
+    const g = group("d", { input: 1000, cached: 500, output: 10, compactions: 1, summary: [100, 20, 5] });
+    const [day] = dayFacts(["d"], new Map([["d", g]]), WEIGHTS);
+    expect(day!.summaryEffective).toBeCloseTo(80 + 2 + 25);
+    expect(day!.effective).toBeCloseTo(500 + 50 + 50 + 107);
+    expect(day!.summaryUncached).toBe(80);
+  });
+  it("no summary request is nothing to sum; a request with no usage is unknown", () => {
+    const none = dayFacts(["d"], new Map([["d", group("d", { input: 100, cached: 0, output: 0 })]]), WEIGHTS)[0]!;
+    expect(none.summaryEffective).toBe(0);
+    const raw = usageItem("d", { input: 100, cached: 0, output: 0, compactions: 1 });
+    (raw.compaction as Record<string, unknown>).input_tokens = { known_sum: null, unknown_count: 1, overflow: false };
+    const unknown = dayFacts(["d"], new Map([["d", readGroup(raw)!]]), WEIGHTS)[0]!;
+    expect(unknown.summaryEffective).toBeUndefined();
+    expect(unknown.incomplete).toBe(true);
+    expect(unknown.effective).toBe(100);
+  });
+  it("marks a day whose counters have unknowns or disagree", () => {
+    expect(dayFacts(["d"], new Map([["d", group("d", { input: 100, cached: 50, output: 1, unknown: 2 })]]), WEIGHTS)[0]!.incomplete).toBe(true);
+    const bad = dayFacts(["d"], new Map([["d", group("d", { input: 100, cached: 150, output: 1 })]]), WEIGHTS)[0]!;
+    expect(bad).toMatchObject({ inconsistent: true, uncached: undefined, rate: 1.5 });
+  });
+  it("the period's rate comes from summed counters, never from an average of daily ratios", () => {
+    const groups = new Map([
+      ["a", group("a", { input: 1000, cached: 1000, output: 0 })],
+      ["b", group("b", { input: 9000, cached: 0, output: 0 })],
+    ]);
+    const t = periodTotals(groups, WEIGHTS);
+    expect(t.rate).toBeCloseTo(0.1);
+    expect(t.days).toBe(2);
+    expect(periodTotals(new Map(), WEIGHTS)).toMatchObject({ effective: undefined, days: 0 });
   });
 });

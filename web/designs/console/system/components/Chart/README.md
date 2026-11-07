@@ -1,4 +1,4 @@
-A small chart drawn as inline SVG at the frame's real width, so text stays its true size on a phone. `columns` stacks series from one baseline; `line` plots change over time. One axis only. Ticks come from the same scale as the marks.
+A small chart drawn as inline SVG at the frame's real width, so text stays its true size on a phone. `columns` stacks series from one baseline; `line` plots change over time. One axis only. Ticks come from the same scale as the marks. A value above zero is at least 2px tall, so a small part of a stack stays visible; the table has the exact number.
 
 - Series use `chart-1` to `chart-3`, with a fixed meaning: uncached input, cached input, output. A single series with no such identity uses `neutral`. Text never takes a series colour.
 - Two or more series always get a legend. The table under the chart holds every value; hover, touch and arrow keys show one point's values.

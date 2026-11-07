@@ -1,0 +1,311 @@
+import { useState } from "preact/hooks";
+import {
+  cacheRate, COMPACTION_ROWS, dayFacts, DEFAULT_WEIGHTS, effectiveTokens, formatClock, formatDuration, formatRoute, formatTokens, groupEffective, groupIncomplete, meanInput, periodTotals, PERIODS, readWeights, shortDay,
+  splitParts, type AppModel, type CompactionEvent, type DayFacts, type DesignContext, type Translate, type UsageGroup, type WalkState, type Weights,
+} from "../../../ui-core/src";
+import { Button, ButtonGroup, Chart, DataTable, Field, Notice, RangeBar, Section, Stat, type ChartPoint, type ChartSeries } from "../system/components";
+import { Resources } from "./Resources";
+
+const percent = (v: number): string => `${Math.round(v * 100)}%`;
+const noteOf = (t: Translate, d: DayFacts): string | undefined => (d.inconsistent ? t("common.inconsistent") : d.incomplete ? t("common.incomplete") : undefined);
+
+function peakSummary(t: Translate, days: number, values: (number | undefined)[], format: (n: number) => string): string {
+  const known = values.filter((v): v is number => v !== undefined);
+  return t("chart.ariaPeak", { days, value: known.length ? format(Math.max(...known)) : t("analytics.noValue") });
+}
+
+function WalkNotice({ t, state, onStop, onContinue, onRetry }: { t: Translate; state: WalkState; onStop: () => void; onContinue: () => void; onRetry: () => void }) {
+  const c = state.coverage;
+  if (state.status === "loading")
+    return <Notice actions={<Button onClick={onStop}>{t("analytics.stop")}</Button>}>{t("analytics.walking", { n: c.windows + 1 })}</Notice>;
+  if (state.status === "stopped")
+    return <Notice tone="wait" actions={state.canContinue ? <Button onClick={onContinue}>{t("analytics.continue")}</Button> : undefined}>{t("analytics.stopped", { n: c.windows })}</Notice>;
+  if (state.status === "failed")
+    return <Notice tone="bad" actions={state.canContinue ? <Button onClick={onContinue}>{t("analytics.continue")}</Button> : <Button onClick={onRetry}>{t("common.refresh")}</Button>}>{t("analytics.failed", { message: state.error?.message ?? "" })}</Notice>;
+  return null;
+}
+
+function Weighting({ context }: { context: DesignContext }) {
+  const t = context.model.t.value;
+  const weights = context.prefs.value.weights;
+  const [draft, setDraft] = useState<{ n: string; m: string }>({ n: String(weights.cached), m: String(weights.output) });
+  const parse = (s: string): number | undefined => {
+    const v = s.trim() === "" ? NaN : Number(s);
+    return Number.isFinite(v) && v >= 0 ? v : undefined;
+  };
+  const invalid = parse(draft.n) === undefined || parse(draft.m) === undefined;
+  const change = (next: { n: string; m: string }) => {
+    setDraft(next);
+    const cached = parse(next.n);
+    const output = parse(next.m);
+    context.setPrefs({ weights: readWeights({ cached: cached ?? weights.cached, output: output ?? weights.output }) });
+  };
+  return (
+    <Section title={t("weights.title")} sub={<span class="mono">{t("weights.formula")}</span>}>
+      <div class="fieldrow">
+        <label class="lab">
+          {t("weights.n")}
+          <Field ariaLabel={t("weights.n")} type="number" min="0" step="0.05" inputMode="decimal" value={draft.n} onInput={(e) => change({ ...draft, n: e.currentTarget.value })} />
+        </label>
+        <label class="lab">
+          {t("weights.m")}
+          <Field ariaLabel={t("weights.m")} type="number" min="0" step="0.5" inputMode="decimal" value={draft.m} onInput={(e) => change({ ...draft, m: e.currentTarget.value })} />
+        </label>
+        <Button onClick={() => { setDraft({ n: String(DEFAULT_WEIGHTS.cached), m: String(DEFAULT_WEIGHTS.output) }); context.setPrefs({ weights: DEFAULT_WEIGHTS }); }}>{t("weights.reset")}</Button>
+      </div>
+      {invalid ? <Notice tone="wait">{t("weights.invalid")}</Notice> : null}
+      <div class="muted caption">{t("weights.note")}</div>
+    </Section>
+  );
+}
+
+function ByThread({ model, weights }: { model: AppModel; weights: Weights }) {
+  const t = model.t.value;
+  const i = model.insights;
+  const walk = i.byThread.state.value;
+  const titles = new Map(model.rows.value.map((r) => [r.summary.thread_id, r.summary.title]));
+  const rows = [...walk.groups.values()].sort((a, b) => (groupEffective(b, weights) ?? 0) - (groupEffective(a, weights) ?? 0)).slice(0, 25);
+  const nameOf = (g: UsageGroup) => titles.get(g.key) ?? g.key.slice(0, 8);
+  return (
+    <Section
+      title={t("threads.heading")}
+      sub={t("threads.sub")}
+      actions={walk.status === "idle" ? <Button onClick={() => void i.byThread.start()}>{t("threads.load")}</Button> : undefined}
+      source={<>{t("common.source", { source: "" })}<code>usage.get group_by=thread</code></>}
+    >
+      <WalkNotice t={t} state={walk} onStop={() => i.byThread.stop()} onContinue={() => void i.byThread.continue()} onRetry={() => void i.byThread.start()} />
+      {rows.length > 0 ? (
+        <DataTable
+          caption={t("threads.heading")}
+          columns={[{ label: t("threads.thread") }, { label: t("series.effective"), numeric: true }, { label: t("series.cacheRate"), numeric: true }, { label: t("threads.mean"), numeric: true }, { label: t("threads.max"), numeric: true }, { label: t("threads.events"), numeric: true }, { label: "" }]}
+          rows={rows.map((g) => {
+            const effective = groupEffective(g, weights);
+            const rate = cacheRate(g.conversation);
+            const mean = meanInput(g);
+            return {
+              key: g.key,
+              cells: [
+                <>
+                  {titles.has(g.key) ? <a href={formatRoute({ view: "conversation", threadId: g.key })}>{nameOf(g)}</a> : <span class="mono">{nameOf(g)}</span>}
+                  {groupIncomplete(g) ? <div class="muted caption">{t("common.incomplete")}</div> : null}
+                </>,
+                effective !== undefined ? formatTokens(Math.round(effective)) : t("analytics.noValue"),
+                rate !== undefined ? percent(rate) : t("analytics.noValue"),
+                mean !== undefined ? formatTokens(Math.round(mean)) : t("analytics.noValue"),
+                g.inputMax !== undefined ? formatTokens(g.inputMax) : t("analytics.noValue"),
+                g.compactions,
+                <Button variant="link" aria-pressed={i.compaction.value.threadId === g.key} onClick={() => void i.showCompaction(g.key)}>{t("threads.show")}</Button>,
+              ],
+            };
+          })}
+        />
+      ) : walk.status === "done" ? (
+        <div class="muted">{t("threads.none")}</div>
+      ) : null}
+    </Section>
+  );
+}
+
+const KIND: Record<string, Parameters<Translate>[0]> = { automatic_reduction: "compact.automatic", summary: "compact.summaryKind", spill: "compact.spill", restore: "compact.restore", compact: "compact.compactKind" };
+const REASON: Record<string, Parameters<Translate>[0]> = { proactive_threshold: "compact.proactive", failure: "compact.failure" };
+
+function Effect({ t, e, max, shared }: { t: Translate; e: CompactionEvent; max: number; shared: boolean }) {
+  if (!e.afterApplies) return <span class="muted">{t("compact.na")}</span>;
+  return (
+    <>
+      <div class="mono">
+        {e.triggerInput !== undefined ? formatTokens(e.triggerInput) : t("analytics.noValue")} {t("compact.to")} {e.afterInput !== undefined ? formatTokens(e.afterInput) : t("analytics.noValue")}
+      </div>
+      {e.triggerInput !== undefined && e.afterInput !== undefined ? <RangeBar from={e.triggerInput} to={e.afterInput} max={max} aria={t("compact.aria", { from: e.triggerInput, to: e.afterInput })} /> : null}
+      {e.afterInput === undefined ? <div class="muted caption">{t("compact.notYet")}</div> : null}
+      {e.triggerInput === undefined ? <div class="muted caption">{t("compact.manual")}</div> : null}
+      {shared ? <div class="muted caption">{t("compact.shared")}</div> : null}
+    </>
+  );
+}
+
+function CompactionEffect({ model, weights }: { model: AppModel; weights: Weights }) {
+  const t = model.t.value;
+  const c = model.insights.compaction.value;
+  const titles = new Map(model.rows.value.map((r) => [r.summary.thread_id, r.summary.title]));
+  const name = c.threadId ? (titles.get(c.threadId) ?? c.threadId.slice(0, 8)) : "";
+  const max = Math.max(0, ...c.events.flatMap((e) => [e.triggerInput ?? 0, e.afterInput ?? 0]));
+  const attempts = new Map<string, number>();
+  for (const e of c.events) if (e.afterAttempt) attempts.set(e.afterAttempt, (attempts.get(e.afterAttempt) ?? 0) + 1);
+  return (
+    <Section title={t("compact.heading")} sub={c.threadId ? t("compact.sub", { thread: name, n: COMPACTION_ROWS }) : t("compact.noThread")} source={<>{t("common.source", { source: "" })}<code>compact.list</code></>}>
+      {c.error ? <Notice tone="bad">{t("common.readError", { message: c.error.message })}</Notice> : null}
+      {c.loading ? <div class="muted">{t("common.loading")}</div> : null}
+      {c.threadId && !c.loading && !c.error && c.events.length === 0 ? <div class="muted">{t("compact.none")}</div> : null}
+      {c.events.length > 0 ? (
+        <DataTable
+          caption={t("compact.heading")}
+          columns={[{ label: t("compact.at") }, { label: t("compact.kind") }, { label: t("compact.effect") }, { label: t("compact.cost"), numeric: true }]}
+          rows={c.events.map((e) => {
+            const split = e.summary ? splitParts(e.summary) : undefined;
+            const effective = e.summary ? effectiveTokens(e.summary, weights) : undefined;
+            const kind = KIND[e.kind];
+            const reason = e.reason ? REASON[e.reason] : undefined;
+            return {
+              key: e.id,
+              cells: [
+                <span class="mono">{e.at ? `${e.at.slice(5, 10)} ${formatClock(e.at) ?? ""}` : t("analytics.noValue")}</span>,
+                <>
+                  {kind ? t(kind) : <span class="mono">{e.kind}</span>}
+                  {reason ? <div class="muted caption">{t(reason)}</div> : null}
+                  {e.state ? <div class="muted caption mono">{e.state}</div> : null}
+                </>,
+                <Effect t={t} e={e} max={max} shared={!!e.afterAttempt && (attempts.get(e.afterAttempt) ?? 0) > 1} />,
+                split && effective !== undefined ? (
+                  <>
+                    {formatTokens(Math.round(effective))}
+                    <div class="muted caption">{t("compact.costNote", { requests: e.summaryRequests ?? 0 })}</div>
+                  </>
+                ) : (
+                  <span class="muted">{t("analytics.noValue")}</span>
+                ),
+              ],
+            };
+          })}
+        />
+      ) : null}
+      {c.limited ? <div class="muted caption">{t("compact.limited")}</div> : null}
+      {c.more ? <div class="muted caption">{t("compact.more")}</div> : null}
+    </Section>
+  );
+}
+
+export function Analytics({ context }: { context: DesignContext }) {
+  const model = context.model;
+  const t = model.t.value;
+  const i = model.insights;
+  const weights = context.prefs.value.weights;
+  const period = i.period.value;
+  const walk = i.daily.state.value;
+  const days = dayFacts(period.dayKeys, walk.groups, weights);
+  const totals = periodTotals(walk.groups, weights);
+  const loading = walk.status === "loading";
+  const notReported = t("analytics.noValue");
+  const c = walk.coverage;
+  const hasSomething = walk.groups.size > 0;
+
+  const parts: ChartSeries[] = [
+    { id: "cached", label: t("series.cached"), tone: "2" },
+    { id: "uncached", label: t("series.uncached"), tone: "1" },
+    { id: "output", label: t("series.output"), tone: "3" },
+  ];
+  const point = (d: DayFacts, values: ChartPoint["values"]): ChartPoint => ({ key: d.key, label: shortDay(d.key), values, note: noteOf(t, d) });
+  const usagePoints = days.map((d) => point(d, { cached: d.cached, uncached: d.uncached, output: d.output }));
+  const summaryPoints = days.map((d) => point(d, { cached: d.summaryCached, uncached: d.summaryUncached, output: d.summaryOutput }));
+  const tokens = (n: number) => formatTokens(Math.round(n));
+  const source = (read: string) => <>{t("common.source", { source: "" })}<code>{read}</code></>;
+  const common = { tableLabel: t("analytics.table"), categoryLabel: t("analytics.day"), noData: t("analytics.noValue") };
+  const dailyTotals = days.map((d) => (d.recorded ? (d.cached ?? 0) + (d.uncached ?? 0) + (d.output ?? 0) : undefined));
+
+  return (
+    <div class="mon">
+      <div class="head">
+        <div class="pagehead">
+          <h1>{t("view.analytics")}</h1>
+          <div class="muted">{t("analytics.subtitle", { zone: period.zone })}</div>
+        </div>
+        <div class="band">
+          <ButtonGroup label={t("analytics.period")}>
+            {PERIODS.map((p) => (
+              <Button key={p} aria-pressed={i.periodDays.value === p} onClick={() => i.setPeriod(p)}>
+                {p === 1 ? t("analytics.today") : t("analytics.days", { n: p })}
+              </Button>
+            ))}
+          </ButtonGroup>
+          <Button disabled={loading} onClick={() => i.refreshUsage()}>{t("common.refresh")}</Button>
+        </div>
+      </div>
+
+      <WalkNotice t={t} state={walk} onStop={() => i.daily.stop()} onContinue={() => void i.daily.continue()} onRetry={() => i.refreshUsage()} />
+      {walk.status === "done" ? (
+        <div class="muted caption">
+          {t("analytics.covered", { windows: c.windows, ms: formatDuration(c.elapsedMs), requests: c.matchedAttempts.toLocaleString("en-US"), compactions: c.matchedCompactions.toLocaleString("en-US") })}{" "}
+          {c.excludedTime + c.unknownTimeCompactions + c.malformedCompactions > 0 ? t("analytics.excluded", { time: c.excludedTime, unknown: c.unknownTimeCompactions, malformed: c.malformedCompactions }) : null}
+        </div>
+      ) : null}
+      {walk.status === "done" && !hasSomething ? <Notice>{t("analytics.empty")}</Notice> : null}
+
+      <div class="stats">
+        <Stat label={t("stat.effective")} value={totals.effective !== undefined ? tokens(totals.effective) : notReported} note={totals.incomplete ? t("common.incomplete") : t("stat.effectiveNote")} />
+        <Stat label={t("stat.cacheRate")} value={totals.rate !== undefined ? percent(totals.rate) : notReported} note={t("stat.cacheRateNote")} />
+        <Stat
+          label={t("stat.summary")}
+          value={totals.summaryEffective !== undefined ? tokens(totals.summaryEffective) : notReported}
+          note={totals.summaryEffective !== undefined && totals.effective ? t("stat.summaryNote", { share: Math.round((totals.summaryEffective / totals.effective) * 1000) / 10, n: totals.summaryRequests.toLocaleString("en-US") }) : undefined}
+        />
+        <Stat label={t("stat.compactions")} value={hasSomething ? totals.compactions.toLocaleString("en-US") : notReported} note={t("stat.compactionsNote")} />
+      </div>
+
+      <Weighting context={context} />
+
+      <div class="charts">
+        <Chart
+          kind="columns"
+          title={t("chart.daily")}
+          sub={t("chart.dailySub")}
+          series={parts}
+          points={usagePoints}
+          format={tokens}
+          ariaSummary={t("chart.dailyAria", { summary: peakSummary(t, days.length, dailyTotals, tokens) })}
+          source={source("usage.get group_by=day")}
+          extra={<div class="muted caption">{t("chart.byModelMissing")}</div>}
+          {...common}
+        />
+        <Chart
+          kind="columns"
+          title={t("chart.effective")}
+          sub={t("chart.effectiveSub")}
+          series={[{ id: "effective", label: t("series.effective"), tone: "neutral" }]}
+          points={days.map((d) => point(d, { effective: d.effective }))}
+          format={tokens}
+          ariaSummary={t("chart.effectiveAria", { summary: peakSummary(t, days.length, days.map((d) => d.effective), tokens) })}
+          source={<>{source("usage.get group_by=day")}, {t("chart.effectiveLocal")}</>}
+          {...common}
+        />
+        <Chart
+          kind="line"
+          title={t("chart.cache")}
+          sub={t("chart.cacheSub")}
+          series={[{ id: "rate", label: t("series.cacheRate"), tone: "2" }]}
+          points={days.map((d) => point(d, { rate: d.rate }))}
+          format={percent}
+          floorMax={1}
+          ariaSummary={t("chart.cacheAria", { summary: peakSummary(t, days.length, days.map((d) => d.rate), percent) })}
+          source={source("usage.get group_by=day")}
+          {...common}
+        />
+        <Chart
+          kind="columns"
+          title={t("chart.summary")}
+          sub={t("chart.summarySub")}
+          series={parts}
+          points={summaryPoints}
+          format={tokens}
+          ariaSummary={t("chart.summaryAria", { summary: peakSummary(t, days.length, days.map((d) => (d.recorded ? (d.summaryCached ?? 0) + (d.summaryUncached ?? 0) + (d.summaryOutput ?? 0) : undefined)), tokens) })}
+          source={source("usage.get group_by=day, compaction")}
+          {...common}
+        />
+        <Chart
+          kind="columns"
+          title={t("chart.events")}
+          sub={t("chart.eventsSub")}
+          series={[{ id: "events", label: t("series.compactions"), tone: "neutral" }]}
+          points={days.map((d) => point(d, { events: d.recorded ? d.compactions : undefined }))}
+          format={(n) => String(Math.round(n * 10) / 10)}
+          ariaSummary={t("chart.eventsAria", { summary: peakSummary(t, days.length, days.map((d) => (d.recorded ? d.compactions : undefined)), String) })}
+          source={source("usage.get group_by=day, compaction.compactions")}
+          {...common}
+        />
+      </div>
+
+      <ByThread model={model} weights={weights} />
+      <CompactionEffect model={model} weights={weights} />
+      <Resources model={model} />
+    </div>
+  );
+}

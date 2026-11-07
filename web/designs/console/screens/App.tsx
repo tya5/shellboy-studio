@@ -5,7 +5,9 @@ import { formatTokens, folderName } from "../../../ui-core/src";
 import { Conversation } from "./Conversation";
 import { Inbox } from "./Inbox";
 import { Monitor } from "./Monitor";
+import { Analytics } from "./Analytics";
 import { Settings } from "./Settings";
+import { SettingsView } from "./SettingsView";
 import { AuthPrompt } from "./AuthPrompt";
 
 const SEARCH_DEBOUNCE_MS = 200;
@@ -42,6 +44,8 @@ export function App({ context }: { context: DesignContext }) {
       <NavItem href={formatRoute({ view: "conversation" })} icon="chat" label={t("view.conversation")} current={route.view === "conversation"} />
       <NavItem href={formatRoute({ view: "monitor" })} icon="monitor" label={t("view.monitor")} current={route.view === "monitor"} />
       <NavItem href={formatRoute({ view: "inbox" })} icon="inbox" label={t("view.inbox")} current={route.view === "inbox"} count={model.pendingCount.value} />
+      <NavItem href={formatRoute({ view: "analytics" })} icon="chart" label={t("view.analytics")} current={route.view === "analytics"} />
+      <NavItem href={formatRoute({ view: "settings" })} icon="gear" label={t("view.settings")} current={route.view === "settings"} />
     </>
   );
 
@@ -51,7 +55,7 @@ export function App({ context }: { context: DesignContext }) {
   const details = model.details.value;
   const ctx = route.view === "conversation" ? model.context.value : undefined;
   const conn = model.connection.value;
-  const title = route.view === "conversation" ? (details?.title ?? row?.summary.title) : t(route.view === "monitor" ? "view.monitor" : "view.inbox");
+  const title = route.view === "conversation" ? (details?.title ?? row?.summary.title) : t(`view.${route.view}`);
   const folder = route.view === "conversation" ? folderName(details?.cwd ?? row?.summary.cwd) : undefined;
 
   return (
@@ -124,7 +128,7 @@ export function App({ context }: { context: DesignContext }) {
             {model.actionError.value ? <Notice tone="bad">{model.actionError.value}</Notice> : null}
           </div>
           <section class="view" aria-label={title}>
-            {route.view === "conversation" ? <Conversation model={model} /> : route.view === "monitor" ? <Monitor model={model} /> : <Inbox model={model} />}
+            {route.view === "conversation" ? <Conversation model={model} /> : route.view === "monitor" ? <Monitor model={model} /> : route.view === "inbox" ? <Inbox model={model} /> : route.view === "analytics" ? <Analytics context={context} /> : <SettingsView context={context} />}
           </section>
           <footer class="status">
             <StatusMark

@@ -129,8 +129,8 @@ describe("Frame", () => {
   it("offers all views as links in both the sidebar and the phone tab bar", async () => {
     const { model } = await fixtureModel();
     const el = draw(model);
-    expect(el.querySelectorAll(".nav .nav-item").length).toBe(3);
-    expect(el.querySelectorAll(".tabbar .nav-item").length).toBe(3);
+    expect(el.querySelectorAll(".nav .nav-item").length).toBe(5);
+    expect(el.querySelectorAll(".tabbar .nav-item").length).toBe(5);
   });
   it("switches language without a reload", async () => {
     const { model } = await fixtureModel({ route: "inbox" });
@@ -181,5 +181,139 @@ describe("Frame", () => {
     });
     expect(text(el)).toContain("Connect to the bridge");
     expect(el.querySelector('input[type="password"]')).toBeTruthy();
+  });
+});
+
+describe("Analytics", () => {
+  it("draws every chart from the fixture, to scale, with its source, and shows no money", async () => {
+    const { model } = await fixtureModel({ route: "analytics" });
+    const el = draw(model);
+    const body = text(el);
+    for (const title of ["Daily tokens", "Daily effective tokens", "Cache rate", "Daily summary tokens", "Compaction events per day", "Usage by Thread", "Compaction effect", "Resources"]) expect(body, title).toContain(title);
+    expect(el.querySelectorAll("figure.chart svg").length).toBe(5);
+    expect(body).toContain("usage.get group_by=day");
+    expect(body).toContain("compact.list");
+    expect(body).toContain("aren't prices");
+    expect(body).toContain("By model isn't shown");
+    expect(body).not.toMatch(/\$\s?\d|USD|¥/);
+    // 2026-11-06: 1.5M cached, 1.5M uncached, 40k output in two windows; a column reaches its value.
+    const dailyColumns = el.querySelectorAll("figure.chart")[0]!.querySelectorAll("path.fill");
+    expect(dailyColumns.length).toBe(9);
+    expect(el.querySelector(".chart-svg")!.getAttribute("role")).toBe("img");
+    expect(el.querySelector(".chart-svg")!.getAttribute("aria-label")).toContain("7 days");
+  });
+  it("states are shown: effective tokens follow the weights without a new read", async () => {
+    const { model, t } = await fixtureModel({ route: "analytics" });
+    const el = draw(model);
+    const before = t.calls("usage.get").length;
+    const first = () => text(el.querySelector(".stat .stat-value")!);
+    const was = first();
+    const n = el.querySelector<HTMLInputElement>('input[aria-label="Cached weight n"]')!;
+    await act(async () => {
+      n.value = "1";
+      n.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    expect(first()).not.toBe(was);
+    expect(t.calls("usage.get").length).toBe(before);
+  });
+  it("offers no destructive action, and explains why", async () => {
+    const { model } = await fixtureModel({ route: "analytics" });
+    const el = draw(model);
+    const body = text(el);
+    for (const phrase of ["no preview", "needs the owner stopped", "Recreating an index costs money", "no bounded read of storage by Thread"]) expect(body, phrase).toContain(phrase);
+    const buttons = [...el.querySelectorAll("button")].map((b) => text(b).toLowerCase());
+    for (const word of ["collect", "vacuum", "prune", "delete"]) expect(buttons.some((b) => b.includes(word)), word).toBe(false);
+  });
+  it("shows the cache limits as reported, and the owner's reason when a value is unavailable", async () => {
+    const { model } = await fixtureModel({ route: "analytics" });
+    const el = draw(model);
+    expect(text(el)).toContain("UI cache owner is not available");
+    expect(text(el)).toContain("3.7 GiB");
+    expect(el.querySelector('[role="meter"]')).toBeTruthy();
+  });
+  it("loading keeps partial values with a Stop; a failure keeps them too", async () => {
+    const { model, t, db } = await fixtureModel();
+    const plain = db.answer;
+    let n = 0;
+    db.answer = (c) => (c.command === "usage.get" && n++ === 1 ? { ok: false, code: "cursor_expired", message: "expired" } as never : plain(c));
+    const el = draw(model);
+    await act(async () => {
+      model.applyRoute({ view: "analytics" });
+      await Promise.resolve();
+    });
+    expect(text(el)).toContain("Reading saved usage");
+    await act(async () => {
+      await (await import("../../../data/test/harness")).settle(t, db);
+    });
+    expect(text(el)).toContain("Reading stopped");
+    expect(el.querySelectorAll("figure.chart path.fill").length).toBeGreaterThan(0);
+  });
+  it("speaks Japanese", async () => {
+    const { model } = await fixtureModel({ route: "analytics" });
+    const el = draw(model, { lang: "ja" });
+    act(() => { model.lang.value = "ja"; });
+    expect(text(el)).toContain("日別トークン");
+    expect(text(el)).toContain("価格ではありません");
+  });
+});
+
+describe("Settings", () => {
+  const open = async (section: "connections" | "models" | "embeddings" | "shell" | "storage" | "compaction" | "appearance") => {
+    const { model, t, db } = await fixtureModel({ route: "settings" });
+    const el = draw(model);
+    await act(async () => {
+      model.applyRoute({ view: "settings", section });
+      await (await import("../../../data/test/harness")).settle(t, db);
+    });
+    return { el, model, t, db };
+  };
+  it("lists the sections as links, and says it is read-only with no restart promise", async () => {
+    const { el } = await open("connections");
+    const nav = [...el.querySelectorAll(".secnav-item")].map(text);
+    expect(nav).toEqual(["Connections", "Models & defaults", "Embeddings & indexing", "Shell", "Storage & retention", "Compaction", "Appearance"]);
+    expect(el.querySelector('.secnav-item[aria-current="page"]')!.getAttribute("href")).toBe("#/settings/connections");
+    expect(text(el)).toContain("Read-only");
+    expect(text(el)).not.toContain("Changes take effect after owner restart");
+    expect(el.querySelector(".settings-main input")).toBeNull();
+  });
+  it("Connections shows the connection in use, and credential names only as unavailable", async () => {
+    const { el, t } = await open("connections");
+    expect(text(el)).toContain("Credential variable name");
+    expect(text(el)).toContain("config check");
+    expect(t.calls("model.list")).toHaveLength(0);
+  });
+  it("the catalog is read only on a press", async () => {
+    const { el, t, db } = await open("connections");
+    const button = [...el.querySelectorAll(".settings-main button")].find((b) => text(b).includes("default connection")) as HTMLButtonElement;
+    await act(async () => {
+      button.click();
+      await (await import("../../../data/test/harness")).settle(t, db);
+    });
+    expect(t.calls("model.list")).toHaveLength(1);
+    expect(text(el)).toContain("2 models");
+    expect(text(el)).toContain("responses");
+  });
+  it("Embeddings shows the index state; Storage marks documented defaults as such", async () => {
+    expect(text((await open("embeddings")).el)).toContain("mock-embed");
+    const storage = text((await open("storage")).el);
+    expect(storage).toContain("Documented default: 8 GiB");
+    expect(storage).toContain("Not reached");
+    expect(storage).toContain("32 MiB");
+  });
+  it("Compaction shows the Thread's values and their origin; Appearance switches theme without a reload", async () => {
+    const compaction = text((await open("compaction")).el);
+    expect(compaction).toContain("Proactive compaction at");
+    expect(compaction).toContain("thread set");
+    const { el } = await open("appearance");
+    const light = [...el.querySelectorAll(".settings-main button")].find((b) => text(b) === "Light") as HTMLButtonElement;
+    act(() => light.click());
+    expect(light.getAttribute("aria-pressed")).toBe("true");
+  });
+  it("the popover keeps quick choices and links to all settings", async () => {
+    const { model } = await fixtureModel({ route: "monitor" });
+    const el = draw(model);
+    act(() => el.querySelector<HTMLButtonElement>("[data-settings-toggle]")!.click());
+    const link = [...el.querySelectorAll(".panel a")].find((a) => text(a) === "All settings")!;
+    expect(link.getAttribute("href")).toBe("#/settings/appearance");
   });
 });

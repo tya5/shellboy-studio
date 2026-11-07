@@ -281,3 +281,95 @@ export function readCompactionEvent(item: unknown): CompactionEvent | undefined 
     summaryCharacters: num(metrics.summary_characters),
   };
 }
+
+// ---- what the charts draw ----
+
+export interface DayFacts {
+  key: string;
+  /** The owner returned this day. Otherwise every value is absent, and absent isn't zero. */
+  recorded: boolean;
+  uncached: number | undefined;
+  cached: number | undefined;
+  output: number | undefined;
+  summaryUncached: number | undefined;
+  summaryCached: number | undefined;
+  summaryOutput: number | undefined;
+  /** Conversation plus summary requests, with the reader's weights. */
+  effective: number | undefined;
+  summaryEffective: number | undefined;
+  rate: number | undefined;
+  compactions: number;
+  requests: number;
+  /** Some records had no value, so sums are lower bounds. */
+  incomplete: boolean;
+  /** A provider reported more cached than input; the split isn't drawn. */
+  inconsistent: boolean;
+}
+
+/** No request means nothing to sum, which is different from a request with no reported usage. */
+function summaryEffectiveOf(g: UsageGroup, w: Weights): number | undefined {
+  return g.summaryRequests === 0 ? 0 : effectiveTokens(g.summary, w);
+}
+
+export function groupEffective(g: UsageGroup, w: Weights): number | undefined {
+  const conversation = g.requests === 0 ? 0 : effectiveTokens(g.conversation, w);
+  const summary = summaryEffectiveOf(g, w);
+  if (conversation === undefined && summary === undefined) return undefined;
+  return (conversation ?? 0) + (summary ?? 0);
+}
+
+export const groupIncomplete = (g: UsageGroup): boolean =>
+  partsIncomplete(g.conversation) || (g.summaryRequests > 0 && partsIncomplete(g.summary)) || g.unknownPairs > 0;
+
+export function dayFacts(dayKeys: readonly string[], groups: ReadonlyMap<string, UsageGroup>, w: Weights): DayFacts[] {
+  return dayKeys.map((key) => {
+    const g = groups.get(key);
+    if (!g) return { key, recorded: false, uncached: undefined, cached: undefined, output: undefined, summaryUncached: undefined, summaryCached: undefined, summaryOutput: undefined, effective: undefined, summaryEffective: undefined, rate: undefined, compactions: 0, requests: 0, incomplete: false, inconsistent: false };
+    const c = splitParts(g.conversation);
+    const s = splitParts(g.summary);
+    return {
+      key,
+      recorded: true,
+      uncached: c.uncached,
+      cached: c.cached,
+      output: c.output,
+      summaryUncached: s.uncached,
+      summaryCached: s.cached,
+      summaryOutput: s.output,
+      effective: groupEffective(g, w),
+      summaryEffective: summaryEffectiveOf(g, w),
+      rate: cacheRate(g.conversation),
+      compactions: g.compactions,
+      requests: g.requests,
+      incomplete: groupIncomplete(g),
+      inconsistent: c.inconsistent || s.inconsistent,
+    };
+  });
+}
+
+export interface PeriodTotals {
+  effective: number | undefined;
+  summaryEffective: number | undefined;
+  rate: number | undefined;
+  compactions: number;
+  summaryRequests: number;
+  requests: number;
+  incomplete: boolean;
+  days: number;
+}
+
+export function periodTotals(groups: ReadonlyMap<string, UsageGroup>, w: Weights): PeriodTotals {
+  const all = [...groups.values()];
+  const total = totalGroups(all);
+  if (!total) return { effective: undefined, summaryEffective: undefined, rate: undefined, compactions: 0, summaryRequests: 0, requests: 0, incomplete: false, days: 0 };
+  return {
+    effective: groupEffective(total, w),
+    summaryEffective: summaryEffectiveOf(total, w),
+    rate: cacheRate(total.conversation),
+    compactions: total.compactions,
+    summaryRequests: total.summaryRequests,
+    requests: total.requests,
+    incomplete: all.some(groupIncomplete),
+    days: all.length,
+  };
+}

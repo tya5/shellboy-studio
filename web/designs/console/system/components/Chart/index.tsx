@@ -28,6 +28,7 @@ const MAX_BAR = 24;
 const GAP = 2;
 const RADIUS = 4;
 const LABEL_MIN = 44;
+const MIN_SEGMENT = 2;
 
 function useWidth(fallback: number) {
   const ref = useRef<HTMLDivElement>(null);
@@ -165,17 +166,17 @@ export function Chart({
             {active !== undefined ? <rect class="chart-band" x={x(active)} y={END_ROOM} width={band} height={plotH} /> : null}
             {kind === "columns"
               ? points.map((p, i) => {
-                  let base = 0;
+                  let cursor = y(0);
                   const present = series.filter((s) => (p.values[s.id] ?? 0) > 0);
                   return (
                     <g key={p.key}>
                       {present.map((s, n) => {
-                        const v = p.values[s.id] as number;
-                        const top = y(base + v);
-                        const bottom = y(base) - (n > 0 ? GAP : 0);
-                        base += v;
-                        const h = bottom - top;
-                        return h > 0 ? <path key={s.id} class={`fill t${s.tone}`} d={column(x(i) + (band - barW) / 2, top, barW, h, n === present.length - 1)} /> : null;
+                        const natural = ((p.values[s.id] as number) / max) * plotH;
+                        const gap = n > 0 ? GAP : 0;
+                        const h = Math.max(MIN_SEGMENT, natural - gap);
+                        const top = cursor - gap - h;
+                        cursor = Math.min(cursor - natural, top);
+                        return <path key={s.id} class={`fill t${s.tone}`} d={column(x(i) + (band - barW) / 2, top, barW, h, n === present.length - 1)} />;
                       })}
                     </g>
                   );
