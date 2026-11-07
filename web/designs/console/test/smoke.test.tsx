@@ -251,6 +251,21 @@ describe("Conversation", () => {
 });
 
 describe("Monitor", () => {
+  it("switches to tiles, pins a thread and filters pinned tiles without old-owner history reads", async () => {
+    const { model, t } = await fixtureModel({ route: "monitor" });
+    const el = draw(model);
+    const button = (name: string) => [...el.querySelectorAll<HTMLButtonElement>("button")].find((b) => text(b) === name)!;
+    act(() => button("Tiles").click());
+    expect(el.querySelectorAll(".monitor-tile")).toHaveLength(5);
+    expect(text(el)).toContain("A newer owner is needed");
+    expect(el.querySelector<HTMLAnchorElement>(".monitor-tile")!.getAttribute("href")).toContain("conversation");
+    act(() => button("Pin").click());
+    act(() => button("Pinned only").click());
+    expect(el.querySelectorAll(".monitor-tile")).toHaveLength(1);
+    expect(text(el)).toContain("Unpin");
+    expect(t.calls("history.list")).toHaveLength(0);
+    model.dispose();
+  });
   it("draws one card per Thread, most urgent first, with chips that filter", async () => {
     const { model } = await fixtureModel({ route: "monitor" });
     const el = draw(model);

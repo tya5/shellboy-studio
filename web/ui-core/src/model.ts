@@ -104,6 +104,7 @@ export class AppModel {
 
   readonly rows: ReadonlySignal<ThreadRow[]>;
   readonly counts: ReadonlySignal<StatusCounts>;
+  readonly monitorStableRows: ReadonlySignal<ThreadRow[]>;
   readonly monitorSort = signal<"stable" | "recent">("stable");
   readonly monitorFilter: Signal<StatusKey | undefined> = signal(undefined);
   readonly monitorRows: ReadonlySignal<ThreadRow[]>;
@@ -184,6 +185,7 @@ export class AppModel {
     const stableMonitor = new StableMonitorOrder();
     const stableRows = computed(() => stableMonitor.order(this.rows.value));
     this.disposers.push(effect(() => { stableRows.value; }));
+    this.monitorStableRows = computed(() => { const filter = this.monitorFilter.value; return filter ? stableRows.value.filter((r) => r.status === filter) : stableRows.value; });
     this.monitorRows = computed(() => {
       const filter = this.monitorFilter.value;
       const stable = stableRows.value;
