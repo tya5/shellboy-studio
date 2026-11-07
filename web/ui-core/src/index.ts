@@ -7,6 +7,7 @@ export * from "./config";
 export * from "./conversation";
 export * from "./design";
 export * from "./format";
+export * from "./headings";
 export * from "./i18n";
 export * from "./insights";
 export * from "./model";

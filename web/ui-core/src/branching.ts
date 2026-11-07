@@ -1,9 +1,10 @@
 // Screen logic of the Branches and Threads views: reads when a view opens or a hint says the list changed,
 // one at a time, with one trailing read. Mutations are explicit and never optimistic.
 import { batch, signal, type Signal } from "@preact/signals-core";
-import { Cancel, type ArchiveResult, type ArchivedFilter, type Operations, type OpError, type ThreadSummary } from "../../data/src";
+import { Cancel, type ArchiveResult, type ArchivedFilter, type Operations, type OpError, type TagResult, type ThreadSummary } from "../../data/src";
 import { branchLayout, readFamily, readRewind, type BranchFamily, type RewindFacts } from "./branches";
-import type { ThreadGrouping } from "./org";
+import { ThreadHeadings, type HeadingKind } from "./headings";
+import { CAPABILITY_CWDS, CAPABILITY_TAGS, checkTag, TAG_SELECTION_MAX, TAGS_PER_CALL, type TagInvalid, type ThreadGrouping } from "./org";
 
 /** A family holds at most 256 Threads; 200 per page, so a walk needs 2. The extra allows for retries. */
 const BRANCH_PAGE = 200;
@@ -198,6 +199,14 @@ export type MoveState =
 
 export type OrgAction = { kind: "idle" } | { kind: "running" } | { kind: "done"; verb: "archive" | "unarchive"; result: ArchiveResult } | { kind: "failed"; error: OpError };
 
+export type TagAction = { kind: "idle" } | { kind: "running" } | { kind: "done"; result: TagResult } | { kind: "failed"; limit: boolean; message: string } | { kind: "selection"; n: number };
+
+export interface TagDraft {
+  open: boolean;
+  add: string[];
+  remove: ReadonlySet<string>;
+}
+
 export class ThreadOrg {
   readonly state: Signal<OrgState> = signal({ mode: "exclude", query: "", loading: false, items: [], nextCursor: undefined, loaded: false, error: undefined });
   readonly groupBy: Signal<ThreadGrouping> = signal("tree");
@@ -209,22 +218,76 @@ export class ThreadOrg {
   private again = false;
   private pages = 1;
   private cancel = new Cancel();
+  /** Names for the Tag and Directory groupings, and their members. Used only when the owner can list them. */
+  readonly headings: ThreadHeadings;
+  readonly tagDraft: Signal<TagDraft> = signal({ open: false, add: [], remove: new Set() });
+  readonly tagAction: Signal<TagAction> = signal({ kind: "idle" });
 
-  constructor(private readonly ops: Operations) {}
+  constructor(
+    private readonly ops: Operations,
+    private readonly capabilities: () => readonly string[] = () => [],
+  ) {
+    this.headings = new ThreadHeadings(ops, () => ({ mode: this.state.peek().mode, query: this.state.peek().query }), () => this.prune());
+  }
+
+  canTag(): boolean {
+    return this.capabilities().includes(CAPABILITY_TAGS);
+  }
+
+  /** The grouping that reads headings from the owner, if this owner can. Otherwise the flat list is grouped here. */
+  headingKind(): HeadingKind | undefined {
+    const by = this.groupBy.peek();
+    if (by === "tag") return this.canTag() ? "tag" : undefined;
+    if (by === "directory") return this.capabilities().includes(CAPABILITY_CWDS) ? "cwd" : undefined;
+    return undefined;
+  }
+
+  /** Whether what the current grouping shows has been read once. */
+  loaded(): boolean {
+    const kind = this.headingKind();
+    return kind ? this.headings.loadedFor(kind) : this.state.peek().loaded;
+  }
+
+  setGrouping(by: ThreadGrouping): void {
+    this.groupBy.value = by;
+    this.ensure();
+  }
 
   ensure(): void {
-    if (!this.state.peek().loaded && !this.state.peek().loading) void this.read();
+    const kind = this.headingKind();
+    if (kind) this.headings.ensure(kind);
+    else if (!this.state.peek().loaded && !this.state.peek().loading) void this.read();
+  }
+
+  /** Every Thread shown by the current grouping, each once. */
+  shown(): ThreadSummary[] {
+    return this.headingKind() ? this.headings.members() : this.state.peek().items;
+  }
+
+  /** Headings hold only some Threads: a selection keeps to rows still shown. */
+  private prune(): void {
+    if (!this.headingKind()) return;
+    const known = new Set(this.headings.members().map((s) => s.thread_id));
+    const now = this.selected.peek();
+    const kept = [...now].filter((id) => known.has(id));
+    if (kept.length !== now.size) this.selected.value = new Set(kept);
   }
 
   /** Nobody is looking: cancels the read. What's listed stays. */
   leave(): void {
     this.again = false;
     this.cancel.cancel();
+    this.headings.leave();
     if (this.state.peek().loading) this.state.value = { ...this.state.peek(), loading: false };
   }
 
   /** Reads again up to the pages shown. A cursor bound to another mode or list starts over. */
   async read(): Promise<void> {
+    const kind = this.headingKind();
+    if (kind) {
+      await this.headings.reload(kind);
+      return;
+    }
     this.state.value = { ...this.state.peek(), loading: true };
     if (this.running) {
       this.again = true;
@@ -363,6 +426,68 @@ export class ThreadOrg {
     batch(() => {
       this.action.value = { kind: "done", verb, result: out.value };
       this.selected.value = new Set();
+    });
+    await this.read();
+  }
+
+  // ---- tags ----
+
+  /** Tags of the chosen Threads that have been read, sorted. Rows not read can't be named here. */
+  selectedTags(): string[] {
+    const chosen = this.selected.value;
+    const all = new Set<string>();
+    for (const s of this.shown()) if (chosen.has(s.thread_id)) for (const tag of s.tags ?? []) all.add(tag);
+    return [...all].sort();
+  }
+
+  openTags(on: boolean): void {
+    this.tagDraft.value = { ...this.tagDraft.peek(), open: on };
+    if (on) this.tagAction.value = { kind: "idle" };
+  }
+
+  /** Puts a tag on the list to add. Returns why it can't, or nothing. */
+  addTag(raw: string): TagInvalid | undefined {
+    const checked = checkTag(raw);
+    if (!checked.ok) return checked.invalid;
+    const draft = this.tagDraft.peek();
+    if (draft.remove.has(checked.tag)) return "both";
+    if (draft.add.includes(checked.tag)) return undefined;
+    if (draft.add.length >= TAGS_PER_CALL) return "many";
+    this.tagDraft.value = { ...draft, add: [...draft.add, checked.tag] };
+    return undefined;
+  }
+
+  unaddTag(tag: string): void {
+    const draft = this.tagDraft.peek();
+    this.tagDraft.value = { ...draft, add: draft.add.filter((t) => t !== tag) };
+  }
+
+  toggleRemoveTag(tag: string): void {
+    const draft = this.tagDraft.peek();
+    const remove = new Set(draft.remove);
+    if (!remove.delete(tag)) remove.add(tag);
+    this.tagDraft.value = { ...draft, add: draft.add.filter((t) => t !== tag), remove };
+  }
+
+  /** One `thread.tag` for the chosen Threads. Nothing is optimistic: the groups are read again after. */
+  async applyTags(): Promise<void> {
+    const ids = [...this.selected.peek()];
+    const draft = this.tagDraft.peek();
+    if (ids.length === 0 || (draft.add.length === 0 && draft.remove.size === 0)) return;
+    if (ids.length > TAG_SELECTION_MAX) {
+      this.tagAction.value = { kind: "selection", n: ids.length };
+      return;
+    }
+    this.tagAction.value = { kind: "running" };
+    const remove = [...draft.remove];
+    const out = await this.ops.threadTag({ thread_ids: ids, ...(draft.add.length > 0 && { add: draft.add }), ...(remove.length > 0 && { remove }) });
+    if (!out.ok) {
+      this.tagAction.value = { kind: "failed", limit: out.error.kind === "owner" && out.error.code === "input_limit", message: out.error.message };
+      return;
+    }
+    batch(() => {
+      this.tagAction.value = { kind: "done", result: out.value };
+      this.tagDraft.value = { ...draft, add: [], remove: new Set() };
     });
     await this.read();
   }

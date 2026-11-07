@@ -151,7 +151,7 @@ export class AppModel {
     });
     this.t = computed(() => translator(this.lang.value));
     this.branches = new Branches(this.ops);
-    this.org = new ThreadOrg(this.ops);
+    this.org = new ThreadOrg(this.ops, () => this.data.capabilities.peek());
     this.config = new ConfigEditor(this.ops);
     this.setup = new ConnectionSetup(this.ops);
     this.embedding = new EmbeddingSetup(this.ops, this.setup);
@@ -268,7 +268,7 @@ export class AppModel {
           if (b.threadId === id && b.family && lastList !== list) void this.branches.read(id);
           else this.branches.ensure(id);
         } else if (view === "threads") {
-          if (this.org.state.peek().loaded && lastList !== list) void this.org.read();
+          if (this.org.loaded() && lastList !== list) void this.org.read();
           else this.org.ensure();
         }
         lastList = list;

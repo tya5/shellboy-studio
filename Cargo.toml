@@ -25,6 +25,13 @@ next-shellboy = []
 # whose [patch] points at a Shellboy that has them (docs/design/connection-setup.md). Off in every
 # normal build, and off in `next-shellboy` alone, which still builds against Shellboy main.
 next-connection-setup = ["next-shellboy"]
+# Thread tags (Shellboy #222 stage 3): `thread.tag`, `thread.tags`, and `tags` / `cwd` on `thread.list`.
+# On a Shellboy branch and in no release, so this builds only against a copy whose [patch] points at
+# a Shellboy that has them (docs/design/branches-threads.md). Off in every normal build.
+next-tags = ["next-shellboy"]
+# `thread.cwds` (the list of directories). Not visible in any Shellboy branch yet: this feature names
+# `Command::ThreadCwds` and has never been compiled. Build it only once that variant exists.
+next-cwds = ["next-tags"]
 
 [dependencies]
 # Pinned to a commit on Shellboy origin/main that has `events.wait` (#243 B, C).
