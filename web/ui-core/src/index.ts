@@ -28,3 +28,4 @@ export * from "./window";
 export * from "./work";
 
 export * from "./app-templates";
+export * from "./tiles";

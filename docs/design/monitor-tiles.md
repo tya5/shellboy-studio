@@ -1,0 +1,11 @@
+# Monitor cards and panes
+
+Cards scan many Threads: status, relationships and update age, without conversation excerpts. Tiles monitor a small selection as equal, edge-separated panes. A shared `ui-core` selection applies the state filter, pinned-only filter, title search and stable or recent order to both views; switching views does not reset it. Pins and order use per-browser preferences. Search applies to the loaded Thread list.
+
+A page has at most six panes, arranged in equal rectangular grids with no gaps. A remainder of five is split across pages to avoid an empty grid cell. On phone width the panes are one vertical column; only the outer page scrolls. Each pane has a heading with title, state and pin; a clipped, bottom-aligned chronological conversation; and an activity/status line. Messages and tool groups take one line each, with plain text, not Markdown. The pane never scrolls, and the bottom alignment follows new rows. On old owners only the status line is shown below the heading.
+
+Each visible pane owns its intersection observation and lightweight hint subscription. Leaving view closes it and cancels reads; the reader owns a bounded queue (20 IDs), at most four concurrent reads and the previews, which are discarded on removal or shutdown. A page displays at most six panes. Initial display and change/resync hints request one tail `history.window` (`before=19`, `after=0`, `excerpt_chars=160`), then one `shell.list` page (`limit=20`). There is no polling. A new hint cancels older reads; partial shell facts are indicated, never inferred. Status uses the same state mark and activity labels as Conversation, and includes a running shell's description and saved elapsed start when available.
+
+## Validation
+
+`web/ui-core/test/tiles.test.ts` with a fake transport records 20 `history.window` and 20 `shell.list` calls for 20 visible previews; one hint adds one of each and an offscreen hint adds none. The pane screen further limits a page to six. `npm run check` tests selection, pagination, cancellation and the old-owner path. Screenshots use headless Chrome on macOS with a fake owner at 1440 x 900 and 390 x 844. Emulation is not a phone test. The real owner and provider were not used; `history.window` remains behind `next-shellboy`.

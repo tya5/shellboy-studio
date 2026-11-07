@@ -116,7 +116,20 @@
 @container app (max-width:1179px){
   .details{display:none}
 }
+/* A page of panes fills the available monitor area; only the page scrolls on phones. */
+.mon.pane-monitor{padding:0;gap:0;overflow:hidden;min-height:0}
+.pane-controls{flex:none;padding:var(--space-8) var(--space-12);display:flex;align-items:center;gap:var(--space-8);flex-wrap:wrap;border-bottom:1px solid var(--line)}
+.pane-grid{flex:1;min-height:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:repeat(2,minmax(0,1fr));gap:1px;background:var(--line);border:1px solid var(--line)}
+.pane-grid[data-count="1"]{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr)}
+.pane-grid[data-count="2"],.pane-grid[data-count="3"]{grid-template-rows:minmax(0,1fr)}
+.pane-grid[data-count="3"]{grid-template-columns:repeat(3,minmax(0,1fr))}
+.pane-grid[data-count="5"],.pane-grid[data-count="6"]{grid-template-columns:repeat(3,minmax(0,1fr))}
+.pane-grid>div{min-width:0;min-height:0;display:flex}
+.pane-grid .monitor-tile{flex:1}
+
 @container app (max-width:899px){
+  .mon.pane-monitor{overflow:auto}
+  .pane-grid,.pane-grid[data-count]{flex:none;grid-template-columns:minmax(0,1fr);grid-template-rows:none;grid-auto-rows:16rem;min-height:0}
   .shell{grid-template-columns:minmax(0,1fr)}
   .side{display:none;position:absolute;inset:0 auto 0 0;z-index:30;width:min(320px,85%);border-right:1px solid var(--line-strong)}
   .side.open{display:flex}

@@ -253,6 +253,41 @@ describe("Conversation", () => {
 });
 
 describe("Monitor", () => {
+  it("switches to tiles, pins a thread and filters pinned tiles without old-owner history reads", async () => {
+    const { model, t } = await fixtureModel({ route: "monitor" });
+    const el = draw(model);
+    const button = (name: string) => [...el.querySelectorAll<HTMLButtonElement>("button")].find((b) => text(b) === name)!;
+    act(() => button("Tiles").click());
+    expect(el.querySelectorAll(".monitor-tile")).toHaveLength(3);
+    expect(el.querySelector(".tile-content")?.textContent).toBe("");
+    expect(el.querySelector<HTMLAnchorElement>(".tile-main")!.getAttribute("href")).toContain("conversation");
+    act(() => button("Pin").click());
+    act(() => button("Pinned only").click());
+    expect(el.querySelectorAll(".monitor-tile")).toHaveLength(1);
+    expect(text(el)).toContain("Unpin");
+    expect(t.calls("history.list")).toHaveLength(0);
+    model.dispose();
+  });
+  it("paginates panes and retains one selection when switching views", async () => {
+    const { model } = await fixtureModel({ route: "monitor", configure: (db) => {
+      for (let i = 0; i < 4; i++) db.threads[`extra-${i}`] = { ...db.threads.lead!, thread_id: `extra-${i}`, title: `Extra ${i}` };
+    } });
+    const el = draw(model);
+    const button = (name: string) => [...el.querySelectorAll<HTMLButtonElement>("button")].find((b) => text(b) === name)!;
+    act(() => button("Tiles").click());
+    expect(el.querySelectorAll(".monitor-tile")).toHaveLength(6);
+    expect(el.querySelector(".pane-grid")?.getAttribute("data-count")).toBe("6");
+    act(() => button("Next page").click());
+    expect(el.querySelectorAll(".monitor-tile")).toHaveLength(3);
+    act(() => button("Cards").click());
+    const input = [...el.querySelectorAll<HTMLInputElement>("input")].find((e) => e.getAttribute("aria-label") === "Search threads" && e.closest(".mon"))!;
+    act(() => { input.value = "Extra"; input.dispatchEvent(new Event("input", { bubbles: true })); });
+    expect(el.querySelectorAll(".card")).toHaveLength(4);
+    act(() => button("Tiles").click());
+    expect(el.querySelectorAll(".monitor-tile")).toHaveLength(4);
+    expect([...el.querySelectorAll(".tile-header")].every((e) => text(e).includes("Extra"))).toBe(true);
+    model.dispose();
+  });
   it("draws one card per Thread, most urgent first, with chips that filter", async () => {
     const { model } = await fixtureModel({ route: "monitor" });
     const el = draw(model);
@@ -260,6 +295,7 @@ describe("Monitor", () => {
     expect(cards.length).toBe(5);
     expect(cards[0]!.classList.contains("err")).toBe(true);
     expect(text(cards[0]!)).toContain("Retry");
+    expect(text(el)).not.toContain("Connection interrupted");
     expect(el.querySelector(".card.lead")).toBeTruthy();
     expect(text(el)).toContain("Parent: Improve history search");
     const chip = [...el.querySelectorAll<HTMLButtonElement>(".chip")].find((c) => text(c).includes("Completed"))!;

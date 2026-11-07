@@ -183,6 +183,7 @@ export class ShellboyData {
   private listGen = 0;
   private entries = new Map<string, ThreadEntry>();
   private watchQueued = false;
+  private hintWatchers = new Map<string, Set<() => void>>();
   private readonly schedule: Schedule;
   private readonly refresher: Refresher;
 
@@ -228,6 +229,28 @@ export class ShellboyData {
   }
   stop(): void {
     this.link.stop();
+  }
+
+  /** Lightweight hint subscription: no detail or history reads. The caller owns and closes it. */
+  watchHints(id: string, notify: () => void): Handle {
+    if (!this.hintWatchers.has(id) && new Set([...this.entries.keys(), ...this.hintWatchers.keys()]).size >= MAX_WATCHED_THREADS)
+      throw new RangeError(`at most ${MAX_WATCHED_THREADS} Threads can be watched`);
+    let listeners = this.hintWatchers.get(id);
+    if (!listeners) this.hintWatchers.set(id, listeners = new Set());
+    listeners.add(notify);
+    this.scheduleWatch();
+    let closed = false;
+    return { close: () => {
+      if (closed) return;
+      closed = true;
+      listeners!.delete(notify);
+      if (!listeners!.size) this.hintWatchers.delete(id);
+      this.scheduleWatch();
+    } };
+  }
+
+  private notifyHints(): void {
+    for (const listeners of this.hintWatchers.values()) for (const notify of listeners) notify();
   }
 
   // ---- tracking ----
@@ -285,7 +308,7 @@ export class ShellboyData {
   openThread(threadId: string): ThreadHandle {
     let entry = this.entries.get(threadId);
     if (!entry) {
-      if (this.entries.size >= MAX_WATCHED_THREADS)
+      if (!this.hintWatchers.has(threadId) && new Set([...this.entries.keys(), ...this.hintWatchers.keys()]).size >= MAX_WATCHED_THREADS)
         throw new RangeError(`at most ${MAX_WATCHED_THREADS} Threads can be open at once`);
       entry = new ThreadEntry(threadId, this.schedule);
       entry.stopSaved = entry.history.subscribe(() => entry!.live.checkSaved());
@@ -394,23 +417,25 @@ export class ShellboyData {
         this.bridgeVersionSig.value = f.bridge_version;
         this.dataDirSig.value = f.data_dir;
         this.setOwner(f.owner);
-        if (f.owner.state === "connected") void this.resyncAll();
+        if (f.owner.state === "connected") { this.notifyHints(); void this.resyncAll(); }
         break;
       case "owner":
         batch(() => {
           this.setOwner(f.owner);
           if (f.event === "restarted") this.discardAllPreviews("owner_restarted");
         });
-        if (f.event === "restarted") void this.resyncAll();
+        if (f.event === "restarted") { this.notifyHints(); void this.resyncAll(); }
         break;
       case "resync":
         this.discardAllPreviews("resync");
+        this.notifyHints();
         void this.resyncAll();
         break;
       case "changed":
         // Hints are not data: re-read the saved facts. Untracked Threads are ignored.
         if (f.list && this.listRefs > 0) void this.refresher.request("list");
         for (const id of f.thread_ids) {
+          for (const notify of this.hintWatchers.get(id) ?? []) notify();
           const entry = this.entries.get(id);
           if (!entry) continue;
           // After an attempt ended, the first change that is read and shows no saved message
@@ -478,7 +503,7 @@ export class ShellboyData {
   }
 
   private flushWatch(): void {
-    const watched = [...this.entries.values()].filter((e) => !e.paused).map((e) => e.id);
+    const watched = [...new Set([...this.entries.values()].filter((e) => !e.paused).map((e) => e.id).concat([...this.hintWatchers.keys()]))];
     this.link.watch(watched, this.listRefs > 0);
   }
 
