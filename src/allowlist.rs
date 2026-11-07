@@ -44,6 +44,12 @@ pub fn access(command: &Command) -> Access {
         // Moving a Thread, and nothing else `thread.set` can do. Needs an owner newer than the pin.
         #[cfg(feature = "next-shellboy")]
         Command::ThreadSet(args) if only_parent(args) => Access::Mutation,
+        // Settings. The owner redacts what it returns and refuses what it can't accept. Apps
+        // have no way to reach these: `apps.call` has its own list.
+        #[cfg(feature = "next-shellboy")]
+        Command::ConfigGet(..) => Access::Read,
+        #[cfg(feature = "next-shellboy")]
+        Command::ConfigSet(..) => Access::Mutation,
         // `events.wait` is bridge-internal (one shared long-poll). The rest has no UI yet.
         Command::OwnerShutdown(..)
         | Command::ThreadDelete(..)

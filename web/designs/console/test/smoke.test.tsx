@@ -453,6 +453,52 @@ describe("Threads", () => {
     });
     expect(t.calls("thread.unarchive")).toHaveLength(1);
   });
+  it("Settings says editing isn't available on a v0.10.0 owner, and draws no control", async () => {
+    const made = await fixtureModel({ route: "settings", section: "storage" });
+    const el = draw(made.model);
+    await act(async () => {
+      await settle(made.t, made.db);
+    });
+    expect(text(el)).toContain("this Shellboy (v0.10.0) has no operation for it");
+    expect(text(el)).toContain("Owner doesn't report this");
+    expect(el.querySelector(".subview-main input")).toBeNull();
+  });
+
+  it("Settings fills rows, reviews changes, and writes only what changed", async () => {
+    const made = await fixtureModel({ route: "settings", section: "shell", capabilities: ["config.edit"] });
+    const before = made.db.answer;
+    const values = { shell: { kind: "bash", executable: null, env: { MY_VAR: "[redacted]" } } };
+    const side = { present: true, content_hash: "h1", valid: true, error: null, values, redacted_fields: ["shell.env.MY_VAR"] };
+    made.db.answer = (c) =>
+      c.command === "config.get"
+        ? { ok: true, result: { config_path: "/temp/config.toml", loaded: { ...side, values: { shell: { kind: "powershell", executable: null, env: {} } } }, file: side, differs: true, differing_fields: ["shell.kind"], restart: { all_fields_require_restart: true } } }
+        : c.command === "config.set"
+          ? { ok: true, result: { written: true, restart_required: true, changes: [{ field: "shell.executable", previous: null, value: "/bin/zsh", sensitive: false, restart_required: true }] } }
+          : before(c);
+    const el = draw(made.model);
+    act(() => made.model.config.ensure());
+    await act(async () => {
+      await settle(made.t, made.db);
+    });
+    const main = () => text(el);
+    expect(main()).toContain("every setting needs an owner restart");
+    expect(main()).toContain("Applied after a restart: shell.kind");
+    expect(main()).toContain("still uses powershell");
+    expect(main()).toContain("Set, hidden");
+    expect(main()).not.toContain("[redacted]");
+    const button = (name: string) => [...el.querySelectorAll<HTMLButtonElement>("button")].find((b) => text(b) === name);
+    const exe = el.querySelector<HTMLInputElement>('input[aria-label="Executable"], .fact input')!;
+    act(() => { exe.value = "/bin/zsh"; exe.dispatchEvent(new Event("input", { bubbles: true })); });
+    act(() => button("Review changes")!.click());
+    expect(main()).toContain("shell.executable");
+    await act(async () => {
+      button("Write to file")!.click();
+      await settle(made.t, made.db);
+    });
+    expect(made.t.calls("config.set").at(-1)!.args).toEqual({ expected_hash: "h1", changes: [{ field: "shell.executable", value: "/bin/zsh" }] });
+    expect(main()).toContain("Restart required");
+  });
+
   it("with the capability: picker, preview, then Move; a refusal shows the owner's words", async () => {
     const made = await fixtureModel({ route: "threads", capabilities: ["thread.reparent"] });
     const el = draw(made.model);

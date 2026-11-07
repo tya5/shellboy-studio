@@ -3,6 +3,7 @@ export * from "./apps";
 export * from "./branches";
 export * from "./branching";
 export * from "./commands";
+export * from "./config";
 export * from "./conversation";
 export * from "./design";
 export * from "./format";

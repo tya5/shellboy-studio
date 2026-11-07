@@ -291,6 +291,15 @@ a{color:var(--accent)}
 .fact dt{color:var(--muted)}
 .fact dd{margin:0;min-width:0;overflow-wrap:anywhere}
 
+/* DiffList */
+.diff{margin:0;padding:0;list-style:none;display:flex;flex-direction:column}
+.diff li{display:flex;flex-direction:column;gap:var(--space-4);padding:var(--space-8) 0;border-top:1px solid var(--line);min-width:0;overflow-wrap:anywhere}
+.diff li:first-child{border-top:0;padding-top:0}
+.diff li:last-child{padding-bottom:0}
+.diff code{font:var(--type-code)}
+.diff-values{display:flex;flex-wrap:wrap;gap:var(--space-4) var(--space-12)}
+.diff-after{font-weight:600}
+
 /* BranchGraph */
 .bgraph{overflow-x:auto;min-width:0;border:1px solid var(--line);border-radius:var(--radius);background:var(--panel);padding:var(--space-8)}
 .bgraph-svg{display:block}

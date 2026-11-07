@@ -47,11 +47,11 @@ export class FakeTransport implements Transport {
   ok(id: number, result: unknown): void {
     this.push({ t: "result", id, response: okResponse(result) });
   }
-  ownerError(id: number, code: string, message = code): void {
+  ownerError(id: number, code: string, message = code, details?: unknown): void {
     this.push({
       t: "result",
       id,
-      response: { protocol_version: 2, operation_id: "x", ok: false, error: { code, message } },
+      response: { protocol_version: 2, operation_id: "x", ok: false, error: { code, message, ...(details !== undefined && { details }) } },
     });
   }
 }
@@ -89,7 +89,7 @@ export class FakeOwnerDb {
   answered = new Set<number>();
   reads: string[] = [];
 
-  answer(c: CallFrame): { ok: true; result: unknown } | { ok: false; code: string } {
+  answer(c: CallFrame): { ok: true; result: unknown } | { ok: false; code: string; message?: string; details?: unknown } {
     const a = (c.args ?? {}) as Record<string, string>;
     this.reads.push(`${c.command}${a.thread_id ? ":" + a.thread_id : ""}${a.cursor ? "@" + a.cursor : ""}`);
     switch (c.command) {
@@ -134,7 +134,7 @@ export async function settle(t: FakeTransport, db: FakeOwnerDb): Promise<void> {
       db.answered.add(c.id);
       const r = db.answer(c);
       if (r.ok) t.ok(c.id, r.result);
-      else t.ownerError(c.id, r.code);
+      else t.ownerError(c.id, r.code, r.message ?? r.code, r.details);
     }
     await flush();
   }

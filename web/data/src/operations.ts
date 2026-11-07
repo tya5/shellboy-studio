@@ -253,6 +253,14 @@ export class Operations {
     return this.run("thread.fork", args, decodeDetails, { operationId });
   }
   /** `parent: ""` detaches. Needs an owner and bridge with the `thread.reparent` capability. */
+  /** Needs an owner newer than v0.10.0; see `CAPABILITY_CONFIG`. */
+  configGet(read?: ReadOptions): Promise<Outcome<Record<string, unknown>>> {
+    return this.run("config.get", {}, decodeRecord, undefined, read);
+  }
+  /** Not cancellable: a started write finishes and is reported. A missing `value` removes the key. */
+  configSet(expectedHash: string, changes: { field: string; value?: unknown }[], operationId = this.newId()): Promise<Outcome<Record<string, unknown>>> {
+    return this.run("config.set", { expected_hash: expectedHash, changes }, decodeRecord, { operationId });
+  }
   threadSetParent(threadId: string, parent: string, operationId = this.newId()): Promise<Outcome<ThreadDetails>> {
     return this.run("thread.set", { thread_id: threadId, parent_id: parent }, decodeDetails, { operationId });
   }

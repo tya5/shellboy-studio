@@ -1,20 +1,12 @@
-import { formatBytes, formatRoute, formatTokens, settingsSection, SETTINGS_SECTIONS, type ConfigKey, type DesignContext, type SettingsSection } from "../../../ui-core/src";
+import { CAPABILITY_CONFIG, CONFIG_FIELDS, formatBytes, formatRoute, formatTokens, settingsSection, SETTINGS_SECTIONS, type ConfigKey, type DesignContext, type SettingsSection } from "../../../ui-core/src";
 import { Button, FactList, Notice, Section, SubView, type Fact, type IconName } from "../system/components";
 import { AppearanceChoices } from "./Appearance";
+import { ConfigConnections, ConfigControl, ConfigPanel, SecretEntries, configRowValue } from "./SettingsConfig";
 import { Rich } from "./Rich";
 
 const ICONS: Record<SettingsSection, IconName> = { connections: "plug", models: "cube", embeddings: "database", shell: "term", storage: "file", compaction: "retry", appearance: "palette" };
 
 const num = (n: number): string => n.toLocaleString("en-US");
-/**
- * Where editing attaches. `config.get` and `config.set` are planned in core (#266) and their wire isn't
- * known yet, so nothing here assumes it. When they exist, this returns a control for a key the owner can
- * set, and rows from `fileFact` become editable without changing their layout.
- */
-const configControl = (_key: ConfigKey): Fact["control"] => undefined;
-
-const fileFact = (label: string, key: ConfigKey, note?: Fact["note"]): Fact => ({ label, control: configControl(key), ...(note !== undefined ? { note } : {}) });
-
 export function SettingsView({ context }: { context: DesignContext }) {
   const model = context.model;
   const t = model.t.value;
@@ -33,6 +25,19 @@ export function SettingsView({ context }: { context: DesignContext }) {
   const memory = i.memory.value;
   const receipts = i.receipts.value;
 
+  const canEdit = model.data.capabilities.value.includes(CAPABILITY_CONFIG);
+  const facts = model.config.read.value.value;
+  const editable = canEdit && facts?.file.valid === true;
+  /** A row of `config.toml`: a control when it can be edited, the loaded value when the file is invalid, otherwise says the owner doesn't report it. */
+  const fileFact = (label: string, key: ConfigKey, note?: Fact["note"]): Fact => {
+    const spec = CONFIG_FIELDS[key];
+    const path = key.split(".");
+    if (spec && editable) return { label, control: <ConfigControl model={model} path={path} label={label} spec={spec} />, ...(note !== undefined ? { note } : {}) };
+    const value = spec && facts ? configRowValue(t, facts, path) : undefined;
+    return { label, ...(value !== undefined ? { value, mono: true } : {}), ...(note !== undefined ? { note } : {}) };
+  };
+  const fileSub = canEdit ? t("config.source") : t("set.models.defaultsSub");
+
   const body = () => {
     switch (section) {
       case "connections":
@@ -40,7 +45,7 @@ export function SettingsView({ context }: { context: DesignContext }) {
           <>
             <Section title={t("set.conn.inUse")} sub={threadSub} source={<>{t("common.source", { source: "" })}<code>thread.get</code></>}>
               {threadError}
-              <FactList missing={missing} facts={[
+              <FactList missing={selected ? missing : t("config.noThreadOpen")} facts={[
                 { label: t("set.conn.name"), value: settings?.connection, mono: true },
                 { label: t("set.conn.model"), value: settings?.model, mono: true },
               ]} />
@@ -61,6 +66,7 @@ export function SettingsView({ context }: { context: DesignContext }) {
                 ]} />
               ) : null}
             </Section>
+            {canEdit && facts ? <ConfigConnections model={model} /> : (
             <Section title={t("set.conn.file")} sub={<Rich text={t("set.conn.fileSub")} />}>
               <FactList missing={missing} facts={[
                 fileFact(t("set.conn.url"), "connections.base_url"),
@@ -69,6 +75,7 @@ export function SettingsView({ context }: { context: DesignContext }) {
                 fileFact(t("set.conn.timeouts"), "connections.timeouts"),
               ]} />
             </Section>
+            )}
           </>
         );
       case "models":
@@ -76,14 +83,14 @@ export function SettingsView({ context }: { context: DesignContext }) {
           <>
             <Section title={t("set.conn.inUse")} sub={threadSub} source={<>{t("common.source", { source: "" })}<code>thread.get</code></>}>
               {threadError}
-              <FactList missing={missing} facts={[
+              <FactList missing={selected ? missing : t("config.noThreadOpen")} facts={[
                 { label: t("set.conn.name"), value: settings?.connection, mono: true },
                 { label: t("set.conn.model"), value: settings?.model, mono: true },
                 { label: t("set.conn.effort"), value: settings ? (settings.effort ?? t("set.conn.effortUnset")) : undefined, mono: settings?.effort !== undefined },
               ]} />
             </Section>
-            <Section title={t("set.models.defaults")} sub={t("set.models.defaultsSub")}>
-              <FactList missing={missing} facts={[fileFact(t("set.models.defaultConn"), "default_connection"), fileFact(t("set.models.defaultModel"), "default_model"), fileFact(t("set.models.defaultEffort"), "connections.default_effort")]} />
+            <Section title={t("set.models.defaults")} sub={canEdit ? <Rich text={fileSub} /> : fileSub}>
+              <FactList missing={missing} facts={[fileFact(t("set.models.defaultConn"), "default_connection"), fileFact(t("set.models.defaultModel"), "default_model"), canEdit ? { label: t("set.models.defaultEffort"), value: t("config.perConnection") } : fileFact(t("set.models.defaultEffort"), "connections.default_effort")]} />
             </Section>
           </>
         );
@@ -102,7 +109,7 @@ export function SettingsView({ context }: { context: DesignContext }) {
                 ]} />
               ) : null}
             </Section>
-            <Section title={t("set.embed.file")} sub={t("set.models.defaultsSub")}>
+            <Section title={t("set.embed.file")} sub={canEdit ? <Rich text={fileSub} /> : fileSub}>
               <FactList missing={missing} facts={[fileFact(t("set.embed.batchInputs"), "embedding.batch_max_inputs"), fileFact(t("set.embed.batchChars"), "embedding.batch_max_chars"), fileFact(t("set.embed.split"), "indexing.split_chars"), fileFact(t("set.embed.concurrency"), "indexing.concurrency")]} />
             </Section>
           </>
@@ -112,16 +119,18 @@ export function SettingsView({ context }: { context: DesignContext }) {
           <>
             <Section title={t("set.shell.cwd")} sub={threadSub} source={<>{t("common.source", { source: "" })}<code>thread.get</code></>}>
               {threadError}
-              <FactList missing={missing} facts={[
+              <FactList missing={selected ? missing : t("config.noThreadOpen")} facts={[
                 { label: t("set.shell.cwd"), value: settings?.cwd, mono: true },
                 { label: t("set.shell.agents"), value: settings?.agentsPath, mono: true },
               ]} />
             </Section>
-            <Section title={t("set.shell.file")} sub={t("set.models.defaultsSub")}>
+            <Section title={t("set.shell.file")} sub={canEdit ? <Rich text={fileSub} /> : fileSub}>
               <FactList missing={missing} facts={[
                 fileFact(t("set.shell.kind"), "shell.kind"),
                 fileFact(t("set.shell.exe"), "shell.executable"),
-                fileFact(t("set.shell.env"), "shell.env", t("set.shell.envNote")),
+                editable
+                  ? { label: t("set.shell.env"), control: <SecretEntries model={model} path={["shell", "env"]} label={t("set.shell.env")} json={false} /> }
+                  : fileFact(t("set.shell.env"), "shell.env", t("set.shell.envNote")),
               ]} />
             </Section>
           </>
@@ -139,7 +148,7 @@ export function SettingsView({ context }: { context: DesignContext }) {
                 { label: t("set.store.retention"), ...(receipts.value?.retentionSeconds !== undefined ? { value: t("set.store.hours", { n: receipts.value.retentionSeconds / 3600 }) } : {}) },
               ]} />
             </Section>
-            <Section title={t("set.store.file")} sub={t("set.models.defaultsSub")}>
+            <Section title={t("set.store.file")} sub={canEdit ? <Rich text={fileSub} /> : fileSub}>
               <FactList missing={missing} facts={[
                 fileFact(t("set.store.warnBytes"), "limits.data_warning_bytes"),
                 fileFact(t("set.store.maxBytes"), "limits.data_max_bytes"),
@@ -171,7 +180,7 @@ export function SettingsView({ context }: { context: DesignContext }) {
                 },
               ]} />
             </Section>
-            <Section title={t("set.compact.file")} sub={t("set.models.defaultsSub")}>
+            <Section title={t("set.compact.file")} sub={canEdit ? <Rich text={fileSub} /> : fileSub}>
               <FactList missing={missing} facts={[fileFact(t("set.compact.autoAt"), "compaction.auto_at_tokens"), fileFact(t("set.compact.segment"), "compaction.segment_chars"), fileFact(t("set.compact.rounds"), "compaction.reduce_rounds")]} />
             </Section>
           </>
@@ -197,7 +206,7 @@ export function SettingsView({ context }: { context: DesignContext }) {
         <h1>{t(`set.section.${section}`)}</h1>
         <div class="muted">{t(`set.sub.${section}`)}</div>
       </div>
-      {section !== "appearance" ? <Notice><Rich text={t("set.readOnly")} /></Notice> : null}
+      {section !== "appearance" ? <ConfigPanel model={model} /> : null}
       {body()}
     </SubView>
   );

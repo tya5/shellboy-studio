@@ -1,0 +1,1 @@
+A review of changes before they're made, or a record of them afterwards: machine name, value before, value after. The before and after are labelled in words, so color isn't the only signal. Values that must stay hidden are passed as words, never as the value. For read-only values use FactList.

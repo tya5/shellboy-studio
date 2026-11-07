@@ -22,7 +22,7 @@ Logic is in `web/ui-core/src/analytics.ts`, `resources.ts` and `insights.ts`; sc
 | A Thread's settings | `thread.get` | connection, model, effort, cwd, agents path, own and effective `auto_compact_at`, `segment_chars`, `reduce_rounds` |
 | A connection's catalog | `model.list` | One GET to the provider's model list, so it runs only on a press |
 
-**The owner has no read of `config.toml`.** No `Command` reads or writes it. `config check` and
+**v0.10.0 has no read of `config.toml`.** No `Command` there reads or writes it. `config check` and
 `config init` are standalone CLI commands that `src/config_setup.rs` documents as "not owner RPCs":
 `config check` reads the file and makes one catalog GET with the CLI's own environment, which may not be
 what the running owner loaded. So these have no read and Settings says so: `default_connection`,
@@ -31,9 +31,7 @@ all of `[shell]`, `[retention]`, `[limits]`, `[compaction]`, `[embedding]` and `
 than what `index.status` and `thread.get` reflect.
 
 Settings shows these rows as "Owner doesn't report this", with no default beside them (user decision
-2026-11-07, under the no-guessed-values rule). `config.get` and `config.set` are planned in core (#266); their
-wire isn't known. `configControl` in `SettingsView.tsx` and `Fact.control` are the small seam: each such row
-carries its public TOML key (`ConfigKey`) and takes an edit control when one exists.
+2026-11-07, under the no-guessed-values rule). An owner with `config.get` and `config.set` fills them (below): each row carries its public TOML key (`ConfigKey`), and `Fact.control` takes the edit control.
 
 Credentials: nothing in the bridge or browser reads a credential value. No owner read returns a credential
 variable name either, so the name is listed as unavailable. `shell.env` values could hold secrets; only
@@ -46,14 +44,29 @@ exists. The only related owner write is `thread.set` (per Thread: title, cwd, co
 `auto_compact_at`, `segment_chars`, `reduce_rounds`, applied at the next boundary with no restart). It stays
 denied here; the Compaction section names it.
 
-Options for editing `config.toml`, for the user to choose:
+## Editing `config.toml` (#266)
 
-| Option | What it needs | Trade-off |
-|---|---|---|
-| A. Owner operations `config.get` (redacted: names, not values) and `config.set` | Core: two operations, atomic file write keeping comments, validation with the existing `Config::parse` | Recommended for reads at least. A general client surface, also usable by the CLI. Reports what the running owner loaded versus the file, which also makes the restart banner true |
-| B. `config.get` only; the UI shows the file and how to change it | Core: one read | Smallest step; removes every "Owner doesn't report this" in Settings |
-| C. Bridge reads or writes the file through the `shellboy::config` crate API | Bridge only | Breaks the rule that the bridge talks only to the owner's RPC. The file may differ from what the owner loaded, and the bridge's environment isn't the owner's, so credential presence would be wrong. Not recommended |
-| D. Bridge runs `shellboy config check` | Bridge: a child process | Same mismatch as C, plus a network GET per read. Not recommended |
+`config.get` and `config.set` landed on Shellboy main (`cccb713f`), not in v0.10.0, so editing sits behind the capability `config.edit`, which says what this bridge was built to send (`seam::owner_capabilities`, feature `next-shellboy`; see `branches-threads.md`). A normal build pinned to v0.10.0 says editing isn't available and why, makes no `config.get`, draws no control, and the bridge refuses both: the protocol it was built against has no such commands. The file rows keep saying "Owner doesn't report this", which there is true.
+
+With the capability, opening a Settings section reads `config.get`, and leaving Settings cancels that read. `ConfigEditor` (`ui-core/src/config.ts`) holds the drafts, so they survive a change of section.
+
+| Rule | How |
+|---|---|
+| Only what the person changed is sent | Drafts are per field. A draft equal to the file's value is dropped |
+| `[redacted]` is never posted | A hidden value has no text control, only "Set, hidden", Replace and Remove. Typing the placeholder makes a draft invalid, which blocks the review, and `save()` refuses again. The owner refuses it too (`redacted_placeholder_refused`) |
+| Replacement values stay out of sight | Password fields, and the review and result say "New value, hidden". Drafts are in memory only, and a written one is dropped |
+| Credential fields are names | `api_key_env` is a variable name, with whether the owner's environment has it (`credential_env_set`). A credential typed there is the owner's refusal, shown |
+| Entry whose name looks like a credential | Shown as the owner hides it, with no actions, since `config.set` refuses a field containing the placeholder. The person edits the file |
+| Typed controls | Bool and choice as button groups, whole numbers parsed here, and blank removes the key so the default applies. Bounds stay with the owner, which validates |
+| Diff first | Nothing is sent until Review, then Write to file. Before and after are from the file, and the result shows what the owner reports changed: effective values, which may differ from the request |
+| Stale file | `expected_hash` is the hash of the last read. `operation_conflict` reads again, keeps the drafts and says so; the next write uses the new hash, so another program's edit isn't overwritten silently |
+| Refusals | The owner's own words, with the field from `change_index`, and `recovery_file` when a replace was interrupted. `warning` on a result is shown |
+| Restart | `restart.all_fields_require_restart` is all there is, so one line says it on every section. `differs` and `differing_fields` show what's waiting, and a row shows the value the running owner still uses. The UI can't restart the owner: `owner.shutdown` stays denied |
+| No reply | The file is read again. A visible draft the file now agrees with is dropped. A hidden one can't be compared, so it stays and the notice says so; writing it again is refused if the file changed |
+| Invalid file | Its validation message, and what the owner loaded, read-only |
+
+Left out: adding or removing a connection, and fields beyond the rows Settings already had plus the connection's name fields, effort, TLS, timeouts, retries and hidden entries. `config.set` can do more; those are the file's for now. Apps can't reach either command: `apps.call` has its own list.
+
 
 ## The walk
 

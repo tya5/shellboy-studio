@@ -763,3 +763,107 @@ async fn a_thread_moves_and_the_owner_refuses_a_cycle() {
     drop(serve);
     let _ = std::fs::remove_dir_all(&root);
 }
+
+/// `config.get` and `config.set` through the bridge, on a temp config with a synthetic value.
+#[cfg(feature = "next-shellboy")]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn settings_read_and_write_the_file_and_values_stay_hidden() {
+    if std::env::var_os("SHELLBOY_BIN").is_none() {
+        eprintln!("SKIPPED: SHELLBOY_BIN is not set");
+        return;
+    }
+    let bin = PathBuf::from(std::env::var_os("SHELLBOY_BIN").expect("SHELLBOY_BIN"));
+    let root = temp_root();
+    let data = root.join("data");
+    let serve = start_owner(&bin, &root, &data);
+    let path = root.join("config.toml");
+    let hidden = "synthetic-value-not-a-credential";
+    let mut text = std::fs::read_to_string(&path).unwrap();
+    text.push_str(&format!("\n[shell.env]\nMY_VAR = \"{hidden}\"\n"));
+    std::fs::write(&path, &text).unwrap();
+    let instance = serve.instance.clone();
+    let op = |n: &str| Some(format!("{instance}:web-config-{n}"));
+    let owner = Arc::new(IpcOwner::new(data.clone()));
+    let (addr, state, cancel) = start(owner, true).await;
+    let cookie = login(addr, &state).await;
+    let mut request = format!("ws://{addr}/ws").into_client_request().unwrap();
+    request
+        .headers_mut()
+        .insert("origin", format!("http://{addr}").parse().unwrap());
+    request
+        .headers_mut()
+        .insert("cookie", cookie.parse().unwrap());
+    let (ws, _) = tokio_tungstenite::connect_async(request).await.unwrap();
+    let mut c = Client { ws, next: 0 };
+    let hello = next_t(&mut c.ws, "hello").await;
+    assert!(
+        hello.to_string().contains("config.edit") || !hello["owner"]["info"].is_object(),
+        "{hello}"
+    );
+
+    let read = c.ok("config.get", json!({}), None).await;
+    assert!(
+        !read.to_string().contains(hidden),
+        "the value left the owner"
+    );
+    assert_eq!(
+        read["file"]["values"]["shell"]["env"]["MY_VAR"],
+        "[redacted]"
+    );
+    assert_eq!(read["differs"], true, "{read}");
+    assert_eq!(read["restart"]["all_fields_require_restart"], true);
+    let hash = read["file"]["content_hash"].as_str().unwrap().to_owned();
+
+    // A form posting back what it was shown is refused, and the file keeps the secret.
+    let back = c
+        .call(
+            "config.set",
+            json!({"expected_hash": hash, "changes": [{"field": "shell.env.MY_VAR", "value": "[redacted]"}]}),
+            op("back"),
+        )
+        .await;
+    assert_eq!(
+        back["response"]["error"]["details"]["reason"], "redacted_placeholder_refused",
+        "{back}"
+    );
+    assert!(std::fs::read_to_string(&path).unwrap().contains(hidden));
+
+    let stale = c
+        .call(
+            "config.set",
+            json!({"expected_hash": "0".repeat(64), "changes": [{"field": "default_model", "value": "m"}]}),
+            op("stale"),
+        )
+        .await;
+    assert_eq!(
+        stale["response"]["error"]["code"], "operation_conflict",
+        "{stale}"
+    );
+
+    let wrote = c
+        .ok(
+            "config.set",
+            json!({"expected_hash": hash, "changes": [{"field": "default_model", "value": "changed"}]}),
+            op("write"),
+        )
+        .await;
+    assert_eq!(wrote["written"], true, "{wrote}");
+    assert_eq!(wrote["restart_required"], true, "{wrote}");
+    assert_eq!(wrote["changes"][0]["value"], "changed", "{wrote}");
+    let after = std::fs::read_to_string(&path).unwrap();
+    assert!(
+        after.contains("\"changed\"") && after.contains(hidden),
+        "only the named field changes"
+    );
+    let read = c.ok("config.get", json!({}), None).await;
+    assert!(
+        read["differing_fields"]
+            .to_string()
+            .contains("default_model"),
+        "{read}"
+    );
+    drop(c);
+    cancel.cancel();
+    drop(serve);
+    let _ = std::fs::remove_dir_all(&root);
+}

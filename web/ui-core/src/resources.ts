@@ -191,8 +191,8 @@ export function readThreadSettings(d: Record<string, unknown>): ThreadSettings {
 }
 
 /**
- * `config.toml` keys Settings shows but the owner can't read yet. The names are Shellboy's public TOML
- * keys, not a wire format: `config.get`/`config.set` (#266) will decide that. See `configControl`.
+ * `config.toml` keys Settings shows. An owner older than `config.get` (#266) can't read them. Where each
+ * one sits, and how it's edited, is `CONFIG_FIELDS` in `config.ts`.
  */
 export type ConfigKey =
   | "default_connection"
