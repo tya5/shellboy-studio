@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
-import { formatClock, formatDuration, formatRoute, formatTokens, parseTime, statusLabel, type AppModel, type ConversationRow, type StepRow as Step } from "../../../ui-core/src";
+import { renderOutput, formatClock, formatDuration, formatRoute, formatTokens, parseTime, statusLabel, type AppModel, type ConversationRow, type StepRow as Step } from "../../../ui-core/src";
 import { ScrollIntent } from "./scrollIntent";
 import { LiveMessage } from "./LiveMessage";
 import { WindowedScroll } from "./WindowedScroll";
@@ -27,14 +27,18 @@ function ConversationStatus({ model }: { model: AppModel }) {
   </div>;
 }
 
-function Output({ model, id, boxed }: { model: AppModel; id: string; boxed?: boolean }) {
+function Output({ model, id, command, complete, boxed }: { model: AppModel; id: string; command: string; complete: boolean; boxed?: boolean }) {
+  const [raw, setRaw] = useState(false);
   const t = model.t.value;
   const out = model.outputs.value.get(id);
   if (!out || (out.loading && out.text === "")) return <div class="log muted">{t("details.outputLoading")}</div>;
   if (out.error) return <div class="log muted">{t("details.outputError", { message: out.error })}</div>;
+  const rendered = renderOutput({ command, text: out.text, complete: complete && !out.loading && !out.cutOff });
   return (
     <>
-      <LogBlock text={out.text === "" ? t("details.outputEmpty") : out.text} boxed={boxed ?? false} />
+      <Button onClick={() => { void navigator.clipboard.writeText(rendered && !raw ? rendered.lines.map((line) => line.text).join("\n") : out.text).catch(() => {}); }}>{t("code.copy")}</Button>
+      {rendered ? <Button onClick={() => setRaw(!raw)}>{raw ? t("output.formatted") : t("output.raw")}</Button> : null}
+      {rendered && !raw ? <pre class={boxed ? "log boxed" : "log"} tabIndex={0}>{rendered.lines.map((line, i) => <span key={i} class={`output-${line.kind}`}>{line.text}{i < rendered.lines.length - 1 ? "\n" : ""}</span>)}</pre> : <LogBlock text={out.text === "" ? t("details.outputEmpty") : out.text} boxed={boxed ?? false} />}
       {out.cutOff ? <div class="caption muted">{t("details.outputMore")}</div> : null}
     </>
   );
@@ -61,7 +65,7 @@ function StepView({ model, step }: { model: AppModel; step: Step }) {
       }}
     >
       {step.description ? <div class="mono muted caption">{step.command}</div> : null}
-      <Output model={model} id={step.executionId} />
+      <Output model={model} id={step.executionId} command={step.command ?? ""} complete={step.status === "completed" || step.status === "failed"} />
     </StepRow>
   );
 }
@@ -72,21 +76,27 @@ function RowView({ model, row }: { model: AppModel; row: ConversationRow }) {
   const point = threadId !== undefined ? formatRoute({ view: "branches", threadId, nodeId: row.id }) : undefined;
   const found = model.rowMarks.value.get(row.id);
   const mark = found && threadId !== undefined ? <BranchMark href={formatRoute({ view: "branches", threadId, nodeId: found.nodeId })} label={found.branches === 1 ? t("branches.markOne") : t("branches.mark", { n: found.branches })} /> : null;
-  if (row.type === "steps")
+  if (row.type === "steps") {
+    const opened = model.openToolGroups.value.has(row.id);
+    const active = row.steps.find((s) => s.status === "running");
+    const nonzero = row.steps.filter((s) => typeof s.exitCode === "number" && s.exitCode !== 0).length;
+    const failed = row.steps.some((s) => s.status === "failed" || s.status === "recovery");
     return (
       <>
-        <div class="steps">
-          {row.steps.map((s) => (
-            <StepView key={s.executionId} model={model} step={s} />
-          ))}
-        </div>
+        <section class="steps">
+          <Button aria-expanded={opened} onClick={() => { const next = new Set(model.openToolGroups.peek()); if (opened) next.delete(row.id); else next.add(row.id); model.openToolGroups.value = next; }}>
+            {t("tools.group", { n: row.steps.length, nonzero })} {active ? active.description ?? active.command : failed ? t("status.failed") : t("status.completed")}
+          </Button>
+          {opened ? row.steps.map((s) => <StepView key={s.executionId} model={model} step={s} />) : null}
+        </section>
         {mark ? <div class="scroll-mark">{mark}</div> : null}
       </>
     );
+  }
   if (row.type === "note")
     return (
       <>
-        <SummaryStrip label={row.kind} text={row.text} />
+        <SummaryStrip label={row.kind === "spill" ? t("compact.spill") : row.kind} text={row.text} />
         {mark ? <div class="scroll-mark">{mark}</div> : null}
       </>
     );
@@ -158,7 +168,7 @@ function Details({ model }: { model: AppModel }) {
               ...(step.cwd ? [{ key: t("details.directory"), value: step.cwd, mono: true }] : []),
             ]}
           />
-          <Output model={model} id={step.executionId} boxed />
+          <Output model={model} id={step.executionId} command={step.command ?? ""} complete={step.status === "completed" || step.status === "failed"} boxed />
       {usageRows.length > 0 ? (
         <>
           <h3>{t("usage.title")}</h3>

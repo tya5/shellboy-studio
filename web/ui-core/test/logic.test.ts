@@ -105,6 +105,7 @@ describe("conversation projection", () => {
     const one = (sender: Record<string, unknown>) => projectConversation([{ node_id: "1", kind: "user", excerpt: "x", provenance: { sender: sender as { kind: string } } }])[0]!;
     expect(one({ kind: "human" })).toMatchObject({ speaker: { kind: "you" } });
     expect(one({ kind: "external_cli" })).toMatchObject({ speaker: { kind: "cli" } });
+    expect(one({ kind: "external_cli", label: "app:board" })).toMatchObject({ speaker: { kind: "other", label: "CLI: app:board" } });
     expect(one({ kind: "thread", label: "worker" })).toMatchObject({ speaker: { kind: "other", label: "worker" } });
   });
   it("flags a message cut at the excerpt limit, counted in characters", () => {
@@ -146,9 +147,9 @@ describe("routes, prefs, commands, words", () => {
   it("prefs default to the first design, English; damaged or removed values fall back", () => {
     const designs = [{ name: "console", themes: [{ name: "console" }, { name: "light" }] }];
     const store = (v: string | null) => ({ read: () => v, write() {} });
-    expect(loadPrefs(store(null), designs)).toEqual({ design: "console", theme: "console", lang: "en", navCollapsed: false, monitorPins: [], monitorView: "cards", monitorSort: "stable", weights: { cached: 0.1, output: 5 } });
-    expect(loadPrefs(store("{oops"), designs)).toEqual({ design: "console", theme: "console", lang: "en", navCollapsed: false, monitorPins: [], monitorView: "cards", monitorSort: "stable", weights: { cached: 0.1, output: 5 } });
-    expect(loadPrefs(store('{"design":"gone","theme":"light","lang":"ja"}'), designs)).toEqual({ design: "console", theme: "light", lang: "ja", navCollapsed: false, monitorPins: [], monitorView: "cards", monitorSort: "stable", weights: { cached: 0.1, output: 5 } });
+    expect(loadPrefs(store(null), designs)).toEqual({ design: "console", theme: "console", lang: "en", navCollapsed: false, monitorPins: [], monitorStatuses: [], monitorQuery: "", monitorArchive: "exclude", monitorView: "cards", monitorSort: "stable", weights: { cached: 0.1, output: 5 } });
+    expect(loadPrefs(store("{oops"), designs)).toEqual({ design: "console", theme: "console", lang: "en", navCollapsed: false, monitorPins: [], monitorStatuses: [], monitorQuery: "", monitorArchive: "exclude", monitorView: "cards", monitorSort: "stable", weights: { cached: 0.1, output: 5 } });
+    expect(loadPrefs(store('{"design":"gone","theme":"light","lang":"ja"}'), designs)).toEqual({ design: "console", theme: "light", lang: "ja", navCollapsed: false, monitorPins: [], monitorStatuses: [], monitorQuery: "", monitorArchive: "exclude", monitorView: "cards", monitorSort: "stable", weights: { cached: 0.1, output: 5 } });
     expect(loadPrefs(store('{"theme":"gone"}'), designs).theme).toBe("console");
     expect(loadPrefs(store('{"navCollapsed":true}'), designs).navCollapsed).toBe(true);
     expect(loadPrefs(store('{"navCollapsed":"true"}'), designs).navCollapsed).toBe(false);

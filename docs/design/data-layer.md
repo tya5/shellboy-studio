@@ -231,6 +231,12 @@ sort preference offers stable order (default) or descending `updated_at` with ID
 as the tie-breaker. The stable order lives only for the AppModel's lifetime and
 is rebuilt from the bounded current list after reload.
 
+### Compacted tool output linkage
+
+The public history projection does not expose a reliable association between a
+spill node and its original execution. Until the owner provides that association
+(and a way to read the original when available), Studio retains the existing row
+and describes it as compacted output rather than guessing which tool it belongs to.
 ### Conversation status timing
 
 The existing bounded `thread.get` and work projections expose running shell

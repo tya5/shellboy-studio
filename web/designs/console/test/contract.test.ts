@@ -93,6 +93,29 @@ describe("components name roles, never values", () => {
     expect(noComments).not.toMatch(/font-family:/);
     expect(noComments).not.toMatch(/box-shadow:(?!inset)/);
   });
+  it("keeps Field chrome on its wrapper and excludes it from other input chrome", () => {
+    const rules = [...css.replace(/\/\*[\s\S]*?\*\//g, "").matchAll(/([^{}]+)\{([^{}]*)\}/g)];
+    const fieldInput = rules.find((m) => m[1]!.trim() === ".field input");
+    expect(fieldInput?.[2]).toMatch(/border:0/);
+    expect(fieldInput?.[2]).toMatch(/background:transparent/);
+    expect(css).toMatch(/\.field:focus-within\{/);
+    expect(css).toMatch(/\.field:has\(input:disabled\)/);
+    expect(css).toMatch(/\.field:has\(input\[aria-invalid="true"\]\)/);
+    for (const rule of rules) {
+      if (!/\b(?:border|background)(?:-color)?:/.test(rule[2]!)) continue;
+      expect(rule[1]!.trim()).not.toMatch(/\.sect\s+input\b/);
+    }
+  });
+  it("uses role spacing in the shared page layout", () => {
+    const layout = readFileSync(join(system, "layout.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+    for (const match of layout.matchAll(/(?:^|[;{])\s*(gap|padding(?:-top|-bottom|-left|-right)?):([^;}]+)/gm)) {
+      const value = match[2]!.trim();
+      // The pane grid's one-pixel gap is a divider, not whitespace.
+      if ((match[1] === "gap" && value === "1px") || value === "env(safe-area-inset-bottom,0px)") continue;
+      expect(value, match[0]).not.toMatch(/\d+(?:\.\d+)?(?:px|rem|em)\b/);
+      for (const token of value.matchAll(/var\(--space-(\d+)\)/g)) expect(["4", "8", "12", "16", "24"]).toContain(token[1]);
+    }
+  });
   it("every custom property used exists", () => {
     for (const m of css.matchAll(/var\(--([\w-]+)/g)) expect(known.has(m[1]!), m[1]).toBe(true);
   });

@@ -211,6 +211,9 @@ describe("Conversation", () => {
     const { model } = await fixtureModel();
     const el = draw(model);
     expect(text(el)).toContain("Improve history search");
+    expect(text(el)).toContain("Tools:");
+    expect(text(el)).not.toContain("cargo test history::search");
+    act(() => el.querySelector<HTMLButtonElement>('.steps button[aria-expanded="false"]')!.click());
     expect(text(el)).toContain("cargo test history::search");
     expect(text(el)).toContain("exit 0");
     expect(text(el)).toContain("2.4s");
@@ -286,6 +289,31 @@ describe("Monitor", () => {
     act(() => button("Tiles").click());
     expect(el.querySelectorAll(".monitor-tile")).toHaveLength(4);
     expect([...el.querySelectorAll(".tile-header")].every((e) => text(e).includes("Extra"))).toBe(true);
+    model.dispose();
+  });
+  it("keeps a pinned status change visible, retains filters on view switch, and clears them", async () => {
+    const { model, t, db } = await fixtureModel({ route: "monitor" });
+    const el = draw(model);
+    const button = (name: string) => [...el.querySelectorAll<HTMLButtonElement>(".monitor-filter-bar button, .monitor-heading button")].find((b) => text(b) === name)!;
+    const lead = [...el.querySelectorAll(".card")].find((c) => c.querySelector("h2")?.textContent === "Improve history search")!;
+    act(() => lead.querySelector<HTMLButtonElement>("button")!.click());
+    const running = [...el.querySelectorAll<HTMLButtonElement>(".monitor-filter-bar .chip")].find((c) => text(c).includes("Running"))!;
+    act(() => running.click());
+    const before = [...el.querySelectorAll(".card h2")].map(text);
+    db.threads.lead = { ...db.threads.lead!, activity: "completed", state: "completed" };
+    act(() => t.push({ t: "changed", thread_ids: [], list: true }));
+    await act(async () => settle(t, db));
+    expect([...el.querySelectorAll(".card h2")].map(text)).toEqual(before);
+    expect(text(el)).toContain("No longer matches the filter");
+    act(() => button("Tiles").click());
+    expect(el.querySelector('.monitor-filter-bar .chip[aria-pressed="true"]')).toBeTruthy();
+    act(() => button("Pinned only").click());
+    expect([...el.querySelectorAll(".tile-header")].map(text).join()).toContain("Improve history search");
+    act(() => button("All").click());
+    act(() => button("Clear filters").click());
+    expect(el.querySelector('.monitor-filter-bar .chip[aria-pressed="true"]')).toBeNull();
+    expect(text(el)).not.toContain("No longer matches the filter");
+    expect(el.querySelector('.tile-header button[aria-pressed="true"]')).toBeTruthy();
     model.dispose();
   });
   it("draws one card per Thread, most urgent first, with chips that filter", async () => {

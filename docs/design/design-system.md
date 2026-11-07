@@ -84,6 +84,10 @@ Limit: this costs some discipline, and a shared `ui-core` change can affect all 
 | On phone width the thread list is a drawer from a menu button in the top bar, which the mock doesn't show | a phone needs a way to change Thread and create one | the user wants another path |
 | Archive needs a second press | the UI has no unarchive yet (`thread.unarchive` is denied) | unarchive exists |
 
+## Console layout rules
+
+The Console system's `web/designs/console/system/README.md` is the component-level contract. Use `space-4` for tightly coupled content, `space-8` for rows and compact insets, `space-12` for component interiors and related groups, `space-16` for card interiors and section separation, and `space-24` for the desktop page perimeter (phone: `space-12`). Use the existing control and touch heights, and the title, heading, body, label, caption, code and log type roles. Align headings, sections and cards at a shared left edge. Cards contain distinct subjects; lines separate repeated rows. Hover uses `raised`, selection `accent-bg`, focus the accent outline, and disabled controls reduced opacity. Preserve semantic status marks and words. Conversation tool group layout follows the same rules; changes to that group belong to its worker.
+
 ## Validation record (2026-11-07)
 
 Environment: macOS (Darwin 25.3, arm64), Node 25.9, Google Chrome headless driven over its DevTools protocol by a throwaway script (no browser tooling installed), bridge debug build embedding the production bundle, `shellboy serve` from Shellboy `fa7bec02c0` with temporary HOME and data directory and a local mock provider. No real API call.
