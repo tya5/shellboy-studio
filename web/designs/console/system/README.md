@@ -26,6 +26,15 @@ An engineer's console: dark navy surfaces, one accent, and monospace wherever th
 - Phone width (container under 900px): sidebar, status bar and details disappear and a bottom tab bar of four tabs takes over: Awaiting you, Conversation, Monitor and More, which holds the rest. Use container queries, so the same components work in any frame.
 - The conversation opens first. Thread views are Conversation, Monitor and Awaiting you. Analytics, Settings, Branches and Threads are whole-owner views.
 
+## Layout contract
+
+- `space-4`: tightly related text, labels and control internals; `space-8`: row-to-row and compact control insets; `space-12`: component insets and related groups; `space-16`: card insets and distinct sections; `space-24`: desktop page horizontal perimeter. At phone width use `space-12` for the page perimeter. Use zero when regions touch by design; a one-pixel grid divider is a border, not spacing.
+- Use `size-control` for ordinary control height and at least `size-touch` for phone targets. Let text rows grow for wrapping; never clip content to a fixed line height.
+- `type-title` names a desktop page (`type-heading` at phone width); `type-heading` names a section; `type-body` is prose; `type-label` is control and row text; `type-caption` is metadata; `type-code` and `type-log` are machine text. Use the token's line height.
+- Align page headings, sections and cards to the same content left edge; nested content aligns to its component inset. Keep the same perimeter above and beside each screen, including empty states. Tool groups in Conversation follow these rules; do not change their ownership or interaction.
+- Use a card (`panel`, `line`, `radius`) for a distinct subject or independent action. Use a `line` separator, not another card, between repeated rows of one subject. Avoid nested cards solely for spacing.
+- Hover uses `raised`; selection uses `accent-bg` with `fg` and the existing current/pressed semantics; focus uses the 2px `accent` outline; disabled controls use reduced opacity and `not-allowed`. State meaning uses StatusMark and words rather than relying on colour. Native selected indicators and semantic warning surfaces may retain their specific meaning.
+
 ## Themes
 
 Console is the default. Light and Terminal replace colour tokens only, and Terminal also sets `font-sans` to the mono stack and squares the radii in `components/bundle.css`. Components name a role, never a colour. To add a theme, add a value per colour token; don't add component styles.
