@@ -146,9 +146,9 @@ describe("routes, prefs, commands, words", () => {
   it("prefs default to the first design, English; damaged or removed values fall back", () => {
     const designs = [{ name: "console", themes: [{ name: "console" }, { name: "light" }] }];
     const store = (v: string | null) => ({ read: () => v, write() {} });
-    expect(loadPrefs(store(null), designs)).toEqual({ design: "console", theme: "console", lang: "en", monitorSort: "stable", weights: { cached: 0.1, output: 5 } });
-    expect(loadPrefs(store("{oops"), designs)).toEqual({ design: "console", theme: "console", lang: "en", monitorSort: "stable", weights: { cached: 0.1, output: 5 } });
-    expect(loadPrefs(store('{"design":"gone","theme":"light","lang":"ja"}'), designs)).toEqual({ design: "console", theme: "light", lang: "ja", monitorSort: "stable", weights: { cached: 0.1, output: 5 } });
+    expect(loadPrefs(store(null), designs)).toEqual({ design: "console", theme: "console", lang: "en", monitorPins: [], monitorView: "cards", monitorSort: "stable", weights: { cached: 0.1, output: 5 } });
+    expect(loadPrefs(store("{oops"), designs)).toEqual({ design: "console", theme: "console", lang: "en", monitorPins: [], monitorView: "cards", monitorSort: "stable", weights: { cached: 0.1, output: 5 } });
+    expect(loadPrefs(store('{"design":"gone","theme":"light","lang":"ja"}'), designs)).toEqual({ design: "console", theme: "light", lang: "ja", monitorPins: [], monitorView: "cards", monitorSort: "stable", weights: { cached: 0.1, output: 5 } });
     expect(loadPrefs(store('{"theme":"gone"}'), designs).theme).toBe("console");
     expect(loadPrefs(store('{"monitorSort":"recent"}'), designs).monitorSort).toBe("recent");
     expect(loadPrefs(store('{"monitorSort":"invalid"}'), designs).monitorSort).toBe("stable");
