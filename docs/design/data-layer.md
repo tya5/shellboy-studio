@@ -237,3 +237,10 @@ The public history projection does not expose a reliable association between a
 spill node and its original execution. Until the owner provides that association
 (and a way to read the original when available), Studio retains the existing row
 and describes it as compacted output rather than guessing which tool it belongs to.
+### Conversation status timing
+
+The existing bounded `thread.get` and work projections expose running shell
+`started_at`, but do not expose when the current model request began. The
+conversation must not derive that time from `updated_at` or pretend an observed
+client-side transition is the owner's start time. Model-wait duration is unknown
+until an adopted public owner projection provides the corresponding timestamp.

@@ -28,3 +28,4 @@ export * from "./window";
 export * from "./work";
 
 export * from "./output-renderers";
+export * from "./tiles";

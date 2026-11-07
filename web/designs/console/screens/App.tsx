@@ -1,5 +1,5 @@
 import { useEffect, useState } from "preact/hooks";
-import { formatRoute, statusLabel, viewShortcut, type DesignContext, type ViewName } from "../../../ui-core/src";
+import { formatRoute, statusLabel, viewShortcut, navShortcut, type DesignContext, type ViewName } from "../../../ui-core/src";
 import { Button, ContextBar, Field, Icon, MoreMenu, NavItem, Notice, StatusMark, ThreadItem, type IconName } from "../system/components";
 import { formatTokens, folderName } from "../../../ui-core/src";
 import { Conversation } from "./Conversation";
@@ -28,6 +28,11 @@ export function App({ context }: { context: DesignContext }) {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (navShortcut(e) && (document.querySelector(".app")?.clientWidth ?? 0) >= 900) {
+        e.preventDefault();
+        context.setPrefs({ navCollapsed: !context.prefs.value.navCollapsed });
+        return;
+      }
       const view = viewShortcut(e);
       if (view) {
         e.preventDefault();
@@ -36,7 +41,7 @@ export function App({ context }: { context: DesignContext }) {
     };
     addEventListener("keydown", onKey);
     return () => removeEventListener("keydown", onKey);
-  }, [model]);
+  }, [model, context]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -62,13 +67,14 @@ export function App({ context }: { context: DesignContext }) {
 
   return (
     <div class="app">
-      <div class="shell">
+      <div class={context.prefs.value.navCollapsed ? "shell nav-collapsed" : "shell"}>
         <button type="button" class={drawer ? "scrim open" : "scrim"} aria-label={t("threads.close")} tabIndex={drawer ? 0 : -1} onClick={() => setDrawer(false)} />
         <aside class={drawer ? "side open" : "side"} aria-label={t("threads.title")}>
           <div class="brand">
             <Icon name="bot" />
-            {t("brand")}
+            <span class="brand-label">{t("brand")}</span>
           </div>
+          <div class="nav-toggle"><Button icon label={context.prefs.value.navCollapsed ? t("nav.expand") : t("nav.collapse")} title={context.prefs.value.navCollapsed ? t("nav.expand") : t("nav.collapse")} aria-expanded={!context.prefs.value.navCollapsed} onClick={() => context.setPrefs({ navCollapsed: !context.prefs.value.navCollapsed })}><Icon name="menu" /></Button></div>
           <nav class="nav" aria-label={t("nav.views")}>
             {conversationNav}
             {monitorNav}

@@ -105,6 +105,10 @@ export class AppModel {
 
   readonly rows: ReadonlySignal<ThreadRow[]>;
   readonly counts: ReadonlySignal<StatusCounts>;
+  readonly monitorStableRows: ReadonlySignal<ThreadRow[]>;
+  readonly monitorQuery = signal("");
+  readonly monitorPinnedOnly = signal(false);
+  readonly monitorPins = signal<readonly string[]>([]);
   readonly monitorSort = signal<"stable" | "recent">("stable");
   readonly monitorFilter: Signal<StatusKey | undefined> = signal(undefined);
   readonly monitorRows: ReadonlySignal<ThreadRow[]>;
@@ -185,11 +189,15 @@ export class AppModel {
     const stableMonitor = new StableMonitorOrder();
     const stableRows = computed(() => stableMonitor.order(this.rows.value));
     this.disposers.push(effect(() => { stableRows.value; }));
+    this.monitorStableRows = computed(() => { const filter = this.monitorFilter.value; return filter ? stableRows.value.filter((r) => r.status === filter) : stableRows.value; });
     this.monitorRows = computed(() => {
       const filter = this.monitorFilter.value;
       const stable = stableRows.value;
       const rows = this.monitorSort.value === "recent" ? [...stable].sort((a, b) => b.summary.updated_at.localeCompare(a.summary.updated_at) || a.summary.thread_id.localeCompare(b.summary.thread_id)) : stable;
-      return filter ? rows.filter((r) => r.status === filter) : rows;
+      const query = this.monitorQuery.value.trim().toLocaleLowerCase();
+      const pinned = this.monitorPinnedOnly.value;
+      const pins = new Set(this.monitorPins.value);
+      return rows.filter((r) => (!filter || r.status === filter) && (!pinned || pins.has(r.summary.thread_id)) && (!query || r.summary.title.toLocaleLowerCase().includes(query)));
     });
     this.connection = computed(() => {
       const conn = this.data.connection.value;

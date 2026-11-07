@@ -43,6 +43,25 @@ const flushPromises = async () => {
 };
 const text = (el: Element) => el.textContent ?? "";
 
+describe("Desktop navigation", () => {
+  it("toggles the rail and keeps named, titled destinations", async () => {
+    const { model } = await fixtureModel();
+    const el = draw(model);
+    const toggle = () => el.querySelector<HTMLButtonElement>(".nav-toggle button")!;
+    expect(toggle().getAttribute("aria-expanded")).toBe("true");
+    act(() => toggle().click());
+    expect(el.querySelector(".shell")?.classList.contains("nav-collapsed")).toBe(true);
+    expect(toggle().getAttribute("aria-label")).toBe("Expand navigation");
+    for (const link of el.querySelectorAll(".side nav a")) {
+      expect(link.getAttribute("aria-label")).toBeTruthy();
+      expect(link.getAttribute("title")).toBe(link.getAttribute("aria-label"));
+    }
+    act(() => toggle().click());
+    expect(el.querySelector(".shell")?.classList.contains("nav-collapsed")).toBe(false);
+    model.dispose();
+  });
+});
+
 describe("App request and guide", () => {
   it("requires review before sending the full request and shows guidance", async () => {
     const { model, t } = await fixtureModel({ route: "apps" });
@@ -144,7 +163,8 @@ describe("Conversation live text", () => {
       expect(box.scrollTop, "following").toBe(height);
     }
     expect(box.textContent).toContain("word word word");
-    expect(box.lastElementChild?.textContent ?? box.textContent).toContain("Writing");
+    expect(box.textContent).toContain("Writing");
+    expect(box.lastElementChild?.textContent).toContain("Running");
   });
 
   it("a Thread with no held text shows no message, and without the capability nothing is shown at all", async () => {
@@ -234,6 +254,41 @@ describe("Conversation", () => {
 });
 
 describe("Monitor", () => {
+  it("switches to tiles, pins a thread and filters pinned tiles without old-owner history reads", async () => {
+    const { model, t } = await fixtureModel({ route: "monitor" });
+    const el = draw(model);
+    const button = (name: string) => [...el.querySelectorAll<HTMLButtonElement>("button")].find((b) => text(b) === name)!;
+    act(() => button("Tiles").click());
+    expect(el.querySelectorAll(".monitor-tile")).toHaveLength(3);
+    expect(el.querySelector(".tile-content")?.textContent).toBe("");
+    expect(el.querySelector<HTMLAnchorElement>(".tile-main")!.getAttribute("href")).toContain("conversation");
+    act(() => button("Pin").click());
+    act(() => button("Pinned only").click());
+    expect(el.querySelectorAll(".monitor-tile")).toHaveLength(1);
+    expect(text(el)).toContain("Unpin");
+    expect(t.calls("history.list")).toHaveLength(0);
+    model.dispose();
+  });
+  it("paginates panes and retains one selection when switching views", async () => {
+    const { model } = await fixtureModel({ route: "monitor", configure: (db) => {
+      for (let i = 0; i < 4; i++) db.threads[`extra-${i}`] = { ...db.threads.lead!, thread_id: `extra-${i}`, title: `Extra ${i}` };
+    } });
+    const el = draw(model);
+    const button = (name: string) => [...el.querySelectorAll<HTMLButtonElement>("button")].find((b) => text(b) === name)!;
+    act(() => button("Tiles").click());
+    expect(el.querySelectorAll(".monitor-tile")).toHaveLength(6);
+    expect(el.querySelector(".pane-grid")?.getAttribute("data-count")).toBe("6");
+    act(() => button("Next page").click());
+    expect(el.querySelectorAll(".monitor-tile")).toHaveLength(3);
+    act(() => button("Cards").click());
+    const input = [...el.querySelectorAll<HTMLInputElement>("input")].find((e) => e.getAttribute("aria-label") === "Search threads" && e.closest(".mon"))!;
+    act(() => { input.value = "Extra"; input.dispatchEvent(new Event("input", { bubbles: true })); });
+    expect(el.querySelectorAll(".card")).toHaveLength(4);
+    act(() => button("Tiles").click());
+    expect(el.querySelectorAll(".monitor-tile")).toHaveLength(4);
+    expect([...el.querySelectorAll(".tile-header")].every((e) => text(e).includes("Extra"))).toBe(true);
+    model.dispose();
+  });
   it("draws one card per Thread, most urgent first, with chips that filter", async () => {
     const { model } = await fixtureModel({ route: "monitor" });
     const el = draw(model);
@@ -241,6 +296,7 @@ describe("Monitor", () => {
     expect(cards.length).toBe(5);
     expect(cards[0]!.classList.contains("err")).toBe(true);
     expect(text(cards[0]!)).toContain("Retry");
+    expect(text(el)).not.toContain("Connection interrupted");
     expect(el.querySelector(".card.lead")).toBeTruthy();
     expect(text(el)).toContain("Parent: Improve history search");
     const chip = [...el.querySelectorAll<HTMLButtonElement>(".chip")].find((c) => text(c).includes("Completed"))!;
@@ -763,7 +819,10 @@ describe("Apps", () => {
     expect(frame(el).getAttribute("src")).toBe("/a/s1/index.html");
     expect(frame(el).getAttribute("sandbox")).toContain("allow-scripts");
     expect(frame(el).getAttribute("sandbox")).not.toContain("allow-same-origin");
-    expect([...el.querySelectorAll(".apptab a")].map(text)).toEqual(["All apps", "Board"]);
+    expect([...el.querySelectorAll(".apptab a")].map(text)).toEqual(["Board"]);
+    expect(text(el.querySelector(".apptabs-all")!)).toBe("All apps");
+    expect(el.querySelector('.apptab button[aria-label="Reload Board"]')).toBeNull();
+    expect(el.querySelector('.apps-toolbar button[aria-label="Reload Board"]')).toBeTruthy();
     const before = frame(el);
     await act(async () => {
       model.applyRoute({ view: "monitor" });
