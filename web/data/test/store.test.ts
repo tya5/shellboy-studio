@@ -222,6 +222,21 @@ const node = (n: number, ordinal = n) => ({
 });
 const ids = (items: { node_id?: string }[]) => items.map((i) => i.node_id);
 
+describe("operation ids", () => {
+  it("are prefixed with the connected owner's instance", async () => {
+    const { t, data } = await setup();
+    void data.operations.messageSend({ thread_id: "a", text: "x" });
+    await flush();
+    expect(t.calls("message.send")[0]!.operation_id).toBe("i1:id");
+  });
+  it("an explicit id is reused unchanged, so a retry stays the same operation", async () => {
+    const { t, data } = await setup();
+    void data.operations.messageSend({ thread_id: "a", text: "x" }, "i0:kept");
+    await flush();
+    expect(t.calls("message.send")[0]!.operation_id).toBe("i0:kept");
+  });
+});
+
 describe("history window", () => {
   it("walks to the end of the path, oldest to newest, keeping the newest items", async () => {
     const { t, data, db } = await setup();

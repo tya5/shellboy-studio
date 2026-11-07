@@ -85,6 +85,8 @@ export interface ThreadHandle extends Handle {
   readonly preview: ReadonlySignal<Preview>;
   refresh(): Promise<void>;
   loadOlderHistory(): Promise<void>;
+  /** False when the window reached its maximum. */
+  canShowEarlier(): boolean;
 }
 
 export interface DataOptions {
@@ -148,7 +150,8 @@ export class ShellboyData {
 
   constructor(options: DataOptions) {
     this.link = new Link(options.transport);
-    this.operations = new Operations(this.link, options.newId ?? defaultNewId);
+    const newId = options.newId ?? defaultNewId;
+    this.operations = new Operations(this.link, () => withInstance(this.ownerSig.peek(), newId()));
     this.refresher = new Refresher((key, onSent) => this.read(key, onSent));
     this.connection = this.link.connection;
     this.failedAttempts = this.link.failedAttempts;
@@ -239,6 +242,7 @@ export class ShellboyData {
       preview: e.preview,
       refresh: () => this.requestThread(threadId),
       loadOlderHistory: () => this.loadOlder(e),
+      canShowEarlier: () => e.window < HISTORY_WINDOW_MAX,
       close: () => {
         if (closed) return;
         closed = true;
@@ -527,6 +531,16 @@ function listArgs(filter: ListFilter) {
   if (filter.query) args.query = filter.query;
   if (filter.archived) args.archived = filter.archived;
   return args;
+}
+
+/**
+ * The owner accepts a client's operation ID only as `<instance_id>:<id>` (found on the real owner:
+ * a bare UUID is refused with "operation ID has no active instance prefix"). Before the instance
+ * is known the ID stays bare, and the owner's refusal is reported rather than hidden.
+ */
+function withInstance(owner: OwnerView, id: string): string {
+  const instance = owner.state === "connected" ? owner.info.instance_id : null;
+  return instance ? `${instance}:${id}` : id;
 }
 
 function defaultNewId(): string {

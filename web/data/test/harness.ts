@@ -83,6 +83,9 @@ export class FakeOwnerDb {
   details: Record<string, ReturnType<typeof details>> = {};
   history: Record<string, Record<string, unknown>[]> = {};
   expiredCursors = new Set<string>();
+  shells: Record<string, Record<string, unknown>[]> = {};
+  outputs: Record<string, string> = {};
+  bodies: Record<string, string> = {};
   answered = new Set<number>();
   reads: string[] = [];
 
@@ -106,6 +109,12 @@ export class FakeOwnerDb {
         const end = start + limit;
         return { ok: true, result: { items: all.slice(start, end), ...(end < all.length ? { next_cursor: String(end) } : {}) } };
       }
+      case "shell.list":
+        return { ok: true, result: { items: this.shells[a.thread_id!] ?? [] } };
+      case "shell.read":
+        return { ok: true, result: { execution_id: a.execution_id, text: this.outputs[a.execution_id!] ?? "", output_complete: true } };
+      case "history.get":
+        return { ok: true, result: { node_id: a.node_id, kind: "assistant_response", text: this.bodies[a.node_id!] ?? "" } };
       default:
         return { ok: true, result: {} };
     }

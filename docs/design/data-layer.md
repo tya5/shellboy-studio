@@ -48,7 +48,8 @@ only browser API, behind the `Transport` interface (`transport.ts`).
   last item read; at most 8 such retries per read. `resync` starts over. `loadOlderHistory` doubles
   the window (limit 6400) and walks again. The cost of opening a Thread therefore grows with its
   history; a reverse read is on the list of needs from core.
-- **Mutations** take an `operationId` (default a fresh UUID). A reply lost on socket close is
+- **Mutations** take an `operationId` (default `<instance_id>:<fresh UUID>`, the only form the owner
+  accepts from a client; the instance comes from `hello`). A reply lost on socket close is
   `unconfirmed` and carries the id; the caller retries with the same id (idempotent through
   receipts) or looks it up with `operationGet`. The data layer never retries mutations itself.
   `human` and `sender_label` are set by the bridge, not by the data layer.
