@@ -76,7 +76,7 @@ pub async fn run<O: Owner>(
             Ok(ok) => ok,
             Err(reason) => {
                 if !announced_unreachable {
-                    eprintln!("shellboy-web: owner unreachable: {reason}");
+                    eprintln!("shellboy-studio: owner unreachable: {reason}");
                     hub.set_owner(OwnerState::Unreachable, OwnerEvent::Unreachable);
                     announced_unreachable = true;
                 }

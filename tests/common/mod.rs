@@ -3,7 +3,7 @@
 #![allow(dead_code)]
 use serde_json::{Value, json};
 use shellboy::protocol::{ApiError, Command, EventsWaitArgs, Origin, Response};
-use shellboy_web::{
+use shellboy_studio::{
     auth::Auth,
     events::PollConfig,
     hub::Hub,

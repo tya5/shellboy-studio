@@ -158,7 +158,7 @@ async fn serves_the_frontend_with_a_strict_policy_or_says_how_to_build_it() {
             .unwrap()
     };
     let index = app.clone().oneshot(request("/")).await.unwrap();
-    if shellboy_web::assets::EMBEDDED.is_empty() {
+    if shellboy_studio::assets::EMBEDDED.is_empty() {
         assert_eq!(index.status(), StatusCode::SERVICE_UNAVAILABLE);
     } else {
         assert_eq!(index.status(), StatusCode::OK);
@@ -167,7 +167,7 @@ async fn serves_the_frontend_with_a_strict_policy_or_says_how_to_build_it() {
             .to_str()
             .unwrap();
         assert!(policy.contains("default-src 'none'"));
-        let (path, _) = shellboy_web::assets::EMBEDDED
+        let (path, _) = shellboy_studio::assets::EMBEDDED
             .iter()
             .find(|(p, _)| p.starts_with("assets/"))
             .expect("a hashed asset");
@@ -336,7 +336,7 @@ async fn proxies_calls_enforces_the_allowlist_and_marks_web_sends() {
 
 #[tokio::test]
 async fn per_session_bound_replies_busy_and_cancel_frees_a_call() {
-    use shellboy_web::ws_limits::{SESSION_IN_FLIGHT, SESSION_QUEUE};
+    use shellboy_studio::ws_limits::{SESSION_IN_FLIGHT, SESSION_QUEUE};
     let (owner, _tx) = mock(list_handler);
     let (addr, state, cancel) = start(owner.clone(), false).await;
     let cookie = login(addr, &state).await;

@@ -1,4 +1,4 @@
-# shellboy-web
+# shellboy-studio
 
 A browser UI for [Shellboy](https://github.com/tya5/shellboy), the terminal
 coding agent. It aims to be a better place than the TUI to read and drive a
@@ -21,8 +21,8 @@ capabilities and JSON Schema export, Shellboy #244).
 ## How it relates to Shellboy
 
 - Shellboy's owner process remains the only place with agent logic and saved
-  conversations. shellboy-web does not access Shellboy's database.
-- shellboy-web is a small Rust bridge on the same machine as the owner. It
+  conversations. shellboy-studio does not access Shellboy's database.
+- shellboy-studio is a small Rust bridge on the same machine as the owner. It
   talks to the owner over Shellboy's existing local IPC RPC, like
   `shellboy chat`, and serves the TypeScript frontend over HTTP and WebSocket. The frontend is
   layered: a tested data layer, a swappable presentation, and an opt-in debug
@@ -40,7 +40,7 @@ MIT. See [LICENSE](LICENSE).
 ## Planned usage (not usable yet)
 
 During development (M1) the owner and the bridge are started separately, as below.
-The release target is one `shellboy-web` binary and one command: it connects to a
+The release target is one `shellboy-studio` binary and one command: it connects to a
 running owner if there is one, otherwise starts the owner in-process (Shellboy's
 headless `serve` as a library), doubles as the `shellboy` CLI when called with
 arguments (multicall, so model shells find `shellboy`), and opens the browser.
@@ -49,8 +49,8 @@ Shellboy does not support yet (tracked as a Shellboy issue).
 
 ```sh
 shellboy serve &      # an owner must already run (a TUI owner also works)
-shellboy-web          # prints http://127.0.0.1:8751/#token=…; open it once
-shellboy-web --debug  # also enables the separate /debug page (off by default)
+shellboy-studio          # prints http://127.0.0.1:8751/#token=…; open it once
+shellboy-studio --debug  # also enables the separate /debug page (off by default)
 ```
 
 - The bridge connects to a running owner only; if none runs it says to start `shellboy serve`.

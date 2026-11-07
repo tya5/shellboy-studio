@@ -1,7 +1,7 @@
 //! The shared `events.wait` loop against a scripted owner (no real owner, no network).
 mod common;
 use common::*;
-use shellboy_web::{
+use shellboy_studio::{
     envelope::{OwnerEvent, OwnerState},
     events,
     hub::Hub,

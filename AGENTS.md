@@ -1,6 +1,6 @@
-# shellboy-web development guide
+# shellboy-studio development guide
 
-This file contains instructions for developing shellboy-web, the browser UI and
+This file contains instructions for developing shellboy-studio, the browser UI and
 local bridge for [Shellboy](https://github.com/tya5/shellboy). Linked files are
 not expanded automatically.
 

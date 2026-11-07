@@ -48,7 +48,7 @@ pub async fn index() -> Response {
         None => (
             StatusCode::SERVICE_UNAVAILABLE,
             [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],
-            "shellboy-web: this binary has no frontend. Run `npm ci && npm run build` in web/, then build the bridge again.\n",
+            "shellboy-studio: this binary has no frontend. Run `npm ci && npm run build` in web/, then build the bridge again.\n",
         )
             .into_response(),
     }

@@ -5,7 +5,7 @@ use common::*;
 use futures_util::{SinkExt, StreamExt};
 use serde_json::{Value, json};
 use shellboy::protocol::Command;
-use shellboy_web::{
+use shellboy_studio::{
     auth::Auth,
     hub::Hub,
     server::{AppState, AppsPaths, ServerConfig, Shared, serve},
@@ -99,7 +99,7 @@ const PAGE: (&str, &str) = (
 );
 
 async fn fixture() -> Fixture {
-    let root = std::env::temp_dir().join(format!("shellboy-web-apps-{}", uuid::Uuid::new_v4()));
+    let root = std::env::temp_dir().join(format!("shellboy-studio-apps-{}", uuid::Uuid::new_v4()));
     let apps = root.join("apps");
     let (owner, _events) = mock(|command| match command {
         Command::MessageSend(_) => Some(json!({"message_id": "m1"})),

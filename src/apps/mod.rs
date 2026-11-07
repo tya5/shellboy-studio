@@ -63,7 +63,7 @@ impl<O: Owner> Apps<O> {
             std::fs::create_dir_all(&dir).and_then(|_| std::fs::write(dir.join("README.md"), GUIDE))
         {
             eprintln!(
-                "shellboy-web: cannot write the apps guide in {}: {e}",
+                "shellboy-studio: cannot write the apps guide in {}: {e}",
                 dir.display()
             );
         }

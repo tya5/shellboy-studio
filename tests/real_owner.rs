@@ -6,7 +6,7 @@ mod common;
 use common::*;
 use futures_util::{SinkExt, StreamExt};
 use serde_json::{Value, json};
-use shellboy_web::owner::IpcOwner;
+use shellboy_studio::owner::IpcOwner;
 use std::{
     io::{BufRead, BufReader},
     path::{Path, PathBuf},
@@ -118,7 +118,7 @@ mod common_ws {
 }
 
 fn temp_root() -> PathBuf {
-    let root = std::env::temp_dir().join(format!("shellboy-web-it-{}", uuid::Uuid::new_v4()));
+    let root = std::env::temp_dir().join(format!("shellboy-studio-it-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&root).unwrap();
     root
 }
@@ -158,7 +158,7 @@ async fn hints_and_restart_against_a_real_owner() {
     // The first owner frame says connected, with the instance and no capabilities (protocol 2).
     let connected = if matches!(
         state.hub.owner_state(),
-        shellboy_web::envelope::OwnerState::Connected { .. }
+        shellboy_studio::envelope::OwnerState::Connected { .. }
     ) {
         None
     } else {
@@ -595,28 +595,28 @@ async fn an_app_message_is_recorded_as_from_the_app() {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let cancel = tokio_util::sync::CancellationToken::new();
-    let state = shellboy_web::server::Shared::with_apps(
+    let state = shellboy_studio::server::Shared::with_apps(
         owner.clone(),
-        shellboy_web::hub::Hub::new(),
-        shellboy_web::auth::Auth::new("ab".repeat(32)),
-        shellboy_web::server::ServerConfig {
+        shellboy_studio::hub::Hub::new(),
+        shellboy_studio::auth::Auth::new("ab".repeat(32)),
+        shellboy_studio::server::ServerConfig {
             listen: addr,
             extra_hosts: vec![],
             data_dir: "/temp/data".into(),
             debug: false,
         },
-        Some(shellboy_web::server::AppsPaths {
+        Some(shellboy_studio::server::AppsPaths {
             dir: root.join("apps"),
         }),
         cancel.clone(),
     );
-    tokio::spawn(shellboy_web::server::serve(
+    tokio::spawn(shellboy_studio::server::serve(
         listener,
         state.clone(),
         fast_poll(),
         cancel.clone(),
     ));
-    let created = shellboy_web::owner::Owner::call(
+    let created = shellboy_studio::owner::Owner::call(
         &*owner,
         shellboy::protocol::Command::ThreadCreate(
             serde_json::from_value(json!({"cwd": root.to_str().unwrap()})).unwrap(),

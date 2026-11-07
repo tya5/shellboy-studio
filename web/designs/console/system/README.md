@@ -36,7 +36,7 @@ Line icons at 18px, stroke 1.7, round joins, `currentColor`. No logo file exists
 
 ## Keeping several designs
 
-A design system is one folder under `web/designs/<name>/`. Data and screen logic stay below it and are shared. See `docs/design/design-system.md` in the shellboy-web repository.
+A design system is one folder under `web/designs/<name>/`. Data and screen logic stay below it and are shared. See `docs/design/design-system.md` in the shellboy-studio repository.
 
 ## In this repository
 

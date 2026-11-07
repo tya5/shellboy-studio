@@ -1,4 +1,4 @@
-//! shellboy-web bridge: a thin client of the Shellboy owner's public RPC that serves
+//! shellboy-studio bridge: a thin client of the Shellboy owner's public RPC that serves
 //! browsers over HTTP and WebSocket. See `docs/design/architecture.md` and
 //! `docs/design/bridge.md`.
 //!

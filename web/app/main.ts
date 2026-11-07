@@ -5,7 +5,7 @@ import { defaultBridgeUrl, ShellboyData, WebSocketTransport } from "../data/src"
 import { DESIGNS } from "../designs/registry";
 import { AppModel, loadPrefs, parseRoute, savePrefs, type DesignContext, type Prefs, type PrefStore } from "../ui-core/src";
 
-const PREF_KEY = "shellboy-web.prefs";
+const PREF_KEY = "shellboy-studio.prefs";
 const TICK_MS = 1000;
 
 const store: PrefStore = {

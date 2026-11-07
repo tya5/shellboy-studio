@@ -6,7 +6,7 @@ code does it.
 
 ## What exists
 
-- `shellboy-web` binary and library crate (`src/`): HTTP + WebSocket bridge to a running
+- `shellboy-studio` binary and library crate (`src/`): HTTP + WebSocket bridge to a running
   owner. `GET /` and `GET /assets/*` serve the production frontend, embedded from `web/dist`
   by `build.rs` (`include_bytes!`, no extra crate). `index.html` is `no-cache`, hashed assets are
   immutable, and the CSP allows only the bridge's own origin. Build order: `npm ci && npm run
@@ -21,15 +21,15 @@ code does it.
 
 ```sh
 shellboy serve --data-dir DIR &      # an owner must run (a TUI owner also works)
-shellboy-web --data-dir DIR          # prints http://127.0.0.1:8751/#token=...
-shellboy-web --data-dir DIR --debug  # also serves /debug
+shellboy-studio --data-dir DIR          # prints http://127.0.0.1:8751/#token=...
+shellboy-studio --data-dir DIR --debug  # also serves /debug
 ```
 
 Open the printed URL once; the app exchanges the token the same way. For the debug page, open the printed `debug page:` URL; the page posts the token to `/auth`, gets an
 `HttpOnly; SameSite=Strict` cookie and drops the fragment. Flags: `--listen ADDR`
 (default `127.0.0.1:8751`), `--data-dir` (default: `SHELLBOY_DATA_DIR`, then the OS
 default, resolved by Shellboy's own `resolve_cli_data_dir`), `--config-dir` (token
-location, default the OS config directory plus `shellboy-web`), `--allow-host NAME`
+location, default the OS config directory plus `shellboy-studio`), `--allow-host NAME`
 (repeatable), `--apps-dir` (default `apps` in the data directory, `apps.md`), `--debug`. Apps are served on this same port, under `/a/`.
 
 ## Bounds (limits, not performance claims)

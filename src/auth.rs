@@ -128,7 +128,7 @@ pub fn default_config_dir() -> Result<PathBuf, String> {
         Platform::Macos => env.home.map(|h| h.join("Library/Application Support")),
         Platform::Windows => env.appdata,
     };
-    dir.map(|d| d.join("shellboy-web"))
+    dir.map(|d| d.join("shellboy-studio"))
         .ok_or_else(|| "cannot determine the config directory; pass --config-dir".to_owned())
 }
 

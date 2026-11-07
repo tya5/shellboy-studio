@@ -3,7 +3,7 @@ use shellboy::{
     config::{PathEnvironment, resolve_cli_data_dir},
     protocol::{Command, ThreadListArgs},
 };
-use shellboy_web::{
+use shellboy_studio::{
     auth::{Auth, default_config_dir},
     events::PollConfig,
     hub::Hub,
@@ -42,7 +42,7 @@ async fn main() -> ExitCode {
     match run(Args::parse()).await {
         Ok(()) => ExitCode::SUCCESS,
         Err(message) => {
-            eprintln!("shellboy-web: {message}");
+            eprintln!("shellboy-studio: {message}");
             ExitCode::FAILURE
         }
     }
@@ -71,14 +71,14 @@ async fn run(args: Args) -> Result<(), String> {
         .await;
     if let Err(error) = probe {
         eprintln!(
-            "shellboy-web: no owner reachable in {} ({}). Start one with `shellboy serve --data-dir DIR` or the TUI; the bridge keeps retrying.",
+            "shellboy-studio: no owner reachable in {} ({}). Start one with `shellboy serve --data-dir DIR` or the TUI; the bridge keeps retrying.",
             data_dir.display(),
             error.message
         );
     }
     if !args.listen.ip().is_loopback() {
         eprintln!(
-            "shellboy-web: warning: {} is not loopback; traffic is plain HTTP unless a TLS tunnel is in front. The token is still required.",
+            "shellboy-studio: warning: {} is not loopback; traffic is plain HTTP unless a TLS tunnel is in front. The token is still required.",
             args.listen
         );
     }

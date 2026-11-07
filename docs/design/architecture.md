@@ -1,4 +1,4 @@
-# shellboy-web architecture
+# shellboy-studio architecture
 
 Status: design proposal, not implemented. Written 2026-11-06 against Shellboy
 `origin/main` `740a50f7df` (v0.9.0, protocol 2) and the Shellboy study
@@ -42,7 +42,7 @@ Non-goals:
  phone (PWA)    ──────────────────────┤
                                       ▼
                          ┌─────────────────────────┐
-                         │ shellboy-web (bridge)    │  one process, user's machine
+                         │ shellboy-studio (bridge)    │  one process, user's machine
                          │  HTTP: static assets     │
                          │  WS:   envelope + proxy  │
                          │  1 events.wait long-poll │
@@ -57,7 +57,7 @@ Non-goals:
 
 | Component | Language | Owns | Never does |
 |---|---|---|---|
-| Bridge (`shellboy-web` binary) | Rust | HTTP listener, auth cookie, WebSocket sessions, the single `events.wait` loop and its fan-out, an operation allowlist, bounded concurrency toward the owner, embedded static assets | agent logic, DB reads, rendering decisions, caching saved facts beyond one in-flight read, starting or stopping the owner |
+| Bridge (`shellboy-studio` binary) | Rust | HTTP listener, auth cookie, WebSocket sessions, the single `events.wait` loop and its fan-out, an operation allowlist, bounded concurrency toward the owner, embedded static assets | agent logic, DB reads, rendering decisions, caching saved facts beyond one in-flight read, starting or stopping the owner |
 | Data layer (`web/data`) | TypeScript, framework-agnostic | normalized state, operations, the view-model API (§2.1) | DOM, layout, talking to the owner directly, inventing facts not returned by an RPC |
 | Presentation (`web/ui-*`) | TypeScript + a UI library | layout, visual design, Markdown/code rendering, offline shell (PWA) | state derivation, protocol knowledge |
 | Debug page (`web/debug`) | TypeScript | raw inspection (§2.2) | being enabled by default |
@@ -282,7 +282,7 @@ Remote and phone access (recommended path):
 
 Stricter opt-outs (off by default, settings, not prompts): `read_only = true`
 (allowlist reduced to reads), shorter cookie lifetime, rotating the token
-(`shellboy-web token rotate` invalidates all sessions). Built-in TLS is not in
+(`shellboy-studio token rotate` invalidates all sessions). Built-in TLS is not in
 M1; a tunnel provides it.
 
 ## 6. Version skew with the owner
@@ -293,7 +293,7 @@ M1; a tunnel provides it.
 - **Before protocol 3** (today): a mismatch is rejected in Hello/Welcome with
   `client_protocol_version`/`owner_protocol_version`. The bridge reports both
   plus the Shellboy release it was built against, in the `hello` frame and on
-  stdout. Rule: use the shellboy-web release built for your Shellboy release.
+  stdout. Rule: use the shellboy-studio release built for your Shellboy release.
 - **From protocol 3** (#244 stage A2): results are tolerant and `Welcome`
   carries `capabilities`. A bridge built against Shellboy X keeps working with a
   later owner that has the same protocol version; features added after X are
@@ -410,16 +410,16 @@ Each adds its operations to the allowlist and its own tests.
 
 ## 10. Packaging and release
 
-- Separate repository and release cadence. A shellboy-web release states the
+- Separate repository and release cadence. A shellboy-studio release states the
   Shellboy release (tag) it was built against and therefore the protocol
   version it speaks.
 - Release binaries are the supported install. Node is required at build time;
   built assets are not committed.
-- One binary `shellboy-web` per OS/CPU, frontend embedded. Release assets and
+- One binary `shellboy-studio` per OS/CPU, frontend embedded. Release assets and
   installer follow Shellboy's pattern (archives with SHA-256, `install.sh` /
   `install.ps1`, no sudo, `~/.local/bin`) so users install both the same way.
 - Until the first binary release: `cargo install --locked --git
-  https://github.com/tya5/shellboy-web --tag <tag>` (documents the Node
+  https://github.com/tya5/shellboy-studio --tag <tag>` (documents the Node
   requirement; `build.rs` builds the frontend).
 - Before protocol 3: users must pair releases exactly. From protocol 3: any
   owner with the same (single) protocol version works; new features appear when both
@@ -429,7 +429,7 @@ Each adds its operations to the allowlist and its own tests.
 
 ## 10.1 Release target: one binary, one command (user decision 2026-11-06)
 
-M1 is developed with two separately started processes (owner via `shellboy serve`, then the bridge). The release target is a single `shellboy-web` binary: connect to a running owner if one holds the data dir; otherwise start the owner in-process through Shellboy's headless `serve` exposed as a library function; act as the `shellboy` CLI when invoked with arguments (multicall) and put itself on model shells' PATH as `shellboy`; open the browser (setting to disable). This is the desktop form B (§11) without the Tauri window, so the core prerequisites are shared. Constraint: while shellboy-web or `serve` owns the data dir, the TUI cannot run on it, because the TUI is itself an owner today; attaching the TUI to an existing owner is a future Shellboy feature (study issue).
+M1 is developed with two separately started processes (owner via `shellboy serve`, then the bridge). The release target is a single `shellboy-studio` binary: connect to a running owner if one holds the data dir; otherwise start the owner in-process through Shellboy's headless `serve` exposed as a library function; act as the `shellboy` CLI when invoked with arguments (multicall) and put itself on model shells' PATH as `shellboy`; open the browser (setting to disable). This is the desktop form B (§11) without the Tauri window, so the core prerequisites are shared. Constraint: while shellboy-studio or `serve` owns the data dir, the TUI cannot run on it, because the TUI is itself an owner today; attaching the TUI to an existing owner is a future Shellboy feature (study issue).
 
 ## 11. Desktop app (future)
 
