@@ -43,6 +43,25 @@ const flushPromises = async () => {
 };
 const text = (el: Element) => el.textContent ?? "";
 
+describe("Desktop navigation", () => {
+  it("toggles the rail and keeps named, titled destinations", async () => {
+    const { model } = await fixtureModel();
+    const el = draw(model);
+    const toggle = () => el.querySelector<HTMLButtonElement>(".nav-toggle button")!;
+    expect(toggle().getAttribute("aria-expanded")).toBe("true");
+    act(() => toggle().click());
+    expect(el.querySelector(".shell")?.classList.contains("nav-collapsed")).toBe(true);
+    expect(toggle().getAttribute("aria-label")).toBe("Expand navigation");
+    for (const link of el.querySelectorAll(".side nav a")) {
+      expect(link.getAttribute("aria-label")).toBeTruthy();
+      expect(link.getAttribute("title")).toBe(link.getAttribute("aria-label"));
+    }
+    act(() => toggle().click());
+    expect(el.querySelector(".shell")?.classList.contains("nav-collapsed")).toBe(false);
+    model.dispose();
+  });
+});
+
 describe("App request and guide", () => {
   it("requires review before sending the full request and shows guidance", async () => {
     const { model, t } = await fixtureModel({ route: "apps" });
