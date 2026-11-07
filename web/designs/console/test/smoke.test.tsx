@@ -149,6 +149,23 @@ describe("Frame", () => {
     act(() => buttons.find((b) => text(b) === "Light")!.click());
     expect(el.querySelector('.panel .btn[aria-pressed="true"]')?.textContent).toBe("Light");
   });
+  it("settings closes on Escape and on a press outside, and stays open for a press inside", async () => {
+    const { model } = await fixtureModel();
+    const el = draw(model);
+    const toggle = () => el.querySelector<HTMLButtonElement>('.top .right .btn[aria-expanded]')!;
+    act(() => toggle().click());
+    act(() => { el.querySelector(".panel")!.dispatchEvent(new Event("pointerdown", { bubbles: true })); });
+    expect(el.querySelector(".panel")).not.toBeNull();
+    act(() => { document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })); });
+    expect(el.querySelector(".panel")).toBeNull();
+    act(() => toggle().click());
+    act(() => { el.querySelector(".top h1, .top .crumb, main, .main")!.dispatchEvent(new Event("pointerdown", { bubbles: true })); });
+    expect(el.querySelector(".panel")).toBeNull();
+    act(() => toggle().click());
+    expect(el.querySelector(".panel")).not.toBeNull();
+    act(() => { toggle().dispatchEvent(new Event("pointerdown", { bubbles: true })); toggle().click(); });
+    expect(el.querySelector(".panel")).toBeNull();
+  });
   it("names the owner being down", async () => {
     const { model, t } = await fixtureModel();
     const el = draw(model);

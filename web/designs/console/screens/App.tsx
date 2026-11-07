@@ -112,12 +112,12 @@ export function App({ context }: { context: DesignContext }) {
               ) : null}
               {route.view === "conversation" && row?.status ? <span class="hide-n"><StatusMark status={row.status} label={statusLabel(t, row.status)} /></span> : null}
               {route.view === "conversation" && details ? <span class="hide-n mono muted">{details.model}</span> : null}
-              <Button icon label={settings ? t("settings.close") : t("settings.open")} aria-expanded={settings} onClick={() => setSettings(!settings)}>
+              <Button icon label={settings ? t("settings.close") : t("settings.open")} aria-expanded={settings} data-settings-toggle onClick={() => setSettings(!settings)}>
                 <Icon name="gear" />
               </Button>
             </div>
           </header>
-          {settings ? <Settings context={context} /> : null}
+          {settings ? <Settings context={context} onClose={() => setSettings(false)} /> : null}
           <div class="alerts">
             {conn === "authNeeded" ? <AuthPrompt context={context} /> : null}
             {conn === "ownerDown" ? <Notice tone="wait">{t("banner.ownerDown")}</Notice> : null}
