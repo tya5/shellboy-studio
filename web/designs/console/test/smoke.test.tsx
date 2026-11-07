@@ -130,7 +130,7 @@ describe("Frame", () => {
   it("offers all views as links in both the sidebar and the phone tab bar", async () => {
     const { model } = await fixtureModel();
     const el = draw(model);
-    expect(el.querySelectorAll(".nav .nav-item").length).toBe(7);
+    expect(el.querySelectorAll(".nav .nav-item").length).toBe(8);
     expect(el.querySelectorAll(".tabbar > .nav-item").length).toBe(3);
     expect(text(el.querySelector(".tabbar .more-tab")!)).toBe("More");
   });
@@ -450,6 +450,103 @@ describe("Threads", () => {
   });
 });
 
+describe("Apps", () => {
+  const open = async (appName?: string) => {
+    const made = await fixtureModel({ route: "apps" });
+    const el = draw(made.model);
+    await act(async () => {
+      await settle(made.t, made.db);
+    });
+    if (appName) {
+      await act(async () => {
+        made.model.applyRoute({ view: "apps", appName });
+        await settle(made.t, made.db);
+      });
+    }
+    return { ...made, el };
+  };
+  const frame = (el: Element) => el.querySelector<HTMLIFrameElement>("iframe")!;
+  it("lists apps, with a broken one saying why and no way to open it", async () => {
+    const { el } = await open();
+    const cards = [...el.querySelectorAll(".card")];
+    expect(cards.map((c) => text(c.querySelector("h2")!))).toEqual(["Board", "Half made"]);
+    expect(text(cards[1]!)).toContain("app.json can't be read");
+    expect(cards[1]!.querySelector("a")).toBeNull();
+    expect(cards[0]!.querySelector("a")!.getAttribute("href")).toBe("#/apps/board");
+    expect(text(el)).toContain("/tmp/x/apps/README.md");
+  });
+  it("says what to do when there are none, and ships nothing of its own", async () => {
+    const { model, t, db } = await fixtureModel({ route: "monitor" });
+    const plain = db.answer;
+    db.answer = (c) => (c.command === "apps.list" ? { ok: true, result: { dir: "/tmp/x/apps", apps: [] } } : plain(c));
+    const el = draw(model);
+    await act(async () => {
+      model.applyRoute({ view: "apps" });
+      await settle(t, db);
+    });
+    expect(text(el)).toContain("No apps yet");
+    expect(el.querySelector(".card")).toBeNull();
+  });
+  it("opens in a tab on the app's own origin, and stays mounted while other views show", async () => {
+    const { el, model } = await open("board");
+    expect(frame(el).getAttribute("src")).toContain("http://127.0.0.1:8752/");
+    expect([...el.querySelectorAll(".apptab a")].map(text)).toEqual(["All apps", "Board"]);
+    const before = frame(el);
+    await act(async () => {
+      model.applyRoute({ view: "monitor" });
+    });
+    expect(frame(el)).toBe(before);
+    expect(el.querySelector(".apps-host.off")).toBeTruthy();
+    await act(async () => {
+      model.applyRoute({ view: "apps", appName: "board" });
+    });
+    expect(frame(el)).toBe(before);
+    expect(el.querySelector(".apps-host.off")).toBeNull();
+  });
+  it("closing a tab removes its page and returns to the list", async () => {
+    const { el, model } = await open("board");
+    await act(async () => {
+      el.querySelector<HTMLButtonElement>(".apptab-close")!.click();
+    });
+    expect(el.querySelector("iframe")).toBeNull();
+    expect(model.route.value).toEqual({ view: "apps" });
+  });
+  it("shows an app's errors as text, with a button that sends them to the bound Thread", async () => {
+    const { el, model, t, db } = await open("board");
+    await act(async () => {
+      model.apps.report("board", { kind: "script", message: "<b>boom</b>", where: "app.js:3" });
+    });
+    expect(text(el)).toContain("<b>boom</b>");
+    expect(el.querySelector(".apps-alerts b")).toBeNull();
+    expect(el.querySelector(".apptab .st.bad")).toBeTruthy();
+    const send = [...el.querySelectorAll<HTMLButtonElement>(".apps-alerts button")].find((b) => text(b) === "Send to the bound Thread")!;
+    await act(async () => {
+      send.click();
+      await settle(t, db);
+    });
+    const call = t.calls("message.send").at(-1)!;
+    expect((call.args as { thread_id: string; text: string }).thread_id).toBe("lead");
+    expect((call.args as { text: string }).text).toContain("boom");
+    expect(text(el)).toContain("Sent to the bound Thread");
+  });
+  it("a deleted bound Thread leaves the app open, and says so", async () => {
+    const { model, t, db } = await fixtureModel({ route: "monitor" });
+    const plain = db.answer;
+    db.answer = (c) => (c.command === "thread.get" && (c.args as { thread_id: string }).thread_id === "lead" ? { ok: false, code: "thread_not_found" } : plain(c));
+    const el = draw(model);
+    await act(async () => {
+      model.applyRoute({ view: "apps", appName: "board" });
+      await settle(t, db);
+    });
+    expect(frame(el)).toBeTruthy();
+    expect(text(el)).toContain("no longer exists");
+    await act(async () => {
+      model.apps.report("board", { kind: "script", message: "x", where: undefined });
+    });
+    expect([...el.querySelectorAll(".apps-alerts button")].some((b) => text(b) === "Send to the bound Thread")).toBe(false);
+  });
+});
+
 describe("Phone tabs", () => {
   it("More holds Analytics and Settings, marks itself current, and closes on a choice", async () => {
     const { model } = await fixtureModel({ route: "analytics" });
@@ -458,8 +555,8 @@ describe("Phone tabs", () => {
     expect(button.getAttribute("aria-current")).toBe("page");
     act(() => button.click());
     const links = [...el.querySelectorAll<HTMLAnchorElement>(".more-panel a")];
-    expect(links.map(text)).toEqual(["Branches", "Threads", "Analytics", "Settings"]);
-    act(() => links[3]!.click());
+    expect(links.map(text)).toEqual(["Apps", "Branches", "Threads", "Analytics", "Settings"]);
+    act(() => links[4]!.click());
     expect(el.querySelector(".more-panel")).toBeNull();
     act(() => button.click());
     act(() => { document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })); });
