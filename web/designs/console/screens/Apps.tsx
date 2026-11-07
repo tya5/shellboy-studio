@@ -140,25 +140,24 @@ export function AppsHost({ context }: { context: DesignContext }) {
     <div class={showing ? "apps-host" : "apps-host off"}>
       <AppTabs
         label={t("apps.tabs")}
-        tabs={[
-          { key: "", title: t("apps.all"), href: formatRoute({ view: "apps" }), current: showing && current === undefined },
-          ...tabs.map((tab) => ({
+        allLabel={t("apps.all")}
+        allHref={formatRoute({ view: "apps" })}
+        allCurrent={showing && current === undefined}
+        tabs={tabs.map((tab) => ({
             key: appTabKey(tab.name, tab.instance),
             title: tab.instance ? `${tab.title} / ${tab.instance}` : tab.title,
             href: formatRoute({ view: "apps", appName: tab.name, ...(tab.instance ? { appInstance: tab.instance } : {}) }),
             current: tab.name === current && tab.instance === instance,
             alert: tab.errors.length > 0,
             closeLabel: t("apps.close", { name: tab.title }),
-            reloadLabel: t("apps.reloadTab", { name: tab.title }),
-            onReload: () => void apps.reload(tab.name, tab.instance),
             onClose: () => {
               apps.close(tab.name, tab.instance);
               if (tab.name === current && tab.instance === instance) model.navigate({ view: "apps" });
             },
-          })),
-        ]}
+          }))}
       />
       {open && apps.openError.value?.name === open.name ? <Notice tone="bad">{t("apps.openFailed", { name: open.name, message: apps.openError.value.message })}</Notice> : null}
+      {open ? <div class="apps-toolbar"><Button label={t("apps.reloadTab", { name: open.title })} onClick={() => void apps.reload(open.name, open.instance)}>{t("apps.reloadTab", { name: open.title })}</Button></div> : null}
       {open ? <Alerts model={model} tab={open} /> : null}
       {current === undefined || !open ? <AppList model={model} /> : null}
       {tabs.map((tab) => (

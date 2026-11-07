@@ -795,7 +795,10 @@ describe("Apps", () => {
     expect(frame(el).getAttribute("src")).toBe("/a/s1/index.html");
     expect(frame(el).getAttribute("sandbox")).toContain("allow-scripts");
     expect(frame(el).getAttribute("sandbox")).not.toContain("allow-same-origin");
-    expect([...el.querySelectorAll(".apptab a")].map(text)).toEqual(["All apps", "Board"]);
+    expect([...el.querySelectorAll(".apptab a")].map(text)).toEqual(["Board"]);
+    expect(text(el.querySelector(".apptabs-all")!)).toBe("All apps");
+    expect(el.querySelector('.apptab button[aria-label="Reload Board"]')).toBeNull();
+    expect(el.querySelector('.apps-toolbar button[aria-label="Reload Board"]')).toBeTruthy();
     const before = frame(el);
     await act(async () => {
       model.applyRoute({ view: "monitor" });
