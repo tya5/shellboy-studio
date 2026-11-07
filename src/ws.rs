@@ -277,6 +277,40 @@ mod tests {
     }
 
     #[test]
+    fn analytics_and_settings_reads_are_allowed_and_their_mutations_are_not() {
+        for (command, args) in [
+            (
+                "usage.get",
+                json!({"group_by":"day","timezone":"+09:00","since":"2026-11-01T00:00:00+09:00","limit":168}),
+            ),
+            ("compact.list", json!({"thread_id":"t","limit":50})),
+            ("storage.status", json!({})),
+            ("index.status", json!({})),
+            ("status", json!({"memory":true})),
+            ("model.list", json!({})),
+        ] {
+            let parsed = build_command(command, Some(args)).unwrap();
+            assert_eq!(access(&parsed), Access::Read, "{command}");
+        }
+        // Nothing here has a preview in the pinned owner, or it stays on its Thread.
+        for (command, args) in [
+            ("storage.collect", json!({"category":"raw"})),
+            ("index.probe", json!({})),
+            ("index.rebuild", json!({})),
+            ("index.backfill", json!({})),
+            ("thread.prune", json!({"thread_id":"t","before_node_id":"n"})),
+            ("thread.set", json!({"thread_id":"t","model":"m"})),
+            ("compact", json!({"thread_id":"t"})),
+        ] {
+            assert_eq!(
+                build_command(command, Some(args)).unwrap_err().code,
+                "not_allowed",
+                "{command}"
+            );
+        }
+    }
+
+    #[test]
     fn data_layer_mutations_are_allowed_and_unarchive_is_not() {
         assert!(build_command("run.retry", Some(json!({"run_id":"r"}))).is_ok());
         assert!(

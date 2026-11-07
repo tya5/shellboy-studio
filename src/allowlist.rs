@@ -23,7 +23,12 @@ pub fn access(command: &Command) -> Access {
         | Command::ShellRead(..)
         | Command::HistoryList(..)
         | Command::HistoryGet(..)
-        | Command::OperationGet(..) => Access::Read,
+        | Command::OperationGet(..)
+        // Analytics and Settings: saved facts only, no provider request and no receipt.
+        | Command::UsageGet(..)
+        | Command::CompactList(..)
+        | Command::IndexStatus(..)
+        | Command::StorageStatus(..) => Access::Read,
         Command::ThreadCreate(..)
         | Command::MessageSend(..)
         | Command::RunStop(..)
@@ -33,8 +38,6 @@ pub fn access(command: &Command) -> Access {
         // `events.wait` is bridge-internal (one shared long-poll). The rest has no UI yet.
         Command::OwnerShutdown(..)
         | Command::ThreadBranches(..)
-        | Command::UsageGet(..)
-        | Command::CompactList(..)
         | Command::ThreadFork(..)
         | Command::ThreadDelete(..)
         | Command::ThreadDeletePreview(..)
@@ -56,13 +59,11 @@ pub fn access(command: &Command) -> Access {
         | Command::CompactPreview(..)
         | Command::Compact(..)
         | Command::ContextEdit(..)
-        | Command::IndexStatus(..)
         | Command::IndexPreview(..)
         | Command::IndexBackfill(..)
         | Command::IndexRetry(..)
         | Command::IndexRebuild(..)
         | Command::IndexProbe(..)
-        | Command::StorageStatus(..)
         | Command::StorageCollect(..) => Access::Denied,
     }
 }
