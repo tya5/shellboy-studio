@@ -579,3 +579,146 @@ async fn branches_fork_rewind_and_unarchive_against_a_real_owner() {
     drop(serve);
     let _ = std::fs::remove_dir_all(&root);
 }
+
+/// A throwaway app in a temp folder, against a real owner: what a page sends is recorded as from the app.
+#[tokio::test]
+async fn an_app_message_is_recorded_as_from_the_app() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let Some(bin) = std::env::var_os("SHELLBOY_BIN").map(PathBuf::from) else {
+        eprintln!("SKIPPED real_owner: set SHELLBOY_BIN");
+        return;
+    };
+    let root = temp_root();
+    let data = root.join("data");
+    let url = mock_provider().await;
+    let serve_owner = start_owner_with(&bin, &root, &data, &url);
+    let owner = Arc::new(IpcOwner::new(data.clone()));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let cancel = tokio_util::sync::CancellationToken::new();
+    let state = shellboy_web::server::Shared::with_apps(
+        owner.clone(),
+        shellboy_web::hub::Hub::new(),
+        shellboy_web::auth::Auth::new("ab".repeat(32)),
+        shellboy_web::server::ServerConfig {
+            listen: addr,
+            extra_hosts: vec![],
+            debug: false,
+        },
+        Some(shellboy_web::server::AppsPaths {
+            dir: root.join("apps"),
+            state_dir: root.join("state"),
+        }),
+        cancel.clone(),
+    );
+    tokio::spawn(shellboy_web::server::serve(
+        listener,
+        state.clone(),
+        fast_poll(),
+        cancel.clone(),
+    ));
+    let created = shellboy_web::owner::Owner::call(
+        &*owner,
+        shellboy::protocol::Command::ThreadCreate(
+            serde_json::from_value(json!({"cwd": root.to_str().unwrap()})).unwrap(),
+        ),
+        None,
+        None,
+    )
+    .await
+    .unwrap();
+    let thread = serde_json::to_value(&created).unwrap()["result"]["thread_id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let dir = root.join("apps/probe");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("app.json"), json!({"thread": thread}).to_string()).unwrap();
+    std::fs::write(dir.join("index.html"), "<!doctype html><title>x</title>").unwrap();
+
+    let opened = state
+        .apps
+        .as_ref()
+        .unwrap()
+        .open("probe", &addr.to_string())
+        .await
+        .unwrap();
+    let origin = opened["origin"].as_str().unwrap().to_owned();
+    let app_addr = origin.trim_start_matches("http://").to_owned();
+    let path = opened["url"].as_str().unwrap()[origin.len()..].to_owned();
+    let http = |request: String| {
+        let app_addr = app_addr.clone();
+        async move {
+            let mut s = tokio::net::TcpStream::connect(&app_addr).await.unwrap();
+            s.write_all(request.as_bytes()).await.unwrap();
+            let mut text = String::new();
+            s.read_to_string(&mut text).await.unwrap();
+            text
+        }
+    };
+    let first = http(format!(
+        "GET {path} HTTP/1.1\r\nHost: {app_addr}\r\nConnection: close\r\n\r\n"
+    ))
+    .await;
+    let cookie = first
+        .lines()
+        .find(|l| l.to_ascii_lowercase().starts_with("set-cookie:"))
+        .unwrap()
+        .split_once(':')
+        .unwrap()
+        .1
+        .trim()
+        .split(';')
+        .next()
+        .unwrap()
+        .to_owned();
+    let post = |op: &str, args: Value| {
+        let body = json!({"op": op, "args": args}).to_string();
+        http(format!(
+            "POST /_shellboy/call HTTP/1.1\r\nHost: {app_addr}\r\nOrigin: {origin}\r\nCookie: {cookie}\r\nConnection: close\r\nContent-Length: {}\r\n\r\n{body}",
+            body.len()
+        ))
+    };
+    let result = |raw: String| -> Value {
+        serde_json::from_str(raw.split_once("\r\n\r\n").unwrap().1).unwrap()
+    };
+
+    let sent = result(post("thread.send", json!({"text": "from the page"})).await);
+    assert_eq!(sent["ok"], true, "{sent}");
+    let mut sender = Value::Null;
+    for _ in 0..200 {
+        let read = result(post("thread.messages", json!({"limit": 50})).await);
+        assert_eq!(read["ok"], true, "{read}");
+        if let Some(item) = read["result"]["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|i| i["kind"] == "user")
+        {
+            sender = item["provenance"]["sender"].clone();
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+    assert_eq!(sender["label"], "app:probe", "{sender}");
+    assert_ne!(sender["kind"], "human", "{sender}");
+
+    // The bound Thread goes: the owner's error reaches the page, and its own data still works.
+    let gone = result(
+        post(
+            "thread.send",
+            json!({"text": "x", "thread": "no-such-thread"}),
+        )
+        .await,
+    );
+    assert_eq!(gone["ok"], false, "{gone}");
+    assert_eq!(gone["error"]["code"], "thread_not_found", "{gone}");
+    assert_eq!(
+        result(post("data.write", json!({"path": "k.txt", "text": "ok"})).await)["ok"],
+        true
+    );
+
+    cancel.cancel();
+    drop(serve_owner);
+    let _ = std::fs::remove_dir_all(&root);
+}

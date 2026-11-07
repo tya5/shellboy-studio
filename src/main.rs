@@ -8,7 +8,7 @@ use shellboy_web::{
     events::PollConfig,
     hub::Hub,
     owner::{IpcOwner, Owner},
-    server::{ServerConfig, Shared, serve},
+    server::{AppsPaths, ServerConfig, Shared, serve},
 };
 use std::{net::SocketAddr, path::PathBuf, process::ExitCode, sync::Arc};
 use tokio_util::sync::CancellationToken;
@@ -29,6 +29,9 @@ struct Args {
     /// Extra Host names to accept (for example a Tailscale name). Repeatable.
     #[arg(long = "allow-host")]
     allow_host: Vec<String>,
+    /// Folder of apps (default: `apps` in the owner data directory).
+    #[arg(long)]
+    apps_dir: Option<PathBuf>,
     /// Enable the /debug page (off by default).
     #[arg(long)]
     debug: bool,
@@ -87,7 +90,8 @@ async fn run(args: Args) -> Result<(), String> {
     if args.debug {
         println!("debug page: http://{addr}/debug#token={}", auth.token());
     }
-    let state = Shared::new(
+    let cancel = CancellationToken::new();
+    let state = Shared::with_apps(
         owner,
         Hub::new(),
         auth,
@@ -96,8 +100,12 @@ async fn run(args: Args) -> Result<(), String> {
             extra_hosts: args.allow_host,
             debug: args.debug,
         },
+        Some(AppsPaths {
+            dir: args.apps_dir.unwrap_or_else(|| data_dir.join("apps")),
+            state_dir: config_dir,
+        }),
+        cancel.clone(),
     );
-    let cancel = CancellationToken::new();
     let stop = cancel.clone();
     tokio::spawn(async move {
         let _ = tokio::signal::ctrl_c().await;

@@ -11,7 +11,7 @@ include!(concat!(env!("OUT_DIR"), "/assets.rs"));
 
 /// Nothing leaves the bridge's own origin: no CDN, no font host, and a model's Markdown can't
 /// load remote images. Preact sets element styles through the CSSOM, which `style-src` allows.
-const CSP: &str = "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
+const CSP: &str = "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; frame-src http: https:";
 
 fn find(table: &'static [(&'static str, &'static [u8])], path: &str) -> Option<&'static [u8]> {
     table
@@ -87,7 +87,8 @@ mod tests {
 
     #[test]
     fn nothing_external_is_allowed() {
-        assert!(!CSP.contains("http"));
+        // Nothing may load from elsewhere; only apps may be framed, on their own origins.
+        assert!(!CSP.replace("frame-src http: https:", "").contains("http"));
         assert!(CSP.contains("default-src 'none'"));
     }
 }

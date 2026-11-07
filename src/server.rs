@@ -1,5 +1,6 @@
 //! HTTP routes. `/debug` is registered only when the debug option is on.
 use crate::{
+    apps::{Apps, AppsConfig},
     assets,
     auth::{self, Auth, COOKIE_NAME},
     hub::Hub,
@@ -16,8 +17,9 @@ use axum::{
     routing::{get, post},
 };
 use serde::Deserialize;
-use std::{net::SocketAddr, sync::Arc};
+use std::{net::SocketAddr, path::PathBuf, sync::Arc};
 use tokio::sync::Semaphore;
+use tokio_util::sync::CancellationToken;
 
 /// Global bound on proxied owner calls (the long-poll is separate). A limit, not a
 /// performance claim.
@@ -29,24 +31,61 @@ pub struct ServerConfig {
     pub debug: bool,
 }
 
+/// Where apps live. Without it, the bridge offers no apps.
+pub struct AppsPaths {
+    pub dir: PathBuf,
+    pub state_dir: PathBuf,
+}
+
 pub struct Shared<O> {
     pub owner: Arc<O>,
     pub hub: Arc<Hub>,
     pub auth: Auth,
     pub config: ServerConfig,
     pub global: Arc<Semaphore>,
+    pub apps: Option<Arc<Apps<O>>>,
+    pub cancel: CancellationToken,
 }
 
 pub type AppState<O> = Arc<Shared<O>>;
 
-impl<O> Shared<O> {
+impl<O: Owner> Shared<O> {
     pub fn new(owner: Arc<O>, hub: Arc<Hub>, auth: Auth, config: ServerConfig) -> Arc<Self> {
+        Self::with_apps(owner, hub, auth, config, None, CancellationToken::new())
+    }
+
+    /// `cancel` also ends the app listeners.
+    pub fn with_apps(
+        owner: Arc<O>,
+        hub: Arc<Hub>,
+        auth: Auth,
+        config: ServerConfig,
+        apps: Option<AppsPaths>,
+        cancel: CancellationToken,
+    ) -> Arc<Self> {
+        let global = Arc::new(Semaphore::new(GLOBAL_CALLS));
+        let apps = apps.map(|paths| {
+            Apps::new(
+                AppsConfig {
+                    dir: paths.dir,
+                    state_dir: paths.state_dir,
+                    listen: config.listen,
+                    extra_hosts: config.extra_hosts.clone(),
+                },
+                owner.clone(),
+                hub.clone(),
+                global.clone(),
+                cancel.clone(),
+            )
+        });
         Arc::new(Self {
             owner,
             hub,
             auth,
             config,
-            global: Arc::new(Semaphore::new(GLOBAL_CALLS)),
+            global,
+            apps,
+            cancel,
         })
     }
 }
@@ -154,10 +193,13 @@ async fn ws_upgrade<O: Owner>(
     let Some((guard, owner_state)) = state.hub.register() else {
         return (StatusCode::SERVICE_UNAVAILABLE, "too many sessions").into_response();
     };
+    let host = header_str(&headers, header::HOST)
+        .unwrap_or_default()
+        .to_owned();
     upgrade
         .max_message_size(ws::MAX_CLIENT_FRAME)
         .max_frame_size(ws::MAX_CLIENT_FRAME)
-        .on_upgrade(move |socket: WebSocket| ws::session(socket, state, guard, owner_state))
+        .on_upgrade(move |socket: WebSocket| ws::session(socket, state, guard, owner_state, host))
 }
 
 /// Run the bridge until `cancel` fires: the HTTP server and the one `events.wait` loop.
@@ -168,6 +210,14 @@ pub async fn serve<O: Owner>(
     poll: crate::events::PollConfig,
     cancel: tokio_util::sync::CancellationToken,
 ) -> std::io::Result<()> {
+    // `serve` owns stopping: the same token ends the app listeners.
+    let inner = state.cancel.clone();
+    let linked = cancel.clone();
+    tokio::spawn(async move {
+        linked.cancelled().await;
+        inner.cancel();
+    });
+    let apps = state.apps.clone();
     let poller = tokio::spawn(crate::events::run(
         state.owner.clone(),
         state.hub.clone(),
@@ -180,5 +230,8 @@ pub async fn serve<O: Owner>(
         .await;
     cancel.cancel();
     let _ = poller.await;
+    if let Some(apps) = apps {
+        apps.stopped().await;
+    }
     result
 }

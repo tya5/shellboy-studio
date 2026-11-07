@@ -20,7 +20,7 @@ path = "src/main.rs"
 # Pinned to a commit on Shellboy origin/main that has `events.wait` (#243 B, C).
 # No release tag contains it yet; replace by the tag when one does (docs/design/bridge.md).
 shellboy = { git = "https://github.com/tya5/shellboy", tag = "v0.10.0" }
-tokio = { version = "=1.54.1", features = ["rt-multi-thread", "macros", "sync", "time", "net", "signal"] }
+tokio = { version = "=1.54.1", features = ["rt-multi-thread", "macros", "sync", "time", "net", "signal", "process", "fs", "io-util"] }
 tokio-util = { version = "=0.7.20", features = ["rt"] }
 axum = { version = "=0.8.9", default-features = false, features = ["http1", "tokio", "ws", "json"] }
 serde = { version = "=1.0.229", features = ["derive"] }
@@ -28,6 +28,8 @@ serde_json = "=1.0.154"
 uuid = { version = "=1.29.0", features = ["v4"] }
 clap = { version = "=4.6.7", features = ["derive"] }
 getrandom = "=0.3.4"
+# Apps: the hash on data files. Same version as Shellboy, so nothing new is compiled.
+sha2 = "=0.11.1"
 
 [dev-dependencies]
 tokio-tungstenite = "=0.28.0"

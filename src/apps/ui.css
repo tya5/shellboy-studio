@@ -1,0 +1,16 @@
+
+/* Optional helpers for apps. Colours come from the tokens above, chosen by the person's theme. */
+html,body{background:var(--bg);color:var(--fg);font:var(--type-body)}
+.sb-page{max-width:900px;margin:0 auto;padding:var(--space-16)}
+.sb-btn{display:inline-flex;align-items:center;gap:6px;min-height:32px;padding:0 var(--space-8);border:1px solid var(--line-strong);border-radius:var(--radius-s);background:transparent;color:var(--fg);font:var(--type-label);cursor:pointer}
+.sb-btn:hover{background:var(--raised)}
+.sb-btn:disabled{opacity:.55;cursor:not-allowed}
+.sb-field{min-height:32px;padding:0 var(--space-8);border:1px solid var(--line-strong);border-radius:var(--radius-s);background:var(--inset);color:var(--fg);font:var(--type-label)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.sb-status{display:inline-flex;align-items:center;gap:6px;font:var(--type-label)}
+.sb-status::before{content:"";display:block;width:12px;height:12px;flex:none}
+.sb-status.running{color:var(--accent)}.sb-status.running::before{border:2.5px solid var(--accent);border-right-color:transparent;border-radius:50%;box-sizing:border-box}
+.sb-status.waiting{color:var(--wait)}.sb-status.waiting::before{background:var(--wait);border-radius:50%}
+.sb-status.recovery{color:var(--bad)}.sb-status.recovery::before{background:var(--bad);border-radius:2px;transform:rotate(45deg) scale(.82)}
+.sb-status.ok{color:var(--ok)}.sb-status.ok::before{border-bottom:2.5px solid var(--ok);border-left:2.5px solid var(--ok);height:6px;margin-top:-3px;transform:rotate(-45deg);box-sizing:border-box}
+.sb-status.failed{color:var(--bad)}.sb-status.failed::before{background:linear-gradient(45deg,transparent 42%,var(--bad) 42% 58%,transparent 58%),linear-gradient(-45deg,transparent 42%,var(--bad) 42% 58%,transparent 58%)}

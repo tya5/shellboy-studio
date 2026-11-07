@@ -74,6 +74,7 @@ pub async fn session<O: Owner>(
     state: AppState<O>,
     guard: SessionGuard,
     owner_state: OwnerState,
+    host: String,
 ) {
     let hello = ServerFrame::Hello {
         bridge_version: env!("CARGO_PKG_VERSION"),
@@ -103,7 +104,7 @@ pub async fn session<O: Owner>(
                 };
                 let reply = handle_frame(
                     &text, &state, &guard, &in_flight, &outstanding,
-                    &results_tx, &mut tasks, &mut handles,
+                    &results_tx, &mut tasks, &mut handles, &host,
                 );
                 if let Some(frame) = reply
                     && !send(&mut socket, &frame).await
@@ -158,6 +159,7 @@ fn handle_frame<O: Owner>(
     results_tx: &mpsc::Sender<ServerFrame>,
     tasks: &mut JoinSet<()>,
     handles: &mut HashMap<u64, AbortHandle>,
+    host: &str,
 ) -> Option<ServerFrame> {
     let frame: ClientFrame = match serde_json::from_str(text) {
         Ok(frame) => frame,
@@ -191,6 +193,10 @@ fn handle_frame<O: Owner>(
                     id,
                     BridgeError::new("invalid_call", "call id already in flight"),
                 ));
+            }
+            // The gateway's own calls: they never reach the owner.
+            if let Some(name) = command.strip_prefix("apps.") {
+                return apps_call(name, id, args, state, results_tx, tasks, handles, host);
             }
             let command = match build_command(&command, args) {
                 Ok(command) => command,
@@ -238,6 +244,43 @@ fn handle_frame<O: Owner>(
             None
         }
     }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn apps_call<O: Owner>(
+    name: &str,
+    id: u64,
+    args: Option<Value>,
+    state: &AppState<O>,
+    results_tx: &mpsc::Sender<ServerFrame>,
+    tasks: &mut JoinSet<()>,
+    handles: &mut HashMap<u64, AbortHandle>,
+    host: &str,
+) -> Option<ServerFrame> {
+    let Some(apps) = state.apps.clone() else {
+        return Some(result_error(
+            id,
+            BridgeError::new("not_allowed", "this bridge offers no apps"),
+        ));
+    };
+    let (name, tx, host) = (name.to_owned(), results_tx.clone(), host.to_owned());
+    let handle = tasks.spawn(async move {
+        let result = match name.as_str() {
+            "list" => apps.list().await.map_err(|m| ("apps_unreadable", m)),
+            "open" => {
+                let app = args.as_ref().and_then(|a| a.get("name")).and_then(Value::as_str).unwrap_or_default();
+                apps.open(app, &host).await
+            }
+            _ => Err(("invalid_call", format!("no call apps.{name}"))),
+        };
+        let response = match result {
+            Ok(result) => json!({"protocol_version": 0, "operation_id": "gateway", "ok": true, "result": result}),
+            Err((code, message)) => json!({"protocol_version": 0, "operation_id": "gateway", "ok": false, "error": {"code": code, "message": message}}),
+        };
+        let _ = tx.send(ServerFrame::Result { id, response: Some(response), error: None }).await;
+    });
+    handles.insert(id, handle);
+    None
 }
 
 #[cfg(test)]
