@@ -37,6 +37,31 @@ struct Args {
     debug: bool,
 }
 
+/// What to tell someone whose first probe of the owner failed: the fact, then the next step.
+/// The page keeps retrying, so none of these stop the bridge.
+fn owner_problem(data_dir: &std::path::Path, error: &shellboy::protocol::ApiError) -> String {
+    use shellboy::protocol::ErrorCode;
+    let dir = data_dir.display();
+    let next = match error.code {
+        ErrorCode::AppNotRunning => format!(
+            "No owner is running for the data directory {dir}. Start one there with `shellboy serve --data-dir {dir}` (or the Shellboy TUI), or, if your owner uses another data directory, restart shellboy-studio with --data-dir pointing at it. This window keeps retrying."
+        ),
+        ErrorCode::ProtocolMismatch => format!(
+            "The owner for {dir} speaks a different Shellboy protocol than this shellboy-studio (built for protocol {}). Install the Shellboy release this Studio is paired with (see the README), restart the owner, then reload the page. If the data directory is wrong instead, pass --data-dir.",
+            shellboy::protocol::PROTOCOL_VERSION
+        ),
+        _ => format!(
+            "The owner for {dir} could not be used. Check that it runs under the same OS user and that --data-dir is the one it uses. This window keeps retrying."
+        ),
+    };
+    let hint = error
+        .hint
+        .as_deref()
+        .map(|h| format!(" Shellboy says: {h}."))
+        .unwrap_or_default();
+    format!("shellboy-studio: {} {next}{hint}", error.message)
+}
+
 #[tokio::main]
 async fn main() -> ExitCode {
     match run(Args::parse()).await {
@@ -70,11 +95,7 @@ async fn run(args: Args) -> Result<(), String> {
         )
         .await;
     if let Err(error) = probe {
-        eprintln!(
-            "shellboy-studio: no owner reachable in {} ({}). Start one with `shellboy serve --data-dir DIR` or the TUI; the bridge keeps retrying.",
-            data_dir.display(),
-            error.message
-        );
+        eprintln!("{}", owner_problem(&data_dir, &error));
     }
     if !args.listen.ip().is_loopback() {
         eprintln!(
@@ -114,4 +135,28 @@ async fn run(args: Args) -> Result<(), String> {
     serve(listener, state, PollConfig::default(), cancel)
         .await
         .map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::owner_problem;
+    use shellboy::protocol::{ApiError, ErrorCode};
+    use std::path::Path;
+
+    #[test]
+    fn each_owner_problem_says_what_to_do_next() {
+        let dir = Path::new("/data");
+        let none = owner_problem(
+            dir,
+            &ApiError::new(ErrorCode::AppNotRunning, "Cannot connect"),
+        );
+        assert!(none.contains("shellboy serve --data-dir /data") && none.contains("--data-dir"));
+        let old = owner_problem(
+            dir,
+            &ApiError::new(ErrorCode::ProtocolMismatch, "CLI uses 2"),
+        );
+        assert!(old.contains("README") && old.contains("protocol"));
+        let other = owner_problem(dir, &ApiError::new(ErrorCode::IoFailed, "x"));
+        assert!(other.contains("same OS user"));
+    }
 }

@@ -1,62 +1,124 @@
 # shellboy-studio
 
-A browser UI for [Shellboy](https://github.com/tya5/shellboy), the terminal
-coding agent. It aims to be a better place than the TUI to read and drive a
-conversation (rendered Markdown and code, collapsible tool output, live
-progress, Thread list) and to make Shellboy usable from a phone.
+A browser UI for [Shellboy](https://github.com/tya5/shellboy), the terminal coding agent.
+It is a small local program that sits next to a running Shellboy and lets you read and
+drive your conversations in a browser: rendered Markdown and code, collapsible tool
+output, live progress, a Thread list, and a layout that works on a phone.
 
-## Status
+Shellboy's owner process stays the only place with agent logic and saved conversations.
+Studio never reads Shellboy's database; it talks to the owner over Shellboy's local IPC
+RPC, the same way `shellboy chat` does.
 
-**First version, local only.** The Rust bridge, the `--debug` page, the TypeScript data layer
-(`web/data`, [docs/design/data-layer.md](docs/design/data-layer.md)), shared screen logic
-(`web/ui-core`) and the first design (`web/designs/console`,
-[docs/design/design-system.md](docs/design/design-system.md)) exist. To run it: `npm ci && npm run build`
-in `web/`, then `cargo run -- --data-dir DIR` with an owner on that directory
-([docs/design/bridge.md](docs/design/bridge.md)). The design is in
-[docs/design/architecture.md](docs/design/architecture.md). The first milestone
-depends on Shellboy features that are designed but not implemented yet
-(change notification `events.wait`, Shellboy #243; external RPC contract with
-capabilities and JSON Schema export, Shellboy #244).
+**Status: first version, not yet released.** No binary has been published and nothing
+here has run on GitHub CI yet. See [What has and has not been verified](#what-has-and-has-not-been-verified).
 
-## How it relates to Shellboy
+<!-- Screenshots: files do not exist yet. Add them under docs/screenshots/ and replace this list with images.
+     - docs/screenshots/conversation.png   Conversation view with a tool row expanded
+     - docs/screenshots/threads.png        Thread list
+     - docs/screenshots/setup.png          First-run connection setup
+     - docs/screenshots/phone.png          A real phone over Tailscale (do not use browser emulation)
+-->
+Screenshots (placeholders, not yet taken): `docs/screenshots/conversation.png`,
+`docs/screenshots/threads.png`, `docs/screenshots/setup.png`, `docs/screenshots/phone.png`.
 
-- Shellboy's owner process remains the only place with agent logic and saved
-  conversations. shellboy-studio does not access Shellboy's database.
-- shellboy-studio is a small Rust bridge on the same machine as the owner. It
-  talks to the owner over Shellboy's existing local IPC RPC, like
-  `shellboy chat`, and serves the TypeScript frontend over HTTP and WebSocket. The frontend is
-  layered: a tested data layer, a swappable presentation, and an opt-in debug
-  page. A desktop app (Tauri) is a possible later step.
-- It listens on localhost and requires a token by default. For phone or remote
-  access, put it behind Tailscale (`tailscale serve`) or an SSH tunnel; LAN
-  binding is available only when explicitly configured.
-- It has its own release cadence. Each release states which Shellboy release
-  (protocol version) it works with.
+## Start
+
+You need a running Shellboy owner first, then Studio:
+
+```sh
+shellboy serve &        # the owner (a Shellboy TUI that owns the data directory also works)
+shellboy-studio         # prints:  open http://127.0.0.1:8751/#token=...
+```
+
+Open the printed address once. The token in the address is exchanged for a session
+cookie and removed from the page. Add `--debug` to also enable the separate `/debug` page
+(off by default).
+
+This is two commands, not one. The intended one-command form (Studio starts the owner
+itself, acts as the `shellboy` CLI, and opens the browser) is a later step, designed in
+[docs/design/architecture.md](docs/design/architecture.md) section 10.1 and **not
+implemented**. While Studio or `shellboy serve` owns a data directory, the Shellboy TUI
+cannot run on that directory, because the TUI is itself an owner today.
+
+### Install
+
+- Release binaries (one `shellboy-studio` per OS/CPU, frontend embedded, with
+  `SHA256SUMS`) are what the release workflow will produce. **None are published yet.**
+  Verify a download with `sha256sum --check SHA256SUMS` (`shasum -a 256 -c` on macOS).
+- From source, which needs Node (build time) and the pinned Rust toolchain:
+
+  ```sh
+  git clone https://github.com/tya5/shellboy-studio && cd shellboy-studio
+  (cd web && npm ci && npm run build)   # the frontend is embedded by build.rs
+  cargo run --release -- --data-dir DIR
+  ```
+
+  Without `npm run build` the binary still builds, but `GET /` only says how to build the frontend.
+
+## Connecting to an owner
+
+Studio finds the owner from the Shellboy **data directory**: `--data-dir DIR`, else
+`SHELLBOY_DATA_DIR`, else Shellboy's OS default. Use the same directory the owner uses.
+Studio keeps its own token in its own config directory (`--config-dir`; by default
+`~/.config/shellboy-studio` on Linux, `~/Library/Application Support/shellboy-studio` on
+macOS, `%APPDATA%\shellboy-studio` on Windows), never in the data directory.
+
+If the owner is missing, Studio starts anyway, says so on the terminal, and keeps
+retrying; the page shows "Shellboy isn't reachable" until an owner appears.
+Run Studio and the owner as the same OS user.
+
+If no model connection exists yet, Studio can set one up from the browser (Anthropic,
+OpenAI, OpenRouter, LiteLLM, local, other). That needs a Shellboy newer than v0.10.0;
+on v0.10.0 the screen lists the manual steps instead. A Claude or ChatGPT subscription
+is not an API key; an API key is required.
+
+## Security
+
+- Studio listens on **loopback only** (`127.0.0.1:8751`) by default and requires a
+  **token**: 256 random bits in a file in the config directory (mode 0600 on Unix).
+  Anyone who has the token has your Shellboy session; keep it out of screenshots and Git.
+- Requests with an unexpected `Host` or `Origin` are refused (DNS rebinding and
+  cross-site WebSocket protection).
+- For a phone or another machine, use [Tailscale](https://tailscale.com):
+
+  ```sh
+  shellboy-studio --allow-host YOUR-MACHINE.TAILNET.ts.net
+  tailscale serve --bg 8751
+  ```
+
+  `tailscale serve` shares only within your tailnet and gives you HTTPS (needed for the
+  PWA). **Do not use `tailscale funnel`**: it publishes the port on the public internet.
+  An SSH tunnel (`ssh -L 8751:127.0.0.1:8751 host`) also works.
+- Binding to a non-loopback address with `--listen` is possible but is plain HTTP; Studio
+  warns, and the token is still required.
+- Studio is a thin client: no model calls, no direct access to Shellboy's data files.
+  It forwards only an allowlist of owner operations.
+
+## Version pairing with Shellboy
+
+Studio releases are built against one Shellboy release and speak its protocol.
+This tree is built against **Shellboy v0.10.0 (protocol 2)**, pinned in `Cargo.toml`.
+Until Shellboy's protocol 3, pair releases exactly. If the owner speaks another protocol,
+Studio says so on start and asks you to install the paired Shellboy. Screens that need
+operations newer than v0.10.0 (editing `config.toml`, connection setup) say so and
+stay read-only. A release's notes will name the exact Shellboy tag.
+
+## What has and has not been verified
+
+- Verified on macOS (Apple silicon) during development: Rust tests and clippy, the
+  frontend type checks and unit tests, and the bridge against a real owner using a
+  temporary data directory and no model API.
+- **Not yet run:** the GitHub Actions workflows, any Linux or Windows build or test, the
+  release packaging, a real phone over Tailscale, any paid model API.
+- Windows: written to be portable (Shellboy's named-pipe IPC, `%APPDATA%` config
+  directory) but never compiled or run on Windows by us.
+
+## Development
+
+See [AGENTS.md](AGENTS.md) and [docs/design/architecture.md](docs/design/architecture.md).
+Checks: `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test`,
+and in `web/`: `npm run check`.
 
 ## License
 
 MIT. See [LICENSE](LICENSE).
-
-## Planned usage (not usable yet)
-
-During development (M1) the owner and the bridge are started separately, as below.
-The release target is one `shellboy-studio` binary and one command: it connects to a
-running owner if there is one, otherwise starts the owner in-process (Shellboy's
-headless `serve` as a library), doubles as the `shellboy` CLI when called with
-arguments (multicall, so model shells find `shellboy`), and opens the browser.
-Using the TUI at the same time needs the TUI to attach to an existing owner, which
-Shellboy does not support yet (tracked as a Shellboy issue).
-
-```sh
-shellboy serve &      # an owner must already run (a TUI owner also works)
-shellboy-studio          # prints http://127.0.0.1:8751/#token=…; open it once
-shellboy-studio --debug  # also enables the separate /debug page (off by default)
-```
-
-- The bridge connects to a running owner only; if none runs it says to start `shellboy serve`.
-- It listens on localhost by default. For a phone, expose it privately with
-  `tailscale serve` (HTTPS, needed for the PWA) or an SSH tunnel; LAN binding needs
-  an explicit setting and warns.
-- Config and the token live in the OS config directory, separate from Shellboy's data directory.
-- A future desktop app bundles owner, bridge, UI and CLI into one binary, so none of
-  the above is needed there (see `docs/design/architecture.md` §11).

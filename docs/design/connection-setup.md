@@ -60,7 +60,7 @@ Failure classes the adapter knows: `auth`, `url`, `unreachable`, `timeout`, `tls
 
 | Decision | Reason | Revisit when |
 |---|---|---|
-| Presets' key pages are `console.anthropic.com/settings/keys` and `platform.openai.com/api-keys` | the addresses the providers' own documentation gave when read; not fetched now | a link is found dead |
+| Presets' key pages are `platform.claude.com/settings/keys` and `platform.openai.com/api-keys` | see "Preset sources" below; the Anthropic address was changed from `console.anthropic.com` because that now answers 301 to the new one | a link is found dead |
 | Local and Other default to `chat_completions`; Local's example is `http://localhost:11434/v1` | the dialect most servers (Ollama, LiteLLM, vLLM) speak; Ollama's default port. Shellboy's docs name no local preset | a local server needs another dialect |
 | `api_key_env` is always written for a preset with a variable name, also when the key is stored | `api_key_header` requires `api_key_env` in Shellboy's validation, and a stored key is the fallback behind it (#269 stage A) | the core stores a key without a variable |
 | It makes the new connection the default only when the file has none (the person can change it either way) | the screen exists to reach a first message, and a second connection must not silently change the default | a person asks for a different default |
@@ -71,6 +71,20 @@ Failure classes the adapter knows: `auth`, `url`, `unreachable`, `timeout`, `tls
 | A connection change needs a restart where the owner says so; no restart automation | #269 stage C changes this; the screen follows `restart_required` | stage C lands |
 | Not shown automatically on an owner without the capability | without `config.get` the screen can't know there is no connection | the owner reports connections some other way |
 
-OpenRouter and LiteLLM proxy are presets because they are common entry points and a preset is only data. OpenRouter's fixed address and key page, and LiteLLM's example port and variable name, come from memory and still need checking against their documentation. A provider may serve its model list without checking the key, so a fetched list is never reported as an accepted key; OpenRouter does (HTTP 200 with no key, measured 2026-11-07), so its screen says the first message is what checks the key.
+OpenRouter and LiteLLM proxy are presets because they are common entry points and a preset is only data. OpenRouter's address and key page and LiteLLM's port and variable name were checked against their documentation on 2026-11-07 (see "Preset sources"). A provider may serve its model list without checking the key, so a fetched list is never reported as an accepted key; OpenRouter does (HTTP 200 with no key, measured 2026-11-07), so its screen says the first message is what checks the key.
 
 Every preset is only a starting value. "Change address or format" opens the address and the format on any service, so a stale preset never blocks anyone and doesn't need an urgent fix. Editing them forgets what was learned about the preset's variable: the owner's key is never sent to a typed address unasked. `api_key_env` is written only when the person chose the variable, because at each request it would otherwise win over the key they stored. We add a preset only when "Other" is really a problem; models.dev (checked 2026-11-07: 235 providers, but none of Anthropic's or OpenAI's addresses, no LiteLLM or Ollama, 6 MB, dialect only implied) stays a possible search aid for "Other", not a source of truth.
+
+## Preset sources (fetched 2026-11-07)
+
+| Value | Result | Source |
+|---|---|---|
+| Anthropic key page | Changed to `https://platform.claude.com/settings/keys`. `https://console.anthropic.com/settings/keys` answers 301 with that Location. | the 301 itself; `https://platform.claude.com/docs/en/api/overview` ("generate API keys on the API keys page (`platform.claude.com/settings/keys`)") |
+| Anthropic base URL, key header | Unchanged. The API is at `https://api.anthropic.com`; `GET /v1/models`; `x-api-key` is listed (as a legacy fallback to `Authorization: Bearer`, still supported). The preset's `x-api-key` therefore still works. | same overview page |
+| OpenAI key page | Unchanged: `https://platform.openai.com/api-keys`. The page itself answered 403 to the fetch tool, so it was not opened. The link is quoted by OpenAI's own docs: "create an API key in the dashboard" linking to it. | `https://developers.openai.com/api/docs/libraries` (`platform.openai.com/docs/quickstart` answers 301 to `developers.openai.com/api/docs/quickstart`, which uses `OPENAI_API_KEY` and gives no key-page URL) |
+| OpenAI variable | Unchanged: `OPENAI_API_KEY`. | `https://developers.openai.com/api/docs/quickstart` |
+| OpenRouter base URL | Unchanged: `https://openrouter.ai/api/v1` (an EU in-region variant `https://eu.openrouter.ai/api/v1` exists for Business/Enterprise; not a preset). | `https://openrouter.ai/docs/quickstart` |
+| OpenRouter key page | Unchanged: `https://openrouter.ai/keys` (the page itself is a sign-in page when signed out). | `https://openrouter.ai/docs/api-reference/authentication` |
+| OpenRouter variable `OPENROUTER_API_KEY` | Not confirmed by a fetched page (the quickstart shows only the placeholder `<OPENROUTER_API_KEY>`). It is only the name Studio asks the owner to read, so it is a convention, not a provider requirement. | `https://openrouter.ai/docs/quickstart` |
+| LiteLLM default port | Unchanged: 4000 ("Proxy running on http://0.0.0.0:4000"; examples use `http://localhost:4000`). The preset's `/v1` suffix is the OpenAI-compatible path and was not confirmed by this page. | `https://docs.litellm.ai/docs/proxy/quick_start` |
+| LiteLLM variable `LITELLM_API_KEY` | Unchanged. The proxy's own variable is `LITELLM_MASTER_KEY` (server side); the virtual-keys page uses `LITELLM_API_KEY` for client calls (`Authorization: Bearer $LITELLM_API_KEY`). | `https://docs.litellm.ai/docs/proxy/virtual_keys` |

@@ -1,0 +1,162 @@
+# UNTESTED: written before the first push; it has not run on GitHub. Validated only as YAML.
+# Never publishes by itself: it builds, and leaves a DRAFT release for the owner to inspect and publish.
+name: Release binaries
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing vX.Y.Z tag to build (a draft release is created; nothing is published)
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: release-${{ inputs.release_tag || github.ref_name }}
+  cancel-in-progress: false
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            executable: shellboy-studio.exe
+            archive: zip
+          - os: macos-15
+            target: aarch64-apple-darwin
+            executable: shellboy-studio
+            archive: tar.gz
+          - os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            executable: shellboy-studio
+            archive: tar.gz
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    env:
+      RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
+      RELEASE_TARGET: ${{ matrix.target }}
+      RELEASE_EXECUTABLE: ${{ matrix.executable }}
+      RELEASE_ARCHIVE: ${{ matrix.archive }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ inputs.release_tag || github.ref_name }}
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Install pinned Rust toolchain
+        run: rustup toolchain install 1.99.1 --profile minimal --component rustfmt --component clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: release-v1
+          cache-on-failure: true
+      - name: Tag must be vX.Y.Z and match the Cargo version
+        run: |
+          python - <<'PY'
+          import json, os, re, subprocess
+          tag = os.environ['RELEASE_TAG']
+          meta = json.loads(subprocess.check_output(['cargo', '+1.99.1', 'metadata', '--locked', '--no-deps', '--format-version', '1'], text=True))
+          version = next(p['version'] for p in meta['packages'] if p['name'] == 'shellboy-studio')
+          assert re.fullmatch(r'v[0-9]+\.[0-9]+\.[0-9]+', tag), 'Use a stable vX.Y.Z tag'
+          assert tag == f'v{version}', f'Tag {tag} must match Cargo version {version}'
+          rustc = subprocess.check_output(['rustc', '+1.99.1', '-vV'], text=True)
+          assert f"host: {os.environ['RELEASE_TARGET']}" in rustc, rustc
+          PY
+      - name: Build the frontend (embedded by build.rs) and run the checks
+        run: |
+          (cd web && npm ci && npm run check && npm run build)
+          test -s web/dist/index.html
+          cargo +1.99.1 test --locked
+      - name: Build the locked release binary
+        run: |
+          if [[ "$RELEASE_TARGET" == "aarch64-apple-darwin" ]]; then export MACOSX_DEPLOYMENT_TARGET=14.0; fi
+          cargo +1.99.1 build --locked --release --bin shellboy-studio --target "$RELEASE_TARGET"
+          "target/$RELEASE_TARGET/release/$RELEASE_EXECUTABLE" --version
+      - name: Package
+        run: |
+          python - <<'PY'
+          import os, shutil, tarfile, zipfile
+          from pathlib import Path
+          name = f"shellboy-studio-{os.environ['RELEASE_TAG']}-{os.environ['RELEASE_TARGET']}"
+          stage = Path('package') / name
+          stage.mkdir(parents=True)
+          exe = os.environ['RELEASE_EXECUTABLE']
+          shutil.copy2(Path('target') / os.environ['RELEASE_TARGET'] / 'release' / exe, stage / exe)
+          for f in ('LICENSE', 'README.md'):
+              shutil.copy2(f, stage / f)
+          out = Path('dist'); out.mkdir()
+          archive = out / f"{name}.{os.environ['RELEASE_ARCHIVE']}"
+          if os.environ['RELEASE_ARCHIVE'] == 'zip':
+              with zipfile.ZipFile(archive, 'w', zipfile.ZIP_DEFLATED) as z:
+                  for p in sorted(stage.rglob('*')):
+                      if p.is_file(): z.write(p, p.relative_to(stage.parent))
+          else:
+              with tarfile.open(archive, 'w:gz') as t:
+                  t.add(stage, arcname=name)
+          PY
+      - name: Smoke-test the packaged executable
+        run: |
+          python - <<'PY'
+          import os, subprocess, tarfile, tempfile, zipfile
+          from pathlib import Path
+          archive, = Path('dist').iterdir()
+          root = Path(tempfile.mkdtemp(prefix='studio-packaged-'))
+          if archive.suffix == '.zip':
+              zipfile.ZipFile(archive).extractall(root)
+          else:
+              tarfile.open(archive).extractall(root, filter='data')
+          stage, = root.iterdir()
+          out = subprocess.check_output([str(stage / os.environ['RELEASE_EXECUTABLE']), '--version'], text=True).strip()
+          assert out == 'shellboy-studio ' + os.environ['RELEASE_TAG'][1:], out
+          assert (stage / 'LICENSE').is_file() and (stage / 'README.md').is_file()
+          print('packaged smoke:', out)
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+
+  draft:
+    name: SHA256SUMS and draft release
+    needs: build
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    env:
+      RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: dist
+          merge-multiple: true
+      - name: Checksums
+        run: |
+          cd dist
+          ls -l
+          test "$(ls | wc -l)" -eq 3
+          sha256sum * > SHA256SUMS
+          sha256sum --check SHA256SUMS
+          cat SHA256SUMS
+      - name: Create a draft release (the owner publishes it by hand)
+        run: |
+          gh release create "$RELEASE_TAG" dist/* --repo "$GITHUB_REPOSITORY" --draft --verify-tag \
+            --title "$RELEASE_TAG" --notes "Draft. Built from tag $RELEASE_TAG; see SHA256SUMS. Pairing with Shellboy: see README."
