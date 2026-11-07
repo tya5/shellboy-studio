@@ -180,11 +180,12 @@ shows "result unconfirmed" and offers `operation.get`, exactly like the CLI's
 
 **Allowlist (M1).** Reads: `status`, `model.list`, `thread.list`, `thread.get`,
 `run.get`, `turn.get`, `message.get`, `shell.list`, `shell.get`, `shell.read`,
-`history.list`, `history.get`, `operation.get`. Mutations: `thread.create`,
+`history.list`, `history.get`, `operation.get`. Reads added for Analytics and Settings: `usage.get`, `compact.list`,
+`storage.status`, `index.status` (`analytics-settings.md`). Mutations: `thread.create`,
 `message.send`, `run.stop`, `run.retry`, `thread.archive`, `message.cancel`, plus the
 rewind operations of Shellboy #246 once available. `events.wait` is bridge-internal.
-Everything else (`owner.shutdown`, deletion, prune, storage, index, compaction)
-is rejected with a bridge error until a milestone adds a UI for it. The list
+Everything else (`owner.shutdown`, deletion, prune, `storage.collect`, index and
+compaction mutations) is rejected with a bridge error until a milestone adds a UI for it. The list
 is the set of operations the UI implements, so the browser cannot be used as a
 generic remote shell into the RPC; it is one exhaustive `match` in the bridge,
 not a registry.
@@ -515,4 +516,5 @@ the foundation works end to end (§2.1).
 | Reactive state via signals with WebSocket push; responsive baseline in M1, PWA/phone polish in M2 verified on a real phone (2026-11-06, user decision) | no reload or polling | — |
 | Desktop app future: Web, then PWA, then Tauri form B (single binary, in-process owner, multicall CLI); sidecar A fallback; design-now constraints in §11 (2026-11-06, user decision) | non-server users | OS integration needed |
 | First-run GUI setup for connection, folder, security explanation, in-app updates; needs new core operations (§12) (2026-11-06, user decision) | non-server users | — |
+| `usage.get`, `compact.list`, `storage.status` and `index.status` join the allowlist as reads for Analytics and Settings (2026-11-07) | saved facts only, no provider request and no receipt; every related mutation stays denied (`analytics-settings.md`) | a UI offers a mutation with a preview |
 | `run.retry` and `thread.archive` join the allowlist with the data layer's operations (2026-11-07) | the data layer exposes them as typed operations (`docs/design/data-layer.md`); `thread.unarchive` stays denied until a UI offers it | a UI for unarchive exists |

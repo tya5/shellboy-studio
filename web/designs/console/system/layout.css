@@ -68,7 +68,7 @@
 .band{display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-8)}
 .band.end{justify-content:flex-end}
 .fieldrow{display:flex;flex-wrap:wrap;align-items:flex-end;gap:var(--space-12)}
-.fieldrow label.lab{display:flex;flex-direction:column;gap:var(--space-4);font:var(--type-caption);color:var(--muted);width:120px}
+.fieldrow .lab{display:flex;flex-direction:column;gap:var(--space-4);font:var(--type-caption);color:var(--muted);width:120px}
 .steps-list{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:var(--space-12);font:var(--type-label)}
 .steps-list strong{display:block;font-weight:600}
 .subhead{margin:var(--space-8) 0 0;font:var(--type-heading)}

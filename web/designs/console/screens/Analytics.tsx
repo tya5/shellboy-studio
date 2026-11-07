@@ -43,14 +43,14 @@ function Weighting({ context }: { context: DesignContext }) {
   return (
     <Section title={t("weights.title")} sub={<span class="mono">{t("weights.formula")}</span>}>
       <div class="fieldrow">
-        <label class="lab">
+        <div class="lab">
           {t("weights.n")}
           <Field ariaLabel={t("weights.n")} type="number" min="0" step="0.05" inputMode="decimal" value={draft.n} onInput={(e) => change({ ...draft, n: e.currentTarget.value })} />
-        </label>
-        <label class="lab">
+        </div>
+        <div class="lab">
           {t("weights.m")}
           <Field ariaLabel={t("weights.m")} type="number" min="0" step="0.5" inputMode="decimal" value={draft.m} onInput={(e) => change({ ...draft, m: e.currentTarget.value })} />
-        </label>
+        </div>
         <Button onClick={() => { setDraft({ n: String(DEFAULT_WEIGHTS.cached), m: String(DEFAULT_WEIGHTS.output) }); context.setPrefs({ weights: DEFAULT_WEIGHTS }); }}>{t("weights.reset")}</Button>
       </div>
       {invalid ? <Notice tone="wait">{t("weights.invalid")}</Notice> : null}

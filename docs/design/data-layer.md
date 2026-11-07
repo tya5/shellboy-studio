@@ -69,6 +69,7 @@ const h = data.openThread(id)   // ThreadHandle; h.detail, h.history, h.preview 
 h.refresh(); h.loadOlderHistory(); h.close()
 // operations (data.operations), each returns Outcome<T> = {ok,value}|{ok:false,error:OpError}
 threadList(args) threadGet(id) historyList(args) historyGet(args) shellList(args) shellRead(args) operationGet(opId)
+usageGet(args) compactList(args) storageStatus() indexStatus() memoryStatus() statusSummary() modelList(args)
 threadCreate(args, opId?) messageSend({thread_id,text,deliver?}, opId?) runStop(runId, opId?) runRetry(runId, opId?)
 threadArchive(ids, {descendants?}, opId?)
 ```

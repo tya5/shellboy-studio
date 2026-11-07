@@ -85,6 +85,10 @@ fallback.
 | Ephemeral `message.send` fields: the bridge forces `human: true`, `sender_label: "web"` | architecture 4.4 | never |
 | Debug page UI is plain JS, not the TS data layer | the data layer is part 2; the debug page must work without it | the data layer exists (then the debug page may show its state) |
 
+## Allowlist additions
+
+`usage.get`, `compact.list`, `storage.status` and `index.status` are reads for the Analytics and Settings views (`analytics-settings.md`). `src/ws.rs` tests that they pass and that `storage.collect`, `index.*` mutations, `thread.prune`, `thread.set` and `compact` stay denied.
+
 ## Needs from core
 
 See the hand-off report; nothing blocks part 1. Items that would help: a way to obtain
