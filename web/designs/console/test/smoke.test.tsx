@@ -248,6 +248,15 @@ describe("Analytics", () => {
     expect(text(el)).toContain("Reading stopped");
     expect(el.querySelectorAll("figure.chart path.fill").length).toBeGreaterThan(0);
   });
+  it("says Not read until something has been read, and No value only after", async () => {
+    const { model, t } = await fixtureModel({ route: "monitor" });
+    t.drop();
+    const el = draw(model);
+    await act(async () => {
+      model.applyRoute({ view: "analytics" });
+    });
+    expect(text(el.querySelector(".stat .stat-value")!)).toBe("Not read");
+  });
   it("speaks Japanese", async () => {
     const { model } = await fixtureModel({ route: "analytics" });
     const el = draw(model, { lang: "ja" });
@@ -290,7 +299,7 @@ describe("Settings", () => {
       await (await import("../../../data/test/harness")).settle(t, db);
     });
     expect(t.calls("model.list")).toHaveLength(1);
-    expect(text(el)).toContain("2 models");
+    expect(text(el)).toContain("Models: 2");
     expect(text(el)).toContain("responses");
   });
   it("Embeddings shows the index state; Storage marks documented defaults as such", async () => {

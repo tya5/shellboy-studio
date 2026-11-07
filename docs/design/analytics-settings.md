@@ -116,3 +116,15 @@ legend and table provide the required second channel). Single series use `muted`
 | Period is browser-local fixed offset, not `local` | Calendar days should match what the reader sees when the owner is elsewhere. Uncertain: a DST change inside the period shifts boundaries by the offset difference | Someone reads across a DST change |
 | Settings reads one `thread.get` for the selected Thread, without opening its history | Opening a Thread walks its history (`data-layer.md`) | A Thread picker is wanted |
 | Documented defaults are shown beside "Owner doesn't report this" | Useful to read, and marked so it isn't taken for the running value. Uncertain under the no-guessed-values rule | `config.get` exists; then they go away |
+
+## Validation record (2026-11-07)
+
+Environment: macOS (Darwin 25.3, arm64), Node 25.9, headless Google Chrome driven over its DevTools protocol by a throwaway script, bridge debug build embedding the production bundle, `~/.local/bin/shellboy` 0.10.0 `serve` with a temporary HOME and data directory and a local mock Responses endpoint. No paid request. The user's data directory wasn't connected to; its database was opened once with `mode=ro` for row counts only.
+
+The data was synthetic: mock replies, then, with the owner stopped, attempts copied to 33,959 rows and their times moved across 13 days directly in the temporary database, to exercise days and scan windows. Row sizes don't match real ones, so these timings say nothing about the real database: a walk of 4 windows reported 204 to 273 ms of owner time.
+
+Commands: `npm run check` (typecheck and Vitest), `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test` with `SHELLBOY_BIN` set to the same 0.10.0 binary. `tests/real_owner.rs` now sends every new read through the bridge to that real owner, and checks that `storage.collect` is refused.
+
+Seen in the browser against the real bridge and owner: all charts, tables and Resources; Console, Light and Terminal at 1440 px and 390 px; Japanese; hover tooltips; opening a chart's table; period change; weights changing the figures with no read, kept per browser, an invalid value refused; by-Thread walk and choosing a Thread's compaction; the range bar with a real "after" value; a walk over 4 windows with real cursors; Stop then Continue; owner down and then back, which read again by itself; the catalog on a press. No console error, no request leaving the bridge's origin, no horizontal page overflow. Daily values for six days were compared with a direct SQL sum of the temporary database and matched.
+
+Browser device emulation is not a phone test. Not tested: real phones, Safari, Firefox, Windows, Linux, a real provider, the user's real data, index spaces in a browser (the temporary owner had no embedding configured, so spaces are covered by fixtures only), storage `warning` or `limit_reached` in a browser (fixtures only by logic), the 64-window bound against a real owner (unit test only), a screen reader.

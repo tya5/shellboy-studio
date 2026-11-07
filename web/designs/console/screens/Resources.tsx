@@ -12,10 +12,10 @@ function CacheMeter({ t, c }: { t: Translate; c: CacheFact }) {
   const text =
     used === undefined
       ? t("res.cacheUnknown", { reason: c.reason ?? t("common.notReported"), limit })
-      : c.entries !== undefined && c.unit
-        ? t("res.cacheEntries", { used, limit, entries: c.entries, unit: c.unit })
+      : c.entries !== undefined
+        ? t("res.cacheEntries", { used, limit, entries: c.entries })
         : t("res.cacheText", { used, limit });
-  return <Meter label={name} value={c.retained} limit={c.limit} text={text} aria={t("res.cacheAria", { name, used: c.retained ?? "", limit: c.limit ?? "" })} />;
+  return <Meter prose={used === undefined} label={name} value={c.retained} limit={c.limit} text={text} aria={t("res.cacheAria", { name, used: c.retained ?? "", limit: c.limit ?? "" })} />;
 }
 
 export function Resources({ model }: { model: AppModel }) {

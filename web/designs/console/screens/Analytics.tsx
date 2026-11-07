@@ -7,6 +7,8 @@ import { Button, ButtonGroup, Chart, DataTable, Field, Notice, RangeBar, Section
 import { Resources } from "./Resources";
 
 const percent = (v: number): string => `${Math.round(v * 100)}%`;
+/** A share too small to round to 0.1% says so, rather than reading as none. */
+const shareText = (fraction: number): string => (fraction > 0 && fraction < 0.001 ? "<0.1" : String(Math.round(fraction * 1000) / 10));
 const noteOf = (t: Translate, d: DayFacts): string | undefined => (d.inconsistent ? t("common.inconsistent") : d.incomplete ? t("common.incomplete") : undefined);
 
 function peakSummary(t: Translate, days: number, values: (number | undefined)[], format: (n: number) => string): string {
@@ -185,7 +187,8 @@ export function Analytics({ context }: { context: DesignContext }) {
   const days = dayFacts(period.dayKeys, walk.groups, weights);
   const totals = periodTotals(walk.groups, weights);
   const loading = walk.status === "loading";
-  const notReported = t("analytics.noValue");
+  // Nothing read yet isn't the same as the owner having no value.
+  const notReported = walk.groups.size > 0 || walk.status === "done" ? t("analytics.noValue") : loading ? t("common.loading") : t("analytics.notRead");
   const c = walk.coverage;
   const hasSomething = walk.groups.size > 0;
 
@@ -199,7 +202,7 @@ export function Analytics({ context }: { context: DesignContext }) {
   const summaryPoints = days.map((d) => point(d, { cached: d.summaryCached, uncached: d.summaryUncached, output: d.summaryOutput }));
   const tokens = (n: number) => formatTokens(Math.round(n));
   const source = (read: string) => <>{t("common.source", { source: "" })}<code>{read}</code></>;
-  const common = { tableLabel: t("analytics.table"), categoryLabel: t("analytics.day"), noData: t("analytics.noValue") };
+  const common = { tableLabel: t("analytics.table"), categoryLabel: t("analytics.day"), noData: notReported };
   const dailyTotals = days.map((d) => (d.recorded ? (d.cached ?? 0) + (d.uncached ?? 0) + (d.output ?? 0) : undefined));
 
   return (
@@ -236,7 +239,7 @@ export function Analytics({ context }: { context: DesignContext }) {
         <Stat
           label={t("stat.summary")}
           value={totals.summaryEffective !== undefined ? tokens(totals.summaryEffective) : notReported}
-          note={totals.summaryEffective !== undefined && totals.effective ? t("stat.summaryNote", { share: Math.round((totals.summaryEffective / totals.effective) * 1000) / 10, n: totals.summaryRequests.toLocaleString("en-US") }) : undefined}
+          note={totals.summaryEffective !== undefined && totals.effective ? t("stat.summaryNote", { share: shareText(totals.summaryEffective / totals.effective), n: totals.summaryRequests.toLocaleString("en-US") }) : undefined}
         />
         <Stat label={t("stat.compactions")} value={hasSomething ? totals.compactions.toLocaleString("en-US") : notReported} note={t("stat.compactionsNote")} />
       </div>
@@ -296,7 +299,8 @@ export function Analytics({ context }: { context: DesignContext }) {
           sub={t("chart.eventsSub")}
           series={[{ id: "events", label: t("series.compactions"), tone: "neutral" }]}
           points={days.map((d) => point(d, { events: d.recorded ? d.compactions : undefined }))}
-          format={(n) => String(Math.round(n * 10) / 10)}
+          format={String}
+          whole
           ariaSummary={t("chart.eventsAria", { summary: peakSummary(t, days.length, days.map((d) => (d.recorded ? d.compactions : undefined)), String) })}
           source={source("usage.get group_by=day, compaction.compactions")}
           {...common}

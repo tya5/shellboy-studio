@@ -29,6 +29,8 @@ const GAP = 2;
 const RADIUS = 4;
 const LABEL_MIN = 44;
 const MIN_SEGMENT = 2;
+const TIP_WIDTH = 220;
+const TIP_GAP = 8;
 
 function useWidth(fallback: number) {
   const ref = useRef<HTMLDivElement>(null);
@@ -60,6 +62,7 @@ export function Chart({
   points,
   format,
   floorMax,
+  whole,
   ariaSummary,
   tableLabel,
   categoryLabel,
@@ -75,6 +78,8 @@ export function Chart({
   format: (n: number) => string;
   /** The axis reaches at least this, e.g. 1 for a rate. */
   floorMax?: number;
+  /** Counts: no tick between whole numbers. */
+  whole?: boolean;
   ariaSummary: string;
   tableLabel: string;
   categoryLabel: string;
@@ -97,7 +102,8 @@ export function Chart({
   const lastIndex = points.length - 1;
   const showLabel = (i: number) => (lastIndex - i) % every === 0;
   const current = active !== undefined ? points[active] : undefined;
-  const tipLeft = active !== undefined ? Math.min(Math.max(0, x(active) + band / 2 - 90), Math.max(0, width - 180)) : 0;
+  // Beside the hovered column, so it never hides the mark it describes.
+  const tipLeft = active === undefined ? 0 : x(active) + band + TIP_GAP + TIP_WIDTH <= width ? x(active) + band + TIP_GAP : Math.max(0, x(active) - TIP_GAP - TIP_WIDTH);
 
   const key = (e: KeyboardEvent) => {
     if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
@@ -156,7 +162,7 @@ export function Chart({
             onBlur={() => setActive(undefined)}
             onPointerLeave={() => setActive(undefined)}
           >
-            {[0, max / 2, max].map((v) => (
+            {[0, max / 2, max].filter((v) => !whole || Number.isInteger(v)).map((v) => (
               <g key={v}>
                 <line class={v === 0 ? "axis" : "grid"} x1={AXIS_LEFT} x2={width - END_ROOM} y1={y(v)} y2={y(v)} />
                 <text class="tick" x={AXIS_LEFT - 6} y={y(v) + 4} text-anchor="end">{format(v)}</text>
@@ -202,7 +208,7 @@ export function Chart({
           <div class="chart-empty muted">{noData}</div>
         )}
         {current ? (
-          <div class="chart-tip" role="status" style={{ left: `${tipLeft}px` }}>
+          <div class="chart-tip" role="status" style={{ left: `${tipLeft}px`, width: `${TIP_WIDTH}px` }}>
             <div class="tip-head">{current.key}</div>
             {series.map((s) => {
               const v = current.values[s.id];
