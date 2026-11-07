@@ -337,6 +337,16 @@ async fn mock_provider() -> String {
                         }
                     }
                 }
+                if seen.starts_with(b"GET ") {
+                    let body = r#"{"object":"list","data":[{"id":"mock-model","object":"model"}]}"#;
+                    let head = format!(
+                        "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n",
+                        body.len()
+                    );
+                    let _ = socket.write_all(head.as_bytes()).await;
+                    let _ = socket.write_all(body.as_bytes()).await;
+                    return;
+                }
                 let item = json!({"id":"m","type":"message","role":"assistant","status":"completed","content":[{"type":"output_text","text":"done"}]});
                 let reply = json!({"type":"response.completed","response":{"id":"r","status":"completed","output":[item],"usage":{"input_tokens":10,"input_tokens_details":{"cached_tokens":0},"output_tokens":1,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":11}}});
                 let body = format!("data: {reply}\n\n");
@@ -811,7 +821,8 @@ async fn settings_read_and_write_the_file_and_values_stay_hidden() {
     let bin = PathBuf::from(std::env::var_os("SHELLBOY_BIN").expect("SHELLBOY_BIN"));
     let root = temp_root();
     let data = root.join("data");
-    let serve = start_owner(&bin, &root, &data);
+    let url = mock_provider().await;
+    let serve = start_owner_with(&bin, &root, &data, &url);
     let path = root.join("config.toml");
     let hidden = "synthetic-value-not-a-credential";
     let mut text = std::fs::read_to_string(&path).unwrap();
@@ -849,7 +860,12 @@ async fn settings_read_and_write_the_file_and_values_stay_hidden() {
     let checked = c
         .ok("connection.test", json!({"connection":"local"}), None)
         .await;
-    assert!(checked["sent"].is_boolean(), "{checked}");
+    assert_eq!(checked["sent"], true, "{checked}");
+    assert_eq!(checked["ok"], true, "{checked}");
+    assert!(
+        checked["models"].to_string().contains("mock-model"),
+        "{checked}"
+    );
     assert!(checked["credential"].is_object(), "{checked}");
     let cleared = c
         .ok(
