@@ -88,7 +88,7 @@ export class AppsModel {
   readonly instances: Signal<Readonly<Record<string, readonly string[]>>> = signal({});
   readonly openError: Signal<{ name: string; message: string } | undefined> = signal(undefined);
   /** One bounded page of folders, owned by the new-app panel and cancelled when it closes. */
-  readonly folders = signal<{ names: string[]; loading: boolean; error?: string }>({ names: [], loading: false });
+  readonly folders = signal<{ names: string[]; loading: boolean; truncated?: boolean; error?: string }>({ names: [], loading: false });
   private folderCancel = new Cancel();
   private folderGeneration = 0;
   async loadFolders(): Promise<void> {
@@ -98,7 +98,7 @@ export class AppsModel {
     this.folders.value = { names: [], loading: true };
     const out = await this.ops.threadCwds({ limit: 200 }, { cancel });
     if (generation !== this.folderGeneration) return;
-    this.folders.value = out.ok ? { names: out.value.items, loading: false } : { names: [], loading: false, error: out.error.message };
+    this.folders.value = out.ok ? { names: out.value.items, loading: false, truncated: out.value.next_cursor !== undefined } : { names: [], loading: false, error: out.error.message };
   }
   leaveFolders(): void { this.folderGeneration++; this.folderCancel.cancel(); }
   private opening = new Set<string>();

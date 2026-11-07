@@ -798,6 +798,22 @@ describe("Apps", () => {
     expect(frame(el)).toBe(before);
     expect(el.querySelector(".apps-host.off")).toBeNull();
   });
+  it("opens another name inline and lists previously opened names on the card", async () => {
+    const { el, model, t, db } = await open("board");
+    const plain = db.answer;
+    db.answer = (c) => c.command === "apps.instances" ? { ok: true, result: { items: ["alpha"] } } : c.command === "apps.instance.create" ? { ok: true, result: {} } : plain(c);
+    act(() => el.querySelector<HTMLButtonElement>(".apptab-add")!.click());
+    const input = el.querySelector<HTMLInputElement>(".apptab-name input")!;
+    act(() => { input.value = "bad/name"; input.dispatchEvent(new Event("input", { bubbles: true })); });
+    expect(el.querySelector<HTMLButtonElement>(".apptab-name button")!.disabled).toBe(true);
+    act(() => { input.value = "alpha"; input.dispatchEvent(new Event("input", { bubbles: true })); });
+    await act(async () => { el.querySelector<HTMLFormElement>(".apptab-name")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })); await settle(t, db); });
+    expect(model.route.value).toEqual({ view: "apps", appName: "board", appInstance: "alpha" });
+    expect(text(el.querySelector(".apps-toolbar strong")!)).toBe("Board: alpha");
+    expect(text(el)).not.toContain("Instance");
+    await act(async () => { model.applyRoute({ view: "apps" }); await settle(t, db); });
+    expect(el.querySelector('.card .app-names a[href="#/apps/board/alpha"]')).toBeTruthy();
+  });
   it("manually reloads the open app with a fresh file session", async () => {
     const { el, model, t, db } = await open("board");
     const before = frame(el);

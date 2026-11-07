@@ -100,7 +100,7 @@
 .branches[data-layout=list] .bgraph{display:none}
 .apps-host{flex:1;min-width:0;min-height:0;display:flex;flex-direction:column}
 .apps-host.off{display:none}
-.apps-toolbar{display:flex;justify-content:flex-end;padding:var(--space-4) var(--space-16);border-bottom:1px solid var(--line);flex:none}
+.apps-toolbar{display:flex;align-items:center;justify-content:space-between;gap:var(--space-8);padding:var(--space-4) var(--space-16);border-bottom:1px solid var(--line);flex:none}
 .apps-alerts{display:flex;flex-direction:column;gap:var(--space-8);padding:var(--space-8) var(--space-16);flex:none}
 .apps-alerts:empty{display:none}
 .app-list-actions,.app-templates{display:flex;flex-wrap:wrap;gap:var(--space-8)}

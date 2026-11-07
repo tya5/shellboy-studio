@@ -1,7 +1,7 @@
 import { appTabKey } from "../../../ui-core/src/apps";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { APP_TEMPLATES, formatRoute, readAppMessage, validAppInstance, type AppModel, type DesignContext, type OpenApp } from "../../../ui-core/src";
-import { AppCard, AppFrame, AppTabs, AppRequest, Button, EmptyState, Field, GuideCopy, Notice } from "../system/components";
+import { AppCard, AppFrame, AppTabs, AppRequest, Button, EmptyState, GuideCopy, Notice } from "../system/components";
 
 function Alerts({ model, tab }: { model: AppModel; tab: OpenApp }) {
   const t = model.t.value;
@@ -35,17 +35,11 @@ function Alerts({ model, tab }: { model: AppModel; tab: OpenApp }) {
   );
 }
 
-function Instances({ model, name }: { model: AppModel; name: string }) {
-  const [value, setValue] = useState("");
-  const [busy, setBusy] = useState(false);
-  const t = model.t.value;
+function AppNames({ model, name }: { model: AppModel; name: string }) {
   const apps = model.apps;
   useEffect(() => { void apps.loadInstances(name); }, [apps, name]);
-  return <section class="sect"><h3>{t("apps.instances")}</h3>
-    <Field ariaLabel={t("apps.instanceName")} value={value} onInput={(event) => setValue(event.currentTarget.value)} />
-    <Button disabled={busy || !validAppInstance(value)} onClick={() => { setBusy(true); void apps.createInstance(name, value).then((ok) => { setBusy(false); if (ok) { model.navigate({ view: "apps", appName: name, appInstance: value }); setValue(""); } }); }}>{t("apps.instanceCreate")}</Button>
-    {(apps.instances.value[name] ?? []).map((instance) => <div key={instance}><a href={formatRoute({ view: "apps", appName: name, appInstance: instance })}>{instance}</a></div>)}
-  </section>;
+  const names = apps.instances.value[name] ?? [];
+  return names.length ? <div class="app-names">{names.map((value) => <a key={value} href={formatRoute({ view: "apps", appName: name, appInstance: value })}>{value}</a>)}</div> : null;
 }
 
 function AppList({ model }: { model: AppModel }) {
@@ -65,6 +59,7 @@ function AppList({ model }: { model: AppModel }) {
         <div class="app-list-actions"><Button onClick={() => { setDraft(""); setCreating(!creating); }}>{t("apps.new")}</Button><Button disabled={list.loading} onClick={() => void apps.refresh()}>{t("common.refresh")}</Button></div>
       </div>
       {creating ? <AppRequest key={draft} title={t("apps.createTitle")} requestLabel={t("apps.request")} cwdLabel={t("apps.cwd")} reviewLabel={t("apps.preview")} previewLabel={t("apps.previewLabel")} sendLabel={t("apps.createSend")} prompt={t("apps.prompt")} busy={model.appRequestState.value.kind === "sending"} disabled={model.connection.value !== "connected" || model.appRequestState.value.kind === "unconfirmed"} error={model.appRequestState.value.message ? t("apps.createError", { message: model.appRequestState.value.message }) : undefined} folders={model.appFolders.value} defaultCwd={model.selectedRow.value?.summary.cwd ?? ""} templates={templates} templatesLabel={t("apps.templates")} filterLabel={t("apps.folderFilter")} listLabel={t("apps.folderList")} manualLabel={t("apps.folderManual")} initialDraft={draft} onSend={(text, cwd) => model.createAppRequest(text, cwd)} /> : null}
+      {creating && apps.folders.value.truncated ? <Notice>{t("apps.folderTruncated")}</Notice> : null}
       {creating && apps.folders.value.error ? <Notice tone="bad">{t("apps.folderReadError", { message: apps.folders.value.error })}</Notice> : null}
       {failed ? <Notice tone="bad">{t("apps.openFailed", { name: failed.name, message: failed.message })}</Notice> : null}
       {list.error ? <Notice tone="bad">{t("common.readError", { message: list.error.message })}</Notice> : null}
@@ -72,14 +67,14 @@ function AppList({ model }: { model: AppModel }) {
       {list.apps.length > 0 ? (
         <div class="grid">
           {list.apps.map((a) => (
-            <div key={a.name}><AppCard
+            <AppCard key={a.name}
               title={a.title}
               name={a.name}
               href={formatRoute({ view: "apps", appName: a.name })}
               openLabel={t("apps.open")}
               note={a.thread ? t("apps.bound", { title: rows.get(a.thread)?.summary.title ?? a.thread.slice(0, 8) }) : t("apps.unbound")}
               problem={a.problem ? t("apps.broken", { problem: a.problem }) : undefined}
-            />{a.problem ? null : <Instances model={model} name={a.name} />}</div>
+            >{a.problem ? null : <AppNames model={model} name={a.name} />}</AppCard>
           ))}
         </div>
       ) : null}
@@ -140,13 +135,18 @@ export function AppsHost({ context }: { context: DesignContext }) {
         allLabel={t("apps.all")}
         allHref={formatRoute({ view: "apps" })}
         allCurrent={showing && current === undefined}
+        addLabel={t("apps.openNamed")}
+        nameLabel={t("apps.nameLabel")}
+        openLabel={t("apps.open")}
+        validName={validAppInstance}
         tabs={tabs.map((tab) => ({
             key: appTabKey(tab.name, tab.instance),
-            title: tab.instance ? `${tab.title} / ${tab.instance}` : tab.title,
+            title: tab.instance ? `${tab.title}: ${tab.instance}` : tab.title,
             href: formatRoute({ view: "apps", appName: tab.name, ...(tab.instance ? { appInstance: tab.instance } : {}) }),
             current: tab.name === current && tab.instance === instance,
             alert: tab.errors.length > 0,
             closeLabel: t("apps.close", { name: tab.title }),
+            onOpenNamed: (name: string) => model.navigate({ view: "apps", appName: tab.name, appInstance: name }),
             onClose: () => {
               apps.close(tab.name, tab.instance);
               if (tab.name === current && tab.instance === instance) model.navigate({ view: "apps" });
@@ -154,7 +154,7 @@ export function AppsHost({ context }: { context: DesignContext }) {
           }))}
       />
       {open && apps.openError.value?.name === open.name ? <Notice tone="bad">{t("apps.openFailed", { name: open.name, message: apps.openError.value.message })}</Notice> : null}
-      {open ? <div class="apps-toolbar"><Button label={t("apps.reloadTab", { name: open.title })} onClick={() => void apps.reload(open.name, open.instance)}>{t("apps.reloadTab", { name: open.title })}</Button></div> : null}
+      {open ? <div class="apps-toolbar"><strong>{open.instance ? `${open.title}: ${open.instance}` : open.title}</strong><Button label={t("apps.reloadTab", { name: open.title })} onClick={() => void apps.reload(open.name, open.instance)}>{t("apps.reloadTab", { name: open.title })}</Button></div> : null}
       {open ? <Alerts model={model} tab={open} /> : null}
       {current === undefined || !open ? <AppList model={model} /> : null}
       {tabs.map((tab) => (

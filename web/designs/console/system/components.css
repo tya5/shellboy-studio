@@ -369,12 +369,17 @@ a{color:var(--accent)}
 .apptabs-all{display:flex;align-items:center;padding:0 var(--space-12);border-right:1px solid var(--line);color:var(--fg);font:var(--type-label);text-decoration:none;white-space:nowrap}
 .apptabs-all[aria-current=page]{color:var(--accent)}
 .apptabs-scroll{display:flex;min-width:0;overflow-x:auto}
+.apptab-group{display:flex;align-items:stretch;flex:none}
 .apptab{display:flex;align-items:center;flex:none;max-width:240px;border-right:1px solid var(--line);color:var(--muted);font:var(--type-label)}
 .apptab:hover{background:var(--raised)}
 .apptab[aria-current=page]{background:var(--bg);color:var(--fg);box-shadow:inset 0 2px 0 var(--accent)}
 .apptab a{display:flex;align-items:center;gap:6px;height:100%;padding:0 var(--space-12);color:inherit;text-decoration:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .apptab-close{display:grid;place-items:center;width:28px;height:28px;margin-right:var(--space-4);border:0;border-radius:var(--radius-s);background:transparent;color:inherit;cursor:pointer}
-.apptab-close:hover,.apptab-close:focus-visible{background:var(--line);color:var(--fg)}
+.apptab-close:hover,.apptab-close:focus-visible,.apptab-add:hover,.apptab-add:focus-visible{background:var(--line);color:var(--fg)}
+.apptab-add{align-self:center;display:grid;place-items:center;width:36px;height:36px;border:0;background:transparent;color:var(--muted);cursor:pointer}
+.apptab-name{display:flex;align-items:center;gap:var(--space-4);padding-right:var(--space-8)}
+.apptab-name input{width:120px;min-width:0}
+.app-names{display:flex;gap:var(--space-8);flex-wrap:wrap;font:var(--type-caption)}
 
 /* AppFrame */
 .appframe{flex:1;min-height:0;width:100%;border:0;background:var(--bg);display:block}
@@ -401,7 +406,9 @@ a{color:var(--accent)}
   .field{min-height:var(--size-touch)}
   .check{min-height:var(--size-touch)}
   .nav-item,.tree-item,.secnav-item{min-height:var(--size-touch)}
+  .apptabs{height:calc(var(--size-touch) + 2 * var(--space-8) + 1px);min-height:calc(var(--size-touch) + 2 * var(--space-8) + 1px)}
   .apptab a{min-height:var(--size-touch)}
+  .apptab-add{width:var(--size-touch);height:var(--size-touch)}
   .apptab-close{width:var(--size-touch);height:var(--size-touch);margin-right:0}
   .tcheck{width:var(--size-touch);height:var(--size-touch)}
   .srow{min-height:var(--size-touch)}
