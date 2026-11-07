@@ -75,6 +75,19 @@ describe("the API relay", () => {
 });
 
 describe("AppsModel over the fake transport", () => {
+  it("loads one bounded folder page and cancels it when the panel closes", async () => {
+    const { t, db, model } = await fixtureModel({ route: "apps" });
+    const read = model.apps.loadFolders();
+    expect(t.calls("thread.cwds").at(-1)?.args).toEqual({ limit: 200 });
+    await settle(t, db);
+    await read;
+    expect(model.apps.folders.value.names).toContain("/home/me/dev/shellboy");
+    void model.apps.loadFolders();
+    model.apps.leaveFolders();
+    expect(t.cancels().length).toBeGreaterThan(0);
+    model.dispose();
+  });
+
   it("reads nothing until the view opens, and asks the gateway for one ticket per open", async () => {
     const quiet = await fixtureModel({ route: "monitor" });
     expect(quiet.t.calls("apps.list")).toHaveLength(0);

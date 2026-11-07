@@ -126,3 +126,20 @@ uses only its own paths, so ordinary changes to another instance do not wake it.
 The underlying scan is bounded; when truncated, changes outside its scanned set
 may be missed and the response marks this. The watcher stops on bridge shutdown.
 Unnamed legacy pages retain their existing app-wide notifications.
+
+### Library and named tabs
+
+The library uses a fixed All apps entrance and a scrollable strip of app tabs.
+Reload is in the app toolbar. A tab's adjacent add control opens an inline name
+field; a named tab and its toolbar use `App title: name`. Previously opened names
+appear in the app's card. The UI calls these names, not instances; the existing
+route and API terminology remain unchanged.
+
+The New app panel sends a reviewed request in a new Thread. Five localized
+prompt drafts are data in ui-core, not bundled apps. The folder picker reads at
+most one 200-name `thread.cwds` page while the panel is open; the panel owns
+and cancels that read on close or disposal. Loaded Thread-list order brings
+known recent folders forward, followed by remaining names in owner order. The
+currently selected Thread supplies the default. More than one page is not yet
+listed, and the manual path remains available. The AGENTS.md guidance is
+collapsed at the bottom of the library.
