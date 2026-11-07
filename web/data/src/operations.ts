@@ -3,11 +3,18 @@
 import { fromApiError, type Outcome } from "./errors";
 import type { Link } from "./link";
 import type {
+  HistoryBody,
+  HistoryGetArgs,
   HistoryItem,
   HistoryListArgs,
   MessageSendArgs,
   OwnerResponse,
   Page,
+  ShellEntry,
+  ShellListArgs,
+  ShellOutput,
+  ShellReadArgs,
+  ThreadCreateArgs,
   ThreadDetails,
   ThreadListArgs,
   ThreadSummary,
@@ -45,6 +52,19 @@ const decodeDetails: Decoder<ThreadDetails> = (v) =>
   isObject(v) && typeof v.thread_id === "string" && typeof v.title === "string"
     ? { ok: true, value: v as ThreadDetails }
     : { ok: false, reason: "thread.get result lacks thread_id or title" };
+const decodeShellPage = pageOf<ShellEntry>((v) =>
+  isObject(v) && typeof v.execution_id === "string" && typeof v.state === "string"
+    ? undefined
+    : "shell entry lacks execution_id or state",
+);
+const decodeBody: Decoder<HistoryBody> = (v) =>
+  isObject(v) && typeof v.node_id === "string" && typeof v.text === "string"
+    ? { ok: true, value: v as HistoryBody }
+    : { ok: false, reason: "history.get result lacks node_id or text" };
+const decodeShellOutput: Decoder<ShellOutput> = (v) =>
+  isObject(v) && typeof v.execution_id === "string" && typeof v.text === "string"
+    ? { ok: true, value: v as ShellOutput }
+    : { ok: false, reason: "shell.read result lacks execution_id or text" };
 const decodeRecord: Decoder<Record<string, unknown>> = (v) =>
   isObject(v) ? { ok: true, value: v } : { ok: false, reason: "expected an object result" };
 
@@ -112,12 +132,24 @@ export class Operations {
   historyList(args: HistoryListArgs, read?: ReadOptions): Promise<Outcome<Page<HistoryItem>>> {
     return this.run("history.list", args, decodeHistoryPage, undefined, read);
   }
+  historyGet(args: HistoryGetArgs): Promise<Outcome<HistoryBody>> {
+    return this.run("history.get", args, decodeBody);
+  }
+  shellList(args: ShellListArgs): Promise<Outcome<Page<ShellEntry>>> {
+    return this.run("shell.list", args, decodeShellPage);
+  }
+  shellRead(args: ShellReadArgs): Promise<Outcome<ShellOutput>> {
+    return this.run("shell.read", args, decodeShellOutput);
+  }
   /** Look up a mutation's receipt, e.g. after an `unconfirmed` error. */
   operationGet(operationId: string): Promise<Outcome<Record<string, unknown>>> {
     return this.run("operation.get", { operation_id: operationId }, decodeRecord);
   }
 
   // ---- mutations: pass `operationId` to retry the same logical mutation idempotently ----
+  threadCreate(args: ThreadCreateArgs = {}, operationId = this.newId()): Promise<Outcome<ThreadDetails>> {
+    return this.run("thread.create", args, decodeDetails, { operationId });
+  }
   /** Sender identity (`human`, `sender_label: "web"`) is set by the bridge, not here. */
   messageSend(args: MessageSendArgs, operationId = this.newId()): Promise<Outcome<MutationResult>> {
     return this.run("message.send", args, decodeRecord, { operationId });

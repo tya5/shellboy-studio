@@ -39,9 +39,15 @@ only browser API, behind the `Transport` interface (`transport.ts`).
   running bound, so `busy` should not occur), 256 outstanding calls then local `busy`,
   64 open Threads (= the bridge's watch bound; `openThread` throws `RangeError`), pages of 50,
   live preview 262144 UTF-16 code units, reconnect delay 1 s doubling to 10 s.
-- **History refresh replaces all loaded pages** with the newest page: cursors expire when the
-  history changes, and without a known item key older pages cannot be merged without risking
-  duplicates. A `loadOlderHistory` that finishes after a refresh is dropped.
+- **History is a window over the end of the path.** Observed on the real owner: `history.list`
+  runs oldest to newest, `next_cursor` moves towards the newest, there is no way to start at the
+  end, and any append expires cursors (`cursor_expired`). So the first read walks the path in
+  pages of 100 with 4096-character excerpts, keeping the newest 400 items. Later reads ask only
+  `since` the last known item and merge by node id. If that item is missing or its ordinal
+  changed, the path was rewritten and the walk starts over. An expired cursor continues from the
+  last item read; at most 8 such retries per read. `resync` starts over. `loadOlderHistory` doubles
+  the window (limit 6400) and walks again. The cost of opening a Thread therefore grows with its
+  history; a reverse read is on the list of needs from core.
 - **Mutations** take an `operationId` (default a fresh UUID). A reply lost on socket close is
   `unconfirmed` and carries the id; the caller retries with the same id (idempotent through
   receipts) or looks it up with `operationGet`. The data layer never retries mutations itself.
@@ -61,8 +67,8 @@ data.trackThreadList(): Handle; data.setListFilter({query?, archived?}); data.lo
 const h = data.openThread(id)   // ThreadHandle; h.detail, h.history, h.preview (signals)
 h.refresh(); h.loadOlderHistory(); h.close()
 // operations (data.operations), each returns Outcome<T> = {ok,value}|{ok:false,error:OpError}
-threadList(args) threadGet(id) historyList(args) operationGet(opId)
-messageSend({thread_id,text,deliver?}, opId?) runStop(runId, opId?) runRetry(runId, opId?)
+threadList(args) threadGet(id) historyList(args) historyGet(args) shellList(args) shellRead(args) operationGet(opId)
+threadCreate(args, opId?) messageSend({thread_id,text,deliver?}, opId?) runStop(runId, opId?) runRetry(runId, opId?)
 threadArchive(ids, {descendants?}, opId?)
 ```
 
@@ -86,4 +92,5 @@ Turn settles: an attempt boundary from the owner (see the hand-off report).
 | `package.json` lives in `web/`, covering `web/data` now and the app and debug bundles later | one lockfile, one toolchain | the app bundle is added |
 | Debug page stays plain JS and is not connected to the data layer | it has no build step; connecting it needs the bundle | the app bundle and Vite exist |
 | `run.retry` and `thread.archive` added to the bridge allowlist | requested data-layer operations | — |
+| The first data-layer version assumed newest-first history pages; replaced by the window above (2026-11-07) | checking a real owner showed oldest-first pages, so a Thread over 50 nodes showed only its beginning | the owner offers a reverse read |
 | Preview stays discarded after any discard until the owner wire defines an attempt boundary | cannot tell a resumed attempt from its middle | E3 wire exists |

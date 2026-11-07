@@ -145,8 +145,66 @@ export interface ThreadDetails {
   [extra: string]: unknown;
 }
 
-/** One `history.list` item. Its fields are not typed by the owner yet; kept opaque. */
-export type HistoryItem = Record<string, unknown>;
+/** A shell execution linked from a history node (`history.list`, observed at the pinned revision). */
+export interface HistoryExecution {
+  execution_id: string;
+  command_excerpt?: string;
+  command_truncated?: boolean;
+  /** Saved native shell state: starting, running, stopping, exited, failed, stopped. */
+  state?: string;
+  call_state?: string;
+  cwd?: string;
+  [extra: string]: unknown;
+}
+
+/**
+ * One `history.list` item. The owner does not type these fields yet (#244 follow-up), so they
+ * are optional here and readers tolerate their absence; added fields pass through.
+ */
+export interface HistoryItem {
+  node_id?: string;
+  /** user, assistant_response, tool_result, event, context, summary, ... */
+  kind?: string;
+  excerpt?: string;
+  execution_count?: number;
+  executions?: HistoryExecution[];
+  provenance?: { created_at?: string; sender?: { kind?: string; [extra: string]: unknown }; [extra: string]: unknown };
+  /** Position on the Thread's selected path; `ordinal` ascends. */
+  selection?: { ordinal?: number; [extra: string]: unknown };
+  [extra: string]: unknown;
+}
+
+/** `history.get` page of one node's body. */
+export interface HistoryBody {
+  node_id: string;
+  kind: string;
+  text: string;
+  next_cursor?: string;
+  [extra: string]: unknown;
+}
+
+/** One `shell.list` item (saved facts of one execution). */
+export interface ShellEntry {
+  execution_id: string;
+  state: string;
+  thread_id?: string;
+  run_id?: string;
+  command_excerpt?: string;
+  command_excerpt_truncated?: boolean;
+  started_at?: string;
+  ended_at?: string;
+  exit_code?: number | null;
+  [extra: string]: unknown;
+}
+
+/** `shell.read` page. `cursor` continues after this page; `output_complete` ends it. */
+export interface ShellOutput {
+  execution_id: string;
+  text: string;
+  cursor?: string;
+  output_complete: boolean;
+  [extra: string]: unknown;
+}
 
 export type ArchivedFilter = "exclude" | "include" | "only";
 export type Deliver = "next" | "now";
@@ -162,6 +220,26 @@ export interface HistoryListArgs {
   limit?: number;
   cursor?: string;
   excerpt_chars?: number;
+  /** Inclusive node creation time (RFC3339 with offset). */
+  since?: string;
+}
+export interface HistoryGetArgs {
+  node_id: string;
+  cursor?: string;
+  limit_bytes?: number;
+}
+export interface ShellListArgs {
+  thread_id: string;
+  limit?: number;
+}
+export interface ShellReadArgs {
+  execution_id: string;
+  cursor?: string;
+  limit_bytes?: number;
+}
+export interface ThreadCreateArgs {
+  cwd?: string;
+  parent_id?: string;
 }
 export interface MessageSendArgs {
   thread_id: string;

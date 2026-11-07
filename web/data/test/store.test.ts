@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { applyOwnerLiveText, LiveTextWireUnknownError, MAX_PREVIEW_CHARS } from "../src/live";
-import { MAX_WATCHED_THREADS, ShellboyData } from "../src/store";
+import { HISTORY_WINDOW, MAX_WATCHED_THREADS, ShellboyData } from "../src/store";
 import { connected, details, FakeOwnerDb, FakeTransport, flush, settle, summary } from "./harness";
 
 async function setup(opts: { owner?: boolean } = {}) {
@@ -214,38 +214,95 @@ describe("resync, restart and loss", () => {
   });
 });
 
-describe("paging", () => {
-  it("loads older history pages and a refresh replaces all loaded pages", async () => {
+const node = (n: number, ordinal = n) => ({
+  node_id: `n${n}`,
+  kind: "user",
+  provenance: { created_at: `2026-01-01T00:00:00.${String(n).padStart(6, "0")}+00:00` },
+  selection: { ordinal },
+});
+const ids = (items: { node_id?: string }[]) => items.map((i) => i.node_id);
+
+describe("history window", () => {
+  it("walks to the end of the path, oldest to newest, keeping the newest items", async () => {
     const { t, data, db } = await setup();
     db.details.a = details("a");
-    db.history.a = [{ node_id: "new" }];
-    db.historyNext.a = "c1";
+    db.history.a = Array.from({ length: HISTORY_WINDOW + 150 }, (_, i) => node(i));
     const h = data.openThread("a");
     await settle(t, db);
+    const { items, earlierHidden } = h.history.value;
+    expect(items).toHaveLength(HISTORY_WINDOW);
+    expect(items[0]!.node_id).toBe("n150");
+    expect(items.at(-1)!.node_id).toBe(`n${HISTORY_WINDOW + 149}`);
+    expect(earlierHidden).toBe(true);
+  });
+
+  it("a hint reads only since the last known item and appends", async () => {
+    const { t, data, db } = await setup();
+    db.details.a = details("a");
+    db.history.a = [node(1), node(2)];
+    const h = data.openThread("a");
+    await settle(t, db);
+    db.history.a = [node(1), node(2), node(3)];
+    const before = t.calls("history.list").length;
+    t.push({ t: "changed", thread_ids: ["a"], list: false });
+    await settle(t, db);
+    const reads = t.calls("history.list").slice(before);
+    expect(reads).toHaveLength(1);
+    expect((reads[0]!.args as { since?: string }).since).toBe(node(2).provenance.created_at);
+    expect(ids(h.history.value.items)).toEqual(["n1", "n2", "n3"]);
+  });
+
+  it("starts over when the last known item moved (the path was rewritten)", async () => {
+    const { t, data, db } = await setup();
+    db.details.a = details("a");
+    db.history.a = [node(1), node(2)];
+    const h = data.openThread("a");
+    await settle(t, db);
+    db.history.a = [node(9, 0), node(2, 1), node(3, 2)];
+    t.push({ t: "changed", thread_ids: ["a"], list: false });
+    await settle(t, db);
+    expect(ids(h.history.value.items)).toEqual(["n9", "n2", "n3"]);
+  });
+
+  it("an expired cursor continues from the last item read, without duplicates", async () => {
+    const { t, data, db } = await setup();
+    db.details.a = details("a");
+    db.history.a = Array.from({ length: 250 }, (_, i) => node(i));
+    db.expiredCursors.add("100");
+    const h = data.openThread("a");
+    await settle(t, db);
+    const got = ids(h.history.value.items);
+    expect(got).toHaveLength(250);
+    expect(new Set(got).size).toBe(250);
+    expect(h.history.value.error).toBeUndefined();
+  });
+
+  it("resync reads the whole path again", async () => {
+    const { t, data, db } = await setup();
+    db.details.a = details("a");
+    db.history.a = [node(1), node(2)];
+    const h = data.openThread("a");
+    await settle(t, db);
+    db.history.a = [node(2, 0)];
+    t.push({ t: "resync" });
+    await settle(t, db);
+    expect(ids(h.history.value.items)).toEqual(["n2"]);
+  });
+
+  it("loadOlderHistory widens the window with a new walk", async () => {
+    const { t, data, db } = await setup();
+    db.details.a = details("a");
+    db.history.a = Array.from({ length: HISTORY_WINDOW + 10 }, (_, i) => node(i));
+    const h = data.openThread("a");
+    await settle(t, db);
+    expect(h.history.value.earlierHidden).toBe(true);
     await Promise.all([h.loadOlderHistory(), settle(t, db)]);
-    expect(h.history.value.items).toEqual([{ node_id: "new" }, { node_id: "older-c1" }]);
-    expect(h.history.value.nextCursor).toBeUndefined();
-
-    t.push({ t: "changed", thread_ids: ["a"], list: false });
-    await settle(t, db);
-    expect(h.history.value.items).toEqual([{ node_id: "new" }]);
-    expect(h.history.value.nextCursor).toBe("c1");
+    expect(h.history.value.items).toHaveLength(HISTORY_WINDOW + 10);
+    expect(h.history.value.earlierHidden).toBe(false);
   });
+});
 
-  it("a load-older result that arrives after a refresh is dropped", async () => {
-    const { t, data, db } = await setup();
-    db.details.a = details("a");
-    db.history.a = [{ node_id: "new" }];
-    db.historyNext.a = "c1";
-    const h = data.openThread("a");
-    await settle(t, db);
-    const older = h.loadOlderHistory();
-    t.push({ t: "changed", thread_ids: ["a"], list: false });
-    await settle(t, db);
-    await older;
-    expect(h.history.value.items).toEqual([{ node_id: "new" }]);
-  });
-
+describe("paging", () => {
   it("changing the list filter re-reads with the new filter", async () => {
     const { t, data, db } = await setup();
     data.trackThreadList();

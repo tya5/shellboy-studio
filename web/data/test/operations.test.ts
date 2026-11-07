@@ -102,3 +102,34 @@ describe("Operations", () => {
     expect(await p).toMatchObject({ ok: true });
   });
 });
+
+describe("Operations added for the presentation", () => {
+  it("history.get, shell.list and shell.read decode what the owner returns", async () => {
+    const { t, ops } = setup();
+    const body = ops.historyGet({ node_id: "n" });
+    t.ok(t.calls("history.get")[0]!.id, { node_id: "n", kind: "user", text: "full" });
+    expect(await body).toMatchObject({ ok: true, value: { text: "full" } });
+    const list = ops.shellList({ thread_id: "a", limit: 5 });
+    t.ok(t.calls("shell.list")[0]!.id, { items: [{ execution_id: "e", state: "exited", exit_code: 0 }], next_cursor: null });
+    expect(await list).toMatchObject({ ok: true, value: { items: [{ execution_id: "e" }] } });
+    const read = ops.shellRead({ execution_id: "e" });
+    t.ok(t.calls("shell.read")[0]!.id, { execution_id: "e", text: "out", output_complete: true });
+    expect(await read).toMatchObject({ ok: true, value: { text: "out" } });
+  });
+
+  it("thread.create is a mutation with an operation id", async () => {
+    const { t, ops } = setup();
+    const made = ops.threadCreate({ cwd: "/w" });
+    const call = t.calls("thread.create")[0]!;
+    expect(call.operation_id).toBe("uuid-1");
+    t.ok(call.id, details("a"));
+    expect(await made).toMatchObject({ ok: true, value: { thread_id: "a" }, operationId: "uuid-1" });
+  });
+
+  it("an undecodable shell entry is a loud invalid_response", async () => {
+    const { t, ops } = setup();
+    const list = ops.shellList({ thread_id: "a" });
+    t.ok(t.calls("shell.list")[0]!.id, { items: [{ nope: 1 }] });
+    expect(await list).toMatchObject({ ok: false, error: { kind: "invalid_response" } });
+  });
+});

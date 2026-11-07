@@ -23,8 +23,17 @@ import type { Transport } from "./transport";
 
 /** Threads watched at once. Equals the bridge's per-tab bound; beyond it `openThread` throws. */
 export const MAX_WATCHED_THREADS = 64;
-/** Default page size for list and history reads (the owner's own maximum applies). */
+/** Default page size for list reads (the owner's own maximum applies). */
 export const PAGE_LIMIT = 50;
+/** Page size of history reads. With HISTORY_EXCERPT_CHARS it keeps a page far below the 8 MiB frame. */
+export const HISTORY_PAGE_LIMIT = 100;
+/** Excerpt asked of `history.list`: the owner's maximum, so most messages need no `history.get`. */
+export const HISTORY_EXCERPT_CHARS = 4096;
+/** Newest history items kept per open Thread; `loadOlderHistory` doubles it up to the maximum. */
+export const HISTORY_WINDOW = 400;
+export const HISTORY_WINDOW_MAX = 6400;
+/** `cursor_expired` continuations, and restarts after the path changed, within one history read. */
+const HISTORY_READ_RETRIES = 8;
 
 export interface Resource<T> {
   value: T | undefined;
@@ -38,6 +47,18 @@ export interface PagedState<T> {
   items: T[];
   nextCursor: string | undefined;
   /** At least one successful read happened. */
+  loaded: boolean;
+  loading: boolean;
+  loadingMore: boolean;
+  stale: boolean;
+  error: OpError | undefined;
+}
+
+/** The newest part of a Thread's selected path, ascending. */
+export interface HistoryState {
+  items: HistoryItem[];
+  /** Items older than `items[0]` exist and were dropped by the window. */
+  earlierHidden: boolean;
   loaded: boolean;
   loading: boolean;
   loadingMore: boolean;
@@ -59,8 +80,8 @@ export interface Handle {
 export interface ThreadHandle extends Handle {
   readonly threadId: string;
   readonly detail: ReadonlySignal<Resource<ThreadDetails>>;
-  /** Newest page first, as the owner returns it; a refresh replaces all loaded pages. */
-  readonly history: ReadonlySignal<PagedState<HistoryItem>>;
+  /** Oldest to newest, as the owner returns it; a window over the end of the path. */
+  readonly history: ReadonlySignal<HistoryState>;
   readonly preview: ReadonlySignal<Preview>;
   refresh(): Promise<void>;
   loadOlderHistory(): Promise<void>;
@@ -86,9 +107,12 @@ class ThreadEntry {
   refs = 0;
   closed = false;
   detail = signal<Resource<ThreadDetails>>({ value: undefined, loading: false, stale: false, error: undefined });
-  history = signal<PagedState<HistoryItem>>(emptyPaged());
+  history = signal<HistoryState>({ items: [], earlierHidden: false, loaded: false, loading: false, loadingMore: false, stale: false, error: undefined });
+  window = HISTORY_WINDOW;
+  /** The next read starts from the beginning of the path, not from the last known item. */
+  fullRead = true;
   preview = signal<Preview>(NO_PREVIEW);
-  /** Bumped by every history refresh; a `loadOlder` started earlier drops its result. */
+  /** Bumped by every history read; a read started earlier drops its result. */
   historyGen = 0;
   constructor(readonly id: string) {}
 }
@@ -229,6 +253,7 @@ export class ShellboyData {
 
   /** Re-read everything tracked (what `resync` and `owner: restarted` trigger). */
   resyncAll(): Promise<void> {
+    this.markFullReads();
     const jobs: Promise<void>[] = [];
     if (this.listRefs > 0) jobs.push(this.refresher.request("list"));
     for (const id of this.entries.keys()) jobs.push(this.requestThread(id));
@@ -311,6 +336,10 @@ export class ShellboyData {
     }
   }
 
+  private markFullReads(): void {
+    for (const e of this.entries.values()) e.fullRead = true;
+  }
+
   private discardAllPreviews(reason: PreviewDiscardReason): void {
     for (const e of this.entries.values()) e.preview.value = discardPreview(reason);
   }
@@ -377,27 +406,120 @@ export class ShellboyData {
 
   private async readHistory(entry: ThreadEntry, onSent: () => void): Promise<void> {
     const gen = ++entry.historyGen;
-    entry.history.value = { ...entry.history.value, loading: true, loadingMore: false };
-    const out = await this.operations.historyList({ thread_id: entry.id, limit: PAGE_LIMIT }, { onSent });
+    entry.history.value = { ...entry.history.value, loading: true };
+    const out = await this.walkHistory(entry, gen, onSent);
     if (entry.closed || gen !== entry.historyGen) return;
     const cur = entry.history.value;
     entry.history.value = out.ok
-      ? { items: out.value.items, nextCursor: out.value.next_cursor, loaded: true, loading: false, loadingMore: false, stale: false, error: undefined }
-      : { ...cur, loading: false, stale: cur.loaded, error: out.error };
+      ? { items: out.items, earlierHidden: out.earlierHidden, loaded: true, loading: false, loadingMore: false, stale: false, error: undefined }
+      : { ...cur, loading: false, loadingMore: false, stale: cur.loaded, error: out.error };
   }
 
+  /**
+   * `history.list` runs oldest to newest and has no way to start at the end, and any append
+   * expires its cursors. So the first read walks the whole path keeping a window of the newest
+   * items, and later reads ask only for items since the last known one. If that item moved or
+   * vanished, the path was rewritten (compaction, rewind) and the walk starts over.
+   */
+  private async walkHistory(
+    entry: ThreadEntry,
+    gen: number,
+    onSent: () => void,
+  ): Promise<{ ok: true; items: HistoryItem[]; earlierHidden: boolean } | { ok: false; error: OpError }> {
+    const cur = entry.history.value;
+    const fresh = entry.fullRead;
+    entry.fullRead = false;
+    let items = fresh ? [] : cur.items;
+    let earlierHidden = fresh ? false : cur.earlierHidden;
+    let cursor: string | undefined;
+    let anchor = anchorOf(items);
+    let retries = 0;
+    let first = true;
+    const startOver = () => {
+      items = [];
+      earlierHidden = false;
+      anchor = undefined;
+      cursor = undefined;
+    };
+    if (items.length > 0 && !anchor) startOver();
+    for (;;) {
+      const out = await this.operations.historyList(
+        {
+          thread_id: entry.id,
+          limit: HISTORY_PAGE_LIMIT,
+          excerpt_chars: HISTORY_EXCERPT_CHARS,
+          ...(anchor?.since !== undefined && { since: anchor.since }),
+          ...(cursor !== undefined && { cursor }),
+        },
+        first ? { onSent } : undefined,
+      );
+      first = false;
+      if (entry.closed || gen !== entry.historyGen) return { ok: true, items: [], earlierHidden: false };
+      if (!out.ok) {
+        if (out.error.kind !== "owner" || out.error.code !== "cursor_expired" || ++retries > HISTORY_READ_RETRIES) {
+          entry.fullRead = fresh;
+          return { ok: false, error: out.error };
+        }
+        // Something was appended: continue from the last item this walk knows.
+        cursor = undefined;
+        anchor = anchorOf(items);
+        if (items.length > 0 && !anchor) startOver();
+        continue;
+      }
+      if (cursor === undefined && anchor && !confirmsAnchor(out.value.items, anchor)) {
+        if (++retries > HISTORY_READ_RETRIES)
+          return { ok: false, error: { kind: "invalid_response", message: "history path keeps changing" } };
+        startOver();
+        continue;
+      }
+      items = mergeItems(items, out.value.items);
+      if (items.length > entry.window) {
+        items = items.slice(items.length - entry.window);
+        earlierHidden = true;
+      }
+      cursor = out.value.next_cursor;
+      if (cursor === undefined) return { ok: true, items, earlierHidden };
+    }
+  }
+
+  /** Show more of the path: a larger window needs a new walk, the owner cannot read backwards. */
   private async loadOlder(entry: ThreadEntry): Promise<void> {
     const cur = entry.history.value;
-    if (!cur.nextCursor || cur.loadingMore || cur.loading) return;
-    const gen = entry.historyGen;
+    if (!cur.earlierHidden || cur.loadingMore || cur.loading || entry.window >= HISTORY_WINDOW_MAX) return;
+    entry.window = Math.min(entry.window * 2, HISTORY_WINDOW_MAX);
+    entry.fullRead = true;
     entry.history.value = { ...cur, loadingMore: true };
-    const out = await this.operations.historyList({ thread_id: entry.id, limit: PAGE_LIMIT, cursor: cur.nextCursor });
-    if (entry.closed || gen !== entry.historyGen) return;
-    const now = entry.history.value;
-    entry.history.value = out.ok
-      ? { ...now, items: [...now.items, ...out.value.items], nextCursor: out.value.next_cursor, loadingMore: false, error: undefined }
-      : { ...now, loadingMore: false, error: out.error };
+    await this.refresher.request(`history:${entry.id}`);
   }
+}
+
+interface Anchor {
+  nodeId: string;
+  ordinal: number | undefined;
+  since: string;
+}
+
+function anchorOf(items: HistoryItem[]): Anchor | undefined {
+  const last = items[items.length - 1];
+  const since = last?.provenance?.created_at;
+  if (!last || last.node_id === undefined || since === undefined) return undefined;
+  return { nodeId: last.node_id, ordinal: last.selection?.ordinal, since };
+}
+
+const confirmsAnchor = (page: HistoryItem[], anchor: Anchor): boolean =>
+  page.some((i) => i.node_id === anchor.nodeId && i.selection?.ordinal === anchor.ordinal);
+
+/** Union by node id: a re-read item replaces its older copy, new items follow in path order. */
+function mergeItems(known: HistoryItem[], page: HistoryItem[]): HistoryItem[] {
+  if (known.length === 0) return page;
+  const index = new Map(known.map((item, i) => [item.node_id, i]));
+  const merged = [...known];
+  for (const item of page) {
+    const at = index.get(item.node_id);
+    if (at === undefined) merged.push(item);
+    else merged[at] = item;
+  }
+  return merged;
 }
 
 function listArgs(filter: ListFilter) {

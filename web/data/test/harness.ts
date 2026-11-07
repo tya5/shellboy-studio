@@ -82,7 +82,7 @@ export class FakeOwnerDb {
   threads: Record<string, ReturnType<typeof summary>> = {};
   details: Record<string, ReturnType<typeof details>> = {};
   history: Record<string, Record<string, unknown>[]> = {};
-  historyNext: Record<string, string | undefined> = {};
+  expiredCursors = new Set<string>();
   answered = new Set<number>();
   reads: string[] = [];
 
@@ -95,10 +95,16 @@ export class FakeOwnerDb {
       case "thread.get":
         return this.details[a.thread_id!] ? { ok: true, result: this.details[a.thread_id!] } : { ok: false, code: "not_found" };
       case "history.list": {
-        const all = this.history[a.thread_id!] ?? [];
-        if (a.cursor) return { ok: true, result: { items: [{ node_id: `older-${a.cursor}` }] } };
-        const next = this.historyNext[a.thread_id!];
-        return { ok: true, result: { items: all, ...(next ? { next_cursor: next } : {}) } };
+        // Like the owner: oldest first, `since` inclusive, cursors continue towards the newest.
+        const since = a.since;
+        const all = (this.history[a.thread_id!] ?? []).filter(
+          (i) => since === undefined || String((i.provenance as { created_at?: string } | undefined)?.created_at) >= since,
+        );
+        if (a.cursor && this.expiredCursors.has(a.cursor)) return { ok: false, code: "cursor_expired" };
+        const start = a.cursor ? Number(a.cursor) : 0;
+        const limit = Number(a.limit ?? 50);
+        const end = start + limit;
+        return { ok: true, result: { items: all.slice(start, end), ...(end < all.length ? { next_cursor: String(end) } : {}) } };
       }
       default:
         return { ok: true, result: {} };
