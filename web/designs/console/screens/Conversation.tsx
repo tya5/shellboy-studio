@@ -18,7 +18,7 @@ function Output({ model, id, boxed }: { model: AppModel; id: string; boxed?: boo
   return (
     <>
       <LogBlock text={out.text === "" ? t("details.outputEmpty") : out.text} boxed={boxed ?? false} />
-      {out.cutOff ? <div class="caption muted">{t("details.outputMore", { size: "512 KiB" })}</div> : null}
+      {out.cutOff ? <div class="caption muted">{t("details.outputMore")}</div> : null}
     </>
   );
 }

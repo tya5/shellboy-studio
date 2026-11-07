@@ -33,21 +33,32 @@ describe("AppModel over the fake transport", () => {
     expect(step()).toMatchObject({ status: "failed", exitCode: 3 });
   });
 
-  it("opening a step reads its output once, and again on a hint while it is watched", async () => {
+  it("an open step re-reads output while its shell runs and once as it ends, then stops", async () => {
     const { model, t, db } = await fixtureModel();
+    const hint = async () => {
+      t.push({ t: "changed", thread_ids: ["lead"], list: false });
+      await settle(t, db);
+    };
+    db.shells.lead = [{ execution_id: "exec-1", state: "running" }];
+    await hint();
     const stop = model.watchOutput("exec-1");
     await settle(t, db);
     expect(model.outputs.value.get("exec-1")?.text).toContain("12 passed");
     const reads = () => t.calls("shell.read").length;
-    const before = reads();
-    t.push({ t: "changed", thread_ids: ["lead"], list: false });
-    await settle(t, db);
+    let before = reads();
+    await hint();
     expect(reads()).toBeGreaterThan(before);
+    db.shells.lead = [{ execution_id: "exec-1", state: "exited", exit_code: 0 }];
+    before = reads();
+    await hint();
+    expect(reads()).toBeGreaterThan(before);
+    before = reads();
+    await hint();
+    expect(reads()).toBe(before);
     stop();
-    const after = reads();
-    t.push({ t: "changed", thread_ids: ["lead"], list: false });
-    await settle(t, db);
-    expect(reads()).toBe(after);
+    db.shells.lead = [{ execution_id: "exec-1", state: "running" }];
+    await hint();
+    expect(reads()).toBe(before);
   });
 
   it("send: nothing optimistic, state clears on acceptance", async () => {

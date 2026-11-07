@@ -6,7 +6,7 @@ import { projectConversation, type ConversationRow, type StepRow } from "./conve
 import { translator, type Lang, type Translate } from "./i18n";
 import { noPending, type PendingAdapter } from "./pending";
 import { formatRoute, START_ROUTE, type Route, type ViewName } from "./route";
-import type { StatusKey } from "./status";
+import { statusOfShell, type StatusKey } from "./status";
 import { byUrgency, countByStatus, threadTree, type StatusCounts, type ThreadRow } from "./threads";
 import { contextFacts, recoveryFacts, usageFacts, type ContextFacts, type RecoveryFacts, type UsageFacts } from "./usage";
 
@@ -98,7 +98,7 @@ export class AppModel {
   readonly actionError: Signal<string | undefined> = signal(undefined);
 
   private readonly lastThread = signal<string | undefined>(undefined);
-  private readonly watchedOutputs = new Set<string>();
+  private readonly watchedOutputs = new Map<string, string | undefined>();
   private readonly nowMs: () => number;
   private readonly onNavigate: ((hash: string) => void) | undefined;
   private listHandle: Handle | undefined;
@@ -250,9 +250,14 @@ export class AppModel {
         // A failed read keeps the last facts; the step shows the state saved in history.
         if (out.ok) {
           this.shells.value = new Map(out.value.items.map((s) => [s.execution_id, s]));
-          for (const id of this.watchedOutputs) {
+          // Saved output changes only while a shell runs, and once more as it ends.
+          for (const [id, lastState] of this.watchedOutputs) {
             const fact = this.shells.value.get(id);
-            if (fact && !this.outputs.peek().get(id)?.loading) void this.readOutput(id);
+            if (!fact || this.outputs.peek().get(id)?.loading) continue;
+            if (fact.state !== lastState || statusOfShell(fact.state, fact.exit_code) === "running") {
+              this.watchedOutputs.set(id, fact.state);
+              void this.readOutput(id);
+            }
           }
         }
       } while (this.shellRead.again);
@@ -261,9 +266,9 @@ export class AppModel {
     }
   }
 
-  /** A step was opened: read its output now and again whenever shell facts change. */
+  /** A step was opened: read its output now and again when a hint shows it may have changed. */
   watchOutput(executionId: string): () => void {
-    this.watchedOutputs.add(executionId);
+    this.watchedOutputs.set(executionId, this.shells.peek().get(executionId)?.state);
     void this.readOutput(executionId);
     return () => this.watchedOutputs.delete(executionId);
   }
