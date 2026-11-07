@@ -40,8 +40,8 @@ export type SaveState =
   | { kind: "failed"; message: string; keyStored: boolean }
   | { kind: "saved"; connection: string; model: string; keyPath: string | undefined; usesStoredKey: boolean; restart: "required" | "none" | "unreported" };
 
-/** Only a service with a fixed address can be asked about its variable; a typed address isn't probed. */
-const detects = (s: ServicePreset): boolean => s.envName !== undefined && s.needsKey && !s.urlEditable;
+/** Only a preset's own address is asked about its variable; a key from the environment never goes to a typed address unasked. */
+const detects = (s: ServicePreset): boolean => s.envName !== undefined && s.needsKey && !s.askUrl;
 
 const errText = (e: OpError): string => e.message;
 
@@ -55,6 +55,8 @@ export class ConnectionSetup {
   readonly service: Signal<ServicePreset | undefined> = signal(undefined);
   readonly baseUrl: Signal<string> = signal("");
   readonly api: Signal<Dialect> = signal("chat_completions");
+  /** The person opened the address and format of a preset that doesn't ask for them. */
+  readonly editing: Signal<boolean> = signal(false);
   /** The key input. Cleared as soon as the key is sent. */
   readonly keyDraft: Signal<string> = signal("");
   /** A key was sent for the test and is held for the save. Its value is never exposed. */
@@ -142,6 +144,7 @@ export class ConnectionSetup {
       this.service.value = s;
       this.baseUrl.value = s.baseUrl;
       this.api.value = s.api;
+      this.editing.value = false;
       this.keyDraft.value = "";
       this.test.value = { kind: "idle" };
       this.model.value = "";
@@ -160,6 +163,9 @@ export class ConnectionSetup {
     this.api.value = api;
     this.forgetTest();
   }
+  editConnection(): void {
+    this.editing.value = true;
+  }
   setKeyDraft(value: string): void {
     this.keyDraft.value = value;
   }
@@ -175,7 +181,9 @@ export class ConnectionSetup {
     batch(() => {
       this.test.value = { kind: "idle" };
       this.model.value = "";
-      if (this.env.value.kind === "using") this.env.value = { kind: "declined" };
+      // What was learned about the variable was about the old address; a key is only sent from here on request.
+      const env = this.env.value.kind;
+      if (env === "using" || env === "offered" || env === "checking") this.env.value = { kind: "declined" };
     });
   }
 
@@ -286,7 +294,8 @@ export class ConnectionSetup {
     const changes: { field: string; value: unknown }[] = [
       { field: fieldOf(["connections", name, "base_url"]), value: this.baseUrl.peek().trim() },
       { field: fieldOf(["connections", name, "api"]), value: this.api.peek() },
-      ...(s.envName !== undefined ? [{ field: fieldOf(["connections", name, "api_key_env"]), value: s.envName }] : []),
+      // Only when chosen: the variable would win over a stored key at every request.
+      ...(useEnv && s.envName !== undefined ? [{ field: fieldOf(["connections", name, "api_key_env"]), value: s.envName }] : []),
       ...(s.apiKeyHeader !== undefined ? [{ field: fieldOf(["connections", name, "api_key_header"]), value: s.apiKeyHeader }] : []),
       { field: "default_connection", value: name },
       { field: "default_model", value: model },

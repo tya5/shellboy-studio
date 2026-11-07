@@ -13,7 +13,7 @@ export interface ServicePreset {
   label: Record<Lang, string>;
   /** Name of the connection written to `config.toml`. */
   connectionName: string;
-  /** The address. Editable for `local` and `other`, which show it as an example to confirm. */
+  /** The starting address, which the person can change. */
   baseUrl: string;
   api: Dialect;
   /** Header the key goes in when it isn't `Authorization: Bearer`. */
@@ -24,8 +24,12 @@ export interface ServicePreset {
   envName?: string;
   /** False: no key is asked for. */
   needsKey: boolean;
-  urlEditable: boolean;
-  dialectEditable: boolean;
+  /** The address needs the person's confirmation up front. Every preset's address and format can be changed. */
+  askUrl: boolean;
+  /** The format needs the person's choice up front. */
+  askDialect: boolean;
+  /** Its model list answers without checking the key (OpenRouter: HTTP 200 with no key, measured 2026-11-07). */
+  listSkipsKey?: boolean;
 }
 
 export const OLLAMA_CONTEXT_URL = "https://docs.ollama.com/context-length";
@@ -41,8 +45,8 @@ export const SERVICES: readonly ServicePreset[] = [
     keyPageUrl: "https://console.anthropic.com/settings/keys",
     envName: "ANTHROPIC_API_KEY",
     needsKey: true,
-    urlEditable: false,
-    dialectEditable: false,
+    askUrl: false,
+    askDialect: false,
   },
   {
     id: "openai",
@@ -53,8 +57,8 @@ export const SERVICES: readonly ServicePreset[] = [
     keyPageUrl: "https://platform.openai.com/api-keys",
     envName: "OPENAI_API_KEY",
     needsKey: true,
-    urlEditable: false,
-    dialectEditable: false,
+    askUrl: false,
+    askDialect: false,
   },
   {
     id: "openrouter",
@@ -64,9 +68,10 @@ export const SERVICES: readonly ServicePreset[] = [
     api: "chat_completions",
     keyPageUrl: "https://openrouter.ai/keys",
     envName: "OPENROUTER_API_KEY",
+    listSkipsKey: true,
     needsKey: true,
-    urlEditable: false,
-    dialectEditable: false,
+    askUrl: false,
+    askDialect: false,
   },
   {
     id: "litellm",
@@ -77,8 +82,8 @@ export const SERVICES: readonly ServicePreset[] = [
     api: "chat_completions",
     envName: "LITELLM_API_KEY",
     needsKey: true,
-    urlEditable: true,
-    dialectEditable: true,
+    askUrl: true,
+    askDialect: true,
   },
   {
     id: "local",
@@ -88,8 +93,8 @@ export const SERVICES: readonly ServicePreset[] = [
     baseUrl: "http://localhost:11434/v1",
     api: "chat_completions",
     needsKey: false,
-    urlEditable: true,
-    dialectEditable: false,
+    askUrl: true,
+    askDialect: false,
   },
   {
     id: "other",
@@ -99,8 +104,8 @@ export const SERVICES: readonly ServicePreset[] = [
     api: "chat_completions",
     envName: "SHELLBOY_API_KEY",
     needsKey: true,
-    urlEditable: true,
-    dialectEditable: true,
+    askUrl: true,
+    askDialect: true,
   },
 ];
 

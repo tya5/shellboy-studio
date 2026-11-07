@@ -107,6 +107,27 @@ describe("the flow", () => {
     return m;
   }
 
+  it("lets a preset's address and format change, and forgets what the variable offered", async () => {
+    const m = await ready({ env: ["ANTHROPIC_API_KEY"] });
+    const { t } = m;
+    const s = m.model.setup;
+    s.choose("anthropic");
+    await settle(t, m.db);
+    expect(s.env.value.kind).toBe("offered");
+    const asked = wire(t, "connection.test").length;
+    s.editConnection();
+    s.setBaseUrl("https://proxy.example/v1");
+    s.setApi("chat_completions");
+    await settle(t, m.db);
+    expect(s.env.value.kind).toBe("declined");
+    // The environment's key isn't sent to the typed address.
+    expect(wire(t, "connection.test").length).toBe(asked);
+    s.setKeyDraft(KEY);
+    await run(m, s.runTest());
+    expect(wire(t, "connection.test").at(-1)).toMatchObject({ base_url: "https://proxy.example/v1", api: "chat_completions", api_key: KEY });
+    expect(wire(t, "connection.test").at(-1)).not.toHaveProperty("api_key_env");
+  });
+
   it("offers the owner's variable once and saves without storing a key", async () => {
     const m = await ready({ env: ["ANTHROPIC_API_KEY"] });
     const { t } = m;
@@ -166,8 +187,8 @@ describe("the flow", () => {
     expect(wire(t, "credentials.set")).toEqual([{ connection: "openai", value: KEY }]);
     expect(s.saveState.value).toMatchObject({ kind: "saved", usesStoredKey: true, keyPath: "/temp/cfg/credentials.toml", restart: "required" });
     expect(s.keyHeld.value).toBe(false);
-    // The connection is written with the variable's name, which a stored key stands behind.
-    expect(wire(t, "config.set").at(-1)!.changes).toContainEqual({ field: "connections.openai.api_key_env", value: "OPENAI_API_KEY" });
+    // No variable name: at each request it would win over the key the person just gave.
+    expect((wire(t, "config.set").at(-1)!.changes as { field: string }[]).map((c) => c.field)).not.toContain("connections.openai.api_key_env");
   });
 
   it("reports each failure class as facts, and drops a rejected key only", async () => {

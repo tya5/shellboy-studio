@@ -12,7 +12,7 @@ describe("service presets", () => {
   it("uses a known dialect, and an address unless the person supplies it", () => {
     for (const service of SERVICES) {
       expect(DIALECTS).toContain(service.api);
-      if (!service.urlEditable) expect(service.baseUrl).toMatch(/^https:\/\//);
+      if (!service.askUrl) expect(service.baseUrl).toMatch(/^https:\/\//);
     }
   });
 });

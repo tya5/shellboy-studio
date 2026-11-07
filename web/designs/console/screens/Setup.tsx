@@ -123,7 +123,7 @@ export function Setup({ context }: { context: DesignContext }) {
 
         {service ? (
           <Section title={service.needsKey ? t("setup.step.key") : t("setup.step.address")} sub={service.needsKey ? t("setup.apiKeyNote") : undefined}>
-            {service.urlEditable ? (
+            {service.askUrl || s.editing.value ? (
               <>
                 <Field ariaLabel={t("setup.url.label")} class="mono" placeholder="https://" autoComplete="off" spellcheck={false} value={s.baseUrl.value} onInput={(e) => s.setBaseUrl(e.currentTarget.value)} />
                 <div class="muted caption">{t(service.id === "local" ? "setup.url.local" : service.id === "litellm" ? "setup.url.litellm" : "setup.url.other")}</div>
@@ -131,7 +131,7 @@ export function Setup({ context }: { context: DesignContext }) {
             ) : (
               <KeyValue rows={[{ key: t("setup.url.fixed"), value: service.baseUrl, mono: true }]} />
             )}
-            {service.dialectEditable ? (
+            {service.askDialect || s.editing.value ? (
               <ButtonGroup label={t("setup.dialect.label")}>
                 {DIALECTS.map((d) => (
                   <Button key={d} aria-pressed={s.api.value === d} onClick={() => s.setApi(d)}>
@@ -139,6 +139,11 @@ export function Setup({ context }: { context: DesignContext }) {
                   </Button>
                 ))}
               </ButtonGroup>
+            ) : null}
+            {!s.editing.value && !(service.askUrl && service.askDialect) ? (
+              <div class="setup-actions">
+                <Button onClick={() => s.editConnection()}>{t("setup.edit")}</Button>
+              </div>
             ) : null}
             {service.needsKey ? (
               <>
@@ -182,6 +187,7 @@ export function Setup({ context }: { context: DesignContext }) {
             actions={<Button variant="primary" disabled={!s.canTest.value} onClick={() => void s.runTest()}>{test.kind === "testing" ? t("setup.test.running") : t("setup.test.run")}</Button>}
           >
             <TestResult t={t} state={test} />
+            {service.listSkipsKey && test.kind === "ok" ? <div class="muted caption">{t("setup.test.listSkipsKey")}</div> : null}
           </Section>
         ) : null}
 
