@@ -201,6 +201,15 @@ describe("the path changes", () => {
 });
 
 describe("following", () => {
+  it("follows again at the scroller's end, even when the last nodes draw nothing", async () => {
+    const r = await rig(300);
+    await r.settle();
+    r.w.view(100 * ESTIMATED_ROW_PX, VIEW, false);
+    expect(r.w.following.value).toBe(false);
+    // A position that locates to a row before the last: hidden kinds have no height.
+    r.w.view(100 * ESTIMATED_ROW_PX, VIEW, true);
+    expect(r.w.following.value).toBe(true);
+  });
   it("reads only after the last known node while at the bottom", async () => {
     const r = await rig(300);
     await r.settle();

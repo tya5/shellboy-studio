@@ -228,7 +228,8 @@ export class ConversationWindow {
     const now = this.renderRange()!;
     if (was?.first !== now.first || was?.last !== now.last) this.bump(); // the screen draws other rows
     this.lastAnchor = this.anchor(scrollTop);
-    const follow = atBottom && this.locate(scrollTop + clientHeight) >= this.total - 1;
+    // The scroller's end is the path's end: trailing nodes that draw nothing have no height to reach.
+    const follow = atBottom;
     if (follow !== this.following.peek()) this.following.value = follow;
     if (follow && this.newer.peek()) this.newer.value = false;
     const r = this.renderRange()!;
