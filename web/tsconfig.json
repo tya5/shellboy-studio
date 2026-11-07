@@ -11,7 +11,9 @@
     "exactOptionalPropertyTypes": false,
     "noEmit": true,
     "skipLibCheck": true,
-    "isolatedModules": true
+    "isolatedModules": true,
+    "jsx": "react-jsx",
+    "jsxImportSource": "preact"
   },
-  "include": ["data/src", "data/test"]
+  "include": ["data/src", "data/test", "ui-core/src", "ui-core/test/*.test.ts"]
 }

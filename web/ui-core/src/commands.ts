@@ -1,0 +1,26 @@
+// Keyboard commands, as decisions over key facts. A design binds them to its elements.
+import type { ViewName } from "./route";
+
+export interface KeyFacts {
+  key: string;
+  shiftKey?: boolean;
+  altKey?: boolean;
+  ctrlKey?: boolean;
+  metaKey?: boolean;
+  /** An IME is composing: Enter confirms the conversion and must never send. */
+  isComposing?: boolean;
+}
+
+export type ComposerAction = "send" | "none";
+
+export function composerAction(e: KeyFacts): ComposerAction {
+  if (e.key !== "Enter" || e.isComposing || e.shiftKey || e.altKey) return "none";
+  return "send";
+}
+
+const VIEW_KEYS: Record<string, ViewName> = { "1": "conversation", "2": "monitor", "3": "inbox" };
+
+/** Alt+1, Alt+2, Alt+3 switch views. `code`-independent digits only. */
+export function viewShortcut(e: KeyFacts): ViewName | undefined {
+  return e.altKey && !e.ctrlKey && !e.metaKey ? VIEW_KEYS[e.key] : undefined;
+}

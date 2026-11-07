@@ -3,15 +3,23 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.ui.json",
     "test": "vitest run",
-    "check": "tsc --noEmit && vitest run"
+    "check": "npm run -s typecheck && vitest run",
+    "tokens": "node designs/console/system/gen-tokens.mjs",
+    "build": "vite build",
+    "dev": "vite"
   },
   "dependencies": {
-    "@preact/signals-core": "1.14.4"
+    "@preact/signals": "2.11.3",
+    "@preact/signals-core": "1.14.4",
+    "markdown-it": "15.0.3",
+    "preact": "10.29.8"
   },
   "devDependencies": {
+    "happy-dom": "21.0.4",
     "typescript": "6.0.3",
+    "vite": "8.3.5",
     "vitest": "5.0.4"
   }
 }
