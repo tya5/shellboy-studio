@@ -4,6 +4,7 @@ import { computed, effect, signal, type ReadonlySignal, type Signal } from "@pre
 import type { Handle, Operations, OpError, ShellboyData, ShellEntry, ThreadDetails, ThreadHandle } from "../../data/src";
 import { projectConversation, type ConversationRow, type StepRow } from "./conversation";
 import { translator, type Lang, type Translate } from "./i18n";
+import { Insights } from "./insights";
 import { noPending, type PendingAdapter } from "./pending";
 import { formatRoute, START_ROUTE, type Route, type ViewName } from "./route";
 import { statusOfShell, type StatusKey } from "./status";
@@ -47,6 +48,8 @@ export interface AppModelOptions {
   lang?: Lang;
   /** Current time source for ages. */
   nowMs?: () => number;
+  /** Minutes east of UTC, for calendar days in Analytics. */
+  offsetMinutes?: () => number;
   /** Writes the route to wherever the location lives (the fragment in a browser). */
   onNavigate?: (hash: string) => void;
 }
@@ -66,6 +69,8 @@ export class AppModel {
   readonly ops: Operations;
   readonly pending: PendingAdapter;
   readonly route: Signal<Route> = signal(START_ROUTE);
+  /** Analytics, Resources and Settings reads. Nothing runs until one of those views opens. */
+  readonly insights: Insights;
   readonly lang: Signal<Lang>;
   readonly now: Signal<number>;
   readonly t: ReadonlySignal<Translate>;
@@ -113,6 +118,10 @@ export class AppModel {
     this.nowMs = options.nowMs ?? (() => Date.now());
     this.now = signal(this.nowMs());
     this.onNavigate = options.onNavigate;
+    this.insights = new Insights(this.ops, {
+      nowMs: this.nowMs,
+      offsetMinutes: options.offsetMinutes ?? (() => -new Date(this.nowMs()).getTimezoneOffset()),
+    });
     this.t = computed(() => translator(this.lang.value));
 
     const pendingByThread = computed(() => {
@@ -165,6 +174,16 @@ export class AppModel {
   start(): void {
     this.listHandle = this.data.trackThreadList();
     this.disposers.push(effect(() => this.syncOpenThread()));
+    // Reads for a view run when it opens with the owner reachable, not when it renders.
+    this.disposers.push(
+      effect(() => {
+        const view = this.route.value.view;
+        if (this.connection.value !== "connected") return;
+        const threadId = this.selectedId.value;
+        if (view === "analytics") this.insights.ensureAnalytics(threadId);
+        else if (view === "settings") this.insights.ensureSettings(threadId);
+      }),
+    );
     // Shell facts follow the hints: the store re-reads the Thread on each, and so do we.
     this.disposers.push(
       effect(() => {

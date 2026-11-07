@@ -146,13 +146,13 @@ describe("routes, prefs, commands, words", () => {
   it("prefs default to the first design, English; damaged or removed values fall back", () => {
     const designs = [{ name: "console", themes: [{ name: "console" }, { name: "light" }] }];
     const store = (v: string | null) => ({ read: () => v, write() {} });
-    expect(loadPrefs(store(null), designs)).toEqual({ design: "console", theme: "console", lang: "en" });
-    expect(loadPrefs(store("{oops"), designs)).toEqual({ design: "console", theme: "console", lang: "en" });
-    expect(loadPrefs(store('{"design":"gone","theme":"light","lang":"ja"}'), designs)).toEqual({ design: "console", theme: "light", lang: "ja" });
+    expect(loadPrefs(store(null), designs)).toEqual({ design: "console", theme: "console", lang: "en", weights: { cached: 0.1, output: 5 } });
+    expect(loadPrefs(store("{oops"), designs)).toEqual({ design: "console", theme: "console", lang: "en", weights: { cached: 0.1, output: 5 } });
+    expect(loadPrefs(store('{"design":"gone","theme":"light","lang":"ja"}'), designs)).toEqual({ design: "console", theme: "light", lang: "ja", weights: { cached: 0.1, output: 5 } });
     expect(loadPrefs(store('{"theme":"gone"}'), designs).theme).toBe("console");
   });
   it("a blocked store doesn't throw", () => {
-    expect(() => savePrefs({ read: () => null, write: () => { throw new Error("blocked"); } }, { design: "x", theme: "y", lang: "en" })).not.toThrow();
+    expect(() => savePrefs({ read: () => null, write: () => { throw new Error("blocked"); } }, { design: "x", theme: "y", lang: "en", weights: { cached: 0, output: 1 } })).not.toThrow();
   });
   it("Enter sends unless an IME is composing or Shift is held", () => {
     expect(composerAction({ key: "Enter" })).toBe("send");

@@ -54,7 +54,8 @@ export function formatClock(iso: string | undefined, seconds = false): string | 
 export function formatBytes(n: number): string {
   if (n < 1024) return `${n} B`;
   if (n < 1024 * 1024) return `${Math.round(n / 1024)} KiB`;
-  return `${trim(n / (1024 * 1024))} MiB`;
+  if (n < 1024 ** 3) return `${trim(n / (1024 * 1024))} MiB`;
+  return `${trim(n / 1024 ** 3)} GiB`;
 }
 
 /** Last path segment, for the breadcrumb. */

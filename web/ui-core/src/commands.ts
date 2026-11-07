@@ -18,9 +18,9 @@ export function composerAction(e: KeyFacts): ComposerAction {
   return "send";
 }
 
-const VIEW_KEYS: Record<string, ViewName> = { "1": "conversation", "2": "monitor", "3": "inbox" };
+const VIEW_KEYS: Record<string, ViewName> = { "1": "conversation", "2": "monitor", "3": "inbox", "4": "analytics", "5": "settings" };
 
-/** Alt+1, Alt+2, Alt+3 switch views. `code`-independent digits only. */
+/** Alt+1 to Alt+5 switch views. `code`-independent digits only. */
 export function viewShortcut(e: KeyFacts): ViewName | undefined {
   return e.altKey && !e.ctrlKey && !e.metaKey ? VIEW_KEYS[e.key] : undefined;
 }
