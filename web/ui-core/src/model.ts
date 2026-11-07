@@ -3,6 +3,7 @@
 import { computed, effect, signal, untracked, type ReadonlySignal, type Signal } from "@preact/signals-core";
 import { Cancel, type Handle, type Operations, type OpError, type ShellboyData, type ShellEntry, type ThreadDetails, type ThreadHandle } from "../../data/src";
 import { CAPABILITY_HISTORY_WINDOW, noReplyWait, type ReplyWait, type ReplyWaitAdapter } from "../../data/src";
+import { MissingPins, MonitorSelection, type MonitorArchive } from "./monitor-selection";
 import { workRegions, type WorkRegions } from "./work";
 import { ConversationWindow } from "./window";
 import { branchRowMarks, projectConversation, type ConversationRow, type StepRow } from "./conversation";
@@ -109,7 +110,11 @@ export class AppModel {
   readonly monitorPinnedOnly = signal(false);
   readonly monitorPins = signal<readonly string[]>([]);
   readonly monitorSort = signal<"stable" | "recent">("stable");
-  readonly monitorFilter: Signal<StatusKey | undefined> = signal(undefined);
+  readonly monitorFilter: Signal<readonly StatusKey[]> = signal([]);
+  readonly monitorArchive = signal<MonitorArchive>("exclude");
+  readonly monitorRefresh = signal(0);
+  readonly missingPins: MissingPins;
+  readonly monitorOutOfFilter: ReadonlySignal<ReadonlySet<string>>;
   readonly monitorRows: ReadonlySignal<ThreadRow[]>;
   readonly pendingCount: ReadonlySignal<number>;
   readonly connection: ReadonlySignal<ConnectionView>;
@@ -185,19 +190,26 @@ export class AppModel {
     this.rowById = computed(() => new Map(this.rows.value.map((r) => [r.summary.thread_id, r])));
     this.counts = computed(() => countByStatus(this.rows.value));
     this.pendingCount = computed(() => this.pending.items.value.length);
+    this.missingPins = new MissingPins(this.ops);
     const stableMonitor = new StableMonitorOrder();
-    const stableRows = computed(() => stableMonitor.order(this.rows.value));
+    const stableRows = computed(() => stableMonitor.order([...this.rows.value, ...this.missingPins.rows.value]));
     this.disposers.push(effect(() => { stableRows.value; }));
-    this.monitorStableRows = computed(() => { const filter = this.monitorFilter.value; return filter ? stableRows.value.filter((r) => r.status === filter) : stableRows.value; });
-    this.monitorRows = computed(() => {
-      const filter = this.monitorFilter.value;
+    this.disposers.push(effect(() => {
+      const active = this.route.value.view === "monitor" && this.data.threadList.value.loaded && this.data.owner.value.state === "connected";
+      const pins = this.monitorPins.value;
+      const rows = this.rows.value;
+      untracked(() => this.missingPins.sync(pins, rows, active));
+    }));
+    this.monitorStableRows = stableRows;
+    const selection = new MonitorSelection();
+    const selected = computed(() => {
       const stable = stableRows.value;
       const rows = this.monitorSort.value === "recent" ? [...stable].sort((a, b) => b.summary.updated_at.localeCompare(a.summary.updated_at) || a.summary.thread_id.localeCompare(b.summary.thread_id)) : stable;
-      const query = this.monitorQuery.value.trim().toLocaleLowerCase();
-      const pinned = this.monitorPinnedOnly.value;
-      const pins = new Set(this.monitorPins.value);
-      return rows.filter((r) => (!filter || r.status === filter) && (!pinned || pins.has(r.summary.thread_id)) && (!query || r.summary.title.toLocaleLowerCase().includes(query)));
+      return selection.select(rows, { statuses: this.monitorFilter.value, query: this.monitorQuery.value, archive: this.monitorArchive.value, pinnedOnly: this.monitorPinnedOnly.value, pins: this.monitorPins.value, refresh: this.monitorRefresh.value });
     });
+    this.monitorRows = computed(() => selected.value.rows);
+    this.monitorOutOfFilter = computed(() => selected.value.outOfFilter);
+    this.disposers.push(effect(() => { selected.value; }));
     this.connection = computed(() => {
       const conn = this.data.connection.value;
       if (conn !== "open") return this.data.failedAttempts.value >= AUTH_HINT_ATTEMPTS ? "authNeeded" : "connecting";
@@ -368,6 +380,7 @@ export class AppModel {
   }
 
   dispose(): void {
+    this.missingPins.close();
     this.longReader.peek()?.dispose();
     for (const d of this.disposers) d();
     this.disposers = [];

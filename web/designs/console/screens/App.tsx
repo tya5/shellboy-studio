@@ -45,10 +45,12 @@ export function App({ context }: { context: DesignContext }) {
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      if ((model.data.listFilter.peek().query ?? "") !== query) model.data.setListFilter(query ? { query } : {});
+      const next = route.view === "monitor" ? { archived: "include" as const } : query ? { query } : {};
+      const current = model.data.listFilter.peek();
+      if (current.query !== ("query" in next ? next.query : undefined) || current.archived !== ("archived" in next ? next.archived : undefined)) model.data.setListFilter(next);
     }, SEARCH_DEBOUNCE_MS);
     return () => clearTimeout(timer);
-  }, [model, query]);
+  }, [model, query, route.view]);
 
   const nav = (view: ViewName, icon: IconName, label: string, count?: number) => <NavItem key={view} href={formatRoute({ view })} icon={icon} label={label} current={route.view === view} {...(count !== undefined ? { count } : {})} />;
   const conversationNav = nav("conversation", "chat", t("view.conversation"));

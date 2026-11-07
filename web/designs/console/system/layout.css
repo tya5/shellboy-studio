@@ -123,7 +123,23 @@
 .pane-grid>div{min-width:0;min-height:0;display:flex}
 .pane-grid .monitor-tile{flex:1}
 
+/* Monitor heading and common filter bar. */
+.monitor-controls{flex:none;min-width:0;display:flex;flex-direction:column;gap:var(--space-8)}
+.pane-monitor .monitor-controls{padding:var(--space-8) var(--space-12);border-bottom:1px solid var(--line)}
+.monitor-heading{display:flex;align-items:center;justify-content:space-between;gap:var(--space-12)}
+.monitor-heading h1{font:var(--type-title);margin:0}
+.monitor-filter-bar{display:flex;align-items:center;gap:var(--space-8);min-width:0}
+.monitor-filter-bar>*{flex:none}
+.monitor-filter-scroll{display:flex;align-items:center;gap:var(--space-8);min-width:0;flex:1 1 auto;overflow-x:auto}
+.monitor-filter-scroll>*{flex:none}
+.monitor-filter-bar .monitor-count{margin-left:auto;white-space:nowrap}
+.monitor-filter-mobile{display:none}
+.monitor-filter-sheet{display:flex;flex-direction:column;align-items:stretch;gap:var(--space-12)}
+.monitor-filter-sheet .chips{display:flex;flex-wrap:wrap}
+.monitor-filter-sheet .monitor-count{margin-left:0}
 @container app (max-width:899px){
+  .monitor-filter-bar{display:none}
+  .monitor-filter-mobile{display:block}
   .mon.pane-monitor{overflow:auto}
   .pane-grid,.pane-grid[data-count]{flex:none;grid-template-columns:minmax(0,1fr);grid-template-rows:none;grid-auto-rows:16rem;min-height:0}
   .shell{grid-template-columns:minmax(0,1fr)}

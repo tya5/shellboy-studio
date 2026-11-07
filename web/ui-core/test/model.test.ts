@@ -16,7 +16,7 @@ describe("AppModel over the fake transport", () => {
     expect(t.calls("history.list")).toHaveLength(0);
     expect(model.handle.value).toBeUndefined();
     expect(model.monitorRows.value[0]!.summary.thread_id).toBe("broken");
-    model.monitorFilter.value = "completed";
+    model.monitorFilter.value = ["completed"];
     expect(model.monitorRows.value.map((r) => r.summary.thread_id)).toEqual(["done"]);
   });
 
@@ -26,9 +26,9 @@ describe("AppModel over the fake transport", () => {
     model.monitorPinnedOnly.value = true;
     model.monitorQuery.value = "REVIEW";
     expect(model.monitorRows.value.map((r) => r.summary.thread_id)).toEqual(["child"]);
-    model.monitorFilter.value = "completed";
-    expect(model.monitorRows.value).toEqual([]);
-    model.monitorFilter.value = "running";
+    model.monitorFilter.value = ["completed"];
+    expect(model.monitorRows.value.map((r) => r.summary.thread_id)).toEqual(["child"]);
+    model.monitorFilter.value = ["running"];
     expect(model.monitorRows.value.map((r) => r.summary.thread_id)).toEqual(["child"]);
     model.dispose();
   });
@@ -46,9 +46,9 @@ describe("AppModel over the fake transport", () => {
     expect(ids().slice(0, before.length)).toEqual(before);
     expect(ids().at(-1)).toBe("aaa-new");
     expect(model.counts.value.recovery).toBe(3);
-    model.monitorFilter.value = "recovery";
+    model.monitorFilter.value = ["recovery"];
     expect(ids()).toContain("lead");
-    model.monitorFilter.value = undefined;
+    model.monitorFilter.value = [];
     expect(t.calls("thread.list").length).toBe(reads + 1);
     model.monitorSort.value = "recent";
     expect(ids()[0]).toBe("aaa-new");

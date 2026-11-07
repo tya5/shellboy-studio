@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { activityLabel, formatAge, formatDuration, formatRoute, parseTime, TilePreviews, statusLabel, STATUS_KEYS, type AppModel, type DesignContext, type ThreadRow } from "../../../ui-core/src";
-import { Button, ButtonGroup, Chip, EmptyState, Field, Icon, StatusMark, ThreadCard, MonitorTile } from "../system/components";
+import { Button, ButtonGroup, Chip, EmptyState, Field, Icon, StatusMark, ThreadCard, MonitorTile, WorkSheet } from "../system/components";
 
 function Archive({ model, id }: { model: AppModel; id: string }) {
   const t = model.t.value;
@@ -12,7 +12,7 @@ function Archive({ model, id }: { model: AppModel; id: string }) {
   );
 }
 
-function Card({ model, row, pinned, togglePin }: { model: AppModel; row: ThreadRow; pinned: boolean; togglePin: () => void }) {
+function Card({ model, row, pinned, togglePin, outOfFilter }: { model: AppModel; row: ThreadRow; pinned: boolean; togglePin: () => void; outOfFilter: boolean }) {
   const t = model.t.value;
   const s = row.summary;
   const tone = row.status === "awaiting" ? "need" : row.status === "recovery" ? "err" : row.childCount > 0 ? "lead" : undefined;
@@ -25,6 +25,7 @@ function Card({ model, row, pinned, togglePin }: { model: AppModel; row: ThreadR
       title={s.title}
       foot={
         <>
+          {outOfFilter ? <span class="muted">{t("monitor.outOfFilter")}</span> : null}
           <Button aria-pressed={pinned} onClick={togglePin}>{t(pinned ? "monitor.unpin" : "monitor.pin")}</Button>
           {row.childCount > 0 ? (
             <span class="rel">
@@ -54,7 +55,7 @@ function Card({ model, row, pinned, togglePin }: { model: AppModel; row: ThreadR
   );
 }
 
-function Tile({ model, row, reader, supported, pinned, togglePin }: { model: AppModel; row: ThreadRow; reader: TilePreviews; supported: boolean; pinned: boolean; togglePin: () => void }) {
+function Tile({ model, row, reader, supported, pinned, togglePin, outOfFilter }: { model: AppModel; row: ThreadRow; reader: TilePreviews; supported: boolean; pinned: boolean; togglePin: () => void; outOfFilter: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
   const id = row.summary.thread_id;
   useEffect(() => {
@@ -71,7 +72,7 @@ function Tile({ model, row, reader, supported, pinned, togglePin }: { model: App
   const running = rows.flatMap((r) => r.type === "steps" ? r.steps : []).find((step) => step.status === "running");
   const start = parseTime(running?.startedAt);
   const detail = running ? [running.description ?? running.command, start === undefined ? "" : formatDuration(model.now.value - start)].filter(Boolean).join(" ") : "";
-  const status = <>{row.status ? <StatusMark status={row.status} label={statusLabel(t, row.status)} /> : null}<span class="tile-detail">{row.status === "awaiting" ? "" : activityLabel(model.lang.value, row.summary.activity)}{detail ? ` ${detail}` : ""}</span></>;
+  const status = <>{row.status ? <StatusMark status={row.status} label={statusLabel(t, row.status)} /> : null}<span class="tile-detail">{row.status === "awaiting" ? "" : activityLabel(model.lang.value, row.summary.activity)}{detail ? ` ${detail}` : ""}{outOfFilter ? ` ${t("monitor.outOfFilter")}` : ""}</span></>;
   return <div ref={ref}>
     <MonitorTile href={formatRoute({ view: "conversation", threadId: id })} title={row.summary.title} headingStatus={row.status ? <StatusMark status={row.status} label={statusLabel(t, row.status)} word={false} /> : null} status={status} pin={<Button aria-pressed={pinned} onClick={togglePin}>{t(pinned ? "monitor.unpin" : "monitor.pin")}</Button>}>
       {supported ? rows.map((r) => {
@@ -97,12 +98,29 @@ export function Monitor({ context }: { context: DesignContext }) {
   const tiles = prefs.value.monitorView === "tiles";
   const pins = prefs.value.monitorPins ?? [];
   const pinnedOnly = model.monitorPinnedOnly.value;
-  useEffect(() => { model.monitorPins.value = prefs.value.monitorPins ?? []; }, [model, prefs.value.monitorPins]);
+  useEffect(() => {
+    model.monitorPins.value = prefs.value.monitorPins ?? [];
+    model.monitorFilter.value = prefs.value.monitorStatuses ?? [];
+    model.monitorQuery.value = prefs.value.monitorQuery ?? "";
+    model.monitorArchive.value = prefs.value.monitorArchive ?? "exclude";
+  }, [model]);
+  const deletedPins = model.missingPins.deleted.value;
+  useEffect(() => {
+    if (!deletedPins.length) return;
+    const next = (prefs.value.monitorPins ?? []).filter((id) => !deletedPins.includes(id));
+    model.monitorPins.value = next;
+    setPrefs({ monitorPins: next });
+    model.missingPins.deleted.value = [];
+  }, [deletedPins]);
   const [page, setPage] = useState(0);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const reader = useMemo(() => new TilePreviews(model.data), [model]);
   useEffect(() => () => reader.close(), [reader]);
   const supported = model.data.capabilities.value.includes("history.window");
   const selectedRows = model.monitorRows.value;
+  const outOfFilter = model.monitorOutOfFilter.value;
+  const filtered = filter.length > 0 || !!model.monitorQuery.value.trim() || model.monitorArchive.value !== "exclude";
+  const clearFilters = () => { model.monitorFilter.value = []; model.monitorQuery.value = ""; model.monitorArchive.value = "exclude"; setPrefs({ monitorStatuses: [], monitorQuery: "", monitorArchive: "exclude" }); setPage(0); };
   const groups: ThreadRow[][] = [];
   for (let i = 0; i < selectedRows.length;) {
     const remaining = selectedRows.length - i;
@@ -115,43 +133,47 @@ export function Monitor({ context }: { context: DesignContext }) {
   const rows = tiles ? groups[currentPage] ?? [] : selectedRows;
   const togglePin = (id: string) => { const next = pins.includes(id) ? pins.filter((p) => p !== id) : [...pins, id].slice(0, 100); model.monitorPins.value = next; setPrefs({ monitorPins: next }); };
   const list = model.data.threadList.value;
+  const filterControls = () => <>
+    <div class="chips" role="group" aria-label={t("monitor.filter")}>
+      {STATUS_KEYS.filter((k) => (counts[k] ?? 0) > 0 || filter.includes(k)).map((k) => <Chip key={k} status={k} label={statusLabel(t, k)} count={counts[k] ?? 0} pressed={filter.includes(k)} onClick={() => { const next = filter.includes(k) ? filter.filter((x) => x !== k) : [...filter, k]; model.monitorFilter.value = next; setPrefs({ monitorStatuses: next }); setPage(0); }} />)}
+    </div>
+    <Field ariaLabel={t("threads.search")} placeholder={t("threads.search")} value={model.monitorQuery.value} onInput={(e) => { model.monitorQuery.value = e.currentTarget.value.slice(0, 256); setPrefs({ monitorQuery: model.monitorQuery.value }); setPage(0); }} />
+    <ButtonGroup label={t("monitor.sort")}>
+      {(["stable", "recent"] as const).map((sort) => <Button key={sort} aria-pressed={(prefs.value.monitorSort ?? "stable") === sort} onClick={() => { model.monitorSort.value = sort; setPrefs({ monitorSort: sort }); }}>{t(sort === "stable" ? "monitor.sortStable" : "monitor.sortRecent")}</Button>)}
+    </ButtonGroup>
+    <ButtonGroup label={t("monitor.scope")}>
+      <Button aria-pressed={!pinnedOnly} onClick={() => { model.monitorPinnedOnly.value = false; setPage(0); }}>{t("monitor.all")}</Button>
+      <Button aria-pressed={pinnedOnly} onClick={() => { model.monitorPinnedOnly.value = true; setPage(0); }}>{t("monitor.pinnedOnly")}</Button>
+    </ButtonGroup>
+    <ButtonGroup label={t("monitor.archive")}>
+      {(["exclude", "include", "only"] as const).map((archive) => <Button key={archive} aria-pressed={model.monitorArchive.value === archive} onClick={() => { model.monitorArchive.value = archive; setPrefs({ monitorArchive: archive }); setPage(0); }}>{t(archive === "exclude" ? "monitor.archiveExclude" : archive === "include" ? "monitor.archiveInclude" : "monitor.archiveOnly")}</Button>)}
+    </ButtonGroup>
+    <Button onClick={() => { model.monitorRefresh.value++; setPage(0); }}>{t("monitor.refreshSelection")}</Button>
+  </>;
   return (
     <div class={tiles ? "mon pane-monitor" : "mon"}>
-      <div class={tiles ? "pane-controls" : undefined}>
-      <div class="head">
-        <div>
-          <h1>{t("view.monitor")}</h1>
-          <div class="muted">{t("monitor.subtitle")}</div>
-        </div>
-        <div class="chips" role="group" aria-label={t("monitor.filter")}>
-          {STATUS_KEYS.filter((k) => (counts[k] ?? 0) > 0).map((k) => (
-            <Chip key={k} status={k} label={statusLabel(t, k)} count={counts[k] ?? 0} pressed={filter === k} onClick={() => (model.monitorFilter.value = filter === k ? undefined : k)} />
-          ))}
-        </div>
-      </div>
-      <ButtonGroup label={t("monitor.view")}>
-        {(["cards", "tiles"] as const).map((view) => <Button key={view} aria-pressed={(tiles ? "tiles" : "cards") === view} onClick={() => setPrefs({ monitorView: view })}>{t(view === "tiles" ? "monitor.tiles" : "monitor.cards")}</Button>)}
-        <Button aria-pressed={pinnedOnly} onClick={() => { model.monitorPinnedOnly.value = !pinnedOnly; setPage(0); }}>{t("monitor.pinnedOnly")}</Button>
-      </ButtonGroup>
-      <Field ariaLabel={t("threads.search")} placeholder={t("threads.search")} value={model.monitorQuery.value} onInput={(e) => { model.monitorQuery.value = e.currentTarget.value; setPage(0); }} />
-      <ButtonGroup label={t("monitor.sort")}>
-        {(["stable", "recent"] as const).map((sort) => <Button key={sort} aria-pressed={(prefs.value.monitorSort ?? "stable") === sort} onClick={() => { model.monitorSort.value = sort; setPrefs({ monitorSort: sort }); }}>{t(sort === "stable" ? "monitor.sortStable" : "monitor.sortRecent")}</Button>)}
-      </ButtonGroup>
-      {tiles && pages > 1 ? <ButtonGroup label={t("monitor.page", { page: currentPage + 1, pages })}>
-        <Button disabled={currentPage === 0} onClick={() => setPage(currentPage - 1)}>{t("monitor.previous")}</Button>
-        <span>{t("monitor.page", { page: currentPage + 1, pages })}</span>
-        <Button disabled={currentPage + 1 === pages} onClick={() => setPage(currentPage + 1)}>{t("monitor.next")}</Button>
-      </ButtonGroup> : null}
+      <div class="monitor-controls">
+        <div class="monitor-heading"><h1>{t("view.monitor")}</h1><ButtonGroup label={t("monitor.view")}>
+          {(["cards", "tiles"] as const).map((view) => <Button key={view} aria-pressed={(tiles ? "tiles" : "cards") === view} onClick={() => setPrefs({ monitorView: view })}>{t(view === "tiles" ? "monitor.tiles" : "monitor.cards")}</Button>)}
+        </ButtonGroup></div>
+        <div class="monitor-filter-bar"><div class="monitor-filter-scroll">{filterControls()}</div><span class="monitor-count muted caption">{t("monitor.showing", { shown: selectedRows.length, total: model.monitorStableRows.value.length })}</span>{filtered ? <Button onClick={clearFilters}>{t("monitor.clearFilters")}</Button> : null}</div>
+        <div class="monitor-filter-mobile"><Button onClick={() => setFiltersOpen(true)}>{t("monitor.filterButton")}</Button></div>
+        <WorkSheet open={filtersOpen} title={t("monitor.filterButton")} closeLabel={t("work.close")} onClose={() => setFiltersOpen(false)}><div class="monitor-filter-sheet">{filterControls()}<span class="monitor-count muted caption">{t("monitor.showing", { shown: selectedRows.length, total: model.monitorStableRows.value.length })}</span>{filtered ? <Button onClick={clearFilters}>{t("monitor.clearFilters")}</Button> : null}</div></WorkSheet>
+        {tiles && pages > 1 ? <ButtonGroup label={t("monitor.page", { page: currentPage + 1, pages })}>
+          <Button disabled={currentPage === 0} onClick={() => setPage(currentPage - 1)}>{t("monitor.previous")}</Button>
+          <span>{t("monitor.page", { page: currentPage + 1, pages })}</span>
+          <Button disabled={currentPage + 1 === pages} onClick={() => setPage(currentPage + 1)}>{t("monitor.next")}</Button>
+        </ButtonGroup> : null}
       </div>
       {rows.length > 0 ? (
         <div class={tiles ? "pane-grid" : "grid"} data-count={tiles ? rows.length : undefined}>
           {rows.map((r) => (
-            tiles ? <Tile key={r.summary.thread_id} model={model} row={r} reader={reader} supported={supported} pinned={pins.includes(r.summary.thread_id)} togglePin={() => togglePin(r.summary.thread_id)} /> : <Card key={r.summary.thread_id} model={model} row={r} pinned={pins.includes(r.summary.thread_id)} togglePin={() => togglePin(r.summary.thread_id)} />
+            tiles ? <Tile key={r.summary.thread_id} model={model} row={r} reader={reader} supported={supported} outOfFilter={outOfFilter.has(r.summary.thread_id)} pinned={pins.includes(r.summary.thread_id)} togglePin={() => togglePin(r.summary.thread_id)} /> : <Card key={r.summary.thread_id} model={model} row={r} outOfFilter={outOfFilter.has(r.summary.thread_id)} pinned={pins.includes(r.summary.thread_id)} togglePin={() => togglePin(r.summary.thread_id)} />
           ))}
         </div>
-      ) : filter || pinnedOnly || model.monitorQuery.value ? (
+      ) : filtered || pinnedOnly ? (
         <EmptyState icon="monitor" title={t("monitor.noMatch")}>
-          <Button onClick={() => { model.monitorFilter.value = undefined; model.monitorPinnedOnly.value = false; model.monitorQuery.value = ""; }}>{t("monitor.showAll")}</Button>
+          <Button onClick={clearFilters}>{t("monitor.clearFilters")}</Button>
         </EmptyState>
       ) : list.loaded ? (
         <EmptyState icon="monitor" title={t("monitor.empty")} body={t("monitor.emptyBody")} />
