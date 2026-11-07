@@ -42,7 +42,7 @@ export const SERVICES: readonly ServicePreset[] = [
     baseUrl: "https://api.anthropic.com/v1",
     api: "anthropic_messages",
     apiKeyHeader: "x-api-key",
-    keyPageUrl: "https://console.anthropic.com/settings/keys",
+    keyPageUrl: "https://platform.claude.com/settings/keys",
     envName: "ANTHROPIC_API_KEY",
     needsKey: true,
     askUrl: false,

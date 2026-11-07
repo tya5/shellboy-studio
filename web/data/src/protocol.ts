@@ -133,6 +133,8 @@ export interface ThreadSummary {
   excerpt: string;
   parent_id?: string;
   archived_at?: string;
+  /** Sorted; absent when the Thread has none, and on an owner without tags. */
+  tags?: string[];
   latest_run_stop_reason?: string | null;
   [extra: string]: unknown;
 }
@@ -147,6 +149,7 @@ export interface ThreadDetails {
   turn_id?: string;
   parent_id?: string;
   archived_at?: string;
+  tags?: string[];
   children_count: number;
   shells_count: number;
   [extra: string]: unknown;
@@ -271,6 +274,29 @@ export interface ThreadListArgs {
   cursor?: string;
   query?: string;
   archived?: ArchivedFilter;
+  /** Needs the `thread.tags` capability. Every tag must match (AND); at most 64. */
+  tags?: string[];
+  /** Needs the `thread.cwds` capability. Exact, after the owner's own cleanup; an absolute path. */
+  cwd?: string;
+}
+
+/** A page of names for `thread.tags` and `thread.cwds`. */
+export interface NamesArgs {
+  limit?: number;
+  cursor?: string;
+}
+export interface ThreadTagArgs {
+  thread_ids: string[];
+  add?: string[];
+  remove?: string[];
+}
+export interface TagResult {
+  changed: string[];
+  unchanged: string[];
+  not_found: string[];
+  add: string[];
+  remove: string[];
+  [extra: string]: unknown;
 }
 export interface HistoryListArgs {
   thread_id: string;
@@ -279,6 +305,27 @@ export interface HistoryListArgs {
   excerpt_chars?: number;
   /** Inclusive node creation time (RFC3339 with offset). */
   since?: string;
+}
+/** `history.window` (Shellboy #268, capability `history.window`): a positional window of the selected path. */
+export interface HistoryWindowArgs {
+  thread_id: string;
+  /** With neither `ordinal` nor `node_id` the window ends at the last node. */
+  ordinal?: number;
+  node_id?: string;
+  /** With `ordinal`: `cursor_expired` unless this node still sits there. */
+  expect_node_id?: string;
+  before?: number;
+  after?: number;
+  excerpt_chars?: number;
+}
+export interface HistoryWindowResult {
+  thread_id: string;
+  /** Advances on append, rewind and compaction. */
+  revision: string | number;
+  /** One past the last ordinal. */
+  total: number;
+  /** `history.list` items, ascending; `selection.ordinal` is the position. */
+  items: HistoryItem[];
 }
 export interface HistoryGetArgs {
   node_id: string;

@@ -20,6 +20,13 @@ pub fn owner_capabilities() -> Vec<String> {
         capabilities.push("thread.reparent".to_owned());
         capabilities.push("config.edit".to_owned());
         capabilities.push("live.text".to_owned());
+        capabilities.push("history.window".to_owned());
+    }
+    if cfg!(feature = "next-tags") {
+        capabilities.push("thread.tags".to_owned());
+    }
+    if cfg!(feature = "next-cwds") {
+        capabilities.push("thread.cwds".to_owned());
     }
     if cfg!(feature = "next-connection-setup") {
         capabilities.push("connection.setup".to_owned());

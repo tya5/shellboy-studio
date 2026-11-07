@@ -77,6 +77,8 @@ export const flush = async (n = 8): Promise<void> => {
   for (let i = 0; i < n; i++) await Promise.resolve();
 };
 
+const tagsOf = (t: unknown): string[] => (t as { tags?: string[] }).tags ?? [];
+
 /** Saved facts held by a fake owner; reads return the current content. */
 export class FakeOwnerDb {
   threads: Record<string, ReturnType<typeof summary>> = {};
@@ -89,12 +91,51 @@ export class FakeOwnerDb {
   answered = new Set<number>();
   reads: string[] = [];
 
+  /** A page of a list, like the owner's: `limit` items, and a cursor that continues the same list. */
+  private page<T>(all: T[], limit: number | undefined, cursor: string | undefined): { ok: true; result: unknown } | { ok: false; code: string } {
+    if (cursor !== undefined && this.expiredCursors.has(cursor)) return { ok: false, code: "cursor_expired" };
+    const start = cursor ? Number(cursor) : 0;
+    const end = start + (limit ?? 50);
+    return { ok: true, result: { items: all.slice(start, end), ...(end < all.length ? { next_cursor: String(end) } : {}) } };
+  }
+
   answer(c: CallFrame): { ok: true; result: unknown } | { ok: false; code: string; message?: string; details?: unknown } {
     const a = (c.args ?? {}) as Record<string, string>;
     this.reads.push(`${c.command}${a.thread_id ? ":" + a.thread_id : ""}${a.cursor ? "@" + a.cursor : ""}`);
     switch (c.command) {
-      case "thread.list":
-        return { ok: true, result: { items: Object.values(this.threads), ...(a.cursor ? {} : {}) } };
+      case "thread.list": {
+        const f = c.args as { tags?: string[]; cwd?: string; limit?: number; cursor?: string };
+        if (f.tags === undefined && f.cwd === undefined) return { ok: true, result: { items: Object.values(this.threads) } };
+        // Like the owner: every tag must match (AND), the cwd is exact, a cursor continues one filter.
+        const matching = Object.values(this.threads).filter((t) => (f.tags ?? []).every((tag) => tagsOf(t).includes(tag)) && (f.cwd === undefined || t.cwd === f.cwd));
+        return this.page(matching, f.limit, f.cursor);
+      }
+      case "thread.tags":
+        return this.page([...new Set(Object.values(this.threads).flatMap(tagsOf))].sort(), Number(a.limit), a.cursor);
+      case "thread.cwds":
+        return this.page([...new Set(Object.values(this.threads).map((t) => t.cwd))].sort(), Number(a.limit), a.cursor);
+      case "thread.tag": {
+        const f = c.args as { thread_ids: string[]; add?: string[]; remove?: string[] };
+        const changed: string[] = [];
+        const unchanged: string[] = [];
+        const notFound: string[] = [];
+        const next = new Map<string, string[]>();
+        for (const id of f.thread_ids) {
+          const t = this.threads[id];
+          if (!t) {
+            notFound.push(id);
+            continue;
+          }
+          const now = new Set(tagsOf(t));
+          for (const tag of f.add ?? []) now.add(tag);
+          for (const tag of f.remove ?? []) now.delete(tag);
+          if (now.size > 64) return { ok: false, code: "input_limit", message: "a Thread can have at most 64 tags" };
+          next.set(id, [...now].sort());
+          (JSON.stringify(next.get(id)) === JSON.stringify(tagsOf(t)) ? unchanged : changed).push(id);
+        }
+        for (const [id, tags] of next) (this.threads[id] as { tags?: string[] }).tags = tags;
+        return { ok: true, result: { changed, unchanged, not_found: notFound, add: f.add ?? [], remove: f.remove ?? [] } };
+      }
       case "thread.get":
         return this.details[a.thread_id!] ? { ok: true, result: this.details[a.thread_id!] } : { ok: false, code: "not_found" };
       case "history.list": {

@@ -48,11 +48,22 @@ pub fn access(command: &Command) -> Access {
         // have no way to reach these: `apps.call` has its own list.
         #[cfg(feature = "next-shellboy")]
         Command::ConfigGet(..) => Access::Read,
+        // The long-thread reader (#268): a positional window of the selected path. Read only.
+        #[cfg(feature = "next-shellboy")]
+        Command::HistoryWindow(..) => Access::Read,
         #[cfg(feature = "next-shellboy")]
         Command::ConfigSet(..) => Access::Mutation,
         // First-run connection setup (#269). One model-list GET, no state change on the owner.
         #[cfg(feature = "next-connection-setup")]
         Command::ConnectionTest(..) => Access::Read,
+        // Tags (#222 stage 3). `thread.tag` changes only tag rows; `thread.tags` lists names, no counts.
+        #[cfg(feature = "next-tags")]
+        Command::ThreadTags(..) => Access::Read,
+        #[cfg(feature = "next-tags")]
+        Command::ThreadTag(..) => Access::Mutation,
+        // The distinct working directories, assumed to read like `thread.tags`.
+        #[cfg(feature = "next-cwds")]
+        Command::ThreadCwds(..) => Access::Read,
         // The key is write-only: the owner never returns it. Nothing here logs arguments.
         #[cfg(feature = "next-connection-setup")]
         Command::CredentialsSet(..) | Command::CredentialsClear(..) => Access::Mutation,
