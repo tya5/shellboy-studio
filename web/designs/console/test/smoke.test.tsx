@@ -453,6 +453,17 @@ describe("Threads", () => {
     });
     expect(t.calls("thread.unarchive")).toHaveLength(1);
   });
+  it("the status bar says which owner this is, in every view", async () => {
+    for (const route of ["conversation", "monitor", "inbox", "apps", "branches", "threads", "analytics", "settings"] as const) {
+      const made = await fixtureModel({ route });
+      const el = draw(made.model);
+      await act(async () => {
+        await settle(made.t, made.db);
+      });
+      expect(el.querySelector(".status .owner-dir")?.textContent, route).toContain("/temp/owner-a");
+    }
+  });
+
   it("Settings says editing isn't available on a v0.10.0 owner, and draws no control", async () => {
     const made = await fixtureModel({ route: "settings", section: "storage" });
     const el = draw(made.model);

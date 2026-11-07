@@ -146,6 +146,7 @@ export class ShellboyData {
 
   private readonly ownerSig = signal<OwnerView>({ state: "unknown" });
   private readonly bridgeVersionSig = signal<string | undefined>(undefined);
+  private readonly dataDirSig = signal<string | undefined>(undefined);
   private readonly invalidSig = signal<{ count: number; last: string | undefined }>({ count: 0, last: undefined });
   private readonly bridgeErrorSig = signal<{ code: string; message: string } | undefined>(undefined);
   private readonly listSig = signal<PagedState<ThreadSummary>>(emptyPaged());
@@ -162,6 +163,8 @@ export class ShellboyData {
   /** Features the owner advertises (empty until protocol 3). Enable features from this. */
   readonly capabilities: ReadonlySignal<string[]>;
   readonly bridgeVersion: ReadonlySignal<string | undefined>;
+  /** Which owner this bridge talks to. Only after sign-in. */
+  readonly dataDir: ReadonlySignal<string | undefined>;
   /** Undecodable frames seen (count and last reason); a bug indicator, not a user message. */
   readonly invalidFrames: ReadonlySignal<{ count: number; last: string | undefined }>;
   /** Last `error` frame from the bridge (e.g. an invalid watch). */
@@ -182,6 +185,7 @@ export class ShellboyData {
       return o.state === "connected" ? o.info.capabilities : [];
     });
     this.bridgeVersion = this.bridgeVersionSig;
+    this.dataDir = this.dataDirSig;
     this.invalidFrames = this.invalidSig;
     this.bridgeError = this.bridgeErrorSig;
     this.threadList = this.listSig;
@@ -340,6 +344,7 @@ export class ShellboyData {
     switch (f.t) {
       case "hello":
         this.bridgeVersionSig.value = f.bridge_version;
+        this.dataDirSig.value = f.data_dir;
         this.setOwner(f.owner);
         if (f.owner.state === "connected") void this.resyncAll();
         break;

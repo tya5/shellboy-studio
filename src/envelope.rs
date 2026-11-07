@@ -75,6 +75,7 @@ impl BridgeError {
 pub enum ServerFrame {
     Hello {
         bridge_version: &'static str,
+        data_dir: String,
         owner: OwnerState,
     },
     Result {

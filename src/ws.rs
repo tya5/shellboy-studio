@@ -80,6 +80,7 @@ pub async fn session<O: Owner>(
 ) {
     let hello = ServerFrame::Hello {
         bridge_version: env!("CARGO_PKG_VERSION"),
+        data_dir: state.config.data_dir.display().to_string(),
         owner: owner_state,
     };
     if !send(&mut socket, &hello).await {

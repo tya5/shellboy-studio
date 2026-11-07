@@ -2,7 +2,7 @@
 use crate::{
     apps::Apps,
     assets,
-    auth::{self, Auth, COOKIE_NAME},
+    auth::{self, Auth},
     hub::Hub,
     owner::Owner,
     ws,
@@ -29,6 +29,8 @@ pub struct ServerConfig {
     pub listen: SocketAddr,
     pub extra_hosts: Vec<String>,
     pub debug: bool,
+    /// Which owner this bridge talks to. Shown so two tabs on two bridges can be told apart.
+    pub data_dir: PathBuf,
 }
 
 /// Where apps live. Without it, the bridge offers no apps.
@@ -168,7 +170,10 @@ async fn auth_exchange<O: Owner>(
             StatusCode::NO_CONTENT,
             [(
                 header::SET_COOKIE,
-                format!("{COOKIE_NAME}={id}; HttpOnly; SameSite=Strict; Path=/"),
+                format!(
+                    "{}={id}; HttpOnly; SameSite=Strict; Path=/",
+                    auth::cookie_name(state.config.listen.port())
+                ),
             )],
         )
             .into_response(),
@@ -196,10 +201,10 @@ async fn ws_upgrade<O: Owner>(
     if !origin_ok(&headers) {
         return (StatusCode::FORBIDDEN, "origin not allowed").into_response();
     }
-    if !state
-        .auth
-        .cookie_valid(header_str(&headers, header::COOKIE))
-    {
+    if !state.auth.cookie_valid(
+        &auth::cookie_name(state.config.listen.port()),
+        header_str(&headers, header::COOKIE),
+    ) {
         return (StatusCode::UNAUTHORIZED, "no session").into_response();
     }
     let Some((guard, owner_state)) = state.hub.register() else {

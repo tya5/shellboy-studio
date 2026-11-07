@@ -140,7 +140,12 @@ export function App({ context }: { context: DesignContext }) {
               status={conn === "connected" ? "completed" : conn === "ownerDown" ? "recovery" : "waiting"}
               label={t(conn === "connected" ? "conn.connected" : conn === "ownerDown" ? "conn.ownerDown" : "conn.connecting")}
             />
-            {details?.cwd ? <span class="mono">{details.cwd}</span> : null}
+            {model.data.dataDir.value ? (
+              <span class="owner-dir">
+                {t("conn.ownerDir")} <span class="mono" title={model.data.dataDir.value}><bdi>{model.data.dataDir.value}</bdi></span>
+              </span>
+            ) : null}
+            {details?.cwd ? <span class="mono cwd">{details.cwd}</span> : null}
             <div class="right">
               {conn === "connected" ? <span>{t("conn.live")}</span> : null}
             </div>

@@ -11,7 +11,11 @@ use std::{
     sync::Mutex,
 };
 
-pub const COOKIE_NAME: &str = "sbw_session";
+/// Cookies ignore ports, so two bridges on one host need different names or each login overwrites
+/// the other's. A bridge's port is unique on its host; behind a proxy it still tells them apart.
+pub fn cookie_name(port: u16) -> String {
+    format!("sbw_session_{port}")
+}
 /// Bound on live browser sessions kept in memory.
 pub const MAX_SESSION_COOKIES: usize = 256;
 
@@ -43,28 +47,33 @@ impl Auth {
         }
     }
 
-    /// Read the token file, or create it with a fresh token.
+    /// Read the token file, or create it with a fresh token. Bridges may share a config directory,
+    /// and so the token: each keeps its own sessions. Two creating it at once end up with one token,
+    /// because the file appears complete or not at all and the second adopts what's there.
     pub fn load_or_create(config_dir: &Path) -> Result<Self, String> {
         let path = config_dir.join("token");
-        match std::fs::read_to_string(&path) {
-            Ok(text) if text.trim().len() == 64 => return Ok(Self::new(text.trim().to_owned())),
-            Ok(_) => return Err(format!("{} is not a bridge token file", path.display())),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-            Err(e) => return Err(format!("cannot read {}: {e}", path.display())),
+        if let Some(found) = read_token(&path)? {
+            return Ok(found);
         }
         std::fs::create_dir_all(config_dir)
             .map_err(|e| format!("cannot create {}: {e}", config_dir.display()))?;
         let token = random_hex()?;
+        let temporary = config_dir.join(format!(".token.{}.tmp", random_hex()?));
         let mut options = std::fs::OpenOptions::new();
         options.write(true).create_new(true);
         #[cfg(unix)]
         std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
-        let mut file = options
-            .open(&path)
-            .map_err(|e| format!("cannot create {}: {e}", path.display()))?;
-        file.write_all(token.as_bytes())
-            .map_err(|e| format!("cannot write {}: {e}", path.display()))?;
-        Ok(Self::new(token))
+        let written = options
+            .open(&temporary)
+            .and_then(|mut file| file.write_all(token.as_bytes()))
+            .and_then(|()| std::fs::hard_link(&temporary, &path));
+        let _ = std::fs::remove_file(&temporary);
+        match written {
+            Ok(()) => Ok(Self::new(token)),
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => read_token(&path)?
+                .ok_or_else(|| format!("{} disappeared while it was created", path.display())),
+            Err(e) => Err(format!("cannot create {}: {e}", path.display())),
+        }
     }
 
     pub fn token(&self) -> &str {
@@ -87,7 +96,7 @@ impl Auth {
     }
 
     /// Does a `Cookie` header carry a live session?
-    pub fn cookie_valid(&self, cookie_header: Option<&str>) -> bool {
+    pub fn cookie_valid(&self, name: &str, cookie_header: Option<&str>) -> bool {
         let Some(header) = cookie_header else {
             return false;
         };
@@ -95,8 +104,17 @@ impl Auth {
         header
             .split(';')
             .filter_map(|part| part.trim().split_once('='))
-            .filter(|(name, _)| *name == COOKIE_NAME)
+            .filter(|(cookie, _)| *cookie == name)
             .any(|(_, value)| sessions.iter().any(|s| same(s, value)))
+    }
+}
+
+fn read_token(path: &Path) -> Result<Option<Auth>, String> {
+    match std::fs::read_to_string(path) {
+        Ok(text) if text.trim().len() == 64 => Ok(Some(Auth::new(text.trim().to_owned()))),
+        Ok(_) => Err(format!("{} is not a bridge token file", path.display())),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(format!("cannot read {}: {e}", path.display())),
     }
 }
 
@@ -172,16 +190,39 @@ mod tests {
         assert!(auth.token_matches(&"t".repeat(64)));
         assert!(!auth.token_matches("t"));
         let first = auth.issue_session().unwrap();
-        let header = format!("a=b; {COOKIE_NAME}={first}");
-        assert!(auth.cookie_valid(Some(&header)));
-        assert!(!auth.cookie_valid(Some("sbw_session=nope")));
-        assert!(!auth.cookie_valid(None));
+        let name = cookie_name(18752);
+        let header = format!("a=b; {name}={first}");
+        assert!(auth.cookie_valid(&name, Some(&header)));
+        assert!(!auth.cookie_valid(&name, Some(&format!("{name}=nope"))));
+        assert!(!auth.cookie_valid(&name, None));
+        assert!(
+            !auth.cookie_valid(&cookie_name(18753), Some(&header)),
+            "another bridge's cookie"
+        );
         for _ in 0..MAX_SESSION_COOKIES {
             auth.issue_session().unwrap();
         }
         assert!(
-            !auth.cookie_valid(Some(&header)),
+            !auth.cookie_valid(&name, Some(&header)),
             "oldest session is evicted"
         );
+    }
+
+    #[test]
+    fn bridges_sharing_a_config_dir_share_one_token() {
+        let dir = std::env::temp_dir().join(format!("sbw-token-{}", random_hex().unwrap()));
+        let tokens: Vec<String> = std::thread::scope(|scope| {
+            let handles: Vec<_> = (0..8)
+                .map(|_| scope.spawn(|| Auth::load_or_create(&dir).unwrap().token().to_owned()))
+                .collect();
+            handles.into_iter().map(|h| h.join().unwrap()).collect()
+        });
+        assert!(tokens.iter().all(|t| *t == tokens[0]), "one token");
+        let left: Vec<_> = std::fs::read_dir(&dir)
+            .unwrap()
+            .map(|e| e.unwrap().file_name())
+            .collect();
+        assert_eq!(left, ["token"], "no temporary file stays");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

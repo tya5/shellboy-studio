@@ -118,6 +118,7 @@ async fn fixture() -> Fixture {
         ServerConfig {
             listen: addr,
             extra_hosts: vec![],
+            data_dir: "/temp/data".into(),
             debug: false,
         },
         Some(AppsPaths { dir: apps.clone() }),

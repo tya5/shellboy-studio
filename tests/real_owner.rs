@@ -602,6 +602,7 @@ async fn an_app_message_is_recorded_as_from_the_app() {
         shellboy_web::server::ServerConfig {
             listen: addr,
             extra_hosts: vec![],
+            data_dir: "/temp/data".into(),
             debug: false,
         },
         Some(shellboy_web::server::AppsPaths {

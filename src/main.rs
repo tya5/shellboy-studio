@@ -98,6 +98,7 @@ async fn run(args: Args) -> Result<(), String> {
         ServerConfig {
             listen: addr,
             extra_hosts: args.allow_host,
+            data_dir: data_dir.clone(),
             debug: args.debug,
         },
         Some(AppsPaths {

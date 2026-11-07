@@ -26,7 +26,11 @@
 
 .view{flex:1;min-height:0;display:flex}
 .status{display:flex;align-items:center;gap:var(--space-16);padding:6px var(--space-16);border-top:1px solid var(--line);background:var(--panel);font:var(--type-caption);color:var(--muted);white-space:nowrap;overflow:hidden}
-.status .mono{font-size:var(--size-caption);overflow:hidden;text-overflow:ellipsis}
+.status .mono{font-size:var(--size-caption);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.status .cwd{min-width:0;flex:0 1 auto}
+/* Two tabs on two owners differ at the end of the path, so a long one is cut at its start. */
+.status .owner-dir{display:flex;align-items:baseline;gap:var(--space-4);min-width:0;flex:0 1 auto;white-space:nowrap}
+.status .owner-dir .mono{min-width:0;direction:rtl;text-align:left}
 .status .right{margin-left:auto;display:flex;gap:var(--space-16)}
 .tabbar{display:none;grid-template-columns:repeat(4,1fr);border-top:1px solid var(--line);background:var(--panel);padding-bottom:env(safe-area-inset-bottom,0px)}
 .tabbar .nav-item{position:relative;flex-direction:column;justify-content:center;gap:2px;min-height:56px;font:var(--type-caption);padding:0;border-radius:0;text-align:center;line-height:1.2}

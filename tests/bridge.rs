@@ -189,6 +189,39 @@ async fn serves_the_frontend_with_a_strict_policy_or_says_how_to_build_it() {
 }
 
 #[tokio::test]
+async fn two_bridges_on_one_host_keep_their_own_sessions() {
+    let (a_owner, _a) = mock(list_handler);
+    let (b_owner, _b) = mock(list_handler);
+    let (a, a_state, a_cancel) = start(a_owner, false).await;
+    let (b, b_state, b_cancel) = start(b_owner, false).await;
+    let a_cookie = login(a, &a_state).await;
+    let b_cookie = login(b, &b_state).await;
+    assert_ne!(
+        a_cookie.split_once('=').unwrap().0,
+        b_cookie.split_once('=').unwrap().0
+    );
+    // A browser holds both, since cookies ignore ports, and sends both to each.
+    let both = format!("{a_cookie}; {b_cookie}");
+    for addr in [a, b] {
+        let origin = format!("http://{addr}");
+        assert!(
+            connect(addr, Some(&both), Some(&origin)).await.is_ok(),
+            "{addr}"
+        );
+    }
+    // Each session belongs to the bridge that issued it, even under the other's name.
+    let a_value = a_cookie.split_once('=').unwrap().1;
+    let wrong = format!("{}={a_value}", b_cookie.split_once('=').unwrap().0);
+    let origin = format!("http://{b}");
+    assert_eq!(
+        status_of(connect(b, Some(&wrong), Some(&origin)).await.err().unwrap()),
+        401
+    );
+    a_cancel.cancel();
+    b_cancel.cancel();
+}
+
+#[tokio::test]
 async fn websocket_requires_a_session_and_a_matching_origin() {
     let (owner, _tx) = mock(list_handler);
     let (addr, state, cancel) = start(owner, false).await;
@@ -220,6 +253,7 @@ async fn websocket_requires_a_session_and_a_matching_origin() {
     let mut ws = connect(addr, Some(&cookie), Some(&origin)).await.unwrap();
     let hello = next(&mut ws).await;
     assert_eq!(hello["t"], "hello");
+    assert_eq!(hello["data_dir"], "/temp/data");
     assert_eq!(hello["bridge_version"], env!("CARGO_PKG_VERSION"));
     cancel.cancel();
 }

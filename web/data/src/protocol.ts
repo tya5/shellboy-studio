@@ -40,7 +40,7 @@ export type ClientFrame =
   | { t: "cancel"; id: number };
 
 export type ServerFrame =
-  | { t: "hello"; bridge_version: string; owner: OwnerState }
+  | { t: "hello"; bridge_version: string; data_dir?: string; owner: OwnerState }
   | { t: "result"; id: number; response?: OwnerResponse; error?: BridgeError }
   | { t: "changed"; thread_ids: string[]; list: boolean }
   | { t: "stream"; thread_id: string; cursor: string; text: string; gap: boolean }

@@ -125,6 +125,7 @@ pub fn app_state<O: Owner>(
         ServerConfig {
             listen,
             extra_hosts: vec![],
+            data_dir: "/temp/data".into(),
             debug,
         },
     )

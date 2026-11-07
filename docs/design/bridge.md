@@ -79,6 +79,8 @@ fallback.
 | Depend on Shellboy `origin/main` `fa7bec02c0` by git `rev`, not a tag | `events.wait` is not in v0.9.0; no later tag | a tag containing `events.wait` exists |
 | `/debug` page is served without a session; all data arrives over the authenticated `/ws` | the page is static and holds nothing; it doubles as the token form. Requests still pass the Host check | the page gains embedded data |
 | `Origin` absent is accepted on `/auth` and `/ws`; present must equal `Host` | browsers always send it on the risky requests; non-browser clients (tests, curl) need not | a non-browser threat appears |
+| Cookie named by the bridge's port, `sbw_session_<port>` | cookies ignore ports, so bridges on one host would overwrite each other's sessions. A port is unique per host, and a browser sends a bridge only its own name | a bridge moved to another port asks for the token again |
+| Bridges may share `--config-dir`, and so the token | the token is all that's there. Each bridge keeps its own sessions, so signing in to one doesn't sign in to the other. Preferences are per origin, so per bridge | separate `--config-dir` for a separate token |
 | Session cookie is a random id kept in memory, not signed | no HMAC dependency; a bridge restart asks for the token again | restarts become a nuisance |
 | No `Secure` attribute on the cookie | the bridge cannot know whether a TLS tunnel is in front | built-in TLS or a trusted-proxy setting |
 | `read_only`, `token rotate` opt-outs not built yet | not needed by the foundation | before first release |

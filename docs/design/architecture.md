@@ -159,7 +159,7 @@ Bridge → browser:
 
 | `t` | Fields | Meaning |
 |---|---|---|
-| `hello` | bridge version, owner `{protocol_version, instance_id, capabilities}` or `unreachable` | first frame; frontend enables features by capability |
+| `hello` | bridge version, the owner's data directory, owner `{protocol_version, instance_id, capabilities}` or `unreachable` | first frame; frontend enables features by capability |
 | `result` | `id`, owner `Response` or bridge error `{code, message}` | reply to `call` |
 | `changed` | `thread_ids`, `list` | coalesced dirty set since the last `changed` frame |
 | `stream` | `thread_id`, `cursor`, `text`, `gap: bool` | live model text since the last frame; bounded, lossy with an explicit gap (the data layer then waits for saved output) |
