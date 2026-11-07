@@ -144,7 +144,8 @@ describe("Conversation live text", () => {
       expect(box.scrollTop, "following").toBe(height);
     }
     expect(box.textContent).toContain("word word word");
-    expect(box.lastElementChild?.textContent ?? box.textContent).toContain("Writing");
+    expect(box.textContent).toContain("Writing");
+    expect(box.lastElementChild?.textContent).toContain("Running");
   });
 
   it("a Thread with no held text shows no message, and without the capability nothing is shown at all", async () => {

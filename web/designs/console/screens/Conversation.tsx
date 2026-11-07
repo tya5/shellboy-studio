@@ -13,6 +13,20 @@ const stepDuration = (s: Step, now: number): string | undefined => {
 
 const exitText = (s: Step): string | undefined => (typeof s.exitCode === "number" ? `exit ${s.exitCode}` : undefined);
 
+function ConversationStatus({ model }: { model: AppModel }) {
+  const t = model.t.value;
+  const work = model.work.value;
+  const row = model.selectedRow.value;
+  const status = model.threadReplies.value.some((r) => r.recipient.kind === "human") ? "awaiting" : row?.status;
+  if (!status || status === "idle" || status === "completed" || status === "failed") return null;
+  const running = work.running[0];
+  const start = running?.startedAt ? parseTime(running.startedAt) : undefined;
+  return <div class="work-row" role="status"><StatusMark status={status} label={statusLabel(t, status)} />
+    {running ? <span>{running.label} {work.running.length > 1 ? t("work.runningCount", { n: work.running.length }) : ""} {start === undefined ? "" : formatDuration(model.now.value - start)}</span> : null}
+    {status === "recovery" ? <><span>{model.recovery.value?.message ?? model.recovery.value?.hint}</span>{model.canRetry.value ? <Button onClick={() => void model.retry()}>{t("action.retry")}</Button> : null}</> : null}
+  </div>;
+}
+
 function Output({ model, id, boxed }: { model: AppModel; id: string; boxed?: boolean }) {
   const t = model.t.value;
   const out = model.outputs.value.get(id);
@@ -213,7 +227,7 @@ export function Conversation({ model }: { model: AppModel }) {
             model={model}
             win={win}
             renderRow={(row) => <RowView model={model} row={row} />}
-            live={<LiveMessage model={model} handle={handle} follow={follow} />}
+            live={<><LiveMessage model={model} handle={handle} follow={follow} /><ConversationStatus model={model} /></>}
           />
         ) : (
           <div
@@ -243,6 +257,7 @@ export function Conversation({ model }: { model: AppModel }) {
               <RowView key={row.id} model={model} row={row} />
             ))}
             <LiveMessage model={model} handle={handle} follow={follow} />
+            <ConversationStatus model={model} />
             {rows.length === 0 && !history?.error ? (
               loading ? <LoadingRows label={t("convo.loading")} rows={5} /> : <EmptyState icon="chat" title={t("convo.empty")} body={t("convo.emptyBody")} />
             ) : null}
