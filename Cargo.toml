@@ -19,7 +19,7 @@ path = "src/main.rs"
 [dependencies]
 # Pinned to a commit on Shellboy origin/main that has `events.wait` (#243 B, C).
 # No release tag contains it yet; replace by the tag when one does (docs/design/bridge.md).
-shellboy = { git = "https://github.com/tya5/shellboy", rev = "fa7bec02c07fc9f4ed8590b4b21a3644a973b606" }
+shellboy = { git = "https://github.com/tya5/shellboy", tag = "v0.10.0" }
 tokio = { version = "=1.54.1", features = ["rt-multi-thread", "macros", "sync", "time", "net", "signal"] }
 tokio-util = { version = "=0.7.20", features = ["rt"] }
 axum = { version = "=0.8.9", default-features = false, features = ["http1", "tokio", "ws", "json"] }
