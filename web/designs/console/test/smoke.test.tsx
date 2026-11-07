@@ -130,7 +130,7 @@ describe("Frame", () => {
   it("offers all views as links in both the sidebar and the phone tab bar", async () => {
     const { model } = await fixtureModel();
     const el = draw(model);
-    expect(el.querySelectorAll(".nav .nav-item").length).toBe(5);
+    expect(el.querySelectorAll(".nav .nav-item").length).toBe(7);
     expect(el.querySelectorAll(".tabbar > .nav-item").length).toBe(3);
     expect(text(el.querySelector(".tabbar .more-tab")!)).toBe("More");
   });
@@ -313,6 +313,143 @@ describe("Analytics", () => {
   });
 });
 
+describe("Branches", () => {
+  const open = async () => {
+    const made = await fixtureModel({ route: "branches" });
+    const el = draw(made.model);
+    await act(async () => {
+      await settle(made.t, made.db);
+    });
+    return { ...made, el };
+  };
+  it("draws lanes, points and tips from the read, with real counts and a list for phones", async () => {
+    const { el } = await open();
+    expect(el.querySelectorAll(".bgraph-svg .bg-tip").length).toBe(4);
+    expect(el.querySelectorAll(".bgraph-svg .bg-point").length).toBe(2);
+    expect(el.querySelector(".edge.on")).toBeTruthy();
+    expect(text(el.querySelector(".bgraph-svg")!)).toContain("101 nodes");
+    expect(text(el)).toContain("no shared prefix");
+    expect(text(el)).toContain("thread.branches");
+    expect(el.querySelectorAll(".blist .brow").length).toBe(4);
+    expect(el.querySelector(".bgraph-svg .bg-tip")!.getAttribute("href")).toBe("#/conversation/lead");
+  });
+  it("omits comparing tips and usage since a point, and says so", async () => {
+    const { el } = await open();
+    expect(text(el)).toContain("Comparing two tips");
+    expect([...el.querySelectorAll("button")].some((b) => /side by side/i.test(text(b)))).toBe(false);
+  });
+  it("a rewind shows its preview first, what isn't undone and the undo path, then asks", async () => {
+    const { el, model, t, db } = await open();
+    await act(async () => {
+      model.applyRoute({ view: "branches", threadId: "lead", nodeId: "n100" });
+    });
+    const button = (name: string) => [...el.querySelectorAll<HTMLButtonElement>(".branches-side button")].find((b) => text(b) === name);
+    expect(button("Rewind")).toBeUndefined();
+    await act(async () => {
+      button("Preview rewind")!.click();
+      await settle(t, db);
+    });
+    const panel = text(el.querySelector(".branches-side")!);
+    expect(panel).toContain("125 nodes, 25 turns");
+    expect(panel).toContain("cargo test");
+    expect(panel).toContain("shell effects aren't undone");
+    expect(panel).toContain("stays as a new child Thread");
+    expect(panel).toContain("Nothing has changed");
+    expect(t.calls("thread.rewind")).toHaveLength(1);
+    await act(async () => {
+      button("Rewind")!.click();
+      await settle(t, db);
+    });
+    expect(t.calls("thread.rewind")).toHaveLength(2);
+    expect(el.querySelector(".branches-side a.btn")!.getAttribute("href")).toBe("#/conversation/kept");
+  });
+  it("Fork from here reports the new Thread with a link", async () => {
+    const { el, model, t, db } = await open();
+    await act(async () => {
+      model.applyRoute({ view: "branches", threadId: "lead", nodeId: "n100" });
+    });
+    await act(async () => {
+      [...el.querySelectorAll<HTMLButtonElement>(".branches-side button")].find((b) => text(b) === "Fork from here")!.click();
+      await settle(t, db);
+    });
+    expect(text(el.querySelector(".branches-side")!)).toContain("Forked as Forked");
+  });
+  it("a conversation row carries a mark only where the read reports a point", async () => {
+    const { model, t, db } = await fixtureModel({ route: "conversation" });
+    db.history.lead = [...(db.history.lead ?? []), { node_id: "n100", kind: "assistant_response", excerpt: "Here it splits", execution_count: 0, provenance: { created_at: "2026-11-07T10:19:00.000000+00:00", sender: { kind: "assistant" } }, selection: { ordinal: 1000 } }];
+    const el = draw(model);
+    await act(async () => {
+      void model.handle.value!.refresh();
+      await settle(t, db);
+    });
+    const marks = [...el.querySelectorAll<HTMLAnchorElement>(".bmark")];
+    expect(marks.length).toBeGreaterThan(0);
+    expect(marks[0]!.getAttribute("href")).toBe("#/branches/lead/n100");
+  });
+  it("speaks Japanese", async () => {
+    const { el, model } = await open();
+    act(() => { model.lang.value = "ja"; });
+    expect(text(el)).toContain("分岐点と先端");
+  });
+});
+
+describe("Threads", () => {
+  const open = async () => {
+    const made = await fixtureModel({ route: "threads" });
+    const el = draw(made.model);
+    await act(async () => {
+      await settle(made.t, made.db);
+    });
+    return { ...made, el };
+  };
+  it("groups by directory and by state, with real parent links and no fake controls", async () => {
+    const { el } = await open();
+    expect(el.querySelectorAll(".tgroup").length).toBeGreaterThan(0);
+    expect(el.querySelector("[draggable]")).toBeNull();
+    expect(text(el)).toContain("Token totals per directory aren't shown");
+    const state = [...el.querySelectorAll<HTMLButtonElement>(".org button")].find((b) => text(b) === "State")!;
+    act(() => state.click());
+    expect(text(el.querySelector(".tgroup")!)).toContain("Recovery wait");
+  });
+  it("archive needs a second press, states what it touches, and calls the owner", async () => {
+    const { el, t, db } = await open();
+    const box = el.querySelector<HTMLInputElement>(".srow input")!;
+    act(() => box.click());
+    expect(text(el.querySelector(".selbar")!)).toContain("Selected: 1");
+    const archive = () => [...el.querySelectorAll<HTMLButtonElement>(".selbar button")].find((b) => /archive/i.test(text(b)))!;
+    act(() => archive().click());
+    expect(t.calls("thread.archive")).toHaveLength(0);
+    expect(text(archive())).toBe("Confirm archive");
+    await act(async () => {
+      archive().click();
+      await settle(t, db);
+    });
+    expect(t.calls("thread.archive")).toHaveLength(1);
+    expect(text(el)).toContain("Nothing was deleted");
+    expect(el.querySelector(".selbar")).toBeNull();
+  });
+  it("Archived offers Unarchive with one press", async () => {
+    const { el, t, db } = await open();
+    await act(async () => {
+      [...el.querySelectorAll<HTMLButtonElement>(".org button")].find((b) => text(b) === "Archived")!.click();
+      await settle(t, db);
+    });
+    act(() => el.querySelector<HTMLInputElement>(".srow input")!.click());
+    const go = [...el.querySelectorAll<HTMLButtonElement>(".selbar button")].find((b) => text(b) === "Unarchive")!;
+    await act(async () => {
+      go.click();
+      await settle(t, db);
+    });
+    expect(t.calls("thread.unarchive")).toHaveLength(1);
+  });
+  it("a group's checkbox selects its rows", async () => {
+    const { el, model } = await open();
+    const group = el.querySelector<HTMLInputElement>(".tgroup header input")!;
+    act(() => group.click());
+    expect(model.org.selected.value.size).toBe(el.querySelector(".tgroup")!.querySelectorAll(".srow").length);
+  });
+});
+
 describe("Phone tabs", () => {
   it("More holds Analytics and Settings, marks itself current, and closes on a choice", async () => {
     const { model } = await fixtureModel({ route: "analytics" });
@@ -321,8 +458,8 @@ describe("Phone tabs", () => {
     expect(button.getAttribute("aria-current")).toBe("page");
     act(() => button.click());
     const links = [...el.querySelectorAll<HTMLAnchorElement>(".more-panel a")];
-    expect(links.map(text)).toEqual(["Analytics", "Settings"]);
-    act(() => links[1]!.click());
+    expect(links.map(text)).toEqual(["Branches", "Threads", "Analytics", "Settings"]);
+    act(() => links[3]!.click());
     expect(el.querySelector(".more-panel")).toBeNull();
     act(() => button.click());
     act(() => { document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })); });

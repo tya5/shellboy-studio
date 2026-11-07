@@ -120,3 +120,5 @@ Not done: the debug page has not been opened in a browser (no browser automation
 Playwright); its behaviour is unverified beyond syntax and the frames it relies on being
 covered by the bridge tests. Not tested: Linux, Windows, phone, LAN binding, TLS tunnel, several
 hundred hints per second, concurrent real tabs, `message.send` with a real provider.
+
+`thread.branches` (read), `thread.fork`, `thread.rewind` and `thread.unarchive` (mutations) serve the Branches and Threads views (`branches-threads.md`). A rewind dry run is the same command with `dry_run: true` and no operation id. `tests/real_owner.rs` drives them against a real owner with a loopback provider.

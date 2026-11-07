@@ -6,6 +6,8 @@ import { Conversation } from "./Conversation";
 import { Inbox } from "./Inbox";
 import { Monitor } from "./Monitor";
 import { Analytics } from "./Analytics";
+import { Branches } from "./Branches";
+import { Threads } from "./Threads";
 import { Settings } from "./Settings";
 import { SettingsView } from "./SettingsView";
 import { AuthPrompt } from "./AuthPrompt";
@@ -43,7 +45,7 @@ export function App({ context }: { context: DesignContext }) {
   const conversationNav = nav("conversation", "chat", t("view.conversation"));
   const monitorNav = nav("monitor", "monitor", t("view.monitor"));
   const inboxNav = nav("inbox", "inbox", t("view.inbox"), model.pendingCount.value);
-  const moreItems = ([["analytics", "chart"], ["settings", "gear"]] as const).map(([view, icon]) => ({ key: view, href: formatRoute({ view }), icon, label: t(`view.${view}`), current: route.view === view }));
+  const moreItems = ([["branches", "branch"], ["threads", "tree"], ["analytics", "chart"], ["settings", "gear"]] as const).map(([view, icon]) => ({ key: view, href: formatRoute({ view }), icon, label: t(`view.${view}`), current: route.view === view }));
 
   const list = model.data.threadList.value;
   const selected = model.selectedId.value;
@@ -129,7 +131,7 @@ export function App({ context }: { context: DesignContext }) {
             {model.actionError.value ? <Notice tone="bad">{model.actionError.value}</Notice> : null}
           </div>
           <section class="view" aria-label={title}>
-            {route.view === "conversation" ? <Conversation model={model} /> : route.view === "monitor" ? <Monitor model={model} /> : route.view === "inbox" ? <Inbox model={model} /> : route.view === "analytics" ? <Analytics context={context} /> : <SettingsView context={context} />}
+            {route.view === "conversation" ? <Conversation model={model} /> : route.view === "monitor" ? <Monitor model={model} /> : route.view === "inbox" ? <Inbox model={model} /> : route.view === "analytics" ? <Analytics context={context} /> : route.view === "branches" ? <Branches model={model} /> : route.view === "threads" ? <Threads model={model} /> : <SettingsView context={context} />}
           </section>
           <footer class="status">
             <StatusMark

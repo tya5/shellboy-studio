@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
-import { formatClock, formatDuration, formatTokens, parseTime, statusLabel, type AppModel, type ConversationRow, type StepRow as Step } from "../../../ui-core/src";
-import { Button, Composer, EmptyState, Icon, KeyValue, LogBlock, Message, Notice, StatusMark, StepRow, SummaryStrip } from "../system/components";
+import { formatClock, formatDuration, formatRoute, formatTokens, parseTime, statusLabel, type AppModel, type ConversationRow, type StepRow as Step } from "../../../ui-core/src";
+import { BranchMark, Button, Composer, EmptyState, Icon, KeyValue, LogBlock, Message, Notice, StatusMark, StepRow, SummaryStrip } from "../system/components";
 
 const stepDuration = (s: Step, now: number): string | undefined => {
   if (s.durationMs !== undefined) return formatDuration(s.durationMs);
@@ -50,15 +50,28 @@ function StepView({ model, step }: { model: AppModel; step: Step }) {
 
 function RowView({ model, row }: { model: AppModel; row: ConversationRow }) {
   const t = model.t.value;
+  const threadId = model.handle.value?.threadId;
+  const point = threadId !== undefined ? formatRoute({ view: "branches", threadId, nodeId: row.id }) : undefined;
+  const found = model.rowMarks.value.get(row.id);
+  const mark = found && threadId !== undefined ? <BranchMark href={formatRoute({ view: "branches", threadId, nodeId: found.nodeId })} label={found.branches === 1 ? t("branches.markOne") : t("branches.mark", { n: found.branches })} /> : null;
   if (row.type === "steps")
     return (
-      <div class="steps">
-        {row.steps.map((s) => (
-          <StepView key={s.executionId} model={model} step={s} />
-        ))}
-      </div>
+      <>
+        <div class="steps">
+          {row.steps.map((s) => (
+            <StepView key={s.executionId} model={model} step={s} />
+          ))}
+        </div>
+        {mark ? <div class="scroll-mark">{mark}</div> : null}
+      </>
     );
-  if (row.type === "note") return <SummaryStrip label={row.kind} text={row.text} />;
+  if (row.type === "note")
+    return (
+      <>
+        <SummaryStrip label={row.kind} text={row.text} />
+        {mark ? <div class="scroll-mark">{mark}</div> : null}
+      </>
+    );
   const who = row.speaker.kind === "you" ? t("convo.you") : row.speaker.kind === "shellboy" ? t("convo.shellboy") : row.speaker.kind === "cli" ? t("convo.cli") : row.speaker.label;
   const body = model.bodies.value.get(row.id);
   return (
@@ -71,6 +84,10 @@ function RowView({ model, row }: { model: AppModel; row: ConversationRow }) {
           {body?.error ? <span class="muted caption">{body.error}</span> : null}
         </span>
       ) : null}
+      <div class="msg-acts">
+        {mark}
+        {point ? <a class="quiet" href={point}>{t("branches.fromHere")}</a> : null}
+      </div>
     </Message>
   );
 }
