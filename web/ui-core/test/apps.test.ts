@@ -5,7 +5,15 @@ import { fixtureModel } from "./fixture";
 
 describe("routes", () => {
   it("keeps the open app in the hash", () => {
-    for (const r of [{ view: "apps" }, { view: "apps", appName: "board" }] as const) expect(parseRoute(formatRoute(r))).toEqual(r);
+    for (const r of [{ view: "apps" }, { view: "apps", appName: "board" }, { view: "apps", appName: "board", appInstance: "one_2" }] as const) expect(parseRoute(formatRoute(r))).toEqual(r);
+  });
+});
+
+describe("instance paths", () => {
+  it("rejects traversal, separators, invalid encodings and excess segments", () => {
+    for (const hash of ["#/apps/board/..", "#/apps/board/a%2Fb", "#/apps/board/%", "#/apps/board/a/b"]) {
+      expect(parseRoute(hash)).toEqual({ view: "apps" });
+    }
   });
 });
 

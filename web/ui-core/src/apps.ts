@@ -2,6 +2,7 @@
 // running while other views show. Everything an app sends is treated as text from an untrusted page.
 import { signal, type Signal } from "@preact/signals-core";
 import { Cancel, type Operations, type OpError } from "../../data/src";
+import { validAppInstance } from "./route";
 
 export interface AppInfo {
   name: string;
@@ -30,6 +31,7 @@ export type AppSendState = { kind: "idle" } | { kind: "sending" } | { kind: "sen
 
 export interface OpenApp {
   name: string;
+  instance?: string;
   title: string;
   url: string;
   thread: string | undefined;
@@ -47,6 +49,8 @@ export const MAX_APP_CALLS = 64;
 /** These wait on hints and hold no owner connection, so they don't take an ordinary call slot. */
 const WAITING_OPS = new Set(["events.wait", "data.wait"]);
 const MAX_REPORT_CHARS = 8000;
+
+export const appTabKey = (name: string, instance?: string): string => `${name}\0${instance ?? ""}`;
 
 const str = (v: unknown): string | undefined => (typeof v === "string" && v !== "" ? v : undefined);
 
@@ -81,6 +85,7 @@ export function errorReportText(app: Pick<OpenApp, "name" | "title">, errors: re
 export class AppsModel {
   readonly list: Signal<AppListState> = signal({ loading: false, loaded: false, apps: [], dir: undefined, guide: undefined, error: undefined });
   readonly tabs: Signal<readonly OpenApp[]> = signal([]);
+  readonly instances: Signal<Readonly<Record<string, readonly string[]>>> = signal({});
   readonly openError: Signal<{ name: string; message: string } | undefined> = signal(undefined);
   private opening = new Set<string>();
   /** Cancels an app's outstanding calls when its tab closes or reloads. */
@@ -105,34 +110,55 @@ export class AppsModel {
     this.list.value = { loading: false, loaded: true, apps, dir: str(out.value.dir), guide: str(out.value.guide), error: undefined };
   }
 
+  async loadInstances(name: string): Promise<void> {
+    const out = await this.ops.appsInstances(name);
+    if (out.ok && Array.isArray(out.value.items)) {
+      this.instances.value = { ...this.instances.peek(), [name]: out.value.items.filter((x): x is string => typeof x === "string" && validAppInstance(x)).slice(0, 128) };
+    }
+  }
+
+  async createInstance(name: string, instance: string): Promise<boolean> {
+    if (!validAppInstance(instance)) return false;
+    const out = await this.ops.appsCreateInstance(name, instance);
+    if (!out.ok) { this.openError.value = { name, message: out.error.message }; return false; }
+    await this.loadInstances(name);
+    return true;
+  }
+
   /** Opening what's already open only shows it: its page isn't reloaded. */
-  async open(name: string): Promise<void> {
-    if (this.tabs.peek().some((t) => t.name === name) || this.opening.has(name)) return;
-    this.opening.add(name);
+  async open(name: string, instance?: string): Promise<void> {
+    if (instance !== undefined && !validAppInstance(instance)) return;
+    const key = appTabKey(name, instance);
+    if (this.tabs.peek().some((t) => t.name === name && t.instance === instance) || this.opening.has(key)) return;
+    this.opening.add(key);
     try {
+      if (instance !== undefined && !(await this.createInstance(name, instance))) return;
       const made = await this.mint(name);
       if (made) {
+        if (instance !== undefined) made.instance = instance;
         this.tabs.value = [...this.tabs.peek(), made];
         this.openError.value = undefined;
       }
     } finally {
-      this.opening.delete(name);
+      this.opening.delete(key);
     }
   }
 
   /** A fresh ticket, for when the session ended. */
-  async reload(name: string): Promise<void> {
-    if (this.opening.has(name) || !this.tabs.peek().some((tab) => tab.name === name)) return;
-    this.opening.add(name);
+  async reload(name: string, instance?: string): Promise<void> {
+    const key = appTabKey(name, instance);
+    if (this.opening.has(key) || !this.tabs.peek().some((tab) => tab.name === name && tab.instance === instance)) return;
+    this.opening.add(key);
     try {
-      this.cancelCalls(name);
+      this.cancelCalls(key);
       const made = await this.mint(name);
-      if (made && this.tabs.peek().some((tab) => tab.name === name)) {
-        this.tabs.value = this.tabs.peek().map((t) => (t.name === name ? made : t));
+      if (made && this.tabs.peek().some((tab) => tab.name === name && tab.instance === instance)) {
+        if (instance !== undefined) made.instance = instance;
+        this.tabs.value = this.tabs.peek().map((t) => (t.name === name && t.instance === instance ? made : t));
         this.openError.value = undefined;
       }
     } finally {
-      this.opening.delete(name);
+      this.opening.delete(key);
     }
   }
 
@@ -163,15 +189,16 @@ export class AppsModel {
    * One API call from an app's page. The caller matched the message to this tab by its frame, so the page
    * can't speak for another app. The reply is the gateway's `{ok, result}` or `{ok, error}`.
    */
-  async call(name: string, op: string, args: unknown): Promise<{ ok: boolean; result?: unknown; error?: unknown }> {
-    let state = this.calls.get(name);
+  async call(name: string, op: string, args: unknown, instance?: string): Promise<{ ok: boolean; result?: unknown; error?: unknown }> {
+    const key = appTabKey(name, instance);
+    let state = this.calls.get(key);
     if (!state) {
       state = { cancel: new Cancel(), count: 0 };
-      this.calls.set(name, state);
+      this.calls.set(key, state);
     }
     if (state.count >= MAX_APP_CALLS) return { ok: false, error: { code: "busy", message: "Too many calls are waiting" } };
     state.count++;
-    const out = await this.ops.appsCall(name, op, args, { cancel: state.cancel, waits: WAITING_OPS.has(op) });
+    const out = await this.ops.appsCall(name, op, args, { cancel: state.cancel, waits: WAITING_OPS.has(op) }, instance);
     state.count--;
     if (out.ok) return out.value as { ok: boolean };
     return { ok: false, error: { code: out.error.kind === "owner" ? out.error.code : out.error.kind, message: out.error.message } };
@@ -182,29 +209,29 @@ export class AppsModel {
     this.calls.delete(name);
   }
 
-  close(name: string): void {
-    this.cancelCalls(name);
-    this.tabs.value = this.tabs.peek().filter((t) => t.name !== name);
+  close(name: string, instance?: string): void {
+    this.cancelCalls(appTabKey(name, instance));
+    this.tabs.value = this.tabs.peek().filter((t) => t.name !== name || t.instance !== instance);
   }
 
-  private patch(name: string, change: (t: OpenApp) => OpenApp): void {
-    this.tabs.value = this.tabs.peek().map((t) => (t.name === name ? change(t) : t));
+  private patch(name: string, change: (t: OpenApp) => OpenApp, instance?: string): void {
+    this.tabs.value = this.tabs.peek().map((t) => (t.name === name && t.instance === instance ? change(t) : t));
   }
 
-  report(name: string, error: AppErrorReport): void {
-    this.patch(name, (t) => ({ ...t, errors: [...t.errors, error].slice(-MAX_APP_ERRORS), send: { kind: "idle" } }));
+  report(name: string, error: AppErrorReport, instance?: string): void {
+    this.patch(name, (t) => ({ ...t, errors: [...t.errors, error].slice(-MAX_APP_ERRORS), send: { kind: "idle" } }), instance);
   }
 
-  dismissErrors(name: string): void {
-    this.patch(name, (t) => ({ ...t, errors: [], send: { kind: "idle" } }));
+  dismissErrors(name: string, instance?: string): void {
+    this.patch(name, (t) => ({ ...t, errors: [], send: { kind: "idle" } }), instance);
   }
 
   /** On a person's press, so it's recorded as from them. */
-  async sendErrors(name: string): Promise<void> {
-    const tab = this.tabs.peek().find((t) => t.name === name);
+  async sendErrors(name: string, instance?: string): Promise<void> {
+    const tab = this.tabs.peek().find((t) => t.name === name && t.instance === instance);
     if (!tab?.thread || tab.errors.length === 0) return;
-    this.patch(name, (t) => ({ ...t, send: { kind: "sending" } }));
+    this.patch(name, (t) => ({ ...t, send: { kind: "sending" } }), instance);
     const out = await this.ops.messageSend({ thread_id: tab.thread, text: errorReportText(tab, tab.errors) });
-    this.patch(name, (t) => ({ ...t, ...(out.ok ? { errors: [], send: { kind: "sent" } as const } : { send: { kind: "failed", message: out.error.message } as const }) }));
+    this.patch(name, (t) => ({ ...t, ...(out.ok ? { errors: [], send: { kind: "sent" } as const } : { send: { kind: "failed", message: out.error.message } as const }) }), instance);
   }
 }

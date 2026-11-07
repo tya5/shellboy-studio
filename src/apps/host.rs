@@ -54,6 +54,8 @@ pub struct AppHost<O> {
     /// One at a time per action, so a page's timer can't pile up.
     running: Mutex<HashSet<PathBuf>>,
     watch: tokio::sync::watch::Sender<DataSnapshot>,
+    instance_watch:
+        Mutex<std::collections::HashMap<String, tokio::sync::watch::Sender<DataSnapshot>>>,
     watching: AtomicBool,
 }
 
@@ -244,6 +246,7 @@ impl<O: Owner> AppHost<O> {
             hints: tokio::sync::Mutex::new(None),
             running: Mutex::new(HashSet::new()),
             watch: tokio::sync::watch::channel(DataSnapshot::default()).0,
+            instance_watch: Mutex::new(std::collections::HashMap::new()),
             watching: AtomicBool::new(false),
         })
     }
@@ -438,6 +441,33 @@ impl<O: Owner> AppHost<O> {
         else {
             return;
         };
+        let watchers: Vec<_> = self
+            .instance_watch
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .iter()
+            .map(|(name, sender)| (name.clone(), sender.clone()))
+            .collect();
+        for (name, sender) in watchers {
+            let prefix = format!("{name}/");
+            let scoped: BTreeMap<_, _> = files
+                .iter()
+                .filter_map(|(path, value)| {
+                    path.strip_prefix(&prefix).map(|p| (p.to_owned(), *value))
+                })
+                .collect();
+            sender.send_if_modified(|snapshot| {
+                let changed = differences(&snapshot.files, &scoped);
+                snapshot.truncated = truncated;
+                if changed.is_empty() {
+                    return false;
+                }
+                snapshot.version += 1;
+                snapshot.files = scoped;
+                snapshot.changed = changed;
+                true
+            });
+        }
         self.watch.send_if_modified(|snapshot| {
             let changed = differences(&snapshot.files, &files);
             snapshot.truncated = truncated;
@@ -466,7 +496,14 @@ impl<O: Owner> AppHost<O> {
                     _ = tokio::time::sleep(WATCH_INTERVAL) => {}
                 }
                 host.look().await;
-                if host.watch.receiver_count() > 0 {
+                if host.watch.receiver_count() > 0
+                    || host
+                        .instance_watch
+                        .lock()
+                        .unwrap_or_else(|p| p.into_inner())
+                        .values()
+                        .any(|watch| watch.receiver_count() > 0)
+                {
                     idle_since = None;
                 } else if idle_since.get_or_insert_with(Instant::now).elapsed() > WATCH_LINGER {
                     break;
@@ -478,8 +515,29 @@ impl<O: Owner> AppHost<O> {
     }
 
     /// `version` from the last reply; without one, this only says where things stand.
-    async fn data_wait(self: &Arc<Self>, args: &Value) -> Result<Value, ApiFail> {
-        let mut rx = self.watch.subscribe();
+    async fn data_wait(
+        self: &Arc<Self>,
+        args: &Value,
+        instance: Option<&str>,
+    ) -> Result<Value, ApiFail> {
+        let mut rx = if let Some(name) = instance {
+            if !super::valid_instance_name(name) {
+                return Err(("invalid_instance", "Invalid instance name".into()));
+            }
+            let mut watchers = self
+                .instance_watch
+                .lock()
+                .unwrap_or_else(|p| p.into_inner());
+            if !watchers.contains_key(name) && watchers.len() >= 128 {
+                return Err(("too_many_instances", "Too many instance watchers".into()));
+            }
+            watchers
+                .entry(name.to_owned())
+                .or_insert_with(|| tokio::sync::watch::channel(DataSnapshot::default()).0)
+                .subscribe()
+        } else {
+            self.watch.subscribe()
+        };
         self.ensure_watcher();
         let Some(known) = args.get("version").and_then(Value::as_u64) else {
             self.look().await;
@@ -537,7 +595,12 @@ impl<O: Owner> AppHost<O> {
         serde_json::to_value(result).map_err(|e| ("io_failed", e.to_string()))
     }
 
-    async fn dispatch(self: &Arc<Self>, op: &str, args: Value) -> Result<Value, Value> {
+    async fn dispatch(
+        self: &Arc<Self>,
+        op: &str,
+        args: Value,
+        instance: Option<&str>,
+    ) -> Result<Value, Value> {
         let fail = |(code, message): ApiFail| json!({"code": code, "message": message});
         match op {
             "app.info" => {
@@ -550,7 +613,7 @@ impl<O: Owner> AppHost<O> {
             "data.write" => self.data_write(&args).await.map_err(fail),
             "data.list" => self.data_list(&args).await.map_err(fail),
             "events.wait" => self.events_wait(&args).await.map_err(fail),
-            "data.wait" => self.data_wait(&args).await.map_err(fail),
+            "data.wait" => self.data_wait(&args, instance).await.map_err(fail),
             "run" => self.run_action(&args).await.map_err(fail),
             "thread.send" => {
                 let thread = self.bound(&args).await.map_err(fail)?;
@@ -595,8 +658,8 @@ impl<O: Owner> AppHost<O> {
 
 impl<O: Owner> AppHost<O> {
     /// One API call from the app's page, already forwarded by the parent frame.
-    pub async fn call(self: &Arc<Self>, op: &str, args: Value) -> Value {
-        match self.dispatch(op, args).await {
+    pub async fn call(self: &Arc<Self>, op: &str, args: Value, instance: Option<&str>) -> Value {
+        match self.dispatch(op, args, instance).await {
             Ok(result) => json!({"ok": true, "result": result}),
             Err(error) => json!({"ok": false, "error": error}),
         }

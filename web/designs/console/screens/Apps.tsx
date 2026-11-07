@@ -1,6 +1,7 @@
-import { useEffect, useRef } from "preact/hooks";
-import { formatRoute, readAppMessage, type AppModel, type DesignContext, type OpenApp } from "../../../ui-core/src";
-import { AppCard, AppFrame, AppTabs, AppRequest, Button, EmptyState, GuideCopy, KeyValue, Notice, Section } from "../system/components";
+import { appTabKey } from "../../../ui-core/src/apps";
+import { useEffect, useRef, useState } from "preact/hooks";
+import { formatRoute, readAppMessage, validAppInstance, type AppModel, type DesignContext, type OpenApp } from "../../../ui-core/src";
+import { AppCard, AppFrame, AppTabs, AppRequest, Button, EmptyState, Field, GuideCopy, KeyValue, Notice, Section } from "../system/components";
 
 function Alerts({ model, tab }: { model: AppModel; tab: OpenApp }) {
   const t = model.t.value;
@@ -16,9 +17,9 @@ function Alerts({ model, tab }: { model: AppModel; tab: OpenApp }) {
           title={t("apps.errors", { n: count })}
           actions={
             <>
-              {tab.thread && tab.threadState !== "missing" ? <Button disabled={tab.send.kind === "sending"} onClick={() => void apps.sendErrors(tab.name)}>{t("apps.sendErrors")}</Button> : null}
-              <Button onClick={() => void apps.reload(tab.name)}>{t("apps.reopen")}</Button>
-              <Button variant="link" onClick={() => apps.dismissErrors(tab.name)}>{t("apps.dismiss")}</Button>
+              {tab.thread && tab.threadState !== "missing" ? <Button disabled={tab.send.kind === "sending"} onClick={() => void apps.sendErrors(tab.name, tab.instance)}>{t("apps.sendErrors")}</Button> : null}
+              <Button onClick={() => void apps.reload(tab.name, tab.instance)}>{t("apps.reopen")}</Button>
+              <Button variant="link" onClick={() => apps.dismissErrors(tab.name, tab.instance)}>{t("apps.dismiss")}</Button>
             </>
           }
         >
@@ -32,6 +33,19 @@ function Alerts({ model, tab }: { model: AppModel; tab: OpenApp }) {
       {tab.send.kind === "failed" ? <Notice tone="bad">{t("apps.sendFailed", { message: tab.send.message })}</Notice> : null}
     </div>
   );
+}
+
+function Instances({ model, name }: { model: AppModel; name: string }) {
+  const [value, setValue] = useState("");
+  const [busy, setBusy] = useState(false);
+  const t = model.t.value;
+  const apps = model.apps;
+  useEffect(() => { void apps.loadInstances(name); }, [apps, name]);
+  return <section class="sect"><h3>{t("apps.instances")}</h3>
+    <Field ariaLabel={t("apps.instanceName")} value={value} onInput={(event) => setValue(event.currentTarget.value)} />
+    <Button disabled={busy || !validAppInstance(value)} onClick={() => { setBusy(true); void apps.createInstance(name, value).then((ok) => { setBusy(false); if (ok) { model.navigate({ view: "apps", appName: name, appInstance: value }); setValue(""); } }); }}>{t("apps.instanceCreate")}</Button>
+    {(apps.instances.value[name] ?? []).map((instance) => <div key={instance}><a href={formatRoute({ view: "apps", appName: name, appInstance: instance })}>{instance}</a></div>)}
+  </section>;
 }
 
 function AppList({ model }: { model: AppModel }) {
@@ -57,15 +71,14 @@ function AppList({ model }: { model: AppModel }) {
       {list.apps.length > 0 ? (
         <div class="grid">
           {list.apps.map((a) => (
-            <AppCard
-              key={a.name}
+            <div key={a.name}><AppCard
               title={a.title}
               name={a.name}
               href={formatRoute({ view: "apps", appName: a.name })}
               openLabel={t("apps.open")}
               note={a.thread ? t("apps.bound", { title: rows.get(a.thread)?.summary.title ?? a.thread.slice(0, 8) }) : t("apps.unbound")}
               problem={a.problem ? t("apps.broken", { problem: a.problem }) : undefined}
-            />
+            />{a.problem ? null : <Instances model={model} name={a.name} />}</div>
           ))}
         </div>
       ) : null}
@@ -92,31 +105,37 @@ export function AppsHost({ context }: { context: DesignContext }) {
   const frames = useRef(new Map<string, HTMLIFrameElement>());
   const showing = route.view === "apps";
   const current = showing ? route.appName : undefined;
+  const instance = showing ? route.appInstance : undefined;
 
   useEffect(() => {
         // An opaque origin has no name to target, so "*": it goes to this frame's window and nowhere else.
     const send = (frame: HTMLIFrameElement, message: Record<string, unknown>) => frame.contentWindow?.postMessage({ shellboy: true, ...message }, "*");
     for (const tab of apps.tabs.peek()) {
-      const frame = frames.current.get(tab.name);
+      const frame = frames.current.get(appTabKey(tab.name, tab.instance));
       if (frame) send(frame, { type: "theme", theme });
     }
     const onMessage = (e: MessageEvent) => {
       // The frame identifies the app, never anything the page says.
-      const tab = apps.tabs.peek().find((x) => frames.current.get(x.name)?.contentWindow === e.source);
+      const tab = apps.tabs.peek().find((x) => frames.current.get(appTabKey(x.name, x.instance))?.contentWindow === e.source);
       if (!tab || e.origin !== "null") return;
-      const frame = frames.current.get(tab.name);
+      const frame = frames.current.get(appTabKey(tab.name, tab.instance));
       const message = readAppMessage(e.data);
       if (!frame || !message) return;
-      if (message.type === "error") apps.report(tab.name, message);
-      else if (message.type === "ready") send(frame, { type: "theme", theme });
-      else void apps.call(tab.name, message.op, message.args).then((reply) => send(frame, { type: "reply", id: message.id, ...reply }));
+      if (message.type === "error") apps.report(tab.name, message, tab.instance);
+      else if (message.type === "ready") { send(frame, { type: "theme", theme }); send(frame, { type: "instance", instance: tab.instance ?? null }); }
+      else void apps.call(tab.name, message.op, message.args, tab.instance).then((reply) => {
+        if (message.op === "app.info" && reply.ok && typeof reply.result === "object" && reply.result !== null) {
+          reply = { ...reply, result: { ...reply.result, instance: tab.instance ?? null } };
+        }
+        send(frame, { type: "reply", id: message.id, ...reply });
+      });
     };
     addEventListener("message", onMessage);
     return () => removeEventListener("message", onMessage);
   }, [apps, theme]);
 
   if (!showing && tabs.length === 0) return null;
-  const open = tabs.find((x) => x.name === current);
+  const open = tabs.find((x) => x.name === current && x.instance === instance);
   return (
     <div class={showing ? "apps-host" : "apps-host off"}>
       <AppTabs
@@ -124,17 +143,17 @@ export function AppsHost({ context }: { context: DesignContext }) {
         tabs={[
           { key: "", title: t("apps.all"), href: formatRoute({ view: "apps" }), current: showing && current === undefined },
           ...tabs.map((tab) => ({
-            key: tab.name,
-            title: tab.title,
-            href: formatRoute({ view: "apps", appName: tab.name }),
-            current: tab.name === current,
+            key: appTabKey(tab.name, tab.instance),
+            title: tab.instance ? `${tab.title} / ${tab.instance}` : tab.title,
+            href: formatRoute({ view: "apps", appName: tab.name, ...(tab.instance ? { appInstance: tab.instance } : {}) }),
+            current: tab.name === current && tab.instance === instance,
             alert: tab.errors.length > 0,
             closeLabel: t("apps.close", { name: tab.title }),
             reloadLabel: t("apps.reloadTab", { name: tab.title }),
-            onReload: () => void apps.reload(tab.name),
+            onReload: () => void apps.reload(tab.name, tab.instance),
             onClose: () => {
-              apps.close(tab.name);
-              if (tab.name === current) model.navigate({ view: "apps" });
+              apps.close(tab.name, tab.instance);
+              if (tab.name === current && tab.instance === instance) model.navigate({ view: "apps" });
             },
           })),
         ]}
@@ -144,13 +163,13 @@ export function AppsHost({ context }: { context: DesignContext }) {
       {current === undefined || !open ? <AppList model={model} /> : null}
       {tabs.map((tab) => (
         <AppFrame
-          key={`${tab.name}:${tab.url}`}
+          key={`${appTabKey(tab.name, tab.instance)}:${tab.url}`}
           title={tab.title}
           url={tab.url}
-          hidden={tab.name !== current}
+          hidden={tab.name !== current || tab.instance !== instance}
           frameRef={(el) => {
-            if (el) frames.current.set(tab.name, el);
-            else frames.current.delete(tab.name);
+            if (el) frames.current.set(appTabKey(tab.name, tab.instance), el);
+            else frames.current.delete(appTabKey(tab.name, tab.instance));
           }}
         />
       ))}

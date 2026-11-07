@@ -11,6 +11,8 @@ export interface Route {
   nodeId?: string;
   /** Apps only: the open tab. Absent shows the list. */
   appName?: string;
+  /** Optional named instance of an app. */
+  appInstance?: string;
   /** Settings and Analytics. Absent means the first section. */
   section?: SettingsSection | AnalyticsSection;
   /** Setup only: the optional embeddings step. Absent shows the connection steps. */
@@ -21,6 +23,9 @@ export interface Route {
 export const settingsSection = (route: Route): SettingsSection => SETTINGS_SECTIONS.find((s) => s === route.section) ?? SETTINGS_SECTIONS[0];
 export const analyticsSection = (route: Route): AnalyticsSection => ANALYTICS_SECTIONS.find((s) => s === route.section) ?? ANALYTICS_SECTIONS[0];
 
+/** A single portable path component; keep this aligned with bridge validation. */
+export const validAppInstance = (name: string): boolean => /^[a-zA-Z0-9_-]{1,40}$/.test(name);
+
 export const START_ROUTE: Route = { view: "conversation" };
 
 export function parseRoute(hash: string): Route {
@@ -29,7 +34,15 @@ export function parseRoute(hash: string): Route {
   if (parts[0] === "inbox") return { view: "inbox" };
   if (parts[0] === "setup") return parts[1] === "embedding" ? { view: "setup", step: "embedding" } : { view: "setup" };
   if (parts[0] === "threads") return { view: "threads" };
-  if (parts[0] === "apps") return parts[1] ? { view: "apps", appName: decodeURIComponent(parts[1]) } : { view: "apps" };
+  if (parts[0] === "apps") {
+    try {
+      if (!parts[1] || parts.length > 3) return { view: "apps" };
+      const appName = decodeURIComponent(parts[1]);
+      if (!parts[2]) return { view: "apps", appName };
+      const appInstance = decodeURIComponent(parts[2]);
+      return validAppInstance(appInstance) ? { view: "apps", appName, appInstance } : { view: "apps" };
+    } catch { return { view: "apps" }; }
+  }
   if (parts[0] === "branches") {
     if (!parts[1]) return { view: "branches" };
     const threadId = decodeURIComponent(parts[1]);
@@ -50,7 +63,7 @@ export function parseRoute(hash: string): Route {
 export function formatRoute(route: Route): string {
   if (route.view === "conversation")
     return route.threadId ? `#/conversation/${encodeURIComponent(route.threadId)}` : "#/conversation";
-  if (route.view === "apps" && route.appName) return `#/apps/${encodeURIComponent(route.appName)}`;
+  if (route.view === "apps" && route.appName) return `#/apps/${encodeURIComponent(route.appName)}${route.appInstance && validAppInstance(route.appInstance) ? `/${encodeURIComponent(route.appInstance)}` : ""}`;
   if (route.view === "branches" && route.threadId) {
     const thread = `#/branches/${encodeURIComponent(route.threadId)}`;
     return route.nodeId ? `${thread}/${encodeURIComponent(route.nodeId)}` : thread;

@@ -19,6 +19,7 @@
   window.addEventListener("message", (e) => {
     if (e.source !== window.parent || !e.data || e.data.shellboy !== true) return;
     if (e.data.type === "theme" && typeof e.data.theme === "string") document.documentElement.dataset.ds = e.data.theme;
+    if (e.data.type === "instance" && (e.data.instance === null || typeof e.data.instance === "string")) shellboy.instance = e.data.instance;
   });
 
   // The page has an opaque origin and no session of its own: every call goes through the parent frame.
@@ -46,6 +47,7 @@
 
   const shellboy = {
     app: undefined,
+    instance: null,
     ready: undefined,
     data: {
       read: (path) => call("data.read", { path }),
@@ -99,7 +101,7 @@
     threads: { list: (options) => call("threads.list", options) },
     run: (action, args, options) => call("run", { action, args: args === undefined ? null : args, ...(options && options.timeoutMs ? { timeout_ms: options.timeoutMs } : {}) }),
   };
-  shellboy.ready = call("app.info").then((info) => { shellboy.app = info; return info; });
+  shellboy.ready = call("app.info").then((info) => { shellboy.app = info; shellboy.instance = info.instance ?? null; return info; });
   shellboy.ready.catch(() => {});
   window.shellboy = shellboy;
   post({ type: "ready" });

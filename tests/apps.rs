@@ -153,6 +153,63 @@ async fn call(f: &Fixture, name: &str, op: &str, args: Value) -> Value {
 }
 
 #[tokio::test]
+async fn instance_wait_ignores_other_instance_changes() {
+    let f = fixture().await;
+    write_app(&f.apps, "one", "{}", &[PAGE]);
+    let apps = f.state.apps.as_ref().unwrap().clone();
+    let initial = apps
+        .call_instance("one", "data.wait", json!({}), Some("alpha"))
+        .await;
+    let version = initial["result"]["version"].as_u64().unwrap();
+    let wait_app = apps.clone();
+    let mut wait = tokio::spawn(async move {
+        wait_app
+            .call_instance(
+                "one",
+                "data.wait",
+                json!({"version": version}),
+                Some("alpha"),
+            )
+            .await
+    });
+    let dir = f.apps.join("one/data/beta");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("x"), "other").unwrap();
+    assert!(
+        tokio::time::timeout(std::time::Duration::from_millis(700), &mut wait)
+            .await
+            .is_err()
+    );
+    let dir = f.apps.join("one/data/alpha");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("x"), "own").unwrap();
+    let result = tokio::time::timeout(std::time::Duration::from_secs(4), wait)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(result["result"]["changed"], true);
+}
+
+#[tokio::test]
+async fn instance_registry_is_bounded_validated_and_survives_host_recreation() {
+    let f = fixture().await;
+    write_app(&f.apps, "one", "{}", &[PAGE]);
+    let apps = f.state.apps.as_ref().unwrap();
+    assert!(apps.add_instance("one", "../bad").await.is_err());
+    assert!(apps.add_instance("one", "alpha").await.is_ok());
+    assert!(apps.add_instance("one", "alpha").await.is_ok());
+    assert_eq!(apps.instances("one").await.unwrap(), vec!["alpha"]);
+    let other = shellboy_studio::apps::Apps::new(
+        f.apps.clone(),
+        f.owner.clone(),
+        shellboy_studio::hub::Hub::new(),
+        std::sync::Arc::new(tokio::sync::Semaphore::new(8)),
+        CancellationToken::new(),
+    );
+    assert_eq!(other.instances("one").await.unwrap(), vec!["alpha"]);
+}
+
+#[tokio::test]
 async fn finds_apps_without_a_restart_and_writes_only_the_guide() {
     let f = fixture().await;
     let apps = f.state.apps.as_ref().unwrap();

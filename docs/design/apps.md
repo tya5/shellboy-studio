@@ -108,3 +108,21 @@ remounts the iframe; it does not write or remove the app's `data/` files. App
 file responses use `Cache-Control: no-cache` so cached files are revalidated.
 The page is not automatically reloaded on file changes. A session-open failure
 is shown, and the existing tab remains available.
+
+### Named instances
+
+A named instance is identified by the pair of an app name and a validated
+instance name. An absent instance retains the existing route and API behaviour.
+The route is `#/apps/NAME/INSTANCE`; each pair has its own tab and iframe.
+Names used as path components must reject separators, dot components and `..`.
+The page receives `shellboy.instance` as a string or `null`. App authors choose
+how to store data, conventionally under `data/<instance>/`; this is a convention,
+not a security boundary, and existing data calls retain their meaning.
+
+Instance discovery needs a bounded, durable listing, including names opened
+without yet writing data. The bridge owns this registry and its lifecycle; it
+must not modify Shellboy's core or use its database. A shared app-wide watcher keeps up to 128 scoped snapshots per app. Each scope
+uses only its own paths, so ordinary changes to another instance do not wake it.
+The underlying scan is bounded; when truncated, changes outside its scanned set
+may be missed and the response marks this. The watcher stops on bridge shutdown.
+Unnamed legacy pages retain their existing app-wide notifications.
