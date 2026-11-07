@@ -17,6 +17,7 @@ export * from "./resources";
 export * from "./presets";
 export * from "./route";
 export * from "./setup";
+export * from "./embedding";
 export * from "./status";
 export * from "./threads";
 export * from "./usage";

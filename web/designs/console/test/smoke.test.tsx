@@ -811,4 +811,77 @@ describe("Setup", () => {
     expect(text(el)).toContain("64k");
     expect(el.querySelector('a[href="https://docs.ollama.com/context-length"]')).toBeTruthy();
   });
+
+  describe("several connections and embeddings", () => {
+    const file = {
+      default_connection: "proxy",
+      connections: { proxy: { base_url: "http://localhost:4000/v1", api: "chat_completions" }, claude: { base_url: "https://api.anthropic.com/v1", api: "anthropic_messages" } },
+    };
+    const withFile = { config_path: "/temp/cfg/config.toml", loaded: { present: true, content_hash: "d".repeat(64), values: file, redacted_fields: [] }, file: { present: true, content_hash: "d".repeat(64), valid: true, values: file, redacted_fields: [] }, restart: { all_fields_require_restart: true } };
+    const setupWith = (route: "setup" | "settings") =>
+      fixtureModel({
+        route,
+        capabilities: ["config.edit", "connection.setup"],
+        configure: (d) =>
+          owner(d as never, (c) => {
+            if (c.command === "config.get") return { ok: true, result: withFile };
+            if (c.command === "connection.test") return { ok: true, result: { http_status: 200, models: ["embed-a", "chat-b"] } };
+            if (c.command === "config.set") return { ok: true, result: { written: true, restart_required: true, changes: [] } };
+            return undefined;
+          }),
+      });
+    const pumpOf = (t: never, db: never) => async (work?: () => void) => {
+      await act(async () => {
+        work?.();
+        await settle(t, db);
+      });
+    };
+
+    it("asks before replacing a connection and offers the default as a choice", async () => {
+      const { model, t, db } = await setupWith("setup");
+      const el = draw(model);
+      const pump = pumpOf(t as never, db as never);
+      await pump();
+      await pump(() => click(el.querySelectorAll(".choice input")[4]));
+      await pump(() => click(button(el, "Test connection")));
+      expect(text(el)).toContain("Make this the default connection and model");
+      const name = el.querySelector<HTMLInputElement>('input[aria-label="Connection name"]')!;
+      expect(name.value).toBe("local");
+      await pump(() => {
+        name.value = "proxy";
+        name.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+      expect(text(el)).toContain("already exists");
+      expect([...el.querySelectorAll("button")].find((b) => b.textContent?.includes("Save"))?.hasAttribute("disabled")).toBe(true);
+    });
+
+    it("shows the Anthropic case, the plain warning and no embeddings request", async () => {
+      const { model, t, db } = await setupWith("setup");
+      const el = draw(model);
+      const pump = pumpOf(t as never, db as never);
+      await pump();
+      model.applyRoute({ view: "setup", step: "embedding" });
+      await pump();
+      expect(text(el)).toContain("starts automatic indexing of new conversation text");
+      expect(text(el)).toContain("may cost money");
+      expect(text(el)).toContain("only when you ask");
+      await pump(() => click([...el.querySelectorAll(".choice input")][1]));
+      expect(text(el)).toContain("Anthropic's API has no embeddings");
+      await pump(() => click([...el.querySelectorAll(".choice input")][0]));
+      expect(text(el)).not.toContain("Anthropic's API has no embeddings");
+      expect(text(el)).toContain("can't tell which of them make embeddings");
+      expect(t.calls().some((c) => /embed|index|rag/.test(c.command))).toBe(false);
+    });
+
+    it("Settings links to both flows", async () => {
+      const { model, t, db } = await setupWith("settings");
+      const el = draw(model);
+      await pumpOf(t as never, db as never)();
+      expect(text(el)).toContain("Add a connection");
+      expect(el.querySelector('a[href="#/setup"]')).toBeTruthy();
+      model.applyRoute({ view: "settings", section: "embeddings" });
+      await pumpOf(t as never, db as never)();
+      expect(el.querySelector('a[href="#/setup/embedding"]')).toBeTruthy();
+    });
+  });
 });

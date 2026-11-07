@@ -9,6 +9,7 @@ import { branchMarks } from "./branches";
 import { Branches, readWholeFamily, ThreadOrg } from "./branching";
 import { CAPABILITY_CONFIG, ConfigEditor } from "./config";
 import { Insights } from "./insights";
+import { EmbeddingSetup } from "./embedding";
 import { CAPABILITY_CONNECTION_SETUP, ConnectionSetup } from "./setup";
 import { noPending, type PendingAdapter } from "./pending";
 import { analyticsSection, formatRoute, settingsSection, START_ROUTE, type Route, type ViewName } from "./route";
@@ -81,6 +82,7 @@ export class AppModel {
   readonly org: ThreadOrg;
   readonly config: ConfigEditor;
   readonly setup: ConnectionSetup;
+  readonly embedding: EmbeddingSetup;
   readonly apps: AppsModel;
   /** Conversation: node id to branches leaving there, for the open Thread. Empty when it has no family. */
   readonly marks: Signal<ReadonlyMap<string, number>> = signal(new Map());
@@ -152,6 +154,7 @@ export class AppModel {
     this.org = new ThreadOrg(this.ops);
     this.config = new ConfigEditor(this.ops);
     this.setup = new ConnectionSetup(this.ops);
+    this.embedding = new EmbeddingSetup(this.ops, this.setup);
     this.apps = new AppsModel(this.ops);
 
     const pendingByThread = computed(() => {
@@ -219,7 +222,10 @@ export class AppModel {
         if (route.view !== "branches") this.branches.leave();
         if (route.view !== "threads") this.org.leave();
         if (route.view !== "settings") this.config.leave();
-        if (route.view !== "setup") this.setup.leave();
+        if (route.view !== "setup") {
+          this.setup.leave();
+          this.embedding.leave();
+        }
         if (this.connection.value !== "connected") return;
         const threadId = this.selectedId.value;
         if (route.view === "analytics") this.insights.ensureAnalytics(analyticsSection(route), threadId);
@@ -236,6 +242,7 @@ export class AppModel {
         if (this.connection.value !== "connected" || !this.data.capabilities.value.includes(CAPABILITY_CONNECTION_SETUP)) return;
         const probe = this.setup.probe.peek();
         if (probe.state === "idle") void this.setup.readFile();
+        else if (this.route.value.view === "setup") this.setup.enter();
         if (this.setup.needed.value && this.route.peek().view === "conversation" && this.setup.takeAutoShow()) this.navigate({ view: "setup" });
       }),
     );

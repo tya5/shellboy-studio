@@ -44,7 +44,7 @@ export function SettingsView({ context }: { context: DesignContext }) {
         return (
           <>
             <Section title={t("setup.open")} sub={t("setup.intro")}>
-              <div><a class="btn" href={formatRoute({ view: "setup" })}>{t("setup.open")}</a></div>
+              <div class="setup-actions"><a class="btn" href={formatRoute({ view: "setup" })} onClick={() => model.setup.beginAdd()}>{t("setup.add")}</a></div>
             </Section>
             <Section title={t("set.conn.inUse")} sub={threadSub} source={<>{t("common.source", { source: "" })}<code>thread.get</code></>}>
               {threadError}
@@ -100,6 +100,9 @@ export function SettingsView({ context }: { context: DesignContext }) {
       case "embeddings":
         return (
           <>
+            <Section title={t("setup.embed.offerTitle")} sub={t("setup.embed.offerBody")}>
+              <div class="setup-actions"><a class="btn" href={formatRoute({ view: "setup", step: "embedding" })}>{t("setup.embed.open")}</a></div>
+            </Section>
             <Section title={t("set.embed.state")} source={<>{t("common.source", { source: "" })}<code>index.status</code></>}>
               {index.error ? <Notice tone="bad">{t("common.readError", { message: index.error.message })}</Notice> : null}
               {index.value ? (

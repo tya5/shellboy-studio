@@ -112,3 +112,17 @@ export const SERVICES: readonly ServicePreset[] = [
 export const DIALECTS: readonly Dialect[] = ["responses", "chat_completions", "anthropic_messages"];
 
 export const presetOf = (id: ServiceId): ServicePreset => SERVICES.find((s) => s.id === id)!;
+
+/**
+ * What each dialect's API offers beyond conversation. Indexing and search call `{base_url}/embeddings`
+ * whatever the conversation dialect is, and Anthropic's API has no embeddings (Shellboy
+ * `docs/guides/configuration.md`, checked 2026-11-07), so a connection of that dialect can't serve them.
+ */
+export const DIALECT_FACTS: Record<Dialect, { embeddings: boolean }> = {
+  responses: { embeddings: true },
+  chat_completions: { embeddings: true },
+  anthropic_messages: { embeddings: false },
+};
+
+/** False only when the dialect is known to have no Embeddings API; an unknown dialect is left to the owner. */
+export const dialectHasEmbeddings = (api: string | undefined): boolean => (api !== undefined && api in DIALECT_FACTS ? DIALECT_FACTS[api as Dialect].embeddings : true);

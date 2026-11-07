@@ -1,48 +1,12 @@
 import { useState } from "preact/hooks";
-import { CAPABILITY_CONNECTION_SETUP, DIALECTS, formatRoute, OLLAMA_CONTEXT_URL, SERVICES, type DesignContext, type MessageKey, type TestState } from "../../../ui-core/src";
-import { Button, ButtonGroup, ChoiceList, Field, KeyValue, Notice, Section } from "../system/components";
+import { CAPABILITY_CONNECTION_SETUP, DIALECTS, formatRoute, OLLAMA_CONTEXT_URL, SERVICES, type DesignContext, type MessageKey } from "../../../ui-core/src";
+import { Button, ButtonGroup, Check, ChoiceList, Field, KeyValue, Notice, Section } from "../system/components";
 import { Rich } from "./Rich";
+import { SetupEmbedding } from "./SetupEmbedding";
+import { External, TestResult, Unavailable } from "./SetupParts";
 
 /** Longest model list drawn at once; the filter narrows the rest. */
 const MODELS_SHOWN = 50;
-
-type T = DesignContext["model"]["t"]["value"];
-
-function External({ href, children }: { href: string; children: string }) {
-  return (
-    <a class="btn link" href={href} target="_blank" rel="noreferrer noopener">
-      {children}
-    </a>
-  );
-}
-
-function Unavailable({ t }: { t: T }) {
-  return (
-    <Section title={t("setup.unavailable.title")} sub={t("setup.unavailable.body")}>
-      <ol class="setup-steps">
-        {(["setup.manual.1", "setup.manual.2", "setup.manual.3"] as const).map((k) => (
-          <li key={k}>
-            <Rich text={t(k)} />
-          </li>
-        ))}
-      </ol>
-    </Section>
-  );
-}
-
-function TestResult({ t, state }: { t: T; state: TestState }) {
-  if (state.kind === "idle") return null;
-  if (state.kind === "testing") return <Notice>{t("setup.test.running")}</Notice>;
-  if (state.kind === "error") return <Notice tone="bad">{t("setup.test.error", { message: state.message })}</Notice>;
-  const status = (n: number | undefined) => (n === undefined ? t("setup.status.none") : t("setup.status", { n }));
-  if (state.kind === "ok") return <Notice>{t("setup.test.ok", { n: state.facts.models.length, status: status(state.facts.httpStatus) })}</Notice>;
-  return (
-    <Notice tone="bad">
-      <Rich text={t(`setup.test.fail.${state.failure}` as MessageKey, { status: status(state.status) })} />
-      {state.message ? <div class="muted caption">{t("setup.test.ownerWords", { message: state.message })}</div> : null}
-    </Notice>
-  );
-}
 
 export function Setup({ context }: { context: DesignContext }) {
   const model = context.model;
@@ -82,11 +46,15 @@ export function Setup({ context }: { context: DesignContext }) {
       </div>
     );
 
+  if (model.route.value.step === "embedding") return <SetupEmbedding context={context} />;
+
   if (save.kind === "saved") {
+    const embed = model.embedding;
     return (
       <div class="mon">
         <div class="setup">
-          <Section title={t("setup.saved.title")} sub={<Rich text={t("setup.saved.body", { name: save.connection, model: save.model })} />}>
+          <Section title={t("setup.saved.title")} sub={<Rich text={save.madeDefault ? t("setup.saved.body", { name: save.connection, model: save.model }) : t("setup.saved.bodyKept", { name: save.connection })} />}>
+            {save.replaced ? <p><Rich text={t("setup.saved.replaced")} /></p> : null}
             <p>
               <Rich text={save.usesStoredKey ? (save.keyPath ? t("setup.saved.keyAt", { path: save.keyPath }) : t("setup.saved.keyAtUnknown")) : service?.envName ? t("setup.saved.keyEnv", { name: service.envName }) : ""} />
             </p>
@@ -94,11 +62,28 @@ export function Setup({ context }: { context: DesignContext }) {
               <Rich text={t(`setup.saved.restart.${save.restart}` as MessageKey)} />
             </Notice>
             <div class="setup-actions">
-              <a class="btn primary" href={formatRoute({ view: "conversation" })}>
+              {embed.returning.value ? (
+                <a class="btn primary" href={formatRoute({ view: "setup", step: "embedding" })} onClick={() => embed.comeBack(save.connection)}>
+                  {t("setup.embed.back")}
+                </a>
+              ) : null}
+              <a class={embed.returning.value ? "btn" : "btn primary"} href={formatRoute({ view: "conversation" })}>
                 {t("setup.done")}
               </a>
             </div>
           </Section>
+          {embed.returning.value ? null : (
+            <Section title={t("setup.embed.offerTitle")} sub={t("setup.embed.offerBody")}>
+              <div class="setup-actions">
+                <a class="btn" href={formatRoute({ view: "setup", step: "embedding" })} onClick={() => embed.comeBack(save.connection)}>
+                  {t("setup.embed.open")}
+                </a>
+                <a class="btn link" href={formatRoute({ view: "conversation" })}>
+                  {t("setup.embed.skip")}
+                </a>
+              </div>
+            </Section>
+          )}
         </div>
       </div>
     );
@@ -192,7 +177,9 @@ export function Setup({ context }: { context: DesignContext }) {
         ) : null}
 
         {service && test.kind === "ok" ? (
-          <Section title={t("setup.step.model")} sub={t("setup.model.hint")}>
+          <Section title={t(s.makeDefault.value ? "setup.step.model" : "setup.step.default")} sub={s.makeDefault.value ? t("setup.model.hint") : t("setup.default.off")}>
+            {s.hasDefault.value ? <Check checked={s.makeDefault.value} onChange={(on) => s.setMakeDefault(on)} note={t("setup.default.have")}>{t("setup.default.label")}</Check> : null}
+            {s.makeDefault.value ? <>
             {service.id === "local" ? (
               <Notice tone="wait" actions={<External href={OLLAMA_CONTEXT_URL}>{t("setup.model.localLink")}</External>}>
                 {t("setup.model.localWarn")}
@@ -202,11 +189,21 @@ export function Setup({ context }: { context: DesignContext }) {
             {shown.length > 0 ? <ChoiceList label={t("setup.model.list")} mono value={s.model.value} onChange={(m) => s.setModel(m)} choices={shown.map((m) => ({ value: m, label: m }))} /> : <div class="muted">{t("setup.model.none")}</div>}
             {matching.length > shown.length ? <div class="muted caption">{t("setup.model.shown", { n: shown.length, total: matching.length })}</div> : null}
             <Field ariaLabel={t("setup.model.type")} class="mono" placeholder={t("setup.model.type")} autoComplete="off" spellcheck={false} value={s.model.value} onInput={(e) => s.setModel(e.currentTarget.value)} />
+            </> : null}
           </Section>
         ) : null}
 
         {service && test.kind === "ok" ? (
-          <Section title={t("setup.step.save")} sub={<Rich text={t("setup.save.sub", { name: s.connectionName.value })} />}>
+          <Section title={t("setup.step.save")} sub={<Rich text={t(s.makeDefault.value ? "setup.save.sub" : "setup.save.subKeep", { name: s.connectionName.value })} />}>
+            <Field ariaLabel={t("setup.name.label")} class="mono" placeholder={t("setup.name.label")} autoComplete="off" spellcheck={false} value={s.nameDraft.value ?? s.suggestedName.value} onInput={(e) => s.setName(e.currentTarget.value)} />
+            <div class="muted caption"><Rich text={t("setup.name.hint")} /></div>
+            {s.nameProblem.value ? <Notice tone="bad"><Rich text={t(`setup.name.${s.nameProblem.value}` as MessageKey)} /></Notice> : null}
+            {s.replaces.value && !s.nameProblem.value ? (
+              <Notice tone="wait">
+                <Rich text={t("setup.name.replaces", { name: s.connectionName.value })} />
+                <Check checked={s.confirmReplace.value} onChange={(on) => s.setConfirmReplace(on)}>{t("setup.name.confirm", { name: s.connectionName.value })}</Check>
+              </Notice>
+            ) : null}
             {save.kind === "failed" ? (
               <Notice tone="bad">
                 {t("setup.save.failed", { message: save.message })}

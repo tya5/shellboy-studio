@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { settle } from "../../data/test/harness";
-import { loadPrefs, savePrefs, type PrefStore } from "../src";
+import { formatRoute, loadPrefs, nameProblem, parseRoute, savePrefs, type PrefStore } from "../src";
 import { fixtureModel } from "./fixture";
 
 const KEY = "sk-test-SECRET-0123456789";
@@ -354,5 +354,228 @@ describe("the key stays out of sight", () => {
     // The key travelled only in the two calls that carry it.
     const carrying = m.t.calls().filter((c) => JSON.stringify(c.args ?? {}).includes(KEY)).map((c) => c.command);
     expect(carrying).toEqual(["connection.test", "credentials.set"]);
+  });
+});
+
+const FILE = {
+  default_connection: "proxy",
+  default_model: "m0",
+  connections: {
+    proxy: { base_url: "http://localhost:4000/v1", api: "chat_completions", api_key_env: "LITELLM_API_KEY" },
+    claude: { base_url: "https://api.anthropic.com/v1", api: "anthropic_messages", api_key_env: "ANTHROPIC_API_KEY", api_key_header: "x-api-key" },
+    litellm: { base_url: "http://localhost:4000/v1", api: "chat_completions", api_key_env: "LITELLM_API_KEY" },
+  },
+};
+const fields = (t: Made["t"]) => (wire(t, "config.set").at(-1)!.changes as { field: string; value?: unknown }[]);
+
+describe("several connections", () => {
+  async function ready(fake: Fake = {}) {
+    const m = await open({ values: FILE, ...fake });
+    await settle(m.t, m.db);
+    return m;
+  }
+
+  it("prefills a free name, and a typed existing name needs a confirmation before saving", async () => {
+    const m = await ready();
+    const s = m.model.setup;
+    s.choose("litellm");
+    expect(s.connectionName.value).toBe("litellm-2");
+    expect(s.replaces.value).toBe(false);
+    s.choose("local");
+    s.setName("litellm");
+    expect(s.replaces.value).toBe(true);
+    await run(m, s.runTest());
+    s.setModel("m");
+    expect(s.canSave.value).toBe(false);
+    await run(m, s.save());
+    expect(m.t.calls("config.set")).toHaveLength(0);
+    s.setConfirmReplace(true);
+    expect(s.canSave.value).toBe(true);
+    // Typing another name takes the confirmation back.
+    s.setName("litellm-3");
+    expect(s.replaces.value).toBe(false);
+    s.setName("litellm");
+    expect(s.confirmReplace.value).toBe(false);
+  });
+
+  it("a replacement drops the old variable and header it no longer writes", async () => {
+    const m = await ready();
+    const s = m.model.setup;
+    s.choose("local");
+    s.setName("claude");
+    s.setConfirmReplace(true);
+    await run(m, s.runTest());
+    s.setModel("m");
+    await run(m, s.save());
+    const changes = fields(m.t);
+    expect(changes).toContainEqual({ field: "connections.claude.base_url", value: "http://localhost:11434/v1" });
+    expect(changes).toContainEqual({ field: "connections.claude.api_key_env" });
+    expect(changes).toContainEqual({ field: "connections.claude.api_key_header" });
+    expect(changes.filter((c) => c.field.endsWith("api_key_env"))[0]).not.toHaveProperty("value");
+    expect(s.saveState.value).toMatchObject({ kind: "saved", replaced: true });
+  });
+
+  it("a new name leaves the others alone", async () => {
+    const m = await ready();
+    const s = m.model.setup;
+    s.choose("local");
+    s.setName("local-b");
+    await run(m, s.runTest());
+    await run(m, s.save());
+    expect(fields(m.t).every((c) => c.field.startsWith("connections.local-b."))).toBe(true);
+    expect(fields(m.t).filter((c) => c.value === undefined)).toEqual([]);
+  });
+
+  it("checks the name against what the owner takes", () => {
+    expect(nameProblem("")).toBe("empty");
+    expect(nameProblem("my proxy")).toBe("chars");
+    expect(nameProblem("my.proxy")).toBe("chars");
+    expect(nameProblem("プロキシ")).toBe("chars");
+    expect(nameProblem("a".repeat(65))).toBe("long");
+    expect(nameProblem("sk-abcdefghijklmnop1234")).toBe("credential");
+    expect(nameProblem("litellm-2")).toBeUndefined();
+    expect(nameProblem("Work_proxy")).toBeUndefined();
+  });
+
+  it("a bad name blocks the save and is never written", async () => {
+    const m = await ready();
+    const s = m.model.setup;
+    s.choose("local");
+    await run(m, s.runTest());
+    s.setModel("m");
+    s.setName("a.b");
+    expect(s.nameProblem.value).toBe("chars");
+    expect(s.canSave.value).toBe(false);
+    s.setName("   ");
+    expect(s.nameProblem.value).toBe("empty");
+  });
+
+  it("makes the new connection the default only when there is none, or when asked", async () => {
+    const withDefault = await ready();
+    const a = withDefault.model.setup;
+    a.choose("local");
+    expect(a.makeDefault.value).toBe(false);
+    await run(withDefault, a.runTest());
+    // No model is needed when the default stays.
+    expect(a.canSave.value).toBe(true);
+    await run(withDefault, a.save());
+    expect(fields(withDefault.t).map((c) => c.field)).not.toContain("default_connection");
+    expect(fields(withDefault.t).map((c) => c.field)).not.toContain("default_model");
+    expect(a.saveState.value).toMatchObject({ kind: "saved", madeDefault: false });
+
+    const asked = await ready();
+    const b = asked.model.setup;
+    b.choose("local");
+    b.setMakeDefault(true);
+    expect(b.canSave.value).toBe(false);
+    await run(asked, b.runTest());
+    expect(b.canSave.value).toBe(false);
+    b.setModel("m");
+    await run(asked, b.save());
+    expect(fields(asked.t)).toContainEqual({ field: "default_connection", value: "local" });
+    expect(fields(asked.t)).toContainEqual({ field: "default_model", value: "m" });
+
+    const none = await ready({ values: { connections: { proxy: { base_url: "x", api: "chat_completions" } } } });
+    none.model.setup.choose("local");
+    expect(none.model.setup.makeDefault.value).toBe(true);
+  });
+});
+
+describe("embedding (optional)", () => {
+  async function ready(fake: Fake = {}) {
+    const m = await open({ values: FILE, ...fake });
+    await settle(m.t, m.db);
+    return m;
+  }
+
+  it("offers the existing connections and takes the model list from connection.test for the chosen one", async () => {
+    const m = await ready();
+    const e = m.model.embedding;
+    expect(e.connections.value).toEqual(["proxy", "claude", "litellm"]);
+    e.choose("proxy");
+    await settle(m.t, m.db);
+    expect(wire(m.t, "connection.test").at(-1)).toEqual({ connection: "proxy" });
+    expect(e.models.value).toEqual(MODELS);
+    // No guess: nothing is chosen, and any ID can be typed.
+    expect(e.modelDraft.value).toBe("");
+    expect(e.canSave.value).toBe(false);
+    e.setModel("my-own-embedding-id");
+    expect(e.canSave.value).toBe(true);
+  });
+
+  it("writes embedding.connection and embedding.model together, and sends no embeddings request", async () => {
+    const m = await ready();
+    const e = m.model.embedding;
+    e.choose("proxy");
+    await settle(m.t, m.db);
+    e.setModel("embed-small");
+    await run(m, e.save());
+    expect(wire(m.t, "config.set")).toEqual([{ expected_hash: HASH, changes: [{ field: "embedding.connection", value: "proxy" }, { field: "embedding.model", value: "embed-small" }] }]);
+    expect(e.saveState.value).toMatchObject({ kind: "saved", change: "on", restart: "required" });
+    expect(m.model.setup.probe.value).toMatchObject({ state: "ready", embedding: { connection: "proxy", model: "embed-small" } });
+    // Nothing but reading the file, the model-list GET and the write.
+    expect(m.t.calls().some((c) => /embed|index\.|rag/.test(c.command) || JSON.stringify(c.args ?? {}).includes("/embeddings"))).toBe(false);
+  });
+
+  it("says Anthropic has no embeddings from the dialect's data, asks for another connection and writes nothing", async () => {
+    const m = await ready();
+    const e = m.model.embedding;
+    const asked = wire(m.t, "connection.test").length;
+    e.choose("claude");
+    await settle(m.t, m.db);
+    expect(e.unsupported.value).toBe(true);
+    expect(wire(m.t, "connection.test").length).toBe(asked);
+    e.setModel("whatever");
+    expect(e.canSave.value).toBe(false);
+    await run(m, e.save());
+    expect(m.t.calls("config.set")).toHaveLength(0);
+    e.choose("proxy");
+    expect(e.unsupported.value).toBe(false);
+  });
+
+  it("turns off by removing both fields, with no value in the change", async () => {
+    const m = await ready({ values: { ...FILE, embedding: { connection: "proxy", model: "embed-small" } } });
+    const e = m.model.embedding;
+    expect(e.current.value).toEqual({ connection: "proxy", model: "embed-small" });
+    await run(m, e.turnOff());
+    const changes = fields(m.t);
+    expect(changes).toEqual([{ field: "embedding.connection" }, { field: "embedding.model" }]);
+    for (const c of changes) expect(c).not.toHaveProperty("value");
+    expect(e.saveState.value).toMatchObject({ kind: "saved", change: "off" });
+    expect(e.current.value).toBeUndefined();
+  });
+
+  it("reports a refused write and retries once on a conflict", async () => {
+    let step = 0;
+    const m = await ready({ configSet: () => (step++ === 0 ? { ok: false, code: "operation_conflict" } : step === 2 ? { ok: false, code: "config_invalid", message: "embedding.connection must reference a configured connection" } : { ok: true, result: {} }) });
+    const e = m.model.embedding;
+    e.choose("proxy");
+    await settle(m.t, m.db);
+    e.setModel("x");
+    await run(m, e.save());
+    expect(m.t.calls("config.set")).toHaveLength(2);
+    expect(e.saveState.value).toMatchObject({ kind: "failed" });
+  });
+
+  it("returns from adding another connection with the new one chosen", async () => {
+    const m = await ready();
+    const e = m.model.embedding;
+    e.startAdd();
+    expect(e.returning.value).toBe(true);
+    const s = m.model.setup;
+    s.choose("local");
+    await run(m, s.runTest());
+    const name = s.connectionName.value;
+    await run(m, s.save());
+    e.comeBack(name);
+    expect(e.connection.value).toBe("local");
+    expect(e.connections.value).toContain("local");
+    expect(e.returning.value).toBe(false);
+  });
+
+  it("has a route of its own", () => {
+    expect(parseRoute("#/setup/embedding")).toEqual({ view: "setup", step: "embedding" });
+    expect(parseRoute("#/setup")).toEqual({ view: "setup" });
+    expect(formatRoute({ view: "setup", step: "embedding" })).toBe("#/setup/embedding");
   });
 });

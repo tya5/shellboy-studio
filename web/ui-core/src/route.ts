@@ -13,6 +13,8 @@ export interface Route {
   appName?: string;
   /** Settings and Analytics. Absent means the first section. */
   section?: SettingsSection | AnalyticsSection;
+  /** Setup only: the optional embeddings step. Absent shows the connection steps. */
+  step?: "embedding";
 }
 
 /** The open Settings section, or the first. A section of another view isn't valid here. */
@@ -25,7 +27,7 @@ export function parseRoute(hash: string): Route {
   const parts = hash.replace(/^#\/?/, "").split("/");
   if (parts[0] === "monitor") return { view: "monitor" };
   if (parts[0] === "inbox") return { view: "inbox" };
-  if (parts[0] === "setup") return { view: "setup" };
+  if (parts[0] === "setup") return parts[1] === "embedding" ? { view: "setup", step: "embedding" } : { view: "setup" };
   if (parts[0] === "threads") return { view: "threads" };
   if (parts[0] === "apps") return parts[1] ? { view: "apps", appName: decodeURIComponent(parts[1]) } : { view: "apps" };
   if (parts[0] === "branches") {
@@ -53,6 +55,7 @@ export function formatRoute(route: Route): string {
     const thread = `#/branches/${encodeURIComponent(route.threadId)}`;
     return route.nodeId ? `${thread}/${encodeURIComponent(route.nodeId)}` : thread;
   }
+  if (route.view === "setup" && route.step) return `#/setup/${route.step}`;
   if ((route.view === "settings" || route.view === "analytics") && route.section) return `#/${route.view}/${route.section}`;
   return `#/${route.view}`;
 }
