@@ -28,22 +28,24 @@ pub fn access(command: &Command) -> Access {
         | Command::UsageGet(..)
         | Command::CompactList(..)
         | Command::IndexStatus(..)
-        | Command::StorageStatus(..) => Access::Read,
+        | Command::StorageStatus(..)
+        // Branches view.
+        | Command::ThreadBranches(..) => Access::Read,
         Command::ThreadCreate(..)
         | Command::MessageSend(..)
         | Command::RunStop(..)
         | Command::MessageCancel(..)
         | Command::RunRetry(..)
-        | Command::ThreadArchive(..) => Access::Mutation,
+        | Command::ThreadArchive(..)
+        // Branches and Threads views. A rewind is shown as a dry run first (`dry_run`).
+        | Command::ThreadFork(..)
+        | Command::ThreadRewind(..)
+        | Command::ThreadUnarchive(..) => Access::Mutation,
         // `events.wait` is bridge-internal (one shared long-poll). The rest has no UI yet.
         Command::OwnerShutdown(..)
-        | Command::ThreadBranches(..)
-        | Command::ThreadFork(..)
         | Command::ThreadDelete(..)
         | Command::ThreadDeletePreview(..)
         | Command::ThreadPrune(..)
-        | Command::ThreadRewind(..)
-        | Command::ThreadUnarchive(..)
         | Command::ThreadSet(..)
         | Command::MessageReply(..)
         | Command::Wait(..)

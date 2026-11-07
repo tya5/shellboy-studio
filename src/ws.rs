@@ -314,7 +314,7 @@ mod tests {
     }
 
     #[test]
-    fn data_layer_mutations_are_allowed_and_unarchive_is_not() {
+    fn data_layer_mutations_are_allowed() {
         assert!(build_command("run.retry", Some(json!({"run_id":"r"}))).is_ok());
         assert!(
             build_command(
@@ -324,11 +324,34 @@ mod tests {
             .is_ok()
         );
         assert!(build_command("thread.list", Some(json!({"archived":"only"}))).is_ok());
-        assert_eq!(
-            build_command("thread.unarchive", Some(json!({"thread_ids":["a"]})))
-                .unwrap_err()
-                .code,
-            "not_allowed"
+        assert!(build_command("thread.unarchive", Some(json!({"thread_ids":["a"]}))).is_ok());
+        assert!(build_command("thread.fork", Some(json!({"thread_id":"t","node_id":"n"}))).is_ok());
+        assert!(
+            build_command(
+                "thread.rewind",
+                Some(json!({"thread_id":"t","node_id":"n","dry_run":true}))
+            )
+            .is_ok()
         );
+        assert_eq!(
+            access(
+                &build_command(
+                    "thread.branches",
+                    Some(json!({"thread_id":"t","limit":200}))
+                )
+                .unwrap()
+            ),
+            Access::Read
+        );
+        for (command, args) in [
+            ("thread.delete", json!({"thread_ids":["t"]})),
+            ("thread.delete_preview", json!({"thread_ids":["t"]})),
+        ] {
+            let denied = match build_command(command, Some(args)) {
+                Err(e) => e.code == "not_allowed" || e.code == "invalid_call",
+                Ok(_) => false,
+            };
+            assert!(denied, "{command}");
+        }
     }
 }

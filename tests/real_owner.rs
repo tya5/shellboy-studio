@@ -32,6 +32,10 @@ impl Drop for Serve {
 }
 
 fn start_owner(bin: &Path, root: &Path, data: &Path) -> Serve {
+    start_owner_with(bin, root, data, "http://127.0.0.1:9/v1")
+}
+
+fn start_owner_with(bin: &Path, root: &Path, data: &Path, base_url: &str) -> Serve {
     let home = root.join("home");
     std::fs::create_dir_all(&home).unwrap();
     // A keyless loopback connection nobody listens on: Threads can be created, and any
@@ -39,7 +43,7 @@ fn start_owner(bin: &Path, root: &Path, data: &Path) -> Serve {
     let config = root.join("config.toml");
     std::fs::write(
         &config,
-        "default_connection = \"local\"\ndefault_model = \"mock\"\n[connections.local]\nbase_url = \"http://127.0.0.1:9/v1\"\n",
+        format!("default_connection = \"local\"\ndefault_model = \"mock\"\n[connections.local]\nbase_url = \"{base_url}\"\n"),
     )
     .unwrap();
     let child = Command::new(bin)
@@ -275,5 +279,303 @@ async fn hints_and_restart_against_a_real_owner() {
 
     cancel.cancel();
     stop_owner(&bin, &data, second).await;
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// A loopback stand-in for a Responses endpoint: every request gets one finished reply. No network
+/// beyond loopback and no credentials. Ends when the test's runtime does.
+async fn mock_provider() -> String {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        loop {
+            let Ok((mut socket, _)) = listener.accept().await else {
+                return;
+            };
+            tokio::spawn(async move {
+                let mut seen = Vec::new();
+                let mut chunk = [0u8; 8192];
+                loop {
+                    let Ok(n) = socket.read(&mut chunk).await else {
+                        return;
+                    };
+                    if n == 0 {
+                        return;
+                    }
+                    seen.extend_from_slice(&chunk[..n]);
+                    let text = String::from_utf8_lossy(&seen);
+                    if let Some(end) = text.find("\r\n\r\n") {
+                        let length = text[..end]
+                            .lines()
+                            .find_map(|l| {
+                                let l = l.to_ascii_lowercase();
+                                l.strip_prefix("content-length:")
+                                    .map(|v| v.trim().parse::<usize>().unwrap_or(0))
+                            })
+                            .unwrap_or(0);
+                        if seen.len() >= end + 4 + length {
+                            break;
+                        }
+                    }
+                }
+                let item = json!({"id":"m","type":"message","role":"assistant","status":"completed","content":[{"type":"output_text","text":"done"}]});
+                let reply = json!({"type":"response.completed","response":{"id":"r","status":"completed","output":[item],"usage":{"input_tokens":10,"input_tokens_details":{"cached_tokens":0},"output_tokens":1,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":11}}});
+                let body = format!("data: {reply}\n\n");
+                let head = format!(
+                    "HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\ncontent-length: {}\r\nconnection: close\r\n\r\n",
+                    body.len()
+                );
+                let _ = socket.write_all(head.as_bytes()).await;
+                let _ = socket.write_all(body.as_bytes()).await;
+            });
+        }
+    });
+    format!("http://{addr}/v1")
+}
+
+struct Client {
+    ws: common_ws::Ws,
+    next: u64,
+}
+
+impl Client {
+    async fn call(&mut self, command: &str, args: Value, operation_id: Option<String>) -> Value {
+        self.next += 1;
+        let id = self.next;
+        let mut frame = json!({"t":"call","id":id,"command":command,"args":args});
+        if let Some(op) = operation_id {
+            frame["operation_id"] = json!(op);
+        }
+        self.ws
+            .send(Message::Text(frame.to_string().into()))
+            .await
+            .unwrap();
+        loop {
+            let reply = next_t(&mut self.ws, "result").await;
+            if reply["id"] == id {
+                return reply;
+            }
+        }
+    }
+    async fn ok(&mut self, command: &str, args: Value, operation_id: Option<String>) -> Value {
+        let reply = self.call(command, args, operation_id).await;
+        assert_eq!(reply["response"]["ok"], true, "{command}: {reply}");
+        reply["response"]["result"].clone()
+    }
+    /// A Thread's activity word, from the saved list.
+    async fn settled(&mut self, thread: &str) {
+        for _ in 0..200 {
+            let got = self
+                .ok("thread.get", json!({"thread_id":thread}), None)
+                .await;
+            if got.get("run_id").is_none_or(Value::is_null) {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+        panic!("thread did not settle");
+    }
+}
+
+#[tokio::test]
+async fn branches_fork_rewind_and_unarchive_against_a_real_owner() {
+    let Some(bin) = std::env::var_os("SHELLBOY_BIN").map(PathBuf::from) else {
+        eprintln!("SKIPPED real_owner: set SHELLBOY_BIN");
+        return;
+    };
+    let root = temp_root();
+    let data = root.join("data");
+    let url = mock_provider().await;
+    let serve = start_owner_with(&bin, &root, &data, &url);
+    let instance = serve.instance.clone();
+    let op = |n: &str| Some(format!("{instance}:web-it-{n}"));
+
+    let owner = Arc::new(IpcOwner::new(data.clone()));
+    let (addr, state, cancel) = start(owner, true).await;
+    let cookie = login(addr, &state).await;
+    let mut request = format!("ws://{addr}/ws").into_client_request().unwrap();
+    request
+        .headers_mut()
+        .insert("origin", format!("http://{addr}").parse().unwrap());
+    request
+        .headers_mut()
+        .insert("cookie", cookie.parse().unwrap());
+    let (ws, _) = tokio_tungstenite::connect_async(request).await.unwrap();
+    let mut c = Client { ws, next: 0 };
+    next_t(&mut c.ws, "hello").await;
+
+    let thread = c
+        .ok(
+            "thread.create",
+            json!({"cwd": root.to_str().unwrap()}),
+            op("create"),
+        )
+        .await;
+    let thread = thread["thread_id"].as_str().unwrap().to_owned();
+    for (n, text) in ["first", "second", "third"].iter().enumerate() {
+        c.ok(
+            "message.send",
+            json!({"thread_id":thread,"text":text}),
+            op(&format!("send-{n}")),
+        )
+        .await;
+        c.settled(&thread).await;
+    }
+    let history = c
+        .ok(
+            "history.list",
+            json!({"thread_id":thread,"limit":200}),
+            None,
+        )
+        .await;
+    let nodes: Vec<&Value> = history["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|i| i["kind"] == "assistant_response")
+        .collect();
+    assert!(nodes.len() >= 2, "{history}");
+    let point = nodes[0]["node_id"].as_str().unwrap().to_owned();
+
+    // A Thread alone: the root, no divergence, sized by the owner.
+    let alone = c
+        .ok(
+            "thread.branches",
+            json!({"thread_id":thread,"limit":200}),
+            None,
+        )
+        .await;
+    assert_eq!(alone["items"].as_array().unwrap().len(), 1, "{alone}");
+    assert!(alone["items"][0]["divergence"].is_null());
+    assert!(alone["items"][0]["size"]["path_nodes"].is_u64());
+
+    // A dry run changes nothing and names what would leave.
+    let preview = c
+        .ok(
+            "thread.rewind",
+            json!({"thread_id":thread,"node_id":point,"dry_run":true}),
+            None,
+        )
+        .await;
+    assert_eq!(preview["dry_run"], true);
+    assert!(
+        preview.get("branch_thread_id").is_none_or(Value::is_null),
+        "{preview}"
+    );
+    assert!(preview["removed"]["nodes"].as_u64().unwrap() > 0);
+    assert_eq!(
+        c.ok("thread.branches", json!({"thread_id":thread}), None)
+            .await["items"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+
+    // Fork: a child with a real divergence, parent unchanged.
+    let fork = c
+        .ok(
+            "thread.fork",
+            json!({"thread_id":thread,"node_id":point}),
+            op("fork"),
+        )
+        .await;
+    let fork = fork["thread_id"].as_str().unwrap().to_owned();
+    let family = c
+        .ok(
+            "thread.branches",
+            json!({"thread_id":thread,"limit":200}),
+            None,
+        )
+        .await;
+    let child = family["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|i| i["thread_id"] == fork.as_str())
+        .unwrap();
+    assert_eq!(child["divergence"]["node_id"], point.as_str(), "{family}");
+    assert_eq!(child["divergence"]["parent_continues"], true);
+    assert_eq!(child["parent_thread_id"], thread.as_str());
+    assert!(child["divergence"]["ordinal"].is_u64());
+    assert!(child["size"]["nodes_after_divergence"].is_u64());
+
+    // Rewind: the removed part stays as a child, which is the undo path.
+    let done = c
+        .ok(
+            "thread.rewind",
+            json!({"thread_id":thread,"node_id":point}),
+            op("rewind"),
+        )
+        .await;
+    let kept = done["branch_thread_id"]
+        .as_str()
+        .expect("branch_thread_id")
+        .to_owned();
+    let family = c
+        .ok(
+            "thread.branches",
+            json!({"thread_id":thread,"limit":200}),
+            None,
+        )
+        .await;
+    let child = family["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|i| i["thread_id"] == kept.as_str())
+        .unwrap();
+    assert_eq!(child["divergence"]["parent_continues"], false, "{family}");
+
+    // A stale cursor would need a family change; a bad one is refused as cursor_expired or invalid.
+    let stale = c
+        .call(
+            "thread.branches",
+            json!({"thread_id":thread,"limit":1,"cursor":"nope"}),
+            None,
+        )
+        .await;
+    assert_eq!(stale["response"]["ok"], false, "{stale}");
+
+    // Archive and unarchive with descendants, then a list in each mode.
+    let archived = c
+        .ok(
+            "thread.archive",
+            json!({"thread_ids":[thread],"descendants":true}),
+            op("archive"),
+        )
+        .await;
+    assert!(
+        archived["archived"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|t| t == kept.as_str()),
+        "{archived}"
+    );
+    let only = c
+        .ok("thread.list", json!({"archived":"only","limit":200}), None)
+        .await;
+    assert_eq!(only["items"].as_array().unwrap().len(), 3, "{only}");
+    let back = c
+        .ok(
+            "thread.unarchive",
+            json!({"thread_ids":[thread],"descendants":true}),
+            op("unarchive"),
+        )
+        .await;
+    assert!(
+        back["unarchived"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|t| t == fork.as_str()),
+        "{back}"
+    );
+
+    drop(c);
+    cancel.cancel();
+    drop(serve);
     let _ = std::fs::remove_dir_all(&root);
 }

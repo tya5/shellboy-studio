@@ -17,9 +17,12 @@ import type {
   ShellListArgs,
   ShellOutput,
   ShellReadArgs,
+  ThreadBranchesArgs,
   ThreadCreateArgs,
   ThreadDetails,
+  ThreadForkArgs,
   ThreadListArgs,
+  ThreadRewindArgs,
   ThreadSummary,
   UsageGetArgs,
 } from "./protocol";
@@ -81,6 +84,7 @@ export type MutationResult = Record<string, unknown>;
 export interface ArchiveResult {
   archived?: string[];
   already?: string[];
+  unarchived?: string[];
   not_found?: string[];
   descendants?: string[];
   [extra: string]: unknown;
@@ -176,6 +180,14 @@ export class Operations {
   modelList(args: ModelListArgs = {}): Promise<Outcome<ModelListResult>> {
     return this.run("model.list", args, decodeModelList);
   }
+  /** One page of a Thread's family: ancestors, then breadth first. */
+  threadBranches(args: ThreadBranchesArgs): Promise<Outcome<Record<string, unknown>>> {
+    return this.run("thread.branches", args, decodeRecord);
+  }
+  /** `dry_run`: runs in a rolled-back savepoint and writes nothing, so it carries no operation id. */
+  threadRewindPreview(args: ThreadRewindArgs): Promise<Outcome<Record<string, unknown>>> {
+    return this.run("thread.rewind", { ...args, dry_run: true }, decodeRecord);
+  }
   /** Look up a mutation's receipt, e.g. after an `unconfirmed` error. */
   operationGet(operationId: string): Promise<Outcome<Record<string, unknown>>> {
     return this.run("operation.get", { operation_id: operationId }, decodeRecord);
@@ -194,6 +206,21 @@ export class Operations {
   }
   runRetry(runId: string, operationId = this.newId()): Promise<Outcome<MutationResult>> {
     return this.run("run.retry", { run_id: runId }, decodeRecord, { operationId });
+  }
+  threadFork(args: ThreadForkArgs, operationId = this.newId()): Promise<Outcome<ThreadDetails>> {
+    return this.run("thread.fork", args, decodeDetails, { operationId });
+  }
+  threadRewind(args: ThreadRewindArgs, operationId = this.newId()): Promise<Outcome<MutationResult>> {
+    return this.run("thread.rewind", args, decodeRecord, { operationId });
+  }
+  threadUnarchive(
+    threadIds: string[],
+    options: { descendants?: boolean } = {},
+    operationId = this.newId(),
+  ): Promise<Outcome<ArchiveResult>> {
+    const args: Record<string, unknown> = { thread_ids: threadIds };
+    if (options.descendants) args.descendants = true;
+    return this.run("thread.unarchive", args, decodeRecord, { operationId });
   }
   threadArchive(
     threadIds: string[],

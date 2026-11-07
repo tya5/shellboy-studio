@@ -217,6 +217,23 @@ export interface CompactListArgs {
   limit: number;
 }
 
+export interface ThreadBranchesArgs {
+  thread_id: string;
+  /** 1 to 200. */
+  limit?: number;
+  cursor?: string;
+}
+
+export interface ThreadForkArgs {
+  thread_id: string;
+  node_id: string;
+}
+
+export interface ThreadRewindArgs {
+  thread_id: string;
+  node_id: string;
+}
+
 export interface ModelListArgs {
   connection?: string;
   thread_id?: string;

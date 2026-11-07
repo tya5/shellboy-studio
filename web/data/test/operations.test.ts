@@ -163,3 +163,27 @@ describe("Reads for Analytics and Settings", () => {
     expect(await p).toMatchObject({ ok: false, error: { kind: "invalid_response" } });
   });
 });
+
+describe("Reads and mutations for Branches and Threads", () => {
+  it("a rewind preview is a dry run with no operation id; the real rewind carries one", async () => {
+    const { t, ops } = setup();
+    void ops.threadRewindPreview({ thread_id: "a", node_id: "n" });
+    void ops.threadRewind({ thread_id: "a", node_id: "n" });
+    void ops.threadFork({ thread_id: "a", node_id: "n" });
+    void ops.threadUnarchive(["a"], { descendants: true });
+    const [preview, rewind, fork, unarchive] = t.calls();
+    expect(preview).toMatchObject({ command: "thread.rewind", args: { thread_id: "a", node_id: "n", dry_run: true } });
+    expect(preview!.operation_id).toBeUndefined();
+    expect(rewind!.args).toEqual({ thread_id: "a", node_id: "n" });
+    expect(rewind!.operation_id).toBeTruthy();
+    expect(fork).toMatchObject({ command: "thread.fork", args: { thread_id: "a", node_id: "n" } });
+    expect(fork!.operation_id).toBeTruthy();
+    expect(unarchive).toMatchObject({ command: "thread.unarchive", args: { thread_ids: ["a"], descendants: true } });
+  });
+  it("branches sends the owner's argument names", async () => {
+    const { t, ops } = setup();
+    void ops.threadBranches({ thread_id: "a", limit: 200, cursor: "c" });
+    expect(t.calls()[0]).toMatchObject({ command: "thread.branches", args: { thread_id: "a", limit: 200, cursor: "c" } });
+    expect(t.calls()[0]!.operation_id).toBeUndefined();
+  });
+});
