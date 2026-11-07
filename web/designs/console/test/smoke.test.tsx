@@ -761,7 +761,7 @@ describe("Setup", () => {
       });
     };
     await pump();
-    expect(el.querySelectorAll(".choice")).toHaveLength(4);
+    expect(el.querySelectorAll(".choice")).toHaveLength(6);
     await pump(() => click(el.querySelectorAll(".choice input")[1]));
     const field = el.querySelector<HTMLInputElement>('input[type="password"]')!;
     expect(text(el)).toContain("An API key is required");
@@ -799,7 +799,7 @@ describe("Setup", () => {
     const el = draw(model, { lang: "en" });
     await act(async () => void (await settle(t, db)));
     await act(async () => {
-      click(el.querySelectorAll(".choice input")[2]);
+      click(el.querySelectorAll(".choice input")[4]);
       await settle(t, db);
     });
     expect(el.querySelector<HTMLInputElement>('input[aria-label="Address"]')!.value).toBe("http://localhost:11434/v1");

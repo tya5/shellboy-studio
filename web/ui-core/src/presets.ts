@@ -6,7 +6,7 @@
 import type { Dialect } from "../../data/src";
 import type { Lang } from "./i18n";
 
-export type ServiceId = "anthropic" | "openai" | "local" | "other";
+export type ServiceId = "anthropic" | "openai" | "openrouter" | "litellm" | "local" | "other";
 
 export interface ServicePreset {
   id: ServiceId;
@@ -55,6 +55,30 @@ export const SERVICES: readonly ServicePreset[] = [
     needsKey: true,
     urlEditable: false,
     dialectEditable: false,
+  },
+  {
+    id: "openrouter",
+    label: { en: "OpenRouter", ja: "OpenRouter" },
+    connectionName: "openrouter",
+    baseUrl: "https://openrouter.ai/api/v1",
+    api: "chat_completions",
+    keyPageUrl: "https://openrouter.ai/keys",
+    envName: "OPENROUTER_API_KEY",
+    needsKey: true,
+    urlEditable: false,
+    dialectEditable: false,
+  },
+  {
+    id: "litellm",
+    label: { en: "LiteLLM proxy", ja: "LiteLLM プロキシ" },
+    connectionName: "litellm",
+    // LiteLLM's default port, shown as an example. A proxy offers either dialect.
+    baseUrl: "http://localhost:4000/v1",
+    api: "chat_completions",
+    envName: "LITELLM_API_KEY",
+    needsKey: true,
+    urlEditable: true,
+    dialectEditable: true,
   },
   {
     id: "local",

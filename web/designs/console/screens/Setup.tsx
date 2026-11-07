@@ -126,7 +126,7 @@ export function Setup({ context }: { context: DesignContext }) {
             {service.urlEditable ? (
               <>
                 <Field ariaLabel={t("setup.url.label")} class="mono" placeholder="https://" autoComplete="off" spellcheck={false} value={s.baseUrl.value} onInput={(e) => s.setBaseUrl(e.currentTarget.value)} />
-                <div class="muted caption">{t(service.id === "local" ? "setup.url.local" : "setup.url.other")}</div>
+                <div class="muted caption">{t(service.id === "local" ? "setup.url.local" : service.id === "litellm" ? "setup.url.litellm" : "setup.url.other")}</div>
               </>
             ) : (
               <KeyValue rows={[{ key: t("setup.url.fixed"), value: service.baseUrl, mono: true }]} />
