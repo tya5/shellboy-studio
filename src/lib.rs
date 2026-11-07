@@ -8,6 +8,7 @@
 //! that wait for Shellboy protocol 3 and live text deltas).
 
 pub mod allowlist;
+pub mod assets;
 pub mod auth;
 pub mod envelope;
 pub mod events;

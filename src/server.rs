@@ -1,5 +1,6 @@
 //! HTTP routes. `/debug` is registered only when the debug option is on.
 use crate::{
+    assets,
     auth::{self, Auth, COOKIE_NAME},
     hub::Hub,
     owner::Owner,
@@ -52,7 +53,8 @@ impl<O> Shared<O> {
 
 pub fn router<O: Owner>(state: AppState<O>) -> Router {
     let mut router = Router::new()
-        .route("/", get(index))
+        .route("/", get(assets::index))
+        .route("/assets/{*path}", get(assets::asset))
         .route("/healthz", get(|| async { "ok" }))
         .route("/auth", post(auth_exchange::<O>))
         .route("/ws", get(ws_upgrade::<O>));
@@ -87,13 +89,6 @@ async fn host_guard<O: Owner>(
 fn origin_ok(headers: &HeaderMap) -> bool {
     let host = header_str(headers, header::HOST).unwrap_or_default();
     auth::origin_matches(header_str(headers, header::ORIGIN), host)
-}
-
-async fn index() -> impl IntoResponse {
-    (
-        [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],
-        "shellboy-web bridge. The production frontend is not built yet.\n",
-    )
 }
 
 const DEBUG_HTML: &str = include_str!("../web/debug/index.html");
