@@ -1,8 +1,9 @@
 // Screen logic over the data layer: which Thread is open, what the views show, the send, stop,
 // retry and archive flows. Saved facts stay in the data layer; nothing here is optimistic.
-import { computed, effect, signal, type ReadonlySignal, type Signal } from "@preact/signals-core";
+import { computed, effect, signal, untracked, type ReadonlySignal, type Signal } from "@preact/signals-core";
 import { Cancel, type Handle, type Operations, type OpError, type ShellboyData, type ShellEntry, type ThreadDetails, type ThreadHandle } from "../../data/src";
-import { CAPABILITY_HISTORY_WINDOW } from "../../data/src";
+import { CAPABILITY_HISTORY_WINDOW, noReplyWait, type ReplyWait, type ReplyWaitAdapter } from "../../data/src";
+import { workRegions, type WorkRegions } from "./work";
 import { ConversationWindow } from "./window";
 import { branchRowMarks, projectConversation, type ConversationRow, type StepRow } from "./conversation";
 import { translator, type Lang, type Translate } from "./i18n";
@@ -54,6 +55,7 @@ const MAX_PAGES = 8;
 export interface AppModelOptions {
   data: ShellboyData;
   pending?: PendingAdapter;
+  replyWait?: ReplyWaitAdapter;
   lang?: Lang;
   /** Current time source for ages. */
   nowMs?: () => number;
@@ -77,6 +79,8 @@ export class AppModel {
   readonly data: ShellboyData;
   readonly ops: Operations;
   readonly pending: PendingAdapter;
+  readonly replyWait: ReplyWaitAdapter;
+  readonly threadReplies: ReadonlySignal<readonly ReplyWait[]>;
   readonly route: Signal<Route> = signal(START_ROUTE);
   /** Analytics, Resources and Settings reads. Nothing runs until one of those views opens. */
   readonly insights: Insights;
@@ -118,6 +122,7 @@ export class AppModel {
   readonly recovery: ReadonlySignal<RecoveryFacts | undefined>;
   readonly canStop: ReadonlySignal<boolean>;
   readonly canRetry: ReadonlySignal<boolean>;
+  readonly work: ReadonlySignal<WorkRegions>;
 
   readonly shells: Signal<ReadonlyMap<string, ShellEntry>> = signal(new Map());
   readonly outputs: Signal<ReadonlyMap<string, OutputState>> = signal(new Map());
@@ -126,6 +131,8 @@ export class AppModel {
   readonly selectedStep: ReadonlySignal<StepRow | undefined>;
   readonly sendState: Signal<SendState> = signal({ kind: "idle" });
   readonly actionError: Signal<string | undefined> = signal(undefined);
+  readonly appRequestState: Signal<{ kind: "idle" | "sending" | "failed" | "unconfirmed"; message?: string }> = signal({ kind: "idle" });
+  readonly uncertainCancels: Signal<ReadonlySet<string>> = signal(new Set());
 
   private readonly lastThread = signal<string | undefined>(undefined);
   private readonly watchedOutputs = new Map<string, string | undefined>();
@@ -146,6 +153,7 @@ export class AppModel {
     this.data = options.data;
     this.ops = options.data.operations;
     this.pending = options.pending ?? noPending;
+    this.replyWait = options.replyWait ?? noReplyWait;
     this.lang = signal(options.lang ?? "en");
     this.nowMs = options.nowMs ?? (() => Date.now());
     this.now = signal(this.nowMs());
@@ -188,7 +196,9 @@ export class AppModel {
       const r = this.route.value;
       return r.threadId ?? this.lastThread.value ?? this.rows.value[0]?.summary.thread_id;
     });
+    this.threadReplies = computed(() => this.replyWait.supported(this.data.capabilities.value) ? this.replyWait.items.value.filter((item) => item.threadId === this.selectedId.value).slice(0, 128) : []);
     this.details = computed(() => this.handle.value?.detail.value.value);
+    this.work = computed(() => workRegions(this.handle.value?.work.value.value, this.details.value?.run_id, this.shells.value));
     this.selectedRow = computed(() => {
       const id = this.selectedId.value;
       return id === undefined ? undefined : this.rowById.value.get(id);
@@ -324,6 +334,13 @@ export class AppModel {
         });
       }),
     );
+    this.disposers.push(effect(() => {
+      const h = this.handle.value;
+      const active = this.route.value.view === "conversation";
+      if (!h) return;
+      untracked(() => h.setWorkActive(active));
+      return () => untracked(() => h.setWorkActive(false));
+    }));
     // Shell facts follow the hints: the store re-reads the Thread on each, and so do we.
     this.disposers.push(
       effect(() => {
@@ -331,7 +348,7 @@ export class AppModel {
         if (!h) return;
         h.detail.value;
         const history = h.history.value;
-        if (history.items.some((i) => (i.executions?.length ?? 0) > 0)) void this.refreshShells(h.threadId);
+        if (this.route.value.view === "conversation" && (h.work.value.value?.items.some((i) => i.kind === "shell") || history.items.some((i) => (i.executions?.length ?? 0) > 0))) void this.refreshShells(h.threadId);
       }),
     );
     this.data.start();
@@ -449,6 +466,7 @@ export class AppModel {
     this.selectedStepId.value = undefined;
     this.watchedOutputs.clear();
     this.sendState.value = { kind: "idle" };
+    this.uncertainCancels.value = new Set();
     this.actionError.value = undefined;
     this.handle.value = this.data.openThread(id);
   }
@@ -599,6 +617,48 @@ export class AppModel {
         ? { kind: "unconfirmed", operationId: out.error.operationId, text }
         : { kind: "failed", message: errorMessage(out.error) };
     return false;
+  }
+
+  async createAppRequest(text: string, cwd: string): Promise<boolean> {
+    if (!text.trim() || !cwd.trim() || this.appRequestState.peek().kind === "sending" || this.appRequestState.peek().kind === "unconfirmed") return false;
+    this.appRequestState.value = { kind: "sending" };
+    const created = await this.ops.threadCreate({ cwd: cwd.trim() });
+    if (!created.ok) {
+      this.appRequestState.value = { kind: created.error.kind === "unconfirmed" ? "unconfirmed" : "failed", message: created.error.kind === "unconfirmed" ? this.t.value("work.cancelUnconfirmed", { id: created.error.operationId }) : errorMessage(created.error) };
+      return false;
+    }
+    const id = created.value.thread_id;
+    const sent = await this.ops.messageSend({ thread_id: id, text });
+    if (!sent.ok) {
+      this.appRequestState.value = { kind: "unconfirmed", message: `${id}: ${sent.error.kind === "unconfirmed" ? this.t.value("work.cancelUnconfirmed", { id: sent.error.operationId }) : errorMessage(sent.error)}` };
+      return false;
+    }
+    this.appRequestState.value = { kind: "idle" };
+    this.openThread(id);
+    return true;
+  }
+
+  async answerReply(id: string, text: string): Promise<string | undefined> {
+    const item = this.threadReplies.peek().find((row) => row.id === id);
+    if (!item || item.recipient.kind !== "human") return "not available";
+    const out = await this.replyWait.answer(id, text);
+    return out.ok ? undefined : errorMessage(out.error);
+  }
+
+  async cancelPending(messageId: string): Promise<string | undefined> {
+    const out = await this.ops.messageCancel(messageId);
+    if (!out.ok) {
+      if (out.error.kind === "unconfirmed") {
+        this.uncertainCancels.value = new Set([...this.uncertainCancels.peek(), messageId]);
+        return this.t.value("work.cancelUnconfirmed", { id: out.error.operationId });
+      }
+      return errorMessage(out.error);
+    }
+    const items = out.value.items;
+    if (!Array.isArray(items) || items.length !== 1 || items[0]?.message_id !== messageId || items[0]?.outcome !== "cancelled") {
+      return String(Array.isArray(items) ? items[0]?.outcome ?? "invalid response" : "invalid response");
+    }
+    return undefined;
   }
 
   async stop(): Promise<void> {

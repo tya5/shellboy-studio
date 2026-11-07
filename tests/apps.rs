@@ -253,7 +253,33 @@ async fn files_need_the_session_in_their_path_and_are_always_sandboxed() {
     // No cookie: an opaque page can't send one.
     let page = http(&web, "GET", &url, &[], "").await;
     assert_eq!(page.status, 200, "{}", page.headers);
+    assert!(
+        page.headers
+            .to_ascii_lowercase()
+            .contains("cache-control: no-cache")
+    );
     assert!(page.body.contains("hello"));
+    std::fs::write(
+        f.apps.join("one/index.html"),
+        "<html><head></head><body>updated</body></html>",
+    )
+    .unwrap();
+    let refreshed = http(&web, "GET", &url, &[], "").await;
+    assert!(refreshed.body.contains("updated"));
+    let reopened = open(&f, "one").await;
+    let reopened_base = reopened.trim_end_matches("index.html");
+    assert_eq!(
+        http(&web, "GET", &format!("{reopened_base}data/a.txt"), &[], "")
+            .await
+            .body,
+        "x"
+    );
+    assert!(
+        refreshed
+            .headers
+            .to_ascii_lowercase()
+            .contains("cache-control: no-cache")
+    );
     assert!(
         page.body
             .contains("<head><script src=\"/_shellboy/api.js\"></script><title>"),
@@ -271,6 +297,10 @@ async fn files_need_the_session_in_their_path_and_are_always_sandboxed() {
         assert_eq!(reply.status, status, "{path}");
         // Opened on its own at the Web UI's origin, a file must not be same-origin with it.
         let headers = reply.headers.to_ascii_lowercase();
+        assert!(
+            headers.contains("cache-control: no-cache"),
+            "{path}: {headers}"
+        );
         assert!(
             headers.contains("content-security-policy: sandbox "),
             "{path}: {headers}"

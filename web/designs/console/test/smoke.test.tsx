@@ -43,6 +43,58 @@ const flushPromises = async () => {
 };
 const text = (el: Element) => el.textContent ?? "";
 
+describe("App request and guide", () => {
+  it("requires review before sending the full request and shows guidance", async () => {
+    const { model, t } = await fixtureModel({ route: "apps" });
+    const el = draw(model);
+    expect(text(el)).toContain("AGENTS.md");
+    const section = [...el.querySelectorAll("section")].find((node) => text(node).includes("Create an app"))!;
+    const request = section.querySelector("textarea")!;
+    const cwd = section.querySelector("input")!;
+    act(() => {
+      request.value = "Make a board";
+      request.dispatchEvent(new Event("input", { bubbles: true }));
+      cwd.value = "/work";
+      cwd.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    const review = [...section.querySelectorAll("button")].find((b) => text(b) === "Review request")!;
+    expect(t.calls("thread.create")).toHaveLength(0);
+    act(() => review.click());
+    const preview = section.querySelector<HTMLTextAreaElement>("textarea[readonly]")!;
+    expect(preview.value).toContain("$SHELLBOY_DATA_DIR/studio/agent-guide.md");
+    expect(preview.value).toContain("Make a board");
+    expect(t.calls("thread.create")).toHaveLength(0);
+    model.dispose();
+  });
+});
+
+describe("Conversation work regions", () => {
+  it("shows nonempty regions in the sidebar and one compact strip; removes them on a hint", async () => {
+    const { model, t, db } = await fixtureModel();
+    db.work.lead = [
+      { kind: "shell", id: "exec-1", execution_id: "exec-1", thread_id: "lead", run_id: "run-1", state: "running" },
+      { kind: "message", id: "m", message_id: "m", thread_id: "lead", state: "held" },
+    ];
+    db.bodies.m = "Please review";
+    db.shells.lead = [{ execution_id: "exec-1", state: "running", command_excerpt: "test command" }];
+    const el = draw(model);
+    act(() => t.push({ t: "changed", thread_ids: ["lead"], list: false }));
+    await act(async () => settle(t, db));
+    const sidebar = el.querySelector(".details")!;
+    const headings = [...sidebar.querySelectorAll(".work-region h3")].map(text);
+    expect(headings).toEqual(["Running", "Pending"]);
+    expect(text(sidebar)).toContain("test command");
+    expect(text(sidebar)).toContain("Please review");
+    expect(el.querySelector(".work-strip")?.textContent).toContain("Running at least 1");
+    db.work.lead = [];
+    act(() => t.push({ t: "changed", thread_ids: ["lead"], list: false }));
+    await act(async () => settle(t, db));
+    expect(el.querySelector(".work-strip")).toBeNull();
+    expect(el.querySelectorAll(".details .work-region")).toHaveLength(0);
+    model.dispose();
+  });
+});
+
 describe("Conversation live text", () => {
   const liveFrame = (text: string, offset = 0, extra: { gap?: boolean } = {}): ServerFrame =>
     ({ t: "live", thread_id: "lead", attempt_id: "a1", gap: false, deltas: [{ offset, reasoning: false, text }], ...extra });
@@ -720,6 +772,19 @@ describe("Apps", () => {
     });
     expect(frame(el)).toBe(before);
     expect(el.querySelector(".apps-host.off")).toBeNull();
+  });
+  it("manually reloads the open app with a fresh file session", async () => {
+    const { el, model, t, db } = await open("board");
+    const before = frame(el);
+    const plain = db.answer;
+    db.answer = (call) => call.command === "apps.open" ? { ok: true, result: { name: "board", title: "Board", url: "/a/s2/index.html", thread: "lead" } } : plain(call);
+    const button = el.querySelector<HTMLButtonElement>('button[aria-label="Reload Board"]')!;
+    await act(async () => { button.click(); await settle(t, db); });
+    expect(t.calls("apps.open")).toHaveLength(2);
+    expect(frame(el)).not.toBe(before);
+    expect(frame(el).getAttribute("src")).toBe("/a/s2/index.html");
+    expect(model.route.value).toEqual({ view: "apps", appName: "board" });
+    expect(t.calls("apps.call")).toHaveLength(0);
   });
   it("closing a tab removes its page and returns to the list", async () => {
     const { el, model } = await open("board");

@@ -122,3 +122,11 @@ and in `web/`: `npm run check`.
 ## License
 
 MIT. See [LICENSE](LICENSE).
+
+## Studio guides
+
+Read `shellboy-studio guide user` or `shellboy-studio guide agent` without
+starting the bridge. At startup Studio installs the agent guide in
+`$SHELLBOY_DATA_DIR/studio/agent-guide.md`; it is overwritten on each start.
+The Apps screen shows the Apps folder and its README, which is also overwritten.
+Apps can run actions on the Studio host, so review their code and permissions.

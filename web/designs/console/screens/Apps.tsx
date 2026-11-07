@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "preact/hooks";
 import { formatRoute, readAppMessage, type AppModel, type DesignContext, type OpenApp } from "../../../ui-core/src";
-import { AppCard, AppFrame, AppTabs, Button, EmptyState, KeyValue, Notice, Section } from "../system/components";
+import { AppCard, AppFrame, AppTabs, AppRequest, Button, EmptyState, GuideCopy, KeyValue, Notice, Section } from "../system/components";
 
 function Alerts({ model, tab }: { model: AppModel; tab: OpenApp }) {
   const t = model.t.value;
@@ -49,6 +49,8 @@ function AppList({ model }: { model: AppModel }) {
         </div>
         <Button disabled={list.loading} onClick={() => void apps.refresh()}>{t("common.refresh")}</Button>
       </div>
+      <AppRequest title={t("apps.createTitle")} requestLabel={t("apps.request")} cwdLabel={t("apps.cwd")} reviewLabel={t("apps.preview")} previewLabel={t("apps.previewLabel")} sendLabel={t("apps.createSend")} prompt={t("apps.prompt")} busy={model.appRequestState.value.kind === "sending"} disabled={model.connection.value !== "connected" || model.appRequestState.value.kind === "unconfirmed"} error={model.appRequestState.value.message ? t("apps.createError", { message: model.appRequestState.value.message }) : undefined} onSend={(text, cwd) => model.createAppRequest(text, cwd)} />
+      <GuideCopy title={t("guide.title")} line={t("guide.line")} note={t("guide.note")} copy={t("code.copy")} copied={t("code.copied")} failed={t("guide.copyFailed")} />
       {failed ? <Notice tone="bad">{t("apps.openFailed", { name: failed.name, message: failed.message })}</Notice> : null}
       {list.error ? <Notice tone="bad">{t("common.readError", { message: list.error.message })}</Notice> : null}
       {list.loaded && list.apps.length === 0 ? <EmptyState icon="apps" title={t("apps.empty")} body={t("apps.emptyBody")} /> : null}
@@ -128,6 +130,8 @@ export function AppsHost({ context }: { context: DesignContext }) {
             current: tab.name === current,
             alert: tab.errors.length > 0,
             closeLabel: t("apps.close", { name: tab.title }),
+            reloadLabel: t("apps.reloadTab", { name: tab.title }),
+            onReload: () => void apps.reload(tab.name),
             onClose: () => {
               apps.close(tab.name);
               if (tab.name === current) model.navigate({ view: "apps" });
@@ -135,6 +139,7 @@ export function AppsHost({ context }: { context: DesignContext }) {
           })),
         ]}
       />
+      {open && apps.openError.value?.name === open.name ? <Notice tone="bad">{t("apps.openFailed", { name: open.name, message: apps.openError.value.message })}</Notice> : null}
       {open ? <Alerts model={model} tab={open} /> : null}
       {current === undefined || !open ? <AppList model={model} /> : null}
       {tabs.map((tab) => (

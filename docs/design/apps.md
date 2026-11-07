@@ -100,3 +100,11 @@ What an opaque origin costs, and how each is handled:
 - **A real model** hasn't made an app. The flow is `SHELLBOY_DATA_DIR`, which model shells have, plus `apps/README.md`. A model only finds the guide with a pointer in Shellboy's Agent Guide, which is a core change.
 - **The sender label doesn't reach the model.** `thread.send` saves `app:<name>`, and history shows it (real-owner test), but one captured request held only the text, with no label, and the same goes for `web`. The guide says so and has pages say who they are in the text. Core could put the label in the input.
 - **Timer-driven `run`** is tested for no overlap, not for hours of use. A grandchild of an action can outlive a timeout.
+
+### Manual app reload
+
+Each open app tab offers an explicit reload. It mints a fresh file session and
+remounts the iframe; it does not write or remove the app's `data/` files. App
+file responses use `Cache-Control: no-cache` so cached files are revalidated.
+The page is not automatically reloaded on file changes. A session-open failure
+is shown, and the existing tab remains available.

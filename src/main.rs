@@ -1,4 +1,4 @@
-use clap::Parser;
+use clap::{Parser, Subcommand, ValueEnum};
 use shellboy::{
     config::{PathEnvironment, resolve_cli_data_dir},
     protocol::{Command, ThreadListArgs},
@@ -17,6 +17,8 @@ use tokio_util::sync::CancellationToken;
 #[derive(Parser)]
 #[command(version)]
 struct Args {
+    #[command(subcommand)]
+    command: Option<CliCommand>,
     /// Address to listen on. Loopback by default; anything else is plain HTTP.
     #[arg(long, default_value = "127.0.0.1:8751")]
     listen: SocketAddr,
@@ -35,6 +37,27 @@ struct Args {
     /// Enable the /debug page (off by default).
     #[arg(long)]
     debug: bool,
+}
+
+#[derive(Subcommand)]
+enum CliCommand {
+    /// Print a bundled Studio guide without starting the bridge.
+    Guide { guide: GuideKind },
+}
+
+#[derive(Clone, ValueEnum)]
+enum GuideKind {
+    User,
+    Agent,
+}
+
+const USER_GUIDE: &str = include_str!("../docs/guides/user-guide.md");
+const AGENT_GUIDE: &str = include_str!("../docs/guides/agent-guide.md");
+
+fn install_agent_guide(data_dir: &std::path::Path) -> std::io::Result<()> {
+    let dir = data_dir.join("studio");
+    std::fs::create_dir_all(&dir)?;
+    std::fs::write(dir.join("agent-guide.md"), AGENT_GUIDE)
 }
 
 /// What to tell someone whose first probe of the owner failed: the fact, then the next step.
@@ -74,10 +97,26 @@ async fn main() -> ExitCode {
 }
 
 async fn run(args: Args) -> Result<(), String> {
+    if let Some(CliCommand::Guide { guide }) = args.command {
+        print!(
+            "{}",
+            match guide {
+                GuideKind::User => USER_GUIDE,
+                GuideKind::Agent => AGENT_GUIDE,
+            }
+        );
+        return Ok(());
+    }
     let cwd = std::env::current_dir().map_err(|e| e.to_string())?;
     let data_dir =
         resolve_cli_data_dir(args.data_dir.as_deref(), &PathEnvironment::current(), &cwd)
             .map_err(|e| format!("cannot resolve the owner data directory: {e}"))?;
+    if let Err(error) = install_agent_guide(&data_dir) {
+        eprintln!(
+            "shellboy-studio: cannot write the agent guide in {}: {error}",
+            data_dir.display()
+        );
+    }
     let config_dir = match args.config_dir {
         Some(dir) => dir,
         None => default_config_dir()?,
@@ -142,6 +181,25 @@ mod tests {
     use super::owner_problem;
     use shellboy::protocol::{ApiError, ErrorCode};
     use std::path::Path;
+
+    #[test]
+    fn installed_guide_is_replaced_on_next_install() {
+        let root = std::env::temp_dir().join(format!("studio-guide-{}", uuid::Uuid::new_v4()));
+        super::install_agent_guide(&root).unwrap();
+        let path = root.join("studio").join("agent-guide.md");
+        std::fs::write(&path, "edited").unwrap();
+        super::install_agent_guide(&root).unwrap();
+        assert_eq!(std::fs::read_to_string(path).unwrap(), super::AGENT_GUIDE);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn guide_command_accepts_both_bundled_guides() {
+        use clap::Parser;
+        assert!(super::Args::try_parse_from(["studio", "guide", "user"]).is_ok());
+        assert!(super::Args::try_parse_from(["studio", "guide", "agent"]).is_ok());
+        assert!(super::Args::try_parse_from(["studio", "guide", "other"]).is_err());
+    }
 
     #[test]
     fn each_owner_problem_says_what_to_do_next() {

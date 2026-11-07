@@ -13,6 +13,8 @@ import type {
   OwnerState,
   ThreadDetails,
   ThreadSummary,
+  WorkItem,
+  Page,
 } from "./protocol";
 import { Refresher } from "./refresher";
 import type { Transport } from "./transport";
@@ -80,6 +82,8 @@ export interface Handle {
 export interface ThreadHandle extends Handle {
   readonly threadId: string;
   readonly detail: ReadonlySignal<Resource<ThreadDetails>>;
+  readonly work: ReadonlySignal<Resource<Page<WorkItem>>>;
+  setWorkActive(active: boolean): void;
   /** Oldest to newest, as the owner returns it; a window over the end of the path. */
   readonly history: ReadonlySignal<HistoryState>;
   readonly preview: ReadonlySignal<Preview>;
@@ -120,6 +124,9 @@ class ThreadEntry {
   refs = 0;
   closed = false;
   detail = signal<Resource<ThreadDetails>>({ value: undefined, loading: false, stale: false, error: undefined });
+  work = signal<Resource<Page<WorkItem>>>({ value: undefined, loading: false, stale: false, error: undefined });
+  workRefs = 0;
+  workBodies = new Map<string, string>();
   history = signal<HistoryState>({ items: [], earlierHidden: false, loaded: false, loading: false, loadingMore: false, stale: false, error: undefined });
   window = HISTORY_WINDOW;
   /** The next read starts from the beginning of the path, not from the last known item. */
@@ -292,9 +299,18 @@ export class ShellboyData {
     entry.refs++;
     const e = entry;
     let closed = false;
+    let watchingWork = false;
+    const setWorkActive = (active: boolean) => {
+      if (closed || watchingWork === active) return;
+      watchingWork = active;
+      e.workRefs += active ? 1 : -1;
+      if (active && e.workRefs === 1 && !e.paused && this.canRead()) void this.refresher.request(`work:${threadId}`);
+    };
     return {
       threadId,
       detail: e.detail,
+      work: e.work,
+      setWorkActive,
       history: e.history,
       preview: e.preview,
       historyTick: e.historyTick,
@@ -310,6 +326,7 @@ export class ShellboyData {
       resume: () => this.resumeEntry(e),
       close: () => {
         if (closed) return;
+        setWorkActive(false);
         closed = true;
         if (--e.refs === 0) {
           e.closed = true;
@@ -434,6 +451,8 @@ export class ShellboyData {
     for (const e of this.entries.values()) {
       const d = e.detail.value;
       if (d.value !== undefined) e.detail.value = { ...d, stale: true };
+      const w = e.work.value;
+      if (w.value !== undefined) e.work.value = { ...w, stale: true };
       const h = e.history.value;
       if (h.loaded) e.history.value = { ...h, stale: true };
     }
@@ -471,7 +490,7 @@ export class ShellboyData {
 
   private requestThread(id: string): Promise<void> {
     if (this.entries.get(id)?.paused) return Promise.resolve();
-    return Promise.all([this.refresher.request(`thread:${id}`), this.refresher.request(`history:${id}`)]).then(
+    return Promise.all([this.refresher.request(`thread:${id}`), this.refresher.request(`history:${id}`), ...(this.entries.get(id)?.workRefs ? [this.refresher.request(`work:${id}`)] : [])]).then(
       () => undefined,
     );
   }
@@ -483,6 +502,7 @@ export class ShellboyData {
     const entry = this.entries.get(key.slice(sep + 1));
     if (!entry) return; // closed since the request
     if (kind === "thread") return this.readDetail(entry, onSent);
+    if (kind === "work") return this.readWork(entry, onSent);
     if (this.ownerSig.peek().state === "connected" && this.capabilities.peek().includes(CAPABILITY_HISTORY_WINDOW)) {
       entry.historyTick.value++; // positional reads: nothing is walked, the window reader decides what to read
       return;
@@ -532,6 +552,39 @@ export class ShellboyData {
     }
     entry.detail.value = out.ok
       ? { value: out.value, loading: false, stale: false, error: undefined }
+      : { ...cur, loading: false, stale: cur.value !== undefined, error: out.error };
+  }
+
+  private async readWork(entry: ThreadEntry, onSent: () => void): Promise<void> {
+    if (entry.workRefs === 0 || entry.paused) return;
+    entry.work.value = { ...entry.work.value, loading: true };
+    const out = await this.operations.threadWork(entry.id, { onSent, cancel: entry.cancel });
+    if (entry.closed) return;
+    let value = out.ok ? out.value : undefined;
+    if (value && entry.workRefs > 0 && !entry.paused) {
+      // Only the first eight pending originals are read. The cache belongs to this open
+      // Thread and is replaced on every observation, so neither memory nor reads grow.
+      const ids = value.items.filter((i) => i.kind === "message" && i.message_id && ["accepted", "held"].includes(i.state)).slice(0, 8).map((i) => i.message_id!);
+      const bodies = await Promise.all(ids.map(async (id) => {
+        const cached = entry.workBodies.get(id);
+        if (cached !== undefined) return [id, cached] as const;
+        const body = await this.operations.historyGet({ node_id: id, limit_bytes: 1024 }, { cancel: entry.cancel });
+        return [id, body.ok && body.value.kind === "user" ? body.value.text : undefined] as const;
+      }));
+      if (entry.closed) return;
+      entry.workBodies = new Map(bodies.filter((pair): pair is readonly [string, string] => pair[1] !== undefined));
+      value = { ...value, items: value.items.map((item) => {
+        const text = item.message_id ? entry.workBodies.get(item.message_id) : undefined;
+        return text !== undefined ? { ...item, excerpt: text } : item;
+      }) };
+    }
+    const cur = entry.work.value;
+    if (entry.workRefs === 0 || entry.paused || (!out.ok && out.error.kind === "cancelled")) {
+      entry.work.value = { ...cur, loading: false };
+      return;
+    }
+    entry.work.value = out.ok
+      ? { value: value!, loading: false, stale: false, error: undefined }
       : { ...cur, loading: false, stale: cur.value !== undefined, error: out.error };
   }
 
