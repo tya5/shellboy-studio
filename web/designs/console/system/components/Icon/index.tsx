@@ -20,6 +20,7 @@ const PATHS = {
   layers: <path d="M12 3l9 5-9 5-9-5zM3 13l9 5 9-5" />,
   menu: <path d="M4 6h16M4 12h16M4 18h16" />,
   branch: <><circle cx="6" cy="5" r="2.2" /><circle cx="6" cy="19" r="2.2" /><circle cx="18" cy="8" r="2.2" /><path d="M6 7.2v9.6M18 10.2c0 4-4 4.3-7 4.8-2.5.4-5 .8-5 1.8" /></>,
+  apps: <><rect x="4" y="4" width="7" height="7" rx="1.5" /><rect x="13" y="4" width="7" height="7" rx="1.5" /><rect x="4" y="13" width="7" height="7" rx="1.5" /><rect x="13" y="13" width="7" height="7" rx="1.5" /></>,
   chart: <path d="M4 20V10M10 20V4M16 20v-7M21 20H3" />,
   plug: <path d="M9 3v5M15 3v5M6 8h12v3a6 6 0 0 1-12 0zM12 17v4" />,
   cube: <path d="M12 3l8 4.5v9L12 21l-8-4.5v-9zM4 7.5l8 4.5 8-4.5M12 12v9" />,

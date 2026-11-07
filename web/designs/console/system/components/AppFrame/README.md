@@ -1,0 +1,1 @@
+Hosts an app's page in an iframe on the app's own origin, so the page can't reach the Web UI's storage or DOM. It is hidden, never removed, while another tab shows. The page is the app author's: nothing from the design system reaches inside unless the app loads `/_shellboy/ui.css`.

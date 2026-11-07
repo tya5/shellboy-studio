@@ -1,0 +1,1 @@
+Tabs over the app pane: the app list first, then each open app. An app with unread errors shows the recovery diamond beside its name. Closing a tab ends that app's page; moving to another tab or view doesn't. The strip scrolls in its own frame on a phone.
