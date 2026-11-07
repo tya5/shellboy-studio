@@ -22,6 +22,7 @@ function Output({ model, id, command, complete, boxed }: { model: AppModel; id: 
   const rendered = renderOutput({ command, text: out.text, complete: complete && !out.loading && !out.cutOff });
   return (
     <>
+      <Button onClick={() => { void navigator.clipboard.writeText(rendered && !raw ? rendered.lines.map((line) => line.text).join("\n") : out.text).catch(() => {}); }}>{t("code.copy")}</Button>
       {rendered ? <Button onClick={() => setRaw(!raw)}>{raw ? t("output.formatted") : t("output.raw")}</Button> : null}
       {rendered && !raw ? <pre class={boxed ? "log boxed" : "log"} tabIndex={0}>{rendered.lines.map((line, i) => <span key={i} class={`output-${line.kind}`}>{line.text}{i < rendered.lines.length - 1 ? "\n" : ""}</span>)}</pre> : <LogBlock text={out.text === "" ? t("details.outputEmpty") : out.text} boxed={boxed ?? false} />}
       {out.cutOff ? <div class="caption muted">{t("details.outputMore")}</div> : null}

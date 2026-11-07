@@ -10,6 +10,7 @@ describe("bounded output renderers", () => {
   it("classifies diff hunks and preserves raw fallback", () => {
     const text = '--- a/x\n+++ b/x\n@@ -1 +1 @@\n-old\n+new';
     expect(renderOutput({ command: "cat patch", text, complete: true })?.lines.map((l) => l.kind)).toEqual(["file", "file", "hunk", "remove", "add"]);
+    expect(renderOutput({ command: "git diff", text, complete: true })?.lines[4]?.text).toContain("1 +new");
     expect(renderOutput({ command: "git diff", text, complete: false })).toBeUndefined();
     expect(renderOutput({ command: "git diff", text: "x".repeat(65537), complete: true })).toBeUndefined();
   });

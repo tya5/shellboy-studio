@@ -24,7 +24,17 @@ const json: Renderer = ({ command, text }) => {
 };
 const diff: Renderer = ({ command, text }) => {
   if (!/\bgit\s+(?:diff|show|log\s+-p)(?:\s|$)/.test(command) && !/^--- .+\n\+\+\+ /m.test(text) && !/^diff --git /m.test(text)) return;
-  return { kind: "diff", lines: text.split("\n").map((line): OutputLine => ({ text: line, kind: line.startsWith("diff --git ") || line.startsWith("--- ") || line.startsWith("+++ ") ? "file" : line.startsWith("@@") ? "hunk" : line.startsWith("+") ? "add" : line.startsWith("-") ? "remove" : "plain" })) };
+  let oldLine = 0, newLine = 0, inHunk = false;
+  const lines = text.split("\n").map((line): OutputLine => {
+    const match = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(line);
+    if (match) { oldLine = Number(match[1]); newLine = Number(match[2]); inHunk = true; return { text: line, kind: "hunk" }; }
+    if (line.startsWith("diff --git ") || line.startsWith("--- ") || line.startsWith("+++ ")) { inHunk = false; return { text: line, kind: "file" }; }
+    if (!inHunk || !/^[ +\-]/.test(line)) return { text: line, kind: "plain" };
+    const oldNumber = line[0] === "+" ? "" : String(oldLine++);
+    const newNumber = line[0] === "-" ? "" : String(newLine++);
+    return { text: `${oldNumber.padStart(5)} ${newNumber.padStart(5)} ${line}`, kind: line[0] === "+" ? "add" : line[0] === "-" ? "remove" : "plain" };
+  });
+  return { kind: "diff", lines };
 };
 export const outputRenderers: readonly Renderer[] = [diff, json];
 export function renderOutput(input: OutputInput): RenderedOutput | undefined {
