@@ -32,9 +32,31 @@ State meaning is fixed across systems: running, waiting for a person, recovery w
 - Every system must pass the same checks: text contrast of 4.5:1, states distinct without colour, phone width. A contract test lists required tokens and fails if one is missing.
 - Light and dark are separate systems, or modes within one: to be decided when a second real system is adopted.
 
+## Keeping several designs side by side
+
+User requirement (2026-11-07): after building one design, it must be possible to start another without removing the first, and reuse what can be shared.
+
+| Layer | Path (proposed) | Contents | Shared by designs |
+|---|---|---|---|
+| Data | `web/data` | View-model, operations, reconnect, previews | Always |
+| Screen logic | `web/ui-core` | No DOM or style: grouping Threads by state, status meaning, labels and translations, time and token formatting, keyboard commands, reply and cancel flows | Always |
+| Parts | `web/ui-parts` | Optional unstyled parts with behaviour only: log viewer, virtual list, composer, Markdown rendering | Opt in per part |
+| Design | `web/designs/<name>/` | Tokens, styled components, screens, layout | Never shared; each design owns its folder |
+
+Rules:
+
+- Dependencies point one way: `designs/*` may import from `ui-parts`, `ui-core` and `data`. Nothing imports from a design, and designs don't import each other. A part wanted by a second design moves down to `ui-parts` first.
+- A new look comes in two sizes. Same structure with new colours or type: add a token file. New structure: add a `designs/<name>/` folder and reuse `ui-core` and any `ui-parts`.
+- Starting from an existing design is a folder copy; it diverges freely, and the old one keeps working.
+- Each design has a small manifest (`name`, `title`, entry) in one registry. The bridge serves all designs and the browser selects one by preference, so an old design stays one click away. Removing a design is deleting its folder and registry line.
+- Tests live at the lowest layer that owns the behaviour, so a new design inherits them. Each design only needs a smoke test on the shared fixture view-model plus the token contract test. A design that has rotted can't break others.
+- Bundle size: load only the selected design, by dynamic import.
+
+Limit: this costs some discipline, and a shared `ui-core` change can affect all designs. Keep `ui-core` free of visual assumptions, such as row counts or colours.
+
 ## Layers it sits in
 
-`web/data` (view-model and operations, no DOM) → components → screens → design system tokens. Layout variants (A conversation, B monitor, C inbox, phone) are screens over the same view-model and aren't design systems.
+`web/data` → `web/ui-core` → optional `web/ui-parts` → `web/designs/<name>/`. Layout variants (A conversation, B monitor, C inbox, phone) are screens within a design and aren't design systems.
 
 ## Not decided
 
