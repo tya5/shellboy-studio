@@ -284,12 +284,74 @@ a{color:var(--accent)}
 .fact dt{color:var(--muted)}
 .fact dd{margin:0;min-width:0;overflow-wrap:anywhere}
 
+/* BranchGraph */
+.bgraph{overflow-x:auto;min-width:0;border:1px solid var(--line);border-radius:var(--radius);background:var(--panel);padding:var(--space-8)}
+.bgraph-svg{display:block}
+.bgraph-svg .edge{fill:none;stroke:var(--line-strong);stroke-width:2;stroke-linecap:round}
+.bgraph-svg .edge.on{stroke:var(--accent);stroke-width:3}
+.bgraph-svg .pt{fill:var(--panel);stroke:var(--line-strong);stroke-width:2}
+.bgraph-svg .pt.on{fill:var(--accent);stroke:var(--panel)}
+.bgraph-svg .pt.sel{stroke:var(--fg);stroke-width:3}
+.bgraph-svg .pt-hit{fill:transparent}
+.bgraph-svg .tip{fill:var(--raised);stroke:var(--line-strong);stroke-width:1}
+.bgraph-svg .tip.on{stroke:var(--accent);stroke-width:2;fill:var(--accent-bg)}
+.bgraph-svg .bg-name{fill:var(--fg);font:var(--type-label);font-weight:600}
+.bgraph-svg .bg-label{fill:var(--fg);font:var(--type-caption)}
+.bgraph-svg .bg-note{fill:var(--muted);font:var(--type-caption)}
+.bg-point,.bg-tip{cursor:pointer;outline:0}
+.bg-point:focus-visible .pt-hit,.bg-tip:focus-visible rect{stroke:var(--accent);stroke-width:2}
+.bg-tip:hover rect{stroke:var(--fg)}
+
+/* BranchList */
+.blist{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:var(--space-4);min-width:0}
+.brow{display:flex;align-items:center;gap:var(--space-8);padding:var(--space-8);border:1px solid var(--line);border-radius:var(--radius-s);background:var(--panel);min-width:0;font:var(--type-label)}
+.brow.on{border-color:var(--accent);background:var(--accent-bg)}
+.brow>.i{color:var(--muted)}
+.brow-text{flex:1;min-width:0;overflow-wrap:anywhere}
+
+/* BranchMark */
+.bmark{display:inline-flex;align-items:center;gap:var(--space-4);padding:0 var(--space-8);min-height:24px;border:1px solid var(--line-strong);border-radius:var(--radius-s);color:var(--muted);font:var(--type-caption);text-decoration:none;width:fit-content}
+.bmark:hover{background:var(--raised);color:var(--fg)}
+.msg-acts{display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-8);min-height:18px}
+.msg-acts .quiet{color:var(--muted);font:var(--type-caption);text-decoration:none;opacity:0}
+.msg:hover .msg-acts .quiet,.msg-acts .quiet:focus-visible{opacity:1}
+.msg-acts .quiet:hover{color:var(--accent)}
+
+/* ThreadGroup and SelectRow */
+.tgroup{border:1px solid var(--line);border-radius:var(--radius);background:var(--panel);min-width:0}
+.tgroup>header{display:flex;align-items:center;gap:var(--space-8);padding:var(--space-4) var(--space-12) var(--space-4) var(--space-4);border-bottom:1px solid var(--line);min-width:0}
+.tgroup-name{flex:1;min-width:0;overflow-wrap:anywhere;font-weight:600}
+.tgroup-name.mono{font-weight:400}
+.tgroup-count{white-space:nowrap}
+.tcheck{display:inline-grid;place-items:center;flex:none;width:32px;height:32px;cursor:pointer}
+.tcheck input{width:15px;height:15px;margin:0;accent-color:var(--accent);cursor:pointer}
+.srow{display:flex;align-items:center;gap:var(--space-8);padding-right:var(--space-12);min-height:40px;border-bottom:1px solid var(--line);font:var(--type-label);min-width:0}
+.srow:last-child{border-bottom:0}
+.srow:hover{background:var(--raised)}
+.srow.on{background:var(--accent-bg)}
+.srow-status{flex:none;display:inline-grid;place-items:center;width:18px}
+.srow-text{flex:1;min-width:0;padding:var(--space-4) 0;overflow-wrap:anywhere}
+.srow-text a{color:var(--fg);text-decoration:none}
+.srow-text a:hover{color:var(--accent);text-decoration:underline}
+
+/* SelectionBar */
+.selbar{position:sticky;top:0;z-index:4;display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-8);padding:var(--space-8) var(--space-12);border:1px solid var(--accent);border-radius:var(--radius);background:var(--raised);font:var(--type-label)}
+.selbar-text{flex:1 1 200px;min-width:0}
+.selbar-acts{display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-8)}
+.selbar label{display:inline-flex;align-items:center;gap:var(--space-4);cursor:pointer}
+.selbar input{accent-color:var(--accent)}
+
 /* Phone width: same markup, driven by the container */
 @container app (max-width:899px){
   .btn,.chip{min-height:var(--size-touch)}
   .btn.icon{width:var(--size-touch)}
   .field{min-height:var(--size-touch)}
   .nav-item,.tree-item,.secnav-item{min-height:var(--size-touch)}
+  .tcheck{width:var(--size-touch);height:var(--size-touch)}
+  .srow{min-height:var(--size-touch)}
+  .bmark{min-height:var(--size-touch)}
+  .msg-acts .quiet{opacity:1}
+  .selbar label{min-height:var(--size-touch)}
   .secnav h2,.secnav-list{display:none}
   .secnav-pick{display:block}
   .tbl.stack thead{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}

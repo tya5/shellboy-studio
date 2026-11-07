@@ -1,0 +1,1 @@
+Stays at the top of the list while something is chosen, and states how many, including descendants the action would also touch. Actions are real owner operations only. An action that can't be undone in one step needs a second press.

@@ -44,7 +44,7 @@
 
 .convo{flex:1;min-width:0;display:flex;flex-direction:column}
 .scroll{flex:1;min-height:0;overflow:auto;padding:var(--space-16) var(--space-24);display:flex;flex-direction:column;gap:var(--space-12)}
-.scroll>.steps,.scroll>.strip{margin-left:40px}
+.scroll>.steps,.scroll>.strip,.scroll>.scroll-mark{margin-left:40px}
 .dock{display:flex;flex-direction:column;gap:var(--space-8);padding:0 var(--space-24) var(--space-16)}
 .details{width:var(--size-details);flex:none;border-left:1px solid var(--line);background:var(--panel);overflow:auto;padding:var(--space-16);display:flex;flex-direction:column;gap:var(--space-12)}
 .details h3{margin:0;font:var(--type-body);font-weight:600}
@@ -79,6 +79,15 @@
 .subhead{margin:var(--space-8) 0 0;font:var(--type-heading)}
 .meters{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:var(--space-12)}
 
+.branches{flex:1;min-width:0;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) var(--size-details)}
+.branches-main{overflow:auto;padding:var(--space-16) var(--space-24);display:flex;flex-direction:column;gap:var(--space-12);min-width:0}
+.branches-side{border-left:1px solid var(--line);background:var(--panel);overflow:auto;padding:var(--space-16);display:flex;flex-direction:column;gap:var(--space-12);min-width:0}
+.branches-side h3{margin:0;font:var(--type-heading)}
+.branches[data-layout=graph] .blist{display:none}
+.branches[data-layout=list] .bgraph{display:none}
+.org{flex:1;min-width:0;overflow:auto;padding:var(--space-16) var(--space-24);display:flex;flex-direction:column;gap:var(--space-12)}
+.toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-8)}
+
 .loading{margin:auto;color:var(--muted)}
 
 @container app (max-width:1179px){
@@ -94,10 +103,17 @@
   .top .menu{display:inline-flex}
   .top{padding-left:var(--space-8);padding-right:var(--space-8)}
   .scroll,.mon{padding:var(--space-12)}
-  .scroll>.steps,.scroll>.strip{margin-left:0}
+  .scroll>.steps,.scroll>.strip,.scroll>.scroll-mark{margin-left:0}
   .dock{padding:0 var(--space-12) var(--space-12)}
   .grid{grid-template-columns:minmax(0,1fr)}
   .head h1{font-size:var(--size-heading);line-height:1.3}
+  .branches{grid-template-columns:minmax(0,1fr);grid-auto-rows:min-content;overflow:auto}
+  .branches-main{overflow:visible;padding:var(--space-12)}
+  .branches-side{overflow:visible;border-left:0;border-top:1px solid var(--line);padding:var(--space-12)}
+  .branches[data-layout] .bgraph{display:none}
+  .branches[data-layout] .blist{display:flex}
+  .branch-layout{display:none}
+  .org{padding:var(--space-12)}
   .subview{grid-template-columns:minmax(0,1fr);grid-auto-rows:min-content;overflow:auto}
   .subview-nav{border-right:0;border-bottom:1px solid var(--line);overflow:visible;padding:var(--space-12)}
   .subview-main{overflow:visible;padding:var(--space-12)}

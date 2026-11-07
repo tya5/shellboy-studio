@@ -1,0 +1,1 @@
+A Thread in a list that supports choosing several. The checkbox chooses; the title opens. Depth indents only for a real parent link, and `note` names a parent outside the group. There's no drag handle: moving a Thread is not an operation in the pinned owner.

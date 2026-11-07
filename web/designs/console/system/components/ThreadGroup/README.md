@@ -1,0 +1,1 @@
+Threads gathered by working directory or state. The heading names the group, in `mono` for a path, and its checkbox selects every row in it, showing mixed when only some are chosen. It holds SelectRow rows. Don't put a total here that the owner doesn't report.
