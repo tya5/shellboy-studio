@@ -98,9 +98,9 @@ export function MemoryPane({ model }: { model: AppModel }) {
   const missing = t("common.notReported");
   return (
     <>
-      <Head t={t} title={t("res.memory")} sub={t("ana.sub.memory")} loading={memory.loading || bridge.loading} onRefresh={() => { i.refreshRead("memory"); i.refreshRead("bridge"); }} />
+      <Head t={t} title={t("ana.section.memory")} sub={t("ana.sub.memory")} loading={memory.loading || bridge.loading} onRefresh={() => { i.refreshRead("memory"); i.refreshRead("bridge"); }} />
       <Section
-        title={t("res.process")}
+        title={t("res.memory")}
         sub={memory.value?.observedAt ? t("res.memorySub", { at: formatClock(memory.value.observedAt, true) ?? "" }) : undefined}
         source={<>{t("common.source", { source: "" })}<code>status --memory</code></>}
       >

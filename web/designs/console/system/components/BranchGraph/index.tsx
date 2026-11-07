@@ -85,7 +85,7 @@ export function BranchGraph({ layout, selected, onPoint, tipHref, tipTitle, tipN
           <a key={l.item.threadId} class="bg-tip" href={tipHref(l.item)} aria-label={`${tipTitle(l.item)}. ${tipNote(l.item)}`}>
             <rect class={l.active ? "tip on" : "tip"} x={x(layout.tipColumn)} y={y(l.row) - TIP_H / 2} width={TIP_W} height={TIP_H} rx={8} />
             <text class="bg-name" x={x(layout.tipColumn) + 12} y={y(l.row) - 4}>{clip(tipTitle(l.item), NAME_CHARS)}</text>
-            <text class="bg-note" x={x(layout.tipColumn) + 12} y={y(l.row) + 15}>{clip(tipNote(l.item), NAME_CHARS + 8)}</text>
+            <text class="bg-note" x={x(layout.tipColumn) + 12} y={y(l.row) + 15}>{clip(tipNote(l.item), NAME_CHARS + 5)}</text>
           </a>
         ))}
       </svg>

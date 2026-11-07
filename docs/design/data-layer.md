@@ -37,7 +37,7 @@ only browser API, behind the `Transport` interface (`transport.ts`).
 - **Reads wait for the owner**: nothing is read until `hello` shows the owner connected.
 - **Bounds** (limits, not performance claims): 4 calls on the wire (= the bridge's per-session
   running bound, so `busy` should not occur), 256 outstanding calls then local `busy`,
-  64 open Threads (= the bridge's watch bound; `openThread` throws `RangeError`), pages of 50,
+  64 open Threads (= the bridge's watch bound; `openThread` throws `RangeError`), pages of 50 up to 1000 rows held,
   live preview 262144 UTF-16 code units, reconnect delay 1 s doubling to 10 s.
 - **History is a window over the end of the path.** Observed on the real owner: `history.list`
   runs oldest to newest, `next_cursor` moves towards the newest, there is no way to start at the
@@ -53,6 +53,46 @@ only browser API, behind the `Transport` interface (`transport.ts`).
   `unconfirmed` and carries the id; the caller retries with the same id (idempotent through
   receipts) or looks it up with `operationGet`. The data layer never retries mutations itself.
   `human` and `sender_label` are set by the bridge, not by the data layer.
+
+## Scale
+
+User requirement (2026-11-07): many Threads must not mean all data in memory, and nothing may scale with the total number of Threads per render or per hint. What each thing holds:
+
+| Item | Bound | Released |
+|---|---|---|
+| Thread list rows (`threadList`, sidebar, Monitor) | 1000 (`MAX_LIST_ROWS`), 50 per press of Show more; past it, search | Replaced by a changed search; a hint re-reads one page and keeps rows further down, which can stay stale until the next full read |
+| `rows`, `rowById` | Derived once per list change, from those rows | With the list |
+| Threads view | 5 pages of 200 (`ORG_MAX_PAGES`), re-read on a list change, one read at a time and one trailing; grouping is memoized | Mode or filter change |
+| Branches view | One family, at most 256 Threads (owner's bound); 4 pages, 3 restarts | Thread change |
+| Open Thread handles | 64 watched (`MAX_WATCHED_THREADS`); the Web UI holds 1, closed when another opens | On close |
+| History window | 400 items of up to 4096 characters; up to 6400 if asked for | With the handle |
+| Message bodies, step output | 64 entries each, oldest dropped; 8 pages of 64 KiB per entry at most | Oldest first; also on Thread change for output watch |
+| Shell facts | 200 per Thread | Thread change |
+| Branch marks | One map per open Thread; one family read per open | Thread change |
+| Live preview | 262144 UTF-16 code units per open Thread | Discard rules below |
+| Analytics walks | Days: at most 32 groups. By Thread: 2000 groups (`MAX_GROUPS`), then stops and says so; 64 windows per run | New period or Refresh |
+| Compaction events | 50 rows for one Thread | New Thread or period |
+| Resource reads | One value each | Replaced on Refresh |
+| Markdown | No cache: a `useMemo` per mounted message, so bounded by the window | Unmount |
+| Apps | 64 tabs and listeners; 20 errors per tab | On close; listeners with the bridge |
+| Ticks | `now` each second, read by running steps; lists use `coarseNow`, every 30 s, so a tick doesn't re-render a list | — |
+
+Long lists use `content-visibility:auto` rather than a JS virtual list, so off-screen rows cost layout only when reached. The DOM still holds them, up to the bounds above.
+
+Measured (2026-11-07, one run, facts and not bounds): macOS arm64, headless Chrome, debug bridge, `shellboy` 0.10.0, temp owner seeded by SQL with 5,002 Threads and a 100,000-node Thread cloned from real rows, 1440x900.
+
+| Scenario | First paint | Ready | JS heap after GC | DOM nodes | Long tasks | Frames while scrolling |
+|---|---|---|---|---|---|---|
+| Monitor, 50 rows | 44 ms | 73 ms | 1.7 MiB | 989 | 0 | 17 ms, p95 and max |
+| Threads view, 200 rows | 44 ms | 79 ms | 2.2 MiB | 2,528 | 0 | 17 ms |
+| By Thread (no usage in this seed) | 40 ms | 79 ms | 1.5 MiB | 450 | 0 | 17 ms |
+| Monitor, 1000 rows (the bound) | | | 8.1 MiB | 17,518 | 0 | 17 ms |
+| 100,000-node Thread | | 30.8 s, 1,002 `history.list` calls | 3.1 MiB | 2,205 | 0 | 17 ms over 140 messages |
+| Four tabs on it at once | | 150 s each | about 3 MiB each | | | |
+
+Five list hints with 1000 rows expanded: 5 `thread.list` calls, no long task, no rows lost. With 5,000 Threads, one page of the list costs what it costs with 50. These frames come from a scripted scroll in headless Chrome, which paints nothing to a screen, so they say the main thread kept up, not how it looks. The seed's Threads are idle: a real owner with many running Threads wasn't tried, nor was a phone, nor Safari or Firefox.
+
+What needs core: the only remaining thing that scales with the data is opening a long Thread, which walks the whole path and takes 30 s for 100,000 nodes, though the page stays responsive and only 400 items are kept. That is Shellboy #268, and `long-threads.md` is the plan. By-Thread usage has the same shape in `usage.get` (`analytics-settings.md`), and needs a seek by date.
 
 ## Public API (short)
 

@@ -30,7 +30,7 @@ Open the printed URL once; the app exchanges the token the same way. For the deb
 (default `127.0.0.1:8751`), `--data-dir` (default: `SHELLBOY_DATA_DIR`, then the OS
 default, resolved by Shellboy's own `resolve_cli_data_dir`), `--config-dir` (token
 location, default the OS config directory plus `shellboy-web`), `--allow-host NAME`
-(repeatable), `--debug`.
+(repeatable), `--apps-dir` (default `apps` in the data directory, `apps.md`), `--debug`.
 
 ## Bounds (limits, not performance claims)
 
@@ -88,6 +88,10 @@ fallback.
 ## Allowlist additions
 
 `usage.get`, `compact.list`, `storage.status` and `index.status` are reads for the Analytics and Settings views (`analytics-settings.md`). `src/ws.rs` tests that they pass and that `storage.collect`, `index.*` mutations, `thread.prune`, `thread.set` and `compact` stay denied.
+
+## Memory (measured, 2026-11-07)
+
+A fact of one run, not a bound. `ps -o rss=` sampled every 200 ms; debug build, macOS arm64, temp owner with 5,002 Threads and a 100,000-node Thread. Idle: 5 to 13 MiB depending on what it has served. One tab opening the long Thread (1,002 `history.list` calls): peak 15 MiB. Four tabs doing that at once: peak 15 MiB. Analytics > Memory shows the same figure on opening and on Refresh (`bridge.memory`, `src/process.rs`): `/proc` on Linux, `ps` on other Unix, unknown on Windows with the reason stated. A release build wasn't measured. The worst case isn't this: replies pass through unbuffered per call, so up to 8 proxied calls of up to the 8 MiB frame limit could be in memory at once.
 
 ## Needs from core
 
