@@ -431,3 +431,8 @@ a{color:var(--accent)}
 .vspace-in{position:absolute;left:0;right:0}
 .vgap{overflow:hidden}
 .vrow{display:flow-root}
+
+.output-add { color: var(--ok); }
+.output-remove { color: var(--bad); }
+.output-hunk, .output-key { color: var(--accent); }
+.output-file { color: var(--fg); font-weight: 600; }

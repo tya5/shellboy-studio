@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
-import { formatClock, formatDuration, formatRoute, formatTokens, parseTime, statusLabel, type AppModel, type ConversationRow, type StepRow as Step } from "../../../ui-core/src";
+import { renderOutput, formatClock, formatDuration, formatRoute, formatTokens, parseTime, statusLabel, type AppModel, type ConversationRow, type StepRow as Step } from "../../../ui-core/src";
 import { ScrollIntent } from "./scrollIntent";
 import { LiveMessage } from "./LiveMessage";
 import { WindowedScroll } from "./WindowedScroll";
@@ -13,14 +13,17 @@ const stepDuration = (s: Step, now: number): string | undefined => {
 
 const exitText = (s: Step): string | undefined => (typeof s.exitCode === "number" ? `exit ${s.exitCode}` : undefined);
 
-function Output({ model, id, boxed }: { model: AppModel; id: string; boxed?: boolean }) {
+function Output({ model, id, command, complete, boxed }: { model: AppModel; id: string; command: string; complete: boolean; boxed?: boolean }) {
+  const [raw, setRaw] = useState(false);
   const t = model.t.value;
   const out = model.outputs.value.get(id);
   if (!out || (out.loading && out.text === "")) return <div class="log muted">{t("details.outputLoading")}</div>;
   if (out.error) return <div class="log muted">{t("details.outputError", { message: out.error })}</div>;
+  const rendered = renderOutput({ command, text: out.text, complete: complete && !out.loading && !out.cutOff });
   return (
     <>
-      <LogBlock text={out.text === "" ? t("details.outputEmpty") : out.text} boxed={boxed ?? false} />
+      {rendered ? <Button onClick={() => setRaw(!raw)}>{raw ? t("output.formatted") : t("output.raw")}</Button> : null}
+      {rendered && !raw ? <pre class={boxed ? "log boxed" : "log"} tabIndex={0}>{rendered.lines.map((line, i) => <span key={i} class={`output-${line.kind}`}>{line.text}{i < rendered.lines.length - 1 ? "\n" : ""}</span>)}</pre> : <LogBlock text={out.text === "" ? t("details.outputEmpty") : out.text} boxed={boxed ?? false} />}
       {out.cutOff ? <div class="caption muted">{t("details.outputMore")}</div> : null}
     </>
   );
@@ -47,7 +50,7 @@ function StepView({ model, step }: { model: AppModel; step: Step }) {
       }}
     >
       {step.description ? <div class="mono muted caption">{step.command}</div> : null}
-      <Output model={model} id={step.executionId} />
+      <Output model={model} id={step.executionId} command={step.command ?? ""} complete={step.status === "completed" || step.status === "failed"} />
     </StepRow>
   );
 }
@@ -150,7 +153,7 @@ function Details({ model }: { model: AppModel }) {
               ...(step.cwd ? [{ key: t("details.directory"), value: step.cwd, mono: true }] : []),
             ]}
           />
-          <Output model={model} id={step.executionId} boxed />
+          <Output model={model} id={step.executionId} command={step.command ?? ""} complete={step.status === "completed" || step.status === "failed"} boxed />
       {usageRows.length > 0 ? (
         <>
           <h3>{t("usage.title")}</h3>
