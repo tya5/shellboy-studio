@@ -217,6 +217,25 @@ describe("Insights over the fake transport", () => {
     expect(t.calls("usage.get").filter((c) => (c.args as { group_by: string }).group_by === "thread")).toHaveLength(1);
   });
 
+  it("the bridge's memory reads only with the Memory section, again on Refresh, and says why when unknown", async () => {
+    const { t, db, model } = await fixtureModel({ route: "analytics", section: "overview" });
+    await settle(t, db);
+    expect(t.calls("bridge.memory")).toHaveLength(0);
+    model.applyRoute({ view: "analytics", section: "memory" });
+    await settle(t, db);
+    expect(t.calls("bridge.memory")).toHaveLength(1);
+    expect(model.insights.bridge.value.value?.rssBytes).toBe(41943040);
+    model.applyRoute({ view: "analytics", section: "overview" });
+    model.applyRoute({ view: "analytics", section: "memory" });
+    await settle(t, db);
+    expect(t.calls("bridge.memory")).toHaveLength(1);
+    const plain = db.answer;
+    db.answer = (c) => (c.command === "bridge.memory" ? { ok: true, result: { rss_bytes: null, unavailable_reason: "Not read on this platform" } } : plain(c));
+    model.insights.refreshRead("bridge");
+    await settle(t, db);
+    expect(model.insights.bridge.value.value).toEqual({ rssBytes: undefined, reason: "Not read on this platform" });
+  });
+
   it("walked data survives switching sections, also while a walk runs", async () => {
     const { t, db, model } = await fixtureModel({ route: "analytics", section: "overview" });
     await settle(t, db);

@@ -15,6 +15,7 @@ pub mod envelope;
 pub mod events;
 pub mod hub;
 pub mod owner;
+pub mod process;
 pub mod seam;
 pub mod server;
 pub mod ws_limits {

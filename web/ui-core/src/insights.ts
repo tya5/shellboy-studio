@@ -135,7 +135,17 @@ export interface CompactionState {
   error: OpError | undefined;
 }
 
-export type ResourceRead = "memory" | "storage" | "index" | "receipts";
+export type ResourceRead = "memory" | "storage" | "index" | "receipts" | "bridge";
+
+export interface BridgeMemory {
+  rssBytes: number | undefined;
+  reason: string | undefined;
+}
+
+const readBridgeMemory = (v: Record<string, unknown>): BridgeMemory => ({
+  rssBytes: typeof v.rss_bytes === "number" ? v.rss_bytes : undefined,
+  reason: typeof v.unavailable_reason === "string" ? v.unavailable_reason : undefined,
+});
 
 const lostConnection = (e: OpError | undefined): boolean => e?.kind === "not_connected" || e?.kind === "connection_lost";
 
@@ -156,6 +166,7 @@ export class Insights {
   readonly storage: Signal<ReadState<StorageFacts>> = signal(nothing);
   readonly index: Signal<ReadState<IndexFacts>> = signal(nothing);
   readonly receipts: Signal<ReadState<ReceiptFacts | undefined>> = signal(nothing);
+  readonly bridge: Signal<ReadState<BridgeMemory>> = signal(nothing);
   readonly thread: Signal<ReadState<ThreadSettings> & { threadId: string | undefined }> = signal({ ...nothing, threadId: undefined });
   /** Model catalog: an explicit request only, because it makes a network request. */
   readonly catalog: Signal<ReadState<ModelListResult>> = signal(nothing);
@@ -197,6 +208,7 @@ export class Insights {
         return;
       case "memory":
         this.ensureRead("memory");
+        this.ensureRead("bridge");
         return;
       case "index":
         this.ensureRead("index");
@@ -265,7 +277,7 @@ export class Insights {
   }
 
   private resource(kind: ResourceRead): Signal<ReadState<unknown>> {
-    return { memory: this.memory, storage: this.storage, index: this.index, receipts: this.receipts }[kind] as Signal<ReadState<unknown>>;
+    return { memory: this.memory, storage: this.storage, index: this.index, receipts: this.receipts, bridge: this.bridge }[kind] as Signal<ReadState<unknown>>;
   }
 
   /** One finite owner read, when a section opens and on request. There is no periodic sampling. */
@@ -282,6 +294,9 @@ export class Insights {
         return;
       case "receipts":
         void readInto(this.receipts, () => this.ops.statusSummary(), readReceipts);
+        return;
+      case "bridge":
+        void readInto(this.bridge, () => this.ops.bridgeMemory(), readBridgeMemory);
         return;
     }
   }

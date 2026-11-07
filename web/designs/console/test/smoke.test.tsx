@@ -261,6 +261,8 @@ describe("Analytics", () => {
     });
     expect(text(el)).toContain("UI cache owner is not available");
     expect(el.querySelector('[role="meter"]')).toBeTruthy();
+    expect(text(el)).toContain("Bridge resident memory");
+    expect(text(el)).toContain("40 MiB");
   });
   it("By Thread reads on opening; Show compaction goes to its section", async () => {
     const { el, t, db, model } = await open("threads");

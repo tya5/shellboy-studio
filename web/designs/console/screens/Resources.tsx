@@ -94,10 +94,11 @@ export function MemoryPane({ model }: { model: AppModel }) {
   const t = model.t.value;
   const i = model.insights;
   const memory = i.memory.value;
+  const bridge = i.bridge.value;
   const missing = t("common.notReported");
   return (
     <>
-      <Head t={t} title={t("res.memory")} sub={t("ana.sub.memory")} loading={memory.loading} onRefresh={() => i.refreshRead("memory")} />
+      <Head t={t} title={t("res.memory")} sub={t("ana.sub.memory")} loading={memory.loading || bridge.loading} onRefresh={() => { i.refreshRead("memory"); i.refreshRead("bridge"); }} />
       <Section
         title={t("res.process")}
         sub={memory.value?.observedAt ? t("res.memorySub", { at: formatClock(memory.value.observedAt, true) ?? "" }) : undefined}
@@ -109,6 +110,14 @@ export function MemoryPane({ model }: { model: AppModel }) {
             {memory.value.metrics.map((m) => (
               <Stat key={m.name} label={metricName(t, m.name)} value={m.bytes !== undefined ? formatBytes(m.bytes) : missing} note={m.bytes === undefined ? m.reason : undefined} />
             ))}
+          </div>
+        ) : null}
+      </Section>
+      <Section title={t("res.bridge")} sub={t("res.bridgeSub")} source={<>{t("common.source", { source: "" })}<code>bridge.memory</code></>}>
+        {bridge.error ? <Notice tone="bad">{t("common.readError", { message: bridge.error.message })}</Notice> : null}
+        {bridge.value ? (
+          <div class="stats">
+            <Stat label={t("res.bridgeRss")} value={bridge.value.rssBytes !== undefined ? formatBytes(bridge.value.rssBytes) : missing} note={bridge.value.reason} />
           </div>
         ) : null}
       </Section>

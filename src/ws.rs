@@ -195,6 +195,16 @@ fn handle_frame<O: Owner>(
                 ));
             }
             // The gateway's own calls: they never reach the owner.
+            if command == "bridge.memory" {
+                let tx = results_tx.clone();
+                let handle = tasks.spawn(async move {
+                    let result = crate::process::memory().await;
+                    let response = json!({"protocol_version": 0, "operation_id": "gateway", "ok": true, "result": result});
+                    let _ = tx.send(ServerFrame::Result { id, response: Some(response), error: None }).await;
+                });
+                handles.insert(id, handle);
+                return None;
+            }
             if let Some(name) = command.strip_prefix("apps.") {
                 return apps_call(name, id, args, state, results_tx, tasks, handles, host);
             }

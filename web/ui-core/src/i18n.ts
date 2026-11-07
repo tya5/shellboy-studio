@@ -498,6 +498,9 @@ const en = {
   "apps.noThreadToSend": "This app has no bound Thread to send these to.",
   "apps.reopen": "Reload app",
   "apps.source": "Found in the apps folder, read when you open this view and on Refresh.",
+  "res.bridge": "Bridge process",
+  "res.bridgeSub": "This gateway, as the OS reports it. Read on opening and on Refresh only.",
+  "res.bridgeRss": "Bridge resident memory",
   "brand": "Shellboy",
 } as const;
 
@@ -996,6 +999,9 @@ const ja: Record<MessageKey, string> = {
   "apps.noThreadToSend": "送信先の関連スレッドがありません。",
   "apps.reopen": "アプリを再読み込み",
   "apps.source": "アプリフォルダから取得。この画面を開いたときと再読み込み時に読みます。",
+  "res.bridge": "ブリッジのプロセス",
+  "res.bridgeSub": "このゲートウェイ自身。OSの報告値で、開いたときと再読み込み時だけ読みます。",
+  "res.bridgeRss": "ブリッジの常駐メモリ",
   "brand": "Shellboy",
 };
 

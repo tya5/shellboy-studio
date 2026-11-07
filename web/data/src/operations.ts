@@ -188,6 +188,10 @@ export class Operations {
   threadRewindPreview(args: ThreadRewindArgs): Promise<Outcome<Record<string, unknown>>> {
     return this.run("thread.rewind", { ...args, dry_run: true }, decodeRecord);
   }
+  /** The gateway's own process memory, as the OS reports it. */
+  bridgeMemory(): Promise<Outcome<Record<string, unknown>>> {
+    return this.run("bridge.memory", {}, decodeRecord);
+  }
   /** The gateway's own: apps found in the apps folder. Doesn't reach the owner. */
   appsList(): Promise<Outcome<Record<string, unknown>>> {
     return this.run("apps.list", {}, decodeRecord);
