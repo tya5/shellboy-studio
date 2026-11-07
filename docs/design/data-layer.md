@@ -48,6 +48,7 @@ only browser API, behind the `Transport` interface (`transport.ts`).
   last item read; at most 8 such retries per read. `resync` starts over. `loadOlderHistory` doubles
   the window (limit 6400) and walks again. The cost of opening a Thread therefore grows with its
   history; a reverse read is on the list of needs from core.
+- **With `history.window`** (capability, Shellboy #268, `next-shellboy`) the walk above is not used: the store only counts hints (`ThreadHandle.historyTick`) and `readWindow` sends positional reads for the long-thread reader, which owns what is held (`long-threads.md`). `history` stays unloaded on that path.
 - **Mutations** take an `operationId` (default `<instance_id>:<fresh UUID>`, the only form the owner
   accepts from a client; the instance comes from `hello`). A reply lost on socket close is
   `unconfirmed` and carries the id; the caller retries with the same id (idempotent through

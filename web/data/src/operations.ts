@@ -9,6 +9,8 @@ import type {
   HistoryGetArgs,
   HistoryItem,
   HistoryListArgs,
+  HistoryWindowArgs,
+  HistoryWindowResult,
   MessageSendArgs,
   ModelListArgs,
   ModelListResult,
@@ -61,6 +63,14 @@ const summaryProblem = (v: unknown): string | undefined =>
 
 const decodeThreadPage = pageOf<ThreadSummary>(summaryProblem);
 const decodeHistoryPage = pageOf<HistoryItem>((v) => (isObject(v) ? undefined : "history item is not an object"));
+const decodeHistoryWindow: Decoder<HistoryWindowResult> = (v) =>
+  isObject(v) &&
+  Array.isArray(v.items) &&
+  typeof v.total === "number" &&
+  (typeof v.revision === "string" || typeof v.revision === "number") &&
+  v.items.every((i) => isObject(i) && typeof (i.selection as { ordinal?: unknown } | undefined)?.ordinal === "number")
+    ? { ok: true, value: v as unknown as HistoryWindowResult }
+    : { ok: false, reason: "history.window result lacks items with ordinals, total or revision" };
 const decodeDetails: Decoder<ThreadDetails> = (v) =>
   isObject(v) && typeof v.thread_id === "string" && typeof v.title === "string"
     ? { ok: true, value: v as ThreadDetails }
@@ -193,6 +203,9 @@ export class Operations {
   }
   historyList(args: HistoryListArgs, read?: ReadOptions): Promise<Outcome<Page<HistoryItem>>> {
     return this.run("history.list", args, decodeHistoryPage, undefined, read);
+  }
+  historyWindow(args: HistoryWindowArgs, read?: ReadOptions): Promise<Outcome<HistoryWindowResult>> {
+    return this.run("history.window", args, decodeHistoryWindow, undefined, read);
   }
   historyGet(args: HistoryGetArgs, read?: ReadOptions): Promise<Outcome<HistoryBody>> {
     return this.run("history.get", args, decodeBody, undefined, read);

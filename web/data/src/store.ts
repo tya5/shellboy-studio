@@ -1,7 +1,7 @@
 // The view-model: signals holding saved facts re-read through the proxy, never invented.
 // Hints (`changed`, `resync`, `owner`) are triggers only; their payloads carry no data.
 import { batch, computed, signal, type ReadonlySignal } from "@preact/signals-core";
-import type { OpError } from "./errors";
+import type { OpError, Outcome } from "./errors";
 import { Link, type ConnectionState, type LinkEvent } from "./link";
 import {
   applyStream,
@@ -14,6 +14,8 @@ import { Cancel, Operations } from "./operations";
 import type {
   ArchivedFilter,
   HistoryItem,
+  HistoryWindowArgs,
+  HistoryWindowResult,
   OwnerState,
   ThreadDetails,
   ThreadSummary,
@@ -34,6 +36,8 @@ export const HISTORY_EXCERPT_CHARS = 4096;
 /** Newest history items kept per open Thread; `loadOlderHistory` doubles it up to the maximum. */
 export const HISTORY_WINDOW = 400;
 export const HISTORY_WINDOW_MAX = 6400;
+/** The owner reads `history.window` (Shellboy #268). With it, history is read by position and never walked. */
+export const CAPABILITY_HISTORY_WINDOW = "history.window";
 /** `cursor_expired` continuations, and restarts after the path changed, within one history read. */
 const HISTORY_READ_RETRIES = 8;
 
@@ -85,6 +89,12 @@ export interface ThreadHandle extends Handle {
   /** Oldest to newest, as the owner returns it; a window over the end of the path. */
   readonly history: ReadonlySignal<HistoryState>;
   readonly preview: ReadonlySignal<Preview>;
+  /** Counts hints for this Thread's history while the owner has `history.window`; the window reader follows it. */
+  readonly historyTick: ReadonlySignal<number>;
+  /** One positional read. Nothing is sent for a closed or paused Thread. */
+  readWindow(args: Omit<HistoryWindowArgs, "thread_id">, cancel: Cancel): Promise<Outcome<HistoryWindowResult>>;
+  /** Cancels this Thread's reads (what leaving the view does). */
+  cancelReads(): void;
   refresh(): Promise<void>;
   loadOlderHistory(): Promise<void>;
   /** False when the window reached its maximum. */
@@ -119,6 +129,7 @@ class ThreadEntry {
   /** The next read starts from the beginning of the path, not from the last known item. */
   fullRead = true;
   preview = signal<Preview>(NO_PREVIEW);
+  historyTick = signal(0);
   /** Bumped by every history read; a read started earlier drops its result. */
   historyGen = 0;
   /** Cancels this Thread's reads: dropped if queued, a `cancel` frame if sent. Replaced on resume. */
@@ -273,6 +284,12 @@ export class ShellboyData {
       detail: e.detail,
       history: e.history,
       preview: e.preview,
+      historyTick: e.historyTick,
+      readWindow: (args, cancel) => {
+        if (e.closed || e.paused) return Promise.resolve({ ok: false, error: { kind: "cancelled", message: "thread is not being read" } });
+        return this.operations.historyWindow({ thread_id: threadId, ...args }, { cancel });
+      },
+      cancelReads: () => e.cancel.cancel(),
       refresh: () => this.requestThread(threadId),
       loadOlderHistory: () => this.loadOlder(e),
       canShowEarlier: () => e.window < HISTORY_WINDOW_MAX,
@@ -438,6 +455,10 @@ export class ShellboyData {
     const entry = this.entries.get(key.slice(sep + 1));
     if (!entry) return; // closed since the request
     if (kind === "thread") return this.readDetail(entry, onSent);
+    if (this.ownerSig.peek().state === "connected" && this.capabilities.peek().includes(CAPABILITY_HISTORY_WINDOW)) {
+      entry.historyTick.value++; // positional reads: nothing is walked, the window reader decides what to read
+      return;
+    }
     return this.readHistory(entry, onSent);
   }
 

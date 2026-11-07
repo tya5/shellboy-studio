@@ -2,6 +2,8 @@
 // retry and archive flows. Saved facts stay in the data layer; nothing here is optimistic.
 import { computed, effect, signal, type ReadonlySignal, type Signal } from "@preact/signals-core";
 import { Cancel, type Handle, type Operations, type OpError, type ShellboyData, type ShellEntry, type ThreadDetails, type ThreadHandle } from "../../data/src";
+import { CAPABILITY_HISTORY_WINDOW } from "../../data/src";
+import { ConversationWindow } from "./window";
 import { branchRowMarks, projectConversation, type ConversationRow, type StepRow } from "./conversation";
 import { translator, type Lang, type Translate } from "./i18n";
 import { AppsModel } from "./apps";
@@ -106,6 +108,8 @@ export class AppModel {
   /** The Thread the conversation shows: from the route, else the last one, else the newest. */
   readonly selectedId: ReadonlySignal<string | undefined>;
   readonly handle: Signal<ThreadHandle | undefined> = signal(undefined);
+  /** The long-thread reader, while the owner reads by position by position and the Conversation is open. */
+  readonly longReader: Signal<ConversationWindow | undefined> = signal(undefined);
   readonly details: ReadonlySignal<ThreadDetails | undefined>;
   readonly selectedRow: ReadonlySignal<ThreadRow | undefined>;
   readonly conversation: ReadonlySignal<ConversationRow[]>;
@@ -129,6 +133,8 @@ export class AppModel {
   private readonly onNavigate: ((hash: string) => void) | undefined;
   private listHandle: Handle | undefined;
   private handlePaused = false;
+  private readerThread: string | undefined;
+  private readerTick = 0;
   private disposers: (() => void)[] = [];
   private shellRead: { running: boolean; again: boolean } = { running: false, again: false };
   /** Cancels reads for the open Thread (steps, bodies, marks) when another opens or the view is left. */
@@ -191,7 +197,13 @@ export class AppModel {
       const h = this.handle.value;
       return h ? projectConversation(h.history.value.items, this.shells.value) : [];
     });
-    this.rowMarks = computed(() => branchRowMarks(this.handle.value?.history.value.items ?? [], this.conversation.value, this.marks.value));
+    this.rowMarks = computed(() => {
+      const w = this.longReader.value;
+      if (!w) return branchRowMarks(this.handle.value?.history.value.items ?? [], this.conversation.value, this.marks.value);
+      w.version.value; // marks follow the items the reader holds in view
+      const items = w.rangeItems();
+      return branchRowMarks(items, items.flatMap((i) => projectConversation([i], this.shells.value)), this.marks.value);
+    });
     this.context = computed(() => contextFacts(this.details.value));
     this.usage = computed(() => usageFacts(this.details.value));
     this.recovery = computed(() => (this.selectedRow.value?.status === "recovery" ? recoveryFacts(this.details.value) : undefined));
@@ -200,7 +212,13 @@ export class AppModel {
     this.selectedStep = computed(() => {
       const id = this.selectedStepId.value;
       if (!id) return undefined;
-      for (const row of this.conversation.value)
+      const w = this.longReader.value;
+      let rows = this.conversation.value;
+      if (w) {
+        w.version.value;
+        rows = w.heldSteps().flatMap((i) => projectConversation([i], this.shells.value));
+      }
+      for (const row of rows)
         if (row.type === "steps") for (const s of row.steps) if (s.executionId === id) return s;
       return undefined;
     });
@@ -211,6 +229,7 @@ export class AppModel {
     let marksFor: string | undefined;
     this.listHandle = this.data.trackThreadList();
     this.disposers.push(effect(() => this.syncOpenThread()));
+    this.disposers.push(effect(() => this.syncWindow()));
     // A section's reads run when it opens with the owner reachable, not when it renders. A new
     // period re-runs this, so only the open section reads it.
     this.disposers.push(
@@ -319,6 +338,7 @@ export class AppModel {
   }
 
   dispose(): void {
+    this.longReader.peek()?.dispose();
     for (const d of this.disposers) d();
     this.disposers = [];
     this.listHandle?.close();
@@ -356,6 +376,42 @@ export class AppModel {
 
   openThread(threadId: string): void {
     this.navigate({ view: "conversation", threadId });
+  }
+
+  /** One reader per open Thread while the Conversation shows and the owner has the positional read. */
+  private syncWindow(): void {
+    const h = this.handle.value;
+    const want = this.route.value.view === "conversation" && h !== undefined && this.data.capabilities.value.includes(CAPABILITY_HISTORY_WINDOW);
+    const cur = this.longReader.peek();
+    if (cur && (!want || this.readerThread !== h.threadId)) {
+      cur.dispose(); // leaving the view or the Thread cancels its reads
+      this.longReader.value = undefined;
+      this.readerThread = undefined;
+    }
+    if (!want || !h) return;
+    if (!this.longReader.peek()) {
+      this.readerThread = h.threadId;
+      this.readerTick = h.historyTick.peek();
+      this.longReader.value = new ConversationWindow({ read: (a, c) => h.readWindow(a, c) });
+    }
+    const tick = h.historyTick.value; // a hint: the reader decides what to read
+    if (tick !== this.readerTick) {
+      this.readerTick = tick;
+      this.longReader.peek()!.changed();
+    }
+    this.readerShells(this.longReader.peek()!);
+  }
+
+  /** Shell facts for the steps in view, read while it shows some. */
+  private readerShells(w: ConversationWindow): void {
+    w.version.value;
+    const r = w.renderRange();
+    if (!r || !this.handle.peek()) return;
+    for (let i = r.first; i <= r.last; i++)
+      if ((w.itemAt(i)?.executions?.length ?? 0) > 0) {
+        void this.refreshShells(this.handle.peek()!.threadId);
+        return;
+      }
   }
 
   private cancelThreadReads(): void {
