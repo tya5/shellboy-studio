@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import { formatClock, formatDuration, formatRoute, formatTokens, parseTime, statusLabel, type AppModel, type ConversationRow, type StepRow as Step } from "../../../ui-core/src";
+import { WindowedScroll } from "./WindowedScroll";
 import { BranchMark, Button, Composer, LoadingRows, EmptyState, Icon, KeyValue, LogBlock, Message, Notice, StatusMark, StepRow, SummaryStrip } from "../system/components";
 
 const stepDuration = (s: Step, now: number): string | undefined => {
@@ -153,6 +154,7 @@ export function Conversation({ model }: { model: AppModel }) {
   const t = model.t.value;
   const handle = model.handle.value;
   const rows = model.conversation.value;
+  const win = model.longReader.value;
   const scroller = useRef<HTMLDivElement>(null);
   const pinned = useRef(true);
   const history = handle?.history.value;
@@ -184,38 +186,47 @@ export function Conversation({ model }: { model: AppModel }) {
   return (
     <>
       <div class="convo">
-        <div
-          class="scroll"
-          ref={scroller}
-          onScroll={(e) => {
-            const el = e.currentTarget;
-            pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
-          }}
-        >
-          {history?.earlierHidden ? (
-            <span class="more">
-              {handle.canShowEarlier() ? (
-                <Button disabled={history.loadingMore} onClick={() => void handle.loadOlderHistory()}>{t("convo.earlier")}</Button>
-              ) : (
-                <span class="muted caption">{t("convo.earlierLimit")}</span>
-              )}
-            </span>
-          ) : null}
-          {history?.error && !history.loaded ? (
-            <Notice tone="bad" actions={<Button onClick={() => void handle.refresh()}>{t("convo.retryLoad")}</Button>}>
-              {t("convo.loadError", { message: history.error.message })}
-            </Notice>
-          ) : null}
-          {rows.map((row) => (
-            <RowView key={row.id} model={model} row={row} />
-          ))}
-          {previewText !== undefined ? (
-            <Message bot who={t("convo.shellboy")} at={t("convo.live")} text={previewText} copyLabel={t("code.copy")} copiedLabel={t("code.copied")} />
-          ) : null}
-          {rows.length === 0 && !history?.error ? (
-            loading ? <LoadingRows label={t("convo.loading")} rows={5} /> : <EmptyState icon="chat" title={t("convo.empty")} body={t("convo.emptyBody")} />
-          ) : null}
-        </div>
+        {win ? (
+          <WindowedScroll
+            model={model}
+            win={win}
+            renderRow={(row) => <RowView model={model} row={row} />}
+            live={previewText !== undefined ? <Message bot who={t("convo.shellboy")} at={t("convo.live")} text={previewText} copyLabel={t("code.copy")} copiedLabel={t("code.copied")} /> : null}
+          />
+        ) : (
+          <div
+            class="scroll"
+            ref={scroller}
+            onScroll={(e) => {
+              const el = e.currentTarget;
+              pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
+            }}
+          >
+            {history?.earlierHidden ? (
+              <span class="more">
+                {handle.canShowEarlier() ? (
+                  <Button disabled={history.loadingMore} onClick={() => void handle.loadOlderHistory()}>{t("convo.earlier")}</Button>
+                ) : (
+                  <span class="muted caption">{t("convo.earlierLimit")}</span>
+                )}
+              </span>
+            ) : null}
+            {history?.error && !history.loaded ? (
+              <Notice tone="bad" actions={<Button onClick={() => void handle.refresh()}>{t("convo.retryLoad")}</Button>}>
+                {t("convo.loadError", { message: history.error.message })}
+              </Notice>
+            ) : null}
+            {rows.map((row) => (
+              <RowView key={row.id} model={model} row={row} />
+            ))}
+            {previewText !== undefined ? (
+              <Message bot who={t("convo.shellboy")} at={t("convo.live")} text={previewText} copyLabel={t("code.copy")} copiedLabel={t("code.copied")} />
+            ) : null}
+            {rows.length === 0 && !history?.error ? (
+              loading ? <LoadingRows label={t("convo.loading")} rows={5} /> : <EmptyState icon="chat" title={t("convo.empty")} body={t("convo.emptyBody")} />
+            ) : null}
+          </div>
+        )}
         <div class="dock">
           {recovery ? (
             <Notice

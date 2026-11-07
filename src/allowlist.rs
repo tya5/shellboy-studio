@@ -48,6 +48,9 @@ pub fn access(command: &Command) -> Access {
         // have no way to reach these: `apps.call` has its own list.
         #[cfg(feature = "next-shellboy")]
         Command::ConfigGet(..) => Access::Read,
+        // The long-thread reader (#268): a positional window of the selected path. Read only.
+        #[cfg(feature = "next-shellboy")]
+        Command::HistoryWindow(..) => Access::Read,
         #[cfg(feature = "next-shellboy")]
         Command::ConfigSet(..) => Access::Mutation,
         // First-run connection setup (#269). One model-list GET, no state change on the owner.

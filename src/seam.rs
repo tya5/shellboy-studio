@@ -28,6 +28,7 @@ pub fn owner_capabilities() -> Vec<String> {
     if cfg!(feature = "next-shellboy") {
         capabilities.push("thread.reparent".to_owned());
         capabilities.push("config.edit".to_owned());
+        capabilities.push("history.window".to_owned());
     }
     if cfg!(feature = "next-connection-setup") {
         capabilities.push("connection.setup".to_owned());

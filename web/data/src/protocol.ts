@@ -273,6 +273,27 @@ export interface HistoryListArgs {
   /** Inclusive node creation time (RFC3339 with offset). */
   since?: string;
 }
+/** `history.window` (Shellboy #268, capability `history.window`): a positional window of the selected path. */
+export interface HistoryWindowArgs {
+  thread_id: string;
+  /** With neither `ordinal` nor `node_id` the window ends at the last node. */
+  ordinal?: number;
+  node_id?: string;
+  /** With `ordinal`: `cursor_expired` unless this node still sits there. */
+  expect_node_id?: string;
+  before?: number;
+  after?: number;
+  excerpt_chars?: number;
+}
+export interface HistoryWindowResult {
+  thread_id: string;
+  /** Advances on append, rewind and compaction. */
+  revision: string | number;
+  /** One past the last ordinal. */
+  total: number;
+  /** `history.list` items, ascending; `selection.ordinal` is the position. */
+  items: HistoryItem[];
+}
 export interface HistoryGetArgs {
   node_id: string;
   cursor?: string;

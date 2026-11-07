@@ -421,3 +421,8 @@ a{color:var(--accent)}
   .choice{min-height:var(--size-touch)}
   .md .code pre{min-height:calc(var(--size-touch) + 2 * var(--space-4))}
 }
+/* VirtualSpace */
+.vspace{position:relative}
+.vspace-in{position:absolute;left:0;right:0}
+.vgap{overflow:hidden}
+.vrow{display:flow-root}
