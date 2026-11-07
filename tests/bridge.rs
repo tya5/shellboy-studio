@@ -148,6 +148,47 @@ async fn http_guards_host_origin_token_and_debug_route() {
 }
 
 #[tokio::test]
+async fn serves_the_frontend_with_a_strict_policy_or_says_how_to_build_it() {
+    let (owner, _tx) = mock(list_handler);
+    let app = router_only(owner, false);
+    let request = |uri: &str| {
+        Request::get(uri)
+            .header(header::HOST, "127.0.0.1:8751")
+            .body(Body::empty())
+            .unwrap()
+    };
+    let index = app.clone().oneshot(request("/")).await.unwrap();
+    if shellboy_web::assets::EMBEDDED.is_empty() {
+        assert_eq!(index.status(), StatusCode::SERVICE_UNAVAILABLE);
+    } else {
+        assert_eq!(index.status(), StatusCode::OK);
+        assert_eq!(index.headers()[header::CACHE_CONTROL], "no-cache");
+        let policy = index.headers()[header::CONTENT_SECURITY_POLICY]
+            .to_str()
+            .unwrap();
+        assert!(policy.contains("default-src 'none'"));
+        let (path, _) = shellboy_web::assets::EMBEDDED
+            .iter()
+            .find(|(p, _)| p.starts_with("assets/"))
+            .expect("a hashed asset");
+        let asset = app
+            .clone()
+            .oneshot(request(&format!("/{path}")))
+            .await
+            .unwrap();
+        assert_eq!(asset.status(), StatusCode::OK);
+        assert!(
+            asset.headers()[header::CACHE_CONTROL]
+                .to_str()
+                .unwrap()
+                .contains("immutable")
+        );
+    }
+    let missing = app.oneshot(request("/assets/none.js")).await.unwrap();
+    assert_eq!(missing.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
 async fn websocket_requires_a_session_and_a_matching_origin() {
     let (owner, _tx) = mock(list_handler);
     let (addr, state, cancel) = start(owner, false).await;

@@ -14,7 +14,10 @@ include!(concat!(env!("OUT_DIR"), "/assets.rs"));
 const CSP: &str = "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
 
 fn find(table: &'static [(&'static str, &'static [u8])], path: &str) -> Option<&'static [u8]> {
-    table.iter().find(|(p, _)| *p == path).map(|(_, bytes)| *bytes)
+    table
+        .iter()
+        .find(|(p, _)| *p == path)
+        .map(|(_, bytes)| *bytes)
 }
 
 fn content_type(path: &str) -> &'static str {

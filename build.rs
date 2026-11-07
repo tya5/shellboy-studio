@@ -33,8 +33,17 @@ fn main() {
     let mut table = String::from("pub static EMBEDDED: &[(&str, &[u8])] = &[\n");
     for file in &files {
         println!("cargo:rerun-if-changed={}", file.display());
-        let relative = file.strip_prefix(&dist).unwrap().to_string_lossy().replace('\\', "/");
-        writeln!(table, "    ({relative:?}, include_bytes!({:?})),", file.display().to_string()).unwrap();
+        let relative = file
+            .strip_prefix(&dist)
+            .unwrap()
+            .to_string_lossy()
+            .replace('\\', "/");
+        writeln!(
+            table,
+            "    ({relative:?}, include_bytes!({:?})),",
+            file.display().to_string()
+        )
+        .unwrap();
     }
     table.push_str("];\n");
     let out = PathBuf::from(env::var("OUT_DIR").unwrap()).join("assets.rs");
