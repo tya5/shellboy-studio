@@ -15,6 +15,7 @@ import {
   type UsageGroup,
   type WalkCoverage,
 } from "./analytics";
+import type { AnalyticsSection, SettingsSection } from "./route";
 import { readIndex, readMemory, readReceipts, readStorage, readThreadSettings, type IndexFacts, type MemoryFacts, type ReceiptFacts, type StorageFacts, type ThreadSettings } from "./resources";
 
 /**
@@ -134,6 +135,10 @@ export interface CompactionState {
   error: OpError | undefined;
 }
 
+export type ResourceRead = "memory" | "storage" | "index" | "receipts";
+
+const lostConnection = (e: OpError | undefined): boolean => e?.kind === "not_connected" || e?.kind === "connection_lost";
+
 export interface InsightsOptions {
   nowMs: () => number;
   /** Minutes east of UTC. */
@@ -156,6 +161,7 @@ export class Insights {
   readonly catalog: Signal<ReadState<ModelListResult>> = signal(nothing);
 
   private compactionGeneration = 0;
+  private compactionPeriod: Period | undefined;
   private threadGeneration = 0;
 
   constructor(
@@ -171,43 +177,70 @@ export class Insights {
     return periodOf(days, this.options.nowMs(), this.options.offsetMinutes());
   }
 
-  /** The Analytics view opened or the owner came back: reads once, and again only on request. */
-  ensureAnalytics(threadId: string | undefined): void {
-    const s = this.daily.state.peek();
-    if (s.status === "idle" || (s.status === "failed" && (s.error?.kind === "not_connected" || s.error?.kind === "connection_lost"))) void this.daily.start();
-    if (threadId !== undefined && this.compaction.peek().threadId === undefined) void this.showCompaction(threadId);
-    this.ensureResources();
+  /** A section opened or the owner came back: reads what that section shows, once. */
+  ensureAnalytics(section: AnalyticsSection, threadId: string | undefined): void {
+    switch (section) {
+      case "overview":
+      case "tokens":
+        this.ensureWalk(this.daily);
+        return;
+      case "compaction":
+        this.ensureWalk(this.daily);
+        this.ensureCompaction(threadId);
+        return;
+      case "threads":
+        this.ensureWalk(this.byThread);
+        return;
+      case "storage":
+        this.ensureRead("storage");
+        this.ensureRead("receipts");
+        return;
+      case "memory":
+        this.ensureRead("memory");
+        return;
+      case "index":
+        this.ensureRead("index");
+        return;
+    }
   }
 
+  private ensureWalk(walk: UsageWalk): void {
+    const s = walk.state.peek();
+    if (s.status === "idle" || (s.status === "failed" && lostConnection(s.error))) void walk.start();
+  }
+
+  private ensureCompaction(threadId: string | undefined): void {
+    const s = this.compaction.peek();
+    const id = s.threadId ?? threadId;
+    if (id === undefined || s.loading) return;
+    if (s.threadId === undefined || this.compactionPeriod !== this.period.peek() || lostConnection(s.error)) void this.showCompaction(id);
+  }
+
+  /** Walked data of the old period is dropped; the open section reads the new one. */
   setPeriod(days: PeriodDays): void {
     batch(() => {
       this.periodDays.value = days;
-      this.period.value = this.computePeriod(days);
-      this.byThread.reset();
+      this.renewPeriod();
     });
-    this.refreshPeriodReads();
   }
 
-  /** Reads the period's facts again, up to now. */
+  /** The period's facts, up to now. The open section reads again; other sections when opened. */
   refreshUsage(): void {
-    batch(() => {
-      this.period.value = this.computePeriod(this.periodDays.peek());
-      this.byThread.reset();
-    });
-    this.refreshPeriodReads();
+    batch(() => this.renewPeriod());
   }
 
-  private refreshPeriodReads(): void {
-    void this.daily.start();
-    const id = this.compaction.peek().threadId;
-    if (id !== undefined) void this.showCompaction(id);
+  private renewPeriod(): void {
+    this.daily.reset();
+    this.byThread.reset();
+    this.period.value = this.computePeriod(this.periodDays.peek());
   }
 
   /** One `compact.list` of one Thread, within the period. The owner has no list across Threads. */
   async showCompaction(threadId: string): Promise<void> {
     const generation = ++this.compactionGeneration;
-    this.compaction.value = { ...this.compaction.peek(), threadId, loading: true, error: undefined };
     const p = this.period.peek();
+    this.compactionPeriod = p;
+    this.compaction.value = { ...this.compaction.peek(), threadId, loading: true, error: undefined };
     const out = await this.ops.compactList({ thread_id: threadId, since: p.since, until: p.until, limit: COMPACTION_ROWS });
     if (generation !== this.compactionGeneration) return;
     if (!out.ok) {
@@ -226,29 +259,49 @@ export class Insights {
     };
   }
 
-  private readsDone(): boolean {
-    return [this.memory, this.storage, this.index].some((r) => {
-      const s = r.peek();
-      return s.loading || s.value !== undefined || (s.error !== undefined && s.error.kind !== "not_connected");
-    });
+  private ensureRead(kind: ResourceRead): void {
+    const s = this.resource(kind).peek();
+    if (!s.loading && s.value === undefined && (s.error === undefined || lostConnection(s.error))) this.refreshRead(kind);
   }
 
-  ensureResources(): void {
-    if (!this.readsDone()) this.refreshResources();
+  private resource(kind: ResourceRead): Signal<ReadState<unknown>> {
+    return { memory: this.memory, storage: this.storage, index: this.index, receipts: this.receipts }[kind] as Signal<ReadState<unknown>>;
   }
 
-  /** Four finite owner reads, on opening a view and on request. There is no periodic sampling. */
-  refreshResources(): void {
-    void readInto(this.memory, () => this.ops.memoryStatus(), readMemory);
-    void readInto(this.storage, () => this.ops.storageStatus(), readStorage);
-    void readInto(this.index, () => this.ops.indexStatus(), readIndex);
-    void readInto(this.receipts, () => this.ops.statusSummary(), readReceipts);
+  /** One finite owner read, when a section opens and on request. There is no periodic sampling. */
+  refreshRead(kind: ResourceRead): void {
+    switch (kind) {
+      case "memory":
+        void readInto(this.memory, () => this.ops.memoryStatus(), readMemory);
+        return;
+      case "storage":
+        void readInto(this.storage, () => this.ops.storageStatus(), readStorage);
+        return;
+      case "index":
+        void readInto(this.index, () => this.ops.indexStatus(), readIndex);
+        return;
+      case "receipts":
+        void readInto(this.receipts, () => this.ops.statusSummary(), readReceipts);
+        return;
+    }
   }
 
-  /** The Settings view opened: resources plus one `thread.get`. Doesn't open the Thread's history. */
-  ensureSettings(threadId: string | undefined): void {
-    this.ensureResources();
-    if (threadId !== undefined && this.thread.peek().threadId !== threadId) void this.readThread(threadId);
+  /** A Settings section opened. `thread.get` doesn't open the Thread's history. */
+  ensureSettings(section: SettingsSection, threadId: string | undefined): void {
+    switch (section) {
+      case "embeddings":
+        this.ensureRead("index");
+        return;
+      case "storage":
+        this.ensureRead("storage");
+        this.ensureRead("memory");
+        this.ensureRead("receipts");
+        return;
+      case "appearance":
+        return;
+      default:
+        if (threadId !== undefined && this.thread.peek().threadId !== threadId) void this.readThread(threadId);
+    }
   }
 
   async readThread(threadId: string): Promise<void> {

@@ -1,23 +1,25 @@
-import { formatBytes, formatRoute, formatTokens, SETTINGS_SECTIONS, type DesignContext, type SettingsSection, type Translate } from "../../../ui-core/src";
-import { Button, FactList, Notice, Section, SectionNav, type Fact, type IconName } from "../system/components";
+import { formatBytes, formatRoute, formatTokens, settingsSection, SETTINGS_SECTIONS, type ConfigKey, type DesignContext, type SettingsSection } from "../../../ui-core/src";
+import { Button, FactList, Notice, Section, SubView, type Fact, type IconName } from "../system/components";
 import { AppearanceChoices } from "./Appearance";
 import { Rich } from "./Rich";
 
 const ICONS: Record<SettingsSection, IconName> = { connections: "plug", models: "cube", embeddings: "database", shell: "term", storage: "file", compaction: "retry", appearance: "palette" };
 
 const num = (n: number): string => n.toLocaleString("en-US");
-const MIB = 1024 * 1024;
-const GIB = 1024 * MIB;
+/**
+ * Where editing attaches. `config.get` and `config.set` are planned in core (#266) and their wire isn't
+ * known yet, so nothing here assumes it. When they exist, this returns a control for a key the owner can
+ * set, and rows from `fileFact` become editable without changing their layout.
+ */
+const configControl = (_key: ConfigKey): Fact["control"] => undefined;
 
-function fileFacts(t: Translate, rows: [string, string?, string?][]): Fact[] {
-  return rows.map(([label, value, note]) => ({ label, ...(value !== undefined ? { note: t("common.default", { value }) } : note !== undefined ? { note } : {}) }));
-}
+const fileFact = (label: string, key: ConfigKey, note?: Fact["note"]): Fact => ({ label, control: configControl(key), ...(note !== undefined ? { note } : {}) });
 
 export function SettingsView({ context }: { context: DesignContext }) {
   const model = context.model;
   const t = model.t.value;
   const route = model.route.value;
-  const section = route.section ?? "connections";
+  const section = settingsSection(route);
   const i = model.insights;
   const selected = model.selectedRow.value;
   const thread = i.thread.value;
@@ -61,10 +63,10 @@ export function SettingsView({ context }: { context: DesignContext }) {
             </Section>
             <Section title={t("set.conn.file")} sub={<Rich text={t("set.conn.fileSub")} />}>
               <FactList missing={missing} facts={[
-                { label: t("set.conn.url") },
-                { label: t("set.conn.keyEnv"), note: t("set.conn.keyNote") },
-                { label: t("set.conn.tls"), note: t("common.default", { value: "true" }) },
-                { label: t("set.conn.timeouts") },
+                fileFact(t("set.conn.url"), "connections.base_url"),
+                fileFact(t("set.conn.keyEnv"), "connections.api_key_env", t("set.conn.keyNote")),
+                fileFact(t("set.conn.tls"), "connections.ssl_verify"),
+                fileFact(t("set.conn.timeouts"), "connections.timeouts"),
               ]} />
             </Section>
           </>
@@ -81,7 +83,7 @@ export function SettingsView({ context }: { context: DesignContext }) {
               ]} />
             </Section>
             <Section title={t("set.models.defaults")} sub={t("set.models.defaultsSub")}>
-              <FactList missing={missing} facts={[{ label: t("set.models.defaultConn") }, { label: t("set.models.defaultModel") }, { label: t("set.models.defaultEffort") }]} />
+              <FactList missing={missing} facts={[fileFact(t("set.models.defaultConn"), "default_connection"), fileFact(t("set.models.defaultModel"), "default_model"), fileFact(t("set.models.defaultEffort"), "connections.default_effort")]} />
             </Section>
           </>
         );
@@ -101,7 +103,7 @@ export function SettingsView({ context }: { context: DesignContext }) {
               ) : null}
             </Section>
             <Section title={t("set.embed.file")} sub={t("set.models.defaultsSub")}>
-              <FactList missing={missing} facts={fileFacts(t, [[t("set.embed.batchInputs"), "1"], [t("set.embed.batchChars"), "64,000"], [t("set.embed.split"), "2,000"], [t("set.embed.concurrency"), "1"]])} />
+              <FactList missing={missing} facts={[fileFact(t("set.embed.batchInputs"), "embedding.batch_max_inputs"), fileFact(t("set.embed.batchChars"), "embedding.batch_max_chars"), fileFact(t("set.embed.split"), "indexing.split_chars"), fileFact(t("set.embed.concurrency"), "indexing.concurrency")]} />
             </Section>
           </>
         );
@@ -117,9 +119,9 @@ export function SettingsView({ context }: { context: DesignContext }) {
             </Section>
             <Section title={t("set.shell.file")} sub={t("set.models.defaultsSub")}>
               <FactList missing={missing} facts={[
-                { label: t("set.shell.kind") },
-                { label: t("set.shell.exe") },
-                { label: t("set.shell.env"), note: t("set.shell.envNote") },
+                fileFact(t("set.shell.kind"), "shell.kind"),
+                fileFact(t("set.shell.exe"), "shell.executable"),
+                fileFact(t("set.shell.env"), "shell.env", t("set.shell.envNote")),
               ]} />
             </Section>
           </>
@@ -127,7 +129,7 @@ export function SettingsView({ context }: { context: DesignContext }) {
       case "storage":
         return (
           <>
-            <Section title={t("set.store.state")} sub={t("set.store.see")} actions={<a class="btn" href={formatRoute({ view: "analytics" })}>{t("set.store.open")}</a>} source={<>{t("common.source", { source: "" })}<code>storage.status</code>, <code>status --memory</code>, <code>status</code></>}>
+            <Section title={t("set.store.state")} sub={t("set.store.see")} actions={<a class="btn" href={formatRoute({ view: "analytics", section: "storage" })}>{t("set.store.open")}</a>} source={<>{t("common.source", { source: "" })}<code>storage.status</code>, <code>status --memory</code>, <code>status</code></>}>
               {storage.error ? <Notice tone="bad">{t("common.readError", { message: storage.error.message })}</Notice> : null}
               <FactList missing={missing} facts={[
                 { label: t("set.store.warning"), ...(storage.value ? { value: t(storage.value.warning ? "set.store.reached" : "set.store.notReached") } : {}) },
@@ -138,14 +140,14 @@ export function SettingsView({ context }: { context: DesignContext }) {
               ]} />
             </Section>
             <Section title={t("set.store.file")} sub={t("set.models.defaultsSub")}>
-              <FactList missing={missing} facts={fileFacts(t, [
-                [t("set.store.warnBytes"), formatBytes(8 * GIB)],
-                [t("set.store.maxBytes"), formatBytes(10 * GIB)],
-                [t("set.store.rawDays"), t("set.store.days", { n: 7 })],
-                [t("set.store.rawBytes"), formatBytes(GIB)],
-                [t("set.store.clipDays"), t("set.store.days", { n: 7 })],
-                [t("set.store.clipBytes"), formatBytes(256 * MIB)],
-              ])} />
+              <FactList missing={missing} facts={[
+                fileFact(t("set.store.warnBytes"), "limits.data_warning_bytes"),
+                fileFact(t("set.store.maxBytes"), "limits.data_max_bytes"),
+                fileFact(t("set.store.rawDays"), "retention.tool_raw_days"),
+                fileFact(t("set.store.rawBytes"), "retention.tool_raw_bytes"),
+                fileFact(t("set.store.clipDays"), "retention.clipboard_days"),
+                fileFact(t("set.store.clipBytes"), "retention.clipboard_bytes"),
+              ]} />
             </Section>
           </>
         );
@@ -170,7 +172,7 @@ export function SettingsView({ context }: { context: DesignContext }) {
               ]} />
             </Section>
             <Section title={t("set.compact.file")} sub={t("set.models.defaultsSub")}>
-              <FactList missing={missing} facts={fileFacts(t, [[t("set.compact.autoAt"), t("set.compact.tokens", { n: "200k" })], [t("set.compact.segment"), "64,000"], [t("set.compact.rounds"), "4"]])} />
+              <FactList missing={missing} facts={[fileFact(t("set.compact.autoAt"), "compaction.auto_at_tokens"), fileFact(t("set.compact.segment"), "compaction.segment_chars"), fileFact(t("set.compact.rounds"), "compaction.reduce_rounds")]} />
             </Section>
           </>
         );
@@ -186,21 +188,17 @@ export function SettingsView({ context }: { context: DesignContext }) {
   };
 
   return (
-    <div class="settings">
-      <div class="settings-nav">
-        <SectionNav
-          title={t("set.title")}
-          items={SETTINGS_SECTIONS.map((s) => ({ key: s, href: formatRoute({ view: "settings", section: s }), icon: ICONS[s], label: t(`set.section.${s}`), current: s === section }))}
-        />
+    <SubView
+      title={t("set.title")}
+      items={SETTINGS_SECTIONS.map((s) => ({ key: s, href: formatRoute({ view: "settings", section: s }), icon: ICONS[s], label: t(`set.section.${s}`), current: s === section }))}
+      onSelect={(key) => model.navigate({ view: "settings", section: key as SettingsSection })}
+    >
+      <div class="pagehead">
+        <h1>{t(`set.section.${section}`)}</h1>
+        <div class="muted">{t(`set.sub.${section}`)}</div>
       </div>
-      <div class="settings-main">
-        <div class="pagehead">
-          <h1>{t(`set.section.${section}`)}</h1>
-          <div class="muted">{t(`set.sub.${section}`)}</div>
-        </div>
-        {section !== "appearance" ? <Notice><Rich text={t("set.readOnly")} /></Notice> : null}
-        {body()}
-      </div>
-    </div>
+      {section !== "appearance" ? <Notice><Rich text={t("set.readOnly")} /></Notice> : null}
+      {body()}
+    </SubView>
   );
 }

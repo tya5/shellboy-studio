@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { settle } from "../../data/test/harness";
 import {
-  addSum, cacheRate, dayFacts, effectiveTokens, formatBytes, formatRoute, loadPrefs, MAX_WINDOWS, meanInput, mergeGroups, niceMax, parseRoute, periodOf, periodTotals,
-  readCompactionEvent, readGroup, readIndex, readMemory, readStorage, readSum, readThreadSettings, splitParts, totalGroups, zoneOf, type Prefs,
+  addSum, ANALYTICS_SECTIONS, analyticsSection, cacheRate, dayFacts, effectiveTokens, formatBytes, formatRoute, loadPrefs, MAX_WINDOWS, meanInput, mergeGroups, niceMax, parseRoute, periodOf, periodTotals,
+  readCompactionEvent, readGroup, readIndex, readMemory, readStorage, readSum, readThreadSettings, settingsSection, SETTINGS_SECTIONS, splitParts, totalGroups, zoneOf, type Prefs,
 } from "../src";
 import { fixtureCompaction, fixtureIndex, fixtureMemory, fixtureModel, fixtureStorage, NOW, usageItem, usagePage } from "./fixture";
 
@@ -92,8 +92,13 @@ describe("chart scale and formats", () => {
 
 describe("routes", () => {
   it("round-trips the new views and rejects an unknown section", () => {
-    for (const r of [{ view: "analytics" }, { view: "settings" }, { view: "settings", section: "shell" }] as const) expect(parseRoute(formatRoute(r))).toEqual(r);
+    for (const r of [{ view: "analytics" }, { view: "analytics", section: "memory" }, { view: "settings" }, { view: "settings", section: "shell" }] as const) expect(parseRoute(formatRoute(r))).toEqual(r);
     expect(parseRoute("#/settings/nope")).toEqual({ view: "settings" });
+    expect(parseRoute("#/analytics/nope")).toEqual({ view: "analytics" });
+    // A section name of the other view isn't valid here.
+    expect(parseRoute("#/analytics/shell")).toEqual({ view: "analytics" });
+    expect(analyticsSection({ view: "analytics" })).toBe("overview");
+    expect(settingsSection({ view: "settings", section: "memory" })).toBe("connections");
   });
 });
 
@@ -182,19 +187,78 @@ describe("Insights over the fake transport", () => {
     expect(model.insights.daily.state.value.status).toBe("loading");
   });
 
-  it("a period change reads again; by-Thread is reset and read only on request", async () => {
-    const { t, db, model } = await fixtureModel({ route: "analytics" });
+  it("each section reads only what it shows, when it opens", async () => {
+    const { t, db, model } = await fixtureModel({ route: "analytics", section: "memory" });
     await settle(t, db);
+    const count = (c: string) => t.calls(c).filter((x) => c !== "status" || (x.args as { memory?: boolean }).memory).length;
+    expect(count("status")).toBe(1);
+    for (const c of ["usage.get", "compact.list", "storage.status", "index.status"]) expect(count(c), c).toBe(0);
+    const open = async (section: "storage" | "index" | "overview" | "tokens" | "threads" | "compaction") => {
+      model.applyRoute({ view: "analytics", section });
+      await settle(t, db);
+    };
+    await open("storage");
+    expect(count("storage.status")).toBe(1);
+    expect(count("index.status")).toBe(0);
+    await open("index");
+    expect(count("index.status")).toBe(1);
+    expect(count("usage.get")).toBe(0);
+    await open("overview");
+    expect(count("usage.get")).toBe(2);
     expect(t.calls("usage.get").every((c) => (c.args as { group_by: string }).group_by === "day")).toBe(true);
-    void model.insights.byThread.start();
+    expect(count("compact.list")).toBe(0);
+    await open("tokens");
+    expect(count("usage.get")).toBe(2);
+    await open("compaction");
+    expect(count("usage.get")).toBe(2);
+    expect(count("compact.list")).toBe(1);
+    expect(t.calls("compact.list")[0]!.args).toMatchObject({ thread_id: "lead", limit: 50 });
+    await open("threads");
+    expect(t.calls("usage.get").filter((c) => (c.args as { group_by: string }).group_by === "thread")).toHaveLength(1);
+  });
+
+  it("walked data survives switching sections, also while a walk runs", async () => {
+    const { t, db, model } = await fixtureModel({ route: "analytics", section: "overview" });
     await settle(t, db);
+    const walked = model.insights.daily.state.value;
+    expect(walked.status).toBe("done");
+    model.applyRoute({ view: "analytics", section: "storage" });
+    await settle(t, db);
+    model.applyRoute({ view: "settings" });
+    await settle(t, db);
+    model.applyRoute({ view: "analytics", section: "tokens" });
+    await settle(t, db);
+    expect(model.insights.daily.state.value).toBe(walked);
+    expect(t.calls("usage.get")).toHaveLength(2);
+  });
+
+  it("a period change drops the old period; only the open section reads the new one", async () => {
+    const { t, db, model } = await fixtureModel({ route: "analytics", section: "threads" });
+    await settle(t, db);
+    const usage = (g: string) => t.calls("usage.get").filter((c) => (c.args as { group_by: string }).group_by === g).length;
+    expect([usage("thread"), usage("day")]).toEqual([1, 0]);
     expect(model.insights.byThread.state.value.groups.get("lead")?.compactions).toBe(3);
-    const before = t.calls("usage.get").length;
     model.insights.setPeriod(31);
-    expect(model.insights.byThread.state.value.status).toBe("idle");
     await settle(t, db);
-    expect(t.calls("usage.get").length).toBe(before + 2);
+    expect([usage("thread"), usage("day")]).toEqual([2, 0]);
     expect(model.insights.period.value.dayKeys).toHaveLength(31);
+    model.applyRoute({ view: "analytics", section: "tokens" });
+    await settle(t, db);
+    expect(usage("day")).toBe(2);
+    const at = t.calls("usage.get").at(-1)!.args as { since: string };
+    expect(at.since).toBe(model.insights.period.value.since);
+  });
+
+  it("compaction reads again for a new period and keeps the chosen Thread", async () => {
+    const { t, db, model } = await fixtureModel({ route: "analytics", section: "compaction" });
+    await settle(t, db);
+    void model.insights.showCompaction("done");
+    await settle(t, db);
+    const before = t.calls("compact.list").length;
+    model.insights.refreshUsage();
+    await settle(t, db);
+    expect(t.calls("compact.list").length).toBe(before + 1);
+    expect(t.calls("compact.list").at(-1)!.args).toMatchObject({ thread_id: "done" });
   });
 
   it("stops at the window bound and continues from the same cursor on request", async () => {
@@ -267,22 +331,31 @@ describe("Insights over the fake transport", () => {
   });
 
   it("compaction is one call per Thread, never one per Thread in the list", async () => {
-    const { t, db, model } = await fixtureModel({ route: "analytics" });
+    const { t, db, model } = await fixtureModel({ route: "analytics", section: "compaction" });
     await settle(t, db);
     expect(t.calls("compact.list")).toHaveLength(1);
-    expect(t.calls("compact.list")[0]!.args).toMatchObject({ thread_id: "lead", limit: 50 });
     void model.insights.showCompaction("done");
     await settle(t, db);
     expect(t.calls("compact.list")).toHaveLength(2);
     expect(model.insights.compaction.value.events).toHaveLength(2);
   });
 
-  it("Settings reads resources and one thread.get, and opens no history; the catalog waits for a press", async () => {
+  it("Settings reads per section and opens no history; the catalog waits for a press", async () => {
     const { t, db, model } = await fixtureModel({ route: "settings" });
     await settle(t, db);
     expect(t.calls("history.list")).toHaveLength(0);
     expect(t.calls("thread.get")).toHaveLength(1);
     expect(model.insights.thread.value.value?.connection).toBe("c");
+    for (const c of ["storage.status", "index.status", "model.list"]) expect(t.calls(c), c).toHaveLength(0);
+    model.applyRoute({ view: "settings", section: "models" });
+    await settle(t, db);
+    expect(t.calls("thread.get")).toHaveLength(1);
+    model.applyRoute({ view: "settings", section: "embeddings" });
+    await settle(t, db);
+    expect(t.calls("index.status")).toHaveLength(1);
+    expect(t.calls("storage.status")).toHaveLength(0);
+    model.applyRoute({ view: "settings", section: "storage" });
+    await settle(t, db);
     expect(t.calls("storage.status")).toHaveLength(1);
     expect(t.calls("model.list")).toHaveLength(0);
     void model.insights.readCatalog();
@@ -291,11 +364,11 @@ describe("Insights over the fake transport", () => {
   });
 
   it("a failed resource read keeps the last value and carries the error", async () => {
-    const { t, db, model } = await fixtureModel({ route: "settings" });
+    const { t, db, model } = await fixtureModel({ route: "settings", section: "storage" });
     await settle(t, db);
     const plain = db.answer;
     db.answer = (c) => (c.command === "storage.status" ? { ok: false, code: "io_failed" } : plain(c));
-    model.insights.refreshResources();
+    model.insights.refreshRead("storage");
     await settle(t, db);
     const s = model.insights.storage.value;
     expect(s.value?.dbBytes).toBe(fixtureStorage.db_bytes);
@@ -305,8 +378,14 @@ describe("Insights over the fake transport", () => {
   it("never sends a mutation", async () => {
     const { t, db, model } = await fixtureModel({ route: "analytics" });
     await settle(t, db);
-    model.applyRoute({ view: "settings" });
-    await settle(t, db);
+    for (const section of ANALYTICS_SECTIONS) {
+      model.applyRoute({ view: "analytics", section });
+      await settle(t, db);
+    }
+    for (const section of SETTINGS_SECTIONS) {
+      model.applyRoute({ view: "settings", section });
+      await settle(t, db);
+    }
     expect(t.calls().filter((c) => c.operation_id !== undefined)).toHaveLength(0);
     for (const c of ["storage.collect", "thread.set", "thread.prune", "index.rebuild"]) expect(t.calls(c)).toHaveLength(0);
   });

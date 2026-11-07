@@ -189,3 +189,32 @@ export function readThreadSettings(d: Record<string, unknown>): ThreadSettings {
     effectiveReduceRounds: num(d.effective_reduce_rounds),
   };
 }
+
+/**
+ * `config.toml` keys Settings shows but the owner can't read yet. The names are Shellboy's public TOML
+ * keys, not a wire format: `config.get`/`config.set` (#266) will decide that. See `configControl`.
+ */
+export type ConfigKey =
+  | "default_connection"
+  | "default_model"
+  | "connections.default_effort"
+  | "connections.base_url"
+  | "connections.api_key_env"
+  | "connections.ssl_verify"
+  | "connections.timeouts"
+  | "embedding.batch_max_inputs"
+  | "embedding.batch_max_chars"
+  | "indexing.split_chars"
+  | "indexing.concurrency"
+  | "shell.kind"
+  | "shell.executable"
+  | "shell.env"
+  | "limits.data_warning_bytes"
+  | "limits.data_max_bytes"
+  | "retention.tool_raw_days"
+  | "retention.tool_raw_bytes"
+  | "retention.clipboard_days"
+  | "retention.clipboard_bytes"
+  | "compaction.auto_at_tokens"
+  | "compaction.segment_chars"
+  | "compaction.reduce_rounds";

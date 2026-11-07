@@ -1,6 +1,6 @@
 import { useEffect, useState } from "preact/hooks";
-import { formatRoute, statusLabel, viewShortcut, type DesignContext } from "../../../ui-core/src";
-import { Button, ContextBar, Field, Icon, NavItem, Notice, StatusMark, ThreadItem } from "../system/components";
+import { formatRoute, statusLabel, viewShortcut, type DesignContext, type ViewName } from "../../../ui-core/src";
+import { Button, ContextBar, Field, Icon, MoreMenu, NavItem, Notice, StatusMark, ThreadItem, type IconName } from "../system/components";
 import { formatTokens, folderName } from "../../../ui-core/src";
 import { Conversation } from "./Conversation";
 import { Inbox } from "./Inbox";
@@ -39,15 +39,11 @@ export function App({ context }: { context: DesignContext }) {
     return () => clearTimeout(timer);
   }, [model, query]);
 
-  const views = (
-    <>
-      <NavItem href={formatRoute({ view: "conversation" })} icon="chat" label={t("view.conversation")} current={route.view === "conversation"} />
-      <NavItem href={formatRoute({ view: "monitor" })} icon="monitor" label={t("view.monitor")} current={route.view === "monitor"} />
-      <NavItem href={formatRoute({ view: "inbox" })} icon="inbox" label={t("view.inbox")} current={route.view === "inbox"} count={model.pendingCount.value} />
-      <NavItem href={formatRoute({ view: "analytics" })} icon="chart" label={t("view.analytics")} current={route.view === "analytics"} />
-      <NavItem href={formatRoute({ view: "settings" })} icon="gear" label={t("view.settings")} current={route.view === "settings"} />
-    </>
-  );
+  const nav = (view: ViewName, icon: IconName, label: string, count?: number) => <NavItem key={view} href={formatRoute({ view })} icon={icon} label={label} current={route.view === view} {...(count !== undefined ? { count } : {})} />;
+  const conversationNav = nav("conversation", "chat", t("view.conversation"));
+  const monitorNav = nav("monitor", "monitor", t("view.monitor"));
+  const inboxNav = nav("inbox", "inbox", t("view.inbox"), model.pendingCount.value);
+  const moreItems = ([["analytics", "chart"], ["settings", "gear"]] as const).map(([view, icon]) => ({ key: view, href: formatRoute({ view }), icon, label: t(`view.${view}`), current: route.view === view }));
 
   const list = model.data.threadList.value;
   const selected = model.selectedId.value;
@@ -67,7 +63,12 @@ export function App({ context }: { context: DesignContext }) {
             <Icon name="bot" />
             {t("brand")}
           </div>
-          <nav class="nav" aria-label={t("nav.views")}>{views}</nav>
+          <nav class="nav" aria-label={t("nav.views")}>
+            {conversationNav}
+            {monitorNav}
+            {inboxNav}
+            {moreItems.map((i) => <NavItem key={i.key} href={i.href} icon={i.icon} label={i.label} current={i.current} />)}
+          </nav>
           <div class="sidehead">
             <h2>{t("threads.title")}</h2>
             <Button onClick={() => { setDrawer(false); void model.createThread(); }}>
@@ -140,7 +141,12 @@ export function App({ context }: { context: DesignContext }) {
               {conn === "connected" ? <span>{t("conn.live")}</span> : null}
             </div>
           </footer>
-          <nav class="tabbar" aria-label={t("nav.views")}>{views}</nav>
+          <nav class="tabbar" aria-label={t("nav.views")}>
+            {inboxNav}
+            {conversationNav}
+            {monitorNav}
+            <MoreMenu label={t("nav.more")} items={moreItems} />
+          </nav>
         </div>
       </div>
     </div>

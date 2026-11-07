@@ -18,29 +18,31 @@ function CacheMeter({ t, c }: { t: Translate; c: CacheFact }) {
   return <Meter prose={used === undefined} label={name} value={c.retained} limit={c.limit} text={text} aria={t("res.cacheAria", { name, used: c.retained ?? "", limit: c.limit ?? "" })} />;
 }
 
-export function Resources({ model }: { model: AppModel }) {
+function Head({ t, title, sub, loading, onRefresh }: { t: Translate; title: string; sub: string; loading: boolean; onRefresh: () => void }) {
+  return (
+    <div class="head">
+      <div class="pagehead">
+        <h1>{title}</h1>
+        <div class="muted">{sub}</div>
+      </div>
+      <Button disabled={loading} onClick={onRefresh}>{loading ? t("common.loading") : t("common.refresh")}</Button>
+    </div>
+  );
+}
+
+export function StoragePane({ model }: { model: AppModel }) {
   const t = model.t.value;
   const i = model.insights;
-  const memory = i.memory.value;
   const storage = i.storage.value;
-  const index = i.index.value;
   const receipts = i.receipts.value;
-  const loading = memory.loading || storage.loading || index.loading || receipts.loading;
   const missing = t("common.notReported");
   const s = storage.value;
   const bytes = (n: number | undefined) => (n !== undefined ? { value: formatBytes(n), mono: true } : {});
   return (
-    <div class="stack">
-      <div class="head">
-        <div>
-          <h2 class="subhead">{t("res.heading")}</h2>
-          <div class="muted caption">{t("res.sub")}</div>
-        </div>
-        <Button disabled={loading} onClick={() => i.refreshResources()}>{loading ? t("common.loading") : t("common.refresh")}</Button>
-      </div>
-
+    <>
+      <Head t={t} title={t("res.storage")} sub={t("ana.sub.storage")} loading={storage.loading || receipts.loading} onRefresh={() => { i.refreshRead("storage"); i.refreshRead("receipts"); }} />
       <Section
-        title={t("res.storage")}
+        title={t("res.cat")}
         sub={<>{s ? t(s.limitReached ? "res.storageLimit" : s.warning ? "res.storageWarning" : "res.storageOk") : null}</>}
         source={<>{t("common.source", { source: "" })}<code>storage.status</code></>}
       >
@@ -53,7 +55,6 @@ export function Resources({ model }: { model: AppModel }) {
               <Stat label={t("res.live")} value={s.liveBytes !== undefined ? formatBytes(s.liveBytes) : missing} />
               <Stat label={t("res.free")} value={s.freeBytes !== undefined ? formatBytes(s.freeBytes) : missing} note={s.freeBytes === undefined ? t("res.freeMissing") : undefined} />
             </div>
-            <h3>{t("res.cat")}</h3>
             <BarList aria={t("res.cat")} rows={s.categories.map((c) => ({ key: c.name, label: t(`res.cat.${c.name}`), value: c.bytes, text: c.bytes !== undefined ? formatBytes(c.bytes) : missing }))} />
             <div class="muted caption">{t("res.storageNoLimit")}</div>
             <FactList missing={missing} facts={[
@@ -67,30 +68,72 @@ export function Resources({ model }: { model: AppModel }) {
         ) : null}
       </Section>
 
+      <Section title={t("res.receipts")} source={<>{t("common.source", { source: "" })}<code>status</code></>}>
+        {receipts.error ? <Notice tone="bad">{t("common.readError", { message: receipts.error.message })}</Notice> : null}
+        {receipts.value ? (
+          <Meter label={t("res.receipts")} tone={receipts.value.atLimit ? "bad" : undefined} value={receipts.value.accounted} limit={receipts.value.limit} text={t("res.cacheText", { used: formatBytes(receipts.value.accounted ?? 0), limit: formatBytes(receipts.value.limit ?? 0) })} aria={t("res.cacheAria", { name: t("res.receipts"), used: receipts.value.accounted ?? "", limit: receipts.value.limit ?? "" })} />
+        ) : null}
+      </Section>
+
+      <Section title={t("res.largest")}>
+        <div class="muted"><Rich text={t("res.largestMissing")} /></div>
+      </Section>
+
+      <Section title={t("res.actions")} sub={t("res.actionsSub")}>
+        <ul class="steps-list">
+          <li><strong>{t("res.collectTitle")}</strong><span class="muted"><Rich text={t("res.collectBody")} /></span></li>
+          <li><strong>{t("res.vacuumTitle")}</strong><span class="muted"><Rich text={t("res.vacuumBody")} /></span></li>
+          <li><strong>{t("res.pruneTitle")}</strong><span class="muted"><Rich text={t("res.pruneBody")} /></span></li>
+        </ul>
+      </Section>
+    </>
+  );
+}
+
+export function MemoryPane({ model }: { model: AppModel }) {
+  const t = model.t.value;
+  const i = model.insights;
+  const memory = i.memory.value;
+  const missing = t("common.notReported");
+  return (
+    <>
+      <Head t={t} title={t("res.memory")} sub={t("ana.sub.memory")} loading={memory.loading} onRefresh={() => i.refreshRead("memory")} />
       <Section
-        title={t("res.memory")}
+        title={t("res.process")}
         sub={memory.value?.observedAt ? t("res.memorySub", { at: formatClock(memory.value.observedAt, true) ?? "" }) : undefined}
         source={<>{t("common.source", { source: "" })}<code>status --memory</code></>}
       >
         {memory.error ? <Notice tone="bad">{t("common.readError", { message: memory.error.message })}</Notice> : null}
         {memory.value ? (
-          <>
-            <div class="stats">
-              {memory.value.metrics.map((m) => (
-                <Stat key={m.name} label={metricName(t, m.name)} value={m.bytes !== undefined ? formatBytes(m.bytes) : missing} note={m.bytes === undefined ? m.reason : undefined} />
-              ))}
-            </div>
-            <h3>{t("res.caches")}</h3>
-            <div class="meters">
-              {memory.value.caches.map((c) => (
-                <CacheMeter key={c.name} t={t} c={c} />
-              ))}
-            </div>
-          </>
+          <div class="stats">
+            {memory.value.metrics.map((m) => (
+              <Stat key={m.name} label={metricName(t, m.name)} value={m.bytes !== undefined ? formatBytes(m.bytes) : missing} note={m.bytes === undefined ? m.reason : undefined} />
+            ))}
+          </div>
         ) : null}
       </Section>
+      {memory.value ? (
+        <Section title={t("res.caches")} source={<>{t("common.source", { source: "" })}<code>status --memory</code></>}>
+          <div class="meters">
+            {memory.value.caches.map((c) => (
+              <CacheMeter key={c.name} t={t} c={c} />
+            ))}
+          </div>
+        </Section>
+      ) : null}
+    </>
+  );
+}
 
-      <Section title={t("res.index")} sub={index.value ? t("res.indexCounts", { pending: index.value.pending ?? 0, running: index.value.running ?? 0, done: index.value.done ?? 0, failed: index.value.failed ?? 0, held: index.value.held ?? 0 }) : undefined} source={<>{t("common.source", { source: "" })}<code>index.status</code>, <code>storage.status</code></>}>
+export function IndexPane({ model }: { model: AppModel }) {
+  const t = model.t.value;
+  const i = model.insights;
+  const index = i.index.value;
+  const missing = t("common.notReported");
+  return (
+    <>
+      <Head t={t} title={t("res.index")} sub={t("ana.sub.index")} loading={index.loading} onRefresh={() => i.refreshRead("index")} />
+      <Section title={t("res.spaces")} sub={index.value ? t("res.indexCounts", { pending: index.value.pending ?? 0, running: index.value.running ?? 0, done: index.value.done ?? 0, failed: index.value.failed ?? 0, held: index.value.held ?? 0 }) : undefined} source={<>{t("common.source", { source: "" })}<code>index.status</code></>}>
         {index.error ? <Notice tone="bad">{t("common.readError", { message: index.error.message })}</Notice> : null}
         {index.value?.paused ? <Notice tone="wait">{t("res.indexPaused")}</Notice> : null}
         {index.value?.reason ? <div class="muted">{index.value.reason}</div> : null}
@@ -114,26 +157,9 @@ export function Resources({ model }: { model: AppModel }) {
         ) : null}
         {index.value?.truncated ? <div class="muted caption">{t("res.spacesTruncated", { n: index.value.spaces.length, total: index.value.spacesTotal })}</div> : null}
       </Section>
-
-      <Section title={t("res.receipts")} source={<>{t("common.source", { source: "" })}<code>status</code></>}>
-        {receipts.error ? <Notice tone="bad">{t("common.readError", { message: receipts.error.message })}</Notice> : null}
-        {receipts.value ? (
-          <Meter label={t("res.receipts")} tone={receipts.value.atLimit ? "bad" : undefined} value={receipts.value.accounted} limit={receipts.value.limit} text={t("res.cacheText", { used: formatBytes(receipts.value.accounted ?? 0), limit: formatBytes(receipts.value.limit ?? 0) })} aria={t("res.cacheAria", { name: t("res.receipts"), used: receipts.value.accounted ?? "", limit: receipts.value.limit ?? "" })} />
-        ) : null}
+      <Section title={t("res.indexTitle")}>
+        <div class="muted"><Rich text={t("res.indexBody")} /></div>
       </Section>
-
-      <Section title={t("res.largest")}>
-        <div class="muted"><Rich text={t("res.largestMissing")} /></div>
-      </Section>
-
-      <Section title={t("res.actions")} sub={t("res.actionsSub")}>
-        <ul class="steps-list">
-          <li><strong>{t("res.collectTitle")}</strong><span class="muted"><Rich text={t("res.collectBody")} /></span></li>
-          <li><strong>{t("res.vacuumTitle")}</strong><span class="muted"><Rich text={t("res.vacuumBody")} /></span></li>
-          <li><strong>{t("res.pruneTitle")}</strong><span class="muted"><Rich text={t("res.pruneBody")} /></span></li>
-          <li><strong>{t("res.indexTitle")}</strong><span class="muted"><Rich text={t("res.indexBody")} /></span></li>
-        </ul>
-      </Section>
-    </div>
+    </>
   );
 }

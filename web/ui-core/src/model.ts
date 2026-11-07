@@ -6,7 +6,7 @@ import { projectConversation, type ConversationRow, type StepRow } from "./conve
 import { translator, type Lang, type Translate } from "./i18n";
 import { Insights } from "./insights";
 import { noPending, type PendingAdapter } from "./pending";
-import { formatRoute, START_ROUTE, type Route, type ViewName } from "./route";
+import { analyticsSection, formatRoute, settingsSection, START_ROUTE, type Route, type ViewName } from "./route";
 import { statusOfShell, type StatusKey } from "./status";
 import { byUrgency, countByStatus, threadTree, type StatusCounts, type ThreadRow } from "./threads";
 import { contextFacts, recoveryFacts, usageFacts, type ContextFacts, type RecoveryFacts, type UsageFacts } from "./usage";
@@ -174,14 +174,16 @@ export class AppModel {
   start(): void {
     this.listHandle = this.data.trackThreadList();
     this.disposers.push(effect(() => this.syncOpenThread()));
-    // Reads for a view run when it opens with the owner reachable, not when it renders.
+    // A section's reads run when it opens with the owner reachable, not when it renders. A new
+    // period re-runs this, so only the open section reads it.
     this.disposers.push(
       effect(() => {
-        const view = this.route.value.view;
+        const route = this.route.value;
+        this.insights.period.value;
         if (this.connection.value !== "connected") return;
         const threadId = this.selectedId.value;
-        if (view === "analytics") this.insights.ensureAnalytics(threadId);
-        else if (view === "settings") this.insights.ensureSettings(threadId);
+        if (route.view === "analytics") this.insights.ensureAnalytics(analyticsSection(route), threadId);
+        else if (route.view === "settings") this.insights.ensureSettings(settingsSection(route), threadId);
       }),
     );
     // Shell facts follow the hints: the store re-reads the Thread on each, and so do we.

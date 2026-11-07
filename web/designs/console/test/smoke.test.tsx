@@ -6,7 +6,8 @@ import { render } from "preact";
 import { act } from "preact/test-utils";
 import { afterEach, describe, expect, it } from "vitest";
 import { fixtureModel, fixturePendingAdapter } from "../../../ui-core/test/fixture";
-import { type AppModel, type DesignContext, type Prefs } from "../../../ui-core/src";
+import { settle } from "../../../data/test/harness";
+import { type AnalyticsSection, type AppModel, type DesignContext, type Prefs } from "../../../ui-core/src";
 import { DESIGNS } from "../../registry";
 import { App } from "../screens/App";
 
@@ -130,7 +131,8 @@ describe("Frame", () => {
     const { model } = await fixtureModel();
     const el = draw(model);
     expect(el.querySelectorAll(".nav .nav-item").length).toBe(5);
-    expect(el.querySelectorAll(".tabbar .nav-item").length).toBe(5);
+    expect(el.querySelectorAll(".tabbar > .nav-item").length).toBe(3);
+    expect(text(el.querySelector(".tabbar .more-tab")!)).toBe("More");
   });
   it("switches language without a reload", async () => {
     const { model } = await fixtureModel({ route: "inbox" });
@@ -185,26 +187,43 @@ describe("Frame", () => {
 });
 
 describe("Analytics", () => {
-  it("draws every chart from the fixture, to scale, with its source, and shows no money", async () => {
-    const { model } = await fixtureModel({ route: "analytics" });
-    const el = draw(model);
+  const open = async (section: AnalyticsSection) => {
+    const made = await fixtureModel({ route: "analytics", section });
+    const el = draw(made.model);
+    return { ...made, el };
+  };
+  it("lists its sections with the shared navigation and shows one pane at a time", async () => {
+    const { el } = await open("overview");
+    expect([...el.querySelectorAll(".secnav-item")].map(text)).toEqual(["Overview", "Tokens", "Compaction", "By Thread", "Storage", "Memory", "Index"]);
+    expect(el.querySelector('.secnav-item[aria-current="page"]')!.getAttribute("href")).toBe("#/analytics/overview");
+    expect([...el.querySelectorAll(".secnav-pick option")].map(text)).toHaveLength(7);
+    expect(el.querySelectorAll("figure.chart svg").length).toBe(1);
+    expect(text(el)).not.toContain("Owner memory");
+    expect(text(el)).toContain("aren't prices");
+  });
+  it("the phone selector navigates like the list", async () => {
+    const { el, model } = await open("overview");
+    const pick = el.querySelector<HTMLSelectElement>(".secnav-pick select")!;
+    expect(pick.value).toBe("overview");
+    await act(async () => {
+      pick.value = "memory";
+      pick.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    expect(model.route.value).toEqual({ view: "analytics", section: "memory" });
+  });
+  it("Tokens draws to its data, with sources, and shows no money", async () => {
+    const { el } = await open("tokens");
     const body = text(el);
-    for (const title of ["Daily tokens", "Daily effective tokens", "Cache rate", "Daily summary tokens", "Compaction events per day", "Usage by Thread", "Compaction effect", "Resources"]) expect(body, title).toContain(title);
-    expect(el.querySelectorAll("figure.chart svg").length).toBe(5);
     expect(body).toContain("usage.get group_by=day");
-    expect(body).toContain("compact.list");
-    expect(body).toContain("aren't prices");
     expect(body).toContain("By model isn't shown");
     expect(body).not.toMatch(/\$\s?\d|USD|¥/);
-    // 2026-11-06: 1.5M cached, 1.5M uncached, 40k output in two windows; a column reaches its value.
-    const dailyColumns = el.querySelectorAll("figure.chart")[0]!.querySelectorAll("path.fill");
-    expect(dailyColumns.length).toBe(9);
+    // 2026-11-05 to 11-07, three parts each. Small parts stay visible.
+    expect(el.querySelectorAll("figure.chart")[0]!.querySelectorAll("path.fill").length).toBe(9);
     expect(el.querySelector(".chart-svg")!.getAttribute("role")).toBe("img");
     expect(el.querySelector(".chart-svg")!.getAttribute("aria-label")).toContain("7 days");
   });
-  it("states are shown: effective tokens follow the weights without a new read", async () => {
-    const { model, t } = await fixtureModel({ route: "analytics" });
-    const el = draw(model);
+  it("effective tokens follow the weights without a new read", async () => {
+    const { el, model, t } = await open("overview");
     const before = t.calls("usage.get").length;
     const first = () => text(el.querySelector(".stat .stat-value")!);
     const was = first();
@@ -215,40 +234,68 @@ describe("Analytics", () => {
     });
     expect(first()).not.toBe(was);
     expect(t.calls("usage.get").length).toBe(before);
+    expect(model.route.value.section).toBe("overview");
   });
-  it("offers no destructive action, and explains why", async () => {
-    const { model } = await fixtureModel({ route: "analytics" });
-    const el = draw(model);
+  it("Storage offers no destructive action, and explains why", async () => {
+    const { el, t, db } = await open("storage");
+    await act(async () => {
+      await settle(t, db);
+    });
     const body = text(el);
-    for (const phrase of ["no preview", "needs the owner stopped", "Recreating an index costs money", "no bounded read of storage by Thread"]) expect(body, phrase).toContain(phrase);
+    for (const phrase of ["no preview", "needs the owner stopped", "no bounded read of storage by Thread", "3.7 GiB"]) expect(body, phrase).toContain(phrase);
     const buttons = [...el.querySelectorAll("button")].map((b) => text(b).toLowerCase());
     for (const word of ["collect", "vacuum", "prune", "delete"]) expect(buttons.some((b) => b.includes(word)), word).toBe(false);
   });
-  it("shows the cache limits as reported, and the owner's reason when a value is unavailable", async () => {
-    const { model } = await fixtureModel({ route: "analytics" });
-    const el = draw(model);
+  it("Index says recreating costs money", async () => {
+    const { el, t, db } = await open("index");
+    await act(async () => {
+      await settle(t, db);
+    });
+    expect(text(el)).toContain("Recreating an index costs money");
+    expect(text(el)).toContain("mock-embed");
+  });
+  it("Memory shows the cache limits as reported, and the owner's reason when a value is unavailable", async () => {
+    const { el, t, db } = await open("memory");
+    await act(async () => {
+      await settle(t, db);
+    });
     expect(text(el)).toContain("UI cache owner is not available");
-    expect(text(el)).toContain("3.7 GiB");
     expect(el.querySelector('[role="meter"]')).toBeTruthy();
+  });
+  it("By Thread reads on opening; Show compaction goes to its section", async () => {
+    const { el, t, db, model } = await open("threads");
+    await act(async () => {
+      await settle(t, db);
+    });
+    expect(text(el)).toContain("Improve history search");
+    const show = [...el.querySelectorAll("button")].find((b) => text(b) === "Show compaction")!;
+    await act(async () => {
+      show.click();
+      await settle(t, db);
+    });
+    expect(model.route.value).toEqual({ view: "analytics", section: "compaction" });
+    expect(text(el)).toContain("Compaction effect");
+    expect(el.querySelector(".tbl.stack [data-label='Summary tokens']")).toBeTruthy();
+    expect(el.querySelector(".range")).toBeTruthy();
   });
   it("loading keeps partial values with a Stop; a failure keeps them too", async () => {
     const { model, t, db } = await fixtureModel();
     const plain = db.answer;
     let n = 0;
-    db.answer = (c) => (c.command === "usage.get" && n++ === 1 ? { ok: false, code: "cursor_expired", message: "expired" } as never : plain(c));
+    db.answer = (c) => (c.command === "usage.get" && n++ === 1 ? { ok: false, code: "cursor_expired" } : plain(c));
     const el = draw(model);
     await act(async () => {
-      model.applyRoute({ view: "analytics" });
+      model.applyRoute({ view: "analytics", section: "tokens" });
       await Promise.resolve();
     });
     expect(text(el)).toContain("Reading saved usage");
     await act(async () => {
-      await (await import("../../../data/test/harness")).settle(t, db);
+      await settle(t, db);
     });
     expect(text(el)).toContain("Reading stopped");
     expect(el.querySelectorAll("figure.chart path.fill").length).toBeGreaterThan(0);
   });
-  it("says Not read until something has been read, and No value only after", async () => {
+  it("says Not read until something has been read", async () => {
     const { model, t } = await fixtureModel({ route: "monitor" });
     t.drop();
     const el = draw(model);
@@ -261,8 +308,30 @@ describe("Analytics", () => {
     const { model } = await fixtureModel({ route: "analytics" });
     const el = draw(model, { lang: "ja" });
     act(() => { model.lang.value = "ja"; });
-    expect(text(el)).toContain("日別トークン");
+    expect(text(el)).toContain("実効トークン");
     expect(text(el)).toContain("価格ではありません");
+  });
+});
+
+describe("Phone tabs", () => {
+  it("More holds Analytics and Settings, marks itself current, and closes on a choice", async () => {
+    const { model } = await fixtureModel({ route: "analytics" });
+    const el = draw(model);
+    const button = el.querySelector<HTMLButtonElement>(".more-tab button")!;
+    expect(button.getAttribute("aria-current")).toBe("page");
+    act(() => button.click());
+    const links = [...el.querySelectorAll<HTMLAnchorElement>(".more-panel a")];
+    expect(links.map(text)).toEqual(["Analytics", "Settings"]);
+    act(() => links[1]!.click());
+    expect(el.querySelector(".more-panel")).toBeNull();
+    act(() => button.click());
+    act(() => { document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })); });
+    expect(el.querySelector(".more-panel")).toBeNull();
+  });
+  it("Awaiting you, Conversation and Monitor have tabs of their own, in that order", async () => {
+    const { model } = await fixtureModel();
+    const el = draw(model);
+    expect([...el.querySelectorAll(".tabbar > .nav-item")].map(text)).toEqual(["Awaiting you", "Conversation", "Monitor"]);
   });
 });
 
@@ -272,7 +341,7 @@ describe("Settings", () => {
     const el = draw(model);
     await act(async () => {
       model.applyRoute({ view: "settings", section });
-      await (await import("../../../data/test/harness")).settle(t, db);
+      await settle(t, db);
     });
     return { el, model, t, db };
   };
@@ -283,7 +352,7 @@ describe("Settings", () => {
     expect(el.querySelector('.secnav-item[aria-current="page"]')!.getAttribute("href")).toBe("#/settings/connections");
     expect(text(el)).toContain("Read-only");
     expect(text(el)).not.toContain("Changes take effect after owner restart");
-    expect(el.querySelector(".settings-main input")).toBeNull();
+    expect(el.querySelector(".subview-main input")).toBeNull();
   });
   it("Connections shows the connection in use, and credential names only as unavailable", async () => {
     const { el, t } = await open("connections");
@@ -293,7 +362,7 @@ describe("Settings", () => {
   });
   it("the catalog is read only on a press", async () => {
     const { el, t, db } = await open("connections");
-    const button = [...el.querySelectorAll(".settings-main button")].find((b) => text(b).includes("default connection")) as HTMLButtonElement;
+    const button = [...el.querySelectorAll(".subview-main button")].find((b) => text(b).includes("default connection")) as HTMLButtonElement;
     await act(async () => {
       button.click();
       await (await import("../../../data/test/harness")).settle(t, db);
@@ -305,7 +374,8 @@ describe("Settings", () => {
   it("Embeddings shows the index state; Storage marks documented defaults as such", async () => {
     expect(text((await open("embeddings")).el)).toContain("mock-embed");
     const storage = text((await open("storage")).el);
-    expect(storage).toContain("Documented default: 8 GiB");
+    expect(storage).toContain("Logical warning");
+    expect(storage).not.toMatch(/Documented default|8 GiB|10 GiB/);
     expect(storage).toContain("Not reached");
     expect(storage).toContain("32 MiB");
   });
@@ -314,7 +384,7 @@ describe("Settings", () => {
     expect(compaction).toContain("Proactive compaction at");
     expect(compaction).toContain("thread set");
     const { el } = await open("appearance");
-    const light = [...el.querySelectorAll(".settings-main button")].find((b) => text(b) === "Light") as HTMLButtonElement;
+    const light = [...el.querySelectorAll(".subview-main button")].find((b) => text(b) === "Light") as HTMLButtonElement;
     act(() => light.click());
     expect(light.getAttribute("aria-pressed")).toBe("true");
   });

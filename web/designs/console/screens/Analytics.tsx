@@ -1,10 +1,10 @@
 import { useState } from "preact/hooks";
 import {
-  cacheRate, COMPACTION_ROWS, dayFacts, DEFAULT_WEIGHTS, effectiveTokens, formatClock, formatDuration, formatRoute, formatTokens, groupEffective, groupIncomplete, meanInput, periodTotals, PERIODS, readWeights, shortDay,
-  splitParts, type AppModel, type CompactionEvent, type DayFacts, type DesignContext, type Translate, type UsageGroup, type WalkState, type Weights,
+  ANALYTICS_SECTIONS, analyticsSection, cacheRate, COMPACTION_ROWS, dayFacts, DEFAULT_WEIGHTS, effectiveTokens, formatClock, formatDuration, formatRoute, formatTokens, groupEffective, groupIncomplete, meanInput, periodTotals, PERIODS, readWeights, shortDay,
+  splitParts, type AnalyticsSection, type AppModel, type CompactionEvent, type DayFacts, type DesignContext, type Translate, type UsageGroup, type WalkState, type Weights,
 } from "../../../ui-core/src";
-import { Button, ButtonGroup, Chart, DataTable, Field, Notice, RangeBar, Section, Stat, type ChartPoint, type ChartSeries } from "../system/components";
-import { Resources } from "./Resources";
+import { Button, ButtonGroup, Chart, DataTable, Field, Notice, RangeBar, Section, Stat, SubView, type ChartPoint, type ChartSeries, type IconName } from "../system/components";
+import { IndexPane, MemoryPane, StoragePane } from "./Resources";
 
 const percent = (v: number): string => `${Math.round(v * 100)}%`;
 /** A share too small to round to 0.1% says so, rather than reading as none. */
@@ -72,7 +72,6 @@ function ByThread({ model, weights }: { model: AppModel; weights: Weights }) {
     <Section
       title={t("threads.heading")}
       sub={t("threads.sub")}
-      actions={walk.status === "idle" ? <Button onClick={() => void i.byThread.start()}>{t("threads.load")}</Button> : undefined}
       source={<>{t("common.source", { source: "" })}<code>usage.get group_by=thread</code></>}
     >
       <WalkNotice t={t} state={walk} onStop={() => i.byThread.stop()} onContinue={() => void i.byThread.continue()} onRetry={() => void i.byThread.start()} />
@@ -96,7 +95,7 @@ function ByThread({ model, weights }: { model: AppModel; weights: Weights }) {
                 mean !== undefined ? formatTokens(Math.round(mean)) : t("analytics.noValue"),
                 g.inputMax !== undefined ? formatTokens(g.inputMax) : t("analytics.noValue"),
                 g.compactions,
-                <Button variant="link" aria-pressed={i.compaction.value.threadId === g.key} onClick={() => void i.showCompaction(g.key)}>{t("threads.show")}</Button>,
+                <Button variant="link" aria-pressed={i.compaction.value.threadId === g.key} onClick={() => { void i.showCompaction(g.key); model.navigate({ view: "analytics", section: "compaction" }); }}>{t("threads.show")}</Button>,
               ],
             };
           })}
@@ -135,7 +134,7 @@ function CompactionEffect({ model, weights }: { model: AppModel; weights: Weight
   const attempts = new Map<string, number>();
   for (const e of c.events) if (e.afterAttempt) attempts.set(e.afterAttempt, (attempts.get(e.afterAttempt) ?? 0) + 1);
   return (
-    <Section title={t("compact.heading")} sub={c.threadId ? t("compact.sub", { thread: name, n: COMPACTION_ROWS }) : t("compact.noThread")} source={<>{t("common.source", { source: "" })}<code>compact.list</code></>}>
+    <Section title={t("compact.heading")} sub={c.threadId ? t("compact.sub", { thread: name, n: COMPACTION_ROWS }) : t("compact.noThread")} actions={<a class="btn" href={formatRoute({ view: "analytics", section: "threads" })}>{t("compact.other")}</a>} source={<>{t("common.source", { source: "" })}<code>compact.list</code></>}>
       {c.error ? <Notice tone="bad">{t("common.readError", { message: c.error.message })}</Notice> : null}
       {c.loading ? <div class="muted">{t("common.loading")}</div> : null}
       {c.threadId && !c.loading && !c.error && c.events.length === 0 ? <div class="muted">{t("compact.none")}</div> : null}
@@ -177,139 +176,195 @@ function CompactionEffect({ model, weights }: { model: AppModel; weights: Weight
   );
 }
 
-export function Analytics({ context }: { context: DesignContext }) {
+const ICONS: Record<AnalyticsSection, IconName> = { overview: "chart", tokens: "layers", compaction: "retry", threads: "tree", storage: "database", memory: "cube", index: "search" };
+
+function PeriodHead({ model, section }: { model: AppModel; section: AnalyticsSection }) {
+  const t = model.t.value;
+  const i = model.insights;
+  const walk = section === "threads" ? i.byThread.state.value : i.daily.state.value;
+  return (
+    <div class="head">
+      <div class="pagehead">
+        <h1>{t(`ana.section.${section}`)}</h1>
+        <div class="muted">{t(`ana.sub.${section}`)} {t("analytics.subtitle", { zone: i.period.value.zone })}</div>
+      </div>
+      <div class="band">
+        <ButtonGroup label={t("analytics.period")}>
+          {PERIODS.map((p) => (
+            <Button key={p} aria-pressed={i.periodDays.value === p} onClick={() => i.setPeriod(p)}>
+              {p === 1 ? t("analytics.today") : t("analytics.days", { n: p })}
+            </Button>
+          ))}
+        </ButtonGroup>
+        <Button disabled={walk.status === "loading"} onClick={() => i.refreshUsage()}>{t("common.refresh")}</Button>
+      </div>
+    </div>
+  );
+}
+
+function Coverage({ t, walk }: { t: Translate; walk: WalkState }) {
+  const c = walk.coverage;
+  if (walk.status !== "done") return null;
+  return (
+    <div class="muted caption">
+      {t("analytics.covered", { windows: c.windows, ms: formatDuration(c.elapsedMs), requests: c.matchedAttempts.toLocaleString("en-US"), compactions: c.matchedCompactions.toLocaleString("en-US") })}{" "}
+      {c.excludedTime + c.unknownTimeCompactions + c.malformedCompactions > 0 ? t("analytics.excluded", { time: c.excludedTime, unknown: c.unknownTimeCompactions, malformed: c.malformedCompactions }) : null}
+    </div>
+  );
+}
+
+function UsagePane({ context, section }: { context: DesignContext; section: "overview" | "tokens" | "compaction" }) {
   const model = context.model;
   const t = model.t.value;
   const i = model.insights;
   const weights = context.prefs.value.weights;
-  const period = i.period.value;
   const walk = i.daily.state.value;
-  const days = dayFacts(period.dayKeys, walk.groups, weights);
+  const days = dayFacts(i.period.value.dayKeys, walk.groups, weights);
   const totals = periodTotals(walk.groups, weights);
-  const loading = walk.status === "loading";
   // Nothing read yet isn't the same as the owner having no value.
-  const notReported = walk.groups.size > 0 || walk.status === "done" ? t("analytics.noValue") : loading ? t("common.loading") : t("analytics.notRead");
-  const c = walk.coverage;
+  const notReported = walk.groups.size > 0 || walk.status === "done" ? t("analytics.noValue") : walk.status === "loading" ? t("common.loading") : t("analytics.notRead");
   const hasSomething = walk.groups.size > 0;
-
   const parts: ChartSeries[] = [
     { id: "cached", label: t("series.cached"), tone: "2" },
     { id: "uncached", label: t("series.uncached"), tone: "1" },
     { id: "output", label: t("series.output"), tone: "3" },
   ];
   const point = (d: DayFacts, values: ChartPoint["values"]): ChartPoint => ({ key: d.key, label: shortDay(d.key), values, note: noteOf(t, d) });
-  const usagePoints = days.map((d) => point(d, { cached: d.cached, uncached: d.uncached, output: d.output }));
-  const summaryPoints = days.map((d) => point(d, { cached: d.summaryCached, uncached: d.summaryUncached, output: d.summaryOutput }));
   const tokens = (n: number) => formatTokens(Math.round(n));
   const source = (read: string) => <>{t("common.source", { source: "" })}<code>{read}</code></>;
   const common = { tableLabel: t("analytics.table"), categoryLabel: t("analytics.day"), noData: notReported };
   const dailyTotals = days.map((d) => (d.recorded ? (d.cached ?? 0) + (d.uncached ?? 0) + (d.output ?? 0) : undefined));
 
-  return (
-    <div class="mon">
-      <div class="head">
-        <div class="pagehead">
-          <h1>{t("view.analytics")}</h1>
-          <div class="muted">{t("analytics.subtitle", { zone: period.zone })}</div>
-        </div>
-        <div class="band">
-          <ButtonGroup label={t("analytics.period")}>
-            {PERIODS.map((p) => (
-              <Button key={p} aria-pressed={i.periodDays.value === p} onClick={() => i.setPeriod(p)}>
-                {p === 1 ? t("analytics.today") : t("analytics.days", { n: p })}
-              </Button>
-            ))}
-          </ButtonGroup>
-          <Button disabled={loading} onClick={() => i.refreshUsage()}>{t("common.refresh")}</Button>
-        </div>
-      </div>
+  const summaryStat = (
+    <Stat
+      label={t("stat.summary")}
+      value={totals.summaryEffective !== undefined ? tokens(totals.summaryEffective) : notReported}
+      note={totals.summaryEffective !== undefined && totals.effective ? t("stat.summaryNote", { share: shareText(totals.summaryEffective / totals.effective), n: totals.summaryRequests.toLocaleString("en-US") }) : undefined}
+    />
+  );
+  const eventsStat = <Stat label={t("stat.compactions")} value={hasSomething ? totals.compactions.toLocaleString("en-US") : notReported} note={t("stat.compactionsNote")} />;
 
+  return (
+    <>
+      <PeriodHead model={model} section={section} />
       <WalkNotice t={t} state={walk} onStop={() => i.daily.stop()} onContinue={() => void i.daily.continue()} onRetry={() => i.refreshUsage()} />
-      {walk.status === "done" ? (
-        <div class="muted caption">
-          {t("analytics.covered", { windows: c.windows, ms: formatDuration(c.elapsedMs), requests: c.matchedAttempts.toLocaleString("en-US"), compactions: c.matchedCompactions.toLocaleString("en-US") })}{" "}
-          {c.excludedTime + c.unknownTimeCompactions + c.malformedCompactions > 0 ? t("analytics.excluded", { time: c.excludedTime, unknown: c.unknownTimeCompactions, malformed: c.malformedCompactions }) : null}
-        </div>
-      ) : null}
+      <Coverage t={t} walk={walk} />
       {walk.status === "done" && !hasSomething ? <Notice>{t("analytics.empty")}</Notice> : null}
 
-      <div class="stats">
-        <Stat label={t("stat.effective")} value={totals.effective !== undefined ? tokens(totals.effective) : notReported} note={totals.incomplete ? t("common.incomplete") : t("stat.effectiveNote")} />
-        <Stat label={t("stat.cacheRate")} value={totals.rate !== undefined ? percent(totals.rate) : notReported} note={t("stat.cacheRateNote")} />
-        <Stat
-          label={t("stat.summary")}
-          value={totals.summaryEffective !== undefined ? tokens(totals.summaryEffective) : notReported}
-          note={totals.summaryEffective !== undefined && totals.effective ? t("stat.summaryNote", { share: shareText(totals.summaryEffective / totals.effective), n: totals.summaryRequests.toLocaleString("en-US") }) : undefined}
-        />
-        <Stat label={t("stat.compactions")} value={hasSomething ? totals.compactions.toLocaleString("en-US") : notReported} note={t("stat.compactionsNote")} />
-      </div>
+      {section === "overview" ? (
+        <>
+          <div class="stats">
+            <Stat label={t("stat.effective")} value={totals.effective !== undefined ? tokens(totals.effective) : notReported} note={totals.incomplete ? t("common.incomplete") : t("stat.effectiveNote")} />
+            <Stat label={t("stat.cacheRate")} value={totals.rate !== undefined ? percent(totals.rate) : notReported} note={t("stat.cacheRateNote")} />
+            {summaryStat}
+            {eventsStat}
+          </div>
+          <Weighting context={context} />
+          <Chart
+            kind="columns"
+            title={t("chart.effective")}
+            sub={t("chart.effectiveSub")}
+            series={[{ id: "effective", label: t("series.effective"), tone: "neutral" }]}
+            points={days.map((d) => point(d, { effective: d.effective }))}
+            format={tokens}
+            ariaSummary={t("chart.effectiveAria", { summary: peakSummary(t, days.length, days.map((d) => d.effective), tokens) })}
+            source={<>{source("usage.get group_by=day")}, {t("chart.effectiveLocal")}</>}
+            {...common}
+          />
+        </>
+      ) : null}
 
-      <Weighting context={context} />
+      {section === "tokens" ? (
+        <>
+          <Chart
+            kind="columns"
+            title={t("chart.daily")}
+            sub={t("chart.dailySub")}
+            series={parts}
+            points={days.map((d) => point(d, { cached: d.cached, uncached: d.uncached, output: d.output }))}
+            format={tokens}
+            ariaSummary={t("chart.dailyAria", { summary: peakSummary(t, days.length, dailyTotals, tokens) })}
+            source={source("usage.get group_by=day")}
+            extra={<div class="muted caption">{t("chart.byModelMissing")}</div>}
+            {...common}
+          />
+          <Chart
+            kind="line"
+            title={t("chart.cache")}
+            sub={t("chart.cacheSub")}
+            series={[{ id: "rate", label: t("series.cacheRate"), tone: "2" }]}
+            points={days.map((d) => point(d, { rate: d.rate }))}
+            format={percent}
+            floorMax={1}
+            ariaSummary={t("chart.cacheAria", { summary: peakSummary(t, days.length, days.map((d) => d.rate), percent) })}
+            source={source("usage.get group_by=day")}
+            {...common}
+          />
+        </>
+      ) : null}
 
-      <div class="charts">
-        <Chart
-          kind="columns"
-          title={t("chart.daily")}
-          sub={t("chart.dailySub")}
-          series={parts}
-          points={usagePoints}
-          format={tokens}
-          ariaSummary={t("chart.dailyAria", { summary: peakSummary(t, days.length, dailyTotals, tokens) })}
-          source={source("usage.get group_by=day")}
-          extra={<div class="muted caption">{t("chart.byModelMissing")}</div>}
-          {...common}
-        />
-        <Chart
-          kind="columns"
-          title={t("chart.effective")}
-          sub={t("chart.effectiveSub")}
-          series={[{ id: "effective", label: t("series.effective"), tone: "neutral" }]}
-          points={days.map((d) => point(d, { effective: d.effective }))}
-          format={tokens}
-          ariaSummary={t("chart.effectiveAria", { summary: peakSummary(t, days.length, days.map((d) => d.effective), tokens) })}
-          source={<>{source("usage.get group_by=day")}, {t("chart.effectiveLocal")}</>}
-          {...common}
-        />
-        <Chart
-          kind="line"
-          title={t("chart.cache")}
-          sub={t("chart.cacheSub")}
-          series={[{ id: "rate", label: t("series.cacheRate"), tone: "2" }]}
-          points={days.map((d) => point(d, { rate: d.rate }))}
-          format={percent}
-          floorMax={1}
-          ariaSummary={t("chart.cacheAria", { summary: peakSummary(t, days.length, days.map((d) => d.rate), percent) })}
-          source={source("usage.get group_by=day")}
-          {...common}
-        />
-        <Chart
-          kind="columns"
-          title={t("chart.summary")}
-          sub={t("chart.summarySub")}
-          series={parts}
-          points={summaryPoints}
-          format={tokens}
-          ariaSummary={t("chart.summaryAria", { summary: peakSummary(t, days.length, days.map((d) => (d.recorded ? (d.summaryCached ?? 0) + (d.summaryUncached ?? 0) + (d.summaryOutput ?? 0) : undefined)), tokens) })}
-          source={source("usage.get group_by=day, compaction")}
-          {...common}
-        />
-        <Chart
-          kind="columns"
-          title={t("chart.events")}
-          sub={t("chart.eventsSub")}
-          series={[{ id: "events", label: t("series.compactions"), tone: "neutral" }]}
-          points={days.map((d) => point(d, { events: d.recorded ? d.compactions : undefined }))}
-          format={String}
-          whole
-          ariaSummary={t("chart.eventsAria", { summary: peakSummary(t, days.length, days.map((d) => (d.recorded ? d.compactions : undefined)), String) })}
-          source={source("usage.get group_by=day, compaction.compactions")}
-          {...common}
-        />
-      </div>
+      {section === "compaction" ? (
+        <>
+          <div class="stats">
+            {summaryStat}
+            {eventsStat}
+          </div>
+          <div class="charts">
+            <Chart
+              kind="columns"
+              title={t("chart.summary")}
+              sub={t("chart.summarySub")}
+              series={parts}
+              points={days.map((d) => point(d, { cached: d.summaryCached, uncached: d.summaryUncached, output: d.summaryOutput }))}
+              format={tokens}
+              ariaSummary={t("chart.summaryAria", { summary: peakSummary(t, days.length, days.map((d) => (d.recorded ? (d.summaryCached ?? 0) + (d.summaryUncached ?? 0) + (d.summaryOutput ?? 0) : undefined)), tokens) })}
+              source={source("usage.get group_by=day, compaction")}
+              {...common}
+            />
+            <Chart
+              kind="columns"
+              title={t("chart.events")}
+              sub={t("chart.eventsSub")}
+              series={[{ id: "events", label: t("series.compactions"), tone: "neutral" }]}
+              points={days.map((d) => point(d, { events: d.recorded ? d.compactions : undefined }))}
+              format={String}
+              whole
+              ariaSummary={t("chart.eventsAria", { summary: peakSummary(t, days.length, days.map((d) => (d.recorded ? d.compactions : undefined)), String) })}
+              source={source("usage.get group_by=day, compaction.compactions")}
+              {...common}
+            />
+          </div>
+          <CompactionEffect model={model} weights={weights} />
+        </>
+      ) : null}
+    </>
+  );
+}
 
-      <ByThread model={model} weights={weights} />
-      <CompactionEffect model={model} weights={weights} />
-      <Resources model={model} />
-    </div>
+export function Analytics({ context }: { context: DesignContext }) {
+  const model = context.model;
+  const t = model.t.value;
+  const section = analyticsSection(model.route.value);
+  return (
+    <SubView
+      title={t("view.analytics")}
+      items={ANALYTICS_SECTIONS.map((s) => ({ key: s, href: formatRoute({ view: "analytics", section: s }), icon: ICONS[s], label: t(`ana.section.${s}`), current: s === section }))}
+      onSelect={(key) => model.navigate({ view: "analytics", section: key as AnalyticsSection })}
+    >
+      {section === "overview" || section === "tokens" || section === "compaction" ? (
+        <UsagePane context={context} section={section} />
+      ) : section === "threads" ? (
+        <>
+          <PeriodHead model={model} section={section} />
+          <ByThread model={model} weights={context.prefs.value.weights} />
+        </>
+      ) : section === "storage" ? (
+        <StoragePane model={model} />
+      ) : section === "memory" ? (
+        <MemoryPane model={model} />
+      ) : (
+        <IndexPane model={model} />
+      )}
+    </SubView>
   );
 }

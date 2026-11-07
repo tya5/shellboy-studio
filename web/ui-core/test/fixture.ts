@@ -3,7 +3,7 @@
 import { signal } from "@preact/signals-core";
 import { connected, details, FakeOwnerDb, FakeTransport, settle, summary } from "../../data/test/harness";
 import { ShellboyData } from "../../data/src";
-import { AppModel, noPending, type PendingAdapter, type PendingItem, type ViewName } from "../src";
+import { AppModel, noPending, type PendingAdapter, type PendingItem, type Route, type ViewName } from "../src";
 
 export const NOW = Date.parse("2026-11-07T10:20:00+00:00");
 const at = (minute: number, second = 0) => `2026-11-07T10:${String(minute).padStart(2, "0")}:${String(second).padStart(2, "0")}.000000+00:00`;
@@ -265,13 +265,13 @@ export function answerInsights(db: FakeOwnerDb, usage: Record<string, unknown> =
   };
 }
 
-export async function fixtureModel(options: { pending?: PendingAdapter; route?: ViewName; usage?: Record<string, unknown> } = {}) {
+export async function fixtureModel(options: { pending?: PendingAdapter; route?: ViewName; section?: Route["section"]; usage?: Record<string, unknown> } = {}) {
   const t = new FakeTransport();
   const db = fixtureDb();
   answerInsights(db, options.usage);
   const data = new ShellboyData({ transport: t, newId: () => "op-1" });
   const model = new AppModel({ data, pending: options.pending ?? noPending, nowMs: () => NOW, offsetMinutes: () => 540 });
-  if (options.route) model.applyRoute({ view: options.route });
+  if (options.route) model.applyRoute({ view: options.route, ...(options.section && { section: options.section }) });
   model.start();
   t.open();
   t.push({ t: "hello", bridge_version: "0.0.1", owner: connected });

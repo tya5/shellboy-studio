@@ -30,8 +30,10 @@ what the running owner loaded. So these have no read and Settings says so: `defa
 all of `[shell]`, `[retention]`, `[limits]`, `[compaction]`, `[embedding]` and `[indexing]` values other
 than what `index.status` and `thread.get` reflect.
 
-Where such a key has a documented default, Settings shows it marked as a documented default that the file
-may override. It is never presented as the running value.
+Settings shows these rows as "Owner doesn't report this", with no default beside them (user decision
+2026-11-07, under the no-guessed-values rule). `config.get` and `config.set` are planned in core (#266); their
+wire isn't known. `configControl` in `SettingsView.tsx` and `Fact.control` are the small seam: each such row
+carries its public TOML key (`ConfigKey`) and takes an edit control when one exists.
 
 Credentials: nothing in the bridge or browser reads a credential value. No owner read returns a credential
 variable name either, so the name is listed as unavailable. `shell.env` values could hold secrets; only
@@ -66,11 +68,16 @@ Bounds, all in `insights.ts`:
 
 - One call on the wire per walk, each waiting for the last reply.
 - `MAX_WINDOWS` = 64 per run. It then stops, keeps what it has and offers Continue from the same cursor.
-- A walk runs when Analytics opens, on a period change and on Refresh. Never per render, and there's no
-  polling. Weights are applied locally with no read.
+- A walk runs when a section that shows it opens, and again for a new period or on Refresh only if such a
+  section is open. Never per render, and there's no polling. Weights are applied locally with no read.
 - Stop halts after the call on the wire. `cursor_expired` keeps partial values and asks for a new read.
-- By-Thread is a second walk, on request only. Compaction events are one `compact.list` for one Thread.
-- Resources are four finite reads when a view opens and on Refresh.
+- By-Thread is a second walk, read when By Thread opens. Compaction events are one `compact.list` for one Thread.
+- Each resource read runs when a section showing it opens and on Refresh. Switching sections drops nothing:
+  walks live in `Insights`, not in the pane, and carry on while another section is shown.
+
+Sections (`#/analytics/<section>`): Overview, Tokens and Compaction use the daily walk; By Thread its own walk;
+Storage reads `storage.status` and `status`; Memory `status --memory`; Index `index.status`. Settings sections read
+the same way: `thread.get` for four of them, `index.status` for Embeddings, storage, memory and receipts for Storage.
 
 The same day can recur across windows. Counters add. Percentiles and ratios don't, so the cache rate comes from
 summed `cached_tokens / input_tokens`, the mean input is re-derived from `known_count` and `mean`, and p50/p95
@@ -111,11 +118,12 @@ legend and table provide the required second channel). Single series use `muted`
 
 | Decision | Reason | Revisit when |
 |---|---|---|
-| Analytics is one scrolling page with Resources below | The questions are read together; a tab would hide the reads' state | The page proves too long in use |
+| Analytics is split into sections by a shared SubView (user request 2026-11-07), replacing one long scroll | The page was too long; panes also make reads lazy | — |
+| Phone tabs are Awaiting you, Conversation, Monitor and More (user request 2026-11-07) | Five tabs were tight; More holds everything else | — |
+| At phone width tables stack into label and value pairs, except a chart's value table | No hidden column and no sideways scroll | — |
 | The popover keeps theme and language, and links to Settings > Appearance | Those choices are quick and were just fixed in the popover | The user prefers one place |
 | Period is browser-local fixed offset, not `local` | Calendar days should match what the reader sees when the owner is elsewhere. Uncertain: a DST change inside the period shifts boundaries by the offset difference | Someone reads across a DST change |
 | Settings reads one `thread.get` for the selected Thread, without opening its history | Opening a Thread walks its history (`data-layer.md`) | A Thread picker is wanted |
-| Documented defaults are shown beside "Owner doesn't report this" | Useful to read, and marked so it isn't taken for the running value. Uncertain under the no-guessed-values rule | `config.get` exists; then they go away |
 
 ## Validation record (2026-11-07)
 
@@ -125,6 +133,6 @@ The data was synthetic: mock replies, then, with the owner stopped, attempts cop
 
 Commands: `npm run check` (typecheck and Vitest), `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test` with `SHELLBOY_BIN` set to the same 0.10.0 binary. `tests/real_owner.rs` now sends every new read through the bridge to that real owner, and checks that `storage.collect` is refused.
 
-Seen in the browser against the real bridge and owner: all charts, tables and Resources; Console, Light and Terminal at 1440 px and 390 px; Japanese; hover tooltips; opening a chart's table; period change; weights changing the figures with no read, kept per browser, an invalid value refused; by-Thread walk and choosing a Thread's compaction; the range bar with a real "after" value; a walk over 4 windows with real cursors; Stop then Continue; owner down and then back, which read again by itself; the catalog on a press. No console error, no request leaving the bridge's origin, no horizontal page overflow. Daily values for six days were compared with a direct SQL sum of the temporary database and matched.
+Seen in the browser against the real bridge and owner: every Analytics section; all charts, tables and Resources; Console, Light and Terminal at 1440 px and 390 px; Japanese; hover tooltips; opening a chart's table; period change; weights changing the figures with no read, kept per browser, an invalid value refused; by-Thread walk and choosing a Thread's compaction; the range bar with a real "after" value; a walk over 4 windows with real cursors; Stop then Continue; owner down and then back, which read again by itself; the catalog on a press. No console error, no request leaving the bridge's origin, no horizontal page overflow. Daily values for six days were compared with a direct SQL sum of the temporary database and matched.
 
 Browser device emulation is not a phone test. Not tested: real phones, Safari, Firefox, Windows, Linux, a real provider, the user's real data, index spaces in a browser (the temporary owner had no embedding configured, so spaces are covered by fixtures only), storage `warning` or `limit_reached` in a browser (fixtures only by logic), the 64-window bound against a real owner (unit test only), a screen reader.
