@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import { formatClock, formatDuration, formatRoute, formatTokens, parseTime, statusLabel, type AppModel, type ConversationRow, type StepRow as Step } from "../../../ui-core/src";
 import { LiveMessage } from "./LiveMessage";
 import { WindowedScroll } from "./WindowedScroll";
-import { BranchMark, Button, Composer, LoadingRows, EmptyState, Icon, KeyValue, LogBlock, Message, Notice, StatusMark, StepRow, SummaryStrip } from "../system/components";
+import { BranchMark, Button, Composer, LoadingRows, EmptyState, Icon, KeyValue, LogBlock, Message, Notice, QuestionCard, StatusMark, StepRow, SummaryStrip, WorkSheet } from "../system/components";
 
 const stepDuration = (s: Step, now: number): string | undefined => {
   if (s.durationMs !== undefined) return formatDuration(s.durationMs);
@@ -95,6 +95,24 @@ function RowView({ model, row }: { model: AppModel; row: ConversationRow }) {
   );
 }
 
+function WorkRegions({ model, place }: { model: AppModel; place: string }) {
+  const t = model.t.value;
+  const work = model.work.value;
+  const replies = model.threadReplies.value;
+  const [error, setError] = useState<string | undefined>();
+  const [busy, setBusy] = useState<string | undefined>();
+  const state = (s: string) => s === "accepted" ? t("work.accepted") : s === "held" ? t("work.held") : s === "starting" ? t("work.starting") : s === "stopping" ? t("work.stopping") : t("work.runningState");
+  return <>
+    {replies.length ? <section class="work-region"><h3>{t("work.replies")}</h3>{replies.map((r) => r.recipient.kind === "human" ?
+      <QuestionCard key={r.id} id={`${place}-${r.id}`} label={t("work.replies")} waitingWord={t("status.awaiting")} question={r.question} answerLabel={t("inbox.answer")} submitLabel={t("inbox.answerResume")} error={error} onAnswer={(text) => { void model.answerReply(r.id, text).then((failure) => setError(failure ? t("inbox.answerFailed", { message: failure }) : undefined)); }} /> :
+      <div class="work-row" key={r.id}><span>{r.question}</span><span>{r.state}</span><a href={formatRoute({ view: "conversation", threadId: r.recipient.threadId })}>{r.recipient.title}</a></div>)}</section> : null}
+    {work.running.length ? <section class="work-region"><h3>{t("work.running")}</h3><span class="caption muted">{t("work.incomplete")}</span>{work.running.map((r) => <div class="work-row" key={r.id}><span class="mono">{r.label}</span><span>{state(r.state)} {r.startedAt && parseTime(r.startedAt) !== undefined ? formatDuration(model.now.value - parseTime(r.startedAt)!) : ""}</span></div>)}</section> : null}
+    {work.pending.length ? <section class="work-region"><h3>{t("work.pending")}</h3>{work.pending.map((r) => <div class="work-row" key={r.id}><span>{r.label || t("work.textUnavailable")}</span><span class="mono">{r.id}</span><span>{state(r.state)}</span><Button disabled={busy !== undefined || model.connection.value !== "connected" || model.uncertainCancels.value.has(r.id)} onClick={() => { setBusy(r.id); void model.cancelPending(r.id).then((failure) => { setBusy(undefined); setError(failure ? t("work.cancelFailed", { message: failure }) : undefined); }); }}>{t("work.cancel")}</Button></div>)}{error ? <div role="alert">{error}</div> : null}</section> : null}
+    {work.partial ? <div class="caption muted">{t("work.partial")}</div> : null}
+    {model.handle.value?.work.value.stale && (work.running.length > 0 || work.pending.length > 0) ? <div class="caption muted">{t("work.stale")}</div> : null}
+  </>;
+}
+
 function Details({ model }: { model: AppModel }) {
   const t = model.t.value;
   const step = model.selectedStep.value;
@@ -112,9 +130,9 @@ function Details({ model }: { model: AppModel }) {
     : [];
   return (
     <aside class="details" aria-label={t("details.title")}>
-      <h3>{t("details.title")}</h3>
+      <WorkRegions model={model} place="sidebar" />
       {step ? (
-        <>
+        <section class="detail-region"><h3>{t("details.title")}</h3>
           <div class="cmd"><Icon name="term" /><span>{step.command}</span></div>
           <KeyValue
             rows={[
@@ -126,10 +144,6 @@ function Details({ model }: { model: AppModel }) {
             ]}
           />
           <Output model={model} id={step.executionId} boxed />
-        </>
-      ) : (
-        <div class="muted caption">{t("details.pick")}</div>
-      )}
       {usageRows.length > 0 ? (
         <>
           <h3>{t("usage.title")}</h3>
@@ -148,12 +162,15 @@ function Details({ model }: { model: AppModel }) {
           />
         </>
       ) : null}
+        </section>
+      ) : null}
     </aside>
   );
 }
 
 export function Conversation({ model }: { model: AppModel }) {
   const t = model.t.value;
+  const [sheetOpen, setSheetOpen] = useState(false);
   const handle = model.handle.value;
   const rows = model.conversation.value;
   const win = model.longReader.value;
@@ -170,6 +187,7 @@ export function Conversation({ model }: { model: AppModel }) {
   useLayoutEffect(() => follow(), [rows]);
   useEffect(() => {
     pinned.current = true;
+    setSheetOpen(false);
   }, [handle]);
 
   if (!handle)
@@ -250,6 +268,7 @@ export function Conversation({ model }: { model: AppModel }) {
               {t("composer.unconfirmed")}
             </Notice>
           ) : null}
+          {(model.threadReplies.value.length || model.work.value.running.length || model.work.value.pending.length || model.work.value.partial) ? <div class="work-strip"><Button onClick={() => setSheetOpen(true)}>{[model.threadReplies.value.length ? `${t("work.replies")} ${model.threadReplies.value.length}` : "", model.work.value.running.length ? t("work.runningCount", { n: model.work.value.running.length }) : "", model.work.value.pending.length ? `${t("work.pending")} ${model.work.value.pending.length}` : ""].filter(Boolean).join(", ")}{model.work.value.partial ? ` ${t("work.partial")}` : ""}</Button></div> : null}
           <Composer
             label={t("composer.label")}
             placeholder={t("composer.placeholder")}
@@ -270,6 +289,7 @@ export function Conversation({ model }: { model: AppModel }) {
         </div>
       </div>
       <Details model={model} />
+      <WorkSheet open={sheetOpen} title={t("work.title")} closeLabel={t("work.close")} onClose={() => setSheetOpen(false)}><WorkRegions model={model} place="sheet" /></WorkSheet>
     </>
   );
 }

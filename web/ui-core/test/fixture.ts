@@ -2,7 +2,7 @@
 // shapes observed on a real owner. Every design's smoke test renders this. Examples, not data.
 import { signal } from "@preact/signals-core";
 import { connected, details, FakeOwnerDb, FakeTransport, settle, summary } from "../../data/test/harness";
-import { ShellboyData } from "../../data/src";
+import { ShellboyData, type ReplyWaitAdapter } from "../../data/src";
 import { AppModel, noPending, type PendingAdapter, type PendingItem, type Route, type ViewName } from "../src";
 
 export const NOW = Date.parse("2026-11-07T10:20:00+00:00");
@@ -313,6 +313,7 @@ export function answerInsights(db: FakeOwnerDb, usage: Record<string, unknown> =
       case "index.status":
         return { ok: true, result: fixtureIndex };
       case "status":
+        if (a.thread_id) return plain(c);
         return { ok: true, result: a.memory ? fixtureMemory : { items: [], receipt_budget: { accounted_bytes: 13214, at_limit: false, limit_bytes: 268435456, result_retention_seconds: 86400 } } };
       case "model.list":
         return { ok: true, result: { api: "responses", connection: "local", models: ["mock-large", "mock-small"], unavailable_features: [] } };
@@ -322,13 +323,13 @@ export function answerInsights(db: FakeOwnerDb, usage: Record<string, unknown> =
   };
 }
 
-export async function fixtureModel(options: { pending?: PendingAdapter; route?: ViewName; section?: Route["section"]; usage?: Record<string, unknown>; capabilities?: string[]; configure?: (db: FakeOwnerDb) => void } = {}) {
+export async function fixtureModel(options: { pending?: PendingAdapter; replyWait?: ReplyWaitAdapter; route?: ViewName; section?: Route["section"]; usage?: Record<string, unknown>; capabilities?: string[]; configure?: (db: FakeOwnerDb) => void } = {}) {
   const t = new FakeTransport();
   const db = fixtureDb();
   answerInsights(db, options.usage);
   options.configure?.(db);
   const data = new ShellboyData({ transport: t, newId: () => "op-1" });
-  const model = new AppModel({ data, pending: options.pending ?? noPending, nowMs: () => NOW, offsetMinutes: () => 540 });
+  const model = new AppModel({ data, pending: options.pending ?? noPending, ...(options.replyWait ? { replyWait: options.replyWait } : {}), nowMs: () => NOW, offsetMinutes: () => 540 });
   if (options.route) model.applyRoute({ view: options.route, ...(options.section && { section: options.section }) });
   model.start();
   t.open();

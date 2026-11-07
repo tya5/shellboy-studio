@@ -187,3 +187,34 @@ the client rule of `events-and-external-protocol` 2.5 (Shellboy):
 | The first data-layer version assumed newest-first history pages; replaced by the window above (2026-11-07) | checking a real owner showed oldest-first pages, so a Thread over 50 nodes showed only its beginning | the owner offers a reverse read |
 | The `stream` frame (cursor, text) is replaced by `live` / `live_end` (2026-11-07) | the owner's wire is known now: attempts, offsets, gaps and reasoning need to reach the tab | — |
 | Live text is kept past the bound by dropping the oldest, marked incomplete (was: discard the whole preview) | with attempt boundaries a long answer can stay visible and honest | measured use shows otherwise |
+
+## Conversation work observations
+
+The visible conversation opts its Thread handle into one `status` page per hint,
+with a 200-item limit, filtered to active shell and undelivered message states.
+A continuation is not walked: the displayed counts are lower bounds. `status`
+contains other work kinds too, so a page can omit matching rows even when the
+visible count is zero. It is not an atomic TUI live-work snapshot. The handle
+owns the page and at most eight pending-message previews, each one `history.get`
+of at most 1024 bytes. Original bodies are immutable; the cache is replaced on
+refresh and discarded with the handle. Work subscriptions are reference-counted;
+closing or pausing the handle cancels its reads. The existing Link scheduler
+bounds concurrent and outstanding calls. Ticks never issue reads.
+
+The public status page does not expose ordinary `wait` operations. `run.get`
+exposes owned IDs but does not specify a paginated or bounded owned-ID list;
+therefore this view does not enumerate children through it. The bounded shell
+page can omit the command for an active execution; in that case its ID is shown.
+A source original that cannot be read is shown as unavailable, not invented.
+These limitations must be revisited when a bounded external live-work projection
+and its invalidation semantics are adopted in Shellboy; this project does not
+add one to core. Pending cancellation uses a single receipt-backed `message.cancel`
+and checks its per-ID outcome. An unconfirmed result is shown as an error and is
+not automatically retried.
+
+The reply-wait adapter is deliberately inert until #262 W6 publishes its wire and
+capability. Its eventual implementation owns bounded observations, subscriptions,
+cancellation and cleanup; no capability or wire shape is guessed here. The
+conversation projection caps the adapter's visible results at 128 and separates
+human recipients from Thread recipients. The existing global Awaiting you adapter
+remains independent and human-only.

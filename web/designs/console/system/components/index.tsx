@@ -44,3 +44,5 @@ export { AppFrame } from "./AppFrame";
 export { AppCard } from "./AppCard";
 export { LoadingRows } from "./LoadingRows";
 export { VirtualGap, VirtualSpace } from "./VirtualSpace";
+
+export { WorkSheet } from "./WorkSheet";

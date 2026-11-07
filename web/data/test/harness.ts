@@ -86,6 +86,7 @@ export class FakeOwnerDb {
   history: Record<string, Record<string, unknown>[]> = {};
   expiredCursors = new Set<string>();
   shells: Record<string, Record<string, unknown>[]> = {};
+  work: Record<string, Record<string, unknown>[]> = {};
   outputs: Record<string, string> = {};
   bodies: Record<string, string> = {};
   answered = new Set<number>();
@@ -136,6 +137,8 @@ export class FakeOwnerDb {
         for (const [id, tags] of next) (this.threads[id] as { tags?: string[] }).tags = tags;
         return { ok: true, result: { changed, unchanged, not_found: notFound, add: f.add ?? [], remove: f.remove ?? [] } };
       }
+      case "status":
+        return this.page(this.work[a.thread_id!] ?? [], Number(a.limit), a.cursor);
       case "thread.get":
         return this.details[a.thread_id!] ? { ok: true, result: this.details[a.thread_id!] } : { ok: false, code: "not_found" };
       case "history.list": {
@@ -155,7 +158,7 @@ export class FakeOwnerDb {
       case "shell.read":
         return { ok: true, result: { execution_id: a.execution_id, text: this.outputs[a.execution_id!] ?? "", output_complete: true } };
       case "history.get":
-        return { ok: true, result: { node_id: a.node_id, kind: "assistant_response", text: this.bodies[a.node_id!] ?? "" } };
+        return { ok: true, result: { node_id: a.node_id, kind: Object.values(this.work).some((rows) => rows.some((i) => i.message_id === a.node_id)) ? "user" : "assistant_response", text: this.bodies[a.node_id!] ?? "" } };
       default:
         return { ok: true, result: {} };
     }

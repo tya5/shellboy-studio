@@ -31,6 +31,7 @@ import type {
   ThreadTagArgs,
   TagResult,
   UsageGetArgs,
+  WorkItem,
 } from "./protocol";
 
 const isObject = (v: unknown): v is Record<string, unknown> =>
@@ -80,6 +81,14 @@ const decodeShellPage = pageOf<ShellEntry>((v) =>
     ? undefined
     : "shell entry lacks execution_id or state",
 );
+const workPage = pageOf<WorkItem>((v) =>
+  isObject(v) && typeof v.kind === "string" && typeof v.id === "string" && typeof v.state === "string" && typeof v.thread_id === "string"
+    ? undefined : "status item lacks kind, id, state or thread_id",
+);
+const decodeWorkPage: Decoder<Page<WorkItem>> = (v) => {
+  const decoded = workPage(v);
+  return decoded.ok && decoded.value.items.length > 200 ? { ok: false, reason: "status page exceeds 200 items" } : decoded;
+};
 const decodeBody: Decoder<HistoryBody> = (v) =>
   isObject(v) && typeof v.node_id === "string" && typeof v.text === "string"
     ? { ok: true, value: v as HistoryBody }
@@ -235,6 +244,9 @@ export class Operations {
     return this.run("status", { memory: true }, decodeRecord, undefined, read);
   }
   /** Activity status, for `receipt_budget`. One row is enough; the rows are not used. */
+  threadWork(threadId: string, read?: ReadOptions): Promise<Outcome<Page<WorkItem>>> {
+    return this.run("status", { thread_id: threadId, state: ["starting", "running", "stopping", "accepted", "held"], limit: 200 }, decodeWorkPage, undefined, read);
+  }
   statusSummary(read?: ReadOptions): Promise<Outcome<Record<string, unknown>>> {
     return this.run("status", { limit: 1 }, decodeRecord, undefined, read);
   }
@@ -278,6 +290,9 @@ export class Operations {
   /** Sender identity (`human`, `sender_label: "web"`) is set by the bridge, not here. */
   messageSend(args: MessageSendArgs, operationId = this.newId()): Promise<Outcome<MutationResult>> {
     return this.run("message.send", args, decodeRecord, { operationId });
+  }
+  messageCancel(messageId: string, operationId = this.newId()): Promise<Outcome<MutationResult>> {
+    return this.run("message.cancel", { message_ids: [messageId] }, decodeRecord, { operationId });
   }
   runStop(runId: string, operationId = this.newId()): Promise<Outcome<MutationResult>> {
     return this.run("run.stop", { run_id: runId }, decodeRecord, { operationId });

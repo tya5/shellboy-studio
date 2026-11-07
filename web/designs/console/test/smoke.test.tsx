@@ -43,6 +43,33 @@ const flushPromises = async () => {
 };
 const text = (el: Element) => el.textContent ?? "";
 
+describe("Conversation work regions", () => {
+  it("shows nonempty regions in the sidebar and one compact strip; removes them on a hint", async () => {
+    const { model, t, db } = await fixtureModel();
+    db.work.lead = [
+      { kind: "shell", id: "exec-1", execution_id: "exec-1", thread_id: "lead", run_id: "run-1", state: "running" },
+      { kind: "message", id: "m", message_id: "m", thread_id: "lead", state: "held" },
+    ];
+    db.bodies.m = "Please review";
+    db.shells.lead = [{ execution_id: "exec-1", state: "running", command_excerpt: "test command" }];
+    const el = draw(model);
+    act(() => t.push({ t: "changed", thread_ids: ["lead"], list: false }));
+    await act(async () => settle(t, db));
+    const sidebar = el.querySelector(".details")!;
+    const headings = [...sidebar.querySelectorAll(".work-region h3")].map(text);
+    expect(headings).toEqual(["Running", "Pending"]);
+    expect(text(sidebar)).toContain("test command");
+    expect(text(sidebar)).toContain("Please review");
+    expect(el.querySelector(".work-strip")?.textContent).toContain("Running at least 1");
+    db.work.lead = [];
+    act(() => t.push({ t: "changed", thread_ids: ["lead"], list: false }));
+    await act(async () => settle(t, db));
+    expect(el.querySelector(".work-strip")).toBeNull();
+    expect(el.querySelectorAll(".details .work-region")).toHaveLength(0);
+    model.dispose();
+  });
+});
+
 describe("Conversation live text", () => {
   const liveFrame = (text: string, offset = 0, extra: { gap?: boolean } = {}): ServerFrame =>
     ({ t: "live", thread_id: "lead", attempt_id: "a1", gap: false, deltas: [{ offset, reasoning: false, text }], ...extra });

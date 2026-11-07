@@ -24,3 +24,5 @@ export * from "./status";
 export * from "./threads";
 export * from "./usage";
 export * from "./window";
+
+export * from "./work";

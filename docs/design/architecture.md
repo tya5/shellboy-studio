@@ -523,3 +523,10 @@ the foundation works end to end (§2.1).
 | `usage.get`, `compact.list`, `storage.status` and `index.status` join the allowlist as reads for Analytics and Settings (2026-11-07) | saved facts only, no provider request and no receipt; every related mutation stays denied (`analytics-settings.md`) | a UI offers a mutation with a preview |
 | `run.retry` and `thread.archive` join the allowlist with the data layer's operations (2026-11-07) | the data layer exposes them as typed operations (`docs/design/data-layer.md`); `thread.unarchive` stays denied until a UI offers it | a UI for unarchive exists |
 | First-run connection setup screen behind capability `connection.setup`, Cargo feature `next-connection-setup`; `connection.test` is a read, `credentials.set` and `credentials.clear` are mutations (2026-11-07) | #269's operations are on a branch; one screen from nothing to a first message (`connection-setup.md`) | the operations are in a Shellboy release |
+
+### Conversation work observation decision (2026-11-07)
+
+| Decision | Reason and impact | Revisit when |
+|---|---|---|
+| Use one bounded Thread-scoped `status` page and at most eight bounded original previews; do not walk continuation pages or enumerate unbounded Run-owned IDs | The public RPC has no bounded equivalent of the TUI live-work/held-input snapshot. Counts are lower bounds when truncated; ordinary waits and owned child Runs can be missing. | Shellboy adopts a bounded, hint-invalidated external live-work and pending-input projection. |
+| Leave the #262 reply-wait wire adapter inert | W6 capability and protocol are not yet finalized. The UI can exercise an injected adapter, but production shows no reply-wait rows. | W6 reports the adopted capability, bounded read and answer contract. |

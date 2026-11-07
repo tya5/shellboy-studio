@@ -134,3 +134,17 @@
   .qlist{border-right:0;overflow:visible}
   .qdetail{overflow:visible;padding:var(--space-12)}
 }
+
+/* Conversation work regions: independent scroll areas; compact sheet on narrow frames. */
+.details{min-height:0;overflow:hidden}
+.work-region,.detail-region{min-height:0;overflow:auto;display:flex;flex-direction:column;gap:var(--space-8);flex:1 1 auto}
+.work-region h3,.detail-region h3{position:sticky;top:0;background:var(--panel)}
+.work-row{display:flex;flex-direction:column;gap:var(--space-4);overflow-wrap:anywhere;padding:var(--space-8);background:var(--inset);border-radius:var(--radius-s)}
+.work-strip{display:none}
+.work-sheet{border:1px solid var(--line-strong);border-radius:var(--radius);background:var(--panel);color:var(--fg);width:min(100%,600px);max-height:80dvh;padding:var(--space-16)}
+.work-sheet::backdrop{background:var(--scrim)}
+.work-sheet-head{display:flex;align-items:center;justify-content:space-between;gap:var(--space-8)}
+.work-sheet-head h2{font:var(--type-heading);margin:0}
+.work-sheet-body{display:flex;flex-direction:column;gap:var(--space-12);max-height:65dvh;overflow:auto}
+.work-sheet-body .work-region{overflow:visible;flex:none}
+@container app (max-width:1179px){.work-strip{display:block}.work-strip .btn{width:100%;justify-content:flex-start;min-height:var(--size-touch);overflow:hidden;white-space:nowrap;text-overflow:ellipsis}}

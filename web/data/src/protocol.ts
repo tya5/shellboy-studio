@@ -155,6 +155,20 @@ export interface ThreadDetails {
   [extra: string]: unknown;
 }
 
+/** One bounded status observation; it does not contain message text or shell commands. */
+export interface WorkItem {
+  kind: string;
+  id: string;
+  state: string;
+  thread_id: string;
+  run_id?: string | null;
+  execution_id?: string | null;
+  message_id?: string | null;
+  started_at?: string | null;
+  /** Bounded history.get preview, absent when it could not be read. */
+  excerpt?: string;
+}
+
 /** A shell execution linked from a history node (`history.list`, observed at the pinned revision). */
 export interface HistoryExecution {
   execution_id: string;
