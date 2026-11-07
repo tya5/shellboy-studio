@@ -375,6 +375,17 @@ a{color:var(--accent)}
 .appframe.off{display:none}
 
 /* Phone width: same markup, driven by the container */
+.choices{display:flex;flex-direction:column;max-height:288px;overflow:auto;border:1px solid var(--line-strong);border-radius:var(--radius-s);background:var(--inset)}
+.choice{display:flex;align-items:flex-start;gap:var(--space-8);min-height:var(--size-control);padding:var(--space-8) var(--space-12);border-bottom:1px solid var(--line);font:var(--type-label);cursor:pointer}
+.choice:last-child{border-bottom:0}
+.choice:hover{background:var(--raised)}
+.choice.on{background:var(--accent-bg)}
+.choice input{margin:2px 0 0;accent-color:var(--accent)}
+.choice:focus-within{outline:2px solid var(--accent);outline-offset:-2px}
+.choice-text{display:flex;flex-direction:column;gap:var(--space-4);min-width:0;overflow-wrap:anywhere}
+.setup{display:flex;flex-direction:column;gap:var(--space-16);max-width:760px;width:100%;margin:0 auto}
+.setup-actions{display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-8)}
+.setup-steps{margin:0;padding-left:var(--space-24);display:flex;flex-direction:column;gap:var(--space-8);font:var(--type-label)}
 @container app (max-width:899px){
   .btn,.chip{min-height:var(--size-touch)}
   .btn.icon{width:var(--size-touch)}
@@ -403,5 +414,6 @@ a{color:var(--accent)}
   .chart-table summary{min-height:var(--size-touch)}
   .sect,.chart{padding:var(--space-12)}
   .composer .hint{display:none}
+  .choice{min-height:var(--size-touch)}
   .md .code pre{min-height:calc(var(--size-touch) + 2 * var(--space-4))}
 }

@@ -9,6 +9,7 @@ import { branchMarks } from "./branches";
 import { Branches, readWholeFamily, ThreadOrg } from "./branching";
 import { CAPABILITY_CONFIG, ConfigEditor } from "./config";
 import { Insights } from "./insights";
+import { CAPABILITY_CONNECTION_SETUP, ConnectionSetup } from "./setup";
 import { noPending, type PendingAdapter } from "./pending";
 import { analyticsSection, formatRoute, settingsSection, START_ROUTE, type Route, type ViewName } from "./route";
 import { statusOfShell, type StatusKey } from "./status";
@@ -79,6 +80,7 @@ export class AppModel {
   readonly branches: Branches;
   readonly org: ThreadOrg;
   readonly config: ConfigEditor;
+  readonly setup: ConnectionSetup;
   readonly apps: AppsModel;
   /** Conversation: node id to branches leaving there, for the open Thread. Empty when it has no family. */
   readonly marks: Signal<ReadonlyMap<string, number>> = signal(new Map());
@@ -149,6 +151,7 @@ export class AppModel {
     this.branches = new Branches(this.ops);
     this.org = new ThreadOrg(this.ops);
     this.config = new ConfigEditor(this.ops);
+    this.setup = new ConnectionSetup(this.ops);
     this.apps = new AppsModel(this.ops);
 
     const pendingByThread = computed(() => {
@@ -216,6 +219,7 @@ export class AppModel {
         if (route.view !== "branches") this.branches.leave();
         if (route.view !== "threads") this.org.leave();
         if (route.view !== "settings") this.config.leave();
+        if (route.view !== "setup") this.setup.leave();
         if (this.connection.value !== "connected") return;
         const threadId = this.selectedId.value;
         if (route.view === "analytics") this.insights.ensureAnalytics(analyticsSection(route), threadId);
@@ -223,6 +227,16 @@ export class AppModel {
           this.insights.ensureSettings(settingsSection(route), threadId);
           if (settingsSection(route) !== "appearance" && this.data.capabilities.value.includes(CAPABILITY_CONFIG)) this.config.ensure();
         }
+      }),
+    );
+    // Setup: with the capability, the file is read once per connection to the owner. If it has no
+    // connection, the screen opens by itself, once, and only from the start of a session.
+    this.disposers.push(
+      effect(() => {
+        if (this.connection.value !== "connected" || !this.data.capabilities.value.includes(CAPABILITY_CONNECTION_SETUP)) return;
+        const probe = this.setup.probe.peek();
+        if (probe.state === "idle") void this.setup.readFile();
+        if (this.setup.needed.value && this.route.peek().view === "conversation" && this.setup.takeAutoShow()) this.navigate({ view: "setup" });
       }),
     );
     // Apps read on opening the view. Open tabs stay open while other views show.

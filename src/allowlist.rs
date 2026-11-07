@@ -50,6 +50,12 @@ pub fn access(command: &Command) -> Access {
         Command::ConfigGet(..) => Access::Read,
         #[cfg(feature = "next-shellboy")]
         Command::ConfigSet(..) => Access::Mutation,
+        // First-run connection setup (#269). One model-list GET, no state change on the owner.
+        #[cfg(feature = "next-connection-setup")]
+        Command::ConnectionTest(..) => Access::Read,
+        // The key is write-only: the owner never returns it. Nothing here logs arguments.
+        #[cfg(feature = "next-connection-setup")]
+        Command::CredentialsSet(..) | Command::CredentialsClear(..) => Access::Mutation,
         // `events.wait` is bridge-internal (one shared long-poll). The rest has no UI yet.
         Command::OwnerShutdown(..)
         | Command::ThreadDelete(..)

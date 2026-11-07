@@ -29,6 +29,7 @@ export { SectionNav, type SectionNavItem } from "./SectionNav";
 export { DiffList, type DiffRow } from "./DiffList";
 export { FactList, type Fact } from "./FactList";
 export { ButtonGroup } from "./ButtonGroup";
+export { ChoiceList, type Choice } from "./ChoiceList";
 export { SubView } from "./SubView";
 export { MoreMenu } from "./MoreMenu";
 export { BranchGraph } from "./BranchGraph";

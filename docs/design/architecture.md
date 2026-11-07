@@ -466,6 +466,10 @@ data-layer operations usable by both web and desktop. Future core needs: write
 connection config, set the working folder, validate provider/model, keychain
 access for the key, trigger an update (§8).
 
+Connection setup for the Web is built: see `connection-setup.md` (Shellboy #269
+operations; the key is stored by the owner in a plain owner-only file, not the OS
+keychain, which #269 leaves out).
+
 ## 13. Risks
 
 - **Core prerequisites slip** (#243 B, #244 A2/D): M1 cannot ship. Mitigation:
@@ -518,3 +522,4 @@ the foundation works end to end (§2.1).
 | First-run GUI setup for connection, folder, security explanation, in-app updates; needs new core operations (§12) (2026-11-06, user decision) | non-server users | — |
 | `usage.get`, `compact.list`, `storage.status` and `index.status` join the allowlist as reads for Analytics and Settings (2026-11-07) | saved facts only, no provider request and no receipt; every related mutation stays denied (`analytics-settings.md`) | a UI offers a mutation with a preview |
 | `run.retry` and `thread.archive` join the allowlist with the data layer's operations (2026-11-07) | the data layer exposes them as typed operations (`docs/design/data-layer.md`); `thread.unarchive` stays denied until a UI offers it | a UI for unarchive exists |
+| First-run connection setup screen behind capability `connection.setup`, Cargo feature `next-connection-setup`; `connection.test` is a read, `credentials.set` and `credentials.clear` are mutations (2026-11-07) | #269's operations are on a branch; one screen from nothing to a first message (`connection-setup.md`) | the operations are in a Shellboy release |

@@ -43,6 +43,9 @@ export function SettingsView({ context }: { context: DesignContext }) {
       case "connections":
         return (
           <>
+            <Section title={t("setup.open")} sub={t("setup.intro")}>
+              <div><a class="btn" href={formatRoute({ view: "setup" })}>{t("setup.open")}</a></div>
+            </Section>
             <Section title={t("set.conn.inUse")} sub={threadSub} source={<>{t("common.source", { source: "" })}<code>thread.get</code></>}>
               {threadError}
               <FactList missing={selected ? missing : t("config.noThreadOpen")} facts={[

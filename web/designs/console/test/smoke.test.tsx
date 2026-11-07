@@ -721,3 +721,94 @@ describe("Settings", () => {
     expect(link.getAttribute("href")).toBe("#/settings/appearance");
   });
 });
+
+describe("Setup", () => {
+  const KEY = "sk-smoke-SECRET-42";
+  const owner = (db: { answer: (c: never) => unknown }, reply: (c: { command: string; args?: unknown }) => unknown) => {
+    const before = db.answer.bind(db);
+    db.answer = ((c: { command: string; args?: unknown }) => reply(c) ?? before(c as never)) as never;
+  };
+  const config = { config_path: "/temp/cfg/config.toml", loaded: { present: false, content_hash: "c".repeat(64), values: {}, redacted_fields: [] }, file: { present: false, content_hash: "c".repeat(64), valid: true, values: {}, redacted_fields: [] }, restart: { all_fields_require_restart: true } };
+  const click = (el: Element | null | undefined) => act(() => void (el as HTMLElement).click());
+  const button = (el: Element, label: string) => [...el.querySelectorAll("button, a.btn")].find((b) => b.textContent?.trim() === label) as HTMLElement | undefined;
+
+  it("on an owner without the operations, says so and gives the manual steps", async () => {
+    const { model } = await fixtureModel({ route: "setup" });
+    const el = draw(model);
+    expect(text(el)).toContain("Setting up here needs a newer Shellboy");
+    expect(text(el)).toContain("shellboy config init");
+    expect(el.querySelector(".choices")).toBeNull();
+  });
+
+  it("walks from nothing to saved, empties the key field when sent, and says a restart is needed", async () => {
+    const { model, t, db } = await fixtureModel({
+      route: "setup",
+      capabilities: ["config.edit", "connection.setup"],
+      configure: (d) =>
+        owner(d as never, (c) => {
+          if (c.command === "config.get") return { ok: true, result: config };
+          if (c.command === "connection.test") return { ok: true, result: { http_status: 200, models: ["model-a", "model-b"], api_key_env: { name: "OPENAI_API_KEY", set: false } } };
+          if (c.command === "credentials.set") return { ok: true, result: { path: "/temp/cfg/credentials.toml" } };
+          if (c.command === "config.set") return { ok: true, result: { written: true, restart_required: true, changes: [] } };
+          return undefined;
+        }),
+    });
+    const el = draw(model);
+    const pump = async (work?: () => void) => {
+      await act(async () => {
+        work?.();
+        await settle(t, db);
+      });
+    };
+    await pump();
+    expect(el.querySelectorAll(".choice")).toHaveLength(4);
+    await pump(() => click(el.querySelectorAll(".choice input")[1]));
+    const field = el.querySelector<HTMLInputElement>('input[type="password"]')!;
+    expect(text(el)).toContain("An API key is required");
+    expect(el.querySelector('a[href="https://platform.openai.com/api-keys"]')).toBeTruthy();
+    await pump(() => {
+      field.value = KEY;
+      field.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await pump(() => click(button(el, "Test connection")));
+    expect(text(el)).toContain("The model list was fetched: 2 models (HTTP 200).");
+    expect(el.querySelector('input[type="password"]')).toBeNull();
+    expect(el.innerHTML).not.toContain(KEY);
+    await pump(() => click([...el.querySelectorAll(".choices")].at(-1)!.querySelector("input")));
+    await pump(() => click(button(el, "Save and use this connection")));
+    expect(text(el)).toContain("Saved");
+    expect(text(el)).toContain("/temp/cfg/credentials.toml");
+    expect(text(el)).toContain("plain-text file");
+    expect(text(el)).toContain("Restart it");
+    expect(el.querySelector('a[href="#/conversation"]')).toBeTruthy();
+    expect(el.innerHTML).not.toContain(KEY);
+    expect(JSON.stringify(Object.entries(localStorage))).not.toContain(KEY);
+  });
+
+  it("warns beside the Local model picker about Ollama's context", async () => {
+    const { model, t, db } = await fixtureModel({
+      route: "setup",
+      capabilities: ["connection.setup"],
+      configure: (d) =>
+        owner(d as never, (c) => {
+          if (c.command === "config.get") return { ok: true, result: config };
+          if (c.command === "connection.test") return { ok: true, result: { http_status: 200, models: ["llama"] } };
+          return undefined;
+        }),
+    });
+    const el = draw(model, { lang: "en" });
+    await act(async () => void (await settle(t, db)));
+    await act(async () => {
+      click(el.querySelectorAll(".choice input")[2]);
+      await settle(t, db);
+    });
+    expect(el.querySelector<HTMLInputElement>('input[aria-label="Address"]')!.value).toBe("http://localhost:11434/v1");
+    await act(async () => {
+      click(button(el, "Test connection"));
+      await settle(t, db);
+    });
+    expect(text(el)).toContain("4k tokens");
+    expect(text(el)).toContain("64k");
+    expect(el.querySelector('a[href="https://docs.ollama.com/context-length"]')).toBeTruthy();
+  });
+});

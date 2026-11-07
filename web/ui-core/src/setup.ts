@@ -1,0 +1,344 @@
+// First-run connection setup: pick a service, give a key, test, pick a model, save. The steps
+// are the operations of Shellboy #269 (`connection.test`, `credentials.set`, `config.set`), which
+// sit behind the `connection.setup` capability. Nothing here is optimistic, and nothing here
+// ever shows, stores or logs a key: it lives in this object only from the test until the save,
+// and the input is cleared the moment it is sent.
+import { batch, computed, signal, type ReadonlySignal, type Signal } from "@preact/signals-core";
+import { Cancel, type Dialect, type OpError, type Operations, type TestFacts, type TestFailureClass } from "../../data/src";
+import { fieldOf, readConfigFacts, type ConfigFacts } from "./config";
+import { presetOf, type ServiceId, type ServicePreset } from "./presets";
+
+export const CAPABILITY_CONNECTION_SETUP = "connection.setup";
+
+/** What the screen knows about the file before it starts. */
+export type SetupProbe =
+  | { state: "idle" }
+  | { state: "reading" }
+  | { state: "ready"; connections: string[]; hasDefault: boolean; configPath: string | undefined }
+  /** The file can't be read or is invalid: setup isn't offered automatically. */
+  | { state: "unreadable"; message: string };
+
+export type EnvOffer =
+  | { kind: "none" }
+  | { kind: "checking" }
+  | { kind: "offered"; name: string; facts: TestFacts }
+  | { kind: "absent" }
+  | { kind: "declined" }
+  | { kind: "using"; name: string };
+
+export type TestState =
+  | { kind: "idle" }
+  | { kind: "testing" }
+  | { kind: "ok"; facts: TestFacts }
+  | { kind: "failed"; failure: TestFailureClass | "empty"; status: number | undefined; message: string | undefined }
+  /** The call itself failed (no reply, not allowed): there are no facts about the provider. */
+  | { kind: "error"; message: string };
+
+export type SaveState =
+  | { kind: "idle" }
+  | { kind: "saving" }
+  | { kind: "failed"; message: string; keyStored: boolean }
+  | { kind: "saved"; connection: string; model: string; keyPath: string | undefined; usesStoredKey: boolean; restart: "required" | "none" | "unreported" };
+
+/** Only a service with a fixed address can be asked about its variable; a typed address isn't probed. */
+const detects = (s: ServicePreset): boolean => s.envName !== undefined && s.needsKey && !s.urlEditable;
+
+const errText = (e: OpError): string => e.message;
+
+const dirOf = (path: string): string => {
+  const i = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
+  return i > 0 ? path.slice(0, i) : path;
+};
+
+export class ConnectionSetup {
+  readonly probe: Signal<SetupProbe> = signal({ state: "idle" });
+  readonly service: Signal<ServicePreset | undefined> = signal(undefined);
+  readonly baseUrl: Signal<string> = signal("");
+  readonly api: Signal<Dialect> = signal("chat_completions");
+  /** The key input. Cleared as soon as the key is sent. */
+  readonly keyDraft: Signal<string> = signal("");
+  /** A key was sent for the test and is held for the save. Its value is never exposed. */
+  readonly keyHeld: Signal<boolean> = signal(false);
+  readonly env: Signal<EnvOffer> = signal({ kind: "none" });
+  readonly test: Signal<TestState> = signal({ kind: "idle" });
+  readonly model: Signal<string> = signal("");
+  readonly saveState: Signal<SaveState> = signal({ kind: "idle" });
+  /** Setup was shown by itself once: leaving it must not bring it back. */
+  private autoShown = false;
+
+  /** No connection in the file the owner reads. Only true after a successful read. */
+  readonly needed: ReadonlySignal<boolean>;
+  readonly models: ReadonlySignal<string[]>;
+  readonly connectionName: ReadonlySignal<string>;
+  readonly canTest: ReadonlySignal<boolean>;
+  readonly canSave: ReadonlySignal<boolean>;
+
+  private key = "";
+  private keyStored = false;
+  private cancel = new Cancel();
+  private seq = 0;
+
+  constructor(private readonly ops: Operations) {
+    this.needed = computed(() => {
+      const p = this.probe.value;
+      return p.state === "ready" && p.connections.length === 0;
+    });
+    this.models = computed(() => {
+      const t = this.test.value;
+      return t.kind === "ok" ? t.facts.models : [];
+    });
+    this.connectionName = computed(() => {
+      const base = this.service.value?.connectionName ?? "";
+      const p = this.probe.value;
+      const taken = new Set(p.state === "ready" ? p.connections : []);
+      let name = base;
+      for (let n = 2; taken.has(name); n++) name = `${base}-${n}`;
+      return name;
+    });
+    this.canTest = computed(() => {
+      const s = this.service.value;
+      if (!s || this.test.value.kind === "testing" || this.env.value.kind === "checking") return false;
+      if (this.baseUrl.value.trim() === "") return false;
+      if (s.needsKey && this.env.value.kind !== "using" && !this.keyHeld.value && this.keyDraft.value.trim() === "") return false;
+      return true;
+    });
+    this.canSave = computed(() => this.test.value.kind === "ok" && this.model.value.trim() !== "" && this.saveState.value.kind !== "saving" && this.saveState.value.kind !== "saved");
+  }
+
+  /** True once, when the screen should open by itself. */
+  takeAutoShow(): boolean {
+    if (this.autoShown || !this.needed.peek()) return false;
+    this.autoShown = true;
+    return true;
+  }
+
+  /** Read the file once to learn which connections exist and where it lives. */
+  async readFile(): Promise<ConfigFacts | undefined> {
+    this.probe.value = { state: "reading" };
+    const out = await this.ops.configGet();
+    if (!out.ok) {
+      this.probe.value = { state: "unreadable", message: errText(out.error) };
+      return undefined;
+    }
+    const facts = readConfigFacts(out.value);
+    if (!facts.file.valid && facts.file.present) {
+      this.probe.value = { state: "unreadable", message: facts.file.error ?? "" };
+      return facts;
+    }
+    const side = facts.file.present ? facts.file : facts.loaded;
+    const conns = (side.values?.connections ?? {}) as Record<string, unknown>;
+    const loadedConns = (facts.loaded.values?.connections ?? {}) as Record<string, unknown>;
+    const names = [...new Set([...Object.keys(conns), ...Object.keys(loadedConns)])];
+    this.probe.value = { state: "ready", connections: names, hasDefault: typeof side.values?.default_connection === "string", configPath: facts.path };
+    return facts;
+  }
+
+  choose(id: ServiceId): void {
+    const s = presetOf(id);
+    this.cancel.cancel();
+    this.cancel = new Cancel();
+    this.wipeKey();
+    batch(() => {
+      this.service.value = s;
+      this.baseUrl.value = s.baseUrl;
+      this.api.value = s.api;
+      this.keyDraft.value = "";
+      this.test.value = { kind: "idle" };
+      this.model.value = "";
+      this.saveState.value = { kind: "idle" };
+      this.env.value = detects(s) ? { kind: "checking" } : { kind: "none" };
+    });
+    if (detects(s)) void this.detectEnv(s, this.cancel);
+  }
+
+  /** The dialect or address changed: earlier results are about something else. */
+  setBaseUrl(value: string): void {
+    this.baseUrl.value = value;
+    this.forgetTest();
+  }
+  setApi(api: Dialect): void {
+    this.api.value = api;
+    this.forgetTest();
+  }
+  setKeyDraft(value: string): void {
+    this.keyDraft.value = value;
+  }
+  /** Take a typed key back out: the person wants to enter another. */
+  replaceKey(): void {
+    this.wipeKey();
+    this.forgetTest();
+  }
+
+  private forgetTest(): void {
+    this.cancel.cancel();
+    this.cancel = new Cancel();
+    batch(() => {
+      this.test.value = { kind: "idle" };
+      this.model.value = "";
+      if (this.env.value.kind === "using") this.env.value = { kind: "declined" };
+    });
+  }
+
+  private wipeKey(): void {
+    this.key = "";
+    this.keyStored = false;
+    this.keyHeld.value = false;
+  }
+
+  private candidate(s: ServicePreset, useEnv: boolean) {
+    return {
+      baseUrl: this.baseUrl.value.trim(),
+      api: this.api.value,
+      ...(s.apiKeyHeader !== undefined && { apiKeyHeader: s.apiKeyHeader }),
+      ...(useEnv && s.envName !== undefined && { apiKeyEnv: s.envName }),
+      ...(!useEnv && this.key !== "" && { apiKey: this.key }),
+    };
+  }
+
+  /** Ask the owner whether the preset's variable has a value. The same call also fetches the list. */
+  private async detectEnv(s: ServicePreset, cancel: Cancel): Promise<void> {
+    const out = await this.ops.connectionTest({ candidate: this.candidate(s, true) }, { cancel });
+    if (cancel.cancelled) return;
+    if (!out.ok) {
+      this.env.value = { kind: "absent" };
+      return;
+    }
+    const f = out.value;
+    this.env.value = f.env?.set === true && s.envName ? { kind: "offered", name: s.envName, facts: f } : { kind: "absent" };
+  }
+
+  /** The person accepts the variable the owner already has. Its test result is the one shown. */
+  useEnv(): void {
+    const e = this.env.value;
+    if (e.kind !== "offered") return;
+    this.wipeKey();
+    batch(() => {
+      this.env.value = { kind: "using", name: e.name };
+      this.keyDraft.value = "";
+      this.applyFacts(e.facts);
+    });
+  }
+
+  declineEnv(): void {
+    if (this.env.value.kind === "offered") this.env.value = { kind: "declined" };
+  }
+
+  private applyFacts(f: TestFacts): void {
+    if (f.failure || f.models.length === 0) {
+      this.test.value = { kind: "failed", failure: f.failure?.kind ?? "empty", status: f.httpStatus, message: f.failure?.message };
+    } else this.test.value = { kind: "ok", facts: f };
+  }
+
+  async runTest(): Promise<void> {
+    const s = this.service.peek();
+    if (!s || !this.canTest.peek()) return;
+    const useEnv = this.env.peek().kind === "using";
+    // The key is sent now and the field is emptied at once. It is held for the save only.
+    if (!useEnv && this.keyDraft.peek().trim() !== "") {
+      this.key = this.keyDraft.peek().trim();
+      this.keyStored = false;
+      batch(() => {
+        this.keyDraft.value = "";
+        this.keyHeld.value = true;
+      });
+    }
+    const mine = ++this.seq;
+    this.cancel.cancel();
+    const cancel = (this.cancel = new Cancel());
+    this.test.value = { kind: "testing" };
+    const out = await this.ops.connectionTest({ candidate: this.candidate(s, useEnv) }, { cancel });
+    if (cancel.cancelled || mine !== this.seq) return;
+    if (!out.ok) {
+      this.test.value = { kind: "error", message: errText(out.error) };
+      return;
+    }
+    batch(() => {
+      this.applyFacts(out.value);
+      // A rejected key is of no use: the person enters another.
+      if (this.test.peek().kind === "failed" && out.value.failure?.kind === "auth") this.wipeKey();
+    });
+  }
+
+  setModel(value: string): void {
+    this.model.value = value;
+    if (this.saveState.peek().kind === "failed") this.saveState.value = { kind: "idle" };
+  }
+
+  /** Store the key if one was typed, then write the connection and make it the default. */
+  async save(): Promise<void> {
+    const s = this.service.peek();
+    const p = this.probe.peek();
+    if (!s || p.state !== "ready" || !this.canSave.peek()) return;
+    const name = this.connectionName.peek();
+    const model = this.model.peek().trim();
+    const useEnv = this.env.peek().kind === "using";
+    this.saveState.value = { kind: "saving" };
+    let keyPath: string | undefined;
+    if (!useEnv && this.key !== "" && !this.keyStored) {
+      const stored = await this.ops.credentialsSet(name, this.key);
+      if (!stored.ok) {
+        this.saveState.value = { kind: "failed", message: errText(stored.error), keyStored: false };
+        return;
+      }
+      this.keyStored = true;
+      keyPath = stored.value.path;
+    }
+    const changes: { field: string; value: unknown }[] = [
+      { field: fieldOf(["connections", name, "base_url"]), value: this.baseUrl.peek().trim() },
+      { field: fieldOf(["connections", name, "api"]), value: this.api.peek() },
+      ...(s.envName !== undefined ? [{ field: fieldOf(["connections", name, "api_key_env"]), value: s.envName }] : []),
+      ...(s.apiKeyHeader !== undefined ? [{ field: fieldOf(["connections", name, "api_key_header"]), value: s.apiKeyHeader }] : []),
+      { field: "default_connection", value: name },
+      { field: "default_model", value: model },
+    ];
+    // Read the hash just before writing, so another program's edit isn't overwritten.
+    let result: Awaited<ReturnType<Operations["configSet"]>> | undefined;
+    let path = p.configPath;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const read = await this.ops.configGet();
+      if (!read.ok) {
+        this.saveState.value = { kind: "failed", message: errText(read.error), keyStored: this.keyStored };
+        return;
+      }
+      const facts = readConfigFacts(read.value);
+      path = facts.path ?? path;
+      result = await this.ops.configSet(facts.file.contentHash, changes);
+      if (result.ok || result.error.kind !== "owner" || result.error.code !== "operation_conflict") break;
+    }
+    if (!result || !result.ok) {
+      this.saveState.value = { kind: "failed", message: result ? errText(result.error) : "", keyStored: this.keyStored };
+      return;
+    }
+    const restart = result.value.restart_required;
+    const usesStoredKey = this.keyStored;
+    // The key has done its work: nothing holds it any more.
+    this.wipeKey();
+    batch(() => {
+      this.saveState.value = {
+        kind: "saved",
+        connection: name,
+        model,
+        keyPath: usesStoredKey ? (keyPath ?? (path ? `${dirOf(path)}/credentials.toml` : undefined)) : undefined,
+        usesStoredKey,
+        restart: restart === true ? "required" : restart === false ? "none" : "unreported",
+      };
+      this.probe.value = { ...p, connections: [...p.connections, name], hasDefault: true };
+    });
+  }
+
+  /** Leaving the screen drops every in-flight read and every held key. */
+  leave(): void {
+    this.cancel.cancel();
+    this.cancel = new Cancel();
+    this.seq++;
+    this.wipeKey();
+    batch(() => {
+      this.service.value = undefined;
+      this.keyDraft.value = "";
+      this.test.value = { kind: "idle" };
+      this.env.value = { kind: "none" };
+      this.model.value = "";
+      this.saveState.value = { kind: "idle" };
+    });
+  }
+}

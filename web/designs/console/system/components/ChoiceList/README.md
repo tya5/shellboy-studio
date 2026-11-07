@@ -1,0 +1,1 @@
+One option chosen from a list, as radio rows with an optional one-line note: a service, a model. Give it a `label` for the group, the `choices` and the chosen `value`. Rows are at least touch height on phone width, and the list scrolls inside a bounded height, so a long list (a model catalog) doesn't push the page. Use ButtonGroup for two to four short options with no notes.

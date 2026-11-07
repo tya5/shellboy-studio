@@ -40,8 +40,17 @@ const RESULT_CHANNEL: usize = SESSION_IN_FLIGHT + SESSION_QUEUE + APP_CALLS + 4;
 /// label `web` (architecture 4.4).
 pub fn build_command(command: &str, args: Option<Value>) -> Result<Command, BridgeError> {
     let value = json!({"command": command, "args": args.unwrap_or_else(|| json!({}))});
-    let mut parsed: Command = serde_json::from_value(value)
-        .map_err(|e| BridgeError::new("invalid_call", format!("cannot decode call: {e}")))?;
+    let mut parsed: Command = serde_json::from_value(value).map_err(|e| {
+        // A decode error can quote the offending value, and these calls carry a key.
+        if carries_credential(command) {
+            BridgeError::new(
+                "invalid_call",
+                "cannot decode call (details withheld: it may carry a credential)",
+            )
+        } else {
+            BridgeError::new("invalid_call", format!("cannot decode call: {e}"))
+        }
+    })?;
     match access(&parsed) {
         Access::Denied => {
             return Err(BridgeError::new(
@@ -56,6 +65,11 @@ pub fn build_command(command: &str, args: Option<Value>) -> Result<Command, Brid
         send.sender_label = Some("web".into());
     }
     Ok(parsed)
+}
+
+/// Calls whose arguments can hold an API key: their errors never repeat the arguments.
+fn carries_credential(command: &str) -> bool {
+    command.starts_with("credentials.") || command == "connection.test"
 }
 
 struct Outstanding(Arc<AtomicUsize>);
@@ -305,6 +319,23 @@ fn apps_call<O: Owner>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_decode_error_never_repeats_a_credential() {
+        for command in ["credentials.set", "connection.test"] {
+            let error = build_command(
+                command,
+                Some(json!({"connection": 7, "value": "SECRET-KEY", "api_key": "SECRET-KEY"})),
+            )
+            .unwrap_err();
+            assert_eq!(error.code, "invalid_call", "{command}");
+            assert!(
+                !error.message.contains("SECRET-KEY"),
+                "{command}: {}",
+                error.message
+            );
+        }
+    }
 
     #[test]
     fn calls_are_decoded_strictly_and_checked_against_the_allowlist() {

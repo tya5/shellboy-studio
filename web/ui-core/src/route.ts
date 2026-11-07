@@ -1,5 +1,5 @@
 // Location of the UI, as a fragment. `#token=` belongs to the entry point, not to routing.
-export type ViewName = "conversation" | "monitor" | "inbox" | "analytics" | "settings" | "branches" | "threads" | "apps";
+export type ViewName = "conversation" | "monitor" | "inbox" | "analytics" | "settings" | "branches" | "threads" | "apps" | "setup";
 export const SETTINGS_SECTIONS = ["connections", "models", "embeddings", "shell", "storage", "compaction", "appearance"] as const;
 export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
 export const ANALYTICS_SECTIONS = ["overview", "tokens", "compaction", "threads", "storage", "memory", "index"] as const;
@@ -25,6 +25,7 @@ export function parseRoute(hash: string): Route {
   const parts = hash.replace(/^#\/?/, "").split("/");
   if (parts[0] === "monitor") return { view: "monitor" };
   if (parts[0] === "inbox") return { view: "inbox" };
+  if (parts[0] === "setup") return { view: "setup" };
   if (parts[0] === "threads") return { view: "threads" };
   if (parts[0] === "apps") return parts[1] ? { view: "apps", appName: decodeURIComponent(parts[1]) } : { view: "apps" };
   if (parts[0] === "branches") {

@@ -1,5 +1,6 @@
 // Typed operations: the UX boundary for requests. Stateless wrappers over `Link.call`;
 // they never touch the store (saved facts change only by re-reading after a hint).
+import { decodeStored, decodeTest, encodeCredentialsClear, encodeCredentialsSet, encodeTest, type StoredFacts, type TestFacts, type TestTarget } from "./connection-setup";
 import { fromApiError, type Outcome } from "./errors";
 import type { Link } from "./link";
 import type {
@@ -260,6 +261,17 @@ export class Operations {
   /** Not cancellable: a started write finishes and is reported. A missing `value` removes the key. */
   configSet(expectedHash: string, changes: { field: string; value?: unknown }[], operationId = this.newId()): Promise<Outcome<Record<string, unknown>>> {
     return this.run("config.set", { expected_hash: expectedHash, changes }, decodeRecord, { operationId });
+  }
+  /** One model-list GET against a saved connection or a candidate. Needs the `connection.setup` capability. */
+  connectionTest(target: TestTarget, read?: ReadOptions): Promise<Outcome<TestFacts>> {
+    return this.run("connection.test", encodeTest(target), decodeTest, undefined, read);
+  }
+  /** Write-only. The value is sent once and never returned. */
+  credentialsSet(connection: string, value: string, operationId = this.newId()): Promise<Outcome<StoredFacts>> {
+    return this.run("credentials.set", encodeCredentialsSet(connection, value), decodeStored, { operationId });
+  }
+  credentialsClear(connection: string, operationId = this.newId()): Promise<Outcome<StoredFacts>> {
+    return this.run("credentials.clear", encodeCredentialsClear(connection), decodeStored, { operationId });
   }
   threadSetParent(threadId: string, parent: string, operationId = this.newId()): Promise<Outcome<ThreadDetails>> {
     return this.run("thread.set", { thread_id: threadId, parent_id: parent }, decodeDetails, { operationId });

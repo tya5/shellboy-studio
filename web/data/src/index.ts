@@ -1,3 +1,4 @@
+export * from "./connection-setup";
 export * from "./errors";
 export * from "./link";
 export * from "./live";

@@ -91,6 +91,8 @@ fallback.
 
 `usage.get`, `compact.list`, `storage.status` and `index.status` are reads for the Analytics and Settings views (`analytics-settings.md`). `src/ws.rs` tests that they pass and that `storage.collect`, `index.*` mutations, `thread.prune`, `thread.set` and `compact` stay denied.
 
+`connection.test` (read), `credentials.set` and `credentials.clear` (mutations) are allowed only with the Cargo feature `next-connection-setup`, which advertises the capability `connection.setup`; a decode error of these calls never repeats the arguments (`connection-setup.md`).
+
 ## Memory (measured, 2026-11-07)
 
 A fact of one run, not a bound. `ps -o rss=` sampled every 200 ms; debug build, macOS arm64, temp owner with 5,002 Threads and a 100,000-node Thread. Idle: 5 to 13 MiB depending on what it has served. One tab opening the long Thread (1,002 `history.list` calls): peak 15 MiB. Four tabs doing that at once: peak 15 MiB. Analytics > Memory shows the same figure on opening and on Refresh (`bridge.memory`, `src/process.rs`): `/proc` on Linux, `ps` on other Unix, unknown on Windows with the reason stated. A release build wasn't measured. The worst case isn't this: replies pass through unbuffered per call, so up to 8 proxied calls of up to the 8 MiB frame limit could be in memory at once.

@@ -65,7 +65,7 @@ With the capability, opening a Settings section reads `config.get`, and leaving 
 | No reply | The file is read again. A visible draft the file now agrees with is dropped. A hidden one can't be compared, so it stays and the notice says so; writing it again is refused if the file changed |
 | Invalid file | Its validation message, and what the owner loaded, read-only |
 
-Left out: adding or removing a connection, and fields beyond the rows Settings already had plus the connection's name fields, effort, TLS, timeouts, retries and hidden entries. `config.set` can do more; those are the file's for now. Apps can't reach either command: `apps.call` has its own list.
+Left out: adding or removing a connection here (the first one is added by the first-run screen, `connection-setup.md`, behind its own capability), and fields beyond the rows Settings already had plus the connection's name fields, effort, TLS, timeouts, retries and hidden entries. `config.set` can do more; those are the file's for now. Apps can't reach either command: `apps.call` has its own list.
 
 
 ## The walk

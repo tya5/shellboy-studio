@@ -20,6 +20,11 @@ path = "src/main.rs"
 # For developing against Shellboy main, in a copy with a [patch] of the shellboy dependency
 # (docs/design/branches-threads.md). Off in every normal build: the pin stays at the tag.
 next-shellboy = []
+# First-run connection setup (Shellboy #269): `credentials.set`, `credentials.clear`, `connection.test`.
+# These operations are on a Shellboy branch and in no release, so this builds only against a copy
+# whose [patch] points at a Shellboy that has them (docs/design/connection-setup.md). Off in every
+# normal build, and off in `next-shellboy` alone, which still builds against Shellboy main.
+next-connection-setup = ["next-shellboy"]
 
 [dependencies]
 # Pinned to a commit on Shellboy origin/main that has `events.wait` (#243 B, C).

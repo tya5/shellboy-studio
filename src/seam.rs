@@ -29,6 +29,9 @@ pub fn owner_capabilities() -> Vec<String> {
         capabilities.push("thread.reparent".to_owned());
         capabilities.push("config.edit".to_owned());
     }
+    if cfg!(feature = "next-connection-setup") {
+        capabilities.push("connection.setup".to_owned());
+    }
     capabilities
 }
 
