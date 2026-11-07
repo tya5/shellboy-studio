@@ -40,6 +40,8 @@ Today's cost, measured on a 100,000-node Thread: 1,001 `history.list` calls and 
 
 **Never freezing.** Rendering is at most the visible rows per frame. Markdown rendering runs when a row first enters the margin, not for the whole window, and long bodies stay collapsed as now.
 
+**Stop, recovery, marks, steps.** Stop, retry and the recovery row never read history items (they come from `thread.get` and the Thread list), so they work wherever the view is. Branch marks are computed from the items in the render range; a mark on a node with no row goes to the row before it, if that is in range. The selected step is found among the held windows, so it stays while its window is held. Covered in `reader-state.test.ts`.
+
 ## Needs from core
 
 - Hidden kinds filtered in the window read, so positions and the bar match what shows. Not essential; positions count every node today, so the bar is approximate and the total reads as nodes.
@@ -64,4 +66,4 @@ Fake transport seeded with 100,000 nodes, rows given 120 px when drawn (`ui-core
 
 ## Not measured
 
-Everything in a browser: first paint, heap, frame times while dragging, the cost of measuring rows with real fonts, Safari and touch behaviour, and the owner's own cost per `history.window`. Counts above come from a fake and say nothing about time. A very tall scroll space (the browsers' element height limits, roughly 10 to 30 million px) was not reached; 100,000 rows at 120 px is 12 million px. The branch marks on rows are not drawn on this path yet (they are computed from the items the old reader holds), and the recovery row and `canStop` that read `history` items do not see them either. Not run against a real owner.
+Everything in a browser: first paint, heap, frame times while dragging, the cost of measuring rows with real fonts, Safari and touch behaviour, and the owner's own cost per `history.window`. Counts above come from a fake and say nothing about time. A very tall scroll space (the browsers' element height limits, roughly 10 to 30 million px) was not reached; 100,000 rows at 120 px is 12 million px. Not run against a real owner.

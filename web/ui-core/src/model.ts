@@ -197,7 +197,13 @@ export class AppModel {
       const h = this.handle.value;
       return h ? projectConversation(h.history.value.items, this.shells.value) : [];
     });
-    this.rowMarks = computed(() => branchRowMarks(this.handle.value?.history.value.items ?? [], this.conversation.value, this.marks.value));
+    this.rowMarks = computed(() => {
+      const w = this.longReader.value;
+      if (!w) return branchRowMarks(this.handle.value?.history.value.items ?? [], this.conversation.value, this.marks.value);
+      w.version.value; // marks follow the items the reader holds in view
+      const items = w.rangeItems();
+      return branchRowMarks(items, items.flatMap((i) => projectConversation([i], this.shells.value)), this.marks.value);
+    });
     this.context = computed(() => contextFacts(this.details.value));
     this.usage = computed(() => usageFacts(this.details.value));
     this.recovery = computed(() => (this.selectedRow.value?.status === "recovery" ? recoveryFacts(this.details.value) : undefined));
@@ -206,7 +212,13 @@ export class AppModel {
     this.selectedStep = computed(() => {
       const id = this.selectedStepId.value;
       if (!id) return undefined;
-      for (const row of this.conversation.value)
+      const w = this.longReader.value;
+      let rows = this.conversation.value;
+      if (w) {
+        w.version.value;
+        rows = w.heldSteps().flatMap((i) => projectConversation([i], this.shells.value));
+      }
+      for (const row of rows)
         if (row.type === "steps") for (const s of row.steps) if (s.executionId === id) return s;
       return undefined;
     });

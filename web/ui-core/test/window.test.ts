@@ -100,6 +100,19 @@ describe("requests follow what shows", () => {
   });
 });
 
+describe("redrawing", () => {
+  it("reports a change when the view moves to other rows, and not when it stays", async () => {
+    const r = await rig(1000);
+    await r.settle();
+    r.w.view(0, VIEW, false);
+    const v = r.w.version.value;
+    r.w.view(0, VIEW, false);
+    expect(r.w.version.value).toBe(v);
+    r.w.view(300 * ESTIMATED_ROW_PX, VIEW, false);
+    expect(r.w.version.value).toBeGreaterThan(v);
+  });
+});
+
 describe("keeping position", () => {
   it("corrects the scroll offset by the height change above the anchor", () => {
     expect(correctedScrollTop(1000, 500, 620)).toBe(1120);

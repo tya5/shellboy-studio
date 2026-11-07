@@ -160,6 +160,19 @@ export class ConversationWindow {
   itemAt(i: number): HistoryItem | undefined {
     return this.buckets.get(Math.floor(i / WINDOW_NODES))?.items[i % WINDOW_NODES];
   }
+  /** Items in the render range that are held, ascending. */
+  rangeItems(): HistoryItem[] {
+    const r = this.renderRange();
+    const out: HistoryItem[] = [];
+    if (r) for (let i = r.first; i <= r.last; i++) { const it = this.itemAt(i); if (it) out.push(it); }
+    return out;
+  }
+  /** Held items with shell executions, wherever they are (for finding a selected step). */
+  heldSteps(): HistoryItem[] {
+    const out: HistoryItem[] = [];
+    for (const b of this.buckets.values()) for (const it of b.items) if (it && (it.executions?.length ?? 0) > 0) out.push(it);
+    return out;
+  }
   isLoaded(i: number): boolean {
     return this.itemAt(i) !== undefined;
   }
@@ -208,9 +221,12 @@ export class ConversationWindow {
   /** Tell what shows. Cancels reads that left the margin now; requests what entered it after a pause. */
   view(scrollTop: number, clientHeight: number, atBottom: boolean): void {
     if (this.disposed) return;
+    const was = this.renderRange();
     this.viewTop = scrollTop;
     this.viewHeight = clientHeight;
     if (this.total === 0) return;
+    const now = this.renderRange()!;
+    if (was?.first !== now.first || was?.last !== now.last) this.bump(); // the screen draws other rows
     this.lastAnchor = this.anchor(scrollTop);
     const follow = atBottom && this.locate(scrollTop + clientHeight) >= this.total - 1;
     if (follow !== this.following.peek()) this.following.value = follow;

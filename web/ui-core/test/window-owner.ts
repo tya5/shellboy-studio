@@ -9,6 +9,7 @@ export class WindowOwner {
   gen = 0;
   total: number;
   hiddenEvery = 7;
+  decorate: (i: number, item: Record<string, unknown>) => Record<string, unknown> = (_i, item) => item;
   answered = new Set<number>();
   constructor(total: number) {
     this.total = total;
@@ -25,15 +26,15 @@ export class WindowOwner {
     this.revision++;
     void from;
   }
-  private item(i: number) {
+  private item(i: number): Record<string, unknown> {
     const kind = i % this.hiddenEvery === 3 ? "event" : i % 2 ? "assistant_response" : "user";
-    return {
+    return this.decorate(i, {
       node_id: this.nodeId(i),
       kind,
       excerpt: `text ${i}`,
       provenance: { created_at: "2026-11-07T10:00:00+00:00", sender: { kind: "human" } },
       selection: { ordinal: i },
-    };
+    });
   }
   answer(c: CallFrame): { ok: true; result: unknown } | { ok: false; code: string; details?: unknown } {
     if (c.command !== "history.window") return { ok: true, result: {} };
