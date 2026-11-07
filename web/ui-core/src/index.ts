@@ -1,4 +1,6 @@
 export * from "./analytics";
+export * from "./branches";
+export * from "./branching";
 export * from "./commands";
 export * from "./conversation";
 export * from "./design";
@@ -6,6 +8,7 @@ export * from "./format";
 export * from "./i18n";
 export * from "./insights";
 export * from "./model";
+export * from "./org";
 export * from "./pending";
 export * from "./prefs";
 export * from "./resources";

@@ -91,3 +91,25 @@ export function projectConversation(items: HistoryItem[], shells: ReadonlyMap<st
   }
   return rows;
 }
+
+/**
+ * Where to show a branch mark. A divergence on a node with no row of its own (a tool result, a bookkeeping
+ * node) goes on the row before it: everything above that row is shared. A node outside the items read shows
+ * nothing, rather than a mark in the wrong place.
+ */
+export function branchRowMarks(items: readonly HistoryItem[], rows: readonly ConversationRow[], marks: ReadonlyMap<string, number>): Map<string, { nodeId: string; branches: number }> {
+  const out = new Map<string, { nodeId: string; branches: number }>();
+  if (marks.size === 0) return out;
+  const rowIds = new Set(rows.map((r) => r.id));
+  let lastRow: string | undefined;
+  for (const item of items) {
+    const id = item.node_id;
+    if (id === undefined) continue;
+    if (rowIds.has(id)) lastRow = id;
+    const branches = marks.get(id);
+    if (branches === undefined || lastRow === undefined) continue;
+    const had = out.get(lastRow);
+    out.set(lastRow, { nodeId: id, branches: (had?.branches ?? 0) + branches });
+  }
+  return out;
+}

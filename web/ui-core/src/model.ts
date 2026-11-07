@@ -2,8 +2,10 @@
 // retry and archive flows. Saved facts stay in the data layer; nothing here is optimistic.
 import { computed, effect, signal, type ReadonlySignal, type Signal } from "@preact/signals-core";
 import type { Handle, Operations, OpError, ShellboyData, ShellEntry, ThreadDetails, ThreadHandle } from "../../data/src";
-import { projectConversation, type ConversationRow, type StepRow } from "./conversation";
+import { branchRowMarks, projectConversation, type ConversationRow, type StepRow } from "./conversation";
 import { translator, type Lang, type Translate } from "./i18n";
+import { branchMarks } from "./branches";
+import { Branches, readWholeFamily, ThreadOrg } from "./branching";
 import { Insights } from "./insights";
 import { noPending, type PendingAdapter } from "./pending";
 import { analyticsSection, formatRoute, settingsSection, START_ROUTE, type Route, type ViewName } from "./route";
@@ -71,6 +73,12 @@ export class AppModel {
   readonly route: Signal<Route> = signal(START_ROUTE);
   /** Analytics, Resources and Settings reads. Nothing runs until one of those views opens. */
   readonly insights: Insights;
+  readonly branches: Branches;
+  readonly org: ThreadOrg;
+  /** Conversation: node id to branches leaving there, for the open Thread. Empty when it has no family. */
+  readonly marks: Signal<ReadonlyMap<string, number>> = signal(new Map());
+  /** Conversation row id to the mark it shows. */
+  readonly rowMarks: ReadonlySignal<ReadonlyMap<string, { nodeId: string; branches: number }>>;
   readonly lang: Signal<Lang>;
   readonly now: Signal<number>;
   readonly t: ReadonlySignal<Translate>;
@@ -123,6 +131,8 @@ export class AppModel {
       offsetMinutes: options.offsetMinutes ?? (() => -new Date(this.nowMs()).getTimezoneOffset()),
     });
     this.t = computed(() => translator(this.lang.value));
+    this.branches = new Branches(this.ops);
+    this.org = new ThreadOrg(this.ops);
 
     const pendingByThread = computed(() => {
       const map = new Map<string, number>();
@@ -157,6 +167,7 @@ export class AppModel {
       const h = this.handle.value;
       return h ? projectConversation(h.history.value.items, this.shells.value) : [];
     });
+    this.rowMarks = computed(() => branchRowMarks(this.handle.value?.history.value.items ?? [], this.conversation.value, this.marks.value));
     this.context = computed(() => contextFacts(this.details.value));
     this.usage = computed(() => usageFacts(this.details.value));
     this.recovery = computed(() => (this.selectedRow.value?.status === "recovery" ? recoveryFacts(this.details.value) : undefined));
@@ -172,6 +183,8 @@ export class AppModel {
   }
 
   start(): void {
+    let lastList: unknown;
+    let marksFor: string | undefined;
     this.listHandle = this.data.trackThreadList();
     this.disposers.push(effect(() => this.syncOpenThread()));
     // A section's reads run when it opens with the owner reachable, not when it renders. A new
@@ -184,6 +197,52 @@ export class AppModel {
         const threadId = this.selectedId.value;
         if (route.view === "analytics") this.insights.ensureAnalytics(analyticsSection(route), threadId);
         else if (route.view === "settings") this.insights.ensureSettings(settingsSection(route), threadId);
+      }),
+    );
+    // Both views follow the list: a list hint re-reads it, and each change here re-reads once.
+    this.disposers.push(
+      effect(() => {
+        const view = this.route.value.view;
+        // Items, not the whole state: its loading flags change without a new list.
+        const list = this.data.threadList.value.items;
+        if (this.connection.value !== "connected") return;
+        const id = this.selectedId.value;
+        if (view === "branches" && id !== undefined) {
+          const b = this.branches.state.peek();
+          if (b.threadId === id && b.family && lastList !== list) void this.branches.read(id);
+          else this.branches.ensure(id);
+        } else if (view === "threads") {
+          if (this.org.state.peek().loaded && lastList !== list) void this.org.read();
+          else this.org.ensure();
+        }
+        lastList = list;
+      }),
+    );
+    this.disposers.push(
+      effect(() => {
+        const route = this.route.value;
+        this.branches.state.value;
+        if (route.view === "branches") this.branches.select(this.selectedId.value, route.nodeId);
+      }),
+    );
+    // Marks need one family read per Thread opened, again when the list shows its children changed.
+    // `children_count` from `thread.get` doesn't count forks, so it can't decide this.
+    this.disposers.push(
+      effect(() => {
+        const h = this.handle.value;
+        const childCount = this.selectedRow.value?.childCount ?? 0;
+        if (h && marksFor !== undefined && !marksFor.startsWith(`${h.threadId}:`)) {
+          marksFor = undefined;
+          this.marks.value = new Map();
+        }
+        if (this.route.value.view !== "conversation" || !h || this.connection.value !== "connected") return;
+        const stamp = `${h.threadId}:${childCount}`;
+        if (stamp === marksFor) return;
+        marksFor = stamp;
+        void readWholeFamily(this.ops, h.threadId).then((out) => {
+          if (marksFor !== stamp) return;
+          this.marks.value = out.ok ? branchMarks(out.family, h.threadId) : new Map();
+        });
       }),
     );
     // Shell facts follow the hints: the store re-reads the Thread on each, and so do we.

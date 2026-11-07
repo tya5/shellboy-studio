@@ -235,6 +235,43 @@ export const fixtureIndex = {
   spaces_truncated: false,
 };
 
+const branchSize = (path: number, after: number | null) => ({ bytes: null, nodes_after_divergence: after, path_nodes: path });
+const tip = (node: string, request: string) => ({ at: "2026-11-07T02:46:32.223881+00:00", last_request: { node_id: `${node}-r`, text: request, truncated: false }, node_id: node });
+
+/** Shaped as `thread.branches` returned on a real owner. */
+export const fixtureBranches = {
+  ancestors_truncated: false,
+  family_threads: 4,
+  family_truncated: false,
+  items: [
+    { depth: 0, divergence: null, divergence_unknown: null, parent_thread_id: null, pruned_originals: false, running: false, size: branchSize(226, null), state: "current", thread_id: "lead", tip: tip("n225", "after"), title: "Improve history search" },
+    { depth: 1, divergence: { node_id: "n100", ordinal: 100, parent_continues: true, request: { node_id: "r21", text: "step 21", truncated: false } }, divergence_unknown: null, parent_thread_id: "lead", pruned_originals: false, running: true, size: branchSize(113, 12), state: "branch", thread_id: "fork-a", tip: tip("f12", "last asked"), title: null },
+    { depth: 1, divergence: { node_id: "n150", ordinal: 150, parent_continues: false, request: { node_id: "r31", text: "step 31", truncated: false } }, divergence_unknown: null, parent_thread_id: "lead", pruned_originals: true, running: false, size: branchSize(226, 75), state: "branch", thread_id: "rewound", tip: tip("g75", "kept"), title: "Before the ranking change" },
+    { depth: 1, divergence: null, divergence_unknown: "no_shared_prefix", parent_thread_id: "lead", pruned_originals: false, running: false, size: branchSize(9, null), state: "branch", thread_id: "plain-child", tip: tip("p9", "child work"), title: "Plain child" },
+  ],
+  limits: { ancestors: 32, bytes: "not_measured", excerpt_chars: 160, family_threads: 256, request_scan_rows: 256 },
+  root_parent_unavailable: false,
+  root_thread_id: "lead",
+  thread_id: "lead",
+};
+
+export const fixtureRewind = {
+  attachment_selections_removed: 0,
+  child_threads_after_node: { count: 0, items: [], truncated: false },
+  dry_run: true,
+  node_id: "n100",
+  note: "Conversation only: shell side effects are not undone.",
+  path_nodes: { after: 101, before: 226 },
+  pending_replies_to_sent_messages: { count: 0, items: [], truncated: false },
+  previous_end_node_id: "n225",
+  removed: { nodes: 125, turns: 25 },
+  rewound_into_summarized_range: false,
+  shell_executions_after_node: { count: 1, items: [{ execution_id: "e", command_excerpt: "cargo test" }], truncated: false },
+  thread_id: "lead",
+  title: "Improve history search",
+  undo: "not executed; a real rewind keeps the removed part as a branch Thread you can open",
+};
+
 const fixtureUsagePages: Record<string, ReturnType<typeof usagePage>> = {
   first: usagePage([usageItem("2026-11-05", { input: 1000000, cached: 750000, output: 20000 }), usageItem("2026-11-06", { input: 2000000, cached: 1000000, output: 30000, compactions: 2, summary: [3200, 320, 400] })], "second"),
   second: usagePage([usageItem("2026-11-06", { input: 1000000, cached: 500000, output: 10000 }), usageItem("2026-11-07", { input: 500000, cached: 100000, output: 5000, compactions: 1, summary: [1000, 0, 100] })]),
@@ -245,6 +282,16 @@ export function answerInsights(db: FakeOwnerDb, usage: Record<string, unknown> =
   db.answer = (c) => {
     const a = (c.args ?? {}) as Record<string, unknown>;
     switch (c.command) {
+      case "thread.branches":
+        return { ok: true, result: fixtureBranches };
+      case "thread.rewind":
+        return { ok: true, result: a.dry_run ? fixtureRewind : { ...fixtureRewind, dry_run: false, branch_thread_id: "kept" } };
+      case "thread.fork":
+        return { ok: true, result: details("forked", { title: "Forked", parent_id: a.thread_id }) };
+      case "thread.archive":
+        return { ok: true, result: { archived: a.thread_ids, already: [], not_found: [], descendants: [] } };
+      case "thread.unarchive":
+        return { ok: true, result: { unarchived: a.thread_ids, already: [], not_found: [], descendants: [] } };
       case "usage.get":
         db.reads.push(`usage.get@${String(a.cursor ?? "first")}:${String(a.group_by)}`);
         if (a.group_by === "thread") return { ok: true, result: usagePage([usageItem("lead", { input: 3000000, cached: 2000000, output: 40000, compactions: 3, summary: [4200, 320, 500] }), usageItem("gone-thread", { input: 1000, cached: 0, output: 10 })]) };

@@ -17,7 +17,9 @@ export function contextFacts(d: ThreadDetails | undefined): ContextFacts | undef
   const attempt = obj(obj(d?.context_usage)?.last_successful_attempt);
   const inputTokens = num(attempt?.input_tokens);
   if (inputTokens === undefined) return undefined;
-  return { inputTokens, autoSummaryAt: num(d?.effective_auto_compact_at) };
+  // 0 means proactive compaction is off for this Thread: there is no threshold to show.
+  const at = num(d?.effective_auto_compact_at);
+  return { inputTokens, autoSummaryAt: at === 0 ? undefined : at };
 }
 
 export interface Measured {
