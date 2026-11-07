@@ -87,6 +87,20 @@ export class AppsModel {
   readonly tabs: Signal<readonly OpenApp[]> = signal([]);
   readonly instances: Signal<Readonly<Record<string, readonly string[]>>> = signal({});
   readonly openError: Signal<{ name: string; message: string } | undefined> = signal(undefined);
+  /** One bounded page of folders, owned by the new-app panel and cancelled when it closes. */
+  readonly folders = signal<{ names: string[]; loading: boolean; error?: string }>({ names: [], loading: false });
+  private folderCancel = new Cancel();
+  private folderGeneration = 0;
+  async loadFolders(): Promise<void> {
+    this.leaveFolders();
+    const generation = ++this.folderGeneration;
+    const cancel = this.folderCancel = new Cancel();
+    this.folders.value = { names: [], loading: true };
+    const out = await this.ops.threadCwds({ limit: 200 }, { cancel });
+    if (generation !== this.folderGeneration) return;
+    this.folders.value = out.ok ? { names: out.value.items, loading: false } : { names: [], loading: false, error: out.error.message };
+  }
+  leaveFolders(): void { this.folderGeneration++; this.folderCancel.cancel(); }
   private opening = new Set<string>();
   /** Cancels an app's outstanding calls when its tab closes or reloads. */
   private calls = new Map<string, { cancel: Cancel; count: number }>();

@@ -1,3 +1,4 @@
+import { recentAppFolders } from "./app-templates";
 // Screen logic over the data layer: which Thread is open, what the views show, the send, stop,
 // retry and archive flows. Saved facts stay in the data layer; nothing here is optimistic.
 import { computed, effect, signal, untracked, type ReadonlySignal, type Signal } from "@preact/signals-core";
@@ -90,6 +91,7 @@ export class AppModel {
   readonly setup: ConnectionSetup;
   readonly embedding: EmbeddingSetup;
   readonly apps: AppsModel;
+  readonly appFolders: ReadonlySignal<string[]>;
   /** Conversation: node id to branches leaving there, for the open Thread. Empty when it has no family. */
   readonly marks: Signal<ReadonlyMap<string, number>> = signal(new Map());
   /** Conversation row id to the mark it shows. */
@@ -171,6 +173,7 @@ export class AppModel {
     this.setup = new ConnectionSetup(this.ops);
     this.embedding = new EmbeddingSetup(this.ops, this.setup);
     this.apps = new AppsModel(this.ops);
+    this.appFolders = computed(() => recentAppFolders(this.apps.folders.value.names, this.data.threadList.value.items.map((item) => item.cwd)));
 
     const pendingByThread = computed(() => {
       const map = new Map<string, number>();
@@ -361,6 +364,7 @@ export class AppModel {
 
   dispose(): void {
     this.longReader.peek()?.dispose();
+    this.apps.leaveFolders();
     for (const d of this.disposers) d();
     this.disposers = [];
     this.listHandle?.close();

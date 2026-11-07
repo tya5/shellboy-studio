@@ -67,9 +67,11 @@ describe("App request and guide", () => {
     const { model, t } = await fixtureModel({ route: "apps" });
     const el = draw(model);
     expect(text(el)).toContain("AGENTS.md");
+    act(() => [...el.querySelectorAll<HTMLButtonElement>("button")].find((b) => text(b) === "New app")!.click());
     const section = [...el.querySelectorAll("section")].find((node) => text(node).includes("Create an app"))!;
+    act(() => [...section.querySelectorAll<HTMLButtonElement>("button")].find((b) => text(b) === "Enter another folder")!.click());
     const request = section.querySelector("textarea")!;
-    const cwd = section.querySelector("input")!;
+    const cwd = section.querySelectorAll("input")[1]!;
     act(() => {
       request.value = "Make a board";
       request.dispatchEvent(new Event("input", { bubbles: true }));
@@ -761,7 +763,7 @@ describe("Apps", () => {
     expect(text(cards[1]!)).toContain("app.json can't be read");
     expect(cards[1]!.querySelector("a")).toBeNull();
     expect(cards[0]!.querySelector("a")!.getAttribute("href")).toBe("#/apps/board");
-    expect(text(el)).toContain("/tmp/x/apps/README.md");
+    expect(el.querySelector("details")?.hasAttribute("open")).toBe(false);
   });
   it("says what to do when there are none, and ships nothing of its own", async () => {
     const { model, t, db } = await fixtureModel({ route: "monitor" });

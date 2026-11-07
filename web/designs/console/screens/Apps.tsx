@@ -1,7 +1,7 @@
 import { appTabKey } from "../../../ui-core/src/apps";
 import { useEffect, useRef, useState } from "preact/hooks";
-import { formatRoute, readAppMessage, validAppInstance, type AppModel, type DesignContext, type OpenApp } from "../../../ui-core/src";
-import { AppCard, AppFrame, AppTabs, AppRequest, Button, EmptyState, Field, GuideCopy, KeyValue, Notice, Section } from "../system/components";
+import { APP_TEMPLATES, formatRoute, readAppMessage, validAppInstance, type AppModel, type DesignContext, type OpenApp } from "../../../ui-core/src";
+import { AppCard, AppFrame, AppTabs, AppRequest, Button, EmptyState, Field, GuideCopy, Notice } from "../system/components";
 
 function Alerts({ model, tab }: { model: AppModel; tab: OpenApp }) {
   const t = model.t.value;
@@ -54,20 +54,21 @@ function AppList({ model }: { model: AppModel }) {
   const list = apps.list.value;
   const rows = model.rowById.value;
   const failed = apps.openError.value;
+  const [creating, setCreating] = useState(false);
+  const [draft, setDraft] = useState("");
+  const templates = APP_TEMPLATES.map((x) => ({ id: x.id, title: x.title[model.lang.value], draft: x.draft[model.lang.value] }));
+  useEffect(() => { if (creating) { void apps.loadFolders(); return () => apps.leaveFolders(); } }, [apps, creating]);
   return (
     <div class="apps-list">
       <div class="head">
-        <div class="pagehead">
-          <h1>{t("view.apps")}</h1>
-          <div class="muted">{t("apps.sub")}</div>
-        </div>
-        <Button disabled={list.loading} onClick={() => void apps.refresh()}>{t("common.refresh")}</Button>
+        <h1>{t("view.apps")}</h1>
+        <div class="app-list-actions"><Button onClick={() => { setDraft(""); setCreating(!creating); }}>{t("apps.new")}</Button><Button disabled={list.loading} onClick={() => void apps.refresh()}>{t("common.refresh")}</Button></div>
       </div>
-      <AppRequest title={t("apps.createTitle")} requestLabel={t("apps.request")} cwdLabel={t("apps.cwd")} reviewLabel={t("apps.preview")} previewLabel={t("apps.previewLabel")} sendLabel={t("apps.createSend")} prompt={t("apps.prompt")} busy={model.appRequestState.value.kind === "sending"} disabled={model.connection.value !== "connected" || model.appRequestState.value.kind === "unconfirmed"} error={model.appRequestState.value.message ? t("apps.createError", { message: model.appRequestState.value.message }) : undefined} onSend={(text, cwd) => model.createAppRequest(text, cwd)} />
-      <GuideCopy title={t("guide.title")} line={t("guide.line")} note={t("guide.note")} copy={t("code.copy")} copied={t("code.copied")} failed={t("guide.copyFailed")} />
+      {creating ? <AppRequest key={draft} title={t("apps.createTitle")} requestLabel={t("apps.request")} cwdLabel={t("apps.cwd")} reviewLabel={t("apps.preview")} previewLabel={t("apps.previewLabel")} sendLabel={t("apps.createSend")} prompt={t("apps.prompt")} busy={model.appRequestState.value.kind === "sending"} disabled={model.connection.value !== "connected" || model.appRequestState.value.kind === "unconfirmed"} error={model.appRequestState.value.message ? t("apps.createError", { message: model.appRequestState.value.message }) : undefined} folders={model.appFolders.value} defaultCwd={model.selectedRow.value?.summary.cwd ?? ""} templates={templates} templatesLabel={t("apps.templates")} filterLabel={t("apps.folderFilter")} listLabel={t("apps.folderList")} manualLabel={t("apps.folderManual")} initialDraft={draft} onSend={(text, cwd) => model.createAppRequest(text, cwd)} /> : null}
+      {creating && apps.folders.value.error ? <Notice tone="bad">{t("apps.folderReadError", { message: apps.folders.value.error })}</Notice> : null}
       {failed ? <Notice tone="bad">{t("apps.openFailed", { name: failed.name, message: failed.message })}</Notice> : null}
       {list.error ? <Notice tone="bad">{t("common.readError", { message: list.error.message })}</Notice> : null}
-      {list.loaded && list.apps.length === 0 ? <EmptyState icon="apps" title={t("apps.empty")} body={t("apps.emptyBody")} /> : null}
+      {list.loaded && list.apps.length === 0 ? <><EmptyState icon="apps" title={t("apps.empty")} body={t("apps.emptyBody")} /><div>{t("apps.templates")}<div class="app-templates">{templates.map((item) => <Button key={item.id} onClick={() => { setDraft(item.draft); setCreating(true); }}>{item.title}</Button>)}</div></div></> : null}
       {list.apps.length > 0 ? (
         <div class="grid">
           {list.apps.map((a) => (
@@ -82,11 +83,7 @@ function AppList({ model }: { model: AppModel }) {
           ))}
         </div>
       ) : null}
-      {list.dir ? (
-        <Section title={t("apps.folder")} sub={t("apps.source")}>
-          <KeyValue rows={[{ key: t("apps.folder"), value: list.dir, mono: true }, ...(list.guide ? [{ key: t("apps.guide"), value: list.guide, mono: true }] : [])]} />
-        </Section>
-      ) : null}
+      <GuideCopy collapsed title={t("guide.title")} line={t("guide.line")} note={t("guide.note")} copy={t("code.copy")} copied={t("code.copied")} failed={t("guide.copyFailed")} />
     </div>
   );
 }
