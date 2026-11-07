@@ -43,6 +43,31 @@ const flushPromises = async () => {
 };
 const text = (el: Element) => el.textContent ?? "";
 
+describe("App request and guide", () => {
+  it("requires review before sending the full request and shows guidance", async () => {
+    const { model, t } = await fixtureModel({ route: "apps" });
+    const el = draw(model);
+    expect(text(el)).toContain("AGENTS.md");
+    const section = [...el.querySelectorAll("section")].find((node) => text(node).includes("Create an app"))!;
+    const request = section.querySelector("textarea")!;
+    const cwd = section.querySelector("input")!;
+    act(() => {
+      request.value = "Make a board";
+      request.dispatchEvent(new Event("input", { bubbles: true }));
+      cwd.value = "/work";
+      cwd.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    const review = [...section.querySelectorAll("button")].find((b) => text(b) === "Review request")!;
+    expect(t.calls("thread.create")).toHaveLength(0);
+    act(() => review.click());
+    const preview = section.querySelector<HTMLTextAreaElement>("textarea[readonly]")!;
+    expect(preview.value).toContain("$SHELLBOY_DATA_DIR/studio/agent-guide.md");
+    expect(preview.value).toContain("Make a board");
+    expect(t.calls("thread.create")).toHaveLength(0);
+    model.dispose();
+  });
+});
+
 describe("Conversation work regions", () => {
   it("shows nonempty regions in the sidebar and one compact strip; removes them on a hint", async () => {
     const { model, t, db } = await fixtureModel();

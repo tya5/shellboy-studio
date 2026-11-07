@@ -46,3 +46,6 @@ export { LoadingRows } from "./LoadingRows";
 export { VirtualGap, VirtualSpace } from "./VirtualSpace";
 
 export { WorkSheet } from "./WorkSheet";
+
+export { AppRequest } from "./AppRequest";
+export { GuideCopy } from "./GuideCopy";

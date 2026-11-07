@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { settle } from "../../data/test/harness";
+import { flush, settle } from "../../data/test/harness";
 import { errorReportText, formatRoute, MAX_APP_CALLS, MAX_APP_ERRORS, parseRoute, readAppMessage } from "../src";
 import { fixtureModel } from "./fixture";
 
@@ -121,5 +121,24 @@ describe("AppsModel over the fake transport", () => {
     const errors = model.apps.tabs.value[0]!.errors;
     expect(errors).toHaveLength(MAX_APP_ERRORS);
     expect(errors.at(-1)!.message).toBe(String(MAX_APP_ERRORS + 4));
+  });
+});
+
+describe("create app request", () => {
+  it("creates a Thread with the chosen folder, then sends the reviewed text", async () => {
+    const { model, t } = await fixtureModel({ route: "apps" });
+    const text = "First read $SHELLBOY_DATA_DIR/studio/agent-guide.md\n\nMake a board";
+    const result = model.createAppRequest(text, "/work");
+    await flush();
+    const create = t.calls("thread.create").at(-1)!;
+    expect(create.args).toEqual({ cwd: "/work" });
+    t.ok(create.id, { thread_id: "new-thread", title: "New" });
+    await flush();
+    const send = t.calls("message.send").at(-1)!;
+    expect(send.args).toEqual({ thread_id: "new-thread", text });
+    t.ok(send.id, { message_id: "new-message" });
+    expect(await result).toBe(true);
+    expect(model.route.value).toEqual({ view: "conversation", threadId: "new-thread" });
+    model.dispose();
   });
 });

@@ -530,3 +530,10 @@ the foundation works end to end (§2.1).
 |---|---|---|
 | Use one bounded Thread-scoped `status` page and at most eight bounded original previews; do not walk continuation pages or enumerate unbounded Run-owned IDs | The public RPC has no bounded equivalent of the TUI live-work/held-input snapshot. Counts are lower bounds when truncated; ordinary waits and owned child Runs can be missing. | Shellboy adopts a bounded, hint-invalidated external live-work and pending-input projection. |
 | Leave the #262 reply-wait wire adapter inert | W6 capability and protocol are not yet finalized. The UI can exercise an injected adapter, but production shows no reply-wait rows. | W6 reports the adopted capability, bounded read and answer contract. |
+
+### Studio guide and app request decision (2026-11-07)
+
+| Decision | Reason and impact | Revisit when |
+|---|---|---|
+| Bundle guides in Studio and overwrite the installed agent guide at startup | The guide describes Studio rather than core; no user AGENTS.md is changed. A custom apps directory is shown by Studio, not inferred from the data directory. | The Apps host exposes an agent-readable discovery surface for custom directories. |
+| Require a typed working folder and review of the exact request before creating a Thread | The browser cannot safely browse the host filesystem through the current RPC; typing gives explicit choice without adding bridge filesystem access. An uncertain create/send is not retried automatically. | Shellboy adopts a bounded, authorized folder-selection surface. |

@@ -1,5 +1,7 @@
 # Making an app
 
+This is the Apps reference for the Studio agent guide at `$SHELLBOY_DATA_DIR/studio/agent-guide.md`. Read that guide first for the workflow.
+
 This file is written by shellboy-studio each time it starts; edits here are lost. Every folder beside it is an app. The gateway finds new folders without a restart, and the person opens them under Apps in the Web UI.
 
 When someone says "make this an app", create a folder here. The folder's name is the app's ID: lowercase letters, digits, `-` and `_`, up to 40 characters.

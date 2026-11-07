@@ -131,6 +131,7 @@ export class AppModel {
   readonly selectedStep: ReadonlySignal<StepRow | undefined>;
   readonly sendState: Signal<SendState> = signal({ kind: "idle" });
   readonly actionError: Signal<string | undefined> = signal(undefined);
+  readonly appRequestState: Signal<{ kind: "idle" | "sending" | "failed" | "unconfirmed"; message?: string }> = signal({ kind: "idle" });
   readonly uncertainCancels: Signal<ReadonlySet<string>> = signal(new Set());
 
   private readonly lastThread = signal<string | undefined>(undefined);
@@ -616,6 +617,25 @@ export class AppModel {
         ? { kind: "unconfirmed", operationId: out.error.operationId, text }
         : { kind: "failed", message: errorMessage(out.error) };
     return false;
+  }
+
+  async createAppRequest(text: string, cwd: string): Promise<boolean> {
+    if (!text.trim() || !cwd.trim() || this.appRequestState.peek().kind === "sending" || this.appRequestState.peek().kind === "unconfirmed") return false;
+    this.appRequestState.value = { kind: "sending" };
+    const created = await this.ops.threadCreate({ cwd: cwd.trim() });
+    if (!created.ok) {
+      this.appRequestState.value = { kind: created.error.kind === "unconfirmed" ? "unconfirmed" : "failed", message: created.error.kind === "unconfirmed" ? this.t.value("work.cancelUnconfirmed", { id: created.error.operationId }) : errorMessage(created.error) };
+      return false;
+    }
+    const id = created.value.thread_id;
+    const sent = await this.ops.messageSend({ thread_id: id, text });
+    if (!sent.ok) {
+      this.appRequestState.value = { kind: "unconfirmed", message: `${id}: ${sent.error.kind === "unconfirmed" ? this.t.value("work.cancelUnconfirmed", { id: sent.error.operationId }) : errorMessage(sent.error)}` };
+      return false;
+    }
+    this.appRequestState.value = { kind: "idle" };
+    this.openThread(id);
+    return true;
   }
 
   async answerReply(id: string, text: string): Promise<string | undefined> {
