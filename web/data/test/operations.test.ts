@@ -81,6 +81,27 @@ describe("Operations", () => {
     expect(await arch).toMatchObject({ ok: true });
   });
 
+  it("tag calls: tag edits are mutations, the name lists and filters are plain reads", async () => {
+    const { t, ops } = setup();
+    const tag = ops.threadTag({ thread_ids: ["a"], add: ["x"] });
+    const tags = ops.threadTags({ limit: 200 });
+    const cwds = ops.threadCwds({ limit: 200, cursor: "c" });
+    const list = ops.threadList({ limit: 100, tags: ["x", "y"], cwd: "/w" });
+    const cmds = t.calls();
+    expect(cmds.map((c) => [c.command, c.operation_id])).toEqual([["thread.tag", "uuid-1"], ["thread.tags", undefined], ["thread.cwds", undefined], ["thread.list", undefined]]);
+    expect(cmds[0]!.args).toEqual({ thread_ids: ["a"], add: ["x"] });
+    expect(cmds[3]!.args).toEqual({ limit: 100, tags: ["x", "y"], cwd: "/w" });
+    t.ok(cmds[0]!.id, { changed: ["a"], unchanged: [], not_found: [], add: ["x"], remove: [] });
+    t.ok(cmds[1]!.id, { items: ["x", "y"], next_cursor: "n" });
+    t.ok(cmds[2]!.id, { items: 5 });
+    t.ok(cmds[3]!.id, { items: [{ thread_id: "a", title: "A", state: "idle", tags: ["x", 3] }] });
+    await flush();
+    expect(await tag).toMatchObject({ ok: true, value: { changed: ["a"] } });
+    expect(await tags).toEqual({ ok: true, value: { items: ["x", "y"], next_cursor: "n" } });
+    expect(await cwds).toMatchObject({ ok: false });
+    expect(await list).toMatchObject({ ok: false });
+  });
+
   it("a lost mutation reply is unconfirmed and retrying reuses the operation id", async () => {
     const { t, ops } = setup();
     const first = ops.messageSend({ thread_id: "a", text: "hi" });

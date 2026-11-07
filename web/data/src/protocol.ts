@@ -126,6 +126,8 @@ export interface ThreadSummary {
   excerpt: string;
   parent_id?: string;
   archived_at?: string;
+  /** Sorted; absent when the Thread has none, and on an owner without tags. */
+  tags?: string[];
   latest_run_stop_reason?: string | null;
   [extra: string]: unknown;
 }
@@ -140,6 +142,7 @@ export interface ThreadDetails {
   turn_id?: string;
   parent_id?: string;
   archived_at?: string;
+  tags?: string[];
   children_count: number;
   shells_count: number;
   [extra: string]: unknown;
@@ -264,6 +267,29 @@ export interface ThreadListArgs {
   cursor?: string;
   query?: string;
   archived?: ArchivedFilter;
+  /** Needs the `thread.tags` capability. Every tag must match (AND); at most 64. */
+  tags?: string[];
+  /** Needs the `thread.cwds` capability. Exact, after the owner's own cleanup; an absolute path. */
+  cwd?: string;
+}
+
+/** A page of names for `thread.tags` and `thread.cwds`. */
+export interface NamesArgs {
+  limit?: number;
+  cursor?: string;
+}
+export interface ThreadTagArgs {
+  thread_ids: string[];
+  add?: string[];
+  remove?: string[];
+}
+export interface TagResult {
+  changed: string[];
+  unchanged: string[];
+  not_found: string[];
+  add: string[];
+  remove: string[];
+  [extra: string]: unknown;
 }
 export interface HistoryListArgs {
   thread_id: string;

@@ -447,4 +447,15 @@ mod tests {
             assert!(denied, "{command}");
         }
     }
+
+    #[cfg(feature = "next-tags")]
+    #[test]
+    fn tag_calls_and_list_filters_are_allowed_with_the_feature() {
+        let tag = build_command("thread.tag", Some(json!({"thread_ids":["a"],"add":["x"]}))).unwrap();
+        assert_eq!(access(&tag), Access::Mutation);
+        let tags = build_command("thread.tags", Some(json!({"limit":200}))).unwrap();
+        assert_eq!(access(&tags), Access::Read);
+        let list = build_command("thread.list", Some(json!({"tags":["x"],"cwd":"/w","limit":100}))).unwrap();
+        assert_eq!(access(&list), Access::Read);
+    }
 }

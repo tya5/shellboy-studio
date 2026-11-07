@@ -13,6 +13,7 @@ import type {
   ModelListArgs,
   ModelListResult,
   OwnerResponse,
+  NamesArgs,
   Page,
   ShellEntry,
   ShellListArgs,
@@ -25,6 +26,8 @@ import type {
   ThreadListArgs,
   ThreadRewindArgs,
   ThreadSummary,
+  ThreadTagArgs,
+  TagResult,
   UsageGetArgs,
 } from "./protocol";
 
@@ -50,9 +53,11 @@ function pageOf<T>(item: (v: unknown) => string | undefined): Decoder<Page<T>> {
 }
 
 const summaryProblem = (v: unknown): string | undefined =>
-  isObject(v) && typeof v.thread_id === "string" && typeof v.title === "string" && typeof v.state === "string"
-    ? undefined
-    : "thread summary lacks thread_id, title or state";
+  !(isObject(v) && typeof v.thread_id === "string" && typeof v.title === "string" && typeof v.state === "string")
+    ? "thread summary lacks thread_id, title or state"
+    : v.tags !== undefined && !(Array.isArray(v.tags) && v.tags.every((t) => typeof t === "string"))
+      ? "thread summary tags is not a list of strings"
+      : undefined;
 
 const decodeThreadPage = pageOf<ThreadSummary>(summaryProblem);
 const decodeHistoryPage = pageOf<HistoryItem>((v) => (isObject(v) ? undefined : "history item is not an object"));
@@ -73,6 +78,11 @@ const decodeShellOutput: Decoder<ShellOutput> = (v) =>
   isObject(v) && typeof v.execution_id === "string" && typeof v.text === "string"
     ? { ok: true, value: v as ShellOutput }
     : { ok: false, reason: "shell.read result lacks execution_id or text" };
+const decodeNames = pageOf<string>((v) => (typeof v === "string" ? undefined : "a name in the page is not a string"));
+const decodeTagResult: Decoder<TagResult> = (v) =>
+  isObject(v) && Array.isArray(v.changed) && Array.isArray(v.unchanged) && Array.isArray(v.not_found)
+    ? { ok: true, value: v as unknown as TagResult }
+    : { ok: false, reason: "thread.tag result lacks changed, unchanged or not_found" };
 const decodeRecord: Decoder<Record<string, unknown>> = (v) =>
   isObject(v) ? { ok: true, value: v } : { ok: false, reason: "expected an object result" };
 
@@ -165,6 +175,18 @@ export class Operations {
   // ---- reads ----
   threadList(args: ThreadListArgs = {}, read?: ReadOptions): Promise<Outcome<Page<ThreadSummary>>> {
     return this.run("thread.list", args, decodeThreadPage, undefined, read);
+  }
+  /** Distinct tag names in byte order. Names only: the owner reports no counts. Needs `thread.tags`. */
+  threadTags(args: NamesArgs = {}, read?: ReadOptions): Promise<Outcome<Page<string>>> {
+    return this.run("thread.tags", args, decodeNames, undefined, read);
+  }
+  /**
+   * Distinct working directories. ASSUMPTION: Shellboy is adding `thread.cwds` and it mirrors
+   * `thread.tags` (`{limit, cursor}` in, a page of strings out). This is the only place that says so.
+   * Needs `thread.cwds`.
+   */
+  threadCwds(args: NamesArgs = {}, read?: ReadOptions): Promise<Outcome<Page<string>>> {
+    return this.run("thread.cwds", args, decodeNames, undefined, read);
   }
   threadGet(threadId: string, read?: ReadOptions): Promise<Outcome<ThreadDetails>> {
     return this.run("thread.get", { thread_id: threadId }, decodeDetails, undefined, read);
@@ -275,6 +297,10 @@ export class Operations {
   }
   threadSetParent(threadId: string, parent: string, operationId = this.newId()): Promise<Outcome<ThreadDetails>> {
     return this.run("thread.set", { thread_id: threadId, parent_id: parent }, decodeDetails, { operationId });
+  }
+  /** Add and remove tags on several Threads at once. Needs `thread.tags`. */
+  threadTag(args: ThreadTagArgs, operationId = this.newId()): Promise<Outcome<TagResult>> {
+    return this.run("thread.tag", args, decodeTagResult, { operationId });
   }
   threadRewind(args: ThreadRewindArgs, operationId = this.newId()): Promise<Outcome<MutationResult>> {
     return this.run("thread.rewind", args, decodeRecord, { operationId });

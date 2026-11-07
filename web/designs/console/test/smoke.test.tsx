@@ -412,6 +412,49 @@ describe("Threads", () => {
     act(() => state.click());
     expect(text(el.querySelector(".tgroup")!)).toContain("Recovery wait");
   });
+  it("with tags and directories on the owner: headings from the owner, members on demand, tags on rows and edited from a selection", async () => {
+    const made = await fixtureModel({
+      route: "threads",
+      capabilities: ["thread.tags", "thread.cwds"],
+      configure: (db) => {
+        (db.threads.lead as { tags?: string[] }).tags = ["bug hunt", "customer A"];
+        (db.threads.broken as { tags?: string[] }).tags = ["bug hunt"];
+      },
+    });
+    const el = draw(made.model);
+    const go = async (f: () => void) => {
+      await act(async () => {
+        f();
+        await settle(made.t, made.db);
+      });
+    };
+    const mode = (name: string) => [...el.querySelectorAll<HTMLButtonElement>(".org button")].find((b) => text(b) === name)!;
+    await go(() => mode("Tag").click());
+    expect(text(el)).not.toContain("Tags aren't available");
+    expect([...el.querySelectorAll(".tgroup .tgroup-name")].map(text)).toEqual(["bug hunt", "customer A"]);
+    expect(el.querySelector(".srow")).toBeNull();
+    const show = (n: number) => el.querySelectorAll<HTMLButtonElement>(".tgroup header .btn")[n]!;
+    await go(() => show(0).click());
+    expect(made.t.calls("thread.list").at(-1)!.args).toMatchObject({ tags: ["bug hunt"] });
+    expect(el.querySelectorAll(".srow").length).toBe(2);
+    expect([...el.querySelectorAll(".srow .tag")].map(text)).toContain("customer A");
+    act(() => el.querySelector<HTMLInputElement>(".srow input")!.click());
+    const tagsButton = [...el.querySelectorAll<HTMLButtonElement>(".selbar button")].find((b) => text(b) === "Tags")!;
+    act(() => tagsButton.click());
+    const field = el.querySelector<HTMLInputElement>("input[aria-label='Tag to add']")!;
+    act(() => {
+      field.value = "later";
+      field.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await go(() => [...el.querySelectorAll<HTMLButtonElement>(".btn")].find((b) => text(b) === "Add to list")!.click());
+    await go(() => [...el.querySelectorAll<HTMLButtonElement>(".btn")].find((b) => /^Apply to 1/.test(text(b)))!.click());
+    expect(made.t.calls("thread.tag")).toHaveLength(1);
+    expect(text(el)).toContain("Tags changed on 1 Threads");
+    await go(() => mode("Directory").click());
+    expect([...el.querySelectorAll(".tgroup .tgroup-name")].map(text)).toEqual(["/home/me/dev/rag", "/home/me/dev/shellboy"]);
+    act(() => { made.model.lang.value = "ja"; });
+    expect(text(el)).toContain("表示");
+  });
   it("archive needs a second press, states what it touches, and calls the owner", async () => {
     const { el, t, db } = await open();
     const box = el.querySelector<HTMLInputElement>(".srow input")!;
