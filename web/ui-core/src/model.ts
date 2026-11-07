@@ -17,7 +17,7 @@ import { CAPABILITY_CONNECTION_SETUP, ConnectionSetup } from "./setup";
 import { noPending, type PendingAdapter } from "./pending";
 import { analyticsSection, formatRoute, settingsSection, START_ROUTE, type Route, type ViewName } from "./route";
 import { statusOfShell, type StatusKey } from "./status";
-import { byUrgency, countByStatus, threadTree, type StatusCounts, type ThreadRow } from "./threads";
+import { StableMonitorOrder, countByStatus, threadTree, type StatusCounts, type ThreadRow } from "./threads";
 import { contextFacts, recoveryFacts, usageFacts, type ContextFacts, type RecoveryFacts, type UsageFacts } from "./usage";
 
 export type ConnectionView = "connected" | "connecting" | "ownerDown" | "authNeeded";
@@ -104,6 +104,7 @@ export class AppModel {
 
   readonly rows: ReadonlySignal<ThreadRow[]>;
   readonly counts: ReadonlySignal<StatusCounts>;
+  readonly monitorSort = signal<"stable" | "recent">("stable");
   readonly monitorFilter: Signal<StatusKey | undefined> = signal(undefined);
   readonly monitorRows: ReadonlySignal<ThreadRow[]>;
   readonly pendingCount: ReadonlySignal<number>;
@@ -180,9 +181,13 @@ export class AppModel {
     this.rowById = computed(() => new Map(this.rows.value.map((r) => [r.summary.thread_id, r])));
     this.counts = computed(() => countByStatus(this.rows.value));
     this.pendingCount = computed(() => this.pending.items.value.length);
+    const stableMonitor = new StableMonitorOrder();
+    const stableRows = computed(() => stableMonitor.order(this.rows.value));
+    this.disposers.push(effect(() => { stableRows.value; }));
     this.monitorRows = computed(() => {
       const filter = this.monitorFilter.value;
-      const rows = byUrgency(this.rows.value);
+      const stable = stableRows.value;
+      const rows = this.monitorSort.value === "recent" ? [...stable].sort((a, b) => b.summary.updated_at.localeCompare(a.summary.updated_at) || a.summary.thread_id.localeCompare(b.summary.thread_id)) : stable;
       return filter ? rows.filter((r) => r.status === filter) : rows;
     });
     this.connection = computed(() => {

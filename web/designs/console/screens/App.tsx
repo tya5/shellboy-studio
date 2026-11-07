@@ -24,6 +24,8 @@ export function App({ context }: { context: DesignContext }) {
   const [settings, setSettings] = useState(false);
   const [query, setQuery] = useState("");
 
+  useEffect(() => { model.monitorSort.value = context.prefs.value.monitorSort ?? "stable"; }, [model, context.prefs.value.monitorSort]);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const view = viewShortcut(e);
@@ -134,7 +136,7 @@ export function App({ context }: { context: DesignContext }) {
           </div>
           <section class="view" aria-label={title}>
             <AppsHost context={context} />
-            {route.view === "apps" ? null : route.view === "conversation" ? <Conversation model={model} /> : route.view === "monitor" ? <Monitor model={model} /> : route.view === "inbox" ? <Inbox model={model} /> : route.view === "analytics" ? <Analytics context={context} /> : route.view === "branches" ? <Branches model={model} /> : route.view === "threads" ? <Threads model={model} /> : route.view === "setup" ? <Setup context={context} /> : <SettingsView context={context} />}
+            {route.view === "apps" ? null : route.view === "conversation" ? <Conversation model={model} /> : route.view === "monitor" ? <Monitor context={context} /> : route.view === "inbox" ? <Inbox model={model} /> : route.view === "analytics" ? <Analytics context={context} /> : route.view === "branches" ? <Branches model={model} /> : route.view === "threads" ? <Threads model={model} /> : route.view === "setup" ? <Setup context={context} /> : <SettingsView context={context} />}
           </section>
           <footer class="status">
             <StatusMark

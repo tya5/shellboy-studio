@@ -1,6 +1,6 @@
 import { useState } from "preact/hooks";
-import { formatAge, formatRoute, plainExcerpt, statusLabel, STATUS_KEYS, type AppModel, type ThreadRow } from "../../../ui-core/src";
-import { Button, Chip, EmptyState, Icon, StatusMark, ThreadCard } from "../system/components";
+import { formatAge, formatRoute, plainExcerpt, statusLabel, STATUS_KEYS, type AppModel, type DesignContext, type ThreadRow } from "../../../ui-core/src";
+import { Button, ButtonGroup, Chip, EmptyState, Icon, StatusMark, ThreadCard } from "../system/components";
 
 function Archive({ model, id }: { model: AppModel; id: string }) {
   const t = model.t.value;
@@ -54,7 +54,8 @@ function Card({ model, row }: { model: AppModel; row: ThreadRow }) {
   );
 }
 
-export function Monitor({ model }: { model: AppModel }) {
+export function Monitor({ context }: { context: DesignContext }) {
+  const { model, prefs, setPrefs } = context;
   const t = model.t.value;
   const counts = model.counts.value;
   const filter = model.monitorFilter.value;
@@ -73,6 +74,9 @@ export function Monitor({ model }: { model: AppModel }) {
           ))}
         </div>
       </div>
+      <ButtonGroup label={t("monitor.sort")}>
+        {(["stable", "recent"] as const).map((sort) => <Button key={sort} aria-pressed={(prefs.value.monitorSort ?? "stable") === sort} onClick={() => { model.monitorSort.value = sort; setPrefs({ monitorSort: sort }); }}>{t(sort === "stable" ? "monitor.sortStable" : "monitor.sortRecent")}</Button>)}
+      </ButtonGroup>
       {rows.length > 0 ? (
         <div class="grid">
           {rows.map((r) => (

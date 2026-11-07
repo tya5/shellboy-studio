@@ -20,6 +20,30 @@ describe("AppModel over the fake transport", () => {
     expect(model.monitorRows.value.map((r) => r.summary.thread_id)).toEqual(["done"]);
   });
 
+  it("keeps existing monitor rows in place across hints and appends new rows", async () => {
+    const { model, t, db } = await fixtureModel({ route: "monitor" });
+    const ids = () => model.monitorRows.value.map((row) => row.summary.thread_id);
+    const before = ids();
+    const reads = t.calls("thread.list").length;
+    db.threads.lead = { ...db.threads.lead!, activity: "recovery", updated_at: "2099-01-01T00:00:00Z" };
+    db.threads = Object.fromEntries(Object.entries(db.threads).reverse());
+    db.threads["aaa-new"] = { ...db.threads.lead!, thread_id: "aaa-new", title: "New" };
+    t.push({ t: "changed", thread_ids: [], list: true });
+    await settle(t, db);
+    expect(ids().slice(0, before.length)).toEqual(before);
+    expect(ids().at(-1)).toBe("aaa-new");
+    expect(model.counts.value.recovery).toBe(3);
+    model.monitorFilter.value = "recovery";
+    expect(ids()).toContain("lead");
+    model.monitorFilter.value = undefined;
+    expect(t.calls("thread.list").length).toBe(reads + 1);
+    model.monitorSort.value = "recent";
+    expect(ids()[0]).toBe("aaa-new");
+    model.monitorSort.value = "stable";
+    expect(ids().slice(0, before.length)).toEqual(before);
+    model.dispose();
+  });
+
   it("step facts come from shell.list and follow a change hint", async () => {
     const { model, t, db } = await fixtureModel();
     const step = () => {

@@ -7,6 +7,7 @@ export interface Prefs {
   /** Token file within the design. */
   theme: string;
   lang: Lang;
+  monitorSort?: "stable" | "recent";
   /** Effective-token weights. The reader's own; they are not prices. */
   weights: Weights;
 }
@@ -41,7 +42,7 @@ export function loadPrefs(store: PrefStore, designs: readonly DesignChoice[]): P
   if (!design) throw new Error("no design registered");
   const theme = design.themes.find((t) => t.name === saved.theme) ?? design.themes[0];
   if (!theme) throw new Error(`design ${design.name} has no theme`);
-  return { design: design.name, theme: theme.name, lang: saved.lang === "ja" ? "ja" : "en", weights: readWeights(saved.weights) };
+  return { design: design.name, theme: theme.name, lang: saved.lang === "ja" ? "ja" : "en", monitorSort: saved.monitorSort === "recent" ? "recent" : "stable", weights: readWeights(saved.weights) };
 }
 
 export function savePrefs(store: PrefStore, prefs: Prefs): void {

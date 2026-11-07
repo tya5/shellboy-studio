@@ -218,3 +218,15 @@ cancellation and cleanup; no capability or wire shape is guessed here. The
 conversation projection caps the adapter's visible results at 128 and separates
 human recipients from Thread recipients. The existing global Awaiting you adapter
 remains independent and human-only.
+
+### Stable monitor order
+
+The Monitor projects only the already bounded Thread list. It retains the order
+in which IDs first enter this local projection, appending newly observed IDs in
+ID order; it forgets IDs removed from the list. Activity, state and hints update
+row content and counts without moving retained rows. List replacement, filtering
+or the owner's bounded retention can remove rows; the displayed counts therefore
+cover loaded rows only. No additional RPC or polling is introduced. The per-browser
+sort preference offers stable order (default) or descending `updated_at` with ID
+as the tie-breaker. The stable order lives only for the AppModel's lifetime and
+is rebuilt from the bounded current list after reload.
