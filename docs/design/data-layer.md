@@ -230,3 +230,11 @@ cover loaded rows only. No additional RPC or polling is introduced. The per-brow
 sort preference offers stable order (default) or descending `updated_at` with ID
 as the tie-breaker. The stable order lives only for the AppModel's lifetime and
 is rebuilt from the bounded current list after reload.
+
+### Conversation status timing
+
+The existing bounded `thread.get` and work projections expose running shell
+`started_at`, but do not expose when the current model request began. The
+conversation must not derive that time from `updated_at` or pretend an observed
+client-side transition is the owner's start time. Model-wait duration is unknown
+until an adopted public owner projection provides the corresponding timestamp.
