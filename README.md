@@ -7,9 +7,12 @@ progress, Thread list) and to make Shellboy usable from a phone.
 
 ## Status
 
-**Foundation in progress.** The Rust bridge, the `--debug` page and the TypeScript data layer
-(`web/data`, [docs/design/data-layer.md](docs/design/data-layer.md)) exist (see
-[docs/design/bridge.md](docs/design/bridge.md)); there is no real UI yet. The proposed design is in
+**First version, local only.** The Rust bridge, the `--debug` page, the TypeScript data layer
+(`web/data`, [docs/design/data-layer.md](docs/design/data-layer.md)), shared screen logic
+(`web/ui-core`) and the first design (`web/designs/console`,
+[docs/design/design-system.md](docs/design/design-system.md)) exist. To run it: `npm ci && npm run build`
+in `web/`, then `cargo run -- --data-dir DIR` with an owner on that directory
+([docs/design/bridge.md](docs/design/bridge.md)). The design is in
 [docs/design/architecture.md](docs/design/architecture.md). The first milestone
 depends on Shellboy features that are designed but not implemented yet
 (change notification `events.wait`, Shellboy #243; external RPC contract with

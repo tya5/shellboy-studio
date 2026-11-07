@@ -38,7 +38,7 @@ const TEXT_PAIRS: [string, string][] = [
   ["on-wait", "wait"],
   ["accent", "bg"], ["accent", "panel"], ["accent", "inset"], ["accent", "lead-bg"], ["accent", "raised"],
   ["ok", "bg"], ["ok", "panel"], ["ok", "raised"], ["ok", "lead-bg"],
-  ["wait", "bg"], ["wait", "panel"], ["wait", "wait-bg"], ["wait", "need-bg"],
+  ["wait", "bg"], ["wait", "panel"], ["wait", "wait-bg"], ["wait", "need-bg"], ["wait", "bad-bg"],
   ["bad", "bg"], ["bad", "panel"], ["bad", "bad-bg"], ["bad", "err-bg"],
 ];
 const CONTROL_PAIRS: [string, string][] = [["line-strong", "bg"], ["line-strong", "panel"], ["line-strong", "inset"], ["accent", "bg"], ["accent", "panel"]];

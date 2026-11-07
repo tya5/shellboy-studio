@@ -1,6 +1,6 @@
 # Design system
 
-Status: proposal from the 2026-11-07 discussion. Direction from the user: engineer-oriented, dark console feel per the reference images; all of conversation, monitor, inbox and phone views are wanted; design systems should be defined and switchable.
+Status: adopted and implemented for the first design, `web/designs/console/` (2026-11-07), local only. Direction from the user: engineer-oriented, dark console feel per the reference images; all of conversation, monitor, inbox and phone views are wanted; design systems should be defined and switchable.
 
 ## Principle
 
@@ -64,6 +64,34 @@ Limit: this costs some discipline, and a shared `ui-core` change can affect all 
 - Default UI language is English; Japanese stays available as in the TUI.
 - The app opens on Conversation.
 
+- Build the design system first and every screen on it, so new pages inherit the same taste. Screens use only the system's tokens and components; a screen that needs something new adds it to the system first, with a usage note. A test enforces this.
+
+## The Console design
+
+`web/designs/console/system/` is the system, taken from the design system reference built from the approved mock; its `README.md` lists the contents and where it differs. `web/designs/registry.ts` is the one registry; `web/app/main.ts` is the entry point, which holds the token exchange, preferences and the fragment route.
+
+| Decision | Reason | Revisit when |
+|---|---|---|
+| Preact 10.29.8, `@preact/signals` 2.11.3, Vite 8.3.5 (exact, older than two weeks on 2026-11-07), as in `architecture.md` §7.2. Preact 10, not the newer 11 | small, familiar, signals update only what reads them; the data layer already uses the same signal core. Preact 11 is a month-old major | Preact 11 has settled |
+| `markdown-it` 15.0.3 with `html: false`, in a chunk of its own loaded when a message first renders, inside the design. Text shows unformatted until then | model text can't inject markup; the chunk is the largest and isn't needed for the first paint. It stays in the design until a second design wants it (then `web/ui-parts`) | a second design |
+| No `highlight.js` yet, though `architecture.md` lists it. Code blocks have a copy button and no colouring | not in the approved mock, and it would add size for something nobody has asked to see | syntax colour is wanted |
+| `happy-dom` 21.0.4 (dev only) for the smoke tests, no `@types/node`; the two node-based test files are excluded from `tsc` | real components and events without a browser; one less dependency | those tests need types |
+| No web font at runtime. System stacks that name Inter, Noto Sans JP and JetBrains Mono first | the bridge must work with no external host, and bundling the faces costs more than the rest of the app together. Text differs slightly by machine from the mock | a bundled face is measured and wanted |
+| Light and dark are separate systems, not modes of one | Console and Light differ in more than a mode flag would express cleanly, and one attribute selects either | a system needs both |
+| Icons drawn inline as line icons from the mock. No icon package | a package is a dependency for about twenty paths | many more icons are needed |
+| Status marks: four from the reference (`run`, `wait`, `bad`, `ok`) plus `hold`, `fail`, `halt`, `idle` (uncertain; the reference says not to add states) | the owner reports waiting, failed, stopped and idle as distinct states. Merging them would change their meaning, and showing them with no mark would be worse. `awaiting` comes only from the pending adapter, never from the owner's `waiting` | the user reviews these marks |
+| Execution details hide below a 1180px frame, earlier than the reference's 900px | a 340px panel leaves too little for the conversation with the 260px sidebar | a real layout need |
+| On phone width the thread list is a drawer from a menu button in the top bar, which the mock doesn't show | a phone needs a way to change Thread and create one | the user wants another path |
+| Archive needs a second press | the UI has no unarchive yet (`thread.unarchive` is denied) | unarchive exists |
+
+## Validation record (2026-11-07)
+
+Environment: macOS (Darwin 25.3, arm64), Node 25.9, Google Chrome headless driven over its DevTools protocol by a throwaway script (no browser tooling installed), bridge debug build embedding the production bundle, `shellboy serve` from Shellboy `fa7bec02c0` with temporary HOME and data directory and a local mock provider. No real API call.
+
+`npm run check` (typecheck plus Vitest) and `cargo clippy --all-targets -- -D warnings`, `cargo test` pass. In the browser, against the real bridge at `/`: token exchange and fragment removal; Thread list, Conversation with Markdown, command steps with exit code and output, details panel, usage and input size from `thread.get`; sending from the composer (recorded as a person), Stop on a running Run, Retry from Monitor, Archive with two presses, New; a 100-message Thread opening at its end with Show earlier messages; a message from the CLI arriving by hint without reload; theme and language switching without reload and kept after a reload; owner down and back; a restarted bridge asking for the token, refusing a wrong one, accepting the right one; no request leaving the bridge's origin. Widths of 1440, 1000 and 390 px checked by computed style and screenshots.
+
+Browser device emulation is not a phone test. Not tested: real phones, Safari, Firefox, Windows, Linux, a real provider, real compaction, live text (not on Shellboy main), real `message ask`.
+
 ## Not decided
 
-Component technology for the production UI, icon set, whether users can load a custom token file from settings, Japanese and English font pairing.
+Whether users can load a custom token file from settings.

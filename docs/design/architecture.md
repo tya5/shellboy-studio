@@ -501,7 +501,7 @@ the foundation works end to end (§2.1).
 | Browser issues reads; bridge only proxies and fans out hints | no projection logic in the bridge; one place for view logic | measurement shows many tabs duplicate the same reads |
 | Empty `thread_ids` filter on the single long-poll | Thread list needs all hints; simplest | owner load from hints for unwatched Threads is measured as significant |
 | No polling stand-in before `events.wait` | avoids the cost #243 removes and receipt writes from `wait` | never for M1; a development-only stand-in may exist behind a dev flag |
-| Preact + Vite + markdown-it + highlight.js | smallest familiar stack that covers M1–M2 | streaming or rendering measured too slow on phones |
+| Preact + Vite + markdown-it; highlight.js deferred (`design-system.md`) | smallest familiar stack that covers M1–M2 | streaming or rendering measured too slow on phones |
 | Token in URL fragment + HttpOnly cookie | not sent to servers/proxies; scripts on the page cannot read the cookie | a tunnel or browser breaks fragment handling |
 | No text glyph marks in the Web UI; state words stay consistent (2026-11-06, user decision) | richer, clearer visual expression; meanings matter, not TUI glyphs | never without approval |
 | Layers: bridge / data layer (UX boundary) / swappable presentation / debug page; layout deferred, brainstorm with user after end-to-end works (2026-11-06, user decision) | redesign without touching tested logic | the data-layer API proves wrong |

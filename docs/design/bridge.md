@@ -7,7 +7,11 @@ code does it.
 ## What exists
 
 - `shellboy-web` binary and library crate (`src/`): HTTP + WebSocket bridge to a running
-  owner. No frontend beyond the debug page; `GET /` is a plain text placeholder.
+  owner. `GET /` and `GET /assets/*` serve the production frontend, embedded from `web/dist`
+  by `build.rs` (`include_bytes!`, no extra crate). `index.html` is `no-cache`, hashed assets are
+  immutable, and the CSP allows only the bridge's own origin. Build order: `npm ci && npm run
+  build` in `web/`, then `cargo build`. Without a build the bridge still compiles, and `GET /`
+  answers 503 with how to make one. Built assets are not committed.
 - `web/debug/index.html`: the debug page, one static file embedded into the binary
   (`include_str!`), plain JavaScript, no build step. It is a separate entry from the
   future app bundle. Served at `/debug` only with `--debug`; otherwise the route does not
@@ -17,10 +21,11 @@ code does it.
 
 ```sh
 shellboy serve --data-dir DIR &      # an owner must run (a TUI owner also works)
-shellboy-web --data-dir DIR --debug  # prints http://127.0.0.1:8751/#token=...
+shellboy-web --data-dir DIR          # prints http://127.0.0.1:8751/#token=...
+shellboy-web --data-dir DIR --debug  # also serves /debug
 ```
 
-Open the printed `debug page:` URL once; the page posts the token to `/auth`, gets an
+Open the printed URL once; the app exchanges the token the same way. For the debug page, open the printed `debug page:` URL; the page posts the token to `/auth`, gets an
 `HttpOnly; SameSite=Strict` cookie and drops the fragment. Flags: `--listen ADDR`
 (default `127.0.0.1:8751`), `--data-dir` (default: `SHELLBOY_DATA_DIR`, then the OS
 default, resolved by Shellboy's own `resolve_cli_data_dir`), `--config-dir` (token

@@ -124,7 +124,7 @@ a{color:var(--accent)}
 .bar i{display:block;height:100%;background:var(--accent)}
 
 /* KeyValue */
-.kv{margin:0;display:grid;grid-template-columns:96px minmax(0,1fr);gap:var(--space-4) var(--space-8);font:var(--type-label)}
+.kv{margin:0;display:grid;grid-template-columns:112px minmax(0,1fr);gap:var(--space-4) var(--space-8);font:var(--type-label)}
 .kv dt{color:var(--muted)}
 .kv dd{margin:0;overflow-wrap:anywhere}
 
@@ -180,4 +180,5 @@ a{color:var(--accent)}
   .field{min-height:var(--size-touch)}
   .nav-item,.tree-item{min-height:var(--size-touch)}
   .composer .hint{display:none}
+  .md .code pre{min-height:calc(var(--size-touch) + 2 * var(--space-4))}
 }
