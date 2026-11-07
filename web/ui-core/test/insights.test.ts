@@ -229,6 +229,19 @@ describe("Insights over the fake transport", () => {
     expect(walk.state.value.status).toBe("stopped");
   });
 
+  it("Stop before the first reply can still continue, from the start", async () => {
+    const { t, db, model } = await fixtureModel();
+    model.applyRoute({ view: "analytics" });
+    await Promise.resolve();
+    const walk = model.insights.daily;
+    walk.stop();
+    expect(walk.state.value).toMatchObject({ status: "stopped", canContinue: true });
+    void walk.continue();
+    await settle(t, db);
+    expect(walk.state.value.status).toBe("done");
+    expect(walk.state.value.coverage.windows).toBe(2);
+  });
+
   it("an expired cursor keeps partial values, can't continue, and asks for a new read", async () => {
     const { t, db, model } = await fixtureModel();
     const plain = db.answer;

@@ -69,7 +69,7 @@ export class UsageWalk {
   stop(): void {
     this.generation++;
     const s = this.state.peek();
-    if (s.status === "loading") this.state.value = { ...s, status: "stopped", canContinue: this.cursor !== undefined };
+    if (s.status === "loading") this.state.value = { ...s, status: "stopped", canContinue: true };
   }
 
   /** Reads further windows from where the walk stopped. */
