@@ -795,16 +795,15 @@ async fn an_app_keeps_its_origin_across_restarts_and_stops_with_the_bridge() {
         serde_json::from_slice(&std::fs::read(f.root.join("state/app-ports.json")).unwrap())
             .unwrap();
     assert_eq!(format!("127.0.0.1:{}", saved["one"]), addr);
+    // Stopping waits for the listeners. Whether the port is then free isn't asserted: tests running
+    // alongside take ports from the same neighbourhood, and a taken port only moves an app.
     f.cancel.cancel();
-    f.state.apps.as_ref().unwrap().stopped().await;
-    assert!(
-        tokio::net::TcpStream::connect(&addr).await.is_err(),
-        "the listener ended"
-    );
-    assert!(
-        tokio::net::TcpListener::bind(&addr).await.is_ok(),
-        "the port is free again, for the next start"
-    );
+    tokio::time::timeout(
+        Duration::from_secs(5),
+        f.state.apps.as_ref().unwrap().stopped(),
+    )
+    .await
+    .expect("the app listeners end with the bridge");
 }
 
 #[tokio::test]
