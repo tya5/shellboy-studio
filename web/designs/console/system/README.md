@@ -18,7 +18,7 @@ An engineer's console: dark navy surfaces, one accent, and monospace wherever th
 - Corners: `radius-s` for controls, `radius` for cards. Terminal squares both.
 - Spacing comes from `space-4` to `space-24`. Touch targets on phone width are at least 44px.
 - Focus is a solid 2px `accent` ring with a 2px offset on every interactive element.
-- Motion: only the running ring spins. It stops under `prefers-reduced-motion`.
+- Motion: the running ring spins and LoadingRows pulses; nothing else moves. Both stop under `prefers-reduced-motion`.
 
 ## Layout
 
@@ -48,4 +48,4 @@ This folder is the system; `../screens` builds on it. A screen uses only these t
 - The root attribute is `data-ds`, as `docs/design/design-system.md` specifies; the reference previews use `data-theme`.
 - Fonts: no web font is loaded at runtime. The stacks name Inter, Noto Sans JP and JetBrains Mono first, so a machine that has them uses them, and otherwise fall back to the system faces. The reference's Google Fonts import is for its previews only.
 
-Differences from the reference, each for a reason in the usage note or `docs/design/design-system.md`: added states `hold`, `fail`, `halt` and `idle` on StatusMark; added tokens `scrim`, `motion-spin` and the `size-*` layout tokens; spacing inside components snaps to the `space-*` scale, where the reference has some 10px and 14px values; the Notice, Field, Chip, LogBlock, KeyValue, EmptyState, Message, Composer, ThreadItem, QuestionItem and Icon components; for Analytics and Settings, the Section, Stat, Chart, DataTable, Meter, BarList, RangeBar, SectionNav, SubView, MoreMenu, FactList and ButtonGroup components; for Branches and Threads, the BranchGraph, BranchList, BranchMark, ThreadGroup, SelectRow and SelectionBar components; for Apps, the AppTabs, AppFrame and AppCard components and the `chart-1` to `chart-3` tokens.
+Differences from the reference, each for a reason in the usage note or `docs/design/design-system.md`: added states `hold`, `fail`, `halt` and `idle` on StatusMark; added tokens `scrim`, `motion-spin` and the `size-*` layout tokens; spacing inside components snaps to the `space-*` scale, where the reference has some 10px and 14px values; the Notice, Field, Chip, LogBlock, KeyValue, EmptyState, Message, Composer, ThreadItem, QuestionItem and Icon components; for Analytics and Settings, the Section, Stat, Chart, DataTable, Meter, BarList, RangeBar, SectionNav, SubView, MoreMenu, FactList and ButtonGroup components; for Branches and Threads, the BranchGraph, BranchList, BranchMark, ThreadGroup, SelectRow and SelectionBar components; for Apps, the AppTabs, AppFrame and AppCard components; and LoadingRows and the `chart-1` to `chart-3` tokens.

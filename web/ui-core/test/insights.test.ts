@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { settle } from "../../data/test/harness";
 import {
-  addSum, ANALYTICS_SECTIONS, analyticsSection, cacheRate, dayFacts, effectiveTokens, formatBytes, formatRoute, loadPrefs, MAX_WINDOWS, meanInput, mergeGroups, niceMax, parseRoute, periodOf, periodTotals,
+  addSum, ANALYTICS_SECTIONS, analyticsSection, cacheRate, dayFacts, effectiveTokens, formatBytes, formatRoute, loadPrefs, MAX_GROUPS, MAX_WINDOWS, meanInput, mergeGroups, niceMax, parseRoute, periodOf, periodTotals,
   readCompactionEvent, readGroup, readIndex, readMemory, readStorage, readSum, readThreadSettings, settingsSection, SETTINGS_SECTIONS, splitParts, totalGroups, zoneOf, type Prefs,
 } from "../src";
 import { fixtureCompaction, fixtureIndex, fixtureMemory, fixtureModel, fixtureStorage, NOW, usageItem, usagePage } from "./fixture";
@@ -294,6 +294,23 @@ describe("Insights over the fake transport", () => {
     await settleLong(t, db);
     expect((t.calls("usage.get")[MAX_WINDOWS]!.args as { cursor: string }).cursor).toBe(`w${MAX_WINDOWS - 1}`);
     expect(model.insights.daily.state.value.coverage.windows).toBe(2 * MAX_WINDOWS);
+  });
+
+  it("a by-Thread walk stops at its bound on groups and says so", async () => {
+    const { t, db, model } = await fixtureModel({ route: "monitor" });
+    const plain = db.answer;
+    let n = 0;
+    db.answer = (c) => {
+      if (c.command !== "usage.get") return plain(c);
+      const items = Array.from({ length: 168 }, () => usageItem(`thread-${n++}`, { input: 1, cached: 0, output: 1 }));
+      return { ok: true, result: usagePage(items, "again") };
+    };
+    void model.insights.byThread.start();
+    await settleLong(t, db);
+    const s = model.insights.byThread.state.value;
+    expect(s).toMatchObject({ status: "stopped", capped: true, canContinue: false });
+    expect(s.groups.size).toBeGreaterThanOrEqual(MAX_GROUPS);
+    expect(s.groups.size).toBeLessThan(MAX_GROUPS + 168);
   });
 
   it("Stop halts after the call on the wire and keeps what was read", async () => {

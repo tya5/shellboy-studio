@@ -501,6 +501,9 @@ const en = {
   "res.bridge": "Bridge process",
   "res.bridgeSub": "This gateway, as the OS reports it. Read on opening and on Refresh only.",
   "res.bridgeRss": "Bridge resident memory",
+  "threads.capped": "This list keeps 1,000 Threads. Search to find others.",
+  "threads.groupsCapped": "Stopped at 2,000 Threads, so this table isn't complete. Choose a shorter period.",
+  "common.loadingRows": "Loading",
   "brand": "Shellboy",
 } as const;
 
@@ -1002,6 +1005,9 @@ const ja: Record<MessageKey, string> = {
   "res.bridge": "ブリッジのプロセス",
   "res.bridgeSub": "このゲートウェイ自身。OSの報告値で、開いたときと再読み込み時だけ読みます。",
   "res.bridgeRss": "ブリッジの常駐メモリ",
+  "threads.capped": "この一覧は1,000スレッドまで保持します。他のスレッドは検索してください。",
+  "threads.groupsCapped": "2,000スレッドで停止したため、この表は完全ではありません。期間を短くしてください。",
+  "common.loadingRows": "読み込み中",
   "brand": "Shellboy",
 };
 

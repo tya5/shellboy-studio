@@ -24,6 +24,8 @@ import { readIndex, readMemory, readReceipts, readStorage, readThreadSettings, t
  * so a walk reads from the first attempt ever saved.
  */
 export const MAX_WINDOWS = 64;
+/** Groups one walk keeps. Days can't reach it; a by-Thread walk can, and then stops and says so. */
+export const MAX_GROUPS = 2000;
 /** The owner's largest group page. */
 const GROUP_LIMIT = 168;
 /** Rows of one Thread's `compact.list`. */
@@ -39,6 +41,8 @@ export interface WalkState {
   error: OpError | undefined;
   /** More windows exist; `continue` reads them. */
   canContinue: boolean;
+  /** Stopped at `MAX_GROUPS`, so some groups aren't counted. */
+  capped?: boolean;
 }
 
 const emptyWalk: WalkState = { status: "idle", groups: new Map(), coverage: EMPTY_COVERAGE, error: undefined, canContinue: false };
@@ -103,7 +107,13 @@ export class UsageWalk {
       const next = typeof page.next_cursor === "string" ? page.next_cursor : undefined;
       const more = page.more === true && next !== undefined;
       this.cursor = more ? next : undefined;
-      this.state.value = { status: more ? "loading" : "done", groups, coverage: addCoverage(this.state.peek().coverage, page), error: undefined, canContinue: false };
+      const coverage = addCoverage(this.state.peek().coverage, page);
+      if (groups.size >= MAX_GROUPS && more) {
+        this.cursor = undefined;
+        this.state.value = { status: "stopped", groups, coverage, error: undefined, canContinue: false, capped: true };
+        return;
+      }
+      this.state.value = { status: more ? "loading" : "done", groups, coverage, error: undefined, canContinue: false };
       if (!more) return;
     }
     this.state.value = { ...this.state.peek(), status: "stopped", canContinue: true };

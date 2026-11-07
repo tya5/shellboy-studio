@@ -94,15 +94,14 @@ export function Branches({ model }: { model: AppModel }) {
   const state = b.state.value;
   const family = state.family;
   const threadId = model.selectedId.value;
-  const statusOf = new Map(model.rows.value.map((r) => [r.summary.thread_id, r.status]));
-  const titleOf = new Map(model.rows.value.map((r) => [r.summary.thread_id, r.summary.title]));
-  const title = (i: BranchItem) => i.title ?? titleOf.get(i.threadId) ?? branchTitle(i);
+  const rows = model.rowById.value;
+  const title = (i: BranchItem) => i.title ?? rows.get(i.threadId)?.summary.title ?? branchTitle(i);
   const note = (i: BranchItem): string => {
     const parts: string[] = [];
     if (i.state === "current") parts.push(t("branches.current"));
     if (i.divergenceUnknown) parts.push(t("branches.noShared"));
     else if (i.divergence && !i.divergence.parentContinues) parts.push(t("branches.extends"));
-    const status = statusOf.get(i.threadId);
+    const status = rows.get(i.threadId)?.status;
     if (i.running) parts.push(t("status.running"));
     else if (status) parts.push(statusLabel(t, status));
     if (i.prunedOriginals) parts.push(t("branches.pruned"));
@@ -183,7 +182,7 @@ export function Branches({ model }: { model: AppModel }) {
       </div>
       <aside class="branches-side" aria-label={t("branches.point")}>
         {target ? (
-          <PointPanel model={model} target={target} title={onThread ? title(onThread) : (titleOf.get(target.threadId) ?? target.threadId.slice(0, 8))} request={point?.request} branches={point?.branches} ordinal={point?.ordinal} />
+          <PointPanel model={model} target={target} title={onThread ? title(onThread) : (rows.get(target.threadId)?.summary.title ?? target.threadId.slice(0, 8))} request={point?.request} branches={point?.branches} ordinal={point?.ordinal} />
         ) : (
           <div class="muted caption"><Rich text={t("branches.pick")} /></div>
         )}

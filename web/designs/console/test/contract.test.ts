@@ -96,9 +96,10 @@ describe("components name roles, never values", () => {
   it("every custom property used exists", () => {
     for (const m of css.matchAll(/var\(--([\w-]+)/g)) expect(known.has(m[1]!), m[1]).toBe(true);
   });
-  it("only the running ring moves, and it stops under reduced motion", () => {
-    expect(css.match(/animation:/g)).toHaveLength(2);
+  it("only the running ring and loading rows move, and both stop under reduced motion", () => {
+    expect(css.match(/animation:/g)).toHaveLength(4);
     expect(css).toMatch(/prefers-reduced-motion:reduce\)\{\.st\.run \.dot\{animation:none\}/);
+    expect(css).toMatch(/prefers-reduced-motion:reduce\)\{\.loadrow\{animation:none\}/);
   });
   it("phone width is driven by the container, with a tab bar and 44px controls", () => {
     expect(css).toMatch(/container:app \/ inline-size/);

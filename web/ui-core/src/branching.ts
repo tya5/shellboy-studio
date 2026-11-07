@@ -12,6 +12,8 @@ const BRANCH_PAGES = 4;
 const BRANCH_RESTARTS = 3;
 /** One `thread.list` page; the owner's largest. */
 export const ORG_PAGE = 200;
+/** Pages this view holds and re-reads: at most 1000 rows, however many Threads exist. Past it, filter. */
+export const ORG_MAX_PAGES = 5;
 
 export interface FamilyState {
   threadId: string | undefined;
@@ -230,7 +232,12 @@ export class ThreadOrg {
     }
   }
 
+  canLoadMore(): boolean {
+    return this.state.peek().nextCursor !== undefined && this.pages < ORG_MAX_PAGES;
+  }
+
   loadMore(): void {
+    if (!this.canLoadMore()) return;
     this.pages++;
     void this.read();
   }

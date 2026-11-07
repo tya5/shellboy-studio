@@ -1,4 +1,4 @@
-import { useEffect, useState } from "preact/hooks";
+import { useEffect, useMemo, useState } from "preact/hooks";
 import { formatAge, formatRoute, groupThreads, listedDescendants, statusLabel, THREAD_GROUPINGS, type AppModel, type StatusKey, type Translate } from "../../../ui-core/src";
 import { Button, ButtonGroup, EmptyState, Field, Icon, Notice, SelectionBar, SelectRow, StatusMark, ThreadGroup } from "../system/components";
 
@@ -21,7 +21,7 @@ export function Threads({ model }: { model: AppModel }) {
     return () => clearTimeout(timer);
   }, [org, query]);
   useEffect(() => setArmed(false), [selected, state.mode]);
-  const groups = groupThreads(state.items, by);
+  const groups = useMemo(() => groupThreads(state.items, by), [state.items, by]);
   const extra = descendants ? listedDescendants(state.items, selected) : 0;
   const archiving = state.mode === "exclude";
   const run = () => {
@@ -93,14 +93,14 @@ export function Threads({ model }: { model: AppModel }) {
                   checkLabel={t("org.selectOne", { title: s.title })}
                   onToggle={() => org.toggle(s.thread_id)}
                   note={notes || undefined}
-                  age={formatAge(s.updated_at, model.now.value)}
+                  age={formatAge(s.updated_at, model.coarseNow.value)}
                 />
               );
             })}
           </ThreadGroup>
         );
       })}
-      {state.nextCursor ? <span class="more"><Button disabled={state.loading} onClick={() => org.loadMore()}>{t("threads.more")}</Button></span> : null}
+      {org.canLoadMore() ? <span class="more"><Button disabled={state.loading} onClick={() => org.loadMore()}>{t("threads.more")}</Button></span> : state.nextCursor ? <div class="muted caption">{t("threads.capped")}</div> : null}
       <div class="muted caption">{t("org.seam")}</div>
       <div class="sect-source">{t("common.source", { source: "" })}<code>thread.list</code></div>
     </div>

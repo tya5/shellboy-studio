@@ -38,7 +38,7 @@ function AppList({ model }: { model: AppModel }) {
   const t = model.t.value;
   const apps = model.apps;
   const list = apps.list.value;
-  const titles = new Map(model.rows.value.map((r) => [r.summary.thread_id, r.summary.title]));
+  const rows = model.rowById.value;
   const failed = apps.openError.value;
   return (
     <div class="apps-list">
@@ -61,7 +61,7 @@ function AppList({ model }: { model: AppModel }) {
               name={a.name}
               href={formatRoute({ view: "apps", appName: a.name })}
               openLabel={t("apps.open")}
-              note={a.thread ? t("apps.bound", { title: titles.get(a.thread) ?? a.thread.slice(0, 8) }) : t("apps.unbound")}
+              note={a.thread ? t("apps.bound", { title: rows.get(a.thread)?.summary.title ?? a.thread.slice(0, 8) }) : t("apps.unbound")}
               problem={a.problem ? t("apps.broken", { problem: a.problem }) : undefined}
             />
           ))}

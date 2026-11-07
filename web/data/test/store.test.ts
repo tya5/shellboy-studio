@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { applyOwnerLiveText, LiveTextWireUnknownError, MAX_PREVIEW_CHARS } from "../src/live";
-import { HISTORY_WINDOW, MAX_WATCHED_THREADS, ShellboyData } from "../src/store";
+import { MAX_LIST_ROWS, PAGE_LIMIT, HISTORY_WINDOW, MAX_WATCHED_THREADS, ShellboyData } from "../src/store";
 import { connected, details, FakeOwnerDb, FakeTransport, flush, settle, summary } from "./harness";
 
 async function setup(opts: { owner?: boolean } = {}) {
@@ -393,5 +393,65 @@ describe("diagnostics", () => {
     expect(data.bridgeError.value).toEqual({ code: "invalid_watch", message: "too many" });
     t.handlers!.onInvalidFrame("unknown frame x");
     expect(data.invalidFrames.value).toEqual({ count: 1, last: "unknown frame x" });
+  });
+});
+
+describe("the Thread list stays bounded however many Threads exist", () => {
+  async function listed(pages: number) {
+    const t = new FakeTransport();
+    const db = new FakeOwnerDb();
+    const all = Array.from({ length: pages * PAGE_LIMIT }, (_, i) => summary(`t${i}`));
+    const answer = db.answer.bind(db);
+    db.answer = (c) => {
+      if (c.command !== "thread.list") return answer(c);
+      const a = (c.args ?? {}) as { cursor?: string };
+      const start = a.cursor ? Number(a.cursor) : 0;
+      const end = start + PAGE_LIMIT;
+      return { ok: true, result: { items: all.slice(start, end), ...(end < all.length ? { next_cursor: String(end) } : {}) } };
+    };
+    const data = new ShellboyData({ transport: t, newId: () => "x" });
+    data.trackThreadList();
+    data.start();
+    t.open();
+    t.push({ t: "hello", bridge_version: "0", owner: connected });
+    await settle(t, db);
+    return { t, db, data, all };
+  }
+  const more = async (x: Awaited<ReturnType<typeof listed>>) => {
+    const p = x.data.loadMoreThreads();
+    await settle(x.t, x.db);
+    await p;
+  };
+  it("a hint reads one page and doesn't collapse rows shown further down", async () => {
+    const x = await listed(4);
+    await more(x);
+    await more(x);
+    expect(x.data.threadList.value.items).toHaveLength(150);
+    const before = x.t.calls("thread.list").length;
+    x.all[60] = { ...x.all[60]!, title: "moved up" };
+    x.all.unshift(summary("fresh"));
+    x.t.push({ t: "changed", thread_ids: ["fresh"], list: true });
+    await settle(x.t, x.db);
+    expect(x.t.calls("thread.list").length).toBe(before + 1);
+    const items = x.data.threadList.value.items;
+    expect(items[0]!.thread_id).toBe("fresh");
+    expect(items.length).toBeGreaterThanOrEqual(150);
+    expect(new Set(items.map((i) => i.thread_id)).size).toBe(items.length);
+  });
+  it("a changed search starts over", async () => {
+    const x = await listed(3);
+    await more(x);
+    x.data.setListFilter({ query: "q" });
+    await settle(x.t, x.db);
+    expect(x.data.threadList.value.items).toHaveLength(PAGE_LIMIT);
+  });
+  it("stops holding rows at the bound, and says it can't load more", async () => {
+    const x = await listed(30);
+    for (let i = 0; i < 25; i++) await more(x);
+    expect(x.data.threadList.value.items).toHaveLength(MAX_LIST_ROWS);
+    expect(x.data.canLoadMoreThreads()).toBe(false);
+    const before = x.t.calls("thread.list").length;
+    await more(x);
+    expect(x.t.calls("thread.list").length).toBe(before);
   });
 });

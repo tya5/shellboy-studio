@@ -25,6 +25,8 @@ import type { Transport } from "./transport";
 export const MAX_WATCHED_THREADS = 64;
 /** Default page size for list reads (the owner's own maximum applies). */
 export const PAGE_LIMIT = 50;
+/** Thread list rows held, however many exist; past this, a search finds the rest. */
+export const MAX_LIST_ROWS = 1000;
 /** Page size of history reads. With HISTORY_EXCERPT_CHARS it keeps a page far below the 8 MiB frame. */
 export const HISTORY_PAGE_LIMIT = 100;
 /** Excerpt asked of `history.list`: the owner's maximum, so most messages need no `history.get`. */
@@ -119,6 +121,18 @@ class ThreadEntry {
   constructor(readonly id: string) {}
 }
 
+/** Keeps the first seen of each Thread, in order, within the bound. */
+function mergeRows(first: readonly ThreadSummary[], then: readonly ThreadSummary[]): ThreadSummary[] {
+  const seen = new Set<string>();
+  const out: ThreadSummary[] = [];
+  for (const row of [...first, ...then]) {
+    if (seen.has(row.thread_id) || out.length >= MAX_LIST_ROWS) continue;
+    seen.add(row.thread_id);
+    out.push(row);
+  }
+  return out;
+}
+
 export class ShellboyData {
   readonly link: Link;
   readonly operations: Operations;
@@ -204,9 +218,15 @@ export class ShellboyData {
     return this.refresher.request("list");
   }
 
+  /** Whether "show more" can do anything: more exist, and the bound isn't reached. */
+  canLoadMoreThreads(): boolean {
+    const cur = this.listSig.value;
+    return cur.nextCursor !== undefined && cur.items.length < MAX_LIST_ROWS;
+  }
+
   async loadMoreThreads(): Promise<void> {
     const cur = this.listSig.value;
-    if (!cur.nextCursor || cur.loadingMore || cur.loading) return;
+    if (!cur.nextCursor || cur.loadingMore || cur.loading || cur.items.length >= MAX_LIST_ROWS) return;
     const gen = this.listGen;
     const filter = this.filterSig.value;
     this.listSig.value = { ...cur, loadingMore: true };
@@ -214,7 +234,7 @@ export class ShellboyData {
     if (gen !== this.listGen) return; // a refresh replaced the pages meanwhile
     const now = this.listSig.value;
     this.listSig.value = out.ok
-      ? { ...now, items: [...now.items, ...out.value.items], nextCursor: out.value.next_cursor, loadingMore: false, error: undefined }
+      ? { ...now, items: mergeRows(now.items, out.value.items), nextCursor: out.value.next_cursor, loadingMore: false, error: undefined }
       : { ...now, loadingMore: false, error: out.error };
   }
 
@@ -385,6 +405,8 @@ export class ShellboyData {
     return this.readHistory(entry, onSent);
   }
 
+  private listFilterRead: ListFilter | undefined;
+
   private async readList(onSent: () => void): Promise<void> {
     if (this.listRefs === 0) return;
     const gen = ++this.listGen;
@@ -393,9 +415,23 @@ export class ShellboyData {
     const out = await this.operations.threadList(listArgs(filter), { onSent });
     if (gen !== this.listGen || filter !== this.filterSig.value) return; // superseded; a newer read follows
     const cur = this.listSig.value;
-    this.listSig.value = out.ok
-      ? { items: out.value.items, nextCursor: out.value.next_cursor, loaded: true, loading: false, loadingMore: false, stale: false, error: undefined }
-      : { ...cur, loading: false, stale: cur.loaded, error: out.error };
+    if (!out.ok) {
+      this.listSig.value = { ...cur, loading: false, stale: cur.loaded, error: out.error };
+      return;
+    }
+    // One call per hint, whatever was expanded: the first page is read again and rows further down are
+    // kept, so a hint doesn't collapse the list. A kept row can be stale until the next full read.
+    const expanded = this.listFilterRead === filter && cur.items.length > PAGE_LIMIT;
+    this.listFilterRead = filter;
+    this.listSig.value = {
+      items: expanded ? mergeRows(out.value.items, cur.items) : out.value.items,
+      nextCursor: expanded ? cur.nextCursor : out.value.next_cursor,
+      loaded: true,
+      loading: false,
+      loadingMore: false,
+      stale: false,
+      error: undefined,
+    };
   }
 
   private async readDetail(entry: ThreadEntry, onSent: () => void): Promise<void> {

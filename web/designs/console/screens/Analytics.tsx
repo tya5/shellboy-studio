@@ -65,15 +65,16 @@ function ByThread({ model, weights }: { model: AppModel; weights: Weights }) {
   const t = model.t.value;
   const i = model.insights;
   const walk = i.byThread.state.value;
-  const titles = new Map(model.rows.value.map((r) => [r.summary.thread_id, r.summary.title]));
+  const threadRows = model.rowById.value;
   const rows = [...walk.groups.values()].sort((a, b) => (groupEffective(b, weights) ?? 0) - (groupEffective(a, weights) ?? 0)).slice(0, 25);
-  const nameOf = (g: UsageGroup) => titles.get(g.key) ?? g.key.slice(0, 8);
+  const nameOf = (g: UsageGroup) => threadRows.get(g.key)?.summary.title ?? g.key.slice(0, 8);
   return (
     <Section
       title={t("threads.heading")}
       sub={t("threads.sub")}
       source={<>{t("common.source", { source: "" })}<code>usage.get group_by=thread</code></>}
     >
+      {walk.capped ? <Notice tone="wait">{t("threads.groupsCapped")}</Notice> : null}
       <WalkNotice t={t} state={walk} onStop={() => i.byThread.stop()} onContinue={() => void i.byThread.continue()} onRetry={() => void i.byThread.start()} />
       {rows.length > 0 ? (
         <DataTable
@@ -87,7 +88,7 @@ function ByThread({ model, weights }: { model: AppModel; weights: Weights }) {
               key: g.key,
               cells: [
                 <>
-                  {titles.has(g.key) ? <a href={formatRoute({ view: "conversation", threadId: g.key })}>{nameOf(g)}</a> : <span class="mono">{nameOf(g)}</span>}
+                  {threadRows.has(g.key) ? <a href={formatRoute({ view: "conversation", threadId: g.key })}>{nameOf(g)}</a> : <span class="mono">{nameOf(g)}</span>}
                   {groupIncomplete(g) ? <div class="muted caption">{t("common.incomplete")}</div> : null}
                 </>,
                 effective !== undefined ? formatTokens(Math.round(effective)) : t("analytics.noValue"),
@@ -128,8 +129,8 @@ function Effect({ t, e, max, shared }: { t: Translate; e: CompactionEvent; max: 
 function CompactionEffect({ model, weights }: { model: AppModel; weights: Weights }) {
   const t = model.t.value;
   const c = model.insights.compaction.value;
-  const titles = new Map(model.rows.value.map((r) => [r.summary.thread_id, r.summary.title]));
-  const name = c.threadId ? (titles.get(c.threadId) ?? c.threadId.slice(0, 8)) : "";
+  const threadRows = model.rowById.value;
+  const name = c.threadId ? (threadRows.get(c.threadId)?.summary.title ?? c.threadId.slice(0, 8)) : "";
   const max = Math.max(0, ...c.events.flatMap((e) => [e.triggerInput ?? 0, e.afterInput ?? 0]));
   const attempts = new Map<string, number>();
   for (const e of c.events) if (e.afterAttempt) attempts.set(e.afterAttempt, (attempts.get(e.afterAttempt) ?? 0) + 1);

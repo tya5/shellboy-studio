@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import { formatClock, formatDuration, formatRoute, formatTokens, parseTime, statusLabel, type AppModel, type ConversationRow, type StepRow as Step } from "../../../ui-core/src";
-import { BranchMark, Button, Composer, EmptyState, Icon, KeyValue, LogBlock, Message, Notice, StatusMark, StepRow, SummaryStrip } from "../system/components";
+import { BranchMark, Button, Composer, LoadingRows, EmptyState, Icon, KeyValue, LogBlock, Message, Notice, StatusMark, StepRow, SummaryStrip } from "../system/components";
 
 const stepDuration = (s: Step, now: number): string | undefined => {
   if (s.durationMs !== undefined) return formatDuration(s.durationMs);
@@ -213,7 +213,7 @@ export function Conversation({ model }: { model: AppModel }) {
             <Message bot who={t("convo.shellboy")} at={t("convo.live")} text={previewText} copyLabel={t("code.copy")} copiedLabel={t("code.copied")} />
           ) : null}
           {rows.length === 0 && !history?.error ? (
-            loading ? <div class="loading">{t("convo.loading")}</div> : <EmptyState icon="chat" title={t("convo.empty")} body={t("convo.emptyBody")} />
+            loading ? <LoadingRows label={t("convo.loading")} rows={5} /> : <EmptyState icon="chat" title={t("convo.empty")} body={t("convo.emptyBody")} />
           ) : null}
         </div>
         <div class="dock">

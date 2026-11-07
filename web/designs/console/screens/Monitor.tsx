@@ -16,7 +16,7 @@ function Card({ model, row }: { model: AppModel; row: ThreadRow }) {
   const t = model.t.value;
   const s = row.summary;
   const tone = row.status === "awaiting" ? "need" : row.status === "recovery" ? "err" : row.childCount > 0 ? "lead" : undefined;
-  const age = formatAge(s.updated_at, model.now.value);
+  const age = formatAge(s.updated_at, model.coarseNow.value);
   return (
     <ThreadCard
       tone={tone}
@@ -86,7 +86,7 @@ export function Monitor({ model }: { model: AppModel }) {
       ) : list.loaded ? (
         <EmptyState icon="monitor" title={t("monitor.empty")} body={t("monitor.emptyBody")} />
       ) : null}
-      {list.nextCursor ? <span class="more"><Button disabled={list.loadingMore} onClick={() => void model.data.loadMoreThreads()}>{t("threads.more")}</Button></span> : null}
+      {model.data.canLoadMoreThreads() ? <span class="more"><Button disabled={list.loadingMore} onClick={() => void model.data.loadMoreThreads()}>{t("threads.more")}</Button></span> : list.nextCursor ? <div class="muted caption">{t("threads.capped")}</div> : null}
     </div>
   );
 }

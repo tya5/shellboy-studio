@@ -42,6 +42,7 @@ const AUTH_HINT_ATTEMPTS = 2;
 const SHELL_LIST_LIMIT = 200;
 /** Output and body caches keep this many entries, oldest dropped first. */
 const CACHE_ENTRIES = 64;
+const COARSE_TICK_MS = 30_000;
 /** One output or body read stops after this many pages (64 KiB each by the owner's default). */
 const MAX_PAGES = 8;
 
@@ -83,6 +84,10 @@ export class AppModel {
   readonly rowMarks: ReadonlySignal<ReadonlyMap<string, { nodeId: string; branches: number }>>;
   readonly lang: Signal<Lang>;
   readonly now: Signal<number>;
+  /** For ages in long lists: it moves every 30 s, so a list doesn't re-render all its rows per tick. */
+  readonly coarseNow: Signal<number>;
+  /** Thread rows by ID, built once per list change. */
+  readonly rowById: ReadonlySignal<ReadonlyMap<string, ThreadRow>>;
   readonly t: ReadonlySignal<Translate>;
 
   readonly rows: ReadonlySignal<ThreadRow[]>;
@@ -127,6 +132,7 @@ export class AppModel {
     this.lang = signal(options.lang ?? "en");
     this.nowMs = options.nowMs ?? (() => Date.now());
     this.now = signal(this.nowMs());
+    this.coarseNow = signal(this.now.peek());
     this.onNavigate = options.onNavigate;
     this.insights = new Insights(this.ops, {
       nowMs: this.nowMs,
@@ -143,6 +149,7 @@ export class AppModel {
       return map;
     });
     this.rows = computed(() => threadTree(this.data.threadList.value.items, pendingByThread.value));
+    this.rowById = computed(() => new Map(this.rows.value.map((r) => [r.summary.thread_id, r])));
     this.counts = computed(() => countByStatus(this.rows.value));
     this.pendingCount = computed(() => this.pending.items.value.length);
     this.monitorRows = computed(() => {
@@ -164,7 +171,7 @@ export class AppModel {
     this.details = computed(() => this.handle.value?.detail.value.value);
     this.selectedRow = computed(() => {
       const id = this.selectedId.value;
-      return this.rows.value.find((r) => r.summary.thread_id === id);
+      return id === undefined ? undefined : this.rowById.value.get(id);
     });
     this.conversation = computed(() => {
       const h = this.handle.value;
@@ -282,7 +289,9 @@ export class AppModel {
 
   /** A display tick for ages and elapsed time. Not a data read. */
   tick(): void {
-    this.now.value = this.nowMs();
+    const now = this.nowMs();
+    this.now.value = now;
+    if (now - this.coarseNow.peek() >= COARSE_TICK_MS) this.coarseNow.value = now;
   }
 
   // ---- navigation ----

@@ -29,6 +29,13 @@ a{color:var(--accent)}
 @keyframes spin{to{transform:rotate(360deg)}}
 @media (prefers-reduced-motion:reduce){.st.run .dot{animation:none}}
 
+/* LoadingRows */
+.loadrows{display:flex;flex-direction:column;gap:var(--space-12)}
+.loadrow{display:block;height:44px;border-radius:var(--radius-s);background:var(--raised);animation:pulse var(--motion-spin) ease-in-out infinite alternate}
+.loadrow:nth-child(2n){margin-left:40px;height:64px}
+@keyframes pulse{from{opacity:1}to{opacity:.5}}
+@media (prefers-reduced-motion:reduce){.loadrow{animation:none}}
+
 /* Button */
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:var(--size-control);padding:0 var(--space-8);border:1px solid var(--line-strong);border-radius:var(--radius-s);background:transparent;color:var(--fg);font:var(--type-label);cursor:pointer;text-decoration:none;white-space:nowrap}
 .btn:hover{background:var(--raised)}
@@ -56,7 +63,7 @@ a{color:var(--accent)}
 
 /* ThreadItem */
 .tree{display:flex;flex-direction:column;gap:1px}
-.tree-item{display:flex;align-items:center;gap:var(--space-8);min-height:32px;padding:0 var(--space-8);border-radius:var(--radius-s);color:var(--fg);text-decoration:none;font:var(--type-label);min-width:0}
+.tree-item{content-visibility:auto;contain-intrinsic-size:auto 32px;display:flex;align-items:center;gap:var(--space-8);min-height:32px;padding:0 var(--space-8);border-radius:var(--radius-s);color:var(--fg);text-decoration:none;font:var(--type-label);min-width:0}
 .tree-item span.name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .tree-item:hover,.tree-item[aria-current=true]{background:var(--raised)}
 .tree-item.child{color:var(--muted)}
@@ -70,7 +77,7 @@ a{color:var(--accent)}
 .chip[aria-pressed=true]{border-color:var(--accent);background:var(--accent-bg)}
 
 /* ThreadCard */
-.card{display:flex;flex-direction:column;gap:var(--space-8);padding:var(--space-12);border:1px solid var(--line);border-radius:var(--radius);background:var(--panel);min-width:0}
+.card{content-visibility:auto;contain-intrinsic-size:auto 180px;display:flex;flex-direction:column;gap:var(--space-8);padding:var(--space-12);border:1px solid var(--line);border-radius:var(--radius);background:var(--panel);min-width:0}
 .card.lead{border-color:var(--accent);background:var(--lead-bg)}
 .card.need{border-color:var(--wait);background:var(--need-bg)}
 .card.err{border-color:var(--bad);background:var(--err-bg)}
@@ -325,7 +332,7 @@ a{color:var(--accent)}
 .tgroup-count{white-space:nowrap}
 .tcheck{display:inline-grid;place-items:center;flex:none;width:32px;height:32px;cursor:pointer}
 .tcheck input{width:15px;height:15px;margin:0;accent-color:var(--accent);cursor:pointer}
-.srow{display:flex;align-items:center;gap:var(--space-8);padding-right:var(--space-12);min-height:40px;border-bottom:1px solid var(--line);font:var(--type-label);min-width:0}
+.srow{content-visibility:auto;contain-intrinsic-size:auto 40px;display:flex;align-items:center;gap:var(--space-8);padding-right:var(--space-12);min-height:40px;border-bottom:1px solid var(--line);font:var(--type-label);min-width:0}
 .srow:last-child{border-bottom:0}
 .srow:hover{background:var(--raised)}
 .srow.on{background:var(--accent-bg)}

@@ -321,3 +321,23 @@ describe("Threads over the fake transport", () => {
     expect(model.org.action.value).toMatchObject({ kind: "failed", error: { code: "input_limit" } });
   });
 });
+
+describe("the Threads view is bounded too", () => {
+  it("holds at most five pages and asks for a filter past that", async () => {
+    const { t, db, model } = await fixtureModel({ route: "threads" });
+    const plain = db.answer;
+    let page = 0;
+    db.answer = (c) => (c.command === "thread.list" && (c.args as { limit?: number }).limit === 200 ? { ok: true, result: { items: [], next_cursor: `c${++page}` } } : plain(c));
+    model.org.setQuery("x");
+    await settle(t, db);
+    for (let i = 0; i < 8; i++) {
+      model.org.loadMore();
+      await settle(t, db);
+    }
+    expect(model.org.canLoadMore()).toBe(false);
+    const last = t.calls("thread.list").filter((c) => (c.args as { limit?: number }).limit === 200).length;
+    model.org.loadMore();
+    await settle(t, db);
+    expect(t.calls("thread.list").filter((c) => (c.args as { limit?: number }).limit === 200).length).toBe(last);
+  });
+});
