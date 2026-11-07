@@ -1,16 +1,4 @@
-// Wire adapter for first-run connection setup (Shellboy #269): `credentials.set`,
-// `credentials.clear` and `connection.test`. These operations are on a Shellboy branch and in no
-// release, so every assumption about their shape is in this one file. When the core reports its
-// final shape, correct it here; nothing else in the data layer or above reads the wire.
-//
-// Assumed shapes (docs/design/connection-setup.md):
-//   connection.test  args    {connection} for a saved connection, or a candidate
-//                            {base_url, api, api_key_env?, api_key_header?, api_key?}
-//                    result  {http_status?, models: string[] | {id}[], api_key_env?: {name, set},
-//                             failure?: null | {class, message?}}
-//   credentials.set  args    {connection, value}       result {path?}
-//   credentials.clear args   {connection}              result {}
-// A key travels only inside these arguments. It is never returned, logged or stored here.
+// Wire adapter for the adopted Shellboy #269 protocol. Secret values are write-only.
 
 export type Dialect = "responses" | "chat_completions" | "anthropic_messages";
 
@@ -22,6 +10,7 @@ export interface TestCandidate {
   api: Dialect;
   apiKeyEnv?: string;
   apiKeyHeader?: string;
+  sslVerify?: boolean;
   /** Write-only: sent, never read back. */
   apiKey?: string;
 }
@@ -30,6 +19,10 @@ export type TestTarget = { connection: string } | { candidate: TestCandidate };
 
 export interface TestFacts {
   httpStatus: number | undefined;
+  sent?: boolean;
+  ok?: boolean;
+  credentialSource?: string;
+  credentialsFileError?: string | null;
   models: string[];
   /** The variable the owner looked at, and whether it has a value there. */
   env: { name: string; set: boolean } | undefined;
@@ -49,6 +42,7 @@ export function encodeTest(target: TestTarget): Record<string, unknown> {
     ...(c.apiKeyEnv !== undefined && { api_key_env: c.apiKeyEnv }),
     ...(c.apiKeyHeader !== undefined && { api_key_header: c.apiKeyHeader }),
     ...(c.apiKey !== undefined && { api_key: c.apiKey }),
+    ...(c.sslVerify !== undefined && { ssl_verify: c.sslVerify }),
   };
 }
 
@@ -77,11 +71,12 @@ export const decodeTest = (v: unknown): Decoded<TestFacts> => {
   if (!isObject(v)) return { ok: false, reason: "connection.test result is not an object" };
   const list = Array.isArray(v.models) ? v.models : [];
   const models = list.flatMap((m): string[] => (typeof m === "string" ? [m] : isObject(m) && typeof m.id === "string" ? [m.id] : []));
-  const env = isObject(v.api_key_env) && typeof v.api_key_env.name === "string" && typeof v.api_key_env.set === "boolean" ? { name: v.api_key_env.name, set: v.api_key_env.set } : undefined;
+  const credential = isObject(v.credential) ? v.credential : undefined;
+  const env = credential && typeof credential.api_key_env === "string" && typeof credential.env_set === "boolean" ? { name: credential.api_key_env, set: credential.env_set } : isObject(v.api_key_env) && typeof v.api_key_env.name === "string" && typeof v.api_key_env.set === "boolean" ? { name: v.api_key_env.name, set: v.api_key_env.set } : undefined;
   let failure: TestFacts["failure"];
   if (typeof v.failure === "string") failure = { kind: failureClass(v.failure), message: undefined };
   else if (isObject(v.failure)) failure = { kind: failureClass(v.failure.class), message: typeof v.failure.message === "string" ? v.failure.message : undefined };
-  return { ok: true, value: { httpStatus: typeof v.http_status === "number" ? v.http_status : undefined, models, env, failure } };
+  return { ok: true, value: { httpStatus: typeof v.http_status === "number" ? v.http_status : undefined, models, env, failure, ...(typeof v.sent === "boolean" ? { sent: v.sent } : {}), ...(typeof v.ok === "boolean" ? { ok: v.ok } : {}), ...(credential && typeof credential.source === "string" ? { credentialSource: credential.source } : {}), ...(credential && (credential.credentials_file_error === null || typeof credential.credentials_file_error === "string") ? { credentialsFileError: credential.credentials_file_error } : {}) } };
 };
 
 export const encodeCredentialsSet = (connection: string, value: string): Record<string, unknown> => ({ connection, value });
@@ -92,4 +87,4 @@ export interface StoredFacts {
   path: string | undefined;
 }
 
-export const decodeStored = (v: unknown): Decoded<StoredFacts> => (isObject(v) ? { ok: true, value: { path: typeof v.path === "string" ? v.path : undefined } } : { ok: false, reason: "credentials result is not an object" });
+export const decodeStored = (v: unknown): Decoded<StoredFacts> => (isObject(v) ? { ok: true, value: { path: typeof v.credentials_path === "string" ? v.credentials_path : typeof v.path === "string" ? v.path : undefined } } : { ok: false, reason: "credentials result is not an object" });

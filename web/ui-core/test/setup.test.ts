@@ -266,7 +266,7 @@ describe("the flow", () => {
     }
   });
 
-  it("keeps a stored key when the write fails and doesn't ask for it again", async () => {
+  it("retains the uncommitted key when the configuration write fails", async () => {
     let failures = 1;
     const m = await ready({ configSet: () => (failures-- > 0 ? { ok: false, code: "write_failed", message: "disk is read-only" } : { ok: true, result: { restart_required: true } }) });
     const s = m.model.setup;
@@ -276,13 +276,13 @@ describe("the flow", () => {
     await run(m, s.runTest());
     s.setModel("m");
     await run(m, s.save());
-    expect(s.saveState.value).toMatchObject({ kind: "failed", message: "disk is read-only", keyStored: true });
+    expect(s.saveState.value).toMatchObject({ kind: "failed", message: "disk is read-only", keyStored: false });
     await run(m, s.save());
     expect(s.saveState.value.kind).toBe("saved");
     expect(m.t.calls("credentials.set")).toHaveLength(1);
   });
 
-  it("stops before writing the connection when the key can't be stored", async () => {
+  it("reports a key storage failure after creating the connection", async () => {
     const m = await ready({ credentials: () => ({ ok: false, code: "credentials_write_failed", message: "no space" }) });
     const s = m.model.setup;
     s.choose("other");
@@ -292,7 +292,7 @@ describe("the flow", () => {
     s.setModel("m");
     await run(m, s.save());
     expect(s.saveState.value).toMatchObject({ kind: "failed", keyStored: false });
-    expect(m.t.calls("config.set")).toHaveLength(0);
+    expect(m.t.calls("config.set")).toHaveLength(1);
   });
 
   it("reads again and retries once when the file changed under it", async () => {
@@ -353,7 +353,7 @@ describe("the key stays out of sight", () => {
       expect(String(JSON.stringify(sig.value, (_k, v: unknown) => (v instanceof Map ? [...v] : v)))).not.toContain(KEY);
     // The key travelled only in the two calls that carry it.
     const carrying = m.t.calls().filter((c) => JSON.stringify(c.args ?? {}).includes(KEY)).map((c) => c.command);
-    expect(carrying).toEqual(["connection.test", "credentials.set"]);
+    expect(carrying).toEqual(["connection.test"]);
   });
 });
 

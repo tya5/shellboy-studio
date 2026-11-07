@@ -64,6 +64,7 @@ export interface ConfigSide {
   contentHash: string;
   values: Record<string, unknown> | undefined;
   redacted: readonly string[];
+  credentialSource?: Record<string, unknown> | undefined;
 }
 
 export interface ConfigFacts {
@@ -71,6 +72,7 @@ export interface ConfigFacts {
   loaded: ConfigSide;
   file: ConfigSide & { valid: boolean; error: string | undefined };
   credentialSet: Record<string, boolean>;
+  credentialsFile?: { path: string | undefined; present: boolean; valid: boolean; error: string | undefined } | undefined;
   differs: boolean;
   /** Undefined when the file is invalid and the owner can't compare. */
   differing: readonly string[] | undefined;
@@ -83,7 +85,7 @@ const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is
 export function readConfigFacts(raw: Record<string, unknown>): ConfigFacts {
   const side = (v: unknown): ConfigSide => {
     const r = record(v) ?? {};
-    return { present: r.present === true, contentHash: typeof r.content_hash === "string" ? r.content_hash : "", values: record(r.values), redacted: strings(r.redacted_fields) };
+    return { present: r.present === true, contentHash: typeof r.content_hash === "string" ? r.content_hash : "", values: record(r.values), redacted: strings(r.redacted_fields), ...(record(r.credential_source) ? { credentialSource: record(r.credential_source) } : {}) };
   };
   const loaded = record(raw.loaded) ?? {};
   const file = record(raw.file) ?? {};
@@ -94,6 +96,7 @@ export function readConfigFacts(raw: Record<string, unknown>): ConfigFacts {
     loaded: side(loaded),
     file: { ...side(file), valid: file.valid === true, error: typeof file.error === "string" ? file.error : undefined },
     credentialSet: set,
+    ...(record(raw.credentials_file) ? { credentialsFile: { path: typeof record(raw.credentials_file)?.path === "string" ? record(raw.credentials_file)!.path as string : undefined, present: record(raw.credentials_file)?.present === true, valid: record(raw.credentials_file)?.valid === true, error: typeof record(raw.credentials_file)?.error === "string" ? record(raw.credentials_file)!.error as string : undefined } } : {}),
     differs: raw.differs === true,
     differing: Array.isArray(raw.differing_fields) ? strings(raw.differing_fields) : undefined,
     restartAll: record(raw.restart)?.all_fields_require_restart === true,

@@ -325,7 +325,7 @@ export class ConnectionSetup {
   }
 
   private applyFacts(f: TestFacts): void {
-    if (f.failure || f.models.length === 0) {
+    if (f.ok === false || f.failure || f.models.length === 0) {
       this.test.value = { kind: "failed", failure: f.failure?.kind ?? "empty", status: f.httpStatus, message: f.failure?.message };
     } else this.test.value = { kind: "ok", facts: f };
   }
@@ -365,7 +365,7 @@ export class ConnectionSetup {
     if (this.saveState.peek().kind === "failed") this.saveState.value = { kind: "idle" };
   }
 
-  /** Store the key if one was typed, then write the connection and make it the default. */
+  /** Save the connection first: credentials.set requires it to exist in configuration. */
   async save(): Promise<void> {
     const s = this.service.peek();
     const p = this.probe.peek();
@@ -377,15 +377,6 @@ export class ConnectionSetup {
     const useEnv = this.env.peek().kind === "using";
     this.saveState.value = { kind: "saving" };
     let keyPath: string | undefined;
-    if (!useEnv && this.key !== "" && !this.keyStored) {
-      const stored = await this.ops.credentialsSet(name, this.key);
-      if (!stored.ok) {
-        this.saveState.value = { kind: "failed", message: errText(stored.error), keyStored: false };
-        return;
-      }
-      this.keyStored = true;
-      keyPath = stored.value.path;
-    }
     const changes: { field: string; value?: unknown }[] = [
       { field: fieldOf(["connections", name, "base_url"]), value: this.baseUrl.peek().trim() },
       { field: fieldOf(["connections", name, "api"]), value: this.api.peek() },
@@ -417,6 +408,15 @@ export class ConnectionSetup {
     if (!result || !result.ok) {
       this.saveState.value = { kind: "failed", message: result ? errText(result.error) : "", keyStored: this.keyStored };
       return;
+    }
+    if (!useEnv && this.key !== "" && !this.keyStored) {
+      const stored = await this.ops.credentialsSet(name, this.key);
+      if (!stored.ok) {
+        this.saveState.value = { kind: "failed", message: errText(stored.error), keyStored: false };
+        return;
+      }
+      this.keyStored = true;
+      keyPath = stored.value.path;
     }
     const restart = result.value.restart_required;
     const usesStoredKey = this.keyStored;

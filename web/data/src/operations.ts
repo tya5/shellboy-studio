@@ -200,7 +200,7 @@ export class Operations {
     return this.run("thread.tags", args, decodeNames, undefined, read);
   }
   /**
-   * Distinct working directories. ASSUMPTION: Shellboy is adding `thread.cwds` and it mirrors
+   * Distinct working directories. Shellboy `thread.cwds` mirrors
    * `thread.tags` (`{limit, cursor}` in, a page of strings out). This is the only place that says so.
    * Needs `thread.cwds`.
    */
