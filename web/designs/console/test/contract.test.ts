@@ -93,6 +93,19 @@ describe("components name roles, never values", () => {
     expect(noComments).not.toMatch(/font-family:/);
     expect(noComments).not.toMatch(/box-shadow:(?!inset)/);
   });
+  it("keeps Field chrome on its wrapper and excludes it from other input chrome", () => {
+    const rules = [...css.replace(/\/\*[\s\S]*?\*\//g, "").matchAll(/([^{}]+)\{([^{}]*)\}/g)];
+    const fieldInput = rules.find((m) => m[1]!.trim() === ".field input");
+    expect(fieldInput?.[2]).toMatch(/border:0/);
+    expect(fieldInput?.[2]).toMatch(/background:transparent/);
+    expect(css).toMatch(/\.field:focus-within\{/);
+    expect(css).toMatch(/\.field:has\(input:disabled\)/);
+    expect(css).toMatch(/\.field:has\(input\[aria-invalid="true"\]\)/);
+    for (const rule of rules) {
+      if (!/\b(?:border|background)(?:-color)?:/.test(rule[2]!)) continue;
+      expect(rule[1]!.trim()).not.toMatch(/\.sect\s+input\b/);
+    }
+  });
   it("every custom property used exists", () => {
     for (const m of css.matchAll(/var\(--([\w-]+)/g)) expect(known.has(m[1]!), m[1]).toBe(true);
   });
