@@ -20,7 +20,9 @@ Hand an app to someone by copying its folder. They should change `thread`, which
 
 ## Rules
 
-- Use relative URLs only, and reach Shellboy only through `shellboy.*`. The gateway may change an app's origin, so never write a host or port into an app, and don't rely on `localStorage`, which belongs to that origin. Keep state in `data/`.
+- Use relative URLs only, without a leading `/`: `app.js`, `img/logo.png`, `data/x.json`. Never write a host or port into an app. Reach Shellboy only through `shellboy.*`.
+- The page runs sandboxed with no origin of its own. **`localStorage`, `sessionStorage`, IndexedDB and cookies don't work** and throw or do nothing. Keep state with `shellboy.data.*`. A page can't navigate the window it sits in, and `alert` and popups are allowed.
+- Scripts, styles, images and `fetch` from the app's own folder work with relative URLs, also `type="module"`. They and `shellboy.*` work through a tunnel as they do locally.
 - `/_shellboy/api.js` is added to every HTML page for you, and errors on the page are shown to the person with a button that sends them to the bound Thread.
 - Keep it small enough to read. Load nothing from other hosts if a local copy will do: the app should work offline.
 

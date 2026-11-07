@@ -1,23 +1,19 @@
-//! One app's origin: its files, its session and the API. Reached only with a session made from a
-//! ticket the authenticated Web UI asked for. Cookies ignore ports, so each is named by port and is
-//! HttpOnly; `Origin` must equal `Host` on the API, so another app's page can't call it, and the
-//! Web UI's `/ws` and `/auth` refuse an app's origin the same way.
+//! One app's API and files. The page runs in a sandboxed iframe with an opaque origin, so it can't see
+//! the Web UI's cookie or storage. It reaches this API only through the parent frame, which forwards
+//! over the authenticated `/ws` and alone decides which app a call is for. Its files come from a path
+//! holding an unguessable session (`Apps::file`), because an opaque origin sends no cookies.
 use super::{Apps, catalog, run};
-use crate::{auth, hub::SessionGuard, owner::Owner};
+use crate::{hub::SessionGuard, owner::Owner};
 use axum::{
-    Router,
     body::Body,
-    extract::{DefaultBodyLimit, Request, State},
-    http::{HeaderMap, Method, StatusCode, header},
-    middleware::{self, Next},
+    http::{Method, StatusCode, header},
     response::{IntoResponse, Response},
-    routing::{get, post},
 };
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use shellboy::protocol::Command;
 use std::{
-    collections::{BTreeMap, HashSet, VecDeque},
+    collections::{BTreeMap, HashSet},
     path::{Path, PathBuf},
     sync::{
         Arc, Mutex,
@@ -26,13 +22,7 @@ use std::{
     time::{Duration, Instant, SystemTime},
 };
 
-pub const TICKET_PARAM: &str = "_sb_ticket";
-pub const COOKIE_PREFIX: &str = "sbw_app_";
-const MAX_SESSIONS: usize = 16;
-const MAX_TICKETS: usize = 16;
-const TICKET_LIFE: Duration = Duration::from_secs(60);
 const MAX_DATA: usize = 8 * 1024 * 1024;
-const MAX_BODY: usize = 12 * 1024 * 1024;
 const MAX_FILE: u64 = 64 * 1024 * 1024;
 const MAX_LIST: usize = 1000;
 const WAIT: Duration = Duration::from_secs(25);
@@ -45,8 +35,8 @@ const WATCH_ENTRIES: usize = 4096;
 const WATCH_DEPTH: usize = 8;
 const MAX_CHANGED: usize = 64;
 
-const API_JS: &str = include_str!("api.js");
-const UI_CSS: &str = concat!(
+pub(super) const API_JS: &str = include_str!("api.js");
+pub(super) const UI_CSS: &str = concat!(
     include_str!("../../web/designs/console/system/tokens/console.css"),
     include_str!("../../web/designs/console/system/tokens/light.css"),
     include_str!("../../web/designs/console/system/tokens/terminal.css"),
@@ -58,10 +48,7 @@ type ApiFail = (&'static str, String);
 pub struct AppHost<O> {
     pub name: String,
     dir: PathBuf,
-    pub port: u16,
     apps: Arc<Apps<O>>,
-    tickets: Mutex<VecDeque<(String, Instant)>>,
-    sessions: Mutex<VecDeque<String>>,
     writes: tokio::sync::Mutex<()>,
     hints: tokio::sync::Mutex<Option<SessionGuard>>,
     /// One at a time per action, so a page's timer can't pile up.
@@ -180,9 +167,38 @@ fn content_type(path: &Path) -> &'static str {
     }
 }
 
-/// The API goes in first, so an error in any later script is caught. Nothing else in the page changes.
+/// Scripts from the app's own folder get `crossorigin`, so an opaque page sees their real errors instead
+/// of "Script error.". A script from another host is left alone: it may not allow CORS.
+fn add_crossorigin(page: &str) -> String {
+    let lower = page.to_ascii_lowercase();
+    let mut out = String::with_capacity(page.len() + 64);
+    let mut at = 0;
+    while let Some(found) = lower[at..].find("<script") {
+        let start = at + found;
+        let Some(end) = lower[start..].find('>').map(|e| start + e) else {
+            break;
+        };
+        let tag = &lower[start..end];
+        let src = tag
+            .find("src=")
+            .map(|i| tag[i + 4..].trim_start_matches(['"', '\'']));
+        let local = src.is_some_and(|v| {
+            !v.starts_with("http:") && !v.starts_with("https:") && !v.starts_with("//")
+        });
+        out.push_str(&page[at..start + "<script".len()]);
+        if local && !tag.contains("crossorigin") {
+            out.push_str(" crossorigin=\"anonymous\"");
+        }
+        at = start + "<script".len();
+    }
+    out.push_str(&page[at..]);
+    out
+}
+
+/// The API goes in first, so an error in any later script is caught.
 fn inject_api(page: &str) -> String {
     const TAG: &str = "<script src=\"/_shellboy/api.js\"></script>";
+    let page = add_crossorigin(page);
     let lower = page.to_ascii_lowercase();
     let after_open = |tag: &str| {
         lower
@@ -196,120 +212,40 @@ fn inject_api(page: &str) -> String {
     format!("{}{TAG}{}", &page[..at], &page[at..])
 }
 
-fn plain_page(status: StatusCode, title: &str, script: Option<&str>) -> Response {
-    let report = script.map_or(String::new(), |m| {
-        format!(
-            "<script src=\"/_shellboy/api.js\"></script><script>throw new Error({m:?})</script>"
-        )
-    });
+/// On everything under an app's path. `sandbox` also holds when a page is opened in its own tab, where the
+/// iframe's attribute can't help; without it the page would be same-origin with the Web UI.
+const APP_CSP: &str = "sandbox allow-scripts allow-forms allow-popups allow-modals allow-downloads; frame-ancestors 'self'";
+
+fn app_headers(kind: &str, body: Body, status: StatusCode) -> Response {
     (
         status,
         [
-            (header::CONTENT_TYPE, "text/html; charset=utf-8"),
-            (header::CACHE_CONTROL, "no-store"),
+            (header::CONTENT_TYPE, kind.to_owned()),
+            (header::CACHE_CONTROL, "no-cache".to_owned()),
+            (header::X_CONTENT_TYPE_OPTIONS, "nosniff".to_owned()),
+            (header::CONTENT_SECURITY_POLICY, APP_CSP.to_owned()),
+            (header::REFERRER_POLICY, "no-referrer".to_owned()),
+            // The page's origin is opaque, so its own module scripts and fetches are cross-origin. The path
+            // is the capability, and no cookie is involved.
+            (header::ACCESS_CONTROL_ALLOW_ORIGIN, "*".to_owned()),
         ],
-        format!(
-            "<!doctype html><meta charset=\"utf-8\"><title>{title}</title>{report}<p>{title}</p>"
-        ),
+        body,
     )
         .into_response()
 }
 
 impl<O: Owner> AppHost<O> {
-    pub(super) fn new(name: String, dir: PathBuf, port: u16, apps: Arc<Apps<O>>) -> Arc<Self> {
+    pub(super) fn new(name: String, dir: PathBuf, apps: Arc<Apps<O>>) -> Arc<Self> {
         Arc::new(Self {
             name,
             dir,
-            port,
             apps,
-            tickets: Mutex::new(VecDeque::new()),
-            sessions: Mutex::new(VecDeque::new()),
             writes: tokio::sync::Mutex::new(()),
             hints: tokio::sync::Mutex::new(None),
             running: Mutex::new(HashSet::new()),
             watch: tokio::sync::watch::channel(DataSnapshot::default()).0,
             watching: AtomicBool::new(false),
         })
-    }
-
-    pub(super) fn router(self: Arc<Self>) -> Router {
-        Router::new()
-            .route(
-                "/_shellboy/api.js",
-                get(|| async {
-                    (
-                        [
-                            (header::CONTENT_TYPE, "text/javascript; charset=utf-8"),
-                            (header::CACHE_CONTROL, "no-cache"),
-                        ],
-                        API_JS,
-                    )
-                }),
-            )
-            .route(
-                "/_shellboy/ui.css",
-                get(|| async {
-                    (
-                        [
-                            (header::CONTENT_TYPE, "text/css; charset=utf-8"),
-                            (header::CACHE_CONTROL, "no-cache"),
-                        ],
-                        UI_CSS,
-                    )
-                }),
-            )
-            .route(
-                "/_shellboy/call",
-                post(call::<O>).layer(DefaultBodyLimit::max(MAX_BODY)),
-            )
-            .fallback(file::<O>)
-            .layer(middleware::from_fn_with_state(self.clone(), guard::<O>))
-            .with_state(self)
-    }
-
-    pub(super) fn issue_ticket(&self) -> String {
-        let ticket = random();
-        let mut tickets = self.tickets.lock().unwrap_or_else(|p| p.into_inner());
-        tickets.retain(|(_, at)| at.elapsed() < TICKET_LIFE);
-        while tickets.len() >= MAX_TICKETS {
-            tickets.pop_front();
-        }
-        tickets.push_back((ticket.clone(), Instant::now()));
-        ticket
-    }
-
-    fn redeem(&self, ticket: &str) -> bool {
-        let mut tickets = self.tickets.lock().unwrap_or_else(|p| p.into_inner());
-        let found = tickets
-            .iter()
-            .position(|(t, at)| t == ticket && at.elapsed() < TICKET_LIFE);
-        found.map(|i| tickets.remove(i)).is_some()
-    }
-
-    fn new_session(&self) -> String {
-        let id = random();
-        let mut sessions = self.sessions.lock().unwrap_or_else(|p| p.into_inner());
-        while sessions.len() >= MAX_SESSIONS {
-            sessions.pop_front();
-        }
-        sessions.push_back(id.clone());
-        id
-    }
-
-    fn cookie_name(&self) -> String {
-        format!("{COOKIE_PREFIX}{}", self.port)
-    }
-
-    fn has_session(&self, headers: &HeaderMap) -> bool {
-        let Some(cookies) = headers.get(header::COOKIE).and_then(|v| v.to_str().ok()) else {
-            return false;
-        };
-        let want = self.cookie_name();
-        let sessions = self.sessions.lock().unwrap_or_else(|p| p.into_inner());
-        cookies
-            .split(';')
-            .filter_map(|c| c.trim().split_once('='))
-            .any(|(k, v)| k == want && sessions.iter().any(|s| s == v))
     }
 
     /// Follows no symlink out of the app.
@@ -657,174 +593,75 @@ impl<O: Owner> AppHost<O> {
     }
 }
 
-async fn guard<O: Owner>(
-    State(host): State<Arc<AppHost<O>>>,
-    request: Request<Body>,
-    next: Next,
-) -> Response {
-    let ok = request
-        .headers()
-        .get(header::HOST)
-        .and_then(|h| h.to_str().ok())
-        .is_some_and(|h| auth::host_allowed(h, &host.apps.listen, &host.apps.extra_hosts));
-    if !ok {
-        return (StatusCode::FORBIDDEN, "host not allowed").into_response();
-    }
-    next.run(request).await
-}
-
-async fn call<O: Owner>(
-    State(host): State<Arc<AppHost<O>>>,
-    headers: HeaderMap,
-    body: axum::body::Bytes,
-) -> Response {
-    let authority = headers
-        .get(header::HOST)
-        .and_then(|h| h.to_str().ok())
-        .unwrap_or_default();
-    // A page on any other origin, including another app, stops here.
-    if !auth::origin_matches(
-        headers.get(header::ORIGIN).and_then(|o| o.to_str().ok()),
-        authority,
-    ) {
-        return (StatusCode::FORBIDDEN, "origin not allowed").into_response();
-    }
-    if !host.has_session(&headers) {
-        return (StatusCode::UNAUTHORIZED, "no session").into_response();
-    }
-    let parsed: Result<Value, _> = serde_json::from_slice(&body);
-    let reply = match parsed {
-        Err(e) => json!({"ok": false, "error": {"code": "invalid_call", "message": e.to_string()}}),
-        Ok(v) => {
-            let op = v
-                .get("op")
-                .and_then(Value::as_str)
-                .unwrap_or_default()
-                .to_owned();
-            let args = v.get("args").cloned().unwrap_or_else(|| json!({}));
-            match host.dispatch(&op, args).await {
-                Ok(result) => json!({"ok": true, "result": result}),
-                Err(error) => json!({"ok": false, "error": error}),
-            }
+impl<O: Owner> AppHost<O> {
+    /// One API call from the app's page, already forwarded by the parent frame.
+    pub async fn call(self: &Arc<Self>, op: &str, args: Value) -> Value {
+        match self.dispatch(op, args).await {
+            Ok(result) => json!({"ok": true, "result": result}),
+            Err(error) => json!({"ok": false, "error": error}),
         }
-    };
-    ([(header::CACHE_CONTROL, "no-store")], axum::Json(reply)).into_response()
-}
-
-async fn file<O: Owner>(
-    State(host): State<Arc<AppHost<O>>>,
-    method: Method,
-    headers: HeaderMap,
-    uri: axum::http::Uri,
-) -> Response {
-    if method != Method::GET && method != Method::HEAD {
-        return StatusCode::METHOD_NOT_ALLOWED.into_response();
     }
-    // A ticket makes a session, once, and leaves the address bar without it.
-    if let Some(ticket) = uri.query().and_then(|q| {
-        q.split('&').find_map(|p| {
-            p.strip_prefix(TICKET_PARAM)
-                .and_then(|r| r.strip_prefix('='))
-        })
-    }) {
-        if !host.redeem(ticket) {
-            return plain_page(
-                StatusCode::UNAUTHORIZED,
-                "This link has been used. Open the app from Apps in Shellboy.",
-                None,
+
+    /// A file under the app's path. `actions/` isn't served: scripts run through the API.
+    pub(super) async fn file(&self, method: &Method, raw: &str) -> Response {
+        if method != Method::GET && method != Method::HEAD {
+            return StatusCode::METHOD_NOT_ALLOWED.into_response();
+        }
+        let relative = percent_decode(raw);
+        let entry = catalog::read_entry(&self.apps.dir, &self.name).await;
+        let is_entry = entry.as_ref().is_some_and(|e| e.entry == relative);
+        let missing = || {
+            if is_entry {
+                let page = format!(
+                    "<!doctype html><meta charset=\"utf-8\"><title>Missing</title><script src=\"/_shellboy/api.js\"></script><script>throw new Error({:?})</script><p>This app's entry file is missing.</p>",
+                    format!("The entry file {relative} is missing")
+                );
+                app_headers(
+                    "text/html; charset=utf-8",
+                    Body::from(page),
+                    StatusCode::NOT_FOUND,
+                )
+            } else {
+                app_headers(
+                    "text/plain; charset=utf-8",
+                    Body::from("Not found"),
+                    StatusCode::NOT_FOUND,
+                )
+            }
+        };
+        let Some(rel) = catalog::safe_relative(&relative) else {
+            return missing();
+        };
+        if rel.starts_with("actions") {
+            return app_headers(
+                "text/plain; charset=utf-8",
+                Body::from("Not found"),
+                StatusCode::NOT_FOUND,
             );
         }
-        let cookie = format!(
-            "{}={}; HttpOnly; SameSite=Strict; Path=/",
-            host.cookie_name(),
-            host.new_session()
-        );
-        return (
-            StatusCode::SEE_OTHER,
-            [
-                (header::LOCATION, "/".to_owned()),
-                (header::SET_COOKIE, cookie),
-                (header::CACHE_CONTROL, "no-store".to_owned()),
-            ],
-        )
-            .into_response();
-    }
-    if !host.has_session(&headers) {
-        return plain_page(
-            StatusCode::UNAUTHORIZED,
-            "Open this app from Apps in Shellboy.",
-            None,
-        );
-    }
-    let raw = uri.path().trim_start_matches('/');
-    let is_entry = raw.is_empty();
-    let entry = catalog::read_entry(&host.apps.dir, &host.name).await;
-    let relative = if is_entry {
-        entry
-            .as_ref()
-            .map_or("index.html".to_owned(), |e| e.entry.clone())
-    } else {
-        percent_decode(raw)
-    };
-    let Some(rel) = catalog::safe_relative(&relative) else {
-        return StatusCode::NOT_FOUND.into_response();
-    };
-    // Scripts in `actions/` run through the API; their source isn't served.
-    if rel.starts_with("actions") {
-        return StatusCode::NOT_FOUND.into_response();
-    }
-    let missing = || {
-        if is_entry {
-            plain_page(
-                StatusCode::NOT_FOUND,
-                "This app's entry file is missing.",
-                Some(&format!("The entry file {relative} is missing")),
-            )
-        } else {
-            StatusCode::NOT_FOUND.into_response()
+        let Some(full) = self.inside(&rel).await else {
+            return missing();
+        };
+        let Ok(meta) = tokio::fs::metadata(&full).await else {
+            return missing();
+        };
+        if !meta.is_file() {
+            return missing();
         }
-    };
-    let Some(full) = host.inside(&rel).await else {
-        return missing();
-    };
-    let Ok(meta) = tokio::fs::metadata(&full).await else {
-        return missing();
-    };
-    if !meta.is_file() {
-        return missing();
+        if meta.len() > MAX_FILE {
+            return StatusCode::PAYLOAD_TOO_LARGE.into_response();
+        }
+        let Ok(bytes) = tokio::fs::read(&full).await else {
+            return missing();
+        };
+        let kind = content_type(&full);
+        let body = if kind.starts_with("text/html") {
+            Body::from(inject_api(&String::from_utf8_lossy(&bytes)))
+        } else {
+            Body::from(bytes)
+        };
+        app_headers(kind, body, StatusCode::OK)
     }
-    if meta.len() > MAX_FILE {
-        return StatusCode::PAYLOAD_TOO_LARGE.into_response();
-    }
-    let Ok(bytes) = tokio::fs::read(&full).await else {
-        return missing();
-    };
-    let kind = content_type(&full);
-    let body = if kind.starts_with("text/html") {
-        Body::from(inject_api(&String::from_utf8_lossy(&bytes)))
-    } else {
-        Body::from(bytes)
-    };
-    let web_ui = super::app_origin(
-        headers
-            .get(header::HOST)
-            .and_then(|h| h.to_str().ok())
-            .unwrap_or_default(),
-        host.apps.listen.port(),
-    );
-    (
-        [
-            (header::CONTENT_TYPE, kind.to_owned()),
-            (header::CACHE_CONTROL, "no-cache".to_owned()),
-            (header::X_CONTENT_TYPE_OPTIONS, "nosniff".to_owned()),
-            (
-                header::CONTENT_SECURITY_POLICY,
-                format!("frame-ancestors {web_ui} 'self'"),
-            ),
-        ],
-        body,
-    )
-        .into_response()
 }
 
 fn percent_decode(path: &str) -> String {
@@ -862,6 +699,26 @@ mod tests {
             format!("<!doctype html>{tag}<p>x")
         );
         assert_eq!(inject_api("<p>x"), format!("{tag}<p>x"));
+    }
+    #[test]
+    fn local_scripts_report_real_errors_and_others_stay_as_written() {
+        assert_eq!(
+            add_crossorigin("<script src=\"a.js\"></script>"),
+            "<script crossorigin=\"anonymous\" src=\"a.js\"></script>"
+        );
+        assert_eq!(
+            add_crossorigin("<SCRIPT type=module src='sub/a.js'></SCRIPT>"),
+            "<SCRIPT crossorigin=\"anonymous\" type=module src='sub/a.js'></SCRIPT>"
+        );
+        for same in [
+            "<script>1<2</script>",
+            "<script src=\"https://x.example/a.js\"></script>",
+            "<script src=\"//x.example/a.js\"></script>",
+            "<script crossorigin src=\"a.js\"></script>",
+            "<p>no script",
+        ] {
+            assert_eq!(add_crossorigin(same), same);
+        }
     }
     #[test]
     fn decodes_paths_and_leaves_bad_escapes() {

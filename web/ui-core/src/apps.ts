@@ -1,7 +1,7 @@
 // Apps: the list, the open tabs, and what an app's page reports. Tabs live here, so an app keeps
 // running while other views show. Everything an app sends is treated as text from an untrusted page.
 import { signal, type Signal } from "@preact/signals-core";
-import type { Operations, OpError } from "../../data/src";
+import { Cancel, type Operations, type OpError } from "../../data/src";
 
 export interface AppInfo {
   name: string;
@@ -31,7 +31,6 @@ export type AppSendState = { kind: "idle" } | { kind: "sending" } | { kind: "sen
 export interface OpenApp {
   name: string;
   title: string;
-  origin: string;
   url: string;
   thread: string | undefined;
   threadTitle: string | undefined;
@@ -43,6 +42,10 @@ export interface OpenApp {
 
 /** Kept per tab. An app in a loop can't grow this. */
 export const MAX_APP_ERRORS = 20;
+/** API calls one open app can have outstanding. Past this, a call is refused with code `busy`. */
+export const MAX_APP_CALLS = 64;
+/** These wait on hints and hold no owner connection, so they don't take an ordinary call slot. */
+const WAITING_OPS = new Set(["events.wait", "data.wait"]);
 const MAX_REPORT_CHARS = 8000;
 
 const str = (v: unknown): string | undefined => (typeof v === "string" && v !== "" ? v : undefined);
@@ -55,13 +58,17 @@ const readApp = (v: unknown): AppInfo | undefined => {
   return { name, title: str(o.title) ?? name, entry: str(o.entry) ?? "index.html", thread: str(o.thread), problem: str(o.problem) };
 };
 
+/** A file's address holds the app's file session, which has no place in a message to a Thread. */
+const withoutSession = (text: string): string => text.replace(/https?:\/\/[^\s/]+\/a\/[0-9a-f]{32}\//g, "");
+
 /** A message from an app's page. Anything else is ignored. */
-export function readAppMessage(data: unknown): { type: "ready" } | ({ type: "error" } & AppErrorReport) | undefined {
+export function readAppMessage(data: unknown): { type: "ready" } | { type: "call"; id: number; op: string; args: unknown } | ({ type: "error" } & AppErrorReport) | undefined {
   if (typeof data !== "object" || data === null) return undefined;
   const o = data as Record<string, unknown>;
   if (o.shellboy !== true) return undefined;
   if (o.type === "ready") return { type: "ready" };
-  if (o.type === "error" && typeof o.message === "string") return { type: "error", kind: str(o.kind)?.slice(0, 40) ?? "script", message: o.message.slice(0, 2000), where: str(o.where)?.slice(0, 400) };
+  if (o.type === "call" && typeof o.id === "number" && typeof o.op === "string") return { type: "call", id: o.id, op: o.op, args: o.args ?? {} };
+  if (o.type === "error" && typeof o.message === "string") return { type: "error", kind: str(o.kind)?.slice(0, 40) ?? "script", message: withoutSession(o.message).slice(0, 2000), where: str(o.where) === undefined ? undefined : withoutSession(o.where as string).slice(0, 400) };
   return undefined;
 }
 
@@ -76,6 +83,8 @@ export class AppsModel {
   readonly tabs: Signal<readonly OpenApp[]> = signal([]);
   readonly openError: Signal<{ name: string; message: string } | undefined> = signal(undefined);
   private opening = new Set<string>();
+  /** Cancels an app's outstanding calls when its tab closes or reloads. */
+  private calls = new Map<string, { cancel: Cancel; count: number }>();
 
   constructor(private readonly ops: Operations) {}
 
@@ -113,6 +122,7 @@ export class AppsModel {
 
   /** A fresh ticket, for when the session ended. */
   async reload(name: string): Promise<void> {
+    this.cancelCalls(name);
     const made = await this.mint(name);
     if (made) this.tabs.value = this.tabs.peek().map((t) => (t.name === name ? made : t));
   }
@@ -123,14 +133,13 @@ export class AppsModel {
       this.openError.value = { name, message: out.error.message };
       return undefined;
     }
-    const origin = str(out.value.origin);
     const url = str(out.value.url);
-    if (!origin || !url) {
+    if (!url) {
       this.openError.value = { name, message: "the gateway gave no address" };
       return undefined;
     }
     const thread = str(out.value.thread);
-    const made: OpenApp = { name, title: str(out.value.title) ?? name, origin, url, thread, threadTitle: undefined, threadState: thread ? "ok" : "unbound", errors: [], send: { kind: "idle" } };
+    const made: OpenApp = { name, title: str(out.value.title) ?? name, url, thread, threadTitle: undefined, threadState: thread ? "ok" : "unbound", errors: [], send: { kind: "idle" } };
     if (thread) {
       const got = await this.ops.threadGet(thread);
       if (got.ok) {
@@ -141,7 +150,31 @@ export class AppsModel {
     return made;
   }
 
+  /**
+   * One API call from an app's page. The caller matched the message to this tab by its frame, so the page
+   * can't speak for another app. The reply is the gateway's `{ok, result}` or `{ok, error}`.
+   */
+  async call(name: string, op: string, args: unknown): Promise<{ ok: boolean; result?: unknown; error?: unknown }> {
+    let state = this.calls.get(name);
+    if (!state) {
+      state = { cancel: new Cancel(), count: 0 };
+      this.calls.set(name, state);
+    }
+    if (state.count >= MAX_APP_CALLS) return { ok: false, error: { code: "busy", message: "Too many calls are waiting" } };
+    state.count++;
+    const out = await this.ops.appsCall(name, op, args, { cancel: state.cancel, waits: WAITING_OPS.has(op) });
+    state.count--;
+    if (out.ok) return out.value as { ok: boolean };
+    return { ok: false, error: { code: out.error.kind === "owner" ? out.error.code : out.error.kind, message: out.error.message } };
+  }
+
+  private cancelCalls(name: string): void {
+    this.calls.get(name)?.cancel.cancel();
+    this.calls.delete(name);
+  }
+
   close(name: string): void {
+    this.cancelCalls(name);
     this.tabs.value = this.tabs.peek().filter((t) => t.name !== name);
   }
 

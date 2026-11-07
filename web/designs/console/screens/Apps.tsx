@@ -78,7 +78,7 @@ function AppList({ model }: { model: AppModel }) {
 
 /**
  * Stays mounted once anything is open, so apps keep running in any view. Only messages from an app's own
- * frame and origin count; their text is shown as text.
+ * frame count; their text is shown as text. This is also the relay for the app API.
  */
 export function AppsHost({ context }: { context: DesignContext }) {
   const model = context.model;
@@ -92,20 +92,22 @@ export function AppsHost({ context }: { context: DesignContext }) {
   const current = showing ? route.appName : undefined;
 
   useEffect(() => {
-    const send = (frame: HTMLIFrameElement, origin: string) => frame.contentWindow?.postMessage({ shellboy: true, type: "theme", theme }, origin);
+        // An opaque origin has no name to target, so "*": it goes to this frame's window and nowhere else.
+    const send = (frame: HTMLIFrameElement, message: Record<string, unknown>) => frame.contentWindow?.postMessage({ shellboy: true, ...message }, "*");
     for (const tab of apps.tabs.peek()) {
       const frame = frames.current.get(tab.name);
-      if (frame) send(frame, tab.origin);
+      if (frame) send(frame, { type: "theme", theme });
     }
     const onMessage = (e: MessageEvent) => {
-      const tab = apps.tabs.peek().find((x) => x.origin === e.origin && frames.current.get(x.name)?.contentWindow === e.source);
-      if (!tab) return;
+      // The frame identifies the app, never anything the page says.
+      const tab = apps.tabs.peek().find((x) => frames.current.get(x.name)?.contentWindow === e.source);
+      if (!tab || e.origin !== "null") return;
+      const frame = frames.current.get(tab.name);
       const message = readAppMessage(e.data);
-      if (message?.type === "error") apps.report(tab.name, message);
-      else if (message?.type === "ready") {
-        const frame = frames.current.get(tab.name);
-        if (frame) send(frame, tab.origin);
-      }
+      if (!frame || !message) return;
+      if (message.type === "error") apps.report(tab.name, message);
+      else if (message.type === "ready") send(frame, { type: "theme", theme });
+      else void apps.call(tab.name, message.op, message.args).then((reply) => send(frame, { type: "reply", id: message.id, ...reply }));
     };
     addEventListener("message", onMessage);
     return () => removeEventListener("message", onMessage);

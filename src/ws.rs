@@ -28,10 +28,13 @@ use tokio::{
     task::{AbortHandle, JoinSet},
 };
 
-pub const MAX_CLIENT_FRAME: usize = 1 << 20;
+/// Up to what an app's `data.write` can carry (8 MiB of text), once escaped. Allocated only when sent.
+pub const MAX_CLIENT_FRAME: usize = 24 << 20;
 pub const SESSION_IN_FLIGHT: usize = 4;
 pub const SESSION_QUEUE: usize = 32;
-const RESULT_CHANNEL: usize = SESSION_IN_FLIGHT + SESSION_QUEUE + 4;
+/// Calls in flight for a tab, counting app calls, which may wait on hints and hold no owner connection.
+const APP_CALLS: usize = 256;
+const RESULT_CHANNEL: usize = SESSION_IN_FLIGHT + SESSION_QUEUE + APP_CALLS + 4;
 
 /// Decode and authorize one call. Mutations from the web are recorded as human with the
 /// label `web` (architecture 4.4).
@@ -74,7 +77,6 @@ pub async fn session<O: Owner>(
     state: AppState<O>,
     guard: SessionGuard,
     owner_state: OwnerState,
-    host: String,
 ) {
     let hello = ServerFrame::Hello {
         bridge_version: env!("CARGO_PKG_VERSION"),
@@ -104,7 +106,7 @@ pub async fn session<O: Owner>(
                 };
                 let reply = handle_frame(
                     &text, &state, &guard, &in_flight, &outstanding,
-                    &results_tx, &mut tasks, &mut handles, &host,
+                    &results_tx, &mut tasks, &mut handles,
                 );
                 if let Some(frame) = reply
                     && !send(&mut socket, &frame).await
@@ -159,7 +161,6 @@ fn handle_frame<O: Owner>(
     results_tx: &mpsc::Sender<ServerFrame>,
     tasks: &mut JoinSet<()>,
     handles: &mut HashMap<u64, AbortHandle>,
-    host: &str,
 ) -> Option<ServerFrame> {
     let frame: ClientFrame = match serde_json::from_str(text) {
         Ok(frame) => frame,
@@ -206,7 +207,7 @@ fn handle_frame<O: Owner>(
                 return None;
             }
             if let Some(name) = command.strip_prefix("apps.") {
-                return apps_call(name, id, args, state, results_tx, tasks, handles, host);
+                return apps_call(name, id, args, state, results_tx, tasks, handles);
             }
             let command = match build_command(&command, args) {
                 Ok(command) => command,
@@ -265,7 +266,6 @@ fn apps_call<O: Owner>(
     results_tx: &mpsc::Sender<ServerFrame>,
     tasks: &mut JoinSet<()>,
     handles: &mut HashMap<u64, AbortHandle>,
-    host: &str,
 ) -> Option<ServerFrame> {
     let Some(apps) = state.apps.clone() else {
         return Some(result_error(
@@ -273,13 +273,21 @@ fn apps_call<O: Owner>(
             BridgeError::new("not_allowed", "this bridge offers no apps"),
         ));
     };
-    let (name, tx, host) = (name.to_owned(), results_tx.clone(), host.to_owned());
+    if handles.len() >= APP_CALLS {
+        return Some(result_error(
+            id,
+            BridgeError::new("busy", "too many calls in flight"),
+        ));
+    }
+    let (name, tx) = (name.to_owned(), results_tx.clone());
     let handle = tasks.spawn(async move {
+        let text = |key: &str| args.as_ref().and_then(|a| a.get(key)).and_then(Value::as_str).unwrap_or_default().to_owned();
         let result = match name.as_str() {
             "list" => apps.list().await.map_err(|m| ("apps_unreadable", m)),
-            "open" => {
-                let app = args.as_ref().and_then(|a| a.get("name")).and_then(Value::as_str).unwrap_or_default();
-                apps.open(app, &host).await
+            "open" => apps.open(&text("name")).await,
+            "call" => {
+                let inner = args.as_ref().and_then(|a| a.get("args")).cloned().unwrap_or_else(|| json!({}));
+                Ok(apps.call(&text("name"), &text("op"), inner).await)
             }
             _ => Err(("invalid_call", format!("no call apps.{name}"))),
         };

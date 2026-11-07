@@ -2,6 +2,7 @@
 //! written into a temp folder by the test; the product ships none.
 mod common;
 use common::*;
+use futures_util::{SinkExt, StreamExt};
 use serde_json::{Value, json};
 use shellboy::protocol::Command;
 use shellboy_web::{
@@ -15,6 +16,7 @@ use std::{
     time::Duration,
 };
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio_tungstenite::tungstenite::{Message, client::IntoClientRequest};
 use tokio_util::sync::CancellationToken;
 
 struct Reply {
@@ -118,10 +120,7 @@ async fn fixture() -> Fixture {
             extra_hosts: vec![],
             debug: false,
         },
-        Some(AppsPaths {
-            dir: apps.clone(),
-            state_dir: root.join("state"),
-        }),
+        Some(AppsPaths { dir: apps.clone() }),
         cancel.clone(),
     );
     std::mem::forget(_events);
@@ -136,57 +135,20 @@ async fn fixture() -> Fixture {
     }
 }
 
-/// An opened app: its address, plus the session cookie a browser would hold.
-async fn open(f: &Fixture, name: &str) -> (String, String) {
-    let out = f
-        .state
-        .apps
-        .as_ref()
-        .unwrap()
-        .open(name, &f.addr.to_string())
-        .await
-        .unwrap();
-    let origin = out["origin"].as_str().unwrap();
-    assert!(origin.starts_with("http://127.0.0.1:"), "{origin}");
-    let addr = origin.trim_start_matches("http://").to_owned();
-    let url = out["url"].as_str().unwrap();
-    let path = &url[origin.len()..];
-    let reply = http(&addr, "GET", path, &[], "").await;
-    assert_eq!(reply.status, 303, "{}", reply.headers);
-    assert!(reply.headers.contains("HttpOnly"));
-    assert!(reply.headers.contains("SameSite=Strict"));
-    let cookie = reply
-        .headers
-        .lines()
-        .find(|l| l.to_ascii_lowercase().starts_with("set-cookie:"))
-        .unwrap()
-        .split_once(':')
-        .unwrap()
-        .1
-        .trim()
-        .split(';')
-        .next()
-        .unwrap()
-        .to_owned();
-    (addr, cookie)
+/// An opened app's file URL, as a path.
+async fn open(f: &Fixture, name: &str) -> String {
+    let out = f.state.apps.as_ref().unwrap().open(name).await.unwrap();
+    let url = out["url"].as_str().unwrap().to_owned();
+    assert!(
+        url.starts_with("/a/"),
+        "a path, so any host or tunnel carries it: {url}"
+    );
+    url
 }
 
-async fn call(addr: &str, cookie: &str, op: &str, args: Value) -> Value {
-    let origin = format!("http://{addr}");
-    let reply = http(
-        addr,
-        "POST",
-        "/_shellboy/call",
-        &[
-            ("Origin", &origin),
-            ("Cookie", cookie),
-            ("Content-Type", "application/json"),
-        ],
-        &json!({"op": op, "args": args}).to_string(),
-    )
-    .await;
-    assert_eq!(reply.status, 200, "{op}: {} {}", reply.headers, reply.body);
-    serde_json::from_str(&reply.body).unwrap()
+/// What the parent frame does for a page: names the app and forwards the call.
+async fn call(f: &Fixture, name: &str, op: &str, args: Value) -> Value {
+    f.state.apps.as_ref().unwrap().call(name, op, args).await
 }
 
 #[tokio::test]
@@ -257,20 +219,14 @@ async fn finds_apps_without_a_restart_and_writes_only_the_guide() {
             .unwrap()
             .contains("missing")
     );
-    let refused = apps.open("bad-json", "127.0.0.1:1").await.unwrap_err();
+    let refused = apps.open("bad-json").await.unwrap_err();
     assert_eq!(refused.0, "app_broken");
-    assert_eq!(
-        apps.open("nothing", "127.0.0.1:1").await.unwrap_err().0,
-        "app_not_found"
-    );
-    assert_eq!(
-        apps.open("../one", "127.0.0.1:1").await.unwrap_err().0,
-        "app_not_found"
-    );
+    assert_eq!(apps.open("nothing").await.unwrap_err().0, "app_not_found");
+    assert_eq!(apps.open("../one").await.unwrap_err().0, "app_not_found");
 }
 
 #[tokio::test]
-async fn a_ticket_works_once_and_nothing_is_served_without_a_session() {
+async fn files_need_the_session_in_their_path_and_are_always_sandboxed() {
     let f = fixture().await;
     write_app(
         &f.apps,
@@ -281,32 +237,21 @@ async fn a_ticket_works_once_and_nothing_is_served_without_a_session() {
             ("actions/secret.sh", "echo hi"),
             ("data/a.txt", "x"),
             ("sub/app.js", "1"),
+            ("evil.svg", "<svg onload='alert(1)'/>"),
         ],
     );
-    let out = f
-        .state
-        .apps
-        .as_ref()
-        .unwrap()
-        .open("one", &f.addr.to_string())
-        .await
-        .unwrap();
-    let origin = out["origin"].as_str().unwrap();
-    let addr = origin.trim_start_matches("http://").to_owned();
-    assert_ne!(addr, f.addr.to_string(), "an app has its own origin");
-    let no = http(&addr, "GET", "/", &[], "").await;
-    assert_eq!(no.status, 401);
-    assert!(!no.body.contains("hello"));
-    let path = &out["url"].as_str().unwrap()[origin.len()..];
-    assert_eq!(http(&addr, "GET", path, &[], "").await.status, 303);
+    let web = f.addr.to_string();
+    let url = open(&f, "one").await;
+    let base = url.trim_end_matches("index.html").to_owned();
     assert_eq!(
-        http(&addr, "GET", path, &[], "").await.status,
-        401,
-        "a ticket works once"
+        http(&web, "GET", "/a/not-a-session/index.html", &[], "")
+            .await
+            .status,
+        404
     );
-    let (addr, cookie) = open(&f, "one").await;
-    let page = http(&addr, "GET", "/", &[("Cookie", &cookie)], "").await;
-    assert_eq!(page.status, 200);
+    // No cookie: an opaque page can't send one.
+    let page = http(&web, "GET", &url, &[], "").await;
+    assert_eq!(page.status, 200, "{}", page.headers);
     assert!(page.body.contains("hello"));
     assert!(
         page.body
@@ -314,199 +259,257 @@ async fn a_ticket_works_once_and_nothing_is_served_without_a_session() {
         "{}",
         page.body
     );
-    assert!(
-        page.headers
-            .contains(&format!("frame-ancestors http://{}", f.addr)),
-        "{}",
-        page.headers
-    );
+    for (path, status) in [
+        ("sub/app.js", 200),
+        ("data/a.txt", 200),
+        ("evil.svg", 200),
+        ("gone.js", 404),
+        ("actions/secret.sh", 404),
+    ] {
+        let reply = http(&web, "GET", &format!("{base}{path}"), &[], "").await;
+        assert_eq!(reply.status, status, "{path}");
+        // Opened on its own at the Web UI's origin, a file must not be same-origin with it.
+        let headers = reply.headers.to_ascii_lowercase();
+        assert!(
+            headers.contains("content-security-policy: sandbox "),
+            "{path}: {headers}"
+        );
+        assert!(!headers.contains("allow-same-origin"), "{path}");
+        assert!(
+            headers.contains("x-content-type-options: nosniff"),
+            "{path}"
+        );
+        assert!(headers.contains("access-control-allow-origin: *"), "{path}");
+        assert!(headers.contains("referrer-policy: no-referrer"), "{path}");
+    }
     assert_eq!(
-        http(&addr, "GET", "/sub/app.js", &[("Cookie", &cookie)], "")
+        http(&web, "GET", &format!("{base}sub/app.js"), &[], "")
             .await
             .body,
         "1"
     );
-    assert_eq!(
-        http(&addr, "GET", "/data/a.txt", &[("Cookie", &cookie)], "")
-            .await
-            .status,
-        200
-    );
-    assert_eq!(
-        http(
-            &addr,
-            "GET",
-            "/actions/secret.sh",
-            &[("Cookie", &cookie)],
-            ""
-        )
-        .await
-        .status,
-        404
-    );
-    assert_eq!(
-        http(
-            &addr,
-            "GET",
-            "/../one/index.html",
-            &[("Cookie", &cookie)],
-            ""
-        )
-        .await
-        .status,
-        404
-    );
-    assert_eq!(
-        http(
-            &addr,
-            "GET",
-            "/%2e%2e/one/index.html",
-            &[("Cookie", &cookie)],
-            ""
-        )
-        .await
-        .status,
-        404
-    );
+    for sneaky in [
+        "../one/index.html",
+        "%2e%2e/one/index.html",
+        "..%2fone%2findex.html",
+        "sub/../../x",
+    ] {
+        assert_ne!(
+            http(&web, "GET", &format!("{base}{sneaky}"), &[], "")
+                .await
+                .status,
+            200,
+            "{sneaky}"
+        );
+    }
+    assert_eq!(http(&web, "POST", &url, &[], "").await.status, 405);
     assert!(
-        http(&addr, "GET", "/_shellboy/api.js", &[], "")
+        http(&web, "GET", "/_shellboy/api.js", &[], "")
             .await
             .body
             .contains("shellboy")
     );
+    assert!(
+        http(&web, "GET", "/_shellboy/ui.css", &[], "")
+            .await
+            .body
+            .contains("--bg")
+    );
     assert_eq!(
-        raw(&addr, format!("GET / HTTP/1.1\r\nHost: evil.example\r\nCookie: {cookie}\r\nConnection: close\r\n\r\n")).await,
+        raw(
+            &web,
+            format!("GET {url} HTTP/1.1\r\nHost: evil.example\r\nConnection: close\r\n\r\n")
+        )
+        .await,
         403,
         "DNS rebinding"
     );
 }
 
 #[tokio::test]
-async fn origins_are_kept_apart() {
+async fn an_app_page_cant_reach_the_web_ui() {
     let f = fixture().await;
     write_app(&f.apps, "one", "{}", &[PAGE]);
     write_app(&f.apps, "two", "{}", &[PAGE]);
-    let (one, one_cookie) = open(&f, "one").await;
-    let (two, two_cookie) = open(&f, "two").await;
-    assert_ne!(one, two);
-    let body = json!({"op":"app.info","args":{}}).to_string();
-    let call_from = |origin: String, cookie: String, target: String, body: String| async move {
-        http(
-            &target,
-            "POST",
-            "/_shellboy/call",
-            &[("Origin", &origin), ("Cookie", &cookie)],
-            &body,
-        )
-        .await
-        .status
-    };
-    assert_eq!(
-        call_from(
-            format!("http://{one}"),
-            one_cookie.clone(),
-            one.clone(),
-            body.clone()
-        )
-        .await,
-        200
-    );
-    // Another app's page, or any other site.
-    assert_eq!(
-        call_from(
-            format!("http://{two}"),
-            one_cookie.clone(),
-            one.clone(),
-            body.clone()
-        )
-        .await,
-        403
-    );
-    assert_eq!(
-        call_from(
-            "https://evil.example".into(),
-            one_cookie.clone(),
-            one.clone(),
-            body.clone()
-        )
-        .await,
-        403
-    );
-    // A session for one app is no session for another. A browser would send both: cookies ignore ports.
-    assert_eq!(
-        call_from(
-            format!("http://{two}"),
-            one_cookie.clone(),
-            two.clone(),
-            body.clone()
-        )
-        .await,
-        401
-    );
-    assert_eq!(
-        call_from(
-            format!("http://{two}"),
-            two_cookie.clone(),
-            two.clone(),
-            body.clone()
-        )
-        .await,
-        200
-    );
-
-    // The Web UI: a browser would attach its session cookie to an app's request, because cookies ignore
-    // ports. The Origin check is what stops an app's page, so it's tested with a valid cookie.
-    let session = login(f.addr, &f.state).await;
     let web = f.addr.to_string();
-    let app_origin = format!("http://{one}");
-    let upgrade = |origin: &str| {
+    // A sandboxed page's requests carry `Origin: null`.
+    let session = login(f.addr, &f.state).await;
+    let upgrade = |origin: &str, cookie: &str| {
         format!(
-            "GET /ws HTTP/1.1\r\nHost: {web}\r\nOrigin: {origin}\r\nCookie: {session}\r\nUpgrade: websocket\r\nConnection: upgrade\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n"
+            "GET /ws HTTP/1.1\r\nHost: {web}\r\nOrigin: {origin}\r\nCookie: {cookie}\r\nUpgrade: websocket\r\nConnection: upgrade\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n"
         )
     };
     assert_eq!(
-        raw(&web, upgrade(&format!("http://{web}"))).await,
+        raw(&web, upgrade(&format!("http://{web}"), &session)).await,
         101,
-        "the Web UI's own origin"
+        "the Web UI itself"
     );
-    assert_eq!(raw(&web, upgrade(&app_origin)).await, 403);
+    assert_eq!(raw(&web, upgrade("null", &session)).await, 403);
+    assert_eq!(raw(&web, upgrade("null", "")).await, 403);
     let auth = json!({"token": f.state.auth.token()}).to_string();
     assert_eq!(
         http(
             &web,
             "POST",
             "/auth",
-            &[
-                ("Origin", &app_origin),
-                ("Content-Type", "application/json")
-            ],
+            &[("Origin", "null"), ("Content-Type", "application/json")],
             &auth
         )
         .await
         .status,
         403
     );
-    // An app's own files and API never carry the Web UI's token.
-    assert!(
-        !http(&one, "GET", "/_shellboy/api.js", &[], "")
+    // The token is on no route a page can read, and the app API exists only over `/ws`.
+    let token = "ab".repeat(32);
+    for path in [
+        "/_shellboy/api.js",
+        "/_shellboy/ui.css",
+        &open(&f, "one").await,
+    ] {
+        assert!(
+            !http(&web, "GET", path, &[], "").await.body.contains(&token),
+            "{path}"
+        );
+    }
+    assert_eq!(
+        http(&web, "POST", "/_shellboy/call", &[("Origin", "null")], "{}")
             .await
-            .body
-            .contains(&"ab".repeat(32))
+            .status,
+        404,
+        "no such route for a page to call"
     );
+    // Each page's data is its own: the app comes from who forwarded it, and a path can't leave.
+    assert_eq!(
+        call(&f, "one", "data.write", json!({"path":"k","text":"one"})).await["ok"],
+        true
+    );
+    assert_eq!(
+        call(&f, "two", "data.read", json!({"path":"k"})).await["result"]["exists"],
+        false
+    );
+    assert_eq!(
+        call(&f, "two", "data.read", json!({"path":"../../one/data/k"})).await["error"]["code"],
+        "invalid_path"
+    );
+    assert_eq!(
+        call(&f, "nothing", "data.read", json!({"path":"k"})).await["error"]["code"],
+        "app_not_found"
+    );
+}
+
+#[tokio::test]
+async fn the_api_runs_over_the_web_uis_socket() {
+    let f = fixture().await;
+    write_app(
+        &f.apps,
+        "one",
+        r#"{"name":"First","thread":"bound"}"#,
+        &[PAGE],
+    );
+    let cookie = login(f.addr, &f.state).await;
+    let mut request = format!("ws://{}/ws", f.addr).into_client_request().unwrap();
+    request
+        .headers_mut()
+        .insert("origin", format!("http://{}", f.addr).parse().unwrap());
+    request
+        .headers_mut()
+        .insert("cookie", cookie.parse().unwrap());
+    let (mut ws, _) = tokio_tungstenite::connect_async(request).await.unwrap();
+    async fn result(
+        ws: &mut (
+                 impl futures_util::Stream<Item = Result<Message, tokio_tungstenite::tungstenite::Error>>
+                 + Unpin
+             ),
+        id: u64,
+    ) -> Value {
+        loop {
+            let message = tokio::time::timeout(Duration::from_secs(10), ws.next())
+                .await
+                .unwrap()
+                .unwrap()
+                .unwrap();
+            if let Message::Text(text) = message {
+                let v: Value = serde_json::from_str(text.as_str()).unwrap();
+                if v["t"] == "result" && v["id"] == id {
+                    return v["response"]["result"].clone();
+                }
+            }
+        }
+    }
+    let send = |id: u64, command: &str, args: Value| {
+        Message::Text(
+            json!({"t":"call","id":id,"command":command,"args":args})
+                .to_string()
+                .into(),
+        )
+    };
+    ws.send(send(1, "apps.list", json!({}))).await.unwrap();
+    assert_eq!(result(&mut ws, 1).await["apps"][0]["title"], "First");
+    ws.send(send(2, "apps.open", json!({"name":"one"})))
+        .await
+        .unwrap();
+    assert!(
+        result(&mut ws, 2).await["url"]
+            .as_str()
+            .unwrap()
+            .starts_with("/a/")
+    );
+    ws.send(send(
+        3,
+        "apps.call",
+        json!({"name":"one","op":"app.info","args":{}}),
+    ))
+    .await
+    .unwrap();
+    assert_eq!(result(&mut ws, 3).await["result"]["thread"], "bound");
+    // A write past the old 1 MiB frame, as an app's data.write can be.
+    let large = "x".repeat(4 * 1024 * 1024);
+    ws.send(send(
+        4,
+        "apps.call",
+        json!({"name":"one","op":"data.write","args":{"path":"big.txt","text":large}}),
+    ))
+    .await
+    .unwrap();
+    assert_eq!(result(&mut ws, 4).await["ok"], true);
+    assert_eq!(
+        std::fs::metadata(f.apps.join("one/data/big.txt"))
+            .unwrap()
+            .len(),
+        4 * 1024 * 1024
+    );
+    // A wait holds no ordinary slot, and cancelling it ends it.
+    for id in 10..16u64 {
+        ws.send(send(
+            id,
+            "apps.call",
+            json!({"name":"one","op":"data.wait","args":{"version":0}}),
+        ))
+        .await
+        .unwrap();
+    }
+    ws.send(send(5, "apps.list", json!({}))).await.unwrap();
+    assert_eq!(result(&mut ws, 5).await["apps"][0]["name"], "one");
+    for id in 10..16u64 {
+        ws.send(Message::Text(
+            json!({"t":"cancel","id":id}).to_string().into(),
+        ))
+        .await
+        .unwrap();
+    }
 }
 
 #[tokio::test]
 async fn data_detects_concurrent_writes_and_stays_inside() {
     let f = fixture().await;
     write_app(&f.apps, "one", "{}", &[PAGE]);
-    let (addr, cookie) = open(&f, "one").await;
     assert_eq!(
-        call(&addr, &cookie, "data.read", json!({"path":"a/b.json"})).await["result"],
+        call(&f, "one", "data.read", json!({"path":"a/b.json"})).await["result"],
         json!({"exists":false,"text":null,"hash":null})
     );
     let first = call(
-        &addr,
-        &cookie,
+        &f,
+        "one",
         "data.write",
         json!({"path":"a/b.json","text":"[1]","hash":null,"check":true}),
     )
@@ -517,14 +520,14 @@ async fn data_detects_concurrent_writes_and_stays_inside() {
         "[1]",
         "shared with the Thread"
     );
-    let read = call(&addr, &cookie, "data.read", json!({"path":"a/b.json"})).await;
+    let read = call(&f, "one", "data.read", json!({"path":"a/b.json"})).await;
     assert_eq!(read["result"]["text"], "[1]");
     assert_eq!(read["result"]["hash"], hash.as_str());
     // A write from the Thread, between the page's read and its write.
     std::fs::write(f.apps.join("one/data/a/b.json"), "[2]").unwrap();
     let stale = call(
-        &addr,
-        &cookie,
+        &f,
+        "one",
         "data.write",
         json!({"path":"a/b.json","text":"[3]","hash":hash,"check":true}),
     )
@@ -536,8 +539,8 @@ async fn data_detects_concurrent_writes_and_stays_inside() {
     );
     assert_eq!(
         call(
-            &addr,
-            &cookie,
+            &f,
+            "one",
             "data.write",
             json!({"path":"a/b.json","text":"[1]","hash":null,"check":true})
         )
@@ -546,8 +549,8 @@ async fn data_detects_concurrent_writes_and_stays_inside() {
     );
     assert_eq!(
         call(
-            &addr,
-            &cookie,
+            &f,
+            "one",
             "data.write",
             json!({"path":"a/b.json","text":"[4]"})
         )
@@ -557,17 +560,17 @@ async fn data_detects_concurrent_writes_and_stays_inside() {
     );
     for bad in ["../app.json", "/etc/passwd", "a/../../x", "..\\x", ""] {
         assert_eq!(
-            call(&addr, &cookie, "data.write", json!({"path":bad,"text":"x"})).await["error"]["code"],
+            call(&f, "one", "data.write", json!({"path":bad,"text":"x"})).await["error"]["code"],
             "invalid_path",
             "{bad}"
         );
         assert_eq!(
-            call(&addr, &cookie, "data.read", json!({"path":bad})).await["error"]["code"],
+            call(&f, "one", "data.read", json!({"path":bad})).await["error"]["code"],
             "invalid_path",
             "{bad}"
         );
     }
-    let listed = call(&addr, &cookie, "data.list", json!({})).await;
+    let listed = call(&f, "one", "data.list", json!({})).await;
     assert_eq!(listed["result"]["entries"][0]["name"], "a");
     assert_eq!(listed["result"]["entries"][0]["dir"], true);
     assert_eq!(
@@ -584,24 +587,24 @@ async fn data_detects_concurrent_writes_and_stays_inside() {
             .unwrap();
         std::os::unix::fs::symlink(&f.root, f.apps.join("one/data/out")).unwrap();
         assert_eq!(
-            call(&addr, &cookie, "data.read", json!({"path":"link"})).await["result"]["exists"],
+            call(&f, "one", "data.read", json!({"path":"link"})).await["result"]["exists"],
             false
         );
         assert_eq!(
-            call(
-                &addr,
-                &cookie,
-                "data.write",
-                json!({"path":"out/x","text":"x"})
-            )
-            .await["error"]["code"],
+            call(&f, "one", "data.write", json!({"path":"out/x","text":"x"})).await["error"]["code"],
             "invalid_path"
         );
         assert!(!f.root.join("x").exists());
         assert_eq!(
-            http(&addr, "GET", "/data/link", &[("Cookie", &cookie)], "")
-                .await
-                .status,
+            http(
+                &f.addr.to_string(),
+                "GET",
+                &open(&f, "one").await.replace("index.html", "data/link"),
+                &[],
+                ""
+            )
+            .await
+            .status,
             404
         );
     }
@@ -612,18 +615,17 @@ async fn messages_are_recorded_as_from_the_app_not_a_person() {
     let f = fixture().await;
     write_app(&f.apps, "one", r#"{"thread":"bound"}"#, &[PAGE]);
     write_app(&f.apps, "free", "{}", &[PAGE]);
-    let (addr, cookie) = open(&f, "one").await;
     assert_eq!(
-        call(&addr, &cookie, "app.info", json!({})).await["result"]["thread"],
+        call(&f, "one", "app.info", json!({})).await["result"]["thread"],
         "bound"
     );
     assert_eq!(
-        call(&addr, &cookie, "thread.send", json!({"text":"hi"})).await["ok"],
+        call(&f, "one", "thread.send", json!({"text":"hi"})).await["ok"],
         true
     );
     call(
-        &addr,
-        &cookie,
+        &f,
+        "one",
         "thread.send",
         json!({"text":"there","thread":"other"}),
     )
@@ -648,7 +650,7 @@ async fn messages_are_recorded_as_from_the_app_not_a_person() {
     assert_eq!(sends[0].thread_id.as_deref(), Some("bound"));
     assert_eq!(sends[1].thread_id.as_deref(), Some("other"));
     assert_eq!(
-        call(&addr, &cookie, "thread.messages", json!({"limit":5000})).await["ok"],
+        call(&f, "one", "thread.messages", json!({"limit":5000})).await["ok"],
         true
     );
     assert!(
@@ -661,22 +663,21 @@ async fn messages_are_recorded_as_from_the_app_not_a_person() {
         "limit is capped"
     );
     assert_eq!(
-        call(&addr, &cookie, "threads.list", json!({})).await["result"]["items"][0]["thread_id"],
+        call(&f, "one", "threads.list", json!({})).await["result"]["items"][0]["thread_id"],
         "t1"
     );
     assert_eq!(
-        call(&addr, &cookie, "nope", json!({})).await["error"]["code"],
+        call(&f, "one", "nope", json!({})).await["error"]["code"],
         "unknown_call"
     );
-    let (free, free_cookie) = open(&f, "free").await;
     assert_eq!(
-        call(&free, &free_cookie, "thread.send", json!({"text":"x"})).await["error"]["code"],
+        call(&f, "free", "thread.send", json!({"text":"x"})).await["error"]["code"],
         "no_bound_thread"
     );
     assert_eq!(
         call(
-            &free,
-            &free_cookie,
+            &f,
+            "free",
             "data.write",
             json!({"path":"k","text":"still works"})
         )
@@ -689,9 +690,8 @@ async fn messages_are_recorded_as_from_the_app_not_a_person() {
 async fn on_change_uses_the_shared_hints() {
     let f = fixture().await;
     write_app(&f.apps, "one", r#"{"thread":"bound"}"#, &[PAGE]);
-    let (addr, cookie) = open(&f, "one").await;
-    let (a, c) = (addr.clone(), cookie.clone());
-    let waiting = tokio::spawn(async move { call(&a, &c, "events.wait", json!({})).await });
+    let apps = f.state.apps.clone().unwrap();
+    let waiting = tokio::spawn(async move { apps.call("one", "events.wait", json!({})).await });
     let hub = f.state.hub.clone();
     let before = hub.session_count();
     tokio::time::sleep(Duration::from_millis(100)).await;
@@ -736,82 +736,62 @@ async fn run_has_limits_and_its_source_stays_private() {
             ("actions/plain.txt", "not executable"),
         ],
     );
-    let (addr, cookie) = open(&f, "one").await;
-    let out = call(
-        &addr,
-        &cookie,
-        "run",
-        json!({"action":"echo","args":{"days":7}}),
-    )
-    .await;
+    let out = call(&f, "one", "run", json!({"action":"echo","args":{"days":7}})).await;
     let r = &out["result"];
     assert_eq!(r["exit_code"], 3, "{out}");
     assert_eq!(r["stdout"].as_str().unwrap().trim(), "{\"days\":7} one");
     assert!(r["stderr"].as_str().unwrap().contains("/apps/one"));
     assert_eq!(r["timed_out"], false);
-    let slow = call(
-        &addr,
-        &cookie,
-        "run",
-        json!({"action":"slow","timeout_ms":200}),
-    )
-    .await;
+    let slow = call(&f, "one", "run", json!({"action":"slow","timeout_ms":200})).await;
     assert_eq!(slow["result"]["timed_out"], true);
     assert!(slow["result"]["duration_ms"].as_u64().unwrap() < 5000);
-    let big = call(&addr, &cookie, "run", json!({"action":"big"})).await;
+    let big = call(&f, "one", "run", json!({"action":"big"})).await;
     assert_eq!(big["result"]["stdout_truncated"], true);
     assert_eq!(big["result"]["stdout"].as_str().unwrap().len(), 1024 * 1024);
     assert_eq!(
-        call(&addr, &cookie, "run", json!({"action":"twin"})).await["error"]["code"],
+        call(&f, "one", "run", json!({"action":"twin"})).await["error"]["code"],
         "ambiguous_action"
     );
     assert_eq!(
-        call(&addr, &cookie, "run", json!({"action":"twin.sh"})).await["result"]["exit_code"],
+        call(&f, "one", "run", json!({"action":"twin.sh"})).await["result"]["exit_code"],
         0
     );
     assert_eq!(
-        call(&addr, &cookie, "run", json!({"action":"nope"})).await["error"]["code"],
+        call(&f, "one", "run", json!({"action":"nope"})).await["error"]["code"],
         "no_action"
     );
     for bad in ["../x", "/bin/sh", "a/b", ".hidden", ""] {
         assert_eq!(
-            call(&addr, &cookie, "run", json!({"action":bad})).await["error"]["code"],
+            call(&f, "one", "run", json!({"action":bad})).await["error"]["code"],
             "invalid_action",
             "{bad}"
         );
     }
     assert_eq!(
-        call(&addr, &cookie, "run", json!({"action":"plain.txt"})).await["error"]["code"],
+        call(&f, "one", "run", json!({"action":"plain.txt"})).await["error"]["code"],
         "run_failed"
     );
 }
 
 #[tokio::test]
-async fn an_app_keeps_its_origin_across_restarts_and_stops_with_the_bridge() {
+async fn watchers_stop_with_the_bridge() {
     let f = fixture().await;
     write_app(&f.apps, "one", "{}", &[PAGE]);
-    let (addr, _) = open(&f, "one").await;
-    let saved: Value =
-        serde_json::from_slice(&std::fs::read(f.root.join("state/app-ports.json")).unwrap())
-            .unwrap();
-    assert_eq!(format!("127.0.0.1:{}", saved["one"]), addr);
-    // Stopping waits for the listeners. Whether the port is then free isn't asserted: tests running
-    // alongside take ports from the same neighbourhood, and a taken port only moves an app.
+    assert_eq!(call(&f, "one", "data.wait", json!({})).await["ok"], true);
     f.cancel.cancel();
     tokio::time::timeout(
         Duration::from_secs(5),
         f.state.apps.as_ref().unwrap().stopped(),
     )
     .await
-    .expect("the app listeners end with the bridge");
+    .expect("the watcher ends with the bridge");
 }
 
 #[tokio::test]
 async fn data_changes_from_outside_reach_the_page_through_one_watcher() {
     let f = fixture().await;
     write_app(&f.apps, "one", "{}", &[PAGE, ("data/start.txt", "x")]);
-    let (addr, cookie) = open(&f, "one").await;
-    let first = call(&addr, &cookie, "data.wait", json!({})).await;
+    let first = call(&f, "one", "data.wait", json!({})).await;
     let mut version = first["result"]["version"].clone();
     assert_eq!(
         first["result"]["changed"], false,
@@ -820,9 +800,9 @@ async fn data_changes_from_outside_reach_the_page_through_one_watcher() {
     // A Thread's shell writing, not the API. One sample each, on loopback: a record, not a bound.
     let mut samples = Vec::new();
     for (n, file) in ["a.json", "sub/b.json", "a.json"].iter().enumerate() {
-        let (a, c, v) = (addr.clone(), cookie.clone(), version.clone());
+        let (apps, v) = (f.state.apps.clone().unwrap(), version.clone());
         let waiting =
-            tokio::spawn(async move { call(&a, &c, "data.wait", json!({"version": v})).await });
+            tokio::spawn(async move { apps.call("one", "data.wait", json!({"version": v})).await });
         tokio::time::sleep(Duration::from_millis(40)).await;
         let path = f.apps.join("one/data").join(file);
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -850,7 +830,7 @@ async fn data_changes_from_outside_reach_the_page_through_one_watcher() {
     // A change between two waits isn't lost.
     std::fs::remove_file(f.apps.join("one/data/a.json")).unwrap();
     tokio::time::sleep(Duration::from_millis(600)).await;
-    let out = call(&addr, &cookie, "data.wait", json!({"version": version})).await;
+    let out = call(&f, "one", "data.wait", json!({"version": version})).await;
     assert_eq!(out["result"]["changed"], true, "{out}");
     assert!(
         out["result"]["paths"]
@@ -876,14 +856,14 @@ async fn the_same_action_never_overlaps_and_inherits_the_gateways_environment() 
             ("actions/other.sh", "echo \"$HOME\""),
         ],
     );
-    let (addr, cookie) = open(&f, "one").await;
-    let (a, c) = (addr.clone(), cookie.clone());
-    let first = tokio::spawn(async move { call(&a, &c, "run", json!({"action":"slow"})).await });
+    let apps = f.state.apps.clone().unwrap();
+    let first =
+        tokio::spawn(async move { apps.call("one", "run", json!({"action":"slow"})).await });
     tokio::time::sleep(Duration::from_millis(200)).await;
-    let second = call(&addr, &cookie, "run", json!({"action":"slow"})).await;
+    let second = call(&f, "one", "run", json!({"action":"slow"})).await;
     assert_eq!(second["error"]["code"], "already_running", "{second}");
     // Another action isn't held up.
-    let other = call(&addr, &cookie, "run", json!({"action":"other"})).await;
+    let other = call(&f, "one", "run", json!({"action":"other"})).await;
     assert_eq!(
         other["result"]["stdout"].as_str().unwrap().trim(),
         std::env::var("HOME").unwrap_or_default(),
@@ -897,17 +877,11 @@ async fn the_same_action_never_overlaps_and_inherits_the_gateways_environment() 
         "done"
     );
     assert_eq!(
-        call(
-            &addr,
-            &cookie,
-            "run",
-            json!({"action":"slow","timeout_ms":100})
-        )
-        .await["result"]["timed_out"],
+        call(&f, "one", "run", json!({"action":"slow","timeout_ms":100})).await["result"]["timed_out"],
         true
     );
     assert_eq!(
-        call(&addr, &cookie, "run", json!({"action":"slow"})).await["result"]["timed_out"],
+        call(&f, "one", "run", json!({"action":"slow"})).await["result"]["timed_out"],
         false,
         "finished or timed out, it can run again"
     );

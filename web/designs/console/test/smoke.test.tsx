@@ -489,9 +489,11 @@ describe("Apps", () => {
     expect(text(el)).toContain("No apps yet");
     expect(el.querySelector(".card")).toBeNull();
   });
-  it("opens in a tab on the app's own origin, and stays mounted while other views show", async () => {
+  it("opens sandboxed in a tab, with no same-origin, and stays mounted while other views show", async () => {
     const { el, model } = await open("board");
-    expect(frame(el).getAttribute("src")).toContain("http://127.0.0.1:8752/");
+    expect(frame(el).getAttribute("src")).toBe("/a/s1/index.html");
+    expect(frame(el).getAttribute("sandbox")).toContain("allow-scripts");
+    expect(frame(el).getAttribute("sandbox")).not.toContain("allow-same-origin");
     expect([...el.querySelectorAll(".apptab a")].map(text)).toEqual(["All apps", "Board"]);
     const before = frame(el);
     await act(async () => {

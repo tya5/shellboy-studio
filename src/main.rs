@@ -102,7 +102,6 @@ async fn run(args: Args) -> Result<(), String> {
         },
         Some(AppsPaths {
             dir: args.apps_dir.unwrap_or_else(|| data_dir.join("apps")),
-            state_dir: config_dir,
         }),
         cancel.clone(),
     );

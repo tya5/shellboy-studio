@@ -33,6 +33,11 @@ export interface CallOptions {
   mutation?: boolean;
   /** Called when the call is written to the socket (it can no longer be dropped silently). */
   onSent?: () => void;
+  /**
+   * A call that waits for something and holds no owner connection, such as an app's change hints. It goes
+   * out at once and doesn't take one of the `MAX_IN_FLIGHT` slots, which would starve ordinary reads.
+   */
+  waits?: boolean;
 }
 
 export interface CallHandle {
@@ -55,6 +60,8 @@ export class Link {
   private nextId = 1;
   private queue: Pending[] = [];
   private inFlight = new Map<number, Pending>();
+  /** Those in `inFlight` that don't count against `MAX_IN_FLIGHT`. */
+  private waiting = new Set<number>();
   private listeners = new Set<(e: LinkEvent) => void>();
   private readonly conn = signal<ConnectionState>("closed");
   private readonly failed = signal(0);
@@ -137,13 +144,24 @@ export class Link {
       while (at < this.queue.length && this.queue[at]!.mutation) at++;
       this.queue.splice(at, 0, p);
     } else this.queue.push(p);
-    this.pump();
+    if (options.waits) {
+      this.queue.pop();
+      this.inFlight.set(id, p);
+      this.waiting.add(id);
+      if (!this.transport.send(p.frame)) {
+        this.inFlight.delete(id);
+        this.waiting.delete(id);
+        return fail({ kind: "not_connected", message: "not connected to the bridge" });
+      }
+      p.sent = true;
+    } else this.pump();
     return {
       promise,
       cancel: () => {
         const q = this.queue.indexOf(p);
         if (q >= 0) this.queue.splice(q, 1);
         else if (this.inFlight.delete(id)) {
+          this.waiting.delete(id);
           this.transport.send({ t: "cancel", id });
           this.pump();
         } else return;
@@ -153,7 +171,7 @@ export class Link {
   }
 
   private pump(): void {
-    while (this.inFlight.size < MAX_IN_FLIGHT && this.queue.length > 0) {
+    while (this.inFlight.size - this.waiting.size < MAX_IN_FLIGHT && this.queue.length > 0) {
       const p = this.queue.shift()!;
       this.inFlight.set(p.id, p);
       if (!this.transport.send(p.frame)) {
@@ -171,6 +189,7 @@ export class Link {
     const p = this.inFlight.get(frame.id);
     if (!p) return; // cancelled or unknown: discard
     this.inFlight.delete(frame.id);
+    this.waiting.delete(frame.id);
     if (frame.error) p.resolve({ ok: false, error: fromBridgeError(frame.error) });
     else if (frame.response) p.resolve({ ok: true, response: frame.response });
     else
@@ -187,6 +206,7 @@ export class Link {
     const lost = [...this.inFlight.values()];
     const queued = this.queue;
     this.inFlight.clear();
+    this.waiting.clear();
     this.queue = [];
     for (const p of lost)
       p.resolve({

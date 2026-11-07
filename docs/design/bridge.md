@@ -30,7 +30,7 @@ Open the printed URL once; the app exchanges the token the same way. For the deb
 (default `127.0.0.1:8751`), `--data-dir` (default: `SHELLBOY_DATA_DIR`, then the OS
 default, resolved by Shellboy's own `resolve_cli_data_dir`), `--config-dir` (token
 location, default the OS config directory plus `shellboy-web`), `--allow-host NAME`
-(repeatable), `--apps-dir` (default `apps` in the data directory, `apps.md`), `--debug`.
+(repeatable), `--apps-dir` (default `apps` in the data directory, `apps.md`), `--debug`. Apps are served on this same port, under `/a/`.
 
 ## Bounds (limits, not performance claims)
 
@@ -42,7 +42,7 @@ location, default the OS config directory plus `shellboy-web`), `--allow-host NA
 | Browser sessions | 64 (`hub::MAX_SESSIONS`), then HTTP 503 | `Hub`; removed by `SessionGuard::drop` |
 | Watched Threads per tab | 64 | per-session set; the dirty set is a subset of it plus flags |
 | Hints per tab | no queue: one coalesced `Pending` (dirty set, list flag, resync flag, latest owner event) | merged on every update, flushed as one `changed` frame |
-| Incoming WebSocket frame | 1 MiB | axum limit |
+| Incoming WebSocket frame | 24 MiB, for an app's `data.write` | axum limit |
 | Session cookies in memory | 256, oldest evicted | `Auth` |
 | Poll backoff after an owner error | 250 ms doubling to 10 s, no cursor kept | `events::PollConfig` |
 

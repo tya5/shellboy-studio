@@ -90,9 +90,36 @@ export interface ArchiveResult {
   [extra: string]: unknown;
 }
 
-/** Hooks for reads issued by the store; presentation does not need them. */
+/** Hooks for reads. */
 export interface ReadOptions {
   onSent?: () => void;
+  /** Cancels the call: dropped if queued, and a `cancel` frame if sent. */
+  cancel?: Cancel;
+  /** See `CallOptions.waits`. */
+  waits?: boolean;
+}
+
+/** Cancels whatever registered with it. Later registrations run at once. */
+export class Cancel {
+  private done = false;
+  private readonly actions = new Set<() => void>();
+  get cancelled(): boolean {
+    return this.done;
+  }
+  add(action: () => void): () => void {
+    if (this.done) {
+      action();
+      return () => {};
+    }
+    this.actions.add(action);
+    return () => this.actions.delete(action);
+  }
+  cancel(): void {
+    if (this.done) return;
+    this.done = true;
+    for (const a of [...this.actions]) a();
+    this.actions.clear();
+  }
 }
 
 export type UuidFn = () => string;
@@ -124,12 +151,11 @@ export class Operations {
     mutation?: { operationId: string },
     read?: ReadOptions,
   ): Promise<Outcome<T>> {
-    const handle = this.link.call(
-      command,
-      args,
-      mutation ? { operationId: mutation.operationId, mutation: true } : { ...read },
-    );
+    const { cancel, ...options } = read ?? {};
+    const handle = this.link.call(command, args, mutation ? { operationId: mutation.operationId, mutation: true } : options);
+    const forget = cancel?.add(() => handle.cancel());
     const reply = await handle.promise;
+    forget?.();
     const extra = mutation ? { operationId: mutation.operationId } : {};
     if (!reply.ok) return { ok: false, error: reply.error, ...extra };
     return { ...unwrap(reply.response, decode), ...extra };
@@ -199,6 +225,10 @@ export class Operations {
   /** A one-time URL that opens an app on its own origin. */
   appsOpen(name: string): Promise<Outcome<Record<string, unknown>>> {
     return this.run("apps.open", { name }, decodeRecord);
+  }
+  /** One API call from an app's page, for the app the caller named. */
+  appsCall(name: string, op: string, args: unknown, read?: ReadOptions): Promise<Outcome<Record<string, unknown>>> {
+    return this.run("apps.call", { name, op, args }, decodeRecord, undefined, read);
   }
   /** Look up a mutation's receipt, e.g. after an `unconfirmed` error. */
   operationGet(operationId: string): Promise<Outcome<Record<string, unknown>>> {

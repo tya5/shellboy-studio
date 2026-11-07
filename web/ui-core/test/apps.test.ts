@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { settle } from "../../data/test/harness";
-import { errorReportText, formatRoute, MAX_APP_ERRORS, parseRoute, readAppMessage } from "../src";
+import { errorReportText, formatRoute, MAX_APP_CALLS, MAX_APP_ERRORS, parseRoute, readAppMessage } from "../src";
 import { fixtureModel } from "./fixture";
 
 describe("routes", () => {
@@ -25,6 +25,47 @@ describe("messages from an app's page", () => {
   });
 });
 
+describe("the API relay", () => {
+  const opened = async () => {
+    const made = await fixtureModel({ route: "apps" });
+    void made.model.apps.open("board");
+    await settle(made.t, made.db);
+    return made;
+  };
+  it("forwards a call for the tab's app and returns the gateway's reply", async () => {
+    const { t, db, model } = await opened();
+    const reply = model.apps.call("board", "data.read", { path: "a" });
+    await settle(t, db);
+    expect(await reply).toEqual({ ok: true, result: { echoed: "data.read" } });
+    expect(t.calls("apps.call")[0]!.args).toEqual({ name: "board", op: "data.read", args: { path: "a" } });
+  });
+  it("hint waits don't take the slots ordinary reads need", async () => {
+    const { t, db, model } = await opened();
+    const plain = db.answer;
+    db.answer = (c) => (c.command === "apps.call" ? plain(c) : plain(c));
+    const before = t.calls().length;
+    for (let i = 0; i < 6; i++) void model.apps.call("board", "data.wait", {});
+    expect(t.calls().length).toBe(before + 6);
+    await settle(t, db);
+  });
+  it("bounds an app's outstanding calls, and closing the tab cancels them", async () => {
+    const { t, model } = await opened();
+    const calls = Array.from({ length: MAX_APP_CALLS + 1 }, () => model.apps.call("board", "data.wait", {}));
+    expect(await calls[MAX_APP_CALLS]).toMatchObject({ ok: false, error: { code: "busy" } });
+    model.apps.close("board");
+    expect(t.cancels().length).toBe(MAX_APP_CALLS);
+    expect(await calls[0]).toMatchObject({ ok: false, error: { code: "cancelled" } });
+  });
+  it("keeps an app's file session out of error text", () => {
+    const m = readAppMessage({ shellboy: true, type: "error", message: `Couldn't load http://h:1/a/${"a".repeat(32)}/gone.js`, where: `http://h:1/a/${"b".repeat(32)}/x.js:3` });
+    expect(m).toMatchObject({ message: "Couldn't load gone.js", where: "x.js:3" });
+  });
+  it("accepts only known shapes from a page", () => {
+    expect(readAppMessage({ shellboy: true, type: "call", id: 1, op: "x", args: { a: 1 } })).toEqual({ type: "call", id: 1, op: "x", args: { a: 1 } });
+    for (const bad of [{ shellboy: true, type: "call" }, { shellboy: true, type: "call", id: "1", op: "x" }]) expect(readAppMessage(bad)).toBeUndefined();
+  });
+});
+
 describe("AppsModel over the fake transport", () => {
   it("reads nothing until the view opens, and asks the gateway for one ticket per open", async () => {
     const quiet = await fixtureModel({ route: "monitor" });
@@ -40,7 +81,7 @@ describe("AppsModel over the fake transport", () => {
     await settle(t, db);
     expect(t.calls("apps.open")).toHaveLength(1);
     expect(model.apps.tabs.value).toHaveLength(1);
-    expect(model.apps.tabs.value[0]).toMatchObject({ origin: "http://127.0.0.1:8752", thread: "lead", threadState: "ok" });
+    expect(model.apps.tabs.value[0]).toMatchObject({ url: "/a/s1/index.html", thread: "lead", threadState: "ok" });
   });
   it("Refresh shows a new app without a restart", async () => {
     const { t, db, model } = await fixtureModel({ route: "apps" });

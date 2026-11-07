@@ -1,5 +1,5 @@
-// The Shellboy app API, added to every HTML page by the gateway. Relative URLs only: an app never
-// knows its origin. Errors go to the frame that hosts the app, which shows them.
+// The Shellboy app API, added to every HTML page by the gateway. The page runs sandboxed with an opaque
+// origin, so calls and errors go to the frame that hosts it, by postMessage.
 (function () {
   "use strict";
   if (window.shellboy) return;
@@ -21,21 +21,27 @@
     if (e.data.type === "theme" && typeof e.data.theme === "string") document.documentElement.dataset.ds = e.data.theme;
   });
 
-  async function call(op, args) {
-    let res;
-    try {
-      res = await fetch("/_shellboy/call", { method: "POST", headers: { "content-type": "application/json" }, credentials: "same-origin", body: JSON.stringify({ op, args: args || {} }) });
-    } catch (cause) {
-      throw Object.assign(new Error("The gateway isn't reachable"), { code: "gateway_unreachable", cause });
+  // The page has an opaque origin and no session of its own: every call goes through the parent frame.
+  let nextId = 1;
+  const waiting = new Map();
+  window.addEventListener("message", (e) => {
+    if (e.source !== window.parent || !e.data || e.data.shellboy !== true || e.data.type !== "reply") return;
+    const pending = waiting.get(e.data.id);
+    if (!pending) return;
+    waiting.delete(e.data.id);
+    if (e.data.ok) pending.resolve(e.data.result);
+    else {
+      const error = e.data.error || {};
+      pending.reject(Object.assign(new Error(error.message || "The call failed"), error));
     }
-    if (res.status === 401) {
-      fail("session", "This app's session ended. Reopen it from Apps.");
-      throw Object.assign(new Error("This app's session ended. Reopen it from Apps."), { code: "no_session" });
-    }
-    const body = await res.json();
-    if (body.ok) return body.result;
-    const error = body.error || {};
-    throw Object.assign(new Error(error.message || op + " failed"), error);
+  });
+  function call(op, args) {
+    if (window.parent === window) return Promise.reject(Object.assign(new Error("Open this app from Apps in Shellboy."), { code: "no_host" }));
+    return new Promise((resolve, reject) => {
+      const id = nextId++;
+      waiting.set(id, { resolve, reject });
+      post({ type: "call", id, op, args: args || {} });
+    });
   }
 
   const shellboy = {
@@ -57,7 +63,7 @@
               delay = 1000;
               if (!stopped && out.changed) fn(out);
             } catch (e) {
-              if (e.code === "no_session") return;
+              if (e.code === "no_host") return;
               await new Promise((r) => setTimeout(r, delay));
               delay = Math.min(delay * 2, 10000);
             }
@@ -81,7 +87,7 @@
               delay = 1000;
               if (!stopped && out.changed) fn(out);
             } catch (e) {
-              if (e.code === "no_session") return;
+              if (e.code === "no_host") return;
               await new Promise((r) => setTimeout(r, delay));
               delay = Math.min(delay * 2, 10000);
             }

@@ -1,6 +1,6 @@
 //! HTTP routes. `/debug` is registered only when the debug option is on.
 use crate::{
-    apps::{Apps, AppsConfig},
+    apps::Apps,
     assets,
     auth::{self, Auth, COOKIE_NAME},
     hub::Hub,
@@ -10,8 +10,8 @@ use crate::{
 use axum::{
     Router,
     body::Body,
-    extract::{State, WebSocketUpgrade, ws::WebSocket},
-    http::{HeaderMap, Request, StatusCode, header},
+    extract::{Path, State, WebSocketUpgrade, ws::WebSocket},
+    http::{HeaderMap, Method, Request, StatusCode, header},
     middleware::{self, Next},
     response::{Html, IntoResponse, Response},
     routing::{get, post},
@@ -34,7 +34,6 @@ pub struct ServerConfig {
 /// Where apps live. Without it, the bridge offers no apps.
 pub struct AppsPaths {
     pub dir: PathBuf,
-    pub state_dir: PathBuf,
 }
 
 pub struct Shared<O> {
@@ -66,12 +65,7 @@ impl<O: Owner> Shared<O> {
         let global = Arc::new(Semaphore::new(GLOBAL_CALLS));
         let apps = apps.map(|paths| {
             Apps::new(
-                AppsConfig {
-                    dir: paths.dir,
-                    state_dir: paths.state_dir,
-                    listen: config.listen,
-                    extra_hosts: config.extra_hosts.clone(),
-                },
+                paths.dir,
                 owner.clone(),
                 hub.clone(),
                 global.clone(),
@@ -99,6 +93,12 @@ pub fn router<O: Owner>(state: AppState<O>) -> Router {
         .route("/ws", get(ws_upgrade::<O>));
     if state.config.debug {
         router = router.route("/debug", get(debug_page));
+    }
+    if state.apps.is_some() {
+        router = router
+            .route("/a/{session}/{*path}", get(app_file::<O>))
+            .route("/_shellboy/api.js", get(|| async { Apps::<O>::api_js() }))
+            .route("/_shellboy/ui.css", get(|| async { Apps::<O>::ui_css() }));
     }
     router
         .layer(middleware::from_fn_with_state(
@@ -176,6 +176,18 @@ async fn auth_exchange<O: Owner>(
     }
 }
 
+/// The path's session is the capability: a sandboxed page sends no cookies.
+async fn app_file<O: Owner>(
+    State(state): State<AppState<O>>,
+    Path((session, path)): Path<(String, String)>,
+    method: Method,
+) -> Response {
+    match &state.apps {
+        Some(apps) => apps.file(&session, &path, &method).await,
+        None => StatusCode::NOT_FOUND.into_response(),
+    }
+}
+
 async fn ws_upgrade<O: Owner>(
     State(state): State<AppState<O>>,
     headers: HeaderMap,
@@ -193,13 +205,10 @@ async fn ws_upgrade<O: Owner>(
     let Some((guard, owner_state)) = state.hub.register() else {
         return (StatusCode::SERVICE_UNAVAILABLE, "too many sessions").into_response();
     };
-    let host = header_str(&headers, header::HOST)
-        .unwrap_or_default()
-        .to_owned();
     upgrade
         .max_message_size(ws::MAX_CLIENT_FRAME)
         .max_frame_size(ws::MAX_CLIENT_FRAME)
-        .on_upgrade(move |socket: WebSocket| ws::session(socket, state, guard, owner_state, host))
+        .on_upgrade(move |socket: WebSocket| ws::session(socket, state, guard, owner_state))
 }
 
 /// Run the bridge until `cancel` fires: the HTTP server and the one `events.wait` loop.
