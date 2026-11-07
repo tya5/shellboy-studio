@@ -40,11 +40,18 @@ Every call returns a promise and rejects with an `Error` that has a `code`.
 | `shellboy.data.list(path?)` | `{entries: [{name, dir, size}]}` |
 | `shellboy.data.onChange(fn)` | Calls `fn({paths})` soon after any file in `data/` changes, whoever wrote it: your Thread's shell, an action or the page itself. Returns a function that stops it. Watches up to 4096 entries, 8 folders deep |
 | `shellboy.thread.send(text, {thread, deliver})` | Sends a message, recorded as from `app:<name>`, not from a person |
-| `shellboy.thread.get(thread?)` | The Thread: title, state, model |
+| `shellboy.thread.get(thread?)` | A Thread details object: `thread_id`, `title`, `cwd`, `connection`, `model`, `agents_path`, `children_count`, `shells_count`; optional fields include `run_id`, `turn_id`, `parent_id`, `effort` and `archived_at` |
 | `shellboy.thread.messages({thread, limit, cursor, since})` | `{items, next_cursor}`, oldest first, as `shellboy history list` returns them |
-| `shellboy.threads.list({query, limit, cursor, archived})` | `{items, next_cursor}` |
+| `shellboy.threads.list({query, limit, cursor, archived})` | `{items, next_cursor?}`; each item has `thread_id`, `title`, `cwd`, `state`, `activity`, `updated_at` and `excerpt`; `parent_id` and `archived_at` may be omitted |
 | `shellboy.thread.onChange(fn, {thread})` | Calls `fn()` when that Thread may have changed; re-read then. Returns a function that stops it. `{list: true}` also watches the Thread list |
 | `shellboy.run(action, args, {timeoutMs})` | Runs a script from `actions/`: `{exit_code, stdout, stderr, stdout_truncated, stderr_truncated, timed_out, duration_ms}` |
+
+These thread calls return the owner's fields directly: use `thread_id`, `title`,
+and `cwd` exactly, not `id`, `name`, or `working_directory`. `cwd` is the
+Thread's current working directory, not necessarily the directory of every past
+shell. List results are paginated; follow `next_cursor` only when needed.
+`thread.get` gives configuration and current Run/Turn IDs; `state` is on each
+`threads.list` item, not guaranteed on `thread.get`.
 
 A bound Thread that was archived still works. If it was deleted, `thread.*` calls reject and the rest of the app keeps working, so show that rather than failing.
 

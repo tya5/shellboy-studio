@@ -659,6 +659,23 @@ async fn an_app_message_is_recorded_as_from_the_app() {
         async move { apps.call("probe", op, args).await }
     };
 
+    // Exercise the actual Apps API against the pinned owner, not a hand-built DTO.
+    let detail = call("thread.get", json!({})).await;
+    assert_eq!(detail["ok"], true, "{detail}");
+    assert_eq!(detail["result"]["thread_id"], thread);
+    assert!(detail["result"]["title"].is_string(), "{detail}");
+    assert_eq!(detail["result"]["cwd"], root.to_str().unwrap());
+    let list = call("threads.list", json!({"limit": 50})).await;
+    assert_eq!(list["ok"], true, "{list}");
+    let row = list["result"]["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|item| item["thread_id"] == thread)
+        .expect("created Thread in list");
+    assert!(row["title"].is_string(), "{row}");
+    assert_eq!(row["cwd"], root.to_str().unwrap());
+
     let sent = call("thread.send", json!({"text": "from the page"})).await;
     assert_eq!(sent["ok"], true, "{sent}");
     let mut sender = Value::Null;
