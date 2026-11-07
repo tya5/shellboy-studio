@@ -52,6 +52,7 @@ export function WindowedScroll({ model, win, renderRow, live }: { model: AppMode
   }
 
   return (
+    <div class="scroll-frame">
     <div
       class="scroll"
       ref={el}
@@ -73,6 +74,7 @@ export function WindowedScroll({ model, win, renderRow, live }: { model: AppMode
       {live}
       {win.total === 0 && status === "loading" ? <LoadingRows label={t("convo.loading")} rows={5} /> : null}
       {win.total === 0 && status === "ready" ? <EmptyState icon="chat" title={t("convo.empty")} body={t("convo.emptyBody")} /> : null}
+    </div>
       {!win.following.value ? (
         <div class="jump-newest">
           <Button variant="primary" onClick={() => win.jumpToEnd()}>{t("convo.newer")}</Button>
