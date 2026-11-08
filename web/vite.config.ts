@@ -3,7 +3,7 @@ import { defineConfig } from "vite";
 // Node is needed at build time only. The output in web/dist is embedded into the bridge.
 export default defineConfig({
   root: "app",
-  publicDir: "public",
+  publicDir: false,
   oxc: { jsx: { runtime: "automatic", importSource: "preact" } },
   build: {
     outDir: "../dist",
