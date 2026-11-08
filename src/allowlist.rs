@@ -94,7 +94,7 @@ pub fn access(command: &Command) -> Access {
         | Command::IndexProbe(..)
         | Command::StorageCollect(..) => Access::Denied,
         #[cfg(feature = "next-shellboy")]
-        Command::IndexShrink(..) | Command::IndexRemove(..) => Access::Denied,
+        Command::IndexShrink(..) | Command::IndexRemove(..) | Command::MessageAsk(..) => Access::Denied,
     }
 }
 
