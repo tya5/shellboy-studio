@@ -39,6 +39,22 @@ export function WindowedScroll({ model, win, renderRow, live }: { model: AppMode
     win.view(box.scrollTop, box.clientHeight, win.following.peek() && intent.current.following);
   });
 
+  useLayoutEffect(() => {
+    const box = el.current;
+    if (!box || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => {
+      const changes: [number, number][] = [];
+      for (const child of box.querySelectorAll<HTMLElement>("[data-o]"))
+        changes.push([Number(child.dataset.o), child.getBoundingClientRect().height]);
+      if (changes.length) win.measure(changes);
+      const want = win.takeScroll();
+      if (want !== undefined) intent.current.program(box, want);
+      else if (win.following.peek() && intent.current.following) intent.current.program(box, box.scrollHeight);
+    });
+    box.querySelectorAll("[data-o]").forEach((row) => observer.observe(row));
+    return () => observer.disconnect();
+  });
+
   const parts: VNode[] = [];
   if (range) {
     for (let i = range.first; i <= range.last; ) {
@@ -97,7 +113,7 @@ export function WindowedScroll({ model, win, renderRow, live }: { model: AppMode
         </Notice>
       ) : null}
       {win.total > 0 ? <div class="muted caption">{t("convo.total", { n: win.total })}</div> : null}
-      <VirtualSpace height={win.totalHeight()} top={range ? win.offsetOf(range.first) : 0}>
+      <VirtualSpace top={range ? win.offsetOf(range.first) : 0} bottom={range ? Math.max(0, win.totalHeight() - win.offsetOf(range.last + 1)) : win.totalHeight()}>
         {parts}
       </VirtualSpace>
       {live}

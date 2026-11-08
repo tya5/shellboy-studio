@@ -1,12 +1,8 @@
 import type { ComponentChildren } from "preact";
 
-/** A scroll space of a known height with the drawn rows placed at their offset; the rest stays empty. */
-export function VirtualSpace({ height, top, children }: { height: number; top: number; children?: ComponentChildren }) {
-  return (
-    <div class="vspace" style={{ height: `${height}px` }}>
-      <div class="vspace-in" style={{ top: `${top}px` }}>{children}</div>
-    </div>
-  );
+/** Rows stay in normal flow so a late height change cannot overlap later content. */
+export function VirtualSpace({ top, bottom, children }: { top: number; bottom: number; children?: ComponentChildren }) {
+  return <div class="vspace"><div aria-hidden="true" style={{ height: `${top}px` }} />{children}<div aria-hidden="true" style={{ height: `${bottom}px` }} /></div>;
 }
 
 /** A range of rows not read yet, held at its estimated height. */
