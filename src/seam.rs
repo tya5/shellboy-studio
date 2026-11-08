@@ -18,6 +18,7 @@ pub fn owner_capabilities() -> Vec<String> {
     let mut capabilities = Vec::new();
     if cfg!(feature = "next-shellboy") {
         capabilities.push("thread.reparent".to_owned());
+        capabilities.push("thread.settings".to_owned());
         capabilities.push("config.edit".to_owned());
         capabilities.push("live.text".to_owned());
         capabilities.push("history.window".to_owned());

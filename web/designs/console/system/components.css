@@ -473,7 +473,12 @@ a{color:var(--accent)}
 
 .model-picker-anchor{position:relative;min-width:0}
 .model-picker-anchor>.btn{max-width:var(--size-details);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.model-picker{position:absolute;right:0;top:100%;z-index:20;width:min(var(--size-details),calc(100vw - 2 * var(--space-24)));padding:var(--space-16);display:flex;flex-direction:column;gap:var(--space-8);background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);}
+.model-picker{max-height:calc(100dvh - 3 * var(--space-24));overflow-y:auto;position:absolute;right:0;top:100%;z-index:20;width:min(var(--size-details),calc(100vw - 2 * var(--space-24)));padding:var(--space-16);display:flex;flex-direction:column;gap:var(--space-8);background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);}
 .model-picker p{margin:0}.model-picker>label{display:flex;flex-direction:column;gap:var(--space-4)}
 .model-picker-list{display:flex;flex-direction:column;align-items:stretch;max-height:var(--size-details);overflow:auto}
 .model-picker-list .btn{text-align:left;justify-content:flex-start;overflow-wrap:anywhere}
+@container app (max-width:899px){
+  .model-picker{position:fixed;left:var(--space-12);right:var(--space-12);top:calc(var(--size-touch) + var(--space-8));width:auto}
+}
+
+.pairing-url{overflow-wrap:anywhere}

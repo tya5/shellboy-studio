@@ -1,14 +1,17 @@
+import { useEffect } from "preact/hooks";
+import { GuideRegistrationView } from "./GuideRegistration";
 import { CAPABILITY_CONFIG, CONFIG_FIELDS, formatRoute, settingsSection, SETTINGS_SECTIONS, valueAt, type ConfigKey, type DesignContext, type SettingsSection } from "../../../ui-core/src";
-import { FactList, Notice, Section, SubView, type Fact, type IconName } from "../system/components";
+import { Button, FactList, Notice, PairingQr, Section, SubView, type Fact, type IconName } from "../system/components";
 import { AppearanceChoices } from "./Appearance";
 import { ConfigConnections, ConfigControl, ConfigPanel, configRowValue } from "./SettingsConfig";
 
-const ICONS: Record<SettingsSection, IconName> = { general: "palette", connections: "plug", compaction: "retry", storage: "file", index: "database" };
+const ICONS: Record<SettingsSection, IconName> = { general: "palette", connections: "plug", compaction: "retry", storage: "file", index: "database", agent: "file", studio: "gear" };
 
 export function SettingsView({ context }: { context: DesignContext }) {
   const model = context.model;
   const t = model.t.value;
   const section = settingsSection(model.route.value);
+  useEffect(() => { if (section === "studio") void model.loadPairingHosts(); }, [section, model]);
   const canEdit = model.data.capabilities.value.includes(CAPABILITY_CONFIG);
   const facts = model.config.read.value.value;
   const editable = canEdit && !model.config.read.value.error && facts?.file.valid === true;
@@ -75,6 +78,21 @@ export function SettingsView({ context }: { context: DesignContext }) {
           fileFact(t("set.store.clipDays"), "retention.clipboard_days"),
           fileFact(t("set.store.clipBytes"), "retention.clipboard_bytes"),
         ]} /></Section>;
+      case "agent":
+        return <GuideRegistrationView context={context} />;
+      case "studio":
+        return <>
+          <Section title={t("pair.title")} sub={t("pair.help")}>
+            {model.pairing.value.error ? <Notice tone="bad">{t("pair.error")}</Notice> : null}
+            {!model.pairing.value.hosts.length ? <p>{t("pair.noHosts")}</p> : model.pairing.value.hosts.map(host => {
+              const link = model.pairing.value.links[host];
+              return <div key={host}><p><code>{host}</code></p>{link ? <><PairingQr value={link.url} label={t("pair.qr")} /><p class="pairing-url"><code>{link.url}</code></p><p>{t("pair.expires", { time: new Date(link.expires).toLocaleTimeString() })}</p><Button onClick={() => void navigator.clipboard.writeText(link.url)}>{t("pair.copy")}</Button></> : null}<Button onClick={() => void model.createPairing(host)}>{t(link ? "pair.reissue" : "pair.create")}</Button></div>;
+            })}
+          </Section>
+          <Section title={t("studio.remote")} sub={t("studio.remoteGuide")}><FactList missing={missing} facts={[{ label: t("studio.listen"), value: model.data.listen.value, mono: true }]} /><p><code>tailscale serve --bg http://127.0.0.1:PORT</code></p><p><code>shellboy-studio --allow-host HOSTNAME</code></p><p>{t("studio.hostGuide")}</p></Section>
+          <Section title={t("studio.token")}><p>{t("studio.tokenGuide")}</p></Section>
+          <Section title={t("studio.info")}><FactList missing={missing} facts={[{ label: t("studio.apps"), value: model.data.appsDir.value, mono: true }, { label: t("studio.version"), value: model.data.bridgeVersion.value, mono: true }, { label: t("studio.ownerVersion") }]} /></Section>
+        </>;
       case "index":
         return <Section title={t("set.section.index")}><Notice tone="wait">{t("set.index.cost")}</Notice><FactList missing={missing} facts={[
           fileFact(t("set.embed.auto"), "indexing.auto_history"),
@@ -84,7 +102,7 @@ export function SettingsView({ context }: { context: DesignContext }) {
   };
   return <SubView title={t("set.title")} items={SETTINGS_SECTIONS.map((s) => ({ key: s, href: formatRoute({ view: "settings", section: s }), icon: ICONS[s], label: t(`set.section.${s}`), current: s === section }))}>
     <div class="pagehead"><h1>{t(`set.section.${section}`)}</h1><div class="muted">{t(`set.sub.${section}`)}</div></div>
-    <ConfigPanel model={model} />
+    {section !== "studio" && section !== "agent" ? <ConfigPanel model={model} /> : null}
     {body()}
   </SubView>;
 }

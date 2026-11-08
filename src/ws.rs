@@ -94,6 +94,11 @@ pub async fn session<O: Owner>(
 ) {
     let hello = ServerFrame::Hello {
         bridge_version: env!("CARGO_PKG_VERSION"),
+        listen: state.config.listen.to_string(),
+        apps_dir: state
+            .apps
+            .as_ref()
+            .map(|apps| apps.dir.display().to_string()),
         data_dir: state.config.data_dir.display().to_string(),
         owner: owner_state,
     };
@@ -442,6 +447,7 @@ mod tests {
         for args in [
             json!({"thread_id":"t","model":"m"}),
             json!({"thread_id":"t","connection":"c","effort":""}),
+            json!({"thread_id":"t","auto_compact_at":"0","segment_chars":"4096","reduce_rounds":"2","agents":"/tmp/AGENTS.md"}),
         ] {
             assert_eq!(
                 access(&build_command("thread.set", Some(args)).unwrap()),
@@ -451,6 +457,7 @@ mod tests {
         for args in [
             json!({"model":"m"}),
             json!({"thread_id":"t","model":"m","cwd":"/tmp"}),
+            json!({"thread_id":"t","agents":"/tmp/AGENTS.md","title":"bad"}),
             json!({"thread_id":"t","model":"m","parent_id":"p"}),
         ] {
             assert_eq!(

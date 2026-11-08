@@ -176,3 +176,9 @@ Shellboy release whose public protocol includes them.
 Connection edits remain inline rather than reopening first-run setup (user
 approval 2026-11-08). This keeps existing values and pending changes visible;
 adding a connection continues to use the setup flow.
+
+## Studio and per-Thread settings
+
+Studio shows the bridge's bound address and configured apps directory, supplied by the authenticated bridge hello, and its version. The owner handshake does not report the owner software version, so it is shown as unavailable rather than inferred from a protocol version. Propose an optional owner software-version field on the general external-client handshake or status RPC; revisit this row once that documented surface is released. A local executable version or startup log cannot identify the running owner and is not a substitute. Token rotation is manual: stop all Studio processes using the same config directory, remove its token file, and restart. Tailscale Serve guidance keeps the loopback listener and requires an explicit allowed hostname.
+
+The conversation settings include the Thread's own compaction overrides and instruction reference from `thread.get`. Empty compaction overrides clear them; an empty instruction reference is not a valid selection. Only changed overrides are sent. The bridge's `thread.settings` capability is enabled with `next-shellboy`; without it the form is read-only. `thread.set` retains its strict field allowlist and never permits an unrelated setting alongside these changes. Compaction changes affect subsequent requests; an instruction reference change is captured on the next new Turn, not on a retry of the current Turn.

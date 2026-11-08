@@ -8,3 +8,5 @@ export * from "./store";
 export * from "./transport";
 
 export * from "./replies";
+
+export * from "./pairing";
