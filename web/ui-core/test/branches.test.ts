@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { details, flush, settle } from "../../data/test/harness";
 import { branchLayout, branchMarks, branchRowMarks, branchTitle, formatRoute, groupThreads, listedDescendants, parseRoute, projectConversation, readFamily, readRewind, readWholeFamily } from "../src";
+import { Cancel } from "../../data/src";
 import type { HistoryItem, ThreadSummary } from "../../data/src";
 import { fixtureBranches, fixtureModel, fixtureRewind } from "./fixture";
 
@@ -41,6 +42,19 @@ describe("branch management", () => {
     expect(t.calls("thread.archive").at(-1)?.args).toEqual({ thread_ids: ["fork-a"] });
     const rename = model.branches.renameBranch("fork-a", "Keep this"); await settle(t, db); await rename;
     expect(t.calls("thread.set").at(-1)?.args).toEqual({ thread_id: "fork-a", title: "Keep this" });
+    model.dispose();
+  });
+});
+
+describe("branch excerpts", () => {
+  it("reads a bounded split window and a bounded tip window", async () => {
+    const { model, t, db } = await fixtureModel();
+    const answer = db.answer.bind(db);
+    db.answer = c => c.command === "history.window" ? { ok: true, result: { thread_id: "fork-a", revision: 1, total: 103, items: (c.args as { node_id?: string }).node_id ? [{ node_id: "n100", kind: "user", excerpt: "split", selection: { ordinal: 100 } }, { node_id: "n101", kind: "user", excerpt: "first", selection: { ordinal: 101 } }] : [{ node_id: "n102", kind: "assistant_response", excerpt: "line one\nline two\nline three", selection: { ordinal: 102 } }] } } : answer(c);
+    const pending = model.branches.excerpts(family().items[1]!, new Cancel());
+    await settle(t, db); await settle(t, db);
+    expect(await pending).toEqual({ split: "split", request: "first", answer: "line one\nline two" });
+    expect(t.calls("history.window")).toHaveLength(2);
     model.dispose();
   });
 });

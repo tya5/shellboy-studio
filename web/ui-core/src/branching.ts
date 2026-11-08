@@ -94,6 +94,22 @@ export class Branches {
 
   constructor(private readonly ops: Operations) {}
 
+  async excerpts(item: import("./branches").BranchItem, cancel: Cancel): Promise<{ split?: string; request?: string; answer?: string }> {
+    const result: { split?: string; request?: string; answer?: string } = {};
+    if (item.divergence) {
+      const out = await this.ops.historyWindow({ thread_id: item.threadId, node_id: item.divergence.nodeId, before: 0, after: 24, excerpt_chars: 256 }, { cancel });
+      if (out.ok) {
+        result.split = out.value.items.find(n => n.node_id === item.divergence!.nodeId)?.excerpt;
+        result.request = out.value.items.find(n => (n.selection?.ordinal ?? -1) > item.divergence!.ordinal && n.kind === "user")?.excerpt;
+      }
+    }
+    if (!cancel.cancelled) {
+      const out = await this.ops.historyWindow({ thread_id: item.threadId, before: 48, after: 0, excerpt_chars: 256 }, { cancel });
+      if (out.ok) result.answer = out.value.items.filter(n => n.kind === "assistant_response" && n.excerpt).at(-1)?.excerpt?.split("\n").slice(0, 2).join("\n");
+    }
+    return result;
+  }
+
   /** Nobody is looking: cancels the read. The family read so far stays. */
   leave(): void {
     this.again = false;

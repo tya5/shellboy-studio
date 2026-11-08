@@ -35,6 +35,11 @@ async function exchangeToken(token: string): Promise<boolean> {
 }
 
 async function main(): Promise<void> {
+  const pair = /^#pair=([a-f0-9]{64})$/.exec(location.hash);
+  if (pair?.[1]) {
+    history.replaceState(null, "", location.pathname);
+    try { await fetch("/pairing/exchange", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ code: pair[1] }) }); } catch { /* The normal login prompt remains available. */ }
+  }
   const fragment = /^#token=([^&]+)/.exec(location.hash);
   if (fragment?.[1]) {
     await exchangeToken(decodeURIComponent(fragment[1]));
@@ -98,6 +103,12 @@ async function main(): Promise<void> {
       unmount?.();
       unmount = module.mount(root, context);
     });
+  });
+  effect(() => {
+    const owner = data.owner.value;
+    const dir = data.dataDir.value;
+    const optedOut = prefs.value.guideOptOut === true;
+    if (owner.state === "connected" && data.capabilities.value.includes("config.edit")) model.guideRegistration.update(dir, !optedOut);
   });
   model.start();
 }

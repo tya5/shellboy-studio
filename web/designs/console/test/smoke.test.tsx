@@ -569,13 +569,13 @@ describe("Branches", () => {
     expect(el.querySelector(".edge.on")).toBeTruthy();
     expect(text(el.querySelector(".bgraph-svg")!)).toContain("101 nodes");
     expect(text(el)).toContain("no shared prefix");
-    expect(text(el)).toContain("thread.branches");
+    expect(text(el)).not.toContain("thread.branches");
     expect(el.querySelectorAll(".blist .brow").length).toBe(4);
     expect(el.querySelector(".bgraph-svg .bg-tip")!.getAttribute("href")).toBe("#/conversation/lead");
   });
-  it("omits comparing tips and usage since a point, and says so", async () => {
+  it("does not show developer-only missing data notes", async () => {
     const { el } = await open();
-    expect(text(el)).toContain("Comparing two tips");
+    expect(text(el)).not.toContain("Comparing two tips");
     expect([...el.querySelectorAll("button")].some((b) => /side by side/i.test(text(b)))).toBe(false);
   });
   it("a rewind shows its preview first, what isn't undone and the undo path, then asks", async () => {
@@ -974,7 +974,7 @@ describe("Phone tabs", () => {
 });
 
 describe("Settings", () => {
-  const open = async (section: "connections" | "models" | "embeddings" | "shell" | "storage" | "compaction" | "appearance") => {
+  const open = async (section: "connections" | "models" | "embeddings" | "shell" | "storage" | "compaction" | "studio" | "appearance") => {
     const { model, t, db } = await fixtureModel({ route: "settings" });
     const el = draw(model);
     await act(async () => {
@@ -986,11 +986,18 @@ describe("Settings", () => {
   it("lists the sections as links, and says it is read-only with no restart promise", async () => {
     const { el } = await open("connections");
     const nav = [...el.querySelectorAll(".secnav-item")].map(text);
-    expect(nav).toEqual(["Connections", "Models & defaults", "Embeddings & indexing", "Shell", "Storage & retention", "Compaction", "Appearance"]);
+    expect(nav).toEqual(["Connections", "Models & defaults", "Embeddings & indexing", "Shell", "Storage & retention", "Compaction", "Studio", "Appearance"]);
     expect(el.querySelector('.secnav-item[aria-current="page"]')!.getAttribute("href")).toBe("#/settings/connections");
     expect(text(el)).toContain("Read-only");
     expect(text(el)).not.toContain("Changes take effect after owner restart");
     expect(el.querySelector(".subview-main input")).toBeNull();
+  });
+  it("shows the Studio access guidance without developer source labels", async () => {
+    const { el } = await open("studio");
+    expect(text(el)).toContain("Tailscale Serve");
+    expect(text(el)).toContain("--allow-host");
+    expect(text(el)).toContain("Apps folder");
+    expect(text(el)).not.toContain("Source:");
   });
   it("Connections shows the connection in use, and credential names only as unavailable", async () => {
     const { el, t } = await open("connections");

@@ -1,10 +1,12 @@
+import { useEffect } from "preact/hooks";
+import { GuideRegistrationView } from "./GuideRegistration";
 import { CAPABILITY_CONFIG, CONFIG_FIELDS, formatBytes, formatRoute, formatTokens, settingsSection, SETTINGS_SECTIONS, type ConfigKey, type DesignContext, type SettingsSection } from "../../../ui-core/src";
-import { Button, FactList, GuideCopy, Notice, Section, SubView, type Fact, type IconName } from "../system/components";
+import { Button, FactList, Notice, PairingQr, Section, SubView, type Fact, type IconName } from "../system/components";
 import { AppearanceChoices } from "./Appearance";
 import { ConfigConnections, ConfigControl, ConfigPanel, SecretEntries, configRowValue } from "./SettingsConfig";
 import { Rich } from "./Rich";
 
-const ICONS: Record<SettingsSection, IconName> = { connections: "plug", models: "cube", embeddings: "database", shell: "term", storage: "file", compaction: "retry", appearance: "palette" };
+const ICONS: Record<SettingsSection, IconName> = { connections: "plug", models: "cube", embeddings: "database", shell: "term", storage: "file", compaction: "retry", studio: "gear", appearance: "palette" };
 
 const num = (n: number): string => n.toLocaleString("en-US");
 export function SettingsView({ context }: { context: DesignContext }) {
@@ -12,6 +14,7 @@ export function SettingsView({ context }: { context: DesignContext }) {
   const t = model.t.value;
   const route = model.route.value;
   const section = settingsSection(route);
+  useEffect(() => { if (section === "studio") void model.loadPairingHosts(); }, [model, section]);
   const i = model.insights;
   const selected = model.selectedRow.value;
   const thread = i.thread.value;
@@ -46,7 +49,7 @@ export function SettingsView({ context }: { context: DesignContext }) {
             <Section title={t("setup.open")} sub={t("setup.intro")}>
               <div class="setup-actions"><a class="btn" href={formatRoute({ view: "setup" })} onClick={() => model.setup.beginAdd()}>{t("setup.add")}</a></div>
             </Section>
-            <Section title={t("set.conn.inUse")} sub={threadSub} source={<>{t("common.source", { source: "" })}<code>thread.get</code></>}>
+            <Section title={t("set.conn.inUse")} sub={threadSub}>
               {threadError}
               <FactList missing={selected ? missing : t("config.noThreadOpen")} facts={[
                 { label: t("set.conn.name"), value: settings?.connection, mono: true },
@@ -57,7 +60,6 @@ export function SettingsView({ context }: { context: DesignContext }) {
               title={t("set.conn.catalog")}
               sub={t("set.conn.catalogSub")}
               actions={<Button disabled={catalog.loading} onClick={() => void i.readCatalog()}>{catalog.loading ? t("common.loading") : t("set.conn.readCatalog")}</Button>}
-              source={<>{t("common.source", { source: "" })}<code>model.list</code></>}
             >
               {catalog.error ? <Notice tone="bad">{t("common.readError", { message: catalog.error.message })}</Notice> : null}
               {catalog.value ? (
@@ -84,7 +86,7 @@ export function SettingsView({ context }: { context: DesignContext }) {
       case "models":
         return (
           <>
-            <Section title={t("set.conn.inUse")} sub={threadSub} source={<>{t("common.source", { source: "" })}<code>thread.get</code></>}>
+            <Section title={t("set.conn.inUse")} sub={threadSub}>
               {threadError}
               <FactList missing={selected ? missing : t("config.noThreadOpen")} facts={[
                 { label: t("set.conn.name"), value: settings?.connection, mono: true },
@@ -103,7 +105,7 @@ export function SettingsView({ context }: { context: DesignContext }) {
             <Section title={t("setup.embed.offerTitle")} sub={t("setup.embed.offerBody")}>
               <div class="setup-actions"><a class="btn" href={formatRoute({ view: "setup", step: "embedding" })}>{t("setup.embed.open")}</a></div>
             </Section>
-            <Section title={t("set.embed.state")} source={<>{t("common.source", { source: "" })}<code>index.status</code></>}>
+            <Section title={t("set.embed.state")}>
               {index.error ? <Notice tone="bad">{t("common.readError", { message: index.error.message })}</Notice> : null}
               {index.value ? (
                 <FactList missing={missing} facts={[
@@ -123,7 +125,7 @@ export function SettingsView({ context }: { context: DesignContext }) {
       case "shell":
         return (
           <>
-            <Section title={t("set.shell.cwd")} sub={threadSub} source={<>{t("common.source", { source: "" })}<code>thread.get</code></>}>
+            <Section title={t("set.shell.cwd")} sub={threadSub}>
               {threadError}
               <FactList missing={selected ? missing : t("config.noThreadOpen")} facts={[
                 { label: t("set.shell.cwd"), value: settings?.cwd, mono: true },
@@ -144,7 +146,7 @@ export function SettingsView({ context }: { context: DesignContext }) {
       case "storage":
         return (
           <>
-            <Section title={t("set.store.state")} sub={t("set.store.see")} actions={<a class="btn" href={formatRoute({ view: "analytics", section: "storage" })}>{t("set.store.open")}</a>} source={<>{t("common.source", { source: "" })}<code>storage.status</code>, <code>status --memory</code>, <code>status</code></>}>
+            <Section title={t("set.store.state")} sub={t("set.store.see")} actions={<a class="btn" href={formatRoute({ view: "analytics", section: "storage" })}>{t("set.store.open")}</a>}>
               {storage.error ? <Notice tone="bad">{t("common.readError", { message: storage.error.message })}</Notice> : null}
               <FactList missing={missing} facts={[
                 { label: t("set.store.warning"), ...(storage.value ? { value: t(storage.value.warning ? "set.store.reached" : "set.store.notReached") } : {}) },
@@ -169,7 +171,7 @@ export function SettingsView({ context }: { context: DesignContext }) {
       case "compaction":
         return (
           <>
-            <Section title={t("set.compact.thread")} sub={<>{threadSub} <Rich text={t("set.compact.threadSub")} /></>} source={<>{t("common.source", { source: "" })}<code>thread.get</code></>}>
+            <Section title={t("set.compact.thread")} sub={<>{threadSub} <Rich text={t("set.compact.threadSub")} /></>}>
               {threadError}
               <FactList missing={missing} facts={[
                 {
@@ -191,6 +193,19 @@ export function SettingsView({ context }: { context: DesignContext }) {
             </Section>
           </>
         );
+      case "studio":
+        return <>
+          <Section title={t("pair.title")} sub={t("pair.help")}>
+            {model.pairing.value.error ? <Notice tone="bad">{t("pair.error")}</Notice> : null}
+            {!model.pairing.value.hosts.length ? <p>{t("pair.noHosts")}</p> : model.pairing.value.hosts.map(host => {
+              const link = model.pairing.value.links[host];
+              return <div key={host}><p><code>{host}</code></p>{link ? <><PairingQr value={link.url} label={t("pair.qr")} /><p class="pairing-url"><code>{link.url}</code></p><p>{t("pair.expires", { time: new Date(link.expires).toLocaleTimeString() })}</p><Button onClick={() => void navigator.clipboard.writeText(link.url)}>{t("pair.copy")}</Button></> : null}<Button onClick={() => void model.createPairing(host)}>{t(link ? "pair.reissue" : "pair.create")}</Button></div>;
+            })}
+          </Section>
+          <Section title={t("studio.remote")} sub={t("studio.remoteGuide")}><FactList missing={missing} facts={[{ label: t("studio.listen"), value: model.data.listen.value, mono: true }]} /><p><code>tailscale serve --bg http://127.0.0.1:PORT</code></p><p><code>shellboy-studio --allow-host HOSTNAME</code></p><p>{t("studio.hostGuide")}</p></Section>
+          <Section title={t("studio.token")}><p>{t("studio.tokenGuide")}</p></Section>
+          <Section title={t("studio.info")}><FactList missing={missing} facts={[{ label: t("studio.apps"), value: model.data.appsDir.value, mono: true }, { label: t("studio.version"), value: model.data.bridgeVersion.value, mono: true }, { label: t("studio.ownerVersion") }]} /></Section>
+        </>;
       case "appearance":
         return (
           <Section title={t("set.section.appearance")} sub={t("set.sub.appearance")}>
@@ -211,9 +226,9 @@ export function SettingsView({ context }: { context: DesignContext }) {
         <h1>{t(`set.section.${section}`)}</h1>
         <div class="muted">{t(`set.sub.${section}`)}</div>
       </div>
-      {section !== "appearance" ? <ConfigPanel model={model} /> : null}
+      {section !== "appearance" && section !== "studio" ? <ConfigPanel model={model} /> : null}
       {body()}
-      <GuideCopy title={t("guide.title")} line={t("guide.line")} note={t("guide.note")} copy={t("code.copy")} copied={t("code.copied")} failed={t("guide.copyFailed")} />
+      <GuideRegistrationView context={context} />
     </SubView>
   );
 }
