@@ -22,7 +22,7 @@ const got = (over: Record<string, unknown> = {}) => ({
 });
 
 async function open(answer: (args: Record<string, unknown>) => unknown = () => ({ ok: true, result: { written: true, restart_required: true, changes: [] } })) {
-  const made = await fixtureModel({ route: "settings", section: "models", capabilities: ["config.edit"] });
+  const made = await fixtureModel({ route: "settings", section: "general", capabilities: ["config.edit"] });
   const before = made.db.answer;
   let read = got();
   made.db.answer = (c) => {
@@ -37,7 +37,7 @@ async function open(answer: (args: Record<string, unknown>) => unknown = () => (
 
 describe("config editing", () => {
   it("doesn't read without the capability", async () => {
-    const { t } = await fixtureModel({ route: "settings", section: "models" });
+    const { t } = await fixtureModel({ route: "settings", section: "general" });
     expect(t.calls("config.get")).toHaveLength(0);
   });
 
@@ -76,6 +76,18 @@ describe("config editing", () => {
     void c.save();
     await settle(t, db);
     expect(t.calls("config.set").at(-1)!.args).toMatchObject({ changes: [{ field: "limits.data_max_bytes", value: 2048 }, { field: "connections.proxy.ssl_verify", value: false }] });
+  });
+
+  it("writes indexing kinds as an array and fractional compaction percentages as numbers", async () => {
+    const { model, t, db } = await open();
+    model.config.edit(["indexing", "auto_kinds"], "user,summary", "kinds");
+    model.config.edit(["compaction", "summary_max_percent"], "2.5", "float");
+    void model.config.save();
+    await settle(t, db);
+    expect(t.calls("config.set").at(-1)!.args).toEqual({ expected_hash: HASH, changes: [
+      { field: "indexing.auto_kinds", value: ["user", "summary"] },
+      { field: "compaction.summary_max_percent", value: 2.5 },
+    ] });
   });
 
   it("blank removes the key, which the review says", async () => {
@@ -159,7 +171,35 @@ describe("config editing", () => {
     await settle(t, db);
     expect(c.stage.value).toMatchObject({ kind: "saved", restartRequired: true, warning: "permissions may differ" });
     const stage = c.stage.value as { changes: { sensitive: boolean; value?: unknown }[] };
-    expect(stage.changes[1]).toEqual({ field: "shell.env.MY_VAR", sensitive: true, restartRequired: true });
+    expect(stage.changes[1]).toEqual({ field: "shell.env.MY_VAR", sensitive: true, restartRequired: true, appliedToRunningOwner: false });
+  });
+
+  it("tests and clears a saved connection without sending a credential", async () => {
+    const made = await open();
+    const before = made.db.answer;
+    made.db.answer = (c) => c.command === "connection.test" ? { ok: true, result: { ok: true, models: [] } }
+      : c.command === "credentials.clear" ? { ok: true, result: {} } : before(c);
+    void made.model.config.testConnection("proxy");
+    await settle(made.t, made.db);
+    expect(made.t.calls("connection.test").at(-1)!.args).toEqual({ connection: "proxy" });
+    expect(made.model.config.connectionAction.value).toEqual({ name: "proxy", state: "ok" });
+    void made.model.config.clearCredential("proxy");
+    await settle(made.t, made.db);
+    expect(made.t.calls("credentials.clear").at(-1)!.args).toEqual({ connection: "proxy" });
+    expect(made.model.config.connectionAction.value).toEqual({ name: "proxy", state: "cleared" });
+  });
+
+  it("does not write a stale draft when a later configuration read fails", async () => {
+    const made = await open();
+    const before = made.db.answer;
+    made.db.answer = (c) => c.command === "config.get" ? { ok: false, code: "invalid_argument", message: "not available" } : before(c);
+    made.model.config.edit(["default_model"], "new", "text");
+    void made.model.config.refresh();
+    await settle(made.t, made.db);
+    expect(made.model.config.read.value.error).toBeDefined();
+    void made.model.config.save();
+    await settle(made.t, made.db);
+    expect(made.t.calls("config.set")).toHaveLength(0);
   });
 
   it("leaving Settings cancels the read and keeps the drafts", async () => {

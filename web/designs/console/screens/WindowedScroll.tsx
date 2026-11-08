@@ -14,7 +14,7 @@ export function heldRange(visible: { first: number; last: number }, total: numbe
   return range;
 }
 
-export function WindowedScroll({ model, win, renderRow, live }: { model: AppModel; win: ConversationWindow; renderRow: (row: ConversationRow) => VNode; live: ComponentChildren }) {
+export function WindowedScroll({ model, win, renderRow, live, liveBoundary, statusLine }: { model: AppModel; win: ConversationWindow; renderRow: (row: ConversationRow) => VNode; live: ComponentChildren; liveBoundary?: number; statusLine?: ComponentChildren }) {
   const t = model.t.value;
   win.version.value; // redraw on every change the window reports
   const status = win.status.value;
@@ -88,6 +88,7 @@ export function WindowedScroll({ model, win, renderRow, live }: { model: AppMode
         if (position !== undefined) rowAt.set(position, [...(rowAt.get(position) ?? []), row]);
       }
       for (let position = i; position <= end; position++) {
+        if (position === liveBoundary) parts.push(<div class="live-tail" key="live">{live}</div>);
         const grouped = rowAt.get(position);
         parts.push(grouped ? <div key={position} data-o={position} class="vrow">{grouped.map(renderRow)}</div>
           : <div key={`empty${position}`} data-o={position} />);
@@ -120,7 +121,8 @@ export function WindowedScroll({ model, win, renderRow, live }: { model: AppMode
       <VirtualSpace top={range ? win.offsetOf(range.first) : 0} bottom={range ? Math.max(0, win.totalHeight() - win.offsetOf(range.last + 1)) : win.totalHeight()}>
         {parts}
       </VirtualSpace>
-      <div class="live-tail">{live}</div>
+      {(liveBoundary === undefined || !range || liveBoundary > range.last) ? <div class="live-tail">{live}</div> : null}
+      {statusLine}
       {win.total === 0 && status === "loading" ? <LoadingRows label={t("convo.loading")} rows={5} /> : null}
       {win.total === 0 && status === "ready" ? <EmptyState icon="chat" title={t("convo.empty")} body={t("convo.emptyBody")} /> : null}
     </div>

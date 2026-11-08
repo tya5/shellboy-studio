@@ -5,6 +5,7 @@ import { signal } from "@preact/signals-core";
 import { options, render } from "preact";
 import { act } from "preact/test-utils";
 import { afterEach, describe, expect, it } from "vitest";
+import { WindowOwner } from "../../../ui-core/test/window-owner";
 import { fixtureModel, fixturePendingAdapter } from "../../../ui-core/test/fixture";
 import type { ServerFrame } from "../../../data/src";
 import { settle } from "../../../data/test/harness";
@@ -164,6 +165,55 @@ describe("Conversation live text", () => {
     expect(el.textContent).toContain("Final saved answer");
   });
 
+  it("keeps a newly saved human message after the live reply until the answer is reread", async () => {
+    const { model, t, db } = await fixtureModel({ capabilities: ["live.text"] });
+    const el = draw(model);
+    act(() => t.push(liveFrame("Live answer")));
+    await act(async () => flushPromises());
+    db.history.lead = [...(db.history.lead ?? []), { node_id: "user-new", kind: "user", excerpt: "New human message", provenance: { sender: { kind: "human" } } }];
+    act(() => t.push({ t: "changed", thread_ids: ["lead"], list: false }));
+    await act(async () => settle(t, db));
+    expect(text(el).indexOf("Live answer")).toBeLessThan(text(el).indexOf("New human message"));
+    model.dispose();
+  });
+
+  it("keeps a saved answer ahead of a later human message", async () => {
+    const { model, t, db } = await fixtureModel({ capabilities: ["live.text"] });
+    const el = draw(model);
+    act(() => t.push(liveFrame("Answer before save")));
+    await act(async () => flushPromises());
+    db.history.lead = [...(db.history.lead ?? []), { node_id: "saved-order", kind: "assistant_response", excerpt: "Saved answer", provenance: { sender: { kind: "shellboy" } } }];
+    act(() => t.push({ t: "live_end", thread_id: "lead" }));
+    await act(async () => settle(t, db));
+    db.history.lead = [...db.history.lead, { node_id: "user-order", kind: "user", excerpt: "Later human", provenance: { sender: { kind: "human" } } }];
+    act(() => t.push({ t: "changed", thread_ids: ["lead"], list: false }));
+    await act(async () => settle(t, db));
+    expect(text(el)).toContain("Saved answer");
+    expect(text(el)).toContain("Later human");
+    expect(text(el).indexOf("Saved answer")).toBeLessThan(text(el).indexOf("Later human"));
+    model.dispose();
+  });
+
+  it("keeps the live answer before a later human row in the windowed reader", async () => {
+    const owner = new WindowOwner(8);
+    owner.decorate = (i, item) => i === 8 ? { ...item, kind: "user", excerpt: "Window human" } : item;
+    const { model, t, db } = await fixtureModel({ capabilities: ["live.text", "history.window"], configure(db) {
+      const base = db.answer.bind(db);
+      db.answer = (c) => c.command === "history.window" ? owner.answer(c) : base(c);
+    } });
+    const el = draw(model);
+    await act(async () => settle(t, db));
+    act(() => t.push(liveFrame("Window live answer")));
+    await act(async () => flushPromises());
+    owner.append(1);
+    act(() => t.push({ t: "changed", thread_ids: ["lead"], list: false }));
+    await act(async () => settle(t, db));
+    expect(text(el)).toContain("Window live answer");
+    expect(text(el)).toContain("Window human");
+    expect(text(el).indexOf("Window live answer")).toBeLessThan(text(el).indexOf("Window human"));
+    model.dispose();
+  });
+
   it("shows at the end of the windowed reader too, and keeps following as it grows", async () => {
     const { model, t } = await fixtureModel({ capabilities: ["live.text", "history.window"] });
     const el = draw(model);
@@ -228,6 +278,7 @@ describe("Conversation", () => {
     expect(text(el)).toContain("1 tools");
     expect(text(el)).not.toContain("cargo test history::search");
     act(() => el.querySelector<HTMLButtonElement>('.steps summary')!.click());
+    expect(el.querySelector(".step-group > .step-group-list > .step")).toBeTruthy();
     expect(text(el)).toContain("cargo test history::search");
     expect(text(el)).toContain("exit 0");
     expect(text(el)).toContain("2.4s");
@@ -569,13 +620,13 @@ describe("Branches", () => {
     expect(el.querySelector(".edge.on")).toBeTruthy();
     expect(text(el.querySelector(".bgraph-svg")!)).toContain("101 nodes");
     expect(text(el)).toContain("no shared prefix");
-    expect(text(el)).toContain("thread.branches");
+    expect(text(el)).not.toContain("thread.branches");
     expect(el.querySelectorAll(".blist .brow").length).toBe(4);
     expect(el.querySelector(".bgraph-svg .bg-tip")!.getAttribute("href")).toBe("#/conversation/lead");
   });
-  it("omits comparing tips and usage since a point, and says so", async () => {
+  it("does not show developer-only missing data notes", async () => {
     const { el } = await open();
-    expect(text(el)).toContain("Comparing two tips");
+    expect(text(el)).not.toContain("Comparing two tips");
     expect([...el.querySelectorAll("button")].some((b) => /side by side/i.test(text(b)))).toBe(false);
   });
   it("a rewind shows its preview first, what isn't undone and the undo path, then asks", async () => {
@@ -756,39 +807,27 @@ describe("Threads", () => {
     expect(el.querySelector(".subview-main input")).toBeNull();
   });
 
-  it("Settings fills rows, reviews changes, and writes only what changed", async () => {
-    const made = await fixtureModel({ route: "settings", section: "shell", capabilities: ["config.edit"] });
+  it("Settings reviews changes and writes only what changed", async () => {
+    const made = await fixtureModel({ route: "settings", section: "general", capabilities: ["config.edit"] });
     const before = made.db.answer;
-    const values = { shell: { kind: "bash", executable: null, env: { MY_VAR: "[redacted]" } } };
-    const side = { present: true, content_hash: "h1", valid: true, error: null, values, redacted_fields: ["shell.env.MY_VAR"] };
-    made.db.answer = (c) =>
-      c.command === "config.get"
-        ? { ok: true, result: { config_path: "/temp/config.toml", loaded: { ...side, values: { shell: { kind: "powershell", executable: null, env: {} } } }, file: side, differs: true, differing_fields: ["shell.kind"], restart: { all_fields_require_restart: true } } }
-        : c.command === "config.set"
-          ? { ok: true, result: { written: true, restart_required: true, changes: [{ field: "shell.executable", previous: null, value: "/bin/zsh", sensitive: false, restart_required: true }] } }
-          : before(c);
+    const values = { default_model: "old-model", default_connection: "proxy", connections: { proxy: {} } };
+    const side = { present: true, content_hash: "h1", valid: true, error: null, values, redacted_fields: [] };
+    made.db.answer = (c) => c.command === "config.get"
+      ? { ok: true, result: { loaded: side, file: side, differs: false } }
+      : c.command === "config.set"
+        ? { ok: true, result: { written: true, restart_required: false, changes: [{ field: "default_model", previous: "old-model", value: "new-model", applied_to_running_owner: true }] } }
+        : before(c);
     const el = draw(made.model);
     act(() => made.model.config.ensure());
-    await act(async () => {
-      await settle(made.t, made.db);
-    });
-    const main = () => text(el);
-    expect(main()).toContain("every setting needs an owner restart");
-    expect(main()).toContain("Applied after a restart: shell.kind");
-    expect(main()).toContain("still uses powershell");
-    expect(main()).toContain("Set, hidden");
-    expect(main()).not.toContain("[redacted]");
-    const button = (name: string) => [...el.querySelectorAll<HTMLButtonElement>("button")].find((b) => text(b) === name);
-    const exe = el.querySelector<HTMLInputElement>('input[aria-label="Executable"], .fact input')!;
-    act(() => { exe.value = "/bin/zsh"; exe.dispatchEvent(new Event("input", { bubbles: true })); });
-    act(() => button("Review changes")!.click());
-    expect(main()).toContain("shell.executable");
-    await act(async () => {
-      button("Write to file")!.click();
-      await settle(made.t, made.db);
-    });
-    expect(made.t.calls("config.set").at(-1)!.args).toEqual({ expected_hash: "h1", changes: [{ field: "shell.executable", value: "/bin/zsh" }] });
-    expect(main()).toContain("Restart required");
+    await act(async () => { await settle(made.t, made.db); });
+    const input = el.querySelector<HTMLInputElement>('input[aria-label="Default model"]')!;
+    act(() => { input.value = "new-model"; input.dispatchEvent(new Event("input", { bubbles: true })); });
+    const button = (name: string) => [...el.querySelectorAll<HTMLButtonElement>("button")].find((b) => text(b) === name)!;
+    act(() => button("Review changes").click());
+    await act(async () => { button("Write to file").click(); await settle(made.t, made.db); });
+    expect(made.t.calls("config.set").at(-1)!.args).toEqual({ expected_hash: "h1", changes: [{ field: "default_model", value: "new-model" }] });
+    expect(text(el)).toContain("subsequent requests");
+    expect(text(el)).not.toContain("Restart required");
   });
 
   it("with the capability: picker, preview, then Move; a refusal shows the owner's words", async () => {
@@ -974,7 +1013,7 @@ describe("Phone tabs", () => {
 });
 
 describe("Settings", () => {
-  const open = async (section: "connections" | "models" | "embeddings" | "shell" | "storage" | "compaction" | "appearance") => {
+  const open = async (section: "connections" | "general" | "index" | "storage" | "compaction" | "studio" | "agent") => {
     const { model, t, db } = await fixtureModel({ route: "settings" });
     const el = draw(model);
     await act(async () => {
@@ -986,42 +1025,27 @@ describe("Settings", () => {
   it("lists the sections as links, and says it is read-only with no restart promise", async () => {
     const { el } = await open("connections");
     const nav = [...el.querySelectorAll(".secnav-item")].map(text);
-    expect(nav).toEqual(["Connections", "Models & defaults", "Embeddings & indexing", "Shell", "Storage & retention", "Compaction", "Agents", "Appearance"]);
+    expect(nav).toEqual(["General", "Connections", "Summary", "Storage & capacity", "Indexing", "Agent", "Studio"]);
     expect(el.querySelector('.secnav-item[aria-current="page"]')!.getAttribute("href")).toBe("#/settings/connections");
     expect(text(el)).toContain("Read-only");
     expect(text(el)).not.toContain("Changes take effect after owner restart");
     expect(el.querySelector(".subview-main input")).toBeNull();
   });
-  it("Connections shows the connection in use, and credential names only as unavailable", async () => {
-    const { el, t } = await open("connections");
-    expect(text(el)).toContain("Credential variable name");
-    expect(text(el)).toContain("config check");
-    expect(t.calls("model.list")).toHaveLength(0);
+  it("shows indexing cost and links storage use to Analytics", async () => {
+    expect(text((await open("index")).el)).toContain("may incur charges");
+    const { el } = await open("storage");
+    expect(el.querySelector('a[href="#/analytics/storage"]')).toBeTruthy();
   });
-  it("the catalog is read only on a press", async () => {
-    const { el, t, db } = await open("connections");
-    const button = [...el.querySelectorAll(".subview-main button")].find((b) => text(b).includes("default connection")) as HTMLButtonElement;
-    await act(async () => {
-      button.click();
-      await (await import("../../../data/test/harness")).settle(t, db);
-    });
-    expect(t.calls("model.list")).toHaveLength(1);
-    expect(text(el)).toContain("Models: 2");
-    expect(text(el)).toContain("responses");
+  it("shows the Studio access guidance without developer source labels", async () => {
+    const { el } = await open("studio");
+    expect(text(el)).toContain("Tailscale Serve");
+    expect(text(el)).toContain("--allow-host");
+    expect(text(el)).toContain("Apps folder");
+    expect(text(el)).not.toContain("Source:");
   });
-  it("Embeddings shows the index state; Storage marks documented defaults as such", async () => {
-    expect(text((await open("embeddings")).el)).toContain("mock-embed");
-    const storage = text((await open("storage")).el);
-    expect(storage).toContain("Logical warning");
-    expect(storage).not.toMatch(/Documented default|8 GiB|10 GiB/);
-    expect(storage).toContain("Not reached");
-    expect(storage).toContain("32 MiB");
-  });
-  it("Compaction shows the Thread's values and their origin; Appearance switches theme without a reload", async () => {
-    const compaction = text((await open("compaction")).el);
-    expect(compaction).toContain("Proactive compaction at");
-    expect(compaction).toContain("thread set");
-    const { el } = await open("appearance");
+  it("points per-thread settings to Conversation and keeps appearance choices", async () => {
+    expect(text((await open("compaction")).el)).toContain("conversation screen");
+    const { el } = await open("general");
     const light = [...el.querySelectorAll(".subview-main button")].find((b) => text(b) === "Light") as HTMLButtonElement;
     act(() => light.click());
     expect(light.getAttribute("aria-pressed")).toBe("true");
@@ -1031,7 +1055,7 @@ describe("Settings", () => {
     const el = draw(model);
     act(() => el.querySelector<HTMLButtonElement>("[data-settings-toggle]")!.click());
     const link = [...el.querySelectorAll(".panel a")].find((a) => text(a) === "All settings")!;
-    expect(link.getAttribute("href")).toBe("#/settings/appearance");
+    expect(link.getAttribute("href")).toBe("#/settings/general");
   });
 });
 
@@ -1186,15 +1210,14 @@ describe("Setup", () => {
       expect(t.calls().some((c) => /embed|index|rag/.test(c.command))).toBe(false);
     });
 
-    it("Settings links to both flows", async () => {
+    it("Settings links to connection setup and edits embedding settings", async () => {
       const { model, t, db } = await setupWith("settings");
+      model.applyRoute({ view: "settings", section: "connections" });
       const el = draw(model);
       await pumpOf(t as never, db as never)();
       expect(text(el)).toContain("Add a connection");
       expect(el.querySelector('a[href="#/setup"]')).toBeTruthy();
-      model.applyRoute({ view: "settings", section: "embeddings" });
-      await pumpOf(t as never, db as never)();
-      expect(el.querySelector('a[href="#/setup/embedding"]')).toBeTruthy();
+      expect(text(el)).toContain("Embedding settings");
     });
   });
 });

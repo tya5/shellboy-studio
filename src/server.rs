@@ -94,6 +94,8 @@ pub fn router<O: Owner>(state: AppState<O>) -> Router {
         .route("/healthz", get(|| async { "ok" }))
         .route("/auth", post(auth_exchange::<O>))
         .route("/guide-preference", get(guide_preference_get::<O>).post(guide_preference_set::<O>))
+        .route("/pairing", get(pairing_hosts::<O>).post(pairing_issue::<O>))
+        .route("/pairing/exchange", post(pairing_exchange::<O>))
         .route("/ws", get(ws_upgrade::<O>));
     if state.config.debug {
         router = router.route("/debug", get(debug_page));
@@ -180,6 +182,92 @@ async fn auth_exchange<O: Owner>(
         )
             .into_response(),
         Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, "no random source").into_response(),
+    }
+}
+
+fn authorized<O: Owner>(state: &AppState<O>, headers: &HeaderMap) -> bool {
+    origin_ok(headers)
+        && state.auth.cookie_valid(
+            &auth::cookie_name(state.config.listen.port()),
+            header_str(headers, header::COOKIE),
+        )
+}
+
+async fn pairing_hosts<O: Owner>(State(state): State<AppState<O>>, headers: HeaderMap) -> Response {
+    if !authorized(&state, &headers) {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
+    let hosts: Vec<_> = state
+        .config
+        .extra_hosts
+        .iter()
+        .filter(|h| auth::pairing_host(h))
+        .collect();
+    (
+        [(header::CACHE_CONTROL, "no-store")],
+        axum::Json(serde_json::json!({"hosts": hosts})),
+    )
+        .into_response()
+}
+
+#[derive(Deserialize)]
+struct PairingHost {
+    host: String,
+}
+async fn pairing_issue<O: Owner>(
+    State(state): State<AppState<O>>,
+    headers: HeaderMap,
+    axum::Json(body): axum::Json<PairingHost>,
+) -> Response {
+    if !authorized(&state, &headers) {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
+    if !auth::pairing_host(&body.host)
+        || !state
+            .config
+            .extra_hosts
+            .iter()
+            .any(|h| h.eq_ignore_ascii_case(&body.host))
+    {
+        return StatusCode::BAD_REQUEST.into_response();
+    }
+    match state.auth.issue_pairing() {
+        Ok(code) => ([(header::CACHE_CONTROL, "no-store")], axum::Json(serde_json::json!({"url": format!("https://{}/#pair={code}", body.host), "expires_in_seconds": auth::PAIRING_TTL.as_secs()}))).into_response(),
+        Err(_) => StatusCode::TOO_MANY_REQUESTS.into_response(),
+    }
+}
+
+#[derive(Deserialize)]
+struct PairingCode {
+    code: String,
+}
+async fn pairing_exchange<O: Owner>(
+    State(state): State<AppState<O>>,
+    headers: HeaderMap,
+    axum::Json(body): axum::Json<PairingCode>,
+) -> Response {
+    if !origin_ok(&headers) {
+        return StatusCode::FORBIDDEN.into_response();
+    }
+    if !state.auth.consume_pairing(&body.code) {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
+    match state.auth.issue_session() {
+        Ok(id) => (
+            StatusCode::NO_CONTENT,
+            [
+                (
+                    header::SET_COOKIE,
+                    format!(
+                        "{}={id}; HttpOnly; SameSite=Strict; Path=/",
+                        auth::cookie_name(state.config.listen.port())
+                    ),
+                ),
+                (header::CACHE_CONTROL, "no-store".to_owned()),
+            ],
+        )
+            .into_response(),
+        Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
     }
 }
 
