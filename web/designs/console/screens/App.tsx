@@ -75,7 +75,7 @@ export function App({ context }: { context: DesignContext }) {
         <button type="button" class={drawer ? "scrim open" : "scrim"} aria-label={t("threads.close")} tabIndex={drawer ? 0 : -1} onClick={() => setDrawer(false)} />
         <aside class={drawer ? "side open" : "side"} aria-label={t("threads.title")}>
           <div class="brand">
-            <Icon name="bot" />
+            <img class="brand-logo" src="/assets/brand/studio-teal-master.svg" alt="" />
             <span class="brand-label">{t("brand")}</span>
           </div>
           <div class="nav-toggle"><Button icon label={context.prefs.value.navCollapsed ? t("nav.expand") : t("nav.collapse")} title={context.prefs.value.navCollapsed ? t("nav.expand") : t("nav.collapse")} aria-expanded={!context.prefs.value.navCollapsed} onClick={() => context.setPrefs({ navCollapsed: !context.prefs.value.navCollapsed })}><Icon name="menu" /></Button></div>

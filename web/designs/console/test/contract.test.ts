@@ -59,6 +59,14 @@ describe.each(THEMES)("theme %s", (theme) => {
   });
 });
 
+describe("approved Bright Teal brand", () => {
+  it("keeps the approved palette theme-independent and outside UI tokens", () => {
+    expect(tokens.brand.tokens).toEqual({ "logo-tile": "#028da3", "logo-face": "#023239", "logo-ring": "#FEF2D1", "logo-wink": "#38bdf8" });
+    expect(tokens.brand.tokens["logo-wink"]).toBe(parse(fileFor("console")).get("accent"));
+    for (const theme of THEMES) for (const name of Object.keys(tokens.brand.tokens)) expect(parse(fileFor(theme)).has(name)).toBe(false);
+  });
+});
+
 describe("one source of tokens", () => {
   it("the token files are what tokens.json generates", () => {
     for (const f of allTokenFiles(tokens)) expect(fileFor(f.id)).toBe(f.css);

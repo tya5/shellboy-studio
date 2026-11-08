@@ -1,0 +1,10 @@
+<?xml version='1.0' encoding='utf-8'?>
+<ns0:svg xmlns:ns0="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 390 390" role="img" aria-labelledby="shellboy-teal-32-title">
+  <ns0:title id="shellboy-teal-32-title">Shellboy Studio — teal, 32px optical</ns0:title>
+  <ns0:desc>Original lower-left speech-bubble tail, left greater-than wink, right vertical oval eye. Newly reconstructed from the selected PNG.</ns0:desc>
+  <ns0:rect id="shellboy-teal-32-tile" width="390" height="390" rx="50" fill="#028da3" />
+  <ns0:path id="shellboy-teal-32-face" d="M126 63 H263 C315 63 354 102 354 153 V222 C354 272 324 310 274 310 H208 L155 349 C141 359 126 350 126 333 L125 310 H124 C74 310 35 271 35 221 V154 C35 104 75 63 126 63 Z" fill="#023239" />
+  <ns0:path id="shellboy-teal-32-bubble" d="M126 63 H263 C315 63 354 102 354 153 V222 C354 272 324 310 274 310 H208 L155 349 C141 359 126 350 126 333 L125 310 H124 C74 310 35 271 35 221 V154 C35 104 75 63 126 63 Z M125 96 H263 C297 96 322 119 322 150 V221 C322 254 303 278 271 278 H205 C199 278 197 279 192 283 L157 311 Q150 316 150 309 V286 Q150 278 143 278 H124 C92 278 69 254 69 220 V154 C69 121 92 96 125 96 Z" fill="#FEF2D1" fill-rule="evenodd" />
+  <ns0:path id="shellboy-teal-32-wink" d="M134 160 L172 188 L134 217" fill="none" stroke="#38bdf8" stroke-width="22" stroke-linecap="round" stroke-linejoin="round" />
+  <ns0:ellipse id="shellboy-teal-32-eye" cx="247" cy="187" rx="22" ry="38" fill="#FEF2D1" />
+</ns0:svg>

@@ -1249,3 +1249,17 @@ describe("Character status information", () => {
     } finally { model.dispose(); }
   });
 });
+
+
+describe("approved Studio brand", () => {
+  it("shows Bright Teal at the existing sidebar brand position", async () => {
+    const { model } = await fixtureModel();
+    try {
+      const el = draw(model);
+      const brand = el.querySelector(".side .brand img.brand-logo")!;
+      expect(brand.getAttribute("src")).toBe("/assets/brand/studio-teal-master.svg");
+      expect(brand.getAttribute("alt")).toBe("");
+      expect(brand.parentElement?.textContent).toContain("Shellboy");
+    } finally { model.dispose(); }
+  });
+});

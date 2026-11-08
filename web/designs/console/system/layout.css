@@ -220,3 +220,5 @@
 .work-region .running-label>button:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 
 .conversation-status{flex-direction:row;align-items:center}
+
+.brand-logo{width:var(--size-icon);height:var(--size-icon);flex:none}
