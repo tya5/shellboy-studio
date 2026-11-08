@@ -40,3 +40,33 @@ release-preparation checks, delta privacy review and independent review outcomes
 are reported with the final commit. Physical devices, real-owner data, paid APIs,
 public-tag pinning and hosted CI are not exercised here. Existing synthetic
 happy-dom iframe warnings are not physical browser acceptance.
+
+### Observed owner-free checks
+
+Environment: macOS arm64, Node 25.9.0, locked npm dependencies, Rust 1.99.1.
+`npm run check` passes both TypeScript configurations and 638 tests in 42 files;
+`npm run build` succeeds. Focused protocol-5 UI and parent-organization tests
+pass 42 tests. `python3 tools/check-release.py` passes 21 preparation tests and
+checks three synthetic OS archives; this is not a real release or CI run.
+
+The existing synthetic production fixture now accepts `state=awaiting` and the
+existing browser runner accepts `PROTOCOL5_ONLY=1`. Four cases (1280/390 widths,
+console/light) pass: human question, Thread-directed duty/link, human answer
+control, loaded character assets, no horizontal overflow or old owner claim.
+Human reply command identity and hint refresh are asserted in the happy-dom
+acceptance test. Browser checks do not claim a real owner, physical device or
+complete runtime/CSP-console audit. The fixture favicon request may return 404;
+no character asset failure occurred.
+
+Artifacts remain private under literal `$TMPDIR/studio-p5-browser-iG55r3/`:
+four `production-*-awaiting.png` files, `production-results.json`, request log
+and served synthetic bundle. Logs use literal `$TMPDIR/s7-p5-final-check.log`,
+`$TMPDIR/s7-p5-final-build.log`, `$TMPDIR/s7-p5-focused.log` and
+`$TMPDIR/s7-p5-release.log`. No host-specific path or evidence contents are
+embedded in the public source.
+
+A local delta scan of added lines and new commit messages found no host-home,
+private temporary root, tailnet hostname, credential assignment, internal UUID
+or email matches. This is a scoped delta check, not a guarantee about inherited
+history. Commit identity remains the repository's established public noreply
+identity. Independent review remains distinct from this author check.
