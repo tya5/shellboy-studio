@@ -68,17 +68,19 @@ fn old_run_ownership_and_create_inputs_are_not_wire_aliases() {
         let mut args = json!({});
         args[field] = json!("old");
         assert!(
-            serde_json::from_value::<Command>(json!({"op":"thread.create","args":args})).is_err()
+            serde_json::from_value::<Command>(json!({"command":"thread.create","args":args}))
+                .is_err()
         );
     }
     let reply: Command = serde_json::from_value(
-        json!({"op":"message.reply","args":{"message_id":"h","text":"yes"}}),
+        json!({"command":"message.reply","args":{"message_id":"h","text":"yes"}}),
     )
     .unwrap();
     assert_eq!(access(&reply), Access::Mutation);
-    let create: Command =
-        serde_json::from_value(json!({"op":"thread.create","args":{"parent_id":"organization"}}))
-            .unwrap();
+    let create: Command = serde_json::from_value(
+        json!({"command":"thread.create","args":{"parent_id":"organization"}}),
+    )
+    .unwrap();
     assert_eq!(access(&create), Access::Mutation);
     assert_eq!(
         serde_json::to_value(ErrorCode::SelfWait).unwrap(),
@@ -92,7 +94,7 @@ fn old_run_ownership_and_create_inputs_are_not_wire_aliases() {
 #[test]
 fn protocol_four_fails_closed_without_downgrade() {
     let command: Command =
-        serde_json::from_value(json!({"op":"thread.get","args":{"thread_id":"t"}})).unwrap();
+        serde_json::from_value(json!({"command":"thread.get","args":{"thread_id":"t"}})).unwrap();
     let mut request = shellboy::protocol::Request::new("synthetic", command);
     assert!(request.validate().is_ok());
     request.protocol_version = 4;

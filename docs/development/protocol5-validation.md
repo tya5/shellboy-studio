@@ -70,3 +70,31 @@ private temporary root, tailnet hostname, credential assignment, internal UUID
 or email matches. This is a scoped delta check, not a guarantee about inherited
 history. Commit identity remains the repository's established public noreply
 identity. Independent review remains distinct from this author check.
+
+### Typed candidate compile (not a release pin)
+
+A separate temporary Studio snapshot and Core archive at the checkpoint above
+were used with a **CLI-only** Cargo patch to the local archive. Only that
+snapshot's lockfile resolved the candidate dependencies; neither this checkout's
+manifest/lock nor an installed binary was changed. All local Rust commands ran
+through `rust-slot`. `cargo check --tests` succeeded; `cargo test --test protocol5`
+passed all four tests: unified details/removal, human count exactness, retained
+shell ownership and strict removed inputs, protocol-4 rejection. Result DTOs
+remain tolerant of unknown additions; the tests check that removed output fields
+are not re-exposed, not that unknown result fields are rejected.
+
+During preparation, incorrect author-written test fixtures (an `op` key instead
+of the public Command `command` key and an unknown-result rejection assumption)
+failed and were corrected. The first attempt to use Default on EventsWaitArgs
+also failed compilation; the final code explicitly keeps
+`include_reasoning_activity=false`, without enabling a new reasoning UI. These
+were superseded by the successful check and four tests, not reported as Core
+bugs. Logs: literal `$TMPDIR/s7-p5-rust3.log` (check success, superseded fixture
+failures) and `$TMPDIR/s7-p5-rust4.log` (four tests pass).
+
+Final UI wording includes the parent-move preview in both languages, not just
+the completion notice. Rechecked 638 web tests and production build pass in
+literal `$TMPDIR/s7-p5-final2-check.log` and `$TMPDIR/s7-p5-final2-build.log`.
+Public-tag exact pairing, lock regeneration, installation, all-OS Rust checks,
+real-owner acceptance, runtime activation and hosted CI remain release gates,
+not outcomes claimed by this candidate work.
