@@ -1,0 +1,11 @@
+import type { Prefs } from '../../../../ui-core/src';
+import { signal } from '@preact/signals-core';
+import { fixtureModel, settle } from '../../../../ui-core/test/fixture';
+import { mount } from '../..';
+import { DESIGNS } from '../../../registry';
+const { model,t,db } = await fixtureModel({route:'monitor',capabilities:['history.window']});
+const original=db.answer.bind(db);
+db.answer=(call)=>{ if(call.command!=='history.window') return original(call); const id=(call.args as {thread_id:string}).thread_id; const items=(db.history[id]??[]).map((item,ordinal)=>({...item,selection:{ordinal}})); return {ok:true,result:{thread_id:id,revision:1,total:items.length,items}}; };
+const send=t.send.bind(t); t.send=(frame)=>{const ok=send(frame); if(frame.t==='call') queueMicrotask(()=>void settle(t,db)); return ok;};
+const prefs=signal<Prefs>({design:'console',theme:'console',lang:'en' as const,monitorView:'cards' as const,weights:{cached:0.1,output:5}});
+mount(document.getElementById('app')!,{model,designs:DESIGNS,prefs,setPrefs:(c)=>{prefs.value={...prefs.value,...c}},submitToken:async()=>true});

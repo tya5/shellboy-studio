@@ -2,18 +2,18 @@ import type { StatusKey } from "./status";
 import type { ThreadRow } from "./threads";
 
 export type MonitorArchive = "exclude" | "include" | "only";
-export interface MonitorCriteria { statuses: readonly StatusKey[]; query: string; archive: MonitorArchive; pinnedOnly: boolean; pins: readonly string[]; refresh: number }
+export interface MonitorCriteria { statuses: readonly StatusKey[]; query: string; archive: MonitorArchive; pinnedOnly: boolean; attention?: boolean; pins: readonly string[]; refresh: number }
 export interface MonitorSelectionResult { rows: ThreadRow[]; outOfFilter: ReadonlySet<string> }
 
 /** Keeps previously displayed matches when only their status changes. */
 export class MonitorSelection {
   private signature = "";
-  private activeScope: boolean | undefined;
+  private activeScope = "";
   private held = new Set<string>();
   select(rows: readonly ThreadRow[], c: MonitorCriteria): MonitorSelectionResult {
     const signature = JSON.stringify([c.statuses.slice().sort(), c.query, c.archive, c.refresh]);
     if (signature !== this.signature) { this.signature = signature; this.held.clear(); }
-    if (this.activeScope !== c.pinnedOnly) { this.activeScope = c.pinnedOnly; this.held.clear(); }
+    if (this.activeScope !== `${c.pinnedOnly}:${!!c.attention}`) { this.activeScope = `${c.pinnedOnly}:${!!c.attention}`; this.held.clear(); }
     const query = c.query.trim().toLocaleLowerCase();
     const pins = new Set(c.pins);
     const mismatch = new Set<string>();
@@ -23,7 +23,7 @@ export class MonitorSelection {
       if (c.pinnedOnly) { if (pins.has(id)) { this.held.add(id); return true; } return false; }
       const archived = !!row.summary.archived_at;
       if ((c.archive === "exclude" && archived) || (c.archive === "only" && !archived)) return false;
-      const matches = c.statuses.length === 0 || (row.status !== undefined && c.statuses.includes(row.status));
+      const matches = (c.statuses.length === 0 || (row.status !== undefined && c.statuses.includes(row.status))) && (!c.attention || row.status === "recovery" || row.status === "awaiting");
       if (matches) { this.held.add(id); return true; }
       if (this.held.has(id)) { mismatch.add(id); return true; }
       return false;

@@ -51,3 +51,5 @@ export { AppRequest } from "./AppRequest";
 export { GuideCopy } from "./GuideCopy";
 
 export { MonitorTile } from "./MonitorTile";
+
+export { MonitorPopover } from "./MonitorPopover";

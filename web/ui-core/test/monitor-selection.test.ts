@@ -26,6 +26,13 @@ describe("monitor selection", () => {
     expect(c.pins).toEqual(["a", "c"]);
     expect(ids(s.select(rows(), { ...defaults(), pins: ["b"] }))).toEqual(["b", "a"]);
   });
+  it("applies attention without overwriting saved filters", () => {
+    const s = new MonitorSelection();
+    const c = { ...defaults(), statuses: ["running", "completed"] as const, archive: "include" as const, attention: true };
+    expect(ids(s.select(rows(), c))).toEqual([]);
+    expect(ids(s.select(rows("recovery"), { ...c, statuses: [] }))).toEqual(["a"]);
+    expect(ids(s.select(rows(), { ...c, attention: false }))).toEqual(["a", "b", "c"]);
+  });
   it("supports multiple statuses and archive scopes", () => {
     const s = new MonitorSelection();
     expect(ids(s.select(rows(), { ...defaults(), statuses: ["running", "completed"], archive: "include" }))).toEqual(["a", "b", "c"]);

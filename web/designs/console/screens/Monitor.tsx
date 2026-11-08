@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { activityLabel, formatAge, formatDuration, formatRoute, parseTime, TilePreviews, statusLabel, STATUS_KEYS, type AppModel, type DesignContext, type ThreadRow } from "../../../ui-core/src";
-import { Button, ButtonGroup, Chip, EmptyState, Field, Icon, StatusMark, ThreadCard, MonitorTile, WorkSheet } from "../system/components";
+import { Button, ButtonGroup, Chip, EmptyState, Field, Icon, StatusMark, ThreadCard, MonitorTile, MonitorPopover } from "../system/components";
 
 function Archive({ model, id }: { model: AppModel; id: string }) {
   const t = model.t.value;
@@ -113,7 +113,7 @@ export function Monitor({ context }: { context: DesignContext }) {
     model.missingPins.deleted.value = [];
   }, [deletedPins]);
   const [page, setPage] = useState(0);
-  const [filtersOpen, setFiltersOpen] = useState(false);
+  const attention = model.monitorAttention.value;
   const reader = useMemo(() => new TilePreviews(model.data), [model]);
   useEffect(() => () => reader.close(), [reader]);
   const supported = model.data.capabilities.value.includes("history.window");
@@ -133,32 +133,46 @@ export function Monitor({ context }: { context: DesignContext }) {
   const rows = tiles ? groups[currentPage] ?? [] : selectedRows;
   const togglePin = (id: string) => { const next = pins.includes(id) ? pins.filter((p) => p !== id) : [...pins, id].slice(0, 100); model.monitorPins.value = next; setPrefs({ monitorPins: next }); };
   const list = model.data.threadList.value;
-  const filterControls = () => <>
-    <div class="chips" role="group" aria-label={t("monitor.filter")}>
-      {STATUS_KEYS.filter((k) => (counts[k] ?? 0) > 0 || filter.includes(k)).map((k) => <Chip key={k} status={k} label={statusLabel(t, k)} count={counts[k] ?? 0} pressed={filter.includes(k)} onClick={() => { const next = filter.includes(k) ? filter.filter((x) => x !== k) : [...filter, k]; model.monitorFilter.value = next; setPrefs({ monitorStatuses: next }); setPage(0); }} />)}
-    </div>
-    <Field ariaLabel={t("threads.search")} placeholder={t("threads.search")} value={model.monitorQuery.value} onInput={(e) => { model.monitorQuery.value = e.currentTarget.value.slice(0, 256); setPrefs({ monitorQuery: model.monitorQuery.value }); setPage(0); }} />
-    <ButtonGroup label={t("monitor.sort")}>
-      {(["stable", "recent"] as const).map((sort) => <Button key={sort} aria-pressed={(prefs.value.monitorSort ?? "stable") === sort} onClick={() => { model.monitorSort.value = sort; setPrefs({ monitorSort: sort }); }}>{t(sort === "stable" ? "monitor.sortStable" : "monitor.sortRecent")}</Button>)}
-    </ButtonGroup>
-    <ButtonGroup label={t("monitor.scope")}>
-      <Button aria-pressed={!pinnedOnly} onClick={() => { model.monitorPinnedOnly.value = false; setPage(0); }}>{t("monitor.all")}</Button>
-      <Button aria-pressed={pinnedOnly} onClick={() => { model.monitorPinnedOnly.value = true; setPage(0); }}>{t("monitor.pinnedOnly")}</Button>
-    </ButtonGroup>
-    <ButtonGroup label={t("monitor.archive")}>
-      {(["exclude", "include", "only"] as const).map((archive) => <Button key={archive} aria-pressed={model.monitorArchive.value === archive} onClick={() => { model.monitorArchive.value = archive; setPrefs({ monitorArchive: archive }); setPage(0); }}>{t(archive === "exclude" ? "monitor.archiveExclude" : archive === "include" ? "monitor.archiveInclude" : "monitor.archiveOnly")}</Button>)}
-    </ButtonGroup>
-    <Button onClick={() => { model.monitorRefresh.value++; setPage(0); }}>{t("monitor.refreshSelection")}</Button>
-  </>;
+  const updateStatus = (k: (typeof STATUS_KEYS)[number]) => { const next = filter.includes(k) ? filter.filter((x) => x !== k) : [...filter, k]; model.monitorFilter.value = next; setPrefs({ monitorStatuses: next }); setPage(0); };
+  const setArchive = (archive: "exclude" | "include" | "only") => { model.monitorArchive.value = archive; setPrefs({ monitorArchive: archive }); setPage(0); };
+  const sortControls = () => <ButtonGroup label={t("monitor.sort")}>
+    {(["stable", "recent"] as const).map((sort) => <Button key={sort} aria-pressed={(prefs.value.monitorSort ?? "stable") === sort} onClick={() => { model.monitorSort.value = sort; setPrefs({ monitorSort: sort }); }}>{t(sort === "stable" ? "monitor.sortStable" : "monitor.sortRecent")}</Button>)}
+  </ButtonGroup>;
+  const archiveLabel = model.monitorArchive.value === "only" ? t("monitor.archiveOnly") : t("monitor.archiveInclude");
+  const switchScope = (scope: "all" | "pinned" | "attention") => { model.monitorPinnedOnly.value = scope === "pinned"; model.monitorAttention.value = scope === "attention"; setPage(0); };
   return (
     <div class={tiles ? "mon pane-monitor" : "mon"}>
       <div class="monitor-controls">
         <div class="monitor-heading"><h1>{t("view.monitor")}</h1><ButtonGroup label={t("monitor.view")}>
           {(["cards", "tiles"] as const).map((view) => <Button key={view} aria-pressed={(tiles ? "tiles" : "cards") === view} onClick={() => setPrefs({ monitorView: view })}>{t(view === "tiles" ? "monitor.tiles" : "monitor.cards")}</Button>)}
         </ButtonGroup></div>
-        <div class="monitor-filter-bar"><div class="monitor-filter-scroll">{filterControls()}</div><span class="monitor-count muted caption">{t("monitor.showing", { shown: selectedRows.length, total: model.monitorStableRows.value.length })}</span>{filtered ? <Button onClick={clearFilters}>{t("monitor.clearFilters")}</Button> : null}</div>
-        <div class="monitor-filter-mobile"><Button onClick={() => setFiltersOpen(true)}>{t("monitor.filterButton")}</Button></div>
-        <WorkSheet open={filtersOpen} title={t("monitor.filterButton")} closeLabel={t("work.close")} onClose={() => setFiltersOpen(false)}><div class="monitor-filter-sheet">{filterControls()}<span class="monitor-count muted caption">{t("monitor.showing", { shown: selectedRows.length, total: model.monitorStableRows.value.length })}</span>{filtered ? <Button onClick={clearFilters}>{t("monitor.clearFilters")}</Button> : null}</div></WorkSheet>
+        <div class="monitor-tabs"><ButtonGroup label={t("monitor.scope")}>
+          <Button aria-current={!pinnedOnly && !attention ? "page" : undefined} onClick={() => switchScope("all")}>{t("monitor.all")} {model.monitorStableRows.value.length}</Button>
+          <Button aria-current={pinnedOnly ? "page" : undefined} onClick={() => switchScope("pinned")}>{t("monitor.pinnedTab")} {pins.length}</Button>
+          <Button aria-current={attention ? "page" : undefined} onClick={() => switchScope("attention")}>{t("monitor.attention")} {(counts.recovery ?? 0) + (counts.awaiting ?? 0)}</Button>
+        </ButtonGroup></div>
+        <div class="monitor-tools">
+          <Field ariaLabel={t("threads.search")} placeholder={t("threads.search")} value={model.monitorQuery.value} onInput={(e) => { model.monitorQuery.value = e.currentTarget.value.slice(0, 256); setPrefs({ monitorQuery: model.monitorQuery.value }); setPage(0); }} />
+          <MonitorPopover label={t("monitor.filterButton")}>
+            <div class="chips" role="group" aria-label={t("monitor.filter")}>
+              {STATUS_KEYS.filter((k) => (counts[k] ?? 0) > 0 || filter.includes(k)).map((k) => <Chip key={k} status={k} label={statusLabel(t, k)} count={counts[k] ?? 0} pressed={filter.includes(k)} onClick={() => updateStatus(k)} />)}
+            </div>
+            <ButtonGroup label={t("monitor.archive")}>
+              {(["exclude", "include", "only"] as const).map((archive) => <Button key={archive} aria-pressed={model.monitorArchive.value === archive} onClick={() => setArchive(archive)}>{t(archive === "exclude" ? "monitor.archiveExclude" : archive === "include" ? "monitor.archiveInclude" : "monitor.archiveOnly")}</Button>)}
+            </ButtonGroup>
+            <div class="monitor-sort-narrow">{sortControls()}</div>
+            <Button onClick={() => { model.monitorRefresh.value++; setPage(0); }}>{t("monitor.refreshSelection")}</Button>
+          </MonitorPopover>
+          <MonitorPopover className="monitor-sort-wide" label={t("monitor.sort")}>{sortControls()}</MonitorPopover>
+          <span class="monitor-count muted caption">{t("monitor.showing", { shown: selectedRows.length, total: model.monitorStableRows.value.length })}</span>
+        </div>
+        <span class="monitor-count-mobile muted caption">{t("monitor.showing", { shown: selectedRows.length, total: model.monitorStableRows.value.length })}</span>
+        {filtered ? <div class="monitor-pills">
+          {filter.map((k) => <Button key={k} aria-label={t("monitor.removeFilter", { filter: statusLabel(t, k) })} onClick={() => updateStatus(k)}>{statusLabel(t, k)} <Icon name="cross" small /></Button>)}
+          {model.monitorQuery.value.trim() ? <Button aria-label={t("monitor.removeFilter", { filter: model.monitorQuery.value })} onClick={() => { model.monitorQuery.value = ""; setPrefs({ monitorQuery: "" }); }}>{model.monitorQuery.value} <Icon name="cross" small /></Button> : null}
+          {model.monitorArchive.value !== "exclude" ? <Button aria-label={t("monitor.removeFilter", { filter: archiveLabel })} onClick={() => setArchive("exclude")}>{archiveLabel} <Icon name="cross" small /></Button> : null}
+          <Button onClick={clearFilters}>{t("monitor.clearAll")}</Button>
+        </div> : null}
         {tiles && pages > 1 ? <ButtonGroup label={t("monitor.page", { page: currentPage + 1, pages })}>
           <Button disabled={currentPage === 0} onClick={() => setPage(currentPage - 1)}>{t("monitor.previous")}</Button>
           <span>{t("monitor.page", { page: currentPage + 1, pages })}</span>
@@ -171,7 +185,7 @@ export function Monitor({ context }: { context: DesignContext }) {
             tiles ? <Tile key={r.summary.thread_id} model={model} row={r} reader={reader} supported={supported} outOfFilter={outOfFilter.has(r.summary.thread_id)} pinned={pins.includes(r.summary.thread_id)} togglePin={() => togglePin(r.summary.thread_id)} /> : <Card key={r.summary.thread_id} model={model} row={r} outOfFilter={outOfFilter.has(r.summary.thread_id)} pinned={pins.includes(r.summary.thread_id)} togglePin={() => togglePin(r.summary.thread_id)} />
           ))}
         </div>
-      ) : filtered || pinnedOnly ? (
+      ) : filtered || pinnedOnly || attention ? (
         <EmptyState icon="monitor" title={t("monitor.noMatch")}>
           <Button onClick={clearFilters}>{t("monitor.clearFilters")}</Button>
         </EmptyState>
