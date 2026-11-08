@@ -194,3 +194,7 @@
 
 /* Padding is included in the virtual row height measured by ResizeObserver. */
 .vrow,.conversation-row{padding-bottom:var(--space-8)}
+
+.details .running-region{flex:0 0 160px;height:160px;overflow:auto}
+.running-region .work-row{flex-direction:row;align-items:center;white-space:nowrap}
+.running-label{min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

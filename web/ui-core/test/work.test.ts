@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { signal } from "@preact/signals-core";
 import type { ReplyWaitAdapter } from "../../data/src";
-import { workRegions } from "../src";
+import { toolLabel, workRegions } from "../src";
 import { fixtureModel } from "./fixture";
 import { flush, settle } from "../../data/test/harness";
 
@@ -17,6 +17,14 @@ describe("bounded conversation work", () => {
     expect(regions.running.map((r) => r.label)).toEqual(["test"]);
     expect(regions.pending.map((r) => r.id)).toEqual(["m"]);
     expect(regions.partial).toBe(true);
+  });
+
+  it("uses descriptions before commands and falls back to the shell start time", () => {
+    expect(toolLabel("  inspect files  ", "ls")).toBe("inspect files");
+    expect(toolLabel("  ", "ls")).toBe("ls");
+    const page = { items: [{ kind: "shell", id: "x", thread_id: "t", run_id: "r", execution_id: "x", state: "running" }] };
+    const shells = new Map([["x", { execution_id: "x", state: "running", description: "Inspect files", command_excerpt: "ls", started_at: "2026-01-01T00:00:00Z" }]]);
+    expect(workRegions(page, "r", shells).running[0]).toMatchObject({ label: "Inspect files", startedAt: "2026-01-01T00:00:00Z" });
   });
 
   it("reads a bounded page only while viewing and follows hints", async () => {
