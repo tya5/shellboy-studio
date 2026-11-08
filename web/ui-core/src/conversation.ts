@@ -25,7 +25,7 @@ export type Speaker = { kind: "you" } | { kind: "shellboy" } | { kind: "cli" } |
 
 export type ConversationRow =
   | { type: "message"; id: string; speaker: Speaker; text: string; truncated: boolean; at: string | undefined }
-  | { type: "steps"; id: string; steps: StepRow[] }
+  | { type: "steps"; id: string; steps: StepRow[]; entries: ({ kind: "step"; step: StepRow } | { kind: "compacted"; id: string; text: string })[] }
   | { type: "note"; id: string; kind: string; text: string; at: string | undefined };
 
 const HIDDEN = new Set(["event", "context", "tool_result"]);
@@ -50,11 +50,18 @@ export function projectConversation(items: HistoryItem[], shells: ReadonlyMap<st
   const seen = new Set<string>();
   const addStep = (id: string, step: StepRow) => {
     const last = rows[rows.length - 1];
-    if (last?.type === "steps") last.steps.push(step);
-    else rows.push({ type: "steps", id, steps: [step] });
+    if (last?.type === "steps") { last.steps.push(step); last.entries.push({ kind: "step", step }); }
+    else rows.push({ type: "steps", id, steps: [step], entries: [{ kind: "step", step }] });
   };
   for (const item of items) {
     const id = item.node_id ?? "";
+    if (item.kind === "spill") {
+      const entry = { kind: "compacted" as const, id, text: item.excerpt ?? "" };
+      const last = rows[rows.length - 1];
+      if (last?.type === "steps") last.entries.push(entry);
+      else rows.push({ type: "steps", id, steps: [], entries: [entry] });
+      continue;
+    }
     const executions = item.executions ?? [];
     if (executions.length > 0) {
       for (const e of executions) {

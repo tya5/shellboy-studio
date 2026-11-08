@@ -81,12 +81,13 @@ function RowView({ model, row }: { model: AppModel; row: ConversationRow }) {
     const active = row.steps.find((s) => s.status === "running");
     const nonzero = row.steps.filter((s) => typeof s.exitCode === "number" && s.exitCode !== 0).length;
     const failed = row.steps.some((s) => s.state === "failed" || s.status === "recovery" || (typeof s.exitCode === "number" && s.exitCode !== 0));
-    const summary = [t("tools.count", { n: row.steps.length }), ...(nonzero ? [t("tools.nonzero", { n: nonzero })] : []), ...(active ? [t("tools.active", { command: toolLabel(active.description, active.command) })] : [])].join(" · ");
+    const compacted = row.entries.filter((entry) => entry.kind === "compacted").length;
+    const summary = [t("tools.count", { n: row.steps.length }), ...(compacted ? [t("tools.compacted", { n: compacted })] : []), ...(nonzero ? [t("tools.nonzero", { n: nonzero })] : []), ...(active ? [t("tools.active", { command: toolLabel(active.description, active.command) })] : [])].join(" · ");
     return (
       <>
         <section class="steps">
           <StepRow open={opened} command={summary} group status={<StatusMark status={active ? "running" : failed ? "failed" : "completed"} label={statusLabel(t, active ? "running" : failed ? "failed" : "completed")} />} onToggle={(open) => { const next = new Set(model.openToolGroups.peek()); if (open) next.add(row.id); else next.delete(row.id); model.openToolGroups.value = next; }}>
-            {row.steps.map((s) => <StepView key={s.executionId} model={model} step={s} />)}
+            {row.entries.map((entry) => entry.kind === "step" ? <StepView key={entry.step.executionId} model={model} step={entry.step} /> : <div class="step" key={entry.id}><div class="work-row"><span>{t("compact.spill")}</span><span>{entry.text}</span></div></div>)}
           </StepRow>
         </section>
         {mark ? <div class="scroll-mark">{mark}</div> : null}

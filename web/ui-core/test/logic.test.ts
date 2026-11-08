@@ -108,6 +108,14 @@ describe("conversation projection", () => {
     expect(one({ kind: "external_cli", label: "app:board" })).toMatchObject({ speaker: { kind: "other", label: "CLI: app:board" } });
     expect(one({ kind: "thread", label: "worker" })).toMatchObject({ speaker: { kind: "other", label: "worker" } });
   });
+  it("keeps compacted output before, between and after calls in the same group", () => {
+    const call = (id: string) => ({ node_id: id, kind: "assistant_response", executions: [{ execution_id: id, command_excerpt: "echo" }] });
+    const rows = projectConversation([{ node_id: "s1", kind: "spill", excerpt: "compressed" }, call("a"), { node_id: "s2", kind: "spill", excerpt: "compressed" }, call("b"), { node_id: "s3", kind: "spill", excerpt: "compressed" }, { node_id: "u", kind: "user", excerpt: "Next" }]);
+    expect(rows.map((row) => row.type)).toEqual(["steps", "message"]);
+    if (rows[0]?.type !== "steps") throw new Error("expected group");
+    expect(rows[0].steps).toHaveLength(2);
+    expect(rows[0].entries.map((entry) => entry.kind)).toEqual(["compacted", "step", "compacted", "step", "compacted"]);
+  });
   it("joins tool calls across invisible and empty nodes but not visible speech", () => {
     const calls = Array.from({ length: 12 }, (_, i) => ({ execution_id: `e${i}`, command_excerpt: `command ${i}` }));
     const rows = projectConversation([
