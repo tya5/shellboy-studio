@@ -1,6 +1,10 @@
 import type { JSX } from "preact";
 
 const PATHS = {
+  attachment: <path d="m9 12 6-6a3.5 3.5 0 0 1 5 5L10 21a5 5 0 0 1-7-7L13 4a2 2 0 0 1 3 3L6 17" />,
+  web: <><circle cx="12" cy="12" r="9" /><ellipse cx="12" cy="12" rx="4" ry="9" /><path d="M3 12h18" /></>,
+  compacted: <path d="M4 5h16M4 9h11M4 19h16M4 14h4l3-2 3 4 3-2h3" />,
+  git: <><circle cx="6" cy="5" r="2" /><circle cx="6" cy="19" r="2" /><circle cx="18" cy="8" r="2" /><path d="M6 7v10M18 10c0 5-12 3-12 7" /></>,
   bot: <><path d="M12 2v3M5 9a3 3 0 0 1 3-3h8a3 3 0 0 1 3 3v6a3 3 0 0 1-3 3H8a3 3 0 0 1-3-3zM2.5 11v3M21.5 11v3M9 21h6" /><circle cx="9.5" cy="11" r="1.1" fill="currentColor" /><circle cx="14.5" cy="11" r="1.1" fill="currentColor" /><path d="M9.5 14.5h5" /></>,
   user: <><circle cx="12" cy="8" r="4" /><path d="M4 21a8 8 0 0 1 16 0" /></>,
   chat: <path d="M21 12a8 8 0 0 1-8 8H4l1.8-3A8 8 0 1 1 21 12z" />,

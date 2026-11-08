@@ -15,15 +15,26 @@ const stepDuration = (s: Step, now: number): string | undefined => {
 
 const exitText = (s: Step): string | undefined => (typeof s.exitCode === "number" ? `exit ${s.exitCode}` : undefined);
 
+export function statusCharacter(status: string): string {
+  switch (status) {
+    case "awaiting": return "ask";
+    case "recovery": case "failed": return "error";
+    case "completed": return "complete-check";
+    case "stopped": case "idle": return "rest";
+    case "running": case "waiting": return "thinking";
+    default: return "neutral";
+  }
+}
+
 function ConversationStatus({ model }: { model: AppModel }) {
   const t = model.t.value;
   const work = model.work.value;
   const row = model.selectedRow.value;
   const status = model.threadReplies.value.some((r) => r.recipient.kind === "human") ? "awaiting" : row?.status;
-  if (!status || status === "idle" || status === "completed" || status === "failed") return null;
+  if (!status) return null;
   const running = work.running[0];
   const start = running?.startedAt ? parseTime(running.startedAt) : undefined;
-  return <div class="work-row conversation-row" role="status"><StatusMark status={status} label={statusLabel(t, status)} />
+  return <div class="work-row conversation-row" role="status"><img class="character-status" src={`/characters/${statusCharacter(status)}-24.svg`} alt="" /><span>{statusLabel(t, status)}</span>
     {running ? <span>{running.label} {work.running.length > 1 ? t("work.runningCount", { n: work.running.length }) : ""} {start === undefined ? "" : formatDuration(model.now.value - start)}</span> : row?.summary.activity ? <span>{activityLabel(model.lang.value, row.summary.activity)}</span> : null}
     {status === "recovery" ? <><span>{model.recovery.value?.message ?? model.recovery.value?.hint}</span>{model.canRetry.value ? <Button onClick={() => void model.retry()}>{t("action.retry")}</Button> : null}</> : null}
   </div>;
@@ -89,7 +100,7 @@ function RowView({ model, row }: { model: AppModel; row: ConversationRow }) {
       <>
         <section class="steps">
           <StepRow open={opened} command={summary} group status={<StatusMark status={active ? "running" : failed ? "failed" : "completed"} label={statusLabel(t, active ? "running" : failed ? "failed" : "completed")} />} onToggle={(open) => { const next = new Set(model.openToolGroups.peek()); if (open) next.add(row.id); else next.delete(row.id); model.openToolGroups.value = next; }}>
-            <div class="step-group-list">{row.entries.map((entry) => entry.kind === "step" ? <StepView key={entry.step.executionId} model={model} step={entry.step} /> : <div class="step" key={entry.id}><div class="work-row"><span>{t("compact.spill")}</span><span>{entry.text}</span></div></div>)}</div>
+            <div class="step-group-list">{row.entries.map((entry) => entry.kind === "step" ? <StepView key={entry.step.executionId} model={model} step={entry.step} /> : <div class="step" key={entry.id}><div class="work-row"><Icon name="compacted" /><span>{t("compact.spill")}</span><span>{entry.text}</span></div></div>)}</div>
           </StepRow>
         </section>
         {mark ? <div class="scroll-mark">{mark}</div> : null}
@@ -249,7 +260,7 @@ function OrderedHistory({ model, handle, rows, win, history, scroller, pinned, f
             {boundary === undefined || boundary.legacy >= rows.length ? <LiveMessage model={model} handle={handle} follow={follow} /> : null}
             <ConversationStatus model={model} />
             {rows.length === 0 && !history?.error ? (
-              loading ? <LoadingRows label={t("convo.loading")} rows={5} /> : <EmptyState icon="chat" title={t("convo.empty")} body={t("convo.emptyBody")} />
+              loading ? <LoadingRows label={t("convo.loading")} rows={5} /> : <EmptyState icon="chat" character title={t("convo.empty")} body={t("convo.emptyBody")} />
             ) : null}
           </div>
         )}

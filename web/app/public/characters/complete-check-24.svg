@@ -1,0 +1,9 @@
+<?xml version='1.0' encoding='utf-8'?>
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 390 390" role="img" aria-labelledby="complete-check-24-title">
+  <title id="complete-check-24-title">Shellboy 完了案 A / check / 24</title>
+  <desc>Proposal. Intentional symbol replacement at viewer LEFT wink. Pair with visible state text.</desc>
+  <rect id="complete-check-24-tile" width="390" height="390" rx="50" fill="#028da3" />
+  <path id="complete-check-24-face" d="M126 63 H263 C315 63 354 102 354 153 V222 C354 272 324 310 274 310 H208 L155 349 C141 359 126 350 126 333 L125 310 H124 C74 310 35 271 35 221 V154 C35 104 75 63 126 63 Z" fill="#023239" />
+  <path id="complete-check-24-bubble" d="M126 63 H263 C315 63 354 102 354 153 V222 C354 272 324 310 274 310 H208 L155 349 C141 359 126 350 126 333 L125 310 H124 C74 310 35 271 35 221 V154 C35 104 75 63 126 63 Z M125 98 H263 C296 98 320 120 320 150 V221 C320 253 302 276 271 276 H205 C199 276 197 277 192 281 L157 309 Q152 313 152 308 V284 Q152 276 145 276 H124 C93 276 71 253 71 220 V154 C71 122 93 98 125 98 Z" fill="#FEF2D1" fill-rule="evenodd" />
+  <ellipse id="complete-check-24-eye" cx="246" cy="187" rx="21" ry="37" fill="#FEF2D1" />
+<path d="M124 188 L146 213 L182 157" fill="none" stroke="#38bdf8" stroke-width="22" stroke-linecap="round" stroke-linejoin="round" id="complete-check-24-symbol-0" /></svg>
