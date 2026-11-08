@@ -569,13 +569,13 @@ describe("Branches", () => {
     expect(el.querySelector(".edge.on")).toBeTruthy();
     expect(text(el.querySelector(".bgraph-svg")!)).toContain("101 nodes");
     expect(text(el)).toContain("no shared prefix");
-    expect(text(el)).toContain("thread.branches");
+    expect(text(el)).not.toContain("thread.branches");
     expect(el.querySelectorAll(".blist .brow").length).toBe(4);
     expect(el.querySelector(".bgraph-svg .bg-tip")!.getAttribute("href")).toBe("#/conversation/lead");
   });
-  it("omits comparing tips and usage since a point, and says so", async () => {
+  it("does not show developer-only missing data notes", async () => {
     const { el } = await open();
-    expect(text(el)).toContain("Comparing two tips");
+    expect(text(el)).not.toContain("Comparing two tips");
     expect([...el.querySelectorAll("button")].some((b) => /side by side/i.test(text(b)))).toBe(false);
   });
   it("a rewind shows its preview first, what isn't undone and the undo path, then asks", async () => {

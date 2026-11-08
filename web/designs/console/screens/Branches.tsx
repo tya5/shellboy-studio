@@ -1,8 +1,31 @@
+import { useEffect, useRef, useState } from "preact/hooks";
+import { Cancel, CAPABILITY_HISTORY_WINDOW } from "../../../data/src";
 import { branchLayout, branchTitle, formatClock, formatRoute, statusLabel, type AppModel, type BranchFamily, type BranchItem, type BranchTarget, type GraphPoint, type RewindFacts, type Translate } from "../../../ui-core/src";
-import { BranchGraph, BranchList, Button, ButtonGroup, EmptyState, KeyValue, Notice, Section } from "../system/components";
+import { BranchGraph, BranchList, Button, ButtonGroup, EmptyState, KeyValue, Notice } from "../system/components";
 import { Rich } from "./Rich";
 
 const tipRoute = (i: BranchItem) => formatRoute({ view: "conversation", threadId: i.threadId });
+
+function BranchExcerpt({ model, item }: { model: AppModel; item: BranchItem }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [facts, setFacts] = useState<{ split?: string; request?: string; answer?: string }>({});
+  const supported = model.data.capabilities.value.includes(CAPABILITY_HISTORY_WINDOW);
+  useEffect(() => {
+    if (!supported || !ref.current) return;
+    let cancel: Cancel | undefined;
+    const observer = new IntersectionObserver(entries => {
+      if (entries[0]?.isIntersecting) {
+        cancel?.cancel(); cancel = new Cancel(); const current = cancel;
+        void model.branches.excerpts(item, current).then(v => { if (!current.cancelled) setFacts(v); });
+      } else { cancel?.cancel(); setFacts({}); }
+    }, { rootMargin: "0px" });
+    observer.observe(ref.current.parentElement ?? ref.current);
+    return () => { cancel?.cancel(); observer.disconnect(); };
+  }, [model, item.threadId, item.divergence?.nodeId, item.tipNodeId, supported]);
+  if (!supported) return null;
+  const t = model.t.value;
+  return <div ref={ref} class="branch-excerpts">{facts.split ? <p><b>{t("branches.splitExcerpt")}</b> {facts.split}</p> : null}{facts.request ? <p><b>{t("branches.firstRequest")}</b> {facts.request}</p> : null}{facts.answer ? <p><b>{t("branches.latestAnswer")}</b> {facts.answer}</p> : null}</div>;
+}
 
 function RewindPreview({ t, facts }: { t: Translate; facts: RewindFacts }) {
   return (
@@ -168,15 +191,13 @@ export function Branches({ model }: { model: AppModel }) {
                   href: tipRoute(i),
                   note: [note(i), i.nodesAfterDivergence !== undefined ? t("branches.after", { n: i.nodesAfterDivergence.toLocaleString("en-US") }) : i.pathNodes !== undefined ? t("branches.nodes", { n: i.pathNodes.toLocaleString("en-US") }) : ""].filter(Boolean).join(", "),
                   current: i.state === "current",
+                  excerpt: <BranchExcerpt model={model} item={i} />,
                   ...(action ? { action } : {}),
                 };
               })}
             />
             <div class="muted caption">{t("branches.hint")}</div>
-            <Section title={t("branches.missing")}>
-              <div class="muted caption">{t("branches.missingBody")}</div>
-            </Section>
-            <div class="sect-source">{t("common.source", { source: "" })}<code>thread.branches</code></div>
+
           </>
         ) : null}
       </div>
