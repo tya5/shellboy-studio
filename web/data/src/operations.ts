@@ -297,6 +297,9 @@ export class Operations {
   messageSend(args: MessageSendArgs, operationId = this.newId()): Promise<Outcome<MutationResult>> {
     return this.run("message.send", args, decodeRecord, { operationId });
   }
+  messageReply(messageId: string, text: string, operationId = this.newId()): Promise<Outcome<MutationResult>> {
+    return this.run("message.reply", { message_id: messageId, text }, decodeRecord, { operationId });
+  }
   messageCancel(messageId: string, operationId = this.newId()): Promise<Outcome<MutationResult>> {
     return this.run("message.cancel", { message_ids: [messageId] }, decodeRecord, { operationId });
   }
