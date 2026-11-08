@@ -278,6 +278,7 @@ describe("Conversation", () => {
     expect(text(el)).toContain("1 tools");
     expect(text(el)).not.toContain("cargo test history::search");
     act(() => el.querySelector<HTMLButtonElement>('.steps summary')!.click());
+    expect(el.querySelector(".step-group > .step-group-list > .step")).toBeTruthy();
     expect(text(el)).toContain("cargo test history::search");
     expect(text(el)).toContain("exit 0");
     expect(text(el)).toContain("2.4s");

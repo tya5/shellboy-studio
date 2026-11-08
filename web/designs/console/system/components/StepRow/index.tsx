@@ -3,7 +3,7 @@ import { Icon } from "../Icon";
 
 export function StepRow({ open, command, status, duration, exit, onToggle, children, group }: { open: boolean; command: string; group?: boolean; status: ComponentChildren; duration?: string | undefined; exit?: string | undefined; onToggle: (open: boolean) => void; children: ComponentChildren }) {
   return (
-    <details class="step" open={open} onToggle={(e) => onToggle((e.currentTarget as HTMLDetailsElement).open)}>
+    <details class={group ? "step step-group" : "step"} open={open} onToggle={(e) => onToggle((e.currentTarget as HTMLDetailsElement).open)}>
       <summary>
         <Icon name="term" />
         <span class={group ? "tool-group-label" : "cmd"}>{command}</span>

@@ -89,7 +89,7 @@ function RowView({ model, row }: { model: AppModel; row: ConversationRow }) {
       <>
         <section class="steps">
           <StepRow open={opened} command={summary} group status={<StatusMark status={active ? "running" : failed ? "failed" : "completed"} label={statusLabel(t, active ? "running" : failed ? "failed" : "completed")} />} onToggle={(open) => { const next = new Set(model.openToolGroups.peek()); if (open) next.add(row.id); else next.delete(row.id); model.openToolGroups.value = next; }}>
-            {row.entries.map((entry) => entry.kind === "step" ? <StepView key={entry.step.executionId} model={model} step={entry.step} /> : <div class="step" key={entry.id}><div class="work-row"><span>{t("compact.spill")}</span><span>{entry.text}</span></div></div>)}
+            <div class="step-group-list">{row.entries.map((entry) => entry.kind === "step" ? <StepView key={entry.step.executionId} model={model} step={entry.step} /> : <div class="step" key={entry.id}><div class="work-row"><span>{t("compact.spill")}</span><span>{entry.text}</span></div></div>)}</div>
           </StepRow>
         </section>
         {mark ? <div class="scroll-mark">{mark}</div> : null}

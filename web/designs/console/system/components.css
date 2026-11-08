@@ -104,6 +104,14 @@ a{color:var(--accent)}
 .step .cmd{font:var(--type-code);min-width:0;overflow-wrap:anywhere}
 .step .meta{margin-left:auto;display:flex;gap:var(--space-12);font:var(--type-caption);color:var(--muted)}
 .step .meta .mono{font-size:var(--size-caption)}
+.step-group{overflow:hidden}
+.step-group-list>.step{border:0;border-top:1px solid var(--line);border-radius:0;background:transparent}
+.step-group-list>.step[open]{border-color:var(--line)}
+.step-group-list>.step>summary:hover,.step-group-list>.step>summary:focus-visible{background:var(--raised);border-radius:0}
+.step-group-list>.step>summary:focus-visible{outline:0}
+.step-group-list>.step>.log{margin:0 var(--space-12) var(--space-12) var(--space-24);border:0;border-radius:0}
+.step-group-list>.step>button,.step-group-list>.step>.caption{margin-left:var(--space-24)}
+.step-group-list>.step>.work-row{padding:var(--space-8) var(--space-12)}
 .steps{display:flex;flex-direction:column;gap:6px}
 
 /* QuestionCard */
