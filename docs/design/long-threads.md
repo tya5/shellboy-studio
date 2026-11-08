@@ -28,7 +28,9 @@ Today's cost, measured on a 100,000-node Thread: 1,001 `history.list` calls and 
 
 **Variable-height virtual scroll.** The scroller's height is a sum of rows. A row not yet measured uses the mean of those measured, or a fixed estimate for layout before any is. That's a layout placeholder, never shown as a fact. A measured height is kept per position (see the table); a node with nothing to draw (`event`, `context`, `tool_result`, empty) is measured as 0 once its window is read. The mean counts only once some row with a height was measured, so zero-height rows alone don't collapse the estimate. Offsets are sums over a Fenwick tree, so a position to offset and back is logarithmic. Hidden kinds (`event`, `context`, `tool_result`) take no height, but their count can't be known without reading them, so the scroller's position is by node and the bar is approximate. It stays fine for reading, and the total shows as a number.
 
-**Placeholders.** A range not read yet draws `LoadingRows`, sized to the range's estimated height, and its window is requested when it comes within the margin.
+**No estimated heights (proposed invariant; not yet implemented).** Unmeasured rows contribute no height to position calculations; all heights come from rendered measurements.
+
+**Placeholders (proposed replacement; not yet implemented).** The scrollbar covers only contiguous loaded windows. An unloaded edge has a fixed-height loading indicator and cannot be scrolled through. Near an edge, request the adjacent window; add it with measured anchor compensation. Far navigation reads the target window first. Display the full count numerically. When exceeding `WINDOWS_HELD`, evict from the opposite edge; the evicted side becomes an unloaded edge. See `conversation-scroll.md` for the pending design and verification.
 
 **Following.** At the bottom, new rows keep it at the bottom. Scrolled up, it stays put and offers a jump to the newest, and a hint reads nothing. A hint at the bottom reads one window from the last known node on (`ordinal` of that node, `after` 199, `expect_node_id` set), which both fetches the new rows and checks the path.
 

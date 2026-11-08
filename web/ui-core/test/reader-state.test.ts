@@ -1,7 +1,6 @@
 // Stop, recovery, branch marks and the selected step on the long-thread reader, after scrolling away from the end.
 import { describe, expect, it } from "vitest";
 import { flush, settle } from "../../data/test/harness";
-import { ESTIMATED_ROW_PX } from "../src/window";
 import { fixtureModel } from "./fixture";
 import { WindowOwner } from "./window-owner";
 

@@ -13,8 +13,6 @@ export const WINDOWS_HELD = 16;
 export const READS_IN_FLIGHT = 2;
 /** Fast scrolling must pause this long before a window is requested. */
 export const PAUSE_MS = 80;
-/** Layout-only height of a row before any is measured; never shown as a fact. */
-export const ESTIMATED_ROW_PX = 96;
 
 export type WindowReadArgs = Omit<HistoryWindowArgs, "thread_id">;
 export interface WindowReader {
@@ -44,19 +42,13 @@ class Bucket {
   filled = 0;
 }
 
-/** Row heights over all positions, summed in O(log n). Unmeasured rows count as the mean measured. */
+/** Measured row heights over all positions, summed in O(log n). */
 class Heights {
   readonly h: Float64Array;
   private readonly sum: Float64Array;
-  private readonly cnt: Int32Array;
-  totalSum = 0;
-  totalCnt = 0;
-  /** Rows measured with a height; zero-height (hidden) rows alone say nothing about the rest. */
-  private shown = 0;
   constructor(readonly n: number) {
     this.h = new Float64Array(n).fill(Number.NaN);
     this.sum = new Float64Array(n + 1);
-    this.cnt = new Int32Array(n + 1);
   }
   static grown(old: Heights | undefined, n: number): Heights {
     const next = new Heights(n);
@@ -68,29 +60,25 @@ class Heights {
     if (was === v) return false;
     const known = !Number.isNaN(was);
     const dSum = v - (known ? was : 0);
-    const dCnt = known ? 0 : 1;
     this.h[i] = v;
-    this.shown += (v > 0 ? 1 : 0) - (known && was > 0 ? 1 : 0);
-    this.totalSum += dSum;
-    this.totalCnt += dCnt;
     for (let k = i + 1; k <= this.n; k += k & -k) {
       this.sum[k]! += dSum;
-      this.cnt[k]! += dCnt;
     }
     return true;
   }
-  mean(): number {
-    return this.shown > 0 ? this.totalSum / this.totalCnt : ESTIMATED_ROW_PX;
+  clear(i: number): void {
+    const was = this.h[i];
+    if (was === undefined || Number.isNaN(was)) return;
+    this.h[i] = Number.NaN;
+    for (let k = i + 1; k <= this.n; k += k & -k) this.sum[k]! -= was;
   }
   /** Top of position i. */
   offsetOf(i: number): number {
     let s = 0;
-    let c = 0;
     for (let k = i; k > 0; k -= k & -k) {
       s += this.sum[k]!;
-      c += this.cnt[k]!;
     }
-    return s + (i - c) * this.mean();
+    return s;
   }
   /** The position containing offset y. */
   locate(y: number, count: number): number {
@@ -178,7 +166,7 @@ export class ConversationWindow {
   }
   heightOf(i: number): number {
     const h = this.heights.h[i];
-    return h === undefined || Number.isNaN(h) ? this.heights.mean() : h;
+    return h === undefined || Number.isNaN(h) ? 0 : h;
   }
   offsetOf(i: number): number {
     return this.heights.offsetOf(Math.max(0, Math.min(i, this.total)));
@@ -189,13 +177,21 @@ export class ConversationWindow {
   locate(y: number): number {
     return this.total === 0 ? 0 : this.heights.locate(y, this.total);
   }
-  /** Positions to draw: the viewport and one viewport above and below. */
+  /** The contiguous loaded run around the current anchor, or the newest loaded run. */
   renderRange(): { first: number; last: number } | undefined {
-    if (this.total === 0) return undefined;
-    return {
-      first: this.locate(Math.max(0, this.viewTop - this.viewHeight)),
-      last: this.locate(this.viewTop + 2 * this.viewHeight),
-    };
+    if (!this.buckets.size) return undefined;
+    const candidate = this.lastAnchor?.ordinal;
+    let ordinal = candidate !== undefined && this.isLoaded(candidate) ? candidate : -1;
+    if (ordinal < 0) {
+      for (const [bucket, held] of this.buckets)
+        for (let i = 0; i < held.items.length; i++)
+          if (held.items[i] !== undefined) ordinal = Math.max(ordinal, bucket * WINDOW_NODES + i);
+    }
+    if (ordinal < 0) return undefined;
+    let first = ordinal, last = ordinal;
+    while (first > 0 && this.isLoaded(first - 1)) first--;
+    while (last + 1 < this.total && this.isLoaded(last + 1)) last++;
+    return { first, last };
   }
   /** The scroll offset as last told or corrected. */
   get scrollTop(): number {
@@ -225,16 +221,22 @@ export class ConversationWindow {
     this.viewTop = scrollTop;
     this.viewHeight = clientHeight;
     if (this.total === 0) return;
-    const now = this.renderRange()!;
+    const now = this.renderRange();
+    if (!now) return;
     if (was?.first !== now.first || was?.last !== now.last) this.bump(); // the screen draws other rows
     this.lastAnchor = this.anchor(scrollTop);
     // The scroller's end is the path's end: trailing nodes that draw nothing have no height to reach.
     const follow = atBottom;
     if (follow !== this.following.peek()) this.following.value = follow;
     if (follow && this.newer.peek()) this.newer.value = false;
-    const r = this.renderRange()!;
+    const r = now;
     const wanted = new Set<number>();
     for (let b = Math.floor(r.first / WINDOW_NODES); b <= Math.floor(r.last / WINDOW_NODES); b++) wanted.add(b);
+    // Adjacent windows are prefetched before the reader reaches an unloaded edge.
+    const nearStart = r.first > 0 && scrollTop <= clientHeight;
+    const nearEnd = r.last + 1 < this.total && scrollTop + 2 * clientHeight >= this.totalHeight();
+    if (nearStart && (!nearEnd || !follow)) wanted.add(Math.floor((r.first - 1) / WINDOW_NODES));
+    else if (nearEnd) wanted.add(Math.floor((r.last + 1) / WINDOW_NODES));
     this.wanted = wanted;
     for (const b of wanted) {
       const held = this.buckets.get(b);
@@ -249,10 +251,8 @@ export class ConversationWindow {
         this.inflight.delete(b);
       }
     this.stopTimer?.();
-    this.stopTimer = this.setTimer(() => {
-      this.stopTimer = undefined;
-      this.pump();
-    }, PAUSE_MS);
+    this.stopTimer = undefined;
+    this.pump();
   }
 
   /** A row was measured. Rows above the anchor changing height move the scroll offset, not the text. */
@@ -494,9 +494,10 @@ export class ConversationWindow {
           held = new Bucket();
           this.buckets.set(b, held);
           while (this.buckets.size > WINDOWS_HELD) {
-            const oldest = [...this.buckets.keys()].find((k) => k !== b && !this.wanted.has(k)) ?? this.buckets.keys().next().value!;
-            if (oldest === b) break;
-            this.buckets.delete(oldest);
+            const keys = [...this.buckets.keys()].sort((a, z) => a - z);
+            const edge = b === keys[0] ? keys[keys.length - 1]! : keys[0]!;
+            this.buckets.delete(edge);
+            for (let i = edge * WINDOW_NODES; i < Math.min((edge + 1) * WINDOW_NODES, this.heights.n); i++) this.heights.clear(i);
           }
         }
         const slot = o % WINDOW_NODES;

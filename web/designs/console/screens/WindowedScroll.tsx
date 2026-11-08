@@ -3,9 +3,9 @@
 import type { ComponentChildren, VNode } from "preact";
 import { useLayoutEffect, useRef } from "preact/hooks";
 import { projectConversation, type AppModel, type ConversationRow, type ConversationWindow } from "../../../ui-core/src";
-import { Button, EmptyState, LoadingRows, Notice, VirtualGap, VirtualSpace } from "../system/components";
+import { Button, EmptyState, LoadingRows, Notice } from "../system/components";
 
-import { ScrollIntent } from "./scrollIntent";
+import { HeadingAnchor, ScrollIntent } from "./scrollIntent";
 
 export function heldRange(visible: { first: number; last: number }, total: number, held: (index: number) => boolean): { first: number; last: number } {
   const range = { ...visible };
@@ -23,6 +23,7 @@ export function WindowedScroll({ model, win, renderRow, live, liveBoundary, stat
   const visible = win.renderRange();
   const range = visible && heldRange(visible, win.total, (index) => win.itemAt(index) !== undefined);
   const intent = useRef(new ScrollIntent());
+  const headingAnchor = useRef(new HeadingAnchor());
 
   // After each draw: report measured heights (the window corrects the offset for rows above the
   // anchor), apply the scroll it asks for, keep the bottom while following, then report the view.
@@ -48,7 +49,9 @@ export function WindowedScroll({ model, win, renderRow, live, liveBoundary, stat
         changes.push([Number(child.dataset.o), child.getBoundingClientRect().height]);
       if (changes.length) win.measure(changes);
       const want = win.takeScroll();
+      const delta = headingAnchor.current.correction();
       if (win.following.peek() && intent.current.following) intent.current.program(box, box.scrollHeight);
+      else if (delta !== undefined) { intent.current.program(box, box.scrollTop + delta); win.view(box.scrollTop, box.clientHeight, false); }
       else if (want !== undefined) intent.current.program(box, want);
     });
     box.querySelectorAll("[data-o], .vspace, .live-tail").forEach((row) => observer.observe(row));
@@ -59,17 +62,7 @@ export function WindowedScroll({ model, win, renderRow, live, liveBoundary, stat
   if (range) {
     for (let i = range.first; i <= range.last; ) {
       const item = win.itemAt(i);
-      if (item === undefined) {
-        let end = i;
-        while (end + 1 <= range.last && win.itemAt(end + 1) === undefined) end++;
-        parts.push(
-          <VirtualGap key={`gap${i}`} height={win.offsetOf(end + 1) - win.offsetOf(i)}>
-            <LoadingRows label={t("convo.loading")} rows={Math.min(end - i + 1, 6)} />
-          </VirtualGap>,
-        );
-        i = end + 1;
-        continue;
-      }
+      if (item === undefined) break;
       // Project a contiguous loaded run together. Unloaded gaps are hard boundaries:
       // once the adjacent window loads, the next render joins the two groups.
       let end = i;
@@ -102,6 +95,10 @@ export function WindowedScroll({ model, win, renderRow, live, liveBoundary, stat
     <div
       class="scroll"
       ref={el}
+      onClickCapture={(e) => {
+        const heading = (e.target as Element).closest<HTMLElement>(".step summary");
+        if (heading && !intent.current.following) headingAnchor.current.capture(heading);
+      }}
       onWheel={(e) => { intent.current.wheel(e.deltaY); if (!intent.current.following) win.following.value = false; }}
       onTouchStart={(e) => { if (e.touches[0]) intent.current.touchStart(e.touches[0].clientY); }}
       onTouchMove={(e) => { if (e.touches[0]) intent.current.touchMove(e.touches[0].clientY); if (!intent.current.following) win.following.value = false; }}
@@ -118,9 +115,9 @@ export function WindowedScroll({ model, win, renderRow, live, liveBoundary, stat
         </Notice>
       ) : null}
       {win.total > 0 ? <div class="muted caption">{t("convo.total", { n: win.total })}</div> : null}
-      <VirtualSpace top={range ? win.offsetOf(range.first) : 0} bottom={range ? Math.max(0, win.totalHeight() - win.offsetOf(range.last + 1)) : win.totalHeight()}>
-        {parts}
-      </VirtualSpace>
+      {range && range.first > 0 ? <LoadingRows label={t("convo.loading")} rows={1} /> : null}
+      <div class="vspace">{parts}</div>
+      {range && range.last + 1 < win.total ? <LoadingRows label={t("convo.loading")} rows={1} /> : null}
       {(liveBoundary === undefined || !range || liveBoundary > range.last) ? <div class="live-tail">{live}</div> : null}
       {statusLine}
       {win.total === 0 && status === "loading" ? <LoadingRows label={t("convo.loading")} rows={5} /> : null}

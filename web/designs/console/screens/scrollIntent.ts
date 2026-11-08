@@ -3,22 +3,23 @@ export class ScrollIntent {
   following = true;
   private top = 0;
   private programTop: number | undefined;
-  private touchY: number | undefined;
-  detach(): void { this.following = false; }
   program(box: HTMLElement, top: number): void {
     box.scrollTop = top;
     this.top = box.scrollTop;
     this.programTop = box.scrollTop;
   }
-  touchStart(y: number): void { this.touchY = y; }
-  touchMove(y: number): void {
-    if (this.touchY !== undefined && y > this.touchY) this.detach();
-    this.touchY = y;
-  }
-  key(key: string): void { if (["PageUp", "Home", "ArrowUp"].includes(key)) this.detach(); }
-  wheel(deltaY: number): void { if (deltaY < 0) this.detach(); }
+  touchStart(_y: number): void {}
+  touchMove(_y: number): void {}
+  key(_key: string): void {}
+  wheel(_deltaY: number): void {}
   scroll(box: HTMLElement): boolean {
     const top = box.scrollTop;
+    if (box.scrollHeight <= box.clientHeight) {
+      this.following = true;
+      this.programTop = undefined;
+      this.top = top;
+      return true;
+    }
     if (this.programTop !== undefined && Math.abs(top - this.programTop) < 1) {
       this.programTop = undefined;
       this.top = top;
@@ -29,5 +30,18 @@ export class ScrollIntent {
     else if (box.scrollHeight - top - box.clientHeight <= 1) this.following = true;
     this.top = top;
     return this.following;
+  }
+}
+
+/** Capture a tool heading before its details change, then restore its viewport position. */
+export class HeadingAnchor {
+  private saved: { heading: HTMLElement; top: number } | undefined;
+  capture(heading: HTMLElement): void {
+    this.saved = { heading, top: heading.getBoundingClientRect().top };
+  }
+  correction(): number | undefined {
+    const saved = this.saved;
+    this.saved = undefined;
+    return saved?.heading.isConnected ? saved.heading.getBoundingClientRect().top - saved.top : undefined;
   }
 }
