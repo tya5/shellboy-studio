@@ -1,3 +1,4 @@
+import { characterAssets } from "../../character-assets";
 import type { ComponentChildren } from "preact";
 import { useEffect, useMemo, useState } from "preact/hooks";
 import { Icon } from "../Icon";
@@ -39,7 +40,7 @@ export function Message({ bot, who, at, text, copyLabel, copiedLabel, children }
   return (
     <div class="msg">
       <div class={bot ? "av bot" : "av"}>
-        {bot ? <img class="character-avatar" src="/characters/neutral-24.svg" alt="" /> : <Icon name="user" />}
+        {bot ? <img class="character-avatar" src={characterAssets.neutral} alt="" /> : <Icon name="user" />}
       </div>
       <div>
         <div class="who">

@@ -13,6 +13,7 @@ import { type AnalyticsSection, type AppModel, type DesignContext, type Prefs } 
 import { DESIGNS } from "../../registry";
 import { App } from "../screens/App";
 import { Conversation } from "../screens/Conversation";
+import { characterAssets } from "../system/character-assets";
 
 let host: HTMLElement | undefined;
 afterEach(() => {
@@ -1219,5 +1220,32 @@ describe("Setup", () => {
       expect(el.querySelector('a[href="#/setup"]')).toBeTruthy();
       expect(text(el)).toContain("Embedding settings");
     });
+  });
+});
+
+
+describe("Character status information", () => {
+  it("keeps tool description and concurrent count alongside running activity", async () => {
+    const { model, t, db } = await fixtureModel({ configure(db) {
+      db.work.lead = ["verify", "inspect"].map((id) => ({ kind: "shell", id, thread_id: "lead", run_id: "run-1", execution_id: id, state: "running", started_at: "2026-11-07T10:19:00Z" }));
+      db.shells.lead = [
+        { execution_id: "verify", state: "running", description: "Verify query ranking", command_excerpt: "npm run check" },
+        { execution_id: "inspect", state: "running", command_excerpt: "git diff --check" },
+      ];
+    } });
+    try {
+      const el = draw(model);
+      await act(async () => { await settle(t, db); });
+      const status = el.querySelector(".conversation-status")!;
+      expect(status.textContent).toContain("Running tools");
+      expect(status.textContent).toContain("Verify query ranking");
+      expect(status.textContent).toContain("Running at least 2");
+      expect(status.textContent).toContain("1m");
+      expect(el.querySelector(".dock")?.contains(status)).toBe(false);
+      expect(status.querySelector(".character-status")).not.toBeNull();
+      const avatars = [...el.querySelectorAll(".character-avatar")];
+      expect(avatars.length).toBeGreaterThan(0);
+      expect(avatars.every(avatar => avatar.getAttribute("src") === characterAssets.neutral)).toBe(true);
+    } finally { model.dispose(); }
   });
 });

@@ -5,7 +5,14 @@ import { mount } from '../..';
 import { DESIGNS } from '../../../registry';
 
 const params = new URLSearchParams(location.search);
-const { model, t, db } = await fixtureModel();
+const { model, t, db } = await fixtureModel({ configure(db) {
+  if (params.get('state') !== 'running') return;
+  db.work.lead = ['verify', 'inspect'].map((id) => ({ kind: 'shell', id, thread_id: 'lead', run_id: 'run-1', execution_id: id, state: 'running', started_at: '2026-11-07T10:19:00Z' }));
+  db.shells.lead = [
+    { execution_id: 'verify', state: 'running', description: 'Verify query ranking', command_excerpt: 'npm run check' },
+    { execution_id: 'inspect', state: 'running', command_excerpt: 'git diff --check' },
+  ];
+} });
 if (params.get('state') === 'empty') {
   db.history.lead = [];
   t.push({ t: 'changed', thread_ids: ['lead'], list: false });
