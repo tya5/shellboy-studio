@@ -116,6 +116,13 @@ describe("components name roles, never values", () => {
       for (const token of value.matchAll(/var\(--space-(\d+)\)/g)) expect(["4", "8", "12", "16", "24"]).toContain(token[1]);
     }
   });
+  it("gives compact interactive controls a phone-sized target", () => {
+    const mobile = readFileSync(join(system, "components.css"), "utf8");
+    expect(mobile).toMatch(/\.btn,\.chip\{min-width:var\(--size-touch\)/);
+    expect(mobile).toMatch(/\.tcheck\{width:var\(--size-touch\);height:var\(--size-touch\)/);
+    expect(mobile).toMatch(/\.brow-text>a,\.srow-text>a\{[^}]*min-height:var\(--size-touch\)/);
+    expect(mobile).toMatch(/\.tile-header>a\{[^}]*min-height:var\(--size-touch\)/);
+  });
   it("every custom property used exists", () => {
     for (const m of css.matchAll(/var\(--([\w-]+)/g)) expect(known.has(m[1]!), m[1]).toBe(true);
   });

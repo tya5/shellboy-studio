@@ -405,6 +405,7 @@ a{color:var(--accent)}
 .setup-steps{margin:0;padding-left:var(--space-24);display:flex;flex-direction:column;gap:var(--space-8);font:var(--type-label)}
 @container app (max-width:899px){
   .btn,.chip{min-height:var(--size-touch)}
+  .btn,.chip{min-width:var(--size-touch)}
   .btn.icon{width:var(--size-touch)}
   .field{min-height:var(--size-touch)}
   .check{min-height:var(--size-touch)}
@@ -417,7 +418,8 @@ a{color:var(--accent)}
   .srow{min-height:var(--size-touch)}
   .srow-act{min-height:var(--size-touch)}
   .bmark{min-height:var(--size-touch)}
-  .msg-acts .quiet{opacity:1}
+  .msg-acts .quiet{opacity:1;display:inline-flex;align-items:center;min-height:var(--size-touch)}
+  .brow-text>a,.srow-text>a{display:flex;align-items:center;min-height:var(--size-touch)}
   .selbar label{min-height:var(--size-touch)}
   .secnav h2{display:none}
   .secnav-list{flex-direction:row;flex-wrap:wrap;gap:var(--space-4)}
@@ -464,3 +466,7 @@ a{color:var(--accent)}
 .app-request>label{display:flex;flex-direction:column;gap:var(--space-4);margin-bottom:var(--space-8)}
 .app-request>label>textarea,.app-request>label>input{width:100%;background:var(--inset);color:var(--fg);border:1px solid var(--line-strong);border-radius:var(--radius-s);padding:var(--space-8);font:var(--type-body)}
 .app-request>label>textarea{min-height:100px;resize:vertical}
+
+@container app (max-width:899px){
+  .tile-header>a{display:flex;align-items:center;min-height:var(--size-touch)}
+}
