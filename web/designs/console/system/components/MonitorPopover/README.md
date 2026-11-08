@@ -1,0 +1,1 @@
+A bounded toolbar popover. It closes on outside press or Escape, restoring focus after Escape. The caller supplies named, keyboard-accessible controls; use for local display settings, not destructive confirmations.

@@ -111,6 +111,7 @@ export class AppModel {
   readonly monitorStableRows: ReadonlySignal<ThreadRow[]>;
   readonly monitorQuery = signal("");
   readonly monitorPinnedOnly = signal(false);
+  readonly monitorAttention = signal(false);
   readonly monitorPins = signal<readonly string[]>([]);
   readonly monitorSort = signal<"stable" | "recent">("stable");
   readonly monitorFilter: Signal<readonly StatusKey[]> = signal([]);
@@ -209,7 +210,7 @@ export class AppModel {
     const selected = computed(() => {
       const stable = stableRows.value;
       const rows = this.monitorSort.value === "recent" ? [...stable].sort((a, b) => b.summary.updated_at.localeCompare(a.summary.updated_at) || a.summary.thread_id.localeCompare(b.summary.thread_id)) : stable;
-      return selection.select(rows, { statuses: this.monitorFilter.value, query: this.monitorQuery.value, archive: this.monitorArchive.value, pinnedOnly: this.monitorPinnedOnly.value, pins: this.monitorPins.value, refresh: this.monitorRefresh.value });
+      return selection.select(rows, { statuses: this.monitorFilter.value, query: this.monitorQuery.value, archive: this.monitorArchive.value, pinnedOnly: this.monitorPinnedOnly.value, attention: this.monitorAttention.value, pins: this.monitorPins.value, refresh: this.monitorRefresh.value });
     });
     this.monitorRows = computed(() => selected.value.rows);
     this.monitorOutOfFilter = computed(() => selected.value.outOfFilter);

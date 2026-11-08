@@ -265,7 +265,7 @@ describe("Monitor", () => {
     expect(el.querySelector(".tile-content")?.textContent).toBe("");
     expect(el.querySelector<HTMLAnchorElement>(".tile-main")!.getAttribute("href")).toContain("conversation");
     act(() => button("Pin").click());
-    act(() => button("Pinned only").click());
+    act(() => [...el.querySelectorAll<HTMLButtonElement>(".monitor-tabs button")].find((b) => text(b).startsWith("Pinned "))!.click());
     expect(el.querySelectorAll(".monitor-tile")).toHaveLength(1);
     expect(text(el)).toContain("Unpin");
     expect(t.calls("history.list")).toHaveLength(0);
@@ -294,10 +294,11 @@ describe("Monitor", () => {
   it("keeps a pinned status change visible, retains filters on view switch, and clears them", async () => {
     const { model, t, db } = await fixtureModel({ route: "monitor" });
     const el = draw(model);
-    const button = (name: string) => [...el.querySelectorAll<HTMLButtonElement>(".monitor-filter-bar button, .monitor-heading button")].find((b) => text(b) === name)!;
+    const button = (name: string) => [...el.querySelectorAll<HTMLButtonElement>(".monitor-controls button")].find((b) => text(b) === name || text(b).startsWith(name + " "))!;
     const lead = [...el.querySelectorAll(".card")].find((c) => c.querySelector("h2")?.textContent === "Improve history search")!;
     act(() => lead.querySelector<HTMLButtonElement>("button")!.click());
-    const running = [...el.querySelectorAll<HTMLButtonElement>(".monitor-filter-bar .chip")].find((c) => text(c).includes("Running"))!;
+    act(() => button("Filters").click());
+    const running = [...el.querySelectorAll<HTMLButtonElement>(".monitor-popover-panel .chip")].find((c) => text(c).includes("Running"))!;
     act(() => running.click());
     const before = [...el.querySelectorAll(".card h2")].map(text);
     db.threads.lead = { ...db.threads.lead!, activity: "completed", state: "completed" };
@@ -306,12 +307,12 @@ describe("Monitor", () => {
     expect([...el.querySelectorAll(".card h2")].map(text)).toEqual(before);
     expect(text(el)).toContain("No longer matches the filter");
     act(() => button("Tiles").click());
-    expect(el.querySelector('.monitor-filter-bar .chip[aria-pressed="true"]')).toBeTruthy();
-    act(() => button("Pinned only").click());
+    expect(el.querySelector('.monitor-popover-panel .chip[aria-pressed="true"]')).toBeTruthy();
+    act(() => [...el.querySelectorAll<HTMLButtonElement>(".monitor-tabs button")].find((b) => text(b).startsWith("Pinned "))!.click());
     expect([...el.querySelectorAll(".tile-header")].map(text).join()).toContain("Improve history search");
     act(() => button("All").click());
-    act(() => button("Clear filters").click());
-    expect(el.querySelector('.monitor-filter-bar .chip[aria-pressed="true"]')).toBeNull();
+    act(() => button("Clear all").click());
+    expect(el.querySelector('.monitor-popover-panel .chip[aria-pressed="true"]')).toBeNull();
     expect(text(el)).not.toContain("No longer matches the filter");
     expect(el.querySelector('.tile-header button[aria-pressed="true"]')).toBeTruthy();
     model.dispose();
@@ -326,6 +327,7 @@ describe("Monitor", () => {
     expect(text(el)).not.toContain("Connection interrupted");
     expect(el.querySelector(".card.lead")).toBeTruthy();
     expect(text(el)).toContain("Parent: Improve history search");
+    act(() => [...el.querySelectorAll<HTMLButtonElement>(".monitor-tools button")].find((b) => text(b) === "Filters")!.click());
     const chip = [...el.querySelectorAll<HTMLButtonElement>(".chip")].find((c) => text(c).includes("Completed"))!;
     act(() => chip.click());
     expect(el.querySelectorAll(".card").length).toBe(1);

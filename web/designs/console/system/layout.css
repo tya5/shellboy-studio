@@ -132,18 +132,26 @@
 .pane-monitor .monitor-controls{padding:var(--space-8) var(--space-12);border-bottom:1px solid var(--line)}
 .monitor-heading{display:flex;align-items:center;justify-content:space-between;gap:var(--space-12)}
 .monitor-heading h1{font:var(--type-title);margin:0}
-.monitor-filter-bar{display:flex;align-items:center;gap:var(--space-8);min-width:0}
-.monitor-filter-bar>*{flex:none}
-.monitor-filter-scroll{display:flex;align-items:center;gap:var(--space-8);min-width:0;flex:1 1 auto;overflow-x:auto}
-.monitor-filter-scroll>*{flex:none}
-.monitor-filter-bar .monitor-count{margin-left:auto;white-space:nowrap}
-.monitor-filter-mobile{display:none}
-.monitor-filter-sheet{display:flex;flex-direction:column;align-items:stretch;gap:var(--space-12)}
-.monitor-filter-sheet .chips{display:flex;flex-wrap:wrap}
-.monitor-filter-sheet .monitor-count{margin-left:0}
+ .monitor-tabs,.monitor-tools,.monitor-pills{display:flex;align-items:center;gap:var(--space-8);min-width:0}
+.monitor-tabs .btn-group{flex-wrap:wrap}
+.monitor-tabs .btn{border:0;border-radius:0;border-bottom:2px solid transparent}
+.monitor-tabs .btn[aria-current="page"]{border-bottom-color:var(--accent);color:var(--accent)}
+.monitor-tools>.field{flex:1 1 auto;min-width:0}
+.monitor-count{white-space:nowrap;flex:none}
+.monitor-count-mobile{display:none}
+.monitor-pills{flex-wrap:wrap}
+.monitor-pills .btn{max-width:100%;overflow:hidden;text-overflow:ellipsis}
+.monitor-popover{position:relative;flex:none}
+.monitor-popover-panel{position:absolute;right:0;top:100%;z-index:20;display:flex;flex-direction:column;align-items:stretch;gap:var(--space-12);padding:var(--space-12);background:var(--panel);border:1px solid var(--line);width:min(24rem,calc(100vw - 2 * var(--space-12)))}
+.monitor-popover-panel .chips{display:flex;flex-wrap:wrap}
+.monitor-popover-panel .btn-group{flex-wrap:wrap}
+.monitor-sort-narrow{display:none}
 @container app (max-width:899px){
-  .monitor-filter-bar{display:none}
-  .monitor-filter-mobile{display:block}
+  .monitor-sort-wide,.monitor-tools>.monitor-count{display:none}
+  .monitor-sort-narrow,.monitor-count-mobile{display:block}
+  .monitor-popover-panel{position:fixed;left:var(--space-12);right:var(--space-12);top:auto;width:auto}
+  .monitor-tabs .btn{flex:1 1 auto}
+  .monitor-tabs .btn-group{width:100%}
   .mon.pane-monitor{overflow:auto}
   .pane-grid,.pane-grid[data-count]{flex:none;grid-template-columns:minmax(0,1fr);grid-template-rows:none;grid-auto-rows:16rem;min-height:0}
   .shell{grid-template-columns:minmax(0,1fr)}
