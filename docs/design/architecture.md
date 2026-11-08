@@ -181,7 +181,7 @@ shows "result unconfirmed" and offers `operation.get`, exactly like the CLI's
 `history.list`, `history.get`, `operation.get`. Reads added for Analytics and Settings: `usage.get`, `compact.list`,
 `storage.status`, `index.status` (`analytics-settings.md`). Mutations: `thread.create`,
 `message.send`, `run.stop`, `run.retry`, `thread.archive`, `message.cancel`, plus the
-rewind operations of Shellboy #246 once available. `events.wait` is bridge-internal.
+rewind operations of Shellboy #246 once available. `thread.set` is restricted to either parent changes or model/connection/effort changes for one Thread; model catalog reads are explicit and late responses are discarded. `events.wait` is bridge-internal.
 Everything else (`owner.shutdown`, deletion, prune, `storage.collect`, index and
 compaction mutations) is rejected with a bridge error until a milestone adds a UI for it. The list
 is the set of operations the UI implements, so the browser cannot be used as a

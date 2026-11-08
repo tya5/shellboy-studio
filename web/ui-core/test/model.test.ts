@@ -11,6 +11,31 @@ describe("AppModel over the fake transport", () => {
     expect(model.usage.value).toMatchObject({ cachedPercent: 75, attempts: 4 });
   });
 
+  it("lists models and sends only this Thread's model settings, retaining the saved display on failure", async () => {
+    const { model, t, db } = await fixtureModel();
+    const before = model.details.value!.model;
+    model.openModelPicker();
+    await settle(t, db);
+    expect(model.modelPicker.value.models).toEqual(["mock-large", "mock-small"]);
+    model.modelPicker.value = { ...model.modelPicker.value, model: "custom-id", effort: "high" };
+    const save = model.saveThreadModel();
+    await settle(t, db);
+    await save;
+    const call = t.calls("thread.set").at(-1)!;
+    expect(call.args).toEqual({ thread_id: "lead", connection: model.details.value!.connection, model: "custom-id", effort: "high" });
+    model.openModelPicker();
+    await settle(t, db);
+    const answer = db.answer.bind(db);
+    db.answer = (c) => c.command === "thread.set" ? { ok: false, code: "invalid_argument", message: "Rejected" } : answer(c);
+    model.modelPicker.value = { ...model.modelPicker.value, model: "bad-id" };
+    const failed = model.saveThreadModel();
+    await settle(t, db);
+    await failed;
+    expect(model.details.value!.model).toBe(before);
+    expect(model.modelPicker.value.error).toContain("Rejected");
+    model.dispose();
+  });
+
   it("Monitor doesn't open any Thread until asked", async () => {
     const { model, t } = await fixtureModel({ route: "monitor" });
     expect(t.calls("history.list")).toHaveLength(0);

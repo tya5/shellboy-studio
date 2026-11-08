@@ -23,6 +23,8 @@ export function App({ context }: { context: DesignContext }) {
   const [drawer, setDrawer] = useState(false);
   const [settings, setSettings] = useState(false);
   const [query, setQuery] = useState("");
+  const picker = model.modelPicker.value;
+  useEffect(() => { if (picker.open && picker.thread !== model.selectedId.value) model.closeModelPicker(); }, [picker.open, picker.thread, model.selectedId.value]);
 
   useEffect(() => { model.monitorSort.value = context.prefs.value.monitorSort ?? "stable"; }, [model, context.prefs.value.monitorSort]);
 
@@ -130,7 +132,7 @@ export function App({ context }: { context: DesignContext }) {
                 />
               ) : null}
               {route.view === "conversation" && row?.status ? <span class="hide-n"><StatusMark status={row.status} label={statusLabel(t, row.status)} /></span> : null}
-              {route.view === "conversation" && details ? <span class="hide-n mono muted">{details.model}</span> : null}
+              {route.view === "conversation" && details ? <div class="model-picker-anchor"><Button aria-expanded={picker.open} aria-haspopup="dialog" onClick={() => picker.open ? model.closeModelPicker() : model.openModelPicker()}>{details.model}</Button>{picker.open ? <div class="model-picker" role="dialog" aria-label={t("model.change")} onKeyDown={(e) => { if (e.key === "Escape") model.closeModelPicker(); }}><p class="caption muted">{t("model.note")}</p><label>{t("model.connection")}<select value={picker.connection} disabled={picker.saving} onChange={(e) => model.chooseModelConnection(e.currentTarget.value)}>{[...new Set([picker.connection, ...Object.keys((model.config.read.value.value?.loaded.values?.connections as Record<string, unknown> | undefined) ?? {})])].filter(Boolean).map(c => <option value={c}>{c}</option>)}</select></label><Field ariaLabel={t("model.search")} value={picker.model} disabled={picker.saving} onInput={(e) => { model.modelPicker.value = { ...model.modelPicker.peek(), model: e.currentTarget.value }; }} /><div class="model-picker-list">{picker.loading ? <span>{t("common.loading")}</span> : picker.models.filter(m => (picker.model === details.model || m.toLowerCase().includes(picker.model.toLowerCase()))).length ? picker.models.filter(m => (picker.model === details.model || m.toLowerCase().includes(picker.model.toLowerCase()))).map(m => <Button variant="link" onClick={() => { model.modelPicker.value = { ...model.modelPicker.peek(), model: m }; }}>{m}</Button>) : <span>{t("model.empty")}</span>}</div><Field ariaLabel={t("model.effort")} placeholder={t("model.effort")} value={picker.effort} disabled={picker.saving} onInput={(e) => { model.modelPicker.value = { ...model.modelPicker.peek(), effort: e.currentTarget.value }; }} />{picker.error ? <Notice tone="bad">{picker.error}</Notice> : null}<div class="row"><Button disabled={picker.saving} onClick={() => model.closeModelPicker()}>{t("model.close")}</Button><Button variant="primary" disabled={picker.saving || !picker.model.trim()} onClick={() => void model.saveThreadModel()}>{t("model.save")}</Button></div></div> : null}</div> : null}
               <Button icon label={settings ? t("settings.close") : t("settings.open")} aria-expanded={settings} data-settings-toggle onClick={() => setSettings(!settings)}>
                 <Icon name="gear" />
               </Button>

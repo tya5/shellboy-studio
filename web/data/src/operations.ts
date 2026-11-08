@@ -106,7 +106,7 @@ const decodeRecord: Decoder<Record<string, unknown>> = (v) =>
   isObject(v) ? { ok: true, value: v } : { ok: false, reason: "expected an object result" };
 
 const decodeModelList: Decoder<ModelListResult> = (v) =>
-  isObject(v) && typeof v.connection === "string" && Array.isArray(v.models)
+  isObject(v) && typeof v.connection === "string" && Array.isArray(v.models) && v.models.every((m) => typeof m === "string" && m.length > 0 && !/[\s\x00-\x1f\x7f]/.test(m))
     ? { ok: true, value: v as unknown as ModelListResult }
     : { ok: false, reason: "model.list result lacks connection or models" };
 
@@ -251,8 +251,12 @@ export class Operations {
     return this.run("status", { limit: 1 }, decodeRecord, undefined, read);
   }
   /** Asks the connection's endpoint for its model list (one GET). No conversation request. */
-  modelList(args: ModelListArgs = {}): Promise<Outcome<ModelListResult>> {
-    return this.run("model.list", args, decodeModelList);
+  modelList(args: ModelListArgs = {}, read?: ReadOptions): Promise<Outcome<ModelListResult>> {
+    return this.run("model.list", args, decodeModelList, undefined, read);
+  }
+  /** Update only model settings for this Thread; owner validates values. */
+  setThreadModel(threadId: string, changes: { model: string; connection: string; effort?: string }): Promise<Outcome<ThreadDetails>> {
+    return this.run("thread.set", { thread_id: threadId, ...changes }, decodeDetails, { operationId: this.newId() });
   }
   /** One page of a Thread's family: ancestors, then breadth first. */
   threadBranches(args: ThreadBranchesArgs, read?: ReadOptions): Promise<Outcome<Record<string, unknown>>> {

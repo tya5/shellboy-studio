@@ -43,7 +43,7 @@ pub fn access(command: &Command) -> Access {
         | Command::ThreadUnarchive(..) => Access::Mutation,
         // Moving a Thread, and nothing else `thread.set` can do. Needs an owner newer than the pin.
         #[cfg(feature = "next-shellboy")]
-        Command::ThreadSet(args) if only_parent(args) => Access::Mutation,
+        Command::ThreadSet(args) if only_parent(args) || only_model(args) => Access::Mutation,
         // Settings. The owner redacts what it returns and refuses what it can't accept. Apps
         // have no way to reach these: `apps.call` has its own list.
         #[cfg(feature = "next-shellboy")]
@@ -106,4 +106,17 @@ fn only_parent(args: &shellboy::protocol::ThreadSetArgs) -> bool {
     rest.thread_id = None;
     let has_parent = rest.parent_id.take().is_some();
     has_parent && rest == Default::default()
+}
+
+#[cfg(feature = "next-shellboy")]
+fn only_model(args: &shellboy::protocol::ThreadSetArgs) -> bool {
+    let mut rest = args.clone();
+    if rest.thread_id.as_deref().is_none_or(str::is_empty) {
+        return false;
+    }
+    rest.thread_id = None;
+    let has_change = rest.model.take().is_some()
+        | rest.connection.take().is_some()
+        | rest.effort.take().is_some();
+    has_change && rest == Default::default()
 }

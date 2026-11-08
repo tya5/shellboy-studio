@@ -78,6 +78,49 @@ export function setBounded<V>(map: Map<string, V>, key: string, value: V): Map<s
 export const errorMessage = (e: OpError): string => e.message;
 
 export class AppModel {
+  readonly modelPicker = signal<{ open: boolean; thread: string; connection: string; model: string; effort: string; models: string[]; loading: boolean; saving: boolean; error?: string | undefined }>({ open: false, thread: "", connection: "", model: "", effort: "", models: [], loading: false, saving: false });
+  private modelListCancel = new Cancel();
+  private modelListSeq = 0;
+  private initialModelEffort = "";
+
+  openModelPicker(): void {
+    const d = this.details.peek();
+    if (!d) return;
+    this.initialModelEffort = typeof d.effort === "string" ? d.effort : "";
+    this.modelPicker.value = { open: true, thread: d.thread_id, connection: d.connection, model: d.model, effort: typeof d.effort === "string" ? d.effort : "", models: [], loading: false, saving: false };
+    if (this.data.capabilities.peek().includes(CAPABILITY_CONFIG)) this.config.ensure();
+    this.chooseModelConnection(d.connection);
+  }
+  closeModelPicker(): void {
+    this.modelListCancel.cancel();
+    this.modelListSeq++;
+    this.modelPicker.value = { ...this.modelPicker.peek(), open: false };
+  }
+  chooseModelConnection(connection: string): void {
+    this.modelListCancel.cancel();
+    const cancel = this.modelListCancel = new Cancel();
+    const seq = ++this.modelListSeq;
+    const p = this.modelPicker.peek();
+    this.modelPicker.value = { ...p, connection, models: [], loading: true, error: undefined };
+    void this.ops.modelList({ thread_id: p.thread, connection }, { cancel }).then(out => {
+      if (cancel.cancelled || seq !== this.modelListSeq) return;
+      const now = this.modelPicker.peek();
+      this.modelPicker.value = out.ok ? { ...now, loading: false, models: [...new Set(out.value.models)].sort() } : { ...now, loading: false, error: out.error.message };
+    });
+  }
+  async saveThreadModel(): Promise<void> {
+    const p = this.modelPicker.peek();
+    if (p.saving || this.selectedId.peek() !== p.thread || !p.model.trim() || !p.connection.trim()) return;
+    this.modelPicker.value = { ...p, saving: true, error: undefined };
+    const out = await this.ops.setThreadModel(p.thread, { model: p.model.trim(), connection: p.connection, ...(p.effort !== this.initialModelEffort ? { effort: p.effort } : {}) });
+    const current = this.modelPicker.peek();
+    if (!out.ok) {
+      if (current.thread === p.thread && current.open) this.modelPicker.value = { ...current, saving: false, error: out.error.message };
+      return;
+    }
+    if (this.selectedId.peek() === p.thread) await this.handle.peek()?.refresh();
+    if (this.modelPicker.peek().thread === p.thread) this.closeModelPicker();
+  }
   readonly data: ShellboyData;
   readonly ops: Operations;
   readonly pending: PendingAdapter;
@@ -389,6 +432,7 @@ export class AppModel {
   }
 
   dispose(): void {
+    this.modelListCancel.cancel();
     this.missingPins.close();
     this.longReader.peek()?.dispose();
     this.apps.leaveFolders();

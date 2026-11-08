@@ -422,13 +422,40 @@ mod tests {
                 "thread.prune",
                 json!({"thread_id":"t","before_node_id":"n"}),
             ),
-            ("thread.set", json!({"thread_id":"t","model":"m"})),
+            (
+                "thread.set",
+                json!({"thread_id":"t","model":"m","title":"bad"}),
+            ),
             ("compact", json!({"thread_id":"t"})),
         ] {
             assert_eq!(
                 build_command(command, Some(args)).unwrap_err().code,
                 "not_allowed",
                 "{command}"
+            );
+        }
+    }
+
+    #[cfg(feature = "next-shellboy")]
+    #[test]
+    fn thread_model_changes_allow_only_selected_fields() {
+        for args in [
+            json!({"thread_id":"t","model":"m"}),
+            json!({"thread_id":"t","connection":"c","effort":""}),
+        ] {
+            assert_eq!(
+                access(&build_command("thread.set", Some(args)).unwrap()),
+                Access::Mutation
+            );
+        }
+        for args in [
+            json!({"model":"m"}),
+            json!({"thread_id":"t","model":"m","cwd":"/tmp"}),
+            json!({"thread_id":"t","model":"m","parent_id":"p"}),
+        ] {
+            assert_eq!(
+                build_command("thread.set", Some(args)).unwrap_err().code,
+                "not_allowed"
             );
         }
     }
