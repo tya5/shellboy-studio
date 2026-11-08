@@ -9,6 +9,7 @@ use std::{
     io::Write,
     path::{Path, PathBuf},
     sync::Mutex,
+    time::{Duration, Instant},
 };
 
 /// Cookies ignore ports, so two bridges on one host need different names or each login overwrites
@@ -19,9 +20,13 @@ pub fn cookie_name(port: u16) -> String {
 /// Bound on live browser sessions kept in memory.
 pub const MAX_SESSION_COOKIES: usize = 256;
 
+pub const PAIRING_LIMIT: usize = 16;
+pub const PAIRING_TTL: Duration = Duration::from_secs(120);
+
 pub struct Auth {
     token: String,
     sessions: Mutex<VecDeque<String>>,
+    pairings: Mutex<VecDeque<(String, Instant)>>,
 }
 
 pub fn random_hex() -> Result<String, String> {
@@ -44,6 +49,7 @@ impl Auth {
         Self {
             token,
             sessions: Mutex::new(VecDeque::new()),
+            pairings: Mutex::new(VecDeque::new()),
         }
     }
 
@@ -95,6 +101,30 @@ impl Auth {
         Ok(id)
     }
 
+    pub fn issue_pairing(&self) -> Result<String, &'static str> {
+        let mut codes = self.pairings.lock().unwrap_or_else(|p| p.into_inner());
+        let now = Instant::now();
+        codes.retain(|(_, expires)| *expires > now);
+        if codes.len() >= PAIRING_LIMIT {
+            return Err("too many active codes");
+        }
+        let code = random_hex().map_err(|_| "no random source")?;
+        codes.push_back((code.clone(), now + PAIRING_TTL));
+        Ok(code)
+    }
+
+    pub fn consume_pairing(&self, candidate: &str) -> bool {
+        let mut codes = self.pairings.lock().unwrap_or_else(|p| p.into_inner());
+        let now = Instant::now();
+        codes.retain(|(_, expires)| *expires > now);
+        if let Some(index) = codes.iter().position(|(code, _)| same(code, candidate)) {
+            codes.remove(index);
+            true
+        } else {
+            false
+        }
+    }
+
     /// Does a `Cookie` header carry a live session?
     pub fn cookie_valid(&self, name: &str, cookie_header: Option<&str>) -> bool {
         let Some(header) = cookie_header else {
@@ -132,6 +162,21 @@ pub fn default_config_dir() -> Result<PathBuf, String> {
         .ok_or_else(|| "cannot determine the config directory; pass --config-dir".to_owned())
 }
 
+/// Only DNS names without a scheme, port or path are safe URL authorities.
+pub fn pairing_host(host: &str) -> bool {
+    host.len() <= 253
+        && host.contains('.')
+        && host.split('.').all(|label| {
+            !label.is_empty()
+                && label.len() <= 63
+                && !label.starts_with('-')
+                && !label.ends_with('-')
+                && label
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b == b'-')
+        })
+}
+
 /// Host header (with optional port) against loopback names, the listen address and
 /// configured extra names. Blocks DNS rebinding.
 pub fn host_allowed(host: &str, listen: &std::net::SocketAddr, extra: &[String]) -> bool {
@@ -161,6 +206,38 @@ pub fn origin_matches(origin: Option<&str>, host: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn pairing_codes_expire_are_single_use_and_bounded() {
+        let auth = Auth::new("t".repeat(64));
+        let code = auth.issue_pairing().unwrap();
+        assert!(auth.consume_pairing(&code));
+        assert!(!auth.consume_pairing(&code));
+        let expired = auth.issue_pairing().unwrap();
+        auth.pairings.lock().unwrap().front_mut().unwrap().1 =
+            Instant::now() - Duration::from_secs(1);
+        assert!(!auth.consume_pairing(&expired));
+        for _ in 0..PAIRING_LIMIT {
+            auth.issue_pairing().unwrap();
+        }
+        assert!(auth.issue_pairing().is_err());
+    }
+
+    #[test]
+    fn pairing_hosts_require_plain_dns_names() {
+        assert!(pairing_host("mac.tail123.ts.net"));
+        for host in [
+            "evil.test/path",
+            "https://evil.test",
+            "evil.test:443",
+            "bad..test",
+            "-bad.test",
+            "evil.test@ok.test",
+            "localhost",
+        ] {
+            assert!(!pairing_host(host));
+        }
+    }
 
     #[test]
     fn host_and_origin_rules() {

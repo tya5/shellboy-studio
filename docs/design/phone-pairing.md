@@ -1,0 +1,7 @@
+# One-time phone pairing
+
+The authenticated Studio session may request a pairing URL for a configured `--allow-host` DNS hostname. URLs use HTTPS for Tailscale Serve, and put a random 256-bit one-time code in the fragment, never the persistent bridge token. A QR photograph, browser history, or shared URL therefore cannot disclose the long-term credential. The entry point removes the fragment before exchanging it for the same HttpOnly, SameSite session cookie used by normal login. Never log codes, URLs or cookies.
+
+The bridge owns at most 16 codes in memory, protected by a mutex; codes expire after 120 seconds on a monotonic clock, are atomically consumed once, and disappear on bridge shutdown. Expired codes are pruned on issue and exchange. Issuance requires a live session and same-origin/Host guards. Hostnames must both match `--allow-host` and be valid plain DNS names; no scheme, path, credentials or port are allowed. The short-lived code is still a bearer credential: anyone scanning it first can log in. An operator should share it privately. Reissue creates a new code, subject to the limit.
+
+The frontend adds `qrcode-generator` 2.0.4 (MIT), a small dependency with no runtime dependencies, pinned in the lockfile; it renders the code locally without sending it to a third party. Validate output with an actual QR scanner and the HTTP and frontend tests before release. Browser emulation is not a physical phone test.

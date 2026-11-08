@@ -1,3 +1,4 @@
+import { pairingHosts, issuePairing } from "../../data/src/pairing";
 import { GuideRegistration } from "./guide-registration";
 import { recentAppFolders } from "./app-templates";
 // Screen logic over the data layer: which Thread is open, what the views show, the send, stop,
@@ -79,6 +80,20 @@ export function setBounded<V>(map: Map<string, V>, key: string, value: V): Map<s
 export const errorMessage = (e: OpError): string => e.message;
 
 export class AppModel {
+  readonly pairing = signal<{ hosts: string[]; links: Record<string, { url: string; expires: number }>; error?: string }>({ hosts: [], links: {} });
+  async loadPairingHosts(): Promise<void> {
+    try { this.pairing.value = { ...this.pairing.peek(), hosts: await pairingHosts(), error: undefined }; }
+    catch { this.pairing.value = { ...this.pairing.peek(), error: "pair.error" }; }
+  }
+  async createPairing(host: string): Promise<void> {
+    try {
+      const started = Date.now();
+      const link = await issuePairing(host);
+      const p = this.pairing.peek();
+      this.pairing.value = { ...p, links: { ...p.links, [host]: { url: link.url, expires: started + link.expires_in_seconds * 1000 } }, error: undefined };
+    } catch { this.pairing.value = { ...this.pairing.peek(), error: "pair.error" }; }
+  }
+
   readonly modelPicker = signal<{ open: boolean; thread: string; connection: string; model: string; effort: string; agents: string; autoCompactAt: string; segmentChars: string; reduceRounds: string; models: string[]; loading: boolean; saving: boolean; error?: string | undefined }>({ open: false, thread: "", connection: "", model: "", effort: "", agents: "", autoCompactAt: "", segmentChars: "", reduceRounds: "", models: [], loading: false, saving: false });
   private modelListCancel = new Cancel();
   private modelListSeq = 0;

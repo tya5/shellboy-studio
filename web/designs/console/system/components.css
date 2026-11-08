@@ -480,3 +480,5 @@ a{color:var(--accent)}
 @container app (max-width:899px){
   .model-picker{position:fixed;left:var(--space-12);right:var(--space-12);top:calc(var(--size-touch) + var(--space-8));width:auto}
 }
+
+.pairing-url{overflow-wrap:anywhere}

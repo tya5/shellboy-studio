@@ -555,3 +555,114 @@ async fn new_tabs_start_from_the_current_owner_state_and_hear_about_changes() {
     assert_eq!(next_t(&mut early, "owner").await["event"], "unreachable");
     cancel.cancel();
 }
+
+#[tokio::test]
+async fn pairing_issue_requires_an_authenticated_session_and_allowed_host() {
+    let (owner, _tx) = mock(list_handler);
+    let app = router_only(owner, false);
+    let post = |cookie: Option<String>, host: &str| {
+        let mut req = Request::post("/pairing")
+            .header(header::HOST, "127.0.0.1:8751")
+            .header(header::CONTENT_TYPE, "application/json");
+        if let Some(cookie) = cookie {
+            req = req.header(header::COOKIE, cookie);
+        }
+        req.body(Body::from(json!({"host":host}).to_string()))
+            .unwrap()
+    };
+    assert_eq!(
+        app.clone()
+            .oneshot(post(None, "example.ts.net"))
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::UNAUTHORIZED
+    );
+    let auth = Request::post("/auth")
+        .header(header::HOST, "127.0.0.1:8751")
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(json!({"token":"ab".repeat(32)}).to_string()))
+        .unwrap();
+    let response = app.clone().oneshot(auth).await.unwrap();
+    let cookie = response.headers()[header::SET_COOKIE]
+        .to_str()
+        .unwrap()
+        .to_owned();
+    assert_eq!(
+        app.oneshot(post(Some(cookie), "example.ts.net"))
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::BAD_REQUEST
+    );
+}
+
+#[tokio::test]
+async fn pairing_link_exchanges_once_for_session_cookie() {
+    use shellboy_studio::{
+        auth::Auth,
+        hub::Hub,
+        server::{ServerConfig, Shared, router},
+    };
+    let (owner, _tx) = mock(list_handler);
+    let state = Shared::new(
+        owner,
+        Hub::new(),
+        Auth::new("ab".repeat(32)),
+        ServerConfig {
+            listen: "127.0.0.1:8751".parse().unwrap(),
+            extra_hosts: vec!["mac.tail123.ts.net".into()],
+            debug: false,
+            data_dir: "/tmp/test".into(),
+        },
+    );
+    let app = router(state);
+    let send = |uri: &str, body: Value, cookie: Option<&str>| {
+        let mut req = Request::post(uri)
+            .header(header::HOST, "127.0.0.1:8751")
+            .header(header::CONTENT_TYPE, "application/json");
+        if let Some(cookie) = cookie {
+            req = req.header(header::COOKIE, cookie);
+        }
+        req.body(Body::from(body.to_string())).unwrap()
+    };
+    let response = app
+        .clone()
+        .oneshot(send("/auth", json!({"token":"ab".repeat(32)}), None))
+        .await
+        .unwrap();
+    let cookie = response.headers()[header::SET_COOKIE]
+        .to_str()
+        .unwrap()
+        .to_owned();
+    let issued = app
+        .clone()
+        .oneshot(send(
+            "/pairing",
+            json!({"host":"mac.tail123.ts.net"}),
+            Some(&cookie),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(issued.status(), StatusCode::OK);
+    let bytes = axum::body::to_bytes(issued.into_body(), 8192)
+        .await
+        .unwrap();
+    let value: Value = serde_json::from_slice(&bytes).unwrap();
+    let url = value["url"].as_str().unwrap();
+    assert!(url.starts_with("https://mac.tail123.ts.net/#pair="));
+    assert!(!url.contains(&"ab".repeat(32)));
+    let code = url.split_once("#pair=").unwrap().1;
+    let exchanged = app
+        .clone()
+        .oneshot(send("/pairing/exchange", json!({"code":code}), None))
+        .await
+        .unwrap();
+    assert_eq!(exchanged.status(), StatusCode::NO_CONTENT);
+    assert!(exchanged.headers().contains_key(header::SET_COOKIE));
+    let again = app
+        .oneshot(send("/pairing/exchange", json!({"code":code}), None))
+        .await
+        .unwrap();
+    assert_eq!(again.status(), StatusCode::UNAUTHORIZED);
+}
