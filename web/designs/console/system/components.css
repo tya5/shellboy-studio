@@ -495,3 +495,5 @@ a{color:var(--accent)}
 .character-status{width:24px;height:24px;flex:none}
 
 .character-empty{width:128px;height:128px;max-width:100%}
+
+.empty-character{align-items:center;text-align:center;width:100%}
