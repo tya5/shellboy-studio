@@ -46,7 +46,10 @@ pub async fn run<O: Owner>(
 }
 
 pub async fn run_with_guide<O: Owner>(
-    owner: Arc<O>, hub: Arc<Hub>, config: PollConfig, cancel: CancellationToken,
+    owner: Arc<O>,
+    hub: Arc<Hub>,
+    config: PollConfig,
+    cancel: CancellationToken,
     guide: Option<(std::path::PathBuf, std::path::PathBuf)>,
 ) {
     let mut cursor: Option<String> = None;
@@ -117,7 +120,12 @@ pub async fn run_with_guide<O: Owner>(
         if !connected_now || restarted {
             #[cfg(feature = "next-shellboy")]
             if let (Some((config_dir, data_dir)), Some(instance_id)) = (&guide, &instance) {
-                let registration = crate::guide_preference::register(owner.as_ref(), config_dir, data_dir, instance_id);
+                let registration = crate::guide_preference::register(
+                    owner.as_ref(),
+                    config_dir,
+                    data_dir,
+                    instance_id,
+                );
                 tokio::select! {
                     _ = cancel.cancelled() => return,
                     result = tokio::time::timeout(Duration::from_secs(10), registration) => {

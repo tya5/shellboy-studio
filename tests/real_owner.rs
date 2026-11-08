@@ -1,7 +1,7 @@
 //! The bridge against a real `shellboy serve` from the pinned revision, with a temporary
 //! data directory and temporary HOME/XDG (so no user config or data is read). No model is
-//! configured or called; the test only creates Threads. Skipped, loudly, unless
-//! `SHELLBOY_BIN` points at a `shellboy` binary built from the pinned revision.
+//! called outside local mock providers. Selected explicitly with `real-owner-tests`;
+//! requires `SHELLBOY_BIN` pointing at the binary from the published pinned tag.
 mod common;
 use common::*;
 use futures_util::{SinkExt, StreamExt};
@@ -125,12 +125,9 @@ fn temp_root() -> PathBuf {
 
 #[tokio::test]
 async fn hints_and_restart_against_a_real_owner() {
-    let Some(bin) = std::env::var_os("SHELLBOY_BIN").map(PathBuf::from) else {
-        eprintln!(
-            "SKIPPED real_owner: set SHELLBOY_BIN to a shellboy binary built from the pinned revision"
-        );
-        return;
-    };
+    let bin = PathBuf::from(
+        std::env::var_os("SHELLBOY_BIN").expect("explicit real-owner-tests require SHELLBOY_BIN"),
+    );
     let root = temp_root();
     let data = root.join("data");
     let first = start_owner(&bin, &root, &data);
@@ -408,10 +405,9 @@ impl Client {
 
 #[tokio::test]
 async fn branches_fork_rewind_and_unarchive_against_a_real_owner() {
-    let Some(bin) = std::env::var_os("SHELLBOY_BIN").map(PathBuf::from) else {
-        eprintln!("SKIPPED real_owner: set SHELLBOY_BIN");
-        return;
-    };
+    let bin = PathBuf::from(
+        std::env::var_os("SHELLBOY_BIN").expect("explicit real-owner-tests require SHELLBOY_BIN"),
+    );
     let root = temp_root();
     let data = root.join("data");
     let url = mock_provider().await;
@@ -611,10 +607,9 @@ async fn branches_fork_rewind_and_unarchive_against_a_real_owner() {
 /// A throwaway app in a temp folder, against a real owner: what a page sends is recorded as from the app.
 #[tokio::test]
 async fn an_app_message_is_recorded_as_from_the_app() {
-    let Some(bin) = std::env::var_os("SHELLBOY_BIN").map(PathBuf::from) else {
-        eprintln!("SKIPPED real_owner: set SHELLBOY_BIN");
-        return;
-    };
+    let bin = PathBuf::from(
+        std::env::var_os("SHELLBOY_BIN").expect("explicit real-owner-tests require SHELLBOY_BIN"),
+    );
     let root = temp_root();
     let data = root.join("data");
     let url = mock_provider().await;
@@ -815,10 +810,6 @@ async fn a_thread_moves_and_the_owner_refuses_a_cycle() {
 #[cfg(feature = "next-shellboy")]
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn settings_read_and_write_the_file_and_values_stay_hidden() {
-    if std::env::var_os("SHELLBOY_BIN").is_none() {
-        eprintln!("SKIPPED: SHELLBOY_BIN is not set");
-        return;
-    }
     let bin = PathBuf::from(std::env::var_os("SHELLBOY_BIN").expect("SHELLBOY_BIN"));
     let root = temp_root();
     let data = root.join("data");

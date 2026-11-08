@@ -111,10 +111,11 @@ is not an API key; an API key is required.
 
 Studio releases are built against one Shellboy release and speak its protocol.
 This tree pins **Shellboy v0.10.0 (protocol 2)** in `Cargo.toml`, but enables features intended for v0.11.0 by default. The default build is therefore not yet a verified v0.10.0 pairing. See the [release checklist](docs/development/release-v0.1.0-checklist.md) before building or publishing.
-Until Shellboy's protocol 3, pair releases exactly. If the owner speaks another protocol,
-Studio says so on start and asks you to install the paired Shellboy. Screens that need
-operations newer than v0.10.0 (editing `config.toml`, connection setup) say so and
-stay read-only. A release's notes will name the exact Shellboy tag.
+Pair the final release exactly with the owner named in its release notes.
+Capabilities currently describe the bridge build, not negotiated owner support.
+Automatic protocol-mismatch guidance or read-only fallback on older owners is
+not guaranteed. Older-owner behavior is unverified until measured; do not use
+it as a supported pairing or infer data safety from missing UI controls.
 
 ## Verification and limitations
 
@@ -125,6 +126,10 @@ physical phone. No CI run or release binaries are claimed by this tree.
 ## Development
 
 See [AGENTS.md](AGENTS.md) and [docs/design/architecture.md](docs/design/architecture.md).
+Owner-free checks exclude the explicit `real-owner-tests` suite. Exact-pair CI
+and the release gate run it with a published-tag binary and `SHELLBOY_BIN` in
+temporary test data; omitting it is not owner-integration success.
+
 Checks: `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test`,
 and in `web/`: `npm run check`.
 

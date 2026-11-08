@@ -23,3 +23,8 @@ these notes. Preserve user data and keep token URLs/QR codes private.
 See `docs/development/release-v0.1.0-checklist.md` for required gates and
 `docs/first-release-verification.md` for the limited prior test environment.
 Publication is not authorized before 2026-11-09 07:00 JST.
+
+Scope update: attachment changes are excluded from v0.1.0; character
+`6fbb954` remains optional pending independent review. This branch changes
+neither feature. The missing bridge pairing fixture `config_dir` is filled
+with a synthetic path, not a user configuration directory.

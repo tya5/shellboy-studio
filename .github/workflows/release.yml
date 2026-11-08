@@ -16,7 +16,13 @@ concurrency:
   group: release-${{ inputs.release_tag || github.ref_name }}
   cancel-in-progress: false
 jobs:
+  exact-owner:
+    name: Required exact-pair owner acceptance before artifacts
+    uses: ./.github/workflows/exact-owner.yml
+    with:
+      studio_ref: refs/tags/${{ inputs.release_tag || github.ref_name }}
   build:
+    needs: exact-owner
     name: Build ${{ matrix.target }}
     strategy:
       fail-fast: false
@@ -86,6 +92,7 @@ jobs:
         run: |
           (cd web && npm ci && npm run check && npm run build)
           test -s web/dist/index.html
+          python tools/check-release.py
           cargo +1.99.1 test --locked
       - name: Build the locked release binary
         run: |
@@ -102,14 +109,9 @@ jobs:
           stage.mkdir(parents=True)
           exe = os.environ['RELEASE_EXECUTABLE']
           shutil.copy2(Path('target') / os.environ['RELEASE_TARGET'] / 'release' / exe, stage / exe)
-          for f in ('LICENSE', 'README.md'):
+          for f in ('LICENSE', 'README.md', 'AGENTS.md'):
               shutil.copy2(f, stage / f)
-          shutil.copytree('docs/guides', stage / 'docs/guides')
-          for doc in ('release-v0.1.0.md', 'first-release-verification.md'):
-            shutil.copy2(Path('docs') / doc, stage / 'docs' / doc)
-          (stage / 'docs/development').mkdir()
-          for doc in ('release-v0.1.0-checklist.md', 'release-v0.1.0-safety.md'):
-            shutil.copy2(Path('docs/development') / doc, stage / 'docs/development' / doc)
+          shutil.copytree('docs', stage / 'docs')
           out = Path('dist'); out.mkdir()
           archive = out / f"{name}.{os.environ['RELEASE_ARCHIVE']}"
           if os.environ['RELEASE_ARCHIVE'] == 'zip':

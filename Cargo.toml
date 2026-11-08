@@ -16,7 +16,14 @@ path = "src/lib.rs"
 name = "shellboy-studio"
 path = "src/main.rs"
 
+[[test]]
+name = "real_owner"
+path = "tests/real_owner.rs"
+required-features = ["real-owner-tests"]
+
 [features]
+# Explicit integration suite: never part of owner-free unit/synthetic checks.
+real-owner-tests = []
 default = ["next-shellboy", "next-connection-setup", "next-tags", "next-cwds"]
 # Prepared for v0.11.0: validate the published tag and regenerate Cargo.lock before merging.
 next-shellboy = []

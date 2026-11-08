@@ -1,0 +1,43 @@
+# Required integration gate, separate from owner-free tests. Not executed locally.
+name: Exact-pair owner acceptance
+on:
+  workflow_call:
+    inputs:
+      studio_ref:
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  owner:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Enforce publication time boundary
+        run: |
+          python3 - <<'PY'
+          from datetime import datetime, timezone
+          assert datetime.now(timezone.utc) >= datetime(2026, 11, 8, 22, tzinfo=timezone.utc)
+          PY
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.studio_ref }}
+          persist-credentials: false
+      - name: Install pinned Rust toolchain
+        run: rustup toolchain install 1.99.1 --profile minimal
+      - uses: Swatinem/rust-cache@v2
+      - name: Build the explicitly published pinned owner in runner temp
+        run: |
+          tag=$(sed -n 's/^shellboy = .*tag = "\([^"]*\)".*/\1/p' Cargo.toml)
+          test "$tag" = v0.11.0
+          cargo +1.99.1 install --locked --git https://github.com/tya5/shellboy --tag "$tag" --root "$RUNNER_TEMP/exact-owner" shellboy
+          "$RUNNER_TEMP/exact-owner/bin/shellboy" --version
+      - name: Run explicit exact-pair integration suite (temporary data and local mock)
+        env:
+          SHELLBOY_BIN: ${{ runner.temp }}/exact-owner/bin/shellboy
+        run: |
+          test -x "$SHELLBOY_BIN"
+          cargo +1.99.1 test --locked --features real-owner-tests --test real_owner -- --nocapture

@@ -614,6 +614,7 @@ async fn pairing_link_exchanges_once_for_session_cookie() {
             extra_hosts: vec!["mac.tail123.ts.net".into()],
             debug: false,
             data_dir: "/tmp/test".into(),
+            config_dir: "/tmp/test-config".into(),
         },
     );
     let app = router(state);

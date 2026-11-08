@@ -5,11 +5,6 @@ on:
     branches: ["main"]
     paths-ignore: ["docs/**", "**/*.md", "LICENSE"]
   workflow_dispatch:
-    inputs:
-      real_owner:
-        description: Also run the integration test against a real `shellboy serve` built from the pinned tag (Linux only, builds Shellboy)
-        type: boolean
-        default: false
 permissions:
   contents: read
 concurrency:
@@ -42,12 +37,17 @@ jobs:
           npm ci
           npm run check
           npm run build
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Owner-free release preparation checks
+        run: python3 tools/check-release.py
       - name: Install pinned Rust toolchain
         run: rustup toolchain install 1.99.1 --profile minimal --component rustfmt --component clippy
       - uses: Swatinem/rust-cache@v2
         with:
           cache-on-failure: true
-      - name: Rust checks
+      - name: Owner-free Rust checks (explicit owner suite runs separately)
         run: |
           cargo +1.99.1 fmt --check
           cargo +1.99.1 clippy --locked --all-targets -- -D warnings
@@ -59,25 +59,7 @@ jobs:
           ./target/debug/shellboy-studio --version
 
   real-owner:
-    name: Integration with a real owner (Linux, manual)
-    if: ${{ inputs.real_owner }}
-    runs-on: ubuntu-22.04
-    timeout-minutes: 60
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-      - name: Install pinned Rust toolchain
-        run: rustup toolchain install 1.99.1 --profile minimal
-      - uses: Swatinem/rust-cache@v2
-        with:
-          cache-on-failure: true
-      - name: Build Shellboy at the tag Studio pins
-        run: |
-          tag=$(sed -n 's/^shellboy = .*tag = "\([^"]*\)".*/\1/p' Cargo.toml)
-          echo "pinned tag: $tag"
-          cargo +1.99.1 install --locked --git https://github.com/tya5/shellboy --tag "$tag" --root "$RUNNER_TEMP/shellboy" shellboy
-      - name: Run the real-owner test
-        env:
-          SHELLBOY_BIN: ${{ runner.temp }}/shellboy/bin/shellboy
-        run: cargo +1.99.1 test --locked --test real_owner -- --nocapture
+    name: Required exact-pair owner acceptance
+    uses: ./.github/workflows/exact-owner.yml
+    with:
+      studio_ref: ${{ github.sha }}

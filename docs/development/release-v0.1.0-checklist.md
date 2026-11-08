@@ -29,18 +29,19 @@ run, tag, release, main merge, restart or real owner was performed in this audit
 |---|---|---|---|
 | 1 | Pin is v0.10.0 in manifest/lock, while four next features default on. `src/seam.rs` advertises build flags, not negotiated owner support. | **Blocker**: no verified release pairing or old-owner fallback. | Leader: wait for public Core v0.11.0, inspect its adopted public types, update tag/lock, build/test exact pair. Do not substitute origin/main. |
 | 2 | Package/lock now say 0.1.0; MIT present; `publish = false` intentionally retained for binary-only distribution. Notes and guides prepared. | Metadata fixed locally; final release scope/tip approval **required**. | Leader/reviewer: integrate reviewed changes, confirm scope and version on final tip. |
-| 3 | CI YAML has Ubuntu/macOS/Windows jobs and optional Linux real-owner job. Local frontend: 600 tests pass and production build passes at audit baseline. | **Blocker**: hosted CI not run; local tests do not prove target builds. | After first-push authorization: inspect all jobs and run synthetic owner acceptance with published Core; record run IDs, not invented CI numbers. |
+| 3 | CI YAML has Ubuntu/macOS/Windows jobs and required Linux exact-pair owner job. Local frontend: 600 tests pass and production build passes at audit baseline. | **Blocker**: hosted CI not run; local tests do not prove target builds. | After first-push authorization: inspect all jobs and run synthetic owner acceptance with published Core; record run IDs, not invented CI numbers. |
 | 4 | Release YAML builds existing three targets, embeds web, archives binary/LICENSE/README/docs, checks staged guides/version and emits SHA256SUMS; draft release only. Time guard added. | **Blocker**: artifact workflow/execution/download contents untested. | After approved tag: inspect actual archives/checksums/embedded UI/CLI guides on each target. Signing/notarization and extra architectures are **known limitations**, not added commitments. |
 | 5 | Prior evidence is macOS headless Chromium and synthetic data, not phone/Windows/Linux/Safari/Firefox/AT. | **Known unverified limitations**, unless required by product acceptance; do not claim those checks passed. | Reviewer/user: accept explicit limitations or require physical testing before publishing. A successful CI runner is not a physical-device test. |
-| 6 | Reachable baseline history: 173 commits, 1,173 blobs scanned for common credential/private-path/key-file/tailnet patterns; no private-path/key-file matches. Credential-looking hit is a synthetic setup-test value. Tailnet hits are example/test contexts (locations in safety report). | **Privacy decision required** for author identity and fixture-host approval; pattern scan is not proof of no secrets. | Review locations and author/committer identity without printing values; approve intended public history and assets. Never rewrite history without authorization. Rescan final tip. |
+| 6 | Reachable baseline history: 173 commits, 1,173 blobs scanned for common credential/private-path/key-file/tailnet patterns; no private-path/key-file matches. Credential-looking hit is a synthetic setup-test value. Tailnet hits are example/test contexts (locations in safety report). | **Final privacy review required** for fixture-host provenance; normal Git attribution approved; pattern scan is not proof of no secrets. | Review locations and fixture provenance without printing values; normal Git attribution is approved by the leader and retained without rewriting. Approve final intended public history and assets. Never rewrite history without authorization. Rescan final tip. |
 | 7 | README/User Guide/Agent Guide and release notes now distinguish proposed pairing, build targets and unverified devices; release archive includes docs. | Local documentation complete for proposed scope; final artifact truthfulness **required**. | Final tip reviewer: update pending pairing language only after published-tag validation and inspect packaged links. |
 | 8 | Existing first-run report uses origin/main and mock provider, not release pair; S5/S7 pending integration are outside this worktree. | **Blocker**: clean synthetic first-run and correctness acceptance on final candidate. | Leader: after pin and reviewed S5/S7 integration, use temporary data/local mock only; validate startup/setup/session recovery/live-to-saved answers/scroll and failure paths. No real data, owner or paid API in this audit. |
 
 ## Feature and old-owner policy
 
-Propose retaining the current four default flags only after the published tag
+Propose retaining the current four default owner API flags only after the published tag
 passes typed compilation and allowlist tests: `next-shellboy` (history/config/
 settings/live text), `next-connection-setup`, `next-tags`, `next-cwds`.
+`real-owner-tests` is a separate non-default test-selection feature, not an owner capability.
 `next-reply` stays off: it is not needed for this scope; the gated `MessageAsk`
 arm is denied and `MessageReply` is already independently allowed. Do not infer
 feature needs from names or enable all flags blindly.
@@ -89,3 +90,33 @@ Follow-up: this branch now includes main `6312f700` by rebase. Final local
 frontend checks pass 623 tests and production build. See the safety report for
 the follow-up history scan and synthetic packaging-script check. Exact Core
 pairing, hosted CI, genuine artifacts and S5 integrated acceptance remain open.
+
+
+## Independent review corrections
+
+Ordinary all-target jobs run owner-free tests: `real_owner` has Cargo
+`required-features = ["real-owner-tests"]` and is not in defaults. CI calls the
+required reusable exact-owner job; release artifact builds depend on that same
+job, so its failure prevents artifacts/draft creation. This job explicitly
+requires the public v0.11.0 pin, builds its CLI under runner temporary storage,
+and runs the selected suite with `SHELLBOY_BIN`. Selecting the suite without the
+binary is an error, never a successful skip. The still-v0.10.0 pin intentionally
+cannot pass this gate until the separate approved tag/pin/lock work is done.
+No owner was started to test this preparation.
+
+`python3 tools/check-release.py` verifies target classification, gate wiring,
+Python syntax and all parsed local file/heading links in README/AGENTS/docs,
+both in source and in all three synthetic archive layouts. Archive contents
+now include AGENTS and all docs, including architecture, rather than selected
+files with dangling README links. This is local packaging evidence, not target
+binary or hosted-workflow success. Run the check from CI and release jobs.
+
+The baseline also failed `cargo fmt --check`; rustfmt-only changes in
+`src/events.rs`, `src/guide_preference.rs`, `src/server.rs`, `src/main.rs` remove
+that known failure without changing logic or integration scope. Typed tests and
+clippy remain dependent on the public Core pin and are not claimed passed.
+
+Scope update: attachment changes are excluded from v0.1.0; character
+`6fbb954` remains optional pending independent review. This branch changes
+neither feature. The missing bridge pairing fixture `config_dir` is filled
+with a synthetic path, not a user configuration directory.

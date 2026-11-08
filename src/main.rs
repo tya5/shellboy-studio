@@ -58,7 +58,10 @@ fn install_agent_guide(data_dir: &std::path::Path) -> std::io::Result<()> {
     let dir = data_dir.join("studio");
     std::fs::create_dir_all(&dir)?;
     std::fs::write(dir.join("agent-guide.md"), AGENT_GUIDE)?;
-    std::fs::write(dir.join("agent-pointer.md"), "When asked to make an app or web tool, first read $SHELLBOY_DATA_DIR/studio/agent-guide.md.\n")
+    std::fs::write(
+        dir.join("agent-pointer.md"),
+        "When asked to make an app or web tool, first read $SHELLBOY_DATA_DIR/studio/agent-guide.md.\n",
+    )
 }
 
 /// What to tell someone whose first probe of the owner failed: the fact, then the next step.
@@ -191,7 +194,11 @@ mod tests {
         let path = root.join("studio").join("agent-guide.md");
         let pointer = std::fs::read(root.join("studio").join("agent-pointer.md")).unwrap();
         assert!(pointer.len() <= 8192);
-        assert!(std::str::from_utf8(&pointer).unwrap().contains("agent-guide.md"));
+        assert!(
+            std::str::from_utf8(&pointer)
+                .unwrap()
+                .contains("agent-guide.md")
+        );
         std::fs::write(&path, "edited").unwrap();
         super::install_agent_guide(&root).unwrap();
         assert_eq!(std::fs::read_to_string(path).unwrap(), super::AGENT_GUIDE);
