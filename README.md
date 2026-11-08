@@ -51,9 +51,10 @@ cannot run on that directory, because the TUI is itself an owner today.
   ```sh
   git clone https://github.com/tya5/shellboy-studio && cd shellboy-studio
   (cd web && npm ci && npm run build)   # the frontend is embedded by build.rs
-  cargo run --release -- --data-dir DIR
+  cargo run --release --no-default-features -- --data-dir DIR
   ```
 
+  This uses the v0.10.0-compatible feature set; next-generation features are unavailable.
   Without `npm run build` the binary still builds, but `GET /` only says how to build the frontend.
 
 ## Connecting to an owner
@@ -87,6 +88,8 @@ is not an API key; an API key is required.
   tailscale serve --bg 8751
   ```
 
+  For a phone, use Settings > Studio > Open on a phone to issue a one-use pairing QR code; see the [user guide](docs/guides/user-guide.md). Never share the printed local token URL.
+
   `tailscale serve` shares only within your tailnet and gives you HTTPS (needed for the
   PWA). **Do not use `tailscale funnel`**: it publishes the port on the public internet.
   An SSH tunnel (`ssh -L 8751:127.0.0.1:8751 host`) also works.
@@ -98,7 +101,7 @@ is not an API key; an API key is required.
 ## Version pairing with Shellboy
 
 Studio releases are built against one Shellboy release and speak its protocol.
-This tree is built against **Shellboy v0.10.0 (protocol 2)**, pinned in `Cargo.toml`.
+This tree pins **Shellboy v0.10.0 (protocol 2)** in `Cargo.toml`, but enables features intended for v0.11.0 by default. The default build is therefore not yet a verified v0.10.0 pairing. See the [release checklist](docs/development/release-v0.1.0-checklist.md) before building or publishing.
 Until Shellboy's protocol 3, pair releases exactly. If the owner speaks another protocol,
 Studio says so on start and asks you to install the paired Shellboy. Screens that need
 operations newer than v0.10.0 (editing `config.toml`, connection setup) say so and
