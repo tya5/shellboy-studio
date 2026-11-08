@@ -1,3 +1,4 @@
+import { effect } from "@preact/signals-core";
 import { MonitorPopover } from "../system/components/MonitorPopover";
 import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import { toolLabel, activityLabel, renderOutput, formatClock, formatDuration, formatRoute, formatTokens, parseTime, statusLabel, type AppModel, type ConversationRow, type StepRow as Step } from "../../../ui-core/src";
@@ -195,6 +196,66 @@ function Details({ model }: { model: AppModel }) {
   );
 }
 
+function OrderedHistory({ model, handle, rows, win, history, scroller, pinned, follow, loading, t }: { model: AppModel; handle: NonNullable<AppModel["handle"]["value"]>; rows: AppModel["conversation"]["value"]; win: AppModel["longReader"]["value"]; history: NonNullable<AppModel["handle"]["value"]>["history"]["value"] | undefined; scroller: import("preact").RefObject<HTMLDivElement>; pinned: { current: ScrollIntent }; follow: (from?: Element | null) => void; loading: boolean; t: AppModel["t"]["value"] }) {
+  const [boundary, setBoundary] = useState<{ attempt: string; ordinal: number; legacy: number } | undefined>();
+  useEffect(() => {
+    if (!handle) return;
+    let attempt: string | undefined;
+    return effect(() => {
+      const preview = handle.preview.value;
+      const next = preview?.kind === "live" ? preview.attemptId : undefined;
+      if (next === attempt) return;
+      attempt = next;
+      setBoundary(next === undefined ? undefined : { attempt: next, ordinal: win?.total ?? 0, legacy: rows.length });
+    });
+  }, [handle, win]);
+  return <>
+        {win ? (
+          <WindowedScroll
+            model={model}
+            win={win}
+            renderRow={(row) => <RowView model={model} row={row} />}
+            live={<LiveMessage model={model} handle={handle} follow={follow} />}
+            liveBoundary={boundary?.ordinal}
+            statusLine={<ConversationStatus model={model} />}
+          />
+        ) : (
+          <div
+            class="scroll"
+            ref={scroller}
+            onWheel={(e) => pinned.current.wheel(e.deltaY)}
+            onTouchStart={(e) => { if (e.touches[0]) pinned.current.touchStart(e.touches[0].clientY); }}
+            onTouchMove={(e) => { if (e.touches[0]) pinned.current.touchMove(e.touches[0].clientY); }}
+            onKeyDown={(e) => pinned.current.key(e.key)}
+            onScroll={(e) => { pinned.current.scroll(e.currentTarget); }}
+          >
+            {history?.earlierHidden ? (
+              <span class="more">
+                {handle.canShowEarlier() ? (
+                  <Button disabled={history.loadingMore} onClick={() => void handle.loadOlderHistory()}>{t("convo.earlier")}</Button>
+                ) : (
+                  <span class="muted caption">{t("convo.earlierLimit")}</span>
+                )}
+              </span>
+            ) : null}
+            {history?.error && !history.loaded ? (
+              <Notice tone="bad" actions={<Button onClick={() => void handle.refresh()}>{t("convo.retryLoad")}</Button>}>
+                {t("convo.loadError", { message: history.error.message })}
+              </Notice>
+            ) : null}
+            {rows.map((row, index) => (
+              <>{index === boundary?.legacy ? <LiveMessage model={model} handle={handle} follow={follow} /> : null}<div class="conversation-row" key={row.id}><RowView model={model} row={row} /></div></>
+            ))}
+            {boundary === undefined || boundary.legacy >= rows.length ? <LiveMessage model={model} handle={handle} follow={follow} /> : null}
+            <ConversationStatus model={model} />
+            {rows.length === 0 && !history?.error ? (
+              loading ? <LoadingRows label={t("convo.loading")} rows={5} /> : <EmptyState icon="chat" title={t("convo.empty")} body={t("convo.emptyBody")} />
+            ) : null}
+          </div>
+        )}
+  </>;
+}
+
 export function Conversation({ model }: { model: AppModel }) {
   const t = model.t.value;
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -234,47 +295,7 @@ export function Conversation({ model }: { model: AppModel }) {
   return (
     <>
       <div class="convo">
-        {win ? (
-          <WindowedScroll
-            model={model}
-            win={win}
-            renderRow={(row) => <RowView model={model} row={row} />}
-            live={<><LiveMessage model={model} handle={handle} follow={follow} /><ConversationStatus model={model} /></>}
-          />
-        ) : (
-          <div
-            class="scroll"
-            ref={scroller}
-            onWheel={(e) => pinned.current.wheel(e.deltaY)}
-            onTouchStart={(e) => { if (e.touches[0]) pinned.current.touchStart(e.touches[0].clientY); }}
-            onTouchMove={(e) => { if (e.touches[0]) pinned.current.touchMove(e.touches[0].clientY); }}
-            onKeyDown={(e) => pinned.current.key(e.key)}
-            onScroll={(e) => { pinned.current.scroll(e.currentTarget); }}
-          >
-            {history?.earlierHidden ? (
-              <span class="more">
-                {handle.canShowEarlier() ? (
-                  <Button disabled={history.loadingMore} onClick={() => void handle.loadOlderHistory()}>{t("convo.earlier")}</Button>
-                ) : (
-                  <span class="muted caption">{t("convo.earlierLimit")}</span>
-                )}
-              </span>
-            ) : null}
-            {history?.error && !history.loaded ? (
-              <Notice tone="bad" actions={<Button onClick={() => void handle.refresh()}>{t("convo.retryLoad")}</Button>}>
-                {t("convo.loadError", { message: history.error.message })}
-              </Notice>
-            ) : null}
-            {rows.map((row) => (
-              <div class="conversation-row" key={row.id}><RowView model={model} row={row} /></div>
-            ))}
-            <LiveMessage model={model} handle={handle} follow={follow} />
-            <ConversationStatus model={model} />
-            {rows.length === 0 && !history?.error ? (
-              loading ? <LoadingRows label={t("convo.loading")} rows={5} /> : <EmptyState icon="chat" title={t("convo.empty")} body={t("convo.emptyBody")} />
-            ) : null}
-          </div>
-        )}
+        <OrderedHistory model={model} handle={handle} rows={rows} win={win} history={history} scroller={scroller} pinned={pinned} follow={follow} loading={loading} t={t} />
         <div class="dock">
           {recovery ? (
             <Notice

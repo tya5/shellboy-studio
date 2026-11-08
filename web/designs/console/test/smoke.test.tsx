@@ -5,6 +5,7 @@ import { signal } from "@preact/signals-core";
 import { options, render } from "preact";
 import { act } from "preact/test-utils";
 import { afterEach, describe, expect, it } from "vitest";
+import { WindowOwner } from "../../../ui-core/test/window-owner";
 import { fixtureModel, fixturePendingAdapter } from "../../../ui-core/test/fixture";
 import type { ServerFrame } from "../../../data/src";
 import { settle } from "../../../data/test/harness";
@@ -162,6 +163,55 @@ describe("Conversation live text", () => {
     });
     expect(bodies().some((b) => b.includes("Writing"))).toBe(false);
     expect(el.textContent).toContain("Final saved answer");
+  });
+
+  it("keeps a newly saved human message after the live reply until the answer is reread", async () => {
+    const { model, t, db } = await fixtureModel({ capabilities: ["live.text"] });
+    const el = draw(model);
+    act(() => t.push(liveFrame("Live answer")));
+    await act(async () => flushPromises());
+    db.history.lead = [...(db.history.lead ?? []), { node_id: "user-new", kind: "user", excerpt: "New human message", provenance: { sender: { kind: "human" } } }];
+    act(() => t.push({ t: "changed", thread_ids: ["lead"], list: false }));
+    await act(async () => settle(t, db));
+    expect(text(el).indexOf("Live answer")).toBeLessThan(text(el).indexOf("New human message"));
+    model.dispose();
+  });
+
+  it("keeps a saved answer ahead of a later human message", async () => {
+    const { model, t, db } = await fixtureModel({ capabilities: ["live.text"] });
+    const el = draw(model);
+    act(() => t.push(liveFrame("Answer before save")));
+    await act(async () => flushPromises());
+    db.history.lead = [...(db.history.lead ?? []), { node_id: "saved-order", kind: "assistant_response", excerpt: "Saved answer", provenance: { sender: { kind: "shellboy" } } }];
+    act(() => t.push({ t: "live_end", thread_id: "lead" }));
+    await act(async () => settle(t, db));
+    db.history.lead = [...db.history.lead, { node_id: "user-order", kind: "user", excerpt: "Later human", provenance: { sender: { kind: "human" } } }];
+    act(() => t.push({ t: "changed", thread_ids: ["lead"], list: false }));
+    await act(async () => settle(t, db));
+    expect(text(el)).toContain("Saved answer");
+    expect(text(el)).toContain("Later human");
+    expect(text(el).indexOf("Saved answer")).toBeLessThan(text(el).indexOf("Later human"));
+    model.dispose();
+  });
+
+  it("keeps the live answer before a later human row in the windowed reader", async () => {
+    const owner = new WindowOwner(8);
+    owner.decorate = (i, item) => i === 8 ? { ...item, kind: "user", excerpt: "Window human" } : item;
+    const { model, t, db } = await fixtureModel({ capabilities: ["live.text", "history.window"], configure(db) {
+      const base = db.answer.bind(db);
+      db.answer = (c) => c.command === "history.window" ? owner.answer(c) : base(c);
+    } });
+    const el = draw(model);
+    await act(async () => settle(t, db));
+    act(() => t.push(liveFrame("Window live answer")));
+    await act(async () => flushPromises());
+    owner.append(1);
+    act(() => t.push({ t: "changed", thread_ids: ["lead"], list: false }));
+    await act(async () => settle(t, db));
+    expect(text(el)).toContain("Window live answer");
+    expect(text(el)).toContain("Window human");
+    expect(text(el).indexOf("Window live answer")).toBeLessThan(text(el).indexOf("Window human"));
+    model.dispose();
   });
 
   it("shows at the end of the windowed reader too, and keeps following as it grows", async () => {
