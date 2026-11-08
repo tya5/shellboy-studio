@@ -3,14 +3,16 @@
 A browser UI for [Shellboy](https://github.com/tya5/shellboy), the terminal coding agent.
 It is a small local program that sits next to a running Shellboy and lets you read and
 drive your conversations in a browser: rendered Markdown and code, collapsible tool
-output, live progress, a Thread list, and a layout that works on a phone.
+output, live progress, Thread organization and responsive layouts. Monitor supports list and tile
+views; Apps provide a local library, named tabs and prompt templates. Analytics, settings,
+branches, search and inbox views are also available, subject to owner capabilities.
 
 Shellboy's owner process stays the only place with agent logic and saved conversations.
 Studio never reads Shellboy's database; it talks to the owner over Shellboy's local IPC
 RPC, the same way `shellboy chat` does.
 
 **Status: first version, not yet released.** No binary has been published and nothing
-here has run on GitHub CI yet. See [What has and has not been verified](#what-has-and-has-not-been-verified).
+here has run on GitHub CI yet. See [Verification and limitations](#verification-and-limitations).
 
 <!-- Screenshots: files do not exist yet. Add them under docs/screenshots/ and replace this list with images.
      - docs/screenshots/conversation.png   Conversation view with a tool row expanded
@@ -18,8 +20,7 @@ here has run on GitHub CI yet. See [What has and has not been verified](#what-ha
      - docs/screenshots/setup.png          First-run connection setup
      - docs/screenshots/phone.png          A real phone over Tailscale (do not use browser emulation)
 -->
-Screenshots (placeholders, not yet taken): `docs/screenshots/conversation.png`,
-`docs/screenshots/threads.png`, `docs/screenshots/setup.png`, `docs/screenshots/phone.png`.
+Screenshots are not bundled yet.
 
 ## Start
 
@@ -103,15 +104,11 @@ Studio says so on start and asks you to install the paired Shellboy. Screens tha
 operations newer than v0.10.0 (editing `config.toml`, connection setup) say so and
 stay read-only. A release's notes will name the exact Shellboy tag.
 
-## What has and has not been verified
+## Verification and limitations
 
-- Verified on macOS (Apple silicon) during development: Rust tests and clippy, the
-  frontend type checks and unit tests, and the bridge against a real owner using a
-  temporary data directory and no model API.
-- **Not yet run:** the GitHub Actions workflows, any Linux or Windows build or test, the
-  release packaging, a real phone over Tailscale, any paid model API.
-- Windows: written to be portable (Shellboy's named-pipe IPC, `%APPDATA%` config
-  directory) but never compiled or run on Windows by us.
+See [First-release verification](docs/first-release-verification.md) for the tested
+environments and known gaps, including the distinction between browser emulation and a
+physical phone. No CI run or release binaries are claimed by this tree.
 
 ## Development
 
@@ -128,5 +125,6 @@ MIT. See [LICENSE](LICENSE).
 Read `shellboy-studio guide user` or `shellboy-studio guide agent` without
 starting the bridge. At startup Studio installs the agent guide in
 `$SHELLBOY_DATA_DIR/studio/agent-guide.md`; it is overwritten on each start.
-The Apps screen shows the Apps folder and its README, which is also overwritten.
+The Apps library offers prompt drafts for creating apps and an AGENTS.md guidance line.
+Apps reside in the owner data directory by default; the gateway writes their README.
 Apps can run actions on the Studio host, so review their code and permissions.

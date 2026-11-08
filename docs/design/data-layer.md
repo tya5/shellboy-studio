@@ -244,3 +244,24 @@ The existing bounded `thread.get` and work projections expose running shell
 conversation must not derive that time from `updated_at` or pretend an observed
 client-side transition is the owner's start time. Model-wait duration is unknown
 until an adopted public owner projection provides the corresponding timestamp.
+### Reply duties and Awaiting you (#262)
+
+`thread.get.awaiting_replies` is the bounded per-Thread inbox (maximum 128).
+Decode recipient kind explicitly; human questions use `message.reply`, and
+Thread duties show the target and delivery state. `events.wait` hints refresh
+the open Thread; no polling is added. Old owners omit the projection and show
+no duties. `message.reply` uses an operation ID and owner authority. The
+pinned owner is v0.10.0, so the #262 path activates when Studio's dependency advances. A temporary owner
+built from 89515711 and a loopback mock provider exercised model `message ask`,
+`thread.get`, human `message reply`, and removal from `awaiting_replies`. The
+bridge and browser were not included in that first real-owner run. A second run
+used an owner built from a dedicated origin/main worktree at 89515711, a loopback
+mock provider, an isolated temporary data directory, and a patched bridge with
+`next-reply,next-cwds,next-connection-setup` on 127.0.0.1:18761. Headless Chrome
+showed the question in the conversation panel, submitted the answer, and saw
+the panel clear; `thread.get` confirmed the duty was gone. No user data or paid
+provider was used.
+
+Awaiting you remains behind the existing `PendingAdapter`, empty by default.
+A cross-Thread human-only list is pending Shellboy W6's paginated public read;
+no aggregate reply counts or candidate scans are treated as an inbox.

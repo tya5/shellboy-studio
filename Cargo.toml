@@ -17,26 +17,25 @@ name = "shellboy-studio"
 path = "src/main.rs"
 
 [features]
-# For developing against Shellboy main, in a copy with a [patch] of the shellboy dependency
-# (docs/design/branches-threads.md). Off in every normal build: the pin stays at the tag.
+default = ["next-shellboy", "next-connection-setup", "next-tags", "next-cwds"]
+# Prepared for v0.11.0: validate the published tag and regenerate Cargo.lock before merging.
 next-shellboy = []
+# #262 owner branch adds message.ask; never forward it from Studio.
+next-reply = ["next-shellboy"]
 # First-run connection setup (Shellboy #269): `credentials.set`, `credentials.clear`, `connection.test`.
 # These operations are on a Shellboy branch and in no release, so this builds only against a copy
 # whose [patch] points at a Shellboy that has them (docs/design/connection-setup.md). Off in every
-# normal build, and off in `next-shellboy` alone, which still builds against Shellboy main.
+# normal v0.10.0 builds; this branch enables it for the proposed v0.11.0 pairing.
 next-connection-setup = ["next-shellboy"]
 # Thread tags (Shellboy #222 stage 3): `thread.tag`, `thread.tags`, and `tags` / `cwd` on `thread.list`.
-# On a Shellboy branch and in no release, so this builds only against a copy whose [patch] points at
-# a Shellboy that has them (docs/design/branches-threads.md). Off in every normal build.
+# Validate these operations against the published tag before merging this branch.
 next-tags = ["next-shellboy"]
-# `thread.cwds` (the list of directories). Not visible in any Shellboy branch yet: this feature names
-# `Command::ThreadCwds` and has never been compiled. Build it only once that variant exists.
+# `thread.cwds` (the list of directories). Validate it against the published tag.
 next-cwds = ["next-tags"]
 
 [dependencies]
-# Pinned to a commit on Shellboy origin/main that has `events.wait` (#243 B, C).
-# No release tag contains it yet; replace by the tag when one does (docs/design/bridge.md).
-shellboy = { git = "https://github.com/tya5/shellboy", tag = "v0.10.0" }
+# Future pin; do not merge until the tag exists and pairing checks pass.
+shellboy = { git = "https://github.com/tya5/shellboy", tag = "v0.11.0" }
 tokio = { version = "=1.54.1", features = ["rt-multi-thread", "macros", "sync", "time", "net", "signal", "process", "fs", "io-util"] }
 tokio-util = { version = "=0.7.20", features = ["rt"] }
 axum = { version = "=0.8.9", default-features = false, features = ["http1", "tokio", "ws", "json"] }

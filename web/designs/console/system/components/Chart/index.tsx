@@ -22,7 +22,9 @@ export interface ChartPoint {
 
 const HEIGHT = 168;
 const AXIS_BOTTOM = 22;
-const AXIS_LEFT = 46;
+const AXIS_GAP = 6;
+const LABEL_INSET = 4;
+const FALLBACK_GLYPH_WIDTH = 16;
 const END_ROOM = 8;
 const MAX_BAR = 24;
 const GAP = 2;
@@ -88,15 +90,35 @@ export function Chart({
 }) {
   const [ref, width] = useWidth(560);
   const [active, setActive] = useState<number | undefined>(undefined);
+  const [measured, setMeasured] = useState<{ key: string; width: number } | undefined>();
   const total = (p: ChartPoint): number => series.reduce((sum, s) => sum + (p.values[s.id] ?? 0), 0);
   const hasData = points.some((p) => series.some((s) => p.values[s.id] !== undefined));
   const peak = Math.max(0, ...points.map(total));
   const max = Math.max(niceMax(peak), floorMax ?? 0);
+  const ticks = [0, max / 2, max].filter((v) => !whole || Number.isInteger(v));
+  const tickLabels = ticks.map(format);
+  const tickKey = JSON.stringify(tickLabels);
+  const fallbackWidth = Math.max(0, ...tickLabels.map((label) => Array.from(label).length * FALLBACK_GLYPH_WIDTH));
+  const axisLeft = (measured?.key === tickKey ? measured.width : fallbackWidth) + AXIS_GAP + LABEL_INSET;
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || !hasData) return;
+    let cancelled = false;
+    const measure = () => {
+      const labels = el.querySelectorAll<SVGTextElement>(".chart-y-tick");
+      if (!labels.length || typeof labels[0]?.getComputedTextLength !== "function") return;
+      const lengths = Array.from(labels, (label) => label.getComputedTextLength());
+      if (!cancelled && lengths.every(Number.isFinite) && Math.max(...lengths) > 0) setMeasured({ key: tickKey, width: Math.ceil(Math.max(...lengths)) });
+    };
+    measure();
+    if (document.fonts) void document.fonts.ready.then(measure);
+    return () => { cancelled = true; };
+  }, [tickKey, hasData, ref]);
   const plotH = HEIGHT - AXIS_BOTTOM - END_ROOM;
-  const plotW = Math.max(40, width - AXIS_LEFT - END_ROOM);
+  const plotW = Math.max(1, width - axisLeft - END_ROOM);
   const band = plotW / Math.max(points.length, 1);
   const y = (v: number) => END_ROOM + plotH - (v / max) * plotH;
-  const x = (i: number) => AXIS_LEFT + band * i;
+  const x = (i: number) => axisLeft + band * i;
   const barW = Math.min(MAX_BAR, Math.max(2, band - GAP));
   const every = Math.max(1, Math.ceil(LABEL_MIN / band));
   const lastIndex = points.length - 1;
@@ -162,10 +184,10 @@ export function Chart({
             onBlur={() => setActive(undefined)}
             onPointerLeave={() => setActive(undefined)}
           >
-            {[0, max / 2, max].filter((v) => !whole || Number.isInteger(v)).map((v) => (
+            {ticks.map((v, i) => (
               <g key={v}>
-                <line class={v === 0 ? "axis" : "grid"} x1={AXIS_LEFT} x2={width - END_ROOM} y1={y(v)} y2={y(v)} />
-                <text class="tick" x={AXIS_LEFT - 6} y={y(v) + 4} text-anchor="end">{format(v)}</text>
+                <line class={v === 0 ? "axis" : "grid"} x1={axisLeft} x2={width - END_ROOM} y1={y(v)} y2={y(v)} />
+                <text class="tick chart-y-tick" x={axisLeft - AXIS_GAP} y={y(v) + 4} text-anchor="end">{tickLabels[i]}</text>
               </g>
             ))}
             {points.map((p, i) => (showLabel(i) ? <text key={p.key} class="tick" x={x(i) + band / 2} y={HEIGHT - 6} text-anchor="middle">{p.label}</text> : null))}

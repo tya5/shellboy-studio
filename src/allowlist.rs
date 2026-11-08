@@ -67,13 +67,15 @@ pub fn access(command: &Command) -> Access {
         // The key is write-only: the owner never returns it. Nothing here logs arguments.
         #[cfg(feature = "next-connection-setup")]
         Command::CredentialsSet(..) | Command::CredentialsClear(..) => Access::Mutation,
+        Command::MessageReply(..) => Access::Mutation,
+        #[cfg(feature = "next-reply")]
+        Command::MessageAsk(..) => Access::Denied,
         // `events.wait` is bridge-internal (one shared long-poll). The rest has no UI yet.
         Command::OwnerShutdown(..)
         | Command::ThreadDelete(..)
         | Command::ThreadDeletePreview(..)
         | Command::ThreadPrune(..)
         | Command::ThreadSet(..)
-        | Command::MessageReply(..)
         | Command::Wait(..)
         | Command::EventsWait(..)
         | Command::HistorySearch(..)
@@ -94,7 +96,7 @@ pub fn access(command: &Command) -> Access {
         | Command::IndexProbe(..)
         | Command::StorageCollect(..) => Access::Denied,
         #[cfg(feature = "next-shellboy")]
-        Command::IndexShrink(..) | Command::IndexRemove(..) => Access::Denied,
+        Command::IndexShrink(..) | Command::IndexRemove(..) | Command::MessageAsk(..) => Access::Denied,
     }
 }
 

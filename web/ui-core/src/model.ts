@@ -3,7 +3,7 @@ import { recentAppFolders } from "./app-templates";
 // retry and archive flows. Saved facts stay in the data layer; nothing here is optimistic.
 import { computed, effect, signal, untracked, type ReadonlySignal, type Signal } from "@preact/signals-core";
 import { Cancel, type Handle, type Operations, type OpError, type ShellboyData, type ShellEntry, type ThreadDetails, type ThreadHandle } from "../../data/src";
-import { CAPABILITY_HISTORY_WINDOW, noReplyWait, type ReplyWait, type ReplyWaitAdapter } from "../../data/src";
+import { CAPABILITY_HISTORY_WINDOW, threadReplyItems, noReplyWait, type ReplyWait, type ReplyWaitAdapter } from "../../data/src";
 import { MissingPins, MonitorSelection, type MonitorArchive } from "./monitor-selection";
 import { workRegions, type WorkRegions } from "./work";
 import { ConversationWindow } from "./window";
@@ -226,7 +226,11 @@ export class AppModel {
       const r = this.route.value;
       return r.threadId ?? this.lastThread.value ?? this.rows.value[0]?.summary.thread_id;
     });
-    this.threadReplies = computed(() => this.replyWait.supported(this.data.capabilities.value) ? this.replyWait.items.value.filter((item) => item.threadId === this.selectedId.value).slice(0, 128) : []);
+    this.threadReplies = computed(() => {
+      if (this.replyWait.supported(this.data.capabilities.value)) return this.replyWait.items.value.filter((item) => item.threadId === this.selectedId.value).slice(0, 128);
+      const detail = this.handle.value?.detail.value.value;
+      return detail ? threadReplyItems(detail.thread_id, detail.awaiting_replies) : [];
+    });
     this.details = computed(() => this.handle.value?.detail.value.value);
     this.work = computed(() => workRegions(this.handle.value?.work.value.value, this.details.value?.run_id, this.shells.value));
     this.selectedRow = computed(() => {
@@ -673,7 +677,7 @@ export class AppModel {
   async answerReply(id: string, text: string): Promise<string | undefined> {
     const item = this.threadReplies.peek().find((row) => row.id === id);
     if (!item || item.recipient.kind !== "human") return "not available";
-    const out = await this.replyWait.answer(id, text);
+    const out = this.replyWait.supported(this.data.capabilities.peek()) ? await this.replyWait.answer(id, text) : await this.ops.messageReply(id, text);
     return out.ok ? undefined : errorMessage(out.error);
   }
 

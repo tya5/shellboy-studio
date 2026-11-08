@@ -1,12 +1,10 @@
 # shellboy-studio architecture
 
-Status: design proposal, not implemented. Written 2026-11-06 against Shellboy
-`origin/main` `740a50f7df` (v0.9.0, protocol 2) and the Shellboy study
-`docs/design/events-and-external-protocol.md` (#243, #244), which is adopted in
-principle but not yet implemented. Statements about Shellboy refer to that
-revision; re-check them when the pinned Shellboy tag changes. The decisions of
-2026-11-06 in §15 refine this document; where text and §15 differ, §15 wins
-until the text is updated.
+Status: historical architecture baseline, partially implemented. Written 2026-11-06
+against Shellboy `origin/main` `740a50f7df` (v0.9.0, protocol 2). The current
+implementation and later design documents supersede forward-looking statements here;
+see the README and `docs/first-release-verification.md` for current status and limits.
+The decisions of 2026-11-06 in section 15 refine this document.
 
 ## 1. Goals and non-goals
 

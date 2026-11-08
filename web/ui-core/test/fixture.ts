@@ -323,13 +323,13 @@ export function answerInsights(db: FakeOwnerDb, usage: Record<string, unknown> =
   };
 }
 
-export async function fixtureModel(options: { pending?: PendingAdapter; replyWait?: ReplyWaitAdapter; route?: ViewName; section?: Route["section"]; usage?: Record<string, unknown>; capabilities?: string[]; configure?: (db: FakeOwnerDb) => void } = {}) {
+export async function fixtureModel(options: { realPending?: boolean; pending?: PendingAdapter; replyWait?: ReplyWaitAdapter; route?: ViewName; section?: Route["section"]; usage?: Record<string, unknown>; capabilities?: string[]; configure?: (db: FakeOwnerDb) => void } = {}) {
   const t = new FakeTransport();
   const db = fixtureDb();
   answerInsights(db, options.usage);
   options.configure?.(db);
   const data = new ShellboyData({ transport: t, newId: () => "op-1" });
-  const model = new AppModel({ data, pending: options.pending ?? noPending, ...(options.replyWait ? { replyWait: options.replyWait } : {}), nowMs: () => NOW, offsetMinutes: () => 540 });
+  const model = new AppModel({ data, ...(options.realPending ? {} : { pending: options.pending ?? noPending }), ...(options.replyWait ? { replyWait: options.replyWait } : {}), nowMs: () => NOW, offsetMinutes: () => 540 });
   if (options.route) model.applyRoute({ view: options.route, ...(options.section && { section: options.section }) });
   model.start();
   t.open();
