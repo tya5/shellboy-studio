@@ -78,16 +78,20 @@ export function setBounded<V>(map: Map<string, V>, key: string, value: V): Map<s
 export const errorMessage = (e: OpError): string => e.message;
 
 export class AppModel {
-  readonly modelPicker = signal<{ open: boolean; thread: string; connection: string; model: string; effort: string; models: string[]; loading: boolean; saving: boolean; error?: string | undefined }>({ open: false, thread: "", connection: "", model: "", effort: "", models: [], loading: false, saving: false });
+  readonly modelPicker = signal<{ open: boolean; thread: string; connection: string; model: string; effort: string; agents: string; autoCompactAt: string; segmentChars: string; reduceRounds: string; models: string[]; loading: boolean; saving: boolean; error?: string | undefined }>({ open: false, thread: "", connection: "", model: "", effort: "", agents: "", autoCompactAt: "", segmentChars: "", reduceRounds: "", models: [], loading: false, saving: false });
   private modelListCancel = new Cancel();
   private modelListSeq = 0;
   private initialModelEffort = "";
+  readonly effectiveThreadSettings = signal<{ autoCompactAt?: number; segmentChars?: number; reduceRounds?: number }>({});
+  private initialThreadSettings = { agents: "", autoCompactAt: "", segmentChars: "", reduceRounds: "" };
 
   openModelPicker(): void {
     const d = this.details.peek();
     if (!d) return;
     this.initialModelEffort = typeof d.effort === "string" ? d.effort : "";
-    this.modelPicker.value = { open: true, thread: d.thread_id, connection: d.connection, model: d.model, effort: typeof d.effort === "string" ? d.effort : "", models: [], loading: false, saving: false };
+    this.effectiveThreadSettings.value = { ...(typeof d.effective_auto_compact_at === "number" ? { autoCompactAt: d.effective_auto_compact_at } : {}), ...(typeof d.effective_segment_chars === "number" ? { segmentChars: d.effective_segment_chars } : {}), ...(typeof d.effective_reduce_rounds === "number" ? { reduceRounds: d.effective_reduce_rounds } : {}) };
+    this.initialThreadSettings = { agents: typeof d.agents_path === "string" ? d.agents_path : "", autoCompactAt: typeof d.auto_compact_at === "number" ? String(d.auto_compact_at) : "", segmentChars: typeof d.segment_chars === "number" ? String(d.segment_chars) : "", reduceRounds: typeof d.reduce_rounds === "number" ? String(d.reduce_rounds) : "" };
+    this.modelPicker.value = { open: true, thread: d.thread_id, connection: d.connection, model: d.model, effort: typeof d.effort === "string" ? d.effort : "", ...this.initialThreadSettings, models: [], loading: false, saving: false };
     if (this.data.capabilities.peek().includes(CAPABILITY_CONFIG)) this.config.ensure();
     this.chooseModelConnection(d.connection);
   }
@@ -110,9 +114,9 @@ export class AppModel {
   }
   async saveThreadModel(): Promise<void> {
     const p = this.modelPicker.peek();
-    if (p.saving || this.selectedId.peek() !== p.thread || !p.model.trim() || !p.connection.trim()) return;
+    if (!this.data.capabilities.peek().includes("thread.settings") || p.saving || this.selectedId.peek() !== p.thread || !p.model.trim() || !p.connection.trim()) return;
     this.modelPicker.value = { ...p, saving: true, error: undefined };
-    const out = await this.ops.setThreadModel(p.thread, { model: p.model.trim(), connection: p.connection, ...(p.effort !== this.initialModelEffort ? { effort: p.effort } : {}) });
+    const out = await this.ops.setThreadModel(p.thread, { model: p.model.trim(), connection: p.connection, ...(p.effort !== this.initialModelEffort ? { effort: p.effort } : {}), ...(p.agents !== this.initialThreadSettings.agents ? { agents: p.agents } : {}), ...(p.autoCompactAt !== this.initialThreadSettings.autoCompactAt ? { auto_compact_at: p.autoCompactAt } : {}), ...(p.segmentChars !== this.initialThreadSettings.segmentChars ? { segment_chars: p.segmentChars } : {}), ...(p.reduceRounds !== this.initialThreadSettings.reduceRounds ? { reduce_rounds: p.reduceRounds } : {}) });
     const current = this.modelPicker.peek();
     if (!out.ok) {
       if (current.thread === p.thread && current.open) this.modelPicker.value = { ...current, saving: false, error: out.error.message };

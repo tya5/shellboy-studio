@@ -974,7 +974,7 @@ describe("Phone tabs", () => {
 });
 
 describe("Settings", () => {
-  const open = async (section: "connections" | "models" | "embeddings" | "shell" | "storage" | "compaction" | "appearance") => {
+  const open = async (section: "connections" | "models" | "embeddings" | "shell" | "storage" | "compaction" | "studio" | "appearance") => {
     const { model, t, db } = await fixtureModel({ route: "settings" });
     const el = draw(model);
     await act(async () => {
@@ -986,11 +986,18 @@ describe("Settings", () => {
   it("lists the sections as links, and says it is read-only with no restart promise", async () => {
     const { el } = await open("connections");
     const nav = [...el.querySelectorAll(".secnav-item")].map(text);
-    expect(nav).toEqual(["Connections", "Models & defaults", "Embeddings & indexing", "Shell", "Storage & retention", "Compaction", "Appearance"]);
+    expect(nav).toEqual(["Connections", "Models & defaults", "Embeddings & indexing", "Shell", "Storage & retention", "Compaction", "Studio", "Appearance"]);
     expect(el.querySelector('.secnav-item[aria-current="page"]')!.getAttribute("href")).toBe("#/settings/connections");
     expect(text(el)).toContain("Read-only");
     expect(text(el)).not.toContain("Changes take effect after owner restart");
     expect(el.querySelector(".subview-main input")).toBeNull();
+  });
+  it("shows the Studio access guidance without developer source labels", async () => {
+    const { el } = await open("studio");
+    expect(text(el)).toContain("Tailscale Serve");
+    expect(text(el)).toContain("--allow-host");
+    expect(text(el)).toContain("Apps folder");
+    expect(text(el)).not.toContain("Source:");
   });
   it("Connections shows the connection in use, and credential names only as unavailable", async () => {
     const { el, t } = await open("connections");

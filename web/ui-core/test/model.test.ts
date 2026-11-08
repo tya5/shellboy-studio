@@ -12,7 +12,7 @@ describe("AppModel over the fake transport", () => {
   });
 
   it("lists models and sends only this Thread's model settings, retaining the saved display on failure", async () => {
-    const { model, t, db } = await fixtureModel();
+    const { model, t, db } = await fixtureModel({ capabilities: ["thread.settings"] });
     const before = model.details.value!.model;
     model.openModelPicker();
     await settle(t, db);
@@ -33,6 +33,27 @@ describe("AppModel over the fake transport", () => {
     await failed;
     expect(model.details.value!.model).toBe(before);
     expect(model.modelPicker.value.error).toContain("Rejected");
+    model.dispose();
+  });
+
+  it("sends changed thread summary settings and the instruction reference only", async () => {
+    const { model, t, db } = await fixtureModel({ capabilities: ["thread.settings"] });
+    model.openModelPicker();
+    await settle(t, db);
+    model.modelPicker.value = { ...model.modelPicker.value, autoCompactAt: "0", segmentChars: "4096", reduceRounds: "2", agents: "/tmp/AGENTS.md" };
+    const saved = model.saveThreadModel();
+    await settle(t, db);
+    await saved;
+    expect(t.calls("thread.set").at(-1)!.args).toMatchObject({ thread_id: "lead", auto_compact_at: "0", segment_chars: "4096", reduce_rounds: "2", agents: "/tmp/AGENTS.md" });
+    model.dispose();
+  });
+
+  it("does not write thread settings without the capability", async () => {
+    const { model, t, db } = await fixtureModel();
+    model.openModelPicker();
+    await settle(t, db);
+    await model.saveThreadModel();
+    expect(t.calls("thread.set")).toHaveLength(0);
     model.dispose();
   });
 

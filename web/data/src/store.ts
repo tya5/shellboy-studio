@@ -174,6 +174,8 @@ export class ShellboyData {
 
   private readonly ownerSig = signal<OwnerView>({ state: "unknown" });
   private readonly bridgeVersionSig = signal<string | undefined>(undefined);
+  private readonly listenSig = signal<string | undefined>(undefined);
+  private readonly appsDirSig = signal<string | undefined>(undefined);
   private readonly dataDirSig = signal<string | undefined>(undefined);
   private readonly invalidSig = signal<{ count: number; last: string | undefined }>({ count: 0, last: undefined });
   private readonly bridgeErrorSig = signal<{ code: string; message: string } | undefined>(undefined);
@@ -195,6 +197,8 @@ export class ShellboyData {
   readonly bridgeVersion: ReadonlySignal<string | undefined>;
   /** Which owner this bridge talks to. Only after sign-in. */
   readonly dataDir: ReadonlySignal<string | undefined>;
+  readonly listen: ReadonlySignal<string | undefined>;
+  readonly appsDir: ReadonlySignal<string | undefined>;
   /** Undecodable frames seen (count and last reason); a bug indicator, not a user message. */
   readonly invalidFrames: ReadonlySignal<{ count: number; last: string | undefined }>;
   /** Last `error` frame from the bridge (e.g. an invalid watch). */
@@ -217,6 +221,8 @@ export class ShellboyData {
     });
     this.bridgeVersion = this.bridgeVersionSig;
     this.dataDir = this.dataDirSig;
+    this.listen = this.listenSig;
+    this.appsDir = this.appsDirSig;
     this.invalidFrames = this.invalidSig;
     this.bridgeError = this.bridgeErrorSig;
     this.threadList = this.listSig;
@@ -416,6 +422,8 @@ export class ShellboyData {
       case "hello":
         this.bridgeVersionSig.value = f.bridge_version;
         this.dataDirSig.value = f.data_dir;
+        this.listenSig.value = typeof f.listen === "string" ? f.listen : undefined;
+        this.appsDirSig.value = typeof f.apps_dir === "string" ? f.apps_dir : undefined;
         this.setOwner(f.owner);
         if (f.owner.state === "connected") { this.notifyHints(); void this.resyncAll(); }
         break;

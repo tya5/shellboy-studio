@@ -117,6 +117,10 @@ fn only_model(args: &shellboy::protocol::ThreadSetArgs) -> bool {
     rest.thread_id = None;
     let has_change = rest.model.take().is_some()
         | rest.connection.take().is_some()
-        | rest.effort.take().is_some();
+        | rest.effort.take().is_some()
+        | rest.auto_compact_at.take().is_some()
+        | rest.segment_chars.take().is_some()
+        | rest.reduce_rounds.take().is_some()
+        | rest.agents.take().is_some();
     has_change && rest == Default::default()
 }
