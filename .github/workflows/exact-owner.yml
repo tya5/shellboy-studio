@@ -29,12 +29,21 @@ jobs:
       - name: Install pinned Rust toolchain
         run: rustup toolchain install 1.99.1 --profile minimal
       - uses: Swatinem/rust-cache@v2
-      - name: Build the explicitly published pinned owner in runner temp
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify the official peeled tag against the Studio lock before build
         run: |
-          tag=$(sed -n 's/^shellboy = .*tag = "\([^"]*\)".*/\1/p' Cargo.toml)
-          test "$tag" = v0.11.0
-          cargo +1.99.1 install --locked --git https://github.com/tya5/shellboy --tag "$tag" --root "$RUNNER_TEMP/exact-owner" shellboy
-          "$RUNNER_TEMP/exact-owner/bin/shellboy" --version
+          git init "$RUNNER_TEMP/exact-owner-source"
+          git -C "$RUNNER_TEMP/exact-owner-source" remote add origin https://github.com/tya5/shellboy
+          git -C "$RUNNER_TEMP/exact-owner-source" fetch --depth 1 origin refs/tags/v0.11.0:refs/tags/v0.11.0
+          git -C "$RUNNER_TEMP/exact-owner-source" checkout --detach 'refs/tags/v0.11.0^{commit}'
+          python3 tools/exact-owner.py --studio . --owner "$RUNNER_TEMP/exact-owner-source"
+      - name: Build the verified source and assert package and binary version
+        run: |
+          cargo +1.99.1 install --locked --path "$RUNNER_TEMP/exact-owner-source" --root "$RUNNER_TEMP/exact-owner"
+          "$RUNNER_TEMP/exact-owner/bin/shellboy" --version > "$RUNNER_TEMP/exact-owner-version.txt"
+          python3 tools/exact-owner.py --studio . --owner "$RUNNER_TEMP/exact-owner-source" --binary-version "$RUNNER_TEMP/exact-owner-version.txt"
       - name: Run explicit exact-pair integration suite (temporary data and local mock)
         env:
           SHELLBOY_BIN: ${{ runner.temp }}/exact-owner/bin/shellboy

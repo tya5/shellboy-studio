@@ -86,3 +86,19 @@ passes. Workflow YAML parses; synthetic ZIP and both tar target layouts each
 pass all 11 parsed local file/heading link checks. These are not native target
 executions. The final reachable ref is rescanned after committing corrections;
 no other private branches/reflogs are included.
+
+
+Scope supersession: S7 and character-only are adopted in main `fb1dc5c8`;
+attachments excluded. #279/S5 is conditional at Core #262 landing: absent completed review
+and both exact-SHA CI, defer without waiting and disclose existing Studio live
+limitations. Earlier mentions of mandatory S5 acceptance in this audit describe
+an older scope, not a current release gate.
+
+Exact identity correction: `tools/test-exact-owner.py` runs 21 isolated local
+Git fixtures with synthetic package/version text, including same version at a
+different commit, wrong/missing lock, tag, checkout and binary metadata. No
+network or owner process is used. The official published tag has not yet been
+compared: that remains a future gate which fetches the official tag, compares
+its peeled commit with Cargo.lock, builds that verified checkout, then asserts
+both package and binary version before owner tests. Public identity-only JSON
+records those comparisons, with no local paths or user values.

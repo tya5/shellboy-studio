@@ -4,6 +4,8 @@ import os
 from pathlib import Path
 import re
 import shutil
+import subprocess
+import sys
 import tarfile
 import tempfile
 import textwrap
@@ -46,11 +48,13 @@ def main():
     assert "uses: ./.github/workflows/exact-owner.yml" in ci
     assert "needs: exact-owner" in release and "needs: build" in release
     assert "--features real-owner-tests --test real_owner" in owner
-    assert "SHELLBOY_BIN:" in owner and 'test "$tag" = v0.11.0' in owner
+    assert "SHELLBOY_BIN:" in owner and "refs/tags/v0.11.0^{commit}" in owner
+    assert "tools/exact-owner.py" in owner and "--binary-version" in owner
     assert "inputs.real_owner" not in ci
     for workflow in (ci, release, owner):
         for code in re.findall(r"python3? - <<'([A-Z]+)'\n(.*?)\n\s*\1(?:\n|$)", workflow, re.S):
             ast.parse(textwrap.dedent(code[1]))
+    subprocess.run([sys.executable, str(ROOT / "tools/test-exact-owner.py")], check=True)
     print(f"Source local links checked: {local_links(ROOT)}")
     block = release.split("      - name: Package\n", 1)[1].split("      - name:", 1)[0]
     code = textwrap.dedent(block.split("python - <<'PY'\n", 1)[1].rsplit("\n          PY", 1)[0])

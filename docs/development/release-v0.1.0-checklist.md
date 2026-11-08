@@ -11,15 +11,17 @@ run, tag, release, main merge, restart or real owner was performed in this audit
 - Browser UI and thin local bridge, paired with the published Core v0.11.0.
 - Keep the existing artifact targets only: Windows x86_64, macOS arm64, Linux
   x86_64. These are build targets, not claims of physical-device validation.
-- Include scroll correction S7 `6312f700` after independent review/integration;
-  it is a user-prioritized inclusion, not silently optional. Leader subsequently
-  reports it reviewed and fast-forwarded to local main; final-tip checks remain
-  outside this baseline audit.
-- Resolve S5 live/persisted answer handoff and tool JSON correctness before
-  publication, using existing public IDs. Final integrated-tip validation is
-  required; this audit does not validate S5 or S7 changes.
-- Character and attachment-icon changes are independent optional additions
-  after S3 integration/review; defer either rather than expand the release.
+- Scroll S7 `6312f700` is reviewed and adopted in local main; retain it and
+  validate the final selected tip, not a pre-scroll baseline.
+- #279/S5 is **not an unconditional release gate**. At Core #262 landing,
+  include #279 only if independent review and both exact-SHA CI runs are green.
+  Otherwise do not wait: defer it to the next version and publish Studio's
+  existing live behavior as an explicit known limitation. The attempted partial
+  fix stays excluded. Final acceptance must describe the selected behavior and
+  must not claim the deferred fix or intermediate-attempt linkage is solved.
+- Attachment picker/icons are excluded. Character-only is reviewed and adopted
+  in local main `fb1dc5c8` (including scroll `6312f700`); final selected-tip
+  validation remains required. No attachment changes enter this release.
 - No Core #276/#280 wire work, no dependency on #278, new UI design, platform
   expansion, signing claim, installer, crate publication or paid-provider claim.
 
@@ -34,7 +36,7 @@ run, tag, release, main merge, restart or real owner was performed in this audit
 | 5 | Prior evidence is macOS headless Chromium and synthetic data, not phone/Windows/Linux/Safari/Firefox/AT. | **Known unverified limitations**, unless required by product acceptance; do not claim those checks passed. | Reviewer/user: accept explicit limitations or require physical testing before publishing. A successful CI runner is not a physical-device test. |
 | 6 | Reachable baseline history: 173 commits, 1,173 blobs scanned for common credential/private-path/key-file/tailnet patterns; no private-path/key-file matches. Credential-looking hit is a synthetic setup-test value. Tailnet hits are example/test contexts (locations in safety report). | **Final privacy review required** for fixture-host provenance; normal Git attribution approved; pattern scan is not proof of no secrets. | Review locations and fixture provenance without printing values; normal Git attribution is approved by the leader and retained without rewriting. Approve final intended public history and assets. Never rewrite history without authorization. Rescan final tip. |
 | 7 | README/User Guide/Agent Guide and release notes now distinguish proposed pairing, build targets and unverified devices; release archive includes docs. | Local documentation complete for proposed scope; final artifact truthfulness **required**. | Final tip reviewer: update pending pairing language only after published-tag validation and inspect packaged links. |
-| 8 | Existing first-run report uses origin/main and mock provider, not release pair; S5/S7 pending integration are outside this worktree. | **Blocker**: clean synthetic first-run and correctness acceptance on final candidate. | Leader: after pin and reviewed S5/S7 integration, use temporary data/local mock only; validate startup/setup/session recovery/live-to-saved answers/scroll and failure paths. No real data, owner or paid API in this audit. |
+| 8 | Existing first-run report uses origin/main and mock provider, not release pair; scroll is adopted; #279 is subject to the #262 review/both-CI cutoff, not always required. | **Blocker**: clean synthetic first-run and correctness acceptance on final candidate. | Leader: after pin and reviewed selected-tip integration, use temporary data/local mock only; validate startup/setup/session recovery/scroll/failure paths and the selected existing live behavior. If #279 misses cutoff, document its limitation and defer; do not wait for S5. No real data, owner or paid API in this audit. |
 
 ## Feature and old-owner policy
 
@@ -62,8 +64,11 @@ that is a separate correctness blocker, not a documentation promise.
 2. Inspect that tag's public protocol/design and generated schema for every
    enabled next surface. Update `Cargo.toml` tag, regenerate `Cargo.lock` through
    `rust-slot cargo update -p shellboy`, inspect exact source revision and diff.
-3. Independently review/integrate S5, S7 and this branch; decide optional S3
-   additions. No merges are performed by this preparation task.
+3. Retain adopted scroll and character; review/integrate this branch
+   (attachments excluded). At #262 landing apply the
+   #279 cutoff: if review and both exact-SHA CI are not green, defer #279 and
+   its partial Studio fix without waiting; document existing live limitations.
+   No merges are performed by this preparation task.
 4. Through rust-slot run locked Rust tests/clippy and a no-default-feature
    compatibility build as appropriate; run `npm ci`, `npm run check`,
    `npm run build`. Run final-pair synthetic acceptance only in approved
@@ -89,7 +94,8 @@ physical phone or additional OS was tested.
 Follow-up: this branch now includes main `6312f700` by rebase. Final local
 frontend checks pass 623 tests and production build. See the safety report for
 the follow-up history scan and synthetic packaging-script check. Exact Core
-pairing, hosted CI, genuine artifacts and S5 integrated acceptance remain open.
+pairing, hosted CI, genuine artifacts and selected-tip acceptance remain open;
+#279/S5 is conditional under the #262 cutoff, not an unconditional blocker.
 
 
 ## Independent review corrections
@@ -98,7 +104,9 @@ Ordinary all-target jobs run owner-free tests: `real_owner` has Cargo
 `required-features = ["real-owner-tests"]` and is not in defaults. CI calls the
 required reusable exact-owner job; release artifact builds depend on that same
 job, so its failure prevents artifacts/draft creation. This job explicitly
-requires the public v0.11.0 pin, builds its CLI under runner temporary storage,
+requires the public v0.11.0 pin, matches its official peeled tag commit to the
+locked dependency commit, verifies source package version, builds that checkout
+under runner temporary storage, asserts the binary version,
 and runs the selected suite with `SHELLBOY_BIN`. Selecting the suite without the
 binary is an error, never a successful skip. The still-v0.10.0 pin intentionally
 cannot pass this gate until the separate approved tag/pin/lock work is done.
@@ -116,7 +124,27 @@ The baseline also failed `cargo fmt --check`; rustfmt-only changes in
 that known failure without changing logic or integration scope. Typed tests and
 clippy remain dependent on the public Core pin and are not claimed passed.
 
-Scope update: attachment changes are excluded from v0.1.0; character
-`6fbb954` remains optional pending independent review. This branch changes
+Scope update: attachment changes are excluded from v0.1.0; character-only
+is reviewed/adopted in main `fb1dc5c8`, along with scroll `6312f700`. This branch changes
 neither feature. The missing bridge pairing fixture `config_dir` is filled
 with a synthetic path, not a user configuration directory.
+
+
+## Exact identity gate (synthetic evidence, not public-tag verification)
+
+The existing exact-owner job fetches only the fixed official repository's
+v0.11.0 tag into runner temporary storage. `tools/exact-owner.py` rejects a
+missing or ambiguous lock package, wrong source/tag/version, missing commit,
+peeled-tag/lock commit mismatch, wrong/dirty checkout, wrong source package,
+and missing/wrong binary version. The job builds the verified checkout, not a
+separately resolved version/tag install, then rechecks the identity and binary
+version before the explicit integration suite. Version text alone never proves
+commit identity. Logs contain public repository/tag/commit/package/binary fields,
+not user paths or config. Source verification logs explicitly say the binary
+has not yet been checked; only the second phase verifies that field.
+
+`python3 tools/test-exact-owner.py` exercises annotated and lightweight tags,
+including a same-version/different-commit rejection, using isolated temporary
+Git repositories and fake version text only. These tests do not fetch, install,
+start or validate the official owner. Public v0.11.0 pin/lock matching, actual
+binary provenance/build and exact-pair integration remain publication gates.
