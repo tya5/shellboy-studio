@@ -535,3 +535,7 @@ the foundation works end to end (§2.1).
 |---|---|---|
 | Bundle guides in Studio and overwrite the installed agent guide at startup | The guide describes Studio rather than core; no user AGENTS.md is changed. A custom apps directory is shown by Studio, not inferred from the data directory. | The Apps host exposes an agent-readable discovery surface for custom directories. |
 | Require a typed working folder and review of the exact request before creating a Thread | The browser cannot safely browse the host filesystem through the current RPC; typing gives explicit choice without adding bridge filesystem access. An uncertain create/send is not retried automatically. | Shellboy adopts a bounded, authorized folder-selection surface. |
+
+### Branch comparison reads
+
+When `history.window` is advertised, visible branch rows may request two bounded windows (split and tip), sequentially; the row owns cancellation on exit. Old owners retain the existing branch view. Missing excerpts are not guessed.
