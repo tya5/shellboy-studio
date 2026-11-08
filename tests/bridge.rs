@@ -525,11 +525,26 @@ async fn new_tabs_start_from_the_current_owner_state_and_hear_about_changes() {
     assert_eq!(event["event"], "connected");
     assert_eq!(event["owner"]["info"]["instance_id"], "inst1");
     // What this build was made to send: nothing in a normal build, pinned to the tag.
-    let expected = if cfg!(feature = "next-shellboy") {
-        json!(["thread.reparent", "config.edit", "live.text"])
-    } else {
-        json!([])
-    };
+    let mut expected = Vec::new();
+    if cfg!(feature = "next-shellboy") {
+        expected.extend([
+            "thread.reparent",
+            "thread.settings",
+            "config.edit",
+            "live.text",
+            "history.window",
+        ]);
+    }
+    if cfg!(feature = "next-tags") {
+        expected.push("thread.tags");
+    }
+    if cfg!(feature = "next-cwds") {
+        expected.push("thread.cwds");
+    }
+    if cfg!(feature = "next-connection-setup") {
+        expected.push("connection.setup");
+    }
+    let expected = json!(expected);
     assert_eq!(event["owner"]["info"]["capabilities"], expected);
     let mut late = connect(addr, Some(&cookie), Some(&origin)).await.unwrap();
     assert_eq!(
