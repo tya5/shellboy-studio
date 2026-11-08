@@ -4,6 +4,7 @@ export interface WorkRow {
   id: string;
   state: string;
   label: string;
+  command?: string;
   startedAt?: string;
 }
 export interface WorkRegions {
@@ -23,7 +24,7 @@ export function workRegions(page: Page<WorkItem> | undefined, runId: string | un
   for (const item of page?.items ?? []) {
     if (item.kind === "shell" && runId && item.run_id === runId && item.execution_id && ["starting", "running", "stopping"].includes(item.state)) {
       const shell = shells.get(item.execution_id);
-      running.push({ id: item.execution_id, state: item.state, label: toolLabel(typeof shell?.description === "string" ? shell.description : undefined, shell?.command_excerpt, item.execution_id), ...((item.started_at || shell?.started_at) ? { startedAt: item.started_at || shell?.started_at } : {}) });
+      running.push({ id: item.execution_id, state: item.state, command: shell?.command_excerpt, label: toolLabel(typeof shell?.description === "string" ? shell.description : undefined, shell?.command_excerpt, item.execution_id), ...((item.started_at || shell?.started_at) ? { startedAt: item.started_at || shell?.started_at } : {}) });
     } else if (item.kind === "message" && item.message_id && ["accepted", "held"].includes(item.state)) {
       pending.push({ id: item.message_id, state: item.state, label: item.excerpt?.replace(/\s+/g, " ").trim().slice(0, 512) || "" });
     }

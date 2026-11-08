@@ -34,8 +34,8 @@ export function WindowedScroll({ model, win, renderRow, live }: { model: AppMode
       changes.push([Number(child.dataset.o), child.getBoundingClientRect().height]);
     if (changes.length > 0) win.measure(changes);
     const want = win.takeScroll();
-    if (want !== undefined) intent.current.program(box, want);
-    else if (win.following.peek() && intent.current.following) intent.current.program(box, box.scrollHeight);
+    if (win.following.peek() && intent.current.following) intent.current.program(box, box.scrollHeight);
+    else if (want !== undefined) intent.current.program(box, want);
     win.view(box.scrollTop, box.clientHeight, win.following.peek() && intent.current.following);
   });
 
@@ -48,10 +48,10 @@ export function WindowedScroll({ model, win, renderRow, live }: { model: AppMode
         changes.push([Number(child.dataset.o), child.getBoundingClientRect().height]);
       if (changes.length) win.measure(changes);
       const want = win.takeScroll();
-      if (want !== undefined) intent.current.program(box, want);
-      else if (win.following.peek() && intent.current.following) intent.current.program(box, box.scrollHeight);
+      if (win.following.peek() && intent.current.following) intent.current.program(box, box.scrollHeight);
+      else if (want !== undefined) intent.current.program(box, want);
     });
-    box.querySelectorAll("[data-o]").forEach((row) => observer.observe(row));
+    box.querySelectorAll("[data-o], .vspace, .live-tail").forEach((row) => observer.observe(row));
     return () => observer.disconnect();
   });
 
@@ -116,7 +116,7 @@ export function WindowedScroll({ model, win, renderRow, live }: { model: AppMode
       <VirtualSpace top={range ? win.offsetOf(range.first) : 0} bottom={range ? Math.max(0, win.totalHeight() - win.offsetOf(range.last + 1)) : win.totalHeight()}>
         {parts}
       </VirtualSpace>
-      {live}
+      <div class="live-tail">{live}</div>
       {win.total === 0 && status === "loading" ? <LoadingRows label={t("convo.loading")} rows={5} /> : null}
       {win.total === 0 && status === "ready" ? <EmptyState icon="chat" title={t("convo.empty")} body={t("convo.emptyBody")} /> : null}
     </div>

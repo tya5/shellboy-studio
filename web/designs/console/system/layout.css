@@ -206,3 +206,6 @@
 .details .running-region{flex:0 0 160px;height:160px;overflow:auto}
 .running-region .work-row{flex-direction:row;align-items:center;white-space:nowrap}
 .running-label{min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* The virtual reader owns anchor correction; do not let browser anchoring compete. */
+.scroll-frame > .scroll{overflow-anchor:none}
