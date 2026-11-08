@@ -17,6 +17,7 @@ name = "shellboy-studio"
 path = "src/main.rs"
 
 [features]
+default = ["next-shellboy", "next-connection-setup", "next-tags", "next-cwds"]
 # For developing against Shellboy main, in a copy with a [patch] of the shellboy dependency
 # (docs/design/branches-threads.md). Off in every normal build: the pin stays at the tag.
 next-shellboy = []
@@ -36,7 +37,7 @@ next-cwds = ["next-tags"]
 [dependencies]
 # Pinned to a commit on Shellboy origin/main that has `events.wait` (#243 B, C).
 # No release tag contains it yet; replace by the tag when one does (docs/design/bridge.md).
-shellboy = { git = "https://github.com/tya5/shellboy", tag = "v0.10.0" }
+shellboy = { git = "https://github.com/tya5/shellboy", tag = "v0.11.0" }
 tokio = { version = "=1.54.1", features = ["rt-multi-thread", "macros", "sync", "time", "net", "signal", "process", "fs", "io-util"] }
 tokio-util = { version = "=0.7.20", features = ["rt"] }
 axum = { version = "=0.8.9", default-features = false, features = ["http1", "tokio", "ws", "json"] }
