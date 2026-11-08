@@ -477,3 +477,6 @@ a{color:var(--accent)}
 .model-picker p{margin:0}.model-picker>label{display:flex;flex-direction:column;gap:var(--space-4)}
 .model-picker-list{display:flex;flex-direction:column;align-items:stretch;max-height:var(--size-details);overflow:auto}
 .model-picker-list .btn{text-align:left;justify-content:flex-start;overflow-wrap:anywhere}
+@container app (max-width:899px){
+  .model-picker{position:fixed;left:var(--space-12);right:var(--space-12);top:calc(var(--size-touch) + var(--space-8));width:auto}
+}
