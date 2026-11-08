@@ -1,5 +1,6 @@
+import { GuideRegistrationView } from "./GuideRegistration";
 import { CAPABILITY_CONFIG, CONFIG_FIELDS, formatBytes, formatRoute, formatTokens, settingsSection, SETTINGS_SECTIONS, type ConfigKey, type DesignContext, type SettingsSection } from "../../../ui-core/src";
-import { Button, FactList, GuideCopy, Notice, Section, SubView, type Fact, type IconName } from "../system/components";
+import { Button, FactList, Notice, Section, SubView, type Fact, type IconName } from "../system/components";
 import { AppearanceChoices } from "./Appearance";
 import { ConfigConnections, ConfigControl, ConfigPanel, SecretEntries, configRowValue } from "./SettingsConfig";
 import { Rich } from "./Rich";
@@ -218,7 +219,7 @@ export function SettingsView({ context }: { context: DesignContext }) {
       </div>
       {section !== "appearance" && section !== "studio" ? <ConfigPanel model={model} /> : null}
       {body()}
-      <GuideCopy title={t("guide.title")} line={t("guide.line")} note={t("guide.note")} copy={t("code.copy")} copied={t("code.copied")} failed={t("guide.copyFailed")} />
+      <GuideRegistrationView context={context} />
     </SubView>
   );
 }

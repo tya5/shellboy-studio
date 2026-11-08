@@ -1,3 +1,4 @@
+import { GuideRegistration } from "./guide-registration";
 import { recentAppFolders } from "./app-templates";
 // Screen logic over the data layer: which Thread is open, what the views show, the send, stop,
 // retry and archive flows. Saved facts stay in the data layer; nothing here is optimistic.
@@ -136,6 +137,7 @@ export class AppModel {
   readonly branches: Branches;
   readonly org: ThreadOrg;
   readonly config: ConfigEditor;
+  readonly guideRegistration: GuideRegistration;
   readonly setup: ConnectionSetup;
   readonly embedding: EmbeddingSetup;
   readonly apps: AppsModel;
@@ -228,6 +230,7 @@ export class AppModel {
     this.branches = new Branches(this.ops);
     this.org = new ThreadOrg(this.ops, () => this.data.capabilities.peek());
     this.config = new ConfigEditor(this.ops);
+    this.guideRegistration = new GuideRegistration(this.ops);
     this.setup = new ConnectionSetup(this.ops);
     this.embedding = new EmbeddingSetup(this.ops, this.setup);
     this.apps = new AppsModel(this.ops);

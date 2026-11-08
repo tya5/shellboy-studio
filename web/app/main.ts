@@ -99,6 +99,12 @@ async function main(): Promise<void> {
       unmount = module.mount(root, context);
     });
   });
+  effect(() => {
+    const owner = data.owner.value;
+    const dir = data.dataDir.value;
+    const optedOut = prefs.value.guideOptOut === true;
+    if (owner.state === "connected" && data.capabilities.value.includes("config.edit")) model.guideRegistration.update(dir, !optedOut);
+  });
   model.start();
 }
 

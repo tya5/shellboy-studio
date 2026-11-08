@@ -1,7 +1,8 @@
+import { GuideRegistrationView } from "./GuideRegistration";
 import { appTabKey } from "../../../ui-core/src/apps";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { APP_TEMPLATES, formatRoute, readAppMessage, validAppInstance, type AppModel, type DesignContext, type OpenApp } from "../../../ui-core/src";
-import { AppCard, AppFrame, AppTabs, AppRequest, Button, EmptyState, GuideCopy, Notice } from "../system/components";
+import { AppCard, AppFrame, AppTabs, AppRequest, Button, EmptyState, Notice } from "../system/components";
 
 function Alerts({ model, tab }: { model: AppModel; tab: OpenApp }) {
   const t = model.t.value;
@@ -42,7 +43,8 @@ function AppNames({ model, name }: { model: AppModel; name: string }) {
   return names.length ? <div class="app-names">{names.map((value) => <a key={value} href={formatRoute({ view: "apps", appName: name, appInstance: value })}>{value}</a>)}</div> : null;
 }
 
-function AppList({ model }: { model: AppModel }) {
+function AppList({ context }: { context: DesignContext }) {
+  const model = context.model;
   const t = model.t.value;
   const apps = model.apps;
   const list = apps.list.value;
@@ -78,7 +80,7 @@ function AppList({ model }: { model: AppModel }) {
           ))}
         </div>
       ) : null}
-      <GuideCopy collapsed title={t("guide.title")} line={t("guide.line")} note={t("guide.note")} copy={t("code.copy")} copied={t("code.copied")} failed={t("guide.copyFailed")} />
+      <GuideRegistrationView context={context} collapsed />
     </div>
   );
 }
@@ -156,7 +158,7 @@ export function AppsHost({ context }: { context: DesignContext }) {
       {open && apps.openError.value?.name === open.name ? <Notice tone="bad">{t("apps.openFailed", { name: open.name, message: apps.openError.value.message })}</Notice> : null}
       {open ? <div class="apps-toolbar"><strong>{open.instance ? `${open.title}: ${open.instance}` : open.title}</strong><Button label={t("apps.reloadTab", { name: open.title })} onClick={() => void apps.reload(open.name, open.instance)}>{t("apps.reloadTab", { name: open.title })}</Button></div> : null}
       {open ? <Alerts model={model} tab={open} /> : null}
-      {current === undefined || !open ? <AppList model={model} /> : null}
+      {current === undefined || !open ? <AppList context={context} /> : null}
       {tabs.map((tab) => (
         <AppFrame
           key={`${appTabKey(tab.name, tab.instance)}:${tab.url}`}
