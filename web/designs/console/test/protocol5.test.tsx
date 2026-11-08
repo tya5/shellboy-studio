@@ -25,6 +25,10 @@ it('protocol 5 unifies human/thread duties while preserving shells and organizat
     expect(r.data.owner.value).toMatchObject({state:'connected',info:{protocol_version:5}});
     expect(host.textContent).toContain('P5_HUMAN'); expect(host.textContent).toContain('P5_THREAD');
     expect(host.textContent).not.toContain('DO_NOT_MERGE');
+    expect(r.model.t.value('org.previewNote')).not.toContain('keeps its owner');
+    r.model.lang.value='ja';
+    expect(r.model.t.value('org.previewNote')).not.toContain('所有者');
+    r.model.lang.value='en';
     expect(host.querySelector('a[href="#/thread/child"]') ?? [...host.querySelectorAll('a')].find(a=>a.href.includes('child'))).toBeTruthy();
     expect(r.model.threadReplies.value.filter(x=>x.recipient.kind==='human')).toHaveLength(1);
     expect(r.model.handle.value!.detail.value.value!.shells_count).toBe(1);
