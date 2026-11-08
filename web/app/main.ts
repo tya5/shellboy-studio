@@ -1,3 +1,4 @@
+import { showAuthMode } from "./auth-mode";
 // Entry point: session exchange, preferences, routing to the fragment, the selected design.
 // The only module that touches browser globals besides the WebSocket transport and the design.
 import { effect, signal } from "@preact/signals-core";
@@ -35,6 +36,7 @@ async function exchangeToken(token: string): Promise<boolean> {
 }
 
 async function main(): Promise<void> {
+  await showAuthMode();
   const pair = /^#pair=([a-f0-9]{64})$/.exec(location.hash);
   if (pair?.[1]) {
     history.replaceState(null, "", location.pathname);
@@ -70,6 +72,7 @@ async function main(): Promise<void> {
     transport: new WebSocketTransport({ url: defaultBridgeUrl }),
     schedule: (callback) => void requestAnimationFrame(() => callback()),
   });
+  effect(() => { if (data.connection.value === "open") void showAuthMode(); });
   const model = new AppModel({
     data,
     lang: prefs.value.lang,

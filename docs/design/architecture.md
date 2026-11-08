@@ -552,3 +552,18 @@ the foundation works end to end (§2.1).
 ### Branch comparison reads
 
 When `history.window` is advertised, visible branch rows may request two bounded windows (split and tip), sequentially; the row owns cancellation on exit. Old owners retain the existing branch view. Missing excerpts are not guessed.
+
+### Explicit no-auth mode (Studio #4)
+
+Only the explicit CLI `--no-auth` bypasses bridge token/session checks. It creates
+no token file. Host allowlisting applies to all routes; same-authority Origin checks protect
+authenticated HTTP endpoints and WebSocket requests, including the public one-bit `/auth-mode` bootstrap.
+Absent Origin retains the existing non-browser-client behaviour; local processes
+and permitted tailnet clients can therefore operate the bridge. No wildcard
+Host/Origin, proxy-header trust, new owner RPC, queue or background task is added.
+Auth exchange returns 204 without issuing a cookie in this mode; pairing endpoints
+return 409 rather than creating unused credentials. Existing app capability URLs
+and their sandbox checks remain independent and are not relaxed. Guide preference
+reads/writes use the same guarded no-auth/session decision. The UI configuration
+bit is no-store, contains no owner data and adds a persistent desktop/mobile badge.
+Default token/session authentication and restart behaviour remain unchanged.

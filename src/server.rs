@@ -93,6 +93,7 @@ pub fn router<O: Owner>(state: AppState<O>) -> Router {
         .route("/assets/{*path}", get(assets::asset))
         .route("/healthz", get(|| async { "ok" }))
         .route("/auth", post(auth_exchange::<O>))
+        .route("/auth-mode", get(auth_mode::<O>))
         .route(
             "/guide-preference",
             get(guide_preference_get::<O>).post(guide_preference_set::<O>),
@@ -131,6 +132,13 @@ async fn host_guard<O: Owner>(
     if !ok {
         return (StatusCode::FORBIDDEN, "host not allowed").into_response();
     }
+    if matches!(
+        request.uri().path(),
+        "/auth" | "/auth-mode" | "/guide-preference" | "/pairing" | "/pairing/exchange" | "/ws"
+    ) && !origin_ok(request.headers())
+    {
+        return (StatusCode::FORBIDDEN, "origin not allowed").into_response();
+    }
     next.run(request).await
 }
 
@@ -156,6 +164,15 @@ async fn debug_page() -> impl IntoResponse {
     )
 }
 
+/// Public configuration bit only: no token, owner status or data is exposed here.
+async fn auth_mode<O: Owner>(State(state): State<AppState<O>>) -> Response {
+    (
+        [(header::CACHE_CONTROL, "no-store")],
+        axum::Json(serde_json::json!({"authentication_required": !state.auth.is_disabled()})),
+    )
+        .into_response()
+}
+
 #[derive(Deserialize)]
 struct AuthBody {
     token: String,
@@ -168,6 +185,9 @@ async fn auth_exchange<O: Owner>(
 ) -> Response {
     if !origin_ok(&headers) {
         return (StatusCode::FORBIDDEN, "origin not allowed").into_response();
+    }
+    if state.auth.is_disabled() {
+        return StatusCode::NO_CONTENT.into_response();
     }
     if !state.auth.token_matches(&body.token) {
         return (StatusCode::UNAUTHORIZED, "bad token").into_response();
@@ -190,13 +210,17 @@ async fn auth_exchange<O: Owner>(
 
 fn authorized<O: Owner>(state: &AppState<O>, headers: &HeaderMap) -> bool {
     origin_ok(headers)
-        && state.auth.cookie_valid(
-            &auth::cookie_name(state.config.listen.port()),
-            header_str(headers, header::COOKIE),
-        )
+        && (state.auth.is_disabled()
+            || state.auth.cookie_valid(
+                &auth::cookie_name(state.config.listen.port()),
+                header_str(headers, header::COOKIE),
+            ))
 }
 
 async fn pairing_hosts<O: Owner>(State(state): State<AppState<O>>, headers: HeaderMap) -> Response {
+    if state.auth.is_disabled() {
+        return (StatusCode::CONFLICT, "pairing is disabled in no-auth mode").into_response();
+    }
     if !authorized(&state, &headers) {
         return StatusCode::UNAUTHORIZED.into_response();
     }
@@ -222,6 +246,9 @@ async fn pairing_issue<O: Owner>(
     headers: HeaderMap,
     axum::Json(body): axum::Json<PairingHost>,
 ) -> Response {
+    if state.auth.is_disabled() {
+        return (StatusCode::CONFLICT, "pairing is disabled in no-auth mode").into_response();
+    }
     if !authorized(&state, &headers) {
         return StatusCode::UNAUTHORIZED.into_response();
     }
@@ -249,6 +276,9 @@ async fn pairing_exchange<O: Owner>(
     headers: HeaderMap,
     axum::Json(body): axum::Json<PairingCode>,
 ) -> Response {
+    if state.auth.is_disabled() {
+        return (StatusCode::CONFLICT, "pairing is disabled in no-auth mode").into_response();
+    }
     if !origin_ok(&headers) {
         return StatusCode::FORBIDDEN.into_response();
     }
@@ -292,21 +322,14 @@ struct GuidePreferenceBody {
 }
 
 fn guide_authorized<O: Owner>(state: &AppState<O>, headers: &HeaderMap) -> bool {
-    origin_ok(headers)
-        && state.auth.cookie_valid(
-            &auth::cookie_name(state.config.listen.port()),
-            header_str(headers, header::COOKIE),
-        )
+    authorized(state, headers)
 }
 
 async fn guide_preference_get<O: Owner>(
     State(state): State<AppState<O>>,
     headers: HeaderMap,
 ) -> Response {
-    if !state.auth.cookie_valid(
-        &auth::cookie_name(state.config.listen.port()),
-        header_str(&headers, header::COOKIE),
-    ) {
+    if !authorized(&state, &headers) {
         return StatusCode::UNAUTHORIZED.into_response();
     }
     match crate::guide_preference::enabled(&state.config.config_dir) {
@@ -337,10 +360,7 @@ async fn ws_upgrade<O: Owner>(
     if !origin_ok(&headers) {
         return (StatusCode::FORBIDDEN, "origin not allowed").into_response();
     }
-    if !state.auth.cookie_valid(
-        &auth::cookie_name(state.config.listen.port()),
-        header_str(&headers, header::COOKIE),
-    ) {
+    if !authorized(&state, &headers) {
         return (StatusCode::UNAUTHORIZED, "no session").into_response();
     }
     let Some((guard, owner_state)) = state.hub.register() else {

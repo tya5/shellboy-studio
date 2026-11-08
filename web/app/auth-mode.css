@@ -1,0 +1,4 @@
+.studio-no-auth { position: fixed; inset: 0 0 auto; height: 24px; z-index: 10000; display: flex; align-items: center; justify-content: center; background: #fff0bc; color: #432d00; font: 12px Georgia, serif; border-bottom: 1px solid #b48932; }
+body.studio-no-auth-mode { padding-top: 25px; box-sizing: border-box; }
+
+body.studio-no-auth-mode .app { height: calc(100dvh - 25px); }

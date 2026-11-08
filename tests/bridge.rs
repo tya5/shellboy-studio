@@ -667,3 +667,194 @@ async fn pairing_link_exchanges_once_for_session_cookie() {
         .unwrap();
     assert_eq!(again.status(), StatusCode::UNAUTHORIZED);
 }
+
+#[tokio::test]
+async fn no_auth_http_keeps_host_origin_and_disables_pairing_credentials() {
+    use shellboy_studio::{
+        auth::Auth,
+        hub::Hub,
+        server::{ServerConfig, Shared, router},
+    };
+    for disabled in [false, true] {
+        let (owner, _tx) = mock(list_handler);
+        let dir = SyntheticDir::new();
+        let app = router(Shared::new(
+            owner,
+            Hub::new(),
+            if disabled {
+                Auth::disabled()
+            } else {
+                Auth::new("ab".repeat(32))
+            },
+            ServerConfig {
+                listen: "127.0.0.1:8751".parse().unwrap(),
+                extra_hosts: vec!["studio.example.ts.net".into()],
+                debug: true,
+                data_dir: dir.path().into(),
+                config_dir: dir.path().into(),
+            },
+        ));
+        for host in ["127.0.0.1:8751", "studio.example.ts.net"] {
+            for (path, method, body) in [
+                ("/auth-mode", "GET", ""),
+                ("/guide-preference", "GET", ""),
+                ("/guide-preference", "POST", "{\"enabled\":false}"),
+                ("/auth", "POST", "{\"token\":\"wrong\"}"),
+                ("/pairing", "GET", ""),
+                ("/pairing", "POST", "{\"host\":\"studio.example.ts.net\"}"),
+                ("/pairing/exchange", "POST", "{\"code\":\"wrong\"}"),
+            ] {
+                let request = |host: &str, origin: &str| {
+                    Request::builder()
+                        .method(method)
+                        .uri(path)
+                        .header(header::HOST, host)
+                        .header(header::ORIGIN, origin)
+                        .header(header::CONTENT_TYPE, "application/json")
+                        .body(Body::from(body))
+                        .unwrap()
+                };
+                let response = app
+                    .clone()
+                    .oneshot(request(host, &format!("https://{host}")))
+                    .await
+                    .unwrap();
+                let expected = if path == "/auth-mode" {
+                    StatusCode::OK
+                } else if disabled && path.starts_with("/pairing") {
+                    StatusCode::CONFLICT
+                } else if disabled && method == "GET" {
+                    StatusCode::OK
+                } else if disabled {
+                    StatusCode::NO_CONTENT
+                } else {
+                    StatusCode::UNAUTHORIZED
+                };
+                assert_eq!(
+                    response.status(),
+                    expected,
+                    "{disabled} {host} {method} {path}"
+                );
+                assert!(!response.headers().contains_key(header::SET_COOKIE));
+                if path == "/auth-mode" {
+                    assert_eq!(
+                        response.headers().get(header::CACHE_CONTROL).unwrap(),
+                        "no-store"
+                    );
+                    let bytes = axum::body::to_bytes(response.into_body(), 1024)
+                        .await
+                        .unwrap();
+                    assert_eq!(
+                        serde_json::from_slice::<Value>(&bytes).unwrap(),
+                        json!({"authentication_required": !disabled})
+                    );
+                }
+
+                assert_eq!(
+                    app.clone()
+                        .oneshot(request(host, "https://evil.example"))
+                        .await
+                        .unwrap()
+                        .status(),
+                    StatusCode::FORBIDDEN
+                );
+                assert_eq!(
+                    app.clone()
+                        .oneshot(request("evil.example", "https://evil.example"))
+                        .await
+                        .unwrap()
+                        .status(),
+                    StatusCode::FORBIDDEN
+                );
+            }
+        }
+    }
+}
+
+#[tokio::test]
+async fn no_auth_ws_accepts_loopback_and_proxy_but_never_bad_host_or_origin() {
+    use shellboy_studio::{
+        auth::Auth,
+        hub::Hub,
+        server::{ServerConfig, Shared, serve},
+    };
+    for disabled in [false, true] {
+        let (owner, _tx) = mock(list_handler);
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let dir = SyntheticDir::new();
+        let state = Shared::new(
+            owner,
+            Hub::new(),
+            if disabled {
+                Auth::disabled()
+            } else {
+                Auth::new("ab".repeat(32))
+            },
+            ServerConfig {
+                listen: addr,
+                extra_hosts: vec!["studio.example.ts.net".into()],
+                debug: false,
+                data_dir: dir.path().into(),
+                config_dir: dir.path().into(),
+            },
+        );
+        let cancel = tokio_util::sync::CancellationToken::new();
+        let task = tokio::spawn(serve(listener, state.clone(), fast_poll(), cancel.clone()));
+        for (host, origin, expected) in [
+            (
+                addr.to_string(),
+                format!("http://{addr}"),
+                if disabled { 101 } else { 401 },
+            ),
+            (
+                "studio.example.ts.net".into(),
+                "https://studio.example.ts.net".into(),
+                if disabled { 101 } else { 401 },
+            ),
+            ("evil.example".into(), "https://evil.example".into(), 403),
+            (
+                "studio.example.ts.net".into(),
+                "https://evil.example".into(),
+                403,
+            ),
+        ] {
+            let mut request = format!("ws://{addr}/ws").into_client_request().unwrap();
+            request.headers_mut().insert("host", host.parse().unwrap());
+            request
+                .headers_mut()
+                .insert("origin", origin.parse().unwrap());
+            match tokio_tungstenite::connect_async(request).await {
+                Ok((mut socket, response)) => {
+                    assert_eq!(response.status().as_u16(), expected);
+                    socket.close(None).await.unwrap();
+                }
+                Err(e) => assert_eq!(status_of(e), expected),
+            }
+        }
+        if !disabled {
+            let cookie = login(addr, &state).await;
+            let mut socket = connect(addr, Some(&cookie), Some(&format!("http://{addr}")))
+                .await
+                .unwrap();
+            socket.close(None).await.unwrap();
+        }
+        cancel.cancel();
+        task.await.unwrap().unwrap();
+    }
+}
+
+struct SyntheticDir(std::path::PathBuf);
+impl SyntheticDir {
+    fn new() -> Self {
+        Self(std::env::temp_dir().join(format!("studio-no-auth-{}", uuid::Uuid::new_v4())))
+    }
+    fn path(&self) -> &std::path::Path {
+        &self.0
+    }
+}
+impl Drop for SyntheticDir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}

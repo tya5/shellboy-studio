@@ -31,6 +31,9 @@ struct Args {
     /// Extra Host names to accept (for example a Tailscale name). Repeatable.
     #[arg(long = "allow-host")]
     allow_host: Vec<String>,
+    /// Skip token/session checks. Only for local or tailnet-only Serve; NEVER Funnel.
+    #[arg(long)]
+    no_auth: bool,
     /// Folder of apps (default: `apps` in the owner data directory).
     #[arg(long)]
     apps_dir: Option<PathBuf>,
@@ -125,7 +128,14 @@ async fn run(args: Args) -> Result<(), String> {
         Some(dir) => dir,
         None => default_config_dir()?,
     };
-    let auth = Auth::load_or_create(&config_dir)?;
+    let auth = if args.no_auth {
+        eprintln!(
+            "shellboy-studio: WARNING: authentication disabled (--no-auth). Local processes and anyone able to reach this bridge, including shared tailnet users, can operate it. Use only local access or tailnet-only Tailscale Serve, NEVER Funnel. Serve/Funnel configuration is NOT detected or guaranteed."
+        );
+        Auth::disabled()
+    } else {
+        Auth::load_or_create(&config_dir)?
+    };
     let owner = Arc::new(IpcOwner::new(data_dir.clone()));
     let probe = owner
         .call(
@@ -142,7 +152,7 @@ async fn run(args: Args) -> Result<(), String> {
     }
     if !args.listen.ip().is_loopback() {
         eprintln!(
-            "shellboy-studio: warning: {} is not loopback; traffic is plain HTTP unless a TLS tunnel is in front. The token is still required.",
+            "shellboy-studio: warning: {} is not loopback; traffic is plain HTTP unless a TLS tunnel is in front. Host/Origin checks remain required; authentication depends on --no-auth.",
             args.listen
         );
     }
@@ -150,9 +160,17 @@ async fn run(args: Args) -> Result<(), String> {
         .await
         .map_err(|e| format!("cannot listen on {}: {e}", args.listen))?;
     let addr = listener.local_addr().map_err(|e| e.to_string())?;
-    println!("open http://{addr}/#token={}", auth.token());
+    if args.no_auth {
+        println!("open http://{addr}/ (NO AUTHENTICATION)");
+    } else {
+        println!("open http://{addr}/#token={}", auth.token());
+    }
     if args.debug {
-        println!("debug page: http://{addr}/debug#token={}", auth.token());
+        if args.no_auth {
+            println!("debug page: http://{addr}/debug (NO AUTHENTICATION)");
+        } else {
+            println!("debug page: http://{addr}/debug#token={}", auth.token());
+        }
     }
     let cancel = CancellationToken::new();
     let state = Shared::with_apps(
@@ -228,5 +246,23 @@ mod tests {
         assert!(old.contains("README") && old.contains("protocol"));
         let other = owner_problem(dir, &ApiError::new(ErrorCode::IoFailed, "x"));
         assert!(other.contains("same OS user"));
+    }
+}
+
+#[cfg(test)]
+mod no_auth_tests {
+    use super::*;
+    #[test]
+    fn no_auth_is_explicit_and_composes_with_allow_host() {
+        assert!(!Args::try_parse_from(["studio"]).unwrap().no_auth);
+        let args = Args::try_parse_from([
+            "studio",
+            "--no-auth",
+            "--allow-host",
+            "studio.example.ts.net",
+        ])
+        .unwrap();
+        assert!(args.no_auth);
+        assert_eq!(args.allow_host, ["studio.example.ts.net"]);
     }
 }

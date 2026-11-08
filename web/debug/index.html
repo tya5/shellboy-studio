@@ -23,6 +23,7 @@
 </style>
 </head>
 <body>
+<div id="no-auth-warning" hidden>Authentication off: local processes and reachable tailnet users can operate this bridge. Never use Funnel.</div>
 <h1>shellboy-studio debug</h1>
 
 <section id="login" hidden>
@@ -87,6 +88,7 @@
 </section>
 
 <script>
+fetch("/auth-mode", {cache:"no-store"}).then(r=>r.json()).then(mode=>{if(mode.authentication_required===false) document.getElementById("no-auth-warning").hidden=false;}).catch(()=>{});
 "use strict";
 const MAX_LOG = 500;
 const $ = (id) => document.getElementById(id);

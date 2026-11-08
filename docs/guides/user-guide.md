@@ -67,3 +67,30 @@ access and HTTPS Serve status; reissue an expired pairing code on the computer.
 Do not use Funnel or paste token URLs, QR contents or credentials into reports.
 Phone, Safari/Firefox and physical Windows/Linux validation remain unverified
 unless the final release notes explicitly record those checks.
+
+## Explicit Development Authentication Opt-Out
+
+`--no-auth` skips token and session checks only when explicitly specified. The
+normal default still requires the token and an in-memory session after restart.
+For disposable development, use loopback, or combine `--no-auth` with an exact
+`--allow-host your-device.your-tailnet.ts.net` behind **tailnet-only Tailscale
+Serve**. Never use this mode with **Tailscale Funnel** or Internet exposure.
+Studio does not configure, detect or guarantee Serve versus Funnel. Verify that
+access is restricted yourself; this option is not a safe way to publish Studio.
+
+Anyone who can reach the bridge can operate it, including other processes on the
+same PC and users/devices sharing the tailnet. Host and Origin checks are not user
+authentication and do not stop those clients. These checks remain enforced for
+HTTP and WebSocket, with no wildcard host or arbitrary-origin bypass. Requests
+without Origin retain the existing non-browser policy. Use the normal authenticated
+mode when these access assumptions are not acceptable.
+
+An always-visible “Authentication off” / “認証なし” strip appears on desktop and
+mobile. The bootstrap `/auth-mode` exposes only the no-auth configuration bit, not
+owner data or secrets. In this mode `/auth` acknowledges valid requests without
+creating a session cookie; pairing endpoints return 409 and do not issue or
+exchange codes. WebSocket and guide-preference routes require allowed Host and
+matching Origin (when present), but no token/cookie. App capability URLs retain
+their independent sandbox restrictions. `/debug`, when explicitly enabled, also
+connects without a cookie and exposes the same bridge operations: do not share it.
+Actual tailnet/Serve/Funnel operation is not established by synthetic tests.

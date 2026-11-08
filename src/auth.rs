@@ -24,6 +24,7 @@ pub const PAIRING_LIMIT: usize = 16;
 pub const PAIRING_TTL: Duration = Duration::from_secs(120);
 
 pub struct Auth {
+    disabled: bool,
     token: String,
     sessions: Mutex<VecDeque<String>>,
     pairings: Mutex<VecDeque<(String, Instant)>>,
@@ -47,10 +48,23 @@ fn same(a: &str, b: &str) -> bool {
 impl Auth {
     pub fn new(token: String) -> Self {
         Self {
+            disabled: false,
             token,
             sessions: Mutex::new(VecDeque::new()),
             pairings: Mutex::new(VecDeque::new()),
         }
+    }
+
+    /// Explicit CLI opt-out only; does not read or create a token file.
+    pub fn disabled() -> Self {
+        Self {
+            disabled: true,
+            ..Self::new(String::new())
+        }
+    }
+
+    pub fn is_disabled(&self) -> bool {
+        self.disabled
     }
 
     /// Read the token file, or create it with a fresh token. Bridges may share a config directory,
