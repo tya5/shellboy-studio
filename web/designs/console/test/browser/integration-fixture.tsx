@@ -1,4 +1,4 @@
-import { signal } from '@preact/signals-core';
+import { effect, signal } from '@preact/signals-core';
 import type { Prefs } from '../../../../ui-core/src';
 import { fixtureModel, settle } from '../../../../ui-core/test/fixture';
 import { mount } from '../..';
@@ -20,5 +20,6 @@ if (params.get('state') === 'empty') {
 }
 const send = t.send.bind(t);
 t.send = (frame) => { const ok = send(frame); if (frame.t === 'call') queueMicrotask(() => void settle(t, db)); return ok; };
-const prefs = signal<Prefs>({ design: 'console', theme: params.get('theme') === 'light' ? 'light' : 'console', lang: 'en', monitorView: 'cards', weights: { cached: 0.1, output: 5 } });
+const prefs = signal<Prefs>({ design: 'console', theme: params.get('theme') === 'light' ? 'light' : params.get('theme') === 'terminal' ? 'terminal' : 'console', lang: 'en', monitorView: 'cards', weights: { cached: 0.1, output: 5 } });
+effect(() => { document.documentElement.dataset.ds = prefs.value.theme; });
 mount(document.getElementById('app')!, { model, designs: DESIGNS, prefs, setPrefs: (change) => { prefs.value = { ...prefs.value, ...change }; }, submitToken: async () => true });

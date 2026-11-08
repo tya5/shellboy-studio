@@ -26,6 +26,7 @@ fn content_type(path: &str) -> &'static str {
         Some("js") => "text/javascript; charset=utf-8",
         Some("css") => "text/css; charset=utf-8",
         Some("png") => "image/png",
+        Some("ico") => "image/x-icon",
         Some("svg") => "image/svg+xml",
         Some("woff2") => "font/woff2",
         Some("webmanifest") => "application/manifest+json",
@@ -139,6 +140,14 @@ mod tests {
                 "no-cache",
             ),
         ];
+        let checks = checks.into_iter().chain([
+            (
+                "/assets/brand/studio-favicon.svg",
+                "image/svg+xml",
+                "no-cache",
+            ),
+            ("/assets/brand/studio-teal.ico", "image/x-icon", "no-cache"),
+        ]);
         for (path, mime, cache) in checks {
             let mut stream = tokio::net::TcpStream::connect(addr).await.unwrap();
             stream

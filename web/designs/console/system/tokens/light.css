@@ -27,6 +27,8 @@
   --chart-1: #2a78d6;
   --chart-2: #16976a;
   --chart-3: #eb6834;
+  --logo-face: #000810;
+  --logo-bright: #FEF2D1;
   --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   --font-sans: Inter, "Noto Sans JP", "Hiragino Sans", "Yu Gothic UI", system-ui, sans-serif;
   --type-title: 700 24px/30px var(--font-sans);

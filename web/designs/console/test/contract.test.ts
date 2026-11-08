@@ -59,11 +59,16 @@ describe.each(THEMES)("theme %s", (theme) => {
   });
 });
 
-describe("approved Bright Teal brand", () => {
-  it("keeps the approved palette theme-independent and outside UI tokens", () => {
-    expect(tokens.brand.tokens).toEqual({ "logo-tile": "#028da3", "logo-face": "#023239", "logo-ring": "#FEF2D1", "logo-wink": "#38bdf8" });
-    expect(tokens.brand.tokens["logo-wink"]).toBe(parse(fileFor("console")).get("accent"));
-    for (const theme of THEMES) for (const name of Object.keys(tokens.brand.tokens)) expect(parse(fileFor(theme)).has(name)).toBe(false);
+describe("accent-following approved brand", () => {
+  it("references existing generated theme tokens instead of a fixed tile/wink palette", () => {
+    expect(tokens.brand.tokens["logo-tile"]).toBe("var(--accent)");
+    expect(tokens.brand.tokens["logo-wink"]).toBe("var(--accent)");
+  });
+  it.each(THEMES)("keeps identifiable details above 3:1 in %s", theme => {
+    const v = parse(fileFor(theme));
+    expect(contrast(v.get("accent")!, v.get("logo-face")!)).toBeGreaterThanOrEqual(3);
+    expect(contrast(v.get("logo-bright")!, v.get("logo-face")!)).toBeGreaterThanOrEqual(3);
+    expect(contrast(v.get("accent")!, v.get("panel")!)).toBeGreaterThanOrEqual(3);
   });
 });
 

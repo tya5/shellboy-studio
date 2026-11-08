@@ -27,6 +27,8 @@
   --chart-1: #3987e5;
   --chart-2: #199e70;
   --chart-3: #d95926;
+  --logo-face: #000810;
+  --logo-bright: #FEF2D1;
   --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   --font-sans: var(--font-mono);
   --type-title: 700 24px/30px var(--font-sans);

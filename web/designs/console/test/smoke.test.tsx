@@ -1252,13 +1252,15 @@ describe("Character status information", () => {
 
 
 describe("approved Studio brand", () => {
-  it("shows Bright Teal at the existing sidebar brand position", async () => {
+  it("shows inline accent-following logo at the existing sidebar position", async () => {
     const { model } = await fixtureModel();
     try {
       const el = draw(model);
-      const brand = el.querySelector(".side .brand img.brand-logo")!;
-      expect(brand.getAttribute("src")).toBe("/assets/brand/studio-teal-master.svg");
-      expect(brand.getAttribute("alt")).toBe("");
+      const brand = el.querySelector(".side .brand svg.brand-logo")!;
+      expect(brand.getAttribute("aria-hidden")).toBe("true");
+      expect(brand.querySelector(".logo-tile")?.getAttribute("fill")).toBe("var(--accent)");
+      expect(brand.querySelector(".logo-wink")?.getAttribute("stroke")).toBe("var(--accent)");
+      expect(brand.querySelectorAll("rect,path,ellipse")).toHaveLength(5);
       expect(brand.parentElement?.textContent).toContain("Shellboy");
     } finally { model.dispose(); }
   });
