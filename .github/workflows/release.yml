@@ -45,6 +45,13 @@ jobs:
       RELEASE_EXECUTABLE: ${{ matrix.executable }}
       RELEASE_ARCHIVE: ${{ matrix.archive }}
     steps:
+      - name: Refuse release work before the approved publication window
+        shell: bash
+        run: |
+          python3 - <<'PYTHON'
+          from datetime import datetime, timezone
+          assert datetime.now(timezone.utc) >= datetime(2026, 11, 8, 22, tzinfo=timezone.utc), 'Publication is not authorized before 2026-11-09 07:00 JST'
+          PYTHON
       - uses: actions/checkout@v4
         with:
           ref: refs/tags/${{ inputs.release_tag || github.ref_name }}
@@ -97,6 +104,12 @@ jobs:
           shutil.copy2(Path('target') / os.environ['RELEASE_TARGET'] / 'release' / exe, stage / exe)
           for f in ('LICENSE', 'README.md'):
               shutil.copy2(f, stage / f)
+          shutil.copytree('docs/guides', stage / 'docs/guides')
+          for doc in ('release-v0.1.0.md', 'first-release-verification.md'):
+            shutil.copy2(Path('docs') / doc, stage / 'docs' / doc)
+          (stage / 'docs/development').mkdir()
+          for doc in ('release-v0.1.0-checklist.md', 'release-v0.1.0-safety.md'):
+            shutil.copy2(Path('docs/development') / doc, stage / 'docs/development' / doc)
           out = Path('dist'); out.mkdir()
           archive = out / f"{name}.{os.environ['RELEASE_ARCHIVE']}"
           if os.environ['RELEASE_ARCHIVE'] == 'zip':
@@ -122,6 +135,8 @@ jobs:
           out = subprocess.check_output([str(stage / os.environ['RELEASE_EXECUTABLE']), '--version'], text=True).strip()
           assert out == 'shellboy-studio ' + os.environ['RELEASE_TAG'][1:], out
           assert (stage / 'LICENSE').is_file() and (stage / 'README.md').is_file()
+          assert (stage / 'docs/guides/user-guide.md').is_file()
+          assert (stage / 'docs/guides/agent-guide.md').is_file()
           print('packaged smoke:', out)
           PY
       - uses: actions/upload-artifact@v4

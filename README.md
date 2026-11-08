@@ -22,6 +22,15 @@ here has run on GitHub CI yet. See [Verification and limitations](#verification-
 -->
 Screenshots are not bundled yet.
 
+## v0.1.0 candidate
+
+Planned pairing: published Core v0.11.0 after exact-tag validation. The current
+pin is not changed until that tag exists. Older-owner feature negotiation is
+not guaranteed; use only the validated matching owner. Existing artifact targets
+remain Windows x86_64, macOS arm64 and Linux x86_64, not new physical-device
+support claims. See [candidate notes](docs/release-v0.1.0.md) and the
+[release readiness checklist](docs/development/release-v0.1.0-checklist.md).
+
 ## Start
 
 You need a running Shellboy owner first, then Studio:

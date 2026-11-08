@@ -53,3 +53,17 @@ Studio starts. Studio rewrites it on every startup: edits to that installed copy
 are lost. The Apps README is also rewritten. To read the bundled guides without
 starting the bridge, run `shellboy-studio guide user` or
 `shellboy-studio guide agent`.
+
+## Version and troubleshooting
+
+For the v0.1.0 candidate, use the validated matching Core release (planned:
+v0.11.0). A newer Studio build is not guaranteed to negotiate missing features
+with an older owner. If operations fail after a version mismatch, check both
+versions and follow the release pairing instructions; do not reset data or
+restart an owner that is running work without explicit approval.
+
+If a phone cannot connect, confirm the computer's allowed hostname, tailnet
+access and HTTPS Serve status; reissue an expired pairing code on the computer.
+Do not use Funnel or paste token URLs, QR contents or credentials into reports.
+Phone, Safari/Firefox and physical Windows/Linux validation remain unverified
+unless the final release notes explicitly record those checks.
