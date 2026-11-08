@@ -211,3 +211,10 @@
 .scroll-frame > .scroll{overflow-anchor:none}
 
 .branch-excerpts p{margin:var(--space-4) 0;white-space:pre-wrap;overflow-wrap:anywhere}
+
+/* Work items are rows within their section; inset focus stays inside scrolling bounds. */
+.work-region .work-row{background:transparent;border-radius:0;border:0;border-bottom:1px solid var(--line)}
+.work-region .work-row:hover,.work-region .work-row:focus-within{background:var(--accent-bg)}
+.work-region .running-label{overflow:visible}
+.work-region .running-label>button{display:block;max-width:100%;width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border:0;background:transparent;text-align:left}
+.work-region .running-label>button:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
