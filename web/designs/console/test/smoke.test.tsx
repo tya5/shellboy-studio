@@ -62,6 +62,20 @@ describe("Desktop navigation", () => {
   });
 });
 
+describe("Thread model picker", () => {
+  it("opens from the model name and explains when changes apply", async () => {
+    const { model, t, db } = await fixtureModel();
+    const el = draw(model);
+    const button = [...el.querySelectorAll<HTMLButtonElement>(".top button")].find((b) => text(b) === "example-model")!;
+    act(() => button.click());
+    await act(async () => { await settle(t, db); });
+    expect(el.querySelector('[role="dialog"]')?.textContent).toContain("next request");
+    expect(el.querySelector<HTMLInputElement>('input[aria-label="Search models or enter an ID"]')).not.toBeNull();
+    expect(el.querySelector<HTMLInputElement>('input[aria-label="Reasoning effort (optional)"]')).not.toBeNull();
+    model.dispose();
+  });
+});
+
 describe("App request and guide", () => {
   it("requires review before sending the full request and shows guidance", async () => {
     const { model, t } = await fixtureModel({ route: "apps" });
@@ -379,7 +393,7 @@ describe("Frame", () => {
   it("settings lists Console, Light and Terminal and changes the theme preference", async () => {
     const { model } = await fixtureModel();
     const el = draw(model);
-    act(() => el.querySelector<HTMLButtonElement>('.top .right .btn[aria-expanded]')!.click());
+    act(() => el.querySelector<HTMLButtonElement>('.top .right .btn[data-settings-toggle]')!.click());
     const buttons = [...el.querySelectorAll<HTMLButtonElement>(".panel .btn")];
     expect(buttons.map(text)).toEqual(expect.arrayContaining(["Console", "Light", "Terminal", "English", "日本語"]));
     act(() => buttons.find((b) => text(b) === "Light")!.click());
@@ -388,7 +402,7 @@ describe("Frame", () => {
   it("settings closes on Escape and on a press outside, and stays open for a press inside", async () => {
     const { model } = await fixtureModel();
     const el = draw(model);
-    const toggle = () => el.querySelector<HTMLButtonElement>('.top .right .btn[aria-expanded]')!;
+    const toggle = () => el.querySelector<HTMLButtonElement>('.top .right .btn[data-settings-toggle]')!;
     act(() => toggle().click());
     act(() => { el.querySelector(".panel")!.dispatchEvent(new Event("pointerdown", { bubbles: true })); });
     expect(el.querySelector(".panel")).not.toBeNull();
