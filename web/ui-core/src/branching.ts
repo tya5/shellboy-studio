@@ -67,6 +67,22 @@ const sameTarget = (a: BranchTarget | undefined, b: BranchTarget): boolean => a?
 export class Branches {
   readonly state: Signal<FamilyState> = signal({ threadId: undefined, loading: false, family: undefined, error: undefined });
   readonly rewind: Signal<RewindState> = signal({ kind: "idle" });
+  readonly selection: Signal<ReadonlySet<string>> = signal(new Set());
+  readonly actionError: Signal<string | undefined> = signal(undefined);
+  readonly actionBusy = signal(false);
+  toggleBranch(id: string): void { const next = new Set(this.selection.peek()); next.has(id) ? next.delete(id) : next.add(id); this.selection.value = next; }
+  async archiveSelected(): Promise<void> {
+    const ids = [...this.selection.peek()]; if (!ids.length || this.actionBusy.peek()) return;
+    this.actionBusy.value = true; const out = await this.ops.threadArchive(ids); this.actionBusy.value = false;
+    if (!out.ok) this.actionError.value = out.error.message;
+    else { const missing = out.value.not_found ?? []; this.selection.value = new Set(missing); this.actionError.value = missing.length ? `Not found: ${missing.join(", ")}` : undefined; const id = this.state.peek().threadId; if (id) void this.read(id); }
+  }
+  async renameBranch(id: string, title: string): Promise<void> {
+    if (!title.trim() || this.actionBusy.peek()) return;
+    this.actionBusy.value = true; const out = await this.ops.threadSetTitle(id, title.trim()); this.actionBusy.value = false;
+    if (!out.ok) this.actionError.value = out.error.message;
+    else { this.actionError.value = undefined; const selected = this.state.peek().threadId; if (selected) void this.read(selected); }
+  }
   readonly fork: Signal<ForkState> = signal({ kind: "idle" });
   /** Graph or list; a phone always gets the list. */
   readonly layout: Signal<"graph" | "list"> = signal("graph");
@@ -174,19 +190,28 @@ export class Branches {
   }
 
   /** Only after a preview of this exact target. */
-  async confirmRewind(): Promise<void> {
+  async confirmRewind(text = ""): Promise<void> {
     const s = this.rewind.peek();
     if (s.kind !== "ready" && s.kind !== "failed") return;
     const { facts, target } = s;
     this.rewind.value = { kind: "rewinding", facts, target };
     const out = await this.ops.threadRewind({ thread_id: target.threadId, node_id: target.nodeId });
     this.rewind.value = out.ok ? { kind: "done", facts: readRewind(out.value) } : { kind: "failed", facts, target, error: out.error };
+    if (out.ok && text.trim()) {
+      this.actionError.value = undefined;
+      const sent = await this.ops.messageSend({ thread_id: target.threadId, text: text.trim() });
+      if (!sent.ok) this.actionError.value = `Rewind succeeded; request not sent: ${sent.error.message}`;
+    }
     if (out.ok) void this.read(this.state.peek().threadId ?? target.threadId);
   }
 
-  async forkAt(target: BranchTarget): Promise<void> {
+  async forkAt(target: BranchTarget, text = ""): Promise<void> {
     this.fork.value = { kind: "forking" };
     const out = await this.ops.threadFork({ thread_id: target.threadId, node_id: target.nodeId });
+    if (out.ok && text.trim()) {
+      const sent = await this.ops.messageSend({ thread_id: out.value.thread_id, text: text.trim() });
+      if (!sent.ok) { this.fork.value = { kind: "done", threadId: out.value.thread_id, title: out.value.title }; this.actionError.value = `Branch ${out.value.thread_id} created; request not sent: ${sent.error.message}`; return; }
+    }
     this.fork.value = out.ok ? { kind: "done", threadId: out.value.thread_id, title: out.value.title } : { kind: "failed", error: out.error };
     if (out.ok) void this.read(this.state.peek().threadId ?? target.threadId);
   }

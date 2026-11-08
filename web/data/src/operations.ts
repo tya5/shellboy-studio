@@ -336,6 +336,9 @@ export class Operations {
   credentialsClear(connection: string, operationId = this.newId()): Promise<Outcome<StoredFacts>> {
     return this.run("credentials.clear", encodeCredentialsClear(connection), decodeStored, { operationId });
   }
+  threadSetTitle(threadId: string, title: string): Promise<Outcome<ThreadDetails>> {
+    return this.run("thread.set", { thread_id: threadId, title }, decodeDetails, { operationId: this.newId() });
+  }
   threadSetParent(threadId: string, parent: string, operationId = this.newId()): Promise<Outcome<ThreadDetails>> {
     return this.run("thread.set", { thread_id: threadId, parent_id: parent }, decodeDetails, { operationId });
   }

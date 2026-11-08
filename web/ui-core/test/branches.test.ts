@@ -24,6 +24,28 @@ describe("reading a family", () => {
   });
 });
 
+describe("branch management", () => {
+  it("retains missing branches after a partial archive", async () => {
+    const { model, t, db } = await fixtureModel();
+    const plain = db.answer;
+    db.answer = c => c.command === "thread.archive" ? { ok: true, result: { archived: ["fork-a"], already: [], not_found: ["gone"], descendants: false } } : plain(c);
+    model.branches.toggleBranch("fork-a"); model.branches.toggleBranch("gone");
+    const pending = model.branches.archiveSelected(); await settle(t, db); await pending;
+    expect([...model.branches.selection.value]).toEqual(["gone"]);
+    expect(model.branches.actionError.value).toContain("gone");
+    model.dispose();
+  });
+  it("archives only selected branches and sends titles for the chosen branch", async () => {
+    const { model, t, db } = await fixtureModel();
+    model.branches.toggleBranch("fork-a");
+    const archive = model.branches.archiveSelected(); await settle(t, db); await archive;
+    expect(t.calls("thread.archive").at(-1)?.args).toEqual({ thread_ids: ["fork-a"] });
+    const rename = model.branches.renameBranch("fork-a", "Keep this"); await settle(t, db); await rename;
+    expect(t.calls("thread.set").at(-1)?.args).toEqual({ thread_id: "fork-a", title: "Keep this" });
+    model.dispose();
+  });
+});
+
 describe("branch excerpts", () => {
   it("reads a bounded split window and a bounded tip window", async () => {
     const { model, t, db } = await fixtureModel();
@@ -154,6 +176,27 @@ describe("Branches over the fake transport", () => {
     const read = readWholeFamily(model.ops, "lead");
     await settle(t, db);
     expect(await read).toMatchObject({ ok: false, error: { code: "cursor_expired" } });
+  });
+  it("keeps the new branch visible when its follow-up request fails", async () => {
+    const { t, db, model } = await branches();
+    const plain = db.answer;
+    db.answer = c => c.command === "message.send" ? { ok: false, code: "invalid_state", message: "Cannot send" } : plain(c);
+    const task = model.branches.forkAt({ threadId: "lead", nodeId: "n100" }, "new request");
+    await settle(t, db); await settle(t, db); await task;
+    expect(model.branches.fork.value.kind).toBe("done");
+    expect(model.branches.actionError.value).toContain("Cannot send");
+    model.dispose();
+  });
+  it("keeps rewind complete and reports a failed follow-up request", async () => {
+    const { t, db, model } = await branches();
+    const plain = db.answer;
+    db.answer = c => c.command === "message.send" ? { ok: false, code: "invalid_state", message: "Cannot send" } : plain(c);
+    model.applyRoute({ view: "branches", threadId: "lead", nodeId: "n100" });
+    void model.branches.previewRewind(model.branches.target.value!); await settle(t, db);
+    const task = model.branches.confirmRewind("new request"); await settle(t, db); await settle(t, db); await task;
+    expect(model.branches.rewind.value.kind).toBe("done");
+    expect(model.branches.actionError.value).toContain("Cannot send");
+    model.dispose();
   });
   it("rewind runs only after a preview of that exact point, with an operation id only on the real one", async () => {
     const { t, db, model } = await branches();
