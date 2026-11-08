@@ -255,7 +255,7 @@ export class Operations {
     return this.run("model.list", args, decodeModelList, undefined, read);
   }
   /** Update only model settings for this Thread; owner validates values. */
-  setThreadModel(threadId: string, changes: { model: string; connection: string; effort?: string }): Promise<Outcome<ThreadDetails>> {
+  setThreadModel(threadId: string, changes: { model: string; connection: string; effort?: string; agents?: string; auto_compact_at?: string; segment_chars?: string; reduce_rounds?: string }): Promise<Outcome<ThreadDetails>> {
     return this.run("thread.set", { thread_id: threadId, ...changes }, decodeDetails, { operationId: this.newId() });
   }
   /** One page of a Thread's family: ancestors, then breadth first. */
@@ -335,6 +335,9 @@ export class Operations {
   }
   credentialsClear(connection: string, operationId = this.newId()): Promise<Outcome<StoredFacts>> {
     return this.run("credentials.clear", encodeCredentialsClear(connection), decodeStored, { operationId });
+  }
+  threadSetTitle(threadId: string, title: string): Promise<Outcome<ThreadDetails>> {
+    return this.run("thread.set", { thread_id: threadId, title }, decodeDetails, { operationId: this.newId() });
   }
   threadSetParent(threadId: string, parent: string, operationId = this.newId()): Promise<Outcome<ThreadDetails>> {
     return this.run("thread.set", { thread_id: threadId, parent_id: parent }, decodeDetails, { operationId });

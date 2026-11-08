@@ -149,3 +149,36 @@ Commands: `npm run check` (typecheck and Vitest), `cargo fmt --check`, `cargo cl
 Seen in the browser against the real bridge and owner: every Analytics section; all charts, tables and Resources; Console, Light and Terminal at 1440 px and 390 px; Japanese; hover tooltips; opening a chart's table; period change; weights changing the figures with no read, kept per browser, an invalid value refused; by-Thread walk and choosing a Thread's compaction; the range bar with a real "after" value; a walk over 4 windows with real cursors; Stop then Continue; owner down and then back, which read again by itself; the catalog on a press. No console error, no request leaving the bridge's origin, no horizontal page overflow. Daily values for six days were compared with a direct SQL sum of the temporary database and matched.
 
 Browser device emulation is not a phone test. Not tested: real phones, Safari, Firefox, Windows, Linux, a real provider, the user's real data, index spaces in a browser (the temporary owner had no embedding configured, so spaces are covered by fixtures only), storage `warning` or `limit_reached` in a browser (fixtures only by logic), the 64-window bound against a real owner (unit test only), a screen reader.
+
+## Settings refresh (2026-11-08)
+
+Settings groups the new-thread defaults, connections, compaction, storage, and
+indexing controls separately. Values come from `config.get`; edits are reviewed
+and sent through `config.set` against the last file hash. Credentials remain
+write-only. Automatic indexing can send conversation content to an embedding
+provider; the view warns that it can incur charges. Per-Thread compaction
+settings belong to the conversation view, not this screen.
+
+Shellboy's connection-generation contract on `origin/main` can apply connection
+and default changes to the running owner. A save result can report both live
+application and restart-required changes. Settings must show only the flags the
+owner returned, rather than describing all changes as restart-only. A failed or
+unavailable configuration read leaves editing disabled. Connection tests and
+credential deletion are explicit actions, limited to one in flight by the
+configuration editor; the editor owns their completion and is retained by the
+app model. Credential deletion requires confirmation and never reads a key.
+
+The v0.10.0 pin does not contain these newer commands. Integration pairing with
+an unreleased owner is a local verification only, not a change to the release
+pin. Before shipping a bridge with the new commands, pair it with an approved
+Shellboy release whose public protocol includes them.
+
+Connection edits remain inline rather than reopening first-run setup (user
+approval 2026-11-08). This keeps existing values and pending changes visible;
+adding a connection continues to use the setup flow.
+
+## Studio and per-Thread settings
+
+Studio shows the bridge's bound address and configured apps directory, supplied by the authenticated bridge hello, and its version. The owner handshake does not report the owner software version, so it is shown as unavailable rather than inferred from a protocol version. Propose an optional owner software-version field on the general external-client handshake or status RPC; revisit this row once that documented surface is released. A local executable version or startup log cannot identify the running owner and is not a substitute. Token rotation is manual: stop all Studio processes using the same config directory, remove its token file, and restart. Tailscale Serve guidance keeps the loopback listener and requires an explicit allowed hostname.
+
+The conversation settings include the Thread's own compaction overrides and instruction reference from `thread.get`. Empty compaction overrides clear them; an empty instruction reference is not a valid selection. Only changed overrides are sent. The bridge's `thread.settings` capability is enabled with `next-shellboy`; without it the form is read-only. `thread.set` retains its strict field allowlist and never permits an unrelated setting alongside these changes. Compaction changes affect subsequent requests; an instruction reference change is captured on the next new Turn, not on a retry of the current Turn.

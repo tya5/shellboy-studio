@@ -491,6 +491,9 @@ describe("diagnostics", () => {
     });
     expect(data.capabilities.value).toEqual(["live_text"]);
     expect(data.bridgeVersion.value).toBe("0.1.0");
+    t.push({ t: "hello", bridge_version: "0.1.1", listen: "127.0.0.1:9012", apps_dir: "/tmp/apps", owner: { state: "unreachable" } });
+    expect(data.listen.value).toBe("127.0.0.1:9012");
+    expect(data.appsDir.value).toBe("/tmp/apps");
     t.push({ t: "error", error: { code: "invalid_watch", message: "too many" } });
     expect(data.bridgeError.value).toEqual({ code: "invalid_watch", message: "too many" });
     t.handlers!.onInvalidFrame("unknown frame x");
