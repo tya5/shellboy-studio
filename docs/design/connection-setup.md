@@ -1,6 +1,6 @@
 # First-run connection setup
 
-Status: implemented (2026-11-07), local only. Realises `architecture.md` §12 for the Web: someone with no connection opens Studio and reaches a first message from one screen, without editing a file. The core operations are Shellboy issue #269, on branch `issue-269/connection-setup` and in no release, so everything about their wire shape is an assumption held in one place (below).
+Status: implemented (2026-11-07), local only. Realises `architecture.md` §12 for the Web: someone with no connection opens Studio and reaches a first message from one screen, without editing a file. The core operations are Shellboy issue #269, not available in the pinned v0.10.0 release. The current Shellboy main must be checked before enabling the feature; do not infer v0.11.0 availability before that tag is published.
 
 Logic: `web/ui-core/src/setup.ts` (the steps), `embedding.ts` (the optional embeddings step), `presets.ts` (the services and what each dialect offers, plain data), wire adapter `web/data/src/connection-setup.ts`. Screens: `web/designs/console/screens/Setup.tsx` and `SetupEmbedding.tsx`, routes `#/setup` and `#/setup/embedding`.
 
@@ -35,7 +35,7 @@ Reaching it: it opens by itself once, from the start route, when `config.get` sh
 
 The screen is behind the capability `connection.setup`, which `seam::owner_capabilities` advertises only in a build with the Cargo feature `next-connection-setup`. Without it (every normal build, pinned to v0.10.0), the Setup view shows "Setting up here needs a newer Shellboy" with the manual steps (`config init`, edit, set the variable, `config check`, restart), makes no `config.get` or `connection.test` call, and never opens by itself (without `config.get` it can't know that no connection exists), and the bridge refuses the three operations.
 
-**Deviation from the brief, and why.** The brief said to use the same `next-shellboy` feature as settings editing. `next-shellboy` builds against Shellboy main, which has no `Command::ConnectionTest`, `CredentialsSet` or `CredentialsClear` yet, and the allowlist is an exhaustive `match` over the crate's `Command`. Naming those variants under `next-shellboy` would stop that feature building today. `next-connection-setup` implies `next-shellboy` and adds only these arms and the capability; when the pin passes a Shellboy that has the operations, the feature goes and the arms stay, as `next-shellboy` does. The variant names are guessed from the wire names and were **not compiled** (no Shellboy has them).
+**Deviation from the brief, and why.** The brief said to use the same `next-shellboy` feature as settings editing. `next-shellboy` was introduced when Shellboy main did not yet have `Command::ConnectionTest`, `CredentialsSet` or `CredentialsClear`, and the allowlist is an exhaustive `match` over the crate's `Command`. Naming those variants under `next-shellboy` would stop that feature building today. `next-connection-setup` implies `next-shellboy` and adds only these arms and the capability; when the pin passes a Shellboy that has the operations, the feature goes and the arms stay, as `next-shellboy` does. The variants must be validated against the paired tag before enabling the feature by default.
 
 ## Allowlist
 
