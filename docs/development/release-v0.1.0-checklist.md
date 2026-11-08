@@ -84,3 +84,8 @@ passes with package 0.1.0; this does not compile the mismatched pin/features.
 baseline worktree. YAML parses and embedded Python syntax checks are recorded
 in the safety report. No hosted workflow, actual release archive, real owner,
 physical phone or additional OS was tested.
+
+Follow-up: this branch now includes main `6312f700` by rebase. Final local
+frontend checks pass 623 tests and production build. See the safety report for
+the follow-up history scan and synthetic packaging-script check. Exact Core
+pairing, hosted CI, genuine artifacts and S5 integrated acceptance remain open.

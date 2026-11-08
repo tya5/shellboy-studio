@@ -37,3 +37,15 @@ chain limitation requiring acceptance or a separately reviewed SHA-pin change.
 No platform/architecture was added. Packages remain unsigned/unnotarized until
 separately implemented and validated. Python syntax/YAML structure checks do
 not validate GitHub expressions, action availability or OS shell behavior.
+
+## Follow-up after local main advanced
+
+This branch was rebased onto reviewed scroll main `6312f700` without merging
+or changing main. `npm run check` passes 623 tests and `npm run build` passes
+on that base plus release-preparation changes. A local packaging-script dry run
+with a fake, non-executable Linux-target fixture confirms guide files enter the
+archive; it is not a real binary, workflow dispatch or Linux test. All embedded
+Python heredocs parse. Reachable-object rescan after the first preparation
+commit: 176 commits and 1,208 blobs, same candidate locations/categories, no
+additional private-path or key-file hits. Subsequent audit-record-only commits
+are covered by diff review, not those object counts.
