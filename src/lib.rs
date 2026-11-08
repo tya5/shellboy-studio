@@ -5,7 +5,7 @@
 //! Layers in this crate: `owner` (the only way to reach the owner), `events` (the single
 //! `events.wait` loop), `hub` (bounded fan-out of hints to tabs), `live` (bounded copy of unsaved model text), `allowlist`, `envelope`
 //! (browser frames), `auth`, `server`/`ws` (HTTP and WebSocket) and `seam` (the places
-//! that wait for Shellboy protocol 3 and live text deltas).
+//! that await exact published Core tag validation).
 
 pub mod allowlist;
 pub mod apps;

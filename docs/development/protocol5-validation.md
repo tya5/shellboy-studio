@@ -13,10 +13,10 @@ pairing task and is not established by this branch.
 | Wire change | Studio action |
 |---|---|
 | `ThreadDetails.children_count` removed | Remove type/fixture/details row and localized label; retain `thread.branches` family reads |
-| `RunDetails.owner_run_id` / `owned_run_ids` removed | No corresponding product input/row exists in this public baseline; typed negative tests prohibit aliases; shell `owned_execution_ids` remains |
+| `RunDetails.owner_run_id` / `owned_run_ids` removed | No corresponding product input/row exists in this public baseline; typed tests verify these fields are not re-exposed; strict request tests prohibit aliases; shell `owned_execution_ids` remains |
 | `ParentChange.live_run_owner_run_id` removed | No product parser for that field exists; remove the old running-Run previous-owner claim and its derived UI flag |
 | Three old Thread-get reply lists removed | Existing reader already uses `awaiting_replies`; make the type explicit, retain human/thread discrimination and bounded 128 decoder, test that legacy extras are not merged |
-| Protocol 5 exact pairing / `self_wait` | Core's typed IPC handshake enforces the version; no downgrade added. Typed tests check exact version, removed fields/errors and retained operations |
+| Protocol 5 exact pairing / `self_wait` | Core's typed IPC handshake enforces the version; no downgrade added. Typed tests check exact version, removed output fields/errors and retained operations |
 | Human count exactness | Type optional exactness flag with absent=true semantics; typed test covers 16 exact / 17 lower-bound, no new count UI invented |
 | Schema 39 Run settlement | Core owns storage/lifecycle; Studio does not read/migrate the database or recreate that state machine |
 

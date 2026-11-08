@@ -16,13 +16,13 @@ try {
   const base=process.env.SHOTS_DIR;
   await cmd("Runtime.enable"); await cmd("Page.enable"); await cmd("Log.enable");
   const results = [];
-  for (const width of [1280, 390]) for (const theme of ['console', 'light']) for (const state of ['history', 'empty', 'running']) {
+  for (const width of [1280, 390]) for (const theme of ['console', 'light']) for (const state of process.env.PROTOCOL5_ONLY === '1' ? ['awaiting'] : ['history', 'empty', 'running']) {
     await cmd('Emulation.setDeviceMetricsOverride', { width, height: 900, deviceScaleFactor: 1, mobile: width === 390 });
     await cmd('Page.navigate', { url: `http://127.0.0.1:${appPort}/?theme=${theme}&state=${state}` });
     let ready = false;
     for (let n = 0; n < 100; n++) { await new Promise(r => setTimeout(r, 100)); if (await evaluate("!!document.querySelector('.convo .character-status')")) { ready = true; break; } }
     if (!ready) throw Error('Fixture not ready: ' + await evaluate('document.body.innerText'));
-    await evaluate("document.querySelector('.convo .scroll').scrollTop = 100000");
+    await evaluate(`document.querySelector('.convo .scroll').scrollTop = ${state === 'awaiting' ? 0 : 100000}`);
     await new Promise(r => setTimeout(r, 200));
     const result = await evaluate(`(() => {
       const images = [...document.querySelectorAll('.convo img')].map(e => ({ src: e.getAttribute('src'), loaded: e.complete && e.naturalWidth > 0, width: e.getBoundingClientRect().width, height: e.getBoundingClientRect().height }));
@@ -30,6 +30,11 @@ try {
       const dock = document.querySelector('.dock');
       return { theme: document.documentElement.dataset.ds, images, statusInDock: dock.contains(status), pageOverflow: document.documentElement.scrollWidth > innerWidth, empty: !!document.querySelector('.empty-character'), avatars: document.querySelectorAll('.character-avatar').length, statusText: status.innerText };
     })()`);
+    if (state === 'awaiting') {
+      const replies = await evaluate(`(() => ({human:document.body.textContent.includes('P5_HUMAN_QUESTION'),thread:document.body.textContent.includes('P5_THREAD_DUTY'),answer:!!document.querySelector('.work-region textarea'),peerLink:[...document.querySelectorAll('.work-region a')].some(a=>a.href.includes('child')),oldOwner:document.body.innerText.includes('previous owner')}))()`);
+      if (!replies.human || !replies.thread || !replies.answer || !replies.peerLink || replies.oldOwner) throw Error('Protocol-5 reply display: '+JSON.stringify(replies));
+      result.replies = replies;
+    }
     results.push({ width, theme, state, ...result });
     if (result.images.some(i => !i.loaded || !/^\/assets\/[^/]+\.svg$/.test(i.src)) || result.statusInDock || result.pageOverflow || (state === 'empty' && !result.empty)) throw Error('Layout/image failure: ' + JSON.stringify(result));
     if (state !== 'empty' && result.avatars < 1) throw Error('No bot avatar exercised');

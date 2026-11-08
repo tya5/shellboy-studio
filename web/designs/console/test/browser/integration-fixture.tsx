@@ -6,6 +6,12 @@ import { DESIGNS } from '../../../registry';
 
 const params = new URLSearchParams(location.search);
 const { model, t, db } = await fixtureModel({ configure(db) {
+  if (params.get('state') === 'awaiting') {
+    Object.assign(db.details.lead!, { parent_id: 'organization', shells_count: 1, awaiting_replies: [
+      { message_id: 'human-5', recipient_kind: 'human', recipient_thread_id: 'lead', excerpt: 'P5_HUMAN_QUESTION', delivery_status: 'accepted' },
+      { message_id: 'thread-5', recipient_kind: 'thread', recipient_thread_id: 'child', excerpt: 'P5_THREAD_DUTY', delivery_status: 'applied' },
+    ] });
+  }
   if (params.get('state') !== 'running') return;
   db.work.lead = ['verify', 'inspect'].map((id) => ({ kind: 'shell', id, thread_id: 'lead', run_id: 'run-1', execution_id: id, state: 'running', started_at: '2026-11-07T10:19:00Z' }));
   db.shells.lead = [

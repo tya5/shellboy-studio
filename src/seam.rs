@@ -37,7 +37,8 @@ pub fn events_args(after: Option<String>, timeout_ms: u64) -> EventsWaitArgs {
         timeout_ms,
         #[cfg(feature = "next-shellboy")]
         include_text: true,
-        ..Default::default()
+        #[cfg(feature = "next-shellboy")]
+        include_reasoning_activity: false,
     }
 }
 

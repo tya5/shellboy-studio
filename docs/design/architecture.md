@@ -288,20 +288,16 @@ M1; a tunnel provides it.
 - The bridge links the Shellboy crate at a git tag; it speaks exactly that
   tag's `PROTOCOL_VERSION`. Shellboy's owner accepts exactly one version
   (current-only, protocol.md Issue #33).
-- **Before protocol 3** (today): a mismatch is rejected in Hello/Welcome with
-  `client_protocol_version`/`owner_protocol_version`. The bridge reports both
-  plus the Shellboy release it was built against, in the `hello` frame and on
-  stdout. Rule: use the shellboy-studio release built for your Shellboy release.
-- **From protocol 3** (#244 stage A2): results are tolerant and `Welcome`
-  carries `capabilities`. A bridge built against Shellboy X keeps working with a
-  later owner that has the same protocol version; features added after X are
-  simply unused. A bridge newer than the owner checks capabilities before
-  sending a newer field or operation and hides the feature.
-- Decided: the owner accepts one protocol version with handshake capabilities
-  (protocol 3); no version range.
-- The data layer never sees the protocol version directly; it reads
-  `capabilities` from `hello`. Bridge and frontend ship in one binary, so they
-  never skew with each other.
+- Current candidate: protocol 5 / schema 39 (#276). Version 4 peers fail closed;
+  there is no downgrade, alias or payload rewrite. Handshake capabilities do not
+  override an exact protocol-version mismatch. Before release, validate the exact
+  published Core tag/lock/binary pairing separately.
+- Run ownership and duplicate Thread-get reply lists are removed. Shell ownership
+  and organizational Thread parents remain. The bounded `awaiting_replies` inbox
+  distinguishes human and Thread duties through explicit recipient fields.
+- The bridge and bundled frontend are released together. The frontend observes
+  the bridge's connected-owner facts; the Core IPC handshake enforces the wire
+  version before that owner is published as connected.
 - Owner restart: Hello gives a new `instance_id`, `events.wait` reports
   `resync_required`; the bridge sends `owner: restarted` + `resync`.
 
@@ -419,9 +415,8 @@ Each adds its operations to the allowlist and its own tests.
 - Until the first binary release: `cargo install --locked --git
   https://github.com/tya5/shellboy-studio --tag <tag>` (documents the Node
   requirement; `build.rs` builds the frontend).
-- Before protocol 3: users must pair releases exactly. From protocol 3: any
-  owner with the same (single) protocol version works; new features appear when both
-  sides support them.
+- The v0.1.0 candidate requires the exact validated protocol-5 Core release pair.
+  No compatibility with protocol-4 or older owners is claimed.
 - Tags, published releases and binaries need the user's explicit approval, as
   in Shellboy.
 
