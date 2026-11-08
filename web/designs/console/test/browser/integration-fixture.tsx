@@ -5,7 +5,7 @@ import { mount } from '../..';
 import { DESIGNS } from '../../../registry';
 
 const params = new URLSearchParams(location.search);
-const { model, t, db } = await fixtureModel({ replies: [] });
+const { model, t, db } = await fixtureModel();
 if (params.get('state') === 'empty') {
   db.history.lead = [];
   t.push({ t: 'changed', thread_ids: ['lead'], list: false });
