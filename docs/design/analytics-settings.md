@@ -172,3 +172,7 @@ The v0.10.0 pin does not contain these newer commands. Integration pairing with
 an unreleased owner is a local verification only, not a change to the release
 pin. Before shipping a bridge with the new commands, pair it with an approved
 Shellboy release whose public protocol includes them.
+
+Connection edits remain inline rather than reopening first-run setup (user
+approval 2026-11-08). This keeps existing values and pending changes visible;
+adding a connection continues to use the setup flow.
