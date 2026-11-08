@@ -35,7 +35,6 @@ export function fixtureDb(): FakeOwnerDb {
     cwd: "/home/me/dev/shellboy",
     model: "example-model",
     run_id: "run-1",
-    children_count: 2,
     effective_auto_compact_at: 200000,
     context_usage: { last_successful_attempt: { input_tokens: 41200, cached_tokens: 38000 } },
     usage_totals: {
@@ -333,7 +332,7 @@ export async function fixtureModel(options: { realPending?: boolean; pending?: P
   if (options.route) model.applyRoute({ view: options.route, ...(options.section && { section: options.section }) });
   model.start();
   t.open();
-  t.push({ t: "hello", bridge_version: "0.0.1", data_dir: "/temp/owner-a", owner: options.capabilities ? { state: "connected", info: { protocol_version: 2, instance_id: "i1", capabilities: options.capabilities } } : connected });
+  t.push({ t: "hello", bridge_version: "0.0.1", data_dir: "/temp/owner-a", owner: options.capabilities ? { state: "connected", info: { protocol_version: 5, instance_id: "i1", capabilities: options.capabilities } } : connected });
   // `settle` gives up after 50 rounds; a test that walks further keeps answering itself.
   await settle(t, db).catch(() => undefined);
   return { t, db, model, data };

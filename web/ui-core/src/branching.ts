@@ -235,7 +235,7 @@ export type MoveState =
   | { kind: "picking"; threadId: string }
   | { kind: "preview"; threadId: string; parent: string }
   | { kind: "moving"; threadId: string; parent: string }
-  | { kind: "moved"; threadId: string; parent: string; liveRun: boolean }
+  | { kind: "moved"; threadId: string; parent: string }
   | { kind: "refused"; threadId: string; parent: string; message: string };
 
 export type OrgAction = { kind: "idle" } | { kind: "running" } | { kind: "done"; verb: "archive" | "unarchive"; result: ArchiveResult } | { kind: "failed"; error: OpError };
@@ -427,8 +427,7 @@ export class ThreadOrg {
       this.move.value = { kind: "refused", threadId: m.threadId, parent: m.parent, message: out.error.message };
       return;
     }
-    const change = out.value.parent_change as { live_run_id?: unknown } | undefined;
-    this.move.value = { kind: "moved", threadId: m.threadId, parent: m.parent, liveRun: typeof change?.live_run_id === "string" };
+    this.move.value = { kind: "moved", threadId: m.threadId, parent: m.parent };
     await this.read();
   }
 

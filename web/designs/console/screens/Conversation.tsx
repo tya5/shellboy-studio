@@ -198,7 +198,6 @@ function Details({ model }: { model: AppModel }) {
           <KeyValue
             rows={[
               { key: t("details.model"), value: details.model, mono: true },
-              { key: t("details.children"), value: details.children_count, mono: true },
             ]}
           />
         </>

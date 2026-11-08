@@ -432,9 +432,9 @@ describe("moving a Thread", () => {
     const call = t.calls("thread.set")[0]!;
     expect(call.args).toEqual({ thread_id: "done", parent_id: "broken" });
     expect(call.operation_id).toBeTruthy();
-    expect(org.move.value).toMatchObject({ kind: "moved", liveRun: false });
+    expect(org.move.value).toMatchObject({ kind: "moved" });
   });
-  it("shows the owner's refusal as it wrote it, and says when a live Run keeps its owner", async () => {
+  it("shows the refusal and moves organizational parentage without a Run-owner claim", async () => {
     const { t, db, model } = await fixtureModel({ route: "threads" });
     const plain = db.answer;
     db.answer = (c) => (c.command === "thread.set" ? { ok: false, code: "would make T its own ancestor" } : plain(c));
@@ -447,7 +447,7 @@ describe("moving a Thread", () => {
     void model.org.confirmMove();
     await settle(t, db);
     expect(t.calls("thread.set").at(-1)!.args).toEqual({ thread_id: "lead", parent_id: "" });
-    expect(model.org.move.value).toMatchObject({ kind: "moved", liveRun: true });
+    expect(model.org.move.value).toMatchObject({ kind: "moved" });
   });
 });
 

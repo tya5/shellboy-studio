@@ -265,3 +265,11 @@ provider was used.
 Awaiting you remains behind the existing `PendingAdapter`, empty by default.
 A cross-Thread human-only list is pending Shellboy W6's paginated public read;
 no aggregate reply counts or candidate scans are treated as an inbox.
+
+### Protocol 5 migration (#276)
+
+The per-Thread `awaiting_replies` projection is the only reply-duty list. Do not
+merge `awaiting_reply`, `awaiting_human` or `awaiting_thread_replies`. Recipient
+kind, not sender identity, determines whether Studio offers a human answer.
+Thread parentage and shell ownership remain; Run ownership does not. No new
+polling, queue, adapter, live handoff or authentication mode is introduced.

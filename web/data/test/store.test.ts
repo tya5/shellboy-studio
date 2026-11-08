@@ -487,7 +487,7 @@ describe("diagnostics", () => {
     t.push({
       t: "owner",
       event: "connected",
-      owner: { state: "connected", info: { protocol_version: 3, instance_id: "i2", capabilities: ["live_text"] } },
+      owner: { state: "connected", info: { protocol_version: 5, instance_id: "i2", capabilities: ["live_text"] } },
     });
     expect(data.capabilities.value).toEqual(["live_text"]);
     expect(data.bridgeVersion.value).toBe("0.1.0");

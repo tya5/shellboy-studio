@@ -51,25 +51,25 @@ export class FakeTransport implements Transport {
     this.push({
       t: "result",
       id,
-      response: { protocol_version: 2, operation_id: "x", ok: false, error: { code, message, ...(details !== undefined && { details }) } },
+      response: { protocol_version: 5, operation_id: "x", ok: false, error: { code, message, ...(details !== undefined && { details }) } },
     });
   }
 }
 
 export const okResponse = (result: unknown): OwnerResponse => ({
-  protocol_version: 2,
+  protocol_version: 5,
   operation_id: "op",
   ok: true,
   result,
 });
 
-export const connected: OwnerState = { state: "connected", info: { protocol_version: 2, instance_id: "i1", capabilities: [] } };
+export const connected: OwnerState = { state: "connected", info: { protocol_version: 5, instance_id: "i1", capabilities: [] } };
 
 export function summary(id: string, extra: Record<string, unknown> = {}) {
   return { thread_id: id, title: `t-${id}`, cwd: "/", state: "idle", activity: "idle", updated_at: "u", excerpt: "", ...extra };
 }
 export function details(id: string, extra: Record<string, unknown> = {}) {
-  return { thread_id: id, title: `t-${id}`, cwd: "/", connection: "c", model: "m", children_count: 0, shells_count: 0, ...extra };
+  return { thread_id: id, title: `t-${id}`, cwd: "/", connection: "c", model: "m", shells_count: 0, ...extra };
 }
 
 /** Let promise continuations run (no timers involved). */

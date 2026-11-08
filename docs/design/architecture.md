@@ -526,7 +526,7 @@ the foundation works end to end (§2.1).
 
 | Decision | Reason and impact | Revisit when |
 |---|---|---|
-| Use one bounded Thread-scoped `status` page and at most eight bounded original previews; do not walk continuation pages or enumerate unbounded Run-owned IDs | The public RPC has no bounded equivalent of the TUI live-work/held-input snapshot. Counts are lower bounds when truncated; ordinary waits and owned child Runs can be missing. | Shellboy adopts a bounded, hint-invalidated external live-work and pending-input projection. |
+| Use one bounded Thread-scoped `status` page and at most eight bounded original previews; do not walk continuation pages or enumerate unbounded Run-owned IDs | The public RPC has no bounded equivalent of the TUI live-work/held-input snapshot. Counts are lower bounds when truncated; ordinary waits can be missing; protocol 5 has no Run-owned child Runs. | Shellboy adopts a bounded, hint-invalidated external live-work and pending-input projection. |
 | Leave the #262 reply-wait wire adapter inert | W6 capability and protocol are not yet finalized. The UI can exercise an injected adapter, but production shows no reply-wait rows. | W6 reports the adopted capability, bounded read and answer contract. |
 
 ### Studio guide and app request decision (2026-11-07)

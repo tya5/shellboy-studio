@@ -1,7 +1,7 @@
 import { signal, type ReadonlySignal } from "@preact/signals-core";
 import type { Outcome } from "./errors";
 
-/** The W6 wire is not yet adopted. Its adapter owns capability detection and bounded reads. */
+/** Optional cross-Thread inbox adapter; per-Thread protocol-5 duties use thread.get. */
 export interface ReplyWait {
   id: string;
   threadId: string;
@@ -20,7 +20,7 @@ export const noReplyWait: ReplyWaitAdapter = {
   answer: async () => ({ ok: false, error: { kind: "bridge", code: "not_available", message: "reply waiting is not available" } }),
 };
 
-/** Decode only the bounded thread.get reply projection; old owners omit it. */
+/** Decode only protocol 5's unified bounded projection; never merge removed legacy lists. */
 export function threadReplyItems(threadId: string, raw: unknown): ReplyWait[] {
   if (!Array.isArray(raw) || raw.length > 128) return [];
   return raw.flatMap((value: unknown): ReplyWait[] => {

@@ -42,7 +42,7 @@ describe("Operations", () => {
     t.push({
       t: "result",
       id: t.calls()[0]!.id,
-      response: { protocol_version: 2, operation_id: "o", ok: false, error: { code: "not_found", message: "no", hint: "list" } },
+      response: { protocol_version: 5, operation_id: "o", ok: false, error: { code: "not_found", message: "no", hint: "list" } },
     });
     expect(await p).toEqual({ ok: false, error: { kind: "owner", code: "not_found", message: "no", hint: "list" } });
   });
@@ -54,7 +54,7 @@ describe("Operations", () => {
     const c = ops.runStop("r");
     t.ok(t.calls()[0]!.id, { items: [{ title: "no id" }] });
     t.ok(t.calls()[1]!.id, "string");
-    t.push({ t: "result", id: t.calls()[2]!.id, response: { protocol_version: 2, operation_id: "o", ok: true } });
+    t.push({ t: "result", id: t.calls()[2]!.id, response: { protocol_version: 5, operation_id: "o", ok: true } });
     for (const r of await Promise.all([a, b, c])) expect(r).toMatchObject({ ok: false, error: { kind: "invalid_response" } });
   });
 

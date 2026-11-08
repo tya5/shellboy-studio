@@ -34,7 +34,7 @@ function MovePanel({ model }: { model: AppModel }) {
   }
   const text = move.parent === "" ? t("org.previewDetach", { title }) : t("org.previewUnder", { title, parent: titleOf(move.parent) });
   if (move.kind === "moved")
-    return <Notice actions={close}>{t("org.moved", { title })}{move.liveRun ? ` ${t("org.movedLive")}` : ""}</Notice>;
+    return <Notice actions={close}>{t("org.moved", { title })}</Notice>;
   return (
     <Section title={text} sub={t("org.previewNote")} actions={close}>
       {move.kind === "refused" ? <Notice tone="bad">{t("org.moveRefused", { message: move.message })}</Notice> : null}

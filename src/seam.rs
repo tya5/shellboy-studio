@@ -1,20 +1,13 @@
-//! The two places where the bridge waits for Shellboy work that is not on `main` yet.
-//! Everything else in the bridge is written against the adopted protocol 2 contract.
-//!
-//! 1. Protocol 3 handshake (#244 A2): `Welcome.capabilities`. Today the owner advertises
-//!    nothing, so `owner_capabilities` returns an empty list. When A2 lands, this function
-//!    (or the call site in `events.rs` that builds `OwnerInfo`) takes the advertised list
-//!    from the handshake and the bridge starts gating newer operations on it.
-//! 2. Live text (E3, Shellboy #243): on Shellboy main, in no release. `events.wait` takes
-//!    `include_text` and returns `live_text`. Both exist only in a build with the Cargo feature
-//!    `next-shellboy` (against a Shellboy that has them); a normal build, pinned to v0.10.0,
-//!    never asks, never decodes it and advertises no `live.text` capability.
+//! Version-pairing seams for the protocol-5 candidate. The committed release pin is
+//! deliberately unchanged until the Core tag is public and independently validated.
+//! `next-shellboy` is checked against that candidate with an isolated CLI patch;
+//! it is not an older-owner compatibility shim. Shell ownership is unchanged.
 use crate::live::Entry;
 use serde_json::Value;
 use shellboy::protocol::{EventsWaitArgs, EventsWaitResult};
 
 pub fn owner_capabilities() -> Vec<String> {
-    // Protocol 2 has no way to ask, so this says what this bridge was built to send.
+    // Bridge-side operation support; owner handshake capabilities remain authoritative.
     let mut capabilities = Vec::new();
     if cfg!(feature = "next-shellboy") {
         capabilities.push("thread.reparent".to_owned());
@@ -44,6 +37,7 @@ pub fn events_args(after: Option<String>, timeout_ms: u64) -> EventsWaitArgs {
         timeout_ms,
         #[cfg(feature = "next-shellboy")]
         include_text: true,
+        ..Default::default()
     }
 }
 

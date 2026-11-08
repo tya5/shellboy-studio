@@ -419,7 +419,7 @@ export class AppModel {
       }),
     );
     // Marks need one family read per Thread opened, again when the list shows its children changed.
-    // `children_count` from `thread.get` doesn't count forks, so it can't decide this.
+    // Organizational family membership comes from the bounded branches read, not Run ownership.
     this.disposers.push(
       effect(() => {
         const h = this.handle.value;

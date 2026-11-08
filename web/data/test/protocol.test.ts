@@ -5,11 +5,11 @@ const j = (v: unknown) => JSON.stringify(v);
 
 describe("parseServerFrame", () => {
   it("accepts every frame the bridge defines", () => {
-    const owner = { state: "connected", info: { protocol_version: 2, instance_id: null, capabilities: [] } };
+    const owner = { state: "connected", info: { protocol_version: 5, instance_id: null, capabilities: [] } };
     for (const f of [
       { t: "hello", bridge_version: "0.1.0", owner },
       { t: "hello", bridge_version: "0.1.0", owner: { state: "unreachable" } },
-      { t: "result", id: 1, response: { protocol_version: 2, operation_id: "a", ok: true, result: {} } },
+      { t: "result", id: 1, response: { protocol_version: 5, operation_id: "a", ok: true, result: {} } },
       { t: "result", id: 1, error: { code: "busy", message: "m" } },
       { t: "changed", thread_ids: ["a"], list: false },
       { t: "live", thread_id: "a", attempt_id: "x", gap: false, deltas: [{ offset: 0, reasoning: false, text: "x" }] },

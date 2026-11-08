@@ -115,7 +115,7 @@ export function parseServerFrame(text: string): ParsedFrame {
   }
 }
 
-// ---- Owner records (Shellboy protocol 2 at the pinned revision) ----
+// ---- Owner records (protocol-5 candidate; release pin validation is separate) ----
 
 export interface Page<T> {
   items: T[];
@@ -136,7 +136,24 @@ export interface ThreadSummary {
   /** Sorted; absent when the Thread has none, and on an owner without tags. */
   tags?: string[];
   latest_run_stop_reason?: string | null;
+  awaiting_replies?: number;
+  awaiting_human_count?: number;
+  /** Absent means true; false makes count 17 a lower bound, not an exact count. */
+  awaiting_human_count_exact?: boolean;
+  awaiting_human_oldest_at?: string | null;
+  awaiting_thread_count?: number;
   [extra: string]: unknown;
+}
+
+/** Protocol 5's single bounded Thread-scoped reply-duty projection. */
+export interface AwaitingReply {
+  message_id: string;
+  recipient_kind: "human" | "thread";
+  recipient_thread_id: string;
+  excerpt: string;
+  delivery_status: string;
+  created_at?: string;
+  elapsed_ms?: number;
 }
 
 export interface ThreadDetails {
@@ -150,8 +167,8 @@ export interface ThreadDetails {
   parent_id?: string;
   archived_at?: string;
   tags?: string[];
-  children_count: number;
   shells_count: number;
+  awaiting_replies?: AwaitingReply[];
   [extra: string]: unknown;
 }
 
