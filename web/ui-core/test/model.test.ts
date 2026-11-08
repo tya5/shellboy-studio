@@ -248,3 +248,27 @@ describe("AppModel over the fake transport", () => {
     expect(model.conversation.value.length).toBeGreaterThan(0);
   });
 });
+
+
+describe("per-thread reply duties", () => {
+  it("shows human and thread duties, answers only a human, and refreshes on a hint", async () => {
+    const { model, t, db } = await fixtureModel({ configure: (db) => {
+      Object.assign(db.details.lead!, { awaiting_replies: [
+        { message_id: "h", recipient_kind: "human", excerpt: "Choose", delivery_status: "pending" },
+        { message_id: "t", recipient_kind: "thread", recipient_thread_id: "child", excerpt: "Review", delivery_status: "applied" },
+      ] });
+    } });
+    expect(model.threadReplies.value.map((r) => r.recipient.kind)).toEqual(["human", "thread"]);
+    expect(await model.answerReply("t", "no")).toBe("not available");
+    const answer = model.answerReply("h", "yes");
+    await flush();
+    const call = t.calls("message.reply").at(-1)!;
+    expect(call.args).toEqual({ message_id: "h", text: "yes" });
+    t.ok(call.id, {}); expect(await answer).toBeUndefined();
+    Object.assign(db.details.lead!, { awaiting_replies: [] });
+    t.push({ t: "changed", thread_ids: ["lead"], list: false }); await settle(t, db);
+    expect(model.threadReplies.value).toEqual([]);
+    expect(model.pending.items.value).toEqual([]);
+    model.dispose();
+  });
+});
