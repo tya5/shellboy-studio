@@ -535,3 +535,9 @@ the foundation works end to end (§2.1).
 |---|---|---|
 | Bundle guides in Studio and overwrite the installed agent guide at startup | The guide describes Studio rather than core; no user AGENTS.md is changed. A custom apps directory is shown by Studio, not inferred from the data directory. | The Apps host exposes an agent-readable discovery surface for custom directories. |
 | Require a typed working folder and review of the exact request before creating a Thread | The browser cannot safely browse the host filesystem through the current RPC; typing gives explicit choice without adding bridge filesystem access. An uncertain create/send is not retried automatically. | Shellboy adopts a bounded, authorized folder-selection surface. |
+
+### Owner version information (2026-11-08)
+
+| Decision | Reason and impact | Revisit when |
+|---|---|---|
+| Show the running owner software version as unavailable; propose a general version field on the external-client handshake or status RPC | The public owner contract reports a protocol version, not the running binary's software version. Neither the local executable nor startup logs reliably identifies the owner, and direct log access is outside the bridge boundary. | Shellboy adopts and releases a documented owner software-version surface. |
