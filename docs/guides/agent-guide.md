@@ -13,3 +13,9 @@ the app, and report any displayed errors. Do not claim that browser or device
 checks were performed unless they were actually performed.
 
 Studio rewrites this guide on each startup. Edits to the installed copy are lost.
+
+Read the bundled user guide with `shellboy-studio guide user` for connection and
+phone pairing. Never request or copy Studio tokens, pairing codes, real
+conversations or API credentials into app files, logs, screenshots or Git.
+The bridge talks to the Shellboy owner; apps must use their documented APIs,
+not the owner database or data-directory internals.
