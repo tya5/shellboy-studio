@@ -21,7 +21,7 @@ function ConversationStatus({ model }: { model: AppModel }) {
   if (!status || status === "idle" || status === "completed" || status === "failed") return null;
   const running = work.running[0];
   const start = running?.startedAt ? parseTime(running.startedAt) : undefined;
-  return <div class="work-row" role="status"><StatusMark status={status} label={statusLabel(t, status)} />
+  return <div class="work-row conversation-row" role="status"><StatusMark status={status} label={statusLabel(t, status)} />
     {running ? <span>{running.label} {work.running.length > 1 ? t("work.runningCount", { n: work.running.length }) : ""} {start === undefined ? "" : formatDuration(model.now.value - start)}</span> : row?.summary.activity ? <span>{activityLabel(model.lang.value, row.summary.activity)}</span> : null}
     {status === "recovery" ? <><span>{model.recovery.value?.message ?? model.recovery.value?.hint}</span>{model.canRetry.value ? <Button onClick={() => void model.retry()}>{t("action.retry")}</Button> : null}</> : null}
   </div>;
@@ -264,7 +264,7 @@ export function Conversation({ model }: { model: AppModel }) {
               </Notice>
             ) : null}
             {rows.map((row) => (
-              <RowView key={row.id} model={model} row={row} />
+              <div class="conversation-row" key={row.id}><RowView model={model} row={row} /></div>
             ))}
             <LiveMessage model={model} handle={handle} follow={follow} />
             <ConversationStatus model={model} />
