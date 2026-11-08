@@ -116,6 +116,16 @@ describe("conversation projection", () => {
     expect(rows[0].steps).toHaveLength(2);
     expect(rows[0].entries.map((entry) => entry.kind)).toEqual(["compacted", "step", "compacted", "step", "compacted"]);
   });
+  it("keeps commentary as speech without displaying function call arguments", () => {
+    const rows = projectConversation([
+      { node_id: "a", kind: "assistant_response", phase: "commentary", excerpt: "Checking files", executions: [{ execution_id: "e", command_excerpt: "ls" }] },
+      { node_id: "b", kind: "assistant_response", excerpt: "{\"command\":\"pwd\"}", executions: [{ execution_id: "e2", command_excerpt: "pwd" }] },
+      { node_id: "c", kind: "assistant_response", excerpt: "Finished" },
+    ]);
+    expect(rows.map((row) => row.type)).toEqual(["steps", "message", "steps", "message"]);
+    expect(rows[1]).toMatchObject({ text: "Checking files" });
+    expect(rows[3]).toMatchObject({ text: "Finished" });
+  });
   it("joins tool calls across invisible and empty nodes but not visible speech", () => {
     const calls = Array.from({ length: 12 }, (_, i) => ({ execution_id: `e${i}`, command_excerpt: `command ${i}` }));
     const rows = projectConversation([

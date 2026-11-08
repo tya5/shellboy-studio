@@ -82,10 +82,14 @@ export function WindowedScroll({ model, win, renderRow, live }: { model: AppMode
       }
       const rows = projectConversation(items, shells);
       const positions = new Map(items.map((entry, index) => [entry.node_id, i + index]));
-      const rowAt = new Map(rows.map((row) => [positions.get(row.id), row]));
+      const rowAt = new Map<number, typeof rows>();
+      for (const row of rows) {
+        const position = positions.get(row.id) ?? (row.id.endsWith(":commentary") ? positions.get(row.id.slice(0, -11)) : undefined);
+        if (position !== undefined) rowAt.set(position, [...(rowAt.get(position) ?? []), row]);
+      }
       for (let position = i; position <= end; position++) {
-        const row = rowAt.get(position);
-        parts.push(row ? <div key={row.id} data-o={position} class="vrow">{renderRow(row)}</div>
+        const grouped = rowAt.get(position);
+        parts.push(grouped ? <div key={position} data-o={position} class="vrow">{grouped.map(renderRow)}</div>
           : <div key={`empty${position}`} data-o={position} />);
       }
       i = end + 1;
