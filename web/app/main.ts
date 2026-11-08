@@ -42,6 +42,19 @@ async function main(): Promise<void> {
   }
 
   const prefs = signal<Prefs>(loadPrefs(store, DESIGNS));
+  const guidePreferenceReady = signal(false);
+  async function readGuidePreference(): Promise<void> {
+    guidePreferenceReady.value = false;
+    try {
+      const response = await fetch("/guide-preference", { credentials: "same-origin" });
+      if (!response.ok) return;
+      const value: unknown = await response.json();
+      if (typeof value !== "object" || value === null || !("enabled" in value) || typeof value.enabled !== "boolean") return;
+      prefs.value = { ...prefs.value, guideOptOut: !value.enabled };
+      guidePreferenceReady.value = true;
+    } catch { /* Do not register until the bridge preference is available. */ }
+  }
+  await readGuidePreference();
   effect(() => {
     document.documentElement.dataset.ds = prefs.value.theme;
     document.documentElement.lang = prefs.value.lang;
@@ -68,6 +81,20 @@ async function main(): Promise<void> {
     designs: DESIGNS,
     prefs,
     setPrefs(change) {
+      if (change.guideOptOut !== undefined) {
+        const desired = change.guideOptOut;
+        model.guideRegistration.state.value = { ...model.guideRegistration.state.peek(), busy: true, error: undefined };
+        void fetch("/guide-preference", { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ enabled: !desired }) }).then((response) => {
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          const next = { ...prefs.value, guideOptOut: desired };
+          prefs.value = next;
+          savePrefs(store, next);
+          model.guideRegistration.state.value = { ...model.guideRegistration.state.peek(), busy: false };
+        }).catch((error: unknown) => {
+          model.guideRegistration.state.value = { ...model.guideRegistration.state.peek(), busy: false, error: error instanceof Error ? error.message : String(error) };
+        });
+        return;
+      }
       const next = { ...prefs.value, ...change };
       prefs.value = next;
       model.lang.value = next.lang;
@@ -76,6 +103,7 @@ async function main(): Promise<void> {
     async submitToken(token) {
       const ok = await exchangeToken(token.trim());
       if (ok) {
+        await readGuidePreference();
         data.stop();
         data.start();
       }
@@ -103,7 +131,7 @@ async function main(): Promise<void> {
     const owner = data.owner.value;
     const dir = data.dataDir.value;
     const optedOut = prefs.value.guideOptOut === true;
-    if (owner.state === "connected" && data.capabilities.value.includes("config.edit")) model.guideRegistration.update(dir, !optedOut);
+    if (guidePreferenceReady.value && owner.state === "connected" && data.capabilities.value.includes("config.edit")) model.guideRegistration.update(dir, !optedOut);
   });
   model.start();
 }

@@ -5,7 +5,7 @@ import { AppearanceChoices } from "./Appearance";
 import { ConfigConnections, ConfigControl, ConfigPanel, SecretEntries, configRowValue } from "./SettingsConfig";
 import { Rich } from "./Rich";
 
-const ICONS: Record<SettingsSection, IconName> = { connections: "plug", models: "cube", embeddings: "database", shell: "term", storage: "file", compaction: "retry", appearance: "palette" };
+const ICONS: Record<SettingsSection, IconName> = { connections: "plug", models: "cube", embeddings: "database", shell: "term", storage: "file", compaction: "retry", agent: "file", appearance: "palette" };
 
 const num = (n: number): string => n.toLocaleString("en-US");
 export function SettingsView({ context }: { context: DesignContext }) {
@@ -192,6 +192,8 @@ export function SettingsView({ context }: { context: DesignContext }) {
             </Section>
           </>
         );
+      case "agent":
+        return <GuideRegistrationView context={context} />;
       case "appearance":
         return (
           <Section title={t("set.section.appearance")} sub={t("set.sub.appearance")}>
@@ -212,9 +214,8 @@ export function SettingsView({ context }: { context: DesignContext }) {
         <h1>{t(`set.section.${section}`)}</h1>
         <div class="muted">{t(`set.sub.${section}`)}</div>
       </div>
-      {section !== "appearance" ? <ConfigPanel model={model} /> : null}
+      {section !== "appearance" && section !== "agent" ? <ConfigPanel model={model} /> : null}
       {body()}
-      <GuideRegistrationView context={context} />
     </SubView>
   );
 }

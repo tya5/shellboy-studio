@@ -126,6 +126,7 @@ pub fn app_state<O: Owner>(
             listen,
             extra_hosts: vec![],
             data_dir: "/temp/data".into(),
+            config_dir: "/temp/config".into(),
             debug,
         },
     )

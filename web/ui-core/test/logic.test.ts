@@ -184,6 +184,8 @@ describe("routes, prefs, commands, words", () => {
     expect(loadPrefs(store('{"design":"gone","theme":"light","lang":"ja"}'), designs)).toEqual({ design: "console", theme: "light", lang: "ja", navCollapsed: false, guideOptOut: false, monitorPins: [], monitorStatuses: [], monitorQuery: "", monitorArchive: "exclude", monitorView: "cards", monitorSort: "stable", weights: { cached: 0.1, output: 5 } });
     expect(loadPrefs(store('{"theme":"gone"}'), designs).theme).toBe("console");
     expect(loadPrefs(store('{"navCollapsed":true}'), designs).navCollapsed).toBe(true);
+    expect(loadPrefs(store('{"guideOptOut":true}'), designs).guideOptOut).toBe(true);
+    expect(loadPrefs(store('{"guideOptOut":"true"}'), designs).guideOptOut).toBe(false);
     expect(loadPrefs(store('{"navCollapsed":"true"}'), designs).navCollapsed).toBe(false);
     expect(loadPrefs(store('{"monitorSort":"recent"}'), designs).monitorSort).toBe("recent");
     expect(loadPrefs(store('{"monitorSort":"invalid"}'), designs).monitorSort).toBe("stable");

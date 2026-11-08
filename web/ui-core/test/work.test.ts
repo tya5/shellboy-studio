@@ -42,6 +42,25 @@ describe("bounded conversation work", () => {
     expect(model.work.value.pending).toEqual([]);
     model.dispose();
   });
+  it("hides stale pending messages when the saved conversation arrives before status", async () => {
+    const { model, t, db } = await fixtureModel();
+    db.bodies.m = "Delivered message";
+    db.work.lead = [{ kind: "message", id: "m", message_id: "m", thread_id: "lead", state: "held" }];
+    t.push({ t: "changed", thread_ids: ["lead"], list: false }); await settle(t, db);
+    expect(model.work.value.pending.map((r) => r.id)).toEqual(["m"]);
+    db.work.lead = [];
+    db.history.lead!.push({ node_id: "m", kind: "user", excerpt: "Delivered message", execution_count: 0 });
+    t.push({ t: "changed", thread_ids: ["lead"], list: false }); await flush();
+    const status = t.calls("status").at(-1)!;
+    for (const call of t.calls().filter((c) => !db.answered.has(c.id) && c.id !== status.id)) {
+      db.answered.add(call.id); const response = db.answer(call);
+      if (response.ok) t.ok(call.id, response.result); else t.ownerError(call.id, response.code);
+    }
+    await flush();
+    expect(model.conversation.value.some((row) => row.type === "message" && row.text === "Delivered message")).toBe(true);
+    expect(model.work.value.pending).toEqual([]);
+    await settle(t, db); expect(model.work.value.pending).toEqual([]); model.dispose();
+  });
   it("keeps replies capability-gated and only answers human recipients", async () => {
     const answers: string[] = [];
     const adapter: ReplyWaitAdapter = {

@@ -986,7 +986,7 @@ describe("Settings", () => {
   it("lists the sections as links, and says it is read-only with no restart promise", async () => {
     const { el } = await open("connections");
     const nav = [...el.querySelectorAll(".secnav-item")].map(text);
-    expect(nav).toEqual(["Connections", "Models & defaults", "Embeddings & indexing", "Shell", "Storage & retention", "Compaction", "Appearance"]);
+    expect(nav).toEqual(["Connections", "Models & defaults", "Embeddings & indexing", "Shell", "Storage & retention", "Compaction", "Agents", "Appearance"]);
     expect(el.querySelector('.secnav-item[aria-current="page"]')!.getAttribute("href")).toBe("#/settings/connections");
     expect(text(el)).toContain("Read-only");
     expect(text(el)).not.toContain("Changes take effect after owner restart");

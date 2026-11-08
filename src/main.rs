@@ -160,6 +160,7 @@ async fn run(args: Args) -> Result<(), String> {
             listen: addr,
             extra_hosts: args.allow_host,
             data_dir: data_dir.clone(),
+            config_dir: config_dir.clone(),
             debug: args.debug,
         },
         Some(AppsPaths {

@@ -31,6 +31,7 @@ pub struct ServerConfig {
     pub debug: bool,
     /// Which owner this bridge talks to. Shown so two tabs on two bridges can be told apart.
     pub data_dir: PathBuf,
+    pub config_dir: PathBuf,
 }
 
 /// Where apps live. Without it, the bridge offers no apps.
@@ -92,6 +93,7 @@ pub fn router<O: Owner>(state: AppState<O>) -> Router {
         .route("/assets/{*path}", get(assets::asset))
         .route("/healthz", get(|| async { "ok" }))
         .route("/auth", post(auth_exchange::<O>))
+        .route("/guide-preference", get(guide_preference_get::<O>).post(guide_preference_set::<O>))
         .route("/ws", get(ws_upgrade::<O>));
     if state.config.debug {
         router = router.route("/debug", get(debug_page));
@@ -193,6 +195,29 @@ async fn app_file<O: Owner>(
     }
 }
 
+#[derive(Deserialize)]
+struct GuidePreferenceBody { enabled: bool }
+
+fn guide_authorized<O: Owner>(state: &AppState<O>, headers: &HeaderMap) -> bool {
+    origin_ok(headers) && state.auth.cookie_valid(&auth::cookie_name(state.config.listen.port()), header_str(headers, header::COOKIE))
+}
+
+async fn guide_preference_get<O: Owner>(State(state): State<AppState<O>>, headers: HeaderMap) -> Response {
+    if !state.auth.cookie_valid(&auth::cookie_name(state.config.listen.port()), header_str(&headers, header::COOKIE)) { return StatusCode::UNAUTHORIZED.into_response(); }
+    match crate::guide_preference::enabled(&state.config.config_dir) {
+        Ok(enabled) => axum::Json(serde_json::json!({ "enabled": enabled })).into_response(),
+        Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+    }
+}
+
+async fn guide_preference_set<O: Owner>(State(state): State<AppState<O>>, headers: HeaderMap, axum::Json(body): axum::Json<GuidePreferenceBody>) -> Response {
+    if !guide_authorized(&state, &headers) { return StatusCode::UNAUTHORIZED.into_response(); }
+    match crate::guide_preference::set_enabled(&state.config.config_dir, body.enabled) {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+    }
+}
+
 async fn ws_upgrade<O: Owner>(
     State(state): State<AppState<O>>,
     headers: HeaderMap,
@@ -232,11 +257,12 @@ pub async fn serve<O: Owner>(
         inner.cancel();
     });
     let apps = state.apps.clone();
-    let poller = tokio::spawn(crate::events::run(
+    let poller = tokio::spawn(crate::events::run_with_guide(
         state.owner.clone(),
         state.hub.clone(),
         poll,
         cancel.clone(),
+        Some((state.config.config_dir.clone(), state.config.data_dir.clone())),
     ));
     let shutdown = cancel.clone();
     let result = axum::serve(listener, router(state))

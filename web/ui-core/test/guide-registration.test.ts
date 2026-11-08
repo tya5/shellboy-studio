@@ -17,4 +17,13 @@ describe("common instruction pointer", () => {
     t.ok(t.calls("config.set").at(-1)!.id, {}); await flush(); data.stop();
   });
   it("does not write for older owners", async () => { const { transport: t, data, guide } = await setup(); guide.update("/data", true); await flush(); t.ok(t.calls("config.get").at(-1)!.id, facts()); await flush(); expect(t.calls("config.set")).toHaveLength(0); expect(guide.state.value.supported).toBe(false); data.stop(); });
+  it("edits user instruction paths while retaining the existing list", async () => {
+    const { transport: t, data, guide } = await setup();
+    const edit = guide.edit("/new", true); await flush();
+    t.ok(t.calls("config.get").at(-1)!.id, facts(["/other"])); await flush();
+    expect(t.calls("config.set").at(-1)!.args).toEqual({ expected_hash: "hash", changes: [{ field: "extra_instructions", value: ["/other", "/new"] }] });
+    t.ok(t.calls("config.set").at(-1)!.id, {}); await edit;
+    expect(guide.files.value).toEqual(["/other", "/new"]); data.stop();
+  });
+
 });
