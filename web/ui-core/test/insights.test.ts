@@ -92,13 +92,13 @@ describe("chart scale and formats", () => {
 
 describe("routes", () => {
   it("round-trips the new views and rejects an unknown section", () => {
-    for (const r of [{ view: "analytics" }, { view: "analytics", section: "memory" }, { view: "settings" }, { view: "settings", section: "shell" }] as const) expect(parseRoute(formatRoute(r))).toEqual(r);
+    for (const r of [{ view: "analytics" }, { view: "analytics", section: "memory" }, { view: "settings" }, { view: "settings", section: "general" }] as const) expect(parseRoute(formatRoute(r))).toEqual(r);
     expect(parseRoute("#/settings/nope")).toEqual({ view: "settings" });
     expect(parseRoute("#/analytics/nope")).toEqual({ view: "analytics" });
     // A section name of the other view isn't valid here.
     expect(parseRoute("#/analytics/shell")).toEqual({ view: "analytics" });
     expect(analyticsSection({ view: "analytics" })).toBe("overview");
-    expect(settingsSection({ view: "settings", section: "memory" })).toBe("connections");
+    expect(settingsSection({ view: "settings", section: "memory" })).toBe("general");
   });
 });
 
@@ -434,13 +434,12 @@ describe("Insights over the fake transport", () => {
     const { t, db, model } = await fixtureModel({ route: "settings" });
     await settle(t, db);
     expect(t.calls("history.list")).toHaveLength(0);
-    expect(t.calls("thread.get")).toHaveLength(1);
-    expect(model.insights.thread.value.value?.connection).toBe("c");
+    expect(t.calls("thread.get")).toHaveLength(0);
     for (const c of ["storage.status", "index.status", "model.list"]) expect(t.calls(c), c).toHaveLength(0);
-    model.applyRoute({ view: "settings", section: "models" });
+    model.applyRoute({ view: "settings", section: "general" });
     await settle(t, db);
-    expect(t.calls("thread.get")).toHaveLength(1);
-    model.applyRoute({ view: "settings", section: "embeddings" });
+    expect(t.calls("thread.get")).toHaveLength(0);
+    model.applyRoute({ view: "settings", section: "index" });
     await settle(t, db);
     expect(t.calls("index.status")).toHaveLength(1);
     expect(t.calls("storage.status")).toHaveLength(0);

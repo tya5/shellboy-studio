@@ -385,7 +385,7 @@ export class Insights {
   ensureSettings(section: SettingsSection, threadId: string | undefined): void {
     this.showing(`settings:${section}`);
     switch (section) {
-      case "embeddings":
+      case "index":
         this.ensureRead("index");
         return;
       case "storage":
@@ -393,7 +393,7 @@ export class Insights {
         this.ensureRead("memory");
         this.ensureRead("receipts");
         return;
-      case "appearance":
+      case "general":
         return;
       default:
         if (threadId !== undefined && this.thread.peek().threadId !== threadId) void this.readThread(threadId);

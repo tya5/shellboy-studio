@@ -8,7 +8,7 @@ import type { ConfigKey } from "./resources";
 export const CAPABILITY_CONFIG = "config.edit";
 const PLACEHOLDER = "[redacted";
 
-export type ConfigKind = "text" | "int" | "bool" | "choice" | "name";
+export type ConfigKind = "text" | "int" | "float" | "bool" | "choice" | "name" | "kinds";
 
 export interface ConfigFieldSpec {
   kind: ConfigKind;
@@ -19,6 +19,18 @@ export interface ConfigFieldSpec {
 export const CONFIG_FIELDS: Partial<Record<ConfigKey, ConfigFieldSpec>> = {
   default_connection: { kind: "choice" },
   default_model: { kind: "text" },
+  "ui.language": { kind: "choice", options: ["en", "ja"] },
+  "embedding.connection": { kind: "choice" },
+  "embedding.model": { kind: "text" },
+  "indexing.auto_history": { kind: "bool" },
+  "indexing.auto_kinds": { kind: "kinds" },
+  "limits.disk_free_min_bytes": { kind: "int" },
+  "limits.attachment_file_bytes": { kind: "int" },
+  "limits.attachment_request_bytes": { kind: "int" },
+  "limits.shell_raw_bytes": { kind: "int" },
+  "limits.tool_excerpt_bytes": { kind: "int" },
+  "limits.shell_stdin_bytes": { kind: "int" },
+  "limits.draft_bytes": { kind: "int" },
   "embedding.batch_max_inputs": { kind: "int" },
   "embedding.batch_max_chars": { kind: "int" },
   "indexing.split_chars": { kind: "int" },
@@ -31,6 +43,10 @@ export const CONFIG_FIELDS: Partial<Record<ConfigKey, ConfigFieldSpec>> = {
   "retention.tool_raw_bytes": { kind: "int" },
   "retention.clipboard_days": { kind: "int" },
   "retention.clipboard_bytes": { kind: "int" },
+  "compaction.summary_max_chars": { kind: "int" },
+  "compaction.summary_max_percent": { kind: "float" },
+  "compaction.summary_map_max_requests": { kind: "int" },
+  "compaction.summary_reduce_max_requests": { kind: "int" },
   "compaction.auto_at_tokens": { kind: "int" },
   "compaction.segment_chars": { kind: "int" },
   "compaction.reduce_rounds": { kind: "int" },
@@ -38,6 +54,7 @@ export const CONFIG_FIELDS: Partial<Record<ConfigKey, ConfigFieldSpec>> = {
 
 /** The rows of one connection. `labelKey` ends an i18n key under `config.conn.`. */
 export const CONNECTION_FIELDS = [
+  { key: "api", kind: "choice", options: ["responses", "chat_completions", "anthropic_messages"] },
   { key: "base_url", kind: "text" },
   { key: "api_key_env", kind: "name" },
   { key: "api_key_header", kind: "name" },
@@ -47,7 +64,7 @@ export const CONNECTION_FIELDS = [
   { key: "stream_idle_timeout_ms", kind: "int" },
   { key: "request_timeout_ms", kind: "int" },
   { key: "response_max_retries", kind: "int" },
-] as const satisfies readonly { key: string; kind: ConfigKind }[];
+] as const satisfies readonly { key: string; kind: ConfigKind; options?: readonly string[] }[];
 
 /** Entries whose values the owner hides. `extra_body` values are JSON; the others are text. */
 export const CONNECTION_SECRETS = [
@@ -151,6 +168,7 @@ export interface SavedChange {
   value?: unknown;
   sensitive: boolean;
   restartRequired: boolean;
+  appliedToRunningOwner: boolean;
 }
 
 export type ConfigStage =
@@ -180,6 +198,7 @@ const same = (a: unknown, b: unknown): boolean => JSON.stringify(a ?? null) === 
 
 export class ConfigEditor {
   readonly read: Signal<ConfigRead> = signal({ loading: false, value: undefined, error: undefined });
+  readonly connectionAction: Signal<{ name: string; state: "testing" | "ok" | "failed" | "clearing" | "cleared" | "unconfirmed" } | undefined> = signal(undefined);
   readonly drafts: Signal<ReadonlyMap<string, Draft>> = signal(new Map());
   readonly stage: Signal<ConfigStage> = signal({ kind: "editing" });
   /** Every draft that would change the file, against the file as last read. */
@@ -200,6 +219,22 @@ export class ConfigEditor {
       return rows;
     });
     this.hasInvalid = computed(() => [...this.drafts.value.values()].some((d) => d.invalid !== undefined));
+  }
+
+  async testConnection(name: string): Promise<void> {
+    if (["testing", "clearing"].includes(this.connectionAction.peek()?.state ?? "")) return;
+    this.connectionAction.value = { name, state: "testing" };
+    const result = await this.ops.connectionTest({ connection: name });
+    this.connectionAction.value = { name, state: result.ok && result.value.ok === true ? "ok" : "failed" };
+  }
+
+  async clearCredential(name: string): Promise<void> {
+    if (["testing", "clearing"].includes(this.connectionAction.peek()?.state ?? "")) return;
+    this.connectionAction.value = { name, state: "clearing" };
+    const result = await this.ops.credentialsClear(name);
+    const uncertain = !result.ok && (result.error.kind === "unconfirmed" || result.error.kind === "connection_lost");
+    this.connectionAction.value = { name, state: result.ok ? "cleared" : uncertain ? "unconfirmed" : "failed" };
+    if (result.ok || uncertain) await this.refresh();
   }
 
   /** Settings opened or changed section: the file may have changed since. */
@@ -256,7 +291,12 @@ export class ConfigEditor {
         value = parseInt10(raw.trim());
         if (value === undefined) invalid = "number";
       }
+    } else if (kind === "float") {
+      if (raw.trim() === "") value = undefined;
+      else if (!Number.isFinite(Number(raw))) invalid = "number";
+      else value = Number(raw);
     } else if (kind === "bool") value = raw === "true";
+    else if (kind === "kinds") value = raw ? raw.split(",").filter(Boolean) : [];
     else if (kind === "secret-json") {
       try {
         value = JSON.parse(raw);
@@ -315,7 +355,7 @@ export class ConfigEditor {
 
   async save(): Promise<void> {
     const facts = this.read.peek().value;
-    if (!facts || this.stage.peek().kind === "saving") return;
+    if (!facts || this.read.peek().error || this.stage.peek().kind === "saving") return;
     const drafts = [...this.drafts.peek().values()];
     // The owner refuses this as well. It must not depend on that.
     if (drafts.some((d) => d.invalid !== undefined || d.field.includes(PLACEHOLDER) || isHidden(d.value))) return;
@@ -359,7 +399,7 @@ function readSaved(result: Record<string, unknown>): SavedChange[] {
   return result.changes.flatMap((c): SavedChange[] => {
     const r = record(c);
     if (!r || typeof r.field !== "string") return [];
-    return [{ field: r.field, ...("previous" in r ? { previous: r.previous } : {}), ...("value" in r ? { value: r.value } : {}), sensitive: r.sensitive === true, restartRequired: r.restart_required === true }];
+    return [{ field: r.field, ...("previous" in r ? { previous: r.previous } : {}), ...("value" in r ? { value: r.value } : {}), sensitive: r.sensitive === true, restartRequired: r.restart_required === true, appliedToRunningOwner: r.applied_to_running_owner === true }];
   });
 }
 

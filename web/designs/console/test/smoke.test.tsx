@@ -756,39 +756,27 @@ describe("Threads", () => {
     expect(el.querySelector(".subview-main input")).toBeNull();
   });
 
-  it("Settings fills rows, reviews changes, and writes only what changed", async () => {
-    const made = await fixtureModel({ route: "settings", section: "shell", capabilities: ["config.edit"] });
+  it("Settings reviews changes and writes only what changed", async () => {
+    const made = await fixtureModel({ route: "settings", section: "general", capabilities: ["config.edit"] });
     const before = made.db.answer;
-    const values = { shell: { kind: "bash", executable: null, env: { MY_VAR: "[redacted]" } } };
-    const side = { present: true, content_hash: "h1", valid: true, error: null, values, redacted_fields: ["shell.env.MY_VAR"] };
-    made.db.answer = (c) =>
-      c.command === "config.get"
-        ? { ok: true, result: { config_path: "/temp/config.toml", loaded: { ...side, values: { shell: { kind: "powershell", executable: null, env: {} } } }, file: side, differs: true, differing_fields: ["shell.kind"], restart: { all_fields_require_restart: true } } }
-        : c.command === "config.set"
-          ? { ok: true, result: { written: true, restart_required: true, changes: [{ field: "shell.executable", previous: null, value: "/bin/zsh", sensitive: false, restart_required: true }] } }
-          : before(c);
+    const values = { default_model: "old-model", default_connection: "proxy", connections: { proxy: {} } };
+    const side = { present: true, content_hash: "h1", valid: true, error: null, values, redacted_fields: [] };
+    made.db.answer = (c) => c.command === "config.get"
+      ? { ok: true, result: { loaded: side, file: side, differs: false } }
+      : c.command === "config.set"
+        ? { ok: true, result: { written: true, restart_required: false, changes: [{ field: "default_model", previous: "old-model", value: "new-model", applied_to_running_owner: true }] } }
+        : before(c);
     const el = draw(made.model);
     act(() => made.model.config.ensure());
-    await act(async () => {
-      await settle(made.t, made.db);
-    });
-    const main = () => text(el);
-    expect(main()).toContain("every setting needs an owner restart");
-    expect(main()).toContain("Applied after a restart: shell.kind");
-    expect(main()).toContain("still uses powershell");
-    expect(main()).toContain("Set, hidden");
-    expect(main()).not.toContain("[redacted]");
-    const button = (name: string) => [...el.querySelectorAll<HTMLButtonElement>("button")].find((b) => text(b) === name);
-    const exe = el.querySelector<HTMLInputElement>('input[aria-label="Executable"], .fact input')!;
-    act(() => { exe.value = "/bin/zsh"; exe.dispatchEvent(new Event("input", { bubbles: true })); });
-    act(() => button("Review changes")!.click());
-    expect(main()).toContain("shell.executable");
-    await act(async () => {
-      button("Write to file")!.click();
-      await settle(made.t, made.db);
-    });
-    expect(made.t.calls("config.set").at(-1)!.args).toEqual({ expected_hash: "h1", changes: [{ field: "shell.executable", value: "/bin/zsh" }] });
-    expect(main()).toContain("Restart required");
+    await act(async () => { await settle(made.t, made.db); });
+    const input = el.querySelector<HTMLInputElement>('input[aria-label="Default model"]')!;
+    act(() => { input.value = "new-model"; input.dispatchEvent(new Event("input", { bubbles: true })); });
+    const button = (name: string) => [...el.querySelectorAll<HTMLButtonElement>("button")].find((b) => text(b) === name)!;
+    act(() => button("Review changes").click());
+    await act(async () => { button("Write to file").click(); await settle(made.t, made.db); });
+    expect(made.t.calls("config.set").at(-1)!.args).toEqual({ expected_hash: "h1", changes: [{ field: "default_model", value: "new-model" }] });
+    expect(text(el)).toContain("subsequent requests");
+    expect(text(el)).not.toContain("Restart required");
   });
 
   it("with the capability: picker, preview, then Move; a refusal shows the owner's words", async () => {
@@ -974,7 +962,7 @@ describe("Phone tabs", () => {
 });
 
 describe("Settings", () => {
-  const open = async (section: "connections" | "models" | "embeddings" | "shell" | "storage" | "compaction" | "appearance") => {
+  const open = async (section: "connections" | "general" | "index" | "storage" | "compaction") => {
     const { model, t, db } = await fixtureModel({ route: "settings" });
     const el = draw(model);
     await act(async () => {
@@ -986,42 +974,20 @@ describe("Settings", () => {
   it("lists the sections as links, and says it is read-only with no restart promise", async () => {
     const { el } = await open("connections");
     const nav = [...el.querySelectorAll(".secnav-item")].map(text);
-    expect(nav).toEqual(["Connections", "Models & defaults", "Embeddings & indexing", "Shell", "Storage & retention", "Compaction", "Appearance"]);
+    expect(nav).toEqual(["General", "Connections", "Summary", "Storage & capacity", "Indexing"]);
     expect(el.querySelector('.secnav-item[aria-current="page"]')!.getAttribute("href")).toBe("#/settings/connections");
     expect(text(el)).toContain("Read-only");
     expect(text(el)).not.toContain("Changes take effect after owner restart");
     expect(el.querySelector(".subview-main input")).toBeNull();
   });
-  it("Connections shows the connection in use, and credential names only as unavailable", async () => {
-    const { el, t } = await open("connections");
-    expect(text(el)).toContain("Credential variable name");
-    expect(text(el)).toContain("config check");
-    expect(t.calls("model.list")).toHaveLength(0);
+  it("shows indexing cost and links storage use to Analytics", async () => {
+    expect(text((await open("index")).el)).toContain("may incur charges");
+    const { el } = await open("storage");
+    expect(el.querySelector('a[href="#/analytics/storage"]')).toBeTruthy();
   });
-  it("the catalog is read only on a press", async () => {
-    const { el, t, db } = await open("connections");
-    const button = [...el.querySelectorAll(".subview-main button")].find((b) => text(b).includes("default connection")) as HTMLButtonElement;
-    await act(async () => {
-      button.click();
-      await (await import("../../../data/test/harness")).settle(t, db);
-    });
-    expect(t.calls("model.list")).toHaveLength(1);
-    expect(text(el)).toContain("Models: 2");
-    expect(text(el)).toContain("responses");
-  });
-  it("Embeddings shows the index state; Storage marks documented defaults as such", async () => {
-    expect(text((await open("embeddings")).el)).toContain("mock-embed");
-    const storage = text((await open("storage")).el);
-    expect(storage).toContain("Logical warning");
-    expect(storage).not.toMatch(/Documented default|8 GiB|10 GiB/);
-    expect(storage).toContain("Not reached");
-    expect(storage).toContain("32 MiB");
-  });
-  it("Compaction shows the Thread's values and their origin; Appearance switches theme without a reload", async () => {
-    const compaction = text((await open("compaction")).el);
-    expect(compaction).toContain("Proactive compaction at");
-    expect(compaction).toContain("thread set");
-    const { el } = await open("appearance");
+  it("points per-thread settings to Conversation and keeps appearance choices", async () => {
+    expect(text((await open("compaction")).el)).toContain("conversation screen");
+    const { el } = await open("general");
     const light = [...el.querySelectorAll(".subview-main button")].find((b) => text(b) === "Light") as HTMLButtonElement;
     act(() => light.click());
     expect(light.getAttribute("aria-pressed")).toBe("true");
@@ -1031,7 +997,7 @@ describe("Settings", () => {
     const el = draw(model);
     act(() => el.querySelector<HTMLButtonElement>("[data-settings-toggle]")!.click());
     const link = [...el.querySelectorAll(".panel a")].find((a) => text(a) === "All settings")!;
-    expect(link.getAttribute("href")).toBe("#/settings/appearance");
+    expect(link.getAttribute("href")).toBe("#/settings/general");
   });
 });
 
@@ -1186,15 +1152,14 @@ describe("Setup", () => {
       expect(t.calls().some((c) => /embed|index|rag/.test(c.command))).toBe(false);
     });
 
-    it("Settings links to both flows", async () => {
+    it("Settings links to connection setup and edits embedding settings", async () => {
       const { model, t, db } = await setupWith("settings");
+      model.applyRoute({ view: "settings", section: "connections" });
       const el = draw(model);
       await pumpOf(t as never, db as never)();
       expect(text(el)).toContain("Add a connection");
       expect(el.querySelector('a[href="#/setup"]')).toBeTruthy();
-      model.applyRoute({ view: "settings", section: "embeddings" });
-      await pumpOf(t as never, db as never)();
-      expect(el.querySelector('a[href="#/setup/embedding"]')).toBeTruthy();
+      expect(text(el)).toContain("Embedding settings");
     });
   });
 });

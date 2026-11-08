@@ -337,7 +337,7 @@ export class AppModel {
         if (route.view === "analytics") this.insights.ensureAnalytics(analyticsSection(route), threadId);
         else if (route.view === "settings") {
           this.insights.ensureSettings(settingsSection(route), threadId);
-          if (settingsSection(route) !== "appearance" && this.data.capabilities.value.includes(CAPABILITY_CONFIG)) this.config.ensure();
+          if (this.data.capabilities.value.includes(CAPABILITY_CONFIG)) this.config.ensure();
         }
       }),
     );
