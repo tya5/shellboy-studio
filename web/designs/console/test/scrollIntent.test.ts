@@ -52,3 +52,41 @@ describe("scroll intent", () => {
     expect(intent.scroll(el)).toBe(false);
   });
 });
+
+describe("layout is not upward input", () => {
+  it("does not detach when shrinking content clamps the scroll offset", () => {
+    const intent = new ScrollIntent(), el = box();
+    intent.program(el, 950); intent.scroll(el);
+    Object.assign(el, { scrollHeight: 850, scrollTop: 750 });
+    expect(intent.scroll(el)).toBe(true);
+  });
+  it("does not detach when a taller viewport clamps the scroll offset", () => {
+    const intent = new ScrollIntent(), el = box();
+    intent.program(el, 950); intent.scroll(el);
+    Object.assign(el, { clientHeight: 200, scrollTop: 850 });
+    expect(intent.scroll(el)).toBe(true);
+  });
+  it.each(["wheel", "touch", "key"])("waits for actual motion after %s, then detaches", (gesture) => {
+    const intent = new ScrollIntent(), el = box();
+    intent.program(el, 950); intent.scroll(el);
+    if (gesture === "wheel") intent.wheel(-1);
+    if (gesture === "touch") { intent.touchStart(10); intent.touchMove(20); }
+    if (gesture === "key") intent.key("PageUp");
+    expect(intent.following).toBe(true);
+    el.scrollTop = 900;
+    expect(intent.scroll(el)).toBe(false);
+  });
+  it("treats scrollbar motion as motion without a preceding wheel or key event", () => {
+    const intent = new ScrollIntent(), el = box();
+    intent.program(el, 950); intent.scroll(el);
+    el.scrollTop = 500;
+    expect(intent.scroll(el)).toBe(false);
+  });
+  it("resumes following when detached content now fits the viewport", () => {
+    const intent = new ScrollIntent(), el = box();
+    intent.program(el, 950); intent.scroll(el);
+    el.scrollTop = 500; intent.scroll(el);
+    Object.assign(el, { scrollHeight: 80, clientHeight: 100, scrollTop: 0 });
+    expect(intent.scroll(el)).toBe(true);
+  });
+});

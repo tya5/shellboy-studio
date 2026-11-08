@@ -48,7 +48,7 @@ function Output({ model, id, command, complete, boxed }: { model: AppModel; id: 
 
 function StepView({ model, step }: { model: AppModel; step: Step }) {
   const t = model.t.value;
-  const [choice, setChoice] = useState<boolean | undefined>(undefined);
+  const choice = model.toolStepChoices.value.get(step.executionId);
   const open = choice ?? step.status === "running";
   useEffect(() => {
     if (!open) return;
@@ -57,13 +57,14 @@ function StepView({ model, step }: { model: AppModel; step: Step }) {
   }, [model, open, step.executionId]);
   return (
     <StepRow
+      anchorKey={step.executionId}
       open={open}
       command={step.description ?? step.command}
       status={step.status ? <StatusMark status={step.status} label={statusLabel(t, step.status)} /> : null}
       duration={stepDuration(step, model.now.value)}
       exit={exitText(step)}
       onToggle={(next) => {
-        if (next !== open) setChoice(next);
+        if (next !== open) model.toolStepChoices.value = new Map(model.toolStepChoices.peek()).set(step.executionId, next);
       }}
     >
       {step.description ? <div class="mono muted caption">{step.command}</div> : null}
@@ -79,7 +80,7 @@ function RowView({ model, row }: { model: AppModel; row: ConversationRow }) {
   const found = model.rowMarks.value.get(row.id);
   const mark = found && threadId !== undefined ? <BranchMark href={formatRoute({ view: "branches", threadId, nodeId: found.nodeId })} label={found.branches === 1 ? t("branches.markOne") : t("branches.mark", { n: found.branches })} /> : null;
   if (row.type === "steps") {
-    const opened = model.openToolGroups.value.has(row.id);
+    const opened = model.openToolGroups.value.has(row.id) || row.steps.some((step) => model.openToolGroups.value.has(`step:${step.executionId}`));
     const active = row.steps.find((s) => s.status === "running");
     const nonzero = row.steps.filter((s) => typeof s.exitCode === "number" && s.exitCode !== 0).length;
     const failed = row.steps.some((s) => s.state === "failed" || s.status === "recovery" || (typeof s.exitCode === "number" && s.exitCode !== 0));
@@ -88,7 +89,7 @@ function RowView({ model, row }: { model: AppModel; row: ConversationRow }) {
     return (
       <>
         <section class="steps">
-          <StepRow open={opened} command={summary} group status={<StatusMark status={active ? "running" : failed ? "failed" : "completed"} label={statusLabel(t, active ? "running" : failed ? "failed" : "completed")} />} onToggle={(open) => { const next = new Set(model.openToolGroups.peek()); if (open) next.add(row.id); else next.delete(row.id); model.openToolGroups.value = next; }}>
+          <StepRow open={opened} command={summary} group status={<StatusMark status={active ? "running" : failed ? "failed" : "completed"} label={statusLabel(t, active ? "running" : failed ? "failed" : "completed")} />} onToggle={(open) => { const next = new Set(model.openToolGroups.peek()); for (const key of [row.id, ...row.steps.map((step) => `step:${step.executionId}`)]) { if (open) next.add(key); else next.delete(key); } model.openToolGroups.value = next; }}>
             <div class="step-group-list">{row.entries.map((entry) => entry.kind === "step" ? <StepView key={entry.step.executionId} model={model} step={entry.step} /> : <div class="step" key={entry.id}><div class="work-row"><span>{t("compact.spill")}</span><span>{entry.text}</span></div></div>)}</div>
           </StepRow>
         </section>
@@ -265,14 +266,15 @@ export function Conversation({ model }: { model: AppModel }) {
   const scroller = useRef<HTMLDivElement>(null);
   const pinned = useRef(new ScrollIntent());
   const history = handle?.history.value;
-  // Keep the bottom in view while following, on either reader. The live message passes itself
-  // so the scroll box is found from it (the windowed reader owns its box).
+  // The windowed reader owns every scroll write, including live-tail resizing.
+  // The legacy reader finds its box from the live message when necessary.
   const follow = (from?: Element | null) => {
+    if (win) { win.layoutChanged(); return; }
     const el = from?.closest<HTMLElement>(".scroll") ?? scroller.current;
-    if (el && (win ? win.following.peek() : pinned.current.following)) pinned.current.program(el, el.scrollHeight);
+    if (el && pinned.current.following) pinned.current.program(el, el.scrollHeight);
   };
 
-  useLayoutEffect(() => follow(), [rows]);
+  useLayoutEffect(() => { if (!win) follow(); }, [rows, win]);
   useEffect(() => {
     pinned.current = new ScrollIntent();
     setSheetOpen(false);

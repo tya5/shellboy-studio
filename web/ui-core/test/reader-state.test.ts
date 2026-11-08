@@ -21,9 +21,18 @@ async function open(thread: string) {
   }
   const w = r.model.longReader.value!;
   const goTo = async (ordinal: number) => {
+    while (ordinal < (w.renderRange()?.first ?? 0)) {
+      w.view(0, 600, false);
+      await new Promise((res) => setTimeout(res, 90));
+      await settle(r.t, r.db).catch(() => undefined);
+      const range = w.renderRange()!;
+      w.measure(Array.from({ length: range.last - range.first + 1 }, (_, i) => [range.first + i, 40] as [number, number]));
+    }
+    if (ordinal > (w.renderRange()?.last ?? 0)) {
+      w.jumpToEnd();
+      await settle(r.t, r.db).catch(() => undefined);
+    }
     w.view(w.offsetOf(ordinal), 600, false);
-    await new Promise((res) => setTimeout(res, 120));
-    await settle(r.t, r.db).catch(() => undefined);
     await flush();
   };
   return { ...r, w, goTo };
@@ -33,7 +42,7 @@ describe("the reader keeps Stop, recovery, marks and steps working", () => {
   it("Stop does not depend on which window is held", async () => {
     const { model, goTo } = await open("lead");
     expect(model.canStop.value).toBe(true);
-    await goTo(1000);
+    await goTo(3200);
     expect(model.canStop.value).toBe(true);
   });
 
@@ -41,7 +50,7 @@ describe("the reader keeps Stop, recovery, marks and steps working", () => {
     const { model, goTo, w } = await open("broken");
     expect(model.recovery.value).toBeDefined();
     expect(model.canRetry.value).toBe(true);
-    await goTo(1000);
+    await goTo(3200);
     expect(w.renderRange()!.last).toBeLessThan(4900); // the end is out of view
     expect(model.recovery.value?.message).toContain("connection interrupted");
     expect(model.canRetry.value).toBe(true);
@@ -53,9 +62,12 @@ describe("the reader keeps Stop, recovery, marks and steps working", () => {
     model.marks.value = new Map([["n0-4995", 2]]);
     expect(w.isLoaded(4995)).toBe(true);
     expect(model.rowMarks.value.get("n0-4995")).toEqual({ nodeId: "n0-4995", branches: 2 });
-    await goTo(1000);
+    await goTo(3200);
     expect(model.rowMarks.value.size).toBe(0);
     await goTo(4995);
+    expect(w.renderRange()).toEqual({ first: 4900, last: 4999 });
+    expect(w.isLoaded(4995)).toBe(true);
+    expect(model.marks.value.get("n0-4995")).toBe(2);
     expect(model.rowMarks.value.get("n0-4995")).toEqual({ nodeId: "n0-4995", branches: 2 });
   });
 
@@ -70,8 +82,10 @@ describe("the reader keeps Stop, recovery, marks and steps working", () => {
     const { model, goTo, t } = await open("lead");
     model.selectedStepId.value = "ex-far";
     expect(model.selectedStep.value?.command).toBe("make");
-    await goTo(1000);
+    await goTo(4500);
     expect(model.selectedStep.value?.command).toBe("make"); // still held (16 windows)
+    await goTo(3200);
+    expect(model.selectedStep.value).toBeUndefined();
     expect(t.calls("history.list")).toHaveLength(0);
   });
 });

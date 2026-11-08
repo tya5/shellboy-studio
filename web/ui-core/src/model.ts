@@ -164,6 +164,7 @@ export class AppModel {
   readonly lang: Signal<Lang>;
   readonly now: Signal<number>;
   readonly openToolGroups: Signal<ReadonlySet<string>> = signal(new Set());
+  readonly toolStepChoices: Signal<ReadonlyMap<string, boolean>> = signal(new Map());
   /** For ages in long lists: it moves every 30 s, so a list doesn't re-render all its rows per tick. */
   readonly coarseNow: Signal<number>;
   /** Thread rows by ID, built once per list change. */
@@ -344,6 +345,9 @@ export class AppModel {
     this.listHandle = this.data.trackThreadList();
     this.disposers.push(effect(() => this.syncOpenThread()));
     this.disposers.push(effect(() => this.syncWindow()));
+    this.disposers.push(effect(() => {
+      if (!this.longReader.value) this.retainToolState(this.conversation.value);
+    }));
     // A section's reads run when it opens with the owner reachable, not when it renders. A new
     // period re-runs this, so only the open section reads it.
     this.disposers.push(
@@ -529,6 +533,8 @@ export class AppModel {
   /** Shell facts for the steps in view, read while it shows some. */
   private readerShells(w: ConversationWindow): void {
     w.version.value;
+    if (this.toolStepChoices.peek().size || this.openToolGroups.peek().size)
+      this.retainToolState(projectConversation(w.rangeItems()), new Set(w.heldSteps().flatMap((item) => (item.executions ?? []).map((step) => step.execution_id))));
     const r = w.renderRange();
     if (!r || !this.handle.peek()) return;
     for (let i = r.first; i <= r.last; i++)
@@ -536,6 +542,19 @@ export class AppModel {
         void this.refreshShells(this.handle.peek()!.threadId);
         return;
       }
+  }
+
+  /** Expansion choices live no longer than the history they describe. */
+  private retainToolState(rows: readonly ConversationRow[], heldSteps?: ReadonlySet<string>): void {
+    const groups = rows.filter((row) => row.type === "steps");
+    const steps = heldSteps ?? new Set(groups.flatMap((row) => row.steps.map((step) => step.executionId)));
+    const choices = this.toolStepChoices.peek();
+    const keptChoices = new Map([...choices].filter(([id]) => steps.has(id)));
+    if (keptChoices.size !== choices.size) this.toolStepChoices.value = keptChoices;
+    const allowed = new Set(groups.flatMap((row) => [row.id, ...row.steps.map((step) => `step:${step.executionId}`)]));
+    const opened = this.openToolGroups.peek();
+    const kept = new Set([...opened].filter((id) => allowed.has(id)));
+    if (kept.size !== opened.size) this.openToolGroups.value = kept;
   }
 
   private cancelThreadReads(): void {
@@ -573,6 +592,8 @@ export class AppModel {
     this.selectedStepId.value = undefined;
     this.watchedOutputs.clear();
     this.sendState.value = { kind: "idle" };
+    this.openToolGroups.value = new Set();
+    this.toolStepChoices.value = new Map();
     this.uncertainCancels.value = new Set();
     this.actionError.value = undefined;
     this.handle.value = this.data.openThread(id);

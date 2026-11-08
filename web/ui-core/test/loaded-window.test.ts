@@ -8,6 +8,7 @@ describe("loaded history edges", () => {
     await r.settle();
     expect(r.w.renderRange()).toEqual({ first: 900, last: 999 });
     r.w.view(0, 600, false);
+    r.pause();
     await r.settle();
     expect(r.w.renderRange()).toEqual({ first: 800, last: 999 });
     r.w.dispose();
@@ -18,6 +19,7 @@ describe("loaded history edges", () => {
     await r.settle();
     for (let i = 0; i < WINDOWS_HELD + 3; i++) {
       r.w.view(0, 600, false);
+      r.pause();
       await r.settle();
       expect(r.w.windowsHeld).toBeLessThanOrEqual(WINDOWS_HELD);
     }

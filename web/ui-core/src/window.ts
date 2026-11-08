@@ -1,13 +1,13 @@
 // The long-thread reader's model (docs/design/long-threads.md): positional windows of a Thread's
-// path held as an LRU, a variable-height scroll space over all positions, and reads that follow
-// what shows. It knows no pixels except the heights it is told, and never walks the history.
+// path held in bounded buckets, a measured scroll space over one loaded run, and adjacent reads.
+// It stops at an unloaded edge. It knows no pixels except the heights it is told, and never walks the history.
 import { signal } from "@preact/signals-core";
 import { Cancel, HISTORY_EXCERPT_CHARS, type HistoryItem, type HistoryWindowArgs, type HistoryWindowResult, type Outcome } from "../../data/src";
 import { projectConversation } from "./conversation";
 
 /** Positions in one window of the path. */
 export const WINDOW_NODES = 100;
-/** Windows held per open Thread (1,600 nodes), least recently shown dropped first. */
+/** Windows held per open Thread (1,600 nodes), evicting the opposite edge. */
 export const WINDOWS_HELD = 16;
 /** Window reads running at once (a tail or verify read is one more). */
 export const READS_IN_FLIGHT = 2;
@@ -42,54 +42,19 @@ class Bucket {
   filled = 0;
 }
 
-/** Measured row heights over all positions, summed in O(log n). */
+/** Sparse measurements: storage and all scans are bounded by the held windows, not total. */
 class Heights {
-  readonly h: Float64Array;
-  private readonly sum: Float64Array;
-  constructor(readonly n: number) {
-    this.h = new Float64Array(n).fill(Number.NaN);
-    this.sum = new Float64Array(n + 1);
-  }
-  static grown(old: Heights | undefined, n: number): Heights {
-    const next = new Heights(n);
-    if (old) for (let i = 0; i < Math.min(old.n, n); i++) if (!Number.isNaN(old.h[i]!)) next.set(i, old.h[i]!);
-    return next;
-  }
+  readonly h = new Map<number, number>();
   set(i: number, v: number): boolean {
-    const was = this.h[i]!;
-    if (was === v) return false;
-    const known = !Number.isNaN(was);
-    const dSum = v - (known ? was : 0);
-    this.h[i] = v;
-    for (let k = i + 1; k <= this.n; k += k & -k) {
-      this.sum[k]! += dSum;
-    }
+    if (this.h.get(i) === v) return false;
+    this.h.set(i, v);
     return true;
   }
-  clear(i: number): void {
-    const was = this.h[i];
-    if (was === undefined || Number.isNaN(was)) return;
-    this.h[i] = Number.NaN;
-    for (let k = i + 1; k <= this.n; k += k & -k) this.sum[k]! -= was;
-  }
-  /** Top of position i. */
-  offsetOf(i: number): number {
-    let s = 0;
-    for (let k = i; k > 0; k -= k & -k) {
-      s += this.sum[k]!;
-    }
-    return s;
-  }
-  /** The position containing offset y. */
-  locate(y: number, count: number): number {
-    let lo = 0;
-    let hi = count - 1;
-    while (lo < hi) {
-      const mid = (lo + hi) >> 1;
-      if (this.offsetOf(mid + 1) > y) hi = mid;
-      else lo = mid + 1;
-    }
-    return lo;
+  clear(i: number): void { this.h.delete(i); }
+  offsetOf(i: number, first: number): number {
+    let sum = 0;
+    for (const [ordinal, height] of this.h) if (ordinal >= first && ordinal < i) sum += height;
+    return sum;
   }
 }
 
@@ -97,7 +62,7 @@ export class ConversationWindow {
   private readonly reader: WindowReader;
   private readonly setTimer: (fn: () => void, ms: number) => () => void;
   private buckets = new Map<number, Bucket>();
-  private heights = new Heights(0);
+  private heights = new Heights();
   private revision: string | number | undefined;
   private tailKnown: { ordinal: number; nodeId: string } | undefined;
   private epoch = 0;
@@ -106,6 +71,7 @@ export class ConversationWindow {
   private failed = new Set<number>();
   private tailCancel: Cancel | undefined;
   private tailAgain = false;
+  private tailFailed = false;
   private verifying = false;
   private stopTimer: (() => void) | undefined;
   private viewTop = 0;
@@ -113,6 +79,8 @@ export class ConversationWindow {
   private wanted = new Set<number>();
   private lastAnchor: Anchor | undefined;
   private scrollRequest: number | undefined;
+  private jumping = false;
+  get pendingNavigation(): boolean { return this.jumping; }
 
   /** Bumped on every change a screen must redraw for. */
   readonly version = signal(0);
@@ -140,11 +108,12 @@ export class ConversationWindow {
   // ---- reading what's held ----
 
   get readsInFlight(): number {
-    return this.inflight.size + (this.tailCancel ? 1 : 0) + (this.verifying ? 1 : 0);
+    return this.inflight.size + (this.tailCancel || this.verifying ? 1 : 0);
   }
   get windowsHeld(): number {
     return this.buckets.size;
   }
+  get measurementsHeld(): number { return this.heights.h.size; }
   itemAt(i: number): HistoryItem | undefined {
     return this.buckets.get(Math.floor(i / WINDOW_NODES))?.items[i % WINDOW_NODES];
   }
@@ -165,17 +134,29 @@ export class ConversationWindow {
     return this.itemAt(i) !== undefined;
   }
   heightOf(i: number): number {
-    const h = this.heights.h[i];
-    return h === undefined || Number.isNaN(h) ? 0 : h;
+    return this.heights.h.get(i) ?? 0;
   }
   offsetOf(i: number): number {
-    return this.heights.offsetOf(Math.max(0, Math.min(i, this.total)));
+    const range = this.renderRange();
+    return range ? this.heights.offsetOf(Math.max(range.first, Math.min(i, range.last + 1)), range.first) : 0;
   }
   totalHeight(): number {
     return this.offsetOf(this.total);
   }
   locate(y: number): number {
-    return this.total === 0 ? 0 : this.heights.locate(y, this.total);
+    const range = this.renderRange();
+    if (!range) return 0;
+    let top = 0;
+    let lastVisible = range.first;
+    for (let i = range.first; i <= range.last; i++) {
+      const height = this.heightOf(i);
+      if (height > 0) {
+        lastVisible = i;
+        if (top + height > y) return i;
+        top += height;
+      }
+    }
+    return lastVisible;
   }
   /** The contiguous loaded run around the current anchor, or the newest loaded run. */
   renderRange(): { first: number; last: number } | undefined {
@@ -217,16 +198,24 @@ export class ConversationWindow {
   /** Tell what shows. Cancels reads that left the margin now; requests what entered it after a pause. */
   view(scrollTop: number, clientHeight: number, atBottom: boolean): void {
     if (this.disposed) return;
-    const was = this.renderRange();
+    if (this.jumping) {
+      if (atBottom) return; // keep the old reading position until the target window arrives
+      this.jumping = false; // actual upward movement cancels explicit navigation too
+      this.tailCancel?.cancel();
+      this.tailCancel = undefined;
+      this.verifying = false;
+      this.tailAgain = false;
+    }
+    const moved = this.viewTop !== scrollTop || this.viewHeight !== clientHeight;
     this.viewTop = scrollTop;
     this.viewHeight = clientHeight;
     if (this.total === 0) return;
+    this.lastAnchor = this.anchor(scrollTop);
     const now = this.renderRange();
     if (!now) return;
-    if (was?.first !== now.first || was?.last !== now.last) this.bump(); // the screen draws other rows
-    this.lastAnchor = this.anchor(scrollTop);
+    // Pixels cannot navigate across an unloaded gap. Run switches are explicit and bump version.
     // The scroller's end is the path's end: trailing nodes that draw nothing have no height to reach.
-    const follow = atBottom;
+    const follow = atBottom && now.last === this.total - 1;
     if (follow !== this.following.peek()) this.following.value = follow;
     if (follow && this.newer.peek()) this.newer.value = false;
     const r = now;
@@ -235,8 +224,10 @@ export class ConversationWindow {
     // Adjacent windows are prefetched before the reader reaches an unloaded edge.
     const nearStart = r.first > 0 && scrollTop <= clientHeight;
     const nearEnd = r.last + 1 < this.total && scrollTop + 2 * clientHeight >= this.totalHeight();
-    if (nearStart && (!nearEnd || !follow)) wanted.add(Math.floor((r.first - 1) / WINDOW_NODES));
+    if (nearStart && !follow) wanted.add(Math.floor((r.first - 1) / WINDOW_NODES));
     else if (nearEnd) wanted.add(Math.floor((r.last + 1) / WINDOW_NODES));
+    const sameWanted = wanted.size === this.wanted.size && [...wanted].every((b) => this.wanted.has(b));
+    for (const b of this.failed) if (!wanted.has(b)) this.failed.delete(b);
     this.wanted = wanted;
     for (const b of wanted) {
       const held = this.buckets.get(b);
@@ -250,8 +241,20 @@ export class ConversationWindow {
         read.cancel.cancel();
         this.inflight.delete(b);
       }
+    if (this.stopTimer && !moved && sameWanted) return;
     this.stopTimer?.();
-    this.stopTimer = undefined;
+    this.stopTimer = this.setTimer(() => {
+      this.stopTimer = undefined;
+      this.pump();
+    }, PAUSE_MS);
+  }
+
+  /** An upward gesture against a fitting loaded edge reads once without detaching follow. */
+  requestOlder(): void {
+    if (this.disposed || this.jumping) return;
+    const range = this.renderRange();
+    if (!range || range.first === 0) return;
+    this.wanted.add(Math.floor((range.first - 1) / WINDOW_NODES));
     this.pump();
   }
 
@@ -259,10 +262,13 @@ export class ConversationWindow {
   measure(changes: readonly (readonly [number, number])[]): void {
     this.applyHeights(() => {
       let any = false;
-      for (const [i, h] of changes) if (i < this.total && this.heights.set(i, h)) any = true;
+      for (const [i, h] of changes) if (this.isLoaded(i) && Number.isFinite(h) && h >= 0 && this.heights.set(i, h)) any = true;
       return any;
     });
   }
+
+  /** A live child changed layout; the screen remains the sole owner of DOM scroll writes. */
+  layoutChanged(): void { if (!this.disposed) this.bump(); }
 
   /** Called after hints for this Thread. At the bottom this reads the last window only. */
   changed(): void {
@@ -274,14 +280,21 @@ export class ConversationWindow {
 
   /** Jump to the newest: follow again and read the end. */
   jumpToEnd(): void {
+    this.stopTimer?.();
+    this.stopTimer = undefined;
+    this.wanted.clear();
+    for (const read of this.inflight.values()) read.cancel.cancel();
+    this.inflight.clear();
     this.following.value = true;
     this.newer.value = false;
-    this.scrollRequest = Number.MAX_SAFE_INTEGER; // the screen clamps to the bottom
+    this.jumping = true;
+    this.scrollRequest = undefined;
     void this.readTail();
     this.bump();
   }
 
   retry(): void {
+    if (this.tailFailed) { this.tailFailed = false; this.jumpToEnd(); return; }
     this.failed.clear();
     if (this.status.peek() === "error" && this.total === 0) void this.readTail();
     this.pump();
@@ -364,9 +377,9 @@ export class ConversationWindow {
     this.tailCancel?.cancel();
     this.tailCancel = cancel;
     const out = await this.reader.read({ ordinal: known.ordinal, before: 0, after: 0, expect_node_id: known.nodeId, excerpt_chars: HISTORY_EXCERPT_CHARS }, cancel);
+    if (this.disposed || epoch !== this.epoch || this.tailCancel !== cancel) return;
     this.verifying = false;
-    if (this.tailCancel === cancel) this.tailCancel = undefined;
-    if (this.disposed || epoch !== this.epoch) return;
+    this.tailCancel = undefined;
     if (!out.ok) {
       if (out.error.kind === "owner" && out.error.code === "cursor_expired") this.reset();
       else if (out.error.kind !== "cancelled") this.fail(out.error.message);
@@ -374,35 +387,63 @@ export class ConversationWindow {
     }
     this.revision = out.value.revision;
     this.setTotal(out.value.total);
-    this.install(out.value);
+    // Verification is evidence, not navigation to an evicted tail island.
+    if (this.isLoaded(known.ordinal)) this.install(out.value);
+    if (this.tailAgain) { this.tailAgain = false; void this.readTail(); }
     this.pump();
   }
 
   /** The newest window; once nodes are known, only what follows the last one known, checked against it. */
-  private async readTail(): Promise<void> {
+  private async readTail(latest = false): Promise<void> {
     if (this.disposed) return;
     if (this.tailCancel || this.verifying) {
       this.tailAgain = true;
       return;
     }
     const known = this.tailKnown;
-    const args: WindowReadArgs = known
+    const args: WindowReadArgs = known && !latest
       ? { ordinal: known.ordinal, before: 0, after: 2 * WINDOW_NODES - 1, expect_node_id: known.nodeId, excerpt_chars: HISTORY_EXCERPT_CHARS }
       : { before: WINDOW_NODES - 1, after: 0, excerpt_chars: HISTORY_EXCERPT_CHARS };
     const epoch = this.epoch;
     const cancel = new Cancel();
     this.tailCancel = cancel;
     const out = await this.reader.read(args, cancel);
-    if (this.tailCancel === cancel) this.tailCancel = undefined;
-    if (this.disposed || epoch !== this.epoch) return;
+    if (this.disposed || epoch !== this.epoch || this.tailCancel !== cancel) return;
+    this.tailCancel = undefined;
     if (!out.ok) {
       if (out.error.kind === "owner" && out.error.code === "cursor_expired") this.reset();
-      else if (out.error.kind !== "cancelled") this.fail(out.error.message);
+      else if (out.error.kind !== "cancelled") {
+        this.tailFailed = true;
+        if (this.jumping) { this.jumping = false; this.following.value = false; }
+        this.fail(out.error.message);
+        this.bump();
+      }
       return;
     }
+    if (latest && known && this.revision !== undefined && out.value.revision !== this.revision) {
+      this.tailAgain = true;
+      void this.verify();
+      return;
+    }
+    this.tailFailed = false;
     this.revision = out.value.revision;
     this.setTotal(out.value.total);
+    if (known && !latest && this.following.peek() && !this.isLoaded(Math.max(0, this.total - WINDOW_NODES))) {
+      void this.readTail(true);
+      return;
+    }
     this.install(out.value);
+    if (this.following.peek()) {
+      this.lastAnchor = undefined;
+      this.jumping = false;
+      this.scrollRequest = Number.MAX_SAFE_INTEGER;
+      this.bump(); // publish the new run only after its anchor selection changes
+    }
+    const last = out.value.items.at(-1);
+    if (last && (ordinalOf(last) ?? -1) < this.total - 1) {
+      void this.readTail(true);
+      return;
+    }
     if (this.tailAgain) {
       this.tailAgain = false;
       void this.readTail();
@@ -423,9 +464,12 @@ export class ConversationWindow {
     this.cancelAll();
     this.verifying = false;
     this.tailAgain = false;
+    this.jumping = false;
+    this.lastAnchor = undefined;
+    this.wanted.clear();
     this.buckets.clear();
     this.failed.clear();
-    this.heights = new Heights(0);
+    this.heights = new Heights();
     this.revision = undefined;
     this.tailKnown = undefined;
     this.total = 0;
@@ -455,14 +499,12 @@ export class ConversationWindow {
       this.tailCancel = undefined;
       this.revision = out.value.revision;
       this.setTotal(out.value.total);
+      const recovered = out.value.items.find((item) => item.node_id === anchor?.nodeId);
+      const ordinal = recovered ? ordinalOf(recovered) : anchor && this.total > 0 ? Math.min(anchor.ordinal, this.total - 1) : undefined;
+      this.lastAnchor = !follow && ordinal !== undefined ? { ordinal, nodeId: recovered?.node_id, offset: recovered ? anchor!.offset : 0 } : undefined;
       this.install(out.value);
-      if (!follow && anchor && args.node_id !== undefined) {
-        const at = out.value.items.find((i) => i.node_id === anchor.nodeId);
-        const ordinal = at ? ordinalOf(at) : undefined;
-        if (ordinal !== undefined) this.scrollRequest = this.offsetOf(ordinal) + anchor.offset;
-      } else if (!follow && anchor && args.ordinal !== undefined) {
-        this.scrollRequest = this.offsetOf(Math.min(anchor.ordinal, this.total - 1));
-      } else if (follow) this.scrollRequest = Number.MAX_SAFE_INTEGER;
+      if (!follow && this.lastAnchor) this.scrollRequest = this.scrollFor(this.lastAnchor);
+      else if (follow) this.scrollRequest = Number.MAX_SAFE_INTEGER;
       if (this.scrollRequest !== undefined && this.scrollRequest < Number.MAX_SAFE_INTEGER) this.viewTop = this.scrollRequest;
       this.bump();
       this.pump();
@@ -477,10 +519,19 @@ export class ConversationWindow {
 
   private setTotal(total: number): void {
     if (total === this.total) return;
-    // Capacity doubles, so an append rebuilds the sums only now and then.
-    if (total > this.heights.n) this.heights = Heights.grown(this.heights, Math.max(total, this.heights.n * 2));
     this.total = total;
-    for (const b of [...this.buckets.keys()]) if (b * WINDOW_NODES >= total) this.buckets.delete(b);
+    for (const b of [...this.buckets.keys()]) if (b * WINDOW_NODES >= total) this.dropBucket(b);
+    for (const i of this.heights.h.keys()) if (i >= total) this.heights.clear(i);
+  }
+
+  /** Eviction discards both content and its measurements. */
+  private dropBucket(b: number): void {
+    this.buckets.delete(b);
+    this.wanted.delete(b);
+    this.failed.delete(b);
+    this.inflight.get(b)?.cancel.cancel();
+    this.inflight.delete(b);
+    for (let i = b * WINDOW_NODES; i < (b + 1) * WINDOW_NODES; i++) this.heights.clear(i);
   }
 
   private install(result: HistoryWindowResult): void {
@@ -496,8 +547,7 @@ export class ConversationWindow {
           while (this.buckets.size > WINDOWS_HELD) {
             const keys = [...this.buckets.keys()].sort((a, z) => a - z);
             const edge = b === keys[0] ? keys[keys.length - 1]! : keys[0]!;
-            this.buckets.delete(edge);
-            for (let i = edge * WINDOW_NODES; i < Math.min((edge + 1) * WINDOW_NODES, this.heights.n); i++) this.heights.clear(i);
+            this.dropBucket(edge);
           }
         }
         const slot = o % WINDOW_NODES;
@@ -516,7 +566,7 @@ export class ConversationWindow {
   /** Runs a height change with the anchor row held in place. */
   private applyHeights(change: () => boolean): void {
     const follow = this.following.peek();
-    const a = this.total > 0 ? this.anchor(this.viewTop) : undefined;
+    const a = this.total > 0 ? (this.lastAnchor ?? this.anchor(this.viewTop)) : undefined;
     const before = a ? this.offsetOf(a.ordinal) : 0;
     const changed = change();
     if (a && !follow) {
