@@ -920,7 +920,7 @@ async fn settings_read_and_write_the_file_and_values_stay_hidden() {
         "[redacted]"
     );
     assert_eq!(read["differs"], true, "{read}");
-    assert_eq!(read["restart"]["all_fields_require_restart"], true);
+    assert_eq!(read["restart"]["all_fields_require_restart"], false);
     let hash = read["file"]["content_hash"].as_str().unwrap().to_owned();
 
     // A form posting back what it was shown is refused, and the file keeps the secret.
@@ -957,7 +957,8 @@ async fn settings_read_and_write_the_file_and_values_stay_hidden() {
         )
         .await;
     assert_eq!(wrote["written"], true, "{wrote}");
-    assert_eq!(wrote["restart_required"], true, "{wrote}");
+    assert_eq!(wrote["restart_required"], false, "{wrote}");
+    assert_eq!(wrote["applied_to_running_owner"], true, "{wrote}");
     assert_eq!(wrote["changes"][0]["value"], "changed", "{wrote}");
     let after = std::fs::read_to_string(&path).unwrap();
     assert!(
@@ -966,7 +967,7 @@ async fn settings_read_and_write_the_file_and_values_stay_hidden() {
     );
     let read = c.ok("config.get", json!({}), None).await;
     assert!(
-        read["differing_fields"]
+        !read["differing_fields"]
             .to_string()
             .contains("default_model"),
         "{read}"

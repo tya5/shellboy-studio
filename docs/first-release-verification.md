@@ -2,6 +2,16 @@
 
 This is a record of gaps, not a claim that a release or CI run exists.
 
+## Observed local first-run path
+
+On macOS with headless Chromium, an isolated temporary HOME and data directory, the
+Studio bridge (all `next-*` features enabled) was patched against Shellboy
+`origin/main` at `89515711525e23fdb0d9de1734c92ba74e6ada81`. A loopback-only mock
+provider supplied the model list and chat stream. Opening the token URL, selecting Local,
+testing and saving a connection, restarting the owner, creating a Thread, sending a
+synthetic message and seeing the mock reply succeeded. No user data or real provider was
+used. This is not verification against the pinned v0.10.0 build or a physical phone.
+
 ## Not verified for the first release
 
 - A Windows physical machine: build, named-pipe access, configuration paths and usage.
