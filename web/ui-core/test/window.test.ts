@@ -200,6 +200,23 @@ describe("the path changes", () => {
   });
 });
 
+describe("row spacing measurement", () => {
+  it("retains the anchor and following state when padded row heights change", async () => {
+    const r = await rig(300);
+    await r.settle();
+    r.w.view(100 * ESTIMATED_ROW_PX, VIEW, false);
+    r.w.takeScroll();
+    const anchor = r.w.anchor(r.w.scrollTop);
+    r.w.measure([[10, ESTIMATED_ROW_PX + 8], [20, ESTIMATED_ROW_PX + 8]]);
+    const next = r.w.takeScroll() ?? r.w.scrollTop;
+    expect(r.w.offsetOf(anchor.ordinal) + anchor.offset).toBeCloseTo(next, 5);
+    expect(r.w.following.value).toBe(false);
+    r.w.view(r.w.totalHeight() - VIEW, VIEW, true);
+    r.w.measure([[299, ESTIMATED_ROW_PX + 8]]);
+    expect(r.w.following.value).toBe(true);
+  });
+});
+
 describe("following", () => {
   it("follows again at the scroller's end, even when the last nodes draw nothing", async () => {
     const r = await rig(300);

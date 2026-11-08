@@ -99,7 +99,7 @@ a{color:var(--accent)}
 /* StepRow */
 .step{border:1px solid var(--line);border-radius:var(--radius);background:var(--panel);min-width:0}
 .step[open]{border-color:var(--accent)}
-.step summary{display:flex;align-items:center;gap:var(--space-8);flex-wrap:wrap;min-height:40px;padding:var(--space-4) var(--space-12);cursor:pointer;list-style:none}
+.step summary{display:flex;align-items:center;justify-content:flex-start;text-align:left;gap:var(--space-8);flex-wrap:wrap;min-height:40px;padding:var(--space-4) var(--space-12);cursor:pointer;list-style:none}
 .step summary::-webkit-details-marker{display:none}
 .step .cmd{font:var(--type-code);min-width:0;overflow-wrap:anywhere}
 .step .meta{margin-left:auto;display:flex;gap:var(--space-12);font:var(--type-caption);color:var(--muted)}

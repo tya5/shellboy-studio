@@ -16,7 +16,7 @@ export function LiveMessage({ model, handle, follow }: { model: AppModel; handle
   useLayoutEffect(() => follow(box.current), [preview]);
   if (!on || preview.kind !== "live" || preview.text === "") return null;
   return (
-    <div ref={box}>
+    <div ref={box} class="conversation-row">
     <Message bot who={t("convo.shellboy")} at={t("convo.live")} text={preview.text} copyLabel={t("code.copy")} copiedLabel={t("code.copied")}>
       {preview.incomplete ? <div class="caption muted">{t("convo.liveIncomplete")}</div> : null}
     </Message>

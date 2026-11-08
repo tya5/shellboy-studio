@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
-import { renderOutput, formatClock, formatDuration, formatRoute, formatTokens, parseTime, statusLabel, type AppModel, type ConversationRow, type StepRow as Step } from "../../../ui-core/src";
+import { activityLabel, renderOutput, formatClock, formatDuration, formatRoute, formatTokens, parseTime, statusLabel, type AppModel, type ConversationRow, type StepRow as Step } from "../../../ui-core/src";
 import { ScrollIntent } from "./scrollIntent";
 import { LiveMessage } from "./LiveMessage";
 import { WindowedScroll } from "./WindowedScroll";
@@ -21,8 +21,8 @@ function ConversationStatus({ model }: { model: AppModel }) {
   if (!status || status === "idle" || status === "completed" || status === "failed") return null;
   const running = work.running[0];
   const start = running?.startedAt ? parseTime(running.startedAt) : undefined;
-  return <div class="work-row" role="status"><StatusMark status={status} label={statusLabel(t, status)} />
-    {running ? <span>{running.label} {work.running.length > 1 ? t("work.runningCount", { n: work.running.length }) : ""} {start === undefined ? "" : formatDuration(model.now.value - start)}</span> : null}
+  return <div class="work-row conversation-row" role="status"><StatusMark status={status} label={statusLabel(t, status)} />
+    {running ? <span>{running.label} {work.running.length > 1 ? t("work.runningCount", { n: work.running.length }) : ""} {start === undefined ? "" : formatDuration(model.now.value - start)}</span> : row?.summary.activity ? <span>{activityLabel(model.lang.value, row.summary.activity)}</span> : null}
     {status === "recovery" ? <><span>{model.recovery.value?.message ?? model.recovery.value?.hint}</span>{model.canRetry.value ? <Button onClick={() => void model.retry()}>{t("action.retry")}</Button> : null}</> : null}
   </div>;
 }
@@ -80,14 +80,14 @@ function RowView({ model, row }: { model: AppModel; row: ConversationRow }) {
     const opened = model.openToolGroups.value.has(row.id);
     const active = row.steps.find((s) => s.status === "running");
     const nonzero = row.steps.filter((s) => typeof s.exitCode === "number" && s.exitCode !== 0).length;
-    const failed = row.steps.some((s) => s.status === "failed" || s.status === "recovery");
+    const failed = row.steps.some((s) => s.state === "failed" || s.status === "recovery" || (typeof s.exitCode === "number" && s.exitCode !== 0));
+    const summary = [t("tools.count", { n: row.steps.length }), ...(nonzero ? [t("tools.nonzero", { n: nonzero })] : []), ...(active ? [t("tools.active", { command: active.description || active.command })] : [])].join(" · ");
     return (
       <>
         <section class="steps">
-          <Button aria-expanded={opened} onClick={() => { const next = new Set(model.openToolGroups.peek()); if (opened) next.delete(row.id); else next.add(row.id); model.openToolGroups.value = next; }}>
-            {t("tools.group", { n: row.steps.length, nonzero })} {active ? active.description ?? active.command : failed ? t("status.failed") : t("status.completed")}
-          </Button>
-          {opened ? row.steps.map((s) => <StepView key={s.executionId} model={model} step={s} />) : null}
+          <StepRow open={opened} command={summary} group status={<StatusMark status={active ? "running" : failed ? "failed" : "completed"} label={statusLabel(t, active ? "running" : failed ? "failed" : "completed")} />} onToggle={(open) => { const next = new Set(model.openToolGroups.peek()); if (open) next.add(row.id); else next.delete(row.id); model.openToolGroups.value = next; }}>
+            {row.steps.map((s) => <StepView key={s.executionId} model={model} step={s} />)}
+          </StepRow>
         </section>
         {mark ? <div class="scroll-mark">{mark}</div> : null}
       </>
@@ -188,7 +188,7 @@ function Details({ model }: { model: AppModel }) {
         </>
       ) : null}
         </section>
-      ) : null}
+      ) : <section class="detail-region"><h3>{t("details.title")}</h3><p class="muted">{t("details.choose")}</p></section>}
     </aside>
   );
 }
@@ -264,7 +264,7 @@ export function Conversation({ model }: { model: AppModel }) {
               </Notice>
             ) : null}
             {rows.map((row) => (
-              <RowView key={row.id} model={model} row={row} />
+              <div class="conversation-row" key={row.id}><RowView model={model} row={row} /></div>
             ))}
             <LiveMessage model={model} handle={handle} follow={follow} />
             <ConversationStatus model={model} />
