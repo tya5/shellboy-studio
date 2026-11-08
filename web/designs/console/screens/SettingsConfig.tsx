@@ -53,7 +53,7 @@ function HiddenControl({ model, path, label, json, t, name, onRemove }: { model:
       {head}
       <Field
         ariaLabel={t("config.newValue") + ": " + label}
-        type={json ? "text" : "password"}
+        type="password"
         autoComplete="new-password"
         placeholder={json ? t("config.enterJson") : t("config.newValue")}
         value={draft?.raw ?? ""}
@@ -92,6 +92,15 @@ export function ConfigControl({ model, path, label, spec }: { model: AppModel; p
         <Button aria-pressed={held === false} onClick={() => config.edit(path, "false", "bool")}>{t("config.off")}</Button>
       </ButtonGroup>
     );
+  else if (spec.kind === "kinds") {
+    const kinds = ["user", "summary", "assistant_response", "tool_result", "spill", "event"] as const;
+    const selected = Array.isArray(held) ? held.filter((v): v is string => typeof v === "string") : [];
+    control = (
+      <ButtonGroup label={label}>
+        {kinds.map((kind) => <Button key={kind} aria-pressed={selected.includes(kind)} onClick={() => config.edit(path, (selected.includes(kind) ? selected.filter((v) => v !== kind) : [...selected, kind]).join(","), "kinds")}>{t(`set.kind.${kind}`)}</Button>)}
+      </ButtonGroup>
+    );
+  }
   else if (spec.kind === "choice")
     control = (
       <ButtonGroup label={label}>
@@ -186,7 +195,7 @@ function HiddenAdd({ model, path, label, json, t }: { model: AppModel; path: rea
     <>
       <Field
         ariaLabel={`${label}: ${t("config.newValue")}`}
-        type={json ? "text" : "password"}
+        type="password"
         autoComplete="new-password"
         placeholder={json ? t("config.enterJson") : t("config.newValue")}
         value={draft?.raw ?? ""}
@@ -209,13 +218,14 @@ export function ConfigConnections({ model }: { model: AppModel }) {
   return (
     <>
       {names.map((name) => {
-        const rows: Fact[] = CONNECTION_FIELDS.map(({ key, kind }) => {
+        const rows: Fact[] = CONNECTION_FIELDS.map((field) => {
+          const { key, kind } = field;
           const path = ["connections", name, key];
           const label = t(`config.conn.${key}`);
           const env = key === "api_key_env" ? valueAt(values, path) : undefined;
           const note = key === "api_key_env" ? <>{t("config.keyNote")} {typeof env === "string" && facts.credentialSet[env] !== undefined ? t(facts.credentialSet[env] ? "config.envSet" : "config.envUnset") : null}</> : undefined;
           const value = configRowValue(t, facts, path);
-          return editable ? { label, control: <ConfigControl model={model} path={path} label={label} spec={{ kind }} />, ...(note ? { note } : {}) } : { label, mono: true, ...(value !== undefined ? { value } : {}), ...(note ? { note } : {}) };
+          return editable ? { label, control: <ConfigControl model={model} path={path} label={label} spec={{ kind, ...("options" in field ? { options: field.options } : {}) }} />, ...(note ? { note } : {}) } : { label, mono: true, ...(value !== undefined ? { value } : {}), ...(note ? { note } : {}) };
         });
         if (editable)
           for (const { key, json } of CONNECTION_SECRETS) {
@@ -223,13 +233,35 @@ export function ConfigConnections({ model }: { model: AppModel }) {
             rows.push({ label, control: <SecretEntries model={model} path={["connections", name, key]} label={label} json={json} /> });
           }
         return (
-          <Section key={name} title={t("config.connection", { name })} sub={<Rich text={t("config.source")} />}>
+          <Section key={name} title={t("config.connection", { name })}>
+            <ConnectionActions model={model} name={name} />
             <FactList missing={t("common.notReadable")} facts={rows} />
           </Section>
         );
       })}
     </>
   );
+}
+
+function ConnectionActions({ model, name }: { model: AppModel; name: string }) {
+  const t = model.t.value;
+  const [confirm, setConfirm] = useState(false);
+  const action = model.config.connectionAction.value;
+  const busy = action?.state === "testing" || action?.state === "clearing";
+  const source = model.config.read.value.value?.loaded.credentialSource?.[name];
+  const state = source === "env" || source === "stored" || source === "none" ? source : undefined;
+  return <>
+    <div class="band">
+      <span>{t("config.keyState")}: {state ?? t("config.notSet")}</span>
+      <Button disabled={busy} onClick={() => void model.config.testConnection(name)}>{t("config.testConnection")}</Button>
+      {confirm ? <>
+        <Button disabled={busy} onClick={() => { setConfirm(false); void model.config.clearCredential(name); }}>{t("config.confirmClear")}</Button>
+        <Button disabled={busy} onClick={() => setConfirm(false)}>{t("common.close")}</Button>
+      </> : <Button disabled={busy} onClick={() => setConfirm(true)}>{t("config.clearKey")}</Button>}
+    </div>
+    {confirm ? <Notice tone="wait">{t("config.clearKeyWarning")}</Notice> : null}
+    {action?.name === name ? <Notice>{t(`config.action.${action.state}`)}</Notice> : null}
+  </>;
 }
 
 function reviewRow(t: T, c: ConfigChangeRow): DiffRow {
@@ -251,22 +283,17 @@ export function ConfigPanel({ model }: { model: AppModel }) {
   const reviewing = stage.kind === "review" || stage.kind === "saving" || stage.kind === "conflict" || stage.kind === "refused" || stage.kind === "unconfirmed";
   return (
     <>
-      {read.error ? <Notice tone="bad">{t("config.readError", { message: read.error.message })}</Notice> : null}
-      {facts ? (
-        <Notice>
-          <Rich text={t("config.restart", { path: facts.path ?? "config.toml" })} />
-          {facts.file.present ? null : <div>{t("config.absent")}</div>}
-        </Notice>
-      ) : null}
+      {read.error ? <Notice tone="bad">{t("config.readonlyError")}</Notice> : null}
       {facts && !facts.file.valid ? <Notice tone="bad">{t("config.invalid", { error: facts.file.error ?? "" })}</Notice> : null}
       {facts?.differs ? (
         <Notice tone="wait" title={t("config.differs")}>
-          {facts.differing?.length ? <div>{t("config.differsFields", { fields: facts.differing.join(", ") })}</div> : null}
+          {facts.differing?.length ? <div>{t("config.differsValues")}</div> : null}
         </Notice>
       ) : null}
       {stage.kind === "saved" ? (
         <Section title={t(stage.changes.length ? "config.saved" : "config.savedNone")} actions={<Button variant="link" onClick={() => config.dismissResult()}>{t("common.close")}</Button>}>
           {stage.restartRequired ? <Notice tone="wait">{t("config.restartRequired")}</Notice> : null}
+          {stage.changes.some((c) => c.appliedToRunningOwner) ? <Notice>{t("config.appliedNext")}</Notice> : null}
           {stage.warning ? <Notice tone="wait">{stage.warning}</Notice> : null}
           <DiffList
             beforeLabel={t("config.previous")}

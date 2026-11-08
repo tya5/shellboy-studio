@@ -1,6 +1,6 @@
 // Location of the UI, as a fragment. `#token=` belongs to the entry point, not to routing.
 export type ViewName = "conversation" | "monitor" | "inbox" | "analytics" | "settings" | "branches" | "threads" | "apps" | "setup";
-export const SETTINGS_SECTIONS = ["connections", "models", "embeddings", "shell", "storage", "compaction", "studio", "appearance"] as const;
+export const SETTINGS_SECTIONS = ["general", "connections", "compaction", "storage", "index", "agent", "studio"] as const;
 export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
 export const ANALYTICS_SECTIONS = ["overview", "tokens", "compaction", "threads", "storage", "memory", "index"] as const;
 export type AnalyticsSection = (typeof ANALYTICS_SECTIONS)[number];

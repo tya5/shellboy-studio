@@ -30,7 +30,7 @@ export function Settings({ context, onClose }: { context: DesignContext; onClose
   return (
     <aside ref={root} class="panel" aria-label={t("settings.title")}>
       <AppearanceChoices context={context} />
-      <a class="btn link" href={formatRoute({ view: "settings", section: "appearance" })} onClick={onClose}>
+      <a class="btn link" href={formatRoute({ view: "settings", section: "general" })} onClick={onClose}>
         {t("settings.all")}
       </a>
       {version ? <div class="muted caption">{t("settings.version", { version })}</div> : null}

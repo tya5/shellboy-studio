@@ -536,6 +536,13 @@ the foundation works end to end (§2.1).
 | Bundle guides in Studio and overwrite the installed agent guide at startup | The guide describes Studio rather than core; no user AGENTS.md is changed. A custom apps directory is shown by Studio, not inferred from the data directory. | The Apps host exposes an agent-readable discovery surface for custom directories. |
 | Require a typed working folder and review of the exact request before creating a Thread | The browser cannot safely browse the host filesystem through the current RPC; typing gives explicit choice without adding bridge filesystem access. An uncertain create/send is not retried automatically. | Shellboy adopts a bounded, authorized folder-selection surface. |
 
+### Settings editing decision (2026-11-08)
+
+| Decision | Reason and impact | Revisit when |
+|---|---|---|
+| Configuration editing uses the owner's file hash and reports the owner's per-change application flags | Concurrent edits must be refused rather than overwritten; connection generations may apply without a restart while other changes do not. | The owner changes its config-edit contract. |
+| Keep the Shellboy release pin unchanged while validating against a temporary origin/main pairing | The pinned tag does not include the new operations; a local patch is not a release pairing. | A suitable Shellboy tag is published and the pairing is approved. |
+
 ### Owner version information (2026-11-08)
 
 | Decision | Reason and impact | Revisit when |

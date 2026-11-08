@@ -2,7 +2,7 @@ import { LANGS, type DesignContext } from "../../../ui-core/src";
 import { Button, ButtonGroup } from "../system/components";
 
 /** Theme, design and language: per-browser choices, shown in the popover and in Settings. */
-export function AppearanceChoices({ context }: { context: DesignContext }) {
+export function AppearanceChoices({ context, showLanguage = true }: { context: DesignContext; showLanguage?: boolean }) {
   const { model, prefs, designs, setPrefs } = context;
   const t = model.t.value;
   const current = designs.find((d) => d.name === prefs.value.design);
@@ -28,14 +28,14 @@ export function AppearanceChoices({ context }: { context: DesignContext }) {
           </ButtonGroup>
         </>
       ) : null}
-      <h3>{t("settings.language")}</h3>
+      {showLanguage ? <><h3>{t("settings.language")}</h3>
       <ButtonGroup label={t("settings.language")}>
         {LANGS.map((lang) => (
           <Button key={lang} aria-pressed={prefs.value.lang === lang} onClick={() => setPrefs({ lang })}>
             {t(`lang.${lang}`)}
           </Button>
         ))}
-      </ButtonGroup>
+      </ButtonGroup></> : null}
     </>
   );
 }
