@@ -3,8 +3,11 @@ import importlib.util
 import os
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import unittest
+
+sys.dont_write_bytecode = True
 
 spec = importlib.util.spec_from_file_location("exact_owner", Path(__file__).with_name("exact-owner.py"))
 gate = importlib.util.module_from_spec(spec)

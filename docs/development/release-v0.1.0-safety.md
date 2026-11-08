@@ -102,3 +102,11 @@ compared: that remains a future gate which fetches the official tag, compares
 its peeled commit with Cargo.lock, builds that verified checkout, then asserts
 both package and binary version before owner tests. Public identity-only JSON
 records those comparisons, with no local paths or user values.
+
+After following local main `fb1dc5c8` (scroll plus character only), final local
+frontend checks pass 625 tests and production build. Identity fixtures pass all
+21 cases; source and all three synthetic archives pass 11 local links each.
+Workflow YAML/tool Python syntax and rust-slot format checks pass. This
+follow-up does not run an owner or change the published Core pin. No attachments
+are included. The 21 identity cases are synthetic evidence only, not evidence
+that the future official tag matches the current lock.
