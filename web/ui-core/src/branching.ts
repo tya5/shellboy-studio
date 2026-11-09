@@ -292,11 +292,13 @@ export class Branches {
     ++this.projectionEpoch;
     const generation = ++this.familyGeneration;
     this.again = false;
-    this.previewCancel.cancel();
-    this.cancel.cancel();
-    if (generation !== this.familyGeneration) return;
+    const previous = this.previewCancel;
+    const marker = this.previewCancel = new Cancel();
+    const familyCancel = this.cancel;
     this.excerptBatch.reset();
-    if (generation !== this.familyGeneration) return;
+    familyCancel.cancel();
+    previous.cancel();
+    if (marker !== this.previewCancel || generation !== this.familyGeneration) return;
     if (this.state.peek().loading) this.state.value = { ...this.state.peek(), loading: false };
   }
 
@@ -355,7 +357,11 @@ export class Branches {
   }
 
   clearActions(): void {
-    this.previewCancel.cancel();
+    const previous = this.previewCancel;
+    const marker = this.previewCancel = new Cancel();
+    const generation = this.familyGeneration;
+    previous.cancel();
+    if (marker !== this.previewCancel || generation !== this.familyGeneration) return;
     batch(() => {
       this.rewind.value = { kind: "idle" };
       this.fork.value = { kind: "idle" };
@@ -381,12 +387,14 @@ export class Branches {
     const token = this.invocation(target);
     const previewOwner = { owner: token.owner };
     if (!this.visible(previewOwner, token)) return;
-    this.previewCancel.cancel();
+    const previous = this.previewCancel;
     const cancel = this.previewCancel = new Cancel();
+    previous.cancel();
+    if (cancel !== this.previewCancel || !this.visible(previewOwner, token)) { cancel.cancel(); return; }
     this.rewind.value = { kind: "previewing" };
-    if (!this.visible(previewOwner, token)) { cancel.cancel(); return; }
+    if (cancel !== this.previewCancel || !this.visible(previewOwner, token)) { cancel.cancel(); return; }
     const out = await this.ops.threadRewindPreview({ thread_id: target.threadId, node_id: target.nodeId }, { cancel });
-    if (cancel.cancelled || !this.visible(previewOwner, token)) return;
+    if (cancel !== this.previewCancel || cancel.cancelled || !this.visible(previewOwner, token)) return;
     this.rewind.value = out.ok ? { kind: "ready", facts: readRewind(out.value), target } : { kind: "refused", error: out.error };
   }
 
@@ -453,10 +461,11 @@ export class Branches {
 
   async forkAt(target: BranchTarget, text = ""): Promise<void> {
     const token = this.invocation(target);
-    const original = this.forkAttempt;
-    if ((!original || original.owner === this.owner()) && !this.visible({ owner: this.owner() }, token)) return;
     text = text.trim();
     const key = JSON.stringify({ thread_id: target.threadId, node_id: target.nodeId, text });
+    const original = this.forkAttempt;
+    const diagnostic = original && original.key === key && original.owner !== this.owner();
+    if (!diagnostic && !this.visible({ owner: this.owner() }, token)) return;
     let attempt = this.forkAttempt;
     if (attempt && (attempt.uncertain || attempt.running) && attempt.key !== key) {
       this.refusal(`Resolve the original fork/request outcome (${attempt.send?.id ?? attempt.receipt.id}) before changing its target or text`);

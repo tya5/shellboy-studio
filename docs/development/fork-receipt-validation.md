@@ -107,3 +107,10 @@ wrong family field and a required FamilyState field) and a real loading-thread
 guard failure are separately recorded in the inventory. No assertion was skipped,
 no timeout lengthened and no unsafe behavior treated as successful acceptance.
 Previous rejected SHA history and earlier UNKNOWN/observation exclusions remain.
+
+The independent 82db5a6 review held the candidate on old-owner changed-key slot
+poisoning and reentrant preview cancellation. Exact-key-only diagnostic admission
+and preinstalled Cancel/sentinel ownership repair those classes. Five additional
+cross-boundary regressions include valid next action without consumed receipt ID
+and restart/clear/leave/select cancellation callbacks. These are separate from
+prior 220-grid evidence. No policy, runtime evidence or public contract changes.

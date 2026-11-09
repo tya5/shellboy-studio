@@ -79,3 +79,46 @@ S6 must independently verify exact source/coverage before adoption. The old 706
 result did not satisfy this inventory gate. No runtime/browser/owner/Rust/CI/
 cleanup/push evidence is introduced here. Unknown earlier provenance remains
 unknown; opaque JSON is neither read nor used for a response contract.
+
+## Cross-Boundary Follow-Up To Held 82db5a6
+
+The old-owner admission exception was too broad: changed key plus stale selected
+point could mint an uncertain slot despite zero mutation. The repaired predicate
+normalizes the key first and permits only exact retained-key diagnostic lookup.
+Every fresh/replacement attempt requires active context before ID/slot changes,
+regardless of old owner. Regression `R1 old-owner changed stale payload` checks
+no ID consumed and subsequent valid new-owner action gets its own ID and proceeds.
+This is distinct from the existing old-exact-key safeopaque grid.
+
+Preview cancellation is itself a notifying boundary. New preview Cancel ownership
+is installed before cancelling the captured old Cancel, then identity and the
+original invocation are rechecked before previewing, RPC and adoption. Clear and
+leave install a sentinel before cancelling; losing to explicit reentrant preview
+means no subsequent stale clear/publication. Select delegates to that same clear
+boundary. Leave cancels its captured family reader, not a newly installed reader.
+Four `R1 preview ... cancel callback` tests exercise restart/clear/leave/select,
+requiring initial plus one explicit new preview, zero outer restart and preserved
+new ready result. The first 220-grid result did not cover these two classes and
+remains held; its 926 successes are not retroactively complete acceptance.
+
+## Ownership Interpretation
+
+Every matrix row uses three distinct owners: attempt facts (immutable receipt /
+canonical outcome), invocation qualification (captured owner/session/view/target),
+and read admission (owned Cancel/epoch/row identity). Five ordering rules apply:
+classify key and qualify before reserve; install replacement handle before old
+notification; recheck the same token/handle before the next effect; save canonical
+facts independently of projection; settle only the original owned frame.
+
+The counterexample/control for attempt admission is old-owner changed stale key
+versus valid new key (no slot/ID change versus a distinct accepted ID). For preview
+admission it is outer cancel callback versus explicit nested winner (outer zero
+RPC and no clear versus nested ready). For row ownership it is old same-ID release
+versus newly admitted row (detach original only). For invocation projection it is
+late owner/ABA/leave/retarget versus unchanged control (zero stale UI/read/RPC
+versus one qualified continuation). For family ownership it is old cancelled walk
+versus explicit new read (no old adoption/loading write versus fresh adoption).
+The table's terminal setter/finalizer rows have no subsequent external effect;
+their caller still rechecks its own qualification. No extra counter/boolean or
+framework is needed to represent these owners. Test totals are not completion
+proof; exact independent review of these counterexamples remains the gate.

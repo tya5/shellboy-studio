@@ -8,7 +8,8 @@ const transitions = ["B", "ABA", "unavailable", "leave", "thread", "target", "sa
 type Transition = typeof transitions[number];
 function fixture() {
   const t = new FakeTransport(), link = new Link(t); link.start(); t.open(); let owner: string | undefined = "a", n = 0;
-  const b = new Branches(new Operations(link, () => `${owner}:${++n}`), () => owner);
+  const ops = new Operations(link, () => `${owner}:${++n}`);
+  const b = new Branches(ops, () => owner);
   const target = { threadId: "parent", nodeId: "point" }; b.target.value = target; b.ownerChanged(owner);
   b.state.value = { ...b.state.peek(), threadId: "parent" };
   const change = (o: string | undefined) => { owner = o; b.ownerChanged(o); };
@@ -20,7 +21,7 @@ function fixture() {
     if (kind === "thread") b.state.value = { ...b.state.peek(), threadId: "other" };
     if (kind === "target") b.target.value = { ...target, nodeId: "other" };
   };
-  return { t, link, b, target, invalidate };
+  return { t, link, ops, b, target, invalidate };
 }
 const child = { thread_id: "child", title: "child" };
 const boundaries = ["forking", "failed", "done", "partial-error", "success-clear", "send-clear", "fork-await", "send-await"] as const;
@@ -222,4 +223,29 @@ it("R1 pending and cached fork retarget never dispatch; a valid new explicit act
   f.t.ok(original.id,child);await p;await f.b.forkAt(f.target);expect(f.t.calls("thread.fork")).toHaveLength(1);
   const next={threadId:"parent",nodeId:"other"};const fresh=f.b.forkAt(next);const second=f.t.calls("thread.fork")[1]!;
   expect(second.operation_id).not.toBe(original.operation_id);expect(second.args).toEqual({thread_id:"parent",node_id:"other"});f.t.drop();await fresh;f.link.stop();
+});
+
+it("R1 old-owner changed stale payload cannot replace the slot or mint a fresh receipt",async()=>{
+  const f=fixture();const first=f.b.forkAt(f.target);const original=f.t.calls("thread.fork")[0]!;
+  f.t.ok(original.id,child);await first;f.invalidate("B");const current={...f.target,nodeId:"new"};f.b.target.value=current;
+  await f.b.forkAt(f.target,"stale changed");expect(f.t.calls("thread.fork")).toHaveLength(1);
+  const fresh=f.b.forkAt(current,"valid");const call=f.t.calls("thread.fork")[1]!;
+  expect(call.operation_id).toBe("b:2");expect(call.args).toEqual({thread_id:"parent",node_id:"new"});
+  f.t.drop();await fresh;f.link.stop();
+});
+for(const trigger of ["restart", "clear", "leave", "select"] as const) it(`R1 preview ${trigger} cancel callback cannot overwrite a newer explicit preview`,async()=>{
+  const f=fixture();const original=f.ops.threadRewindPreview.bind(f.ops);let nested:Promise<void>|undefined,hooked=false;
+  f.ops.threadRewindPreview=(args,read)=>{
+    if(!hooked){hooked=true;read?.cancel?.add(()=>{nested=f.b.previewRewind(f.b.target.peek()!);});}
+    return original(args,read);
+  };
+  const initial=f.b.previewRewind(f.target);
+  let restart:Promise<void>|undefined;
+  if(trigger==="restart")restart=f.b.previewRewind(f.target);
+  else if(trigger==="leave")f.b.leave();
+  else if(trigger==="select")f.b.select("parent","new-point");
+  else f.b.clearActions();
+  expect(f.t.calls("thread.rewind")).toHaveLength(2);expect(f.b.rewind.value.kind).toBe("previewing");
+  f.t.ok(f.t.calls("thread.rewind")[1]!.id,{removed_node_count:2});await nested;await initial;await restart;
+  expect(f.b.rewind.value.kind).toBe("ready");expect(f.t.calls("thread.rewind")).toHaveLength(2);f.b.leave();f.link.stop();
 });
