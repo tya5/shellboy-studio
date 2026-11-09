@@ -90,3 +90,12 @@ describe("layout is not upward input", () => {
     expect(intent.scroll(el)).toBe(true);
   });
 });
+
+it("does not write scrollTop when geometry and the requested position are unchanged", () => {
+  let top = 400, writes = 0;
+  const el = { scrollHeight: 600, clientHeight: 200, get scrollTop() { return top; }, set scrollTop(value: number) { writes++; top = value; } } as HTMLElement;
+  const intent = new ScrollIntent();
+  for (let tick = 0; tick < 5; tick++) intent.program(el, el.scrollHeight);
+  expect(writes).toBe(0);
+  top = 300; intent.program(el, el.scrollHeight); expect(writes).toBe(1); expect(top).toBe(400);
+});

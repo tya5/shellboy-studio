@@ -4,7 +4,8 @@ export class ScrollIntent {
   private top = 0;
   private programTop: number | undefined;
   program(box: HTMLElement, top: number): void {
-    box.scrollTop = top;
+    const bounded = Math.min(Math.max(0, top), Math.max(0, box.scrollHeight - box.clientHeight));
+    if (box.scrollTop !== bounded) box.scrollTop = bounded;
     this.top = box.scrollTop;
     this.programTop = box.scrollTop;
     this.height = box.scrollHeight;

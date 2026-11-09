@@ -690,7 +690,7 @@ export class AppModel {
           // Saved output changes only while a shell runs, and once more as it ends.
           for (const [id, lastState] of this.watchedOutputs) {
             const fact = this.shells.value.get(id);
-            if (!fact || this.outputs.peek().get(id)?.loading) continue;
+            if (!fact || this.outputReads.has(id)) continue;
             if (fact.state !== lastState || statusOfShell(fact.state, fact.exit_code) === "running") {
               this.watchedOutputs.set(id, fact.state);
               void this.readOutput(id);
@@ -709,15 +709,21 @@ export class AppModel {
     void this.readOutput(executionId);
     return () => {
       this.watchedOutputs.delete(executionId);
-      this.outputReads.get(executionId)?.cancel();
+      const cancel = this.outputReads.get(executionId);
       this.outputReads.delete(executionId);
+      if (this.outputs.peek().get(executionId)?.loading) {
+        const next = new Map(this.outputs.peek()); next.delete(executionId); this.outputs.value = next;
+      }
+      cancel?.cancel();
     };
   }
 
   private async readOutput(executionId: string): Promise<void> {
-    this.outputReads.get(executionId)?.cancel();
+    const previous = this.outputReads.get(executionId);
     const cancel = new Cancel();
     this.outputReads.set(executionId, cancel);
+    previous?.cancel();
+    if (this.outputReads.get(executionId) !== cancel) return;
     const forget = this.threadReads.add(() => cancel.cancel());
     try {
       await this.readOutputPages(executionId, cancel);
@@ -729,10 +735,11 @@ export class AppModel {
 
   private async readOutputPages(executionId: string, cancel: Cancel): Promise<void> {
     const cur = this.outputs.peek().get(executionId);
-    this.outputs.value = setBounded(this.outputs.peek() as Map<string, OutputState>, executionId, {
+    // A validated empty output is still a saved result, not first-load absence.
+    if (!cur || cur.loading || cur.error !== undefined) this.outputs.value = setBounded(this.outputs.peek() as Map<string, OutputState>, executionId, {
       text: cur?.text ?? "",
       loading: true,
-      cutOff: false,
+      cutOff: cur?.cutOff ?? false,
       error: undefined,
     });
     let text = "";
@@ -745,9 +752,11 @@ export class AppModel {
         break;
       }
       const out = await this.ops.shellRead({ execution_id: executionId, ...(cursor !== undefined && { cursor }) }, { cancel });
+      if (this.outputReads.get(executionId) !== cancel) return;
       if (!out.ok) {
         if (out.error.kind === "cancelled") {
-          // Nobody is looking. Reopening the row reads again.
+          // Keep an already validated snapshot; only discard an unfinished first load.
+          if (cur && !cur.loading && cur.error === undefined) return;
           const next = new Map(this.outputs.peek());
           next.delete(executionId);
           this.outputs.value = next;
@@ -760,12 +769,10 @@ export class AppModel {
       cursor = out.value.cursor;
       if (out.value.text === "" || cursor === undefined) break;
     }
-    this.outputs.value = setBounded(this.outputs.peek() as Map<string, OutputState>, executionId, {
-      text: error !== undefined ? (cur?.text ?? "") : text,
-      loading: false,
-      cutOff,
-      error,
-    });
+    const next: OutputState = { text: error !== undefined ? (cur?.text ?? "") : text, loading: false, cutOff, error };
+    const current = this.outputs.peek().get(executionId);
+    if (current?.text === next.text && current.loading === next.loading && current.cutOff === next.cutOff && current.error === next.error) return;
+    this.outputs.value = setBounded(this.outputs.peek() as Map<string, OutputState>, executionId, next);
   }
 
   /** Read one message beyond its excerpt. On request only. */
