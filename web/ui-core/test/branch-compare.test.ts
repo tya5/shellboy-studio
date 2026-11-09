@@ -1,3 +1,4 @@
+import { effect } from "@preact/signals-core";
 import { describe, expect, it } from "vitest";
 import { BranchCompare, anchorCandidate, compareInteger, recordedCounter } from "../src/branch-compare";
 import { readFamily } from "../src/branches";
@@ -163,6 +164,113 @@ describe("limited Branches compare contracts", () => {
   it("body UTF8 limit and wrong node ID are unavailable rather than text from another target", async () => {
     const { c, handle } = fixture(); await c.refresh(family());
     handle(() => ({ ok: true, value: { node_id: "other", text: "x" } })); await c.openBody(0,"anchor"); expect(c.body.value.unavailable).toBe(true); expect(c.body.value.text).toBe("");
+  });
+
+  it.each(["initial", "busy", "metadata"])("rejects synchronous owner reentry at %s publication before next RPC", async boundary => {
+    const { c, calls } = fixture(); let triggered = false;
+    const stop = effect(() => {
+      const sides = c.state.value.sides;
+      const hit = boundary === "initial" ? sides.length > 0 : boundary === "busy" ? sides.some(s => s.busy) : sides.some(s => s.anchor);
+      if (!triggered && hit) { triggered = true; c.context("owner-b", true); }
+    });
+    try { await c.refresh(family()); expect(triggered).toBe(true); expect(calls).toHaveLength(boundary === "metadata" ? 2 : 0); expect(c.state.value.sides).toEqual([]); } finally { stop(); }
+  });
+  it.each(["usage", "body"])("does not send %s after its synchronous budget/busy publication changes owner", async kind => {
+    const { c, calls } = fixture(); await c.refresh(family()); let triggered = false;
+    const stop = effect(() => {
+      const state = c.state.value; const body = c.body.value;
+      if (!triggered && (kind === "usage" ? state.sides.some(s => s.usageCalls > 0) : body.busy)) { triggered = true; c.context("owner-b", true); }
+    });
+    try { if (kind === "usage") await c.usage(0); else await c.openBody(0,"anchor"); expect(triggered).toBe(true); expect(calls).toHaveLength(4); expect(c.state.value.sides).toEqual([]); } finally { stop(); }
+  });
+
+  it.each(["pair", "page", "route"])("initial side publication invalidation by %s starts zero RPCs", async boundary => {
+    const { c, calls } = fixture(); let triggered = false;
+    const stop = effect(() => {
+      if (!triggered && c.state.value.sides.length) { triggered = true; if (boundary === "pair") c.choose("b"); else if (boundary === "page") c.pageChanged(); else c.context("owner-a/another-route", true); }
+    });
+    try { await c.refresh(family()); expect(calls).toHaveLength(0); expect(c.state.value.sides).toEqual([]); } finally { stop(); }
+  });
+
+  it("old settlements cannot clear fresh busy/capacity after owner transition", async () => {
+    const { c, calls, handle, normal } = fixture(); const old: (() => void)[] = [];
+    handle((kind,args) => new Promise(resolve => old.push(() => resolve(normal(kind,args)))));
+    const pending = c.refresh(family()); c.context("B",true); c.choose("a"); c.choose("b");
+    old.forEach(f => f()); await pending;
+    const fresh: (() => void)[] = [];
+    handle((kind,args) => new Promise(resolve => fresh.push(() => resolve(normal(kind,args)))));
+    const p = c.refresh(family()); await tick(); expect(c.state.value.sides.every(s => s.busy)).toBe(true);
+    await c.refresh(family()); expect(calls).toHaveLength(4);
+    c.leave(); fresh.forEach(f => f()); await p; expect(c.state.value.sides).toEqual([]);
+  });
+  it("owner ABA during initial publish does not revive old invocation", async () => {
+    const { c, calls } = fixture(); let once = false;
+    const stop = effect(() => { if (!once && c.state.value.sides.length) { once = true; c.context("B",true); c.context("owner-a/branches/a",true); } });
+    try { await c.refresh(family()); expect(calls).toHaveLength(0); } finally { stop(); }
+  });
+
+  it.each(["initial", "busy", "point", "window", "usage", "body"].flatMap(boundary => ["B", "ABA", "leave", "pair", "unknownSame", "unchanged"].map(transition => ({ boundary, transition }))))("inventory $boundary x $transition keeps old dispatch/projection fenced", async ({ boundary, transition }) => {
+    const { c, calls } = fixture();
+    if (boundary === "usage" || boundary === "body") await c.refresh(family());
+    let hit = false; let transientCleared = false;
+    const stop = effect(() => {
+      const state = c.state.value; const body = c.body.value;
+      const reachable = boundary === "initial" ? state.sides.length > 0 : boundary === "busy" ? state.sides.some(s => s.busy) : boundary === "point" ? state.sides.some(s => s.anchor) : boundary === "window" ? state.sides.some(s => s.pages.length) : boundary === "usage" ? state.sides.some(s => s.usageCalls) : body.busy;
+      if (!hit && reachable) {
+        hit = true;
+        if (transition === "B") c.context("B",true);
+        else if (transition === "ABA") { c.context("B",true); c.context("owner-a/branches/a",true); }
+        else if (transition === "leave") c.leave();
+        else if (transition === "pair") c.choose("b");
+        else if (transition === "unknownSame") { c.context("",false); c.context("owner-a/branches/a",true); }
+        if (transition !== "unchanged") transientCleared = !c.state.peek().sides.length && !c.body.peek().text && !c.body.peek().busy;
+      }
+    });
+    try {
+      if (boundary === "usage") await c.usage(0); else if (boundary === "body") await c.openBody(0,"anchor"); else await c.refresh(family());
+      expect(hit).toBe(true);
+      if (transition === "unchanged") expect(calls).toHaveLength(boundary === "usage" || boundary === "body" ? 5 : 4);
+      else {
+        expect(transientCleared).toBe(true); expect(c.state.value.sides).toEqual([]); expect(c.body.value.text).toBe("");
+        expect(calls).toHaveLength(boundary === "initial" || boundary === "busy" ? 0 : boundary === "point" ? 2 : 4);
+      }
+    } finally { stop(); c.leave(); }
+  });
+  it("notification refresh reentry issues only the explicit new invocation, not old pair continuation", async () => {
+    const { c, calls } = fixture(); let once = false; let fresh: Promise<void> | undefined;
+    const stop = effect(() => { if (!once && c.state.value.sides.length) { once = true; fresh = c.refresh(family()); } });
+    try { await c.refresh(family()); await fresh; expect(calls).toHaveLength(4); const cancel = calls[0]!.cancel; expect(calls.every(x => x.cancel === cancel)).toBe(true); expect(cancel.cancelled).toBe(false); } finally { stop(); c.leave(); }
+  });
+
+  it.each(["usageResult", "bodyResult", "usageFailure", "bodyFailure", "error", "finally", "resetBody", "resetState", "cancelCallback"].flatMap(boundary => ["B", "ABA", "leave", "pair", "unknownSame", "unchanged"].map(transition => ({ boundary, transition }))))("inventory terminal/reset $boundary x $transition owns only its admission", async ({ boundary, transition }) => {
+    const { c, calls, handle, normal } = fixture();
+    const result = boundary === "usageResult" || boundary === "bodyResult" || boundary === "usageFailure" || boundary === "bodyFailure";
+    const reset = boundary === "resetBody" || boundary === "resetState" || boundary === "cancelCallback";
+    if (result || reset) await c.refresh(family());
+    if (boundary === "resetBody") await c.openBody(0,"anchor");
+    if (boundary === "error" || boundary === "usageFailure" || boundary === "bodyFailure") handle(() => ({ ok:false, error:{ message:"read failed" } }));
+    let hit = false; let cleared = false;
+    const transitionNow = () => {
+      hit = true;
+      if (transition === "B") c.context("B",true);
+      else if (transition === "ABA") { c.context("B",true); c.context("owner-a/branches/a",true); }
+      else if (transition === "leave") c.leave();
+      else if (transition === "pair") c.choose("b");
+      else if (transition === "unknownSame") { c.context("",false); c.context("owner-a/branches/a",true); }
+      if (transition !== "unchanged") cleared = !c.state.peek().sides.length && !c.body.peek().busy && !c.body.peek().text;
+    };
+    const stop = boundary === "cancelCallback" ? (() => { calls[0]!.cancel.add(transitionNow); return () => {}; })() : effect(() => {
+      const state = c.state.value; const body = c.body.value;
+      const reached = boundary === "usageFailure" ? state.sides.some(s => s.error) : boundary === "bodyFailure" ? body.unavailable : boundary === "usageResult" ? state.sides.some(s => s.usage) : boundary === "bodyResult" ? body.pages > 0 : boundary === "error" ? state.sides.some(s => s.error) : boundary === "finally" ? state.sides.some(s => !s.busy && s.pages.length) : boundary === "resetBody" ? !body.node : !state.sides.length;
+      if (!hit && reached) transitionNow();
+    });
+    try {
+      if (boundary === "usageResult" || boundary === "usageFailure") await c.usage(0); else if (boundary === "bodyResult" || boundary === "bodyFailure") await c.openBody(0,"anchor"); else if (reset) c.pageChanged(); else await c.refresh(family());
+      expect(hit).toBe(true);
+      if (transition !== "unchanged") { expect(cleared).toBe(true); expect(c.state.value.sides).toEqual([]); expect(c.body.value.text).toBe(""); }
+      const expected = result || boundary === "resetBody" ? 5 : boundary === "error" ? 2 : 4;
+      expect(calls).toHaveLength(expected);
+    } finally { stop(); c.leave(); handle(normal); }
   });
 
 });
