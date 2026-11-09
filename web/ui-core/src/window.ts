@@ -1,3 +1,4 @@
+import type { HandoffRecord } from "../../data/src/handoff";
 // The long-thread reader's model (docs/design/long-threads.md): positional windows of a Thread's
 // path held in bounded buckets, a measured scroll space over one loaded run, and adjacent reads.
 // It stops at an unloaded edge. It knows no pixels except the heights it is told, and never walks the history.
@@ -38,6 +39,7 @@ export const correctedScrollTop = (scrollTop: number, anchorOffsetBefore: number
 const ordinalOf = (item: HistoryItem): number | undefined => item.selection?.ordinal;
 
 class Bucket {
+  readonly handoffs = new Map<number, { record: HandoffRecord; release: (reason: "return" | "end") => void }>();
   items: (HistoryItem | undefined)[] = new Array(WINDOW_NODES).fill(undefined);
   filled = 0;
 }
@@ -117,6 +119,20 @@ export class ConversationWindow {
   itemAt(i: number): HistoryItem | undefined {
     return this.buckets.get(Math.floor(i / WINDOW_NODES))?.items[i % WINDOW_NODES];
   }
+  /** Pure ownership receive; no navigation, reads or scroll correction. */
+  acceptHandoff(record: HandoffRecord, scope: string, release: (reason: "return" | "end") => void): boolean {
+    const proof = record.proof;
+    if (this.disposed || !proof || proof.scope !== scope || proof.kind !== 'assistant_response' || proof.revision !== this.revision) return false;
+    const bucket = this.buckets.get(Math.floor(proof.ordinal / WINDOW_NODES));
+    const item = bucket?.items[proof.ordinal % WINDOW_NODES];
+    if (!bucket || !item || item.node_id !== record.nodeId || item.kind !== proof.kind) return false;
+    const old = bucket.handoffs.get(proof.ordinal);
+    if (old) return old.record === record;
+    bucket.handoffs.set(proof.ordinal, { record, release });
+    this.bump();
+    return true;
+  }
+
   /** Items in the render range that are held, ascending. */
   rangeItems(): HistoryItem[] {
     const r = this.renderRange();
@@ -303,6 +319,10 @@ export class ConversationWindow {
   /** Leaving the view or the Thread: nothing more is read. */
   dispose(): void {
     this.disposed = true;
+    const attachments = [...this.buckets.values()].flatMap(bucket => [...bucket.handoffs.values()]);
+    for (const bucket of this.buckets.values()) bucket.handoffs.clear();
+    this.buckets.clear();
+    for (const attachment of attachments) attachment.release(this.disposed ? "end" : "return");
     this.stopTimer?.();
     this.stopTimer = undefined;
     this.cancelAll();
@@ -467,7 +487,10 @@ export class ConversationWindow {
     this.jumping = false;
     this.lastAnchor = undefined;
     this.wanted.clear();
+    const attachments = [...this.buckets.values()].flatMap(bucket => [...bucket.handoffs.values()]);
+    for (const bucket of this.buckets.values()) bucket.handoffs.clear();
     this.buckets.clear();
+    for (const attachment of attachments) attachment.release(this.disposed ? "end" : "return");
     this.failed.clear();
     this.heights = new Heights();
     this.revision = undefined;
@@ -526,7 +549,11 @@ export class ConversationWindow {
 
   /** Eviction discards both content and its measurements. */
   private dropBucket(b: number): void {
+    const held = this.buckets.get(b);
+    const attachments = held ? [...held.handoffs.values()] : [];
+    held?.handoffs.clear();
     this.buckets.delete(b);
+    for (const attachment of attachments) attachment.release("return");
     this.wanted.delete(b);
     this.failed.delete(b);
     this.inflight.get(b)?.cancel.cancel();
@@ -552,6 +579,8 @@ export class ConversationWindow {
         }
         const slot = o % WINDOW_NODES;
         if (held.items[slot] === undefined) held.filled++;
+        const attachment = held.handoffs.get(o);
+        if (attachment && attachment.record.nodeId !== item.node_id) { held.handoffs.delete(o); attachment.release("return"); }
         held.items[slot] = item;
         // A node with nothing to draw takes no height; once known, that's a measurement of zero.
         if (projectConversation([item]).length === 0) this.heights.set(o, 0);

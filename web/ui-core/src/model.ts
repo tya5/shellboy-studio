@@ -4,7 +4,7 @@ import { GuideRegistration } from "./guide-registration";
 import { recentAppFolders } from "./app-templates";
 // Screen logic over the data layer: which Thread is open, what the views show, the send, stop,
 // retry and archive flows. Saved facts stay in the data layer; nothing here is optimistic.
-import { computed, effect, signal, untracked, type ReadonlySignal, type Signal } from "@preact/signals-core";
+import { batch, computed, effect, signal, untracked, type ReadonlySignal, type Signal } from "@preact/signals-core";
 import { Cancel, type Handle, type Operations, type OpError, type ShellboyData, type ShellEntry, type ThreadDetails, type ThreadHandle } from "../../data/src";
 import { CAPABILITY_HISTORY_WINDOW, threadReplyItems, noReplyWait, type ReplyWait, type ReplyWaitAdapter } from "../../data/src";
 import { MissingPins, MonitorSelection, type MonitorArchive } from "./monitor-selection";
@@ -530,11 +530,12 @@ export class AppModel {
   }
 
   /** One reader per open Thread while the Conversation shows and the owner has the positional read. */
+  private readerHandoffScope: string | undefined;
   private syncWindow(): void {
     const h = this.handle.value;
     const want = this.route.value.view === "conversation" && h !== undefined && this.data.capabilities.value.includes(CAPABILITY_HISTORY_WINDOW);
     const cur = this.longReader.peek();
-    if (cur && (!want || this.readerThread !== h.threadId)) {
+    if (cur && (!want || this.readerThread !== h.threadId || this.readerHandoffScope !== h.handoffScope())) {
       cur.dispose(); // leaving the view or the Thread cancels its reads
       this.longReader.value = undefined;
       this.readerThread = undefined;
@@ -542,6 +543,7 @@ export class AppModel {
     if (!want || !h) return;
     if (!this.longReader.peek()) {
       this.readerThread = h.threadId;
+      this.readerHandoffScope = h.handoffScope();
       this.readerTick = h.historyTick.peek();
       this.longReader.value = new ConversationWindow({ read: (a, c) => h.readWindow(a, c) });
     }
@@ -549,6 +551,12 @@ export class AppModel {
     if (tick !== this.readerTick) {
       this.readerTick = tick;
       this.longReader.peek()!.changed();
+    }
+    const reader = this.longReader.peek()!;
+    const records = h.handoff.value;
+    reader.version.value;
+    for (const record of records) if (record.status === "ready" && !record.transferred) {
+      batch(() => h.transferHandoff(record.attemptId, (attachment, release) => reader.acceptHandoff(attachment, h.handoffScope(), release)));
     }
     this.readerShells(this.longReader.peek()!);
   }

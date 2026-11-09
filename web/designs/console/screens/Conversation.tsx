@@ -214,19 +214,20 @@ function OrderedHistory({ model, handle, rows, win, history, scroller, pinned, f
     if (!handle) return;
     let attempt: string | undefined;
     return effect(() => {
-      const preview = handle.preview.value;
-      const next = preview?.kind === "live" ? preview.attemptId : undefined;
+      const next = handle.handoff.value[0]?.attemptId;
       if (next === attempt) return;
       attempt = next;
       setBoundary(next === undefined ? undefined : { attempt: next, ordinal: win?.total ?? 0, legacy: rows.length });
     });
   }, [handle, win]);
+  const owned = new Set(handle.handoff.value.filter(r => r.status === "ready").map(r => r.nodeId));
+  const visible = (row: ConversationRow): boolean => row.type !== "message" || (!owned.has(row.id) && !owned.has(row.id.replace(/:commentary$/, "")));
   return <>
         {win ? (
           <WindowedScroll
             model={model}
             win={win}
-            renderRow={(row) => <RowView model={model} row={row} />}
+            renderRow={(row) => visible(row) ? <RowView model={model} row={row} /> : <></>}
             live={<LiveMessage model={model} handle={handle} follow={follow} />}
             liveBoundary={boundary?.ordinal}
             statusLine={<ConversationStatus model={model} />}
@@ -255,10 +256,13 @@ function OrderedHistory({ model, handle, rows, win, history, scroller, pinned, f
                 {t("convo.loadError", { message: history.error.message })}
               </Notice>
             ) : null}
-            {rows.map((row, index) => (
-              <>{index === boundary?.legacy ? <LiveMessage model={model} handle={handle} follow={follow} /> : null}<div class="conversation-row" key={row.id}><RowView model={model} row={row} /></div></>
-            ))}
-            {boundary === undefined || boundary.legacy >= rows.length ? <LiveMessage model={model} handle={handle} follow={follow} /> : null}
+            {[
+              ...rows.flatMap((row, index) => [
+                ...(index === boundary?.legacy ? [<LiveMessage key="handoff-slot" model={model} handle={handle} follow={follow} />] : []),
+                <div class="conversation-row" key={row.id}>{visible(row) ? <RowView model={model} row={row} /> : null}</div>,
+              ]),
+              ...(boundary === undefined || boundary.legacy >= rows.length ? [<LiveMessage key="handoff-slot" model={model} handle={handle} follow={follow} />] : []),
+            ]}
             <ConversationStatus model={model} />
             {rows.length === 0 && !history?.error ? (
               loading ? <LoadingRows label={t("convo.loading")} rows={5} /> : <EmptyState icon="chat" character title={t("convo.empty")} body={t("convo.emptyBody")} />

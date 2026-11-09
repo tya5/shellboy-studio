@@ -1,9 +1,10 @@
+import { Handoff, type HandoffRecord } from "./handoff";
 // The view-model: signals holding saved facts re-read through the proxy, never invented.
 // Hints (`changed`, `resync`, `owner`) are triggers only; their payloads carry no data.
 import { batch, computed, signal, type ReadonlySignal } from "@preact/signals-core";
 import type { OpError, Outcome } from "./errors";
 import { Link, type ConnectionState, type LinkEvent } from "./link";
-import { LiveText, microtaskSchedule, type Preview, type PreviewDiscardReason, type Schedule } from "./live";
+import { microtaskSchedule, type Preview, type PreviewDiscardReason, type Schedule } from "./live";
 import { Cancel, Operations } from "./operations";
 import type {
   ArchivedFilter,
@@ -87,6 +88,11 @@ export interface ThreadHandle extends Handle {
   /** Oldest to newest, as the owner returns it; a window over the end of the path. */
   readonly history: ReadonlySignal<HistoryState>;
   readonly preview: ReadonlySignal<Preview>;
+  readonly handoff: ReadonlySignal<readonly HandoffRecord[]>;
+  readonly handoffOverflow: ReadonlySignal<boolean>;
+  retryHandoff(): Promise<void>;
+  handoffScope(): string;
+  transferHandoff(attemptId: string, accept: (record: HandoffRecord, release: (reason: "return" | "end") => void) => boolean): boolean;
   /** Counts hints for this Thread's history while the owner has `history.window`; the window reader follows it. */
   readonly historyTick: ReadonlySignal<number>;
   /** One positional read. Nothing is sent for a closed or paused Thread. */
@@ -132,29 +138,24 @@ class ThreadEntry {
   /** The next read starts from the beginning of the path, not from the last known item. */
   fullRead = true;
   /** Unsaved model text; its signal is the handle's `preview`. */
-  live: LiveText;
+  live: Handoff;
+  resolving: Promise<void> | undefined;
+  resolveAgain = false;
+  refreshAfterHandoff = false;
   historyTick = signal(0);
   /** Bumped by every history read; a read started earlier drops its result. */
   historyGen = 0;
   /** Cancels this Thread's reads: dropped if queued, a `cancel` frame if sent. Replaced on resume. */
   cancel = new Cancel();
-  /** Stops watching the history for the saved message. */
-  stopSaved: (() => void) | undefined;
   /** Nobody is looking: no reads, and no hints from the bridge. */
   paused = false;
   constructor(readonly id: string, schedule: Schedule) {
-    this.live = new LiveText(schedule, () => lastAssistantId(this.history.peek().items));
+    this.live = new Handoff(schedule);
   }
   get preview(): ReadonlySignal<Preview> {
     return this.live.preview;
   }
 }
-
-/** The newest saved model message on the loaded part of the path: how a preview learns it was saved. */
-const lastAssistantId = (items: readonly HistoryItem[]): string | undefined => {
-  for (let i = items.length - 1; i >= 0; i--) if (items[i]!.kind === "assistant_response") return items[i]!.node_id;
-  return undefined;
-};
 
 /** Keeps the first seen of each Thread, in order, within the bound. */
 function mergeRows(first: readonly ThreadSummary[], then: readonly ThreadSummary[]): ThreadSummary[] {
@@ -184,6 +185,7 @@ export class ShellboyData {
   private listRefs = 0;
   private listGen = 0;
   private entries = new Map<string, ThreadEntry>();
+  private handoffRead: { entry: ThreadEntry; done: Promise<void> } | undefined;
   private watchQueued = false;
   private hintWatchers = new Map<string, Set<() => void>>();
   private readonly schedule: Schedule;
@@ -317,7 +319,6 @@ export class ShellboyData {
       if (!this.hintWatchers.has(threadId) && new Set([...this.entries.keys(), ...this.hintWatchers.keys()]).size >= MAX_WATCHED_THREADS)
         throw new RangeError(`at most ${MAX_WATCHED_THREADS} Threads can be open at once`);
       entry = new ThreadEntry(threadId, this.schedule);
-      entry.stopSaved = entry.history.subscribe(() => entry!.live.checkSaved());
       this.entries.set(threadId, entry);
       this.scheduleWatch();
       if (this.canRead()) this.requestThread(threadId);
@@ -342,12 +343,17 @@ export class ShellboyData {
       setWorkActive,
       history: e.history,
       preview: e.preview,
+      handoff: e.live.records,
+      handoffOverflow: e.live.overflow,
+      handoffScope: () => this.handoffScope(e),
+      transferHandoff: (id, accept) => { if (closed || e.closed || e.paused) return false; return e.live.transfer(id, accept); },
+      retryHandoff: () => { if (closed || e.closed || e.paused) return Promise.resolve(); if (e.cancel.cancelled) e.cancel = new Cancel(); if (e.resolving) { e.live.reconcile(); e.resolveAgain = true; return e.resolving; } e.live.reconcile(); return this.resolveHandoff(e); },
       historyTick: e.historyTick,
       readWindow: (args, cancel) => {
         if (e.closed || e.paused) return Promise.resolve({ ok: false, error: { kind: "cancelled", message: "thread is not being read" } });
         return this.operations.historyWindow({ thread_id: threadId, ...args }, { cancel });
       },
-      cancelReads: () => e.cancel.cancel(),
+      cancelReads: () => { e.live.invalidate(); e.cancel.cancel(); },
       refresh: () => this.requestThread(threadId),
       loadOlderHistory: () => this.loadOlder(e),
       canShowEarlier: () => e.window < HISTORY_WINDOW_MAX,
@@ -359,7 +365,7 @@ export class ShellboyData {
         closed = true;
         if (--e.refs === 0) {
           e.closed = true;
-          e.stopSaved?.();
+          e.live.discard("connection_closed");
           e.cancel.cancel();
           this.entries.delete(threadId);
           this.scheduleWatch();
@@ -372,6 +378,8 @@ export class ShellboyData {
   private pauseEntry(entry: ThreadEntry): void {
     if (entry.paused || entry.closed) return;
     entry.paused = true;
+    entry.refreshAfterHandoff = false;
+    entry.live.invalidate();
     entry.cancel.cancel();
     this.scheduleWatch();
   }
@@ -381,6 +389,7 @@ export class ShellboyData {
     if (!entry.paused || entry.closed) return;
     entry.paused = false;
     entry.cancel = new Cancel();
+    entry.live.reconcile();
     this.scheduleWatch();
     if (this.canRead()) this.requestThread(entry.id);
   }
@@ -445,13 +454,12 @@ export class ShellboyData {
         for (const id of f.thread_ids) {
           for (const notify of this.hintWatchers.get(id) ?? []) notify();
           const entry = this.entries.get(id);
-          if (!entry) continue;
-          // After an attempt ended, the first change that is read and shows no saved message
-          // (stopped, failed) means none is coming: drop the preview that waited for it.
-          const waiting = entry.live.isEnding;
-          void this.requestThread(id).then(() => {
-            if (waiting) entry.live.endedWithoutSaved();
-          });
+          if (entry?.live.records.peek().length) {
+            entry.refreshAfterHandoff = true;
+            entry.history.value = { ...entry.history.peek(), stale: true };
+            void this.requestThread(id, false);
+            void this.resolveHandoff(entry);
+          } else this.refreshHint(id);
         }
         break;
       case "live":
@@ -461,7 +469,8 @@ export class ShellboyData {
         const entry = this.entries.get(f.thread_id);
         if (!entry) break;
         entry.live.finish();
-        void this.requestThread(f.thread_id); // read saved facts (rule 4); a `changed` follows the commit
+        void this.resolveHandoff(entry);
+        void this.requestThread(f.thread_id, false); // history ownership is reconciled separately
         break;
       }
       case "error":
@@ -471,6 +480,8 @@ export class ShellboyData {
   }
 
   private setOwner(owner: OwnerState): void {
+    const previous = this.ownerSig.peek();
+    if (previous.state === "connected" && owner.state === "connected" && previous.info.instance_id !== owner.info.instance_id) this.discardAllPreviews("owner_restarted");
     this.ownerSig.value = owner;
     if (owner.state === "unreachable") {
       this.markAllStale();
@@ -496,7 +507,7 @@ export class ShellboyData {
   }
 
   private discardAllPreviews(reason: PreviewDiscardReason): void {
-    for (const e of this.entries.values()) e.live.discard(reason);
+    for (const e of this.entries.values()) { e.refreshAfterHandoff = false; e.resolveAgain = false; e.live.discard(reason); }
   }
 
   // ---- subscription ----
@@ -521,9 +532,9 @@ export class ShellboyData {
     return this.link.connection.value === "open" && this.ownerSig.value.state === "connected";
   }
 
-  private requestThread(id: string): Promise<void> {
+  private requestThread(id: string, history = true): Promise<void> {
     if (this.entries.get(id)?.paused) return Promise.resolve();
-    return Promise.all([this.refresher.request(`thread:${id}`), this.refresher.request(`history:${id}`), ...(this.entries.get(id)?.workRefs ? [this.refresher.request(`work:${id}`)] : [])]).then(
+    return Promise.all([this.refresher.request(`thread:${id}`), ...(history ? [this.refresher.request(`history:${id}`)] : []), ...(this.entries.get(id)?.workRefs ? [this.refresher.request(`work:${id}`)] : [])]).then(
       () => undefined,
     );
   }
@@ -537,6 +548,7 @@ export class ShellboyData {
     if (kind === "thread") return this.readDetail(entry, onSent);
     if (kind === "work") return this.readWork(entry, onSent);
     if (this.ownerSig.peek().state === "connected" && this.capabilities.peek().includes(CAPABILITY_HISTORY_WINDOW)) {
+      entry.history.value = { ...entry.history.peek(), stale: false };
       entry.historyTick.value++; // positional reads: nothing is walked, the window reader decides what to read
       return;
     }
@@ -586,6 +598,74 @@ export class ShellboyData {
     entry.detail.value = out.ok
       ? { value: out.value, loading: false, stale: false, error: undefined }
       : { ...cur, loading: false, stale: cur.value !== undefined, error: out.error };
+  }
+
+  private handoffScope(entry: ThreadEntry): string {
+    const owner = this.ownerSig.peek();
+    return JSON.stringify([owner.state === "connected" ? owner.info.instance_id : null, entry.id, entry.live.lifetime]);
+  }
+
+  private refreshHint(id: string): void {
+    if (this.entries.has(id)) void this.requestThread(id);
+  }
+
+  /** ADR-C1: one resolver, at most eight starts until explicit retry/open. Hints never refill. */
+  private resolveHandoff(entry: ThreadEntry): Promise<void> {
+    if (entry.resolving) { entry.resolveAgain = true; return entry.resolving; }
+    if (this.handoffRead) { entry.resolveAgain = true; return this.handoffRead.done; }
+    const epoch = entry.live.epoch;
+    const cancelled = entry.cancel;
+    const valid = () => !entry.closed && !entry.paused && epoch === entry.live.epoch && !cancelled.cancelled && cancelled === entry.cancel && this.canRead();
+    entry.resolving = Promise.resolve().then(async () => {
+      const targets = entry.live.records.peek().filter(r => r.status === "confirming" || r.status === "failed");
+      if (!targets.length || !valid() || !entry.live.takeRead()) return;
+      const out = await this.operations.handoffAttempts(entry.id, { cancel: cancelled });
+      if (!valid()) return;
+      if (!out.ok) { if (out.error.kind !== "cancelled") for (const r of targets) entry.live.fail(r.attemptId); return; }
+      for (const record of targets) {
+        const attempt = out.value.items.find(i => i.kind === "attempt" && i.attempt_id === record.attemptId && i.thread_id === entry.id && typeof i.turn_id === "string");
+        if (!attempt || attempt.response_nodes_truncated !== false || !Array.isArray(attempt.response_nodes)) continue;
+        const refs = attempt.response_nodes;
+        if (refs.length > 64 || refs.some(r => !r || typeof r.kind !== "string" || typeof r.node_id !== "string" || !Number.isSafeInteger(r.ordinal) || r.ordinal < 0)) continue;
+        // #279 supplies identity, not body spans. Only the approved final-answer projection is used.
+        const finals = refs.filter(r => r.kind === "message" && r.phase === "final_answer");
+        if (finals.length !== 1 || refs.some(r => r.kind === "message" && r.phase !== "final_answer" && r.phase !== "commentary")) continue;
+        const ref = finals[0]!;
+        if (typeof ref.node_id !== "string" || !["completed", "failed", "incomplete", "cancelled"].includes(attempt.state)) continue;
+        if (!entry.live.takeRead()) return;
+        entry.live.confirming(record.attemptId);
+        if (!valid()) return;
+        const anchor = await this.operations.historyWindow({ thread_id: entry.id, node_id: ref.node_id, before: 0, after: 0, excerpt_chars: 0 }, { cancel: cancelled });
+        if (!valid()) return;
+        if (!anchor.ok) { if (anchor.error.kind !== "cancelled") entry.live.fail(record.attemptId); continue; }
+        if (anchor.value.thread_id !== entry.id || !anchor.value.items.some(i => i.node_id === ref.node_id && i.kind === "assistant_response")) continue;
+        if (!entry.live.takeRead()) return;
+        const body = await this.operations.historyGet({ node_id: ref.node_id, end_message_only: true, limit_bytes: 262144 }, { cancel: cancelled });
+        if (!valid()) return;
+        if (!body.ok) { if (body.error.kind !== "cancelled") entry.live.fail(record.attemptId); continue; }
+        // Empty projection can mean no eligible message; partial pages are not a complete saved body.
+        if (body.value.node_id !== ref.node_id || body.value.kind !== "assistant_response" || body.value.next_cursor || !body.value.text) continue;
+        if (!entry.live.takeRead() || !valid()) return;
+        const verify = await this.operations.historyWindow({ thread_id: entry.id, node_id: ref.node_id, before: 0, after: 0, excerpt_chars: 0 }, { cancel: cancelled });
+        if (!valid()) return;
+        if (!verify.ok) { if (verify.error.kind !== "cancelled") entry.live.fail(record.attemptId); continue; }
+        if (verify.value.thread_id !== entry.id || verify.value.revision !== anchor.value.revision || !verify.value.items.some(i => i.node_id === ref.node_id && i.selection?.ordinal === anchor.value.items.find(i => i.node_id === ref.node_id)?.selection?.ordinal)) continue;
+        const item = anchor.value.items.find(i => i.node_id === ref.node_id)!;
+        if (!Number.isSafeInteger(item.selection?.ordinal)) continue;
+        batch(() => entry.live.ready(record.attemptId, ref.node_id, body.value.text, Object.freeze({ scope: this.handoffScope(entry), turnId: attempt.turn_id!, ordinal: item.selection!.ordinal!, revision: anchor.value.revision, kind: "assistant_response" })));
+      }
+    }).finally(() => {
+      entry.resolving = undefined;
+      if (this.handoffRead?.entry === entry) this.handoffRead = undefined;
+      const waiting = [...this.entries.values()].find(e => e !== entry && e.resolveAgain && !e.closed && !e.paused);
+      if (waiting) { waiting.resolveAgain = false; void this.resolveHandoff(waiting); }
+      if (entry.resolveAgain) { entry.resolveAgain = false; if (!entry.closed && !entry.paused) { void this.resolveHandoff(entry); return; } }
+      if (entry.refreshAfterHandoff && !entry.live.records.peek().some(r => r.status === "failed")) {
+        entry.refreshAfterHandoff = false; if (!entry.closed && !entry.paused) this.refreshHint(entry.id);
+      }
+    });
+    this.handoffRead = { entry, done: entry.resolving };
+    return entry.resolving;
   }
 
   private async readWork(entry: ThreadEntry, onSent: () => void): Promise<void> {

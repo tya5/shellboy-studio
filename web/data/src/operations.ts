@@ -247,6 +247,9 @@ export class Operations {
     return this.run("status", { memory: true }, decodeRecord, undefined, read);
   }
   /** Activity status, for `receipt_budget`. One row is enough; the rows are not used. */
+  handoffAttempts(threadId: string, read?: ReadOptions): Promise<Outcome<Page<WorkItem>>> {
+    return this.run("status", { thread_id: threadId, all: true, limit: 200 }, decodeWorkPage, undefined, read);
+  }
   threadWork(threadId: string, read?: ReadOptions): Promise<Outcome<Page<WorkItem>>> {
     return this.run("status", { thread_id: threadId, state: ["starting", "running", "stopping", "accepted", "held"], limit: 200 }, decodeWorkPage, undefined, read);
   }

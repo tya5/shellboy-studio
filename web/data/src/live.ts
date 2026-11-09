@@ -7,8 +7,7 @@
 //  * a new `attempt_id` or `gap: true` discards the preview first, then deltas are appended;
 //  * offsets count Unicode scalar values of the attempt, reasoning included. A delta that starts
 //    past what is held, or a preview that starts partway, is shown as incomplete, never patched;
-//  * `live_end` keeps the text on screen until the saved message arrives (or a later change shows
-//    none is coming), so the answer does not vanish and reappear;
+//  * `live_end` keeps the text; exact public ownership resolution belongs to the handoff ledger;
 //  * deltas are applied at once but published to the signal once per `schedule` tick (the app
 //    passes an animation frame), so a burst of frames is one render.
 
@@ -77,17 +76,9 @@ export class LiveText {
   private started = false;
   private incomplete = false;
   private ending = false;
-  private mark: string | undefined;
   private queued = false;
 
-  /**
-   * @param saved Identifies the newest saved model message of the Thread. When it differs from
-   *   what it was as the attempt began, the saved message has arrived.
-   */
-  constructor(
-    private readonly schedule: Schedule,
-    private readonly saved: () => string | undefined,
-  ) {}
+  constructor(private readonly schedule: Schedule) {}
 
   /** A `live` frame. */
   apply(frame: LiveFrame): void {
@@ -98,7 +89,6 @@ export class LiveText {
       this.started = false;
       this.incomplete = frame.gap;
       this.ending = false;
-      this.mark = this.saved();
     }
     for (const d of frame.deltas) {
       const length = scalars(d.text);
@@ -131,22 +121,11 @@ export class LiveText {
     if (this.attempt === undefined) return;
     this.ending = true;
     this.publishNow();
-    this.checkSaved();
   }
 
   /** Whether the preview waits for the saved message. */
   get isEnding(): boolean {
     return this.attempt !== undefined && this.ending;
-  }
-
-  /** The history changed (or was read): is the saved message there? */
-  checkSaved(): void {
-    if (this.isEnding && this.saved() !== this.mark) this.discard("saved");
-  }
-
-  /** A read after the end finished and no saved message came (stopped, failed): nothing is coming. */
-  endedWithoutSaved(): void {
-    if (this.isEnding) this.discard("ended");
   }
 
   discard(reason: PreviewDiscardReason): void {
