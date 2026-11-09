@@ -122,3 +122,24 @@ The table's terminal setter/finalizer rows have no subsequent external effect;
 their caller still rechecks its own qualification. No extra counter/boolean or
 framework is needed to represent these owners. Test totals are not completion
 proof; exact independent review of these counterexamples remains the gate.
+
+## Captured Multi-Resource Owner Invalidation
+
+Independent fd88 review held its owner invalidation: a captured family cancellation
+callback could install an explicit current-owner preview, then the invalidator
+cancelled the current preview pointer rather than the original handle. The repair
+captures both old handles and installs the preview sentinel before either callback.
+Invalid family projection is installed inside the existing signal batch before
+old cancellation; notification is deferred until cancellation completes. Thus
+loading converges without a late write over a callback's replacement read.
+Only captured handles are cancelled. Subsequent reset requires the original
+family generation, observed owner and preview sentinel identity to match.
+
+Two counterexample/control tests cover family cancellation creating a new preview
+(and no replacement control); a reverse-resource test covers old preview cancel
+creating a new family reader. New preview cancellation remains false; new read
+retains its own Cancel and adopts its result. The reverse fixture initially
+awaited the old coalesced loop before answering its new trailing walk; response
+ordering was corrected, not timeout extended. Existing leave/clear/restart/select
+captured-handle tests remain enabled. No scope, budget, framework or receipt-policy
+change is inferred from these tests. fd88's 931 passing tests remain held history.

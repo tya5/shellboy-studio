@@ -249,3 +249,26 @@ for(const trigger of ["restart", "clear", "leave", "select"] as const) it(`R1 pr
   f.t.ok(f.t.calls("thread.rewind")[1]!.id,{removed_node_count:2});await nested;await initial;await restart;
   expect(f.b.rewind.value.kind).toBe("ready");expect(f.t.calls("thread.rewind")).toHaveLength(2);f.b.leave();f.link.stop();
 });
+
+for(const nested of [false,true]) it(`R1 owner invalidation cancels captured handles only, nested preview ${nested}`,async()=>{
+  const f=fixture();const original=f.ops.threadBranches.bind(f.ops),preview=f.ops.threadRewindPreview.bind(f.ops);
+  let winner:Promise<void>|undefined,winnerCancelled=false,calls=0;
+  f.ops.threadBranches=(args,read)=>{if(nested)read?.cancel?.add(()=>{winner=f.b.previewRewind(f.target);});return original(args,read);};
+  f.ops.threadRewindPreview=(args,read)=>{calls++;if(calls>1)read?.cancel?.add(()=>{winnerCancelled=true;});return preview(args,read);};
+  const initial=f.b.previewRewind(f.target);const reading=f.b.read("parent");
+  f.invalidate("B");await initial;await reading;
+  expect(f.b.state.peek().loading).toBe(false);
+  if(nested){expect(winnerCancelled).toBe(false);f.t.ok(f.t.calls("thread.rewind")[1]!.id,{removed_node_count:2});await winner;expect(f.b.rewind.value.kind).toBe("ready");}
+  else expect(f.t.calls("thread.rewind")).toHaveLength(1);
+  f.b.leave();f.link.stop();
+});
+it("R1 owner invalidation preview cancellation cannot cancel an explicit new family reader",async()=>{
+  const f=fixture();const preview=f.ops.threadRewindPreview.bind(f.ops),family=f.ops.threadBranches.bind(f.ops);
+  let winner:Promise<void>|undefined,newCancelled=false,walks=0;
+  f.ops.threadRewindPreview=(args,read)=>{read?.cancel?.add(()=>{winner=f.b.read("other");});return preview(args,read);};
+  f.ops.threadBranches=(args,read)=>{walks++;if(walks>1)read?.cancel?.add(()=>{newCancelled=true;});return family(args,read);};
+  const initial=f.b.previewRewind(f.target),old=f.b.read("parent");f.invalidate("B");await initial;await flush();
+  expect(newCancelled).toBe(false);expect(f.t.calls("thread.branches")).toHaveLength(2);
+  f.t.ok(f.t.calls("thread.branches")[1]!.id,{root_thread_id:"other",items:[],total:0});await winner;await old;await flush();
+  expect(f.b.state.peek().family?.rootId).toBe("other");f.b.leave();f.link.stop();
+});

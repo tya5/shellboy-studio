@@ -114,3 +114,10 @@ and preinstalled Cancel/sentinel ownership repair those classes. Five additional
 cross-boundary regressions include valid next action without consumed receipt ID
 and restart/clear/leave/select cancellation callbacks. These are separate from
 prior 220-grid evidence. No policy, runtime evidence or public contract changes.
+
+The next independent finding held fd88 on owner invalidation's current-pointer
+cancellation. Capturing both old family/preview handles and preinstalling the
+sentinel, with batched family invalidation and guarded post-callback reset, fixes
+that ownership class. Three counterexample/control and reverse-resource regressions
+bring owner-free acceptance to 47 files / 934 tests plus typecheck/build. This
+remains candidate evidence pending independent S6 exact review, not runtime proof.

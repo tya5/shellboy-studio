@@ -178,11 +178,16 @@ export class Branches {
       ++this.ownerGeneration;
       const generation = ++this.familyGeneration;
       this.again = false;
-      this.cancel.cancel();
-      this.previewCancel.cancel();
-      if (generation !== this.familyGeneration) return;
-      this.state.value = { threadId: this.state.peek().threadId, loading: false, family: undefined, error: undefined };
-      if (generation === this.familyGeneration) this.excerptBatch.reset();
+      const familyCancel = this.cancel;
+      const previewCancel = this.previewCancel;
+      const marker = this.previewCancel = new Cancel();
+      batch(() => {
+        // Install invalid projection before callbacks, notify only after old cancellation.
+        this.state.value = { threadId: this.state.peek().threadId, loading: false, family: undefined, error: undefined };
+        familyCancel.cancel();
+        previewCancel.cancel();
+      });
+      if (generation === this.familyGeneration && owner === this.observedOwner && marker === this.previewCancel) this.excerptBatch.reset();
     }
   }
   private invocation(target?: BranchTarget): Invocation {
