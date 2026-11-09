@@ -205,3 +205,32 @@ it("cancel callback starts a fresh owner read without outer reset erasing its ne
  f.t.ok(f.t.calls("thread.get").at(-1)!.id,details("fresh",{awaiting_replies:[human("new")] }));await flush();
  expect(f.inbox.items.value.map(x=>x.id)).toEqual(["new"]);f.close();
 });
+
+it("page-two answer success intentionally returns to first page with a fresh read",async()=>{
+ const f=await fixture();await flush();f.t.ok(humanCalls(f).at(-1)!.id,{items:[summary("a")],next_cursor:"page-two"});await flush();f.t.ok(f.t.calls("thread.get").at(-1)!.id,details("a",{awaiting_replies:[human("h")]}));await flush();const more=f.inbox.more();await flush();
+ f.t.ok(humanCalls(f).at(-1)!.id,{items:[summary("second")]});await flush();f.t.ok(f.t.calls("thread.get").at(-1)!.id,details("second",{awaiting_replies:[human("second-id")]}));await more;
+ const before=humanCalls(f).length;const answer=f.inbox.answer("second-id","ok");f.t.ok(f.t.calls("message.reply").at(-1)!.id,{});await flush();
+ expect(humanCalls(f)).toHaveLength(before+1);expect((humanCalls(f).at(-1)!.args as Record<string,unknown>).cursor).toBeUndefined();
+ f.t.ok(humanCalls(f).at(-1)!.id,{items:[]});await flush();await answer;f.close();
+});
+it("explicit same-owner reconnect retry dispatches a new call with the ORIGINAL operation ID",async()=>{
+ const f=await fixture();await fill(f);const answer=f.inbox.answer("h","exact text");const original=f.t.calls("message.reply").at(-1)!;
+ f.t.drop();await flush();await answer;f.t.open();f.t.push({t:"hello",bridge_version:"test",data_dir:"/synthetic",owner:connected});
+ writable(f.data.threadList).value={...f.data.threadList.value,loading:false,stale:false,loaded:true};await flush();await fill(f);
+ const before=f.t.calls("message.reply").length;const retry=f.inbox.answer("h","exact text");await flush();
+ expect(f.t.calls("message.reply")).toHaveLength(before+1);const next=f.t.calls("message.reply").at(-1)!;expect(next.id).not.toBe(original.id);expect(next.operation_id).toBe(original.operation_id);expect(next.args).toEqual(original.args);
+ f.t.ownerError(next.id,"delivery_unconfirmed");await flush();f.t.ok(humanCalls(f).at(-1)!.id,{items:[]});await flush();await retry;f.close();
+});
+it.each(["owner","query"])("page-two completion reset callback %s change cannot be recaptured as a fresh first-page intent",async transition=>{
+ const f=await fixture();await flush();f.t.ok(humanCalls(f).at(-1)!.id,{items:[summary("a")],next_cursor:"p2"});await flush();f.t.ok(f.t.calls("thread.get").at(-1)!.id,details("a",{awaiting_replies:[human("h")]}));await flush();
+ const more=f.inbox.more();await flush();f.t.ok(humanCalls(f).at(-1)!.id,{items:[summary("a")]});await flush();f.t.ok(f.t.calls("thread.get").at(-1)!.id,details("a",{awaiting_replies:[human("h")]}));await more;
+ const answer=f.inbox.answer("h","text");const reply=f.t.calls("message.reply").at(-1)!;
+ (f.inbox as unknown as {cancel:{add(fn:()=>void):void}}).cancel.add(()=>{if(transition==="owner"){writable(f.data.threadList).value={...f.data.threadList.value,stale:true};writable(f.data.owner).value=ownerB;}else(f.inbox as unknown as {resetScope():void}).resetScope();});
+ const before=humanCalls(f).length;f.t.ok(reply.id,{});await flush();await answer;expect(humanCalls(f)).toHaveLength(before);expect(f.t.calls("message.reply")).toHaveLength(1);f.close();
+});
+it("different owner cannot reuse or remint an unconfirmed original-owner receipt",async()=>{
+ const f=await fixture();await fill(f);const answer=f.inbox.answer("h","same text");const original=f.t.calls("message.reply").at(-1)!;
+ writable(f.data.owner).value=ownerB;f.t.ownerError(original.id,"delivery_unconfirmed");await flush();await answer;
+ writable(f.data.threadList).value={...f.data.threadList.value,loading:false,stale:false,loaded:true};await flush();await fill(f);
+ const result=await f.inbox.answer("h","same text");expect(result.ok).toBe(false);expect(f.t.calls("message.reply")).toHaveLength(1);f.close();
+});

@@ -163,7 +163,7 @@ export class HumanInbox implements PendingAdapter {
     };
     if (!authorized()) return fail("question is no longer in the displayed human inbox");
     let attempt = this.attempts.get(id);
-    if (attempt && (attempt.owner !== page!.owner || attempt.epoch !== page!.epoch)) return fail("inspect the original owner reply outcome before retrying");
+    if (attempt && (attempt.owner !== page!.owner)) return fail("inspect the original owner reply outcome before retrying");
     if (attempt?.text !== undefined && attempt.text !== text) return fail("resolve the previous reply outcome before changing its text");
     if (attempt?.result) return attempt.result;
     if (!attempt) {
@@ -180,8 +180,13 @@ export class HumanInbox implements PendingAdapter {
       else if (!out.ok) this.attempts.delete(id);
       // Keep the original canonical receipt fact, but never refresh a different scope.
       if (authorized()) {
+        const owner = page!.owner;
+        const epoch = this.scopeEpoch + (this.cursor !== undefined ? 1 : 0);
+        const generation = this.generation + (this.cursor !== undefined ? 1 : 0);
         if (this.cursor !== undefined) this.resetScope();
-        if (page!.epoch === this.scopeEpoch && page!.owner === this.ownerKey) {
+        // This token describes our intended first-page transition, not whatever a callback installed.
+        const current = this.data.owner.peek();
+        if (epoch === this.scopeEpoch && generation === this.generation && owner === this.ownerKey && !this.closed && this.data.connection.peek() === "open" && current.state === "connected" && current.info.instance_id === owner) {
           this.cursor = undefined;
           await this.refresher.requestFresh("human");
         }

@@ -87,3 +87,20 @@ B/ABA/unknown-same/queryreset (reply RPC zero inside callback), same-session sta
 positive control, late answer new-scope refresh zero, preserved unconfirmed retry
 identity and reentrant fresh-owner page not erased by the outer reset. No broad
 ask restriction or Core mutation protocol change is introduced.
+
+### Receipt Owner Versus Query Session (P2 Follow-Up)
+
+Receipt retry identity is immutable owner instance + normalized answer text +
+original operation ID, not the read-page epoch. A fresh same-instance reconnect
+page may authorize an explicit same-message/same-text retry with that ID; no old
+invocation resumes and different-owner retries cannot dispatch or mint another ID.
+Tests assert new call count, request identity, original operation ID and text,
+not merely the last historical call's ID.
+
+A page-two completion may intentionally return to page one. Before reset/cancel,
+it fixes the intended first-page epoch/generation and original owner. It continues
+only if those exact intended values survive callbacks; it does not recapture the
+post-callback owner/query or compare the old page epoch to an intentionally new one.
+Tests require one first-page call without a cursor and zero old-continuation calls
+if reset callbacks change owner or query. Canonical old receipt facts remain local
+to the original attempt; this transition does not weaken revoke-before-cancel.
