@@ -91,6 +91,12 @@ function RowView({ model, row }: { model: AppModel; row: ConversationRow }) {
   const point = threadId !== undefined ? formatRoute({ view: "branches", threadId, nodeId: row.id }) : undefined;
   const found = model.rowMarks.value.get(row.id);
   const mark = found && threadId !== undefined ? <BranchMark href={formatRoute({ view: "branches", threadId, nodeId: found.nodeId })} label={found.branches === 1 ? t("branches.markOne") : t("branches.mark", { n: found.branches })} /> : null;
+  if (row.type === "publication") return <div class="caption" role="status">
+    {mark}
+    <strong>{t(row.state === "tool" ? "convo.toolIdentity" : row.error ? "convo.publicationFailed" : "convo.publicationUnknown")}</strong>
+    {row.kind ? <div><code>{row.kind}</code> <code>{row.attemptId}</code> / {row.ordinal}</div> : null}
+    {row.state === "unknown" ? <Button onClick={() => void model.handle.value?.retryPublication()}>{t("convo.retryLoad")}</Button> : null}
+  </div>;
   if (row.type === "steps") {
     const opened = model.openToolGroups.value.has(row.id) || row.steps.some((step) => model.openToolGroups.value.has(`step:${step.executionId}`));
     const active = row.steps.find((s) => s.status === "running");

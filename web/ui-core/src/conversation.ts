@@ -25,6 +25,7 @@ export interface StepRow {
 export type Speaker = { kind: "model"; threadId: string; label?: string } | { kind: "unknown"; model: boolean; label?: string } | { kind: "you" } | { kind: "shellboy" } | { kind: "cli" } | { kind: "other"; label: string };
 
 export type ConversationRow =
+  | { type: "publication"; id: string; state: "tool" | "unknown"; attemptId?: string; ordinal?: number; kind?: string; error?: boolean }
   | { type: "message"; id: string; speaker: Speaker; text: string; truncated: boolean; at: string | undefined }
   | { type: "steps"; id: string; steps: StepRow[]; entries: ({ kind: "step"; step: StepRow } | { kind: "compacted"; id: string; text: string })[] }
   | { type: "note"; id: string; kind: string; text: string; at: string | undefined };
@@ -64,6 +65,12 @@ export function projectConversation(items: HistoryItem[], shells: ReadonlyMap<st
       else rows.push({ type: "steps", id, steps: [], entries: [entry] });
       continue;
     }
+    const publication = item.assistant_publication;
+    if (item.kind === "assistant_response" && publication && publication.state !== "message") {
+      rows.push({ type: "publication", id, ...publication, state: publication.state });
+      // Execution links, when present, still project below; an identity ref invents none.
+      if (!(item.executions?.length)) continue;
+    }
     const executions = item.executions ?? [];
     if (executions.length > 0) {
       for (const e of executions) {
@@ -89,7 +96,7 @@ export function projectConversation(items: HistoryItem[], shells: ReadonlyMap<st
           cwd: e.cwd,
         });
       }
-      if (item.kind !== "assistant_response" || item.phase !== "commentary" || !item.excerpt) continue;
+      if ((publication && publication.state !== "message") || item.kind !== "assistant_response" || item.phase !== "commentary" || !item.excerpt) continue;
       rows.push({ type: "message", id: `${id}:commentary`, speaker: speakerOf(item), text: item.excerpt, truncated: codePoints(item.excerpt) >= HISTORY_EXCERPT_CHARS, at: item.provenance?.created_at });
       continue;
     }

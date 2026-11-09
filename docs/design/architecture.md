@@ -715,3 +715,52 @@ lookups in the new owner's scope. Existing transport handles request timeout and
 cancellation. There is no persistent/global cache, new subscription, queue worker,
 poller, body parsing, network adapter or new dependency. Monitor tiles display
 recorded sender ID/label and unknown states without starting a second resolver.
+
+### Tracked Assistant Publication (ADR-T8)
+
+Initial committed unreferenced legacy history is a baseline, not proof of safe
+item bodies. Existing history is not globally hidden. Within that watched view,
+new assistant nodes are qualified before their first Message publication; explicit
+older paging is not a fresh append. An already-known exact non-message ref also
+gates an initial row. Positional history applies the same gate before returning
+a read. Its initial ordinal watermark is a local safety boundary, not an
+attempt/body identity: it survives an owner/capability ABA so a previously tracked
+node cannot be laundered through the legacy first-read fallback. Proof caches are
+cleared on that owner change. A genuinely new view starts a new baseline.
+
+A client-only qualification accompanies the bounded history row. It is stripped
+from incoming owner DTOs and never serialized in an RPC. Missing, failed,
+truncated, cursor-incomplete, malformed, ambiguous, competing-attempt or unknown
+phase refs remain unknown with explicit retry. Exact function_call refs expose
+identity only (attempt and output ordinal); they do not create command, execution
+ID, state, success or body spans. A mixed tool/message node does not expose its
+aggregate as prose. The existing C1 safe final projection remains separate.
+
+Ordinary excerpt publication requires one terminal exact Thread/attempt/Turn
+association, a complete bounded status page, complete well-formed refs with no
+competing attribution, and exactly one relevant final_answer message ref for the
+node. Commentary/null/unknown phase and multi-message nodes stay unknown; no
+JSON shape, text/time/order similarity or item-span inference is used. Plain
+message JSON stays ordinary message JSON when that qualification is proved.
+
+C1 owns the shared candidate and additional-lookup allowance: at most eight
+combined live attachments/publication candidates and eight RPC starts per
+explicit reconciliation generation; retained preview bodies keep their existing
+one-MiB UTF-8 budget. Publication proofs have no retained body copy. Candidate
+identity maps have an independent eight-entry hard bound even when multiple
+nodes refer to a live attempt. One aggregate additional lookup is admitted across
+C1 and publication qualification, with no per-client unbounded wait queue or
+polling. Existing active-work reads remain their existing user-selected reader;
+the gate does not launch another work subscription. Hints consume but never
+refill the shared budget. On exhaustion new rows remain unknown in the bounded
+history window while existing safe content remains. Explicit retry resets only
+publication priority and the explicit read generation, not safe live text.
+
+The legacy retained history and positional proof caches have their existing
+window bounds; the latter holds at most eight proof entries, no global node map.
+Each read captures generation/cancel/owner lifetime before any publication,
+rechecks after status callbacks and rejects late owner/pause/cancel/close results.
+Actual unresolved status calls occupy the shared slot until they settle. There
+is no new queue, worker, persistent cache, wire/API or Core #290 implementation.
+Arbitrary unreferenced legacy aggregate classification remains unsupported;
+normal legacy display is not advertised as universally tool-safe.

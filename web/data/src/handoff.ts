@@ -22,6 +22,15 @@ interface Held { admitted: number; transferring?: boolean; attemptId: string; so
 /** One ledger per watched Thread. No queue, spill or timer. Hints cannot refill read budget. */
 export class Handoff {
   private held: Held[] = [];
+  private publications = new Map<string, string | undefined>();
+  private get publicationSlots(): number { return [...this.publications.values()].filter(id => !id || !this.held.some(h => h.attemptId === id)).length; }
+  claimPublication(nodeId: string, attemptId?: string): boolean {
+    if (this.publications.has(nodeId)) { if (attemptId) this.publications.set(nodeId, attemptId); return true; }
+    if (this.publications.size >= MAX_HANDOFF_RECORDS || this.held.length + this.publicationSlots >= MAX_HANDOFF_RECORDS) { this.overflowSig.value = true; return false; }
+    this.publications.set(nodeId, attemptId); return true;
+  }
+  resetPublicationPriority(): void { this.publications.clear(); }
+
   private active: string | undefined;
   private epochValue = 0;
   private lifetimeValue = 0;
@@ -51,7 +60,7 @@ export class Handoff {
     let h = this.held.find(h => h.attemptId === frame.attempt_id);
     if (h && (h.record.status === "ready" || (this.active !== h.attemptId && h.record.status !== "streaming"))) return;
     if (!h) {
-      if (this.held.length >= MAX_HANDOFF_RECORDS || this.blockedAttempt === frame.attempt_id) { this.overflowSig.value = true; this.blockedAttempt = frame.attempt_id; return; }
+      if (this.held.length + this.publicationSlots >= MAX_HANDOFF_RECORDS || this.blockedAttempt === frame.attempt_id) { this.overflowSig.value = true; this.blockedAttempt = frame.attempt_id; return; }
       if (this.active) this.finish();
       const source = new LiveText(this.schedule);
       const record: HandoffRecord = { key: `handoff:${frame.attempt_id}`, attemptId: frame.attempt_id, text: '', incomplete: frame.gap, status: 'streaming' };
@@ -135,6 +144,7 @@ export class Handoff {
     this.lifetimeValue++;
     this.discarded.value = _reason;
     for (const h of this.held) { h.stop(); h.source.discard(_reason); }
+    this.publications.clear();
     this.held = []; this.active = undefined; this.blockedAttempt = undefined;
     this.overflowSig.value = false; this.publish();
   }

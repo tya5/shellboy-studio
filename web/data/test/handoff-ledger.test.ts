@@ -52,3 +52,10 @@ it('a late old-attempt frame cannot steal the active successor or revive a saved
   h.apply(frame('old','late old replay'));tick();expect(h.preview.value).toMatchObject({attemptId:'next',text:'second'});
   h.ready('old','saved','canonical');h.apply(frame('old','late saved replay'));tick();expect(h.preview.value).toMatchObject({attemptId:'next',text:'second'});
 });
+
+it('publication candidates share the live attachment limit and retry cannot discard safe text',()=>{
+  const {h,tick}=rig();for(let n=0;n<7;n++){h.apply(frame(`a${n}`,`safe${n}`));tick();}
+  expect(h.claimPublication('node')).toBe(true);expect(h.claimPublication('ninth')).toBe(false);
+  h.apply(frame('ninth-live','must not evict'));tick();expect(h.records.value).toHaveLength(7);expect(h.records.value[0]!.text).toBe('safe0');
+  h.resetPublicationPriority();expect(h.records.value).toHaveLength(7);expect(h.claimPublication('retry-node')).toBe(true);
+});

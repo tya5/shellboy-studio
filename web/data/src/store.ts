@@ -91,6 +91,7 @@ export interface ThreadHandle extends Handle {
   readonly handoff: ReadonlySignal<readonly HandoffRecord[]>;
   readonly handoffOverflow: ReadonlySignal<boolean>;
   retryHandoff(): Promise<void>;
+  retryPublication(): Promise<void>;
   handoffScope(): string;
   transferHandoff(attemptId: string, accept: (record: HandoffRecord, release: (reason: "return" | "end") => void) => boolean): boolean;
   /** Counts hints for this Thread's history while the owner has `history.window`; the window reader follows it. */
@@ -145,6 +146,8 @@ class ThreadEntry {
   historyTick = signal(0);
   /** Bumped by every history read; a read started earlier drops its result. */
   historyGen = 0;
+  publicationTail: number | undefined;
+  publicationWindow = new Map<string, HistoryItem["assistant_publication"]>();
   /** Cancels this Thread's reads: dropped if queued, a `cancel` frame if sent. Replaced on resume. */
   cancel = new Cancel();
   /** Nobody is looking: no reads, and no hints from the bridge. */
@@ -185,6 +188,7 @@ export class ShellboyData {
   private listRefs = 0;
   private listGen = 0;
   private entries = new Map<string, ThreadEntry>();
+  private publicationRead = false;
   private handoffRead: { entry: ThreadEntry; done: Promise<void> } | undefined;
   private watchQueued = false;
   private hintWatchers = new Map<string, Set<() => void>>();
@@ -345,13 +349,38 @@ export class ShellboyData {
       preview: e.preview,
       handoff: e.live.records,
       handoffOverflow: e.live.overflow,
+      retryPublication: () => {
+        if (closed || e.closed || e.paused) return Promise.resolve();
+        if (e.cancel.cancelled) e.cancel = new Cancel();
+        e.live.resetPublicationPriority();
+        e.live.reconcile();
+        return this.refresher.request(`history:${e.id}`);
+      },
       handoffScope: () => this.handoffScope(e),
       transferHandoff: (id, accept) => { if (closed || e.closed || e.paused) return false; return e.live.transfer(id, accept); },
       retryHandoff: () => { if (closed || e.closed || e.paused) return Promise.resolve(); if (e.cancel.cancelled) e.cancel = new Cancel(); if (e.resolving) { e.live.reconcile(); e.resolveAgain = true; return e.resolving; } e.live.reconcile(); return this.resolveHandoff(e); },
       historyTick: e.historyTick,
-      readWindow: (args, cancel) => {
+      readWindow: async (args, cancel) => {
         if (e.closed || e.paused) return Promise.resolve({ ok: false, error: { kind: "cancelled", message: "thread is not being read" } });
-        return this.operations.historyWindow({ thread_id: threadId, ...args }, { cancel });
+        const epoch = e.live.epoch;
+        const valid = () => !closed && !e.closed && !e.paused && !cancel.cancelled && epoch === e.live.epoch && this.canRead();
+        const out = await this.operations.historyWindow({ thread_id: threadId, ...args }, { cancel });
+        if (!out.ok || !valid()) return out.ok ? { ok: false, error: { kind: "cancelled", message: "publication owner changed" } } : out;
+        if (out.value.thread_id !== threadId) return { ok: false, error: { kind: "cancelled", message: "window Thread mismatch" } };
+        const baseline = e.publicationTail;
+        const next: HistoryItem[] = out.value.items.map(rawItem => {
+          const { assistant_publication: _untrusted, ...item } = rawItem;
+          const ordinal = item.selection?.ordinal;
+          const held = item.node_id ? e.publicationWindow.get(item.node_id) : undefined;
+          const knownTool = e.work.peek().value?.items.some(attempt => attempt.thread_id === e.id && attempt.response_nodes_truncated === false && Array.isArray(attempt.response_nodes) && attempt.response_nodes.some(ref => ref?.node_id === item.node_id && ref.kind === "function_call"));
+          return item.kind === "assistant_response" && item.node_id && (held || knownTool || baseline !== undefined && ordinal !== undefined && ordinal > baseline)
+            ? { ...item, assistant_publication: held ?? { state: "unknown" as const } } : item;
+        });
+        await this.qualifyPublication(e, next, cancel, valid);
+        if (!valid()) return { ok: false, error: { kind: "cancelled", message: "publication owner changed" } };
+        if (baseline === undefined) e.publicationTail = Math.max(-1, out.value.total - 1);
+        e.publicationWindow = new Map(next.filter(item => item.node_id && item.assistant_publication).slice(0, 8).map(item => [item.node_id!, item.assistant_publication]));
+        return { ok: true, value: { ...out.value, items: next } };
       },
       cancelReads: () => { e.live.invalidate(); e.cancel.cancel(); },
       refresh: () => this.requestThread(threadId),
@@ -381,6 +410,7 @@ export class ShellboyData {
     entry.refreshAfterHandoff = false;
     entry.live.invalidate();
     entry.cancel.cancel();
+    entry.history.value = { ...entry.history.peek(), loading: false, loadingMore: false };
     this.scheduleWatch();
   }
 
@@ -507,7 +537,18 @@ export class ShellboyData {
   }
 
   private discardAllPreviews(reason: PreviewDiscardReason): void {
-    for (const e of this.entries.values()) { e.refreshAfterHandoff = false; e.resolveAgain = false; e.live.discard(reason); }
+    for (const e of this.entries.values()) {
+      e.refreshAfterHandoff = false;
+      e.resolveAgain = false;
+      e.publicationWindow.clear();
+      const lifetime = e.live.lifetime;
+      e.live.discard(reason);
+      if (e.live.lifetime !== lifetime + 1 || e.closed) continue;
+      const current = e.history.peek();
+      if (current.items.some(item => item.assistant_publication)) e.history.value = {
+        ...current, items: current.items.map(item => item.assistant_publication ? { ...item, assistant_publication: { state: "unknown" } } : item),
+      };
+    }
   }
 
   // ---- subscription ----
@@ -612,6 +653,7 @@ export class ShellboyData {
   /** ADR-C1: one resolver, at most eight starts until explicit retry/open. Hints never refill. */
   private resolveHandoff(entry: ThreadEntry): Promise<void> {
     if (entry.resolving) { entry.resolveAgain = true; return entry.resolving; }
+    if (this.publicationRead) return Promise.resolve();
     if (this.handoffRead) { entry.resolveAgain = true; return this.handoffRead.done; }
     const epoch = entry.live.epoch;
     const cancelled = entry.cancel;
@@ -701,10 +743,59 @@ export class ShellboyData {
       : { ...cur, loading: false, stale: cur.value !== undefined, error: out.error };
   }
 
+  private async qualifyPublication(entry: ThreadEntry, items: HistoryItem[], cancel: Cancel, valid: () => boolean): Promise<void> {
+    const pending = items.filter(item => item.assistant_publication?.state === "unknown" && entry.live.claimPublication(item.node_id!)).slice(0, 8);
+    if (!valid()) return;
+    if (pending.length && !this.handoffRead && !this.publicationRead && entry.live.takeRead()) {
+      this.publicationRead = true;
+      try {
+        const refs = await this.operations.handoffAttempts(entry.id, { cancel });
+        if (!valid()) return;
+        for (const item of pending) {
+          if (!refs.ok) { item.assistant_publication = { state: "unknown", error: true }; continue; }
+          const candidates = refs.value.items.filter(attempt => attempt.kind === "attempt" && attempt.thread_id === entry.id && typeof attempt.attempt_id === "string" && attempt.attempt_id.trim() !== "" && typeof attempt.turn_id === "string" && attempt.turn_id.trim() !== "" && attempt.response_nodes_truncated === false && Array.isArray(attempt.response_nodes) && attempt.response_nodes.length <= 64 && attempt.response_nodes.some(ref => ref?.node_id === item.node_id));
+          if (refs.value.next_cursor || refs.value.items.some(other => other.response_nodes != null && !Array.isArray(other.response_nodes)) || candidates.length !== 1) continue;
+          const attempt = candidates[0]!;
+          if (refs.value.items.some(other => other !== attempt && Array.isArray(other.response_nodes) && other.response_nodes.some(ref => ref?.node_id === item.node_id))) continue;
+          entry.live.claimPublication(item.node_id!, attempt.attempt_id!);
+          const all = attempt.response_nodes!;
+          if (!["completed", "failed", "incomplete", "cancelled"].includes(attempt.state)) continue;
+          if (all.some(ref => !ref || typeof ref.node_id !== "string" || !Number.isSafeInteger(ref.ordinal) || ref.ordinal < 0 || typeof ref.kind !== "string")) continue;
+          if (new Set(all.map(ref => ref.ordinal)).size !== all.length) continue;
+          const nodeRefs = all.filter(ref => ref.node_id === item.node_id);
+          const tool = nodeRefs.find(ref => ref.kind === "function_call");
+          if (tool) item.assistant_publication = { state: "tool", attemptId: attempt.attempt_id!, ordinal: tool.ordinal, kind: tool.kind };
+          else if (nodeRefs.length === 1 && nodeRefs[0]!.kind === "message" && nodeRefs[0]!.phase === "final_answer") item.assistant_publication = { state: "message", attemptId: attempt.attempt_id!, ordinal: nodeRefs[0]!.ordinal, kind: "message" };
+        }
+      } finally { this.publicationRead = false; }
+    }
+  }
+
   private async readHistory(entry: ThreadEntry, onSent: () => void): Promise<void> {
     const gen = ++entry.historyGen;
-    entry.history.value = { ...entry.history.value, loading: true };
+    const before = entry.history.peek();
+    const olderPage = before.loadingMore;
+    const cancel = entry.cancel;
+    const epoch = entry.live.epoch;
+    const valid = () => !entry.closed && !entry.paused && entry.historyGen === gen && entry.cancel === cancel && !cancel.cancelled && entry.live.epoch === epoch && this.canRead();
+    entry.history.value = { ...entry.history.peek(), loading: true };
+    if (!valid()) return;
     const out = await this.walkHistory(entry, gen, onSent);
+    if (!valid()) return;
+    if (out.ok) {
+      const old = new Map(before.items.map(item => [item.node_id, item]));
+      out.items = out.items.map(rawItem => {
+        const { assistant_publication: _untrusted, ...item } = rawItem;
+        const prior = old.get(item.node_id);
+        const knownTool = entry.work.peek().value?.items.some(attempt => attempt.thread_id === entry.id && attempt.response_nodes_truncated === false && Array.isArray(attempt.response_nodes) && attempt.response_nodes.some(ref => ref?.node_id === item.node_id && ref.kind === "function_call"));
+        return item.kind === "assistant_response" && item.node_id
+          ? prior?.assistant_publication ? { ...item, assistant_publication: prior.assistant_publication }
+            : ((before.loaded || entry.publicationTail !== undefined) && !olderPage && !prior) || knownTool ? { ...item, assistant_publication: { state: "unknown" as const } } : item
+          : item;
+      });
+      await this.qualifyPublication(entry, out.items, cancel, valid);
+      if (!valid()) return;
+    }
     if (entry.closed || gen !== entry.historyGen) return;
     const cur = entry.history.value;
     if (!out.ok && out.error.kind === "cancelled") {

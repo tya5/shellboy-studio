@@ -210,7 +210,11 @@ export interface HistoryExecution {
  * One `history.list` item. The owner does not type these fields yet (#244 follow-up), so they
  * are optional here and readers tolerate their absence; added fields pass through.
  */
+/** Local rendering qualification; never serialized into an owner RPC. */
+export interface AssistantPublication { state: "unknown" | "tool" | "message"; attemptId?: string; ordinal?: number; kind?: string; error?: boolean }
 export interface HistoryItem {
+  /** Client-owned, carried only within the already bounded retained history window. */
+  assistant_publication?: AssistantPublication;
   node_id?: string;
   /** user, assistant_response, tool_result, event, context, summary, ... */
   kind?: string;

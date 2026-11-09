@@ -38,7 +38,7 @@ export class WindowOwner {
   }
   answer(c: CallFrame): { ok: true; result: unknown } | { ok: false; code: string; details?: unknown } {
     if (c.command !== "history.window") return { ok: true, result: {} };
-    const a = c.args as { ordinal?: number; node_id?: string; expect_node_id?: string; before?: number; after?: number };
+    const a = c.args as { thread_id?: string; ordinal?: number; node_id?: string; expect_node_id?: string; before?: number; after?: number };
     const before = a.before ?? 20;
     const after = a.after ?? 20;
     const stale = { ok: false as const, code: "cursor_expired", details: { revision: this.revision, total: this.total } };
@@ -64,7 +64,7 @@ export class WindowOwner {
     to = Math.min(this.total - 1, to);
     const items = [];
     for (let i = from; i <= to; i++) items.push(this.item(i));
-    return { ok: true, result: { thread_id: "t", revision: this.revision, total: this.total, items } };
+    return { ok: true, result: { thread_id: a.thread_id ?? "t", revision: this.revision, total: this.total, items } };
   }
 }
 
