@@ -11,8 +11,9 @@ Shellboy's owner process stays the only place with agent logic and saved convers
 Studio never reads Shellboy's database; it talks to the owner over Shellboy's local IPC
 RPC, the same way `shellboy chat` does.
 
-**Status: first version, not yet released.** No binary has been published and nothing
-here has run on GitHub CI yet. See [Verification and limitations](#verification-and-limitations).
+**Status: v0.1.0 released.** Published binaries and hosted checks are available.
+See the [exact release evidence](docs/first-release-verification.md#published-v010-outcome)
+and [Verification and limitations](#verification-and-limitations).
 
 <!-- Screenshots: files do not exist yet. Add them under docs/screenshots/ and replace this list with images.
      - docs/screenshots/conversation.png   Conversation view with a tool row expanded
@@ -22,13 +23,13 @@ here has run on GitHub CI yet. See [Verification and limitations](#verification-
 -->
 Screenshots are not bundled yet.
 
-## v0.1.0 candidate
+## v0.1.0
 
-Source candidate pairing: published Core v0.11.0, pinned to its official tag
-and locked source commit (protocol 5, schema 39). Studio is not yet published. Older-owner feature negotiation is
+Release pairing: published Core v0.11.0, pinned to its official tag
+and locked source commit (protocol 5, schema 39). Studio v0.1.0 is published. Older-owner feature negotiation is
 not guaranteed; use only the validated matching owner. Existing artifact targets
 remain Windows x86_64, macOS arm64 and Linux x86_64, not new physical-device
-support claims. See [candidate notes](docs/release-v0.1.0.md) and the
+support claims. See [release notes](docs/release-v0.1.0.md) and the
 [release readiness checklist](docs/development/release-v0.1.0-checklist.md).
 
 ## Start
@@ -53,7 +54,7 @@ cannot run on that directory, because the TUI is itself an owner today.
 ### Install
 
 - Release binaries (one `shellboy-studio` per OS/CPU, frontend embedded, with
-  `SHA256SUMS`) are what the release workflow will produce. **None are published yet.**
+  `SHA256SUMS`) are published in the [v0.1.0 release](https://github.com/tya5/shellboy-studio/releases/tag/v0.1.0).
   Verify a download with `sha256sum --check SHA256SUMS` (`shasum -a 256 -c` on macOS).
 - From source, which needs Node (build time) and the pinned Rust toolchain:
 
@@ -102,7 +103,12 @@ A Claude or ChatGPT subscription is not an API key; an API key is required.
   PWA). **Do not use `tailscale funnel`**: it publishes the port on the public internet.
   An SSH tunnel (`ssh -L 8751:127.0.0.1:8751 host`) also works.
 - Binding to a non-loopback address with `--listen` is possible but is plain HTTP; Studio
-  warns, and the token is still required.
+  warns, and authentication remains required unless explicitly disabled with `--no-auth`.
+- Optional `--no-auth` is included in v0.1.0 for explicitly trusted local or tailnet-only
+  Serve access. Default authentication is unchanged. Host/Origin checks remain, but
+  anyone who can reach the bridge (including local processes and shared-tailnet users)
+  can operate it. Never use Funnel; Studio does not detect or guarantee Serve/Funnel
+  configuration. See the [opt-out restrictions](docs/guides/user-guide.md#explicit-development-authentication-opt-out).
 - Studio is a thin client: no model calls, no direct access to Shellboy's data files.
   It forwards only an allowlist of owner operations.
 
@@ -111,10 +117,10 @@ A Claude or ChatGPT subscription is not an API key; an API key is required.
 Studio releases are built against one Shellboy release and speak its protocol.
 This tree pins **Shellboy v0.11.0 (protocol 5, schema 39)** in `Cargo.toml`
 and `Cargo.lock`. Local locked tests and synthetic acceptance against the public
-Core release binary pass; hosted CI and distribution-artifact validation remain
-separate gates. See the [validation record](docs/development/protocol5-validation.md)
+Core release binary pass. Hosted exact-pair checks and distribution builds also
+passed for the published release; see the [release evidence](docs/first-release-verification.md#published-v010-outcome). See the [validation record](docs/development/protocol5-validation.md)
 for the tested environment and limits, and the [release checklist](docs/development/release-v0.1.0-checklist.md)
-for historical preparation checkpoints and remaining release gates.
+for historical preparation checkpoints and the published outcome.
 Pair the final release exactly with the owner named in its release notes.
 Capabilities currently describe the bridge build, not negotiated owner support.
 Automatic protocol-mismatch guidance or read-only fallback on older owners is
@@ -125,7 +131,8 @@ it as a supported pairing or infer data safety from missing UI controls.
 
 See [First-release verification](docs/first-release-verification.md) for the tested
 environments and known gaps, including the distinction between browser emulation and a
-physical phone. No CI run or release binaries are claimed by this tree.
+physical phone. Published CI and archive evidence is recorded separately from
+historical preparation and unverified device/browser coverage.
 
 ## Development
 
@@ -154,10 +161,10 @@ Apps can run actions on the Studio host, so review their code and permissions.
 
 ## Protocol 5 compatibility
 
-The v0.1.0 candidate follows Core's protocol 5 / schema 39 contract (#276).
+Studio v0.1.0 follows Core's protocol 5 / schema 39 contract (#276).
 There is no protocol-4 downgrade or ownership alias. Use the exact validated
 Core release pair; the published Core tag, lockfile and installed binaries must
-be checked separately before release. The current manifest/lock establish the
+be checked separately when installing or replacing binaries. The current manifest/lock establish the
 public v0.11.0 pin; earlier CLI-patch preparation checkpoints alone did not.
 Never restart a working owner or change its data to resolve a mismatch without
 explicit approval.

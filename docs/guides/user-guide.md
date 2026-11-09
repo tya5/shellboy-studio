@@ -2,7 +2,7 @@
 
 Shellboy Studio is a browser interface for a running Shellboy owner. Start the
 owner, then run `shellboy-studio` and open the URL printed by the bridge. The URL
-contains a credential: do not share it. By default the bridge listens only on
+contains a credential in the default authenticated mode: do not share it. By default the bridge listens only on
 loopback; a remote bind is plain HTTP unless protected by a TLS tunnel.
 
 ## Open on a phone
@@ -56,14 +56,15 @@ starting the bridge, run `shellboy-studio guide user` or
 
 ## Version and troubleshooting
 
-For the v0.1.0 candidate, use the validated matching Core release (planned:
-v0.11.0). A newer Studio build is not guaranteed to negotiate missing features
+For released Studio v0.1.0, use the validated matching Core v0.11.0 release
+(protocol 5, schema 39). A newer Studio build is not guaranteed to negotiate missing features
 with an older owner. If operations fail after a version mismatch, check both
 versions and follow the release pairing instructions; do not reset data or
 restart an owner that is running work without explicit approval.
 
 If a phone cannot connect, confirm the computer's allowed hostname, tailnet
-access and HTTPS Serve status; reissue an expired pairing code on the computer.
+access and HTTPS Serve status; in authenticated mode, reissue an expired pairing
+code on the computer. Pairing is disabled in explicit `--no-auth` mode.
 Do not use Funnel or paste token URLs, QR contents or credentials into reports.
 Phone, Safari/Firefox and physical Windows/Linux validation remain unverified
 unless the final release notes explicitly record those checks.
@@ -97,7 +98,7 @@ Actual tailnet/Serve/Funnel operation is not established by synthetic tests.
 
 ## Protocol 5 compatibility
 
-The v0.1.0 candidate follows Core's protocol 5 / schema 39 contract (#276).
+Studio v0.1.0 follows Core's protocol 5 / schema 39 contract (#276).
 There is no protocol-4 downgrade or ownership alias. Use the exact validated
 Core release pair; the published Core tag, lockfile and installed binaries must
 be checked separately before release. This source change does not establish that

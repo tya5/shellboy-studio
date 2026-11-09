@@ -1,5 +1,28 @@
 # Studio v0.1.0 release readiness
 
+## Published outcome; historical checklist below
+
+Studio v0.1.0 was published from `1f26ec97c6e3cf3b8521422c4e430eddcb45ad32`
+on 2026-11-09, paired with public Core v0.11.0 (protocol 5, schema 39).
+[Exact release, CI and artifact evidence](../first-release-verification.md#published-v010-outcome)
+records Checks `42545162766` and Release binaries `42545961767`, all jobs successful,
+three public archives and `SHA256SUMS`. Four default flags are `next-shellboy`,
+`next-connection-setup`, `next-tags`, `next-cwds`; `next-reply` remains off.
+Explicit `--no-auth` is included, with default authentication/Host/Origin safeguards
+and the [documented restrictions](../guides/user-guide.md#explicit-development-authentication-opt-out).
+Attachment picker remains excluded. Publication does not prove that the historical
+conditional #279/intermediate-attempt linkage work is solved.
+
+The baseline audit, eight-item table, morning sequence, old pin, test counts and
+pending-tag/CI/artifact statements below are **historical preparation checkpoints**,
+not outstanding blockers for the published release. Preserve them as records of
+what was known then. Physical-phone and other explicit coverage limitations remain
+unverified; see the current verification record. No current source update changes
+already-published archives or their embedded historical docs.
+
+## Historical preparation audit
+
+
 Audit baseline: main `dc37c77` (2026-11-08). This document supersedes the
 initial eight-item inventory at `26e4027`. It is not publication approval.
 First push and publication are authorized **no earlier than 2026-11-09 07:00

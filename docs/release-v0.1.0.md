@@ -1,4 +1,27 @@
-# Shellboy Studio v0.1.0 (candidate)
+# Shellboy Studio v0.1.0
+
+Released stable/non-draft on 2026-11-09 from
+`1f26ec97c6e3cf3b8521422c4e430eddcb45ad32`, paired with public Core v0.11.0
+(protocol 5, schema 39). See [published outcome and exact CI/artifact evidence](first-release-verification.md#published-v010-outcome).
+
+Shipped scope includes conversations, monitoring, branches, analytics, settings,
+local Apps, adopted scroll/characters, accent-following branding and explicit
+`--no-auth` with unchanged default authentication and retained Host/Origin checks.
+Read its [security restrictions](guides/user-guide.md#explicit-development-authentication-opt-out).
+Attachment picker is excluded. Publication alone is not a claim that the historical
+conditional #279/intermediate-attempt linkage limitation is solved.
+
+Windows x86_64, macOS arm64 and Linux x86_64 archives plus `SHA256SUMS` are
+[published](https://github.com/tya5/shellboy-studio/releases/tag/v0.1.0).
+They are unsigned/unnotarized. Physical-phone, Safari/Firefox, assistive-technology
+and paid-provider coverage is not established by hosted builds or desktop Chrome.
+
+## Historical candidate planning
+
+The following is the preserved preparation checkpoint, not current publication
+status or an instruction to repeat the first push. Later public exact-pair/CI/
+archive evidence supersedes its pending gates without rewriting past observations.
+
 
 First public browser UI and local bridge for Shellboy, intended to pair with
 Core v0.11.0 after its public tag and exact-pair validation. This is preparation,
