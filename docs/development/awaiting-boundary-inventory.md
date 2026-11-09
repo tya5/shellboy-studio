@@ -60,3 +60,30 @@ only final text. Reply receipt/mutation semantics remain unchanged.
 Limits: synthetic transport/happy-dom is not an actual owner/browser/phone test.
 The original source fails the retained-page and keyed selection tests before this
 repair. No debounce, optimistic remove, new timer/cache/poll or real data is used.
+
+## P1 Repair: Display Is Not Action Qualification
+
+The held first repair retained displayed rows but still admitted answer by row
+existence during reset cancellation. A dedicated regression first observed one
+reply RPC where zero was required. The repaired scope introduces one small page
+capability: successful page owner, session/query epoch, cursor and message IDs.
+Scope reset revokes it and increments scope epoch BEFORE old Cancel callbacks or
+signal notification. Ordinary same-session refresh changes read generation only,
+not the page capability; stale rows may still be answered under the same scope.
+
+Answer captures the exact page capability and checks connected owner/session,
+query cursor, ID membership and the original attempt owner/epoch before attempt
+reservation and immediately before dispatch. No old attempt receives a new owner
+identity or retry receipt. Completion keeps its original canonical receipt fact;
+it may refresh/cursor-project only when its captured page/scope is still valid.
+A newer successful page is never replaced by an old completion's hidden refresh.
+
+Additional inventory: resetScope capability revoke precedes invalidateRead cancel;
+read success installs capability before its atomic items publication; answer entry,
+attempt reserve and RPC have the same immutable page check; answer await writes
+only its original attempt fact, then guards any cursor/refresher continuation.
+close revokes capability before Cancel. Tests cover cancelcallback answer under
+B/ABA/unknown-same/queryreset (reply RPC zero inside callback), same-session stale
+positive control, late answer new-scope refresh zero, preserved unconfirmed retry
+identity and reentrant fresh-owner page not erased by the outer reset. No broad
+ask restriction or Core mutation protocol change is introduced.

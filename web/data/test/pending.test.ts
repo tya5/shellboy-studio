@@ -160,3 +160,48 @@ it("same-session refresh notification reentry is finite and does not erase curre
  const stop=effect(()=>{if(!once&&f.inbox.loading.value){once=true;writable(f.data.threadList).value={...f.data.threadList.peek(),loaded:true,loading:false,stale:false};}});
  try{await reread(f);expect(once).toBe(true);expect(f.inbox.items.value).toBe(previous);expect(humanCalls(f).length).toBeLessThanOrEqual(3);}finally{stop();f.close();}
 });
+
+it("revokes old-page action qualification before owner reset cancellation callbacks",async()=>{
+ const f=await fixture();await fill(f);await reread(f);
+ const cancel=(f.inbox as unknown as {cancel:{add(fn:()=>void):()=>void}}).cancel;
+ let answer:ReturnType<typeof f.inbox.answer>|undefined;
+ cancel.add(()=>{answer=f.inbox.answer("h","old-page callback");});
+ writable(f.data.owner).value=ownerB;await flush();
+ expect(answer).toBeDefined();expect(f.t.calls("message.reply")).toHaveLength(0);expect((await answer!).ok).toBe(false);f.close();
+});
+
+it.each(["B","ABA","unknownSame","query"])("cancelcallback answer admission is zero across %s",async transition=>{
+ const f=await fixture();await fill(f);await reread(f);
+ let result:ReturnType<typeof f.inbox.answer>|undefined;
+ (f.inbox as unknown as {cancel:{add(fn:()=>void):void}}).cancel.add(()=>{result=f.inbox.answer("h","old callback");expect(f.t.calls("message.reply")).toHaveLength(0);});
+ if(transition==="B")writable(f.data.owner).value=ownerB;
+ else if(transition==="ABA"){f.t.push({t:"owner",event:"restarted",owner:ownerB});f.t.push({t:"owner",event:"restarted",owner:connected});}
+ else if(transition==="unknownSame"){f.t.drop();f.t.open();f.t.push({t:"hello",bridge_version:"test",data_dir:"/synthetic",owner:connected});}
+ else {const inbox=f.inbox as unknown as {loading:{value:boolean};nextCursor?:string;resetScope():void};inbox.resetScope();}
+ await flush();expect(result).toBeDefined();expect((await result!).ok).toBe(false);expect(f.t.calls("message.reply")).toHaveLength(0);f.close();
+});
+it("same-session stale page remains authorized rather than globally disabling replies",async()=>{
+ const f=await fixture();await fill(f);writable(f.data.threadList).value={...f.data.threadList.value,stale:true};
+ const answer=f.inbox.answer("h","same scope");expect(f.t.calls("message.reply")).toHaveLength(1);
+ f.t.ok(f.t.calls("message.reply")[0]!.id,{});await flush();
+ const call=humanCalls(f).at(-1)!;f.t.ok(call.id,{items:[]});await flush();expect((await answer).ok).toBe(true);f.close();
+});
+it.each(["B","ABA","unknownSame","query"])("late answer retains original receipt but cannot refresh/cursor new %s scope",async transition=>{
+ const f=await fixture();await fill(f);const answer=f.inbox.answer("h","original");const reply=f.t.calls("message.reply")[0]!;
+ if(transition==="B")writable(f.data.owner).value=ownerB;
+ else if(transition==="ABA"){f.t.push({t:"owner",event:"restarted",owner:ownerB});f.t.push({t:"owner",event:"restarted",owner:connected});}
+ else if(transition==="unknownSame"){f.t.drop();f.t.open();f.t.push({t:"hello",bridge_version:"test",data_dir:"/synthetic",owner:connected});}
+ else(f.inbox as unknown as {resetScope():void}).resetScope();
+ await flush();const count=humanCalls(f).length;
+ f.t.ownerError(reply.id,"delivery_unconfirmed");await flush();await answer;
+ expect(humanCalls(f)).toHaveLength(count);expect(f.inbox.items.value).toEqual([]);expect(f.t.calls("message.reply")).toHaveLength(1);f.close();
+});
+it("cancel callback starts a fresh owner read without outer reset erasing its new page",async()=>{
+ const f=await fixture();await fill(f);await reread(f);
+ (f.inbox as unknown as {cancel:{add(fn:()=>void):void}}).cancel.add(()=>{f.t.push({t:"owner",event:"restarted",owner:ownerB});});
+ writable(f.data.owner).value={state:"unknown"};await flush();
+ writable(f.data.threadList).value={...f.data.threadList.value,loading:false,stale:false,loaded:true};await flush();
+ const page=humanCalls(f).at(-1)!;f.t.ok(page.id,{items:[summary("fresh")]});await flush();
+ f.t.ok(f.t.calls("thread.get").at(-1)!.id,details("fresh",{awaiting_replies:[human("new")] }));await flush();
+ expect(f.inbox.items.value.map(x=>x.id)).toEqual(["new"]);f.close();
+});
