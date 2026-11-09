@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 def local_links(root):
     checked = 0
     for path in [root / "README.md", root / "AGENTS.md", *sorted((root / "docs").rglob("*.md"))]:
-        text = re.sub(r"<!--.*?-->|```.*?```", "", path.read_text(), flags=re.S)
+        text = re.sub(r"<!--.*?-->|```.*?```", "", path.read_text(encoding="utf-8"), flags=re.S)
         for link in re.findall(r'!?\[[^\]]*\]\(([^\s)]+)(?:\s+"[^"]*")?\)', text):
             url = urlsplit(link.strip("<>"))
             if url.scheme or url.netloc:
@@ -28,7 +28,7 @@ def local_links(root):
             assert target.exists(), f"Missing local link in {path.relative_to(root)}"
             # File targets are checked, including images; heading fragments are checked below.
             if url.fragment and target.suffix == ".md":
-                headings = re.findall(r"^#{1,6}\s+(.+?)\s*#*\s*$", target.read_text(), re.M)
+                headings = re.findall(r"^#{1,6}\s+(.+?)\s*#*\s*$", target.read_text(encoding="utf-8"), re.M)
                 slugs = {re.sub(r"[^\w\- ]", "", h.lower().replace("`", "")).replace(" ", "-") for h in headings}
                 assert unquote(url.fragment) in slugs, f"Missing heading link in {path.relative_to(root)}"
             checked += 1
@@ -36,15 +36,15 @@ def local_links(root):
 
 
 def main():
-    manifest = tomllib.loads((ROOT / "Cargo.toml").read_text())
+    manifest = tomllib.loads((ROOT / "Cargo.toml").read_text(encoding="utf-8"))
     target = next(t for t in manifest["test"] if t["name"] == "real_owner")
     assert target["required-features"] == ["real-owner-tests"]
     assert "real-owner-tests" not in manifest["features"]["default"]
-    tests = (ROOT / "tests/real_owner.rs").read_text()
+    tests = (ROOT / "tests/real_owner.rs").read_text(encoding="utf-8")
     assert "SKIPPED" not in tests
-    ci = (ROOT / ".github/workflows/ci.yml").read_text()
-    release = (ROOT / ".github/workflows/release.yml").read_text()
-    owner = (ROOT / ".github/workflows/exact-owner.yml").read_text()
+    ci = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    release = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+    owner = (ROOT / ".github/workflows/exact-owner.yml").read_text(encoding="utf-8")
     assert "uses: ./.github/workflows/exact-owner.yml" in ci
     assert "needs: exact-owner" in release and "needs: build" in release
     assert "--features real-owner-tests --test real_owner" in owner

@@ -31,25 +31,25 @@ class ExactOwner(unittest.TestCase):
         self.run_git("config", "user.email", "fixture@example.invalid")
         self.run_git("remote", "add", "origin", gate.OFFICIAL)
         self.manifest = self.owner / "Cargo.toml"
-        self.manifest.write_text('[package]\nname="shellboy"\nversion="0.11.0"\n')
+        self.manifest.write_text('[package]\nname="shellboy"\nversion="0.11.0"\n', encoding="utf-8")
         self.run_git("add", "Cargo.toml")
         self.run_git("commit", "-m", "Synthetic source")
         self.run_git("tag", "-a", gate.TAG, "-m", "Synthetic annotated tag")
         self.commit = self.run_git("rev-parse", "HEAD")
         self.studio = self.root / "studio"
         self.studio.mkdir()
-        (self.studio / "Cargo.toml").write_text('[dependencies]\nshellboy={git="'+gate.OFFICIAL+'", tag="'+gate.TAG+'"}\n')
+        (self.studio / "Cargo.toml").write_text('[dependencies]\nshellboy={git="'+gate.OFFICIAL+'", tag="'+gate.TAG+'"}\n', encoding="utf-8")
         self.lock = self.studio / "Cargo.lock"
         self.write_lock()
         self.version = self.root / "binary-version.txt"
-        self.version.write_text("shellboy 0.11.0\n")
+        self.version.write_text("shellboy 0.11.0\n", encoding="utf-8")
 
     def run_git(self, *args):
         return subprocess.check_output(["git", "-C", str(self.owner), *args], env=self.env,
-                                       stderr=subprocess.DEVNULL, text=True).strip()
+                                       stderr=subprocess.DEVNULL, text=True, encoding="utf-8").strip()
 
     def write_lock(self, commit=None, version="0.11.0", repository=None, tag=None):
-        self.lock.write_text('version=4\n[[package]]\nname="shellboy"\nversion="'+version+'"\nsource="git+'+(repository or gate.OFFICIAL)+'?tag='+(tag or gate.TAG)+'#'+(self.commit if commit is None else commit)+'"\n')
+        self.lock.write_text('version=4\n[[package]]\nname="shellboy"\nversion="'+version+'"\nsource="git+'+(repository or gate.OFFICIAL)+'?tag='+(tag or gate.TAG)+'#'+(self.commit if commit is None else commit)+'"\n', encoding="utf-8")
 
     def check(self):
         return gate.verify(self.studio, self.owner, self.version)
@@ -68,7 +68,7 @@ class ExactOwner(unittest.TestCase):
         self.check()
 
     def test_same_version_different_commit_is_rejected(self):
-        (self.owner / "fixture.txt").write_text("same version, distinct source\n")
+        (self.owner / "fixture.txt").write_text("same version, distinct source\n", encoding="utf-8")
         self.run_git("add", "fixture.txt")
         self.run_git("commit", "-m", "Different source, unchanged version")
         self.write_lock(commit=self.run_git("rev-parse", "HEAD"))
@@ -76,7 +76,7 @@ class ExactOwner(unittest.TestCase):
             self.check()
 
     def test_wrong_checkout_is_rejected_even_with_correct_lock(self):
-        (self.owner / "fixture.txt").write_text("different checkout\n")
+        (self.owner / "fixture.txt").write_text("different checkout\n", encoding="utf-8")
         self.run_git("add", "fixture.txt")
         self.run_git("commit", "-m", "Wrong checkout")
         with self.assertRaisesRegex(ValueError, "checkout differs"):
@@ -112,7 +112,7 @@ class ExactOwner(unittest.TestCase):
 
     def test_wrong_manifest_pin(self):
         path = self.studio / "Cargo.toml"
-        path.write_text(path.read_text().replace("v0.11.0", "v0.10.0"))
+        path.write_text(path.read_text(encoding="utf-8").replace("v0.11.0", "v0.10.0"), encoding="utf-8")
         with self.assertRaisesRegex(ValueError, "Studio must pin"): self.check()
 
     def test_wrong_remote(self):
@@ -120,7 +120,7 @@ class ExactOwner(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "wrong owner remote"): self.check()
 
     def test_wrong_source_package_version(self):
-        self.manifest.write_text(self.manifest.read_text().replace("0.11.0", "0.10.0"))
+        self.manifest.write_text(self.manifest.read_text(encoding="utf-8").replace("0.11.0", "0.10.0"), encoding="utf-8")
         self.run_git("add", "Cargo.toml")
         self.run_git("commit", "-m", "Wrong package version")
         self.commit = self.run_git("rev-parse", "HEAD")
@@ -129,7 +129,7 @@ class ExactOwner(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "source package version"): self.check()
 
     def test_dirty_source(self):
-        self.manifest.write_text(self.manifest.read_text()+"# modified\n")
+        self.manifest.write_text(self.manifest.read_text(encoding="utf-8")+"# modified\n", encoding="utf-8")
         with self.assertRaisesRegex(ValueError, "not clean"): self.check()
 
     def test_missing_source_manifest(self):
@@ -141,20 +141,34 @@ class ExactOwner(unittest.TestCase):
         with self.assertRaises(OSError): self.check()
 
     def test_wrong_binary_version(self):
-        self.version.write_text("shellboy 0.10.0\n")
+        self.version.write_text("shellboy 0.10.0\n", encoding="utf-8")
         with self.assertRaisesRegex(ValueError, "wrong binary version"): self.check()
 
     def test_correct_version_with_extra_output_is_rejected(self):
-        self.version.write_text("shellboy 0.11.0 extra\n")
+        self.version.write_text("shellboy 0.11.0 extra\n", encoding="utf-8")
         with self.assertRaisesRegex(ValueError, "wrong binary version"): self.check()
 
     def test_missing_owner_package(self):
-        self.lock.write_text("version=4\npackage=[]\n")
+        self.lock.write_text("version=4\npackage=[]\n", encoding="utf-8")
         with self.assertRaisesRegex(ValueError, "exactly one"): self.check()
 
     def test_duplicate_owner_packages(self):
-        self.lock.write_text(self.lock.read_text()+"[[package]]"+self.lock.read_text().split("[[package]]", 1)[1])
+        self.lock.write_text(self.lock.read_text(encoding="utf-8")+"[[package]]"+self.lock.read_text(encoding="utf-8").split("[[package]]", 1)[1], encoding="utf-8")
         with self.assertRaises(ValueError): self.check()
+
+
+class StrictReleaseText(unittest.TestCase):
+    def test_invalid_utf8_in_document_is_rejected(self):
+        spec = importlib.util.spec_from_file_location("release_check", Path(__file__).with_name("check-release.py"))
+        release = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(release)
+        with tempfile.TemporaryDirectory(prefix="studio-invalid-utf8-") as tmp:
+            root = Path(tmp)
+            (root / "README.md").write_bytes(b"invalid utf8: \xff\n")
+            (root / "AGENTS.md").write_text("Synthetic instructions\n", encoding="utf-8")
+            (root / "docs").mkdir()
+            with self.assertRaises(UnicodeDecodeError):
+                release.local_links(root)
 
 
 if __name__ == "__main__":

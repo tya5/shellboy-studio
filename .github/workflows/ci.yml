@@ -1,4 +1,4 @@
-# UNTESTED: written before the first push; it has not run on GitHub. Validated only as YAML.
+# Required checks retain failed conclusions while independent diagnostics continue.
 name: Checks
 on:
   push:
@@ -38,21 +38,32 @@ jobs:
           npm run check
           npm run build
       - uses: actions/setup-python@v5
+        if: ${{ !cancelled() }}
         with:
           python-version: '3.12'
       - name: Owner-free release preparation checks
+        if: ${{ !cancelled() }}
+        env:
+          PYTHONUTF8: "1"
         run: python3 tools/check-release.py
       - name: Install pinned Rust toolchain
+        if: ${{ !cancelled() }}
         run: rustup toolchain install 1.99.1 --profile minimal --component rustfmt --component clippy
       - uses: Swatinem/rust-cache@v2
+        if: ${{ !cancelled() }}
         with:
           cache-on-failure: true
-      - name: Owner-free Rust checks (explicit owner suite runs separately)
-        run: |
-          cargo +1.99.1 fmt --check
-          cargo +1.99.1 clippy --locked --all-targets -- -D warnings
-          cargo +1.99.1 test --locked
+      - name: Rust format
+        if: ${{ !cancelled() }}
+        run: cargo +1.99.1 fmt --check
+      - name: Rust clippy
+        if: ${{ !cancelled() }}
+        run: cargo +1.99.1 clippy --locked --all-targets -- -D warnings
+      - name: Owner-free Rust tests (explicit owner suite runs separately)
+        if: ${{ !cancelled() }}
+        run: cargo +1.99.1 test --locked
       - name: Embedded frontend is present in the binary
+        if: ${{ !cancelled() }}
         run: |
           cargo +1.99.1 build --locked
           test -s web/dist/index.html
