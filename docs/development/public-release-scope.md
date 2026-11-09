@@ -86,3 +86,19 @@ A source archive is not a platform binary. Public tags/releases, generated publi
 assets, and installed Studio replacement require separate approval; installed
 Core owner v0.11.1 remains unchanged. Physical-phone and sample-outside behavior
 are not established by this preparation.
+
+## #20 Archive Result Type Follow-Up (Candidate)
+
+[#20](https://github.com/tya5/shellboy-studio/issues/20) corrects the browser
+operation result's optional `descendants` field from an ID array to the existing
+producer boolean. The [current data-layer contract](../design/data-layer.md#current-archive-result-contract-20)
+records the known boolean and generic unknown-reply boundary. This is an
+operation-contract correction, so current specification and status documentation
+apply even though the wire payload and runtime decoder do not change.
+
+Author validation records a TypeScript assignment failure before the type fix,
+then both TypeScript checks and 1,247 tests in 60 files passing afterward. These
+are local supporting results, not an independent producer rerun, demonstrated
+UI failure, same-SHA all-OS CI, final review acceptance or publication. The current
+UI does not read this field. Independent review and coordinated same-SHA CI remain
+pending; prior release history and immutable archives are unchanged.

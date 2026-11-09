@@ -273,3 +273,20 @@ merge `awaiting_reply`, `awaiting_human` or `awaiting_thread_replies`. Recipient
 kind, not sender identity, determines whether Studio offers a human answer.
 Thread parentage and shell ownership remain; Run ownership does not. No new
 polling, queue, adapter, live handoff or authentication mode is introduced.
+
+## Current Archive Result Contract (#20)
+
+The public browser operation result `ArchiveResult.descendants` is an optional
+boolean, matching the existing Core archive/unarchive producer's mode flag (both
+`false` and `true`). It is not an array of descendant IDs. The count-bearing
+`archived` / `unarchived`, `already` and `not_found` arrays are unchanged. The
+current UI does not consume the result's `descendants` field; this correction
+makes the operation type accurate, not a repair of an observed UI incident.
+
+The generic object decoder remains unchanged: missing, null, unknown and additive
+wire fields are not normalized or newly validated by this TypeScript declaration.
+The boolean type describes the known producer contract; it is not runtime proof
+that an arbitrary reply contains a boolean. No mutation, bridge, wire format or
+validator dependency changes are introduced. Core #292's real-producer fixture is
+the source reference for both modes; the browser fixture encodes that shape and
+exercises the consumer, without rerunning the Core producer.
