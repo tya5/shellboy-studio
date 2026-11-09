@@ -1,3 +1,4 @@
+import type { Signal } from "@preact/signals-core";
 // @vitest-environment happy-dom
 // One smoke test per view on the shared fixture, through the real components.
 import "@preact/signals";
@@ -1303,4 +1304,38 @@ describe("limited Branches comparison UI", () => {
       expect(model.branchCompare.state.value.selected).toEqual([]);
     } finally { model.dispose(); }
   });
+});
+
+it("keeps same-message Inbox DOM and draft across updates/reorder, but resets a different message", async () => {
+  const pending = fixturePendingAdapter(); const { model } = await fixtureModel({ route: "inbox", pending });
+  try {
+    const el = draw(model); const box = el.querySelector("textarea")!;
+    act(() => { box.value = "synthetic draft"; box.dispatchEvent(new Event("input", { bubbles:true })); });
+    const original = pending.items.value;
+    act(() => { (pending.items as Signal<typeof pending.items.value>).value = [original[1]!, { ...original[0]!, question:"Updated same message" }]; });
+    // Keep the original picked message selected, rather than silently switching with order.
+    expect(el.querySelector("textarea")).toBe(box); expect(box.value).toBe("synthetic draft");
+    expect(el.querySelector(".q .t")?.textContent).toBe("Updated same message");
+    act(() => { (pending.items as Signal<typeof pending.items.value>).value = [original[1]!]; });
+    expect(el.querySelector("textarea")).not.toBe(box); expect(el.querySelector<HTMLTextAreaElement>("textarea")?.value).toBe("");
+  } finally { model.dispose(); }
+});
+
+it("real HumanInbox reread does not transiently unmount or lose the message draft", async () => {
+  const { model, data, t, db } = await fixtureModel({ route:"inbox", realPending:true });
+  try {
+    const originalAnswer = db.answer.bind(db);
+    db.answer = call => call.command === "thread.list" && (call.args as Record<string,unknown>).awaiting === "human" ? {ok:true,result:{items:[db.threads.lead!]}} : originalAnswer(call);
+    for (const detail of Object.values(db.details)) Object.assign(detail, { awaiting_replies: [] });
+    db.details.lead = { ...db.details.lead!, awaiting_replies:[{message_id:"stable-human",recipient_kind:"human",excerpt:"Stable question",delivery_status:"accepted"}] } as NonNullable<typeof db.details.lead>;
+    (data.threadList as Signal<typeof data.threadList.value>).value = { ...data.threadList.value, loaded:true, loading:false, stale:false }; await settle(t,db);
+    expect(model.pending.items.value, JSON.stringify({error:model.pending.error?.value,calls:t.calls("thread.get").map(x=>x.args)})).not.toEqual([]);
+    const el=draw(model); const box=el.querySelector("textarea")!; expect(box).toBeTruthy();
+    act(()=>{box.value="kept draft";box.dispatchEvent(new Event("input",{bubbles:true}));});
+    act(()=>{(data.threadList as Signal<typeof data.threadList.value>).value={...data.threadList.value,loading:true};});
+    expect(el.querySelector("textarea")).toBe(box);expect(box.value).toBe("kept draft");expect(el.querySelector(".qdetail .empty")).toBeNull();
+    act(()=>{(data.threadList as Signal<typeof data.threadList.value>).value={...data.threadList.value,loading:false,stale:false,loaded:true};});
+    expect(el.querySelector("textarea")).toBe(box); await act(async()=>settle(t,db));
+    expect(el.querySelector("textarea")).toBe(box);expect(box.value).toBe("kept draft");
+  } finally {model.dispose();}
 });

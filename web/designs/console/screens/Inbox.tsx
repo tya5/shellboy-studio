@@ -1,4 +1,4 @@
-import { useState } from "preact/hooks";
+import { useRef, useState } from "preact/hooks";
 import { errorMessage, formatAge, formatRoute, statusLabel, STATUS_KEYS, type AppModel } from "../../../ui-core/src";
 import { Button, EmptyState, Icon, QuestionCard, QuestionItem, StatusMark } from "../system/components";
 
@@ -8,7 +8,9 @@ export function Inbox({ model }: { model: AppModel }) {
   const counts = model.counts.value;
   const [picked, setPicked] = useState<string | undefined>(undefined);
   const [error, setError] = useState<string | undefined>(undefined);
-  const current = items.find((p) => p.id === picked) ?? items[0];
+  const previous = useRef<string | undefined>(undefined);
+  const current = items.find((p) => p.id === picked) ?? items.find(p => p.id === previous.current) ?? items[0];
+  previous.current = current?.id;
   const others = STATUS_KEYS.filter((k) => k !== "awaiting" && (counts[k] ?? 0) > 0);
   return (
     <div class="inbox">
@@ -17,6 +19,8 @@ export function Inbox({ model }: { model: AppModel }) {
         {items.map((p) => (
           <QuestionItem key={p.id} title={`${p.threadTitle}${p.count !== undefined ? ` (${p.count}${p.countExact === false ? "+" : ""})` : ""}`} age={formatAge(p.askedAt, model.now.value)} question={p.question} current={p.id === current?.id} onClick={() => setPicked(p.id)} />
         ))}
+        {model.pending.loading?.value ? <p class="muted caption" role="status">{t("common.loading")}</p> : null}
+        {model.pending.stale?.value ? <p class="muted caption">{t("work.stale")}</p> : null}
         {model.pending.error?.value ? <p role="alert">{errorMessage(model.pending.error.value)}</p> : null}
         {model.pending.hasMore?.value ? <Button onClick={() => void model.pending.more?.()}>{t("threads.more")}</Button> : null}
         {others.length > 0 ? (
@@ -34,6 +38,7 @@ export function Inbox({ model }: { model: AppModel }) {
       <div class="qdetail">
         {current ? (
           <QuestionCard
+            key={current.id}
             id={current.id}
             label={t("inbox.waitingLabel")}
             waitingWord={statusLabel(t, "awaiting")}
