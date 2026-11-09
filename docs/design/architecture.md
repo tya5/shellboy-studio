@@ -605,3 +605,16 @@ concurrently. Repeated notifications initiate new bounded epochs, not a global
 lifetime budget. Existing WS4/global8 execution limits do not replace this
 admission bound. Shutdown cancels both owned reads. Limits describe work, not
 latency. No full-path scan or history-list fallback is used.
+
+### Fork Chain Extension (ADR-F1)
+
+One AppModel-owned fork chain adds at most two receipts to the existing rename,
+archive and rewind slots: four slots/six receipts total. Immutable parent/node/
+normalized text/original owner is reserved before dispatch; identical in-flight
+calls join. Unknown outcomes retain identity and refuse changed payloads.
+Only canonical fork acknowledgement fixes the child; send recovery never forks
+again. Existing owner-generation/invocation guards apply before all new stages,
+projection and refresh. Clear/read/leave preserve receipts but invalidate stale
+projection as appropriate. Opaque diagnostic lookup cannot mark success.
+No persistent reload recovery or real-owner exactly-once guarantee is asserted.
+The existing B12 eight-row/serial-excerpt and bounded-family budgets do not change.

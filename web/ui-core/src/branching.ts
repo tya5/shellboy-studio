@@ -106,7 +106,7 @@ export class ExcerptBatch {
     } finally { this.running = false; }
   }
 }
-// Three model-owned slots, four receipts maximum. Reads/navigation never evict
+// Four model-owned slots, six receipts maximum. Reads/navigation never evict
 // uncertain outcomes. Immutable keys include the initiating owner and payload.
 interface Invocation {
   owner: string | undefined;
@@ -134,6 +134,13 @@ interface RewindAttempt extends BranchAttempt {
   send?: BranchReceipt<unknown>;
   running?: Promise<void>;
 }
+interface ForkAttempt extends BranchAttempt {
+  target: BranchTarget;
+  text: string;
+  child?: { threadId: string; title: string };
+  send?: BranchReceipt<unknown>;
+  running?: Promise<void>;
+}
 const uncertainOutcome = (out: Outcome<unknown>): boolean => !out.ok && !["not_connected", "busy"].includes(out.error.kind);
 const outcomeMessage = (out: Outcome<unknown>): string | undefined => out.ok ? undefined :
   out.error.kind === "not_connected" || out.error.kind === "busy" ? `Not sent: ${out.error.message}` :
@@ -150,6 +157,7 @@ export class Branches {
   private renameAttempt?: BranchAttempt;
   private archiveAttempt?: BranchAttempt;
   private rewindAttempt?: RewindAttempt;
+  private forkAttempt?: ForkAttempt;
   private refusal(message: string): void { this.actionError.value = message; }
   private projectionEpoch = 0;
   private ownerGeneration = 0;
@@ -406,15 +414,66 @@ export class Branches {
   }
 
   async forkAt(target: BranchTarget, text = ""): Promise<void> {
-    this.fork.value = { kind: "forking" };
-    const out = await this.ops.threadFork({ thread_id: target.threadId, node_id: target.nodeId });
-    if (out.ok && text.trim()) {
-      const sent = await this.ops.messageSend({ thread_id: out.value.thread_id, text: text.trim() });
-      if (!sent.ok) { this.fork.value = { kind: "done", threadId: out.value.thread_id, title: out.value.title }; this.actionError.value = `Branch ${out.value.thread_id} created; request not sent: ${sent.error.message}`; return; }
+    text = text.trim();
+    const key = JSON.stringify({ thread_id: target.threadId, node_id: target.nodeId, text });
+    let attempt = this.forkAttempt;
+    if (attempt && (attempt.uncertain || attempt.running) && attempt.key !== key) {
+      this.refusal(`Resolve the original fork/request outcome (${attempt.send?.id ?? attempt.receipt.id}) before changing its target or text`);
+      return;
     }
-    this.fork.value = out.ok ? { kind: "done", threadId: out.value.thread_id, title: out.value.title } : { kind: "failed", error: out.error };
-    if (out.ok) void this.read(this.state.peek().threadId ?? target.threadId);
+    if (!attempt || attempt.key !== key) {
+      if (!this.owner()) { this.refusal("No current owner; fork was not sent"); return; }
+      attempt = { owner: this.owner(), key, threadId: target.threadId, target: { ...target }, text,
+        uncertain: true, receipt: { id: this.ops.mutationId() } };
+      this.forkAttempt = attempt;
+    }
+    if (attempt.running) return attempt.running;
+    const active = attempt;
+    const token = this.invocation(target);
+    let settle!: () => void;
+    const running = new Promise<void>(resolve => { settle = resolve; });
+    active.running = running;
+    void this.runFork(active, token).finally(() => { active.running = undefined; settle(); });
+    return running;
   }
+  private async runFork(attempt: ForkAttempt, token: Invocation): Promise<void> {
+    if (this.visible(attempt, token)) {
+      this.fork.value = { kind: "forking" };
+      // Signal subscribers may synchronously change owner/view or leave.
+      if (!this.visible(attempt, token)) return;
+    }
+    const out = await this.receipt(attempt, attempt.receipt, id => this.ops.threadFork({
+      thread_id: attempt.target.threadId, node_id: attempt.target.nodeId,
+    }, id));
+    if (!out.ok) {
+      attempt.uncertain = uncertainOutcome(out);
+      if (this.visible(attempt, token)) {
+        this.fork.value = { kind: "failed", error: out.error };
+        this.actionError.value = outcomeMessage(out);
+      }
+      return;
+    }
+    // Only a canonical thread.fork response can establish the immutable child.
+    const child = out.value as { thread_id: string; title: string };
+    attempt.child ??= { threadId: child.thread_id, title: child.title };
+    if (!this.visible(attempt, token)) { attempt.uncertain = !!attempt.text && !attempt.send?.outcome?.ok; return; }
+    if (attempt.text) {
+      attempt.send ??= { id: this.ops.mutationId() };
+      const sent = await this.receipt(attempt, attempt.send, id => this.ops.messageSend({
+        thread_id: attempt.child!.threadId, text: attempt.text,
+      }, id));
+      attempt.uncertain = !sent.ok;
+      if (!this.visible(attempt, token)) return;
+      this.actionError.value = sent.ok ? undefined : `Branch ${attempt.child.threadId} created; request ${outcomeMessage(sent)}`;
+    } else {
+      attempt.uncertain = false;
+      this.actionError.value = undefined;
+    }
+    if (!this.visible(attempt, token)) return;
+    this.fork.value = { kind: "done", ...attempt.child };
+    if (!attempt.uncertain) void this.read(this.state.peek().threadId ?? attempt.target.threadId);
+  }
+
 }
 
 export type ArchiveMode = Extract<ArchivedFilter, "exclude" | "only">;

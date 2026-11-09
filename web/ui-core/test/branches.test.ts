@@ -182,6 +182,7 @@ describe("Branches over the fake transport", () => {
     const { t, db, model } = await branches();
     const plain = db.answer;
     db.answer = c => c.command === "message.send" ? { ok: false, code: "invalid_state", message: "Cannot send" } : plain(c);
+    model.applyRoute({ view: "branches", threadId: "lead", nodeId: "n100" });
     const task = model.branches.forkAt({ threadId: "lead", nodeId: "n100" }, "new request");
     await settle(t, db); await settle(t, db); await task;
     expect(model.branches.fork.value.kind).toBe("done");
@@ -254,6 +255,7 @@ describe("Branches over the fake transport", () => {
   });
   it("fork names the new Thread and re-reads the family", async () => {
     const { t, db, model } = await branches();
+    model.applyRoute({ view: "branches", threadId: "lead", nodeId: "n100" });
     const before = t.calls("thread.branches").length;
     void model.branches.forkAt({ threadId: "lead", nodeId: "n100" });
     await settle(t, db);
