@@ -100,3 +100,15 @@ it("unknown owner starts no fork and changing the selected node blocks late foll
   f.change("a");const p=f.b.forkAt(f.target,"fixed");f.b.target.value={...f.target,nodeId:"different"};f.b.actionError.value="new point";
   f.t.ok(f.t.calls("thread.fork")[0]!.id,child);await p;expect(f.t.calls("message.send")).toHaveLength(0);expect(f.b.actionError.value).toBe("new point");f.link.stop();
 });
+
+for (const invalidation of ["owner", "aba", "leave", "target"] as const) it(`done notification ${invalidation} invalidates refresh before dispatch`,async()=>{
+  const f=fixture();const stop=effect(()=>{if(f.b.fork.value.kind!=="done")return;
+    if(invalidation==="owner")f.change("b");
+    if(invalidation==="aba"){f.change("b");f.change("a");}
+    if(invalidation==="leave")f.b.leave();
+    if(invalidation==="target")f.b.target.value={...f.target,nodeId:"different"};
+  });
+  const p=f.b.forkAt(f.target);f.t.ok(f.t.calls("thread.fork")[0]!.id,child);await p;
+  expect(f.t.calls("thread.branches")).toHaveLength(0);expect(f.t.calls("message.send")).toHaveLength(0);
+  stop();f.link.stop();
+});

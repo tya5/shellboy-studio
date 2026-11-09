@@ -59,3 +59,14 @@ Independent S6 meaning/privacy review and integration's exact-source conflict
 forecast remain required. Fork is reviewed before B3; comparison selection must
 not become mutation target. No deployment or publication authorization follows
 from this document.
+
+## Done-Notification Reentry Follow-Up
+
+S6 independently held initial product 52c24ef: after publishing done, a
+synchronous subscriber could change owner or leave before the unguarded family
+refresh. Its 700 passing tests did not cover that boundary. The follow-up checks
+the original immutable invocation again after done publication and before read.
+Four new synthetic tests invalidate owner, owner ABA, leave or target during
+the done notification and require zero refresh RPCs. No receipt, policy, family
+budget or public contract changes. The rejected initial result remains history;
+these tests do not constitute runtime or real-owner acceptance.

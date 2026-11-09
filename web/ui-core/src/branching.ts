@@ -471,6 +471,7 @@ export class Branches {
     }
     if (!this.visible(attempt, token)) return;
     this.fork.value = { kind: "done", ...attempt.child };
+    if (!this.visible(attempt, token)) return;
     if (!attempt.uncertain) void this.read(this.state.peek().threadId ?? attempt.target.threadId);
   }
 
