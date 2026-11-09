@@ -24,8 +24,8 @@ Screenshots are not bundled yet.
 
 ## v0.1.0 candidate
 
-Planned pairing: published Core v0.11.0 after exact-tag validation. The current
-pin is not changed until that tag exists. Older-owner feature negotiation is
+Source candidate pairing: published Core v0.11.0, pinned to its official tag
+and locked source commit (protocol 5, schema 39). Studio is not yet published. Older-owner feature negotiation is
 not guaranteed; use only the validated matching owner. Existing artifact targets
 remain Windows x86_64, macOS arm64 and Linux x86_64, not new physical-device
 support claims. See [candidate notes](docs/release-v0.1.0.md) and the
@@ -60,10 +60,9 @@ cannot run on that directory, because the TUI is itself an owner today.
   ```sh
   git clone https://github.com/tya5/shellboy-studio && cd shellboy-studio
   (cd web && npm ci && npm run build)   # the frontend is embedded by build.rs
-  cargo run --release --no-default-features -- --data-dir DIR
+  cargo run --release -- --data-dir DIR
   ```
 
-  This uses the v0.10.0-compatible feature set; next-generation features are unavailable.
   Without `npm run build` the binary still builds, but `GET /` only says how to build the frontend.
 
 ## Connecting to an owner

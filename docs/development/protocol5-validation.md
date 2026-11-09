@@ -98,3 +98,56 @@ literal `$TMPDIR/s7-p5-final2-check.log` and `$TMPDIR/s7-p5-final2-build.log`.
 Public-tag exact pairing, lock regeneration, installation, all-OS Rust checks,
 real-owner acceptance, runtime activation and hosted CI remain release gates,
 not outcomes claimed by this candidate work.
+
+
+## Formal public-pin follow-up and event fixture diagnosis
+
+The public v0.11.0 tag resolves to
+`4dc8f66a6c586db57a7a63a3a8be84e25999c95f` (protocol 5, schema 39).
+The manifest and lock now select that source rather than the earlier CLI patch.
+The macOS arm64 public release archive matches its published SHA256SUMS; the
+identity tool verifies tag/peeled commit/locked commit/source package and
+binary version. Studio remains an unpublished source candidate.
+
+Initial default `cargo test --locked` failed two bridge tests with frame waits:
+`hints_reach_only_the_tabs_that_watch_and_resync_reaches_all` and
+`new_tabs_start_from_the_current_owner_state_and_hear_about_changes`. Eleven
+other bridge tests passed. This failure is retained, not treated as pair success.
+
+Cause: the full bridge starts `run_with_guide`, unlike direct event-loop tests.
+After consuming the baseline, registration reads ConfigGet before announcing
+Connected or polling the next cursor. The hint fixture's handler omitted that
+command; common MockOwner intentionally waits forever for unknown commands.
+The 10-second guide bound consequently competed with the existing 10-second
+WebSocket frame deadline. This is an incomplete startup fixture, not evidence
+of lost hints, an invalid protocol5 cursor, or a process/IPC failure. No owner
+wire, migration, product event order, deadlines or assertion strength changes.
+
+Minimal fix: explicitly answer ConfigGet with the existing no-file result for
+these hint-only tests. Use unique synthetic data/config paths instead of shared
+fixed roots; hello still asserts exact equality with its configured path.
+Separate semaphore-controlled guide tests prove slow config holds Connected
+and the next poll until release, errors still permit Connected/hints, and a
+persisted opt-out avoids ConfigGet. Each proves the baseline cursor survives.
+The test-created opt-out file is removed. Unknown-command pending behavior is
+retained for cancellation/backpressure tests.
+
+Focused original tests now pass individually without increasing timeouts.
+Three guide startup causal tests pass. During authoring, diagnostic compile
+errors (wrong helper signature/field names) and a stale fixed-path hello
+assertion were corrected; none is counted as successful execution. Full
+locked default results and real public-binary synthetic pair results are
+recorded only after their commands finish. No running user owner/data/Serve
+configuration or runtime binary is touched by these checks.
+
+Default locked rerun passed after the fixture correction, including protocol5
+4/4 and guide-startup 3/3. The independent six-test public-binary suite did not
+pass: 3/6 failed (stale title-denied expectation, branch settle, live frame).
+A focused branch diagnostic identifies recovery caused by guide registration
+pointing to a missing agent-pointer file: library-start test fixtures do not
+run the CLI's guide installer. This is separate from hint subscription/cursor
+semantics. The stale title test is updated to assert permitted naming and
+retain denial of unrelated cwd changes. Clippy's items-after-test-module is
+corrected by moving the unchanged guide test module after implementation.
+Full-pair and limited real-CLI acceptance remain independent pending gates;
+no runtime switch or publication is authorized by this record.

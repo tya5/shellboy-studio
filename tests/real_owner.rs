@@ -394,6 +394,11 @@ impl Client {
             let got = self
                 .ok("thread.get", json!({"thread_id":thread}), None)
                 .await;
+            assert!(
+                got.get("recovery_reason").is_none_or(Value::is_null),
+                "synthetic request entered recovery: {}",
+                got["recovery_reason"]
+            );
             if got.get("run_id").is_none_or(Value::is_null) {
                 return;
             }
@@ -791,12 +796,20 @@ async fn a_thread_moves_and_the_owner_refuses_a_cycle() {
         )
         .await;
     assert!(detached["parent_id"].is_null(), "{detached}");
-    // Anything else thread.set can do stays denied.
-    let other = c
-        .call(
+    // Naming is explicitly allowed for retained branches; unrelated fields remain denied.
+    let named = c
+        .ok(
             "thread.set",
             json!({"thread_id": b, "title": "x"}),
             op("title"),
+        )
+        .await;
+    assert_eq!(named["title"], "x");
+    let other = c
+        .call(
+            "thread.set",
+            json!({"thread_id": b, "cwd": cwd}),
+            op("cwd-denied"),
         )
         .await;
     assert_eq!(other["error"]["code"], "not_allowed", "{other}");

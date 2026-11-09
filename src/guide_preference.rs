@@ -26,20 +26,6 @@ pub fn set_enabled(dir: &Path, value: bool) -> io::Result<()> {
     result
 }
 
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn preference_is_persistent_and_invalid_values_fail_closed() {
-        let dir = std::env::temp_dir().join(format!("studio-pref-{}", uuid::Uuid::new_v4()));
-        assert!(super::enabled(&dir).unwrap());
-        super::set_enabled(&dir, false).unwrap();
-        assert!(!super::enabled(&dir).unwrap());
-        std::fs::write(dir.join("guide-preference.json"), "bad").unwrap();
-        assert!(super::enabled(&dir).is_err());
-        std::fs::remove_dir_all(dir).unwrap();
-    }
-}
-
 /// Reconcile the pointer through the owner's public, hash-checked configuration API.
 #[cfg(feature = "next-shellboy")]
 pub async fn register<O: crate::owner::Owner>(
@@ -111,4 +97,18 @@ pub async fn register<O: crate::owner::Owner>(
             .unwrap_or_else(|| "config.set failed".into()));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn preference_is_persistent_and_invalid_values_fail_closed() {
+        let dir = std::env::temp_dir().join(format!("studio-pref-{}", uuid::Uuid::new_v4()));
+        assert!(super::enabled(&dir).unwrap());
+        super::set_enabled(&dir, false).unwrap();
+        assert!(!super::enabled(&dir).unwrap());
+        std::fs::write(dir.join("guide-preference.json"), "bad").unwrap();
+        assert!(super::enabled(&dir).is_err());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
 }

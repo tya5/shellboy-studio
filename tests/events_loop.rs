@@ -404,3 +404,123 @@ mod live_text {
         cancel.cancel();
     }
 }
+
+// Guide reconciliation precedes Connected. Exercise that startup dependency
+// separately from hint fixtures, whose ConfigGet must always be answered.
+#[cfg(feature = "next-shellboy")]
+mod guide_startup {
+    use super::*;
+    use shellboy::protocol::Command;
+    use shellboy::protocol::{ApiError, ErrorCode, Origin};
+    use shellboy_studio::owner::Owner;
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
+    use tokio::sync::Semaphore;
+
+    struct ConfigGate {
+        inner: Arc<MockOwner>,
+        entered: AtomicUsize,
+        release: Semaphore,
+        fail: bool,
+    }
+    impl Owner for ConfigGate {
+        async fn call(
+            &self,
+            command: Command,
+            operation_id: Option<String>,
+            origin: Option<Origin>,
+        ) -> Reply {
+            if matches!(command, Command::ConfigGet(_)) {
+                self.entered.fetch_add(1, Ordering::SeqCst);
+                self.release.acquire().await.unwrap().forget();
+                return if self.fail {
+                    Err(ApiError::new(
+                        ErrorCode::InvalidState,
+                        "synthetic unavailable config",
+                    ))
+                } else {
+                    ok("instance", json!({}))
+                };
+            }
+            self.inner.call(command, operation_id, origin).await
+        }
+    }
+
+    async fn startup(disabled: bool, fail: bool) {
+        let (inner, tx) = mock(|_| None);
+        let state = app_state(inner.clone(), false, "127.0.0.1:0".parse().unwrap());
+        if disabled {
+            shellboy_studio::guide_preference::set_enabled(&state.config.config_dir, false)
+                .unwrap();
+        }
+        let owner = Arc::new(ConfigGate {
+            inner: inner.clone(),
+            entered: AtomicUsize::new(0),
+            release: Semaphore::new(0),
+            fail,
+        });
+        let hub = Hub::new();
+        let (tab, _) = hub.register().unwrap();
+        hub.watch(&tab, vec!["t1".into()], true).unwrap();
+        let cancel = CancellationToken::new();
+        let task = tokio::spawn(events::run_with_guide(
+            owner.clone(),
+            hub.clone(),
+            fast_poll(),
+            cancel.clone(),
+            Some((
+                state.config.config_dir.clone(),
+                state.config.data_dir.clone(),
+            )),
+        ));
+        tx.send(events("instance", "baseline", "c1", &[], false))
+            .unwrap();
+        tx.send(events("instance", "changed", "c2", &["t1"], false))
+            .unwrap();
+        if !disabled {
+            until("registration entered", || {
+                owner.entered.load(Ordering::SeqCst) == 1
+            })
+            .await;
+            assert_eq!(
+                inner.event_args.lock().unwrap().len(),
+                1,
+                "ConfigGet blocks the next poll, not cursor decoding"
+            );
+            assert!(!matches!(hub.take(&tab).1, OwnerState::Connected { .. }));
+            owner.release.add_permits(1);
+        }
+        until("changed consumed", || {
+            inner.event_args.lock().unwrap().len() == 3
+        })
+        .await;
+        assert_eq!(owner.entered.load(Ordering::SeqCst), usize::from(!disabled));
+        assert_eq!(
+            inner.event_args.lock().unwrap()[1].after.as_deref(),
+            Some("c1")
+        );
+        let (pending, owner_state) = hub.take(&tab);
+        assert!(matches!(owner_state, OwnerState::Connected { .. }));
+        assert!(pending.threads.contains("t1"));
+        cancel.cancel();
+        task.await.unwrap();
+        if disabled {
+            std::fs::remove_dir_all(state.config.config_dir.parent().unwrap()).unwrap();
+        }
+    }
+
+    #[tokio::test]
+    async fn slow_guide_config_delays_connected_until_released_without_losing_cursor() {
+        startup(false, false).await;
+    }
+    #[tokio::test]
+    async fn guide_error_does_not_prevent_connected_or_hints() {
+        startup(false, true).await;
+    }
+    #[tokio::test]
+    async fn guide_disabled_never_reads_owner_config() {
+        startup(true, false).await;
+    }
+}

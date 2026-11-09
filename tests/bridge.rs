@@ -74,6 +74,9 @@ fn status_of(error: tokio_tungstenite::tungstenite::Error) -> u16 {
 fn list_handler(command: &shellboy::protocol::Command) -> Option<Value> {
     use shellboy::protocol::Command;
     match command {
+        // Guide reconciliation precedes Connected; this hint fixture has no guide file.
+        #[cfg(feature = "next-shellboy")]
+        Command::ConfigGet(_) => Some(json!({})),
         Command::ThreadList(_) => Some(json!({"items": []})),
         Command::ThreadCreate(_) => Some(json!({"thread_id": "t-new"})),
         Command::MessageSend(_) => Some(json!({"accepted": true})),
@@ -253,7 +256,10 @@ async fn websocket_requires_a_session_and_a_matching_origin() {
     let mut ws = connect(addr, Some(&cookie), Some(&origin)).await.unwrap();
     let hello = next(&mut ws).await;
     assert_eq!(hello["t"], "hello");
-    assert_eq!(hello["data_dir"], "/temp/data");
+    assert_eq!(
+        hello["data_dir"],
+        state.config.data_dir.to_string_lossy().as_ref()
+    );
     assert_eq!(hello["bridge_version"], env!("CARGO_PKG_VERSION"));
     cancel.cancel();
 }

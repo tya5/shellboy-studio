@@ -118,6 +118,7 @@ pub fn app_state<O: Owner>(
     debug: bool,
     listen: std::net::SocketAddr,
 ) -> AppState<O> {
+    let fixture = std::env::temp_dir().join(format!("studio-mock-{}", uuid::Uuid::new_v4()));
     Shared::new(
         owner,
         Hub::new(),
@@ -125,8 +126,8 @@ pub fn app_state<O: Owner>(
         ServerConfig {
             listen,
             extra_hosts: vec![],
-            data_dir: "/temp/data".into(),
-            config_dir: "/temp/config".into(),
+            data_dir: fixture.join("data"),
+            config_dir: fixture.join("config"),
             debug,
         },
     )

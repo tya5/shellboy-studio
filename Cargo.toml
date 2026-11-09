@@ -42,7 +42,7 @@ next-cwds = ["next-tags"]
 
 [dependencies]
 # Future pin; do not merge until the tag exists and pairing checks pass.
-shellboy = { git = "https://github.com/tya5/shellboy", tag = "v0.10.0" }
+shellboy = { git = "https://github.com/tya5/shellboy", tag = "v0.11.0" }
 tokio = { version = "=1.54.1", features = ["rt-multi-thread", "macros", "sync", "time", "net", "signal", "process", "fs", "io-util"] }
 tokio-util = { version = "=0.7.20", features = ["rt"] }
 axum = { version = "=0.8.9", default-features = false, features = ["http1", "tokio", "ws", "json"] }
