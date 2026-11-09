@@ -73,3 +73,28 @@ cleanup or measurement fills those gaps. Limited resumption authorizes only the
 product edit and synthetic/owner-free web work described here. Separate S6
 meaning/privacy/provenance review and integration approval remain required;
 no push, CI, release, composition or runtime operation is authorized by this file.
+
+## Owner Generation Follow-Up
+
+Independent S6 review rejected initial repair `6c3cb105`: ownerless projection
+checks allowed a late rename/archive success to affect another owner, and the
+success cache shortcut preceded owner validation. Its 660 passing tests did not
+cover those races; that candidate is not accepted on that evidence.
+
+The follow-up separates immutable original-owner receipts from per-invocation
+projection. AppModel synchronously notifies a monotonic owner generation,
+including transitions through unavailable and A-to-B-to-A. Each invocation
+captures generation, owner, view, target and navigation epoch before await.
+Only a current nonempty matching owner and matching captured bindings permit
+projection, read side effects or an unstarted next stage. Joining/rebinding does
+not alter older invocation tokens. Owner validation precedes successful-cache
+reuse. Diagnostic lookup never overwrites a retained canonical success. Explicit
+return to the original owner may reuse the same ID or display its known outcome;
+no cached successful mutation stage is re-executed.
+
+Nine additional synthetic owner-race tests cover rename/archive late success,
+A-to-B and A-to-B-to-A, unavailable roundtrip, cross-owner canonical cache reuse,
+explicit original-owner join without resurrecting the old continuation, and
+owner roundtrips in both rewind/send stages. One older test initially timed out
+because the corrected old-owner confirm now performs a diagnostic lookup; the
+fixture now explicitly answers that read. No timeout increase or skip was used.

@@ -66,6 +66,13 @@ const sameTarget = (a: BranchTarget | undefined, b: BranchTarget): boolean => a?
 
 // Three model-owned slots, four receipts maximum. Reads/navigation never evict
 // uncertain outcomes. Immutable keys include the initiating owner and payload.
+interface Invocation {
+  owner: string | undefined;
+  generation: number;
+  epoch: number;
+  view: string | undefined;
+  target?: BranchTarget;
+}
 interface BranchReceipt<T> {
   id: string;
   outcome?: Outcome<T>;
@@ -75,8 +82,6 @@ interface BranchAttempt {
   owner: string | undefined;
   key: string;
   threadId: string;
-  viewId: string | undefined;
-  epoch: number;
   uncertain: boolean;
   receipt: BranchReceipt<unknown>;
 }
@@ -104,26 +109,48 @@ export class Branches {
   private rewindAttempt?: RewindAttempt;
   private refusal(message: string): void { this.actionError.value = message; }
   private projectionEpoch = 0;
-  private visible(attempt: BranchAttempt): boolean { return this.projectionEpoch === attempt.epoch && this.currentView() === attempt.viewId; }
+  private ownerGeneration = 0;
+  private observedOwner: string | undefined;
+  private ownerObserved = false;
+  /** Synchronous owner/session notification; even A -> unavailable -> A invalidates. */
+  ownerChanged(owner: string | undefined): void {
+    if (!this.ownerObserved || owner !== this.observedOwner) {
+      this.ownerObserved = true;
+      this.observedOwner = owner;
+      ++this.ownerGeneration;
+    }
+  }
+  private invocation(target?: BranchTarget): Invocation {
+    this.ownerChanged(this.owner());
+    return { owner: this.owner(), generation: this.ownerGeneration, epoch: this.projectionEpoch, view: this.currentView(), target: target ? { ...target } : undefined };
+  }
+  private visible(attempt: BranchAttempt, token: Invocation): boolean {
+    this.ownerChanged(this.owner());
+    return !!token.owner && attempt.owner === token.owner && token.owner === this.owner() &&
+      token.generation === this.ownerGeneration && token.epoch === this.projectionEpoch &&
+      token.view === this.currentView() && (!token.target || sameTarget(this.target.peek(), token.target));
+  }
   private reserve(slot: BranchAttempt | undefined, threadId: string, key: string): BranchAttempt | undefined {
     if (slot && (slot.uncertain || slot.receipt.pending) && slot.key !== key) {
       this.refusal(`Resolve the existing mutation outcome (${slot.receipt.id}) before changing its owner, target or payload`); return;
     }
-    if (slot?.key === key) { if (!slot.receipt.pending) { slot.viewId = this.currentView(); slot.epoch = this.projectionEpoch; } return slot; }
-    return { owner: this.owner(), key, threadId, viewId: this.currentView(), epoch: this.projectionEpoch, uncertain: true, receipt: { id: this.ops.mutationId() } };
+    if (slot?.key === key) return slot;
+    if (!this.owner()) { this.refusal("No current owner; mutation was not sent"); return; }
+    return { owner: this.owner(), key, threadId, uncertain: true, receipt: { id: this.ops.mutationId() } };
   }
   private receipt<T>(attempt: BranchAttempt, slot: BranchReceipt<T>, send: (id: string) => Promise<Outcome<T>>): Promise<Outcome<T>> {
     if (slot.pending) return slot.pending;
-    if (slot.outcome?.ok) return Promise.resolve(slot.outcome);
+    if (attempt.owner && attempt.owner === this.owner() && slot.outcome?.ok) return Promise.resolve(slot.outcome);
     let settle!: (out: Outcome<T>) => void;
     const pending = new Promise<Outcome<T>>(resolve => { settle = resolve; });
     // Install the guard before send can synchronously notify model subscribers.
     slot.pending = pending;
-    const result = attempt.owner !== this.owner()
+    const diagnostic = !attempt.owner || attempt.owner !== this.owner();
+    const result = diagnostic
       ? this.ops.branchReceipt(slot.id) as Promise<Outcome<T>>
       : send(slot.id);
     void result.then(out => {
-      slot.outcome = out;
+      if (!diagnostic) slot.outcome = out;
       slot.pending = undefined;
       settle(out);
     });
@@ -135,9 +162,10 @@ export class Branches {
     const threadId = this.state.peek().threadId ?? ids[0]!;
     const attempt = this.reserve(this.archiveAttempt, threadId, JSON.stringify({ thread_ids: ids })); if (!attempt) return;
     this.archiveAttempt = attempt;
+    const token = this.invocation();
     const out = await this.receipt(attempt, attempt.receipt, id => this.ops.threadArchive(ids, {}, id));
     attempt.uncertain = uncertainOutcome(out);
-    if (!this.visible(attempt)) return;
+    if (!this.visible(attempt, token)) return;
     if (!out.ok) this.actionError.value = outcomeMessage(out);
     else { const missing = (out.value as ArchiveResult).not_found ?? []; this.selection.value = new Set(missing); this.actionError.value = missing.length ? `Not found: ${missing.join(", ")}` : undefined; const id = this.state.peek().threadId; if (id) void this.read(id); }
   }
@@ -145,9 +173,10 @@ export class Branches {
     title = title.trim(); if (!title) return;
     const attempt = this.reserve(this.renameAttempt, id, JSON.stringify({ thread_id: id, title })); if (!attempt) return;
     this.renameAttempt = attempt;
+    const token = this.invocation();
     const out = await this.receipt(attempt, attempt.receipt, op => this.ops.threadSetTitle(id, title, op));
     attempt.uncertain = uncertainOutcome(out);
-    if (!this.visible(attempt)) return;
+    if (!this.visible(attempt, token)) return;
     this.actionError.value = outcomeMessage(out);
     if (out.ok) { const selected = this.state.peek().threadId; if (selected) void this.read(selected); }
   }
@@ -273,39 +302,40 @@ export class Branches {
     let attempt = held;
     if (!attempt || attempt.key !== key) {
       if (s.kind !== "ready" && s.kind !== "failed") return;
-      attempt = { owner: this.owner(), key, threadId: target.threadId, viewId: this.currentView(), epoch: this.projectionEpoch, target: { ...target }, text, facts: s.facts, uncertain: true, receipt: { id: this.ops.mutationId() } };
+      if (!this.owner()) { this.refusal("No current owner; rewind was not sent"); return; }
+      attempt = { owner: this.owner(), key, threadId: target.threadId, target: { ...target }, text, facts: s.facts, uncertain: true, receipt: { id: this.ops.mutationId() } };
       this.rewindAttempt = attempt;
     }
     if (attempt.running) return attempt.running;
     const active = attempt;
-    active.viewId = this.currentView(); active.epoch = this.projectionEpoch;
+    const token = this.invocation(target);
     let settle!: () => void;
     const running = new Promise<void>(resolve => { settle = resolve; });
     active.running = running;
-    void this.runRewind(active).finally(() => { active.running = undefined; settle(); });
+    void this.runRewind(active, token).finally(() => { active.running = undefined; settle(); });
     return running;
   }
   canRetryRewind(): boolean { return !!this.rewindAttempt?.uncertain && !this.rewindAttempt.running && sameTarget(this.target.peek(), this.rewindAttempt.target); }
-  private async runRewind(attempt: RewindAttempt): Promise<void> {
+  private async runRewind(attempt: RewindAttempt, token: Invocation): Promise<void> {
     const { target, facts } = attempt;
-    if (this.visible(attempt)) this.rewind.value = { kind: "rewinding", facts, target };
+    if (this.visible(attempt, token)) this.rewind.value = { kind: "rewinding", facts, target };
     const out = await this.receipt(attempt, attempt.receipt, id => this.ops.threadRewind({ thread_id: target.threadId, node_id: target.nodeId }, id));
     if (!out.ok) {
       attempt.uncertain = uncertainOutcome(out);
-      if (this.visible(attempt)) { this.rewind.value = { kind: "failed", facts, target, error: out.error }; this.actionError.value = outcomeMessage(out); }
+      if (this.visible(attempt, token)) { this.rewind.value = { kind: "failed", facts, target, error: out.error }; this.actionError.value = outcomeMessage(out); }
       return;
     }
     attempt.facts = readRewind(out.value as Record<string, unknown>);
-    if (attempt.owner !== this.owner()) { attempt.uncertain = true; if (this.visible(attempt)) this.actionError.value = "Original owner changed; follow-up is not started"; return; }
-    if (!this.visible(attempt)) { attempt.uncertain = !!attempt.text; return; }
+    if (attempt.owner !== this.owner()) { attempt.uncertain = true; if (this.visible(attempt, token)) this.actionError.value = "Original owner changed; follow-up is not started"; return; }
+    if (!this.visible(attempt, token)) { attempt.uncertain = !!attempt.text; return; }
     if (attempt.text) {
       // The successful rewind is immutable. Only this follow-up receipt retries.
       attempt.send ??= { id: this.ops.mutationId() };
       const sent = await this.receipt(attempt, attempt.send, id => this.ops.messageSend({ thread_id: target.threadId, text: attempt.text }, id));
       attempt.uncertain = !sent.ok;
-      if (this.visible(attempt)) this.actionError.value = sent.ok ? undefined : `Rewind succeeded; request ${outcomeMessage(sent)}`;
+      if (this.visible(attempt, token)) this.actionError.value = sent.ok ? undefined : `Rewind succeeded; request ${outcomeMessage(sent)}`;
     } else attempt.uncertain = false;
-    if (this.visible(attempt)) {
+    if (this.visible(attempt, token)) {
       this.rewind.value = { kind: "done", facts: attempt.facts };
       void this.read(this.state.peek().threadId ?? target.threadId);
     }

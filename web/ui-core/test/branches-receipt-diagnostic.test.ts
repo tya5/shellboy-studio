@@ -162,7 +162,7 @@ it("owner change after a known rewind never starts the unsent send stage", async
   const b=new Branches(new Operations(link,()=>`${owner}:${++id}`),()=>owner);const target={threadId:"selected",nodeId:"split"};b.target.value=target;
   const preview=b.previewRewind(target);t.ok(t.calls("thread.rewind")[0]!.id,fixtureRewind);await preview;
   const p=b.confirmRewind("text");t.ok(t.calls("thread.rewind")[1]!.id,{...fixtureRewind,dry_run:false});owner="b";await p;
-  expect(t.calls("message.send")).toHaveLength(0);await b.confirmRewind("text");expect(t.calls("message.send")).toHaveLength(0);
+  expect(t.calls("message.send")).toHaveLength(0);const diagnostic=b.confirmRewind("text");const get=t.calls("operation.get").at(-1)!;t.ownerError(get.id,"operation_expired");await diagnostic;expect(t.calls("message.send")).toHaveLength(0);
   owner="a";const resume=b.confirmRewind("text");await flush();t.ok(t.calls("message.send")[0]!.id,{});await resume;link.stop();
 });
 
@@ -185,4 +185,47 @@ it("reserves pending state before a synchronous transport callback can reenter",
   f.t.send=frame=>{const sent=original(frame);if(frame.t==="call"&&frame.command==="thread.set"&&!reentered){reentered=true;joined=f.b.renameBranch("selected","fixed");}return sent;};
   const first=f.b.renameBranch("selected","fixed");expect(f.t.calls("thread.set")).toHaveLength(1);
   f.t.ok(f.t.calls("thread.set")[0]!.id,{thread_id:"selected",title:"fixed"});await first;await joined;f.link.stop();
+});
+
+function ownerFixture() {
+  const t=new FakeTransport(),link=new Link(t);link.start();t.open();let owner:string|undefined="a",seq=0;
+  const b=new Branches(new Operations(link,()=>`${owner}:${++seq}`),()=>owner);
+  const change=(next:string|undefined)=>{owner=next;b.ownerChanged(next);};change("a");
+  return {t,link,b,change};
+}
+for(const kind of ["rename","archive"] as const) for(const returns of [false,true]) it(`${kind} late success after owner ${returns?"A-B-A":"A-B"} has no projection or read effect`,async()=>{
+  const f=ownerFixture();f.b.state.value={...f.b.state.value,threadId:"selected"};f.b.toggleBranch("selected");
+  const p=kind==="rename"?f.b.renameBranch("selected","x"):f.b.archiveSelected();
+  const call=f.t.calls(kind==="rename"?"thread.set":"thread.archive")[0]!;f.change("b");if(returns)f.change("a");f.b.actionError.value="new owner";
+  f.t.ok(call.id,kind==="rename"?{thread_id:"selected",title:"x"}:{archived:["selected"],not_found:[]});await p;
+  expect(f.b.actionError.value).toBe("new owner");expect([...f.b.selection.value]).toEqual(["selected"]);expect(f.t.calls("thread.branches")).toHaveLength(0);f.link.stop();
+});
+it("cached canonical success belongs only to the original owner, retained through opaque lookup",async()=>{
+  const f=ownerFixture();const p=f.b.renameBranch("selected","x");f.t.ok(f.t.calls("thread.set")[0]!.id,{thread_id:"selected",title:"x"});await p;
+  f.change("b");f.b.actionError.value="new owner";const other=f.b.renameBranch("selected","x");
+  f.t.ok(f.t.calls("operation.get")[0]!.id,{operation_id:f.t.calls("thread.set")[0]!.operation_id,state:"completed",replay_policy:"return_saved_outcome",outcome:{result:{}}});await other;
+  expect(f.b.actionError.value).toBe("new owner");expect(f.t.calls("thread.set")).toHaveLength(1);
+  f.change("a");await f.b.renameBranch("selected","x");expect(f.b.actionError.value).toBeUndefined();expect(f.t.calls("thread.set")).toHaveLength(1);f.link.stop();
+});
+it("explicit original-owner rejoin cannot revive the old await continuation",async()=>{
+  const f=ownerFixture();f.b.state.value={...f.b.state.value,threadId:"selected"};const first=f.b.renameBranch("selected","x");
+  f.change("b");f.change("a");const explicit=f.b.renameBranch("selected","x");
+  f.t.ok(f.t.calls("thread.set")[0]!.id,{thread_id:"selected",title:"x"});await first;await explicit;
+  expect(f.t.calls("thread.set")).toHaveLength(1);expect(f.t.calls("thread.branches")).toHaveLength(1);f.link.stop();
+});
+for(const stage of ["rewind","send"] as const) it(`owner roundtrip during ${stage} never starts or projects a late chain`,async()=>{
+  const f=ownerFixture();const target={threadId:"selected",nodeId:"split"};f.b.target.value=target;
+  const preview=f.b.previewRewind(target);f.t.ok(f.t.calls("thread.rewind")[0]!.id,fixtureRewind);await preview;
+  const p=f.b.confirmRewind("fixed");const rewind=f.t.calls("thread.rewind")[1]!;
+  if(stage==="send"){f.t.ok(rewind.id,{...fixtureRewind,dry_run:false});await flush();}
+  f.change("b");f.change("a");f.b.actionError.value="new epoch";
+  if(stage==="rewind")f.t.ok(rewind.id,{...fixtureRewind,dry_run:false});else f.t.ok(f.t.calls("message.send")[0]!.id,{});
+  await p;expect(f.b.actionError.value).toBe("new epoch");expect(f.t.calls("thread.branches")).toHaveLength(0);
+  expect(f.t.calls("message.send")).toHaveLength(stage==="send"?1:0);
+  await f.b.confirmRewind("changed");expect(f.t.calls("thread.rewind")).toHaveLength(2);f.link.stop();
+});
+it("unavailable owner roundtrip invalidates late results and unknown owner cannot start mutation",async()=>{
+  const f=ownerFixture();const p=f.b.renameBranch("selected","x");f.change(undefined);f.change("a");f.b.actionError.value="untouched";
+  f.t.ok(f.t.calls("thread.set")[0]!.id,{thread_id:"selected",title:"x"});await p;expect(f.b.actionError.value).toBe("untouched");
+  f.change(undefined);await f.b.renameBranch("other","new");expect(f.t.calls("thread.set")).toHaveLength(1);f.link.stop();
 });
