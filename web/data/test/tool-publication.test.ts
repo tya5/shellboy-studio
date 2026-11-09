@@ -119,3 +119,50 @@ it.each(['empty','different-thread'])('complete non-competing %s scope retains t
   };
   r.add();await r.pump();expect(r.h.history.value.items.at(-1)?.assistant_publication?.state).toBe('message');r.data.stop();
 });
+
+it('late exact tool reference requalifies an already published legacy node without replaying raw text',async()=>{
+  const r=await rig([toolNode()]);
+  // No authoritative reference existed at the legacy first read; ordinary text remains readable.
+  expect(r.h.history.value.items[0]?.assistant_publication).toBeUndefined();
+  r.h.setWorkActive(true);await r.pump();
+  expect(r.h.history.value.items.find(i=>i.node_id==='tool')?.assistant_publication?.state).toBe('tool');
+  r.data.stop();
+});
+
+it('mixed exact refs on a legacy aggregate remain qualified rather than falling back to raw prose',async()=>{
+  const r=await rig([toolNode()]);
+  const base=r.db.answer.bind(r.db);r.db.answer=c=>{
+    const out=base(c);if(c.command!=='status'||!out.ok)return out;
+    const value=out.result as {items:Record<string,unknown>[]};
+    return {ok:true,result:{...value,items:value.items.map(a=>({...a,response_nodes:[{ordinal:0,node_id:'tool',kind:'message',phase:'commentary'},{ordinal:1,node_id:'tool',kind:'function_call',phase:null}]}))}};
+  };
+  r.h.setWorkActive(true);await r.pump();
+  expect(r.h.history.value.items.find(i=>i.node_id==='tool')?.assistant_publication?.state).toBe('unknown');r.data.stop();
+});
+
+it('late exact tool identity never changes unrelated legacy or ordinary user JSON',async()=>{
+  const r=await rig([toolNode(),{node_id:'plain',kind:'assistant_response',excerpt:'{"ordinary":true}'},{node_id:'human',kind:'user',excerpt:'{"user":true}'}]);
+  r.h.setWorkActive(true);await r.pump();
+  expect(r.h.history.value.items.find(i=>i.node_id==='plain')).toMatchObject({excerpt:'{"ordinary":true}'});
+  expect(r.h.history.value.items.find(i=>i.node_id==='plain')?.assistant_publication).toBeUndefined();
+  expect(r.h.history.value.items.find(i=>i.node_id==='human')?.assistant_publication).toBeUndefined();r.data.stop();
+});
+
+it.each(['cancel','pause','owner','ABA'])('late work lookup cannot gate another publication scope after %s',async mode=>{
+  const r=await rig([toolNode()]);r.h.setWorkActive(true);
+  for(let n=0;n<20;n++)await Promise.resolve();
+  const held=r.t.calls('status').find(c=>!r.db.answered.has(c.id))!;expect(held).toBeTruthy();
+  if(mode==='cancel')r.h.cancelReads();else if(mode==='pause')r.h.pause();else{
+    r.t.push({t:'owner',event:'restarted',owner:{state:'connected',info:{protocol_version:5,capabilities:connected.state==='connected'?connected.info.capabilities:[],instance_id:'different-owner'}}});
+    if(mode==='ABA')r.t.push({t:'owner',event:'restarted',owner:connected});
+  }
+  r.db.answered.add(held.id);const out=r.db.answer(held);if(out.ok)r.t.ok(held.id,out.result);
+  for(let n=0;n<20;n++)await Promise.resolve();
+  expect(r.h.history.value.items.find(i=>i.node_id==='tool')?.assistant_publication).toBeUndefined();r.data.stop();
+});
+
+it('synchronous work loading cancellation sends no status lookup',async()=>{
+  const r=await rig([toolNode()]);const count=r.t.calls('status').length;
+  const stop=r.h.work.subscribe(value=>{if(value.loading)r.h.cancelReads();});
+  r.h.setWorkActive(true);await r.pump();expect(r.t.calls('status')).toHaveLength(count);stop();r.data.stop();
+});
