@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { Link } from "../src/link";
-import { Operations } from "../src/operations";
+import { Operations, type ArchiveResult } from "../src/operations";
 import { details, FakeTransport, flush, summary } from "./harness";
 
 function setup() {
@@ -13,6 +13,40 @@ function setup() {
 }
 
 describe("Operations", () => {
+  it("preserves encoded archive/unarchive boolean descendants without narrowing unknown replies", async () => {
+    // Core #292 real-producer fixture: changed/already/not_found arrays and a boolean mode.
+    for (const verb of ["archive", "unarchive"] as const) {
+      for (const descendants of [false, true]) {
+        const encoded = JSON.stringify({
+          [verb === "archive" ? "archived" : "unarchived"]: ["synthetic-root"],
+          already: [], not_found: ["synthetic-missing"], descendants,
+        });
+        const { t, ops } = setup();
+        const pending = verb === "archive"
+          ? ops.threadArchive(["synthetic-root"], { descendants })
+          : ops.threadUnarchive(["synthetic-root"], { descendants });
+        t.ok(t.calls()[0]!.id, JSON.parse(encoded));
+        const out = await pending;
+        expect(out.ok).toBe(true);
+        if (out.ok) {
+          const mode: boolean | undefined = out.value.descendants;
+          expect(mode).toBe(descendants);
+        }
+      }
+    }
+    const known: ArchiveResult = { descendants: true };
+    expect(known.descendants).toBe(true);
+    // Missing is optional; malformed wire fields stay unknown at the generic decoder boundary.
+    for (const raw of [{}, { descendants: null }, { descendants: "unknown" }]) {
+      const { t, ops } = setup();
+      const pending = ops.threadArchive(["synthetic-root"]);
+      t.ok(t.calls()[0]!.id, raw);
+      const out = await pending;
+      expect(out.ok).toBe(true);
+      if (out.ok) expect(out.value).toEqual(raw);
+    }
+  });
+
   it("thread list: sends the owner's argument names and decodes a page", async () => {
     const { t, ops } = setup();
     const p = ops.threadList({ limit: 5, archived: "only", query: "q" });

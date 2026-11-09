@@ -116,7 +116,7 @@ export interface ArchiveResult {
   already?: string[];
   unarchived?: string[];
   not_found?: string[];
-  descendants?: string[];
+  descendants?: boolean;
   [extra: string]: unknown;
 }
 
