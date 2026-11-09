@@ -78,9 +78,9 @@ retrying; the page shows "Shellboy isn't reachable" until an owner appears.
 Run Studio and the owner as the same OS user.
 
 If no model connection exists yet, Studio can set one up from the browser (Anthropic,
-OpenAI, OpenRouter, LiteLLM, local, other). That needs a Shellboy newer than v0.10.0;
-on v0.10.0 the screen lists the manual steps instead. A Claude or ChatGPT subscription
-is not an API key; an API key is required.
+OpenAI, OpenRouter, LiteLLM, local, other) with the matching Core v0.11.0 owner.
+Older owners are not a supported pairing; no protocol downgrade is provided.
+A Claude or ChatGPT subscription is not an API key; an API key is required.
 
 ## Security
 
@@ -109,7 +109,12 @@ is not an API key; an API key is required.
 ## Version pairing with Shellboy
 
 Studio releases are built against one Shellboy release and speak its protocol.
-This tree pins **Shellboy v0.10.0 (protocol 2)** in `Cargo.toml`, but enables features intended for v0.11.0 by default. The default build is therefore not yet a verified v0.10.0 pairing. See the [release checklist](docs/development/release-v0.1.0-checklist.md) before building or publishing.
+This tree pins **Shellboy v0.11.0 (protocol 5, schema 39)** in `Cargo.toml`
+and `Cargo.lock`. Local locked tests and synthetic acceptance against the public
+Core release binary pass; hosted CI and distribution-artifact validation remain
+separate gates. See the [validation record](docs/development/protocol5-validation.md)
+for the tested environment and limits, and the [release checklist](docs/development/release-v0.1.0-checklist.md)
+for historical preparation checkpoints and remaining release gates.
 Pair the final release exactly with the owner named in its release notes.
 Capabilities currently describe the bridge build, not negotiated owner support.
 Automatic protocol-mismatch guidance or read-only fallback on older owners is
@@ -126,8 +131,10 @@ physical phone. No CI run or release binaries are claimed by this tree.
 
 See [AGENTS.md](AGENTS.md) and [docs/design/architecture.md](docs/design/architecture.md).
 Owner-free checks exclude the explicit `real-owner-tests` suite. Exact-pair CI
-and the release gate run it with a published-tag binary and `SHELLBOY_BIN` in
-temporary test data; omitting it is not owner-integration success.
+and the release gate build Core from its verified public-tag source, then run
+the suite with that binary and `SHELLBOY_BIN` in temporary test data. This is
+separate from local acceptance with the downloaded public Core release binary;
+omitting the suite is not owner-integration success.
 
 Checks: `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test`,
 and in `web/`: `npm run check`.
@@ -150,9 +157,10 @@ Apps can run actions on the Studio host, so review their code and permissions.
 The v0.1.0 candidate follows Core's protocol 5 / schema 39 contract (#276).
 There is no protocol-4 downgrade or ownership alias. Use the exact validated
 Core release pair; the published Core tag, lockfile and installed binaries must
-be checked separately before release. This source change does not establish that
-pin. Never restart a working owner or change its data to resolve a mismatch
-without explicit approval.
+be checked separately before release. The current manifest/lock establish the
+public v0.11.0 pin; earlier CLI-patch preparation checkpoints alone did not.
+Never restart a working owner or change its data to resolve a mismatch without
+explicit approval.
 
 Runs are independent: no Run owns another Run and organizational Thread parents
 are not Run owners. Shell ownership remains unchanged. Pending reply duties come
