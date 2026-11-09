@@ -121,3 +121,11 @@ sentinel, with batched family invalidation and guarded post-callback reset, fixe
 that ownership class. Three counterexample/control and reverse-resource regressions
 bring owner-free acceptance to 47 files / 934 tests plus typecheck/build. This
 remains candidate evidence pending independent S6 exact review, not runtime proof.
+
+Two-phase excerpt invalidation follows the held 226681e counterexample. Detach
+old epoch/rows before multi-resource callbacks, finish captured cancellations
+unconditionally, suppress obsolete empty UI writes when a replacement row uses
+the same ID or setter. Two new tests require actual old answer publication zero
+with new preview ready, and same-setter new UI preservation. Previous cross-resource
+controls remain. The result is still an independent-review candidate, not acceptance
+by test count alone; no runtime or contract evidence is added.

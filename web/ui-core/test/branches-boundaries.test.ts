@@ -272,3 +272,26 @@ it("R1 owner invalidation preview cancellation cannot cancel an explicit new fam
   f.t.ok(f.t.calls("thread.branches")[1]!.id,{root_thread_id:"other",items:[],total:0});await winner;await old;await flush();
   expect(f.b.state.peek().family?.rootId).toBe("other");f.b.leave();f.link.stop();
 });
+
+it("R1 owner invalidation detaches old excerpts even when family cancellation starts a new preview",async()=>{
+  const f=fixture();const family=f.ops.threadBranches.bind(f.ops),window=f.ops.historyWindow.bind(f.ops);
+  let ready:Promise<void>|undefined,cancelled=false;
+  f.ops.threadBranches=(args,read)=>{read?.cancel?.add(()=>{ready=f.b.previewRewind(f.target);});return family(args,read);};
+  f.ops.historyWindow=(args,read)=>{if(args.thread_id==="second")read?.cancel?.add(()=>{cancelled=true;});return window(args,read);};
+  const seen:string[]=[];f.b.excerptBatch.show({threadId:"child",tipNodeId:"tip"} as Parameters<Branches["excerpts"]>[0],v=>{if(v.answer)seen.push(v.answer);});
+  const oldWindow=f.t.calls("history.window")[0]!;const p=f.b.read("parent");
+  // A read resets prior excerpts; install another pending row in that read epoch.
+  f.b.excerptBatch.show({threadId:"second",tipNodeId:"tip"} as Parameters<Branches["excerpts"]>[0],v=>{if(v.answer)seen.push(v.answer);});
+  await flush();f.invalidate("B");await p;expect(cancelled).toBe(true);
+  for(const call of f.t.calls("history.window"))f.t.ok(call.id,{thread_id:"child",revision:1,total:1,items:[{node_id:"tip",kind:"assistant_response",excerpt:"stale",selection:{ordinal:1}}]});
+  await flush();expect(seen).toEqual([]);expect(oldWindow.id).toBeTruthy();
+  f.t.ok(f.t.calls("thread.rewind")[0]!.id,{removed_node_count:1});await ready;expect(f.b.rewind.value.kind).toBe("ready");f.b.leave();f.link.stop();
+});
+it("R1 detached old clear never overwrites a same-ID replacement using the same UI setter",async()=>{
+  let finish!:(v:{answer:string})=>void,replace=false;const displays:string[]=[];
+  const item={threadId:"x"} as Parameters<Branches["excerpts"]>[0];let batch!:ExcerptBatch;
+  const publish=(v:{answer?:string})=>{displays.push(v.answer??"empty");};
+  batch=new ExcerptBatch(async(_item,cancel)=>{cancel.add(()=>{if(replace){replace=false;batch.show(item,publish);publish({answer:"new UI"});}});return new Promise<{answer:string}>(r=>{finish=r;});});
+  batch.show(item,publish);const invalidate=batch.detach();replace=true;invalidate();
+  expect(displays.at(-1)).toBe("new UI");finish({answer:"old"});await flush();expect(displays.at(-1)).toBe("new UI");batch.reset();
+});

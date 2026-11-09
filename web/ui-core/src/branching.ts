@@ -74,13 +74,19 @@ export class ExcerptBatch {
   private admitted = new Set<string>();
   private visible = new Map<string, { item: import("./branches").BranchItem; cancel: Cancel; publish: (v: BranchExcerpts) => void }>();
   constructor(private readonly read: (item: import("./branches").BranchItem, cancel: Cancel) => Promise<BranchExcerpts>) {}
-  reset(): void {
+  /** Detach before any cross-resource callback; finish touches only this snapshot. */
+  detach(): () => void {
     ++this.epoch;
     const previous = [...this.visible.values()];
     this.visible.clear(); this.admitted.clear();
-    for (const row of previous) row.cancel.cancel();
-    for (const row of previous) row.publish({});
+    return () => {
+      for (const row of previous) row.cancel.cancel();
+      for (const row of previous) {
+        if (![...this.visible.values()].some(current => current.item.threadId === row.item.threadId || current.publish === row.publish)) row.publish({});
+      }
+    };
   }
+  reset(): void { this.detach()(); }
   show(item: import("./branches").BranchItem, publish: (v: BranchExcerpts) => void): () => void {
     const epoch = this.epoch;
     publish({});
@@ -90,9 +96,9 @@ export class ExcerptBatch {
     const row = { item, publish, cancel: new Cancel() };
     this.visible.set(item.threadId, row); void this.drain();
     return () => {
-      row.cancel.cancel();
       if (this.visible.get(item.threadId) === row) this.visible.delete(item.threadId);
-      row.publish({});
+      row.cancel.cancel();
+      if (![...this.visible.values()].some(current => current.item.threadId === item.threadId || current.publish === row.publish)) row.publish({});
     };
   }
   private async drain(): Promise<void> {
@@ -176,18 +182,19 @@ export class Branches {
       this.ownerObserved = true;
       this.observedOwner = owner;
       ++this.ownerGeneration;
-      const generation = ++this.familyGeneration;
+      ++this.familyGeneration;
       this.again = false;
       const familyCancel = this.cancel;
       const previewCancel = this.previewCancel;
-      const marker = this.previewCancel = new Cancel();
+      this.previewCancel = new Cancel();
+      const finishExcerpts = this.excerptBatch.detach();
       batch(() => {
         // Install invalid projection before callbacks, notify only after old cancellation.
         this.state.value = { threadId: this.state.peek().threadId, loading: false, family: undefined, error: undefined };
         familyCancel.cancel();
         previewCancel.cancel();
+        finishExcerpts();
       });
-      if (generation === this.familyGeneration && owner === this.observedOwner && marker === this.previewCancel) this.excerptBatch.reset();
     }
   }
   private invocation(target?: BranchTarget): Invocation {

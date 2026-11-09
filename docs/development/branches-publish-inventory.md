@@ -143,3 +143,25 @@ awaited the old coalesced loop before answering its new trailing walk; response
 ordering was corrected, not timeout extended. Existing leave/clear/restart/select
 captured-handle tests remain enabled. No scope, budget, framework or receipt-policy
 change is inferred from these tests. fd88's 931 passing tests remain held history.
+
+## Two-Phase Excerpt Snapshot Invalidation
+
+226681e independently remained held: a preview replacement could correctly win,
+but the guarded reset then left unrelated old excerpt rows live. Resource owners
+cannot share the preview sentinel as an excerpt invalidation condition.
+ExcerptBatch now locally detaches its epoch/map/admitted snapshot before any
+owner invalidation callback. Its returned finish touches only captured rows:
+old Cancel always settles, while old empty publication is suppressed if a current
+row has the same Thread or UI callback. Thus same-ID/same-setter replacements are
+not erased. Release similarly detaches its own row before cancelling/notifying.
+No new queue, global registry, framework or bound is introduced.
+
+Owner invalidation captures family and preview and installs their sentinel plus
+the detached excerpt snapshot before the existing batched callbacks. It always
+finishes captured excerpts independently of new preview ownership and performs
+no later current-row reset. New preview remains ready, old late answer publication
+is zero, and the same UI setter retains replacement output in dedicated regression.
+The prior reverse-family and ordinary clear/control tests remain enabled. The
+old Cancel flag is asserted before late replies for the second pending excerpt;
+actual answer publication is also asserted zero, not inferred from eventual
+reader self-cancellation. 226681e's 934 successes remain held history.
