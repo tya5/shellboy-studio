@@ -84,3 +84,18 @@ classification. It does not update release status or close unperformed physical
 acceptance. If a separate adopted current-status registry requires an entry, that
 entry needs its exact document reference; this task does not infer such a policy
 from an abbreviated identifier.
+
+## Current Main Follow-Up
+
+The reviewed three-commit patch is reapplied to public main
+`fefc262b99825dfe01f0400dbc03ffd72eb9723a`. The rebase is conflict-free;
+range-diff reports the three patch contents unchanged. The intervening main
+changes add remote-access guidance/copy validation, including separate locale
+keys, not status/tool/elapsed behavior. This does not import #14's held motion.
+Focused mobile-status and Console smoke tests on the rebased source pass:
+84 tests /2 files, execution `1b6349be-845b-4aab-991b-af480e2f025b` exited0,
+log `/tmp/11f-mobile-fefc-focused.log`. Existing node dependencies are reused;
+no new dependency install, full check/build copy, Rust or browser run is performed.
+Older full-suite and S7 browser observations remain attributed to their original
+exact candidates, not presented as executions of this new source. Minimal
+independent follow-up and same-exact all-OS CI / leader landing remain pending.
