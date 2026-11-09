@@ -1058,7 +1058,9 @@ describe("Settings", () => {
   });
   it("shows the Studio access guidance without developer source labels", async () => {
     const { el } = await open("studio");
-    expect(text(el)).toContain("Tailscale Serve");
+    expect(text(el)).toContain("HTTPS reverse proxy or VPN");
+    expect(text(el)).toContain("shellboy-studio guide user");
+    expect(text(el)).not.toContain("tailscale serve");
     expect(text(el)).toContain("--allow-host");
     expect(text(el)).toContain("Apps folder");
     expect(text(el)).not.toContain("Source:");

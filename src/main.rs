@@ -28,10 +28,10 @@ struct Args {
     /// Directory for the bridge token (default: the OS config directory).
     #[arg(long)]
     config_dir: Option<PathBuf>,
-    /// Extra Host names to accept (for example a Tailscale name). Repeatable.
+    /// Extra Host names reachable from other devices via HTTPS proxy/VPN. Repeatable.
     #[arg(long = "allow-host")]
     allow_host: Vec<String>,
-    /// Skip token/session checks. Only for local or tailnet-only Serve; NEVER Funnel.
+    /// Skip token/session checks. Only for trusted access; NEVER expose publicly (e.g. Funnel).
     #[arg(long)]
     no_auth: bool,
     /// Folder of apps (default: `apps` in the owner data directory).
@@ -130,7 +130,7 @@ async fn run(args: Args) -> Result<(), String> {
     };
     let auth = if args.no_auth {
         eprintln!(
-            "shellboy-studio: WARNING: authentication disabled (--no-auth). Local processes and anyone able to reach this bridge, including shared tailnet users, can operate it. Use only local access or tailnet-only Tailscale Serve, NEVER Funnel. Serve/Funnel configuration is NOT detected or guaranteed."
+            "shellboy-studio: WARNING: authentication disabled (--no-auth). Local processes and anyone able to reach this bridge can operate it. Use only local or explicitly trusted private access; NEVER expose it to the public internet (for example via Tailscale Funnel). A VPN is not user authentication. Proxy/VPN exposure is NOT detected or guaranteed."
         );
         Auth::disabled()
     } else {
@@ -252,6 +252,15 @@ mod tests {
 #[cfg(test)]
 mod no_auth_tests {
     use super::*;
+    #[test]
+    fn remote_help_uses_generic_hosts_and_keeps_public_exposure_prohibition() {
+        use clap::CommandFactory;
+        let help = Args::command().render_long_help().to_string();
+        assert!(help.contains("HTTPS proxy/VPN"));
+        assert!(help.contains("NEVER expose publicly"));
+        assert!(!help.contains("tailnet"));
+    }
+
     #[test]
     fn no_auth_is_explicit_and_composes_with_allow_host() {
         assert!(!Args::try_parse_from(["studio"]).unwrap().no_auth);

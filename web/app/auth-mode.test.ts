@@ -32,3 +32,14 @@ it('does not duplicate the indicator and removes it only on explicit authenticat
   fetcher.mockResolvedValue({ ok: true, json: async () => ({ authentication_required: true }) });
   await showAuthMode(); expect(document.querySelector('.studio-no-auth')).toBeNull();
 });
+
+it.each(['en', 'ja'])('prohibits public exposure generically in no-auth mode (%s)', async language => {
+  vi.stubGlobal('navigator', { language });
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ authentication_required: false }) }));
+  await showAuthMode();
+  const title = document.querySelector<HTMLElement>('.studio-no-auth')!.title;
+  expect(title).toMatch(/public|公開/);
+  expect(title).toContain('Funnel');
+  expect(title).not.toMatch(/tailnet/i);
+  expect(title).toMatch(/Never|禁止/);
+});

@@ -19,7 +19,9 @@ export async function showAuthMode(): Promise<void> {
     warning.className = 'studio-no-auth';
     warning.setAttribute('role', 'status');
     warning.textContent = navigator.language.startsWith('ja') ? '認証なし' : 'Authentication off';
-    warning.title = 'Anyone who can reach this bridge can operate it. Never use Tailscale Funnel.';
+    warning.title = navigator.language.startsWith('ja')
+      ? '到達できる全員が操作できます。インターネット公開は禁止です（Tailscale Funnel など）。VPN はユーザー認証の代わりにはなりません。'
+      : 'Anyone who can reach this bridge can operate it. Never expose it publicly (for example via Tailscale Funnel). A VPN is not user authentication.';
     document.body.classList.add('studio-no-auth-mode');
     document.body.prepend(warning);
   } catch { /* Unknown mode is not claimed to be authenticated or unauthenticated. */ }

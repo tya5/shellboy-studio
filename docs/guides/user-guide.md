@@ -5,9 +5,18 @@ owner, then run `shellboy-studio` and open the URL printed by the bridge. The UR
 contains a credential in the default authenticated mode: do not share it. By default the bridge listens only on
 loopback; a remote bind is plain HTTP unless protected by a TLS tunnel.
 
-## Open on a phone
+## Open on another device
 
-Install Tailscale on both the Mac or PC running Studio and your phone, and sign
+Keep Studio on this computer's loopback address. Use an HTTPS reverse proxy or
+a VPN with an HTTPS endpoint reachable from the other device, and allow the
+exact hostname with `--allow-host HOSTNAME`. A VPN alone does not provide HTTPS
+or user authentication. Preserve the authenticated default unless you explicitly
+choose the restricted development opt-out described below. Studio does not
+configure or verify your proxy/VPN or its exposure.
+
+### Example: a phone using Tailscale Serve
+
+Tailscale Serve is one example, not a dependency. Install Tailscale on both the Mac or PC running Studio and your phone, and sign
 in to the same tailnet on both devices. Tailnet access controls must permit the
 phone to reach the computer.
 
@@ -62,10 +71,11 @@ with an older owner. If operations fail after a version mismatch, check both
 versions and follow the release pairing instructions; do not reset data or
 restart an owner that is running work without explicit approval.
 
-If a phone cannot connect, confirm the computer's allowed hostname, tailnet
-access and HTTPS Serve status; in authenticated mode, reissue an expired pairing
+If another device cannot connect, confirm the allowed hostname, network access
+and HTTPS reverse-proxy/VPN endpoint status; in authenticated mode, reissue an expired pairing
 code on the computer. Pairing is disabled in explicit `--no-auth` mode.
-Do not use Funnel or paste token URLs, QR contents or credentials into reports.
+Do not expose an unauthenticated Studio publicly (for example via Funnel), or
+paste token URLs, QR contents or credentials into reports.
 Phone, Safari/Firefox and physical Windows/Linux validation remain unverified
 unless the final release notes explicitly record those checks.
 
@@ -73,14 +83,15 @@ unless the final release notes explicitly record those checks.
 
 `--no-auth` skips token and session checks only when explicitly specified. The
 normal default still requires the token and an in-memory session after restart.
-For disposable development, use loopback, or combine `--no-auth` with an exact
-`--allow-host your-device.your-tailnet.ts.net` behind **tailnet-only Tailscale
-Serve**. Never use this mode with **Tailscale Funnel** or Internet exposure.
-Studio does not configure, detect or guarantee Serve versus Funnel. Verify that
-access is restricted yourself; this option is not a safe way to publish Studio.
+For disposable development, use loopback or explicitly trusted private access
+through an HTTPS reverse proxy/VPN and an exact `--allow-host HOSTNAME`.
+**Never expose this mode to the public internet**, for example via **Tailscale
+Funnel**. A VPN is not user authentication. Studio does not configure, detect or
+guarantee proxy/VPN access restrictions. Verify those restrictions yourself;
+this option is not a safe way to publish Studio.
 
 Anyone who can reach the bridge can operate it, including other processes on the
-same PC and users/devices sharing the tailnet. Host and Origin checks are not user
+same PC and users/devices sharing the reachable private network. Host and Origin checks are not user
 authentication and do not stop those clients. These checks remain enforced for
 HTTP and WebSocket, with no wildcard host or arbitrary-origin bypass. Requests
 without Origin retain the existing non-browser policy. Use the normal authenticated
@@ -94,7 +105,7 @@ exchange codes. WebSocket and guide-preference routes require allowed Host and
 matching Origin (when present), but no token/cookie. App capability URLs retain
 their independent sandbox restrictions. `/debug`, when explicitly enabled, also
 connects without a cookie and exposes the same bridge operations: do not share it.
-Actual tailnet/Serve/Funnel operation is not established by synthetic tests.
+Actual reverse-proxy/VPN or Serve/Funnel operation is not established by synthetic tests.
 
 ## Protocol 5 compatibility
 
