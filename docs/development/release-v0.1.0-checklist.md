@@ -20,6 +20,9 @@ what was known then. Physical-phone and other explicit coverage limitations rema
 unverified; see the current verification record. No current source update changes
 already-published archives or their embedded historical docs.
 
+Current follow-up issues and the reconciled eight-item evidence are tracked in
+[Published Studio scope and follow-up](public-release-scope.md).
+
 ## Historical preparation audit
 
 
