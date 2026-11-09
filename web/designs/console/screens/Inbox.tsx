@@ -1,6 +1,6 @@
 import { useState } from "preact/hooks";
 import { errorMessage, formatAge, formatRoute, statusLabel, STATUS_KEYS, type AppModel } from "../../../ui-core/src";
-import { EmptyState, Icon, QuestionCard, QuestionItem, StatusMark } from "../system/components";
+import { Button, EmptyState, Icon, QuestionCard, QuestionItem, StatusMark } from "../system/components";
 
 export function Inbox({ model }: { model: AppModel }) {
   const t = model.t.value;
@@ -15,8 +15,10 @@ export function Inbox({ model }: { model: AppModel }) {
       <div class="qlist">
         <h2>{t("view.inbox")}{items.length > 0 ? ` ${items.length}` : ""}</h2>
         {items.map((p) => (
-          <QuestionItem key={p.id} title={p.threadTitle} age={formatAge(p.askedAt, model.now.value)} question={p.question} current={p.id === current?.id} onClick={() => setPicked(p.id)} />
+          <QuestionItem key={p.id} title={`${p.threadTitle}${p.count !== undefined ? ` (${p.count}${p.countExact === false ? "+" : ""})` : ""}`} age={formatAge(p.askedAt, model.now.value)} question={p.question} current={p.id === current?.id} onClick={() => setPicked(p.id)} />
         ))}
+        {model.pending.error?.value ? <p role="alert">{errorMessage(model.pending.error.value)}</p> : null}
+        {model.pending.hasMore?.value ? <Button onClick={() => void model.pending.more?.()}>{t("threads.more")}</Button> : null}
         {others.length > 0 ? (
           <div class="other">
             <h2>{t("inbox.other")}</h2>
@@ -51,7 +53,7 @@ export function Inbox({ model }: { model: AppModel }) {
               </a>
             }
           />
-        ) : (
+        ) : model.pending.error?.value ? null : (
           <EmptyState icon="inbox" title={t("inbox.emptyTitle")} body={t("inbox.emptyBody")} />
         )}
       </div>

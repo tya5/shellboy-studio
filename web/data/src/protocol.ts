@@ -303,6 +303,7 @@ export type ArchivedFilter = "exclude" | "include" | "only";
 export type Deliver = "next" | "now";
 
 export interface ThreadListArgs {
+  awaiting?: "human";
   limit?: number;
   cursor?: string;
   query?: string;

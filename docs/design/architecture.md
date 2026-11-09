@@ -562,3 +562,20 @@ and their sandbox checks remain independent and are not relaxed. Guide preferenc
 reads/writes use the same guarded no-auth/session decision. The UI configuration
 bit is no-store, contains no owner data and adds a persistent desktop/mobile badge.
 Default token/session authentication and restart behaviour remain unchanged.
+
+### Protocol 5 Human Inbox Bound
+
+The existing Awaiting you surface uses the public human-only live keyset list,
+not a full Thread scan. Its data-layer adapter owns one displayed page of 16
+Threads, at most 128 duties per Thread, sequential detail reads, one existing
+Refresher key (one running/one coalesced follow-up), and no timer/worker/queue.
+The existing Show more control replaces the displayed page using its opaque
+keyset cursor; hints restart from the first page because this is not a snapshot.
+Expired cursors/errors are reported, not silently walked. Shutdown cancels the
+current read and disposes its signal subscription. Replies use only displayed
+human message IDs. In-flight duplicate submissions share one outcome; uncertain
+retries retain the exact operation ID and text. Retained uncertain outcomes are
+bounded by 16*128; reaching the bound refuses new replies rather than dropping
+an uncertain identity. Thread-directed duties remain open-only in their existing
+per-Thread surface. Count 17 with exact=false renders 17+, with no oldest age.
+No next-reply/live feature is enabled. Revisit page size only with measured need.

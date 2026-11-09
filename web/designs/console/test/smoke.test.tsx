@@ -409,6 +409,14 @@ describe("Awaiting you", () => {
     expect(el.querySelector(".count")).toBeNull();
     expect(text(el)).toContain("Other activity");
   });
+  it("renders synthetic legacy 17+ without fabricating an oldest age", async () => {
+    const pending = fixturePendingAdapter([{ id: "legacy", threadId: "lead", threadTitle: "Legacy", question: "Synthetic legacy question", askedAt: undefined, count: 17, countExact: false }]);
+    const { model } = await fixtureModel({ route: "inbox", pending });
+    const el = draw(model);
+    expect(text(el)).toContain("Legacy (17+)");
+    expect(text(el)).toContain("Synthetic legacy question");
+    expect(el.querySelector(".qitem")?.textContent).not.toMatch(/ago|minute|hour/);
+  });
   it("renders questions from the fixture adapter and sends the answer through it", async () => {
     const pending = fixturePendingAdapter();
     const { model } = await fixtureModel({ route: "inbox", pending });

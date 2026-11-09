@@ -10,3 +10,5 @@ export * from "./transport";
 export * from "./replies";
 
 export * from "./pairing";
+
+export * from "./pending";

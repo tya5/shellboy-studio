@@ -178,3 +178,43 @@ as four-point success. No existing owner/Serve/runtime was changed. No Studio
 release or first push has occurred as part of these checks. Hosted OS CI,
 actual distribution inspection, final privacy review and release authorization
 remain separate gates.
+
+### Human Inbox Adapter Acceptance
+
+The production `noPending` gap is a separate product defect, not a fixture
+failure. The data-layer HumanInbox now uses only `thread.list(awaiting:human)`
+with one displayed keyset page of 16 Threads and sequential detail reads only
+for that page. Existing list hints, signal lifecycle and Refresher drive rereads;
+there is no new worker, queue, timer or full-Thread scan. Existing UI cards and
+reply form are retained. Only human duties enter the reply adapter; existing
+Thread-directed duties stay open-only. Count exactness and unknown oldest time
+are preserved. A reply uses its message ID and one operation identity; duplicate
+clicks coalesce, uncertain retries keep identity/text, and the public owner
+performs the atomic terminal-state CAS. Protocol.md Explicit Replies and
+reply-expected-messages.md are the authority, not old lifecycle assumptions.
+
+With the published Core macOS arm64 binary and an unpublished default-feature
+Studio executable, a disposable HOME/config/data directory, loopback mock
+Responses provider and real headless Chrome successfully exercise protocol5
+connection, synthetic send, saved answer DOM display, real shell-tool ask,
+Awaiting you inbox display, existing form reply and removal. No user data,
+external model, runtime replacement or Serve configuration is involved.
+The public API admits 16 pending duties and returns typed `reply_limit` for
+additional asks; actual shell.read JSON verifies that error and its limit 16.
+The same real-browser run verifies UI count 16 and retention of an unrelated
+Thread's pending human question.
+
+Legacy 17+ is tested separately by synthetic transport/DOM fixtures: count17,
+exact=false, oldest unknown, rendered 17+. New public API asks cannot create
+legacy over-limit state; no database seed, migration bypass or owner-wire
+change was used. **Real legacy migration/17+ state is not tested.** An earlier
+17+ real-owner attempt failed because it incorrectly assumed admission beyond
+16; that harness error is not a product failure or successful legacy test.
+
+Data regression tests assert exact human-list/keyset and detail-call counts,
+human-only reply, duplicate submission, uncertain same-ID retry and changed-text
+refusal, cursor-expired error, oversized-page refusal, shutdown cancellation and
+unrelated list preservation. Console smoke tests assert the 17+ presentation.
+No next-reply or additional live feature is enabled. Release readiness still
+requires independent exact-delta review, final push-ref privacy audit, hosted OS
+CI and distribution checks; this local-browser acceptance is not physical testing.

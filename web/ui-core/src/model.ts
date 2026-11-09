@@ -18,7 +18,8 @@ import { CAPABILITY_CONFIG, ConfigEditor } from "./config";
 import { Insights } from "./insights";
 import { EmbeddingSetup } from "./embedding";
 import { CAPABILITY_CONNECTION_SETUP, ConnectionSetup } from "./setup";
-import { noPending, type PendingAdapter } from "./pending";
+import { type PendingAdapter } from "./pending";
+import { HumanInbox } from "../../data/src";
 import { analyticsSection, formatRoute, settingsSection, START_ROUTE, type Route, type ViewName } from "./route";
 import { statusOfShell, type StatusKey } from "./status";
 import { StableMonitorOrder, countByStatus, threadTree, type StatusCounts, type ThreadRow } from "./threads";
@@ -231,7 +232,7 @@ export class AppModel {
   constructor(options: AppModelOptions) {
     this.data = options.data;
     this.ops = options.data.operations;
-    this.pending = options.pending ?? noPending;
+    this.pending = options.pending ?? new HumanInbox(options.data);
     this.replyWait = options.replyWait ?? noReplyWait;
     this.lang = signal(options.lang ?? "en");
     this.nowMs = options.nowMs ?? (() => Date.now());
@@ -463,6 +464,7 @@ export class AppModel {
   }
 
   dispose(): void {
+    this.pending.close?.();
     this.modelListCancel.cancel();
     this.missingPins.close();
     this.longReader.peek()?.dispose();
