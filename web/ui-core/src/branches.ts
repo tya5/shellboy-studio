@@ -7,6 +7,7 @@ const str = (v: unknown): string | undefined => (typeof v === "string" && v !== 
 
 export interface BranchItem {
   threadId: string;
+  branchKind: "fork" | "rewind" | "unknown";
   /** Null from the owner when untitled. */
   title: string | undefined;
   parentId: string | undefined;
@@ -37,6 +38,7 @@ export function readBranchItem(v: unknown): BranchItem | undefined {
   const state = o.state === "current" || o.state === "ancestor" ? o.state : "branch";
   return {
     threadId,
+    branchKind: o.branch_kind === "fork" || o.branch_kind === "rewind" ? o.branch_kind : "unknown",
     title: str(o.title),
     parentId: str(o.parent_thread_id),
     depth: num(o.depth) ?? 0,

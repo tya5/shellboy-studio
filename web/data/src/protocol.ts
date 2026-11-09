@@ -242,6 +242,8 @@ export interface ShellEntry {
 
 /** `usage.get` arguments the UI uses. The owner rejects a grouped period over 31 days. */
 export interface UsageGetArgs {
+  /** Saved node timestamp, inclusive; mutually exclusive with since. Not an ordinal cut. */
+  since_node_id?: string;
   group_by?: "day" | "hour" | "thread";
   /** `local`, `UTC` or a fixed `+HH:MM`/`-HH:MM`. */
   timezone?: string;

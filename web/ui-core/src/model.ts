@@ -1,3 +1,4 @@
+import { BranchCompare } from "./branch-compare";
 import { pairingHosts, issuePairing } from "../../data/src/pairing";
 import { GuideRegistration } from "./guide-registration";
 import { recentAppFolders } from "./app-templates";
@@ -151,6 +152,7 @@ export class AppModel {
   /** Analytics, Resources and Settings reads. Nothing runs until one of those views opens. */
   readonly insights: Insights;
   readonly branches: Branches;
+  readonly branchCompare: BranchCompare;
   readonly org: ThreadOrg;
   readonly config: ConfigEditor;
   readonly guideRegistration: GuideRegistration;
@@ -249,6 +251,15 @@ export class AppModel {
       const owner = this.data.owner.value;
       this.branches.ownerChanged(owner.state === "connected" ? owner.info.instance_id ?? undefined : undefined);
     }));
+    this.branchCompare = new BranchCompare(this.ops, this.nowMs);
+    this.disposers.push(effect(() => {
+      const owner = this.data.owner.value;
+      const route = this.route.value;
+      const connected = owner.state === "connected";
+      const id = connected ? owner.info.instance_id : undefined;
+      this.branchCompare.context(JSON.stringify([id, route.view, route.threadId, route.nodeId]), connected && this.data.connection.value === "open" && !!id && route.view === "branches" && this.data.capabilities.value.includes(CAPABILITY_HISTORY_WINDOW));
+    }));
+    this.disposers.push(effect(() => { this.data.threadList.value; this.branchCompare.hint(); }));
     this.org = new ThreadOrg(this.ops, () => this.data.capabilities.peek());
     this.config = new ConfigEditor(this.ops);
     this.guideRegistration = new GuideRegistration(this.ops);
@@ -472,6 +483,7 @@ export class AppModel {
   }
 
   dispose(): void {
+    this.branchCompare.leave();
     this.branches.leave();
     this.pending.close?.();
     this.modelListCancel.cancel();

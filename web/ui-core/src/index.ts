@@ -34,3 +34,5 @@ export * from "./tiles";
 export * from "./monitor-selection";
 
 export * from "./guide-registration";
+
+export * from "./branch-compare";
