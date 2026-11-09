@@ -60,3 +60,70 @@ it('does not free candidate slots merely because background membership churned',
   r.resolver.update('view',['seventeenth']);await flush();expect(r.calls).toHaveLength(0);expect(r.resolver.candidateCount).toBe(16);expect(r.resolver.values.value.get('seventeenth')).toBeUndefined();
   r.resolver.update('view-page2',['seventeenth']);await flush();expect(r.calls).toHaveLength(1);r.ok(0);await flush();
 });
+
+it.each(['scope','membership'])('cancel reentrancy gives the newest %s update ownership of candidates and cache',async mode=>{
+  let cancelAction:(()=>void)|undefined;
+  let finish!: (out:Outcome<ThreadDetails>)=>void;
+  const resolver=new SenderTitles({threadGet:(_id,options)=>{
+    options!.cancel!.add(()=>cancelAction?.());
+    return new Promise(resolve=>{finish=resolve;});
+  }});
+  resolver.update('A',['pending']);await flush();
+  cancelAction=()=>resolver.update('C',['winner'],[{thread_id:'winner',title:'Winner title'} as ThreadSummary]);
+  resolver.update(mode==='scope'?'B':'A',['stale'],[{thread_id:'stale',title:'Stale title'} as ThreadSummary]);
+  expect([...resolver.values.value.keys()]).toEqual(['winner']);
+  expect(resolver.values.value.get('winner')).toEqual({state:'ready',title:'Winner title'});
+  expect(resolver.inFlight).toBe(1);
+  finish({ok:true,value:{thread_id:'pending',title:'Late'} as ThreadDetails});await flush();
+  expect([...resolver.values.value.keys()]).toEqual(['winner']);expect(resolver.inFlight).toBe(0);
+});
+
+it('same-scope nested update supersedes the old cache without refilling consumed attempts',async()=>{
+  let finish!:(out:Outcome<ThreadDetails>)=>void;
+  const resolver=new SenderTitles({threadGet:(_id,options)=>{
+    options!.cancel!.add(()=>resolver.update('A',['shared'],[{thread_id:'shared',title:'Winner'} as ThreadSummary]));
+    return new Promise(resolve=>{finish=resolve;});
+  }});
+  resolver.update('A',['pending']);await flush();
+  resolver.update('A',['shared'],[{thread_id:'shared',title:'Stale'} as ThreadSummary]);
+  expect(resolver.values.value.get('shared')).toEqual({state:'ready',title:'Winner'});expect(resolver.attemptCount).toBe(1);
+  finish({ok:true,value:{thread_id:'pending',title:'Late'} as ThreadDetails});await flush();expect(resolver.attemptCount).toBe(1);
+});
+
+it.each(['ABA','leave','close'])('cancel callback %s cannot be overwritten by outer update or start a second RPC',async mode=>{
+  let resolver:SenderTitles,finish!:(out:Outcome<ThreadDetails>)=>void,calls=0;
+  resolver=new SenderTitles({threadGet:(_id,options)=>{
+    calls++;options!.cancel!.add(()=>{
+      if(mode==='close')resolver.close();else resolver.update(mode==='leave'?undefined:'B',['winner'],[{thread_id:'winner',title:'Winner'} as ThreadSummary]);
+    });return new Promise(resolve=>{finish=resolve;});
+  }});
+  const observed:string[]=[];const stop=resolver.values.subscribe(map=>{for(const value of map.values())if(value.title)observed.push(value.title);});
+  resolver.update('A',['pending']);await flush();resolver.update('B',['stale'],[{thread_id:'stale',title:'Stale'} as ThreadSummary]);
+  expect(observed).not.toContain('Stale');expect(calls).toBe(1);expect(resolver.inFlight).toBe(1);
+  if(mode==='ABA')expect(resolver.values.value.get('winner')).toEqual({state:'ready',title:'Winner'});else expect(resolver.values.value.size).toBe(0);
+  finish({ok:true,value:{thread_id:'pending',title:'Late'} as ThreadDetails});await flush();expect(calls).toBe(1);expect(resolver.inFlight).toBe(0);stop();
+});
+
+it('same-scope cancellation replacement keeps one occupied RPC and consumed candidate/attempt budget',async()=>{
+  let resolver:SenderTitles,calls=0,finish!:(out:Outcome<ThreadDetails>)=>void;
+  resolver=new SenderTitles({threadGet:(_id,options)=>{
+    calls++;options!.cancel!.add(()=>resolver.update('A',['winner'],[{thread_id:'winner',title:'Winner'} as ThreadSummary]));
+    return new Promise(resolve=>{finish=resolve;});
+  }});
+  resolver.update('A',['pending']);await flush();resolver.update('A',['discarded']);
+  expect(resolver.attemptCount).toBe(1);expect(resolver.candidateCount).toBe(3);expect(calls).toBe(1);
+  finish({ok:true,value:{thread_id:'pending',title:'Late'} as ThreadDetails});await flush();expect(calls).toBe(1);expect(resolver.attemptCount).toBe(1);
+});
+
+it('publish callbacks can close or replace the scope before any queued RPC enters transport',async()=>{
+  for(const action of ['close','replace']){
+    const r=rig();let fired=false;
+    const stop=r.resolver.values.subscribe(map=>{
+      if(fired||map.get('old')?.state!=='loading')return;fired=true;
+      if(action==='close')r.resolver.close();else r.resolver.update('new',['winner'],[{thread_id:'winner',title:'Winner'} as ThreadSummary]);
+    });
+    r.resolver.update('old',['old']);await flush();expect(r.calls).toHaveLength(0);
+    if(action==='replace')expect(r.resolver.values.value.get('winner')).toEqual({state:'ready',title:'Winner'});else expect(r.resolver.values.value.size).toBe(0);
+    stop();
+  }
+});

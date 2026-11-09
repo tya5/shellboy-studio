@@ -80,3 +80,25 @@ files pass; production web build passes. Eight browser conditions pass with two
 stable sender IDs, current rename observed, unknown-model visible, no fabricated
 label, no injected markup or horizontal overflow. These are author observations;
 independent review results must be recorded separately, not added to this count.
+
+## R1 Cancellation Reentrancy Follow-Up
+
+Independent review held the first candidate: scope-change cancellation could
+synchronously install a newer update and then let the outer call overwrite its
+candidates/cache. The same-scope candidate-cancel path also needed update-level
+authority, not just an owner/scope lifetime. New regressions reproduced two
+failures before the fix. Each update now reserves its own revision before any
+cancellation callback; after scope or membership cancellation it rechecks that
+revision and intended scope before touching cache or publishing. Nested updates,
+including same-scope/ABA, invalidate the outer authority without refilling the
+same lifetime's 16-attempt budget. The old flight still owns the admission slot
+until its original promise settles; its finally releases only its own identity.
+Inventory tests cover scope B to C, same-scope replacement/cache overwrite,
+ABA, leave/close, transient title observations, actual RPC count, consumed budgets
+and existing normal controls. No new framework, queue or owner runtime is added.
+
+Follow-up author check: 1189 tests / 56 files and both TS configurations pass;
+web build and diff check pass. The previous eight browser observations belong
+to the first candidate and are not claimed rerun for this local resolver fix.
+The cancellation/reentrant publication boundary is exercised by controlled
+synchronous callbacks rather than a browser timing inference.

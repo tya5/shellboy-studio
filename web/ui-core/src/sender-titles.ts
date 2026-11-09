@@ -11,6 +11,7 @@ export class SenderTitles {
   private candidates = new Set<string>();
   private scope: string | undefined;
   private lifetime = 0;
+  private updateRevision = 0;
   private attempts = 0;
   private flight: Flight | undefined;
   private closed = false;
@@ -21,9 +22,13 @@ export class SenderTitles {
   get inFlight(): number { return this.flight ? 1 : 0; }
   update(scope: string | undefined, ids: readonly string[], cached: readonly ThreadSummary[] = []): void {
     if (this.closed) return;
+    const revision = ++this.updateRevision;
+    const current = () => !this.closed && this.updateRevision === revision && this.scope === scope;
     if (scope !== this.scope) {
       this.scope = scope; this.lifetime++; this.entries.clear(); this.candidates.clear(); this.attempts = 0;
-      this.flight?.cancel.cancel();
+      const oldFlight = this.flight;
+      oldFlight?.cancel.cancel();
+      if (!current()) return;
     }
     const next = new Set<string>();
     if (scope !== undefined) for (const id of ids) {
@@ -33,7 +38,7 @@ export class SenderTitles {
     }
     if (next.size !== this.candidates.size || [...next].some(id => !this.candidates.has(id))) {
       this.candidates = next;
-      if (this.flight && !next.has(this.flight.entry.id)) { this.flight.entry.title = { state: "unresolved" }; this.flight.cancel.cancel(); }
+      if (this.flight && !next.has(this.flight.entry.id)) { this.flight.entry.title = { state: "unresolved" }; this.flight.cancel.cancel(); if (!current()) return; }
     }
     if (scope === undefined) { this.publish(); return; }
     for (const id of this.candidates) {
@@ -41,10 +46,10 @@ export class SenderTitles {
       const hit = cached.find(row => row.thread_id === id);
       if (entry && hit && typeof hit.title === 'string' && (entry.title.state !== 'ready' || entry.title.title !== hit.title)) { entry.cacheVersion++; entry.title = { state: 'ready', title: hit.title }; }
     }
-    this.publish(); this.pump();
+    this.publish(); if (current()) this.pump();
   }
   close(): void {
-    this.closed = true; this.lifetime++; this.scope = undefined; this.entries.clear(); this.candidates.clear();
+    this.closed = true; this.updateRevision++; this.lifetime++; this.scope = undefined; this.entries.clear(); this.candidates.clear();
     this.flight?.cancel.cancel(); this.values.value = new Map();
   }
   private valid(f: Flight): boolean {
