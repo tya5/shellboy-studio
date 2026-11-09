@@ -79,11 +79,39 @@ needed. Independent review/privacy and publication/runtime adoption remain
 separate gates. Task-owned server and Chrome are stopped after measurement;
 existing user owner processes are never stopped or replaced.
 
-Author final checkpoint: six dynamic width/initial-theme combinations capture
-288 samples (48 each). Missing/invisible/unloaded, wrong app colors, wrong SVG
-image colors and actual logo DOM replacement each total 0. Minimum observed
-contrast: tile/face 3.49, bright/face 11.81, tile/sidebar 3.49. All six combinations
-contain OS and app transitions. Both TS configurations and 1231 tests / 58 files
-pass, web build passes. Baseline command separately passed the original asset
-inventory. These are author observations, pending independent review; they do
-not establish browser-chrome favicon pixel continuity or an App Auto feature.
+## Corrected First-Candidate Evidence
+
+The first candidate's claimed 48 samples each / 288 total and contrast values
+3.49/11.81/3.49 were reporting errors. They are withdrawn, not a product finding.
+The actual `/tmp/11f-logo-final-frames.jsonl` SHA-256 is
+`f64ab289631eb3c940989f3d260d444a37ddeddaa00bde8c0fcb5c868021781a`.
+It contains six runs of 47 samples, 282 total. Each summary's minimum contrasts
+are 3.3957894124201147 / 18.072761071772074 / 5.933638668604332
+(tile/face, detail/face, tile/panel). The runner blob at candidate 2bdfdd3 is
+identified in the follow-up handoff; it recorded replacements but did NOT fail
+on them. It also only logged uncaught runtime exceptions. Thus those counts are
+author observations, not comprehensive callback-continuity assertions.
+
+The follow-up runner separately catches every sample callback exception, records
+it, counts Runtime.exceptionThrown events and fails on either; replacements now
+also fail acceptance. Nonzero samples remain mandatory. This detects callback
+failures but cannot prove there were no unobserved frames between RAF samples,
+browser-chrome pixels, or an initial cold paint. A fresh uniquely named log and
+runner blob identify the new evidence; it does not overwrite the old trace.
+
+## Guarded Follow-Up Evidence
+
+Fresh log: `/tmp/11f-logo-r1-guarded-frames.jsonl`, SHA-256
+`48a6b2ec859a938a602e53d993d4a1712ee65db6447a2bdec342d0ce6353e660`.
+Runner Git blob: `08c41277d9edbe9445de4c5b2b8ca25025972f36`.
+Previous runner blob: `4cd29da90af8afd968c2433adfd119eab5e06c52`.
+The guarded run exits 0 and contains six runs of 47 samples, **282 total**.
+Each run records zero callback errors, runtime exceptions, missing/unloaded/
+invisible logos, app/image color mismatches and DOM replacements. Exact minimum
+contrasts remain **3.3957894124201147 / 18.072761071772074 /
+5.933638668604332**. These values are recomputed from the named log, not a rounded
+or expected design value. Replacements, callback/runtime errors, absent samples
+and the previously defined color/load/contrast failures now reject the run.
+The older false numerical summary stays withdrawn; the old candidate remains
+historical HOLD pending this new exact's independent review. No product defect
+or product asset fix is claimed.

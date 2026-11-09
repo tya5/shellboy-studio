@@ -10,7 +10,8 @@ try {
   let info; for(let n=0;n<100;n++){try {info=await (await fetch(`http://127.0.0.1:${port}/json`)).json();break}catch{await new Promise(r=>setTimeout(r,100))}}
   if(!info) throw Error('Chrome did not start');
   const ws=new WebSocket(info.find((target)=>target.type==='page' && target.url==='about:blank').webSocketDebuggerUrl); await new Promise((resolve,reject)=>{ws.onopen=resolve;ws.onerror=reject});
-  let id=0;const waiting=new Map();ws.onmessage=({data})=>{const m=JSON.parse(data);if(m.method==='Log.entryAdded')console.log('LOG',JSON.stringify(m.params));if(m.method==='Runtime.exceptionThrown')console.log('EXCEPTION',JSON.stringify(m.params));if(m.id){const p=waiting.get(m.id);waiting.delete(m.id);m.error?p.reject(Error(m.error.message)):p.resolve(m.result)}};
+  let runtimeErrors=0;
+  let id=0;const waiting=new Map();ws.onmessage=({data})=>{const m=JSON.parse(data);if(m.method==='Log.entryAdded')console.log('LOG',JSON.stringify(m.params));if(m.method==='Runtime.exceptionThrown'){runtimeErrors++;}if(m.method==='Runtime.exceptionThrown')console.log('EXCEPTION',JSON.stringify(m.params));if(m.id){const p=waiting.get(m.id);waiting.delete(m.id);m.error?p.reject(Error(m.error.message)):p.resolve(m.result)}};
   const cmd=(method,params={})=>new Promise((resolve,reject)=>{const i=++id;waiting.set(i,{resolve,reject});ws.send(JSON.stringify({id:i,method,params}))});
   const evaluate=async(expression)=>{let r=await cmd('Runtime.evaluate',{expression,returnByValue:true,awaitPromise:true});if(r.exceptionDetails)throw Error(JSON.stringify(r.exceptionDetails));return r.result.value};
   await cmd('Runtime.enable');await cmd('Page.enable');
@@ -28,11 +29,12 @@ try {
       const canvas=document.createElement('canvas');canvas.width=canvas.height=390;
       const ctx=canvas.getContext('2d',{willReadFrequently:true});
       const original=document.querySelector('.brand-logo');
-      const samples=[];let running=true;
+      const samples=[];const errors=[];let running=true;
       const rgb=s=>s.match(/[0-9.]+/g).slice(0,3).map(Number);
       const luminance=arr=>arr.map(v=>{v/=255;return v<=.04045?v/12.92:((v+.055)/1.055)**2.4;}).reduce((s,v,i)=>s+v*[.2126,.7152,.0722][i],0);
       const contrast=(a,b)=>{a=luminance(a);b=luminance(b);return (Math.max(a,b)+.05)/(Math.min(a,b)+.05);};
       function sample(){
+        try {
         const logo=document.querySelector('.brand-logo');const rect=logo?.getBoundingClientRect();
         const get=selector=>logo?getComputedStyle(logo.querySelector(selector)):null;
         ctx.clearRect(0,0,390,390);ctx.drawImage(image,0,0,390,390);
@@ -41,9 +43,10 @@ try {
         const tile=get('.logo-tile')?.fill;const face=get('.logo-face')?.fill;const wink=get('.logo-wink')?.stroke;const bright=get('.logo-eye')?.fill;
         const panel=getComputedStyle(document.querySelector('.side')).backgroundColor;
         if(samples.length<256)samples.push({theme:document.documentElement.dataset.ds,dark:matchMedia('(prefers-color-scheme:dark)').matches,tile,face,wink,bright,panel,svgImagePixel:pixel,loaded:image.complete&&image.naturalWidth>0,missing:!rect||!rect.width||!rect.height,same:logo===original,visible:!!rect&&rect.left>=0&&rect.right<=innerWidth&&rect.bottom<=innerHeight,faceContrast:tile&&face?contrast(rgb(tile),rgb(face)):0,detailContrast:bright&&face?contrast(rgb(bright),rgb(face)):0,panelContrast:tile?contrast(rgb(tile),rgb(panel)):0,accent});
+        } catch(error) { errors.push(String(error)); }
         if(running)requestAnimationFrame(sample);
       }
-      window.logoObservation={samples,stop:()=>{running=false;}};
+      window.logoObservation={samples,errors,stop:()=>{running=false;}};
       requestAnimationFrame(sample);
       for(let n=0;n<5;n++)await new Promise(r=>requestAnimationFrame(r));
     })()`);
@@ -55,13 +58,14 @@ try {
       await evaluate(`window.setFixtureTheme('${theme}')`);
       await evaluate("new Promise(resolve=>{let n=0;const step=()=>++n===6?resolve():requestAnimationFrame(step);requestAnimationFrame(step);})");
     }
-    const samples=await evaluate('window.logoObservation.stop();window.logoObservation.samples');
+    const observation=await evaluate('window.logoObservation.stop();({samples:window.logoObservation.samples,errors:window.logoObservation.errors})');
+    const {samples,errors}=observation;
     const expected={console:'rgb(56, 189, 248)',light:'rgb(3, 105, 161)',terminal:'rgb(74, 222, 128)'};
     const missing=samples.filter(s=>s.missing||!s.visible||!s.loaded).length;
     const appWrong=samples.filter(s=>s.tile!==expected[s.theme]||s.wink!==expected[s.theme]).length;
     const imageWrong=samples.filter(s=>JSON.stringify(s.svgImagePixel)!==JSON.stringify(s.dark?[56,189,248,255]:[3,105,161,255])).length;
-    console.log(JSON.stringify({width,initialTheme,samples:samples.length,missing,appWrong,imageWrong,replaced:samples.filter(s=>!s.same).length,minFaceContrast:Math.min(...samples.map(s=>s.faceContrast)),minDetailContrast:Math.min(...samples.map(s=>s.detailContrast)),minPanelContrast:Math.min(...samples.map(s=>s.panelContrast)),trace:samples}));
-    if(!samples.length||missing||appWrong||imageWrong||samples.some(s=>s.faceContrast<3||s.detailContrast<3||s.panelContrast<3))process.exitCode=2;
+    console.log(JSON.stringify({width,initialTheme,samples:samples.length,callbackErrors:errors,runtimeErrors,missing,appWrong,imageWrong,replaced:samples.filter(s=>!s.same).length,minFaceContrast:Math.min(...samples.map(s=>s.faceContrast)),minDetailContrast:Math.min(...samples.map(s=>s.detailContrast)),minPanelContrast:Math.min(...samples.map(s=>s.panelContrast)),trace:samples}));
+    if(runtimeErrors||errors.length||samples.some(s=>!s.same)||!samples.length||missing||appWrong||imageWrong||samples.some(s=>s.faceContrast<3||s.detailContrast<3||s.panelContrast<3))process.exitCode=2;
   }
   ws.close();
 } finally {chrome.kill('SIGTERM')}
