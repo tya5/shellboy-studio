@@ -93,7 +93,7 @@ function PointPanel({ model, target, title, request, branches, ordinal }: { mode
           {rewind.kind === "refused" ? <Notice tone="bad">{t("branches.refused", { message: rewind.error.message })}</Notice> : null}
         </>
       ) : null}
-      {rewind.kind === "ready" || rewind.kind === "rewinding" || rewind.kind === "failed" ? (
+      {rewind.kind === "ready" || rewind.kind === "rewinding" || rewind.kind === "failed" || (rewind.kind === "done" && b.canRetryRewind()) ? (
         <>
           <div class="muted caption">{t("branches.previewNote")}</div>
           <RewindPreview t={t} facts={rewind.facts} />
