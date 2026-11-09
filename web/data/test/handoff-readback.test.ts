@@ -33,6 +33,21 @@ describe('approved exact final-answer subset',()=>{
     const r=await rig();r.state.error=true;r.live();r.end();await r.pump();expect(r.h.handoff.value[0]).toMatchObject({text:'Live final text',status:'failed'});
     r.state.error=false;const retry=r.h.retryHandoff();await r.pump();await retry;expect(r.h.handoff.value[0]!.status).toBe("ready");
   });
+  it.each(['cancel','close','ownerABA'] as const)('does not start a body read when identify synchronously invalidates %s',async mode=>{
+    const r=await rig(); let invalidated=false;
+    const unsubscribe=r.h.handoff.subscribe(records=>{
+      if(invalidated || !records.some(x=>x.nodeId==='n1'))return;
+      invalidated=true;
+      if(mode==='cancel')r.h.cancelReads();
+      else if(mode==='close')r.h.close();
+      else { r.t.push({t:'owner',event:'restarted',owner:connected}); r.t.push({t:'owner',event:'restarted',owner:connected}); }
+    });
+    r.live();r.end();await r.pump();
+    expect(invalidated).toBe(true);
+    expect(r.t.calls().filter(c=>c.command==='history.get')).toHaveLength(0);
+    expect(r.h.handoff.value.some(x=>x.status==='ready')).toBe(false);
+    unsubscribe();r.data.stop();
+  });
   it('keeps known text and exact identity when the public body format is unsupported',async()=>{
     const r=await rig(),base=r.db.answer.bind(r.db);
     r.db.answer=c=>c.command==='history.get'?{ok:true,result:{node_id:'n1',kind:'assistant_response',body_ref:{kind:'unsupported'}}}:base(c);

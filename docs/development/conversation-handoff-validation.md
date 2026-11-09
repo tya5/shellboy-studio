@@ -137,3 +137,16 @@ configuration, installed asset or user data was used.
   No resource limits, read budgets, hint refills or protocol surface changed.
 - Independent S6 review and same-SHA all-OS CI are handoff gates, not established
   by these local results. Device widths are emulation, not phone testing.
+
+### Synchronous identity subscriber invalidation
+
+Source review identified an additional boundary not exercised by the earlier
+cancel-before-anchor test: identity publication synchronously invokes subscribers.
+A subscriber can cancel reads, close the last handle, or restart owner A twice
+(ABA) before the next body read starts. Three controlled tests fail on `040c920`
+with one stale `history.get` start each (`/tmp/s2-sync-identify-red2.log`). Rechecking
+the existing epoch/cancel/closed/owner predicate immediately after `identify`,
+before taking budget or starting a read, makes all three pass. No new timing,
+resource ownership, read budget or protocol changes are needed. Full Web check
+now passes 58 files / 1235 tests and build passes. The updated candidate needs a
+fresh independent source and exact-SHA Chrome acceptance before leader CI.
