@@ -70,3 +70,8 @@ Four new synthetic tests invalidate owner, owner ABA, leave or target during
 the done notification and require zero refresh RPCs. No receipt, policy, family
 budget or public contract changes. The rejected initial result remains history;
 these tests do not constitute runtime or real-owner acceptance.
+
+A further synchronous failed notification guard preserves the new owner's error
+instead of writing the old error after reentry. Two additional tests cover failed
+notification owner switch and partial-send error notification preventing stale
+done. All guards reuse the same invocation, never a freshly sampled replacement.

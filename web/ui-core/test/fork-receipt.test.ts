@@ -112,3 +112,15 @@ for (const invalidation of ["owner", "aba", "leave", "target"] as const) it(`don
   expect(f.t.calls("thread.branches")).toHaveLength(0);expect(f.t.calls("message.send")).toHaveLength(0);
   stop();f.link.stop();
 });
+
+it("failed notification invalidation preserves the new owner's error",async()=>{
+  const f=fixture();const stop=effect(()=>{if(f.b.fork.value.kind==="failed"){f.change("b");f.b.actionError.value="new owner error";}});
+  const p=f.b.forkAt(f.target);f.t.ownerError(f.t.calls("thread.fork")[0]!.id,"operation_expired");await p;
+  expect(f.b.actionError.value).toBe("new owner error");expect(f.t.calls("thread.branches")).toHaveLength(0);stop();f.link.stop();
+});
+it("partial-send error notification invalidation cannot publish stale done",async()=>{
+  const f=fixture();const stop=effect(()=>{if(f.b.actionError.value?.startsWith("Branch child created"))f.change("b");});
+  const p=f.b.forkAt(f.target,"fixed");f.t.ok(f.t.calls("thread.fork")[0]!.id,child);await flush();
+  f.t.ownerError(f.t.calls("message.send")[0]!.id,"thread_busy");await p;
+  expect(f.b.fork.value.kind).not.toBe("done");expect(f.t.calls("thread.branches")).toHaveLength(0);stop();f.link.stop();
+});

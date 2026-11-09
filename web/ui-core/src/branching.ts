@@ -449,6 +449,7 @@ export class Branches {
       attempt.uncertain = uncertainOutcome(out);
       if (this.visible(attempt, token)) {
         this.fork.value = { kind: "failed", error: out.error };
+        if (!this.visible(attempt, token)) return;
         this.actionError.value = outcomeMessage(out);
       }
       return;
