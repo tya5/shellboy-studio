@@ -58,7 +58,7 @@ export function Inbox({ model }: { model: AppModel }) {
               </a>
             }
           />
-        ) : model.pending.error?.value ? null : (
+        ) : model.pending.error?.value || model.pending.loading?.value || model.pending.stale?.value ? null : (
           <EmptyState icon="inbox" title={t("inbox.emptyTitle")} body={t("inbox.emptyBody")} />
         )}
       </div>

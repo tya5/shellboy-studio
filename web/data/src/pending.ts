@@ -33,7 +33,7 @@ export class HumanInbox implements PendingAdapter {
   readonly error = signal<OpError | undefined>(undefined);
   readonly hasMore = signal(false);
   readonly loading = signal(false);
-  readonly stale = signal(false);
+  readonly stale = signal(true);
   private ownerKey: string | undefined;
   private scopeEpoch = 0;
   private page: { owner: string; epoch: number; cursor?: string; ids: ReadonlySet<string> } | undefined;
@@ -69,9 +69,10 @@ export class HumanInbox implements PendingAdapter {
       }
       if (key !== this.ownerKey || this.closed) return;
       if (!key || list.loading || list.stale) {
-        const generation = this.invalidateRead();
-        if (generation !== this.generation || key !== this.ownerKey) return;
-        batch(() => { this.loading.value = false; if (key) this.stale.value = true; });
+        batch(() => {
+          this.loading.value = false; this.stale.value = true;
+          this.invalidateRead();
+        });
         return;
       }
       if (list.loaded) {
@@ -94,10 +95,14 @@ export class HumanInbox implements PendingAdapter {
   private resetScope(): void {
     // Revoke actions before cancellation can run a subscriber against displayed old rows.
     this.page = undefined; ++this.scopeEpoch;
-    const generation = this.invalidateRead();
-    if (generation !== this.generation) return;
+    ++this.generation;
+    const previous = this.cancel; this.cancel = new Cancel();
     this.cursor = undefined; this.nextCursor = undefined;
-    batch(() => { this.items.value = []; this.error.value = undefined; this.hasMore.value = false; this.loading.value = false; this.stale.value = false; });
+    batch(() => {
+      this.items.value = []; this.error.value = undefined; this.hasMore.value = false;
+      this.loading.value = false; this.stale.value = true;
+      previous.cancel();
+    });
   }
   private async read(sent: () => void): Promise<void> {
     if (this.closed || !this.ownerKey) return;

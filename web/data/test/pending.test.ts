@@ -234,3 +234,37 @@ it("different owner cannot reuse or remint an unconfirmed original-owner receipt
  writable(f.data.threadList).value={...f.data.threadList.value,loading:false,stale:false,loaded:true};await flush();await fill(f);
  const result=await f.inbox.answer("h","same text");expect(result.ok).toBe(false);expect(f.t.calls("message.reply")).toHaveLength(1);f.close();
 });
+
+it("keeps empty status unconfirmed after owner restart until a new validated page", async () => {
+  const f = await fixture(); await fill(f);
+  f.t.push({ t: "owner", event: "restarted", owner: connected }); await flush();
+  expect(f.inbox.items.peek()).toEqual([]);
+  expect(f.inbox.loading.peek() || f.inbox.stale.peek()).toBe(true);
+  expect((await f.inbox.answer("h", "must not send")).ok).toBe(false);
+  expect(f.t.calls("message.reply")).toHaveLength(0);
+  const page = await reread(f); f.t.ok(page.id, { items: [] }); await flush();
+  expect(f.inbox.items.peek()).toEqual([]); expect(f.inbox.loading.peek()).toBe(false); expect(f.inbox.stale.peek()).toBe(false);
+  f.close();
+});
+
+for (const transition of ["unknown-same", "ABA"] as const) it(`confirms empty only after validated new page following ${transition}`, async () => {
+  const f = await fixture(); await fill(f);
+  if (transition === "unknown-same") f.t.push({ t: "owner", event: "unreachable", owner: { state: "unreachable" } });
+  else f.t.push({ t: "owner", event: "restarted", owner: ownerB });
+  f.t.push({ t: "owner", event: "restarted", owner: connected }); await flush();
+  expect(f.inbox.items.peek()).toEqual([]); expect(f.inbox.stale.peek() || f.inbox.loading.peek()).toBe(true);
+  const failed = await reread(f); f.t.ownerError(failed.id, "temporarily_unavailable"); await flush();
+  expect(f.inbox.stale.peek()).toBe(true); expect((await f.inbox.answer("h", "no")).ok).toBe(false);
+  const page = await reread(f); f.t.ok(page.id, { items: [] }); await flush();
+  expect(f.inbox.stale.peek()).toBe(false); expect(f.inbox.items.peek()).toEqual([]); expect(f.t.calls("message.reply")).toHaveLength(0); f.close();
+});
+it("new scope is unconfirmed before an old read cancellation callback can inspect it", async () => {
+  const f = await fixture(); const original = f.data.operations.threadList.bind(f.data.operations); let observed: boolean | undefined;
+  f.data.operations.threadList = (args, read) => {
+    if ((args as { awaiting?: string }).awaiting) read?.cancel?.add(() => { observed = f.inbox.stale.peek() && f.inbox.items.peek().length === 0; });
+    return original(args, read);
+  };
+  const page = await reread(f); f.t.push({ t: "owner", event: "restarted", owner: connected }); await flush();
+  expect(observed).toBe(true); expect(f.inbox.stale.peek()).toBe(true);
+  f.t.ok(page.id, { items: [] }); await flush(); expect(f.inbox.stale.peek()).toBe(true); f.close();
+});
