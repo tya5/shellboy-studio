@@ -116,10 +116,15 @@ function RowView({ model, row }: { model: AppModel; row: ConversationRow }) {
         {mark ? <div class="scroll-mark">{mark}</div> : null}
       </>
     );
-  const who = row.speaker.kind === "you" ? t("convo.you") : row.speaker.kind === "shellboy" ? t("convo.shellboy") : row.speaker.kind === "cli" ? t("convo.cli") : row.speaker.label;
+  const who = row.speaker.kind === "you" ? t("convo.you") : row.speaker.kind === "shellboy" ? t("convo.shellboy") : row.speaker.kind === "cli" ? t("convo.cli") : row.speaker.kind === "model" ? t("convo.modelSender") : row.speaker.kind === "unknown" ? t(row.speaker.model ? "convo.unknownModelSender" : "convo.unknownSender") : row.speaker.label;
   const body = model.bodies.value.get(row.id);
   return (
     <Message bot={row.speaker.kind === "shellboy"} who={who} at={formatClock(row.at)} text={body?.text ?? row.text} copyLabel={t("code.copy")} copiedLabel={t("code.copied")}>
+      {row.speaker.kind === "model" ? <div class="caption sender-fact">
+        {model.senderTitles.values.value.get(row.speaker.threadId)?.state === "ready" ? <div>{t("convo.senderCurrentTitle", { title: model.senderTitles.values.value.get(row.speaker.threadId)!.title ?? "" })}</div> : <div>{t("convo.senderTitleUnresolved")}</div>}
+        <div>{t("convo.senderThread")} <a href={formatRoute({ view: "conversation", threadId: row.speaker.threadId })}><code class="sender-id">{row.speaker.threadId}</code></a></div>
+        {row.speaker.label !== undefined ? <div>{t("convo.senderClaimedLabel", { label: row.speaker.label })}</div> : null}
+      </div> : row.speaker.kind === "unknown" && row.speaker.label !== undefined ? <div class="caption">{t("convo.senderClaimedLabel", { label: row.speaker.label })}</div> : null}
       {row.truncated && body?.text === undefined ? (
         <span class="more">
           <Button variant="link" disabled={body?.loading} onClick={() => void model.loadBody(row.id)}>
@@ -245,7 +250,7 @@ function OrderedHistory({ model, handle, rows, win, history, scroller, pinned, f
             {history?.earlierHidden ? (
               <span class="more">
                 {handle.canShowEarlier() ? (
-                  <Button disabled={history.loadingMore} onClick={() => void handle.loadOlderHistory()}>{t("convo.earlier")}</Button>
+                  <Button disabled={history.loadingMore} onClick={() => { model.senderPageAfter(() => handle.loadOlderHistory()); }}>{t("convo.earlier")}</Button>
                 ) : (
                   <span class="muted caption">{t("convo.earlierLimit")}</span>
                 )}

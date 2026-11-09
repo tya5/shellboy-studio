@@ -497,3 +497,6 @@ a{color:var(--accent)}
 .character-empty{width:128px;height:128px;max-width:100%}
 
 .empty-character{align-items:center;text-align:center;width:100%}
+
+/* Sender IDs remain complete on narrow screens; titles and labels are not identity. */
+.sender-id { overflow-wrap: anywhere; }

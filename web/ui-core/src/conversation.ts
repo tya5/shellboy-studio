@@ -1,3 +1,4 @@
+import { senderFact } from "../../data/src/sender";
 // Projects saved history items into what a conversation shows. Bookkeeping nodes the owner
 // keeps for the model (events, context notes) and tool results (read through shell.read) are
 // not conversation rows.
@@ -21,7 +22,7 @@ export interface StepRow {
   cwd: string | undefined;
 }
 
-export type Speaker = { kind: "you" } | { kind: "shellboy" } | { kind: "cli" } | { kind: "other"; label: string };
+export type Speaker = { kind: "model"; threadId: string; label?: string } | { kind: "unknown"; model: boolean; label?: string } | { kind: "you" } | { kind: "shellboy" } | { kind: "cli" } | { kind: "other"; label: string };
 
 export type ConversationRow =
   | { type: "message"; id: string; speaker: Speaker; text: string; truncated: boolean; at: string | undefined }
@@ -32,11 +33,12 @@ const HIDDEN = new Set(["event", "context", "tool_result"]);
 
 function speakerOf(item: HistoryItem): Speaker {
   if (item.kind === "assistant_response") return { kind: "shellboy" };
-  const sender = item.provenance?.sender;
-  if (sender?.kind === "human") return { kind: "you" };
-  if (sender?.kind === "external_cli") return typeof sender.label === "string" && sender.label.trim() ? { kind: "other", label: `CLI: ${sender.label}` } : { kind: "cli" };
-  const label = typeof sender?.label === "string" ? sender.label : sender?.kind;
-  return label ? { kind: "other", label } : { kind: "you" };
+  const sender = senderFact(item.provenance?.sender);
+  if (sender.kind === "human") return { kind: "you" };
+  if (sender.kind === "external_cli") return sender.label?.trim() ? { kind: "other", label: `CLI: ${sender.label}` } : { kind: "cli" };
+  if (sender.kind === "model") return sender;
+  if (sender.kind === "unknown_model") return { kind: "unknown", model: true, label: sender.label };
+  return { kind: "unknown", model: false, label: sender.label };
 }
 
 const codePoints = (s: string): number => {

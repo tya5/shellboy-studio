@@ -77,8 +77,8 @@ function Tile({ model, row, reader, supported, pinned, togglePin, outOfFilter }:
     <MonitorTile href={formatRoute({ view: "conversation", threadId: id })} title={row.summary.title} headingStatus={row.status ? <StatusMark status={row.status} label={statusLabel(t, row.status)} word={false} /> : null} status={status} pin={<Button aria-pressed={pinned} onClick={togglePin}>{t(pinned ? "monitor.unpin" : "monitor.pin")}</Button>}>
       {supported ? rows.map((r) => {
         if (r.type === "message") {
-          const who = r.speaker.kind === "other" ? r.speaker.label : t(r.speaker.kind === "you" ? "convo.you" : r.speaker.kind === "cli" ? "convo.cli" : "convo.shellboy");
-          return <p key={r.id}><strong>{who} </strong>{r.text.split(/\r?\n/, 1)[0]}</p>;
+          const who = r.speaker.kind === "other" ? r.speaker.label : t(r.speaker.kind === "you" ? "convo.you" : r.speaker.kind === "cli" ? "convo.cli" : r.speaker.kind === "model" ? "convo.modelSender" : r.speaker.kind === "unknown" ? "convo.unknownSender" : "convo.shellboy");
+          return <p key={r.id}><strong>{who} </strong>{r.speaker.kind === "model" ? <span>{t("convo.senderThread")} <code class="sender-id">{r.speaker.threadId}</code>{r.speaker.label !== undefined ? ` ${t("convo.senderClaimedLabel", { label: r.speaker.label })}` : ""} </span> : r.speaker.kind === "unknown" && r.speaker.label !== undefined ? <span>{t("convo.senderClaimedLabel", { label: r.speaker.label })} </span> : null}{r.text.split(/\r?\n/, 1)[0]}</p>;
         }
         if (r.type !== "steps") return null;
         const failed = r.steps.filter((step) => step.exitCode != null && step.exitCode !== 0).length;

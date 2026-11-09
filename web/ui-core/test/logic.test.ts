@@ -106,7 +106,7 @@ describe("conversation projection", () => {
     expect(one({ kind: "human" })).toMatchObject({ speaker: { kind: "you" } });
     expect(one({ kind: "external_cli" })).toMatchObject({ speaker: { kind: "cli" } });
     expect(one({ kind: "external_cli", label: "app:board" })).toMatchObject({ speaker: { kind: "other", label: "CLI: app:board" } });
-    expect(one({ kind: "thread", label: "worker" })).toMatchObject({ speaker: { kind: "other", label: "worker" } });
+    expect(one({ kind: "thread", label: "worker" })).toMatchObject({ speaker: { kind: "unknown", model: false, label: "worker" } });
   });
   it("keeps compacted output before, between and after calls in the same group", () => {
     const call = (id: string) => ({ node_id: id, kind: "assistant_response", executions: [{ execution_id: id, command_excerpt: "echo" }] });

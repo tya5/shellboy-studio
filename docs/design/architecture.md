@@ -676,3 +676,42 @@ work/status refresh immediately; lightweight hint observers and list consumers
 are not gated. History is marked stale while held, with an explicit failed-row
 notice; pause/navigation or owner/session reset clears the old gate. A regression
 checks these independent consumers during a failed body lookup.
+
+### Sender Identity And Current Titles (#285, ADR-A285)
+
+Studio displays existing owner NodeProvenance.sender facts; it does not parse
+model notification text or reconstruct identity from labels, origin_thread_id,
+selected Thread, title or body. The data-layer guard accepts an object (not
+null/array), explicit kind=model and a nonempty opaque string thread_id. The
+unchanged full ID is identity and link destination. Missing/malformed model IDs
+remain unknown-model, never human/You; absent/unsupported sender kinds are unknown.
+Only explicit human provenance is You. A self-asserted label is separate text,
+never automatically populated or treated as a verified name/title. Title/label
+rendering is escaped text. No owner DTO, persisted field, wire or bridge change.
+
+The Conversation's view-owned SenderTitles resolves current titles via existing
+thread.get. Existing nonstale owner-list rows are preferred without a lookup.
+Do not expand that shared cache; the resolver retains at most 16 distinct candidate
+entries and performs at most 16 total RPC attempts per budget, one in flight.
+Later IDs keep their full-ID fallback. A same-title pair stays distinct by ID;
+renames may update from current valid cached rows without a new RPC. A cached
+rename observed during an in-flight request wins over that older response.
+
+Budget scope is owner observation generation + conversation route/selected Thread
++ explicit page selection. Closing/leaving discards resolver entries, candidate
+membership and queued work, cancelling its sole flight; the flight slot is not
+reused before its promise settles. Owner/route/page changes reject late replies.
+Candidate removal cancels obsolete work but consumes its original candidate and
+attempt allowance; hints, automatic history revisions, rendering and membership
+churn do not refill or evict the lifetime candidate set. Errors/deleted IDs,
+unsupported requests and response-ID mismatch remain ID fallback, not automatic
+retry. Current-page selection is explicit earlier-page completion or the existing
+jump-to-newest control. Automatic virtual-window movement does not refill.
+
+Ownership/cancellation is reserved before invoking transport; reply adoption
+rechecks that exact flight, lifetime, scope, current membership and requested ID.
+An owner switch also bars stale old-owner history and list rows from starting
+lookups in the new owner's scope. Existing transport handles request timeout and
+cancellation. There is no persistent/global cache, new subscription, queue worker,
+poller, body parsing, network adapter or new dependency. Monitor tiles display
+recorded sender ID/label and unknown states without starting a second resolver.

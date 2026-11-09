@@ -1,3 +1,5 @@
+import { SenderTitles } from "./sender-titles";
+import { senderFact } from "../../data/src/sender";
 import { BranchCompare } from "./branch-compare";
 import { pairingHosts, issuePairing } from "../../data/src/pairing";
 import { GuideRegistration } from "./guide-registration";
@@ -231,6 +233,18 @@ export class AppModel {
   /** A step's output read, cancelled when its row closes. */
   private outputReads = new Map<string, Cancel>();
 
+  readonly senderTitles: SenderTitles;
+  private readonly senderPage = signal(0);
+  senderPageSelected(): void { this.senderPage.value++; }
+  senderPageAfter(read: () => Promise<void>): void {
+    const owner = this.data.owner.peek();
+    const route = this.route.peek();
+    const handle = this.handle.peek();
+    void read().then(() => {
+      if (this.data.owner.peek() === owner && this.route.peek() === route && this.handle.peek() === handle && route.view === "conversation") this.senderPageSelected();
+    });
+  }
+
   constructor(options: AppModelOptions) {
     this.data = options.data;
     this.ops = options.data.operations;
@@ -260,6 +274,7 @@ export class AppModel {
       this.branchCompare.context(JSON.stringify([id, route.view, route.threadId, route.nodeId]), connected && this.data.connection.value === "open" && !!id && route.view === "branches" && this.data.capabilities.value.includes(CAPABILITY_HISTORY_WINDOW));
     }));
     this.disposers.push(effect(() => { this.data.threadList.value; this.branchCompare.hint(); }));
+    this.senderTitles = new SenderTitles(this.ops);
     this.org = new ThreadOrg(this.ops, () => this.data.capabilities.peek());
     this.config = new ConfigEditor(this.ops);
     this.guideRegistration = new GuideRegistration(this.ops);
@@ -361,6 +376,31 @@ export class AppModel {
     this.listHandle = this.data.trackThreadList();
     this.disposers.push(effect(() => this.syncOpenThread()));
     this.disposers.push(effect(() => this.syncWindow()));
+    let senderOwner: unknown;
+    let senderOwnerGeneration = 0;
+    let senderCachedList: unknown;
+    let senderOldHistory: unknown;
+    let senderOldWindow: unknown;
+    let senderOldWindowVersion = 0;
+    this.disposers.push(effect(() => {
+      const owner = this.data.owner.value;
+      const list = this.data.threadList.value;
+      if (senderOwner !== owner) { senderOwner = owner; senderOwnerGeneration++; senderCachedList = list.items; senderOldHistory = this.handle.peek()?.history.peek().items; senderOldWindow = this.longReader.peek(); senderOldWindowVersion = this.longReader.peek()?.version.peek() ?? 0; }
+      const h = this.handle.value;
+      const route = this.route.value;
+      const connected = this.data.connection.value === "open" && owner.state === "connected" && typeof owner.info.instance_id === "string" && owner.info.instance_id !== "";
+      const page = this.senderPage.value;
+      const win = this.longReader.value;
+      if (win) win.version.value;
+      const history = h?.history.value;
+      const items = win ? (win === senderOldWindow && win.version.peek() === senderOldWindowVersion ? [] : win.rangeItems()) : history && !history.stale && history.items !== senderOldHistory ? history.items : [];
+      const ids: string[] = [];
+      for (const item of items) { const fact = senderFact(item.provenance?.sender); if (fact.kind === "model") ids.push(fact.threadId); }
+      const scope = connected && h && route.view === "conversation" ? JSON.stringify([senderOwnerGeneration, owner.info.instance_id, route.view, h.threadId, page]) : undefined;
+      // An owner switch cannot reuse an old list merely because it is still displayed as stale data.
+      const cache = !list.stale && list.items !== senderCachedList ? list.items : [];
+      untracked(() => this.senderTitles.update(scope, ids, cache));
+    }));
     this.disposers.push(effect(() => {
       if (!this.longReader.value) this.retainToolState(this.conversation.value);
     }));
@@ -483,6 +523,7 @@ export class AppModel {
   }
 
   dispose(): void {
+    this.senderTitles.close();
     this.branchCompare.leave();
     this.branches.leave();
     this.pending.close?.();

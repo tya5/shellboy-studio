@@ -140,7 +140,7 @@ export function WindowedScroll({ model, win, renderRow, live, liveBoundary, stat
     </div>
       {!win.following.value ? (
         <div class="jump-newest">
-          <Button variant="primary" onClick={() => { intent.current.following = true; win.jumpToEnd(); }}>{t("convo.newer")}</Button>
+          <Button variant="primary" onClick={() => { model.senderPageSelected(); intent.current.following = true; win.jumpToEnd(); }}>{t("convo.newer")}</Button>
         </div>
       ) : null}
     </div>

@@ -115,3 +115,23 @@ progress is ordinary messaging, not automatic child-Run forwarding. A recovery
 wait is not evidence the reply duty disappeared. Unknown fields are not inferred
 from old lists. Human count 17 with `awaiting_human_count_exact=false` means
 17 or more, not an exact count.
+
+## Message Sender Identity
+
+For model-originated messages, Studio shows the owner-recorded **From Thread** ID
+and, when available, its **Current title**. A title is display text: it can change
+or match another Thread's title. The full Thread ID and its link remain the sender
+identity even if lookup fails or that Thread has been deleted. Studio uses the
+existing Thread lookup; it does not save title snapshots or infer sender identity
+from message text, a notification, the selected Thread or a label.
+
+A **Self-asserted label** is the sender's supplied label, not a verified title or
+identity. Studio does not automatically fill an absent label. Human and external
+CLI provenance do not gain fictional model sender IDs; malformed or missing model
+identity displays as unavailable, never as You.
+
+Title lookup is limited to 16 distinct sender IDs and 16 attempts, one at a time,
+per owner/view/explicit-page budget. Existing current owner-list titles are reused.
+Background updates do not refill that budget or retry failures. Unresolved or
+additional IDs still display in full; open the ID link to inspect the Thread.
+Leaving the view cancels its lookups and discards view-owned title entries.
