@@ -24,10 +24,21 @@ describe('approved exact final-answer subset',()=>{
   it.each(['truncated','competing','partial','wrong','empty','nullphase','changingRevision'])('retains confirming body for %s rather than invent final proof',async mode=>{
     const r=await rig();if(mode==='empty')r.state.text='';else if(mode==='nullphase')r.state.phase=null;else r.state[mode as 'truncated'|'competing'|'partial'|'wrong'|'changingRevision']=true;
     r.live();r.end();await r.pump();expect(r.h.handoff.value[0]).toMatchObject({text:'Live final text',status:'confirming'});
+    if (['partial','wrong','empty','changingRevision'].includes(mode)) {
+      expect(r.h.handoff.value[0]!.nodeId).toBe('n1');
+      expect(r.h.handoff.value[0]!.proof).toBeUndefined();
+    } else expect(r.h.handoff.value[0]!.nodeId).toBeUndefined();
   });
   it('reports read failure, retains text, and explicitly retries exact identity',async()=>{
     const r=await rig();r.state.error=true;r.live();r.end();await r.pump();expect(r.h.handoff.value[0]).toMatchObject({text:'Live final text',status:'failed'});
     r.state.error=false;const retry=r.h.retryHandoff();await r.pump();await retry;expect(r.h.handoff.value[0]!.status).toBe("ready");
+  });
+  it('keeps known text and exact identity when the public body format is unsupported',async()=>{
+    const r=await rig(),base=r.db.answer.bind(r.db);
+    r.db.answer=c=>c.command==='history.get'?{ok:true,result:{node_id:'n1',kind:'assistant_response',body_ref:{kind:'unsupported'}}}:base(c);
+    r.live();r.end();await r.pump();
+    expect(r.h.handoff.value[0]).toMatchObject({nodeId:'n1',status:'failed',text:'Live final text'});
+    expect(r.h.handoff.value[0]!.proof).toBeUndefined();r.data.stop();
   });
   it('hints never refill the generation budget',async()=>{
     const r=await rig();r.state.available=false;r.live();r.end();await r.pump();for(let n=0;n<20;n++){r.change();await r.pump();}
@@ -41,6 +52,7 @@ describe('approved exact final-answer subset',()=>{
     for(const action of ['cancel','owner','close']){const r=await rig();r.live();r.end();
       if(action==='cancel')r.h.cancelReads();else if(action==='close')r.h.close();else r.t.push({t:'owner',event:'restarted',owner:connected});
       await r.pump();expect(r.h.handoff.value.some(x=>x.status==='ready')).toBe(false);
+      expect(r.h.handoff.value.some(x=>x.nodeId !== undefined)).toBe(false);
     }
   });
 });

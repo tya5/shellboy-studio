@@ -105,3 +105,35 @@ checks hint callbacks, thread.get and status still advance during a failed body
 lookup. Exact follow-up web check: 1101 tests / 52 files, both TS configurations;
 web build succeeds. The same eight RAF combinations are rerun as author evidence,
 not independent review or a whole-time rendering guarantee.
+
+## S2 exact identity reservation (2026-11-10 local validation)
+
+Baseline: public `83dabe0ba858324ac8dd150d3fdcf97a7e23f1a8`, with S7's
+independent visible RAF fixture imported unchanged. No real owner, runtime owner
+configuration, installed asset or user data was used.
+
+- Red: `DEBUG_PORT=19683 node web/designs/console/test/browser/visible-red-check.mjs`
+  exited 1. Of twelve Chrome/RAF cases (legacy/windowed, 1280/390, normal/partial/
+  wrong-node), four windowed partial/wrong-node cases each observed two duplicate
+  frames while the body was still confirming. Missing frames and message identity
+  changes were zero.
+- Repair: after exact attempt/reference plus assistant anchor validation, retain
+  the anchored node as display reservation; do not mark ready. Suppress only the
+  ordinary message projection for that node. Partial, wrong, absent or unsupported
+  body formats retain known text; safe body proof and transfer remain unchanged.
+- Green: the same runner at `DEBUG_PORT=19684` exited 0, all twelve cases had zero
+  missing, duplicate or message identity-change frames and eventually ready after
+  valid retry. Text and confirming status remained for unverified bodies.
+- `npm --prefix web run check`: 58 files, 1232 tests passed, including unsupported
+  public-body format, cancellation-before-identity and owner ABA coverage.
+  `npm --prefix web run build` passed.
+- Scope limitation: ResizeObserver loop notifications still appear in the Vite
+  browser diagnostic output (not silently filtered). The retained message body
+  measured 102.75 px in desktop cases and 146.125 px in windowed mobile cases;
+  legacy mobile varied from 124.4375 to 146.125 px. Status/retry chrome changes
+  message height separately. Scroll/height work belongs to #6, not this body fix.
+- Unknown/mixed refs without exact identity cannot be deduplicated by guessing
+  text or body spans; they remain unknown and do not remove a retained body.
+  No resource limits, read budgets, hint refills or protocol surface changed.
+- Independent S6 review and same-SHA all-OS CI are handoff gates, not established
+  by these local results. Device widths are emulation, not phone testing.

@@ -97,6 +97,10 @@ export class Handoff {
   }
   fail(attemptId: string): void { this.update(attemptId, r => ({ ...r, status: 'failed' })); }
   confirming(attemptId: string): void { this.update(attemptId, r => ({ ...r, status: 'confirming' })); }
+  /** Reserve exact saved identity without claiming its body is safe to display. */
+  identify(attemptId: string, nodeId: string): void {
+    this.update(attemptId, r => r.status === 'ready' ? r : ({ ...r, nodeId }));
+  }
   /** Called only after exact identity and intended safe body are verified. One signal write. */
   ready(attemptId: string, nodeId: string, text: string, proof?: HandoffRecord["proof"]): boolean {
     const h = this.held.find(h => h.attemptId === attemptId);

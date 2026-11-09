@@ -231,7 +231,7 @@ function OrderedHistory({ model, handle, rows, win, history, scroller, pinned, f
       setBoundary(next === undefined ? undefined : { attempt: next, ordinal: win?.total ?? 0, legacy: rows.length });
     });
   }, [handle, win]);
-  const owned = new Set(handle.handoff.value.filter(r => r.status === "ready").map(r => r.nodeId));
+  const owned = new Set(handle.handoff.value.filter(r => r.nodeId !== undefined).map(r => r.nodeId));
   const visible = (row: ConversationRow): boolean => row.type !== "message" || (!owned.has(row.id) && !owned.has(row.id.replace(/:commentary$/, "")));
   return <>
         {win ? (

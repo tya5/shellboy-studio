@@ -697,6 +697,9 @@ export class ShellboyData {
         if (!valid()) return;
         if (!anchor.ok) { if (anchor.error.kind !== "cancelled") entry.live.fail(record.attemptId); continue; }
         if (anchor.value.thread_id !== entry.id || !anchor.value.items.some(i => i.node_id === ref.node_id && i.kind === "assistant_response")) continue;
+        // Identity excludes the ordinary history row while retained text still owns display.
+        // This is not final-body readiness: partial, unsupported and failed bodies stay retained.
+        entry.live.identify(record.attemptId, ref.node_id);
         if (!entry.live.takeRead()) return;
         const body = await this.operations.historyGet({ node_id: ref.node_id, end_message_only: true, limit_bytes: 262144 }, { cancel: cancelled });
         if (!valid()) return;

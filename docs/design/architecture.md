@@ -646,7 +646,9 @@ ambiguous phase, missing refs, malformed refs or truncation do not prove a ready
 answer. Read failures retain text and expose explicit retry. Commentary/multiple
 message body disambiguation remains the unimplemented Core #290 contract gap.
 
-Ready body/identity and duplicate-message suppression publish together. Tools on
+An exact identity reservation suppresses only its ordinary message projection while
+the retained body owns display; readiness and final transfer still require safe
+body verification. Tools on
 the same node remain independently projected; node-level suppression must not
 remove steps. A stable logical key AND component parent/list keep the existing
 Message DOM across replacement and subsequent generations. WindowedScroll's live
@@ -665,8 +667,8 @@ reserve twice or install a result after owner teardown.
 
 Changed hints reconcile the displayed attempt before refreshing history. If a
 read failed, that history hint stays coalesced until retry/recovery so an incoming
-raw row cannot race the failed visible body. Known existing history is not hidden
-merely because a node ID was identified. This delays history updates during a
+raw row cannot race the failed visible body. Unrelated history is not hidden. An exact anchored node reserved by a retained
+record is suppressed even while its body is unverified, preventing two copies. This delays history updates during a
 failed handoff; it is an explicit candidate tradeoff for review, not a timer or a
 claim that all unsupported mixed cases are solved. No-metadata tool first arrival
 without a live record remains outside the supported final-answer subset.
@@ -764,3 +766,16 @@ Actual unresolved status calls occupy the shared slot until they settle. There
 is no new queue, worker, persistent cache, wire/API or Core #290 implementation.
 Arbitrary unreferenced legacy aggregate classification remains unsupported;
 normal legacy display is not advertised as universally tool-safe.
+
+### Exact identity reservation during C1 body readback
+
+Once the existing bounded resolver has verified a unique exact Thread/attempt
+final-answer reference and its assistant-response anchor, the retained record may
+reserve that node identity before a safe final body is available. This reservation
+is not readiness or a window transfer proof. Ordinary history must not paint a
+second message for that exact node while the retained logical message owns display.
+Partial pages, mismatched response nodes, unsupported bodies and failures keep the
+retained text and confirming/retry (or failure) chrome; they never promote a body
+by inference. All existing owner epoch/cancellation invalidation and eight-record,
+UTF-8 one-MiB, eight-start read budget and single-resolver bounds remain unchanged.
+No new read, queue, guessed span, or public protocol is introduced.
