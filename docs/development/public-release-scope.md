@@ -93,7 +93,7 @@ The exact-identity reservation and synchronous observer eligibility guard in the
 reviewed #5 candidate are technically accepted, with focused data/DOM tests and
 an independent actual-Chrome frame probe. This is candidate acceptance, not a
 claim of public-main landing or release inclusion. The public baseline at this
-review is `2dee5539e689f661e495e98c96b328915856c42a`; its 0.2.0 scope remains
+review is `fefc262b99825dfe01f0400dbc03ffd72eb9723a`; its 0.2.0 scope remains
 unchanged. The preceding "Unlanded #5" statement describes that public baseline,
 not the absence of the implementation in this next-lane candidate.
 
