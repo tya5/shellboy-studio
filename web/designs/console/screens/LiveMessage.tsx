@@ -20,6 +20,7 @@ export function LiveMessage({ model, handle, follow }: { model: AppModel; handle
     {records.map(record => <div class="conversation-row" key={record.key} data-handoff-key={record.key}>
       <Message bot who={t("convo.shellboy")} at={record.status === "streaming" ? t("convo.live") : record.status === "ready" ? "" : record.status === "failed" ? t("convo.handoffFailed") : t("convo.handoffConfirming")} text={record.text} copyLabel={t("code.copy")} copiedLabel={t("code.copied")}>
         {record.incomplete ? <div class="caption muted">{t("convo.liveIncomplete")}</div> : null}
+        {record.status === "failed" ? <div class="caption muted">{t("convo.handoffHistoryStale")}</div> : null}
         {record.status === "failed" || record.status === "confirming" ? <Button onClick={() => void handle.retryHandoff()}>{t("convo.retryLoad")}</Button> : null}
       </Message>
     </div>)}

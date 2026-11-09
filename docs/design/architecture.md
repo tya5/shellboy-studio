@@ -670,3 +670,9 @@ merely because a node ID was identified. This delays history updates during a
 failed handoff; it is an explicit candidate tradeoff for review, not a timer or a
 claim that all unsupported mixed cases are solved. No-metadata tool first arrival
 without a live record remains outside the supported final-answer subset.
+
+The failed-handoff gate applies only to history for that Thread. Detail and active
+work/status refresh immediately; lightweight hint observers and list consumers
+are not gated. History is marked stale while held, with an explicit failed-row
+notice; pause/navigation or owner/session reset clears the old gate. A regression
+checks these independent consumers during a failed body lookup.

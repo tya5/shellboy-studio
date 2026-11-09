@@ -378,6 +378,7 @@ export class ShellboyData {
   private pauseEntry(entry: ThreadEntry): void {
     if (entry.paused || entry.closed) return;
     entry.paused = true;
+    entry.refreshAfterHandoff = false;
     entry.live.invalidate();
     entry.cancel.cancel();
     this.scheduleWatch();
@@ -451,9 +452,12 @@ export class ShellboyData {
         // Hints are not data: re-read the saved facts. Untracked Threads are ignored.
         if (f.list && this.listRefs > 0) void this.refresher.request("list");
         for (const id of f.thread_ids) {
+          for (const notify of this.hintWatchers.get(id) ?? []) notify();
           const entry = this.entries.get(id);
           if (entry?.live.records.peek().length) {
             entry.refreshAfterHandoff = true;
+            entry.history.value = { ...entry.history.peek(), stale: true };
+            void this.requestThread(id, false);
             void this.resolveHandoff(entry);
           } else this.refreshHint(id);
         }
@@ -466,7 +470,7 @@ export class ShellboyData {
         if (!entry) break;
         entry.live.finish();
         void this.resolveHandoff(entry);
-        void this.requestThread(f.thread_id); // read saved facts (rule 4); a `changed` follows the commit
+        void this.requestThread(f.thread_id, false); // history ownership is reconciled separately
         break;
       }
       case "error":
@@ -503,7 +507,7 @@ export class ShellboyData {
   }
 
   private discardAllPreviews(reason: PreviewDiscardReason): void {
-    for (const e of this.entries.values()) e.live.discard(reason);
+    for (const e of this.entries.values()) { e.refreshAfterHandoff = false; e.resolveAgain = false; e.live.discard(reason); }
   }
 
   // ---- subscription ----
@@ -528,9 +532,9 @@ export class ShellboyData {
     return this.link.connection.value === "open" && this.ownerSig.value.state === "connected";
   }
 
-  private requestThread(id: string): Promise<void> {
+  private requestThread(id: string, history = true): Promise<void> {
     if (this.entries.get(id)?.paused) return Promise.resolve();
-    return Promise.all([this.refresher.request(`thread:${id}`), this.refresher.request(`history:${id}`), ...(this.entries.get(id)?.workRefs ? [this.refresher.request(`work:${id}`)] : [])]).then(
+    return Promise.all([this.refresher.request(`thread:${id}`), ...(history ? [this.refresher.request(`history:${id}`)] : []), ...(this.entries.get(id)?.workRefs ? [this.refresher.request(`work:${id}`)] : [])]).then(
       () => undefined,
     );
   }
@@ -544,6 +548,7 @@ export class ShellboyData {
     if (kind === "thread") return this.readDetail(entry, onSent);
     if (kind === "work") return this.readWork(entry, onSent);
     if (this.ownerSig.peek().state === "connected" && this.capabilities.peek().includes(CAPABILITY_HISTORY_WINDOW)) {
+      entry.history.value = { ...entry.history.peek(), stale: false };
       entry.historyTick.value++; // positional reads: nothing is walked, the window reader decides what to read
       return;
     }
@@ -601,7 +606,6 @@ export class ShellboyData {
   }
 
   private refreshHint(id: string): void {
-    for (const notify of this.hintWatchers.get(id) ?? []) notify();
     if (this.entries.has(id)) void this.requestThread(id);
   }
 

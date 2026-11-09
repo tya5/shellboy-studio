@@ -56,3 +56,12 @@ it('a held canonical read cannot survive owner ABA',async()=>{
   r.t.push({t:'owner',event:'restarted',owner:connected});
   await r.pump();expect(r.h.handoff.value).toEqual([]);
 });
+
+it('a failed history gate leaves other status/detail and hint consumers live',async()=>{
+  const r=await rig();r.state.error=true;r.live();r.end();await r.pump();
+  let hints=0;const watch=r.data.watchHints('a',()=>hints++);r.h.setWorkActive(true);await r.pump();
+  const detailBefore=r.t.calls('thread.get').length,workBefore=r.t.calls('status').length;
+  r.change();await r.pump();expect(hints).toBe(1);expect(r.t.calls('thread.get').length).toBeGreaterThan(detailBefore);
+  expect(r.t.calls('status').length).toBeGreaterThan(workBefore);expect(r.h.history.value.stale).toBe(true);
+  watch.close();r.h.close();
+});

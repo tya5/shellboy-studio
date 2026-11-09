@@ -91,3 +91,17 @@ commentary-to-final body completeness and production CSP deployment are not
 established by this owner-free Vite test. Existing scroll/anchor acceptance is
 not replaced; residual position work belongs to a later minimal change after
 this body handoff is reviewed.
+
+## Failed-History Gate Follow-Up
+
+Only the changed Thread's history refresh is coalesced. Thread detail, active
+work/status, list hints and lightweight hint consumers continue immediately;
+usage/shell listeners remain independent. History state is marked stale while
+held and the failed response explicitly warns that saved history may be out of
+date until retry. Existing rows stay visible. Pause/navigation and owner/session
+reset clear the old pending hint gate; recovery/retry refreshes history without
+turning an unsupported mixed body into ready. The added synthetic regression
+checks hint callbacks, thread.get and status still advance during a failed body
+lookup. Exact follow-up web check: 1101 tests / 52 files, both TS configurations;
+web build succeeds. The same eight RAF combinations are rerun as author evidence,
+not independent review or a whole-time rendering guarantee.
