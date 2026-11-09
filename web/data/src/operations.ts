@@ -174,6 +174,9 @@ export class Operations {
     private readonly newId: UuidFn,
   ) {}
 
+  /** Reserve a receipt before publishing an in-flight model attempt. */
+  mutationId(): string { return this.newId(); }
+
   private async run<T>(
     command: string,
     args: unknown,
@@ -289,6 +292,15 @@ export class Operations {
     return this.run("apps.call", { name, op, args, ...(instance ? { instance } : {}) }, decodeRecord, undefined, read);
   }
   /** Look up a mutation's receipt, e.g. after an `unconfirmed` error. */
+  /** Opaque saved outcomes are diagnostic only, never mutation acknowledgments. */
+  async branchReceipt(operationId: string): Promise<Outcome<unknown>> {
+    const found = await this.operationGet(operationId);
+    if (!found.ok) return { ...found, operationId };
+    const v = found.value;
+    const known = v.operation_id === operationId && ["completed", "failed", "pending"].includes(String(v.state)) &&
+      ["return_saved_outcome", "do_not_reexecute"].includes(String(v.replay_policy));
+    return { ok: false, error: { kind: "invalid_response", message: known ? "Opaque original receipt remains unconfirmed" : "Receipt identity, state or policy is invalid" }, operationId };
+  }
   operationGet(operationId: string): Promise<Outcome<Record<string, unknown>>> {
     return this.run("operation.get", { operation_id: operationId }, decodeRecord);
   }
@@ -336,8 +348,8 @@ export class Operations {
   credentialsClear(connection: string, operationId = this.newId()): Promise<Outcome<StoredFacts>> {
     return this.run("credentials.clear", encodeCredentialsClear(connection), decodeStored, { operationId });
   }
-  threadSetTitle(threadId: string, title: string): Promise<Outcome<ThreadDetails>> {
-    return this.run("thread.set", { thread_id: threadId, title }, decodeDetails, { operationId: this.newId() });
+  threadSetTitle(threadId: string, title: string, operationId = this.newId()): Promise<Outcome<ThreadDetails>> {
+    return this.run("thread.set", { thread_id: threadId, title }, decodeDetails, { operationId });
   }
   threadSetParent(threadId: string, parent: string, operationId = this.newId()): Promise<Outcome<ThreadDetails>> {
     return this.run("thread.set", { thread_id: threadId, parent_id: parent }, decodeDetails, { operationId });

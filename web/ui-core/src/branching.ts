@@ -1,7 +1,7 @@
 // Screen logic of the Branches and Threads views: reads when a view opens or a hint says the list changed,
 // one at a time, with one trailing read. Mutations are explicit and never optimistic.
 import { batch, signal, type Signal } from "@preact/signals-core";
-import { Cancel, type ArchiveResult, type ArchivedFilter, type Operations, type OpError, type TagResult, type ThreadSummary } from "../../data/src";
+import { Cancel, type ArchiveResult, type ArchivedFilter, type Operations, type OpError, type Outcome, type TagResult, type ThreadSummary } from "../../data/src";
 import { branchLayout, readFamily, readRewind, type BranchFamily, type RewindFacts } from "./branches";
 import { ThreadHeadings, type HeadingKind } from "./headings";
 import { CAPABILITY_CWDS, CAPABILITY_TAGS, checkTag, TAG_SELECTION_MAX, TAGS_PER_CALL, type TagInvalid, type ThreadGrouping } from "./org";
@@ -64,6 +64,34 @@ export type ForkState = { kind: "idle" } | { kind: "forking" } | { kind: "done";
 
 const sameTarget = (a: BranchTarget | undefined, b: BranchTarget): boolean => a?.threadId === b.threadId && a?.nodeId === b.nodeId;
 
+// Three model-owned slots, four receipts maximum. Reads/navigation never evict
+// uncertain outcomes. Immutable keys include the initiating owner and payload.
+interface BranchReceipt<T> {
+  id: string;
+  outcome?: Outcome<T>;
+  pending?: Promise<Outcome<T>>;
+}
+interface BranchAttempt {
+  owner: string | undefined;
+  key: string;
+  threadId: string;
+  viewId: string | undefined;
+  epoch: number;
+  uncertain: boolean;
+  receipt: BranchReceipt<unknown>;
+}
+interface RewindAttempt extends BranchAttempt {
+  target: BranchTarget;
+  facts: RewindFacts;
+  text: string;
+  send?: BranchReceipt<unknown>;
+  running?: Promise<void>;
+}
+const uncertainOutcome = (out: Outcome<unknown>): boolean => !out.ok && !["not_connected", "busy"].includes(out.error.kind);
+const outcomeMessage = (out: Outcome<unknown>): string | undefined => out.ok ? undefined :
+  out.error.kind === "not_connected" || out.error.kind === "busy" ? `Not sent: ${out.error.message}` :
+  `Not confirmed; may have applied (${out.operationId ?? "receipt unavailable"}): ${out.error.message}`;
+
 export class Branches {
   readonly state: Signal<FamilyState> = signal({ threadId: undefined, loading: false, family: undefined, error: undefined });
   readonly rewind: Signal<RewindState> = signal({ kind: "idle" });
@@ -71,17 +99,57 @@ export class Branches {
   readonly actionError: Signal<string | undefined> = signal(undefined);
   readonly actionBusy = signal(false);
   toggleBranch(id: string): void { const next = new Set(this.selection.peek()); next.has(id) ? next.delete(id) : next.add(id); this.selection.value = next; }
+  private renameAttempt?: BranchAttempt;
+  private archiveAttempt?: BranchAttempt;
+  private rewindAttempt?: RewindAttempt;
+  private refusal(message: string): void { this.actionError.value = message; }
+  private projectionEpoch = 0;
+  private visible(attempt: BranchAttempt): boolean { return this.projectionEpoch === attempt.epoch && this.currentView() === attempt.viewId; }
+  private reserve(slot: BranchAttempt | undefined, threadId: string, key: string): BranchAttempt | undefined {
+    if (slot && (slot.uncertain || slot.receipt.pending) && slot.key !== key) {
+      this.refusal(`Resolve the existing mutation outcome (${slot.receipt.id}) before changing its owner, target or payload`); return;
+    }
+    if (slot?.key === key) { if (!slot.receipt.pending) { slot.viewId = this.currentView(); slot.epoch = this.projectionEpoch; } return slot; }
+    return { owner: this.owner(), key, threadId, viewId: this.currentView(), epoch: this.projectionEpoch, uncertain: true, receipt: { id: this.ops.mutationId() } };
+  }
+  private receipt<T>(attempt: BranchAttempt, slot: BranchReceipt<T>, send: (id: string) => Promise<Outcome<T>>): Promise<Outcome<T>> {
+    if (slot.pending) return slot.pending;
+    if (slot.outcome?.ok) return Promise.resolve(slot.outcome);
+    let settle!: (out: Outcome<T>) => void;
+    const pending = new Promise<Outcome<T>>(resolve => { settle = resolve; });
+    // Install the guard before send can synchronously notify model subscribers.
+    slot.pending = pending;
+    const result = attempt.owner !== this.owner()
+      ? this.ops.branchReceipt(slot.id) as Promise<Outcome<T>>
+      : send(slot.id);
+    void result.then(out => {
+      slot.outcome = out;
+      slot.pending = undefined;
+      settle(out);
+    });
+    return pending;
+  }
+
   async archiveSelected(): Promise<void> {
-    const ids = [...this.selection.peek()]; if (!ids.length || this.actionBusy.peek()) return;
-    this.actionBusy.value = true; const out = await this.ops.threadArchive(ids); this.actionBusy.value = false;
-    if (!out.ok) this.actionError.value = out.error.message;
-    else { const missing = out.value.not_found ?? []; this.selection.value = new Set(missing); this.actionError.value = missing.length ? `Not found: ${missing.join(", ")}` : undefined; const id = this.state.peek().threadId; if (id) void this.read(id); }
+    const ids = [...this.selection.peek()].sort(); if (!ids.length) return;
+    const threadId = this.state.peek().threadId ?? ids[0]!;
+    const attempt = this.reserve(this.archiveAttempt, threadId, JSON.stringify({ thread_ids: ids })); if (!attempt) return;
+    this.archiveAttempt = attempt;
+    const out = await this.receipt(attempt, attempt.receipt, id => this.ops.threadArchive(ids, {}, id));
+    attempt.uncertain = uncertainOutcome(out);
+    if (!this.visible(attempt)) return;
+    if (!out.ok) this.actionError.value = outcomeMessage(out);
+    else { const missing = (out.value as ArchiveResult).not_found ?? []; this.selection.value = new Set(missing); this.actionError.value = missing.length ? `Not found: ${missing.join(", ")}` : undefined; const id = this.state.peek().threadId; if (id) void this.read(id); }
   }
   async renameBranch(id: string, title: string): Promise<void> {
-    if (!title.trim() || this.actionBusy.peek()) return;
-    this.actionBusy.value = true; const out = await this.ops.threadSetTitle(id, title.trim()); this.actionBusy.value = false;
-    if (!out.ok) this.actionError.value = out.error.message;
-    else { this.actionError.value = undefined; const selected = this.state.peek().threadId; if (selected) void this.read(selected); }
+    title = title.trim(); if (!title) return;
+    const attempt = this.reserve(this.renameAttempt, id, JSON.stringify({ thread_id: id, title })); if (!attempt) return;
+    this.renameAttempt = attempt;
+    const out = await this.receipt(attempt, attempt.receipt, op => this.ops.threadSetTitle(id, title, op));
+    attempt.uncertain = uncertainOutcome(out);
+    if (!this.visible(attempt)) return;
+    this.actionError.value = outcomeMessage(out);
+    if (out.ok) { const selected = this.state.peek().threadId; if (selected) void this.read(selected); }
   }
   readonly fork: Signal<ForkState> = signal({ kind: "idle" });
   /** Graph or list; a phone always gets the list. */
@@ -92,7 +160,8 @@ export class Branches {
   private again = false;
   private cancel = new Cancel();
 
-  constructor(private readonly ops: Operations) {}
+  constructor(private readonly ops: Operations, private readonly owner: () => string | undefined = () => "synthetic-owner", private readonly view?: () => string | undefined) {}
+  private currentView(): string | undefined { return this.view ? this.view() : this.state.peek().threadId; }
 
   async excerpts(item: import("./branches").BranchItem, cancel: Cancel): Promise<{ split?: string; request?: string; answer?: string }> {
     const result: { split?: string; request?: string; answer?: string } = {};
@@ -112,6 +181,7 @@ export class Branches {
 
   /** Nobody is looking: cancels the read. The family read so far stays. */
   leave(): void {
+    ++this.projectionEpoch;
     this.again = false;
     this.cancel.cancel();
     if (this.state.peek().loading) this.state.value = { ...this.state.peek(), loading: false };
@@ -191,18 +261,54 @@ export class Branches {
 
   /** Only after a preview of this exact target. */
   async confirmRewind(text = ""): Promise<void> {
+    text = text.trim();
     const s = this.rewind.peek();
-    if (s.kind !== "ready" && s.kind !== "failed") return;
-    const { facts, target } = s;
-    this.rewind.value = { kind: "rewinding", facts, target };
-    const out = await this.ops.threadRewind({ thread_id: target.threadId, node_id: target.nodeId });
-    this.rewind.value = out.ok ? { kind: "done", facts: readRewind(out.value) } : { kind: "failed", facts, target, error: out.error };
-    if (out.ok && text.trim()) {
-      this.actionError.value = undefined;
-      const sent = await this.ops.messageSend({ thread_id: target.threadId, text: text.trim() });
-      if (!sent.ok) this.actionError.value = `Rewind succeeded; request not sent: ${sent.error.message}`;
+    const held = this.rewindAttempt;
+    const target = s.kind === "ready" || s.kind === "failed" ? s.target : this.target.peek() ?? held?.target;
+    if (!target) return;
+    const key = JSON.stringify({ thread_id: target.threadId, node_id: target.nodeId, text });
+    if (held && (held.uncertain || held.running) && held.key !== key) {
+      this.refusal(`Resolve the original rewind/request outcome (${held.send?.id ?? held.receipt.id}) before changing its owner, target or text`); return;
     }
-    if (out.ok) void this.read(this.state.peek().threadId ?? target.threadId);
+    let attempt = held;
+    if (!attempt || attempt.key !== key) {
+      if (s.kind !== "ready" && s.kind !== "failed") return;
+      attempt = { owner: this.owner(), key, threadId: target.threadId, viewId: this.currentView(), epoch: this.projectionEpoch, target: { ...target }, text, facts: s.facts, uncertain: true, receipt: { id: this.ops.mutationId() } };
+      this.rewindAttempt = attempt;
+    }
+    if (attempt.running) return attempt.running;
+    const active = attempt;
+    active.viewId = this.currentView(); active.epoch = this.projectionEpoch;
+    let settle!: () => void;
+    const running = new Promise<void>(resolve => { settle = resolve; });
+    active.running = running;
+    void this.runRewind(active).finally(() => { active.running = undefined; settle(); });
+    return running;
+  }
+  canRetryRewind(): boolean { return !!this.rewindAttempt?.uncertain && !this.rewindAttempt.running && sameTarget(this.target.peek(), this.rewindAttempt.target); }
+  private async runRewind(attempt: RewindAttempt): Promise<void> {
+    const { target, facts } = attempt;
+    if (this.visible(attempt)) this.rewind.value = { kind: "rewinding", facts, target };
+    const out = await this.receipt(attempt, attempt.receipt, id => this.ops.threadRewind({ thread_id: target.threadId, node_id: target.nodeId }, id));
+    if (!out.ok) {
+      attempt.uncertain = uncertainOutcome(out);
+      if (this.visible(attempt)) { this.rewind.value = { kind: "failed", facts, target, error: out.error }; this.actionError.value = outcomeMessage(out); }
+      return;
+    }
+    attempt.facts = readRewind(out.value as Record<string, unknown>);
+    if (attempt.owner !== this.owner()) { attempt.uncertain = true; if (this.visible(attempt)) this.actionError.value = "Original owner changed; follow-up is not started"; return; }
+    if (!this.visible(attempt)) { attempt.uncertain = !!attempt.text; return; }
+    if (attempt.text) {
+      // The successful rewind is immutable. Only this follow-up receipt retries.
+      attempt.send ??= { id: this.ops.mutationId() };
+      const sent = await this.receipt(attempt, attempt.send, id => this.ops.messageSend({ thread_id: target.threadId, text: attempt.text }, id));
+      attempt.uncertain = !sent.ok;
+      if (this.visible(attempt)) this.actionError.value = sent.ok ? undefined : `Rewind succeeded; request ${outcomeMessage(sent)}`;
+    } else attempt.uncertain = false;
+    if (this.visible(attempt)) {
+      this.rewind.value = { kind: "done", facts: attempt.facts };
+      void this.read(this.state.peek().threadId ?? target.threadId);
+    }
   }
 
   async forkAt(target: BranchTarget, text = ""): Promise<void> {

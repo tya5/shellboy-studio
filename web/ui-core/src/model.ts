@@ -244,7 +244,7 @@ export class AppModel {
       offsetMinutes: options.offsetMinutes ?? (() => -new Date(this.nowMs()).getTimezoneOffset()),
     });
     this.t = computed(() => translator(this.lang.value));
-    this.branches = new Branches(this.ops);
+    this.branches = new Branches(this.ops, () => { const owner = this.data.owner.peek(); return owner.state === "connected" ? owner.info.instance_id ?? undefined : undefined; }, () => this.selectedId.peek());
     this.org = new ThreadOrg(this.ops, () => this.data.capabilities.peek());
     this.config = new ConfigEditor(this.ops);
     this.guideRegistration = new GuideRegistration(this.ops);
