@@ -151,3 +151,30 @@ retain denial of unrelated cwd changes. Clippy's items-after-test-module is
 corrected by moving the unchanged guide test module after implementation.
 Full-pair and limited real-CLI acceptance remain independent pending gates;
 no runtime switch or publication is authorized by this record.
+
+### Public-binary pair follow-up
+
+Library-start fixtures now create their synthetic guide pointer before serving,
+matching the CLI install prerequisite; the serving task removes its owned
+UUID directory on shutdown. They never register an unowned user path. With
+that correction, the independent public Core binary suite passes all six
+real_owner tests, including branch settle and live-to-saved text. The prior
+recovery was caused by a nonexistent registered extra-instruction file, not
+by a removed Run lifecycle notification. Default locked rerun passes 76 tests
+with one pre-existing asset HTTP test ignored; protocol5 is 4/4. Clippy all
+ordinary targets, format and synthetic release checks pass.
+
+Limited real-CLI/browser acceptance is **3/4, not passed**: a disposable public
+Core binary, this unpublished local Studio binary and a loopback provider pass
+protocol5 connection, synthetic send and saved assistant text rendered in
+headless Chrome. A real tool issues a synthetic human question and the bridge
+returns a human `awaiting_replies` entry, but the actual Awaiting you inbox is
+empty because production still selects `noPending` in `web/ui-core/src/pending.ts`.
+This separate product adapter gap needs an explicit implementation/scope decision;
+neither longer timeouts nor successful full-pair tests satisfy that UI gate.
+Early harness mistakes (owner-frame shape and operation instance prefix) were
+corrected before the three successful observations; no discarded run is counted
+as four-point success. No existing owner/Serve/runtime was changed. No Studio
+release or first push has occurred as part of these checks. Hosted OS CI,
+actual distribution inspection, final privacy review and release authorization
+remain separate gates.

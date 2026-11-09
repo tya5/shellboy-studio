@@ -142,7 +142,22 @@ pub async fn start<O: Owner>(
     let addr = listener.local_addr().unwrap();
     let state = app_state(owner, debug, addr);
     let cancel = CancellationToken::new();
-    tokio::spawn(serve(listener, state.clone(), fast_poll(), cancel.clone()));
+    // The real CLI installs this file before serving. Library fixtures must not
+    // register a missing extra-instruction path in a disposable real owner.
+    let fixture_root = state.config.data_dir.parent().unwrap().to_owned();
+    let guide_dir = state.config.data_dir.join("studio");
+    std::fs::create_dir_all(&guide_dir).unwrap();
+    std::fs::write(
+        guide_dir.join("agent-pointer.md"),
+        "Synthetic local test instructions.\n",
+    )
+    .unwrap();
+    let serving = serve(listener, state.clone(), fast_poll(), cancel.clone());
+    tokio::spawn(async move {
+        let result = serving.await;
+        let _ = std::fs::remove_dir_all(fixture_root);
+        result
+    });
     (addr, state, cancel)
 }
 
