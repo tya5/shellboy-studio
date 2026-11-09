@@ -66,3 +66,23 @@ General body readback design does not become an implemented API, release
 requirement or dependency merely because a proposal exists. Unsupported initial
 tool/non-live/mixed cases, same-thread history-delay trade-offs, and coverage
 UNKNOWNs remain explicit. See also [release notes](../release-v0.1.0.md).
+
+
+## v0.2.0 Metadata Preparation
+
+This source candidate sets the Studio package version to 0.2.0 and pins the
+published Core v0.11.1 commit
+`8a87b1bb3d7580e5528a61fa06d046d24ee382e9` in Cargo.lock and exact-owner CI.
+The prior v0.11.0 owner job is not evidence for this new pairing. The new
+exact-pair owner acceptance runs with disposable data and a local mock provider,
+not the user's installed owner. No new operation or authorization behavior is
+introduced by this metadata change.
+
+The included visible fixes are the landed #13 output-refresh, #8 late tool
+reference, and #12 Awaiting changes. Unlanded #5 and other candidates are not
+part of this preparation. Historical release records above remain historical.
+New exact CI and independent source/privacy review are required before landing.
+A source archive is not a platform binary. Public tags/releases, generated public
+assets, and installed Studio replacement require separate approval; installed
+Core owner v0.11.1 remains unchanged. Physical-phone and sample-outside behavior
+are not established by this preparation.

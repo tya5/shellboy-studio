@@ -48,7 +48,7 @@ def main():
     assert "uses: ./.github/workflows/exact-owner.yml" in ci
     assert "needs: exact-owner" in release and "needs: build" in release
     assert "--features real-owner-tests --test real_owner" in owner
-    assert "SHELLBOY_BIN:" in owner and "refs/tags/v0.11.0^{commit}" in owner
+    assert "SHELLBOY_BIN:" in owner and "refs/tags/v0.11.1^{commit}" in owner
     assert "tools/exact-owner.py" in owner and "--binary-version" in owner
     assert "inputs.real_owner" not in ci
     for workflow in (ci, release, owner):
@@ -75,7 +75,7 @@ def main():
             old_cwd, old_env = Path.cwd(), os.environ.copy()
             try:
                 os.chdir(root)
-                os.environ.update(RELEASE_TAG="v0.1.0", RELEASE_TARGET=target,
+                os.environ.update(RELEASE_TAG="v" + manifest["package"]["version"], RELEASE_TARGET=target,
                                   RELEASE_EXECUTABLE=executable, RELEASE_ARCHIVE=archive)
                 exec(compile(code, "release packaging fixture", "exec"), {})
             finally:

@@ -1,6 +1,6 @@
 [package]
 name = "shellboy-studio"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 rust-version = "1.99"
 publish = false
@@ -25,14 +25,13 @@ required-features = ["real-owner-tests"]
 # Explicit integration suite: never part of owner-free unit/synthetic checks.
 real-owner-tests = []
 default = ["next-shellboy", "next-connection-setup", "next-tags", "next-cwds"]
-# Prepared for v0.11.0: validate the published tag and regenerate Cargo.lock before merging.
+# Prepared for v0.11.1: validate the published tag and regenerate Cargo.lock before merging.
 next-shellboy = []
 # #262 owner branch adds message.ask; never forward it from Studio.
 next-reply = ["next-shellboy"]
 # First-run connection setup (Shellboy #269): `credentials.set`, `credentials.clear`, `connection.test`.
-# These operations are on a Shellboy branch and in no release, so this builds only against a copy
-# whose [patch] points at a Shellboy that has them (docs/design/connection-setup.md). Off in every
-# normal v0.10.0 builds; this branch enables it for the proposed v0.11.0 pairing.
+# Published connection operations are enabled for the pinned v0.11.1 pairing;
+# validate the exact owner pair (docs/design/connection-setup.md).
 next-connection-setup = ["next-shellboy"]
 # Thread tags (Shellboy #222 stage 3): `thread.tag`, `thread.tags`, and `tags` / `cwd` on `thread.list`.
 # Validate these operations against the published tag before merging this branch.
@@ -41,8 +40,8 @@ next-tags = ["next-shellboy"]
 next-cwds = ["next-tags"]
 
 [dependencies]
-# Future pin; do not merge until the tag exists and pairing checks pass.
-shellboy = { git = "https://github.com/tya5/shellboy", tag = "v0.11.0" }
+# Published owner pin; exact-pair acceptance verifies the tag and lock commit.
+shellboy = { git = "https://github.com/tya5/shellboy", tag = "v0.11.1" }
 tokio = { version = "=1.54.1", features = ["rt-multi-thread", "macros", "sync", "time", "net", "signal", "process", "fs", "io-util"] }
 tokio-util = { version = "=0.7.20", features = ["rt"] }
 axum = { version = "=0.8.9", default-features = false, features = ["http1", "tokio", "ws", "json"] }
