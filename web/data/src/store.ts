@@ -160,6 +160,19 @@ class ThreadEntry {
   }
 }
 
+/** Negative body exclusivity needs complete attribution across the bounded observed Thread scope. */
+function incompleteResponseScope(items: WorkItem[], threadId: string): boolean {
+  return items.some(other => {
+    if (other.kind !== "attempt") return false;
+    if (typeof other.thread_id === "string" && other.thread_id !== threadId) return false;
+    const output = other.response_nodes;
+    return !["completed", "failed", "incomplete", "cancelled"].includes(other.state) || other.thread_id !== threadId || typeof other.attempt_id !== "string" || !other.attempt_id.trim() || typeof other.turn_id !== "string" || !other.turn_id.trim()
+      || other.response_nodes_truncated !== false || !Array.isArray(output) || output.length > 64
+      || output.some(ref => !ref || typeof ref.node_id !== "string" || !ref.node_id || typeof ref.kind !== "string" || !ref.kind || !Number.isSafeInteger(ref.ordinal) || ref.ordinal < 0)
+      || new Set(output.map(ref => ref.ordinal)).size !== output.length;
+  });
+}
+
 /** Keeps the first seen of each Thread, in order, within the bound. */
 function mergeRows(first: readonly ThreadSummary[], then: readonly ThreadSummary[]): ThreadSummary[] {
   const seen = new Set<string>();
@@ -664,10 +677,12 @@ export class ShellboyData {
       const out = await this.operations.handoffAttempts(entry.id, { cancel: cancelled });
       if (!valid()) return;
       if (!out.ok) { if (out.error.kind !== "cancelled") for (const r of targets) entry.live.fail(r.attemptId); return; }
+      if (out.value.next_cursor || incompleteResponseScope(out.value.items, entry.id)) return;
       for (const record of targets) {
         const attempt = out.value.items.find(i => i.kind === "attempt" && i.attempt_id === record.attemptId && i.thread_id === entry.id && typeof i.turn_id === "string");
         if (!attempt || attempt.response_nodes_truncated !== false || !Array.isArray(attempt.response_nodes)) continue;
         const refs = attempt.response_nodes;
+        if (out.value.items.some(other => other !== attempt && other.response_nodes?.some(ref => refs.some(own => own.node_id === ref?.node_id)))) continue;
         if (refs.length > 64 || refs.some(r => !r || typeof r.kind !== "string" || typeof r.node_id !== "string" || !Number.isSafeInteger(r.ordinal) || r.ordinal < 0)) continue;
         // #279 supplies identity, not body spans. Only the approved final-answer projection is used.
         const finals = refs.filter(r => r.kind === "message" && r.phase === "final_answer");
@@ -753,6 +768,8 @@ export class ShellboyData {
         if (!valid()) return;
         for (const item of pending) {
           if (!refs.ok) { item.assistant_publication = { state: "unknown", error: true }; continue; }
+          // A complete candidate does not establish non-competing coverage of the observed scope.
+          const scopeIncomplete = incompleteResponseScope(refs.value.items, entry.id);
           const candidates = refs.value.items.filter(attempt => attempt.kind === "attempt" && attempt.thread_id === entry.id && typeof attempt.attempt_id === "string" && attempt.attempt_id.trim() !== "" && typeof attempt.turn_id === "string" && attempt.turn_id.trim() !== "" && attempt.response_nodes_truncated === false && Array.isArray(attempt.response_nodes) && attempt.response_nodes.length <= 64 && attempt.response_nodes.some(ref => ref?.node_id === item.node_id));
           if (refs.value.next_cursor || refs.value.items.some(other => other.response_nodes != null && !Array.isArray(other.response_nodes)) || candidates.length !== 1) continue;
           const attempt = candidates[0]!;
@@ -765,7 +782,7 @@ export class ShellboyData {
           const nodeRefs = all.filter(ref => ref.node_id === item.node_id);
           const tool = nodeRefs.find(ref => ref.kind === "function_call");
           if (tool) item.assistant_publication = { state: "tool", attemptId: attempt.attempt_id!, ordinal: tool.ordinal, kind: tool.kind };
-          else if (nodeRefs.length === 1 && nodeRefs[0]!.kind === "message" && nodeRefs[0]!.phase === "final_answer") item.assistant_publication = { state: "message", attemptId: attempt.attempt_id!, ordinal: nodeRefs[0]!.ordinal, kind: "message" };
+          else if (!scopeIncomplete && nodeRefs.length === 1 && nodeRefs[0]!.kind === "message" && nodeRefs[0]!.phase === "final_answer") item.assistant_publication = { state: "message", attemptId: attempt.attempt_id!, ordinal: nodeRefs[0]!.ordinal, kind: "message" };
         }
       } finally { this.publicationRead = false; }
     }

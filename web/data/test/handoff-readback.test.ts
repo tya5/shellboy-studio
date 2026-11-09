@@ -65,3 +65,13 @@ it('a failed history gate leaves other status/detail and hint consumers live',as
   expect(r.t.calls('status').length).toBeGreaterThan(workBefore);expect(r.h.history.value.stale).toBe(true);
   watch.close();r.h.close();
 });
+
+it.each(['truncated','missing','ongoing'])('C1 final projection cannot bypass another %s attempt coverage',async mode=>{
+  const r=await rig(),base=r.db.answer.bind(r.db);
+  r.db.answer=c=>{const out=base(c);if(c.command!=='status'||!out.ok)return out;
+    const other:Record<string,unknown>={kind:'attempt',id:'other',attempt_id:'other',turn_id:'turn-a',thread_id:'a',state:'completed',response_nodes:[],response_nodes_truncated:false};
+    if(mode==='truncated')other.response_nodes_truncated=true;if(mode==='missing')delete other.response_nodes;if(mode==='ongoing')other.state='running';
+    return {ok:true,result:{...out.result as object,items:[...(out.result as {items:unknown[]}).items,other]}};
+  };
+  r.live();r.end();await r.pump();expect(r.h.handoff.value[0]).toMatchObject({status:'confirming',text:'Live final text'});expect(r.t.calls('history.get')).toHaveLength(0);r.data.stop();
+});

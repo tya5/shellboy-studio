@@ -91,3 +91,31 @@ it('owner replacement invalidates retained message proof rather than reusing it 
   expect(r.h.history.value.items.at(-1)?.assistant_publication?.state).toBe('unknown');await r.pump();
   expect(r.h.history.value.items.at(-1)?.assistant_publication?.state).toBe('unknown');r.data.stop();
 });
+
+it.each(['truncated','missing','malformed','invalid-ref','unknown-thread','ongoing','null','other-turn-truncated','missing-turn'])('cannot prove message-only coverage with another %s attempt',async mode=>{
+  const r=await rig();r.state.kind='message';r.state.phase='final_answer';
+  const base=r.db.answer.bind(r.db);r.db.answer=c=>{
+    const out=base(c);if(c.command!=='status'||!out.ok)return out;
+    const extra:Record<string,unknown>={kind:'attempt',id:'other',attempt_id:'other',turn_id:'turn',thread_id:'a',state:'completed',response_nodes:[],response_nodes_truncated:false};
+    if(mode==='truncated')extra.response_nodes_truncated=true;
+    if(mode==='ongoing')extra.state='running';
+    if(mode==='null')extra.response_nodes=null;
+    if(mode==='other-turn-truncated'){extra.turn_id='other-turn';extra.response_nodes_truncated=true;}
+    if(mode==='missing-turn')delete extra.turn_id;
+    if(mode==='missing'){delete extra.response_nodes;delete extra.response_nodes_truncated;}
+    if(mode==='malformed')extra.response_nodes={};
+    if(mode==='invalid-ref')extra.response_nodes=[null];
+    if(mode==='unknown-thread'){delete extra.thread_id;extra.response_nodes_truncated=true;}
+    return {ok:true,result:{...out.result as object,items:[...(out.result as {items:unknown[]}).items,extra]}};
+  };
+  r.add();await r.pump();expect(r.h.history.value.items.at(-1)?.assistant_publication?.state).toBe('unknown');r.data.stop();
+});
+
+it.each(['empty','different-thread'])('complete non-competing %s scope retains the ordinary message control',async mode=>{
+  const r=await rig();r.state.kind='message';r.state.phase='final_answer';const base=r.db.answer.bind(r.db);
+  r.db.answer=c=>{const out=base(c);if(c.command!=='status'||!out.ok)return out;
+    const other={kind:'attempt',id:'other',attempt_id:'other',turn_id:'other-turn',thread_id:mode==='different-thread'?'b':'a',state:'completed',response_nodes:[],response_nodes_truncated:mode==='different-thread'};
+    return {ok:true,result:{...out.result as object,items:[...(out.result as {items:unknown[]}).items,other]}};
+  };
+  r.add();await r.pump();expect(r.h.history.value.items.at(-1)?.assistant_publication?.state).toBe('message');r.data.stop();
+});

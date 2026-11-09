@@ -105,3 +105,43 @@ WindowOwner answered every Thread as literal `t`, even when the model requested
 lead/recover. The synthetic owner now echoes the requested Thread ID (retaining
 `t` only for direct threadless unit reads). The product check is not weakened;
 these fixture failures are not represented as an unmodified final green.
+
+## Incomplete Competing Scope Follow-Up
+
+Independent review held the first candidate: a complete matching final-message
+attempt was incorrectly accepted when another same-scope attempt had truncated
+empty refs. That second row might hide competing attribution. The repair fails
+closed unless every observed relevant Thread attempt has valid identity and a
+complete, well-formed, bounded ref list; missing Thread scope is unknown, not
+excluded. An explicit different Thread is outside this scope. The shared scope
+validator protects legacy and positional publication and
+the separate C1 final-only body path; C1 is not an aggregate item-span proof.
+Ongoing attempts also keep negative exclusivity unproved. Positive exact tool
+identity remains available independently of negative message exclusivity.
+Inventory cases cover truncated, absent/null, malformed, invalid
+refs, ongoing attempts and missing/different Turn scope. The first five-case
+replay had three failures before repair (two already failed closed).
+No broader raw aggregate fallback or legacy hiding is introduced.
+
+Positive exact tool identity is separate from negative message/body exclusivity:
+incomplete other attempts do not make the aggregate safe, but need not erase an
+otherwise proved tool identity. The same complete-scope helper now guards the C1
+final body path, so its different body projection is not a competing-attribution
+escape hatch. Ordinary-message controls with a complete empty other attempt or
+an explicitly different Thread still pass; unknown/different Turn coverage in
+the same Thread fails closed when incomplete. No additional page walk or RPC
+budget is introduced. Initial five-case red replay was 3 failures/22 passes;
+expanded final checks include nine bad-scope variants and three C1 cases.
+
+A repeated positional browser run found a message control remained unknown when
+the one lookup slot was occupied. This is not a raw leak; unknown/no-auto-poll is
+the bounded admission policy. The message control may now exercise an explicit
+retry if needed (recorded as its own sample phase), rather than asserting an
+unconditional immediate-admission guarantee. Such a run is not identical to the
+original 440-sample trace and its actual sample count is reported separately.
+
+Follow-up final author check: 1231 tests / 58 files, both TS configurations and
+build pass. Browser repeat completes legacy 28 and positional 28 conditions;
+actual sample totals and any explicit-control-retry samples are kept in the
+follow-up logs, not silently relabelled the original candidate's trace. No
+independent/browser/native acceptance is implied by these author reruns.
