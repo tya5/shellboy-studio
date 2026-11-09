@@ -86,3 +86,22 @@ A source archive is not a platform binary. Public tags/releases, generated publi
 assets, and installed Studio replacement require separate approval; installed
 Core owner v0.11.1 remains unchanged. Physical-phone and sample-outside behavior
 are not established by this preparation.
+
+### #5 next-lane candidate status
+
+The exact-identity reservation and synchronous observer eligibility guard in the
+reviewed #5 candidate are technically accepted, with focused data/DOM tests and
+an independent actual-Chrome frame probe. This is candidate acceptance, not a
+claim of public-main landing or release inclusion. The public baseline at this
+review is `2dee5539e689f661e495e98c96b328915856c42a`; its 0.2.0 scope remains
+unchanged. The preceding "Unlanded #5" statement describes that public baseline,
+not the absence of the implementation in this next-lane candidate.
+
+This note is the landing-rule status check: effective architecture describes the
+candidate implementation, while release status continues to name the actual
+public baseline. The sole integration/CI owner must update that public current
+state when this candidate actually lands, without silently adding it to the
+0.2.0 release candidate. General mixed or unsupported body-reference handoff is
+still open; an identity reservation never proves a safe final body. The retained
+known body and retry/unknown behavior remain the supported fallback. ResizeObserver
+loop diagnostics remain recorded separately from the successful display probe.
