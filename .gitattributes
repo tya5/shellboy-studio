@@ -1,0 +1,2 @@
+# Generated token CSS must match gen-tokens.mjs byte-for-byte on every OS.
+/web/designs/console/system/tokens/*.css text eol=lf
