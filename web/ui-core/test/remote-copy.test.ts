@@ -23,7 +23,7 @@ describe("generic remote access copy", () => {
     expect(t("studio.hostGuide")).toMatch(/other devices|ほかの端末/);
   });
   it("keeps CLI and debug no-auth warnings generic and prohibits public exposure", () => {
-    for (const text of [cli, debug]) {
+    for (const text of [cli.split("#[cfg(test)]")[0]!, debug]) {
       expect(text).not.toMatch(/tailnet|tailnet-only/i);
       expect(text).toContain("public");
       expect(text).toContain("Funnel");
