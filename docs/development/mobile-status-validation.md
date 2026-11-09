@@ -49,3 +49,38 @@ when values change. Scroll/virtual-reader handoff logic is not altered. No Rust,
 new dependency, paid provider, actual owner, tailnet or installed asset operation.
 S7 mobile verification, S6 source/privacy and same-exact all-OS CI through6057
 remain separate gates before leader landing. Task server/Chrome stop after use.
+
+## Classification And Current Status
+
+Classification: effective existing-design repair, not a functional-contract
+change. The patch rearranges already displayed activity/tool/time information,
+removes a duplicated count while retaining the existing work-details entry and
+reply/pending/partial facts, and corrects locale grammar. It does not redefine
+status meanings, introduce data requirements, change reply actions, hide tool
+identity or alter handoff/body ownership. The existing24px artwork is retained;
+there is no new motion or #14 visual adoption. This limited application rationale
+does not authorize broader design or functional changes.
+
+Source candidate: `fc3ed01e716703eee02756dcd7e1f5ff9acfba6c` on public
+`2dee5539e689f661e495e98c96b328915856c42a`. It is a local review candidate,
+NOT a claim about the published release or installed/served assets. S6's initial
+source/privacy gate reports no finding; final source disposition and same-exact
+all-OS CI / leader landing remain separate gates.
+
+S7 independently served this exact candidate in a fresh dedicated worktree and
+executed the same author browser runner: four conditions /144 RAF samples pass.
+Each run's height is59.375px, with unchanged DOM, no overflow, separate lines,
+visible elapsed, no animation and no duplicate running lower bound on the Work
+details button. Execution `c4e74aa7-0e83-4114-ab66-8da4680bcd3c` exited0,
+Run `e95f8a77-8a33-41ac-9ac1-123f5c248829`; local synthetic artifacts are in
+`/tmp/studio-s7-mobile17-abnFIx/`. This is an independent execution of the same
+runner, not an independently designed test or a complete paint audit. Native
+phone, AT, long locale, elapsed tick changes, browser singular-tool rendering and
+all reply interactions were not tested by that run. Author DOM plural tests are
+separate evidence; counts are not added together. No old status height is reused.
+
+This task validation record supplies the candidate-specific status and repair
+classification. It does not update release status or close unperformed physical
+acceptance. If a separate adopted current-status registry requires an entry, that
+entry needs its exact document reference; this task does not infer such a policy
+from an abbreviated identifier.
