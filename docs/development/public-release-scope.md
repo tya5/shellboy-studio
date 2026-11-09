@@ -86,3 +86,16 @@ A source archive is not a platform binary. Public tags/releases, generated publi
 assets, and installed Studio replacement require separate approval; installed
 Core owner v0.11.1 remains unchanged. Physical-phone and sample-outside behavior
 are not established by this preparation.
+
+
+## v0.2.1 Packaging Correction
+
+The v0.2.0 tag and draft artifacts are retained as failure evidence: all three
+archive checksums matched, but Windows checkout converted all 41 packaged text
+files to CRLF and failed strict Git-blob byte comparison. v0.2.1 fixes only the
+packaged text LF attributes and package version. It inherits the exact v0.2.0
+feature source and Core v0.11.1 pin, excluding later #19 copy and unlanded fixes.
+Prior local/native smoke and source tests retain their original SHA attribution;
+new exact CI and release artifact checks are required. Release publication and
+Studio-only replacement follow successful strict archive/version/checksum gates;
+the installed Core owner remains unchanged.
