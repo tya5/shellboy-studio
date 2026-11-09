@@ -618,3 +618,55 @@ projection and refresh. Clear/read/leave preserve receipts but invalidate stale
 projection as appropriate. Opaque diagnostic lookup cannot mark success.
 No persistent reload recovery or real-owner exactly-once guarantee is asserted.
 The existing B12 eight-row/serial-excerpt and bounded-family budgets do not change.
+
+### Conversation Handoff (ADR-C1, Supported Final Projection)
+
+One ledger per watched Thread retains at most eight attempt attachments and one
+MiB of UTF-8 text total, including unpublished frame admission and bodies leased
+to a held history window. The existing 262144 UTF-16 per-preview bound remains.
+These are client payload bounds, not a JavaScript heap guarantee. On overflow keep
+previously visible material, stop admitting new preview text (not the Core
+stream), and mark it incomplete with a saved-history/retry notice. No disk spill,
+poller, worker or persistent global body map is introduced. A paused view retains
+its bounded ledger but invalidates reads; last-handle close/owner/session changes
+invalidate it. One aggregate resolver is admitted; other watched entries have one
+coalesced rerun bit each under the existing 64-Thread bound. At most eight RPC
+starts occur per explicitly opened/resumed/retried reconciliation generation.
+Hints consume that budget and cannot refill it. No status cursor walk is used;
+absence from the first 200 work rows remains unknown.
+
+A live_end/tool/new attempt is not proof of saving. Neither newest-node changes,
+text similarity, time nor Turn end_message_node_id identify an intermediate
+response. Complete #279 refs must identify the exact Thread/attempt/Turn and one
+explicit message/final_answer without competing eligible messages. This permits
+only the approved history.get end_message_only body projection, not arbitrary
+item readback. Exact selected-path anchors before/after body read must match node,
+ordinal and revision. Empty projected text, partial cursor, wrong identity,
+ambiguous phase, missing refs, malformed refs or truncation do not prove a ready
+answer. Read failures retain text and expose explicit retry. Commentary/multiple
+message body disambiguation remains the unimplemented Core #290 contract gap.
+
+Ready body/identity and duplicate-message suppression publish together. Tools on
+the same node remain independently projected; node-level suppression must not
+remove steps. A stable logical key AND component parent/list keep the existing
+Message DOM across replacement and subsequent generations. WindowedScroll's live
+slot is always in its one keyed vspace list, including when its boundary is past
+the held range. No scroll-intent algorithm, compensation or debounce is changed.
+
+Window handoff receive is a non-reading, non-scrolling API validating immutable
+scope/node/kind/ordinal/revision proof. A bucket owns the same immutable body
+attachment that the ledger view lease references; quota counts it once and never
+resets on transfer. Off-window/revision mismatch declines transfer, retaining the
+ledger. Automatic eviction/revision reset returns the lease to the ledger;
+actual close ends it. Maps detach before invoking callbacks, and only the exact
+attachment/lifetime callback can release a lease. Explicit retry's read generation
+is separate from the attachment's owner lifetime. Reentrant receivers cannot
+reserve twice or install a result after owner teardown.
+
+Changed hints reconcile the displayed attempt before refreshing history. If a
+read failed, that history hint stays coalesced until retry/recovery so an incoming
+raw row cannot race the failed visible body. Known existing history is not hidden
+merely because a node ID was identified. This delays history updates during a
+failed handoff; it is an explicit candidate tradeoff for review, not a timer or a
+claim that all unsupported mixed cases are solved. No-metadata tool first arrival
+without a live record remains outside the supported final-answer subset.

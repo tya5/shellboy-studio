@@ -100,6 +100,9 @@ export function WindowedScroll({ model, win, renderRow, live, liveBoundary, stat
     }
   }
 
+  // One parent/list owns the live slot whether its ordinal is inside or past the window.
+  if (!parts.some(part => part.key === "live")) parts.push(<div class="live-tail" key="live">{live}</div>);
+
   return (
     <div class="scroll-frame">
     <div
@@ -131,7 +134,6 @@ export function WindowedScroll({ model, win, renderRow, live, liveBoundary, stat
       {range && range.first > 0 ? <LoadingRows label={t("convo.loading")} rows={1} /> : null}
       <div class="vspace">{parts}</div>
       {range && range.last + 1 < win.total ? <LoadingRows label={t("convo.loading")} rows={1} /> : null}
-      {(liveBoundary === undefined || !range || liveBoundary > range.last) ? <div class="live-tail">{live}</div> : null}
       {statusLine}
       {win.total === 0 && status === "loading" ? <LoadingRows label={t("convo.loading")} rows={5} /> : null}
       {win.total === 0 && status === "ready" ? <EmptyState icon="chat" title={t("convo.empty")} body={t("convo.emptyBody")} /> : null}

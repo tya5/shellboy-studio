@@ -355,6 +355,28 @@ describe("live text preview", () => {
   }
   const text = (h: { preview: { value: Preview } }) => (h.preview.value.kind === "live" ? h.preview.value.text : undefined);
 
+  it("retains a visible response when a change arrives before its persisted body", async () => {
+    const { t, owner, h, f } = await open([asst("older", "earlier")]);
+    t.push(live([d(0, "VISIBLE_HANDOFF_BODY")]));
+    f.frame();
+    t.push(end());
+    await settle(t, owner);
+    t.push({ t: "changed", thread_ids: ["a"], list: false });
+    await settle(t, owner);
+    expect(h.preview.value).toMatchObject({ kind: "live", attemptId: "a1", text: "VISIBLE_HANDOFF_BODY", ending: true });
+  });
+
+  it("does not identify an unrelated saved node as this attempt's persisted body", async () => {
+    const { t, owner, h, f } = await open([asst("older", "earlier")]);
+    t.push(live([d(0, "VISIBLE_HANDOFF_BODY")]));
+    f.frame();
+    t.push(end());
+    owner.history.a = [asst("unrelated", "unrelated response")];
+    t.push({ t: "changed", thread_ids: ["a"], list: false });
+    await settle(t, owner);
+    expect(h.preview.value).toMatchObject({ kind: "live", attemptId: "a1", text: "VISIBLE_HANDOFF_BODY" });
+  });
+
   it("a baseline starts from the retained tail and says it is incomplete", async () => {
     const { t, h, f } = await open();
     t.push(live([d(5, "tail")]));
@@ -402,7 +424,7 @@ describe("live text preview", () => {
     expect(h.preview.value).toMatchObject({ attemptId: "a2", text: "second", incomplete: false });
   });
 
-  it("the saved message replaces the text: it stays after the attempt ends until the message is read", async () => {
+  it("a newest node without exact references cannot resolve the attempt", async () => {
     const { t, owner, h, f } = await open([asst("n1", "earlier")]);
     t.push(live([d(0, "Hello")]));
     f.frame();
@@ -413,10 +435,10 @@ describe("live text preview", () => {
     owner.history["a"] = [asst("n1", "earlier"), asst("n2", "Hello there")];
     t.push({ t: "changed", thread_ids: ["a"], list: false });
     await settle(t, owner);
-    expect(h.preview.value).toEqual({ kind: "none", discarded: "saved" });
+    expect(h.preview.value).toMatchObject({ kind: "live", ending: true });
   });
 
-  it("when the saved message is already there at the end, the text goes at once", async () => {
+  it("a newest node already read does not establish this attempt identity", async () => {
     const { t, owner, h, f } = await open([asst("n1", "earlier")]);
     t.push(live([d(0, "Hello")]));
     f.frame();
@@ -425,10 +447,10 @@ describe("live text preview", () => {
     await settle(t, owner);
     expect(text(h), "the live text is still the attempt's own until it ends").toBe("Hello");
     t.push(end());
-    expect(h.preview.value).toEqual({ kind: "none", discarded: "saved" });
+    expect(h.preview.value).toMatchObject({ kind: "live", ending: true });
   });
 
-  it("stop: an ended attempt that saves nothing is dropped after the next change is read", async () => {
+  it("a stopped attempt without authoritative body remains confirming", async () => {
     const { t, owner, h, f } = await open([asst("n1", "earlier")]);
     t.push(live([d(0, "partial")]));
     f.frame();
@@ -437,7 +459,7 @@ describe("live text preview", () => {
     expect(text(h)).toBe("partial");
     t.push({ t: "changed", thread_ids: ["a"], list: false });
     await settle(t, owner);
-    expect(h.preview.value).toEqual({ kind: "none", discarded: "ended" });
+    expect(h.preview.value).toMatchObject({ kind: "live", ending: true });
   });
 
   it("a Thread with no held text shows nothing and a stray end changes nothing", async () => {

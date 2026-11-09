@@ -173,7 +173,13 @@ export interface ThreadDetails {
 }
 
 /** One bounded status observation; it does not contain message text or shell commands. */
+export interface ResponseNodeRef { ordinal: number; item_id?: string | null; kind: string; phase?: string | null; node_id: string }
+
 export interface WorkItem {
+  attempt_id?: string | null;
+  turn_id?: string | null;
+  response_nodes?: ResponseNodeRef[];
+  response_nodes_truncated?: boolean;
   kind: string;
   id: string;
   state: string;
@@ -364,6 +370,7 @@ export interface HistoryWindowResult {
   items: HistoryItem[];
 }
 export interface HistoryGetArgs {
+  end_message_only?: boolean;
   node_id: string;
   cursor?: string;
   limit_bytes?: number;
