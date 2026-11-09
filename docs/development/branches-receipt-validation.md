@@ -125,3 +125,27 @@ composition. Release link checking is local-file only. No runtime, owner,
 browser, Rust, CI, cleanup or push was performed. Previous failed candidates,
 unauthorized-observation exclusion, UNKNOWNs, fork non-repair and native-platform
 limits remain unchanged. Independent S6 exact-merge review is required.
+
+### Loading Convergence Follow-Up
+
+S6 rejected merge db2a684 with a new P2: owner invalidation cancelled the old
+family but left loading=true, so same-Thread ensure could not restart after an
+owner roundtrip. Its passing 679 tests did not cover this boundary. The failed
+merge remains in history; no prior result is relabeled accepted.
+
+The follow-up establishes generation/cancel/trailing-intent invalidation first,
+then clears only the family read projection (Thread ID retained, loading=false,
+family/error unknown). A generation guard prevents a later excerpt reset from
+overwriting reentrant fresh reads. Running ownership is never released early;
+the existing loop owns one reader plus one coalesced trailing intent. Leave
+cancels that trailing intent. Receipt slots and invocation tokens are unchanged.
+The accidentally introduced unused ThreadOrg generation field is removed.
+
+Six added tests cover ABA, unavailable and different-owner recovery with fresh
+adoption; synchronous invalidation-to-ensure trailing read; invalidation-to-leave
+with no new RPC; and AppModel's real owner signal notification path. The first
+reentry fixture awaited the entire loop before answering its fresh trailing
+read and timed out; the fixture now answers that read before awaiting the loop.
+No timeout increase, test removal or production assertion relaxation was used.
+All validation remains synthetic/owner-free; previous provenance and UNKNOWN
+limits remain in force. New exact review, not these assertions alone, lifts hold.

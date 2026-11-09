@@ -1,14 +1,15 @@
+import { effect } from "@preact/signals-core";
 import { expect, it } from "vitest";
 import { Link } from "../../data/src/link";
 import { Operations } from "../../data/src/operations";
-import { FakeTransport, flush } from "../../data/test/harness";
+import { FakeTransport, flush, connected } from "../../data/test/harness";
 import { Branches } from "../src/branching";
-import { fixtureRewind } from "./fixture";
+import { fixtureModel, fixtureRewind } from "./fixture";
 
 function fixture(){
-  const t=new FakeTransport(),link=new Link(t);link.start();t.open();let owner="a",seq=0;
+  const t=new FakeTransport(),link=new Link(t);link.start();t.open();let owner:string|undefined="a",seq=0;
   const b=new Branches(new Operations(link,()=>`${owner}:${++seq}`),()=>owner);b.ownerChanged(owner);
-  const change=(next:string)=>{owner=next;b.ownerChanged(next);};
+  const change=(next:string|undefined)=>{owner=next;b.ownerChanged(next);};
   return {t,link,b,change};
 }
 const empty={root_thread_id:"selected",items:[],total:0};
@@ -43,4 +44,36 @@ it("partial rewind retains send receipt through family/excerpt resets and leave 
   expect(resent.operation_id).toBe(send.operation_id);expect(resent.args).toEqual(send.args);expect(f.t.calls("thread.rewind")).toHaveLength(2);
   f.b.leave();f.t.ok(resent.id,{});await retry;const reads=f.t.calls("thread.branches").length;
   await f.b.confirmRewind("fixed");expect(f.t.calls("message.send")).toHaveLength(2);expect(f.t.calls("thread.branches")).toHaveLength(reads+1);f.link.stop();
+});
+
+for(const transition of ["aba","unavailable","other"] as const) it(`family loading converges after ${transition} and same-Thread ensure can adopt fresh results`,async()=>{
+  const f=fixture();const old=f.b.read("selected");const first=f.t.calls("thread.branches")[0]!;
+  f.change(transition==="unavailable"?undefined:"b");if(transition!=="other")f.change("a");
+  expect(f.b.state.value.loading).toBe(false);f.t.ok(first.id,empty);await old;f.b.ensure("selected");
+  expect(f.t.calls("thread.branches")).toHaveLength(2);expect(f.b.state.value.loading).toBe(true);
+  f.t.ok(f.t.calls("thread.branches")[1]!.id,empty);await flush();expect(f.b.state.value.loading).toBe(false);expect(f.b.state.value.family).toBeDefined();f.b.leave();f.link.stop();
+});
+
+
+it("invalidation notification can queue one fresh read without old cancellation clearing it",async()=>{
+  const f=fixture();const old=f.b.read("selected");let armed=true;
+  const stop=effect(()=>{const state=f.b.state.value;if(armed&&!state.loading&&state.threadId==="selected"){armed=false;f.b.ensure("selected");}});
+  f.change("b");expect(f.b.state.value.loading).toBe(true);await flush();
+  expect(f.t.calls("thread.branches")).toHaveLength(2);expect(f.b.state.value.loading).toBe(true);
+  f.t.ok(f.t.calls("thread.branches")[1]!.id,empty);await old;await flush();expect(f.b.state.value.family).toBeDefined();stop();f.b.leave();f.link.stop();
+});
+it("leave reentered from invalidation cancels trailing intent with no fresh RPC",async()=>{
+  const f=fixture();const old=f.b.read("selected");let armed=true;
+  const stop=effect(()=>{const state=f.b.state.value;if(armed&&!state.loading&&state.threadId==="selected"){armed=false;f.b.ensure("selected");f.b.leave();}});
+  f.change("b");await old;await flush();expect(f.t.calls("thread.branches")).toHaveLength(1);expect(f.b.state.value.loading).toBe(false);stop();f.link.stop();
+});
+
+it("AppModel owner notification restores ensure eligibility after unreachable without adopting old family",async()=>{
+  const {model,t}=await fixtureModel();const before=t.calls("thread.branches").length;
+  const old=model.branches.read("selected");
+  t.push({t:"owner",event:"unreachable",owner:{state:"unreachable"}});
+  t.push({t:"owner",event:"connected",owner:connected});await old;
+  expect(model.branches.state.value.loading).toBe(false);model.branches.ensure("selected");
+  expect(t.calls("thread.branches")).toHaveLength(before+2);
+  t.ok(t.calls("thread.branches").at(-1)!.id,empty);await flush();expect(model.branches.state.value.family).toBeDefined();model.dispose();
 });

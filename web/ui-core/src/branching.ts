@@ -164,7 +164,9 @@ export class Branches {
       ++this.familyGeneration;
       this.again = false;
       this.cancel.cancel();
-      this.excerptBatch.reset();
+      const generation = this.familyGeneration;
+      this.state.value = { threadId: this.state.peek().threadId, loading: false, family: undefined, error: undefined };
+      if (generation === this.familyGeneration) this.excerptBatch.reset();
     }
   }
   private invocation(target?: BranchTarget): Invocation {
@@ -453,7 +455,6 @@ export class ThreadOrg {
   readonly selected: Signal<ReadonlySet<string>> = signal(new Set());
   readonly descendants: Signal<boolean> = signal(true);
   readonly action: Signal<OrgAction> = signal({ kind: "idle" });
-  private familyGeneration = 0;
   private running = false;
   private again = false;
   private pages = 1;
