@@ -1,3 +1,4 @@
+import { BranchCompare } from "./BranchCompare";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { CAPABILITY_HISTORY_WINDOW } from "../../../data/src";
 import { branchLayout, branchTitle, formatClock, formatRoute, statusLabel, type AppModel, type BranchFamily, type BranchItem, type BranchTarget, type GraphPoint, type RewindFacts, type Translate } from "../../../ui-core/src";
@@ -122,13 +123,13 @@ export function Branches({ model }: { model: AppModel }) {
   const state = b.state.value;
   const family = state.family;
   const excerptPage = page.family === family ? page.index : 0;
-  const setExcerptPage = (index: number) => setPage({ family, index });
+  const setExcerptPage = (index: number) => { model.branchCompare.pageChanged(); setPage({ family, index }); };
   const threadId = model.selectedId.value;
 
   const rows = model.rowById.value;
   const title = (i: BranchItem) => i.title ?? rows.get(i.threadId)?.summary.title ?? branchTitle(i);
   const note = (i: BranchItem): string => {
-    const parts: string[] = [];
+    const parts: string[] = [`${t("b3.kind")}: ${i.branchKind}`];
     if (i.state === "current") parts.push(t("branches.current"));
     if (i.divergenceUnknown) parts.push(t("branches.noShared"));
     else if (i.divergence && !i.divergence.parentContinues) parts.push(t("branches.extends"));
@@ -190,10 +191,11 @@ export function Branches({ model }: { model: AppModel }) {
             />
             <div class="band"><Button disabled={!b.selection.value.size || b.actionBusy.value} onClick={() => void b.archiveSelected()}>{t("branches.archiveSelected")}</Button></div>
             {b.actionError.value ? <Notice tone="bad">{b.actionError.value}</Notice> : null}
+            <BranchCompare model={model} family={family!} />
             <BranchList
               label={t("view.branches")}
               rows={items.slice(excerptPage * 8, (excerptPage + 1) * 8).map((i) => {
-                const action = <div class="band"><Check checked={b.selection.value.has(i.threadId)} onChange={() => b.toggleBranch(i.threadId)}>{t("branches.select")}</Check><Field ariaLabel={t("branches.rename")} placeholder={t("branches.rename")} value={rename[i.threadId] ?? ""} onInput={e => setRename({ ...rename, [i.threadId]: e.currentTarget.value })} /><Button disabled={!(rename[i.threadId] ?? "").trim() || b.actionBusy.value} onClick={() => void b.renameBranch(i.threadId, rename[i.threadId] ?? "")}>{t("branches.rename")}</Button>{fromHere(i)}</div>;
+                const action = <div class="band"><Check checked={model.branchCompare.state.value.selected.includes(i.threadId)} onChange={() => model.branchCompare.choose(i.threadId)}>{t("b3.choose")}</Check><Check checked={b.selection.value.has(i.threadId)} onChange={() => b.toggleBranch(i.threadId)}>{t("branches.select")}</Check><Field ariaLabel={t("branches.rename")} placeholder={t("branches.rename")} value={rename[i.threadId] ?? ""} onInput={e => setRename({ ...rename, [i.threadId]: e.currentTarget.value })} /><Button disabled={!(rename[i.threadId] ?? "").trim() || b.actionBusy.value} onClick={() => void b.renameBranch(i.threadId, rename[i.threadId] ?? "")}>{t("branches.rename")}</Button>{fromHere(i)}</div>;
                 return {
                   key: i.threadId,
                   depth: i.depth,

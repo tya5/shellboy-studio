@@ -1280,3 +1280,27 @@ describe("approved Studio brand", () => {
     } finally { model.dispose(); }
   });
 });
+
+describe("limited Branches comparison UI", () => {
+  it("keeps compare selection out of archive selection and shows honest limits in the existing screen", async () => {
+    const { model, t, db } = await fixtureModel();
+    try {
+      model.navigate({ view: "branches", threadId: "lead" }); await settle(t, db);
+      const el = draw(model); await act(flushPromises);
+      expect(text(el)).toContain("Limited two-tip comparison");
+      expect(text(el)).toContain("Not an exact LCA");
+      expect(text(el)).toContain("Recorded creation kind");
+      const comparison = [...el.querySelectorAll("label")].find(x => x.textContent?.includes("Compare (up to two)"));
+      expect(comparison).toBeDefined();
+      const input = comparison!.querySelector("input")!;
+      act(() => input.click());
+      expect(model.branchCompare.state.value.selected).toHaveLength(1);
+      expect(model.branches.selection.value.size).toBe(0);
+      expect(t.calls("thread.archive")).toHaveLength(0);
+      expect(t.calls("thread.fork")).toHaveLength(0);
+      expect(t.calls("thread.rewind")).toHaveLength(0);
+      model.navigate({ view: "monitor" });
+      expect(model.branchCompare.state.value.selected).toEqual([]);
+    } finally { model.dispose(); }
+  });
+});

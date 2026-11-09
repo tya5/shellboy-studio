@@ -179,3 +179,30 @@ progress is ordinary messaging, not automatic child-Run forwarding. A recovery
 wait is not evidence the reply duty disappeared. Unknown fields are not inferred
 from old lists. Human count 17 with `awaiting_human_count_exact=false` means
 17 or more, not an exact count.
+
+### Limited branch comparison (source candidate)
+
+The Branches view adds recorded creation kind (`fork`, `rewind`, otherwise
+`unknown`) and a separate selection of at most two tips. Only direct parent/child
+or same-parent/same-divergence candidates are offered; the same anchor must be
+verified on both paths, with each side's own ordinal and revision. This does not
+prove an exact LCA, equality of all preceding context, or a complete diff.
+Unsupported or truncated families stay unavailable; normal tip navigation remains.
+
+Usage is explicitly scoped to each Thread from the anchor's saved timestamp
+inclusive to one displayed shared `until` exclusive. It is recorded usage, not
+ordinal-exclusive tail cost, money, refunds or causal savings. Shared-prefix
+parent/child totals are not summed or subtracted. Missing/unsafe/overflow counters
+and summary coverage remain unknown/partial. Grouped intervals over 31 days are
+unavailable; explicit shorter-period selection is not implemented. There is no
+silent clipping, timestamp epsilon or all-time fallback.
+
+Reads use the existing owner-free-testable data boundary: aggregate concurrency
+two across history/body/usage, one in flight per side; four initial window calls,
+50-row pages and four cached pages per side, one expanded node with at most two
+16 KiB body responses, and at most four usage responses per side per explicit
+refresh. Hints only mark stale and never refill budgets; route/owner/pair/page
+changes cancel reads and reject late results. Compare selection does not mutate
+archive/rewind/fork selection or receipt slots. Arbitrary-pair exact divergence,
+full-history comparison and arbitrary-age exclusive monetary cost remain unsupported.
+This source addition does not replace already-published v0.1.0 archives.
