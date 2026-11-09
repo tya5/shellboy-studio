@@ -13,12 +13,11 @@ This documentation task did not operate a phone, owner, browser, or paid provide
 - Current-source plan baseline: `dd9372b338d0be0bae6bb475145d8131b23192da`.
   Later source fixes are not proof that a running bridge or v0.1.0 archive has
   those fixes. Record the actually served Studio/Core identities before testing.
-- Reuse the eight-item scope reconciliation, coordinator candidate commit
-  `47e437b81499ab7c939e9a449727e95bae4f6f10`, file
-  `docs/development/public-release-scope.md`. It is not in this base tree yet;
-  the coordinator should add a relative link when both docs are integrated.
-  Do not claim this local candidate URL is already public or embedded in release
-  archives, and do not duplicate its CI/asset/privacy/attribution tables here.
+- Reuse the [eight-item scope reconciliation](public-release-scope.md),
+  originally reviewed at `47e437b81499ab7c939e9a449727e95bae4f6f10`.
+  The document is present in this combined source tree; that does not put it in
+  immutable release archives. Do not duplicate its CI/asset/privacy/attribution
+  tables here.
 
 Existing evidence below means recorded synthetic/headless/source evidence, not
 new testing in this task. CI OS builds, 390px emulation and author frame
