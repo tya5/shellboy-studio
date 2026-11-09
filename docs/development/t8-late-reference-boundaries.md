@@ -5,10 +5,15 @@ No new RPC, timing/JSON-shape heuristic, arbitrary legacy hiding or span model.
 
 Two author tests fail on the base: a legacy aggregate was rendered before later
 status supplies an exact function_call reference, with no history-changed hint.
-S7 independently reports 13 raw/visible RAF frames after that evidence in late and
-mixed cases at 1280/390 widths, distinct from ten existing zero-exposure cases.
-Initial unqualified legacy prose is not counted as failure. This is an author
-source repair, not yet independently validated on the fixed commit.
+The original S7 13-frame report did not receive the late status (one work call):
+Conversation already owned an active work subscription, so setting it true again
+was a no-op. Preserve that report as a fixture error, not product evidence.
+Corrected explicit false-to-true activation on the earlier fixed commit produced
+four zero-exposure desktop/emulated-width cases. Those earlier results are not
+qualification of this refreshed candidate on parent
+`b3a555f143b86400f6f3dd23fe867f7ab90dca06`; independent same-SHA validation is
+required. Record actual status/work/history calls, not phase names, as evidence.
+Initial unqualified legacy prose remains outside the late-evidence failure score.
 
 Late status atomically fences matching retained aggregates to unknown and publishes
 work. It invalidates older history generation before notification, so an old read
