@@ -398,8 +398,12 @@ export class AppModel {
       effect(() => {
         const view = this.route.value.view;
         // Items, not the whole state: its loading flags change without a new list.
-        const list = this.data.threadList.value.items;
-        if (this.connection.value !== "connected") return;
+        const listState = this.data.threadList.value;
+        const list = listState.items;
+        if (this.connection.value !== "connected" || (view === "branches" && (listState.stale || listState.loading))) {
+          this.branches.excerptBatch.reset();
+          return;
+        }
         const id = this.selectedId.value;
         if (view === "branches" && id !== undefined) {
           const b = this.branches.state.peek();
@@ -464,6 +468,7 @@ export class AppModel {
   }
 
   dispose(): void {
+    this.branches.leave();
     this.pending.close?.();
     this.modelListCancel.cancel();
     this.missingPins.close();

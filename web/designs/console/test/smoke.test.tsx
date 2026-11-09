@@ -622,6 +622,13 @@ describe("Branches", () => {
     });
     return { ...made, el };
   };
+  it("does not issue history-window reads or invent excerpts without the capability", async () => {
+    const made = await fixtureModel({ route: "branches", capabilities: [] });
+    const el = draw(made.model);
+    await act(async () => { await settle(made.t, made.db); });
+    expect(made.t.calls("history.window")).toHaveLength(0);
+    expect(el.querySelectorAll(".branch-excerpts")).toHaveLength(0);
+  });
   it("draws lanes, points and tips from the read, with real counts and a list for phones", async () => {
     const { el } = await open();
     expect(el.querySelectorAll(".bgraph-svg .bg-tip").length).toBe(4);

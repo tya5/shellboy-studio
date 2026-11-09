@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "preact/hooks";
-import { Cancel, CAPABILITY_HISTORY_WINDOW } from "../../../data/src";
+import { CAPABILITY_HISTORY_WINDOW } from "../../../data/src";
 import { branchLayout, branchTitle, formatClock, formatRoute, statusLabel, type AppModel, type BranchFamily, type BranchItem, type BranchTarget, type GraphPoint, type RewindFacts, type Translate } from "../../../ui-core/src";
 import { BranchGraph, BranchList, Button, ButtonGroup, Check, EmptyState, Field, KeyValue, Notice } from "../system/components";
 import { Rich } from "./Rich";
@@ -8,23 +8,23 @@ const tipRoute = (i: BranchItem) => formatRoute({ view: "conversation", threadId
 
 function BranchExcerpt({ model, item }: { model: AppModel; item: BranchItem }) {
   const ref = useRef<HTMLDivElement>(null);
-  const [facts, setFacts] = useState<{ split?: string; request?: string; answer?: string }>({});
-  const supported = model.data.capabilities.value.includes(CAPABILITY_HISTORY_WINDOW);
+  const [saved, save] = useState<{ item?: BranchItem; facts: { split?: string; request?: string; answer?: string } }>({ facts: {} });
+  const facts = saved.item === item ? saved.facts : {};
+  const supported = model.data.capabilities.value.includes(CAPABILITY_HISTORY_WINDOW) && model.data.owner.value.state === "connected" && !model.data.threadList.value.stale && !model.data.threadList.value.loading && !model.branches.state.value.loading && !model.branches.state.value.error;
   useEffect(() => {
     if (!supported || !ref.current) return;
-    let cancel: Cancel | undefined;
+    let release: (() => void) | undefined;
     const observer = new IntersectionObserver(entries => {
       if (entries[0]?.isIntersecting) {
-        cancel?.cancel(); cancel = new Cancel(); const current = cancel;
-        void model.branches.excerpts(item, current).then(v => { if (!current.cancelled) setFacts(v); });
-      } else { cancel?.cancel(); setFacts({}); }
+        if (!release) release = model.branches.excerptBatch.show(item, facts => save({ item, facts }));
+      } else { release?.(); release = undefined; save({ facts: {} }); }
     }, { rootMargin: "0px" });
     observer.observe(ref.current.parentElement ?? ref.current);
-    return () => { cancel?.cancel(); observer.disconnect(); };
-  }, [model, item.threadId, item.divergence?.nodeId, item.tipNodeId, supported]);
+    return () => { release?.(); save({ facts: {} }); observer.disconnect(); };
+  }, [model, item, supported]);
   if (!supported) return null;
   const t = model.t.value;
-  return <div ref={ref} class="branch-excerpts">{facts.split ? <p><b>{t("branches.splitExcerpt")}</b> {facts.split}</p> : null}{facts.request ? <p><b>{t("branches.firstRequest")}</b> {facts.request}</p> : null}{facts.answer ? <p><b>{t("branches.latestAnswer")}</b> {facts.answer}</p> : null}</div>;
+  return <div ref={ref} class="branch-excerpts"><p><b>{t("branches.splitExcerpt")}</b> {facts.split ?? t("branches.excerptUnknown")}</p><p><b>{t("branches.firstRequest")}</b> {facts.request ?? t("branches.excerptUnknown")}</p><p><b>{t("branches.latestAnswer")}</b> {facts.answer ?? t("branches.excerptUnknown")}</p></div>;
 }
 
 function RewindPreview({ t, facts }: { t: Translate; facts: RewindFacts }) {
@@ -117,10 +117,14 @@ function PointPanel({ model, target, title, request, branches, ordinal }: { mode
 export function Branches({ model }: { model: AppModel }) {
   const t = model.t.value;
   const b = model.branches;
+  const [page, setPage] = useState<{ family?: BranchFamily; index: number }>({ index: 0 });
   const [rename, setRename] = useState<Record<string, string>>({});
   const state = b.state.value;
   const family = state.family;
+  const excerptPage = page.family === family ? page.index : 0;
+  const setExcerptPage = (index: number) => setPage({ family, index });
   const threadId = model.selectedId.value;
+
   const rows = model.rowById.value;
   const title = (i: BranchItem) => i.title ?? rows.get(i.threadId)?.summary.title ?? branchTitle(i);
   const note = (i: BranchItem): string => {
@@ -188,7 +192,7 @@ export function Branches({ model }: { model: AppModel }) {
             {b.actionError.value ? <Notice tone="bad">{b.actionError.value}</Notice> : null}
             <BranchList
               label={t("view.branches")}
-              rows={items.map((i) => {
+              rows={items.slice(excerptPage * 8, (excerptPage + 1) * 8).map((i) => {
                 const action = <div class="band"><Check checked={b.selection.value.has(i.threadId)} onChange={() => b.toggleBranch(i.threadId)}>{t("branches.select")}</Check><Field ariaLabel={t("branches.rename")} placeholder={t("branches.rename")} value={rename[i.threadId] ?? ""} onInput={e => setRename({ ...rename, [i.threadId]: e.currentTarget.value })} /><Button disabled={!(rename[i.threadId] ?? "").trim() || b.actionBusy.value} onClick={() => void b.renameBranch(i.threadId, rename[i.threadId] ?? "")}>{t("branches.rename")}</Button>{fromHere(i)}</div>;
                 return {
                   key: i.threadId,
@@ -202,6 +206,7 @@ export function Branches({ model }: { model: AppModel }) {
                 };
               })}
             />
+            <ButtonGroup label={t("view.branches")}><Button disabled={excerptPage === 0} onClick={() => { b.excerptBatch.reset(); setExcerptPage(excerptPage - 1); }}>{t("branches.previousBatch")}</Button><Button disabled={(excerptPage + 1) * 8 >= items.length} onClick={() => { b.excerptBatch.reset(); setExcerptPage(excerptPage + 1); }}>{t("threads.more")}</Button></ButtonGroup>
             <div class="muted caption">{t("branches.hint")}</div>
 
           </>

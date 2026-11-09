@@ -64,7 +64,49 @@ export type ForkState = { kind: "idle" } | { kind: "forking" } | { kind: "done";
 
 const sameTarget = (a: BranchTarget | undefined, b: BranchTarget): boolean => a?.threadId === b.threadId && a?.nodeId === b.nodeId;
 
+export const EXCERPT_ROWS = 8;
+export interface BranchExcerpts { split?: string; request?: string; answer?: string }
+
+/** One displayed batch, at most eight admissions/two RPCs each; no retry queue. */
+export class ExcerptBatch {
+  private epoch = 0;
+  private running = false;
+  private admitted = new Set<string>();
+  private visible = new Map<string, { item: import("./branches").BranchItem; cancel: Cancel; publish: (v: BranchExcerpts) => void }>();
+  constructor(private readonly read: (item: import("./branches").BranchItem, cancel: Cancel) => Promise<BranchExcerpts>) {}
+  reset(): void {
+    ++this.epoch;
+    for (const row of this.visible.values()) { row.cancel.cancel(); row.publish({}); }
+    this.visible.clear(); this.admitted.clear();
+  }
+  show(item: import("./branches").BranchItem, publish: (v: BranchExcerpts) => void): () => void {
+    publish({});
+    if (this.admitted.has(item.threadId) || this.admitted.size >= EXCERPT_ROWS) return () => {};
+    this.admitted.add(item.threadId);
+    const row = { item, publish, cancel: new Cancel() };
+    this.visible.set(item.threadId, row); void this.drain();
+    return () => { row.cancel.cancel(); row.publish({}); if (this.visible.get(item.threadId) === row) this.visible.delete(item.threadId); };
+  }
+  private async drain(): Promise<void> {
+    if (this.running) return;
+    this.running = true;
+    try {
+      while (true) {
+        const row = [...this.visible.values()].find(r => !r.cancel.cancelled);
+        if (!row) break;
+        const epoch = this.epoch;
+        let facts: BranchExcerpts = {};
+        try { facts = await this.read(row.item, row.cancel); } catch { /* Failed reads remain unknown. */ }
+        if (epoch === this.epoch && !row.cancel.cancelled) row.publish(facts);
+        // Retain the entry for invalidation, but never schedule it twice.
+        row.cancel.cancel();
+      }
+    } finally { this.running = false; }
+  }
+}
+
 export class Branches {
+  readonly excerptBatch = new ExcerptBatch((item, cancel) => this.excerpts(item, cancel));
   readonly state: Signal<FamilyState> = signal({ threadId: undefined, loading: false, family: undefined, error: undefined });
   readonly rewind: Signal<RewindState> = signal({ kind: "idle" });
   readonly selection: Signal<ReadonlySet<string>> = signal(new Set());
@@ -96,8 +138,12 @@ export class Branches {
 
   async excerpts(item: import("./branches").BranchItem, cancel: Cancel): Promise<{ split?: string; request?: string; answer?: string }> {
     const result: { split?: string; request?: string; answer?: string } = {};
+    let revision: string | number | undefined;
+    if (cancel.cancelled) return {};
     if (item.divergence) {
       const out = await this.ops.historyWindow({ thread_id: item.threadId, node_id: item.divergence.nodeId, before: 0, after: 24, excerpt_chars: 256 }, { cancel });
+      if (!out.ok || cancel.cancelled) return {};
+      revision = out.value.revision;
       if (out.ok) {
         result.split = out.value.items.find(n => n.node_id === item.divergence!.nodeId)?.excerpt;
         result.request = out.value.items.find(n => (n.selection?.ordinal ?? -1) > item.divergence!.ordinal && n.kind === "user")?.excerpt;
@@ -105,13 +151,15 @@ export class Branches {
     }
     if (!cancel.cancelled) {
       const out = await this.ops.historyWindow({ thread_id: item.threadId, before: 48, after: 0, excerpt_chars: 256 }, { cancel });
-      if (out.ok) result.answer = out.value.items.filter(n => n.kind === "assistant_response" && n.excerpt).at(-1)?.excerpt?.split("\n").slice(0, 2).join("\n");
+      if (!out.ok || cancel.cancelled || (revision !== undefined && revision !== out.value.revision)) return {};
+      if (out.ok) result.answer = out.value.items.filter(n => n.kind === "assistant_response" && n.excerpt && (!item.divergence || (n.selection?.ordinal ?? -1) > item.divergence.ordinal)).at(-1)?.excerpt?.split("\n").slice(0, 2).join("\n");
     }
     return result;
   }
 
   /** Nobody is looking: cancels the read. The family read so far stays. */
   leave(): void {
+    this.excerptBatch.reset();
     this.again = false;
     this.cancel.cancel();
     if (this.state.peek().loading) this.state.value = { ...this.state.peek(), loading: false };
@@ -119,6 +167,7 @@ export class Branches {
 
   /** The view opened on this Thread, or a hint arrived. One read at a time, one trailing. */
   async read(threadId: string): Promise<void> {
+    this.excerptBatch.reset();
     const had = this.state.peek();
     if (had.threadId !== threadId) {
       this.cancel.cancel();
