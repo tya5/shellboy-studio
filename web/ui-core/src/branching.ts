@@ -82,12 +82,18 @@ export class ExcerptBatch {
     for (const row of previous) row.publish({});
   }
   show(item: import("./branches").BranchItem, publish: (v: BranchExcerpts) => void): () => void {
+    const epoch = this.epoch;
     publish({});
+    if (epoch !== this.epoch) return () => {};
     if (this.admitted.has(item.threadId) || this.admitted.size >= EXCERPT_ROWS) return () => {};
     this.admitted.add(item.threadId);
     const row = { item, publish, cancel: new Cancel() };
     this.visible.set(item.threadId, row); void this.drain();
-    return () => { row.cancel.cancel(); row.publish({}); if (this.visible.get(item.threadId) === row) this.visible.delete(item.threadId); };
+    return () => {
+      row.cancel.cancel();
+      if (this.visible.get(item.threadId) === row) this.visible.delete(item.threadId);
+      row.publish({});
+    };
   }
   private async drain(): Promise<void> {
     if (this.running) return;
@@ -158,6 +164,7 @@ export class Branches {
   private archiveAttempt?: BranchAttempt;
   private rewindAttempt?: RewindAttempt;
   private forkAttempt?: ForkAttempt;
+  private previewCancel = new Cancel();
   private refusal(message: string): void { this.actionError.value = message; }
   private projectionEpoch = 0;
   private ownerGeneration = 0;
@@ -169,10 +176,11 @@ export class Branches {
       this.ownerObserved = true;
       this.observedOwner = owner;
       ++this.ownerGeneration;
-      ++this.familyGeneration;
+      const generation = ++this.familyGeneration;
       this.again = false;
       this.cancel.cancel();
-      const generation = this.familyGeneration;
+      this.previewCancel.cancel();
+      if (generation !== this.familyGeneration) return;
       this.state.value = { threadId: this.state.peek().threadId, loading: false, family: undefined, error: undefined };
       if (generation === this.familyGeneration) this.excerptBatch.reset();
     }
@@ -181,7 +189,7 @@ export class Branches {
     this.ownerChanged(this.owner());
     return { owner: this.owner(), generation: this.ownerGeneration, epoch: this.projectionEpoch, view: this.currentView(), target: target ? { ...target } : undefined };
   }
-  private visible(attempt: BranchAttempt, token: Invocation): boolean {
+  private visible(attempt: Pick<BranchAttempt, "owner">, token: Invocation): boolean {
     this.ownerChanged(this.owner());
     return !!token.owner && attempt.owner === token.owner && token.owner === this.owner() &&
       token.generation === this.ownerGeneration && token.epoch === this.projectionEpoch &&
@@ -224,7 +232,14 @@ export class Branches {
     attempt.uncertain = uncertainOutcome(out);
     if (!this.visible(attempt, token)) return;
     if (!out.ok) this.actionError.value = outcomeMessage(out);
-    else { const missing = (out.value as ArchiveResult).not_found ?? []; this.selection.value = new Set(missing); this.actionError.value = missing.length ? `Not found: ${missing.join(", ")}` : undefined; const id = this.state.peek().threadId; if (id) void this.read(id); }
+    else {
+      const missing = (out.value as ArchiveResult).not_found ?? [];
+      this.selection.value = new Set(missing);
+      if (!this.visible(attempt, token)) return;
+      this.actionError.value = missing.length ? `Not found: ${missing.join(", ")}` : undefined;
+      if (!this.visible(attempt, token)) return;
+      const id = this.state.peek().threadId; if (id) void this.read(id);
+    }
   }
   async renameBranch(id: string, title: string): Promise<void> {
     title = title.trim(); if (!title) return;
@@ -235,6 +250,7 @@ export class Branches {
     attempt.uncertain = uncertainOutcome(out);
     if (!this.visible(attempt, token)) return;
     this.actionError.value = outcomeMessage(out);
+    if (!this.visible(attempt, token)) return;
     if (out.ok) { const selected = this.state.peek().threadId; if (selected) void this.read(selected); }
   }
   readonly fork: Signal<ForkState> = signal({ kind: "idle" });
@@ -274,16 +290,21 @@ export class Branches {
   /** Nobody is looking: cancels the read. The family read so far stays. */
   leave(): void {
     ++this.projectionEpoch;
-    ++this.familyGeneration;
+    const generation = ++this.familyGeneration;
     this.again = false;
+    this.previewCancel.cancel();
     this.cancel.cancel();
+    if (generation !== this.familyGeneration) return;
     this.excerptBatch.reset();
+    if (generation !== this.familyGeneration) return;
     if (this.state.peek().loading) this.state.value = { ...this.state.peek(), loading: false };
   }
 
   /** The view opened on this Thread, or a hint arrived. One read at a time, one trailing. */
   async read(threadId: string): Promise<void> {
+    if (!this.owner()) return;
     const generation = ++this.familyGeneration;
+    const ownerGeneration = this.ownerGeneration;
     this.cancel.cancel();
     this.excerptBatch.reset();
     if (generation !== this.familyGeneration) return;
@@ -291,8 +312,10 @@ export class Branches {
     if (had.threadId !== threadId) {
       this.cancel.cancel();
       this.state.value = { threadId, loading: true, family: undefined, error: undefined };
+      if (generation !== this.familyGeneration || ownerGeneration !== this.ownerGeneration) return;
       this.clearActions();
     } else this.state.value = { ...had, loading: true };
+    if (generation !== this.familyGeneration || ownerGeneration !== this.ownerGeneration || this.state.peek().threadId !== threadId) return;
     if (this.running) {
       this.again = true;
       return;
@@ -332,6 +355,7 @@ export class Branches {
   }
 
   clearActions(): void {
+    this.previewCancel.cancel();
     batch(() => {
       this.rewind.value = { kind: "idle" };
       this.fork.value = { kind: "idle" };
@@ -354,9 +378,15 @@ export class Branches {
 
   /** Shows what would change. Nothing is written. */
   async previewRewind(target: BranchTarget): Promise<void> {
+    const token = this.invocation(target);
+    const previewOwner = { owner: token.owner };
+    if (!this.visible(previewOwner, token)) return;
+    this.previewCancel.cancel();
+    const cancel = this.previewCancel = new Cancel();
     this.rewind.value = { kind: "previewing" };
-    const out = await this.ops.threadRewindPreview({ thread_id: target.threadId, node_id: target.nodeId });
-    if (!sameTarget(this.target.peek(), target)) return;
+    if (!this.visible(previewOwner, token)) { cancel.cancel(); return; }
+    const out = await this.ops.threadRewindPreview({ thread_id: target.threadId, node_id: target.nodeId }, { cancel });
+    if (cancel.cancelled || !this.visible(previewOwner, token)) return;
     this.rewind.value = out.ok ? { kind: "ready", facts: readRewind(out.value), target } : { kind: "refused", error: out.error };
   }
 
@@ -390,11 +420,18 @@ export class Branches {
   canRetryRewind(): boolean { return !!this.rewindAttempt?.uncertain && !this.rewindAttempt.running && sameTarget(this.target.peek(), this.rewindAttempt.target); }
   private async runRewind(attempt: RewindAttempt, token: Invocation): Promise<void> {
     const { target, facts } = attempt;
-    if (this.visible(attempt, token)) this.rewind.value = { kind: "rewinding", facts, target };
+    if (attempt.owner === this.owner() && !this.visible(attempt, token)) return;
+    if (this.visible(attempt, token)) {
+      this.rewind.value = { kind: "rewinding", facts, target };
+      if (!this.visible(attempt, token)) return;
+    }
     const out = await this.receipt(attempt, attempt.receipt, id => this.ops.threadRewind({ thread_id: target.threadId, node_id: target.nodeId }, id));
     if (!out.ok) {
       attempt.uncertain = uncertainOutcome(out);
-      if (this.visible(attempt, token)) { this.rewind.value = { kind: "failed", facts, target, error: out.error }; this.actionError.value = outcomeMessage(out); }
+      if (this.visible(attempt, token)) {
+        this.rewind.value = { kind: "failed", facts, target, error: out.error };
+        if (this.visible(attempt, token)) this.actionError.value = outcomeMessage(out);
+      }
       return;
     }
     attempt.facts = readRewind(out.value as Record<string, unknown>);
@@ -409,11 +446,15 @@ export class Branches {
     } else attempt.uncertain = false;
     if (this.visible(attempt, token)) {
       this.rewind.value = { kind: "done", facts: attempt.facts };
+      if (!this.visible(attempt, token)) return;
       void this.read(this.state.peek().threadId ?? target.threadId);
     }
   }
 
   async forkAt(target: BranchTarget, text = ""): Promise<void> {
+    const token = this.invocation(target);
+    const original = this.forkAttempt;
+    if ((!original || original.owner === this.owner()) && !this.visible({ owner: this.owner() }, token)) return;
     text = text.trim();
     const key = JSON.stringify({ thread_id: target.threadId, node_id: target.nodeId, text });
     let attempt = this.forkAttempt;
@@ -429,7 +470,6 @@ export class Branches {
     }
     if (attempt.running) return attempt.running;
     const active = attempt;
-    const token = this.invocation(target);
     let settle!: () => void;
     const running = new Promise<void>(resolve => { settle = resolve; });
     active.running = running;
@@ -437,6 +477,7 @@ export class Branches {
     return running;
   }
   private async runFork(attempt: ForkAttempt, token: Invocation): Promise<void> {
+    if (attempt.owner === this.owner() && !this.visible(attempt, token)) return;
     if (this.visible(attempt, token)) {
       this.fork.value = { kind: "forking" };
       // Signal subscribers may synchronously change owner/view or leave.

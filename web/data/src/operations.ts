@@ -266,8 +266,8 @@ export class Operations {
     return this.run("thread.branches", args, decodeRecord, undefined, read);
   }
   /** `dry_run`: runs in a rolled-back savepoint and writes nothing, so it carries no operation id. */
-  threadRewindPreview(args: ThreadRewindArgs): Promise<Outcome<Record<string, unknown>>> {
-    return this.run("thread.rewind", { ...args, dry_run: true }, decodeRecord);
+  threadRewindPreview(args: ThreadRewindArgs, read?: ReadOptions): Promise<Outcome<Record<string, unknown>>> {
+    return this.run("thread.rewind", { ...args, dry_run: true }, decodeRecord, undefined, read);
   }
   /** The gateway's own process memory, as the OS reports it. */
   bridgeMemory(read?: ReadOptions): Promise<Outcome<Record<string, unknown>>> {

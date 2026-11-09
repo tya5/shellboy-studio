@@ -75,3 +75,35 @@ A further synchronous failed notification guard preserves the new owner's error
 instead of writing the old error after reentry. Two additional tests cover failed
 notification owner switch and partial-send error notification preventing stale
 done. All guards reuse the same invocation, never a freshly sampled replacement.
+
+## ADR-R1 Inventory And Admission Follow-Up
+
+07661c4 remained held: its 706 tests did not cover all publish boundaries, and
+same-owner initial target mismatch could skip the visible branch and dispatch.
+The next source captures initial fork invocation before reservation and refuses
+stale selected target without minting an ID. Old-owner explicit lookup remains
+separate, diagnostic-only and cannot dispatch. Pending/cached retarget and a
+valid different explicit action are tested with actual IDs/args.
+
+`branches-publish-inventory.md` lists fork and current B12 publication, reset,
+cancellation, batch exit, await, admission and finally boundaries. The table
+maps each continuation to its immutable context and regression family. The
+220 table-driven/new boundary cases cover seven context transitions, owner-free
+normal controls and specialized reentry/row identity tests. Together with
+existing tests, typecheck and 47 files / 926 tests and frontend build pass.
+Full-suite green is evidence alongside, not a replacement for, inventory review.
+
+Confirmed B12 gaps repaired in the same architect-approved scope include row
+initial-callback admission/reset, callback replacement detach order, read loading
+notification context capture, leave/reset fresh-read ownership, rename/archive
+refresh after callback, rewind initial/failed/done continuations and preview
+owner/session/target/cancel ownership. A compatible optional read-options argument
+passes preview cancellation through the existing read path; no RPC change.
+Family one-loop/one-trailing ownership, four slots/six receipts and all budgets
+stay unchanged. No ThreadOrg, B3 or presentation redesign is included.
+
+Matrix fixture corrections (viewed Thread missing from normal-control refresh,
+wrong family field and a required FamilyState field) and a real loading-thread
+guard failure are separately recorded in the inventory. No assertion was skipped,
+no timeout lengthened and no unsafe behavior treated as successful acceptance.
+Previous rejected SHA history and earlier UNKNOWN/observation exclusions remain.
