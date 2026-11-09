@@ -133,6 +133,7 @@ class ThreadEntry {
   detail = signal<Resource<ThreadDetails>>({ value: undefined, loading: false, stale: false, error: undefined });
   work = signal<Resource<Page<WorkItem>>>({ value: undefined, loading: false, stale: false, error: undefined });
   workRefs = 0;
+  workGen = 0;
   workBodies = new Map<string, string>();
   history = signal<HistoryState>({ items: [], earlierHidden: false, loaded: false, loading: false, loadingMore: false, stale: false, error: undefined });
   window = HISTORY_WINDOW;
@@ -727,9 +728,13 @@ export class ShellboyData {
 
   private async readWork(entry: ThreadEntry, onSent: () => void): Promise<void> {
     if (entry.workRefs === 0 || entry.paused) return;
+    const cancel = entry.cancel; const epoch = entry.live.epoch;
+    const generation = ++entry.workGen; const owner = this.ownerSig.peek();
+    const valid = () => generation === entry.workGen && owner === this.ownerSig.peek() && !entry.closed && !entry.paused && entry.workRefs > 0 && entry.cancel === cancel && !cancel.cancelled && epoch === entry.live.epoch && this.canRead();
     entry.work.value = { ...entry.work.value, loading: true };
-    const out = await this.operations.threadWork(entry.id, { onSent, cancel: entry.cancel });
-    if (entry.closed) return;
+    if (!valid()) return;
+    const out = await this.operations.threadWork(entry.id, { onSent, cancel });
+    if (!valid()) return;
     let value = out.ok ? out.value : undefined;
     if (value && entry.workRefs > 0 && !entry.paused) {
       // Only the first eight pending originals are read. The cache belongs to this open
@@ -738,24 +743,41 @@ export class ShellboyData {
       const bodies = await Promise.all(ids.map(async (id) => {
         const cached = entry.workBodies.get(id);
         if (cached !== undefined) return [id, cached] as const;
-        const body = await this.operations.historyGet({ node_id: id, limit_bytes: 1024 }, { cancel: entry.cancel });
+        if (!valid()) return [id, undefined] as const;
+        const body = await this.operations.historyGet({ node_id: id, limit_bytes: 1024 }, { cancel });
         return [id, body.ok && body.value.kind === "user" ? body.value.text : undefined] as const;
       }));
-      if (entry.closed) return;
+      if (!valid()) return;
       entry.workBodies = new Map(bodies.filter((pair): pair is readonly [string, string] => pair[1] !== undefined));
       value = { ...value, items: value.items.map((item) => {
         const text = item.message_id ? entry.workBodies.get(item.message_id) : undefined;
         return text !== undefined ? { ...item, excerpt: text } : item;
       }) };
     }
+    if (!valid()) return;
     const cur = entry.work.value;
     if (entry.workRefs === 0 || entry.paused || (!out.ok && out.error.kind === "cancelled")) {
       entry.work.value = { ...cur, loading: false };
       return;
     }
-    entry.work.value = out.ok
-      ? { value: value!, loading: false, stale: false, error: undefined }
-      : { ...cur, loading: false, stale: cur.value !== undefined, error: out.error };
+    // Late exact identity evidence must fence retained legacy aggregates too, not only new history.
+    const toolIds = new Set(out.ok ? value!.items.filter(a => a.kind === "attempt" && a.thread_id === entry.id && a.response_nodes_truncated === false && Array.isArray(a.response_nodes)).flatMap(a => a.response_nodes!.filter(ref => ref?.kind === "function_call" && typeof ref.node_id === "string").map(ref => ref.node_id)) : []);
+    let requalify = false;
+    batch(() => {
+      const history = entry.history.peek();
+      const items = history.items.map(item => {
+        if (item.kind !== "assistant_response" || !item.node_id || !toolIds.has(item.node_id) || item.assistant_publication?.state === "tool" || item.assistant_publication?.state === "unknown") return item;
+        requalify = true; return { ...item, assistant_publication: { state: "unknown" as const } };
+      });
+      if (requalify) {
+        ++entry.historyGen; // In-flight history built before this evidence cannot restore raw legacy facts.
+        entry.history.value = { ...history, items };
+      }
+      entry.work.value = out.ok
+        ? { value: value!, loading: false, stale: false, error: undefined }
+        : { ...cur, loading: false, stale: cur.value !== undefined, error: out.error };
+    });
+    if (valid() && requalify) void this.refresher.request(`history:${entry.id}`);
   }
 
   private async qualifyPublication(entry: ThreadEntry, items: HistoryItem[], cancel: Cancel, valid: () => boolean): Promise<void> {
@@ -770,6 +792,7 @@ export class ShellboyData {
           if (!refs.ok) { item.assistant_publication = { state: "unknown", error: true }; continue; }
           // A complete candidate does not establish non-competing coverage of the observed scope.
           const scopeIncomplete = incompleteResponseScope(refs.value.items, entry.id);
+          if (scopeIncomplete) continue;
           const candidates = refs.value.items.filter(attempt => attempt.kind === "attempt" && attempt.thread_id === entry.id && typeof attempt.attempt_id === "string" && attempt.attempt_id.trim() !== "" && typeof attempt.turn_id === "string" && attempt.turn_id.trim() !== "" && attempt.response_nodes_truncated === false && Array.isArray(attempt.response_nodes) && attempt.response_nodes.length <= 64 && attempt.response_nodes.some(ref => ref?.node_id === item.node_id));
           if (refs.value.next_cursor || refs.value.items.some(other => other.response_nodes != null && !Array.isArray(other.response_nodes)) || candidates.length !== 1) continue;
           const attempt = candidates[0]!;
@@ -777,11 +800,11 @@ export class ShellboyData {
           entry.live.claimPublication(item.node_id!, attempt.attempt_id!);
           const all = attempt.response_nodes!;
           if (!["completed", "failed", "incomplete", "cancelled"].includes(attempt.state)) continue;
-          if (all.some(ref => !ref || typeof ref.node_id !== "string" || !Number.isSafeInteger(ref.ordinal) || ref.ordinal < 0 || typeof ref.kind !== "string")) continue;
+          if (all.some(ref => !ref || typeof ref.node_id !== "string" || !ref.node_id || !Number.isSafeInteger(ref.ordinal) || ref.ordinal < 0 || !["message", "function_call"].includes(ref.kind) || ref.kind === "message" && ref.phase !== null && ref.phase !== "commentary" && ref.phase !== "final_answer")) continue;
           if (new Set(all.map(ref => ref.ordinal)).size !== all.length) continue;
           const nodeRefs = all.filter(ref => ref.node_id === item.node_id);
           const tool = nodeRefs.find(ref => ref.kind === "function_call");
-          if (tool) item.assistant_publication = { state: "tool", attemptId: attempt.attempt_id!, ordinal: tool.ordinal, kind: tool.kind };
+          if (tool && nodeRefs.length === 1) item.assistant_publication = { state: "tool", attemptId: attempt.attempt_id!, ordinal: tool.ordinal, kind: tool.kind };
           else if (!scopeIncomplete && nodeRefs.length === 1 && nodeRefs[0]!.kind === "message" && nodeRefs[0]!.phase === "final_answer") item.assistant_publication = { state: "message", attemptId: attempt.attempt_id!, ordinal: nodeRefs[0]!.ordinal, kind: "message" };
         }
       } finally { this.publicationRead = false; }
