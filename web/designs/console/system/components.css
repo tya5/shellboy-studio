@@ -500,3 +500,12 @@ a{color:var(--accent)}
 
 /* Sender IDs remain complete on narrow screens; titles and labels are not identity. */
 .sender-id { overflow-wrap: anywhere; }
+
+/* Keep activity and tool details on deliberate separate lines without truncating identity. */
+.conversation-status{display:grid;grid-template-columns:24px minmax(0,1fr);align-items:start;column-gap:var(--space-8);white-space:normal}
+.conversation-status-copy{min-width:0}
+.conversation-status-heading,.conversation-status-detail{display:flex;align-items:baseline;flex-wrap:wrap;gap:var(--space-4) var(--space-8)}
+.conversation-status-heading{min-height:1.5em}
+.conversation-status-detail{min-height:1.5em}
+.conversation-status-tool{min-width:0;overflow-wrap:anywhere}
+.conversation-status-elapsed{font-variant-numeric:tabular-nums;white-space:nowrap}

@@ -43,6 +43,9 @@ const en = {
   "threads.close": "Close thread list",
   "tools.group": "{n} tools, {nonzero} exited with an error",
   "tools.count": "{n} tools",
+  "tools.count.one": "{n} tool",
+  "tools.group.one": "{n} tool, {nonzero} exited with an error",
+  "work.openDetails": "Work details",
   "tools.compacted": "{n} compacted",
   "tools.nonzero": "{n} exited with an error",
   "tools.active": "Running: {command}",
@@ -1032,6 +1035,9 @@ const ja: Record<MessageKey, string> = {
   "threads.close": "スレッド一覧を閉じる",
   "tools.group": "ツール {n}件、うちエラー終了 {nonzero}件",
   "tools.count": "ツール {n}件",
+  "tools.count.one": "ツール {n}件",
+  "tools.group.one": "ツール {n}件、うちエラー終了 {nonzero}件",
+  "work.openDetails": "作業の詳細",
   "tools.compacted": "圧縮済み {n}件",
   "tools.nonzero": "エラー終了 {n}件",
   "tools.active": "実行中: {command}",
@@ -1988,7 +1994,8 @@ export type Translate = (key: MessageKey, params?: Record<string, string | numbe
 export function translator(lang: Lang): Translate {
   const table = MESSAGES[lang];
   return (key, params) => {
-    const text = table[key];
+    const selected = params?.n === 1 && (key === "tools.count" || key === "tools.group") ? `${key}.one` as MessageKey : key;
+    const text = table[selected];
     return params ? text.replace(/\{(\w+)\}/g, (m, name: string) => (name in params ? String(params[name]) : m)) : text;
   };
 }

@@ -35,8 +35,11 @@ function ConversationStatus({ model }: { model: AppModel }) {
   if (!status) return null;
   const running = work.running[0];
   const start = running?.startedAt ? parseTime(running.startedAt) : undefined;
-  return <div class="work-row conversation-status" role="status"><img class="character-status" src={characterAssets[statusCharacter(status)]} alt="" /><span>{status === "running" && row?.summary.activity ? activityLabel(model.lang.value, row.summary.activity) : statusLabel(t, status)}</span>
-    {running ? <span>{running.label} {work.running.length > 1 ? t("work.runningCount", { n: work.running.length }) : ""} {start === undefined ? "" : formatDuration(model.now.value - start)}</span> : null}
+  return <div class="work-row conversation-status" role="status"><img class="character-status" src={characterAssets[statusCharacter(status)]} alt="" />
+    <div class="conversation-status-copy">
+      <div class="conversation-status-heading"><span class="conversation-status-activity">{status === "running" && row?.summary.activity ? activityLabel(model.lang.value, row.summary.activity) : statusLabel(t, status)}</span>{work.running.length ? <span class="caption muted">{t("work.runningCount", { n: work.running.length })}</span> : null}</div>
+      {running ? <div class="conversation-status-detail"><span class="conversation-status-tool">{running.label}</span>{start === undefined ? null : <span class="conversation-status-elapsed muted">{formatDuration(model.now.value - start)}</span>}</div> : null}
+    </div>
     {status === "recovery" ? <><span>{model.recovery.value?.message ?? model.recovery.value?.hint}</span>{model.canRetry.value ? <Button onClick={() => void model.retry()}>{t("action.retry")}</Button> : null}</> : null}
   </div>;
 }
@@ -346,7 +349,7 @@ export function Conversation({ model }: { model: AppModel }) {
               {t("composer.unconfirmed")}
             </Notice>
           ) : null}
-          {(model.threadReplies.value.length || model.work.value.running.length || model.work.value.pending.length || model.work.value.partial) ? <div class="work-strip"><Button onClick={() => setSheetOpen(true)}>{[model.threadReplies.value.length ? `${t("work.replies")} ${model.threadReplies.value.length}` : "", model.work.value.running.length ? t("work.runningCount", { n: model.work.value.running.length }) : "", model.work.value.pending.length ? `${t("work.pending")} ${model.work.value.pending.length}` : ""].filter(Boolean).join(", ")}{model.work.value.partial ? ` ${t("work.partial")}` : ""}</Button></div> : null}
+          {(model.threadReplies.value.length || model.work.value.running.length || model.work.value.pending.length || model.work.value.partial) ? <div class="work-strip"><Button onClick={() => setSheetOpen(true)}>{[t("work.openDetails"), model.threadReplies.value.length ? `${t("work.replies")} ${model.threadReplies.value.length}` : "", model.work.value.pending.length ? `${t("work.pending")} ${model.work.value.pending.length}` : ""].filter(Boolean).join(", ")}{model.work.value.partial ? ` ${t("work.partial")}` : ""}</Button></div> : null}
           <Composer
             label={t("composer.label")}
             placeholder={t("composer.placeholder")}
