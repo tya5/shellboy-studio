@@ -41,7 +41,7 @@ Console is the default. Light and Terminal replace colour tokens only, and Termi
 
 ## Iconography
 
-Line icons at 18px, stroke 1.7, round joins, `currentColor`. No logo file exists yet, so the source mock draws a simple robot mark inline: treat it as a placeholder until the project has a real mark.
+Line icons at 18px, stroke 1.7, round joins, `currentColor`. The sidebar uses the approved inline `BrandLogo` silhouette and generated theme tokens. OS-adaptive SVG favicon and fixed ICO/apple/PWA fallbacks are separate browser/install assets; see `components/BrandLogo/README.md`.
 
 ## Keeping several designs
 

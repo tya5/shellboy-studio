@@ -29,3 +29,8 @@ t.send = (frame) => { const ok = send(frame); if (frame.t === 'call') queueMicro
 const prefs = signal<Prefs>({ design: 'console', theme: params.get('theme') === 'light' ? 'light' : params.get('theme') === 'terminal' ? 'terminal' : 'console', lang: 'en', monitorView: 'cards', weights: { cached: 0.1, output: 5 } });
 effect(() => { document.documentElement.dataset.ds = prefs.value.theme; });
 mount(document.getElementById('app')!, { model, designs: DESIGNS, prefs, setPrefs: (change) => { prefs.value = { ...prefs.value, ...change }; }, submitToken: async () => true });
+
+// Synthetic-only theme control; production App preferences still use the existing settings surface.
+(window as unknown as { setFixtureTheme: (theme: 'console' | 'light' | 'terminal') => void }).setFixtureTheme = theme => {
+  prefs.value = { ...prefs.value, theme };
+};
