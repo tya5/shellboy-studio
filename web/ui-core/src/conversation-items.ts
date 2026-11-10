@@ -40,7 +40,7 @@ export interface WorkDisplayMetadata {
   readonly nodeKind?: string;
   readonly createdAt?: string;
   readonly publicState?: string;
-  readonly shells: readonly Readonly<{ execution_id: string; command_excerpt?: string; state?: string; exit_code?: number | null }>[];
+  readonly shells: readonly Readonly<{ execution_id: string; description?: string; command_excerpt?: string; state?: string; exit_code?: number | null }>[];
   readonly receipt?: TerminalPresence;
 }
 const displayMetadata = new WeakMap<object, WorkDisplayMetadata>();
@@ -58,6 +58,30 @@ function preserveDisplayMetadata(from: NormalizedSavedItem, to: NormalizedSavedI
   if (facts && displayIdentity.get(from) === metadataIdentity(from) && metadataIdentity(from) === metadataIdentity(to)
     && facts.scopeKey === JSON.stringify(to.keyScope ?? [])) issueDisplayMetadata(to, facts);
 }
+/** Scope only issuer-owned Work facts; saved/body facts must remain untouched. */
+export function scopeIssuedWorkFacts(items: readonly NormalizedSavedItem[], keyScope: readonly string[]): readonly NormalizedSavedItem[] | undefined {
+  if (!keyScope.length || keyScope.some(part => typeof part !== "string" || !part.length)) return undefined;
+  const scope = Object.freeze([...keyScope]), scopeKey = JSON.stringify(scope);
+  const captured = items.map(source => ({ source, facts: displayMetadata.get(source), identity: metadataIdentity(source) }));
+  for (const { source, facts, identity } of captured) {
+    if (!facts || displayIdentity.get(source) !== identity || facts.scopeKey !== JSON.stringify(source.keyScope ?? [])) return undefined;
+    if (source.keyScope?.length) { if (facts.scopeKey !== scopeKey) return undefined; }
+    else if (!("domain" in source) || (source.domain !== "live" && source.domain !== "receipt")) return undefined;
+    if (facts.receipt && (!("domain" in source) || source.domain !== "receipt" || source.terminalPresence !== facts.receipt
+      || source.scope !== facts.receipt.scope || source.attemptId !== facts.receipt.attemptId)) return undefined;
+  }
+  const result = captured.map(({ source, facts }) => {
+    if (source.keyScope?.length) return source;
+    const copy = Object.freeze({ ...source, keyScope: scope });
+    // Check association with the scope field removed, before issuing the clone.
+    if (metadataIdentity({ ...copy, keyScope: source.keyScope }) !== metadataIdentity(source)) throw new Error("Changed Work association");
+    issueDisplayMetadata(copy, Object.freeze({ ...facts!, scopeKey }));
+    return copy;
+  });
+  if (captured.some(({ source, identity }) => identity !== metadataIdentity(source))) return undefined;
+  return Object.freeze(result);
+}
+
 /** Only facts issued by this normalizer for this exact scoped source object. */
 export function workDisplayMetadata(item: ProjectedSavedItem): WorkDisplayMetadata | undefined {
   const facts = displayMetadata.get(item.source);
@@ -334,7 +358,9 @@ function projectHistoryNodes(input: { readonly keyScope?: readonly string[]; rea
         segment.push(value);
       }
       if (metadata.status !== "known" || metadata.truncated || !metadata.items.length) {
-        segment.push({ nodeId: node.node_id, itemIdentity: node.node_id, identityDomain: "node", ...(input.revision !== undefined ? { windowRevision: input.revision } : {}), kind: "unavailable" });
+        const value: NormalizedSavedItem = { nodeId: node.node_id, itemIdentity: node.node_id, identityDomain: "node", ...(input.revision !== undefined ? { windowRevision: input.revision } : {}), ...(input.keyScope ? { keyScope: input.keyScope } : {}), kind: "unavailable" };
+        issueDisplayMetadata(value, Object.freeze({ scopeKey: JSON.stringify(value.keyScope ?? []), nodeKind: node.kind, shells: Object.freeze([]) }));
+        segment.push(value);
       }
       continue;
     }
@@ -344,6 +370,7 @@ function projectHistoryNodes(input: { readonly keyScope?: readonly string[]; rea
       if (ids.length > 64) return value;
       const shells = (node.executions ?? []).filter(shell => ids.includes(shell.execution_id)).map(shell => Object.freeze({
         execution_id: shell.execution_id, state: shell.state,
+        ...(shell.description !== undefined ? { description: shell.description } : {}),
         ...(shell.command_excerpt !== undefined ? { command_excerpt: shell.command_excerpt } : {}),
         ...((typeof shell.exit_code === "number" && Number.isFinite(shell.exit_code)) || shell.exit_code === null ? { exit_code: shell.exit_code } : {}) }));
       issueDisplayMetadata(value, Object.freeze({ scopeKey: JSON.stringify(value.keyScope ?? []),

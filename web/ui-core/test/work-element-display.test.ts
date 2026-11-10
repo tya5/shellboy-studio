@@ -73,3 +73,42 @@ it("changed receipt association cannot inherit the original display facts", () =
  const item = projectSavedItems(normalizeTerminalPresenceFacts([presence])).items[0]!;
  expect(workElementDisplay({ ...item, source: { ...item.source, keyScope: ["foreign"] } })).toBeUndefined();
 });
+it("exact execution selection preserves each command description and state without aggregate duplication", async () => {
+ const { workExecutionDisplay } = await import("../src/work-element-display");
+ const [row] = display([{ node_id: "n", kind: "assistant_response", items: [{ kind: "tool_call", item_identity: "c", execution_ids: ["a", "b"] }], executions: [
+ { execution_id: "a", command_excerpt: "first", description: "safe first", state: "exited", exit_code: 0 },
+ { execution_id: "b", command_excerpt: "second", description: "safe second", state: "running" }] }]);
+ expect(workExecutionDisplay(row!.item, "a")).toMatchObject({ contentLabel: { text: "first", context: expect.arrayContaining([{ name: "description", value: "safe first" }]) }, state: { value: "exited", exitCode: 0 } });
+ expect(workExecutionDisplay(row!.item, "b")).toMatchObject({ contentLabel: { text: "second" }, state: { value: "running" } });
+ expect(workExecutionDisplay(row!.item, "foreign")).toBeUndefined();
+});
+it("module scoping accepts only issued live/receipt and never arbitrary copies or unscoped saved facts", async () => {
+ const { scopeIssuedWorkFacts, normalizeLiveWorkFacts } = await import("../src/conversation-items");
+ const live = normalizeLiveWorkFacts({ scope: "t", items: [{ kind: "notification", id: "n", thread_id: "t", state: "pending" }] });
+ const scope = ["owner", "t"], scoped = scopeIssuedWorkFacts(live, scope)!;
+ expect(Object.isFrozen(scoped)).toBe(true); expect(Object.isFrozen(scoped[0]!.keyScope)).toBe(true); scope[0] = "changed";
+ expect(scoped[0]!.keyScope).toEqual(["owner", "t"]);
+ expect(scopeIssuedWorkFacts(scoped, ["owner", "t"])![0]).toBe(scoped[0]);
+ expect(scopeIssuedWorkFacts(scoped, ["foreign"])).toBeUndefined();
+ expect(scopeIssuedWorkFacts(live, [])).toBeUndefined(); expect(scopeIssuedWorkFacts(live, [""])).toBeUndefined();
+ expect(scopeIssuedWorkFacts([{ ...live[0]! }], ["s"])).toBeUndefined();
+ const saved = projectLegacyHistoryItems({ nodes: [{ node_id: "x", kind: "event" }] }).projection.items[0]!.source;
+ expect(scopeIssuedWorkFacts([saved], ["s"])).toBeUndefined();
+ expect(scopeIssuedWorkFacts([...live, { ...live[0]! }], ["s"])).toBeUndefined();
+ expect(workElementDisplay(projectSavedItems(scoped).items[0]!)).toBeDefined();
+});
+it("scoped receipt keeps the exact original presence and rejects altered association", async () => {
+ const { scopeIssuedWorkFacts } = await import("../src/conversation-items");
+ const p = { scope: "opaque", attemptId: "a", receipt: { scope: "opaque", attemptId: "a", nodeIds: ["n"], terminalState: "completed" as const }, phase: "pending" as const, reason: "canonical-pending" as const, answerAvailability: "unknown" as const };
+ const issued = normalizeTerminalPresenceFacts([p]); const scoped = scopeIssuedWorkFacts(issued, ["ui", "scope"])!;
+ const item = projectSavedItems(scoped).items[0]!;
+ expect(workElementDisplay(item)).toMatchObject({ state: { source: "client", value: "canonical-pending" } });
+ expect("domain" in item.source && item.source.domain === "receipt" && item.source.terminalPresence).toBe(p);
+ const source = issued[0]!;
+ if (!("domain" in source) || source.domain !== "receipt") throw new Error("Expected issued receipt");
+ expect(scopeIssuedWorkFacts([{ ...source, attemptId: "other" }], ["ui"])).toBeUndefined();
+});
+it("spill unavailable issuer emits display facts without hydrating original content", () => {
+ const [row] = display([{ node_id: "s", kind: "spill", spill_tools: { status: "unknown", items: [], truncated: false } }]);
+ expect(row!.value).toMatchObject({ contentLabel: { text: "Display content is unavailable" }, detailPolicy: "unavailable" });
+});

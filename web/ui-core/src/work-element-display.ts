@@ -9,6 +9,15 @@ export interface WorkElementDisplay {
 }
 /** Display facts are issued with normalized source objects, never joined in JSX. */
 export function workElementDisplay(item: ProjectedSavedItem): WorkElementDisplay | undefined {
+  return display(item);
+}
+/** Select only an execution already associated by this item's original issuer. */
+export function workExecutionDisplay(item: ProjectedSavedItem, executionId: string): WorkElementDisplay | undefined {
+  const facts = workDisplayMetadata(item);
+  if (!facts || !facts.shells.some(shell => shell.execution_id === executionId)) return undefined;
+  return display(item, executionId);
+}
+function display(item: ProjectedSavedItem, executionId?: string): WorkElementDisplay | undefined {
   const facts = workDisplayMetadata(item), c = item.classification;
   if (!facts || !c || c !== CANONICAL_CASES[c.id] || c.classification !== "work" || !("displayPolicy" in c)) return undefined;
   const source = item.source;
@@ -21,13 +30,16 @@ export function workElementDisplay(item: ProjectedSavedItem): WorkElementDisplay
   switch (c.displayPolicy) {
     case "associated-tool": {
       label = "Tool";
-      const shells = facts.shells;
+      const shells = executionId === undefined ? facts.shells : facts.shells.filter(shell => shell.execution_id === executionId);
       if (shells.length) {
         text = shells.map(shell => shell.command_excerpt?.trim() || "Execution content was not provided").join("; ");
         const first = shells[0]!;
         state = first.state ? { source: "wire", value: first.state, ...(first.exit_code !== undefined ? { exitCode: first.exit_code } : {}) } : null;
         detail = "existing-shell-output";
-        for (const shell of shells) context.push({ name: "execution_id", value: shell.execution_id });
+        for (const shell of shells) {
+          context.push({ name: "execution_id", value: shell.execution_id });
+          if (shell.description) context.push({ name: "description", value: shell.description });
+        }
       } else {
         text = source.kind === "tool" && source.compressed ? "Compressed; execution content was not provided" : "Execution content was not provided";
         if (source.kind === "tool" && source.callId) context.push({ name: "call_id", value: source.callId });

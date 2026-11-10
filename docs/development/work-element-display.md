@@ -36,3 +36,25 @@ as author artifacts, not product-red evidence. Normalizer clone metadata omissio
 was caught during development and corrected; full consumer/UI usage remains a
 separate gate. An unused adapter or passing DTO tests do not prove user-visible
 completion. No UI files, services, installed Core or user data are changed here.
+
+## Exact Execution And Scoped Work API
+
+workExecutionDisplay(item, executionId) selects ONLY that same item's issued shell
+association. Different executions retain distinct safe command/description/state/
+exit; missing membership is undefined. Aggregate display must not be copied onto
+each execution. Description is the existing public execution field, not raw args.
+
+scopeIssuedWorkFacts(items,keyScope) validates ALL sources before issuing ANY clone.
+Only issued unscoped live/receipt facts can gain UI keyScope; saved unscoped facts,
+foreign nonempty scope, empty scope and arbitrary copy all fail closed. Existing
+same-scoped sources retain identity. Array and new scope are frozen. Receipt scope
+is opaque authority and never parsed/rebound as UI keyScope. Fingerprints preserve
+source/execution/receipt associations across the module-owned transformation.
+
+D must scope ONLY issued live records/receipt facts. Already-scoped saved sources
+and projectOwnedHandoffFacts text/body retain their existing original source path;
+they must not be fed through this Work-only issuer. If scoping returns undefined,
+retain the previous coherent projection (including independent saved content): no
+spread fallback, fabricated display or dropping saved rows. No new read/current
+reference authority is conferred. Spill unavailable facts use the existing CASE
+and normalizer-issued metadata, without original-node hydration.
