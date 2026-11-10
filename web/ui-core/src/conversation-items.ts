@@ -13,6 +13,7 @@ export interface SavedItemIdentity {
 
 export interface LiveWorkIdentity {
   readonly domain: "live";
+  readonly namespace?: "work" | "handoff";
   readonly scope: string;
   readonly recordId: string;
   readonly nodeId?: never;
@@ -89,10 +90,10 @@ export function projectSavedItems(input: readonly NormalizedSavedItem[]): SavedI
   for (const source of input) {
     if (!("domain" in source) && (!source.nodeId || !source.itemIdentity || (source.revision === undefined && source.windowRevision === undefined))) throw new Error("Missing authoritative identity/proof");
     if ("domain" in source && (!source.scope || !source.recordId)) throw new Error("Missing live record identity");
-    const key = "domain" in source ? JSON.stringify(["live", source.scope, source.recordId]) : source.identityDomain === "node" ? JSON.stringify(["node", source.nodeId]) : JSON.stringify([source.nodeId, source.itemIdentity]);
+    const key = "domain" in source ? JSON.stringify(["live", source.namespace ?? "work", source.scope, source.recordId]) : source.identityDomain === "node" ? JSON.stringify(["node", source.nodeId]) : JSON.stringify([source.nodeId, source.itemIdentity]);
     if (seen.has(key)) throw new Error("Duplicate normalized saved item identity");
     seen.add(key);
-    const identity = "domain" in source ? { domain: "live" as const, scope: source.scope, recordId: source.recordId } : { ...(source.identityDomain ? { identityDomain: source.identityDomain } : {}), nodeId: source.nodeId, itemIdentity: source.itemIdentity, ...(source.revision !== undefined ? { revision: source.revision } : {}), ...(source.windowRevision !== undefined ? { windowRevision: source.windowRevision } : {}) };
+    const identity = "domain" in source ? { domain: "live" as const, namespace: source.namespace ?? "work", scope: source.scope, recordId: source.recordId } : { ...(source.identityDomain ? { identityDomain: source.identityDomain } : {}), nodeId: source.nodeId, itemIdentity: source.itemIdentity, ...(source.revision !== undefined ? { revision: source.revision } : {}), ...(source.windowRevision !== undefined ? { windowRevision: source.windowRevision } : {}) };
     let copy: NormalizedSavedItem;
     if (source.kind === "tool") {
       if (source.executionId !== undefined && !source.executionId) throw new Error("Empty execution identity");

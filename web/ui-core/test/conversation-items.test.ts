@@ -191,3 +191,13 @@ it("NEW FINAL live identities are explicit scoped records, not fabricated saved 
   expect(out.items[0]?.source).not.toHaveProperty("nodeId");
   expect(JSON.stringify(out)).not.toContain("not body");
 });
+
+it("NEW FINAL handoff presence is nontext Work in a distinct explicit namespace", () => {
+  const common = { domain: "live" as const, scope: "thread", recordId: "actual-record" };
+  const out = projectSavedItems([{ ...common, kind: "record" }, { ...common, namespace: "handoff", kind: "unknown" }]);
+  expect(out.items).toHaveLength(2);
+  expect(new Set(out.items.map(item => item.key)).size).toBe(2);
+  expect(out.workGroups).toHaveLength(1);
+  expect(out.sequence.map(row => row.kind)).toEqual(["work"]);
+  expect(out.items.every(item => !("text" in item.source))).toBe(true);
+});
