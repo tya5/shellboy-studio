@@ -1,0 +1,62 @@
+import { describe, expect, it } from "vitest";
+import { projectHistoryWindowItems, normalizeLiveWorkFacts } from "../src/conversation-items";
+import type { HistoryItem, HistorySavedItem } from "../../data/src/protocol";
+const text: HistorySavedItem = { kind: "text", item_identity: "body", text: "safe typed text", text_complete: true };
+const call: HistorySavedItem = { kind: "tool_call", item_identity: "call", execution_ids: ["execution"] };
+const reasoning: HistorySavedItem = { kind: "reasoning_unavailable", item_identity: "reason" };
+const rows: readonly { name: string; node: HistoryItem; kind: string; semantic: string }[] = [
+  { name: "01 user human", node: { kind: "user", provenance: { sender: { kind: "human" } }, items: [text] }, kind: "user", semantic: "conversation" },
+  { name: "02 user model", node: { kind: "user", provenance: { sender: { kind: "model" } }, items: [text] }, kind: "user", semantic: "conversation" },
+  { name: "03 user external_cli", node: { kind: "user", provenance: { sender: { kind: "external_cli" } }, items: [text] }, kind: "user", semantic: "conversation" },
+  { name: "04 user unknown sender", node: { kind: "user", provenance: { sender: { kind: "unknown" } }, items: [text] }, kind: "user", semantic: "conversation" },
+  { name: "05 assistant authoritative TEXT any phase", node: { kind: "assistant_response", phase: "arbitrary", items: [text] }, kind: "text", semantic: "conversation" },
+  { name: "06 assistant tool_call function_call", node: { kind: "assistant_response", items: [call] }, kind: "tool", semantic: "work" },
+  { name: "07 assistant reasoning readable contract absent", node: { kind: "assistant_response", items: [reasoning] }, kind: "reasoning_unavailable", semantic: "work" },
+  { name: "08 encrypted opaque empty reasoning", node: { kind: "reasoning_unavailable", items: [] }, kind: "reasoning_unavailable", semantic: "work" },
+  { name: "09 tool_result ordinary typed text is tool not unavailable", node: { kind: "tool_result", items: [text], executions: [{ execution_id: "execution" }] }, kind: "tool", semantic: "work" },
+  { name: "10 spill", node: { kind: "spill", items: [], spill_tools: { status: "known", truncated: false, items: [{ call_id: "call", execution_id: "execution" }] } }, kind: "tool", semantic: "work" },
+  { name: "11 summary", node: { kind: "summary", items: [text] }, kind: "summary", semantic: "conversation" },
+  { name: "12 event", node: { kind: "event", items: [text] }, kind: "record", semantic: "work" },
+  { name: "13 context context_note", node: { kind: "context_note", items: [text] }, kind: "record", semantic: "work" },
+  { name: "14 model_stream_observation observation", node: { kind: "model_stream_observation", items: [text] }, kind: "record", semantic: "work" },
+  { name: "15 message notification record", node: { kind: "message", items: [text] }, kind: "record", semantic: "work" },
+  { name: "16 interruption_details", node: { kind: "interruption_details", items: [text] }, kind: "interruption", semantic: "work" },
+  { name: "17 interruption_context", node: { kind: "interruption_context", items: [text] }, kind: "interruption", semantic: "work" },
+  { name: "18 incomplete_response", node: { kind: "incomplete_response", items: [text] }, kind: "interruption", semantic: "work" },
+  { name: "19 interrupted_wait", node: { kind: "interrupted_wait", items: [text] }, kind: "interruption", semantic: "work" },
+  { name: "20 legacy assistant without safe text authority", node: { kind: "assistant", excerpt: "private aggregate" }, kind: "record", semantic: "work" },
+  { name: "21 genuine unavailable actual reason", node: { kind: "assistant_response", items: null, items_unavailable_reason: "response_budget" }, kind: "unavailable", semantic: "work" },
+  { name: "22 unknown bookkeeping internal", node: { kind: "future-internal", items: [text] }, kind: "record", semantic: "work" },
+  { name: "23 definitively empty ordinary", node: { kind: "assistant_response", items: [] }, kind: "ordinaryEmpty", semantic: "conversation" },
+];
+describe("FINAL Section2 canonical node/item matrix", () => {
+  for (const row of rows) it(row.name, () => {
+    const out = projectHistoryWindowItems({ keyScope: ["owner", "thread"], revision: 1, nodes: [{ node_id: "node", ...row.node }] });
+    expect(out.projection.items[0]?.source.kind).toBe(row.kind);
+    expect(out.projection.sequence?.[0]?.kind).toBe(row.semantic);
+    if (row.semantic === "work") expect(out.projection.workGroups).toHaveLength(1);
+    if (row.kind === "interruption") expect(out.projection.workGroups?.[0]?.interrupted).toBe(true);
+    if (!["tool"].includes(row.kind)) expect(out.projection.workGroups?.[0]?.toolItemKeys ?? []).toEqual([]);
+    expect(JSON.stringify(out.projection)).not.toContain("private aggregate");
+    if (row.kind === "unavailable") expect(out.projection.items[0]?.source).toMatchObject({ reason: "response_budget" });
+  });
+  it("24 pending accepted held INPUT is separate not Work", () => {
+    expect(normalizeLiveWorkFacts({ scope: "thread", items: [{ id: "pending", kind: "message", state: "held", thread_id: "thread", message_id: "message" }] })).toEqual([]);
+  });
+  it("matrix aliases and arbitrary phase never create a second classification", async () => {
+    const { classifySavedHistoryFact } = await import("../src/conversation-items");
+    for (const kind of ["event", "context", "context_note", "model_stream_observation", "observation", "message", "notification", "unknown", "bookkeeping", "future"]) {
+      expect(classifySavedHistoryFact(kind, "text")).toBe("record");
+      expect(classifySavedHistoryFact(kind, "tool_call")).toBe("record");
+    }
+    for (const kind of ["assistant_response", "assistant"]) {
+      expect(classifySavedHistoryFact(kind, "text")).toBe("text");
+      expect(classifySavedHistoryFact(kind, "legacy")).toBe("record");
+    }
+  });
+  it("BUG3 legacy ordinary tool remains tool without inventing unavailable body or successful execution", () => {
+    const out = projectHistoryWindowItems({ revision: 1, nodes: [{ node_id: "tool", kind: "tool_result", excerpt: "do not parse aggregate", executions: [{ execution_id: "execution" }] }] });
+    expect(out.projection.items[0]?.source).toMatchObject({ kind: "tool", executionIds: ["execution"] });
+    expect(JSON.stringify(out.projection)).not.toContain("do not parse aggregate");
+  });
+});

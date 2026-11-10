@@ -105,7 +105,7 @@ it("FINAL keeps empty ordinary presence without exposing reasoning or inventing 
     { node_id: "empty-text", kind: "assistant_response", items: [{ kind: "text", item_identity: "t", text: "", text_complete: true }] },
     { node_id: "deferred", kind: "assistant_response", items: null, items_unavailable_reason: "response_budget", selection: { ordinal: 4 } },
   ] });
-  expect(out.nodes.map(n => n.emptyOrdinary)).toEqual([true, true, false, false, false]);
+  expect(out.nodes.map(n => n.emptyOrdinary)).toEqual([true, false, false, false, false]);
   expect(out.projection.items.map(i => i.source.nodeId)).toEqual(["user", "model", "event", "empty-text", "deferred"]);
   expect(out.retryFrom).toEqual({ ordinal: 4, expect_node_id: "deferred" });
 });
@@ -264,7 +264,7 @@ it("F883 spill call-only IDs remain usable while missing/truncated association s
 });
 
 it("F883 actually selected original and spill dedup preserves compressed badge without remapping provenance", () => {
-  const out = projectHistoryWindowItems({ keyScope: ["owner", "thread"], revision: 1, nodes: [{ node_id: "original", items: [{ kind: "tool_call", item_identity: "call", execution_ids: ["exec"] }] }, { node_id: "spill", kind: "spill", items: [], spill_tools: { status: "known", truncated: false, items: [{ call_id: "call", execution_id: "exec", original_node_id: "original" }] } }] });
+  const out = projectHistoryWindowItems({ keyScope: ["owner", "thread"], revision: 1, nodes: [{ node_id: "original", kind: "assistant_response", items: [{ kind: "tool_call", item_identity: "call", execution_ids: ["exec"] }] }, { node_id: "spill", kind: "spill", items: [], spill_tools: { status: "known", truncated: false, items: [{ call_id: "call", execution_id: "exec", original_node_id: "original" }] } }] });
   expect(out.projection.items).toHaveLength(1);
   expect(out.projection.items[0]?.source).toMatchObject({ nodeId: "original", kind: "tool", compressed: true });
 });
@@ -286,7 +286,7 @@ it("legacy canonical node presence needs no invented revision but grants no body
 });
 
 it("USER970c1 node kind outranks developer input text: event/context stay Work records", () => {
-  for (const kind of ["event", "context", "other-internal", "tool_result", undefined]) {
+  for (const kind of ["event", "context", "other-internal", undefined]) {
     const out = projectHistoryWindowItems({ revision: 1, nodes: [{ node_id: kind ?? "missing-kind", kind, provenance: { sender: { kind: "developer" } }, items: [{ kind: "text", item_identity: "input", text: "developer input_text", text_complete: true }] }] });
     expect(out.projection.items[0]?.source.kind).toBe("record");
     expect(out.projection.sequence?.map(row => row.kind)).toEqual(["work"]);
