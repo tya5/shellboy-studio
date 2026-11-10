@@ -13,7 +13,7 @@ export const CANONICAL_CASES = {
   toolResult: { id: "toolResult", normalizedKind: "tool", classification: "work", headingCategory: "Tools", render: "tool", keyPolicy: "association", openPolicy: "closed", toolPolicy: "explicit-association" },
   spill: { id: "spill", normalizedKind: "tool", classification: "work", headingCategory: "Tools", render: "compressed-tool", keyPolicy: "association", openPolicy: "closed", toolPolicy: "explicit-association" },
   summary: { id: "summary", normalizedKind: "summary", classification: "conversation", headingCategory: null, render: "summary", keyPolicy: "canonical", openPolicy: "closed", toolPolicy: "none" },
-  event: { id: "event", normalizedKind: "record", classification: "work", headingCategory: "Notifications", render: "state-change", keyPolicy: "canonical", openPolicy: "closed", toolPolicy: "none" },
+  event: { id: "event", normalizedKind: "record", classification: "work", headingCategory: "Notifications", render: "notification", keyPolicy: "canonical", openPolicy: "closed", toolPolicy: "none" },
   context: { id: "context", normalizedKind: "record", classification: "work", headingCategory: "Notifications", render: "state-change", keyPolicy: "canonical", openPolicy: "closed", toolPolicy: "none" },
   observation: { id: "observation", normalizedKind: "record", classification: "work", headingCategory: "Notifications", render: "stream-change", keyPolicy: "canonical", openPolicy: "closed", toolPolicy: "none" },
   notification: { id: "notification", normalizedKind: "record", classification: "work", headingCategory: "Notifications", render: "notification", keyPolicy: "canonical", openPolicy: "closed", toolPolicy: "none" },

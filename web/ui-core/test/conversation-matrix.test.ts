@@ -136,7 +136,7 @@ const caseColumns = [
   ["toolResult", "work", "Tools", "tool", "association"],
   ["spill", "work", "Tools", "compressed-tool", "association"],
   ["summary", "conversation", null, "summary", "canonical"],
-  ["event", "work", "Notifications", "state-change", "canonical"],
+  ["event", "work", "Notifications", "notification", "canonical"],
   ["context", "work", "Notifications", "state-change", "canonical"],
   ["observation", "work", "Notifications", "stream-change", "canonical"],
   ["notification", "work", "Notifications", "notification", "canonical"],
