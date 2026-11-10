@@ -37,21 +37,21 @@ describe("internal saved ordered-item projection (no wire adapter)", () => {
     expect(out.items[1]?.source).toEqual(text("A", "empty", ""));
     expect(out.toolSummaries.map(s => s.executionIds)).toEqual([["x"], ["y"]]);
   });
-  it.todo("reasoning-without-text transparency awaits the approved #296 short contract");
-  it.todo("unavailable preserves partition uncertainty, not a confirmed body break or tool join");
+
+
   it.todo("same-revision evidence monotonicity and new-revision authorization require adapter proof");
 });
 
 it("materializes immutable data and preserves unknown partitions without reasoning text", () => {
   const source = [tool("A", "x", "x"), { nodeId: "A", itemIdentity: "r", revision: "r1", kind: "reasoning", text: "must not leak" }, tool("B", "y", "y"), { nodeId: "B", itemIdentity: "u", revision: "r1", kind: "unavailable" }, tool("C", "z", "z")] as NormalizedSavedItem[];
   const out = projectSavedItems(source);
-  expect(out.toolSummaries.map(s => s.executionIds)).toEqual([["x"], ["y"], ["z"]]);
-  expect(out.partitionUnknownKeys).toEqual([out.items[1]!.key, out.items[3]!.key]);
+  expect(out.toolSummaries.map(s => s.executionIds)).toEqual([["x", "y"], ["z"]]);
+  expect(out.partitionUnknownKeys).toEqual([out.items[2]!.key]);
   expect(JSON.stringify(out)).not.toContain("must not leak");
   expect(Object.isFrozen(out)).toBe(true);
   expect(Object.isFrozen(out.items[0]?.source)).toBe(true);
   source.splice(0);
-  expect(out.items).toHaveLength(5);
+  expect(out.items).toHaveLength(4);
 });
 it("rejects absent or duplicate authority instead of inventing a key", () => {
   expect(() => projectSavedItems([text("", "x", "value")])).toThrow();
@@ -63,4 +63,18 @@ it("keeps identity tuples unambiguous and renders execution only once across tex
   expect(new Set(out.items.map(i => i.key)).size).toBe(out.items.length);
   expect(out.toolSummaries.map(s => s.executionIds)).toEqual([["exec"]]);
   expect(out.items.filter(i => i.source.kind === "text")).toHaveLength(3);
+});
+
+it("v3 keeps contentless reasoning transparent and unknown as a barrier", () => {
+  const out = projectSavedItems([tool("A", "a", "a"), { nodeId: "A", itemIdentity: "r", revision: "r1", kind: "reasoning" }, tool("B", "b", "b"), { nodeId: "B", itemIdentity: "u", revision: "r1", kind: "unavailable" }, tool("C", "c", "c")]);
+  expect(out.toolSummaries.map(s => s.executionIds)).toEqual([["a", "b"], ["c"]]);
+  expect(out.items.some(i => i.source.kind === "reasoning")).toBe(false);
+  expect(out.partitionUnknownKeys).toEqual([out.items.find(i => i.source.kind === "unavailable")!.key]);
+});
+
+it("v3 explicit reasoning_unavailable is transparent and unknown never fabricates text", () => {
+  const out = projectSavedItems([tool("A", "a", "a"), { nodeId: "A", itemIdentity: "r", revision: "r1", kind: "reasoning_unavailable" }, tool("B", "b", "b"), { nodeId: "B", itemIdentity: "u", revision: "r1", kind: "unknown" }, text("C", "empty", ""), tool("C", "c", "c")]);
+  expect(out.toolSummaries.map(s => s.executionIds)).toEqual([["a", "b"], ["c"]]);
+  expect(out.partitionUnknownKeys).toEqual([out.items.find(i => i.source.kind === "unknown")!.key]);
+  expect(out.items.some(i => i.source.kind === "reasoning_unavailable")).toBe(false);
 });
