@@ -159,6 +159,7 @@ export class Handoff {
   }
   transfer(attemptId: string, accept: (record: HandoffRecord, release: (reason: 'return' | 'end') => void) => boolean): boolean {
     const h = this.held.find(h => h.attemptId === attemptId);
+    if (h?.attemptCapture) return this.transferAttempt(h.attemptCapture.original, h.attemptCapture.proof, accept);
     if (!h || h.transferring || h.record.status !== 'ready' || !h.record.proof || h.record.transferred) return false;
     const epoch = this.lifetimeValue;
     const moved = Object.freeze({ ...h.record, transferred: true });
