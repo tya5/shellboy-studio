@@ -199,6 +199,22 @@ describe("Conversation live text", () => {
     model.dispose();
   });
 
+  it.each(['running', 'completed'] as const)('renders one authoritative conversation status in the accepted window (%s)', async status => {
+    const owner = new WindowOwner(7);
+    const { model } = await fixtureModel({ capabilities: ['history.window'], configure: db => {
+      const base = db.answer.bind(db);
+      db.threads.lead = { ...db.threads.lead!, summary: { ...db.threads.lead!.summary, status } };
+      db.answer = call => call.command === 'history.window' ? owner.answer(call) : base(call);
+    } });
+    const el = draw(model);
+    await act(async () => flushPromises(12));
+    const statuses = [...el.querySelectorAll('.conversation-status')];
+    expect(statuses).toHaveLength(1);
+    expect(statuses[0]!.getAttribute('role')).toBe('status');
+    expect(el.querySelectorAll('.work-strip')).toHaveLength(1);
+    model.dispose();
+  });
+
   it("keeps the live answer before a later human row in the windowed reader", async () => {
     const owner = new WindowOwner(8);
     owner.decorate = (i, item) => i === 8 ? { ...item, kind: "user", excerpt: "Window human" } : item;
