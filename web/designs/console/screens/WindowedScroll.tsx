@@ -4,6 +4,7 @@ import { useLayoutEffect, useRef } from "preact/hooks";
 import { projectConversation, type AppModel, type ConversationRow, type ConversationWindow } from "../../../ui-core/src";
 import { Button, EmptyState, LoadingRows, Notice } from "../system/components";
 
+import { CurrentScrollSync, type ScrollViewPort } from "./scrollTransaction";
 import { HeadingAnchor, ReadingAnchor, ScrollIntent } from "./scrollIntent";
 
 export function heldRange(visible: { first: number; last: number }, total: number, held: (index: number) => boolean): { first: number; last: number } {
@@ -13,7 +14,7 @@ export function heldRange(visible: { first: number; last: number }, total: numbe
   return range;
 }
 
-export function WindowedScroll({ model, win, renderRow, live, liveBoundary, statusLine }: { model: AppModel; win: ConversationWindow; renderRow: (row: ConversationRow) => VNode; live: ComponentChildren; liveBoundary?: number; statusLine?: ComponentChildren }) {
+export function WindowedScroll({ model, win, renderRow, live, liveBoundary, statusLine, scrollPort }: { model: AppModel; win: ConversationWindow; renderRow: (row: ConversationRow) => VNode; live: ComponentChildren; liveBoundary?: number; statusLine?: ComponentChildren; scrollPort?: ScrollViewPort<object> }) {
   const t = model.t.value;
   win.version.value; // redraw on every change the window reports
   const status = win.status.value;
@@ -23,6 +24,8 @@ export function WindowedScroll({ model, win, renderRow, live, liveBoundary, stat
   const visible = win.renderRange();
   const range = visible && heldRange(visible, win.total, (index) => win.itemAt(index) !== undefined);
   const intent = useRef(new ScrollIntent());
+  const writer = useRef(new CurrentScrollSync());
+  useLayoutEffect(() => () => { writer.current.dispose(); headingAnchor.current.clear(); }, []);
   const headingAnchor = useRef(new HeadingAnchor());
   const touchY = useRef<number | undefined>(undefined);
   const readingAnchor = useRef(new ReadingAnchor());
@@ -36,9 +39,40 @@ export function WindowedScroll({ model, win, renderRow, live, liveBoundary, stat
   const sync = () => {
     const box = el.current;
     if (!box || win.status.peek() === "loading") return;
-    const start = rowOrigin(box);
-    if (win.pendingNavigation) {
+    let start = 0;
+    if (!scrollPort) start = rowOrigin(box);
+    if (!scrollPort && win.pendingNavigation) {
       win.view(box.scrollTop - start, box.clientHeight, intent.current.following);
+      return;
+    }
+    if (scrollPort) {
+      writer.current.run(scrollPort, {
+        measure: () => {
+          start = rowOrigin(box);
+          const changes: [number, number][] = [];
+          for (const child of box.querySelectorAll<HTMLElement>("[data-o]"))
+            changes.push([Number(child.dataset.o), child.getBoundingClientRect().height]);
+          if (changes.length) win.measure(changes);
+        },
+        plan: (_ref, request) => {
+          const heading = headingAnchor.current.peek();
+          const delta = heading?.delta ?? readingAnchor.current.correction(box);
+          return {
+            consume: () => { if (heading) headingAnchor.current.consume(heading); },
+            write: () => {
+              const following = intent.current.scroll(box) && win.following.peek();
+              if (following) intent.current.program(box, box.scrollHeight);
+              else if (delta !== undefined) intent.current.program(box, box.scrollTop + delta);
+              else if (request) intent.current.program(box, request.target + start);
+              else if (origin.current !== undefined && start !== origin.current)
+                intent.current.program(box, box.scrollTop + start - origin.current);
+              origin.current = start;
+              win.view(box.scrollTop - start, box.clientHeight, intent.current.following);
+            },
+            capture: () => readingAnchor.current.capture(box),
+          };
+        },
+      });
       return;
     }
     const changes: [number, number][] = [];
