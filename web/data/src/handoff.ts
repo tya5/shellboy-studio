@@ -52,6 +52,7 @@ export class Handoff {
   private reads = MAX_HANDOFF_READS;
   private readonly discarded = signal<PreviewDiscardReason | undefined>(undefined);
   private publishing = false;
+  private publicationDirty = false;
   private readonly sig = signal<readonly HandoffRecord[]>([]);
   readonly records: ReadonlySignal<readonly HandoffRecord[]> = this.sig;
   private readonly overflowSig = signal(false);
@@ -224,8 +225,21 @@ export class Handoff {
     const h = this.held.find(h => h.attemptId === id); if (!h) return; h.record = fn(h.record); this.publish();
   }
   private publish(): void {
+    this.publicationDirty = true;
     if (this.publishing) return;
     this.publishing = true;
-    try { this.sig.value = this.held.map(h => h.record); } finally { this.publishing = false; }
+    try {
+      // Coalesce nested mutations without recursive notification or a queued task.
+      for (let pass = 0; pass < MAX_HANDOFF_RECORDS; pass++) {
+        this.publicationDirty = false;
+        const latest = this.held.map(h => h.record);
+        const current = this.sig.peek();
+        if (latest.length !== current.length || latest.some((record, i) => record !== current[i])) this.sig.value = latest;
+        if (!this.publicationDirty) return;
+      }
+      // A continuously mutating observer cannot keep old capture authority alive.
+      this.invalidate();
+      this.overflowSig.value = true;
+    } finally { this.publishing = false; }
   }
 }
