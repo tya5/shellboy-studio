@@ -20,6 +20,19 @@ import type {
 import { Refresher } from "./refresher";
 import type { Transport } from "./transport";
 
+/** Owned plain snapshot of a decoded bounded window; no UI-layer dependency. */
+function immutableWindow(value: HistoryWindowResult): HistoryWindowResult {
+  const copy = structuredClone(value);
+  const freeze = (value: unknown): void => {
+    if (value && typeof value === "object") {
+      for (const child of Object.values(value)) freeze(child);
+      Object.freeze(value);
+    }
+  };
+  freeze(copy);
+  return copy;
+}
+
 /** Threads watched at once. Equals the bridge's per-tab bound; beyond it `openThread` throws. */
 export const MAX_WATCHED_THREADS = 64;
 /** Default page size for list reads (the owner's own maximum applies). */
@@ -392,9 +405,11 @@ export class ShellboyData {
         });
         await this.qualifyPublication(e, next, cancel, valid);
         if (!valid()) return { ok: false, error: { kind: "cancelled", message: "publication owner changed" } };
-        if (baseline === undefined) e.publicationTail = Math.max(-1, out.value.total - 1);
-        e.publicationWindow = new Map(next.filter(item => item.node_id && item.assistant_publication).slice(0, 8).map(item => [item.node_id!, item.assistant_publication]));
-        return { ok: true, value: { ...out.value, items: next } };
+        const saved = immutableWindow({ ...out.value, items: next });
+        if (!valid()) return { ok: false, error: { kind: "cancelled", message: "window owner changed while materializing" } };
+        if (baseline === undefined) e.publicationTail = Math.max(-1, saved.total - 1);
+        e.publicationWindow = new Map(saved.items.filter(item => item.node_id && item.assistant_publication).slice(0, 8).map(item => [item.node_id!, item.assistant_publication]));
+        return { ok: true, value: saved };
       },
       cancelReads: () => { e.live.invalidate(); e.cancel.cancel(); },
       refresh: () => this.requestThread(threadId),
