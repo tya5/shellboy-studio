@@ -1,4 +1,6 @@
 // @vitest-environment happy-dom
+// @ts-expect-error Node-only test reader; the UI typecheck intentionally excludes Node types.
+import {readFileSync} from "node:fs";
 import {render} from 'preact';
 import {act} from 'preact/test-utils';
 import {expect,it} from 'vitest';
@@ -108,5 +110,42 @@ it('non-tool Work rows keep visible authorized content and the existing DS summa
   expect(host.textContent).not.toContain(f.model.t.value('work.thinking'));
   expect(host.querySelector('[data-internal-records] details')).toBeNull();
 
+ }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
+});
+
+for(const windowed of [false,true])it(`all actual Work member boundaries own one separator across nested tool and non-tool DOM window=${windowed}`,async()=>{
+ const f=await fixtureModel(),host=document.createElement('div');document.body.append(host);
+ const css=readFileSync('designs/console/system/components.css','utf8') as string;
+ const boundary='[data-work-group]>.step-group-list>[data-work-item-key]';
+ const toolReset=boundary+'>div>[data-execution-id]>.step:not(.step-group)';
+ const rule=(selector:string)=>css.split(selector+'{')[1]?.split('}')[0];
+ try{
+  const nodes=[{node_id:'mixed',kind:'assistant_response',items:[
+   {item_identity:'tool',kind:'tool_call' as const,execution_ids:['one','two']},
+   {item_identity:'reason',kind:'reasoning_unavailable' as const},
+   {item_identity:'problem',kind:'unavailable' as const,reason:'response_budget' as const},
+  ],executions:[{execution_id:'one',command_excerpt:'printf one',state:'exited'},{execution_id:'two',command_excerpt:'printf two',state:'exited'}]},
+  {node_id:'notification',kind:'event'}];
+  const projection=(windowed?projectHistoryWindowItems({nodes,revision:1}):projectLegacyHistoryItems({nodes})).projection;
+  const paint=()=>render(<SavedConversationItems model={f.model} nodes={nodes} projection={projection}/>,host);
+  await act(async()=>paint());
+  const group=host.querySelector<HTMLDetailsElement>('[data-work-group]')!;
+  const members=[...host.querySelectorAll('[data-work-item-key]')];expect(members).toHaveLength(4);
+  expect(host.querySelectorAll('[data-execution-id]>.step')).toHaveLength(0);
+  expect(host.querySelectorAll('[data-item-key]')).toHaveLength(4);
+  for(const open of [true,false,true]){
+   await act(async()=>{group.open=open;group.dispatchEvent(new Event('toggle'));paint();});
+   const tools=[...host.querySelectorAll<HTMLDetailsElement>('[data-execution-id]>.step')];expect(tools).toHaveLength(open?2:0);
+   for(const tool of tools){tool.open=open;tool.dispatchEvent(new Event('toggle'));}
+   expect(host.querySelectorAll(boundary)).toHaveLength(4);
+   for(const member of members)expect(member.matches(boundary)).toBe(true);
+   for(const tool of tools){expect(tool.matches(toolReset)).toBe(true);expect(tool.matches(boundary)).toBe(false);}
+   expect(rule(boundary)).toBe('border-top:1px solid var(--line)');
+   expect(rule(toolReset)).toBe('border:0;border-radius:0;background:transparent');
+   expect(rule(toolReset+'[open]')).toBe('border:0');
+   expect(group.open).toBe(open);expect([...host.querySelectorAll('[data-work-item-key]')]).toEqual(members);
+  }
+  expect(members[0]!.querySelectorAll('[data-execution-id]>.step')).toHaveLength(2);
+  expect(host.querySelector('[data-work-item-key] [data-work-item-key]')).toBeNull();
  }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
 });

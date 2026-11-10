@@ -107,9 +107,12 @@ a{color:var(--accent)}
 .step-group{overflow:hidden}
 .step-group-list>.step{border:0;border-top:1px solid var(--line);border-radius:0;background:transparent}
 .step-group-list>.step[open]{border-color:var(--line)}
-/* Work projection wraps tool rows; retain the original grouped-row separator. */
-[data-work-group]>.step-group-list>[data-work-item-key]>.step:not(.step-group){border:0;border-top:1px solid var(--line);border-radius:0;background:transparent}
-[data-work-group]>.step-group-list>[data-work-item-key]>.step:not(.step-group)[open]{border-color:var(--line)}
+/* One separator per normalized Work member, including the first. */
+[data-work-group]>.step-group-list>[data-work-item-key]{border-top:1px solid var(--line)}
+[data-work-group]>.step-group-list>[data-work-item-key]>.step:not(.step-group){border:0;border-radius:0;background:transparent}
+[data-work-group]>.step-group-list>[data-work-item-key]>.step:not(.step-group)[open]{border:0}
+[data-work-group]>.step-group-list>[data-work-item-key]>div>[data-execution-id]>.step:not(.step-group){border:0;border-radius:0;background:transparent}
+[data-work-group]>.step-group-list>[data-work-item-key]>div>[data-execution-id]>.step:not(.step-group)[open]{border:0}
 .step-group-list>.step>summary:hover,.step-group-list>.step>summary:focus-visible{background:var(--raised);border-radius:0}
 .step-group-list>.step>summary:focus-visible{outline:0}
 .step-group-list>.step>.log{margin:0 var(--space-12) var(--space-12) var(--space-24);border:0;border-radius:0}

@@ -192,13 +192,13 @@ it("compact Work rows use the same DS gutter and gap as tool summaries",()=>{
  expect(row).toContain("box-sizing:border-box");
 });
 
-it("wrapped Work tool rows retain the v0.1 separator instead of the standalone StepRow card", () => {
+it("Work container owns the v0.1 separator while inner tool rows retain the flat treatment", () => {
   const css = readFileSync(join(system, "components.css"), "utf8");
   const selector = "[data-work-group]>.step-group-list>[data-work-item-key]>.step:not(.step-group)";
   const rule = (name: string) => css.split(`${name}{`)[1]?.split("}")[0];
-  expect(rule(selector)).toBe(rule(".step-group-list>.step"));
-  expect(rule(selector)).toBe("border:0;border-top:1px solid var(--line);border-radius:0;background:transparent");
-  expect(rule(`${selector}[open]`)).toBe(rule(".step-group-list>.step[open]"));
+  expect(rule("[data-work-group]>.step-group-list>[data-work-item-key]")).toBe("border-top:1px solid var(--line)");
+  expect(rule(selector)).toBe("border:0;border-radius:0;background:transparent");
+  expect(rule(`${selector}[open]`)).toBe("border:0");
   expect(rule(".step")).toBe("border:1px solid var(--line);border-radius:var(--radius);background:var(--panel);min-width:0");
   expect(rule(".log.boxed")).toBe("border:1px solid var(--line);border-radius:var(--radius-s)");
 });
