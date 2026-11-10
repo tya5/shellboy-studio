@@ -12,7 +12,7 @@ import {App} from '../screens/App';
 
 const independent:HistoryItem={node_id:'independent',kind:'user',selection:{ordinal:0},items:[{kind:'text',item_identity:'u',text:'Independent saved user',text_complete:true}]};
 const saved:HistoryItem[]=[independent,{node_id:'tool',kind:'assistant_response',selection:{ordinal:1},items:[{kind:'tool_call',item_identity:'call',execution_ids:['exec']}]},{node_id:'answer',kind:'assistant_response',selection:{ordinal:2},items:[{kind:'text',item_identity:'answer-text',text:'Qualified saved answer',text_complete:true}]}];
-for(const mode of ['ready','partial','deferred'] as const)it(`real Store/O/model/Window -> App whole attempt under ${mode}`,async()=>{
+for(const mode of ['ready','ready-with-change','partial','deferred'] as const)it(`real Store/O/model/Window -> App whole attempt under ${mode}`,async()=>{
  let ended=false;
  const f=await fixtureModel({capabilities:['history.window'],configure(db){db.threads={t:summary('t')};db.details.t=details('t');db.history.t=[];const base=db.answer.bind(db);db.answer=call=>{
   if(call.command==='status')return {ok:true,result:{items:ended?[{kind:'attempt',id:'attempt',attempt_id:'attempt',turn_id:'turn',thread_id:'t',state:'completed',response_nodes_truncated:false,response_nodes:[{node_id:'answer',ordinal:0,kind:'message'},{node_id:'tool',ordinal:1,kind:'function_call'},{node_id:'answer',ordinal:2,kind:'message'}]}]:[]}};
@@ -33,11 +33,12 @@ for(const mode of ['ready','partial','deferred'] as const)it(`real Store/O/model
   // Hold every authoritative item read while resolving only non-history operations.
   for(let n=0;n<8;n++){await act(async()=>{for(const call of f.t.calls().filter(c=>!f.db.answered.has(c.id)&&c.command!=='history.window')){const out=f.db.answer(call);f.db.answered.add(call.id);if(out.ok)f.t.ok(call.id,out.result);else f.t.ownerError(call.id,out.code,out.message);}await flush();});sample();}
   expect(frames.every(frame=>frame.independent&&frame.live&&!frame.retired)).toBe(true);
+  if(mode==='ready-with-change')await act(async()=>{f.t.push({t:'changed',thread_ids:['t'],list:false});await flush();});
   const publications:{rows:string[];retired:number}[]=[];
   const stop=win.acceptedView.subscribe(ref=>publications.push({rows:ref.rows.map(row=>row.node_id!),retired:ref.retiredAttempts?.length??0}));
   await act(async()=>{await settle(f.t,f.db);await flush(24);});sample();stop();
   expect(frames.every(frame=>frame.independent)).toBe(true);
-  if(mode==='ready'){
+  if(mode==='ready'||mode==='ready-with-change'){
    console.log(JSON.stringify({calls:f.t.calls().filter(c=>c.command==='status'||c.command==='history.window').map(c=>({command:c.command,args:c.args})),handoff:f.model.handle.peek()?.handoff.peek(),rows:win.acceptedView.peek().rows,publications}));
    expect(host.textContent).toContain('Qualified saved answer');expect(host.textContent).not.toContain('Whole live answer');
    expect(win.acceptedView.peek().retiredAttempts).toHaveLength(1);
