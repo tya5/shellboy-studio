@@ -1,14 +1,14 @@
 {
   "purpose": "unreviewed normalized validation only, not production adoption",
   "base": "9bda7c699b9b2732de5ec5e105ad789d4f3cb638",
-  "P": "bb6ad33ea8aad67c142f6d5d66210f76da681f84",
-  "S": "41f8e0bbdbd6e9ab6f6035b291ecb9e2563f8950",
+  "P": "12374780bbc2c75c1c1a78d12579b6fab94d7129",
+  "S": "35fec912bea3086b63d55ba8be49367ce75296ec",
   "O": "3ab5cbb3c93b137c2d5e1974dfe96cf66427e778",
-  "G": "6a045cbe21a5f56c735139872e55917464fd1f2a",
-  "D": "395e5999be407d2d95759913979db4705ad1a1ef",
+  "G": "85ffed5096c0570e3866c43e70b1608638168478",
+  "D": "45b968fbbb1a95faf7629a17298dba244a1aff86",
   "wire": "none; synthetic normalized inputs",
   "pipeline": "actual P invocation required; failed P leaves full pipeline red",
   "downstream_controls": "precomputed expectation explicitly not P success",
-  "S_status": "HOLD: actual notification revoke resurrection and pending-tail follow red",
-  "D_integration_commit": "00b8717 (exact one-commit cherry-pick; parents already integrated)"
+  "S_status": "incremental S6 accepted; T actual focused rerun, not production",
+  "D_integration_commit": "395e + 475e01c + 45b968f owned commits cherry-picked; exact original blobs"
 }
