@@ -25,6 +25,13 @@ export interface WindowOptions {
   setTimer?: (fn: () => void, ms: number) => () => void;
 }
 
+export interface RetiredAttempt {
+  readonly scope: string;
+  readonly attemptId: string;
+  readonly turnId: string;
+  readonly nodeIds: readonly string[];
+  readonly revision: string | number;
+}
 export interface WindowAcceptedSnapshot {
   readonly generation: number;
   readonly epoch: number;
@@ -34,6 +41,7 @@ export interface WindowAcceptedSnapshot {
   readonly total: number;
   readonly revision: string | number | undefined;
   readonly pending: boolean;
+  readonly retiredAttempts?: readonly RetiredAttempt[];
 }
 export interface WindowScrollRequest { readonly id: object; readonly target: number }
 
@@ -96,6 +104,8 @@ export class ConversationWindow {
   private scrollRequest: number | undefined;
   private scrollHandle: WindowScrollRequest | undefined;
   private acceptedGeneration = 0;
+  private retiredAttempts: readonly RetiredAttempt[] = [];
+  private retiredCapability: AcceptedCapability | undefined;
   readonly acceptedView = new AcceptedView<WindowAcceptedSnapshot>({
     generation: 0, epoch: 0, disposed: false, rows: [], range: undefined,
     total: 0, revision: undefined, pending: true,
@@ -140,6 +150,43 @@ export class ConversationWindow {
   }
   /** Pure ownership receive; no navigation, reads or scroll correction. */
   acceptHandoff(record: HandoffRecord, scope: string, release: (reason: "return" | "end") => void): boolean {
+    if (record.readyAttempt) {
+      const proof = record.readyAttempt;
+      const capability = this.acceptedView.currentCapability;
+      const expected = this.acceptedView.peek();
+      if (this.disposed || !this.acceptedView.isCurrent(expected) || proof.scope !== scope
+        || proof.attemptId !== record.attemptId || !proof.turnId || proof.revision !== this.revision
+        || !proof.refs.length || proof.refs.length > 64 || !proof.nodes.length) return false;
+      const rows = expected.rows;
+      for (const ref of proof.refs) {
+        const node = proof.nodes.find(node => node.node_id === ref.nodeId);
+        const loaded = rows.find(row => row.node_id === ref.nodeId);
+        if (!node || !loaded || node.selection?.ordinal !== loaded.selection?.ordinal
+          || !Array.isArray(loaded.items) || JSON.stringify(loaded.items) !== JSON.stringify(node.items)
+          || loaded.items.some(item => item.kind === "unavailable" || item.kind === "text" && !item.text_complete)) return false;
+      }
+      const previous = this.retiredCapability === capability ? this.retiredAttempts : [];
+      const previousCapability = this.retiredCapability;
+      if (previous.length >= 8 && !previous.some(item => item.scope === scope && item.attemptId === record.attemptId)) return false;
+      const retired = { scope, attemptId: record.attemptId, turnId: proof.turnId, revision: proof.revision,
+        nodeIds: proof.refs.map(ref => ref.nodeId) };
+      const next = [...previous.filter(item => item.scope !== scope || item.attemptId !== record.attemptId), retired];
+      const generation = this.acceptedGeneration + 1;
+      const staged = this.acceptedView.stage({ ...expected, generation, retiredAttempts: next }, capability);
+      if (this.disposed || !this.acceptedView.isCurrent(expected) || capability !== this.acceptedView.currentCapability) return false;
+      // Publish retirement and saved rows together, before any subscriber can run.
+      this.retiredAttempts = next;
+      this.retiredCapability = capability;
+      ++this.acceptedGeneration;
+      if (!this.acceptedView.commit(staged)) { if (this.retiredAttempts === next) { this.retiredAttempts = previous; this.retiredCapability = previousCapability; } return false; }
+      const committed = this.acceptedView.peek();
+      if (committed.generation !== generation || this.acceptedGeneration !== generation || capability !== this.acceptedView.currentCapability
+        || !this.acceptedView.isCurrent(committed) || committed.retiredAttempts?.at(-1)?.attemptId !== record.attemptId) return false;
+      this.version.value++;
+      if (!this.acceptedView.isCurrent(committed) || capability !== this.acceptedView.currentCapability) return false;
+      release("end");
+      return true;
+    }
     const proof = record.proof;
     if (this.disposed || !proof || proof.scope !== scope || proof.kind !== 'assistant_response' || proof.revision !== this.revision) return false;
     const bucket = this.buckets.get(Math.floor(proof.ordinal / WINDOW_NODES));
@@ -393,7 +440,8 @@ export class ConversationWindow {
     const generation = ++this.acceptedGeneration;
     const staged = this.acceptedView.stage({ generation, epoch, disposed: false,
       rows: this.rangeItems(), range: this.renderRange(), total: this.total,
-      revision: this.revision, pending: this.status.peek() === "loading" }, capability);
+      revision: this.revision, pending: this.status.peek() === "loading",
+      retiredAttempts: (this.retiredCapability === capability ? this.retiredAttempts : []).filter(item => item.revision === this.revision) }, capability);
     if (this.disposed || epoch !== this.epoch || generation !== this.acceptedGeneration) return;
     if (!this.acceptedView.commit(staged)) return;
     if (this.disposed || epoch !== this.epoch || generation !== this.acceptedGeneration) return;
@@ -544,6 +592,7 @@ export class ConversationWindow {
     const follow = this.following.peek();
     this.epoch++;
     this.acceptedView.revoke();
+    this.retiredAttempts = [];
     const capability = this.acceptedView.currentCapability;
     this.cancelAll();
     if (capability !== this.acceptedView.currentCapability || this.disposed) return;

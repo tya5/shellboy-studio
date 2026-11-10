@@ -703,35 +703,39 @@ export class ShellboyData {
         const refs = attempt.response_nodes;
         if (out.value.items.some(other => other !== attempt && other.response_nodes?.some(ref => refs.some(own => own.node_id === ref?.node_id)))) continue;
         if (refs.length > 64 || refs.some(r => !r || typeof r.kind !== "string" || typeof r.node_id !== "string" || !Number.isSafeInteger(r.ordinal) || r.ordinal < 0)) continue;
-        // #279 supplies identity, not body spans. Only the approved final-answer projection is used.
-        const finals = refs.filter(r => r.kind === "message" && r.phase === "final_answer");
-        if (finals.length !== 1 || refs.some(r => r.kind === "message" && r.phase !== "final_answer" && r.phase !== "commentary")) continue;
-        const ref = finals[0]!;
-        if (typeof ref.node_id !== "string" || !["completed", "failed", "incomplete", "cancelled"].includes(attempt.state)) continue;
-        if (!entry.live.takeRead()) return;
-        entry.live.confirming(record.attemptId);
+        if (!refs.length || typeof attempt.turn_id !== "string" || !attempt.turn_id || !["completed", "failed", "incomplete", "cancelled"].includes(attempt.state)) continue;
+        const nodes = new Map<string, HistoryItem>();
+        let revision: string | number | undefined;
+        let total: number | undefined;
+        let unavailable = false;
+        // Resolve exact identities sequentially inside the existing attempt-wide read budget.
+        // Each response may satisfy several refs; repeated refs are retained in the proof.
+        for (const ref of refs) {
+          if (nodes.has(ref.node_id)) continue;
+          if (!valid() || !entry.live.takeRead()) { unavailable = true; break; }
+          const page = await this.operations.historyWindow({ thread_id: entry.id, node_id: ref.node_id,
+            before: 0, after: 199, excerpt_chars: 0, items: true }, { cancel: cancelled });
+          if (!valid()) return;
+          if (!page.ok) { unavailable = true; if (page.error.kind !== "cancelled") entry.live.fail(record.attemptId); break; }
+          if (page.value.thread_id !== entry.id || revision !== undefined && (revision !== page.value.revision || total !== page.value.total)) { unavailable = true; break; }
+          revision = page.value.revision;
+          total = page.value.total;
+          for (const node of page.value.items) {
+            if (!node.node_id || !refs.some(ref => ref.node_id === node.node_id)) continue;
+            if (!Number.isSafeInteger(node.selection?.ordinal) || !Array.isArray(node.items)
+              || node.items.some(item => item.kind === "unavailable" || item.kind === "text" && !item.text_complete)) { unavailable = true; break; }
+            nodes.set(node.node_id, node);
+          }
+          if (unavailable) break;
+        }
         if (!valid()) return;
-        const anchor = await this.operations.historyWindow({ thread_id: entry.id, node_id: ref.node_id, before: 0, after: 0, excerpt_chars: 0 }, { cancel: cancelled });
-        if (!valid()) return;
-        if (!anchor.ok) { if (anchor.error.kind !== "cancelled") entry.live.fail(record.attemptId); continue; }
-        if (anchor.value.thread_id !== entry.id || !anchor.value.items.some(i => i.node_id === ref.node_id && i.kind === "assistant_response")) continue;
-        // Identity excludes the ordinary history row while retained text still owns display.
-        // This is not final-body readiness: partial, unsupported and failed bodies stay retained.
-        entry.live.identify(record.attemptId, ref.node_id);
-        if (!valid() || !entry.live.takeRead()) return;
-        const body = await this.operations.historyGet({ node_id: ref.node_id, end_message_only: true, limit_bytes: 262144 }, { cancel: cancelled });
-        if (!valid()) return;
-        if (!body.ok) { if (body.error.kind !== "cancelled") entry.live.fail(record.attemptId); continue; }
-        // Empty projection can mean no eligible message; partial pages are not a complete saved body.
-        if (body.value.node_id !== ref.node_id || body.value.kind !== "assistant_response" || body.value.next_cursor || !body.value.text) continue;
-        if (!entry.live.takeRead() || !valid()) return;
-        const verify = await this.operations.historyWindow({ thread_id: entry.id, node_id: ref.node_id, before: 0, after: 0, excerpt_chars: 0 }, { cancel: cancelled });
-        if (!valid()) return;
-        if (!verify.ok) { if (verify.error.kind !== "cancelled") entry.live.fail(record.attemptId); continue; }
-        if (verify.value.thread_id !== entry.id || verify.value.revision !== anchor.value.revision || !verify.value.items.some(i => i.node_id === ref.node_id && i.selection?.ordinal === anchor.value.items.find(i => i.node_id === ref.node_id)?.selection?.ordinal)) continue;
-        const item = anchor.value.items.find(i => i.node_id === ref.node_id)!;
-        if (!Number.isSafeInteger(item.selection?.ordinal)) continue;
-        batch(() => entry.live.ready(record.attemptId, ref.node_id, body.value.text, Object.freeze({ scope: this.handoffScope(entry), turnId: attempt.turn_id!, ordinal: item.selection!.ordinal!, revision: anchor.value.revision, kind: "assistant_response" })));
+        if (unavailable || revision === undefined || refs.some(ref => !nodes.has(ref.node_id))) continue;
+        const saved = immutableSaved([...nodes.values()].sort((a, b) => a.selection!.ordinal! - b.selection!.ordinal!));
+        // A replacement must contain a visible authoritative item, not just bookkeeping.
+        if (!saved.some(node => node.items?.some(item => item.kind === "text" || item.kind === "tool_call" || item.kind === "tool_result"))) continue;
+        const proof = Object.freeze({ scope: this.handoffScope(entry), attemptId: record.attemptId,
+          turnId: attempt.turn_id!, revision, refs: Object.freeze(refs.map(ref => Object.freeze({ nodeId: ref.node_id }))), nodes: saved });
+        entry.live.stageAttempt(record, proof);
       }
     }).finally(() => {
       entry.resolving = undefined;
