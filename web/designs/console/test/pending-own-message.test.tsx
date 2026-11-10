@@ -53,8 +53,13 @@ for(const windowed of [true,false])for(const savedBeforeAck of [false,true])it(`
   expect(host.querySelector('[data-pending-own-message]')).not.toBeNull();
   rows=[{...equalText,node_id:'canonical-own',selection:{ordinal:0}}];f.db.history.t=rows;
   await act(async()=>{f.t.push({t:'changed',thread_ids:['t'],list:false});await settle(f.t,f.db);});
-  expect(host.querySelector('[data-pending-own-message]')?.textContent).toContain('Next unsent draft');
+  expect([...host.querySelectorAll('[data-pending-own-message]')].map(row=>row.textContent)).toEqual([expect.stringContaining('Own submitted message'),expect.stringContaining('Next unsent draft')]);
+  expect(host.querySelectorAll('[data-node="canonical-own"] .md')).toHaveLength(0);
+  rows=[...rows,{...equalText,node_id:'second-canonical',selection:{ordinal:1},items:[{kind:'text',item_identity:'second',text:'Next unsent draft',text_complete:true}]}];f.db.history.t=rows;
+  await act(async()=>{f.t.push({t:'changed',thread_ids:['t'],list:false});await settle(f.t,f.db);});
+  expect(host.querySelector('[data-pending-own-message]')).toBeNull();
   expect(host.querySelectorAll('[data-node="canonical-own"] .md')).toHaveLength(1);
+  expect(host.querySelectorAll('[data-node="second-canonical"] .md')).toHaveLength(1);
   await act(async()=>{composer.value='Third ready draft';composer.dispatchEvent(new Event('input',{bubbles:true}));});
   expect(host.querySelector<HTMLButtonElement>('.composer button:last-child')?.disabled).toBe(false);
  }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
@@ -148,4 +153,63 @@ it('real edits, even restored text, remain a different generation; composing Ent
   await act(async()=>{input.value='Different';input.dispatchEvent(new Event('input',{bubbles:true}));input.value='Original';input.dispatchEvent(new Event('input',{bubbles:true}));finish(true);await flush(4);});
   expect(input.value).toBe('Original');expect(calls).toBe(1);
  }finally{render(null,host);host.remove();}
+});
+
+for(const windowed of [true,false])it(`actual own cohort has no metadata/partial/stale gap and swaps A/B together: window=${windowed}`,async()=>{
+ const f=await fixtureModel({capabilities:windowed?['history.window']:[],configure(db){db.threads={t:summary('t')};db.details.t=details('t');db.history.t=[];const base=db.answer.bind(db);db.answer=call=>call.command==='history.window'?{ok:true,result:{thread_id:'t',revision:2,total:db.history.t?.length??0,items:db.history.t??[]}}:base(call);}});
+ const host=document.createElement('div');document.body.append(host);const frames:string[][]=[];
+ const ids=()=>[...host.querySelectorAll('.msg:not(.assistant)')].map(row=>row.textContent??'');
+ const frame=(expected:string[])=>{const actual=ids();frames.push(actual);expect(actual).toHaveLength(expected.length);expected.forEach((text,index)=>expect(actual[index]).toContain(text));};
+ const node=(id:string,text?:string,complete?:boolean):HistoryItem=>({node_id:id,kind:'user',selection:{ordinal:id==='a'?0:1},items:text===undefined?[]:[{kind:'text',item_identity:id,text,text_complete:complete??false}]});
+ try{
+  await act(async()=>{render(<App context={{model:f.model,prefs:signal(loadPrefs({read:()=>null,write:()=>{}},[{name:'console',themes:[{name:'light'}]}])),setPrefs:()=>{},designs:[],submitToken:async()=>false}}/>,host);await settle(f.t,f.db);});
+  const area=host.querySelector<HTMLTextAreaElement>('textarea')!;
+  for(const [id,text] of [['a','Original A'],['b','Original B']]){
+   await act(async()=>{area.value=text!;area.dispatchEvent(new Event('input',{bubbles:true}));area.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));await flush();});
+   const send=f.t.calls('message.send').at(-1)!;f.db.answered.add(send.id);
+   await act(async()=>{f.t.ok(send.id,{message_id:id,thread_id:'t'});await flush();});
+  }
+  frame(['Original A','Original B']);expect(f.model.acceptedOwnMessages.peek()).toHaveLength(2);
+  let installed=0;
+  const commit=f.model.installOwnPresentation.bind(f.model);
+  f.model.installOwnPresentation=(decision,current)=>{
+   if(decision.retire.length){
+    frame(['Saved A','Saved B']);const before=f.model.acceptedOwnMessages.peek();
+    commit(decision,()=>false);expect(f.model.acceptedOwnMessages.peek()).toBe(before);
+    commit(decision,current);frame(['Saved A','Saved B']);
+    const after=f.model.acceptedOwnMessages.peek();commit(decision,current);expect(f.model.acceptedOwnMessages.peek()).toBe(after);installed++;
+   }else commit(decision,current);
+  };
+  const publish=async(nodes:HistoryItem[])=>{f.db.history.t=nodes;await act(async()=>{f.t.push({t:'changed',thread_ids:['t'],list:false});await settle(f.t,f.db);await flush(12);});};
+  await publish([node('a'),node('b','Saved B',true)]);frame(['Original A','Original B']);expect(f.model.acceptedOwnMessages.peek()).toHaveLength(2);
+  await publish([node('a','Partial A',false),node('b','Saved B',true)]);frame(['Original A','Original B']);
+  const original=f.db.answer.bind(f.db),sendFrame=f.t.send.bind(f.t);
+  f.t.send=message=>{const ok=sendFrame(message);if(message.t==='call'&&(message.command==='history.window'||message.command==='history.list'))f.db.answered.add(message.id);return ok;};
+  await act(async()=>{f.t.push({t:'changed',thread_ids:['t'],list:false});await flush(12);});frame(['Original A','Original B']);
+  f.t.send=sendFrame;f.db.answer=original;
+  // Complete the held public read using the same request, not a new private read.
+  const held=f.t.calls(windowed?'history.window':'history.list').at(-1)!;
+  await act(async()=>{f.t.ok(held.id,windowed?{thread_id:'t',revision:2,total:2,items:[node('a','Saved A',true),node('b','Saved B',true)]}:{items:[node('a','Saved A',true),node('b','Saved B',true)]});await flush(24);});
+  frame(['Saved A','Saved B']);expect(installed).toBe(1);expect(f.model.acceptedOwnMessages.peek()).toHaveLength(0);expect(host.querySelector('[data-pending-own-message]')).toBeNull();
+  expect(frames.every(rows=>rows.length===2)).toBe(true);
+ }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
+});
+it('actual model installed receipt rejects cohort changes during qualification and retires once atomically',async()=>{
+ const f=await fixtureModel({configure(db){db.threads={t:summary('t')};db.details.t=details('t');db.history.t=[];}});
+ try{
+  const accept=async(text:string,id:string)=>{const sent=f.model.send(text);await flush();const call=f.t.calls('message.send').at(-1)!;f.db.answered.add(call.id);f.t.ok(call.id,{message_id:id,thread_id:'t'});expect(await sent).toBe(true);};
+  await accept('A','a');
+  const {ownSendPresentation}=await import('../../../ui-core/src/own-send-presentation');
+  const {projectSavedItems}=await import('../../../ui-core/src/conversation-items');
+  const make=()=>ownSendPresentation({ref:{},current:true,scope:f.model.ownMutationScope(),localRows:f.model.ownMutationRows(f.model.ownMutationScope()),cohortVersion:{accepted:f.model.acceptedOwnMessages.peek(),pending:f.model.pendingOwnMessage.peek()},projection:projectSavedItems(f.model.acceptedOwnMessages.peek().map(row=>({windowRevision:1,nodeId:row.messageId!,itemIdentity:row.messageId!,kind:'user',text:row.text,textComplete:true}))),hiddenItemKeys:new Set<string>()});
+  const old=make();let newer:Promise<boolean>|undefined;
+  f.model.installOwnPresentation(old,()=>{newer=f.model.send('B');return true;});
+  expect(f.model.acceptedOwnMessages.peek()).toHaveLength(1);expect(f.model.pendingOwnMessage.peek()?.text).toBe('B');
+  await flush();const call=f.t.calls('message.send').at(-1)!;f.db.answered.add(call.id);f.t.ok(call.id,{message_id:'b',thread_id:'t'});expect(await newer).toBe(true);
+  f.model.installOwnPresentation(old,()=>true);expect(f.model.acceptedOwnMessages.peek()).toHaveLength(2);
+  const ready=make(),before=f.model.acceptedOwnMessages.peek();
+  f.model.installOwnPresentation(ready,()=>false);expect(f.model.acceptedOwnMessages.peek()).toBe(before);
+  f.model.installOwnPresentation(ready,()=>true);expect(f.model.acceptedOwnMessages.peek()).toHaveLength(0);
+  const empty=f.model.acceptedOwnMessages.peek();f.model.installOwnPresentation(ready,()=>true);expect(f.model.acceptedOwnMessages.peek()).toBe(empty);
+ }finally{f.model.dispose();f.data.stop();}
 });

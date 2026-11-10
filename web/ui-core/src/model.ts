@@ -1,3 +1,4 @@
+import type { OwnSendDecision } from "./own-send-presentation";
 import { LegacyAcceptedPresentation } from "./legacy-presentation";
 import { SenderTitles } from "./sender-titles";
 import { senderFact } from "../../data/src/sender";
@@ -392,7 +393,7 @@ export class AppModel {
     this.disposers.push(effect(() => this.syncLegacyPresentation()));
     this.disposers.push(effect(() => {
       this.route.value; this.handle.value; this.data.owner.value;
-      if (this.acceptedOwnMessages.peek().length && !this.pendingOwnCurrent?.()) this.acceptedOwnMessages.value = [];
+      if (this.acceptedOwnMessages.peek().length && !this.pendingOwnRetryCurrent?.()) this.acceptedOwnMessages.value = [];
       if (this.pendingOwnMessage.peek() && !this.pendingOwnRetryCurrent?.()) {
         this.pendingOwnMessage.value = undefined; this.ownSendCapacityReason.value = false; this.sendState.value = {kind:"idle"};
       }
@@ -877,31 +878,27 @@ export class AppModel {
     return !!this.pendingOwnMessage.value || this.acceptedOwnMessages.value.length >= 8;
   }
 
-  retirePendingOwnIfSaved(): void {
-    const previous=this.acceptedOwnMessages.peek();
-    const kept=previous.filter(message=>!this.pendingOwnSaved(message));
-    if(kept.length!==previous.length){this.acceptedOwnMessages.value=kept;this.ownSendCapacityReason.value=false;}
+  private installedOwnResult: object | undefined;
+  ownMutationScope(): string { return this.acceptedOwnMessages.value[0]?.scope ?? this.pendingOwnMessage.value?.scope ?? this.handle.value?.handoffScope() ?? ""; }
+  ownMutationRows(scope: string): readonly PendingOwnMessage[] {
+    const accepted=this.acceptedOwnMessages.value, pending=this.pendingOwnMessage.value;
+    return [...accepted,...(pending?[pending]:[])].filter(row=>row.scope===scope);
   }
-
-  pendingOwnIsCurrent(): boolean {
-    return !!this.pendingOwnCurrent?.();
-  }
-
-  private pendingOwnSaved(message: PendingOwnMessage): boolean {
-    if (!message.messageId || !this.pendingOwnCurrent?.()) return false;
-    const reader = this.longReader.peek();
-    if (reader) {
-      const ref = reader.acceptedView.peek();
-      return reader.acceptedView.isCurrent(ref) && ref.rows.some(node => node.node_id === message.messageId);
-    }
-    const legacy = this.legacyPresentation.peek(), ref = legacy?.acceptedView.peek();
-    return !!legacy && !!ref && legacy.isCurrent(ref) && ref.rows.some(node => node.node_id === message.messageId);
+  pendingOwnIsCurrent(): boolean { return !!this.pendingOwnRetryCurrent?.(); }
+  installOwnPresentation<Ref>(result: OwnSendDecision<Ref>, current: () => boolean): void {
+    this.installedOwnResult=result.token;
+    if (!result.retire.length || !current() || !this.pendingOwnRetryCurrent?.()) return;
+    if (!result.cohortVersion || result.cohortVersion.accepted!==this.acceptedOwnMessages.peek() || result.cohortVersion.pending!==this.pendingOwnMessage.peek()) return;
+    const rows=this.ownMutationRows(result.scope);
+    if (rows.length!==result.cohort.length || rows.some((row,index)=>row!==result.cohort[index])) return;
+    if (this.installedOwnResult!==result.token) return;
+    const previous=this.acceptedOwnMessages.peek(),kept=previous.filter(row=>!result.retire.includes(row));
+    if(kept.length!==previous.length)batch(()=>{this.acceptedOwnMessages.value=kept;this.ownSendCapacityReason.value=false;});
   }
 
   private async deliver(threadId: string, text: string, operationId = this.ops.mutationId()): Promise<boolean> {
     const handle = this.handle.peek(), route = this.route.peek();
     if (!handle || handle.threadId !== threadId) return false;
-    this.retirePendingOwnIfSaved();
     const old = this.pendingOwnMessage.peek();
     if (old && (old.operationId !== operationId || old.text !== text)) return false;
     if (old?.operationId === operationId && old.phase === "sending") return false;

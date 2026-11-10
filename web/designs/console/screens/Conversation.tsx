@@ -1,3 +1,4 @@
+import { ownSendPresentation } from "../../../ui-core/src/own-send-presentation";
 import type { ThreadHandle } from "../../../data/src/store";
 import { Disclosure } from "../system/components/Disclosure";
 import type { HandoffRecord } from "../../../data/src/handoff";
@@ -12,7 +13,7 @@ import { ConversationItems, type ConversationItem, type ConversationToolSummary,
 import { characterAssets } from "../system/character-assets";
 import { effect } from "@preact/signals-core";
 import { MonitorPopover } from "../system/components/MonitorPopover";
-import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
 import { collectExecutionSteps, toolLabel, activityLabel, renderOutput, formatClock, formatDuration, formatRoute, formatTokens, parseTime, statusLabel, type AppModel, type ConversationRow, type StepRow as Step } from "../../../ui-core/src";
 import { ScrollIntent } from "./scrollIntent";
 import { WindowedScroll } from "./WindowedScroll";
@@ -226,16 +227,15 @@ export function retainUnretiredLiveFacts(snapshot: WindowAcceptedSnapshot, scope
   return facts.filter(fact => !("domain" in fact && fact.attemptId && fact.turnId && snapshot.retiredAttempts?.some(retired => retired.scope === scope && retired.revision === snapshot.revision && retired.attemptId === fact.attemptId && retired.turnId === fact.turnId)));
 }
 
-function PendingOwnMessageView({model,nodes,scope}: {model:AppModel;nodes:readonly HistoryItem[];scope:string}) {
-  const pending=model.pendingOwnMessage.value;
-  const accepted=model.acceptedOwnMessages.value;
-  useLayoutEffect(()=>{model.retirePendingOwnIfSaved();},[model,pending,accepted,nodes]);
-  if(!model.pendingOwnIsCurrent())return null;
-  return <>{[...accepted,...(pending?[pending]:[])].filter(message=>message.scope===scope&&message.threadId===model.handle.value?.threadId&&!(message.messageId&&nodes.some(node=>node.node_id===message.messageId))).map(message=><aside key={message.operationId} data-pending-own-message={message.operationId} data-pending-phase={message.phase}>
-    <Message bot={false} who={model.t.value("convo.you")} text={message.text} at={model.t.value(`composer.pending.${message.phase}`)} copyLabel={model.t.value("code.copy")} copiedLabel={model.t.value("code.copied")} />
+function OwnSendContent<Ref>({model,projection,nodes,scope,acceptedRef,current,isCurrent,trailing,hiddenItemKeys=new Set<string>()}:{model:AppModel;projection:SavedItemProjection;nodes?:readonly HistoryItem[];scope:string;acceptedRef:Ref|undefined;current:boolean;isCurrent:()=>boolean;trailing?:ComponentChildren;hiddenItemKeys?:ReadonlySet<string>}) {
+  const rows=model.ownMutationRows(scope);
+  const decision=useMemo(()=>ownSendPresentation({ref:acceptedRef,current,scope,projection,localRows:rows,hiddenItemKeys,cohortVersion:{accepted:model.acceptedOwnMessages.peek(),pending:model.pendingOwnMessage.peek()}}),[acceptedRef,current,scope,projection,model.acceptedOwnMessages.value,model.pendingOwnMessage.value]);
+  useLayoutEffect(()=>{model.installOwnPresentation(decision,isCurrent);},[decision]);
+  const local=<div data-own-presentation="" data-own-order-conflict={decision.conflictIds.length?decision.conflictIds.join(","):undefined}>{decision.conflictIds.length?<div role="status" class="caption muted" data-own-order-problem="">{model.t.value("composer.pending.orderConflict")} {decision.conflictIds.join(", ")}</div>:null}{decision.localRows.map(message=><aside key={message.operationId} data-pending-own-message={message.operationId} data-pending-phase={message.phase}>
+    <Message bot={false} who={model.t.value("convo.you")} text={message.text} at={model.t.value(`composer.pending.${message.phase}`)} copyLabel={model.t.value("code.copy")} copiedLabel={model.t.value("code.copied")}/>
     {message.phase==="failed"||message.phase==="unconfirmed"?<Button variant="link" onClick={()=>void model.resend()}>{model.t.value("action.retry")}</Button>:null}
-  </aside>)}</>;
-
+  </aside>)}</div>;
+  return <SavedConversationItems model={model} projection={decision.projection} nodes={current?nodes:[]} trailing={<>{local}{trailing}</>}/>;
 }
 
 function LegacySavedContent({model,handle}: {model:AppModel;handle:ThreadHandle;history:ReturnType<ThreadHandle["history"]["peek"]>|undefined;rows:readonly ConversationRow[];boundary:number|undefined;follow:()=>void}) {
@@ -247,14 +247,14 @@ function LegacySavedContent({model,handle}: {model:AppModel;handle:ThreadHandle;
     const stop=owner.acceptedView.subscribe(update);update(owner.acceptedView.peek());return stop;
   },[owner]);
   const ref=accepted.owner===owner?accepted.ref:owner?.acceptedView.peek();
-  if(!owner||!ref||!owner.isCurrent(ref))return null;
+  if(!owner||!ref||!owner.isCurrent(ref))return <OwnSendContent model={model} projection={projectSavedItems([])} scope={model.ownMutationScope()} acceptedRef={ref} current={false} isCurrent={()=>false}/>;
   const receipts=[...ref.terminalPersistedAttempts,...ref.structuralTerminalReceipts];
   const retired=(attemptId:string|null|undefined)=>!!attemptId&&receipts.some(proof=>proof.scope===ref.scope&&proof.attemptId===attemptId);
   const live=ref.live.filter(record=>!retired(record.attemptId));
   const handoffs=model.data.capabilities.value.includes("live.text") ? projectOwnedHandoffFacts(handle.threadId,live) : [];
   const work=normalizeLiveWorkFacts({scope:handle.threadId,items:(ref.work.value?.items??[]).filter(item=>!retired(item.attempt_id))});
   const projection=projectLegacyHistoryItems({nodes:ref.rows,keyScope:[ref.scope],liveFacts:[...handoffs,...work,...normalizeTerminalPresenceFacts(ref.terminalPresence ?? [])]}).projection;
-  return <SavedConversationItems model={model} nodes={ref.rows} projection={projection} trailing={<PendingOwnMessageView model={model} nodes={ref.rows} scope={ref.scope}/>}/>;
+  return <OwnSendContent model={model} nodes={ref.rows} projection={projection} scope={model.ownMutationScope()} acceptedRef={ref} current={true} isCurrent={()=>owner.isCurrent(ref)}/>;
 }
 
 export function SavedWindowContent({ model, snapshot, live, liveBoundary, liveFacts }: { model: AppModel; snapshot: WindowAcceptedSnapshot; live?: ComponentChildren; liveBoundary?: number; liveFacts?: readonly NormalizedSavedItem[] }) {
@@ -283,7 +283,7 @@ export function SavedWindowContent({ model, snapshot, live, liveBoundary, liveFa
   const ordered = cut < 0 ? [...saved, ...retainedHandoffs] : [...saved.slice(0, cut), ...retainedHandoffs, ...saved.slice(cut)];
   const projection = projectSavedItems([...ordered, ...retainedRecords, ...normalizeTerminalPresenceFacts(current ? snapshot.terminalPresence ?? [] : [])].map(source => keyScope ? {...source, keyScope} : source));
   // Live text without item-kind proof cannot unlock or replace saved Conversation text.
-  return <SavedConversationItems model={model} projection={projection} nodes={snapshot.rows} trailing={<>{handle && current ? <PendingOwnMessageView model={model} nodes={snapshot.rows} scope={handle.handoffScope()}/> : null}{handle?.handoffOverflow.value ? <div class="caption muted" data-live-overflow="">{model.t.value("convo.handoffLimit")} <HandoffRetryControl model={model}/></div> : undefined}</>} />;
+  return <OwnSendContent model={model} projection={projection} nodes={snapshot.rows} scope={model.ownMutationScope()} acceptedRef={snapshot} current={current} isCurrent={()=>model.longReader.peek()?.acceptedView.isCurrent(snapshot)??false} hiddenItemKeys={new Set(projection.items.filter(item=>pendingNodes.has(item.source.nodeId??"")&&item.source.kind!=="user").map(item=>item.key))} trailing={<>{handle?.handoffOverflow.value ? <div class="caption muted" data-live-overflow="">{model.t.value("convo.handoffLimit")} <HandoffRetryControl model={model}/></div> : undefined}</>} />;
 }
 
 const stepDuration = (s: Step, now: number): string | undefined => {
