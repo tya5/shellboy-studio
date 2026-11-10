@@ -137,7 +137,7 @@ describe("Conversation live text", () => {
   const liveFrame = (text: string, offset = 0, extra: { gap?: boolean } = {}): ServerFrame =>
     ({ t: "live", thread_id: "lead", attempt_id: "a1", gap: false, deltas: [{ offset, reasoning: false, text }], ...extra });
 
-  it("shows unsaved text and retains it when a new saved aggregate lacks exact qualification", async () => {
+  it("retains unsaved text while displaying independent ordinary saved prose", async () => {
     const { model, t, db } = await fixtureModel({ capabilities: ["live.text"] });
     const el = draw(model);
     const bodies = () => [...el.querySelectorAll(".msg")].map((m) => m.textContent ?? "");
@@ -164,7 +164,7 @@ describe("Conversation live text", () => {
       await settle(t, db);
     });
     expect(bodies().some((b) => b.includes("Writing"))).toBe(false);
-    expect(el.textContent).not.toContain("Final saved answer");
+    expect(el.textContent).toContain("Final saved answer");
     expect(el.textContent).toContain("Checking response kind");
     expect(el.textContent).toContain("later");
   });
@@ -181,7 +181,7 @@ describe("Conversation live text", () => {
     model.dispose();
   });
 
-  it("keeps the proved live answer ahead of a later human while the saved aggregate is unqualified", async () => {
+  it("keeps proved live text ahead of a later human without hiding ordinary saved prose", async () => {
     const { model, t, db } = await fixtureModel({ capabilities: ["live.text"] });
     const el = draw(model);
     act(() => t.push(liveFrame("Answer before save")));
@@ -192,7 +192,7 @@ describe("Conversation live text", () => {
     db.history.lead = [...db.history.lead, { node_id: "user-order", kind: "user", excerpt: "Later human", provenance: { sender: { kind: "human" } } }];
     act(() => t.push({ t: "changed", thread_ids: ["lead"], list: false }));
     await act(async () => settle(t, db));
-    expect(text(el)).not.toContain("Saved answer");
+    expect(text(el)).toContain("Saved answer");
     expect(text(el)).toContain("Answer before save");
     expect(text(el)).toContain("Later human");
     expect(text(el).indexOf("Answer before save")).toBeLessThan(text(el).indexOf("Later human"));

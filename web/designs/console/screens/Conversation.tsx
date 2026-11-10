@@ -1,5 +1,6 @@
+import type { HandoffRecord } from "../../../data/src/handoff";
 import { senderFact } from "../../../data/src/sender";
-import { projectHistoryWindowItems } from "../../../ui-core/src/conversation-items";
+import { projectHistoryWindowItems, projectSavedItems, normalizeLiveWorkFacts, type NormalizedSavedItem } from "../../../ui-core/src/conversation-items";
 import { projectConversation } from "../../../ui-core/src/conversation";
 import type { HistoryItem } from "../../../data/src/protocol";
 import { Markdown } from "../system/components/Message";
@@ -123,14 +124,14 @@ export function SavedConversationItems({ model, projection, renderBefore, traili
   }}
     renderItem={item => {
       if (item.source.kind === "text" || item.source.kind === "user" || item.source.kind === "summary") {
-        const node = nodes?.find(node => node.node_id === item.source.nodeId);
-        if (!node) return <Markdown text={item.source.text ?? ""} copyLabel={t("code.copy")} copiedLabel={t("code.copied")} />;
+        const node = item.source.nodeId ? nodes?.find(node => node.node_id === item.source.nodeId) : undefined;
+        if (!node) return "domain" in item.source ? <div data-live-overlay=""><Message bot who={t("convo.shellboy")} at={t("convo.live")} text={item.source.text ?? ""} copyLabel={t("code.copy")} copiedLabel={t("code.copied")} /></div> : <Markdown text={item.source.text ?? ""} copyLabel={t("code.copy")} copiedLabel={t("code.copied")} />;
         const fact = senderFact(node.provenance?.sender);
         const speaker: Extract<ConversationRow, { type: "message" }>["speaker"] = node.kind === "assistant_response" ? { kind: "shellboy" }
           : fact.kind === "human" ? { kind: "you" } : fact.kind === "model" ? fact
           : fact.kind === "external_cli" ? (fact.label?.trim() ? { kind: "other", label: `CLI: ${fact.label}` } : { kind: "cli" })
           : { kind: "unknown", model: fact.kind === "unknown_model", label: fact.label };
-        return <><RowView model={model} authorizedText={item.source.text ?? ""} row={{ type: "message", id: item.source.nodeId, speaker, text: item.source.text ?? "", truncated: false, at: node.provenance?.created_at }} />{item.source.textComplete === false ? <div class="caption muted" data-item-partial="">{t("work.partial")}</div> : null}</>;
+        return <><RowView model={model} authorizedText={item.source.text ?? ""} row={{ type: "message", id: node.node_id!, speaker, text: item.source.text ?? "", truncated: false, at: node.provenance?.created_at }} />{item.source.kind === "text" && item.source.textComplete === false ? <div class="caption muted" data-item-partial="">{t("work.partial")}</div> : null}</>;
       }
       if (item.source.kind === "tool") {
         const ids = item.source.executionIds ?? (item.source.executionId ? [item.source.executionId] : []);
@@ -145,7 +146,7 @@ export function SavedConversationItems({ model, projection, renderBefore, traili
       if (item.source.kind === "reasoning" || item.source.kind === "reasoning_unavailable") return <div class="caption muted" data-thinking-marker="">{t("work.thinking")}</div>;
       if (item.source.kind === "interruption") return <Notice>{t("status.stopped")}</Notice>;
       if (item.source.kind === "record") return <details data-internal-records=""><summary>{t("work.records", {n: 1})}</summary><span class="caption muted">{t("work.textUnavailable")}</span></details>;
-      if (item.source.kind === "unknown" || item.source.kind === "unavailable") return <div class="caption muted" data-item-unavailable="">{t("work.textUnavailable")}</div>;
+      if (item.source.kind === "unknown" || item.source.kind === "unavailable") return <div class="caption muted" data-item-unavailable="">{item.source.kind === "unknown" ? t("work.record") : t("work.textUnavailable")}{item.source.kind === "unavailable" && item.source.reason ? ` (${item.source.reason})` : ""}</div>;
       return null;
     }} />;
 }
@@ -157,26 +158,30 @@ export function DeferredHistoryNode({ model, row }: { model: AppModel; row: Hist
   </div>;
 }
 
-/** A single flat content parent preserves typed items across ordinary/deferred nodes. */
-export function SavedWindowContent({ model, snapshot, live, liveBoundary }: { model: AppModel; snapshot: WindowAcceptedSnapshot; live?: ComponentChildren; liveBoundary?: number }) {
+/** Only records read from the current owned ledger may enter this adapter. */
+export function projectOwnedHandoffFacts(scope: string, records: readonly HandoffRecord[]): readonly NormalizedSavedItem[] {
+  return records.map(record => record.nodeId === undefined && record.proof === undefined && record.transferred !== true && record.status !== "ready" && record.text
+    ? {domain: "live", namespace: "handoff", scope, recordId: record.key, kind: "text", text: record.text}
+    : {domain: "live", namespace: "handoff", scope, recordId: record.key, kind: "unknown"});
+}
+
+/** One producer classifies saved facts and explicitly scoped live records. */
+export function SavedWindowContent({ model, snapshot, live, liveBoundary, liveFacts }: { model: AppModel; snapshot: WindowAcceptedSnapshot; live?: ComponentChildren; liveBoundary?: number; liveFacts?: readonly NormalizedSavedItem[] }) {
   if (snapshot.revision === undefined) return null;
   const mapped = projectHistoryWindowItems({ revision: snapshot.revision, nodes: snapshot.rows });
-  const before = new Map<string, ComponentChildren[]>();
-  let pending: ComponentChildren[] = [];
-  let livePlaced = false;
-  const liveChrome = <div key="live-overlay" class="live-tail" data-live-overlay="">{live}</div>;
-  for (const entry of mapped.nodes) {
-    if (!livePlaced && live !== undefined && liveBoundary !== undefined && entry.ordinal !== undefined && entry.ordinal >= liveBoundary) {
-      pending.push(liveChrome); livePlaced = true;
-    }
-    const first = mapped.projection.items.find(item => item.source.nodeId === entry.nodeId);
-    if (entry.emptyOrdinary) pending.push(<div key={`empty:${entry.nodeId}`} class="conversation-row" data-node={entry.nodeId} data-empty-ordinary=""><DeferredHistoryNode model={model} row={entry.node} /></div>);
-    if (entry.state === "deferred") pending.push(<DeferredHistoryNode key={`deferred:${entry.nodeId}`} model={model} row={entry.node} />);
-    else if (entry.state === "legacy") pending.push(<div key={`legacy:${entry.nodeId}`} data-node={entry.nodeId}>{projectConversation([entry.node], new Map()).map(row => <RowView key={row.id} model={model} row={row} />)}</div>);
-    if (first && pending.length) { before.set(first.key, pending); pending = []; }
-  }
-  if (!livePlaced && live !== undefined) pending.push(liveChrome);
-  return <SavedConversationItems model={model} projection={mapped.projection} nodes={snapshot.rows} renderBefore={item => before.get(item.key)} trailing={pending} />;
+  const handle = model.handle.value;
+  const records = liveFacts ?? (handle ? normalizeLiveWorkFacts({scope: handle.threadId, items: handle.work.value.value?.items ?? []}) : []);
+  const handoffs = handle ? projectOwnedHandoffFacts(handle.threadId, handle.handoff.value) : [];
+  const saved = mapped.projection.items.map(item => item.source);
+  // This is the captured history cut, not an ordinal assigned to a live record.
+  const cut = liveBoundary === undefined ? -1 : saved.findIndex(source => {
+    const node = snapshot.rows.find(node => node.node_id === source.nodeId);
+    return node?.selection?.ordinal !== undefined && node.selection.ordinal >= liveBoundary;
+  });
+  const ordered = cut < 0 ? [...saved, ...handoffs] : [...saved.slice(0, cut), ...handoffs, ...saved.slice(cut)];
+  const projection = projectSavedItems([...ordered, ...records]);
+  // Live text without item-kind proof cannot unlock or replace saved Conversation text.
+  return <SavedConversationItems model={model} projection={projection} nodes={snapshot.rows} />;
 }
 
 const stepDuration = (s: Step, now: number): string | undefined => {

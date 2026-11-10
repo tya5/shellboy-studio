@@ -60,7 +60,7 @@ it('maps actual typed window rows without a registry and preserves ordinary/defe
 });
 
 
-it.each(['empty', 'reasoning', 'deferred', 'undefined', 'empty-window'] as const)('places live chrome exactly once with %s boundary input',async mode=>{
+it.each(['empty', 'reasoning', 'deferred', 'undefined', 'empty-window'] as const)('places explicit live Work exactly once with %s boundary input',async mode=>{
   const fixture=await fixtureModel(),host=document.createElement('div');document.body.append(host);
   try{
     const { SavedWindowContent }=await import('../screens/Conversation');
@@ -69,13 +69,10 @@ it.each(['empty', 'reasoning', 'deferred', 'undefined', 'empty-window'] as const
       {node_id:'later-human',kind:'user',excerpt:'Later human',selection:{ordinal:2}},
     ];
     const snapshot={rows,range:{first:0,last:2},total:rows.length,revision:1,generation:1,epoch:1,disposed:false,pending:false};
-    await act(async()=>render(<SavedWindowContent model={fixture.model} snapshot={snapshot} liveBoundary={mode==='undefined'?undefined:1} live={<span>Synthetic live boundary answer</span>}/>,host));
-    expect(host.querySelectorAll('[data-live-overlay]')).toHaveLength(1);
-    if(mode!=='empty-window'){
-      const content=host.textContent!;
-      if(mode==='undefined')expect(content.indexOf('Later human')).toBeLessThan(content.indexOf('Synthetic live boundary answer'));
-      else expect(content.indexOf('Synthetic live boundary answer')).toBeLessThan(content.indexOf('Later human'));
-    }
+    await act(async()=>render(<SavedWindowContent model={fixture.model} snapshot={snapshot} liveFacts={[{domain:'live',scope:'synthetic-thread',recordId:'live-record',kind:'unknown'}]}/>,host));
+    const records=[...host.querySelectorAll('[data-work-item-key]')].filter(item=>item.getAttribute('data-item-key')===JSON.stringify(['live','work','synthetic-thread','live-record']));
+    expect(records).toHaveLength(1);expect(records[0]!.closest('[data-work-group]')).not.toBeNull();
+    if(mode!=='empty-window')expect(host.textContent).toContain('Later human');
   }finally{render(null,host);host.remove();fixture.model.dispose();fixture.data.stop();}
 });
 
@@ -95,23 +92,23 @@ it('restores authoritative user Message chrome without substituting aggregate te
   }finally{render(null,host);host.remove();fixture.model.dispose();fixture.data.stop();}
 });
 
-it('restores group summary toggle without making keyed tool items heading children or remounting them',async()=>{
+it('restores Work group toggle with real parent containment and retains same-membership item DOM',async()=>{
   const fixture=await fixtureModel(),host=document.createElement('div');document.body.append(host);
   try{
     const { SavedConversationItems }=await import('../screens/Conversation');
     const projection=projectSavedItems([{nodeId:'group-node',itemIdentity:'tool-1',windowRevision:1,kind:'tool',executionIds:['group-exec-1']},{nodeId:'group-node',itemIdentity:'tool-2',windowRevision:1,kind:'tool',executionIds:['group-exec-2']}]);
     await act(async()=>render(<SavedConversationItems model={fixture.model} projection={projection}/>,host));
-    const heading=host.querySelector('[data-item-heading]')!,details=heading.querySelector('details.step-group')! as HTMLDetailsElement;
+    const details=host.querySelector('details[data-work-group]')! as HTMLDetailsElement,heading=details.querySelector('summary')!;
     expect(details).not.toBeNull();expect(details.open).toBe(false);
     const items=[...host.querySelectorAll('[data-item-key]')];expect(items).toHaveLength(2);
-    expect(items.every(item=>(item as HTMLElement).hidden)).toBe(true);
+    expect(details.open).toBe(false);expect(items.every(item=>item.closest('[data-work-group]')===details)).toBe(true);
     expect(heading.querySelector('[data-item-key]')).toBeNull();
     const parent=items[0]!.parentElement;
     await act(async()=>{details.open=true;details.dispatchEvent(new Event('toggle'));});
     expect([...host.querySelectorAll('[data-item-key]')]).toEqual(items);
-    expect(items.every(item=>item.parentElement===parent&&!(item as HTMLElement).hidden)).toBe(true);
+    expect(details.open).toBe(true);expect(items.every(item=>item.parentElement===parent)).toBe(true);
     await act(async()=>{details.open=false;details.dispatchEvent(new Event('toggle'));});
-    expect([...host.querySelectorAll('[data-item-key]')]).toEqual(items);expect(items.every(item=>(item as HTMLElement).hidden)).toBe(true);
+    expect([...host.querySelectorAll('[data-item-key]')]).toEqual(items);expect(details.open).toBe(false);expect(items.every(item=>item.closest('[data-work-group]')===details)).toBe(true);
   }finally{render(null,host);host.remove();fixture.model.dispose();fixture.data.stop();}
 });
 
@@ -135,7 +132,7 @@ it.each(['empty-user','reasoning-only','unknown-item'] as const)('keeps honest o
     const { SavedWindowContent }=await import('../screens/Conversation');
     const row:import('../../../data/src/protocol').HistoryItem={node_id:'quiet-node',kind:mode==='empty-user'?'user':'assistant_response',excerpt:'Forbidden private aggregate fallback',selection:{ordinal:0},items:mode==='empty-user'?[]:mode==='reasoning-only'?[{item_identity:'r',kind:'reasoning_unavailable'}]:[{item_identity:'unknown',kind:'unavailable',reason:'opaque'}]};
     await act(async()=>render(<SavedWindowContent model={fixture.model} snapshot={{rows:[row],range:{first:0,last:0},total:1,revision:1,generation:1,epoch:1,disposed:false,pending:false}}/>,host));
-    expect(host.querySelector('[data-node="quiet-node"]')).not.toBeNull();expect(host.textContent).toContain(fixture.model.t.value('work.textUnavailable'));
+    expect(host.querySelector('[data-node="quiet-node"]')).not.toBeNull();expect(host.textContent).toContain(fixture.model.t.value(mode==='reasoning-only'?'work.thinking':'work.textUnavailable'));
     expect(host.textContent).not.toContain('Forbidden');expect(host.querySelector('.more')).toBeNull();
   }finally{render(null,host);host.remove();fixture.model.dispose();fixture.data.stop();}
 });
@@ -148,7 +145,7 @@ it('retains a no-execution tool as a visible unavailable item without inventing 
     const projection=projectSavedItems([{nodeId:'no-exec',itemIdentity:'tool',windowRevision:1,kind:'tool',executionIds:[]}]);
     await act(async()=>render(<SavedConversationItems model={fixture.model} projection={projection}/>,host));
     expect(host.querySelectorAll('[data-item-key]')).toHaveLength(1);expect(host.querySelector('[data-execution-id]')).toBeNull();
-    const heading=host.querySelector('[data-item-heading]')!;expect(heading.textContent).toContain(fixture.model.t.value('tools.count',{n:1}));expect(heading.textContent).toContain(fixture.model.t.value('work.textUnavailable'));expect(heading.textContent).not.toContain(fixture.model.t.value('status.completed'));
+    const heading=host.querySelector('summary[data-work-heading]')!;expect(heading.textContent).toContain(fixture.model.t.value('work.unknownTools'));expect(heading.textContent).toContain(fixture.model.t.value('work.textUnavailable'));expect(heading.textContent).not.toContain(fixture.model.t.value('status.completed'));
     const details=host.querySelector('details')!;await act(async()=>{details.open=true;details.dispatchEvent(new Event('toggle'));});
     expect(host.querySelector('[data-execution-unavailable]')?.textContent).toBe(fixture.model.t.value('work.textUnavailable'));
   }finally{render(null,host);host.remove();fixture.model.dispose();fixture.data.stop();}
@@ -175,8 +172,8 @@ it('bounds output watches to opened tool details and preserves item DOM when mem
     const details=host.querySelector('details.step-group')! as HTMLDetailsElement;
     await act(async()=>{details.open=true;details.dispatchEvent(new Event('toggle'));});expect(active).toBe(1);
     await paint(projectSavedItems([{...source,nodeId:'preceding',itemIdentity:'preceding',executionIds:['other-execution']},source]));
-    expect(active).toBe(0);expect([...host.querySelectorAll('[data-item-key]')].find(el=>el.getAttribute('data-item-key')===projection.items[0]!.key)).toBe(item);
-    expect(item.parentElement).toBe(parent);expect((item as HTMLElement).hidden).toBe(true);expect(maximum).toBe(1);
+    expect(active).toBe(0);const replacement=[...host.querySelectorAll('[data-item-key]')].find(el=>el.getAttribute('data-item-key')===projection.items[0]!.key)!;
+    expect(replacement).not.toBe(item);expect((replacement.closest('details') as HTMLDetailsElement).open).toBe(false);expect(maximum).toBe(1);
   }finally{render(null,host);expect(active).toBe(0);fixture.model.watchOutput=original;host.remove();fixture.model.dispose();fixture.data.stop();}
 });
 
@@ -187,10 +184,10 @@ it('does not claim completion for a closed local summary mixing proved and no-ID
     const step=fixture.model.conversation.value.flatMap(row=>row.type==='steps'?row.steps:[])[0]!;
     const projection=projectSavedItems([{nodeId:'mixed-summary',itemIdentity:'known',windowRevision:1,kind:'tool',executionIds:[step.executionId]},{nodeId:'mixed-summary',itemIdentity:'unknown',windowRevision:1,kind:'tool',executionIds:[]}]);
     await act(async()=>render(<SavedConversationItems model={fixture.model} projection={projection}/>,host));
-    const heading=host.querySelector('[data-item-heading]')!,details=heading.querySelector('details')!;
-    expect(details.open).toBe(false);expect(heading.textContent).toContain(fixture.model.t.value('tools.count',{n:2}));
+    const details=host.querySelector('details[data-work-group]')! as HTMLDetailsElement,heading=details.querySelector('summary')!;
+    expect(details.open).toBe(false);expect(heading.textContent).toContain(fixture.model.t.value('work.unknownTools'));
     expect(heading.textContent).toContain(fixture.model.t.value('work.textUnavailable'));expect(heading.querySelector('[data-status="completed"]')).toBeNull();
-    expect([...host.querySelectorAll('[data-item-key]')].every(item=>(item as HTMLElement).hidden)).toBe(true);
+    expect([...host.querySelectorAll('[data-item-key]')].every(item=>item.closest('[data-work-group]')===details)).toBe(true);
   }finally{render(null,host);host.remove();fixture.model.dispose();fixture.data.stop();}
 });
 
@@ -209,6 +206,40 @@ it('contains saved Work in actual group parents even for a singleton and never d
     for(const item of host.querySelectorAll('[data-work-item-key]'))expect(item.closest('[data-work-group]')).not.toBeNull();
     expect(host.querySelector('[data-thinking-marker]')).not.toBeNull();
     expect(host.querySelector('[data-node="conversation"]')?.closest('[data-work-group]')).toBeNull();
-    expect(groups.every(group=>(group.querySelector('details') as HTMLDetailsElement)?.open===false)).toBe(true);
+    expect(groups.every(group=>(group as HTMLDetailsElement).open===false)).toBe(true);
   }finally{render(null,host);host.remove();fixture.model.dispose();fixture.data.stop();}
+});
+
+it.each(['live-only','mixed'] as const)('contains all %s Work facts and keeps authoritative live text outside Work',async mode=>{
+  const fixture=await fixtureModel(),host=document.createElement('div');document.body.append(host);
+  try{
+    const { SavedWindowContent }=await import('../screens/Conversation');
+    const { normalizeLiveWorkFacts }=await import('../../../ui-core/src/conversation-items');
+    const rows:import('../../../data/src/protocol').HistoryItem[]=mode==='mixed'?[{node_id:'saved-work',kind:'assistant_response',selection:{ordinal:0},items:[{item_identity:'thinking',kind:'reasoning_unavailable'}]}]:[];
+    const liveFacts=[...normalizeLiveWorkFacts({scope:'synthetic-scope',items:[{kind:'shell',id:'shell-record',state:'running',thread_id:'synthetic-scope',execution_id:'actual-exec'},{kind:'pending_message',id:'pending',state:'pending',thread_id:'synthetic-scope',message_id:'pending-message'},{kind:'progress',id:'progress-record',state:'running',thread_id:'synthetic-scope'}]}),{domain:'live' as const,namespace:'handoff' as const,scope:'synthetic-scope',recordId:'actual-stream-record',kind:'text' as const,text:'Authoritative live nonreasoning text'}];
+    await act(async()=>render(<SavedWindowContent model={fixture.model} snapshot={{rows,range:{first:0,last:rows.length-1},total:rows.length,revision:1,generation:1,epoch:1,disposed:false,pending:false}} liveFacts={liveFacts}/>,host));
+    const members=[...host.querySelectorAll('[data-work-item-key]')];expect(members).toHaveLength(mode==='mixed'?3:2);
+    for(const item of members)expect(item.closest('details[data-work-group]')).not.toBeNull();
+    expect(host.querySelectorAll('[data-work-group]')).toHaveLength(1);
+    expect(host.textContent).toContain('Authoritative live nonreasoning text');
+    expect(host.querySelector('[data-live-overlay]')?.closest('[data-work-group]')).toBeNull();
+    expect([...host.querySelectorAll('[data-item-key]')].some(item=>item.getAttribute('data-item-key')?.includes('pending'))).toBe(false);
+    expect((host.querySelector('details[data-work-group]') as HTMLDetailsElement).open).toBe(false);
+  }finally{render(null,host);host.remove();fixture.model.dispose();fixture.data.stop();}
+});
+
+
+it('admits text only from never-ready owned ledger records, not ready or identified bodies after status changes',async()=>{
+  const { Handoff }=await import('../../../data/src/handoff');
+  const { projectOwnedHandoffFacts }=await import('../screens/Conversation');
+  const scheduled:(()=>void)[]=[];const ledger=new Handoff(callback=>scheduled.push(callback));
+  const begin=(id:string)=>{ledger.apply({attempt_id:id,gap:false,deltas:[{offset:0,reasoning:false,text:'Synthetic stream text'}]});while(scheduled.length)scheduled.shift()!();};
+  const fact=(id:string)=>projectOwnedHandoffFacts('owned-scope',ledger.records.value).find(item=>'domain' in item&&item.recordId===`handoff:${id}`)!;
+  begin('stream');expect(fact('stream').kind).toBe('text');
+  ledger.ready('stream','saved-node','Forbidden ready replacement');expect(fact('stream').kind).toBe('unknown');
+  ledger.fail('stream');expect(fact('stream').kind).toBe('unknown');
+  ledger.confirming('stream');expect(fact('stream').kind).toBe('unknown');
+  begin('identified');ledger.identify('identified','reserved-node');expect(fact('identified').kind).toBe('unknown');
+  expect(projectOwnedHandoffFacts('owned-scope',ledger.records.value).some(item=>'text' in item&&item.text.includes('Forbidden'))).toBe(false);
+  ledger.discard('ended');
 });

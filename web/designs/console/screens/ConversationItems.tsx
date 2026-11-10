@@ -1,17 +1,7 @@
 import type { ComponentChildren } from 'preact';
 
 /** Internal normalized presentation input, not a Core wire DTO or a body proof. */
-export interface ConversationItemSource {
-  nodeId: string;
-  itemIdentity: string;
-  revision?: string;
-  windowRevision?: string | number;
-  kind: 'text' | 'tool' | 'reasoning' | 'reasoning_unavailable' | 'unknown' | 'unavailable' | 'user' | 'summary' | 'record' | 'interruption' | 'ordinaryEmpty';
-  text?: string;
-  textComplete?: boolean;
-  executionId?: string;
-  executionIds?: readonly string[];
-}
+export type ConversationItemSource = import("../../../ui-core/src/conversation-items").NormalizedSavedItem;
 export interface ConversationItem {
   key: string;
   source: ConversationItemSource;

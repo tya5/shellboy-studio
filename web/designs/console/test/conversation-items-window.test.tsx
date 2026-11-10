@@ -18,7 +18,7 @@ it('consumes actual immutable Window publications without deriving item bodies f
   try{
     await act(async()=>render(<AcceptedWindowConversation reader={r.w.acceptedView} project={snapshot=>{
       seen.push(snapshot);return projectSavedItems(snapshot.rows.flatMap(row=>row.node_id ? known.get(row.node_id)??[] : []));
-    }} renderItem={item=>item.source.kind==='text'?item.source.text:item.source.executionId}/>,host));
+    }} renderItem={item=>item.source.kind==='text'?item.source.text:item.source.kind==='tool'?item.source.executionId:''}/>,host));
     const ref=r.w.acceptedView.peek(),first=host.querySelector('[data-item-key]');
     expect(seen.at(-1)).toBe(ref);expect(Object.isFrozen(ref.rows)).toBe(true);
     expect([...host.querySelectorAll('[data-item-key]')].map(el=>el.getAttribute('data-node'))).toEqual(ref.rows.flatMap(row=>[row.node_id,row.node_id]));
@@ -37,7 +37,7 @@ it.each([true,false])('actual tail continuation cannot republish after synchrono
   try{
     await act(async()=>render(<AcceptedWindowConversation reader={r.w.acceptedView}
       project={snapshot=>projectSavedItems(snapshot.rows.filter(row=>!!row.node_id).map(row=>({nodeId:row.node_id!,itemIdentity:'local-text',revision:'fixture',kind:'text',text:`Synthetic ${row.node_id}`})))}
-      renderItem={item=>item.source.text}/>,host));
+      renderItem={item=>item.source.kind==='text'?item.source.text:''}/>,host));
     const before=r.w.acceptedView.peek(),generation=host.querySelector('[data-accepted-generation]')!.getAttribute('data-accepted-generation');
     await act(async()=>{r.owner.append(1);r.w.changed();await r.settle();});
     if(revoke){

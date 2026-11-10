@@ -8,7 +8,7 @@ import { fixtureModel } from '../../../ui-core/test/fixture';
 import { Output, SnapshotConversation } from '../screens/Conversation';
 
 type Snapshot = { projection: SavedItemProjection; revision: string; readiness: 'pending'|'ready' };
-const tool=(nodeId:string,itemIdentity:string):NormalizedSavedItem=>({nodeId,itemIdentity,revision:'r1',kind:'tool',executionId:`exec-${nodeId}-${itemIdentity}`});
+const tool=(nodeId:string,itemIdentity:string):Extract<NormalizedSavedItem,{kind:'tool'}>&{nodeId:string}=>({nodeId,itemIdentity,revision:'r1',kind:'tool',executionId:`exec-${nodeId}-${itemIdentity}`});
 const text=(nodeId:string,itemIdentity:string):NormalizedSavedItem=>({nodeId,itemIdentity,revision:'r1',kind:'text',text:`Synthetic ${nodeId}-${itemIdentity}`});
 const key=(item:NormalizedSavedItem)=>JSON.stringify([item.nodeId,item.itemIdentity]);
 
@@ -19,7 +19,7 @@ describe('actual normalized P -> materialized S -> D (not a Core wire adapter)',
     const host=document.createElement('div');document.body.append(host);
     const paint=()=>render(<SnapshotConversation reader={controller}
       renderHeading={summary=><span>{summary.executionIds.join(',')}</span>}
-      renderItem={item=>item.source.kind==='text'?<span>{item.source.text}</span>:<code>{item.source.executionId}</code>}/>,host);
+      renderItem={item=>item.source.kind==='text'?<span>{item.source.text}</span>:<code>{item.source.kind==='tool'?item.source.executionId:''}</code>}/>,host);
     try{
       await act(async()=>paint());
       const saved=host.querySelector(`[data-item-key='${key(b[1]!)}']`)!;
@@ -53,7 +53,7 @@ describe('actual normalized P -> materialized S -> D (not a Core wire adapter)',
   it('keeps rendered pending/revision and empty output until a current immutable snapshot commits',async()=>{
     const fixture=await fixtureModel();const cached={text:'',loading:false,cutOff:false,error:undefined};
     fixture.model.outputs.value=new Map([['exec-A-0',cached]]);
-    const controller=new AcceptedView<Snapshot>({projection:projectSavedItems([tool('A','0')]),revision:'r1',readiness:'pending'});
+    const controller=new AcceptedView<Snapshot>({projection:projectSavedItems([{...tool('A','0'),revision:'r3'}]),revision:'r1',readiness:'pending'});
     const host=document.createElement('div');document.body.append(host);
     try{
       await act(async()=>render(<SnapshotConversation reader={controller} renderItem={()=><Output model={fixture.model} id="exec-A-0" command="" complete/>}/>,host));
