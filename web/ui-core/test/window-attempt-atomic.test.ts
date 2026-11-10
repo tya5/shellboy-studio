@@ -42,7 +42,7 @@ it("notification reentry stops old release and never retires another attempt/tur
   expect(w.acceptHandoff(record, proof.scope, () => { releases++; })).toBe(false);
   expect(releases).toBe(0); expect(w.acceptedView.peek().retiredAttempts!.every(item => item.turnId === "turn" && item.attemptId === "attempt")).toBe(true); w.dispose();
 });
-it("actual store ALL-ref lookup -> original O capture -> same Window snapshot -> synchronous end is one observed transition", async () => {
+it("actual terminal persistence -> original O capture -> same Window saved snapshot -> synchronous end is one observed transition", async () => {
   const t = new FakeTransport(), db = new FakeOwnerDb(), ticks: (() => void)[] = []; let id = 0;
   const data = new ShellboyData({ transport: t, newId: () => `joined-${++id}`, schedule: fn => ticks.push(fn) });
   const base = db.answer.bind(db);
@@ -53,13 +53,26 @@ it("actual store ALL-ref lookup -> original O capture -> same Window snapshot ->
   const w = new ConversationWindow({ read: (args, cancel) => h.readWindow(args, cancel) }); await settle(t, db);
   t.push({ t: "live", thread_id: "thread", attempt_id: "attempt", gap: false, deltas: [{ offset: 0, reasoning: false, text: "whole live block" }] }); ticks.splice(0).forEach(fn => fn());
   t.push({ t: "live_end", thread_id: "thread" }); await settle(t, db);
-  const staged = h.handoff.peek()[0]!; expect(staged.text).toBe("whole live block"); expect(staged.readyAttempt).toBeDefined();
+  const staged = h.handoff.peek()[0]!; expect(staged.text).toBe("whole live block");
+  expect(staged.readyAttempt).toBeUndefined();
+  expect(staged.terminalPersisted).toMatchObject({ scope: h.handoffScope(), attemptId: "attempt", nodeIds: ["answer", "tool"] });
+  const before = w.acceptedView.peek();
   const trace: { rows: string[]; retired: string[]; overlay: string }[] = [];
-  w.acceptedView.subscribe(ref => trace.push({ rows: ref.rows.map(row => row.node_id!), retired: (ref.retiredAttempts ?? []).map(r => r.attemptId), overlay: h.handoff.peek()[0]?.text ?? "" }));
-  expect(h.transferHandoff("attempt", (record, release) => w.acceptHandoff(record, h.handoffScope(), release))).toBe(true);
+  w.acceptedView.subscribe(ref => {
+    expect(w.acceptedView.isCurrent(ref)).toBe(true);
+    expect(ref.rows).toEqual(before.rows);
+    trace.push({ rows: ref.rows.map(row => row.node_id!), retired: (ref.terminalPersistedAttempts ?? []).map(r => r.attemptId), overlay: h.handoff.peek()[0]?.text ?? "" });
+  });
+  let ends = 0;
+  const transfer = () => h.transferHandoff("attempt", (record, release) => w.acceptHandoff(record, h.handoffScope(), reason => {
+    expect(reason).toBe("end"); ends++; release(reason);
+  }));
+  expect(transfer()).toBe(true);
   expect(trace).toEqual([{ rows: ["tool", "answer"], retired: ["attempt"], overlay: "whole live block" }]);
-  // Overlay removal is represented by the same snapshot proof before record cleanup.
-  expect(h.handoff.peek()).toHaveLength(0); expect(w.acceptedView.peek().retiredAttempts![0]!.scope).toBe(h.handoffScope());
+  expect(h.handoff.peek()).toHaveLength(0);
+  expect(w.acceptedView.peek().terminalPersistedAttempts![0]!.scope).toBe(h.handoffScope());
+  expect(w.acceptedView.peek().retiredAttempts ?? []).toEqual([]);
+  expect(transfer()).toBe(false); expect(ends).toBe(1); expect(trace).toHaveLength(1);
   expect(t.calls("history.get")).toHaveLength(0); w.dispose(); h.close(); data.stop();
 });
 it("a revoked Window capability cannot re-publish old retirement metadata on a later ordinary generation", async () => {
