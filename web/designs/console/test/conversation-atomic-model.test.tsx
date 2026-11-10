@@ -52,13 +52,13 @@ for(const mode of ['ready','ready-with-change','reentry','wrong-lifetime','parti
  }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
 });
 
-for(const scenario of ['pending','failed','different-turn'] as const)it(`actual scoped pending presentation: ${scenario}`,async()=>{
+for(const scenario of ['pending','failed','separate-attempt','owner-lifetime'] as const)it(`actual scoped pending presentation: ${scenario}`,async()=>{
  let ended=false;
  const member:HistoryItem={node_id:'member',kind:'assistant_response',selection:{ordinal:1},items:[{kind:'text',item_identity:'member-text',text:'Saved member fragment',text_complete:true}]};
  const f=await fixtureModel({capabilities:['history.window'],configure(db){
   db.threads={t:summary('t')};db.details.t=details('t');db.history.t=[];
   const base=db.answer.bind(db);db.answer=call=>{
-   if(call.command==='status')return {ok:true,result:{items:ended?[{kind:'attempt',id:'attempt',attempt_id:'attempt',turn_id:scenario==='different-turn'?'different-turn':'turn',thread_id:'t',state:scenario==='failed'?'failed':'completed',response_nodes_truncated:false,response_nodes:[{node_id:'member',ordinal:1,kind:'message'}]}]:[]}};
+   if(call.command==='status')return {ok:true,result:{items:ended?[{kind:'attempt',id:'attempt',attempt_id:scenario==='separate-attempt'?'retry-attempt':'attempt',turn_id:'turn',thread_id:'t',state:scenario==='failed'?'failed':'completed',response_nodes_truncated:false,response_nodes:[{node_id:'member',ordinal:1,kind:'message'}]}]:[]}};
    if(call.command==='history.window')return {ok:true,result:{thread_id:'t',revision:8,total:2,items:[independent,member]}};
    return base(call);
   };
@@ -69,12 +69,14 @@ for(const scenario of ['pending','failed','different-turn'] as const)it(`actual 
   await act(async()=>{render(<App context={context}/>,host);await settle(f.t,f.db);});
   expect(host.textContent).toContain('Saved member fragment');
   await act(async()=>{f.t.push({t:'live',thread_id:'t',attempt_id:'attempt',gap:false,deltas:[{offset:0,reasoning:false,text:'Whole live answer'}]});await flush(24);});
+  if(scenario==='owner-lifetime')f.model.handle.peek()!.pause();
   ended=true;await act(async()=>{f.t.push({t:'live_end',thread_id:'t'});await flush(24);});
   // Deliver the genuine attempt fact but hold all subsequent item readback.
   await act(async()=>{for(let n=0;n<6;n++){for(const call of f.t.calls().filter(c=>!f.db.answered.has(c.id)&&c.command!=='history.window')){const out=f.db.answer(call);f.db.answered.add(call.id);if(out.ok)f.t.ok(call.id,out.result);else f.t.ownerError(call.id,out.code,out.message);}await flush();}});
   const snapshot=f.model.longReader.peek()!.acceptedView.peek();
   expect(snapshot.rows.some(row=>row.node_id==='member')).toBe(true);
-  expect(snapshot.attemptPresentations?.some(fact=>fact.nodeIds.includes('member'))).toBe(true);
+  if(scenario==='pending'||scenario==='failed')expect(snapshot.attemptPresentations?.some(fact=>fact.nodeIds.includes('member'))).toBe(true);
+  else expect(snapshot.attemptPresentations??[]).toHaveLength(0);
   expect(host.textContent).toContain('Independent saved user');
   expect(snapshot.retiredAttempts??[]).toHaveLength(0);
   if(scenario==='pending')expect(host.textContent).not.toContain('Saved member fragment');
