@@ -452,7 +452,6 @@ function OrderedHistory({ model, handle, rows, win, history, scroller, pinned, f
             renderAcceptedView={snapshot => <><SavedWindowContent model={model} snapshot={snapshot} liveBoundary={boundary?.ordinal} live={<LiveMessage model={model} handle={handle} follow={follow} />} /></>}
             live={<LiveMessage model={model} handle={handle} follow={follow} />}
             liveBoundary={boundary?.ordinal}
-            statusLine={<ConversationStatus model={model} />}
           />
         ) : (
           <div
@@ -485,7 +484,6 @@ function OrderedHistory({ model, handle, rows, win, history, scroller, pinned, f
               ]),
               ...(boundary === undefined || boundary.legacy >= rows.length ? [<LiveMessage key="handoff-slot" model={model} handle={handle} follow={follow} />] : []),
             ]}
-            <ConversationStatus model={model} />
             {rows.length === 0 && !history?.error ? (
               loading ? <LoadingRows label={t("convo.loading")} rows={5} /> : <EmptyState icon="chat" character title={t("convo.empty")} body={t("convo.emptyBody")} />
             ) : null}
@@ -517,15 +515,6 @@ export function Conversation({ model }: { model: AppModel }) {
     setSheetOpen(false);
   }, [handle]);
 
-  if (!handle)
-    return (
-      <div class="convo">
-        <EmptyState icon="chat" title={t("convo.noThread")} body={t("convo.noThreadBody")}>
-          <Button variant="primary" onClick={() => void model.createThread()}>{t("action.new")}</Button>
-        </EmptyState>
-      </div>
-    );
-
   const send = model.sendState.value;
   const conn = model.connection.value;
   const recovery = model.recovery.value;
@@ -534,8 +523,12 @@ export function Conversation({ model }: { model: AppModel }) {
   return (
     <>
       <div class="convo">
-        <OrderedHistory model={model} handle={handle} rows={rows} win={win} history={history} scroller={scroller} pinned={pinned} follow={follow} loading={loading} t={t} />
-        <div class="dock">
+        {handle ? <OrderedHistory model={model} handle={handle} rows={rows} win={win} history={history} scroller={scroller} pinned={pinned} follow={follow} loading={loading} t={t} /> :
+          <EmptyState icon="chat" title={t("convo.noThread")} body={t("convo.noThreadBody")}>
+            <Button variant="primary" onClick={() => void model.createThread()}>{t("action.new")}</Button>
+          </EmptyState>}
+        <ConversationStatus key="permanent-conversation-status" model={model} />
+        {handle ? <div class="dock">
           {recovery ? (
             <Notice
               tone="bad"
@@ -575,9 +568,9 @@ export function Conversation({ model }: { model: AppModel }) {
               ) : undefined
             }
           />
-        </div>
+        </div> : null}
       </div>
-      <Details model={model} />
+      {handle ? <Details model={model} /> : null}
       <WorkSheet open={sheetOpen} title={t("work.title")} closeLabel={t("work.close")} onClose={() => setSheetOpen(false)}><WorkRegions model={model} place="sheet" /></WorkSheet>
     </>
   );
