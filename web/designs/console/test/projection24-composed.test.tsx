@@ -28,9 +28,9 @@ it('actual P -> S -> D -> G can publish mixed item order',()=>{
 it('S nested notify must not repaint obsolete D rows or recapture obsolete G revision',()=>{
  const v1={revision:'v1',projection:downstream};const v2={...v1,revision:'v2'},v3={...v1,revision:'v3'};
  const accepted=new AcceptedView(v1);const captured:string[]=[];
- accepted.subscribe(v=>{if(v===v2)accepted.commit(accepted.stage(v3),()=>true)});
+ accepted.subscribe(v=>{if(v.revision===v2.revision)accepted.commit(accepted.stage(v3))});
  accepted.subscribe(v=>{paint(v.projection);const sync=new CurrentScrollSync();sync.run({acceptedView:{peek:()=>accepted.current,isCurrent:r=>r===accepted.current},peekScroll:()=>undefined,consumeScroll:()=>false},{measure(){},plan(){return{consume(){},write(){},capture(){captured.push(v.revision)}}}})});
- accepted.commit(accepted.stage(v2),()=>true);
+ accepted.commit(accepted.stage(v2));
  expect(captured).toEqual(['v3']);
 });
 it('S/O stale notification must not release the only preview after a newer snapshot supersedes it',()=>{
@@ -42,22 +42,22 @@ it('S/O stale notification must not release the only preview after a newer snaps
  overlay=authority.associate(overlay,proof);
  const v1={id:'initial',visible:false},v2={id:'replacement',visible:true},v3={id:'newer-not-visible',visible:false};
  const accepted=new AcceptedView(v1);
- accepted.subscribe(v=>{if(v===v2)accepted.commit(accepted.stage(v3),()=>true)});
- accepted.subscribe(v=>{if(v===v2)overlay=authority.release(overlay,proof,record,op,cap)});
- accepted.commit(accepted.stage(v2),()=>true);
- expect(accepted.current).toBe(v3);
+ accepted.subscribe(v=>{if(('revision'in v?v.revision:v.id)===('revision'in v2?v2.revision:v2.id))accepted.commit(accepted.stage(v3))});
+ accepted.subscribe(v=>{if(('revision'in v?v.revision:v.id)===('revision'in v2?v2.revision:v2.id))overlay=authority.release(overlay,proof,record,op,cap)});
+ accepted.commit(accepted.stage(v2));
+ expect(accepted.current).toEqual(v3);
  expect(overlay.records).toContain(record);
 });
 it('G cancels a measured D transaction when S changes snapshot before write',()=>{
  const accepted=new AcceptedView({revision:'old',projection:downstream});paint(accepted.current.projection);
  const sync=new CurrentScrollSync();let writes=0,captures=0;
- const result=sync.run({acceptedView:{peek:()=>accepted.current,isCurrent:r=>r===accepted.current},peekScroll:()=>undefined,consumeScroll:()=>false},{measure(){accepted.commit(accepted.stage({...accepted.current,revision:'new'}),()=>true)},plan(){return{consume(){},write(){writes++},capture(){captures++}}}});
+ const result=sync.run({acceptedView:{peek:()=>accepted.current,isCurrent:r=>r===accepted.current},peekScroll:()=>undefined,consumeScroll:()=>false},{measure(){accepted.commit(accepted.stage({...accepted.current,revision:'new'}))},plan(){return{consume(){},write(){writes++},capture(){captures++}}}});
  expect(result).toBe('obsolete');expect(writes).toBe(0);expect(captures).toBe(0);
 });
 it('downstream D stable items survive new S wrapper revision without reparenting',()=>{
  const accepted=new AcceptedView({revision:'v1',projection:downstream});paint(accepted.current.projection);
  const original=[...host.querySelectorAll('[data-item-key]')];accepted.subscribe(v=>paint(v.projection));
- accepted.commit(accepted.stage({...accepted.current,revision:'v2'}),()=>true);
+ accepted.commit(accepted.stage({...accepted.current,revision:'v2'}));
  expect([...host.querySelectorAll('[data-item-key]')]).toEqual(original);
  expect(original.every(n=>n.parentElement===host.querySelector('.conversation-items'))).toBe(true);
 });

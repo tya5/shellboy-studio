@@ -1,11 +1,11 @@
 {
   "purpose": "unreviewed normalized validation only, not production adoption",
   "base": "9bda7c699b9b2732de5ec5e105ad789d4f3cb638",
-  "P": "736b10004f6abd53878caf5ef205c6f44a3a552d",
-  "S": "890ea330e207a9369916b2359fd19d44daba4d32",
+  "P": "bb6ad33ea8aad67c142f6d5d66210f76da681f84",
+  "S": "e89bb81b1d38f0145004d45bcfc1d16739733769",
   "O": "18409540b152a5505e63b5c899ad77366b39fbbd",
-  "G": "0720c9b84e05bc3d539c2be2e096a8c1820e3819",
-  "D": "1c180ef4515955f65a36936c1e96647210a9d337",
+  "G": "de7510076bd90a31430b5311a8f9c85370adda37",
+  "D": "7c0c59f1bff28009dac20cf3b41fb180ecd36b5b",
   "wire": "none; synthetic normalized inputs",
   "pipeline": "actual P invocation required; failed P leaves full pipeline red",
   "downstream_controls": "precomputed expectation explicitly not P success"
