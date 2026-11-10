@@ -1,3 +1,4 @@
+import type { OwnSendTailObservation,OwnSendReservation } from "./own-send-region";
 import type { OwnSendDecision } from "./own-send-presentation";
 import { LegacyAcceptedPresentation } from "./legacy-presentation";
 import { SenderTitles } from "./sender-titles";
@@ -879,6 +880,9 @@ export class AppModel {
   }
 
   private installedOwnResult: object | undefined;
+  private ownTailObservation:OwnSendTailObservation<unknown>|undefined;
+  private ownReservation:OwnSendReservation<unknown>|undefined;
+  ownSendReservation():OwnSendReservation<unknown>|undefined{return this.ownReservation;}
   ownMutationScope(): string { return this.acceptedOwnMessages.value[0]?.scope ?? this.pendingOwnMessage.value?.scope ?? this.handle.value?.handoffScope() ?? ""; }
   ownMutationRows(scope: string): readonly PendingOwnMessage[] {
     const accepted=this.acceptedOwnMessages.value, pending=this.pendingOwnMessage.value;
@@ -887,6 +891,8 @@ export class AppModel {
   pendingOwnIsCurrent(): boolean { return !!this.pendingOwnRetryCurrent?.(); }
   installOwnPresentation<Ref>(result: OwnSendDecision<Ref>, current: () => boolean): void {
     this.installedOwnResult=result.token;
+    this.ownTailObservation=result.observation;
+    if(!this.acceptedOwnMessages.peek().length&&!this.pendingOwnMessage.peek())this.ownReservation=undefined;
     if (!result.retire.length || !current() || !this.pendingOwnRetryCurrent?.()) return;
     if (!result.cohortVersion || result.cohortVersion.accepted!==this.acceptedOwnMessages.peek() || result.cohortVersion.pending!==this.pendingOwnMessage.peek()) return;
     const rows=this.ownMutationRows(result.scope);
@@ -919,6 +925,11 @@ export class AppModel {
     };
     this.pendingOwnCurrent = current;
     this.pendingOwnRetryCurrent = retryCurrent;
+    if(!this.acceptedOwnMessages.peek().length&&!this.pendingOwnMessage.peek()){
+      const observation=this.ownTailObservation;
+      this.ownReservation=observation&&observation.scope===scope&&observation.installedToken===this.installedOwnResult&&observation.isCurrent()
+        ?Object.freeze({token:Object.freeze({}),observation}):undefined;
+    }
     this.pendingOwnMessage.value = {threadId,scope,operationId,text,phase:"sending"};
     this.sendState.value = { kind: "sending" };
     const out = await this.ops.messageSend({ thread_id: threadId, text }, operationId);

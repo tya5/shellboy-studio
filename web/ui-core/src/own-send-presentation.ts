@@ -1,3 +1,4 @@
+import {observeOwnSendTail,placeOwnSendRegion,type OwnSendPath,type OwnSendReservation,type OwnSendPlacement,type OwnSendTailObservation} from "./own-send-region";
 import type { SavedItemProjection } from "./conversation-items";
 import type { PendingOwnMessage } from "./model";
 
@@ -21,6 +22,10 @@ export interface OwnSendPresentationInput<Ref> {
   readonly localRows: readonly PendingOwnMessage[];
   /** Supplied by the final renderer adapter, never derived from node presence. */
   readonly hiddenItemKeys: ReadonlySet<string>;
+  readonly path?:OwnSendPath;
+  readonly nodeOrdinals?:ReadonlyMap<string,number>;
+  readonly reservation?:OwnSendReservation<Ref>;
+  readonly validateCurrent?:()=>boolean;
 }
 
 // Existing CASE classification authorizes the kind; explicit completeness and
@@ -41,6 +46,8 @@ export function completeDisplayedOwnUserIds<Ref>(input: OwnSendPresentationInput
 export interface OwnSendDecision<Ref> extends OwnSendPresentation<Ref> {
   readonly cohort: readonly PendingOwnMessage[];
   readonly conflictIds: readonly string[];
+  readonly placement:OwnSendPlacement;
+  readonly observation?:OwnSendTailObservation<Ref>;
 }
 
 export function ownSendPresentation<Ref>(input: OwnSendPresentationInput<Ref>): OwnSendDecision<Ref> {
@@ -55,12 +62,15 @@ export function ownSendPresentation<Ref>(input: OwnSendPresentationInput<Ref>): 
   const complete = cohort.length > 0 && cohort.every(row => row.phase === "accepted" && !!row.messageId && displayed.has(row.messageId));
   const positions = cohort.map(row => orderedIds.indexOf(row.messageId ?? ""));
   const conflict = complete && positions.some((position, index) => index > 0 && position <= positions[index - 1]!);
-  const transfer = complete && !conflict;
+  const placement=placeOwnSendRegion(input.reservation,input.scope,input.current,input.projection,input.path,input.nodeOrdinals??new Map());
+  const transfer = complete && !conflict && placement.kind==="qualified";
   const suppressedIds = new Set(transfer ? [] : cohort.flatMap(row => row.messageId ? [row.messageId] : []));
   const items = input.current ? input.projection.items.filter(item => !input.hiddenItemKeys.has(item.key) && !suppressedIds.has(item.source.nodeId ?? "")) : [];
   const keys = new Set(items.map(item => item.key));
   const projection = Object.freeze({...input.projection, items: Object.freeze(items), sequence: Object.freeze((input.current ? input.projection.sequence ?? [] : []).filter(entry => entry.kind !== "conversation" || keys.has(entry.itemKey)))});
-  return Object.freeze({token:Object.freeze({}),ref:input.ref,scope:input.scope,cohortVersion:input.cohortVersion,projection,displayedSavedUserIds:displayed,
+  const token=Object.freeze({});
+  const observation=observeOwnSendTail(token,input.ref,input.scope,input.current,input.projection,input.path,input.validateCurrent??(()=>false));
+  return Object.freeze({token,placement,observation,ref:input.ref,scope:input.scope,cohortVersion:input.cohortVersion,projection,displayedSavedUserIds:displayed,
     cohort,localRows:transfer ? Object.freeze([]) : cohort,retire:transfer ? cohort : Object.freeze([]),
     conflictIds:Object.freeze(conflict ? cohort.map(row=>row.messageId!) : [])});
 }

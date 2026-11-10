@@ -119,3 +119,39 @@ introduced: existing eight-entry/submitted-byte bounds remain in force.
 Actual frame controls must exercise two or more ACKs, reversed saved arrival,
 metadata/partial intermediates and stale refresh, observing operation IDs, row
 order, readable text owner and counts before/after installation and retirement.
+
+## Cross-Domain Follow-Up: Build-Free Typed Checkpoint
+
+Installed223 original controls prove four local rows survive but follow the new
+assistant in DOM. The original cohort result did not own a unified region.
+
+`own-send-region.ts` declares an observation and reservation descriptor only.
+An observation is made from the installed result, with its exact token/ref/scope,
+actual revision and actual final canonical node/item tail identity. Its original
+validator is checked at reservation; it is not permission to use future refs.
+An empty qualified history is a distinct `beginning`, never a guessed index.
+One reservation descriptor is held with the existing eight-entry local cohort.
+
+Next implementation order after finite design verdict:
+
+1. UI final projection result publishes qualified-tail observation only after
+   installation; the model never independently normalizes/scans wire history.
+2. FIRST unresolved deliver checks that exact installed observation is still
+   current, captures its immutable descriptor before notifying the sending row.
+   Further same-cohort sends keep it; scope disposal clears it with the ledger.
+3. One helper validates the boundary in the new qualified canonical projection,
+   preserving original canonical order and excluding only exact cohort ACK IDs.
+4. One region result renders prefix, local cohort, suffix in that order. Its
+   entire installation and retirement use the existing cohort CAS guard.
+5. Missing/evicted/incompatible boundaries retain local content and report
+   placement-unqualified; no silent first/last/index substitution is allowed.
+
+Canonical nodes may contain several items. A tail item must be the actual last
+member of that node in the final CASE sequence, not just a matching node ID.
+A Work group containing that member must not be split into two groups with the
+same key. At reservation, the proved tail is the last sequence/member boundary;
+a later group extension requires explicit membership validation or an honest
+unqualified result. No new grouping/classifier is authorized in the renderer.
+
+No executable placement behavior, tests, or claimed validation is added by this
+typed preparation checkpoint. Original223 two RED controls remain unchanged.
