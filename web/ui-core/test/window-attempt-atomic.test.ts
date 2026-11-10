@@ -10,7 +10,7 @@ const nodes: HistoryItem[] = [
 ];
 async function rig(items = nodes) {
   const w = new ConversationWindow({ read: async () => ({ ok: true, value: { thread_id: "thread", revision: 7, total: 2, items } }) }); await flush();
-  const proof: AttemptReadyProof = { scope: '["owner","thread",1]', attemptId: "attempt", turnId: "turn", revision: 7, refs: [{ nodeId: "answer" }, { nodeId: "tool" }, { nodeId: "answer" }], nodes };
+  const proof: AttemptReadyProof = { scope: '["owner","thread",1]', attemptId: "attempt", turnId: "turn", revision: 7, total: 2, refs: [{ nodeId: "answer" }, { nodeId: "tool" }, { nodeId: "answer" }], nodes };
   const record: HandoffRecord = { key: "live-record", attemptId: "attempt", status: "confirming", text: "whole live block", incomplete: false, readyAttempt: proof };
   return { w, record, proof };
 }
@@ -28,7 +28,9 @@ for (const mode of ["missing", "partial", "deferred", "unavailable", "revision",
   if (mode === "partial") items[1]!.items = [{ kind: "text", item_identity: "text", text: "prefix", text_complete: false }];
   if (mode === "deferred") { items[1]!.items = null; items[1]!.items_unavailable_reason = "response_budget"; }
   if (mode === "unavailable") items[1]!.items = [{ kind: "unavailable", item_identity: "unknown", reason: "opaque" }];
-  const { w, record, proof } = await rig(items); const before = w.acceptedView.peek();
+  const { w, record, proof } = await rig(items);
+  if (["missing", "partial", "deferred", "unavailable"].includes(mode)) (proof as { nodes: readonly HistoryItem[] }).nodes = items;
+  const before = w.acceptedView.peek();
   if (mode === "revision") (proof as { revision: number }).revision = 6;
   if (mode === "revoke") w.acceptedView.revoke();
   let released = false; expect(w.acceptHandoff(record, mode === "scope" ? "other" : proof.scope, () => { released = true; })).toBe(false);
@@ -63,4 +65,17 @@ it("actual store ALL-ref lookup -> original O capture -> same Window snapshot ->
 it("a revoked Window capability cannot re-publish old retirement metadata on a later ordinary generation", async () => {
   const { w, record, proof } = await rig(); expect(w.acceptHandoff(record, proof.scope, () => {})).toBe(true);
   w.acceptedView.revoke(); w.layoutChanged(); expect(w.acceptedView.peek().retiredAttempts).toEqual([]); w.dispose();
+});
+it("materializes already-qualified all-ref nodes and retirement together without requiring another changed hint/read", async () => {
+  const initial: HistoryItem = { node_id: "user", kind: "user", items: [], selection: { ordinal: 0 } };
+  let reads = 0;
+  const w = new ConversationWindow({ read: async () => { reads++; return { ok: true, value: { thread_id: "thread", revision: 7, total: 1, items: [initial] } }; } }); await flush();
+  const proof: AttemptReadyProof = { scope: "scope", attemptId: "attempt", turnId: "turn", revision: 7, total: 3,
+    refs: [{ nodeId: "answer" }, { nodeId: "tool" }], nodes: nodes.map((node, i) => ({ ...node, selection: { ordinal: i + 1 } })) };
+  const record: HandoffRecord = { key: "original", attemptId: "attempt", text: "whole live", incomplete: false, status: "confirming", readyAttempt: proof };
+  const frames: { ids: string[]; total: number; retired: number }[] = [];
+  w.acceptedView.subscribe(ref => frames.push({ ids: ref.rows.map(row => row.node_id!), total: ref.total, retired: ref.retiredAttempts?.length ?? 0 }));
+  let releases = 0; expect(w.acceptHandoff(record, "scope", () => { releases++; })).toBe(true);
+  expect(frames).toEqual([{ ids: ["user", "tool", "answer"], total: 3, retired: 1 }]);
+  expect(w.rangeItems().map(row => row.node_id)).toEqual(["user", "tool", "answer"]); expect(w.total).toBe(3); expect(reads).toBe(1); expect(releases).toBe(1); w.dispose();
 });

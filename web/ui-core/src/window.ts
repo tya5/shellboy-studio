@@ -157,14 +157,43 @@ export class ConversationWindow {
       if (this.disposed || !this.acceptedView.isCurrent(expected) || proof.scope !== scope
         || proof.attemptId !== record.attemptId || !proof.turnId || proof.revision !== this.revision
         || !proof.refs.length || proof.refs.length > 64 || !proof.nodes.length) return false;
-      const rows = expected.rows;
-      for (const ref of proof.refs) {
-        const node = proof.nodes.find(node => node.node_id === ref.nodeId);
-        const loaded = rows.find(row => row.node_id === ref.nodeId);
-        if (!node || !loaded || node.selection?.ordinal !== loaded.selection?.ordinal
-          || !Array.isArray(loaded.items) || JSON.stringify(loaded.items) !== JSON.stringify(node.items)
-          || loaded.items.some(item => item.kind === "unavailable" || item.kind === "text" && !item.text_complete)) return false;
+      if (!Number.isSafeInteger(proof.total) || proof.total < this.total || proof.nodes.length > 200 || expected.pending) return false;
+      const incoming = new Map<string, HistoryItem>();
+      const stagedBuckets = new Map(this.buckets);
+      const copied = new Set<number>();
+      for (const node of proof.nodes) {
+        const ordinal = node.selection?.ordinal;
+        if (!node.node_id || incoming.has(node.node_id) || ordinal === undefined || !Number.isSafeInteger(ordinal)
+          || ordinal < 0 || ordinal >= proof.total || !Array.isArray(node.items)
+          || node.items.some(item => item.kind === "unavailable" || item.kind === "text" && !item.text_complete)) return false;
+        incoming.set(node.node_id, node);
+        const index = Math.floor(ordinal / WINDOW_NODES);
+        let holder = stagedBuckets.get(index);
+        if (!copied.has(index)) {
+          const clone = new Bucket();
+          if (holder) { clone.items = [...holder.items]; clone.filled = holder.filled; for (const [key, attachment] of holder.handoffs) clone.handoffs.set(key, attachment); }
+          holder = clone; stagedBuckets.set(index, holder); copied.add(index);
+        }
+        const slot = ordinal % WINDOW_NODES;
+        const existing = holder!.items[slot];
+        if (existing && existing.node_id !== node.node_id) return false;
+        if (!existing) holder!.filled++;
+        holder!.items[slot] = node;
       }
+      if (stagedBuckets.size > WINDOWS_HELD || proof.refs.some(ref => !incoming.has(ref.nodeId))) return false;
+      // The owned staging transaction may extend one contiguous selected run, never
+      // fabricate a gap or evict an independent saved row to make the attempt fit.
+      const ordinals = proof.nodes.map(node => node.selection!.ordinal!);
+      const first = Math.min(expected.range?.first ?? Infinity, ...ordinals);
+      const last = Math.max(expected.range?.last ?? -1, ...ordinals);
+      if (last - first + 1 > WINDOW_NODES * WINDOWS_HELD) return false;
+      const rows: HistoryItem[] = [];
+      for (let ordinal = first; ordinal <= last; ordinal++) {
+        const node = stagedBuckets.get(Math.floor(ordinal / WINDOW_NODES))?.items[ordinal % WINDOW_NODES];
+        if (!node) return false;
+        rows.push(node);
+      }
+      if (!proof.nodes.some(node => node.items?.some(item => item.kind !== "reasoning_unavailable"))) return false;
       const previous = this.retiredCapability === capability ? this.retiredAttempts : [];
       const previousCapability = this.retiredCapability;
       if (previous.length >= 8 && !previous.some(item => item.scope === scope && item.attemptId === record.attemptId)) return false;
@@ -172,13 +201,16 @@ export class ConversationWindow {
         nodeIds: proof.refs.map(ref => ref.nodeId) };
       const next = [...previous.filter(item => item.scope !== scope || item.attemptId !== record.attemptId), retired];
       const generation = this.acceptedGeneration + 1;
-      const staged = this.acceptedView.stage({ ...expected, generation, retiredAttempts: next }, capability);
+      const staged = this.acceptedView.stage({ ...expected, generation, rows, range: { first, last }, total: proof.total, retiredAttempts: next }, capability);
       if (this.disposed || !this.acceptedView.isCurrent(expected) || capability !== this.acceptedView.currentCapability) return false;
       // Publish retirement and saved rows together, before any subscriber can run.
+      const oldBuckets = this.buckets, oldTotal = this.total;
+      this.buckets = stagedBuckets;
+      this.total = proof.total;
       this.retiredAttempts = next;
       this.retiredCapability = capability;
       ++this.acceptedGeneration;
-      if (!this.acceptedView.commit(staged)) { if (this.retiredAttempts === next) { this.retiredAttempts = previous; this.retiredCapability = previousCapability; } return false; }
+      if (!this.acceptedView.commit(staged)) { if (this.retiredAttempts === next) { this.retiredAttempts = previous; this.retiredCapability = previousCapability; this.buckets = oldBuckets; this.total = oldTotal; } return false; }
       const committed = this.acceptedView.peek();
       if (committed.generation !== generation || this.acceptedGeneration !== generation || capability !== this.acceptedView.currentCapability
         || !this.acceptedView.isCurrent(committed) || committed.retiredAttempts?.at(-1)?.attemptId !== record.attemptId) return false;

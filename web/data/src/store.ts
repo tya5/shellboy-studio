@@ -734,7 +734,7 @@ export class ShellboyData {
         // A replacement must contain a visible authoritative item, not just bookkeeping.
         if (!saved.some(node => node.items?.some(item => item.kind === "text" || item.kind === "tool_call" || item.kind === "tool_result"))) continue;
         const proof = Object.freeze({ scope: this.handoffScope(entry), attemptId: record.attemptId,
-          turnId: attempt.turn_id!, revision, refs: Object.freeze(refs.map(ref => Object.freeze({ nodeId: ref.node_id }))), nodes: saved });
+          turnId: attempt.turn_id!, revision, total: total!, refs: Object.freeze(refs.map(ref => Object.freeze({ nodeId: ref.node_id }))), nodes: saved });
         entry.live.stageAttempt(record, proof);
       }
     }).finally(() => {
