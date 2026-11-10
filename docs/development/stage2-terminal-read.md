@@ -233,3 +233,15 @@ D must project terminalPresence through canonical CASE Notifications (pending/
 reading) or Problems (settled client reason), with no new category/fake saved node.
 Until that consumer and its original-token binding are integrated, no visible-gap
 fix or full runtime matrix acceptance is claimed. Barrier/fab0 remain outside scope.
+
+### Overlap Safety Correction
+
+The initial refresh merge could replace already authorized row bodies at the same
+node ID/ordinal. Same selection revision does not authorize that replacement. The
+correction rejects the ENTIRE page when any overlapping row differs structurally,
+retains all existing saved rows and settles partial-items presence. This includes
+richer-looking replacements: without an adopted canonical merge proof no content
+length, type or completeness heuristic grants replacement authority. New rows are
+admitted only when every overlap is identical and the existing contiguous-run /
+capacity guards also pass. Synchronous request completion rechecks the original
+qualification and exact target before any reason publication.

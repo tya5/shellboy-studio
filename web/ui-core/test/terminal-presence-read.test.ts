@@ -90,3 +90,26 @@ it("data stop invalidates held canonical lease before callback and publishes no 
  const before = r.w.acceptedView.peek(); r.data.stop(); await flush();
  expect(r.w.acceptedView.peek()).toBe(before); expect(lease.state.peek().phase).toBe("unavailable"); r.w.dispose();
 });
+it.each(["unavailable", "partial", "fewer"] as const)("same-revision %s replacement cannot downgrade an already available saved node", async mode => {
+ const r = await target(); const before = r.w.acceptedView.peek(); const saved = before.rows[0]!;
+ const original = r.db.answer.bind(r.db);
+ r.db.answer = call => {
+   const answer = original(call);
+   if (call.command === "history.window" && answer.ok) {
+     const page = answer.result as { items: { node_id: string; items: unknown[] }[] };
+     page.items[0]!.items = mode === "unavailable" ? [{ kind: "unavailable", item_identity: "call", reason: "budget" }]
+       : mode === "partial" ? [{ kind: "text", item_identity: "partial", text: "prefix", text_complete: false }] : [];
+   }
+   return answer;
+ };
+ r.w.prepareTerminalRead(r.h, r.token, r.receipt); await r.pump();
+ expect(r.w.acceptedView.peek().rows.find(row => row.node_id === saved.node_id)).toEqual(saved);
+ expect(r.w.acceptedView.peek().terminalPresence?.[0]).toMatchObject({ phase: "settled", answerAvailability: "unknown" });
+ r.w.dispose(); r.data.stop();
+});
+it("synchronous request notification revoking the original token cannot publish even an unavailable reason", async () => {
+ const r = await target(); const before = r.w.acceptedView.peek(); let writes = 0; const stop = r.w.acceptedView.subscribe(() => writes++);
+ const handle = { ...r.h, requestTerminalRead: () => { r.h.cancelReads(); return { phase: "unavailable" as const, reason: "unsupported" as const }; } };
+ expect(r.w.prepareTerminalRead(handle, r.token, r.receipt)).toEqual({ phase: "unavailable", reason: "cancelled" });
+ expect(r.w.acceptedView.peek()).toBe(before); expect(writes).toBe(0); stop(); r.w.dispose(); r.data.stop();
+});

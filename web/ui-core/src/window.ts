@@ -206,6 +206,10 @@ export class ConversationWindow {
     }
     const request = prepared.request;
     const outcome = handle.requestTerminalRead(original, receipt, request);
+    if (!handle.isReadQualificationCurrent(original) || receipt.scope !== handle.handoffScope() || !this.acceptedView.isCurrent(ref) || cap !== this.acceptedView.currentCapability) {
+      if ("state" in outcome) outcome.cancel();
+      return { phase: "unavailable", reason: "cancelled" };
+    }
     if (!("state" in outcome)) {
       if (outcome.phase === "unavailable") this.publishTerminalPresence(ref, cap, receipt, outcome.reason === "cancelled" ? "read-error" : outcome.reason);
       return outcome;
@@ -258,7 +262,14 @@ export class ConversationWindow {
         // Readback can only extend the same qualified selected run; revision changes
         // need a separate fresh transaction, never a silent rebind here.
         if (value.thread_id !== target.handle.threadId || value.revision !== target.ref.revision || value.total < target.ref.total || value.items.length > 200) reason = "selection-gap";
-        else {
+        else if (value.items.some(row => {
+          const existing = target.ref.rows.find(saved => saved.selection?.ordinal === row.selection?.ordinal);
+          return existing !== undefined && JSON.stringify(existing) !== JSON.stringify(row);
+        })) {
+          // Same selection revision does not authorize replacement of saved body
+          // facts. Without canonical merge proof reject the whole changed page.
+          reason = "partial-items";
+        } else {
           const merged = new Map<number, HistoryItem>();
           for (const row of [...target.ref.rows, ...value.items]) {
             const ordinal = row.selection?.ordinal;
