@@ -41,3 +41,26 @@ describe("internal saved ordered-item projection (no wire adapter)", () => {
   it.todo("unavailable preserves partition uncertainty, not a confirmed body break or tool join");
   it.todo("same-revision evidence monotonicity and new-revision authorization require adapter proof");
 });
+
+it("materializes immutable data and preserves unknown partitions without reasoning text", () => {
+  const source = [tool("A", "x", "x"), { nodeId: "A", itemIdentity: "r", revision: "r1", kind: "reasoning", text: "must not leak" }, tool("B", "y", "y"), { nodeId: "B", itemIdentity: "u", revision: "r1", kind: "unavailable" }, tool("C", "z", "z")] as NormalizedSavedItem[];
+  const out = projectSavedItems(source);
+  expect(out.toolSummaries.map(s => s.executionIds)).toEqual([["x"], ["y"], ["z"]]);
+  expect(out.partitionUnknownKeys).toEqual([out.items[1]!.key, out.items[3]!.key]);
+  expect(JSON.stringify(out)).not.toContain("must not leak");
+  expect(Object.isFrozen(out)).toBe(true);
+  expect(Object.isFrozen(out.items[0]?.source)).toBe(true);
+  source.splice(0);
+  expect(out.items).toHaveLength(5);
+});
+it("rejects absent or duplicate authority instead of inventing a key", () => {
+  expect(() => projectSavedItems([text("", "x", "value")])).toThrow();
+  expect(() => projectSavedItems([text("A", "x", "one"), text("A", "x", "two")])).toThrow();
+  expect(() => projectSavedItems([tool("A", "x", "")])).toThrow();
+});
+it("keeps identity tuples unambiguous and renders execution only once across text", () => {
+  const out = projectSavedItems([tool("A", "x", "exec"), text("A", "body", "body"), tool("B", "r", "exec"), text("A/x", "y", "one"), text("A", "x/y", "two")]);
+  expect(new Set(out.items.map(i => i.key)).size).toBe(out.items.length);
+  expect(out.toolSummaries.map(s => s.executionIds)).toEqual([["exec"]]);
+  expect(out.items.filter(i => i.source.kind === "text")).toHaveLength(3);
+});
