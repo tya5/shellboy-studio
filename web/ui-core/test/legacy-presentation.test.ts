@@ -36,7 +36,8 @@ it("no-window view accepts available saved rows and terminal retirement in one n
   const p = new LegacyAcceptedPresentation(r.h), trace: unknown[] = [];
   p.acceptedView.subscribe(ref => trace.push({ live: ref.live.length, terminal: ref.terminalPersistedAttempts.length, rows: ref.rows.map(row => row.node_id) }));
   const beforeReads = r.t.calls().length;
-  expect(p.sync()).toBe(true); expect(trace).toHaveLength(1);
+  expect(p.sync()).toBe(true); expect(trace).toHaveLength(2);
+  expect(trace.every(frame => (frame as { terminal: number }).terminal === 1)).toBe(true);
   const ref = p.acceptedView.peek(); expect(ref.terminalPersistedAttempts[0]?.attemptId).toBe("attempt");
   expect("revision" in ref).toBe(false); expect(p.isCurrent(ref)).toBe(true); expect(r.t.calls()).toHaveLength(beforeReads);
   expect(r.h.handoff.peek()).toHaveLength(0); p.dispose(); r.data.stop();
@@ -81,6 +82,39 @@ it("a rejected transfer that reenters and publishes a newer ref cannot be overwr
     p.acceptedView.commit(p.acceptedView.stage({ ...current, rows: [{ node_id: "newer", kind: "user" }] })); return false;
   } };
   const p = new LegacyAcceptedPresentation(handle);
-  expect(p.sync()).toBe(true); expect(p.acceptedView.peek().rows.map(row => row.node_id)).toEqual(["newer"]);
+  expect(p.sync()).toBe(false); expect(p.acceptedView.peek().rows.map(row => row.node_id)).toEqual(["newer"]);
   p.dispose(); r.data.stop();
+});
+it("current complete absence collects representation proofs but retains structural receipts against late body revival", async () => {
+  const r = await rig(); r.live(); r.end(); await r.pump();
+  const { signal } = await import("@preact/signals-core");
+  const work = signal({ value: { items: [] as import("../../data/src/protocol").WorkItem[] }, loading: false, stale: false, error: undefined });
+  const handle = { ...r.h, work }; const p = new LegacyAcceptedPresentation(handle);
+  expect(p.sync()).toBe(true); const ref = p.acceptedView.peek();
+  expect(ref.terminalPersistedAttempts).toHaveLength(0); expect(ref.structuralTerminalReceipts[0]?.attemptId).toBe("attempt");
+  expect(ref.work.value?.items).toEqual([]); expect(p.isCurrent(ref)).toBe(true);
+  work.value = { ...work.peek(), loading: true };
+  expect(p.isCurrent(ref)).toBe(false); expect(p.sync()).toBe(true); expect(p.acceptedView.peek().structuralTerminalReceipts).toHaveLength(1);
+  p.dispose(); r.data.stop();
+});
+it.each(["missing", "loading", "stale", "paged", "unknown"])("does not collect representation proof from %s work", async mode => {
+  const r = await rig(); r.live(); r.end(); await r.pump(); const { signal } = await import("@preact/signals-core");
+  const work = signal<import("../../data/src/store").Resource<import("../../data/src/protocol").Page<import("../../data/src/protocol").WorkItem>>>({
+    value: mode === "missing" ? undefined : { items: mode === "unknown" ? [{ kind: "unknown", id: "u", state: "unknown", thread_id: "a" }] : [], ...(mode === "paged" ? { next_cursor: "opaque" } : {}) },
+    loading: mode === "loading", stale: mode === "stale", error: undefined });
+  const p = new LegacyAcceptedPresentation({ ...r.h, work }); expect(p.sync()).toBe(true);
+  expect(p.acceptedView.peek().terminalPersistedAttempts).toHaveLength(1); p.dispose(); r.data.stop();
+});
+it("all consumed sources invalidate a ref, including in-place nested mutation", async () => {
+  const r = await rig(); const { signal } = await import("@preact/signals-core");
+  const work = signal({ value: { items: [{ kind: "attempt", id: "a", attempt_id: "a", state: "inflight", thread_id: "a" }] }, loading: false, stale: false, error: undefined });
+  const history = signal(r.h.history.peek()), pending = signal<readonly import("../../data/src/store").AttemptPresentation[]>([]);
+  const live = signal<readonly import("../../data/src/handoff").HandoffRecord[]>([]);
+  const p = new LegacyAcceptedPresentation({ ...r.h, work, history, attemptPresentations: pending, handoff: live });
+  expect(p.sync()).toBe(true); let ref = p.acceptedView.peek();
+  work.peek().value.items[0]!.state = "completed"; expect(p.isCurrent(ref)).toBe(false);
+  expect(p.sync()).toBe(true); ref = p.acceptedView.peek(); history.value = { ...history.peek() }; expect(p.isCurrent(ref)).toBe(false);
+  expect(p.sync()).toBe(true); ref = p.acceptedView.peek(); pending.value = []; expect(p.isCurrent(ref)).toBe(false);
+  expect(p.sync()).toBe(true); ref = p.acceptedView.peek(); live.value = []; expect(p.isCurrent(ref)).toBe(false);
+  p.dispose(); expect(p.sync()).toBe(false); r.data.stop();
 });
