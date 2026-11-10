@@ -268,3 +268,9 @@ it("F883 actually selected original and spill dedup preserves compressed badge w
   expect(out.projection.items).toHaveLength(1);
   expect(out.projection.items[0]?.source).toMatchObject({ nodeId: "original", kind: "tool", compressed: true });
 });
+
+it("F883 duplicate public spill facts are idempotent and conflicting calls remain unresolved", () => {
+  const out = projectHistoryWindowItems({ keyScope: ["owner", "thread"], revision: 1, nodes: [{ node_id: "spill", kind: "spill", items: [], spill_tools: { status: "known", truncated: false, items: [{ call_id: "call", execution_id: "x" }, { call_id: "call", execution_id: "x" }, { call_id: "call", execution_id: "y" }] } }] });
+  expect(out.projection.items).toHaveLength(2);
+  expect(out.projection.items.every(item => item.toolIdentity === "unresolved")).toBe(true);
+});

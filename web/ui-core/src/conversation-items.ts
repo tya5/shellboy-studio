@@ -95,7 +95,7 @@ export function projectSavedItems(input: readonly NormalizedSavedItem[]): SavedI
   for (const source of input) {
     const a = association(source);
     if (!a) continue;
-    for (const id of a.ids.length ? a.ids : [a.key]) {
+    for (const id of [...(a.ids.length ? a.ids : [a.key]), ...(source.kind === "tool" && source.callId ? [JSON.stringify(["call", source.callId])] : [])]) {
       const scoped = JSON.stringify([a.scope, id]);
       const prior = associationById.get(scoped);
       if (prior && prior !== a.key) { conflicts.add(prior); conflicts.add(a.key); }
@@ -188,8 +188,12 @@ export function projectHistoryWindowItems(input: { readonly keyScope?: readonly 
     if (node.kind === "spill" && node.spill_tools) {
       // Public spill-local IDs only. No payload/args hydration or original-node join.
       const metadata = node.spill_tools;
+      const seenSources = new Set<string>();
       for (const tool of metadata.items) {
-        segment.push({ nodeId: node.node_id, itemIdentity: tool.call_id, identityDomain: "spill", windowRevision: input.revision, ...(input.keyScope ? { keyScope: input.keyScope } : {}), kind: "tool", callId: tool.call_id, executionIds: tool.execution_id ? [tool.execution_id] : [], compressed: true, detailUnavailable: true });
+        const sourceKey = JSON.stringify([tool.call_id, tool.execution_id ?? null]);
+        if (seenSources.has(sourceKey)) continue;
+        seenSources.add(sourceKey);
+        segment.push({ nodeId: node.node_id, itemIdentity: sourceKey, identityDomain: "spill", windowRevision: input.revision, ...(input.keyScope ? { keyScope: input.keyScope } : {}), kind: "tool", callId: tool.call_id, executionIds: tool.execution_id ? [tool.execution_id] : [], compressed: true, detailUnavailable: true });
       }
       if (metadata.status !== "known" || metadata.truncated || !metadata.items.length) {
         segment.push({ nodeId: node.node_id, itemIdentity: node.node_id, identityDomain: "node", windowRevision: input.revision, kind: "unavailable" });
