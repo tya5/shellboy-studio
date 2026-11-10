@@ -1,14 +1,19 @@
 import type { ComponentChildren } from "preact";
-import { useState } from "preact/hooks";
+import { useRef, useState } from "preact/hooks";
 import { composerAction } from "../../../../../ui-core/src";
 import { Icon } from "../Icon";
 import { Button } from "../Button";
 
 export function Composer(props: { label: string; placeholder: string; hint: string; sendLabel: string; canSend: boolean; busy: boolean; stop?: ComponentChildren; onSend: (text: string) => Promise<boolean> }) {
   const [text, setText] = useState("");
+  const generation = useRef(0);
+  const submitting = useRef(false);
   const submit = async () => {
-    if (!props.canSend || props.busy || text.trim() === "") return;
-    if (await props.onSend(text)) setText("");
+    if (submitting.current || !props.canSend || props.busy || text.trim() === "") return;
+    const submittedGeneration = generation.current;
+    submitting.current = true;
+    try { if (await props.onSend(text) && generation.current === submittedGeneration) { generation.current++; setText(""); } }
+    finally { submitting.current = false; }
   };
   return (
     <div class="composer">
@@ -17,7 +22,7 @@ export function Composer(props: { label: string; placeholder: string; hint: stri
         aria-label={props.label}
         placeholder={props.placeholder}
         value={text}
-        onInput={(e) => setText(e.currentTarget.value)}
+        onInput={(e) => { generation.current++; setText(e.currentTarget.value); }}
         onKeyDown={(e) => {
           if (composerAction(e) === "send") {
             e.preventDefault();

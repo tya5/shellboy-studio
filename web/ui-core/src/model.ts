@@ -1,3 +1,4 @@
+import { LegacyAcceptedPresentation } from "./legacy-presentation";
 import { SenderTitles } from "./sender-titles";
 import { senderFact } from "../../data/src/sender";
 import { BranchCompare } from "./branch-compare";
@@ -35,6 +36,15 @@ export type SendState =
   | { kind: "sending" }
   | { kind: "failed"; message: string }
   | { kind: "unconfirmed"; operationId: string; text: string };
+
+export interface PendingOwnMessage {
+  readonly threadId: string;
+  readonly scope: string;
+  readonly operationId: string;
+  readonly text: string;
+  readonly phase: "sending" | "accepted" | "failed" | "unconfirmed";
+  readonly messageId?: string;
+}
 
 export interface OutputState {
   text: string;
@@ -197,6 +207,9 @@ export class AppModel {
   readonly selectedId: ReadonlySignal<string | undefined>;
   readonly handle: Signal<ThreadHandle | undefined> = signal(undefined);
   /** The long-thread reader, while the owner reads by position by position and the Conversation is open. */
+  readonly legacyPresentation: Signal<LegacyAcceptedPresentation | undefined> = signal(undefined);
+  private legacyHandle: ThreadHandle | undefined;
+  private legacyScope: string | undefined;
   readonly longReader: Signal<ConversationWindow | undefined> = signal(undefined);
   readonly details: ReadonlySignal<ThreadDetails | undefined>;
   readonly selectedRow: ReadonlySignal<ThreadRow | undefined>;
@@ -213,6 +226,8 @@ export class AppModel {
   readonly bodies: Signal<ReadonlyMap<string, BodyState>> = signal(new Map());
   readonly selectedStepId: Signal<string | undefined> = signal(undefined);
   readonly selectedStep: ReadonlySignal<StepRow | undefined>;
+  readonly pendingOwnMessage: Signal<PendingOwnMessage | undefined> = signal(undefined);
+  private pendingOwnCurrent: (() => boolean) | undefined;
   readonly sendState: Signal<SendState> = signal({ kind: "idle" });
   readonly actionError: Signal<string | undefined> = signal(undefined);
   readonly appRequestState: Signal<{ kind: "idle" | "sending" | "failed" | "unconfirmed"; message?: string }> = signal({ kind: "idle" });
@@ -371,6 +386,11 @@ export class AppModel {
     this.listHandle = this.data.trackThreadList();
     this.disposers.push(effect(() => this.syncOpenThread()));
     this.disposers.push(effect(() => this.syncWindow()));
+    this.disposers.push(effect(() => this.syncLegacyPresentation()));
+    this.disposers.push(effect(() => {
+      this.route.value; this.handle.value; this.data.owner.value;
+      if (this.pendingOwnMessage.peek() && !this.pendingOwnCurrent?.()) { this.pendingOwnMessage.value = undefined; this.sendState.value = {kind:"idle"}; }
+    }));
     let senderOwner: unknown;
     let senderOwnerGeneration = 0;
     let senderCachedList: unknown;
@@ -524,6 +544,7 @@ export class AppModel {
     this.pending.close?.();
     this.modelListCancel.cancel();
     this.missingPins.close();
+    this.legacyPresentation.peek()?.dispose();
     this.longReader.peek()?.dispose();
     this.apps.leaveFolders();
     for (const d of this.disposers) d();
@@ -567,6 +588,24 @@ export class AppModel {
 
   /** One reader per open Thread while the Conversation shows and the owner has the positional read. */
   private readerHandoffScope: string | undefined;
+  private syncLegacyPresentation(): void {
+    const handle = this.handle.value;
+    this.data.owner.value;
+    const want = this.route.value.view === "conversation" && handle && !this.data.capabilities.value.includes(CAPABILITY_HISTORY_WINDOW);
+    if (this.legacyPresentation.peek() && (!want || handle !== this.legacyHandle || handle.handoffScope() !== this.legacyScope || !this.legacyPresentation.peek()!.isCurrent(this.legacyPresentation.peek()!.acceptedView.peek()))) {
+      this.legacyPresentation.peek()!.dispose();
+      this.legacyPresentation.value = undefined;
+    }
+    if (!want || !handle || this.data.owner.peek().state !== "connected") return;
+    if (!this.legacyPresentation.peek()) {
+      this.legacyHandle = handle;
+      this.legacyScope = handle.handoffScope();
+      this.legacyPresentation.value = new LegacyAcceptedPresentation(handle);
+    }
+    handle.history.value; handle.handoff.value; handle.attemptPresentations.value;
+    this.legacyPresentation.peek()!.sync();
+  }
+
   private syncWindow(): void {
     const h = this.handle.value;
     const want = this.route.value.view === "conversation" && h !== undefined && this.data.capabilities.value.includes(CAPABILITY_HISTORY_WINDOW);
@@ -816,21 +855,57 @@ export class AppModel {
   async resend(): Promise<boolean> {
     const state = this.sendState.value;
     const threadId = this.selectedId.value;
-    if (state.kind !== "unconfirmed" || threadId === undefined) return false;
-    return this.deliver(threadId, state.text, state.operationId);
+    const pending = this.pendingOwnMessage.peek();
+    if (!pending || !this.pendingOwnCurrent?.() || threadId !== pending.threadId || !["failed", "unconfirmed"].includes(pending.phase)) return false;
+    return this.deliver(threadId, pending.text, pending.operationId);
   }
 
-  private async deliver(threadId: string, text: string, operationId?: string): Promise<boolean> {
+  retirePendingOwnIfSaved(): void {
+    const pending=this.pendingOwnMessage.peek();
+    if(pending && this.pendingOwnSaved(pending)) this.pendingOwnMessage.value=undefined;
+  }
+
+  pendingOwnIsCurrent(): boolean {
+    return !!this.pendingOwnCurrent?.();
+  }
+
+  private pendingOwnSaved(message: PendingOwnMessage): boolean {
+    if (!message.messageId || !this.pendingOwnCurrent?.()) return false;
+    const reader = this.longReader.peek();
+    if (reader) return reader.acceptedView.peek().rows.some(node => node.node_id === message.messageId);
+    const legacy = this.legacyPresentation.peek(), ref = legacy?.acceptedView.peek();
+    return !!legacy && !!ref && legacy.isCurrent(ref) && ref.rows.some(node => node.node_id === message.messageId);
+  }
+
+  private async deliver(threadId: string, text: string, operationId = this.ops.mutationId()): Promise<boolean> {
+    const handle = this.handle.peek(), route = this.route.peek();
+    if (!handle || handle.threadId !== threadId) return false;
+    const old = this.pendingOwnMessage.peek();
+    if (old && this.pendingOwnCurrent?.() && old.operationId !== operationId && !this.pendingOwnSaved(old)) return false;
+    if (old?.operationId === operationId && old.phase === "sending") return false;
+    const owner = this.data.owner.peek(), scope = handle.handoffScope();
+    if (owner.state !== "connected") return false;
+    const current = () => this.handle.peek() === handle && this.route.peek() === route && this.data.owner.peek() === owner && handle.handoffScope() === scope;
+    this.pendingOwnCurrent = current;
+    this.pendingOwnMessage.value = {threadId,scope,operationId,text,phase:"sending"};
     this.sendState.value = { kind: "sending" };
     const out = await this.ops.messageSend({ thread_id: threadId, text }, operationId);
-    if (out.ok) {
+    if (!current() || this.pendingOwnMessage.peek()?.operationId !== operationId) return false;
+    if (out.ok && out.value.thread_id === threadId) {
+      this.pendingOwnMessage.value = {threadId,scope,operationId,text,phase:"accepted",messageId:out.value.message_id};
       this.sendState.value = { kind: "idle" };
       return true;
     }
-    this.sendState.value =
-      out.error.kind === "unconfirmed"
-        ? { kind: "unconfirmed", operationId: out.error.operationId, text }
-        : { kind: "failed", message: errorMessage(out.error) };
+    if (out.ok) {
+      this.pendingOwnMessage.value = {threadId,scope,operationId,text,phase:"failed"};
+      this.sendState.value = {kind:"failed",message:"Message acceptance belongs to a different Thread"};
+      return false;
+    }
+    const uncertain = out.error.kind === "unconfirmed";
+    this.pendingOwnMessage.value = {threadId,scope,operationId,text,phase:uncertain?"unconfirmed":"failed"};
+    this.sendState.value = uncertain
+      ? { kind: "unconfirmed", operationId, text }
+      : { kind: "failed", message: errorMessage(out.error) };
     return false;
   }
 

@@ -3,6 +3,7 @@ import type { ComponentChildren } from 'preact';
 /** Internal normalized presentation input, not a Core wire DTO or a body proof. */
 export type ConversationItemSource = import("../../../ui-core/src/conversation-items").NormalizedSavedItem;
 export interface ConversationItem {
+  readonly classification?: import("../../../ui-core/src/conversation-items").CanonicalCase;
   key: string;
   source: ConversationItemSource;
 }
@@ -14,6 +15,7 @@ export interface ConversationToolSummary {
   executionIds: readonly string[];
 }
 export interface ConversationWorkGroup {
+  readonly categoryCounts?: Readonly<Record<"Tools" | "Reasoning" | "Notifications" | "Problems", number>>;
   key: string;
   firstMemberKey: string;
   memberKeys: readonly string[];

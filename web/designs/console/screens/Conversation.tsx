@@ -2,7 +2,7 @@ import type { ThreadHandle } from "../../../data/src/store";
 import { Disclosure } from "../system/components/Disclosure";
 import type { HandoffRecord } from "../../../data/src/handoff";
 import { senderFact } from "../../../data/src/sender";
-import { projectLegacyHistoryItems, projectHistoryWindowItems, projectSavedItems, normalizeLiveWorkFacts, type NormalizedSavedItem } from "../../../ui-core/src/conversation-items";
+import { normalizeConversationFacts, projectLegacyHistoryItems, projectHistoryWindowItems, projectSavedItems, normalizeLiveWorkFacts, type NormalizedSavedItem } from "../../../ui-core/src/conversation-items";
 import type { HistoryItem } from "../../../data/src/protocol";
 import { Markdown } from "../system/components/Message";
 import type { WindowAcceptedSnapshot } from "../../../ui-core/src/window";
@@ -15,7 +15,6 @@ import { MonitorPopover } from "../system/components/MonitorPopover";
 import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import { toolLabel, activityLabel, renderOutput, formatClock, formatDuration, formatRoute, formatTokens, parseTime, statusLabel, type AppModel, type ConversationRow, type StepRow as Step } from "../../../ui-core/src";
 import { ScrollIntent } from "./scrollIntent";
-import { LiveMessage } from "./LiveMessage";
 import { WindowedScroll } from "./WindowedScroll";
 import { BranchMark, Button, Composer, LoadingRows, EmptyState, Icon, KeyValue, LogBlock, Message, Notice, QuestionCard, StatusMark, StepRow, SummaryStrip, WorkSheet } from "../system/components";
 
@@ -103,7 +102,12 @@ export function SavedConversationItems({ model, projection, renderBefore, traili
     const completed = group.executionIds.length > 0 && !unknown && steps.every(step => step.status === "completed");
     const status = active ? "running" : failures ? "failed" : completed ? "completed" : undefined;
     const reasons = [...new Set(projection.items.filter(item => group.memberKeys.includes(item.key)).flatMap(item => item.source.kind === "unavailable" && item.source.reason ? [item.source.reason] : []))];
-    const label = [t("work.group"), ...reasons,  ...(group.unknownToolCount ? [t("work.unknownTools")] : [t("tools.count", { n: group.executionIds.length })]), ...(failures ? [t("tools.nonzero", {n: failures})] : []), ...(group.interrupted ? [t("status.stopped")] : []), ...((group.continuationBefore !== "closed" || group.continuationAfter !== "closed") ? [t("work.partial")] : [])].join(" · ");
+    const label = [t("work.group"), ...(["Tools","Reasoning","Notifications","Problems"] as const).flatMap(category=>{
+      const n=group.categoryCounts?.[category] ?? 0;
+      if(!n)return [];
+      const title=category==="Tools"?t("tools.count",{n}):t(`work.category.${category}`,{n});
+      return [title+(category==="Tools"&&failures?` (${t("work.failedCount",{n:failures})})`:"")];
+    }), ...(active?[t("status.running")]:[])].join(" · ");
     return <Disclosure class="step step-group" open={opened(group)} data-work-group={group.key} data-key={group.key} data-heading-anchor-key={group.firstMemberKey} data-heading-member-keys={JSON.stringify(group.memberKeys)} onToggle={event => {
       const open = event.currentTarget.open;
       setOpenMemberships(previous => {
@@ -162,12 +166,12 @@ export function SavedConversationItems({ model, projection, renderBefore, traili
       if (item.source.kind === "ordinaryEmpty") return <div class="caption muted" data-empty-ordinary="">{t("work.textUnavailable")}</div>;
       if (item.source.kind === "reasoning" || item.source.kind === "reasoning_unavailable") return <div class="caption muted" data-thinking-marker="">{t("work.thinking")}</div>;
       if (item.source.kind === "interruption") return <Notice>{t("status.stopped")}</Notice>;
-      if (item.source.kind === "record") return <Disclosure data-internal-records="" open={openRecords.has(item.key)} onToggle={event => { const open = event.currentTarget.open; setOpenRecords(previous => { const next = new Set(previous); if (open) next.add(item.key); else next.delete(item.key); return next; }); }}><summary>{t("work.records", {n: 1})}</summary><span class="caption muted">{t("work.textUnavailable")}</span></Disclosure>;
+      if (item.source.kind === "record") return <Disclosure data-internal-records="" open={openRecords.has(item.key)} onToggle={event => { const open = event.currentTarget.open; setOpenRecords(previous => { const next = new Set(previous); if (open) next.add(item.key); else next.delete(item.key); return next; }); }}><summary>{t(item.classification?.headingCategory === "Problems" ? "work.problem" : item.classification?.render === "state-change" ? "work.stateChanges" : item.classification?.render === "child-notification" || item.classification?.render === "shell-notification" ? "work.continueNotification" : "work.notification", {n:1})}</summary></Disclosure>;
       if (item.source.kind === "unknown" || item.source.kind === "unavailable") {
         const source = item.source;
         const handle = model.handle.value;
         const record = "domain" in source && source.namespace === "handoff" ? handle?.handoff.value.find(record => record.key === source.recordId) : undefined;
-        return <><div class="caption muted" data-item-unavailable="" data-items-unavailable-reason={item.source.kind === "unavailable" ? item.source.reason : undefined}>{item.source.kind === "unknown" ? t("work.record") : item.source.reason ?? t("work.textUnavailable")}</div>{record ? <LiveRecordChrome model={model} record={record} retry={() => handle?.retryHandoff()} /> : null}</>;
+        return <><div class="caption muted" data-item-unavailable="" data-items-unavailable-reason={item.source.kind === "unavailable" ? item.source.reason : undefined}>{item.source.kind === "unknown" ? t("work.problem") : item.source.reason ?? t("work.textUnavailable")}</div>{record ? <LiveRecordChrome model={model} record={record} retry={() => handle?.retryHandoff()} /> : null}</>;
       }
       return null;
     }} />;
@@ -180,20 +184,31 @@ export function DeferredHistoryNode({ model, row }: { model: AppModel; row: Hist
   </div>;
 }
 
-export function LiveRecordChrome({ model, record, retry }: { model: AppModel; record: HandoffRecord; retry: () => void }) {
-  const t = model.t.value;
-  return <span class="live-meta" data-live-record-chrome={record.key}>
-    {record.incomplete ? <span class="preview-note">{t("convo.handoffLimit")}</span> : null}
-    {record.status !== "streaming" ? <span class="live-phase">{record.status === "failed" ? t("convo.handoffFailed") : t("convo.handoffConfirming")}</span> : null}
-    {record.status === "failed" || record.status === "confirming" ? <Button variant="link" onClick={retry}>{t("action.retry")}</Button> : null}
+function HandoffRetryControl({model}: {model:AppModel}) {
+  const handle=model.handle.value;
+  const state=handle?.handoffRetryState.value;
+  if(!handle||!state||state.phase==="idle")return null;
+  return <span data-handoff-retry-phase={state.phase}>
+    <span class="caption muted">{model.t.value(state.phase==="reading"?"convo.handoffConfirming":`convo.retry.${state.reason}`)}</span>
+    {state.phase==="reading"||state.canRetry?<Button variant="link" disabled={!state.canRetry} onClick={()=>void handle.retryHandoff()}>{model.t.value("action.retry")}</Button>:null}
   </span>;
+}
+
+export function LiveRecordChrome({ model, record }: { model: AppModel; record: HandoffRecord; retry: () => void }) {
+  const t=model.t.value;
+  const incomplete = record.incomplete || record.status === "failed";
+  return <div data-live-record-chrome={record.key}>
+    {incomplete ? <div class="caption muted" data-live-incomplete="">{t("convo.liveIncomplete")}</div> : null}
+    <HandoffRetryControl model={model}/>
+    {record.status === "failed" && !model.handle.value?.handoffRetryState.value ? <div class="caption muted">{t("convo.handoffFailed")}</div> : null}
+  </div>;
 }
 
 /** Only records read from the current owned ledger may enter this adapter. */
 export function projectOwnedHandoffFacts(scope: string, records: readonly HandoffRecord[]): readonly NormalizedSavedItem[] {
-  return records.map(record => record.nodeId === undefined && record.proof === undefined && record.transferred !== true && record.status !== "ready" && record.text
+  return normalizeConversationFacts(records.map(record => record.nodeId === undefined && record.proof === undefined && record.transferred !== true && record.status !== "ready" && record.text
     ? {domain: "live", namespace: "handoff", scope, recordId: record.key, attemptId: record.attemptId, kind: "text", text: record.text}
-    : {domain: "live", namespace: "handoff", scope, recordId: record.key, attemptId: record.attemptId, kind: "unknown"});
+    : {domain: "live", namespace: "handoff", scope, recordId: record.key, attemptId: record.attemptId, kind: "unknown"}));
 }
 
 export function retainUnretiredLiveFacts(snapshot: WindowAcceptedSnapshot, scope: string, current: boolean, facts: readonly NormalizedSavedItem[]): readonly NormalizedSavedItem[] {
@@ -202,13 +217,33 @@ export function retainUnretiredLiveFacts(snapshot: WindowAcceptedSnapshot, scope
   return facts.filter(fact => !("domain" in fact && fact.attemptId && fact.turnId && snapshot.retiredAttempts?.some(retired => retired.scope === scope && retired.revision === snapshot.revision && retired.attemptId === fact.attemptId && retired.turnId === fact.turnId)));
 }
 
-/** One producer classifies saved facts and explicitly scoped live records. */
-function LegacySavedContent({model,handle,history,rows,boundary,follow}: {model:AppModel;handle:ThreadHandle;history:ReturnType<ThreadHandle["history"]["peek"]>|undefined;rows:readonly ConversationRow[];boundary:number|undefined;follow:()=>void}) {
-  const projection=projectLegacyHistoryItems({nodes:history?.items??[],keyScope:[handle.handoffScope()]}).projection;
-  const cutNode=boundary===undefined?undefined:rows[boundary]?.id;
-  const cut=projection.items.find(item=>item.source.nodeId===cutNode && (item.source.kind==="user"||item.source.kind==="text"||item.source.kind==="summary"))?.key;
-  const overlay=<LiveMessage model={model} handle={handle} follow={follow}/>;
-  return <SavedConversationItems model={model} nodes={history?.items??[]} projection={projection} renderBefore={item=>item.key===cut?overlay:null} trailing={cut?null:overlay}/>;
+function PendingOwnMessageView({model,nodes,scope}: {model:AppModel;nodes:readonly HistoryItem[];scope:string}) {
+  const pending=model.pendingOwnMessage.value;
+  useLayoutEffect(()=>{model.retirePendingOwnIfSaved();},[model,pending,nodes]);
+  if(!pending || !model.pendingOwnIsCurrent() || pending.scope!==scope || pending.threadId!==model.handle.value?.threadId) return null;
+  if(pending.messageId && nodes.some(node=>node.node_id===pending.messageId)) return null;
+  return <aside data-pending-own-message={pending.operationId} data-pending-phase={pending.phase}>
+    <div class="caption muted">{model.t.value(`composer.pending.${pending.phase}`)}</div>
+    <div class="pre">{pending.text}</div>
+    {pending.phase==="failed"||pending.phase==="unconfirmed"?<Button variant="link" onClick={()=>void model.resend()}>{model.t.value("action.retry")}</Button>:null}
+  </aside>;
+}
+
+function LegacySavedContent({model,handle}: {model:AppModel;handle:ThreadHandle;history:ReturnType<ThreadHandle["history"]["peek"]>|undefined;rows:readonly ConversationRow[];boundary:number|undefined;follow:()=>void}) {
+  const owner=model.legacyPresentation.value;
+  const [accepted,setAccepted]=useState(()=>({owner,ref:owner?.acceptedView.peek()}));
+  useLayoutEffect(()=>{
+    if(!owner)return;
+    const update=(ref:ReturnType<typeof owner.acceptedView.peek>)=>{if(owner.isCurrent(ref))setAccepted({owner,ref});};
+    const stop=owner.acceptedView.subscribe(update);update(owner.acceptedView.peek());return stop;
+  },[owner]);
+  const ref=accepted.owner===owner?accepted.ref:owner?.acceptedView.peek();
+  if(!owner||!ref||!owner.isCurrent(ref))return null;
+  const live=ref.live.filter(record=>!ref.terminalPersistedAttempts.some(proof=>proof.scope===ref.scope&&proof.attemptId===record.attemptId));
+  const handoffs=projectOwnedHandoffFacts(handle.threadId,live);
+  const work=normalizeLiveWorkFacts({scope:handle.threadId,items:handle.work.value.value?.items??[]});
+  const projection=projectLegacyHistoryItems({nodes:ref.rows,keyScope:[ref.scope],liveFacts:[...handoffs,...work]}).projection;
+  return <SavedConversationItems model={model} nodes={ref.rows} projection={projection} trailing={<PendingOwnMessageView model={model} nodes={ref.rows} scope={ref.scope}/>}/>;
 }
 
 export function SavedWindowContent({ model, snapshot, live, liveBoundary, liveFacts }: { model: AppModel; snapshot: WindowAcceptedSnapshot; live?: ComponentChildren; liveBoundary?: number; liveFacts?: readonly NormalizedSavedItem[] }) {
@@ -237,7 +272,7 @@ export function SavedWindowContent({ model, snapshot, live, liveBoundary, liveFa
   const ordered = cut < 0 ? [...saved, ...retainedHandoffs] : [...saved.slice(0, cut), ...retainedHandoffs, ...saved.slice(cut)];
   const projection = projectSavedItems([...ordered, ...retainedRecords].map(source => keyScope ? {...source, keyScope} : source));
   // Live text without item-kind proof cannot unlock or replace saved Conversation text.
-  return <SavedConversationItems model={model} projection={projection} nodes={snapshot.rows} trailing={handle?.handoffOverflow.value ? <div class="caption muted" data-live-overflow="">{model.t.value("convo.handoffLimit")} <Button variant="link" onClick={() => handle.retryHandoff()}>{model.t.value("action.retry")}</Button></div> : undefined} />;
+  return <SavedConversationItems model={model} projection={projection} nodes={snapshot.rows} trailing={<>{handle && current ? <PendingOwnMessageView model={model} nodes={snapshot.rows} scope={handle.handoffScope()}/> : null}{handle?.handoffOverflow.value ? <div class="caption muted" data-live-overflow="">{model.t.value("convo.handoffLimit")} <HandoffRetryControl model={model}/></div> : undefined}</>} />;
 }
 
 const stepDuration = (s: Step, now: number): string | undefined => {
@@ -438,9 +473,10 @@ function OrderedHistory({ model, handle, rows, win, history, scroller, pinned, f
           <WindowedScroll
             model={model}
             win={win}
+            live={null}
             renderRow={() => <></>}
-            renderAcceptedView={snapshot => <><SavedWindowContent model={model} snapshot={snapshot} liveBoundary={boundary?.ordinal} live={<LiveMessage model={model} handle={handle} follow={follow} />} /></>}
-            live={<LiveMessage model={model} handle={handle} follow={follow} />}
+            renderAcceptedView={snapshot => <><SavedWindowContent model={model} snapshot={snapshot} liveBoundary={boundary?.ordinal} /></>}
+
             liveBoundary={boundary?.ordinal}
           />
         ) : (
