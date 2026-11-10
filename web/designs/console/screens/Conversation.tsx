@@ -75,7 +75,7 @@ export function SavedConversationItems({ model, projection, renderBefore, traili
   const t = model.t.value;
   const allSteps = model.conversation.value.flatMap(row => row.type === "steps" ? row.steps : []);
   const [openMemberships, setOpenMemberships] = useState<ReadonlySet<string>>(() => new Set());
-  const membershipKey = (summary: { memberKeys: readonly string[] }) => JSON.stringify(summary.memberKeys);
+  const membershipKey = (summary: { key?: string; memberKeys: readonly string[] }) => summary.key ?? JSON.stringify(summary.memberKeys);
   const memberships = new Set((projection.workGroups ?? projection.toolSummaries).map(membershipKey));
   useLayoutEffect(() => {
     setOpenMemberships(previous => {
@@ -191,8 +191,9 @@ export function retainUnretiredLiveFacts(snapshot: WindowAcceptedSnapshot, scope
 /** One producer classifies saved facts and explicitly scoped live records. */
 export function SavedWindowContent({ model, snapshot, live, liveBoundary, liveFacts }: { model: AppModel; snapshot: WindowAcceptedSnapshot; live?: ComponentChildren; liveBoundary?: number; liveFacts?: readonly NormalizedSavedItem[] }) {
   if (snapshot.revision === undefined) return null;
-  const mapped = projectHistoryWindowItems({ revision: snapshot.revision, nodes: snapshot.rows });
   const handle = model.handle.value;
+  const keyScope = handle ? [handle.handoffScope()] : undefined;
+  const mapped = projectHistoryWindowItems({ revision: snapshot.revision, nodes: snapshot.rows, keyScope });
   const records = liveFacts ?? (handle ? normalizeLiveWorkFacts({scope: handle.threadId, items: handle.work.value.value?.items ?? []}) : []);
   const handoffs = handle ? projectOwnedHandoffFacts(handle.threadId, handle.handoff.value).map(fact => {
     if (!("domain" in fact)) return fact;
@@ -211,7 +212,7 @@ export function SavedWindowContent({ model, snapshot, live, liveBoundary, liveFa
     return node?.selection?.ordinal !== undefined && node.selection.ordinal >= liveBoundary;
   });
   const ordered = cut < 0 ? [...saved, ...retainedHandoffs] : [...saved.slice(0, cut), ...retainedHandoffs, ...saved.slice(cut)];
-  const projection = projectSavedItems([...ordered, ...retainedRecords]);
+  const projection = projectSavedItems([...ordered, ...retainedRecords].map(source => keyScope ? {...source, keyScope} : source));
   // Live text without item-kind proof cannot unlock or replace saved Conversation text.
   return <SavedConversationItems model={model} projection={projection} nodes={snapshot.rows} />;
 }

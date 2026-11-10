@@ -328,3 +328,22 @@ it('publishes saved rows and whole-attempt retirement in the same DOM frame, ret
     expect(host.textContent).toContain('Whole live answer');expect(host.textContent).toContain('Committed saved answer');
   }finally{render(null,host);host.remove();fixture.model.dispose();fixture.data.stop();}
 });
+
+it('retains the actual tool element and open group when thinking prepends under a scoped first-tool identity',async()=>{
+  const fixture=await fixtureModel(),host=document.createElement('div');document.body.append(host);
+  try{
+    const { SavedConversationItems }=await import('../screens/Conversation');
+    const tool={nodeId:'actual-tool-node',itemIdentity:'actual-tool-item',windowRevision:1,kind:'tool' as const,executionIds:['exec-structural'],keyScope:['actual-owner','actual-thread']};
+    const before=projectSavedItems([tool]);
+    await act(async()=>render(<SavedConversationItems model={fixture.model} projection={before}/>,host));
+    const group=host.querySelector('details[data-work-group]')! as HTMLDetailsElement;
+    await act(async()=>{group.open=true;group.dispatchEvent(new Event('toggle'));});
+    const item=host.querySelector('[data-work-item-key]')!;
+    const after=projectSavedItems([{nodeId:'thinking-node',itemIdentity:'thinking',windowRevision:1,kind:'reasoning_unavailable',keyScope:tool.keyScope},tool]);
+    await act(async()=>render(<SavedConversationItems model={fixture.model} projection={after}/>,host));
+    expect(host.querySelector('details[data-work-group]')).toBe(group);expect(group.open).toBe(true);
+    expect([...host.querySelectorAll('[data-work-item-key]')].find(el=>el.getAttribute('data-item-key')===before.items[0]!.key)).toBe(item);
+    expect(item.getAttribute('data-node')).toBe('actual-tool-node');
+    expect(host.querySelector('[data-thinking-marker]')).not.toBeNull();
+  }finally{render(null,host);host.remove();fixture.model.dispose();fixture.data.stop();}
+});
