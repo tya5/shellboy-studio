@@ -122,3 +122,21 @@ it("FINAL summaries claim only local membership and retain uncertain edges", () 
   expect(out.toolSummaries.map(s => [s.continuationBefore, s.continuationAfter])).toEqual([["unknown", "closed"], ["closed", "unknown"], ["unknown", "unknown"]]);
   expect(out.toolSummaries.map(s => s.executionIds)).toEqual([["x"], ["y"], ["z"]]);
 });
+
+it("FINAL legacy saved prose is independent of advisory publication state", async () => {
+  const { projectConversation } = await import("../src/conversation");
+  const node = { node_id: "saved", kind: "assistant_response", phase: "commentary", excerpt: "Saved ordinary prose" };
+  const baseline = projectConversation([node]);
+  for (const state of ["pending", "opaque", "unavailable"] as const) {
+    expect(projectConversation([{ ...node, assistant_publication: { state, attemptId: "advisory", itemId: "item", nodeId: "saved" } }])).toEqual(baseline);
+  }
+});
+it("FINAL typed empty/unknown items never use aggregate excerpt as fallback", () => {
+  const out = projectHistoryWindowItems({ revision: 1, nodes: [
+    { node_id: "empty", kind: "assistant_response", excerpt: "aggregate must not render", items: [] },
+    { node_id: "unknown", kind: "assistant_response", excerpt: "aggregate must not render", items: [{ kind: "unavailable", item_identity: "u", reason: "unsupported" }] },
+  ] });
+  expect(out.nodes[0]?.emptyOrdinary).toBe(true);
+  expect(out.projection.items.map(i => i.source.kind)).toEqual(["unavailable"]);
+  expect(JSON.stringify(out.projection)).not.toContain("aggregate must not render");
+});
