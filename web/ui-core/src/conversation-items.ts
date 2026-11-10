@@ -75,7 +75,11 @@ export function classifyConversationItem(item: NormalizedSavedItem): "conversati
   return item.kind === "text" || item.kind === "user" || item.kind === "summary" || item.kind === "ordinaryEmpty" ? "conversation" : "work";
 }
 /** Authoritative ordered facts only. Live callers may append explicitly scoped tail facts. */
-export function projectSavedItems(input: readonly NormalizedSavedItem[]): SavedItemProjection & { readonly workGroups: readonly WorkGroup[]; readonly sequence: readonly ConversationSequence[] } {
+export function projectSavedItems(input: readonly NormalizedSavedItem[]) {
+  return projectSavedItemsCore(input);
+}
+
+function projectSavedItemsCore(input: readonly NormalizedSavedItem[], decodedLegacy = false): SavedItemProjection & { readonly workGroups: readonly WorkGroup[]; readonly sequence: readonly ConversationSequence[] } {
   const items: ProjectedSavedItem[] = [];
   const groups: WorkGroup[] = [];
   const sequence: ConversationSequence[] = [];
@@ -115,7 +119,7 @@ export function projectSavedItems(input: readonly NormalizedSavedItem[]): SavedI
     members = []; toolKeys = []; ids = []; unknownTools = 0; interrupted = false;
   };
   for (const source of input) {
-    if (!("domain" in source) && (!source.nodeId || !source.itemIdentity || (source.revision === undefined && source.windowRevision === undefined && !(source.identityDomain === "node" && source.kind === "unknown" && source.itemIdentity === source.nodeId)))) throw new Error("Missing authoritative identity/proof");
+    if (!("domain" in source) && (!source.nodeId || !source.itemIdentity || (!decodedLegacy && source.revision === undefined && source.windowRevision === undefined && !(source.identityDomain === "node" && source.kind === "unknown" && source.itemIdentity === source.nodeId)))) throw new Error("Missing authoritative identity/proof");
     if ("domain" in source && (!source.scope || !source.recordId)) throw new Error("Missing live record identity");
     const canonicalKey = "domain" in source ? JSON.stringify(["live", source.namespace ?? "work", source.scope, source.recordId]) : source.identityDomain === "spill" ? JSON.stringify(["spill", source.nodeId, source.itemIdentity]) : source.identityDomain === "node" ? JSON.stringify(["node", source.nodeId]) : JSON.stringify([source.nodeId, source.itemIdentity]);
     const a = association(source);
@@ -212,6 +216,13 @@ export function classifySavedHistoryFact(nodeKind: string | undefined, itemKind:
 
 /** Accept ONLY the strict-decoded v3 DTO; does not decode unknown JSON. */
 export function projectHistoryWindowItems(input: { readonly keyScope?: readonly string[]; readonly revision: string | number; readonly nodes: readonly HistoryItem[] }): HistoryWindowItemProjection {
+  return projectHistoryNodes(input);
+}
+/** Strict-decoded legacy facts: no invented path revision, saved ordering or live identity. */
+export function projectLegacyHistoryItems(input: { readonly keyScope?: readonly string[]; readonly nodes: readonly HistoryItem[] }): HistoryWindowItemProjection {
+  return projectHistoryNodes(input, true);
+}
+function projectHistoryNodes(input: { readonly keyScope?: readonly string[]; readonly revision?: string | number; readonly nodes: readonly HistoryItem[] }, decodedLegacy = false): HistoryWindowItemProjection {
   const nodes: ProjectedHistoryNode[] = [];
   const segment: NormalizedSavedItem[] = [];
   let retryFrom: HistoryWindowItemProjection["retryFrom"];
@@ -228,10 +239,10 @@ export function projectHistoryWindowItems(input: { readonly keyScope?: readonly 
         const sourceKey = JSON.stringify([tool.call_id, tool.execution_id ?? null]);
         if (seenSources.has(sourceKey)) continue;
         seenSources.add(sourceKey);
-        segment.push({ nodeId: node.node_id, itemIdentity: sourceKey, identityDomain: "spill", windowRevision: input.revision, ...(input.keyScope ? { keyScope: input.keyScope } : {}), kind: "tool", callId: tool.call_id, executionIds: tool.execution_id ? [tool.execution_id] : [], compressed: true, detailUnavailable: true });
+        segment.push({ nodeId: node.node_id, itemIdentity: sourceKey, identityDomain: "spill", ...(input.revision !== undefined ? { windowRevision: input.revision } : {}), ...(input.keyScope ? { keyScope: input.keyScope } : {}), kind: "tool", callId: tool.call_id, executionIds: tool.execution_id ? [tool.execution_id] : [], compressed: true, detailUnavailable: true });
       }
       if (metadata.status !== "known" || metadata.truncated || !metadata.items.length) {
-        segment.push({ nodeId: node.node_id, itemIdentity: node.node_id, identityDomain: "node", windowRevision: input.revision, kind: "unavailable" });
+        segment.push({ nodeId: node.node_id, itemIdentity: node.node_id, identityDomain: "node", ...(input.revision !== undefined ? { windowRevision: input.revision } : {}), kind: "unavailable" });
       }
       continue;
     }
@@ -249,7 +260,7 @@ export function projectHistoryWindowItems(input: { readonly keyScope?: readonly 
         default: { const unreachable: never = kind; return unreachable; }
       }
     };
-    const nodeIdentity: SavedItemIdentity = { nodeId: node.node_id, itemIdentity: node.node_id, identityDomain: "node", windowRevision: input.revision, ...(input.keyScope ? { keyScope: input.keyScope } : {}) };
+    const nodeIdentity: SavedItemIdentity = { nodeId: node.node_id, itemIdentity: node.node_id, identityDomain: "node", ...(input.revision !== undefined ? { windowRevision: input.revision } : {}), ...(input.keyScope ? { keyScope: input.keyScope } : {}) };
     if (!node.items) {
       segment.push(normalize(classifySavedHistoryFact(node.kind, node.items === null ? "deferred" : "legacy", !!node.items_unavailable_reason), nodeIdentity));
       if (!retryFrom && node.items_unavailable_reason === "response_budget" && ordinal !== undefined) retryFrom = Object.freeze({ ordinal, expect_node_id: node.node_id });
@@ -261,7 +272,7 @@ export function projectHistoryWindowItems(input: { readonly keyScope?: readonly 
       segment.push(normalize(classifySavedHistoryFact(node.kind, item.kind), identity, item));
     }
   }
-  const projection = projectSavedItems(segment);
+  const projection = projectSavedItemsCore(segment, decodedLegacy);
   return Object.freeze({ projection, nodes: Object.freeze(nodes), ...(retryFrom ? { retryFrom } : {}) });
 }
 

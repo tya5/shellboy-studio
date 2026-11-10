@@ -60,3 +60,20 @@ describe("FINAL Section2 canonical node/item matrix", () => {
     expect(JSON.stringify(out.projection)).not.toContain("do not parse aggregate");
   });
 });
+
+it("legacy adapter preserves canonical Work identities without fabricated revisions or body authority", async () => {
+  const { projectLegacyHistoryItems } = await import("../src/conversation-items");
+  const out = projectLegacyHistoryItems({ nodes: [{ node_id: "event", kind: "event", excerpt: "private diagnostic" }, { node_id: "tool", kind: "tool_result", executions: [{ execution_id: "execution" }] }, { node_id: "interruption", kind: "interrupted_wait" }, { node_id: "human", kind: "user", excerpt: "literal human" }] });
+  expect(out.projection.items.map(item => item.source.kind)).toEqual(["record", "tool", "interruption", "user"]);
+  expect(out.projection.items.every(item => item.source.windowRevision === undefined && item.source.revision === undefined)).toBe(true);
+  expect(out.projection.sequence?.map(row => row.kind)).toEqual(["work", "conversation"]);
+  expect(JSON.stringify(out.projection)).not.toContain("private diagnostic");
+});
+it("legacy projectConversation publishes event/context identities and never arbitrary assistant aggregate", async () => {
+  const { projectConversation } = await import("../src/conversation");
+  const rows = projectConversation([{ node_id: "event", kind: "event", excerpt: "private diagnostic" }, { node_id: "context", kind: "context" }, { node_id: "assistant", kind: "assistant_response", excerpt: "unproved prose" }]);
+  expect(rows.map(row => row.id)).toEqual(["event", "context", "assistant"]);
+  expect(rows.every(row => row.type !== "message")).toBe(true);
+  expect(JSON.stringify(rows)).not.toContain("private diagnostic");
+  expect(JSON.stringify(rows)).not.toContain("unproved prose");
+});

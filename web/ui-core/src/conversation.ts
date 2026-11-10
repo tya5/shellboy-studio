@@ -1,7 +1,6 @@
+import { classifySavedHistoryFact } from "./conversation-items";
 import { senderFact } from "../../data/src/sender";
-// Projects saved history items into what a conversation shows. Bookkeeping nodes the owner
-// keeps for the model (events, context notes) and tool results (read through shell.read) are
-// not conversation rows.
+// Legacy row compatibility; semantic classification is shared with typed projection.
 import { HISTORY_EXCERPT_CHARS, type HistoryItem, type ShellEntry } from "../../data/src";
 import { parseTime } from "./format";
 import { statusOfShell, type StatusKey } from "./status";
@@ -30,7 +29,6 @@ export type ConversationRow =
   | { type: "steps"; id: string; steps: StepRow[]; entries: ({ kind: "step"; step: StepRow } | { kind: "compacted"; id: string; text: string })[] }
   | { type: "note"; id: string; kind: string; text: string; at: string | undefined };
 
-const HIDDEN = new Set(["event", "context", "tool_result"]);
 
 function speakerOf(item: HistoryItem): Speaker {
   if (item.kind === "assistant_response") return { kind: "shellboy" };
@@ -96,15 +94,13 @@ export function projectConversation(items: HistoryItem[], shells: ReadonlyMap<st
       else rows.push({ type: "publication", id: `${id}:unknown`, state: "unknown" });
       continue;
     }
-    if (item.kind !== undefined && HIDDEN.has(item.kind)) continue;
-    const text = item.excerpt ?? "";
-    if (text === "") continue;
+    const safeText = item.items?.filter(entry => entry.kind === "text");
+    const classification = classifySavedHistoryFact(item.kind, safeText?.length ? "text" : item.items === null ? "deferred" : item.items?.length === 0 ? "empty" : "legacy", !!item.items_unavailable_reason);
     const at = item.provenance?.created_at;
-    if (item.kind === "user" || item.kind === "assistant_response") {
-      rows.push({ type: "message", id, speaker: speakerOf(item), text, truncated: codePoints(text) >= HISTORY_EXCERPT_CHARS, at });
-    } else {
-      rows.push({ type: "note", id, kind: item.kind ?? "", text, at });
-    }
+    if (classification === "text" || classification === "user" || classification === "summary") {
+      const text = safeText?.length ? safeText.map(entry => entry.text).join("\n") : classification === "user" ? item.excerpt ?? "" : "";
+      rows.push({ type: "message", id, speaker: speakerOf(item), text, truncated: safeText?.some(entry => !entry.text_complete) ?? false, at });
+    } else rows.push({ type: "note", id, kind: item.kind ?? "unknown", text: "", at });
   }
   return rows;
 }
