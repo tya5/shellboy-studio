@@ -1,3 +1,5 @@
+import { projectHistoryWindowItems } from "../../../ui-core/src/conversation-items";
+import { projectConversation } from "../../../ui-core/src/conversation";
 import type { HistoryItem } from "../../../data/src/protocol";
 import { Markdown } from "../system/components/Message";
 import type { WindowAcceptedSnapshot } from "../../../ui-core/src/window";
@@ -67,9 +69,9 @@ export function AcceptedWindowConversation({ reader, project, renderItem, render
 }
 
 /** Console presentation for an already authorized projection, independent of wire decoding. */
-export function SavedConversationItems({ model, projection }: { model: AppModel; projection: SavedItemProjection }) {
+export function SavedConversationItems({ model, projection, renderBefore, trailing }: { model: AppModel; projection: SavedItemProjection; renderBefore?: (item: ConversationItem) => ComponentChildren; trailing?: ComponentChildren }) {
   const t = model.t.value;
-  return <ConversationItems {...projection} renderHeading={summary => <span>{t("tools.count", { n: summary.executionIds.length })}</span>}
+  return <ConversationItems {...projection} renderBefore={renderBefore} trailing={trailing} renderHeading={summary => <span>{t("tools.count", { n: summary.executionIds.length })}</span>}
     renderItem={item => {
       if (item.source.kind === "text") return <Markdown text={item.source.text ?? ""} copyLabel={t("code.copy")} copiedLabel={t("code.copied")} />;
       if (item.source.kind === "tool") {
@@ -89,6 +91,21 @@ export function DeferredHistoryNode({ model, row }: { model: AppModel; row: Hist
   return <div class="caption muted" data-node={row.node_id} data-items-unavailable-reason={row.items_unavailable_reason}>
     {model.t.value("work.textUnavailable")}
   </div>;
+}
+
+/** A single flat content parent preserves typed items across ordinary/deferred nodes. */
+export function SavedWindowContent({ model, snapshot }: { model: AppModel; snapshot: WindowAcceptedSnapshot }) {
+  if (snapshot.revision === undefined) return null;
+  const mapped = projectHistoryWindowItems({ revision: snapshot.revision, nodes: snapshot.rows });
+  const before = new Map<string, ComponentChildren[]>();
+  let pending: ComponentChildren[] = [];
+  for (const entry of mapped.nodes) {
+    const first = mapped.projection.items.find(item => item.source.nodeId === entry.nodeId);
+    if (entry.state === "deferred") pending.push(<DeferredHistoryNode key={`deferred:${entry.nodeId}`} model={model} row={entry.node} />);
+    else if (entry.state === "legacy") pending.push(<div key={`legacy:${entry.nodeId}`} data-node={entry.nodeId}>{projectConversation([entry.node], new Map()).map(row => <RowView key={row.id} model={model} row={row} />)}</div>);
+    if (first && pending.length) { before.set(first.key, pending); pending = []; }
+  }
+  return <SavedConversationItems model={model} projection={mapped.projection} renderBefore={item => before.get(item.key)} trailing={pending} />;
 }
 
 const stepDuration = (s: Step, now: number): string | undefined => {

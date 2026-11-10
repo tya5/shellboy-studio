@@ -25,16 +25,19 @@ interface Props {
   toolSummaries?: readonly ConversationToolSummary[];
   partitionUnknownKeys?: readonly string[];
   renderItem: (item: ConversationItem) => ComponentChildren;
+  renderBefore?: (item: ConversationItem) => ComponentChildren;
+  trailing?: ComponentChildren;
   renderHeading?: (summary: ConversationToolSummary) => ComponentChildren;
 }
 
 /** Content always has one parent. Summary chrome is a sibling, never an owner. */
-export function ConversationItems({ items, toolSummaries = [], renderItem, renderHeading }: Props) {
+export function ConversationItems({ items, toolSummaries = [], renderItem, renderHeading, renderBefore, trailing }: Props) {
   const rows: ComponentChildren[] = [];
   for (const item of items) {
+    if (renderBefore) rows.push(renderBefore(item));
     for (const summary of toolSummaries) {
       if (summary.memberKeys[0] === item.key && renderHeading) rows.push(
-        <div key={`heading:${summary.anchorKey}`} data-item-heading="" data-key={summary.anchorKey}>
+        <div key={`heading:${summary.anchorKey}`} data-item-heading="" data-key={summary.anchorKey} data-heading-anchor-key={summary.anchorKey} data-heading-member-keys={JSON.stringify(summary.memberKeys)}>
           {renderHeading(summary)}
         </div>,
       );
@@ -44,5 +47,5 @@ export function ConversationItems({ items, toolSummaries = [], renderItem, rende
       {renderItem(item)}
     </div>);
   }
-  return <div class="conversation-items">{rows}</div>;
+  return <div class="conversation-items">{rows}{trailing}</div>;
 }

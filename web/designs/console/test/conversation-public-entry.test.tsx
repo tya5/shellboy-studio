@@ -35,9 +35,26 @@ it('keeps all execution IDs under the single authoritative tool item wrapper',as
   const fixture=await fixtureModel(),host=document.createElement('div');document.body.append(host);
   try{
     const { SavedConversationItems }=await import('../screens/Conversation');
-    const projection=projectSavedItems([{nodeId:'multi-node',itemIdentity:'multi-tool',kind:'tool',executionIds:['execution-one','execution-two']}]);
+    const projection=projectSavedItems([{nodeId:'multi-node',itemIdentity:'multi-tool',windowRevision:1,kind:'tool',executionIds:['execution-one','execution-two']}]);
     await act(async()=>render(<SavedConversationItems model={fixture.model} projection={projection}/>,host));
     expect(host.querySelectorAll('[data-item-key]')).toHaveLength(1);
     expect([...host.querySelectorAll('[data-execution-id]')].map(el=>el.getAttribute('data-execution-id'))).toEqual(['execution-one','execution-two']);
+  }finally{render(null,host);host.remove();fixture.model.dispose();fixture.data.stop();}
+});
+
+it('maps actual typed window rows without a registry and preserves ordinary/deferred node ordering',async()=>{
+  const fixture=await fixtureModel(),host=document.createElement('div');document.body.append(host);
+  try{
+    const { SavedWindowContent }=await import('../screens/Conversation');
+    const rows:import('../../../data/src/protocol').HistoryItem[]=[
+      {node_id:'saved',kind:'assistant_response',selection:{ordinal:0},items:[{item_identity:'t0',kind:'text',text:'Actual typed saved content',text_complete:true}]},
+      {node_id:'ordinary',kind:'user',excerpt:'Ordinary node survives',selection:{ordinal:1}},
+      {node_id:'deferred',kind:'assistant_response',excerpt:'Unproved deferred body',selection:{ordinal:2},items:null,items_unavailable_reason:'response_budget'},
+    ];
+    const snapshot={rows,range:{first:0,last:2},total:3,revision:1,generation:1,epoch:1,disposed:false,pending:false};
+    await act(async()=>render(<SavedWindowContent model={fixture.model} snapshot={snapshot}/>,host));
+    expect(host.textContent).toContain('Actual typed saved content');expect(host.textContent).toContain('Ordinary node survives');
+    expect(host.textContent).not.toContain('Unproved deferred body');expect(host.querySelector('[data-node="deferred"]')).not.toBeNull();
+    const content=host.querySelector('[data-item-key]')!;expect(content.parentElement?.className).toBe('conversation-items');
   }finally{render(null,host);host.remove();fixture.model.dispose();fixture.data.stop();}
 });
