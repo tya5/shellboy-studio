@@ -219,6 +219,8 @@
 .work-region .running-label>button{display:block;max-width:100%;width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border:0;background:transparent;text-align:left}
 .work-region .running-label>button:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 
-.conversation-status{flex-direction:row;align-items:center}
+.conversation-status{flex-direction:row;align-items:center;flex-wrap:nowrap;white-space:nowrap;overflow:hidden;overflow-wrap:normal;box-sizing:border-box;height:calc(24px + 2 * var(--space-8));min-height:calc(24px + 2 * var(--space-8));max-height:calc(24px + 2 * var(--space-8));min-width:0}
+.conversation-status>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.conversation-status>.btn{flex-shrink:0}
 
 .brand-logo{width:var(--size-icon);height:var(--size-icon);flex:none}

@@ -276,3 +276,22 @@ it('restores incomplete, failed, and retry chrome without granting ready text li
     ledger.discard('ended');
   }finally{render(null,host);host.remove();fixture.model.dispose();fixture.data.stop();}
 });
+
+it('keeps one identical footer element through known states and unknown loading or disconnected frames',async()=>{
+  const fixture=await fixtureModel(),host=document.createElement('div');document.body.append(host);
+  try{
+    const screen=await import('../screens/Conversation') as unknown as Record<string,any>;
+    expect(screen.ConversationStatus).toBeTypeOf('function');
+    const base=fixture.model.selectedRow.value!;let current:typeof fixture.model.selectedRow.value=base;
+    const model=new Proxy(fixture.model,{get(target,key){return key==='selectedRow'?{value:current}:Reflect.get(target,key);}});
+    let original:Element|undefined;
+    for(const state of ['idle',undefined,'running',undefined,'completed',undefined,'idle'] as const){
+      current=state?{...base,status:state}:undefined;
+      await act(async()=>render(<screen.ConversationStatus model={model}/>,host));
+      const footer=host.querySelector('.conversation-status')!;expect(footer).not.toBeNull();
+      if(original)expect(footer).toBe(original);else original=footer;
+      expect(host.querySelectorAll('.conversation-status')).toHaveLength(1);
+      if(!state){expect(footer.textContent?.trim()).toBe('');expect(footer.querySelector('img,button')).toBeNull();}
+    }
+  }finally{render(null,host);host.remove();fixture.model.dispose();fixture.data.stop();}
+});
