@@ -12,6 +12,7 @@ import type {
   HistoryWindowArgs,
   HistoryWindowResult,
   MessageSendArgs,
+  MessageAccepted,
   ModelListArgs,
   ModelListResult,
   OwnerResponse,
@@ -165,6 +166,12 @@ const decodeModelList: Decoder<ModelListResult> = (v) =>
   isObject(v) && typeof v.connection === "string" && Array.isArray(v.models) && v.models.every((m) => typeof m === "string" && m.length > 0 && !/[\s\x00-\x1f\x7f]/.test(m))
     ? { ok: true, value: v as unknown as ModelListResult }
     : { ok: false, reason: "model.list result lacks connection or models" };
+
+const decodeMessageAccepted: Decoder<MessageAccepted> = value =>
+  isObject(value) && typeof value.message_id === "string" && value.message_id.length > 0
+    && typeof value.thread_id === "string" && value.thread_id.length > 0
+    ? { ok: true, value: value as MessageAccepted }
+    : { ok: false, reason: "expected MessageAccepted with nonempty message_id and thread_id" };
 
 export type MutationResult = Record<string, unknown>;
 export interface ArchiveResult {
@@ -369,8 +376,8 @@ export class Operations {
     return this.run("thread.create", args, decodeDetails, { operationId });
   }
   /** Sender identity (`human`, `sender_label: "web"`) is set by the bridge, not here. */
-  messageSend(args: MessageSendArgs, operationId = this.newId()): Promise<Outcome<MutationResult>> {
-    return this.run("message.send", args, decodeRecord, { operationId });
+  messageSend(args: MessageSendArgs, operationId = this.newId()): Promise<Outcome<MessageAccepted>> {
+    return this.run("message.send", args, decodeMessageAccepted, { operationId });
   }
   messageReply(messageId: string, text: string, operationId = this.newId()): Promise<Outcome<MutationResult>> {
     return this.run("message.reply", { message_id: messageId, text }, decodeRecord, { operationId });

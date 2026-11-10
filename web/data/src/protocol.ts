@@ -417,6 +417,13 @@ export interface ThreadCreateArgs {
   cwd?: string;
   parent_id?: string;
 }
+/** Public message.send acceptance; the canonical node ID is message_id. */
+export interface MessageAccepted {
+  message_id: string;
+  thread_id: string;
+  [key: string]: unknown;
+}
+
 export interface MessageSendArgs {
   thread_id: string;
   text: string;
