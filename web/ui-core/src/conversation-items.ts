@@ -124,7 +124,7 @@ function projectSavedItemsCore(rawInput: readonly NormalizedSavedItem[], decoded
   const associationById = new Map<string, string>();
   const conflicts = new Set<string>();
   const association = (item: NormalizedSavedItem) => {
-    if (canonicalItemCase(item).keyPolicy !== "association" || item.kind !== "tool") return undefined;
+    if (canonicalItemCase(item).toolPolicy !== "explicit-association" || item.kind !== "tool") return undefined;
     const scope = item.keyScope;
     if (!scope?.length || scope.some(value => !value)) return undefined;
     const ids = [...new Set(item.executionIds ?? (item.executionId ? [item.executionId] : []))].sort();
@@ -161,7 +161,7 @@ function projectSavedItemsCore(rawInput: readonly NormalizedSavedItem[], decoded
     const canonicalKey = "domain" in source ? JSON.stringify(["live", source.namespace ?? "work", source.scope, source.recordId]) : source.identityDomain === "spill" ? JSON.stringify(["spill", source.nodeId, source.itemIdentity]) : source.identityDomain === "node" ? JSON.stringify(["node", source.nodeId]) : JSON.stringify([source.nodeId, source.itemIdentity]);
     const a = association(source);
     const proven = a && !conflicts.has(a.key) ? a : undefined;
-    const key = source.kind === "tool" && proven ? proven.key : canonicalKey;
+    const key = canonicalItemCase(source).keyPolicy === "association" && proven ? proven.key : canonicalKey;
     if (seen.has(canonicalKey)) throw new Error("Duplicate normalized saved item identity");
     seen.add(canonicalKey);
     if (proven && selectedTools.has(key)) {
@@ -181,8 +181,10 @@ function projectSavedItemsCore(rawInput: readonly NormalizedSavedItem[], decoded
       const raw = source.executionIds ?? (source.executionId ? [source.executionId] : []);
       if (raw.some(id => !id)) throw new Error("Empty execution identity");
       const fresh = [...new Set(raw)];
-      ids.push(...fresh); toolKeys.push(key);
-      if (!proven) unknownTools++;
+      if (canonicalItemCase(source).toolPolicy === "explicit-association") {
+        ids.push(...fresh); toolKeys.push(key);
+        if (!proven) unknownTools++;
+      }
       copy = { ...scopedIdentity, kind: "tool", executionIds: Object.freeze(a ? [...new Set(raw)] : fresh), ...(source.callId ? { callId: source.callId } : {}), ...(source.compressed ? { compressed: true } : {}), ...(source.detailUnavailable ? { detailUnavailable: true } : {}), ...(source.executionId ? { executionId: source.executionId } : {}) };
     } else if (source.kind === "text") copy = { ...scopedIdentity, kind: "text", text: source.text, ...(source.textComplete !== undefined ? { textComplete: source.textComplete } : {}) };
     else if (source.kind === "user" || source.kind === "summary") copy = { ...scopedIdentity, kind: source.kind, text: source.text };
