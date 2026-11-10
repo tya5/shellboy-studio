@@ -47,3 +47,18 @@ it('public event without notification subtype stays generic Notifications, no co
   expect(host.textContent).not.toContain('Synthetic event content');
  }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
 });
+it('uses CASE closed defaults and preserves explicit Work and record choices through rerender',async()=>{
+ const f=await fixtureModel(),host=document.createElement('div');document.body.append(host);
+ try{
+  const projection=projectLegacyHistoryItems({nodes:[{node_id:'event-choice',kind:'event'}]}).projection;
+  const show=()=>render(<SavedConversationItems model={f.model} projection={projection}/>,host);
+  await act(async()=>show());const group=host.querySelector<HTMLDetailsElement>('[data-work-group]')!;
+  expect(group.open).toBe(false);
+  await act(async()=>{group.open=true;group.dispatchEvent(new Event('toggle'));});
+  const record=host.querySelector<HTMLDetailsElement>('[data-internal-records]')!;expect(record.open).toBe(false);
+  await act(async()=>{record.open=true;record.dispatchEvent(new Event('toggle'));});
+  await act(async()=>show());expect(group.open).toBe(true);expect(record.open).toBe(true);
+  await act(async()=>{record.open=false;record.dispatchEvent(new Event('toggle'));});
+  await act(async()=>show());expect(record.open).toBe(false);
+ }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
+});

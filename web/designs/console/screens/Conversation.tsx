@@ -2,7 +2,7 @@ import type { ThreadHandle } from "../../../data/src/store";
 import { Disclosure } from "../system/components/Disclosure";
 import type { HandoffRecord } from "../../../data/src/handoff";
 import { senderFact } from "../../../data/src/sender";
-import { normalizeConversationFacts, projectLegacyHistoryItems, projectHistoryWindowItems, projectSavedItems, normalizeLiveWorkFacts, type NormalizedSavedItem } from "../../../ui-core/src/conversation-items";
+import { CANONICAL_CASES, type CanonicalCase, normalizeConversationFacts, projectLegacyHistoryItems, projectHistoryWindowItems, projectSavedItems, normalizeLiveWorkFacts, type NormalizedSavedItem } from "../../../ui-core/src/conversation-items";
 import type { HistoryItem } from "../../../data/src/protocol";
 import { Markdown } from "../system/components/Message";
 import type { WindowAcceptedSnapshot } from "../../../ui-core/src/window";
@@ -74,22 +74,22 @@ export function AcceptedWindowConversation({ reader, project, renderItem, render
 export function SavedConversationItems({ model, projection, renderBefore, trailing, nodes }: { model: AppModel; projection: SavedItemProjection & { sequence?: readonly ({kind: "conversation"; itemKey: string} | {kind: "work"; groupKey: string})[]; workGroups?: readonly ConversationWorkGroup[] }; nodes?: readonly HistoryItem[]; renderBefore?: (item: ConversationItem) => ComponentChildren; trailing?: ComponentChildren }) {
   const t = model.t.value;
   const allSteps = model.conversation.value.flatMap(row => row.type === "steps" ? row.steps : []);
-  const [openRecords, setOpenRecords] = useState<ReadonlySet<string>>(() => new Set());
-  const [openMemberships, setOpenMemberships] = useState<ReadonlySet<string>>(() => new Set());
+  const [openRecords, setOpenRecords] = useState<ReadonlyMap<string, boolean>>(() => new Map());
+  const [openMemberships, setOpenMemberships] = useState<ReadonlyMap<string, boolean>>(() => new Map());
   const membershipKey = (summary: { key?: string; memberKeys: readonly string[] }) => summary.key ?? JSON.stringify(summary.memberKeys);
   const memberships = new Set((projection.workGroups ?? projection.toolSummaries).map(membershipKey));
   useLayoutEffect(() => {
     const records = new Set(projection.items.filter(item => item.source.kind === "record").map(item => item.key));
     setOpenRecords(previous => {
-      const kept = new Set([...previous].filter(key => records.has(key)));
+      const kept = new Map([...previous].filter(([key]) => records.has(key)));
       return kept.size === previous.size ? previous : kept;
     });
     setOpenMemberships(previous => {
-      const kept = new Set([...previous].filter(key => memberships.has(key)));
+      const kept = new Map([...previous].filter(([key]) => memberships.has(key)));
       return kept.size === previous.size ? previous : kept;
     });
   }, [projection]);
-  const opened = (summary: { memberKeys: readonly string[] }) => openMemberships.has(membershipKey(summary));
+  const opened = (summary: { memberKeys: readonly string[] }) => openMemberships.get(membershipKey(summary)) ?? projection.items.filter(item=>summary.memberKeys.includes(item.key)).some(item=>item.classification!.openPolicy !== "closed");
   const hidden = (item: ConversationItem) => {
     const summary = (projection.workGroups ?? projection.toolSummaries).find(summary => summary.memberKeys.includes(item.key));
     return summary !== undefined && !opened(summary);
@@ -111,8 +111,8 @@ export function SavedConversationItems({ model, projection, renderBefore, traili
     return <Disclosure class="step step-group" open={opened(group)} data-work-group={group.key} data-key={group.key} data-heading-anchor-key={group.firstMemberKey} data-heading-member-keys={JSON.stringify(group.memberKeys)} onToggle={event => {
       const open = event.currentTarget.open;
       setOpenMemberships(previous => {
-        const next = new Set([...previous].filter(key => memberships.has(key)));
-        if (open) next.add(membershipKey(group)); else next.delete(membershipKey(group));
+        const next = new Map([...previous].filter(([key]) => memberships.has(key)));
+        next.set(membershipKey(group), open);
         return next;
       });
     }}><summary data-work-heading=""><Icon name="layers" /><span class="tool-group-label">{label}</span>{status ? <StatusMark status={status} label={statusLabel(t, status)} /> : null}<span class="meta" /></summary><div class="step-group-list">{children}</div></Disclosure>;
@@ -128,8 +128,8 @@ export function SavedConversationItems({ model, projection, renderBefore, traili
     const label = [t("tools.count", { n: summary.memberKeys.length }), ...(missingExecution ? [t("work.textUnavailable")] : []), ...((summary.continuationBefore !== "closed" || summary.continuationAfter !== "closed") ? [t("work.partial")] : []), ...(nonzero ? [t("tools.nonzero", { n: nonzero })] : []), ...(active ? [t("tools.active", { command: toolLabel(active.description, active.command) })] : [])].join(" · ");
     return <section class="steps"><StepRow group open={opened(summary)} command={label} status={status ? <StatusMark status={status} label={statusLabel(t, status)} /> : <span class="muted caption">{t("work.textUnavailable")}</span>} onToggle={open => {
       setOpenMemberships(previous => {
-        const next = new Set([...previous].filter(key => memberships.has(key)));
-        if (open) next.add(membershipKey(summary)); else next.delete(membershipKey(summary));
+        const next = new Map([...previous].filter(([key]) => memberships.has(key)));
+        next.set(membershipKey(summary), open);
         return next;
       });
     }}>{null}</StepRow></section>;
@@ -160,13 +160,13 @@ export function SavedConversationItems({ model, projection, renderBefore, traili
         const badge = source.compressed ? <span class="caption muted" data-tool-compressed="">{t("work.compressed")}</span> : null;
         return <div data-tool-call-id={source.callId} data-tool-detail-unavailable={source.detailUnavailable ? "true" : undefined}>{badge}{!ids.length ? <div class="caption muted" data-execution-unavailable="">{t("work.unknownTools")}</div> : ids.map(id => {
           const step = steps.find(step => step.executionId === id);
-          return <div key={id} data-execution-id={id}>{hidden(item) ? null : step ? <StepView model={model} step={step} /> : <div class="caption muted" data-execution-unresolved="">{t("work.unknownTools")}</div>}</div>;
+          return <div key={id} data-execution-id={id}>{hidden(item) ? null : step ? <StepView model={model} step={step} openPolicy={item.classification!.openPolicy} /> : <div class="caption muted" data-execution-unresolved="">{t("work.unknownTools")}</div>}</div>;
         })}</div>;
       }
       if (item.source.kind === "ordinaryEmpty") return <div class="caption muted" data-empty-ordinary="">{t("work.textUnavailable")}</div>;
       if (item.source.kind === "reasoning" || item.source.kind === "reasoning_unavailable") return <div class="caption muted" data-thinking-marker="">{t("work.thinking")}</div>;
       if (item.source.kind === "interruption") return <Notice>{t("status.stopped")}</Notice>;
-      if (item.source.kind === "record") return <Disclosure data-internal-records="" open={openRecords.has(item.key)} onToggle={event => { const open = event.currentTarget.open; setOpenRecords(previous => { const next = new Set(previous); if (open) next.add(item.key); else next.delete(item.key); return next; }); }}><summary>{t(item.classification?.headingCategory === "Problems" ? "work.problem" : item.classification?.render === "state-change" ? "work.stateChanges" : item.classification?.render === "child-notification" || item.classification?.render === "shell-notification" ? "work.continueNotification" : "work.notification", {n:1})}</summary></Disclosure>;
+      if (item.source.kind === "record") return <Disclosure data-internal-records="" open={openRecords.get(item.key) ?? (item.classification!.openPolicy !== "closed")} onToggle={event => { const open = event.currentTarget.open; setOpenRecords(previous => { const next = new Map(previous); next.set(item.key, open); return next; }); }}><summary>{t(item.classification?.headingCategory === "Problems" ? "work.problem" : item.classification?.render === "state-change" ? "work.stateChanges" : item.classification?.render === "child-notification" || item.classification?.render === "shell-notification" ? "work.continueNotification" : "work.notification", {n:1})}</summary></Disclosure>;
       if (item.source.kind === "unknown" || item.source.kind === "unavailable") {
         const source = item.source;
         const handle = model.handle.value;
@@ -324,10 +324,10 @@ export function Output({ model, id, command, complete, boxed }: { model: AppMode
   );
 }
 
-export function StepView({ model, step }: { model: AppModel; step: Step }) {
+export function StepView({ model, step, openPolicy = CANONICAL_CASES.toolCall.openPolicy }: { model: AppModel; step: Step; openPolicy?: CanonicalCase["openPolicy"] }) {
   const t = model.t.value;
   const choice = model.toolStepChoices.value.get(step.executionId);
-  const open = choice ?? false;
+  const open = choice ?? (openPolicy !== "closed");
   useEffect(() => {
     if (!open) return;
     model.selectedStepId.value = step.executionId;
