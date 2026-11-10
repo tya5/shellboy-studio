@@ -71,3 +71,18 @@ it("getter reentry during actual Window staging cannot overwrite a nested accept
   expect(seen[0]).toBe(w.acceptedView.peek().generation);
   stop(); w.dispose();
 });
+
+it("pending latest-tail evidence does not detach follow intent at the loaded bottom", async () => {
+  const replies: ((value: { ok: true; value: { thread_id: string; total: number; revision: number; items: HistoryItem[] } }) => void)[] = [];
+  const w = new ConversationWindow({ read: () => new Promise(resolve => { replies.push(resolve); }) });
+  const rows = (first: number, last: number): HistoryItem[] => Array.from({ length: last - first + 1 }, (_, offset) => ({ node_id: `n${first + offset}`, kind: "user", excerpt: "local", selection: { ordinal: first + offset } }));
+  replies.shift()!({ ok: true, value: { thread_id: "t", total: 100, revision: 1, items: rows(0, 99) } }); await flush();
+  w.changed();
+  replies.shift()!({ ok: true, value: { thread_id: "t", total: 1100, revision: 2, items: rows(99, 298) } }); await flush();
+  expect(replies).toHaveLength(1);
+  expect(w.following.peek()).toBe(true);
+  w.view(0, 600, true); expect(w.following.peek()).toBe(true);
+  w.view(0, 600, false); expect(w.following.peek()).toBe(false);
+  w.view(0, 600, true); expect(w.following.peek()).toBe(false);
+  w.dispose();
+});

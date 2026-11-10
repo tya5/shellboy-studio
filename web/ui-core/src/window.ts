@@ -265,7 +265,8 @@ export class ConversationWindow {
     if (!now) return;
     // Pixels cannot navigate across an unloaded gap. Run switches are explicit and bump version.
     // The scroller's end is the path's end: trailing nodes that draw nothing have no height to reach.
-    const follow = atBottom && now.last === this.total - 1;
+    // Missing tail evidence is not a user detach and cannot create follow intent.
+    const follow = atBottom && (now.last === this.total - 1 || this.following.peek() && !!this.tailCancel);
     if (follow !== this.following.peek()) this.following.value = follow;
     if (follow && this.newer.peek()) this.newer.value = false;
     const r = now;
