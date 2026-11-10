@@ -1,8 +1,9 @@
+import { AcceptedView } from "./accepted-view";
 import type { HandoffRecord } from "../../data/src/handoff";
 // The long-thread reader's model (docs/design/long-threads.md): positional windows of a Thread's
 // path held in bounded buckets, a measured scroll space over one loaded run, and adjacent reads.
 // It stops at an unloaded edge. It knows no pixels except the heights it is told, and never walks the history.
-import { signal } from "@preact/signals-core";
+import { batch, signal } from "@preact/signals-core";
 import { Cancel, HISTORY_EXCERPT_CHARS, type HistoryItem, type HistoryWindowArgs, type HistoryWindowResult, type Outcome } from "../../data/src";
 import { projectConversation } from "./conversation";
 
@@ -23,6 +24,18 @@ export interface WindowOptions {
   /** Defaults to `setTimeout`; returns the canceller. */
   setTimer?: (fn: () => void, ms: number) => () => void;
 }
+
+export interface WindowAcceptedSnapshot {
+  readonly generation: number;
+  readonly epoch: number;
+  readonly disposed: boolean;
+  readonly rows: readonly HistoryItem[];
+  readonly range: Readonly<{ first: number; last: number }> | undefined;
+  readonly total: number;
+  readonly revision: string | number | undefined;
+  readonly pending: boolean;
+}
+export interface WindowScrollRequest { readonly id: object; readonly target: number }
 
 export type WindowStatus = "loading" | "ready" | "error";
 export interface Anchor {
@@ -81,6 +94,12 @@ export class ConversationWindow {
   private wanted = new Set<number>();
   private lastAnchor: Anchor | undefined;
   private scrollRequest: number | undefined;
+  private scrollHandle: WindowScrollRequest | undefined;
+  private acceptedGeneration = 0;
+  readonly acceptedView = new AcceptedView<WindowAcceptedSnapshot>({
+    generation: 0, epoch: 0, disposed: false, rows: [], range: undefined,
+    total: 0, revision: undefined, pending: true,
+  });
   private jumping = false;
   get pendingNavigation(): boolean { return this.jumping; }
 
@@ -201,6 +220,21 @@ export class ConversationWindow {
     return s;
   }
 
+  /** Capture without consuming. A new accepted generation invalidates old plans. */
+  peekScroll(ref: WindowAcceptedSnapshot): WindowScrollRequest | undefined {
+    if (this.disposed || !this.acceptedView.isCurrent(ref) || ref.epoch !== this.epoch || this.scrollRequest === undefined) return;
+    if (!this.scrollHandle || this.scrollHandle.target !== this.scrollRequest)
+      this.scrollHandle = Object.freeze({ id: Object.freeze({}), target: this.scrollRequest });
+    return this.scrollHandle;
+  }
+  /** Callback-free consumption leaves the accepted reference and epoch unchanged. */
+  consumeScroll(ref: WindowAcceptedSnapshot, id: object): boolean {
+    if (this.disposed || !this.acceptedView.isCurrent(ref) || ref.epoch !== this.epoch || !this.scrollHandle || this.scrollHandle.id !== id || this.scrollHandle.target !== this.scrollRequest) return false;
+    this.scrollRequest = undefined;
+    this.scrollHandle = undefined;
+    return true;
+  }
+
   // ---- the viewport ----
 
   anchor(scrollTop: number): Anchor {
@@ -319,6 +353,7 @@ export class ConversationWindow {
   /** Leaving the view or the Thread: nothing more is read. */
   dispose(): void {
     this.disposed = true;
+    this.acceptedView.dispose();
     const attachments = [...this.buckets.values()].flatMap(bucket => [...bucket.handoffs.values()]);
     for (const bucket of this.buckets.values()) bucket.handoffs.clear();
     this.buckets.clear();
@@ -338,6 +373,15 @@ export class ConversationWindow {
   }
 
   private bump(): void {
+    if (this.disposed) return;
+    const epoch = this.epoch, capability = this.acceptedView.currentCapability;
+    const generation = ++this.acceptedGeneration;
+    const staged = this.acceptedView.stage({ generation, epoch, disposed: false,
+      rows: this.rangeItems(), range: this.renderRange(), total: this.total,
+      revision: this.revision, pending: this.status.peek() === "loading" }, capability);
+    if (this.disposed || epoch !== this.epoch || generation !== this.acceptedGeneration) return;
+    if (!this.acceptedView.commit(staged)) return;
+    if (this.disposed || epoch !== this.epoch || generation !== this.acceptedGeneration) return;
     this.version.value++;
   }
 
@@ -481,6 +525,7 @@ export class ConversationWindow {
     const anchor = this.lastAnchor;
     const follow = this.following.peek();
     this.epoch++;
+    this.acceptedView.revoke();
     this.cancelAll();
     this.verifying = false;
     this.tailAgain = false;
@@ -587,13 +632,16 @@ export class ConversationWindow {
         if (item.node_id !== undefined && (this.tailKnown === undefined || o >= this.tailKnown.ordinal)) this.tailKnown = { ordinal: o, nodeId: item.node_id };
       }
       return true;
+    }, false);
+    batch(() => {
+      this.status.value = "ready";
+      this.error.value = undefined;
+      this.bump();
     });
-    this.status.value = "ready";
-    this.error.value = undefined;
   }
 
   /** Runs a height change with the anchor row held in place. */
-  private applyHeights(change: () => boolean): void {
+  private applyHeights(change: () => boolean, publish = true): void {
     const follow = this.following.peek();
     const a = this.total > 0 ? (this.lastAnchor ?? this.anchor(this.viewTop)) : undefined;
     const before = a ? this.offsetOf(a.ordinal) : 0;
@@ -605,6 +653,6 @@ export class ConversationWindow {
         this.viewTop = top;
       }
     }
-    if (changed) this.bump();
+    if (changed && publish) this.bump();
   }
 }
