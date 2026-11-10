@@ -15,6 +15,7 @@ export function heldRange(visible: { first: number; last: number }, total: numbe
 }
 
 export function WindowedScroll({ model, win, renderRow, live, liveBoundary, statusLine, scrollPort }: { model: AppModel; win: ConversationWindow; renderRow: (row: ConversationRow) => VNode; live: ComponentChildren; liveBoundary?: number; statusLine?: ComponentChildren; scrollPort?: ScrollViewPort<object> }) {
+  const port: ScrollViewPort<object> = scrollPort ?? win;
   const t = model.t.value;
   win.version.value; // redraw on every change the window reports
   const status = win.status.value;
@@ -40,13 +41,7 @@ export function WindowedScroll({ model, win, renderRow, live, liveBoundary, stat
     const box = el.current;
     if (!box || win.status.peek() === "loading") return;
     let start = 0;
-    if (!scrollPort) start = rowOrigin(box);
-    if (!scrollPort && win.pendingNavigation) {
-      win.view(box.scrollTop - start, box.clientHeight, intent.current.following);
-      return;
-    }
-    if (scrollPort) {
-      writer.current.run(scrollPort, {
+    writer.current.run(port, {
         measure: () => {
           start = rowOrigin(box);
           const changes: [number, number][] = [];
@@ -72,24 +67,7 @@ export function WindowedScroll({ model, win, renderRow, live, liveBoundary, stat
             capture: () => readingAnchor.current.capture(box),
           };
         },
-      });
-      return;
-    }
-    const changes: [number, number][] = [];
-    for (const child of box.querySelectorAll<HTMLElement>("[data-o]"))
-      changes.push([Number(child.dataset.o), child.getBoundingClientRect().height]);
-    if (changes.length) win.measure(changes);
-    const want = win.takeScroll();
-    const delta = headingAnchor.current.correction() ?? readingAnchor.current.correction(box);
-    const following = intent.current.scroll(box) && win.following.peek();
-    if (following) intent.current.program(box, box.scrollHeight);
-    else if (delta !== undefined) intent.current.program(box, box.scrollTop + delta);
-    else if (want !== undefined) intent.current.program(box, want + start);
-    else if (origin.current !== undefined && start !== origin.current)
-      intent.current.program(box, box.scrollTop + start - origin.current);
-    origin.current = start;
-    win.view(box.scrollTop - start, box.clientHeight, intent.current.following);
-    readingAnchor.current.capture(box);
+    });
   };
 
   useLayoutEffect(sync);
