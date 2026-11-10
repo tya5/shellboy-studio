@@ -7,7 +7,8 @@ it('actual Window readTail partial response must not convert pending tail proof 
   await r.settle();expect(r.w.following.value).toBe(true);
   r.owner.append(1000);r.w.changed();await flush();
   const partial=r.calls().filter(c=>!r.owner.answered.has(c.id))[0]!;expect(partial).toBeDefined();
-  r.owner.answered.add(partial.id);const answer=r.owner.answer(partial);expect(answer.ok).toBe(true);if(answer.ok)r.t.ok(partial.id,answer.result);await flush();
+  r.owner.answered.add(partial.id);const answer=r.owner.answer(partial);expect(answer.ok).toBe(true);if(answer.ok)r.t.ok(partial.id,answer.result);await flush();await flush();await flush();
+  console.log(JSON.stringify({calls:r.calls().map(c=>({id:c.id,args:c.args,answered:r.owner.answered.has(c.id)})),total:r.w.total,range:r.w.renderRange(),following:r.w.following.value}));
   // Latest tail reply is still held; the user has supplied no detach action.
   expect(r.calls().some(c=>!r.owner.answered.has(c.id))).toBe(true);
   r.w.view(0,600,true);
