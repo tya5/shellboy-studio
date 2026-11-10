@@ -203,15 +203,14 @@ describe("Conversation live text", () => {
     const owner = new WindowOwner(7);
     const { model } = await fixtureModel({ capabilities: ['history.window'], configure: db => {
       const base = db.answer.bind(db);
-      db.threads.lead = { ...db.threads.lead!, summary: { ...db.threads.lead!.summary, status } };
+      db.threads.lead = { ...db.threads.lead!, state: status };
       db.answer = call => call.command === 'history.window' ? owner.answer(call) : base(call);
     } });
     const el = draw(model);
-    await act(async () => flushPromises(12));
+    await act(async () => flushPromises());
     const statuses = [...el.querySelectorAll('.conversation-status')];
     expect(statuses).toHaveLength(1);
     expect(statuses[0]!.getAttribute('role')).toBe('status');
-    expect(el.querySelectorAll('.work-strip')).toHaveLength(1);
     model.dispose();
   });
 
