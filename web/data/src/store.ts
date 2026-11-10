@@ -434,7 +434,7 @@ export class ShellboyData {
         if (!valid()) return { ok: false, error: { kind: "cancelled", message: "window owner changed while materializing" } };
         return { ok: true, value: saved };
       },
-      cancelReads: () => { e.pendingAttempts.value = []; e.live.invalidate(); e.cancel.cancel(); },
+      cancelReads: () => { e.live.invalidate(); e.cancel.cancel(); e.pendingAttempts.value = []; },
       refresh: () => this.requestThread(threadId),
       loadOlderHistory: () => this.loadOlder(e),
       canShowEarlier: () => e.window < HISTORY_WINDOW_MAX,
@@ -460,10 +460,10 @@ export class ShellboyData {
   /** Stops reading a Thread nobody is looking at, and keeps what it has. */
   private pauseEntry(entry: ThreadEntry): void {
     if (entry.paused || entry.closed) return;
-    entry.pendingAttempts.value = [];
     entry.paused = true;
-    entry.refreshAfterHandoff = false;
     entry.live.invalidate();
+    entry.pendingAttempts.value = [];
+    entry.refreshAfterHandoff = false;
     entry.cancel.cancel();
     entry.history.value = { ...entry.history.peek(), loading: false, loadingMore: false };
     this.scheduleWatch();
@@ -600,6 +600,7 @@ export class ShellboyData {
     for (const e of this.entries.values()) {
       e.refreshAfterHandoff = false;
       e.resolveAgain = false;
+      e.live.invalidate();
       e.pendingAttempts.value = [];
       e.live.discard(reason);
     }
