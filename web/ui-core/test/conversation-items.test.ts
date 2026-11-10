@@ -127,7 +127,7 @@ it("FINAL legacy saved prose is independent of advisory publication state", asyn
   const { projectConversation } = await import("../src/conversation");
   const node = { node_id: "saved", kind: "assistant_response", phase: "commentary", excerpt: "Saved ordinary prose" };
   const baseline = projectConversation([node]);
-  for (const state of ["pending", "opaque", "unavailable"] as const) {
+  for (const state of ["unknown", "tool"] as const) {
     expect(projectConversation([{ ...node, assistant_publication: { state, attemptId: "advisory", itemId: "item", nodeId: "saved" } }])).toEqual(baseline);
   }
 });

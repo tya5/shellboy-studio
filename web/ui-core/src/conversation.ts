@@ -90,7 +90,7 @@ export function projectConversation(items: HistoryItem[], shells: ReadonlyMap<st
           cwd: e.cwd,
         });
       }
-      if (item.kind !== "assistant_response" || item.phase !== "commentary" || !item.excerpt) continue;
+      if (item.kind !== "assistant_response" || !item.excerpt) continue;
       rows.push({ type: "message", id: `${id}:commentary`, speaker: speakerOf(item), text: item.excerpt, truncated: codePoints(item.excerpt) >= HISTORY_EXCERPT_CHARS, at: item.provenance?.created_at });
       continue;
     }
