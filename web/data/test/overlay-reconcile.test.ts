@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { overlayState, reconcileOverlay, createAssociationAuthority, type AssociationEvidence } from '../src/overlay-reconcile';
+import { overlayState, reconcileOverlay, createAssociationAuthority, assessOverlayAdmission, type AssociationEvidence } from '../src/overlay-reconcile';
 const record=Object.freeze({key:'preview-a',attemptId:'attempt-a',text:'retained preview'});
 const saved={nodeId:'node-a',itemIdentity:'item-a',revision:'revision-a'};
 function rig(){const cap=Object.freeze({});const op=Object.freeze({});const authority=createAssociationAuthority<typeof cap>();const state=reconcileOverlay(overlayState(cap,[record]),{type:'begin',capRef:cap,operation:op});return {cap,op,authority,state};}
@@ -52,8 +52,8 @@ it('owns one lookup until exact settlement and never refills starts on scope cha
 it('checks adopted-record bounds only, without deciding new preview overflow policy',()=>{
  const cap={};expect(()=>overlayState(cap,Array.from({length:9},(_,n)=>({...record,key:String(n)})))).toThrow();
  expect(()=>overlayState(cap,[{...record,text:'a'.repeat(262145)}])).toThrow();
- expect(()=>overlayState(cap,Array.from({length:5},(_,n)=>({...record,key:String(n),text:'a'.repeat(262144)})))).toThrow();
- expect(overlayState(cap,Array.from({length:4},(_,n)=>({...record,key:String(n),text:'a'.repeat(262144)}))).records).toHaveLength(4);
+ expect(()=>overlayState(cap,Array.from({length:5},(_,n)=>Object.freeze({...record,key:String(n),text:'a'.repeat(262144)})))).toThrow();
+ expect(overlayState(cap,Array.from({length:4},(_,n)=>Object.freeze({...record,key:String(n),text:'a'.repeat(262144)}))).records).toHaveLength(4);
 });
 
 it('settled operation cannot release after a newer lookup takes ownership',()=>{
@@ -63,3 +63,30 @@ it('settled operation cannot release after a newer lookup takes ownership',()=>{
  const nextOp={};state=reconcileOverlay(state,{type:'begin',capRef:r.cap,operation:nextOp});
  expect(r.authority.release(state,proof,record,r.op,r.cap)).toBe(state);expect(state.lookup).toBe(nextOp);
 });
+
+it.each(['never_arrives','truncated','saved_evicted','outside_loaded'] as const)('terminal %s keeps text, stops hints and permits only an explicit fresh generation',reason=>{
+ const r=rig();let state=reconcileOverlay(r.state,{type:'terminal',capRef:r.cap,operation:r.op,reason});
+ expect(state.terminal).toBe(reason);expect(state.records).toEqual([record]);expect(state.lookup).toBe(r.op);
+ state=reconcileOverlay(state,{type:'settled',operation:r.op});
+ expect(reconcileOverlay(state,{type:'begin',capRef:r.cap,operation:{}})).toBe(state);
+ const nextCap={};state=reconcileOverlay(state,{type:'reconcile',capRef:nextCap});
+ expect(state.terminal).toBeUndefined();expect(state.records).toEqual([record]);expect(state.starts).toBe(1);
+});
+it('capacity policy is explicitly unresolved and never silently evicts existing previews',()=>{
+ const records=Array.from({length:8},(_,n)=>Object.freeze({...record,key:String(n)}));
+ const state=overlayState({},records);const result=assessOverlayAdmission(state,Object.freeze({...record,key:'ninth'}),'pending');
+ expect(result).toEqual({kind:'policy_pending',reason:'records'});expect(state.records).toEqual(records);
+ expect(assessOverlayAdmission(state,Object.freeze({...record,key:'ninth'}),'stop_new_preview')).toEqual({kind:'stop_new_preview',reason:'records'});
+});
+it('capacity measures UTF-8 bytes separately from the per-preview code-unit bound',()=>{
+ const state=overlayState({},Array.from({length:4},(_,n)=>Object.freeze({...record,key:String(n),text:'a'.repeat(262144)})));
+ expect(assessOverlayAdmission(state,Object.freeze({...record,key:'extra',text:'a'}),'pending')).toEqual({kind:'policy_pending',reason:'bytes'});
+ expect(assessOverlayAdmission(overlayState({},[]),Object.freeze({...record,text:'a'.repeat(262145)}),'pending')).toEqual({kind:'policy_pending',reason:'per_preview'});
+ expect(assessOverlayAdmission(overlayState({},[]),Object.freeze({...record,text:'é'.repeat(262144)}),'pending')).toEqual({kind:'fits'});
+});
+it('materialization rejects mutable or accessor record originals without copying identity',()=>{
+ expect(()=>overlayState({},[{...record}])).toThrow();
+ let invoked=0;const accessor=Object.freeze({key:'accessor',attemptId:'attempt',get text(){invoked++;return 'body';}});
+ expect(()=>overlayState({},[accessor])).toThrow();expect(invoked).toBe(0);
+});
+it.todo('approved capacity choice and actual live admission are separate integration gates');
