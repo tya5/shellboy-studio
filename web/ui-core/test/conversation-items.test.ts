@@ -128,7 +128,7 @@ it("FINAL legacy saved prose is independent of advisory publication state", asyn
   const node = { node_id: "saved", kind: "assistant_response", phase: "commentary", excerpt: "Saved ordinary prose" };
   const baseline = projectConversation([node]);
   for (const state of ["unknown", "tool"] as const) {
-    expect(projectConversation([{ ...node, assistant_publication: { state, attemptId: "advisory", itemId: "item", nodeId: "saved" } }])).toEqual(baseline);
+    expect(projectConversation([{ ...node, assistant_publication: { state, attemptId: "advisory" } }])).toEqual(baseline);
   }
 });
 it("FINAL typed empty/unknown items never use aggregate excerpt as fallback", () => {
