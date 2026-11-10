@@ -47,3 +47,14 @@ it('real pending scroll request is non-consuming until a current commit and inva
   expect(w.peekScroll(ref)).toBeUndefined();expect(w.consumeScroll(ref,request!.id)).toBe(false);
   w.dispose();expect(w.acceptedView.isCurrent(ref)).toBe(false);expect(w.consumeScroll(ref,request!.id)).toBe(false);
 });
+it('renders one accepted-view slot without legacy node wrappers or a duplicate live tail',async()=>{
+  r=await realWindow(3);await r.settle();const w=r.w;
+  const legacy=vi.fn(()=> <div data-legacy-row/>),slot=vi.fn((snapshot:ReturnType<typeof w.acceptedView.peek>)=><div class="conversation-items">{snapshot.rows.map(row=><div key={row.node_id} data-item-key={row.node_id} data-node={row.node_id}>item</div>)}<div class="live-tail">owned live</div></div>);
+  host=document.createElement('div');document.body.append(host);
+  await act(async()=>render(<WindowedScroll model={model()} win={w} renderRow={legacy} live={<div data-duplicate-live/>} renderAcceptedView={slot}/>,host!));
+  expect(slot).toHaveBeenCalled();expect(legacy).not.toHaveBeenCalled();
+  expect(host.querySelectorAll('.conversation-items')).toHaveLength(1);
+  expect(host.querySelectorAll('.vrow')).toHaveLength(0);
+  expect(host.querySelectorAll('.live-tail')).toHaveLength(1);
+  expect(host.querySelector('[data-duplicate-live]')).toBeNull();
+});

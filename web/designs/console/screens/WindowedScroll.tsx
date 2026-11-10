@@ -4,6 +4,8 @@ import { useLayoutEffect, useRef } from "preact/hooks";
 import { projectConversation, type AppModel, type ConversationRow, type ConversationWindow } from "../../../ui-core/src";
 import { Button, EmptyState, LoadingRows, Notice } from "../system/components";
 
+import { measureAcceptedRows } from "./acceptedRowMeasure";
+import type { WindowAcceptedSnapshot } from "../../../ui-core/src/window";
 import { CurrentScrollSync, type ScrollViewPort } from "./scrollTransaction";
 import { HeadingAnchor, ReadingAnchor, ScrollIntent } from "./scrollIntent";
 
@@ -14,13 +16,14 @@ export function heldRange(visible: { first: number; last: number }, total: numbe
   return range;
 }
 
-export function WindowedScroll({ model, win, renderRow, live, liveBoundary, statusLine, scrollPort }: { model: AppModel; win: ConversationWindow; renderRow: (row: ConversationRow) => VNode; live: ComponentChildren; liveBoundary?: number; statusLine?: ComponentChildren; scrollPort?: ScrollViewPort<object> }) {
+export function WindowedScroll({ model, win, renderRow, live, liveBoundary, statusLine, scrollPort, renderAcceptedView }: { model: AppModel; win: ConversationWindow; renderRow: (row: ConversationRow) => VNode; live: ComponentChildren; liveBoundary?: number; statusLine?: ComponentChildren; scrollPort?: ScrollViewPort<object>; renderAcceptedView?: (ref: WindowAcceptedSnapshot) => ComponentChildren }) {
   const port: ScrollViewPort<object> = scrollPort ?? win;
   const t = model.t.value;
   win.version.value; // redraw on every change the window reports
   const status = win.status.value;
   const error = win.error.value;
   const shells = model.shells.value;
+  const accepted = renderAcceptedView ? win.acceptedView.peek() : undefined;
   const el = useRef<HTMLDivElement>(null);
   const visible = win.renderRange();
   const range = visible && heldRange(visible, win.total, (index) => win.itemAt(index) !== undefined);
@@ -39,15 +42,17 @@ export function WindowedScroll({ model, win, renderRow, live, liveBoundary, stat
   // Model coordinates start at the measured rows, excluding captions and edge indicators.
   const sync = () => {
     const box = el.current;
-    if (!box || win.status.peek() === "loading") return;
+    if (!box || win.status.peek() === "loading" || (renderAcceptedView && !win.acceptedView.isCurrent(accepted!))) return;
     let start = 0;
     writer.current.run(port, {
-        measure: () => {
+        measure: (ref) => {
+          if (renderAcceptedView && ref !== accepted) return;
           start = rowOrigin(box);
           const changes: [number, number][] = [];
           for (const child of box.querySelectorAll<HTMLElement>("[data-o]"))
             changes.push([Number(child.dataset.o), child.getBoundingClientRect().height]);
-          if (changes.length) win.measure(changes);
+          const measured = renderAcceptedView ? measureAcceptedRows(box, accepted!.rows) : changes;
+          if (measured.length) win.measure(measured);
         },
         plan: (_ref, request) => {
           const heading = headingAnchor.current.peek();
@@ -75,13 +80,13 @@ export function WindowedScroll({ model, win, renderRow, live, liveBoundary, stat
     const box = el.current;
     if (!box || typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver(sync);
-    box.querySelectorAll("[data-o], .vspace, .live-tail").forEach((row) => observer.observe(row));
+    box.querySelectorAll("[data-o], .vspace, .live-tail, .conversation-items > *").forEach((row) => observer.observe(row));
     observer.observe(box);
     return () => observer.disconnect();
   });
 
   const parts: VNode[] = [];
-  if (range) {
+  if (!renderAcceptedView && range) {
     for (let i = range.first; i <= range.last; ) {
       const item = win.itemAt(i);
       if (item === undefined) break;
@@ -113,7 +118,7 @@ export function WindowedScroll({ model, win, renderRow, live, liveBoundary, stat
   }
 
   // One parent/list owns the live slot whether its ordinal is inside or past the window.
-  if (!parts.some(part => part.key === "live")) parts.push(<div class="live-tail" key="live">{live}</div>);
+  if (!renderAcceptedView && !parts.some(part => part.key === "live")) parts.push(<div class="live-tail" key="live">{live}</div>);
 
   return (
     <div class="scroll-frame">
@@ -144,7 +149,7 @@ export function WindowedScroll({ model, win, renderRow, live, liveBoundary, stat
       ) : null}
       {win.total > 0 ? <div class="muted caption">{t("convo.total", { n: win.total })}</div> : null}
       {range && range.first > 0 ? <LoadingRows label={t("convo.loading")} rows={1} /> : null}
-      <div class="vspace">{parts}</div>
+      <div class="vspace">{renderAcceptedView ? renderAcceptedView(accepted!) : parts}</div>
       {range && range.last + 1 < win.total ? <LoadingRows label={t("convo.loading")} rows={1} /> : null}
       {statusLine}
       {win.total === 0 && status === "loading" ? <LoadingRows label={t("convo.loading")} rows={5} /> : null}
