@@ -9,10 +9,11 @@ work branch or copy another author's dirty files.
 
 Public and installed Studio remain v0.2.1, source
 `84617756c93ecbb7aea057b70e9fd330b2ad8e4e`. This candidate is not published
-or installed. Its current Core v0.11.1 pin is a preparation baseline, not a
-claim that the new canonical-history API is available there. Core v0.11.2
-must actually be published before this child pins its exact release source
-and regenerates its lockfile. No guessed tag, branch or future SHA is accepted.
+or installed. Core v0.11.2 is now published at
+`942284c27e867091fe23d07babb0103c2cb6507a`; its six public assets match the
+validated candidate byte-for-byte. This child pins that published tag and
+regenerates its lockfile. Release URL:
+https://github.com/tya5/shellboy/releases/tag/v0.11.2. No guessed source is used.
 
 The accepted actual-encoded App pipeline and bounded repaired-browser milestone
 retain their original exact source and evidence attribution. The measured
