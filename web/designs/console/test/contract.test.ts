@@ -183,3 +183,11 @@ describe("screens use the system only", () => {
     for (const rule of [/\.st\.run \.dot\{border/, /\.st\.wait \.dot\{background/, /\.st\.bad \.dot\{[^}]*rotate\(45deg\)/, /\.st\.ok \.i\{/, /\.st\.fail \.i\{/, /\.st\.halt \.dot\{[^}]*border-radius:2px/, /\.st\.idle \.dot\{border:2px dashed/, /\.st\.hold \.dot\{/]) expect(text).toMatch(rule);
   });
 });
+
+it("compact Work rows use the same DS gutter and gap as tool summaries",()=>{
+ const css=readFileSync(join(system,"components.css"),"utf8");
+ const summary=css.match(/\.step summary\{([^}]+)\}/)![1]!;
+ const row=css.match(/\.work-inner-line\{([^}]+)\}/)![1]!;
+ for(const rule of ["gap:var(--space-8)","padding:var(--space-4) var(--space-12)"]){expect(summary).toContain(rule);expect(row).toContain(rule);}
+ expect(row).toContain("box-sizing:border-box");
+});

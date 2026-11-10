@@ -120,7 +120,7 @@ export function SavedConversationItems({ model, projection, renderBefore, traili
     }}><summary data-work-heading=""><Icon name="layers" /><span class="tool-group-label">{label}</span>{status ? <StatusMark status={status} label={statusLabel(t, status)} /> : null}<span class="meta" /></summary><div class="step-group-list">{children}</div></Disclosure>;
   };
   const workLine = (item: ConversationItem, label: string, content?: ComponentChildren) => <span class="work-inner-line" data-work-inner-line="" title={label} aria-label={label}>
-    {item.classification?.icon ? <Icon name={item.classification.icon} /> : null}{content}
+    {item.classification?.icon ? <Icon name={item.classification.icon} /> : null}<span class="work-inner-content">{content ?? label}</span>
   </span>;
   return <ConversationItems {...projection} renderWorkGroup={projection.workGroups ? renderWorkGroup : undefined} renderBefore={renderBefore} trailing={trailing} isItemHidden={hidden} renderHeading={summary => {
     const steps = allSteps.filter(step => summary.executionIds.includes(step.executionId));

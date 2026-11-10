@@ -47,7 +47,7 @@ it('public event without notification subtype stays generic Notifications, no co
   expect(host.textContent).not.toContain('Synthetic event content');
  }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
 });
-it('uses CASE closed Work defaults and icon-only kind when a notification has no expandable public detail',async()=>{
+it('uses CASE closed Work defaults and visible kind when a notification has no expandable public detail',async()=>{
  const f=await fixtureModel(),host=document.createElement('div');document.body.append(host);
  try{
   const projection=projectLegacyHistoryItems({nodes:[{node_id:'event-choice',kind:'event'}]}).projection;
@@ -61,7 +61,8 @@ it('uses CASE closed Work defaults and icon-only kind when a notification has no
   expect(line.getAttribute('aria-label')).toBe(f.model.t.value('work.notification'));
   expect(line.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true');
   expect(line.querySelector('svg path')?.getAttribute('d')).toBe('M3 13l3-8h12l3 8v6H3zM3 13h5l1.5 3h5L16 13h5');
-  expect(line.textContent).toBe('');
+  expect(line.querySelector('.work-inner-content')?.textContent).toBe(f.model.t.value('work.notification'));
+  expect(line.classList.contains('work-inner-line')).toBe(true);
   await act(async()=>show());expect(group.open).toBe(true);
   await act(async()=>{group.open=false;group.dispatchEvent(new Event('toggle'));});
   await act(async()=>show());expect(group.open).toBe(false);
@@ -87,5 +88,25 @@ for(const windowed of [false,true])it(`renders actual accepted-node execution me
   expect(commandTool.textContent).toContain('printf synthetic-tool');
   expect(commandTool.closest('[data-work-group]')).toBe(group);
   expect(host.querySelector('[data-execution-unresolved]')).toBeNull();
+ }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
+});
+
+it('non-tool Work rows keep visible authorized content and the existing DS summary gutter',async()=>{
+ const f=await fixtureModel(),host=document.createElement('div');document.body.append(host);
+ try{
+  const projection=projectSavedItems([
+   {nodeId:'r',itemIdentity:'r',windowRevision:1,kind:'reasoning_unavailable'},
+   {nodeId:'n',itemIdentity:'n',windowRevision:1,kind:'record',classificationCase:'notification'},
+   {nodeId:'p',itemIdentity:'p',windowRevision:1,kind:'unavailable',reason:'response_budget'},
+   {nodeId:'u',itemIdentity:'u',windowRevision:1,kind:'unknown'},
+   {nodeId:'a',itemIdentity:'a',windowRevision:1,kind:'unavailable'},
+  ]);
+  await act(async()=>render(<SavedConversationItems model={f.model} projection={projection}/>,host));
+  const contents=[...host.querySelectorAll('[data-work-inner-line] > .work-inner-content')];
+  expect(contents).toHaveLength(5);for(const content of contents)expect(content.textContent?.trim()).not.toBe('');
+  expect(contents.map(content=>content.textContent)).toEqual([f.model.t.value('work.reasoning'),f.model.t.value('work.notification'),'response_budget',f.model.t.value('work.problem'),f.model.t.value('work.textUnavailable')]);
+  expect(host.textContent).not.toContain(f.model.t.value('work.thinking'));
+  expect(host.querySelector('[data-internal-records] details')).toBeNull();
+
  }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
 });
