@@ -212,7 +212,17 @@ export interface HistoryExecution {
  */
 /** Local rendering qualification; never serialized into an owner RPC. */
 export interface AssistantPublication { state: "unknown" | "tool" | "message"; attemptId?: string; ordinal?: number; kind?: string; error?: boolean }
+/** Core296 DTO source: 00328ddf660fdbeecaf383cf078107bd32983209; opt-in only. */
+export type HistoryItemsUnavailableReason = 'source_budget' | 'response_budget' | 'legacy' | 'pruned' | 'opaque' | 'unsupported';
+export type HistorySavedItem =
+  | { readonly kind: 'text'; readonly item_identity: string; readonly text: string; readonly text_complete: boolean }
+  | { readonly kind: 'tool_call' | 'tool_result'; readonly item_identity: string; readonly execution_ids: readonly string[] }
+  | { readonly kind: 'reasoning_unavailable'; readonly item_identity: string }
+  | { readonly kind: 'unavailable'; readonly item_identity: string; readonly reason: HistoryItemsUnavailableReason };
 export interface HistoryItem {
+  /** Absent on legacy owners/reads; null is a deferred whole node, never prose. */
+  items?: readonly HistorySavedItem[] | null;
+  items_unavailable_reason?: HistoryItemsUnavailableReason;
   /** Client-owned, carried only within the already bounded retained history window. */
   assistant_publication?: AssistantPublication;
   node_id?: string;
@@ -354,6 +364,7 @@ export interface HistoryListArgs {
 }
 /** `history.window` (Shellboy #268, capability `history.window`): a positional window of the selected path. */
 export interface HistoryWindowArgs {
+  items?: boolean;
   thread_id: string;
   /** With neither `ordinal` nor `node_id` the window ends at the last node. */
   ordinal?: number;
