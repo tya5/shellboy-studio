@@ -40,7 +40,7 @@ export function WorkElementRow(props: WorkElementRowProps) {
   if (props.detailPolicy === "none" || props.detailPolicy === "unavailable") {
     return (
       <div class="work-element-row" data-work-element-key={props.anchorKey} data-detail-policy={props.detailPolicy}>
-        <div class="work-element-row__line" role="group" aria-label={accessibleLabel}>{line}</div>
+        <div class="work-element-row__line" role="group" aria-label={accessibleLabel} title={props.typeAccessibleLabel}>{line}</div>
       </div>
     );
   }
@@ -54,7 +54,7 @@ export function WorkElementRow(props: WorkElementRowProps) {
         // Native toggle also fires after controlled open synchronization.
         if (next !== props.open) props.onToggle(next);
       }}>
-      <summary class="work-element-row__line" aria-label={accessibleLabel}>{line}</summary>
+      <summary class="work-element-row__line" aria-label={accessibleLabel} title={props.typeAccessibleLabel}>{line}</summary>
       <div class="work-element-row__detail">{props.children}</div>
     </details>
   );
