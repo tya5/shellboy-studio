@@ -1,3 +1,4 @@
+import type {HistoryItem} from "../../data/src/protocol";
 import {observeOwnSendTail,placeOwnSendRegion,type OwnSendPath,type OwnSendReservation,type OwnSendPlacement,type OwnSendTailObservation} from "./own-send-region";
 import type { SavedItemProjection } from "./conversation-items";
 import type { PendingOwnMessage } from "./model";
@@ -22,6 +23,7 @@ export interface OwnSendPresentationInput<Ref> {
   readonly localRows: readonly PendingOwnMessage[];
   /** Supplied by the final renderer adapter, never derived from node presence. */
   readonly hiddenItemKeys: ReadonlySet<string>;
+  readonly canonicalRows?: readonly HistoryItem[];
   readonly path?:OwnSendPath;
   readonly nodeOrdinals?:ReadonlyMap<string,number>;
   readonly reservation?:OwnSendReservation<Ref>;
@@ -59,7 +61,14 @@ export function ownSendPresentation<Ref>(input: OwnSendPresentationInput<Ref>): 
     const item = input.projection.items.find(candidate => candidate.key === entry.itemKey);
     if (item?.source.nodeId && displayed.has(item.source.nodeId)) orderedIds.push(item.source.nodeId);
   }
-  const complete = cohort.length > 0 && cohort.every(row => row.phase === "accepted" && !!row.messageId && displayed.has(row.messageId));
+  const complete = cohort.length > 0 && cohort.every(row => {
+    if(row.phase!=="accepted"||!row.messageId||!displayed.has(row.messageId)||row.plainMessageSend!==true)return false;
+    const candidates=(input.canonicalRows??[]).filter(node=>node.node_id===row.messageId);
+    if(candidates.length!==1)return false;
+    const node=candidates[0]!,part=node.items?.[0];
+    // Only the proven plain send route creates exactly one input text part.
+    return node.kind==="user"&&node.items?.length===1&&part?.kind==="text"&&part.text_complete===true&&typeof part.text==="string"&&part.text.trim().length>0;
+  });
   const positions = cohort.map(row => orderedIds.indexOf(row.messageId ?? ""));
   const mutualConflict = complete && positions.some((position, index) => index > 0 && position <= positions[index - 1]!);
   const placement=placeOwnSendRegion(input.reservation,input.scope,input.current,input.projection,input.path,input.nodeOrdinals??new Map());
@@ -71,7 +80,9 @@ export function ownSendPresentation<Ref>(input: OwnSendPresentationInput<Ref>): 
     return index<=boundaryIndex;
   });
   const conflict=mutualConflict||boundaryConflict;
-  const transfer = complete && !conflict && placement.kind==="qualified";
+  // Fresh canonical replacement is independent of the old local placement proof.
+  const freshReplacement=input.current&&!!input.ref;
+  const transfer = complete && !conflict && freshReplacement;
   const suppressedIds = new Set(transfer ? [] : cohort.flatMap(row => row.messageId ? [row.messageId] : []));
   const items = input.current ? input.projection.items.filter(item => !input.hiddenItemKeys.has(item.key) && !suppressedIds.has(item.source.nodeId ?? "")) : [];
   const keys = new Set(items.map(item => item.key));

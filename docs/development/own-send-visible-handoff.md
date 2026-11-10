@@ -155,3 +155,32 @@ unqualified result. No new grouping/classifier is authorized in the renderer.
 
 No executable placement behavior, tests, or claimed validation is added by this
 typed preparation checkpoint. Original223 two RED controls remain unchanged.
+
+## Q1/Q2 Convergence Correction (Contract fc1cf815)
+
+Public selection revision increments on normal appends. The previous static53
+qualification proved conservative placement and before/at conflict handling, NOT
+normal-append liveness. Keep that evidence and its limitation; do not erase it.
+
+Unresolved local placement still uses the old boundary continuity check. Complete
+replacement instead uses the FRESH current final canonical projection and its
+post-install/cohort/owner CAS. It does not revive an old ref or require old/new
+revision equality. Same-revision qualified before/at conflicts remain conflicts.
+
+A recorded plain message.send operation creates one input text part under the
+reviewed producer contract. Record that route at reservation and carry its fact
+from the original operation across ACK. Only its exact ACK user node with exactly
+one nonempty text item, explicit text_complete=true, and an actual final displayed
+complete user row can replace local submitted text. Part completeness alone is
+not a whole-node claim. Multi-item, unavailable, partial, unknown route, excerpt,
+and absent items keep the local body. No body comparison, opaque item-path parse,
+new read, history.get pagination or private prefix witness is introduced.
+
+The same four-ACK controls now use revision1->6 on saved arrival. Window typed
+short plain rows converge and retain canonical DOM order/assistant identity.
+Actual history.list-style excerpt-only rows deliberately retain all four local
+bodies; that is a supported evidence limit, not a successful canonical handoff.
+Legacy full-typed synthetic tests remain renderer/CAS tests only, not evidence that
+history.list supplies typed items. Continued sends can extend the existing cohort
+and postpone convergence until the fixed eight-slot backpressure applies. That
+starvation/limit remains unresolved; no new seal, eviction or queue is adopted.

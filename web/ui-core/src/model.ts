@@ -46,6 +46,7 @@ export interface PendingOwnMessage {
   readonly text: string;
   readonly phase: "sending" | "accepted" | "failed" | "unconfirmed";
   readonly messageId?: string;
+  readonly plainMessageSend?: true;
 }
 
 export interface OutputState {
@@ -930,12 +931,13 @@ export class AppModel {
       this.ownReservation=observation&&observation.scope===scope&&observation.installedToken===this.installedOwnResult&&observation.isCurrent()
         ?Object.freeze({token:Object.freeze({}),observation}):undefined;
     }
-    this.pendingOwnMessage.value = {threadId,scope,operationId,text,phase:"sending"};
+    this.pendingOwnMessage.value = {threadId,scope,operationId,text,phase:"sending",plainMessageSend:true};
     this.sendState.value = { kind: "sending" };
+    const originalPlainOperation=this.pendingOwnMessage.peek();
     const out = await this.ops.messageSend({ thread_id: threadId, text }, operationId);
     if ((!current() && !(!out.ok && out.error.kind === "unconfirmed" && retryCurrent())) || this.pendingOwnMessage.peek()?.operationId !== operationId) return false;
     if (out.ok && out.value.thread_id === threadId) {
-      this.acceptedOwnMessages.value = [...this.acceptedOwnMessages.peek(),{threadId,scope,operationId,text,phase:"accepted",messageId:out.value.message_id}];
+      this.acceptedOwnMessages.value = [...this.acceptedOwnMessages.peek(),{threadId,scope,operationId,text,phase:"accepted",messageId:out.value.message_id,plainMessageSend:originalPlainOperation?.plainMessageSend}];
       this.pendingOwnMessage.value = undefined;
       this.sendState.value = { kind: "idle" };
       return true;
