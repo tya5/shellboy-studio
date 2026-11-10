@@ -92,8 +92,10 @@ export function SavedConversationItems({ model, projection, renderBefore, traili
     const active = steps.find(step => step.status === "running");
     const nonzero = steps.filter(step => typeof step.exitCode === "number" && step.exitCode !== 0).length;
     const failed = steps.some(step => step.state === "failed" || step.status === "recovery" || (typeof step.exitCode === "number" && step.exitCode !== 0));
-    const status = active ? "running" : failed ? "failed" : steps.length === summary.executionIds.length ? "completed" : undefined;
-    const label = [t("tools.count", { n: summary.executionIds.length }), ...((summary.continuationBefore !== "closed" || summary.continuationAfter !== "closed") ? [t("work.partial")] : []), ...(nonzero ? [t("tools.nonzero", { n: nonzero })] : []), ...(active ? [t("tools.active", { command: toolLabel(active.description, active.command) })] : [])].join(" · ");
+    const members = projection.items.filter(item => summary.memberKeys.includes(item.key));
+    const missingExecution = members.some(item => item.source.kind !== "tool" || !(item.source.executionIds?.length || item.source.executionId)) || steps.length !== summary.executionIds.length;
+    const status = active ? "running" : failed ? "failed" : summary.executionIds.length > 0 && !missingExecution ? "completed" : undefined;
+    const label = [t("tools.count", { n: summary.memberKeys.length }), ...(missingExecution ? [t("work.textUnavailable")] : []), ...((summary.continuationBefore !== "closed" || summary.continuationAfter !== "closed") ? [t("work.partial")] : []), ...(nonzero ? [t("tools.nonzero", { n: nonzero })] : []), ...(active ? [t("tools.active", { command: toolLabel(active.description, active.command) })] : [])].join(" · ");
     return <section class="steps"><StepRow group open={opened(summary)} command={label} status={status ? <StatusMark status={status} label={statusLabel(t, status)} /> : <span class="muted caption">{t("work.textUnavailable")}</span>} onToggle={open => {
       setOpenMemberships(previous => {
         const next = new Set([...previous].filter(key => memberships.has(key)));

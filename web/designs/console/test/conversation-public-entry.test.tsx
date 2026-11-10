@@ -148,6 +148,7 @@ it('retains a no-execution tool as a visible unavailable item without inventing 
     const projection=projectSavedItems([{nodeId:'no-exec',itemIdentity:'tool',windowRevision:1,kind:'tool',executionIds:[]}]);
     await act(async()=>render(<SavedConversationItems model={fixture.model} projection={projection}/>,host));
     expect(host.querySelectorAll('[data-item-key]')).toHaveLength(1);expect(host.querySelector('[data-execution-id]')).toBeNull();
+    const heading=host.querySelector('[data-item-heading]')!;expect(heading.textContent).toContain(fixture.model.t.value('tools.count',{n:1}));expect(heading.textContent).toContain(fixture.model.t.value('work.textUnavailable'));expect(heading.textContent).not.toContain(fixture.model.t.value('status.completed'));
     const details=host.querySelector('details')!;await act(async()=>{details.open=true;details.dispatchEvent(new Event('toggle'));});
     expect(host.querySelector('[data-execution-unavailable]')?.textContent).toBe(fixture.model.t.value('work.textUnavailable'));
   }finally{render(null,host);host.remove();fixture.model.dispose();fixture.data.stop();}
@@ -177,4 +178,18 @@ it('bounds output watches to opened tool details and preserves item DOM when mem
     expect(active).toBe(0);expect([...host.querySelectorAll('[data-item-key]')].find(el=>el.getAttribute('data-item-key')===projection.items[0]!.key)).toBe(item);
     expect(item.parentElement).toBe(parent);expect((item as HTMLElement).hidden).toBe(true);expect(maximum).toBe(1);
   }finally{render(null,host);expect(active).toBe(0);fixture.model.watchOutput=original;host.remove();fixture.model.dispose();fixture.data.stop();}
+});
+
+it('does not claim completion for a closed local summary mixing proved and no-ID members',async()=>{
+  const fixture=await fixtureModel(),host=document.createElement('div');document.body.append(host);
+  try{
+    const { SavedConversationItems }=await import('../screens/Conversation');
+    const step=fixture.model.conversation.value.flatMap(row=>row.type==='steps'?row.steps:[])[0]!;
+    const projection=projectSavedItems([{nodeId:'mixed-summary',itemIdentity:'known',windowRevision:1,kind:'tool',executionIds:[step.executionId]},{nodeId:'mixed-summary',itemIdentity:'unknown',windowRevision:1,kind:'tool',executionIds:[]}]);
+    await act(async()=>render(<SavedConversationItems model={fixture.model} projection={projection}/>,host));
+    const heading=host.querySelector('[data-item-heading]')!,details=heading.querySelector('details')!;
+    expect(details.open).toBe(false);expect(heading.textContent).toContain(fixture.model.t.value('tools.count',{n:2}));
+    expect(heading.textContent).toContain(fixture.model.t.value('work.textUnavailable'));expect(heading.querySelector('[data-status="completed"]')).toBeNull();
+    expect([...host.querySelectorAll('[data-item-key]')].every(item=>(item as HTMLElement).hidden)).toBe(true);
+  }finally{render(null,host);host.remove();fixture.model.dispose();fixture.data.stop();}
 });
