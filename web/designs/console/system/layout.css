@@ -224,3 +224,7 @@
 .conversation-status>.btn{flex-shrink:0}
 
 .brand-logo{width:var(--size-icon);height:var(--size-icon);flex:none}
+
+/* Match the permanent footer to the conversation and composer gutters. */
+.convo > .conversation-status{padding-inline:var(--space-24)}
+@media(max-width:768px){.convo > .conversation-status{padding-inline:var(--space-12)}}

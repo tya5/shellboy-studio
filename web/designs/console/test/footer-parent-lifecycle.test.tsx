@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 // @vitest-environment happy-dom
 import '@preact/signals';
 import { signal } from '@preact/signals-core';
@@ -31,4 +32,11 @@ it('retains the production footer across disconnect, loading, and reconnect pare
   expect(host.querySelector('.conversation-status')).toBe(footer);expect(host.querySelectorAll('.conversation-status')).toHaveLength(1);
   observer.disconnect();expect(removed.some(node=>node===footer||node.contains(footer))).toBe(false);
  }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
+});
+
+it('uses the existing conversation gutter tokens without changing footer height',()=>{
+ const css=readFileSync(new URL('../system/layout.css',import.meta.url),'utf8');
+ expect(css).toContain('.convo > .conversation-status{padding-inline:var(--space-24)}');
+ expect(css).toContain('@media(max-width:768px){.convo > .conversation-status{padding-inline:var(--space-12)}}');
+ expect(css).toContain('height:calc(var(--space-32) + var(--space-8))');
 });
