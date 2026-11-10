@@ -16,6 +16,8 @@ export interface LiveWorkIdentity {
   readonly namespace?: "work" | "handoff";
   readonly scope: string;
   readonly recordId: string;
+  readonly attemptId?: string;
+  readonly turnId?: string;
   readonly nodeId?: never;
   readonly itemIdentity?: never;
   readonly revision?: never;
@@ -93,7 +95,7 @@ export function projectSavedItems(input: readonly NormalizedSavedItem[]): SavedI
     const key = "domain" in source ? JSON.stringify(["live", source.namespace ?? "work", source.scope, source.recordId]) : source.identityDomain === "node" ? JSON.stringify(["node", source.nodeId]) : JSON.stringify([source.nodeId, source.itemIdentity]);
     if (seen.has(key)) throw new Error("Duplicate normalized saved item identity");
     seen.add(key);
-    const identity = "domain" in source ? { domain: "live" as const, namespace: source.namespace ?? "work", scope: source.scope, recordId: source.recordId } : { ...(source.identityDomain ? { identityDomain: source.identityDomain } : {}), nodeId: source.nodeId, itemIdentity: source.itemIdentity, ...(source.revision !== undefined ? { revision: source.revision } : {}), ...(source.windowRevision !== undefined ? { windowRevision: source.windowRevision } : {}) };
+    const identity = "domain" in source ? { domain: "live" as const, namespace: source.namespace ?? "work", scope: source.scope, recordId: source.recordId, ...(source.attemptId !== undefined ? { attemptId: source.attemptId } : {}), ...(source.turnId !== undefined ? { turnId: source.turnId } : {}) } : { ...(source.identityDomain ? { identityDomain: source.identityDomain } : {}), nodeId: source.nodeId, itemIdentity: source.itemIdentity, ...(source.revision !== undefined ? { revision: source.revision } : {}), ...(source.windowRevision !== undefined ? { windowRevision: source.windowRevision } : {}) };
     let copy: NormalizedSavedItem;
     if (source.kind === "tool") {
       if (source.executionId !== undefined && !source.executionId) throw new Error("Empty execution identity");
@@ -177,7 +179,7 @@ export function projectHistoryWindowItems(input: { readonly revision: string | n
 export function normalizeLiveWorkFacts(input: { readonly scope: string; readonly items: readonly WorkItem[] }): readonly NormalizedSavedItem[] {
   return Object.freeze(input.items.filter(item => item.kind !== "pending_message" && !(item.kind === "message" && ["accepted", "held"].includes(item.state))).map(item => {
     if (!input.scope || !item.id || item.thread_id !== input.scope) throw new Error("Invalid live work scope");
-    const identity = { domain: "live" as const, scope: input.scope, recordId: item.id };
+    const identity = { domain: "live" as const, scope: input.scope, recordId: item.id, ...(item.attempt_id !== undefined ? { attemptId: item.attempt_id } : {}), ...(item.turn_id !== undefined ? { turnId: item.turn_id } : {}) };
     return Object.freeze(item.kind === "shell" && item.execution_id ? { ...identity, kind: "tool" as const, executionIds: Object.freeze([item.execution_id]) } : { ...identity, kind: "record" as const });
   }));
 }

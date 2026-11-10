@@ -201,3 +201,15 @@ it("NEW FINAL handoff presence is nontext Work in a distinct explicit namespace"
   expect(out.sequence.map(row => row.kind)).toEqual(["work"]);
   expect(out.items.every(item => !("text" in item.source))).toBe(true);
 });
+
+it("ATOMIC preserves explicit attempt/turn facts without changing live keys or inventing missing links", async () => {
+  const { normalizeLiveWorkFacts } = await import("../src/conversation-items");
+  const source = normalizeLiveWorkFacts({ scope: "thread", items: [{ id: "record", thread_id: "thread", kind: "shell", state: "running", execution_id: "exec", attempt_id: "attempt", turn_id: "turn" }, { id: "unlinked", thread_id: "thread", kind: "record", state: "unknown" }] });
+  const out = projectSavedItems(source);
+  expect(out.items[0]?.source).toMatchObject({ attemptId: "attempt", turnId: "turn" });
+  expect(out.items[1]?.source).not.toHaveProperty("attemptId");
+  expect(out.items[1]?.source).not.toHaveProperty("turnId");
+  const handoff = projectSavedItems([{ domain: "live", namespace: "handoff", scope: "thread", recordId: "actual-key", attemptId: "attempt", kind: "text", text: "live" }]);
+  expect(handoff.items[0]?.source).toMatchObject({ attemptId: "attempt", text: "live" });
+  expect(handoff.items[0]?.key).toBe(JSON.stringify(["live", "handoff", "thread", "actual-key"]));
+});
