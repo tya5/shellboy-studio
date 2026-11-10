@@ -1,0 +1,37 @@
+STAGED ACTUAL-INPUT ASSERTIONS: NOT EXECUTED / NOT PRODUCT RED OR GREEN
+Baseline: wire validation branch; prior accepted source/pixels remain separate.
+Contract adopted: message1528e403-9796-4464-9c5e-509c236e5881.
+
+Input seam (W1 test exact6f879c050ea386749a013d0e50d16d19e5101e6d):
+CORE296_FIXTURE_DIR=<owned-temp> rust-slot cargo test --test integration \
+ history_window_items::actual_window_opt_in_and_encoding_fixture -- --exact --nocapture
+The producer candidate must first compile/pass. Do not execute the current RED
+DTO scaffold as a success. W1 supplies exact producer SHA, command, actual-window
+and exported-schema hashes and standard schema-validator result. Loader:
+browser/projection24-encoded-input.mjs verifies bytes, replays unchanged result.
+No invented schema or reconstructed typed items, and no old registry mapping.
+
+1. Real encoded producer -> O production strict decoder -> actual store/window:
+   typed request items=true; ordinary node order/metadata preserved; immutable
+   accepted rows/range/total/revision agree under synchronous notification.
+2. Actual accepted rows -> P projectHistoryWindowItems -> real Console App entry:
+   authoritative text/tool order, empty text boundary, reasoning no content,
+   unavailable barrier, same canonical item identity across window revisions;
+   multiple execution_ids remain one item key with each execution shown once.
+3. Actual budget producer output (separate fixture export required): whole-node
+   suffix items=null/reason=response_budget; retain every ordinary node; never
+   use excerpt as safe typed prose. Prior accepted visible text is not erased
+   by stale replies or failed refresh. No partial-array repair.
+4. Retry first deferred node with existing ordinal/expect_node_id/revision;
+   controlled old selection/revision response cannot replace newer accepted
+   content. Hold/reorder actual transport results, not fabricated item bodies.
+5. Rewindow result -> actual entry recovers typed content with retained identity;
+   no new cursor, string classification, text span inference or preview proof.
+6. Preserve same-ref revoke, notify reentry and default G obsolete zero effects.
+   Existing normalized unit/Chrome successes do not prove this new input target.
+
+Precise remaining inputs:
+W2 actual green producer+exports; W1 exported schema oracle; O strict decoder
+immutable child; S typed accepted projection/rewindow immutable API; D App entry
+immutable branch. P mapper877d2c4 is already integrated. No actual root or owner
+permission is requested by this local fixture. No browser rerun is in this stage.
