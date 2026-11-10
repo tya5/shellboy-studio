@@ -72,13 +72,14 @@ const decodeHistoryWindow: Decoder<HistoryWindowResult> = (v) => {
   let bytes = 0; let deferred = false; let previous = -1;
   const encoder = new TextEncoder();
   for (const node of v.items) {
-    if (!isObject(node) || !isObject(node.selection) || !Number.isSafeInteger(node.selection.ordinal) || (node.selection.ordinal as number) <= previous) return bad('invalid history node ordinal');
+    if (!isObject(node) || !isObject(node.selection) || !Number.isSafeInteger(node.selection.ordinal) || (node.selection.ordinal as number) < 0 || (node.selection.ordinal as number) <= previous) return bad('invalid history node ordinal');
     previous = node.selection.ordinal as number;
     if (!Object.hasOwn(node, 'items')) {
       if (Object.hasOwn(node, 'items_unavailable_reason') || deferred) return bad('missing deferred projection');
       continue; // Honest legacy compatibility, without synthesizing text from excerpts.
     }
     if (node.items === null) {
+      if (typeof node.node_id !== 'string' || !node.node_id) return bad('invalid deferred node identity');
       if (node.items_unavailable_reason !== 'response_budget') return bad('null projection requires response_budget');
       deferred = true; continue;
     }

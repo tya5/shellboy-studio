@@ -32,3 +32,10 @@ it('rejects aggregate decoded UTF-8 item text above 4MiB',async()=>{
  const nodes=Array.from({length:17},(_,n)=>({...node(Array.from({length:16},(_,i)=>({...text,item_identity:String(i),text:'a'.repeat(16384)}))),node_id:String(n),selection:{ordinal:n}}));
  expect((await decode(window(nodes))).ok).toBe(false);
 });
+
+it.each(['',null,17,undefined])('rejects malformed deferred-node identity %j before retry publication',async node_id=>{
+ expect((await decode(window([{...node(null),node_id,items_unavailable_reason:'response_budget'}]))).ok).toBe(false);
+});
+it('rejects negative safe ordinals in mixed legacy/projected windows',async()=>{
+ expect((await decode(window([{node_id:'legacy',kind:'user',selection:{ordinal:-2}},{...node([text]),selection:{ordinal:-1}}]))).ok).toBe(false);
+});
