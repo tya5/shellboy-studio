@@ -2,7 +2,7 @@ import { computed, signal, type ReadonlySignal } from '@preact/signals-core';
 import { LiveText, MAX_PREVIEW_CHARS, type LiveFrame, type Preview, type PreviewDiscardReason, type Schedule } from './live';
 
 import type { HistoryItem } from './protocol';
-export interface AttemptReadyProof { readonly scope: string; readonly attemptId: string; readonly turnId: string; readonly revision: string | number; readonly refs: readonly { readonly nodeId: string }[]; readonly nodes: readonly HistoryItem[] }
+export interface AttemptReadyProof { readonly scope: string; readonly attemptId: string; readonly turnId: string; readonly revision: string | number; readonly total: number; readonly refs: readonly { readonly nodeId: string }[]; readonly nodes: readonly HistoryItem[] }
 
 /** ADR-C1: UTF-8 retained text accounting, not a JavaScript heap guarantee. */
 export const MAX_HANDOFF_RECORDS = 8;
@@ -118,12 +118,13 @@ export class Handoff {
   }
   stageAttempt(original: HandoffRecord, proof: AttemptReadyProof): HandoffRecord | undefined {
     const h = this.held.find(h => h.record === original);
-    if (!h || h.transferring || original.incomplete || proof.attemptId !== original.attemptId || !proof.scope || !proof.turnId || !proof.refs.length || proof.refs.length > 64 || proof.nodes.length > 200) return;
+    if (!h || h.transferring || original.incomplete || !Number.isSafeInteger(proof.total) || proof.total < 0 || proof.attemptId !== original.attemptId || !proof.scope || !proof.turnId || !proof.refs.length || proof.refs.length > 64 || proof.nodes.length > 200) return;
     const nodes = new Map(proof.nodes.map(n => [n.node_id, n]));
     if (nodes.size !== proof.nodes.length || proof.refs.some(r => !nodes.has(r.nodeId))) return;
     let visible = false;
     for (const node of proof.nodes) {
-      if (!node.node_id || !Array.isArray(node.items)) return;
+      const ordinal = node.selection?.ordinal;
+      if (!node.node_id || !Array.isArray(node.items) || typeof ordinal !== 'number' || !Number.isSafeInteger(ordinal) || ordinal < 0 || ordinal >= proof.total) return;
       for (const item of node.items) {
         if (item.kind === 'unavailable' || (item.kind === 'text' && !item.text_complete)) return;
         if (item.kind !== 'reasoning_unavailable') visible = true;
