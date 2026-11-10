@@ -1,6 +1,9 @@
 import { computed, signal, type ReadonlySignal } from '@preact/signals-core';
 import { LiveText, MAX_PREVIEW_CHARS, type LiveFrame, type Preview, type PreviewDiscardReason, type Schedule } from './live';
 
+import type { HistoryItem } from './protocol';
+export interface AttemptReadyProof { readonly scope: string; readonly attemptId: string; readonly turnId: string; readonly revision: string | number; readonly refs: readonly { readonly nodeId: string }[]; readonly nodes: readonly HistoryItem[] }
+
 /** ADR-C1: UTF-8 retained text accounting, not a JavaScript heap guarantee. */
 export const MAX_HANDOFF_RECORDS = 8;
 export const MAX_HANDOFF_BYTES = 1024 * 1024;
@@ -16,8 +19,9 @@ export interface HandoffRecord {
   readonly nodeId?: string;
   readonly proof?: Readonly<{ scope: string; turnId: string; ordinal: number; revision: string | number; kind: 'assistant_response' }>;
   readonly transferred?: boolean;
+  readonly readyAttempt?: AttemptReadyProof;
 }
-interface Held { admitted: number; transferring?: boolean; attemptId: string; source: LiveText; stop: () => void; record: HandoffRecord }
+interface Held { attemptCapture?: { original: HandoffRecord; staged: HandoffRecord; proof: AttemptReadyProof; epoch: number; lifetime: number }; admitted: number; transferring?: boolean; attemptId: string; source: LiveText; stop: () => void; record: HandoffRecord }
 
 /** One ledger per watched Thread. No queue, spill or timer. Hints cannot refill read budget. */
 export class Handoff {
@@ -111,6 +115,47 @@ export class Handoff {
     h.record = { ...h.record, text, nodeId, proof, incomplete: false, status: 'ready' };
     this.publish();
     return true;
+  }
+  stageAttempt(original: HandoffRecord, proof: AttemptReadyProof): HandoffRecord | undefined {
+    const h = this.held.find(h => h.record === original);
+    if (!h || h.transferring || original.incomplete || proof.attemptId !== original.attemptId || !proof.scope || !proof.turnId || !proof.refs.length || proof.refs.length > 64 || proof.nodes.length > 200) return;
+    const nodes = new Map(proof.nodes.map(n => [n.node_id, n]));
+    if (nodes.size !== proof.nodes.length || proof.refs.some(r => !nodes.has(r.nodeId))) return;
+    let visible = false;
+    for (const node of proof.nodes) {
+      if (!node.node_id || !Array.isArray(node.items)) return;
+      for (const item of node.items) {
+        if (item.kind === 'unavailable' || (item.kind === 'text' && !item.text_complete)) return;
+        if (item.kind !== 'reasoning_unavailable') visible = true;
+      }
+    }
+    if (!visible) return;
+    const staged = Object.freeze({ ...original, readyAttempt: proof });
+    h.attemptCapture = { original, staged, proof, epoch: this.epochValue, lifetime: this.lifetimeValue };
+    h.record = staged; this.publish();
+    return staged;
+  }
+  transferAttempt(original: HandoffRecord, proof: AttemptReadyProof, accept: (staged: HandoffRecord, release: (reason: 'return' | 'end') => void) => boolean): boolean {
+    const h = this.held.find(h => h.attemptCapture?.original === original);
+    const c = h?.attemptCapture;
+    if (!h || !c || h.transferring || c.proof !== proof || h.record !== c.staged || c.epoch !== this.epochValue || c.lifetime !== this.lifetimeValue) return false;
+    let receiving = true; let accepted = false; let pending: 'return' | 'end' | undefined;
+    const release = (reason: 'return' | 'end') => {
+      if (receiving) { pending = reason; return; }
+      if (!accepted || h.attemptCapture !== c || h.record !== c.staged || c.epoch !== this.epochValue || c.lifetime !== this.lifetimeValue || !this.held.includes(h)) return;
+      h.attemptCapture = undefined;
+      if (reason === 'end') { h.stop(); this.held = this.held.filter(x => x !== h); }
+      else h.record = original;
+      this.publish();
+    };
+    h.transferring = true;
+    try {
+      accepted = accept(c.staged, release);
+      receiving = false;
+      if (!accepted) return false;
+      if (pending) release(pending);
+      return true;
+    } finally { receiving = false; h.transferring = false; }
   }
   transfer(attemptId: string, accept: (record: HandoffRecord, release: (reason: 'return' | 'end') => void) => boolean): boolean {
     const h = this.held.find(h => h.attemptId === attemptId);
