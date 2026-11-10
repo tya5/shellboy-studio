@@ -12,8 +12,8 @@ import tomllib
 from urllib.parse import parse_qs, urlsplit
 
 OFFICIAL = "https://github.com/tya5/shellboy"
-TAG = "v0.11.1"
-VERSION = "0.11.1"
+TAG = "v0.11.2"
+VERSION = "0.11.2"
 
 
 def require(condition, message):

@@ -36,8 +36,8 @@ jobs:
         run: |
           git init "$RUNNER_TEMP/exact-owner-source"
           git -C "$RUNNER_TEMP/exact-owner-source" remote add origin https://github.com/tya5/shellboy
-          git -C "$RUNNER_TEMP/exact-owner-source" fetch --depth 1 origin refs/tags/v0.11.1:refs/tags/v0.11.1
-          git -C "$RUNNER_TEMP/exact-owner-source" checkout --detach 'refs/tags/v0.11.1^{commit}'
+          git -C "$RUNNER_TEMP/exact-owner-source" fetch --depth 1 origin refs/tags/v0.11.2:refs/tags/v0.11.2
+          git -C "$RUNNER_TEMP/exact-owner-source" checkout --detach 'refs/tags/v0.11.2^{commit}'
           python3 tools/exact-owner.py --studio . --owner "$RUNNER_TEMP/exact-owner-source"
       - name: Build the verified source and assert package and binary version
         run: |
