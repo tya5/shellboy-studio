@@ -15,8 +15,8 @@ assert.equal(createHash('sha256').update(manifestBytes).digest('hex'),'4078c1d12
 const manifest=JSON.parse(manifestBytes);
 const fixtures=new Map();for(const [name,meta] of Object.entries(manifest.files)){const bytes=readFileSync(join(actualDir,name));assert.equal(createHash('sha256').update(bytes).digest('hex'),meta.sha256);fixtures.set(name,bytes);}
 const port=Number(process.env.DEBUG_PORT ?? 19573);
-const server=await createServer({configFile:false,oxc:{jsx:{runtime:'automatic',importSource:'preact'}},optimizeDeps:{noDiscovery:true,include:['preact','preact/hooks','preact/jsx-dev-runtime','@preact/signals','@preact/signals-core','markdown-it','qrcode-generator']},root:fileURLToPath(new URL('../../../../',import.meta.url)),server:{host:'127.0.0.1',port:0}});
-server.middlewares.use((req,res,next)=>{if(!req.url.startsWith('/actual-producer/'))return next();const bytes=fixtures.get(req.url.slice('/actual-producer/'.length));if(!bytes){res.statusCode=404;res.end();return;}res.setHeader('Content-Type','application/json');res.end(bytes);});
+const server=await createServer({configFile:false,plugins:[{name:'verified-producer-fixtures',configureServer(vite){vite.middlewares.use((req,res,next)=>{if(!req.url.startsWith('/actual-producer/'))return next();const bytes=fixtures.get(req.url.slice('/actual-producer/'.length));if(!bytes){res.statusCode=404;res.end();return;}res.setHeader('Content-Type','application/json');res.end(bytes);});}}],oxc:{jsx:{runtime:'automatic',importSource:'preact'}},optimizeDeps:{noDiscovery:true,include:['preact','preact/hooks','preact/jsx-dev-runtime','@preact/signals','@preact/signals-core','markdown-it','qrcode-generator']},root:fileURLToPath(new URL('../../../../',import.meta.url)),server:{host:'127.0.0.1',port:0}});
+
 await server.listen();
 const appPort=server.httpServer.address().port;
 const out=await mkdtemp(join(process.env.P1_ARTIFACT_DIR,'browser-'));
