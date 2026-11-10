@@ -70,3 +70,15 @@ it('does not retain a writer lock when measurement throws',()=>{
   expect(r.pending()).toBe(true);r.effects.measure=()=>{};
   expect(r.owner.run(r.port,r.effects)).toBe('committed');
 });
+it.each(['measure','plan'] as const)('rejects same-ref capability revocation during %s using isCurrent, not equality',boundary=>{
+  const r=rig(),ref=r.port.acceptedView.peek();let eligible=true;
+  r.port.acceptedView.isCurrent=token=>eligible&&token===ref;
+  const revoke=()=>{eligible=false;expect(r.port.acceptedView.peek()).toBe(ref);};
+  if(boundary==='measure')r.effects.measure=revoke;
+  else r.effects.plan=()=>{revoke();return {consume:r.consume,write:r.write,capture:r.capture};};
+  expect(r.owner.run(r.port,r.effects)).toBe('obsolete');
+  expect(r.port.acceptedView.peek()).toBe(ref);
+  expect(r.port.consumeScroll).not.toHaveBeenCalled();
+  expect(r.consume).not.toHaveBeenCalled();expect(r.write).not.toHaveBeenCalled();
+  expect(r.capture).not.toHaveBeenCalled();expect(r.pending()).toBe(true);
+});
