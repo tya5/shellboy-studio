@@ -6,23 +6,30 @@ import { Button } from "../Button";
 
 export function Composer(props: { label: string; placeholder: string; hint: string; sendLabel: string; canSend: boolean; busy: boolean; stop?: ComponentChildren; onSend: (text: string) => Promise<boolean> }) {
   const [text, setText] = useState("");
+  const draft = useRef("");
+  const textarea = useRef<HTMLTextAreaElement>(null);
   const generation = useRef(0);
+  const updateDraft = (value: string) => {
+    if (draft.current !== value) { draft.current = value; generation.current++; }
+    setText(value);
+  };
   const submitting = useRef(false);
   const submit = async () => {
-    if (submitting.current || !props.canSend || props.busy || text.trim() === "") return;
+    if (submitting.current || !props.canSend || props.busy || draft.current.trim() === "") return;
     const submittedGeneration = generation.current;
     submitting.current = true;
-    try { if (await props.onSend(text) && generation.current === submittedGeneration) { generation.current++; setText(""); } }
+    try { if (await props.onSend(draft.current) && generation.current === submittedGeneration) { generation.current++; draft.current = ""; if (textarea.current) textarea.current.value = ""; setText(""); } }
     finally { submitting.current = false; }
   };
   return (
     <div class="composer">
       <textarea
+        ref={textarea}
         id="composer"
         aria-label={props.label}
         placeholder={props.placeholder}
         value={text}
-        onInput={(e) => { generation.current++; setText(e.currentTarget.value); }}
+        onInput={(e) => updateDraft(e.currentTarget.value)}
         onKeyDown={(e) => {
           if (composerAction(e) === "send") {
             e.preventDefault();

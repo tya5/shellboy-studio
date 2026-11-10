@@ -113,3 +113,35 @@ it('reserves eight entries and UTF-8 bytes before dispatch without evicting ackn
   expect(g.t.calls('message.send')).toHaveLength(0);expect(g.model.ownSendCapacityReason.peek()).toBe(true);
  }finally{g.model.dispose();g.data.stop();}
 });
+it('rapid native input and Enter capture the current draft before a reactive render, then clear on same-generation ack',async()=>{
+ const host=document.createElement('div');document.body.append(host);let finish!:(ok:boolean)=>void;const sent:string[]=[];
+ const show=()=>render(<Composer label="Message" placeholder="" hint="" sendLabel="Send" canSend busy={false} onSend={text=>{sent.push(text);return new Promise(resolve=>{finish=resolve;});}}/>,host);
+ try{
+  await act(async()=>show());const input=host.querySelector('textarea')!;
+  await act(async()=>{input.value='Rapid original';input.dispatchEvent(new Event('input',{bubbles:true}));input.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));});
+  expect(sent).toEqual(['Rapid original']);
+  await act(async()=>{show();finish(true);await flush(4);});expect(input.value).toBe('');
+ }finally{render(null,host);host.remove();}
+});
+it('an unchanged native input notification does not become a new draft generation during acknowledgement',async()=>{
+ const host=document.createElement('div');document.body.append(host);let finish!:(ok:boolean)=>void;
+ try{
+  await act(async()=>render(<Composer label="Message" placeholder="" hint="" sendLabel="Send" canSend busy={false} onSend={()=>new Promise(resolve=>{finish=resolve;})}/>,host));
+  const input=host.querySelector('textarea')!;
+  await act(async()=>{input.value='Original';input.dispatchEvent(new Event('input',{bubbles:true}));});
+  await act(async()=>{input.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));});
+  await act(async()=>{input.dispatchEvent(new Event('input',{bubbles:true}));finish(true);await flush(4);});expect(input.value).toBe('');
+ }finally{render(null,host);host.remove();}
+});
+it('real edits, even restored text, remain a different generation; composing Enter never submits',async()=>{
+ const host=document.createElement('div');document.body.append(host);let finish!:(ok:boolean)=>void,calls=0;
+ try{
+  await act(async()=>render(<Composer label="Message" placeholder="" hint="" sendLabel="Send" canSend busy={false} onSend={()=>{calls++;return new Promise(resolve=>{finish=resolve;});}}/>,host));
+  const input=host.querySelector('textarea')!;
+  await act(async()=>{input.value='Original';input.dispatchEvent(new Event('input',{bubbles:true}));});
+  await act(async()=>{input.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',isComposing:true,bubbles:true,cancelable:true}));});expect(calls).toBe(0);
+  await act(async()=>{input.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));});
+  await act(async()=>{input.value='Different';input.dispatchEvent(new Event('input',{bubbles:true}));input.value='Original';input.dispatchEvent(new Event('input',{bubbles:true}));finish(true);await flush(4);});
+  expect(input.value).toBe('Original');expect(calls).toBe(1);
+ }finally{render(null,host);host.remove();}
+});
