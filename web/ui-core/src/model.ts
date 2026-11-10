@@ -896,7 +896,7 @@ export class AppModel {
     if (!handle || handle.threadId !== threadId) return false;
     this.retirePendingOwnIfSaved();
     const old = this.pendingOwnMessage.peek();
-    if (old && old.operationId !== operationId) return false;
+    if (old && (old.operationId !== operationId || old.text !== text)) return false;
     if (old?.operationId === operationId && old.phase === "sending") return false;
     if (!old) {
       const accepted=this.acceptedOwnMessages.peek();
