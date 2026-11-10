@@ -1,8 +1,6 @@
 // @vitest-environment happy-dom
 import '@preact/signals';
-import {readFileSync} from 'node:fs';
-import {createHash} from 'node:crypto';
-import {resolve} from 'node:path';
+import {actual} from './projection24-actual-input.mjs';
 import {expect,it} from 'vitest';
 import {render} from 'preact';
 import {act} from 'preact/test-utils';
@@ -15,11 +13,6 @@ import {rig} from '../../../ui-core/test/window-owner';
 import {projectHistoryWindowItems} from '../../../ui-core/src/conversation-items';
 import {App} from '../screens/App';
 import type {DesignContext} from '../../../ui-core/src';
-const directory=resolve('../../..','.local/leader/artifacts/core296/actual-bdc852');
-const manifestBytes=readFileSync(resolve(directory,'manifest.json'));
-expect(createHash('sha256').update(manifestBytes).digest('hex')).toBe('4078c1d12d06b84ac462c2fab61957e7a7ff02c94ebcf123d8e7444d0efa11e4');
-const manifest=JSON.parse(manifestBytes.toString());
-function actual(name:string){const bytes=readFileSync(resolve(directory,name));expect(createHash('sha256').update(bytes).digest('hex')).toBe(manifest.files[name].sha256);return JSON.parse(bytes.toString());}
 const names=['actual-window.json','legacy-window.json','unavailable-window.json','response-budget-window.json','rewindow-window.json','public-route-window.json'];
 for(const name of names)it(`actual producer bytes -> real strict decoder -> P: ${name}`,async()=>{
  const value=actual(name),t=new FakeTransport(),link=new Link(t);link.start();t.open();
@@ -37,7 +30,9 @@ it('actual encoded typed window -> strict decoder/store/model Window -> real App
   expect(f.model.selectedId.value).toBe('t');const win=f.model.longReader.value;expect(win).toBeDefined();
   const snapshot=win!.acceptedView.peek();expect(snapshot.rows).toEqual(encoded.items);expect(snapshot.revision).toBe(4);expect(snapshot.total).toBe(4);
   expect(f.t.calls('history.window').every(c=>(c.args as {items?:boolean}).items===true)).toBe(true);
-  const elements=[...host.querySelectorAll('[data-item-key]')];expect(elements.map(e=>e.getAttribute('data-node'))).toEqual(['n0','n1','n1','n2','n2','n3']);
+  const elements=[...host.querySelectorAll('[data-item-key]')];expect(elements.map(e=>e.getAttribute('data-node'))).toEqual(['n0','n1','n1','n2','n3']);
+  expect(encoded.items[2].items[0].kind).toBe('reasoning_unavailable');
+  expect(elements[3]!.textContent).toBe('');
   expect(host.textContent).toContain('synthetic input');expect(elements[1]!.textContent).toContain('A');
   expect(elements.every(e=>e.parentElement?.className==='conversation-items')).toBe(true);
   const original=elements[0];await act(async()=>win!.layoutChanged());expect(host.querySelector('[data-item-key]')).toBe(original);
@@ -61,4 +56,33 @@ it('actual stale held producer reply cannot publish after Window disposal',async
  const r=await rig(4);const encoded=actual('actual-window.json');
  try{await flush();const held=r.calls().find(c=>!r.owner.answered.has(c.id))!;expect(held).toBeDefined();r.w.dispose();const snapshot=r.w.acceptedView.peek();r.t.ok(held.id,encoded);await flush(48);expect(r.w.acceptedView.peek()).toBe(snapshot);expect(r.w.acceptedView.isCurrent(snapshot)).toBe(false);}
  finally{r.w.dispose();r.data.stop();}
+});
+it('actual budget -> real App deferred chrome -> actual retry keeps visible text DOM while restoring suffix',async()=>{
+ const budget=actual('response-budget-window.json'),rewindow=actual('rewindow-window.json');let retry=false;
+ const f=await fixtureModel({capabilities:['history.window'],configure(db){db.threads={t:summary('t')};db.details.t=details('t');db.history.t=[];const fallback=db.answer.bind(db);db.answer=call=>call.command==='history.window'?{ok:true,result:retry?rewindow:budget}:fallback(call);}});
+ const host=document.createElement('div');document.body.append(host);
+ try{
+  const context={model:f.model,prefs:signal({}),setPrefs:()=>{}} as unknown as DesignContext;
+  await act(async()=>{render(<App context={context}/>,host);await settle(f.t,f.db);});
+  const win=f.model.longReader.value!;expect(win).toBeDefined();const before=win.acceptedView.peek();
+  expect(before.rows).toHaveLength(132);expect(host.querySelectorAll('[data-items-unavailable-reason="response_budget"]')).toHaveLength(4);
+  const first=host.querySelector('[data-item-key]')!,text=first.textContent;expect(text!.length).toBeGreaterThan(0);
+  retry=true;await act(async()=>{expect(win.retryDeferred(before)).toBe(true);expect(host.querySelector('[data-item-key]')).toBe(first);expect(first.textContent).toBe(text);await settle(f.t,f.db);});
+  expect(win.acceptedView.peek().rows).toHaveLength(132);expect(host.querySelectorAll('[data-items-unavailable-reason="response_budget"]')).toHaveLength(0);
+  expect(host.querySelector('[data-item-key]')).toBe(first);expect(first.textContent).toBe(text);
+  expect(host.querySelectorAll('[data-item-key][data-node="n128"]').length).toBeGreaterThan(0);
+  expect(f.t.calls('history.window').some(c=>(c.args as {ordinal?:number}).ordinal===128)).toBe(true);
+ }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
+});
+it('actual held old rewindow cannot overwrite newer accepted budget snapshot or its existing text',async()=>{
+ const budget=actual('response-budget-window.json'),rewindow=actual('rewindow-window.json'),r=await rig(132);
+ const fallback=r.owner.answer.bind(r.owner);r.owner.answer=call=>call.command==='history.window'?{ok:true,result:budget}:fallback(call);
+ try{
+  await r.settle();const before=r.w.acceptedView.peek();expect(r.w.retryDeferred(before)).toBe(true);await flush();
+  const held=r.calls().find(c=>!r.owner.answered.has(c.id))!;expect(held).toBeDefined();r.owner.answered.add(held.id);
+  r.w.jumpToEnd();await r.settle();const latest=r.w.acceptedView.peek();expect(latest).not.toBe(before);expect(latest.rows.filter(n=>n.items===null)).toHaveLength(4);
+  const saved=projectHistoryWindowItems({revision:latest.revision!,nodes:latest.rows}).projection.items[0];
+  r.t.ok(held.id,rewindow);await flush(48);
+  expect(r.w.acceptedView.peek()).toBe(latest);expect(projectHistoryWindowItems({revision:latest.revision!,nodes:latest.rows}).projection.items[0]).toEqual(saved);
+ }finally{r.w.dispose();r.data.stop();}
 });
