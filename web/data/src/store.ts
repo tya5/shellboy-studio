@@ -103,7 +103,14 @@ export interface AttemptPresentation {
   readonly nodeIds: readonly string[];
   readonly state: "pending" | "failed";
 }
+export type HandoffRetryState =
+  | { readonly phase: "idle"; readonly reason?: "no-pending"; readonly canRetry: false }
+  | { readonly phase: "reading"; readonly canRetry: false }
+  | { readonly phase: "failed"; readonly reason: "lookup-failed"; readonly canRetry: true }
+  | { readonly phase: "unavailable"; readonly reason: "unresolved" | "budget-exhausted"; readonly canRetry: true }
+  | { readonly phase: "unavailable"; readonly reason: "closed" | "paused" | "owner-unavailable"; readonly canRetry: false };
 export interface ThreadHandle extends Handle {
+  readonly handoffRetryState: ReadonlySignal<HandoffRetryState>;
   readonly attemptPresentations: ReadonlySignal<readonly AttemptPresentation[]>;
   captureReadQualification(): ThreadReadQualification | undefined;
   isReadQualificationCurrent(token: ThreadReadQualification): boolean;
@@ -168,6 +175,7 @@ class ThreadEntry {
   /** Unsaved model text; its signal is the handle's `preview`. */
   live: Handoff;
   pendingAttempts = signal<readonly AttemptPresentation[]>([]);
+  handoffRetryState = signal<HandoffRetryState>({ phase: "idle", canRetry: false });
   resolving: Promise<void> | undefined;
   resolveAgain = false;
   refreshAfterHandoff = false;
@@ -372,6 +380,7 @@ export class ShellboyData {
     entry.refs++;
     const e = entry;
     let closed = false;
+    const handleClosed = signal(false);
     let watchingWork = false;
     const setWorkActive = (active: boolean) => {
       if (closed || watchingWork === active) return;
@@ -383,6 +392,16 @@ export class ShellboyData {
     let qualification: { token: ThreadReadQualification; epoch: number; liveEpoch: number; cancel: Cancel } | undefined;
     const readable = () => !closed && !e.closed && !e.paused && !e.cancel.cancelled && this.entries.get(threadId) === e && this.canRead();
     return {
+      handoffRetryState: computed(() => {
+        const state = e.handoffRetryState.value;
+        e.pendingAttempts.value;
+        const locallyClosed = handleClosed.value;
+        const owner = this.ownerSig.value;
+        if (locallyClosed || closed || e.closed) return { phase: "unavailable" as const, reason: "closed" as const, canRetry: false };
+        if (e.paused) return { phase: "unavailable" as const, reason: "paused" as const, canRetry: false };
+        if (owner.state !== "connected") return { phase: "unavailable" as const, reason: "owner-unavailable" as const, canRetry: false };
+        return state;
+      }),
       attemptPresentations: computed(() => {
         const held = e.live.records.value;
         const facts = e.pendingAttempts.value;
@@ -420,7 +439,7 @@ export class ShellboyData {
       },
       handoffScope: () => this.handoffScope(e),
       transferHandoff: (id, accept) => { if (closed || e.closed || e.paused) return false; return e.live.transfer(id, accept); },
-      retryHandoff: () => { if (closed || e.closed || e.paused) return Promise.resolve(); if (e.cancel.cancelled) e.cancel = new Cancel(); if (e.resolving) { e.live.reconcile(); e.resolveAgain = true; return e.resolving; } e.live.reconcile(); return this.resolveHandoff(e); },
+      retryHandoff: () => { if (closed || e.closed || e.paused || !this.canRead()) { e.handoffRetryState.value = { phase: "unavailable", reason: closed || e.closed ? "closed" : e.paused ? "paused" : "owner-unavailable", canRetry: false }; return Promise.resolve(); } if (e.cancel.cancelled) e.cancel = new Cancel(); if (e.resolving) { e.live.reconcile(); e.resolveAgain = true; return e.resolving; } e.live.reconcile(); return this.resolveHandoff(e); },
       historyTick: e.historyTick,
       readWindow: async (args, cancel) => {
         if (e.closed || e.paused) return Promise.resolve({ ok: false, error: { kind: "cancelled", message: "thread is not being read" } });
@@ -444,6 +463,7 @@ export class ShellboyData {
         if (closed) return;
         qualification = undefined;
         closed = true;
+        handleClosed.value = true;
         // setWorkActive normally rejects a closed handle; release its ownership directly.
         if (watchingWork) { watchingWork = false; e.workRefs--; }
         if (--e.refs === 0) {
@@ -714,10 +734,20 @@ export class ShellboyData {
     const valid = () => !entry.closed && !entry.paused && epoch === entry.live.epoch && !cancelled.cancelled && cancelled === entry.cancel && this.canRead();
     entry.resolving = Promise.resolve().then(async () => {
       const targets = entry.live.records.peek().filter(r => r.status === "confirming" || r.status === "failed");
-      if (!targets.length || !valid() || !entry.live.takeRead()) return;
+      if (!valid()) return;
+      if (!targets.length) { entry.handoffRetryState.value = { phase: "idle", reason: "no-pending", canRetry: false }; return; }
+      if (!entry.live.takeRead()) { entry.handoffRetryState.value = { phase: "unavailable", reason: "budget-exhausted", canRetry: true }; return; }
+      entry.handoffRetryState.value = { phase: "reading", canRetry: false };
+      if (!valid()) return;
       const out = await this.operations.handoffAttempts(entry.id, { cancel: cancelled });
       if (!valid()) return;
-      if (!out.ok) { if (out.error.kind !== "cancelled") for (const r of targets) entry.live.fail(r.attemptId); return; }
+      if (!out.ok) {
+        if (out.error.kind !== "cancelled") {
+          for (const r of targets) { if (!valid()) return; entry.live.fail(r.attemptId); }
+          if (valid()) entry.handoffRetryState.value = { phase: "failed", reason: "lookup-failed", canRetry: true };
+        }
+        return;
+      }
       const incompleteScope = !!out.value.next_cursor || incompleteResponseScope(out.value.items, entry.id);
       for (const record of targets) {
         const attempt = out.value.items.find(i => i.kind === "attempt" && i.id === record.attemptId
@@ -788,7 +818,13 @@ export class ShellboyData {
       if (this.handoffRead?.entry === entry) this.handoffRead = undefined;
       const waiting = [...this.entries.values()].find(e => e !== entry && e.resolveAgain && !e.closed && !e.paused);
       if (waiting) { waiting.resolveAgain = false; void this.resolveHandoff(waiting); }
-      if (entry.resolveAgain) { entry.resolveAgain = false; if (!entry.closed && !entry.paused) { void this.resolveHandoff(entry); return; } }
+      if (entry.resolveAgain) { entry.resolveAgain = false; if (!entry.closed && !entry.paused) return this.resolveHandoff(entry); }
+      if (entry.handoffRetryState.peek().phase === "reading") {
+        const unresolved = entry.live.records.peek().some(r => (r.status === "confirming" || r.status === "failed") && !r.readyAttempt && !r.terminalPersisted);
+        entry.handoffRetryState.value = unresolved
+          ? { phase: "unavailable", reason: entry.live.remainingReads ? "unresolved" : "budget-exhausted", canRetry: true }
+          : { phase: "idle", canRetry: false };
+      }
       if (entry.refreshAfterHandoff && !entry.live.records.peek().some(r => r.status === "failed")) {
         entry.refreshAfterHandoff = false; if (!entry.closed && !entry.paused) this.refreshHint(entry.id);
       }
