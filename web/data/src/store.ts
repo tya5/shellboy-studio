@@ -1,3 +1,5 @@
+import { TerminalReadSlots, type SelectedCanonicalRequest, type OwnedTerminalReadLease, type TicketOutcome } from "./terminal-read";
+import type { TerminalPersistedProof } from "./handoff";
 import { Handoff, type HandoffRecord } from "./handoff";
 // The view-model: signals holding saved facts re-read through the proxy, never invented.
 // Hints (`changed`, `resync`, `owner`) are triggers only; their payloads carry no data.
@@ -110,6 +112,7 @@ export type HandoffRetryState =
   | { readonly phase: "unavailable"; readonly reason: "unresolved" | "budget-exhausted"; readonly canRetry: true }
   | { readonly phase: "unavailable"; readonly reason: "closed" | "paused" | "owner-unavailable"; readonly canRetry: false };
 export interface ThreadHandle extends Handle {
+  requestTerminalRead(qualification: ThreadReadQualification, receipt: TerminalPersistedProof, request: SelectedCanonicalRequest): OwnedTerminalReadLease | TicketOutcome;
   readonly handoffRetryState: ReadonlySignal<HandoffRetryState>;
   readonly attemptPresentations: ReadonlySignal<readonly AttemptPresentation[]>;
   captureReadQualification(): ThreadReadQualification | undefined;
@@ -176,6 +179,8 @@ class ThreadEntry {
   live: Handoff;
   pendingAttempts = signal<readonly AttemptPresentation[]>([]);
   handoffRetryState = signal<HandoffRetryState>({ phase: "idle", canRetry: false });
+  terminalReads = new TerminalReadSlots();
+  terminalReceipts = new Map<string, TerminalPersistedProof>();
   resolving: Promise<void> | undefined;
   resolveAgain = false;
   refreshAfterHandoff = false;
@@ -287,6 +292,7 @@ export class ShellboyData {
   }
   stop(): void {
     ++this.readQualificationEpoch;
+    for (const entry of this.entries.values()) { entry.terminalReads.clear(); entry.terminalReceipts.clear(); }
     this.link.stop();
   }
 
@@ -437,9 +443,21 @@ export class ShellboyData {
         e.live.reconcile();
         return this.refresher.request(`history:${e.id}`);
       },
+      requestTerminalRead: (token, receipt, request) => {
+        const valid = () => !closed && !e.closed && !e.paused && !!qualification && token === qualification.token
+          && qualification.epoch === this.readQualificationEpoch && qualification.liveEpoch === e.live.epoch && qualification.cancel === e.cancel && !e.cancel.cancelled
+          && receipt.scope === this.handoffScope(e) && this.canRead();
+        if (!this.capabilities.peek().includes(CAPABILITY_HISTORY_WINDOW)) return { phase: "unavailable", reason: "unsupported" };
+        const ownedReceipt = e.terminalReceipts.get(receipt.attemptId);
+        if (!valid() || !ownedReceipt || JSON.stringify(ownedReceipt) !== JSON.stringify(receipt) || request.args.thread_id !== e.id) return { phase: "unavailable", reason: "cancelled" };
+        const result = e.terminalReads.request(ownedReceipt, request, valid, e.cancel);
+        if (e.resolving) e.resolveAgain = true;
+        void this.resolveHandoff(e);
+        return result;
+      },
       handoffScope: () => this.handoffScope(e),
       transferHandoff: (id, accept) => { if (closed || e.closed || e.paused) return false; return e.live.transfer(id, accept); },
-      retryHandoff: () => { if (closed || e.closed || e.paused || !this.canRead()) { e.handoffRetryState.value = { phase: "unavailable", reason: closed || e.closed ? "closed" : e.paused ? "paused" : "owner-unavailable", canRetry: false }; return Promise.resolve(); } if (e.cancel.cancelled) e.cancel = new Cancel(); if (e.resolving) { e.live.reconcile(); e.resolveAgain = true; return e.resolving; } e.live.reconcile(); return this.resolveHandoff(e); },
+      retryHandoff: () => { if (closed || e.closed || e.paused || !this.canRead()) { e.handoffRetryState.value = { phase: "unavailable", reason: closed || e.closed ? "closed" : e.paused ? "paused" : "owner-unavailable", canRetry: false }; return Promise.resolve(); } if (e.cancel.cancelled) e.cancel = new Cancel(); if (e.resolving) { e.live.reconcile(); e.terminalReads.clear(); e.resolveAgain = true; return e.resolving; } e.live.reconcile(); e.terminalReads.clear(); return this.resolveHandoff(e); },
       historyTick: e.historyTick,
       readWindow: async (args, cancel) => {
         if (e.closed || e.paused) return Promise.resolve({ ok: false, error: { kind: "cancelled", message: "thread is not being read" } });
@@ -453,7 +471,7 @@ export class ShellboyData {
         if (!valid()) return { ok: false, error: { kind: "cancelled", message: "window owner changed while materializing" } };
         return { ok: true, value: saved };
       },
-      cancelReads: () => { e.live.invalidate(); e.cancel.cancel(); e.pendingAttempts.value = []; },
+      cancelReads: () => { e.live.invalidate(); e.cancel.cancel(); e.terminalReads.clear(); e.terminalReceipts.clear(); e.pendingAttempts.value = []; },
       refresh: () => this.requestThread(threadId),
       loadOlderHistory: () => this.loadOlder(e),
       canShowEarlier: () => e.window < HISTORY_WINDOW_MAX,
@@ -468,6 +486,7 @@ export class ShellboyData {
         if (watchingWork) { watchingWork = false; e.workRefs--; }
         if (--e.refs === 0) {
           e.closed = true;
+          e.terminalReads.clear(); e.terminalReceipts.clear();
           e.live.discard("connection_closed");
           e.cancel.cancel();
           this.entries.delete(threadId);
@@ -482,6 +501,7 @@ export class ShellboyData {
     if (entry.paused || entry.closed) return;
     entry.paused = true;
     entry.live.invalidate();
+    entry.terminalReads.clear(); entry.terminalReceipts.clear();
     entry.pendingAttempts.value = [];
     entry.refreshAfterHandoff = false;
     entry.cancel.cancel();
@@ -621,6 +641,7 @@ export class ShellboyData {
       e.refreshAfterHandoff = false;
       e.resolveAgain = false;
       e.live.invalidate();
+      e.terminalReads.clear(); e.terminalReceipts.clear();
       e.pendingAttempts.value = [];
       e.live.discard(reason);
     }
@@ -735,6 +756,11 @@ export class ShellboyData {
     entry.resolving = Promise.resolve().then(async () => {
       const targets = entry.live.records.peek().filter(r => r.status === "confirming" || r.status === "failed");
       if (!valid()) return;
+      if (entry.terminalReads.queued) {
+        await entry.terminalReads.dispatch(() => entry.live.takeRead(), (args, cancel) => this.operations.historyWindow(args, { cancel }));
+        if (entry.terminalReads.queued) entry.resolveAgain = true;
+        return;
+      }
       if (!targets.length) { entry.handoffRetryState.value = { phase: "idle", reason: "no-pending", canRetry: false }; return; }
       if (!entry.live.takeRead()) { entry.handoffRetryState.value = { phase: "unavailable", reason: "budget-exhausted", canRetry: true }; return; }
       entry.handoffRetryState.value = { phase: "reading", canRetry: false };
@@ -763,7 +789,10 @@ export class ShellboyData {
             ...(typeof attempt.turn_id === "string" ? { turnId: attempt.turn_id } : {}),
             nodeIds: Object.freeze(persisted.map(ref => ref.node_id)), terminalState: attempt.state as "completed" | "failed" | "incomplete" | "cancelled" });
           if (!valid()) return;
-          entry.live.stageTerminalPersisted(record, proof);
+          if (!entry.terminalReceipts.has(record.attemptId) && entry.terminalReceipts.size >= 8) continue;
+          const ownedProof = entry.terminalReceipts.get(record.attemptId) ?? proof;
+          entry.terminalReceipts.set(record.attemptId, ownedProof);
+          entry.live.stageTerminalPersisted(record, ownedProof);
           continue;
         }
         if (incompleteScope || attempt.response_nodes_truncated !== false) continue;

@@ -1,9 +1,11 @@
+import { terminalPresence, type TerminalPresence } from "./terminal-presence";
 import { AcceptedView } from "./accepted-view";
 import type { ThreadHandle, ThreadReadQualification, AttemptPresentation, Resource } from "../../data/src/store";
 import type { HistoryItem, Page, WorkItem } from "../../data/src/protocol";
 import type { HandoffRecord, TerminalPersistedProof } from "../../data/src/handoff";
 
 export interface LegacyPresentationSnapshot {
+  readonly terminalPresence?: readonly TerminalPresence[];
   readonly scope: string;
   readonly projectionGeneration: number;
   readonly rows: readonly HistoryItem[];
@@ -68,6 +70,7 @@ export class LegacyAcceptedPresentation {
   private value(sources: Sources, proofs: readonly TerminalPersistedProof[], receipts: readonly TerminalPersistedProof[]): LegacyPresentationSnapshot {
     return { scope: this.scope, projectionGeneration: this.generation + 1, rows: sources.history.items, live: sources.live, work: sources.work,
       attemptPresentations: sources.pending.filter(f => !receipts.some(p => p.scope === f.scope && p.attemptId === f.attemptId)),
+      terminalPresence: receipts.flatMap(p => { const item = terminalPresence(p, sources.history.items, "unsupported"); return item ? [item] : []; }),
       terminalPersistedAttempts: this.representationProofs(sources, proofs), structuralTerminalReceipts: receipts };
   }
   private publish(expected: LegacyPresentationSnapshot, sources: Sources, value: LegacyPresentationSnapshot): LegacyPresentationSnapshot | undefined {

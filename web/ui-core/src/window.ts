@@ -1,3 +1,5 @@
+import { terminalPresence, type TerminalPresence, type TerminalPresenceReason } from "./terminal-presence";
+import type { OwnedTerminalReadLease, TicketOutcome, TerminalReadTicketId, SelectedRequestId } from "../../data/src/terminal-read";
 import type { TerminalPersistedProof } from "../../data/src/handoff";
 import type { AttemptPresentation, ThreadHandle, ThreadReadQualification } from "../../data/src/store";
 import type { HistoryBody } from "../../data/src/protocol";
@@ -56,6 +58,7 @@ export interface WindowAcceptedSnapshot {
   readonly pending: boolean;
   readonly coverage?: AcceptedCoverage;
   readonly attemptPresentations?: readonly AttemptPresentation[];
+  readonly terminalPresence?: readonly TerminalPresence[];
   readonly terminalPersistedAttempts?: readonly TerminalPersistedProof[];
   readonly retiredAttempts?: readonly RetiredAttempt[];
 }
@@ -125,6 +128,13 @@ export class ConversationWindow {
     sourceRef: WindowAcceptedSnapshot; sourceCap: AcceptedCapability; nodeId: string; offset: number; scope: string;
     consumed: boolean; targetCap?: AcceptedCapability; coverage?: AcceptedCoverage } | undefined;
   private acceptedGeneration = 0;
+  private terminalPresence: readonly TerminalPresence[] = [];
+  private terminalRequestSerial = 0;
+  private terminalIdentitySerial = 0;
+  private terminalIdentity = new WeakMap<object, number>();
+  private terminalPreparedRequests = new Map<string, { refId: number; capId: number; tokenId: number; argsKey: string; request: import("../../data/src/terminal-read").SelectedCanonicalRequest }>();
+  private terminalTargets = new Map<string, { ref: WindowAcceptedSnapshot; cap: AcceptedCapability; handle: ThreadHandle; token: ThreadReadQualification;
+    receipt: TerminalPersistedProof; requestId: SelectedRequestId; lease: OwnedTerminalReadLease; stop?: () => void }>();
   private terminalPersistedAttempts: readonly TerminalPersistedProof[] = [];
   private terminalCapability: AcceptedCapability | undefined;
   private retiredAttempts: readonly RetiredAttempt[] = [];
@@ -171,6 +181,130 @@ export class ConversationWindow {
   itemAt(i: number): HistoryItem | undefined {
     return this.buckets.get(Math.floor(i / WINDOW_NODES))?.items[i % WINDOW_NODES];
   }
+  prepareTerminalRead(handle: ThreadHandle, original: ThreadReadQualification, receipt: TerminalPersistedProof): OwnedTerminalReadLease | TicketOutcome {
+    const ref = this.acceptedView.peek(), cap = this.acceptedView.currentCapability;
+    if (this.disposed || !handle.isReadQualificationCurrent(original) || !this.acceptedView.isCurrent(ref)
+      || receipt.scope !== handle.handoffScope() || !ref.terminalPersistedAttempts?.some(p => p.scope === receipt.scope && p.attemptId === receipt.attemptId))
+      return { phase: "unavailable", reason: "cancelled" };
+    const key = JSON.stringify([receipt.scope, receipt.attemptId]);
+    const held = this.terminalTargets.get(key);
+    if (held) return held.ref === ref && held.cap === cap && held.handle === handle && held.token === original ? held.lease : { phase: "unavailable", reason: "cancelled" };
+    if (!terminalPresence(receipt, ref.rows)) return { phase: "unavailable", reason: "cancelled" };
+    if (this.terminalTargets.size >= 8) return { phase: "unavailable", reason: "capacity" };
+    // Existing canonical reads are never joined or bypassed through this owner.
+    if (this.readsInFlight) {
+      this.publishTerminalPresence(ref, cap, receipt, "read-inflight", "pending");
+      return { phase: "unavailable", reason: "capacity" };
+    }
+    const args = Object.freeze({ thread_id: handle.threadId, node_id: receipt.nodeIds[0], before: 99, after: 100, items: true });
+    const argsKey = JSON.stringify(args), refId = this.terminalIdentityId(ref), capId = this.terminalIdentityId(cap), tokenId = this.terminalIdentityId(original);
+    let prepared = this.terminalPreparedRequests.get(key);
+    if (!prepared || prepared.refId !== refId || prepared.capId !== capId || prepared.tokenId !== tokenId || prepared.argsKey !== argsKey) {
+      if (!prepared && this.terminalPreparedRequests.size >= 8) return { phase: "unavailable", reason: "capacity" };
+      prepared = { refId, capId, tokenId, argsKey, request: Object.freeze({ id: `selected-${++this.terminalRequestSerial}` as SelectedRequestId, args }) };
+      this.terminalPreparedRequests.set(key, prepared);
+    }
+    const request = prepared.request;
+    const outcome = handle.requestTerminalRead(original, receipt, request);
+    if (!("state" in outcome)) {
+      if (outcome.phase === "unavailable") this.publishTerminalPresence(ref, cap, receipt, outcome.reason === "cancelled" ? "read-error" : outcome.reason);
+      return outcome;
+    }
+    const target = { ref, cap, handle, token: original, receipt, requestId: request.id, lease: outcome, stop: undefined as (() => void) | undefined };
+    this.terminalTargets.set(key, target);
+    target.stop = outcome.state.subscribe(() => this.applyTerminalRead(outcome));
+    if (this.terminalTargets.get(key) !== target) target.stop();
+    return outcome;
+  }
+
+  private terminalIdentityId(value: object): number {
+    let id = this.terminalIdentity.get(value);
+    if (id === undefined) { id = ++this.terminalIdentitySerial; this.terminalIdentity.set(value, id); }
+    return id;
+  }
+  private advanceTerminalTarget(target: { ref: WindowAcceptedSnapshot; receipt: TerminalPersistedProof }, ref: WindowAcceptedSnapshot): void {
+    target.ref = ref;
+    const prepared = this.terminalPreparedRequests.get(JSON.stringify([target.receipt.scope, target.receipt.attemptId]));
+    if (prepared) prepared.refId = this.terminalIdentityId(ref);
+  }
+
+  private publishTerminalPresence(ref: WindowAcceptedSnapshot, cap: AcceptedCapability, receipt: TerminalPersistedProof, reason: TerminalPresenceReason, phase?: TerminalPresence["phase"]): WindowAcceptedSnapshot | undefined {
+    if (this.disposed || !this.acceptedView.isCurrent(ref) || cap !== this.acceptedView.currentCapability) return undefined;
+    const present = terminalPresence(receipt, ref.rows, reason);
+    const next = [...(ref.terminalPresence ?? []).filter(p => p.scope !== receipt.scope || p.attemptId !== receipt.attemptId), ...(present ? [{ ...present, ...(phase ? { phase } : {}) }] : [])];
+    if (JSON.stringify(next) === JSON.stringify(ref.terminalPresence ?? [])) return ref;
+    const generation = this.acceptedGeneration + 1;
+    const staged = this.acceptedView.stage({ ...ref, generation, terminalPresence: next }, cap);
+    this.terminalPresence = next; this.acceptedGeneration = generation;
+    if (!this.acceptedView.isCurrent(ref) || !this.acceptedView.commit(staged)) return undefined;
+    const committed = this.acceptedView.peek();
+    if (committed.generation !== generation || !this.acceptedView.isCurrent(committed) || cap !== this.acceptedView.currentCapability) return undefined;
+    return committed;
+  }
+
+  applyTerminalRead(lease: OwnedTerminalReadLease): boolean {
+    const target = [...this.terminalTargets.values()].find(t => t.lease === lease);
+    if (!target || this.disposed || !target.handle.isReadQualificationCurrent(target.token)
+      || target.receipt.scope !== target.handle.handoffScope() || !this.acceptedView.isCurrent(target.ref) || target.cap !== this.acceptedView.currentCapability) {
+      this.cancelTerminalRead(lease.ticket.id); return false;
+    }
+    const out = lease.state.peek();
+    let reason: TerminalPresenceReason = "read-inflight";
+    if (out.phase === "unavailable") reason = out.reason === "cancelled" ? "read-error" : out.reason;
+    else if (out.phase === "settled") {
+      reason = out.result.ok ? "missing-candidate" : "read-error";
+      if (out.result.ok) {
+        const value = out.result.value;
+        // Readback can only extend the same qualified selected run; revision changes
+        // need a separate fresh transaction, never a silent rebind here.
+        if (value.thread_id !== target.handle.threadId || value.revision !== target.ref.revision || value.total < target.ref.total || value.items.length > 200) reason = "selection-gap";
+        else {
+          const merged = new Map<number, HistoryItem>();
+          for (const row of [...target.ref.rows, ...value.items]) {
+            const ordinal = row.selection?.ordinal;
+            if (ordinal === undefined || !Number.isSafeInteger(ordinal) || ordinal < 0 || ordinal >= value.total || !row.node_id
+              || (merged.has(ordinal) && merged.get(ordinal)!.node_id !== row.node_id)) { reason = "selection-gap"; break; }
+            merged.set(ordinal, row);
+          }
+          const ordinals = [...merged.keys()].sort((a, b) => a - b);
+          if (reason !== "selection-gap" && ordinals.length && ordinals.length <= 200 && ordinals.at(-1)! - ordinals[0]! + 1 === ordinals.length) {
+            const rows = ordinals.map(i => merged.get(i)!);
+            const buckets = new Map(this.buckets), copied = new Set<number>();
+            for (const row of rows) {
+              const ordinal = row.selection!.ordinal!, index = Math.floor(ordinal / WINDOW_NODES);
+              if (!copied.has(index)) { const old = buckets.get(index), clone = new Bucket(); if (old) { clone.items = [...old.items]; clone.filled = old.filled; for (const [k, v] of old.handoffs) clone.handoffs.set(k, v); } buckets.set(index, clone); copied.add(index); }
+              const bucket = buckets.get(index)!, slot = ordinal % WINDOW_NODES;
+              if (!bucket.items[slot]) bucket.filled++;
+              bucket.items[slot] = row;
+            }
+            if (buckets.size > WINDOWS_HELD) reason = "selection-gap";
+            else {
+              const presence = terminalPresence(target.receipt, rows, "missing-candidate");
+              const next = [...(target.ref.terminalPresence ?? []).filter(p => p.scope !== target.receipt.scope || p.attemptId !== target.receipt.attemptId), ...(presence ? [presence] : [])];
+              const generation = this.acceptedGeneration + 1;
+              const staged = this.acceptedView.stage({ ...target.ref, generation, rows, range: { first: ordinals[0]!, last: ordinals.at(-1)! }, total: value.total, terminalPresence: next }, target.cap);
+              if (!target.handle.isReadQualificationCurrent(target.token) || !this.acceptedView.isCurrent(target.ref)) return false;
+              this.buckets = buckets; this.total = value.total; this.terminalPresence = next; this.acceptedGeneration = generation;
+              if (!this.acceptedView.commit(staged)) return false;
+              const ref = this.acceptedView.peek();
+              if (ref.generation !== generation || !this.acceptedView.isCurrent(ref) || target.cap !== this.acceptedView.currentCapability || !target.handle.isReadQualificationCurrent(target.token)) return false;
+              this.advanceTerminalTarget(target, ref); return true;
+            }
+          } else reason = "selection-gap";
+        }
+      }
+    }
+    const next = this.publishTerminalPresence(target.ref, target.cap, target.receipt, reason, out.phase === "queued" ? "pending" : out.phase === "reading" ? "reading" : "settled");
+    if (!next || !target.handle.isReadQualificationCurrent(target.token)) return false;
+    this.advanceTerminalTarget(target, next); return true;
+  }
+
+  cancelTerminalRead(id: TerminalReadTicketId): void {
+    for (const [key, target] of this.terminalTargets) if (target.lease.ticket.id === id) {
+      this.terminalTargets.delete(key); target.stop?.(); target.lease.cancel();
+    }
+  }
+
   /** Pure ownership receive; no navigation, reads or scroll correction. */
   beginSummaryTransition(handle: ThreadHandle, ref: WindowAcceptedSnapshot, nodeId: string, offset: number): SummaryTransitionId | undefined {
     if (this.disposed || !this.acceptedView.isCurrent(ref) || ref.pending || ref.revision === undefined || !Number.isFinite(offset)
@@ -247,11 +381,12 @@ export class ConversationWindow {
       if (before.length >= 8 && !before.some(p => p.scope === scope && p.attemptId === proof.attemptId)) return false;
       const next = [...before.filter(p => p.scope !== scope || p.attemptId !== proof.attemptId), proof];
       const generation = this.acceptedGeneration + 1;
-      const staged = this.acceptedView.stage({ ...expected, generation, terminalPersistedAttempts: next,
+      const presence = next.flatMap(p => { const item = terminalPresence(p, expected.rows); return item ? [item] : []; });
+      const staged = this.acceptedView.stage({ ...expected, generation, terminalPersistedAttempts: next, terminalPresence: presence,
         attemptPresentations: (expected.attemptPresentations ?? []).filter(p => p.scope !== scope || p.attemptId !== proof.attemptId) }, cap);
       if (!this.acceptedView.isCurrent(expected) || cap !== this.acceptedView.currentCapability) return false;
       const old = this.terminalPersistedAttempts, oldCap = this.terminalCapability;
-      this.terminalPersistedAttempts = next; this.terminalCapability = cap; this.acceptedGeneration = generation;
+      this.terminalPresence = presence; this.terminalPersistedAttempts = next; this.terminalCapability = cap; this.acceptedGeneration = generation;
       if (!this.acceptedView.commit(staged)) { this.terminalPersistedAttempts = old; this.terminalCapability = oldCap; return false; }
       const committed = this.acceptedView.peek();
       if (committed.generation !== generation || !this.acceptedView.isCurrent(committed) || cap !== this.acceptedView.currentCapability) return false;
@@ -555,6 +690,8 @@ export class ConversationWindow {
 
   /** Leaving the view or the Thread: nothing more is read. */
   dispose(): void {
+    for (const target of [...this.terminalTargets.values()]) this.cancelTerminalRead(target.lease.ticket.id);
+    this.terminalPreparedRequests.clear();
     this.clearSummaryTransition();
     this.disposed = true;
     this.acceptedView.dispose();
@@ -580,9 +717,17 @@ export class ConversationWindow {
     if (this.disposed || capability !== this.acceptedView.currentCapability) return;
     const epoch = this.epoch;
     const generation = ++this.acceptedGeneration;
+    const currentRows = this.rangeItems();
+    const presence = this.terminalCapability === capability ? this.terminalPersistedAttempts.flatMap(receipt => {
+      const previous = this.terminalPresence.find(p => p.scope === receipt.scope && p.attemptId === receipt.attemptId);
+      const value = terminalPresence(receipt, currentRows, previous?.reason ?? "canonical-pending");
+      return value ? [{ ...value, phase: previous?.phase ?? value.phase }] : [];
+    }) : [];
+    this.terminalPresence = presence;
     const staged = this.acceptedView.stage({ generation, epoch, disposed: false,
-      rows: this.rangeItems(), range: this.renderRange(), total: this.total,
+      rows: currentRows, range: this.renderRange(), total: this.total,
       revision: this.revision, pending: this.status.peek() === "loading", attemptPresentations: this.attemptPresentations.filter(p => !this.terminalPersistedAttempts.some(done => this.terminalCapability === capability && done.scope === p.scope && done.attemptId === p.attemptId)),
+      terminalPresence: this.terminalCapability === capability ? this.terminalPresence : [],
       terminalPersistedAttempts: this.terminalCapability === capability ? this.terminalPersistedAttempts : [],
       coverage: this.summaryTransition?.targetCap === capability && !this.summaryTransition?.consumed ? this.summaryTransition?.coverage : undefined,
       retiredAttempts: (this.retiredCapability === capability ? this.retiredAttempts : []).filter(item => item.revision === this.revision) }, capability);
