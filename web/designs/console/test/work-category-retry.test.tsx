@@ -40,14 +40,14 @@ it('public event without notification subtype stays generic Notifications, no co
   const projection=projectLegacyHistoryItems({nodes:[{node_id:'public-event',kind:'event',items:[{item_identity:'event-text',kind:'text',text:'Synthetic event content',text_complete:true}]}]}).projection;
   expect(projection.workGroups?.[0]?.categoryCounts).toEqual({Tools:0,Reasoning:0,Notifications:1,Problems:0});
   await act(async()=>render(<SavedConversationItems model={f.model} projection={projection}/>,host));
-  expect(host.querySelector('[data-internal-records] summary')?.textContent).toBe(f.model.t.value('work.notification'));
+  expect(host.querySelector('[data-internal-records] [data-work-inner-line]')?.getAttribute('aria-label')).toBe(f.model.t.value('work.notification'));
   expect(host.textContent).not.toContain(f.model.t.value('work.continueNotification'));
   expect(host.textContent).not.toContain(f.model.t.value('work.problem'));
   expect(host.querySelector('[data-items-unavailable-reason], [data-item-unavailable]')).toBeNull();
   expect(host.textContent).not.toContain('Synthetic event content');
  }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
 });
-it('uses CASE closed defaults and preserves explicit Work and record choices through rerender',async()=>{
+it('uses CASE closed Work defaults and icon-only kind when a notification has no expandable public detail',async()=>{
  const f=await fixtureModel(),host=document.createElement('div');document.body.append(host);
  try{
   const projection=projectLegacyHistoryItems({nodes:[{node_id:'event-choice',kind:'event'}]}).projection;
@@ -55,14 +55,18 @@ it('uses CASE closed defaults and preserves explicit Work and record choices thr
   await act(async()=>show());const group=host.querySelector<HTMLDetailsElement>('[data-work-group]')!;
   expect(group.open).toBe(false);
   await act(async()=>{group.open=true;group.dispatchEvent(new Event('toggle'));});
-  const record=host.querySelector<HTMLDetailsElement>('[data-internal-records]')!;expect(record.open).toBe(false);
-  await act(async()=>{record.open=true;record.dispatchEvent(new Event('toggle'));});
-  await act(async()=>show());expect(group.open).toBe(true);expect(record.open).toBe(true);
-  await act(async()=>{record.open=false;record.dispatchEvent(new Event('toggle'));});
-  await act(async()=>show());expect(record.open).toBe(false);
+  const record=host.querySelector('[data-internal-records]')!;
+  expect(record.tagName).toBe('DIV');expect(record.querySelector('details,summary')).toBeNull();
+  const line=record.querySelector('[data-work-inner-line]')!;
+  expect(line.getAttribute('aria-label')).toBe(f.model.t.value('work.notification'));
+  expect(line.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true');
+  expect(line.querySelector('svg path')?.getAttribute('d')).toBe('M3 13l3-8h12l3 8v6H3zM3 13h5l1.5 3h5L16 13h5');
+  expect(line.textContent).toBe('');
+  await act(async()=>show());expect(group.open).toBe(true);
+  await act(async()=>{group.open=false;group.dispatchEvent(new Event('toggle'));});
+  await act(async()=>show());expect(group.open).toBe(false);
  }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
 });
-
 for(const windowed of [false,true])it(`renders actual accepted-node execution metadata inside its same Work disclosure even when legacy history has no step: window=${windowed}`,async()=>{
  const f=await fixtureModel(),host=document.createElement('div');document.body.append(host);
  try{

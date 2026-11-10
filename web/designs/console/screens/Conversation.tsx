@@ -119,6 +119,9 @@ export function SavedConversationItems({ model, projection, renderBefore, traili
       });
     }}><summary data-work-heading=""><Icon name="layers" /><span class="tool-group-label">{label}</span>{status ? <StatusMark status={status} label={statusLabel(t, status)} /> : null}<span class="meta" /></summary><div class="step-group-list">{children}</div></Disclosure>;
   };
+  const workLine = (item: ConversationItem, label: string, content?: ComponentChildren) => <span class="work-inner-line" data-work-inner-line="" title={label} aria-label={label}>
+    {item.classification?.icon ? <Icon name={item.classification.icon} /> : null}{content}
+  </span>;
   return <ConversationItems {...projection} renderWorkGroup={projection.workGroups ? renderWorkGroup : undefined} renderBefore={renderBefore} trailing={trailing} isItemHidden={hidden} renderHeading={summary => {
     const steps = allSteps.filter(step => summary.executionIds.includes(step.executionId));
     const active = steps.find(step => step.status === "running");
@@ -160,20 +163,20 @@ export function SavedConversationItems({ model, projection, renderBefore, traili
         const steps = allSteps;
         const source = item.source;
         const badge = source.compressed ? <span class="caption muted" data-tool-compressed="">{t("work.compressed")}</span> : null;
-        return <div data-tool-call-id={source.callId} data-tool-detail-unavailable={source.detailUnavailable ? "true" : undefined}>{badge}{!ids.length ? <div class="caption muted" data-execution-unavailable="">{t("work.unknownTools")}</div> : ids.map(id => {
+        return <div data-tool-call-id={source.callId} data-tool-detail-unavailable={source.detailUnavailable ? "true" : undefined}>{badge}{!ids.length ? <div class="caption muted" data-execution-unavailable="">{workLine(item, t("work.unknownTools"), t("work.unknownTools"))}</div> : ids.map(id => {
           const step = steps.find(step => step.executionId === id);
-          return <div key={id} data-execution-id={id}>{hidden(item) ? null : step ? <StepView model={model} step={step} openPolicy={item.classification!.openPolicy} /> : <div class="caption muted" data-execution-unresolved="">{t("work.unknownTools")}</div>}</div>;
+          return <div key={id} data-execution-id={id}>{hidden(item) ? null : step ? <StepView model={model} step={step} openPolicy={item.classification!.openPolicy} icon={item.classification?.icon ?? undefined} /> : <div class="caption muted" data-execution-unresolved="">{workLine(item, t("work.unknownTools"), t("work.unknownTools"))}</div>}</div>;
         })}</div>;
       }
       if (item.source.kind === "ordinaryEmpty") return <div class="caption muted" data-empty-ordinary="">{t("work.textUnavailable")}</div>;
-      if (item.source.kind === "reasoning" || item.source.kind === "reasoning_unavailable") return <div class="caption muted" data-thinking-marker="">{t("work.thinking")}</div>;
-      if (item.source.kind === "interruption") return <Notice>{t("status.stopped")}</Notice>;
-      if (item.source.kind === "record") return <Disclosure data-internal-records="" open={openRecords.get(item.key) ?? (item.classification!.openPolicy !== "closed")} onToggle={event => { const open = event.currentTarget.open; setOpenRecords(previous => { const next = new Map(previous); next.set(item.key, open); return next; }); }}><summary>{t(item.classification?.headingCategory === "Problems" ? "work.problem" : item.classification?.render === "state-change" ? "work.stateChanges" : item.classification?.render === "child-notification" || item.classification?.render === "shell-notification" ? "work.continueNotification" : "work.notification", {n:1})}</summary></Disclosure>;
+      if (item.source.kind === "reasoning" || item.source.kind === "reasoning_unavailable") return <div class="caption muted" data-thinking-marker="">{workLine(item, t("work.reasoning"), t("work.reasoning"))}</div>;
+      if (item.source.kind === "interruption") return workLine(item, t("status.stopped"), t("status.stopped"));
+      if (item.source.kind === "record") return <div data-internal-records="">{workLine(item, t(item.classification?.headingCategory === "Problems" ? "work.problem" : item.classification?.render === "state-change" ? "work.stateChanges" : item.classification?.render === "child-notification" || item.classification?.render === "shell-notification" ? "work.continueNotification" : "work.notification", {n:1}))}</div>;
       if (item.source.kind === "unknown" || item.source.kind === "unavailable") {
         const source = item.source;
         const handle = model.handle.value;
         const record = "domain" in source && source.namespace === "handoff" ? handle?.handoff.value.find(record => record.key === source.recordId) : undefined;
-        return <><div class="caption muted" data-item-unavailable="" data-items-unavailable-reason={item.source.kind === "unavailable" ? item.source.reason : undefined}>{item.source.kind === "unknown" ? t("work.problem") : item.source.reason ?? t("work.textUnavailable")}</div>{record ? <LiveRecordChrome model={model} record={record} retry={() => handle?.retryHandoff()} /> : null}</>;
+        return <><div class="caption muted" data-item-unavailable="" data-items-unavailable-reason={item.source.kind === "unavailable" ? item.source.reason : undefined}>{workLine(item, item.source.kind === "unknown" ? t("work.problem") : t("work.textUnavailable"), item.source.kind === "unavailable" && item.source.reason ? item.source.reason : undefined)}</div>{record ? <LiveRecordChrome model={model} record={record} retry={() => handle?.retryHandoff()} /> : null}</>;
       }
       return null;
     }} />;
@@ -326,7 +329,7 @@ export function Output({ model, id, command, complete, boxed }: { model: AppMode
   );
 }
 
-export function StepView({ model, step, openPolicy = CANONICAL_CASES.toolCall.openPolicy }: { model: AppModel; step: Step; openPolicy?: CanonicalCase["openPolicy"] }) {
+export function StepView({ model, step, openPolicy = CANONICAL_CASES.toolCall.openPolicy, icon = CANONICAL_CASES.toolCall.icon }: { model: AppModel; step: Step; openPolicy?: CanonicalCase["openPolicy"]; icon?: NonNullable<CanonicalCase["icon"]> }) {
   const t = model.t.value;
   const choice = model.toolStepChoices.value.get(step.executionId);
   const open = choice ?? (openPolicy !== "closed");

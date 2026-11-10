@@ -500,3 +500,5 @@ a{color:var(--accent)}
 
 /* Sender IDs remain complete on narrow screens; titles and labels are not identity. */
 .sender-id { overflow-wrap: anywhere; }
+
+.work-inner-line{display:inline-flex;align-items:center;gap:var(--space-8);max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;vertical-align:middle}
