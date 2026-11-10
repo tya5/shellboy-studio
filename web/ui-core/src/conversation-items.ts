@@ -1,7 +1,11 @@
+import type { TerminalPresence } from "./terminal-presence";
 import type { HistoryItem, HistorySavedItem, HistoryItemsUnavailableReason, WorkItem } from "../../data/src/protocol";
 /** Internal normalized contract only. Not a Core wire type or a body adapter. */
 export type WorkCategory = "Tools" | "Reasoning" | "Notifications" | "Problems";
 export const CANONICAL_CASES = {
+  terminalPending: { id: "terminalPending", normalizedKind: "record", classification: "work", headingCategory: "Notifications", render: "notification", keyPolicy: "canonical", icon: "inbox", openPolicy: "closed", toolPolicy: "none" },
+  terminalReading: { id: "terminalReading", normalizedKind: "record", classification: "work", headingCategory: "Notifications", render: "notification", keyPolicy: "canonical", icon: "inbox", openPolicy: "closed", toolPolicy: "none" },
+  terminalSettled: { id: "terminalSettled", normalizedKind: "record", classification: "work", headingCategory: "Problems", render: "unsupported", keyPolicy: "canonical", icon: "file", openPolicy: "closed", toolPolicy: "none" },
   human: { id: "human", normalizedKind: "user", classification: "conversation", headingCategory: null, render: "human-message", keyPolicy: "canonical", icon: null, openPolicy: "closed", toolPolicy: "none" },
   receivedModel: { id: "receivedModel", normalizedKind: "user", classification: "conversation", headingCategory: null, render: "received-model", keyPolicy: "canonical", icon: null, openPolicy: "closed", toolPolicy: "none" },
   receivedCli: { id: "receivedCli", normalizedKind: "user", classification: "conversation", headingCategory: null, render: "received-cli", keyPolicy: "canonical", icon: null, openPolicy: "closed", toolPolicy: "none" },
@@ -45,7 +49,8 @@ export interface SavedItemIdentity {
 }
 
 export interface LiveWorkIdentity {
-  readonly domain: "live";
+  readonly domain: "live" | "receipt";
+  readonly terminalPresence?: TerminalPresence;
   readonly namespace?: "work" | "handoff";
   readonly classificationCase?: CanonicalCaseId;
   readonly keyScope?: readonly string[];
@@ -158,7 +163,7 @@ function projectSavedItemsCore(rawInput: readonly NormalizedSavedItem[], decoded
   for (const source of input) {
     if (!("domain" in source) && (!source.nodeId || !source.itemIdentity || (!decodedLegacy && source.revision === undefined && source.windowRevision === undefined && !(source.identityDomain === "node" && source.kind === "unknown" && source.itemIdentity === source.nodeId)))) throw new Error("Missing authoritative identity/proof");
     if ("domain" in source && (!source.scope || !source.recordId)) throw new Error("Missing live record identity");
-    const canonicalKey = "domain" in source ? JSON.stringify(["live", source.namespace ?? "work", source.scope, source.recordId]) : source.identityDomain === "spill" ? JSON.stringify(["spill", source.nodeId, source.itemIdentity]) : source.identityDomain === "node" ? JSON.stringify(["node", source.nodeId]) : JSON.stringify([source.nodeId, source.itemIdentity]);
+    const canonicalKey = "domain" in source ? JSON.stringify([source.domain, source.namespace ?? "work", source.scope, source.recordId]) : source.identityDomain === "spill" ? JSON.stringify(["spill", source.nodeId, source.itemIdentity]) : source.identityDomain === "node" ? JSON.stringify(["node", source.nodeId]) : JSON.stringify([source.nodeId, source.itemIdentity]);
     const a = association(source);
     const proven = a && !conflicts.has(a.key) ? a : undefined;
     const key = canonicalItemCase(source).keyPolicy === "association" && proven ? proven.key : canonicalKey;
@@ -173,7 +178,7 @@ function projectSavedItemsCore(rawInput: readonly NormalizedSavedItem[], decoded
       continue;
     }
     if (proven) selectedTools.set(key, items.length);
-    const identity = "domain" in source ? { domain: "live" as const, namespace: source.namespace ?? "work", scope: source.scope, recordId: source.recordId, ...(source.attemptId !== undefined ? { attemptId: source.attemptId } : {}), ...(source.turnId !== undefined ? { turnId: source.turnId } : {}) } : { ...(source.identityDomain ? { identityDomain: source.identityDomain } : {}), nodeId: source.nodeId, itemIdentity: source.itemIdentity, ...(source.revision !== undefined ? { revision: source.revision } : {}), ...(source.windowRevision !== undefined ? { windowRevision: source.windowRevision } : {}) };
+    const identity = "domain" in source ? { domain: source.domain, ...(source.terminalPresence ? { terminalPresence: source.terminalPresence } : {}), namespace: source.namespace ?? "work", scope: source.scope, recordId: source.recordId, ...(source.attemptId !== undefined ? { attemptId: source.attemptId } : {}), ...(source.turnId !== undefined ? { turnId: source.turnId } : {}) } : { ...(source.identityDomain ? { identityDomain: source.identityDomain } : {}), nodeId: source.nodeId, itemIdentity: source.itemIdentity, ...(source.revision !== undefined ? { revision: source.revision } : {}), ...(source.windowRevision !== undefined ? { windowRevision: source.windowRevision } : {}) };
     const scopedIdentity = { ...identity, classificationCase: canonicalItemCase(source).id, ...(source.keyScope ? { keyScope: Object.freeze([...source.keyScope]) } : {}) };
     let copy: NormalizedSavedItem;
     if (source.kind === "tool") {
@@ -322,7 +327,7 @@ function projectHistoryNodes(input: { readonly keyScope?: readonly string[]; rea
     }
   }
   for (const live of input.liveFacts ?? []) {
-    if (!("domain" in live) || live.domain !== "live") throw new Error("Legacy liveFacts requires explicit live domain");
+    if (!("domain" in live) || (live.domain !== "live" && live.domain !== "receipt")) throw new Error("Legacy liveFacts requires explicit live or receipt domain");
     segment.push(live);
   }
   const projection = projectSavedItemsCore(segment, decodedLegacy);
@@ -336,5 +341,14 @@ export function normalizeLiveWorkFacts(input: { readonly scope: string; readonly
     if (!input.scope || !item.id || item.thread_id !== input.scope) throw new Error("Invalid live work scope");
     const identity = { domain: "live" as const, scope: input.scope, recordId: item.id, ...(typeof item.attempt_id === "string" ? { attemptId: item.attempt_id } : {}), ...(typeof item.turn_id === "string" ? { turnId: item.turn_id } : {}) };
     return Object.freeze(item.kind === "shell" && item.execution_id ? { ...identity, kind: "tool" as const, executionIds: Object.freeze([item.execution_id]) } : { ...identity, kind: "record" as const });
+  }));
+}
+
+const TERMINAL_PHASE_CASES = { pending: "terminalPending", reading: "terminalReading", settled: "terminalSettled" } as const satisfies Record<TerminalPresence["phase"], CanonicalCaseId>;
+/** Only the same accepted reference's qualified S facts; omission means no extra row. */
+export function normalizeTerminalPresenceFacts(presences: readonly TerminalPresence[]): readonly NormalizedSavedItem[] {
+  return normalizeConversationFacts(presences.map(presence => {
+    if (!presence.scope || !presence.attemptId || presence.receipt.scope !== presence.scope || presence.receipt.attemptId !== presence.attemptId) throw new Error("Mismatched terminal receipt scope");
+    return { domain: "receipt" as const, scope: presence.scope, recordId: presence.attemptId, attemptId: presence.attemptId, terminalPresence: presence, kind: "record" as const, classificationCase: TERMINAL_PHASE_CASES[presence.phase] };
   }));
 }
