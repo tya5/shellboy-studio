@@ -104,3 +104,21 @@ it("requests authoritative saved items, preserves whole deferred nodes and retri
   r.w.acceptedView.revoke(); expect(r.w.retryDeferred(ref)).toBe(false);
   r.w.dispose(); r.data.stop();
 });
+
+it("deferred retry respects the global bucket admission and succeeds after a slot is freed", async () => {
+  type Page = { ok: true; value: { thread_id: string; total: number; revision: number; items: HistoryItem[] } };
+  const held: { args: { ordinal?: number }; finish: (value: Page) => void }[] = [];
+  const w = new ConversationWindow({ read: args => new Promise(resolve => held.push({ args, finish: resolve })) });
+  const deferred: HistoryItem = { node_id: "deferred", kind: "user", items: null, items_unavailable_reason: "response_budget", selection: { ordinal: 400 } };
+  held.shift()!.finish({ ok: true, value: { thread_id: "t", total: 600, revision: 1, items: Array.from({ length: 200 }, (_, i) => i === 0 ? deferred : { node_id: `n${400 + i}`, kind: "user", selection: { ordinal: 400 + i } }) } }); await flush();
+  // Drive the owned read primitive to control two held buckets independently of viewport timers.
+  const reads = w as unknown as { readBucket(index: number): Promise<void> };
+  void reads.readBucket(0); void reads.readBucket(1);
+  expect(held).toHaveLength(2);
+  const ref = w.acceptedView.peek();
+  expect(w.retryDeferred(ref)).toBe(false); expect(held).toHaveLength(2);
+  held.shift()!.finish({ ok: true, value: { thread_id: "t", total: 600, revision: 1, items: [{ node_id: "first", kind: "user", selection: { ordinal: 0 } }] } }); await flush();
+  expect(w.retryDeferred(w.acceptedView.peek())).toBe(true);
+  expect(held).toHaveLength(2); expect(held.at(-1)!.args).toMatchObject({ ordinal: 400, expect_node_id: "deferred", items: true });
+  w.dispose();
+});

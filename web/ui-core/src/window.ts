@@ -242,7 +242,9 @@ export class ConversationWindow {
     const ordinal = row?.selection?.ordinal;
     if (!row?.node_id || ordinal === undefined) return false;
     const index = Math.floor(ordinal / WINDOW_NODES);
-    if (this.inflight.has(index)) return false;
+    // Bucket reads share the pump's two slots; the separately owned tail/verify
+    // must not be competed with by an explicit deferred retry.
+    if (this.inflight.has(index) || this.inflight.size >= READS_IN_FLIGHT || this.tailCancel || this.verifying) return false;
     void this.readBucket(index, { ordinal, expect_node_id: row.node_id, before: 0, after: WINDOW_NODES - 1, excerpt_chars: HISTORY_EXCERPT_CHARS, items: true });
     return true;
   }
