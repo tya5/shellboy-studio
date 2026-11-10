@@ -26,12 +26,13 @@ export function Composer(props: { label: string; placeholder: string; hint: stri
         onKeyDown={(e) => {
           if (composerAction(e) === "send") {
             e.preventDefault();
+            if (!props.canSend || props.busy || submitting.current) return;
             void submit();
           }
         }}
       />
       <div class="row">
-        <span class="hint">{props.hint}</span>
+        <span class="hint" role="status">{props.hint}</span>
         <div class="right">
           {props.stop}
           <Button icon label={props.sendLabel} variant="primary" disabled={!props.canSend || props.busy || text.trim() === ""} onClick={() => void submit()}>

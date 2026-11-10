@@ -537,6 +537,8 @@ export function Conversation({ model }: { model: AppModel }) {
   }, [handle]);
 
   const send = model.sendState.value;
+  const pendingOwn = model.pendingOwnMessage.value;
+  const sendBlocked = pendingOwn && model.pendingOwnIsCurrent() ? pendingOwn : undefined;
   const conn = model.connection.value;
   const recovery = model.recovery.value;
   const loading = !history?.loaded;
@@ -575,9 +577,9 @@ export function Conversation({ model }: { model: AppModel }) {
           <Composer
             label={t("composer.label")}
             placeholder={t("composer.placeholder")}
-            hint={t("composer.hint")}
+            hint={sendBlocked ? t(`composer.pending.${sendBlocked.phase}`) : t("composer.hint")}
             sendLabel={t("composer.send")}
-            canSend={conn === "connected"}
+            canSend={conn === "connected" && !sendBlocked}
             busy={send.kind === "sending"}
             onSend={(text) => model.send(text)}
             stop={

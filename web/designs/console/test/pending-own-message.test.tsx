@@ -22,8 +22,9 @@ for(const windowed of [true,false])for(const savedBeforeAck of [false,true])it(`
  const context:DesignContext={model:f.model,prefs:signal(loadPrefs({read:()=>null,write:()=>{}},[{name:'console',themes:[{name:'light'}]}])),setPrefs:()=>{},designs:[],submitToken:async()=>false};
  try{
   await act(async()=>{render(<App context={context}/>,host);await settle(f.t,f.db);});
-  let sending!:Promise<boolean>;
-  await act(async()=>{sending=f.model.send('Own submitted message');await flush(8);});
+  const composer=host.querySelector<HTMLTextAreaElement>('#composer')!;
+  await act(async()=>{composer.value='Own submitted message';composer.dispatchEvent(new Event('input',{bubbles:true}));});
+  await act(async()=>{composer.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));await flush(8);});
   expect(f.model.pendingOwnMessage.peek()).toBeDefined();
   expect(f.model.pendingOwnIsCurrent()).toBe(true);
   if(!windowed)expect(f.model.legacyPresentation.peek()?.isCurrent(f.model.legacyPresentation.peek()!.acceptedView.peek())).toBe(true);
@@ -33,9 +34,12 @@ for(const windowed of [true,false])for(const savedBeforeAck of [false,true])it(`
    rows=[{node_id:'canonical-own',kind:'user',selection:{ordinal:0},items:[{kind:'text',item_identity:'accepted',text:'Own submitted message',text_complete:true}],provenance:{sender:{kind:'human'}}}];f.db.history.t=rows;
    await act(async()=>{f.t.push({t:'changed',thread_ids:['t'],list:false});await settle(f.t,f.db);});
   }
-  await act(async()=>{f.t.ok(call.id,{message_id:'canonical-own',thread_id:'t'});await flush(8);});expect(await sending).toBe(true);
+  await act(async()=>{f.t.ok(call.id,{message_id:'canonical-own',thread_id:'t'});await flush(8);});expect(f.model.sendState.peek().kind).toBe('idle');expect(composer.value).toBe('');
   if(savedBeforeAck){expect(host.querySelector('[data-pending-own-message]')).toBeNull();expect(host.querySelectorAll('[data-node="canonical-own"] .md')).toHaveLength(1);return;}
   expect(host.querySelector('[data-pending-phase="accepted"]')).not.toBeNull();
+  await act(async()=>{composer.value='Next unsent draft';composer.dispatchEvent(new Event('input',{bubbles:true}));composer.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));await flush(4);});
+  expect(f.t.calls('message.send')).toHaveLength(1);expect(composer.value).toBe('Next unsent draft');
+  expect(host.querySelector('.composer [role="status"]')?.textContent).toContain(f.model.t.value('composer.pending.accepted'));
   const equalText:HistoryItem={node_id:'wrong-node',kind:'user',items:[{item_identity:'wrong',kind:'text',text:'Own submitted message',text_complete:true}],provenance:{sender:{kind:'human'}}};
   rows=[{...equalText,selection:{ordinal:0}}];f.db.history.t=rows;
   await act(async()=>{f.t.push({t:'changed',thread_ids:['t'],list:false});await settle(f.t,f.db);});
@@ -44,6 +48,7 @@ for(const windowed of [true,false])for(const savedBeforeAck of [false,true])it(`
   await act(async()=>{f.t.push({t:'changed',thread_ids:['t'],list:false});await settle(f.t,f.db);});
   expect(host.querySelector('[data-pending-own-message]')).toBeNull();
   expect(host.querySelectorAll('[data-node="canonical-own"] .md')).toHaveLength(1);
+  expect(host.querySelector<HTMLButtonElement>('.composer button:last-child')?.disabled).toBe(false);
  }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
 });
 it('an old acknowledgement never clears a newer draft generation',async()=>{
@@ -72,4 +77,17 @@ it('failed acceptance retries the original operation, while navigation invalidat
   f.t.ok(second.id,{message_id:'canonical-late',thread_id:f.model.pendingOwnMessage.peek()?.threadId??'lead'});
   expect(await sent).toBe(false);expect(f.model.pendingOwnMessage.peek()).toBeUndefined();
  }finally{f.model.dispose();f.data.stop();}
+});
+it('actual Composer Enter preserves an unconfirmed draft and does not double-submit a held request',async()=>{
+ const host=document.createElement('div');document.body.append(host);let calls=0,finish!:(ok:boolean)=>void;
+ const show=(canSend:boolean)=>render(<Composer label="Message" placeholder="" hint={canSend?'Ready':'Acceptance unconfirmed'} sendLabel="Send" canSend={canSend} busy={false} onSend={()=>{calls++;return new Promise(resolve=>{finish=resolve;});}}/>,host);
+ try{
+  await act(async()=>show(true));const input=host.querySelector('textarea')!;
+  await act(async()=>{input.value='Original uncertain message';input.dispatchEvent(new Event('input',{bubbles:true}));});
+  await act(async()=>{input.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));input.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));});
+  expect(calls).toBe(1);expect(input.value).toBe('Original uncertain message');
+  await act(async()=>{show(false);finish(false);await flush(4);});
+  await act(async()=>{input.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));});
+  expect(calls).toBe(1);expect(input.value).toBe('Original uncertain message');expect(host.querySelector('[role="status"]')?.textContent).toBe('Acceptance unconfirmed');
+ }finally{render(null,host);host.remove();}
 });
