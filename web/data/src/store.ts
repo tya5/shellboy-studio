@@ -20,8 +20,8 @@ import type {
 import { Refresher } from "./refresher";
 import type { Transport } from "./transport";
 
-/** Owned plain snapshot of a decoded bounded window; no UI-layer dependency. */
-function immutableWindow(value: HistoryWindowResult): HistoryWindowResult {
+/** Owned immutable snapshot of decoded bounded saved data; no UI-layer dependency. */
+function immutableSaved<T>(value: T): T {
   const copy = structuredClone(value);
   const freeze = (value: unknown): void => {
     if (value && typeof value === "object") {
@@ -165,8 +165,6 @@ class ThreadEntry {
   historyTick = signal(0);
   /** Bumped by every history read; a read started earlier drops its result. */
   historyGen = 0;
-  publicationTail: number | undefined;
-  publicationWindow = new Map<string, HistoryItem["assistant_publication"]>();
   /** Cancels this Thread's reads: dropped if queued, a `cancel` frame if sent. Replaced on resume. */
   cancel = new Cancel();
   /** Nobody is looking: no reads, and no hints from the bridge. */
@@ -220,7 +218,6 @@ export class ShellboyData {
   private listRefs = 0;
   private listGen = 0;
   private entries = new Map<string, ThreadEntry>();
-  private publicationRead = false;
   private handoffRead: { entry: ThreadEntry; done: Promise<void> } | undefined;
   private watchQueued = false;
   private hintWatchers = new Map<string, Set<() => void>>();
@@ -411,29 +408,11 @@ export class ShellboyData {
         const epoch = e.live.epoch;
         const valid = () => !closed && !e.closed && !e.paused && !cancel.cancelled && epoch === e.live.epoch && this.canRead();
         const out = await this.operations.historyWindow({ thread_id: threadId, ...args }, { cancel });
-        if (!out.ok || !valid()) return out.ok ? { ok: false, error: { kind: "cancelled", message: "publication owner changed" } } : out;
+        if (!out.ok || !valid()) return out.ok ? { ok: false, error: { kind: "cancelled", message: "window owner changed" } } : out;
         if (out.value.thread_id !== threadId) return { ok: false, error: { kind: "cancelled", message: "window Thread mismatch" } };
-        // Typed saved items are authoritative; legacy qualification must not gate them.
-        if (args.items === true) {
-          const saved = immutableWindow(out.value);
-          if (!valid()) return { ok: false, error: { kind: "cancelled", message: "typed window owner changed" } };
-          return { ok: true, value: saved };
-        }
-        const baseline = e.publicationTail;
-        const next: HistoryItem[] = out.value.items.map(rawItem => {
-          const { assistant_publication: _untrusted, ...item } = rawItem;
-          const ordinal = item.selection?.ordinal;
-          const held = item.node_id ? e.publicationWindow.get(item.node_id) : undefined;
-          const knownTool = e.work.peek().value?.items.some(attempt => attempt.thread_id === e.id && attempt.response_nodes_truncated === false && Array.isArray(attempt.response_nodes) && attempt.response_nodes.some(ref => ref?.node_id === item.node_id && ref.kind === "function_call"));
-          return item.kind === "assistant_response" && item.node_id && (held || knownTool || baseline !== undefined && ordinal !== undefined && ordinal > baseline)
-            ? { ...item, assistant_publication: held ?? { state: "unknown" as const } } : item;
-        });
-        await this.qualifyPublication(e, next, cancel, valid);
-        if (!valid()) return { ok: false, error: { kind: "cancelled", message: "publication owner changed" } };
-        const saved = immutableWindow({ ...out.value, items: next });
+        // Saved ordinary nodes are independent of overlay/publication evidence.
+        const saved = immutableSaved(out.value);
         if (!valid()) return { ok: false, error: { kind: "cancelled", message: "window owner changed while materializing" } };
-        if (baseline === undefined) e.publicationTail = Math.max(-1, saved.total - 1);
-        e.publicationWindow = new Map(saved.items.filter(item => item.node_id && item.assistant_publication).slice(0, 8).map(item => [item.node_id!, item.assistant_publication]));
         return { ok: true, value: saved };
       },
       cancelReads: () => { e.live.invalidate(); e.cancel.cancel(); },
@@ -601,14 +580,7 @@ export class ShellboyData {
     for (const e of this.entries.values()) {
       e.refreshAfterHandoff = false;
       e.resolveAgain = false;
-      e.publicationWindow.clear();
-      const lifetime = e.live.lifetime;
       e.live.discard(reason);
-      if (e.live.lifetime !== lifetime + 1 || e.closed) continue;
-      const current = e.history.peek();
-      if (current.items.some(item => item.assistant_publication)) e.history.value = {
-        ...current, items: current.items.map(item => item.assistant_publication ? { ...item, assistant_publication: { state: "unknown" } } : item),
-      };
     }
   }
 
@@ -714,7 +686,6 @@ export class ShellboyData {
   /** ADR-C1: one resolver, at most eight starts until explicit retry/open. Hints never refill. */
   private resolveHandoff(entry: ThreadEntry): Promise<void> {
     if (entry.resolving) { entry.resolveAgain = true; return entry.resolving; }
-    if (this.publicationRead) return Promise.resolve();
     if (this.handoffRead) { entry.resolveAgain = true; return this.handoffRead.done; }
     const epoch = entry.live.epoch;
     const cancelled = entry.cancel;
@@ -810,61 +781,13 @@ export class ShellboyData {
       entry.work.value = { ...cur, loading: false };
       return;
     }
-    // Late exact identity evidence must fence retained legacy aggregates too, not only new history.
-    const toolIds = new Set(out.ok ? value!.items.filter(a => a.kind === "attempt" && a.thread_id === entry.id && a.response_nodes_truncated === false && Array.isArray(a.response_nodes)).flatMap(a => a.response_nodes!.filter(ref => ref?.kind === "function_call" && typeof ref.node_id === "string").map(ref => ref.node_id)) : []);
-    let requalify = false;
-    batch(() => {
-      const history = entry.history.peek();
-      const items = history.items.map(item => {
-        if (item.kind !== "assistant_response" || !item.node_id || !toolIds.has(item.node_id) || item.assistant_publication?.state === "tool" || item.assistant_publication?.state === "unknown") return item;
-        requalify = true; return { ...item, assistant_publication: { state: "unknown" as const } };
-      });
-      if (requalify) {
-        ++entry.historyGen; // In-flight history built before this evidence cannot restore raw legacy facts.
-        entry.history.value = { ...history, items };
-      }
-      entry.work.value = out.ok
-        ? { value: value!, loading: false, stale: false, error: undefined }
-        : { ...cur, loading: false, stale: cur.value !== undefined, error: out.error };
-    });
-    if (valid() && requalify) void this.refresher.request(`history:${entry.id}`);
-  }
-
-  private async qualifyPublication(entry: ThreadEntry, items: HistoryItem[], cancel: Cancel, valid: () => boolean): Promise<void> {
-    const pending = items.filter(item => item.assistant_publication?.state === "unknown" && entry.live.claimPublication(item.node_id!)).slice(0, 8);
-    if (!valid()) return;
-    if (pending.length && !this.handoffRead && !this.publicationRead && entry.live.takeRead()) {
-      this.publicationRead = true;
-      try {
-        const refs = await this.operations.handoffAttempts(entry.id, { cancel });
-        if (!valid()) return;
-        for (const item of pending) {
-          if (!refs.ok) { item.assistant_publication = { state: "unknown", error: true }; continue; }
-          // A complete candidate does not establish non-competing coverage of the observed scope.
-          const scopeIncomplete = incompleteResponseScope(refs.value.items, entry.id);
-          if (scopeIncomplete) continue;
-          const candidates = refs.value.items.filter(attempt => attempt.kind === "attempt" && attempt.thread_id === entry.id && typeof attempt.attempt_id === "string" && attempt.attempt_id.trim() !== "" && typeof attempt.turn_id === "string" && attempt.turn_id.trim() !== "" && attempt.response_nodes_truncated === false && Array.isArray(attempt.response_nodes) && attempt.response_nodes.length <= 64 && attempt.response_nodes.some(ref => ref?.node_id === item.node_id));
-          if (refs.value.next_cursor || refs.value.items.some(other => other.response_nodes != null && !Array.isArray(other.response_nodes)) || candidates.length !== 1) continue;
-          const attempt = candidates[0]!;
-          if (refs.value.items.some(other => other !== attempt && Array.isArray(other.response_nodes) && other.response_nodes.some(ref => ref?.node_id === item.node_id))) continue;
-          entry.live.claimPublication(item.node_id!, attempt.attempt_id!);
-          const all = attempt.response_nodes!;
-          if (!["completed", "failed", "incomplete", "cancelled"].includes(attempt.state)) continue;
-          if (all.some(ref => !ref || typeof ref.node_id !== "string" || !ref.node_id || !Number.isSafeInteger(ref.ordinal) || ref.ordinal < 0 || !["message", "function_call"].includes(ref.kind) || ref.kind === "message" && ref.phase !== null && ref.phase !== "commentary" && ref.phase !== "final_answer")) continue;
-          if (new Set(all.map(ref => ref.ordinal)).size !== all.length) continue;
-          const nodeRefs = all.filter(ref => ref.node_id === item.node_id);
-          const tool = nodeRefs.find(ref => ref.kind === "function_call");
-          if (tool && nodeRefs.length === 1) item.assistant_publication = { state: "tool", attemptId: attempt.attempt_id!, ordinal: tool.ordinal, kind: tool.kind };
-          else if (!scopeIncomplete && nodeRefs.length === 1 && nodeRefs[0]!.kind === "message" && nodeRefs[0]!.phase === "final_answer") item.assistant_publication = { state: "message", attemptId: attempt.attempt_id!, ordinal: nodeRefs[0]!.ordinal, kind: "message" };
-        }
-      } finally { this.publicationRead = false; }
-    }
+    entry.work.value = out.ok
+      ? { value: value!, loading: false, stale: false, error: undefined }
+      : { ...cur, loading: false, stale: cur.value !== undefined, error: out.error };
   }
 
   private async readHistory(entry: ThreadEntry, onSent: () => void): Promise<void> {
     const gen = ++entry.historyGen;
-    const before = entry.history.peek();
-    const olderPage = before.loadingMore;
     const cancel = entry.cancel;
     const epoch = entry.live.epoch;
     const valid = () => !entry.closed && !entry.paused && entry.historyGen === gen && entry.cancel === cancel && !cancel.cancelled && entry.live.epoch === epoch && this.canRead();
@@ -872,28 +795,13 @@ export class ShellboyData {
     if (!valid()) return;
     const out = await this.walkHistory(entry, gen, onSent);
     if (!valid()) return;
-    if (out.ok) {
-      const old = new Map(before.items.map(item => [item.node_id, item]));
-      out.items = out.items.map(rawItem => {
-        const { assistant_publication: _untrusted, ...item } = rawItem;
-        const prior = old.get(item.node_id);
-        const knownTool = entry.work.peek().value?.items.some(attempt => attempt.thread_id === entry.id && attempt.response_nodes_truncated === false && Array.isArray(attempt.response_nodes) && attempt.response_nodes.some(ref => ref?.node_id === item.node_id && ref.kind === "function_call"));
-        return item.kind === "assistant_response" && item.node_id
-          ? prior?.assistant_publication ? { ...item, assistant_publication: prior.assistant_publication }
-            : ((before.loaded || entry.publicationTail !== undefined) && !olderPage && !prior) || knownTool ? { ...item, assistant_publication: { state: "unknown" as const } } : item
-          : item;
-      });
-      await this.qualifyPublication(entry, out.items, cancel, valid);
-      if (!valid()) return;
-    }
-    if (entry.closed || gen !== entry.historyGen) return;
     const cur = entry.history.value;
     if (!out.ok && out.error.kind === "cancelled") {
       entry.history.value = { ...cur, loading: false, loadingMore: false };
       return;
     }
     entry.history.value = out.ok
-      ? { items: out.items, earlierHidden: out.earlierHidden, loaded: true, loading: false, loadingMore: false, stale: false, error: undefined }
+      ? { items: immutableSaved(out.items.map(({ assistant_publication: _untrusted, ...item }) => item)), earlierHidden: out.earlierHidden, loaded: true, loading: false, loadingMore: false, stale: false, error: undefined }
       : { ...cur, loading: false, loadingMore: false, stale: cur.loaded, error: out.error };
   }
 
