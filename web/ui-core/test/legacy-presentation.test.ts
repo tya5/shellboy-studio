@@ -51,3 +51,36 @@ it("reentry invalidation during accepted publication suppresses old O release", 
   p.acceptedView.subscribe(() => p.dispose()); expect(p.sync()).toBe(false);
   expect(r.h.handoff.peek()).toHaveLength(1); r.data.stop();
 });
+it("ninth retirement capacity rejection never blocks independent saved rows on this current legacy ref", async () => {
+  const r = await rig(); const { signal } = await import("@preact/signals-core");
+  const live = signal<readonly import("../../data/src/handoff").HandoffRecord[]>([]);
+  const history = signal(r.h.history.peek());
+  // Public-handle adapter control: capacity/rows, not persistence-authority evidence.
+  const handle = { ...r.h, handoff: live, history, transferHandoff: (_id: string, accept: Parameters<typeof r.h.transferHandoff>[1]) => accept(live.peek()[0]!, () => {}) };
+  const p = new LegacyAcceptedPresentation(handle);
+  for (let i = 0; i < 8; i++) {
+    live.value = [{ key: `k${i}`, attemptId: `a${i}`, text: "", status: "confirming", incomplete: false,
+      terminalPersisted: { scope: r.h.handoffScope(), attemptId: `a${i}`, nodeIds: [`n${i}`], terminalState: "completed" } }];
+    expect(p.sync()).toBe(true);
+  }
+  expect(p.acceptedView.peek().terminalPersistedAttempts).toHaveLength(8);
+  live.value = [{ key: "ninth", attemptId: "a8", text: "retained", status: "confirming", incomplete: false,
+    terminalPersisted: { scope: r.h.handoffScope(), attemptId: "a8", nodeIds: ["n8"], terminalState: "completed" } }];
+  history.value = { ...history.peek(), items: [{ node_id: "independent", kind: "user" }] };
+  expect(p.sync()).toBe(true);
+  expect(p.acceptedView.peek().rows.map(row => row.node_id)).toEqual(["independent"]);
+  expect(p.acceptedView.peek().terminalPersistedAttempts).toHaveLength(8);
+  expect(p.acceptedView.peek().live[0]?.attemptId).toBe("a8"); p.dispose(); r.data.stop();
+});
+it("a rejected transfer that reenters and publishes a newer ref cannot be overwritten by the old ordinary capture", async () => {
+  const r = await rig(); const { signal } = await import("@preact/signals-core");
+  const live = signal<readonly import("../../data/src/handoff").HandoffRecord[]>([{ key: "k", attemptId: "a", text: "", status: "confirming", incomplete: false,
+    terminalPersisted: { scope: r.h.handoffScope(), attemptId: "a", nodeIds: ["saved"], terminalState: "completed" } }]);
+  const handle = { ...r.h, handoff: live, transferHandoff: () => {
+    const current = p.acceptedView.peek();
+    p.acceptedView.commit(p.acceptedView.stage({ ...current, rows: [{ node_id: "newer", kind: "user" }] })); return false;
+  } };
+  const p = new LegacyAcceptedPresentation(handle);
+  expect(p.sync()).toBe(true); expect(p.acceptedView.peek().rows.map(row => row.node_id)).toEqual(["newer"]);
+  p.dispose(); r.data.stop();
+});

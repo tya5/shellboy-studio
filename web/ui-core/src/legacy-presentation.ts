@@ -38,10 +38,8 @@ export class LegacyAcceptedPresentation {
       const next: LegacyPresentationSnapshot = { scope: this.scope, rows: this.handle.history.peek().items,
         live: this.handle.handoff.peek(), attemptPresentations: this.handle.attemptPresentations.peek()
           .filter(f => !done.some(p => p.scope === f.scope && p.attemptId === f.attemptId)), terminalPersistedAttempts: done };
-      let terminalCandidate = false;
       for (const record of this.handle.handoff.peek()) {
         if (!record.terminalPersisted || record.transferred) continue;
-        terminalCandidate = true;
         this.handle.transferHandoff(record.attemptId, (captured, release) => {
           const proof = captured.terminalPersisted, expected = this.acceptedView.peek();
           if (!proof || !this.isCurrent(expected) || proof.scope !== this.scope || proof.attemptId !== captured.attemptId
@@ -62,7 +60,7 @@ export class LegacyAcceptedPresentation {
           return true;
         });
       }
-      if (!terminalCandidate && JSON.stringify(next) !== JSON.stringify(previous)) {
+      if (this.isCurrent(previous) && JSON.stringify(next) !== JSON.stringify(previous)) {
         const staged = this.acceptedView.stage(next);
         if (!this.qualified() || !this.acceptedView.isCurrent(previous) || !this.acceptedView.commit(staged)) return false;
       }
