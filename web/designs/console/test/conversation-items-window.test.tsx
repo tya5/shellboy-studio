@@ -29,3 +29,24 @@ it('consumes actual immutable Window publications without deriving item bodies f
     expect(host.querySelector('[data-readiness]')?.getAttribute('data-readiness')).toBe(next.pending?'pending':'ready');
   }finally{render(null,host);host.remove();r.w.dispose();r.data.stop();}
 });
+
+it.each([true,false])('actual tail continuation cannot republish after synchronous same-ref revoke=%s',async revoke=>{
+  const r=await rig(3);await r.settle();const host=document.createElement('div');document.body.append(host);
+  let revoked:ReturnType<typeof r.w.acceptedView.peek>|undefined;
+  const stop=r.w.acceptedView.subscribe(ref=>{if(revoke&&!revoked){revoked=ref;r.w.acceptedView.revoke();}});
+  try{
+    await act(async()=>render(<AcceptedWindowConversation reader={r.w.acceptedView}
+      project={snapshot=>projectSavedItems(snapshot.rows.filter(row=>!!row.node_id).map(row=>({nodeId:row.node_id!,itemIdentity:'local-text',revision:'fixture',kind:'text',text:`Synthetic ${row.node_id}`})))}
+      renderItem={item=>item.source.text}/>,host));
+    const before=r.w.acceptedView.peek(),generation=host.querySelector('[data-accepted-generation]')!.getAttribute('data-accepted-generation');
+    await act(async()=>{r.owner.append(1);r.w.changed();await r.settle();});
+    if(revoke){
+      expect(revoked).toBeDefined();expect(r.w.acceptedView.peek()).toBe(revoked);
+      expect(r.w.acceptedView.isCurrent(revoked!)).toBe(false);
+      expect(host.querySelector('[data-accepted-generation]')!.getAttribute('data-accepted-generation')).toBe(generation);
+    }else{
+      expect(r.w.acceptedView.peek()).not.toBe(before);expect(r.w.acceptedView.peek().total).toBe(4);
+      expect(host.querySelector('[data-accepted-generation]')!.getAttribute('data-accepted-generation')).toBe(String(r.w.acceptedView.peek().generation));
+    }
+  }finally{stop();render(null,host);host.remove();r.w.dispose();r.data.stop();}
+});
