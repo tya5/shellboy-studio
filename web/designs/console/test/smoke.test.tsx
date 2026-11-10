@@ -220,7 +220,11 @@ describe("Conversation live text", () => {
   });
 
   it("shows at the end of the windowed reader too, and keeps following as it grows", async () => {
-    const { model, t } = await fixtureModel({ capabilities: ["live.text", "history.window"] });
+    const owner = new WindowOwner(7);
+    const { model, t } = await fixtureModel({ capabilities: ["live.text", "history.window"], configure: db => {
+      const base = db.answer.bind(db);
+      db.answer = call => call.command === "history.window" ? owner.answer(call) : base(call);
+    } });
     const el = draw(model);
     expect(model.longReader.value).toBeTruthy();
     const box = el.querySelector<HTMLElement>(".scroll")!;

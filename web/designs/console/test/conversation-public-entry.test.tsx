@@ -58,3 +58,23 @@ it('maps actual typed window rows without a registry and preserves ordinary/defe
     const content=host.querySelector('[data-item-key]')!;expect(content.parentElement?.className).toBe('conversation-items');
   }finally{render(null,host);host.remove();fixture.model.dispose();fixture.data.stop();}
 });
+
+
+it.each(['empty', 'reasoning', 'deferred', 'undefined', 'empty-window'] as const)('places live chrome exactly once with %s boundary input',async mode=>{
+  const fixture=await fixtureModel(),host=document.createElement('div');document.body.append(host);
+  try{
+    const { SavedWindowContent }=await import('../screens/Conversation');
+    const rows:import('../../../data/src/protocol').HistoryItem[]=mode==='empty-window'?[]:[
+      {node_id:'boundary-node',kind:'assistant_response',selection:{ordinal:1},...(mode==='deferred'?{items:null,items_unavailable_reason:'response_budget' as const}:{items:mode==='reasoning'?[{item_identity:'reasoning',kind:'reasoning_unavailable' as const}]:[]})},
+      {node_id:'later-human',kind:'user',excerpt:'Later human',selection:{ordinal:2}},
+    ];
+    const snapshot={rows,range:{first:0,last:2},total:rows.length,revision:1,generation:1,epoch:1,disposed:false,pending:false};
+    await act(async()=>render(<SavedWindowContent model={fixture.model} snapshot={snapshot} liveBoundary={mode==='undefined'?undefined:1} live={<span>Synthetic live boundary answer</span>}/>,host));
+    expect(host.querySelectorAll('[data-live-overlay]')).toHaveLength(1);
+    if(mode!=='empty-window'){
+      const content=host.textContent!;
+      if(mode==='undefined')expect(content.indexOf('Later human')).toBeLessThan(content.indexOf('Synthetic live boundary answer'));
+      else expect(content.indexOf('Synthetic live boundary answer')).toBeLessThan(content.indexOf('Later human'));
+    }
+  }finally{render(null,host);host.remove();fixture.model.dispose();fixture.data.stop();}
+});
