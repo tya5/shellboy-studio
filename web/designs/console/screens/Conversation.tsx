@@ -6,7 +6,7 @@ import { Markdown } from "../system/components/Message";
 import type { WindowAcceptedSnapshot } from "../../../ui-core/src/window";
 import type { ComponentChildren } from "preact";
 import type { SavedItemProjection } from "../../../ui-core/src/conversation-items";
-import { ConversationItems, type ConversationItem, type ConversationToolSummary } from "./ConversationItems";
+import { ConversationItems, type ConversationItem, type ConversationToolSummary, type ConversationWorkGroup } from "./ConversationItems";
 import { characterAssets } from "../system/character-assets";
 import { effect } from "@preact/signals-core";
 import { MonitorPopover } from "../system/components/MonitorPopover";
@@ -70,12 +70,12 @@ export function AcceptedWindowConversation({ reader, project, renderItem, render
 }
 
 /** Console presentation for an already authorized projection, independent of wire decoding. */
-export function SavedConversationItems({ model, projection, renderBefore, trailing, nodes }: { model: AppModel; projection: SavedItemProjection; nodes?: readonly HistoryItem[]; renderBefore?: (item: ConversationItem) => ComponentChildren; trailing?: ComponentChildren }) {
+export function SavedConversationItems({ model, projection, renderBefore, trailing, nodes }: { model: AppModel; projection: SavedItemProjection & { sequence?: readonly ({kind: "conversation"; itemKey: string} | {kind: "work"; groupKey: string})[]; workGroups?: readonly ConversationWorkGroup[] }; nodes?: readonly HistoryItem[]; renderBefore?: (item: ConversationItem) => ComponentChildren; trailing?: ComponentChildren }) {
   const t = model.t.value;
   const allSteps = model.conversation.value.flatMap(row => row.type === "steps" ? row.steps : []);
   const [openMemberships, setOpenMemberships] = useState<ReadonlySet<string>>(() => new Set());
   const membershipKey = (summary: { memberKeys: readonly string[] }) => JSON.stringify(summary.memberKeys);
-  const memberships = new Set(projection.toolSummaries.map(membershipKey));
+  const memberships = new Set((projection.workGroups ?? projection.toolSummaries).map(membershipKey));
   useLayoutEffect(() => {
     setOpenMemberships(previous => {
       const kept = new Set([...previous].filter(key => memberships.has(key)));
@@ -84,10 +84,27 @@ export function SavedConversationItems({ model, projection, renderBefore, traili
   }, [projection]);
   const opened = (summary: { memberKeys: readonly string[] }) => openMemberships.has(membershipKey(summary));
   const hidden = (item: ConversationItem) => {
-    const summary = projection.toolSummaries.find(summary => summary.memberKeys.includes(item.key));
+    const summary = (projection.workGroups ?? projection.toolSummaries).find(summary => summary.memberKeys.includes(item.key));
     return summary !== undefined && !opened(summary);
   };
-  return <ConversationItems {...projection} renderBefore={renderBefore} trailing={trailing} isItemHidden={hidden} renderHeading={summary => {
+  const renderWorkGroup = (group: ConversationWorkGroup, children: ComponentChildren) => {
+    const steps = allSteps.filter(step => group.executionIds.includes(step.executionId));
+    const active = steps.some(step => step.status === "running");
+    const failures = steps.filter(step => step.state === "failed" || step.status === "failed" || step.status === "recovery" || (typeof step.exitCode === "number" && step.exitCode !== 0)).length;
+    const unknown = group.unknownToolCount > 0 || steps.length !== group.executionIds.length;
+    const completed = group.executionIds.length > 0 && !unknown && steps.every(step => step.status === "completed");
+    const status = active ? "running" : failures ? "failed" : completed ? "completed" : undefined;
+    const label = [t("work.group"), ...(group.unknownToolCount ? [t("work.unknownTools")] : [t("tools.count", { n: group.executionIds.length })]), ...(unknown ? [t("work.textUnavailable")] : []), ...(failures ? [t("tools.nonzero", {n: failures})] : []), ...(group.interrupted ? [t("status.stopped")] : []), ...((group.continuationBefore !== "closed" || group.continuationAfter !== "closed") ? [t("work.partial")] : [])].join(" · ");
+    return <details class="step step-group" open={opened(group)} data-work-group={group.key} data-key={group.key} data-heading-anchor-key={group.firstMemberKey} data-heading-member-keys={JSON.stringify(group.memberKeys)} onToggle={event => {
+      const open = event.currentTarget.open;
+      setOpenMemberships(previous => {
+        const next = new Set([...previous].filter(key => memberships.has(key)));
+        if (open) next.add(membershipKey(group)); else next.delete(membershipKey(group));
+        return next;
+      });
+    }}><summary data-work-heading=""><Icon name="term" /><span class="tool-group-label">{label}</span>{status ? <StatusMark status={status} label={statusLabel(t, status)} /> : null}<span class="meta" /></summary><div class="step-group-list">{children}</div></details>;
+  };
+  return <ConversationItems {...projection} renderWorkGroup={projection.workGroups ? renderWorkGroup : undefined} renderBefore={renderBefore} trailing={trailing} isItemHidden={hidden} renderHeading={summary => {
     const steps = allSteps.filter(step => summary.executionIds.includes(step.executionId));
     const active = steps.find(step => step.status === "running");
     const nonzero = steps.filter(step => typeof step.exitCode === "number" && step.exitCode !== 0).length;
@@ -105,7 +122,7 @@ export function SavedConversationItems({ model, projection, renderBefore, traili
     }}>{null}</StepRow></section>;
   }}
     renderItem={item => {
-      if (item.source.kind === "text") {
+      if (item.source.kind === "text" || item.source.kind === "user" || item.source.kind === "summary") {
         const node = nodes?.find(node => node.node_id === item.source.nodeId);
         if (!node) return <Markdown text={item.source.text ?? ""} copyLabel={t("code.copy")} copiedLabel={t("code.copied")} />;
         const fact = senderFact(node.provenance?.sender);
@@ -124,6 +141,10 @@ export function SavedConversationItems({ model, projection, renderBefore, traili
           return <div key={id} data-execution-id={id}>{hidden(item) ? null : step ? <StepView model={model} step={step} /> : <div class="caption muted" data-execution-unresolved="">{t("work.textUnavailable")}</div>}</div>;
         });
       }
+      if (item.source.kind === "ordinaryEmpty") return <div class="caption muted" data-empty-ordinary="">{t("work.textUnavailable")}</div>;
+      if (item.source.kind === "reasoning" || item.source.kind === "reasoning_unavailable") return <div class="caption muted" data-thinking-marker="">{t("work.thinking")}</div>;
+      if (item.source.kind === "interruption") return <Notice>{t("status.stopped")}</Notice>;
+      if (item.source.kind === "record") return <details data-internal-records=""><summary>{t("work.records", {n: 1})}</summary><span class="caption muted">{t("work.textUnavailable")}</span></details>;
       if (item.source.kind === "unknown" || item.source.kind === "unavailable") return <div class="caption muted" data-item-unavailable="">{t("work.textUnavailable")}</div>;
       return null;
     }} />;
