@@ -258,3 +258,21 @@ it('retains the actual response budget reason in closed and open saved Work with
     expect(details.textContent).toContain('response_budget');expect(details.textContent).not.toContain('Forbidden');
   }finally{render(null,host);host.remove();fixture.model.dispose();fixture.data.stop();}
 });
+
+it('restores incomplete, failed, and retry chrome without granting ready text live authority',async()=>{
+  const fixture=await fixtureModel(),host=document.createElement('div');document.body.append(host);
+  try{
+    const screen=await import('../screens/Conversation') as unknown as Record<string,any>;
+    expect(screen.LiveRecordChrome).toBeTypeOf('function');
+    const { Handoff }=await import('../../../data/src/handoff');const callbacks:(()=>void)[]=[];
+    const ledger=new Handoff(callback=>callbacks.push(callback));
+    ledger.apply({attempt_id:'chrome',gap:true,deltas:[{offset:0,reasoning:false,text:'Stream body'}]});while(callbacks.length)callbacks.shift()!();
+    ledger.fail('chrome');const record=ledger.records.value[0]!;let retries=0;
+    await act(async()=>render(<screen.LiveRecordChrome model={fixture.model} record={record} retry={()=>{retries++;}}/>,host));
+    expect(host.textContent).toContain(fixture.model.t.value('convo.handoffLimit'));
+    const retry=host.querySelector('button')!;expect(retry.textContent).toContain(fixture.model.t.value('action.retry'));
+    await act(async()=>{retry.dispatchEvent(new MouseEvent('click',{bubbles:true}));});expect(retries).toBe(1);
+    expect(host.textContent).not.toContain('Stream body');expect(host.querySelector('[role="status"]')).toBeNull();
+    ledger.discard('ended');
+  }finally{render(null,host);host.remove();fixture.model.dispose();fixture.data.stop();}
+});

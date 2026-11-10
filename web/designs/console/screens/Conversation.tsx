@@ -126,7 +126,15 @@ export function SavedConversationItems({ model, projection, renderBefore, traili
     renderItem={item => {
       if (item.source.kind === "text" || item.source.kind === "user" || item.source.kind === "summary") {
         const node = item.source.nodeId ? nodes?.find(node => node.node_id === item.source.nodeId) : undefined;
-        if (!node) return "domain" in item.source ? <div data-live-overlay=""><Message bot who={t("convo.shellboy")} at={t("convo.live")} text={item.source.text ?? ""} copyLabel={t("code.copy")} copiedLabel={t("code.copied")} /></div> : <Markdown text={item.source.text ?? ""} copyLabel={t("code.copy")} copiedLabel={t("code.copied")} />;
+        if (!node && "domain" in item.source) {
+          const source = item.source;
+          const handle = model.handle.value;
+          const record = source.namespace === "handoff" ? handle?.handoff.value.find(record => record.key === source.recordId) : undefined;
+          return <div data-live-overlay=""><Message bot who={t("convo.shellboy")} at={t("convo.live")} text={item.source.text ?? ""} copyLabel={t("code.copy")} copiedLabel={t("code.copied")}>
+            {record ? <LiveRecordChrome model={model} record={record} retry={() => handle?.retryHandoff()} /> : null}
+          </Message></div>;
+        }
+        if (!node) return <Markdown text={item.source.text ?? ""} copyLabel={t("code.copy")} copiedLabel={t("code.copied")} />;
         const fact = senderFact(node.provenance?.sender);
         const speaker: Extract<ConversationRow, { type: "message" }>["speaker"] = node.kind === "assistant_response" ? { kind: "shellboy" }
           : fact.kind === "human" ? { kind: "you" } : fact.kind === "model" ? fact
@@ -157,6 +165,15 @@ export function DeferredHistoryNode({ model, row }: { model: AppModel; row: Hist
   return <div class="caption muted" data-node={row.node_id} data-items-unavailable-reason={row.items_unavailable_reason}>
     {model.t.value("work.textUnavailable")}
   </div>;
+}
+
+export function LiveRecordChrome({ model, record, retry }: { model: AppModel; record: HandoffRecord; retry: () => void }) {
+  const t = model.t.value;
+  return <span class="live-meta" data-live-record-chrome={record.key}>
+    {record.incomplete ? <span class="preview-note">{t("convo.handoffLimit")}</span> : null}
+    {record.status !== "streaming" ? <span class="live-phase">{record.status === "failed" ? t("convo.handoffFailed") : record.status === "interrupted" ? t("status.stopped") : t("convo.handoffConfirming")}</span> : null}
+    {record.status === "failed" || record.status === "confirming" ? <Button variant="link" onClick={retry}>{t("action.retry")}</Button> : null}
+  </span>;
 }
 
 /** Only records read from the current owned ledger may enter this adapter. */
