@@ -1,3 +1,7 @@
+// LOCAL normalized authority identity, not a Core protocol or serializable token.
+declare const acceptedCapabilityBrand: unique symbol;
+export type AcceptedCapability = Readonly<{ readonly [acceptedCapabilityBrand]: true }>;
+
 /** Initial counterexample scaffold, not wired into store/window publication. */
 export class AcceptedView<T> {
   current: T;
