@@ -2,6 +2,14 @@ import { computed, signal, type ReadonlySignal } from '@preact/signals-core';
 import { LiveText, MAX_PREVIEW_CHARS, type LiveFrame, type Preview, type PreviewDiscardReason, type Schedule } from './live';
 
 import type { HistoryItem } from './protocol';
+/** Partial persisted-node evidence, not complete body/item coverage. S owns scope authority. */
+export interface TerminalPersistedProof {
+  readonly scope: string;
+  readonly attemptId: string;
+  readonly turnId?: string;
+  readonly nodeIds: readonly string[];
+  readonly terminalState: 'completed' | 'failed' | 'incomplete' | 'cancelled';
+}
 export interface AttemptReadyProof { readonly scope: string; readonly attemptId: string; readonly turnId: string; readonly revision: string | number; readonly total: number; readonly refs: readonly { readonly nodeId: string }[]; readonly nodes: readonly HistoryItem[] }
 
 /** ADR-C1: UTF-8 retained text accounting, not a JavaScript heap guarantee. */
@@ -20,6 +28,7 @@ export interface HandoffRecord {
   readonly proof?: Readonly<{ scope: string; turnId: string; ordinal: number; revision: string | number; kind: 'assistant_response' }>;
   readonly transferred?: boolean;
   readonly readyAttempt?: AttemptReadyProof;
+  readonly terminalPersisted?: TerminalPersistedProof;
 }
 interface Held { attemptCapture?: { original: HandoffRecord; staged: HandoffRecord; proof: AttemptReadyProof; epoch: number; lifetime: number }; admitted: number; transferring?: boolean; attemptId: string; source: LiveText; stop: () => void; record: HandoffRecord }
 
