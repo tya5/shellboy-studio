@@ -15,14 +15,14 @@ export function workElementDisplay(item: ProjectedSavedItem): WorkElementDisplay
   const context: { name: string; value: string }[] = [];
   if (facts.nodeKind) context.push({ name: "kind", value: facts.nodeKind });
   if (facts.createdAt) context.push({ name: "created_at", value: facts.createdAt });
-  let text: string, label: string, icon: WorkTypeIcon = c.icon;
+  let text: string, label: string;
+  const icon: WorkTypeIcon = c.icon;
   let state: WorkElementDisplay["state"] = facts.publicState ? { source: "wire", value: facts.publicState } : null, detail: WorkElementDisplay["detailPolicy"] = "unavailable";
   switch (c.displayPolicy) {
     case "associated-tool": {
       label = "Tool";
       const shells = facts.shells;
       if (shells.length) {
-        icon = "cube"; // CASE icon remains semantic; shell rendering owns its term icon.
         text = shells.map(shell => shell.command_excerpt?.trim() || "Execution content was not provided").join("; ");
         const first = shells[0]!;
         state = first.state ? { source: "wire", value: first.state, ...(first.exit_code !== undefined ? { exitCode: first.exit_code } : {}) } : null;
