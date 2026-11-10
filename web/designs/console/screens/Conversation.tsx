@@ -94,17 +94,23 @@ export function DeferredHistoryNode({ model, row }: { model: AppModel; row: Hist
 }
 
 /** A single flat content parent preserves typed items across ordinary/deferred nodes. */
-export function SavedWindowContent({ model, snapshot }: { model: AppModel; snapshot: WindowAcceptedSnapshot }) {
+export function SavedWindowContent({ model, snapshot, live, liveBoundary }: { model: AppModel; snapshot: WindowAcceptedSnapshot; live?: ComponentChildren; liveBoundary?: number }) {
   if (snapshot.revision === undefined) return null;
   const mapped = projectHistoryWindowItems({ revision: snapshot.revision, nodes: snapshot.rows });
   const before = new Map<string, ComponentChildren[]>();
   let pending: ComponentChildren[] = [];
+  let livePlaced = false;
+  const liveChrome = <div key="live-overlay" class="live-tail" data-live-overlay="">{live}</div>;
   for (const entry of mapped.nodes) {
+    if (!livePlaced && live !== undefined && liveBoundary !== undefined && entry.ordinal !== undefined && entry.ordinal >= liveBoundary) {
+      pending.push(liveChrome); livePlaced = true;
+    }
     const first = mapped.projection.items.find(item => item.source.nodeId === entry.nodeId);
     if (entry.state === "deferred") pending.push(<DeferredHistoryNode key={`deferred:${entry.nodeId}`} model={model} row={entry.node} />);
     else if (entry.state === "legacy") pending.push(<div key={`legacy:${entry.nodeId}`} data-node={entry.nodeId}>{projectConversation([entry.node], new Map()).map(row => <RowView key={row.id} model={model} row={row} />)}</div>);
     if (first && pending.length) { before.set(first.key, pending); pending = []; }
   }
+  if (!livePlaced && live !== undefined) pending.push(liveChrome);
   return <SavedConversationItems model={model} projection={mapped.projection} renderBefore={item => before.get(item.key)} trailing={pending} />;
 }
 
@@ -339,7 +345,7 @@ function OrderedHistory({ model, handle, rows, win, history, scroller, pinned, f
             model={model}
             win={win}
             renderRow={(row) => visible(row) ? <RowView model={model} row={row} /> : <></>}
-            renderAcceptedView={snapshot => <><SavedWindowContent model={model} snapshot={snapshot} /><div class="live-tail" data-live-overlay=""><LiveMessage model={model} handle={handle} follow={follow} /><ConversationStatus model={model} /></div></>}
+            renderAcceptedView={snapshot => <><SavedWindowContent model={model} snapshot={snapshot} liveBoundary={boundary?.ordinal} live={<LiveMessage model={model} handle={handle} follow={follow} />} /><ConversationStatus model={model} /></>}
             live={<LiveMessage model={model} handle={handle} follow={follow} />}
             liveBoundary={boundary?.ordinal}
             statusLine={<ConversationStatus model={model} />}
