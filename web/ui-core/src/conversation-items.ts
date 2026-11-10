@@ -12,7 +12,9 @@ export type NormalizedSavedItem = SavedItemIdentity & (
   | { readonly kind: "tool"; readonly executionId: string }
   // Hidden reasoning deliberately has no text field.
   | { readonly kind: "reasoning" }
+  | { readonly kind: "reasoning_unavailable" }
   | { readonly kind: "unavailable" }
+  | { readonly kind: "unknown" }
 );
 
 export interface ProjectedSavedItem {
@@ -60,6 +62,8 @@ export function projectSavedItems(input: readonly NormalizedSavedItem[]): SavedI
     const key = JSON.stringify([source.nodeId, source.itemIdentity]);
     if (seenItems.has(key)) throw new Error("Duplicate normalized saved item identity");
     seenItems.add(key);
+    // v3: explicitly contentless reasoning is transparent, never rendered.
+    if (source.kind === "reasoning" || source.kind === "reasoning_unavailable") continue;
     if (source.kind === "tool") {
       if (!source.executionId) throw new Error("Normalized tool requires execution identity");
       // Request/result associations refer to one actual execution.
@@ -69,7 +73,7 @@ export function projectSavedItems(input: readonly NormalizedSavedItem[]): SavedI
       runExecutions.push(source.executionId);
     } else {
       flush();
-      if (source.kind === "reasoning" || source.kind === "unavailable") {
+      if (source.kind === "unknown" || source.kind === "unavailable") {
         partitionUnknownKeys.push(key);
       }
     }
