@@ -598,7 +598,7 @@ export class AppModel {
     const handle = this.handle.value;
     this.data.owner.value;
     const want = this.route.value.view === "conversation" && handle && !this.data.capabilities.value.includes(CAPABILITY_HISTORY_WINDOW);
-    if (this.legacyPresentation.peek() && (!want || handle !== this.legacyHandle || handle.handoffScope() !== this.legacyScope || !this.legacyPresentation.peek()!.isCurrent(this.legacyPresentation.peek()!.acceptedView.peek()))) {
+    if (this.legacyPresentation.peek() && (!want || handle !== this.legacyHandle || handle.handoffScope() !== this.legacyScope)) {
       this.legacyPresentation.peek()!.dispose();
       this.legacyPresentation.value = undefined;
     }
@@ -608,7 +608,7 @@ export class AppModel {
       this.legacyScope = handle.handoffScope();
       this.legacyPresentation.value = new LegacyAcceptedPresentation(handle);
     }
-    handle.history.value; handle.handoff.value; handle.attemptPresentations.value;
+    handle.history.value; handle.handoff.value; handle.work.value; handle.attemptPresentations.value;
     this.legacyPresentation.peek()!.sync();
   }
 

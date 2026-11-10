@@ -54,3 +54,38 @@ for(const windowed of [true,false])for(const mode of ['truncated','partial','bud
   expect(f.t.calls('history.get')).toHaveLength(0);
  }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
 });
+
+it('no-window App keeps structural receipts after representation GC and suppresses old work from the same qualified bundle',async()=>{
+ let stage=0;
+ const nodes:HistoryItem[]=[{node_id:'saved-terminal',kind:'assistant_response',selection:{ordinal:0},items:[{kind:'text',item_identity:'saved',text:'Independent available saved',text_complete:true}]}];
+ const f=await fixtureModel({capabilities:['live.text'],configure(db){
+  db.threads={t:summary('t')};db.details.t=details('t');db.history.t=nodes;
+  const base=db.answer.bind(db);db.answer=call=>{
+   if(call.command==='history.window')return {ok:true,result:{thread_id:'t',revision:1,total:1,items:nodes}};
+   if(call.command==='status')return {ok:true,result:{items:stage===1?[{id:'retired-attempt',attempt_id:'retired-attempt',thread_id:'t',kind:'attempt',state:'completed',response_nodes:[{node_id:'saved-terminal',ordinal:0,kind:'message'}]}]:stage===3?[{id:'old-work',thread_id:'t',kind:'shell',state:'running',attempt_id:'retired-attempt',execution_id:'old-execution'}]:[]}};
+   return base(call);
+  };
+ }});
+ const host=document.createElement('div');document.body.append(host);
+ const context:DesignContext={model:f.model,prefs:signal(loadPrefs({read:()=>null,write:()=>{}},[{name:'console',themes:[{name:'light'}]}])),setPrefs:()=>{},designs:[],submitToken:async()=>false};
+ try{
+  await act(async()=>{render(<App context={context}/>,host);await settle(f.t,f.db);});
+  const owner=f.model.legacyPresentation.peek()!;
+  await act(async()=>{f.t.push({t:'live',thread_id:'t',attempt_id:'retired-attempt',gap:false,deltas:[{offset:0,reasoning:false,text:'Retired original body'}]});await flush(24);});
+  expect(host.textContent).toContain('Retired original body');
+  stage=1;await act(async()=>{f.t.push({t:'live_end',thread_id:'t'});await settle(f.t,f.db);await flush(24);});
+  expect(f.model.legacyPresentation.peek()).toBe(owner);
+  expect(owner.acceptedView.peek().structuralTerminalReceipts).toHaveLength(1);
+  stage=2;await act(async()=>{f.t.push({t:'changed',thread_ids:['t'],list:false});await settle(f.t,f.db);await flush(24);});
+  let ref=owner.acceptedView.peek();
+  expect(owner.isCurrent(ref)).toBe(true);expect(ref.structuralTerminalReceipts).toHaveLength(1);
+  expect(ref.terminalPersistedAttempts).toHaveLength(0);
+  expect(host.textContent).not.toContain('Retired original body');expect(host.textContent).toContain('Independent available saved');
+  stage=3;await act(async()=>{f.t.push({t:'changed',thread_ids:['t'],list:false});await settle(f.t,f.db);await flush(24);});
+  ref=owner.acceptedView.peek();expect(owner.isCurrent(ref)).toBe(true);expect(ref.work.value?.items[0]?.id).toBe('old-work');
+  expect(ref.structuralTerminalReceipts).toHaveLength(1);
+  expect(host.querySelector('[data-execution-unavailable], [data-execution-id="old-execution"]')).toBeNull();
+  expect(host.textContent).not.toContain('Retired original body');
+  await act(async()=>{f.model.navigate({view:'threads'});await flush(4);});expect(owner.isCurrent(ref)).toBe(false);
+ }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
+});

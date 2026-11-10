@@ -244,9 +244,11 @@ function LegacySavedContent({model,handle}: {model:AppModel;handle:ThreadHandle;
   },[owner]);
   const ref=accepted.owner===owner?accepted.ref:owner?.acceptedView.peek();
   if(!owner||!ref||!owner.isCurrent(ref))return null;
-  const live=ref.live.filter(record=>!ref.terminalPersistedAttempts.some(proof=>proof.scope===ref.scope&&proof.attemptId===record.attemptId));
+  const receipts=[...ref.terminalPersistedAttempts,...ref.structuralTerminalReceipts];
+  const retired=(attemptId:string|null|undefined)=>!!attemptId&&receipts.some(proof=>proof.scope===ref.scope&&proof.attemptId===attemptId);
+  const live=ref.live.filter(record=>!retired(record.attemptId));
   const handoffs=model.data.capabilities.value.includes("live.text") ? projectOwnedHandoffFacts(handle.threadId,live) : [];
-  const work=normalizeLiveWorkFacts({scope:handle.threadId,items:handle.work.value.value?.items??[]});
+  const work=normalizeLiveWorkFacts({scope:handle.threadId,items:(ref.work.value?.items??[]).filter(item=>!retired(item.attempt_id))});
   const projection=projectLegacyHistoryItems({nodes:ref.rows,keyScope:[ref.scope],liveFacts:[...handoffs,...work]}).projection;
   return <SavedConversationItems model={model} nodes={ref.rows} projection={projection} trailing={<PendingOwnMessageView model={model} nodes={ref.rows} scope={ref.scope}/>}/>;
 }
