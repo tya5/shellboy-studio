@@ -2,11 +2,13 @@
   "purpose": "unreviewed normalized validation only, not production adoption",
   "base": "9bda7c699b9b2732de5ec5e105ad789d4f3cb638",
   "P": "bb6ad33ea8aad67c142f6d5d66210f76da681f84",
-  "S": "e89bb81b1d38f0145004d45bcfc1d16739733769",
+  "S": "41f8e0bbdbd6e9ab6f6035b291ecb9e2563f8950",
   "O": "3ab5cbb3c93b137c2d5e1974dfe96cf66427e778",
   "G": "6a045cbe21a5f56c735139872e55917464fd1f2a",
-  "D": "3bfe2fa90029a32d7338198eb3ca8158d9ced4bb",
+  "D": "395e5999be407d2d95759913979db4705ad1a1ef",
   "wire": "none; synthetic normalized inputs",
   "pipeline": "actual P invocation required; failed P leaves full pipeline red",
-  "downstream_controls": "precomputed expectation explicitly not P success"
+  "downstream_controls": "precomputed expectation explicitly not P success",
+  "S_status": "HOLD: actual notification revoke resurrection and pending-tail follow red",
+  "D_integration_commit": "00b8717 (exact one-commit cherry-pick; parents already integrated)"
 }
