@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { projectHistoryWindowItems, projectSavedItems, type NormalizedSavedItem } from "../src/conversation-items";
 const text = (nodeId: string, itemIdentity: string, value: string): NormalizedSavedItem => ({ nodeId, itemIdentity, revision: "r1", kind: "text", text: value });
-const tool = (nodeId: string, itemIdentity: string, executionId: string): NormalizedSavedItem => ({ nodeId, itemIdentity, revision: "r1", kind: "tool", executionId });
+const tool = (nodeId: string, itemIdentity: string, executionId: string): Extract<NormalizedSavedItem, { kind: "tool" }> => ({ nodeId, itemIdentity, revision: "r1", keyScope: ["test-owner", "test-thread"], kind: "tool", executionId });
 
 describe("internal saved ordered-item projection (no wire adapter)", () => {
   it("splits on every body item, never on a node boundary", () => {
@@ -81,7 +81,7 @@ it("NEW FINAL reasoning and unknown join Work without fabricating text", () => {
 
 it("maps authoritative v3 arrays without inventing item revision or splitting multi-link items", async () => {
   const { projectHistoryWindowItems } = await import("../src/conversation-items");
-  const out = projectHistoryWindowItems({ revision: 7, nodes: [{ node_id: "A", selection: { ordinal: 2 }, items: [{ kind: "text", item_identity: "t", text: "prefix", text_complete: false }, { kind: "tool_call", item_identity: "c", execution_ids: ["x", "y"] }] }, { node_id: "B", selection: { ordinal: 3 }, items: [{ kind: "tool_result", item_identity: "r", execution_ids: ["x", "y"] }, { kind: "text", item_identity: "e", text: "", text_complete: true }] }] });
+  const out = projectHistoryWindowItems({ keyScope: ["test-owner", "test-thread"], revision: 7, nodes: [{ node_id: "A", selection: { ordinal: 2 }, items: [{ kind: "text", item_identity: "t", text: "prefix", text_complete: false }, { kind: "tool_call", item_identity: "c", execution_ids: ["x", "y"] }] }, { node_id: "B", selection: { ordinal: 3 }, items: [{ kind: "tool_result", item_identity: "r", execution_ids: ["x", "y"] }, { kind: "text", item_identity: "e", text: "", text_complete: true }] }] });
   expect(out.projection.items).toHaveLength(3);
   expect(out.projection.toolSummaries[0]?.executionIds).toEqual(["x", "y"]);
   expect(out.projection.items[0]?.source).toMatchObject({ text: "prefix", textComplete: false, windowRevision: 7 });
@@ -220,4 +220,28 @@ it("REVIEW budget reason survives into the visible Work item, not only node meta
   expect(out.projection.workGroups?.[0]?.memberKeys).toEqual([out.projection.items[0]!.key]);
   expect(out.retryFrom).toEqual({ ordinal: 9, expect_node_id: "budget" });
   expect(JSON.stringify(out.projection)).not.toContain("not safe body");
+});
+
+it("SECTION11 scoped tool key and group survive non-tool prepend and selected call/result dedup", () => {
+  const keyed = { ...tool("A", "call", "exec"), keyScope: ["owner", "thread"] };
+  const first = projectSavedItems([keyed]);
+  const next = projectSavedItems([{ nodeId: "R", itemIdentity: "reason", revision: "r1", kind: "reasoning" }, keyed, { ...tool("B", "result", "exec"), keyScope: ["owner", "thread"] }]);
+  expect(next.workGroups[0]?.key).toBe(first.workGroups[0]?.key);
+  expect(next.items.filter(i => i.source.kind === "tool")).toHaveLength(1);
+  expect(first.items[0]?.key).toBe(JSON.stringify(["tool", ["owner", "thread"], "execution", ["exec"]]));
+  expect(first.items[0]?.canonicalKey).toBe(JSON.stringify(["A", "call"]));
+});
+it("SECTION11 conflicting associations and missing IDs stay separate unresolved", () => {
+  const out = projectSavedItems([{ ...tool("A", "a", "x"), executionIds: ["x", "y"], keyScope: ["o", "t"] }, { ...tool("B", "b", "x"), executionIds: ["x", "z"], keyScope: ["o", "t"] }, { nodeId: "C", itemIdentity: "c", revision: "r1", kind: "tool", executionIds: [] }]);
+  expect(out.items).toHaveLength(3);
+  expect(out.items.every(i => i.toolIdentity === "unresolved")).toBe(true);
+});
+
+it("SECTION11 unscoped equal IDs and unequal scoped associations never erase selected records", () => {
+  const noScope = projectSavedItems([{ nodeId: "A", itemIdentity: "a", revision: "r", kind: "tool", executionIds: ["same"] }, { nodeId: "B", itemIdentity: "b", revision: "r", kind: "tool", executionIds: ["same"] }]);
+  expect(noScope.items).toHaveLength(2);
+  expect(noScope.items.every(item => item.toolIdentity === "unresolved")).toBe(true);
+  const scopedCall = projectSavedItems([{ nodeId: "A", itemIdentity: "a", revision: "r", keyScope: ["owner", "thread", "attempt"], kind: "tool", callId: "call" }]);
+  expect(scopedCall.items[0]?.toolIdentity).toBe("call");
+  expect(scopedCall.items[0]?.key).toBe(JSON.stringify(["tool", ["owner", "thread", "attempt"], "call", "call"]));
 });
