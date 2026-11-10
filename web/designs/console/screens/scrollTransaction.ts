@@ -10,7 +10,8 @@ export interface ScrollViewPort<View extends object> {
 }
 export interface ScrollCommitPlan {
   /** G-owned, callback-free consumption of a previously peeked heading/intent plan. */
-  consume(): void;
+  consume(): void | boolean;
+  readonly ownsScrollRequest?: boolean;
   write(): void;
   capture(): void;
 }
@@ -60,8 +61,8 @@ export class CurrentScrollSync {
       const plan = effects.plan(ref, request);
       if (!current()) return obsolete();
       // Both consumes are callback-free. A successful request consume preserves ref/epoch.
-      if (request && !port.consumeScroll(ref, request.id)) return 'rejected';
-      plan.consume();
+      if (!plan.ownsScrollRequest && request && !port.consumeScroll(ref, request.id)) return 'rejected';
+      if (plan.consume() === false) return "rejected";
       if (!current()) return obsolete();
       plan.write();
       if (!current()) return obsolete();

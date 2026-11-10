@@ -103,6 +103,12 @@ function canonicalElement(item: HTMLElement): HTMLElement | undefined {
 }
 
 export class ReadingAnchor {
+  source(context: ReadingContext): { nodeId: string; offset: number } | undefined {
+    const saved = this.canonical;
+    if (!saved || !context.isCurrent() || saved.revision !== context.revision || saved.epoch !== context.epoch || saved.capability !== context.capability || !context.nodes.includes(saved.node)) return;
+    return { nodeId: saved.node, offset: saved.offset };
+  }
+
   private canonical: { key: string; node: string; offset: number; revision: string | number | undefined; epoch: number; capability: object } | undefined;
 
   private saved: { node: string; step?: string; members: string[]; offset: number } | undefined;
