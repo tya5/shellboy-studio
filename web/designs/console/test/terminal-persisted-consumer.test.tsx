@@ -18,7 +18,7 @@ for(const windowed of [true,false])for(const mode of ['truncated','partial','bud
   {node_id:'saved',kind:'assistant_response',selection:{ordinal:1},items:[{kind:'text',item_identity:'s',text:'Available saved answer',text_complete:true}]},
   {node_id:'unready',kind:'assistant_response',selection:{ordinal:2},items:mode==='partial'?[{kind:'text',item_identity:'p',text:'Available partial prefix',text_complete:false}]:null,...(mode==='partial'?{}:{items_unavailable_reason:'response_budget' as const})},
  ];
- const f=await fixtureModel({capabilities:windowed?['history.window']:[],configure(db){
+ const f=await fixtureModel({capabilities:windowed?['live.text','history.window']:['live.text'],configure(db){
   db.threads={t:summary('t')};db.details.t=details('t');db.history.t=nodes;
   const base=db.answer.bind(db);db.answer=call=>{
    if(call.command==='status')return {ok:true,result:{items:ended?[{kind:'attempt',id:mode==='wrong-attempt'?'other-attempt':'attempt',attempt_id:mode==='wrong-attempt'?'other-attempt':'attempt',thread_id:'t',state:mode==='nonterminal'?'inflight':'completed',response_nodes_truncated:mode==='truncated',response_nodes:mode==='empty'?[]:[{node_id:'unready',ordinal:2,kind:'message'},{node_id:'saved',ordinal:1,kind:'message'}]}]:[]}};
@@ -30,6 +30,8 @@ for(const windowed of [true,false])for(const mode of ['truncated','partial','bud
  const context:DesignContext={model:f.model,prefs:signal(loadPrefs({read:()=>null,write:()=>{}},[{name:'console',themes:[{name:'light'}]}])),setPrefs:()=>{},designs:[],submitToken:async()=>false};
  try{
   await act(async()=>{render(<App context={context}/>,host);await settle(f.t,f.db);});
+  expect(f.model.data.capabilities.peek()).toContain('live.text');
+  expect(f.model.data.capabilities.peek().includes('history.window')).toBe(windowed);
   const win=windowed?f.model.longReader.peek()!:f.model.legacyPresentation.peek()!;
   const before=win.acceptedView.peek();
   await act(async()=>{f.t.push({t:'live',thread_id:'t',attempt_id:'attempt',gap:false,deltas:[{offset:0,reasoning:false,text:'Original live answer'}]});await flush(24);});
