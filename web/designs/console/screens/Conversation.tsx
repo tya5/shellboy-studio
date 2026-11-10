@@ -73,8 +73,12 @@ export function SavedConversationItems({ model, projection }: { model: AppModel;
     renderItem={item => {
       if (item.source.kind === "text") return <Markdown text={item.source.text ?? ""} copyLabel={t("code.copy")} copiedLabel={t("code.copied")} />;
       if (item.source.kind === "tool") {
-        const step = model.conversation.value.flatMap(row => row.type === "steps" ? row.steps : []).find(step => step.executionId === item.source.executionId);
-        return step ? <StepView model={model} step={step} /> : <div class="caption muted" data-execution-unresolved="">{t("work.textUnavailable")}</div>;
+        const ids = item.source.executionIds ?? (item.source.executionId ? [item.source.executionId] : []);
+        const steps = model.conversation.value.flatMap(row => row.type === "steps" ? row.steps : []);
+        return ids.map(id => {
+          const step = steps.find(step => step.executionId === id);
+          return <div key={id} data-execution-id={id}>{step ? <StepView model={model} step={step} /> : <div class="caption muted" data-execution-unresolved="">{t("work.textUnavailable")}</div>}</div>;
+        });
       }
       return null;
     }} />;

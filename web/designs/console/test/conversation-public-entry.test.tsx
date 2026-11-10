@@ -30,3 +30,14 @@ it('shows a deferred whole-node placeholder without exposing its unproved aggreg
     expect(host.textContent).not.toContain(row.excerpt!);
   }finally{render(null,host);host.remove();fixture.model.dispose();fixture.data.stop();}
 });
+
+it('keeps all execution IDs under the single authoritative tool item wrapper',async()=>{
+  const fixture=await fixtureModel(),host=document.createElement('div');document.body.append(host);
+  try{
+    const { SavedConversationItems }=await import('../screens/Conversation');
+    const projection=projectSavedItems([{nodeId:'multi-node',itemIdentity:'multi-tool',kind:'tool',executionIds:['execution-one','execution-two']}]);
+    await act(async()=>render(<SavedConversationItems model={fixture.model} projection={projection}/>,host));
+    expect(host.querySelectorAll('[data-item-key]')).toHaveLength(1);
+    expect([...host.querySelectorAll('[data-execution-id]')].map(el=>el.getAttribute('data-execution-id'))).toEqual(['execution-one','execution-two']);
+  }finally{render(null,host);host.remove();fixture.model.dispose();fixture.data.stop();}
+});

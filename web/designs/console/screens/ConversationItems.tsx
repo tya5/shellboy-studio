@@ -4,10 +4,12 @@ import type { ComponentChildren } from 'preact';
 export interface ConversationItemSource {
   nodeId: string;
   itemIdentity: string;
-  revision: string;
+  revision?: string;
+  windowRevision?: string | number;
   kind: 'text' | 'tool' | 'reasoning' | 'reasoning_unavailable' | 'unknown' | 'unavailable';
   text?: string;
   executionId?: string;
+  executionIds?: readonly string[];
 }
 export interface ConversationItem {
   key: string;
@@ -38,7 +40,7 @@ export function ConversationItems({ items, toolSummaries = [], renderItem, rende
       );
     }
     rows.push(<div key={`item:${item.key}`} data-item-key={item.key} data-key={item.key}
-      data-node={item.source.nodeId} data-execution-id={item.source.kind === 'tool' ? item.source.executionId : undefined}>
+      data-node={item.source.nodeId} data-execution-id={item.source.kind === 'tool' && !item.source.executionIds ? item.source.executionId : undefined}>
       {renderItem(item)}
     </div>);
   }
