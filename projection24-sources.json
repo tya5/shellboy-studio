@@ -3,9 +3,9 @@
   "base": "9bda7c699b9b2732de5ec5e105ad789d4f3cb638",
   "P": "bb6ad33ea8aad67c142f6d5d66210f76da681f84",
   "S": "e89bb81b1d38f0145004d45bcfc1d16739733769",
-  "O": "18409540b152a5505e63b5c899ad77366b39fbbd",
-  "G": "de7510076bd90a31430b5311a8f9c85370adda37",
-  "D": "7c0c59f1bff28009dac20cf3b41fb180ecd36b5b",
+  "O": "3ab5cbb3c93b137c2d5e1974dfe96cf66427e778",
+  "G": "6a045cbe21a5f56c735139872e55917464fd1f2a",
+  "D": "3bfe2fa90029a32d7338198eb3ca8158d9ced4bb",
   "wire": "none; synthetic normalized inputs",
   "pipeline": "actual P invocation required; failed P leaves full pipeline red",
   "downstream_controls": "precomputed expectation explicitly not P success"
