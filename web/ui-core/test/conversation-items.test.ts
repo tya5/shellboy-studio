@@ -78,3 +78,21 @@ it("v3 explicit reasoning_unavailable is transparent and unknown never fabricate
   expect(out.partitionUnknownKeys).toEqual([out.items.find(i => i.source.kind === "unknown")!.key]);
   expect(out.items.some(i => i.source.kind === "reasoning_unavailable")).toBe(false);
 });
+
+it("maps authoritative v3 arrays without inventing item revision or splitting multi-link items", async () => {
+  const { projectHistoryWindowItems } = await import("../src/conversation-items");
+  const out = projectHistoryWindowItems({ revision: 7, nodes: [{ node_id: "A", selection: { ordinal: 2 }, items: [{ kind: "text", item_identity: "t", text: "prefix", text_complete: false }, { kind: "tool_call", item_identity: "c", execution_ids: ["x", "y"] }] }, { node_id: "B", selection: { ordinal: 3 }, items: [{ kind: "tool_result", item_identity: "r", execution_ids: ["x", "y"] }, { kind: "text", item_identity: "e", text: "", text_complete: true }] }] });
+  expect(out.projection.items).toHaveLength(3);
+  expect(out.projection.toolSummaries[0]?.executionIds).toEqual(["x", "y"]);
+  expect(out.projection.items[0]?.source).toMatchObject({ text: "prefix", textComplete: false, windowRevision: 7 });
+  expect(out.projection.items[0]?.source).not.toHaveProperty("revision");
+});
+it("keeps null/legacy ordinary nodes and ordinal retry outside fabricated item identity", async () => {
+  const { projectHistoryWindowItems } = await import("../src/conversation-items");
+  const out = projectHistoryWindowItems({ revision: "v", nodes: [{ node_id: "A", selection: { ordinal: 0 }, items: [{ kind: "tool_call", item_identity: "a", execution_ids: ["x"] }] }, { node_id: "B", selection: { ordinal: 1 }, items: null, items_unavailable_reason: "response_budget", excerpt: "ordinary retained" }, { node_id: "C", selection: { ordinal: 2 }, items: null, items_unavailable_reason: "response_budget" }] });
+  expect(out.nodes).toHaveLength(3);
+  expect(out.nodes[1]).toMatchObject({ nodeId: "B", state: "deferred", reason: "response_budget", ordinal: 1 });
+  expect(out.retryFrom).toEqual({ ordinal: 1, expect_node_id: "B" });
+  expect(out.projection.items).toHaveLength(1);
+  expect(JSON.stringify(out.projection)).not.toContain("ordinary retained");
+});
