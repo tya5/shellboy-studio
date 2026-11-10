@@ -145,11 +145,12 @@ export function SavedConversationItems({ model, projection, renderBefore, traili
       if (item.source.kind === "tool") {
         const ids = item.source.executionIds ?? (item.source.executionId ? [item.source.executionId] : []);
         const steps = model.conversation.value.flatMap(row => row.type === "steps" ? row.steps : []);
-        if (!ids.length) return <div class="caption muted" data-execution-unavailable="">{t("work.textUnavailable")}</div>;
-        return ids.map(id => {
+        const source = item.source;
+        const badge = source.compressed ? <span class="caption muted" data-tool-compressed="">{t("work.compressed")}</span> : null;
+        return <div data-tool-call-id={source.callId} data-tool-detail-unavailable={source.detailUnavailable ? "true" : undefined}>{badge}{!ids.length ? <div class="caption muted" data-execution-unavailable="">{t("work.textUnavailable")}</div> : ids.map(id => {
           const step = steps.find(step => step.executionId === id);
           return <div key={id} data-execution-id={id}>{hidden(item) ? null : step ? <StepView model={model} step={step} /> : <div class="caption muted" data-execution-unresolved="">{t("work.textUnavailable")}</div>}</div>;
-        });
+        })}</div>;
       }
       if (item.source.kind === "ordinaryEmpty") return <div class="caption muted" data-empty-ordinary="">{t("work.textUnavailable")}</div>;
       if (item.source.kind === "reasoning" || item.source.kind === "reasoning_unavailable") return <div class="caption muted" data-thinking-marker="">{t("work.thinking")}</div>;
