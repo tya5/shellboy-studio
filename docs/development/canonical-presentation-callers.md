@@ -64,3 +64,28 @@ The first metadata expectations/type failure are preserved, not product red clai
 Twenty-five independent named case-column controls plus grouping/legacy-live
 negative controls extend the existing per-row matrix. D consumer, UI TS, S6 final
 matrix and zero old-symbol whole-union check are still separate gates.
+
+## Row 04 Missing Sender And Case-Normalization Boundary
+
+Absence of structured sender proof is receivedUnknown, not human. Explicit human
+still selects human; provider role, body spelling and text prefixes do not qualify
+provenance. A named missing-sender control exercises both the decision and actual
+legacy normalized output. Direct normalized user facts also default to unknown.
+
+normalizeConversationFacts is the sole compatibility input normalizer. The core
+grouping entry and raw WorkItem adapter invoke it; saved node/item normalization
+already stamps the exact case. Qualified handoff/direct live facts acquire a case
+at this boundary before grouping. canonicalItemCase now requires a stored case and
+performs only lookup/consistency validation; it has no semantic fallback. D must
+use normalized results or call the input normalizer, never reproduce classification.
+Existing case IDs are preserved on repeated normalization; no sender is invented.
+
+Child/shell notification literal case controls prove column values only, NOT a
+fact-route selector. No public subtype absent from the DTO has been fabricated.
+
+Local evidence: /tmp/p-sender-case-red.log (missing sender red),
+/tmp/p-sender-case-green-v2.log (250 PASS / 1 TODO),
+/tmp/p-sender-case-types-v2.log (core TS PASS). The intermediate edit script failed
+before writing, causing a preserved two-control red in p-sender-case-green.log;
+that is not claimed as an additional product regression. UI and final union matrix
+remain separate gates. All work remains local-only.

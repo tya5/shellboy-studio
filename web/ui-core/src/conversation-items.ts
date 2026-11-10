@@ -114,7 +114,8 @@ export function projectSavedItems(input: readonly NormalizedSavedItem[]) {
   return projectSavedItemsCore(input);
 }
 
-function projectSavedItemsCore(input: readonly NormalizedSavedItem[], decodedLegacy = false): SavedItemProjection & { readonly workGroups: readonly WorkGroup[]; readonly sequence: readonly ConversationSequence[] } {
+function projectSavedItemsCore(rawInput: readonly NormalizedSavedItem[], decodedLegacy = false): SavedItemProjection & { readonly workGroups: readonly WorkGroup[]; readonly sequence: readonly ConversationSequence[] } {
+  const input = normalizeConversationFacts(rawInput);
   const items: ProjectedSavedItem[] = [];
   const groups: WorkGroup[] = [];
   const sequence: ConversationSequence[] = [];
@@ -237,14 +238,24 @@ export function classifySavedHistoryCase(nodeKind: string | undefined, itemKind:
   if (id === "human") {
     if (itemKind === "empty") return CANONICAL_CASES.ordinaryEmpty;
     if (itemKind !== "text" && itemKind !== "legacy") return CANONICAL_CASES.unknown;
-    return senderKind === "model" || senderKind === "thread" ? CANONICAL_CASES.receivedModel : senderKind === "external_cli" ? CANONICAL_CASES.receivedCli : senderKind && senderKind !== "human" ? CANONICAL_CASES.receivedUnknown : CANONICAL_CASES.human;
+    return senderKind === "model" || senderKind === "thread" ? CANONICAL_CASES.receivedModel : senderKind === "external_cli" ? CANONICAL_CASES.receivedCli : senderKind === "human" ? CANONICAL_CASES.human : CANONICAL_CASES.receivedUnknown;
   }
   if (id === "assistantText") return CANONICAL_CASES[itemKind === "empty" ? "ordinaryEmpty" : itemKind === "legacy" ? "legacyUnknown" : ASSISTANT_CASES[itemKind]];
   return CANONICAL_CASES[id];
 }
-const NORMALIZED_CASES = { text: "assistantText", user: "human", summary: "summary", ordinaryEmpty: "ordinaryEmpty", tool: "toolCall", reasoning: "readableReasoning", reasoning_unavailable: "reasoningMarker", record: "unknown", unknown: "unknown", interruption: "interruptionDetails", unavailable: "unavailable" } as const satisfies Record<NormalizedSavedItem["kind"], CanonicalCaseId>;
+const NORMALIZED_CASES = { text: "assistantText", user: "receivedUnknown", summary: "summary", ordinaryEmpty: "ordinaryEmpty", tool: "toolCall", reasoning: "readableReasoning", reasoning_unavailable: "reasoningMarker", record: "unknown", unknown: "unknown", interruption: "interruptionDetails", unavailable: "unavailable" } as const satisfies Record<NormalizedSavedItem["kind"], CanonicalCaseId>;
+/** Sole normalization boundary for already-normalized direct/live inputs. */
+export function normalizeConversationFacts(input: readonly NormalizedSavedItem[]): readonly NormalizedSavedItem[] {
+  return Object.freeze(input.map(item => {
+    const copy = Object.freeze({ ...item, classificationCase: item.classificationCase ?? NORMALIZED_CASES[item.kind] });
+    canonicalItemCase(copy);
+    return copy;
+  }));
+}
+/** Stored-column lookup only; missing case requires the input normalizer. */
 export function canonicalItemCase(item: NormalizedSavedItem): CanonicalCase {
-  const value = CANONICAL_CASES[item.classificationCase ?? NORMALIZED_CASES[item.kind]];
+  if (!item.classificationCase) throw new Error("Normalize canonical case at the input boundary");
+  const value = CANONICAL_CASES[item.classificationCase];
   if (value.normalizedKind !== item.kind && !(item.kind === "unknown" && value.id === "unknown")) throw new Error("Canonical case does not match normalized fact");
   return value;
 }
@@ -319,7 +330,7 @@ function projectHistoryNodes(input: { readonly keyScope?: readonly string[]; rea
 
 /** Explicit live namespace: no saved node/item/ordinal or excerpt inference. */
 export function normalizeLiveWorkFacts(input: { readonly scope: string; readonly items: readonly WorkItem[] }): readonly NormalizedSavedItem[] {
-  return Object.freeze(input.items.filter(item => item.kind !== "pending_message" && !(item.kind === "message" && ["accepted", "held"].includes(item.state))).map(item => {
+  return normalizeConversationFacts(input.items.filter(item => item.kind !== "pending_message" && !(item.kind === "message" && ["accepted", "held"].includes(item.state))).map(item => {
     if (!input.scope || !item.id || item.thread_id !== input.scope) throw new Error("Invalid live work scope");
     const identity = { domain: "live" as const, scope: input.scope, recordId: item.id, ...(typeof item.attempt_id === "string" ? { attemptId: item.attempt_id } : {}), ...(typeof item.turn_id === "string" ? { turnId: item.turn_id } : {}) };
     return Object.freeze(item.kind === "shell" && item.execution_id ? { ...identity, kind: "tool" as const, executionIds: Object.freeze([item.execution_id]) } : { ...identity, kind: "record" as const });

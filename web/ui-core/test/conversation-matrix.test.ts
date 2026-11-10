@@ -173,3 +173,21 @@ it("qualified legacy boundary groups unversioned saved facts with explicitly liv
   expect(() => projectSavedItems(mapped.projection.items.map(item => item.source))).toThrow();
   expect(() => projectLegacyHistoryItems({ nodes: [], liveFacts: [{ nodeId: "invented", itemIdentity: "invented", kind: "record" }] })).toThrow();
 });
+
+it("row04 missing structured sender is receivedUnknown, never inferred human from role or text", async () => {
+  const { classifySavedHistoryCase, projectLegacyHistoryItems } = await import("../src/conversation-items");
+  expect(classifySavedHistoryCase("user", "text").id).toBe("receivedUnknown");
+  const out = projectLegacyHistoryItems({ nodes: [{ node_id: "user", kind: "user", excerpt: "human-looking Shellboy event text", items: [{ ...text }] }] });
+  expect(out.projection.items[0]?.classification).toMatchObject({ id: "receivedUnknown", render: "received-unknown", classification: "conversation" });
+  expect(out.nodes[0]?.node.provenance?.sender).toBeUndefined();
+});
+
+it("input case normalization happens before grouping and stored-column consumers reject missing cases", async () => {
+  const { normalizeConversationFacts, canonicalItemCase, normalizeLiveWorkFacts } = await import("../src/conversation-items");
+  expect(() => canonicalItemCase({ domain: "live", scope: "thread", recordId: "actual", kind: "record" })).toThrow();
+  const normalized = normalizeConversationFacts([{ domain: "live", scope: "thread", recordId: "actual", kind: "user", text: "no sender proof" }]);
+  expect(canonicalItemCase(normalized[0]!).id).toBe("receivedUnknown");
+  const live = normalizeLiveWorkFacts({ scope: "thread", items: [{ id: "shell", thread_id: "thread", kind: "shell", state: "running", execution_id: "exec" }] });
+  expect(live[0]?.classificationCase).toBe("toolCall");
+  expect(normalizeConversationFacts(normalized)[0]?.classificationCase).toBe("receivedUnknown");
+});
