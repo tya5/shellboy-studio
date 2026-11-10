@@ -1,11 +1,17 @@
 /** Measure only the supplied loaded DOM, never the full Thread or guessed identities. */
-export function measureAcceptedRows(root: HTMLElement, rows: readonly { node_id: string; selection: { ordinal: number } }[]): [number, number][] {
+export function measureAcceptedRows(root: HTMLElement, rows: readonly { node_id?: string; selection?: { ordinal?: number } }[]): [number, number][] {
   const parent = root.querySelector<HTMLElement>('.conversation-items');
   if (!parent) return [];
-  const ordinals = new Map(rows.map(row => [row.node_id, row.selection.ordinal]));
+  const ordinals = new Map<string, number>();
+  for (const row of rows) {
+    const ordinal = row.selection?.ordinal;
+    if (!row.node_id || ordinal === undefined || !Number.isSafeInteger(ordinal) || ordinal < 0 || ordinals.has(row.node_id)) return [];
+    ordinals.set(row.node_id, ordinal);
+  }
   const nodes = [...parent.children] as HTMLElement[];
   const keys = new Map<string, string>();
   for (const el of nodes) {
+    if (el.matches(".live-tail, [data-live-overlay]")) continue;
     const key = el.dataset.itemKey;
     if (!key) continue;
     if (keys.has(key) || !el.dataset.node) return [];
@@ -13,6 +19,7 @@ export function measureAcceptedRows(root: HTMLElement, rows: readonly { node_id:
   }
   const sums = new Map<number, number>();
   for (const el of nodes) {
+    if (el.matches(".live-tail, [data-live-overlay]")) continue;
     let node = el.dataset.node;
     if (el.dataset.headingAnchorKey !== undefined) {
       let members: unknown;
