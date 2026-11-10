@@ -1,5 +1,7 @@
 // @vitest-environment happy-dom
 import { render } from 'preact';
+import { fixtureModel } from '../../../ui-core/test/fixture';
+import { Output } from '../screens/Conversation';
 import { act } from 'preact/test-utils';
 import { afterEach, describe, expect, it } from 'vitest';
 // Normalized presentation scaffold only. This is NOT a Core #296 wire DTO.
@@ -47,6 +49,36 @@ describe('flat authoritative output-item DOM contract (normalized scaffold)',()=
     await paint([b],'split-summary');expect(host.querySelector('[data-item-key="B:0"]')).toBe(old);
     expect(old.parentElement).toBe(parent);expect(host.querySelector('[data-node-container]')).toBeNull();
     expect(old.getAttribute('data-node')).toBe('B');expect(old.getAttribute('data-execution-id')).toBe('exec-B:0');
+  });
+
+  it('asserts every mixed/cross-node item position and preserves selection through prepend/merge/split',async()=>{
+    const Items=await renderer();host=document.createElement('div');document.body.append(host);
+    const a=[item('A:0','A','text'),item('A:1','A','tool')],b=[item('B:0','B','tool'),item('B:1','B','text'),item('B:2','B','tool')];
+    const paint=async(items:Item[],anchorKey:string)=>act(async()=>render(<Items items={items}
+      toolSummaries={[{anchorKey,memberKeys:items.filter(i=>i.source.kind==='tool').map(i=>i.key),executionIds:[]}]} renderHeading={()=>'Tools'} renderItem={(i:Item)=><span>{i.source.text}</span>}/>,host!));
+    const assertOrder=(items:Item[])=>expect([...host!.querySelectorAll('[data-item-key]')].map(n=>n.getAttribute('data-item-key'))).toEqual(items.map(i=>i.key));
+    await paint([...a,...b],'initial');assertOrder([...a,...b]);
+    const selected=host.querySelector('[data-item-key="B:1"] span')!.firstChild!;
+    const selection=window.getSelection()!;const range=document.createRange();range.setStart(selected,0);range.setEnd(selected,9);selection.removeAllRanges();selection.addRange(range);
+    const text=selection.toString();const parent=selected.parentNode;
+    for(const [items,key] of [[[item('P:0','P','tool'),...a,...b],'prepend'],[[...a,...b],'merge'],[b,'split']] as const){
+      await paint([...items],key);assertOrder([...items]);
+      expect(selection.anchorNode).toBe(selected);expect(selection.toString()).toBe(text);expect(selected.parentNode).toBe(parent);
+    }
+    selection.removeAllRanges();
+  });
+
+  it('retains an existing empty execution output DOM/cache entry while summary chrome changes',async()=>{
+    const Items=await renderer();const fixture=await fixtureModel();host=document.createElement('div');document.body.append(host);
+    const cached={text:'',loading:false,cutOff:false,error:undefined};fixture.model.outputs.value=new Map([['exec-A:1',cached]]);
+    const tools=[item('A:1','A','tool')];
+    const paint=async(anchorKey:string)=>act(async()=>render(<Items items={tools} toolSummaries={[{anchorKey,memberKeys:['A:1'],executionIds:['exec-A:1']}]} renderHeading={()=>'Tools'} renderItem={()=><Output model={fixture.model} id="exec-A:1" command="" complete/>}/>,host!));
+    try{
+      await paint('before');const body=host.querySelector('[data-item-key]')!,output=host.querySelector('.log')!;
+      expect(output.textContent).toBe(fixture.model.t.value('details.outputEmpty'));
+      await paint('after');expect(host.querySelector('[data-item-key]')).toBe(body);expect(host.querySelector('.log')).toBe(output);
+      expect(fixture.model.outputs.value.get('exec-A:1')).toBe(cached);expect(host.textContent).not.toContain(fixture.model.t.value('details.outputLoading'));
+    }finally{fixture.model.dispose();fixture.data.stop();}
   });
 
 });
