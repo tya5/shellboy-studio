@@ -1,4 +1,4 @@
-import { AcceptedView } from "./accepted-view";
+import { AcceptedView, type AcceptedCapability } from "./accepted-view";
 import type { HandoffRecord } from "../../data/src/handoff";
 // The long-thread reader's model (docs/design/long-threads.md): positional windows of a Thread's
 // path held in bounded buckets, a measured scroll space over one loaded run, and adjacent reads.
@@ -265,7 +265,8 @@ export class ConversationWindow {
     if (!now) return;
     // Pixels cannot navigate across an unloaded gap. Run switches are explicit and bump version.
     // The scroller's end is the path's end: trailing nodes that draw nothing have no height to reach.
-    const follow = atBottom && now.last === this.total - 1;
+    // Missing tail evidence is not a user detach and cannot create follow intent.
+    const follow = atBottom && (now.last === this.total - 1 || this.following.peek() && !!this.tailCancel);
     if (follow !== this.following.peek()) this.following.value = follow;
     if (follow && this.newer.peek()) this.newer.value = false;
     const r = now;
@@ -372,9 +373,9 @@ export class ConversationWindow {
     this.tailCancel = undefined;
   }
 
-  private bump(): void {
-    if (this.disposed) return;
-    const epoch = this.epoch, capability = this.acceptedView.currentCapability;
+  private bump(capability: AcceptedCapability = this.acceptedView.currentCapability): void {
+    if (this.disposed || capability !== this.acceptedView.currentCapability) return;
+    const epoch = this.epoch;
     const generation = ++this.acceptedGeneration;
     const staged = this.acceptedView.stage({ generation, epoch, disposed: false,
       rows: this.rangeItems(), range: this.renderRange(), total: this.total,
@@ -403,14 +404,14 @@ export class ConversationWindow {
   }
 
   private async readBucket(b: number): Promise<void> {
-    const epoch = this.epoch;
+    const epoch = this.epoch, capability = this.acceptedView.currentCapability;
     const cancel = new Cancel();
     this.inflight.set(b, { cancel });
     const out = await this.reader.read(
       { ordinal: b * WINDOW_NODES, before: 0, after: WINDOW_NODES - 1, excerpt_chars: HISTORY_EXCERPT_CHARS },
       cancel,
     );
-    if (this.disposed || epoch !== this.epoch || this.inflight.get(b)?.cancel !== cancel) return; // scrolled away or reset: dropped
+    if (this.disposed || capability !== this.acceptedView.currentCapability || epoch !== this.epoch || this.inflight.get(b)?.cancel !== cancel) return; // scrolled away or reset: dropped
     this.inflight.delete(b);
     if (!out.ok) {
       if (out.error.kind === "owner" && out.error.code === "cursor_expired") void this.verify();
@@ -426,7 +427,8 @@ export class ConversationWindow {
       void this.verify(); // the reply may predate or follow a rewrite; check before trusting it
       return;
     }
-    this.install(out.value);
+    this.install(out.value, capability);
+    if (capability !== this.acceptedView.currentCapability || epoch !== this.epoch || this.disposed) return;
     this.pump();
   }
 
@@ -436,12 +438,12 @@ export class ConversationWindow {
     const known = this.tailKnown;
     if (!known) return this.reset();
     this.verifying = true;
-    const epoch = this.epoch;
+    const epoch = this.epoch, capability = this.acceptedView.currentCapability;
     const cancel = new Cancel();
     this.tailCancel?.cancel();
     this.tailCancel = cancel;
     const out = await this.reader.read({ ordinal: known.ordinal, before: 0, after: 0, expect_node_id: known.nodeId, excerpt_chars: HISTORY_EXCERPT_CHARS }, cancel);
-    if (this.disposed || epoch !== this.epoch || this.tailCancel !== cancel) return;
+    if (this.disposed || capability !== this.acceptedView.currentCapability || epoch !== this.epoch || this.tailCancel !== cancel) return;
     this.verifying = false;
     this.tailCancel = undefined;
     if (!out.ok) {
@@ -452,7 +454,8 @@ export class ConversationWindow {
     this.revision = out.value.revision;
     this.setTotal(out.value.total);
     // Verification is evidence, not navigation to an evicted tail island.
-    if (this.isLoaded(known.ordinal)) this.install(out.value);
+    if (this.isLoaded(known.ordinal)) this.install(out.value, capability);
+    if (capability !== this.acceptedView.currentCapability || epoch !== this.epoch || this.disposed) return;
     if (this.tailAgain) { this.tailAgain = false; void this.readTail(); }
     this.pump();
   }
@@ -468,11 +471,11 @@ export class ConversationWindow {
     const args: WindowReadArgs = known && !latest
       ? { ordinal: known.ordinal, before: 0, after: 2 * WINDOW_NODES - 1, expect_node_id: known.nodeId, excerpt_chars: HISTORY_EXCERPT_CHARS }
       : { before: WINDOW_NODES - 1, after: 0, excerpt_chars: HISTORY_EXCERPT_CHARS };
-    const epoch = this.epoch;
+    const epoch = this.epoch, capability = this.acceptedView.currentCapability;
     const cancel = new Cancel();
     this.tailCancel = cancel;
     const out = await this.reader.read(args, cancel);
-    if (this.disposed || epoch !== this.epoch || this.tailCancel !== cancel) return;
+    if (this.disposed || capability !== this.acceptedView.currentCapability || epoch !== this.epoch || this.tailCancel !== cancel) return;
     this.tailCancel = undefined;
     if (!out.ok) {
       if (out.error.kind === "owner" && out.error.code === "cursor_expired") this.reset();
@@ -480,7 +483,7 @@ export class ConversationWindow {
         this.tailFailed = true;
         if (this.jumping) { this.jumping = false; this.following.value = false; }
         this.fail(out.error.message);
-        this.bump();
+        this.bump(capability);
       }
       return;
     }
@@ -496,12 +499,13 @@ export class ConversationWindow {
       void this.readTail(true);
       return;
     }
-    this.install(out.value);
+    this.install(out.value, capability);
+    if (capability !== this.acceptedView.currentCapability || epoch !== this.epoch || this.disposed) return;
     if (this.following.peek()) {
       this.lastAnchor = undefined;
       this.jumping = false;
       this.scrollRequest = Number.MAX_SAFE_INTEGER;
-      this.bump(); // publish the new run only after its anchor selection changes
+      this.bump(capability); // publish the new run only after its anchor selection changes
     }
     const last = out.value.items.at(-1);
     if (last && (ordinalOf(last) ?? -1) < this.total - 1) {
@@ -526,7 +530,9 @@ export class ConversationWindow {
     const follow = this.following.peek();
     this.epoch++;
     this.acceptedView.revoke();
+    const capability = this.acceptedView.currentCapability;
     this.cancelAll();
+    if (capability !== this.acceptedView.currentCapability || this.disposed) return;
     this.verifying = false;
     this.tailAgain = false;
     this.jumping = false;
@@ -606,7 +612,8 @@ export class ConversationWindow {
     for (let i = b * WINDOW_NODES; i < (b + 1) * WINDOW_NODES; i++) this.heights.clear(i);
   }
 
-  private install(result: HistoryWindowResult): void {
+  private install(result: HistoryWindowResult, capability = this.acceptedView.currentCapability): void {
+    if (capability !== this.acceptedView.currentCapability || this.disposed) return;
     this.applyHeights(() => {
       for (const item of result.items) {
         const o = ordinalOf(item);
@@ -636,7 +643,7 @@ export class ConversationWindow {
     batch(() => {
       this.status.value = "ready";
       this.error.value = undefined;
-      this.bump();
+      this.bump(capability);
     });
   }
 
