@@ -171,7 +171,7 @@ export function LiveRecordChrome({ model, record, retry }: { model: AppModel; re
   const t = model.t.value;
   return <span class="live-meta" data-live-record-chrome={record.key}>
     {record.incomplete ? <span class="preview-note">{t("convo.handoffLimit")}</span> : null}
-    {record.status !== "streaming" ? <span class="live-phase">{record.status === "failed" ? t("convo.handoffFailed") : record.status === "interrupted" ? t("status.stopped") : t("convo.handoffConfirming")}</span> : null}
+    {record.status !== "streaming" ? <span class="live-phase">{record.status === "failed" ? t("convo.handoffFailed") : t("convo.handoffConfirming")}</span> : null}
     {record.status === "failed" || record.status === "confirming" ? <Button variant="link" onClick={retry}>{t("action.retry")}</Button> : null}
   </span>;
 }
