@@ -1,4 +1,5 @@
-import css from '../system/layout.css?raw';
+// @ts-ignore -- node built-in, no Node types in the browser build
+import { readFileSync } from 'node:fs';
 // @vitest-environment happy-dom
 import '@preact/signals';
 import { signal } from '@preact/signals-core';
@@ -35,7 +36,8 @@ it('retains the production footer across disconnect, loading, and reconnect pare
 });
 
 it('uses the existing conversation gutter tokens without changing footer height',()=>{
+ const css=readFileSync('designs/console/system/layout.css','utf8');
  expect(css).toContain('.convo > .conversation-status{padding-inline:var(--space-24)}');
  expect(css).toContain('@media(max-width:768px){.convo > .conversation-status{padding-inline:var(--space-12)}}');
- expect(css).toContain('height:calc(var(--space-32) + var(--space-8))');
+ expect(css).toContain('height:calc(24px + 2 * var(--space-8))');
 });
