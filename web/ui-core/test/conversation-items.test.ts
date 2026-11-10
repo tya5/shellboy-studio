@@ -81,7 +81,7 @@ it("NEW FINAL reasoning and unknown join Work without fabricating text", () => {
 
 it("maps authoritative v3 arrays without inventing item revision or splitting multi-link items", async () => {
   const { projectHistoryWindowItems } = await import("../src/conversation-items");
-  const out = projectHistoryWindowItems({ keyScope: ["test-owner", "test-thread"], revision: 7, nodes: [{ node_id: "A", selection: { ordinal: 2 }, items: [{ kind: "text", item_identity: "t", text: "prefix", text_complete: false }, { kind: "tool_call", item_identity: "c", execution_ids: ["x", "y"] }] }, { node_id: "B", selection: { ordinal: 3 }, items: [{ kind: "tool_result", item_identity: "r", execution_ids: ["x", "y"] }, { kind: "text", item_identity: "e", text: "", text_complete: true }] }] });
+  const out = projectHistoryWindowItems({ keyScope: ["test-owner", "test-thread"], revision: 7, nodes: [{ node_id: "A", kind: "assistant_response", selection: { ordinal: 2 }, items: [{ kind: "text", item_identity: "t", text: "prefix", text_complete: false }, { kind: "tool_call", item_identity: "c", execution_ids: ["x", "y"] }] }, { node_id: "B", kind: "assistant_response", selection: { ordinal: 3 }, items: [{ kind: "tool_result", item_identity: "r", execution_ids: ["x", "y"] }, { kind: "text", item_identity: "e", text: "", text_complete: true }] }] });
   expect(out.projection.items).toHaveLength(3);
   expect(out.projection.toolSummaries[0]?.executionIds).toEqual(["x", "y"]);
   expect(out.projection.items[0]?.source).toMatchObject({ text: "prefix", textComplete: false, windowRevision: 7 });
@@ -283,4 +283,23 @@ it("legacy canonical node presence needs no invented revision but grants no body
   expect(out.items[0]?.key).toBe(JSON.stringify(["node", "actual-node"]));
   expect(() => projectSavedItems([{ ...source, kind: "text", text: "unproved" }])).toThrow();
   expect(() => projectSavedItems([{ ...source, itemIdentity: "guessed-item" }])).toThrow();
+});
+
+it("USER970c1 node kind outranks developer input text: event/context stay Work records", () => {
+  for (const kind of ["event", "context", "other-internal", "tool_result", undefined]) {
+    const out = projectHistoryWindowItems({ revision: 1, nodes: [{ node_id: kind ?? "missing-kind", kind, provenance: { sender: { kind: "developer" } }, items: [{ kind: "text", item_identity: "input", text: "developer input_text", text_complete: true }] }] });
+    expect(out.projection.items[0]?.source.kind).toBe("record");
+    expect(out.projection.sequence?.map(row => row.kind)).toEqual(["work"]);
+    expect(JSON.stringify(out.projection)).not.toContain("developer input_text");
+  }
+});
+it("USER970c1 user literal event/context text and typed assistant text remain Conversation", () => {
+  const out = projectHistoryWindowItems({ revision: 1, nodes: [
+    { node_id: "human", kind: "user", items: [{ kind: "text", item_identity: "body", text: "Shellboy event/context is literal human text", text_complete: true }] },
+    { node_id: "received", kind: "user", provenance: { sender: { kind: "thread", thread_id: "source" } }, items: [{ kind: "text", item_identity: "body", text: "legitimate received user", text_complete: true }] },
+    { node_id: "assistant", kind: "assistant_response", phase: "any", items: [{ kind: "text", item_identity: "body", text: "assistant text", text_complete: true }] },
+  ] });
+  expect(out.projection.sequence?.map(row => row.kind)).toEqual(["conversation", "conversation", "conversation"]);
+  expect(out.projection.items.map(item => "text" in item.source ? item.source.text : undefined)).toEqual(["Shellboy event/context is literal human text", "legitimate received user", "assistant text"]);
+  expect(out.nodes[1]?.node.provenance?.sender?.kind).toBe("thread");
 });

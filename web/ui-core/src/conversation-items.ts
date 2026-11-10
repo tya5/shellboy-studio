@@ -215,7 +215,12 @@ export function projectHistoryWindowItems(input: { readonly keyScope?: readonly 
     for (const item of node.items) {
       const identity = { ...(input.keyScope ? { keyScope: input.keyScope } : {}), nodeId: node.node_id, itemIdentity: item.item_identity, windowRevision: input.revision };
       switch (item.kind) {
-        case "text": segment.push({ ...identity, kind: "text", text: item.text, textComplete: item.text_complete }); break;
+        case "text":
+          // Structural node kind outranks the provider's text-item role.
+          if (node.kind === "user" || node.kind === "assistant_response" || node.kind === "summary") {
+            segment.push({ ...identity, kind: "text", text: item.text, textComplete: item.text_complete });
+          } else segment.push({ ...identity, kind: "record" });
+          break;
         case "tool_call": case "tool_result": segment.push({ ...identity, kind: "tool", executionIds: item.execution_ids }); break;
         case "reasoning_unavailable": segment.push({ ...identity, kind: "reasoning_unavailable" }); break;
         case "unavailable": segment.push({ ...identity, kind: "unavailable", reason: item.reason }); break;
