@@ -60,7 +60,7 @@ export function WindowedScroll({ model, win, renderRow, live, liveBoundary, stat
           return {
             consume: () => { if (heading) headingAnchor.current.consume(heading); },
             write: () => {
-              const following = intent.current.scroll(box) && win.following.peek();
+              const following = intent.current.following && win.following.peek();
               if (following) intent.current.program(box, box.scrollHeight);
               else if (delta !== undefined) intent.current.program(box, box.scrollTop + delta);
               else if (request) intent.current.program(box, request.target + start);
@@ -75,14 +75,49 @@ export function WindowedScroll({ model, win, renderRow, live, liveBoundary, stat
     });
   };
 
-  useLayoutEffect(sync);
+  // One frame belongs to this mounted scroll root; RO delivery only invalidates it.
+  const resize = useRef<ResizeObserver | undefined>(undefined);
+  const observed = useRef(new Set<Element>());
+  const frame = useRef<number | undefined>(undefined);
+  const latest = useRef({ sync, port });
+  latest.current = { sync, port };
+  const cancelFrame = () => {
+    if (frame.current !== undefined) cancelAnimationFrame(frame.current);
+    frame.current = undefined;
+  };
   useLayoutEffect(() => {
+    if (typeof ResizeObserver === "undefined") return;
+    let mounted = true;
+    const observer = new ResizeObserver(() => {
+      if (!mounted) return;
+      if (frame.current !== undefined) return;
+      const owner = latest.current.port;
+      const ref = owner.acceptedView.peek();
+      frame.current = requestAnimationFrame(() => {
+        frame.current = undefined;
+        if (latest.current.port === owner && owner.acceptedView.isCurrent(ref)) latest.current.sync();
+      });
+    });
+    resize.current = observer;
+    return () => {
+      mounted = false;
+      cancelFrame();
+      observer.disconnect();
+      observed.current.clear();
+      resize.current = undefined;
+    };
+  }, []);
+  useLayoutEffect(() => {
+    // A rendered generation already has its own sync; do not drain old RO work.
+    cancelFrame();
+    sync();
     const box = el.current;
-    if (!box || typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(sync);
-    box.querySelectorAll("[data-o], .vspace, .live-tail, .conversation-items > *").forEach((row) => observer.observe(row));
-    observer.observe(box);
-    return () => observer.disconnect();
+    const observer = resize.current;
+    if (!box || !observer) return;
+    const next = new Set<Element>([box, ...box.querySelectorAll("[data-o], .vspace, .live-tail, .conversation-items > *")]);
+    for (const node of observed.current) if (!next.has(node)) observer.unobserve(node);
+    for (const node of next) if (!observed.current.has(node)) observer.observe(node);
+    observed.current = next;
   });
 
   const parts: VNode[] = [];
