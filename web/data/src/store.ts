@@ -718,10 +718,25 @@ export class ShellboyData {
       const out = await this.operations.handoffAttempts(entry.id, { cancel: cancelled });
       if (!valid()) return;
       if (!out.ok) { if (out.error.kind !== "cancelled") for (const r of targets) entry.live.fail(r.attemptId); return; }
-      if (out.value.next_cursor || incompleteResponseScope(out.value.items, entry.id)) return;
+      const incompleteScope = !!out.value.next_cursor || incompleteResponseScope(out.value.items, entry.id);
       for (const record of targets) {
-        const attempt = out.value.items.find(i => i.kind === "attempt" && i.attempt_id === record.attemptId && i.thread_id === entry.id && typeof i.turn_id === "string");
-        if (!attempt || attempt.response_nodes_truncated !== false || !Array.isArray(attempt.response_nodes)) continue;
+        const attempt = out.value.items.find(i => i.kind === "attempt" && i.id === record.attemptId
+          && (i.attempt_id === undefined || i.attempt_id === record.attemptId) && i.thread_id === entry.id);
+        if (!attempt || !Array.isArray(attempt.response_nodes)) continue;
+        // A terminal exact attempt with any committed public node reference proves
+        // partial persistence, even when full readback coverage is unavailable.
+        const terminal = attempt.state === "completed" || attempt.state === "failed" || attempt.state === "incomplete" || attempt.state === "cancelled";
+        const persisted = attempt.response_nodes;
+        if (terminal && persisted.length > 0 && persisted.length <= 64
+          && persisted.every(ref => ref && typeof ref.node_id === "string" && !!ref.node_id)) {
+          const proof = Object.freeze({ scope: this.handoffScope(entry), attemptId: record.attemptId,
+            ...(typeof attempt.turn_id === "string" ? { turnId: attempt.turn_id } : {}),
+            nodeIds: Object.freeze(persisted.map(ref => ref.node_id)), terminalState: attempt.state as "completed" | "failed" | "incomplete" | "cancelled" });
+          if (!valid()) return;
+          entry.live.stageTerminalPersisted(record, proof);
+          continue;
+        }
+        if (incompleteScope || attempt.response_nodes_truncated !== false) continue;
         const refs = attempt.response_nodes;
         if (out.value.items.some(other => other !== attempt && other.response_nodes?.some(ref => refs.some(own => own.node_id === ref?.node_id)))) continue;
         if (refs.length > 64 || refs.some(r => !r || typeof r.kind !== "string" || typeof r.node_id !== "string" || !Number.isSafeInteger(r.ordinal) || r.ordinal < 0)) continue;

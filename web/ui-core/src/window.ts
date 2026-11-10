@@ -1,3 +1,4 @@
+import type { TerminalPersistedProof } from "../../data/src/handoff";
 import type { AttemptPresentation, ThreadHandle, ThreadReadQualification } from "../../data/src/store";
 import type { HistoryBody } from "../../data/src/protocol";
 import { AcceptedView, type AcceptedCapability } from "./accepted-view";
@@ -56,6 +57,7 @@ export interface WindowAcceptedSnapshot {
   readonly pending: boolean;
   readonly coverage?: AcceptedCoverage;
   readonly attemptPresentations?: readonly AttemptPresentation[];
+  readonly terminalPersistedAttempts?: readonly TerminalPersistedProof[];
   readonly retiredAttempts?: readonly RetiredAttempt[];
 }
 export interface WindowScrollRequest { readonly id: object; readonly target: number }
@@ -124,6 +126,8 @@ export class ConversationWindow {
     sourceRef: WindowAcceptedSnapshot; sourceCap: AcceptedCapability; nodeId: string; offset: number; scope: string;
     consumed: boolean; targetCap?: AcceptedCapability; coverage?: AcceptedCoverage } | undefined;
   private acceptedGeneration = 0;
+  private terminalPersistedAttempts: readonly TerminalPersistedProof[] = [];
+  private terminalCapability: AcceptedCapability | undefined;
   private retiredAttempts: readonly RetiredAttempt[] = [];
   private retiredCapability: AcceptedCapability | undefined;
   readonly acceptedView = new AcceptedView<WindowAcceptedSnapshot>({
@@ -235,6 +239,27 @@ export class ConversationWindow {
   }
 
   acceptHandoff(record: HandoffRecord, scope: string, release: (reason: "return" | "end") => void): boolean {
+    if (record.terminalPersisted) {
+      const proof = record.terminalPersisted, cap = this.acceptedView.currentCapability, expected = this.acceptedView.peek();
+      if (this.disposed || !this.acceptedView.isCurrent(expected) || scope !== proof.scope || proof.attemptId !== record.attemptId
+        || !["completed", "failed", "incomplete", "cancelled"].includes(proof.terminalState)
+        || !proof.nodeIds.length || proof.nodeIds.length > 64 || proof.nodeIds.some(id => !id)) return false;
+      const before = this.terminalCapability === cap ? this.terminalPersistedAttempts : [];
+      if (before.length >= 8 && !before.some(p => p.scope === scope && p.attemptId === proof.attemptId)) return false;
+      const next = [...before.filter(p => p.scope !== scope || p.attemptId !== proof.attemptId), proof];
+      const generation = this.acceptedGeneration + 1;
+      const staged = this.acceptedView.stage({ ...expected, generation, terminalPersistedAttempts: next,
+        attemptPresentations: (expected.attemptPresentations ?? []).filter(p => p.scope !== scope || p.attemptId !== proof.attemptId) }, cap);
+      if (!this.acceptedView.isCurrent(expected) || cap !== this.acceptedView.currentCapability) return false;
+      const old = this.terminalPersistedAttempts, oldCap = this.terminalCapability;
+      this.terminalPersistedAttempts = next; this.terminalCapability = cap; this.acceptedGeneration = generation;
+      if (!this.acceptedView.commit(staged)) { this.terminalPersistedAttempts = old; this.terminalCapability = oldCap; return false; }
+      const committed = this.acceptedView.peek();
+      if (committed.generation !== generation || !this.acceptedView.isCurrent(committed) || cap !== this.acceptedView.currentCapability) return false;
+      this.version.value++;
+      if (!this.acceptedView.isCurrent(committed) || cap !== this.acceptedView.currentCapability) return false;
+      release("end"); return true;
+    }
     if (record.readyAttempt) {
       const proof = record.readyAttempt;
       const capability = this.acceptedView.currentCapability;
@@ -558,7 +583,8 @@ export class ConversationWindow {
     const generation = ++this.acceptedGeneration;
     const staged = this.acceptedView.stage({ generation, epoch, disposed: false,
       rows: this.rangeItems(), range: this.renderRange(), total: this.total,
-      revision: this.revision, pending: this.status.peek() === "loading", attemptPresentations: this.attemptPresentations,
+      revision: this.revision, pending: this.status.peek() === "loading", attemptPresentations: this.attemptPresentations.filter(p => !this.terminalPersistedAttempts.some(done => this.terminalCapability === capability && done.scope === p.scope && done.attemptId === p.attemptId)),
+      terminalPersistedAttempts: this.terminalCapability === capability ? this.terminalPersistedAttempts : [],
       coverage: this.summaryTransition?.targetCap === capability && !this.summaryTransition?.consumed ? this.summaryTransition?.coverage : undefined,
       retiredAttempts: (this.retiredCapability === capability ? this.retiredAttempts : []).filter(item => item.revision === this.revision) }, capability);
     if (this.disposed || epoch !== this.epoch || generation !== this.acceptedGeneration) return;
