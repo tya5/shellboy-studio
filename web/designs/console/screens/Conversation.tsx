@@ -72,7 +72,36 @@ export function AcceptedWindowConversation({ reader, project, renderItem, render
 /** Console presentation for an already authorized projection, independent of wire decoding. */
 export function SavedConversationItems({ model, projection, renderBefore, trailing, nodes }: { model: AppModel; projection: SavedItemProjection; nodes?: readonly HistoryItem[]; renderBefore?: (item: ConversationItem) => ComponentChildren; trailing?: ComponentChildren }) {
   const t = model.t.value;
-  return <ConversationItems {...projection} renderBefore={renderBefore} trailing={trailing} renderHeading={summary => <span>{t("tools.count", { n: summary.executionIds.length })}</span>}
+  const allSteps = model.conversation.value.flatMap(row => row.type === "steps" ? row.steps : []);
+  const [openMemberships, setOpenMemberships] = useState<ReadonlySet<string>>(() => new Set());
+  const membershipKey = (summary: { memberKeys: readonly string[] }) => JSON.stringify(summary.memberKeys);
+  const memberships = new Set(projection.toolSummaries.map(membershipKey));
+  useLayoutEffect(() => {
+    setOpenMemberships(previous => {
+      const kept = new Set([...previous].filter(key => memberships.has(key)));
+      return kept.size === previous.size ? previous : kept;
+    });
+  }, [projection]);
+  const opened = (summary: { memberKeys: readonly string[] }) => openMemberships.has(membershipKey(summary));
+  const hidden = (item: ConversationItem) => {
+    const summary = projection.toolSummaries.find(summary => summary.memberKeys.includes(item.key));
+    return summary !== undefined && !opened(summary);
+  };
+  return <ConversationItems {...projection} renderBefore={renderBefore} trailing={trailing} isItemHidden={hidden} renderHeading={summary => {
+    const steps = allSteps.filter(step => summary.executionIds.includes(step.executionId));
+    const active = steps.find(step => step.status === "running");
+    const nonzero = steps.filter(step => typeof step.exitCode === "number" && step.exitCode !== 0).length;
+    const failed = steps.some(step => step.state === "failed" || step.status === "recovery" || (typeof step.exitCode === "number" && step.exitCode !== 0));
+    const status = active ? "running" : failed ? "failed" : steps.length === summary.executionIds.length ? "completed" : undefined;
+    const label = [t("tools.count", { n: summary.executionIds.length }), ...((summary.continuationBefore !== "closed" || summary.continuationAfter !== "closed") ? [t("work.partial")] : []), ...(nonzero ? [t("tools.nonzero", { n: nonzero })] : []), ...(active ? [t("tools.active", { command: toolLabel(active.description, active.command) })] : [])].join(" · ");
+    return <section class="steps"><StepRow group open={opened(summary)} command={label} status={status ? <StatusMark status={status} label={statusLabel(t, status)} /> : <span class="muted caption">{t("work.textUnavailable")}</span>} onToggle={open => {
+      setOpenMemberships(previous => {
+        const next = new Set([...previous].filter(key => memberships.has(key)));
+        if (open) next.add(membershipKey(summary)); else next.delete(membershipKey(summary));
+        return next;
+      });
+    }}>{null}</StepRow></section>;
+  }}
     renderItem={item => {
       if (item.source.kind === "text") {
         const node = nodes?.find(node => node.node_id === item.source.nodeId);
@@ -82,16 +111,18 @@ export function SavedConversationItems({ model, projection, renderBefore, traili
           : fact.kind === "human" ? { kind: "you" } : fact.kind === "model" ? fact
           : fact.kind === "external_cli" ? (fact.label?.trim() ? { kind: "other", label: `CLI: ${fact.label}` } : { kind: "cli" })
           : { kind: "unknown", model: fact.kind === "unknown_model", label: fact.label };
-        return <RowView model={model} authorizedText={item.source.text ?? ""} row={{ type: "message", id: item.source.nodeId, speaker, text: item.source.text ?? "", truncated: false, at: node.provenance?.created_at }} />;
+        return <><RowView model={model} authorizedText={item.source.text ?? ""} row={{ type: "message", id: item.source.nodeId, speaker, text: item.source.text ?? "", truncated: false, at: node.provenance?.created_at }} />{item.source.textComplete === false ? <div class="caption muted" data-item-partial="">{t("work.partial")}</div> : null}</>;
       }
       if (item.source.kind === "tool") {
         const ids = item.source.executionIds ?? (item.source.executionId ? [item.source.executionId] : []);
         const steps = model.conversation.value.flatMap(row => row.type === "steps" ? row.steps : []);
+        if (!ids.length) return <div class="caption muted" data-execution-unavailable="">{t("work.textUnavailable")}</div>;
         return ids.map(id => {
           const step = steps.find(step => step.executionId === id);
-          return <div key={id} data-execution-id={id}>{step ? <StepView model={model} step={step} /> : <div class="caption muted" data-execution-unresolved="">{t("work.textUnavailable")}</div>}</div>;
+          return <div key={id} data-execution-id={id}>{hidden(item) ? null : step ? <StepView model={model} step={step} /> : <div class="caption muted" data-execution-unresolved="">{t("work.textUnavailable")}</div>}</div>;
         });
       }
+      if (item.source.kind === "unknown" || item.source.kind === "unavailable") return <div class="caption muted" data-item-unavailable="">{t("work.textUnavailable")}</div>;
       return null;
     }} />;
 }
@@ -116,6 +147,7 @@ export function SavedWindowContent({ model, snapshot, live, liveBoundary }: { mo
       pending.push(liveChrome); livePlaced = true;
     }
     const first = mapped.projection.items.find(item => item.source.nodeId === entry.nodeId);
+    if (entry.emptyOrdinary) pending.push(<div key={`empty:${entry.nodeId}`} class="conversation-row" data-node={entry.nodeId} data-empty-ordinary=""><DeferredHistoryNode model={model} row={entry.node} /></div>);
     if (entry.state === "deferred") pending.push(<DeferredHistoryNode key={`deferred:${entry.nodeId}`} model={model} row={entry.node} />);
     else if (entry.state === "legacy") pending.push(<div key={`legacy:${entry.nodeId}`} data-node={entry.nodeId}>{projectConversation([entry.node], new Map()).map(row => <RowView key={row.id} model={model} row={row} />)}</div>);
     if (first && pending.length) { before.set(first.key, pending); pending = []; }

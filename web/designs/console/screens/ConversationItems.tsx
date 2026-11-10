@@ -8,6 +8,7 @@ export interface ConversationItemSource {
   windowRevision?: string | number;
   kind: 'text' | 'tool' | 'reasoning' | 'reasoning_unavailable' | 'unknown' | 'unavailable';
   text?: string;
+  textComplete?: boolean;
   executionId?: string;
   executionIds?: readonly string[];
 }
@@ -16,6 +17,8 @@ export interface ConversationItem {
   source: ConversationItemSource;
 }
 export interface ConversationToolSummary {
+  continuationBefore?: "unknown" | "closed";
+  continuationAfter?: "unknown" | "closed";
   anchorKey: string;
   memberKeys: readonly string[];
   executionIds: readonly string[];
@@ -27,11 +30,12 @@ interface Props {
   renderItem: (item: ConversationItem) => ComponentChildren;
   renderBefore?: (item: ConversationItem) => ComponentChildren;
   trailing?: ComponentChildren;
+  isItemHidden?: (item: ConversationItem) => boolean;
   renderHeading?: (summary: ConversationToolSummary) => ComponentChildren;
 }
 
 /** Content always has one parent. Summary chrome is a sibling, never an owner. */
-export function ConversationItems({ items, toolSummaries = [], renderItem, renderHeading, renderBefore, trailing }: Props) {
+export function ConversationItems({ items, toolSummaries = [], renderItem, renderHeading, renderBefore, trailing, isItemHidden }: Props) {
   const rows: ComponentChildren[] = [];
   for (const item of items) {
     if (renderBefore) rows.push(renderBefore(item));
@@ -42,7 +46,7 @@ export function ConversationItems({ items, toolSummaries = [], renderItem, rende
         </div>,
       );
     }
-    rows.push(<div class="conversation-row" key={`item:${item.key}`} data-item-key={item.key} data-key={item.key}
+    rows.push(<div hidden={isItemHidden?.(item)} class="conversation-row" key={`item:${item.key}`} data-item-key={item.key} data-key={item.key}
       data-node={item.source.nodeId} data-execution-id={item.source.kind === 'tool' && !item.source.executionIds ? item.source.executionId : undefined}>
       {renderItem(item)}
     </div>);

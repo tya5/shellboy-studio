@@ -94,3 +94,87 @@ it('restores authoritative user Message chrome without substituting aggregate te
     expect(item.textContent).toContain('Authoritative typed user content');expect(item.textContent).not.toContain('Aggregate must not replace item');
   }finally{render(null,host);host.remove();fixture.model.dispose();fixture.data.stop();}
 });
+
+it('restores group summary toggle without making keyed tool items heading children or remounting them',async()=>{
+  const fixture=await fixtureModel(),host=document.createElement('div');document.body.append(host);
+  try{
+    const { SavedConversationItems }=await import('../screens/Conversation');
+    const projection=projectSavedItems([{nodeId:'group-node',itemIdentity:'tool-1',windowRevision:1,kind:'tool',executionIds:['group-exec-1']},{nodeId:'group-node',itemIdentity:'tool-2',windowRevision:1,kind:'tool',executionIds:['group-exec-2']}]);
+    await act(async()=>render(<SavedConversationItems model={fixture.model} projection={projection}/>,host));
+    const heading=host.querySelector('[data-item-heading]')!,details=heading.querySelector('details.step-group')! as HTMLDetailsElement;
+    expect(details).not.toBeNull();expect(details.open).toBe(false);
+    const items=[...host.querySelectorAll('[data-item-key]')];expect(items).toHaveLength(2);
+    expect(items.every(item=>(item as HTMLElement).hidden)).toBe(true);
+    expect(heading.querySelector('[data-item-key]')).toBeNull();
+    const parent=items[0]!.parentElement;
+    await act(async()=>{details.open=true;details.dispatchEvent(new Event('toggle'));});
+    expect([...host.querySelectorAll('[data-item-key]')]).toEqual(items);
+    expect(items.every(item=>item.parentElement===parent&&!(item as HTMLElement).hidden)).toBe(true);
+    await act(async()=>{details.open=false;details.dispatchEvent(new Event('toggle'));});
+    expect([...host.querySelectorAll('[data-item-key]')]).toEqual(items);expect(items.every(item=>(item as HTMLElement).hidden)).toBe(true);
+  }finally{render(null,host);host.remove();fixture.model.dispose();fixture.data.stop();}
+});
+
+it.each(['', 'Partial authoritative item'])('never replaces authorized item text %j with a cached aggregate body',async text=>{
+  const fixture=await fixtureModel(),host=document.createElement('div');document.body.append(host);
+  try{
+    const { SavedWindowContent }=await import('../screens/Conversation');
+    fixture.model.bodies.value=new Map([['item-authority',{text:'Forbidden cached aggregate body',loading:false,error:undefined}]]);
+    const rows:import('../../../data/src/protocol').HistoryItem[]=[{node_id:'item-authority',kind:'user',provenance:{sender:{kind:'human'}},excerpt:'Forbidden aggregate excerpt',selection:{ordinal:0},items:[{item_identity:'text',kind:'text',text,text_complete:false}]}];
+    await act(async()=>render(<SavedWindowContent model={fixture.model} snapshot={{rows,range:{first:0,last:0},total:1,revision:1,generation:1,epoch:1,disposed:false,pending:false}}/>,host));
+    expect(host.textContent).not.toContain('Forbidden');expect(host.querySelector('.more')).toBeNull();
+    expect(host.querySelector('[data-item-partial]')).not.toBeNull();
+    expect(host.querySelector('.msg .md')?.textContent??'').toBe(text);
+    const link=host.querySelector('.msg-acts a')!;expect(link.getAttribute('href')).toContain('item-authority');
+  }finally{render(null,host);host.remove();fixture.model.dispose();fixture.data.stop();}
+});
+
+it.each(['empty-user','reasoning-only','unknown-item'] as const)('keeps honest ordinary node presence for %s without aggregate fallback',async mode=>{
+  const fixture=await fixtureModel(),host=document.createElement('div');document.body.append(host);
+  try{
+    const { SavedWindowContent }=await import('../screens/Conversation');
+    const row:import('../../../data/src/protocol').HistoryItem={node_id:'quiet-node',kind:mode==='empty-user'?'user':'assistant_response',excerpt:'Forbidden private aggregate fallback',selection:{ordinal:0},items:mode==='empty-user'?[]:mode==='reasoning-only'?[{item_identity:'r',kind:'reasoning_unavailable'}]:[{item_identity:'unknown',kind:'unavailable',reason:'opaque'}]};
+    await act(async()=>render(<SavedWindowContent model={fixture.model} snapshot={{rows:[row],range:{first:0,last:0},total:1,revision:1,generation:1,epoch:1,disposed:false,pending:false}}/>,host));
+    expect(host.querySelector('[data-node="quiet-node"]')).not.toBeNull();expect(host.textContent).toContain(fixture.model.t.value('work.textUnavailable'));
+    expect(host.textContent).not.toContain('Forbidden');expect(host.querySelector('.more')).toBeNull();
+  }finally{render(null,host);host.remove();fixture.model.dispose();fixture.data.stop();}
+});
+
+
+it('retains a no-execution tool as a visible unavailable item without inventing execution identity',async()=>{
+  const fixture=await fixtureModel(),host=document.createElement('div');document.body.append(host);
+  try{
+    const { SavedConversationItems }=await import('../screens/Conversation');
+    const projection=projectSavedItems([{nodeId:'no-exec',itemIdentity:'tool',windowRevision:1,kind:'tool',executionIds:[]}]);
+    await act(async()=>render(<SavedConversationItems model={fixture.model} projection={projection}/>,host));
+    expect(host.querySelectorAll('[data-item-key]')).toHaveLength(1);expect(host.querySelector('[data-execution-id]')).toBeNull();
+    const details=host.querySelector('details')!;await act(async()=>{details.open=true;details.dispatchEvent(new Event('toggle'));});
+    expect(host.querySelector('[data-execution-unavailable]')?.textContent).toBe(fixture.model.t.value('work.textUnavailable'));
+  }finally{render(null,host);host.remove();fixture.model.dispose();fixture.data.stop();}
+});
+
+it('bounds output watches to opened tool details and preserves item DOM when membership changes',async()=>{
+  const fixture=await fixtureModel(),host=document.createElement('div');document.body.append(host);
+  const original=fixture.model.watchOutput.bind(fixture.model);let active=0,maximum=0;
+  fixture.model.watchOutput=()=>{active++;maximum=Math.max(maximum,active);return()=>{active--;};};
+  try{
+    const { SavedConversationItems }=await import('../screens/Conversation');
+    const step=fixture.model.conversation.value.flatMap(row=>row.type==='steps'?row.steps:[])[0]!;
+    expect(step).toBeDefined();fixture.model.toolStepChoices.value=new Map([[step.executionId,true]]);
+    const source={nodeId:'watch-node',itemIdentity:'watch-item',windowRevision:1,kind:'tool' as const,executionIds:[step.executionId]};
+    const projection=projectSavedItems([source]);
+    const paint=async(p:typeof projection)=>act(async()=>render(<SavedConversationItems model={fixture.model} projection={p}/>,host));
+    await paint(projection);const item=host.querySelector('[data-item-key]')!,parent=item.parentElement;
+    expect(active).toBe(0);
+    for(let i=0;i<3;i++){
+      const details=host.querySelector('details.step-group')! as HTMLDetailsElement;
+      await act(async()=>{details.open=true;details.dispatchEvent(new Event('toggle'));});expect(active).toBe(1);
+      await act(async()=>{details.open=false;details.dispatchEvent(new Event('toggle'));});expect(active).toBe(0);
+    }
+    const details=host.querySelector('details.step-group')! as HTMLDetailsElement;
+    await act(async()=>{details.open=true;details.dispatchEvent(new Event('toggle'));});expect(active).toBe(1);
+    await paint(projectSavedItems([{...source,nodeId:'preceding',itemIdentity:'preceding',executionIds:['other-execution']},source]));
+    expect(active).toBe(0);expect([...host.querySelectorAll('[data-item-key]')].find(el=>el.getAttribute('data-item-key')===projection.items[0]!.key)).toBe(item);
+    expect(item.parentElement).toBe(parent);expect((item as HTMLElement).hidden).toBe(true);expect(maximum).toBe(1);
+  }finally{render(null,host);expect(active).toBe(0);fixture.model.watchOutput=original;host.remove();fixture.model.dispose();fixture.data.stop();}
+});
