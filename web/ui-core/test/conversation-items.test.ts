@@ -146,7 +146,7 @@ it("FINAL execution-linked saved prose is invariant across phase and publication
   const node = { node_id: "saved-linked", kind: "assistant_response", excerpt: "Same saved ordinary text", executions: [{ execution_id: "actual-execution", state: "exited", command_excerpt: "synthetic" }] };
   const baseline = projectConversation([node]);
   expect(baseline.filter(row => row.type === "message")).toEqual([]);
-  expect(baseline.some(row => row.type === "publication")).toBe(true);
+  expect(baseline.some(row => row.type === "note" && row.kind === "record")).toBe(true);
   expect(baseline.filter(row => row.type === "steps")).toHaveLength(1);
   for (const phase of ["commentary", "final_answer", undefined, "unknown"]) {
     for (const advice of [undefined, "unknown", "tool"] as const) {

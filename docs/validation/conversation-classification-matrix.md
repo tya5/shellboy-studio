@@ -52,3 +52,27 @@ Legacy projectConversation and renderer presentation are separate consumer seams
 do not call this mapper matrix an all-path/DOM acceptance. D must consume the shared
 classifier rather than copy kind logic. Full CI, user Thread and installed acceptance
 remain unverified. No DB/RPC/browser/owner/version operation.
+
+## Early-Sidefact Crosspath Correction
+
+The prior c512 adapter checkpoint did NOT remove all early semantic branches in
+projectConversation. The S6 event/context, interruption-with-execution and
+text-without-excerpt counterexamples are accepted. Those early spill/execution
+continues are removed: projectLegacyHistoryItems supplies every semantic row
+before execution metadata is appended independently. No HIDDEN_KINDS remains.
+Unknown/internal nodes have a canonical empty record note, not synthetic unavailable.
+Typed assistant text is emitted per item, without excerpt gating or string joining.
+
+Each Section 2 named row additionally has a `legacy crosspath <row name>` test
+with execution sidefacts. Dedicated controls exercise all four interruption
+variants, event/context payload non-exposure and two typed text items without an
+aggregate excerpt. Tests preserve the node row alongside actual execution facts.
+The old publication expectation for unsafe legacy aggregate is now an explicit
+record expectation; body hiding remains asserted, with no skip.
+
+Evidence: /tmp/p-crosspath-red.log (3 failing concrete controls),
+/tmp/p-crosspath-allrows.log (89 PASS / 1 TODO), and
+/tmp/p-crosspath-allrows-types.log (both TypeScript checks pass).
+This is local mapper/core projection evidence. D real consumer adoption, full
+suite and real user Thread results remain separate. User has prohibited push,
+CI dispatch, remote operations and installed changes; none were performed.

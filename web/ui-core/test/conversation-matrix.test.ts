@@ -30,6 +30,15 @@ const rows: readonly { name: string; node: HistoryItem; kind: string; semantic: 
   { name: "23 definitively empty ordinary", node: { kind: "assistant_response", items: [] }, kind: "ordinaryEmpty", semantic: "conversation" },
 ];
 describe("FINAL Section2 canonical node/item matrix", () => {
+  for (const row of rows) it(`legacy crosspath ${row.name}`, async () => {
+    const { projectConversation } = await import("../src/conversation");
+    const result = projectConversation([{ node_id: "canonical-node", ...row.node, executions: [{ execution_id: "execution" }] }]);
+    if (row.semantic === "conversation") expect(result.some(entry => entry.type === "message" || entry.type === "note" && entry.kind === "ordinaryEmpty")).toBe(true);
+    else expect(result.some(entry => entry.type === "note" && entry.kind === row.kind)).toBe(true);
+    expect(result.some(entry => entry.type === "steps")).toBe(true);
+    expect(JSON.stringify(result)).not.toContain("private aggregate");
+  });
+
   for (const row of rows) it(row.name, () => {
     const out = projectHistoryWindowItems({ keyScope: ["owner", "thread"], revision: 1, nodes: [{ node_id: "node", ...row.node }] });
     expect(out.projection.items[0]?.source.kind).toBe(row.kind);
@@ -76,4 +85,28 @@ it("legacy projectConversation publishes event/context identities and never arbi
   expect(rows.every(row => row.type !== "message")).toBe(true);
   expect(JSON.stringify(rows)).not.toContain("private diagnostic");
   expect(JSON.stringify(rows)).not.toContain("unproved prose");
+});
+
+it("crosspath event/context with execution sidefacts retain canonical record rows", async () => {
+  const { projectConversation } = await import("../src/conversation");
+  for (const kind of ["event", "context"]) {
+    const rows = projectConversation([{ node_id: kind, kind, excerpt: "private record payload", executions: [{ execution_id: "exec" }] }]);
+    expect(rows.some(row => row.type === "note" && row.id === kind && row.kind === "record")).toBe(true);
+    expect(rows.some(row => row.type === "steps")).toBe(true);
+    expect(JSON.stringify(rows)).not.toContain("private record payload");
+  }
+});
+it("crosspath all interruption nodes retain markers alongside execution sidefacts", async () => {
+  const { projectConversation } = await import("../src/conversation");
+  for (const kind of ["interruption_details", "interruption_context", "incomplete_response", "interrupted_wait"]) {
+    const rows = projectConversation([{ node_id: kind, kind, executions: [{ execution_id: "exec" }] }]);
+    expect(rows.some(row => row.type === "note" && row.id === kind && row.kind === "interruption")).toBe(true);
+    expect(rows.some(row => row.type === "steps")).toBe(true);
+  }
+});
+it("crosspath typed assistant multi-item text needs no aggregate excerpt", async () => {
+  const { projectConversation } = await import("../src/conversation");
+  const rows = projectConversation([{ node_id: "assistant", kind: "assistant_response", executions: [{ execution_id: "exec" }], items: [{ ...text, item_identity: "one", text: "one" }, { ...text, item_identity: "two", text: "two" }] }]);
+  expect(rows.filter(row => row.type === "message").map(row => row.text)).toEqual(["one", "two"]);
+  expect(rows.some(row => row.type === "steps")).toBe(true);
 });

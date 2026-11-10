@@ -1,4 +1,4 @@
-import { classifySavedHistoryFact } from "./conversation-items";
+import { projectLegacyHistoryItems } from "./conversation-items";
 import { senderFact } from "../../data/src/sender";
 // Legacy row compatibility; semantic classification is shared with typed projection.
 import { HISTORY_EXCERPT_CHARS, type HistoryItem, type ShellEntry } from "../../data/src";
@@ -56,12 +56,15 @@ export function projectConversation(items: HistoryItem[], shells: ReadonlyMap<st
   };
   for (const item of items) {
     const id = item.node_id ?? "";
-    if (item.kind === "spill") {
-      const entry = { kind: "compacted" as const, id, text: item.excerpt ?? "" };
-      const last = rows[rows.length - 1];
-      if (last?.type === "steps") last.entries.push(entry);
-      else rows.push({ type: "steps", id, steps: [], entries: [entry] });
-      continue;
+    // Semantic rows always come from the canonical adapter before sidefacts.
+    const projected = projectLegacyHistoryItems({ nodes: [item] }).projection;
+    for (const entry of projected.items) {
+      const source = entry.source;
+      const at = item.provenance?.created_at;
+      const rowId = projected.items.length === 1 ? id : entry.key;
+      if (source.kind === "text" || source.kind === "user" || source.kind === "summary") {
+        rows.push({ type: "message", id: rowId, speaker: speakerOf(item), text: source.text, truncated: source.kind === "text" && source.textComplete === false, at });
+      } else rows.push({ type: "note", id: rowId, kind: source.kind, text: "", at });
     }
     const executions = item.executions ?? [];
     if (executions.length > 0) {
@@ -88,19 +91,7 @@ export function projectConversation(items: HistoryItem[], shells: ReadonlyMap<st
           cwd: e.cwd,
         });
       }
-      if (item.kind !== "assistant_response" || !item.excerpt) continue;
-      const safeText = item.items?.filter(entry => entry.kind === "text");
-      if (safeText?.length) rows.push({ type: "message", id: `${id}:commentary`, speaker: speakerOf(item), text: safeText.map(entry => entry.text).join("\n"), truncated: safeText.some(entry => !entry.text_complete), at: item.provenance?.created_at });
-      else rows.push({ type: "publication", id: `${id}:unknown`, state: "unknown" });
-      continue;
     }
-    const safeText = item.items?.filter(entry => entry.kind === "text");
-    const classification = classifySavedHistoryFact(item.kind, safeText?.length ? "text" : item.items === null ? "deferred" : item.items?.length === 0 ? "empty" : "legacy", !!item.items_unavailable_reason);
-    const at = item.provenance?.created_at;
-    if (classification === "text" || classification === "user" || classification === "summary") {
-      const text = safeText?.length ? safeText.map(entry => entry.text).join("\n") : classification === "user" ? item.excerpt ?? "" : "";
-      rows.push({ type: "message", id, speaker: speakerOf(item), text, truncated: safeText?.some(entry => !entry.text_complete) ?? false, at });
-    } else rows.push({ type: "note", id, kind: item.kind ?? "unknown", text: "", at });
   }
   return rows;
 }
