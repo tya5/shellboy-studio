@@ -36,7 +36,7 @@ describe("fork receipt repair", () => {
     const f=fixture();const p=f.b.forkAt(f.target,"fixed");f.b.leave();f.t.ok(f.t.calls("thread.fork")[0]!.id,child);await p;
     expect(f.t.calls("message.send")).toHaveLength(0);expect(f.t.calls("thread.branches")).toHaveLength(0);
     const retry=f.b.forkAt(f.target,"fixed");await flush();expect(f.t.calls("thread.fork")).toHaveLength(1);
-    f.t.ok(f.t.calls("message.send")[0]!.id,{});await retry;f.link.stop();
+    f.t.ok(f.t.calls("message.send")[0]!.id,{message_id:"accepted-message",thread_id:(f.t.calls("message.send")[0]!.args as {thread_id:string}).thread_id});await retry;f.link.stop();
   });
   for(const lost of [false,true]) it(`partial send ${lost?"reply loss":"refusal"} retries only send with identical ID`,async()=>{
     const f=fixture();const p=f.b.forkAt(f.target,"fixed");f.t.ok(f.t.calls("thread.fork")[0]!.id,child);await flush();const send=f.t.calls("message.send")[0]!;
@@ -45,7 +45,7 @@ describe("fork receipt repair", () => {
     if(lost)f.t.open();await f.b.forkAt(f.target,"changed");expect(f.t.calls("thread.fork")).toHaveLength(1);
     const retry=f.b.forkAt(f.target,"fixed");await flush();const resent=f.t.calls("message.send")[1]!;
     expect(resent.operation_id).toBe(send.operation_id);expect(resent.args).toEqual({thread_id:"child",text:"fixed"});
-    f.t.ok(resent.id,{});await retry;expect(f.t.calls("thread.fork")).toHaveLength(1);f.link.stop();
+    f.t.ok(resent.id,{message_id:"accepted-message",thread_id:(resent.args as {thread_id:string}).thread_id});await retry;expect(f.t.calls("thread.fork")).toHaveLength(1);f.link.stop();
   });
 });
 
@@ -54,11 +54,11 @@ it("old-owner opaque receipt cannot establish success; explicit original-owner r
   const lookup=f.b.forkAt(f.target,"fixed");f.t.ok(f.t.calls("operation.get")[0]!.id,{operation_id:sent.operation_id,state:"completed",replay_policy:"return_saved_outcome",outcome:{result:child}});await lookup;
   expect(f.t.calls("thread.fork")).toHaveLength(1);expect(f.t.calls("message.send")).toHaveLength(0);
   f.change("a");const retry=f.b.forkAt(f.target,"fixed");expect(f.t.calls("thread.fork")[1]!.operation_id).toBe(sent.operation_id);
-  f.t.ok(f.t.calls("thread.fork")[1]!.id,child);await flush();f.t.ok(f.t.calls("message.send")[0]!.id,{});await retry;f.link.stop();
+  f.t.ok(f.t.calls("thread.fork")[1]!.id,child);await flush();f.t.ok(f.t.calls("message.send")[0]!.id,{message_id:"accepted-message",thread_id:(f.t.calls("message.send")[0]!.args as {thread_id:string}).thread_id});await retry;f.link.stop();
 });
 it("owner unavailable roundtrip during send keeps the original receipt and blocks late projection",async()=>{
   const f=fixture();const p=f.b.forkAt(f.target,"fixed");f.t.ok(f.t.calls("thread.fork")[0]!.id,child);await flush();const send=f.t.calls("message.send")[0]!;
-  f.change(undefined);f.change("a");f.b.actionError.value="new epoch";f.t.ok(send.id,{});await p;
+  f.change(undefined);f.change("a");f.b.actionError.value="new epoch";f.t.ok(send.id,{message_id:"accepted-message",thread_id:(send.args as {thread_id:string}).thread_id});await p;
   expect(f.b.actionError.value).toBe("new epoch");expect(f.t.calls("thread.branches")).toHaveLength(0);
   await f.b.forkAt(f.target,"fixed");expect(f.t.calls("thread.fork")).toHaveLength(1);expect(f.t.calls("message.send")).toHaveLength(1);f.link.stop();
 });
@@ -67,7 +67,7 @@ it("same owner explicit rejoin cannot revive a fork continuation from before own
   f.b.actionError.value="new epoch";f.t.ok(f.t.calls("thread.fork")[0]!.id,child);await first;await joined;
   expect(f.t.calls("message.send")).toHaveLength(0);expect(f.b.actionError.value).toBe("new epoch");
   const explicit=f.b.forkAt(f.target,"fixed");await flush();expect(f.t.calls("message.send")).toHaveLength(1);
-  f.t.ok(f.t.calls("message.send")[0]!.id,{});await explicit;f.link.stop();
+  f.t.ok(f.t.calls("message.send")[0]!.id,{message_id:"accepted-message",thread_id:(f.t.calls("message.send")[0]!.args as {thread_id:string}).thread_id});await explicit;f.link.stop();
 });
 it("synchronous transport reentry joins before the first fork send",async()=>{
   const f=fixture();const original=f.t.send.bind(f.t);let reentered=false,joined:Promise<void>|undefined;

@@ -157,7 +157,7 @@ describe("create app request", () => {
     await flush();
     const send = t.calls("message.send").at(-1)!;
     expect(send.args).toEqual({ thread_id: "new-thread", text });
-    t.ok(send.id, { message_id: "new-message" });
+    t.ok(send.id, { message_id: "new-message", thread_id: "new-thread" });
     expect(await result).toBe(true);
     expect(model.route.value).toEqual({ view: "conversation", threadId: "new-thread" });
     model.dispose();

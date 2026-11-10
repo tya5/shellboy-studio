@@ -154,7 +154,7 @@ describe("Conversation live text", () => {
     await act(async () => flushPromises());
     expect(el.textContent).toContain("Part of this text was missed");
     expect(el.textContent).toContain("later");
-    // The attempt ends and its message is saved: the text goes, the saved message stays.
+    // A bare live_end has no exact terminal receipt: keep the live text and independent saved prose.
     db.history["lead"] = [...(db.history["lead"] ?? []), { node_id: "saved-1", kind: "assistant_response", excerpt: "Final saved answer", items: [{item_identity:"text",kind:"text",text:"Final saved answer",text_complete:true}], provenance: { created_at: "2099-01-01T00:00:00+09:00", sender: { kind: "shellboy" } } }];
     act(() => {
       t.push({ t: "changed", thread_ids: ["lead"], list: false });
@@ -163,7 +163,7 @@ describe("Conversation live text", () => {
     await act(async () => {
       await settle(t, db);
     });
-    expect(bodies().some((b) => b.includes("Writing"))).toBe(false);
+    expect(bodies().some((b) => b.includes("Writing"))).toBe(true);
     expect(el.textContent).toContain("Final saved answer");
     await act(async()=>{const group=el.querySelector<HTMLDetailsElement>("[data-work-group]");if(group){group.open=true;group.dispatchEvent(new Event("toggle"));}await flushPromises();});
     expect(el.textContent).not.toContain("Checking response kind");
@@ -171,7 +171,7 @@ describe("Conversation live text", () => {
     expect(el.textContent).toContain("later");
   });
 
-  it("keeps a newly saved human message after the live reply until the answer is reread", async () => {
+  it("keeps an unanchored live reply and a new saved human independently visible", async () => {
     const { model, t, db } = await fixtureModel({ capabilities: ["live.text"] });
     const el = draw(model);
     act(() => t.push(liveFrame("Live answer")));
@@ -179,11 +179,12 @@ describe("Conversation live text", () => {
     db.history.lead = [...(db.history.lead ?? []), { node_id: "user-new", kind: "user", excerpt: "New human message", provenance: { sender: { kind: "human" } } }];
     act(() => t.push({ t: "changed", thread_ids: ["lead"], list: false }));
     await act(async () => settle(t, db));
-    expect(text(el).indexOf("Live answer")).toBeLessThan(text(el).indexOf("New human message"));
+    expect(text(el)).toContain("Live answer");
+    expect(el.querySelector('[data-node="user-new"]')).not.toBeNull();
     model.dispose();
   });
 
-  it("keeps proved live text ahead of a later human without hiding ordinary saved prose", async () => {
+  it("preserves canonical saved order without inventing an unanchored live insertion ordinal", async () => {
     const { model, t, db } = await fixtureModel({ capabilities: ["live.text"] });
     const el = draw(model);
     act(() => t.push(liveFrame("Answer before save")));
@@ -197,7 +198,7 @@ describe("Conversation live text", () => {
     expect(text(el)).toContain("Saved answer");
     expect(text(el)).toContain("Answer before save");
     expect(text(el)).toContain("Later human");
-    expect(text(el).indexOf("Answer before save")).toBeLessThan(text(el).indexOf("Later human"));
+    expect(text(el).indexOf("Saved answer")).toBeLessThan(text(el).indexOf("Later human"));
     model.dispose();
   });
 
@@ -1011,6 +1012,8 @@ describe("Apps", () => {
     expect(text(el)).toContain("<b>boom</b>");
     expect(el.querySelector(".apps-alerts b")).toBeNull();
     expect(el.querySelector(".apptab .st.bad")).toBeTruthy();
+    const originalAnswer=db.answer.bind(db);
+    db.answer=call=>call.command==="message.send"?{ok:true,result:{message_id:"app-report",thread_id:(call.args as {thread_id:string}).thread_id}}:originalAnswer(call);
     const send = [...el.querySelectorAll<HTMLButtonElement>(".apps-alerts button")].find((b) => text(b) === "Send to the bound Thread")!;
     await act(async () => {
       send.click();

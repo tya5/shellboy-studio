@@ -240,7 +240,7 @@ function LegacySavedContent({model,handle}: {model:AppModel;handle:ThreadHandle;
   const ref=accepted.owner===owner?accepted.ref:owner?.acceptedView.peek();
   if(!owner||!ref||!owner.isCurrent(ref))return null;
   const live=ref.live.filter(record=>!ref.terminalPersistedAttempts.some(proof=>proof.scope===ref.scope&&proof.attemptId===record.attemptId));
-  const handoffs=projectOwnedHandoffFacts(handle.threadId,live);
+  const handoffs=model.data.capabilities.value.includes("live.text") ? projectOwnedHandoffFacts(handle.threadId,live) : [];
   const work=normalizeLiveWorkFacts({scope:handle.threadId,items:handle.work.value.value?.items??[]});
   const projection=projectLegacyHistoryItems({nodes:ref.rows,keyScope:[ref.scope],liveFacts:[...handoffs,...work]}).projection;
   return <SavedConversationItems model={model} nodes={ref.rows} projection={projection} trailing={<PendingOwnMessageView model={model} nodes={ref.rows} scope={ref.scope}/>}/>;

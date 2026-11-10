@@ -49,7 +49,7 @@ for (const boundary of boundaries) for (const transition of transitions) it(`R1 
       const send = f.t.calls("message.send")[0]!;
       expect(send.args).toEqual({ thread_id: "child", text: "fixed" });
       if (boundary === "send-await") fire();
-      if (boundary === "partial-error") f.t.ownerError(send.id, "thread_busy"); else f.t.ok(send.id, {});
+      if (boundary === "partial-error") f.t.ownerError(send.id, "thread_busy"); else f.t.ok(send.id,{message_id:"accepted-message",thread_id:(send.args as {thread_id:string}).thread_id});
     }
   }
   await p;
@@ -144,7 +144,7 @@ it("R1 fresh mismatched target neither mints a receipt nor occupies the fork slo
 for (const site of ["fork-await", "send-await", "cached"] as const) for (const transition of transitions) it(`R1 retained fork ${site} x ${transition}`, async () => {
   const f = fixture(); const p = f.b.forkAt(f.target, "fixed"); const fork = f.t.calls("thread.fork")[0]!;
   if (site !== "fork-await") { f.t.ok(fork.id, child); await flush(); }
-  if (site === "cached") { f.t.ok(f.t.calls("message.send")[0]!.id, {}); await p; }
+  if (site === "cached") { f.t.ok(f.t.calls("message.send")[0]!.id,{message_id:"accepted-message",thread_id:(f.t.calls("message.send")[0]!.args as {thread_id:string}).thread_id}); await p; }
   else { f.t.drop(); await p; f.t.open(); }
   const calls = f.t.calls().length; f.invalidate(transition);
   const retry = f.b.forkAt(f.target, "fixed"); await flush();

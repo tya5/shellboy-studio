@@ -80,7 +80,7 @@ describe("Branches receipt repair", () => {
     const recover = f.b.confirmRewind("follow-up"); await flush();
     const resend = f.t.calls("message.send")[1]!; expect(resend.operation_id).toBe(send.operation_id); expect(resend.args).toEqual(send.args);
     expect(f.t.calls("thread.rewind").filter(c => !(c.args as {dry_run?:boolean}).dry_run)).toHaveLength(1);
-    f.t.ok(resend.id, {}); await recover;
+    f.t.ok(resend.id,{message_id:"accepted-message",thread_id:(resend.args as {thread_id:string}).thread_id}); await recover;
     f.b.leave(); f.link.stop();
   });
 });
@@ -127,7 +127,7 @@ it("distinguishes definite pre-send refusal from lost replies and never reruns a
   // Drop immediately before the await continuation can attempt message.send.
   f.t.drop();await p;expect(f.b.actionError.value).toContain("Not sent:");expect(f.t.calls("message.send")).toHaveLength(0);
   f.t.open();const retry=f.b.confirmRewind("follow-up");await flush();const sent=f.t.calls("message.send")[0]!;
-  f.t.ok(sent.id,{});await retry;await f.b.confirmRewind("follow-up");
+  f.t.ok(sent.id,{message_id:"accepted-message",thread_id:(sent.args as {thread_id:string}).thread_id});await retry;await f.b.confirmRewind("follow-up");
   expect(f.t.calls("thread.rewind").filter(c=>!(c.args as {dry_run?:boolean}).dry_run)).toHaveLength(1);
   expect(f.t.calls("message.send")).toHaveLength(1);f.link.stop();
 });
@@ -154,7 +154,7 @@ it("read/clear/leave never discard receipt; late rewind success cannot start a f
   f.b.target.value={threadId:"other",nodeId:"else"};await f.b.confirmRewind("changed");expect(f.t.calls("thread.rewind")).toHaveLength(2);
   f.b.state.value={...f.b.state.value,threadId:"selected"};f.b.target.value=f.target;
   const recover=f.b.confirmRewind("frozen");await flush();const send=f.t.calls("message.send")[0]!;
-  f.t.ok(send.id,{});await recover;expect(f.t.calls("thread.rewind")).toHaveLength(2);f.link.stop();
+  f.t.ok(send.id,{message_id:"accepted-message",thread_id:(send.args as {thread_id:string}).thread_id});await recover;expect(f.t.calls("thread.rewind")).toHaveLength(2);f.link.stop();
 });
 
 it("owner change after a known rewind never starts the unsent send stage", async () => {
@@ -163,7 +163,7 @@ it("owner change after a known rewind never starts the unsent send stage", async
   const preview=b.previewRewind(target);t.ok(t.calls("thread.rewind")[0]!.id,fixtureRewind);await preview;
   const p=b.confirmRewind("text");t.ok(t.calls("thread.rewind")[1]!.id,{...fixtureRewind,dry_run:false});owner="b";await p;
   expect(t.calls("message.send")).toHaveLength(0);const diagnostic=b.confirmRewind("text");const get=t.calls("operation.get").at(-1)!;t.ownerError(get.id,"operation_expired");await diagnostic;expect(t.calls("message.send")).toHaveLength(0);
-  owner="a";const resume=b.confirmRewind("text");await flush();t.ok(t.calls("message.send")[0]!.id,{});await resume;link.stop();
+  owner="a";const resume=b.confirmRewind("text");await flush();t.ok(t.calls("message.send")[0]!.id,{message_id:"accepted-message",thread_id:(t.calls("message.send")[0]!.args as {thread_id:string}).thread_id});await resume;link.stop();
 });
 
 it("admits no more than four mutation receipts across all three occupied slots", async () => {
@@ -219,7 +219,7 @@ for(const stage of ["rewind","send"] as const) it(`owner roundtrip during ${stag
   const p=f.b.confirmRewind("fixed");const rewind=f.t.calls("thread.rewind")[1]!;
   if(stage==="send"){f.t.ok(rewind.id,{...fixtureRewind,dry_run:false});await flush();}
   f.change("b");f.change("a");f.b.actionError.value="new epoch";
-  if(stage==="rewind")f.t.ok(rewind.id,{...fixtureRewind,dry_run:false});else f.t.ok(f.t.calls("message.send")[0]!.id,{});
+  if(stage==="rewind")f.t.ok(rewind.id,{...fixtureRewind,dry_run:false});else f.t.ok(f.t.calls("message.send")[0]!.id,{message_id:"accepted-message",thread_id:(f.t.calls("message.send")[0]!.args as {thread_id:string}).thread_id});
   await p;expect(f.b.actionError.value).toBe("new epoch");expect(f.t.calls("thread.branches")).toHaveLength(0);
   expect(f.t.calls("message.send")).toHaveLength(stage==="send"?1:0);
   await f.b.confirmRewind("changed");expect(f.t.calls("thread.rewind")).toHaveLength(2);f.link.stop();

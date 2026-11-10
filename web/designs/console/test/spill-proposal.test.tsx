@@ -41,7 +41,7 @@ it.each(['execution','call'] as const)('retains scoped %s identity and open DOM 
     expect(row.querySelector('[data-tool-call-id="synthetic-call"]')).not.toBeNull();
     expect(row.querySelector('[data-tool-compressed]')?.textContent).toBe('Compressed');
     expect(row.querySelector('[data-tool-detail-unavailable="true"]')).not.toBeNull();
-    if(kind==='call')expect(row.textContent).toContain(fixture.model.t.value('work.textUnavailable'));
+    if(kind==='call'){expect(row.textContent).toContain(fixture.model.t.value('work.unknownTools'));expect(row.textContent).not.toContain(fixture.model.t.value('work.textUnavailable'));}
     expect(row.textContent).not.toContain('original-node');
   }finally{render(null,host);host.remove();fixture.model.dispose();fixture.data.stop();}
 });

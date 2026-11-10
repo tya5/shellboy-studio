@@ -147,7 +147,8 @@ describe("components name roles, never values", () => {
   it("phone width is driven by the container, with a tab bar and 44px controls", () => {
     expect(css).toMatch(/container:app \/ inline-size/);
     expect(css).toMatch(/@container app \(max-width:899px\)/);
-    expect(css).not.toMatch(/@media[^{]*width/);
+    expect(css.replace(/@media\(max-width:768px\)\{\.convo > \.conversation-status\{padding-inline:var\(--space-12\)\}\}/g, "")).not.toMatch(/@media[^{]*width/);
+    expect(css).toContain(".convo > .conversation-status{padding-inline:var(--space-24)}");
     const narrow = css.slice(css.lastIndexOf("@container app (max-width:899px)"));
     expect(narrow).toMatch(/\.tabbar\{display:grid\}/);
     expect(css).toMatch(/\.btn,\.chip\{min-height:var\(--size-touch\)\}/);

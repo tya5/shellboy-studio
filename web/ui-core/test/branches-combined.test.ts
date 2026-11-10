@@ -42,7 +42,7 @@ it("partial rewind retains send receipt through family/excerpt resets and leave 
   const reading=f.b.read("selected");f.b.excerptBatch.reset();f.t.ok(f.t.calls("thread.branches").at(-1)!.id,empty);await reading;
   f.b.target.value=target;const retry=f.b.confirmRewind("fixed");await flush();const resent=f.t.calls("message.send")[1]!;
   expect(resent.operation_id).toBe(send.operation_id);expect(resent.args).toEqual(send.args);expect(f.t.calls("thread.rewind")).toHaveLength(2);
-  f.b.leave();f.t.ok(resent.id,{});await retry;const reads=f.t.calls("thread.branches").length;
+  f.b.leave();f.t.ok(resent.id,{message_id:"accepted-message",thread_id:(resent.args as {thread_id:string}).thread_id});await retry;const reads=f.t.calls("thread.branches").length;
   await f.b.confirmRewind("fixed");expect(f.t.calls("message.send")).toHaveLength(2);expect(f.t.calls("thread.branches")).toHaveLength(reads+1);f.link.stop();
 });
 

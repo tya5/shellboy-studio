@@ -73,9 +73,9 @@ describe("Operations", () => {
     ]);
     expect(cmds[0]!.args).toEqual({ thread_id: "a", text: "hi", deliver: "now" }); // bridge sets human/sender_label
     expect(cmds[3]!.args).toEqual({ thread_ids: ["a", "b"], descendants: true });
-    for (const c of cmds) t.ok(c.id, { done: true });
+    for (const c of cmds) t.ok(c.id, c.command === "message.send" ? {message_id:"accepted-message",thread_id:"a"} : { done: true });
     await flush();
-    expect(await send).toEqual({ ok: true, value: { done: true }, operationId: "uuid-1" });
+    expect(await send).toEqual({ ok: true, value: {message_id:"accepted-message",thread_id:"a"}, operationId: "uuid-1" });
     expect(await retry).toMatchObject({ operationId: "mine" });
     expect(await stop).toMatchObject({ ok: true });
     expect(await arch).toMatchObject({ ok: true });
@@ -111,7 +111,7 @@ describe("Operations", () => {
     t.open();
     const again = ops.messageSend({ thread_id: "a", text: "hi" }, "uuid-1");
     expect(t.calls().at(-1)!.operation_id).toBe("uuid-1");
-    t.ok(t.calls().at(-1)!.id, { receipt: "same" });
+    t.ok(t.calls().at(-1)!.id, { message_id:"accepted-message",thread_id:"a",receipt: "same" });
     expect(await again).toMatchObject({ ok: true });
   });
 

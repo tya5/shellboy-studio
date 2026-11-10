@@ -19,7 +19,7 @@ it('retains record choice by canonical structural ID across rerender',async()=>{
 it('retains retry chrome for a nontext failed live record and exposes overflow without a duplicate footer',async()=>{
  const f=await fixtureModel(),host=document.createElement('div');document.body.append(host);let retries=0;
  try{
-  const handle={threadId:'thread',handoffScope:()=> 'scope',handoff:{value:[{key:'actual-record',attemptId:'attempt',status:'failed',text:'',incomplete:true}]},handoffOverflow:{value:true},work:{value:{}},retryHandoff:()=>{retries++;}};
+  const handle={threadId:'thread',handoffScope:()=> 'scope',handoffRetryState:{value:{phase:'failed',reason:'lookup-failed',canRetry:true}},handoff:{value:[{key:'actual-record',attemptId:'attempt',status:'failed',text:'',incomplete:true}]},handoffOverflow:{value:true},work:{value:{}},retryHandoff:()=>{retries++;}};
   const model=new Proxy(f.model,{get(target,key){return key==='handle'?{value:handle}:Reflect.get(target,key);}});
   await act(async()=>render(<SavedWindowContent model={model} snapshot={{rows:[],range:{first:0,last:-1},total:0,revision:1,generation:1,epoch:1,disposed:false,pending:false}}/>,host));
   expect(host.querySelector('[data-live-record-chrome="actual-record"]')?.closest('[data-work-group]')).not.toBeNull();
@@ -34,7 +34,7 @@ it('does not synthesize a body-unavailable error for normal tool presence, but r
   await act(async()=>render(<SavedConversationItems model={f.model} projection={projection}/>,host));
   const heading=host.querySelector('[data-work-heading]')!;
   expect(heading.textContent).not.toContain(f.model.t.value('work.textUnavailable'));
-  expect(heading.textContent).toContain('response_budget');
+  expect(heading.textContent).not.toContain('response_budget');
   const group=host.querySelector('[data-work-group]')! as HTMLDetailsElement;
   await act(async()=>{group.open=true;group.dispatchEvent(new Event('toggle'));});
   expect(host.querySelector('[data-node="tool"]')?.textContent).not.toContain(f.model.t.value('work.textUnavailable'));
