@@ -61,8 +61,16 @@ export function ownSendPresentation<Ref>(input: OwnSendPresentationInput<Ref>): 
   }
   const complete = cohort.length > 0 && cohort.every(row => row.phase === "accepted" && !!row.messageId && displayed.has(row.messageId));
   const positions = cohort.map(row => orderedIds.indexOf(row.messageId ?? ""));
-  const conflict = complete && positions.some((position, index) => index > 0 && position <= positions[index - 1]!);
+  const mutualConflict = complete && positions.some((position, index) => index > 0 && position <= positions[index - 1]!);
   const placement=placeOwnSendRegion(input.reservation,input.scope,input.current,input.projection,input.path,input.nodeOrdinals??new Map());
+  const sequence=input.projection.sequence??[];
+  const boundaryIndex=placement.kind==="qualified"&&placement.insertion.kind!=="beginning"
+    ? sequence.findIndex(entry=>entry.kind===placement.insertion.kind&&(entry.kind==="conversation"?placement.insertion.kind==="conversation"&&entry.itemKey===placement.insertion.itemKey:placement.insertion.kind==="work"&&entry.groupKey===placement.insertion.groupKey)) : -1;
+  const boundaryConflict=complete&&boundaryIndex>=0&&cohort.some(row=>{
+    const index=sequence.findIndex(entry=>entry.kind==="conversation"&&input.projection.items.some(item=>item.key===entry.itemKey&&item.source.nodeId===row.messageId));
+    return index<=boundaryIndex;
+  });
+  const conflict=mutualConflict||boundaryConflict;
   const transfer = complete && !conflict && placement.kind==="qualified";
   const suppressedIds = new Set(transfer ? [] : cohort.flatMap(row => row.messageId ? [row.messageId] : []));
   const items = input.current ? input.projection.items.filter(item => !input.hiddenItemKeys.has(item.key) && !suppressedIds.has(item.source.nodeId ?? "")) : [];

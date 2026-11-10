@@ -38,3 +38,14 @@ it('requires a mounted sequence member, not just a complete item in the projecti
  const projection=projectSavedItems([{windowRevision:1,nodeId:'own',itemIdentity:'item',kind:'user',text:'Saved',textComplete:true}]);
  expect([...completeDisplayedOwnUserIds({ref:{},current:true,scope:'scope',projection:{...projection,sequence:[]},localRows:[],hiddenItemKeys:new Set()})]).toEqual([]);
 });
+it('retains a complete cohort with explicit conflict when its saved row is at or before the reserved boundary',()=>{
+ const own=local('own');
+ const node=(id:string)=>({windowRevision:1,nodeId:id,itemIdentity:id,kind:'user' as const,text:id,textComplete:true});
+ for(const atAnchor of [false,true]){
+  const projection=projectSavedItems(atAnchor?[node('own')]:[node('own'),node('anchor')]);
+  const anchor=projection.items.at(-1)!;
+  const result=ownSendPresentation({ref:{},current:true,scope:'scope',projection,localRows:[own],hiddenItemKeys:new Set(),nodeOrdinals:new Map([[anchor.source.nodeId!,0]]),path:{tail:true,empty:false,revision:1},reservation:{token:{},observation:{installedToken:{},ref:{},scope:'scope',revision:1,isCurrent:()=>true,boundary:{kind:'item',itemKey:anchor.key,nodeId:anchor.source.nodeId!,ordinal:0,nodeMembers:[anchor.key]}}}});
+  expect(result.placement.kind).toBe('qualified');expect(result.localRows).toEqual([own]);expect(result.retire).toEqual([]);expect(result.conflictIds).toEqual(['own']);
+  expect(result.projection.items.some(item=>item.source.nodeId==='own')).toBe(false);
+ }
+});
