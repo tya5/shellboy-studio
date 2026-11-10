@@ -7,7 +7,7 @@ import { Button, EmptyState, LoadingRows, Notice } from "../system/components";
 import { measureAcceptedRows } from "./acceptedRowMeasure";
 import type { WindowAcceptedSnapshot } from "../../../ui-core/src/window";
 import { CurrentScrollSync, type ScrollViewPort } from "./scrollTransaction";
-import { HeadingAnchor, ReadingAnchor, ScrollIntent } from "./scrollIntent";
+import { HeadingAnchor, ReadingAnchor, ScrollIntent, type ReadingContext } from "./scrollIntent";
 
 export function heldRange(visible: { first: number; last: number }, total: number, held: (index: number) => boolean): { first: number; last: number } {
   const range = { ...visible };
@@ -55,8 +55,13 @@ export function WindowedScroll({ model, win, renderRow, live, liveBoundary, stat
           if (measured.length) win.measure(measured);
         },
         plan: (_ref, request) => {
+          const snapshot = renderAcceptedView ? win.acceptedView.peek() : undefined;
+          const context: ReadingContext | undefined = snapshot ? { revision: snapshot.revision, epoch: snapshot.epoch, capability: win.acceptedView.currentCapability,
+            nodes: snapshot.rows.flatMap(row => row.node_id ? [row.node_id] : []),
+            isCurrent: () => port.acceptedView.isCurrent(_ref) && win.acceptedView.isCurrent(snapshot) } : undefined;
+
           const heading = headingAnchor.current.peek();
-          const delta = heading?.delta ?? readingAnchor.current.correction(box);
+          const delta = heading?.delta ?? readingAnchor.current.correction(box, context);
           return {
             consume: () => { if (heading) headingAnchor.current.consume(heading); },
             write: () => {
@@ -69,7 +74,7 @@ export function WindowedScroll({ model, win, renderRow, live, liveBoundary, stat
               origin.current = start;
               win.view(box.scrollTop - start, box.clientHeight, intent.current.following);
             },
-            capture: () => readingAnchor.current.capture(box),
+            capture: () => readingAnchor.current.capture(box, context),
           };
         },
     });
