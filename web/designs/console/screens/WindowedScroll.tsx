@@ -1,7 +1,7 @@
 // One contiguous loaded history run. Unknown edges have indicators, never estimated space.
 import type { ComponentChildren, VNode } from "preact";
 import { useLayoutEffect, useRef, useState } from "preact/hooks";
-import { projectConversation, type AppModel, type ConversationRow, type ConversationWindow } from "../../../ui-core/src";
+import { materializeHistoryPresentation, type AppModel, type ConversationRow, type ConversationWindow } from "../../../ui-core/src";
 import { Button, EmptyState, LoadingRows, Notice } from "../system/components";
 
 import { measureSummaryTransition } from "./summaryAnchor";
@@ -170,11 +170,12 @@ export function WindowedScroll({ model, win, renderRow, live, liveBoundary, stat
         items.push(next);
         end++;
       }
-      const rows = projectConversation(items, shells);
+      const { rows, nodeIdByRowId } = materializeHistoryPresentation(items, shells);
       const positions = new Map(items.map((entry, index) => [entry.node_id, i + index]));
       const rowAt = new Map<number, typeof rows>();
       for (const row of rows) {
-        const position = positions.get(row.id) ?? (row.id.endsWith(":commentary") ? positions.get(row.id.slice(0, -11)) : undefined);
+        const nodeId = nodeIdByRowId.get(row.id);
+        const position = nodeId === undefined ? undefined : positions.get(nodeId);
         if (position !== undefined) rowAt.set(position, [...(rowAt.get(position) ?? []), row]);
       }
       for (let position = i; position <= end; position++) {
