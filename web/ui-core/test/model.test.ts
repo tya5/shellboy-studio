@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { flush, settle } from "../../data/test/harness";
+import { connected, flush, settle } from "../../data/test/harness";
 import { fixtureModel, fixturePendingAdapter } from "./fixture";
 
 describe("AppModel over the fake transport", () => {
@@ -153,26 +153,33 @@ describe("AppModel over the fake transport", () => {
     const call = t.calls("message.send")[0]!;
     expect(call.args).toEqual({ thread_id: "lead", text: "hello" });
     const rowsBefore = model.conversation.value.length;
-    t.ok(call.id, { message_id: "m" });
+    t.ok(call.id, { message_id: "m", thread_id: "lead" });
     expect(await sent).toBe(true);
     expect(model.sendState.value.kind).toBe("idle");
     expect(model.conversation.value.length).toBe(rowsBefore);
   });
 
   it("a lost reply is unconfirmed; resending reuses the operation id", async () => {
-    const { model, t } = await fixtureModel();
+    const { model, t, db } = await fixtureModel();
     const sent = model.send("hello");
     await flush();
     const first = t.calls("message.send")[0]!;
+    db.answered.add(first.id);
     t.drop();
     expect(await sent).toBe(false);
     expect(model.sendState.value).toMatchObject({ kind: "unconfirmed", text: "hello" });
     t.open();
+    t.push({t:"hello",bridge_version:"0.0.1",data_dir:"/temp/owner-a",owner:connected});
+    await settle(t,db);
+    expect(model.pendingOwnMessage.peek()).toBeDefined();
+    expect(model.sendState.peek().kind).toBe("unconfirmed");
+    expect(await model.send("must not replace uncertain text")).toBe(false);
+    expect(model.pendingOwnMessage.peek()?.operationId).toBe(first.operation_id);
     const again = model.resend();
     await flush();
     const second = t.calls("message.send")[1]!;
     expect(second.operation_id).toBe(first.operation_id);
-    t.ok(second.id, {});
+    t.ok(second.id, {message_id:"confirmed-original",thread_id:"lead"});
     expect(await again).toBe(true);
   });
 

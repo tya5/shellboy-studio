@@ -229,6 +229,7 @@ export class AppModel {
   readonly pendingOwnMessage: Signal<PendingOwnMessage | undefined> = signal(undefined);
   readonly acceptedOwnMessages: Signal<readonly PendingOwnMessage[]> = signal([]);
   readonly ownSendCapacityReason: Signal<boolean> = signal(false);
+  private pendingOwnRetryCurrent: (() => boolean) | undefined;
   private pendingOwnCurrent: (() => boolean) | undefined;
   readonly sendState: Signal<SendState> = signal({ kind: "idle" });
   readonly actionError: Signal<string | undefined> = signal(undefined);
@@ -391,8 +392,9 @@ export class AppModel {
     this.disposers.push(effect(() => this.syncLegacyPresentation()));
     this.disposers.push(effect(() => {
       this.route.value; this.handle.value; this.data.owner.value;
-      if ((this.pendingOwnMessage.peek() || this.acceptedOwnMessages.peek().length) && !this.pendingOwnCurrent?.()) {
-        this.pendingOwnMessage.value = undefined; this.acceptedOwnMessages.value = []; this.ownSendCapacityReason.value = false; this.sendState.value = {kind:"idle"};
+      if (this.acceptedOwnMessages.peek().length && !this.pendingOwnCurrent?.()) this.acceptedOwnMessages.value = [];
+      if (this.pendingOwnMessage.peek() && !this.pendingOwnRetryCurrent?.()) {
+        this.pendingOwnMessage.value = undefined; this.ownSendCapacityReason.value = false; this.sendState.value = {kind:"idle"};
       }
     }));
     let senderOwner: unknown;
@@ -860,7 +862,7 @@ export class AppModel {
     const state = this.sendState.value;
     const threadId = this.selectedId.value;
     const pending = this.pendingOwnMessage.peek();
-    if (!pending || !this.pendingOwnCurrent?.() || threadId !== pending.threadId || !["failed", "unconfirmed"].includes(pending.phase)) return false;
+    if (!pending || !this.pendingOwnRetryCurrent?.() || threadId !== pending.threadId || !["failed", "unconfirmed"].includes(pending.phase)) return false;
     return this.deliver(threadId, pending.text, pending.operationId);
   }
 
@@ -894,7 +896,7 @@ export class AppModel {
     if (!handle || handle.threadId !== threadId) return false;
     this.retirePendingOwnIfSaved();
     const old = this.pendingOwnMessage.peek();
-    if (old && this.pendingOwnCurrent?.() && old.operationId !== operationId) return false;
+    if (old && old.operationId !== operationId) return false;
     if (old?.operationId === operationId && old.phase === "sending") return false;
     if (!old) {
       const accepted=this.acceptedOwnMessages.peek();
@@ -905,11 +907,18 @@ export class AppModel {
     const owner = this.data.owner.peek(), scope = handle.handoffScope();
     if (owner.state !== "connected") return false;
     const current = () => this.handle.peek() === handle && this.route.peek() === route && this.data.owner.peek() === owner && handle.handoffScope() === scope;
+    // A read-preview lifetime may end on disconnect; the mutation identity survives it.
+    const retryCurrent = () => {
+      const now = this.data.owner.peek();
+      return this.handle.peek() === handle && this.route.peek() === route &&
+        (now.state !== "connected" || now.info.instance_id === owner.info.instance_id);
+    };
     this.pendingOwnCurrent = current;
+    this.pendingOwnRetryCurrent = retryCurrent;
     this.pendingOwnMessage.value = {threadId,scope,operationId,text,phase:"sending"};
     this.sendState.value = { kind: "sending" };
     const out = await this.ops.messageSend({ thread_id: threadId, text }, operationId);
-    if (!current() || this.pendingOwnMessage.peek()?.operationId !== operationId) return false;
+    if ((!current() && !(!out.ok && out.error.kind === "unconfirmed" && retryCurrent())) || this.pendingOwnMessage.peek()?.operationId !== operationId) return false;
     if (out.ok && out.value.thread_id === threadId) {
       this.acceptedOwnMessages.value = [...this.acceptedOwnMessages.peek(),{threadId,scope,operationId,text,phase:"accepted",messageId:out.value.message_id}];
       this.pendingOwnMessage.value = undefined;
