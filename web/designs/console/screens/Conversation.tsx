@@ -339,6 +339,7 @@ function OrderedHistory({ model, handle, rows, win, history, scroller, pinned, f
             model={model}
             win={win}
             renderRow={(row) => visible(row) ? <RowView model={model} row={row} /> : <></>}
+            renderAcceptedView={snapshot => <><SavedWindowContent model={model} snapshot={snapshot} /><div class="live-tail" data-live-overlay=""><LiveMessage model={model} handle={handle} follow={follow} /><ConversationStatus model={model} /></div></>}
             live={<LiveMessage model={model} handle={handle} follow={follow} />}
             liveBoundary={boundary?.ordinal}
             statusLine={<ConversationStatus model={model} />}
