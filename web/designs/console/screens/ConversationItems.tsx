@@ -5,7 +5,7 @@ export interface ConversationItemSource {
   nodeId: string;
   itemIdentity: string;
   revision: string;
-  kind: 'text' | 'tool' | 'reasoning' | 'unavailable';
+  kind: 'text' | 'tool' | 'reasoning' | 'reasoning_unavailable' | 'unknown' | 'unavailable';
   text?: string;
   executionId?: string;
 }
