@@ -115,7 +115,7 @@ export function SavedConversationItems({ model, projection, renderBefore, traili
         if (open) next.add(membershipKey(group)); else next.delete(membershipKey(group));
         return next;
       });
-    }}><summary data-work-heading=""><Icon name="term" /><span class="tool-group-label">{label}</span>{status ? <StatusMark status={status} label={statusLabel(t, status)} /> : null}<span class="meta" /></summary><div class="step-group-list">{children}</div></Disclosure>;
+    }}><summary data-work-heading=""><Icon name="layers" /><span class="tool-group-label">{label}</span>{status ? <StatusMark status={status} label={statusLabel(t, status)} /> : null}<span class="meta" /></summary><div class="step-group-list">{children}</div></Disclosure>;
   };
   return <ConversationItems {...projection} renderWorkGroup={projection.workGroups ? renderWorkGroup : undefined} renderBefore={renderBefore} trailing={trailing} isItemHidden={hidden} renderHeading={summary => {
     const steps = allSteps.filter(step => summary.executionIds.includes(step.executionId));
@@ -223,7 +223,7 @@ function PendingOwnMessageView({model,nodes,scope}: {model:AppModel;nodes:readon
   useLayoutEffect(()=>{model.retirePendingOwnIfSaved();},[model,pending,accepted,nodes]);
   if(!model.pendingOwnIsCurrent())return null;
   return <>{[...accepted,...(pending?[pending]:[])].filter(message=>message.scope===scope&&message.threadId===model.handle.value?.threadId&&!(message.messageId&&nodes.some(node=>node.node_id===message.messageId))).map(message=><aside key={message.operationId} data-pending-own-message={message.operationId} data-pending-phase={message.phase}>
-    <Message bot={false} who={model.t.value("convo.you")} text={message.text} copyLabel={model.t.value("code.copy")} copiedLabel={model.t.value("code.copied")}><small>{model.t.value(`composer.pending.${message.phase}`)}</small></Message>
+    <Message bot={false} who={model.t.value("convo.you")} text={message.text} at={model.t.value(`composer.pending.${message.phase}`)} copyLabel={model.t.value("code.copy")} copiedLabel={model.t.value("code.copied")} />
     {message.phase==="failed"||message.phase==="unconfirmed"?<Button variant="link" onClick={()=>void model.resend()}>{model.t.value("action.retry")}</Button>:null}
   </aside>)}</>;
 

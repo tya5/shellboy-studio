@@ -37,6 +37,10 @@ for(const windowed of [true,false])for(const savedBeforeAck of [false,true])it(`
   await act(async()=>{f.t.ok(call.id,{message_id:'canonical-own',thread_id:'t'});await flush(8);});expect(f.model.sendState.peek().kind).toBe('idle');expect(composer.value).toBe('');
   if(savedBeforeAck){expect(host.querySelector('[data-pending-own-message]')).toBeNull();expect(host.querySelectorAll('[data-node="canonical-own"] .md')).toHaveLength(1);return;}
   expect(host.querySelector('[data-pending-phase="accepted"]')).not.toBeNull();
+  const acceptedRow=host.querySelector('[data-pending-phase="accepted"]')!;
+  expect(acceptedRow.querySelector('.who > small.mono')?.textContent).toBe(f.model.t.value('composer.pending.accepted'));
+  expect(acceptedRow.querySelector('.msg > small')).toBeNull();
+  expect(acceptedRow.querySelector('.who > small.mono')?.parentElement?.className).toBe('who');
   await act(async()=>{composer.value='Next unsent draft';composer.dispatchEvent(new Event('input',{bubbles:true}));});
   await act(async()=>{composer.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));await flush(4);});
   expect(f.t.calls('message.send')).toHaveLength(2);expect(composer.value).toBe('Next unsent draft');
