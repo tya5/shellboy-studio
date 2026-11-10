@@ -202,3 +202,9 @@ it("typed user and summary preserve explicit partial/completed facts through bot
   const legacy = projectLegacyHistoryItems({ nodes: [{ node_id: "legacy", kind: "user", excerpt: "saved user" }] });
   expect(legacy.projection.items[0]?.source).not.toHaveProperty("textComplete");
 });
+it("Work inner icon is a stored canonical display column, not renderer kind classification", async () => {
+  const { CANONICAL_CASES } = await import("../src/conversation-items");
+  const expected = { toolCall: "cube", toolResult: "cube", spill: "cube", readableReasoning: "bot", reasoningMarker: "bot", event: "inbox", context: "inbox", observation: "inbox", notification: "inbox", childNotification: "inbox", shellNotification: "inbox", interruptionDetails: "cross", interruptionContext: "cross", incompleteResponse: "cross", interruptedWait: "cross", legacyUnknown: "file", unavailable: "file", unknown: "file" } as const;
+  for (const [id, icon] of Object.entries(expected)) expect(CANONICAL_CASES[id as keyof typeof expected].icon).toBe(icon);
+  expect(CANONICAL_CASES.human.icon).toBeNull();
+});
