@@ -191,3 +191,14 @@ it("compact Work rows use the same DS gutter and gap as tool summaries",()=>{
  for(const rule of ["gap:var(--space-8)","padding:var(--space-4) var(--space-12)"]){expect(summary).toContain(rule);expect(row).toContain(rule);}
  expect(row).toContain("box-sizing:border-box");
 });
+
+it("wrapped Work tool rows retain the v0.1 separator instead of the standalone StepRow card", () => {
+  const css = readFileSync(join(system, "components.css"), "utf8");
+  const selector = "[data-work-group]>.step-group-list>[data-work-item-key]>.step:not(.step-group)";
+  const rule = (name: string) => css.split(`${name}{`)[1]?.split("}")[0];
+  expect(rule(selector)).toBe(rule(".step-group-list>.step"));
+  expect(rule(selector)).toBe("border:0;border-top:1px solid var(--line);border-radius:0;background:transparent");
+  expect(rule(`${selector}[open]`)).toBe(rule(".step-group-list>.step[open]"));
+  expect(rule(".step")).toBe("border:1px solid var(--line);border-radius:var(--radius);background:var(--panel);min-width:0");
+  expect(rule(".log.boxed")).toBe("border:1px solid var(--line);border-radius:var(--radius-s)");
+});
