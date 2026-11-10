@@ -1,3 +1,6 @@
+import type { ComponentChildren } from "preact";
+import type { SavedItemProjection } from "../../../ui-core/src/conversation-items";
+import { ConversationItems, type ConversationItem, type ConversationToolSummary } from "./ConversationItems";
 import { characterAssets } from "../system/character-assets";
 import { effect } from "@preact/signals-core";
 import { MonitorPopover } from "../system/components/MonitorPopover";
@@ -7,6 +10,37 @@ import { ScrollIntent } from "./scrollIntent";
 import { LiveMessage } from "./LiveMessage";
 import { WindowedScroll } from "./WindowedScroll";
 import { BranchMark, Button, Composer, LoadingRows, EmptyState, Icon, KeyValue, LogBlock, Message, Notice, QuestionCard, StatusMark, StepRow, SummaryStrip, WorkSheet } from "../system/components";
+
+/** Internal immutable publication seam; deliberately not a Core transport type. */
+export interface ConversationSnapshot {
+  readonly projection: SavedItemProjection;
+  readonly revision: string;
+  readonly readiness: "pending" | "ready";
+}
+export interface ConversationSnapshotReader<T extends ConversationSnapshot> {
+  readonly current: T;
+  subscribe(listener: (value: T) => void): () => void;
+  isCurrent(value: T): boolean;
+}
+
+/** Render only the adapter's accepted reference, never a staged candidate. */
+export function SnapshotConversation<T extends ConversationSnapshot>({ reader, renderItem, renderHeading }: {
+  reader: ConversationSnapshotReader<T>;
+  renderItem: (item: ConversationItem) => ComponentChildren;
+  renderHeading?: (summary: ConversationToolSummary) => ComponentChildren;
+}) {
+  const [view, setView] = useState(() => ({ reader, value: reader.current }));
+  useLayoutEffect(() => {
+    const accept = (value: T) => { if (reader.isCurrent(value)) setView({ reader, value }); };
+    const unsubscribe = reader.subscribe(accept);
+    accept(reader.current);
+    return unsubscribe;
+  }, [reader]);
+  const snapshot = view.reader === reader ? view.value : reader.current;
+  return <section class="snapshot-conversation" data-accepted-revision={snapshot.revision} data-readiness={snapshot.readiness}>
+    <ConversationItems {...snapshot.projection} renderItem={renderItem} renderHeading={renderHeading} />
+  </section>;
+}
 
 const stepDuration = (s: Step, now: number): string | undefined => {
   if (s.durationMs !== undefined) return formatDuration(s.durationMs);
