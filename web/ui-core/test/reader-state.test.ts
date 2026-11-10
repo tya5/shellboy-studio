@@ -1,5 +1,6 @@
 // Stop, recovery, branch marks and the selected step on the long-thread reader, after scrolling away from the end.
 import { describe, expect, it } from "vitest";
+import { materializeHistoryPresentation } from "../src/conversation";
 import { flush, settle } from "../../data/test/harness";
 import { fixtureModel } from "./fixture";
 import { WindowOwner } from "./window-owner";
@@ -71,11 +72,16 @@ describe("the reader keeps Stop, recovery, marks and steps working", () => {
     expect(model.rowMarks.value.get("n0-4995")).toEqual({ nodeId: "n0-4995", branches: 2 });
   });
 
-  it("a mark on a hidden node goes to the row before it", async () => {
-    const { model, goTo } = await open("lead");
+  it("a mark on a retained canonical event stays on its actual node row", async () => {
+    const { model, goTo, w } = await open("lead");
     await goTo(4990);
-    model.marks.value = new Map([["n0-4994", 1]]); // 4994 % 7 === 3: an event, no row of its own
-    expect(model.rowMarks.value.get("n0-4993")).toEqual({ nodeId: "n0-4994", branches: 1 });
+    model.marks.value = new Map([["n0-4994", 1]]); // 4994 % 7 === 3: a retained event record.
+    const view = materializeHistoryPresentation(w.rangeItems());
+    const event = view.rows.find(row => row.id === "n0-4994");
+    expect(event).toMatchObject({ type: "note", kind: "record", text: "" });
+    expect(view.nodeIdByRowId.get(event!.id)).toBe("n0-4994");
+    expect(model.rowMarks.value.get(event!.id)).toEqual({ nodeId: "n0-4994", branches: 1 });
+    expect(model.rowMarks.value.has("n0-4993")).toBe(false);
   });
 
   it("the selected step is found while its window is held, and not walked for", async () => {
