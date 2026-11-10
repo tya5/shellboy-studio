@@ -3,7 +3,7 @@ import {render} from 'preact';
 import {act} from 'preact/test-utils';
 import {expect,it} from 'vitest';
 import {fixtureModel} from '../../../ui-core/test/fixture';
-import {projectSavedItems} from '../../../ui-core/src/conversation-items';
+import {projectLegacyHistoryItems,projectSavedItems} from '../../../ui-core/src/conversation-items';
 import {LiveRecordChrome,SavedConversationItems} from '../screens/Conversation';
 import type {HandoffRetryState} from '../../../data/src/store';
 it('headings consume canonical category counts, omit zero and keep reasons only inside Problems',async()=>{
@@ -31,5 +31,19 @@ it.each<HandoffRetryState>([{phase:'idle',canRetry:false},{phase:'reading',canRe
   if(state.phase==='reading'){expect(button?.disabled).toBe(true);expect(reads).toBe(0);}
   else if(state.canRetry){expect(button?.disabled).toBe(false);await act(async()=>button!.click());expect(reads).toBe(1);}
   else expect(button).toBeNull();
+ }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
+});
+
+it('public event without notification subtype stays generic Notifications, no continuation-cause label',async()=>{
+ const f=await fixtureModel(),host=document.createElement('div');document.body.append(host);
+ try{
+  const projection=projectLegacyHistoryItems({nodes:[{node_id:'public-event',kind:'event',items:[{item_identity:'event-text',kind:'text',text:'Synthetic event content',text_complete:true}]}]}).projection;
+  expect(projection.workGroups?.[0]?.categoryCounts).toEqual({Tools:0,Reasoning:0,Notifications:1,Problems:0});
+  await act(async()=>render(<SavedConversationItems model={f.model} projection={projection}/>,host));
+  expect(host.querySelector('[data-internal-records] summary')?.textContent).toBe(f.model.t.value('work.notification'));
+  expect(host.textContent).not.toContain(f.model.t.value('work.continueNotification'));
+  expect(host.textContent).not.toContain(f.model.t.value('work.problem'));
+  expect(host.querySelector('[data-items-unavailable-reason], [data-item-unavailable]')).toBeNull();
+  expect(host.textContent).not.toContain('Synthetic event content');
  }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
 });
