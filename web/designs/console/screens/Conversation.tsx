@@ -41,7 +41,7 @@ function ConversationStatus({ model }: { model: AppModel }) {
   </div>;
 }
 
-function Output({ model, id, command, complete, boxed }: { model: AppModel; id: string; command: string; complete: boolean; boxed?: boolean }) {
+export function Output({ model, id, command, complete, boxed }: { model: AppModel; id: string; command: string; complete: boolean; boxed?: boolean }) {
   const [raw, setRaw] = useState(false);
   const t = model.t.value;
   const out = model.outputs.value.get(id);
@@ -58,7 +58,7 @@ function Output({ model, id, command, complete, boxed }: { model: AppModel; id: 
   );
 }
 
-function StepView({ model, step }: { model: AppModel; step: Step }) {
+export function StepView({ model, step }: { model: AppModel; step: Step }) {
   const t = model.t.value;
   const choice = model.toolStepChoices.value.get(step.executionId);
   const open = choice ?? step.status === "running";
