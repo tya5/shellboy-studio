@@ -12,3 +12,6 @@ it('id seam cannot revive invalidated staged capture',()=>{const{h,original,proo
 
 it.each(['invalidate','discard'] as const)('reports no transfer success after callback %s',mode=>{const{h,original,proof}=rig();h.stageAttempt(original,proof);expect(h.transfer('a',(_,end)=>{if(mode==='invalidate')h.invalidate();else h.discard('owner_restarted');end('end');return true;})).toBe(false);});
 it('reports no success when callback replaces current staged record',()=>{const{h,original,proof}=rig();h.stageAttempt(original,proof);expect(h.transfer('a',()=>{h.fail('a');return true;})).toBe(false);});
+
+it('acceptance alone without completed end does not report transfer success',()=>{const{h,original,proof}=rig();h.stageAttempt(original,proof);expect(h.transfer('a',()=>true)).toBe(false);expect(h.records.value[0]?.text).toBe(original.text);});
+it('return ownership is not successful retirement',()=>{const{h,original,proof}=rig();h.stageAttempt(original,proof);expect(h.transfer('a',(_,release)=>{release('return');return true;})).toBe(false);expect(h.records.value[0]).toBe(original);});
