@@ -152,7 +152,7 @@ export function projectHistoryWindowItems(input: { readonly revision: string | n
       // Canonical node-level record, never a fabricated wire item identity.
       const base = { nodeId: node.node_id, itemIdentity: node.node_id, identityDomain: "node" as const, windowRevision: input.revision };
       const safeHuman = node.items === undefined && node.kind === "user";
-      segment.push(safeHuman ? { ...base, kind: "user", text: node.excerpt ?? "" } : { ...base, kind: "unknown" });
+      segment.push(safeHuman ? { ...base, kind: "user", text: node.excerpt ?? "" } : node.items_unavailable_reason ? { ...base, kind: "unavailable", reason: node.items_unavailable_reason } : { ...base, kind: "unknown" });
       if (!retryFrom && node.items_unavailable_reason === "response_budget" && ordinal !== undefined) retryFrom = Object.freeze({ ordinal, expect_node_id: node.node_id });
       continue;
     }

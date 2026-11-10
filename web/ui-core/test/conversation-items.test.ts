@@ -213,3 +213,11 @@ it("ATOMIC preserves explicit attempt/turn facts without changing live keys or i
   expect(handoff.items[0]?.source).toMatchObject({ attemptId: "attempt", text: "live" });
   expect(handoff.items[0]?.key).toBe(JSON.stringify(["live", "handoff", "thread", "actual-key"]));
 });
+
+it("REVIEW budget reason survives into the visible Work item, not only node metadata", () => {
+  const out = projectHistoryWindowItems({ revision: 1, nodes: [{ node_id: "budget", selection: { ordinal: 9 }, items: null, items_unavailable_reason: "response_budget", excerpt: "not safe body" }] });
+  expect(out.projection.items[0]?.source).toMatchObject({ kind: "unavailable", reason: "response_budget", identityDomain: "node", nodeId: "budget" });
+  expect(out.projection.workGroups?.[0]?.memberKeys).toEqual([out.projection.items[0]!.key]);
+  expect(out.retryFrom).toEqual({ ordinal: 9, expect_node_id: "budget" });
+  expect(JSON.stringify(out.projection)).not.toContain("not safe body");
+});
