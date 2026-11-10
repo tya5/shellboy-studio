@@ -24,14 +24,20 @@ describe("internal saved ordered-item projection (no wire adapter)", () => {
     expect(out.toolSummaries.map(s => s.executionIds)).toEqual([["x"], ["y"]]);
     expect(out.items.filter(i => i.source.kind === "tool")).toHaveLength(2);
   });
-  it("does not treat hidden reasoning as body text or a group separator", () => {
-    const out = projectSavedItems([tool("A", "x", "x"), { nodeId: "A", itemIdentity: "r", revision: "r1", kind: "reasoning" }, tool("B", "y", "y")]);
-    expect(out.toolSummaries.map(s => s.executionIds)).toEqual([["x", "y"]]);
-    expect(out.items.some(i => i.source.kind === "reasoning")).toBe(false);
+  it("keeps the key domain independent of content revision and identical text", () => {
+    const before = projectSavedItems([text("A", "first", "same"), text("A", "second", "same")]);
+    const input = { ...text("A", "first", "changed"), revision: "r2" };
+    const after = projectSavedItems([input, text("A", "second", "same")]);
+    expect(new Set(before.items.map(i => i.key)).size).toBe(2);
+    expect(after.items.map(i => i.key)).toEqual(before.items.map(i => i.key));
+    expect(after.items[0]?.source.revision).toBe("r2");
   });
-  it("does not claim tool-run continuity through an unavailable ordered segment", () => {
-    const out = projectSavedItems([tool("A", "x", "x"), { nodeId: "A", itemIdentity: "u", revision: "r1", kind: "unavailable" }, tool("B", "y", "y")]);
+  it("uses text items, including empty bodies, as explicit group boundaries", () => {
+    const out = projectSavedItems([tool("A", "x", "x"), text("A", "empty", ""), tool("A", "y", "y")]);
+    expect(out.items[1]?.source).toEqual(text("A", "empty", ""));
     expect(out.toolSummaries.map(s => s.executionIds)).toEqual([["x"], ["y"]]);
-    expect(out.items[1]?.source.kind).toBe("unavailable");
   });
+  it.todo("reasoning-without-text transparency awaits the approved #296 short contract");
+  it.todo("unavailable preserves partition uncertainty, not a confirmed body break or tool join");
+  it.todo("same-revision evidence monotonicity and new-revision authorization require adapter proof");
 });
