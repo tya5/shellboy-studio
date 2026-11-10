@@ -95,7 +95,8 @@ export function SavedConversationItems({ model, projection, renderBefore, traili
     const unknown = group.unknownToolCount > 0 || steps.length !== group.executionIds.length;
     const completed = group.executionIds.length > 0 && !unknown && steps.every(step => step.status === "completed");
     const status = active ? "running" : failures ? "failed" : completed ? "completed" : undefined;
-    const label = [t("work.group"), ...(group.unknownToolCount ? [t("work.unknownTools")] : [t("tools.count", { n: group.executionIds.length })]), ...(unknown ? [t("work.textUnavailable")] : []), ...(failures ? [t("tools.nonzero", {n: failures})] : []), ...(group.interrupted ? [t("status.stopped")] : []), ...((group.continuationBefore !== "closed" || group.continuationAfter !== "closed") ? [t("work.partial")] : [])].join(" · ");
+    const reasons = [...new Set(projection.items.filter(item => group.memberKeys.includes(item.key)).flatMap(item => item.source.kind === "unavailable" && item.source.reason ? [item.source.reason] : []))];
+    const label = [t("work.group"), ...reasons,  ...(group.unknownToolCount ? [t("work.unknownTools")] : [t("tools.count", { n: group.executionIds.length })]), ...(unknown ? [t("work.textUnavailable")] : []), ...(failures ? [t("tools.nonzero", {n: failures})] : []), ...(group.interrupted ? [t("status.stopped")] : []), ...((group.continuationBefore !== "closed" || group.continuationAfter !== "closed") ? [t("work.partial")] : [])].join(" · ");
     return <details class="step step-group" open={opened(group)} data-work-group={group.key} data-key={group.key} data-heading-anchor-key={group.firstMemberKey} data-heading-member-keys={JSON.stringify(group.memberKeys)} onToggle={event => {
       const open = event.currentTarget.open;
       setOpenMemberships(previous => {
@@ -146,7 +147,7 @@ export function SavedConversationItems({ model, projection, renderBefore, traili
       if (item.source.kind === "reasoning" || item.source.kind === "reasoning_unavailable") return <div class="caption muted" data-thinking-marker="">{t("work.thinking")}</div>;
       if (item.source.kind === "interruption") return <Notice>{t("status.stopped")}</Notice>;
       if (item.source.kind === "record") return <details data-internal-records=""><summary>{t("work.records", {n: 1})}</summary><span class="caption muted">{t("work.textUnavailable")}</span></details>;
-      if (item.source.kind === "unknown" || item.source.kind === "unavailable") return <div class="caption muted" data-item-unavailable="">{item.source.kind === "unknown" ? t("work.record") : t("work.textUnavailable")}{item.source.kind === "unavailable" && item.source.reason ? ` (${item.source.reason})` : ""}</div>;
+      if (item.source.kind === "unknown" || item.source.kind === "unavailable") return <div class="caption muted" data-item-unavailable="" data-items-unavailable-reason={item.source.kind === "unavailable" ? item.source.reason : undefined}>{item.source.kind === "unknown" ? t("work.record") : t("work.textUnavailable")}{item.source.kind === "unavailable" && item.source.reason ? ` (${item.source.reason})` : ""}</div>;
       return null;
     }} />;
 }
