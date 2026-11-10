@@ -64,10 +64,21 @@ const summaryProblem = (v: unknown): string | undefined =>
 
 const decodeThreadPage = pageOf<ThreadSummary>(summaryProblem);
 const decodeHistoryPage = pageOf<HistoryItem>((v) => (isObject(v) ? undefined : "history item is not an object"));
+// Core942 protocol1611-1616 / spill_tools.rs: bounded public metadata only.
+function validSpillTools(value: unknown): boolean {
+  if (value === null) return true;
+  if (!isObject(value) || typeof value.status !== 'string' || typeof value.truncated !== 'boolean' || !Array.isArray(value.items) || value.items.length > 8) return false;
+  const encoder = new TextEncoder();
+  const optionalId = (id: unknown) => id === undefined || id === null || (typeof id === 'string' && encoder.encode(id).length <= 256);
+  if (!value.items.every(item => isObject(item) && typeof item.call_id === 'string' && item.call_id.length > 0 && encoder.encode(item.call_id).length <= 256 && optionalId(item.execution_id) && optionalId(item.original_node_id))) return false;
+  // Duplicate/conflicting public tuples are valid wire facts, not authority to merge tools.
+  return encoder.encode(JSON.stringify(value)).length <= 16384;
+}
 const historyItemReasons = new Set(['source_budget', 'response_budget', 'legacy', 'pruned', 'opaque', 'unsupported']);
 const decodeHistoryWindow: Decoder<HistoryWindowResult> = (v) => {
   const bad = (reason: string): { ok: false; reason: string } => ({ ok: false, reason });
   if (!isObject(v) || !Array.isArray(v.items) || v.items.length > 200 || !Number.isSafeInteger(v.total) || (v.total as number) < 0 || !(typeof v.revision === 'string' || typeof v.revision === 'number')) return bad('invalid history.window envelope');
+  if (v.items.some(node => isObject(node) && Object.hasOwn(node, 'spill_tools') && !validSpillTools(node.spill_tools))) return bad('invalid public spill identities');
   if (!v.items.some(node => isObject(node) && (Object.hasOwn(node, 'items') || Object.hasOwn(node, 'items_unavailable_reason')))) return { ok: true, value: v as unknown as HistoryWindowResult };
   let bytes = 0; let deferred = false; let previous = -1;
   const encoder = new TextEncoder();
