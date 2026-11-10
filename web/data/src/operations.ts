@@ -64,14 +64,54 @@ const summaryProblem = (v: unknown): string | undefined =>
 
 const decodeThreadPage = pageOf<ThreadSummary>(summaryProblem);
 const decodeHistoryPage = pageOf<HistoryItem>((v) => (isObject(v) ? undefined : "history item is not an object"));
-const decodeHistoryWindow: Decoder<HistoryWindowResult> = (v) =>
-  isObject(v) &&
-  Array.isArray(v.items) &&
-  typeof v.total === "number" &&
-  (typeof v.revision === "string" || typeof v.revision === "number") &&
-  v.items.every((i) => isObject(i) && typeof (i.selection as { ordinal?: unknown } | undefined)?.ordinal === "number")
-    ? { ok: true, value: v as unknown as HistoryWindowResult }
-    : { ok: false, reason: "history.window result lacks items with ordinals, total or revision" };
+const historyItemReasons = new Set(['source_budget', 'response_budget', 'legacy', 'pruned', 'opaque', 'unsupported']);
+const decodeHistoryWindow: Decoder<HistoryWindowResult> = (v) => {
+  const bad = (reason: string): { ok: false; reason: string } => ({ ok: false, reason });
+  if (!isObject(v) || !Array.isArray(v.items) || v.items.length > 200 || !Number.isSafeInteger(v.total) || (v.total as number) < 0 || !(typeof v.revision === 'string' || typeof v.revision === 'number')) return bad('invalid history.window envelope');
+  if (!v.items.some(node => isObject(node) && (Object.hasOwn(node, 'items') || Object.hasOwn(node, 'items_unavailable_reason')))) return { ok: true, value: v as unknown as HistoryWindowResult };
+  let bytes = 0; let deferred = false; let previous = -1;
+  const encoder = new TextEncoder();
+  for (const node of v.items) {
+    if (!isObject(node) || !isObject(node.selection) || !Number.isSafeInteger(node.selection.ordinal) || (node.selection.ordinal as number) <= previous) return bad('invalid history node ordinal');
+    previous = node.selection.ordinal as number;
+    if (!Object.hasOwn(node, 'items')) {
+      if (Object.hasOwn(node, 'items_unavailable_reason') || deferred) return bad('missing deferred projection');
+      continue; // Honest legacy compatibility, without synthesizing text from excerpts.
+    }
+    if (node.items === null) {
+      if (node.items_unavailable_reason !== 'response_budget') return bad('null projection requires response_budget');
+      deferred = true; continue;
+    }
+    if (deferred || !Array.isArray(node.items) || Object.hasOwn(node, 'items_unavailable_reason') || typeof node.node_id !== 'string' || !node.node_id) return bad('invalid whole-node item projection');
+    const ids = new Set<string>();
+    for (const item of node.items) {
+      if (!isObject(item) || typeof item.item_identity !== 'string' || !item.item_identity || ids.has(item.item_identity)) return bad('invalid or duplicate saved item identity');
+      ids.add(item.item_identity);
+      let allowed: string[];
+      switch (item.kind) {
+        case 'text': {
+          allowed = ['kind', 'item_identity', 'text', 'text_complete'];
+          if (typeof item.text !== 'string' || typeof item.text_complete !== 'boolean') return bad('invalid authoritative text');
+          const length = encoder.encode(item.text).length; bytes += length;
+          if (length > 16384 || bytes > 4194304) return bad('history item text budget exceeded');
+          break;
+        }
+        case 'tool_call': case 'tool_result':
+          allowed = ['kind', 'item_identity', 'execution_ids'];
+          if (!Array.isArray(item.execution_ids) || item.execution_ids.length > 8 || !item.execution_ids.every(id => typeof id === 'string' && id.length > 0)) return bad('invalid execution identities');
+          break;
+        case 'reasoning_unavailable': allowed = ['kind', 'item_identity']; break;
+        case 'unavailable':
+          allowed = ['kind', 'item_identity', 'reason'];
+          if (typeof item.reason !== 'string' || !historyItemReasons.has(item.reason)) return bad('invalid unavailable reason');
+          break;
+        default: return bad('unknown history item kind');
+      }
+      if (Object.keys(item).some(key => !allowed.includes(key))) return bad('unexpected saved item field');
+    }
+  }
+  return { ok: true, value: v as unknown as HistoryWindowResult };
+};
 const decodeDetails: Decoder<ThreadDetails> = (v) =>
   isObject(v) && typeof v.thread_id === "string" && typeof v.title === "string"
     ? { ok: true, value: v as ThreadDetails }
