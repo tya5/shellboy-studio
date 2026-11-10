@@ -86,3 +86,21 @@ it("pending latest-tail evidence does not detach follow intent at the loaded bot
   w.view(0, 600, true); expect(w.following.peek()).toBe(false);
   w.dispose();
 });
+
+it("requests authoritative saved items, preserves whole deferred nodes and retries their first ordinal", async () => {
+  const r = await rig(3);
+  r.owner.decorate = (ordinal, row) => ({ ...row, kind: "assistant_response", items: ordinal >= 1 ? null : [{ kind: "text", item_identity: `item${ordinal}`, text: "saved authoritative text", text_complete: true }], ...(ordinal >= 1 ? { items_unavailable_reason: "response_budget" as const } : {}) });
+  await r.settle();
+  const ref = r.w.acceptedView.peek();
+  expect(ref.rows).toHaveLength(3);
+  expect(ref.rows[0]!.items?.[0]).toMatchObject({ text: "saved authoritative text" });
+  expect(ref.rows[1]!.items).toBeNull(); expect(ref.rows[1]!.node_id).toBeTruthy();
+  expect(r.t.calls("history.window").every(call => (call.args as { items?: boolean }).items === true)).toBe(true);
+  expect(r.t.calls("thread.work.status")).toHaveLength(0);
+  expect(r.w.retryDeferred(ref)).toBe(true);
+  const retry = r.t.calls("history.window").at(-1)!;
+  expect(retry.args).toMatchObject({ ordinal: 1, expect_node_id: ref.rows[1]!.node_id, items: true });
+  expect(r.w.retryDeferred(ref)).toBe(false);
+  r.w.acceptedView.revoke(); expect(r.w.retryDeferred(ref)).toBe(false);
+  r.w.dispose(); r.data.stop();
+});

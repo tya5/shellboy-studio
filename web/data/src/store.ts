@@ -394,6 +394,12 @@ export class ShellboyData {
         const out = await this.operations.historyWindow({ thread_id: threadId, ...args }, { cancel });
         if (!out.ok || !valid()) return out.ok ? { ok: false, error: { kind: "cancelled", message: "publication owner changed" } } : out;
         if (out.value.thread_id !== threadId) return { ok: false, error: { kind: "cancelled", message: "window Thread mismatch" } };
+        // Typed saved items are authoritative; legacy qualification must not gate them.
+        if (args.items === true) {
+          const saved = immutableWindow(out.value);
+          if (!valid()) return { ok: false, error: { kind: "cancelled", message: "typed window owner changed" } };
+          return { ok: true, value: saved };
+        }
         const baseline = e.publicationTail;
         const next: HistoryItem[] = out.value.items.map(rawItem => {
           const { assistant_publication: _untrusted, ...item } = rawItem;

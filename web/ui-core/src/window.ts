@@ -235,6 +235,18 @@ export class ConversationWindow {
     return true;
   }
 
+  /** Explicit re-window from a deferred node. No fragment merge or automatic retry loop. */
+  retryDeferred(ref: WindowAcceptedSnapshot): boolean {
+    if (!this.acceptedView.isCurrent(ref) || this.disposed || ref.revision !== this.revision) return false;
+    const row = ref.rows.find(row => row.items === null && row.items_unavailable_reason === "response_budget");
+    const ordinal = row?.selection?.ordinal;
+    if (!row?.node_id || ordinal === undefined) return false;
+    const index = Math.floor(ordinal / WINDOW_NODES);
+    if (this.inflight.has(index)) return false;
+    void this.readBucket(index, { ordinal, expect_node_id: row.node_id, before: 0, after: WINDOW_NODES - 1, excerpt_chars: HISTORY_EXCERPT_CHARS, items: true });
+    return true;
+  }
+
   // ---- the viewport ----
 
   anchor(scrollTop: number): Anchor {
@@ -403,12 +415,12 @@ export class ConversationWindow {
     }
   }
 
-  private async readBucket(b: number): Promise<void> {
+  private async readBucket(b: number, request?: WindowReadArgs): Promise<void> {
     const epoch = this.epoch, capability = this.acceptedView.currentCapability;
     const cancel = new Cancel();
     this.inflight.set(b, { cancel });
     const out = await this.reader.read(
-      { ordinal: b * WINDOW_NODES, before: 0, after: WINDOW_NODES - 1, excerpt_chars: HISTORY_EXCERPT_CHARS },
+      request ?? { ordinal: b * WINDOW_NODES, before: 0, after: WINDOW_NODES - 1, excerpt_chars: HISTORY_EXCERPT_CHARS, items: true },
       cancel,
     );
     if (this.disposed || capability !== this.acceptedView.currentCapability || epoch !== this.epoch || this.inflight.get(b)?.cancel !== cancel) return; // scrolled away or reset: dropped
@@ -442,7 +454,7 @@ export class ConversationWindow {
     const cancel = new Cancel();
     this.tailCancel?.cancel();
     this.tailCancel = cancel;
-    const out = await this.reader.read({ ordinal: known.ordinal, before: 0, after: 0, expect_node_id: known.nodeId, excerpt_chars: HISTORY_EXCERPT_CHARS }, cancel);
+    const out = await this.reader.read({ ordinal: known.ordinal, before: 0, after: 0, expect_node_id: known.nodeId, excerpt_chars: HISTORY_EXCERPT_CHARS, items: true }, cancel);
     if (this.disposed || capability !== this.acceptedView.currentCapability || epoch !== this.epoch || this.tailCancel !== cancel) return;
     this.verifying = false;
     this.tailCancel = undefined;
@@ -469,8 +481,8 @@ export class ConversationWindow {
     }
     const known = this.tailKnown;
     const args: WindowReadArgs = known && !latest
-      ? { ordinal: known.ordinal, before: 0, after: 2 * WINDOW_NODES - 1, expect_node_id: known.nodeId, excerpt_chars: HISTORY_EXCERPT_CHARS }
-      : { before: WINDOW_NODES - 1, after: 0, excerpt_chars: HISTORY_EXCERPT_CHARS };
+      ? { ordinal: known.ordinal, before: 0, after: 2 * WINDOW_NODES - 1, expect_node_id: known.nodeId, excerpt_chars: HISTORY_EXCERPT_CHARS, items: true }
+      : { before: WINDOW_NODES - 1, after: 0, excerpt_chars: HISTORY_EXCERPT_CHARS, items: true };
     const epoch = this.epoch, capability = this.acceptedView.currentCapability;
     const cancel = new Cancel();
     this.tailCancel = cancel;
@@ -554,13 +566,13 @@ export class ConversationWindow {
   }
 
   private async recover(anchor: Anchor | undefined, follow: boolean, epoch: number): Promise<void> {
-    const around = (extra: WindowReadArgs): WindowReadArgs => ({ before: WINDOW_NODES / 2, after: WINDOW_NODES / 2 - 1, excerpt_chars: HISTORY_EXCERPT_CHARS, ...extra });
+    const around = (extra: WindowReadArgs): WindowReadArgs => ({ items: true, before: WINDOW_NODES / 2, after: WINDOW_NODES / 2 - 1, excerpt_chars: HISTORY_EXCERPT_CHARS, ...extra });
     const attempts: WindowReadArgs[] = [];
     if (!follow && anchor) {
       if (anchor.nodeId) attempts.push(around({ node_id: anchor.nodeId }));
       attempts.push(around({ ordinal: anchor.ordinal }));
     }
-    attempts.push({ before: WINDOW_NODES - 1, after: 0, excerpt_chars: HISTORY_EXCERPT_CHARS });
+    attempts.push({ before: WINDOW_NODES - 1, after: 0, excerpt_chars: HISTORY_EXCERPT_CHARS, items: true });
     const cancel = new Cancel();
     this.tailCancel = cancel;
     for (const args of attempts) {
