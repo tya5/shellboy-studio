@@ -243,3 +243,18 @@ it('admits text only from never-ready owned ledger records, not ready or identif
   expect(projectOwnedHandoffFacts('owned-scope',ledger.records.value).some(item=>'text' in item&&item.text.includes('Forbidden'))).toBe(false);
   ledger.discard('ended');
 });
+
+it('retains the actual response budget reason in closed and open saved Work without aggregate fallback',async()=>{
+  const fixture=await fixtureModel(),host=document.createElement('div');document.body.append(host);
+  try{
+    const { SavedWindowContent }=await import('../screens/Conversation');
+    const rows:import('../../../data/src/protocol').HistoryItem[]=[{node_id:'budget-reason',kind:'assistant_response',excerpt:'Forbidden deferred aggregate',selection:{ordinal:0},items:null,items_unavailable_reason:'response_budget'}];
+    await act(async()=>render(<SavedWindowContent model={fixture.model} snapshot={{rows,range:{first:0,last:0},total:1,revision:1,generation:1,epoch:1,disposed:false,pending:false}}/>,host));
+    const details=host.querySelector('details[data-work-group]')! as HTMLDetailsElement;
+    expect(details.open).toBe(false);expect(details.querySelector('summary')?.textContent).toContain('response_budget');
+    expect(host.textContent).not.toContain('Forbidden');
+    await act(async()=>{details.open=true;details.dispatchEvent(new Event('toggle'));});
+    expect(details.querySelector('[data-items-unavailable-reason="response_budget"]')).not.toBeNull();
+    expect(details.textContent).toContain('response_budget');expect(details.textContent).not.toContain('Forbidden');
+  }finally{render(null,host);host.remove();fixture.model.dispose();fixture.data.stop();}
+});
