@@ -594,6 +594,7 @@ export class AppModel {
       this.longReader.peek()!.changed();
     }
     const reader = this.longReader.peek()!;
+    reader.setAttemptPresentations(h.attemptPresentations.value);
     const records = h.handoff.value;
     reader.version.value;
     for (const record of records) if ((record.readyAttempt || record.status === "ready") && !record.transferred) {
@@ -780,6 +781,12 @@ export class AppModel {
     const set = (b: BodyState) => {
       this.bodies.value = setBounded(this.bodies.peek() as Map<string, BodyState>, nodeId, b);
     };
+    const handle = this.handle.peek();
+    const reader = this.longReader.peek();
+    const transition = reader?.peekSummaryTransitionId();
+    const cancel = this.threadReads;
+    const route = this.route.peek();
+    const qualified = () => this.handle.peek() === handle && this.longReader.peek() === reader && this.threadReads === cancel && this.route.peek() === route;
     set({ text: undefined, loading: true, error: undefined });
     let text = "";
     let cursor: string | undefined;
@@ -788,6 +795,12 @@ export class AppModel {
       if (!out.ok) {
         set({ text: undefined, loading: false, error: out.error.kind === "cancelled" ? undefined : errorMessage(out.error) });
         return;
+      }
+      if (!qualified()) return;
+      if (page === 0 && handle && reader && transition && reader.peekSummaryTransitionId() === transition) {
+        const target = reader.acceptedView.peek();
+        if (reader.acceptedView.isCurrent(target)) reader.acceptSummaryCoverage(handle, target, transition, out.value);
+        if (!qualified()) return;
       }
       text += out.value.text;
       cursor = out.value.next_cursor;
