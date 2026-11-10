@@ -1,0 +1,245 @@
+# Candidate artifacts only. Never creates a tag, release, draft or installed process.
+# Trial and later promotion must use these exact archive bytes; expiry requires a new trial.
+name: Candidate binaries
+on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Full reviewed source SHA (must equal this workflow commit)
+        required: true
+        type: string
+      version:
+        description: Actual Cargo version, without a tag prefix
+        required: true
+        type: string
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: candidate-${{ inputs.source_sha }}
+  cancel-in-progress: false
+jobs:
+  guard:
+    runs-on: ubuntu-22.04
+    env:
+      SOURCE_SHA: ${{ inputs.source_sha }}
+      WORKFLOW_SHA: ${{ github.workflow_sha }}
+      EVENT_SHA: ${{ github.sha }}
+      CANDIDATE_VERSION: ${{ inputs.version }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Require exact workflow source and successful same-SHA full CI
+        run: |
+          python3 - <<'PYTHON'
+          import json, os, re, subprocess
+          sha = os.environ['SOURCE_SHA']
+          assert re.fullmatch('[0-9a-f]{40}', sha)
+          assert sha == os.environ['WORKFLOW_SHA'] == os.environ['EVENT_SHA']
+          assert re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+', os.environ['CANDIDATE_VERSION'])
+          url = f"repos/{os.environ['GITHUB_REPOSITORY']}/actions/workflows/ci.yml/runs?head_sha={sha}&status=success&per_page=100"
+          runs = json.loads(subprocess.check_output(['gh', 'api', url]))['workflow_runs']
+          eligible = [r for r in runs if r['head_sha'] == sha and r['conclusion'] == 'success' and r['event'] == 'workflow_dispatch']
+          required = {'Checks on ubuntu-22.04', 'Checks on macos-15', 'Checks on windows-latest'}
+          verified = False
+          for r in eligible:
+              jobs = json.loads(subprocess.check_output(['gh', 'api', f"repos/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{r['id']}/jobs?per_page=100"]))['jobs']
+              passed = {j['name'] for j in jobs if j['conclusion'] == 'success'}
+              if required <= passed and any('Required exact-pair owner acceptance' in n for n in passed):
+                  verified = True
+                  break
+          assert verified, 'Successful same-SHA dispatched three-OS CI and required owner gate are required'
+          PYTHON
+  exact-owner:
+    needs: guard
+    name: Required exact-pair owner acceptance before artifacts
+    uses: ./.github/workflows/exact-owner.yml
+    with:
+      studio_ref: ${{ inputs.source_sha }}
+  build:
+    needs: [guard, exact-owner]
+    name: Build ${{ matrix.target }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            executable: shellboy-studio.exe
+            archive: zip
+          - os: macos-15
+            target: aarch64-apple-darwin
+            executable: shellboy-studio
+            archive: tar.gz
+          - os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            executable: shellboy-studio
+            archive: tar.gz
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    env:
+      CANDIDATE_VERSION: ${{ inputs.version }}
+      SOURCE_SHA: ${{ inputs.source_sha }}
+      RELEASE_TARGET: ${{ matrix.target }}
+      RELEASE_EXECUTABLE: ${{ matrix.executable }}
+      RELEASE_ARCHIVE: ${{ matrix.archive }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_sha }}
+          persist-credentials: false
+      - name: Verify immutable checkout
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Install pinned Rust toolchain
+        run: rustup toolchain install 1.99.1 --profile minimal --component rustfmt --component clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: candidate-v1
+          cache-on-failure: true
+      - name: Candidate version must match the exact Cargo version
+        run: |
+          python - <<'PY'
+          import json, os, re, subprocess
+          version_input = os.environ['CANDIDATE_VERSION']
+          meta = json.loads(subprocess.check_output(['cargo', '+1.99.1', 'metadata', '--locked', '--no-deps', '--format-version', '1'], text=True))
+          version = next(p['version'] for p in meta['packages'] if p['name'] == 'shellboy-studio')
+          assert re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+', version_input), 'Use the source version'
+          assert version_input == version, f'Candidate version must match Cargo version {version}'
+          rustc = subprocess.check_output(['rustc', '+1.99.1', '-vV'], text=True)
+          assert f"host: {os.environ['RELEASE_TARGET']}" in rustc, rustc
+          PY
+      - name: Build the frontend (embedded by build.rs) and run the checks
+        run: |
+          (cd web && npm ci && npm run check && npm run build)
+          test -s web/dist/index.html
+          python tools/check-release.py
+          cargo +1.99.1 test --locked
+      - name: Build the locked release binary
+        run: |
+          if [[ "$RELEASE_TARGET" == "aarch64-apple-darwin" ]]; then export MACOSX_DEPLOYMENT_TARGET=14.0; fi
+          cargo +1.99.1 build --locked --release --bin shellboy-studio --target "$RELEASE_TARGET"
+          "target/$RELEASE_TARGET/release/$RELEASE_EXECUTABLE" --version
+      - name: Package
+        run: |
+          python - <<'PY'
+          import os, shutil, tarfile, zipfile
+          from pathlib import Path
+          name = f"shellboy-studio-candidate-{os.environ['CANDIDATE_VERSION']}-{os.environ['SOURCE_SHA']}-{os.environ['RELEASE_TARGET']}"
+          stage = Path('package') / name
+          stage.mkdir(parents=True)
+          exe = os.environ['RELEASE_EXECUTABLE']
+          shutil.copy2(Path('target') / os.environ['RELEASE_TARGET'] / 'release' / exe, stage / exe)
+          for f in ('LICENSE', 'README.md', 'AGENTS.md'):
+              shutil.copy2(f, stage / f)
+          shutil.copytree('docs', stage / 'docs')
+          out = Path('dist'); out.mkdir()
+          archive = out / f"{name}.{os.environ['RELEASE_ARCHIVE']}"
+          if os.environ['RELEASE_ARCHIVE'] == 'zip':
+              with zipfile.ZipFile(archive, 'w', zipfile.ZIP_DEFLATED) as z:
+                  for p in sorted(stage.rglob('*')):
+                      if p.is_file(): z.write(p, p.relative_to(stage.parent))
+          else:
+              with tarfile.open(archive, 'w:gz') as t:
+                  t.add(stage, arcname=name)
+          PY
+      - name: Smoke-test the packaged executable
+        run: |
+          python - <<'PY'
+          import os, subprocess, tarfile, tempfile, zipfile
+          from pathlib import Path
+          archive, = Path('dist').iterdir()
+          root = Path(tempfile.mkdtemp(prefix='studio-packaged-'))
+          if archive.suffix == '.zip':
+              zipfile.ZipFile(archive).extractall(root)
+          else:
+              tarfile.open(archive).extractall(root, filter='data')
+          stage, = root.iterdir()
+          out = subprocess.check_output([str(stage / os.environ['RELEASE_EXECUTABLE']), '--version'], text=True).strip()
+          assert out == 'shellboy-studio ' + os.environ['CANDIDATE_VERSION'], out
+          assert (stage / 'LICENSE').is_file() and (stage / 'README.md').is_file()
+          assert (stage / 'docs/guides/user-guide.md').is_file()
+          assert (stage / 'docs/guides/agent-guide.md').is_file()
+          print('packaged smoke:', out)
+          PY
+      - name: Record archive and binary provenance (no credentials)
+        run: |
+          python - <<'PYTHON'
+          import hashlib, json, os, subprocess
+          from pathlib import Path
+          def git(*args):
+              return subprocess.check_output(['git', *args], text=True).strip()
+          def digest(path):
+              return hashlib.sha256(path.read_bytes()).hexdigest()
+          archive, = Path('dist').iterdir()
+          binary = Path('target') / os.environ['RELEASE_TARGET'] / 'release' / os.environ['RELEASE_EXECUTABLE']
+          lock = Path('Cargo.lock').read_text()
+          pin = '942284c27e867091fe23d07babb0103c2cb6507a'
+          assert pin in lock
+          proof = dict(source_sha=git('rev-parse', 'HEAD'), tree=git('rev-parse', 'HEAD^{tree}'),
+                       version=os.environ['CANDIDATE_VERSION'], target=os.environ['RELEASE_TARGET'],
+                       core_sha=pin, rust_toolchain='1.99.1', run_id=os.environ['GITHUB_RUN_ID'],
+                       run_attempt=os.environ['GITHUB_RUN_ATTEMPT'], retention_days=90,
+                       archive=archive.name, archive_sha256=digest(archive),
+                       binary_path=str(binary), binary_sha256=digest(binary))
+          assert proof['source_sha'] == os.environ['SOURCE_SHA']
+          (Path('dist') / (archive.name + '.provenance.json')).write_text(json.dumps(proof, sort_keys=True, indent=2) + '\n')
+          PYTHON
+      - uses: actions/upload-artifact@v4
+        with:
+          name: candidate-${{ inputs.source_sha }}-${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 90
+
+  bundle:
+    needs: build
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: candidate-${{ inputs.source_sha }}-*
+          path: dist
+          merge-multiple: true
+      - name: Verify all provenance and write canonical checksums
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          CANDIDATE_VERSION: ${{ inputs.version }}
+        run: |
+          python3 - <<'PYTHON'
+          import hashlib, json, os
+          from pathlib import Path
+          root = Path('dist')
+          proofs = sorted(root.glob('*.provenance.json'))
+          assert len(proofs) == 3 and len(list(root.iterdir())) == 6
+          targets = set()
+          for p in proofs:
+              x = json.loads(p.read_text())
+              assert x['source_sha'] == os.environ['SOURCE_SHA'] and x['version'] == os.environ['CANDIDATE_VERSION']
+              name = x['archive']
+              assert Path(name).name == name
+              assert hashlib.sha256((root / name).read_bytes()).hexdigest() == x['archive_sha256']
+              targets.add(x['target'])
+          assert targets == {'aarch64-apple-darwin', 'x86_64-unknown-linux-gnu', 'x86_64-pc-windows-msvc'}
+          files = sorted(root.iterdir())
+          (root / 'SHA256SUMS').write_text(''.join(hashlib.sha256(p.read_bytes()).hexdigest() + '  ' + p.name + '\n' for p in files))
+          PYTHON
+          (cd dist && sha256sum --check SHA256SUMS)
+          echo 'Artifacts expire 90 days after upload. Preserve this bundle before expiry; never rebuild and call it the same build.'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: candidate-bundle-${{ inputs.source_sha }}
+          path: dist/*
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 90
