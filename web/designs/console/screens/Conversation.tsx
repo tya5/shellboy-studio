@@ -2,7 +2,7 @@ import type { ThreadHandle } from "../../../data/src/store";
 import { Disclosure } from "../system/components/Disclosure";
 import type { HandoffRecord } from "../../../data/src/handoff";
 import { senderFact } from "../../../data/src/sender";
-import { CANONICAL_CASES, type CanonicalCase, normalizeConversationFacts, projectLegacyHistoryItems, projectHistoryWindowItems, projectSavedItems, normalizeLiveWorkFacts, type NormalizedSavedItem } from "../../../ui-core/src/conversation-items";
+import { CANONICAL_CASES, type CanonicalCase, normalizeConversationFacts, projectLegacyHistoryItems, projectHistoryWindowItems, projectSavedItems, normalizeLiveWorkFacts, normalizeTerminalPresenceFacts, type NormalizedSavedItem } from "../../../ui-core/src/conversation-items";
 import type { HistoryItem } from "../../../data/src/protocol";
 import { Markdown } from "../system/components/Message";
 import type { WindowAcceptedSnapshot } from "../../../ui-core/src/window";
@@ -171,6 +171,10 @@ export function SavedConversationItems({ model, projection, renderBefore, traili
       if (item.source.kind === "ordinaryEmpty") return <div class="caption muted" data-empty-ordinary="">{t("work.textUnavailable")}</div>;
       if (item.source.kind === "reasoning" || item.source.kind === "reasoning_unavailable") return <div class="caption muted" data-thinking-marker="">{workLine(item, t("work.reasoning"), t("work.reasoning"))}</div>;
       if (item.source.kind === "interruption") return workLine(item, t("status.stopped"), t("status.stopped"));
+      if ("terminalPresence" in item.source && item.source.terminalPresence) {
+        const presence=item.source.terminalPresence;
+        return <div data-terminal-presence="" data-terminal-phase={presence.phase} data-client-reason={presence.reason}>{workLine(item, t(item.classification?.headingCategory === "Problems" ? "work.problem" : "work.notification"), <>{t(`terminal.phase.${presence.phase}`)}{item.classification?.headingCategory === "Problems" ? `: ${t("terminal.clientReason")} ${t(`terminal.reason.${presence.reason}`)}` : ""}</>)}</div>;
+      }
       if (item.source.kind === "record") return <div data-internal-records="">{workLine(item, t(item.classification?.headingCategory === "Problems" ? "work.problem" : item.classification?.render === "state-change" ? "work.stateChanges" : item.classification?.render === "child-notification" || item.classification?.render === "shell-notification" ? "work.continueNotification" : "work.notification", {n:1}))}</div>;
       if (item.source.kind === "unknown" || item.source.kind === "unavailable") {
         const source = item.source;
@@ -249,7 +253,7 @@ function LegacySavedContent({model,handle}: {model:AppModel;handle:ThreadHandle;
   const live=ref.live.filter(record=>!retired(record.attemptId));
   const handoffs=model.data.capabilities.value.includes("live.text") ? projectOwnedHandoffFacts(handle.threadId,live) : [];
   const work=normalizeLiveWorkFacts({scope:handle.threadId,items:(ref.work.value?.items??[]).filter(item=>!retired(item.attempt_id))});
-  const projection=projectLegacyHistoryItems({nodes:ref.rows,keyScope:[ref.scope],liveFacts:[...handoffs,...work]}).projection;
+  const projection=projectLegacyHistoryItems({nodes:ref.rows,keyScope:[ref.scope],liveFacts:[...handoffs,...work,...normalizeTerminalPresenceFacts(ref.terminalPresence ?? [])]}).projection;
   return <SavedConversationItems model={model} nodes={ref.rows} projection={projection} trailing={<PendingOwnMessageView model={model} nodes={ref.rows} scope={ref.scope}/>}/>;
 }
 
@@ -277,7 +281,7 @@ export function SavedWindowContent({ model, snapshot, live, liveBoundary, liveFa
     return node?.selection?.ordinal !== undefined && node.selection.ordinal >= liveBoundary;
   });
   const ordered = cut < 0 ? [...saved, ...retainedHandoffs] : [...saved.slice(0, cut), ...retainedHandoffs, ...saved.slice(cut)];
-  const projection = projectSavedItems([...ordered, ...retainedRecords].map(source => keyScope ? {...source, keyScope} : source));
+  const projection = projectSavedItems([...ordered, ...retainedRecords, ...normalizeTerminalPresenceFacts(current ? snapshot.terminalPresence ?? [] : [])].map(source => keyScope ? {...source, keyScope} : source));
   // Live text without item-kind proof cannot unlock or replace saved Conversation text.
   return <SavedConversationItems model={model} projection={projection} nodes={snapshot.rows} trailing={<>{handle && current ? <PendingOwnMessageView model={model} nodes={snapshot.rows} scope={handle.handoffScope()}/> : null}{handle?.handoffOverflow.value ? <div class="caption muted" data-live-overflow="">{model.t.value("convo.handoffLimit")} <HandoffRetryControl model={model}/></div> : undefined}</>} />;
 }

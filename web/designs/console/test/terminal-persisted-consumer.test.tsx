@@ -47,6 +47,11 @@ for(const windowed of [true,false])for(const mode of ['truncated','partial','bud
    expect(current.rows).toEqual(before.rows);if("retiredAttempts" in current)expect(current.retiredAttempts??[]).toHaveLength(0);
    expect(current.attemptPresentations?.some(fact=>fact.state==='pending'&&fact.attemptId==='attempt')).not.toBe(true);
    expect(publications.some(ref=>ref.terminalPersistedAttempts?.length===1)).toBe(true);
+   const presence=host.querySelector('[data-terminal-presence]');expect(presence).not.toBeNull();
+   expect(presence?.closest('[data-work-group]')).not.toBeNull();
+   expect(presence?.textContent).toContain(f.model.t.value('terminal.clientReason'));
+   expect(presence?.getAttribute('data-client-reason')).toBe(current.terminalPresence?.[0]?.reason);
+   expect(f.t.calls('history.window').length).toBeLessThanOrEqual(windowed?3:1);
   }else{
    expect(host.textContent).toContain('Original live answer');
    expect(win.acceptedView.peek().terminalPersistedAttempts??[]).toHaveLength(0);
@@ -87,5 +92,49 @@ it('no-window App keeps structural receipts after representation GC and suppress
   expect(host.querySelector('[data-execution-unavailable], [data-execution-id="old-execution"]')).toBeNull();
   expect(host.textContent).not.toContain('Retired original body');
   await act(async()=>{f.model.navigate({view:'threads'});await flush(4);});expect(owner.isCurrent(ref)).toBe(false);
+ }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
+});
+for(const resultMode of ['complete','partial','error','cancel'] as const)it(`actual Stage2 App bound read and receipt presence: ${resultMode}`,async()=>{
+ let ended=false;
+ const available:HistoryItem={node_id:'available',kind:'user',selection:{ordinal:0},items:[{kind:'text',item_identity:'available-text',text:'Already available unchanged',text_complete:true}]};
+ const f=await fixtureModel({capabilities:['live.text','history.window'],configure(db){
+  db.threads={t:summary('t')};db.details.t=details('t');db.history.t=[available];
+  const base=db.answer.bind(db);db.answer=call=>{
+   if(call.command==='status')return {ok:true,result:{items:ended?[{kind:'attempt',id:'terminal',attempt_id:'terminal',thread_id:'t',state:'completed',response_nodes:[{node_id:'missing',ordinal:1,kind:'message'}]}]:[]}};
+   if(call.command==='history.window'){
+    return {ok:true,result:{thread_id:'t',revision:1,total:1,items:[available]}};
+   }
+   return base(call);
+  };
+ }});
+ const host=document.createElement('div');document.body.append(host);
+ const context:DesignContext={model:f.model,prefs:signal(loadPrefs({read:()=>null,write:()=>{}},[{name:'console',themes:[{name:'light'}]}])),setPrefs:()=>{},designs:[],submitToken:async()=>false};
+ try{
+  await act(async()=>{render(<App context={context}/>,host);await settle(f.t,f.db);});
+  await act(async()=>{f.t.push({t:'live',thread_id:'t',attempt_id:'terminal',gap:false,deltas:[{offset:0,reasoning:false,text:'Live before exact receipt'}]});await flush(24);});
+  expect(host.textContent).toContain('Live before exact receipt');
+  const send=f.t.send.bind(f.t);f.t.send=frame=>{const sent=send(frame);if(frame.t==='call'&&frame.command==='history.window'&&(frame.args as {node_id?:string}).node_id==='missing')f.db.answered.add(frame.id);return sent;};
+  ended=true;await act(async()=>{f.t.push({t:'live_end',thread_id:'t'});await settle(f.t,f.db);await flush(24);});
+  const read=f.t.calls('history.window').filter(call=>(call.args as {node_id?:string}).node_id==='missing');expect(read).toHaveLength(1);
+  const held=read[0]!;f.db.answered.add(held.id);
+  expect(host.textContent).not.toContain('Live before exact receipt');expect(host.textContent).toContain('Already available unchanged');
+  expect(host.querySelector('[data-terminal-phase="reading"]')?.closest('[data-work-group]')).not.toBeNull();
+  expect(host.querySelector('[data-terminal-phase="reading"] [data-work-inner-line]')?.getAttribute('aria-label')).toBe(f.model.t.value('work.notification'));
+  expect(host.querySelector('[data-terminal-phase="reading"]')?.textContent).not.toContain(f.model.t.value('terminal.clientReason'));
+  const before=f.model.longReader.peek()!.acceptedView.peek();
+  if(resultMode==='cancel')await act(async()=>{f.model.navigate({view:'threads'});await flush(12);});
+  await act(async()=>{
+   if(resultMode==='error')f.t.ownerError(held.id,'synthetic_read_failure','synthetic read failure');
+   else f.t.ok(held.id,{thread_id:'t',revision:1,total:2,items:[available,{node_id:'missing',kind:'assistant_response',selection:{ordinal:1},items:[{kind:'text',item_identity:'canonical',text:'Canonical candidate',text_complete:resultMode!=='partial'}]}]});
+   await flush(48);
+  });
+  expect(read).toHaveLength(1);expect(f.t.calls('history.window').filter(call=>(call.args as {node_id?:string}).node_id==='missing')).toHaveLength(1);
+  if(resultMode==='complete'){expect(host.textContent).toContain('Canonical candidate');expect(host.querySelector('[data-terminal-presence]')).toBeNull();}
+  else if(resultMode==='partial'){expect(host.querySelector('[data-client-reason="partial-items"]')?.textContent).toContain(f.model.t.value('terminal.clientReason'));}
+  else if(resultMode==='error'){expect(host.querySelector('[data-client-reason="read-error"]')?.textContent).toContain(f.model.t.value('terminal.clientReason'));}
+  else expect(f.model.longReader.peek()).toBeUndefined();
+  if(resultMode!=='cancel')expect(f.model.longReader.peek()!.acceptedView.peek().rows[0]).toEqual(before.rows[0]);
+  if(resultMode==='partial'||resultMode==='error')expect(host.querySelector('[data-terminal-phase="settled"] [data-work-inner-line]')?.getAttribute('aria-label')).toBe(f.model.t.value('work.problem'));
+  expect(f.t.calls('history.get')).toHaveLength(0);
  }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
 });

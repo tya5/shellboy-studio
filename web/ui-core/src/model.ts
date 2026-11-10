@@ -626,7 +626,9 @@ export class AppModel {
       this.readerThread = h.threadId;
       this.readerHandoffScope = h.handoffScope();
       this.readerTick = h.historyTick.peek();
-      this.longReader.value = new ConversationWindow({ read: (a, c) => h.readWindow(a, c) });
+      const reader = new ConversationWindow({ read: (a, c) => h.readWindow(a, c) });
+      reader.bindTerminalHandle(h);
+      this.longReader.value = reader;
     }
     const tick = h.historyTick.value; // a hint: the reader decides what to read
     if (tick !== this.readerTick) {
@@ -639,6 +641,11 @@ export class AppModel {
     reader.version.value;
     for (const record of records) if ((record.terminalPersisted || record.readyAttempt || record.status === "ready") && !record.transferred) {
       batch(() => h.transferHandoff(record.attemptId, (attachment, release) => reader.acceptHandoff(attachment, h.handoffScope(), release)));
+    }
+    if (reader.isTerminalHandleCurrent(h)) {
+      const accepted = reader.acceptedView.peek();
+      if (reader.acceptedView.isCurrent(accepted))
+        for (const receipt of accepted.terminalPersistedAttempts ?? []) reader.prepareBoundTerminalRead(receipt);
     }
     this.readerShells(this.longReader.peek()!);
   }
