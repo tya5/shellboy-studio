@@ -132,7 +132,7 @@ it.each(['empty-user','reasoning-only','unknown-item'] as const)('keeps honest o
     const { SavedWindowContent }=await import('../screens/Conversation');
     const row:import('../../../data/src/protocol').HistoryItem={node_id:'quiet-node',kind:mode==='empty-user'?'user':'assistant_response',excerpt:'Forbidden private aggregate fallback',selection:{ordinal:0},items:mode==='empty-user'?[]:mode==='reasoning-only'?[{item_identity:'r',kind:'reasoning_unavailable'}]:[{item_identity:'unknown',kind:'unavailable',reason:'opaque'}]};
     await act(async()=>render(<SavedWindowContent model={fixture.model} snapshot={{rows:[row],range:{first:0,last:0},total:1,revision:1,generation:1,epoch:1,disposed:false,pending:false}}/>,host));
-    expect(host.querySelector('[data-node="quiet-node"]')).not.toBeNull();expect(host.textContent).toContain(fixture.model.t.value(mode==='reasoning-only'?'work.thinking':'work.textUnavailable'));
+    expect(host.querySelector('[data-node="quiet-node"]')).not.toBeNull();expect(host.textContent).toContain(mode==='unknown-item'?'opaque':fixture.model.t.value(mode==='reasoning-only'?'work.thinking':'work.textUnavailable'));
     expect(host.textContent).not.toContain('Forbidden');expect(host.querySelector('.more')).toBeNull();
   }finally{render(null,host);host.remove();fixture.model.dispose();fixture.data.stop();}
 });
@@ -145,9 +145,9 @@ it('retains a no-execution tool as a visible unavailable item without inventing 
     const projection=projectSavedItems([{nodeId:'no-exec',itemIdentity:'tool',windowRevision:1,kind:'tool',executionIds:[]}]);
     await act(async()=>render(<SavedConversationItems model={fixture.model} projection={projection}/>,host));
     expect(host.querySelectorAll('[data-item-key]')).toHaveLength(1);expect(host.querySelector('[data-execution-id]')).toBeNull();
-    const heading=host.querySelector('summary[data-work-heading]')!;expect(heading.textContent).toContain(fixture.model.t.value('work.unknownTools'));expect(heading.textContent).toContain(fixture.model.t.value('work.textUnavailable'));expect(heading.textContent).not.toContain(fixture.model.t.value('status.completed'));
+    const heading=host.querySelector('summary[data-work-heading]')!;expect(heading.textContent).toContain(fixture.model.t.value('tools.count',{n:1}));expect(heading.textContent).not.toContain(fixture.model.t.value('work.textUnavailable'));expect(heading.textContent).not.toContain(fixture.model.t.value('status.completed'));
     const details=host.querySelector('details')!;await act(async()=>{details.open=true;details.dispatchEvent(new Event('toggle'));});
-    expect(host.querySelector('[data-execution-unavailable]')?.textContent).toBe(fixture.model.t.value('work.textUnavailable'));
+    expect(host.querySelector('[data-execution-unavailable]')?.textContent).toBe(fixture.model.t.value('work.unknownTools'));expect(host.querySelector('[data-execution-unavailable]')?.closest('[data-work-group]')).toBe(details);
   }finally{render(null,host);host.remove();fixture.model.dispose();fixture.data.stop();}
 });
 
@@ -185,8 +185,8 @@ it('does not claim completion for a closed local summary mixing proved and no-ID
     const projection=projectSavedItems([{nodeId:'mixed-summary',itemIdentity:'known',windowRevision:1,kind:'tool',executionIds:[step.executionId]},{nodeId:'mixed-summary',itemIdentity:'unknown',windowRevision:1,kind:'tool',executionIds:[]}]);
     await act(async()=>render(<SavedConversationItems model={fixture.model} projection={projection}/>,host));
     const details=host.querySelector('details[data-work-group]')! as HTMLDetailsElement,heading=details.querySelector('summary')!;
-    expect(details.open).toBe(false);expect(heading.textContent).toContain(fixture.model.t.value('work.unknownTools'));
-    expect(heading.textContent).toContain(fixture.model.t.value('work.textUnavailable'));expect(heading.querySelector('[data-status="completed"]')).toBeNull();
+    expect(details.open).toBe(false);expect(heading.textContent).toContain(fixture.model.t.value('tools.count',{n:2}));
+    expect(heading.textContent).not.toContain(fixture.model.t.value('work.textUnavailable'));expect(heading.querySelector('[data-status="completed"]')).toBeNull();
     expect([...host.querySelectorAll('[data-item-key]')].every(item=>item.closest('[data-work-group]')===details)).toBe(true);
   }finally{render(null,host);host.remove();fixture.model.dispose();fixture.data.stop();}
 });
@@ -251,7 +251,7 @@ it('retains the actual response budget reason in closed and open saved Work with
     const rows:import('../../../data/src/protocol').HistoryItem[]=[{node_id:'budget-reason',kind:'assistant_response',excerpt:'Forbidden deferred aggregate',selection:{ordinal:0},items:null,items_unavailable_reason:'response_budget'}];
     await act(async()=>render(<SavedWindowContent model={fixture.model} snapshot={{rows,range:{first:0,last:0},total:1,revision:1,generation:1,epoch:1,disposed:false,pending:false}}/>,host));
     const details=host.querySelector('details[data-work-group]')! as HTMLDetailsElement;
-    expect(details.open).toBe(false);expect(details.querySelector('summary')?.textContent).toContain('response_budget');
+    expect(details.open).toBe(false);expect(details.querySelector('summary')?.textContent).not.toContain('response_budget');
     expect(host.textContent).not.toContain('Forbidden');
     await act(async()=>{details.open=true;details.dispatchEvent(new Event('toggle'));});
     expect(details.querySelector('[data-items-unavailable-reason="response_budget"]')).not.toBeNull();
@@ -259,7 +259,7 @@ it('retains the actual response budget reason in closed and open saved Work with
   }finally{render(null,host);host.remove();fixture.model.dispose();fixture.data.stop();}
 });
 
-it('restores incomplete, failed, and retry chrome without granting ready text live authority',async()=>{
+it('renders actual incomplete and qualified retry state without granting ready text live authority',async()=>{
   const fixture=await fixtureModel(),host=document.createElement('div');document.body.append(host);
   try{
     const screen=await import('../screens/Conversation') as unknown as Record<string,any>;
@@ -268,8 +268,11 @@ it('restores incomplete, failed, and retry chrome without granting ready text li
     const ledger=new Handoff(callback=>callbacks.push(callback));
     ledger.apply({attempt_id:'chrome',gap:true,deltas:[{offset:0,reasoning:false,text:'Stream body'}]});while(callbacks.length)callbacks.shift()!();
     ledger.fail('chrome');const record=ledger.records.value[0]!;let retries=0;
-    await act(async()=>render(<screen.LiveRecordChrome model={fixture.model} record={record} retry={()=>{retries++;}}/>,host));
-    expect(host.textContent).toContain(fixture.model.t.value('convo.handoffLimit'));
+    const qualifiedModel=new Proxy(fixture.model,{get(target,key){return key==='handle'?{value:{handoffRetryState:{value:{phase:'failed',reason:'lookup-failed',canRetry:true}},retryHandoff:async()=>{retries++;}}}:Reflect.get(target,key);}});
+    await act(async()=>render(<screen.LiveRecordChrome model={qualifiedModel} record={record} retry={()=>{throw Error('unqualified retry callback');}}/>,host));
+    expect(host.textContent).toContain(fixture.model.t.value('convo.liveIncomplete'));
+    expect(host.textContent).toContain(fixture.model.t.value('convo.retry.lookup-failed'));
+    expect(host.textContent).not.toContain(fixture.model.t.value('convo.handoffLimit'));
     const retry=host.querySelector('button')!;expect(retry.textContent).toContain(fixture.model.t.value('action.retry'));
     await act(async()=>{retry.dispatchEvent(new MouseEvent('click',{bubbles:true}));});expect(retries).toBe(1);
     expect(host.textContent).not.toContain('Stream body');expect(host.querySelector('[role="status"]')).toBeNull();
