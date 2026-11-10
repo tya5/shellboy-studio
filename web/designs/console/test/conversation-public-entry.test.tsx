@@ -78,3 +78,19 @@ it.each(['empty', 'reasoning', 'deferred', 'undefined', 'empty-window'] as const
     }
   }finally{render(null,host);host.remove();fixture.model.dispose();fixture.data.stop();}
 });
+
+
+it('restores authoritative user Message chrome without substituting aggregate text for typed content',async()=>{
+  const fixture=await fixtureModel(),host=document.createElement('div');document.body.append(host);
+  try{
+    const { SavedWindowContent }=await import('../screens/Conversation');
+    const rows:import('../../../data/src/protocol').HistoryItem[]=[{node_id:'user-chrome',kind:'user',excerpt:'Aggregate must not replace item',provenance:{created_at:'2099-01-01T00:00:00Z',sender:{kind:'human'}},selection:{ordinal:0},items:[{item_identity:'user-text',kind:'text',text:'Authoritative typed user content',text_complete:true}]}];
+    const snapshot={rows,range:{first:0,last:0},total:1,revision:1,generation:1,epoch:1,disposed:false,pending:false};
+    await act(async()=>render(<SavedWindowContent model={fixture.model} snapshot={snapshot}/>,host));
+    const item=host.querySelector('[data-item-key]')!;
+    expect(item.querySelector('.msg .av')).not.toBeNull();expect(item.querySelector('.who')?.textContent).toContain(fixture.model.t.value('convo.you'));
+    expect(item.querySelector('.who small')).not.toBeNull();expect(item.querySelector('.msg-acts')).not.toBeNull();
+    expect(item.classList.contains('conversation-row')).toBe(true);
+    expect(item.textContent).toContain('Authoritative typed user content');expect(item.textContent).not.toContain('Aggregate must not replace item');
+  }finally{render(null,host);host.remove();fixture.model.dispose();fixture.data.stop();}
+});

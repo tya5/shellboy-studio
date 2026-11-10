@@ -42,7 +42,7 @@ export function ConversationItems({ items, toolSummaries = [], renderItem, rende
         </div>,
       );
     }
-    rows.push(<div key={`item:${item.key}`} data-item-key={item.key} data-key={item.key}
+    rows.push(<div class="conversation-row" key={`item:${item.key}`} data-item-key={item.key} data-key={item.key}
       data-node={item.source.nodeId} data-execution-id={item.source.kind === 'tool' && !item.source.executionIds ? item.source.executionId : undefined}>
       {renderItem(item)}
     </div>);

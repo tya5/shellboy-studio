@@ -1,3 +1,4 @@
+import { senderFact } from "../../../data/src/sender";
 import { projectHistoryWindowItems } from "../../../ui-core/src/conversation-items";
 import { projectConversation } from "../../../ui-core/src/conversation";
 import type { HistoryItem } from "../../../data/src/protocol";
@@ -69,11 +70,20 @@ export function AcceptedWindowConversation({ reader, project, renderItem, render
 }
 
 /** Console presentation for an already authorized projection, independent of wire decoding. */
-export function SavedConversationItems({ model, projection, renderBefore, trailing }: { model: AppModel; projection: SavedItemProjection; renderBefore?: (item: ConversationItem) => ComponentChildren; trailing?: ComponentChildren }) {
+export function SavedConversationItems({ model, projection, renderBefore, trailing, nodes }: { model: AppModel; projection: SavedItemProjection; nodes?: readonly HistoryItem[]; renderBefore?: (item: ConversationItem) => ComponentChildren; trailing?: ComponentChildren }) {
   const t = model.t.value;
   return <ConversationItems {...projection} renderBefore={renderBefore} trailing={trailing} renderHeading={summary => <span>{t("tools.count", { n: summary.executionIds.length })}</span>}
     renderItem={item => {
-      if (item.source.kind === "text") return <Markdown text={item.source.text ?? ""} copyLabel={t("code.copy")} copiedLabel={t("code.copied")} />;
+      if (item.source.kind === "text") {
+        const node = nodes?.find(node => node.node_id === item.source.nodeId);
+        if (!node) return <Markdown text={item.source.text ?? ""} copyLabel={t("code.copy")} copiedLabel={t("code.copied")} />;
+        const fact = senderFact(node.provenance?.sender);
+        const speaker: Extract<ConversationRow, { type: "message" }>["speaker"] = node.kind === "assistant_response" ? { kind: "shellboy" }
+          : fact.kind === "human" ? { kind: "you" } : fact.kind === "model" ? fact
+          : fact.kind === "external_cli" ? (fact.label?.trim() ? { kind: "other", label: `CLI: ${fact.label}` } : { kind: "cli" })
+          : { kind: "unknown", model: fact.kind === "unknown_model", label: fact.label };
+        return <RowView model={model} authorizedText={item.source.text ?? ""} row={{ type: "message", id: item.source.nodeId, speaker, text: item.source.text ?? "", truncated: false, at: node.provenance?.created_at }} />;
+      }
       if (item.source.kind === "tool") {
         const ids = item.source.executionIds ?? (item.source.executionId ? [item.source.executionId] : []);
         const steps = model.conversation.value.flatMap(row => row.type === "steps" ? row.steps : []);
@@ -111,7 +121,7 @@ export function SavedWindowContent({ model, snapshot, live, liveBoundary }: { mo
     if (first && pending.length) { before.set(first.key, pending); pending = []; }
   }
   if (!livePlaced && live !== undefined) pending.push(liveChrome);
-  return <SavedConversationItems model={model} projection={mapped.projection} renderBefore={item => before.get(item.key)} trailing={pending} />;
+  return <SavedConversationItems model={model} projection={mapped.projection} nodes={snapshot.rows} renderBefore={item => before.get(item.key)} trailing={pending} />;
 }
 
 const stepDuration = (s: Step, now: number): string | undefined => {
@@ -191,7 +201,7 @@ export function StepView({ model, step }: { model: AppModel; step: Step }) {
   );
 }
 
-function RowView({ model, row }: { model: AppModel; row: ConversationRow }) {
+function RowView({ model, row, authorizedText }: { model: AppModel; row: ConversationRow; authorizedText?: string }) {
   const t = model.t.value;
   const threadId = model.handle.value?.threadId;
   const point = threadId !== undefined ? formatRoute({ view: "branches", threadId, nodeId: row.id }) : undefined;
@@ -231,7 +241,7 @@ function RowView({ model, row }: { model: AppModel; row: ConversationRow }) {
   const who = row.speaker.kind === "you" ? t("convo.you") : row.speaker.kind === "shellboy" ? t("convo.shellboy") : row.speaker.kind === "cli" ? t("convo.cli") : row.speaker.kind === "model" ? t("convo.modelSender") : row.speaker.kind === "unknown" ? t(row.speaker.model ? "convo.unknownModelSender" : "convo.unknownSender") : row.speaker.label;
   const body = model.bodies.value.get(row.id);
   return (
-    <Message bot={row.speaker.kind === "shellboy"} who={who} at={formatClock(row.at)} text={body?.text ?? row.text} copyLabel={t("code.copy")} copiedLabel={t("code.copied")}>
+    <Message bot={row.speaker.kind === "shellboy"} who={who} at={formatClock(row.at)} text={authorizedText ?? body?.text ?? row.text} copyLabel={t("code.copy")} copiedLabel={t("code.copied")}>
       {row.speaker.kind === "model" ? <div class="caption sender-fact">
         {model.senderTitles.values.value.get(row.speaker.threadId)?.state === "ready" ? <div>{t("convo.senderCurrentTitle", { title: model.senderTitles.values.value.get(row.speaker.threadId)!.title ?? "" })}</div> : <div>{t("convo.senderTitleUnresolved")}</div>}
         <div>{t("convo.senderThread")} <a href={formatRoute({ view: "conversation", threadId: row.speaker.threadId })}><code class="sender-id">{row.speaker.threadId}</code></a></div>
