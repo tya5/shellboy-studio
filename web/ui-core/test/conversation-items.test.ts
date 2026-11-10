@@ -7,7 +7,7 @@ describe("internal saved ordered-item projection (no wire adapter)", () => {
   it("splits on every body item, never on a node boundary", () => {
     const input = [text("A", "t", "before"), tool("A", "x", "x"), tool("B", "y", "y"), text("B", "t", "between"), tool("B", "z", "z")];
     const out = projectSavedItems(input);
-    expect(out.items.map(i => i.source)).toEqual(input);
+    expect(out.items.map(i => i.source)).toMatchObject(input);
     expect(out.toolSummaries.map(s => s.executionIds)).toEqual([["x", "y"], ["z"]]);
     expect(out.toolSummaries[0]?.memberKeys).toEqual(out.items.slice(1, 3).map(i => i.key));
   });
@@ -26,7 +26,7 @@ describe("internal saved ordered-item projection (no wire adapter)", () => {
   });
   it("keeps the key domain independent of content revision and identical text", () => {
     const before = projectSavedItems([text("A", "first", "same"), text("A", "second", "same")]);
-    const input = { ...text("A", "first", "changed"), revision: "r2" };
+    const input: NormalizedSavedItem = { nodeId: "A", itemIdentity: "first", kind: "text", text: "changed", revision: "r2" };
     const after = projectSavedItems([input, text("A", "second", "same")]);
     expect(new Set(before.items.map(i => i.key)).size).toBe(2);
     expect(after.items.map(i => i.key)).toEqual(before.items.map(i => i.key));
@@ -45,13 +45,13 @@ describe("internal saved ordered-item projection (no wire adapter)", () => {
 it("materializes immutable data and preserves unknown partitions without reasoning text", () => {
   const source = [tool("A", "x", "x"), { nodeId: "A", itemIdentity: "r", revision: "r1", kind: "reasoning", text: "must not leak" }, tool("B", "y", "y"), { nodeId: "B", itemIdentity: "u", revision: "r1", kind: "unavailable" }, tool("C", "z", "z")] as NormalizedSavedItem[];
   const out = projectSavedItems(source);
-  expect(out.toolSummaries.map(s => s.executionIds)).toEqual([["x", "y"], ["z"]]);
-  expect(out.partitionUnknownKeys).toEqual([out.items[2]!.key]);
+  expect(out.toolSummaries.map(s => s.executionIds)).toEqual([["x", "y", "z"]]);
+  expect(out.partitionUnknownKeys).toEqual([out.items[3]!.key]);
   expect(JSON.stringify(out)).not.toContain("must not leak");
   expect(Object.isFrozen(out)).toBe(true);
   expect(Object.isFrozen(out.items[0]?.source)).toBe(true);
   source.splice(0);
-  expect(out.items).toHaveLength(4);
+  expect(out.items).toHaveLength(5);
 });
 it("rejects absent or duplicate authority instead of inventing a key", () => {
   expect(() => projectSavedItems([text("", "x", "value")])).toThrow();
@@ -65,18 +65,18 @@ it("keeps identity tuples unambiguous and renders execution only once across tex
   expect(out.items.filter(i => i.source.kind === "text")).toHaveLength(3);
 });
 
-it("v3 keeps contentless reasoning transparent and unknown as a barrier", () => {
+it("NEW FINAL reasoning and unknown are contentless Work members", () => {
   const out = projectSavedItems([tool("A", "a", "a"), { nodeId: "A", itemIdentity: "r", revision: "r1", kind: "reasoning" }, tool("B", "b", "b"), { nodeId: "B", itemIdentity: "u", revision: "r1", kind: "unavailable" }, tool("C", "c", "c")]);
-  expect(out.toolSummaries.map(s => s.executionIds)).toEqual([["a", "b"], ["c"]]);
-  expect(out.items.some(i => i.source.kind === "reasoning")).toBe(false);
+  expect(out.toolSummaries.map(s => s.executionIds)).toEqual([["a", "b", "c"]]);
+  expect(out.items.some(i => i.source.kind === "reasoning")).toBe(true);
   expect(out.partitionUnknownKeys).toEqual([out.items.find(i => i.source.kind === "unavailable")!.key]);
 });
 
-it("v3 explicit reasoning_unavailable is transparent and unknown never fabricates text", () => {
+it("NEW FINAL reasoning and unknown join Work without fabricating text", () => {
   const out = projectSavedItems([tool("A", "a", "a"), { nodeId: "A", itemIdentity: "r", revision: "r1", kind: "reasoning_unavailable" }, tool("B", "b", "b"), { nodeId: "B", itemIdentity: "u", revision: "r1", kind: "unknown" }, text("C", "empty", ""), tool("C", "c", "c")]);
   expect(out.toolSummaries.map(s => s.executionIds)).toEqual([["a", "b"], ["c"]]);
   expect(out.partitionUnknownKeys).toEqual([out.items.find(i => i.source.kind === "unknown")!.key]);
-  expect(out.items.some(i => i.source.kind === "reasoning_unavailable")).toBe(false);
+  expect(out.items.some(i => i.source.kind === "reasoning_unavailable")).toBe(true);
 });
 
 it("maps authoritative v3 arrays without inventing item revision or splitting multi-link items", async () => {
@@ -93,7 +93,7 @@ it("keeps null/legacy ordinary nodes and ordinal retry outside fabricated item i
   expect(out.nodes).toHaveLength(3);
   expect(out.nodes[1]).toMatchObject({ nodeId: "B", state: "deferred", reason: "response_budget", ordinal: 1 });
   expect(out.retryFrom).toEqual({ ordinal: 1, expect_node_id: "B" });
-  expect(out.projection.items).toHaveLength(1);
+  expect(out.projection.items).toHaveLength(3);
   expect(JSON.stringify(out.projection)).not.toContain("ordinary retained");
 });
 
@@ -106,7 +106,7 @@ it("FINAL keeps empty ordinary presence without exposing reasoning or inventing 
     { node_id: "deferred", kind: "assistant_response", items: null, items_unavailable_reason: "response_budget", selection: { ordinal: 4 } },
   ] });
   expect(out.nodes.map(n => n.emptyOrdinary)).toEqual([true, true, false, false, false]);
-  expect(out.projection.items.map(i => i.source.nodeId)).toEqual(["empty-text"]);
+  expect(out.projection.items.map(i => i.source.nodeId)).toEqual(["user", "model", "event", "empty-text", "deferred"]);
   expect(out.retryFrom).toEqual({ ordinal: 4, expect_node_id: "deferred" });
 });
 it("FINAL generic tool is visible without fictional execution or detail", () => {
@@ -119,8 +119,8 @@ it("FINAL generic tool is visible without fictional execution or detail", () => 
 });
 it("FINAL summaries claim only local membership and retain uncertain edges", () => {
   const out = projectSavedItems([tool("A", "x", "x"), text("B", "e", ""), tool("C", "y", "y"), { nodeId: "C", itemIdentity: "u", revision: "r1", kind: "unknown" }, tool("D", "z", "z")]);
-  expect(out.toolSummaries.map(s => [s.continuationBefore, s.continuationAfter])).toEqual([["unknown", "closed"], ["closed", "unknown"], ["unknown", "unknown"]]);
-  expect(out.toolSummaries.map(s => s.executionIds)).toEqual([["x"], ["y"], ["z"]]);
+  expect(out.toolSummaries.map(s => [s.continuationBefore, s.continuationAfter])).toEqual([["unknown", "closed"], ["closed", "unknown"]]);
+  expect(out.toolSummaries.map(s => s.executionIds)).toEqual([["x"], ["y", "z"]]);
 });
 
 it("FINAL legacy saved prose is independent of advisory publication state", async () => {
@@ -137,7 +137,7 @@ it("FINAL typed empty/unknown items never use aggregate excerpt as fallback", ()
     { node_id: "unknown", kind: "assistant_response", excerpt: "aggregate must not render", items: [{ kind: "unavailable", item_identity: "u", reason: "unsupported" }] },
   ] });
   expect(out.nodes[0]?.emptyOrdinary).toBe(true);
-  expect(out.projection.items.map(i => i.source.kind)).toEqual(["unavailable"]);
+  expect(out.projection.items.map(i => i.source.kind)).toEqual(["ordinaryEmpty", "unavailable"]);
   expect(JSON.stringify(out.projection)).not.toContain("aggregate must not render");
 });
 
@@ -145,7 +145,8 @@ it("FINAL execution-linked saved prose is invariant across phase and publication
   const { projectConversation } = await import("../src/conversation");
   const node = { node_id: "saved-linked", kind: "assistant_response", excerpt: "Same saved ordinary text", executions: [{ execution_id: "actual-execution", state: "exited", command_excerpt: "synthetic" }] };
   const baseline = projectConversation([node]);
-  expect(baseline.filter(row => row.type === "message").map(row => row.text)).toEqual([node.excerpt]);
+  expect(baseline.filter(row => row.type === "message")).toEqual([]);
+  expect(baseline.some(row => row.type === "publication")).toBe(true);
   expect(baseline.filter(row => row.type === "steps")).toHaveLength(1);
   for (const phase of ["commentary", "final_answer", undefined, "unknown"]) {
     for (const advice of [undefined, "unknown", "tool"] as const) {
@@ -161,4 +162,32 @@ it("FINAL publication and execution hints cannot unlock typed empty or unavailab
     expect(JSON.stringify(out.projection)).not.toContain("Forbidden aggregate");
     expect(out.nodes[0]?.emptyOrdinary).toBe(items.length === 0);
   }
+});
+
+it("NEW FINAL groups every non-conversation record, including unknown/reasoning singleton", () => {
+  const out = projectSavedItems([tool("A", "x", "x"), { nodeId: "A", itemIdentity: "r", revision: "r1", kind: "reasoning_unavailable" }, { nodeId: "B", itemIdentity: "u", revision: "r1", kind: "unknown" }, tool("B", "y", "y"), text("C", "t", ""), tool("D", "z", "z")]);
+  expect(out.workGroups.map(g => g.memberKeys.length)).toEqual([4, 1]);
+  expect(out.workGroups.map(g => g.executionIds)).toEqual([["x", "y"], ["z"]]);
+  expect(out.sequence.map(row => row.kind)).toEqual(["work", "conversation", "work"]);
+  expect(out.items).toHaveLength(6);
+});
+it("NEW FINAL no-ID work does not imply completed tools and prepend does not change content keys", () => {
+  const member = { nodeId: "A", itemIdentity: "generic", revision: "r1", kind: "tool" as const, executionIds: [] };
+  const out = projectSavedItems([member]);
+  expect(out.workGroups[0]?.unknownToolCount).toBe(1);
+  expect(out.workGroups[0]?.executionIds).toEqual([]);
+  const prepended = projectSavedItems([tool("B", "b", "b"), member]);
+  expect(prepended.items[1]?.key).toBe(out.items[0]?.key);
+  expect(prepended.workGroups[0]?.key).not.toBe(out.workGroups[0]?.key);
+});
+
+it("NEW FINAL live identities are explicit scoped records, not fabricated saved nodes", async () => {
+  const { normalizeLiveWorkFacts } = await import("../src/conversation-items");
+  const live = normalizeLiveWorkFacts({ scope: "thread", items: [{ id: "shell-record", thread_id: "thread", kind: "shell", state: "running", execution_id: "actual" }, { id: "held", thread_id: "thread", kind: "message", state: "held", message_id: "pending" }, { id: "other", thread_id: "thread", kind: "other", state: "unknown", excerpt: "not body" }] });
+  const out = projectSavedItems(live);
+  expect(out.workGroups).toHaveLength(1);
+  expect(out.workGroups[0]?.executionIds).toEqual(["actual"]);
+  expect(out.items).toHaveLength(2);
+  expect(out.items[0]?.source).not.toHaveProperty("nodeId");
+  expect(JSON.stringify(out)).not.toContain("not body");
 });

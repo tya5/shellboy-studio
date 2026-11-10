@@ -91,7 +91,9 @@ export function projectConversation(items: HistoryItem[], shells: ReadonlyMap<st
         });
       }
       if (item.kind !== "assistant_response" || !item.excerpt) continue;
-      rows.push({ type: "message", id: `${id}:commentary`, speaker: speakerOf(item), text: item.excerpt, truncated: codePoints(item.excerpt) >= HISTORY_EXCERPT_CHARS, at: item.provenance?.created_at });
+      const safeText = item.items?.filter(entry => entry.kind === "text");
+      if (safeText?.length) rows.push({ type: "message", id: `${id}:commentary`, speaker: speakerOf(item), text: safeText.map(entry => entry.text).join("\n"), truncated: safeText.some(entry => !entry.text_complete), at: item.provenance?.created_at });
+      else rows.push({ type: "publication", id: `${id}:unknown`, state: "unknown" });
       continue;
     }
     if (item.kind !== undefined && HIDDEN.has(item.kind)) continue;
