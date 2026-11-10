@@ -1,3 +1,5 @@
+import type { AttemptPresentation, ThreadHandle, ThreadReadQualification } from "../../data/src/store";
+import type { HistoryBody } from "../../data/src/protocol";
 import { AcceptedView, type AcceptedCapability } from "./accepted-view";
 import type { HandoffRecord } from "../../data/src/handoff";
 // The long-thread reader's model (docs/design/long-threads.md): positional windows of a Thread's
@@ -32,6 +34,17 @@ export interface RetiredAttempt {
   readonly nodeIds: readonly string[];
   readonly revision: string | number;
 }
+declare const summaryIdBrand: unique symbol;
+export type SummaryTransitionId = string & { readonly [summaryIdBrand]: true };
+export interface AcceptedCoverage {
+  readonly transitionId: SummaryTransitionId;
+  readonly scope: string;
+  readonly summaryNodeId: string;
+  readonly sourceNodeIds: readonly string[];
+  readonly source: { readonly nodeId: string; readonly offset: number; readonly revision: string | number };
+  readonly targetRevision: string | number;
+  readonly kind: "inside" | "below";
+}
 export interface WindowAcceptedSnapshot {
   readonly generation: number;
   readonly epoch: number;
@@ -41,6 +54,8 @@ export interface WindowAcceptedSnapshot {
   readonly total: number;
   readonly revision: string | number | undefined;
   readonly pending: boolean;
+  readonly coverage?: AcceptedCoverage;
+  readonly attemptPresentations?: readonly AttemptPresentation[];
   readonly retiredAttempts?: readonly RetiredAttempt[];
 }
 export interface WindowScrollRequest { readonly id: object; readonly target: number }
@@ -103,6 +118,11 @@ export class ConversationWindow {
   private lastAnchor: Anchor | undefined;
   private scrollRequest: number | undefined;
   private scrollHandle: WindowScrollRequest | undefined;
+  private attemptPresentations: readonly AttemptPresentation[] = [];
+  private summarySerial = 0;
+  private summaryTransition: { id: SummaryTransitionId; handle: ThreadHandle; token: ThreadReadQualification;
+    sourceRef: WindowAcceptedSnapshot; sourceCap: AcceptedCapability; nodeId: string; offset: number; scope: string;
+    consumed: boolean; targetCap?: AcceptedCapability; coverage?: AcceptedCoverage } | undefined;
   private acceptedGeneration = 0;
   private retiredAttempts: readonly RetiredAttempt[] = [];
   private retiredCapability: AcceptedCapability | undefined;
@@ -149,6 +169,71 @@ export class ConversationWindow {
     return this.buckets.get(Math.floor(i / WINDOW_NODES))?.items[i % WINDOW_NODES];
   }
   /** Pure ownership receive; no navigation, reads or scroll correction. */
+  beginSummaryTransition(handle: ThreadHandle, ref: WindowAcceptedSnapshot, nodeId: string, offset: number): SummaryTransitionId | undefined {
+    if (this.disposed || !this.acceptedView.isCurrent(ref) || ref.pending || ref.revision === undefined || !Number.isFinite(offset)
+      || ref.rows.filter(row => row.node_id === nodeId).length !== 1) return undefined;
+    const old = this.summaryTransition;
+    if (old) return old.handle === handle && old.sourceRef === ref && old.nodeId === nodeId && old.offset === offset
+      && !old.consumed && handle.isReadQualificationCurrent(old.token) ? old.id : undefined;
+    const token = handle.captureReadQualification();
+    if (!token || !this.acceptedView.isCurrent(ref)) return undefined;
+    const id = `summary-${++this.summarySerial}` as SummaryTransitionId;
+    this.summaryTransition = { id, handle, token, sourceRef: ref, sourceCap: this.acceptedView.currentCapability, nodeId, offset, scope: handle.handoffScope(), consumed: false };
+    return id;
+  }
+  peekSummaryTransitionId(): SummaryTransitionId | undefined {
+    const tx = this.summaryTransition;
+    return tx && !tx.consumed && !this.disposed && tx.handle.isReadQualificationCurrent(tx.token) && tx.scope === tx.handle.handoffScope() ? tx.id : undefined;
+  }
+  acceptSummaryCoverage(handle: ThreadHandle, ref: WindowAcceptedSnapshot, id: SummaryTransitionId, body: HistoryBody): boolean {
+    const tx = this.summaryTransition;
+    if (!tx || tx.id !== id || tx.handle !== handle || tx.consumed || this.disposed || ref.pending || ref.revision === undefined
+      || !this.acceptedView.isCurrent(ref) || !handle.isReadQualificationCurrent(tx.token) || handle.handoffScope() !== tx.scope
+      || body.kind !== "summary" || ref.rows.filter(row => row.node_id === body.node_id && row.kind === "summary").length !== 1) return false;
+    if (ref.revision === tx.sourceRef.revision && tx.sourceCap !== this.acceptedView.currentCapability) return false;
+    const ids = body.source_node_ids;
+    if (!ids?.length || ids.length > 4096 || new Set(ids).size !== ids.length || ids.some(id => typeof id !== "string" || !id)) return false;
+    let kind: "inside" | "below";
+    if (ids.includes(tx.nodeId)) kind = "inside";
+    else {
+      const ordinal = tx.sourceRef.rows.find(row => row.node_id === tx.nodeId)?.selection?.ordinal;
+      if (ordinal === undefined || !ids.every(id => {
+        const found = tx.sourceRef.rows.filter(row => row.node_id === id);
+        return found.length === 1 && found[0]!.selection?.ordinal !== undefined && found[0]!.selection!.ordinal! < ordinal;
+      }) || ref.rows.filter(row => row.node_id === tx.nodeId).length !== 1) return false;
+      kind = "below";
+    }
+    const cap = this.acceptedView.currentCapability;
+    const coverage: AcceptedCoverage = { transitionId: id, scope: tx.scope, summaryNodeId: body.node_id, sourceNodeIds: [...ids],
+      source: { nodeId: tx.nodeId, offset: tx.offset, revision: tx.sourceRef.revision! }, targetRevision: ref.revision, kind };
+    const generation = this.acceptedGeneration + 1;
+    const staged = this.acceptedView.stage({ ...ref, generation, coverage }, cap);
+    if (!this.acceptedView.isCurrent(ref) || tx !== this.summaryTransition || !handle.isReadQualificationCurrent(tx.token)) return false;
+    tx.coverage = coverage; tx.targetCap = cap; this.acceptedGeneration = generation;
+    if (!this.acceptedView.commit(staged)) { tx.coverage = undefined; tx.targetCap = undefined; return false; }
+    return this.acceptedView.peek().generation === generation && this.peekSummaryCoverage(this.acceptedView.peek()) !== undefined;
+  }
+  peekSummaryCoverage(ref: WindowAcceptedSnapshot): AcceptedCoverage | undefined {
+    const tx = this.summaryTransition;
+    return tx && !tx.consumed && !this.disposed && !ref.pending && this.acceptedView.isCurrent(ref)
+      && tx.targetCap === this.acceptedView.currentCapability && tx.handle.isReadQualificationCurrent(tx.token)
+      && tx.handle.handoffScope() === tx.scope && ref.coverage?.transitionId === tx.id && ref.coverage.targetRevision === ref.revision ? ref.coverage : undefined;
+  }
+  consumeSummaryCoverage(ref: WindowAcceptedSnapshot, id: SummaryTransitionId): boolean {
+    const coverage = this.peekSummaryCoverage(ref);
+    if (!coverage || coverage.transitionId !== id) return false;
+    this.summaryTransition!.consumed = true; return true;
+  }
+  clearSummaryTransition(id?: SummaryTransitionId): void {
+    if (id === undefined || this.summaryTransition?.id === id) this.summaryTransition = undefined;
+  }
+  setAttemptPresentations(facts: readonly AttemptPresentation[]): void {
+    if (this.disposed || facts.length > 8 || facts.some(f => f.nodeIds.length > 64)) return;
+    if (JSON.stringify(facts) === JSON.stringify(this.attemptPresentations)) return;
+    this.attemptPresentations = facts.map(f => ({ ...f, nodeIds: [...f.nodeIds] }));
+    this.bump(this.acceptedView.currentCapability);
+  }
+
   acceptHandoff(record: HandoffRecord, scope: string, release: (reason: "return" | "end") => void): boolean {
     if (record.readyAttempt) {
       const proof = record.readyAttempt;
@@ -446,6 +531,7 @@ export class ConversationWindow {
 
   /** Leaving the view or the Thread: nothing more is read. */
   dispose(): void {
+    this.clearSummaryTransition();
     this.disposed = true;
     this.acceptedView.dispose();
     const attachments = [...this.buckets.values()].flatMap(bucket => [...bucket.handoffs.values()]);
@@ -472,7 +558,8 @@ export class ConversationWindow {
     const generation = ++this.acceptedGeneration;
     const staged = this.acceptedView.stage({ generation, epoch, disposed: false,
       rows: this.rangeItems(), range: this.renderRange(), total: this.total,
-      revision: this.revision, pending: this.status.peek() === "loading",
+      revision: this.revision, pending: this.status.peek() === "loading", attemptPresentations: this.attemptPresentations,
+      coverage: this.summaryTransition?.targetCap === capability && !this.summaryTransition?.consumed ? this.summaryTransition?.coverage : undefined,
       retiredAttempts: (this.retiredCapability === capability ? this.retiredAttempts : []).filter(item => item.revision === this.revision) }, capability);
     if (this.disposed || epoch !== this.epoch || generation !== this.acceptedGeneration) return;
     if (!this.acceptedView.commit(staged)) return;

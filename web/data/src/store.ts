@@ -96,7 +96,15 @@ export interface Handle {
 declare const threadReadBrand: unique symbol;
 export type ThreadReadQualification = Readonly<{ readonly [threadReadBrand]: true }>;
 
+export interface AttemptPresentation {
+  readonly scope: string;
+  readonly attemptId: string;
+  readonly turnId: string;
+  readonly nodeIds: readonly string[];
+  readonly state: "pending" | "failed";
+}
 export interface ThreadHandle extends Handle {
+  readonly attemptPresentations: ReadonlySignal<readonly AttemptPresentation[]>;
   captureReadQualification(): ThreadReadQualification | undefined;
   isReadQualificationCurrent(token: ThreadReadQualification): boolean;
   readonly threadId: string;
@@ -159,6 +167,7 @@ class ThreadEntry {
   fullRead = true;
   /** Unsaved model text; its signal is the handle's `preview`. */
   live: Handoff;
+  pendingAttempts = signal<readonly AttemptPresentation[]>([]);
   resolving: Promise<void> | undefined;
   resolveAgain = false;
   refreshAfterHandoff = false;
@@ -374,6 +383,16 @@ export class ShellboyData {
     let qualification: { token: ThreadReadQualification; epoch: number; liveEpoch: number; cancel: Cancel } | undefined;
     const readable = () => !closed && !e.closed && !e.paused && !e.cancel.cancelled && this.entries.get(threadId) === e && this.canRead();
     return {
+      attemptPresentations: computed(() => {
+        const held = e.live.records.value;
+        const facts = e.pendingAttempts.value;
+        const scope = this.handoffScope(e);
+        if (closed || e.closed || e.paused || !this.canRead()) return [];
+        return facts.filter(fact => fact.scope === scope).map(fact => {
+          const record = held.find(record => record.attemptId === fact.attemptId);
+          return { ...fact, state: !record || record.status === "failed" ? "failed" as const : fact.state };
+        });
+      }),
       captureReadQualification: () => {
         qualification = undefined;
         if (!readable()) return undefined;
@@ -415,7 +434,7 @@ export class ShellboyData {
         if (!valid()) return { ok: false, error: { kind: "cancelled", message: "window owner changed while materializing" } };
         return { ok: true, value: saved };
       },
-      cancelReads: () => { e.live.invalidate(); e.cancel.cancel(); },
+      cancelReads: () => { e.pendingAttempts.value = []; e.live.invalidate(); e.cancel.cancel(); },
       refresh: () => this.requestThread(threadId),
       loadOlderHistory: () => this.loadOlder(e),
       canShowEarlier: () => e.window < HISTORY_WINDOW_MAX,
@@ -441,6 +460,7 @@ export class ShellboyData {
   /** Stops reading a Thread nobody is looking at, and keeps what it has. */
   private pauseEntry(entry: ThreadEntry): void {
     if (entry.paused || entry.closed) return;
+    entry.pendingAttempts.value = [];
     entry.paused = true;
     entry.refreshAfterHandoff = false;
     entry.live.invalidate();
@@ -580,6 +600,7 @@ export class ShellboyData {
     for (const e of this.entries.values()) {
       e.refreshAfterHandoff = false;
       e.resolveAgain = false;
+      e.pendingAttempts.value = [];
       e.live.discard(reason);
     }
   }
@@ -703,6 +724,13 @@ export class ShellboyData {
         const refs = attempt.response_nodes;
         if (out.value.items.some(other => other !== attempt && other.response_nodes?.some(ref => refs.some(own => own.node_id === ref?.node_id)))) continue;
         if (refs.length > 64 || refs.some(r => !r || typeof r.kind !== "string" || typeof r.node_id !== "string" || !Number.isSafeInteger(r.ordinal) || r.ordinal < 0)) continue;
+        if (refs.length && typeof attempt.turn_id === "string" && attempt.turn_id) {
+          const fact: AttemptPresentation = Object.freeze({ scope: this.handoffScope(entry), attemptId: record.attemptId,
+            turnId: attempt.turn_id, nodeIds: Object.freeze(refs.map(ref => ref.node_id)),
+            state: attempt.state === "failed" || attempt.state === "cancelled" || record.status === "failed" ? "failed" : "pending" });
+          entry.pendingAttempts.value = Object.freeze([...entry.pendingAttempts.peek().filter(item => item.attemptId !== record.attemptId && item.scope === fact.scope), fact].slice(-8));
+          if (!valid()) return;
+        }
         if (!refs.length || typeof attempt.turn_id !== "string" || !attempt.turn_id || !["completed", "failed", "incomplete", "cancelled"].includes(attempt.state)) continue;
         const nodes = new Map<string, HistoryItem>();
         let revision: string | number | undefined;
@@ -729,7 +757,9 @@ export class ShellboyData {
           if (unavailable) break;
         }
         if (!valid()) return;
-        if (unavailable || revision === undefined || refs.some(ref => !nodes.has(ref.node_id))) continue;
+        if (unavailable || revision === undefined || refs.some(ref => !nodes.has(ref.node_id))) {
+          continue;
+        }
         const saved = immutableSaved([...nodes.values()].sort((a, b) => a.selection!.ordinal! - b.selection!.ordinal!));
         // A replacement must contain a visible authoritative item, not just bookkeeping.
         if (!saved.some(node => node.items?.some(item => item.kind === "text" || item.kind === "tool_call" || item.kind === "tool_result"))) continue;
