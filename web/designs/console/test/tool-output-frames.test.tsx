@@ -10,6 +10,7 @@ import { Conversation } from "../screens/Conversation";
 for (const saved of ["", "Synthetic saved body"]) it(`keeps validated ${saved === "" ? "empty" : "body"} output across held refresh frames and unchanged results`, async () => {
   const { model, t, db } = await fixtureModel({ configure(db) { db.outputs["exec-1"] = saved; db.shells.lead = [{ execution_id: "exec-1", state: "running", started_at: "2026-01-01T00:00:00Z" }]; } });
   model.openToolGroups.value = new Set(["step:exec-1"]);
+  model.toolStepChoices.value = new Map([["exec-1", true]]);
   const host = document.createElement("div"); document.body.append(host);
   act(() => render(<Conversation model={model} />, host)); await act(async () => { await settle(t, db); });
   const snapshot = model.outputs.peek().get("exec-1"); expect(snapshot?.loading).toBe(false);

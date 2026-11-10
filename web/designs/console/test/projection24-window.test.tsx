@@ -97,6 +97,10 @@ it('actual Window/store snapshot drives real P and subscribed D, then visible ow
 it.each(['reasoning_unavailable','unknown'] as const)('v3 real P normalized %s preserves item order and declared tool boundary',async kind=>{
  const {projectSavedItems}=await import('../../../ui-core/src/conversation-items');
  const p=projectSavedItems([{nodeId:'A',itemIdentity:'a',revision:'r1',kind:'tool',executionId:'e1'},{nodeId:'A',itemIdentity:'r',revision:'r1',kind},{nodeId:'B',itemIdentity:'b',revision:'r1',kind:'tool',executionId:'e2'}]);
- expect(p.toolSummaries.map(s=>s.executionIds)).toEqual(kind==='reasoning_unavailable'?[['e1','e2']]:[['e1'],['e2']]);
+ expect(p.toolSummaries.map(s=>s.executionIds)).toEqual([['e1','e2']]);
+ expect(p.items.map(item=>item.source.kind)).toEqual(['tool',kind,'tool']);
+ expect(p.workGroups).toHaveLength(1);
+ expect(p.workGroups![0]!.memberKeys).toEqual(p.items.map(item=>item.key));
+ if(kind==='unknown')expect(p.workGroups![0]!.unknownToolCount).toBeGreaterThan(0);
  expect(p.items.some(i=>'text'in i.source)).toBe(false);
 });

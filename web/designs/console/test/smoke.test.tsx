@@ -155,7 +155,7 @@ describe("Conversation live text", () => {
     expect(el.textContent).toContain("Part of this text was missed");
     expect(el.textContent).toContain("later");
     // The attempt ends and its message is saved: the text goes, the saved message stays.
-    db.history["lead"] = [...(db.history["lead"] ?? []), { node_id: "saved-1", kind: "assistant_response", excerpt: "Final saved answer", provenance: { created_at: "2099-01-01T00:00:00+09:00", sender: { kind: "shellboy" } } }];
+    db.history["lead"] = [...(db.history["lead"] ?? []), { node_id: "saved-1", kind: "assistant_response", excerpt: "Final saved answer", items: [{item_identity:"text",kind:"text",text:"Final saved answer",text_complete:true}], provenance: { created_at: "2099-01-01T00:00:00+09:00", sender: { kind: "shellboy" } } }];
     act(() => {
       t.push({ t: "changed", thread_ids: ["lead"], list: false });
       t.push({ t: "live_end", thread_id: "lead" });
@@ -186,7 +186,7 @@ describe("Conversation live text", () => {
     const el = draw(model);
     act(() => t.push(liveFrame("Answer before save")));
     await act(async () => flushPromises());
-    db.history.lead = [...(db.history.lead ?? []), { node_id: "saved-order", kind: "assistant_response", excerpt: "Saved answer", provenance: { sender: { kind: "shellboy" } } }];
+    db.history.lead = [...(db.history.lead ?? []), { node_id: "saved-order", kind: "assistant_response", excerpt: "Saved answer", items: [{item_identity:"text",kind:"text",text:"Saved answer",text_complete:true}], provenance: { sender: { kind: "shellboy" } } }];
     act(() => t.push({ t: "live_end", thread_id: "lead" }));
     await act(async () => settle(t, db));
     db.history.lead = [...db.history.lead, { node_id: "user-order", kind: "user", excerpt: "Later human", provenance: { sender: { kind: "human" } } }];
@@ -254,7 +254,9 @@ describe("Conversation live text", () => {
     }
     expect(box.textContent).toContain("word word word");
     expect(box.textContent).toContain("Writing");
-    expect(box.lastElementChild?.textContent).toContain("Running");
+    expect(el.querySelector(".convo > .conversation-status")?.textContent).toContain("Running");
+    expect(box.querySelector(".conversation-status")).toBeNull();
+    expect(el.querySelectorAll(".conversation-status")).toHaveLength(1);
   });
 
   it("a Thread with no held text shows no message, and without the capability nothing is shown at all", async () => {
@@ -301,7 +303,12 @@ describe("Conversation", () => {
     expect(text(el)).toContain("Improve history search");
     expect(text(el)).toContain("1 tools");
     expect(text(el)).not.toContain("cargo test history::search");
-    act(() => el.querySelector<HTMLButtonElement>('.steps summary')!.click());
+    await act(async () => {
+      const row=model.conversation.value.find(row=>row.type==='steps')!;
+      model.openToolGroups.value=new Set([row.id]);
+      if(row.type==='steps')model.toolStepChoices.value=new Map(row.steps.map(step=>[step.executionId,true]));
+      await flushPromises();
+    });
     expect(el.querySelector(".step-group > .step-group-list > .step")).toBeTruthy();
     expect(text(el)).toContain("cargo test history::search");
     expect(text(el)).toContain("exit 0");
@@ -1267,6 +1274,7 @@ describe("Setup", () => {
 describe("Character status information", () => {
   it("keeps tool description and concurrent count alongside running activity", async () => {
     const { model, t, db } = await fixtureModel({ configure(db) {
+      db.history.lead = (db.history.lead ?? []).map(node => node.kind === "assistant_response" && node.excerpt ? {...node,items:[{item_identity:"ordinary-text",kind:"text",text:node.excerpt,text_complete:true}]} : node);
       db.work.lead = ["verify", "inspect"].map((id) => ({ kind: "shell", id, thread_id: "lead", run_id: "run-1", execution_id: id, state: "running", started_at: "2026-11-07T10:19:00Z" }));
       db.shells.lead = [
         { execution_id: "verify", state: "running", description: "Verify query ranking", command_excerpt: "npm run check" },

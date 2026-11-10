@@ -30,11 +30,17 @@ it('actual encoded typed window -> strict decoder/store/model Window -> real App
   expect(f.model.selectedId.value).toBe('t');const win=f.model.longReader.value;expect(win).toBeDefined();
   const snapshot=win!.acceptedView.peek();expect(snapshot.rows).toEqual(encoded.items);expect(snapshot.revision).toBe(4);expect(snapshot.total).toBe(4);
   expect(f.t.calls('history.window').every(c=>(c.args as {items?:boolean}).items===true)).toBe(true);
-  const elements=[...host.querySelectorAll('[data-item-key]')];expect(elements.map(e=>e.getAttribute('data-node'))).toEqual(['n0','n1','n1','n2','n3']);
+  const elements=[...host.querySelectorAll('[data-item-key]')];expect(elements.map(e=>e.getAttribute('data-node'))).toEqual(['n0','n1','n1','n2','n2','n3']);
   expect(encoded.items[2].items[0].kind).toBe('reasoning_unavailable');
-  expect(elements[3]!.textContent).toBe('');
+  expect(elements[3]!.querySelector('[data-thinking-marker]')).not.toBeNull();
+  expect(elements[3]!.textContent).toBe(f.model.t.value('work.thinking'));
+  expect(elements[3]!.querySelector('.md, .msg')).toBeNull();
+  expect(elements[4]!.querySelector('[data-thinking-marker]')).toBeNull();
+  expect(elements[4]!.querySelector('.md')?.textContent).toBe('');
+  expect(elements[3]!.getAttribute('data-item-key')).not.toBe(elements[4]!.getAttribute('data-item-key'));
   expect(host.textContent).toContain('synthetic input');expect(elements[1]!.textContent).toContain('A');
-  expect(elements.every(e=>e.parentElement?.className==='conversation-items')).toBe(true);
+  expect(elements.filter(e=>e.closest('[data-work-group]')).map(e=>e.getAttribute('data-node'))).toEqual(['n1','n2','n3']);
+  expect(elements.filter(e=>!e.closest('[data-work-group]')).map(e=>e.getAttribute('data-node'))).toEqual(['n0','n1','n2']);
   const original=elements[0];await act(async()=>win!.layoutChanged());expect(host.querySelector('[data-item-key]')).toBe(original);
  }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
 });

@@ -1,3 +1,4 @@
+import { Disclosure } from "../system/components/Disclosure";
 import type { HandoffRecord } from "../../../data/src/handoff";
 import { senderFact } from "../../../data/src/sender";
 import { projectHistoryWindowItems, projectSavedItems, normalizeLiveWorkFacts, type NormalizedSavedItem } from "../../../ui-core/src/conversation-items";
@@ -103,14 +104,14 @@ export function SavedConversationItems({ model, projection, renderBefore, traili
     const status = active ? "running" : failures ? "failed" : completed ? "completed" : undefined;
     const reasons = [...new Set(projection.items.filter(item => group.memberKeys.includes(item.key)).flatMap(item => item.source.kind === "unavailable" && item.source.reason ? [item.source.reason] : []))];
     const label = [t("work.group"), ...reasons,  ...(group.unknownToolCount ? [t("work.unknownTools")] : [t("tools.count", { n: group.executionIds.length })]), ...(unknown ? [t("work.textUnavailable")] : []), ...(failures ? [t("tools.nonzero", {n: failures})] : []), ...(group.interrupted ? [t("status.stopped")] : []), ...((group.continuationBefore !== "closed" || group.continuationAfter !== "closed") ? [t("work.partial")] : [])].join(" · ");
-    return <details class="step step-group" open={opened(group)} data-work-group={group.key} data-key={group.key} data-heading-anchor-key={group.firstMemberKey} data-heading-member-keys={JSON.stringify(group.memberKeys)} onToggle={event => {
+    return <Disclosure class="step step-group" open={opened(group)} data-work-group={group.key} data-key={group.key} data-heading-anchor-key={group.firstMemberKey} data-heading-member-keys={JSON.stringify(group.memberKeys)} onToggle={event => {
       const open = event.currentTarget.open;
       setOpenMemberships(previous => {
         const next = new Set([...previous].filter(key => memberships.has(key)));
         if (open) next.add(membershipKey(group)); else next.delete(membershipKey(group));
         return next;
       });
-    }}><summary data-work-heading=""><Icon name="term" /><span class="tool-group-label">{label}</span>{status ? <StatusMark status={status} label={statusLabel(t, status)} /> : null}<span class="meta" /></summary><div class="step-group-list">{children}</div></details>;
+    }}><summary data-work-heading=""><Icon name="term" /><span class="tool-group-label">{label}</span>{status ? <StatusMark status={status} label={statusLabel(t, status)} /> : null}<span class="meta" /></summary><div class="step-group-list">{children}</div></Disclosure>;
   };
   return <ConversationItems {...projection} renderWorkGroup={projection.workGroups ? renderWorkGroup : undefined} renderBefore={renderBefore} trailing={trailing} isItemHidden={hidden} renderHeading={summary => {
     const steps = allSteps.filter(step => summary.executionIds.includes(step.executionId));
@@ -161,7 +162,7 @@ export function SavedConversationItems({ model, projection, renderBefore, traili
       if (item.source.kind === "ordinaryEmpty") return <div class="caption muted" data-empty-ordinary="">{t("work.textUnavailable")}</div>;
       if (item.source.kind === "reasoning" || item.source.kind === "reasoning_unavailable") return <div class="caption muted" data-thinking-marker="">{t("work.thinking")}</div>;
       if (item.source.kind === "interruption") return <Notice>{t("status.stopped")}</Notice>;
-      if (item.source.kind === "record") return <details data-internal-records="" open={openRecords.has(item.key)} onToggle={event => { const open = event.currentTarget.open; setOpenRecords(previous => { const next = new Set(previous); if (open) next.add(item.key); else next.delete(item.key); return next; }); }}><summary>{t("work.records", {n: 1})}</summary><span class="caption muted">{t("work.textUnavailable")}</span></details>;
+      if (item.source.kind === "record") return <Disclosure data-internal-records="" open={openRecords.has(item.key)} onToggle={event => { const open = event.currentTarget.open; setOpenRecords(previous => { const next = new Set(previous); if (open) next.add(item.key); else next.delete(item.key); return next; }); }}><summary>{t("work.records", {n: 1})}</summary><span class="caption muted">{t("work.textUnavailable")}</span></Disclosure>;
       if (item.source.kind === "unknown" || item.source.kind === "unavailable") {
         const source = item.source;
         const handle = model.handle.value;
@@ -343,6 +344,12 @@ function RowView({ model, row, authorizedText }: { model: AppModel; row: Convers
         {mark ? <div class="scroll-mark">{mark}</div> : null}
       </>
     );
+  // Legacy aggregates cannot authorize prose; typed callers already supply exact text.
+  const savedNode = authorizedText === undefined ? model.handle.value?.history.value.items.find(node => node.node_id === row.id) : undefined;
+  if (savedNode?.kind === "assistant_response" && savedNode.items === undefined) {
+    const projection = projectSavedItems([{nodeId: savedNode.node_id!, itemIdentity: savedNode.node_id!, identityDomain: "node", kind: "unknown"}]);
+    return <><SavedConversationItems model={model} projection={projection} nodes={[savedNode]} />{mark ? <div class="scroll-mark">{mark}</div> : null}</>;
+  }
   const who = row.speaker.kind === "you" ? t("convo.you") : row.speaker.kind === "shellboy" ? t("convo.shellboy") : row.speaker.kind === "cli" ? t("convo.cli") : row.speaker.kind === "model" ? t("convo.modelSender") : row.speaker.kind === "unknown" ? t(row.speaker.model ? "convo.unknownModelSender" : "convo.unknownSender") : row.speaker.label;
   const body = model.bodies.value.get(row.id);
   return (
