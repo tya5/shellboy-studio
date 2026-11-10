@@ -245,3 +245,26 @@ it("SECTION11 unscoped equal IDs and unequal scoped associations never erase sel
   expect(scopedCall.items[0]?.toolIdentity).toBe("call");
   expect(scopedCall.items[0]?.key).toBe(JSON.stringify(["tool", ["owner", "thread", "attempt"], "call", "call"]));
 });
+
+it("F883 public selected spill association supplies the same tool row/key without private details", () => {
+  const scope = ["owner", "thread"];
+  const original = projectSavedItems([{ nodeId: "original", itemIdentity: "call-item", revision: "r1", keyScope: scope, kind: "tool", executionIds: ["exec"] }]);
+  const out = projectHistoryWindowItems({ keyScope: scope, revision: 2, nodes: [{ node_id: "spill", kind: "spill", items: [], spill_tools: { status: "known", truncated: false, items: [{ call_id: "call", execution_id: "exec", original_node_id: "original" }] } }] });
+  expect(out.projection.items).toHaveLength(1);
+  expect(out.projection.items[0]?.key).toBe(original.items[0]?.key);
+  expect(out.projection.items[0]?.source.nodeId).toBe("spill");
+  expect(out.projection.items[0]?.source).toMatchObject({ kind: "tool", callId: "call", detailUnavailable: true, compressed: true });
+  expect(out.projection.workGroups?.[0]?.executionIds).toEqual(["exec"]);
+});
+it("F883 spill call-only IDs remain usable while missing/truncated association stays honest", () => {
+  const out = projectHistoryWindowItems({ keyScope: ["owner", "thread"], revision: 1, nodes: [{ node_id: "spill", kind: "spill", items: [], spill_tools: { status: "known", truncated: true, items: [{ call_id: "call" }] } }] });
+  expect(out.projection.items[0]?.toolIdentity).toBe("call");
+  expect(out.projection.items.some(item => item.source.kind === "unavailable")).toBe(true);
+  expect(out.projection.workGroups?.[0]?.executionIds).toEqual([]);
+});
+
+it("F883 actually selected original and spill dedup preserves compressed badge without remapping provenance", () => {
+  const out = projectHistoryWindowItems({ keyScope: ["owner", "thread"], revision: 1, nodes: [{ node_id: "original", items: [{ kind: "tool_call", item_identity: "call", execution_ids: ["exec"] }] }, { node_id: "spill", kind: "spill", items: [], spill_tools: { status: "known", truncated: false, items: [{ call_id: "call", execution_id: "exec", original_node_id: "original" }] } }] });
+  expect(out.projection.items).toHaveLength(1);
+  expect(out.projection.items[0]?.source).toMatchObject({ nodeId: "original", kind: "tool", compressed: true });
+});

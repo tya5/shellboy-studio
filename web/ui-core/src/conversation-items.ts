@@ -3,7 +3,7 @@ import type { HistoryItem, HistoryItemsUnavailableReason, WorkItem } from "../..
 export interface SavedItemIdentity {
   readonly keyScope?: readonly string[];
   readonly nodeId: string;
-  readonly identityDomain?: "node";
+  readonly identityDomain?: "node" | "spill";
   /** Authoritative node-local identity; never a window/array index. */
   readonly itemIdentity: string;
   /** Content authorization version, not automatically part of the DOM key. */
@@ -28,7 +28,7 @@ export interface LiveWorkIdentity {
 }
 export type NormalizedSavedItem = (SavedItemIdentity | LiveWorkIdentity) & (
   | { readonly kind: "text"; readonly text: string; readonly textComplete?: boolean }
-  | { readonly kind: "tool"; readonly executionId?: string; readonly executionIds?: readonly string[]; readonly callId?: string }
+  | { readonly kind: "tool"; readonly executionId?: string; readonly executionIds?: readonly string[]; readonly callId?: string; readonly compressed?: boolean; readonly detailUnavailable?: boolean }
   // Hidden reasoning deliberately has no text field.
   | { readonly kind: "reasoning" }
   | { readonly kind: "reasoning_unavailable" }
@@ -102,7 +102,7 @@ export function projectSavedItems(input: readonly NormalizedSavedItem[]): SavedI
       associationById.set(scoped, a.key);
     }
   }
-  const selectedTools = new Set<string>();
+  const selectedTools = new Map<string, number>();
   let members: string[] = [], toolKeys: string[] = [], ids: string[] = [];
   let unknownTools = 0, interrupted = false;
   let before: "unknown" | "closed" = "unknown";
@@ -117,14 +117,21 @@ export function projectSavedItems(input: readonly NormalizedSavedItem[]): SavedI
   for (const source of input) {
     if (!("domain" in source) && (!source.nodeId || !source.itemIdentity || (source.revision === undefined && source.windowRevision === undefined))) throw new Error("Missing authoritative identity/proof");
     if ("domain" in source && (!source.scope || !source.recordId)) throw new Error("Missing live record identity");
-    const canonicalKey = "domain" in source ? JSON.stringify(["live", source.namespace ?? "work", source.scope, source.recordId]) : source.identityDomain === "node" ? JSON.stringify(["node", source.nodeId]) : JSON.stringify([source.nodeId, source.itemIdentity]);
+    const canonicalKey = "domain" in source ? JSON.stringify(["live", source.namespace ?? "work", source.scope, source.recordId]) : source.identityDomain === "spill" ? JSON.stringify(["spill", source.nodeId, source.itemIdentity]) : source.identityDomain === "node" ? JSON.stringify(["node", source.nodeId]) : JSON.stringify([source.nodeId, source.itemIdentity]);
     const a = association(source);
     const proven = a && !conflicts.has(a.key) ? a : undefined;
     const key = source.kind === "tool" && proven ? proven.key : canonicalKey;
     if (seen.has(canonicalKey)) throw new Error("Duplicate normalized saved item identity");
     seen.add(canonicalKey);
-    if (proven && selectedTools.has(key)) continue;
-    if (proven) selectedTools.add(key);
+    if (proven && selectedTools.has(key)) {
+      const index = selectedTools.get(key)!;
+      const previous = items[index]!;
+      if (previous.source.kind === "tool" && source.kind === "tool" && source.compressed) {
+        items[index] = Object.freeze({ ...previous, source: Object.freeze({ ...previous.source, compressed: true }) });
+      }
+      continue;
+    }
+    if (proven) selectedTools.set(key, items.length);
     const identity = "domain" in source ? { domain: "live" as const, namespace: source.namespace ?? "work", scope: source.scope, recordId: source.recordId, ...(source.attemptId !== undefined ? { attemptId: source.attemptId } : {}), ...(source.turnId !== undefined ? { turnId: source.turnId } : {}) } : { ...(source.identityDomain ? { identityDomain: source.identityDomain } : {}), nodeId: source.nodeId, itemIdentity: source.itemIdentity, ...(source.revision !== undefined ? { revision: source.revision } : {}), ...(source.windowRevision !== undefined ? { windowRevision: source.windowRevision } : {}) };
     const scopedIdentity = { ...identity, ...(source.keyScope ? { keyScope: Object.freeze([...source.keyScope]) } : {}) };
     let copy: NormalizedSavedItem;
@@ -135,7 +142,7 @@ export function projectSavedItems(input: readonly NormalizedSavedItem[]): SavedI
       const fresh = [...new Set(raw)];
       ids.push(...fresh); toolKeys.push(key);
       if (!proven) unknownTools++;
-      copy = { ...scopedIdentity, kind: "tool", executionIds: Object.freeze(a ? [...new Set(raw)] : fresh), ...(source.callId ? { callId: source.callId } : {}), ...(source.executionId ? { executionId: source.executionId } : {}) };
+      copy = { ...scopedIdentity, kind: "tool", executionIds: Object.freeze(a ? [...new Set(raw)] : fresh), ...(source.callId ? { callId: source.callId } : {}), ...(source.compressed ? { compressed: true } : {}), ...(source.detailUnavailable ? { detailUnavailable: true } : {}), ...(source.executionId ? { executionId: source.executionId } : {}) };
     } else if (source.kind === "text") copy = { ...scopedIdentity, kind: "text", text: source.text, ...(source.textComplete !== undefined ? { textComplete: source.textComplete } : {}) };
     else if (source.kind === "user" || source.kind === "summary") copy = { ...scopedIdentity, kind: source.kind, text: source.text };
     else copy = { ...scopedIdentity, kind: source.kind, ...(source.kind === "unavailable" && source.reason ? { reason: source.reason } : {}) } as NormalizedSavedItem;
@@ -178,6 +185,17 @@ export function projectHistoryWindowItems(input: { readonly keyScope?: readonly 
     const ordinal = node.selection?.ordinal;
     const state = node.items === undefined ? "legacy" : node.items === null ? "deferred" : "items";
     nodes.push(Object.freeze({ nodeId: node.node_id, ...(ordinal !== undefined ? { ordinal } : {}), node, state, emptyOrdinary: state === "items" && ["user", "assistant_response", "tool_result"].includes(node.kind ?? "") && node.items!.every(item => item.kind === "reasoning_unavailable"), ...(node.items_unavailable_reason ? { reason: node.items_unavailable_reason } : {}) }));
+    if (node.kind === "spill" && node.spill_tools) {
+      // Public spill-local IDs only. No payload/args hydration or original-node join.
+      const metadata = node.spill_tools;
+      for (const tool of metadata.items) {
+        segment.push({ nodeId: node.node_id, itemIdentity: tool.call_id, identityDomain: "spill", windowRevision: input.revision, ...(input.keyScope ? { keyScope: input.keyScope } : {}), kind: "tool", callId: tool.call_id, executionIds: tool.execution_id ? [tool.execution_id] : [], compressed: true, detailUnavailable: true });
+      }
+      if (metadata.status !== "known" || metadata.truncated || !metadata.items.length) {
+        segment.push({ nodeId: node.node_id, itemIdentity: node.node_id, identityDomain: "node", windowRevision: input.revision, kind: "unavailable" });
+      }
+      continue;
+    }
     if (!node.items) {
       // Canonical node-level record, never a fabricated wire item identity.
       const base = { nodeId: node.node_id, itemIdentity: node.node_id, identityDomain: "node" as const, windowRevision: input.revision };
