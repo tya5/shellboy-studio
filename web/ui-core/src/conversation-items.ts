@@ -179,7 +179,7 @@ export function projectHistoryWindowItems(input: { readonly revision: string | n
 export function normalizeLiveWorkFacts(input: { readonly scope: string; readonly items: readonly WorkItem[] }): readonly NormalizedSavedItem[] {
   return Object.freeze(input.items.filter(item => item.kind !== "pending_message" && !(item.kind === "message" && ["accepted", "held"].includes(item.state))).map(item => {
     if (!input.scope || !item.id || item.thread_id !== input.scope) throw new Error("Invalid live work scope");
-    const identity = { domain: "live" as const, scope: input.scope, recordId: item.id, ...(item.attempt_id !== undefined ? { attemptId: item.attempt_id } : {}), ...(item.turn_id !== undefined ? { turnId: item.turn_id } : {}) };
+    const identity = { domain: "live" as const, scope: input.scope, recordId: item.id, ...(typeof item.attempt_id === "string" ? { attemptId: item.attempt_id } : {}), ...(typeof item.turn_id === "string" ? { turnId: item.turn_id } : {}) };
     return Object.freeze(item.kind === "shell" && item.execution_id ? { ...identity, kind: "tool" as const, executionIds: Object.freeze([item.execution_id]) } : { ...identity, kind: "record" as const });
   }));
 }
