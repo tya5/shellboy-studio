@@ -347,3 +347,14 @@ it('retains the actual tool element and open group when thinking prepends under 
     expect(host.querySelector('[data-thinking-marker]')).not.toBeNull();
   }finally{render(null,host);host.remove();fixture.model.dispose();fixture.data.stop();}
 });
+
+it('defaults a running structural tool detail to closed without subscribing output',async()=>{
+  const fixture=await fixtureModel(),host=document.createElement('div');document.body.append(host);
+  let watches=0;const watch=fixture.model.watchOutput.bind(fixture.model);fixture.model.watchOutput=()=>{watches++;return()=>{watches--;};};
+  try{
+    const { StepView }=await import('../screens/Conversation');
+    const base=fixture.model.conversation.value.flatMap(row=>row.type==='steps'?row.steps:[])[0]!;
+    await act(async()=>render(<StepView model={fixture.model} step={{...base,status:'running'}}/>,host));
+    expect((host.querySelector('details.step') as HTMLDetailsElement).open).toBe(false);expect(watches).toBe(0);
+  }finally{render(null,host);fixture.model.watchOutput=watch;host.remove();fixture.model.dispose();fixture.data.stop();}
+});

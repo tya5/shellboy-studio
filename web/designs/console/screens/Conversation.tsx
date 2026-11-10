@@ -269,7 +269,7 @@ export function Output({ model, id, command, complete, boxed }: { model: AppMode
 export function StepView({ model, step }: { model: AppModel; step: Step }) {
   const t = model.t.value;
   const choice = model.toolStepChoices.value.get(step.executionId);
-  const open = choice ?? step.status === "running";
+  const open = choice ?? false;
   useEffect(() => {
     if (!open) return;
     model.selectedStepId.value = step.executionId;
