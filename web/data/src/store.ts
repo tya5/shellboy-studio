@@ -93,7 +93,12 @@ export interface Handle {
   close(): void;
 }
 
+declare const threadReadBrand: unique symbol;
+export type ThreadReadQualification = Readonly<{ readonly [threadReadBrand]: true }>;
+
 export interface ThreadHandle extends Handle {
+  captureReadQualification(): ThreadReadQualification | undefined;
+  isReadQualificationCurrent(token: ThreadReadQualification): boolean;
   readonly threadId: string;
   readonly detail: ReadonlySignal<Resource<ThreadDetails>>;
   readonly work: ReadonlySignal<Resource<Page<WorkItem>>>;
@@ -267,6 +272,7 @@ export class ShellboyData {
     this.link.start();
   }
   stop(): void {
+    ++this.readQualificationEpoch;
     this.link.stop();
   }
 
@@ -367,7 +373,20 @@ export class ShellboyData {
       e.workRefs += active ? 1 : -1;
       if (active && e.workRefs === 1 && !e.paused && this.canRead()) void this.refresher.request(`work:${threadId}`);
     };
+    // One private slot per handle; tokens contain no authority fields or callbacks.
+    let qualification: { token: ThreadReadQualification; epoch: number; liveEpoch: number; cancel: Cancel } | undefined;
+    const readable = () => !closed && !e.closed && !e.paused && !e.cancel.cancelled && this.entries.get(threadId) === e && this.canRead();
     return {
+      captureReadQualification: () => {
+        qualification = undefined;
+        if (!readable()) return undefined;
+        const token = Object.freeze({}) as ThreadReadQualification;
+        qualification = { token, epoch: this.readQualificationEpoch, liveEpoch: e.live.epoch, cancel: e.cancel };
+        return token;
+      },
+      isReadQualificationCurrent: token => !!qualification && qualification.token === token && readable()
+        && qualification.epoch === this.readQualificationEpoch && qualification.liveEpoch === e.live.epoch
+        && qualification.cancel === e.cancel && !qualification.cancel.cancelled,
       threadId,
       detail: e.detail,
       work: e.work,
@@ -425,8 +444,10 @@ export class ShellboyData {
       resume: () => this.resumeEntry(e),
       close: () => {
         if (closed) return;
-        setWorkActive(false);
+        qualification = undefined;
         closed = true;
+        // setWorkActive normally rejects a closed handle; release its ownership directly.
+        if (watchingWork) { watchingWork = false; e.workRefs--; }
         if (--e.refs === 0) {
           e.closed = true;
           e.live.discard("connection_closed");
@@ -470,12 +491,16 @@ export class ShellboyData {
 
   // ---- frames ----
 
+  private readQualificationEpoch = 0;
+
   private onEvent(e: LinkEvent): void {
     switch (e.kind) {
       case "open":
+        ++this.readQualificationEpoch;
         this.flushWatch(); // the bridge session starts with an empty subscription
         break;
       case "closed":
+        ++this.readQualificationEpoch;
         batch(() => {
           this.ownerSig.value = { state: "unknown" };
           this.markAllStale();
@@ -545,6 +570,7 @@ export class ShellboyData {
   }
 
   private setOwner(owner: OwnerState): void {
+    ++this.readQualificationEpoch;
     const previous = this.ownerSig.peek();
     if (previous.state === "connected" && owner.state === "connected" && previous.info.instance_id !== owner.info.instance_id) this.discardAllPreviews("owner_restarted");
     this.ownerSig.value = owner;
