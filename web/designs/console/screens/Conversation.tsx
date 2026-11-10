@@ -341,6 +341,7 @@ export function StepView({ model, step, openPolicy = CANONICAL_CASES.toolCall.op
   return (
     <StepRow
       anchorKey={step.executionId}
+      icon={model.shells.value.has(step.executionId) ? "term" : icon}
       open={open}
       command={step.description ?? step.command}
       status={step.status ? <StatusMark status={step.status} label={statusLabel(t, step.status)} /> : null}

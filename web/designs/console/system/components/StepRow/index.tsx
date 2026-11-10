@@ -1,11 +1,11 @@
 import type { ComponentChildren } from "preact";
-import { Icon } from "../Icon";
+import { Icon, type IconName } from "../Icon";
 
-export function StepRow({ open, command, status, duration, exit, onToggle, children, group, anchorKey }: { open: boolean; command: string; group?: boolean; anchorKey?: string; status: ComponentChildren; duration?: string | undefined; exit?: string | undefined; onToggle: (open: boolean) => void; children: ComponentChildren }) {
+export function StepRow({ open, command, status, duration, exit, onToggle, children, group, anchorKey, icon = "cube" }: { open: boolean; command: string; icon?: IconName; group?: boolean; anchorKey?: string; status: ComponentChildren; duration?: string | undefined; exit?: string | undefined; onToggle: (open: boolean) => void; children: ComponentChildren }) {
   return (
     <details data-scroll-key={anchorKey} class={group ? "step step-group" : "step"} open={open} onToggle={(e) => onToggle((e.currentTarget as HTMLDetailsElement).open)}>
       <summary>
-        <Icon name="term" />
+        <Icon name={icon} />
         <span class={group ? "tool-group-label" : "cmd"}>{command}</span>
         {status}
         <span class="meta">

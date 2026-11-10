@@ -78,6 +78,9 @@ for(const windowed of [false,true])it(`renders actual accepted-node execution me
   await act(async()=>{group.open=true;group.dispatchEvent(new Event('toggle'));});
   const tool=host.querySelector('[data-execution-id="accepted-execution"] .step')!;
   expect(tool).not.toBeNull();expect(tool.textContent).toContain('Synthetic safe description');
+  expect(tool.querySelector('summary > svg path')?.getAttribute('d')).toBe('M12 3l8 4.5v9L12 21l-8-4.5v-9zM4 7.5l8 4.5 8-4.5M12 12v9');
+  await act(async()=>{f.model.shells.value=new Map([['accepted-execution',{execution_id:'accepted-execution',state:'exited'}]]);render(<SavedConversationItems model={f.model} nodes={nodes} projection={projection}/>,host);});
+  expect(host.querySelector('[data-execution-id="accepted-execution"] .step summary > svg rect')).not.toBeNull();
   const commandNodes=nodes.map(node=>({...node,executions:node.executions.map(execution=>({...execution,description:undefined}))}));
   await act(async()=>render(<SavedConversationItems model={f.model} nodes={commandNodes} projection={projection}/>,host));
   const commandTool=host.querySelector('[data-execution-id="accepted-execution"] .step')!;
