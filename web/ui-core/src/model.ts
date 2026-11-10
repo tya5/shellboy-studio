@@ -872,7 +872,10 @@ export class AppModel {
   private pendingOwnSaved(message: PendingOwnMessage): boolean {
     if (!message.messageId || !this.pendingOwnCurrent?.()) return false;
     const reader = this.longReader.peek();
-    if (reader) return reader.acceptedView.peek().rows.some(node => node.node_id === message.messageId);
+    if (reader) {
+      const ref = reader.acceptedView.peek();
+      return reader.acceptedView.isCurrent(ref) && ref.rows.some(node => node.node_id === message.messageId);
+    }
     const legacy = this.legacyPresentation.peek(), ref = legacy?.acceptedView.peek();
     return !!legacy && !!ref && legacy.isCurrent(ref) && ref.rows.some(node => node.node_id === message.messageId);
   }
