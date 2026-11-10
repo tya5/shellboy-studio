@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { projectSavedItems, type NormalizedSavedItem } from "../src/conversation-items";
+import { projectHistoryWindowItems, projectSavedItems, type NormalizedSavedItem } from "../src/conversation-items";
 const text = (nodeId: string, itemIdentity: string, value: string): NormalizedSavedItem => ({ nodeId, itemIdentity, revision: "r1", kind: "text", text: value });
 const tool = (nodeId: string, itemIdentity: string, executionId: string): NormalizedSavedItem => ({ nodeId, itemIdentity, revision: "r1", kind: "tool", executionId });
 
@@ -95,4 +95,30 @@ it("keeps null/legacy ordinary nodes and ordinal retry outside fabricated item i
   expect(out.retryFrom).toEqual({ ordinal: 1, expect_node_id: "B" });
   expect(out.projection.items).toHaveLength(1);
   expect(JSON.stringify(out.projection)).not.toContain("ordinary retained");
+});
+
+it("FINAL keeps empty ordinary presence without exposing reasoning or inventing item identity", () => {
+  const out = projectHistoryWindowItems({ revision: "v", nodes: [
+    { node_id: "user", kind: "user", items: [] },
+    { node_id: "model", kind: "assistant_response", items: [{ kind: "reasoning_unavailable", item_identity: "r" }] },
+    { node_id: "event", kind: "event", items: [] },
+    { node_id: "empty-text", kind: "assistant_response", items: [{ kind: "text", item_identity: "t", text: "", text_complete: true }] },
+    { node_id: "deferred", kind: "assistant_response", items: null, items_unavailable_reason: "response_budget", selection: { ordinal: 4 } },
+  ] });
+  expect(out.nodes.map(n => n.emptyOrdinary)).toEqual([true, true, false, false, false]);
+  expect(out.projection.items.map(i => i.source.nodeId)).toEqual(["empty-text"]);
+  expect(out.retryFrom).toEqual({ ordinal: 4, expect_node_id: "deferred" });
+});
+it("FINAL generic tool is visible without fictional execution or detail", () => {
+  const out = projectSavedItems([{ nodeId: "A", itemIdentity: "tool", windowRevision: 1, kind: "tool", executionIds: [] }]);
+  expect(out.items).toHaveLength(1);
+  expect(out.items[0]?.key).toBe(JSON.stringify(["A", "tool"]));
+  expect(out.items[0]?.source).toMatchObject({ kind: "tool", executionIds: [] });
+  expect(out.toolSummaries[0]?.memberKeys).toEqual([out.items[0]!.key]);
+  expect(out.toolSummaries[0]?.executionIds).toEqual([]);
+});
+it("FINAL summaries claim only local membership and retain uncertain edges", () => {
+  const out = projectSavedItems([tool("A", "x", "x"), text("B", "e", ""), tool("C", "y", "y"), { nodeId: "C", itemIdentity: "u", revision: "r1", kind: "unknown" }, tool("D", "z", "z")]);
+  expect(out.toolSummaries.map(s => [s.continuationBefore, s.continuationAfter])).toEqual([["unknown", "closed"], ["closed", "unknown"], ["unknown", "unknown"]]);
+  expect(out.toolSummaries.map(s => s.executionIds)).toEqual([["x"], ["y"], ["z"]]);
 });

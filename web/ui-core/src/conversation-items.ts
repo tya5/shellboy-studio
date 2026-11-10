@@ -30,6 +30,8 @@ export interface ToolSummaryMembership {
   readonly anchorKey: string;
   readonly memberKeys: readonly string[];
   readonly executionIds: readonly string[];
+  readonly continuationBefore?: "unknown" | "closed";
+  readonly continuationAfter?: "unknown" | "closed";
 }
 export interface SavedItemProjection {
   readonly items: readonly ProjectedSavedItem[];
@@ -49,10 +51,11 @@ export function projectSavedItems(input: readonly NormalizedSavedItem[]): SavedI
   const executions = new Set<string>();
   let members: string[] = [];
   let runExecutions: string[] = [];
-  const flush = () => {
+  let before: "unknown" | "closed" = "unknown";
+  const flush = (after: "unknown" | "closed" = "unknown") => {
     if (members.length) toolSummaries.push(Object.freeze({
       anchorKey: members[0]!, memberKeys: Object.freeze(members),
-      executionIds: Object.freeze(runExecutions),
+      executionIds: Object.freeze(runExecutions), continuationBefore: before, continuationAfter: after,
     }));
     members = [];
     runExecutions = [];
@@ -80,7 +83,8 @@ export function projectSavedItems(input: readonly NormalizedSavedItem[]): SavedI
       members.push(key);
       runExecutions.push(...fresh);
     } else {
-      flush();
+      flush(source.kind === "text" ? "closed" : "unknown");
+      before = source.kind === "text" ? "closed" : "unknown";
       if (source.kind === "unknown" || source.kind === "unavailable") {
         partitionUnknownKeys.push(key);
       }
@@ -103,6 +107,7 @@ export interface ProjectedHistoryNode {
   /** Ordinary retained node, not a fabricated content item. */
   readonly node: Readonly<HistoryItem>;
   readonly state: "items" | "legacy" | "deferred";
+  readonly emptyOrdinary: boolean;
   readonly reason?: HistoryItemsUnavailableReason;
 }
 export interface HistoryWindowItemProjection {
@@ -128,7 +133,7 @@ export function projectHistoryWindowItems(input: { readonly revision: string | n
     if (!node.node_id) throw new Error("Typed history node requires canonical node_id");
     const ordinal = node.selection?.ordinal;
     const state = node.items === undefined ? "legacy" : node.items === null ? "deferred" : "items";
-    nodes.push(Object.freeze({ nodeId: node.node_id, ...(ordinal !== undefined ? { ordinal } : {}), node, state, ...(node.items_unavailable_reason ? { reason: node.items_unavailable_reason } : {}) }));
+    nodes.push(Object.freeze({ nodeId: node.node_id, ...(ordinal !== undefined ? { ordinal } : {}), node, state, emptyOrdinary: state === "items" && ["user", "assistant_response", "tool_result"].includes(node.kind ?? "") && node.items!.every(item => item.kind === "reasoning_unavailable"), ...(node.items_unavailable_reason ? { reason: node.items_unavailable_reason } : {}) }));
     if (!node.items) {
       // A whole-node gap is a partition boundary, not an invented item identity.
       flush();
