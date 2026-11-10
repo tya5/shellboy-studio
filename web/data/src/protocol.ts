@@ -251,6 +251,8 @@ export interface HistoryItem {
 
 /** `history.get` page of one node's body. */
 export interface HistoryBody {
+  /** Explicit replacement sources; absent on older owners, empty is not coverage. */
+  source_node_ids?: readonly string[];
   node_id: string;
   kind: string;
   text: string;
