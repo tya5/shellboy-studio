@@ -1,3 +1,4 @@
+import type { WindowAcceptedSnapshot } from "../../../ui-core/src/window";
 import type { ComponentChildren } from "preact";
 import type { SavedItemProjection } from "../../../ui-core/src/conversation-items";
 import { ConversationItems, type ConversationItem, type ConversationToolSummary } from "./ConversationItems";
@@ -39,6 +40,27 @@ export function SnapshotConversation<T extends ConversationSnapshot>({ reader, r
   const snapshot = view.reader === reader ? view.value : reader.current;
   return <section class="snapshot-conversation" data-accepted-revision={snapshot.revision} data-readiness={snapshot.readiness}>
     <ConversationItems {...snapshot.projection} renderItem={renderItem} renderHeading={renderHeading} />
+  </section>;
+}
+
+/** The caller supplies an approved/internal normalized producer, never aggregate-text inference here. */
+export function AcceptedWindowConversation({ reader, project, renderItem, renderHeading }: {
+  reader: { peek(): WindowAcceptedSnapshot; subscribe(listener: (value: WindowAcceptedSnapshot) => void): () => void; isCurrent(value: WindowAcceptedSnapshot): boolean };
+  project: (snapshot: WindowAcceptedSnapshot) => SavedItemProjection;
+  renderItem: (item: ConversationItem) => ComponentChildren;
+  renderHeading?: (summary: ConversationToolSummary) => ComponentChildren;
+}) {
+  const [view, setView] = useState(() => ({ reader, value: reader.peek() }));
+  useLayoutEffect(() => {
+    const accept = (value: WindowAcceptedSnapshot) => { if (reader.isCurrent(value)) setView({ reader, value }); };
+    const unsubscribe = reader.subscribe(accept);
+    accept(reader.peek());
+    return unsubscribe;
+  }, [reader]);
+  const snapshot = view.reader === reader ? view.value : reader.peek();
+  return <section class="snapshot-conversation" data-accepted-revision={snapshot.revision}
+    data-accepted-generation={snapshot.generation} data-readiness={snapshot.pending ? "pending" : "ready"}>
+    <ConversationItems {...project(snapshot)} renderItem={renderItem} renderHeading={renderHeading} />
   </section>;
 }
 
