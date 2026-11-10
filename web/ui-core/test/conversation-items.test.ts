@@ -148,8 +148,8 @@ it("FINAL execution-linked saved prose is invariant across phase and publication
   expect(baseline.filter(row => row.type === "message").map(row => row.text)).toEqual([node.excerpt]);
   expect(baseline.filter(row => row.type === "steps")).toHaveLength(1);
   for (const phase of ["commentary", "final_answer", undefined, "unknown"]) {
-    for (const advised of [false, true]) {
-      const rows = projectConversation([{ ...node, ...(phase !== undefined ? { phase } : {}), ...(advised ? { assistant_publication: { state: "unknown" as const, attemptId: "advisory" } } : {}) }]);
+    for (const advice of [undefined, "unknown", "tool"] as const) {
+      const rows = projectConversation([{ ...node, ...(phase !== undefined ? { phase } : {}), ...(advice ? { assistant_publication: { state: advice, attemptId: "advisory" } } : {}) }]);
       expect(rows).toEqual(baseline);
     }
   }
