@@ -67,7 +67,7 @@ export type NormalizedSavedItem = (SavedItemIdentity | LiveWorkIdentity) & (
   | { readonly kind: "reasoning_unavailable" }
   | { readonly kind: "unavailable"; readonly reason?: HistoryItemsUnavailableReason }
   | { readonly kind: "unknown" }
-  | { readonly kind: "user" | "summary"; readonly text: string }
+  | { readonly kind: "user" | "summary"; readonly text: string; readonly textComplete?: boolean }
   | { readonly kind: "ordinaryEmpty" }
   | { readonly kind: "record" | "interruption" }
 );
@@ -187,7 +187,7 @@ function projectSavedItemsCore(rawInput: readonly NormalizedSavedItem[], decoded
       }
       copy = { ...scopedIdentity, kind: "tool", executionIds: Object.freeze(a ? [...new Set(raw)] : fresh), ...(source.callId ? { callId: source.callId } : {}), ...(source.compressed ? { compressed: true } : {}), ...(source.detailUnavailable ? { detailUnavailable: true } : {}), ...(source.executionId ? { executionId: source.executionId } : {}) };
     } else if (source.kind === "text") copy = { ...scopedIdentity, kind: "text", text: source.text, ...(source.textComplete !== undefined ? { textComplete: source.textComplete } : {}) };
-    else if (source.kind === "user" || source.kind === "summary") copy = { ...scopedIdentity, kind: source.kind, text: source.text };
+    else if (source.kind === "user" || source.kind === "summary") copy = { ...scopedIdentity, kind: source.kind, text: source.text, ...(source.textComplete !== undefined ? { textComplete: source.textComplete } : {}) };
     else copy = { ...scopedIdentity, kind: source.kind, ...(source.kind === "unavailable" && source.reason ? { reason: source.reason } : {}) } as NormalizedSavedItem;
     if (classifyConversationItem(source) === "conversation") {
       flush("closed"); before = "closed";
@@ -299,7 +299,7 @@ function projectHistoryNodes(input: { readonly keyScope?: readonly string[]; rea
       const identity = { ...rawIdentity, classificationCase: caseValue.id };
       switch (kind) {
         case "text": return { ...identity, kind, text: item?.kind === "text" ? item.text : "", ...(item?.kind === "text" ? { textComplete: item.text_complete } : {}) };
-        case "user": case "summary": return { ...identity, kind, text: item?.kind === "text" ? item.text : kind === "user" ? node.excerpt ?? "" : "" };
+        case "user": case "summary": return { ...identity, kind, text: item?.kind === "text" ? item.text : kind === "user" ? node.excerpt ?? "" : "", ...(item?.kind === "text" ? { textComplete: item.text_complete } : {}) };
         case "tool": return { ...identity, kind, executionIds: item?.kind === "tool_call" || item?.kind === "tool_result" ? item.execution_ids : (node.executions ?? []).map(execution => execution.execution_id) };
         case "unavailable": return { ...identity, kind, ...(item?.kind === "unavailable" ? { reason: item.reason } : node.items_unavailable_reason ? { reason: node.items_unavailable_reason } : {}) };
         case "reasoning": return { ...identity, kind };

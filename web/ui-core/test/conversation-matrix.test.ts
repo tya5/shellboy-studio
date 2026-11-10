@@ -191,3 +191,14 @@ it("input case normalization happens before grouping and stored-column consumers
   expect(live[0]?.classificationCase).toBe("toolCall");
   expect(normalizeConversationFacts(normalized)[0]?.classificationCase).toBe("receivedUnknown");
 });
+it("typed user and summary preserve explicit partial/completed facts through both projection boundaries", async () => {
+  const { projectHistoryWindowItems, projectLegacyHistoryItems } = await import("../src/conversation-items");
+  for (const kind of ["user", "summary"]) for (const complete of [false, true]) {
+    const node: HistoryItem = { node_id: "node", kind, items: [{ ...text, text_complete: complete }] };
+    for (const out of [projectHistoryWindowItems({ revision: 1, nodes: [node] }), projectLegacyHistoryItems({ nodes: [node] })]) {
+      expect(out.projection.items[0]?.source).toMatchObject({ kind, text: text.text, textComplete: complete });
+    }
+  }
+  const legacy = projectLegacyHistoryItems({ nodes: [{ node_id: "legacy", kind: "user", excerpt: "saved user" }] });
+  expect(legacy.projection.items[0]?.source).not.toHaveProperty("textComplete");
+});
