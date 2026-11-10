@@ -295,3 +295,36 @@ it('keeps one identical footer element through known states and unknown loading 
     }
   }finally{render(null,host);host.remove();fixture.model.dispose();fixture.data.stop();}
 });
+
+it('publishes saved rows and whole-attempt retirement in the same DOM frame, retaining partial and invalid-scope overlays',async()=>{
+  const fixture=await fixtureModel(),host=document.createElement('div');document.body.append(host);
+  try{
+    const { SavedWindowContent }=await import('../screens/Conversation');
+    const scope='owner-thread-lifetime';let current:object;
+    const model=new Proxy(fixture.model,{get(target,key){
+      if(key==='handle')return {value:{threadId:'thread',handoffScope:()=>scope,handoff:{value:[]},work:{value:{}}}};
+      if(key==='longReader')return {value:{acceptedView:{isCurrent:(ref:object)=>ref===current}}};
+      return Reflect.get(target,key);
+    }});
+    const liveFacts=[{domain:'live' as const,scope:'thread',recordId:'live-text',kind:'text' as const,text:'Whole live answer',attemptId:'attempt',turnId:'turn'},{domain:'live' as const,scope:'thread',recordId:'live-work',kind:'unknown' as const,attemptId:'attempt',turnId:'turn'}];
+    const independent:import('../../../data/src/protocol').HistoryItem={node_id:'independent',kind:'user',selection:{ordinal:0},items:[{item_identity:'text',kind:'text',text:'Independent user',text_complete:true}]};
+    const saved:import('../../../data/src/protocol').HistoryItem={node_id:'saved-answer',kind:'assistant_response',selection:{ordinal:1},items:[{item_identity:'answer',kind:'text',text:'Committed saved answer',text_complete:true}]};
+    const base={range:{first:0,last:1},revision:7,generation:1,epoch:1,disposed:false,pending:false};
+    const frames=[
+      {...base,rows:[independent],total:1},
+      {...base,rows:[independent,{...saved,items:null,items_unavailable_reason:'response_budget' as const}],total:2},
+      {...base,rows:[independent,saved],total:2,retiredAttempts:[{scope:'other-lifetime',attemptId:'attempt',turnId:'turn',nodeIds:['saved-answer'],revision:7}]},
+      {...base,rows:[independent,saved],total:2,retiredAttempts:[{scope,attemptId:'attempt',turnId:'other-turn',nodeIds:['saved-answer'],revision:7}]},
+      {...base,rows:[independent,saved],total:2,retiredAttempts:[{scope,attemptId:'attempt',turnId:'turn',nodeIds:['saved-answer'],revision:7}]},
+    ];
+    for(let i=0;i<frames.length;i++){
+      current=frames[i]!;await act(async()=>render(<SavedWindowContent model={model} snapshot={frames[i]!} liveFacts={liveFacts}/>,host));
+      expect(host.textContent).toContain('Independent user');
+      expect(host.textContent?.includes('Whole live answer')).toBe(i!==4);
+      expect(host.querySelectorAll('[data-work-item-key]').length).toBe(i===4?0:i===1?2:1);
+      if(i>=2)expect(host.textContent).toContain('Committed saved answer');
+    }
+    current={};await act(async()=>render(<SavedWindowContent model={model} snapshot={frames[4]!} liveFacts={liveFacts}/>,host));
+    expect(host.textContent).toContain('Whole live answer');expect(host.textContent).toContain('Committed saved answer');
+  }finally{render(null,host);host.remove();fixture.model.dispose();fixture.data.stop();}
+});

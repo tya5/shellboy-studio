@@ -183,21 +183,35 @@ export function projectOwnedHandoffFacts(scope: string, records: readonly Handof
     : {domain: "live", namespace: "handoff", scope, recordId: record.key, attemptId: record.attemptId, kind: "unknown"});
 }
 
+export function retainUnretiredLiveFacts(snapshot: WindowAcceptedSnapshot, scope: string, current: boolean, facts: readonly NormalizedSavedItem[]): readonly NormalizedSavedItem[] {
+  if (!current) return facts;
+  return facts.filter(fact => !("domain" in fact && fact.attemptId && fact.turnId && snapshot.retiredAttempts?.some(retired => retired.scope === scope && retired.revision === snapshot.revision && retired.attemptId === fact.attemptId && retired.turnId === fact.turnId)));
+}
+
 /** One producer classifies saved facts and explicitly scoped live records. */
 export function SavedWindowContent({ model, snapshot, live, liveBoundary, liveFacts }: { model: AppModel; snapshot: WindowAcceptedSnapshot; live?: ComponentChildren; liveBoundary?: number; liveFacts?: readonly NormalizedSavedItem[] }) {
   if (snapshot.revision === undefined) return null;
   const mapped = projectHistoryWindowItems({ revision: snapshot.revision, nodes: snapshot.rows });
   const handle = model.handle.value;
   const records = liveFacts ?? (handle ? normalizeLiveWorkFacts({scope: handle.threadId, items: handle.work.value.value?.items ?? []}) : []);
-  const handoffs = handle ? projectOwnedHandoffFacts(handle.threadId, handle.handoff.value) : [];
+  const handoffs = handle ? projectOwnedHandoffFacts(handle.threadId, handle.handoff.value).map(fact => {
+    if (!("domain" in fact)) return fact;
+    const original = handle.handoff.value.find(record => record.key === fact.recordId);
+    return original?.readyAttempt ? {...fact, turnId: original.readyAttempt.turnId} : fact;
+  }) : [];
+  const scope = handle?.handoffScope() ?? "";
+  const current = model.longReader.value?.acceptedView.isCurrent(snapshot) ?? false;
+  const retained = retainUnretiredLiveFacts(snapshot, scope, current, [...handoffs, ...records]);
+  const retainedHandoffs = retained.filter(fact => handoffs.includes(fact));
+  const retainedRecords = retained.filter(fact => records.includes(fact));
   const saved = mapped.projection.items.map(item => item.source);
   // This is the captured history cut, not an ordinal assigned to a live record.
   const cut = liveBoundary === undefined ? -1 : saved.findIndex(source => {
     const node = snapshot.rows.find(node => node.node_id === source.nodeId);
     return node?.selection?.ordinal !== undefined && node.selection.ordinal >= liveBoundary;
   });
-  const ordered = cut < 0 ? [...saved, ...handoffs] : [...saved.slice(0, cut), ...handoffs, ...saved.slice(cut)];
-  const projection = projectSavedItems([...ordered, ...records]);
+  const ordered = cut < 0 ? [...saved, ...retainedHandoffs] : [...saved.slice(0, cut), ...retainedHandoffs, ...saved.slice(cut)];
+  const projection = projectSavedItems([...ordered, ...retainedRecords]);
   // Live text without item-kind proof cannot unlock or replace saved Conversation text.
   return <SavedConversationItems model={model} projection={projection} nodes={snapshot.rows} />;
 }

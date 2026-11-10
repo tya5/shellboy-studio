@@ -596,7 +596,7 @@ export class AppModel {
     const reader = this.longReader.peek()!;
     const records = h.handoff.value;
     reader.version.value;
-    for (const record of records) if (record.status === "ready" && !record.transferred) {
+    for (const record of records) if ((record.readyAttempt || record.status === "ready") && !record.transferred) {
       batch(() => h.transferHandoff(record.attemptId, (attachment, release) => reader.acceptHandoff(attachment, h.handoffScope(), release)));
     }
     this.readerShells(this.longReader.peek()!);
