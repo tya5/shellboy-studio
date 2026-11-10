@@ -5,15 +5,27 @@ import { expect,it } from 'vitest';
 import { fixtureModel } from '../../../ui-core/test/fixture';
 import { projectSavedItems } from '../../../ui-core/src/conversation-items';
 import { SavedConversationItems, SavedWindowContent } from '../screens/Conversation';
-it('retains record choice by canonical structural ID across rerender',async()=>{
+it('retains canonical record identity and explicit Work choice without an empty record disclosure',async()=>{
  const f=await fixtureModel(),host=document.createElement('div');document.body.append(host);
  try{
   const facts=[{nodeId:'record-node',itemIdentity:'record-id',kind:'record' as const,windowRevision:1}];
   const show=()=>render(<SavedConversationItems model={f.model} projection={projectSavedItems(facts)}/>,host);
   await act(async()=>{show();});const detail=host.querySelector('[data-internal-records]')! as HTMLDetailsElement;
-  expect(detail.open).toBe(false);await act(async()=>{detail.open=true;detail.dispatchEvent(new Event('toggle'));});
+  expect(detail.tagName).toBe('DIV');expect(detail.querySelector('details,summary')).toBeNull();
+  const line=detail.querySelector('[data-work-inner-line]')!;expect(line.querySelector('svg')).not.toBeNull();
+  const key=detail.closest('[data-item-key]')!.getAttribute('data-item-key');
+  const kind=line.getAttribute('aria-label');expect(kind).toBeTruthy();expect(line.getAttribute('title')).toBe(kind);
+  const group=detail.closest('[data-work-group]') as HTMLDetailsElement;expect(group.open).toBe(false);
+  await act(async()=>{group.open=true;group.dispatchEvent(new Event('toggle'));});
+  await act(async()=>{render(<SavedConversationItems model={f.model} projection={projectSavedItems([...facts,{nodeId:'independent-user',itemIdentity:'user-id',kind:'user',windowRevision:1,text:'Independent saved message'}])}/>,host);});
+  expect(host.querySelector('[data-internal-records]')).toBe(detail);
+  expect(detail.querySelector('[data-work-inner-line]')).toBe(line);expect(line.getAttribute('aria-label')).toBe(kind);
+  expect(detail.querySelector('details,summary')).toBeNull();expect(group.open).toBe(true);
   await act(async()=>{render(<SavedConversationItems model={f.model} projection={projectSavedItems([...facts,{nodeId:'tool-node',itemIdentity:'tool-id',kind:'tool',windowRevision:1,executionIds:['explicit-exec']}])}/>,host);});
-  expect((host.querySelector('[data-internal-records]') as HTMLDetailsElement).open).toBe(true);
+  const replaced=host.querySelector('[data-internal-records]')!;
+  expect(replaced.closest('[data-item-key]')!.getAttribute('data-item-key')).toBe(key);
+  expect(replaced.querySelector('details,summary')).toBeNull();
+  expect((replaced.closest('[data-work-group]') as HTMLDetailsElement).open).toBe(false);
  }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
 });
 it('retains retry chrome for a nontext failed live record and exposes overflow without a duplicate footer',async()=>{
