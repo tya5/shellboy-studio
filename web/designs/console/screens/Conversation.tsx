@@ -219,14 +219,14 @@ export function retainUnretiredLiveFacts(snapshot: WindowAcceptedSnapshot, scope
 
 function PendingOwnMessageView({model,nodes,scope}: {model:AppModel;nodes:readonly HistoryItem[];scope:string}) {
   const pending=model.pendingOwnMessage.value;
-  useLayoutEffect(()=>{model.retirePendingOwnIfSaved();},[model,pending,nodes]);
-  if(!pending || !model.pendingOwnIsCurrent() || pending.scope!==scope || pending.threadId!==model.handle.value?.threadId) return null;
-  if(pending.messageId && nodes.some(node=>node.node_id===pending.messageId)) return null;
-  return <aside data-pending-own-message={pending.operationId} data-pending-phase={pending.phase}>
-    <div class="caption muted">{model.t.value(`composer.pending.${pending.phase}`)}</div>
-    <div class="pre">{pending.text}</div>
-    {pending.phase==="failed"||pending.phase==="unconfirmed"?<Button variant="link" onClick={()=>void model.resend()}>{model.t.value("action.retry")}</Button>:null}
-  </aside>;
+  const accepted=model.acceptedOwnMessages.value;
+  useLayoutEffect(()=>{model.retirePendingOwnIfSaved();},[model,pending,accepted,nodes]);
+  if(!model.pendingOwnIsCurrent())return null;
+  return <>{[...accepted,...(pending?[pending]:[])].filter(message=>message.scope===scope&&message.threadId===model.handle.value?.threadId&&!(message.messageId&&nodes.some(node=>node.node_id===message.messageId))).map(message=><aside key={message.operationId} data-pending-own-message={message.operationId} data-pending-phase={message.phase}>
+    <Message bot={false} who={model.t.value("convo.you")} text={message.text} copyLabel={model.t.value("code.copy")} copiedLabel={model.t.value("code.copied")}><small>{model.t.value(`composer.pending.${message.phase}`)}</small></Message>
+    {message.phase==="failed"||message.phase==="unconfirmed"?<Button variant="link" onClick={()=>void model.resend()}>{model.t.value("action.retry")}</Button>:null}
+  </aside>)}</>;
+
 }
 
 function LegacySavedContent({model,handle}: {model:AppModel;handle:ThreadHandle;history:ReturnType<ThreadHandle["history"]["peek"]>|undefined;rows:readonly ConversationRow[];boundary:number|undefined;follow:()=>void}) {
@@ -538,7 +538,8 @@ export function Conversation({ model }: { model: AppModel }) {
 
   const send = model.sendState.value;
   const pendingOwn = model.pendingOwnMessage.value;
-  const sendBlocked = pendingOwn && model.pendingOwnIsCurrent() ? pendingOwn : undefined;
+  const sendBlocked = model.ownSendBlocked();
+  const capacityBlocked = model.ownSendCapacityReason.value || model.acceptedOwnMessages.value.length >= 8;
   const conn = model.connection.value;
   const recovery = model.recovery.value;
   const loading = !history?.loaded;
@@ -577,7 +578,7 @@ export function Conversation({ model }: { model: AppModel }) {
           <Composer
             label={t("composer.label")}
             placeholder={t("composer.placeholder")}
-            hint={sendBlocked ? t(`composer.pending.${sendBlocked.phase}`) : t("composer.hint")}
+            hint={capacityBlocked ? t("composer.pending.capacity") : pendingOwn ? t(`composer.pending.${pendingOwn.phase}`) : t("composer.hint")}
             sendLabel={t("composer.send")}
             canSend={conn === "connected" && !sendBlocked}
             busy={send.kind === "sending"}

@@ -37,17 +37,21 @@ for(const windowed of [true,false])for(const savedBeforeAck of [false,true])it(`
   await act(async()=>{f.t.ok(call.id,{message_id:'canonical-own',thread_id:'t'});await flush(8);});expect(f.model.sendState.peek().kind).toBe('idle');expect(composer.value).toBe('');
   if(savedBeforeAck){expect(host.querySelector('[data-pending-own-message]')).toBeNull();expect(host.querySelectorAll('[data-node="canonical-own"] .md')).toHaveLength(1);return;}
   expect(host.querySelector('[data-pending-phase="accepted"]')).not.toBeNull();
-  await act(async()=>{composer.value='Next unsent draft';composer.dispatchEvent(new Event('input',{bubbles:true}));composer.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));await flush(4);});
-  expect(f.t.calls('message.send')).toHaveLength(1);expect(composer.value).toBe('Next unsent draft');
-  expect(host.querySelector('.composer [role="status"]')?.textContent).toContain(f.model.t.value('composer.pending.accepted'));
+  await act(async()=>{composer.value='Next unsent draft';composer.dispatchEvent(new Event('input',{bubbles:true}));});
+  await act(async()=>{composer.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));await flush(4);});
+  expect(f.t.calls('message.send')).toHaveLength(2);expect(composer.value).toBe('Next unsent draft');
+  const next=f.t.calls('message.send').at(-1)!;f.db.answered.add(next.id);
+  await act(async()=>{f.t.ok(next.id,{message_id:'second-canonical',thread_id:'t'});await flush(8);});
+  expect(f.model.acceptedOwnMessages.peek()).toHaveLength(2);
   const equalText:HistoryItem={node_id:'wrong-node',kind:'user',items:[{item_identity:'wrong',kind:'text',text:'Own submitted message',text_complete:true}],provenance:{sender:{kind:'human'}}};
   rows=[{...equalText,selection:{ordinal:0}}];f.db.history.t=rows;
   await act(async()=>{f.t.push({t:'changed',thread_ids:['t'],list:false});await settle(f.t,f.db);});
   expect(host.querySelector('[data-pending-own-message]')).not.toBeNull();
   rows=[{...equalText,node_id:'canonical-own',selection:{ordinal:0}}];f.db.history.t=rows;
   await act(async()=>{f.t.push({t:'changed',thread_ids:['t'],list:false});await settle(f.t,f.db);});
-  expect(host.querySelector('[data-pending-own-message]')).toBeNull();
+  expect(host.querySelector('[data-pending-own-message]')?.textContent).toContain('Next unsent draft');
   expect(host.querySelectorAll('[data-node="canonical-own"] .md')).toHaveLength(1);
+  await act(async()=>{composer.value='Third ready draft';composer.dispatchEvent(new Event('input',{bubbles:true}));});
   expect(host.querySelector<HTMLButtonElement>('.composer button:last-child')?.disabled).toBe(false);
  }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
 });
@@ -90,4 +94,22 @@ it('actual Composer Enter preserves an unconfirmed draft and does not double-sub
   await act(async()=>{input.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));});
   expect(calls).toBe(1);expect(input.value).toBe('Original uncertain message');expect(host.querySelector('[role="status"]')?.textContent).toBe('Acceptance unconfirmed');
  }finally{render(null,host);host.remove();}
+});
+it('reserves eight entries and UTF-8 bytes before dispatch without evicting acknowledged text',async()=>{
+ const f=await fixtureModel();
+ try{
+  for(let i=0;i<8;i++){
+   const sending=f.model.send(`Accepted ${i}`);await flush(4);const call=f.t.calls('message.send').at(-1)!;
+   f.t.ok(call.id,{message_id:`saved-${i}`,thread_id:f.model.handle.peek()!.threadId});expect(await sending).toBe(true);
+   expect(f.model.pendingOwnMessage.peek()).toBeUndefined();expect(f.model.acceptedOwnMessages.peek()).toHaveLength(i+1);
+  }
+  expect(await f.model.send('Ninth draft')).toBe(false);expect(f.t.calls('message.send')).toHaveLength(8);
+  expect(f.model.ownSendCapacityReason.peek()).toBe(true);expect(f.model.acceptedOwnMessages.peek()[0]!.text).toBe('Accepted 0');
+  f.model.navigate({view:'threads'});await flush(4);expect(f.model.acceptedOwnMessages.peek()).toHaveLength(0);
+ }finally{f.model.dispose();f.data.stop();}
+ const g=await fixtureModel();
+ try{
+  expect(await g.model.send('界'.repeat(Math.floor(4*1024*1024/3)+1))).toBe(false);
+  expect(g.t.calls('message.send')).toHaveLength(0);expect(g.model.ownSendCapacityReason.peek()).toBe(true);
+ }finally{g.model.dispose();g.data.stop();}
 });

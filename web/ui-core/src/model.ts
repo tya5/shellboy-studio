@@ -227,6 +227,8 @@ export class AppModel {
   readonly selectedStepId: Signal<string | undefined> = signal(undefined);
   readonly selectedStep: ReadonlySignal<StepRow | undefined>;
   readonly pendingOwnMessage: Signal<PendingOwnMessage | undefined> = signal(undefined);
+  readonly acceptedOwnMessages: Signal<readonly PendingOwnMessage[]> = signal([]);
+  readonly ownSendCapacityReason: Signal<boolean> = signal(false);
   private pendingOwnCurrent: (() => boolean) | undefined;
   readonly sendState: Signal<SendState> = signal({ kind: "idle" });
   readonly actionError: Signal<string | undefined> = signal(undefined);
@@ -389,7 +391,9 @@ export class AppModel {
     this.disposers.push(effect(() => this.syncLegacyPresentation()));
     this.disposers.push(effect(() => {
       this.route.value; this.handle.value; this.data.owner.value;
-      if (this.pendingOwnMessage.peek() && !this.pendingOwnCurrent?.()) { this.pendingOwnMessage.value = undefined; this.sendState.value = {kind:"idle"}; }
+      if ((this.pendingOwnMessage.peek() || this.acceptedOwnMessages.peek().length) && !this.pendingOwnCurrent?.()) {
+        this.pendingOwnMessage.value = undefined; this.acceptedOwnMessages.value = []; this.ownSendCapacityReason.value = false; this.sendState.value = {kind:"idle"};
+      }
     }));
     let senderOwner: unknown;
     let senderOwnerGeneration = 0;
@@ -860,9 +864,14 @@ export class AppModel {
     return this.deliver(threadId, pending.text, pending.operationId);
   }
 
+  ownSendBlocked(): boolean {
+    return !!this.pendingOwnMessage.value || this.acceptedOwnMessages.value.length >= 8;
+  }
+
   retirePendingOwnIfSaved(): void {
-    const pending=this.pendingOwnMessage.peek();
-    if(pending && this.pendingOwnSaved(pending)) this.pendingOwnMessage.value=undefined;
+    const previous=this.acceptedOwnMessages.peek();
+    const kept=previous.filter(message=>!this.pendingOwnSaved(message));
+    if(kept.length!==previous.length){this.acceptedOwnMessages.value=kept;this.ownSendCapacityReason.value=false;}
   }
 
   pendingOwnIsCurrent(): boolean {
@@ -883,9 +892,16 @@ export class AppModel {
   private async deliver(threadId: string, text: string, operationId = this.ops.mutationId()): Promise<boolean> {
     const handle = this.handle.peek(), route = this.route.peek();
     if (!handle || handle.threadId !== threadId) return false;
+    this.retirePendingOwnIfSaved();
     const old = this.pendingOwnMessage.peek();
-    if (old && this.pendingOwnCurrent?.() && old.operationId !== operationId && !this.pendingOwnSaved(old)) return false;
+    if (old && this.pendingOwnCurrent?.() && old.operationId !== operationId) return false;
     if (old?.operationId === operationId && old.phase === "sending") return false;
+    if (!old) {
+      const accepted=this.acceptedOwnMessages.peek();
+      const bytes=new TextEncoder().encode(text).byteLength + accepted.reduce((sum,message)=>sum+new TextEncoder().encode(message.text).byteLength,0);
+      if(accepted.length>=8 || bytes>4*1024*1024){this.ownSendCapacityReason.value=true;return false;}
+    }
+    this.ownSendCapacityReason.value=false;
     const owner = this.data.owner.peek(), scope = handle.handoffScope();
     if (owner.state !== "connected") return false;
     const current = () => this.handle.peek() === handle && this.route.peek() === route && this.data.owner.peek() === owner && handle.handoffScope() === scope;
@@ -895,7 +911,8 @@ export class AppModel {
     const out = await this.ops.messageSend({ thread_id: threadId, text }, operationId);
     if (!current() || this.pendingOwnMessage.peek()?.operationId !== operationId) return false;
     if (out.ok && out.value.thread_id === threadId) {
-      this.pendingOwnMessage.value = {threadId,scope,operationId,text,phase:"accepted",messageId:out.value.message_id};
+      this.acceptedOwnMessages.value = [...this.acceptedOwnMessages.peek(),{threadId,scope,operationId,text,phase:"accepted",messageId:out.value.message_id}];
+      this.pendingOwnMessage.value = undefined;
       this.sendState.value = { kind: "idle" };
       return true;
     }
