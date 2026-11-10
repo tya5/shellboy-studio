@@ -1,3 +1,4 @@
+import type { HistoryItem } from "../../../data/src/protocol";
 import { Markdown } from "../system/components/Message";
 import type { WindowAcceptedSnapshot } from "../../../ui-core/src/window";
 import type { ComponentChildren } from "preact";
@@ -77,6 +78,13 @@ export function SavedConversationItems({ model, projection }: { model: AppModel;
       }
       return null;
     }} />;
+}
+
+/** A typed deferred node is a placeholder, not authority to show its aggregate. */
+export function DeferredHistoryNode({ model, row }: { model: AppModel; row: HistoryItem }) {
+  return <div class="caption muted" data-node={row.node_id} data-items-unavailable-reason={row.items_unavailable_reason}>
+    {model.t.value("work.textUnavailable")}
+  </div>;
 }
 
 const stepDuration = (s: Step, now: number): string | undefined => {
