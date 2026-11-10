@@ -115,7 +115,7 @@ export function projectSavedItems(input: readonly NormalizedSavedItem[]): SavedI
     members = []; toolKeys = []; ids = []; unknownTools = 0; interrupted = false;
   };
   for (const source of input) {
-    if (!("domain" in source) && (!source.nodeId || !source.itemIdentity || (source.revision === undefined && source.windowRevision === undefined))) throw new Error("Missing authoritative identity/proof");
+    if (!("domain" in source) && (!source.nodeId || !source.itemIdentity || (source.revision === undefined && source.windowRevision === undefined && !(source.identityDomain === "node" && source.kind === "unknown" && source.itemIdentity === source.nodeId)))) throw new Error("Missing authoritative identity/proof");
     if ("domain" in source && (!source.scope || !source.recordId)) throw new Error("Missing live record identity");
     const canonicalKey = "domain" in source ? JSON.stringify(["live", source.namespace ?? "work", source.scope, source.recordId]) : source.identityDomain === "spill" ? JSON.stringify(["spill", source.nodeId, source.itemIdentity]) : source.identityDomain === "node" ? JSON.stringify(["node", source.nodeId]) : JSON.stringify([source.nodeId, source.itemIdentity]);
     const a = association(source);

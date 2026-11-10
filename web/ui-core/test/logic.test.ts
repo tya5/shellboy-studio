@@ -93,7 +93,8 @@ describe("conversation projection", () => {
       ],
       new Map([["e", { execution_id: "e", state: "exited", exit_code: 0, started_at: "2026-01-01T00:00:00Z", ended_at: "2026-01-01T00:00:02.400Z" }]]),
     );
-    expect(rows.map((r) => r.type)).toEqual(["message", "steps", "message"]);
+    expect(rows.map((r) => r.type)).toEqual(["message", "steps", "publication", "message"]);
+    expect(rows.filter(row => row.type === "message").some(row => row.text.includes("command"))).toBe(false);
     const step = rows[1]!.type === "steps" ? rows[1]!.steps[0]! : undefined;
     expect(step).toMatchObject({ command: "ls", status: "completed", exitCode: 0, durationMs: 2400, cwd: "/w" });
   });
@@ -118,13 +119,14 @@ describe("conversation projection", () => {
   });
   it("keeps commentary as speech without displaying function call arguments", () => {
     const rows = projectConversation([
-      { node_id: "a", kind: "assistant_response", phase: "commentary", excerpt: "Checking files", executions: [{ execution_id: "e", command_excerpt: "ls" }] },
+      { node_id: "a", kind: "assistant_response", phase: "commentary", excerpt: "Checking files", items: [{ kind: "text", item_identity: "body", text: "Checking files", text_complete: true }], executions: [{ execution_id: "e", command_excerpt: "ls" }] },
       { node_id: "b", kind: "assistant_response", excerpt: "{\"command\":\"pwd\"}", executions: [{ execution_id: "e2", command_excerpt: "pwd" }] },
       { node_id: "c", kind: "assistant_response", excerpt: "Finished" },
     ]);
-    expect(rows.map((row) => row.type)).toEqual(["steps", "message", "steps", "message"]);
+    expect(rows.map((row) => row.type)).toEqual(["steps", "message", "steps", "publication", "message"]);
+    expect(rows[3]).toMatchObject({ type: "publication", state: "unknown" });
     expect(rows[1]).toMatchObject({ text: "Checking files" });
-    expect(rows[3]).toMatchObject({ text: "Finished" });
+    expect(rows[4]).toMatchObject({ text: "Finished" });
   });
   it("joins tool calls across invisible and empty nodes but not visible speech", () => {
     const calls = Array.from({ length: 12 }, (_, i) => ({ execution_id: `e${i}`, command_excerpt: `command ${i}` }));

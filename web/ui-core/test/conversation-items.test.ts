@@ -274,3 +274,13 @@ it("F883 duplicate public spill facts are idempotent and conflicting calls remai
   expect(out.projection.items).toHaveLength(2);
   expect(out.projection.items.every(item => item.toolIdentity === "unresolved")).toBe(true);
 });
+
+it("legacy canonical node presence needs no invented revision but grants no body or item authority", () => {
+  const source = { identityDomain: "node" as const, nodeId: "actual-node", itemIdentity: "actual-node", kind: "unknown" as const };
+  const out = projectSavedItems([source]);
+  expect(out.items[0]?.source).toEqual(source);
+  expect(out.sequence.map(row => row.kind)).toEqual(["work"]);
+  expect(out.items[0]?.key).toBe(JSON.stringify(["node", "actual-node"]));
+  expect(() => projectSavedItems([{ ...source, kind: "text", text: "unproved" }])).toThrow();
+  expect(() => projectSavedItems([{ ...source, itemIdentity: "guessed-item" }])).toThrow();
+});
