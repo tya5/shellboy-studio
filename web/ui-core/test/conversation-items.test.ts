@@ -140,3 +140,25 @@ it("FINAL typed empty/unknown items never use aggregate excerpt as fallback", ()
   expect(out.projection.items.map(i => i.source.kind)).toEqual(["unavailable"]);
   expect(JSON.stringify(out.projection)).not.toContain("aggregate must not render");
 });
+
+it("FINAL execution-linked saved prose is invariant across phase and publication advice", async () => {
+  const { projectConversation } = await import("../src/conversation");
+  const node = { node_id: "saved-linked", kind: "assistant_response", excerpt: "Same saved ordinary text", executions: [{ execution_id: "actual-execution", state: "exited", command_excerpt: "synthetic" }] };
+  const baseline = projectConversation([node]);
+  expect(baseline.filter(row => row.type === "message").map(row => row.text)).toEqual([node.excerpt]);
+  expect(baseline.filter(row => row.type === "steps")).toHaveLength(1);
+  for (const phase of ["commentary", "final_answer", undefined, "unknown"]) {
+    for (const advised of [false, true]) {
+      const rows = projectConversation([{ ...node, ...(phase !== undefined ? { phase } : {}), ...(advised ? { assistant_publication: { state: "unknown" as const, attemptId: "advisory" } } : {}) }]);
+      expect(rows).toEqual(baseline);
+    }
+  }
+});
+it("FINAL publication and execution hints cannot unlock typed empty or unavailable aggregate", () => {
+  for (const items of [[], [{ kind: "unavailable" as const, item_identity: "u", reason: "unsupported" as const }]]) {
+    const out = projectHistoryWindowItems({ revision: 1, nodes: [{ node_id: "typed", kind: "assistant_response", excerpt: "Forbidden aggregate", executions: [{ execution_id: "linked" }], assistant_publication: { state: "message", attemptId: "advisory" }, items }] });
+    expect(out.projection.items.every(item => item.source.kind !== "text")).toBe(true);
+    expect(JSON.stringify(out.projection)).not.toContain("Forbidden aggregate");
+    expect(out.nodes[0]?.emptyOrdinary).toBe(items.length === 0);
+  }
+});
