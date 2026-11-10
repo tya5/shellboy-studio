@@ -6,6 +6,7 @@ import "./style.css";
 export interface FormattedWorkElementDisplay {
   readonly source: WorkElementDisplay;
   readonly context: WorkElementDisplay["contentLabel"]["context"];
+  readonly visibleContext: readonly string[];
   readonly typeIcon: IconName;
   readonly typeAccessibleLabel: string;
   readonly contentLabel: string;
@@ -19,6 +20,7 @@ export function formatWorkElementDisplay(source: WorkElementDisplay): FormattedW
   const typeIcon: IconName = source.typeIcon;
   return {
     source, context: source.contentLabel.context, typeIcon,
+    visibleContext: source.contentLabel.context.filter(entry => entry.name === "description" || entry.name === "time").map(entry => entry.value),
     typeAccessibleLabel: source.typeAccessibleLabel,
     contentLabel: source.contentLabel.text,
     state: source.state === null ? null : source.state.value,
@@ -53,11 +55,11 @@ export function WorkElementRow(props: WorkElementRowProps) {
   const { display } = props;
   if (display.detailPolicy !== props.detailPolicy) throw new Error("WorkElementRow detail policy mismatch");
   if (!display.contentLabel.trim()) throw new Error("WorkElementRow requires factual contentLabel");
-  const accessibleLabel = [display.typeAccessibleLabel, display.contentLabel, display.stateSourceLabel, display.state].filter(value => value !== null && value !== "").join(". ");
+  const accessibleLabel = [display.typeAccessibleLabel, display.contentLabel, ...display.visibleContext, display.stateSourceLabel, display.state].filter(value => value !== null && value !== "").join(". ");
   const line = (
     <>
       <span class="work-element-row__icon"><Icon name={display.typeIcon} /></span>
-      <span class="work-element-row__content">{display.contentLabel}</span>
+      <span class="work-element-row__content">{display.contentLabel}{display.visibleContext.map((value, index) => <span key={index} class="work-element-row__context"> · {value}</span>)}</span>
       {display.state !== null && <span class="work-element-row__state">{display.stateSourceLabel !== null && <span>{display.stateSourceLabel}{" "}</span>}{display.state}</span>}
     </>
   );

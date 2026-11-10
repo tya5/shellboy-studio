@@ -9,3 +9,6 @@
 
 .work-element-row>summary.work-element-row__line:hover{background:var(--raised)}
 @container app (max-width:899px){.work-element-row>summary.work-element-row__line{min-height:var(--size-touch)}}
+
+[data-work-group]>.step-group-list{padding-inline-start:var(--space-12)}
+.work-element-row>.work-element-row__line .work-element-row__context{color:var(--muted)}
