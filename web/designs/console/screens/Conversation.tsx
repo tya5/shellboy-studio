@@ -198,6 +198,7 @@ export function projectOwnedHandoffFacts(scope: string, records: readonly Handof
 
 export function retainUnretiredLiveFacts(snapshot: WindowAcceptedSnapshot, scope: string, current: boolean, facts: readonly NormalizedSavedItem[]): readonly NormalizedSavedItem[] {
   if (!current) return facts;
+  facts = facts.filter(fact => !("domain" in fact && fact.attemptId && snapshot.terminalPersistedAttempts?.some(proof => proof.scope === scope && proof.attemptId === fact.attemptId)));
   return facts.filter(fact => !("domain" in fact && fact.attemptId && fact.turnId && snapshot.retiredAttempts?.some(retired => retired.scope === scope && retired.revision === snapshot.revision && retired.attemptId === fact.attemptId && retired.turnId === fact.turnId)));
 }
 
@@ -218,7 +219,7 @@ export function SavedWindowContent({ model, snapshot, live, liveBoundary, liveFa
   const retained = retainUnretiredLiveFacts(snapshot, scope, current, [...handoffs, ...records]);
   const retainedHandoffs = retained.filter(fact => handoffs.includes(fact));
   const retainedRecords = retained.filter(fact => records.includes(fact));
-  const pendingNodes = new Set(current ? snapshot.attemptPresentations?.filter(fact => fact.scope === scope && fact.state === "pending" && retained.some(source => "domain" in source && source.attemptId === fact.attemptId && (source.turnId === fact.turnId || (source.namespace === "handoff" && source.turnId === undefined))) && !snapshot.retiredAttempts?.some(retired => retired.scope === scope && retired.revision === snapshot.revision && retired.attemptId === fact.attemptId && retired.turnId === fact.turnId)).flatMap(fact => fact.nodeIds) : []);
+  const pendingNodes = new Set(current ? snapshot.attemptPresentations?.filter(fact => fact.scope === scope && fact.state === "pending" && !snapshot.terminalPersistedAttempts?.some(proof => proof.scope === scope && proof.attemptId === fact.attemptId) && retained.some(source => "domain" in source && source.attemptId === fact.attemptId && (source.turnId === fact.turnId || (source.namespace === "handoff" && source.turnId === undefined))) && !snapshot.retiredAttempts?.some(retired => retired.scope === scope && retired.revision === snapshot.revision && retired.attemptId === fact.attemptId && retired.turnId === fact.turnId)).flatMap(fact => fact.nodeIds) : []);
   const saved = mapped.projection.items.filter(item => !item.source.nodeId || !pendingNodes.has(item.source.nodeId)).map(item => item.source);
   // This is the captured history cut, not an ordinal assigned to a live record.
   const cut = liveBoundary === undefined ? -1 : saved.findIndex(source => {
