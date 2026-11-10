@@ -30,7 +30,7 @@ export interface HandoffRecord {
   readonly readyAttempt?: AttemptReadyProof;
   readonly terminalPersisted?: TerminalPersistedProof;
 }
-interface Held { attemptCapture?: { original: HandoffRecord; staged: HandoffRecord; proof: AttemptReadyProof; epoch: number; lifetime: number }; admitted: number; transferring?: boolean; attemptId: string; source: LiveText; stop: () => void; record: HandoffRecord }
+interface Held { attemptCapture?: { original: HandoffRecord; staged: HandoffRecord; proof: AttemptReadyProof | TerminalPersistedProof; epoch: number; lifetime: number }; admitted: number; transferring?: boolean; attemptId: string; source: LiveText; stop: () => void; record: HandoffRecord }
 
 /** One ledger per watched Thread. No queue, spill or timer. Hints cannot refill read budget. */
 export class Handoff {
@@ -125,6 +125,16 @@ export class Handoff {
     this.publish();
     return true;
   }
+  stageTerminalPersisted(original: HandoffRecord, proof: TerminalPersistedProof): HandoffRecord | undefined {
+    const h = this.held.find(h => h.record === original);
+    if (!h || h.transferring || proof.attemptId !== original.attemptId || !proof.scope || !['completed', 'failed', 'incomplete', 'cancelled'].includes(proof.terminalState) || !Array.isArray(proof.nodeIds) || !proof.nodeIds.length || proof.nodeIds.length > 64 || !proof.nodeIds.every(id => typeof id === 'string' && id.length > 0)) return;
+    // Partial saved-node evidence deliberately does not require complete preview or items.
+    const { readyAttempt: _readyAttempt, ...retained } = original;
+    const staged = Object.freeze({ ...retained, terminalPersisted: proof });
+    h.attemptCapture = { original, staged, proof, epoch: this.epochValue, lifetime: this.lifetimeValue };
+    h.record = staged; this.publish();
+    return staged;
+  }
   stageAttempt(original: HandoffRecord, proof: AttemptReadyProof): HandoffRecord | undefined {
     const h = this.held.find(h => h.record === original);
     if (!h || h.transferring || original.incomplete || !Number.isSafeInteger(proof.total) || proof.total < 0 || proof.attemptId !== original.attemptId || !proof.scope || !proof.turnId || !proof.refs.length || proof.refs.length > 64 || proof.nodes.length > 200) return;
@@ -145,7 +155,7 @@ export class Handoff {
     h.record = staged; this.publish();
     return staged;
   }
-  transferAttempt(original: HandoffRecord, proof: AttemptReadyProof, accept: (staged: HandoffRecord, release: (reason: 'return' | 'end') => void) => boolean): boolean {
+  transferAttempt(original: HandoffRecord, proof: AttemptReadyProof | TerminalPersistedProof, accept: (staged: HandoffRecord, release: (reason: 'return' | 'end') => void) => boolean): boolean {
     const h = this.held.find(h => h.attemptCapture?.original === original);
     const c = h?.attemptCapture;
     if (!h || !c || h.transferring || c.proof !== proof || h.record !== c.staged || c.epoch !== this.epochValue || c.lifetime !== this.lifetimeValue) return false;
