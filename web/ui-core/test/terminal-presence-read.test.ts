@@ -113,3 +113,51 @@ it("synchronous request notification revoking the original token cannot publish 
  expect(r.w.prepareTerminalRead(handle, r.token, r.receipt)).toEqual({ phase: "unavailable", reason: "cancelled" });
  expect(r.w.acceptedView.peek()).toBe(before); expect(writes).toBe(0); stop(); r.w.dispose(); r.data.stop();
 });
+it("Window binding captures once and shares original authority with same-handle summary registration", async () => {
+ const r = await target(); let captures = 0; const original = r.h.captureReadQualification;
+ const handle = { ...r.h, captureReadQualification: () => { captures++; return original(); } };
+ expect(r.w.bindTerminalHandle(handle)).toBe(true); expect(r.w.bindTerminalHandle(handle)).toBe(true); expect(captures).toBe(1);
+ const ref = r.w.acceptedView.peek();
+ r.w.beginSummaryTransition(handle, ref, "tool", 0);
+ expect(captures).toBe(1); expect(r.w.isTerminalHandleCurrent(handle)).toBe(true);
+ const lease = r.w.prepareBoundTerminalRead(r.receipt); expect("state" in lease).toBe(true); await r.pump();
+ expect(r.w.acceptedView.peek().rows.map(row => row.node_id)).toEqual(["tool", "answer"]); expect(captures).toBe(1);
+ r.w.dispose(); expect(r.w.isTerminalHandleCurrent(handle)).toBe(false); expect(r.h.isReadQualificationCurrent(r.token)).toBe(false); r.data.stop();
+});
+it("invalidated binding cannot recapture on repeated bind or admit a lease", async () => {
+ const r = await target(); let captures = 0; const original = r.h.captureReadQualification;
+ const handle = { ...r.h, captureReadQualification: () => { captures++; return original(); } };
+ expect(r.w.bindTerminalHandle(handle)).toBe(true); handle.cancelReads();
+ expect(r.w.bindTerminalHandle(handle)).toBe(false); expect(r.w.prepareBoundTerminalRead(r.receipt)).toEqual({ phase: "unavailable", reason: "cancelled" });
+ expect(captures).toBe(1); r.w.dispose(); r.data.stop();
+});
+it("a different handle cannot replace an owned Window binding", async () => {
+ const r = await target(); expect(r.w.bindTerminalHandle(r.h)).toBe(true); const other = r.data.openThread("b");
+ expect(r.w.bindTerminalHandle(other)).toBe(false); expect(r.w.isTerminalHandleCurrent(r.h)).toBe(true);
+ other.close(); r.h.close(); expect(r.w.isTerminalHandleCurrent(r.h)).toBe(false); r.w.dispose(); r.data.stop();
+});
+it("bound terminal then summary shares one token and owner change denies both paths", async () => {
+ const r = await target(); let captures = 0; const capture = r.h.captureReadQualification;
+ const handle = { ...r.h, captureReadQualification: () => { captures++; return capture(); } };
+ expect(r.w.bindTerminalHandle(handle)).toBe(true); r.w.prepareBoundTerminalRead(r.receipt); await r.pump();
+ const ref = r.w.acceptedView.peek(), id = r.w.beginSummaryTransition(handle, ref, "tool", 0);
+ expect(id).toBeDefined(); expect(captures).toBe(1);
+ r.t.push({ t: "owner", event: "restarted", owner: { state: "connected", info: { protocol_version: 5, instance_id: "other", capabilities: ["history.window"] } } });
+ expect(r.w.beginSummaryTransition(handle, ref, "tool", 0)).toBeUndefined();
+ expect(r.w.prepareBoundTerminalRead(r.receipt)).toEqual({ phase: "unavailable", reason: "cancelled" });
+ expect(captures).toBe(1); r.w.dispose(); r.data.stop();
+});
+it("existing unbound summary remains valid when first binding is denied", async () => {
+ const r = await target(); const ref = r.w.acceptedView.peek();
+ const id = r.w.beginSummaryTransition(r.h, ref, "tool", 0); expect(id).toBeDefined();
+ expect(r.w.bindTerminalHandle(r.h)).toBe(false); expect(r.w.peekSummaryTransitionId()).toBe(id);
+ expect(r.w.beginSummaryTransition(r.h, ref, "tool", 0)).toBe(id);
+ r.w.dispose(); r.data.stop();
+});
+it("dispose cancels a bound held lease without closing its external handle", async () => {
+ const r = await target(); expect(r.w.bindTerminalHandle(r.h)).toBe(true);
+ const lease = r.w.prepareBoundTerminalRead(r.receipt) as OwnedTerminalReadLease; await flush();
+ r.w.dispose(); expect(lease.state.peek()).toEqual({ phase: "unavailable", reason: "cancelled" });
+ expect(r.w.prepareBoundTerminalRead(r.receipt)).toEqual({ phase: "unavailable", reason: "cancelled" });
+ expect(r.h.captureReadQualification()).toBeDefined(); r.data.stop();
+});

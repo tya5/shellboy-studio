@@ -129,6 +129,7 @@ export class ConversationWindow {
     consumed: boolean; targetCap?: AcceptedCapability; coverage?: AcceptedCoverage } | undefined;
   private acceptedGeneration = 0;
   private terminalPresence: readonly TerminalPresence[] = [];
+  private terminalBinding: { handle: ThreadHandle; token: ThreadReadQualification; scope: string } | undefined;
   private terminalRequestSerial = 0;
   private terminalIdentitySerial = 0;
   private terminalIdentity = new WeakMap<object, number>();
@@ -181,6 +182,34 @@ export class ConversationWindow {
   itemAt(i: number): HistoryItem | undefined {
     return this.buckets.get(Math.floor(i / WINDOW_NODES))?.items[i % WINDOW_NODES];
   }
+  bindTerminalHandle(handle: ThreadHandle): boolean {
+    if (this.terminalBinding) return this.isTerminalHandleCurrent(handle);
+    const ref = this.acceptedView.peek();
+    if (this.disposed || this.summaryTransition || !this.acceptedView.isCurrent(ref)) return false;
+    const scope = handle.handoffScope(), token = handle.captureReadQualification();
+    if (!token || !handle.isReadQualificationCurrent(token) || scope !== handle.handoffScope()
+      || !this.acceptedView.isCurrent(ref)) return false;
+    this.terminalBinding = { handle, token, scope };
+    return true;
+  }
+  isTerminalHandleCurrent(handle: ThreadHandle): boolean {
+    const binding = this.terminalBinding;
+    const current = !!binding && !this.disposed && binding.handle === handle
+      && handle.isReadQualificationCurrent(binding.token) && handle.handoffScope() === binding.scope;
+    if (!current) for (const target of [...this.terminalTargets.values()]) this.cancelTerminalRead(target.lease.ticket.id);
+    return current;
+  }
+  prepareBoundTerminalRead(receipt: TerminalPersistedProof): OwnedTerminalReadLease | TicketOutcome {
+    const binding = this.terminalBinding;
+    if (!binding || !this.isTerminalHandleCurrent(binding.handle)) return { phase: "unavailable", reason: "cancelled" };
+    const outcome = this.prepareTerminalRead(binding.handle, binding.token, receipt);
+    if (!this.isTerminalHandleCurrent(binding.handle)) {
+      if ("state" in outcome) outcome.cancel();
+      return { phase: "unavailable", reason: "cancelled" };
+    }
+    return outcome;
+  }
+
   prepareTerminalRead(handle: ThreadHandle, original: ThreadReadQualification, receipt: TerminalPersistedProof): OwnedTerminalReadLease | TicketOutcome {
     const ref = this.acceptedView.peek(), cap = this.acceptedView.currentCapability;
     if (this.disposed || !handle.isReadQualificationCurrent(original) || !this.acceptedView.isCurrent(ref)
@@ -320,11 +349,14 @@ export class ConversationWindow {
   beginSummaryTransition(handle: ThreadHandle, ref: WindowAcceptedSnapshot, nodeId: string, offset: number): SummaryTransitionId | undefined {
     if (this.disposed || !this.acceptedView.isCurrent(ref) || ref.pending || ref.revision === undefined || !Number.isFinite(offset)
       || ref.rows.filter(row => row.node_id === nodeId).length !== 1) return undefined;
+    if (this.terminalBinding && !this.isTerminalHandleCurrent(handle)) return undefined;
     const old = this.summaryTransition;
     if (old) return old.handle === handle && old.sourceRef === ref && old.nodeId === nodeId && old.offset === offset
       && !old.consumed && handle.isReadQualificationCurrent(old.token) ? old.id : undefined;
-    const token = handle.captureReadQualification();
-    if (!token || !this.acceptedView.isCurrent(ref)) return undefined;
+    if (this.terminalBinding && !this.isTerminalHandleCurrent(handle)) return undefined;
+    const token = this.terminalBinding?.token ?? handle.captureReadQualification();
+    if (!token || !handle.isReadQualificationCurrent(token) || !this.acceptedView.isCurrent(ref)
+      || (this.terminalBinding && !this.isTerminalHandleCurrent(handle))) return undefined;
     const id = `summary-${++this.summarySerial}` as SummaryTransitionId;
     this.summaryTransition = { id, handle, token, sourceRef: ref, sourceCap: this.acceptedView.currentCapability, nodeId, offset, scope: handle.handoffScope(), consumed: false };
     return id;
@@ -703,6 +735,7 @@ export class ConversationWindow {
   dispose(): void {
     for (const target of [...this.terminalTargets.values()]) this.cancelTerminalRead(target.lease.ticket.id);
     this.terminalPreparedRequests.clear();
+    this.terminalBinding = undefined;
     this.clearSummaryTransition();
     this.disposed = true;
     this.acceptedView.dispose();
