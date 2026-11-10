@@ -48,11 +48,30 @@ export class ScrollIntent {
 }
 
 /** Capture a tool heading before its details change, then restore its viewport position. */
+export interface HeadingCorrection {
+  readonly identity: object;
+  readonly delta: number;
+}
+
 export class HeadingAnchor {
-  private saved: { heading: HTMLElement; top: number } | undefined;
+  private saved: { heading: HTMLElement; top: number; identity: object } | undefined;
   capture(heading: HTMLElement): void {
-    this.saved = { heading, top: heading.getBoundingClientRect().top };
+    this.saved = { heading, top: heading.getBoundingClientRect().top, identity: {} };
   }
+  peek(): HeadingCorrection | undefined {
+    const saved = this.saved;
+    if (!saved?.heading.isConnected) return;
+    const delta = saved.heading.getBoundingClientRect().top - saved.top;
+    if (saved !== this.saved) return;
+    return Object.freeze({ identity: saved.identity, delta });
+  }
+  consume(plan: HeadingCorrection): boolean {
+    if (this.saved?.identity !== plan.identity || !this.saved.heading.isConnected) return false;
+    this.saved = undefined;
+    return true;
+  }
+  clear(): void { this.saved = undefined; }
+  /** Compatibility for the legacy writer; generation-aware sync uses peek/consume. */
   correction(): number | undefined {
     const saved = this.saved;
     this.saved = undefined;
