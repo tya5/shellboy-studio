@@ -114,3 +114,52 @@ describe("WebSocketTransport", () => {
     expect(() => transport.start(handlers)).toThrow();
   });
 });
+
+describe("socket callback ownership", () => {
+  it("ignores old open/message callbacks after replacement and accepts current callbacks", () => {
+    const { transport, sockets, timers, events, handlers } = setup();
+    transport.start(handlers);
+    const old = sockets[0]!;
+    const open = old.onopen!;
+    const message = old.onmessage!;
+    old.fail();
+    timers.at(-1)!.fn();
+    const current = sockets[1]!;
+    open();
+    message({ data: '{"t":"resync"}' });
+    message({ data: "{" });
+    message({ data: new ArrayBuffer(1) });
+    expect(events).toEqual(["close"]);
+    current.open();
+    current.onmessage!({ data: '{"t":"resync"}' });
+    expect(events).toEqual(["close", "open", "frame:resync"]);
+    transport.stop();
+  });
+
+  it("ignores callbacks retained before stop, including after a new start", () => {
+    const { transport, sockets, events, handlers } = setup();
+    transport.start(handlers);
+    const open = sockets[0]!.onopen!;
+    const message = sockets[0]!.onmessage!;
+    transport.stop();
+    open(); message({ data: '{"t":"resync"}' });
+    expect(events).toEqual(["close"]);
+    transport.start(handlers);
+    open(); message({ data: '{"t":"resync"}' });
+    expect(events).toEqual(["close"]);
+    sockets[1]!.open();
+    expect(events).toEqual(["close", "open"]);
+    transport.stop();
+  });
+
+  it("does not let an old open reset current reconnect backoff", () => {
+    const { transport, sockets, timers, handlers } = setup();
+    transport.start(handlers);
+    const oldOpen = sockets[0]!.onopen!;
+    sockets[0]!.fail(); timers.at(-1)!.fn();
+    oldOpen();
+    sockets[1]!.fail();
+    expect(timers.at(-1)!.ms).toBe(2000);
+    transport.stop();
+  });
+});

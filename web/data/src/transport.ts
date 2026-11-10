@@ -119,10 +119,12 @@ export class WebSocketTransport implements Transport {
         })();
     this.socket = socket;
     socket.onopen = () => {
+      if (this.stopped || this.socket !== socket) return;
       this.delay = this.opts.backoff.initialMs;
       this.handlers?.onOpen();
     };
     socket.onmessage = (event) => {
+      if (this.stopped || this.socket !== socket) return;
       if (typeof event.data !== "string") {
         this.handlers?.onInvalidFrame("binary frame");
         return;
