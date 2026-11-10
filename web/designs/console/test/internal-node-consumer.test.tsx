@@ -13,7 +13,7 @@ import {App} from '../screens/App';
 
 const typedText=(text:string)=>[{kind:'text' as const,item_identity:'text',text,text_complete:true}];
 const nodes:HistoryItem[]=[
- {node_id:'internal-event',kind:'event',selection:{ordinal:0},items:typedText('Synthetic developer input event; not conversation prose')},
+ {node_id:'internal-event',kind:'event',selection:{ordinal:0},items:typedText('from thread 11f469e1-794b-4f27-9170-7ff2240e04f7')},
  {node_id:'internal-context',kind:'context',selection:{ordinal:1},items:typedText('Synthetic developer context; not conversation prose')},
  {node_id:'human-mentions-event',kind:'user',selection:{ordinal:2},provenance:{sender:{kind:'human'}},items:typedText('Please explain Shellboy event/context. Keep this human text.')},
  {node_id:'received-user',kind:'user',selection:{ordinal:3},provenance:{sender:{kind:'model',thread_id:'synthetic-sender',label:'Synthetic sender'}},items:typedText('Legitimate received user message')},

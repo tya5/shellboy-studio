@@ -27,3 +27,17 @@ it('retains retry chrome for a nontext failed live record and exposes overflow w
   await act(async()=>{host.querySelector('[data-live-record-chrome] button')!.dispatchEvent(new MouseEvent('click',{bubbles:true}));});expect(retries).toBe(1);
  }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
 });
+it('does not synthesize a body-unavailable error for normal tool presence, but retains actual Core reasons',async()=>{
+ const f=await fixtureModel(),host=document.createElement('div');document.body.append(host);
+ try{
+  const projection=projectSavedItems([{nodeId:'tool',itemIdentity:'tool',windowRevision:1,kind:'tool',executionIds:['metadata-not-loaded']},{nodeId:'core-unavailable',itemIdentity:'u',windowRevision:1,kind:'unavailable',reason:'response_budget'}]);
+  await act(async()=>render(<SavedConversationItems model={f.model} projection={projection}/>,host));
+  const heading=host.querySelector('[data-work-heading]')!;
+  expect(heading.textContent).not.toContain(f.model.t.value('work.textUnavailable'));
+  expect(heading.textContent).toContain('response_budget');
+  const group=host.querySelector('[data-work-group]')! as HTMLDetailsElement;
+  await act(async()=>{group.open=true;group.dispatchEvent(new Event('toggle'));});
+  expect(host.querySelector('[data-node="tool"]')?.textContent).not.toContain(f.model.t.value('work.textUnavailable'));
+  expect(host.querySelector('[data-items-unavailable-reason="response_budget"]')?.textContent).toContain('response_budget');
+ }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
+});

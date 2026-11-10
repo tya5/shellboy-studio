@@ -103,7 +103,7 @@ export function SavedConversationItems({ model, projection, renderBefore, traili
     const completed = group.executionIds.length > 0 && !unknown && steps.every(step => step.status === "completed");
     const status = active ? "running" : failures ? "failed" : completed ? "completed" : undefined;
     const reasons = [...new Set(projection.items.filter(item => group.memberKeys.includes(item.key)).flatMap(item => item.source.kind === "unavailable" && item.source.reason ? [item.source.reason] : []))];
-    const label = [t("work.group"), ...reasons,  ...(group.unknownToolCount ? [t("work.unknownTools")] : [t("tools.count", { n: group.executionIds.length })]), ...(unknown ? [t("work.textUnavailable")] : []), ...(failures ? [t("tools.nonzero", {n: failures})] : []), ...(group.interrupted ? [t("status.stopped")] : []), ...((group.continuationBefore !== "closed" || group.continuationAfter !== "closed") ? [t("work.partial")] : [])].join(" · ");
+    const label = [t("work.group"), ...reasons,  ...(group.unknownToolCount ? [t("work.unknownTools")] : [t("tools.count", { n: group.executionIds.length })]), ...(failures ? [t("tools.nonzero", {n: failures})] : []), ...(group.interrupted ? [t("status.stopped")] : []), ...((group.continuationBefore !== "closed" || group.continuationAfter !== "closed") ? [t("work.partial")] : [])].join(" · ");
     return <Disclosure class="step step-group" open={opened(group)} data-work-group={group.key} data-key={group.key} data-heading-anchor-key={group.firstMemberKey} data-heading-member-keys={JSON.stringify(group.memberKeys)} onToggle={event => {
       const open = event.currentTarget.open;
       setOpenMemberships(previous => {
@@ -154,9 +154,9 @@ export function SavedConversationItems({ model, projection, renderBefore, traili
         const steps = model.conversation.value.flatMap(row => row.type === "steps" ? row.steps : []);
         const source = item.source;
         const badge = source.compressed ? <span class="caption muted" data-tool-compressed="">{t("work.compressed")}</span> : null;
-        return <div data-tool-call-id={source.callId} data-tool-detail-unavailable={source.detailUnavailable ? "true" : undefined}>{badge}{!ids.length ? <div class="caption muted" data-execution-unavailable="">{t("work.textUnavailable")}</div> : ids.map(id => {
+        return <div data-tool-call-id={source.callId} data-tool-detail-unavailable={source.detailUnavailable ? "true" : undefined}>{badge}{!ids.length ? <div class="caption muted" data-execution-unavailable="">{t("work.unknownTools")}</div> : ids.map(id => {
           const step = steps.find(step => step.executionId === id);
-          return <div key={id} data-execution-id={id}>{hidden(item) ? null : step ? <StepView model={model} step={step} /> : <div class="caption muted" data-execution-unresolved="">{t("work.textUnavailable")}</div>}</div>;
+          return <div key={id} data-execution-id={id}>{hidden(item) ? null : step ? <StepView model={model} step={step} /> : <div class="caption muted" data-execution-unresolved="">{t("work.unknownTools")}</div>}</div>;
         })}</div>;
       }
       if (item.source.kind === "ordinaryEmpty") return <div class="caption muted" data-empty-ordinary="">{t("work.textUnavailable")}</div>;
@@ -167,7 +167,7 @@ export function SavedConversationItems({ model, projection, renderBefore, traili
         const source = item.source;
         const handle = model.handle.value;
         const record = "domain" in source && source.namespace === "handoff" ? handle?.handoff.value.find(record => record.key === source.recordId) : undefined;
-        return <><div class="caption muted" data-item-unavailable="" data-items-unavailable-reason={item.source.kind === "unavailable" ? item.source.reason : undefined}>{item.source.kind === "unknown" ? t("work.record") : t("work.textUnavailable")}{item.source.kind === "unavailable" && item.source.reason ? ` (${item.source.reason})` : ""}</div>{record ? <LiveRecordChrome model={model} record={record} retry={() => handle?.retryHandoff()} /> : null}</>;
+        return <><div class="caption muted" data-item-unavailable="" data-items-unavailable-reason={item.source.kind === "unavailable" ? item.source.reason : undefined}>{item.source.kind === "unknown" ? t("work.record") : item.source.reason ?? t("work.textUnavailable")}</div>{record ? <LiveRecordChrome model={model} record={record} retry={() => handle?.retryHandoff()} /> : null}</>;
       }
       return null;
     }} />;
