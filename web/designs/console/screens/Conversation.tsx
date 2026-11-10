@@ -74,10 +74,16 @@ export function AcceptedWindowConversation({ reader, project, renderItem, render
 export function SavedConversationItems({ model, projection, renderBefore, trailing, nodes }: { model: AppModel; projection: SavedItemProjection & { sequence?: readonly ({kind: "conversation"; itemKey: string} | {kind: "work"; groupKey: string})[]; workGroups?: readonly ConversationWorkGroup[] }; nodes?: readonly HistoryItem[]; renderBefore?: (item: ConversationItem) => ComponentChildren; trailing?: ComponentChildren }) {
   const t = model.t.value;
   const allSteps = model.conversation.value.flatMap(row => row.type === "steps" ? row.steps : []);
+  const [openRecords, setOpenRecords] = useState<ReadonlySet<string>>(() => new Set());
   const [openMemberships, setOpenMemberships] = useState<ReadonlySet<string>>(() => new Set());
   const membershipKey = (summary: { key?: string; memberKeys: readonly string[] }) => summary.key ?? JSON.stringify(summary.memberKeys);
   const memberships = new Set((projection.workGroups ?? projection.toolSummaries).map(membershipKey));
   useLayoutEffect(() => {
+    const records = new Set(projection.items.filter(item => item.source.kind === "record").map(item => item.key));
+    setOpenRecords(previous => {
+      const kept = new Set([...previous].filter(key => records.has(key)));
+      return kept.size === previous.size ? previous : kept;
+    });
     setOpenMemberships(previous => {
       const kept = new Set([...previous].filter(key => memberships.has(key)));
       return kept.size === previous.size ? previous : kept;
@@ -155,8 +161,13 @@ export function SavedConversationItems({ model, projection, renderBefore, traili
       if (item.source.kind === "ordinaryEmpty") return <div class="caption muted" data-empty-ordinary="">{t("work.textUnavailable")}</div>;
       if (item.source.kind === "reasoning" || item.source.kind === "reasoning_unavailable") return <div class="caption muted" data-thinking-marker="">{t("work.thinking")}</div>;
       if (item.source.kind === "interruption") return <Notice>{t("status.stopped")}</Notice>;
-      if (item.source.kind === "record") return <details data-internal-records=""><summary>{t("work.records", {n: 1})}</summary><span class="caption muted">{t("work.textUnavailable")}</span></details>;
-      if (item.source.kind === "unknown" || item.source.kind === "unavailable") return <div class="caption muted" data-item-unavailable="" data-items-unavailable-reason={item.source.kind === "unavailable" ? item.source.reason : undefined}>{item.source.kind === "unknown" ? t("work.record") : t("work.textUnavailable")}{item.source.kind === "unavailable" && item.source.reason ? ` (${item.source.reason})` : ""}</div>;
+      if (item.source.kind === "record") return <details data-internal-records="" open={openRecords.has(item.key)} onToggle={event => { const open = event.currentTarget.open; setOpenRecords(previous => { const next = new Set(previous); if (open) next.add(item.key); else next.delete(item.key); return next; }); }}><summary>{t("work.records", {n: 1})}</summary><span class="caption muted">{t("work.textUnavailable")}</span></details>;
+      if (item.source.kind === "unknown" || item.source.kind === "unavailable") {
+        const source = item.source;
+        const handle = model.handle.value;
+        const record = "domain" in source && source.namespace === "handoff" ? handle?.handoff.value.find(record => record.key === source.recordId) : undefined;
+        return <><div class="caption muted" data-item-unavailable="" data-items-unavailable-reason={item.source.kind === "unavailable" ? item.source.reason : undefined}>{item.source.kind === "unknown" ? t("work.record") : t("work.textUnavailable")}{item.source.kind === "unavailable" && item.source.reason ? ` (${item.source.reason})` : ""}</div>{record ? <LiveRecordChrome model={model} record={record} retry={() => handle?.retryHandoff()} /> : null}</>;
+      }
       return null;
     }} />;
 }
@@ -216,7 +227,7 @@ export function SavedWindowContent({ model, snapshot, live, liveBoundary, liveFa
   const ordered = cut < 0 ? [...saved, ...retainedHandoffs] : [...saved.slice(0, cut), ...retainedHandoffs, ...saved.slice(cut)];
   const projection = projectSavedItems([...ordered, ...retainedRecords].map(source => keyScope ? {...source, keyScope} : source));
   // Live text without item-kind proof cannot unlock or replace saved Conversation text.
-  return <SavedConversationItems model={model} projection={projection} nodes={snapshot.rows} />;
+  return <SavedConversationItems model={model} projection={projection} nodes={snapshot.rows} trailing={handle?.handoffOverflow.value ? <div class="caption muted" data-live-overflow="">{model.t.value("convo.handoffLimit")} <Button variant="link" onClick={() => handle.retryHandoff()}>{model.t.value("action.retry")}</Button></div> : undefined} />;
 }
 
 const stepDuration = (s: Step, now: number): string | undefined => {

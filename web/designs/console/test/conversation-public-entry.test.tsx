@@ -302,7 +302,7 @@ it('publishes saved rows and whole-attempt retirement in the same DOM frame, ret
     const { SavedWindowContent }=await import('../screens/Conversation');
     const scope='owner-thread-lifetime';let current:object;
     const model=new Proxy(fixture.model,{get(target,key){
-      if(key==='handle')return {value:{threadId:'thread',handoffScope:()=>scope,handoff:{value:[]},work:{value:{}}}};
+      if(key==='handle')return {value:{threadId:'thread',handoffScope:()=>scope,handoff:{value:[]},handoffOverflow:{value:false},work:{value:{}}}};
       if(key==='longReader')return {value:{acceptedView:{isCurrent:(ref:object)=>ref===current}}};
       return Reflect.get(target,key);
     }});
