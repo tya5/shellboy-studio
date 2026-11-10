@@ -193,3 +193,22 @@ it('does not claim completion for a closed local summary mixing proved and no-ID
     expect([...host.querySelectorAll('[data-item-key]')].every(item=>(item as HTMLElement).hidden)).toBe(true);
   }finally{render(null,host);host.remove();fixture.model.dispose();fixture.data.stop();}
 });
+
+it('contains saved Work in actual group parents even for a singleton and never drops thinking records',async()=>{
+  const fixture=await fixtureModel(),host=document.createElement('div');document.body.append(host);
+  try{
+    const { SavedWindowContent }=await import('../screens/Conversation');
+    const rows:import('../../../data/src/protocol').HistoryItem[]=[
+      {node_id:'work-a',kind:'assistant_response',selection:{ordinal:0},items:[{item_identity:'think',kind:'reasoning_unavailable'},{item_identity:'tool',kind:'tool_call',execution_ids:[]}]},
+      {node_id:'conversation',kind:'assistant_response',selection:{ordinal:1},items:[{item_identity:'text',kind:'text',text:'Authoritative answer',text_complete:true}]},
+      {node_id:'work-b',kind:'assistant_response',selection:{ordinal:2},items:[{item_identity:'unknown',kind:'unavailable',reason:'unsupported'}]},
+    ];
+    await act(async()=>render(<SavedWindowContent model={fixture.model} snapshot={{rows,range:{first:0,last:2},total:3,revision:1,generation:1,epoch:1,disposed:false,pending:false}}/>,host));
+    const groups=[...host.querySelectorAll('[data-work-group]')];expect(groups).toHaveLength(2);
+    expect(host.querySelectorAll('[data-work-item-key]')).toHaveLength(3);
+    for(const item of host.querySelectorAll('[data-work-item-key]'))expect(item.closest('[data-work-group]')).not.toBeNull();
+    expect(host.querySelector('[data-thinking-marker]')).not.toBeNull();
+    expect(host.querySelector('[data-node="conversation"]')?.closest('[data-work-group]')).toBeNull();
+    expect(groups.every(group=>(group.querySelector('details') as HTMLDetailsElement)?.open===false)).toBe(true);
+  }finally{render(null,host);host.remove();fixture.model.dispose();fixture.data.stop();}
+});
