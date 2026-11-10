@@ -3,7 +3,7 @@ import {render} from 'preact';
 import {act} from 'preact/test-utils';
 import {expect,it} from 'vitest';
 import {fixtureModel} from '../../../ui-core/test/fixture';
-import {projectLegacyHistoryItems,projectSavedItems} from '../../../ui-core/src/conversation-items';
+import {projectHistoryWindowItems,projectLegacyHistoryItems,projectSavedItems} from '../../../ui-core/src/conversation-items';
 import {LiveRecordChrome,SavedConversationItems} from '../screens/Conversation';
 import type {HandoffRetryState} from '../../../data/src/store';
 it('headings consume canonical category counts, omit zero and keep reasons only inside Problems',async()=>{
@@ -60,5 +60,24 @@ it('uses CASE closed defaults and preserves explicit Work and record choices thr
   await act(async()=>show());expect(group.open).toBe(true);expect(record.open).toBe(true);
   await act(async()=>{record.open=false;record.dispatchEvent(new Event('toggle'));});
   await act(async()=>show());expect(record.open).toBe(false);
+ }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
+});
+
+for(const windowed of [false,true])it(`renders actual accepted-node execution metadata inside its same Work disclosure even when legacy history has no step: window=${windowed}`,async()=>{
+ const f=await fixtureModel(),host=document.createElement('div');document.body.append(host);
+ try{
+  const nodes=[{node_id:'accepted-tool-node',kind:'assistant_response',items:[{item_identity:'call',kind:'tool_call' as const,execution_ids:['accepted-execution']}],executions:[{execution_id:'accepted-execution',command_excerpt:'printf synthetic-tool',description:'Synthetic safe description',state:'exited'}]}];
+  expect(f.model.conversation.peek().flatMap(row=>row.type==='steps'?row.steps:[]).some(step=>step.executionId==='accepted-execution')).toBe(false);
+  const projection=(windowed?projectHistoryWindowItems({nodes,revision:1}):projectLegacyHistoryItems({nodes})).projection;
+  await act(async()=>render(<SavedConversationItems model={f.model} nodes={nodes} projection={projection}/>,host));
+  const group=host.querySelector<HTMLDetailsElement>('[data-work-group]')!;
+  await act(async()=>{group.open=true;group.dispatchEvent(new Event('toggle'));});
+  const tool=host.querySelector('[data-execution-id="accepted-execution"] .step')!;
+  expect(tool).not.toBeNull();expect(tool.textContent).toContain('Synthetic safe description');
+  const detail=tool as HTMLDetailsElement;
+  await act(async()=>{detail.open=true;detail.dispatchEvent(new Event('toggle'));});
+  expect(tool.textContent).toContain('printf synthetic-tool');
+  expect(tool.closest('[data-work-group]')).toBe(group);
+  expect(host.querySelector('[data-execution-unresolved]')).toBeNull();
  }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
 });

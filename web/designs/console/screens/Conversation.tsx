@@ -13,7 +13,7 @@ import { characterAssets } from "../system/character-assets";
 import { effect } from "@preact/signals-core";
 import { MonitorPopover } from "../system/components/MonitorPopover";
 import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
-import { toolLabel, activityLabel, renderOutput, formatClock, formatDuration, formatRoute, formatTokens, parseTime, statusLabel, type AppModel, type ConversationRow, type StepRow as Step } from "../../../ui-core/src";
+import { collectExecutionSteps, toolLabel, activityLabel, renderOutput, formatClock, formatDuration, formatRoute, formatTokens, parseTime, statusLabel, type AppModel, type ConversationRow, type StepRow as Step } from "../../../ui-core/src";
 import { ScrollIntent } from "./scrollIntent";
 import { WindowedScroll } from "./WindowedScroll";
 import { BranchMark, Button, Composer, LoadingRows, EmptyState, Icon, KeyValue, LogBlock, Message, Notice, QuestionCard, StatusMark, StepRow, SummaryStrip, WorkSheet } from "../system/components";
@@ -73,7 +73,9 @@ export function AcceptedWindowConversation({ reader, project, renderItem, render
 /** Console presentation for an already authorized projection, independent of wire decoding. */
 export function SavedConversationItems({ model, projection, renderBefore, trailing, nodes }: { model: AppModel; projection: SavedItemProjection & { sequence?: readonly ({kind: "conversation"; itemKey: string} | {kind: "work"; groupKey: string})[]; workGroups?: readonly ConversationWorkGroup[] }; nodes?: readonly HistoryItem[]; renderBefore?: (item: ConversationItem) => ComponentChildren; trailing?: ComponentChildren }) {
   const t = model.t.value;
-  const allSteps = model.conversation.value.flatMap(row => row.type === "steps" ? row.steps : []);
+  const savedSteps = collectExecutionSteps(nodes ?? [], model.shells.value);
+  const savedExecutionIds = new Set(savedSteps.map(step => step.executionId));
+  const allSteps = [...savedSteps, ...model.conversation.value.flatMap(row => row.type === "steps" ? row.steps : []).filter(step => !savedExecutionIds.has(step.executionId))];
   const [openRecords, setOpenRecords] = useState<ReadonlyMap<string, boolean>>(() => new Map());
   const [openMemberships, setOpenMemberships] = useState<ReadonlyMap<string, boolean>>(() => new Map());
   const membershipKey = (summary: { key?: string; memberKeys: readonly string[] }) => summary.key ?? JSON.stringify(summary.memberKeys);
@@ -155,7 +157,7 @@ export function SavedConversationItems({ model, projection, renderBefore, traili
       }
       if (item.source.kind === "tool") {
         const ids = item.source.executionIds ?? (item.source.executionId ? [item.source.executionId] : []);
-        const steps = model.conversation.value.flatMap(row => row.type === "steps" ? row.steps : []);
+        const steps = allSteps;
         const source = item.source;
         const badge = source.compressed ? <span class="caption muted" data-tool-compressed="">{t("work.compressed")}</span> : null;
         return <div data-tool-call-id={source.callId} data-tool-detail-unavailable={source.detailUnavailable ? "true" : undefined}>{badge}{!ids.length ? <div class="caption muted" data-execution-unavailable="">{t("work.unknownTools")}</div> : ids.map(id => {
