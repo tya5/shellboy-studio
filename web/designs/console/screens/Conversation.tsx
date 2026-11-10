@@ -1,3 +1,4 @@
+import { Markdown } from "../system/components/Message";
 import type { WindowAcceptedSnapshot } from "../../../ui-core/src/window";
 import type { ComponentChildren } from "preact";
 import type { SavedItemProjection } from "../../../ui-core/src/conversation-items";
@@ -62,6 +63,20 @@ export function AcceptedWindowConversation({ reader, project, renderItem, render
     data-accepted-generation={snapshot.generation} data-readiness={snapshot.pending ? "pending" : "ready"}>
     <ConversationItems {...project(snapshot)} renderItem={renderItem} renderHeading={renderHeading} />
   </section>;
+}
+
+/** Console presentation for an already authorized projection, independent of wire decoding. */
+export function SavedConversationItems({ model, projection }: { model: AppModel; projection: SavedItemProjection }) {
+  const t = model.t.value;
+  return <ConversationItems {...projection} renderHeading={summary => <span>{t("tools.count", { n: summary.executionIds.length })}</span>}
+    renderItem={item => {
+      if (item.source.kind === "text") return <Markdown text={item.source.text ?? ""} copyLabel={t("code.copy")} copiedLabel={t("code.copied")} />;
+      if (item.source.kind === "tool") {
+        const step = model.conversation.value.flatMap(row => row.type === "steps" ? row.steps : []).find(step => step.executionId === item.source.executionId);
+        return step ? <StepView model={model} step={step} /> : <div class="caption muted" data-execution-unresolved="">{t("work.textUnavailable")}</div>;
+      }
+      return null;
+    }} />;
 }
 
 const stepDuration = (s: Step, now: number): string | undefined => {
