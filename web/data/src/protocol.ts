@@ -219,7 +219,19 @@ export type HistorySavedItem =
   | { readonly kind: 'tool_call' | 'tool_result'; readonly item_identity: string; readonly execution_ids: readonly string[] }
   | { readonly kind: 'reasoning_unavailable'; readonly item_identity: string }
   | { readonly kind: 'unavailable'; readonly item_identity: string; readonly reason: HistoryItemsUnavailableReason };
+/** Existing Core942 public spill-local identities; no tool payload/detail fields. */
+export interface SpillToolSource {
+  readonly call_id: string;
+  readonly execution_id?: string | null;
+  readonly original_node_id?: string | null;
+}
+export interface SpillToolSources {
+  readonly status: string;
+  readonly items: readonly SpillToolSource[];
+  readonly truncated: boolean;
+}
 export interface HistoryItem {
+  spill_tools?: SpillToolSources | null;
   /** Absent on legacy owners/reads; null is a deferred whole node, never prose. */
   items?: readonly HistorySavedItem[] | null;
   items_unavailable_reason?: HistoryItemsUnavailableReason;
