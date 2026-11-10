@@ -9,3 +9,6 @@ it.each(['null','partial','unknown'] as const)('retains whole preview for %s',mo
 
 it('existing id-based seam delegates staged capture without legacy ready text',()=>{const{h,original,proof}=rig();const staged=h.stageAttempt(original,proof)!;expect(h.transfer('a',(r,end)=>{expect(r).toBe(staged);expect(r.text).toBe(original.text);end('end');return true;})).toBe(true);expect(h.records.value).toHaveLength(0);});
 it('id seam cannot revive invalidated staged capture',()=>{const{h,original,proof}=rig();h.stageAttempt(original,proof);h.invalidate();expect(h.transfer('a',()=>{throw Error('stale callback');})).toBe(false);expect(h.records.value[0]?.text).toBe(original.text);});
+
+it.each(['invalidate','discard'] as const)('reports no transfer success after callback %s',mode=>{const{h,original,proof}=rig();h.stageAttempt(original,proof);expect(h.transfer('a',(_,end)=>{if(mode==='invalidate')h.invalidate();else h.discard('owner_restarted');end('end');return true;})).toBe(false);});
+it('reports no success when callback replaces current staged record',()=>{const{h,original,proof}=rig();h.stageAttempt(original,proof);expect(h.transfer('a',()=>{h.fail('a');return true;})).toBe(false);});

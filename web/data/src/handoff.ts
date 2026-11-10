@@ -152,9 +152,11 @@ export class Handoff {
     try {
       accepted = accept(c.staged, release);
       receiving = false;
-      if (!accepted) return false;
+      if (!accepted || h.attemptCapture !== c || h.record !== c.staged || c.epoch !== this.epochValue || c.lifetime !== this.lifetimeValue || !this.held.includes(h)) return false;
       if (pending) release(pending);
-      return true;
+      // A synchronous end may remove this exact slot; invalidation never counts as success.
+      if (c.epoch !== this.epochValue || c.lifetime !== this.lifetimeValue) return false;
+      return pending === 'end' ? !this.held.includes(h) : h.attemptCapture === c && h.record === c.staged && this.held.includes(h);
     } finally { receiving = false; h.transferring = false; }
   }
   transfer(attemptId: string, accept: (record: HandoffRecord, release: (reason: 'return' | 'end') => void) => boolean): boolean {
