@@ -53,14 +53,14 @@ describe("FINAL Section2 canonical node/item matrix", () => {
     expect(normalizeLiveWorkFacts({ scope: "thread", items: [{ id: "pending", kind: "message", state: "held", thread_id: "thread", message_id: "message" }] })).toEqual([]);
   });
   it("matrix aliases and arbitrary phase never create a second classification", async () => {
-    const { classifySavedHistoryFact } = await import("../src/conversation-items");
+    const { classifySavedHistoryCase } = await import("../src/conversation-items");
     for (const kind of ["event", "context", "context_note", "model_stream_observation", "observation", "message", "notification", "unknown", "bookkeeping", "future"]) {
-      expect(classifySavedHistoryFact(kind, "text")).toBe("record");
-      expect(classifySavedHistoryFact(kind, "tool_call")).toBe("record");
+      expect(classifySavedHistoryCase(kind, "text").normalizedKind).toBe("record");
+      expect(classifySavedHistoryCase(kind, "tool_call").normalizedKind).toBe("record");
     }
     for (const kind of ["assistant_response", "assistant"]) {
-      expect(classifySavedHistoryFact(kind, "text")).toBe("text");
-      expect(classifySavedHistoryFact(kind, "legacy")).toBe("record");
+      expect(classifySavedHistoryCase(kind, "text").normalizedKind).toBe("text");
+      expect(classifySavedHistoryCase(kind, "legacy").normalizedKind).toBe("record");
     }
   });
   it("BUG3 legacy ordinary tool remains tool without inventing unavailable body or successful execution", () => {
@@ -121,4 +121,55 @@ it("canonical presentation exposes whole-input projection plus independent execu
   expect(view.rows.every(row => view.nodeIdByRowId.has(row.id))).toBe(true);
   for (const row of view.rows.filter(row => row.type === "message" || row.type === "steps")) expect(view.nodeIdByRowId.get(row.id)).toBe("a");
   expect(view.rows.find(row => row.id === "b")).toMatchObject({ type: "note", kind: "record", text: "" });
+});
+
+// Independent specification-column expectations, not derived from product values.
+const caseColumns = [
+  ["human", "conversation", null, "human-message", "canonical"],
+  ["receivedModel", "conversation", null, "received-model", "canonical"],
+  ["receivedCli", "conversation", null, "received-cli", "canonical"],
+  ["receivedUnknown", "conversation", null, "received-unknown", "canonical"],
+  ["assistantText", "conversation", null, "model-message", "canonical"],
+  ["toolCall", "work", "Tools", "tool", "association"],
+  ["readableReasoning", "work", "Reasoning", "thinking", "canonical"],
+  ["reasoningMarker", "work", "Reasoning", "thinking-marker", "canonical"],
+  ["toolResult", "work", "Tools", "tool", "association"],
+  ["spill", "work", "Tools", "compressed-tool", "association"],
+  ["summary", "conversation", null, "summary", "canonical"],
+  ["event", "work", "Notifications", "state-change", "canonical"],
+  ["context", "work", "Notifications", "state-change", "canonical"],
+  ["observation", "work", "Notifications", "stream-change", "canonical"],
+  ["notification", "work", "Notifications", "notification", "canonical"],
+  ["childNotification", "work", "Notifications", "child-notification", "canonical"],
+  ["shellNotification", "work", "Notifications", "shell-notification", "canonical"],
+  ["interruptionDetails", "work", "Problems", "interruption", "canonical"],
+  ["interruptionContext", "work", "Problems", "interruption", "canonical"],
+  ["incompleteResponse", "work", "Problems", "interruption", "canonical"],
+  ["interruptedWait", "work", "Problems", "interruption", "canonical"],
+  ["legacyUnknown", "work", "Problems", "unsupported", "canonical"],
+  ["unavailable", "work", "Problems", "unavailable", "canonical"],
+  ["unknown", "work", "Problems", "unsupported", "canonical"],
+  ["ordinaryEmpty", "conversation", null, "empty-ordinary", "canonical"],
+] as const;
+for (const [id, classification, headingCategory, render, keyPolicy] of caseColumns) it(`all columns canonical case ${id}`, async () => {
+  const { CANONICAL_CASES } = await import("../src/conversation-items");
+  expect(CANONICAL_CASES[id]).toMatchObject({ id, classification, headingCategory, render, keyPolicy, openPolicy: "closed", toolPolicy: keyPolicy === "association" ? "explicit-association" : "none" });
+});
+it("four Work category counts exclude duplicate associated tool rows and retain non-tool facts", async () => {
+  const { projectHistoryWindowItems } = await import("../src/conversation-items");
+  const out = projectHistoryWindowItems({ revision: 1, keyScope: ["owner", "thread"], nodes: [
+    { node_id: "assistant", kind: "assistant_response", items: [call, { ...call, item_identity: "result", kind: "tool_result" }, reasoning] },
+    { node_id: "event", kind: "event", items: [text] },
+    { node_id: "problem", kind: "interrupted_wait", items: [] },
+  ] });
+  expect(out.projection.workGroups?.[0]?.categoryCounts).toEqual({ Tools: 1, Reasoning: 1, Notifications: 1, Problems: 1 });
+  expect(out.projection.workGroups?.[0]?.interrupted).toBe(true);
+});
+it("qualified legacy boundary groups unversioned saved facts with explicitly live facts without public bypass", async () => {
+  const { projectLegacyHistoryItems, projectSavedItems } = await import("../src/conversation-items");
+  const mapped = projectLegacyHistoryItems({ nodes: [{ node_id: "event", kind: "event" }], liveFacts: [{ domain: "live", scope: "thread", recordId: "actual", kind: "record" }] });
+  expect(mapped.projection.workGroups?.[0]?.memberKeys).toHaveLength(2);
+  expect(mapped.projection.items[0]?.source).not.toHaveProperty("windowRevision");
+  expect(() => projectSavedItems(mapped.projection.items.map(item => item.source))).toThrow();
+  expect(() => projectLegacyHistoryItems({ nodes: [], liveFacts: [{ nodeId: "invented", itemIdentity: "invented", kind: "record" }] })).toThrow();
 });

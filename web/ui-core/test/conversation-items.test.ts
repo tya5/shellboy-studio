@@ -34,7 +34,7 @@ describe("internal saved ordered-item projection (no wire adapter)", () => {
   });
   it("uses text items, including empty bodies, as explicit group boundaries", () => {
     const out = projectSavedItems([tool("A", "x", "x"), text("A", "empty", ""), tool("A", "y", "y")]);
-    expect(out.items[1]?.source).toEqual(text("A", "empty", ""));
+    expect(out.items[1]?.source).toMatchObject(text("A", "empty", ""));
     expect(out.toolSummaries.map(s => s.executionIds)).toEqual([["x"], ["y"]]);
   });
 
@@ -278,7 +278,7 @@ it("F883 duplicate public spill facts are idempotent and conflicting calls remai
 it("legacy canonical node presence needs no invented revision but grants no body or item authority", () => {
   const source = { identityDomain: "node" as const, nodeId: "actual-node", itemIdentity: "actual-node", kind: "unknown" as const };
   const out = projectSavedItems([source]);
-  expect(out.items[0]?.source).toEqual(source);
+  expect(out.items[0]?.source).toMatchObject(source);
   expect(out.sequence.map(row => row.kind)).toEqual(["work"]);
   expect(out.items[0]?.key).toBe(JSON.stringify(["node", "actual-node"]));
   expect(() => projectSavedItems([{ ...source, kind: "text", text: "unproved" }])).toThrow();

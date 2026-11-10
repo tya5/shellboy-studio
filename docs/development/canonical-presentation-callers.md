@@ -32,3 +32,35 @@ preserved at /tmp/p-delete-focused.log. No tests were skipped.
 D's separate two-file migration is required before UI typecheck and whole-web
 zero-reference verification. Historical documentation is outside executable scope.
 No push, CI dispatch, browser, RPC, installed operation or user Thread claim.
+
+## Four Work Categories And Case Values
+
+Canonical specification bytes: 303080884a0005a5a6183737bb0e90a9aa04b95947c022e3eb869b59bfd47962.
+CANONICAL_CASES is the sole literal bundle for classification, render, heading
+category, key policy, closed default and tool policy. Its id is the discriminant.
+classifySavedHistoryCase selects a bundle from authoritative node/item facts;
+canonicalItemCase preserves the selection through normalized/live composition.
+The former string-only classifier and route-to-kind tables are deleted.
+Core presentation consumes render with an exhaustive switch, grouping consumes
+classification/category and key construction consumes keyPolicy. D must consume
+these values, not add heading classification. Missing event subtype authority
+continues to use generic known notification/unknown; the child/shell notification
+cases do not invent a new wire kind or infer causal facts from text.
+
+WorkGroup.categoryCounts contains Tools, Reasoning, Notifications and Problems;
+selected equal scoped associations are deduplicated before counts. Conflicts
+remain visible unresolved facts. Zero omission and actual execution state are
+consumer presentation concerns; counts never imply success. Existing execution
+metadata remains separate and genuine unavailable reasons stay inside content.
+
+projectLegacyHistoryItems now accepts liveFacts only with an explicit live domain.
+Saved legacy normalization plus qualified live facts are grouped once inside the
+existing decoded boundary. Public projectSavedItems proof checks remain unchanged;
+no revision is invented and the boundary never qualifies live provenance itself.
+
+Local validation: 248 PASS / 1 TODO across eight focused core files; core TS PASS.
+Logs: /tmp/p-category-final-v2.log, /tmp/p-category-final-types-v2.log.
+The first metadata expectations/type failure are preserved, not product red claims.
+Twenty-five independent named case-column controls plus grouping/legacy-live
+negative controls extend the existing per-row matrix. D consumer, UI TS, S6 final
+matrix and zero old-symbol whole-union check are still separate gates.

@@ -1,4 +1,4 @@
-import { projectLegacyHistoryItems } from "./conversation-items";
+import { canonicalItemCase, projectLegacyHistoryItems } from "./conversation-items";
 import { senderFact } from "../../data/src/sender";
 // Legacy row compatibility; semantic classification is shared with typed projection.
 import { HISTORY_EXCERPT_CHARS, type HistoryItem, type ShellEntry } from "../../data/src";
@@ -102,8 +102,16 @@ export function materializeHistoryPresentation(items: readonly HistoryItem[], sh
     nodeIdByRowId.set(id, nodeId);
     const source = item.source;
     const at = node.provenance?.created_at;
-    if (source.kind === "text" || source.kind === "user" || source.kind === "summary") rows.push({ type: "message", id, speaker: speakerOf(node), text: source.text, truncated: source.kind === "text" && source.textComplete === false, at });
-    else rows.push({ type: "note", id, kind: source.kind, text: "", at });
+    const render = (item.classification ?? canonicalItemCase(source)).render;
+    switch (render) {
+      case "human-message": case "received-model": case "received-cli": case "received-unknown": case "model-message": case "summary":
+        rows.push({ type: "message", id, speaker: speakerOf(node), text: "text" in source ? source.text : "", truncated: source.kind === "text" && source.textComplete === false, at });
+        break;
+      case "tool": case "compressed-tool": case "thinking": case "thinking-marker": case "state-change": case "stream-change": case "notification": case "child-notification": case "shell-notification": case "interruption": case "unsupported": case "unavailable": case "empty-ordinary":
+        rows.push({ type: "note", id, kind: source.kind, text: "", at });
+        break;
+      default: { const unreachable: never = render; throw new Error(`Unhandled canonical render: ${unreachable}`); }
+    }
   }
   const steps = collectExecutionSteps(items, shells);
   // Attach side metadata to actual nodes without changing canonical semantic decisions.

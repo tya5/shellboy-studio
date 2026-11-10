@@ -1,6 +1,38 @@
 import type { HistoryItem, HistorySavedItem, HistoryItemsUnavailableReason, WorkItem } from "../../data/src/protocol";
 /** Internal normalized contract only. Not a Core wire type or a body adapter. */
+export type WorkCategory = "Tools" | "Reasoning" | "Notifications" | "Problems";
+export const CANONICAL_CASES = {
+  human: { id: "human", normalizedKind: "user", classification: "conversation", headingCategory: null, render: "human-message", keyPolicy: "canonical", openPolicy: "closed", toolPolicy: "none" },
+  receivedModel: { id: "receivedModel", normalizedKind: "user", classification: "conversation", headingCategory: null, render: "received-model", keyPolicy: "canonical", openPolicy: "closed", toolPolicy: "none" },
+  receivedCli: { id: "receivedCli", normalizedKind: "user", classification: "conversation", headingCategory: null, render: "received-cli", keyPolicy: "canonical", openPolicy: "closed", toolPolicy: "none" },
+  receivedUnknown: { id: "receivedUnknown", normalizedKind: "user", classification: "conversation", headingCategory: null, render: "received-unknown", keyPolicy: "canonical", openPolicy: "closed", toolPolicy: "none" },
+  assistantText: { id: "assistantText", normalizedKind: "text", classification: "conversation", headingCategory: null, render: "model-message", keyPolicy: "canonical", openPolicy: "closed", toolPolicy: "none" },
+  toolCall: { id: "toolCall", normalizedKind: "tool", classification: "work", headingCategory: "Tools", render: "tool", keyPolicy: "association", openPolicy: "closed", toolPolicy: "explicit-association" },
+  readableReasoning: { id: "readableReasoning", normalizedKind: "reasoning", classification: "work", headingCategory: "Reasoning", render: "thinking", keyPolicy: "canonical", openPolicy: "closed", toolPolicy: "none" },
+  reasoningMarker: { id: "reasoningMarker", normalizedKind: "reasoning_unavailable", classification: "work", headingCategory: "Reasoning", render: "thinking-marker", keyPolicy: "canonical", openPolicy: "closed", toolPolicy: "none" },
+  toolResult: { id: "toolResult", normalizedKind: "tool", classification: "work", headingCategory: "Tools", render: "tool", keyPolicy: "association", openPolicy: "closed", toolPolicy: "explicit-association" },
+  spill: { id: "spill", normalizedKind: "tool", classification: "work", headingCategory: "Tools", render: "compressed-tool", keyPolicy: "association", openPolicy: "closed", toolPolicy: "explicit-association" },
+  summary: { id: "summary", normalizedKind: "summary", classification: "conversation", headingCategory: null, render: "summary", keyPolicy: "canonical", openPolicy: "closed", toolPolicy: "none" },
+  event: { id: "event", normalizedKind: "record", classification: "work", headingCategory: "Notifications", render: "state-change", keyPolicy: "canonical", openPolicy: "closed", toolPolicy: "none" },
+  context: { id: "context", normalizedKind: "record", classification: "work", headingCategory: "Notifications", render: "state-change", keyPolicy: "canonical", openPolicy: "closed", toolPolicy: "none" },
+  observation: { id: "observation", normalizedKind: "record", classification: "work", headingCategory: "Notifications", render: "stream-change", keyPolicy: "canonical", openPolicy: "closed", toolPolicy: "none" },
+  notification: { id: "notification", normalizedKind: "record", classification: "work", headingCategory: "Notifications", render: "notification", keyPolicy: "canonical", openPolicy: "closed", toolPolicy: "none" },
+  childNotification: { id: "childNotification", normalizedKind: "record", classification: "work", headingCategory: "Notifications", render: "child-notification", keyPolicy: "canonical", openPolicy: "closed", toolPolicy: "none" },
+  shellNotification: { id: "shellNotification", normalizedKind: "record", classification: "work", headingCategory: "Notifications", render: "shell-notification", keyPolicy: "canonical", openPolicy: "closed", toolPolicy: "none" },
+  interruptionDetails: { id: "interruptionDetails", normalizedKind: "interruption", classification: "work", headingCategory: "Problems", render: "interruption", keyPolicy: "canonical", openPolicy: "closed", toolPolicy: "none" },
+  interruptionContext: { id: "interruptionContext", normalizedKind: "interruption", classification: "work", headingCategory: "Problems", render: "interruption", keyPolicy: "canonical", openPolicy: "closed", toolPolicy: "none" },
+  incompleteResponse: { id: "incompleteResponse", normalizedKind: "interruption", classification: "work", headingCategory: "Problems", render: "interruption", keyPolicy: "canonical", openPolicy: "closed", toolPolicy: "none" },
+  interruptedWait: { id: "interruptedWait", normalizedKind: "interruption", classification: "work", headingCategory: "Problems", render: "interruption", keyPolicy: "canonical", openPolicy: "closed", toolPolicy: "none" },
+  legacyUnknown: { id: "legacyUnknown", normalizedKind: "record", classification: "work", headingCategory: "Problems", render: "unsupported", keyPolicy: "canonical", openPolicy: "closed", toolPolicy: "none" },
+  unavailable: { id: "unavailable", normalizedKind: "unavailable", classification: "work", headingCategory: "Problems", render: "unavailable", keyPolicy: "canonical", openPolicy: "closed", toolPolicy: "none" },
+  unknown: { id: "unknown", normalizedKind: "record", classification: "work", headingCategory: "Problems", render: "unsupported", keyPolicy: "canonical", openPolicy: "closed", toolPolicy: "none" },
+  ordinaryEmpty: { id: "ordinaryEmpty", normalizedKind: "ordinaryEmpty", classification: "conversation", headingCategory: null, render: "empty-ordinary", keyPolicy: "canonical", openPolicy: "closed", toolPolicy: "none" },
+} as const;
+export type CanonicalCaseId = keyof typeof CANONICAL_CASES;
+export type CanonicalCase = typeof CANONICAL_CASES[CanonicalCaseId];
+
 export interface SavedItemIdentity {
+  readonly classificationCase?: CanonicalCaseId;
   readonly keyScope?: readonly string[];
   readonly nodeId: string;
   readonly identityDomain?: "node" | "spill";
@@ -15,6 +47,7 @@ export interface SavedItemIdentity {
 export interface LiveWorkIdentity {
   readonly domain: "live";
   readonly namespace?: "work" | "handoff";
+  readonly classificationCase?: CanonicalCaseId;
   readonly keyScope?: readonly string[];
   readonly scope: string;
   readonly recordId: string;
@@ -44,6 +77,7 @@ export interface ProjectedSavedItem {
   readonly key: string;
   readonly source: NormalizedSavedItem;
   readonly canonicalKey?: string;
+  readonly classification?: CanonicalCase;
   readonly toolIdentity?: "execution" | "call" | "unresolved";
 }
 export interface ToolSummaryMembership {
@@ -69,10 +103,11 @@ export interface WorkGroup extends ToolSummaryMembership {
   readonly toolItemKeys: readonly string[];
   readonly unknownToolCount: number;
   readonly interrupted: boolean;
+  readonly categoryCounts?: Readonly<Record<WorkCategory, number>>;
 }
 export type ConversationSequence = { readonly kind: "conversation"; readonly itemKey: string } | { readonly kind: "work"; readonly groupKey: string };
 export function classifyConversationItem(item: NormalizedSavedItem): "conversation" | "work" {
-  return item.kind === "text" || item.kind === "user" || item.kind === "summary" || item.kind === "ordinaryEmpty" ? "conversation" : "work";
+  return canonicalItemCase(item).classification;
 }
 /** Authoritative ordered facts only. Live callers may append explicitly scoped tail facts. */
 export function projectSavedItems(input: readonly NormalizedSavedItem[]) {
@@ -88,7 +123,7 @@ function projectSavedItemsCore(input: readonly NormalizedSavedItem[], decodedLeg
   const associationById = new Map<string, string>();
   const conflicts = new Set<string>();
   const association = (item: NormalizedSavedItem) => {
-    if (item.kind !== "tool") return undefined;
+    if (canonicalItemCase(item).keyPolicy !== "association" || item.kind !== "tool") return undefined;
     const scope = item.keyScope;
     if (!scope?.length || scope.some(value => !value)) return undefined;
     const ids = [...new Set(item.executionIds ?? (item.executionId ? [item.executionId] : []))].sort();
@@ -109,14 +144,15 @@ function projectSavedItemsCore(input: readonly NormalizedSavedItem[], decodedLeg
   const selectedTools = new Map<string, number>();
   let members: string[] = [], toolKeys: string[] = [], ids: string[] = [];
   let unknownTools = 0, interrupted = false;
+  let categoryCounts: Record<WorkCategory, number> = { Tools: 0, Reasoning: 0, Notifications: 0, Problems: 0 };
   let before: "unknown" | "closed" = "unknown";
   const flush = (after: "unknown" | "closed") => {
     if (members.length) {
       const key = JSON.stringify(["work", toolKeys[0] ?? members[0]]);
-      groups.push(Object.freeze({ key, firstMemberKey: members[0]!, anchorKey: members[0]!, memberKeys: Object.freeze(members), executionIds: Object.freeze(ids), toolItemKeys: Object.freeze(toolKeys), unknownToolCount: unknownTools, interrupted, continuationBefore: before, continuationAfter: after }));
+      groups.push(Object.freeze({ key, firstMemberKey: members[0]!, anchorKey: members[0]!, memberKeys: Object.freeze(members), executionIds: Object.freeze(ids), toolItemKeys: Object.freeze(toolKeys), unknownToolCount: unknownTools, interrupted, categoryCounts: Object.freeze(categoryCounts), continuationBefore: before, continuationAfter: after }));
       sequence.push(Object.freeze({ kind: "work", groupKey: key }));
     }
-    members = []; toolKeys = []; ids = []; unknownTools = 0; interrupted = false;
+    members = []; toolKeys = []; ids = []; unknownTools = 0; interrupted = false; categoryCounts = { Tools: 0, Reasoning: 0, Notifications: 0, Problems: 0 };
   };
   for (const source of input) {
     if (!("domain" in source) && (!source.nodeId || !source.itemIdentity || (!decodedLegacy && source.revision === undefined && source.windowRevision === undefined && !(source.identityDomain === "node" && source.kind === "unknown" && source.itemIdentity === source.nodeId)))) throw new Error("Missing authoritative identity/proof");
@@ -137,7 +173,7 @@ function projectSavedItemsCore(input: readonly NormalizedSavedItem[], decodedLeg
     }
     if (proven) selectedTools.set(key, items.length);
     const identity = "domain" in source ? { domain: "live" as const, namespace: source.namespace ?? "work", scope: source.scope, recordId: source.recordId, ...(source.attemptId !== undefined ? { attemptId: source.attemptId } : {}), ...(source.turnId !== undefined ? { turnId: source.turnId } : {}) } : { ...(source.identityDomain ? { identityDomain: source.identityDomain } : {}), nodeId: source.nodeId, itemIdentity: source.itemIdentity, ...(source.revision !== undefined ? { revision: source.revision } : {}), ...(source.windowRevision !== undefined ? { windowRevision: source.windowRevision } : {}) };
-    const scopedIdentity = { ...identity, ...(source.keyScope ? { keyScope: Object.freeze([...source.keyScope]) } : {}) };
+    const scopedIdentity = { ...identity, classificationCase: canonicalItemCase(source).id, ...(source.keyScope ? { keyScope: Object.freeze([...source.keyScope]) } : {}) };
     let copy: NormalizedSavedItem;
     if (source.kind === "tool") {
       if (source.executionId !== undefined && !source.executionId) throw new Error("Empty execution identity");
@@ -155,10 +191,12 @@ function projectSavedItemsCore(input: readonly NormalizedSavedItem[], decodedLeg
       sequence.push(Object.freeze({ kind: "conversation", itemKey: key }));
     } else {
       members.push(key);
+      const category = canonicalItemCase(source).headingCategory;
+      if (category) categoryCounts[category]++;
       interrupted ||= source.kind === "interruption";
       if (source.kind === "unknown" || source.kind === "unavailable") unknown.push(key);
     }
-    items.push(Object.freeze({ key, canonicalKey, ...(source.kind === "tool" ? { toolIdentity: proven?.type ?? "unresolved" } : {}), source: Object.freeze(copy) }));
+    items.push(Object.freeze({ key, canonicalKey, classification: canonicalItemCase(source), ...(source.kind === "tool" ? { toolIdentity: proven?.type ?? "unresolved" } : {}), source: Object.freeze(copy) }));
   }
   flush("unknown");
   return Object.freeze({ items: Object.freeze(items), toolSummaries: Object.freeze(groups), workGroups: Object.freeze(groups), sequence: Object.freeze(sequence), partitionUnknownKeys: Object.freeze(unknown) });
@@ -185,33 +223,30 @@ type MatrixNodeKind = "user" | "assistant_response" | "assistant" | "tool_result
   | "model_stream_observation" | "observation" | "message" | "notification"
   | "interruption_details" | "interruption_context" | "incomplete_response" | "interrupted_wait"
   | "unavailable" | "unknown";
-type MatrixRoute = "user" | "assistant" | "tool" | "spill" | "summary" | "reasoning_unavailable" | "record" | "interruption" | "unavailable";
-const NODE_MATRIX = {
-  user: "user", assistant_response: "assistant", assistant: "assistant", tool_result: "tool", spill: "spill", summary: "summary",
-  reasoning: "reasoning_unavailable", reasoning_unavailable: "reasoning_unavailable",
-  event: "record", context: "record", context_note: "record", model_stream_observation: "record", observation: "record", message: "record", notification: "record",
-  interruption_details: "interruption", interruption_context: "interruption", incomplete_response: "interruption", interrupted_wait: "interruption",
-  unavailable: "unavailable", unknown: "record",
-} as const satisfies Record<MatrixNodeKind, MatrixRoute>;
-const ASSISTANT_ITEMS = {
-  text: "text", tool_call: "tool", tool_result: "tool", reasoning_unavailable: "reasoning_unavailable", unavailable: "unavailable",
-} as const satisfies Record<HistorySavedItem["kind"], NormalizedSavedItem["kind"]>;
-/** ONE canonical node + typed-item decision. Never uses phase, sender role or body shape. */
-export function classifySavedHistoryFact(nodeKind: string | undefined, itemKind: HistorySavedItem["kind"] | "empty" | "legacy" | "deferred", hasActualReason = false): NormalizedSavedItem["kind"] {
-  const route: MatrixRoute = nodeKind && Object.hasOwn(NODE_MATRIX, nodeKind) ? NODE_MATRIX[nodeKind as MatrixNodeKind] : "record";
-  if (hasActualReason || itemKind === "unavailable") return "unavailable";
-  if (itemKind === "deferred") return "record";
-  switch (route) {
-    case "record": return "record";
-    case "interruption": return "interruption";
-    case "reasoning_unavailable": return "reasoning_unavailable";
-    case "unavailable": return "unavailable";
-    case "tool": case "spill": return "tool";
-    case "summary": return "summary";
-    case "user": return itemKind === "empty" ? "ordinaryEmpty" : itemKind === "text" || itemKind === "legacy" ? "user" : "record";
-    case "assistant": return itemKind === "empty" ? "ordinaryEmpty" : itemKind === "legacy" ? "record" : ASSISTANT_ITEMS[itemKind];
-    default: { const unreachable: never = route; return unreachable; }
+const NODE_CASES = {
+  user: "human", assistant_response: "assistantText", assistant: "assistantText", tool_result: "toolResult", spill: "spill", summary: "summary",
+  reasoning: "reasoningMarker", reasoning_unavailable: "reasoningMarker", event: "event", context: "context", context_note: "context", model_stream_observation: "observation", observation: "observation", message: "notification", notification: "notification",
+  interruption_details: "interruptionDetails", interruption_context: "interruptionContext", incomplete_response: "incompleteResponse", interrupted_wait: "interruptedWait", unavailable: "unavailable", unknown: "unknown",
+} as const satisfies Record<MatrixNodeKind, CanonicalCaseId>;
+const ASSISTANT_CASES = { text: "assistantText", tool_call: "toolCall", tool_result: "toolResult", reasoning_unavailable: "reasoningMarker", unavailable: "unavailable" } as const satisfies Record<HistorySavedItem["kind"], CanonicalCaseId>;
+/** One decision; every presentation column is a value of the returned case. */
+export function classifySavedHistoryCase(nodeKind: string | undefined, itemKind: HistorySavedItem["kind"] | "empty" | "legacy" | "deferred", hasActualReason = false, senderKind?: string): CanonicalCase {
+  const id = nodeKind && Object.hasOwn(NODE_CASES, nodeKind) ? NODE_CASES[nodeKind as MatrixNodeKind] : "unknown";
+  if (hasActualReason || itemKind === "unavailable") return CANONICAL_CASES.unavailable;
+  if (itemKind === "deferred") return CANONICAL_CASES.unknown;
+  if (id === "human") {
+    if (itemKind === "empty") return CANONICAL_CASES.ordinaryEmpty;
+    if (itemKind !== "text" && itemKind !== "legacy") return CANONICAL_CASES.unknown;
+    return senderKind === "model" || senderKind === "thread" ? CANONICAL_CASES.receivedModel : senderKind === "external_cli" ? CANONICAL_CASES.receivedCli : senderKind && senderKind !== "human" ? CANONICAL_CASES.receivedUnknown : CANONICAL_CASES.human;
   }
+  if (id === "assistantText") return CANONICAL_CASES[itemKind === "empty" ? "ordinaryEmpty" : itemKind === "legacy" ? "legacyUnknown" : ASSISTANT_CASES[itemKind]];
+  return CANONICAL_CASES[id];
+}
+const NORMALIZED_CASES = { text: "assistantText", user: "human", summary: "summary", ordinaryEmpty: "ordinaryEmpty", tool: "toolCall", reasoning: "readableReasoning", reasoning_unavailable: "reasoningMarker", record: "unknown", unknown: "unknown", interruption: "interruptionDetails", unavailable: "unavailable" } as const satisfies Record<NormalizedSavedItem["kind"], CanonicalCaseId>;
+export function canonicalItemCase(item: NormalizedSavedItem): CanonicalCase {
+  const value = CANONICAL_CASES[item.classificationCase ?? NORMALIZED_CASES[item.kind]];
+  if (value.normalizedKind !== item.kind && !(item.kind === "unknown" && value.id === "unknown")) throw new Error("Canonical case does not match normalized fact");
+  return value;
 }
 
 /** Accept ONLY the strict-decoded v3 DTO; does not decode unknown JSON. */
@@ -219,10 +254,10 @@ export function projectHistoryWindowItems(input: { readonly keyScope?: readonly 
   return projectHistoryNodes(input);
 }
 /** Strict-decoded legacy facts: no invented path revision, saved ordering or live identity. */
-export function projectLegacyHistoryItems(input: { readonly keyScope?: readonly string[]; readonly nodes: readonly HistoryItem[] }): HistoryWindowItemProjection {
+export function projectLegacyHistoryItems(input: { readonly keyScope?: readonly string[]; readonly nodes: readonly HistoryItem[]; readonly liveFacts?: readonly NormalizedSavedItem[] }): HistoryWindowItemProjection {
   return projectHistoryNodes(input, true);
 }
-function projectHistoryNodes(input: { readonly keyScope?: readonly string[]; readonly revision?: string | number; readonly nodes: readonly HistoryItem[] }, decodedLegacy = false): HistoryWindowItemProjection {
+function projectHistoryNodes(input: { readonly keyScope?: readonly string[]; readonly revision?: string | number; readonly nodes: readonly HistoryItem[]; readonly liveFacts?: readonly NormalizedSavedItem[] }, decodedLegacy = false): HistoryWindowItemProjection {
   const nodes: ProjectedHistoryNode[] = [];
   const segment: NormalizedSavedItem[] = [];
   let retryFrom: HistoryWindowItemProjection["retryFrom"];
@@ -230,7 +265,7 @@ function projectHistoryNodes(input: { readonly keyScope?: readonly string[]; rea
     if (!node.node_id) throw new Error("Typed history node requires canonical node_id");
     const ordinal = node.selection?.ordinal;
     const state = node.items === undefined ? "legacy" : node.items === null ? "deferred" : "items";
-    nodes.push(Object.freeze({ nodeId: node.node_id, ...(ordinal !== undefined ? { ordinal } : {}), node, state, emptyOrdinary: state === "items" && !node.items!.length && classifySavedHistoryFact(node.kind, "empty") === "ordinaryEmpty", ...(node.items_unavailable_reason ? { reason: node.items_unavailable_reason } : {}) }));
+    nodes.push(Object.freeze({ nodeId: node.node_id, ...(ordinal !== undefined ? { ordinal } : {}), node, state, emptyOrdinary: state === "items" && !node.items!.length && classifySavedHistoryCase(node.kind, "empty").normalizedKind === "ordinaryEmpty", ...(node.items_unavailable_reason ? { reason: node.items_unavailable_reason } : {}) }));
     if (node.kind === "spill" && node.spill_tools) {
       // Public spill-local IDs only. No payload/args hydration or original-node join.
       const metadata = node.spill_tools;
@@ -239,14 +274,16 @@ function projectHistoryNodes(input: { readonly keyScope?: readonly string[]; rea
         const sourceKey = JSON.stringify([tool.call_id, tool.execution_id ?? null]);
         if (seenSources.has(sourceKey)) continue;
         seenSources.add(sourceKey);
-        segment.push({ nodeId: node.node_id, itemIdentity: sourceKey, identityDomain: "spill", ...(input.revision !== undefined ? { windowRevision: input.revision } : {}), ...(input.keyScope ? { keyScope: input.keyScope } : {}), kind: "tool", callId: tool.call_id, executionIds: tool.execution_id ? [tool.execution_id] : [], compressed: true, detailUnavailable: true });
+        segment.push({ nodeId: node.node_id, itemIdentity: sourceKey, identityDomain: "spill", ...(input.revision !== undefined ? { windowRevision: input.revision } : {}), ...(input.keyScope ? { keyScope: input.keyScope } : {}), classificationCase: "spill", kind: "tool", callId: tool.call_id, executionIds: tool.execution_id ? [tool.execution_id] : [], compressed: true, detailUnavailable: true });
       }
       if (metadata.status !== "known" || metadata.truncated || !metadata.items.length) {
         segment.push({ nodeId: node.node_id, itemIdentity: node.node_id, identityDomain: "node", ...(input.revision !== undefined ? { windowRevision: input.revision } : {}), kind: "unavailable" });
       }
       continue;
     }
-    const normalize = (kind: NormalizedSavedItem["kind"], identity: SavedItemIdentity, item?: HistorySavedItem): NormalizedSavedItem => {
+    const normalize = (caseValue: CanonicalCase, rawIdentity: SavedItemIdentity, item?: HistorySavedItem): NormalizedSavedItem => {
+      const kind = caseValue.normalizedKind;
+      const identity = { ...rawIdentity, classificationCase: caseValue.id };
       switch (kind) {
         case "text": return { ...identity, kind, text: item?.kind === "text" ? item.text : "", ...(item?.kind === "text" ? { textComplete: item.text_complete } : {}) };
         case "user": case "summary": return { ...identity, kind, text: item?.kind === "text" ? item.text : kind === "user" ? node.excerpt ?? "" : "" };
@@ -254,7 +291,6 @@ function projectHistoryNodes(input: { readonly keyScope?: readonly string[]; rea
         case "unavailable": return { ...identity, kind, ...(item?.kind === "unavailable" ? { reason: item.reason } : node.items_unavailable_reason ? { reason: node.items_unavailable_reason } : {}) };
         case "reasoning": return { ...identity, kind };
         case "reasoning_unavailable": return { ...identity, kind };
-        case "unknown": return { ...identity, kind };
         case "ordinaryEmpty": return { ...identity, kind };
         case "record": case "interruption": return { ...identity, kind };
         default: { const unreachable: never = kind; return unreachable; }
@@ -262,15 +298,19 @@ function projectHistoryNodes(input: { readonly keyScope?: readonly string[]; rea
     };
     const nodeIdentity: SavedItemIdentity = { nodeId: node.node_id, itemIdentity: node.node_id, identityDomain: "node", ...(input.revision !== undefined ? { windowRevision: input.revision } : {}), ...(input.keyScope ? { keyScope: input.keyScope } : {}) };
     if (!node.items) {
-      segment.push(normalize(classifySavedHistoryFact(node.kind, node.items === null ? "deferred" : "legacy", !!node.items_unavailable_reason), nodeIdentity));
+      segment.push(normalize(classifySavedHistoryCase(node.kind, node.items === null ? "deferred" : "legacy", !!node.items_unavailable_reason, node.provenance?.sender?.kind), nodeIdentity));
       if (!retryFrom && node.items_unavailable_reason === "response_budget" && ordinal !== undefined) retryFrom = Object.freeze({ ordinal, expect_node_id: node.node_id });
       continue;
     }
-    if (!node.items.length) segment.push(normalize(classifySavedHistoryFact(node.kind, "empty"), nodeIdentity));
+    if (!node.items.length) segment.push(normalize(classifySavedHistoryCase(node.kind, "empty"), nodeIdentity));
     for (const item of node.items) {
       const identity: SavedItemIdentity = { ...(input.keyScope ? { keyScope: input.keyScope } : {}), nodeId: node.node_id, itemIdentity: item.item_identity, windowRevision: input.revision };
-      segment.push(normalize(classifySavedHistoryFact(node.kind, item.kind), identity, item));
+      segment.push(normalize(classifySavedHistoryCase(node.kind, item.kind, false, node.provenance?.sender?.kind), identity, item));
     }
+  }
+  for (const live of input.liveFacts ?? []) {
+    if (!("domain" in live) || live.domain !== "live") throw new Error("Legacy liveFacts requires explicit live domain");
+    segment.push(live);
   }
   const projection = projectSavedItemsCore(segment, decodedLegacy);
   return Object.freeze({ projection, nodes: Object.freeze(nodes), ...(retryFrom ? { retryFrom } : {}) });
