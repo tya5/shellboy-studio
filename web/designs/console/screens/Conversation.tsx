@@ -161,8 +161,8 @@ export function DeferredHistoryNode({ model, row }: { model: AppModel; row: Hist
 /** Only records read from the current owned ledger may enter this adapter. */
 export function projectOwnedHandoffFacts(scope: string, records: readonly HandoffRecord[]): readonly NormalizedSavedItem[] {
   return records.map(record => record.nodeId === undefined && record.proof === undefined && record.transferred !== true && record.status !== "ready" && record.text
-    ? {domain: "live", namespace: "handoff", scope, recordId: record.key, kind: "text", text: record.text}
-    : {domain: "live", namespace: "handoff", scope, recordId: record.key, kind: "unknown"});
+    ? {domain: "live", namespace: "handoff", scope, recordId: record.key, attemptId: record.attemptId, kind: "text", text: record.text}
+    : {domain: "live", namespace: "handoff", scope, recordId: record.key, attemptId: record.attemptId, kind: "unknown"});
 }
 
 /** One producer classifies saved facts and explicitly scoped live records. */

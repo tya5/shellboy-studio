@@ -235,7 +235,7 @@ it('admits text only from never-ready owned ledger records, not ready or identif
   const scheduled:(()=>void)[]=[];const ledger=new Handoff(callback=>scheduled.push(callback));
   const begin=(id:string)=>{ledger.apply({attempt_id:id,gap:false,deltas:[{offset:0,reasoning:false,text:'Synthetic stream text'}]});while(scheduled.length)scheduled.shift()!();};
   const fact=(id:string)=>projectOwnedHandoffFacts('owned-scope',ledger.records.value).find(item=>'domain' in item&&item.recordId===`handoff:${id}`)!;
-  begin('stream');expect(fact('stream').kind).toBe('text');
+  begin('stream');expect(fact('stream').kind).toBe('text');expect(fact('stream')).toMatchObject({attemptId:'stream'});expect('turnId' in fact('stream')).toBe(false);
   ledger.ready('stream','saved-node','Forbidden ready replacement');expect(fact('stream').kind).toBe('unknown');
   ledger.fail('stream');expect(fact('stream').kind).toBe('unknown');
   ledger.confirming('stream');expect(fact('stream').kind).toBe('unknown');
