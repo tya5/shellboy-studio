@@ -3,37 +3,70 @@ import type { HistoryItem, HistorySavedItem, HistoryItemsUnavailableReason, Work
 /** Internal normalized contract only. Not a Core wire type or a body adapter. */
 export type WorkCategory = "Tools" | "Reasoning" | "Notifications" | "Problems";
 export const CANONICAL_CASES = {
-  terminalPending: { id: "terminalPending", normalizedKind: "record", classification: "work", headingCategory: "Notifications", render: "notification", keyPolicy: "canonical", icon: "inbox", openPolicy: "closed", toolPolicy: "none" },
-  terminalReading: { id: "terminalReading", normalizedKind: "record", classification: "work", headingCategory: "Notifications", render: "notification", keyPolicy: "canonical", icon: "inbox", openPolicy: "closed", toolPolicy: "none" },
-  terminalSettled: { id: "terminalSettled", normalizedKind: "record", classification: "work", headingCategory: "Problems", render: "unsupported", keyPolicy: "canonical", icon: "file", openPolicy: "closed", toolPolicy: "none" },
+  terminalPending: { displayPolicy: "client-terminal", id: "terminalPending", normalizedKind: "record", classification: "work", headingCategory: "Notifications", render: "notification", keyPolicy: "canonical", icon: "inbox", openPolicy: "closed", toolPolicy: "none" },
+  terminalReading: { displayPolicy: "client-terminal", id: "terminalReading", normalizedKind: "record", classification: "work", headingCategory: "Notifications", render: "notification", keyPolicy: "canonical", icon: "inbox", openPolicy: "closed", toolPolicy: "none" },
+  terminalSettled: { displayPolicy: "client-terminal", id: "terminalSettled", normalizedKind: "record", classification: "work", headingCategory: "Problems", render: "unsupported", keyPolicy: "canonical", icon: "file", openPolicy: "closed", toolPolicy: "none" },
   human: { id: "human", normalizedKind: "user", classification: "conversation", headingCategory: null, render: "human-message", keyPolicy: "canonical", icon: null, openPolicy: "closed", toolPolicy: "none" },
   receivedModel: { id: "receivedModel", normalizedKind: "user", classification: "conversation", headingCategory: null, render: "received-model", keyPolicy: "canonical", icon: null, openPolicy: "closed", toolPolicy: "none" },
   receivedCli: { id: "receivedCli", normalizedKind: "user", classification: "conversation", headingCategory: null, render: "received-cli", keyPolicy: "canonical", icon: null, openPolicy: "closed", toolPolicy: "none" },
   receivedUnknown: { id: "receivedUnknown", normalizedKind: "user", classification: "conversation", headingCategory: null, render: "received-unknown", keyPolicy: "canonical", icon: null, openPolicy: "closed", toolPolicy: "none" },
   assistantText: { id: "assistantText", normalizedKind: "text", classification: "conversation", headingCategory: null, render: "model-message", keyPolicy: "canonical", icon: null, openPolicy: "closed", toolPolicy: "none" },
-  toolCall: { id: "toolCall", normalizedKind: "tool", classification: "work", headingCategory: "Tools", render: "tool", keyPolicy: "association", icon: "cube", openPolicy: "closed", toolPolicy: "explicit-association" },
-  readableReasoning: { id: "readableReasoning", normalizedKind: "reasoning", classification: "work", headingCategory: "Reasoning", render: "thinking", keyPolicy: "canonical", icon: "bot", openPolicy: "closed", toolPolicy: "none" },
-  reasoningMarker: { id: "reasoningMarker", normalizedKind: "reasoning_unavailable", classification: "work", headingCategory: "Reasoning", render: "thinking-marker", keyPolicy: "canonical", icon: "bot", openPolicy: "closed", toolPolicy: "none" },
-  toolResult: { id: "toolResult", normalizedKind: "tool", classification: "work", headingCategory: "Tools", render: "tool", keyPolicy: "association", icon: "cube", openPolicy: "closed", toolPolicy: "explicit-association" },
-  spill: { id: "spill", normalizedKind: "tool", classification: "work", headingCategory: "Tools", render: "compressed-tool", keyPolicy: "association", icon: "cube", openPolicy: "closed", toolPolicy: "explicit-association" },
+  toolCall: { displayPolicy: "associated-tool", id: "toolCall", normalizedKind: "tool", classification: "work", headingCategory: "Tools", render: "tool", keyPolicy: "association", icon: "cube", openPolicy: "closed", toolPolicy: "explicit-association" },
+  readableReasoning: { displayPolicy: "reasoning-unavailable", id: "readableReasoning", normalizedKind: "reasoning", classification: "work", headingCategory: "Reasoning", render: "thinking", keyPolicy: "canonical", icon: "bot", openPolicy: "closed", toolPolicy: "none" },
+  reasoningMarker: { displayPolicy: "reasoning-unavailable", id: "reasoningMarker", normalizedKind: "reasoning_unavailable", classification: "work", headingCategory: "Reasoning", render: "thinking-marker", keyPolicy: "canonical", icon: "bot", openPolicy: "closed", toolPolicy: "none" },
+  toolResult: { displayPolicy: "associated-tool", id: "toolResult", normalizedKind: "tool", classification: "work", headingCategory: "Tools", render: "tool", keyPolicy: "association", icon: "cube", openPolicy: "closed", toolPolicy: "explicit-association" },
+  spill: { displayPolicy: "associated-tool", id: "spill", normalizedKind: "tool", classification: "work", headingCategory: "Tools", render: "compressed-tool", keyPolicy: "association", icon: "cube", openPolicy: "closed", toolPolicy: "explicit-association" },
   summary: { id: "summary", normalizedKind: "summary", classification: "conversation", headingCategory: null, render: "summary", keyPolicy: "canonical", icon: null, openPolicy: "closed", toolPolicy: "none" },
-  event: { id: "event", normalizedKind: "record", classification: "work", headingCategory: "Notifications", render: "notification", keyPolicy: "canonical", icon: "inbox", openPolicy: "closed", toolPolicy: "none" },
-  context: { id: "context", normalizedKind: "record", classification: "work", headingCategory: "Notifications", render: "state-change", keyPolicy: "canonical", icon: "inbox", openPolicy: "closed", toolPolicy: "none" },
-  observation: { id: "observation", normalizedKind: "record", classification: "work", headingCategory: "Notifications", render: "stream-change", keyPolicy: "canonical", icon: "inbox", openPolicy: "closed", toolPolicy: "none" },
-  notification: { id: "notification", normalizedKind: "record", classification: "work", headingCategory: "Notifications", render: "notification", keyPolicy: "canonical", icon: "inbox", openPolicy: "closed", toolPolicy: "none" },
-  childNotification: { id: "childNotification", normalizedKind: "record", classification: "work", headingCategory: "Notifications", render: "child-notification", keyPolicy: "canonical", icon: "inbox", openPolicy: "closed", toolPolicy: "none" },
-  shellNotification: { id: "shellNotification", normalizedKind: "record", classification: "work", headingCategory: "Notifications", render: "shell-notification", keyPolicy: "canonical", icon: "inbox", openPolicy: "closed", toolPolicy: "none" },
-  interruptionDetails: { id: "interruptionDetails", normalizedKind: "interruption", classification: "work", headingCategory: "Problems", render: "interruption", keyPolicy: "canonical", icon: "cross", openPolicy: "closed", toolPolicy: "none" },
-  interruptionContext: { id: "interruptionContext", normalizedKind: "interruption", classification: "work", headingCategory: "Problems", render: "interruption", keyPolicy: "canonical", icon: "cross", openPolicy: "closed", toolPolicy: "none" },
-  incompleteResponse: { id: "incompleteResponse", normalizedKind: "interruption", classification: "work", headingCategory: "Problems", render: "interruption", keyPolicy: "canonical", icon: "cross", openPolicy: "closed", toolPolicy: "none" },
-  interruptedWait: { id: "interruptedWait", normalizedKind: "interruption", classification: "work", headingCategory: "Problems", render: "interruption", keyPolicy: "canonical", icon: "cross", openPolicy: "closed", toolPolicy: "none" },
-  legacyUnknown: { id: "legacyUnknown", normalizedKind: "record", classification: "work", headingCategory: "Problems", render: "unsupported", keyPolicy: "canonical", icon: "file", openPolicy: "closed", toolPolicy: "none" },
-  unavailable: { id: "unavailable", normalizedKind: "unavailable", classification: "work", headingCategory: "Problems", render: "unavailable", keyPolicy: "canonical", icon: "file", openPolicy: "closed", toolPolicy: "none" },
-  unknown: { id: "unknown", normalizedKind: "record", classification: "work", headingCategory: "Problems", render: "unsupported", keyPolicy: "canonical", icon: "file", openPolicy: "closed", toolPolicy: "none" },
+  event: { displayPolicy: "notification-context", id: "event", normalizedKind: "record", classification: "work", headingCategory: "Notifications", render: "notification", keyPolicy: "canonical", icon: "inbox", openPolicy: "closed", toolPolicy: "none" },
+  context: { displayPolicy: "notification-context", id: "context", normalizedKind: "record", classification: "work", headingCategory: "Notifications", render: "state-change", keyPolicy: "canonical", icon: "inbox", openPolicy: "closed", toolPolicy: "none" },
+  observation: { displayPolicy: "notification-context", id: "observation", normalizedKind: "record", classification: "work", headingCategory: "Notifications", render: "stream-change", keyPolicy: "canonical", icon: "inbox", openPolicy: "closed", toolPolicy: "none" },
+  notification: { displayPolicy: "notification-context", id: "notification", normalizedKind: "record", classification: "work", headingCategory: "Notifications", render: "notification", keyPolicy: "canonical", icon: "inbox", openPolicy: "closed", toolPolicy: "none" },
+  childNotification: { displayPolicy: "notification-context", id: "childNotification", normalizedKind: "record", classification: "work", headingCategory: "Notifications", render: "child-notification", keyPolicy: "canonical", icon: "inbox", openPolicy: "closed", toolPolicy: "none" },
+  shellNotification: { displayPolicy: "notification-context", id: "shellNotification", normalizedKind: "record", classification: "work", headingCategory: "Notifications", render: "shell-notification", keyPolicy: "canonical", icon: "inbox", openPolicy: "closed", toolPolicy: "none" },
+  interruptionDetails: { displayPolicy: "problem-context", id: "interruptionDetails", normalizedKind: "interruption", classification: "work", headingCategory: "Problems", render: "interruption", keyPolicy: "canonical", icon: "cross", openPolicy: "closed", toolPolicy: "none" },
+  interruptionContext: { displayPolicy: "problem-context", id: "interruptionContext", normalizedKind: "interruption", classification: "work", headingCategory: "Problems", render: "interruption", keyPolicy: "canonical", icon: "cross", openPolicy: "closed", toolPolicy: "none" },
+  incompleteResponse: { displayPolicy: "problem-context", id: "incompleteResponse", normalizedKind: "interruption", classification: "work", headingCategory: "Problems", render: "interruption", keyPolicy: "canonical", icon: "cross", openPolicy: "closed", toolPolicy: "none" },
+  interruptedWait: { displayPolicy: "problem-context", id: "interruptedWait", normalizedKind: "interruption", classification: "work", headingCategory: "Problems", render: "interruption", keyPolicy: "canonical", icon: "cross", openPolicy: "closed", toolPolicy: "none" },
+  legacyUnknown: { displayPolicy: "unknown-problem", id: "legacyUnknown", normalizedKind: "record", classification: "work", headingCategory: "Problems", render: "unsupported", keyPolicy: "canonical", icon: "file", openPolicy: "closed", toolPolicy: "none" },
+  unavailable: { displayPolicy: "wire-problem", id: "unavailable", normalizedKind: "unavailable", classification: "work", headingCategory: "Problems", render: "unavailable", keyPolicy: "canonical", icon: "file", openPolicy: "closed", toolPolicy: "none" },
+  unknown: { displayPolicy: "unknown-problem", id: "unknown", normalizedKind: "record", classification: "work", headingCategory: "Problems", render: "unsupported", keyPolicy: "canonical", icon: "file", openPolicy: "closed", toolPolicy: "none" },
   ordinaryEmpty: { id: "ordinaryEmpty", normalizedKind: "ordinaryEmpty", classification: "conversation", headingCategory: null, render: "empty-ordinary", keyPolicy: "canonical", icon: null, openPolicy: "closed", toolPolicy: "none" },
 } as const;
 export type CanonicalCaseId = keyof typeof CANONICAL_CASES;
 export type CanonicalCase = typeof CANONICAL_CASES[CanonicalCaseId];
+
+export interface WorkDisplayMetadata {
+  readonly scopeKey: string;
+  readonly nodeKind?: string;
+  readonly createdAt?: string;
+  readonly publicState?: string;
+  readonly shells: readonly Readonly<{ execution_id: string; command_excerpt?: string; state?: string; exit_code?: number | null }>[];
+  readonly receipt?: TerminalPresence;
+}
+const displayMetadata = new WeakMap<object, WorkDisplayMetadata>();
+const displayIdentity = new WeakMap<object, string>();
+function metadataIdentity(source: NormalizedSavedItem): string {
+  return JSON.stringify([source.keyScope, source.nodeId, source.itemIdentity, source.kind,
+    source.kind === "tool" ? [source.executionIds, source.executionId, source.callId] : null,
+    "domain" in source ? [source.domain, source.scope, source.recordId, source.attemptId, source.domain === "receipt" ? source.terminalPresence : null] : null]);
+}
+function issueDisplayMetadata(source: NormalizedSavedItem, facts: WorkDisplayMetadata): void {
+  displayMetadata.set(source, facts); displayIdentity.set(source, metadataIdentity(source));
+}
+function preserveDisplayMetadata(from: NormalizedSavedItem, to: NormalizedSavedItem): void {
+  const facts = displayMetadata.get(from);
+  if (facts && displayIdentity.get(from) === metadataIdentity(from) && metadataIdentity(from) === metadataIdentity(to)
+    && facts.scopeKey === JSON.stringify(to.keyScope ?? [])) issueDisplayMetadata(to, facts);
+}
+/** Only facts issued by this normalizer for this exact scoped source object. */
+export function workDisplayMetadata(item: ProjectedSavedItem): WorkDisplayMetadata | undefined {
+  const facts = displayMetadata.get(item.source);
+  if (item.classification !== canonicalItemCase(item.source)) return undefined;
+  if (!facts || displayIdentity.get(item.source) !== metadataIdentity(item.source) || facts.scopeKey !== JSON.stringify(item.source.keyScope ?? [])) return undefined;
+  if (facts.receipt && (!("domain" in item.source) || item.source.domain !== "receipt"
+    || item.source.terminalPresence !== facts.receipt || item.source.scope !== facts.receipt.scope || item.source.attemptId !== facts.receipt.attemptId)) return undefined;
+  return facts;
+}
 
 export interface SavedItemIdentity {
   readonly classificationCase?: CanonicalCaseId;
@@ -173,7 +206,9 @@ function projectSavedItemsCore(rawInput: readonly NormalizedSavedItem[], decoded
       const index = selectedTools.get(key)!;
       const previous = items[index]!;
       if (previous.source.kind === "tool" && source.kind === "tool" && source.compressed) {
-        items[index] = Object.freeze({ ...previous, source: Object.freeze({ ...previous.source, compressed: true }) });
+        const merged = Object.freeze({ ...previous.source, compressed: true });
+        preserveDisplayMetadata(previous.source, merged);
+        items[index] = Object.freeze({ ...previous, source: merged });
       }
       continue;
     }
@@ -194,6 +229,7 @@ function projectSavedItemsCore(rawInput: readonly NormalizedSavedItem[], decoded
     } else if (source.kind === "text") copy = { ...scopedIdentity, kind: "text", text: source.text, ...(source.textComplete !== undefined ? { textComplete: source.textComplete } : {}) };
     else if (source.kind === "user" || source.kind === "summary") copy = { ...scopedIdentity, kind: source.kind, text: source.text, ...(source.textComplete !== undefined ? { textComplete: source.textComplete } : {}) };
     else copy = { ...scopedIdentity, kind: source.kind, ...(source.kind === "unavailable" && source.reason ? { reason: source.reason } : {}) } as NormalizedSavedItem;
+    preserveDisplayMetadata(source, copy);
     if (classifyConversationItem(source) === "conversation") {
       flush("closed"); before = "closed";
       sequence.push(Object.freeze({ kind: "conversation", itemKey: key }));
@@ -256,6 +292,7 @@ export function normalizeConversationFacts(input: readonly NormalizedSavedItem[]
   return Object.freeze(input.map(item => {
     const copy = Object.freeze({ ...item, classificationCase: item.classificationCase ?? NORMALIZED_CASES[item.kind] });
     canonicalItemCase(copy);
+    preserveDisplayMetadata(item, copy);
     return copy;
   }));
 }
@@ -292,7 +329,9 @@ function projectHistoryNodes(input: { readonly keyScope?: readonly string[]; rea
         const sourceKey = JSON.stringify([tool.call_id, tool.execution_id ?? null]);
         if (seenSources.has(sourceKey)) continue;
         seenSources.add(sourceKey);
-        segment.push({ nodeId: node.node_id, itemIdentity: sourceKey, identityDomain: "spill", ...(input.revision !== undefined ? { windowRevision: input.revision } : {}), ...(input.keyScope ? { keyScope: input.keyScope } : {}), classificationCase: "spill", kind: "tool", callId: tool.call_id, executionIds: tool.execution_id ? [tool.execution_id] : [], compressed: true, detailUnavailable: true });
+        const value: NormalizedSavedItem = { nodeId: node.node_id, itemIdentity: sourceKey, identityDomain: "spill", ...(input.revision !== undefined ? { windowRevision: input.revision } : {}), ...(input.keyScope ? { keyScope: input.keyScope } : {}), classificationCase: "spill", kind: "tool", callId: tool.call_id, executionIds: tool.execution_id ? [tool.execution_id] : [], compressed: true, detailUnavailable: true };
+        issueDisplayMetadata(value, Object.freeze({ scopeKey: JSON.stringify(value.keyScope ?? []), nodeKind: node.kind, shells: Object.freeze([]) }));
+        segment.push(value);
       }
       if (metadata.status !== "known" || metadata.truncated || !metadata.items.length) {
         segment.push({ nodeId: node.node_id, itemIdentity: node.node_id, identityDomain: "node", ...(input.revision !== undefined ? { windowRevision: input.revision } : {}), kind: "unavailable" });
@@ -300,6 +339,18 @@ function projectHistoryNodes(input: { readonly keyScope?: readonly string[]; rea
       continue;
     }
     const normalize = (caseValue: CanonicalCase, rawIdentity: SavedItemIdentity, item?: HistorySavedItem): NormalizedSavedItem => {
+      const value = normalizeValue(caseValue, rawIdentity, item);
+      const ids = value.kind === "tool" ? value.executionIds ?? [] : [];
+      if (ids.length > 64) return value;
+      const shells = (node.executions ?? []).filter(shell => ids.includes(shell.execution_id)).map(shell => Object.freeze({
+        execution_id: shell.execution_id, state: shell.state,
+        ...(shell.command_excerpt !== undefined ? { command_excerpt: shell.command_excerpt } : {}),
+        ...((typeof shell.exit_code === "number" && Number.isFinite(shell.exit_code)) || shell.exit_code === null ? { exit_code: shell.exit_code } : {}) }));
+      issueDisplayMetadata(value, Object.freeze({ scopeKey: JSON.stringify(value.keyScope ?? []),
+        ...(node.kind ? { nodeKind: node.kind } : {}), ...(node.provenance?.created_at ? { createdAt: node.provenance.created_at } : {}), shells: Object.freeze(shells) }));
+      return value;
+    };
+    const normalizeValue = (caseValue: CanonicalCase, rawIdentity: SavedItemIdentity, item?: HistorySavedItem): NormalizedSavedItem => {
       const kind = caseValue.normalizedKind;
       const identity = { ...rawIdentity, classificationCase: caseValue.id };
       switch (kind) {
@@ -340,7 +391,9 @@ export function normalizeLiveWorkFacts(input: { readonly scope: string; readonly
   return normalizeConversationFacts(input.items.filter(item => item.kind !== "pending_message" && !(item.kind === "message" && ["accepted", "held"].includes(item.state))).map(item => {
     if (!input.scope || !item.id || item.thread_id !== input.scope) throw new Error("Invalid live work scope");
     const identity = { domain: "live" as const, scope: input.scope, recordId: item.id, ...(typeof item.attempt_id === "string" ? { attemptId: item.attempt_id } : {}), ...(typeof item.turn_id === "string" ? { turnId: item.turn_id } : {}) };
-    return Object.freeze(item.kind === "shell" && item.execution_id ? { ...identity, kind: "tool" as const, executionIds: Object.freeze([item.execution_id]) } : { ...identity, kind: "record" as const });
+    const value = Object.freeze(item.kind === "shell" && item.execution_id ? { ...identity, kind: "tool" as const, executionIds: Object.freeze([item.execution_id]) } : { ...identity, kind: "record" as const });
+    issueDisplayMetadata(value, Object.freeze({ scopeKey: "[]", nodeKind: item.kind, publicState: item.state, shells: Object.freeze([]) }));
+    return value;
   }));
 }
 
@@ -349,6 +402,8 @@ const TERMINAL_PHASE_CASES = { pending: "terminalPending", reading: "terminalRea
 export function normalizeTerminalPresenceFacts(presences: readonly TerminalPresence[]): readonly NormalizedSavedItem[] {
   return normalizeConversationFacts(presences.map(presence => {
     if (!presence.scope || !presence.attemptId || presence.receipt.scope !== presence.scope || presence.receipt.attemptId !== presence.attemptId) throw new Error("Mismatched terminal receipt scope");
-    return { domain: "receipt" as const, scope: presence.scope, recordId: presence.attemptId, attemptId: presence.attemptId, terminalPresence: presence, kind: "record" as const, classificationCase: TERMINAL_PHASE_CASES[presence.phase] };
+    const value = { domain: "receipt" as const, scope: presence.scope, recordId: presence.attemptId, attemptId: presence.attemptId, terminalPresence: presence, kind: "record" as const, classificationCase: TERMINAL_PHASE_CASES[presence.phase] };
+    issueDisplayMetadata(value, Object.freeze({ scopeKey: "[]", shells: Object.freeze([]), receipt: presence }));
+    return value;
   }));
 }
