@@ -8,7 +8,6 @@ import type { HandoffRecord } from "../../data/src/handoff";
 // It stops at an unloaded edge. It knows no pixels except the heights it is told, and never walks the history.
 import { batch, signal } from "@preact/signals-core";
 import { Cancel, HISTORY_EXCERPT_CHARS, type HistoryItem, type HistoryWindowArgs, type HistoryWindowResult, type Outcome } from "../../data/src";
-import { projectConversation } from "./conversation";
 
 /** Positions in one window of the path. */
 export const WINDOW_NODES = 100;
@@ -842,8 +841,6 @@ export class ConversationWindow {
         const attachment = held.handoffs.get(o);
         if (attachment && attachment.record.nodeId !== item.node_id) { held.handoffs.delete(o); attachment.release("return"); }
         held.items[slot] = item;
-        // A node with nothing to draw takes no height; once known, that's a measurement of zero.
-        if (projectConversation([item]).length === 0) this.heights.set(o, 0);
         if (item.node_id !== undefined && (this.tailKnown === undefined || o >= this.tailKnown.ordinal)) this.tailKnown = { ordinal: o, nodeId: item.node_id };
       }
       return true;

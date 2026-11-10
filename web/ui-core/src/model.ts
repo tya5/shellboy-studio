@@ -12,7 +12,7 @@ import { CAPABILITY_HISTORY_WINDOW, threadReplyItems, noReplyWait, type ReplyWai
 import { MissingPins, MonitorSelection, type MonitorArchive } from "./monitor-selection";
 import { workRegions, type WorkRegions } from "./work";
 import { ConversationWindow } from "./window";
-import { branchRowMarks, projectConversation, type ConversationRow, type StepRow } from "./conversation";
+import { branchRowMarks, collectExecutionSteps, materializeHistoryPresentation, type ConversationRow, type StepRow } from "./conversation";
 import { translator, type Lang, type Translate } from "./i18n";
 import { AppsModel } from "./apps";
 import { branchMarks } from "./branches";
@@ -341,14 +341,14 @@ export class AppModel {
     });
     this.conversation = computed(() => {
       const h = this.handle.value;
-      return h ? projectConversation(h.history.value.items, this.shells.value) : [];
+      return h ? materializeHistoryPresentation(h.history.value.items, this.shells.value).rows : [];
     });
     this.rowMarks = computed(() => {
       const w = this.longReader.value;
       if (!w) return branchRowMarks(this.handle.value?.history.value.items ?? [], this.conversation.value, this.marks.value);
       w.version.value; // marks follow the items the reader holds in view
       const items = w.rangeItems();
-      return branchRowMarks(items, items.flatMap((i) => projectConversation([i], this.shells.value)), this.marks.value);
+      return branchRowMarks(items, materializeHistoryPresentation(items, this.shells.value).rows, this.marks.value);
     });
     this.context = computed(() => contextFacts(this.details.value));
     this.usage = computed(() => usageFacts(this.details.value));
@@ -359,14 +359,9 @@ export class AppModel {
       const id = this.selectedStepId.value;
       if (!id) return undefined;
       const w = this.longReader.value;
-      let rows = this.conversation.value;
-      if (w) {
-        w.version.value;
-        rows = w.heldSteps().flatMap((i) => projectConversation([i], this.shells.value));
-      }
-      for (const row of rows)
-        if (row.type === "steps") for (const s of row.steps) if (s.executionId === id) return s;
-      return undefined;
+      if (w) w.version.value;
+      const steps = collectExecutionSteps(w ? w.heldSteps() : this.handle.value?.history.value.items ?? [], this.shells.value);
+      return steps.find(step => step.executionId === id);
     });
   }
 
@@ -607,7 +602,7 @@ export class AppModel {
   private readerShells(w: ConversationWindow): void {
     w.version.value;
     if (this.toolStepChoices.peek().size || this.openToolGroups.peek().size)
-      this.retainToolState(projectConversation(w.rangeItems()), new Set(w.heldSteps().flatMap((item) => (item.executions ?? []).map((step) => step.execution_id))));
+      this.retainToolState(materializeHistoryPresentation(w.rangeItems()).rows, new Set(w.heldSteps().flatMap((item) => (item.executions ?? []).map((step) => step.execution_id))));
     const r = w.renderRange();
     if (!r || !this.handle.peek()) return;
     for (let i = r.first; i <= r.last; i++)

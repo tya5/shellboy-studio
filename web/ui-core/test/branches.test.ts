@@ -1,7 +1,7 @@
 import { ExcerptBatch } from "../src/branching";
 import { describe, expect, it } from "vitest";
 import { details, flush, settle } from "../../data/test/harness";
-import { branchLayout, branchMarks, branchRowMarks, branchTitle, formatRoute, groupThreads, listedDescendants, parseRoute, projectConversation, readFamily, readRewind, readWholeFamily } from "../src";
+import { branchLayout, branchMarks, branchRowMarks, branchTitle, formatRoute, groupThreads, listedDescendants, parseRoute, materializeHistoryPresentation, readFamily, readRewind, readWholeFamily } from "../src";
 import { Cancel } from "../../data/src";
 import type { HistoryItem, ThreadSummary } from "../../data/src";
 import { fixtureBranches, fixtureModel, fixtureRewind } from "./fixture";
@@ -111,9 +111,9 @@ describe("marks on conversation rows", () => {
     { node_id: "c", kind: "tool_result", excerpt: "output" },
     { node_id: "d", kind: "event", excerpt: "bookkeeping" },
   ];
-  it("a point on a hidden node goes on the row before it; a node not read shows nothing", () => {
-    const rows = projectConversation(items);
-    expect(branchRowMarks(items, rows, new Map([["c", 2]])).get("b")).toEqual({ nodeId: "c", branches: 2 });
+  it("a canonical tool record keeps its own point; a node not read shows nothing", () => {
+    const rows = materializeHistoryPresentation(items).rows;
+    expect(branchRowMarks(items, rows, new Map([["c", 2]])).get("c")).toEqual({ nodeId: "c", branches: 2 });
     expect(branchRowMarks(items, rows, new Map([["b", 1]])).get("b")).toEqual({ nodeId: "b", branches: 1 });
     expect(branchRowMarks(items, rows, new Map([["elsewhere", 1]])).size).toBe(0);
   });

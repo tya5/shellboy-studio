@@ -124,11 +124,11 @@ it("FINAL summaries claim only local membership and retain uncertain edges", () 
 });
 
 it("FINAL legacy saved prose is independent of advisory publication state", async () => {
-  const { projectConversation } = await import("../src/conversation");
+  const { materializeHistoryPresentation } = await import("../src/conversation");
   const node = { node_id: "saved", kind: "assistant_response", phase: "commentary", excerpt: "Saved ordinary prose" };
-  const baseline = projectConversation([node]);
+  const baseline = materializeHistoryPresentation([node]).rows;
   for (const state of ["unknown", "tool"] as const) {
-    expect(projectConversation([{ ...node, assistant_publication: { state, attemptId: "advisory" } }])).toEqual(baseline);
+    expect(materializeHistoryPresentation([{ ...node, assistant_publication: { state, attemptId: "advisory" } }]).rows).toEqual(baseline);
   }
 });
 it("FINAL typed empty/unknown items never use aggregate excerpt as fallback", () => {
@@ -142,15 +142,15 @@ it("FINAL typed empty/unknown items never use aggregate excerpt as fallback", ()
 });
 
 it("FINAL execution-linked saved prose is invariant across phase and publication advice", async () => {
-  const { projectConversation } = await import("../src/conversation");
+  const { materializeHistoryPresentation } = await import("../src/conversation");
   const node = { node_id: "saved-linked", kind: "assistant_response", excerpt: "Same saved ordinary text", executions: [{ execution_id: "actual-execution", state: "exited", command_excerpt: "synthetic" }] };
-  const baseline = projectConversation([node]);
+  const baseline = materializeHistoryPresentation([node]).rows;
   expect(baseline.filter(row => row.type === "message")).toEqual([]);
   expect(baseline.some(row => row.type === "note" && row.kind === "record")).toBe(true);
   expect(baseline.filter(row => row.type === "steps")).toHaveLength(1);
   for (const phase of ["commentary", "final_answer", undefined, "unknown"]) {
     for (const advice of [undefined, "unknown", "tool"] as const) {
-      const rows = projectConversation([{ ...node, ...(phase !== undefined ? { phase } : {}), ...(advice ? { assistant_publication: { state: advice, attemptId: "advisory" } } : {}) }]);
+      const rows = materializeHistoryPresentation([{ ...node, ...(phase !== undefined ? { phase } : {}), ...(advice ? { assistant_publication: { state: advice, attemptId: "advisory" } } : {}) }]).rows;
       expect(rows).toEqual(baseline);
     }
   }

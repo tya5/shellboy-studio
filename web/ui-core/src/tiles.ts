@@ -1,7 +1,7 @@
 // Visible tile previews: bounded queue and reads, cancelled on hints or removal.
 import { signal } from "@preact/signals-core";
 import { Cancel, CAPABILITY_HISTORY_WINDOW, type Handle, type ShellboyData } from "../../data/src";
-import { projectConversation, type ConversationRow } from "./conversation";
+import { materializeHistoryPresentation, type ConversationRow } from "./conversation";
 
 export const TILE_LIMIT = 20;
 export const TILE_READS = 4;
@@ -44,7 +44,7 @@ export class TilePreviews {
     const shells = await this.data.operations.shellList({ thread_id: id, limit: 20 }, { cancel });
     if (cancel.cancelled || !this.watches.has(id)) return;
     const facts = new Map(shells.ok ? shells.value.items.map((s) => [s.execution_id, s]) : []);
-    const rows = projectConversation(history.value.items, facts);
+    const rows = materializeHistoryPresentation(history.value.items, facts).rows;
     const next = new Map(this.previews.peek()); next.set(id, { rows, incomplete: !shells.ok || !!shells.value.next_cursor }); this.previews.value = next;
   }
 }

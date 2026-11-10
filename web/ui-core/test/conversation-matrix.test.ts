@@ -31,8 +31,8 @@ const rows: readonly { name: string; node: HistoryItem; kind: string; semantic: 
 ];
 describe("FINAL Section2 canonical node/item matrix", () => {
   for (const row of rows) it(`legacy crosspath ${row.name}`, async () => {
-    const { projectConversation } = await import("../src/conversation");
-    const result = projectConversation([{ node_id: "canonical-node", ...row.node, executions: [{ execution_id: "execution" }] }]);
+    const { materializeHistoryPresentation } = await import("../src/conversation");
+    const result = materializeHistoryPresentation([{ node_id: "canonical-node", ...row.node, executions: [{ execution_id: "execution" }] }]).rows;
     if (row.semantic === "conversation") expect(result.some(entry => entry.type === "message" || entry.type === "note" && entry.kind === "ordinaryEmpty")).toBe(true);
     else expect(result.some(entry => entry.type === "note" && entry.kind === row.kind)).toBe(true);
     expect(result.some(entry => entry.type === "steps")).toBe(true);
@@ -78,9 +78,9 @@ it("legacy adapter preserves canonical Work identities without fabricated revisi
   expect(out.projection.sequence?.map(row => row.kind)).toEqual(["work", "conversation"]);
   expect(JSON.stringify(out.projection)).not.toContain("private diagnostic");
 });
-it("legacy projectConversation publishes event/context identities and never arbitrary assistant aggregate", async () => {
-  const { projectConversation } = await import("../src/conversation");
-  const rows = projectConversation([{ node_id: "event", kind: "event", excerpt: "private diagnostic" }, { node_id: "context", kind: "context" }, { node_id: "assistant", kind: "assistant_response", excerpt: "unproved prose" }]);
+it("legacy materializeHistoryPresentation publishes event/context identities and never arbitrary assistant aggregate", async () => {
+  const { materializeHistoryPresentation } = await import("../src/conversation");
+  const rows = materializeHistoryPresentation([{ node_id: "event", kind: "event", excerpt: "private diagnostic" }, { node_id: "context", kind: "context" }, { node_id: "assistant", kind: "assistant_response", excerpt: "unproved prose" }]).rows;
   expect(rows.map(row => row.id)).toEqual(["event", "context", "assistant"]);
   expect(rows.every(row => row.type !== "message")).toBe(true);
   expect(JSON.stringify(rows)).not.toContain("private diagnostic");
@@ -88,25 +88,37 @@ it("legacy projectConversation publishes event/context identities and never arbi
 });
 
 it("crosspath event/context with execution sidefacts retain canonical record rows", async () => {
-  const { projectConversation } = await import("../src/conversation");
+  const { materializeHistoryPresentation } = await import("../src/conversation");
   for (const kind of ["event", "context"]) {
-    const rows = projectConversation([{ node_id: kind, kind, excerpt: "private record payload", executions: [{ execution_id: "exec" }] }]);
+    const rows = materializeHistoryPresentation([{ node_id: kind, kind, excerpt: "private record payload", executions: [{ execution_id: "exec" }] }]).rows;
     expect(rows.some(row => row.type === "note" && row.id === kind && row.kind === "record")).toBe(true);
     expect(rows.some(row => row.type === "steps")).toBe(true);
     expect(JSON.stringify(rows)).not.toContain("private record payload");
   }
 });
 it("crosspath all interruption nodes retain markers alongside execution sidefacts", async () => {
-  const { projectConversation } = await import("../src/conversation");
+  const { materializeHistoryPresentation } = await import("../src/conversation");
   for (const kind of ["interruption_details", "interruption_context", "incomplete_response", "interrupted_wait"]) {
-    const rows = projectConversation([{ node_id: kind, kind, executions: [{ execution_id: "exec" }] }]);
+    const rows = materializeHistoryPresentation([{ node_id: kind, kind, executions: [{ execution_id: "exec" }] }]).rows;
     expect(rows.some(row => row.type === "note" && row.id === kind && row.kind === "interruption")).toBe(true);
     expect(rows.some(row => row.type === "steps")).toBe(true);
   }
 });
 it("crosspath typed assistant multi-item text needs no aggregate excerpt", async () => {
-  const { projectConversation } = await import("../src/conversation");
-  const rows = projectConversation([{ node_id: "assistant", kind: "assistant_response", executions: [{ execution_id: "exec" }], items: [{ ...text, item_identity: "one", text: "one" }, { ...text, item_identity: "two", text: "two" }] }]);
+  const { materializeHistoryPresentation } = await import("../src/conversation");
+  const rows = materializeHistoryPresentation([{ node_id: "assistant", kind: "assistant_response", executions: [{ execution_id: "exec" }], items: [{ ...text, item_identity: "one", text: "one" }, { ...text, item_identity: "two", text: "two" }] }]).rows;
   expect(rows.filter(row => row.type === "message").map(row => row.text)).toEqual(["one", "two"]);
   expect(rows.some(row => row.type === "steps")).toBe(true);
+});
+
+it("canonical presentation exposes whole-input projection plus independent execution facts and provenance", async () => {
+  const { materializeHistoryPresentation } = await import("../src/conversation");
+  const input: HistoryItem[] = [{ node_id: "a", kind: "assistant_response", items: [{ ...text, item_identity: "one", text: "one" }, { ...text, item_identity: "two", text: "two" }], executions: [{ execution_id: "exec" }] }, { node_id: "b", kind: "event", items: [text], executions: [{ execution_id: "exec" }] }];
+  const view = materializeHistoryPresentation(input);
+  expect(view.projection.items).toHaveLength(3);
+  expect(view.steps.map(step => step.executionId)).toEqual(["exec"]);
+  expect(view.rows.filter(row => row.type === "message").map(row => row.text)).toEqual(["one", "two"]);
+  expect(view.rows.every(row => view.nodeIdByRowId.has(row.id))).toBe(true);
+  for (const row of view.rows.filter(row => row.type === "message" || row.type === "steps")) expect(view.nodeIdByRowId.get(row.id)).toBe("a");
+  expect(view.rows.find(row => row.id === "b")).toMatchObject({ type: "note", kind: "record", text: "" });
 });

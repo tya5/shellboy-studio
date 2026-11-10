@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { fixtureModel, settle } from './fixture';
-import { projectConversation } from '../src/conversation';
+import { materializeHistoryPresentation } from '../src/conversation';
 const senderNode=(sender:unknown)=>({node_id:'sender-node',kind:'user',excerpt:'synthetic message',provenance:{sender:sender as {kind:string}}});
 describe('product model sender provenance',()=>{
   it('projects model identity without treating the current Thread, labels or absent facts as human',()=>{
     for(const sender of [{kind:'model',thread_id:'sender-a',label:'claim'}, {kind:'model'}, null,[],{kind:'future',label:'You'}]){
-      const row=projectConversation([senderNode(sender)])[0]!;expect(row.type==='message'&&row.speaker.kind).not.toBe('you');
+      const row=materializeHistoryPresentation([senderNode(sender)]).rows[0]!;expect(row.type==='message'&&row.speaker.kind).not.toBe('you');
     }
-    expect(projectConversation([senderNode({kind:'model',thread_id:'opaque-not-a-uuid',label:'claim'})])[0]).toMatchObject({speaker:{kind:'model',threadId:'opaque-not-a-uuid',label:'claim'}});
+    expect(materializeHistoryPresentation([senderNode({kind:'model',thread_id:'opaque-not-a-uuid',label:'claim'})]).rows[0]).toMatchObject({speaker:{kind:'model',threadId:'opaque-not-a-uuid',label:'claim'}});
   });
   it('resolves visible sender IDs and has no repeated lookup on history hint churn',async()=>{
     const r=await fixtureModel({configure(db){db.history.lead=[senderNode({kind:'model',thread_id:'sender-a'})];db.threads['sender-a']={...db.threads.lead!,thread_id:'sender-a',title:'Current sender title'};}});

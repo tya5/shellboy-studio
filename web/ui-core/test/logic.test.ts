@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   activityLabel, byUrgency, composerAction, contextFacts, countByStatus, folderName, formatAge, plainExcerpt, formatDuration, formatRoute, formatTokens,
-  LANGS, loadPrefs, MESSAGES, noPending, parseRoute, projectConversation, recoveryFacts, savePrefs, statusOfActivity, statusOfShell, threadTree,
+  LANGS, loadPrefs, MESSAGES, noPending, parseRoute, materializeHistoryPresentation, recoveryFacts, savePrefs, statusOfActivity, statusOfShell, threadTree,
   translator, usageFacts, viewShortcut, navShortcut,
 } from "../src";
 import { details, summary } from "../../data/test/harness";
@@ -80,9 +80,9 @@ describe("threads", () => {
 });
 
 describe("conversation projection", () => {
-  it("hides bookkeeping, keeps messages, merges an execution's two nodes into one step", () => {
+  it("keeps canonical bookkeeping records and deduplicates execution sidefacts", () => {
     const exec = { execution_id: "e", command_excerpt: "ls", state: "exited", cwd: "/w" };
-    const rows = projectConversation(
+    const rows = materializeHistoryPresentation(
       [
         { node_id: "1", kind: "user", excerpt: "hi", provenance: { sender: { kind: "human" } } },
         { node_id: "2", kind: "event", excerpt: "Shellboy event v1" },
@@ -92,18 +92,18 @@ describe("conversation projection", () => {
         { node_id: "6", kind: "assistant_response", excerpt: "done" },
       ],
       new Map([["e", { execution_id: "e", state: "exited", exit_code: 0, started_at: "2026-01-01T00:00:00Z", ended_at: "2026-01-01T00:00:02.400Z" }]]),
-    );
-    expect(rows.map((r) => r.type)).toEqual(["message", "steps", "publication", "message"]);
+    ).rows;
+    expect(rows.map((r) => r.type)).toEqual(["message", "note", "note", "note", "steps", "note", "note"]);
     expect(rows.filter(row => row.type === "message").some(row => row.text.includes("command"))).toBe(false);
-    const step = rows[1]!.type === "steps" ? rows[1]!.steps[0]! : undefined;
+    const step = rows.flatMap(row => row.type === "steps" ? row.steps : [])[0];
     expect(step).toMatchObject({ command: "ls", status: "completed", exitCode: 0, durationMs: 2400, cwd: "/w" });
   });
   it("without shell facts a step shows no exit or duration rather than a guess", () => {
-    const rows = projectConversation([{ node_id: "4", executions: [{ execution_id: "e", state: "running", command_excerpt: "x" }] }]);
-    expect(rows[0]!.type === "steps" && rows[0]!.steps[0]).toMatchObject({ status: "running", exitCode: undefined, durationMs: undefined });
+    const rows = materializeHistoryPresentation([{ node_id: "4", executions: [{ execution_id: "e", state: "running", command_excerpt: "x" }] }]).rows;
+    expect(rows.flatMap(row => row.type === "steps" ? row.steps : [])[0]).toMatchObject({ status: "running", exitCode: undefined, durationMs: undefined });
   });
   it("names the sender from the owner's record", () => {
-    const one = (sender: Record<string, unknown>) => projectConversation([{ node_id: "1", kind: "user", excerpt: "x", provenance: { sender: sender as { kind: string } } }])[0]!;
+    const one = (sender: Record<string, unknown>) => materializeHistoryPresentation([{ node_id: "1", kind: "user", excerpt: "x", provenance: { sender: sender as { kind: string } } }]).rows[0]!;
     expect(one({ kind: "human" })).toMatchObject({ speaker: { kind: "you" } });
     expect(one({ kind: "external_cli" })).toMatchObject({ speaker: { kind: "cli" } });
     expect(one({ kind: "external_cli", label: "app:board" })).toMatchObject({ speaker: { kind: "other", label: "CLI: app:board" } });
@@ -111,44 +111,44 @@ describe("conversation projection", () => {
   });
   it("keeps compacted output before, between and after calls in the same group", () => {
     const call = (id: string) => ({ node_id: id, kind: "assistant_response", executions: [{ execution_id: id, command_excerpt: "echo" }] });
-    const rows = projectConversation([{ node_id: "s1", kind: "spill", excerpt: "compressed" }, call("a"), { node_id: "s2", kind: "spill", excerpt: "compressed" }, call("b"), { node_id: "s3", kind: "spill", excerpt: "compressed" }, { node_id: "u", kind: "user", excerpt: "Next" }]);
-    expect(rows.map((row) => row.type)).toEqual(["steps", "message"]);
-    if (rows[0]?.type !== "steps") throw new Error("expected group");
-    expect(rows[0].steps).toHaveLength(2);
-    expect(rows[0].entries.map((entry) => entry.kind)).toEqual(["compacted", "step", "compacted", "step", "compacted"]);
+    const rows = materializeHistoryPresentation([{ node_id: "s1", kind: "spill", excerpt: "compressed" }, call("a"), { node_id: "s2", kind: "spill", excerpt: "compressed" }, call("b"), { node_id: "s3", kind: "spill", excerpt: "compressed" }, { node_id: "u", kind: "user", excerpt: "Next" }]).rows;
+    expect(rows.filter(row => row.type === "note").map(row => row.id)).toEqual(["s1", "a", "s2", "b", "s3"]);
+    expect(rows.flatMap(row => row.type === "steps" ? row.steps : []).map(step => step.executionId)).toEqual(["a", "b"]);
+    expect(rows.at(-1)).toMatchObject({ type: "message", text: "Next" });
   });
   it("keeps commentary as speech without displaying function call arguments", () => {
-    const rows = projectConversation([
+    const rows = materializeHistoryPresentation([
       { node_id: "a", kind: "assistant_response", phase: "commentary", excerpt: "Checking files", items: [{ kind: "text", item_identity: "body", text: "Checking files", text_complete: true }], executions: [{ execution_id: "e", command_excerpt: "ls" }] },
       { node_id: "b", kind: "assistant_response", excerpt: "{\"command\":\"pwd\"}", executions: [{ execution_id: "e2", command_excerpt: "pwd" }] },
       { node_id: "c", kind: "assistant_response", excerpt: "Finished" },
-    ]);
-    expect(rows.map((row) => row.type)).toEqual(["steps", "message", "steps", "publication", "message"]);
-    expect(rows[3]).toMatchObject({ type: "publication", state: "unknown" });
-    expect(rows[1]).toMatchObject({ text: "Checking files" });
-    expect(rows[4]).toMatchObject({ text: "Finished" });
+    ]).rows;
+    expect(rows.map((row) => row.type)).toEqual(["message", "steps", "note", "steps", "note"]);
+    expect(rows[2]).toMatchObject({ type: "note", kind: "record", text: "" });
+    expect(rows[0]).toMatchObject({ text: "Checking files" });
+    expect(rows[4]).toMatchObject({ type: "note", kind: "record", text: "" });
+    expect(JSON.stringify(rows)).not.toContain("{\"command\":\"pwd\"}");
   });
   it("joins tool calls across invisible and empty nodes but not visible speech", () => {
     const calls = Array.from({ length: 12 }, (_, i) => ({ execution_id: `e${i}`, command_excerpt: `command ${i}` }));
-    const rows = projectConversation([
+    const rows = materializeHistoryPresentation([
       { node_id: "a", kind: "assistant_response", excerpt: "", executions: calls },
       { node_id: "hidden", kind: "tool_result", excerpt: "result" },
       { node_id: "empty", kind: "assistant_response", excerpt: "" },
       { node_id: "b", kind: "assistant_response", excerpt: "", executions: [{ execution_id: "next", command_excerpt: "next" }] },
       { node_id: "speech", kind: "user", excerpt: "Hello" },
       { node_id: "c", kind: "assistant_response", excerpt: "", executions: [{ execution_id: "last", command_excerpt: "last" }] },
-    ]);
-    expect(rows.map((r) => r.type)).toEqual(["steps", "message", "steps"]);
-    expect(rows[0]).toMatchObject({ steps: expect.arrayContaining([expect.objectContaining({ executionId: "next" })]) });
-    expect(rows[0]?.type === "steps" && rows[0].steps).toHaveLength(13);
+    ]).rows;
+    expect(rows.map((r) => r.type)).toEqual(["note", "steps", "note", "note", "note", "steps", "message", "note", "steps"]);
+    expect(rows.flatMap(row => row.type === "steps" ? row.steps : [])).toEqual(expect.arrayContaining([expect.objectContaining({ executionId: "next" })]));
+    expect(rows.flatMap(row => row.type === "steps" ? row.steps : [])).toHaveLength(14);
   });
-  it("flags a message cut at the excerpt limit, counted in characters", () => {
-    const rows = projectConversation([{ node_id: "1", kind: "assistant_response", excerpt: "x".repeat(4096) }, { node_id: "2", kind: "assistant_response", excerpt: "short" }]);
+  it("uses explicit typed text completeness rather than guessed excerpt length", () => {
+    const rows = materializeHistoryPresentation([{ node_id: "1", kind: "assistant_response", items: [{ kind: "text", item_identity: "t", text: "x".repeat(4096), text_complete: false }] }, { node_id: "2", kind: "assistant_response", items: [{ kind: "text", item_identity: "t", text: "short", text_complete: true }] }]).rows;
     expect(rows[0]).toMatchObject({ truncated: true });
     expect(rows[1]).toMatchObject({ truncated: false });
   });
   it("an unknown kind is shown as a note, not dropped", () => {
-    expect(projectConversation([{ node_id: "1", kind: "summary", excerpt: "the summary" }])[0]).toMatchObject({ type: "note", kind: "summary" });
+    expect(materializeHistoryPresentation([{ node_id: "1", kind: "unlisted", excerpt: "private unknown" }]).rows[0]).toMatchObject({ type: "note", kind: "record", text: "" });
   });
 });
 
@@ -229,10 +229,10 @@ describe("routes, prefs, commands, words", () => {
 
 describe("tool rows", () => {
   it("carries the call's description when the owner reports one, and the command either way", () => {
-    const rows = projectConversation([
+    const rows = materializeHistoryPresentation([
       { node_id: "n", kind: "assistant_response", executions: [{ execution_id: "e", command_excerpt: "cargo test", description: "Run the tests" }] },
       { node_id: "m", kind: "assistant_response", executions: [{ execution_id: "f", command_excerpt: "ls" }] },
-    ] as never);
+    ] as never).rows;
     const steps = rows.flatMap((r) => (r.type === "steps" ? r.steps : []));
     expect(steps.map((s) => [s.description, s.command])).toEqual([["Run the tests", "cargo test"], [undefined, "ls"]]);
   });
