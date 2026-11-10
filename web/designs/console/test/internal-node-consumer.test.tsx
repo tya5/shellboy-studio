@@ -18,16 +18,17 @@ const nodes:HistoryItem[]=[
  {node_id:'human-mentions-event',kind:'user',selection:{ordinal:2},provenance:{sender:{kind:'human'}},items:typedText('Please explain Shellboy event/context. Keep this human text.')},
  {node_id:'received-user',kind:'user',selection:{ordinal:3},provenance:{sender:{kind:'model',thread_id:'synthetic-sender',label:'Synthetic sender'}},items:typedText('Legitimate received user message')},
 ];
-it('actual strict Window -> Console classifies internal node kinds before text while preserving human and received users',async()=>{
- const f=await fixtureModel({capabilities:['history.window'],configure(db){
-  db.threads={t:summary('t')};db.details.t=details('t');db.history.t=[];
+it.each([true,false])('actual shared classifier consumer window=%s: classifies internal node kinds before text while preserving human and received users',async(windowed)=>{
+ const f=await fixtureModel({capabilities:windowed?['history.window']:[],configure(db){
+  db.threads={t:summary('t')};db.details.t=details('t');db.history.t=nodes;
   const base=db.answer.bind(db);db.answer=call=>call.command==='history.window'?{ok:true,result:JSON.parse(JSON.stringify({thread_id:'t',revision:9,total:nodes.length,items:nodes}))}:base(call);
  }});
  const host=document.createElement('div');document.body.append(host);
  const context:DesignContext={model:f.model,prefs:signal(loadPrefs({read:()=>null,write:()=>{}},[{name:'console',themes:[{name:'light'}]}])),setPrefs:()=>{},designs:[],submitToken:async()=>false};
  try{
   await act(async()=>{render(<App context={context}/>,host);await settle(f.t,f.db);});
-  expect(f.model.longReader.peek()!.acceptedView.peek().rows).toEqual(nodes);
+  if(windowed)expect(f.model.longReader.peek()!.acceptedView.peek().rows).toEqual(nodes);
+  else expect(f.model.longReader.peek()).toBeUndefined();
   expect(f.t.calls('history.window').every(call=>(call.args as {items?:boolean}).items===true)).toBe(true);
   for(const node of nodes.slice(0,2)){
    const items=[...host.querySelectorAll(`[data-node="${node.node_id}"]`)];expect(items).toHaveLength(1);

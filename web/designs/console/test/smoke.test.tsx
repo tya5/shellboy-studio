@@ -165,7 +165,9 @@ describe("Conversation live text", () => {
     });
     expect(bodies().some((b) => b.includes("Writing"))).toBe(false);
     expect(el.textContent).toContain("Final saved answer");
-    expect(el.textContent).toContain("Checking response kind");
+    await act(async()=>{const group=el.querySelector<HTMLDetailsElement>("[data-work-group]");if(group){group.open=true;group.dispatchEvent(new Event("toggle"));}await flushPromises();});
+    expect(el.textContent).not.toContain("Checking response kind");
+    expect(el.querySelector("[data-internal-records]")).not.toBeNull();
     expect(el.textContent).toContain("later");
   });
 
@@ -307,9 +309,10 @@ describe("Conversation", () => {
       const row=model.conversation.value.find(row=>row.type==='steps')!;
       model.openToolGroups.value=new Set([row.id]);
       if(row.type==='steps')model.toolStepChoices.value=new Map(row.steps.map(step=>[step.executionId,true]));
+      const group=el.querySelector<HTMLDetailsElement>('[data-work-group]');if(group){group.open=true;group.dispatchEvent(new Event('toggle'));}
       await flushPromises();
     });
-    expect(el.querySelector(".step-group > .step-group-list > .step")).toBeTruthy();
+    expect(el.querySelector("[data-work-group] .step")).toBeTruthy();
     expect(text(el)).toContain("cargo test history::search");
     expect(text(el)).toContain("exit 0");
     expect(text(el)).toContain("2.4s");

@@ -1,7 +1,8 @@
+import type { ThreadHandle } from "../../../data/src/store";
 import { Disclosure } from "../system/components/Disclosure";
 import type { HandoffRecord } from "../../../data/src/handoff";
 import { senderFact } from "../../../data/src/sender";
-import { projectHistoryWindowItems, projectSavedItems, normalizeLiveWorkFacts, type NormalizedSavedItem } from "../../../ui-core/src/conversation-items";
+import { projectLegacyHistoryItems, projectHistoryWindowItems, projectSavedItems, normalizeLiveWorkFacts, type NormalizedSavedItem } from "../../../ui-core/src/conversation-items";
 import { projectConversation } from "../../../ui-core/src/conversation";
 import type { HistoryItem } from "../../../data/src/protocol";
 import { Markdown } from "../system/components/Message";
@@ -147,7 +148,7 @@ export function SavedConversationItems({ model, projection, renderBefore, traili
           : fact.kind === "human" ? { kind: "you" } : fact.kind === "model" ? fact
           : fact.kind === "external_cli" ? (fact.label?.trim() ? { kind: "other", label: `CLI: ${fact.label}` } : { kind: "cli" })
           : { kind: "unknown", model: fact.kind === "unknown_model", label: fact.label };
-        return <><RowView model={model} authorizedText={item.source.text ?? ""} row={{ type: "message", id: node.node_id!, speaker, text: item.source.text ?? "", truncated: false, at: node.provenance?.created_at }} />{item.source.kind === "text" && item.source.textComplete === false ? <div class="caption muted" data-item-partial="">{t("work.partial")}</div> : null}</>;
+        return <><ProjectedMessage model={model} authorizedText={item.source.text ?? ""} row={{ type: "message", id: node.node_id!, speaker, text: item.source.text ?? "", truncated: false, at: node.provenance?.created_at }} />{item.source.kind === "text" && item.source.textComplete === false ? <div class="caption muted" data-item-partial="">{t("work.partial")}</div> : null}</>;
       }
       if (item.source.kind === "tool") {
         const ids = item.source.executionIds ?? (item.source.executionId ? [item.source.executionId] : []);
@@ -203,6 +204,14 @@ export function retainUnretiredLiveFacts(snapshot: WindowAcceptedSnapshot, scope
 }
 
 /** One producer classifies saved facts and explicitly scoped live records. */
+function LegacySavedContent({model,handle,history,rows,boundary,follow}: {model:AppModel;handle:ThreadHandle;history:ReturnType<ThreadHandle["history"]["peek"]>|undefined;rows:readonly ConversationRow[];boundary:number|undefined;follow:()=>void}) {
+  const projection=projectLegacyHistoryItems({nodes:history?.items??[],keyScope:[handle.handoffScope()]}).projection;
+  const cutNode=boundary===undefined?undefined:rows[boundary]?.id;
+  const cut=projection.items.find(item=>item.source.nodeId===cutNode && (item.source.kind==="user"||item.source.kind==="text"||item.source.kind==="summary"))?.key;
+  const overlay=<LiveMessage model={model} handle={handle} follow={follow}/>;
+  return <SavedConversationItems model={model} nodes={history?.items??[]} projection={projection} renderBefore={item=>item.key===cut?overlay:null} trailing={cut?null:overlay}/>;
+}
+
 export function SavedWindowContent({ model, snapshot, live, liveBoundary, liveFacts }: { model: AppModel; snapshot: WindowAcceptedSnapshot; live?: ComponentChildren; liveBoundary?: number; liveFacts?: readonly NormalizedSavedItem[] }) {
   if (snapshot.revision === undefined) return null;
   const handle = model.handle.value;
@@ -308,53 +317,16 @@ export function StepView({ model, step }: { model: AppModel; step: Step }) {
   );
 }
 
-function RowView({ model, row, authorizedText }: { model: AppModel; row: ConversationRow; authorizedText?: string }) {
+function ProjectedMessage({ model, row, authorizedText }: { model: AppModel; row: Extract<ConversationRow, {type:"message"}>; authorizedText: string }) {
   const t = model.t.value;
   const threadId = model.handle.value?.threadId;
   const point = threadId !== undefined ? formatRoute({ view: "branches", threadId, nodeId: row.id }) : undefined;
   const found = model.rowMarks.value.get(row.id);
   const mark = found && threadId !== undefined ? <BranchMark href={formatRoute({ view: "branches", threadId, nodeId: found.nodeId })} label={found.branches === 1 ? t("branches.markOne") : t("branches.mark", { n: found.branches })} /> : null;
-  if (row.type === "publication") return <div class="caption" role="status">
-    {mark}
-    <strong>{t(row.state === "tool" ? "convo.toolIdentity" : row.error ? "convo.publicationFailed" : "convo.publicationUnknown")}</strong>
-    {row.kind ? <div><code>{row.kind}</code> <code>{row.attemptId}</code> / {row.ordinal}</div> : null}
-    {row.state === "unknown" ? <Button onClick={() => void model.handle.value?.retryPublication()}>{t("convo.retryLoad")}</Button> : null}
-  </div>;
-  if (row.type === "steps") {
-    const opened = model.openToolGroups.value.has(row.id) || row.steps.some((step) => model.openToolGroups.value.has(`step:${step.executionId}`));
-    const active = row.steps.find((s) => s.status === "running");
-    const nonzero = row.steps.filter((s) => typeof s.exitCode === "number" && s.exitCode !== 0).length;
-    const failed = row.steps.some((s) => s.state === "failed" || s.status === "recovery" || (typeof s.exitCode === "number" && s.exitCode !== 0));
-    const compacted = row.entries.filter((entry) => entry.kind === "compacted").length;
-    const summary = [t("tools.count", { n: row.steps.length }), ...(compacted ? [t("tools.compacted", { n: compacted })] : []), ...(nonzero ? [t("tools.nonzero", { n: nonzero })] : []), ...(active ? [t("tools.active", { command: toolLabel(active.description, active.command) })] : [])].join(" · ");
-    return (
-      <>
-        <section class="steps">
-          <StepRow open={opened} command={summary} group status={<StatusMark status={active ? "running" : failed ? "failed" : "completed"} label={statusLabel(t, active ? "running" : failed ? "failed" : "completed")} />} onToggle={(open) => { const next = new Set(model.openToolGroups.peek()); for (const key of [row.id, ...row.steps.map((step) => `step:${step.executionId}`)]) { if (open) next.add(key); else next.delete(key); } model.openToolGroups.value = next; }}>
-            <div class="step-group-list">{row.entries.map((entry) => entry.kind === "step" ? <StepView key={entry.step.executionId} model={model} step={entry.step} /> : <div class="step" key={entry.id}><div class="work-row"><Icon name="compacted" /><span>{t("compact.spill")}</span><span>{entry.text}</span></div></div>)}</div>
-          </StepRow>
-        </section>
-        {mark ? <div class="scroll-mark">{mark}</div> : null}
-      </>
-    );
-  }
-  if (row.type === "note")
-    return (
-      <>
-        <SummaryStrip label={row.kind === "spill" ? t("compact.spill") : row.kind} text={row.text} />
-        {mark ? <div class="scroll-mark">{mark}</div> : null}
-      </>
-    );
-  // Legacy aggregates cannot authorize prose; typed callers already supply exact text.
-  const savedNode = authorizedText === undefined ? model.handle.value?.history.value.items.find(node => node.node_id === row.id) : undefined;
-  if (savedNode?.kind === "assistant_response" && savedNode.items === undefined) {
-    const projection = projectSavedItems([{nodeId: savedNode.node_id!, itemIdentity: savedNode.node_id!, identityDomain: "node", kind: "unknown"}]);
-    return <><SavedConversationItems model={model} projection={projection} nodes={[savedNode]} />{mark ? <div class="scroll-mark">{mark}</div> : null}</>;
-  }
   const who = row.speaker.kind === "you" ? t("convo.you") : row.speaker.kind === "shellboy" ? t("convo.shellboy") : row.speaker.kind === "cli" ? t("convo.cli") : row.speaker.kind === "model" ? t("convo.modelSender") : row.speaker.kind === "unknown" ? t(row.speaker.model ? "convo.unknownModelSender" : "convo.unknownSender") : row.speaker.label;
   const body = model.bodies.value.get(row.id);
   return (
-    <Message bot={row.speaker.kind === "shellboy"} who={who} at={formatClock(row.at)} text={authorizedText ?? body?.text ?? row.text} copyLabel={t("code.copy")} copiedLabel={t("code.copied")}>
+    <Message bot={row.speaker.kind === "shellboy"} who={who} at={formatClock(row.at)} text={authorizedText} copyLabel={t("code.copy")} copiedLabel={t("code.copied")}>
       {row.speaker.kind === "model" ? <div class="caption sender-fact">
         {model.senderTitles.values.value.get(row.speaker.threadId)?.state === "ready" ? <div>{t("convo.senderCurrentTitle", { title: model.senderTitles.values.value.get(row.speaker.threadId)!.title ?? "" })}</div> : <div>{t("convo.senderTitleUnresolved")}</div>}
         <div>{t("convo.senderThread")} <a href={formatRoute({ view: "conversation", threadId: row.speaker.threadId })}><code class="sender-id">{row.speaker.threadId}</code></a></div>
@@ -467,7 +439,7 @@ function OrderedHistory({ model, handle, rows, win, history, scroller, pinned, f
           <WindowedScroll
             model={model}
             win={win}
-            renderRow={(row) => visible(row) ? <RowView model={model} row={row} /> : <></>}
+            renderRow={() => <></>}
             renderAcceptedView={snapshot => <><SavedWindowContent model={model} snapshot={snapshot} liveBoundary={boundary?.ordinal} live={<LiveMessage model={model} handle={handle} follow={follow} />} /></>}
             live={<LiveMessage model={model} handle={handle} follow={follow} />}
             liveBoundary={boundary?.ordinal}
@@ -496,13 +468,8 @@ function OrderedHistory({ model, handle, rows, win, history, scroller, pinned, f
                 {t("convo.loadError", { message: history.error.message })}
               </Notice>
             ) : null}
-            {[
-              ...rows.flatMap((row, index) => [
-                ...(index === boundary?.legacy ? [<LiveMessage key="handoff-slot" model={model} handle={handle} follow={follow} />] : []),
-                <div class="conversation-row" key={row.id}>{visible(row) ? <RowView model={model} row={row} /> : null}</div>,
-              ]),
-              ...(boundary === undefined || boundary.legacy >= rows.length ? [<LiveMessage key="handoff-slot" model={model} handle={handle} follow={follow} />] : []),
-            ]}
+            <LegacySavedContent model={model} handle={handle} history={history} rows={rows} boundary={boundary?.legacy} follow={follow} />
+            {[...model.rowMarks.value].map(([rowId, mark]) => <div class="scroll-mark" key={rowId}><BranchMark href={formatRoute({view:"branches",threadId:handle.threadId,nodeId:mark.nodeId})} label={mark.branches === 1 ? t("branches.markOne") : t("branches.mark",{n:mark.branches})} /></div>)}
             {rows.length === 0 && !history?.error ? (
               loading ? <LoadingRows label={t("convo.loading")} rows={5} /> : <EmptyState icon="chat" character title={t("convo.empty")} body={t("convo.emptyBody")} />
             ) : null}
