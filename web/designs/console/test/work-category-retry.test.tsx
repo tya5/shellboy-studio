@@ -74,10 +74,11 @@ for(const windowed of [false,true])it(`renders actual accepted-node execution me
   await act(async()=>{group.open=true;group.dispatchEvent(new Event('toggle'));});
   const tool=host.querySelector('[data-execution-id="accepted-execution"] .step')!;
   expect(tool).not.toBeNull();expect(tool.textContent).toContain('Synthetic safe description');
-  const detail=tool as HTMLDetailsElement;
-  await act(async()=>{detail.open=true;detail.dispatchEvent(new Event('toggle'));});
-  expect(tool.textContent).toContain('printf synthetic-tool');
-  expect(tool.closest('[data-work-group]')).toBe(group);
+  const commandNodes=nodes.map(node=>({...node,executions:node.executions.map(execution=>({...execution,description:undefined}))}));
+  await act(async()=>render(<SavedConversationItems model={f.model} nodes={commandNodes} projection={projection}/>,host));
+  const commandTool=host.querySelector('[data-execution-id="accepted-execution"] .step')!;
+  expect(commandTool.textContent).toContain('printf synthetic-tool');
+  expect(commandTool.closest('[data-work-group]')).toBe(group);
   expect(host.querySelector('[data-execution-unresolved]')).toBeNull();
  }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
 });
