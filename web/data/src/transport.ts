@@ -131,19 +131,34 @@ export class WebSocketTransport implements Transport {
       }
       const parsed = parseServerFrame(event.data);
       if (parsed.ok) this.handlers?.onFrame(parsed.frame);
-      else this.handlers?.onInvalidFrame(parsed.reason);
+      else if (parsed.code === "frame_too_large") {
+        try {
+          this.handlers?.onInvalidFrame(parsed.reason);
+        } finally {
+          // A callback may stop/restart or replace the current socket.
+          if (!this.stopped && this.socket === socket) {
+            const close = socket.onclose;
+            socket.onmessage = null;
+            try { socket.close(); } finally { close?.(); }
+          }
+        }
+      } else this.handlers?.onInvalidFrame(parsed.reason);
     };
     socket.onclose = () => {
       if (this.socket !== socket) return;
       this.socket = undefined;
-      this.handlers?.onClose();
-      if (this.stopped) return;
-      const wait = this.delay;
-      this.delay = Math.min(this.delay * 2, this.opts.backoff.maxMs);
-      this.timer = this.timers().set(() => {
-        this.timer = undefined;
-        if (!this.stopped) this.connect();
-      }, wait);
+      try {
+        this.handlers?.onClose();
+      } finally {
+        if (!this.stopped && this.socket === undefined) {
+          const wait = this.delay;
+          this.delay = Math.min(this.delay * 2, this.opts.backoff.maxMs);
+          this.timer = this.timers().set(() => {
+            this.timer = undefined;
+            if (!this.stopped && this.socket === undefined) this.connect();
+          }, wait);
+        }
+      }
     };
     socket.onerror = () => {
       // `close` follows an error; reconnection is driven from there.

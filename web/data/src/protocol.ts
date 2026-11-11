@@ -49,7 +49,7 @@ export type ServerFrame =
   | { t: "owner"; event: OwnerEvent; owner: OwnerState }
   | { t: "error"; error: BridgeError };
 
-export type ParsedFrame = { ok: true; frame: ServerFrame } | { ok: false; reason: string };
+export type ParsedFrame = { ok: true; frame: ServerFrame } | { ok: false; reason: string; code?: "frame_too_large" };
 
 const isObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);
@@ -63,7 +63,24 @@ function validOwnerState(v: unknown): v is OwnerState {
 }
 
 /** Strict enough to keep the state machine honest; unknown `t` is reported, not guessed. */
+/** Client resource policy for ALL incoming frame kinds, not a Core method guarantee. */
+export const MAX_SERVER_FRAME_BYTES = 8388660;
+/** Fixed auxiliary memory; mirrors UTF8 replacement for isolated surrogates. */
+export function exceedsServerFrameBytes(text: string): boolean {
+  let bytes = 0;
+  for (let i = 0; i < text.length; i++) {
+    const unit = text.charCodeAt(i);
+    if (unit <= 0x7f) bytes++;
+    else if (unit <= 0x7ff) bytes += 2;
+    else if (unit >= 0xd800 && unit <= 0xdbff && i + 1 < text.length && text.charCodeAt(i + 1) >= 0xdc00 && text.charCodeAt(i + 1) <= 0xdfff) { bytes += 4; i++; }
+    else bytes += 3;
+    if (bytes > MAX_SERVER_FRAME_BYTES) return true;
+  }
+  return false;
+}
+
 export function parseServerFrame(text: string): ParsedFrame {
+  if (exceedsServerFrameBytes(text)) return { ok: false, reason: "frame too large", code: "frame_too_large" };
   let v: unknown;
   try {
     v = JSON.parse(text);
