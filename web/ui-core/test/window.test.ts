@@ -332,3 +332,15 @@ describe("following and leaving", () => {
     r.data.stop();
   });
 });
+it("recovery drains coalesced changed hints once without waiting for another hint", async () => {
+ const r=await open(10);
+ try {
+  r.owner.rewrite(10);r.w.changed();await flush();
+  const probe=r.calls().at(-1)!;r.owner.answered.add(probe.id);const probeReply=r.owner.answer(probe);if(probeReply.ok)r.t.ok(probe.id,probeReply.result);else r.t.ownerError(probe.id,probeReply.code,"Synthetic cursor expiry",probeReply.details);await flush();
+  const recover=r.calls().at(-1)!;expect(recover.id).not.toBe(probe.id);r.owner.answered.add(recover.id);
+  const old=r.owner.answer(recover);if(!old.ok)throw new Error('fixture');
+  r.owner.append(1);const mark=r.calls().length;r.w.changed();r.w.changed();await flush();expect(r.calls()).toHaveLength(mark);
+  r.t.ok(recover.id,old.result);await flush();expect(r.calls()).toHaveLength(mark+1);
+  await r.settle();expect(r.w.acceptedView.peek().rows.map(n=>n.node_id)).toContain(r.owner.nodeId(10));
+ } finally {close(r);}
+});

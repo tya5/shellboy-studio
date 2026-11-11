@@ -851,7 +851,7 @@ export class ConversationWindow {
     // Verification is evidence, not navigation to an evicted tail island.
     if (this.isLoaded(known.ordinal)) this.install(out.value, capability);
     if (capability !== this.acceptedView.currentCapability || epoch !== this.epoch || this.disposed) return;
-    if (this.tailAgain) { this.tailAgain = false; void this.readTail(); }
+    this.drainTailHint();
     this.pump();
   }
 
@@ -907,11 +907,15 @@ export class ConversationWindow {
       void this.readTail(true);
       return;
     }
-    if (this.tailAgain) {
-      this.tailAgain = false;
-      void this.readTail();
-    }
+    this.drainTailHint();
     this.pump();
+  }
+
+  /** Consume one coalesced hint after the active owner read releases its slot. */
+  private drainTailHint(): void {
+    if (!this.tailAgain || this.disposed || this.tailCancel || this.verifying) return;
+    this.tailAgain = false;
+    void this.readTail();
   }
 
   private fail(message: string): void {
@@ -977,6 +981,8 @@ export class ConversationWindow {
       else if (follow) this.scrollRequest = Number.MAX_SAFE_INTEGER;
       if (this.scrollRequest !== undefined && this.scrollRequest < Number.MAX_SAFE_INTEGER) this.viewTop = this.scrollRequest;
       this.bump();
+      if (this.disposed || epoch !== this.epoch) return;
+      this.drainTailHint();
       this.pump();
       return;
     }
