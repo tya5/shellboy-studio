@@ -301,3 +301,24 @@ it('Composer scope round-trip does not make an old ACK own the current draft aga
  await act(async()=>{finish(true);await flush();});expect(area.value).toBe('Original');
  }finally{render(null,host);host.remove();}
 });
+it('keeps the next draft across held ACK and same-stack submit guard, then accepts it after ACK continuation',async()=>{
+ const host=document.createElement('div');document.body.append(host);
+ let calls=0,reservations=0,finish!:(ok:boolean)=>void;
+ const observed:{stage:string;draft:string;calls:number;reservations:number}[]=[];
+ const send=()=>{calls++;return new Promise<boolean>(resolve=>{finish=resolve;});};
+ const show=()=>render(<Composer label="Draft" placeholder="" hint="Ready" sendLabel="Send" canSend busy={false} onSend={(_text,notify)=>{reservations++;notify?.();return send();}}/>,host);
+ try{
+  await act(async()=>show());const input=host.querySelector('textarea')!;
+  const enter=()=>input.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));
+  await act(async()=>{input.value='First';input.dispatchEvent(new Event('input',{bubbles:true}));enter();});
+  expect(calls).toBe(1);expect(input.value).toBe('');
+  await act(async()=>{input.value='Next draft';input.dispatchEvent(new Event('input',{bubbles:true}));enter();
+   observed.push({stage:'held-ack',draft:input.value,calls,reservations});
+   finish(true);enter();observed.push({stage:'same-stack-after-resolve',draft:input.value,calls,reservations});await flush(4);
+  });
+  expect(observed).toEqual([{stage:'held-ack',draft:'Next draft',calls:1,reservations:1},{stage:'same-stack-after-resolve',draft:'Next draft',calls:1,reservations:1}]);
+  expect(input.value).toBe('Next draft');
+  await act(async()=>{enter();await flush(2);});expect(calls).toBe(2);expect(reservations).toBe(2);expect(input.value).toBe('');
+  await act(async()=>{finish(true);await flush(4);});
+ }finally{render(null,host);host.remove();}
+});
