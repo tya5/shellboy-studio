@@ -364,3 +364,39 @@ it('reservation reentrant route loss prevents dispatch and preserves the owned o
   const pending=f.model.pendingOwnMessage.peek();if(pending)expect(pending).toMatchObject({text:'Owned before route change',phase:'failed'});
  }finally{f.model.dispose();f.data.stop();}
 });
+
+it('publishes accepted ownership and pending removal in one ACK frame for the exact original operation',async()=>{
+ const f=await fixtureModel();const frames:{accepted:number;pending:boolean;rows:number;phase:string}[]=[];
+ const scope=f.model.ownMutationScope();
+ const capture=()=>frames.push({accepted:f.model.acceptedOwnMessages.peek().length,pending:!!f.model.pendingOwnMessage.peek(),rows:f.model.ownMutationRows(scope).length,phase:f.model.sendState.peek().kind});
+ const stopAccepted=f.model.acceptedOwnMessages.subscribe(capture),stopPending=f.model.pendingOwnMessage.subscribe(capture);
+ try{
+  const sent=f.model.send('Original owned draft');await flush();const call=f.t.calls('message.send').at(-1)!;
+  expect(frames.some(frame=>frame.pending&&frame.accepted===0)).toBe(true);
+  f.t.ok(call.id,{thread_id:'lead',message_id:'exact-saved-node'});expect(await sent).toBe(true);
+  expect(frames.some(frame=>frame.pending&&frame.accepted>0)).toBe(false);
+  expect(frames.filter(frame=>frame.accepted>0).every(frame=>frame.rows===1&&frame.phase==='idle')).toBe(true);
+  expect(f.model.acceptedOwnMessages.peek()[0]).toMatchObject({operationId:call.operation_id,messageId:'exact-saved-node',text:'Original owned draft'});
+ }finally{stopAccepted();stopPending();f.model.dispose();f.data.stop();}
+});
+it.each(['reserve-next','invalidate-route','invalidate-owner'] as const)('ACK subscribers see a complete ownership commit before synchronous %s reentry',async mode=>{
+ const f=await fixtureModel();let entered=false,observed:unknown,next:Promise<boolean>|undefined;
+ let operation=0;f.model.ops.mutationId=()=>`i1:reentry-${++operation}`;
+ const stop=f.model.acceptedOwnMessages.subscribe(rows=>{
+  if(!rows.length||entered)return;entered=true;
+  observed={pending:f.model.pendingOwnMessage.peek(),phase:f.model.sendState.peek().kind};
+  if(mode==='reserve-next')next=f.model.send('Next original operation');
+  else if(mode==='invalidate-route')f.model.navigate({view:'threads'});
+  else {const owner=f.data.owner.peek();if(owner.state==='connected')f.t.push({t:'owner',event:'connected',owner:{...owner,info:{...owner.info,instance_id:'replacement-owner'}}});}
+ });
+ try{
+  const sent=f.model.send('First original operation');await flush();const first=f.t.calls('message.send').at(-1)!;
+  f.t.ok(first.id,{thread_id:'lead',message_id:'first-exact-node'});await sent;await flush();
+  expect(observed).toEqual({pending:undefined,phase:'idle'});
+  if(mode==='reserve-next'){
+   const second=f.t.calls('message.send').at(-1)!;expect(second.operation_id).not.toBe(first.operation_id);
+   expect(f.model.pendingOwnMessage.peek()?.text).toBe('Next original operation');expect(f.model.sendState.peek().kind).toBe('sending');
+   f.t.ownerError(second.id,'temporary_failure');await next;
+  }else expect(f.t.calls('message.send')).toHaveLength(1);
+ }finally{stop();f.model.dispose();f.data.stop();}
+});

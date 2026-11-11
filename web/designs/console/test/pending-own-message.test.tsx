@@ -29,14 +29,17 @@ for(const windowed of [true,false])for(const savedBeforeAck of [false,true])it(`
   expect(f.model.pendingOwnIsCurrent()).toBe(true);
   if(!windowed)expect(f.model.legacyPresentation.peek()?.isCurrent(f.model.legacyPresentation.peek()!.acceptedView.peek())).toBe(true);
   expect(host.querySelector('[data-pending-own-message]')?.textContent).toContain('Own submitted message');
+  expect(host.querySelectorAll('[data-pending-own-message]')).toHaveLength(1);
   const call=f.t.calls('message.send').at(-1)!;f.db.answered.add(call.id);
   if(savedBeforeAck){
    rows=[{node_id:'canonical-own',kind:'user',selection:{ordinal:0},items:[{kind:'text',item_identity:'accepted',text:'Own submitted message',text_complete:true}],provenance:{sender:{kind:'human'}}}];f.db.history.t=rows;
    await act(async()=>{f.t.push({t:'changed',thread_ids:['t'],list:false});await settle(f.t,f.db);});
   }
   await act(async()=>{f.t.ok(call.id,{message_id:'canonical-own',thread_id:'t'});await flush(8);});expect(f.model.sendState.peek().kind).toBe('idle');expect(composer.value).toBe('');
+  expect(host.querySelector('[data-pending-phase="sending"]')).toBeNull();
   if(savedBeforeAck){expect(host.querySelector('[data-pending-own-message]')).toBeNull();expect(host.querySelectorAll('[data-node="canonical-own"] .md')).toHaveLength(1);return;}
   expect(host.querySelector('[data-pending-phase="accepted"]')).not.toBeNull();
+  expect(host.querySelectorAll('[data-pending-own-message]')).toHaveLength(1);
   const acceptedRow=host.querySelector('[data-pending-phase="accepted"]')!;
   expect(acceptedRow.querySelector('.who > small.mono')?.textContent).toBe(f.model.t.value('composer.pending.accepted'));
   expect(acceptedRow.querySelector('.msg > small')).toBeNull();
