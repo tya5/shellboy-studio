@@ -109,3 +109,28 @@ fn protocol_four_fails_closed_without_downgrade() {
         ErrorCode::ProtocolMismatch
     );
 }
+
+#[test]
+fn structural_tool_descriptor_survives_pinned_response_value_and_bridge_frame() {
+    // The real IPC/Owner seam is Response<Value>, not HistoryWindow<HistoryItem>.
+    // Exercise the pinned envelope decode and the exact websocket encode types,
+    // without starting a Core, opening a database or making a provider request.
+    let result = json!({"thread_id":"synthetic","revision":"r","total":1,"items":[{
+        "node_id":"actual-node","kind":"assistant_response","selection":{"ordinal":0},
+        "items":[{"kind":"tool_call","item_identity":"[\"actual-node\",\"/output/0\"]","execution_ids":[],
+            "descriptor":{"call_id":"actual-call","call_id_state":"available","name":"lookup","name_state":"available"},
+            "detail_availability":"unavailable"}]
+    }]});
+    let original = shellboy::protocol::Response::success("synthetic-operation", result.clone());
+    let encoded = serde_json::to_vec(&original).unwrap();
+    let decoded: shellboy::protocol::Response<serde_json::Value> = serde_json::from_slice(&encoded).unwrap();
+    decoded.validate().unwrap();
+    let frame = shellboy_studio::envelope::ServerFrame::Result {
+        id: "call-id".into(),
+        response: Some(serde_json::to_value(&decoded).unwrap()),
+        error: None,
+    };
+    let bridged = serde_json::to_value(frame).unwrap();
+    assert_eq!(bridged["response"]["result"], result);
+    assert_eq!(bridged["response"]["result"]["items"][0]["items"][0]["execution_ids"], json!([]));
+}
