@@ -34,7 +34,7 @@ it.each([
  ...[null,1.5,-2147483649,2147483648,'0'].map(exit_code=>({kind:'shell_ended',execution_id:'exec',state:'exited',exit_code})),
  {kind:'shell_ended',execution_id:'exec',state:'exited',command:'PRIVATE'},
 ])('302 quarantines only invalid optional notification %j',notification=>{
- const node={node_id:'node',kind:'event',text:'Independent body',provenance:{sender:{kind:'system'},message:{expect_reply:false},notification,created_at:'exact',future_independent:{kept:true}}};
+ const node={node_id:'node',kind:'event',text:'Independent body',provenance:{sender:{kind:'system'},message:{expect_reply:false as const},notification,created_at:'exact',future_independent:{kept:true}}};
  const result=sanitizeMessageRelation(node);
  expect(result.text).toBe(node.text);
  expect(result.provenance).toEqual({sender:{kind:'system'},message:{expect_reply:false},created_at:'exact',future_independent:{kept:true}});
