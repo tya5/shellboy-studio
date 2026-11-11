@@ -39,3 +39,38 @@ it.each(['',null,17,undefined])('rejects malformed deferred-node identity %j bef
 it('rejects negative safe ordinals in mixed legacy/projected windows',async()=>{
  expect((await decode(window([{node_id:'legacy',kind:'user',selection:{ordinal:-2}},{...node([text]),selection:{ordinal:-1}}]))).ok).toBe(false);
 });
+
+const descriptor={name:'lookup',name_state:'available',call_id:'call-exact',call_id_state:'available'};
+const tool={kind:'tool_call',item_identity:'canonical-tool',execution_ids:[],descriptor,detail_availability:'unavailable'};
+it('298 zero-execution descriptor preserves exact identity, name, call ID and unavailability',async()=>{
+ const value=window([node([tool])]);expect(await decode(value)).toEqual({ok:true,value});
+});
+it('298 result does not infer name or output completeness from verified execution routing',async()=>{
+ const item={...tool,kind:'tool_result',execution_ids:['actual'],descriptor:{call_id:'call-exact',call_id_state:'available',name_state:'not_applicable'},detail_availability:'execution_linked'};
+ const value=window([node([item])]);expect(await decode(value)).toEqual({ok:true,value});
+});
+it.each([
+ {...tool,descriptor:undefined},{...tool,detail_availability:undefined},{...tool,descriptor:null},
+ {...tool,descriptor:{...descriptor,name:'bad name'}},{...tool,descriptor:{...descriptor,name:'界'}},
+ {...tool,descriptor:{...descriptor,call_id:'界'.repeat(86)}},{...tool,descriptor:{...descriptor,name_state:'invalid'}},
+ {...tool,descriptor:{...descriptor,name_state:'invented'}},{...tool,descriptor:{...descriptor,extra:'SECRET'}},
+ {...tool,descriptor:{...descriptor,call_id_state:'not_applicable'}},{...tool,kind:'tool_result'},
+ {...tool,detail_availability:'execution_linked'},{...tool,execution_ids:['actual']},
+])('298 rejects partial, malformed, extra or inconsistent metadata %#',async item=>{expect((await decode(window([node([item])]))).ok).toBe(false);});
+it('298 legacy omission stays unknown while unavailable metadata remains explicit',async()=>{
+ const item={...tool,descriptor:{name_state:'missing',call_id_state:'field_budget'}};
+ const legacy={kind:'tool_call',item_identity:'legacy',execution_ids:[]};
+ const value=window([node([item,legacy])]);expect(await decode(value)).toEqual({ok:true,value});
+});
+it('298 exact UTF8 call IDs preserve distinct canonical items without merging',async()=>{
+ const a={...tool,descriptor:{...descriptor,call_id:'界'.repeat(85)}};const b={...a,item_identity:'other'};
+ const value=window([node([a,b])]);expect(await decode(value)).toEqual({ok:true,value});
+});
+it('298 descriptor strings charge shared 4MiB ledger exactly once',async()=>{
+ const max={...tool,descriptor:{...descriptor,name:'n'.repeat(256),call_id:'c'.repeat(256)}};
+ const make=(lastBytes:number)=>window(Array.from({length:128},(_,n)=>({...node([
+ {...text,item_identity:'t1',text:'a'.repeat(16384)},
+ {...text,item_identity:'t2',text:'a'.repeat(n===127?lastBytes:15872)},max]),node_id:String(n),selection:{ordinal:n}})));
+ expect((await decode(make(15872))).ok).toBe(true);
+ expect((await decode(make(15873))).ok).toBe(false);
+});

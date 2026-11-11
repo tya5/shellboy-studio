@@ -76,6 +76,20 @@ function validSpillTools(value: unknown): boolean {
   return encoder.encode(JSON.stringify(value)).length <= 16384;
 }
 const historyItemReasons = new Set(['source_budget', 'response_budget', 'legacy', 'pruned', 'opaque', 'unsupported']);
+function validToolDescriptor(value: unknown, result: boolean): value is Record<string, unknown> {
+  if (!isObject(value) || Object.keys(value).some(key => !['call_id', 'call_id_state', 'name', 'name_state'].includes(key))) return false;
+  const states: readonly unknown[] = ['available', 'missing', 'invalid', 'field_budget', 'not_applicable'];
+  if (!states.includes(value.call_id_state) || !states.includes(value.name_state) || value.call_id_state === 'not_applicable') return false;
+  if (result ? value.name_state !== 'not_applicable' : value.name_state === 'not_applicable') return false;
+  for (const [key, state] of [['call_id', value.call_id_state], ['name', value.name_state]] as const) {
+    const field = value[key];
+    if (state === 'available') {
+      if (typeof field !== 'string' || !field || new TextEncoder().encode(field).length > 256) return false;
+      if (key === 'name' && /[^\x21-\x7e]/.test(field)) return false;
+    } else if (Object.hasOwn(value, key)) return false;
+  }
+  return true;
+}
 const decodeHistoryWindow: Decoder<HistoryWindowResult> = (v) => {
   const bad = (reason: string): { ok: false; reason: string } => ({ ok: false, reason });
   if (!isObject(v) || !Array.isArray(v.items) || v.items.length > 200 || !Number.isSafeInteger(v.total) || (v.total as number) < 0 || !(typeof v.revision === 'string' || typeof v.revision === 'number')) return bad('invalid history.window envelope');
@@ -110,8 +124,17 @@ const decodeHistoryWindow: Decoder<HistoryWindowResult> = (v) => {
           break;
         }
         case 'tool_call': case 'tool_result':
-          allowed = ['kind', 'item_identity', 'execution_ids'];
+          allowed = ['kind', 'item_identity', 'execution_ids', 'descriptor', 'detail_availability'];
           if (!Array.isArray(item.execution_ids) || item.execution_ids.length > 8 || !item.execution_ids.every(id => typeof id === 'string' && id.length > 0)) return bad('invalid execution identities');
+          if (Object.hasOwn(item, 'descriptor') !== Object.hasOwn(item, 'detail_availability')) return bad('partial tool metadata');
+          if (Object.hasOwn(item, 'descriptor')) {
+            if (!validToolDescriptor(item.descriptor, item.kind === 'tool_result')) return bad('invalid tool descriptor');
+            if (item.detail_availability !== 'execution_linked' && item.detail_availability !== 'unavailable') return bad('invalid tool detail availability');
+            if ((item.detail_availability === 'execution_linked') !== (item.execution_ids.length > 0)) return bad('inconsistent tool routing');
+            bytes += encoder.encode(typeof item.descriptor.call_id === 'string' ? item.descriptor.call_id : '').length
+              + encoder.encode(typeof item.descriptor.name === 'string' ? item.descriptor.name : '').length;
+            if (bytes > 4194304) return bad('history item metadata budget exceeded');
+          }
           break;
         case 'reasoning_unavailable': allowed = ['kind', 'item_identity']; break;
         case 'unavailable':
