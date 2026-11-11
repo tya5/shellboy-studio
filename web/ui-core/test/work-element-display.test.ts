@@ -132,6 +132,16 @@ it(`tool label selects one original description or command spill=${spill} varian
  for (const bundle of [row!.value!, workExecutionDisplay(row!.item, 'e')!]) {
   expect(bundle.contentLabel.text).toBe(expected);
   expect(bundle.contentLabel.context.some(c => c.name === 'description' || c.name === 'command_excerpt')).toBe(false);
-  expect(bundle.state).toEqual({ source: 'wire', value: 'exited', exitCode: 0 });
+  expect(bundle.state).toEqual({ source: 'wire', value: 'exited', executionStatus: 'completed', exitCode: 0 });
  }
+});
+
+it.each([['running',undefined,'running'],['exited',0,'completed'],['exited',7,'failed'],['stopped',null,'stopped'],['future',null,undefined]] as const)('exact execution %s exit %s uses the existing status mapping only',async(state,exit_code,status)=>{
+ const {workExecutionDisplay}=await import('../src/work-element-display');
+ const [row]=display([{node_id:'n',kind:'assistant_response',items:[{kind:'tool_call',item_identity:'c',execution_ids:['e']}],executions:[{execution_id:'e',state,...(exit_code!==undefined?{exit_code}:{})}]}]);
+ expect(workExecutionDisplay(row!.item,'e')!.state?.executionStatus).toBe(status);
+});
+it('wire reasons and client terminal states never acquire an execution status',()=>{
+ const [row]=display([{node_id:'u',kind:'assistant_response',items:[{kind:'unavailable',item_identity:'u',reason:'unsupported'}]}]);
+ expect(row!.value!.state?.executionStatus).toBeUndefined();
 });

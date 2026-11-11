@@ -1,10 +1,11 @@
+import { statusOfShell, type StatusKey } from "./status";
 import { CANONICAL_CASES, workDisplayMetadata, type CanonicalCase, type ProjectedSavedItem } from "./conversation-items";
 export type WorkTypeIcon = NonNullable<CanonicalCase["icon"]>;
 export interface WorkElementDisplay {
   readonly typeIcon: WorkTypeIcon;
   readonly typeAccessibleLabel: string;
   readonly contentLabel: { readonly text: string; readonly context: readonly { readonly name: string; readonly value: string }[] };
-  readonly state: { readonly source: "wire" | "client"; readonly value: string; readonly exitCode?: number | null } | null;
+  readonly state: { readonly source: "wire" | "client"; readonly value: string; readonly executionStatus?: StatusKey; readonly exitCode?: number | null } | null;
   readonly detailPolicy: "none" | "unavailable" | "actual-safe-typed" | "existing-shell-output";
 }
 /** Display facts are issued with normalized source objects, never joined in JSX. */
@@ -34,7 +35,8 @@ function display(item: ProjectedSavedItem, executionId?: string): WorkElementDis
       if (shells.length) {
         text = shells.map(shell => shell.description?.trim() ? shell.description : shell.command_excerpt?.trim() ? shell.command_excerpt : "Execution content was not provided").join("; ");
         const first = shells[0]!;
-        state = first.state ? { source: "wire", value: first.state, ...(first.exit_code !== undefined ? { exitCode: first.exit_code } : {}) } : null;
+        const executionStatus = statusOfShell(first.state, first.exit_code);
+        state = first.state ? { source: "wire", value: first.state, ...(executionStatus ? { executionStatus } : {}), ...(first.exit_code !== undefined ? { exitCode: first.exit_code } : {}) } : null;
         detail = "existing-shell-output";
         for (const shell of shells) {
           context.push({ name: "execution_id", value: shell.execution_id });
