@@ -1,3 +1,4 @@
+import {hasVisibleTerminalText} from "../../../ui-core/src/terminal-presence";
 import {messageRelationship,senderHeaderDisplay} from "../../../ui-core/src/sender-display";
 import type {OwnSendPath,OwnSendInsertion,OwnSendPlacement} from "../../../ui-core/src/own-send-region";
 import { workElementDisplay, workExecutionDisplay, type WorkElementDisplay } from "../../../ui-core/src/work-element-display";
@@ -79,7 +80,7 @@ export function AcceptedWindowConversation({ reader, project, renderItem, render
 type AssistantTextMembership = "message" | "live-presence" | "empty-saved" | "content-unavailable";
 function assistantTextMembership(item: ConversationItem): AssistantTextMembership {
   const source=item.source;
-  if(source.kind!=="text"||source.text!=="")return "message";
+  if(source.kind!=="text"||typeof source.text!=="string"||hasVisibleTerminalText(source.text))return "message";
   if("domain" in source)return "live-presence";
   return source.textComplete===true?"empty-saved":"content-unavailable";
 }
