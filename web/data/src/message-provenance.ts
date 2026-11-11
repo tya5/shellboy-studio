@@ -45,7 +45,7 @@ export function admitNotificationDescriptor(value:unknown):NotificationDescripto
  // Preserve exact admitted fields; no result/name/command/body inference.
  return value as unknown as NotificationDescriptor;
 }
-export function sanitizeMessageRelation<T extends {node_id:string;provenance?:HistoryItem['provenance']}>(node:T):T{
+export function sanitizeMessageRelation<T extends {node_id?:string;provenance?:unknown}>(node:T):T{
  const provenance=node.provenance;
  if(!object(provenance))return node;
  const hasMessage=Object.hasOwn(provenance,'message');
