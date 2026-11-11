@@ -1,10 +1,12 @@
 import type {OwnSendPath,OwnSendPlacement} from "../../../ui-core/src/own-send-region";
+import { workElementDisplay, workExecutionDisplay, type WorkElementDisplay } from "../../../ui-core/src/work-element-display";
+import { WorkElementRow, formatWorkElementDisplay } from "../system/components/WorkElementRow";
 import { ownSendPresentation } from "../../../ui-core/src/own-send-presentation";
 import type { ThreadHandle } from "../../../data/src/store";
 import { Disclosure } from "../system/components/Disclosure";
 import type { HandoffRecord } from "../../../data/src/handoff";
 import { senderFact } from "../../../data/src/sender";
-import { CANONICAL_CASES, type CanonicalCase, normalizeConversationFacts, projectLegacyHistoryItems, projectHistoryWindowItems, projectSavedItems, normalizeLiveWorkFacts, normalizeTerminalPresenceFacts, type NormalizedSavedItem } from "../../../ui-core/src/conversation-items";
+import { CANONICAL_CASES, scopeIssuedWorkFacts, type CanonicalCase, normalizeConversationFacts, projectLegacyHistoryItems, projectHistoryWindowItems, projectSavedItems, normalizeLiveWorkFacts, normalizeTerminalPresenceFacts, type NormalizedSavedItem } from "../../../ui-core/src/conversation-items";
 import type { HistoryItem } from "../../../data/src/protocol";
 import { Markdown } from "../system/components/Message";
 import type { WindowAcceptedSnapshot } from "../../../ui-core/src/window";
@@ -121,9 +123,13 @@ export function SavedConversationItems({ model, projection, renderBefore, traili
       });
     }}><summary data-work-heading=""><Icon name="layers" /><span class="tool-group-label">{label}</span>{status ? <StatusMark status={status} label={statusLabel(t, status)} /> : null}<span class="meta" /></summary><div class="step-group-list">{children}</div></Disclosure>;
   };
-  const workLine = (item: ConversationItem, label: string, content?: ComponentChildren) => <span class="work-inner-line" data-work-inner-line="" title={label} aria-label={label}>
-    {item.classification?.icon ? <Icon name={item.classification.icon} /> : null}<span class="work-inner-content">{content ?? label}</span>
-  </span>;
+  const workRow = (item: ConversationItem) => {
+    const bundle=workElementDisplay(item);
+    if(!bundle)return <div data-work-display-unavailable="">{t("work.textUnavailable")}</div>;
+    const display=formatWorkElementDisplay(bundle);
+    if(bundle.detailPolicy!=="none"&&bundle.detailPolicy!=="unavailable")return null;
+    return <WorkElementRow display={display} anchorKey={item.key} detailPolicy={bundle.detailPolicy}/>;
+  };
   return <ConversationItems {...projection} localRegion={localRegion} renderWorkGroup={projection.workGroups ? renderWorkGroup : undefined} renderBefore={renderBefore} trailing={trailing} isItemHidden={hidden} renderHeading={summary => {
     const steps = allSteps.filter(step => summary.executionIds.includes(step.executionId));
     const active = steps.find(step => step.status === "running");
@@ -165,24 +171,24 @@ export function SavedConversationItems({ model, projection, renderBefore, traili
         const steps = allSteps;
         const source = item.source;
         const badge = source.compressed ? <span class="caption muted" data-tool-compressed="">{t("work.compressed")}</span> : null;
-        return <div data-tool-call-id={source.callId} data-tool-detail-unavailable={source.detailUnavailable ? "true" : undefined}>{badge}{!ids.length ? <div class="caption muted" data-execution-unavailable="">{workLine(item, t("work.unknownTools"), t("work.unknownTools"))}</div> : ids.map(id => {
+        return <div data-tool-call-id={source.callId} data-tool-detail-unavailable={source.detailUnavailable ? "true" : undefined}>{badge}{!ids.length ? <div class="caption muted" data-execution-unavailable="">{workRow(item)}</div> : ids.map(id => {
           const step = steps.find(step => step.executionId === id);
-          return <div key={id} data-execution-id={id}>{hidden(item) ? null : step ? <StepView model={model} step={step} openPolicy={item.classification!.openPolicy} icon={item.classification?.icon ?? undefined} /> : <div class="caption muted" data-execution-unresolved="">{workLine(item, t("work.unknownTools"), t("work.unknownTools"))}</div>}</div>;
+          const display=workExecutionDisplay(item,id);
+          return <div key={id} data-execution-id={id}>{hidden(item) ? null : step && display ? <StepView model={model} step={step} display={display} openPolicy={item.classification!.openPolicy} /> : <div class="caption muted" data-execution-unresolved="">{workRow(item)}</div>}</div>;
         })}</div>;
       }
       if (item.source.kind === "ordinaryEmpty") return <div class="caption muted" data-empty-ordinary="">{t("work.textUnavailable")}</div>;
-      if (item.source.kind === "reasoning" || item.source.kind === "reasoning_unavailable") return <div class="caption muted" data-thinking-marker="">{workLine(item, t("work.reasoning"), t("work.reasoning"))}</div>;
-      if (item.source.kind === "interruption") return workLine(item, t("status.stopped"), t("status.stopped"));
+      if (item.source.kind === "reasoning" || item.source.kind === "reasoning_unavailable") return <div data-thinking-marker="">{workRow(item)}</div>;
+      if (item.source.kind === "interruption") return workRow(item);
       if ("terminalPresence" in item.source && item.source.terminalPresence) {
         const presence=item.source.terminalPresence;
-        return <div data-terminal-presence="" data-terminal-phase={presence.phase} data-client-reason={presence.reason}>{workLine(item, t(item.classification?.headingCategory === "Problems" ? "work.problem" : "work.notification"), <>{t(`terminal.phase.${presence.phase}`)}{item.classification?.headingCategory === "Problems" ? `: ${t("terminal.clientReason")} ${t(`terminal.reason.${presence.reason}`)}` : ""}</>)}</div>;
+        return <div data-terminal-presence="" data-terminal-phase={presence.phase} data-client-reason={presence.reason}>{workRow(item)}</div>;
       }
-      if (item.source.kind === "record") return <div data-internal-records="">{workLine(item, t(item.classification?.headingCategory === "Problems" ? "work.problem" : item.classification?.render === "state-change" ? "work.stateChanges" : item.classification?.render === "child-notification" || item.classification?.render === "shell-notification" ? "work.continueNotification" : "work.notification", {n:1}))}</div>;
+      if (item.source.kind === "record") return <div data-internal-records="">{workRow(item)}</div>;
       if (item.source.kind === "unknown" || item.source.kind === "unavailable") {
-        const source = item.source;
-        const handle = model.handle.value;
-        const record = "domain" in source && source.namespace === "handoff" ? handle?.handoff.value.find(record => record.key === source.recordId) : undefined;
-        return <><div class="caption muted" data-item-unavailable="" data-items-unavailable-reason={item.source.kind === "unavailable" ? item.source.reason : undefined}>{workLine(item, item.source.kind === "unknown" ? t("work.problem") : t("work.textUnavailable"), item.source.kind === "unavailable" && item.source.reason ? item.source.reason : undefined)}</div>{record ? <LiveRecordChrome model={model} record={record} retry={() => handle?.retryHandoff()} /> : null}</>;
+        const source=item.source,handle=model.handle.value;
+        const record="domain" in source&&source.namespace==="handoff"?handle?.handoff.value.find(record=>record.key===source.recordId):undefined;
+        return <><div data-item-unavailable="" data-items-unavailable-reason={source.kind==="unavailable"?source.reason:undefined}>{workRow(item)}</div>{record?<LiveRecordChrome model={model} record={record} retry={()=>handle?.retryHandoff()}/>:null}</>;
       }
       return null;
     }} />;
@@ -272,8 +278,8 @@ export function SavedWindowContent({ model, snapshot, live, liveBoundary, liveFa
   const scope = handle?.handoffScope() ?? "";
   const current = model.longReader.value?.acceptedView.isCurrent(snapshot) ?? false;
   const retained = retainUnretiredLiveFacts(snapshot, scope, current, [...handoffs, ...records]);
-  const retainedHandoffs = retained.filter(fact => handoffs.includes(fact));
-  const retainedRecords = retained.filter(fact => records.includes(fact));
+  const retainedHandoffs = retained.filter(fact => handoffs.includes(fact) || ("domain" in fact && (fact.namespace === "handoff" || fact.kind === "text")));
+  const retainedRecords = retained.filter(fact => records.includes(fact) && !("domain" in fact && (fact.namespace === "handoff" || fact.kind === "text")));
   const pendingNodes = new Set(current ? snapshot.attemptPresentations?.filter(fact => fact.scope === scope && fact.state === "pending" && !snapshot.terminalPersistedAttempts?.some(proof => proof.scope === scope && proof.attemptId === fact.attemptId) && retained.some(source => "domain" in source && source.attemptId === fact.attemptId && (source.turnId === fact.turnId || (source.namespace === "handoff" && source.turnId === undefined))) && !snapshot.retiredAttempts?.some(retired => retired.scope === scope && retired.revision === snapshot.revision && retired.attemptId === fact.attemptId && retired.turnId === fact.turnId)).flatMap(fact => fact.nodeIds) : []);
   const saved = mapped.projection.items.filter(item => !item.source.nodeId || !pendingNodes.has(item.source.nodeId)).map(item => item.source);
   // This is the captured history cut, not an ordinal assigned to a live record.
@@ -282,7 +288,9 @@ export function SavedWindowContent({ model, snapshot, live, liveBoundary, liveFa
     return node?.selection?.ordinal !== undefined && node.selection.ordinal >= liveBoundary;
   });
   const ordered = cut < 0 ? [...saved, ...retainedHandoffs] : [...saved.slice(0, cut), ...retainedHandoffs, ...saved.slice(cut)];
-  const projection = projectSavedItems([...ordered, ...retainedRecords, ...normalizeTerminalPresenceFacts(current ? snapshot.terminalPresence ?? [] : [])].map(source => keyScope ? {...source, keyScope} : source));
+  const issuedWork=[...retainedRecords,...normalizeTerminalPresenceFacts(current ? snapshot.terminalPresence ?? [] : [])];
+  const scopedWork=keyScope?scopeIssuedWorkFacts(issuedWork,keyScope):issuedWork;
+  const projection = projectSavedItems([...ordered, ...(scopedWork ?? [])]);
   // Live text without item-kind proof cannot unlock or replace saved Conversation text.
   return <OwnSendContent model={model} projection={projection} nodes={snapshot.rows} scope={model.ownMutationScope()} acceptedRef={snapshot} current={current} isCurrent={()=>model.longReader.peek()?.acceptedView.isCurrent(snapshot)??false} path={{tail:!snapshot.pending&&!snapshot.disposed&&(snapshot.total===0||snapshot.range?.last===snapshot.total-1),empty:snapshot.total===0,revision:snapshot.revision,lastNodeId:snapshot.rows.at(-1)?.node_id,lastOrdinal:snapshot.rows.at(-1)?.selection?.ordinal}} hiddenItemKeys={new Set(projection.items.filter(item=>pendingNodes.has(item.source.nodeId??"")&&item.source.kind!=="user").map(item=>item.key))} trailing={<>{handle?.handoffOverflow.value ? <div class="caption muted" data-live-overflow="">{model.t.value("convo.handoffLimit")} <HandoffRetryControl model={model}/></div> : undefined}</>} />;
 }
@@ -336,32 +344,24 @@ export function Output({ model, id, command, complete, boxed }: { model: AppMode
   );
 }
 
-export function StepView({ model, step, openPolicy = CANONICAL_CASES.toolCall.openPolicy, icon = CANONICAL_CASES.toolCall.icon }: { model: AppModel; step: Step; openPolicy?: CanonicalCase["openPolicy"]; icon?: NonNullable<CanonicalCase["icon"]> }) {
+export function StepView({ model, step, display, openPolicy = CANONICAL_CASES.toolCall.openPolicy }: { model: AppModel; step: Step; display: WorkElementDisplay; openPolicy?: CanonicalCase["openPolicy"] }) {
   const t = model.t.value;
   const choice = model.toolStepChoices.value.get(step.executionId);
   const open = choice ?? (openPolicy !== "closed");
   useEffect(() => {
-    if (!open) return;
+    if (!open || (display.detailPolicy!=="actual-safe-typed"&&display.detailPolicy!=="existing-shell-output")) return;
     model.selectedStepId.value = step.executionId;
     return model.watchOutput(step.executionId);
-  }, [model, open, step.executionId]);
-  return (
-    <StepRow
-      anchorKey={step.executionId}
-      icon={model.shells.value.has(step.executionId) ? "term" : icon}
-      open={open}
-      command={step.description ?? step.command}
-      status={step.status ? <StatusMark status={step.status} label={statusLabel(t, step.status)} /> : null}
-      duration={stepDuration(step, model.now.value)}
-      exit={exitText(step)}
-      onToggle={(next) => {
-        if (next !== open) model.toolStepChoices.value = new Map(model.toolStepChoices.peek()).set(step.executionId, next);
-      }}
-    >
-      {step.description ? <div class="mono muted caption">{step.command}</div> : null}
-      <Output model={model} id={step.executionId} command={step.command ?? ""} complete={step.status === "completed" || step.status === "failed"} />
-    </StepRow>
-  );
+  }, [model, open, step.executionId, display.detailPolicy]);
+  const formatted=formatWorkElementDisplay(display);
+  const shellDisplay=model.shells.value.has(step.executionId)?{...formatted,typeIcon:"term" as const}:formatted;
+  if(display.detailPolicy!=="actual-safe-typed"&&display.detailPolicy!=="existing-shell-output")return <WorkElementRow display={shellDisplay} anchorKey={step.executionId} detailPolicy={display.detailPolicy}/>;
+  return <WorkElementRow display={shellDisplay} anchorKey={step.executionId} detailPolicy={display.detailPolicy} open={open} onToggle={next=>{
+    if(next!==open)model.toolStepChoices.value=new Map(model.toolStepChoices.peek()).set(step.executionId,next);
+  }}>
+    {step.description ? <div class="mono muted caption">{step.command}</div> : null}
+    <Output model={model} id={step.executionId} command={step.command ?? ""} complete={step.status === "completed" || step.status === "failed"}/>
+  </WorkElementRow>;
 }
 
 function ProjectedMessage({ model, row, authorizedText }: { model: AppModel; row: Extract<ConversationRow, {type:"message"}>; authorizedText: string }) {
