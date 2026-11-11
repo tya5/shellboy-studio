@@ -126,7 +126,7 @@ fn structural_tool_descriptor_survives_pinned_response_value_and_bridge_frame() 
     let decoded: shellboy::protocol::Response<serde_json::Value> = serde_json::from_slice(&encoded).unwrap();
     decoded.validate().unwrap();
     let frame = shellboy_studio::envelope::ServerFrame::Result {
-        id: "call-id".into(),
+        id: 298,
         response: Some(serde_json::to_value(&decoded).unwrap()),
         error: None,
     };
