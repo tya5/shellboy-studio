@@ -90,3 +90,26 @@ it('renders an explicit unavailable Work cut when a mixed issued/foreign scope b
 
  }finally{render(null,host);reader.dispose();host.remove();f.model.dispose();f.data.stop();}
 });
+it('strict descriptor DTO reaches the existing zero-execution formal row without fabricating output',async()=>{
+ const {Link}=await import('../../../data/src/link');const {Operations}=await import('../../../data/src/operations');const {FakeTransport,flush}=await import('../../../data/test/harness');
+ const {ConversationWindow}=await import('../../../ui-core/src/window');const {SavedWindowContent}=await import('../screens/Conversation');
+ const t=new FakeTransport(),link=new Link(t);link.start();t.open();
+ const ops=new Operations(link,()=> 'descriptor-consumer');
+ const reader=new ConversationWindow({read:input=>ops.historyWindow({thread_id:'t',...input})});
+ const f=await fixtureModel(),host=document.createElement('div');document.body.append(host);
+ try{
+  const call=t.calls('history.window')[0]!;
+  t.ok(call.id,{thread_id:'t',revision:1,total:1,items:[{node_id:'tool-node',kind:'assistant_response',selection:{ordinal:0},items:[
+   {kind:'tool_call',item_identity:'call',execution_ids:[],descriptor:{name:'validated_tool_name',name_state:'available',call_id:'exact-call',call_id_state:'available'},detail_availability:'unavailable'},
+   {kind:'tool_result',item_identity:'result',execution_ids:[],descriptor:{name_state:'not_applicable',call_id:'exact-call',call_id_state:'available'},detail_availability:'unavailable'},
+  ]}]});await flush();
+  const snapshot=reader.acceptedView.peek();expect(reader.acceptedView.isCurrent(snapshot)).toBe(true);
+  const model=new Proxy(f.model,{get(target,key){return key==='longReader'?{value:reader,peek:()=>reader}:Reflect.get(target,key);}});
+  await act(async()=>render(<SavedWindowContent model={model} snapshot={snapshot}/>,host));
+  const rows=host.querySelectorAll('.work-element-row');expect(rows).toHaveLength(2);
+  expect(rows[0]!.textContent).toContain('validated_tool_name');expect(rows[1]!.textContent).not.toContain('validated_tool_name');
+  for(const row of rows){expect(row.tagName).not.toBe('DETAILS');expect(row.getAttribute('data-detail-policy')).toBe('unavailable');expect(row.getAttribute('data-state-value')).toBeNull();}
+  expect(host.querySelector('[data-execution-id]')).toBeNull();expect(t.calls()).toHaveLength(1);
+  expect(snapshot.rows[0]!.items?.[0]).toMatchObject({descriptor:{call_id:'exact-call',name:'validated_tool_name'},detail_availability:'unavailable'});
+ }finally{render(null,host);reader.dispose();link.stop();host.remove();f.model.dispose();f.data.stop();}
+});
