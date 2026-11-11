@@ -176,7 +176,7 @@ const decodeBody: Decoder<HistoryBody> = (v) => {
     const ids = v.source_node_ids;
     if (!Array.isArray(ids) || ids.length > 4096 || !ids.every(id => typeof id === 'string' && id.length > 0) || new Set(ids).size !== ids.length) return { ok: false, reason: 'history.get has invalid explicit source identities' };
   }
-  return { ok: true, value: v as HistoryBody };
+  return { ok: true, value: sanitizeMessageRelation(v as HistoryBody) };
 };
 const decodeShellOutput: Decoder<ShellOutput> = (v) =>
   isObject(v) && typeof v.execution_id === "string" && typeof v.text === "string"

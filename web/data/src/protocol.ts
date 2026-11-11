@@ -274,6 +274,8 @@ export interface HistoryItem {
 
 /** `history.get` page of one node's body. */
 export interface HistoryBody {
+  /** Same optional admitted provenance as list/window; older absence stays unknown. */
+  provenance?: HistoryItem['provenance'];
   /** Explicit replacement sources; absent on older owners, empty is not coverage. */
   source_node_ids?: readonly string[];
   node_id: string;
