@@ -167,14 +167,14 @@ describe("socket callback ownership", () => {
 import {MAX_SERVER_FRAME_BYTES} from '../src/protocol';
 import {Link} from '../src/link';
 it.each(['normal','throw','stop','replace','reenter'] as const)('N2 oversize callback %s never dispatches or closes a replacement',mode=>{
- const h=setup();h.handlers.onInvalidFrame=()=>{
+ const h=setup();let savedMessage:FakeSocket['onmessage']=null;h.handlers.onInvalidFrame=()=>{
   h.events.push('invalid');
-  if(mode==='reenter')h.sockets[0]!.onmessage?.({data:'{"t":"resync"}'});
+  if(mode==='reenter')savedMessage?.({data:'{"t":"resync"}'});
   if(mode==='throw')throw new Error('observer');
   if(mode==='stop')h.transport.stop();
   if(mode==='replace'){h.transport.stop();h.transport.start({...h.handlers,onInvalidFrame:()=>{}});}
  };
- h.transport.start(h.handlers);const old=h.sockets[0]!;old.open();
+ h.transport.start(h.handlers);const old=h.sockets[0]!;old.open();savedMessage=old.onmessage;
  const deliver=()=>old.onmessage?.({data:'x'.repeat(MAX_SERVER_FRAME_BYTES+1)});
  if(mode==='throw')expect(deliver).toThrow('observer');else deliver();
  expect(h.events.filter(e=>e==='close')).toHaveLength(1);

@@ -123,8 +123,9 @@ export class WebSocketTransport implements Transport {
       this.delay = this.opts.backoff.initialMs;
       this.handlers?.onOpen();
     };
+    let quarantined = false;
     socket.onmessage = (event) => {
-      if (this.stopped || this.socket !== socket) return;
+      if (quarantined || this.stopped || this.socket !== socket) return;
       if (typeof event.data !== "string") {
         this.handlers?.onInvalidFrame("binary frame");
         return;
@@ -133,6 +134,7 @@ export class WebSocketTransport implements Transport {
       if (parsed.ok) this.handlers?.onFrame(parsed.frame);
       else if (parsed.code === "frame_too_large") {
         // Quarantine this generation before invoking an observer that can reenter.
+        quarantined = true;
         socket.onmessage = null;
         try {
           this.handlers?.onInvalidFrame(parsed.reason);
