@@ -32,13 +32,12 @@ function display(item: ProjectedSavedItem, executionId?: string): WorkElementDis
       label = "Tool";
       const shells = executionId === undefined ? facts.shells : facts.shells.filter(shell => shell.execution_id === executionId);
       if (shells.length) {
-        text = shells.map(shell => shell.command_excerpt?.trim() || "Execution content was not provided").join("; ");
+        text = shells.map(shell => shell.description?.trim() ? shell.description : shell.command_excerpt?.trim() ? shell.command_excerpt : "Execution content was not provided").join("; ");
         const first = shells[0]!;
         state = first.state ? { source: "wire", value: first.state, ...(first.exit_code !== undefined ? { exitCode: first.exit_code } : {}) } : null;
         detail = "existing-shell-output";
         for (const shell of shells) {
           context.push({ name: "execution_id", value: shell.execution_id });
-          if (shell.description) context.push({ name: "description", value: shell.description });
         }
       } else {
         text = source.kind === "tool" && source.compressed ? "Compressed; execution content was not provided" : "Execution content was not provided";

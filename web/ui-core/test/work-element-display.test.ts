@@ -78,8 +78,8 @@ it("exact execution selection preserves each command description and state witho
  const [row] = display([{ node_id: "n", kind: "assistant_response", items: [{ kind: "tool_call", item_identity: "c", execution_ids: ["a", "b"] }], executions: [
  { execution_id: "a", command_excerpt: "first", description: "safe first", state: "exited", exit_code: 0 },
  { execution_id: "b", command_excerpt: "second", description: "safe second", state: "running" }] }]);
- expect(workExecutionDisplay(row!.item, "a")).toMatchObject({ contentLabel: { text: "first", context: expect.arrayContaining([{ name: "description", value: "safe first" }]) }, state: { value: "exited", exitCode: 0 } });
- expect(workExecutionDisplay(row!.item, "b")).toMatchObject({ contentLabel: { text: "second" }, state: { value: "running" } });
+ expect(workExecutionDisplay(row!.item, "a")).toMatchObject({ contentLabel: { text: "safe first" }, state: { value: "exited", exitCode: 0 } });
+ expect(workExecutionDisplay(row!.item, "b")).toMatchObject({ contentLabel: { text: "safe second" }, state: { value: "running" } });
  expect(workExecutionDisplay(row!.item, "foreign")).toBeUndefined();
 });
 it("module scoping accepts only issued live/receipt and never arbitrary copies or unscoped saved facts", async () => {
@@ -117,6 +117,21 @@ it("spill exact public execution retains details, while unrelated executions sta
  const [row] = display([{ node_id: "spill", kind: "spill", spill_tools: { status: "known", truncated: false, items: [{ call_id: "call", execution_id: "yes" }] }, executions: [
  { execution_id: "yes", command_excerpt: "printf retained", description: "retained description", state: "exited", exit_code: 0 },
  { execution_id: "no", command_excerpt: "unrelated", state: "running" }] }]);
- expect(workExecutionDisplay(row!.item, "yes")).toMatchObject({ contentLabel: { text: "printf retained", context: expect.arrayContaining([{ name: "description", value: "retained description" }]) }, state: { value: "exited", exitCode: 0 }, detailPolicy: "existing-shell-output" });
+ expect(workExecutionDisplay(row!.item, "yes")).toMatchObject({ contentLabel: { text: "retained description" }, state: { value: "exited", exitCode: 0 }, detailPolicy: "existing-shell-output" });
  expect(workExecutionDisplay(row!.item, "no")).toBeUndefined();
+});
+for (const spill of [false, true]) for (const variant of ['description', 'command', 'none'] as const)
+it(`tool label selects one original description or command spill=${spill} variant=${variant}`, async () => {
+ const { workExecutionDisplay } = await import('../src/work-element-display');
+ const description = variant === 'description' ? '  Original explanation  ' : ' \t ';
+ const command = variant === 'none' ? ' \n ' : '  printf original  ';
+ const node: HistoryItem = { node_id: 'n', kind: spill ? 'spill' : 'assistant_response',
+ ...(spill ? { spill_tools: { status: 'known' as const, truncated: false, items: [{ call_id: 'c', execution_id: 'e' }] } } : { items: [{ kind: 'tool_call' as const, item_identity: 'c', execution_ids: ['e'] }] }),
+ executions: [{ execution_id: 'e', description, command_excerpt: command, state: 'exited', exit_code: 0 }] };
+ const [row] = display([node]); const expected = variant === 'description' ? description : variant === 'command' ? command : 'Execution content was not provided';
+ for (const bundle of [row!.value!, workExecutionDisplay(row!.item, 'e')!]) {
+  expect(bundle.contentLabel.text).toBe(expected);
+  expect(bundle.contentLabel.context.some(c => c.name === 'description' || c.name === 'command_excerpt')).toBe(false);
+  expect(bundle.state).toEqual({ source: 'wire', value: 'exited', exitCode: 0 });
+ }
 });
