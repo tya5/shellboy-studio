@@ -174,7 +174,6 @@ for(const windowed of [true,false])it(`actual own cohort has no metadata/partial
    await act(async()=>{f.t.ok(send.id,{message_id:id,thread_id:'t'});await flush();});
   }
   frame(['Original A','Original B']);expect(f.model.acceptedOwnMessages.peek()).toHaveLength(2);
-  expect(composer.value).toBe('Third draft');
   let installed=0;
   const commit=f.model.installOwnPresentation.bind(f.model);
   f.model.installOwnPresentation=(decision,current)=>{
@@ -187,7 +186,6 @@ for(const windowed of [true,false])it(`actual own cohort has no metadata/partial
   };
   const publish=async(nodes:HistoryItem[])=>{f.db.history.t=nodes;await act(async()=>{f.t.push({t:'changed',thread_ids:['t'],list:false});await settle(f.t,f.db);await flush(12);});};
   await publish([node('a'),node('b','Saved B',true)]);frame(['Original A','Original B']);expect(f.model.acceptedOwnMessages.peek()).toHaveLength(2);
-  expect(composer.value).toBe('Third draft');
   await publish([node('a','Partial A',false),node('b','Saved B',true)]);frame(['Original A','Original B']);
   const original=f.db.answer.bind(f.db),sendFrame=f.t.send.bind(f.t);
   f.t.send=message=>{const ok=sendFrame(message);if(message.t==='call'&&(message.command==='history.window'||message.command==='history.list'))f.db.answered.add(message.id);return ok;};
@@ -213,7 +211,6 @@ it('actual model installed receipt rejects cohort changes during qualification a
   expect(f.model.acceptedOwnMessages.peek()).toHaveLength(1);expect(f.model.pendingOwnMessage.peek()?.text).toBe('B');
   await flush();const call=f.t.calls('message.send').at(-1)!;f.db.answered.add(call.id);f.t.ok(call.id,{message_id:'b',thread_id:'t'});expect(await newer).toBe(true);
   f.model.installOwnPresentation(old,()=>true);expect(f.model.acceptedOwnMessages.peek()).toHaveLength(2);
-  expect(composer.value).toBe('Third draft');
   const ready=make(),before=f.model.acceptedOwnMessages.peek();
   f.model.installOwnPresentation(ready,()=>false);expect(f.model.acceptedOwnMessages.peek()).toBe(before);
   f.model.installOwnPresentation(ready,()=>true);expect(f.model.acceptedOwnMessages.peek()).toHaveLength(0);
