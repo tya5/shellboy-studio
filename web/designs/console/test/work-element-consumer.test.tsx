@@ -22,7 +22,10 @@ for(const windowed of [false,true])it(`actual four Work categories consume ident
   const projection=windowed?projectHistoryWindowItems({revision:1,nodes,keyScope:['scope']}):projectLegacyHistoryItems({nodes,keyScope:['scope']});
   await act(async()=>render(<SavedConversationItems model={f.model} nodes={nodes} projection={projection.projection}/>,host));
   const group=host.querySelector<HTMLDetailsElement>('[data-work-group]')!;
-  expect(group.querySelector(':scope > summary')?.textContent).toContain(f.model.t.value('work.group'));
+  const heading=group.querySelector(':scope > summary')!;
+  expect(heading.textContent).not.toContain(f.model.t.value('work.group'));
+  expect(heading.getAttribute('aria-label')).toContain(f.model.t.value('work.group'));
+  expect(heading.textContent?.trim()).not.toBe('');
   expect(group.querySelector(':scope > .step-group-list')).not.toBeNull();
   await act(async()=>{group.open=true;group.dispatchEvent(new Event('toggle'));});
   const members=[...host.querySelectorAll('[data-work-item-key]')];expect(members).toHaveLength(4);
