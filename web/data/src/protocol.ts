@@ -240,6 +240,11 @@ export interface SpillToolSources {
   readonly items: readonly SpillToolSource[];
   readonly truncated: boolean;
 }
+export type MessageProvenance =
+  | {expect_reply:false;reply_to?:string}
+  | {expect_reply:true;reply_state:'pending'|'ignored'|'cancelled';reply_node_id?:never}
+  | {expect_reply:true;reply_state:'replied';reply_node_id:string};
+
 export interface HistoryItem {
   spill_tools?: SpillToolSources | null;
   /** Absent on legacy owners/reads; null is a deferred whole node, never prose. */
@@ -253,7 +258,7 @@ export interface HistoryItem {
   excerpt?: string;
   execution_count?: number;
   executions?: HistoryExecution[];
-  provenance?: { created_at?: string; sender?: { kind?: string; [extra: string]: unknown }; [extra: string]: unknown };
+  provenance?: { message?: MessageProvenance; created_at?: string; sender?: { kind?: string; [extra: string]: unknown }; [extra: string]: unknown };
   /** Position on the Thread's selected path; `ordinal` ascends. */
   selection?: { ordinal?: number; [extra: string]: unknown };
   [extra: string]: unknown;

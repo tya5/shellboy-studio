@@ -99,3 +99,46 @@ it('actual held old rewindow cannot overwrite newer accepted budget snapshot or 
   expect(r.w.acceptedView.peek()).toBe(latest);expect(projectHistoryWindowItems({revision:latest.revision!,nodes:latest.rows}).projection.items[0]).toEqual(saved);
  }finally{r.w.dispose();r.data.stop();}
 });
+
+it('renders source header links and independent request facts through strict history and actual App',async()=>{
+ const f=await fixtureModel(),host=document.createElement('div');document.body.append(host);
+ try{
+  const old=f.db.history.lead![0] as import('../../../data/src/protocol').HistoryItem;
+  f.db.history.lead=[{...old,node_id:'sender-message',kind:'user',items:[{kind:'text',item_identity:'sender-body',text:'Received body stays',text_complete:true}],provenance:{sender:{kind:'model',thread_id:'full-source-identity',label:'Claimed <label>'},message:{expect_reply:true,reply_state:'pending'}}}];
+  f.t.push({t:'changed',thread_ids:['lead'],list:false});await settle(f.t,f.db);
+  await act(async()=>{render(<App context={{model:f.model,prefs:signal({}),setPrefs:()=>{}} as unknown as DesignContext}/>,host);await flush(12);await settle(f.t,f.db);});
+  const node=host.querySelector('[data-node="sender-message"]')!;expect(node).not.toBeNull();
+  const header=node.querySelector('.who a')!;
+  expect(header.getAttribute('href')).toContain('full-source-identity');expect(header.getAttribute('title')).toBe('full-source-identity');
+  expect(header.getAttribute('aria-label')).toContain('full-source-identity');expect(node.textContent).toContain('Received body stays');
+  expect(node.textContent).toContain('Claimed <label>');expect(node.querySelector('[data-message-relation="request"]')).not.toBeNull();
+  expect(node.querySelector('label')).toBeNull();
+  f.db.threads['full-source-identity']={...summary('full-source-identity'),title:'<Renamed source>'};
+  await act(async()=>{f.t.push({t:'changed',thread_ids:[],list:true});await settle(f.t,f.db);await flush(12);});
+  expect(host.querySelector('[data-node="sender-message"]')).toBe(node);
+  expect(node.querySelector('.who a')?.textContent).toBe('<Renamed source>');
+  expect(node.querySelector('.who a')?.getAttribute('href')).toBe(header.getAttribute('href'));
+  expect(node.querySelector('renamed')).toBeNull();
+  // A malformed relationship on a later read cannot erase independent sender/body.
+  f.db.history.lead=[{...f.db.history.lead![0],provenance:{sender:{kind:'model',thread_id:'full-source-identity',label:'Claimed <label>'},message:{expect_reply:true,reply_state:'replied',reply_node_id:null}}}];
+  await act(async()=>{f.t.push({t:'changed',thread_ids:['lead'],list:false});await settle(f.t,f.db);await flush(12);});
+  expect(host.querySelector('[data-node="sender-message"]')).toBe(node);
+  expect(node.querySelector('[data-message-relation]')).toBeNull();expect(node.textContent).toContain('Received body stays');expect(node.querySelector('.who a')).not.toBeNull();
+
+ }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
+});
+
+it('revokes the source header label and href together with its accepted owner snapshot',async()=>{
+ const r=await rig(1),f=await fixtureModel(),host=document.createElement('div');document.body.append(host);
+ r.owner.decorate=(_i,node)=>({...node,kind:'user',provenance:{sender:{kind:'model',thread_id:'exact-source'}},items:[{kind:'text',item_identity:'body',text:'Independent readable sender body',text_complete:true}]});
+ const model=new Proxy(f.model,{get(target,key){return key==='longReader'?{value:r.w,peek:()=>r.w}:Reflect.get(target,key);}});
+ const {SavedWindowContent}=await import('../screens/Conversation');
+ try{
+  await r.settle();const snapshot=r.w.acceptedView.peek();
+  await act(async()=>render(<SavedWindowContent model={model} snapshot={snapshot} liveFacts={[]}/>,host));
+  expect(host.querySelector('.who a')?.getAttribute('href')).toContain('exact-source');expect(host.querySelector('.who a')?.textContent).toContain('exact-so');
+  r.w.dispose();expect(r.w.acceptedView.isCurrent(snapshot)).toBe(false);
+  await act(async()=>render(<SavedWindowContent model={model} snapshot={snapshot} liveFacts={[]}/>,host));
+  expect(host.querySelector('.who a')).toBeNull();expect(host.textContent).not.toContain('Independent readable sender body');
+ }finally{render(null,host);host.remove();r.w.dispose();r.data.stop();f.model.dispose();f.data.stop();}
+});

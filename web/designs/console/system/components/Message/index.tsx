@@ -36,7 +36,7 @@ export function Markdown({ text, copyLabel, copiedLabel }: { text: string; copyL
   );
 }
 
-export function Message({ bot, who, at, text, copyLabel, copiedLabel, children }: { bot: boolean; who: string; at?: string | undefined; text: string; copyLabel: string; copiedLabel: string; children?: ComponentChildren }) {
+export function Message({ bot, who, at, text, copyLabel, copiedLabel, children }: { bot: boolean; who: string | {readonly label:string;readonly href:string;readonly sourceId:string;readonly role:string;readonly fallbackId?:string}; at?: string | undefined; text: string; copyLabel: string; copiedLabel: string; children?: ComponentChildren }) {
   return (
     <div class="msg">
       <div class={bot ? "av bot" : "av"}>
@@ -44,7 +44,7 @@ export function Message({ bot, who, at, text, copyLabel, copiedLabel, children }
       </div>
       <div>
         <div class="who">
-          {who}
+          {typeof who === "string" ? who : <a href={who.href} title={who.sourceId} aria-label={`${who.role}: ${who.label} (${who.sourceId})`}>{who.label}{who.fallbackId ? <> <code class="sender-id">{who.fallbackId}</code></> : null}</a>}
           {at ? <small class="mono">{at}</small> : null}
         </div>
         <Markdown text={text} copyLabel={copyLabel} copiedLabel={copiedLabel} />

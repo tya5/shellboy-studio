@@ -1,3 +1,4 @@
+import {sanitizeMessageRelation} from "./message-provenance";
 // Typed operations: the UX boundary for requests. Stateless wrappers over `Link.call`;
 // they never touch the store (saved facts change only by re-reading after a hint).
 import { decodeStored, decodeTest, encodeCredentialsClear, encodeCredentialsSet, encodeTest, type StoredFacts, type TestFacts, type TestTarget } from "./connection-setup";
@@ -64,7 +65,7 @@ const summaryProblem = (v: unknown): string | undefined =>
       : undefined;
 
 const decodeThreadPage = pageOf<ThreadSummary>(summaryProblem);
-const decodeHistoryPage = pageOf<HistoryItem>((v) => (isObject(v) ? undefined : "history item is not an object"));
+const rawHistoryPage = pageOf<HistoryItem>((v) => (isObject(v) ? undefined : "history item is not an object"));
 // Core942 protocol1611-1616 / spill_tools.rs: bounded public metadata only.
 function validSpillTools(value: unknown): boolean {
   if (value === null) return true;
@@ -75,6 +76,10 @@ function validSpillTools(value: unknown): boolean {
   // Duplicate/conflicting public tuples are valid wire facts, not authority to merge tools.
   return encoder.encode(JSON.stringify(value)).length <= 16384;
 }
+const decodeHistoryPage: Decoder<Page<HistoryItem>> = value => {
+ const result=rawHistoryPage(value);
+ return result.ok?{ok:true,value:{...result.value,items:result.value.items.map(sanitizeMessageRelation)}}:result;
+};
 const historyItemReasons = new Set(['source_budget', 'response_budget', 'legacy', 'pruned', 'opaque', 'unsupported']);
 function validToolDescriptor(value: unknown, result: boolean): value is Record<string, unknown> {
   if (!isObject(value) || Object.keys(value).some(key => !['call_id', 'call_id_state', 'name', 'name_state'].includes(key))) return false;
@@ -94,7 +99,7 @@ const decodeHistoryWindow: Decoder<HistoryWindowResult> = (v) => {
   const bad = (reason: string): { ok: false; reason: string } => ({ ok: false, reason });
   if (!isObject(v) || !Array.isArray(v.items) || v.items.length > 200 || !Number.isSafeInteger(v.total) || (v.total as number) < 0 || !(typeof v.revision === 'string' || typeof v.revision === 'number')) return bad('invalid history.window envelope');
   if (v.items.some(node => isObject(node) && Object.hasOwn(node, 'spill_tools') && !validSpillTools(node.spill_tools))) return bad('invalid public spill identities');
-  if (!v.items.some(node => isObject(node) && (Object.hasOwn(node, 'items') || Object.hasOwn(node, 'items_unavailable_reason')))) return { ok: true, value: v as unknown as HistoryWindowResult };
+  if (!v.items.some(node => isObject(node) && (Object.hasOwn(node, 'items') || Object.hasOwn(node, 'items_unavailable_reason')))) return { ok: true, value: {...v,items:(v.items as unknown as HistoryItem[]).map(sanitizeMessageRelation)} as unknown as HistoryWindowResult };
   let bytes = 0; let deferred = false; let previous = -1;
   const encoder = new TextEncoder();
   for (const node of v.items) {
@@ -146,7 +151,7 @@ const decodeHistoryWindow: Decoder<HistoryWindowResult> = (v) => {
       if (Object.keys(item).some(key => !allowed.includes(key))) return bad('unexpected saved item field');
     }
   }
-  return { ok: true, value: v as unknown as HistoryWindowResult };
+  return { ok: true, value: {...v,items:(v.items as unknown as HistoryItem[]).map(sanitizeMessageRelation)} as unknown as HistoryWindowResult };
 };
 const decodeDetails: Decoder<ThreadDetails> = (v) =>
   isObject(v) && typeof v.thread_id === "string" && typeof v.title === "string"

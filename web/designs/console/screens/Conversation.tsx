@@ -1,3 +1,4 @@
+import {messageRelationship,senderHeaderDisplay} from "../../../ui-core/src/sender-display";
 import type {OwnSendPath,OwnSendInsertion,OwnSendPlacement} from "../../../ui-core/src/own-send-region";
 import { workElementDisplay, workExecutionDisplay, type WorkElementDisplay } from "../../../ui-core/src/work-element-display";
 import { WorkElementRow, formatWorkElementDisplay } from "../system/components/WorkElementRow";
@@ -177,7 +178,7 @@ export function SavedConversationItems({ model, projection, renderBefore, traili
           : fact.kind === "human" ? { kind: "you" } : fact.kind === "model" ? fact
           : fact.kind === "external_cli" ? (fact.label?.trim() ? { kind: "other", label: `CLI: ${fact.label}` } : { kind: "cli" })
           : { kind: "unknown", model: fact.kind === "unknown_model", label: fact.label };
-        return <><ProjectedMessage model={model} authorizedText={item.source.text ?? ""} row={{ type: "message", id: node.node_id!, speaker, text: item.source.text ?? "", truncated: false, at: node.provenance?.created_at }} />{(item.source.kind === "text" || item.source.kind === "user" || item.source.kind === "summary") && item.source.textComplete === false ? <div class="caption muted" data-item-partial="">{t("work.partial")}</div> : null}</>;
+        return <><ProjectedMessage model={model} relationship={messageRelationship(node.provenance?.message,node.node_id)} authorizedText={item.source.text ?? ""} row={{ type: "message", id: node.node_id!, speaker, text: item.source.text ?? "", truncated: false, at: node.provenance?.created_at }} />{(item.source.kind === "text" || item.source.kind === "user" || item.source.kind === "summary") && item.source.textComplete === false ? <div class="caption muted" data-item-partial="">{t("work.partial")}</div> : null}</>;
       }
       if (item.source.kind === "tool") {
         const ids = item.source.executionIds ?? (item.source.executionId ? [item.source.executionId] : []);
@@ -379,19 +380,20 @@ export function StepView({ model, step, display, openPolicy = CANONICAL_CASES.to
   </WorkElementRow>;
 }
 
-function ProjectedMessage({ model, row, authorizedText }: { model: AppModel; row: Extract<ConversationRow, {type:"message"}>; authorizedText: string }) {
+function ProjectedMessage({ model, row, authorizedText, relationship }: { relationship:ReturnType<typeof messageRelationship>; model: AppModel; row: Extract<ConversationRow, {type:"message"}>; authorizedText: string }) {
   const t = model.t.value;
   const threadId = model.handle.value?.threadId;
   const point = threadId !== undefined ? formatRoute({ view: "branches", threadId, nodeId: row.id }) : undefined;
   const found = model.rowMarks.value.get(row.id);
   const mark = found && threadId !== undefined ? <BranchMark href={formatRoute({ view: "branches", threadId, nodeId: found.nodeId })} label={found.branches === 1 ? t("branches.markOne") : t("branches.mark", { n: found.branches })} /> : null;
   const who = row.speaker.kind === "you" ? t("convo.you") : row.speaker.kind === "shellboy" ? t("convo.shellboy") : row.speaker.kind === "cli" ? t("convo.cli") : row.speaker.kind === "model" ? t("convo.modelSender") : row.speaker.kind === "unknown" ? t(row.speaker.model ? "convo.unknownModelSender" : "convo.unknownSender") : row.speaker.label;
+  const senderHeader = row.speaker.kind === "model" ? senderHeaderDisplay(row.speaker.threadId, model.senderTitles.values.value.get(row.speaker.threadId), t("convo.modelSender")) : undefined;
+  const header = senderHeader ? {...senderHeader,role:t("convo.modelSender")} : who;
   const body = model.bodies.value.get(row.id);
   return (
-    <Message bot={row.speaker.kind === "shellboy"} who={who} at={formatClock(row.at)} text={authorizedText} copyLabel={t("code.copy")} copiedLabel={t("code.copied")}>
+    <Message bot={row.speaker.kind === "shellboy"} who={header} at={formatClock(row.at)} text={authorizedText} copyLabel={t("code.copy")} copiedLabel={t("code.copied")}>
+      {relationship.kind==="request" ? <div class="caption" data-message-relation="request">{t("convo.relationRequest")} · {t(`convo.relation.${relationship.state}`)}{relationship.replyId ? <> <code>{relationship.replyId}</code></> : null}</div> : relationship.kind==="reply" ? <div class="caption" data-message-relation="reply">{t("convo.relationReply")} <code>{relationship.requestId}</code></div> : null}
       {row.speaker.kind === "model" ? <div class="caption sender-fact">
-        {model.senderTitles.values.value.get(row.speaker.threadId)?.state === "ready" ? <div>{t("convo.senderCurrentTitle", { title: model.senderTitles.values.value.get(row.speaker.threadId)!.title ?? "" })}</div> : <div>{t("convo.senderTitleUnresolved")}</div>}
-        <div>{t("convo.senderThread")} <a href={formatRoute({ view: "conversation", threadId: row.speaker.threadId })}><code class="sender-id">{row.speaker.threadId}</code></a></div>
         {row.speaker.label !== undefined ? <div>{t("convo.senderClaimedLabel", { label: row.speaker.label })}</div> : null}
       </div> : row.speaker.kind === "unknown" && row.speaker.label !== undefined ? <div class="caption">{t("convo.senderClaimedLabel", { label: row.speaker.label })}</div> : null}
       {row.truncated && body?.text === undefined ? (
