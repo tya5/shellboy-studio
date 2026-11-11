@@ -1,5 +1,5 @@
 import type { TerminalPresence } from "./terminal-presence";
-import type { HistoryItem, HistorySavedItem, HistoryItemsUnavailableReason, WorkItem } from "../../data/src/protocol";
+import type { HistoryItem, HistorySavedItem, HistoryItemsUnavailableReason, WorkItem, ToolDescriptor, ToolDetailAvailability } from "../../data/src/protocol";
 /** Internal normalized contract only. Not a Core wire type or a body adapter. */
 export type WorkCategory = "Tools" | "Reasoning" | "Notifications" | "Problems";
 export const CANONICAL_CASES = {
@@ -36,6 +36,8 @@ export type CanonicalCaseId = keyof typeof CANONICAL_CASES;
 export type CanonicalCase = typeof CANONICAL_CASES[CanonicalCaseId];
 
 export interface WorkDisplayMetadata {
+  readonly descriptor?: ToolDescriptor;
+  readonly detailAvailability?: ToolDetailAvailability;
   readonly scopeKey: string;
   readonly nodeKind?: string;
   readonly createdAt?: string;
@@ -378,7 +380,9 @@ function projectHistoryNodes(input: { readonly keyScope?: readonly string[]; rea
       const ids = value.kind === "tool" ? value.executionIds ?? [] : [];
       if (ids.length > 64) return value;
       const shells = associatedDisplayShells(node, ids);
-      issueDisplayMetadata(value, Object.freeze({ scopeKey: JSON.stringify(value.keyScope ?? []),
+      const extension = item && (item.kind === "tool_call" || item.kind === "tool_result") && item.descriptor && item.detail_availability
+        ? { descriptor: Object.freeze({ ...item.descriptor }), detailAvailability: item.detail_availability } : {};
+      issueDisplayMetadata(value, Object.freeze({ ...extension, scopeKey: JSON.stringify(value.keyScope ?? []),
         ...(node.kind ? { nodeKind: node.kind } : {}), ...(node.provenance?.created_at ? { createdAt: node.provenance.created_at } : {}), shells: Object.freeze(shells) }));
       return value;
     };

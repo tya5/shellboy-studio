@@ -31,9 +31,16 @@ function display(item: ProjectedSavedItem, executionId?: string): WorkElementDis
   switch (c.displayPolicy) {
     case "associated-tool": {
       label = "Tool";
+      const descriptor = facts.descriptor;
+      const name = descriptor?.name_state === "available" ? descriptor.name : undefined;
+      if (descriptor) {
+        context.push({ name: "call_id_state", value: descriptor.call_id_state }, { name: "name_state", value: descriptor.name_state });
+        if (descriptor.call_id_state === "available" && descriptor.call_id) context.push({ name: "call_id", value: descriptor.call_id });
+      }
+      if (facts.detailAvailability) context.push({ name: "detail_availability", value: facts.detailAvailability });
       const shells = executionId === undefined ? facts.shells : facts.shells.filter(shell => shell.execution_id === executionId);
       if (shells.length) {
-        text = shells.map(shell => shell.description?.trim() ? shell.description : shell.command_excerpt?.trim() ? shell.command_excerpt : "Execution content was not provided").join("; ");
+        text = shells.map(shell => shell.description?.trim() ? shell.description : shell.command_excerpt?.trim() ? shell.command_excerpt : name ?? "Execution content was not provided").join("; ");
         const first = shells[0]!;
         const executionStatus = statusOfShell(first.state, first.exit_code);
         state = first.state ? { source: "wire", value: first.state, ...(executionStatus ? { executionStatus } : {}), ...(first.exit_code !== undefined ? { exitCode: first.exit_code } : {}) } : null;
@@ -42,7 +49,7 @@ function display(item: ProjectedSavedItem, executionId?: string): WorkElementDis
           context.push({ name: "execution_id", value: shell.execution_id });
         }
       } else {
-        text = source.kind === "tool" && source.compressed ? "Compressed; execution content was not provided" : "Execution content was not provided";
+        text = source.kind === "tool" && source.compressed ? "Compressed; execution content was not provided" : name ?? "Execution content was not provided";
         if (source.kind === "tool" && source.callId) context.push({ name: "call_id", value: source.callId });
       }
       break;

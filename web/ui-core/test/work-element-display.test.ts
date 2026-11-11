@@ -145,3 +145,39 @@ it('wire reasons and client terminal states never acquire an execution status',(
  const [row]=display([{node_id:'u',kind:'assistant_response',items:[{kind:'unavailable',item_identity:'u',reason:'unsupported'}]}]);
  expect(row!.value!.state?.executionStatus).toBeUndefined();
 });
+it('validated zero-execution descriptor survives accepted snapshot without fake output availability',async()=>{
+ const {AcceptedView}=await import('../src/accepted-view');
+ const descriptor={call_id:'exact-call',call_id_state:'available' as const,name:'safe_tool',name_state:'available' as const};
+ const input:HistoryItem[]=[{node_id:'n',kind:'assistant_response',items:[{kind:'tool_call',item_identity:'c',execution_ids:[],descriptor,detail_availability:'unavailable'}]}];
+ const owner=new AcceptedView(input);const staged=owner.stage(input);owner.commit(staged);
+ const item=owner.peek()[0]!.items![0]!;expect(item.kind==='tool_call'&&item.descriptor).toEqual(descriptor);
+ const [row]=display(owner.peek());expect(row!.value).toMatchObject({contentLabel:{text:'safe_tool',context:expect.arrayContaining([{name:'call_id',value:'exact-call'}])},state:null,detailPolicy:'unavailable'});
+ expect(Object.isFrozen(row!.value!.contentLabel.context)).toBe(true);
+});
+it.each(['description','command','missing'] as const)('validated name fallback preserves actual shell content priority %s',variant=>{
+ const [row]=display([{node_id:'n',kind:'assistant_response',items:[{kind:'tool_call',item_identity:'c',execution_ids:['e'],descriptor:{name:'tool_name',name_state:'available',call_id_state:'missing'},detail_availability:'execution_linked'}],executions:[{execution_id:'e',description:variant==='description'?'  explanation  ':' ',command_excerpt:variant==='command'?'  command  ':' '}]}]);
+ expect(row!.value!.contentLabel.text).toBe(variant==='description'?'  explanation  ':variant==='command'?'  command  ':'tool_name');
+ expect(row!.value!.state).toBeNull();
+});
+it('execution_linked is routing only and old-owner missing metadata stays unknown',()=>{
+ const [linked]=display([{node_id:'n',kind:'assistant_response',items:[{kind:'tool_call',item_identity:'c',execution_ids:['unloaded'],descriptor:{name:'safe',name_state:'available',call_id_state:'missing'},detail_availability:'execution_linked'}]}]);
+ expect(linked!.value).toMatchObject({contentLabel:{text:'safe'},state:null,detailPolicy:'unavailable'});
+ const [old]=display([{node_id:'o',kind:'assistant_response',items:[{kind:'tool_result',item_identity:'r',execution_ids:[]}]}]);
+ expect(old!.value!.contentLabel.context.some(c=>c.name==='name_state'||c.name==='detail_availability')).toBe(false);
+});
+it('result descriptor never acquires a request name through call ID',()=>{
+ const [row]=display([{node_id:'n',kind:'assistant_response',items:[{kind:'tool_result',item_identity:'r',execution_ids:[],descriptor:{call_id:'same',call_id_state:'available',name_state:'not_applicable'},detail_availability:'unavailable'}]}]);
+ expect(row!.value!.contentLabel.text).toBe('Execution content was not provided');expect(row!.value!.detailPolicy).toBe('unavailable');
+});
+it('strict public operation descriptor reaches same accepted snapshot and issued display without a body lookup',async()=>{
+ const {Link}=await import('../../data/src/link');const {Operations}=await import('../../data/src/operations');const {FakeTransport}=await import('../../data/test/harness');const {AcceptedView}=await import('../src/accepted-view');
+ const t=new FakeTransport(),link=new Link(t);link.start();t.open();
+ try{const ops=new Operations(link,()=> 'synthetic');const pending=ops.historyWindow({thread_id:'t',items:true});
+ const descriptor={name:'actual_name',name_state:'available',call_id:'exact',call_id_state:'available'};
+ t.ok(t.calls()[0]!.id,{thread_id:'t',revision:'r',total:1,items:[{node_id:'n',kind:'assistant_response',selection:{ordinal:0},items:[{kind:'tool_call',item_identity:'c',execution_ids:[],descriptor,detail_availability:'unavailable'}]}]});
+ const result=await pending;if(!result.ok)throw new Error('Strict decoder rejected fixture');
+ const view=new AcceptedView(result.value.items);const [row]=display(view.peek());
+ expect(row!.value).toMatchObject({contentLabel:{text:'actual_name'},state:null,detailPolicy:'unavailable'});
+ expect(t.calls()).toHaveLength(1);
+ }finally{link.stop();}
+});
