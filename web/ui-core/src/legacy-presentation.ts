@@ -31,6 +31,7 @@ export class LegacyAcceptedPresentation {
   private readonly scope: string;
   private ended = false;
   private syncing = false;
+  private syncPending = false;
   private generation = 0;
   private publishedSources: Sources | undefined;
   constructor(private readonly handle: ThreadHandle) {
@@ -85,43 +86,56 @@ export class LegacyAcceptedPresentation {
     return this.isCurrent(ref) && ref.projectionGeneration === value.projectionGeneration && cap === this.acceptedView.currentCapability ? ref : undefined;
   }
   sync(): boolean {
-    if (!this.qualified() || this.syncing) return false;
+    if (!this.qualified()) return false;
+    if (this.syncing) { this.syncPending = true; return false; }
     this.syncing = true;
     try {
-      let expected = this.acceptedView.peek();
-      let sources = this.capture();
-      for (const record of sources.live) {
-        if (!record.terminalPersisted || record.transferred) continue;
-        const before = expected;
-        let ownCommit: LegacyPresentationSnapshot | undefined;
-        this.handle.transferHandoff(record.attemptId, (captured, release) => {
-          const proof = captured.terminalPersisted;
-          if (!proof || !this.current(sources) || !this.acceptedView.isCurrent(expected) || proof.scope !== this.scope || proof.attemptId !== captured.attemptId
-            || !["completed", "failed", "incomplete", "cancelled"].includes(proof.terminalState)
-            || !proof.nodeIds.length || proof.nodeIds.length > 64 || proof.nodeIds.some(id => !id)) return false;
-          const old = expected.structuralTerminalReceipts;
-          if (old.length >= 8 && !old.some(p => p.attemptId === proof.attemptId)) return false;
-          const receipts = [...old.filter(p => p.attemptId !== proof.attemptId), proof];
-          const proofs = [...expected.terminalPersistedAttempts.filter(p => p.attemptId !== proof.attemptId), proof];
-          ownCommit = this.publish(expected, sources, this.value(sources, proofs, receipts));
-          if (!ownCommit) return false;
-          release("end"); return true;
-        });
+      // A notification may request a replacement while the current commit is
+      // checking its original sources. Drain one trailing swap, never recurse.
+      for (let pass = 0; pass < 2; pass++) {
+        this.syncPending = false;
+        const accepted = this.syncOnce();
         if (!this.qualified()) return false;
-        const now = this.acceptedView.peek();
-        // Never overwrite a subscriber's newer ref, including a rejected transfer's reentry.
-        if (now !== before && now !== ownCommit) return this.isCurrent(now);
-        expected = now;
-        sources = this.capture();
+        if (!this.syncPending) return accepted;
       }
-      if (!this.current(sources) || !this.acceptedView.isCurrent(expected)) return false;
-      const value = this.value(sources, expected.terminalPersistedAttempts, expected.structuralTerminalReceipts);
-      const comparable = { ...value, projectionGeneration: expected.projectionGeneration };
-      if (JSON.stringify(comparable) !== JSON.stringify(expected) || !this.isCurrent(expected)) {
-        return !!this.publish(expected, sources, value);
-      }
-      return this.isCurrent(expected);
-    } finally { this.syncing = false; }
+      return this.isCurrent(this.acceptedView.peek());
+    } finally { this.syncing = false; this.syncPending = false; }
+  }
+  private syncOnce(): boolean {
+    let expected = this.acceptedView.peek();
+    let sources = this.capture();
+    for (const record of sources.live) {
+      if (!record.terminalPersisted || record.transferred) continue;
+      const before = expected;
+      let ownCommit: LegacyPresentationSnapshot | undefined;
+      this.handle.transferHandoff(record.attemptId, (captured, release) => {
+        const proof = captured.terminalPersisted;
+        if (!proof || !this.current(sources) || !this.acceptedView.isCurrent(expected) || proof.scope !== this.scope || proof.attemptId !== captured.attemptId
+          || !["completed", "failed", "incomplete", "cancelled"].includes(proof.terminalState)
+          || !proof.nodeIds.length || proof.nodeIds.length > 64 || proof.nodeIds.some(id => !id)) return false;
+        const old = expected.structuralTerminalReceipts;
+        if (old.length >= 8 && !old.some(p => p.attemptId === proof.attemptId)) return false;
+        const receipts = [...old.filter(p => p.attemptId !== proof.attemptId), proof];
+        const proofs = [...expected.terminalPersistedAttempts.filter(p => p.attemptId !== proof.attemptId), proof];
+        ownCommit = this.publish(expected, sources, this.value(sources, proofs, receipts));
+        if (!ownCommit) return false;
+        release("end"); return true;
+      });
+      if (!this.qualified()) return false;
+      const now = this.acceptedView.peek();
+      // Never overwrite a subscriber's newer ref, including a rejected transfer's reentry.
+      if (now !== before && now !== ownCommit) return this.isCurrent(now);
+      expected = now;
+      sources = this.capture();
+    }
+    if (!this.current(sources) || !this.acceptedView.isCurrent(expected)) return false;
+    const value = this.value(sources, expected.terminalPersistedAttempts, expected.structuralTerminalReceipts);
+    const comparable = { ...value, projectionGeneration: expected.projectionGeneration };
+    if (JSON.stringify(comparable) !== JSON.stringify(expected) || !this.isCurrent(expected)) {
+      return !!this.publish(expected, sources, value);
+    }
+    return this.isCurrent(expected);
+
   }
   dispose(): void { this.ended = true; this.publishedSources = undefined; this.acceptedView.dispose(); }
 }

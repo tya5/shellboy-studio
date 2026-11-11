@@ -138,3 +138,25 @@ for(const resultMode of ['complete','partial','error','cancel'] as const)it(`act
   expect(f.t.calls('history.get')).toHaveLength(0);
  }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
 });
+
+for(const mode of ['terminal-held','subscriber-source','cancel'] as const)it(`visibility atomic producer ${mode}`,async()=>{
+ let ended=false; const nodes:HistoryItem[]=[{node_id:'old-answer',kind:'assistant_response',selection:{ordinal:0},items:[{kind:'text',item_identity:'old',text:'Synthetic prior complete answer',text_complete:true}]},{node_id:'tool',kind:'assistant_response',selection:{ordinal:1},items:[{kind:'tool_call',item_identity:'call',execution_ids:[]}]}];
+ const f=await fixtureModel({capabilities:['live.text'],configure(db){db.threads={t:summary('t')};db.details.t=details('t');db.history.t=nodes;const base=db.answer.bind(db);db.answer=call=>call.command==='status'?{ok:true,result:{items:ended?[{kind:'attempt',id:'attempt',attempt_id:'attempt',thread_id:'t',state:'completed',response_nodes:[{node_id:'new-answer',kind:'message',ordinal:2}]}]:[]}}:base(call);}});
+ const host=document.createElement('div');document.body.append(host);const frames:unknown[]=[];
+ const context:DesignContext={model:f.model,prefs:signal(loadPrefs({read:()=>null,write:()=>{}},[{name:'console',themes:[{name:'light'}]}])),setPrefs:()=>{},designs:[],submitToken:async()=>false};
+ let stop=()=>{};
+ try{
+ await act(async()=>{render(<App context={context}/>,host);await settle(f.t,f.db);});
+ const owner=f.model.legacyPresentation.peek()!,handle=f.model.handle.peek()!;let armed=mode==='subscriber-source';
+ stop=owner.acceptedView.subscribe(ref=>{
+  frames.push({frame:frames.length,trigger:'accepted-notify',generation:ref.projectionGeneration,current:owner.isCurrent(ref),rows:ref.rows.map(n=>n.node_id)});
+  if(armed){armed=false;const work=handle.work as import('@preact/signals-core').Signal<typeof handle.work.value>;work.value={...work.peek(),stale:!work.peek().stale};frames.push({frame:frames.length,trigger:'subscriber-source-write',oldCurrent:owner.isCurrent(ref),replacement:owner.acceptedView.peek()!==ref});}
+ });
+ expect(host.textContent).toContain('Synthetic prior complete answer');
+ await act(async()=>{f.t.push({t:'live',thread_id:'t',attempt_id:'attempt',gap:false,deltas:[{offset:0,reasoning:false,text:'Synthetic live'}]});await flush(24);});
+ if(mode==='cancel')await act(async()=>{handle.cancelReads();render(<App context={context}/>,host);await flush(24);});
+ else{ended=true;await act(async()=>{f.t.push({t:'live_end',thread_id:'t'});await settle(f.t,f.db);await flush(24);});}
+ const ref=owner.acceptedView.peek();frames.push({frame:frames.length,trigger:'post-render',current:owner.isCurrent(ref),rows:ref.rows.map(n=>n.node_id),completeAssistant:ref.rows.filter(n=>n.items?.some(i=>i.kind==='text'&&i.text_complete)).map(n=>n.node_id),oldMounted:host.textContent!.includes('Synthetic prior complete answer'),presence:ref.terminalPresence?.map(p=>[p.attemptId,p.phase,p.reason])});
+ if(mode==='cancel')expect(owner.isCurrent(ref)).toBe(false);else{expect(owner.isCurrent(ref)).toBe(true);expect(host.textContent).toContain('Synthetic prior complete answer');}
+ }finally{console.log('VISIBILITY_FRAMES',JSON.stringify(frames));stop();render(null,host);host.remove();f.model.dispose();f.data.stop();}
+});

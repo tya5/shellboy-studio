@@ -2,7 +2,7 @@ import { LegacyAcceptedPresentation } from "../src/legacy-presentation";
 import { expect, it } from "vitest";
 import { ShellboyData } from "../../data/src/store";
 import { FakeOwnerDb, FakeTransport, connected, settle, flush } from "../../data/test/harness";
-const baseNodes = [
+const baseNodes: import("../../data/src/protocol").HistoryItem[] = [
   { node_id: "tool", kind: "assistant_response", selection: { ordinal: 0 }, items: [{ kind: "tool_call", item_identity: "call", execution_ids: ["exec"] }] },
   { node_id: "answer", kind: "assistant_response", selection: { ordinal: 1 }, items: [{ kind: "text", item_identity: "text", text: "saved", text_complete: true }] },
 ];
@@ -117,4 +117,30 @@ it("all consumed sources invalidate a ref, including in-place nested mutation", 
   expect(p.sync()).toBe(true); ref = p.acceptedView.peek(); pending.value = []; expect(p.isCurrent(ref)).toBe(false);
   expect(p.sync()).toBe(true); ref = p.acceptedView.peek(); live.value = []; expect(p.isCurrent(ref)).toBe(false);
   p.dispose(); expect(p.sync()).toBe(false); r.data.stop();
+});
+it("same-owner source notification reentry drains one replacement before returning to presentation", async () => {
+ const r=await rig();
+ const history=r.h.history as import('@preact/signals-core').Signal<typeof r.h.history.value>;
+ history.value={...history.peek(),items:baseNodes};
+ const p=new LegacyAcceptedPresentation(r.h);expect(p.sync()).toBe(true);
+ const frames:unknown[]=[];let armed=true;
+ p.acceptedView.subscribe(ref=>{frames.push({frame:frames.length,trigger:"accepted",generation:ref.projectionGeneration,current:p.isCurrent(ref)});
+ if(armed){armed=false;const work=r.h.work as import('@preact/signals-core').Signal<typeof r.h.work.value>;work.value={...work.peek(),stale:!work.peek().stale};p.sync();frames.push({frame:frames.length,trigger:"nested-sync",oldCurrent:p.isCurrent(ref)});}});
+ r.live(); const ok=p.sync();const ref=p.acceptedView.peek();frames.push({frame:frames.length,trigger:"return",current:p.isCurrent(ref),rows:ref.rows.map(n=>n.node_id)});
+ // Synthetic identity-only trace, not user payload.
+ // @ts-expect-error Node-only diagnostic output; no Node types in the UI target.
+ const {writeFileSync}=await import('node:fs');writeFileSync('/tmp/studio-assistant-visibility-frames.json',JSON.stringify(frames));
+ expect(ok).toBe(true);expect(p.isCurrent(ref)).toBe(true);p.dispose();r.data.stop();
+});
+
+it("bounded trailing publication stops a continuously mutating subscriber and never requalifies cancellation",async()=>{
+ const r=await rig(),p=new LegacyAcceptedPresentation(r.h);expect(p.sync()).toBe(true);let calls=0;
+ const stop=p.acceptedView.subscribe(()=>{calls++;const work=r.h.work as import('@preact/signals-core').Signal<typeof r.h.work.value>;work.value={...work.peek(),stale:!work.peek().stale};p.sync();});
+ r.live();expect(p.sync()).toBe(false);expect(calls).toBeLessThanOrEqual(2);stop();r.h.cancelReads();expect(p.sync()).toBe(false);p.dispose();r.data.stop();
+});
+
+it("publication observer exception clears the drain latch for the next independent sync",async()=>{
+ const r=await rig(),p=new LegacyAcceptedPresentation(r.h);expect(p.sync()).toBe(true);
+ const stop=p.acceptedView.subscribe(()=>{throw new Error("synthetic observer");});r.live();
+ expect(()=>p.sync()).toThrow("synthetic observer");stop();expect(p.sync()).toBe(true);expect(p.isCurrent(p.acceptedView.peek())).toBe(true);p.dispose();r.data.stop();
 });
