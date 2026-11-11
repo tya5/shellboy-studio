@@ -108,7 +108,7 @@ export function SavedConversationItems({ model, projection, renderBefore, traili
     const completed = group.executionIds.length > 0 && !unknown && steps.every(step => step.status === "completed");
     const status = active ? "running" : failures ? "failed" : completed ? "completed" : undefined;
     const reasons = [...new Set(projection.items.filter(item => group.memberKeys.includes(item.key)).flatMap(item => item.source.kind === "unavailable" && item.source.reason ? [item.source.reason] : []))];
-    const label = [t("work.group"), ...(["Tools","Reasoning","Notifications","Problems"] as const).flatMap(category=>{
+    const label = [...(["Tools","Reasoning","Notifications","Problems"] as const).flatMap(category=>{
       const n=group.categoryCounts?.[category] ?? 0;
       if(!n)return [];
       const title=category==="Tools"?t("tools.count",{n}):t(`work.category.${category}`,{n});
