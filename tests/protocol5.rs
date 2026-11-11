@@ -123,7 +123,8 @@ fn structural_tool_descriptor_survives_pinned_response_value_and_bridge_frame() 
     }]});
     let original = shellboy::protocol::Response::success("synthetic-operation", result.clone());
     let encoded = serde_json::to_vec(&original).unwrap();
-    let decoded: shellboy::protocol::Response<serde_json::Value> = serde_json::from_slice(&encoded).unwrap();
+    let decoded: shellboy::protocol::Response<serde_json::Value> =
+        serde_json::from_slice(&encoded).unwrap();
     decoded.validate().unwrap();
     let frame = shellboy_studio::envelope::ServerFrame::Result {
         id: 298,
@@ -132,5 +133,8 @@ fn structural_tool_descriptor_survives_pinned_response_value_and_bridge_frame() 
     };
     let bridged = serde_json::to_value(frame).unwrap();
     assert_eq!(bridged["response"]["result"], result);
-    assert_eq!(bridged["response"]["result"]["items"][0]["items"][0]["execution_ids"], json!([]));
+    assert_eq!(
+        bridged["response"]["result"]["items"][0]["items"][0]["execution_ids"],
+        json!([])
+    );
 }
