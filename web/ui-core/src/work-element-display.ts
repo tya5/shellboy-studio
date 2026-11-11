@@ -49,7 +49,7 @@ function display(item: ProjectedSavedItem, executionId?: string): WorkElementDis
           context.push({ name: "execution_id", value: shell.execution_id });
         }
       } else {
-        text = source.kind === "tool" && source.compressed ? "Compressed; execution content was not provided" : name ?? "Execution content was not provided";
+        text = name ?? (source.kind === "tool" && source.compressed ? "Compressed; execution content was not provided" : "Execution content was not provided");
         if (source.kind === "tool" && source.callId) context.push({ name: "call_id", value: source.callId });
       }
       break;
