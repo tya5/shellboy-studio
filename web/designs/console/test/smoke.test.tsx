@@ -301,7 +301,10 @@ describe("Conversation live text", () => {
 
 describe("Conversation", () => {
   it("shows the Thread, its steps and measured context, and hides bookkeeping", async () => {
-    const { model } = await fixtureModel();
+    const { model } = await fixtureModel({configure(db){
+      // This control asserts the public history execution metadata, not a shell-map join.
+      db.history.lead=(db.history.lead as import('../../../data/src/protocol').HistoryItem[]).map(node=>({...node,executions:node.executions?.map(execution=>execution.execution_id==='exec-1'?{...execution,exit_code:0}:execution)}));
+    }});
     const el = draw(model);
     expect(text(el)).toContain("Improve history search");
     expect(text(el)).toContain("1 tools");
