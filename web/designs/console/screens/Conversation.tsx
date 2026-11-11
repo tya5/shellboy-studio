@@ -108,12 +108,14 @@ export function SavedConversationItems({ model, projection, renderBefore, traili
     const completed = group.executionIds.length > 0 && !unknown && steps.every(step => step.status === "completed");
     const status = active ? "running" : failures ? "failed" : completed ? "completed" : undefined;
     const reasons = [...new Set(projection.items.filter(item => group.memberKeys.includes(item.key)).flatMap(item => item.source.kind === "unavailable" && item.source.reason ? [item.source.reason] : []))];
-    const label = [...(["Tools","Reasoning","Notifications","Problems"] as const).flatMap(category=>{
+    const categoryLabel = [...(["Tools","Reasoning","Notifications","Problems"] as const).flatMap(category=>{
       const n=group.categoryCounts?.[category] ?? 0;
       if(!n)return [];
       const title=category==="Tools"?t("tools.count",{n}):t(`work.category.${category}`,{n});
       return [title+(category==="Tools"&&failures?` (${t("work.failedCount",{n:failures})})`:"")];
     }), ...(active?[t("status.running")]:[])].join(" · ");
+    const actualMemberCount = projection.items.filter(item => group.memberKeys.includes(item.key)).length;
+    const label = categoryLabel || (actualMemberCount ? String(actualMemberCount) : t("work.textUnavailable"));
     return <Disclosure class="step step-group" open={opened(group)} data-work-group={group.key} data-key={group.key} data-heading-anchor-key={group.firstMemberKey} data-heading-member-keys={JSON.stringify(group.memberKeys)} onToggle={event => {
       const open = event.currentTarget.open;
       setOpenMemberships(previous => {
@@ -121,7 +123,7 @@ export function SavedConversationItems({ model, projection, renderBefore, traili
         next.set(membershipKey(group), open);
         return next;
       });
-    }}><summary data-work-heading=""><Icon name="layers" /><span class="tool-group-label">{label}</span>{status ? <StatusMark status={status} label={statusLabel(t, status)} /> : null}<span class="meta" /></summary><div class="step-group-list">{children}</div></Disclosure>;
+    }}><summary data-work-heading="" aria-label={`${t("work.group")}: ${label}`}><Icon name="layers" /><span class="tool-group-label">{label}</span>{status ? <StatusMark status={status} label={statusLabel(t, status)} /> : null}<span class="meta" /></summary><div class="step-group-list">{children}</div></Disclosure>;
   };
   const workRow = (item: ConversationItem) => {
     const bundle=workElementDisplay(item);
