@@ -166,9 +166,10 @@ describe("socket callback ownership", () => {
 
 import {MAX_SERVER_FRAME_BYTES} from '../src/protocol';
 import {Link} from '../src/link';
-it.each(['normal','throw','stop','replace'] as const)('N2 oversize callback %s never dispatches or closes a replacement',mode=>{
+it.each(['normal','throw','stop','replace','reenter'] as const)('N2 oversize callback %s never dispatches or closes a replacement',mode=>{
  const h=setup();h.handlers.onInvalidFrame=()=>{
   h.events.push('invalid');
+  if(mode==='reenter')h.sockets[0]!.onmessage?.({data:'{"t":"resync"}'});
   if(mode==='throw')throw new Error('observer');
   if(mode==='stop')h.transport.stop();
   if(mode==='replace'){h.transport.stop();h.transport.start({...h.handlers,onInvalidFrame:()=>{}});}
@@ -181,7 +182,7 @@ it.each(['normal','throw','stop','replace'] as const)('N2 oversize callback %s n
  expect(old.closed).toBe(true);
  if(mode==='replace')expect(h.sockets[1]!.closed).toBe(false);
  old.onclose?.();expect(h.events.filter(e=>e==='close')).toHaveLength(1);
- expect(h.timers.filter(t=>t.live)).toHaveLength(mode==='normal'||mode==='throw'?1:0);
+ expect(h.timers.filter(t=>t.live)).toHaveLength(mode==='normal'||mode==='throw'||mode==='reenter'?1:0);
 });
 it('N2 rejected frame settles pending reads/mutations once without replacing prior body',async()=>{
  const h=setup();const link=new Link(h.transport);link.start();const socket=h.sockets[0]!;socket.open();

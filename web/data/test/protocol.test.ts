@@ -45,13 +45,11 @@ describe("parseServerFrame", () => {
 import {vi} from 'vitest';
 import {MAX_SERVER_FRAME_BYTES,exceedsServerFrameBytes} from '../src/protocol';
 it.each([-1,0,1])('N2 exact global UTF8 boundary %i',offset=>{
- const raw='{"t":"resync","pad":"'+'x'.repeat(MAX_SERVER_FRAME_BYTES-23+offset)+'"}';
  // Derive padding from the exact serialized shell rather than assume its bytes.
  const shell='{"t":"resync","pad":""}';
  const text=shell.slice(0,-2)+'x'.repeat(MAX_SERVER_FRAME_BYTES-shell.length+offset)+'"}';
  expect(exceedsServerFrameBytes(text)).toBe(offset>0);
  expect(parseServerFrame(text).ok).toBe(offset<=0);
- void raw;
 });
 it.each(['界','😀','\ud800','\udc00'])('N2 UTF8 accounting agrees with bounded encoder oracle %j',unit=>{
  const size=new TextEncoder().encode(unit).length;

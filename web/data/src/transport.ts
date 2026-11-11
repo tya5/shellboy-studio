@@ -132,6 +132,8 @@ export class WebSocketTransport implements Transport {
       const parsed = parseServerFrame(event.data);
       if (parsed.ok) this.handlers?.onFrame(parsed.frame);
       else if (parsed.code === "frame_too_large") {
+        // Quarantine this generation before invoking an observer that can reenter.
+        socket.onmessage = null;
         try {
           this.handlers?.onInvalidFrame(parsed.reason);
         } finally {
