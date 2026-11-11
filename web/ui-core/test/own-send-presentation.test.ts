@@ -54,7 +54,7 @@ it('uses fresh complete canonical rows for handoff after append revision changes
  const projection=projectSavedItems([{windowRevision:2,nodeId:'own',itemIdentity:'body',kind:'user',text:'Saved',textComplete:true}]);
  const input={ref:{},current:true,scope:'scope',projection,localRows:[own],hiddenItemKeys:new Set<string>(),path:{tail:true,empty:false,revision:2},reservation:{token:{},observation:{installedToken:{},ref:{},scope:'scope',revision:1,boundary:{kind:'beginning' as const},isCurrent:()=>false}}};
  const result=ownSendPresentation(input);
- expect(result.placement).toEqual({kind:'unqualified',reason:'revision-changed'});
+ expect(result.placement).toEqual({kind:'qualified',insertion:{kind:'beginning'}});
  expect(result.localRows).toEqual([]);expect(result.retire).toEqual([own]);expect(result.projection.items).toHaveLength(1);
  for(const complete of [undefined,false]){
   const unknown=projectSavedItems([{windowRevision:2,nodeId:'own',itemIdentity:'body',kind:'user',text:'Saved',textComplete:complete}]);
@@ -81,4 +81,14 @@ it('requires recorded plain send and exactly one complete public user text part,
  const canonicalRows=[{node_id:'own',kind:'user',items:[part]}];
  expect(ownSendPresentation({...input,canonicalRows}).retire).toEqual([own]);
  expect(ownSendPresentation({...input,canonicalRows,localRows:[{...own,plainMessageSend:undefined}]}).retire).toEqual([]);
+});
+it('places an exact fresh partial/no-items ACK slot without retiring its original local text',()=>{
+ const own=local('own');
+ for(const items of [undefined,[],[{kind:'text' as const,item_identity:'partial',text:'Part',text_complete:false}]]){
+  const nodes=[{node_id:'own',kind:'user',selection:{ordinal:0},items}];
+  const projection=projectSavedItems([{windowRevision:2,nodeId:'own',itemIdentity:'slot',kind:'user',text:'Part',textComplete:false}]);
+  const result=decideOwnSend({ref:{},current:true,scope:'scope',canonicalRows:nodes,projection,localRows:[own],hiddenItemKeys:new Set()});
+  expect(result.retire).toEqual([]);expect(result.slots).toHaveLength(1);expect(result.slots[0]?.row).toBe(own);
+  expect(result.projection.items).toHaveLength(0);expect(result.projection.sequence).toHaveLength(1);
+ }
 });

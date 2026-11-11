@@ -12,8 +12,8 @@ it('captures only installed qualified tails and preserves an exact multiple-item
  const fresh=projectSavedItems([item('a','node'),item('b','node'),item('new')]);
  expect(placeOwnSendRegion(reservation,'scope',true,fresh,path,new Map([['node',3]]))).toEqual({kind:'qualified',insertion:{kind:'conversation',itemKey:projection.items[1]!.key}});
  for(const candidate of [projectSavedItems([item('a','node')]),projectSavedItems([item('a','node'),item('b','node'),item('third','node')]),projectSavedItems([item('new')])])expect(placeOwnSendRegion(reservation,'scope',true,candidate,path,new Map([['node',3]])).kind).toBe('unqualified');
- expect(placeOwnSendRegion(reservation,'scope',true,fresh,{...path,revision:2},new Map([['node',3]]))).toEqual({kind:'unqualified',reason:'revision-changed'});
- expect(placeOwnSendRegion(reservation,'scope',true,fresh,path,new Map([['node',4]]))).toEqual({kind:'unqualified',reason:'boundary-conflict'});
+ expect(placeOwnSendRegion(reservation,'scope',true,fresh,{...path,revision:2},new Map([['node',3]] )).kind).toBe('qualified');
+ expect(placeOwnSendRegion(reservation,'scope',true,fresh,path,new Map([['node',4]])).kind).toBe('qualified');
  expect(placeOwnSendRegion(undefined,'scope',true,fresh,path,new Map()).kind).toBe('unqualified');
 });
 it('does not split an extended Work group or duplicate its key around the local region',()=>{

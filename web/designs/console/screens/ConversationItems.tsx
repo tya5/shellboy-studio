@@ -1,4 +1,4 @@
-import type {OwnSendPlacement} from "../../../ui-core/src/own-send-region";
+import type {OwnSendInsertion,OwnSendPlacement} from "../../../ui-core/src/own-send-region";
 import { Fragment, type ComponentChildren } from 'preact';
 
 /** Internal normalized presentation input, not a Core wire DTO or a body proof. */
@@ -37,7 +37,7 @@ interface Props {
   renderItem: (item: ConversationItem) => ComponentChildren;
   renderBefore?: (item: ConversationItem) => ComponentChildren;
   trailing?: ComponentChildren;
-  localRegion?:{placement:OwnSendPlacement;content:ComponentChildren};
+  localRegion?:{placement:OwnSendPlacement;content:ComponentChildren;slots?:readonly {insertion:OwnSendInsertion;content:ComponentChildren}[];unqualified?:ComponentChildren};
   isItemHidden?: (item: ConversationItem) => boolean;
   renderHeading?: (summary: ConversationToolSummary) => ComponentChildren;
 }
@@ -62,9 +62,13 @@ export function ConversationItems({ items, toolSummaries = [], renderItem, rende
       }))}</div>;
     });
     const region:ComponentChildren[]=[];
-    if(insertion?.kind==="beginning")region.push(localRegion?.content);
-    canonical.forEach((row,index)=>{if(Array.isArray(row))region.push(...row);else region.push(row);if(same(sequence[index]!))region.push(localRegion?.content);});
-    if(!insertion)region.push(localRegion?.content);
+    if(!localRegion?.slots?.length&&insertion?.kind==="beginning")region.push(localRegion?.content);
+    canonical.forEach((row,index)=>{if(Array.isArray(row))region.push(...row);else region.push(row);
+      const entry=sequence[index]!;
+      for(const slot of localRegion?.slots??[])if(slot.insertion.kind===entry.kind&&(entry.kind==="conversation"?slot.insertion.kind==="conversation"&&slot.insertion.itemKey===entry.itemKey:slot.insertion.kind==="work"&&slot.insertion.groupKey===entry.groupKey))region.push(slot.content);
+      if(!localRegion?.slots?.length&&same(entry))region.push(localRegion?.content);
+    });
+    if(!localRegion?.slots?.length&&!insertion)region.push(localRegion?.unqualified);
     return <div class="conversation-items">{region}{trailing}</div>;
   }
   const rows: ComponentChildren[] = [];

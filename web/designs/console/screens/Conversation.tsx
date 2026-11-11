@@ -1,4 +1,4 @@
-import type {OwnSendPath,OwnSendPlacement} from "../../../ui-core/src/own-send-region";
+import type {OwnSendPath,OwnSendInsertion,OwnSendPlacement} from "../../../ui-core/src/own-send-region";
 import { workElementDisplay, workExecutionDisplay, type WorkElementDisplay } from "../../../ui-core/src/work-element-display";
 import { WorkElementRow, formatWorkElementDisplay } from "../system/components/WorkElementRow";
 import { ownSendPresentation } from "../../../ui-core/src/own-send-presentation";
@@ -75,7 +75,7 @@ export function AcceptedWindowConversation({ reader, project, renderItem, render
 }
 
 /** Console presentation for an already authorized projection, independent of wire decoding. */
-export function SavedConversationItems({ model, projection, renderBefore, trailing, nodes,localRegion }: { model: AppModel; projection: SavedItemProjection & { sequence?: readonly ({kind: "conversation"; itemKey: string} | {kind: "work"; groupKey: string})[]; workGroups?: readonly ConversationWorkGroup[] }; nodes?: readonly HistoryItem[]; renderBefore?: (item: ConversationItem) => ComponentChildren; trailing?: ComponentChildren;localRegion?:{placement:OwnSendPlacement;content:ComponentChildren} }) {
+export function SavedConversationItems({ model, projection, renderBefore, trailing, nodes,localRegion }: { model: AppModel; projection: SavedItemProjection & { sequence?: readonly ({kind: "conversation"; itemKey: string} | {kind: "work"; groupKey: string})[]; workGroups?: readonly ConversationWorkGroup[] }; nodes?: readonly HistoryItem[]; renderBefore?: (item: ConversationItem) => ComponentChildren; trailing?: ComponentChildren;localRegion?:{placement:OwnSendPlacement;content:ComponentChildren;slots?:readonly {insertion:OwnSendInsertion;content:ComponentChildren}[];unqualified?:ComponentChildren} }) {
   const t = model.t.value;
   const savedSteps = collectExecutionSteps(nodes ?? [], model.shells.value);
   const savedExecutionIds = new Set(savedSteps.map(step => step.executionId));
@@ -240,11 +240,11 @@ function OwnSendContent<Ref>({model,projection,nodes,scope,acceptedRef,current,i
   const rows=model.ownMutationRows(scope);
   const decision=useMemo(()=>ownSendPresentation({ref:acceptedRef,current,scope,projection,localRows:rows,hiddenItemKeys,canonicalRows:nodes,path,nodeOrdinals:new Map((nodes??[]).flatMap(node=>node.node_id&&node.selection?.ordinal!==undefined?[[node.node_id,node.selection.ordinal] as const]:[])),reservation:model.ownSendReservation() as import("../../../ui-core/src/own-send-region").OwnSendReservation<Ref>|undefined,validateCurrent:isCurrent,cohortVersion:{accepted:model.acceptedOwnMessages.peek(),pending:model.pendingOwnMessage.peek()}}),[acceptedRef,current,scope,projection,model.acceptedOwnMessages.value,model.pendingOwnMessage.value]);
   useLayoutEffect(()=>{model.installOwnPresentation(decision,isCurrent);},[decision]);
-  const local=<div data-own-presentation="" data-own-placement={decision.placement.kind} data-own-order-conflict={decision.conflictIds.length?decision.conflictIds.join(","):undefined}>{decision.localRows.length&&decision.placement.kind==="unqualified"?<div role="status" data-own-placement-reason={decision.placement.reason}>{model.t.value("composer.pending.placementUnqualified")}: {decision.placement.reason}</div>:null}{decision.conflictIds.length?<div role="status" class="caption muted" data-own-order-problem="">{model.t.value("composer.pending.orderConflict")} {decision.conflictIds.join(", ")}</div>:null}{decision.localRows.map(message=><aside key={message.operationId} data-pending-own-message={message.operationId} data-pending-phase={message.phase}>
+  const renderLocal=(messages:readonly import("../../../ui-core/src/model").PendingOwnMessage[])=><div data-own-presentation="" data-own-placement={decision.placement.kind} data-own-order-conflict={decision.conflictIds.length?decision.conflictIds.join(","):undefined}>{decision.localRows.length&&decision.placement.kind==="unqualified"?<div role="status" data-own-placement-reason={decision.placement.reason}>{model.t.value("composer.pending.placementUnqualified")}: {decision.placement.reason}</div>:null}{decision.conflictIds.length?<div role="status" class="caption muted" data-own-order-problem="">{model.t.value("composer.pending.orderConflict")} {decision.conflictIds.join(", ")}</div>:null}{messages.map(message=><aside key={message.operationId} data-pending-own-message={message.operationId} data-pending-phase={message.phase}>
     <Message bot={false} who={model.t.value("convo.you")} text={message.text} at={model.t.value(`composer.pending.${message.phase}`)} copyLabel={model.t.value("code.copy")} copiedLabel={model.t.value("code.copied")}/>
     {message.phase==="failed"||message.phase==="unconfirmed"?<Button variant="link" onClick={()=>void model.resend()}>{model.t.value("action.retry")}</Button>:null}
   </aside>)}</div>;
-  return <SavedConversationItems model={model} projection={decision.projection} nodes={current?nodes:[]} localRegion={{placement:decision.placement,content:local}} trailing={trailing}/>;
+  return <SavedConversationItems model={model} projection={decision.projection} nodes={current?nodes:[]} localRegion={{placement:decision.placement,content:renderLocal(decision.localRows),slots:decision.slots.map(slot=>({insertion:slot.insertion,content:renderLocal([slot.row])})),unqualified:<section role="region" aria-label="Unplaced local submissions" data-own-unqualified-region="">{renderLocal(decision.localRows)}</section>}} trailing={trailing}/>;
 }
 
 function LegacySavedContent({model,handle}: {model:AppModel;handle:ThreadHandle;history:ReturnType<ThreadHandle["history"]["peek"]>|undefined;rows:readonly ConversationRow[];boundary:number|undefined;follow:()=>void}) {

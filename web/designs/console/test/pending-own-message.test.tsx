@@ -217,7 +217,7 @@ it('actual model installed receipt rejects cohort changes during qualification a
   const empty=f.model.acceptedOwnMessages.peek();f.model.installOwnPresentation(ready,()=>true);expect(f.model.acceptedOwnMessages.peek()).toBe(empty);
  }finally{f.model.dispose();f.data.stop();}
 });
-for(const windowed of [true,false])for(const withPrefix of [false,true])it(`actual four rapid ACKs precede new assistant while own saved bodies are unavailable: window=${windowed} prefix=${withPrefix}`,async()=>{
+for(const windowed of [true,false])for(const withPrefix of [false,true])for(const ids of [['2'],['2','3','4','5']])it(`actual four rapid ACKs precede new assistant while own saved bodies are unavailable: window=${windowed} prefix=${withPrefix} count=${ids.length}`,async()=>{
  let revision=1;
  const f=await fixtureModel({capabilities:windowed?['history.window']:[],configure(db){
   db.threads={t:summary('t')};db.details.t=details('t');db.history.t=withPrefix?[{node_id:'prefix',kind:'user',selection:{ordinal:0},items:[{kind:'text',item_identity:'prefix-a',text:'Existing prefix A',text_complete:true},{kind:'text',item_identity:'prefix-b',text:'Existing prefix B',text_complete:true}]}]:[];
@@ -228,30 +228,31 @@ for(const windowed of [true,false])for(const withPrefix of [false,true])it(`actu
  try{
   await act(async()=>{render(<App context={context}/>,host);await settle(f.t,f.db);});
   const area=host.querySelector<HTMLTextAreaElement>('textarea')!;
-  for(const id of ['2','3','4','5']){
+  for(const id of ids){
    await act(async()=>{area.value=`Diagnostic own ${id}`;area.dispatchEvent(new Event('input',{bubbles:true}));area.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));await flush();});
    const call=f.t.calls('message.send').at(-1)!;f.db.answered.add(call.id);
    await act(async()=>{f.t.ok(call.id,{message_id:`own-${id}`,thread_id:'t'});await flush();});
   }
-  expect(host.querySelectorAll('[data-pending-own-message]')).toHaveLength(4);
-  expect(f.model.acceptedOwnMessages.peek().map(row=>row.messageId)).toEqual(['own-2','own-3','own-4','own-5']);
+  expect(host.querySelectorAll('[data-pending-own-message]')).toHaveLength(ids.length);
+  expect(f.model.acceptedOwnMessages.peek().map(row=>row.messageId)).toEqual(ids.map(id=>`own-${id}`));
   const prefix=withPrefix?f.db.history.t!:[];
+  revision++;
   f.db.history.t=[...prefix,{node_id:'assistant-arrival',kind:'assistant_response',selection:{ordinal:withPrefix?1:0},items:[{kind:'text',item_identity:'response',text:'Diagnostic assistant receipt response',text_complete:true}]}];
   await act(async()=>{f.t.push({t:'changed',thread_ids:['t'],list:false});await settle(f.t,f.db);await flush(12);});
-  expect(host.querySelectorAll('[data-pending-own-message]')).toHaveLength(4);
-  expect(f.model.acceptedOwnMessages.peek()).toHaveLength(4);
+  expect(host.querySelectorAll('[data-pending-own-message]')).toHaveLength(ids.length);
+  expect(f.model.acceptedOwnMessages.peek()).toHaveLength(ids.length);
   const actual=[...host.querySelectorAll('.msg')].map(row=>row.querySelector('.md')?.textContent?.trim());
-  expect(actual).toEqual([...(withPrefix?['Existing prefix A','Existing prefix B']:[]),'Diagnostic own 2','Diagnostic own 3','Diagnostic own 4','Diagnostic own 5','Diagnostic assistant receipt response']);
+  expect(actual).toEqual([...(withPrefix?['Existing prefix A','Existing prefix B']:[]),...ids.map(id=>`Diagnostic own ${id}`),'Diagnostic assistant receipt response']);
   const assistant=host.querySelector('[data-node="assistant-arrival"]');
   revision+=5;
-  f.db.history.t=[...prefix,...['2','3','4','5'].map((id,index)=>({node_id:`own-${id}`,kind:'user',selection:{ordinal:index+(withPrefix?1:0)},items:[{kind:'text' as const,item_identity:`body-${id}`,text:`Diagnostic own ${id}`,text_complete:true}]})),{node_id:'assistant-arrival',kind:'assistant_response',selection:{ordinal:withPrefix?5:4},items:[{kind:'text',item_identity:'response',text:'Diagnostic assistant receipt response',text_complete:true}]}];
+  f.db.history.t=[...prefix,...ids.map((id,index)=>({node_id:`own-${id}`,kind:'user',selection:{ordinal:index+(withPrefix?1:0)},items:[{kind:'text' as const,item_identity:`body-${id}`,text:`Diagnostic own ${id}`,text_complete:true}]})),{node_id:'assistant-arrival',kind:'assistant_response',selection:{ordinal:ids.length+(withPrefix?1:0)},items:[{kind:'text',item_identity:'response',text:'Diagnostic assistant receipt response',text_complete:true}]}];
   // Public history.list is excerpt-only: it cannot prove submitted text replacement.
   if(!windowed)f.db.history.t=(f.db.history.t as HistoryItem[]).map(node=>({...node,items:undefined,text:node.items?.[0]?.kind==='text'?node.items[0].text:undefined}));
   await act(async()=>{f.t.push({t:'changed',thread_ids:['t'],list:false});await settle(f.t,f.db);await flush(12);});
   if(windowed)expect([...host.querySelectorAll('.msg')].map(row=>row.querySelector('.md')?.textContent?.trim())).toEqual(actual);
-  else expect([...host.querySelectorAll('[data-pending-own-message] .md')].map(row=>row.textContent?.trim())).toEqual(['Diagnostic own 2','Diagnostic own 3','Diagnostic own 4','Diagnostic own 5']);
-  expect(host.querySelectorAll('[data-pending-own-message]')).toHaveLength(windowed?0:4);
-  expect(f.model.acceptedOwnMessages.peek()).toHaveLength(windowed?0:4);
+  else expect([...host.querySelectorAll('[data-pending-own-message] .md')].map(row=>row.textContent?.trim())).toEqual([...ids.map(id=>`Diagnostic own ${id}`)]);
+  expect(host.querySelectorAll('[data-pending-own-message]')).toHaveLength(windowed?0:ids.length);
+  expect(f.model.acceptedOwnMessages.peek()).toHaveLength(windowed?0:ids.length);
   if(windowed)expect(host.querySelector('[data-node="assistant-arrival"]')).toBe(assistant);
 
  }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}

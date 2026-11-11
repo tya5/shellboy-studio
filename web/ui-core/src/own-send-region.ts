@@ -38,12 +38,10 @@ export function placeOwnSendRegion<Ref>(reservation:OwnSendReservation<Ref>|unde
   if(!reservation||!current)return bad("tail-unproved");
   const observed=reservation.observation;
   if(observed.scope!==scope)return bad("scope-changed");
-  if(observed.revision!==path?.revision)return bad("revision-changed");
   const anchor=observed.boundary;
   if(anchor.kind==="beginning")return Object.freeze({kind:"qualified",insertion:Object.freeze({kind:"beginning"})});
   const item=projection.items.find(item=>item.key===anchor.itemKey&&item.source.nodeId===anchor.nodeId);
   if(!item)return bad("boundary-missing");
-  if(nodeOrdinals.get(anchor.nodeId)!==anchor.ordinal)return bad("boundary-conflict");
   const members=projection.items.filter(item=>item.source.nodeId===anchor.nodeId).map(item=>item.key);
   if(JSON.stringify(members)!==JSON.stringify(anchor.nodeMembers))return bad("boundary-conflict");
   const entry=projection.sequence?.find(entry=>entry.kind==="conversation"?entry.itemKey===anchor.itemKey:projection.workGroups?.find(group=>group.key===entry.groupKey)?.memberKeys.includes(anchor.itemKey));
