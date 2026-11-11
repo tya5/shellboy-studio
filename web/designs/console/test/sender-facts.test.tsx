@@ -24,10 +24,20 @@ async function rig(){
 describe('sender facts in the existing conversation',()=>{
   it('keeps full ID distinct under same-title senders and escapes self-asserted labels/title',async()=>{
     const r=await rig();const boxes=r.host.querySelectorAll('.sender-fact');expect(boxes).toHaveLength(2);
-    expect(boxes[0]!.textContent).toContain('Current title: <Same current title>');expect(boxes[1]!.textContent).toContain('sender-two');
-    expect(boxes[0]!.textContent).toContain('sender-one');expect(boxes[0]!.textContent).toContain('Self-asserted label: <img src=x onerror=alert(1)>');
-    expect(boxes[1]!.textContent).not.toContain('Self-asserted label:');expect(boxes[0]!.querySelector('img')).toBeNull();
-    expect(boxes[0]!.querySelector('a')!.getAttribute('href')).toContain('sender-one');
+    const messages=[...r.host.querySelectorAll('.msg')];
+    const one=messages.find(row=>row.textContent?.includes('body-one'))!;
+    const two=messages.find(row=>row.textContent?.includes('body-two'))!;
+    const first=one.querySelector('.who a')!,second=two.querySelector('.who a')!;
+    expect(first.textContent).toBe('<Same current title>');expect(second.textContent).toBe('<Same current title>');
+    expect(first.getAttribute('href')).toContain('sender-one');expect(second.getAttribute('href')).toContain('sender-two');
+    expect(first.getAttribute('href')).not.toBe(second.getAttribute('href'));
+    expect(first.getAttribute('title')).toBe('sender-one');expect(second.getAttribute('title')).toBe('sender-two');
+    expect(first.getAttribute('aria-label')).toContain('sender-one');expect(second.getAttribute('aria-label')).toContain('sender-two');
+    expect(boxes[0]!.textContent).toContain('Self-asserted label: <img src=x onerror=alert(1)>');
+    expect(boxes[1]!.textContent).not.toContain('Self-asserted label:');
+    expect(one.querySelector('.who img, .sender-fact img')).toBeNull();
+    expect(two.querySelector('.who img, .sender-fact img')).toBeNull();
+    expect(boxes[0]!.textContent).not.toContain('<Same current title>');
   });
   it('does not call malformed model identity You or invent a sender ID for CLI/human',async()=>{
     const r=await rig();const messages=[...r.host.querySelectorAll('.msg')];const unknown=messages.find(e=>e.textContent?.includes('body-unknown'))!;

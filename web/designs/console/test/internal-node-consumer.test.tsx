@@ -42,7 +42,12 @@ it.each([true,false])('actual shared classifier consumer window=%s: classifies i
   expect(human.querySelector('.md')?.textContent).toContain('Please explain Shellboy event/context. Keep this human text.');
   const received=host.querySelector('[data-node="received-user"]')!;
   expect(received.closest('[data-work-group]')).toBeNull();expect(received.querySelector('.md')?.textContent).toContain('Legitimate received user message');
-  expect(received.textContent).toContain('synthetic-sender');expect(received.querySelector('.sender-fact')).not.toBeNull();
+  const sourceLink=received.querySelector('.who a')!;
+  expect(sourceLink.textContent).toContain('syntheti');
+  expect(sourceLink.getAttribute('href')).toContain('synthetic-sender');
+  expect(sourceLink.getAttribute('title')).toBe('synthetic-sender');
+  expect(sourceLink.getAttribute('aria-label')).toContain('synthetic-sender');
+  expect(received.querySelector('.sender-fact')?.textContent).toContain('Synthetic sender');
   expect(received.textContent).not.toContain(f.model.t.value('convo.unknownSender'));
  }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
 });
