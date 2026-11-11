@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { render } from 'preact';
+import {flush} from '../../../data/test/harness';
 import '@preact/signals';
 import {signal} from '@preact/signals';
 import {useLayoutEffect,useState} from 'preact/hooks';
@@ -440,4 +441,38 @@ it('keeps typed assistant empty/presence membership distinct across live, termin
   const saved=host.querySelector('[data-node="saved-answer"]');await act(async()=>{reader.changed();await new Promise(resolve=>setTimeout(resolve,0));});await frame('refresh');expect(host.querySelector('[data-node="saved-answer"]')).toBe(saved);
   await act(async()=>{reader.dispose();paint();});expect(host.textContent).not.toContain('Already readable answer');expect(host.textContent).not.toContain('Saved readable answer');
  }finally{console.log('ASSISTANT_MEMBERSHIP_FRAMES',JSON.stringify(frames));stop();render(null,host);reader.dispose();host.remove();f.model.dispose();f.data.stop();}
+});
+
+it('publishes a newly appended readable assistant after a hint held during path recovery without another input',async()=>{
+ const {rig}=await import('../../../ui-core/test/window-owner');
+ const r=await rig(1),f=await fixtureModel(),host=document.createElement('div');document.body.append(host);
+ const frames:unknown[]=[];
+ r.owner.decorate=(i,node)=>({...node,kind:'assistant_response',items:[{kind:'text',item_identity:`body-${i}`,text:i===0?'Recovered prior answer':'New completed answer',text_complete:true}]});
+ const model=new Proxy(f.model,{get(target,key){return key==='longReader'?{value:r.w,peek:()=>r.w}:Reflect.get(target,key);}});
+ const paint=()=>{
+  const snapshot=r.w.acceptedView.peek();
+  render(<ActualSavedWindowContent model={model} snapshot={snapshot} liveFacts={[]}/>,host);
+  frames.push({frame:frames.length,current:r.w.acceptedView.isCurrent(snapshot),raw:snapshot.rows.map(row=>row.node_id),mounted:[...host.querySelectorAll('[data-node]')].map(row=>row.getAttribute('data-node')),reads:r.calls().length});
+ };
+ const stop=r.w.acceptedView.subscribe(paint);
+ try{
+  await act(async()=>{await r.settle();paint();});expect(host.textContent).toContain('Recovered prior answer');
+  const prior=r.w.acceptedView.peek();
+  r.owner.rewrite(1);
+  await act(async()=>{r.w.changed();await flush();});
+  const stale=r.calls().at(-1)!,rejected=r.owner.answer(stale);expect(rejected.ok).toBe(false);
+  r.owner.answered.add(stale.id);
+  await act(async()=>{if(!rejected.ok)r.t.ownerError(stale.id,rejected.code,rejected.code,rejected.details);await flush();});
+  expect(r.w.acceptedView.isCurrent(prior)).toBe(false);expect(host.textContent).not.toContain('Recovered prior answer');
+  const recovery=r.calls().at(-1)!,oldReply=r.owner.answer(recovery);expect(oldReply.ok).toBe(true);
+  r.owner.append(1);
+  await act(async()=>{r.w.changed();await flush();});const before=r.calls().length;
+  r.owner.answered.add(recovery.id);
+  await act(async()=>{if(oldReply.ok)r.t.ok(recovery.id,oldReply.result);await flush();});
+  expect(r.calls().length).toBeGreaterThan(before);
+  await act(async()=>{await r.settle();paint();});
+  expect(host.textContent).toContain('Recovered prior answer');expect(host.textContent).toContain('New completed answer');
+  expect(r.w.acceptedView.isCurrent(r.w.acceptedView.peek())).toBe(true);
+  expect(host.querySelector('[data-node="n1-1"] .md')?.textContent).toContain('New completed answer');
+ }finally{console.log('RECOVERY_HINT_FRAMES',JSON.stringify(frames));stop();render(null,host);host.remove();r.w.dispose();r.data.stop();f.model.dispose();f.data.stop();}
 });
