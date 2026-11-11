@@ -214,9 +214,19 @@ export interface HistoryExecution {
 export interface AssistantPublication { state: "unknown" | "tool" | "message"; attemptId?: string; ordinal?: number; kind?: string; error?: boolean }
 /** Core296 DTO source: 00328ddf660fdbeecaf383cf078107bd32983209; opt-in only. */
 export type HistoryItemsUnavailableReason = 'source_budget' | 'response_budget' | 'legacy' | 'pruned' | 'opaque' | 'unsupported';
+// Optional only for compatibility with installed owners preceding Core #298.
+export type ToolFieldAvailability = 'available' | 'missing' | 'invalid' | 'field_budget' | 'not_applicable';
+export interface ToolDescriptor {
+  readonly call_id?: string;
+  readonly call_id_state: ToolFieldAvailability;
+  readonly name?: string;
+  readonly name_state: ToolFieldAvailability;
+}
+export type ToolDetailAvailability = 'execution_linked' | 'unavailable';
+
 export type HistorySavedItem =
   | { readonly kind: 'text'; readonly item_identity: string; readonly text: string; readonly text_complete: boolean }
-  | { readonly kind: 'tool_call' | 'tool_result'; readonly item_identity: string; readonly execution_ids: readonly string[] }
+  | { readonly kind: 'tool_call' | 'tool_result'; readonly item_identity: string; readonly execution_ids: readonly string[]; readonly descriptor?: ToolDescriptor; readonly detail_availability?: ToolDetailAvailability }
   | { readonly kind: 'reasoning_unavailable'; readonly item_identity: string }
   | { readonly kind: 'unavailable'; readonly item_identity: string; readonly reason: HistoryItemsUnavailableReason };
 /** Existing Core942 public spill-local identities; no tool payload/detail fields. */
