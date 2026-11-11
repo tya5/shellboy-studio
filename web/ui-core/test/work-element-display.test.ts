@@ -189,3 +189,29 @@ it('compressed tool without shell content still prefers its validated actual nam
  const row=rows.find(row=>row.item.source.kind==='tool'&&row.item.source.compressed)!;
  expect(row).toBeDefined();expect(row.value!.contentLabel.text).toBe('actual_name');expect(row.value!.detailPolicy).toBe('unavailable');
 });
+it('issued notification descriptors format typed meanings without exposing command, values or raw body',()=>{
+ const notifications: import('../../data/src/protocol').NotificationDescriptor[] = [
+ {kind:'turn_started'}, {kind:'recovery_resumed'},
+ {kind:'instructions_observed',observation:'first_seen'},
+ {kind:'instructions_observed',observation:'updated'},
+ {kind:'instructions_observed',observation:'removed'},
+ {kind:'thread_settings_changed',changed_fields:['cwd','model']},
+ {kind:'shell_ended',execution_id:'exact-exec',state:'exited',exit_code:0}];
+ const labels=['Turn started','Recovery resumed','Instructions observed','Instructions updated','Instructions removed','Thread settings changed','Shell execution ended'];
+ for(const [index,notification] of notifications.entries()){
+ const [row]=display([{node_id:`notice-${index}`,kind:'notification',excerpt:'PRIVATE BODY',provenance:{notification}}]);
+ expect(row!.value!.contentLabel.text).toBe(labels[index]);
+ expect(JSON.stringify(row!.value)).not.toContain('PRIVATE BODY');
+ expect(workElementDisplay({...row!.item,source:{...row!.item.source}})).toBeUndefined();
+ }
+});
+it('issued notification changed fields are frozen independently of the admitted input',()=>{
+ const changed_fields: ('cwd'|'model')[]=['cwd'];
+ const [row]=display([{node_id:'notice',kind:'notification',provenance:{notification:{kind:'thread_settings_changed',changed_fields},sender:{kind:'user'}}}]);
+ changed_fields.push('model');
+ expect(workElementDisplay(row!.item)!.contentLabel.context.filter(c=>c.name==='changed_field')).toEqual([{name:'changed_field',value:'cwd'}]);
+});
+it('legacy absent or quarantined optional notification leaves the honest unknown label',()=>{
+ const [row]=display([{node_id:'legacy',kind:'notification',provenance:{sender:{kind:'user'}}}]);
+ expect(row!.value!.contentLabel.text).toBe('A content summary was not provided');
+});

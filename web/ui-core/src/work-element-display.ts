@@ -55,7 +55,32 @@ function display(item: ProjectedSavedItem, executionId?: string): WorkElementDis
       break;
     }
     case "reasoning-unavailable": label = "Reasoning"; text = "Reasoning content is not publicly available"; break;
-    case "notification-context": label = "Notification"; text = facts.createdAt ? `A content summary was not provided (${facts.createdAt})` : "A content summary was not provided"; break;
+    case "notification-context": {
+      label = "Notification";
+      const notification = facts.notification;
+      if (!notification) {
+        text = facts.createdAt ? `A content summary was not provided (${facts.createdAt})` : "A content summary was not provided";
+        break;
+      }
+      switch (notification.kind) {
+        case "turn_started": text = "Turn started"; break;
+        case "recovery_resumed": text = "Recovery resumed"; break;
+        case "instructions_observed":
+          text = { first_seen: "Instructions observed", updated: "Instructions updated", removed: "Instructions removed" }[notification.observation];
+          break;
+        case "thread_settings_changed":
+          text = "Thread settings changed";
+          for (const field of notification.changed_fields) context.push({ name: "changed_field", value: field });
+          break;
+        case "shell_ended":
+          text = "Shell execution ended";
+          context.push({ name: "execution_id", value: notification.execution_id });
+          state = { source: "wire", value: notification.state,
+            ...(notification.exit_code !== undefined ? { exitCode: notification.exit_code } : {}) };
+          break;
+      }
+      break;
+    }
     case "problem-context": label = "Response state"; text = "Response-state details were not provided"; break;
     case "wire-problem": {
       label = "Unavailable item";
