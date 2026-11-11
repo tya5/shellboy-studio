@@ -7,12 +7,14 @@ export interface TerminalPresence {
   readonly reason: TerminalPresenceReason;
   readonly answerAvailability: "unknown";
 }
+/** Exact empty text has no mounted body; whitespace is not reinterpreted. */
+export function hasVisibleTerminalText(text: string): boolean { return text.length > 0; }
 export function terminalPresence(receipt: TerminalPersistedProof, rows: readonly HistoryItem[], fallback: TerminalPresenceReason = "canonical-pending"): TerminalPresence | undefined {
   const found = receipt.nodeIds.map(id => rows.find(row => row.node_id === id));
   const accounted = found.every(row => row && Array.isArray(row.items) && row.items.length > 0
-    && row.items.every(item => item.kind !== "unavailable" && (item.kind !== "text" || item.text_complete)));
+    && row.items.every(item => item.kind !== "unavailable" && (item.kind !== "text" || (item.text_complete && hasVisibleTerminalText(item.text)))));
   if (accounted) return undefined;
-  const reason = found.some(row => row?.items?.some(item => item.kind === "unavailable")) ? "body-unavailable"
+  const reason = found.some(row => row?.items?.some(item => item.kind === "unavailable" || (item.kind === "text" && item.text_complete && !hasVisibleTerminalText(item.text)))) ? "body-unavailable"
     : found.some(row => row?.items?.some(item => item.kind === "text" && !item.text_complete)) ? "partial-items" : fallback;
   return { scope: receipt.scope, attemptId: receipt.attemptId, receipt, phase: fallback === "canonical-pending" ? "pending" : "settled", reason, answerAvailability: "unknown" };
 }

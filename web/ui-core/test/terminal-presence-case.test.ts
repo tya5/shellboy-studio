@@ -19,3 +19,13 @@ it("accounted omitted facts add no status; stable receipt key survives reading/s
   expect(make("pending")).toBe(make("settled"));
   expect(() => normalizeTerminalPresenceFacts([{ scope: "wrong", attemptId: "actual", receipt, phase: "settled", reason: "read-error", answerAvailability: "unknown" }])).toThrow();
 });
+it('empty complete typed text retains honest terminal presence instead of accounting an invisible body', async () => {
+ const { terminalPresence } = await import('../src/terminal-presence');
+ const row = (text: string, complete = true) => [{ node_id: 'actual-node', kind: 'assistant_response', items: [{ kind: 'text' as const, item_identity: 'body', text, text_complete: complete }] }];
+ expect(terminalPresence(receipt, row(''), 'missing-candidate')).toMatchObject({ reason: 'body-unavailable', answerAvailability: 'unknown' });
+ expect(terminalPresence(receipt, row(''), 'canonical-pending')).toMatchObject({ reason: 'body-unavailable' });
+ expect(terminalPresence(receipt, row('nonempty'))).toBeUndefined();
+ expect(terminalPresence(receipt, row(' '))).toBeUndefined();
+ expect(terminalPresence(receipt, row('', false))).toMatchObject({ reason: 'partial-items' });
+ expect(terminalPresence(receipt, [{ node_id: 'actual-node', kind: 'assistant_response', items: [{ kind: 'tool_call', item_identity: 'tool', execution_ids: [] }] }])).toBeUndefined();
+});
