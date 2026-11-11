@@ -322,3 +322,50 @@ it('keeps the next draft across held ACK and same-stack submit guard, then accep
   await act(async()=>{finish(true);await flush(4);});
  }finally{render(null,host);host.remove();}
 });
+it('recomputes local byte hint from the edited draft without reservation or clearing text',async()=>{
+ const f=await fixtureModel(),host=document.createElement('div');document.body.append(host);
+ const scope=f.model.ownMutationScope();
+ f.model.acceptedOwnMessages.value=[{threadId:'lead',scope,operationId:'retained',text:'x'.repeat(4194301),phase:'accepted',plainMessageSend:true}];
+ const show=()=>render(<Composer label="Draft" placeholder="" hint="Ready" sendLabel="Send" canSend busy={false} draftScope={scope} draftStatus={text=>{const reason=f.model.localSendAdmission(text);return {blocked:reason!=='ready',hint:reason};}} onSend={(text,notify)=>f.model.send(text,notify)}/>,host);
+ try{
+  await act(async()=>show());const input=host.querySelector('textarea')!;
+  for(const [text,reason,blocked] of [['あx','bytesfull',true],['あ','ready',false],['xx','ready',false]] as const){
+   await act(async()=>{input.value=text;input.dispatchEvent(new Event('input',{bubbles:true}));});
+   expect(host.querySelector('[role="status"]')?.textContent).toBe(reason);expect(host.querySelector('button')!.disabled).toBe(blocked);expect(input.value).toBe(text);
+  }
+  expect(f.t.calls('message.send')).toHaveLength(0);expect(f.model.pendingOwnMessage.peek()).toBeUndefined();
+ }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
+});
+it('a locally denied draft fires no reservation notification and preserves original operation retry identity',async()=>{
+ const f=await fixtureModel();
+ try{
+  let notified=0;expect(await f.model.send('あ'.repeat(1398102),()=>{notified++;})).toBe(false);
+  expect(notified).toBe(0);expect(f.t.calls('message.send')).toHaveLength(0);expect(f.model.localSendAdmission('small edited draft')).toBe('ready');
+  const sent=f.model.send('Original retry text');await flush(8);const first=f.t.calls('message.send').at(-1)!;
+  f.t.ownerError(first.id,'temporary_failure');expect(await sent).toBe(false);expect(f.model.canResend()).toBe(true);
+  const original=f.model.pendingOwnMessage.peek()!;const before=f.t.calls('message.send').length;
+  for(let n=0;n<3;n++)expect(f.model.canResend()).toBe(true);expect(f.t.calls('message.send')).toHaveLength(before);expect(f.model.pendingOwnMessage.peek()).toBe(original);
+  const retried=f.model.resend();await flush(8);const second=f.t.calls('message.send').at(-1)!;
+  expect(second.operation_id).toBe(first.operation_id);expect(second.args).toEqual(first.args);expect(notified).toBe(0);
+  f.t.ownerError(second.id,'temporary_failure');await retried;
+  f.model.navigate({view:'threads'});await flush(8);expect(f.model.canResend()).toBe(false);
+  expect(await f.model.resend()).toBe(false);expect(f.t.calls('message.send')).toHaveLength(before+1);
+ }finally{f.model.dispose();f.data.stop();}
+});
+it('retry display eligibility rejects owner ABA and route ABA without dispatch side effects',async()=>{
+ for(const mode of ['owner','route'] as const){
+  const f=await fixtureModel();
+  try{
+   const sent=f.model.send('Protected original');await flush(8);const call=f.t.calls('message.send').at(-1)!;
+   f.t.ownerError(call.id,'temporary_failure');await sent;const original=f.model.pendingOwnMessage.peek()!;
+   expect(f.model.canResend(original)).toBe(true);
+   const owner=f.data.owner.peek();
+   if(mode==='owner'&&owner.state==='connected'){
+    f.t.push({t:'owner',event:'connected',owner:{...owner,info:{...owner.info,instance_id:'different-owner'}}});await flush(8);
+    f.t.push({t:'owner',event:'connected',owner});await flush(8);
+   }else {f.model.navigate({view:'threads'});await flush(8);f.model.navigate({view:'conversation',threadId:'lead'});await flush(8);}
+   const count=f.t.calls('message.send').length;
+   expect(f.model.canResend(original)).toBe(false);expect(await f.model.resend(original)).toBe(false);expect(f.t.calls('message.send')).toHaveLength(count);
+  }finally{f.model.dispose();f.data.stop();}
+ }
+});

@@ -1,3 +1,4 @@
+import {localSendAdmission} from "./local-send-admission";
 import type { OwnSendTailObservation,OwnSendReservation } from "./own-send-region";
 import type { OwnSendDecision } from "./own-send-presentation";
 import { LegacyAcceptedPresentation } from "./legacy-presentation";
@@ -868,14 +869,25 @@ export class AppModel {
   }
 
   /** Repeat an unconfirmed send with the same operation id: the owner's receipt prevents a double. */
-  async resend(): Promise<boolean> {
+  async resend(original?:PendingOwnMessage): Promise<boolean> {
     const state = this.sendState.value;
     const threadId = this.selectedId.value;
     const pending = this.pendingOwnMessage.peek();
-    if (!pending || !this.pendingOwnRetryCurrent?.() || threadId !== pending.threadId || !["failed", "unconfirmed"].includes(pending.phase)) return false;
+    if (!pending || (original && original!==pending) || !this.pendingOwnRetryCurrent?.() || threadId !== pending.threadId || !["failed", "unconfirmed"].includes(pending.phase)) return false;
     return this.deliver(threadId, pending.text, pending.operationId);
   }
 
+  localSendAdmission(text:string) {
+    const handle=this.handle.value;
+    if(!handle||handle.threadId!==this.selectedId.value)return "unavailable" as const;
+    const admission=localSendAdmission(!!this.pendingOwnMessage.value,this.acceptedOwnMessages.value,text);
+    if(admission!=="ready")return admission;
+    return this.data.owner.value.state==="connected"?admission:"unavailable" as const;
+  }
+  canResend(original?:PendingOwnMessage):boolean {
+    const pending=this.pendingOwnMessage.value;
+    return (!original||original===pending) && this.data.owner.value.state==="connected" && !!pending && this.handle.value?.threadId===pending.threadId && this.selectedId.value===pending.threadId && ["failed","unconfirmed"].includes(pending.phase) && this.pendingOwnIsCurrent();
+  }
   ownSendBlocked(): boolean {
     return !!this.pendingOwnMessage.value || this.acceptedOwnMessages.value.length >= 8;
   }
@@ -910,9 +922,8 @@ export class AppModel {
     if (old && (old.operationId !== operationId || old.text !== text)) return false;
     if (old?.operationId === operationId && old.phase === "sending") return false;
     if (!old) {
-      const accepted=this.acceptedOwnMessages.peek();
-      const bytes=new TextEncoder().encode(text).byteLength + accepted.reduce((sum,message)=>sum+new TextEncoder().encode(message.text).byteLength,0);
-      if(accepted.length>=8 || bytes>4*1024*1024){this.ownSendCapacityReason.value=true;return false;}
+      const admission=localSendAdmission(false,this.acceptedOwnMessages.peek(),text);
+      if(admission!=="ready"){this.ownSendCapacityReason.value=true;return false;}
     }
     this.ownSendCapacityReason.value=false;
     const owner = this.data.owner.peek(), scope = handle.handoffScope();
