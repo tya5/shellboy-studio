@@ -242,3 +242,27 @@ describe("Reads and mutations for Branches and Threads", () => {
     expect(t.calls()[0]!.operation_id).toBeUndefined();
   });
 });
+
+describe('302 optional notification across public history routes',()=>{
+ const valid=[{kind:'turn_started'},{kind:'recovery_resumed'},{kind:'instructions_observed',observation:'updated'},{kind:'thread_settings_changed',changed_fields:['cwd']},{kind:'shell_ended',execution_id:'exact-exec',state:'exited',exit_code:0}];
+ for(const route of ['get','list','window'] as const){
+  it(`admits five variants and quarantines only invalid notification on history.${route}`,async()=>{
+   for(const notification of [...valid,undefined,null,{kind:'future'},{kind:'turn_started',extra:'PRIVATE'}]){
+    const t=new FakeTransport();const link=new Link(t);link.start();t.open();const ops=new Operations(link,()=> 'notification-case');
+    const rawNode={node_id:'canonical',kind:'event',text:'body remains',selection:{ordinal:0},provenance:{sender:{kind:'system'},message:{expect_reply:false},independent:'kept',...(notification===undefined?{}:{notification})}};
+    const pending=route==='get'?ops.historyGet({node_id:'canonical'}):route==='list'?ops.historyList({thread_id:'thread'}):ops.historyWindow({thread_id:'thread'});
+    const response=route==='get'?rawNode:route==='list'?{items:[rawNode]}:{thread_id:'thread',revision:'r',total:1,items:[rawNode]};
+    t.ok(t.calls()[0]!.id,JSON.parse(JSON.stringify(response)));
+    const out=await pending;expect(out.ok).toBe(true);
+    if(out.ok){
+     const result=route==='get'?out.value:(out.value as {items:unknown[]}).items[0];
+     expect(result).toMatchObject({node_id:'canonical',text:'body remains',provenance:{sender:{kind:'system'},message:{expect_reply:false},independent:'kept'}});
+     const provenance=(result as {provenance:Record<string,unknown>}).provenance;
+     if(valid.includes(notification as typeof valid[number]))expect(provenance.notification).toEqual(notification);
+     else expect(provenance).not.toHaveProperty('notification');
+    }
+    link.stop();
+   }
+  });
+ }
+});
