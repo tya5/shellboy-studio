@@ -252,3 +252,44 @@ for(const windowed of [true,false])for(const withPrefix of [false,true])it(`actu
 
  }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
 });
+it('Composer clears the reserved original immediately while ACK is held and preserves the next draft',async()=>{
+ const host=document.createElement('div');document.body.append(host);let finish!:(ok:boolean)=>void,reserve:(()=>void)|undefined,calls=0;
+ try{
+ await act(async()=>render(<Composer label="Message" placeholder="" hint="" sendLabel="Send" canSend busy={false} onSend={(_text,onReserved)=>{calls++;reserve=onReserved;onReserved?.();return new Promise(resolve=>{finish=resolve;});}}/>,host));
+ const area=host.querySelector('textarea')!;
+ await act(async()=>{area.value='Original';area.dispatchEvent(new Event('input',{bubbles:true}));area.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));});
+ expect(reserve).toBeTypeOf('function');await act(async()=>{reserve!();});expect(area.value).toBe('');
+ await act(async()=>{area.value='New draft';area.dispatchEvent(new Event('input',{bubbles:true}));reserve!();area.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));finish(true);await flush();});
+ expect(area.value).toBe('New draft');expect(calls).toBe(1);
+ }finally{render(null,host);host.remove();}
+});
+for(const outcome of [false,true])it(`Composer old reservation and ACK cannot erase another scope or edited generation accepted=${outcome}`,async()=>{
+ const host=document.createElement('div');document.body.append(host);let finish!:(ok:boolean)=>void,reserve:(()=>void)|undefined;
+ const props={label:'Message',placeholder:'',hint:'',sendLabel:'Send',canSend:true,busy:false};
+ const onSend=(_text:string,onReserved?:()=>void)=>{reserve=onReserved;return new Promise<boolean>(resolve=>{finish=resolve;});};
+ try{
+ await act(async()=>render(<Composer {...props} draftScope="owner/thread/A" onSend={onSend}/>,host));const area=host.querySelector('textarea')!;
+ await act(async()=>{area.value='Original';area.dispatchEvent(new Event('input',{bubbles:true}));area.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));});
+ expect(area.value).toBe('Original');
+ await act(async()=>{render(<Composer {...props} draftScope="owner/thread/B" onSend={onSend}/>,host);});
+ await act(async()=>{reserve!();finish(outcome);await flush();});expect(area.value).toBe('Original');
+ }finally{render(null,host);host.remove();}
+});
+it('Composer failed reserved send preserves the next draft without automatic restoration',async()=>{
+ const host=document.createElement('div');document.body.append(host);let finish!:(ok:boolean)=>void;
+ try{
+ await act(async()=>render(<Composer label="Message" placeholder="" hint="" sendLabel="Send" canSend busy={false} onSend={(_text,reserve)=>{reserve?.();return new Promise(resolve=>{finish=resolve;});}}/>,host));const area=host.querySelector('textarea')!;
+ await act(async()=>{area.value='Owned original';area.dispatchEvent(new Event('input',{bubbles:true}));area.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));});expect(area.value).toBe('');
+ await act(async()=>{area.value='Next';area.dispatchEvent(new Event('input',{bubbles:true}));finish(false);await flush();});expect(area.value).toBe('Next');
+ }finally{render(null,host);host.remove();}
+});
+it('Composer scope round-trip does not make an old ACK own the current draft again',async()=>{
+ const host=document.createElement('div');document.body.append(host);let finish!:(ok:boolean)=>void;
+ const props={label:'Message',placeholder:'',hint:'',sendLabel:'Send',canSend:true,busy:false,onSend:()=>new Promise<boolean>(resolve=>{finish=resolve;})};
+ try{
+ await act(async()=>render(<Composer {...props} draftScope="A"/>,host));const area=host.querySelector('textarea')!;
+ await act(async()=>{area.value='Original';area.dispatchEvent(new Event('input',{bubbles:true}));area.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));});
+ await act(async()=>render(<Composer {...props} draftScope="B"/>,host));await act(async()=>render(<Composer {...props} draftScope="A"/>,host));
+ await act(async()=>{finish(true);await flush();});expect(area.value).toBe('Original');
+ }finally{render(null,host);host.remove();}
+});

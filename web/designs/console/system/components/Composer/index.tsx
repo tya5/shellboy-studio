@@ -4,7 +4,7 @@ import { composerAction } from "../../../../../ui-core/src";
 import { Icon } from "../Icon";
 import { Button } from "../Button";
 
-export function Composer(props: { label: string; placeholder: string; hint: string; sendLabel: string; canSend: boolean; busy: boolean; stop?: ComponentChildren; onSend: (text: string) => Promise<boolean> }) {
+export function Composer(props: { label: string; placeholder: string; hint: string; sendLabel: string; canSend: boolean; busy: boolean; draftScope?: string; stop?: ComponentChildren; onSend: (text: string, onReserved?: () => void) => Promise<boolean> }) {
   const [text, setText] = useState("");
   const draft = useRef("");
   const textarea = useRef<HTMLTextAreaElement>(null);
@@ -13,13 +13,35 @@ export function Composer(props: { label: string; placeholder: string; hint: stri
     if (draft.current !== value) { draft.current = value; generation.current++; }
     setText(value);
   };
+  const latestScope = useRef(props.draftScope);
+  const scopeGeneration = useRef(0);
+  if (latestScope.current !== props.draftScope) { latestScope.current = props.draftScope; scopeGeneration.current++; }
   const submitting = useRef(false);
   const submit = async () => {
     if (submitting.current || !props.canSend || props.busy || draft.current.trim() === "") return;
     const submittedGeneration = generation.current;
+    const submittedScope = props.draftScope;
+    const submittedScopeGeneration = scopeGeneration.current;
+    const submittedText = draft.current;
+    const clearOriginal = () => {
+      if (generation.current !== submittedGeneration || latestScope.current !== submittedScope || scopeGeneration.current !== submittedScopeGeneration) return;
+      generation.current++; draft.current = "";
+      if (textarea.current) textarea.current.value = "";
+      setText("");
+    };
     submitting.current = true;
-    try { if (await props.onSend(draft.current) && generation.current === submittedGeneration) { generation.current++; draft.current = ""; if (textarea.current) textarea.current.value = ""; setText(""); } }
-    finally { submitting.current = false; }
+    let notifying = true, reserved = false;
+    try {
+      const result = props.onSend(submittedText, () => {
+        // The owner may transfer this draft only during this submission call.
+        if (!notifying || reserved) return;
+        reserved = true;
+        clearOriginal();
+      });
+      notifying = false;
+      if (await result) clearOriginal();
+    }
+    finally { notifying = false; submitting.current = false; }
   };
   return (
     <div class="composer">
