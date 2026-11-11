@@ -112,3 +112,11 @@ it("spill unavailable issuer emits display facts without hydrating original cont
  const [row] = display([{ node_id: "s", kind: "spill", spill_tools: { status: "unknown", items: [], truncated: false } }]);
  expect(row!.value).toMatchObject({ contentLabel: { text: "Display content is unavailable" }, detailPolicy: "unavailable" });
 });
+it("spill exact public execution retains details, while unrelated executions stay unassociated", async () => {
+ const { workExecutionDisplay } = await import("../src/work-element-display");
+ const [row] = display([{ node_id: "spill", kind: "spill", spill_tools: { status: "known", truncated: false, items: [{ call_id: "call", execution_id: "yes" }] }, executions: [
+ { execution_id: "yes", command_excerpt: "printf retained", description: "retained description", state: "exited", exit_code: 0 },
+ { execution_id: "no", command_excerpt: "unrelated", state: "running" }] }]);
+ expect(workExecutionDisplay(row!.item, "yes")).toMatchObject({ contentLabel: { text: "printf retained", context: expect.arrayContaining([{ name: "description", value: "retained description" }]) }, state: { value: "exited", exitCode: 0 }, detailPolicy: "existing-shell-output" });
+ expect(workExecutionDisplay(row!.item, "no")).toBeUndefined();
+});

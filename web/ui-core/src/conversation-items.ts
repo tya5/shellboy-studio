@@ -43,6 +43,14 @@ export interface WorkDisplayMetadata {
   readonly shells: readonly Readonly<{ execution_id: string; description?: string; command_excerpt?: string; state?: string; exit_code?: number | null }>[];
   readonly receipt?: TerminalPresence;
 }
+function associatedDisplayShells(node: HistoryItem, ids: readonly string[]): WorkDisplayMetadata["shells"] {
+  if (ids.length > 64 || (node.executions?.length ?? 0) > 64) return Object.freeze([]);
+  return (node.executions ?? []).filter(shell => ids.includes(shell.execution_id)).map(shell => Object.freeze({
+        execution_id: shell.execution_id, state: shell.state,
+        ...(shell.description !== undefined ? { description: shell.description } : {}),
+        ...(shell.command_excerpt !== undefined ? { command_excerpt: shell.command_excerpt } : {}),
+        ...((typeof shell.exit_code === "number" && Number.isFinite(shell.exit_code)) || shell.exit_code === null ? { exit_code: shell.exit_code } : {}) }));
+}
 const displayMetadata = new WeakMap<object, WorkDisplayMetadata>();
 const displayIdentity = new WeakMap<object, string>();
 function metadataIdentity(source: NormalizedSavedItem): string {
@@ -354,7 +362,8 @@ function projectHistoryNodes(input: { readonly keyScope?: readonly string[]; rea
         if (seenSources.has(sourceKey)) continue;
         seenSources.add(sourceKey);
         const value: NormalizedSavedItem = { nodeId: node.node_id, itemIdentity: sourceKey, identityDomain: "spill", ...(input.revision !== undefined ? { windowRevision: input.revision } : {}), ...(input.keyScope ? { keyScope: input.keyScope } : {}), classificationCase: "spill", kind: "tool", callId: tool.call_id, executionIds: tool.execution_id ? [tool.execution_id] : [], compressed: true, detailUnavailable: true };
-        issueDisplayMetadata(value, Object.freeze({ scopeKey: JSON.stringify(value.keyScope ?? []), nodeKind: node.kind, shells: Object.freeze([]) }));
+        issueDisplayMetadata(value, Object.freeze({ scopeKey: JSON.stringify(value.keyScope ?? []), nodeKind: node.kind,
+          shells: Object.freeze(associatedDisplayShells(node, tool.execution_id ? [tool.execution_id] : [])) }));
         segment.push(value);
       }
       if (metadata.status !== "known" || metadata.truncated || !metadata.items.length) {
@@ -368,11 +377,7 @@ function projectHistoryNodes(input: { readonly keyScope?: readonly string[]; rea
       const value = normalizeValue(caseValue, rawIdentity, item);
       const ids = value.kind === "tool" ? value.executionIds ?? [] : [];
       if (ids.length > 64) return value;
-      const shells = (node.executions ?? []).filter(shell => ids.includes(shell.execution_id)).map(shell => Object.freeze({
-        execution_id: shell.execution_id, state: shell.state,
-        ...(shell.description !== undefined ? { description: shell.description } : {}),
-        ...(shell.command_excerpt !== undefined ? { command_excerpt: shell.command_excerpt } : {}),
-        ...((typeof shell.exit_code === "number" && Number.isFinite(shell.exit_code)) || shell.exit_code === null ? { exit_code: shell.exit_code } : {}) }));
+      const shells = associatedDisplayShells(node, ids);
       issueDisplayMetadata(value, Object.freeze({ scopeKey: JSON.stringify(value.keyScope ?? []),
         ...(node.kind ? { nodeKind: node.kind } : {}), ...(node.provenance?.created_at ? { createdAt: node.provenance.created_at } : {}), shells: Object.freeze(shells) }));
       return value;
