@@ -1,4 +1,4 @@
-import type {HistoryItem, MessageProvenance, NotificationDescriptor} from './protocol';
+import type {MessageProvenance, NotificationDescriptor} from './protocol';
 const bytes=new TextEncoder();
 const object=(v:unknown):v is Record<string,unknown>=>typeof v==='object'&&v!==null&&!Array.isArray(v);
 /** Optional metadata rejection cannot reject independent sender or body facts. */
