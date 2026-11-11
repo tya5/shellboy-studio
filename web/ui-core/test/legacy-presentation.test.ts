@@ -127,9 +127,12 @@ it("same-owner source notification reentry drains one replacement before returni
  p.acceptedView.subscribe(ref=>{frames.push({frame:frames.length,trigger:"accepted",generation:ref.projectionGeneration,current:p.isCurrent(ref)});
  if(armed){armed=false;const work=r.h.work as import('@preact/signals-core').Signal<typeof r.h.work.value>;work.value={...work.peek(),stale:!work.peek().stale};p.sync();frames.push({frame:frames.length,trigger:"nested-sync",oldCurrent:p.isCurrent(ref)});}});
  r.live(); const ok=p.sync();const ref=p.acceptedView.peek();frames.push({frame:frames.length,trigger:"return",current:p.isCurrent(ref),rows:ref.rows.map(n=>n.node_id)});
- // Synthetic identity-only trace, not user payload.
- // @ts-expect-error Node-only diagnostic output; no Node types in the UI target.
- const {writeFileSync}=await import('node:fs');writeFileSync('/tmp/studio-assistant-visibility-frames.json',JSON.stringify(frames));
+ expect(frames).toEqual([
+  {frame:0,trigger:"accepted",generation:2,current:true},
+  {frame:1,trigger:"nested-sync",oldCurrent:false},
+  {frame:2,trigger:"accepted",generation:3,current:true},
+  {frame:3,trigger:"return",current:true,rows:["tool","answer"]},
+ ]);
  expect(ok).toBe(true);expect(p.isCurrent(ref)).toBe(true);p.dispose();r.data.stop();
 });
 
