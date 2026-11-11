@@ -316,6 +316,8 @@ describe("Conversation", () => {
     expect(el.querySelector("[data-work-group] .work-element-row")).toBeTruthy();
     expect(text(el)).toContain("cargo test history::search");
     expect(text(el)).toContain("exited");
+    const exitedExecution=[...el.querySelectorAll('[data-execution-id]')].find(row=>row.textContent?.includes('cargo test history::search'));
+    expect(exitedExecution?.querySelector('.work-element-row')?.getAttribute('data-exit-code')).toBe('0');
     expect(text(el)).toContain("2.4s");
     expect(text(el)).toContain("41k / auto-summary 200k");
     expect(text(el)).not.toContain("Shellboy event v1");
