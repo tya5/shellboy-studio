@@ -163,7 +163,13 @@ describe("Conversation live text", () => {
     await act(async () => {
       await settle(t, db);
     });
-    expect(bodies().some((b) => b.includes("Writing"))).toBe(true);
+    const retainedPreview = el.querySelector('[data-live-overlay]')!;
+    expect(retainedPreview).not.toBeNull();
+    expect(retainedPreview.textContent).toContain("later");
+    expect(retainedPreview.querySelector('small.mono')?.textContent).toBe("Checking saved response");
+    expect(retainedPreview.querySelector('small.mono')?.textContent).not.toBe("Writing");
+    expect(el.querySelector('[data-node="saved-1"]')?.textContent).toContain("Final saved answer");
+    expect(retainedPreview.contains(el.querySelector('[data-node="saved-1"]'))).toBe(false);
     expect(el.textContent).toContain("Final saved answer");
     await act(async()=>{const group=el.querySelector<HTMLDetailsElement>("[data-work-group]");if(group){group.open=true;group.dispatchEvent(new Event("toggle"));}await flushPromises();});
     expect(el.textContent).not.toContain("Checking response kind");
