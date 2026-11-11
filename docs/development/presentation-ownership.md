@@ -74,3 +74,98 @@ association is canonical exact attemptId+turnId+nodeId under a qualified snapsho
 not text/time or a new global join. No Core API change is claimed necessary for
 ready states that already carry exact refs; absence in streaming is the separate
 potential contract gap. No blanket live suppression is authorized by this note.
+
+## Exact Trial Source And Terminal Outcomes
+
+Trial f5d6ee3bb282f0f0490818cf6f7ed9f7a021dc5f store.ts Git blob
+9d8ecd6cf6e6e1959f8f2c3eb35960a61c6bb073 / SHA256
+306ccafe81e7238d4161993f1632661ccbe2c47166640226dce1686e096f92fe.
+The earlier claim that response scope completeness blocks terminal receipt staging
+was WRONG: the exact-terminal branch precedes that gate. No such patch was made.
+
+| First Outcome | Source Condition / Observable Result | Existing UI |
+| --- | --- | --- |
+| owner/scope invalid | valid() false; no qualified receipt | existing owner/current invalidation; no stale counterpart permitted |
+| lookup unavailable | lookup result error | lookup-failed; explicit retry policy |
+| attempt identity absent | wrong Thread/attempt or no response_nodes array | unresolved, not proof of no saved counterpart |
+| terminal with 1..64 valid public node IDs, owned receipt available | stage, transfer, qualified reader commit, release | receipt live-off and canonical/CLIENT body presence |
+| terminal with >64/empty/invalid refs | no terminal proof | unresolved; existing negative controls |
+| nonterminal / incomplete attribution | no terminal proof; strong full-body transfer gate remains | unresolved; no body exclusivity inferred |
+| ninth distinct receipt in same lifetime | terminalReceipts.size>=8 before new staging | unresolved, canRetry=true, confirming row retained (misleading generic UI) |
+| bounded read starts exhausted | takeRead false | budget-exhausted, explicit retry; distinct from receipt lifetime capacity |
+
+Receipt map is bounded at eight across one entry lifetime, NOT eight current held
+rows and NOT eight read starts. It is cleared on owner/cancel/close lifecycle paths;
+canonical body visibility and held-slot end do not delete its entries. A retry
+reconciles the existing read budget but cannot create receipt capacity.
+
+A single actual App fixture admits eight sequential exact terminal receipts under
+one unchanged public handoff scope. Each existing explicit retry is used at most
+once per attempt; no new automatic refill is introduced. Attempts1..8 yield
+receipts1..8, held0 and live0. Attempt9 yields receipts8, confirming held1 without
+terminal proof, live1 plus independent canonical row, and unresolved/canRetry=true.
+This reproduces a state shape similar to USER's report, not the real environment's
+scope count or exact counterpart correlation. Original wrong live_end fixture type
+and retry union access failures are author errors, not production RED evidence.
+
+Safe proposed next seam: a closed receipt-capacity backpressure reason, retry
+unavailable for that lifetime, and a confirming label instead of Writing. This
+alone does NOT remove duplicate text or prove canonical transfer. No capacity
+increase, receipt eviction, proof transplantation, cache or body/time join is
+permitted without a separately adopted ownership contract. Production source is
+unchanged while that seam is reviewed.
+
+## Proposed Display Ownership, Separate From Receipt Retention
+
+| Concern | Existing Authority / Limit | Fresh Display Requirement / Missing Contract |
+| --- | --- | --- |
+| persistent terminal receipt | owned terminalReceipts entry, max8 per lifetime | not increased or evicted by display matching |
+| exact lookup association | owner-qualified terminal exactattempt and public node refs | at cap currently not published to consumer; existing pendingAttempts is created only after terminal branch, so ninth consumer cannot inspect it |
+| canonical display | current accepted ref + FINAL visible member | must contain corresponding exact node/turn, not just raw DTO existence |
+| retained owned live | exact original record object, scope and attempt | association must bind this original, not a later same-ID/key record |
+| display suppression | not currently available for cap-blocked ninth | require same accepted decision and fresh association; do not release record or remove receipt as a side effect |
+| canonical disappears or revision changes | prior ref cannot authorize a new display decision | recompute from new qualified data; no permanent suppressed-ID set |
+| owner/scope/path loss | existing qualification revokes old read and association | no stale label/body/link or oldproof migration |
+| ABA / stream re-entry | original-object + epoch/lifetime fences | older lookup must not hide a replacement preview, even if IDs match |
+| GC | receipt map currently lifecycle-owned | visible body does not grant eviction; no implicit GC proposal |
+
+One direct owner consultation is pending about reusing existing bounded
+attemptPresentations for fresh display association or publishing a minimal typed
+association before receipt-capacity denial. Either would be local data/presentation
+contract work, not a new Core barrier by assumption. Required evidence would be
+original record identity + current scope/epoch + exact attempt/optional turn and
+node refs + current accepted canonical-visible member, with an explicit
+invalidation/publication path. It is not satisfied by the retained preview text.
+No such new source surface is implemented or accepted in this record yet.
+
+### S6 Conditions 1-5: Feasibility Check (Not Implementation Approval)
+
+| S6 Condition | Current Ninth-Receipt Surface | Decision |
+| --- | --- | --- |
+| 1 fresh accepted owner/scope/generation + exact association | canonical ref exists; ninth exact lookup refs are not exposed at cap | blocked without a new bounded current association surface |
+| 2 complete nonempty same-membership atomic transfer/CAS | current canonical membership can be inspected, but no matching issued proof for original record at cap | not implemented; terminal refs alone cannot authorize text accounting |
+| 3 unmount/revision/revoke/ABA invalidation | accepted ref and original-object fences exist separately | must compose them under one result; a retained suppression set is invalid |
+| 4 separate receipt insertion/GC/cohort rules | map ownership fixed8, ready whole-attempt proof is distinct | no partial retirement, eviction or ninth permanent saved claim permitted |
+| 5 unchanged token bounds/lifetime/shutdown | no spare receipt ownership or new lifetime is adopted | cannot assume an extra persistent proof slot; keep honest backpressure |
+
+Counterexample to a naive display-only shortcut: a terminal receipt names nodes
+but fresh FINAL has unavailable/partial/empty text or a Work member instead of a
+complete nonempty answer. Suppressing the original preview on raw node existence
+would repeat the disappearance symptom. Counterexample to an ID cache: replacing
+the original live record or revoking/recreating scope may reuse visible keys while
+the old accepted ref is no longer current. Hence the small reason/header seam may
+proceed independently; structural duplicate-body retirement is not authorized.
+
+### Explanation Seam Implemented (Structure Still Unchanged)
+
+S eae7780 supplies receipt_capacity/canRetry=false only for the actual blocked
+exact-terminal capacity outcomes. D adds its English/Japanese reason and uses the
+existing Checking saved response label for confirming previews, not a completed
+Core state. The same ninth App control now asserts retained preview plus canonical
+body (duplicate still present), visible capacity reason and absent Retry button.
+Existing receipt reuse, mixed reasons and lifecycle negatives stay in S's readback
+file. Combined both TS and two files/36 controls pass. The first combined attempt
+used a nonexistent .when selector, failed one assertion and was corrected to the
+actual Message small.mono header; that author fixture error remains separate.
+The earlier proposed labels in this table are now implemented, not the proposed
+new ownership association. General USER cause/duplicate-body repair is not proven.

@@ -168,8 +168,8 @@ export function SavedConversationItems({ model, projection, renderBefore, traili
           const source = item.source;
           const handle = model.handle.value;
           const record = source.namespace === "handoff" ? handle?.handoff.value.find(record => record.key === source.recordId) : undefined;
-          if(membership.get(item.key)==="live-presence")return <div data-live-overlay="" data-assistant-presence="">{t("convo.live")}{record ? <LiveRecordChrome model={model} record={record} retry={() => handle?.retryHandoff()} /> : null}</div>;
-          return <div data-live-overlay=""><Message bot who={t("convo.shellboy")} at={t("convo.live")} text={item.source.text ?? ""} copyLabel={t("code.copy")} copiedLabel={t("code.copied")}>
+          if(membership.get(item.key)==="live-presence")return <div data-live-overlay="" data-assistant-presence="">{t(record?.status==="confirming"?"convo.handoffConfirming":"convo.live")}{record ? <LiveRecordChrome model={model} record={record} retry={() => handle?.retryHandoff()} /> : null}</div>;
+          return <div data-live-overlay=""><Message bot who={t("convo.shellboy")} at={t(record?.status==="confirming"?"convo.handoffConfirming":"convo.live")} text={item.source.text ?? ""} copyLabel={t("code.copy")} copiedLabel={t("code.copied")}>
             {record ? <LiveRecordChrome model={model} record={record} retry={() => handle?.retryHandoff()} /> : null}
           </Message></div>;
         }
@@ -220,7 +220,7 @@ function HandoffRetryControl({model}: {model:AppModel}) {
   const handle=model.handle.value;
   const state=handle?.handoffRetryState.value;
   if(!handle||!state||state.phase==="idle")return null;
-  return <span data-handoff-retry-phase={state.phase}>
+  return <span data-handoff-retry-phase={state.phase} data-handoff-retry-reason={state.phase!=="reading"?state.reason:undefined}>
     <span class="caption muted">{model.t.value(state.phase==="reading"?"convo.handoffConfirming":`convo.retry.${state.reason}`)}</span>
     {state.phase==="reading"||state.canRetry?<Button variant="link" disabled={!state.canRetry} onClick={()=>void handle.retryHandoff()}>{model.t.value("action.retry")}</Button>:null}
   </span>;
