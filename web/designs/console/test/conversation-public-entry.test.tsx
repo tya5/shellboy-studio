@@ -1,9 +1,45 @@
 // @vitest-environment happy-dom
 import { render } from 'preact';
+import '@preact/signals';
+import {signal} from '@preact/signals';
+import {useLayoutEffect,useState} from 'preact/hooks';
+import {ConversationWindow,type WindowAcceptedSnapshot} from '../../../ui-core/src/window';
+import {Handoff} from '../../../data/src/handoff';
+import type {AppModel} from '../../../ui-core/src/model';
+import {SavedWindowContent as ActualSavedWindowContent} from '../screens/Conversation';
 import { act } from 'preact/test-utils';
 import { expect, it } from 'vitest';
 import { fixtureModel } from '../../../ui-core/test/fixture';
-import { projectSavedItems } from '../../../ui-core/src/conversation-items';
+import { normalizeConversationFacts, normalizeLiveWorkFacts, projectSavedItems } from '../../../ui-core/src/conversation-items';
+
+type IssuedProps=Parameters<typeof ActualSavedWindowContent>[0];
+// The real reader owns and publishes this ref; a fixture object is never current.
+function IssuedWindowContent(props:IssuedProps & {onIssued?:(reader:ConversationWindow,snapshot:WindowAcceptedSnapshot)=>void}){
+ const [issued,setIssued]=useState<{reader:ConversationWindow;snapshot:WindowAcceptedSnapshot}>();
+ useLayoutEffect(()=>{
+  const rows=props.snapshot.rows.map((row,index)=>({...row,selection:{...row.selection,ordinal:row.selection?.ordinal??index}}));
+  const total=rows.length?Math.max(...rows.map(row=>row.selection.ordinal))+1:0;
+  const reader=new ConversationWindow({read:async()=>({ok:true,value:{thread_id:'issued-fixture',revision:1,total,items:rows}})});
+  let preparing=false;
+  const publish=()=>{
+   if(preparing||reader.acceptedView.peek().revision===undefined)return;
+   preparing=true;
+   for(const retired of props.snapshot.retiredAttempts??[]){
+    const ledger=new Handoff(fn=>fn());ledger.apply({attempt_id:retired.attemptId,gap:false,deltas:[{offset:0,reasoning:false,text:'Owned stream'}]});
+    const original=ledger.records.value[0]!;
+    const proof={scope:retired.scope,attemptId:retired.attemptId,turnId:retired.turnId,revision:1,total:rows.length,refs:retired.nodeIds.map(nodeId=>({nodeId})),nodes:rows.filter(row=>retired.nodeIds.includes(row.node_id!))};
+    if(ledger.stageAttempt(original,proof))ledger.transferAttempt(original,proof,(record,release)=>reader.acceptHandoff(record,retired.scope,release));
+    ledger.discard('ended');
+   }
+   preparing=false;const snapshot=reader.acceptedView.peek();props.onIssued?.(reader,snapshot);setIssued({reader,snapshot});
+  };
+  const stop=reader.acceptedView.subscribe(publish);
+  publish();return()=>{stop();reader.dispose();};
+ },[props.snapshot]);
+ if(!issued)return null;
+ const model=new Proxy(props.model,{get(target,key){if(key==='longReader')return {value:issued.reader,peek:()=>issued.reader};return Reflect.get(target,key);}});
+ return <ActualSavedWindowContent {...props} model={model} snapshot={issued.snapshot}/>;
+}
 
 it('provides a Console-owned saved-text renderer without a fixture render callback',async()=>{
   const fixture=await fixtureModel(),host=document.createElement('div');document.body.append(host);
@@ -45,7 +81,7 @@ it('keeps all execution IDs under the single authoritative tool item wrapper',as
 it('maps actual typed window rows without a registry and preserves ordinary/deferred node ordering',async()=>{
   const fixture=await fixtureModel(),host=document.createElement('div');document.body.append(host);
   try{
-    const { SavedWindowContent }=await import('../screens/Conversation');
+    const SavedWindowContent=IssuedWindowContent;
     const rows:import('../../../data/src/protocol').HistoryItem[]=[
       {node_id:'saved',kind:'assistant_response',selection:{ordinal:0},items:[{item_identity:'t0',kind:'text',text:'Actual typed saved content',text_complete:true}]},
       {node_id:'ordinary',kind:'user',excerpt:'Ordinary node survives',selection:{ordinal:1}},
@@ -63,14 +99,14 @@ it('maps actual typed window rows without a registry and preserves ordinary/defe
 it.each(['empty', 'reasoning', 'deferred', 'undefined', 'empty-window'] as const)('places explicit live Work exactly once with %s boundary input',async mode=>{
   const fixture=await fixtureModel(),host=document.createElement('div');document.body.append(host);
   try{
-    const { SavedWindowContent }=await import('../screens/Conversation');
+    const SavedWindowContent=IssuedWindowContent;
     const rows:import('../../../data/src/protocol').HistoryItem[]=mode==='empty-window'?[]:[
       {node_id:'boundary-node',kind:'assistant_response',selection:{ordinal:1},...(mode==='deferred'?{items:null,items_unavailable_reason:'response_budget' as const}:{items:mode==='reasoning'?[{item_identity:'reasoning',kind:'reasoning_unavailable' as const}]:[]})},
       {node_id:'later-human',kind:'user',excerpt:'Later human',selection:{ordinal:2}},
     ];
     const snapshot={rows,range:{first:0,last:2},total:rows.length,revision:1,generation:1,epoch:1,disposed:false,pending:false};
-    await act(async()=>render(<SavedWindowContent model={fixture.model} snapshot={snapshot} liveFacts={[{domain:'live',scope:'synthetic-thread',recordId:'live-record',kind:'unknown'}]}/>,host));
-    const records=[...host.querySelectorAll('[data-work-item-key]')].filter(item=>item.getAttribute('data-item-key')===JSON.stringify(['live','work','synthetic-thread','live-record']));
+    await act(async()=>render(<SavedWindowContent model={fixture.model} snapshot={snapshot} liveFacts={normalizeLiveWorkFacts({scope:'synthetic-thread',items:[{kind:'progress',id:'live-record',thread_id:'synthetic-thread',state:'running'}]})}/>,host));
+    const records=[...host.querySelectorAll('[data-work-item-key]')].filter(item=>item.getAttribute('data-item-key')?.includes('live-record'));
     expect(records).toHaveLength(1);expect(records[0]!.closest('[data-work-group]')).not.toBeNull();
     if(mode!=='empty-window')expect(host.textContent).toContain('Later human');
   }finally{render(null,host);host.remove();fixture.model.dispose();fixture.data.stop();}
@@ -80,7 +116,7 @@ it.each(['empty', 'reasoning', 'deferred', 'undefined', 'empty-window'] as const
 it('restores authoritative user Message chrome without substituting aggregate text for typed content',async()=>{
   const fixture=await fixtureModel(),host=document.createElement('div');document.body.append(host);
   try{
-    const { SavedWindowContent }=await import('../screens/Conversation');
+    const SavedWindowContent=IssuedWindowContent;
     const rows:import('../../../data/src/protocol').HistoryItem[]=[{node_id:'user-chrome',kind:'user',excerpt:'Aggregate must not replace item',provenance:{created_at:'2099-01-01T00:00:00Z',sender:{kind:'human'}},selection:{ordinal:0},items:[{item_identity:'user-text',kind:'text',text:'Authoritative typed user content',text_complete:true}]}];
     const snapshot={rows,range:{first:0,last:0},total:1,revision:1,generation:1,epoch:1,disposed:false,pending:false};
     await act(async()=>render(<SavedWindowContent model={fixture.model} snapshot={snapshot}/>,host));
@@ -115,7 +151,7 @@ it('restores Work group toggle with real parent containment and retains same-mem
 it.each(['', 'Partial authoritative item'])('never replaces authorized item text %j with a cached aggregate body',async text=>{
   const fixture=await fixtureModel(),host=document.createElement('div');document.body.append(host);
   try{
-    const { SavedWindowContent }=await import('../screens/Conversation');
+    const SavedWindowContent=IssuedWindowContent;
     fixture.model.bodies.value=new Map([['item-authority',{text:'Forbidden cached aggregate body',loading:false,error:undefined}]]);
     const rows:import('../../../data/src/protocol').HistoryItem[]=[{node_id:'item-authority',kind:'user',provenance:{sender:{kind:'human'}},excerpt:'Forbidden aggregate excerpt',selection:{ordinal:0},items:[{item_identity:'text',kind:'text',text,text_complete:false}]}];
     await act(async()=>render(<SavedWindowContent model={fixture.model} snapshot={{rows,range:{first:0,last:0},total:1,revision:1,generation:1,epoch:1,disposed:false,pending:false}}/>,host));
@@ -129,7 +165,7 @@ it.each(['', 'Partial authoritative item'])('never replaces authorized item text
 it.each(['empty-user','reasoning-only','unknown-item'] as const)('keeps honest ordinary node presence for %s without aggregate fallback',async mode=>{
   const fixture=await fixtureModel(),host=document.createElement('div');document.body.append(host);
   try{
-    const { SavedWindowContent }=await import('../screens/Conversation');
+    const SavedWindowContent=IssuedWindowContent;
     const row:import('../../../data/src/protocol').HistoryItem={node_id:'quiet-node',kind:mode==='empty-user'?'user':'assistant_response',excerpt:'Forbidden private aggregate fallback',selection:{ordinal:0},items:mode==='empty-user'?[]:mode==='reasoning-only'?[{item_identity:'r',kind:'reasoning_unavailable'}]:[{item_identity:'unknown',kind:'unavailable',reason:'opaque'}]};
     await act(async()=>render(<SavedWindowContent model={fixture.model} snapshot={{rows:[row],range:{first:0,last:0},total:1,revision:1,generation:1,epoch:1,disposed:false,pending:false}}/>,host));
     expect(host.querySelector('[data-node="quiet-node"]')).not.toBeNull();expect(host.textContent).toContain(mode==='unknown-item'?'opaque':fixture.model.t.value(mode==='reasoning-only'?'work.reasoning':'work.textUnavailable'));
@@ -142,12 +178,12 @@ it('retains a no-execution tool as a visible unavailable item without inventing 
   const fixture=await fixtureModel(),host=document.createElement('div');document.body.append(host);
   try{
     const { SavedConversationItems }=await import('../screens/Conversation');
-    const projection=projectSavedItems([{nodeId:'no-exec',itemIdentity:'tool',windowRevision:1,kind:'tool',executionIds:[]}]);
+    const projection=projectSavedItems(normalizeConversationFacts([{nodeId:'no-exec',itemIdentity:'tool',windowRevision:1,kind:'tool',executionIds:[]}]));
     await act(async()=>render(<SavedConversationItems model={fixture.model} projection={projection}/>,host));
     expect(host.querySelectorAll('[data-item-key]')).toHaveLength(1);expect(host.querySelector('[data-execution-id]')).toBeNull();
     const heading=host.querySelector('summary[data-work-heading]')!;expect(heading.textContent).toContain(fixture.model.t.value('tools.count',{n:1}));expect(heading.textContent).not.toContain(fixture.model.t.value('work.textUnavailable'));expect(heading.textContent).not.toContain(fixture.model.t.value('status.completed'));
     const details=host.querySelector('details')!;await act(async()=>{details.open=true;details.dispatchEvent(new Event('toggle'));});
-    expect(host.querySelector('[data-execution-unavailable]')?.textContent).toBe(fixture.model.t.value('work.unknownTools'));expect(host.querySelector('[data-execution-unavailable]')?.closest('[data-work-group]')).toBe(details);
+    expect(host.querySelector('[data-execution-unavailable]')?.textContent).toContain(fixture.model.t.value('work.textUnavailable'));expect(host.querySelector('[data-execution-unavailable]')?.closest('[data-work-group]')).toBe(details);
   }finally{render(null,host);host.remove();fixture.model.dispose();fixture.data.stop();}
 });
 
@@ -160,7 +196,7 @@ it('bounds output watches to opened tool details and preserves item DOM when mem
     const step=fixture.model.conversation.value.flatMap(row=>row.type==='steps'?row.steps:[])[0]!;
     expect(step).toBeDefined();fixture.model.toolStepChoices.value=new Map([[step.executionId,true]]);
     const source={nodeId:'watch-node',itemIdentity:'watch-item',windowRevision:1,kind:'tool' as const,executionIds:[step.executionId]};
-    const projection=projectSavedItems([source]);
+    const projection=(await import('../../../ui-core/src/conversation-items')).projectLegacyHistoryItems({nodes:[{node_id:source.nodeId,kind:'assistant_response',items:[{item_identity:source.itemIdentity,kind:'tool_call',execution_ids:source.executionIds}],executions:[{execution_id:step.executionId,command_excerpt:step.command,state:step.state}]}]}).projection;
     const paint=async(p:typeof projection)=>act(async()=>render(<SavedConversationItems model={fixture.model} projection={p}/>,host));
     await paint(projection);const item=host.querySelector('[data-item-key]')!,parent=item.parentElement;
     expect(active).toBe(0);
@@ -171,7 +207,7 @@ it('bounds output watches to opened tool details and preserves item DOM when mem
     }
     const details=host.querySelector('details.step-group')! as HTMLDetailsElement;
     await act(async()=>{details.open=true;details.dispatchEvent(new Event('toggle'));});expect(active).toBe(1);
-    await paint(projectSavedItems([{...source,nodeId:'preceding',itemIdentity:'preceding',executionIds:['other-execution']},source]));
+    await paint(projectSavedItems(normalizeConversationFacts([{...source,nodeId:'preceding',itemIdentity:'preceding',executionIds:['other-execution']},source])));
     expect(active).toBe(0);const replacement=[...host.querySelectorAll('[data-item-key]')].find(el=>el.getAttribute('data-item-key')===projection.items[0]!.key)!;
     expect(replacement).not.toBe(item);expect((replacement.closest('details') as HTMLDetailsElement).open).toBe(false);expect(maximum).toBe(1);
   }finally{render(null,host);expect(active).toBe(0);fixture.model.watchOutput=original;host.remove();fixture.model.dispose();fixture.data.stop();}
@@ -194,7 +230,7 @@ it('does not claim completion for a closed local summary mixing proved and no-ID
 it('contains saved Work in actual group parents even for a singleton and never drops thinking records',async()=>{
   const fixture=await fixtureModel(),host=document.createElement('div');document.body.append(host);
   try{
-    const { SavedWindowContent }=await import('../screens/Conversation');
+    const SavedWindowContent=IssuedWindowContent;
     const rows:import('../../../data/src/protocol').HistoryItem[]=[
       {node_id:'work-a',kind:'assistant_response',selection:{ordinal:0},items:[{item_identity:'think',kind:'reasoning_unavailable'},{item_identity:'tool',kind:'tool_call',execution_ids:[]}]},
       {node_id:'conversation',kind:'assistant_response',selection:{ordinal:1},items:[{item_identity:'text',kind:'text',text:'Authoritative answer',text_complete:true}]},
@@ -213,14 +249,14 @@ it('contains saved Work in actual group parents even for a singleton and never d
 it.each(['live-only','mixed'] as const)('contains all %s Work facts and keeps authoritative live text outside Work',async mode=>{
   const fixture=await fixtureModel(),host=document.createElement('div');document.body.append(host);
   try{
-    const { SavedWindowContent }=await import('../screens/Conversation');
+    const SavedWindowContent=IssuedWindowContent;
     const { normalizeLiveWorkFacts }=await import('../../../ui-core/src/conversation-items');
     const rows:import('../../../data/src/protocol').HistoryItem[]=mode==='mixed'?[{node_id:'saved-work',kind:'assistant_response',selection:{ordinal:0},items:[{item_identity:'thinking',kind:'reasoning_unavailable'}]}]:[];
     const liveFacts=[...normalizeLiveWorkFacts({scope:'synthetic-scope',items:[{kind:'shell',id:'shell-record',state:'running',thread_id:'synthetic-scope',execution_id:'actual-exec'},{kind:'pending_message',id:'pending',state:'pending',thread_id:'synthetic-scope',message_id:'pending-message'},{kind:'progress',id:'progress-record',state:'running',thread_id:'synthetic-scope'}]}),{domain:'live' as const,namespace:'handoff' as const,scope:'synthetic-scope',recordId:'actual-stream-record',kind:'text' as const,text:'Authoritative live nonreasoning text'}];
     await act(async()=>render(<SavedWindowContent model={fixture.model} snapshot={{rows,range:{first:0,last:rows.length-1},total:rows.length,revision:1,generation:1,epoch:1,disposed:false,pending:false}} liveFacts={liveFacts}/>,host));
     const members=[...host.querySelectorAll('[data-work-item-key]')];expect(members).toHaveLength(mode==='mixed'?3:2);
     for(const item of members)expect(item.closest('details[data-work-group]')).not.toBeNull();
-    expect(host.querySelectorAll('[data-work-group]')).toHaveLength(1);
+    expect(host.querySelectorAll('[data-work-group]')).toHaveLength(mode==='mixed'?2:1);
     expect(host.textContent).toContain('Authoritative live nonreasoning text');
     expect(host.querySelector('[data-live-overlay]')?.closest('[data-work-group]')).toBeNull();
     expect([...host.querySelectorAll('[data-item-key]')].some(item=>item.getAttribute('data-item-key')?.includes('pending'))).toBe(false);
@@ -247,7 +283,7 @@ it('admits text only from never-ready owned ledger records, not ready or identif
 it('retains the actual response budget reason in closed and open saved Work without aggregate fallback',async()=>{
   const fixture=await fixtureModel(),host=document.createElement('div');document.body.append(host);
   try{
-    const { SavedWindowContent }=await import('../screens/Conversation');
+    const SavedWindowContent=IssuedWindowContent;
     const rows:import('../../../data/src/protocol').HistoryItem[]=[{node_id:'budget-reason',kind:'assistant_response',excerpt:'Forbidden deferred aggregate',selection:{ordinal:0},items:null,items_unavailable_reason:'response_budget'}];
     await act(async()=>render(<SavedWindowContent model={fixture.model} snapshot={{rows,range:{first:0,last:0},total:1,revision:1,generation:1,epoch:1,disposed:false,pending:false}}/>,host));
     const details=host.querySelector('details[data-work-group]')! as HTMLDetailsElement;
@@ -285,11 +321,11 @@ it('keeps one identical footer element through known states and unknown loading 
   try{
     const screen=await import('../screens/Conversation') as unknown as Record<string,any>;
     expect(screen.ConversationStatus).toBeTypeOf('function');
-    const base=fixture.model.selectedRow.value!;let current:typeof fixture.model.selectedRow.value=base;
-    const model=new Proxy(fixture.model,{get(target,key){return key==='selectedRow'?{value:current}:Reflect.get(target,key);}});
+    const base=fixture.model.selectedRow.value!;const selected=signal<typeof fixture.model.selectedRow.value>(base);
+    const model=new Proxy(fixture.model,{get(target,key){return key==='selectedRow'?selected:key==='threadReplies'?{value:[]}:Reflect.get(target,key);}});
     let original:Element|undefined;
     for(const state of ['idle',undefined,'running',undefined,'completed',undefined,'idle'] as const){
-      current=state?{...base,status:state}:undefined;
+      selected.value=state?{...base,status:state}:undefined;
       await act(async()=>render(<screen.ConversationStatus model={model}/>,host));
       const footer=host.querySelector('.conversation-status')!;expect(footer).not.toBeNull();
       if(original)expect(footer).toBe(original);else original=footer;
@@ -302,14 +338,14 @@ it('keeps one identical footer element through known states and unknown loading 
 it('publishes saved rows and whole-attempt retirement in the same DOM frame, retaining partial and invalid-scope overlays',async()=>{
   const fixture=await fixtureModel(),host=document.createElement('div');document.body.append(host);
   try{
-    const { SavedWindowContent }=await import('../screens/Conversation');
-    const scope='owner-thread-lifetime';let current:object;
+    const SavedWindowContent=IssuedWindowContent;
+    const scope='owner-thread-lifetime';let current:object;let publication:{reader:ConversationWindow;snapshot:WindowAcceptedSnapshot}|undefined;
     const model=new Proxy(fixture.model,{get(target,key){
       if(key==='handle')return {value:{threadId:'thread',handoffScope:()=>scope,handoff:{value:[]},handoffOverflow:{value:false},work:{value:{}}}};
       if(key==='longReader')return {value:{acceptedView:{isCurrent:(ref:object)=>ref===current}}};
       return Reflect.get(target,key);
     }});
-    const liveFacts=[{domain:'live' as const,scope:'thread',recordId:'live-text',kind:'text' as const,text:'Whole live answer',attemptId:'attempt',turnId:'turn'},{domain:'live' as const,scope:'thread',recordId:'live-work',kind:'unknown' as const,attemptId:'attempt',turnId:'turn'}];
+    const liveFacts=[{domain:'live' as const,scope:'thread',recordId:'live-text',kind:'text' as const,text:'Whole live answer',attemptId:'attempt',turnId:'turn'},...normalizeLiveWorkFacts({scope:'thread',items:[{kind:'progress',id:'live-work',thread_id:'thread',state:'running',attempt_id:'attempt',turn_id:'turn'}]})];
     const independent:import('../../../data/src/protocol').HistoryItem={node_id:'independent',kind:'user',selection:{ordinal:0},items:[{item_identity:'text',kind:'text',text:'Independent user',text_complete:true}]};
     const saved:import('../../../data/src/protocol').HistoryItem={node_id:'saved-answer',kind:'assistant_response',selection:{ordinal:1},items:[{item_identity:'answer',kind:'text',text:'Committed saved answer',text_complete:true}]};
     const base={range:{first:0,last:1},revision:7,generation:1,epoch:1,disposed:false,pending:false};
@@ -321,14 +357,21 @@ it('publishes saved rows and whole-attempt retirement in the same DOM frame, ret
       {...base,rows:[independent,saved],total:2,retiredAttempts:[{scope,attemptId:'attempt',turnId:'turn',nodeIds:['saved-answer'],revision:7}]},
     ];
     for(let i=0;i<frames.length;i++){
-      current=frames[i]!;await act(async()=>render(<SavedWindowContent model={model} snapshot={frames[i]!} liveFacts={liveFacts}/>,host));
+      current=frames[i]!;await act(async()=>render(<SavedWindowContent model={model} snapshot={frames[i]!} onIssued={(reader,snapshot)=>{publication={reader,snapshot};}} liveFacts={liveFacts}/>,host));
       expect(host.textContent).toContain('Independent user');
       expect(host.textContent?.includes('Whole live answer')).toBe(i!==4);
       expect(host.querySelectorAll('[data-work-item-key]').length).toBe(i===4?0:i===1?2:1);
       if(i>=2)expect(host.textContent).toContain('Committed saved answer');
     }
-    current={};await act(async()=>render(<SavedWindowContent model={model} snapshot={frames[4]!} liveFacts={liveFacts}/>,host));
-    expect(host.textContent).toContain('Whole live answer');expect(host.textContent).toContain('Committed saved answer');
+    const revoked=publication!;
+    revoked.reader.dispose();
+    expect(revoked.reader.acceptedView.isCurrent(revoked.snapshot)).toBe(false);
+    const {retainUnretiredLiveFacts}=await import('../screens/Conversation');
+    // Revocation cannot consume the overlay; it also cannot authorize stale public DOM.
+    expect(retainUnretiredLiveFacts(revoked.snapshot,scope,false,liveFacts)).toEqual(liveFacts);
+    const revokedModel=new Proxy(model,{get(target,key){return key==='longReader'?{value:revoked.reader,peek:()=>revoked.reader}:Reflect.get(target,key);}});
+    await act(async()=>render(<ActualSavedWindowContent model={revokedModel} snapshot={revoked.snapshot} liveFacts={liveFacts}/>,host));
+    expect(host.textContent).not.toContain('Whole live answer');expect(host.textContent).not.toContain('Committed saved answer');
   }finally{render(null,host);host.remove();fixture.model.dispose();fixture.data.stop();}
 });
 
@@ -357,7 +400,11 @@ it('defaults a running structural tool detail to closed without subscribing outp
   try{
     const { StepView }=await import('../screens/Conversation');
     const base=fixture.model.conversation.value.flatMap(row=>row.type==='steps'?row.steps:[])[0]!;
-    await act(async()=>render(<StepView model={fixture.model} step={{...base,status:'running'}}/>,host));
-    expect((host.querySelector('details.step') as HTMLDetailsElement).open).toBe(false);expect(watches).toBe(0);
+    const {projectLegacyHistoryItems}=await import('../../../ui-core/src/conversation-items');
+    const {workElementDisplay}=await import('../../../ui-core/src/work-element-display');
+    const issued=projectLegacyHistoryItems({nodes:[{node_id:'controlled-tool',kind:'assistant_response',items:[{kind:'tool_call',item_identity:'call',execution_ids:[base.executionId]}],executions:[{execution_id:base.executionId,state:'running',command_excerpt:base.command}]}]}).projection.items[0]!;
+    const display=workElementDisplay(issued)!;
+    await act(async()=>render(<StepView model={fixture.model} step={{...base,status:'running'}} display={display}/>,host));
+    expect((host.querySelector('details.work-element-row') as HTMLDetailsElement).open).toBe(false);expect(watches).toBe(0);
   }finally{render(null,host);fixture.model.watchOutput=watch;host.remove();fixture.model.dispose();fixture.data.stop();}
 });
