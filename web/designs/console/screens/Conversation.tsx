@@ -75,7 +75,16 @@ export function AcceptedWindowConversation({ reader, project, renderItem, render
 }
 
 /** Console presentation for an already authorized projection, independent of wire decoding. */
+type AssistantTextMembership = "message" | "live-presence" | "empty-saved" | "content-unavailable";
+function assistantTextMembership(item: ConversationItem): AssistantTextMembership {
+  const source=item.source;
+  if(source.kind!=="text"||source.text!=="")return "message";
+  if("domain" in source)return "live-presence";
+  return source.textComplete===true?"empty-saved":"content-unavailable";
+}
+
 export function SavedConversationItems({ model, projection, renderBefore, trailing, nodes,localRegion }: { model: AppModel; projection: SavedItemProjection & { sequence?: readonly ({kind: "conversation"; itemKey: string} | {kind: "work"; groupKey: string})[]; workGroups?: readonly ConversationWorkGroup[] }; nodes?: readonly HistoryItem[]; renderBefore?: (item: ConversationItem) => ComponentChildren; trailing?: ComponentChildren;localRegion?:{placement:OwnSendPlacement;content:ComponentChildren;slots?:readonly {insertion:OwnSendInsertion;content:ComponentChildren}[];unqualified?:ComponentChildren} }) {
+  const membership=new Map(projection.items.map(item=>[item.key,assistantTextMembership(item)]));
   const t = model.t.value;
   const savedSteps = collectExecutionSteps(nodes ?? [], model.shells.value);
   const savedExecutionIds = new Set(savedSteps.map(step => step.executionId));
@@ -132,7 +141,7 @@ export function SavedConversationItems({ model, projection, renderBefore, traili
     if(bundle.detailPolicy!=="none"&&bundle.detailPolicy!=="unavailable")return null;
     return <WorkElementRow display={display} anchorKey={item.key} detailPolicy={bundle.detailPolicy}/>;
   };
-  return <ConversationItems {...projection} localRegion={localRegion} renderWorkGroup={projection.workGroups ? renderWorkGroup : undefined} renderBefore={renderBefore} trailing={trailing} isItemHidden={hidden} renderHeading={summary => {
+  return <ConversationItems {...projection} isItemAbsent={item=>membership.get(item.key)==="empty-saved"} localRegion={localRegion} renderWorkGroup={projection.workGroups ? renderWorkGroup : undefined} renderBefore={renderBefore} trailing={trailing} isItemHidden={hidden} renderHeading={summary => {
     const steps = allSteps.filter(step => summary.executionIds.includes(step.executionId));
     const active = steps.find(step => step.status === "running");
     const nonzero = steps.filter(step => typeof step.exitCode === "number" && step.exitCode !== 0).length;
@@ -152,10 +161,12 @@ export function SavedConversationItems({ model, projection, renderBefore, traili
     renderItem={item => {
       if (item.source.kind === "text" || item.source.kind === "user" || item.source.kind === "summary") {
         const node = item.source.nodeId ? nodes?.find(node => node.node_id === item.source.nodeId) : undefined;
+        if(membership.get(item.key)==="content-unavailable")return <div data-assistant-content-unavailable="">{t("work.textUnavailable")}</div>;
         if (!node && "domain" in item.source) {
           const source = item.source;
           const handle = model.handle.value;
           const record = source.namespace === "handoff" ? handle?.handoff.value.find(record => record.key === source.recordId) : undefined;
+          if(membership.get(item.key)==="live-presence")return <div data-live-overlay="" data-assistant-presence="">{t("convo.live")}{record ? <LiveRecordChrome model={model} record={record} retry={() => handle?.retryHandoff()} /> : null}</div>;
           return <div data-live-overlay=""><Message bot who={t("convo.shellboy")} at={t("convo.live")} text={item.source.text ?? ""} copyLabel={t("code.copy")} copiedLabel={t("code.copied")}>
             {record ? <LiveRecordChrome model={model} record={record} retry={() => handle?.retryHandoff()} /> : null}
           </Message></div>;

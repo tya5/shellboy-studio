@@ -38,12 +38,13 @@ interface Props {
   renderBefore?: (item: ConversationItem) => ComponentChildren;
   trailing?: ComponentChildren;
   localRegion?:{placement:OwnSendPlacement;content:ComponentChildren;slots?:readonly {insertion:OwnSendInsertion;content:ComponentChildren}[];unqualified?:ComponentChildren};
+  isItemAbsent?: (item: ConversationItem) => boolean;
   isItemHidden?: (item: ConversationItem) => boolean;
   renderHeading?: (summary: ConversationToolSummary) => ComponentChildren;
 }
 
 /** Projection owns classification and membership; presentation only follows its sequence. */
-export function ConversationItems({ items, toolSummaries = [], renderItem, renderHeading, renderBefore, trailing, isItemHidden, sequence, workGroups, renderWorkGroup,localRegion }: Props) {
+export function ConversationItems({ items, toolSummaries = [], renderItem, renderHeading, renderBefore, trailing, isItemAbsent, isItemHidden, sequence, workGroups, renderWorkGroup,localRegion }: Props) {
   if (sequence && workGroups && renderWorkGroup) {
     const byKey = new Map(items.map(item => [item.key, item]));
     const groups = new Map(workGroups.map(group => [group.key, group]));
@@ -53,7 +54,7 @@ export function ConversationItems({ items, toolSummaries = [], renderItem, rende
     const canonical=sequence.map(entry => {
       if (entry.kind === "conversation") {
         const item = byKey.get(entry.itemKey);
-        return item ? <Fragment key={`conversation:${item.key}`}>{renderBefore?.(item)}{content(item, false)}</Fragment> : null;
+        return item && !isItemAbsent?.(item) ? <Fragment key={`conversation:${item.key}`}>{renderBefore?.(item)}{content(item, false)}</Fragment> : null;
       }
       const group = groups.get(entry.groupKey);
       if (!group) return null;
@@ -73,6 +74,7 @@ export function ConversationItems({ items, toolSummaries = [], renderItem, rende
   }
   const rows: ComponentChildren[] = [];
   for (const item of items) {
+    if(isItemAbsent?.(item))continue;
     if (renderBefore) rows.push(renderBefore(item));
     for (const summary of toolSummaries) {
       if (summary.memberKeys[0] === item.key && renderHeading) rows.push(

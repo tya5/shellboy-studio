@@ -408,3 +408,36 @@ it('defaults a running structural tool detail to closed without subscribing outp
     expect((host.querySelector('details.work-element-row') as HTMLDetailsElement).open).toBe(false);expect(watches).toBe(0);
   }finally{render(null,host);fixture.model.watchOutput=watch;host.remove();fixture.model.dispose();fixture.data.stop();}
 });
+
+it('keeps typed assistant empty/presence membership distinct across live, terminal, saved, refresh and revoke',async()=>{
+ const f=await fixtureModel(),host=document.createElement('div');document.body.append(host);
+ type Node=import('../../../data/src/protocol').HistoryItem;
+ const old:Node={node_id:'prior-answer',kind:'assistant_response',selection:{ordinal:0},items:[{kind:'text',item_identity:'prior',text:'Already readable answer',text_complete:true}]};
+ let nodes:Node[]=[old],revision=1;
+ const reader=new ConversationWindow({read:async()=>({ok:true,value:{thread_id:'t',revision,total:nodes.length,items:nodes}})});
+ const model=new Proxy(f.model,{get(target,key){return key==='longReader'?{value:reader,peek:()=>reader}:Reflect.get(target,key);}});
+ let live:import('../../../ui-core/src/conversation-items').NormalizedSavedItem[]=[];
+ const frames:unknown[]=[];
+ const paint=()=>{const snapshot=reader.acceptedView.peek();render(<ActualSavedWindowContent model={model} snapshot={snapshot} liveFacts={[...live]}/>,host);};
+ let stop=()=>{};
+ try{
+  await act(async()=>{await Promise.resolve();await Promise.resolve();paint();});
+  const oldElement=host.querySelector('[data-node="prior-answer"]');expect(oldElement).not.toBeNull();
+  const record=(text:string)=>({domain:'live' as const,namespace:'handoff' as const,scope:'t',recordId:'stable-live',kind:'text' as const,text});
+  const frame=async(label:string)=>{
+   await act(async()=>paint());
+   frames.push({frame:frames.length,label,current:reader.acceptedView.isCurrent(reader.acceptedView.peek()),messages:host.querySelectorAll('.msg').length,presence:host.querySelectorAll('[data-assistant-presence]').length,keys:[...host.querySelectorAll('[data-item-key]')].map(row=>row.getAttribute('data-item-key'))});
+   expect(host.querySelector('[data-node="prior-answer"]')).toBe(oldElement);
+  };
+  live=[record('')];await frame('empty-live');expect(host.querySelectorAll('.msg')).toHaveLength(1);expect(host.querySelector('[data-assistant-presence]')?.textContent).toContain(f.model.t.value('convo.live'));
+  const liveRow=host.querySelector('[data-assistant-presence]')!.closest('[data-item-key]');
+  live=[record('New live answer')];await frame('live-text');expect(host.querySelectorAll('.msg')).toHaveLength(2);expect(host.querySelector('[data-live-overlay]')?.closest('[data-item-key]')).toBe(liveRow);
+  live=[];await frame('terminal-live-off');expect(host.textContent).not.toContain('New live answer');
+  stop=reader.acceptedView.subscribe(()=>paint());
+  nodes=[old,{node_id:'saved-answer',kind:'assistant_response',selection:{ordinal:1},items:[{kind:'text',item_identity:'saved',text:'Saved readable answer',text_complete:true}]},{node_id:'empty-complete',kind:'assistant_response',selection:{ordinal:2},items:[{kind:'text',item_identity:'empty',text:'',text_complete:true}]},{node_id:'empty-partial',kind:'assistant_response',selection:{ordinal:3},items:[{kind:'text',item_identity:'partial',text:'',text_complete:false}]}];revision++;
+  await act(async()=>{reader.changed();await new Promise(resolve=>setTimeout(resolve,0));});await frame('saved');
+  expect(host.querySelector('[data-node="empty-complete"]')).toBeNull();expect(host.querySelector('[data-assistant-content-unavailable]')).not.toBeNull();expect(host.querySelectorAll('.msg')).toHaveLength(2);
+  const saved=host.querySelector('[data-node="saved-answer"]');await act(async()=>{reader.changed();await new Promise(resolve=>setTimeout(resolve,0));});await frame('refresh');expect(host.querySelector('[data-node="saved-answer"]')).toBe(saved);
+  await act(async()=>{reader.dispose();paint();});expect(host.textContent).not.toContain('Already readable answer');expect(host.textContent).not.toContain('Saved readable answer');
+ }finally{console.log('ASSISTANT_MEMBERSHIP_FRAMES',JSON.stringify(frames));stop();render(null,host);reader.dispose();host.remove();f.model.dispose();f.data.stop();}
+});
