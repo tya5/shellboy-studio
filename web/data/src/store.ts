@@ -110,7 +110,7 @@ export type HandoffRetryState =
   | { readonly phase: "reading"; readonly canRetry: false }
   | { readonly phase: "failed"; readonly reason: "lookup-failed"; readonly canRetry: true }
   | { readonly phase: "unavailable"; readonly reason: "unresolved" | "budget-exhausted"; readonly canRetry: true }
-  | { readonly phase: "unavailable"; readonly reason: "closed" | "paused" | "owner-unavailable"; readonly canRetry: false };
+  | { readonly phase: "unavailable"; readonly reason: "closed" | "paused" | "owner-unavailable" | "receipt_capacity"; readonly canRetry: false };
 export interface ThreadHandle extends Handle {
   requestTerminalRead(qualification: ThreadReadQualification, receipt: TerminalPersistedProof, request: SelectedCanonicalRequest): OwnedTerminalReadLease | TicketOutcome;
   readonly handoffRetryState: ReadonlySignal<HandoffRetryState>;
@@ -753,6 +753,7 @@ export class ShellboyData {
     const epoch = entry.live.epoch;
     const cancelled = entry.cancel;
     const valid = () => !entry.closed && !entry.paused && epoch === entry.live.epoch && !cancelled.cancelled && cancelled === entry.cancel && this.canRead();
+    const receiptBlocked = new Set<string>();
     entry.resolving = Promise.resolve().then(async () => {
       const targets = entry.live.records.peek().filter(r => r.status === "confirming" || r.status === "failed");
       if (!valid()) return;
@@ -789,7 +790,7 @@ export class ShellboyData {
             ...(typeof attempt.turn_id === "string" ? { turnId: attempt.turn_id } : {}),
             nodeIds: Object.freeze(persisted.map(ref => ref.node_id)), terminalState: attempt.state as "completed" | "failed" | "incomplete" | "cancelled" });
           if (!valid()) return;
-          if (!entry.terminalReceipts.has(record.attemptId) && entry.terminalReceipts.size >= 8) continue;
+          if (!entry.terminalReceipts.has(record.attemptId) && entry.terminalReceipts.size >= 8) { receiptBlocked.add(record.attemptId); continue; }
           const ownedProof = entry.terminalReceipts.get(record.attemptId) ?? proof;
           entry.terminalReceipts.set(record.attemptId, ownedProof);
           entry.live.stageTerminalPersisted(record, ownedProof);
@@ -849,8 +850,11 @@ export class ShellboyData {
       if (waiting) { waiting.resolveAgain = false; void this.resolveHandoff(waiting); }
       if (entry.resolveAgain) { entry.resolveAgain = false; if (!entry.closed && !entry.paused) return this.resolveHandoff(entry); }
       if (entry.handoffRetryState.peek().phase === "reading") {
-        const unresolved = entry.live.records.peek().some(r => (r.status === "confirming" || r.status === "failed") && !r.readyAttempt && !r.terminalPersisted);
-        entry.handoffRetryState.value = unresolved
+        const unresolved = entry.live.records.peek().filter(r => (r.status === "confirming" || r.status === "failed") && !r.readyAttempt && !r.terminalPersisted);
+        const capacityBlocked = valid() && unresolved.length > 0 && unresolved.every(r => receiptBlocked.has(r.attemptId));
+        entry.handoffRetryState.value = capacityBlocked
+          ? { phase: "unavailable", reason: "receipt_capacity", canRetry: false }
+          : unresolved.length > 0
           ? { phase: "unavailable", reason: entry.live.remainingReads ? "unresolved" : "budget-exhausted", canRetry: true }
           : { phase: "idle", canRetry: false };
       }
