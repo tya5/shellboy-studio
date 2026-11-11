@@ -58,3 +58,32 @@ it('actual CLIENT receipt uses common chrome without implying a Core wire error'
   expect(row.querySelector('summary,details')).toBeNull();
  }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
 });
+it('renders an explicit unavailable Work cut when a mixed issued/foreign scope batch is rejected',async()=>{
+ const {ConversationWindow}=await import('../../../ui-core/src/window');
+ const {normalizeLiveWorkFacts}=await import('../../../ui-core/src/conversation-items');
+ const {SavedWindowContent}=await import('../screens/Conversation');
+ const f=await fixtureModel(),host=document.createElement('div');document.body.append(host);
+ const node:HistoryItem={node_id:'independent',kind:'user',selection:{ordinal:0},items:[{kind:'text',item_identity:'body',text:'Independent saved text',text_complete:true}]};
+ const reader=new ConversationWindow({read:async()=>({ok:true,value:{thread_id:'t',revision:1,total:1,items:[node]}})});
+ try{
+  await act(async()=>{await Promise.resolve();await Promise.resolve();});
+  const snapshot=reader.acceptedView.peek();expect(reader.acceptedView.isCurrent(snapshot)).toBe(true);
+  const model=new Proxy(f.model,{get(target,key){return key==='longReader'?{value:reader,peek:()=>reader}:Reflect.get(target,key);}});
+  const valid=normalizeLiveWorkFacts({scope:'t',items:[{kind:'progress',id:'valid',thread_id:'t',state:'running'}]});
+  const foreign={domain:'live' as const,scope:'foreign',recordId:'unissued',kind:'unknown' as const};
+  await act(async()=>render(<SavedWindowContent model={model} snapshot={snapshot} liveFacts={[...valid,foreign]}/>,host));
+  expect(host.textContent).toContain('Independent saved text');
+  const rejected=host.querySelector('[data-work-scope-rejected]')!;
+  expect(rejected.getAttribute('role')).toBe('status');expect(rejected.textContent).toContain('CLIENT');expect(rejected.textContent).toContain('scope-qualification-rejected');
+  expect(reader.acceptedView.isCurrent(snapshot)).toBe(true);
+  await act(async()=>render(<SavedWindowContent model={model} snapshot={snapshot} liveFacts={[...valid,foreign]}/>,host));
+  expect(host.querySelector('[data-work-scope-rejected]')).toBe(rejected);
+  expect(host.textContent).not.toContain('foreign');expect(host.textContent).not.toContain('unissued');
+  await act(async()=>render(<SavedWindowContent model={model} snapshot={snapshot} liveFacts={valid}/>,host));
+  expect(host.querySelector('[data-work-scope-rejected]')).toBeNull();expect(host.querySelector('.work-element-row')).not.toBeNull();
+  reader.dispose();expect(reader.acceptedView.isCurrent(snapshot)).toBe(false);
+  await act(async()=>render(<SavedWindowContent model={model} snapshot={snapshot} liveFacts={[...valid,foreign]}/>,host));
+  expect(host.querySelector('[data-work-scope-rejected]')).toBeNull();expect(host.textContent).not.toContain('Independent saved text');
+
+ }finally{render(null,host);reader.dispose();host.remove();f.model.dispose();f.data.stop();}
+});
