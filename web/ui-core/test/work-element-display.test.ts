@@ -183,8 +183,8 @@ it('strict public operation descriptor reaches same accepted snapshot and issued
 });
 it('compressed tool without shell content still prefers its validated actual name',()=>{
  const rows=display([
- {node_id:'n',kind:'assistant_response',items:[{kind:'tool_call',item_identity:'c',call_id:'call',execution_ids:[],descriptor:{call_id:'call',call_id_state:'available',name:'actual_name',name_state:'available'},detail_availability:'unavailable'}]},
- {node_id:'s',kind:'spill',spill_tools:{status:'known',truncated:false,items:[{call_id:'call'}]}}
+ {node_id:'n',kind:'assistant_response',items:[{kind:'tool_call',item_identity:'c',execution_ids:['e'],descriptor:{call_id:'call',call_id_state:'available',name:'actual_name',name_state:'available'},detail_availability:'unavailable'}]},
+ {node_id:'s',kind:'spill',spill_tools:{status:'known',truncated:false,items:[{call_id:'call',execution_id:'e'}]}}
  ]);
  const row=rows.find(row=>row.item.source.kind==='tool'&&row.item.source.compressed)!;
  expect(row).toBeDefined();expect(row.value!.contentLabel.text).toBe('actual_name');expect(row.value!.detailPolicy).toBe('unavailable');
