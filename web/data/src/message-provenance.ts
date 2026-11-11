@@ -1,4 +1,4 @@
-import type {HistoryItem, MessageProvenance} from './protocol';
+import type {HistoryItem, MessageProvenance, NotificationDescriptor} from './protocol';
 const bytes=new TextEncoder();
 const object=(v:unknown):v is Record<string,unknown>=>typeof v==='object'&&v!==null&&!Array.isArray(v);
 /** Optional metadata rejection cannot reject independent sender or body facts. */
@@ -16,10 +16,43 @@ export function admitMessageProvenance(value:unknown,nodeId:unknown):MessageProv
   if(['pending','ignored','cancelled'].includes(value.reply_state as string)&&absent('reply_node_id'))return {expect_reply:true,reply_state:value.reply_state as 'pending'|'ignored'|'cancelled'};
  }
 }
+/** Invalid optional notification metadata is quarantined, not a body rejection. */
+export function admitNotificationDescriptor(value:unknown):NotificationDescriptor|undefined{
+ if(!object(value))return;
+ const encoded=JSON.stringify(value);
+ if(encoded===undefined||bytes.encode(encoded).length>2048)return;
+ let allowed:readonly string[];
+ switch(value.kind){
+  case 'turn_started': case 'recovery_resumed': allowed=['kind'];break;
+  case 'instructions_observed':
+   allowed=['kind','observation'];
+   if(!['first_seen','updated','removed'].includes(value.observation as string))return;
+   break;
+  case 'thread_settings_changed':
+   allowed=['kind','changed_fields'];
+   if(!Array.isArray(value.changed_fields)||value.changed_fields.length===0||value.changed_fields.length>4)return;
+   if(!value.changed_fields.every(field=>typeof field==='string'&&['cwd','connection','model','effort'].includes(field))||new Set(value.changed_fields).size!==value.changed_fields.length)return;
+   break;
+  case 'shell_ended':
+   allowed=['kind','execution_id','state','exit_code'];
+   if(typeof value.execution_id!=='string'||!value.execution_id.trim()||bytes.encode(value.execution_id).length>256)return;
+   if(!['exited','failed','stopped'].includes(value.state as string))return;
+   if(Object.hasOwn(value,'exit_code')&&(typeof value.exit_code!=='number'||!Number.isInteger(value.exit_code)||value.exit_code< -2147483648||value.exit_code>2147483647))return;
+   break;
+  default:return;
+ }
+ if(Object.keys(value).some(key=>!allowed.includes(key))||Object.values(value).some(field=>field===null))return;
+ // Preserve exact admitted fields; no result/name/command/body inference.
+ return value as unknown as NotificationDescriptor;
+}
 export function sanitizeMessageRelation(node:HistoryItem):HistoryItem{
  const provenance=node.provenance;
- if(!object(provenance)||!Object.hasOwn(provenance,'message'))return node;
- const {message,...independent}=provenance;
- const admitted=admitMessageProvenance(message,node.node_id);
- return {...node,provenance:{...independent,...(admitted?{message:admitted}:{})}};
+ if(!object(provenance))return node;
+ const hasMessage=Object.hasOwn(provenance,'message');
+ const hasNotification=Object.hasOwn(provenance,'notification');
+ if(!hasMessage&&!hasNotification)return node;
+ const {message,notification,...independent}=provenance;
+ const admitted=hasMessage?admitMessageProvenance(message,node.node_id):undefined;
+ const admittedNotification=hasNotification?admitNotificationDescriptor(notification):undefined;
+ return {...node,provenance:{...independent,...(admitted?{message:admitted}:{}),...(admittedNotification?{notification:admittedNotification}:{})}};
 }

@@ -240,6 +240,14 @@ export interface SpillToolSources {
   readonly items: readonly SpillToolSource[];
   readonly truncated: boolean;
 }
+/** Public Core302 structure only; never inferred from notification body text. */
+export type NotificationDescriptor =
+  | { kind: 'turn_started' }
+  | { kind: 'recovery_resumed' }
+  | { kind: 'instructions_observed'; observation: 'first_seen' | 'updated' | 'removed' }
+  | { kind: 'thread_settings_changed'; changed_fields: ('cwd' | 'connection' | 'model' | 'effort')[] }
+  | { kind: 'shell_ended'; execution_id: string; state: 'exited' | 'failed' | 'stopped'; exit_code?: number };
+
 export type MessageProvenance =
   | {expect_reply:false;reply_to?:string}
   | {expect_reply:true;reply_state:'pending'|'ignored'|'cancelled';reply_node_id?:never}
@@ -258,7 +266,7 @@ export interface HistoryItem {
   excerpt?: string;
   execution_count?: number;
   executions?: HistoryExecution[];
-  provenance?: { message?: MessageProvenance; created_at?: string; sender?: { kind?: string; [extra: string]: unknown }; [extra: string]: unknown };
+  provenance?: { notification?: NotificationDescriptor; message?: MessageProvenance; created_at?: string; sender?: { kind?: string; [extra: string]: unknown }; [extra: string]: unknown };
   /** Position on the Thread's selected path; `ordinal` ascends. */
   selection?: { ordinal?: number; [extra: string]: unknown };
   [extra: string]: unknown;
