@@ -49,7 +49,7 @@ for(const windowed of [true,false])for(const mode of ['truncated','partial','bud
    expect(publications.some(ref=>ref.terminalPersistedAttempts?.length===1)).toBe(true);
    const presence=host.querySelector('[data-terminal-presence]');expect(presence).not.toBeNull();
    expect(presence?.closest('[data-work-group]')).not.toBeNull();
-   expect(presence?.textContent).toContain(f.model.t.value('terminal.clientReason'));
+   expect(presence?.textContent).toContain('CLIENT');
    expect(presence?.getAttribute('data-client-reason')).toBe(current.terminalPresence?.[0]?.reason);
    expect(f.t.calls('history.window').length).toBeLessThanOrEqual(windowed?3:1);
   }else{
@@ -119,8 +119,9 @@ for(const resultMode of ['complete','partial','error','cancel'] as const)it(`act
   const held=read[0]!;f.db.answered.add(held.id);
   expect(host.textContent).not.toContain('Live before exact receipt');expect(host.textContent).toContain('Already available unchanged');
   expect(host.querySelector('[data-terminal-phase="reading"]')?.closest('[data-work-group]')).not.toBeNull();
-  expect(host.querySelector('[data-terminal-phase="reading"] [data-work-inner-line]')?.getAttribute('aria-label')).toBe(f.model.t.value('work.notification'));
-  expect(host.querySelector('[data-terminal-phase="reading"]')?.textContent).not.toContain(f.model.t.value('terminal.clientReason'));
+  expect(host.querySelector('[data-terminal-phase="reading"] .work-element-row__line')?.getAttribute('title')).toBe('Saved-history confirmation');
+  expect(host.querySelector('[data-terminal-phase="reading"] [data-state-source="client"]')?.getAttribute('data-state-value')).toBe('read-inflight');
+  expect(host.querySelector('[data-terminal-phase="reading"]')?.textContent).toContain('CLIENT');
   const before=f.model.longReader.peek()!.acceptedView.peek();
   if(resultMode==='cancel')await act(async()=>{f.model.navigate({view:'threads'});await flush(12);});
   await act(async()=>{
@@ -130,11 +131,11 @@ for(const resultMode of ['complete','partial','error','cancel'] as const)it(`act
   });
   expect(read).toHaveLength(1);expect(f.t.calls('history.window').filter(call=>(call.args as {node_id?:string}).node_id==='missing')).toHaveLength(1);
   if(resultMode==='complete'){expect(host.textContent).toContain('Canonical candidate');expect(host.querySelector('[data-terminal-presence]')).toBeNull();}
-  else if(resultMode==='partial'){expect(host.querySelector('[data-client-reason="partial-items"]')?.textContent).toContain(f.model.t.value('terminal.clientReason'));}
-  else if(resultMode==='error'){expect(host.querySelector('[data-client-reason="read-error"]')?.textContent).toContain(f.model.t.value('terminal.clientReason'));}
+  else if(resultMode==='partial'){expect(host.querySelector('[data-client-reason="partial-items"]')?.textContent).toContain('CLIENT');}
+  else if(resultMode==='error'){expect(host.querySelector('[data-client-reason="read-error"]')?.textContent).toContain('CLIENT');}
   else expect(f.model.longReader.peek()).toBeUndefined();
   if(resultMode!=='cancel')expect(f.model.longReader.peek()!.acceptedView.peek().rows[0]).toEqual(before.rows[0]);
-  if(resultMode==='partial'||resultMode==='error')expect(host.querySelector('[data-terminal-phase="settled"] [data-work-inner-line]')?.getAttribute('aria-label')).toBe(f.model.t.value('work.problem'));
+  if(resultMode==='partial'||resultMode==='error')expect(host.querySelector('[data-terminal-phase="settled"] .work-element-row__line')?.getAttribute('title')).toBe('Saved-history confirmation');
   expect(f.t.calls('history.get')).toHaveLength(0);
  }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
 });

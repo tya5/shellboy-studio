@@ -313,9 +313,9 @@ describe("Conversation", () => {
       const group=el.querySelector<HTMLDetailsElement>('[data-work-group]');if(group){group.open=true;group.dispatchEvent(new Event('toggle'));}
       await flushPromises();
     });
-    expect(el.querySelector("[data-work-group] .step")).toBeTruthy();
+    expect(el.querySelector("[data-work-group] .work-element-row")).toBeTruthy();
     expect(text(el)).toContain("cargo test history::search");
-    expect(text(el)).toContain("exit 0");
+    expect(text(el)).toContain("exited");
     expect(text(el)).toContain("2.4s");
     expect(text(el)).toContain("41k / auto-summary 200k");
     expect(text(el)).not.toContain("Shellboy event v1");

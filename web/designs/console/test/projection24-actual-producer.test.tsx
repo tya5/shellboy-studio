@@ -33,9 +33,9 @@ it('actual encoded typed window -> strict decoder/store/model Window -> real App
   const elements=[...host.querySelectorAll('[data-item-key]')];expect(elements.map(e=>e.getAttribute('data-node'))).toEqual(['n0','n1','n1','n2','n2','n3']);
   expect(encoded.items[2].items[0].kind).toBe('reasoning_unavailable');
   expect(elements[3]!.querySelector('[data-thinking-marker]')).not.toBeNull();
-  expect(elements[3]!.textContent).toBe(f.model.t.value('work.reasoning'));
+  expect(elements[3]!.textContent).toBe('Reasoning content is not publicly available');
   expect(elements[3]!.textContent).not.toContain(f.model.t.value('work.thinking'));
-  expect(elements[3]!.querySelector('[data-work-inner-line]')?.getAttribute('aria-label')).toBe(f.model.t.value('work.reasoning'));
+  expect(elements[3]!.querySelector('.work-element-row__line')?.getAttribute('title')).toBe('Reasoning');
   expect(elements[3]!.querySelector('.md, .msg')).toBeNull();
   expect(elements[4]!.querySelector('[data-thinking-marker]')).toBeNull();
   expect(elements[4]!.querySelector('.md')?.textContent).toBe('');

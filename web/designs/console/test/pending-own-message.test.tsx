@@ -236,7 +236,7 @@ for(const windowed of [true,false])for(const withPrefix of [false,true])it(`actu
   await act(async()=>{f.t.push({t:'changed',thread_ids:['t'],list:false});await settle(f.t,f.db);await flush(12);});
   expect(host.querySelectorAll('[data-pending-own-message]')).toHaveLength(4);
   expect(f.model.acceptedOwnMessages.peek()).toHaveLength(4);
-  const actual=[...host.querySelectorAll('.msg')].map(row=>row.querySelector('.md')?.textContent);
+  const actual=[...host.querySelectorAll('.msg')].map(row=>row.querySelector('.md')?.textContent?.trim());
   expect(actual).toEqual([...(withPrefix?['Existing prefix A','Existing prefix B']:[]),'Diagnostic own 2','Diagnostic own 3','Diagnostic own 4','Diagnostic own 5','Diagnostic assistant receipt response']);
   const assistant=host.querySelector('[data-node="assistant-arrival"]');
   revision+=5;
@@ -244,8 +244,8 @@ for(const windowed of [true,false])for(const withPrefix of [false,true])it(`actu
   // Public history.list is excerpt-only: it cannot prove submitted text replacement.
   if(!windowed)f.db.history.t=(f.db.history.t as HistoryItem[]).map(node=>({...node,items:undefined,text:node.items?.[0]?.kind==='text'?node.items[0].text:undefined}));
   await act(async()=>{f.t.push({t:'changed',thread_ids:['t'],list:false});await settle(f.t,f.db);await flush(12);});
-  if(windowed)expect([...host.querySelectorAll('.msg')].map(row=>row.querySelector('.md')?.textContent)).toEqual(actual);
-  else expect([...host.querySelectorAll('[data-pending-own-message] .md')].map(row=>row.textContent)).toEqual(['Diagnostic own 2','Diagnostic own 3','Diagnostic own 4','Diagnostic own 5']);
+  if(windowed)expect([...host.querySelectorAll('.msg')].map(row=>row.querySelector('.md')?.textContent?.trim())).toEqual(actual);
+  else expect([...host.querySelectorAll('[data-pending-own-message] .md')].map(row=>row.textContent?.trim())).toEqual(['Diagnostic own 2','Diagnostic own 3','Diagnostic own 4','Diagnostic own 5']);
   expect(host.querySelectorAll('[data-pending-own-message]')).toHaveLength(windowed?0:4);
   expect(f.model.acceptedOwnMessages.peek()).toHaveLength(windowed?0:4);
   if(windowed)expect(host.querySelector('[data-node="assistant-arrival"]')).toBe(assistant);
