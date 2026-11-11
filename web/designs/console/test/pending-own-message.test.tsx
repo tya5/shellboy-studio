@@ -42,11 +42,15 @@ for(const windowed of [true,false])for(const savedBeforeAck of [false,true])it(`
   expect(acceptedRow.querySelector('.msg > small')).toBeNull();
   expect(acceptedRow.querySelector('.who > small.mono')?.parentElement?.className).toBe('who');
   await act(async()=>{composer.value='Next unsent draft';composer.dispatchEvent(new Event('input',{bubbles:true}));});
+  expect(composer.value).toBe('Next unsent draft');
   await act(async()=>{composer.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));await flush(4);});
-  expect(f.t.calls('message.send')).toHaveLength(2);expect(composer.value).toBe('Next unsent draft');
+  expect(f.t.calls('message.send')).toHaveLength(2);expect(composer.value).toBe('');
+  expect(f.model.pendingOwnMessage.peek()).toMatchObject({text:'Next unsent draft',operationId:f.t.calls('message.send').at(-1)!.operation_id});
+  await act(async()=>{composer.value='Third draft';composer.dispatchEvent(new Event('input',{bubbles:true}));});
   const next=f.t.calls('message.send').at(-1)!;f.db.answered.add(next.id);
   await act(async()=>{f.t.ok(next.id,{message_id:'second-canonical',thread_id:'t'});await flush(8);});
   expect(f.model.acceptedOwnMessages.peek()).toHaveLength(2);
+  expect(composer.value).toBe('Third draft');
   const equalText:HistoryItem={node_id:'wrong-node',kind:'user',items:[{item_identity:'wrong',kind:'text',text:'Own submitted message',text_complete:true}],provenance:{sender:{kind:'human'}}};
   rows=[{...equalText,selection:{ordinal:0}}];f.db.history.t=rows;
   await act(async()=>{f.t.push({t:'changed',thread_ids:['t'],list:false});await settle(f.t,f.db);});
@@ -170,6 +174,7 @@ for(const windowed of [true,false])it(`actual own cohort has no metadata/partial
    await act(async()=>{f.t.ok(send.id,{message_id:id,thread_id:'t'});await flush();});
   }
   frame(['Original A','Original B']);expect(f.model.acceptedOwnMessages.peek()).toHaveLength(2);
+  expect(composer.value).toBe('Third draft');
   let installed=0;
   const commit=f.model.installOwnPresentation.bind(f.model);
   f.model.installOwnPresentation=(decision,current)=>{
@@ -182,6 +187,7 @@ for(const windowed of [true,false])it(`actual own cohort has no metadata/partial
   };
   const publish=async(nodes:HistoryItem[])=>{f.db.history.t=nodes;await act(async()=>{f.t.push({t:'changed',thread_ids:['t'],list:false});await settle(f.t,f.db);await flush(12);});};
   await publish([node('a'),node('b','Saved B',true)]);frame(['Original A','Original B']);expect(f.model.acceptedOwnMessages.peek()).toHaveLength(2);
+  expect(composer.value).toBe('Third draft');
   await publish([node('a','Partial A',false),node('b','Saved B',true)]);frame(['Original A','Original B']);
   const original=f.db.answer.bind(f.db),sendFrame=f.t.send.bind(f.t);
   f.t.send=message=>{const ok=sendFrame(message);if(message.t==='call'&&(message.command==='history.window'||message.command==='history.list'))f.db.answered.add(message.id);return ok;};
@@ -207,6 +213,7 @@ it('actual model installed receipt rejects cohort changes during qualification a
   expect(f.model.acceptedOwnMessages.peek()).toHaveLength(1);expect(f.model.pendingOwnMessage.peek()?.text).toBe('B');
   await flush();const call=f.t.calls('message.send').at(-1)!;f.db.answered.add(call.id);f.t.ok(call.id,{message_id:'b',thread_id:'t'});expect(await newer).toBe(true);
   f.model.installOwnPresentation(old,()=>true);expect(f.model.acceptedOwnMessages.peek()).toHaveLength(2);
+  expect(composer.value).toBe('Third draft');
   const ready=make(),before=f.model.acceptedOwnMessages.peek();
   f.model.installOwnPresentation(ready,()=>false);expect(f.model.acceptedOwnMessages.peek()).toBe(before);
   f.model.installOwnPresentation(ready,()=>true);expect(f.model.acceptedOwnMessages.peek()).toHaveLength(0);
