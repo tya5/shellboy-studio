@@ -340,3 +340,27 @@ it("output first load is loading, unchanged refresh is silent and real changes s
   expect(model.outputs.peek().get("exec-1")?.text).toBe("new synthetic output"); expect(model.outputs.peek().get("exec-1")).not.toBe(saved);
   next(); stop(); model.dispose();
 });
+
+it('reservation notification is synchronous, owns text/op before dispatch and isolates observer throws',async()=>{
+ const f=await fixtureModel();
+ try{
+  let notified=0;
+  const sent=f.model.send('Reserved draft',()=>{
+   notified++;expect(f.model.pendingOwnMessage.peek()).toMatchObject({text:'Reserved draft',phase:'sending'});
+   expect(f.model.sendState.peek().kind).toBe('sending');expect(f.t.calls('message.send')).toHaveLength(0);
+   throw new Error('UI observer failed');
+  });
+  expect(notified).toBe(1);await flush();const call=f.t.calls('message.send').at(-1)!;
+  f.t.ok(call.id,{message_id:'accepted',thread_id:'lead'});expect(await sent).toBe(true);expect(notified).toBe(1);
+  expect(await f.model.send(' ',()=>{notified++;})).toBe(false);expect(notified).toBe(1);
+ }finally{f.model.dispose();f.data.stop();}
+});
+it('reservation reentrant route loss prevents dispatch and preserves the owned original draft',async()=>{
+ const f=await fixtureModel();
+ try{
+  const sent=f.model.send('Owned before route change',()=>{f.model.route.value={view:'apps'};});
+  expect(await sent).toBe(false);expect(f.t.calls('message.send')).toHaveLength(0);
+  // Route disposal may remove that scope; it must never dispatch the old mutation.
+  const pending=f.model.pendingOwnMessage.peek();if(pending)expect(pending).toMatchObject({text:'Owned before route change',phase:'failed'});
+ }finally{f.model.dispose();f.data.stop();}
+});

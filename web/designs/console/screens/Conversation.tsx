@@ -597,7 +597,8 @@ export function Conversation({ model }: { model: AppModel }) {
             sendLabel={t("composer.send")}
             canSend={conn === "connected" && !sendBlocked}
             busy={send.kind === "sending"}
-            onSend={(text) => model.send(text)}
+            draftScope={handle?.handoffScope()}
+            onSend={(text,onReserved) => model.send(text,onReserved)}
             stop={
               model.canStop.value ? (
                 <Button variant="stop" onClick={() => void model.stop()}>

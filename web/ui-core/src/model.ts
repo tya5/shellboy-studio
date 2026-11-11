@@ -861,10 +861,10 @@ export class AppModel {
 
   // ---- actions (state changes arrive through hints and re-reads) ----
 
-  async send(text: string): Promise<boolean> {
+  async send(text: string, onReserved?: () => void): Promise<boolean> {
     const threadId = this.selectedId.value;
     if (threadId === undefined || text.trim() === "") return false;
-    return this.deliver(threadId, text);
+    return this.deliver(threadId, text, undefined, onReserved);
   }
 
   /** Repeat an unconfirmed send with the same operation id: the owner's receipt prevents a double. */
@@ -903,7 +903,7 @@ export class AppModel {
     if(kept.length!==previous.length)batch(()=>{this.acceptedOwnMessages.value=kept;this.ownSendCapacityReason.value=false;});
   }
 
-  private async deliver(threadId: string, text: string, operationId = this.ops.mutationId()): Promise<boolean> {
+  private async deliver(threadId: string, text: string, operationId = this.ops.mutationId(), onReserved?: () => void): Promise<boolean> {
     const handle = this.handle.peek(), route = this.route.peek();
     if (!handle || handle.threadId !== threadId) return false;
     const old = this.pendingOwnMessage.peek();
@@ -934,6 +934,17 @@ export class AppModel {
     this.pendingOwnMessage.value = {threadId,scope,operationId,text,phase:"sending",plainMessageSend:true};
     this.sendState.value = { kind: "sending" };
     const originalPlainOperation=this.pendingOwnMessage.peek();
+    if(current()&&originalPlainOperation?.operationId===operationId){
+      // A UI observer cannot orphan an already-owned send by throwing.
+      try { onReserved?.(); } catch { /* The pending operation still owns the text. */ }
+    }
+    if(!current()||this.pendingOwnMessage.peek()!==originalPlainOperation||this.sendState.peek().kind!=="sending"){
+      if(this.pendingOwnMessage.peek()===originalPlainOperation){
+        this.pendingOwnMessage.value={...originalPlainOperation!,phase:"failed"};
+        this.sendState.value={kind:"failed",message:"Send reservation is no longer current"};
+      }
+      return false;
+    }
     const out = await this.ops.messageSend({ thread_id: threadId, text }, operationId);
     if ((!current() && !(!out.ok && out.error.kind === "unconfirmed" && retryCurrent())) || this.pendingOwnMessage.peek()?.operationId !== operationId) return false;
     if (out.ok && out.value.thread_id === threadId) {
