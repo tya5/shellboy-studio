@@ -5,7 +5,7 @@ import "@preact/signals";
 import { signal } from "@preact/signals-core";
 import { options, render } from "preact";
 import { act } from "preact/test-utils";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { WindowOwner } from "../../../ui-core/test/window-owner";
 import { fixtureModel, fixturePendingAdapter } from "../../../ui-core/test/fixture";
 import type { ServerFrame } from "../../../data/src";
@@ -21,6 +21,8 @@ afterEach(() => {
   if (host) render(null, host);
   host?.remove();
   host = undefined;
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 function draw(model: AppModel, prefs: Partial<Prefs> = {}) {
@@ -245,9 +247,14 @@ describe("Conversation live text", () => {
 
   it("shows at the end of the windowed reader too, and keeps following as it grows", async () => {
     const owner = new WindowOwner(0);
-    const { model, t } = await fixtureModel({ capabilities: ["live.text", "history.window"], route: "conversation", threadId: "lead", schedule: callback => callback(), configure: db => {
-      // Publish each synthetic live frame in its originating act so scroll-follow is deterministic.
-      // An empty but supported positional snapshot isolates it from synthetic saved-row sizing.
+    const callbacks: ResizeObserverCallback[] = [];
+    const frames = new Map<number, FrameRequestCallback>();
+    let nextFrame = 0;
+    vi.stubGlobal("ResizeObserver", class { constructor(callback: ResizeObserverCallback) { callbacks.push(callback); } observe() {} unobserve() {} disconnect() {} });
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => { const id = ++nextFrame; frames.set(id, callback); return id; });
+    vi.stubGlobal("cancelAnimationFrame", (id: number) => { frames.delete(id); });
+    const { model, t } = await fixtureModel({ capabilities: ["live.text", "history.window"], route: "conversation", threadId: "lead", configure: db => {
+      // An empty but supported positional snapshot isolates scroll-follow from synthetic saved-row sizing.
       db.history.lead = [];
       const base = db.answer.bind(db);
       db.answer = call => call.command === "history.window" ? owner.answer(call) : base(call);
@@ -261,8 +268,13 @@ describe("Conversation live text", () => {
     box.scrollTop = height;
     for (let i = 0; i < 3; i++) {
       height += 50;
-      act(() => t.push(liveFrame("word ", i * 5)));
-      await act(async () => flushPromises());
+      await act(async () => {
+        t.push(liveFrame("word ", i * 5));
+        callbacks[0]!([], {} as ResizeObserver);
+        const pending = [...frames.values()]; frames.clear();
+        for (const callback of pending) callback(0);
+        await flushPromises();
+      });
       expect(box.scrollTop, "following").toBe(height);
     }
     expect(box.textContent).toContain("word word word");
