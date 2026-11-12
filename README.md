@@ -79,7 +79,7 @@ retrying; the page shows "Shellboy isn't reachable" until an owner appears.
 Run Studio and the owner as the same OS user.
 
 If no model connection exists yet, Studio can set one up from the browser (Anthropic,
-OpenAI, OpenRouter, LiteLLM, local, other) with the matching Core v0.11.0 owner.
+OpenAI, OpenRouter, LiteLLM, local, other) with the matching Core owner (currently v0.12.0).
 Older owners are not a supported pairing; no protocol downgrade is provided.
 A Claude or ChatGPT subscription is not an API key; an API key is required.
 
@@ -115,10 +115,12 @@ A Claude or ChatGPT subscription is not an API key; an API key is required.
 ## Version pairing with Shellboy
 
 Studio releases are built against one Shellboy release and speak its protocol.
-This tree pins **Shellboy v0.11.0 (protocol 5, schema 39)** in `Cargo.toml`
-and `Cargo.lock`. Local locked tests and synthetic acceptance against the public
-Core release binary pass. Hosted exact-pair checks and distribution builds also
-passed for the published release; see the [release evidence](docs/first-release-verification.md#published-v010-outcome). See the [validation record](docs/development/protocol5-validation.md)
+This tree (Studio 0.2.5) pins **Shellboy v0.12.0 (protocol 5, conversation schema 43)**
+in `Cargo.toml` and `Cargo.lock`; see the [0.2.5 release notes](docs/release-v0.2.5.md)
+for the pairing and the schema 42 to 43 upgrade note. Studio v0.2.4 was paired
+with Core v0.11.2 and Studio v0.1.0 with Core v0.11.0. For v0.1.0, hosted
+exact-pair checks and distribution builds passed for the published release; see
+the [release evidence](docs/first-release-verification.md#published-v010-outcome). See the [validation record](docs/development/protocol5-validation.md)
 for the tested environment and limits, and the [release checklist](docs/development/release-v0.1.0-checklist.md)
 for historical preparation checkpoints and the published outcome.
 Pair the final release exactly with the owner named in its release notes.
@@ -165,7 +167,7 @@ Studio v0.1.0 follows Core's protocol 5 / schema 39 contract (#276).
 There is no protocol-4 downgrade or ownership alias. Use the exact validated
 Core release pair; the published Core tag, lockfile and installed binaries must
 be checked separately when installing or replacing binaries. The current manifest/lock establish the
-public v0.11.0 pin; earlier CLI-patch preparation checkpoints alone did not.
+public v0.12.0 pin; earlier preparation checkpoints alone did not.
 Never restart a working owner or change its data to resolve a mismatch without
 explicit approval.
 

@@ -288,7 +288,7 @@ M1; a tunnel provides it.
 - The bridge links the Shellboy crate at a git tag; it speaks exactly that
   tag's `PROTOCOL_VERSION`. Shellboy's owner accepts exactly one version
   (current-only, protocol.md Issue #33).
-- Current candidate: protocol 5 / schema 39 (#276). Version 4 peers fail closed;
+- Current pairing: protocol 5 (#276), Core v0.12.0 with conversation schema 43. Version 4 peers fail closed;
   there is no downgrade, alias or payload rewrite. Handshake capabilities do not
   override an exact protocol-version mismatch. Before release, validate the exact
   published Core tag/lock/binary pairing separately.

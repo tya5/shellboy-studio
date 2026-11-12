@@ -1,6 +1,14 @@
 # Studio 0.2.5
 
-This candidate is based on the reviewed source at `404c0bc28d43e140608361221b3d8e9c10891e37`. The candidate commit and its exact-SHA CI determine the distributable build; this note does not authorize a tag or publication.
+This candidate is based on the reviewed source at `404c0bc28d43e140608361221b3d8e9c10891e37`, with the Core pairing moved to the published Core v0.12.0 release. The candidate commit and its exact-SHA CI determine the distributable build; this note does not authorize a tag or publication.
+
+## Core pairing
+
+Studio 0.2.5 is paired with published Core [v0.12.0](https://github.com/tya5/shellboy/releases/tag/v0.12.0), tag commit `441750809e42aa9cabe4eecf7a0bb85dfa28ef6c` (protocol 5, conversation schema 43). `Cargo.toml` pins the official tag and `Cargo.lock` records that exact commit; the exact-pair owner acceptance builds Core from that verified tag. Studio v0.2.4 was paired with Core v0.11.2; use 0.2.5 only with Core v0.12.0.
+
+Installing Core 0.12.0 over real data migrates the conversation database from schema 42 to schema 43 on its first write-capable start, and older Core binaries cannot open the upgraded store. Stop the owner and take a consistent backup of its data directory first; for rollback, restore that backup rather than opening the upgraded store with an older binary.
+
+Core 0.12.0 removed the per-Thread `segment_chars` and `reduce_rounds` settings. Studio's bridge no longer forwards them; the existing model dialog still shows those two fields, and a value entered there is rejected by the bridge as an invalid call. Other Thread settings are unchanged, and Studio does not yet expose the new Core summary settings.
 
 ## Included improvements
 
@@ -22,7 +30,7 @@ A previous 0.2.5 candidate reproduced answer disappearance and is rejected. This
 
 The terminal-empty repair only covers the tested transition: complete typed empty text keeps the client unavailable reason visible, and a later non-empty saved update for the same item replaces it. General USER non-empty disappearance has not been attributed to this cause or universally resolved. The own-ACK change covers same-operation intermediate duplication only; USER own-versus-assistant origin and any assistant exact-node/turn proof remain unknown. Receipt-capacity copy does not remove a second body; whole-preview suppression remains unauthorized because existing linkage does not prove complete coverage.
 
-Studio 0.2.5 does not adopt Core coverage 0.12.0, alter a Core pin, install Core, or claim typed terminal-coverage delivery. Missing metadata remains unknown. The reviewed notification source does not prove N2 admission, CLI producer emission, installed Core 42 behavior, or actual-owner UI acceptance. Context such as execution ID and changed settings fields is retained in metadata but is not visible in the current common work row.
+Studio 0.2.5 pins Core v0.12.0 but does not install Core, adopt new Core 0.12.0 features, or claim typed terminal-coverage delivery. Missing metadata remains unknown. The reviewed notification source does not prove N2 admission, CLI producer emission, or actual-owner UI acceptance. Context such as execution ID and changed settings fields is retained in metadata but is not visible in the current common work row.
 
 Issue-specific actual-owner acceptance remains separate. Historical non-empty-answer disappearance, all legacy/no-reference/interleaved tool cases, every request/reply relation and state, non-adjacent replay/navigation, complete owner-UI behavior, accessibility/zero/unknown branches, live-to-saved DOM transfer, measured latency, touch tooltip behavior, and explicit Composer cancel/unmount cases are not all independently qualified. No all-symptom or all-policy success is claimed; issues 24 and 25 must not be closed by CI alone.
 
