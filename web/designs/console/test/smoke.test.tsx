@@ -244,8 +244,10 @@ describe("Conversation live text", () => {
   });
 
   it("shows at the end of the windowed reader too, and keeps following as it grows", async () => {
-    const owner = new WindowOwner(7);
+    const owner = new WindowOwner(0);
     const { model, t } = await fixtureModel({ capabilities: ["live.text", "history.window"], route: "conversation", threadId: "lead", configure: db => {
+      // An empty but supported positional snapshot isolates scroll-follow from synthetic saved-row sizing.
+      db.history.lead = [];
       const base = db.answer.bind(db);
       db.answer = call => call.command === "history.window" ? owner.answer(call) : base(call);
     } });
@@ -256,7 +258,6 @@ describe("Conversation live text", () => {
     Object.defineProperty(box, "scrollHeight", { configurable: true, get: () => height });
     Object.defineProperty(box, "clientHeight", { configurable: true, value: 0 });
     box.scrollTop = height;
-    box.dispatchEvent(new Event("scroll", { bubbles: true }));
     for (let i = 0; i < 3; i++) {
       height += 50;
       act(() => t.push(liveFrame("word ", i * 5)));
@@ -730,13 +731,11 @@ describe("Branches", () => {
     expect(text(el.querySelector(".branches-side")!)).toContain("Forked as Forked");
   });
   it("a conversation row carries a mark only where the read reports a point", async () => {
-    const { model, t, db } = await fixtureModel({ route: "conversation", threadId: "lead" });
-    db.history.lead = [...(db.history.lead ?? []), { node_id: "n100", kind: "assistant_response", excerpt: "Here it splits", execution_count: 0, provenance: { created_at: "2026-11-07T10:19:00.000000+00:00", sender: { kind: "assistant" } }, selection: { ordinal: 1000 } }];
+    const { model } = await fixtureModel({ route: "conversation", threadId: "lead", configure: db => {
+      // Seed the branch point before the first accepted positional snapshot is read.
+      db.history.lead = [{ node_id: "n100", kind: "assistant_response", excerpt: "Here it splits", items: [{ item_identity: "split-text", kind: "text", text: "Here it splits", text_complete: true }], execution_count: 0, provenance: { created_at: "2026-11-07T10:19:00.000000+00:00", sender: { kind: "assistant" } }, selection: { ordinal: 0 } }];
+    } });
     const el = draw(model);
-    await act(async () => {
-      t.push({ t: "changed", thread_ids: ["lead"], list: false });
-      await settle(t, db);
-    });
     const marks = [...el.querySelectorAll<HTMLAnchorElement>(".bmark")];
     expect(marks.length).toBeGreaterThan(0);
     expect(marks[0]!.getAttribute("href")).toBe("#/branches/lead/n100");
