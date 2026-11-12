@@ -18,8 +18,8 @@ const nodes:HistoryItem[]=[
  {node_id:'human-mentions-event',kind:'user',selection:{ordinal:2},provenance:{sender:{kind:'human'}},items:typedText('Please explain Shellboy event/context. Keep this human text.')},
  {node_id:'received-user',kind:'user',selection:{ordinal:3},provenance:{sender:{kind:'model',thread_id:'synthetic-sender',label:'Synthetic sender'}},items:typedText('Legitimate received user message')},
 ];
-it.each([true,false])('actual shared classifier consumer window=%s: classifies internal node kinds before text while preserving human and received users',async(windowed)=>{
- const f=await fixtureModel({capabilities:windowed?['history.window']:[],configure(db){
+it('actual shared classifier consumer: classifies internal node kinds before text while preserving human and received users',async()=>{
+ const f=await fixtureModel({capabilities:['history.window'],configure(db){
   db.threads={t:summary('t')};db.details.t=details('t');db.history.t=nodes;
   const base=db.answer.bind(db);db.answer=call=>call.command==='history.window'?{ok:true,result:JSON.parse(JSON.stringify({thread_id:'t',revision:9,total:nodes.length,items:nodes}))}:base(call);
  }});
@@ -27,8 +27,7 @@ it.each([true,false])('actual shared classifier consumer window=%s: classifies i
  const context:DesignContext={model:f.model,prefs:signal(loadPrefs({read:()=>null,write:()=>{}},[{name:'console',themes:[{name:'light'}]}])),setPrefs:()=>{},designs:[],submitToken:async()=>false};
  try{
   await act(async()=>{render(<App context={context}/>,host);await settle(f.t,f.db);});
-  if(windowed)expect(f.model.longReader.peek()!.acceptedView.peek().rows).toEqual(nodes);
-  else expect(f.model.longReader.peek()).toBeUndefined();
+  expect(f.model.longReader.peek()!.acceptedView.peek().rows).toEqual(nodes);
   expect(f.t.calls('history.window').every(call=>(call.args as {items?:boolean}).items===true)).toBe(true);
   for(const node of nodes.slice(0,2)){
    const items=[...host.querySelectorAll(`[data-node="${node.node_id}"]`)];expect(items).toHaveLength(1);
@@ -52,7 +51,7 @@ it.each([true,false])('actual shared classifier consumer window=%s: classifies i
  }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
 });
 
-it.each([true,false])('Core302 notification descriptors reach actual App through the issued Work bundle without extra reads: window=%s',async(windowed)=>{
+it('Core302 notification descriptors reach actual App through the issued Work bundle without extra reads',async()=>{
  const descriptors=[
   {kind:'turn_started'},
   {kind:'recovery_resumed'},
@@ -72,7 +71,7 @@ it.each([true,false])('Core302 notification descriptors reach actual App through
   {node_id:'human-invalid-notification',kind:'user',selection:{ordinal:10},provenance:{sender:{kind:'human'},notification:{kind:'future-notice'}},items:typedText('Human body survives invalid optional notification')},
   {node_id:'received-invalid-notification',kind:'user',selection:{ordinal:11},provenance:{sender:{kind:'model',thread_id:'full-notification-source',label:'Claimed <source>'},notification:{kind:'shell_ended',state:'exited',execution_id:null}},items:typedText('Received body survives invalid optional notification')},
  ];
- const f=await fixtureModel({capabilities:windowed?['history.window']:[],configure(db){
+ const f=await fixtureModel({capabilities:['history.window'],configure(db){
   db.threads={t:summary('t')};db.details.t=details('t');
   // This is an encoded producer-shaped fixture, not a trusted typed DTO cast.
   db.history.t=JSON.parse(JSON.stringify(input));

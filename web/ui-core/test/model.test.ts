@@ -262,9 +262,9 @@ describe("AppModel over the fake transport", () => {
     expect(model.handle.value!.preview.value).toMatchObject({ kind: "live", text: "partial", attemptId: "a1" });
   });
 
-  it("leaving the Conversation stops reading its Thread, and returning reads only what's new", async () => {
-    const { model, t, db } = await fixtureModel();
-    const reads = () => t.calls("history.list").length;
+  it("leaving the Conversation stops reading its Thread and reopening uses the positional API", async () => {
+    const { model, t, db } = await fixtureModel({ capabilities: ["history.window"] });
+    const reads = () => t.calls("history.window").length;
     model.applyRoute({ view: "monitor" });
     await flush();
     expect(t.watches().at(-1)!.thread_ids).toEqual([]);
@@ -276,12 +276,12 @@ describe("AppModel over the fake transport", () => {
     model.applyRoute({ view: "conversation", threadId: "lead" });
     await settle(t, db);
     expect(t.watches().at(-1)!.thread_ids).toEqual(["lead"]);
-    expect(reads()).toBe(away + 1);
-    expect((t.calls("history.list").at(-1)!.args as { since?: string }).since).toBeDefined();
+    expect(reads()).toBeGreaterThan(away);
+    expect(t.calls("history.list")).toHaveLength(0);
   });
 
-  it("switching Thread cancels the old one's reads and closing a step cancels its output read", async () => {
-    const { model, t, db } = await fixtureModel();
+  it("switching Thread cancels the old one's current-window reads and closing a step cancels its output read", async () => {
+    const { model, t, db } = await fixtureModel({ capabilities: ["history.window"] });
     const stop = model.watchOutput("exec-1");
     await flush();
     const read = t.calls("shell.read").at(-1)!;
@@ -292,7 +292,7 @@ describe("AppModel over the fake transport", () => {
     expect(model.outputs.value.has("exec-1")).toBe(false);
     model.openThread("broken");
     await flush();
-    const sent = t.calls("history.list").at(-1)!;
+    const sent = t.calls("history.window").at(-1)!;
     model.openThread("lead");
     await flush();
     expect(t.cancels()).toContain(sent.id);

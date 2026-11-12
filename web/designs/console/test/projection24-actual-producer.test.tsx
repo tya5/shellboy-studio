@@ -16,7 +16,7 @@ import type {DesignContext} from '../../../ui-core/src';
 const names=['actual-window.json','legacy-window.json','unavailable-window.json','response-budget-window.json','rewindow-window.json','public-route-window.json'];
 for(const name of names)it(`actual producer bytes -> real strict decoder -> P: ${name}`,async()=>{
  const value=actual(name),t=new FakeTransport(),link=new Link(t);link.start();t.open();
- try{const ops=new Operations(link,()=> 'actual-fixture');const promise=ops.historyWindow({thread_id:'t',items:true});t.ok(t.calls('history.window')[0]!.id,value);const result=await promise;expect(result.ok).toBe(true);
+ try{const ops=new Operations(link,()=> 'actual-fixture', () => true);const promise=ops.historyWindow({thread_id:'t',items:true});t.ok(t.calls('history.window')[0]!.id,value);const result=await promise;expect(result.ok).toBe(true);
  if(result.ok){expect(result.value).toEqual(value);const p=projectHistoryWindowItems({revision:result.value.revision,nodes:result.value.items});expect(p.nodes).toHaveLength(value.items.length);if(name==='response-budget-window.json'){expect(p.nodes.filter(n=>n.state==='deferred')).toHaveLength(4);expect(p.retryFrom).toEqual({ordinal:128,expect_node_id:'n128'});}if(name==='rewindow-window.json')expect(p.nodes.every(n=>n.state==='items')).toBe(true);}}
  finally{link.stop();}
 });

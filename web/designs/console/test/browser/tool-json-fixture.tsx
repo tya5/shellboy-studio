@@ -38,5 +38,5 @@ const pump=async()=>{await settle(r.t,r.db);for(let n=0;n<6;n++)await frame();};
     r.t.push({t:'changed',thread_ids:['lead'],list:false});await pump();
   }
   phase='settled';await pump();running=false;await frame();
-  return {scenario,samples,workCalls:r.t.calls('status').length,historyCalls:r.t.calls('history.list').length,detailsExpanded:false};
+  return {scenario,samples,workCalls:r.t.calls('status').length,windowCalls:r.t.calls('history.window').length,detailsExpanded:false};
 };

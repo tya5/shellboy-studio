@@ -73,12 +73,6 @@ it("cancel then prepare cannot trigger a second automatic canonical request", as
  r.w.prepareTerminalRead(r.h, r.token, r.receipt); await r.pump(); expect(r.t.calls("history.window")).toHaveLength(count);
  r.w.dispose(); r.data.stop();
 });
-it("no-window public capability has presence-only unsupported and zero canonical RPC", async () => {
- const r = await rig(false); const { LegacyAcceptedPresentation } = await import("../src/legacy-presentation");
- r.live(); r.end(); await r.pump(); const p = new LegacyAcceptedPresentation(r.h);
- expect(p.sync()).toBe(true); expect(p.acceptedView.peek().terminalPresence?.[0]).toMatchObject({ phase: "settled", reason: "unsupported", answerAvailability: "unknown" });
- expect(r.t.calls("history.window")).toHaveLength(0); expect(r.h.handoff.peek()).toHaveLength(0); p.dispose(); r.data.stop();
-});
 it("wrong original qualification cannot admit or write terminal presence", async () => {
  const r = await target(); const before = r.w.acceptedView.peek(); r.h.cancelReads();
  const count = r.t.calls("history.window").length;

@@ -1,7 +1,6 @@
 import {localSendAdmission} from "./local-send-admission";
 import type { OwnSendTailObservation,OwnSendReservation } from "./own-send-region";
 import type { OwnSendDecision } from "./own-send-presentation";
-import { LegacyAcceptedPresentation } from "./legacy-presentation";
 import { SenderTitles } from "./sender-titles";
 import { senderFact } from "../../data/src/sender";
 import { BranchCompare } from "./branch-compare";
@@ -211,10 +210,8 @@ export class AppModel {
   readonly selectedId: ReadonlySignal<string | undefined>;
   readonly handle: Signal<ThreadHandle | undefined> = signal(undefined);
   /** The long-thread reader, while the owner reads by position by position and the Conversation is open. */
-  readonly legacyPresentation: Signal<LegacyAcceptedPresentation | undefined> = signal(undefined);
-  private legacyHandle: ThreadHandle | undefined;
-  private legacyScope: string | undefined;
   readonly longReader: Signal<ConversationWindow | undefined> = signal(undefined);
+  get historySupported(): boolean { return this.data.capabilities.value.includes(CAPABILITY_HISTORY_WINDOW); }
   readonly details: ReadonlySignal<ThreadDetails | undefined>;
   readonly selectedRow: ReadonlySignal<ThreadRow | undefined>;
   readonly conversation: ReadonlySignal<ConversationRow[]>;
@@ -362,15 +359,15 @@ export class AppModel {
       return id === undefined ? undefined : this.rowById.value.get(id);
     });
     this.conversation = computed(() => {
-      const h = this.handle.value;
-      return h ? materializeHistoryPresentation(h.history.value.items, this.shells.value).rows : [];
+      const window = this.longReader.value;
+      return window ? materializeHistoryPresentation(window.rangeItems(), this.shells.value, window.revision ?? 0).rows : [];
     });
     this.rowMarks = computed(() => {
       const w = this.longReader.value;
-      if (!w) return branchRowMarks(this.handle.value?.history.value.items ?? [], this.conversation.value, this.marks.value);
+      if (!w) return branchRowMarks([], [], this.marks.value);
       w.version.value; // marks follow the items the reader holds in view
       const items = w.rangeItems();
-      return branchRowMarks(items, materializeHistoryPresentation(items, this.shells.value).rows, this.marks.value);
+      return branchRowMarks(items, materializeHistoryPresentation(items, this.shells.value, w.revision ?? 0).rows, this.marks.value);
     });
     this.context = computed(() => contextFacts(this.details.value));
     this.usage = computed(() => usageFacts(this.details.value));
@@ -382,7 +379,7 @@ export class AppModel {
       if (!id) return undefined;
       const w = this.longReader.value;
       if (w) w.version.value;
-      const steps = collectExecutionSteps(w ? w.heldSteps() : this.handle.value?.history.value.items ?? [], this.shells.value);
+      const steps = collectExecutionSteps(w?.heldSteps() ?? [], this.shells.value);
       return steps.find(step => step.executionId === id);
     });
   }
@@ -393,7 +390,6 @@ export class AppModel {
     this.listHandle = this.data.trackThreadList();
     this.disposers.push(effect(() => this.syncOpenThread()));
     this.disposers.push(effect(() => this.syncWindow()));
-    this.disposers.push(effect(() => this.syncLegacyPresentation()));
     this.disposers.push(effect(() => {
       this.route.value; this.handle.value; this.data.owner.value;
       if (this.acceptedOwnMessages.peek().length && !this.pendingOwnRetryCurrent?.()) this.acceptedOwnMessages.value = [];
@@ -404,21 +400,19 @@ export class AppModel {
     let senderOwner: unknown;
     let senderOwnerGeneration = 0;
     let senderCachedList: unknown;
-    let senderOldHistory: unknown;
     let senderOldWindow: unknown;
     let senderOldWindowVersion = 0;
     this.disposers.push(effect(() => {
       const owner = this.data.owner.value;
       const list = this.data.threadList.value;
-      if (senderOwner !== owner) { senderOwner = owner; senderOwnerGeneration++; senderCachedList = list.items; senderOldHistory = this.handle.peek()?.history.peek().items; senderOldWindow = this.longReader.peek(); senderOldWindowVersion = this.longReader.peek()?.version.peek() ?? 0; }
+      if (senderOwner !== owner) { senderOwner = owner; senderOwnerGeneration++; senderCachedList = list.items; senderOldWindow = this.longReader.peek(); senderOldWindowVersion = this.longReader.peek()?.version.peek() ?? 0; }
       const h = this.handle.value;
       const route = this.route.value;
       const connected = this.data.connection.value === "open" && owner.state === "connected" && typeof owner.info.instance_id === "string" && owner.info.instance_id !== "";
       const page = this.senderPage.value;
       const win = this.longReader.value;
       if (win) win.version.value;
-      const history = h?.history.value;
-      const items = win ? (win === senderOldWindow && win.version.peek() === senderOldWindowVersion ? [] : win.rangeItems()) : history && !history.stale && history.items !== senderOldHistory ? history.items : [];
+      const items = win ? (win === senderOldWindow && win.version.peek() === senderOldWindowVersion ? [] : win.rangeItems()) : [];
       const ids: string[] = [];
       for (const item of items) { const fact = senderFact(item.provenance?.sender); if (fact.kind === "model") ids.push(fact.threadId); }
       const scope = connected && h && route.view === "conversation" ? JSON.stringify([senderOwnerGeneration, owner.info.instance_id, route.view, h.threadId, page]) : undefined;
@@ -540,8 +534,7 @@ export class AppModel {
         const h = this.handle.value;
         if (!h) return;
         h.detail.value;
-        const history = h.history.value;
-        if (this.route.value.view === "conversation" && (h.work.value.value?.items.some((i) => i.kind === "shell") || history.items.some((i) => (i.executions?.length ?? 0) > 0))) void this.refreshShells(h.threadId);
+        if (this.route.value.view === "conversation" && h.work.value.value?.items.some((i) => i.kind === "shell")) void this.refreshShells(h.threadId);
       }),
     );
     this.data.start();
@@ -554,7 +547,6 @@ export class AppModel {
     this.pending.close?.();
     this.modelListCancel.cancel();
     this.missingPins.close();
-    this.legacyPresentation.peek()?.dispose();
     this.longReader.peek()?.dispose();
     this.apps.leaveFolders();
     for (const d of this.disposers) d();
@@ -598,24 +590,6 @@ export class AppModel {
 
   /** One reader per open Thread while the Conversation shows and the owner has the positional read. */
   private readerHandoffScope: string | undefined;
-  private syncLegacyPresentation(): void {
-    const handle = this.handle.value;
-    this.data.owner.value;
-    const want = this.route.value.view === "conversation" && handle && !this.data.capabilities.value.includes(CAPABILITY_HISTORY_WINDOW);
-    if (this.legacyPresentation.peek() && (!want || handle !== this.legacyHandle || handle.handoffScope() !== this.legacyScope)) {
-      this.legacyPresentation.peek()!.dispose();
-      this.legacyPresentation.value = undefined;
-    }
-    if (!want || !handle || this.data.owner.peek().state !== "connected") return;
-    if (!this.legacyPresentation.peek()) {
-      this.legacyHandle = handle;
-      this.legacyScope = handle.handoffScope();
-      this.legacyPresentation.value = new LegacyAcceptedPresentation(handle);
-    }
-    handle.history.value; handle.handoff.value; handle.work.value; handle.attemptPresentations.value;
-    this.legacyPresentation.peek()!.sync();
-  }
-
   private syncWindow(): void {
     const h = this.handle.value;
     const want = this.route.value.view === "conversation" && h !== undefined && this.data.capabilities.value.includes(CAPABILITY_HISTORY_WINDOW);

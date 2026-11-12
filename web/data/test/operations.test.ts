@@ -9,7 +9,7 @@ function setup() {
   link.start();
   t.open();
   let n = 0;
-  return { t, ops: new Operations(link, () => `uuid-${++n}`) };
+  return { t, ops: new Operations(link, () => `uuid-${++n}`, () => true) };
 }
 
 describe("Operations", () => {
@@ -56,18 +56,31 @@ describe("Operations", () => {
     expect(await p).toEqual({ ok: true, value: { items: [summary("a")], next_cursor: "c1" } });
   });
 
-  it("thread get and history read", async () => {
+  it("history.window fails closed when capability was not advertised", async () => {
+    const t = new FakeTransport();
+    const link = new Link(t);
+    link.start(); t.open();
+    const ops = new Operations(link, () => "unsupported-owner");
+    const result = await ops.historyWindow({ thread_id: "a", before: 0, after: 0 });
+    expect(result).toMatchObject({ ok: false, error: { kind: "invalid_response" } });
+    expect(t.calls("history.window")).toHaveLength(0);
+    link.stop();
+  });
+
+  it("thread get and current positional history read", async () => {
     const { t, ops } = setup();
     const g = ops.threadGet("a");
-    const h = ops.historyList({ thread_id: "a", limit: 2, cursor: "x" });
+    const h = ops.historyWindow({ thread_id: "a", before: 0, after: 0 });
     expect(t.calls().map((c) => [c.command, c.args])).toEqual([
       ["thread.get", { thread_id: "a" }],
-      ["history.list", { thread_id: "a", limit: 2, cursor: "x" }],
+      ["history.window", { thread_id: "a", before: 0, after: 0 }],
     ]);
     t.ok(t.calls()[0]!.id, details("a"));
-    t.ok(t.calls()[1]!.id, { items: [{ node_id: "n1" }] });
+    t.ok(t.calls()[1]!.id, { thread_id: "a", revision: 1, total: 1, items: [{ node_id: "n1", selection: { ordinal: 0 } }] });
     expect(await g).toMatchObject({ ok: true, value: { thread_id: "a" } });
-    expect(await h).toEqual({ ok: true, value: { items: [{ node_id: "n1" }] } });
+    expect(await h).toMatchObject({ ok: true, value: { thread_id: "a", revision: 1, total: 1, items: [{ node_id: "n1" }] } });
+    expect(t.calls("history.window")).toHaveLength(1);
+    expect(t.calls("history.list")).toHaveLength(0);
   });
 
   it("owner errors carry code, message and hint", async () => {
@@ -245,13 +258,13 @@ describe("Reads and mutations for Branches and Threads", () => {
 
 describe('302 optional notification across public history routes',()=>{
  const valid=[{kind:'turn_started'},{kind:'recovery_resumed'},{kind:'instructions_observed',observation:'updated'},{kind:'thread_settings_changed',changed_fields:['cwd']},{kind:'shell_ended',execution_id:'exact-exec',state:'exited',exit_code:0}];
- for(const route of ['get','list','window'] as const){
+ for(const route of ['get','window'] as const){
   it(`admits five variants and quarantines only invalid notification on history.${route}`,async()=>{
    for(const notification of [...valid,undefined,null,{kind:'future'},{kind:'turn_started',extra:'PRIVATE'}]){
-    const t=new FakeTransport();const link=new Link(t);link.start();t.open();const ops=new Operations(link,()=> 'notification-case');
+    const t=new FakeTransport();const link=new Link(t);link.start();t.open();const ops=new Operations(link,()=> 'notification-case', () => true);
     const rawNode={node_id:'canonical',kind:'event',text:'body remains',selection:{ordinal:0},provenance:{sender:{kind:'system'},message:{expect_reply:false},independent:'kept',...(notification===undefined?{}:{notification})}};
-    const pending=route==='get'?ops.historyGet({node_id:'canonical'}):route==='list'?ops.historyList({thread_id:'thread'}):ops.historyWindow({thread_id:'thread'});
-    const response=route==='get'?rawNode:route==='list'?{items:[rawNode]}:{thread_id:'thread',revision:'r',total:1,items:[rawNode]};
+    const pending=route==='get'?ops.historyGet({node_id:'canonical'}):ops.historyWindow({thread_id:'thread'});
+    const response=route==='get'?rawNode:{thread_id:'thread',revision:'r',total:1,items:[rawNode]};
     t.ok(t.calls()[0]!.id,JSON.parse(JSON.stringify(response)));
     const out=await pending;expect(out.ok).toBe(true);
     if(out.ok){

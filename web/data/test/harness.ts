@@ -141,17 +141,17 @@ export class FakeOwnerDb {
         return this.page(this.work[a.thread_id!] ?? [], Number(a.limit), a.cursor);
       case "thread.get":
         return this.details[a.thread_id!] ? { ok: true, result: this.details[a.thread_id!] } : { ok: false, code: "not_found" };
-      case "history.list": {
-        // Like the owner: oldest first, `since` inclusive, cursors continue towards the newest.
-        const since = a.since;
-        const all = (this.history[a.thread_id!] ?? []).filter(
-          (i) => since === undefined || String((i.provenance as { created_at?: string } | undefined)?.created_at) >= since,
-        );
-        if (a.cursor && this.expiredCursors.has(a.cursor)) return { ok: false, code: "cursor_expired" };
-        const start = a.cursor ? Number(a.cursor) : 0;
-        const limit = Number(a.limit ?? 50);
-        const end = start + limit;
-        return { ok: true, result: { items: all.slice(start, end), ...(end < all.length ? { next_cursor: String(end) } : {}) } };
+      case "history.window": {
+        const args = c.args as { thread_id: string; before?: number; after?: number; ordinal?: number; expect_node_id?: string; revision?: string | number };
+        const all = this.history[args.thread_id] ?? [];
+        const total = all.length;
+        let first = args.ordinal ?? Math.max(0, total - 1 - (args.before ?? 0));
+        let last = Math.min(total - 1, first + (args.before ?? 0) + (args.after ?? 0));
+        first = Math.max(0, first);
+        if (args.expect_node_id !== undefined && (all[first] as { node_id?: string } | undefined)?.node_id !== args.expect_node_id)
+          return { ok: false, code: "path_changed" };
+        const items = all.slice(first, last + 1).map((item, index) => ({ ...item, selection: { ordinal: first + index } }));
+        return { ok: true, result: { thread_id: args.thread_id, revision: args.revision ?? "fixture-revision", total, items } };
       }
       case "shell.list":
         return { ok: true, result: { items: this.shells[a.thread_id!] ?? [] } };

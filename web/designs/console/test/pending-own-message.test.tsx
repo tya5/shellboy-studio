@@ -12,9 +12,9 @@ import {loadPrefs} from '../../../ui-core/src/prefs';
 import {App} from '../screens/App';
 import {Composer} from '../system/components/Composer';
 
-for(const windowed of [true,false])for(const savedBeforeAck of [false,true])it(`submitted message remains separate until exact acceptance and saved arrival: window=${windowed} savedFirst=${savedBeforeAck}`,async()=>{
+for(const savedBeforeAck of [false,true])it(`submitted message remains separate until exact acceptance and saved arrival: savedFirst=${savedBeforeAck}`,async()=>{
  let rows:HistoryItem[]=[];
- const f=await fixtureModel({capabilities:windowed?['history.window']:[],configure(db){
+ const f=await fixtureModel({capabilities:['history.window'],configure(db){
   db.threads={t:summary('t')};db.details.t=details('t');db.history.t=[];
   const base=db.answer.bind(db);db.answer=call=>call.command==='history.window'?{ok:true,result:{thread_id:'t',revision:1,total:rows.length,items:rows}}:base(call);
  }});
@@ -27,7 +27,6 @@ for(const windowed of [true,false])for(const savedBeforeAck of [false,true])it(`
   await act(async()=>{composer.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));await flush(8);});
   expect(f.model.pendingOwnMessage.peek()).toBeDefined();
   expect(f.model.pendingOwnIsCurrent()).toBe(true);
-  if(!windowed)expect(f.model.legacyPresentation.peek()?.isCurrent(f.model.legacyPresentation.peek()!.acceptedView.peek())).toBe(true);
   expect(host.querySelector('[data-pending-own-message]')?.textContent).toContain('Own submitted message');
   expect(host.querySelectorAll('[data-pending-own-message]')).toHaveLength(1);
   const call=f.t.calls('message.send').at(-1)!;f.db.answered.add(call.id);
@@ -162,8 +161,8 @@ it('real edits, even restored text, remain a different generation; composing Ent
  }finally{render(null,host);host.remove();}
 });
 
-for(const windowed of [true,false])it(`actual own cohort has no metadata/partial/stale gap and swaps A/B together: window=${windowed}`,async()=>{
- const f=await fixtureModel({capabilities:windowed?['history.window']:[],configure(db){db.threads={t:summary('t')};db.details.t=details('t');db.history.t=[];const base=db.answer.bind(db);db.answer=call=>call.command==='history.window'?{ok:true,result:{thread_id:'t',revision:2,total:db.history.t?.length??0,items:db.history.t??[]}}:base(call);}});
+it(`actual own cohort has no metadata/partial/stale gap and swaps A/B together`,async()=>{
+ const f=await fixtureModel({capabilities:['history.window'],configure(db){db.threads={t:summary('t')};db.details.t=details('t');db.history.t=[];const base=db.answer.bind(db);db.answer=call=>call.command==='history.window'?{ok:true,result:{thread_id:'t',revision:2,total:db.history.t?.length??0,items:db.history.t??[]}}:base(call);}});
  const host=document.createElement('div');document.body.append(host);const frames:string[][]=[];
  const ids=()=>[...host.querySelectorAll('.msg:not(.assistant)')].map(row=>row.textContent??'');
  const frame=(expected:string[])=>{const actual=ids();frames.push(actual);expect(actual).toHaveLength(expected.length);expected.forEach((text,index)=>expect(actual[index]).toContain(text));};
@@ -191,12 +190,12 @@ for(const windowed of [true,false])it(`actual own cohort has no metadata/partial
   await publish([node('a'),node('b','Saved B',true)]);frame(['Original A','Original B']);expect(f.model.acceptedOwnMessages.peek()).toHaveLength(2);
   await publish([node('a','Partial A',false),node('b','Saved B',true)]);frame(['Original A','Original B']);
   const original=f.db.answer.bind(f.db),sendFrame=f.t.send.bind(f.t);
-  f.t.send=message=>{const ok=sendFrame(message);if(message.t==='call'&&(message.command==='history.window'||message.command==='history.list'))f.db.answered.add(message.id);return ok;};
+  f.t.send=message=>{const ok=sendFrame(message);if(message.t==='call'&&message.command==='history.window')f.db.answered.add(message.id);return ok;};
   await act(async()=>{f.t.push({t:'changed',thread_ids:['t'],list:false});await flush(12);});frame(['Original A','Original B']);
   f.t.send=sendFrame;f.db.answer=original;
   // Complete the held public read using the same request, not a new private read.
-  const held=f.t.calls(windowed?'history.window':'history.list').at(-1)!;
-  await act(async()=>{f.t.ok(held.id,windowed?{thread_id:'t',revision:2,total:2,items:[node('a','Saved A',true),node('b','Saved B',true)]}:{items:[node('a','Saved A',true),node('b','Saved B',true)]});await flush(24);});
+  const held=f.t.calls('history.window').at(-1)!;
+  await act(async()=>{f.t.ok(held.id,{thread_id:'t',revision:2,total:2,items:[node('a','Saved A',true),node('b','Saved B',true)]});await flush(24);});
   frame(['Saved A','Saved B']);expect(installed).toBe(1);expect(f.model.acceptedOwnMessages.peek()).toHaveLength(0);expect(host.querySelector('[data-pending-own-message]')).toBeNull();
   expect(frames.every(rows=>rows.length===2)).toBe(true);
  }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
@@ -220,9 +219,9 @@ it('actual model installed receipt rejects cohort changes during qualification a
   const empty=f.model.acceptedOwnMessages.peek();f.model.installOwnPresentation(ready,()=>true);expect(f.model.acceptedOwnMessages.peek()).toBe(empty);
  }finally{f.model.dispose();f.data.stop();}
 });
-for(const windowed of [true,false])for(const withPrefix of [false,true])for(const ids of [['2'],['2','3','4','5']])it(`actual four rapid ACKs precede new assistant while own saved bodies are unavailable: window=${windowed} prefix=${withPrefix} count=${ids.length}`,async()=>{
+for(const withPrefix of [false,true])for(const ids of [['2'],['2','3','4','5']])it(`actual four rapid ACKs precede new assistant while own saved bodies are unavailable: prefix=${withPrefix} count=${ids.length}`,async()=>{
  let revision=1;
- const f=await fixtureModel({capabilities:windowed?['history.window']:[],configure(db){
+ const f=await fixtureModel({capabilities:['history.window'],configure(db){
   db.threads={t:summary('t')};db.details.t=details('t');db.history.t=withPrefix?[{node_id:'prefix',kind:'user',selection:{ordinal:0},items:[{kind:'text',item_identity:'prefix-a',text:'Existing prefix A',text_complete:true},{kind:'text',item_identity:'prefix-b',text:'Existing prefix B',text_complete:true}]}]:[];
   const base=db.answer.bind(db);db.answer=call=>call.command==='history.window'?{ok:true,result:{thread_id:'t',revision,total:db.history.t?.length??0,items:db.history.t??[]}}:base(call);
  }});
@@ -249,14 +248,11 @@ for(const windowed of [true,false])for(const withPrefix of [false,true])for(cons
   const assistant=host.querySelector('[data-node="assistant-arrival"]');
   revision+=5;
   f.db.history.t=[...prefix,...ids.map((id,index)=>({node_id:`own-${id}`,kind:'user',selection:{ordinal:index+(withPrefix?1:0)},items:[{kind:'text' as const,item_identity:`body-${id}`,text:`Diagnostic own ${id}`,text_complete:true}]})),{node_id:'assistant-arrival',kind:'assistant_response',selection:{ordinal:ids.length+(withPrefix?1:0)},items:[{kind:'text',item_identity:'response',text:'Diagnostic assistant receipt response',text_complete:true}]}];
-  // Public history.list is excerpt-only: it cannot prove submitted text replacement.
-  if(!windowed)f.db.history.t=(f.db.history.t as HistoryItem[]).map(node=>({...node,items:undefined,text:node.items?.[0]?.kind==='text'?node.items[0].text:undefined}));
   await act(async()=>{f.t.push({t:'changed',thread_ids:['t'],list:false});await settle(f.t,f.db);await flush(12);});
-  if(windowed)expect([...host.querySelectorAll('.msg')].map(row=>row.querySelector('.md')?.textContent?.trim())).toEqual(actual);
-  else expect([...host.querySelectorAll('[data-pending-own-message] .md')].map(row=>row.textContent?.trim())).toEqual([...ids.map(id=>`Diagnostic own ${id}`)]);
-  expect(host.querySelectorAll('[data-pending-own-message]')).toHaveLength(windowed?0:ids.length);
-  expect(f.model.acceptedOwnMessages.peek()).toHaveLength(windowed?0:ids.length);
-  if(windowed)expect(host.querySelector('[data-node="assistant-arrival"]')).toBe(assistant);
+  expect([...host.querySelectorAll('.msg')].map(row=>row.querySelector('.md')?.textContent?.trim())).toEqual(actual);
+  expect(host.querySelectorAll('[data-pending-own-message]')).toHaveLength(0);
+  expect(f.model.acceptedOwnMessages.peek()).toHaveLength(0);
+  expect(host.querySelector('[data-node="assistant-arrival"]')).toBe(assistant);
 
  }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
 });

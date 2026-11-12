@@ -9,7 +9,7 @@ import { fixtureRewind } from "./fixture";
 
 function fixture() {
   const t = new FakeTransport(); const link = new Link(t); link.start(); t.open();
-  let seq = 0; const ops = new Operations(link, () => `receipt-${++seq}`);
+  let seq = 0; const ops = new Operations(link, () => `receipt-${++seq}`, () => true);
   const b = new Branches(ops);
   const target = { threadId: "selected", nodeId: "split" };
   b.target.value = target;
@@ -102,7 +102,7 @@ it("bounds three independent slots, joins in-flight attempts and refuses new pay
 
 it("retains identities across expired/invalid outcomes and rejects cross-owner mutation replay", async () => {
   const t = new FakeTransport(), link = new Link(t); link.start(); t.open(); let owner = "owner-a", seq = 0;
-  const b = new Branches(new Operations(link, () => `${owner}:${++seq}`), () => owner);
+  const b = new Branches(new Operations(link, () => `${owner}:${++seq}`, () => true), () => owner);
   const first = b.renameBranch("a", "title"); const call = t.calls("thread.set")[0]!;
   t.ownerError(call.id,"operation_expired"); await first;
   const retry = b.renameBranch("a","title"); const second = t.calls("thread.set")[1]!; expect(second.operation_id).toBe(call.operation_id);
@@ -134,7 +134,7 @@ it("distinguishes definite pre-send refusal from lost replies and never reruns a
 
 it("opaque/malformed lookup never advances a stage or releases its slot", async () => {
   const t=new FakeTransport(),link=new Link(t);link.start();t.open();let owner="a",seq=0;
-  const b=new Branches(new Operations(link,()=>`${owner}:${++seq}`),()=>owner);
+  const b=new Branches(new Operations(link,()=>`${owner}:${++seq}`, () => true),()=>owner);
   const first=b.renameBranch("selected","name");const sent=t.calls("thread.set")[0]!;t.drop();await first;t.open();owner="b";
   for(const result of [{operation_id:sent.operation_id,state:"completed",replay_policy:"return_saved_outcome",outcome:{result:{thread_id:"selected",title:"name"}}},{operation_id:"wrong",state:"completed"}]){
     const retry=b.renameBranch("selected","name");t.ok(t.calls("operation.get").at(-1)!.id,result);await retry;
@@ -159,7 +159,7 @@ it("read/clear/leave never discard receipt; late rewind success cannot start a f
 
 it("owner change after a known rewind never starts the unsent send stage", async () => {
   const t=new FakeTransport(),link=new Link(t);link.start();t.open();let owner="a",id=0;
-  const b=new Branches(new Operations(link,()=>`${owner}:${++id}`),()=>owner);const target={threadId:"selected",nodeId:"split"};b.target.value=target;
+  const b=new Branches(new Operations(link,()=>`${owner}:${++id}`, () => true),()=>owner);const target={threadId:"selected",nodeId:"split"};b.target.value=target;
   const preview=b.previewRewind(target);t.ok(t.calls("thread.rewind")[0]!.id,fixtureRewind);await preview;
   const p=b.confirmRewind("text");t.ok(t.calls("thread.rewind")[1]!.id,{...fixtureRewind,dry_run:false});owner="b";await p;
   expect(t.calls("message.send")).toHaveLength(0);const diagnostic=b.confirmRewind("text");const get=t.calls("operation.get").at(-1)!;t.ownerError(get.id,"operation_expired");await diagnostic;expect(t.calls("message.send")).toHaveLength(0);
@@ -189,7 +189,7 @@ it("reserves pending state before a synchronous transport callback can reenter",
 
 function ownerFixture() {
   const t=new FakeTransport(),link=new Link(t);link.start();t.open();let owner:string|undefined="a",seq=0;
-  const b=new Branches(new Operations(link,()=>`${owner}:${++seq}`),()=>owner);
+  const b=new Branches(new Operations(link,()=>`${owner}:${++seq}`, () => true),()=>owner);
   const change=(next:string|undefined)=>{owner=next;b.ownerChanged(next);};change("a");
   return {t,link,b,change};
 }

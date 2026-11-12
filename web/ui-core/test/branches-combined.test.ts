@@ -8,7 +8,7 @@ import { fixtureModel, fixtureRewind } from "./fixture";
 
 function fixture(){
   const t=new FakeTransport(),link=new Link(t);link.start();t.open();let owner:string|undefined="a",seq=0;
-  const b=new Branches(new Operations(link,()=>`${owner}:${++seq}`),()=>owner);b.ownerChanged(owner);
+  const b=new Branches(new Operations(link,()=>`${owner}:${++seq}`, () => true),()=>owner);b.ownerChanged(owner);
   const change=(next:string|undefined)=>{owner=next;b.ownerChanged(next);};
   return {t,link,b,change};
 }

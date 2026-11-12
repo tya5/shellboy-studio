@@ -172,7 +172,7 @@ it('result descriptor never acquires a request name through call ID',()=>{
 it('strict public operation descriptor reaches same accepted snapshot and issued display without a body lookup',async()=>{
  const {Link}=await import('../../data/src/link');const {Operations}=await import('../../data/src/operations');const {FakeTransport}=await import('../../data/test/harness');const {AcceptedView}=await import('../src/accepted-view');
  const t=new FakeTransport(),link=new Link(t);link.start();t.open();
- try{const ops=new Operations(link,()=> 'synthetic');const pending=ops.historyWindow({thread_id:'t',items:true});
+ try{const ops=new Operations(link,()=> 'synthetic', () => true);const pending=ops.historyWindow({thread_id:'t',items:true});
  const descriptor={name:'actual_name',name_state:'available',call_id:'exact',call_id_state:'available'};
  t.ok(t.calls()[0]!.id,{thread_id:'t',revision:'r',total:1,items:[{node_id:'n',kind:'assistant_response',selection:{ordinal:0},items:[{kind:'tool_call',item_identity:'c',execution_ids:[],descriptor,detail_availability:'unavailable'}]}]});
  const result=await pending;if(!result.ok)throw new Error('Strict decoder rejected fixture');

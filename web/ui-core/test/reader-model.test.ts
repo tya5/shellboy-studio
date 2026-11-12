@@ -10,11 +10,11 @@ describe("the long-thread reader in the model", () => {
     expect(t.calls("history.list")).toHaveLength(0);
   });
 
-  it("without it the reader stays off and today's walk reads the history", async () => {
+  it("without it the reader stays off and history is unavailable without a legacy RPC", async () => {
     const { model, t } = await fixtureModel();
     expect(model.longReader.value).toBeUndefined();
     expect(t.calls("history.window")).toHaveLength(0);
-    expect(t.calls("history.list").length).toBeGreaterThan(0);
+    expect(t.calls("history.list")).toHaveLength(0);
   });
 
   it("leaving the Conversation ends the reader and its reads", async () => {

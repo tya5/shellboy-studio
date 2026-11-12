@@ -4,11 +4,10 @@ import type {OwnSendPath,OwnSendInsertion,OwnSendPlacement} from "../../../ui-co
 import { workElementDisplay, workExecutionDisplay, type WorkElementDisplay } from "../../../ui-core/src/work-element-display";
 import { WorkElementRow, formatWorkElementDisplay } from "../system/components/WorkElementRow";
 import { ownSendPresentation } from "../../../ui-core/src/own-send-presentation";
-import type { ThreadHandle } from "../../../data/src/store";
 import { Disclosure } from "../system/components/Disclosure";
 import type { HandoffRecord } from "../../../data/src/handoff";
 import { senderFact } from "../../../data/src/sender";
-import { CANONICAL_CASES, scopeIssuedWorkFacts, type CanonicalCase, normalizeConversationFacts, projectLegacyHistoryItems, projectHistoryWindowItems, projectSavedItems, normalizeLiveWorkFacts, normalizeTerminalPresenceFacts, type NormalizedSavedItem } from "../../../ui-core/src/conversation-items";
+import { CANONICAL_CASES, scopeIssuedWorkFacts, type CanonicalCase, normalizeConversationFacts, projectHistoryWindowItems, projectSavedItems, normalizeLiveWorkFacts, normalizeTerminalPresenceFacts, type NormalizedSavedItem } from "../../../ui-core/src/conversation-items";
 import type { HistoryItem } from "../../../data/src/protocol";
 import { Markdown } from "../system/components/Message";
 import type { WindowAcceptedSnapshot } from "../../../ui-core/src/window";
@@ -20,7 +19,6 @@ import { effect } from "@preact/signals-core";
 import { MonitorPopover } from "../system/components/MonitorPopover";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
 import { collectExecutionSteps, toolLabel, activityLabel, renderOutput, formatClock, formatDuration, formatRoute, formatTokens, parseTime, statusLabel, type AppModel, type ConversationRow, type StepRow as Step } from "../../../ui-core/src";
-import { ScrollIntent } from "./scrollIntent";
 import { WindowedScroll } from "./WindowedScroll";
 import { BranchMark, Button, Composer, LoadingRows, EmptyState, Icon, KeyValue, LogBlock, Message, Notice, QuestionCard, StatusMark, StepRow, SummaryStrip, WorkSheet } from "../system/components";
 
@@ -260,25 +258,6 @@ function OwnSendContent<Ref>({model,projection,nodes,scope,acceptedRef,current,i
   return <SavedConversationItems model={model} projection={decision.projection} nodes={current?nodes:[]} localRegion={{placement:decision.placement,content:renderLocal(decision.localRows),slots:decision.slots.map(slot=>({insertion:slot.insertion,content:renderLocal([slot.row])})),unqualified:<section role="region" aria-label="Unplaced local submissions" data-own-unqualified-region="">{renderLocal(decision.localRows)}</section>}} trailing={trailing}/>;
 }
 
-function LegacySavedContent({model,handle}: {model:AppModel;handle:ThreadHandle;history:ReturnType<ThreadHandle["history"]["peek"]>|undefined;rows:readonly ConversationRow[];boundary:number|undefined;follow:()=>void}) {
-  const owner=model.legacyPresentation.value;
-  const [accepted,setAccepted]=useState(()=>({owner,ref:owner?.acceptedView.peek()}));
-  useLayoutEffect(()=>{
-    if(!owner)return;
-    const update=(ref:ReturnType<typeof owner.acceptedView.peek>)=>{if(owner.isCurrent(ref))setAccepted({owner,ref});};
-    const stop=owner.acceptedView.subscribe(update);update(owner.acceptedView.peek());return stop;
-  },[owner]);
-  const ref=accepted.owner===owner?accepted.ref:owner?.acceptedView.peek();
-  if(!owner||!ref||!owner.isCurrent(ref))return <OwnSendContent model={model} projection={projectSavedItems([])} scope={model.ownMutationScope()} acceptedRef={ref} current={false} isCurrent={()=>false}/>;
-  const receipts=[...ref.terminalPersistedAttempts,...ref.structuralTerminalReceipts];
-  const retired=(attemptId:string|null|undefined)=>!!attemptId&&receipts.some(proof=>proof.scope===ref.scope&&proof.attemptId===attemptId);
-  const live=ref.live.filter(record=>!retired(record.attemptId));
-  const handoffs=model.data.capabilities.value.includes("live.text") ? projectOwnedHandoffFacts(handle.threadId,live) : [];
-  const work=normalizeLiveWorkFacts({scope:handle.threadId,items:(ref.work.value?.items??[]).filter(item=>!retired(item.attempt_id))});
-  const projection=projectLegacyHistoryItems({nodes:ref.rows,keyScope:[ref.scope],liveFacts:[...handoffs,...work,...normalizeTerminalPresenceFacts(ref.terminalPresence ?? [])]}).projection;
-  return <OwnSendContent model={model} nodes={ref.rows} projection={projection} scope={model.ownMutationScope()} acceptedRef={ref} current={true} isCurrent={()=>owner.isCurrent(ref)} path={{tail:handle.history.value.loaded&&!handle.history.value.loading&&!handle.history.value.stale&&!handle.history.value.error,empty:ref.rows.length===0,lastNodeId:ref.rows.at(-1)?.node_id,lastOrdinal:ref.rows.at(-1)?.selection?.ordinal}}/>;
-}
-
 export function SavedWindowContent({ model, snapshot, live, liveBoundary, liveFacts }: { model: AppModel; snapshot: WindowAcceptedSnapshot; live?: ComponentChildren; liveBoundary?: number; liveFacts?: readonly NormalizedSavedItem[] }) {
   if (snapshot.revision === undefined) return null;
   const handle = model.handle.value;
@@ -485,99 +464,41 @@ function Details({ model }: { model: AppModel }) {
   );
 }
 
-function OrderedHistory({ model, handle, rows, win, history, scroller, pinned, follow, loading, t }: { model: AppModel; handle: NonNullable<AppModel["handle"]["value"]>; rows: AppModel["conversation"]["value"]; win: AppModel["longReader"]["value"]; history: NonNullable<AppModel["handle"]["value"]>["history"]["value"] | undefined; scroller: import("preact").RefObject<HTMLDivElement>; pinned: { current: ScrollIntent }; follow: (from?: Element | null) => void; loading: boolean; t: AppModel["t"]["value"] }) {
-  const [boundary, setBoundary] = useState<{ attempt: string; ordinal: number; legacy: number } | undefined>();
+function OrderedHistory({ model, handle, win, t }: { model: AppModel; handle: NonNullable<AppModel["handle"]["value"]>; win: AppModel["longReader"]["value"]; t: AppModel["t"]["value"] }) {
+  const [boundary, setBoundary] = useState<{ attempt: string; ordinal: number } | undefined>();
   useEffect(() => {
-    if (!handle) return;
     let attempt: string | undefined;
     return effect(() => {
       const next = handle.handoff.value[0]?.attemptId;
       if (next === attempt) return;
       attempt = next;
-      setBoundary(next === undefined ? undefined : { attempt: next, ordinal: win?.total ?? 0, legacy: rows.length });
+      setBoundary(next === undefined ? undefined : { attempt: next, ordinal: win?.total ?? 0 });
     });
   }, [handle, win]);
-  const owned = new Set(handle.handoff.value.filter(r => r.nodeId !== undefined).map(r => r.nodeId));
-  const visible = (row: ConversationRow): boolean => row.type !== "message" || (!owned.has(row.id) && !owned.has(row.id.replace(/:commentary$/, "")));
-  return <>
-        {win ? (
-          <WindowedScroll
-            model={model}
-            win={win}
-            live={null}
-            renderRow={() => <></>}
-            renderAcceptedView={snapshot => <><SavedWindowContent model={model} snapshot={snapshot} liveBoundary={boundary?.ordinal} /></>}
-
-            liveBoundary={boundary?.ordinal}
-          />
-        ) : (
-          <div
-            class="scroll"
-            ref={scroller}
-            onWheel={(e) => pinned.current.wheel(e.deltaY)}
-            onTouchStart={(e) => { if (e.touches[0]) pinned.current.touchStart(e.touches[0].clientY); }}
-            onTouchMove={(e) => { if (e.touches[0]) pinned.current.touchMove(e.touches[0].clientY); }}
-            onKeyDown={(e) => pinned.current.key(e.key)}
-            onScroll={(e) => { pinned.current.scroll(e.currentTarget); }}
-          >
-            {history?.earlierHidden ? (
-              <span class="more">
-                {handle.canShowEarlier() ? (
-                  <Button disabled={history.loadingMore} onClick={() => { model.senderPageAfter(() => handle.loadOlderHistory()); }}>{t("convo.earlier")}</Button>
-                ) : (
-                  <span class="muted caption">{t("convo.earlierLimit")}</span>
-                )}
-              </span>
-            ) : null}
-            {history?.error && !history.loaded ? (
-              <Notice tone="bad" actions={<Button onClick={() => void handle.refresh()}>{t("convo.retryLoad")}</Button>}>
-                {t("convo.loadError", { message: history.error.message })}
-              </Notice>
-            ) : null}
-            <LegacySavedContent model={model} handle={handle} history={history} rows={rows} boundary={boundary?.legacy} follow={follow} />
-            {[...model.rowMarks.value].map(([rowId, mark]) => <div class="scroll-mark" key={rowId}><BranchMark href={formatRoute({view:"branches",threadId:handle.threadId,nodeId:mark.nodeId})} label={mark.branches === 1 ? t("branches.markOne") : t("branches.mark",{n:mark.branches})} /></div>)}
-            {rows.length === 0 && !history?.error ? (
-              loading ? <LoadingRows label={t("convo.loading")} rows={5} /> : <EmptyState icon="chat" character title={t("convo.empty")} body={t("convo.emptyBody")} />
-            ) : null}
-          </div>
-        )}
-  </>;
+  if (!model.historySupported) return <Notice tone="bad" title={t("convo.unsupportedOwner")} />;
+  if (!win) return <LoadingRows label={t("convo.loading")} rows={5} />;
+  return <WindowedScroll model={model} win={win} live={null} renderRow={() => <></>}
+    renderAcceptedView={snapshot => <SavedWindowContent model={model} snapshot={snapshot} liveBoundary={boundary?.ordinal} />}
+    liveBoundary={boundary?.ordinal} />;
 }
 
 export function Conversation({ model }: { model: AppModel }) {
   const t = model.t.value;
   const [sheetOpen, setSheetOpen] = useState(false);
   const handle = model.handle.value;
-  const rows = model.conversation.value;
   const win = model.longReader.value;
-  const scroller = useRef<HTMLDivElement>(null);
-  const pinned = useRef(new ScrollIntent());
-  const history = handle?.history.value;
-  // The windowed reader owns every scroll write, including live-tail resizing.
-  // The legacy reader finds its box from the live message when necessary.
-  const follow = (from?: Element | null) => {
-    if (win) { win.layoutChanged(); return; }
-    const el = from?.closest<HTMLElement>(".scroll") ?? scroller.current;
-    if (el && pinned.current.following) pinned.current.program(el, el.scrollHeight);
-  };
-
-  useLayoutEffect(() => { if (!win) follow(); }, [rows, win]);
-  useEffect(() => {
-    pinned.current = new ScrollIntent();
-    setSheetOpen(false);
-  }, [handle]);
+  useEffect(() => { setSheetOpen(false); }, [handle]);
 
   const send = model.sendState.value;
   const pendingOwn = model.pendingOwnMessage.value;
   const sendBlocked = model.ownSendBlocked();
   const conn = model.connection.value;
   const recovery = model.recovery.value;
-  const loading = !history?.loaded;
 
   return (
     <>
       <div class="convo">
-        {handle ? <OrderedHistory model={model} handle={handle} rows={rows} win={win} history={history} scroller={scroller} pinned={pinned} follow={follow} loading={loading} t={t} /> :
+        {handle ? <OrderedHistory model={model} handle={handle} win={win} t={t} /> :
           <EmptyState icon="chat" title={t("convo.noThread")} body={t("convo.noThreadBody")}>
             <Button variant="primary" onClick={() => void model.createThread()}>{t("action.new")}</Button>
           </EmptyState>}

@@ -12,7 +12,7 @@ import { SavedConversationItems } from '../screens/Conversation';
 
 async function decode(rows:readonly HistoryItem[]){
   const transport=new FakeTransport(),link=new Link(transport);link.start();transport.open();
-  const pending=new Operations(link,()=> 'proposal').historyWindow({thread_id:'synthetic-thread'});
+  const pending=new Operations(link,()=> 'proposal', () => true).historyWindow({thread_id:'synthetic-thread'});
   transport.ok(transport.calls()[0]!.id,JSON.parse(JSON.stringify({thread_id:'synthetic-thread',revision:7,total:rows.length,items:rows})));
   const result=await pending;link.stop();if(!result.ok)throw new Error(result.error.message);return result.value.items;
 }

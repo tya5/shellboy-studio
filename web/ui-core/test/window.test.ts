@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { flush } from "../../data/test/harness";
 import { correctedScrollTop, READS_IN_FLIGHT, WINDOW_NODES, WINDOWS_HELD } from "../src/window";
 import { rig, type Rig } from "./window-owner";
 
@@ -45,17 +44,14 @@ describe("opening and measured coordinates", () => {
     expect(r.w.totalHeight()).toBe(40);
     close(r);
   });
-  it("with the capability a hint does not walk history; without it the old reader runs", async () => {
-    const withCap = await open(10);
-    withCap.t.push({ t: "changed", thread_ids: ["t"], list: false });
-    await withCap.settle();
-    expect(withCap.t.calls("history.list")).toHaveLength(0);
-    expect(withCap.handle.historyTick.value).toBeGreaterThan(0);
-    const without = await rig(10, { capability: false });
-    without.t.push({ t: "changed", thread_ids: ["t"], list: false });
-    await flush();
-    expect(without.t.calls("history.list").length).toBeGreaterThan(0);
-    close(withCap); close(without);
+  it("a current-owner hint invalidates only the positional reader", async () => {
+    const r = await open(10);
+    r.t.push({ t: "changed", thread_ids: ["t"], list: false });
+    await r.settle();
+    expect(r.t.calls("history.window").length).toBeGreaterThan(1);
+    expect(r.t.calls("history.list")).toHaveLength(0);
+    expect(r.handle.historyTick.value).toBeGreaterThan(0);
+    close(r);
   });
 });
 

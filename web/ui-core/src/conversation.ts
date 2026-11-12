@@ -1,7 +1,7 @@
-import { canonicalItemCase, projectLegacyHistoryItems } from "./conversation-items";
+import { canonicalItemCase, projectHistoryWindowItems } from "./conversation-items";
 import { senderFact } from "../../data/src/sender";
-// Legacy row compatibility; semantic classification is shared with typed projection.
-import { HISTORY_EXCERPT_CHARS, type HistoryItem, type ShellEntry } from "../../data/src";
+// Pure rendering from strictly decoded selected-path history-window DTOs.
+import { type HistoryItem, type ShellEntry, HISTORY_WINDOW_EXCERPT_CHARS } from "../../data/src/protocol";
 import { parseTime } from "./format";
 import { statusOfShell, type StatusKey } from "./status";
 
@@ -80,15 +80,15 @@ export function collectExecutionSteps(items: readonly HistoryItem[], shells: Rea
 }
 
 export interface HistoryPresentation {
-  readonly projection: ReturnType<typeof projectLegacyHistoryItems>["projection"];
+  readonly projection: ReturnType<typeof projectHistoryWindowItems>["projection"];
   readonly rows: ConversationRow[];
   readonly steps: StepRow[];
   /** Actual canonical provenance for view/measurement, not a position-derived key. */
   readonly nodeIdByRowId: ReadonlyMap<string, string>;
 }
 /** Presentation only: canonical semantic order is produced once for the whole input. */
-export function materializeHistoryPresentation(items: readonly HistoryItem[], shells: ReadonlyMap<string, ShellEntry> = new Map()): HistoryPresentation {
-  const projection = projectLegacyHistoryItems({ nodes: items }).projection;
+export function materializeHistoryPresentation(items: readonly HistoryItem[], shells: ReadonlyMap<string, ShellEntry> = new Map(), revision: string | number = 0): HistoryPresentation {
+  const projection = projectHistoryWindowItems({ revision, nodes: items }).projection;
   const rows: ConversationRow[] = [];
   const nodes = new Map(items.map(node => [node.node_id, node]));
   const nodeIdByRowId = new Map<string, string>();

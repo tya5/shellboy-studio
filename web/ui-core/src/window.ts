@@ -9,7 +9,7 @@ import type { HandoffRecord } from "../../data/src/handoff";
 // path held in bounded buckets, a measured scroll space over one loaded run, and adjacent reads.
 // It stops at an unloaded edge. It knows no pixels except the heights it is told, and never walks the history.
 import { batch, signal } from "@preact/signals-core";
-import { Cancel, HISTORY_EXCERPT_CHARS, type HistoryItem, type HistoryWindowArgs, type HistoryWindowResult, type Outcome } from "../../data/src";
+import { Cancel, type HistoryItem, type HistoryWindowArgs, type HistoryWindowResult, type Outcome, HISTORY_WINDOW_EXCERPT_CHARS } from "../../data/src";
 
 /** Positions in one window of the path. */
 export const WINDOW_NODES = 100;
@@ -611,7 +611,7 @@ export class ConversationWindow {
     // Bucket reads share the pump's two slots; the separately owned tail/verify
     // must not be competed with by an explicit deferred retry.
     if (this.inflight.has(index) || this.inflight.size >= READS_IN_FLIGHT || this.tailCancel || this.verifying) return false;
-    void this.readBucket(index, { ordinal, expect_node_id: row.node_id, before: 0, after: WINDOW_NODES - 1, excerpt_chars: HISTORY_EXCERPT_CHARS, items: true });
+    void this.readBucket(index, { ordinal, expect_node_id: row.node_id, before: 0, after: WINDOW_NODES - 1, excerpt_chars: HISTORY_WINDOW_EXCERPT_CHARS, items: true });
     return true;
   }
 
@@ -803,7 +803,7 @@ export class ConversationWindow {
     const cancel = new Cancel();
     this.inflight.set(b, { cancel });
     const out = await this.reader.read(
-      request ?? { ordinal: b * WINDOW_NODES, before: 0, after: WINDOW_NODES - 1, excerpt_chars: HISTORY_EXCERPT_CHARS, items: true },
+      request ?? { ordinal: b * WINDOW_NODES, before: 0, after: WINDOW_NODES - 1, excerpt_chars: HISTORY_WINDOW_EXCERPT_CHARS, items: true },
       cancel,
     );
     if (this.disposed || capability !== this.acceptedView.currentCapability || epoch !== this.epoch || this.inflight.get(b)?.cancel !== cancel) return; // scrolled away or reset: dropped
@@ -837,7 +837,7 @@ export class ConversationWindow {
     const cancel = new Cancel();
     this.tailCancel?.cancel();
     this.tailCancel = cancel;
-    const out = await this.reader.read({ ordinal: known.ordinal, before: 0, after: 0, expect_node_id: known.nodeId, excerpt_chars: HISTORY_EXCERPT_CHARS, items: true }, cancel);
+    const out = await this.reader.read({ ordinal: known.ordinal, before: 0, after: 0, expect_node_id: known.nodeId, excerpt_chars: HISTORY_WINDOW_EXCERPT_CHARS, items: true }, cancel);
     if (this.disposed || capability !== this.acceptedView.currentCapability || epoch !== this.epoch || this.tailCancel !== cancel) return;
     this.verifying = false;
     this.tailCancel = undefined;
@@ -864,8 +864,8 @@ export class ConversationWindow {
     }
     const known = this.tailKnown;
     const args: WindowReadArgs = known && !latest
-      ? { ordinal: known.ordinal, before: 0, after: 2 * WINDOW_NODES - 1, expect_node_id: known.nodeId, excerpt_chars: HISTORY_EXCERPT_CHARS, items: true }
-      : { before: WINDOW_NODES - 1, after: 0, excerpt_chars: HISTORY_EXCERPT_CHARS, items: true };
+      ? { ordinal: known.ordinal, before: 0, after: 2 * WINDOW_NODES - 1, expect_node_id: known.nodeId, excerpt_chars: HISTORY_WINDOW_EXCERPT_CHARS, items: true }
+      : { before: WINDOW_NODES - 1, after: 0, excerpt_chars: HISTORY_WINDOW_EXCERPT_CHARS, items: true };
     const epoch = this.epoch, capability = this.acceptedView.currentCapability;
     const cancel = new Cancel();
     this.tailCancel = cancel;
@@ -954,13 +954,13 @@ export class ConversationWindow {
   }
 
   private async recover(anchor: Anchor | undefined, follow: boolean, epoch: number): Promise<void> {
-    const around = (extra: WindowReadArgs): WindowReadArgs => ({ items: true, before: WINDOW_NODES / 2, after: WINDOW_NODES / 2 - 1, excerpt_chars: HISTORY_EXCERPT_CHARS, ...extra });
+    const around = (extra: WindowReadArgs): WindowReadArgs => ({ items: true, before: WINDOW_NODES / 2, after: WINDOW_NODES / 2 - 1, excerpt_chars: HISTORY_WINDOW_EXCERPT_CHARS, ...extra });
     const attempts: WindowReadArgs[] = [];
     if (!follow && anchor) {
       if (anchor.nodeId) attempts.push(around({ node_id: anchor.nodeId }));
       attempts.push(around({ ordinal: anchor.ordinal }));
     }
-    attempts.push({ before: WINDOW_NODES - 1, after: 0, excerpt_chars: HISTORY_EXCERPT_CHARS, items: true });
+    attempts.push({ before: WINDOW_NODES - 1, after: 0, excerpt_chars: HISTORY_WINDOW_EXCERPT_CHARS, items: true });
     const cancel = new Cancel();
     this.tailCancel = cancel;
     for (const args of attempts) {

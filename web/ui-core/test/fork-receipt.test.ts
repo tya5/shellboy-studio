@@ -9,7 +9,7 @@ import { Branches } from "../src/branching";
 function fixture() {
   const t = new FakeTransport(), link = new Link(t); link.start(); t.open();
   let owner: string | undefined = "a", seq = 0;
-  const b = new Branches(new Operations(link, () => `${owner}:${++seq}`), () => owner);
+  const b = new Branches(new Operations(link, () => `${owner}:${++seq}`, () => true), () => owner);
   b.ownerChanged(owner);
   const target = { threadId: "parent", nodeId: "point" }; b.target.value = target;
   return { t, link, b, target, change(next: string | undefined) { owner = next; b.ownerChanged(next); } };

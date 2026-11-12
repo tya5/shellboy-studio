@@ -41,17 +41,8 @@ export const MAX_WATCHED_THREADS = 64;
 export const PAGE_LIMIT = 50;
 /** Thread list rows held, however many exist; past this, a search finds the rest. */
 export const MAX_LIST_ROWS = 1000;
-/** Page size of history reads. With HISTORY_EXCERPT_CHARS it keeps a page far below the 8 MiB frame. */
-export const HISTORY_PAGE_LIMIT = 100;
-/** Excerpt asked of `history.list`: the owner's maximum, so most messages need no `history.get`. */
-export const HISTORY_EXCERPT_CHARS = 4096;
-/** Newest history items kept per open Thread; `loadOlderHistory` doubles it up to the maximum. */
-export const HISTORY_WINDOW = 400;
-export const HISTORY_WINDOW_MAX = 6400;
 /** The owner reads `history.window` (Shellboy #268). With it, history is read by position and never walked. */
 export const CAPABILITY_HISTORY_WINDOW = "history.window";
-/** `cursor_expired` continuations, and restarts after the path changed, within one history read. */
-const HISTORY_READ_RETRIES = 8;
 
 export interface Resource<T> {
   value: T | undefined;
@@ -65,18 +56,6 @@ export interface PagedState<T> {
   items: T[];
   nextCursor: string | undefined;
   /** At least one successful read happened. */
-  loaded: boolean;
-  loading: boolean;
-  loadingMore: boolean;
-  stale: boolean;
-  error: OpError | undefined;
-}
-
-/** The newest part of a Thread's selected path, ascending. */
-export interface HistoryState {
-  items: HistoryItem[];
-  /** Items older than `items[0]` exist and were dropped by the window. */
-  earlierHidden: boolean;
   loaded: boolean;
   loading: boolean;
   loadingMore: boolean;
@@ -121,8 +100,6 @@ export interface ThreadHandle extends Handle {
   readonly detail: ReadonlySignal<Resource<ThreadDetails>>;
   readonly work: ReadonlySignal<Resource<Page<WorkItem>>>;
   setWorkActive(active: boolean): void;
-  /** Oldest to newest, as the owner returns it; a window over the end of the path. */
-  readonly history: ReadonlySignal<HistoryState>;
   readonly preview: ReadonlySignal<Preview>;
   readonly handoff: ReadonlySignal<readonly HandoffRecord[]>;
   readonly handoffOverflow: ReadonlySignal<boolean>;
@@ -137,9 +114,6 @@ export interface ThreadHandle extends Handle {
   /** Cancels this Thread's reads (what leaving the view does). */
   cancelReads(): void;
   refresh(): Promise<void>;
-  loadOlderHistory(): Promise<void>;
-  /** False when the window reached its maximum. */
-  canShowEarlier(): boolean;
   /** Stops reads and hints for this Thread, keeping what it has. */
   pause(): void;
   resume(): void;
@@ -171,10 +145,6 @@ class ThreadEntry {
   workRefs = 0;
   workGen = 0;
   workBodies = new Map<string, string>();
-  history = signal<HistoryState>({ items: [], earlierHidden: false, loaded: false, loading: false, loadingMore: false, stale: false, error: undefined });
-  window = HISTORY_WINDOW;
-  /** The next read starts from the beginning of the path, not from the last known item. */
-  fullRead = true;
   /** Unsaved model text; its signal is the handle's `preview`. */
   live: Handoff;
   pendingAttempts = signal<readonly AttemptPresentation[]>([]);
@@ -185,8 +155,6 @@ class ThreadEntry {
   resolveAgain = false;
   refreshAfterHandoff = false;
   historyTick = signal(0);
-  /** Bumped by every history read; a read started earlier drops its result. */
-  historyGen = 0;
   /** Cancels this Thread's reads: dropped if queued, a `cancel` frame if sent. Replaced on resume. */
   cancel = new Cancel();
   /** Nobody is looking: no reads, and no hints from the bridge. */
@@ -267,7 +235,7 @@ export class ShellboyData {
     this.link = new Link(options.transport);
     this.schedule = options.schedule ?? microtaskSchedule;
     const newId = options.newId ?? defaultNewId;
-    this.operations = new Operations(this.link, () => withInstance(this.ownerSig.peek(), newId()));
+    this.operations = new Operations(this.link, () => withInstance(this.ownerSig.peek(), newId()), () => this.capabilities.peek().includes(CAPABILITY_HISTORY_WINDOW));
     this.refresher = new Refresher((key, onSent) => this.read(key, onSent));
     this.connection = this.link.connection;
     this.failedAttempts = this.link.failedAttempts;
@@ -432,12 +400,11 @@ export class ShellboyData {
       detail: e.detail,
       work: e.work,
       setWorkActive,
-      history: e.history,
       preview: e.preview,
       handoff: e.live.records,
       handoffOverflow: e.live.overflow,
       retryPublication: () => {
-        if (closed || e.closed || e.paused) return Promise.resolve();
+        if (closed || e.closed || e.paused || !this.capabilities.peek().includes(CAPABILITY_HISTORY_WINDOW)) return Promise.resolve();
         if (e.cancel.cancelled) e.cancel = new Cancel();
         e.live.resetPublicationPriority();
         e.live.reconcile();
@@ -461,6 +428,7 @@ export class ShellboyData {
       historyTick: e.historyTick,
       readWindow: async (args, cancel) => {
         if (e.closed || e.paused) return Promise.resolve({ ok: false, error: { kind: "cancelled", message: "thread is not being read" } });
+        if (!this.capabilities.peek().includes(CAPABILITY_HISTORY_WINDOW)) return Promise.resolve({ ok: false, error: { kind: "invalid_response", message: "owner does not advertise history.window" } });
         const epoch = e.live.epoch;
         const valid = () => !closed && !e.closed && !e.paused && !cancel.cancelled && epoch === e.live.epoch && this.canRead();
         const out = await this.operations.historyWindow({ thread_id: threadId, ...args }, { cancel });
@@ -473,8 +441,6 @@ export class ShellboyData {
       },
       cancelReads: () => { e.live.invalidate(); e.cancel.cancel(); e.terminalReads.clear(); e.terminalReceipts.clear(); e.pendingAttempts.value = []; },
       refresh: () => this.requestThread(threadId),
-      loadOlderHistory: () => this.loadOlder(e),
-      canShowEarlier: () => e.window < HISTORY_WINDOW_MAX,
       pause: () => this.pauseEntry(e),
       resume: () => this.resumeEntry(e),
       close: () => {
@@ -505,7 +471,6 @@ export class ShellboyData {
     entry.pendingAttempts.value = [];
     entry.refreshAfterHandoff = false;
     entry.cancel.cancel();
-    entry.history.value = { ...entry.history.peek(), loading: false, loadingMore: false };
     this.scheduleWatch();
   }
 
@@ -521,7 +486,6 @@ export class ShellboyData {
 
   /** Re-read everything tracked (what `resync` and `owner: restarted` trigger). */
   resyncAll(): Promise<void> {
-    this.markFullReads();
     const jobs: Promise<void>[] = [];
     if (this.listRefs > 0) jobs.push(this.refresher.request("list"));
     for (const id of this.entries.keys()) jobs.push(this.requestThread(id));
@@ -585,7 +549,6 @@ export class ShellboyData {
           const entry = this.entries.get(id);
           if (entry?.live.records.peek().length) {
             entry.refreshAfterHandoff = true;
-            entry.history.value = { ...entry.history.peek(), stale: true };
             void this.requestThread(id, false);
             void this.resolveHandoff(entry);
           } else this.refreshHint(id);
@@ -627,13 +590,7 @@ export class ShellboyData {
       if (d.value !== undefined) e.detail.value = { ...d, stale: true };
       const w = e.work.value;
       if (w.value !== undefined) e.work.value = { ...w, stale: true };
-      const h = e.history.value;
-      if (h.loaded) e.history.value = { ...h, stale: true };
     }
-  }
-
-  private markFullReads(): void {
-    for (const e of this.entries.values()) e.fullRead = true;
   }
 
   private discardAllPreviews(reason: PreviewDiscardReason): void {
@@ -671,7 +628,8 @@ export class ShellboyData {
 
   private requestThread(id: string, history = true): Promise<void> {
     if (this.entries.get(id)?.paused) return Promise.resolve();
-    return Promise.all([this.refresher.request(`thread:${id}`), ...(history ? [this.refresher.request(`history:${id}`)] : []), ...(this.entries.get(id)?.workRefs ? [this.refresher.request(`work:${id}`)] : [])]).then(
+    const readWindow = history && this.capabilities.peek().includes(CAPABILITY_HISTORY_WINDOW);
+    return Promise.all([this.refresher.request(`thread:${id}`), ...(readWindow ? [this.refresher.request(`history:${id}`)] : []), ...(this.entries.get(id)?.workRefs ? [this.refresher.request(`work:${id}`)] : [])]).then(
       () => undefined,
     );
   }
@@ -684,12 +642,8 @@ export class ShellboyData {
     if (!entry) return; // closed since the request
     if (kind === "thread") return this.readDetail(entry, onSent);
     if (kind === "work") return this.readWork(entry, onSent);
-    if (this.ownerSig.peek().state === "connected" && this.capabilities.peek().includes(CAPABILITY_HISTORY_WINDOW)) {
-      entry.history.value = { ...entry.history.peek(), stale: false };
-      entry.historyTick.value++; // positional reads: nothing is walked, the window reader decides what to read
-      return;
-    }
-    return this.readHistory(entry, onSent);
+    if (kind !== "history" || !this.capabilities.peek().includes(CAPABILITY_HISTORY_WINDOW)) return;
+    entry.historyTick.value++; // current contract: only the positional reader may load history
   }
 
   private listFilterRead: ListFilter | undefined;
@@ -905,130 +859,7 @@ export class ShellboyData {
       : { ...cur, loading: false, stale: cur.value !== undefined, error: out.error };
   }
 
-  private async readHistory(entry: ThreadEntry, onSent: () => void): Promise<void> {
-    const gen = ++entry.historyGen;
-    const cancel = entry.cancel;
-    const epoch = entry.live.epoch;
-    const valid = () => !entry.closed && !entry.paused && entry.historyGen === gen && entry.cancel === cancel && !cancel.cancelled && entry.live.epoch === epoch && this.canRead();
-    entry.history.value = { ...entry.history.peek(), loading: true };
-    if (!valid()) return;
-    const out = await this.walkHistory(entry, gen, onSent);
-    if (!valid()) return;
-    const cur = entry.history.value;
-    if (!out.ok && out.error.kind === "cancelled") {
-      entry.history.value = { ...cur, loading: false, loadingMore: false };
-      return;
-    }
-    entry.history.value = out.ok
-      ? { items: immutableSaved(out.items.map(({ assistant_publication: _untrusted, ...item }) => item)), earlierHidden: out.earlierHidden, loaded: true, loading: false, loadingMore: false, stale: false, error: undefined }
-      : { ...cur, loading: false, loadingMore: false, stale: cur.loaded, error: out.error };
-  }
 
-  /**
-   * `history.list` runs oldest to newest and has no way to start at the end, and any append
-   * expires its cursors. So the first read walks the whole path keeping a window of the newest
-   * items, and later reads ask only for items since the last known one. If that item moved or
-   * vanished, the path was rewritten (compaction, rewind) and the walk starts over.
-   */
-  private async walkHistory(
-    entry: ThreadEntry,
-    gen: number,
-    onSent: () => void,
-  ): Promise<{ ok: true; items: HistoryItem[]; earlierHidden: boolean } | { ok: false; error: OpError }> {
-    const cur = entry.history.value;
-    const fresh = entry.fullRead;
-    entry.fullRead = false;
-    let items = fresh ? [] : cur.items;
-    let earlierHidden = fresh ? false : cur.earlierHidden;
-    let cursor: string | undefined;
-    let anchor = anchorOf(items);
-    let retries = 0;
-    let first = true;
-    const startOver = () => {
-      items = [];
-      earlierHidden = false;
-      anchor = undefined;
-      cursor = undefined;
-    };
-    if (items.length > 0 && !anchor) startOver();
-    for (;;) {
-      const out = await this.operations.historyList(
-        {
-          thread_id: entry.id,
-          limit: HISTORY_PAGE_LIMIT,
-          excerpt_chars: HISTORY_EXCERPT_CHARS,
-          ...(anchor?.since !== undefined && { since: anchor.since }),
-          ...(cursor !== undefined && { cursor }),
-        },
-        first ? { onSent, cancel: entry.cancel } : { cancel: entry.cancel },
-      );
-      first = false;
-      if (entry.closed || gen !== entry.historyGen) return { ok: true, items: [], earlierHidden: false };
-      if (!out.ok) {
-        if (out.error.kind !== "owner" || out.error.code !== "cursor_expired" || ++retries > HISTORY_READ_RETRIES) {
-          entry.fullRead = fresh;
-          return { ok: false, error: out.error };
-        }
-        // Something was appended: continue from the last item this walk knows.
-        cursor = undefined;
-        anchor = anchorOf(items);
-        if (items.length > 0 && !anchor) startOver();
-        continue;
-      }
-      if (cursor === undefined && anchor && !confirmsAnchor(out.value.items, anchor)) {
-        if (++retries > HISTORY_READ_RETRIES)
-          return { ok: false, error: { kind: "invalid_response", message: "history path keeps changing" } };
-        startOver();
-        continue;
-      }
-      items = mergeItems(items, out.value.items);
-      if (items.length > entry.window) {
-        items = items.slice(items.length - entry.window);
-        earlierHidden = true;
-      }
-      cursor = out.value.next_cursor;
-      if (cursor === undefined) return { ok: true, items, earlierHidden };
-    }
-  }
-
-  /** Show more of the path: a larger window needs a new walk, the owner cannot read backwards. */
-  private async loadOlder(entry: ThreadEntry): Promise<void> {
-    const cur = entry.history.value;
-    if (!cur.earlierHidden || cur.loadingMore || cur.loading || entry.window >= HISTORY_WINDOW_MAX) return;
-    entry.window = Math.min(entry.window * 2, HISTORY_WINDOW_MAX);
-    entry.fullRead = true;
-    entry.history.value = { ...cur, loadingMore: true };
-    await this.refresher.request(`history:${entry.id}`);
-  }
-}
-
-interface Anchor {
-  nodeId: string;
-  ordinal: number | undefined;
-  since: string;
-}
-
-function anchorOf(items: HistoryItem[]): Anchor | undefined {
-  const last = items[items.length - 1];
-  const since = last?.provenance?.created_at;
-  if (!last || last.node_id === undefined || since === undefined) return undefined;
-  return { nodeId: last.node_id, ordinal: last.selection?.ordinal, since };
-}
-
-const confirmsAnchor = (page: HistoryItem[], anchor: Anchor): boolean =>
-  page.some((i) => i.node_id === anchor.nodeId && i.selection?.ordinal === anchor.ordinal);
-
-/** Union by node id: a re-read item replaces its older copy, new items follow in path order. */
-function mergeItems(known: HistoryItem[], page: HistoryItem[]): HistoryItem[] {
-  if (known.length === 0) return page;
-  const index = new Map(known.map((item, i) => [item.node_id, i]));
-  const merged = [...known];
-  for (const item of page) {
-    const at = index.get(item.node_id);
-    if (at === undefined) merged.push(item);
-    else merged[at] = item;
-  }
-  return merged;
 }
 
 function listArgs(filter: ListFilter) {

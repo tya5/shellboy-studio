@@ -5,7 +5,7 @@ import { FakeTransport } from './harness';
 const text={kind:'text',item_identity:'item-a',text:'saved',text_complete:false};
 const node=(items:unknown)=>({node_id:'node-a',kind:'assistant_response',selection:{ordinal:0},items});
 const window=(items:unknown[])=>({thread_id:'thread-a',revision:'revision-a',total:items.length,items});
-async function decode(value:unknown, opt=true){const t=new FakeTransport();const link=new Link(t);link.start();t.open();const ops=new Operations(link,()=> 'synthetic');const pending=ops.historyWindow({thread_id:'thread-a',items:opt});expect(t.calls()[0]?.args).toEqual({thread_id:'thread-a',items:opt});t.ok(t.calls()[0]!.id,JSON.parse(JSON.stringify(value)));const out=await pending;link.stop();return out;}
+async function decode(value:unknown, opt=true){const t=new FakeTransport();const link=new Link(t);link.start();t.open();const ops=new Operations(link,()=> 'synthetic', () => true);const pending=ops.historyWindow({thread_id:'thread-a',items:opt});expect(t.calls()[0]?.args).toEqual({thread_id:'thread-a',items:opt});t.ok(t.calls()[0]!.id,JSON.parse(JSON.stringify(value)));const out=await pending;link.stop();return out;}
 it('accepts encoded opt-in whole arrays and authoritative incomplete/empty text boundaries',async()=>{
  const value=window([node([text,{...text,item_identity:'empty',text:'',text_complete:true},{kind:'tool_call',item_identity:'tool',execution_ids:['exec']},{kind:'reasoning_unavailable',item_identity:'reason'},{kind:'unavailable',item_identity:'lost',reason:'legacy'}])]);expect(await decode(value)).toEqual({ok:true,value});
 });

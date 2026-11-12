@@ -332,7 +332,7 @@ export async function fixtureModel(options: { realPending?: boolean; pending?: P
   if (options.route) model.applyRoute({ view: options.route, ...(options.section && { section: options.section }) });
   model.start();
   t.open();
-  t.push({ t: "hello", bridge_version: "0.0.1", data_dir: "/temp/owner-a", owner: options.capabilities ? { state: "connected", info: { protocol_version: 5, instance_id: "i1", capabilities: options.capabilities } } : connected });
+  t.push({ t: "hello", bridge_version: "0.0.1", data_dir: "/temp/owner-a", owner: { state: "connected", info: { protocol_version: 5, instance_id: "i1", capabilities: options.capabilities ?? ["history.window"] } } });
   // `settle` gives up after 50 rounds; a test that walks further keeps answering itself.
   await settle(t, db).catch(() => undefined);
   return { t, db, model, data };

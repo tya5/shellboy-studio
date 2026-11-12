@@ -94,7 +94,7 @@ it('strict descriptor DTO reaches the existing zero-execution formal row without
  const {Link}=await import('../../../data/src/link');const {Operations}=await import('../../../data/src/operations');const {FakeTransport,flush}=await import('../../../data/test/harness');
  const {ConversationWindow}=await import('../../../ui-core/src/window');const {SavedWindowContent}=await import('../screens/Conversation');
  const t=new FakeTransport(),link=new Link(t);link.start();t.open();
- const ops=new Operations(link,()=> 'descriptor-consumer');
+ const ops=new Operations(link,()=> 'descriptor-consumer', () => true);
  const reader=new ConversationWindow({read:input=>ops.historyWindow({thread_id:'t',...input})});
  const f=await fixtureModel(),host=document.createElement('div');document.body.append(host);
  try{

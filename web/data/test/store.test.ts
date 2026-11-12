@@ -1,16 +1,17 @@
 import { describe, expect, it } from "vitest";
 import { MAX_PREVIEW_CHARS, type Preview } from "../src/live";
-import { MAX_LIST_ROWS, PAGE_LIMIT, HISTORY_WINDOW, MAX_WATCHED_THREADS, ShellboyData } from "../src/store";
+import { MAX_LIST_ROWS, PAGE_LIMIT, MAX_WATCHED_THREADS, ShellboyData } from "../src/store";
+import { Cancel } from "../src/operations";
 import { connected, details, FakeOwnerDb, FakeTransport, flush, settle, summary } from "./harness";
 
-async function setup(opts: { owner?: boolean } = {}) {
+async function setup(opts: { owner?: boolean; capabilities?: string[] } = {}) {
   const t = new FakeTransport();
   const data = new ShellboyData({ transport: t, newId: () => "id" });
   const db = new FakeOwnerDb();
   data.start();
   t.open();
   if (opts.owner !== false) {
-    t.push({ t: "hello", bridge_version: "0.1.0", owner: connected });
+    t.push({ t: "hello", bridge_version: "0.1.0", owner: opts.capabilities ? { state: "connected", info: { ...connected.info, capabilities: opts.capabilities } } : connected });
     await flush();
   }
   return { t, data, db };
@@ -56,61 +57,16 @@ describe("shared subscription", () => {
   });
 });
 
-describe("hints are not data", () => {
-  it("opening reads detail and history; a list hint re-reads the list only", async () => {
-    const { t, data, db } = await setup();
-    db.threads.a = summary("a");
-    db.details.a = details("a");
-    db.history.a = [{ node_id: "n1" }];
-    data.trackThreadList();
+describe("history capability is required", () => {
+  it("fails closed before both current and removed RPCs when capability is absent", async () => {
+    const { t, data, db } = await setup({ capabilities: [] });
     const h = data.openThread("a");
     await settle(t, db);
-    expect(data.threadList.value.items).toEqual([summary("a")]);
-    expect(h.detail.value.value).toMatchObject({ thread_id: "a" });
-    expect(h.history.value.items).toEqual([{ node_id: "n1" }]);
-
-    db.reads.length = 0;
-    db.threads.b = summary("b");
-    t.push({ t: "changed", thread_ids: [], list: true });
-    await settle(t, db);
-    expect(db.reads).toEqual(["thread.list"]);
-    expect(data.threadList.value.items.map((x) => x.thread_id)).toEqual(["a", "b"]);
-  });
-
-  it("a thread hint re-reads that Thread's detail and history, and ignores untracked Threads", async () => {
-    const { t, data, db } = await setup();
-    db.details.a = details("a", { title: "old" });
-    const h = data.openThread("a");
-    await settle(t, db);
-    db.reads.length = 0;
-    db.details.a = details("a", { title: "new" });
-    t.push({ t: "changed", thread_ids: ["a", "nobody-watches-this"], list: false });
-    await settle(t, db);
-    expect(db.reads.sort()).toEqual(["history.list:a", "thread.get:a"]);
-    expect(h.detail.value.value!.title).toBe("new");
-  });
-
-  it("does not read the list when nobody shows it", async () => {
-    const { t, db } = await setup();
-    t.push({ t: "changed", thread_ids: [], list: true });
-    await settle(t, db);
-    expect(db.reads).toEqual([]);
-  });
-
-  it("coalesces concurrent hints for one target into one read, plus one trailing read when the first was already sent", async () => {
-    const { t, data, db } = await setup();
-    db.details.a = details("a");
-    data.openThread("a");
-    await settle(t, db);
-    db.reads.length = 0;
-    const base = t.calls().length;
-
-    for (let i = 0; i < 5; i++) t.push({ t: "changed", thread_ids: ["a"], list: false });
-    expect(t.calls().length - base).toBe(2); // thread.get + history.list, once each
-    // the change that triggered more hints lands while those reads are on the wire
-    for (let i = 0; i < 5; i++) t.push({ t: "changed", thread_ids: ["a"], list: false });
-    await settle(t, db);
-    expect(db.reads.sort()).toEqual(["history.list:a", "history.list:a", "thread.get:a", "thread.get:a"]);
+    const out = await h.readWindow({ before: 0, after: 0 }, new Cancel());
+    expect(out).toMatchObject({ ok: false, error: { kind: "invalid_response" } });
+    expect(t.calls("history.list")).toHaveLength(0);
+    expect(t.calls("history.window")).toHaveLength(0);
+    h.close(); data.stop();
   });
 });
 
@@ -127,7 +83,7 @@ describe("resync, restart and loss", () => {
     db.reads.length = 0;
     t.push({ t: "resync" });
     await settle(t, db);
-    expect(db.reads.sort()).toEqual(["history.list:a", "history.list:b", "thread.get:a", "thread.get:b", "thread.list"]);
+    expect(db.reads.sort()).toEqual(["thread.get:a", "thread.get:b", "thread.list"]);
   });
 
   it("restarted followed by resync (the bridge sends both) costs at most one trailing read per target", async () => {
@@ -140,7 +96,7 @@ describe("resync, restart and loss", () => {
     t.push({ t: "resync" });
     await settle(t, db);
     // the first reads were already on the wire when resync arrived, so one trailing read each
-    expect(db.reads.sort()).toEqual(["history.list:a", "history.list:a", "thread.get:a", "thread.get:a"]);
+    expect(db.reads.sort()).toEqual(["thread.get:a", "thread.get:a"]);
   });
 
   it("owner unreachable keeps values but marks them stale; recovery re-reads", async () => {
@@ -167,12 +123,11 @@ describe("resync, restart and loss", () => {
     t.drop();
     expect(data.owner.value).toEqual({ state: "unknown" });
     expect(h.detail.value.stale).toBe(true);
-    expect(h.history.value.stale).toBe(true);
     db.reads.length = 0;
     t.open();
     t.push({ t: "hello", bridge_version: "0.1.0", owner: connected });
     await settle(t, db);
-    expect(db.reads.sort()).toEqual(["history.list:a", "thread.get:a"]);
+    expect(db.reads.sort()).toEqual(["thread.get:a"]);
     expect(h.detail.value.stale).toBe(false);
   });
 
@@ -214,14 +169,6 @@ describe("resync, restart and loss", () => {
   });
 });
 
-const node = (n: number, ordinal = n) => ({
-  node_id: `n${n}`,
-  kind: "user",
-  provenance: { created_at: `2026-01-01T00:00:00.${String(n).padStart(6, "0")}+00:00` },
-  selection: { ordinal },
-});
-const ids = (items: { node_id?: string }[]) => items.map((i) => i.node_id);
-
 describe("operation ids", () => {
   it("are prefixed with the connected owner's instance", async () => {
     const { t, data } = await setup();
@@ -234,86 +181,6 @@ describe("operation ids", () => {
     void data.operations.messageSend({ thread_id: "a", text: "x" }, "i0:kept");
     await flush();
     expect(t.calls("message.send")[0]!.operation_id).toBe("i0:kept");
-  });
-});
-
-describe("history window", () => {
-  it("walks to the end of the path, oldest to newest, keeping the newest items", async () => {
-    const { t, data, db } = await setup();
-    db.details.a = details("a");
-    db.history.a = Array.from({ length: HISTORY_WINDOW + 150 }, (_, i) => node(i));
-    const h = data.openThread("a");
-    await settle(t, db);
-    const { items, earlierHidden } = h.history.value;
-    expect(items).toHaveLength(HISTORY_WINDOW);
-    expect(items[0]!.node_id).toBe("n150");
-    expect(items.at(-1)!.node_id).toBe(`n${HISTORY_WINDOW + 149}`);
-    expect(earlierHidden).toBe(true);
-  });
-
-  it("a hint reads only since the last known item and appends", async () => {
-    const { t, data, db } = await setup();
-    db.details.a = details("a");
-    db.history.a = [node(1), node(2)];
-    const h = data.openThread("a");
-    await settle(t, db);
-    db.history.a = [node(1), node(2), node(3)];
-    const before = t.calls("history.list").length;
-    t.push({ t: "changed", thread_ids: ["a"], list: false });
-    await settle(t, db);
-    const reads = t.calls("history.list").slice(before);
-    expect(reads).toHaveLength(1);
-    expect((reads[0]!.args as { since?: string }).since).toBe(node(2).provenance.created_at);
-    expect(ids(h.history.value.items)).toEqual(["n1", "n2", "n3"]);
-  });
-
-  it("starts over when the last known item moved (the path was rewritten)", async () => {
-    const { t, data, db } = await setup();
-    db.details.a = details("a");
-    db.history.a = [node(1), node(2)];
-    const h = data.openThread("a");
-    await settle(t, db);
-    db.history.a = [node(9, 0), node(2, 1), node(3, 2)];
-    t.push({ t: "changed", thread_ids: ["a"], list: false });
-    await settle(t, db);
-    expect(ids(h.history.value.items)).toEqual(["n9", "n2", "n3"]);
-  });
-
-  it("an expired cursor continues from the last item read, without duplicates", async () => {
-    const { t, data, db } = await setup();
-    db.details.a = details("a");
-    db.history.a = Array.from({ length: 250 }, (_, i) => node(i));
-    db.expiredCursors.add("100");
-    const h = data.openThread("a");
-    await settle(t, db);
-    const got = ids(h.history.value.items);
-    expect(got).toHaveLength(250);
-    expect(new Set(got).size).toBe(250);
-    expect(h.history.value.error).toBeUndefined();
-  });
-
-  it("resync reads the whole path again", async () => {
-    const { t, data, db } = await setup();
-    db.details.a = details("a");
-    db.history.a = [node(1), node(2)];
-    const h = data.openThread("a");
-    await settle(t, db);
-    db.history.a = [node(2, 0)];
-    t.push({ t: "resync" });
-    await settle(t, db);
-    expect(ids(h.history.value.items)).toEqual(["n2"]);
-  });
-
-  it("loadOlderHistory widens the window with a new walk", async () => {
-    const { t, data, db } = await setup();
-    db.details.a = details("a");
-    db.history.a = Array.from({ length: HISTORY_WINDOW + 10 }, (_, i) => node(i));
-    const h = data.openThread("a");
-    await settle(t, db);
-    expect(h.history.value.earlierHidden).toBe(true);
-    await Promise.all([h.loadOlderHistory(), settle(t, db)]);
-    expect(h.history.value.items).toHaveLength(HISTORY_WINDOW + 10);
-    expect(h.history.value.earlierHidden).toBe(false);
   });
 });
 
@@ -600,38 +467,14 @@ describe("reads nobody needs are cancelled", () => {
   }
   it("closing a Thread cancels what's on the wire and starts nothing more", async () => {
     const { t, h } = await opened();
-    const sent = t.calls().filter((c) => c.command === "history.list" || c.command === "thread.get");
+    const sent = t.calls().filter((c) => c.command === "thread.get");
     expect(sent.length).toBeGreaterThan(0);
     h.close();
     await flush();
     expect(t.cancels()).toEqual(expect.arrayContaining(sent.map((c) => c.id)));
-    const before = t.calls("history.list").length;
+    const before = t.calls("history.window").length;
     await flush();
-    expect(t.calls("history.list").length).toBe(before);
-  });
-  it("pausing stops the walk and hints; resuming reads again, and a first walk starts over", async () => {
-    const { t, db, h } = await opened();
-    t.ok(t.calls("thread.get")[0]!.id, db.details.a);
-    db.answered.add(t.calls("thread.get")[0]!.id);
-    db.answered.add(t.calls("history.list")[0]!.id);
-    t.ok(t.calls("history.list")[0]!.id, { items: db.history.a!.slice(0, 100), next_cursor: "100" });
-    await flush();
-    expect(t.calls("history.list")).toHaveLength(2);
-    h.pause();
-    await flush();
-    expect(t.cancels()).toContain(t.calls("history.list")[1]!.id);
-    expect(t.calls("history.list")).toHaveLength(2);
-    expect(t.watches().at(-1)!.thread_ids).toEqual([]);
-    t.push({ t: "changed", thread_ids: ["a"], list: false });
-    await flush();
-    expect(t.calls("history.list")).toHaveLength(2);
-    expect(h.history.value.loading).toBe(false);
-    h.resume();
-    await flush();
-    await settle(t, db);
-    expect(t.watches().at(-1)!.thread_ids).toEqual(["a"]);
-    expect(h.history.value.items).toHaveLength(HISTORY_WINDOW);
-    expect(h.history.value.error).toBeUndefined();
+    expect(t.calls("history.window").length).toBe(before);
   });
   it("a new search cancels the read for the old one, and reads again even if that was still queued", async () => {
     const t = new FakeTransport();

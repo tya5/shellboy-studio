@@ -94,7 +94,7 @@ const MAX_LOG = 500;
 const $ = (id) => document.getElementById(id);
 const TEMPLATES = {
   "thread.list": {}, "status": {}, "model.list": {}, "thread.create": {},
-  "thread.get": { thread_id: "" }, "history.list": { thread_id: "" },
+  "thread.get": { thread_id: "" }, "history.window": { thread_id: "", before: 0, after: 0 },
   "message.send": { thread_id: "", text: "" }, "message.get": { message_id: "" },
   "message.cancel": { message_ids: [] }, "run.get": { run_id: "" }, "run.stop": { run_id: "" },
   "turn.get": { turn_id: "" }, "shell.list": {}, "shell.get": { execution_id: "" },

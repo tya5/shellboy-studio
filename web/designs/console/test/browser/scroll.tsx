@@ -47,7 +47,7 @@ const snapshot = (ordinal?: number) => {
     ordinal: first ? Number(first.dataset.o) : undefined, offset: first ? first.getBoundingClientRect().top - top : undefined,
     range: win.renderRange(), following: win.following.peek(), total: win.total, windows: win.windowsHeld,
     measurements: win.measurementsHeld, reads: win.readsInFlight, calls: r.t.calls("history.window").length,
-    listCalls: r.t.calls("history.list").length, domRows: rows.length, openGroups: r.model.openToolGroups.peek().size, stepChoices: r.model.toolStepChoices.peek().size };
+    windowCalls: r.t.calls("history.window").length, domRows: rows.length, openGroups: r.model.openToolGroups.peek().size, stepChoices: r.model.toolStepChoices.peek().size };
 };
 const api = {
   snapshot,

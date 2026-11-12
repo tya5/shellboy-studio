@@ -9,7 +9,6 @@ import type {
   HistoryBody,
   HistoryGetArgs,
   HistoryItem,
-  HistoryListArgs,
   HistoryWindowArgs,
   HistoryWindowResult,
   MessageSendArgs,
@@ -65,7 +64,6 @@ const summaryProblem = (v: unknown): string | undefined =>
       : undefined;
 
 const decodeThreadPage = pageOf<ThreadSummary>(summaryProblem);
-const rawHistoryPage = pageOf<HistoryItem>((v) => (isObject(v) ? undefined : "history item is not an object"));
 // Core942 protocol1611-1616 / spill_tools.rs: bounded public metadata only.
 function validSpillTools(value: unknown): boolean {
   if (value === null) return true;
@@ -76,10 +74,6 @@ function validSpillTools(value: unknown): boolean {
   // Duplicate/conflicting public tuples are valid wire facts, not authority to merge tools.
   return encoder.encode(JSON.stringify(value)).length <= 16384;
 }
-const decodeHistoryPage: Decoder<Page<HistoryItem>> = value => {
- const result=rawHistoryPage(value);
- return result.ok?{ok:true,value:{...result.value,items:result.value.items.map(sanitizeMessageRelation)}}:result;
-};
 const historyItemReasons = new Set(['source_budget', 'response_budget', 'legacy', 'pruned', 'opaque', 'unsupported']);
 function validToolDescriptor(value: unknown, result: boolean): value is Record<string, unknown> {
   if (!isObject(value) || Object.keys(value).some(key => !['call_id', 'call_id_state', 'name', 'name_state'].includes(key))) return false;
@@ -263,6 +257,7 @@ export class Operations {
   constructor(
     private readonly link: Link,
     private readonly newId: UuidFn,
+    private readonly historyWindowSupported: () => boolean = () => false,
   ) {}
 
   /** Reserve a receipt before publishing an in-flight model attempt. */
@@ -304,10 +299,8 @@ export class Operations {
   threadGet(threadId: string, read?: ReadOptions): Promise<Outcome<ThreadDetails>> {
     return this.run("thread.get", { thread_id: threadId }, decodeDetails, undefined, read);
   }
-  historyList(args: HistoryListArgs, read?: ReadOptions): Promise<Outcome<Page<HistoryItem>>> {
-    return this.run("history.list", args, decodeHistoryPage, undefined, read);
-  }
   historyWindow(args: HistoryWindowArgs, read?: ReadOptions): Promise<Outcome<HistoryWindowResult>> {
+    if (!this.historyWindowSupported()) return Promise.resolve({ ok: false, error: { kind: "invalid_response", message: "owner does not advertise history.window" } });
     return this.run("history.window", args, decodeHistoryWindow, undefined, read);
   }
   historyGet(args: HistoryGetArgs, read?: ReadOptions): Promise<Outcome<HistoryBody>> {

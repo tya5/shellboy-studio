@@ -8,7 +8,7 @@ const transitions = ["B", "ABA", "unavailable", "leave", "thread", "target", "sa
 type Transition = typeof transitions[number];
 function fixture() {
   const t = new FakeTransport(), link = new Link(t); link.start(); t.open(); let owner: string | undefined = "a", n = 0;
-  const ops = new Operations(link, () => `${owner}:${++n}`);
+  const ops = new Operations(link, () => `${owner}:${++n}`, () => true);
   const b = new Branches(ops, () => owner);
   const target = { threadId: "parent", nodeId: "point" }; b.target.value = target; b.ownerChanged(owner);
   b.state.value = { ...b.state.peek(), threadId: "parent" };

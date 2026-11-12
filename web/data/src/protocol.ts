@@ -209,7 +209,7 @@ export interface WorkItem {
   excerpt?: string;
 }
 
-/** A shell execution linked from a history node (`history.list`, observed at the pinned revision). */
+/** A shell execution linked from a history node (`history.window`, observed at the pinned revision). */
 export interface HistoryExecution {
   execution_id: string;
   command_excerpt?: string;
@@ -224,7 +224,7 @@ export interface HistoryExecution {
 }
 
 /**
- * One `history.list` item. The owner does not type these fields yet (#244 follow-up), so they
+ * One selected-path history node. The owner does not type these fields yet (#244 follow-up), so they
  * are optional here and readers tolerate their absence; added fields pass through.
  */
 /** Local rendering qualification; never serialized into an owner RPC. */
@@ -410,15 +410,8 @@ export interface TagResult {
   remove: string[];
   [extra: string]: unknown;
 }
-export interface HistoryListArgs {
-  thread_id: string;
-  limit?: number;
-  cursor?: string;
-  excerpt_chars?: number;
-  /** Inclusive node creation time (RFC3339 with offset). */
-  since?: string;
-}
-/** `history.window` (Shellboy #268, capability `history.window`): a positional window of the selected path. */
+/** Character budget used by bounded positional history.window reads. */
+export const HISTORY_WINDOW_EXCERPT_CHARS = 4096;
 export interface HistoryWindowArgs {
   items?: boolean;
   thread_id: string;
@@ -437,7 +430,7 @@ export interface HistoryWindowResult {
   revision: string | number;
   /** One past the last ordinal. */
   total: number;
-  /** `history.list` items, ascending; `selection.ordinal` is the position. */
+  /** selected-path items, ascending; `selection.ordinal` is the position. */
   items: HistoryItem[];
 }
 export interface HistoryGetArgs {
