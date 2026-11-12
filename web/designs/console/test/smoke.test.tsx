@@ -138,7 +138,7 @@ describe("Conversation live text", () => {
     ({ t: "live", thread_id: "lead", attempt_id: "a1", gap: false, deltas: [{ offset, reasoning: false, text }], ...extra });
 
   it("retains unsaved text while displaying independent ordinary saved prose", async () => {
-    const { model, t, db } = await fixtureModel({ capabilities: ["live.text"] });
+    const { model, t, db } = await fixtureModel({ capabilities: ["live.text", "history.window"] });
     const el = draw(model);
     const bodies = () => [...el.querySelectorAll(".msg")].map((m) => m.textContent ?? "");
     expect(bodies().some((b) => b.includes("Writing"))).toBe(false);
@@ -178,7 +178,7 @@ describe("Conversation live text", () => {
   });
 
   it("keeps an unanchored live reply and a new saved human independently visible", async () => {
-    const { model, t, db } = await fixtureModel({ capabilities: ["live.text"] });
+    const { model, t, db } = await fixtureModel({ capabilities: ["live.text", "history.window"] });
     const el = draw(model);
     act(() => t.push(liveFrame("Live answer")));
     await act(async () => flushPromises());
@@ -191,7 +191,7 @@ describe("Conversation live text", () => {
   });
 
   it("preserves canonical saved order without inventing an unanchored live insertion ordinal", async () => {
-    const { model, t, db } = await fixtureModel({ capabilities: ["live.text"] });
+    const { model, t, db } = await fixtureModel({ capabilities: ["live.text", "history.window"] });
     const el = draw(model);
     act(() => t.push(liveFrame("Answer before save")));
     await act(async () => flushPromises());
@@ -268,23 +268,24 @@ describe("Conversation live text", () => {
     expect(el.querySelectorAll(".conversation-status")).toHaveLength(1);
   });
 
-  it("a Thread with no held text shows no message, and without the capability nothing is shown at all", async () => {
-    const plain = await fixtureModel({ capabilities: ["live.text"] });
+  it("a Thread with no held text shows no message, and an unsupported owner is explicitly unavailable and does not render partial history", async () => {
+    const plain = await fixtureModel({ capabilities: ["live.text", "history.window"] });
     const el = draw(plain.model);
     act(() => plain.t.push({ t: "live_end", thread_id: "lead" }));
     expect(el.textContent).not.toContain("Writing");
     render(null, host!);
     host?.remove();
-    const off = await fixtureModel();
+    const off = await fixtureModel({ capabilities: ["live.text"] });
     const el2 = draw(off.model);
     act(() => off.t.push(liveFrame("hidden words")));
     await act(async () => flushPromises());
+    expect(el2.textContent).toContain("Conversation history is unavailable");
     expect(el2.textContent).not.toContain("hidden words");
     expect(el2.textContent).not.toContain("Writing");
   });
 
   it("text arriving does not re-render the Conversation, only the live message", async () => {
-    const { model, t } = await fixtureModel({ capabilities: ["live.text"] });
+    const { model, t } = await fixtureModel({ capabilities: ["live.text", "history.window"] });
     const el = draw(model);
     let conversation = 0;
     const previous = options.diffed;

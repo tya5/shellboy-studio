@@ -11,7 +11,7 @@ describe("the long-thread reader in the model", () => {
   });
 
   it("without it the reader stays off and history is unavailable without a legacy RPC", async () => {
-    const { model, t } = await fixtureModel();
+    const { model, t } = await fixtureModel({ capabilities: [] });
     expect(model.longReader.value).toBeUndefined();
     expect(t.calls("history.window")).toHaveLength(0);
     expect(t.calls("history.list")).toHaveLength(0);
