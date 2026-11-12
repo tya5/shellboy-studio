@@ -82,7 +82,7 @@ for(const mode of ['terminal-publication-trace','empty-complete','truncated','pa
  }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
 });
 
-it(`actual Stage2 App bound read and receipt presence: ${resultMode}`,async()=>{
+for(const resultMode of ['complete','partial','error','cancel'] as const)it(`actual Stage2 App bound read and receipt presence: ${resultMode}`,async()=>{
  let ended=false;
  const available:HistoryItem={node_id:'available',kind:'user',selection:{ordinal:0},items:[{kind:'text',item_identity:'available-text',text:'Already available unchanged',text_complete:true}]};
  const f=await fixtureModel({capabilities:['live.text','history.window'],configure(db){
