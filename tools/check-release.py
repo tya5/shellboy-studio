@@ -48,7 +48,7 @@ def main():
     assert "uses: ./.github/workflows/exact-owner.yml" in ci
     assert "needs: exact-owner" in release and "needs: build" in release
     assert "--features real-owner-tests --test real_owner" in owner
-    assert "SHELLBOY_BIN:" in owner and "refs/tags/v0.11.2^{commit}" in owner
+    assert "SHELLBOY_BIN:" in owner and "refs/tags/v0.12.0^{commit}" in owner
     assert "tools/exact-owner.py" in owner and "--binary-version" in owner
     assert "inputs.real_owner" not in ci
     for workflow in (ci, release, owner):
