@@ -245,8 +245,9 @@ describe("Conversation live text", () => {
 
   it("shows at the end of the windowed reader too, and keeps following as it grows", async () => {
     const owner = new WindowOwner(0);
-    const { model, t } = await fixtureModel({ capabilities: ["live.text", "history.window"], route: "conversation", threadId: "lead", configure: db => {
-      // An empty but supported positional snapshot isolates scroll-follow from synthetic saved-row sizing.
+    const { model, t } = await fixtureModel({ capabilities: ["live.text", "history.window"], route: "conversation", threadId: "lead", schedule: callback => callback(), configure: db => {
+      // Publish each synthetic live frame in its originating act so scroll-follow is deterministic.
+      // An empty but supported positional snapshot isolates it from synthetic saved-row sizing.
       db.history.lead = [];
       const base = db.answer.bind(db);
       db.answer = call => call.command === "history.window" ? owner.answer(call) : base(call);
