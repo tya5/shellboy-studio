@@ -272,11 +272,12 @@ describe("AppModel over the fake transport", () => {
     t.push({ t: "changed", thread_ids: ["lead"], list: false });
     await settle(t, db);
     expect(reads()).toBe(away);
-    expect(model.conversation.value.length).toBeGreaterThan(0);
+    expect(model.longReader.value).toBeUndefined(); // History is not read or retained off the Conversation route.
     model.applyRoute({ view: "conversation", threadId: "lead" });
     await settle(t, db);
     expect(t.watches().at(-1)!.thread_ids).toEqual(["lead"]);
     expect(reads()).toBeGreaterThan(away);
+    expect(model.longReader.value?.acceptedView.peek().rows.length).toBeGreaterThan(0);
     expect(t.calls("history.list")).toHaveLength(0);
   });
 

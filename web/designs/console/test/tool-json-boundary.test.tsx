@@ -16,7 +16,7 @@ type Scenario = 'ref-first'|'history-first'|'missing'|'error'|'message'|'mixed'|
 async function rig(order:Scenario){
   let refsReady=['ref-first','message','mixed'].includes(order);
   const refKind=order==='message'?'message':'function_call';
-  const r=await fixtureModel({configure(db){
+  const r=await fixtureModel({route:"conversation",threadId:"lead",configure(db){
     const base=db.answer.bind(db);
     db.answer=c=>c.command==='status'?order==='error'?{ok:false,code:'not_found',message:'synthetic lookup failure'}:{ok:true,result:{items:refsReady?[{kind:'attempt',id:'synthetic-attempt',attempt_id:'synthetic-attempt',thread_id:'lead',turn_id:'synthetic-turn',state:'completed',response_nodes:[{ordinal:0,node_id:'synthetic-tool-node',kind:refKind,phase:refKind==='message'?'final_answer':null},...(order==='mixed'?[{ordinal:1,node_id:'synthetic-tool-node',kind:'message',phase:'final_answer'}]:[])],response_nodes_truncated:false}]:[]}}:base(c);
   }});
@@ -30,7 +30,7 @@ async function rig(order:Scenario){
   await pump(()=>{r.db.history.lead=[{node_id:'synthetic-tool-node',kind:'assistant_response',excerpt:raw,...(order==='message'?{items:[{item_identity:'ordinary-json',kind:'text' as const,text:raw,text_complete:true}]}:{}),execution_count:0,execution_links_truncated:false}];r.t.push({t:'changed',thread_ids:['lead'],list:false});});
   if(order==='history-first')await pump(()=>{refsReady=true;r.t.push({t:'changed',thread_ids:['lead'],list:false});});
   if(order==='owner-ABA')await pump(()=>{
-    const owner={state:'connected' as const,info:{protocol_version:5,instance_id:'synthetic-owner',capabilities:[]}};
+    const owner={state:'connected' as const,info:{protocol_version:5,instance_id:'synthetic-owner',capabilities:['history.window']}};
     r.t.push({t:'owner',event:'restarted',owner});r.t.push({t:'owner',event:'restarted',owner});
   });
   return {observations,host:host!};

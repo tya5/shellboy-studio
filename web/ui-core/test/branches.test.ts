@@ -49,7 +49,7 @@ describe("branch management", () => {
 
 describe("branch excerpts", () => {
   it("reads a bounded split window and a bounded tip window", async () => {
-    const { model, t, db } = await fixtureModel();
+    const { model, t, db } = await fixtureModel({ route: "branches" });
     const answer = db.answer.bind(db);
     db.answer = c => c.command === "history.window" ? { ok: true, result: { thread_id: "fork-a", revision: 1, total: 103, items: (c.args as { node_id?: string }).node_id ? [{ node_id: "n100", kind: "user", excerpt: "split", selection: { ordinal: 100 } }, { node_id: "n101", kind: "user", excerpt: "first", selection: { ordinal: 101 } }] : [{ node_id: "n102", kind: "assistant_response", excerpt: "line one\nline two\nline three", selection: { ordinal: 102 } }] } } : answer(c);
     const pending = model.branches.excerpts(family().items[1]!, new Cancel());
@@ -505,7 +505,7 @@ describe("branch excerpt budget and invalidation", () => {
     pending.shift()!(); await flush(); expect(output.length).toBe(before);
   });
   it("long tool windows cannot manufacture a request or response; mismatched revisions clear all facts", async () => {
-    const { model, t, db } = await fixtureModel(); const base = db.answer.bind(db); let reads = 0;
+    const { model, t, db } = await fixtureModel({ route: "branches" }); const base = db.answer.bind(db); let reads = 0;
     db.answer = c => c.command === "history.window" ? { ok: true, result: {
       thread_id: "fork-a", total: 500, revision: ++reads,
       items: [{ node_id: "n100", kind: "tool_result", excerpt: "tool", selection: { ordinal: 100 } }],
@@ -516,7 +516,7 @@ describe("branch excerpt budget and invalidation", () => {
     expect(t.calls("history.window")[1]!.args).toMatchObject({ before: 48, after: 0, excerpt_chars: 256 }); model.dispose();
   });
   it("a failed split read stops without tip retry; precancelled reads issue no calls", async () => {
-    const { model, t, db } = await fixtureModel(); const base = db.answer.bind(db);
+    const { model, t, db } = await fixtureModel({ route: "branches" }); const base = db.answer.bind(db);
     db.answer = c => c.command === "history.window" ? { ok: false, code: "node_not_found" } : base(c);
     const p = model.branches.excerpts(family().items[1]!, new Cancel()); await settle(t, db); expect(await p).toEqual({});
     expect(t.calls("history.window")).toHaveLength(1);
@@ -526,7 +526,7 @@ describe("branch excerpt budget and invalidation", () => {
 });
 
 it("eight admitted child rows issue exactly sixteen bounded RPCs without retries", async () => {
-  const { model, t, db } = await fixtureModel(); const base = db.answer.bind(db);
+  const { model, t, db } = await fixtureModel({ route: "branches" }); const base = db.answer.bind(db);
   db.answer = c => c.command === "history.window" ? { ok: true, result: { thread_id: (c.args as {thread_id:string}).thread_id, total: 500, revision: 7, items: [] } } : base(c);
   for (let n = 0; n < 10; n++) model.branches.excerptBatch.show({ ...family().items[1]!, threadId: `budget-${n}` }, () => {});
   for (let n = 0; n < 20; n++) await settle(t, db);

@@ -158,7 +158,7 @@ describe("resync, restart and loss", () => {
   });
 
   it("closing a Thread drops its late read results and queued reads", async () => {
-    const { t, data } = await setup();
+    const { t, data } = await setup({ capabilities: ["history.window"] });
     const h = data.openThread("a");
     const sent = t.calls().length;
     expect(sent).toBe(2);

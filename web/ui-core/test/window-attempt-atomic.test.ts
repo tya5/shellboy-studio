@@ -3,7 +3,7 @@ import { expect, it } from "vitest";
 import { ConversationWindow } from "../src/window";
 import type { HandoffRecord, AttemptReadyProof } from "../../data/src/handoff";
 import type { HistoryItem } from "../../data/src";
-import { FakeOwnerDb, FakeTransport, connected, settle, flush } from "../../data/test/harness";
+import { FakeOwnerDb, FakeTransport, connectedWithHistory, settle, flush } from "../../data/test/harness";
 const nodes: HistoryItem[] = [
   { node_id: "tool", kind: "assistant_response", selection: { ordinal: 0 }, items: [{ kind: "tool_call", item_identity: "tc", execution_ids: ["exec"] }] },
   { node_id: "answer", kind: "assistant_response", selection: { ordinal: 1 }, items: [{ kind: "text", item_identity: "text", text: "saved", text_complete: true }] },
@@ -48,7 +48,7 @@ it("actual terminal persistence -> original O capture -> same Window saved snaps
   const base = db.answer.bind(db);
   db.answer = call => call.command === "status" ? { ok: true, result: { items: [{ kind: "attempt", id: "attempt", attempt_id: "attempt", turn_id: "turn", thread_id: "thread", state: "completed", response_nodes_truncated: false, response_nodes: [{ node_id: "answer", ordinal: 0, kind: "message" }, { node_id: "tool", ordinal: 1, kind: "function_call" }] }] } }
     : call.command === "history.window" ? { ok: true, result: { thread_id: "thread", revision: 7, total: 2, items: nodes } } : base(call);
-  data.start(); t.open(); t.push({ t: "hello", bridge_version: "synthetic", owner: connected }); await settle(t, db);
+  data.start(); t.open(); t.push({ t: "hello", bridge_version: "synthetic", owner: connectedWithHistory }); await settle(t, db);
   const h = data.openThread("thread"); await settle(t, db);
   const w = new ConversationWindow({ read: (args, cancel) => h.readWindow(args, cancel) }); await settle(t, db);
   t.push({ t: "live", thread_id: "thread", attempt_id: "attempt", gap: false, deltas: [{ offset: 0, reasoning: false, text: "whole live block" }] }); ticks.splice(0).forEach(fn => fn());

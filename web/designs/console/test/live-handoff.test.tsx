@@ -15,7 +15,7 @@ let host: HTMLElement | undefined;
 let cleanup: (() => void) | undefined;
 afterEach(() => { if (host) render(null, host); host?.remove(); host = undefined; cleanup?.(); cleanup = undefined; });
 async function setup() {
-  const r = await fixtureModel({ capabilities: ['live.text'] });
+  const r = await fixtureModel({ capabilities: ['live.text', 'history.window'], route: 'conversation', threadId: 'lead' });
   host = document.createElement('div'); document.body.append(host);
   cleanup = () => { r.model.dispose(); r.data.stop(); };
   const prefs = signal<Prefs>({ design: 'console', theme: 'console', lang: 'en', weights: { cached: 0.1, output: 5 } });

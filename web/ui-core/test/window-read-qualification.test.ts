@@ -1,11 +1,11 @@
 import { ConversationWindow } from "../src/window";
 import { expect, it } from "vitest";
 import { ShellboyData } from "../../data/src/store";
-import { connected, FakeTransport, flush } from "../../data/test/harness";
+import { connectedWithHistory, FakeTransport, flush } from "../../data/test/harness";
 async function rig() {
   const t = new FakeTransport(); let n = 0;
   const data = new ShellboyData({ transport: t, newId: () => `qualification-${++n}` });
-  data.start(); t.open(); t.push({ t: "hello", bridge_version: "synthetic", owner: connected }); await flush();
+  data.start(); t.open(); t.push({ t: "hello", bridge_version: "synthetic", owner: connectedWithHistory }); await flush();
   return { t, data, a: data.openThread("a"), b: data.openThread("a") };
 }
 it("ordinary accepted-reference/read/geometry work preserves handle qualification without qualification RPCs", async () => {

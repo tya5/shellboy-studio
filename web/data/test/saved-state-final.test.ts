@@ -1,11 +1,11 @@
 import { expect, it } from "vitest";
 import { ShellboyData } from "../src/store";
 import { Cancel } from "../src/operations";
-import { connected, FakeTransport, flush } from "./harness";
+import { connectedWithHistory, FakeTransport, flush } from "./harness";
 it("new ordinary saved nodes publish without waiting for publication lookup or status", async () => {
   const t = new FakeTransport(); let id = 0;
   const data = new ShellboyData({ transport: t, newId: () => `saved-${++id}` });
-  data.start(); t.open(); t.push({ t: "hello", bridge_version: "synthetic", owner: connected }); await flush();
+  data.start(); t.open(); t.push({ t: "hello", bridge_version: "synthetic", owner: connectedWithHistory }); await flush();
   const view = data.openThread("saved");
   const first = view.readWindow({}, new Cancel()); await flush();
   t.ok(t.calls("history.window").at(-1)!.id, { thread_id: "saved", revision: 1, total: 1, items: [{ node_id: "a", kind: "user", selection: { ordinal: 0 } }] }); await first;
@@ -21,7 +21,7 @@ it("new ordinary saved nodes publish without waiting for publication lookup or s
 it("preserves empty, partial text, zero-ID tool and whole deferred ordinary nodes in one immutable revision", async () => {
   const t = new FakeTransport(); let n = 0;
   const data = new ShellboyData({ transport: t, newId: () => `ordinary-${++n}` });
-  data.start(); t.open(); t.push({ t: "hello", bridge_version: "synthetic", owner: connected }); await flush();
+  data.start(); t.open(); t.push({ t: "hello", bridge_version: "synthetic", owner: connectedWithHistory }); await flush();
   const view = data.openThread("saved"); const pending = view.readWindow({ items: true }, new Cancel()); await flush();
   const rows = [
     { node_id: "empty", kind: "user", items: [], selection: { ordinal: 0 } },
@@ -44,12 +44,12 @@ it("preserves empty, partial text, zero-ID tool and whole deferred ordinary node
 it.each(["cancel", "pause", "close", "ABA"] as const)("rejects delayed saved results after %s without adding qualification work", async action => {
   const t = new FakeTransport(); let n = 0;
   const data = new ShellboyData({ transport: t, newId: () => `stale-${++n}` });
-  data.start(); t.open(); t.push({ t: "hello", bridge_version: "synthetic", owner: connected }); await flush();
+  data.start(); t.open(); t.push({ t: "hello", bridge_version: "synthetic", owner: connectedWithHistory }); await flush();
   const view = data.openThread("saved"); const pending = view.readWindow({ items: true }, new Cancel()); await flush();
   const held = t.calls("history.window").at(-1)!;
   if (action === "cancel") view.cancelReads(); else if (action === "pause") view.pause(); else if (action === "close") view.close(); else {
     t.push({ t: "owner", event: "unreachable", owner: { state: "unreachable" } });
-    t.push({ t: "owner", event: "connected", owner: connected });
+    t.push({ t: "owner", event: "connected", owner: connectedWithHistory });
   }
   t.ok(held.id, { thread_id: "saved", revision: 1, total: 1, items: [{ node_id: "obsolete", kind: "user", items: [], selection: { ordinal: 0 } }] });
   expect((await pending).ok).toBe(false); expect(t.calls("status")).toHaveLength(0); data.stop();

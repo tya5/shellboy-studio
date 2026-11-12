@@ -359,8 +359,8 @@ export class AppModel {
       return id === undefined ? undefined : this.rowById.value.get(id);
     });
     this.conversation = computed(() => {
-      const window = this.longReader.value;
-      return window ? materializeHistoryPresentation(window.rangeItems(), this.shells.value, window.acceptedView.peek().revision ?? 0).rows : [];
+      const historyWindow = this.longReader.value;
+      return historyWindow ? materializeHistoryPresentation(historyWindow.rangeItems(), this.shells.value, historyWindow.acceptedView.peek().revision ?? 0).rows : [];
     });
     this.rowMarks = computed(() => {
       const w = this.longReader.value;

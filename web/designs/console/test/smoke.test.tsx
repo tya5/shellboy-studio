@@ -245,7 +245,7 @@ describe("Conversation live text", () => {
 
   it("shows at the end of the windowed reader too, and keeps following as it grows", async () => {
     const owner = new WindowOwner(7);
-    const { model, t } = await fixtureModel({ capabilities: ["live.text", "history.window"], configure: db => {
+    const { model, t } = await fixtureModel({ capabilities: ["live.text", "history.window"], route: "conversation", threadId: "lead", configure: db => {
       const base = db.answer.bind(db);
       db.answer = call => call.command === "history.window" ? owner.answer(call) : base(call);
     } });
@@ -728,7 +728,7 @@ describe("Branches", () => {
     expect(text(el.querySelector(".branches-side")!)).toContain("Forked as Forked");
   });
   it("a conversation row carries a mark only where the read reports a point", async () => {
-    const { model, t, db } = await fixtureModel({ route: "conversation" });
+    const { model, t, db } = await fixtureModel({ route: "conversation", threadId: "lead" });
     db.history.lead = [...(db.history.lead ?? []), { node_id: "n100", kind: "assistant_response", excerpt: "Here it splits", execution_count: 0, provenance: { created_at: "2026-11-07T10:19:00.000000+00:00", sender: { kind: "assistant" } }, selection: { ordinal: 1000 } }];
     const el = draw(model);
     await act(async () => {

@@ -101,7 +101,7 @@ it('actual held old rewindow cannot overwrite newer accepted budget snapshot or 
 });
 
 it('renders source header links and independent request facts through strict history and actual App',async()=>{
- const f=await fixtureModel(),host=document.createElement('div');document.body.append(host);
+ const f=await fixtureModel({route:'conversation',threadId:'lead'}),host=document.createElement('div');document.body.append(host);
  try{
   const old=f.db.history.lead![0] as import('../../../data/src/protocol').HistoryItem;
   f.db.history.lead=[{...old,node_id:'sender-message',kind:'user',items:[{kind:'text',item_identity:'sender-body',text:'Received body stays',text_complete:true}],provenance:{sender:{kind:'model',thread_id:'full-source-identity',label:'Claimed <label>'},message:{expect_reply:true,reply_state:'pending'}}}];

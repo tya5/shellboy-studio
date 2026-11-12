@@ -47,8 +47,15 @@ describe("opening and measured coordinates", () => {
   });
   it("a current-owner hint invalidates only the positional reader", async () => {
     const r = await open(10);
+    let lastTick = r.handle.historyTick.peek();
+    const stopHint = r.handle.historyTick.subscribe((tick) => {
+      if (tick === lastTick) return;
+      lastTick = tick;
+      r.w.changed();
+    });
     r.t.push({ t: "changed", thread_ids: ["t"], list: false });
     await r.settle();
+    stopHint();
     expect(r.t.calls("history.window").length).toBeGreaterThan(1);
     expect(r.t.calls("history.list")).toHaveLength(0);
     expect(r.handle.historyTick.value).toBeGreaterThan(0);
