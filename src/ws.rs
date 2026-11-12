@@ -447,7 +447,7 @@ mod tests {
         for args in [
             json!({"thread_id":"t","model":"m"}),
             json!({"thread_id":"t","connection":"c","effort":""}),
-            json!({"thread_id":"t","auto_compact_at":"0","segment_chars":"4096","reduce_rounds":"2","agents":"/tmp/AGENTS.md"}),
+            json!({"thread_id":"t","auto_compact_at":"0","agents":"/tmp/AGENTS.md"}),
         ] {
             assert_eq!(
                 access(&build_command("thread.set", Some(args)).unwrap()),
@@ -463,6 +463,16 @@ mod tests {
             assert_eq!(
                 build_command("thread.set", Some(args)).unwrap_err().code,
                 "not_allowed"
+            );
+        }
+        // Core v0.12.0 removed these per-Thread settings; the call is rejected, not forwarded.
+        for args in [
+            json!({"thread_id":"t","segment_chars":"4096"}),
+            json!({"thread_id":"t","model":"m","reduce_rounds":"2"}),
+        ] {
+            assert_eq!(
+                build_command("thread.set", Some(args)).unwrap_err().code,
+                "invalid_call"
             );
         }
     }
