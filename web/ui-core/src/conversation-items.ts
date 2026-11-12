@@ -353,6 +353,10 @@ export function canonicalItemCase(item: NormalizedSavedItem): CanonicalCase {
 export function projectHistoryWindowItems(input: { readonly keyScope?: readonly string[]; readonly revision: string | number; readonly nodes: readonly HistoryItem[] }): HistoryWindowItemProjection {
   return projectHistoryNodes(input);
 }
+/** Strict projection for normalized legacy-shaped items within the current typed HistoryWindow DTO. */
+export function projectLegacyHistoryItems(input: { readonly keyScope?: readonly string[]; readonly nodes: readonly HistoryItem[]; readonly liveFacts?: readonly NormalizedSavedItem[] }): HistoryWindowItemProjection {
+  return projectHistoryNodes(input, true);
+}
 function projectHistoryNodes(input: { readonly keyScope?: readonly string[]; readonly revision?: string | number; readonly nodes: readonly HistoryItem[]; readonly liveFacts?: readonly NormalizedSavedItem[] }, decodedLegacy = false): HistoryWindowItemProjection {
   const nodes: ProjectedHistoryNode[] = [];
   const segment: NormalizedSavedItem[] = [];

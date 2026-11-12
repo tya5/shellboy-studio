@@ -11,7 +11,7 @@ async function setup(opts: { owner?: boolean; capabilities?: string[] } = {}) {
   data.start();
   t.open();
   if (opts.owner !== false) {
-    t.push({ t: "hello", bridge_version: "0.1.0", owner: opts.capabilities ? { state: "connected", info: { ...connected.info, capabilities: opts.capabilities } } : connected });
+    t.push({ t: "hello", bridge_version: "0.1.0", owner: opts.capabilities ? { state: "connected", info: { protocol_version: 5, instance_id: "i1", capabilities: opts.capabilities } } : connected });
     await flush();
   }
   return { t, data, db };

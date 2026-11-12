@@ -360,14 +360,14 @@ export class AppModel {
     });
     this.conversation = computed(() => {
       const window = this.longReader.value;
-      return window ? materializeHistoryPresentation(window.rangeItems(), this.shells.value, window.revision ?? 0).rows : [];
+      return window ? materializeHistoryPresentation(window.rangeItems(), this.shells.value, window.acceptedView.peek().revision ?? 0).rows : [];
     });
     this.rowMarks = computed(() => {
       const w = this.longReader.value;
       if (!w) return branchRowMarks([], [], this.marks.value);
       w.version.value; // marks follow the items the reader holds in view
       const items = w.rangeItems();
-      return branchRowMarks(items, materializeHistoryPresentation(items, this.shells.value, w.revision ?? 0).rows, this.marks.value);
+      return branchRowMarks(items, materializeHistoryPresentation(items, this.shells.value, w.acceptedView.peek().revision ?? 0).rows, this.marks.value);
     });
     this.context = computed(() => contextFacts(this.details.value));
     this.usage = computed(() => usageFacts(this.details.value));

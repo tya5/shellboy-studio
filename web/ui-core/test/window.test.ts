@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { correctedScrollTop, READS_IN_FLIGHT, WINDOW_NODES, WINDOWS_HELD } from "../src/window";
 import { rig, type Rig } from "./window-owner";
+import { flush } from "../../data/test/harness";
 
 const VIEW = 600;
 const args = (c: { args?: unknown }) => c.args as Record<string, number | string | undefined>;
