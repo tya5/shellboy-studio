@@ -158,13 +158,20 @@ describe("resync, restart and loss", () => {
   });
 
   it("closing a Thread drops its late read results and queued reads", async () => {
-    const { t, data } = await setup({ capabilities: ["history.window"] });
+    const { t, data, db } = await setup({ capabilities: ["history.window"] });
+    db.details.a = details("a");
+    db.history.a = [];
     const h = data.openThread("a");
-    const sent = t.calls().length;
-    expect(sent).toBe(2);
-    h.close();
-    t.ok(t.calls()[0]!.id, details("a"));
+    const pending = t.calls("thread.get")[0]!;
+    const window = h.readWindow({ before: 0, after: 0 }, new Cancel());
     await flush();
+    expect(t.calls()).toHaveLength(2);
+    h.close();
+    t.ok(pending.id, details("a"));
+    const windowCall = t.calls("history.window")[0]!;
+    t.ok(windowCall.id, { thread_id: "a", revision: "empty", total: 0, items: [] });
+    await flush();
+    await window;
     expect(h.detail.value.value).toBeUndefined();
   });
 });

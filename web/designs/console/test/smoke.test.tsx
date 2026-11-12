@@ -254,7 +254,9 @@ describe("Conversation live text", () => {
     const box = el.querySelector<HTMLElement>(".scroll")!;
     let height = 100;
     Object.defineProperty(box, "scrollHeight", { configurable: true, get: () => height });
-    box.scrollTop = 0;
+    Object.defineProperty(box, "clientHeight", { configurable: true, value: 0 });
+    box.scrollTop = height;
+    box.dispatchEvent(new Event("scroll", { bubbles: true }));
     for (let i = 0; i < 3; i++) {
       height += 50;
       act(() => t.push(liveFrame("word ", i * 5)));
@@ -732,7 +734,7 @@ describe("Branches", () => {
     db.history.lead = [...(db.history.lead ?? []), { node_id: "n100", kind: "assistant_response", excerpt: "Here it splits", execution_count: 0, provenance: { created_at: "2026-11-07T10:19:00.000000+00:00", sender: { kind: "assistant" } }, selection: { ordinal: 1000 } }];
     const el = draw(model);
     await act(async () => {
-      void model.handle.value!.refresh();
+      t.push({ t: "changed", thread_ids: ["lead"], list: false });
       await settle(t, db);
     });
     const marks = [...el.querySelectorAll<HTMLAnchorElement>(".bmark")];

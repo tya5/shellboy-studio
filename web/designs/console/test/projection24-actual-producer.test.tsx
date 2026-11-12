@@ -101,11 +101,8 @@ it('actual held old rewindow cannot overwrite newer accepted budget snapshot or 
 });
 
 it('renders source header links and independent request facts through strict history and actual App',async()=>{
- const f=await fixtureModel({route:'conversation',threadId:'lead'}),host=document.createElement('div');document.body.append(host);
+ const f=await fixtureModel({route:'conversation',threadId:'lead',configure(db){const old=db.history.lead![0] as import('../../../data/src/protocol').HistoryItem;db.history.lead=[{...old,node_id:'sender-message',kind:'user',items:[{kind:'text',item_identity:'sender-body',text:'Received body stays',text_complete:true}],provenance:{sender:{kind:'model',thread_id:'full-source-identity',label:'Claimed <label>'},message:{expect_reply:true,reply_state:'pending'}}}];db.threads['full-source-identity']=summary('full-source-identity',{title:'Source'});}}),host=document.createElement('div');document.body.append(host);
  try{
-  const old=f.db.history.lead![0] as import('../../../data/src/protocol').HistoryItem;
-  f.db.history.lead=[{...old,node_id:'sender-message',kind:'user',items:[{kind:'text',item_identity:'sender-body',text:'Received body stays',text_complete:true}],provenance:{sender:{kind:'model',thread_id:'full-source-identity',label:'Claimed <label>'},message:{expect_reply:true,reply_state:'pending'}}}];
-  f.t.push({t:'changed',thread_ids:['lead'],list:false});await settle(f.t,f.db);
   await act(async()=>{render(<App context={{model:f.model,prefs:signal({}),setPrefs:()=>{}} as unknown as DesignContext}/>,host);await flush(12);await settle(f.t,f.db);});
   const node=host.querySelector('[data-node="sender-message"]')!;expect(node).not.toBeNull();
   const header=node.querySelector('.who a')!;

@@ -27,7 +27,7 @@ async function rig(order:Scenario){
   const snapshot=()=>observations.push([...host!.querySelectorAll('.msg')].map(e=>e.textContent??'').join('\n'));
   const pump=async(fn:()=>void)=>{await act(async()=>{fn();await settle(r.t,r.db);for(let n=0;n<8;n++)await Promise.resolve();});snapshot();};
   r.model.handle.value!.setWorkActive(true);await settle(r.t,r.db);snapshot();
-  await pump(()=>{r.db.history.lead=[{node_id:'synthetic-tool-node',kind:'assistant_response',excerpt:raw,...(order==='message'?{items:[{item_identity:'ordinary-json',kind:'text' as const,text:raw,text_complete:true}]}:{}),execution_count:0,execution_links_truncated:false}];r.t.push({t:'changed',thread_ids:['lead'],list:false});});
+  await pump(()=>{r.db.history.lead=[...(r.db.history.lead??[]),{node_id:'synthetic-tool-node',kind:order==='message'?'user':'assistant_response',excerpt:raw,...(order==='message'?{items:[{item_identity:'ordinary-json',kind:'text' as const,text:raw,text_complete:true}]}:{}),execution_count:0,execution_links_truncated:false,provenance:{sender:{kind:order==='message'?'human':'assistant'}}}];r.t.push({t:'changed',thread_ids:['lead'],list:false});});
   if(order==='history-first')await pump(()=>{refsReady=true;r.t.push({t:'changed',thread_ids:['lead'],list:false});});
   if(order==='owner-ABA')await pump(()=>{
     const owner={state:'connected' as const,info:{protocol_version:5,instance_id:'synthetic-owner',capabilities:['history.window']}};
