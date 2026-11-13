@@ -215,3 +215,11 @@ it('legacy absent or quarantined optional notification leaves the honest unknown
  const [row]=display([{node_id:'legacy',kind:'notification',provenance:{sender:{kind:'user'}}}]);
  expect(row!.value!.contentLabel.text).toBe('A content summary was not provided');
 });
+
+it('history links without an exit code show the exited state but no failure status', () => {
+ const node: HistoryItem = { node_id: 'n', kind: 'assistant_response',
+ items: [{ kind: 'tool_call' as const, item_identity: 'c', execution_ids: ['e'] }],
+ executions: [{ execution_id: 'e', command_excerpt: 'make', state: 'exited', call_state: 'completed' }] };
+ const [row] = display([node]);
+ expect(row!.value!.state).toEqual({ source: 'wire', value: 'exited' });
+});

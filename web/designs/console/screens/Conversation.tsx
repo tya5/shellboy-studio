@@ -349,7 +349,9 @@ export function StepView({ model, step, display, openPolicy = CANONICAL_CASES.to
     model.selectedStepId.value = step.executionId;
     return model.watchOutput(step.executionId);
   }, [model, open, step.executionId, display.detailPolicy]);
-  const formatted=formatWorkElementDisplay(display);
+  // History links carry no exit code; the shell.list fact merged into the step does.
+  const merged:WorkElementDisplay=display.state&&display.state.source==="wire"&&step.exitCode!==undefined&&step.status!==undefined?{...display,state:{...display.state,executionStatus:step.status,exitCode:step.exitCode}}:display;
+  const formatted=formatWorkElementDisplay(merged);
   const shellDisplay=model.shells.value.has(step.executionId)?{...formatted,typeIcon:"term" as const}:formatted;
   if(display.detailPolicy!=="actual-safe-typed"&&display.detailPolicy!=="existing-shell-output")return <WorkElementRow display={shellDisplay} anchorKey={step.executionId} detailPolicy={display.detailPolicy}/>;
   return <WorkElementRow display={shellDisplay} anchorKey={step.executionId} detailPolicy={display.detailPolicy} open={open} onToggle={next=>{

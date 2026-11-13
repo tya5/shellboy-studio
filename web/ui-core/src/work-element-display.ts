@@ -42,7 +42,8 @@ function display(item: ProjectedSavedItem, executionId?: string): WorkElementDis
       if (shells.length) {
         text = shells.map(shell => shell.description?.trim() ? shell.description : shell.command_excerpt?.trim() ? shell.command_excerpt : name ?? "Execution content was not provided").join("; ");
         const first = shells[0]!;
-        const executionStatus = statusOfShell(first.state, first.exit_code);
+        // An exit code the history link does not carry is unknown, not a failure.
+        const executionStatus = first.state === "exited" && first.exit_code === undefined ? undefined : statusOfShell(first.state, first.exit_code);
         state = first.state ? { source: "wire", value: first.state, ...(executionStatus ? { executionStatus } : {}), ...(first.exit_code !== undefined ? { exitCode: first.exit_code } : {}) } : null;
         detail = "existing-shell-output";
         for (const shell of shells) {
