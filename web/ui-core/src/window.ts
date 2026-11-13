@@ -81,6 +81,17 @@ export const correctedScrollTop = (scrollTop: number, anchorOffsetBefore: number
 
 const ordinalOf = (item: HistoryItem): number | undefined => item.selection?.ordinal;
 
+// A response-budget omission is a transport downgrade, not a deletion of a known body.
+const mergeHistoryItem = (previous: HistoryItem | undefined, incoming: HistoryItem): HistoryItem => {
+  if (previous?.node_id !== undefined && previous.node_id === incoming.node_id
+    && previous.selection?.ordinal === incoming.selection?.ordinal
+    && incoming.items == null && incoming.items_unavailable_reason === "response_budget"
+    && previous.items != null && previous.items.length > 0) {
+    return { ...previous, ...incoming, items: previous.items };
+  }
+  return incoming;
+};
+
 class Bucket {
   readonly handoffs = new Map<number, { record: HandoffRecord; release: (reason: "return" | "end") => void }>();
   items: (HistoryItem | undefined)[] = new Array(WINDOW_NODES).fill(undefined);
@@ -1091,7 +1102,7 @@ export class ConversationWindow {
         if (held.items[slot] === undefined) held.filled++;
         const attachment = held.handoffs.get(o);
         if (attachment && attachment.record.nodeId !== item.node_id) { held.handoffs.delete(o); attachment.release("return"); }
-        held.items[slot] = item;
+        held.items[slot] = mergeHistoryItem(held.items[slot], item);
         if (item.node_id !== undefined && (this.tailKnown === undefined || o >= this.tailKnown.ordinal)) this.tailKnown = { ordinal: o, nodeId: item.node_id };
       }
       return true;

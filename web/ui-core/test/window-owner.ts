@@ -83,7 +83,7 @@ export interface Rig {
   since(mark: number): CallFrame[];
 }
 
-export async function rig(total: number, options: { capability?: boolean } = {}): Promise<Rig> {
+export async function rig(total: number, options: { capability?: boolean; decorate?: (i: number, item: Record<string, unknown>) => Record<string, unknown> } = {}): Promise<Rig> {
   const t = new FakeTransport();
   const data = new ShellboyData({ transport: t, newId: () => "id" });
   data.start();
@@ -93,6 +93,7 @@ export async function rig(total: number, options: { capability?: boolean } = {})
   t.push({ t: "hello", bridge_version: "0.1.0", owner: info });
   await flush();
   const owner = new WindowOwner(total);
+  if (options.decorate) owner.decorate = options.decorate;
   const handle = data.openThread("t");
   let armed: (() => void) | undefined;
   const opts: WindowOptions = {

@@ -348,3 +348,25 @@ it("recovery drains coalesced changed hints once without waiting for another hin
   await r.settle();expect(r.w.acceptedView.peek().rows.map(n=>n.node_id)).toContain(r.owner.nodeId(10));
  } finally {close(r);}
 });
+
+describe("body availability downgrades", () => {
+  it("retains a qualified final body across a response-budget tail omission", async () => {
+    let bodyAvailable = true;
+    const r = await rig(95, {
+      decorate: (i, item) => i === 94
+        ? (bodyAvailable
+          ? { ...item, items: [{ kind: "text", item_identity: "n0-94/body", text: "qualified-final-body", text_complete: true }] }
+          : { ...item, items: null, items_unavailable_reason: "response_budget" })
+        : item,
+    });
+    await r.settle();
+    expect(r.w.itemAt(94)?.items?.[0]).toMatchObject({ kind: "text", text: "qualified-final-body" });
+    bodyAvailable = false;
+    r.w.changed();
+    await r.settle();
+    expect(r.w.itemAt(94)?.node_id).toBe("n0-94");
+    expect(r.w.itemAt(94)?.items?.[0]).toMatchObject({ kind: "text", text: "qualified-final-body" });
+    expect(r.w.acceptedView.peek().rows.find(row => row.node_id === "n0-94")?.items?.[0]).toMatchObject({ text: "qualified-final-body" });
+    r.w.dispose(); r.data.stop();
+  });
+});
