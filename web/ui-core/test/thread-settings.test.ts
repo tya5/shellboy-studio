@@ -57,3 +57,44 @@ it('owner rejection preserves draft, observed settings and original error withou
 it.each([0,-1,1.5,'4096',Number.NaN,Number.MAX_SAFE_INTEGER+1])('does not invent a configured/effective output limit from invalid readback %j',value=>{
  expect(readThreadSettings({max_tokens:value,effective_max_tokens:value})).toMatchObject({maxTokens:undefined,effectiveMaxTokens:undefined});
 });
+
+it('distinguishes unknown or unrepresentable limit readback from genuinely unset',()=>{
+ expect(readThreadSettings({max_tokens:9007199254740992,effective_max_tokens:9007199254740992})).toMatchObject({maxTokensState:{kind:'unknown'},effectiveMaxTokensState:{kind:'unknown'}});
+ expect(readThreadSettings({max_tokens:null})).toMatchObject({maxTokensState:{kind:'unset'}});
+ expect(readThreadSettings({max_tokens:4096})).toMatchObject({maxTokensState:{kind:'value',value:4096}});
+});
+it('leaves unknown large override unchanged on unrelated save, but honors explicit clear without stringifying rounded values',async()=>{
+ const r=await fixtureModel({capabilities:['thread.settings'],configure(db){db.details.lead!.max_tokens=9007199254740992;db.details.lead!.effective_max_tokens=9007199254740992;}});
+ try{
+  r.model.openModelPicker();await settle(r.t,r.db);
+  expect(r.model.modelPicker.peek()).toMatchObject({maxTokens:'',maxTokensState:{kind:'unknown'}});
+  r.model.modelPicker.value={...r.model.modelPicker.peek(),effort:'high'};
+  const other=r.model.saveThreadModel();await settle(r.t,r.db);await other;
+  expect(r.t.calls('thread.set').at(-1)!.args).not.toHaveProperty('max_tokens');
+  r.model.openModelPicker();await settle(r.t,r.db);
+  r.model.clearThreadOutputLimit();
+  const clear=r.model.saveThreadModel();await settle(r.t,r.db);await clear;
+  expect(r.t.calls('thread.set').at(-1)!.args).toHaveProperty('max_tokens','');
+ }finally{r.model.dispose();r.data.stop();}
+});
+it('sends the exact large digit string, then treats lossy JSON readback as unknown until explicit clear',async()=>{
+ const r=await fixtureModel({capabilities:['thread.settings'],configure(db){
+  const base=db.answer.bind(db);db.answer=c=>{
+   if(c.command==='thread.set'){
+    const value=(c.args as {max_tokens?:string}).max_tokens;
+    if(value!==undefined)db.details.lead!.max_tokens=value===''?null:Number(value);
+    return {ok:true,result:db.details.lead!};
+   }return base(c);
+  };
+ }});
+ try{
+  r.model.openModelPicker();await settle(r.t,r.db);r.model.editThreadOutputLimit('9007199254740993');
+  const save=r.model.saveThreadModel();await settle(r.t,r.db);await save;
+  expect(r.t.calls('thread.set').at(-1)!.args).toHaveProperty('max_tokens','9007199254740993');
+  r.model.openModelPicker();await settle(r.t,r.db);
+  expect(r.model.modelPicker.peek()).toMatchObject({maxTokens:'',maxTokensState:{kind:'unknown'}});
+  r.model.clearThreadOutputLimit();const clear=r.model.saveThreadModel();await settle(r.t,r.db);await clear;
+  expect(r.t.calls('thread.set').at(-1)!.args).toHaveProperty('max_tokens','');
+  r.model.openModelPicker();await settle(r.t,r.db);expect(r.model.modelPicker.peek().maxTokensState).toEqual({kind:'unset'});
+ }finally{r.model.dispose();r.data.stop();}
+});

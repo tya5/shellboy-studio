@@ -1,4 +1,4 @@
-import { readThreadSettings } from "./resources";
+import { readThreadSettings, type OutputLimitReadback } from "./resources";
 import {localSendAdmission} from "./local-send-admission";
 import type { OwnSendTailObservation,OwnSendReservation } from "./own-send-region";
 import type { OwnSendDecision } from "./own-send-presentation";
@@ -112,7 +112,7 @@ export class AppModel {
     } catch { this.pairing.value = { ...this.pairing.peek(), error: "pair.error" }; }
   }
 
-  readonly modelPicker = signal<{ open: boolean; thread: string; connection: string; model: string; effort: string; agents: string; autoCompactAt: string; maxTokens: string; models: string[]; loading: boolean; saving: boolean; error?: string | undefined }>({ open: false, thread: "", connection: "", model: "", effort: "", agents: "", autoCompactAt: "", maxTokens: "", models: [], loading: false, saving: false });
+  readonly modelPicker = signal<{ open: boolean; thread: string; connection: string; model: string; effort: string; agents: string; autoCompactAt: string; maxTokens: string; maxTokensState: OutputLimitReadback; clearMaxTokens: boolean; models: string[]; loading: boolean; saving: boolean; error?: string | undefined }>({ open: false, thread: "", connection: "", model: "", effort: "", agents: "", autoCompactAt: "", maxTokens: "", maxTokensState: { kind: "unset" }, clearMaxTokens: false, models: [], loading: false, saving: false });
   private modelListCancel = new Cancel();
   private modelListSeq = 0;
   private initialModelEffort = "";
@@ -126,10 +126,14 @@ export class AppModel {
     const settings = readThreadSettings(d);
     this.initialModelEffort = settings.effort ?? "";
     this.initialThreadSettings = { agents: settings.agentsPath ?? "", autoCompactAt: settings.autoCompactAt === undefined ? "" : String(settings.autoCompactAt), maxTokens: settings.maxTokens === undefined ? "" : String(settings.maxTokens) };
-    this.modelPicker.value = { open: true, thread: d.thread_id, connection: d.connection, model: d.model, effort: typeof d.effort === "string" ? d.effort : "", ...this.initialThreadSettings, models: [], loading: false, saving: false };
+    this.modelPicker.value = { open: true, thread: d.thread_id, connection: d.connection, model: d.model, effort: typeof d.effort === "string" ? d.effort : "", ...this.initialThreadSettings, maxTokensState: settings.maxTokensState, clearMaxTokens: false, models: [], loading: false, saving: false };
     if (this.data.capabilities.peek().includes(CAPABILITY_CONFIG)) this.config.ensure();
     this.chooseModelConnection(d.connection);
   }
+  editThreadOutputLimit(value: string): void {
+    this.modelPicker.value = { ...this.modelPicker.peek(), maxTokens: value, clearMaxTokens: value === "" };
+  }
+  clearThreadOutputLimit(): void { this.editThreadOutputLimit(""); }
   closeModelPicker(): void {
     this.modelListCancel.cancel();
     this.modelListSeq++;
@@ -151,7 +155,7 @@ export class AppModel {
     const p = this.modelPicker.peek();
     if (!this.data.capabilities.peek().includes("thread.settings") || p.saving || this.selectedId.peek() !== p.thread || !p.model.trim() || !p.connection.trim()) return;
     this.modelPicker.value = { ...p, saving: true, error: undefined };
-    const out = await this.ops.setThreadModel(p.thread, { model: p.model.trim(), connection: p.connection, ...(p.effort !== this.initialModelEffort ? { effort: p.effort } : {}), ...(p.agents !== this.initialThreadSettings.agents ? { agents: p.agents } : {}), ...(p.autoCompactAt !== this.initialThreadSettings.autoCompactAt ? { auto_compact_at: p.autoCompactAt } : {}), ...(p.maxTokens !== this.initialThreadSettings.maxTokens ? { max_tokens: p.maxTokens } : {}) });
+    const out = await this.ops.setThreadModel(p.thread, { model: p.model.trim(), connection: p.connection, ...(p.effort !== this.initialModelEffort ? { effort: p.effort } : {}), ...(p.agents !== this.initialThreadSettings.agents ? { agents: p.agents } : {}), ...(p.autoCompactAt !== this.initialThreadSettings.autoCompactAt ? { auto_compact_at: p.autoCompactAt } : {}), ...(p.clearMaxTokens || p.maxTokens !== this.initialThreadSettings.maxTokens ? { max_tokens: p.maxTokens } : {}) });
     const current = this.modelPicker.peek();
     if (!out.ok) {
       if (current.thread === p.thread && current.open) this.modelPicker.value = { ...current, saving: false, error: out.error.message };

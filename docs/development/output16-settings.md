@@ -81,3 +81,15 @@ owner refusal, actual Thread dialog and capability gating. Baseline REDs and
 current validation results are recorded separately from old candidate evidence.
 No provider, connected owner, private settings, installation or UI acceptance
 is exercised by these tests.
+
+### Unrepresentable Output Limits
+
+Core accepts positive digit strings through its signed-64-bit bound; this is
+larger than JavaScript's exact integer range. The shared typed readback therefore
+distinguishes `value`, `unset` and `unknown`. Studio never stringifies an unsafe
+number into a replacement. Unknown overrides show an explanation rather than
+claiming that a blank draft means inheritance. Unchanged unknown values are
+omitted from unrelated saves; entering a replacement forwards the exact input
+string. Explicit clearing (including the accessible clear action) sends `''`,
+even when the original value could not be displayed. Effective unknown values
+are not replaced with guessed defaults.

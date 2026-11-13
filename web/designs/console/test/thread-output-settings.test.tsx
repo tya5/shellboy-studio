@@ -24,3 +24,19 @@ it.each([true,false])('actual dialog shows own and owner-effective output limit,
   else expect(r.t.calls('thread.set')[0]!.args).toMatchObject({max_tokens:'4096'});
  }finally{render(null,host);host.remove();r.model.dispose();r.data.stop();}
 });
+
+it('unknown large override is not described as inherited and has an explicit accessible clear action',async()=>{
+ const r=await fixtureModel({capabilities:['thread.settings'],configure(db){db.details.lead!.max_tokens=9007199254740992;}});
+ const host=document.createElement('div');document.body.append(host);
+ const context:DesignContext={model:r.model,prefs:signal(loadPrefs({read:()=>null,write:()=>{}},[{name:'console',themes:[{name:'light'}]}])),setPrefs:()=>{},designs:[],submitToken:async()=>false};
+ try{
+  await act(async()=>{render(<App context={context}/>,host);r.model.openModelPicker();await settle(r.t,r.db);});
+  const dialog=host.querySelector('[role="dialog"]')!;
+  expect(dialog.textContent).toContain('An empty field does not mean inheritance');
+  expect(dialog.textContent).not.toContain('Leave blank to follow the connection');
+  const clear=[...dialog.querySelectorAll('button')].find(b=>b.textContent==='Clear Thread output override')!;
+  expect(clear).toBeDefined();
+  await act(async()=>{clear.click();const save=r.model.saveThreadModel();await settle(r.t,r.db);await save;});
+  expect(r.t.calls('thread.set').at(-1)!.args).toHaveProperty('max_tokens','');
+ }finally{render(null,host);host.remove();r.model.dispose();r.data.stop();}
+});

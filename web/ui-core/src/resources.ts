@@ -159,6 +159,8 @@ export function readReceipts(v: Record<string, unknown>): ReceiptFacts | undefin
 
 // ---- one Thread's settings, from `thread.get` ----
 
+export type OutputLimitReadback = { readonly kind: "unset" } | { readonly kind: "value"; readonly value: number } | { readonly kind: "unknown" };
+
 export interface ThreadSettings {
   connection: string | undefined;
   model: string | undefined;
@@ -168,13 +170,20 @@ export interface ThreadSettings {
   /** This Thread's own value; undefined when it follows the connection or `[compaction]`. */
   autoCompactAt: number | undefined;
   effectiveAutoCompactAt: number | undefined;
+  maxTokensState: OutputLimitReadback;
+  effectiveMaxTokensState: OutputLimitReadback;
   maxTokens: number | undefined;
   effectiveMaxTokens: number | undefined;
 }
 
-const outputLimit = (v: unknown): number | undefined => typeof v === "number" && Number.isSafeInteger(v) && v > 0 ? v : undefined;
+function outputLimit(v: unknown): OutputLimitReadback {
+  if (v === undefined || v === null) return { kind: "unset" };
+  return typeof v === "number" && Number.isSafeInteger(v) && v > 0 ? { kind: "value", value: v } : { kind: "unknown" };
+}
 
 export function readThreadSettings(d: Record<string, unknown>): ThreadSettings {
+  const own = outputLimit(d.max_tokens);
+  const effective = outputLimit(d.effective_max_tokens);
   return {
     connection: str(d.connection),
     model: str(d.model),
@@ -183,8 +192,10 @@ export function readThreadSettings(d: Record<string, unknown>): ThreadSettings {
     agentsPath: str(d.agents_path),
     autoCompactAt: num(d.auto_compact_at),
     effectiveAutoCompactAt: num(d.effective_auto_compact_at),
-    maxTokens: outputLimit(d.max_tokens),
-    effectiveMaxTokens: outputLimit(d.effective_max_tokens),
+    maxTokensState: own,
+    effectiveMaxTokensState: effective,
+    maxTokens: own.kind === "value" ? own.value : undefined,
+    effectiveMaxTokens: effective.kind === "value" ? effective.value : undefined,
   };
 }
 
