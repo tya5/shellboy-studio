@@ -174,6 +174,12 @@ export interface AwaitingReply {
 }
 
 export interface ThreadDetails {
+  max_tokens?: number | null;
+  effective_max_tokens?: number;
+  auto_compact_at?: number | null;
+  effective_auto_compact_at?: number;
+  effort?: string;
+  agents_path?: string;
   thread_id: string;
   title: string;
   cwd: string;

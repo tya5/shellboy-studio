@@ -223,7 +223,7 @@ export function ConfigConnections({ model }: { model: AppModel }) {
           const path = ["connections", name, key];
           const label = t(`config.conn.${key}`);
           const env = key === "api_key_env" ? valueAt(values, path) : undefined;
-          const note = key === "api_key_env" ? <>{t("config.keyNote")} {typeof env === "string" && facts.credentialSet[env] !== undefined ? t(facts.credentialSet[env] ? "config.envSet" : "config.envUnset") : null}</> : undefined;
+          const note = key === "api_key_env" ? <>{t("config.keyNote")} {typeof env === "string" && facts.credentialSet[env] !== undefined ? t(facts.credentialSet[env] ? "config.envSet" : "config.envUnset") : null}</> : key === "max_tokens" ? t("config.outputTokensNote") : undefined;
           const value = configRowValue(t, facts, path);
           return editable ? { label, control: <ConfigControl model={model} path={path} label={label} spec={{ kind, ...("options" in field ? { options: field.options } : {}) }} />, ...(note ? { note } : {}) } : { label, mono: true, ...(value !== undefined ? { value } : {}), ...(note ? { note } : {}) };
         });

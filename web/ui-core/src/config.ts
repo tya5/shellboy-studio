@@ -45,11 +45,7 @@ export const CONFIG_FIELDS: Partial<Record<ConfigKey, ConfigFieldSpec>> = {
   "retention.clipboard_bytes": { kind: "int" },
   "compaction.summary_max_chars": { kind: "int" },
   "compaction.summary_max_percent": { kind: "float" },
-  "compaction.summary_map_max_requests": { kind: "int" },
-  "compaction.summary_reduce_max_requests": { kind: "int" },
   "compaction.auto_at_tokens": { kind: "int" },
-  "compaction.segment_chars": { kind: "int" },
-  "compaction.reduce_rounds": { kind: "int" },
 };
 
 /** The rows of one connection. `labelKey` ends an i18n key under `config.conn.`. */
@@ -59,6 +55,7 @@ export const CONNECTION_FIELDS = [
   { key: "api_key_env", kind: "name" },
   { key: "api_key_header", kind: "name" },
   { key: "default_effort", kind: "text" },
+  { key: "max_tokens", kind: "int" },
   { key: "ssl_verify", kind: "bool" },
   { key: "response_header_timeout_ms", kind: "int" },
   { key: "stream_idle_timeout_ms", kind: "int" },

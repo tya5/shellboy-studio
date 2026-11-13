@@ -41,11 +41,11 @@ describe("AppModel over the fake transport", () => {
     const { model, t, db } = await fixtureModel({ capabilities: ["thread.settings"] });
     model.openModelPicker();
     await settle(t, db);
-    model.modelPicker.value = { ...model.modelPicker.value, autoCompactAt: "0", segmentChars: "4096", reduceRounds: "2", agents: "/tmp/AGENTS.md" };
+    model.modelPicker.value = { ...model.modelPicker.value, autoCompactAt: "0", maxTokens: "4096", agents: "/tmp/AGENTS.md" };
     const saved = model.saveThreadModel();
     await settle(t, db);
     await saved;
-    expect(t.calls("thread.set").at(-1)!.args).toMatchObject({ thread_id: "lead", auto_compact_at: "0", segment_chars: "4096", reduce_rounds: "2", agents: "/tmp/AGENTS.md" });
+    expect(t.calls("thread.set").at(-1)!.args).toMatchObject({ thread_id: "lead", auto_compact_at: "0", max_tokens: "4096", agents: "/tmp/AGENTS.md" });
     model.dispose();
   });
 

@@ -143,8 +143,8 @@ describe("resource facts", () => {
     expect(readIndex({ reason: "Embedding connection/model is not configured", spaces: [] }).reason).toContain("not configured");
   });
   it("thread settings separate the Thread's own value from the one in use", () => {
-    const s = readThreadSettings({ connection: "c", model: "m", auto_compact_at: null, effective_auto_compact_at: 60000, segment_chars: null, effective_segment_chars: 64000, reduce_rounds: 2, effective_reduce_rounds: 2 });
-    expect(s).toMatchObject({ autoCompactAt: undefined, effectiveAutoCompactAt: 60000, effectiveSegmentChars: 64000, reduceRounds: 2 });
+    const s = readThreadSettings({ connection: "c", model: "m", auto_compact_at: null, effective_auto_compact_at: 60000, max_tokens: null, effective_max_tokens: 64000 });
+    expect(s).toMatchObject({ autoCompactAt: undefined, effectiveAutoCompactAt: 60000, maxTokens: undefined, effectiveMaxTokens: 64000 });
     expect(s.effort).toBeUndefined();
   });
 });

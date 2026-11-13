@@ -168,11 +168,11 @@ export interface ThreadSettings {
   /** This Thread's own value; undefined when it follows the connection or `[compaction]`. */
   autoCompactAt: number | undefined;
   effectiveAutoCompactAt: number | undefined;
-  segmentChars: number | undefined;
-  effectiveSegmentChars: number | undefined;
-  reduceRounds: number | undefined;
-  effectiveReduceRounds: number | undefined;
+  maxTokens: number | undefined;
+  effectiveMaxTokens: number | undefined;
 }
+
+const outputLimit = (v: unknown): number | undefined => typeof v === "number" && Number.isSafeInteger(v) && v > 0 ? v : undefined;
 
 export function readThreadSettings(d: Record<string, unknown>): ThreadSettings {
   return {
@@ -183,10 +183,8 @@ export function readThreadSettings(d: Record<string, unknown>): ThreadSettings {
     agentsPath: str(d.agents_path),
     autoCompactAt: num(d.auto_compact_at),
     effectiveAutoCompactAt: num(d.effective_auto_compact_at),
-    segmentChars: num(d.segment_chars),
-    effectiveSegmentChars: num(d.effective_segment_chars),
-    reduceRounds: num(d.reduce_rounds),
-    effectiveReduceRounds: num(d.effective_reduce_rounds),
+    maxTokens: outputLimit(d.max_tokens),
+    effectiveMaxTokens: outputLimit(d.effective_max_tokens),
   };
 }
 
@@ -229,8 +227,4 @@ export type ConfigKey =
   | "retention.clipboard_bytes"
   | "compaction.summary_max_chars"
   | "compaction.summary_max_percent"
-  | "compaction.summary_map_max_requests"
-  | "compaction.summary_reduce_max_requests"
-  | "compaction.auto_at_tokens"
-  | "compaction.segment_chars"
-  | "compaction.reduce_rounds";
+  | "compaction.auto_at_tokens";

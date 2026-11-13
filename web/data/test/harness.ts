@@ -1,4 +1,4 @@
-import type { ClientFrame, OwnerResponse, OwnerState, ServerFrame } from "../src/protocol";
+import type { ThreadDetails, ClientFrame, OwnerResponse, OwnerState, ServerFrame } from "../src/protocol";
 import type { Transport, TransportHandlers } from "../src/transport";
 
 export type CallFrame = Extract<ClientFrame, { t: "call" }>;
@@ -69,7 +69,7 @@ export const connectedWithHistory: OwnerState = { state: "connected", info: { pr
 export function summary(id: string, extra: Record<string, unknown> = {}) {
   return { thread_id: id, title: `t-${id}`, cwd: "/", state: "idle", activity: "idle", updated_at: "u", excerpt: "", ...extra };
 }
-export function details(id: string, extra: Record<string, unknown> = {}) {
+export function details(id: string, extra: Record<string, unknown> = {}): ThreadDetails {
   return { thread_id: id, title: `t-${id}`, cwd: "/", connection: "c", model: "m", shells_count: 0, ...extra };
 }
 
