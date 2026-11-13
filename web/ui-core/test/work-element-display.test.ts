@@ -230,3 +230,18 @@ it('a live run or turn record is shown as activity, not as an unsupported item',
  expect(workElementDisplay(items[0]!)).toMatchObject({ contentLabel: { text: 'Run' }, state: { source: 'wire', value: 'live' } });
  expect(workElementDisplay(items[1]!)?.contentLabel.text).toBe('Item details are not supported');
 });
+
+it.each([['run','live'],['run','stopping'],['turn','preparing'],['turn','running'],['turn','waiting']])('supported %s/%s display is owned by its activity CASE', async (kind,state)=>{
+ const {scopeIssuedWorkFacts}=await import('../src/conversation-items');
+ const facts=normalizeLiveWorkFacts({scope:'t',items:[{kind,state,id:'a',thread_id:'t'}]});
+ const item=projectSavedItems(scopeIssuedWorkFacts(facts,['owner','t'])!).items[0]!;
+ expect(item.classification).toMatchObject({id:'liveActivity',headingCategory:'Notifications'});
+ expect(workElementDisplay(item)).toMatchObject({typeIcon:'inbox',typeAccessibleLabel:'Activity',contentLabel:{text:kind==='run'?'Run':'Turn'},state:{source:'wire',value:state},detailPolicy:'none'});
+ expect(workElementDisplay({...item,source:{...item.source}})).toBeUndefined();
+ expect(scopeIssuedWorkFacts([item.source],['foreign'])).toBeUndefined();
+});
+
+it.each([['turn','live'],['run','running'],['turn','recovery_wait'],['turn','failed']])('unknown %s/%s has no activity wording exception',(kind,state)=>{
+ const item=projectSavedItems(normalizeLiveWorkFacts({scope:'t',items:[{kind,state,id:'a',thread_id:'t'}]})).items[0]!;
+ expect(workElementDisplay(item)).toMatchObject({typeAccessibleLabel:'Unsupported item',contentLabel:{text:'Item details are not supported'},state:{value:state}});
+});

@@ -3,6 +3,7 @@ import type { HistoryItem, HistorySavedItem, HistoryItemsUnavailableReason, Work
 /** Internal normalized contract only. Not a Core wire type or a body adapter. */
 export type WorkCategory = "Tools" | "Reasoning" | "Notifications" | "Problems";
 export const CANONICAL_CASES = {
+  liveActivity: { displayPolicy: "live-activity", id: "liveActivity", normalizedKind: "record", classification: "work", headingCategory: "Notifications", render: "state-change", keyPolicy: "canonical", icon: "inbox", openPolicy: "closed", toolPolicy: "none" },
   terminalPending: { displayPolicy: "client-terminal", id: "terminalPending", normalizedKind: "record", classification: "work", headingCategory: "Notifications", render: "notification", keyPolicy: "canonical", icon: "inbox", openPolicy: "closed", toolPolicy: "none" },
   terminalReading: { displayPolicy: "client-terminal", id: "terminalReading", normalizedKind: "record", classification: "work", headingCategory: "Notifications", render: "notification", keyPolicy: "canonical", icon: "inbox", openPolicy: "closed", toolPolicy: "none" },
   terminalSettled: { displayPolicy: "client-terminal", id: "terminalSettled", normalizedKind: "record", classification: "work", headingCategory: "Problems", render: "unsupported", keyPolicy: "canonical", icon: "file", openPolicy: "closed", toolPolicy: "none" },
@@ -439,7 +440,8 @@ export function normalizeLiveWorkFacts(input: { readonly scope: string; readonly
   return normalizeConversationFacts(input.items.filter(item => item.kind !== "pending_message" && !(item.kind === "message" && ["accepted", "held"].includes(item.state))).map(item => {
     if (!input.scope || !item.id || item.thread_id !== input.scope) throw new Error("Invalid live work scope");
     const identity = { domain: "live" as const, scope: input.scope, recordId: item.id, ...(typeof item.attempt_id === "string" ? { attemptId: item.attempt_id } : {}), ...(typeof item.turn_id === "string" ? { turnId: item.turn_id } : {}) };
-    const value = Object.freeze(item.kind === "shell" && item.execution_id ? { ...identity, kind: "tool" as const, executionIds: Object.freeze([item.execution_id]) } : { ...identity, kind: "record" as const });
+    const activity = item.kind === "run" ? ["live", "stopping"].includes(item.state) : item.kind === "turn" && ["preparing", "running", "waiting"].includes(item.state);
+    const value = Object.freeze(item.kind === "shell" && item.execution_id ? { ...identity, kind: "tool" as const, executionIds: Object.freeze([item.execution_id]) } : { ...identity, kind: "record" as const, ...(activity ? { classificationCase: "liveActivity" as const } : {}) });
     issueDisplayMetadata(value, Object.freeze({ scopeKey: "[]", nodeKind: item.kind, publicState: item.state, shells: Object.freeze([]) }));
     return value;
   }));

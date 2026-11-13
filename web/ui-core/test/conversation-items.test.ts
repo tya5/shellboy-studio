@@ -303,3 +303,34 @@ it("USER970c1 user literal event/context text and typed assistant text remain Co
   expect(out.projection.items.map(item => "text" in item.source ? item.source.text : undefined)).toEqual(["Shellboy event/context is literal human text", "legitimate received user", "assistant text"]);
   expect(out.nodes[1]?.node.provenance?.sender?.kind).toBe("thread");
 });
+
+it.each([['run', 'live'], ['run', 'stopping'], ['turn', 'preparing'], ['turn', 'running'], ['turn', 'waiting']])('issues supported live activity CASE for %s/%s without inventing a problem', async (kind, state) => {
+  const { normalizeLiveWorkFacts, scopeIssuedWorkFacts } = await import('../src/conversation-items');
+  const facts = normalizeLiveWorkFacts({ scope: 'thread', items: [{ kind, state, id: 'activity', thread_id: 'thread' }] });
+  const scoped = scopeIssuedWorkFacts(facts, ['owner', 'thread'])!;
+  const out = projectSavedItems(scoped);
+  expect(out.items[0]!.classification).toMatchObject({ id: 'liveActivity', headingCategory: 'Notifications', toolPolicy: 'none' });
+  expect(out.workGroups[0]!.categoryCounts).toEqual({ Tools: 0, Reasoning: 0, Notifications: 1, Problems: 0 });
+  expect(out.workGroups[0]!.executionIds).toEqual([]);
+  expect(out.items[0]!.source).toMatchObject({ domain: 'live', scope: 'thread', recordId: 'activity' });
+  expect(out.items[0]!.key).toBe(projectSavedItems(facts).items[0]!.key);
+  expect(scopeIssuedWorkFacts([{ ...facts[0]! }], ['owner', 'thread'])).toBeUndefined();
+});
+
+it.each([['turn', 'live'], ['run', 'running'], ['turn', 'recovery_wait'], ['run', 'failed'], ['turn', 'completed'], ['turn', 'future'], ['future', 'running']])('preserves genuine unknown/problem live state %s/%s', async (kind, state) => {
+  const { normalizeLiveWorkFacts } = await import('../src/conversation-items');
+  const out = projectSavedItems(normalizeLiveWorkFacts({ scope: 'thread', items: [{ kind, state, id: 'odd', thread_id: 'thread' }] }));
+  expect(out.items[0]!.classification).toMatchObject({ id: 'unknown', headingCategory: 'Problems' });
+});
+
+it('does not reinterpret saved run or turn records as transient activity', () => {
+  const out = projectHistoryWindowItems({ revision: 1, nodes: [{ node_id: 'saved-run', kind: 'run' }, { node_id: 'saved-turn', kind: 'turn' }] });
+  expect(out.projection.items.map(item => item.classification!.id)).toEqual(['unknown', 'unknown']);
+});
+
+it('activity issuance rejects invalid identity and foreign Thread scope', async () => {
+  const { normalizeLiveWorkFacts } = await import('../src/conversation-items');
+  for (const item of [{kind:'turn',state:'running',id:'',thread_id:'thread'}, {kind:'turn',state:'running',id:'a',thread_id:'foreign'}]) {
+    expect(() => normalizeLiveWorkFacts({scope:'thread',items:[item]})).toThrow('Invalid live work scope');
+  }
+});

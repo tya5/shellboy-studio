@@ -113,3 +113,38 @@ it('strict descriptor DTO reaches the existing zero-execution formal row without
   expect(snapshot.rows[0]!.items?.[0]).toMatchObject({descriptor:{call_id:'exact-call',name:'validated_tool_name'},detail_availability:'unavailable'});
  }finally{render(null,host);reader.dispose();link.stop();host.remove();f.model.dispose();f.data.stop();}
 });
+
+it.each(['run', 'turn'])('actual App classifies a supported live %s as Notifications while preserving saved Problems', async kind => {
+ const {signal}=await import('@preact/signals-core');
+ const {summary,details,settle,flush}=await import('../../../data/test/harness');
+ const {loadPrefs}=await import('../../../ui-core/src/prefs');
+ const {App}=await import('../screens/App');
+ const state=kind==='run'?'live':'running';
+ let active=true;
+ const f=await fixtureModel({capabilities:['history.window'],configure(db){
+  db.threads={t:summary('t')};db.details.t=details('t');
+  db.history.t=[{node_id:'saved-problem',kind:'unknown',selection:{ordinal:0}}];
+  const base=db.answer.bind(db);db.answer=call=>call.command==='status'
+   ?{ok:true,result:{items:active?[{kind,id:'live-activity',state,thread_id:'t'}]:[]}}:base(call);
+ }});
+ const host=document.createElement('div');document.body.append(host);
+ const context={model:f.model,prefs:signal(loadPrefs({read:()=>null,write:()=>{}},[{name:'console',themes:[{name:'light'}]}])),setPrefs:()=>{},designs:[],submitToken:async()=>false};
+ try{
+  await act(async()=>{render(<App context={context}/>,host);await settle(f.t,f.db);await flush(12);});
+  const headings=()=>[...host.querySelectorAll('[data-work-heading]')].map(row=>row.textContent).join(' ');
+  expect(headings()).toContain(f.model.t.value('work.category.Notifications',{n:1}));
+  expect(headings()).toContain(f.model.t.value('work.category.Problems',{n:1}));
+  for(const group of host.querySelectorAll<HTMLDetailsElement>('[data-work-group]'))await act(async()=>{group.open=true;group.dispatchEvent(new Event('toggle'));});
+  const rows=[...host.querySelectorAll('.work-element-row')];
+  const activity=rows.find(row=>row.getAttribute('data-state-value')===state)!;
+  expect(activity).toBeTruthy();expect(activity.querySelector('.work-element-row__content')?.textContent).toBe(kind==='run'?'Run':'Turn');
+  expect(activity.getAttribute('data-state-source')).toBe('wire');
+  expect(host.querySelectorAll('[data-work-item-key]')).toHaveLength(2);
+  active=false;
+  await act(async()=>{f.t.push({t:'changed',thread_ids:['t'],list:false});await settle(f.t,f.db);await flush(12);});
+  expect(headings()).not.toContain(f.model.t.value('work.category.Notifications',{n:1}));
+  expect(headings()).toContain(f.model.t.value('work.category.Problems',{n:1}));
+  expect(host.querySelector('[data-state-value="completed"]')).toBeNull();
+  expect(f.t.calls('history.get')).toHaveLength(0);
+ }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
+});

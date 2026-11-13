@@ -76,3 +76,12 @@ Evidence: /tmp/p-crosspath-red.log (3 failing concrete controls),
 This is local mapper/core projection evidence. D real consumer adoption, full
 suite and real user Thread results remain separate. User has prohibited push,
 CI dispatch, remote operations and installed changes; none were performed.
+
+## Supported Live Activity Amendment (2026-11-13)
+
+See work-element-display.md for the adopted narrow Section 2/3 amendment.
+The input normalizer issues liveActivity/Notifications for supported public live
+run/turn state pairs; generic and saved unknown records stay Problems. Existing
+conversation-items.test.ts verifies pairs, negative pairs, identity and scoping;
+work-element-consumer.test.tsx verifies actual App headings, visible row/raw state,
+active-page removal without fabricated completion, and retained saved Problems.

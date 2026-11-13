@@ -1,8 +1,8 @@
 # CASE Display Bundle
 
 S owns the canonical CASE displayPolicy column, normalization fact preservation,
-and workElementDisplay(item). Existing CASE category/icon/tool policies are not
-reclassified. The adapter has exactly one projected item input. Its source must
+and workElementDisplay(item). CASE category/icon/tool policies are owned by the classifier, not the display
+adapter. The adapter has exactly one projected item input. Its source must
 have normalizer-issued WeakMap metadata, exact source association fingerprint,
 scoped identity and unchanged receipt identity. Matching node IDs cannot recover
 metadata for an arbitrary copy. This qualifies same-projection display facts only:
@@ -27,8 +27,27 @@ A tool with approved associated shell metadata may use the EXISTING shell-output
 adapter; none/unavailable never offers a false expansion. No generic actual-safe-
 typed body is emitted in this checkpoint. Unknown and notification rows explicitly
 say missing content; timestamps provide honest context, not a cause or summary.
-Actual wire/client state stays distinct. Current generic live record CASE remains
-unknown: this adapter does not reclassify it from a kind string.
+Actual wire/client state stays distinct. Generic live records remain unknown.
+
+## Supported Transient Activity (2026-11-13 Amendment)
+
+The adopted narrow amendment to the conversation Section 2/3 matrix adds
+`liveActivity`: Work / Notifications, state-change rendering, inbox icon, no tool
+membership or interruption, closed by default, no invented detail body. Only the
+live normalizer issues it for public Core v0.13.0 RunState `live`/`stopping` or
+TurnState `preparing`/`running`/`waiting` (protocol.rs RunState/TurnState, snake_case).
+`recovery_wait`, failures, terminal states, invalid kind/state combinations and
+future states retain the visible unknown/Problems path. Saved records named run
+or turn are unchanged. Scoped record identity and raw wire state are preserved.
+The dedicated display policy consumes that CASE; unknown-problem has no activity
+wording exception. No JSX reclassification or hidden records.
+
+The bounded Work query still selects starting/running/stopping/accepted/held;
+this amendment does not widen fetching or infer status from page absence. The
+actual-App Run fixture injects the public native live state, not a claim that
+this unchanged query normally returns it. Turn running is query-reachable.
+Removal from a later active page is not proof of successful completion.
+Saved body authority, terminal live-off and receipt limits are unchanged.
 
 Tests include every displayPolicy plus scope/copy/receipt negatives and existing
 CASE regressions. Initial missing test API names and fixture types are preserved
