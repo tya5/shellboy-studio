@@ -90,7 +90,10 @@ function display(item: ProjectedSavedItem, executionId?: string): WorkElementDis
       if (reason) { state = { source: "wire", value: reason }; context.push({ name: "reason", value: reason }); }
       break;
     }
-    case "unknown-problem": label = "Unsupported item"; text = facts.nodeKind ? "Item details are not supported" : "The item kind was not provided"; break;
+    case "unknown-problem":
+      // A live run or turn is ordinary activity that ends on its own, not an unsupported item.
+      if ("domain" in source && source.domain === "live" && (facts.nodeKind === "run" || facts.nodeKind === "turn")) { label = "Activity"; text = facts.nodeKind === "run" ? "Run" : "Turn"; break; }
+      label = "Unsupported item"; text = facts.nodeKind ? "Item details are not supported" : "The item kind was not provided"; break;
     case "client-terminal": {
       label = "Saved-history confirmation";
       const presence = facts.receipt;

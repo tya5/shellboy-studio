@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { normalizeTerminalPresenceFacts, projectSavedItems, projectLegacyHistoryItems, CANONICAL_CASES } from "../src/conversation-items";
+import { normalizeTerminalPresenceFacts, normalizeLiveWorkFacts, projectSavedItems, projectLegacyHistoryItems, CANONICAL_CASES } from "../src/conversation-items";
 import { workElementDisplay } from "../src/work-element-display";
 import type { HistoryItem } from "../../data/src/protocol";
 function display(nodes: HistoryItem[]) {
@@ -222,4 +222,11 @@ it('history links without an exit code show the exited state but no failure stat
  executions: [{ execution_id: 'e', command_excerpt: 'make', state: 'exited', call_state: 'completed' }] };
  const [row] = display([node]);
  expect(row!.value!.state).toEqual({ source: 'wire', value: 'exited' });
+});
+
+it('a live run or turn record is shown as activity, not as an unsupported item', () => {
+ const [run, odd] = normalizeLiveWorkFacts({ scope: 't', items: [{ kind: 'run', id: 'r', state: 'live', thread_id: 't' }, { kind: 'future_kind', id: 'f', state: 'x', thread_id: 't' }] });
+ const items = projectSavedItems([run!, odd!]).items;
+ expect(workElementDisplay(items[0]!)).toMatchObject({ contentLabel: { text: 'Run' }, state: { source: 'wire', value: 'live' } });
+ expect(workElementDisplay(items[1]!)?.contentLabel.text).toBe('Item details are not supported');
 });
