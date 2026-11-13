@@ -183,7 +183,7 @@ jobs:
           archive, = Path('dist').iterdir()
           binary = Path('target') / os.environ['RELEASE_TARGET'] / 'release' / os.environ['RELEASE_EXECUTABLE']
           lock = Path('Cargo.lock').read_text()
-          pin = '942284c27e867091fe23d07babb0103c2cb6507a'
+          pin = '441750809e42aa9cabe4eecf7a0bb85dfa28ef6c'
           assert pin in lock
           proof = dict(source_sha=git('rev-parse', 'HEAD'), tree=git('rev-parse', 'HEAD^{tree}'),
                        version=os.environ['CANDIDATE_VERSION'], target=os.environ['RELEASE_TARGET'],
