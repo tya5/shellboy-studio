@@ -226,5 +226,4 @@ export type ConfigKey =
   | "retention.clipboard_days"
   | "retention.clipboard_bytes"
   | "compaction.summary_max_chars"
-  | "compaction.summary_max_percent"
   | "compaction.auto_at_tokens";

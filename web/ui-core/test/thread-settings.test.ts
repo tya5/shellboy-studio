@@ -9,7 +9,7 @@ it('reads explicit and effective output limits without guessing a provider defau
  expect(Object.keys(unset)).not.toContain('segmentChars');expect(Object.keys(unset)).not.toContain('reduceRounds');
 });
 it('does not expose any strict-retired config key',()=>{
- for(const key of ['compaction.segment_chars','compaction.reduce_rounds','compaction.summary_map_max_requests','compaction.summary_reduce_max_requests'])expect(Object.keys(CONFIG_FIELDS)).not.toContain(key);
+ for(const key of ['compaction.segment_chars','compaction.reduce_rounds','compaction.summary_map_max_requests','compaction.summary_reduce_max_requests','compaction.summary_max_percent'])expect(Object.keys(CONFIG_FIELDS)).not.toContain(key);
 });
 it('uses owner readback for set, reopen, explicit empty clear and inherited effective limit',async()=>{
  let own:number|null=null;

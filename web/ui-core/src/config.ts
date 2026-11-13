@@ -44,7 +44,6 @@ export const CONFIG_FIELDS: Partial<Record<ConfigKey, ConfigFieldSpec>> = {
   "retention.clipboard_days": { kind: "int" },
   "retention.clipboard_bytes": { kind: "int" },
   "compaction.summary_max_chars": { kind: "int" },
-  "compaction.summary_max_percent": { kind: "float" },
   "compaction.auto_at_tokens": { kind: "int" },
 };
 

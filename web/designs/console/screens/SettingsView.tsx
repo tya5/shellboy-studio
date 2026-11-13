@@ -56,7 +56,6 @@ export function SettingsView({ context }: { context: DesignContext }) {
         return <Section title={t("set.compact.file")} sub={t("set.threadSettings")}><FactList missing={missing} facts={[
           fileFact(t("set.compact.autoAt"), "compaction.auto_at_tokens"),
           fileFact(t("set.compact.maxChars"), "compaction.summary_max_chars"),
-          fileFact(t("set.compact.maxPercent"), "compaction.summary_max_percent"),
         ]} /></Section>;
       case "storage":
         return <Section title={t("set.store.file")} sub={t("set.store.see")} actions={<a class="btn" href={formatRoute({ view: "analytics", section: "storage" })}>{t("set.store.open")}</a>}><FactList missing={missing} facts={[
