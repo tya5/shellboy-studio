@@ -31,7 +31,7 @@ class ExactOwner(unittest.TestCase):
         self.run_git("config", "user.email", "fixture@example.invalid")
         self.run_git("remote", "add", "origin", gate.OFFICIAL)
         self.manifest = self.owner / "Cargo.toml"
-        self.manifest.write_text('[package]\nname="shellboy"\nversion="0.12.0"\n', encoding="utf-8")
+        self.manifest.write_text('[package]\nname="shellboy"\nversion="0.13.0"\n', encoding="utf-8")
         self.run_git("add", "Cargo.toml")
         self.run_git("commit", "-m", "Synthetic source")
         self.run_git("tag", "-a", gate.TAG, "-m", "Synthetic annotated tag")
@@ -42,13 +42,13 @@ class ExactOwner(unittest.TestCase):
         self.lock = self.studio / "Cargo.lock"
         self.write_lock()
         self.version = self.root / "binary-version.txt"
-        self.version.write_text("shellboy 0.12.0\n", encoding="utf-8")
+        self.version.write_text("shellboy 0.13.0\n", encoding="utf-8")
 
     def run_git(self, *args):
         return subprocess.check_output(["git", "-C", str(self.owner), *args], env=self.env,
                                        stderr=subprocess.DEVNULL, text=True, encoding="utf-8").strip()
 
-    def write_lock(self, commit=None, version="0.12.0", repository=None, tag=None):
+    def write_lock(self, commit=None, version="0.13.0", repository=None, tag=None):
         self.lock.write_text('version=4\n[[package]]\nname="shellboy"\nversion="'+version+'"\nsource="git+'+(repository or gate.OFFICIAL)+'?tag='+(tag or gate.TAG)+'#'+(self.commit if commit is None else commit)+'"\n', encoding="utf-8")
 
     def check(self):
@@ -59,7 +59,7 @@ class ExactOwner(unittest.TestCase):
         evidence = self.check()
         self.assertEqual(evidence["lock_commit"], self.commit)
         self.assertEqual(evidence["peeled_commit"], self.commit)
-        self.assertEqual(evidence["binary_version"], "0.12.0")
+        self.assertEqual(evidence["binary_version"], "0.13.0")
         self.assertNotIn(str(self.root), str(evidence))
 
     def test_lightweight_tag_also_resolves_commit(self):
@@ -112,7 +112,7 @@ class ExactOwner(unittest.TestCase):
 
     def test_wrong_manifest_pin(self):
         path = self.studio / "Cargo.toml"
-        path.write_text(path.read_text(encoding="utf-8").replace("v0.12.0", "v0.10.0"), encoding="utf-8")
+        path.write_text(path.read_text(encoding="utf-8").replace("v0.13.0", "v0.10.0"), encoding="utf-8")
         with self.assertRaisesRegex(ValueError, "Studio must pin"): self.check()
 
     def test_wrong_remote(self):
@@ -120,7 +120,7 @@ class ExactOwner(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "wrong owner remote"): self.check()
 
     def test_wrong_source_package_version(self):
-        self.manifest.write_text(self.manifest.read_text(encoding="utf-8").replace("0.12.0", "0.10.0"), encoding="utf-8")
+        self.manifest.write_text(self.manifest.read_text(encoding="utf-8").replace("0.13.0", "0.10.0"), encoding="utf-8")
         self.run_git("add", "Cargo.toml")
         self.run_git("commit", "-m", "Wrong package version")
         self.commit = self.run_git("rev-parse", "HEAD")
@@ -145,7 +145,7 @@ class ExactOwner(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "wrong binary version"): self.check()
 
     def test_correct_version_with_extra_output_is_rejected(self):
-        self.version.write_text("shellboy 0.12.0 extra\n", encoding="utf-8")
+        self.version.write_text("shellboy 0.13.0 extra\n", encoding="utf-8")
         with self.assertRaisesRegex(ValueError, "wrong binary version"): self.check()
 
     def test_missing_owner_package(self):

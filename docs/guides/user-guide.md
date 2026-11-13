@@ -65,7 +65,7 @@ starting the bridge, run `shellboy-studio guide user` or
 
 ## Version and troubleshooting
 
-Studio 0.2.5 pairs with Core v0.12.0 (protocol 5, conversation schema 43);
+Studio 0.2.6 pairs with Core v0.13.0 (protocol 5, conversation schema 44);
 installing that Core over existing data upgrades schema 42 to 43, so back up the
 owner data directory first. For released Studio v0.1.0, use the validated
 matching Core v0.11.0 release (protocol 5, schema 39). A newer Studio build is not guaranteed to negotiate missing features
