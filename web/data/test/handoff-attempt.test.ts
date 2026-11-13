@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 import { Handoff, type AttemptReadyProof } from '../src/handoff';
-function rig(){const ticks:(()=>void)[]=[];const h=new Handoff(f=>ticks.push(f));h.apply({attempt_id:'a',gap:false,deltas:[{offset:0,reasoning:false,text:'original preview'}]});ticks.splice(0).forEach(f=>f());h.finish();const original=h.records.value[0]!;const proof:AttemptReadyProof={scope:'scope',attemptId:'a',turnId:'turn',revision:1,total:1,refs:[{nodeId:'n'},{nodeId:'n'}],nodes:[{node_id:'n',kind:'assistant_response',selection:{ordinal:0},items:[{kind:'text',item_identity:'i',text:'saved',text_complete:true}]}]};return{h,original,proof};}
+function rig(){const ticks:(()=>void)[]=[];const h=new Handoff(f=>ticks.push(f));h.apply({attempt_id:'a',gap:false,deltas:[{offset:0,reasoning:false,text:'original preview'}]});ticks.splice(0).forEach(f=>f());h.finish();const original=h.records.value[0]!;const proof:AttemptReadyProof={scope:'scope',attemptId:'a',turnId:'turn',revision:1,total:1,refs:[{nodeId:'n'},{nodeId:'n'}],nodes:[{node_id:'n',kind:'assistant_response',selection:{ordinal:0},items:[{kind:'text',item_identity:'i',text:'saved',text_complete:true}]}]};return{h,original,proof,ticks};}
 it('stages same proof references without replacing text and releases only after accepted callback',()=>{const{h,original,proof}=rig();const staged=h.stageAttempt(original,proof)!;expect(staged.text).toBe(original.text);expect(staged.readyAttempt).toBe(proof);expect(proof.refs).toHaveLength(2);expect(h.transferAttempt(original,proof,(r,end)=>{expect(r).toBe(staged);end('end');expect(h.records.value).toHaveLength(1);return true;})).toBe(true);expect(h.records.value).toHaveLength(0);});
 it('failed acceptance cannot consume preview even if release was requested',()=>{const{h,original,proof}=rig();h.stageAttempt(original,proof);expect(h.transferAttempt(original,proof,(_,end)=>{end('end');return false;})).toBe(false);expect(h.records.value[0]?.text).toBe(original.text);});
 it('invalidation during callback makes captured release inert',()=>{const{h,original,proof}=rig();h.stageAttempt(original,proof);h.transferAttempt(original,proof,(_,end)=>{h.invalidate();end('end');return true;});expect(h.records.value[0]?.text).toBe(original.text);});
@@ -22,3 +22,35 @@ it('terminal persisted partial evidence retires original preview without full it
 it('terminal proof without saved nodes cannot stage',()=>{const{h,original}=rig();expect(h.stageTerminalPersisted(original,{scope:'scope',attemptId:'a',nodeIds:[],terminalState:'completed'})).toBeUndefined();expect(h.records.value[0]).toBe(original);});
 it.each(['completed','failed','incomplete','cancelled'] as const)('terminal %s accepts incomplete preview but revoked release is false',terminalState=>{const{h,original}=rig();h.fail('a');const incomplete=h.records.value[0]!;const proof={scope:'s',attemptId:'a',nodeIds:['saved'],terminalState};expect(h.stageTerminalPersisted(incomplete,proof)?.text).toBe(original.text);expect(h.transfer('a',(_,end)=>{h.invalidate();end('end');return true;})).toBe(false);expect(h.records.value[0]?.text).toBe(original.text);});
 it('terminal staging rejects wrong attempt, nonterminal state, malformed IDs and >64 refs',()=>{for(const bad of [{attemptId:'other'},{terminalState:'inflight'},{nodeIds:['']},{nodeIds:Array(65).fill('saved')}]){const{h,original}=rig();const proof={scope:'s',attemptId:'a',nodeIds:['saved'],terminalState:'completed' as const,...bad};expect(h.stageTerminalPersisted(original,proof as Parameters<Handoff['stageTerminalPersisted']>[1])).toBeUndefined();expect(h.records.value[0]).toBe(original);}});
+
+it('display authority borrows one original held slot without transfer or a body copy',()=>{
+ const {h,original}=rig();const bytes=h.retainedBytes;
+ const lease=h.captureDisplay(original)!;let generation=2;
+ const cancel=lease.stage(2,()=>generation===2);
+ expect(h.isDisplayCurrent(original,2)).toBe(true);
+ expect(h.records.value[0]).toBe(original);expect(h.retainedBytes).toBe(bytes);
+ generation=3;expect(h.isDisplayCurrent(original,2)).toBe(false);
+ cancel();expect(h.isDisplayCurrent(original,2)).toBe(false);
+});
+it.each(['invalidate','reconcile','discard','mutation'] as const)('display original-object authority is revoked on %s',mode=>{
+ const {h,original}=rig();const lease=h.captureDisplay(original)!;lease.stage(2,()=>true);
+ if(mode==='invalidate')h.invalidate();else if(mode==='reconcile')h.reconcile();else if(mode==='discard')h.discard('ended');else h.fail(original.attemptId);
+ expect(lease.current()).toBe(false);expect(h.isDisplayCurrent(original,2)).toBe(false);
+});
+it('display A-B-A cannot attach an earlier original-object lease to new identical IDs',()=>{
+ const {h,original,ticks}=rig();const lease=h.captureDisplay(original)!;lease.stage(2,()=>true);
+ h.discard('ended');h.apply({attempt_id:'b',gap:false,deltas:[{offset:0,reasoning:false,text:'b'}]});h.discard('ended');
+ h.apply({attempt_id:'a',gap:false,deltas:[{offset:0,reasoning:false,text:original.text}]});ticks.splice(0).forEach(fn=>fn());
+ expect(h.records.value[0]!.attemptId).toBe(original.attemptId);expect(h.records.value[0]).not.toBe(original);
+ expect(lease.current()).toBe(false);expect(h.isDisplayCurrent(h.records.value[0]!,2)).toBe(false);
+});
+it('eight readable canonical-owner slots do not admit a hidden ninth preview or change UTF8 accounting',()=>{
+ const h=new Handoff(fn=>fn());
+ for(let n=0;n<8;n++){
+  h.apply({attempt_id:`a${n}`,gap:false,deltas:[{offset:0,reasoning:false,text:'\u6e2c\u5b9a\u{1f600}'}]});h.finish();
+  const original=h.records.value[n]!;h.captureDisplay(original)!.stage(2,()=>true);
+ }
+ const before=h.retainedBytes;h.apply({attempt_id:'ninth',gap:false,deltas:[{offset:0,reasoning:false,text:'ninth'}]});
+ expect(h.records.value).toHaveLength(8);expect(h.retainedBytes).toBe(before);expect(h.overflow.value).toBe(true);
+ expect(before).toBe(new TextEncoder().encode('\u6e2c\u5b9a\u{1f600}').byteLength*8);
+});

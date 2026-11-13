@@ -1,3 +1,4 @@
+import type { DisplayAssociation, DisplayTarget, DisplayObservation } from './handoff';
 import { TerminalReadSlots, type SelectedCanonicalRequest, type OwnedTerminalReadLease, type TicketOutcome } from "./terminal-read";
 import type { TerminalPersistedProof } from "./handoff";
 import { Handoff, type HandoffRecord } from "./handoff";
@@ -91,6 +92,8 @@ export type HandoffRetryState =
   | { readonly phase: "unavailable"; readonly reason: "unresolved" | "budget-exhausted"; readonly canRetry: true }
   | { readonly phase: "unavailable"; readonly reason: "closed" | "paused" | "owner-unavailable" | "receipt_capacity"; readonly canRetry: false };
 export interface ThreadHandle extends Handle {
+  bindDisplayOwner(capture: () => DisplayTarget | undefined): () => void;
+  isDisplayOwnershipCurrent(record: HandoffRecord, generation: number): boolean;
   requestTerminalRead(qualification: ThreadReadQualification, receipt: TerminalPersistedProof, request: SelectedCanonicalRequest): OwnedTerminalReadLease | TicketOutcome;
   readonly handoffRetryState: ReadonlySignal<HandoffRetryState>;
   readonly attemptPresentations: ReadonlySignal<readonly AttemptPresentation[]>;
@@ -138,6 +141,7 @@ const emptyPaged = <T>(): PagedState<T> => ({
 });
 
 class ThreadEntry {
+  displayOwner?: { capture: () => DisplayTarget | undefined };
   refs = 0;
   closed = false;
   detail = signal<Resource<ThreadDetails>>({ value: undefined, loading: false, stale: false, error: undefined });
@@ -401,6 +405,12 @@ export class ShellboyData {
       work: e.work,
       setWorkActive,
       preview: e.preview,
+      bindDisplayOwner: capture => {
+        e.live.clearDisplay();
+        const owner = { capture }; e.displayOwner = owner;
+        return () => { if (e.displayOwner === owner) { e.live.clearDisplay(); e.displayOwner = undefined; } };
+      },
+      isDisplayOwnershipCurrent: (record, generation) => readable() && e.live.isDisplayCurrent(record, generation),
       handoff: e.live.records,
       handoffOverflow: e.live.overflow,
       retryPublication: () => {
@@ -720,6 +730,9 @@ export class ShellboyData {
       if (!entry.live.takeRead()) { entry.handoffRetryState.value = { phase: "unavailable", reason: "budget-exhausted", canRetry: true }; return; }
       entry.handoffRetryState.value = { phase: "reading", canRetry: false };
       if (!valid()) return;
+      const displayOwner = entry.displayOwner;
+      const display = displayOwner?.capture();
+      const leases = targets.flatMap(record => { const lease = entry.live.captureDisplay(record); return lease ? [lease] : []; });
       const out = await this.operations.handoffAttempts(entry.id, { cancel: cancelled });
       if (!valid()) return;
       if (!out.ok) {
@@ -730,10 +743,42 @@ export class ShellboyData {
         return;
       }
       const incompleteScope = !!out.value.next_cursor || incompleteResponseScope(out.value.items, entry.id);
+      const observations: DisplayObservation[] = [];
+      for (const lease of leases) {
+        if (!valid() || !lease.current()) continue;
+        const record = lease.original;
+        const matches = out.value.items.filter(item => item.kind === 'attempt' && item.id === record.attemptId
+          && item.attempt_id === record.attemptId && item.thread_id === entry.id);
+        if (matches.length !== 1) continue;
+        const attempt = matches[0]!;
+        const refs = attempt.response_nodes;
+        const terminal = ['completed', 'failed', 'incomplete', 'cancelled'].includes(attempt.state);
+        if (!terminal || !Array.isArray(refs) || !refs.length || refs.length > 64
+          || refs.some(ref => !ref || typeof ref.node_id !== 'string' || !ref.node_id)) continue;
+        const proof = Object.freeze({ scope: this.handoffScope(entry), attemptId: record.attemptId,
+          ...(typeof attempt.turn_id === 'string' ? { turnId: attempt.turn_id } : {}),
+          nodeIds: Object.freeze(refs.map(ref => ref.node_id)), terminalState: attempt.state as TerminalPersistedProof['terminalState'] });
+        let receipt = entry.terminalReceipts.get(record.attemptId);
+        if (!receipt && entry.terminalReceipts.size < 8) { receipt = proof; entry.terminalReceipts.set(record.attemptId, proof); }
+        if (!receipt) receiptBlocked.add(record.attemptId);
+        const qualified = !incompleteScope && attempt.response_nodes_truncated === false
+          && typeof attempt.turn_id === 'string' && !!attempt.turn_id.trim()
+          && refs.every((ref,index) => typeof ref.kind === 'string' && !!ref.kind
+            && Number.isSafeInteger(ref.ordinal) && ref.ordinal >= 0 && (index === 0 || ref.ordinal > refs[index-1]!.ordinal))
+          && !out.value.items.some(other => other !== attempt && other.response_nodes?.some(ref => refs.some(own => own.node_id === ref?.node_id)));
+        const association: DisplayAssociation | undefined = qualified ? Object.freeze({ scope: proof.scope, attemptId: record.attemptId,
+          turnId: attempt.turn_id!, refs: Object.freeze(refs.map(ref => Object.freeze({ nodeId: ref.node_id, ordinal: ref.ordinal, kind: ref.kind }))) }) : undefined;
+        observations.push({ lease, ...(association ? { association } : {}), ...(receipt ? { receipt } : {}) });
+      }
+      const displayPublished = valid() && displayOwner === entry.displayOwner && observations.length > 0 && !!display?.publish(observations);
+
       for (const record of targets) {
         const attempt = out.value.items.find(i => i.kind === "attempt" && i.id === record.attemptId
           && (i.attempt_id === undefined || i.attempt_id === record.attemptId) && i.thread_id === entry.id);
         if (!attempt || !Array.isArray(attempt.response_nodes)) continue;
+        // Readable originals stay in their existing slot. Receipt and display choice were
+        // published together above; persistence alone no longer discards their bytes.
+        if (record.text && displayPublished) continue;
         // A terminal exact attempt with any committed public node reference proves
         // partial persistence, even when full readback coverage is unavailable.
         const terminal = attempt.state === "completed" || attempt.state === "failed" || attempt.state === "incomplete" || attempt.state === "cancelled";

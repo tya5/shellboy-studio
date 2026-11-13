@@ -55,7 +55,7 @@ for(const mode of ['terminal-publication-trace','empty-complete','truncated','pa
   if(mode==='partial')expect(host.textContent).toContain('Available partial prefix');
   else expect(host.textContent).not.toContain('Available partial prefix');
   if(['terminal-publication-trace','empty-complete','truncated','partial','budget'].includes(mode)){
-   expect(host.textContent).not.toContain('Original live answer');
+   expect(host.textContent).toContain('Original live answer');
    const current=win.acceptedView.peek();expect(current.terminalPersistedAttempts).toHaveLength(1);
    expect(current.rows).toEqual(before.rows);if("retiredAttempts" in current)expect(current.retiredAttempts??[]).toHaveLength(0);
    expect(current.attemptPresentations?.some(fact=>fact.state==='pending'&&fact.attemptId==='attempt')).not.toBe(true);
@@ -74,7 +74,7 @@ for(const mode of ['terminal-publication-trace','empty-complete','truncated','pa
    nodes[2]={...nodes[2]!,items:[{kind:'text',item_identity:'empty-complete',text:'Now available completed answer',text_complete:true}]};revision++;
    await act(async()=>{f.t.push({t:'changed',thread_ids:['t'],list:false});await settle(f.t,f.db);await flush(24);});
    expect(host.textContent).toContain('Now available completed answer');
-   expect(host.textContent).toContain('Available saved answer');expect(host.textContent).not.toContain('Original live answer');
+   expect(host.textContent).toContain('Available saved answer');expect(host.textContent).toContain('Original live answer');
    expect(host.querySelector('[data-terminal-presence]')).toBeNull();
   }
   if(mode==='terminal-publication-trace'){capture('settled');stopTrace();console.log('TERMINAL_PUBLICATION_TRACE',JSON.stringify({trace}));}
@@ -105,7 +105,7 @@ for(const resultMode of ['complete','partial','error','cancel'] as const)it(`act
   ended=true;await act(async()=>{f.t.push({t:'live_end',thread_id:'t'});await settle(f.t,f.db);await flush(24);});
   const read=f.t.calls('history.window').filter(call=>(call.args as {node_id?:string}).node_id==='missing');expect(read).toHaveLength(1);
   const held=read[0]!;f.db.answered.add(held.id);
-  expect(host.textContent).not.toContain('Live before exact receipt');expect(host.textContent).toContain('Already available unchanged');
+  expect(host.textContent).toContain('Live before exact receipt');expect(host.textContent).toContain('Already available unchanged');
   expect(host.querySelector('[data-terminal-phase="reading"]')?.closest('[data-work-group]')).not.toBeNull();
   expect(host.querySelector('[data-terminal-phase="reading"] .work-element-row__line')?.getAttribute('title')).toBe('Saved-history confirmation');
   expect(host.querySelector('[data-terminal-phase="reading"] [data-state-source="client"]')?.getAttribute('data-state-value')).toBe('read-inflight');
@@ -147,7 +147,7 @@ it('observes ninth same-scope exact terminal receipt backpressure separately fro
   const handle=f.model.handle.peek()!,scope=handle.handoffScope();
   for(active=1;active<=9;active++){
    ended=false;
-   await act(async()=>{f.t.push({t:'live',thread_id:'t',attempt_id:`attempt-${active}`,gap:false,deltas:[{offset:0,reasoning:false,text:`Preview ${active}`} ]});await flush(12);});
+   await act(async()=>{f.t.push({t:'live',thread_id:'t',attempt_id:`attempt-${active}`,gap:false,deltas:[{offset:0,reasoning:false,text:active===9?'Preview 9':''} ]});await flush(12);});
    ended=true;
    await act(async()=>{f.t.push({t:'live_end',thread_id:'t'});await settle(f.t,f.db);await flush(12);});
    // Exercise only the existing explicit Retry budget; do not refill implicitly.
@@ -170,4 +170,71 @@ it('observes ninth same-scope exact terminal receipt backpressure separately fro
    }
   }
  }finally{console.log('NINTH_RECEIPT_TRACE',JSON.stringify(observed));render(null,host);host.remove();f.model.dispose();f.data.stop();}
+});
+
+it('qualified ninth readable preview transfers only its exact FINAL bundle, not an equal-text independent identity',async()=>{
+ let active=0,ended=false;
+ const text='Equal answer text';
+ const nodes:HistoryItem[]=Array.from({length:10},(_,i)=>({node_id:`owned-node-${i+1}`,kind:'assistant_response',selection:{ordinal:i},items:[{kind:'text',item_identity:`owned-item-${i+1}`,text:i>=8?text:'Prior saved answer',text_complete:true}]}));
+ const f=await fixtureModel({capabilities:['live.text','history.window'],configure(db){
+  db.threads={t:summary('t')};db.details.t=details('t');db.history.t=nodes;
+  const base=db.answer.bind(db);db.answer=call=>{
+   if(call.command==='status')return {ok:true,result:{items:ended?[{kind:'attempt',id:`qualified-${active}`,attempt_id:`qualified-${active}`,thread_id:'t',turn_id:`turn-${active}`,state:'completed',response_nodes_truncated:false,response_nodes:[{node_id:`owned-node-${active}`,ordinal:0,kind:'message'}]}]:[]}};
+   if(call.command==='history.window')return {ok:true,result:{thread_id:'t',revision:1,total:nodes.length,items:nodes}};
+   return base(call);
+  };
+ }});
+ const host=document.createElement('div');document.body.append(host);
+ const context:DesignContext={model:f.model,prefs:signal(loadPrefs({read:()=>null,write:()=>{}},[{name:'console',themes:[{name:'light'}]}])),setPrefs:()=>{},designs:[],submitToken:async()=>false};
+ try{
+  await act(async()=>{render(<App context={context}/>,host);await settle(f.t,f.db);});
+  const handle=f.model.handle.peek()!,scope=handle.handoffScope();
+  for(active=1;active<=9;active++){
+   ended=false;
+   // Empty previews establish receipt backpressure without retaining eight readable owners.
+   await act(async()=>{f.t.push({t:'live',thread_id:'t',attempt_id:`qualified-${active}`,gap:false,deltas:[{offset:0,reasoning:false,text:active===9?text:''}]});await flush(12);});
+   ended=true;
+   await act(async()=>{f.t.push({t:'live_end',thread_id:'t'});await settle(f.t,f.db);await flush(12);});
+   await act(async()=>{const retry=handle.retryHandoff();await settle(f.t,f.db);await retry;await flush(12);});
+   expect(handle.handoffScope()).toBe(scope);
+   if(active<=8)expect(handle.handoff.peek()).toHaveLength(0);
+  }
+  const reader=f.model.longReader.peek()!,snapshot=reader.acceptedView.peek();
+  expect(snapshot.terminalPersistedAttempts).toHaveLength(8);
+  // Both exact saved identities survive although their prose is identical to each other and the preview.
+  expect(host.querySelectorAll('[data-node="owned-node-9"] .msg')).toHaveLength(1);
+  expect(host.querySelectorAll('[data-node="owned-node-10"] .msg')).toHaveLength(1);
+  expect(host.querySelectorAll('[data-live-overlay]')).toHaveLength(0);
+  expect(handle.handoff.peek()).toHaveLength(1);
+  expect(handle.handoff.peek()[0]).toMatchObject({attemptId:'qualified-9',text,status:'confirming'});
+  expect(f.t.calls('history.get')).toHaveLength(0);
+ }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
+});
+
+it('readable owned preview survives terminal persistence while exact body is held unavailable',async()=>{
+ let ended=false;
+ const user:HistoryItem={node_id:'independent-user',kind:'user',selection:{ordinal:0},items:[{kind:'text',item_identity:'independent-user-item',text:'Independent user body',text_complete:true}]};
+ const f=await fixtureModel({capabilities:['live.text','history.window'],configure(db){
+  db.threads={t:summary('t')};db.details.t=details('t');db.history.t=[user];
+  const base=db.answer.bind(db);db.answer=call=>{
+   if(call.command==='status')return {ok:true,result:{items:ended?[{kind:'attempt',id:'owned-attempt',attempt_id:'owned-attempt',thread_id:'t',turn_id:'owned-turn',state:'completed',response_nodes_truncated:false,response_nodes:[{node_id:'held-answer',ordinal:0,kind:'message'}]}]:[]}};
+   if(call.command==='history.window')return {ok:true,result:{thread_id:'t',revision:1,total:1,items:[user]}};
+   return base(call);
+  };
+ }});
+ const host=document.createElement('div');document.body.append(host);
+ const context:DesignContext={model:f.model,prefs:signal(loadPrefs({read:()=>null,write:()=>{}},[{name:'console',themes:[{name:'light'}]}])),setPrefs:()=>{},designs:[],submitToken:async()=>false};
+ try{
+  await act(async()=>{render(<App context={context}/>,host);await settle(f.t,f.db);});
+  await act(async()=>{f.t.push({t:'live',thread_id:'t',attempt_id:'owned-attempt',gap:false,deltas:[{offset:0,reasoning:false,text:'Only readable owned answer'}]});await flush(12);});
+  const handle=f.model.handle.peek()!;
+  const send=f.t.send.bind(f.t);f.t.send=frame=>{const sent=send(frame);if(frame.t==='call'&&frame.command==='history.window'&&(frame.args as {node_id?:string}).node_id==='held-answer')f.db.answered.add(frame.id);return sent;};
+  ended=true;await act(async()=>{f.t.push({t:'live_end',thread_id:'t'});await settle(f.t,f.db);await flush(12);});
+  expect(f.model.longReader.peek()!.acceptedView.peek().terminalPersistedAttempts).toHaveLength(1);
+  expect(host.textContent).toContain('Independent user body');
+  expect(host.querySelectorAll('[data-live-overlay]')).toHaveLength(1);
+  expect(handle.handoff.peek()).toHaveLength(1);
+  expect(handle.handoff.peek()[0]!.text).toBe('Only readable owned answer');
+  expect(f.t.calls('history.get')).toHaveLength(0);
+ }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
 });

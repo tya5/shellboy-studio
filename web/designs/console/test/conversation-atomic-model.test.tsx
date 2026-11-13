@@ -35,7 +35,7 @@ for(const mode of ['ready','ready-with-change','reentry','wrong-lifetime','parti
   for(let n=0;n<8;n++){await act(async()=>{for(const call of f.t.calls().filter(c=>!f.db.answered.has(c.id)&&c.command!=='history.window')){const out=f.db.answer(call);f.db.answered.add(call.id);if(out.ok)f.t.ok(call.id,out.result);else f.t.ownerError(call.id,out.code,out.message);}await flush();});sample();}
   const eligible=!['wrong-lifetime','empty-refs','nonterminal','wrong-thread'].includes(mode);
   const terminal=win.acceptedView.peek().terminalPersistedAttempts??[];
-  if(eligible){expect(terminal).toHaveLength(1);expect(host.textContent).not.toContain('Whole live answer');}
+  if(eligible){expect(terminal).toHaveLength(1);expect(host.textContent).toContain('Whole live answer');}
   else {expect(terminal).toHaveLength(0);expect(host.textContent).toContain('Whole live answer');}
   expect(host.textContent).toContain('Independent saved user');
   let reentered=false;
@@ -43,7 +43,20 @@ for(const mode of ['ready','ready-with-change','reentry','wrong-lifetime','parti
   if(mode==='reentry')await act(async()=>{win.layoutChanged();await flush();});
   await act(async()=>{await settle(f.t,f.db);await flush(24);});sample();stop();
   expect(frames.every(frame=>frame.independent)).toBe(true);
-  if(eligible){expect(host.textContent).not.toContain('Whole live answer');expect(win.acceptedView.peek().terminalPersistedAttempts).toHaveLength(1);}
+  if(eligible){
+   expect(win.acceptedView.peek().terminalPersistedAttempts).toHaveLength(1);
+   // A later canonical cut does not inherit the earlier lookup's association.
+   // Requalify only through existing explicit Retry admission, not an automatic refill.
+   await act(async()=>{const retry=f.model.handle.peek()!.retryHandoff();await settle(f.t,f.db);await retry;await flush(24);});sample();
+   if(['ready','ready-with-change'].includes(mode)){
+    expect(host.textContent).not.toContain('Whole live answer');expect(host.textContent).toContain('Qualified saved answer');
+    expect(f.model.handle.peek()!.handoff.peek()).toHaveLength(1);
+   }else {
+    expect(host.textContent).toContain('Whole live answer');
+    if(mode==='reentry')expect(win.acceptedView.peek().assistantOwnership??[]).toHaveLength(0);
+   }
+  }
+  expect(frames.every(frame=>frame.live||frame.saved)).toBe(true);
   if(mode==='reentry')expect(reentered).toBe(true);
   expect(f.t.calls('history.get')).toHaveLength(0);
  }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}

@@ -271,11 +271,17 @@ export function SavedWindowContent({ model, snapshot, live, liveBoundary, liveFa
   }) : [];
   const scope = handle?.handoffScope() ?? "";
   const current = model.longReader.value?.acceptedView.isCurrent(snapshot) ?? false;
-  const retained = retainUnretiredLiveFacts(snapshot, scope, current, [...handoffs, ...records]);
+  const ownership = current && handle ? (snapshot.assistantOwnership ?? []).filter(decision => {
+    const original = handle.handoff.value.find(record => record.key === decision.recordKey && record.attemptId === decision.attemptId);
+    return decision.scope === scope && !!original && handle.isDisplayOwnershipCurrent(original, snapshot.generation);
+  }) : [];
+  const canonicalOwners = new Set(ownership.filter(decision => decision.mode === 'canonical').map(decision => decision.recordKey));
+  const reservedItems = new Set(ownership.filter(decision => decision.mode === 'preview').flatMap(decision => decision.itemKeys));
+  const retained = [...handoffs.filter(fact => !('domain' in fact) || !canonicalOwners.has(fact.recordId)),
+    ...retainUnretiredLiveFacts(snapshot, scope, current, records)];
   const retainedHandoffs = retained.filter(fact => handoffs.includes(fact) || ("domain" in fact && (fact.namespace === "handoff" || fact.kind === "text")));
   const retainedRecords = retained.filter(fact => records.includes(fact) && !("domain" in fact && (fact.namespace === "handoff" || fact.kind === "text")));
-  const pendingNodes = new Set(current ? snapshot.attemptPresentations?.filter(fact => fact.scope === scope && fact.state === "pending" && !snapshot.terminalPersistedAttempts?.some(proof => proof.scope === scope && proof.attemptId === fact.attemptId) && retained.some(source => "domain" in source && source.attemptId === fact.attemptId && (source.turnId === fact.turnId || (source.namespace === "handoff" && source.turnId === undefined))) && !snapshot.retiredAttempts?.some(retired => retired.scope === scope && retired.revision === snapshot.revision && retired.attemptId === fact.attemptId && retired.turnId === fact.turnId)).flatMap(fact => fact.nodeIds) : []);
-  const saved = mapped.projection.items.filter(item => !item.source.nodeId || !pendingNodes.has(item.source.nodeId)).map(item => item.source);
+  const saved = mapped.projection.items.filter(item => !reservedItems.has(item.key)).map(item => item.source);
   // This is the captured history cut, not an ordinal assigned to a live record.
   const cut = liveBoundary === undefined ? -1 : saved.findIndex(source => {
     const node = snapshot.rows.find(node => node.node_id === source.nodeId);
@@ -288,7 +294,7 @@ export function SavedWindowContent({ model, snapshot, live, liveBoundary, liveFa
   // Rejection is an unavailable Work cut, never a successful empty publication.
   const projection = workScopeRejected ? projectSavedItems(ordered) : projectSavedItems([...ordered,...scopedWork]);
   // Live text without item-kind proof cannot unlock or replace saved Conversation text.
-  return <OwnSendContent model={model} projection={projection} nodes={snapshot.rows} scope={model.ownMutationScope()} acceptedRef={snapshot} current={current} isCurrent={()=>model.longReader.peek()?.acceptedView.isCurrent(snapshot)??false} path={{tail:!snapshot.pending&&!snapshot.disposed&&(snapshot.total===0||snapshot.range?.last===snapshot.total-1),empty:snapshot.total===0,revision:snapshot.revision,lastNodeId:snapshot.rows.at(-1)?.node_id,lastOrdinal:snapshot.rows.at(-1)?.selection?.ordinal}} hiddenItemKeys={new Set(projection.items.filter(item=>pendingNodes.has(item.source.nodeId??"")&&item.source.kind!=="user").map(item=>item.key))} trailing={<>{workScopeRejected&&current?<div key="work-scope-rejected" role="status" data-work-scope-rejected="" data-state-source="client" data-state-value="scope-qualification-rejected">CLIENT: {model.t.value("work.textUnavailable")} (scope-qualification-rejected)</div>:null}{handle?.handoffOverflow.value ? <div class="caption muted" data-live-overflow="">{model.t.value("convo.handoffLimit")} <HandoffRetryControl model={model}/></div> : undefined}</>} />;
+  return <OwnSendContent model={model} projection={projection} nodes={snapshot.rows} scope={model.ownMutationScope()} acceptedRef={snapshot} current={current} isCurrent={()=>model.longReader.peek()?.acceptedView.isCurrent(snapshot)??false} path={{tail:!snapshot.pending&&!snapshot.disposed&&(snapshot.total===0||snapshot.range?.last===snapshot.total-1),empty:snapshot.total===0,revision:snapshot.revision,lastNodeId:snapshot.rows.at(-1)?.node_id,lastOrdinal:snapshot.rows.at(-1)?.selection?.ordinal}} hiddenItemKeys={reservedItems} trailing={<>{workScopeRejected&&current?<div key="work-scope-rejected" role="status" data-work-scope-rejected="" data-state-source="client" data-state-value="scope-qualification-rejected">CLIENT: {model.t.value("work.textUnavailable")} (scope-qualification-rejected)</div>:null}{handle?.handoffOverflow.value ? <div class="caption muted" data-live-overflow="">{model.t.value("convo.handoffLimit")} <HandoffRetryControl model={model}/></div> : undefined}</>} />;
 }
 
 const stepDuration = (s: Step, now: number): string | undefined => {

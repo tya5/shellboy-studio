@@ -1,5 +1,53 @@
 # Presentation Ownership: Own Submission And Assistant
 
+## Current Exact-Identity Ownership Amendment (2026-11-13)
+
+This adopted policy supersedes the historical terminal-live-off rule below for
+an already held readable original preview. Persistence receipts remain bounded
+facts, not complete body proof. They no longer discard those original bytes.
+No old discarded preview is revived on upgrade.
+
+The existing Store resolver captures the original held object, epoch/lifetime,
+owner/read qualification and current Window accepted capability/reference BEFORE
+its bounded status read. Only complete conflict-free same Thread/attempt with
+nonblank turn and 1..64 public response refs may issue a display association.
+Output ref ordinal/kind are provider output coordinates, not path ordinal/node
+kind. Duplicate node refs are allowed; contradictory or foreign claims are not.
+
+The same current FINAL scoped CASE projection supplies exact ordinary text item
+keys. Complete nonempty whole-attempt membership chooses canonical. Known complete
+item membership with partial/empty text chooses the existing preview and reserves
+ONLY those exact ordinary keys, never a whole node or Work/user sibling. Missing,
+unsupported, unavailable or ambiguous membership retains independent saved text
+and live preview; equal bodies confer no relationship or universal exclusivity.
+
+One Window accepted transaction publishes receipts plus that display decision;
+the original existing held slot owns its candidate before synchronous successor
+notification. Both live and saved membership consume that ONE decision in the
+same render, with original-object and exact successor validation. Reentry, any
+other accepted generation/revision, scope/owner/path loss, new delta, retry epoch,
+ABA or close revokes it. No old capability attaches to a later cut merely because
+node IDs/revision strings match. Unknown relation may honestly expose both rows.
+
+Bounds remain8 held records/1MiB retained UTF8,8 read starts,8 lifetime receipts;
+no new controller, history/body cache, cap, eviction, timer or extra lookup loop.
+A display decision at receipt capacity needs no ninth receipt but retains its
+original slot/bytes;8 readable owners therefore still deny admission9. A cap9
+positive fixture seeds receipts with8 EMPTY previews, not released readable text.
+No body/time/equality deduplication, JSX label rule or guessed success is allowed.
+
+Tests cover original corrected public-contract REDs, equal-text independent IDs,
+held body, exact partial reservation, Work siblings, original object/epoch/ABA,
+current successor synchronous cuts, reentry, wrong scope/owner/ref and unchanged
+slot/UTF8 bounds. Synthetic tests do not establish the reported incident cause or
+actual installed-owner/user acceptance. No deployment/install is authorized.
+
+## Historical Investigation (Pre-Amendment)
+
+All terminal-live-off statements and earlier test outcomes below describe the
+released pre-amendment policy/evidence, not the current rule just adopted.
+
+
 USER reports concurrent Writing and final content in trial acc4d3c. The observed
 screen has not been assigned to an origin; own ACK publication is one independently
 verified source defect, not proof of USER same-cause or assistant resolution.

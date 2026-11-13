@@ -42,7 +42,7 @@ it("notification reentry stops old release and never retires another attempt/tur
   expect(w.acceptHandoff(record, proof.scope, () => { releases++; })).toBe(false);
   expect(releases).toBe(0); expect(w.acceptedView.peek().retiredAttempts!.every(item => item.turnId === "turn" && item.attemptId === "attempt")).toBe(true); w.dispose();
 });
-it("actual terminal persistence -> original O capture -> same Window saved snapshot -> synchronous end is one observed transition", async () => {
+it("actual terminal persistence -> original O capture -> same Window saved snapshot -> retains readable original in one observed transition", async () => {
   const t = new FakeTransport(), db = new FakeOwnerDb(), ticks: (() => void)[] = []; let id = 0;
   const data = new ShellboyData({ transport: t, newId: () => `joined-${++id}`, schedule: fn => ticks.push(fn) });
   const base = db.answer.bind(db);
@@ -65,11 +65,12 @@ it("actual terminal persistence -> original O capture -> same Window saved snaps
   });
   let ends = 0;
   const transfer = () => h.transferHandoff("attempt", (record, release) => w.acceptHandoff(record, h.handoffScope(), reason => {
-    expect(reason).toBe("end"); ends++; release(reason);
+    expect(reason).toBe("return"); ends++; release(reason);
   }));
-  expect(transfer()).toBe(true);
+  expect(transfer()).toBe(false);
   expect(trace).toEqual([{ rows: ["tool", "answer"], retired: ["attempt"], overlay: "whole live block" }]);
-  expect(h.handoff.peek()).toHaveLength(0);
+  expect(h.handoff.peek()).toHaveLength(1);
+  expect(h.handoff.peek()[0]!.text).toBe("whole live block");
   expect(w.acceptedView.peek().terminalPersistedAttempts![0]!.scope).toBe(h.handoffScope());
   expect(w.acceptedView.peek().retiredAttempts ?? []).toEqual([]);
   expect(transfer()).toBe(false); expect(ends).toBe(1); expect(trace).toHaveLength(1);

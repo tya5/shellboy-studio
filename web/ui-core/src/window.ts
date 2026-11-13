@@ -1,3 +1,5 @@
+import { assistantOwnership, type AssistantOwnership } from './assistant-ownership';
+import type { DisplayObservation, DisplayTarget } from '../../data/src/handoff';
 import { terminalPresence, type TerminalPresence, type TerminalPresenceReason } from "./terminal-presence";
 import type { OwnedTerminalReadLease, TicketOutcome, TerminalReadTicketId, SelectedRequestId } from "../../data/src/terminal-read";
 import type { TerminalPersistedProof } from "../../data/src/handoff";
@@ -48,6 +50,7 @@ export interface AcceptedCoverage {
   readonly kind: "inside" | "below";
 }
 export interface WindowAcceptedSnapshot {
+  readonly assistantOwnership?: readonly AssistantOwnership[];
   readonly generation: number;
   readonly epoch: number;
   readonly disposed: boolean;
@@ -182,6 +185,7 @@ export class ConversationWindow {
   itemAt(i: number): HistoryItem | undefined {
     return this.buckets.get(Math.floor(i / WINDOW_NODES))?.items[i % WINDOW_NODES];
   }
+  private stopDisplayOwner?: () => void;
   bindTerminalHandle(handle: ThreadHandle): boolean {
     if (this.terminalBinding) return this.isTerminalHandleCurrent(handle);
     const ref = this.acceptedView.peek();
@@ -190,7 +194,58 @@ export class ConversationWindow {
     if (!token || !handle.isReadQualificationCurrent(token) || scope !== handle.handoffScope()
       || !this.acceptedView.isCurrent(ref)) return false;
     this.terminalBinding = { handle, token, scope };
+    this.stopDisplayOwner = handle.bindDisplayOwner(() => this.captureAssistantDisplay(handle));
     return true;
+  }
+  private captureAssistantDisplay(handle: ThreadHandle): DisplayTarget | undefined {
+    const expected = this.acceptedView.peek(), cap = this.acceptedView.currentCapability;
+    if (this.disposed || !this.acceptedView.isCurrent(expected) || expected.pending || expected.revision === undefined
+      || this.terminalBinding?.handle !== handle || handle.handoffScope() !== this.terminalBinding.scope) return;
+    const scope = handle.handoffScope();
+    const bound = this.terminalBinding;
+    const token = handle.isReadQualificationCurrent(bound.token) ? bound.token : handle.captureReadQualification();
+    if (!token || !handle.isReadQualificationCurrent(token)) return;
+    const qualified = () => !this.disposed && this.terminalBinding?.handle === handle
+      && handle.isReadQualificationCurrent(token) && handle.handoffScope() === scope && this.acceptedView.currentCapability === cap;
+    let consumed = false;
+    return { publish: (observations: readonly DisplayObservation[]) => {
+      if (consumed || observations.length > 8 || !qualified() || !this.acceptedView.isCurrent(expected)
+        || observations.some(item => !item.lease.current() || !handle.handoff.peek().includes(item.lease.original))) return false;
+      consumed = true;
+      const decisions = observations.flatMap(item => {
+        if (!item.association || item.association.scope !== scope || item.association.attemptId !== item.lease.original.attemptId) return [];
+        const result = assistantOwnership(item.association, item.lease.original.key, expected.rows, expected.revision!);
+        return result ? [result] : [];
+      });
+      const receipts = [...(this.terminalCapability === cap ? this.terminalPersistedAttempts : [])];
+      for (const item of observations) if (item.receipt && item.receipt.scope === scope
+        && item.receipt.attemptId === item.lease.original.attemptId && !receipts.some(receipt => receipt.attemptId === item.receipt!.attemptId)) {
+        if (receipts.length >= 8) return false;
+        receipts.push(item.receipt);
+      }
+      const generation = this.acceptedGeneration + 1;
+      const presence = receipts.flatMap(receipt => { const result = terminalPresence(receipt, expected.rows); return result ? [result] : []; });
+      const staged = this.acceptedView.stage({ ...expected, generation, assistantOwnership: decisions,
+        terminalPersistedAttempts: receipts, terminalPresence: presence }, cap);
+      if (!qualified() || !this.acceptedView.isCurrent(expected) || observations.some(item => !item.lease.current() || !handle.handoff.peek().includes(item.lease.original))) return false;
+      // Install only in the original held slots before the one synchronous successor publication.
+      const undo = observations.filter(item => decisions.some(decision => decision.recordKey === item.lease.original.key && decision.attemptId === item.lease.original.attemptId)).map(item => item.lease.stage(generation, () => {
+        const ref = this.acceptedView.peek();
+        return qualified() && this.acceptedView.isCurrent(ref) && ref.generation === generation;
+      }));
+      const oldReceipts = this.terminalPersistedAttempts, oldCap = this.terminalCapability, oldPresence = this.terminalPresence;
+      this.terminalPersistedAttempts = receipts; this.terminalCapability = cap; this.terminalPresence = presence;
+      this.acceptedGeneration = generation;
+      if (!this.acceptedView.commit(staged)) {
+        undo.forEach(cancel => cancel());
+        this.terminalPersistedAttempts = oldReceipts; this.terminalCapability = oldCap; this.terminalPresence = oldPresence;
+        return false;
+      }
+      const committed = this.acceptedView.peek();
+      if (!qualified() || !this.acceptedView.isCurrent(committed) || committed.generation !== generation) { undo.forEach(cancel => cancel()); return false; }
+      this.version.value++;
+      return true;
+    } };
   }
   isTerminalHandleCurrent(handle: ThreadHandle): boolean {
     const binding = this.terminalBinding;
@@ -435,7 +490,7 @@ export class ConversationWindow {
       if (committed.generation !== generation || !this.acceptedView.isCurrent(committed) || cap !== this.acceptedView.currentCapability) return false;
       this.version.value++;
       if (!this.acceptedView.isCurrent(committed) || cap !== this.acceptedView.currentCapability) return false;
-      release("end"); return true;
+      release(record.text ? "return" : "end"); return true;
     }
     if (record.readyAttempt) {
       const proof = record.readyAttempt;
@@ -733,6 +788,7 @@ export class ConversationWindow {
 
   /** Leaving the view or the Thread: nothing more is read. */
   dispose(): void {
+    this.stopDisplayOwner?.(); this.stopDisplayOwner = undefined;
     for (const target of [...this.terminalTargets.values()]) this.cancelTerminalRead(target.lease.ticket.id);
     this.terminalPreparedRequests.clear();
     this.terminalBinding = undefined;

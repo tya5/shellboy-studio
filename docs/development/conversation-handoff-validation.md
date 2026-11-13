@@ -1,5 +1,12 @@
 # Conversation Handoff Candidate: Evidence And Boundaries
 
+Current policy amendment: see presentation-ownership.md, Current Exact-Identity
+Ownership Amendment (2026-11-13). Historical S2 reservation greens below cover
+older narrow producer/proof states; they are not a universal no-duplicate claim
+for released026 or permission to restore whole-node pending masks. New ownership
+uses complete current scoped FINAL ordinary item identities and one atomic choice.
+
+
 Task base is exact f53bb16e4f1dbca2c944ff431bc59839c6fbb224. Dedicated
 studio-f53-live-handoff-s5 branch/worktree; no no-auth or ef140dac merge/cherry-pick.
 S7 private diagnostic 74f0e08 (parent ef140dac) supplied scenario provenance only:

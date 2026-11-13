@@ -28,7 +28,7 @@ async function rig(windowCap = true) {
     }
     return original(call);
   };
-  const live = () => { t.push({ t: "live", thread_id: "a", attempt_id: "attempt", gap: false, deltas: [{ offset: 0, reasoning: false, text: "whole live block" }] }); frames.splice(0).forEach(f => f()); };
+  const live = () => { t.push({ t: "live", thread_id: "a", attempt_id: "attempt", gap: false, deltas: [{ offset: 0, reasoning: false, text: "" }] }); frames.splice(0).forEach(f => f()); };
   const end = () => t.push({ t: "live_end", thread_id: "a" });
   return { t, db, data, h, state, live, end, pump: () => settle(t, db) };
 }

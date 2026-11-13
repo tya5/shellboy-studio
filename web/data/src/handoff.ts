@@ -12,6 +12,25 @@ export interface TerminalPersistedProof {
 }
 export interface AttemptReadyProof { readonly scope: string; readonly attemptId: string; readonly turnId: string; readonly revision: string | number; readonly total: number; readonly refs: readonly { readonly nodeId: string }[]; readonly nodes: readonly HistoryItem[] }
 
+export interface DisplayAssociation {
+  readonly scope: string;
+  readonly attemptId: string;
+  readonly turnId: string;
+  readonly refs: readonly { readonly nodeId: string; readonly ordinal: number; readonly kind: string }[];
+}
+/** Borrowed original held slot; no second preview or receipt ledger. */
+export interface DisplayLease {
+  readonly original: HandoffRecord;
+  current(): boolean;
+  stage(generation: number, current: () => boolean): () => void;
+}
+export interface DisplayObservation {
+  readonly lease: DisplayLease;
+  readonly association?: DisplayAssociation;
+  readonly receipt?: TerminalPersistedProof;
+}
+export interface DisplayTarget { publish(observations: readonly DisplayObservation[]): boolean }
+
 /** ADR-C1: UTF-8 retained text accounting, not a JavaScript heap guarantee. */
 export const MAX_HANDOFF_RECORDS = 8;
 export const MAX_HANDOFF_BYTES = 1024 * 1024;
@@ -30,7 +49,7 @@ export interface HandoffRecord {
   readonly readyAttempt?: AttemptReadyProof;
   readonly terminalPersisted?: TerminalPersistedProof;
 }
-interface Held { attemptCapture?: { original: HandoffRecord; staged: HandoffRecord; proof: AttemptReadyProof | TerminalPersistedProof; epoch: number; lifetime: number }; admitted: number; transferring?: boolean; attemptId: string; source: LiveText; stop: () => void; record: HandoffRecord }
+interface Held { display?: { generation: number; current: () => boolean }; attemptCapture?: { original: HandoffRecord; staged: HandoffRecord; proof: AttemptReadyProof | TerminalPersistedProof; epoch: number; lifetime: number }; admitted: number; transferring?: boolean; attemptId: string; source: LiveText; stop: () => void; record: HandoffRecord }
 
 /** One ledger per watched Thread. No queue, spill or timer. Hints cannot refill read budget. */
 export class Handoff {
@@ -67,8 +86,9 @@ export class Handoff {
   get retainedBytes(): number { return this.held.reduce((n, h) => n + bytes(h.record.text), 0); }
   get isEnding(): boolean { return this.held.some(h => h.record.status === 'confirming'); }
   takeRead(): boolean { if (!this.reads) return false; this.reads--; return true; }
-  reconcile(): void { this.reads = MAX_HANDOFF_READS; this.epochValue++; }
-  invalidate(): void { this.epochValue++; }
+  clearDisplay(): void { for (const held of this.held) held.display = undefined; }
+  reconcile(): void { this.clearDisplay(); this.reads = MAX_HANDOFF_READS; this.epochValue++; }
+  invalidate(): void { this.clearDisplay(); this.epochValue++; }
 
   apply(frame: LiveFrame): void {
     let h = this.held.find(h => h.attemptId === frame.attempt_id);
@@ -104,6 +124,22 @@ export class Handoff {
     }
     h.admitted += incoming;
     h.source.apply(frame);
+  }
+  captureDisplay(original: HandoffRecord): DisplayLease | undefined {
+    const held = this.held.find(item => item.record === original);
+    if (!held || !original.text) return;
+    const epoch = this.epochValue, lifetime = this.lifetimeValue;
+    const current = () => this.held.includes(held) && held.record === original && epoch === this.epochValue && lifetime === this.lifetimeValue;
+    return Object.freeze({ original, current, stage: (generation: number, valid: () => boolean) => {
+      if (!current()) return () => {};
+      const candidate = { generation, current: () => current() && valid() };
+      held.display = candidate;
+      return () => { if (held.display === candidate) held.display = undefined; };
+    } });
+  }
+  isDisplayCurrent(original: HandoffRecord, generation: number): boolean {
+    const held = this.held.find(item => item.record === original);
+    return !!held?.display && held.display.generation === generation && held.display.current();
   }
   finish(): void {
     const h = this.held.find(h => h.attemptId === this.active);
@@ -225,6 +261,7 @@ export class Handoff {
     const h = this.held.find(h => h.attemptId === id); if (!h) return; h.record = fn(h.record); this.publish();
   }
   private publish(): void {
+    for (const held of this.held) if (held.display && !held.display.current()) held.display = undefined;
     this.publicationDirty = true;
     if (this.publishing) return;
     this.publishing = true;
