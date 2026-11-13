@@ -1,4 +1,4 @@
-import { readThreadSettings, type OutputLimitReadback } from "./resources";
+import { readThreadSettings, type OutputLimitReadback, type ThreadSettings } from "./resources";
 import {localSendAdmission} from "./local-send-admission";
 import type { OwnSendTailObservation,OwnSendReservation } from "./own-send-region";
 import type { OwnSendDecision } from "./own-send-presentation";
@@ -31,6 +31,16 @@ import { analyticsSection, formatRoute, settingsSection, START_ROUTE, type Route
 import { statusOfShell, type StatusKey } from "./status";
 import { StableMonitorOrder, countByStatus, threadTree, type StatusCounts, type ThreadRow } from "./threads";
 import { contextFacts, recoveryFacts, usageFacts, type ContextFacts, type RecoveryFacts, type UsageFacts } from "./usage";
+
+interface ModelPickerSession {
+  readonly route: Route;
+  readonly owner: ShellboyData["owner"]["value"];
+  readonly handle: ThreadHandle;
+  readonly observation: NonNullable<ReturnType<ThreadHandle["captureDetail"]>>;
+  readonly settings: ThreadSettings;
+  readonly initial: { effort: string; agents: string; autoCompactAt: string; maxTokens: string };
+  save?: object;
+}
 
 export type ConnectionView = "connected" | "connecting" | "ownerDown" | "authNeeded";
 
@@ -115,54 +125,86 @@ export class AppModel {
   readonly modelPicker = signal<{ open: boolean; thread: string; connection: string; model: string; effort: string; agents: string; autoCompactAt: string; maxTokens: string; maxTokensState: OutputLimitReadback; clearMaxTokens: boolean; models: string[]; loading: boolean; saving: boolean; error?: string | undefined }>({ open: false, thread: "", connection: "", model: "", effort: "", agents: "", autoCompactAt: "", maxTokens: "", maxTokensState: { kind: "unset" }, clearMaxTokens: false, models: [], loading: false, saving: false });
   private modelListCancel = new Cancel();
   private modelListSeq = 0;
-  private initialModelEffort = "";
+  private readonly pickerSession = signal<ModelPickerSession | undefined>(undefined);
   readonly threadSettings = computed(() => { const details = this.details.value; return details ? readThreadSettings(details) : undefined; });
-  readonly effectiveThreadSettings = computed(() => ({ autoCompactAt: this.threadSettings.value?.effectiveAutoCompactAt, maxTokens: this.threadSettings.value?.effectiveMaxTokens }));
-  private initialThreadSettings = { agents: "", autoCompactAt: "", maxTokens: "" };
+  readonly effectiveThreadSettings = computed(() => {
+    const settings = this.pickerSession.value?.settings;
+    return { autoCompactAt: settings?.effectiveAutoCompactAt, maxTokens: settings?.effectiveMaxTokens };
+  });
 
+  private pickerCurrent(session: ModelPickerSession): boolean {
+    const picker = this.modelPicker.peek();
+    return this.pickerSession.peek() === session && picker.open && picker.thread === session.handle.threadId
+      && this.route.peek() === session.route && session.route.view === "conversation"
+      && this.selectedId.peek() === session.handle.threadId && this.handle.peek() === session.handle
+      && this.data.owner.peek() === session.owner && this.data.connection.peek() === "open"
+      && session.observation.isCurrent();
+  }
   openModelPicker(): void {
-    const d = this.details.peek();
-    if (!d) return;
+    this.closeModelPicker();
+    const route = this.route.peek();
+    const handle = this.handle.peek();
+    const owner = this.data.owner.peek();
+    const observation = handle?.captureDetail();
+    if (route.view !== "conversation" || !handle || !observation || owner.state !== "connected"
+      || this.selectedId.peek() !== handle.threadId || observation.value.thread_id !== handle.threadId) return;
+    const d = observation.value;
     const settings = readThreadSettings(d);
-    this.initialModelEffort = settings.effort ?? "";
-    this.initialThreadSettings = { agents: settings.agentsPath ?? "", autoCompactAt: settings.autoCompactAt === undefined ? "" : String(settings.autoCompactAt), maxTokens: settings.maxTokens === undefined ? "" : String(settings.maxTokens) };
-    this.modelPicker.value = { open: true, thread: d.thread_id, connection: d.connection, model: d.model, effort: typeof d.effort === "string" ? d.effort : "", ...this.initialThreadSettings, maxTokensState: settings.maxTokensState, clearMaxTokens: false, models: [], loading: false, saving: false };
+    const initial = { effort: settings.effort ?? "", agents: settings.agentsPath ?? "", autoCompactAt: settings.autoCompactAt === undefined ? "" : String(settings.autoCompactAt), maxTokens: settings.maxTokensState.kind === "value" ? String(settings.maxTokensState.value) : "" };
+    const session: ModelPickerSession = { route, handle, owner, observation, settings, initial };
+    batch(() => {
+      this.pickerSession.value = session;
+      this.modelPicker.value = { open: true, thread: d.thread_id, connection: d.connection, model: d.model, ...initial, maxTokensState: settings.maxTokensState, clearMaxTokens: false, models: [], loading: false, saving: false };
+    });
     if (this.data.capabilities.peek().includes(CAPABILITY_CONFIG)) this.config.ensure();
     this.chooseModelConnection(d.connection);
   }
   editThreadOutputLimit(value: string): void {
+    const session = this.pickerSession.peek();
+    if (!session || !this.pickerCurrent(session) || this.modelPicker.peek().saving) return;
     this.modelPicker.value = { ...this.modelPicker.peek(), maxTokens: value, clearMaxTokens: value === "" };
   }
   clearThreadOutputLimit(): void { this.editThreadOutputLimit(""); }
   closeModelPicker(): void {
     this.modelListCancel.cancel();
     this.modelListSeq++;
-    this.modelPicker.value = { ...this.modelPicker.peek(), open: false };
+    batch(() => {
+      this.pickerSession.value = undefined;
+      this.modelPicker.value = { ...this.modelPicker.peek(), open: false };
+    });
   }
   chooseModelConnection(connection: string): void {
+    const session = this.pickerSession.peek();
+    if (!session || !this.pickerCurrent(session)) return;
     this.modelListCancel.cancel();
     const cancel = this.modelListCancel = new Cancel();
     const seq = ++this.modelListSeq;
     const p = this.modelPicker.peek();
     this.modelPicker.value = { ...p, connection, models: [], loading: true, error: undefined };
     void this.ops.modelList({ thread_id: p.thread, connection }, { cancel }).then(out => {
-      if (cancel.cancelled || seq !== this.modelListSeq) return;
+      if (cancel.cancelled || seq !== this.modelListSeq || !this.pickerCurrent(session)) return;
       const now = this.modelPicker.peek();
       this.modelPicker.value = out.ok ? { ...now, loading: false, models: [...new Set(out.value.models)].sort() } : { ...now, loading: false, error: out.error.message };
     });
   }
   async saveThreadModel(): Promise<void> {
+    const session = this.pickerSession.peek();
     const p = this.modelPicker.peek();
-    if (!this.data.capabilities.peek().includes("thread.settings") || p.saving || this.selectedId.peek() !== p.thread || !p.model.trim() || !p.connection.trim()) return;
+    if (!session || !this.pickerCurrent(session) || !this.data.capabilities.peek().includes("thread.settings")
+      || p.saving || !p.model.trim() || !p.connection.trim()) return;
+    const save = session.save = {};
+    const current = () => this.pickerCurrent(session) && session.save === save;
+    const initial = session.initial;
     this.modelPicker.value = { ...p, saving: true, error: undefined };
-    const out = await this.ops.setThreadModel(p.thread, { model: p.model.trim(), connection: p.connection, ...(p.effort !== this.initialModelEffort ? { effort: p.effort } : {}), ...(p.agents !== this.initialThreadSettings.agents ? { agents: p.agents } : {}), ...(p.autoCompactAt !== this.initialThreadSettings.autoCompactAt ? { auto_compact_at: p.autoCompactAt } : {}), ...(p.clearMaxTokens || p.maxTokens !== this.initialThreadSettings.maxTokens ? { max_tokens: p.maxTokens } : {}) });
-    const current = this.modelPicker.peek();
+    const out = await this.ops.setThreadModel(p.thread, { model: p.model.trim(), connection: p.connection, ...(p.effort !== initial.effort ? { effort: p.effort } : {}), ...(p.agents !== initial.agents ? { agents: p.agents } : {}), ...(p.autoCompactAt !== initial.autoCompactAt ? { auto_compact_at: p.autoCompactAt } : {}), ...(p.clearMaxTokens || p.maxTokens !== initial.maxTokens ? { max_tokens: p.maxTokens } : {}) });
+    // The mutation may already be accepted. Retiring a draft only revokes its UI authority.
+    if (!current()) return;
     if (!out.ok) {
-      if (current.thread === p.thread && current.open) this.modelPicker.value = { ...current, saving: false, error: out.error.message };
+      this.modelPicker.value = { ...this.modelPicker.peek(), saving: false, error: out.error.message };
       return;
     }
-    if (this.selectedId.peek() === p.thread) await this.handle.peek()?.refresh();
-    if (this.modelPicker.peek().thread === p.thread) this.closeModelPicker();
+    await session.handle.refresh();
+    if (current()) this.closeModelPicker();
   }
   readonly data: ShellboyData;
   readonly ops: Operations;
@@ -397,6 +439,14 @@ export class AppModel {
     this.disposers.push(effect(() => this.syncOpenThread()));
     this.disposers.push(effect(() => this.syncWindow()));
     this.disposers.push(effect(() => {
+      const session = this.pickerSession.value;
+      this.route.value; this.handle.value; this.data.owner.value; this.data.connection.value;
+      if (session) {
+        session.handle.detail.value;
+        if (!this.pickerCurrent(session)) this.closeModelPicker();
+      }
+    }));
+    this.disposers.push(effect(() => {
       this.route.value; this.handle.value; this.data.owner.value;
       if (this.acceptedOwnMessages.peek().length && !this.pendingOwnRetryCurrent?.()) this.acceptedOwnMessages.value = [];
       if (this.pendingOwnMessage.peek() && !this.pendingOwnRetryCurrent?.()) {
@@ -547,6 +597,7 @@ export class AppModel {
   }
 
   dispose(): void {
+    this.closeModelPicker();
     this.senderTitles.close();
     this.branchCompare.leave();
     this.branches.leave();

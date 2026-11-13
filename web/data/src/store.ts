@@ -91,7 +91,14 @@ export type HandoffRetryState =
   | { readonly phase: "failed"; readonly reason: "lookup-failed"; readonly canRetry: true }
   | { readonly phase: "unavailable"; readonly reason: "unresolved" | "budget-exhausted"; readonly canRetry: true }
   | { readonly phase: "unavailable"; readonly reason: "closed" | "paused" | "owner-unavailable" | "receipt_capacity"; readonly canRetry: false };
+/** One borrowed detail observation, qualified by its successful read's owner epoch. */
+export interface ThreadDetailObservation {
+  readonly value: ThreadDetails;
+  isCurrent(): boolean;
+}
+
 export interface ThreadHandle extends Handle {
+  captureDetail(): ThreadDetailObservation | undefined;
   bindDisplayOwner(capture: () => DisplayTarget | undefined): () => void;
   isDisplayOwnershipCurrent(record: HandoffRecord, generation: number): boolean;
   requestTerminalRead(qualification: ThreadReadQualification, receipt: TerminalPersistedProof, request: SelectedCanonicalRequest): OwnedTerminalReadLease | TicketOutcome;
@@ -144,6 +151,7 @@ class ThreadEntry {
   displayOwner?: { capture: () => DisplayTarget | undefined };
   refs = 0;
   closed = false;
+  detailOwnerEpoch = -1;
   detail = signal<Resource<ThreadDetails>>({ value: undefined, loading: false, stale: false, error: undefined });
   work = signal<Resource<Page<WorkItem>>>({ value: undefined, loading: false, stale: false, error: undefined });
   workRefs = 0;
@@ -390,6 +398,14 @@ export class ShellboyData {
           return { ...fact, state: !record || record.status === "failed" ? "failed" as const : fact.state };
         });
       }),
+      captureDetail: () => {
+        const epoch = this.readQualificationEpoch;
+        const cancel = e.cancel;
+        const valid = () => readable() && epoch === this.readQualificationEpoch && cancel === e.cancel
+          && e.detailOwnerEpoch === epoch && !e.detail.peek().stale && !e.detail.peek().error;
+        const value = e.detail.peek().value;
+        return value && valid() ? { value, isCurrent: valid } : undefined;
+      },
       captureReadQualification: () => {
         qualification = undefined;
         if (!readable()) return undefined;
@@ -688,14 +704,17 @@ export class ShellboyData {
   }
 
   private async readDetail(entry: ThreadEntry, onSent: () => void): Promise<void> {
+    const epoch = this.readQualificationEpoch;
+    const cancel = entry.cancel;
     entry.detail.value = { ...entry.detail.value, loading: true };
-    const out = await this.operations.threadGet(entry.id, { onSent, cancel: entry.cancel });
-    if (entry.closed) return;
+    const out = await this.operations.threadGet(entry.id, { onSent, cancel });
+    if (entry.closed || epoch !== this.readQualificationEpoch || cancel !== entry.cancel || cancel.cancelled) return;
     const cur = entry.detail.value;
     if (!out.ok && out.error.kind === "cancelled") {
       entry.detail.value = { ...cur, loading: false };
       return;
     }
+    if (out.ok) entry.detailOwnerEpoch = epoch;
     entry.detail.value = out.ok
       ? { value: out.value, loading: false, stale: false, error: undefined }
       : { ...cur, loading: false, stale: cur.value !== undefined, error: out.error };

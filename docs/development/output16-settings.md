@@ -93,3 +93,23 @@ omitted from unrelated saves; entering a replacement forwards the exact input
 string. Explicit clearing (including the accessible clear action) sends `''`,
 even when the original value could not be displayed. Effective unknown values
 are not replaced with guessed defaults.
+
+### Picker Session And Accepted Mutation Authority
+
+One current edit session borrows a successful detail observation, its handle,
+owner-generation qualification and route identity. Its typed readback snapshot
+owns both initial drafts and effective placeholders. Opening/reopening creates a
+new session; close, route/handle replacement, owner/connection change or lost
+read authority retires it. Returning to the same Thread/route/owner text does not
+restore an old session. The data layer qualifies detail observations by their
+successful read's epoch and refuses stale-owner detail acceptance; this separate
+observation does not capture or overwrite the Conversation Window's read token.
+
+Model-list reads and each save completion use the same structural session. A
+save also has one current per-session attempt token. Errors, saving-state writes,
+refresh admission and completion/close require both tokens to remain current.
+Refresh uses the captured handle, never whichever handle happens to be selected
+later. A refresh already started may finish as an ordinary saved-fact read but
+cannot change a new draft or its captured effective placeholder. Retiring UI
+authority does not cancel, undo, or claim failure of a mutation already accepted
+by Core. No rollback, retry, timer, polling, ledger or new controller is added.
