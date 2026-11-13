@@ -66,7 +66,8 @@ export function collectExecutionSteps(items: readonly HistoryItem[], shells: Rea
         command: e.command_excerpt ?? fact?.command_excerpt ?? "",
         ...(typeof e.description === "string" && e.description !== "" ? { description: e.description } : {}),
         commandTruncated: e.command_truncated === true || fact?.command_excerpt_truncated === true,
-        status: statusOfShell(state, fact?.exit_code),
+        // Without the shell.list fact the exit code is unknown, which is not a failure.
+        status: state === "exited" && fact?.exit_code === undefined ? undefined : statusOfShell(state, fact?.exit_code),
         state,
         exitCode: fact?.exit_code,
         startedAt,

@@ -358,7 +358,7 @@ export function StepView({ model, step, display, openPolicy = CANONICAL_CASES.to
     if(next!==open)model.toolStepChoices.value=new Map(model.toolStepChoices.peek()).set(step.executionId,next);
   }}>
     {step.description ? <div class="mono muted caption">{step.command}</div> : null}
-    <Output model={model} id={step.executionId} command={step.command ?? ""} complete={step.status === "completed" || step.status === "failed"}/>
+    <Output model={model} id={step.executionId} command={step.command ?? ""} complete={step.status === "completed" || step.status === "failed" || step.state === "exited"}/>
   </WorkElementRow>;
 }
 
@@ -442,7 +442,7 @@ function Details({ model }: { model: AppModel }) {
               ...(step.cwd ? [{ key: t("details.directory"), value: step.cwd, mono: true }] : []),
             ]}
           />
-          <Output model={model} id={step.executionId} command={step.command ?? ""} complete={step.status === "completed" || step.status === "failed"} boxed />
+          <Output model={model} id={step.executionId} command={step.command ?? ""} complete={step.status === "completed" || step.status === "failed" || step.state === "exited"} boxed />
       {usageRows.length > 0 ? (
         <>
           <h3>{t("usage.title")}</h3>
