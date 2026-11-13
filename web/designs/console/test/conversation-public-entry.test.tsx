@@ -9,9 +9,21 @@ import {Handoff} from '../../../data/src/handoff';
 import type {AppModel} from '../../../ui-core/src/model';
 import {SavedWindowContent as ActualSavedWindowContent} from '../screens/Conversation';
 import { act } from 'preact/test-utils';
-import { expect, it } from 'vitest';
+import { afterAll, expect, it, vi } from 'vitest';
 import { fixtureModel } from '../../../ui-core/test/fixture';
 import { normalizeConversationFacts, normalizeLiveWorkFacts, projectSavedItems } from '../../../ui-core/src/conversation-items';
+
+// Control the real lazy renderer boundary: cold text and warm Markdown are different DOM contracts.
+const rendererGate=vi.hoisted(()=>{
+ let release!:()=>void;
+ const ready=new Promise<void>(resolve=>{release=resolve;});
+ return {ready,release};
+});
+vi.mock('../system/components/Message/markdown',async importOriginal=>{
+ await rendererGate.ready;
+ return importOriginal();
+});
+afterAll(()=>rendererGate.release());
 
 type IssuedProps=Parameters<typeof ActualSavedWindowContent>[0];
 // The real reader owns and publishes this ref; a fixture object is never current.
@@ -149,7 +161,8 @@ it('restores Work group toggle with real parent containment and retains same-mem
   }finally{render(null,host);host.remove();fixture.model.dispose();fixture.data.stop();}
 });
 
-it.each(['', 'Partial authoritative item'])('never replaces authorized item text %j with a cached aggregate body',async text=>{
+it.each([['cold',''],['cold','Partial authoritative item'],['warm',''],['warm','Partial authoritative item']])('never replaces authorized item text in %s renderer: %j with a cached aggregate body',async (phase,text)=>{
+  if(phase==='warm'){rendererGate.release();await act(async()=>{await import('../system/components/Message/markdown');await vi.dynamicImportSettled();});}
   const fixture=await fixtureModel(),host=document.createElement('div');document.body.append(host);
   try{
     const SavedWindowContent=IssuedWindowContent;
@@ -158,7 +171,17 @@ it.each(['', 'Partial authoritative item'])('never replaces authorized item text
     await act(async()=>render(<SavedWindowContent model={fixture.model} snapshot={{rows,range:{first:0,last:0},total:1,revision:1,generation:1,epoch:1,disposed:false,pending:false}}/>,host));
     expect(host.textContent).not.toContain('Forbidden');expect(host.querySelector('.more')).toBeNull();
     expect(host.querySelector('[data-item-partial]')).not.toBeNull();
-    expect(host.querySelector('.msg .md')?.textContent??'').toBe(text);
+    const body=host.querySelector('.msg .md')!;
+    if(phase==='cold'){
+      expect(body.classList.contains('plain')).toBe(true);
+      expect(host.querySelector('.msg .md')?.textContent??'').toBe(text);
+    }else{
+      expect(body.classList.contains('plain')).toBe(false);
+      // Markdown's paragraph separator is renderer structure, not an extra source character.
+      expect(body.innerHTML).toBe(text?'<p>Partial authoritative item</p>\n':'');
+      expect(body.querySelectorAll('p')).toHaveLength(text?1:0);
+      expect(body.querySelector('p')?.textContent??'').toBe(text);
+    }
     const link=host.querySelector('.msg-acts a')!;expect(link.getAttribute('href')).toContain('item-authority');
   }finally{render(null,host);host.remove();fixture.model.dispose();fixture.data.stop();}
 });
