@@ -83,6 +83,25 @@ describe("Operations", () => {
     expect(t.calls("history.list")).toHaveLength(0);
   });
 
+  it("history.window accepts only the typed available or response-budget deferred states", async () => {
+    const cases = [
+      { node_id: "n1", selection: { ordinal: 0 }, items: [{ kind: "text", item_identity: "n1/body", text: "body", text_complete: true }] },
+      { node_id: "n1", selection: { ordinal: 0 }, items: null, items_unavailable_reason: "response_budget" },
+    ];
+    for (const node of cases) {
+      const { t, ops } = setup();
+      const pending = ops.historyWindow({ thread_id: "a", before: 0, after: 0 });
+      t.ok(t.calls()[0]!.id, { thread_id: "a", revision: 1, total: 1, items: [node] });
+      expect((await pending).ok).toBe(true);
+    }
+    for (const reason of ["pruned", "source_budget", "opaque"] as const) {
+      const { t, ops } = setup();
+      const pending = ops.historyWindow({ thread_id: "a", before: 0, after: 0 });
+      t.ok(t.calls()[0]!.id, { thread_id: "a", revision: 1, total: 1, items: [{ node_id: "n1", selection: { ordinal: 0 }, items: null, items_unavailable_reason: reason }] });
+      expect((await pending).ok).toBe(false);
+    }
+  });
+
   it("owner errors carry code, message and hint", async () => {
     const { t, ops } = setup();
     const p = ops.threadGet("zzz");

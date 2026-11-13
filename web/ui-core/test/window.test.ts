@@ -370,3 +370,21 @@ describe("body availability downgrades", () => {
     r.w.dispose(); r.data.stop();
   });
 });
+
+describe("authority negatives for body availability", () => {
+  it("does not preserve a body for explicit empty or non-response-budget authority", async () => {
+    const make = async (replacement: Record<string, unknown>) => {
+      let downgraded = false;
+      const r = await rig(95, { decorate: (i, item) => i === 94
+        ? (!downgraded ? { ...item, items: [{ kind: "text", item_identity: "n0-94/body", text: "qualified-final-body", text_complete: true }] } : { ...item, ...replacement }) : item });
+      await r.settle(); downgraded = true; r.w.changed(); await r.settle(); return r;
+    };
+    const empty = await make({ items: [] });
+    expect(empty.w.itemAt(94)?.items).toEqual([]);
+    empty.w.dispose(); empty.data.stop();
+    const source = await make({ items: [{ kind: "unavailable", item_identity: "n0-94/body", reason: "source_budget" }] });
+    expect(source.w.itemAt(94)?.items?.[0]).toMatchObject({ kind: "unavailable", reason: "source_budget" });
+    expect(source.w.itemAt(94)?.items_unavailable_reason).toBeUndefined();
+    source.w.dispose(); source.data.stop();
+  });
+});

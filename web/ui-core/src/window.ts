@@ -87,7 +87,8 @@ const mergeHistoryItem = (previous: HistoryItem | undefined, incoming: HistoryIt
     && previous.selection?.ordinal === incoming.selection?.ordinal
     && incoming.items == null && incoming.items_unavailable_reason === "response_budget"
     && previous.items != null && previous.items.length > 0) {
-    return { ...previous, ...incoming, items: previous.items };
+    const { items_unavailable_reason: _downgrade, ...metadata } = incoming;
+    return { ...metadata, items: previous.items };
   }
   return incoming;
 };
