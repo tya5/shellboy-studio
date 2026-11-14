@@ -7,6 +7,7 @@ export interface ConversationItem {
   readonly classification?: import("../../../ui-core/src/conversation-items").CanonicalCase;
   key: string;
   source: ConversationItemSource;
+  readonly presentationContainer?: string;
 }
 export interface ConversationToolSummary {
   continuationBefore?: "unknown" | "closed";
@@ -51,21 +52,43 @@ export function ConversationItems({ items, toolSummaries = [], renderItem, rende
     const content = (item: ConversationItem, work: boolean) => <div class="conversation-row" key={`item:${item.key}`} data-item-key={item.key} data-key={item.key} data-node={item.source.nodeId} data-work-item-key={work ? item.key : undefined}>{renderItem(item)}</div>;
     const insertion=localRegion?.placement.kind==="qualified"?localRegion.placement.insertion:undefined;
     const same=(entry:NonNullable<Props["sequence"]>[number])=>insertion?.kind===entry.kind&&(entry.kind==="conversation"?insertion.kind==="conversation"&&insertion.itemKey===entry.itemKey:insertion.kind==="work"&&insertion.groupKey===entry.groupKey);
-    const canonical=sequence.map(entry => {
+    const rendered: { entry: NonNullable<Props["sequence"]>[number]; view: ComponentChildren }[] = [];
+    for (let index = 0; index < sequence.length; index++) {
+      const entry = sequence[index]!;
       if (entry.kind === "conversation") {
         const item = byKey.get(entry.itemKey);
-        return item && !isItemAbsent?.(item) ? <Fragment key={`conversation:${item.key}`}>{renderBefore?.(item)}{content(item, false)}</Fragment> : null;
+        if (!item || isItemAbsent?.(item)) continue;
+        const container = (item as ConversationItem & { presentationContainer?: string }).presentationContainer;
+        if (!container) {
+          rendered.push({ entry, view: <Fragment key={`conversation:${item.key}`}>{renderBefore?.(item)}{content(item, false)}</Fragment> });
+          continue;
+        }
+        const children: ComponentChildren[] = [];
+        let end = index;
+        while (end < sequence.length) {
+          const childEntry = sequence[end]!;
+          if (childEntry.kind !== "conversation") break;
+          const child = byKey.get(childEntry.itemKey);
+          if (!child || (child as ConversationItem & { presentationContainer?: string }).presentationContainer !== container) break;
+          if (!isItemAbsent?.(child)) children.push(<div class="conversation-answer-child" key={`answer-child:${child.key}`} data-item-key={child.key}>{renderItem(child)}</div>);
+          end++;
+        }
+        rendered.push({ entry, view: <div class="conversation-row answer-container" key={`answer:${container}`} data-answer-container={container}>{children}</div> });
+        index = end - 1;
+        continue;
       }
       const group = groups.get(entry.groupKey);
-      if (!group) return null;
-      return <div key={`work:${group.key}`} class="conversation-row steps">{renderWorkGroup(group, group.memberKeys.map(key => {
+      if (!group) continue;
+      rendered.push({ entry, view: <div key={`work:${group.key}`} class="conversation-row steps">{renderWorkGroup(group, group.memberKeys.map(key => {
         const item = byKey.get(key); return item ? content(item, true) : null;
-      }))}</div>;
-    });
+      }))}</div> });
+    }
+    const canonical = rendered.map(item => item.view);
+    const canonicalEntries = rendered.map(item => item.entry);
     const region:ComponentChildren[]=[];
     if(!localRegion?.slots?.length&&insertion?.kind==="beginning")region.push(localRegion?.content);
     canonical.forEach((row,index)=>{if(Array.isArray(row))region.push(...row);else region.push(row);
-      const entry=sequence[index]!;
+      const entry=canonicalEntries[index]!;
       for(const slot of localRegion?.slots??[])if(slot.insertion.kind===entry.kind&&(entry.kind==="conversation"?slot.insertion.kind==="conversation"&&slot.insertion.itemKey===entry.itemKey:slot.insertion.kind==="work"&&slot.insertion.groupKey===entry.groupKey))region.push(slot.content);
       if(!localRegion?.slots?.length&&same(entry))region.push(localRegion?.content);
     });
