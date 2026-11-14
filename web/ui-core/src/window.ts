@@ -120,6 +120,11 @@ class Heights {
   }
 }
 
+function revisionIsCurrentOrNewer(candidate: string | number, current: string | number | undefined): boolean {
+  if (current === undefined || typeof candidate !== typeof current) return false;
+  return typeof candidate === "number" ? candidate >= current : candidate === current;
+}
+
 export class ConversationWindow {
   private readonly reader: WindowReader;
   private readonly setTimer: (fn: () => void, ms: number) => () => void;
@@ -579,7 +584,7 @@ export class ConversationWindow {
       const capability = this.acceptedView.currentCapability;
       const expected = this.acceptedView.peek();
       if (this.disposed || !this.acceptedView.isCurrent(expected) || proof.scope !== scope
-        || proof.attemptId !== record.attemptId || !proof.turnId || proof.revision !== this.revision
+        || proof.attemptId !== record.attemptId || !proof.turnId || !revisionIsCurrentOrNewer(proof.revision, this.revision)
         || !proof.refs.length || proof.refs.length > 64 || !proof.nodes.length) return false;
       if (!Number.isSafeInteger(proof.total) || proof.total < this.total || proof.nodes.length > 200 || expected.pending) return false;
       const incoming = new Map<string, HistoryItem>();
@@ -624,8 +629,25 @@ export class ConversationWindow {
       const retired = { scope, attemptId: record.attemptId, turnId: proof.turnId, revision: proof.revision,
         nodeIds: proof.refs.map(ref => ref.nodeId) };
       const next = [...previous.filter(item => item.scope !== scope || item.attemptId !== record.attemptId), retired];
+      const refs = proof.refs.map(ref => {
+        const row = rows.find(item => item.node_id === ref.nodeId);
+        return row?.selection?.ordinal === undefined || row.kind !== "assistant_response" ? undefined
+          : { nodeId: ref.nodeId, ordinal: row.selection.ordinal, kind: row.kind };
+      });
+      if (!refs.length || refs.some(ref => !ref)) return false;
+      const association: DisplayAssociation = { scope, attemptId: record.attemptId, turnId: proof.turnId,
+        presentationContainer: record.presentationContainer,
+        refs: refs as { nodeId: string; ordinal: number; kind: string }[] };
+      const ownership = assistantOwnership(association, record.key, rows, proof.revision);
+      if (!ownership || ownership.mode !== "canonical") return false;
       const generation = this.nextAcceptedGeneration();
-      const staged = this.acceptedView.stage({ ...expected, generation, rows, range: { first, last }, total: proof.total, retiredAttempts: next }, capability);
+      const canonicalProjection = projectHistoryWindowItems({ revision: proof.revision, nodes: rows, keyScope: [scope] }).projection;
+      const displayPlan = createConversationDisplayPlan({ generation, revision: proof.revision, capability, rows,
+        canonicalProjection, projection: canonicalProjection, assistantFacts: [ownership],
+        userDecision: { cohortVersion: expected.displayPlan?.cohortVersion ?? { accepted: [] } }, scope,
+        retiredAttempts: next });
+      const staged = this.acceptedView.stage({ ...expected, generation, rows, revision: proof.revision, pending: false,
+        range: { first, last }, total: proof.total, assistantOwnership: [ownership], displayPlan, retiredAttempts: next }, capability);
       if (this.disposed || !this.acceptedView.isCurrent(expected) || capability !== this.acceptedView.currentCapability) return false;
       // Publish retirement and saved rows together, before any subscriber can run.
       const oldBuckets = this.buckets, oldTotal = this.total;
