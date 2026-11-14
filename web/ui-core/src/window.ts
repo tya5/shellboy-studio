@@ -120,9 +120,18 @@ class Heights {
   }
 }
 
+type RevisionRelation = "same" | "newer" | "older" | "opaque-change";
+
+/** Numeric revisions are ordered; string revisions are opaque generations. */
+function revisionRelation(candidate: string | number, current: string | number | undefined): RevisionRelation {
+  if (current === undefined) return "newer";
+  if (typeof candidate === "number" && typeof current === "number") return candidate === current ? "same" : candidate > current ? "newer" : "older";
+  return candidate === current ? "same" : "opaque-change";
+}
+
 function revisionIsCurrentOrNewer(candidate: string | number, current: string | number | undefined): boolean {
-  if (current === undefined || typeof candidate !== typeof current) return false;
-  return typeof candidate === "number" && typeof current === "number" ? candidate >= current : candidate === current;
+  const relation = revisionRelation(candidate, current);
+  return relation === "same" || relation === "newer";
 }
 
 export class ConversationWindow {
@@ -1041,7 +1050,7 @@ export class ConversationWindow {
       else if (out.error.kind !== "cancelled") this.fail(out.error.message);
       return;
     }
-    if (this.revision !== undefined && out.value.revision < this.revision) {
+    if (revisionRelation(out.value.revision, this.revision) === "older") {
       this.drainTailHint();
       this.pump();
       return;
@@ -1088,7 +1097,7 @@ export class ConversationWindow {
       return;
     }
     this.tailFailed = false;
-    if (this.revision !== undefined && out.value.revision < this.revision) {
+    if (revisionRelation(out.value.revision, this.revision) !== "same") {
       this.tailAgain = true;
       void this.verify();
       return;
