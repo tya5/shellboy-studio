@@ -7,7 +7,7 @@ import type { TerminalPersistedProof } from "../../data/src/handoff";
 import type { AttemptPresentation, ThreadHandle, ThreadReadQualification } from "../../data/src/store";
 import type { HistoryBody } from "../../data/src/protocol";
 import { AcceptedView, type AcceptedCapability } from "./accepted-view";
-import { createConversationDisplayPlan, displaySemanticKey, type ConversationDisplayPlan, type OwnUserDecision } from './conversation-display-plan';
+import { createConversationDisplayPlan, displaySemanticKey, validateQualifiedAssistantFacts, type ConversationDisplayPlan, type OwnUserDecision } from './conversation-display-plan';
 import type { HandoffRecord } from "../../data/src/handoff";
 // The long-thread reader's model (docs/design/long-threads.md): positional windows of a Thread's
 // path held in bounded buckets, a measured scroll space over one loaded run, and adjacent reads.
@@ -890,7 +890,7 @@ export class ConversationWindow {
     if (this.disposed || !this.acceptedView.isCurrent(ref) || ref.revision === undefined) return false;
     if (ref.displayPlan?.capability === capability && ref.displayPlan?.acceptedGeneration === ref.generation) {
       const candidateKey = [...userDecision.cohortVersion.accepted.map(row => `${row.operationId}:${row.phase}:${row.messageId ?? ''}`), userDecision.cohortVersion.pending ? `pending:${userDecision.cohortVersion.pending.operationId}:${userDecision.cohortVersion.pending.phase}` : 'pending:none'].join('|');
-      if (candidateKey === ref.displayPlan.cohortKey && displaySemanticKey(projectHistoryWindowItems({ revision: ref.revision!, nodes: ref.rows }).projection, projection, ref.assistantOwnership ?? [], ref.retiredAttempts ?? []) === ref.displayPlan.semanticKey) return true;
+      if (candidateKey === ref.displayPlan.cohortKey && displaySemanticKey(projectHistoryWindowItems({ revision: ref.revision!, nodes: ref.rows, keyScope: [scope] }).projection, projection, validateQualifiedAssistantFacts({ rows: ref.rows, canonicalProjection: projectHistoryWindowItems({ revision: ref.revision!, nodes: ref.rows, keyScope: [scope] }).projection, facts: ref.assistantOwnership ?? [], revision: ref.revision!, scope }), ref.retiredAttempts ?? []) === ref.displayPlan.semanticKey) return true;
     }
     const generation = this.nextAcceptedGeneration();
     const plan = createConversationDisplayPlan({ generation, revision: ref.revision, capability, rows: ref.rows, canonicalProjection: projectHistoryWindowItems({ revision: ref.revision, nodes: ref.rows, keyScope: [scope] }).projection, projection,

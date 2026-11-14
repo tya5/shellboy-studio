@@ -55,7 +55,7 @@ export function validateQualifiedAssistantFacts(input: {
 export function displaySemanticKey(canonicalProjection: SavedItemProjection, displayProjection: SavedItemProjection,
   facts: QualifiedAssistantFacts, retiredAttempts: readonly { readonly scope: string; readonly attemptId: string; readonly revision: string | number }[]): string {
   // Version the complete authoritative projections and proofs, including body/read state and path order.
-  return JSON.stringify({ canonical: canonicalProjection.items, display: displayProjection.items, facts, retiredAttempts });
+  return JSON.stringify({ canonical: { items: canonicalProjection.items, sequence: canonicalProjection.sequence, workGroups: canonicalProjection.workGroups, partitionUnknownKeys: canonicalProjection.partitionUnknownKeys }, display: { items: displayProjection.items, sequence: displayProjection.sequence, workGroups: displayProjection.workGroups, partitionUnknownKeys: displayProjection.partitionUnknownKeys }, facts, retiredAttempts });
 }
 
 export interface AcceptedPublicationInput {
