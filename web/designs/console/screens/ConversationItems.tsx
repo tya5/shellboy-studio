@@ -1,4 +1,4 @@
-import type {OwnSendInsertion,OwnSendPlacement} from "../../../ui-core/src/own-send-region";
+import type {OwnSendPlacement} from "../../../ui-core/src/own-send-region";
 import { Fragment, type ComponentChildren } from 'preact';
 
 /** Internal normalized presentation input, not a Core wire DTO or a body proof. */
@@ -38,7 +38,7 @@ interface Props {
   renderItem: (item: ConversationItem) => ComponentChildren;
   renderBefore?: (item: ConversationItem) => ComponentChildren;
   trailing?: ComponentChildren;
-  localRegion?:{placement:OwnSendPlacement;content:ComponentChildren;slots?:readonly {insertion:OwnSendInsertion;content:ComponentChildren}[];unqualified?:ComponentChildren};
+  localRegion?:{placement:OwnSendPlacement;content:ComponentChildren;slots?:readonly {insertion:OwnSendInsertion;position:number;content:ComponentChildren}[];unqualified?:ComponentChildren};
   isItemAbsent?: (item: ConversationItem) => boolean;
   isItemHidden?: (item: ConversationItem) => boolean;
   renderHeading?: (summary: ConversationToolSummary) => ComponentChildren;
@@ -53,9 +53,7 @@ export function ConversationItems({ items, toolSummaries = [], renderItem, rende
     const byKey = new Map(items.map(item => [item.key, item]));
     const groups = new Map(normalizedGroups.map(group => [group.key, group]));
     const content = (item: ConversationItem, work: boolean) => <div class={`conversation-row${!work && item.presentationContainer ? " conversation-answer-child" : ""}`} key={`item:${item.key}`} data-item-key={item.key} data-key={item.key} data-node={item.source.nodeId} data-work-item-key={work ? item.key : undefined}>{renderItem(item)}</div>;
-    const insertion=localRegion?.placement.kind==="qualified"?localRegion.placement.insertion:undefined;
-    const same=(entry:NonNullable<Props["sequence"]>[number])=>insertion?.kind===entry.kind&&(entry.kind==="conversation"?insertion.kind==="conversation"&&insertion.itemKey===entry.itemKey:insertion.kind==="work"&&insertion.groupKey===entry.groupKey);
-    const rendered: { entry: NonNullable<Props["sequence"]>[number]; view: ComponentChildren }[] = [];
+    const rendered: { entry: NonNullable<Props["sequence"]>[number]; view: ComponentChildren; first:number; last:number }[] = [];
     for (let index = 0; index < normalizedSequence.length; index++) {
       const entry = normalizedSequence[index]!;
       if (entry.kind === "conversation") {
@@ -63,7 +61,7 @@ export function ConversationItems({ items, toolSummaries = [], renderItem, rende
         if (!item || isItemAbsent?.(item)) continue;
         const container = (item as ConversationItem & { presentationContainer?: string }).presentationContainer;
         if (!container) {
-          rendered.push({ entry, view: <Fragment key={`conversation:${item.key}`}>{renderBefore?.(item)}{content(item, false)}</Fragment> });
+          rendered.push({ entry, view: <Fragment key={`conversation:${item.key}`}>{renderBefore?.(item)}{content(item, false)}</Fragment>, first:index, last:index });
           continue;
         }
         const children: ComponentChildren[] = [];
@@ -74,12 +72,11 @@ export function ConversationItems({ items, toolSummaries = [], renderItem, rende
           const child = byKey.get(childEntry.itemKey);
           if (!child || (child as ConversationItem & { presentationContainer?: string }).presentationContainer !== container) break;
           if (!isItemAbsent?.(child)) {
-            const childSlots = (localRegion?.slots ?? []).filter(slot => slot.insertion.kind === "conversation" && slot.insertion.itemKey === childEntry.itemKey);
-            children.push(<Fragment key={`answer-child:${child.key}`}>{renderBefore?.(child)}{content(child, false)}{childSlots.map(slot => slot.content)}{!localRegion?.slots?.length && insertion?.kind === "conversation" && insertion.itemKey === childEntry.itemKey ? localRegion?.content : null}</Fragment>);
+            children.push(<Fragment key={`answer-child:${child.key}`}>{renderBefore?.(child)}{content(child, false)}</Fragment>);
           }
           end++;
         }
-        rendered.push({ entry, view: <div class="conversation-row answer-container" key={`answer:${container}`} data-answer-container={container}>{children}</div> });
+        rendered.push({ entry, view: <div class="conversation-row answer-container" key={`answer:${container}`} data-answer-container={container}>{children}</div>, first:index, last:end-1 });
         index = end - 1;
         continue;
       }
@@ -87,40 +84,20 @@ export function ConversationItems({ items, toolSummaries = [], renderItem, rende
       if (!group) continue;
       rendered.push({ entry, view: <div key={`work:${group.key}`} class="conversation-row steps">{normalizedRenderWorkGroup(group, group.memberKeys.map(key => {
         const item = byKey.get(key); return item ? content(item, true) : null;
-      }))}</div> });
+      }))}</div>, first:index, last:index });
     }
-    const canonical = rendered.map(item => item.view);
-    const canonicalEntries = rendered.map(item => item.entry);
     const region:ComponentChildren[]=[];
     const slots = localRegion?.slots ?? [];
-    const renderInsertion = (kind: NonNullable<OwnSendInsertion>["kind"], key?: string) => {
-      for (const slot of slots) {
-        if (slot.insertion.kind !== kind) continue;
-        if (kind === "conversation" && slot.insertion.itemKey !== key) continue;
-        if (kind === "work" && slot.insertion.groupKey !== key) continue;
-        region.push(slot.content);
-      }
-    };
     if (localRegion?.placement.kind === "unqualified") region.push(localRegion.unqualified);
-    else if (insertion?.kind === "beginning") {
-      const beginningSlots = slots.filter(slot => slot.insertion.kind === "beginning");
-      if (beginningSlots.length) renderInsertion("beginning");
-      else region.push(localRegion?.content);
-    }
-    canonical.forEach((row,index)=>{if(Array.isArray(row))region.push(...row);else region.push(row);
-      const entry=canonicalEntries[index]!;
-      const grouped = entry.kind === "conversation" && byKey.get(entry.itemKey)?.presentationContainer !== undefined;
-      if (!grouped) {
-        renderInsertion(entry.kind, entry.kind === "conversation" ? entry.itemKey : entry.groupKey);
-        if(!localRegion?.slots?.length&&same(entry))region.push(localRegion?.content);
-      }
+    const ownedSlots=[...slots].sort((a,b)=>a.position-b.position);
+    let slotIndex=0;
+    rendered.forEach(row=>{
+      while(slotIndex<ownedSlots.length&&ownedSlots[slotIndex]!.position<row.first)region.push(ownedSlots[slotIndex++]!.content);
+      region.push(row.view);
+      while(slotIndex<ownedSlots.length&&ownedSlots[slotIndex]!.position<=row.last)region.push(ownedSlots[slotIndex++]!.content);
     });
-    if (insertion?.kind === "conversation" || insertion?.kind === "work") {
-      if (!slots.length && insertion.kind === "conversation") {
-        const target = canonicalEntries.find(entry => entry.kind === "conversation" && entry.itemKey === insertion.itemKey);
-        if (!target) region.push(localRegion?.content);
-      }
-    }
+    while(slotIndex<ownedSlots.length)region.push(ownedSlots[slotIndex++]!.content);
+    if(localRegion?.placement.kind === "qualified" && !ownedSlots.length)region.push(localRegion.content);
     return <div class="conversation-items">{region}{trailing}</div>;
   }
   const rows: ComponentChildren[] = [];

@@ -49,7 +49,7 @@ export interface OwnSendDecision<Ref> extends OwnSendPresentation<Ref> {
   readonly cohort: readonly PendingOwnMessage[];
   readonly conflictIds: readonly string[];
   readonly placement:OwnSendPlacement;
-  readonly slots:readonly {readonly row:PendingOwnMessage;readonly insertion:OwnSendInsertion}[];
+  readonly slots:readonly {readonly row:PendingOwnMessage;readonly insertion:OwnSendInsertion;readonly position:number}[];
   readonly observation?:OwnSendTailObservation<Ref>;
 }
 

@@ -327,7 +327,8 @@ export async function fixtureModel(options: { realPending?: boolean; pending?: P
   const db = fixtureDb();
   answerInsights(db, options.usage);
   options.configure?.(db);
-  const data = new ShellboyData({ transport: t, newId: () => "op-1" });
+  let operationSequence = 0;
+  const data = new ShellboyData({ transport: t, newId: () => `op-${++operationSequence}` });
   const model = new AppModel({ data, ...(options.realPending ? {} : { pending: options.pending ?? noPending }), ...(options.replyWait ? { replyWait: options.replyWait } : {}), nowMs: () => NOW, offsetMinutes: () => 540 });
   if (options.route === "conversation" && options.threadId) model.applyRoute({ view: "conversation", threadId: options.threadId });
   else if (options.route) model.applyRoute({ view: options.route, ...(options.section && { section: options.section }) });
