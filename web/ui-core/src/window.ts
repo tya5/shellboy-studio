@@ -1034,6 +1034,11 @@ export class ConversationWindow {
       else if (out.error.kind !== "cancelled") this.fail(out.error.message);
       return;
     }
+    if (this.revision !== undefined && out.value.revision < this.revision) {
+      this.drainTailHint();
+      this.pump();
+      return;
+    }
     this.revision = out.value.revision;
     this.setTotal(out.value.total);
     // Verification is evidence, not navigation to an evicted tail island.
@@ -1076,6 +1081,11 @@ export class ConversationWindow {
       return;
     }
     this.tailFailed = false;
+    if (this.revision !== undefined && out.value.revision < this.revision) {
+      this.tailAgain = true;
+      void this.verify();
+      return;
+    }
     this.revision = out.value.revision;
     this.setTotal(out.value.total);
     if (known && !latest && this.following.peek() && !this.isLoaded(Math.max(0, this.total - WINDOW_NODES))) {
