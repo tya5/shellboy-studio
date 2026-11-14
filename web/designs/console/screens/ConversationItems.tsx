@@ -39,7 +39,7 @@ interface Props {
   renderItem: (item: ConversationItem) => ComponentChildren;
   renderBefore?: (item: ConversationItem) => ComponentChildren;
   trailing?: ComponentChildren;
-  localRegion?: { readonly kind: "qualified"; readonly slots: readonly {position:OwnSendSlotPosition;content:ComponentChildren}[] } | { readonly kind: "unqualified"; readonly content: ComponentChildren; readonly afterIndex?: number };
+  localRegion?: { readonly kind: "qualified"; readonly slots: readonly {position:OwnSendSlotPosition;content:ComponentChildren}[] } | { readonly kind: "unqualified"; readonly content: ComponentChildren; readonly afterIndex?: number; readonly beforeIndex?: number };
   isItemAbsent?: (item: ConversationItem) => boolean;
   isItemHidden?: (item: ConversationItem) => boolean;
   renderHeading?: (summary: ConversationToolSummary) => ComponentChildren;
@@ -122,10 +122,13 @@ export function ConversationItems({ items, toolSummaries = [], renderItem, rende
     const unqualified = localRegion?.kind === "unqualified" ? localRegion : undefined;
     const local = unqualified ? { view: unqualified.content, first: -1, last: -1 } : undefined;
     const afterIndex = unqualified?.afterIndex;
+    const beforeIndex = unqualified?.beforeIndex;
     const plan = local
-      ? afterIndex === undefined
-        ? [local, ...rendered]
-        : [...rendered.slice(0, afterIndex + 1), local, ...rendered.slice(afterIndex + 1)]
+      ? beforeIndex !== undefined
+        ? [...rendered.slice(0, beforeIndex), local, ...rendered.slice(beforeIndex)]
+        : afterIndex === undefined
+          ? [local, ...rendered]
+          : [...rendered.slice(0, afterIndex + 1), local, ...rendered.slice(afterIndex + 1)]
       : rendered;
     // Keep top-level rows as direct siblings. Nested arrays create implicit
     // unkeyed VNodes and can change an unchanged row's DOM parent on handoff.
