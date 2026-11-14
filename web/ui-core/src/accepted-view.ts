@@ -56,7 +56,7 @@ export class AcceptedView<T> {
   peek(): T { return this.value; }
   isCurrent(ref: T): boolean { return !this.ended && this.value === ref && this.epoch === this.acceptedEpoch; }
   get currentCapability(): AcceptedCapability { return this.capability; }
-  stage(value: T, capability: AcceptedCapability = this.capability): StagedView<T> {
+  private stage(value: T, capability: AcceptedCapability = this.capability): StagedView<T> {
     const handle = Object.freeze({}) as StagedView<T>;
     const slot = { handle, expected: this.value, epoch: this.epoch, capability, value: undefined as T | undefined };
     this.staged = slot;
@@ -69,7 +69,7 @@ export class AcceptedView<T> {
     return this.commit(staged);
   }
 
-  commit(handle: StagedView<T>): boolean {
+  private commit(handle: StagedView<T>): boolean {
     const slot = this.staged;
     if (!slot || slot.handle !== handle || slot.value === undefined || this.ended) return false;
     // Only private materialized fields are read between this check and the swap.
