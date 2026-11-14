@@ -8,6 +8,7 @@ export type PresentationContainerId = string & { readonly [presentationContainer
 export interface TerminalPersistedProof {
   readonly scope: string;
   readonly attemptId: string;
+  readonly recordKey?: string;
   readonly turnId?: string;
   readonly nodeIds: readonly string[];
   /** Immutable ownership transferred with the receipt; never recovered from the retired ledger. */

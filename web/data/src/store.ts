@@ -785,7 +785,7 @@ export class ShellboyData {
         const terminal = ['completed', 'failed', 'incomplete', 'cancelled'].includes(attempt.state);
         if (!terminal || !Array.isArray(refs) || !refs.length || refs.length > 64
           || refs.some(ref => !ref || typeof ref.node_id !== 'string' || !ref.node_id)) continue;
-        const proof = Object.freeze({ scope: this.handoffScope(entry), attemptId: record.attemptId,
+        const proof = Object.freeze({ scope: this.handoffScope(entry), attemptId: record.attemptId, recordKey: record.key,
           ...(typeof attempt.turn_id === 'string' ? { turnId: attempt.turn_id } : {}),
           nodeIds: Object.freeze(refs.map(ref => ref.node_id)),
           presentationContainer: record.presentationContainer,
@@ -820,7 +820,7 @@ export class ShellboyData {
         const persisted = attempt.response_nodes;
         if (!record.text && terminal && persisted.length > 0 && persisted.length <= 64
           && persisted.every(ref => ref && typeof ref.node_id === "string" && !!ref.node_id)) {
-          const proof = Object.freeze({ scope: this.handoffScope(entry), attemptId: record.attemptId,
+          const proof = Object.freeze({ scope: this.handoffScope(entry), attemptId: record.attemptId, recordKey: record.key,
             ...(typeof attempt.turn_id === "string" ? { turnId: attempt.turn_id } : {}),
             nodeIds: Object.freeze(persisted.map(ref => ref.node_id)),
             presentationContainer: record.presentationContainer,

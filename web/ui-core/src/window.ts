@@ -427,9 +427,9 @@ export class ConversationWindow {
                   ? { scope: target.receipt.scope, attemptId: target.receipt.attemptId, turnId: target.receipt.turnId,
                       presentationContainer: target.receipt.presentationContainer, refs }
                   : undefined;
-                if (!record || !association) { reason = "selection-gap"; }
+                if (!association || !target.receipt.recordKey) { reason = "selection-gap"; }
                 else {
-                  const decision = assistantOwnership(association, record.key, rows, value.revision);
+                  const decision = assistantOwnership(association, target.receipt.recordKey, rows, value.revision);
                   if (!decision || decision.mode !== "canonical") reason = "selection-gap";
                   else ownership = [...ownership.filter(item => item.attemptId !== decision.attemptId), decision];
                 }
@@ -548,7 +548,7 @@ export class ConversationWindow {
       if (this.disposed || !this.acceptedView.isCurrent(expected) || scope !== proof.scope || proof.attemptId !== record.attemptId
         || !["completed", "failed", "incomplete", "cancelled"].includes(proof.terminalState)
         || !proof.nodeIds.length || proof.nodeIds.length > 64 || proof.nodeIds.some(id => !id)
-        || !proof.presentationContainer || !proof.refs || proof.refs.length !== proof.nodeIds.length
+        || !proof.recordKey || !proof.presentationContainer || !proof.refs || proof.refs.length !== proof.nodeIds.length
         || proof.refs.some((ref, index) => ref.nodeId !== proof.nodeIds[index] || !Number.isSafeInteger(ref.ordinal) || ref.ordinal < 0 || !ref.kind)) return false;
       const before = this.terminalCapability === cap ? this.terminalPersistedAttempts : [];
       if (before.length >= 8 && !before.some(p => p.scope === scope && p.attemptId === proof.attemptId)) return false;
