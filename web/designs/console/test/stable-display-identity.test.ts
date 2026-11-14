@@ -106,6 +106,20 @@ it("renders one stable host for nonadjacent children while preserving intervenin
   } finally { render(null, host); host.remove(); }
 });
 
+it("does not host an unowned conversation inside an association span", async () => {
+  const { render, h } = await import("preact");
+  const { ConversationItems } = await import("../screens/ConversationItems");
+  const host = document.createElement("div");
+  const second: NormalizedSavedItem = { ...saved, nodeId: "node-human", itemIdentity: "node-human:/output/0/content/0", text: "human" };
+  const base = projectSavedItems([saved, second]);
+  const projection = withPresentationContainers(base, new Map([[base.items[0]!.key, "answer:a"]]));
+  try {
+    render(h(ConversationItems, { items: projection.items, sequence: base.items.map(item => ({ kind: "conversation" as const, itemKey: item.key })), renderItem: item => h("span", {}, item.source.kind === "text" ? item.source.text : "") }), host);
+    expect(host.querySelectorAll("[data-answer-container]")).toHaveLength(0);
+    expect([...host.querySelectorAll("[data-item-key]")].map(node => node.textContent)).toEqual(["saved", "human"]);
+  } finally { render(null, host); }
+});
+
 it("keeps crossing associations unqualified without reordering canonical data", async () => {
   const { render, h } = await import("preact");
   const { ConversationItems } = await import("../screens/ConversationItems");
@@ -118,7 +132,7 @@ it("keeps crossing associations unqualified without reordering canonical data", 
   try {
     render(h(ConversationItems, { items: projection.items, sequence: base.items.map(item => ({ kind: "conversation" as const, itemKey: item.key })), renderItem: item => h("span", {}, item.source.kind === "text" ? item.source.text : "") }), host);
     expect(host.querySelectorAll('[data-answer-container="answer:a"]')).toHaveLength(0);
-    expect(host.querySelectorAll('[data-answer-container="answer:b"]')).toHaveLength(1);
+    expect(host.querySelectorAll('[data-answer-container="answer:b"]')).toHaveLength(0);
     expect([...host.querySelectorAll("[data-item-key]")].map(node => node.textContent)).toEqual(["saved", "second", "third"]);
   } finally { render(null, host); host.remove(); }
 });

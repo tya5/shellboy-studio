@@ -63,16 +63,27 @@ export function ConversationItems({ items, toolSummaries = [], renderItem, rende
     };
     // A span may cross only work entries. Any conversation without this exact
     // association, including a missing/phantom item, makes the association unqualified.
-    const spans = new Map<number, { end: number; container: string }>();
-    const invalidContainers = new Set<string>();
+    const candidates = new Map<string, { start: number; end: number }>();
     for (let index = 0; index < normalizedSequence.length; index++) {
       const container = containerAt(index);
       if (!container) continue;
-      const positions = normalizedSequence.flatMap((_, position) => containerAt(position) === container ? [position] : []);
-      const end = positions.at(-1)!;
-      const valid = normalizedSequence.slice(index, end + 1).every((entry, offset) => entry.kind === "work" || containerAt(index + offset) === container);
+      const candidate = candidates.get(container);
+      candidates.set(container, { start: candidate?.start ?? index, end: index });
+    }
+    const invalidContainers = new Set<string>();
+    for (const [container, span] of candidates) {
+      const valid = normalizedSequence.slice(span.start, span.end + 1).every((entry, offset) => entry.kind === "work" || containerAt(span.start + offset) === container);
       if (!valid) invalidContainers.add(container);
-      else if (index === positions[0]) spans.set(index, { end, container });
+      for (const [other, otherSpan] of candidates) {
+        if (other !== container && span.start <= otherSpan.end && otherSpan.start <= span.end) {
+          // No association may absorb a child owned by an intersecting association.
+          invalidContainers.add(container); invalidContainers.add(other);
+        }
+      }
+    }
+    const spans = new Map<number, { end: number; container: string }>();
+    for (const [container, span] of candidates) {
+      if (!invalidContainers.has(container)) spans.set(span.start, { end: span.end, container });
     }
     const content = (item: ConversationItem, work: boolean, hosted = !work && !!item.presentationContainer) => <div class={`conversation-row${hosted ? " conversation-answer-child" : ""}`} key={`item:${item.key}`} data-item-key={item.key} data-key={item.key} data-node={item.source.nodeId} data-work-item-key={work ? item.key : undefined}>{renderItem(item)}</div>;
     const renderWork = (entry: Extract<NonNullable<Props["sequence"]>[number], { kind: "work" }>): ComponentChildren => {
