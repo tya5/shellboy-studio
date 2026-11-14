@@ -34,6 +34,8 @@ export interface TypedHistoryNode {
   readonly items_unavailable_reason?: "response_budget";
 }
 
+import type { HistoryItem } from "../../data/src/protocol";
+
 export interface TypedHistoryWindow {
   readonly thread_id: string;
   readonly revision: string | number;
@@ -68,6 +70,11 @@ export function typedHistoryWindow(fixture: TypedHandoffFixture, args: { node_id
     items: [{ kind: "text", item_identity: `${fixture.nodeId}:/output/0/content/0`, text: fixture.text, text_complete: true }],
   };
   return { thread_id: fixture.threadId, revision: fixture.revision, total: fixture.total, item_count: 1, items: [node] };
+}
+
+export function typedFullCoverageWindow(threadId: string, revision: string | number, total: number, items: readonly HistoryItem[]): TypedHistoryWindow {
+  if (items.length !== total || items.some((item, index) => item.node_id === undefined || item.selection?.ordinal !== index)) throw new Error("Incomplete typed full coverage");
+  return { thread_id: threadId, revision, total, item_count: items.length, items: items as unknown as readonly TypedHistoryNode[] };
 }
 
 export function validTypedHandoffRef(fixture: TypedHandoffFixture, attempt: TypedHandoffAttempt, window: TypedHistoryWindow): boolean {

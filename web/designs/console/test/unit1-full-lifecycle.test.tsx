@@ -10,7 +10,7 @@ import type {HistoryItem} from '../../../data/src/protocol';
 import type {DesignContext} from '../../../ui-core/src';
 import {loadPrefs} from '../../../ui-core/src/prefs';
 import {App} from '../screens/App';
-import {typedHandoffRegistry,validTypedHandoffRef,type TypedHistoryWindow} from '../../../ui-core/test/typed-handoff-fixture';
+import {typedHandoffRegistry,typedFullCoverageWindow,validTypedHandoffRef,type TypedHistoryWindow} from '../../../ui-core/test/typed-handoff-fixture';
 
 it('keeps one answer presentation through the complete real Conversation lifecycle',async()=>{
  let ended=false,revision: string|number=7; const trace: unknown[]=[];
@@ -33,7 +33,7 @@ it('keeps one answer presentation through the complete real Conversation lifecyc
     const ordinal=Number.isSafeInteger(args.ordinal)?args.ordinal as number:undefined;
     if(point!==undefined||ordinal!==undefined){const fixture=[first,second].find(item=>(point===undefined||item.nodeId===point)&&(ordinal===undefined||item.ordinal===ordinal));
       const proofWindow: TypedHistoryWindow | undefined = registry.history({node_id:point,ordinal,before:Number(args.before) || 0,after:Number(args.after) || 0});
-      const window: TypedHistoryWindow | undefined = registry.canonical ? registry.history({node_id:point,ordinal,before:199,after:199}) : proofWindow;
+      const window: TypedHistoryWindow | undefined = registry.canonical ? typedFullCoverageWindow('thread',registry.revision,nodes.length,nodes) : proofWindow;
       if(!fixture || !window || !proofWindow || !validTypedHandoffRef({...fixture,revision:registry.revision,total:registry.total},attempt,window)) throw new Error(`typed handoff rejection ${point}:${ordinal}`);
       const result=window;
       trace.push({stage:'transport',command:call.command,args:call.args,result:{revision:result.revision,total:result.total,item_count:result.item_count,items:result.items.map(item=>({node_id:item.node_id,ordinal:item.selection?.ordinal,body:Array.isArray(item.items)?item.items.map(value=>value.kind):null,unavailable:item.items_unavailable_reason}))}});return {ok:true,result};}
