@@ -115,8 +115,10 @@ export function ConversationItems({ items, toolSummaries = [], renderItem, rende
       const nodes = renderPosition(index, unsafe ? undefined : containerAt(index));
       if (nodes.length) rendered.push({ entry, view: <>{nodes}</>, first:index, last:index });
     }
-    const region:ComponentChildren[] = [...beforeFirstSlots];
-    for (const row of rendered) region.push(row.view);
+    const plan = localRegion?.placement.kind === "unqualified" && localRegion.unqualified
+      ? [{ view: localRegion.unqualified, first: -1, last: -1 }, ...rendered]
+      : rendered;
+    const region:ComponentChildren[] = [...beforeFirstSlots, ...plan.map(row => row.view)];
     return <div class="conversation-items">{region}{trailing}</div>;
   }
   const rows: ComponentChildren[] = [];
