@@ -322,6 +322,16 @@ export class ConversationWindow {
     if (id === undefined) { id = ++this.terminalIdentitySerial; this.terminalIdentity.set(value, id); }
     return id;
   }
+  private replaceTerminalTarget(target: { ref: WindowAcceptedSnapshot; cap: AcceptedCapability; handle: ThreadHandle; token: ThreadReadQualification; receipt: TerminalPersistedProof; requestId: SelectedRequestId; lease: OwnedTerminalReadLease; stop?: () => void }): void {
+    const ref = this.acceptedView.peek();
+    if (!this.acceptedView.isCurrent(ref) || ref === target.ref) return;
+    const request = Object.freeze({ id:  as SelectedRequestId, args: Object.freeze({ thread_id: target.handle.threadId, node_id: target.receipt.nodeIds[0], before: 99, after: 100, items: true }) });
+    const next = target.handle.replaceTerminalRead(target.token, target.receipt, request);
+    if (!("state" in next)) return;
+    target.stop?.(); target.stop = undefined; target.ref = ref; target.requestId = request.id; target.lease = next;
+    target.stop = next.state.subscribe(() => this.applyTerminalRead(next));
+  }
+
   private advanceTerminalTarget(target: { ref: WindowAcceptedSnapshot; receipt: TerminalPersistedProof }, ref: WindowAcceptedSnapshot): void {
     target.ref = ref;
     const prepared = this.terminalPreparedRequests.get(JSON.stringify([target.receipt.scope, target.receipt.attemptId]));
@@ -403,7 +413,9 @@ export class ConversationWindow {
     }
     const next = this.publishTerminalPresence(target.ref, target.cap, target.receipt, reason, out.phase === "queued" ? "pending" : out.phase === "reading" ? "reading" : "settled");
     if (!next || !target.handle.isReadQualificationCurrent(target.token)) return false;
-    this.advanceTerminalTarget(target, next); return true;
+    this.advanceTerminalTarget(target, next);
+    if (reason === "selection-gap" && out.phase === "settled" && out.result.ok && out.result.value.revision !== target.ref.revision) this.replaceTerminalTarget(target);
+    return true;
   }
 
   cancelTerminalRead(id: TerminalReadTicketId): void {
