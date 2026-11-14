@@ -651,12 +651,13 @@ export class ConversationWindow {
         range: { first, last }, total: proof.total, assistantOwnership: [ownership], displayPlan, retiredAttempts: next }, capability);
       if (this.disposed || !this.acceptedView.isCurrent(expected) || capability !== this.acceptedView.currentCapability) return false;
       // Publish retirement and saved rows together, before any subscriber can run.
-      const oldBuckets = this.buckets, oldTotal = this.total;
+      const oldBuckets = this.buckets, oldTotal = this.total, oldRevision = this.revision;
       this.buckets = stagedBuckets;
       this.total = proof.total;
+      this.revision = proof.revision;
       this.retiredAttempts = next;
       this.retiredCapability = capability;
-      if (!this.acceptedView.commit(staged)) { if (this.retiredAttempts === next) { this.retiredAttempts = previous; this.retiredCapability = previousCapability; this.buckets = oldBuckets; this.total = oldTotal; } return false; }
+      if (!this.acceptedView.commit(staged)) { if (this.retiredAttempts === next) { this.retiredAttempts = previous; this.retiredCapability = previousCapability; this.buckets = oldBuckets; this.total = oldTotal; this.revision = oldRevision; } return false; }
       const committed = this.acceptedView.peek();
       if (committed.generation !== generation || this.acceptedGeneration !== generation || capability !== this.acceptedView.currentCapability
         || !this.acceptedView.isCurrent(committed) || committed.retiredAttempts?.at(-1)?.attemptId !== record.attemptId) return false;
