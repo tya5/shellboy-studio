@@ -39,7 +39,7 @@ interface Props {
   renderItem: (item: ConversationItem) => ComponentChildren;
   renderBefore?: (item: ConversationItem) => ComponentChildren;
   trailing?: ComponentChildren;
-  localRegion?:{placement:OwnSendPlacement;slots?:readonly {position:OwnSendSlotPosition;content:ComponentChildren}[];unqualified?:ComponentChildren};
+  localRegion?: { readonly kind: "qualified"; readonly slots: readonly {position:OwnSendSlotPosition;content:ComponentChildren}[] } | { readonly kind: "unqualified"; readonly content: ComponentChildren };
   isItemAbsent?: (item: ConversationItem) => boolean;
   isItemHidden?: (item: ConversationItem) => boolean;
   renderHeading?: (summary: ConversationToolSummary) => ComponentChildren;
@@ -53,7 +53,7 @@ export function ConversationItems({ items, toolSummaries = [], renderItem, rende
   if (normalizedSequence) {
     const byKey = new Map(items.map(item => [item.key, item]));
     const groups = new Map(normalizedGroups.map(group => [group.key, group]));
-    const slots = localRegion?.slots ?? [];
+    const slots = localRegion?.kind === "qualified" ? localRegion.slots : [];
     const slotsAt = (position: number): ComponentChildren[] => slots.filter(slot => slot.position.kind === "after" && slot.position.index === position).map(slot => slot.content);
     const beforeFirstSlots = slots.filter(slot => slot.position.kind === "before-first").map(slot => slot.content);
     const containerAt = (position: number): string | undefined => {
@@ -119,10 +119,12 @@ export function ConversationItems({ items, toolSummaries = [], renderItem, rende
     // they are plan entries, not a discarded side effect of a missing anchor.
     const slotOnly = slots.filter(slot => slot.position.kind === "after" && slot.position.index >= normalizedSequence.length)
       .flatMap(slot => [slot.content]);
-    const plan = localRegion?.placement.kind === "unqualified" && localRegion.unqualified
-      ? [{ view: localRegion.unqualified, first: -1, last: -1 }, ...rendered]
+    const plan = localRegion?.kind === "unqualified"
+      ? [{ view: localRegion.content, first: -1, last: -1 }]
       : rendered;
-    const region:ComponentChildren[] = [...beforeFirstSlots, ...plan.map(row => row.view), ...slotOnly];
+    const region:ComponentChildren[] = localRegion?.kind === "unqualified"
+      ? plan.map(row => row.view)
+      : [...beforeFirstSlots, ...plan.map(row => row.view), ...slotOnly];
     return <div class="conversation-items">{region}{trailing}</div>;
   }
   const rows: ComponentChildren[] = [];
