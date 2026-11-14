@@ -26,9 +26,16 @@ export interface ConversationDisplayPlan {
   readonly capability: AcceptedCapability;
   readonly entries: readonly ConversationDisplayPlanEntry[];
   readonly cohortKey: string;
+  readonly semanticKey: string;
 }
 
 /** Constructed only by accepted-window publication, never by a renderer. */
+export function displaySemanticKey(projection: SavedItemProjection, facts: readonly AssistantOwnership[]): string {
+  const items = projection.items.map(item => { const source = item.source; return [item.key, source.kind, 'text' in source ? source.text : '', 'textComplete' in source ? String(source.textComplete) : ''].join(':'); });
+  const owners = facts.map(fact => [fact.scope, fact.attemptId, fact.turnId, fact.mode, fact.containerKey, fact.itemKeys.join(',')].join(':'));
+  return [...items, ...owners].join('|');
+}
+
 export function createConversationDisplayPlan(input: {
   readonly acceptedRef: WindowAcceptedSnapshot;
   readonly capability: AcceptedCapability;
@@ -49,6 +56,7 @@ export function createConversationDisplayPlan(input: {
     }
   }
   const generation = input.acceptedGeneration ?? input.acceptedRef.generation, revision = input.acceptedRef.revision;
+  const semanticKey = displaySemanticKey(input.projection, input.assistantFacts);
   const version = input.userDecision.cohortVersion;
   const cohortKey = [...version.accepted.map(row => `${row.operationId}:${row.phase}:${row.messageId ?? ''}`), version.pending ? `pending:${version.pending.operationId}:${version.pending.phase}` : 'pending:none'].join('|');
   const entries = input.projection.items.map(item => {
@@ -65,5 +73,5 @@ export function createConversationDisplayPlan(input: {
     const lifetime: DisplayLifetime = Object.freeze({ kind: retired ? 'revoked' : human && !owner ? 'canonical-human' : owner ? 'valid-owner' : 'retained', scope: input.scope, generation, revision });
     return Object.freeze({ item, ...(host ? { presentationContainer: host } : {}), body, lifetime });
   });
-  return Object.freeze({ acceptedGeneration: generation, revision, capability: input.capability, entries: Object.freeze(entries), cohortKey });
+  return Object.freeze({ acceptedGeneration: generation, revision, capability: input.capability, entries: Object.freeze(entries), cohortKey, semanticKey });
 }
