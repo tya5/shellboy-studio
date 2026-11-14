@@ -913,8 +913,11 @@ export class ConversationWindow {
       terminalPersistedAttempts: this.terminalCapability === capability ? this.terminalPersistedAttempts : [],
       coverage: this.summaryTransition?.targetCap === capability && !this.summaryTransition?.consumed ? this.summaryTransition?.coverage : undefined,
       retiredAttempts: (this.retiredCapability === capability ? this.retiredAttempts : []).filter(item => item.revision === this.revision),
-      displayPlan: this.acceptedView.peek().displayPlan && this.acceptedView.peek().displayPlan.capability === capability
-        ? advanceConversationDisplayPlan(this.acceptedView.peek().displayPlan, generation, capability) : undefined }, capability);
+      displayPlan: (() => {
+        const priorPlan = this.acceptedView.peek().displayPlan;
+        return priorPlan && priorPlan.capability === capability
+          ? advanceConversationDisplayPlan(priorPlan, generation, capability) : undefined;
+      })() }, capability);
     if (this.disposed || epoch !== this.epoch || generation !== this.acceptedGeneration) return;
     if (!this.acceptedView.commit(staged)) return;
     if (this.disposed || epoch !== this.epoch || generation !== this.acceptedGeneration) return;
