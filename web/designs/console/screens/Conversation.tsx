@@ -1,6 +1,6 @@
 import {hasVisibleTerminalText} from "../../../ui-core/src/terminal-presence";
 import {messageRelationship,senderHeaderDisplay} from "../../../ui-core/src/sender-display";
-import type {OwnSendPath,OwnSendPlacement} from "../../../ui-core/src/own-send-region";
+import type {OwnSendPath,OwnSendPlacement,OwnSendSlotPosition} from "../../../ui-core/src/own-send-region";
 import { workElementDisplay, workExecutionDisplay, type WorkElementDisplay } from "../../../ui-core/src/work-element-display";
 import { WorkElementRow, formatWorkElementDisplay } from "../system/components/WorkElementRow";
 import { ownSendPresentation } from "../../../ui-core/src/own-send-presentation";
@@ -83,7 +83,7 @@ function assistantTextMembership(item: ConversationItem): AssistantTextMembershi
   return source.textComplete===true?"empty-saved":"content-unavailable";
 }
 
-export function SavedConversationItems({ model, projection, renderBefore, trailing, nodes,localRegion }: { model: AppModel; projection: SavedItemProjection & { sequence?: readonly ({kind: "conversation"; itemKey: string} | {kind: "work"; groupKey: string})[]; workGroups?: readonly ConversationWorkGroup[] }; nodes?: readonly HistoryItem[]; renderBefore?: (item: ConversationItem) => ComponentChildren; trailing?: ComponentChildren;localRegion?:{placement:OwnSendPlacement;slots?:readonly {position:number;content:ComponentChildren}[];unqualified?:ComponentChildren} }) {
+export function SavedConversationItems({ model, projection, renderBefore, trailing, nodes,localRegion }: { model: AppModel; projection: SavedItemProjection & { sequence?: readonly ({kind: "conversation"; itemKey: string} | {kind: "work"; groupKey: string})[]; workGroups?: readonly ConversationWorkGroup[] }; nodes?: readonly HistoryItem[]; renderBefore?: (item: ConversationItem) => ComponentChildren; trailing?: ComponentChildren;localRegion?:{placement:OwnSendPlacement;slots?:readonly {position:OwnSendSlotPosition;content:ComponentChildren}[];unqualified?:ComponentChildren} }) {
   const membership=new Map(projection.items.map(item=>[item.key,assistantTextMembership(item)]));
   const t = model.t.value;
   const savedSteps = collectExecutionSteps(nodes ?? [], model.shells.value);

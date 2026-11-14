@@ -3,6 +3,8 @@ import {observeOwnSendTail,placeOwnSendRegion,type OwnSendInsertion,type OwnSend
 import type { SavedItemProjection } from "./conversation-items";
 import type { PendingOwnMessage } from "./model";
 
+export type OwnSendSlotPosition = Readonly<{kind:"before-first"}> | Readonly<{kind:"after";index:number}>;
+
 export interface OwnSendPresentation<Ref> {
   readonly token: object;
   readonly ref: Ref | undefined;
@@ -13,6 +15,8 @@ export interface OwnSendPresentation<Ref> {
   readonly localRows: readonly PendingOwnMessage[];
   readonly retire: readonly PendingOwnMessage[];
 }
+
+export type OwnSendSlotPosition = Readonly<{kind:"before-first"}> | Readonly<{kind:"after";index:number}>;
 
 export interface OwnSendPresentationInput<Ref> {
   readonly ref: Ref | undefined;
@@ -49,7 +53,7 @@ export interface OwnSendDecision<Ref> extends OwnSendPresentation<Ref> {
   readonly cohort: readonly PendingOwnMessage[];
   readonly conflictIds: readonly string[];
   readonly placement:OwnSendPlacement;
-  readonly slots:readonly {readonly row:PendingOwnMessage;readonly insertion:OwnSendInsertion;readonly position:number}[];
+  readonly slots:readonly {readonly row:PendingOwnMessage;readonly insertion:OwnSendInsertion;readonly position:OwnSendSlotPosition}[];
   readonly observation?:OwnSendTailObservation<Ref>;
 }
 
@@ -94,7 +98,7 @@ export function ownSendPresentation<Ref>(input: OwnSendPresentationInput<Ref>): 
   const mutualConflict=allSlots&&slots.some((slot,index)=>index>0&&slot!.first<=slots[index-1]!.last);
   const boundaryConflict=boundaryIndex>=0&&slots.some(slot=>slot&&slot.first<=boundaryIndex);
   const conflict=mutualConflict||boundaryConflict;
-  const positionedSlots=allSlots?slots.flatMap(slot=>slot?[{row:slot.row,insertion:slot.insertion,position:slot.last}]:[]):[];
+  const positionedSlots=allSlots?slots.flatMap(slot=>slot?[{row:slot.row,insertion:slot.insertion,position:{kind:"after",index:slot.last}}]:[]):[];
   let reservationPosition=-1;
   if (placement.kind === "qualified") {
     const insertion=placement.insertion;
@@ -102,7 +106,7 @@ export function ownSendPresentation<Ref>(input: OwnSendPresentationInput<Ref>): 
       entry.kind === "conversation" && insertion.kind === "conversation" ? entry.itemKey === insertion.itemKey :
       entry.kind === "work" && insertion.kind === "work" ? entry.groupKey === insertion.groupKey : false);
   }
-  const reservationSlots=placement.kind === "qualified" && reservationPosition >= 0 ? cohort.map(row=>({row,insertion:placement.insertion,position:reservationPosition})) : [];
+  const reservationSlots=placement.kind === "qualified" && reservationPosition >= 0 ? cohort.map(row=>({row,insertion:placement.insertion,position:reservationPosition<0?{kind:"before-first"}:{kind:"after",index:reservationPosition}})) : [];
   const planSlots=conflict ? reservationSlots : allSlots ? positionedSlots : reservationSlots;
   const usableSlots=positionedSlots.length>0&&!conflict?positionedSlots:[];
   const finalPlacement=placement;

@@ -1,4 +1,5 @@
 import type {OwnSendPlacement} from "../../../ui-core/src/own-send-region";
+import type {OwnSendSlotPosition} from "../../../ui-core/src/own-send-presentation";
 import { Fragment, type ComponentChildren } from 'preact';
 
 /** Internal normalized presentation input, not a Core wire DTO or a body proof. */
@@ -38,7 +39,7 @@ interface Props {
   renderItem: (item: ConversationItem) => ComponentChildren;
   renderBefore?: (item: ConversationItem) => ComponentChildren;
   trailing?: ComponentChildren;
-  localRegion?:{placement:OwnSendPlacement;slots?:readonly {position:number;content:ComponentChildren}[];unqualified?:ComponentChildren};
+  localRegion?:{placement:OwnSendPlacement;slots?:readonly {position:OwnSendSlotPosition;content:ComponentChildren}[];unqualified?:ComponentChildren};
   isItemAbsent?: (item: ConversationItem) => boolean;
   isItemHidden?: (item: ConversationItem) => boolean;
   renderHeading?: (summary: ConversationToolSummary) => ComponentChildren;
@@ -54,7 +55,7 @@ export function ConversationItems({ items, toolSummaries = [], renderItem, rende
     const groups = new Map(normalizedGroups.map(group => [group.key, group]));
     const slots = localRegion?.slots ?? [];
     const emittedSlots = new Set<object>();
-    const emitSlotsAt = (position:number): ComponentChildren[] => slots.filter(slot => slot.position === position && !emittedSlots.has(slot)).map(slot => { emittedSlots.add(slot); return slot.content; });
+    const emitSlotsAt = (position:number): ComponentChildren[] => slots.filter(slot => slot.position.kind === "after" && slot.position.index === position && !emittedSlots.has(slot)).map(slot => { emittedSlots.add(slot); return slot.content; });
     const content = (item: ConversationItem, work: boolean) => <div class={`conversation-row${!work && item.presentationContainer ? " conversation-answer-child" : ""}`} key={`item:${item.key}`} data-item-key={item.key} data-key={item.key} data-node={item.source.nodeId} data-work-item-key={work ? item.key : undefined}>{renderItem(item)}</div>;
     const rendered: { entry: NonNullable<Props["sequence"]>[number]; view: ComponentChildren; first:number; last:number }[] = [];
     for (let index = 0; index < normalizedSequence.length; index++) {
@@ -91,12 +92,13 @@ export function ConversationItems({ items, toolSummaries = [], renderItem, rende
     }
     const region:ComponentChildren[]=[];
     if (localRegion?.placement.kind === "unqualified") region.push(localRegion.unqualified);
-    const ownedSlots=[...slots].sort((a,b)=>a.position-b.position);
+    const slotPosition=(slot:{position:OwnSendSlotPosition})=>slot.position.kind==="before-first"?-1:slot.position.index;
+    const ownedSlots=[...slots].sort((a,b)=>slotPosition(a)-slotPosition(b));
     let slotIndex=0;
     rendered.forEach(row=>{
-      while(slotIndex<ownedSlots.length&&ownedSlots[slotIndex]!.position<row.first){const slot=ownedSlots[slotIndex++]!;if(!emittedSlots.has(slot)){emittedSlots.add(slot);region.push(slot.content);}}
+      while(slotIndex<ownedSlots.length&&slotPosition(ownedSlots[slotIndex]!)<row.first){const slot=ownedSlots[slotIndex++]!;if(!emittedSlots.has(slot)){emittedSlots.add(slot);region.push(slot.content);}}
       region.push(row.view);
-      while(slotIndex<ownedSlots.length&&ownedSlots[slotIndex]!.position<=row.last){const slot=ownedSlots[slotIndex++]!;if(!emittedSlots.has(slot)){emittedSlots.add(slot);region.push(slot.content);}}
+      while(slotIndex<ownedSlots.length&&slotPosition(ownedSlots[slotIndex]!)<=row.last){const slot=ownedSlots[slotIndex++]!;if(!emittedSlots.has(slot)){emittedSlots.add(slot);region.push(slot.content);}}
     });
     while(slotIndex<ownedSlots.length){const slot=ownedSlots[slotIndex++]!;if(!emittedSlots.has(slot)){emittedSlots.add(slot);region.push(slot.content);}}
     return <div class="conversation-items">{region}{trailing}</div>;

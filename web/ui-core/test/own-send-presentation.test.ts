@@ -32,7 +32,7 @@ it('keeps the entire fixed cohort until all exact complete counterparts arrive i
  const done=ownSendPresentation({...base,projection:projectSavedItems([node('a'),node('b')])});
  expect(done.localRows).toEqual([]);expect(done.retire).toEqual([a,b]);expect(done.projection.items.map(item=>item.source.nodeId)).toEqual(['a','b']);
  const conflict=ownSendPresentation({...base,projection:projectSavedItems([node('b'),node('a')])});
- expect(conflict.conflictIds).toEqual(['a','b']);expect(conflict.retire).toEqual([]);expect(conflict.localRows).toEqual([a,b]);expect(conflict.slots.map(slot=>slot.row)).toEqual([a,b]);expect(conflict.slots.map(slot=>slot.position)).toEqual([0,0]);
+ expect(conflict.conflictIds).toEqual(['a','b']);expect(conflict.retire).toEqual([]);expect(conflict.localRows).toEqual([a,b]);expect(conflict.slots.map(slot=>slot.row)).toEqual([a,b]);expect(conflict.slots.map(slot=>slot.position)).toEqual([{kind:"after",index:0},{kind:"after",index:0}]);
 });
 it('requires a mounted sequence member, not just a complete item in the projection array',()=>{
  const projection=projectSavedItems([{windowRevision:1,nodeId:'own',itemIdentity:'item',kind:'user',text:'Saved',textComplete:true}]);
