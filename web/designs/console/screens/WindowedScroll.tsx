@@ -29,12 +29,7 @@ export function WindowedScroll({ model, win, renderRow, live, liveBoundary, stat
     if (!renderAcceptedView) return;
     return win.acceptedView.subscribe(() => invalidateAccepted(value => value + 1));
   }, [win, !!renderAcceptedView]);
-  const acceptedRef = useRef<WindowAcceptedSnapshot | undefined>(undefined);
-  const currentAccepted = renderAcceptedView ? win.acceptedView.peek() : undefined;
-  if (currentAccepted) acceptedRef.current = currentAccepted;
-  // Keep the last bounded accepted host through a publication handoff gap; a
-  // transient undefined view must not unmount live/local children.
-  const accepted = currentAccepted ?? acceptedRef.current;
+  const accepted = renderAcceptedView ? win.acceptedView.peek() : undefined;
   const el = useRef<HTMLDivElement>(null);
   const visible = win.renderRange();
   const range = visible && heldRange(visible, win.total, (index) => win.itemAt(index) !== undefined);
