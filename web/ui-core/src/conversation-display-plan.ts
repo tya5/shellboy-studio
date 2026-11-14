@@ -37,7 +37,6 @@ export type QualifiedAssistantFacts = readonly AssistantOwnership[];
 
 export function validateQualifiedAssistantFacts(input: {
   readonly rows: readonly HistoryItem[];
-  readonly projection: SavedItemProjection;
   readonly canonicalProjection: SavedItemProjection;
   readonly facts: readonly AssistantOwnership[];
   readonly revision: string | number;
@@ -72,7 +71,7 @@ export interface AcceptedPublicationInput {
 
 export function createConversationDisplayPlan(input: AcceptedPublicationInput): ConversationDisplayPlan {
   if (!Number.isSafeInteger(input.generation)) throw new Error('display plan requires accepted generation');
-  const qualifiedFacts = validateQualifiedAssistantFacts({ rows: input.rows, projection: input.projection, facts: input.assistantFacts, revision: input.revision, scope: input.scope });
+  const qualifiedFacts = validateQualifiedAssistantFacts({ rows: input.rows, canonicalProjection: input.canonicalProjection, facts: input.assistantFacts, revision: input.revision, scope: input.scope });
   const owners = new Map<string, AssistantOwnership>();
   for (const fact of qualifiedFacts) {
     if (fact.scope !== input.scope || !fact.itemKeys.length) continue;
