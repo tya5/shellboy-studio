@@ -496,7 +496,7 @@ it.each(['live-only','mixed'] as const)('contains all %s Work facts and keeps au
 });
 
 
-it('admits text only from never-ready owned ledger records, not ready or identified bodies after status changes',async()=>{
+it('retains original preview through identity lookup but never revives ready body after status changes',async()=>{
   const { Handoff }=await import('../../../data/src/handoff');
   const scheduled:(()=>void)[]=[];const ledger=new Handoff(callback=>scheduled.push(callback));
   const begin=(id:string)=>{ledger.apply({attempt_id:id,gap:false,deltas:[{offset:0,reasoning:false,text:'Synthetic stream text'}]});while(scheduled.length)scheduled.shift()!();};
@@ -505,7 +505,8 @@ it('admits text only from never-ready owned ledger records, not ready or identif
   ledger.ready('stream','saved-node','Forbidden ready replacement');expect(fact('stream').kind).toBe('unknown');
   ledger.fail('stream');expect(fact('stream').kind).toBe('unknown');
   ledger.confirming('stream');expect(fact('stream').kind).toBe('unknown');
-  begin('identified');ledger.identify('identified','reserved-node');expect(fact('identified').kind).toBe('unknown');
+  begin('identified');ledger.identify('identified','reserved-node');expect(fact('identified')).toMatchObject({kind:'text',text:'Synthetic stream text'});
+  expect(ledger.records.peek().find(record=>record.attemptId==='identified')).toMatchObject({nodeId:'reserved-node',bodyAuthority:'preview'});
   expect(projectOwnedHandoffFacts('owned-scope',ledger.records.value).some(item=>'text' in item&&item.text.includes('Forbidden'))).toBe(false);
   ledger.discard('ended');
 });

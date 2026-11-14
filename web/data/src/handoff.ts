@@ -57,7 +57,7 @@ export interface HandoffRecord {
   readonly text: string;
   readonly incomplete: boolean;
   readonly status: HandoffStatus;
-  readonly bodyAuthority: 'preview' | 'identified' | 'saved';
+  readonly bodyAuthority: 'preview' | 'saved';
   readonly nodeId?: string;
   readonly proof?: Readonly<{ scope: string; turnId: string; ordinal: number; revision: number; kind: 'assistant_response' }>;
   readonly transferred?: boolean;
@@ -164,7 +164,7 @@ export class Handoff {
   confirming(attemptId: string): void { this.update(attemptId, r => ({ ...r, status: 'confirming' })); }
   /** Reserve exact saved identity without claiming its body is safe to display. */
   identify(attemptId: string, nodeId: string): void {
-    this.update(attemptId, r => r.status === 'ready' ? r : ({ ...r, nodeId, bodyAuthority: r.bodyAuthority === 'saved' ? 'saved' : 'identified' }));
+    this.update(attemptId, r => r.status === 'ready' ? r : ({ ...r, nodeId }));
   }
   /** Called only after exact identity and intended safe body are verified. One signal write. */
   ready(attemptId: string, nodeId: string, text: string, proof?: HandoffRecord["proof"]): boolean {

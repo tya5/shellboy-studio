@@ -5,7 +5,9 @@ import { assistantOwnership } from "../src/assistant-ownership";
 import { expect, it } from "vitest";
 import { ShellboyData } from "../../data/src/store";
 import { FakeOwnerDb, FakeTransport, connected, settle, flush } from "../../data/test/harness";
-import { currentInputPlanExpectation, observePublishedPlans } from "./publication-contract";
+import { observeDeclaredCuts, type DeclaredPlanCut } from "./publication-contract";
+import { declaredToolAnswerCut } from "./declared-attempt-cuts";
+import type { TerminalPresence } from "../src/terminal-presence";
 const baseNodes: HistoryItem[] = [
   { node_id: "tool", kind: "assistant_response", selection: { ordinal: 0 }, items: [{ kind: "tool_call", item_identity: "call", execution_ids: ["exec"] }] },
   { node_id: "answer", kind: "assistant_response", selection: { ordinal: 1 }, items: [{ kind: "text", item_identity: "text", text: "saved", text_complete: true }] },
@@ -15,7 +17,7 @@ async function rig(windowCap = true) {
   const data = new ShellboyData({ transport: t, newId: () => `atomic-${++n}`, schedule: cb => frames.push(cb) });
   data.start(); t.open(); t.push({ t: "hello", bridge_version: "synthetic", owner: { state: "connected", info: { protocol_version: 5, instance_id: "i1", capabilities: windowCap ? ["history.window"] : [] } } }); await settle(t, db);
   const h = data.openThread("a"); await settle(t, db);
-  const state = { available: true, truncated: false, partial: false, deferred: false, unknown: false, missing: false, error: false, changing: false, nonterminal: false, wrongid: false, empty: false, hold: false };
+  const state = { selectedRevision: 7, available: true, truncated: false, partial: false, deferred: false, unknown: false, missing: false, error: false, changing: false, nonterminal: false, wrongid: false, empty: false, hold: false };
   const original = db.answer.bind(db); let reads = 0;
   db.answer = call => {
     if (call.command === "status") return { ok: true, result: { items: state.available ? [{ kind: "attempt", id: state.wrongid ? "other" : "attempt", attempt_id: "attempt", turn_id: "turn", thread_id: "a", state: state.nonterminal ? "inflight" : "completed", response_nodes: state.empty ? [] : baseNodes.filter(node => node.items?.some(item => item.kind === "text")).map(node => ({ node_id: node.node_id, ordinal: node.selection!.ordinal!, kind: node.kind, phase: "final_answer", item_id: null })), response_nodes_truncated: state.truncated }] : [] } };
@@ -39,8 +41,22 @@ async function target() {
  const r = await rig(); const token = r.h.captureReadQualification()!;
  const w = new ConversationWindow({ read: async () => ({ ok: true, value: { thread_id: "a", revision: 7, total: 1,
  items: [{ node_id: "tool", kind: "assistant_response", selection: { ordinal: 0 }, items: [{ kind: "tool_call", item_identity: "call", execution_ids: ["exec"] }] }] } }) }); await flush();
- const publications=observePublishedPlans(w, ref => currentInputPlanExpectation(ref, "complete"));
  r.live(); r.end(); await r.pump(); const record = r.h.handoff.peek()[0]!;
+ const receipt=record.terminalPersisted!;
+ const publications=observeDeclaredCuts(w,()=>{
+  const pending:TerminalPresence={scope:receipt.scope,attemptId:'attempt',receipt,phase:'pending',reason:'canonical-pending',answerAvailability:'unknown'};
+  const inputs=[pending,{...pending,reason:'read-inflight' as const},{...pending,phase:'reading' as const,reason:'read-inflight' as const}];
+  const reasons:TerminalPresence['reason'][]=['missing-candidate','body-unavailable','partial-items','read-error','selection-gap','unsupported','capacity','budget-exhausted'];
+  const cuts:DeclaredPlanCut[]=inputs.map(presence=>declaredToolAnswerCut({scope:receipt.scope,revision:7,toolIdentity:'call',presence}));
+  for(const reason of reasons){const presence:TerminalPresence={...pending,phase:'settled',reason};
+   cuts.push(declaredToolAnswerCut({scope:receipt.scope,revision:7,toolIdentity:'call',presence}));
+   const answer=r.state.partial?'partial':r.state.deferred?'deferred':r.state.unknown?'opaque':undefined;
+   if(answer)cuts.push(declaredToolAnswerCut({scope:receipt.scope,revision:7,toolIdentity:'call',answer,presence}));
+  }
+  cuts.push(declaredToolAnswerCut({scope:receipt.scope,revision:7,toolIdentity:'call',answer:'saved'}));
+  if(r.state.selectedRevision===8)cuts.push(declaredToolAnswerCut({scope:receipt.scope,revision:8,toolIdentity:'call',answer:'saved',container:receipt.presentationContainer}));
+  return cuts;
+ });
  expect(r.h.transferHandoff("attempt", (captured, end) => w.acceptHandoff(captured, r.h.handoffScope(), end))).toBe(true);
  return { ...r, w, token, receipt: record.terminalPersisted!, publications };
 }
@@ -182,7 +198,7 @@ it("terminal slot successor dispatches one explicit whole-window request after a
 });
 
 it("Window rebinds a revision-changing point read through one bounded whole-window successor", async () => {
-  const r = await target();
+  const r = await target(); r.state.selectedRevision=8;
   const original = r.db.answer.bind(r.db);
   const requests: unknown[] = [];
   r.db.answer = call => {

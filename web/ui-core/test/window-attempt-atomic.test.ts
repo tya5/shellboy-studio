@@ -1,7 +1,8 @@
 import { ShellboyData } from "../../data/src/store";
 import { expect, it } from "vitest";
 import { ConversationWindow } from "../src/window";
-import { currentInputPlanExpectation, observePublishedPlans } from "./publication-contract";
+import { declaredPlanExpectation, observePublishedPlans } from "./publication-contract";
+import { declaredToolAnswerCut } from "./declared-attempt-cuts";
 import type { HandoffRecord, PresentationContainerId, AttemptReadyProof } from "../../data/src/handoff";
 import type { HistoryItem } from "../../data/src";
 import { FakeOwnerDb, FakeTransport, connectedWithHistory, settle, flush } from "../../data/test/harness";
@@ -10,13 +11,16 @@ const nodes: HistoryItem[] = [
   { node_id: "answer", kind: "assistant_response", selection: { ordinal: 1 }, items: [{ kind: "text", item_identity: "text", text: "saved", text_complete: true }] },
 ];
 async function rig(items = nodes) {
-  const w = new ConversationWindow({ read: async () => ({ ok: true, value: { thread_id: "thread", revision: 7, total: 2, items } }) }); await flush();
+  const source={revision:7,items,total:2};
+  const w = new ConversationWindow({ read: async () => ({ ok: true, value: { thread_id: "thread", revision: source.revision, total: source.total, items:source.items } }) }); await flush();
   const proof: AttemptReadyProof = { scope: '["owner","thread",1]', attemptId: "attempt", turnId: "turn", revision: 7, total: 2, refs: [{ nodeId: "answer" }, { nodeId: "tool" }, { nodeId: "answer" }], nodes };
   const record: HandoffRecord = { key: "live-record", presentationContainer: "presentation:test" as PresentationContainerId, attemptId: "attempt", status: "confirming", bodyAuthority: "preview", text: "whole live block", incomplete: false, readyAttempt: proof };
-  return { w, record, proof };
+  return { w, record, proof, source };
 }
 it("all-ref retirement and saved-order sequence publish once in the SAME observed snapshot", async () => {
-  const { w, record, proof } = await rig(); const publications=observePublishedPlans(w, ref => currentInputPlanExpectation(ref, "complete")); const trace: { saved: string[]; retired: string[] }[] = [];
+  const { w, record, proof, source } = await rig();
+  const declared=declaredToolAnswerCut({scope:proof.scope,revision:7,toolIdentity:'tc',answer:'saved',container:record.presentationContainer});
+  const publications=observePublishedPlans(w, ref => declaredPlanExpectation(ref,w.acceptedView.currentCapability,declared)); const trace: { saved: string[]; retired: string[] }[] = [];
   const stop = w.acceptedView.subscribe(ref => { expect(w.acceptedView.isCurrent(ref)).toBe(true); trace.push({ saved: ref.rows.map(row => row.node_id!), retired: ref.retiredAttempts?.map(item => item.attemptId) ?? [] }); });
   let releases = 0; expect(w.acceptHandoff(record, proof.scope, () => { releases++; expect(w.acceptedView.peek().retiredAttempts).toHaveLength(1); })).toBe(true);
   expect(trace).toEqual([{ saved: ["tool", "answer"], retired: ["attempt"] }]); expect(releases).toBe(1);
@@ -25,30 +29,28 @@ it("all-ref retirement and saved-order sequence publish once in the SAME observe
   expect(retiredSnapshot.assistantOwnership).toHaveLength(1);
   publications.stop(); stop();
   w.layoutChanged();
-  expect(w.acceptedView.peek().generation).toBeGreaterThan(retiredSnapshot.generation);
+  expect(w.acceptedView.peek()).toBe(retiredSnapshot);
   expect(w.acceptedView.peek().assistantOwnership).toEqual(retiredSnapshot.assistantOwnership);
   expect(w.acceptedView.peek().displayPlan?.acceptedGeneration).toBe(w.acceptedView.peek().generation);
   expect(w.acceptedView.peek().displayPlan?.entries.map(entry => entry.lifetime.kind)).toContain("valid-owner");
   const revision8 = w.acceptedView.peek();
   expect(revision8.assistantOwnership![0]!.proofRevision).toBe(7);
   expect(revision8.assistantOwnership![0]!.receiptRevision).toBe(7);
-  (w as unknown as { revision: number }).revision = 8;
-  w.layoutChanged();
+  source.revision=8;w.changed();await flush();
   const qualified8 = w.acceptedView.peek();
   expect(qualified8.revision).toBe(8);
   expect(qualified8.assistantOwnership).toHaveLength(1);
   expect(qualified8.assistantOwnership![0]!.proofRevision).toBe(8);
   expect(qualified8.assistantOwnership![0]!.receiptRevision).toBe(7);
   expect(qualified8.retiredAttempts).toEqual(revision8.retiredAttempts);
-  (w as unknown as { revision: number }).revision = 9;
-  w.layoutChanged();
+  source.revision=9;w.changed();await flush();
   const revision9 = w.acceptedView.peek();
   expect(revision9.revision).toBe(9);
   expect(revision9.assistantOwnership).toHaveLength(1);
   expect(revision9.assistantOwnership![0]!.proofRevision).toBe(9);
   expect(revision9.assistantOwnership![0]!.receiptRevision).toBe(7);
-  w.acceptedView.revoke();
-  w.layoutChanged();
+  w.acceptedView.revoke();w.layoutChanged();expect(w.acceptedView.isCurrent(revision9)).toBe(false);
+  w.changed();await flush();
   expect(w.acceptedView.peek().assistantOwnership).toHaveLength(0);
   expect(w.acceptedView.peek().retiredAttempts).toEqual([]);
   expect(w.acceptedView.peek().displayPlan?.acceptedGeneration).toBe(w.acceptedView.peek().generation);

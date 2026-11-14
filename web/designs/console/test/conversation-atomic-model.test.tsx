@@ -1,3 +1,4 @@
+import {attemptWork} from '../../../data/test/work-fixture';
 // @vitest-environment happy-dom
 import '@preact/signals';
 import {signal} from '@preact/signals-core';
@@ -13,10 +14,10 @@ import {loadPrefs} from '../../../ui-core/src/prefs';
 
 const independent:HistoryItem={node_id:'independent',kind:'user',selection:{ordinal:0},items:[{kind:'text',item_identity:'u',text:'Independent saved user',text_complete:true}]};
 const saved:HistoryItem[]=[independent,{node_id:'tool',kind:'assistant_response',selection:{ordinal:1},items:[{kind:'tool_call',item_identity:'call',execution_ids:['exec']}]},{node_id:'answer',kind:'assistant_response',selection:{ordinal:2},items:[{kind:'text',item_identity:'answer-text',text:'Qualified saved answer',text_complete:true}]}];
-for(const mode of ['ready','ready-with-change','reentry','wrong-lifetime','partial','deferred','truncated','empty-refs','nonterminal','wrong-thread'] as const)it(`real Store/O/model/Window -> App whole attempt under ${mode}`,async()=>{
+for(const mode of ['ready','ready-with-change','reentry','wrong-lifetime','partial','deferred','truncated','empty-refs','nonterminal','wrong-thread','duplicate-refs'] as const)it(`real Store/O/model/Window -> App whole attempt under ${mode}`,async()=>{
  let ended=false;
  const f=await fixtureModel({capabilities:['history.window'],configure(db){db.threads={t:summary('t')};db.details.t=details('t');db.history.t=[];const base=db.answer.bind(db);db.answer=call=>{
-  if(call.command==='status')return {ok:true,result:{items:ended?[{kind:'attempt',id:'attempt',attempt_id:'attempt',turn_id:'turn',thread_id:mode==='wrong-thread'?'other-thread':'t',state:mode==='nonterminal'?'running':'completed',response_nodes_truncated:mode==='truncated',response_nodes:mode==='empty-refs'?[]:[{node_id:'answer',ordinal:0,kind:'message'},{node_id:'tool',ordinal:1,kind:'function_call'},{node_id:'answer',ordinal:2,kind:'message'}]}]:[]}};
+  if(call.command==='status')return {ok:true,result:{items:ended?[attemptWork({threadId:mode==='wrong-thread'?'other-thread':'t',attemptId:'attempt',turnId:'turn',state:mode==='nonterminal'?'running':'completed',truncated:mode==='truncated',refs:mode==='empty-refs'?[]:mode==='duplicate-refs'?[{node_id:'answer',ordinal:2,kind:'assistant_response'},{node_id:'answer',ordinal:2,kind:'assistant_response'}]:[{node_id:'tool',ordinal:1,kind:'assistant_response'},{node_id:'answer',ordinal:2,kind:'assistant_response'}]})]:[]}};
   if(call.command==='history.window')return {ok:true,result:{thread_id:'t',revision:7,total:ended?3:1,items:!ended?[independent]:mode==='partial'?[independent,saved[1],{...saved[2],items:[{kind:'text',item_identity:'answer-text',text:'prefix',text_complete:false}]}]:mode==='deferred'?[independent,saved[1],{...saved[2],items:null,items_unavailable_reason:'response_budget'}]:saved}};
   return base(call);
  };}});
@@ -36,11 +37,22 @@ for(const mode of ['ready','ready-with-change','reentry','wrong-lifetime','parti
   const eligible=!['wrong-lifetime','empty-refs','nonterminal','wrong-thread'].includes(mode);
   const terminal=win.acceptedView.peek().terminalPersistedAttempts??[];
   if(eligible){expect(terminal).toHaveLength(1);expect(host.textContent).toContain('Whole live answer');}
-  else {expect(terminal).toHaveLength(0);expect(host.textContent).toContain('Whole live answer');}
+  else {expect(terminal).toHaveLength(0);
+   if(mode==='wrong-lifetime'){
+    expect(host.textContent).not.toContain('Whole live answer');expect(host.textContent).not.toContain('Qualified saved answer');
+    expect(win.acceptedView.peek().assistantOwnership??[]).toHaveLength(0);
+   }else expect(host.textContent).toContain('Whole live answer');
+  }
   expect(host.textContent).toContain('Independent saved user');
   let reentered=false;
-  const stop=mode==='reentry'?win.acceptedView.subscribe(()=>{if(!reentered){reentered=true;win.layoutChanged();}}):()=>{};
-  if(mode==='reentry')await act(async()=>{win.layoutChanged();await flush();});
+  const stop=mode==='reentry'?win.acceptedView.subscribe(()=>{if(!reentered){
+    reentered=true;
+    const original=f.model.handle.peek()!.handoff.peek().find(record=>record.attemptId==='attempt')!;
+    expect(original.text).toBe('Whole live answer');
+    win.setAttemptPresentations([{scope:f.model.handle.peek()!.handoffScope(),attemptId:'other',turnId:'other-turn',nodeIds:['unselected'],state:'pending'}]);
+    expect(f.model.handle.peek()!.handoff.peek().find(record=>record.attemptId==='attempt')).toBe(original);
+    expect(win.acceptedView.peek().assistantOwnership?.some(owner=>owner.turnId==='other-turn')).toBe(false);
+  }}):()=>{};
   await act(async()=>{await settle(f.t,f.db);await flush(24);});sample();stop();
   expect(frames.every(frame=>frame.independent)).toBe(true);
   if(eligible){
@@ -48,15 +60,14 @@ for(const mode of ['ready','ready-with-change','reentry','wrong-lifetime','parti
    // A later canonical cut does not inherit the earlier lookup's association.
    // Requalify only through existing explicit Retry admission, not an automatic refill.
    await act(async()=>{const retry=f.model.handle.peek()!.retryHandoff();await settle(f.t,f.db);await retry;await flush(24);});sample();
-   if(['ready','ready-with-change'].includes(mode)){
+   if(['ready','ready-with-change','reentry'].includes(mode)){
     expect(host.textContent).not.toContain('Whole live answer');expect(host.textContent).toContain('Qualified saved answer');
-    expect(f.model.handle.peek()!.handoff.peek()).toHaveLength(1);
-   }else {
-    expect(host.textContent).toContain('Whole live answer');
-    if(mode==='reentry')expect(win.acceptedView.peek().assistantOwnership??[]).toHaveLength(0);
-   }
+    expect(f.model.handle.peek()!.handoff.peek().filter(record=>record.attemptId==='attempt')).toHaveLength(0);
+    expect(win.acceptedView.peek().retiredAttempts).toMatchObject([{attemptId:'attempt',turnId:'turn',nodeIds:['tool','answer']}]);
+   }else expect(host.textContent).toContain('Whole live answer');
   }
-  expect(frames.every(frame=>frame.live||frame.saved)).toBe(true);
+  if(mode==='wrong-lifetime')expect(frames.every(frame=>!frame.saved)).toBe(true);
+  else expect(frames.every(frame=>frame.live||frame.saved)).toBe(true);
   if(mode==='reentry')expect(reentered).toBe(true);
   expect(f.t.calls('history.get')).toHaveLength(0);
  }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
@@ -69,7 +80,7 @@ for(const scenario of ['persisted','failed','separate-attempt','owner-lifetime',
  const f=await fixtureModel({capabilities:['history.window'],configure(db){
   db.threads={t:summary('t')};db.details.t=details('t');db.history.t=[];
   const base=db.answer.bind(db);db.answer=call=>{
-   if(call.command==='status')return {ok:true,result:{items:ended?[{kind:'attempt',id:'attempt',attempt_id:scenario==='separate-attempt'?'retry-attempt':'attempt',turn_id:'turn',thread_id:'t',state:scenario==='failed'?'failed':'completed',response_nodes_truncated:false,response_nodes:[{node_id:'member',ordinal:1,kind:'message'}]},...(scenario==='other-attempt-member'?[{kind:'attempt',id:'previous-attempt',attempt_id:'previous-attempt',turn_id:'previous-turn',thread_id:'t',state:'completed',response_nodes_truncated:false,response_nodes:[{node_id:'other-member',ordinal:2,kind:'message'}]}]:[])]:[]}};
+   if(call.command==='status')return {ok:true,result:{items:ended?[{...attemptWork({threadId:'t',attemptId:'attempt',turnId:'turn',state:scenario==='failed'?'failed':'completed',refs:[{node_id:'member',ordinal:1,kind:'assistant_response'}]}),attempt_id:scenario==='separate-attempt'?'retry-attempt':'attempt'},...(scenario==='other-attempt-member'?[attemptWork({threadId:'t',attemptId:'previous-attempt',turnId:'previous-turn',state:'completed',refs:[{node_id:'other-member',ordinal:2,kind:'assistant_response'}]})]:[])]:[]}};
    if(call.command==='history.window')return {ok:true,result:{thread_id:'t',revision:8,total:scenario==='other-attempt-member'?3:2,items:scenario==='other-attempt-member'?[independent,member,otherMember]:[independent,member]}};
    return base(call);
   };

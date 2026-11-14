@@ -4,18 +4,25 @@ import { ConversationWindow } from "../src/window";
 import { flush } from "../../data/test/harness";
 import type { HistoryItem } from "../../data/src";
 import { rig } from "./window-owner";
-import { currentInputPlanExpectation, observePublishedPlans } from "./publication-contract";
+import { observeDeclaredCuts, type DeclaredPlanCut } from "./publication-contract";
 
 it("publishes immutable coherent window tuples and stops obsolete notifications", async () => {
-  const r = await rig(10); await r.settle();
-  const publications = observePublishedPlans(r.w, ref => currentInputPlanExpectation(ref, "unavailable"));
+  const r = await rig(10,{decorate:(ordinal,node)=>({...node,kind:'user',items:[{kind:'text',item_identity:'body',text:`Declared ${ordinal}`,text_complete:true}],provenance:{sender:{kind:'human'}}})}); await r.settle();
+  const cut=(revision:1|2,count:number):DeclaredPlanCut=>{const ids=Array.from({length:count},(_,i)=>`n0-${i}`);
+   return{scope:'history',revision,coverage:'complete',rows:ids,entries:ids.map((id,i)=>({key:JSON.stringify([id,'body']),case:'human',
+    source:{nodeId:id,itemIdentity:'body',windowRevision:revision,keyScope:['history'],classificationCase:'human',kind:'user',text:`Declared ${i}`,textComplete:true},
+    body:{kind:'typed-canonical',text:`Declared ${i}`},lifetime:'canonical-human'})),
+    sequence:ids.map(id=>({kind:'conversation',itemKey:JSON.stringify([id,'body'])})),groups:[]};};
+  const authorized=[cut(1,10),cut(2,10),cut(2,11)];
+  const publications = observeDeclaredCuts(r.w,()=>authorized);
   const first = r.w.acceptedView.peek();
   expect(first.total).toBe(10); expect(first.pending).toBe(false); expect(first.range).toEqual(r.w.renderRange());
   expect(first.rows).toEqual(r.w.rangeItems()); expect(Object.isFrozen(first.rows[0])).toBe(true);
   let nested = false; const seen: number[] = [];
   r.w.acceptedView.subscribe(() => { if (!nested) { nested = true; r.w.layoutChanged(); } });
   r.w.acceptedView.subscribe(ref => { expect(ref).toBe(r.w.acceptedView.peek()); seen.push(ref.generation); });
-  r.w.layoutChanged(); expect(seen).toHaveLength(1); expect(seen[0]).toBe(r.w.acceptedView.peek().generation);
+  r.w.layoutChanged(); expect(seen).toHaveLength(0);expect(r.w.acceptedView.peek()).toBe(first);
+  r.owner.append(1);r.w.view(0,10_000,true);r.w.changed();await r.settle();expect(seen).toHaveLength(4);expect(seen.at(-1)).toBe(r.w.acceptedView.peek().generation);
   expect(first.rows).toHaveLength(10); expect(publications.generations.length).toBeGreaterThan(0); publications.stop(); r.w.dispose(); expect(r.w.acceptedView.isCurrent(first)).toBe(false); r.data.stop();
 });
 it("scroll peek is non-consuming and only an unchanged current view consumes once without publication", async () => {
@@ -23,7 +30,7 @@ it("scroll peek is non-consuming and only an unchanged current view consumes onc
   const original = r.w.acceptedView.peek(), request = r.w.peekScroll(original);
   expect(request).toBeDefined(); expect(r.w.peekScroll(original)).toBe(request);
   r.w.layoutChanged(); const next = r.w.acceptedView.peek();
-  expect(r.w.consumeScroll(original, request!.id)).toBe(false);
+  expect(next).toBe(original);
   expect(r.w.peekScroll(next)).toBe(request);
   expect(r.w.consumeScroll(next, request!.id)).toBe(true);
   expect(r.w.acceptedView.peek()).toBe(next); expect(r.w.acceptedView.isCurrent(next)).toBe(true);
@@ -64,12 +71,12 @@ it("getter reentry during actual Window staging cannot overwrite a nested accept
   const w = new ConversationWindow({ read: async () => ({ ok: true, value: { thread_id: "t", total: 1, revision: 1, items: [row] } }) });
   await flush(); let nested = false;
   Object.defineProperty(row, "syntheticGetter", { configurable: true, enumerable: true, get() {
-    if (!nested) { nested = true; w.layoutChanged(); }
+    if (!nested) { nested = true; w.setAttemptPresentations([{scope:'history',attemptId:'newer',turnId:'turn',nodeIds:['plain-local'],state:'pending'}]); }
     return "materialized";
   } });
   const seen: number[] = [];
   const stop = w.acceptedView.subscribe(ref => seen.push(ref.generation));
-  w.layoutChanged();
+  w.setAttemptPresentations([{scope:'history',attemptId:'older',turnId:'turn',nodeIds:['plain-local'],state:'pending'}]);
   expect(nested).toBe(true); expect(seen).toHaveLength(1);
   expect(seen[0]).toBe(w.acceptedView.peek().generation);
   stop(); w.dispose();

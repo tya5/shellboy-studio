@@ -378,11 +378,11 @@ export class ShellboyData {
       if (active && e.workRefs === 1 && !e.paused && this.canRead()) void this.refresher.request(`work:${threadId}`);
     };
     // One private slot per handle; tokens contain no authority fields or callbacks.
-    let qualification: { token: ThreadReadQualification; epoch: number; liveEpoch: number; cancel: Cancel } | undefined;
+    let qualification: { token: ThreadReadQualification; epoch: number; lifetime: number; cancel: Cancel } | undefined;
     const readable = () => !closed && !e.closed && !e.paused && !e.cancel.cancelled && this.entries.get(threadId) === e && this.canRead();
     const selectedReadValid = (token: ThreadReadQualification, admission: SelectedReadAdmission) => {
       if (!qualification || token !== qualification.token || !readable()
-        || qualification.epoch !== this.readQualificationEpoch || qualification.liveEpoch !== e.live.epoch
+        || qualification.epoch !== this.readQualificationEpoch || qualification.lifetime !== e.live.lifetime
         || qualification.cancel !== e.cancel || !this.capabilities.peek().includes(CAPABILITY_HISTORY_WINDOW)) return false;
       const scope = this.handoffScope(e);
       return admission.kind === "ready" ? admission.scope === scope && e.live.isReadyReadCurrent(admission.record, scope)
@@ -421,11 +421,11 @@ export class ShellboyData {
         qualification = undefined;
         if (!readable()) return undefined;
         const token = Object.freeze({}) as ThreadReadQualification;
-        qualification = { token, epoch: this.readQualificationEpoch, liveEpoch: e.live.epoch, cancel: e.cancel };
+        qualification = { token, epoch: this.readQualificationEpoch, lifetime: e.live.lifetime, cancel: e.cancel };
         return token;
       },
       isReadQualificationCurrent: token => !!qualification && qualification.token === token && readable()
-        && qualification.epoch === this.readQualificationEpoch && qualification.liveEpoch === e.live.epoch
+        && qualification.epoch === this.readQualificationEpoch && qualification.lifetime === e.live.lifetime
         && qualification.cancel === e.cancel && !qualification.cancel.cancelled,
       threadId,
       detail: e.detail,

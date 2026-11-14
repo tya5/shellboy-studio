@@ -1,4 +1,3 @@
-import { captureConversationInput } from '../src/conversation-input';
 import { expect } from 'vitest';
 import type { AcceptedCapability } from '../src/accepted-view';
 import type { ConversationDisplayPlan, DisplayBodySource } from '../src/conversation-display-plan';
@@ -40,31 +39,6 @@ export function observePublishedPlans(window: { acceptedView: { currentCapabilit
   return { generations, stop };
 }
 
-export function currentInputPlanExpectation(ref: WindowAcceptedSnapshot, coverage: 'complete' | 'unavailable'): ExactPlanExpectation {
-  const projection = captureConversationInput(ref, { scope: ref.displayPlan?.scope ?? 'history',
-    threadId: 'fixture', records: [], work: [], current: true }).projection;
-  const owners = new Map<string, { containerKey: string }>();
-  for (const fact of ref.assistantOwnership ?? []) for (const key of fact.itemKeys) owners.set(key, fact);
-  return {
-    coverage, projection,
-    bodyAuthorities: projection.items.map(item => {
-      const source = item.source;
-      const canonicalText = source.kind === 'text' && source.textComplete === true;
-      const humanText = (source.kind === 'user' || source.kind === 'summary') && source.textComplete === true;
-      return canonicalText || humanText
-        ? { kind: 'typed-canonical', text: source.text, cut:{generation: ref.generation, revision: ref.revision ?? 0,
-            capability: ref.displayPlan?.capability!,scope:ref.displayPlan?.scope??'history'} }
-        : { kind: 'unavailable', reason: source.kind, cut:{generation: ref.generation, revision: ref.revision ?? 0,capability:ref.displayPlan?.capability!,scope:ref.displayPlan?.scope??'history'} };
-    }),
-    containers: projection.items.map(item => ('domain' in item.source ? item.source.presentationContainer : undefined) ?? owners.get(item.key)?.containerKey),
-    lifetimes: projection.items.map(item => {
-      const source = item.source;
-      return (source.kind === 'user' || source.kind === 'summary') && source.textComplete === true
-        ? 'canonical-human' : owners.has(item.key) ? 'valid-owner' : 'retained';
-    }),
-  };
-}
-
 
 export interface DeclaredPlanCut {
   readonly revision: number;
@@ -72,21 +46,25 @@ export interface DeclaredPlanCut {
   readonly coverage: 'complete' | 'unavailable';
   readonly rows: readonly string[];
   readonly entries: readonly {
-    readonly key: string; readonly source: NormalizedSavedItem; readonly case: CanonicalCaseId;
+    readonly key: string; readonly canonicalKey?: string; readonly toolIdentity?: "execution" | "call" | "unresolved"; readonly source: NormalizedSavedItem; readonly case: CanonicalCaseId;
     readonly body: { readonly kind: 'typed-canonical'; readonly text: string } | { readonly kind: 'preview'; readonly text: string } | { readonly kind: 'unavailable'; readonly reason: string };
     readonly lifetime: 'canonical-human' | 'valid-owner' | 'retained' | 'revoked'; readonly container?: string;
   }[];
   readonly sequence: readonly ConversationSequence[];
   readonly groups: readonly WorkGroup[];
+  readonly unknownKeys?: readonly string[];
 }
 /** Expected inputs are fixture-owned literals. Never calls the production plan/input factory. */
 export function declaredPlanExpectation(ref: WindowAcceptedSnapshot, capability: AcceptedCapability, input: DeclaredPlanCut): ExactPlanExpectation {
   expect(ref.revision).toBe(input.revision);
   expect(ref.rows.map(row=>row.node_id)).toEqual(input.rows);
   expect(ref.displayPlan?.scope).toBe(input.scope);
+  return declaredExpectedPlan(ref, capability, input);
+}
+function declaredExpectedPlan(ref: WindowAcceptedSnapshot, capability: AcceptedCapability, input: DeclaredPlanCut): ExactPlanExpectation {
   return { coverage: input.coverage,
-    projection: { items: input.entries.map(entry=>({key:entry.key,canonicalKey:entry.key,source:entry.source,classification:CANONICAL_CASES[entry.case],presentationContainer:entry.container})),
-      sequence: input.sequence, workGroups: input.groups, toolSummaries: input.groups, partitionUnknownKeys: [] },
+    projection: { items: input.entries.map(entry=>({key:entry.key,canonicalKey:entry.canonicalKey??entry.key,source:entry.source,classification:CANONICAL_CASES[entry.case],presentationContainer:entry.container,...(entry.toolIdentity?{toolIdentity:entry.toolIdentity}:{})})),
+      sequence: input.sequence, workGroups: input.groups, toolSummaries: input.groups, partitionUnknownKeys: input.unknownKeys??[] },
     bodyAuthorities: input.entries.map(entry=>{
       const cut={generation:ref.generation,revision:input.revision,scope:input.scope,capability};
       if(entry.body.kind==='typed-canonical')return {kind:'typed-canonical',text:entry.body.text,cut};
@@ -94,4 +72,31 @@ export function declaredPlanExpectation(ref: WindowAcceptedSnapshot, capability:
       return {kind:'unavailable',reason:entry.body.reason,cut};
     }),
     containers: input.entries.map(entry=>entry.container),lifetimes: input.entries.map(entry=>entry.lifetime) };
+}
+
+
+/** Membership in fixture-declared legal cuts, not an expectation reconstructed from output. */
+export function observeDeclaredCuts(window: { acceptedView: { currentCapability: AcceptedCapability; subscribe(listener: (ref: WindowAcceptedSnapshot) => void): () => void } },
+  cuts: () => readonly DeclaredPlanCut[]) {
+  const generations:number[]=[];
+  const stop=window.acceptedView.subscribe(ref=>{
+    const capability=window.acceptedView.currentCapability,plan=ref.displayPlan!;
+    expect(plan.acceptedGeneration).toBe(ref.generation);expect(plan.capability).toBe(capability);
+    for(const entry of plan.entries){
+      expect(entry.body.cut.generation).toBe(ref.generation);expect(entry.body.cut.revision).toBe(ref.revision);
+      expect(entry.body.cut.capability).toBe(capability);expect(entry.body.cut.scope).toBe(plan.scope);
+      expect(entry.lifetime.cut).toBe(entry.body.cut);
+    }
+    const declared=cuts().map(cut=>{
+      const expected=declaredExpectedPlan(ref,capability,cut);
+      return {revision:cut.revision,scope:cut.scope,rows:cut.rows,coverage:expected.coverage,
+        items:expected.projection.items,sequence:expected.projection.sequence??[],groups:expected.projection.workGroups??[],
+        unknown:expected.projection.partitionUnknownKeys,bodies:expected.bodyAuthorities,containers:expected.containers,lifetimes:expected.lifetimes};
+    });
+    const actual={revision:ref.revision,scope:plan.scope,rows:ref.rows.map(row=>row.node_id),coverage:plan.coverage,
+      items:plan.entries.map(entry=>entry.item),sequence:plan.sequence,groups:plan.workGroups,unknown:plan.partitionUnknownKeys,
+      bodies:plan.entries.map(entry=>entry.body),containers:plan.entries.map(entry=>entry.presentationContainer),lifetimes:plan.entries.map(entry=>entry.lifetime.kind)};
+    expect(declared).toContainEqual(actual);generations.push(ref.generation);
+  });
+  return{generations,stop};
 }

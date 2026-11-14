@@ -83,7 +83,6 @@ function preserveDisplayMetadata(from: NormalizedSavedItem, to: NormalizedSavedI
 }
 export function retainUnretiredLiveFacts(snapshot: { readonly terminalPersistedAttempts?: readonly { readonly scope: string; readonly attemptId: string }[]; readonly retiredAttempts?: readonly { readonly scope: string; readonly attemptId: string; readonly turnId: string; readonly revision: number }[]; readonly revision?: number }, scope: string, current: boolean, facts: readonly NormalizedSavedItem[]): readonly NormalizedSavedItem[] {
   if (!current) return facts;
-  facts = facts.filter(fact => !("domain" in fact && fact.attemptId && snapshot.terminalPersistedAttempts?.some(receipt => receipt.scope === scope && receipt.attemptId === fact.attemptId)));
   return facts.filter(fact => !("domain" in fact && fact.attemptId && fact.turnId && snapshot.retiredAttempts?.some(retired => retired.scope === scope && retired.revision === snapshot.revision && retired.attemptId === fact.attemptId && retired.turnId === fact.turnId)));
 }
 

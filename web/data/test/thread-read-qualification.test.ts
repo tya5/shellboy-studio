@@ -1,6 +1,6 @@
 import { expect, it } from "vitest";
 import { ShellboyData } from "../src/store";
-import { connected, FakeTransport, flush } from "./harness";
+import { connected, FakeTransport, FakeOwnerDb, settle, flush } from "./harness";
 async function rig() {
   const t = new FakeTransport(); let n = 0;
   const data = new ShellboyData({ transport: t, newId: () => `qualification-${++n}` });
@@ -34,4 +34,18 @@ it("cancellation callbacks observe prior invalidation", async () => {
   const other = r.data.openThread("callback"); const token2 = other.captureReadQualification()!;
   await flush(); other.cancelReads(); await flush();
   expect(seen).toBe(false); expect(r.a.isReadQualificationCurrent(token)).toBe(true); r.data.stop();
+});
+
+
+it('resolver-only retry cannot revoke the existing handle or hide its held preview',async()=>{
+ const r=await rig();
+ r.t.push({t:'live',thread_id:'a',attempt_id:'attempt',gap:false,deltas:[{offset:0,reasoning:false,text:'Held original'}]});await flush();
+ r.t.push({t:'live_end',thread_id:'a'});await flush();
+ const token=r.a.captureReadQualification()!,scope=r.a.handoffScope();
+ const retry=r.a.retryHandoff();
+ expect(r.a.isReadQualificationCurrent(token)).toBe(true);expect(r.a.handoffScope()).toBe(scope);
+ await settle(r.t,new FakeOwnerDb());await retry;
+ expect(r.a.isReadQualificationCurrent(token)).toBe(true);
+ expect(r.a.handoff.peek().find(record=>record.attemptId==='attempt')?.text).toBe('Held original');
+ r.a.cancelReads();expect(r.a.isReadQualificationCurrent(token)).toBe(false);r.data.stop();
 });
