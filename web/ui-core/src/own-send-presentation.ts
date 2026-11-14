@@ -3,7 +3,6 @@ import {observeOwnSendTail,placeOwnSendRegion,type OwnSendInsertion,type OwnSend
 import type { SavedItemProjection } from "./conversation-items";
 import type { PendingOwnMessage } from "./model";
 
-export type OwnSendSlotPosition = Readonly<{kind:"before-first"}> | Readonly<{kind:"after";index:number}>;
 
 export interface OwnSendPresentation<Ref> {
   readonly token: object;
@@ -106,7 +105,7 @@ export function ownSendPresentation<Ref>(input: OwnSendPresentationInput<Ref>): 
       entry.kind === "conversation" && insertion.kind === "conversation" ? entry.itemKey === insertion.itemKey :
       entry.kind === "work" && insertion.kind === "work" ? entry.groupKey === insertion.groupKey : false);
   }
-  const reservationSlots=placement.kind === "qualified" && reservationPosition >= 0 ? cohort.map(row=>({row,insertion:placement.insertion,position:reservationPosition<0?{kind:"before-first"}:{kind:"after",index:reservationPosition}})) : [];
+  const reservationSlots=placement.kind === "qualified" && reservationPosition >= 0 ? cohort.map(row=>({row,insertion:placement.insertion,position:(reservationPosition<0?{kind:"before-first"}:{kind:"after",index:reservationPosition}) as OwnSendSlotPosition})) : [];
   const planSlots=conflict ? reservationSlots : allSlots ? positionedSlots : reservationSlots;
   const usableSlots=positionedSlots.length>0&&!conflict?positionedSlots:[];
   const finalPlacement=placement;
