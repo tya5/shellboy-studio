@@ -84,3 +84,22 @@ it("keeps one answer container while preserving ordered canonical children", asy
   expect(host.textContent).toContain("saved");
   expect(host.textContent).toContain("second");
 });
+
+it("renders one stable host for nonadjacent children while preserving intervening work order", async () => {
+  const { render, h } = await import("preact");
+  const { ConversationItems } = await import("../screens/ConversationItems");
+  const host = document.createElement("div"); document.body.append(host);
+  const second: NormalizedSavedItem = { ...saved, nodeId: "node-2", itemIdentity: "node-2:/output/0/content/0", text: "second" };
+  const base = projectSavedItems([saved, second]);
+  const projection = withPresentationContainers(base, new Map(base.items.map(item => [item.key, "answer:attempt-1"])));
+  render(h(ConversationItems, {
+    items: projection.items,
+    sequence: [{ kind: "conversation", itemKey: base.items[0]!.key }, { kind: "work", groupKey: "work-1" }, { kind: "conversation", itemKey: base.items[1]!.key }],
+    workGroups: [{ key: "work-1", firstMemberKey: "work-1", memberKeys: [], executionIds: [], toolItemKeys: [], unknownToolCount: 0, interrupted: false }],
+    renderItem: item => h("span", {}, item.source.kind === "text" ? item.source.text : ""), renderWorkGroup: (_group, children) => h("div", { class: "intervening-work" }, children),
+  }), host);
+  expect(host.querySelectorAll("[data-answer-container]")).toHaveLength(1);
+  expect([...host.querySelectorAll("[data-item-key]")].map(node => node.textContent)).toEqual(["saved", "second"]);
+  expect(host.querySelector(".intervening-work")?.nextElementSibling?.matches("[data-answer-container]")).toBe(false);
+  render(null, host); host.remove();
+});
