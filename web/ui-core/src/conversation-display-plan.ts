@@ -84,8 +84,6 @@ export function createConversationDisplayPlan(input: AcceptedPublicationInput): 
     }
   }
   const generation = input.generation, revision = input.revision;
-  const previewHosts = [...new Set(input.assistantFacts.filter(fact => fact.scope === input.scope && fact.mode === 'preview' && fact.containerKey).map(fact => fact.containerKey))];
-  const continuityHost = previewHosts.length === 1 ? previewHosts[0] : undefined;
   const semanticKey = displaySemanticKey(input.canonicalProjection, input.projection, qualifiedFacts, input.retiredAttempts);
   const version = input.userDecision.cohortVersion;
   const cohortKey = [...version.accepted.map(row => `${row.operationId}:${row.phase}:${row.messageId ?? ''}`), version.pending ? `pending:${version.pending.operationId}:${version.pending.phase}` : 'pending:none'].join('|');
@@ -94,7 +92,7 @@ export function createConversationDisplayPlan(input: AcceptedPublicationInput): 
     const canonical = input.canonicalProjection.items.find(candidate => candidate.key === item.key);
     const canonicalSource = canonical?.source;
     const owner = owners.get(item.key);
-    const host = ('domain' in source ? (source as LiveWorkIdentity).presentationContainer : undefined) ?? (owner?.containerKey as string | undefined) ?? (continuityHost && canonical?.source.kind === 'text' ? continuityHost : undefined);
+    const host = ('domain' in source ? (source as LiveWorkIdentity).presentationContainer : undefined) ?? (owner?.containerKey as string | undefined);
     const human = (source.kind === 'user' || source.kind === 'summary') && source.textComplete === true;
     const typedCanonical = source.kind === 'text' && source.textComplete === true && canonicalSource?.kind === 'text' && canonicalSource.textComplete === true;
     const body: DisplayBodySource = (typedCanonical || human)
