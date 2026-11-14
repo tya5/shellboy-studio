@@ -954,6 +954,10 @@ export class ConversationWindow {
       terminalPresence: this.terminalCapability === capability ? this.terminalPresence : [],
       terminalPersistedAttempts: this.terminalCapability === capability ? this.terminalPersistedAttempts : [],
       coverage: this.summaryTransition?.targetCap === capability && !this.summaryTransition?.consumed ? this.summaryTransition?.coverage : undefined,
+      assistantOwnership: (() => {
+        const prior = this.acceptedView.peek();
+        return prior.revision === this.revision && prior.capability === capability ? prior.assistantOwnership : undefined;
+      })(),
       retiredAttempts: (this.retiredCapability === capability ? this.retiredAttempts : []).filter(item => item.revision === this.revision),
       displayPlan: (() => {
         const priorPlan = this.acceptedView.peek().displayPlan;
