@@ -43,6 +43,7 @@ it('keeps one answer presentation through the complete real Conversation lifecyc
    {kind:'text',item_identity:'answer-1:/output/0/content/1',text:'Canonical continuation',text_complete:true},
   ]};f.db.history.thread=nodes;revision++;
   await act(async()=>{f.t.push({t:'live_end',thread_id:'thread'});await settle(f.t,f.db);await flush(24);});
+  await act(async()=>{f.t.push({t:'changed',thread_ids:['thread'],list:false});await settle(f.t,f.db);await flush(24);});
   expect(host.querySelector('[data-answer-container]')).toBe(identity);
   expect(host.textContent).toContain('Canonical answer');expect(host.textContent).toContain('Canonical continuation');
   expect([...host.querySelectorAll('[data-answer-container] [data-item-key]')].map(e=>[e.getAttribute('data-node'),e.getAttribute('data-key')])).toHaveLength(2);
