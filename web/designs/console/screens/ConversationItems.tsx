@@ -86,6 +86,13 @@ export function ConversationItems({ items, toolSummaries = [], renderItem, rende
         const item = byKey.get(key); return item ? content(item, true) : null;
       }))}</div> });
     }
+    if (sequence.length === 0) {
+      const emptyRegion: ComponentChildren[] = [];
+      if (localRegion?.placement.kind === "unqualified") emptyRegion.push(localRegion.unqualified);
+      else if (slots.length) emptyRegion.push(...slots.filter(slot => slot.insertion.kind === "beginning").map(slot => slot.content));
+      else if (insertion?.kind === "beginning") emptyRegion.push(localRegion?.content);
+      return <div class="conversation-items">{emptyRegion}{trailing}</div>;
+    }
     const canonical = rendered.map(item => item.view);
     const canonicalEntries = rendered.map(item => item.entry);
     const region:ComponentChildren[]=[];
