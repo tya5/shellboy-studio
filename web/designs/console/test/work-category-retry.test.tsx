@@ -28,7 +28,7 @@ it.each<HandoffRetryState>([{phase:'idle',canRetry:false},{phase:'reading',canRe
  const handle={handoffRetryState:{value:state},retryHandoff:async()=>{reads++;}};
  const model=new Proxy(f.model,{get(target,key){return key==='handle'?{value:handle}:Reflect.get(target,key);}});
  try{
-  await act(async()=>render(<LiveRecordChrome model={model} record={{key:'actual',attemptId:'attempt',status:'confirming',bodyAuthority:'preview',text:'',incomplete:false}} retry={()=>{throw Error('old callback must not be used');}}/>,host));
+  await act(async()=>render(<LiveRecordChrome model={model} record={{key:'actual',presentationContainer:'presentation:test' as import('../../../data/src/handoff').PresentationContainerId,attemptId:'attempt',status:'confirming',bodyAuthority:'preview',text:'',incomplete:false}} retry={()=>{throw Error('old callback must not be used');}}/>,host));
   const button=host.querySelector('button');
   if(state.phase==='reading'){expect(button?.disabled).toBe(true);expect(reads).toBe(0);}
   else if(state.canRetry){expect(button?.disabled).toBe(false);await act(async()=>button!.click());expect(reads).toBe(1);}
