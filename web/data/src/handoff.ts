@@ -43,6 +43,7 @@ export interface HandoffRecord {
   readonly text: string;
   readonly incomplete: boolean;
   readonly status: HandoffStatus;
+  readonly bodyAuthority: 'preview' | 'identified' | 'saved';
   readonly nodeId?: string;
   readonly proof?: Readonly<{ scope: string; turnId: string; ordinal: number; revision: string | number; kind: 'assistant_response' }>;
   readonly transferred?: boolean;
@@ -97,7 +98,7 @@ export class Handoff {
       if (this.held.length + this.publicationSlots >= MAX_HANDOFF_RECORDS || this.blockedAttempt === frame.attempt_id) { this.overflowSig.value = true; this.blockedAttempt = frame.attempt_id; return; }
       if (this.active) this.finish();
       const source = new LiveText(this.schedule);
-      const record: HandoffRecord = { key: `handoff:${frame.attempt_id}`, attemptId: frame.attempt_id, text: '', incomplete: frame.gap, status: 'streaming' };
+      const record: HandoffRecord = { key: `handoff:${frame.attempt_id}`, attemptId: frame.attempt_id, text: '', incomplete: frame.gap, status: 'streaming', bodyAuthority: 'preview' };
       h = { admitted: 0, attemptId: frame.attempt_id, source, stop: () => {}, record };
       const held = h;
       this.held.push(h);
@@ -149,7 +150,7 @@ export class Handoff {
   confirming(attemptId: string): void { this.update(attemptId, r => ({ ...r, status: 'confirming' })); }
   /** Reserve exact saved identity without claiming its body is safe to display. */
   identify(attemptId: string, nodeId: string): void {
-    this.update(attemptId, r => r.status === 'ready' ? r : ({ ...r, nodeId }));
+    this.update(attemptId, r => r.status === 'ready' ? r : ({ ...r, nodeId, bodyAuthority: r.bodyAuthority === 'saved' ? 'saved' : 'identified' }));
   }
   /** Called only after exact identity and intended safe body are verified. One signal write. */
   ready(attemptId: string, nodeId: string, text: string, proof?: HandoffRecord["proof"]): boolean {
@@ -158,7 +159,7 @@ export class Handoff {
     h.stop();
     h.source.discard('saved');
     h.admitted = bytes(text);
-    h.record = { ...h.record, text, nodeId, proof, incomplete: false, status: 'ready' };
+    h.record = { ...h.record, text, nodeId, proof, incomplete: false, status: 'ready', bodyAuthority: 'saved' };
     this.publish();
     return true;
   }

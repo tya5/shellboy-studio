@@ -242,7 +242,8 @@ export function projectOwnedHandoffFacts(scope: string, records: readonly Handof
       && record.readyAttempt.scope === scope && record.readyAttempt.attemptId === record.attemptId
       && record.readyAttempt.turnId === proof.turnId && record.readyAttempt.revision === proof.revision
       && record.readyAttempt.refs.some(ref => ref.nodeId === record.nodeId);
-    return record.text && record.transferred !== true && (record.status !== "ready" || ready)
+    const previewAuthorized = record.bodyAuthority === "preview" && (record.status === "streaming" || record.status === "confirming");
+    return record.text && record.transferred !== true && (previewAuthorized || (record.status === "ready" && ready))
       ? {domain: "live", namespace: "handoff", scope, recordId: record.key, attemptId: record.attemptId, kind: "text", text: record.text}
       : {domain: "live", namespace: "handoff", scope, recordId: record.key, attemptId: record.attemptId, kind: "unknown"};
   }));

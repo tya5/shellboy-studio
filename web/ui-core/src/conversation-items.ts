@@ -242,7 +242,7 @@ function projectSavedItemsCore(rawInput: readonly NormalizedSavedItem[], decoded
   for (const source of input) {
     if (!("domain" in source) && (!source.nodeId || !source.itemIdentity || (!decodedLegacy && source.revision === undefined && source.windowRevision === undefined && !(source.identityDomain === "node" && source.kind === "unknown" && source.itemIdentity === source.nodeId)))) throw new Error("Missing authoritative identity/proof");
     if ("domain" in source && (!source.scope || !source.recordId)) throw new Error("Missing live record identity");
-    const canonicalKey = "domain" in source ? JSON.stringify([source.domain, source.namespace ?? "work", source.scope, source.recordId]) : source.identityDomain === "spill" ? JSON.stringify(["spill", source.nodeId, source.itemIdentity]) : source.identityDomain === "node" ? JSON.stringify(["node", source.nodeId, source.itemIdentity]) : JSON.stringify([source.nodeId, source.itemIdentity]);
+    const canonicalKey = "domain" in source ? JSON.stringify([source.domain, source.namespace ?? "work", source.scope, source.recordId]) : source.identityDomain === "spill" ? JSON.stringify(["spill", source.nodeId, source.itemIdentity]) : source.identityDomain === "node" ? JSON.stringify(["node", source.nodeId, source.itemIdentity === source.nodeId ? undefined : source.itemIdentity].filter(value => value !== undefined)) : JSON.stringify([source.nodeId, source.itemIdentity]);
     const a = association(source);
     const proven = a && !conflicts.has(a.key) ? a : undefined;
     const key = canonicalItemCase(source).keyPolicy === "association" && proven ? proven.key : canonicalKey;
