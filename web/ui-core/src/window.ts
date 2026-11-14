@@ -149,7 +149,6 @@ export class ConversationWindow {
   private terminalIdentitySerial = 0;
   private terminalIdentity = new WeakMap<object, number>();
   private terminalPreparedRequests = new Map<string, { refId: number; capId: number; tokenId: number; argsKey: string; request: import("../../data/src/terminal-read").SelectedCanonicalRequest }>();
-  private freshTerminalReads = new Set<string>();
   private terminalTargets = new Map<string, { ref: WindowAcceptedSnapshot; cap: AcceptedCapability; handle: ThreadHandle; token: ThreadReadQualification;
     receipt: TerminalPersistedProof; requestId: SelectedRequestId; lease: OwnedTerminalReadLease; stop?: () => void }>();
   private terminalPersistedAttempts: readonly TerminalPersistedProof[] = [];
@@ -343,40 +342,6 @@ export class ConversationWindow {
     return committed;
   }
 
-  private beginFreshTerminalRead(target: { ref: WindowAcceptedSnapshot; cap: AcceptedCapability; handle: ThreadHandle; token: ThreadReadQualification; receipt: TerminalPersistedProof }): void {
-    const key = JSON.stringify([target.receipt.scope, target.receipt.attemptId]);
-    if (this.freshTerminalReads.has(key)) return;
-    this.freshTerminalReads.add(key);
-    const epoch = this.epoch, cap = target.cap;
-    void this.reader.read({ node_id: target.receipt.nodeIds[0], before: 99, after: 100, items: true }, new Cancel()).then(out => {
-      if (this.disposed || epoch !== this.epoch || cap !== this.acceptedView.currentCapability
-        || !target.handle.isReadQualificationCurrent(target.token) || !this.acceptedView.isCurrent(target.ref)) return;
-      if (!out.ok || out.value.items.length > 200 || out.value.total < target.ref.total) return;
-      const byOrdinal = new Map<number, HistoryItem>();
-      for (const row of out.value.items) {
-        const ordinal = row.selection?.ordinal;
-        if (ordinal === undefined || !Number.isSafeInteger(ordinal) || ordinal < 0 || ordinal >= out.value.total
-          || (byOrdinal.has(ordinal) && byOrdinal.get(ordinal)!.node_id !== row.node_id)) return;
-        byOrdinal.set(ordinal, row);
-      }
-      if (!target.receipt.nodeIds.every(nodeId => out.value.items.some(row => row.node_id === nodeId))) return;
-      for (const old of target.ref.rows) {
-        const next = byOrdinal.get(old.selection?.ordinal ?? -1);
-        if (!next || next.node_id !== old.node_id) return;
-        const deferredUpgrade = old.items == null && old.items_unavailable_reason === "response_budget"
-          && Array.isArray(next.items) && next.items.length > 0
-          && next.kind === old.kind && next.selection?.ordinal === old.selection?.ordinal;
-        if (JSON.stringify(old) !== JSON.stringify(next) && !deferredUpgrade) return;
-      }
-      this.revision = out.value.revision;
-      this.setTotal(out.value.total);
-      this.install(out.value, cap);
-      const current = this.acceptedView.peek();
-      const entry = this.terminalTargets.get(key);
-      if (entry && this.acceptedView.isCurrent(current)) { entry.ref = current; this.advanceTerminalTarget(entry, current); }
-    }).finally(() => { this.freshTerminalReads.delete(key); });
-  }
-
   applyTerminalRead(lease: OwnedTerminalReadLease): boolean {
     const target = [...this.terminalTargets.values()].find(t => t.lease === lease);
     if (!target || this.disposed || !target.handle.isReadQualificationCurrent(target.token)
@@ -392,10 +357,7 @@ export class ConversationWindow {
         const value = out.result.value;
         // Readback can only extend the same qualified selected run; revision changes
         // need a separate fresh transaction, never a silent rebind here.
-        if (value.thread_id !== target.handle.threadId || value.revision !== target.ref.revision || value.total < target.ref.total || value.items.length > 200) {
-          this.beginFreshTerminalRead(target);
-          reason = "selection-gap";
-        }
+        if (value.thread_id !== target.handle.threadId || value.revision !== target.ref.revision || value.total < target.ref.total || value.items.length > 200) reason = "selection-gap";
         else if (value.items.some(row => {
           const existing = target.ref.rows.find(saved => saved.selection?.ordinal === row.selection?.ordinal);
           return existing !== undefined && JSON.stringify(existing) !== JSON.stringify(row);
