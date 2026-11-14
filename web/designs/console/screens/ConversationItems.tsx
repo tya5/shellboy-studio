@@ -49,7 +49,7 @@ export function ConversationItems({ items, toolSummaries = [], renderItem, rende
   if (sequence && workGroups && renderWorkGroup) {
     const byKey = new Map(items.map(item => [item.key, item]));
     const groups = new Map(workGroups.map(group => [group.key, group]));
-    const content = (item: ConversationItem, work: boolean) => <div class="conversation-row" key={`item:${item.key}`} data-item-key={item.key} data-key={item.key} data-node={item.source.nodeId} data-work-item-key={work ? item.key : undefined}>{renderItem(item)}</div>;
+    const content = (item: ConversationItem, work: boolean) => <div class={`conversation-row${!work && item.presentationContainer ? " conversation-answer-child" : ""}`} key={`item:${item.key}`} data-item-key={item.key} data-key={item.key} data-node={item.source.nodeId} data-work-item-key={work ? item.key : undefined}>{renderItem(item)}</div>;
     const insertion=localRegion?.placement.kind==="qualified"?localRegion.placement.insertion:undefined;
     const same=(entry:NonNullable<Props["sequence"]>[number])=>insertion?.kind===entry.kind&&(entry.kind==="conversation"?insertion.kind==="conversation"&&insertion.itemKey===entry.itemKey:insertion.kind==="work"&&insertion.groupKey===entry.groupKey);
     const rendered: { entry: NonNullable<Props["sequence"]>[number]; view: ComponentChildren }[] = [];
@@ -70,7 +70,10 @@ export function ConversationItems({ items, toolSummaries = [], renderItem, rende
           if (childEntry.kind !== "conversation") break;
           const child = byKey.get(childEntry.itemKey);
           if (!child || (child as ConversationItem & { presentationContainer?: string }).presentationContainer !== container) break;
-          if (!isItemAbsent?.(child)) children.push(<div class="conversation-answer-child" key={`answer-child:${child.key}`} data-item-key={child.key}>{renderItem(child)}</div>);
+          if (!isItemAbsent?.(child)) {
+            const childSlots = (localRegion?.slots ?? []).filter(slot => slot.insertion.kind === "conversation" && slot.insertion.itemKey === childEntry.itemKey);
+            children.push(<Fragment key={`answer-child:${child.key}`}>{renderBefore?.(child)}{content(child, false)}{childSlots.map(slot => slot.content)}{!localRegion?.slots?.length && insertion?.kind === "conversation" && insertion.itemKey === childEntry.itemKey ? localRegion?.content : null}</Fragment>);
+          }
           end++;
         }
         rendered.push({ entry, view: <div class="conversation-row answer-container" key={`answer:${container}`} data-answer-container={container}>{children}</div> });
@@ -89,8 +92,11 @@ export function ConversationItems({ items, toolSummaries = [], renderItem, rende
     if(!localRegion?.slots?.length&&insertion?.kind==="beginning")region.push(localRegion?.content);
     canonical.forEach((row,index)=>{if(Array.isArray(row))region.push(...row);else region.push(row);
       const entry=canonicalEntries[index]!;
-      for(const slot of localRegion?.slots??[])if(slot.insertion.kind===entry.kind&&(entry.kind==="conversation"?slot.insertion.kind==="conversation"&&slot.insertion.itemKey===entry.itemKey:slot.insertion.kind==="work"&&slot.insertion.groupKey===entry.groupKey))region.push(slot.content);
-      if(!localRegion?.slots?.length&&same(entry))region.push(localRegion?.content);
+      const grouped = entry.kind === "conversation" && byKey.get(entry.itemKey)?.presentationContainer !== undefined;
+      if (!grouped) {
+        for(const slot of localRegion?.slots??[])if(slot.insertion.kind===entry.kind&&(entry.kind==="conversation"?slot.insertion.kind==="conversation"&&slot.insertion.itemKey===entry.itemKey:slot.insertion.kind==="work"&&slot.insertion.groupKey===entry.groupKey))region.push(slot.content);
+        if(!localRegion?.slots?.length&&same(entry))region.push(localRegion?.content);
+      }
     });
     if(!localRegion?.slots?.length&&!insertion)region.push(localRegion?.unqualified);
     return <div class="conversation-items">{region}{trailing}</div>;
@@ -106,7 +112,7 @@ export function ConversationItems({ items, toolSummaries = [], renderItem, rende
         </div>,
       );
     }
-    rows.push(<div hidden={isItemHidden?.(item)} class="conversation-row" key={`item:${item.key}`} data-item-key={item.key} data-key={item.key}
+    rows.push(<div hidden={isItemHidden?.(item)} class={`conversation-row${item.presentationContainer ? " conversation-answer-child" : ""}`} key={`item:${item.key}`} data-item-key={item.key} data-key={item.key}
       data-node={item.source.nodeId} data-execution-id={item.source.kind === 'tool' && !item.source.executionIds ? item.source.executionId : undefined}>
       {renderItem(item)}
     </div>);
