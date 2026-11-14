@@ -9,10 +9,18 @@ import {summary,details,flush,settle} from '../../../data/test/harness';
 import type {HistoryItem} from '../../../data/src/protocol';
 import type {DesignContext} from '../../../ui-core/src';
 import {loadPrefs} from '../../../ui-core/src/prefs';
+import {appendFileSync} from 'node:fs';
+
+const diagnosticTrace = (stage:string, data:Record<string, unknown>={}) => {
+ const path = process.env.UNIT1_DIAGNOSTIC_TRACE;
+ if (!path) return;
+ appendFileSync(path, JSON.stringify({stage, ...data, stack: new Error().stack}) + '\n');
+};
 import {App} from '../screens/App';
 import {typedHandoffRegistry,validTypedHandoffRef} from '../../../ui-core/test/typed-handoff-fixture';
 
 it('keeps one answer presentation through the complete real Conversation lifecycle',async()=>{
+ diagnosticTrace('test-entry');
  let ended=false,revision: string|number=7; const trace: unknown[]=[]; let pointReads=0;
  const registry=typedHandoffRegistry({threadId:'thread',attemptId:'attempt-1',turnId:'turn-1',revision:7,total:4,refs:[{nodeId:'answer-1',ordinal:2,text:'Canonical answer'},{nodeId:'answer-2',ordinal:3,text:'Canonical continuation'}]});
  const first=registry.refs[0]!,second=registry.refs[1]!;
@@ -37,15 +45,15 @@ it('keeps one answer presentation through the complete real Conversation lifecyc
    return base(call);
   };
  }});
- const host=document.createElement('div');document.body.append(host);
+ const host=document.createElement('div');document.body.append(host); diagnosticTrace('initial-render');
  const context:DesignContext={model:f.model,prefs:signal(loadPrefs({read:()=>null,write:()=>{}},[{name:'console',themes:[{name:'light'}]}])),setPrefs:()=>{},designs:[],submitToken:async()=>false};
  try{
   await act(async()=>{render(<App context={context}/>,host);await settle(f.t,f.db);});
-  await act(async()=>{f.t.push({t:'live',thread_id:'thread',attempt_id:'attempt-1',gap:false,deltas:[{offset:0,reasoning:false,text:'Preview answer'}]});await flush(24);});
+  await act(async()=>{f.t.push({t:'live',thread_id:'thread',attempt_id:'attempt-1',gap:false,deltas:[{offset:0,reasoning:false,text:'Preview answer'}]});await flush(24);}); diagnosticTrace('preview-render');
   const identity=host.querySelector('[data-answer-container]');expect(identity).not.toBeNull();expect(identity?.textContent).toContain('Preview answer');
   ended=true;registry.canonical=true;registry.revision=8;nodes[2]=canonical(first);nodes[3]=canonical(second);f.db.history.thread=nodes;revision=8;
-  await act(async()=>{f.t.push({t:'live_end',thread_id:'thread'});await settle(f.t,f.db);await flush(24);await settle(f.t,f.db);await flush(24);});
-  const liveHandle=f.model.handle.peek(); const window=f.model.longReader.peek(); trace.push({stage:'live_end_state',handoff:liveHandle?.handoff.peek().map(record=>({key:record.key,attemptId:record.attemptId,status:record.status,text:record.text,terminal:!!record.terminalPersisted,transferred:!!record.transferred,readyAttempt:record.readyAttempt,proof:record.proof})),retry:liveHandle?.handoffRetryState.peek(),window:window?{revision:window.acceptedView.peek().revision,total:window.acceptedView.peek().total,pending:window.acceptedView.peek().pending,generation:window.acceptedView.peek().generation,ownership:window.acceptedView.peek().assistantOwnership,terminalPresence:window.acceptedView.peek().terminalPresence,rows:window.acceptedView.peek().rows.map(row=>({node_id:row.node_id,ordinal:row.selection?.ordinal,body:row.items?.length??null,unavailable:row.items_unavailable_reason}))}:undefined,calls:f.t.calls().map(call=>({command:call.command,args:call.args}))}); console.log('UNIT1_HANDOFF_TRACE',JSON.stringify(trace));
+  diagnosticTrace('live-end-before'); await act(async()=>{f.t.push({t:'live_end',thread_id:'thread'});await settle(f.t,f.db);await flush(24);await settle(f.t,f.db);await flush(24);}); diagnosticTrace('live-end-after');
+  const liveHandle=f.model.handle.peek(); diagnosticTrace('accepted-state', { revision: f.model.longReader.peek()?.acceptedView.peek().revision, generation: f.model.longReader.peek()?.acceptedView.peek().generation, rows: f.model.longReader.peek()?.acceptedView.peek().rows.map(row=>({node:row.node_id,ordinal:row.selection?.ordinal,body:row.items?.length??null})), ownership: f.model.longReader.peek()?.acceptedView.peek().assistantOwnership, presence: f.model.longReader.peek()?.acceptedView.peek().terminalPresence }); const window=f.model.longReader.peek(); trace.push({stage:'live_end_state',handoff:liveHandle?.handoff.peek().map(record=>({key:record.key,attemptId:record.attemptId,status:record.status,text:record.text,terminal:!!record.terminalPersisted,transferred:!!record.transferred,readyAttempt:record.readyAttempt,proof:record.proof})),retry:liveHandle?.handoffRetryState.peek(),window:window?{revision:window.acceptedView.peek().revision,total:window.acceptedView.peek().total,pending:window.acceptedView.peek().pending,generation:window.acceptedView.peek().generation,ownership:window.acceptedView.peek().assistantOwnership,terminalPresence:window.acceptedView.peek().terminalPresence,rows:window.acceptedView.peek().rows.map(row=>({node_id:row.node_id,ordinal:row.selection?.ordinal,body:row.items?.length??null,unavailable:row.items_unavailable_reason}))}:undefined,calls:f.t.calls().map(call=>({command:call.command,args:call.args}))}); console.log('UNIT1_HANDOFF_TRACE',JSON.stringify(trace));
   expect(host.querySelector('[data-answer-container]')).toBe(identity);expect(host.textContent).toContain('Canonical answer');expect(host.textContent).toContain('Canonical continuation');
   expect([...host.querySelectorAll('[data-answer-container] [data-item-key]')]).toHaveLength(2);
   registry.total=5;registry.revision=9;nodes.push({node_id:'local-1',kind:'user',selection:{ordinal:4},items:[{kind:'text',item_identity:'local1',text:'Next turn',text_complete:true}]});revision=9;
