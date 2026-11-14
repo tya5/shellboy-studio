@@ -922,8 +922,8 @@ export class ConversationWindow {
         const priorPlan = this.acceptedView.peek().displayPlan;
         if (!priorPlan || priorPlan.capability !== capability || this.revision === undefined) return undefined;
         return createConversationDisplayPlan({ acceptedRef: this.acceptedView.peek(), acceptedGeneration: generation,
-          capability, projection: projectHistoryWindowItems({ revision: this.revision, nodes: currentRows, keyScope: [priorPlan.cohortVersion.accepted[0]?.operationId ?? ""] }).projection,
-          assistantFacts: this.acceptedView.peek().assistantOwnership ?? [], userDecision: { cohortVersion: priorPlan.cohortVersion }, scope: priorPlan.cohortVersion.accepted[0]?.operationId ?? "" });
+          capability, projection: projectHistoryWindowItems({ revision: this.revision, nodes: currentRows, keyScope: [priorPlan.scope] }).projection,
+          assistantFacts: this.acceptedView.peek().assistantOwnership ?? [], userDecision: { cohortVersion: priorPlan.cohortVersion }, scope: priorPlan.scope });
       })() }, capability);
     if (this.disposed || epoch !== this.epoch || generation !== this.acceptedGeneration) return;
     if (!this.acceptedView.commit(staged)) return;

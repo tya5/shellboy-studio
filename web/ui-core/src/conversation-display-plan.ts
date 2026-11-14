@@ -27,6 +27,7 @@ export interface ConversationDisplayPlan {
   readonly entries: readonly ConversationDisplayPlanEntry[];
   readonly cohortKey: string;
   readonly cohortVersion: DisplayCohortVersion;
+  readonly scope: string;
   readonly semanticKey: string;
 }
 
@@ -74,5 +75,5 @@ export function createConversationDisplayPlan(input: {
     const lifetime: DisplayLifetime = Object.freeze({ kind: retired ? 'revoked' : human && !owner ? 'canonical-human' : owner || host ? 'valid-owner' : 'retained', scope: input.scope, generation, revision });
     return Object.freeze({ item, ...(host ? { presentationContainer: host } : {}), body, lifetime });
   });
-  return Object.freeze({ acceptedGeneration: generation, revision, capability: input.capability, entries: Object.freeze(entries), cohortKey, cohortVersion: version, semanticKey });
+  return Object.freeze({ acceptedGeneration: generation, revision, capability: input.capability, entries: Object.freeze(entries), cohortKey, cohortVersion: version, scope: input.scope, semanticKey });
 }
