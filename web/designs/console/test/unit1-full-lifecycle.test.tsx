@@ -13,7 +13,7 @@ import {App} from '../screens/App';
 import {typedHandoffRegistry,validTypedHandoffRef} from '../../../ui-core/test/typed-handoff-fixture';
 
 it('keeps one answer presentation through the complete real Conversation lifecycle',async()=>{
- let ended=false,revision: string|number=7; const trace: unknown[]=[];
+ let ended=false,revision: string|number=7; const trace: unknown[]=[]; let pointReads=0;
  const registry=typedHandoffRegistry({threadId:'thread',attemptId:'attempt-1',turnId:'turn-1',revision:7,total:4,refs:[{nodeId:'answer-1',ordinal:2,text:'Canonical answer'},{nodeId:'answer-2',ordinal:3,text:'Canonical continuation'}]});
  const first=registry.refs[0]!,second=registry.refs[1]!;
  const attempt=registry.attempt();
@@ -31,7 +31,7 @@ it('keeps one answer presentation through the complete real Conversation lifecyc
     const args=call.args as {node_id?:unknown; ordinal?:unknown; before?:unknown; after?:unknown};
     const point=typeof args.node_id==='string'?args.node_id:undefined;
     const ordinal=Number.isSafeInteger(args.ordinal)?args.ordinal as number:undefined;
-    if(point!==undefined||ordinal!==undefined){const fixture=[first,second].find(item=>(point===undefined||item.nodeId===point)&&(ordinal===undefined||item.ordinal===ordinal));const window=registry.history({node_id:point,ordinal,before:Number(args.before) || 0,after:Number(args.after) || 0});if(!fixture||!window||!validTypedHandoffRef({...fixture,revision:registry.revision,total:registry.total},attempt,window))throw new Error(`typed handoff rejection ${point}:${ordinal}`);const result=window;trace.push({stage:'transport',command:call.command,args:call.args,result:{revision:result.revision,total:result.total,item_count:result.item_count,items:result.items.map(item=>({node_id:item.node_id,ordinal:item.selection?.ordinal,body:Array.isArray(item.items)?item.items.map(value=>value.kind):null,unavailable:item.items_unavailable_reason}))}});return {ok:true,result};}
+    if(point!==undefined||ordinal!==undefined){const fixture=[first,second].find(item=>(point===undefined||item.nodeId===point)&&(ordinal===undefined||item.ordinal===ordinal));pointReads++;const window=pointReads > 1 ? {thread_id:'thread',revision:registry.revision,total:nodes.length,items:nodes} : registry.history({node_id:point,ordinal,before:Number(args.before) || 0,after:Number(args.after) || 0});if(!fixture||!window||!validTypedHandoffRef({...fixture,revision:registry.revision,total:registry.total},attempt,window))throw new Error(`typed handoff rejection ${point}:${ordinal}`);const result=window;trace.push({stage:'transport',command:call.command,args:call.args,result:{revision:result.revision,total:result.total,item_count:result.item_count,items:result.items.map(item=>({node_id:item.node_id,ordinal:item.selection?.ordinal,body:Array.isArray(item.items)?item.items.map(value=>value.kind):null,unavailable:item.items_unavailable_reason}))}});return {ok:true,result};}
     return {ok:true,result:{thread_id:'thread',revision:registry.revision,total:nodes.length,items:nodes}};
    }
    return base(call);
