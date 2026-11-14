@@ -236,9 +236,11 @@ export function LiveRecordChrome({ model, record }: { model: AppModel; record: H
 
 /** Only records read from the current owned ledger may enter this adapter. */
 export function projectOwnedHandoffFacts(scope: string, records: readonly HandoffRecord[]): readonly NormalizedSavedItem[] {
-  return normalizeConversationFacts(records.map(record => record.nodeId === undefined && record.proof === undefined && record.transferred !== true && record.status !== "ready" && record.text
-    ? {domain: "live", namespace: "handoff", scope, recordId: record.key, attemptId: record.attemptId, kind: "text", text: record.text}
-    : {domain: "live", namespace: "handoff", scope, recordId: record.key, attemptId: record.attemptId, kind: "unknown"}));
+  return normalizeConversationFacts(records.map(record => record.nodeId !== undefined && record.proof !== undefined
+    ? {domain: "live", namespace: "handoff", scope, recordId: record.key, attemptId: record.attemptId, canonicalNodeId: record.nodeId, canonicalScope: record.proof.scope, kind: "text", text: record.text, textComplete: record.status === "ready"}
+    : record.nodeId === undefined && record.proof === undefined && record.transferred !== true && record.status !== "ready" && record.text
+      ? {domain: "live", namespace: "handoff", scope, recordId: record.key, attemptId: record.attemptId, kind: "text", text: record.text}
+      : {domain: "live", namespace: "handoff", scope, recordId: record.key, attemptId: record.attemptId, kind: "unknown"}));
 }
 
 export function retainUnretiredLiveFacts(snapshot: WindowAcceptedSnapshot, scope: string, current: boolean, facts: readonly NormalizedSavedItem[]): readonly NormalizedSavedItem[] {

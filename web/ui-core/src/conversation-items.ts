@@ -137,6 +137,9 @@ export interface LiveWorkIdentity {
   readonly recordId: string;
   readonly attemptId?: string;
   readonly turnId?: string;
+  /** Exact saved node claimed by a qualified live receipt; absent means no join. */
+  readonly canonicalNodeId?: string;
+  readonly canonicalScope?: string;
   readonly nodeId?: never;
   readonly itemIdentity?: never;
   readonly revision?: never;
@@ -242,11 +245,20 @@ function projectSavedItemsCore(rawInput: readonly NormalizedSavedItem[], decoded
   for (const source of input) {
     if (!("domain" in source) && (!source.nodeId || !source.itemIdentity || (!decodedLegacy && source.revision === undefined && source.windowRevision === undefined && !(source.identityDomain === "node" && source.kind === "unknown" && source.itemIdentity === source.nodeId)))) throw new Error("Missing authoritative identity/proof");
     if ("domain" in source && (!source.scope || !source.recordId)) throw new Error("Missing live record identity");
-    const canonicalKey = "domain" in source ? JSON.stringify([source.domain, source.namespace ?? "work", source.scope, source.recordId]) : source.identityDomain === "spill" ? JSON.stringify(["spill", source.nodeId, source.itemIdentity]) : source.identityDomain === "node" ? JSON.stringify(["node", source.nodeId]) : JSON.stringify([source.nodeId, source.itemIdentity]);
+    const canonicalKey = "domain" in source ? (source.canonicalNodeId ? JSON.stringify(["node", source.canonicalNodeId, source.canonicalScope ?? source.scope]) : JSON.stringify([source.domain, source.namespace ?? "work", source.scope, source.recordId])) : source.identityDomain === "spill" ? JSON.stringify(["spill", source.nodeId, source.itemIdentity]) : source.identityDomain === "node" ? JSON.stringify(["node", source.nodeId, source.keyScope?.[0] ?? ""]) : JSON.stringify([source.nodeId, source.itemIdentity]);
     const a = association(source);
     const proven = a && !conflicts.has(a.key) ? a : undefined;
     const key = canonicalItemCase(source).keyPolicy === "association" && proven ? proven.key : canonicalKey;
-    if (seen.has(canonicalKey)) throw new Error("Duplicate normalized saved item identity");
+    if (seen.has(canonicalKey)) {
+      const prior = items.findIndex(item => item.canonicalKey === canonicalKey);
+      if (prior >= 0 && classifyConversationItem(source) === "conversation") {
+        const previous = items[prior]!;
+        const replacement = { ...previous, source: Object.freeze({ ...source, classificationCase: canonicalItemCase(source).id }) };
+        items[prior] = Object.freeze(replacement);
+        continue;
+      }
+      throw new Error("Duplicate normalized saved item identity");
+    }
     seen.add(canonicalKey);
     if (proven && selectedTools.has(key)) {
       const index = selectedTools.get(key)!;
@@ -259,7 +271,7 @@ function projectSavedItemsCore(rawInput: readonly NormalizedSavedItem[], decoded
       continue;
     }
     if (proven) selectedTools.set(key, items.length);
-    const identity = "domain" in source ? { domain: source.domain, ...(source.terminalPresence ? { terminalPresence: source.terminalPresence } : {}), namespace: source.namespace ?? "work", scope: source.scope, recordId: source.recordId, ...(source.attemptId !== undefined ? { attemptId: source.attemptId } : {}), ...(source.turnId !== undefined ? { turnId: source.turnId } : {}) } : { ...(source.identityDomain ? { identityDomain: source.identityDomain } : {}), nodeId: source.nodeId, itemIdentity: source.itemIdentity, ...(source.revision !== undefined ? { revision: source.revision } : {}), ...(source.windowRevision !== undefined ? { windowRevision: source.windowRevision } : {}) };
+    const identity = "domain" in source ? { ...(source.canonicalNodeId ? { canonicalNodeId: source.canonicalNodeId, canonicalScope: source.canonicalScope } : {}), domain: source.domain, ...(source.terminalPresence ? { terminalPresence: source.terminalPresence } : {}), namespace: source.namespace ?? "work", scope: source.scope, recordId: source.recordId, ...(source.attemptId !== undefined ? { attemptId: source.attemptId } : {}), ...(source.turnId !== undefined ? { turnId: source.turnId } : {}) } : { ...(source.identityDomain ? { identityDomain: source.identityDomain } : {}), nodeId: source.nodeId, itemIdentity: source.itemIdentity, ...(source.revision !== undefined ? { revision: source.revision } : {}), ...(source.windowRevision !== undefined ? { windowRevision: source.windowRevision } : {}) };
     const scopedIdentity = { ...identity, classificationCase: canonicalItemCase(source).id, ...(source.keyScope ? { keyScope: Object.freeze([...source.keyScope]) } : {}) };
     let copy: NormalizedSavedItem;
     if (source.kind === "tool") {
