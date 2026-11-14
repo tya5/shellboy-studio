@@ -137,8 +137,8 @@ describe('direct local insertion plan', () => {
     const host = document.createElement('div'); document.body.append(host);
     const items = [{ key: 'saved-a', source: input[0]! }];
     const local = <section data-own-presentation=""><div class="msg">A</div><div class="msg">B</div></section>;
-    const props = { items, workGroups: [], renderWorkGroup: (_: unknown, children: unknown) => children,
-      renderItem: () => <span>saved</span>, localRegion: { placement: { kind: 'qualified', insertion: { kind: 'beginning' } } as const, content: local } };
+    const props = { items, workGroups: [], renderWorkGroup: (_: unknown, children: any) => children,
+      renderItem: () => <span>saved</span>, localRegion: { placement: { kind: 'qualified', insertion: { kind: 'beginning' } } as const, slots: [{position:0,content:<div class="msg">A</div>},{position:1,content:<div class="msg">B</div>}] } };
     const paint = (sequence: undefined | readonly {kind:'conversation';itemKey:string}[]) => render(<ConversationItems {...props} sequence={sequence}/>, host);
     paint(undefined);
     expect(host.querySelectorAll('.msg')).toHaveLength(2);
@@ -166,7 +166,7 @@ describe('direct local insertion plan', () => {
 
 it('SavedConversationItems preserves the same beginning cohort with empty accepted rows', async()=>{
  const f=await fixtureModel({capabilities:[],configure(db){db.threads={t:summary('t')};db.details.t=details('t');db.history.t=[];}});
- f.model.acceptedOwnMessages.value=[{scope:'t',operationId:'op-a',text:'A',phase:'accepted',messageId:'a'},{scope:'t',operationId:'op-b',text:'B',phase:'accepted',messageId:'b'}];
+ f.model.acceptedOwnMessages.value=[{threadId:'t',scope:'t',operationId:'op-a',text:'A',phase:'accepted',messageId:'a'},{threadId:'t',scope:'t',operationId:'op-b',text:'B',phase:'accepted',messageId:'b'}];
  const local=<section data-own-presentation=""><div class="msg">A</div><div class="msg">B</div></section>;
  const projection=projectSavedItems([]);
  render(<SavedConversationItems model={f.model} projection={projection} localRegion={{placement:{kind:'qualified',insertion:{kind:'beginning'}},slots:[{position:0,content:<div class='msg'>A</div>},{position:1,content:<div class='msg'>B</div>}]}}/>,host);
@@ -178,7 +178,7 @@ it('SavedWindowContent preserves accepted beginning cohort through empty saved p
  const f=await fixtureModel({configure(db){db.threads={t:summary('t')};db.details.t=details('t');db.history.t=[];}});
  const snapshot={rows:[],range:{first:0,last:-1},total:0,revision:2,generation:7,epoch:1,disposed:false,pending:false};
  const model=new Proxy(f.model,{get(target,key){return key==='longReader'?{value:{acceptedView:{isCurrent:()=>true}},peek:()=>({acceptedView:{isCurrent:()=>true}})}:Reflect.get(target,key);}});
- f.model.acceptedOwnMessages.value=[{scope:'t',operationId:'op-a',text:'A',phase:'accepted',messageId:'a'},{scope:'t',operationId:'op-b',text:'B',phase:'accepted',messageId:'b'}];
+ f.model.acceptedOwnMessages.value=[{threadId:'t',scope:'t',operationId:'op-a',text:'A',phase:'accepted',messageId:'a'},{threadId:'t',scope:'t',operationId:'op-b',text:'B',phase:'accepted',messageId:'b'}];
  const host=document.createElement('div');document.body.append(host);
  try { await act(async()=>render(<SavedWindowContent model={model} snapshot={snapshot}/>,host)); expect(host.querySelectorAll('.msg')).toHaveLength(2); expect([...host.querySelectorAll('.msg')].every(n=>n.isConnected&&host.contains(n))).toBe(true); } finally {render(null,host);host.remove();f.model.dispose();f.data.stop();}
 });
@@ -186,7 +186,7 @@ it('SavedWindowContent preserves accepted beginning cohort through empty saved p
 it('WindowedScroll preserves accepted cohort across real revision publication', async()=>{
  const r=await windowRig(0); const f=await fixtureModel(); const host=document.createElement('div');document.body.append(host);
  const model=new Proxy(f.model,{get(target,key){return key==='longReader'?{value:r.w,peek:()=>r.w}:Reflect.get(target,key);}});
- f.model.acceptedOwnMessages.value=[{scope:'t',operationId:'op-a',text:'A',phase:'accepted',messageId:'a'},{scope:'t',operationId:'op-b',text:'B',phase:'accepted',messageId:'b'}];
+ f.model.acceptedOwnMessages.value=[{threadId:'t',scope:'t',operationId:'op-a',text:'A',phase:'accepted',messageId:'a'},{threadId:'t',scope:'t',operationId:'op-b',text:'B',phase:'accepted',messageId:'b'}];
  const generations:number[]=[]; const renderAccepted=(snapshot: any)=>{generations.push(snapshot.generation);return <SavedWindowContent model={model} snapshot={snapshot}/>};
  try { await r.settle(); await act(async()=>render(<WindowedScroll model={model} win={r.w} renderRow={()=> <div/>} live={null} renderAcceptedView={renderAccepted}/>,host)); expect(host.querySelectorAll('[data-pending-own-message]')).toHaveLength(2); r.owner.append(2); r.w.changed(); await r.settle(); await act(async()=>render(<WindowedScroll model={model} win={r.w} renderRow={()=> <div/>} live={null} renderAcceptedView={renderAccepted}/>,host)); expect(host.querySelectorAll('[data-pending-own-message]')).toHaveLength(2); expect(generations.length).toBeGreaterThan(1); } finally {render(null,host);host.remove();r.w.dispose();r.data.stop();f.model.dispose();f.data.stop();}
 });

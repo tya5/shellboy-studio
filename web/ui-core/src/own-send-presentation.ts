@@ -94,8 +94,9 @@ export function ownSendPresentation<Ref>(input: OwnSendPresentationInput<Ref>): 
   const mutualConflict=allSlots&&slots.some((slot,index)=>index>0&&slot!.first<=slots[index-1]!.last);
   const boundaryConflict=boundaryIndex>=0&&slots.some(slot=>slot&&slot.first<=boundaryIndex);
   const conflict=mutualConflict||boundaryConflict;
-  const usableSlots=allSlots&&!conflict?slots.flatMap(slot=>slot?[{row:slot.row,insertion:slot.insertion,position:slot.last}]:[]):[];
-  const finalPlacement=placement.kind === "qualified" && cohort.length > 0 && usableSlots.length === 0
+  const positionedSlots=allSlots?slots.flatMap(slot=>slot?[{row:slot.row,insertion:slot.insertion,position:slot.last}]:[]):[];
+  const usableSlots=positionedSlots.length>0&&!conflict?positionedSlots:[];
+  const finalPlacement=placement.kind === "qualified" && cohort.length > 0 && !allSlots
     ? Object.freeze({kind:"unqualified" as const,reason:"cohort-unplaced" as const}) : placement;
   // Fresh canonical replacement is independent of the old local placement proof.
   const freshReplacement=input.current&&!!input.ref;
@@ -106,7 +107,7 @@ export function ownSendPresentation<Ref>(input: OwnSendPresentationInput<Ref>): 
   const projection = Object.freeze({...input.projection, items: Object.freeze(items), sequence: Object.freeze((input.current ? input.projection.sequence ?? [] : []).filter(entry => usableSlots.length>0 || entry.kind !== "conversation" || keys.has(entry.itemKey)))});
   const token=Object.freeze({});
   const observation=observeOwnSendTail(token,input.ref,input.scope,input.current,input.projection,input.path,input.validateCurrent??(()=>false));
-  return Object.freeze({token,placement:finalPlacement,slots:Object.freeze(transfer?[]:usableSlots),observation,ref:input.ref,scope:input.scope,cohortVersion:input.cohortVersion,projection,displayedSavedUserIds:displayed,
+  return Object.freeze({token,placement:finalPlacement,slots:Object.freeze(transfer?[]:positionedSlots),observation,ref:input.ref,scope:input.scope,cohortVersion:input.cohortVersion,projection,displayedSavedUserIds:displayed,
     cohort,localRows:transfer ? Object.freeze([]) : cohort,retire:transfer ? cohort : Object.freeze([]),
     conflictIds:Object.freeze(conflict ? cohort.map(row=>row.messageId!) : [])});
 }
