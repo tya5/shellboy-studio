@@ -56,7 +56,6 @@ it("actual status/Store/O/Window publishes honest same-ref missing-answer presen
  await r.pump();
  expect(r.w.acceptedView.peek().rows.map(row => row.node_id)).toEqual(["tool", "answer"]);
  expect(r.h.handoff.peek()).toHaveLength(0);
- expect(r.w.acceptedView.peek().displayPlan?.entries.some(entry => entry.presentationContainer === r.receipt.presentationContainer)).toBe(true);
  expect(r.w.acceptedView.peek().terminalPresence ?? []).toEqual([]);
  expect(r.t.calls("history.window")).toHaveLength(1); expect(r.t.calls("history.get")).toHaveLength(0);
  r.w.dispose(); r.data.stop();
@@ -210,6 +209,7 @@ it("Window rebinds a revision-changing point read through one bounded whole-wind
   expect(r.receipt.nodeIds).toEqual(baseNodes.filter(node => node.items?.some(item => item.kind === "text")).map(node => node.node_id));
   expect(r.receipt.nodeIds).toHaveLength(new Set(r.receipt.nodeIds).size);
   expect(after.rows.map(row => row.selection?.ordinal)).toEqual([0, 1]);
+  expect(after.displayPlan?.entries.some(entry => entry.presentationContainer === r.receipt.presentationContainer)).toBe(true);
   expect(after.revision).toBe(8);
   r.w.dispose(); r.data.stop();
 });
