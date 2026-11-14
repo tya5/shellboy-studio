@@ -5,7 +5,8 @@ import type { OwnedTerminalReadLease, TicketOutcome, TerminalReadTicketId, Selec
 import type { TerminalPersistedProof } from "../../data/src/handoff";
 import type { AttemptPresentation, ThreadHandle, ThreadReadQualification } from "../../data/src/store";
 import type { HistoryBody } from "../../data/src/protocol";
-import { AcceptedView, type AcceptedCapability, type ConversationDisplayPlan } from "./accepted-view";
+import { AcceptedView, type AcceptedCapability } from "./accepted-view";
+import { createConversationDisplayPlan, type ConversationDisplayPlan } from './conversation-display-plan';
 import type { HandoffRecord } from "../../data/src/handoff";
 // The long-thread reader's model (docs/design/long-threads.md): positional windows of a Thread's
 // path held in bounded buckets, a measured scroll space over one loaded run, and adjacent reads.
@@ -875,6 +876,19 @@ export class ConversationWindow {
     this.inflight.clear();
     this.tailCancel?.cancel();
     this.tailCancel = undefined;
+  }
+
+  /** Publish the plan only against the exact accepted reference/capability that admitted it. */
+  publishConversationDisplayPlan(ref: WindowAcceptedSnapshot, projection: import('./conversation-items').SavedItemProjection,
+    userDecision: unknown, scope: string): boolean {
+    const capability = this.acceptedView.currentCapability;
+    if (this.disposed || !this.acceptedView.isCurrent(ref) || ref.revision === undefined) return false;
+    if (ref.displayPlan?.userDecision === userDecision && ref.displayPlan?.capability === capability) return true;
+    const plan = createConversationDisplayPlan({ acceptedRef: ref, capability, projection,
+      assistantFacts: ref.assistantOwnership ?? [], userDecision, scope });
+    const staged = this.acceptedView.stage({ ...ref, displayPlan: plan }, capability);
+    if (!this.acceptedView.isCurrent(ref) || capability !== this.acceptedView.currentCapability) return false;
+    return this.acceptedView.commit(staged);
   }
 
   private bump(capability: AcceptedCapability = this.acceptedView.currentCapability): void {

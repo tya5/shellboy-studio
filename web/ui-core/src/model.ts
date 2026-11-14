@@ -933,6 +933,11 @@ export class AppModel {
     return [...accepted,...(pending?[pending]:[])].filter(row=>row.scope===scope);
   }
   pendingOwnIsCurrent(): boolean { return !!this.pendingOwnRetryCurrent?.(); }
+  publishConversationDisplayPlan(ref: import('./window').WindowAcceptedSnapshot, projection: import('./conversation-items').SavedItemProjection, decision: unknown, current: () => boolean): boolean {
+    const window = this.longReader.peek();
+    if (!window || !current() || !window.acceptedView.isCurrent(ref)) return false;
+    return window.publishConversationDisplayPlan(ref, projection, decision, this.ownMutationScope());
+  }
   installOwnPresentation<Ref>(result: OwnSendDecision<Ref>, current: () => boolean): void {
     this.installedOwnResult=result.token;
     this.ownTailObservation=result.observation;
