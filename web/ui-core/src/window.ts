@@ -362,7 +362,10 @@ export class ConversationWindow {
           || (value.revision !== target.ref.revision && !coveredReceiptRefs)) reason = "selection-gap";
         else if (value.items.some(row => {
           const existing = target.ref.rows.find(saved => saved.selection?.ordinal === row.selection?.ordinal);
-          return existing !== undefined && JSON.stringify(existing) !== JSON.stringify(row);
+          if (existing === undefined || JSON.stringify(existing) === JSON.stringify(row)) return false;
+          const deferredBody = existing.items == null && existing.items_unavailable_reason === "response_budget"
+            && Array.isArray(row.items) && row.items.length > 0;
+          return !(value.revision !== target.ref.revision && deferredBody);
         })) {
           // Same selection revision does not authorize replacement of saved body
           // facts. Without canonical merge proof reject the whole changed page.
