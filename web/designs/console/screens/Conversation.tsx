@@ -301,13 +301,22 @@ export function SavedWindowContent({ model, snapshot, live, liveBoundary, liveFa
   // Rejection is an unavailable Work cut, never a successful empty publication.
   const baseProjection = workScopeRejected ? projectSavedItems(ordered) : projectSavedItems([...ordered,...scopedWork]);
   const displayKeys = new Map<string, string>();
+  const containers = new Map<string, string>();
+  // The current owned ledger is the preview authority; retain its answer host key
+  // while the accepted canonical proof later supplies the ordered child identities.
+  for (const item of baseProjection.items) {
+    const source = item.source;
+    if ("domain" in source && source.domain === "live" && source.recordId) {
+      containers.set(item.key, `answer:${source.recordId}`);
+    }
+  }
   for (const decision of ownership.filter(item => item.mode === "canonical")) {
     for (const itemKey of decision.itemKeys) {
       if (!baseProjection.items.some(item => item.key === itemKey)) continue;
       displayKeys.set(itemKey, `${decision.containerKey}:${itemKey}`);
+      containers.set(itemKey, decision.containerKey);
     }
   }
-  const containers = new Map([...displayKeys].map(([itemKey]) => [itemKey, ownership.find(decision => decision.itemKeys.includes(itemKey) && decision.mode === "canonical")?.containerKey ?? ""]));
   const projection = rekeyConversationPresentation(baseProjection, displayKeys, containers);
   // Live text without item-kind proof cannot unlock or replace saved Conversation text.
   return <OwnSendContent model={model} projection={projection} nodes={snapshot.rows} scope={model.ownMutationScope()} acceptedRef={snapshot} current={current} isCurrent={()=>model.longReader.peek()?.acceptedView.isCurrent(snapshot)??false} path={{tail:!snapshot.pending&&!snapshot.disposed&&(snapshot.total===0||snapshot.range?.last===snapshot.total-1),empty:snapshot.total===0,revision:snapshot.revision,lastNodeId:snapshot.rows.at(-1)?.node_id,lastOrdinal:snapshot.rows.at(-1)?.selection?.ordinal}} hiddenItemKeys={reservedItems} trailing={<>{workScopeRejected&&current?<div key="work-scope-rejected" role="status" data-work-scope-rejected="" data-state-source="client" data-state-value="scope-qualification-rejected">CLIENT: {model.t.value("work.textUnavailable")} (scope-qualification-rejected)</div>:null}{handle?.handoffOverflow.value ? <div class="caption muted" data-live-overflow="">{model.t.value("convo.handoffLimit")} <HandoffRetryControl model={model}/></div> : undefined}</>} />;
