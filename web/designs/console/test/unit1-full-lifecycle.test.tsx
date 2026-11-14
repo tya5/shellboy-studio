@@ -10,7 +10,7 @@ import type {HistoryItem} from '../../../data/src/protocol';
 import type {DesignContext} from '../../../ui-core/src';
 import {loadPrefs} from '../../../ui-core/src/prefs';
 import {App} from '../screens/App';
-import {typedHandoffRegistry,validTypedHandoffRef} from '../../../ui-core/test/typed-handoff-fixture';
+import {typedHandoffRegistry,validTypedHandoffRef,type TypedHistoryWindow} from '../../../ui-core/test/typed-handoff-fixture';
 
 it('keeps one answer presentation through the complete real Conversation lifecycle',async()=>{
  let ended=false,revision: string|number=7; const trace: unknown[]=[]; let pointReads=0;
@@ -31,7 +31,12 @@ it('keeps one answer presentation through the complete real Conversation lifecyc
     const args=call.args as {node_id?:unknown; ordinal?:unknown; before?:unknown; after?:unknown};
     const point=typeof args.node_id==='string'?args.node_id:undefined;
     const ordinal=Number.isSafeInteger(args.ordinal)?args.ordinal as number:undefined;
-    if(point!==undefined||ordinal!==undefined){const fixture=[first,second].find(item=>(point===undefined||item.nodeId===point)&&(ordinal===undefined||item.ordinal===ordinal));pointReads++;const window=pointReads > 1 ? {thread_id:'thread',revision:registry.revision,total:nodes.length,items:nodes} : registry.history({node_id:point,ordinal,before:Number(args.before) || 0,after:Number(args.after) || 0});const proofWindow = pointReads > 1 ? { ...window, items: window.items.filter(item => item.node_id === first.nodeId || item.node_id === second.nodeId), item_count: 2 } : window; if(!fixture || !window || !validTypedHandoffRef({...fixture,revision:registry.revision,total:registry.total},attempt,proofWindow)) throw new Error(`typed handoff rejection ${point}:${ordinal}`);const result=window;trace.push({stage:'transport',command:call.command,args:call.args,result:{revision:result.revision,total:result.total,item_count:result.item_count,items:result.items.map(item=>({node_id:item.node_id,ordinal:item.selection?.ordinal,body:Array.isArray(item.items)?item.items.map(value=>value.kind):null,unavailable:item.items_unavailable_reason}))}});return {ok:true,result};}
+    if(point!==undefined||ordinal!==undefined){const fixture=[first,second].find(item=>(point===undefined||item.nodeId===point)&&(ordinal===undefined||item.ordinal===ordinal));pointReads++;
+      const proofWindow: TypedHistoryWindow | undefined = registry.history({node_id:point,ordinal,before:Number(args.before) || 0,after:Number(args.after) || 0});
+      const window = pointReads > 1 ? {thread_id:'thread',revision:registry.revision,total:nodes.length,items:nodes,item_count:nodes.length} : proofWindow;
+      if(!fixture || !window || !proofWindow || !validTypedHandoffRef({...fixture,revision:registry.revision,total:registry.total},attempt,proofWindow)) throw new Error(`typed handoff rejection ${point}:${ordinal}`);
+      const result=window;
+      trace.push({stage:'transport',command:call.command,args:call.args,result:{revision:result.revision,total:result.total,item_count:result.item_count,items:result.items.map(item=>({node_id:item.node_id,ordinal:item.selection?.ordinal,body:Array.isArray(item.items)?item.items.map(value=>value.kind):null,unavailable:item.items_unavailable_reason}))}});return {ok:true,result};}
     return {ok:true,result:{thread_id:'thread',revision:registry.revision,total:nodes.length,items:nodes}};
    }
    return base(call);
