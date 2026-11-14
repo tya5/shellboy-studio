@@ -1,5 +1,7 @@
 // @vitest-environment happy-dom
 import { expect, it } from "vitest";
+import type { ComponentChildren } from "preact";
+import type { ConversationWorkGroup } from "../../designs/console/screens/ConversationItems";
 import { projectSavedItems, rekeyConversationPresentation, type NormalizedSavedItem } from "../src/conversation-items";
 
 const saved: NormalizedSavedItem = { nodeId: "node-1", itemIdentity: "node-1:/output/0/content/0", identityDomain: "node", windowRevision: 2, kind: "text", text: "saved", textComplete: true };
@@ -46,4 +48,20 @@ it("keeps duplicate canonical identities rejected while preserving node item mul
   const second: NormalizedSavedItem = { ...saved, itemIdentity: "node-1:/output/0/content/1", text: "second" };
   expect(projectSavedItems([saved, second]).items).toHaveLength(2);
   expect(() => projectSavedItems([saved, saved])).toThrow("Duplicate normalized saved item identity");
+});
+
+it("keeps one answer container while preserving ordered canonical children", async () => {
+  const { render, h } = await import("preact");
+  const { ConversationItems } = await import("../../designs/console/screens/ConversationItems");
+  const second: NormalizedSavedItem = { ...saved, itemIdentity: "node-1:/output/0/content/1", text: "second" };
+  const base = projectSavedItems([saved, second]);
+  const keys = new Map(base.items.map(item => [item.key, `answer:a1:${item.key}`]));
+  const containers = new Map(base.items.map(item => [item.key, "answer:a1"]));
+  const projection = rekeyConversationPresentation(base, keys, containers);
+  const host = document.createElement("div");
+  render(h(ConversationItems, { items: projection.items, sequence: projection.sequence, renderItem: item => h("span", {}, item.source.kind === "text" ? item.source.text : ""), workGroups: [], renderWorkGroup: (_group: ConversationWorkGroup, children: ComponentChildren) => children }), host);
+  expect(host.querySelectorAll("[data-answer-container]")).toHaveLength(1);
+  expect(host.querySelectorAll(".conversation-answer-child")).toHaveLength(2);
+  expect(host.textContent).toContain("saved");
+  expect(host.textContent).toContain("second");
 });
