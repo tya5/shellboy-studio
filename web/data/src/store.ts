@@ -862,7 +862,7 @@ export class ShellboyData {
           revision = page.value.revision;
           total = page.value.total;
           for (const node of page.value.items) {
-            if (!node.node_id || !refs.some(ref => ref.node_id === node.node_id)) continue;
+            if (!node.node_id) { unavailable = true; break; }
             if (!Number.isSafeInteger(node.selection?.ordinal) || !Array.isArray(node.items)
               || node.items.some(item => item.kind === "unavailable" || item.kind === "text" && !item.text_complete)) { unavailable = true; break; }
             nodes.set(node.node_id, node);

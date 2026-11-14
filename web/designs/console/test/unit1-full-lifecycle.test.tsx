@@ -13,7 +13,7 @@ import {App} from '../screens/App';
 import {typedHandoffRegistry,validTypedHandoffRef,type TypedHistoryWindow} from '../../../ui-core/test/typed-handoff-fixture';
 
 it('keeps one answer presentation through the complete real Conversation lifecycle',async()=>{
- let ended=false,revision: string|number=7; const trace: unknown[]=[]; let pointReads=0;
+ let ended=false,revision: string|number=7; const trace: unknown[]=[];
  const registry=typedHandoffRegistry({threadId:'thread',attemptId:'attempt-1',turnId:'turn-1',revision:7,total:4,refs:[{nodeId:'answer-1',ordinal:2,text:'Canonical answer'},{nodeId:'answer-2',ordinal:3,text:'Canonical continuation'}]});
  const first=registry.refs[0]!,second=registry.refs[1]!;
  const attempt=registry.attempt();
@@ -33,8 +33,8 @@ it('keeps one answer presentation through the complete real Conversation lifecyc
     const ordinal=Number.isSafeInteger(args.ordinal)?args.ordinal as number:undefined;
     if(point!==undefined||ordinal!==undefined){const fixture=[first,second].find(item=>(point===undefined||item.nodeId===point)&&(ordinal===undefined||item.ordinal===ordinal));pointReads++;
       const proofWindow: TypedHistoryWindow | undefined = registry.history({node_id:point,ordinal,before:Number(args.before) || 0,after:Number(args.after) || 0});
-      const window = pointReads > 1 ? {thread_id:'thread',revision:registry.revision,total:nodes.length,items:nodes,item_count:nodes.length} : proofWindow;
-      if(!fixture || !window || !proofWindow || !validTypedHandoffRef({...fixture,revision:registry.revision,total:registry.total},attempt,proofWindow)) throw new Error(`typed handoff rejection ${point}:${ordinal}`);
+      const window = registry.canonical ? {thread_id:'thread',revision:registry.revision,total:nodes.length,items:nodes,item_count:nodes.length} : proofWindow;
+      if(!fixture || !window || !proofWindow || !validTypedHandoffRef({...fixture,revision:registry.revision,total:registry.total},attempt,window)) throw new Error(`typed handoff rejection ${point}:${ordinal}`);
       const result=window;
       trace.push({stage:'transport',command:call.command,args:call.args,result:{revision:result.revision,total:result.total,item_count:result.item_count,items:result.items.map(item=>({node_id:item.node_id,ordinal:item.selection?.ordinal,body:Array.isArray(item.items)?item.items.map(value=>value.kind):null,unavailable:item.items_unavailable_reason}))}});return {ok:true,result};}
     return {ok:true,result:{thread_id:'thread',revision:registry.revision,total:nodes.length,items:nodes}};

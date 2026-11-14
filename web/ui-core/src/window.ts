@@ -609,7 +609,8 @@ export class ConversationWindow {
         if (!existing) holder!.filled++;
         holder!.items[slot] = node;
       }
-      if (stagedBuckets.size > WINDOWS_HELD || proof.refs.some(ref => !incoming.has(ref.nodeId))) return false;
+      if (stagedBuckets.size > WINDOWS_HELD || proof.refs.some(ref => !incoming.has(ref.nodeId))
+        || proof.nodes.length !== proof.total || new Set(proof.nodes.map(node => node.selection?.ordinal)).size !== proof.total) return false;
       // The owned staging transaction may extend one contiguous selected run, never
       // fabricate a gap or evict an independent saved row to make the attempt fit.
       const ordinals = proof.nodes.map(node => node.selection!.ordinal!);
