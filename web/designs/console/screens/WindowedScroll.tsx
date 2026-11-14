@@ -31,11 +31,10 @@ export function WindowedScroll({ model, win, renderRow, live, liveBoundary, stat
   }, [win, !!renderAcceptedView]);
   const acceptedRef = useRef<WindowAcceptedSnapshot | undefined>(undefined);
   const currentAccepted = renderAcceptedView ? win.acceptedView.peek() : undefined;
-  const completeAccepted = currentAccepted?.revision !== undefined ? currentAccepted : undefined;
-  if (completeAccepted) acceptedRef.current = completeAccepted;
-  // Keep the last complete accepted host through an incomplete publication
-  // handoff; an unqualified snapshot must not unmount live/local children.
-  const accepted = completeAccepted ?? acceptedRef.current;
+  if (currentAccepted) acceptedRef.current = currentAccepted;
+  // Keep the last bounded accepted host through a publication handoff gap; a
+  // transient undefined view must not unmount live/local children.
+  const accepted = currentAccepted ?? acceptedRef.current;
   const el = useRef<HTMLDivElement>(null);
   const visible = win.renderRange();
   const range = visible && heldRange(visible, win.total, (index) => win.itemAt(index) !== undefined);
