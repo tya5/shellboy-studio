@@ -153,7 +153,7 @@ describe('direct local insertion plan', () => {
     const host = document.createElement('div'); document.body.append(host);
     const items = [{ key: 'saved-a', source: input[0]! }, { key: 'saved-b', source: input[0]! }];
     render(<ConversationItems items={items} sequence={[{kind:'conversation', itemKey:'saved-a'}, {kind:'conversation', itemKey:'saved-b'}]}
-      localRegion={{kind:'unqualified', content:<div data-unqualified-local="">}}</div>}
+      localRegion={{kind:'unqualified', content:<div data-unqualified-local=""></div>}}
       renderItem={item => <div class="canonical-row">{item.key}</div>} />, host);
     expect(host.querySelectorAll('[data-unqualified-local]')).toHaveLength(1);
     expect([...host.querySelectorAll('.canonical-row')].map(node => node.textContent)).toEqual(['saved-a', 'saved-b']);
