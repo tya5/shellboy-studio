@@ -1,10 +1,15 @@
 // @vitest-environment happy-dom
 import {render} from 'preact';
+import {act} from 'preact/test-utils';
 import {describe,expect,it,afterEach} from 'vitest';
 import {projectSavedItems,type NormalizedSavedItem,type SavedItemProjection} from '../../../ui-core/src/conversation-items';
 import {AcceptedView} from '../../../ui-core/src/accepted-view';
 import {overlayState,reconcileOverlay,createAssociationAuthority} from '../../../data/src/overlay-reconcile';
 import {ConversationItems} from '../screens/ConversationItems';
+import {SavedConversationItems,SavedWindowContent} from '../screens/Conversation';
+import {ConversationWindow} from '../../../ui-core/src/window';
+import {fixtureModel} from '../../../ui-core/test/fixture';
+import {summary,details} from '../../../data/test/harness';
 import {CurrentScrollSync} from '../screens/scrollTransaction';
 const input:readonly NormalizedSavedItem[]=[
  {nodeId:'A',itemIdentity:'a0',revision:'r1',kind:'text',text:'SYNTHETIC_FIRST'},
@@ -142,4 +147,23 @@ describe('direct local insertion plan', () => {
     expect([...host.querySelectorAll('.msg')].every(node => node.isConnected && node.ownerDocument === document && host.contains(node))).toBe(true);
     render(null, host); host.remove();
   });
+});
+
+it('SavedConversationItems preserves the same beginning cohort with empty accepted rows', async()=>{
+ const f=await fixtureModel({capabilities:[],configure(db){db.threads={t:summary('t')};db.details.t=details('t');db.history.t=[];}});
+ f.model.acceptedOwnMessages.value=[{scope:'t',operationId:'op-a',text:'A',phase:'accepted',messageId:'a'},{scope:'t',operationId:'op-b',text:'B',phase:'accepted',messageId:'b'}];
+ const local=<section data-own-presentation=""><div class="msg">A</div><div class="msg">B</div></section>;
+ const projection=projectSavedItems([]);
+ render(<SavedConversationItems model={f.model} projection={projection} localRegion={{placement:{kind:'qualified',insertion:{kind:'beginning'}},content:local}}/>,host);
+ expect(host.querySelectorAll('.msg')).toHaveLength(2);
+ expect([...host.querySelectorAll('.msg')].every(node=>node.isConnected&&node.ownerDocument===document&&host.contains(node))).toBe(true);
+});
+
+it('SavedWindowContent preserves accepted beginning cohort through empty saved projection', async()=>{
+ const f=await fixtureModel({configure(db){db.threads={t:summary('t')};db.details.t=details('t');db.history.t=[];}});
+ const snapshot={rows:[],range:{first:0,last:-1},total:0,revision:2,generation:7,epoch:1,disposed:false,pending:false};
+ const model=new Proxy(f.model,{get(target,key){return key==='longReader'?{value:{acceptedView:{isCurrent:()=>true}},peek:()=>({acceptedView:{isCurrent:()=>true}})}:Reflect.get(target,key);}});
+ f.model.acceptedOwnMessages.value=[{scope:'t',operationId:'op-a',text:'A',phase:'accepted',messageId:'a'},{scope:'t',operationId:'op-b',text:'B',phase:'accepted',messageId:'b'}];
+ const host=document.createElement('div');document.body.append(host);
+ try { await act(async()=>render(<SavedWindowContent model={model} snapshot={snapshot}/>,host)); expect(host.querySelectorAll('.msg')).toHaveLength(2); expect([...host.querySelectorAll('.msg')].every(n=>n.isConnected&&host.contains(n))).toBe(true); } finally {render(null,host);host.remove();f.model.dispose();f.data.stop();}
 });
