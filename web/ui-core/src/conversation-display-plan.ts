@@ -62,7 +62,7 @@ export function createConversationDisplayPlan(input: {
   const entries = input.projection.items.map(item => {
     const source = item.source;
     const owner = owners.get(item.key);
-    const host = ('domain' in source ? source.presentationContainer : undefined) ?? (owner?.containerKey as string | undefined);
+    const host = ('presentationContainer' in source ? source.presentationContainer : undefined) ?? (owner?.containerKey as string | undefined);
     const human = (source.kind === 'user' || source.kind === 'summary') && source.textComplete === true;
     const body: DisplayBodySource = ((source.kind === 'text' && owner?.mode === 'canonical' && source.textComplete === true) || human)
       ? { kind: 'typed-canonical', text: source.text, generation, revision, capability: input.capability }
