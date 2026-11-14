@@ -640,6 +640,8 @@ export class ShellboyData {
   }
 
   private discardAllPreviews(reason: PreviewDiscardReason): void {
+    // Revoke every old read before any synchronous clear/discard observer can run.
+    ++this.readQualificationEpoch;
     for (const e of this.entries.values()) {
       e.refreshAfterHandoff = false;
       e.resolveAgain = false;

@@ -1304,17 +1304,12 @@ export class ConversationWindow {
       }
       return;
     }
-    if (latest && known && this.revision !== undefined && out.value.revision !== this.revision) {
-      this.tailAgain = true;
-      void this.verify();
-      return;
-    }
     this.tailFailed = false;
     const relation = revisionRelation(out.value.revision, this.revision);
     // The first successful tail read establishes the cursor; only established cursors need verification.
     if (relation === "newer") { void this.refreshSelection(out.value.revision); return; }
     if (relation === "older") {
-      this.tailAgain = true;
+      // Verify stale evidence once; only a real queued hint may demand another tail read.
       void this.verify();
       return;
     }

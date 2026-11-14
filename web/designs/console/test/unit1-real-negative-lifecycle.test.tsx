@@ -10,7 +10,7 @@ import type { HistoryItem } from '../../../data/src/protocol';
 import type { DesignContext } from '../../../ui-core/src';
 import { loadPrefs } from '../../../ui-core/src/prefs';
 import { App } from '../screens/App';
-import { typedHandoffRegistry, typedFullCoverageWindow, type TypedHistoryWindow } from '../../../ui-core/test/typed-handoff-fixture';
+import { typedHandoffRegistry, typedSelectedCoverageWindow, type TypedHistoryWindow } from '../../../ui-core/test/typed-handoff-fixture';
 
 const context = (model: DesignContext['model']): DesignContext => ({
   model, prefs: signal(loadPrefs({ read: () => null, write: () => {} }, [{ name: 'console', themes: [{ name: 'light' }] }])),
@@ -44,8 +44,8 @@ async function realLifecycle(mode: Mode) {
         const proof = ref && registry.history({ node_id: point, ordinal, before: Number(args.before) || 0, after: Number(args.after) || 0 });
         if (!ref || !proof || deleted) return { ok: true, result: { thread_id: 'thread', revision: registry.revision, total: registry.total, item_count: 0, items: [] } };
         if (mode === 'budget') return { ok: true, result: proof };
-        if (mode === 'stale' || (mode === 'aba' && deliverOld)) return { ok: true, result: { ...proof, revision: 7 } as TypedHistoryWindow };
-        const full = registry.canonical ? typedFullCoverageWindow('thread', registry.revision, registry.total, nodes) : proof;
+        if (mode === 'stale' || (mode === 'aba' && deliverOld)) return { ok: true, result: { ...proof, revision: 7 } };
+        const full = registry.canonical ? typedSelectedCoverageWindow('thread',registry.revision,registry.total,nodes,{node_id:point,ordinal,before:typeof args.before==='number'?args.before:undefined,after:typeof args.after==='number'?args.after:undefined}) : proof;
         return { ok: true, result: full };
       }
       return base(call);
