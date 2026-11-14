@@ -244,7 +244,7 @@ export class ConversationWindow {
       if (JSON.stringify(decisions) === JSON.stringify(expected.assistantOwnership ?? [])
         && JSON.stringify(receipts) === JSON.stringify(expected.terminalPersistedAttempts ?? [])
         && JSON.stringify(presence) === JSON.stringify(expected.terminalPresence ?? [])) return true;
-      const generation = this.acceptedGeneration + 1;
+      const generation = this.nextAcceptedGeneration();
       const staged = this.acceptedView.stage({ ...expected, generation, assistantOwnership: decisions,
         terminalPersistedAttempts: receipts, terminalPresence: presence }, cap);
       if (!qualified() || !this.acceptedView.isCurrent(expected) || observations.some(item => !item.lease.current() || !handle.handoff.peek().includes(item.lease.original))) return false;
@@ -255,7 +255,6 @@ export class ConversationWindow {
       }));
       const oldReceipts = this.terminalPersistedAttempts, oldCap = this.terminalCapability, oldPresence = this.terminalPresence;
       this.terminalPersistedAttempts = receipts; this.terminalCapability = cap; this.terminalPresence = presence;
-      this.acceptedGeneration = generation;
       if (!this.acceptedView.commit(staged)) {
         undo.forEach(cancel => cancel());
         this.terminalPersistedAttempts = oldReceipts; this.terminalCapability = oldCap; this.terminalPresence = oldPresence;
@@ -353,9 +352,9 @@ export class ConversationWindow {
     const present = terminalPresence(receipt, ref.rows, reason);
     const next = [...(ref.terminalPresence ?? []).filter(p => p.scope !== receipt.scope || p.attemptId !== receipt.attemptId), ...(present ? [{ ...present, ...(phase ? { phase } : {}) }] : [])];
     if (JSON.stringify(next) === JSON.stringify(ref.terminalPresence ?? [])) return ref;
-    const generation = this.acceptedGeneration + 1;
+    const generation = this.nextAcceptedGeneration();
     const staged = this.acceptedView.stage({ ...ref, generation, terminalPresence: next }, cap);
-    this.terminalPresence = next; this.acceptedGeneration = generation;
+    this.terminalPresence = next;
     if (!this.acceptedView.isCurrent(ref) || !this.acceptedView.commit(staged)) return undefined;
     const committed = this.acceptedView.peek();
     if (committed.generation !== generation || !this.acceptedView.isCurrent(committed) || cap !== this.acceptedView.currentCapability) return undefined;
@@ -434,10 +433,10 @@ export class ConversationWindow {
                 this.advanceTerminalTarget(target, retained);
                 return true;
               }
-              const generation = this.acceptedGeneration + 1;
+              const generation = this.nextAcceptedGeneration();
               const staged = this.acceptedView.stage({ ...target.ref, generation, rows, revision: target.mode === "fresh-window" ? value.revision : target.ref.revision, range: { first: ordinals[0]!, last: ordinals.at(-1)!, }, total: value.total, assistantOwnership: ownership, terminalPresence: next }, target.cap);
               if (!target.handle.isReadQualificationCurrent(target.token) || !this.acceptedView.isCurrent(target.ref)) return false;
-              this.buckets = buckets; this.total = value.total; this.terminalPresence = next; this.acceptedGeneration = generation;
+              this.buckets = buckets; this.total = value.total; this.terminalPresence = next;
               if (!this.acceptedView.commit(staged)) return false;
               const ref = this.acceptedView.peek();
               if (ref.generation !== generation || !this.acceptedView.isCurrent(ref) || target.cap !== this.acceptedView.currentCapability || !target.handle.isReadQualificationCurrent(target.token)) return false;
@@ -506,10 +505,10 @@ export class ConversationWindow {
     const cap = this.acceptedView.currentCapability;
     const coverage: AcceptedCoverage = { transitionId: id, scope: tx.scope, summaryNodeId: body.node_id, sourceNodeIds: [...ids],
       source: { nodeId: tx.nodeId, offset: tx.offset, revision: tx.sourceRef.revision! }, targetRevision: ref.revision, kind };
-    const generation = this.acceptedGeneration + 1;
+    const generation = this.nextAcceptedGeneration();
     const staged = this.acceptedView.stage({ ...ref, generation, coverage }, cap);
     if (!this.acceptedView.isCurrent(ref) || tx !== this.summaryTransition || !handle.isReadQualificationCurrent(tx.token)) return false;
-    tx.coverage = coverage; tx.targetCap = cap; this.acceptedGeneration = generation;
+    tx.coverage = coverage; tx.targetCap = cap;
     if (!this.acceptedView.commit(staged)) { tx.coverage = undefined; tx.targetCap = undefined; return false; }
     return this.acceptedView.peek().generation === generation && this.peekSummaryCoverage(this.acceptedView.peek()) !== undefined;
   }
@@ -543,13 +542,13 @@ export class ConversationWindow {
       const before = this.terminalCapability === cap ? this.terminalPersistedAttempts : [];
       if (before.length >= 8 && !before.some(p => p.scope === scope && p.attemptId === proof.attemptId)) return false;
       const next = [...before.filter(p => p.scope !== scope || p.attemptId !== proof.attemptId), proof];
-      const generation = this.acceptedGeneration + 1;
+      const generation = this.nextAcceptedGeneration();
       const presence = next.flatMap(p => { const item = terminalPresence(p, expected.rows); return item ? [item] : []; });
       const staged = this.acceptedView.stage({ ...expected, generation, terminalPersistedAttempts: next, terminalPresence: presence,
         attemptPresentations: (expected.attemptPresentations ?? []).filter(p => p.scope !== scope || p.attemptId !== proof.attemptId) }, cap);
       if (!this.acceptedView.isCurrent(expected) || cap !== this.acceptedView.currentCapability) return false;
       const old = this.terminalPersistedAttempts, oldCap = this.terminalCapability;
-      this.terminalPresence = presence; this.terminalPersistedAttempts = next; this.terminalCapability = cap; this.acceptedGeneration = generation;
+      this.terminalPresence = presence; this.terminalPersistedAttempts = next; this.terminalCapability = cap;
       if (!this.acceptedView.commit(staged)) { this.terminalPersistedAttempts = old; this.terminalCapability = oldCap; return false; }
       const committed = this.acceptedView.peek();
       if (committed.generation !== generation || !this.acceptedView.isCurrent(committed) || cap !== this.acceptedView.currentCapability) return false;
@@ -607,7 +606,7 @@ export class ConversationWindow {
       const retired = { scope, attemptId: record.attemptId, turnId: proof.turnId, revision: proof.revision,
         nodeIds: proof.refs.map(ref => ref.nodeId) };
       const next = [...previous.filter(item => item.scope !== scope || item.attemptId !== record.attemptId), retired];
-      const generation = this.acceptedGeneration + 1;
+      const generation = this.nextAcceptedGeneration();
       const staged = this.acceptedView.stage({ ...expected, generation, rows, range: { first, last }, total: proof.total, retiredAttempts: next }, capability);
       if (this.disposed || !this.acceptedView.isCurrent(expected) || capability !== this.acceptedView.currentCapability) return false;
       // Publish retirement and saved rows together, before any subscriber can run.
@@ -616,7 +615,6 @@ export class ConversationWindow {
       this.total = proof.total;
       this.retiredAttempts = next;
       this.retiredCapability = capability;
-      ++this.acceptedGeneration;
       if (!this.acceptedView.commit(staged)) { if (this.retiredAttempts === next) { this.retiredAttempts = previous; this.retiredCapability = previousCapability; this.buckets = oldBuckets; this.total = oldTotal; } return false; }
       const committed = this.acceptedView.peek();
       if (committed.generation !== generation || this.acceptedGeneration !== generation || capability !== this.acceptedView.currentCapability
@@ -887,7 +885,7 @@ export class ConversationWindow {
       const candidateKey = [...userDecision.cohortVersion.accepted.map(row => `${row.operationId}:${row.phase}:${row.messageId ?? ''}`), userDecision.cohortVersion.pending ? `pending:${userDecision.cohortVersion.pending.operationId}:${userDecision.cohortVersion.pending.phase}` : 'pending:none'].join('|');
       if (candidateKey === ref.displayPlan.cohortKey) return true;
     }
-    const generation = ++this.acceptedGeneration;
+    const generation = this.nextAcceptedGeneration();
     const plan = createConversationDisplayPlan({ acceptedRef: ref, acceptedGeneration: generation, capability, projection,
       assistantFacts: ref.assistantOwnership ?? [], userDecision, scope });
     const staged = this.acceptedView.stage({ ...ref, generation, displayPlan: plan }, capability);
@@ -895,10 +893,12 @@ export class ConversationWindow {
     return this.acceptedView.commit(staged);
   }
 
+  private nextAcceptedGeneration(): number { return ++this.acceptedGeneration; }
+
   private bump(capability: AcceptedCapability = this.acceptedView.currentCapability): void {
     if (this.disposed || capability !== this.acceptedView.currentCapability) return;
     const epoch = this.epoch;
-    const generation = ++this.acceptedGeneration;
+    const generation = this.nextAcceptedGeneration();
     const currentRows = this.rangeItems();
     const presence = this.terminalCapability === capability ? this.terminalPersistedAttempts.flatMap(receipt => {
       const previous = this.terminalPresence.find(p => p.scope === receipt.scope && p.attemptId === receipt.attemptId);
