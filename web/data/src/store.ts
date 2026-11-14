@@ -742,7 +742,9 @@ export class ShellboyData {
       if (!valid()) return;
       if (entry.terminalReads.queued) {
         await entry.terminalReads.dispatch(() => entry.live.takeRead(), (args, cancel) => this.operations.historyWindow(args, { cancel }));
-        if (entry.terminalReads.queued) entry.resolveAgain = true;
+        // Terminal window publication can complete the accepted snapshot; rerun the
+        // same owned attempt so display.publish observes canonical rows, not stale deferred rows.
+        entry.resolveAgain = true;
         return;
       }
       if (!targets.length) { entry.handoffRetryState.value = { phase: "idle", reason: "no-pending", canRetry: false }; return; }
