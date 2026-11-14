@@ -245,7 +245,7 @@ function IssuedWindowContent(props:IssuedProps & {onPublished?:(reader:Conversat
     const ledger=new Handoff(fn=>fn());ledger.apply({attempt_id:retired.attemptId,gap:false,deltas:[{offset:0,reasoning:false,text:'Owned stream'}]});
     const original=ledger.records.value[0]!;
     const proof={scope:retired.scope,attemptId:retired.attemptId,turnId:retired.turnId,revision:replyRevision,total,
-      refs:retired.nodeIds.map(nodeId=>({nodeId})),nodes:rows};
+      refs:retired.refs,nodes:rows};
     if(ledger.stageAttempt(original,proof))ledger.transferAttempt(original,proof,(record,release)=>reader.acceptHandoff(record,retired.scope,release));
     ledger.discard('ended');
    }

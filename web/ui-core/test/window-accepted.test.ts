@@ -1,3 +1,4 @@
+import {controlledWindow} from './controlled-window';
 import { captureConversationInput } from '../src/conversation-input';
 import { expect, it } from "vitest";
 import { ConversationWindow } from "../src/window";
@@ -82,19 +83,30 @@ it("getter reentry during actual Window staging cannot overwrite a nested accept
   stop(); w.dispose();
 });
 
-it("pending latest-tail evidence does not detach follow intent at the loaded bottom", async () => {
-  const replies: ((value: { ok: true; value: { thread_id: string; total: number; revision: number; items: HistoryItem[] } }) => void)[] = [];
-  const w = new ConversationWindow({ read: () => new Promise(resolve => { replies.push(resolve); }) });
-  const rows = (first: number, last: number): HistoryItem[] => Array.from({ length: last - first + 1 }, (_, offset) => ({ node_id: `n${first + offset}`, kind: "user", excerpt: "local", selection: { ordinal: first + offset } }));
-  replies.shift()!({ ok: true, value: { thread_id: "t", total: 100, revision: 1, items: rows(0, 99) } }); await flush();
-  w.changed();
-  replies.shift()!({ ok: true, value: { thread_id: "t", total: 1100, revision: 2, items: rows(99, 298) } }); await flush();
-  expect(replies).toHaveLength(1);
-  expect(w.following.peek()).toBe(true);
-  w.view(0, 600, true); expect(w.following.peek()).toBe(true);
-  w.view(0, 600, false); expect(w.following.peek()).toBe(false);
-  w.view(0, 600, true); expect(w.following.peek()).toBe(false);
-  w.dispose();
+it("pending latest-tail evidence preserves existing follow but cannot recreate detached intent", async () => {
+  const r=controlledWindow(),w=r.win;
+  const rows=(first:number,last:number):HistoryItem[]=>Array.from({length:last-first+1},(_,offset)=>{
+    const ordinal=first+offset;return{node_id:`n${ordinal}`,kind:'user',selection:{ordinal},
+      items:[{kind:'text',item_identity:'body',text:`Saved ${ordinal}`,text_complete:true}],provenance:{sender:{kind:'human'}}};
+  });
+  try{
+    expect(r.requests[0]!.args).toMatchObject({before:99,after:0,items:true});
+    r.requests[0]!.reply({ok:true,value:{thread_id:'t',revision:1,total:100,items:rows(0,99)}});await flush();
+    const before=w.acceptedView.peek();expect(before.rows.map(row=>row.node_id)).toEqual(rows(0,99).map(row=>row.node_id));
+    w.changed();const tail=r.pending()[0]!;expect(tail.args).toMatchObject({ordinal:99,expect_node_id:'n99',before:0,after:199});
+    tail.reply({ok:true,value:{thread_id:'t',revision:2,total:1100,items:rows(99,298)}});await flush();
+    const verification=r.pending();expect(verification).toHaveLength(1);
+    expect(verification[0]!.args).toMatchObject({ordinal:99,expect_node_id:'n99',before:0,after:0});
+    expect(w.acceptedView.peek()).toBe(before);expect(w.following.peek()).toBe(true);
+    w.view(0,600,true);expect(w.following.peek()).toBe(true);
+    w.view(0,600,false);expect(w.following.peek()).toBe(false);
+    w.view(0,600,true);expect(w.following.peek()).toBe(false);
+    expect(w.acceptedView.peek()).toBe(before);expect(r.pending()).toHaveLength(1);
+    verification[0]!.reply({ok:true,value:{thread_id:'t',revision:2,total:1100,items:rows(99,99)}});await flush();
+    expect(w.following.peek()).toBe(false);expect(w.acceptedView.peek().rows.map(row=>row.node_id)).toEqual(rows(0,99).map(row=>row.node_id));
+    w.jumpToEnd();expect(w.following.peek()).toBe(true);
+    expect(w.acceptedView.peek().rows.map(row=>row.node_id)).toEqual(rows(0,99).map(row=>row.node_id));
+  }finally{w.dispose();expect(r.pending()).toHaveLength(0);}
 });
 
 it("requests authoritative saved items, preserves whole deferred nodes and retries their first ordinal", async () => {
@@ -115,32 +127,38 @@ it("requests authoritative saved items, preserves whole deferred nodes and retri
   r.w.dispose(); r.data.stop();
 });
 
-it("deferred retry respects the global bucket admission and succeeds after a slot is freed", async () => {
-  type Page = { ok: true; value: { thread_id: string; total: number; revision: number; items: HistoryItem[] } };
-  const held: { args: { ordinal?: number; before?: number; after?: number }; finish: (value: Page) => void }[] = [];
-  const w = new ConversationWindow({ read: args => new Promise(resolve => held.push({ args, finish: resolve })) });
-  const deferred: HistoryItem = { node_id: "deferred", kind: "user", items: null, items_unavailable_reason: "response_budget", selection: { ordinal: 400 } };
-  held.shift()!.finish({ ok: true, value: { thread_id: "t", total: 600, revision: 1, items: Array.from({ length: 200 }, (_, i) => i === 0 ? deferred : { node_id: `n${400 + i}`, kind: "user", selection: { ordinal: 400 + i } }) } }); await flush();
-  // The constructor's tail read owns one separate slot; bucket callers share two bucket slots.
-  const reads = w as unknown as { readBucket(index: number): void };
-  void reads.readBucket(0); void reads.readBucket(1);
-  const tail = held.findIndex(x => x.args.before === 99 && x.args.after === 0);
-  const bucketZero = held.findIndex(x => x.args.ordinal === 0 && x.args.before === 0);
-  const bucketOne = held.findIndex(x => x.args.ordinal === 100 && x.args.before === 0);
-  expect([tail, bucketZero, bucketOne].every(index => index >= 0)).toBe(true);
-  expect(held).toHaveLength(3);
-  w.view(0, 600, false);
-  const ref = w.acceptedView.peek();
-  expect(w.retryDeferred(ref)).toBe(false); expect(held).toHaveLength(3);
-  const [releasedTail] = held.splice(tail, 1);
-  releasedTail!.finish({ ok: true, value: { thread_id: "t", total: 600, revision: 1, items: Array.from({ length: 200 }, (_, i) => ({ node_id: `tail-${i}`, kind: "user", selection: { ordinal: 400 + i } })) } }); await flush();
-  expect(w.retryDeferred(w.acceptedView.peek())).toBe(false); // tail released, both bucket slots still occupied
-  const currentBucketZero = held.findIndex(x => x.args.ordinal === 0 && x.args.before === 0);
-  const [released] = held.splice(currentBucketZero, 1);
-  released!.finish({ ok: true, value: { thread_id: "t", total: 600, revision: 1, items: Array.from({ length: 100 }, (_, i) => ({ node_id: `first-${i}`, kind: "user", selection: { ordinal: i } })) } }); await flush();
-  expect(w.retryDeferred(w.acceptedView.peek()), JSON.stringify({ readsInFlight: w.readsInFlight, held: held.map(x => x.args) })).toBe(true);
-  expect(held).toHaveLength(3); expect(held.at(-1)!.args).toMatchObject({ ordinal: 400, expect_node_id: "deferred", items: true });
-  w.dispose();
+it("deferred retry shares two distinct bucket slots and waits for the separately held tail", async () => {
+  const r=controlledWindow(),w=r.win;
+  const rows=(first:number,last:number):HistoryItem[]=>Array.from({length:last-first+1},(_,offset)=>{
+    const ordinal=first+offset;return{node_id:ordinal===800?'deferred':`n${ordinal}`,kind:'user',selection:{ordinal},
+      ...(ordinal>=800?{items:null,items_unavailable_reason:'response_budget' as const}:
+        {items:[{kind:'text' as const,item_identity:'body',text:`Saved ${ordinal}`,text_complete:true}]})};
+  });
+  try{
+    r.requests[0]!.reply({ok:true,value:{thread_id:'t',total:750,revision:1,items:rows(650,749)}});await flush();
+    w.changed();r.pending()[0]!.reply({ok:true,value:{thread_id:'t',total:1000,revision:2,items:rows(749,948)}});await flush();
+    const verify=r.pending()[0]!;expect(verify.args).toMatchObject({ordinal:749,before:0,after:0});
+    verify.reply({ok:true,value:{thread_id:'t',total:1000,revision:2,items:rows(749,749)}});await flush();
+    const forward=r.pending()[0]!;expect(forward.args).toMatchObject({ordinal:749,before:0,after:199});
+    w.view(0,600,false);
+    forward.reply({ok:true,value:{thread_id:'t',total:1000,revision:2,items:rows(749,948)}});await flush();
+    const tail=r.pending()[0]!;expect(tail.args).toMatchObject({before:99,after:0});
+    expect(w.acceptedView.peek().rows.map(row=>row.node_id)).toEqual(rows(650,948).map(row=>row.node_id));
+    w.view(Math.max(0,w.totalHeight()-600),600,false);r.viewportPause();
+    const first=r.pending().find(request=>request.args.ordinal===600)!;
+    const second=r.pending().find(request=>request.args.ordinal===900)!;
+    expect(first).toBeDefined();expect(second,JSON.stringify({pending:r.pending().map(request=>request.args),total:w.total,range:w.renderRange(),height:w.totalHeight(),scroll:w.scrollTop})).toBeDefined();expect(r.pending()).toHaveLength(3);expect(w.readsInFlight).toBe(3);
+    const before=w.acceptedView.peek(),count=r.requests.length;
+    expect(w.retryDeferred(before)).toBe(false);expect(r.requests).toHaveLength(count);expect(w.acceptedView.peek()).toBe(before);
+    tail.reply({ok:true,value:{thread_id:'t',total:1000,revision:2,items:rows(900,999)}});await flush();
+    expect(w.readsInFlight).toBe(2);expect(w.retryDeferred(w.acceptedView.peek())).toBe(false);expect(r.requests).toHaveLength(count);
+    first.reply({ok:true,value:{thread_id:'t',total:1000,revision:2,items:rows(600,699)}});await flush();
+    expect(w.readsInFlight).toBe(1);expect(w.retryDeferred(w.acceptedView.peek())).toBe(true);
+    expect(r.requests).toHaveLength(count+1);expect(r.pending()).toHaveLength(2);
+    expect(r.requests.at(-1)!.args).toMatchObject({ordinal:800,expect_node_id:'deferred',before:0,after:99,items:true});
+    expect(w.retryDeferred(w.acceptedView.peek())).toBe(false);expect(r.requests).toHaveLength(count+1);
+    expect(w.acceptedView.peek().rows.map(row=>row.node_id)).toEqual(rows(600,999).map(row=>row.node_id));
+  }finally{w.dispose();expect(r.pending()).toHaveLength(0);}
 });
 
 it("publishes one capability-bound display plan and reaches a fixed point", async () => {

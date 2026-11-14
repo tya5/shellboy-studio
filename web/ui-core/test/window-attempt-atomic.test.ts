@@ -1,3 +1,4 @@
+import {attemptWork,selectedReadyRefs} from '../../data/test/work-fixture';
 import { ShellboyData } from "../../data/src/store";
 import { expect, it } from "vitest";
 import { ConversationWindow } from "../src/window";
@@ -13,7 +14,7 @@ const nodes: HistoryItem[] = [
 async function rig(items = nodes) {
   const source={revision:7,items,total:2};
   const w = new ConversationWindow({ read: async () => ({ ok: true, value: { thread_id: "thread", revision: source.revision, total: source.total, items:source.items } }) }); await flush();
-  const proof: AttemptReadyProof = { scope: '["owner","thread",1]', attemptId: "attempt", turnId: "turn", revision: 7, total: 2, refs: [{ nodeId: "answer" }, { nodeId: "tool" }, { nodeId: "answer" }], nodes };
+  const proof: AttemptReadyProof = { scope: '["owner","thread",1]', attemptId: "attempt", turnId: "turn", revision: 7, total: 2, refs: selectedReadyRefs(["answer","tool","answer"],nodes), nodes };
   const record: HandoffRecord = { key: "live-record", presentationContainer: "presentation:test" as PresentationContainerId, attemptId: "attempt", status: "confirming", bodyAuthority: "preview", text: "whole live block", incomplete: false, readyAttempt: proof };
   return { w, record, proof, source };
 }
@@ -82,12 +83,13 @@ it("rejects a partial newer proof instead of publishing it over copied older row
 });
 it("delayed ordinary revision 7 cannot replace an accepted revision 8 snapshot", async () => {
   const { w, record, proof } = await rig();
-  const acceptedProof = { ...proof, revision: 8, total: 4, nodes: [
+  const shifted = [
     { node_id: "user-0", kind: "user", selection: { ordinal: 0 }, items: [] },
     { ...nodes[0]!, selection: { ordinal: 1 } },
     { ...nodes[1]!, selection: { ordinal: 2 } },
     { node_id: "user-3", kind: "user", selection: { ordinal: 3 }, items: [] },
-  ] } as AttemptReadyProof;
+  ];
+  const acceptedProof:AttemptReadyProof={...proof,revision:8,total:4,nodes:shifted,refs:selectedReadyRefs(['answer','tool','answer'],shifted)};
   const acceptedRecord = { ...record, readyAttempt: acceptedProof };
   expect(w.acceptHandoff(acceptedRecord, acceptedProof.scope, () => {})).toBe(true);
   const before = w.acceptedView.peek();
@@ -100,54 +102,55 @@ it("delayed ordinary revision 7 cannot replace an accepted revision 8 snapshot",
 });
 it("notification reentry stops old release and never retires another attempt/turn", async () => {
   const { w, record, proof } = await rig(); let nested = false, releases = 0;
-  w.acceptedView.subscribe(() => { if (!nested) { nested = true; w.layoutChanged(); } });
+  w.acceptedView.subscribe(() => { if (!nested) { nested = true;
+    w.setAttemptPresentations([{scope:proof.scope,attemptId:'another',turnId:'another-turn',nodeIds:['unselected'],state:'pending'}]);
+  } });
   expect(w.acceptHandoff(record, proof.scope, () => { releases++; })).toBe(false);
   expect(releases).toBe(0); expect(w.acceptedView.peek().retiredAttempts!.every(item => item.turnId === "turn" && item.attemptId === "attempt")).toBe(true); w.dispose();
 });
-it("actual terminal persistence -> original O capture -> same Window saved snapshot -> retains readable original in one observed transition", async () => {
-  const t = new FakeTransport(), db = new FakeOwnerDb(), ticks: (() => void)[] = []; let id = 0;
-  const data = new ShellboyData({ transport: t, newId: () => `joined-${++id}`, schedule: fn => ticks.push(fn) });
-  const base = db.answer.bind(db);
-  db.answer = call => call.command === "status" ? { ok: true, result: { items: [{ kind: "attempt", id: "attempt", attempt_id: "attempt", turn_id: "turn", thread_id: "thread", state: "completed", response_nodes_truncated: false, response_nodes: [{ node_id: "answer", ordinal: 0, kind: "message" }, { node_id: "tool", ordinal: 1, kind: "function_call" }] }] } }
-    : call.command === "history.window" ? { ok: true, result: { thread_id: "thread", revision: 7, total: 2, items: nodes } } : base(call);
-  data.start(); t.open(); t.push({ t: "hello", bridge_version: "synthetic", owner: connectedWithHistory }); await settle(t, db);
-  const h = data.openThread("thread"); await settle(t, db);
-  const w = new ConversationWindow({ read: (args, cancel) => h.readWindow(args, cancel) }); await settle(t, db);
-  t.push({ t: "live", thread_id: "thread", attempt_id: "attempt", gap: false, deltas: [{ offset: 0, reasoning: false, text: "whole live block" }] }); ticks.splice(0).forEach(fn => fn());
-  t.push({ t: "live_end", thread_id: "thread" }); await settle(t, db);
-  const staged = h.handoff.peek()[0]!; expect(staged.text).toBe("whole live block");
-  expect(staged.readyAttempt).toBeUndefined();
-  expect(staged.terminalPersisted).toMatchObject({ scope: h.handoffScope(), attemptId: "attempt", nodeIds: ["answer", "tool"] });
-  const before = w.acceptedView.peek();
-  const trace: { rows: string[]; retired: string[]; overlay: string }[] = [];
-  w.acceptedView.subscribe(ref => {
-    expect(w.acceptedView.isCurrent(ref)).toBe(true);
-    expect(ref.rows).toEqual(before.rows);
-    trace.push({ rows: ref.rows.map(row => row.node_id!), retired: (ref.terminalPersistedAttempts ?? []).map(r => r.attemptId), overlay: h.handoff.peek()[0]?.text ?? "" });
+it("actual partial persistence observes one bound receipt without transferring or retiring the original", async () => {
+  const t=new FakeTransport(),db=new FakeOwnerDb(),ticks:(()=>void)[]=[];let id=0;
+  const data=new ShellboyData({transport:t,newId:()=>`joined-${++id}`,schedule:fn=>ticks.push(fn)});
+  const base=db.answer.bind(db);
+  db.answer=call=>call.command==='status'?{ok:true,result:{items:[attemptWork({threadId:'thread',attemptId:'attempt',turnId:'turn',state:'completed',
+    refs:[{node_id:'tool',ordinal:0,kind:'assistant_response'},{node_id:'answer',ordinal:1,kind:'assistant_response'}],truncated:true})]}}:
+    call.command==='history.window'?{ok:true,result:{thread_id:'thread',revision:7,total:2,items:nodes}}:base(call);
+  data.start();t.open();t.push({t:'hello',bridge_version:'synthetic',owner:connectedWithHistory});await settle(t,db);
+  const h=data.openThread('thread');await settle(t,db);
+  const w=new ConversationWindow({read:(args,cancel)=>h.readWindow(args,cancel)});await settle(t,db);
+  expect(w.bindTerminalHandle(h)).toBe(true);
+  const before=w.acceptedView.peek(),trace:{rows:string[];receipt:string[];overlay:string}[]=[];
+  const stop=w.acceptedView.subscribe(ref=>{
+    expect(w.acceptedView.isCurrent(ref)).toBe(true);expect(ref.rows).toEqual(before.rows);
+    trace.push({rows:ref.rows.map(row=>row.node_id!),receipt:(ref.terminalPersistedAttempts??[]).map(receipt=>receipt.attemptId),overlay:h.handoff.peek()[0]?.text??''});
   });
-  let ends = 0;
-  const transfer = () => h.transferHandoff("attempt", (record, release) => w.acceptHandoff(record, h.handoffScope(), reason => {
-    expect(reason).toBe("return"); ends++; release(reason);
-  }));
-  expect(transfer()).toBe(false);
-  expect(trace).toEqual([{ rows: ["tool", "answer"], retired: ["attempt"], overlay: "whole live block" }]);
-  expect(h.handoff.peek()).toHaveLength(1);
-  expect(h.handoff.peek()[0]!.text).toBe("whole live block");
-  expect(w.acceptedView.peek().terminalPersistedAttempts![0]!.scope).toBe(h.handoffScope());
-  expect(w.acceptedView.peek().retiredAttempts ?? []).toEqual([]);
-  expect(transfer()).toBe(false); expect(ends).toBe(1); expect(trace).toHaveLength(1);
-  expect(t.calls("history.get")).toHaveLength(0); w.dispose(); h.close(); data.stop();
+  try{
+    t.push({t:'live',thread_id:'thread',attempt_id:'attempt',gap:false,deltas:[{offset:0,reasoning:false,text:'whole live block'}]});ticks.splice(0).forEach(fn=>fn());
+    t.push({t:'live_end',thread_id:'thread'});await settle(t,db);
+    const held=h.handoff.peek()[0]!;expect(held.text).toBe('whole live block');expect(held.readyAttempt).toBeUndefined();
+    expect(w.acceptedView.peek().terminalPersistedAttempts).toMatchObject([{scope:h.handoffScope(),attemptId:'attempt',nodeIds:['tool','answer']}]);
+    expect(trace).toEqual([{rows:['tool','answer'],receipt:['attempt'],overlay:'whole live block'}]);
+    let releases=0;
+    const transfer=()=>h.transferHandoff('attempt',(record,release)=>w.acceptHandoff(record,h.handoffScope(),reason=>{releases++;release(reason);}));
+    expect(transfer()).toBe(false);expect(transfer()).toBe(false);expect(releases).toBe(0);
+    expect(h.handoff.peek()[0]).toBe(held);expect(w.acceptedView.peek().retiredAttempts??[]).toEqual([]);expect(trace).toHaveLength(1);
+    expect(t.calls('history.window')).toHaveLength(1);expect(t.calls('history.get')).toHaveLength(0);
+  }finally{stop();w.dispose();h.close();data.stop();}
 });
+
 it("a revoked Window capability cannot re-publish old retirement metadata on a later ordinary generation", async () => {
   const { w, record, proof } = await rig(); expect(w.acceptHandoff(record, proof.scope, () => {})).toBe(true);
-  w.acceptedView.revoke(); w.layoutChanged(); expect(w.acceptedView.peek().retiredAttempts).toEqual([]); w.dispose();
+  const old=w.acceptedView.peek();w.acceptedView.revoke();w.layoutChanged();
+  expect(w.acceptedView.peek()).toBe(old);expect(w.acceptedView.isCurrent(old)).toBe(false);
+  w.changed();await flush();expect(w.acceptedView.peek().retiredAttempts).toEqual([]);
+  expect(w.acceptedView.peek().assistantOwnership).toEqual([]);expect(w.acceptedView.isCurrent(w.acceptedView.peek())).toBe(true);w.dispose();
 });
 it("materializes already-qualified all-ref nodes and retirement together without requiring another changed hint/read", async () => {
   const initial: HistoryItem = { node_id: "user", kind: "user", items: [], selection: { ordinal: 0 } };
   let reads = 0;
   const w = new ConversationWindow({ read: async () => { reads++; return { ok: true, value: { thread_id: "thread", revision: 7, total: 1, items: [initial] } }; } }); await flush();
   const proof: AttemptReadyProof = { scope: "scope", attemptId: "attempt", turnId: "turn", revision: 7, total: 3,
-    refs: [{ nodeId: "answer" }, { nodeId: "tool" }], nodes: [initial, ...nodes.map((node, i) => ({ ...node, selection: { ordinal: i + 1 } }))] };
+    refs: [{ nodeId: "answer",ordinal:2,kind:'assistant_response' }, { nodeId: "tool",ordinal:1,kind:'assistant_response' }], nodes: [initial, ...nodes.map((node, i) => ({ ...node, selection: { ordinal: i + 1 } }))] };
   const record: HandoffRecord = { key: "original", presentationContainer: "presentation:test" as PresentationContainerId, attemptId: "attempt", text: "whole live", incomplete: false, status: "confirming", bodyAuthority: "preview", readyAttempt: proof };
   const frames: { ids: string[]; total: number; retired: number }[] = [];
   w.acceptedView.subscribe(ref => frames.push({ ids: ref.rows.map(row => row.node_id!), total: ref.total, retired: ref.retiredAttempts?.length ?? 0 }));

@@ -1,3 +1,4 @@
+import {responseRefsMatchSelected} from "../../data/src/public-response-refs";
 import type { DisplayAssociation } from '../../data/src/handoff';
 import type { HistoryItem } from '../../data/src/protocol';
 import type { PresentationContainerId } from '../../data/src/handoff';
@@ -24,7 +25,7 @@ export function assistantOwnership(association: DisplayAssociation, recordKey: s
   rows: readonly HistoryItem[], revision: number): AssistantOwnership | undefined {
   const nodeIds = new Set(association.refs.map(ref => ref.nodeId));
   const nodes = rows.filter(row => row.node_id && nodeIds.has(row.node_id));
-  if (!nodeIds.size || nodeIds.size > 64 || nodes.length !== nodeIds.size
+  if (!responseRefsMatchSelected(association.refs,nodes) || !nodeIds.size || nodeIds.size > 64 || nodes.length !== nodeIds.size
     || new Set(nodes.map(node => node.node_id)).size !== nodes.length
     || nodes.some(node => node.kind !== 'assistant_response' || !Array.isArray(node.items)
       || !node.items.length || node.items.some(item => item.kind === 'unavailable' || typeof item.item_identity !== 'string' || !item.item_identity)

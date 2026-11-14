@@ -1,3 +1,4 @@
+import {capturePublicResponseScope,responseRefsMatchSelected} from "./public-response-refs";
 import type { DisplayAssociation, DisplayTarget, DisplayObservation } from './handoff';
 import { TerminalReadSlots, type SelectedReadAdmission, type SelectedCanonicalRequest, type OwnedTerminalReadLease, type TicketOutcome } from "./terminal-read";
 import type { TerminalPersistedProof } from "./handoff";
@@ -183,17 +184,6 @@ class ThreadEntry {
 }
 
 /** Negative body exclusivity needs complete attribution across the bounded observed Thread scope. */
-function incompleteResponseScope(items: WorkItem[], threadId: string): boolean {
-  return items.some(other => {
-    if (other.kind !== "attempt") return false;
-    if (typeof other.thread_id === "string" && other.thread_id !== threadId) return false;
-    const output = other.response_nodes;
-    return !["completed", "failed", "incomplete", "cancelled"].includes(other.state) || other.thread_id !== threadId || typeof other.attempt_id !== "string" || !other.attempt_id.trim() || typeof other.turn_id !== "string" || !other.turn_id.trim()
-      || other.response_nodes_truncated !== false || !Array.isArray(output) || output.length > 64
-      || output.some(ref => !ref || typeof ref.node_id !== "string" || !ref.node_id || typeof ref.kind !== "string" || !ref.kind || !Number.isSafeInteger(ref.ordinal) || ref.ordinal < 0)
-      || new Set(output.map(ref => ref.ordinal)).size !== output.length;
-  });
-}
 
 /** Keeps the first seen of each Thread, in order, within the bound. */
 function mergeRows(first: readonly ThreadSummary[], then: readonly ThreadSummary[]): ThreadSummary[] {
@@ -784,7 +774,8 @@ export class ShellboyData {
         }
         return;
       }
-      const incompleteScope = !!out.value.next_cursor || incompleteResponseScope(out.value.items, entry.id);
+      const publicScope = capturePublicResponseScope(out.value.items, entry.id);
+      const incompleteScope = !!out.value.next_cursor || !publicScope.complete;
       const observations: DisplayObservation[] = [];
       for (const lease of leases) {
         if (!valid() || !lease.current()) continue;
@@ -806,14 +797,11 @@ export class ShellboyData {
         let receipt = entry.terminalReceipts.get(record.attemptId);
         if (!receipt && entry.terminalReceipts.size < 8) { receipt = proof; entry.terminalReceipts.set(record.attemptId, proof); }
         if (!receipt) receiptBlocked.add(record.attemptId);
-        const qualified = !incompleteScope && attempt.response_nodes_truncated === false
-          && typeof attempt.turn_id === 'string' && !!attempt.turn_id.trim()
-          && refs.every((ref,index) => typeof ref.kind === 'string' && !!ref.kind
-            && Number.isSafeInteger(ref.ordinal) && ref.ordinal >= 0 && (index === 0 || ref.ordinal > refs[index-1]!.ordinal))
-          && !out.value.items.some(other => other !== attempt && other.response_nodes?.some(ref => refs.some(own => own.node_id === ref?.node_id)));
-        const association: DisplayAssociation | undefined = qualified ? Object.freeze({ scope: proof.scope, attemptId: record.attemptId,
-          presentationContainer: record.presentationContainer,
-          turnId: attempt.turn_id!, refs: Object.freeze(refs.map(ref => Object.freeze({ nodeId: ref.node_id, ordinal: ref.ordinal, kind: ref.kind }))) }) : undefined;
+        const qualifiedRefs = publicScope.references.get(attempt);
+        const association: DisplayAssociation | undefined = !incompleteScope && qualifiedRefs
+          && !out.value.items.some(other => other !== attempt && other.response_nodes?.some(ref => refs.some(own => own.node_id === ref?.node_id)))
+          ? Object.freeze({ scope: proof.scope, attemptId: record.attemptId,
+              presentationContainer: record.presentationContainer, turnId: attempt.turn_id!, refs: qualifiedRefs }) : undefined;
         observations.push({ lease, ...(association ? { association } : {}), ...(receipt ? { receipt } : {}) });
       }
       const displayPublished = valid() && displayOwner === entry.displayOwner && observations.length > 0 && !!display?.publish(observations);
@@ -845,13 +833,12 @@ export class ShellboyData {
           entry.live.stageTerminalPersisted(record, ownedProof);
           continue;
         }
-        if (incompleteScope || attempt.response_nodes_truncated !== false) continue;
-        const refs = attempt.response_nodes;
-        if (out.value.items.some(other => other !== attempt && other.response_nodes?.some(ref => refs.some(own => own.node_id === ref?.node_id)))) continue;
-        if (refs.length > 64 || refs.some(r => !r || typeof r.kind !== "string" || typeof r.node_id !== "string" || !Number.isSafeInteger(r.ordinal) || r.ordinal < 0)) continue;
+        const refs = publicScope.references.get(attempt);
+        if (incompleteScope || !refs) continue;
+        if (out.value.items.some(other => other !== attempt && other.response_nodes?.some(ref => refs.some(own => own.nodeId === ref?.node_id)))) continue;
         if (refs.length && typeof attempt.turn_id === "string" && attempt.turn_id) {
           const fact: AttemptPresentation = Object.freeze({ scope: this.handoffScope(entry), attemptId: record.attemptId,
-            turnId: attempt.turn_id, nodeIds: Object.freeze(refs.map(ref => ref.node_id)),
+            turnId: attempt.turn_id, nodeIds: Object.freeze(refs.map(ref => ref.nodeId)),
             state: attempt.state === "failed" || attempt.state === "cancelled" || record.status === "failed" ? "failed" : "pending" });
           entry.pendingAttempts.value = Object.freeze([...entry.pendingAttempts.peek().filter(item => item.attemptId !== record.attemptId && item.scope === fact.scope), fact].slice(-8));
           if (!valid()) return;
@@ -861,20 +848,24 @@ export class ShellboyData {
         let revision: number | undefined;
         let total: number | undefined;
         let unavailable = false;
-        // Resolve exact identities sequentially inside the existing attempt-wide read budget.
-        // Each response may satisfy several refs; repeated refs are retained in the proof.
+        // Qualified public refs are unique; one page may satisfy several of them.
+        // Overlapping pages may reuse only the same exact selected identities.
         for (const ref of refs) {
-          if (nodes.has(ref.node_id)) continue;
+          if (nodes.has(ref.nodeId)) continue;
           if (!valid() || !entry.live.takeRead()) { unavailable = true; break; }
-          const page = await this.operations.historyWindow({ thread_id: entry.id, node_id: ref.node_id,
+          const page = await this.operations.historyWindow({ thread_id: entry.id, node_id: ref.nodeId,
             before: 0, after: 199, excerpt_chars: 0, items: true }, { cancel: cancelled });
           if (!valid()) return;
           if (!page.ok) { unavailable = true; if (page.error.kind !== "cancelled") entry.live.fail(record.attemptId); break; }
           if (page.value.thread_id !== entry.id || revision !== undefined && (revision !== page.value.revision || total !== page.value.total)) { unavailable = true; break; }
           revision = page.value.revision;
           total = page.value.total;
+          const present = refs.filter(ref => page.value.items.some(node => node.node_id === ref.nodeId));
+          if (!responseRefsMatchSelected(present, page.value.items)) { unavailable = true; break; }
           for (const node of page.value.items) {
             if (!node.node_id) { unavailable = true; break; }
+            const previous = nodes.get(node.node_id);
+            if (previous && (previous.selection?.ordinal !== node.selection?.ordinal || previous.kind !== node.kind)) { unavailable = true; break; }
             if (!Number.isSafeInteger(node.selection?.ordinal) || !Array.isArray(node.items)
               || node.items.some(item => item.kind === "unavailable" || item.kind === "text" && !item.text_complete)) { unavailable = true; break; }
             nodes.set(node.node_id, node);
@@ -882,14 +873,16 @@ export class ShellboyData {
           if (unavailable) break;
         }
         if (!valid()) return;
-        if (unavailable || revision === undefined || refs.some(ref => !nodes.has(ref.node_id))) {
+        if (unavailable || revision === undefined || refs.some(ref => !nodes.has(ref.nodeId))) {
           continue;
         }
-        const saved = immutableSaved([...nodes.values()].sort((a, b) => a.selection!.ordinal! - b.selection!.ordinal!));
+        const selected = [...nodes.values()].sort((a,b)=>a.selection!.ordinal!-b.selection!.ordinal!);
+        if (!responseRefsMatchSelected(refs, selected)) continue;
+        const saved = immutableSaved(selected);
         // A replacement must contain a visible authoritative item, not just bookkeeping.
         if (!saved.some(node => node.items?.some(item => item.kind === "text" || item.kind === "tool_call" || item.kind === "tool_result"))) continue;
         const proof = Object.freeze({ scope: this.handoffScope(entry), attemptId: record.attemptId,
-          turnId: attempt.turn_id!, revision, total: total!, refs: Object.freeze(refs.map(ref => Object.freeze({ nodeId: ref.node_id }))), nodes: saved });
+          turnId: attempt.turn_id!, revision, total: total!, refs, nodes: saved });
         entry.live.stageAttempt(record, proof);
       }
     }).finally(() => {

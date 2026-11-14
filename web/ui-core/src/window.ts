@@ -1,3 +1,4 @@
+import {responseRefsMatchSelected} from "../../data/src/public-response-refs";
 import { captureConversationInput, type ConversationSemanticInput } from "./conversation-input";
 import { normalizeLiveWorkFacts } from "./conversation-items";
 import { assistantOwnership, type AssistantOwnership } from './assistant-ownership';
@@ -675,20 +676,13 @@ export class ConversationWindow {
       const previous = this.retiredCapability === capability ? this.retiredAttempts : [];
       const previousCapability = this.retiredCapability;
       if (previous.length >= 8 && !previous.some(item => item.scope === scope && item.attemptId === record.attemptId)) return false;
-      const refs = proof.refs.map(ref => {
-        const row = rows.find(item => item.node_id === ref.nodeId);
-        return row?.selection?.ordinal === undefined || row.kind !== "assistant_response" ? undefined
-          : { nodeId: ref.nodeId, ordinal: row.selection.ordinal, kind: row.kind };
-      });
-      if (!refs.length || refs.some(ref => !ref)) return false;
+      if (!responseRefsMatchSelected(proof.refs,rows)) return false;
+      const refs = proof.refs;
       const retired = { scope, attemptId: record.attemptId, turnId: proof.turnId, revision: proof.revision,
-        nodeIds: proof.refs.map(ref => ref.nodeId),
-        refs: refs as { nodeId: string; ordinal: number; kind: string }[], recordKey: record.key,
-        containerKey: record.presentationContainer };
+        nodeIds: refs.map(ref => ref.nodeId), refs, recordKey: record.key, containerKey: record.presentationContainer };
       const next = [...previous.filter(item => item.scope !== scope || item.attemptId !== record.attemptId), retired];
       const association: DisplayAssociation = { scope, attemptId: record.attemptId, turnId: proof.turnId,
-        presentationContainer: record.presentationContainer,
-        refs: refs as { nodeId: string; ordinal: number; kind: string }[] };
+        presentationContainer: record.presentationContainer, refs };
       const ownership = assistantOwnership(association, record.key, rows, proof.revision);
       if (!ownership || ownership.mode !== "canonical") return false;
       const generation = this.nextAcceptedGeneration();
@@ -851,7 +845,8 @@ export class ConversationWindow {
     // Pixels cannot navigate across an unloaded gap. Run switches are explicit and bump version.
     // The scroller's end is the path's end: trailing nodes that draw nothing have no height to reach.
     // Missing tail evidence is not a user detach and cannot create follow intent.
-    const follow = atBottom && (now.last === this.total - 1 || this.following.peek() && !!this.tailCancel);
+    const pendingTail = !!this.tailCancel || this.verifying || this.tailAgain;
+    const follow = atBottom && (pendingTail ? this.following.peek() : now.last === this.total - 1);
     if (follow !== this.following.peek()) this.following.value = follow;
     if (follow && this.newer.peek()) this.newer.value = false;
     const r = now;
@@ -1111,7 +1106,6 @@ export class ConversationWindow {
     }
   }
 
-  private readBucket(b: number, request?: WindowReadArgs): void { this.admitBucket(b, request); }
   private admitBucket(b: number, request?: WindowReadArgs): boolean {
     // Pump, deferred retry and all other callers share this owner-level two-bucket gate.
     if (this.disposed || this.inflight.has(b) || this.inflight.size >= READS_IN_FLIGHT) return false;

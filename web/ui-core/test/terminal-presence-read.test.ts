@@ -1,3 +1,4 @@
+import {selectedReadyRefs,syntheticPresentation} from '../../data/test/work-fixture';
 import { ConversationWindow } from "../src/window";
 import type { OwnedTerminalReadLease } from "../../data/src/terminal-read";
 import type { HistoryItem } from "../../data/src/protocol";
@@ -256,7 +257,7 @@ it("scoped ownership does not attach an unrelated saved assistant to one preview
     { node_id: "owned", kind: "assistant_response", selection: { ordinal: 0 }, items: [{ kind: "text", item_identity: "owned:text", text: "owned", text_complete: true }] },
     { node_id: "unrelated", kind: "assistant_response", selection: { ordinal: 1 }, items: [{ kind: "text", item_identity: "other:text", text: "other", text_complete: true }] },
   ];
-  const association = { scope: "scope", attemptId: "attempt", turnId: "turn", presentationContainer: "container" as never, refs: [{ nodeId: "owned", ordinal: 0, kind: "message" }] };
+  const association = { scope: "scope", attemptId: "attempt", turnId: "turn", presentationContainer: syntheticPresentation("attempt"), refs: selectedReadyRefs(["owned"],rows) };
   const fact = assistantOwnership(association, "record", rows, 8);
   expect(fact?.itemKeys).toEqual([JSON.stringify(["owned", "owned:text"])]);
   expect(fact?.itemKeys).not.toContain(JSON.stringify(["unrelated", "other:text"]));

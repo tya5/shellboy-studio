@@ -1,11 +1,13 @@
+import {selectedReadyRefs,syntheticPresentation} from '../../data/test/work-fixture';
 import { expect, it } from 'vitest';
 import { assistantOwnership } from '../src/assistant-ownership';
 import type { DisplayAssociation, PresentationContainerId } from '../../data/src/handoff';
 import type { HistoryItem } from '../../data/src/protocol';
-const association: DisplayAssociation = { scope: 'owner/thread/lifetime', attemptId: 'attempt', turnId: 'turn', presentationContainer: 'presentation:test' as PresentationContainerId, refs: [{nodeId:'answer',ordinal:0,kind:'message'}] };
+
 const answer = (): HistoryItem => ({node_id:'answer',kind:'assistant_response',selection:{ordinal:9},items:[{kind:'text',item_identity:'exact-text',text:'Same body',text_complete:true},{kind:'tool_call',item_identity:'independent-tool',execution_ids:['exec']}]});
+const association:DisplayAssociation={scope:'owner/thread/lifetime',attemptId:'attempt',turnId:'turn',presentationContainer:syntheticPresentation('attempt'),refs:selectedReadyRefs(['answer'],[answer()])};
 it('owns exact ordinary item keys, preserving Work siblings and independent equal text identities',()=>{
- const other={...answer(),node_id:'other'};
+ const other={...answer(),node_id:'other',selection:{ordinal:10}};
  const decision=assistantOwnership(association,'original',[answer(),other],7)!;
  expect(decision).toMatchObject({scope:association.scope,attemptId:'attempt',turnId:'turn',mode:'canonical',recordKey:'original'});
  expect(decision.itemKeys).toHaveLength(1);
@@ -36,6 +38,12 @@ it.each(['missing','unavailable','deferred','duplicate-item','duplicate-node','w
  expect(assistantOwnership(association,'original',nodes,7)).toBeUndefined();
 });
 it('denies whole-bundle transfer with one missing node; never retires at first body',()=>{
- const multi={...association,refs:[...association.refs,{nodeId:'second',ordinal:1,kind:'message'}]};
+ const multi={...association,refs:[...association.refs,{nodeId:'second',ordinal:10,kind:'assistant_response'}]};
  expect(assistantOwnership(multi,'original',[answer()],7)).toBeUndefined();
+});
+
+it.each(['ordinal','kind'] as const)('cannot borrow body ownership from a wrong selected %s',mode=>{
+ const mismatched:DisplayAssociation={...association,refs:association.refs.map(ref=>mode==='ordinal'?{...ref,ordinal:8}:{...ref,kind:'user'})};
+ const node=answer();expect(assistantOwnership(mismatched,'original',[node],7)).toBeUndefined();
+ expect(node.items?.[0]).toMatchObject({text:'Same body',text_complete:true});
 });

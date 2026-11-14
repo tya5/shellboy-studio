@@ -73,7 +73,7 @@ it("settled successor is dispatched once without resolver re-entry", async () =>
 it.each(['current','replace','revoke'] as const)('ready selected slot gates finite completion on exact %s record', async mode => {
  const h=new Handoff(f=>f()); h.apply({attempt_id:'a',gap:false,deltas:[{offset:0,reasoning:false,text:'preview'}]}); h.finish();
  const original=h.records.peek()[0]!;
- const proof:AttemptReadyProof={scope:'s',attemptId:'a',turnId:'turn',revision:1,total:1,refs:[{nodeId:'n'}],
+ const proof:AttemptReadyProof={scope:'s',attemptId:'a',turnId:'turn',revision:1,total:1,refs:[{nodeId:'n',ordinal:0,kind:'assistant_response'}],
    nodes:[{node_id:'n',kind:'assistant_response',selection:{ordinal:0},items:[{kind:'text',item_identity:'i',text:'saved',text_complete:true}]}]};
  const staged=h.stageAttempt(original,proof)!;
  const slots=new TerminalReadSlots(), parent=new Cancel();

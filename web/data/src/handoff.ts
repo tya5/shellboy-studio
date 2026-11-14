@@ -1,3 +1,4 @@
+import {responseRefsMatchSelected,type SelectedResponseRef} from "./public-response-refs";
 import { computed, signal, type ReadonlySignal } from '@preact/signals-core';
 import { LiveText, MAX_PREVIEW_CHARS, type LiveFrame, type Preview, type PreviewDiscardReason, type Schedule } from './live';
 
@@ -16,7 +17,7 @@ export interface TerminalPersistedProof {
   readonly refs?: readonly { readonly nodeId: string; readonly ordinal: number; readonly kind: string }[];
   readonly terminalState: 'completed' | 'failed' | 'incomplete' | 'cancelled';
 }
-export interface AttemptReadyProof { readonly scope: string; readonly attemptId: string; readonly turnId: string; readonly revision: number; readonly total: number; readonly refs: readonly { readonly nodeId: string }[]; readonly nodes: readonly HistoryItem[] }
+export interface AttemptReadyProof { readonly scope: string; readonly attemptId: string; readonly turnId: string; readonly revision: number; readonly total: number; readonly refs: readonly SelectedResponseRef[]; readonly nodes: readonly HistoryItem[] }
 
 function mintPresentationContainer(attemptId: string): PresentationContainerId {
   if (globalThis.crypto?.randomUUID) return `presentation:${globalThis.crypto.randomUUID()}` as PresentationContainerId;
@@ -191,7 +192,7 @@ export class Handoff {
     const h = this.held.find(h => h.record === original);
     if (!h || h.transferring || original.incomplete || !Number.isSafeInteger(proof.total) || proof.total < 0 || proof.attemptId !== original.attemptId || !proof.scope || !proof.turnId || !proof.refs.length || proof.refs.length > 64 || proof.nodes.length > 200) return;
     const nodes = new Map(proof.nodes.map(n => [n.node_id, n]));
-    if (nodes.size !== proof.nodes.length || proof.refs.some(r => !nodes.has(r.nodeId))) return;
+    if (nodes.size !== proof.nodes.length || !responseRefsMatchSelected(proof.refs,proof.nodes)) return;
     let visible = false;
     for (const node of proof.nodes) {
       const ordinal = node.selection?.ordinal;
