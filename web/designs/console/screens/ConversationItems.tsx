@@ -121,10 +121,11 @@ export function ConversationItems({ items, toolSummaries = [], renderItem, rende
       .flatMap(slot => [slot.content]);
     const unqualified = localRegion?.kind === "unqualified" ? localRegion : undefined;
     const local = unqualified ? { view: unqualified.content, first: -1, last: -1 } : undefined;
+    const afterIndex = unqualified?.afterIndex;
     const plan = local
-      ? unqualified.afterIndex === undefined
+      ? afterIndex === undefined
         ? [local, ...rendered]
-        : [...rendered.slice(0, unqualified.afterIndex + 1), local, ...rendered.slice(unqualified.afterIndex + 1)]
+        : [...rendered.slice(0, afterIndex + 1), local, ...rendered.slice(afterIndex + 1)]
       : rendered;
     // Keep top-level rows as direct siblings. Nested arrays create implicit
     // unkeyed VNodes and can change an unchanged row's DOM parent on handoff.
