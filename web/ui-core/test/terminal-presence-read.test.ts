@@ -196,7 +196,7 @@ it("Window rebinds a revision-changing point read through one bounded whole-wind
   const calls = r.t.calls("history.window");
   expect(calls.length - callsBefore).toBe(2);
   expect(requests).toHaveLength(2);
-  const wholeItems = baseNodes.map(node => node.selection.ordinal);
+  const wholeItems = baseNodes.map(node => node.selection?.ordinal);
   expect(wholeItems).toEqual([0, 1]);
   expect(requests[0]).toMatchObject({ node_id: "answer", items: true });
   expect(requests[1]).toEqual({ thread_id: "a", before: 199, after: 0, items: true });
