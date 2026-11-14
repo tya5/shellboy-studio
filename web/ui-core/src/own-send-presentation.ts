@@ -95,6 +95,9 @@ export function ownSendPresentation<Ref>(input: OwnSendPresentationInput<Ref>): 
   const boundaryConflict=boundaryIndex>=0&&slots.some(slot=>slot&&slot.first<=boundaryIndex);
   const conflict=mutualConflict||boundaryConflict;
   const positionedSlots=allSlots?slots.flatMap(slot=>slot?[{row:slot.row,insertion:slot.insertion,position:slot.last}]:[]):[];
+  const reservationPosition=placement.kind === "qualified" ? (placement.insertion.kind === "beginning" ? 0 : sequence.findIndex(entry => entry.kind === placement.insertion.kind && (entry.kind === "conversation" ? entry.itemKey === placement.insertion.itemKey : entry.groupKey === placement.insertion.groupKey))) : -1;
+  const conflictSlots=conflict && reservationPosition >= 0 ? cohort.map(row=>({row,insertion:placement.insertion,position:reservationPosition})) : [];
+  const planSlots=conflict ? conflictSlots : positionedSlots;
   const usableSlots=positionedSlots.length>0&&!conflict?positionedSlots:[];
   const finalPlacement=placement.kind === "qualified" && cohort.length > 0 && !allSlots
     ? Object.freeze({kind:"unqualified" as const,reason:"cohort-unplaced" as const}) : placement;
@@ -104,10 +107,10 @@ export function ownSendPresentation<Ref>(input: OwnSendPresentationInput<Ref>): 
   const suppressedIds = new Set(transfer ? [] : cohort.flatMap(row => row.messageId ? [row.messageId] : []));
   const items = input.current ? input.projection.items.filter(item => !input.hiddenItemKeys.has(item.key) && !suppressedIds.has(item.source.nodeId ?? "")) : [];
   const keys = new Set(items.map(item => item.key));
-  const projection = Object.freeze({...input.projection, items: Object.freeze(items), sequence: Object.freeze((input.current ? input.projection.sequence ?? [] : []).filter(entry => usableSlots.length>0 || entry.kind !== "conversation" || keys.has(entry.itemKey)))});
+  const projection = Object.freeze({...input.projection, items: Object.freeze(items), sequence: Object.freeze(input.current ? input.projection.sequence ?? [] : [])});
   const token=Object.freeze({});
   const observation=observeOwnSendTail(token,input.ref,input.scope,input.current,input.projection,input.path,input.validateCurrent??(()=>false));
-  return Object.freeze({token,placement:finalPlacement,slots:Object.freeze(transfer?[]:positionedSlots),observation,ref:input.ref,scope:input.scope,cohortVersion:input.cohortVersion,projection,displayedSavedUserIds:displayed,
+  return Object.freeze({token,placement:finalPlacement,slots:Object.freeze(transfer?[]:planSlots),observation,ref:input.ref,scope:input.scope,cohortVersion:input.cohortVersion,projection,displayedSavedUserIds:displayed,
     cohort,localRows:transfer ? Object.freeze([]) : cohort,retire:transfer ? cohort : Object.freeze([]),
     conflictIds:Object.freeze(conflict ? cohort.map(row=>row.messageId!) : [])});
 }
