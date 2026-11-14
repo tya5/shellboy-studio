@@ -455,7 +455,9 @@ export class ShellboyData {
           && receipt.scope === this.handoffScope(e) && this.canRead();
         const ownedReceipt = e.terminalReceipts.get(receipt.attemptId);
         if (!valid() || !ownedReceipt || JSON.stringify(ownedReceipt) !== JSON.stringify(receipt) || request.args.thread_id !== e.id) return { phase: "unavailable", reason: "cancelled" };
-        const result = e.terminalReads.replace(ownedReceipt, request, valid, e.cancel); void this.resolveHandoff(e); return result;
+        // The active resolver observes the queued replacement after its current dispatch;
+        // do not recursively re-enter it from this transition.
+        return e.terminalReads.replace(ownedReceipt, request, valid, e.cancel);
       },
       handoffScope: () => this.handoffScope(e),
       transferHandoff: (id, accept) => { if (closed || e.closed || e.paused) return false; return e.live.transfer(id, accept); },
