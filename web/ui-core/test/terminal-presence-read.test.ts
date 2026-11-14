@@ -180,11 +180,12 @@ it("Window rebinds a revision-changing point read through one bounded whole-wind
   const requests: unknown[] = [];
   r.db.answer = call => {
     if (call.command === "history.window") {
-      requests.push(call.args);
-      if (call.args.node_id !== undefined) return { ok: true, result: { thread_id: "a", revision: 8, total: 4, items: [
+      const args = call.args as Record<string, unknown>;
+      requests.push(args);
+      if (args.node_id !== undefined) return { ok: true, result: { thread_id: "a", revision: 8, total: 4, items: [
         { node_id: "answer", kind: "assistant_response", selection: { ordinal: 2 }, items: [{ kind: "text", item_identity: "text", text: "saved", text_complete: true }] },
       ] } };
-      if (call.args.before === 199 && call.args.after === 0 && call.args.items === true) return { ok: true, result: { thread_id: "a", revision: 8, total: 4, items: [
+      if (args.before === 199 && args.after === 0 && args.items === true) return { ok: true, result: { thread_id: "a", revision: 8, total: 4, items: [
         { node_id: "tool", kind: "assistant_response", selection: { ordinal: 1 }, items: [{ kind: "tool_call", item_identity: "call", execution_ids: ["exec"] }] },
         { node_id: "answer", kind: "assistant_response", selection: { ordinal: 2 }, items: [{ kind: "text", item_identity: "text", text: "saved", text_complete: true }] },
       ] } };
