@@ -357,7 +357,9 @@ export class ConversationWindow {
         const value = out.result.value;
         // Readback can only extend the same qualified selected run; revision changes
         // need a separate fresh transaction, never a silent rebind here.
-        if (value.thread_id !== target.handle.threadId || value.revision !== target.ref.revision || value.total < target.ref.total || value.items.length > 200) reason = "selection-gap";
+        const coveredReceiptRefs = target.receipt.nodeIds.every(nodeId => value.items.some(row => row.node_id === nodeId));
+        if (value.thread_id !== target.handle.threadId || value.total < target.ref.total || value.items.length > 200
+          || (value.revision !== target.ref.revision && !coveredReceiptRefs)) reason = "selection-gap";
         else if (value.items.some(row => {
           const existing = target.ref.rows.find(saved => saved.selection?.ordinal === row.selection?.ordinal);
           return existing !== undefined && JSON.stringify(existing) !== JSON.stringify(row);
