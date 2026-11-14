@@ -98,7 +98,7 @@ export function ownSendPresentation<Ref>(input: OwnSendPresentationInput<Ref>): 
   let reservationPosition=-1;
   if (placement.kind === "qualified") {
     const insertion=placement.insertion;
-    reservationPosition=insertion.kind === "beginning" ? 0 : sequence.findIndex(entry =>
+    reservationPosition=insertion.kind === "beginning" ? -1 : sequence.findIndex(entry =>
       entry.kind === "conversation" && insertion.kind === "conversation" ? entry.itemKey === insertion.itemKey :
       entry.kind === "work" && insertion.kind === "work" ? entry.groupKey === insertion.groupKey : false);
   }
