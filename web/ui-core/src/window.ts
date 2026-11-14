@@ -946,9 +946,19 @@ export class ConversationWindow {
 
   private nextAcceptedGeneration(): number { return ++this.acceptedGeneration; }
 
-  private acceptedOwnershipForBump(revision: string | number): readonly AssistantOwnership[] {
+  private acceptedOwnershipForBump(revision: string | number, rows: readonly HistoryItem[], capability: AcceptedCapability): readonly AssistantOwnership[] {
     const prior = this.acceptedView.peek().assistantOwnership ?? [];
-    return prior.length && prior.every(fact => fact.proofRevision === revision) ? prior : [];
+    if (!prior.length || prior.some(fact => fact.scope !== prior[0]!.scope)) return [];
+    if (prior.every(fact => fact.proofRevision === revision)) return prior;
+    const qualified: AssistantOwnership[] = [];
+    for (const fact of prior) {
+      if (!fact.refs.length) return [];
+      const next = assistantOwnership({ scope: fact.scope, attemptId: fact.attemptId, turnId: fact.turnId,
+        presentationContainer: fact.containerKey, refs: fact.refs }, fact.recordKey, rows, revision);
+      if (!next || next.mode !== "canonical" || capability !== this.acceptedView.currentCapability) return [];
+      qualified.push(next);
+    }
+    return Object.freeze(qualified);
   }
 
   private bump(capability: AcceptedCapability = this.acceptedView.currentCapability): void {
@@ -962,7 +972,7 @@ export class ConversationWindow {
       return value ? [{ ...value, phase: previous?.phase ?? value.phase }] : [];
     }) : [];
     this.terminalPresence = presence;
-    const requalifiedOwnership = this.revision === undefined ? [] : this.acceptedOwnershipForBump(this.revision);
+    const requalifiedOwnership = this.revision === undefined ? [] : this.acceptedOwnershipForBump(this.revision, currentRows, capability);
     const staged = this.acceptedView.stage({ generation, epoch, disposed: false,
       rows: currentRows, range: this.renderRange(), total: this.total,
       revision: this.revision, pending: this.status.peek() === "loading", attemptPresentations: this.attemptPresentations.filter(p => !this.terminalPersistedAttempts.some(done => this.terminalCapability === capability && done.scope === p.scope && done.attemptId === p.attemptId)),

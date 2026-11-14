@@ -14,6 +14,8 @@ export interface AssistantOwnership {
   readonly mode: 'preview' | 'canonical';
   readonly proofRevision: string | number;
   readonly itemKeys: readonly string[];
+  /** Canonical node/ordinal evidence retained for a fresh revision requalification. */
+  readonly refs: readonly { readonly nodeId: string; readonly ordinal: number; readonly kind: string }[];
 }
 
 export function assistantOwnership(association: DisplayAssociation, recordKey: string,
@@ -36,5 +38,6 @@ export function assistantOwnership(association: DisplayAssociation, recordKey: s
   const complete = ordinary.every(item => item.source.kind === 'text' && item.source.textComplete === true);
   const nonempty = ordinary.some(item => item.source.kind === 'text' && !!item.source.text);
   return Object.freeze({ scope: association.scope, attemptId: association.attemptId, turnId: association.turnId,
-    recordKey, containerKey: association.presentationContainer, proofRevision: revision, mode: complete && nonempty ? 'canonical' : 'preview', itemKeys: Object.freeze(ordinary.map(item => item.key)) });
+    recordKey, containerKey: association.presentationContainer, proofRevision: revision, mode: complete && nonempty ? 'canonical' : 'preview',
+    itemKeys: Object.freeze(ordinary.map(item => item.key)), refs: Object.freeze(association.refs.map(ref => Object.freeze({ ...ref }))) });
 }
