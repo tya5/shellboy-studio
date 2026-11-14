@@ -236,9 +236,16 @@ export function LiveRecordChrome({ model, record }: { model: AppModel; record: H
 
 /** Only records read from the current owned ledger may enter this adapter. */
 export function projectOwnedHandoffFacts(scope: string, records: readonly HandoffRecord[]): readonly NormalizedSavedItem[] {
-  return normalizeConversationFacts(records.map(record => record.text && record.transferred !== true
-    ? {domain: "live", namespace: "handoff", scope, recordId: record.key, attemptId: record.attemptId, kind: "text", text: record.text}
-    : {domain: "live", namespace: "handoff", scope, recordId: record.key, attemptId: record.attemptId, kind: "unknown"}));
+  return normalizeConversationFacts(records.map(record => {
+    const proof = record.proof;
+    const ready = record.status === "ready" && proof !== undefined && record.nodeId !== undefined && record.readyAttempt !== undefined
+      && record.readyAttempt.scope === scope && record.readyAttempt.attemptId === record.attemptId
+      && record.readyAttempt.turnId === proof.turnId && record.readyAttempt.revision === proof.revision
+      && record.readyAttempt.refs.some(ref => ref.nodeId === record.nodeId);
+    return record.text && record.transferred !== true && (record.status !== "ready" || ready)
+      ? {domain: "live", namespace: "handoff", scope, recordId: record.key, attemptId: record.attemptId, kind: "text", text: record.text}
+      : {domain: "live", namespace: "handoff", scope, recordId: record.key, attemptId: record.attemptId, kind: "unknown"};
+  }));
 }
 
 export function retainUnretiredLiveFacts(snapshot: WindowAcceptedSnapshot, scope: string, current: boolean, facts: readonly NormalizedSavedItem[]): readonly NormalizedSavedItem[] {
@@ -293,12 +300,13 @@ export function SavedWindowContent({ model, snapshot, live, liveBoundary, liveFa
   const workScopeRejected=scopedWork===undefined;
   // Rejection is an unavailable Work cut, never a successful empty publication.
   const baseProjection = workScopeRejected ? projectSavedItems(ordered) : projectSavedItems([...ordered,...scopedWork]);
-  const liveProjection = projectSavedItems(handoffs);
   const displayKeys = new Map<string, string>();
   for (const decision of ownership.filter(item => item.mode === "canonical")) {
-    const live = liveProjection.items.find(item => "domain" in item.source && item.source.recordId === decision.recordKey);
-    if (!live) continue;
-    for (const key of decision.itemKeys) if (baseProjection.items.some(item => item.key === key)) displayKeys.set(key, live.key);
+    for (const itemKey of decision.itemKeys) {
+      if (!baseProjection.items.some(item => item.key === itemKey)) continue;
+      // Keep each canonical child distinct while making its owner stable after ledger retirement.
+      displayKeys.set(itemKey, `answer:${decision.recordKey}:${itemKey}`);
+    }
   }
   const projection = rekeyConversationPresentation(baseProjection, displayKeys);
   // Live text without item-kind proof cannot unlock or replace saved Conversation text.
