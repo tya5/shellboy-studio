@@ -934,6 +934,15 @@ export class AppModel {
     return [...accepted,...(pending?[pending]:[])].filter(row=>row.scope===scope);
   }
   pendingOwnIsCurrent(): boolean { return !!this.pendingOwnRetryCurrent?.(); }
+  admitOwnPresentation<Ref>(result: OwnSendDecision<Ref>, projection: import('./conversation-items').SavedItemProjection, currentRef: import('./window').WindowAcceptedSnapshot): void {
+    const window = this.longReader.peek();
+    if (!window || !window.acceptedView.isCurrent(currentRef)) return;
+    const current = () => window.acceptedView.isCurrent(currentRef);
+    this.installOwnPresentation(result, current);
+    if (!window.acceptedView.isCurrent(currentRef)) return;
+    const version = result.cohortVersion ?? { accepted: this.acceptedOwnMessages.peek(), pending: this.pendingOwnMessage.peek() };
+    this.publishConversationDisplayPlan(currentRef, projection, { cohortVersion: version }, current);
+  }
   publishConversationDisplayPlan(ref: import('./window').WindowAcceptedSnapshot, projection: import('./conversation-items').SavedItemProjection, decision: OwnUserDecision, current: () => boolean): boolean {
     const window = this.longReader.peek();
     if (!window || !current() || !window.acceptedView.isCurrent(ref)) return false;
