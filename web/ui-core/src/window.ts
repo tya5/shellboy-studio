@@ -937,16 +937,9 @@ export class ConversationWindow {
 
   private nextAcceptedGeneration(): number { return ++this.acceptedGeneration; }
 
-  private requalifyOwnership(revision: string | number, rows: readonly HistoryItem[]): readonly AssistantOwnership[] {
+  private acceptedOwnershipForBump(revision: string | number): readonly AssistantOwnership[] {
     const prior = this.acceptedView.peek().assistantOwnership ?? [];
-    if (!prior.length) return [];
-    if (prior.every(fact => fact.proofRevision === revision)) return prior;
-    const canonical = projectHistoryWindowItems({ revision, nodes: rows, keyScope: [prior[0]!.scope] }).projection;
-    const byKey = new Map(canonical.items.map(item => [item.key, item]));
-    return prior.filter(fact => fact.proofRevision !== revision && fact.itemKeys.every(key => {
-      const item = byKey.get(key);
-      return item?.source.kind === "text" && item.source.textComplete === true && item.source.text.length > 0;
-    })).map(fact => Object.freeze({ ...fact, proofRevision: revision }));
+    return prior.length && prior.every(fact => fact.proofRevision === revision) ? prior : [];
   }
 
   private bump(capability: AcceptedCapability = this.acceptedView.currentCapability): void {
@@ -960,7 +953,7 @@ export class ConversationWindow {
       return value ? [{ ...value, phase: previous?.phase ?? value.phase }] : [];
     }) : [];
     this.terminalPresence = presence;
-    const requalifiedOwnership = this.revision === undefined ? [] : this.requalifyOwnership(this.revision, currentRows);
+    const requalifiedOwnership = this.revision === undefined ? [] : this.acceptedOwnershipForBump(this.revision);
     const staged = this.acceptedView.stage({ generation, epoch, disposed: false,
       rows: currentRows, range: this.renderRange(), total: this.total,
       revision: this.revision, pending: this.status.peek() === "loading", attemptPresentations: this.attemptPresentations.filter(p => !this.terminalPersistedAttempts.some(done => this.terminalCapability === capability && done.scope === p.scope && done.attemptId === p.attemptId)),

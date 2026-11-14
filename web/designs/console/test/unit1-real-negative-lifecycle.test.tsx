@@ -10,7 +10,7 @@ import type { HistoryItem } from '../../../data/src/protocol';
 import type { DesignContext } from '../../../ui-core/src';
 import { loadPrefs } from '../../../ui-core/src/prefs';
 import { App } from '../screens/App';
-import { typedHandoffRegistry, type TypedHistoryWindow } from '../../../ui-core/test/typed-handoff-fixture';
+import { typedHandoffRegistry, typedFullCoverageWindow, type TypedHistoryWindow } from '../../../ui-core/test/typed-handoff-fixture';
 
 const context = (model: DesignContext['model']): DesignContext => ({
   model, prefs: signal(loadPrefs({ read: () => null, write: () => {} }, [{ name: 'console', themes: [{ name: 'light' }] }])),
@@ -45,7 +45,8 @@ async function realLifecycle(mode: Mode) {
         if (!ref || !proof || deleted) return { ok: true, result: { thread_id: 'thread', revision: registry.revision, total: registry.total, item_count: 0, items: [] } };
         if (mode === 'budget') return { ok: true, result: proof };
         if (mode === 'stale' || (mode === 'aba' && deliverOld)) return { ok: true, result: { ...proof, revision: 7 } as TypedHistoryWindow };
-        return { ok: true, result: proof };
+        const full = registry.canonical ? typedFullCoverageWindow('thread', registry.revision, registry.total, nodes) : proof;
+        return { ok: true, result: full };
       }
       return base(call);
     };
