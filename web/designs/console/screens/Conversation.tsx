@@ -88,6 +88,7 @@ function assistantTextMembership(item: ConversationItem): AssistantTextMembershi
 export function SavedConversationItems({ model, projection, displayPlan, renderBefore, trailing, nodes,localRegion }: { model: AppModel; projection: SavedItemProjection & { sequence?: readonly ({kind: "conversation"; itemKey: string} | {kind: "work"; groupKey: string})[]; workGroups?: readonly ConversationWorkGroup[] }; displayPlan?: ConversationDisplayPlan; nodes?: readonly HistoryItem[]; renderBefore?: (item: ConversationItem) => ComponentChildren; trailing?: ComponentChildren;localRegion?:{placement:OwnSendPlacement;slots?:readonly {position:OwnSendSlotPosition;content:ComponentChildren}[];unqualified?:ComponentChildren} }) {
   const planEntries = displayPlan?.entries ?? [];
   const planByKey = new Map(planEntries.map(entry => [entry.item.key, entry]));
+  const planItems = displayPlan ? projection.items.map(item => { const entry = planByKey.get(item.key); return entry?.presentationContainer ? { ...item, presentationContainer: entry.presentationContainer } : item; }) : projection.items;
   const membership=new Map(projection.items.map(item=>{ const body=planByKey.get(item.key)?.body; return [item.key, body?.kind === "unavailable" ? "content-unavailable" : assistantTextMembership(item)] as const; }));
   const t = model.t.value;
   const savedSteps = collectExecutionSteps(nodes ?? [], model.shells.value);
@@ -145,7 +146,7 @@ export function SavedConversationItems({ model, projection, displayPlan, renderB
     if(bundle.detailPolicy!=="none"&&bundle.detailPolicy!=="unavailable")return null;
     return <WorkElementRow display={display} anchorKey={item.key} detailPolicy={bundle.detailPolicy}/>;
   };
-  return <ConversationItems {...projection} isItemAbsent={item=>membership.get(item.key)==="empty-saved"} localRegion={localRegion} renderWorkGroup={renderWorkGroup} renderBefore={renderBefore} trailing={trailing} isItemHidden={hidden} renderHeading={summary => {
+  return <ConversationItems {...projection} items={planItems} sequence={displayPlan?.sequence ?? projection.sequence} workGroups={displayPlan?.workGroups ?? projection.workGroups} isItemAbsent={item=>membership.get(item.key)==="empty-saved"} localRegion={localRegion} renderWorkGroup={renderWorkGroup} renderBefore={renderBefore} trailing={trailing} isItemHidden={hidden} renderHeading={summary => {
     const steps = allSteps.filter(step => summary.executionIds.includes(step.executionId));
     const active = steps.find(step => step.status === "running");
     const nonzero = steps.filter(step => typeof step.exitCode === "number" && step.exitCode !== 0).length;

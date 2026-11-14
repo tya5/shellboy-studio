@@ -1,6 +1,6 @@
 import type { AssistantOwnership } from './assistant-ownership';
 import type { AcceptedCapability } from './accepted-view';
-import { projectHistoryWindowItems, type SavedItemProjection, type ProjectedSavedItem } from './conversation-items';
+import { projectHistoryWindowItems, type SavedItemProjection, type ProjectedSavedItem, type ConversationSequence, type WorkGroup } from './conversation-items';
 import type { HistoryItem } from '../../data/src/protocol';
 import type { LiveWorkIdentity } from './conversation-items';
 
@@ -26,6 +26,8 @@ export interface ConversationDisplayPlan {
   readonly revision: string | number;
   readonly capability: AcceptedCapability;
   readonly entries: readonly ConversationDisplayPlanEntry[];
+  readonly sequence: readonly ConversationSequence[];
+  readonly workGroups: readonly WorkGroup[];
   readonly cohortKey: string;
   readonly cohortVersion: DisplayCohortVersion;
   readonly scope: string;
@@ -99,5 +101,5 @@ export function createConversationDisplayPlan(input: AcceptedPublicationInput): 
     const lifetime: DisplayLifetime = Object.freeze({ kind: retired ? 'revoked' : human && !owner ? 'canonical-human' : owner || host ? 'valid-owner' : 'retained', scope: input.scope, generation, revision });
     return Object.freeze({ item, ...(host ? { presentationContainer: host } : {}), body, lifetime });
   });
-  return Object.freeze({ acceptedGeneration: generation, revision, capability: input.capability, entries: Object.freeze(entries), cohortKey, cohortVersion: version, scope: input.scope, semanticKey });
+  return Object.freeze({ acceptedGeneration: generation, revision, capability: input.capability, sequence: Object.freeze([...(input.projection.sequence ?? [])]), workGroups: Object.freeze([...(input.projection.workGroups ?? [])]), entries: Object.freeze(entries), cohortKey, cohortVersion: version, scope: input.scope, semanticKey });
 }
