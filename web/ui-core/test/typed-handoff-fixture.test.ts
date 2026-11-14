@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { typedAttempt, typedHandoff, typedHistoryWindow, validTypedHandoff } from "./typed-handoff-fixture";
+import { typedAttempt, typedHandoff, typedHistoryWindow, validTypedHandoff, typedHandoffRegistry } from "./typed-handoff-fixture";
 
 it("builds one strict receipt/owner history contract for node and ordinal reads", () => {
   const fixture = typedHandoff();

@@ -30,7 +30,7 @@ it('keeps one answer presentation through the complete real Conversation lifecyc
    if(call.command==='history.window'){
     const point=typeof call.node_id==='string'?call.node_id:undefined;
     const ordinal=Number.isSafeInteger(call.ordinal)?call.ordinal:undefined;
-    if(point!==undefined||ordinal!==undefined){const fixture=[first,second].find(item=>(point===undefined||item.nodeId===point)&&(ordinal===undefined||item.ordinal===ordinal));const window=registry.history({node_id:point,ordinal});if(!fixture||!window||!validTypedHandoffRef(fixture,attempt,window))throw new Error(`typed handoff rejection ${point}:${ordinal}`);return {ok:true,result:window};}
+    if(point!==undefined||ordinal!==undefined){const fixture=[first,second].find(item=>(point===undefined||item.nodeId===point)&&(ordinal===undefined||item.ordinal===ordinal));const window=registry.history({node_id:point,ordinal});if(!fixture||!window||!validTypedHandoffRef({...fixture,revision:registry.revision,total:registry.total},attempt,window))throw new Error(`typed handoff rejection ${point}:${ordinal}`);return {ok:true,result:window};}
     return {ok:true,result:{thread_id:'thread',revision:registry.revision,total:nodes.length,items:nodes}};
    }
    return base(call);
