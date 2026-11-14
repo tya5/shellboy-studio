@@ -155,3 +155,21 @@ it("dispose cancels a bound held lease without closing its external handle", asy
  expect(r.w.prepareBoundTerminalRead(r.receipt)).toEqual({ phase: "unavailable", reason: "cancelled" });
  expect(r.h.captureReadQualification()).toBeDefined(); r.data.stop();
 });
+
+it("terminal slot successor dispatches one explicit whole-window request after a point revision", async () => {
+  const { TerminalReadSlots } = await import("../../data/src/terminal-read");
+  const slots = new TerminalReadSlots();
+  const parent = { add: (fn: () => void) => fn } as never;
+  const receipt = { scope: "scope", attemptId: "attempt", turnId: "turn", nodeIds: ["answer"] as string[], terminalState: "completed" as const };
+  const calls: unknown[] = [];
+  const valid = () => true;
+  const point = { id: "point" as never, args: { thread_id: "thread", node_id: "answer", before: 0, after: 199, items: true } };
+  const first = slots.request(receipt, point, valid, parent);
+  expect("state" in first).toBe(true);
+  await slots.dispatch(() => true, async args => { calls.push(args); return { ok: true, value: { thread_id: "thread", revision: 7, total: 4, items: [] } }; }, false);
+  const whole = { id: "whole" as never, args: { thread_id: "thread", before: 199, after: 0, items: true } };
+  const replacement = slots.replace(receipt, whole, valid, parent);
+  expect("state" in replacement).toBe(true);
+  await slots.dispatch(() => true, async args => { calls.push(args); return { ok: true, value: { thread_id: "thread", revision: 8, total: 4, items: [] } }; }, false);
+  expect(calls).toEqual([point.args, whole.args]);
+});
