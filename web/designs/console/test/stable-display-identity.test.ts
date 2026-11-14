@@ -23,7 +23,7 @@ it("keeps canonical keys and sequence authoritative while assigning only the hos
   const result = withPresentationContainers(base, new Map(base.items.map(item => [item.key, "answer:attempt-1"])));
   expect(result.items.map(item => item.key)).toEqual(base.items.map(item => item.key));
   expect(result.sequence).toEqual(base.sequence);
-  expect(result.items.map(item => item.presentationContainer)).toEqual(["answer:attempt-1", "answer:attempt-1"]);
+  expect(result.items.map(item => (item as typeof item & { presentationContainer?: string }).presentationContainer)).toEqual(["answer:attempt-1", "answer:attempt-1"]);
 });
 
 it("preserves nonadjacent canonical sequence and intervening work authority", () => {
@@ -97,7 +97,7 @@ it("renders one stable host for nonadjacent children while preserving intervenin
       items: projection.items,
       sequence: [{ kind: "conversation", itemKey: base.items[0]!.key }, { kind: "work", groupKey: "work-1" }, { kind: "conversation", itemKey: base.items[1]!.key }],
       workGroups: [{ key: "work-1", firstMemberKey: "work-1", memberKeys: [], executionIds: [], toolItemKeys: [], unknownToolCount: 0, interrupted: false }],
-      localRegion: { placement: { kind: "qualified" as const, insertion: { kind: "middle" as const, index: 1 } }, slots: [{ position: { kind: "after" as const, index: 1 }, content: h("span", { "data-local-marker": "local-between" }, "local-between") }] },
+      localRegion: { placement: { kind: "qualified" as const, insertion: { kind: "work" as const, index: 1 } }, slots: [{ position: { kind: "after" as const, index: 1 }, content: h("span", { "data-local-marker": "local-between" }, "local-between") }] },
       renderItem: item => h("span", {}, item.source.kind === "text" ? item.source.text : ""), renderWorkGroup: (_group, children) => h("div", { class: "intervening-work", "data-work-marker": "other-attempt-work" }, [h("span", {}, "other-attempt-work"), children]),
     }), host);
     expect(host.querySelectorAll("[data-answer-container]")).toHaveLength(1);
@@ -110,13 +110,14 @@ it("does not host an unowned conversation inside an association span", async () 
   const { render, h } = await import("preact");
   const { ConversationItems } = await import("../screens/ConversationItems");
   const host = document.createElement("div");
-  const second: NormalizedSavedItem = { ...saved, nodeId: "node-human", itemIdentity: "node-human:/output/0/content/0", text: "human" };
-  const base = projectSavedItems([saved, second]);
-  const projection = withPresentationContainers(base, new Map([[base.items[0]!.key, "answer:a"]]));
+  const human: NormalizedSavedItem = { ...saved, nodeId: "node-human", itemIdentity: "node-human:/output/0/content/0", text: "human" };
+  const third: NormalizedSavedItem = { ...saved, nodeId: "node-3", itemIdentity: "node-3:/output/0/content/0", text: "third" };
+  const base = projectSavedItems([saved, human, third]);
+  const projection = withPresentationContainers(base, new Map([[base.items[0]!.key, "answer:a"], [base.items[2]!.key, "answer:a"]]));
   try {
     render(h(ConversationItems, { items: projection.items, sequence: base.items.map(item => ({ kind: "conversation" as const, itemKey: item.key })), renderItem: item => h("span", {}, item.source.kind === "text" ? item.source.text : "") }), host);
     expect(host.querySelectorAll("[data-answer-container]")).toHaveLength(0);
-    expect([...host.querySelectorAll("[data-item-key]")].map(node => node.textContent)).toEqual(["saved", "human"]);
+    expect([...host.querySelectorAll("[data-item-key]")].map(node => node.textContent)).toEqual(["saved", "human", "third"]);
   } finally { render(null, host); }
 });
 
