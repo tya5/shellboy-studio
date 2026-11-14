@@ -1,6 +1,7 @@
 import { ConversationWindow } from "../src/window";
 import type { OwnedTerminalReadLease } from "../../data/src/terminal-read";
 import type { HistoryItem } from "../../data/src/protocol";
+import { assistantOwnership } from "../src/assistant-ownership";
 import { expect, it } from "vitest";
 import { ShellboyData } from "../../data/src/store";
 import { FakeOwnerDb, FakeTransport, connected, settle, flush } from "../../data/test/harness";
@@ -16,7 +17,7 @@ async function rig(windowCap = true) {
   const state = { available: true, truncated: false, partial: false, deferred: false, unknown: false, missing: false, error: false, changing: false, nonterminal: false, wrongid: false, empty: false, hold: false };
   const original = db.answer.bind(db); let reads = 0;
   db.answer = call => {
-    if (call.command === "status") return { ok: true, result: { items: state.available ? [{ kind: "attempt", id: state.wrongid ? "other" : "attempt", attempt_id: "attempt", turn_id: "turn", thread_id: "a", state: state.nonterminal ? "inflight" : "completed", response_nodes: state.empty ? [] : [{ node_id: "answer", ordinal: 0, kind: "message" }, { node_id: "tool", ordinal: 1, kind: "function_call" }, { node_id: "answer", ordinal: 2, kind: "message" }], response_nodes_truncated: state.truncated }] : [] } };
+    if (call.command === "status") return { ok: true, result: { items: state.available ? [{ kind: "attempt", id: state.wrongid ? "other" : "attempt", attempt_id: "attempt", turn_id: "turn", thread_id: "a", state: state.nonterminal ? "inflight" : "completed", response_nodes: state.empty ? [] : baseNodes.map(node => ({ node_id: node.node_id, ordinal: node.selection!.ordinal!, kind: "message", phase: "final_answer", item_id: null })), response_nodes_truncated: state.truncated }] : [] } };
     if (call.command === "history.window") {
       if (state.error) return { ok: false, code: "not_found", message: "synthetic" };
       const items: unknown[] = structuredClone(baseNodes);
@@ -200,7 +201,12 @@ it("Window rebinds a revision-changing point read through one bounded whole-wind
   expect(wholeItems).toEqual([0, 1]);
   expect(requests[0]).toMatchObject({ node_id: "answer", items: true });
   expect(requests[1]).toEqual({ thread_id: "a", before: 199, after: 0, items: true });
-  expect(r.w.acceptedView.peek().revision).toBe(8);
+  const after = r.w.acceptedView.peek();
+  expect(after.terminalPresence?.[0]).toMatchObject({ phase: "settled", reason: "missing-candidate" });
+  expect(r.receipt.nodeIds).toEqual(baseNodes.map(node => node.node_id));
+  expect(r.receipt.nodeIds).toHaveLength(new Set(r.receipt.nodeIds).size);
+  expect(after.rows.map(row => row.selection?.ordinal)).toEqual([0, 1]);
+  expect(after.revision).toBe(8);
   r.w.dispose(); r.data.stop();
 });
 
@@ -220,4 +226,16 @@ it("rejects an incomplete revision successor page before publication", async () 
   expect(r.w.acceptedView.peek().revision).toBe(7);
   expect(r.w.acceptedView.peek().rows.every(row => row.node_id !== "answer")).toBe(true);
   r.w.dispose(); r.data.stop();
+});
+
+
+it("scoped ownership does not attach an unrelated saved assistant to one preview", () => {
+  const rows: HistoryItem[] = [
+    { node_id: "owned", kind: "assistant_response", selection: { ordinal: 0 }, items: [{ kind: "text", item_identity: "owned:text", text: "owned", text_complete: true }] },
+    { node_id: "unrelated", kind: "assistant_response", selection: { ordinal: 1 }, items: [{ kind: "text", item_identity: "other:text", text: "other", text_complete: true }] },
+  ];
+  const association = { scope: "scope", attemptId: "attempt", turnId: "turn", presentationContainer: "container" as never, refs: [{ nodeId: "owned", ordinal: 0, kind: "message" }] };
+  const fact = assistantOwnership(association, "record", rows, 8);
+  expect(fact?.itemKeys).toEqual(["owned:/output/0/content/0"]);
+  expect(fact?.itemKeys).not.toContain("unrelated:/output/0/content/0");
 });
