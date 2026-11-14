@@ -149,6 +149,16 @@ describe('direct local insertion plan', () => {
     expect([...host.querySelectorAll('.msg')].every(node => node.isConnected && node.ownerDocument === document && host.contains(node))).toBe(true);
     render(null, host); host.remove();
   });
+  it('keeps canonical rows when the exclusive unqualified local branch is empty', () => {
+    const host = document.createElement('div'); document.body.append(host);
+    const items = [{ key: 'saved-a', source: input[0]! }, { key: 'saved-b', source: input[0]! }];
+    render(<ConversationItems items={items} sequence={[{kind:'conversation', itemKey:'saved-a'}, {kind:'conversation', itemKey:'saved-b'}]}
+      localRegion={{kind:'unqualified', content:<div data-unqualified-local="">}}</div>}
+      renderItem={item => <div class="canonical-row">{item.key}</div>} />, host);
+    expect(host.querySelectorAll('[data-unqualified-local]')).toHaveLength(1);
+    expect([...host.querySelectorAll('.canonical-row')].map(node => node.textContent)).toEqual(['saved-a', 'saved-b']);
+    render(null, host); host.remove();
+  });
   it('renders each owned slot once when canonical anchors are suppressed', () => {
     const host = document.createElement('div'); document.body.append(host);
     const items = [{ key: 'a', source: input[0]! }, { key: 'b', source: input[0]! }];
