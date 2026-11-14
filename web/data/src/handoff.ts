@@ -2,18 +2,20 @@ import { computed, signal, type ReadonlySignal } from '@preact/signals-core';
 import { LiveText, MAX_PREVIEW_CHARS, type LiveFrame, type Preview, type PreviewDiscardReason, type Schedule } from './live';
 
 import type { HistoryItem } from './protocol';
+declare const presentationContainerBrand: unique symbol;
+export type PresentationContainerId = string & { readonly [presentationContainerBrand]: true };
 /** Partial persisted-node evidence, not complete body/item coverage. S owns scope authority. */
 export interface TerminalPersistedProof {
   readonly scope: string;
   readonly attemptId: string;
   readonly turnId?: string;
   readonly nodeIds: readonly string[];
+  /** Immutable ownership transferred with the receipt; never recovered from the retired ledger. */
+  readonly presentationContainer?: PresentationContainerId;
+  readonly refs?: readonly { readonly nodeId: string; readonly ordinal: number; readonly kind: string }[];
   readonly terminalState: 'completed' | 'failed' | 'incomplete' | 'cancelled';
 }
 export interface AttemptReadyProof { readonly scope: string; readonly attemptId: string; readonly turnId: string; readonly revision: string | number; readonly total: number; readonly refs: readonly { readonly nodeId: string }[]; readonly nodes: readonly HistoryItem[] }
-
-declare const presentationContainerBrand: unique symbol;
-export type PresentationContainerId = string & { readonly [presentationContainerBrand]: true };
 
 function mintPresentationContainer(attemptId: string): PresentationContainerId {
   if (globalThis.crypto?.randomUUID) return `presentation:${globalThis.crypto.randomUUID()}` as PresentationContainerId;

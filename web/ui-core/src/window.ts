@@ -419,13 +419,13 @@ export class ConversationWindow {
               const next = [...(target.ref.terminalPresence ?? []).filter(p => p.scope !== target.receipt.scope || p.attemptId !== target.receipt.attemptId), ...(presence ? [presence] : [])];
               let ownership: readonly AssistantOwnership[] = target.ref.assistantOwnership ?? [];
               if (target.mode === "fresh-window") {
-                const record = target.handle.handoff.peek().find(item => item.attemptId === target.receipt.attemptId);
-                const refs = target.receipt.nodeIds.map(nodeId => {
-                  const row = rows.find(item => item.node_id === nodeId);
-                  return row?.selection?.ordinal === undefined ? undefined : { nodeId, ordinal: row.selection.ordinal, kind: row.kind };
-                });
-                const association: DisplayAssociation | undefined = record && target.receipt.turnId && refs.every((ref): ref is { nodeId: string; ordinal: number; kind: string } => !!ref)
-                  ? { scope: target.receipt.scope, attemptId: target.receipt.attemptId, turnId: target.receipt.turnId, presentationContainer: record.presentationContainer, refs }
+                const refs = target.receipt.refs;
+                const association: DisplayAssociation | undefined = target.receipt.turnId && target.receipt.presentationContainer && refs
+                  && refs.length === target.receipt.nodeIds.length
+                  && refs.every(ref => target.receipt.nodeIds.includes(ref.nodeId)
+                    && rows.some(row => row.node_id === ref.nodeId && row.selection?.ordinal === ref.ordinal && row.kind === ref.kind))
+                  ? { scope: target.receipt.scope, attemptId: target.receipt.attemptId, turnId: target.receipt.turnId,
+                      presentationContainer: target.receipt.presentationContainer, refs }
                   : undefined;
                 if (!record || !association) { reason = "selection-gap"; }
                 else {
@@ -547,7 +547,9 @@ export class ConversationWindow {
       const proof = record.terminalPersisted, cap = this.acceptedView.currentCapability, expected = this.acceptedView.peek();
       if (this.disposed || !this.acceptedView.isCurrent(expected) || scope !== proof.scope || proof.attemptId !== record.attemptId
         || !["completed", "failed", "incomplete", "cancelled"].includes(proof.terminalState)
-        || !proof.nodeIds.length || proof.nodeIds.length > 64 || proof.nodeIds.some(id => !id)) return false;
+        || !proof.nodeIds.length || proof.nodeIds.length > 64 || proof.nodeIds.some(id => !id)
+        || !proof.presentationContainer || !proof.refs || proof.refs.length !== proof.nodeIds.length
+        || proof.refs.some((ref, index) => ref.nodeId !== proof.nodeIds[index] || !Number.isSafeInteger(ref.ordinal) || ref.ordinal < 0 || !ref.kind)) return false;
       const before = this.terminalCapability === cap ? this.terminalPersistedAttempts : [];
       if (before.length >= 8 && !before.some(p => p.scope === scope && p.attemptId === proof.attemptId)) return false;
       const next = [...before.filter(p => p.scope !== scope || p.attemptId !== proof.attemptId), proof];

@@ -787,7 +787,10 @@ export class ShellboyData {
           || refs.some(ref => !ref || typeof ref.node_id !== 'string' || !ref.node_id)) continue;
         const proof = Object.freeze({ scope: this.handoffScope(entry), attemptId: record.attemptId,
           ...(typeof attempt.turn_id === 'string' ? { turnId: attempt.turn_id } : {}),
-          nodeIds: Object.freeze(refs.map(ref => ref.node_id)), terminalState: attempt.state as TerminalPersistedProof['terminalState'] });
+          nodeIds: Object.freeze(refs.map(ref => ref.node_id)),
+          presentationContainer: record.presentationContainer,
+          refs: Object.freeze(refs.map(ref => Object.freeze({ nodeId: ref.node_id, ordinal: ref.ordinal, kind: ref.kind }))),
+          terminalState: attempt.state as TerminalPersistedProof['terminalState'] });
         let receipt = entry.terminalReceipts.get(record.attemptId);
         if (!receipt && entry.terminalReceipts.size < 8) { receipt = proof; entry.terminalReceipts.set(record.attemptId, proof); }
         if (!receipt) receiptBlocked.add(record.attemptId);
@@ -819,7 +822,10 @@ export class ShellboyData {
           && persisted.every(ref => ref && typeof ref.node_id === "string" && !!ref.node_id)) {
           const proof = Object.freeze({ scope: this.handoffScope(entry), attemptId: record.attemptId,
             ...(typeof attempt.turn_id === "string" ? { turnId: attempt.turn_id } : {}),
-            nodeIds: Object.freeze(persisted.map(ref => ref.node_id)), terminalState: attempt.state as "completed" | "failed" | "incomplete" | "cancelled" });
+            nodeIds: Object.freeze(persisted.map(ref => ref.node_id)),
+            presentationContainer: record.presentationContainer,
+            refs: Object.freeze(persisted.map(ref => Object.freeze({ nodeId: ref.node_id, ordinal: ref.ordinal, kind: ref.kind }))),
+            terminalState: attempt.state as "completed" | "failed" | "incomplete" | "cancelled" });
           if (!valid()) return;
           if (!entry.terminalReceipts.has(record.attemptId) && entry.terminalReceipts.size >= 8) { receiptBlocked.add(record.attemptId); continue; }
           const ownedProof = entry.terminalReceipts.get(record.attemptId) ?? proof;

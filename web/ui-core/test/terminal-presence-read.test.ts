@@ -44,7 +44,9 @@ async function target() {
 }
 it("actual status/Store/O/Window publishes honest same-ref missing-answer presence, one held canonical read then available rows", async () => {
  const r = await target(); const initial = r.w.acceptedView.peek();
- expect(r.h.handoff.peek()).toHaveLength(0); expect(initial.rows.map(row => row.node_id)).toEqual(["tool"]);
+ expect(r.h.handoff.peek()).toHaveLength(0); expect(r.receipt.presentationContainer).toBeDefined();
+ expect(r.receipt.refs?.map(ref => ref.nodeId)).toEqual(r.receipt.nodeIds);
+ expect(initial.rows.map(row => row.node_id)).toEqual(["tool"]);
  expect(initial.terminalPresence?.[0]).toMatchObject({ phase: "pending", answerAvailability: "unknown" });
  const lease = r.w.prepareTerminalRead(r.h, r.token, r.receipt) as OwnedTerminalReadLease;
  expect("state" in lease).toBe(true); await flush();
@@ -53,6 +55,8 @@ it("actual status/Store/O/Window publishes honest same-ref missing-answer presen
  expect(r.w.acceptedView.peek().terminalPresence?.[0]?.phase).toBe("reading");
  await r.pump();
  expect(r.w.acceptedView.peek().rows.map(row => row.node_id)).toEqual(["tool", "answer"]);
+ expect(r.h.handoff.peek()).toHaveLength(0);
+ expect(r.w.acceptedView.peek().assistantOwnership?.[0]?.containerKey).toBe(r.receipt.presentationContainer);
  expect(r.w.acceptedView.peek().terminalPresence ?? []).toEqual([]);
  expect(r.t.calls("history.window")).toHaveLength(1); expect(r.t.calls("history.get")).toHaveLength(0);
  r.w.dispose(); r.data.stop();
