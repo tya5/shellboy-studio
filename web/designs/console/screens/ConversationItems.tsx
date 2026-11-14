@@ -103,7 +103,8 @@ export function ConversationItems({ items, toolSummaries = [], renderItem, rende
     };
     if (localRegion?.placement.kind === "unqualified") region.push(localRegion.unqualified);
     else if (insertion?.kind === "beginning") {
-      if (slots.length) renderInsertion("beginning");
+      const beginningSlots = slots.filter(slot => slot.insertion.kind === "beginning");
+      if (beginningSlots.length) renderInsertion("beginning");
       else region.push(localRegion?.content);
     }
     canonical.forEach((row,index)=>{if(Array.isArray(row))region.push(...row);else region.push(row);
