@@ -97,7 +97,7 @@ export function ownSendPresentation<Ref>(input: OwnSendPresentationInput<Ref>): 
   const mutualConflict=allSlots&&slots.some((slot,index)=>index>0&&slot!.first<=slots[index-1]!.last);
   const boundaryConflict=boundaryIndex>=0&&slots.some(slot=>slot&&slot.first<=boundaryIndex);
   const conflict=mutualConflict||boundaryConflict;
-  const positionedSlots=allSlots?slots.flatMap(slot=>slot?[{row:slot.row,insertion:slot.insertion,position:{kind:"after" as const,index:slot.last}}]:[]):[];
+  const positionedSlots=allSlots?slots.flatMap(slot=>slot?[{row:slot.row,insertion:slot.insertion,position:{kind:"after",index:slot.last} as OwnSendSlotPosition}]:[]):[];
   let reservationPosition: OwnSendSlotPosition | undefined;
   if (placement.kind === "qualified") {
     const insertion=placement.insertion;
