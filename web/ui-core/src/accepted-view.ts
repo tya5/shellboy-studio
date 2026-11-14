@@ -71,8 +71,11 @@ export class AcceptedView<T> {
     slot.value = materialize(value);
     return handle;
   }
-  publish<S extends { readonly displayPlan?: { readonly capability?: unknown } }>(publication: AcceptedPublication<S>, capability: AcceptedCapability = this.capability): boolean {
-    if (publication.snapshot.displayPlan !== publication.plan || publication.plan.capability !== capability) return false;
+  publish<S extends { readonly displayPlan?: { readonly capability?: unknown }; readonly generation?: unknown }>(publication: AcceptedPublication<S>, capability: AcceptedCapability = this.capability): boolean {
+    if (publication.snapshot.displayPlan !== publication.plan || publication.plan.capability !== capability
+      || typeof publication.snapshot.generation !== "number"
+      || typeof (this.value as { readonly generation?: unknown }).generation !== "number"
+      || publication.snapshot.generation <= (this.value as { readonly generation: number }).generation) return false;
     const staged = this.stage(publication.snapshot as unknown as T, capability);
     return this.commit(staged);
   }

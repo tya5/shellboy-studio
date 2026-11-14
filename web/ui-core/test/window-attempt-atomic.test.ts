@@ -1,6 +1,7 @@
 import { ShellboyData } from "../../data/src/store";
 import { expect, it } from "vitest";
 import { ConversationWindow } from "../src/window";
+import { canonicalPlanExpectation, observePublishedPlans } from "./publication-contract";
 import type { HandoffRecord, PresentationContainerId, AttemptReadyProof } from "../../data/src/handoff";
 import type { HistoryItem } from "../../data/src";
 import { FakeOwnerDb, FakeTransport, connectedWithHistory, settle, flush } from "../../data/test/harness";
@@ -15,12 +16,43 @@ async function rig(items = nodes) {
   return { w, record, proof };
 }
 it("all-ref retirement and saved-order sequence publish once in the SAME observed snapshot", async () => {
-  const { w, record, proof } = await rig(); const trace: { saved: string[]; retired: string[] }[] = [];
+  const { w, record, proof } = await rig(); const publications=observePublishedPlans(w, ref => canonicalPlanExpectation(ref, "complete")); const trace: { saved: string[]; retired: string[] }[] = [];
   const stop = w.acceptedView.subscribe(ref => { expect(w.acceptedView.isCurrent(ref)).toBe(true); trace.push({ saved: ref.rows.map(row => row.node_id!), retired: ref.retiredAttempts?.map(item => item.attemptId) ?? [] }); });
   let releases = 0; expect(w.acceptHandoff(record, proof.scope, () => { releases++; expect(w.acceptedView.peek().retiredAttempts).toHaveLength(1); })).toBe(true);
   expect(trace).toEqual([{ saved: ["tool", "answer"], retired: ["attempt"] }]); expect(releases).toBe(1);
   expect(w.acceptedView.peek().retiredAttempts![0]!.nodeIds).toEqual(["answer", "tool", "answer"]);
-  stop(); w.dispose();
+  const retiredSnapshot = w.acceptedView.peek();
+  expect(retiredSnapshot.assistantOwnership).toHaveLength(1);
+  publications.stop(); stop();
+  w.layoutChanged();
+  expect(w.acceptedView.peek().generation).toBeGreaterThan(retiredSnapshot.generation);
+  expect(w.acceptedView.peek().assistantOwnership).toEqual(retiredSnapshot.assistantOwnership);
+  expect(w.acceptedView.peek().displayPlan?.acceptedGeneration).toBe(w.acceptedView.peek().generation);
+  expect(w.acceptedView.peek().displayPlan?.entries.map(entry => entry.lifetime.kind)).toContain("valid-owner");
+  const revision8 = w.acceptedView.peek();
+  expect(revision8.assistantOwnership![0]!.proofRevision).toBe(7);
+  expect(revision8.assistantOwnership![0]!.receiptRevision).toBe(7);
+  (w as unknown as { revision: number }).revision = 8;
+  w.layoutChanged();
+  const qualified8 = w.acceptedView.peek();
+  expect(qualified8.revision).toBe(8);
+  expect(qualified8.assistantOwnership).toHaveLength(1);
+  expect(qualified8.assistantOwnership![0]!.proofRevision).toBe(8);
+  expect(qualified8.assistantOwnership![0]!.receiptRevision).toBe(7);
+  expect(qualified8.retiredAttempts).toEqual(revision8.retiredAttempts);
+  (w as unknown as { revision: number }).revision = 9;
+  w.layoutChanged();
+  const revision9 = w.acceptedView.peek();
+  expect(revision9.revision).toBe(9);
+  expect(revision9.assistantOwnership).toHaveLength(1);
+  expect(revision9.assistantOwnership![0]!.proofRevision).toBe(9);
+  expect(revision9.assistantOwnership![0]!.receiptRevision).toBe(7);
+  w.acceptedView.revoke();
+  w.layoutChanged();
+  expect(w.acceptedView.peek().assistantOwnership).toHaveLength(0);
+  expect(w.acceptedView.peek().retiredAttempts).toEqual([]);
+  expect(w.acceptedView.peek().displayPlan?.acceptedGeneration).toBe(w.acceptedView.peek().generation);
+  w.dispose();
 });
 for (const mode of ["missing", "partial", "deferred", "unavailable", "revision", "scope", "revoke"] as const) it(`keeps complete live block and independent saved rows under ${mode}`, async () => {
   const items = structuredClone(nodes);
@@ -49,8 +81,10 @@ it("rejects a partial newer proof instead of publishing it over copied older row
 it("delayed ordinary revision 7 cannot replace an accepted revision 8 snapshot", async () => {
   const { w, record, proof } = await rig();
   const acceptedProof = { ...proof, revision: 8, total: 4, nodes: [
-    { ...nodes[0]!, node_id: "user-0", kind: "user", selection: { ordinal: 0 }, items: [] },
-    ...nodes.map((node, ordinal) => ({ ...node, selection: { ordinal: ordinal + 1 } })),
+    { node_id: "user-0", kind: "user", selection: { ordinal: 0 }, items: [] },
+    { ...nodes[0]!, selection: { ordinal: 1 } },
+    { ...nodes[1]!, selection: { ordinal: 2 } },
+    { node_id: "user-3", kind: "user", selection: { ordinal: 3 }, items: [] },
   ] } as AttemptReadyProof;
   const acceptedRecord = { ...record, readyAttempt: acceptedProof };
   expect(w.acceptHandoff(acceptedRecord, acceptedProof.scope, () => {})).toBe(true);
@@ -59,7 +93,7 @@ it("delayed ordinary revision 7 cannot replace an accepted revision 8 snapshot",
   w.layoutChanged();
   expect(w.acceptedView.peek()).toBe(before);
   expect(w.acceptedView.peek().revision).toBe(8);
-  expect(w.acceptedView.peek().rows.map(row => row.node_id)).toEqual(["user-0", "tool", "answer"]);
+  expect(w.acceptedView.peek().rows.map(row => row.node_id)).toEqual(["user-0", "tool", "answer", "user-3"]);
   w.dispose();
 });
 it("notification reentry stops old release and never retires another attempt/turn", async () => {
@@ -111,7 +145,7 @@ it("materializes already-qualified all-ref nodes and retirement together without
   let reads = 0;
   const w = new ConversationWindow({ read: async () => { reads++; return { ok: true, value: { thread_id: "thread", revision: 7, total: 1, items: [initial] } }; } }); await flush();
   const proof: AttemptReadyProof = { scope: "scope", attemptId: "attempt", turnId: "turn", revision: 7, total: 3,
-    refs: [{ nodeId: "answer" }, { nodeId: "tool" }], nodes: nodes.map((node, i) => ({ ...node, selection: { ordinal: i + 1 } })) };
+    refs: [{ nodeId: "answer" }, { nodeId: "tool" }], nodes: [initial, ...nodes.map((node, i) => ({ ...node, selection: { ordinal: i + 1 } }))] };
   const record: HandoffRecord = { key: "original", presentationContainer: "presentation:test" as PresentationContainerId, attemptId: "attempt", text: "whole live", incomplete: false, status: "confirming", bodyAuthority: "preview", readyAttempt: proof };
   const frames: { ids: string[]; total: number; retired: number }[] = [];
   w.acceptedView.subscribe(ref => frames.push({ ids: ref.rows.map(row => row.node_id!), total: ref.total, retired: ref.retiredAttempts?.length ?? 0 }));

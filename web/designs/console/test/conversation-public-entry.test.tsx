@@ -376,9 +376,9 @@ it('publishes saved rows and whole-attempt retirement in the same DOM frame, ret
     const frames=[
       {...base,rows:[independent],total:1},
       {...base,rows:[independent,{...saved,items:null,items_unavailable_reason:'response_budget' as const}],total:2},
-      {...base,rows:[independent,saved],total:2,retiredAttempts:[{scope:'other-lifetime',attemptId:'attempt',turnId:'turn',nodeIds:['saved-answer'],revision:7}]},
-      {...base,rows:[independent,saved],total:2,retiredAttempts:[{scope,attemptId:'attempt',turnId:'other-turn',nodeIds:['saved-answer'],revision:7}]},
-      {...base,rows:[independent,saved],total:2,retiredAttempts:[{scope,attemptId:'attempt',turnId:'turn',nodeIds:['saved-answer'],revision:7}]},
+      {...base,rows:[independent,saved],total:2,retiredAttempts:[{scope:'other-lifetime',attemptId:'attempt',turnId:'turn',nodeIds:['saved-answer'],refs:[{nodeId:'saved-answer',ordinal:1,kind:'assistant_response'}],recordKey:'record',containerKey:'message',revision:7}]},
+      {...base,rows:[independent,saved],total:2,retiredAttempts:[{scope,attemptId:'attempt',turnId:'other-turn',nodeIds:['saved-answer'],refs:[{nodeId:'saved-answer',ordinal:1,kind:'assistant_response'}],recordKey:'record',containerKey:'message',revision:7}]},
+      {...base,rows:[independent,saved],total:2,retiredAttempts:[{scope,attemptId:'attempt',turnId:'turn',nodeIds:['saved-answer'],refs:[{nodeId:'saved-answer',ordinal:1,kind:'assistant_response'}],recordKey:'record',containerKey:'message',revision:7}]},
     ];
     for(let i=0;i<frames.length;i++){
       current=frames[i]!;await act(async()=>render(<SavedWindowContent model={model} snapshot={frames[i]!} onIssued={(reader,snapshot)=>{publication={reader,snapshot};}} liveFacts={liveFacts}/>,host));

@@ -38,6 +38,9 @@ export interface RetiredAttempt {
   readonly attemptId: string;
   readonly turnId: string;
   readonly nodeIds: readonly string[];
+  readonly refs: readonly { readonly nodeId: string; readonly ordinal: number; readonly kind: string }[];
+  readonly recordKey: string;
+  readonly containerKey: string;
   readonly revision: number;
 }
 declare const summaryIdBrand: unique symbol;
@@ -631,15 +634,17 @@ export class ConversationWindow {
       const previous = this.retiredCapability === capability ? this.retiredAttempts : [];
       const previousCapability = this.retiredCapability;
       if (previous.length >= 8 && !previous.some(item => item.scope === scope && item.attemptId === record.attemptId)) return false;
-      const retired = { scope, attemptId: record.attemptId, turnId: proof.turnId, revision: proof.revision,
-        nodeIds: proof.refs.map(ref => ref.nodeId) };
-      const next = [...previous.filter(item => item.scope !== scope || item.attemptId !== record.attemptId), retired];
       const refs = proof.refs.map(ref => {
         const row = rows.find(item => item.node_id === ref.nodeId);
         return row?.selection?.ordinal === undefined || row.kind !== "assistant_response" ? undefined
           : { nodeId: ref.nodeId, ordinal: row.selection.ordinal, kind: row.kind };
       });
       if (!refs.length || refs.some(ref => !ref)) return false;
+      const retired = { scope, attemptId: record.attemptId, turnId: proof.turnId, revision: proof.revision,
+        nodeIds: proof.refs.map(ref => ref.nodeId),
+        refs: refs as { nodeId: string; ordinal: number; kind: string }[], recordKey: record.key,
+        containerKey: record.presentationContainer };
+      const next = [...previous.filter(item => item.scope !== scope || item.attemptId !== record.attemptId), retired];
       const association: DisplayAssociation = { scope, attemptId: record.attemptId, turnId: proof.turnId,
         presentationContainer: record.presentationContainer,
         refs: refs as { nodeId: string; ordinal: number; kind: string }[] };
@@ -661,7 +666,8 @@ export class ConversationWindow {
       this.revision = proof.revision;
       this.retiredAttempts = next;
       this.retiredCapability = capability;
-      if (!this.commitAccepted(staged, this.acceptedView.currentCapability)) { if (this.retiredAttempts === next) { this.retiredAttempts = previous; this.retiredCapability = previousCapability; this.buckets = oldBuckets; this.total = oldTotal; this.revision = oldRevision; } return false; }
+      const published = this.commitAccepted(staged, this.acceptedView.currentCapability);
+      if (!published) { if (this.retiredAttempts === next) { this.retiredAttempts = previous; this.retiredCapability = previousCapability; this.buckets = oldBuckets; this.total = oldTotal; this.revision = oldRevision; } return false; }
       const committed = this.acceptedView.peek();
       if (committed.generation !== generation || this.acceptedGeneration !== generation || capability !== this.acceptedView.currentCapability
         || !this.acceptedView.isCurrent(committed) || committed.retiredAttempts?.at(-1)?.attemptId !== record.attemptId) return false;
@@ -775,8 +781,7 @@ export class ConversationWindow {
     // Bucket reads share the pump's two slots; the separately owned tail/verify
     // must not be competed with by an explicit deferred retry.
     if (this.inflight.has(index) || this.inflight.size >= READS_IN_FLIGHT || this.tailCancel || this.verifying) return false;
-    void this.readBucket(index, { ordinal, expect_node_id: row.node_id, before: 0, after: WINDOW_NODES - 1, excerpt_chars: HISTORY_WINDOW_EXCERPT_CHARS, items: true });
-    return true;
+    return this.admitBucket(index, { ordinal, expect_node_id: row.node_id, before: 0, after: WINDOW_NODES - 1, excerpt_chars: HISTORY_WINDOW_EXCERPT_CHARS, items: true });
   }
 
   // ---- the viewport ----
@@ -990,8 +995,22 @@ export class ConversationWindow {
   private nextAcceptedGeneration(): number { return ++this.acceptedGeneration; }
 
   private acceptedOwnershipForBump(revision: number, rows: readonly HistoryItem[], capability: AcceptedCapability): readonly AssistantOwnership[] {
-    const prior = this.acceptedView.peek().assistantOwnership ?? [];
+    const snapshot = this.acceptedView.peek();
+    const prior = snapshot.assistantOwnership ?? [];
+    const handle = this.terminalBinding?.handle;
     if (!prior.length || prior.some(fact => fact.scope !== prior[0]!.scope)) return [];
+    // A live overlay needs its exact current lease. Once transferred, only the
+    // accepted ready receipt may own it; saved-row reprojection alone is not authority.
+    for (const fact of prior) {
+      const record = handle?.handoff.peek().find(item => item.key === fact.recordKey && item.attemptId === fact.attemptId);
+      const liveOwner = !!record && handle!.isDisplayOwnershipCurrent(record, snapshot.generation);
+      const retired = this.retiredCapability === capability && snapshot.retiredAttempts?.find(item => item.scope === fact.scope && item.attemptId === fact.attemptId
+        && item.turnId === fact.turnId && item.revision === fact.receiptRevision && item.recordKey === fact.recordKey
+        && item.containerKey === fact.containerKey && item.refs.length === fact.refs.length
+        && item.refs.every((ref, index) => ref.nodeId === fact.refs[index]?.nodeId
+          && ref.ordinal === fact.refs[index]?.ordinal && ref.kind === fact.refs[index]?.kind));
+      if (!liveOwner && !retired) return [];
+    }
     if (prior.every(fact => fact.proofRevision === revision)) return prior;
     const qualified: AssistantOwnership[] = [];
     for (const fact of prior) {
@@ -999,7 +1018,7 @@ export class ConversationWindow {
       const next = assistantOwnership({ scope: fact.scope, attemptId: fact.attemptId, turnId: fact.turnId,
         presentationContainer: fact.containerKey, refs: fact.refs }, fact.recordKey, rows, revision);
       if (!next || next.mode !== "canonical" || capability !== this.acceptedView.currentCapability) return [];
-      qualified.push(next);
+      qualified.push(Object.freeze({ ...next, receiptRevision: fact.receiptRevision }));
     }
     return Object.freeze(qualified);
   }
@@ -1015,7 +1034,10 @@ export class ConversationWindow {
       return value ? [{ ...value, phase: previous?.phase ?? value.phase }] : [];
     }) : [];
     this.terminalPresence = presence;
-    const requalifiedOwnership = this.revision === undefined ? [] : this.acceptedOwnershipForBump(this.revision, currentRows, capability);
+    // A notification-reentrant bump supersedes an in-progress ready transaction;
+    // it may retain saved/retirement facts, but cannot restamp that transaction's owner.
+    const requalifiedOwnership = this.revision === undefined ? []
+      : this.acceptedOwnershipForBump(this.revision, currentRows, capability);
     const staged = this.prepareAccepted({ generation, epoch, disposed: false,
       rows: currentRows, range: this.renderRange(), total: this.total,
       revision: this.revision, pending: this.status.peek() === "loading", attemptPresentations: this.attemptPresentations.filter(p => !this.terminalPersistedAttempts.some(done => this.terminalCapability === capability && done.scope === p.scope && done.attemptId === p.attemptId)),
@@ -1023,7 +1045,7 @@ export class ConversationWindow {
       terminalPersistedAttempts: this.terminalCapability === capability ? this.terminalPersistedAttempts : [],
       coverage: this.summaryTransition?.targetCap === capability && !this.summaryTransition?.consumed ? this.summaryTransition?.coverage : undefined,
       assistantOwnership: requalifiedOwnership,
-      retiredAttempts: (this.retiredCapability === capability ? this.retiredAttempts : []).filter(item => item.revision === this.revision),
+      retiredAttempts: this.retiredCapability === capability ? this.retiredAttempts : [],
       displayPlan: (() => {
         const priorPlan = this.acceptedView.peek().displayPlan;
         if (!priorPlan || priorPlan.capability !== capability || this.revision === undefined) return undefined;
@@ -1052,14 +1074,21 @@ export class ConversationWindow {
       .sort((a, b) => Math.abs(a - center) - Math.abs(b - center));
     for (const b of todo) {
       if (this.inflight.size >= READS_IN_FLIGHT) break;
-      void this.readBucket(b);
+      this.admitBucket(b);
     }
   }
 
-  private async readBucket(b: number, request?: WindowReadArgs): Promise<void> {
+  private readBucket(b: number, request?: WindowReadArgs): void { this.admitBucket(b, request); }
+  private admitBucket(b: number, request?: WindowReadArgs): boolean {
+    // Pump, deferred retry and all other callers share this owner-level two-bucket gate.
+    if (this.disposed || this.inflight.has(b) || this.inflight.size >= READS_IN_FLIGHT) return false;
     const epoch = this.epoch, capability = this.acceptedView.currentCapability;
     const cancel = new Cancel();
     this.inflight.set(b, { cancel });
+    void this.runBucket(b, request, cancel, epoch, capability);
+    return true;
+  }
+  private async runBucket(b: number, request: WindowReadArgs | undefined, cancel: Cancel, epoch: number, capability: AcceptedCapability): Promise<void> {
     const out = await this.reader.read(
       request ?? { ordinal: b * WINDOW_NODES, before: 0, after: WINDOW_NODES - 1, excerpt_chars: HISTORY_WINDOW_EXCERPT_CHARS, items: true },
       cancel,

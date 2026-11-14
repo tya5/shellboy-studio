@@ -3,9 +3,11 @@ import { ConversationWindow } from "../src/window";
 import { flush } from "../../data/test/harness";
 import type { HistoryItem } from "../../data/src";
 import { rig } from "./window-owner";
+import { canonicalPlanExpectation, observePublishedPlans } from "./publication-contract";
 
 it("publishes immutable coherent window tuples and stops obsolete notifications", async () => {
   const r = await rig(10); await r.settle();
+  const publications = observePublishedPlans(r.w, ref => canonicalPlanExpectation(ref, "unavailable"));
   const first = r.w.acceptedView.peek();
   expect(first.total).toBe(10); expect(first.pending).toBe(false); expect(first.range).toEqual(r.w.renderRange());
   expect(first.rows).toEqual(r.w.rangeItems()); expect(Object.isFrozen(first.rows[0])).toBe(true);
@@ -13,7 +15,7 @@ it("publishes immutable coherent window tuples and stops obsolete notifications"
   r.w.acceptedView.subscribe(() => { if (!nested) { nested = true; r.w.layoutChanged(); } });
   r.w.acceptedView.subscribe(ref => { expect(ref).toBe(r.w.acceptedView.peek()); seen.push(ref.generation); });
   r.w.layoutChanged(); expect(seen).toHaveLength(1); expect(seen[0]).toBe(r.w.acceptedView.peek().generation);
-  expect(first.rows).toHaveLength(10); r.w.dispose(); expect(r.w.acceptedView.isCurrent(first)).toBe(false); r.data.stop();
+  expect(first.rows).toHaveLength(10); expect(publications.generations.length).toBeGreaterThan(0); publications.stop(); r.w.dispose(); expect(r.w.acceptedView.isCurrent(first)).toBe(false); r.data.stop();
 });
 it("scroll peek is non-consuming and only an unchanged current view consumes once without publication", async () => {
   const r = await rig(10); await r.settle();
@@ -107,25 +109,36 @@ it("requests authoritative saved items, preserves whole deferred nodes and retri
 
 it("deferred retry respects the global bucket admission and succeeds after a slot is freed", async () => {
   type Page = { ok: true; value: { thread_id: string; total: number; revision: number; items: HistoryItem[] } };
-  const held: { args: { ordinal?: number }; finish: (value: Page) => void }[] = [];
+  const held: { args: { ordinal?: number; before?: number; after?: number }; finish: (value: Page) => void }[] = [];
   const w = new ConversationWindow({ read: args => new Promise(resolve => held.push({ args, finish: resolve })) });
   const deferred: HistoryItem = { node_id: "deferred", kind: "user", items: null, items_unavailable_reason: "response_budget", selection: { ordinal: 400 } };
   held.shift()!.finish({ ok: true, value: { thread_id: "t", total: 600, revision: 1, items: Array.from({ length: 200 }, (_, i) => i === 0 ? deferred : { node_id: `n${400 + i}`, kind: "user", selection: { ordinal: 400 + i } }) } }); await flush();
-  // Drive the owned read primitive to control two held buckets independently of viewport timers.
-  const reads = w as unknown as { readBucket(index: number): Promise<void> };
+  // The constructor's tail read owns one separate slot; bucket callers share two bucket slots.
+  const reads = w as unknown as { readBucket(index: number): void };
   void reads.readBucket(0); void reads.readBucket(1);
-  expect(held).toHaveLength(2);
+  const tail = held.findIndex(x => x.args.before === 99 && x.args.after === 0);
+  const bucketZero = held.findIndex(x => x.args.ordinal === 0 && x.args.before === 0);
+  const bucketOne = held.findIndex(x => x.args.ordinal === 100 && x.args.before === 0);
+  expect([tail, bucketZero, bucketOne].every(index => index >= 0)).toBe(true);
+  expect(held).toHaveLength(3);
+  w.view(0, 600, false);
   const ref = w.acceptedView.peek();
-  expect(w.retryDeferred(ref)).toBe(false); expect(held).toHaveLength(2);
-  held.shift()!.finish({ ok: true, value: { thread_id: "t", total: 600, revision: 1, items: [{ node_id: "first", kind: "user", selection: { ordinal: 0 } }] } }); await flush();
-  expect(w.retryDeferred(w.acceptedView.peek())).toBe(true);
-  expect(held).toHaveLength(2); expect(held.at(-1)!.args).toMatchObject({ ordinal: 400, expect_node_id: "deferred", items: true });
+  expect(w.retryDeferred(ref)).toBe(false); expect(held).toHaveLength(3);
+  const [releasedTail] = held.splice(tail, 1);
+  releasedTail!.finish({ ok: true, value: { thread_id: "t", total: 600, revision: 1, items: Array.from({ length: 200 }, (_, i) => ({ node_id: `tail-${i}`, kind: "user", selection: { ordinal: 400 + i } })) } }); await flush();
+  expect(w.retryDeferred(w.acceptedView.peek())).toBe(false); // tail released, both bucket slots still occupied
+  const currentBucketZero = held.findIndex(x => x.args.ordinal === 0 && x.args.before === 0);
+  const [released] = held.splice(currentBucketZero, 1);
+  released!.finish({ ok: true, value: { thread_id: "t", total: 600, revision: 1, items: Array.from({ length: 100 }, (_, i) => ({ node_id: `first-${i}`, kind: "user", selection: { ordinal: i } })) } }); await flush();
+  expect(w.retryDeferred(w.acceptedView.peek()), JSON.stringify({ readsInFlight: w.readsInFlight, held: held.map(x => x.args) })).toBe(true);
+  expect(held).toHaveLength(3); expect(held.at(-1)!.args).toMatchObject({ ordinal: 400, expect_node_id: "deferred", items: true });
   w.dispose();
 });
 
 it("publishes one capability-bound display plan and reaches a fixed point", async () => {
   const r = await rig(2); await r.settle();
   const ref = r.w.acceptedView.peek();
+  const publications = observePublishedPlans(r.w, (_ref, index) => canonicalPlanExpectation(_ref, index === 1 ? "unavailable" : "complete"));
   const projection = (await import("../src/conversation-items")).projectSavedItems([{
     domain: "live", namespace: "handoff", scope: "thread", recordId: "handoff:a", attemptId: "a",
     presentationContainer: "presentation:test", kind: "text", text: "preview"
@@ -143,5 +156,5 @@ it("publishes one capability-bound display plan and reaches a fixed point", asyn
   expect(ordinary.generation).toBeGreaterThan(generation);
   expect(r.w.publishConversationDisplayPlan(ordinary, projection, { cohortVersion: { accepted: [], pending: undefined } }, "thread")).toBe(true);
   expect(r.w.acceptedView.peek().generation).toBeGreaterThan(ordinary.generation);
-  r.w.dispose(); r.data.stop();
+  expect(publications.generations.length).toBeGreaterThan(0); publications.stop(); r.w.dispose(); r.data.stop();
 });

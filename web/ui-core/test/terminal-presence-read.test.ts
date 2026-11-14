@@ -5,6 +5,7 @@ import { assistantOwnership } from "../src/assistant-ownership";
 import { expect, it } from "vitest";
 import { ShellboyData } from "../../data/src/store";
 import { FakeOwnerDb, FakeTransport, connected, settle, flush } from "../../data/test/harness";
+import { canonicalPlanExpectation, observePublishedPlans } from "./publication-contract";
 const baseNodes: HistoryItem[] = [
   { node_id: "tool", kind: "assistant_response", selection: { ordinal: 0 }, items: [{ kind: "tool_call", item_identity: "call", execution_ids: ["exec"] }] },
   { node_id: "answer", kind: "assistant_response", selection: { ordinal: 1 }, items: [{ kind: "text", item_identity: "text", text: "saved", text_complete: true }] },
@@ -38,9 +39,10 @@ async function target() {
  const r = await rig(); const token = r.h.captureReadQualification()!;
  const w = new ConversationWindow({ read: async () => ({ ok: true, value: { thread_id: "a", revision: 7, total: 1,
  items: [{ node_id: "tool", kind: "assistant_response", selection: { ordinal: 0 }, items: [{ kind: "tool_call", item_identity: "call", execution_ids: ["exec"] }] }] } }) }); await flush();
+ const publications=observePublishedPlans(w, ref => canonicalPlanExpectation(ref, "complete"));
  r.live(); r.end(); await r.pump(); const record = r.h.handoff.peek()[0]!;
  expect(r.h.transferHandoff("attempt", (captured, end) => w.acceptHandoff(captured, r.h.handoffScope(), end))).toBe(true);
- return { ...r, w, token, receipt: record.terminalPersisted! };
+ return { ...r, w, token, receipt: record.terminalPersisted!, publications };
 }
 it("actual status/Store/O/Window publishes honest same-ref missing-answer presence, one held canonical read then available rows", async () => {
  const r = await target(); const initial = r.w.acceptedView.peek();
@@ -58,7 +60,7 @@ it("actual status/Store/O/Window publishes honest same-ref missing-answer presen
  expect(r.h.handoff.peek()).toHaveLength(0);
  expect(r.w.acceptedView.peek().terminalPresence ?? []).toEqual([]);
  expect(r.t.calls("history.window")).toHaveLength(1); expect(r.t.calls("history.get")).toHaveLength(0);
- r.w.dispose(); r.data.stop();
+ expect(r.publications.generations.length).toBeGreaterThan(0); r.publications.stop(); r.w.dispose(); r.data.stop();
 });
 it.each(["partial", "deferred", "unknown", "missing", "error"] as const)("canonical %s preserves rows and an honest settled reason", async mode => {
  const r = await target(); r.state[mode] = true; r.w.prepareTerminalRead(r.h, r.token, r.receipt); await r.pump();

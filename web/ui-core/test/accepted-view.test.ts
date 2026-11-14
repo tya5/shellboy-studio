@@ -70,3 +70,15 @@ it("coalesces repeated trailing reentry into one scheduled current notification"
   view.subscribe(p => seen.push(p.revision)); publish(view, next(view, 1));
   await Promise.resolve(); expect(seen).toEqual([4]);
 });
+
+
+it("rejects duplicate and delayed old publications after a newer accepted generation", () => {
+  const view = new AcceptedView(page(1));
+  const old = makeAcceptedPublication(next(view, 2), "read");
+  expect(view.publish(old)).toBe(true);
+  const newer = next(view, 3), publication = makeAcceptedPublication(newer, "bump");
+  expect(view.publish(publication)).toBe(true);
+  expect(view.publish(publication)).toBe(false);
+  expect(view.publish(old)).toBe(false);
+  expect(view.current.revision).toBe(3); expect(view.current).not.toBe(newer);
+});
