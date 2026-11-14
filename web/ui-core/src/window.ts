@@ -453,13 +453,9 @@ export class ConversationWindow {
                 return true;
               }
               const generation = this.nextAcceptedGeneration();
-              const stagedPlan = target.mode === "fresh-window" && ownership.length
-                ? createConversationDisplayPlan({ generation, revision: value.revision, capability: target.cap,
-                    rows, canonicalProjection: projectHistoryWindowItems({ revision: value.revision, nodes: rows, keyScope: [target.receipt.scope] }).projection,
-                    projection: projectHistoryWindowItems({ revision: value.revision, nodes: rows, keyScope: [target.receipt.scope] }).projection,
-                    assistantFacts: ownership, userDecision: { cohortVersion: target.ref.displayPlan?.cohortVersion ?? { accepted: [] } },
-                    scope: target.receipt.scope, retiredAttempts: target.ref.retiredAttempts ?? [] })
-                : target.ref.displayPlan;
+              const stagedPlan = this.rebuildAcceptedPlan({ generation, revision: target.mode === "fresh-window" ? value.revision : target.ref.revision,
+                capability: target.cap, rows, facts: ownership, prior: target.ref.displayPlan, scope: target.receipt.scope,
+                retiredAttempts: target.ref.retiredAttempts ?? [] });
               const staged = this.acceptedView.stage({ ...target.ref, generation, rows, revision: target.mode === "fresh-window" ? value.revision : target.ref.revision, range: { first: ordinals[0]!, last: ordinals.at(-1)!, }, total: value.total, assistantOwnership: ownership, terminalPresence: next, displayPlan: stagedPlan }, target.cap);
               if (!target.handle.isReadQualificationCurrent(target.token) || !this.acceptedView.isCurrent(target.ref)) return false;
               this.buckets = buckets; this.total = value.total; this.terminalPresence = next;
@@ -573,6 +569,9 @@ export class ConversationWindow {
       const generation = this.nextAcceptedGeneration();
       const presence = next.flatMap(p => { const item = terminalPresence(p, expected.rows); return item ? [item] : []; });
       const staged = this.acceptedView.stage({ ...expected, generation, terminalPersistedAttempts: next, terminalPresence: presence,
+        displayPlan: this.rebuildAcceptedPlan({ generation, revision: expected.revision, capability: cap, rows: expected.rows,
+          facts: expected.assistantOwnership ?? [], prior: expected.displayPlan, scope: expected.displayPlan?.scope,
+          retiredAttempts: expected.retiredAttempts }),
         attemptPresentations: (expected.attemptPresentations ?? []).filter(p => p.scope !== scope || p.attemptId !== proof.attemptId) }, cap);
       if (!this.acceptedView.isCurrent(expected) || cap !== this.acceptedView.currentCapability) return false;
       const old = this.terminalPersistedAttempts, oldCap = this.terminalCapability;
@@ -938,6 +937,17 @@ export class ConversationWindow {
     const staged = this.acceptedView.stage({ ...ref, generation, displayPlan: plan }, capability);
     if (!this.acceptedView.isCurrent(ref) || capability !== this.acceptedView.currentCapability) return false;
     return this.acceptedView.commit(staged);
+  }
+
+  private rebuildAcceptedPlan(input: { readonly generation: number; readonly revision: number | undefined; readonly capability: AcceptedCapability; readonly rows: readonly HistoryItem[]; readonly facts: readonly AssistantOwnership[]; readonly prior?: ConversationDisplayPlan; readonly scope?: string; readonly retiredAttempts?: readonly { readonly scope: string; readonly attemptId: string; readonly revision: number }[] }): ConversationDisplayPlan | undefined {
+    if (input.revision === undefined) return undefined;
+    const scope = input.scope ?? input.prior?.scope;
+    if (!scope) return undefined;
+    const projection = projectHistoryWindowItems({ revision: input.revision, nodes: input.rows, keyScope: [scope] }).projection;
+    return createConversationDisplayPlan({ generation: input.generation, revision: input.revision, capability: input.capability,
+      rows: input.rows, canonicalProjection: projection, projection, assistantFacts: input.facts,
+      userDecision: { cohortVersion: input.prior?.cohortVersion ?? { accepted: [] } }, scope,
+      retiredAttempts: input.retiredAttempts ?? [] });
   }
 
   private nextAcceptedGeneration(): number { return ++this.acceptedGeneration; }
