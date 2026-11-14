@@ -17,7 +17,9 @@ export function heldRange(visible: { first: number; last: number }, total: numbe
   return range;
 }
 
-export function WindowedScroll({ model, win, renderRow, live, liveBoundary, statusLine, scrollPort, renderAcceptedView }: { model: AppModel; win: ConversationWindow; renderRow: (row: ConversationRow) => VNode; live: ComponentChildren; liveBoundary?: number; statusLine?: ComponentChildren; scrollPort?: ScrollViewPort<object>; renderAcceptedView?: (ref: WindowAcceptedSnapshot) => ComponentChildren }) {
+export type WindowScrollModel = Pick<AppModel,'t'|'shells'|'handle'|'senderPageSelected'>;
+
+export function WindowedScroll({ model, win, renderRow, live, liveBoundary, statusLine, scrollPort, renderAcceptedView }: { model: WindowScrollModel; win: ConversationWindow; renderRow: (row: ConversationRow) => VNode; live: ComponentChildren; liveBoundary?: number; statusLine?: ComponentChildren; scrollPort?: ScrollViewPort<object>; renderAcceptedView?: (ref: WindowAcceptedSnapshot) => ComponentChildren }) {
   const port: ScrollViewPort<object> = scrollPort ?? win;
   const t = model.t.value;
   win.version.value; // redraw on every change the window reports

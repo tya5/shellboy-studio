@@ -1,3 +1,5 @@
+import {publishControlledAttempt} from '../../../ui-core/test/controlled-window';
+import {scrollModel} from './scroll-model';
 // @vitest-environment happy-dom
 import '@preact/signals';
 import { signal } from '@preact/signals-core';
@@ -10,7 +12,7 @@ import { WindowedScroll } from '../screens/WindowedScroll';
 import { HeadingAnchor, ReadingAnchor, ScrollIntent } from '../screens/scrollIntent';
 let host:HTMLDivElement|undefined,r:Rig|undefined;
 afterEach(()=>{if(host)render(null,host);host?.remove();r?.w.dispose();r?.data.stop();host=undefined;r=undefined;vi.restoreAllMocks();});
-const model=()=>({t:signal((key:string)=>key),shells:signal([])}) as unknown as AppModel;
+const model=()=>{if(!r)throw new Error("Scroll fixture has no current owner");return scrollModel(r.handle);};
 it.each(['generation','dispose','revoke'] as const)('real Window rejects obsolete DOM effects after synchronous measure %s',async boundary=>{
   r=await realWindow(3);await r.settle();const w=r.w;
   const initial=w.acceptedView.peek();
@@ -22,7 +24,7 @@ it.each(['generation','dispose','revoke'] as const)('real Window rejects obsolet
     once=true;
     if(boundary==='dispose')w.dispose();
     else if(boundary==='revoke'){w.acceptedView.revoke();expect(w.acceptedView.peek()).toBe(initial);}
-    else measure(changes.map(([i])=>[i,41]));
+    else {measure(changes.map(([i])=>[i,41]));publishControlledAttempt(w,'measure-successor');}
     expect(w.acceptedView.isCurrent(initial)).toBe(false);stale=true;
   });
   const consume=w.consumeScroll.bind(w);

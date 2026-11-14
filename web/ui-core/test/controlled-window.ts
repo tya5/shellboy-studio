@@ -13,3 +13,11 @@ export function controlledWindow(){
  return{win,requests,pending:()=>requests.filter(request=>!request.settled&&!request.cancel.cancelled),
   viewportPause:()=>{const admitted=[...timers];timers.clear();admitted.forEach(fn=>fn());}};
 }
+
+/** A real pending-owner input replaces semantics while retaining the selected rows and scroll intent. */
+export function publishControlledAttempt(win:ConversationWindow,attemptId:string){
+ const scope=win.acceptedView.peek().displayPlan?.scope;
+ if(!scope)throw new Error('Controlled semantic replacement requires an accepted scope');
+ win.setAttemptPresentations([{scope,attemptId,turnId:`${attemptId}-turn`,nodeIds:[`unselected-${attemptId}`],state:'pending'}]);
+ return win.acceptedView.peek();
+}

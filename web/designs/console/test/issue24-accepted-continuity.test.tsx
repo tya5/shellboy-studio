@@ -1,3 +1,5 @@
+import type {HistoryItem} from '../../../data/src/protocol';
+import {typedSelectedCoverageWindow} from '../../../ui-core/test/typed-handoff-fixture';
 // @vitest-environment happy-dom
 // Regression probe for final bodies surviving an ordinary tail refresh.
 import '@preact/signals';
@@ -113,24 +115,34 @@ it.each([
   { name: 'different-revision full-first', targetFirst: false, changedRevision: true, trigger: false },
 ])('keeps a qualified tail body across $name', async ({ targetFirst, changedRevision, trigger }) => {
   const seed = actual('actual-window.json') as { items: Array<Record<string, any>> };
-  const rows = Array.from({ length: 95 }, (_, ordinal) => ({
+  const rows:HistoryItem[] = Array.from({ length: 95 }, (_, ordinal) => ({
     ...structuredClone(seed.items[ordinal % seed.items.length]),
     node_id: `n${ordinal}`,
     selection: { ...seed.items[ordinal % seed.items.length]!.selection, ordinal },
-    items: [{ kind: 'text', item_identity: `["n${ordinal}","/output/0/content/0"]`, text: ordinal === 94 ? 'qualified-final-body' : `body-${ordinal}`, text_complete: true }],
+    items: [{ kind: 'text' as const, item_identity: `["n${ordinal}","/output/0/content/0"]`, text: ordinal === 94 ? 'qualified-final-body' : `body-${ordinal}`, text_complete: true }],
   }));
-  let revision = 4;
+  let revision = 4;const trace:Record<string,unknown>[]=[];let stop=()=>{};
   const r = await fixtureModel({
     capabilities: ['history.window', 'live.text'],
     route: 'conversation',
     threadId: 'lead',
     configure(db) {
-      db.history.lead = rows as never[];
+      db.history.lead = rows;
       const answer = db.answer.bind(db);
       db.answer = call => {
         const result = answer(call);
         if (call.command === 'history.window' && result.ok) {
-          return { ...result, result: { ...result.result as object, revision } };
+          const args=call.args;
+          if(!args||typeof args!=='object'||Array.isArray(args))throw new Error('Fixture requires an object window request');
+          const path=db.history.lead??[];
+          const value=typedSelectedCoverageWindow('lead',revision,path.length,path,{
+            node_id:'node_id' in args&&typeof args.node_id==='string'?args.node_id:undefined,
+            ordinal:'ordinal' in args&&typeof args.ordinal==='number'?args.ordinal:undefined,
+            before:'before' in args&&typeof args.before==='number'?args.before:undefined,
+            after:'after' in args&&typeof args.after==='number'?args.after:undefined,
+          });
+          trace.push({kind:'owner-reply',args:call.args,revision,total:value.total,nodes:value.items.map(row=>row.node_id)});
+          return {...result,result:value};
         }
         return result;
       };
@@ -140,7 +152,7 @@ it.each([
     await settle(r.t, r.db);
     const reader = r.model.longReader.value!;
     const handle = r.model.handle.value!;
-    const initial = reader.acceptedView.peek();
+    const initial = reader.acceptedView.peek(),originalRows=JSON.stringify(reader.acceptedView.peek().rows),cap=reader.acceptedView.currentCapability;
     const initialCall = r.t.calls('history.window')[0]!;
     expect(initialCall.args).toMatchObject({ before: 99, after: 0, items: true });
     expect(initial.total).toBe(95);
@@ -156,10 +168,22 @@ it.each([
     const fullRevision = changedRevision ? 5 : revision;
     const fullRows = changedRevision ? [...rows, { ...rows[94], node_id: 'n95', selection: { ...rows[94]!.selection, ordinal: 95 } }] : rows;
     const targetValue = { thread_id: 'lead', revision, total: 95, items: [rows[94]] };
-    const fullValue = { thread_id: 'lead', revision: fullRevision, total: fullRows.length, items: fullRows };
-    const answerCall = (call: typeof targetCall, value: unknown) => { r.db.answered.add(call.id); r.t.ok(call.id, value); };
+    expect(fullCall.args).toMatchObject({ordinal:94,before:0,after:199,expect_node_id:'n94',items:true});
+    const fullValue=typedSelectedCoverageWindow('lead',fullRevision,fullRows.length,fullRows,{ordinal:94,before:0,after:199});
+    const answerCall = (call: typeof targetCall, value: typeof fullValue|typeof targetValue) => {
+      trace.push({kind:'declared-reply',args:call.args,revision:value.revision,total:value.total,nodes:value.items.map(row=>row?.node_id)});
+      r.db.answered.add(call.id); r.t.ok(call.id, value);
+    };
+    stop=reader.acceptedView.subscribe(snapshot=>{
+      expect(reader.acceptedView.isCurrent(snapshot)).toBe(true);expect(snapshot.displayPlan?.capability).toBe(cap);
+      const declared=snapshot.revision===4?rows:fullRows;
+      expect([4,fullRevision]).toContain(snapshot.revision);expect(snapshot.rows.map(row=>row.node_id)).toEqual(declared.map(row=>row.node_id));
+      expect(snapshot.rows.map(row=>row.items?.map(item=>item.kind==='text'?item.text:undefined))).toEqual(declared.map(row=>row.items?.map(item=>item.kind==='text'?item.text:undefined)));
+      expect(snapshot.total).toBe(declared.length);
+      trace.push({kind:'publication',revision:snapshot.revision,total:snapshot.total,generation:snapshot.generation,nodes:snapshot.rows.map(row=>row.node_id)});
+    });
     const sendTarget = () => answerCall(targetCall, targetValue);
-    const sendFull = () => answerCall(fullCall, fullValue);
+    const sendFull = () => {revision=fullRevision;r.db.history.lead=fullRows;answerCall(fullCall, fullValue);};
     if (targetFirst) sendTarget();
     if (trigger) {
       r.t.push({ t: 'live', thread_id: 'lead', attempt_id: 'matrix-handoff', gap: false, deltas: [{ offset: 0, reasoning: false, text: 'preview' }] });
@@ -182,14 +206,17 @@ it.each([
       expect(targetResult.value.items[0]?.node_id).toBe('n94');
     }
     expect(r.t.calls('history.get')).toHaveLength(0);
-    for (let i = 0; i < 12; i++) await Promise.resolve();
+    await settle(r.t,r.db);
     const accepted = reader.acceptedView.peek();
     expect(accepted.rows.some(row => row.node_id === 'n94')).toBe(true);
     expect(reader.itemAt(94)?.node_id).toBe('n94');
     const targetItem = accepted.rows.find(row => row.node_id === 'n94')?.items?.[0];
     expect(targetItem?.kind === 'text' ? targetItem.text : undefined).toBe('qualified-final-body');
     expect(accepted.total).toBe(fullRows.length);
+    expect(JSON.stringify(initial.rows)).toBe(originalRows);
+    if(changedRevision){expect(reader.acceptedView.isCurrent(initial)).toBe(false);expect(r.t.calls('history.window').some(call=>typeof call.args==='object'&&call.args!==null&&'before' in call.args&&call.args.before===99&&!('ordinal' in call.args)&&!('node_id' in call.args)&&call.id!==initialCall.id)).toBe(true);}
   } finally {
+    console.log('CONTINUITY_CURRENT_CUT_TRACE',JSON.stringify({targetFirst,changedRevision,trace}));stop();
     r.model.dispose();
     r.data.stop();
   }

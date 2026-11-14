@@ -1,3 +1,5 @@
+import {publishControlledAttempt} from '../../../ui-core/test/controlled-window';
+import {scrollModel} from './scroll-model';
 // @vitest-environment happy-dom
 import '@preact/signals';
 import { signal } from '@preact/signals-core';
@@ -18,7 +20,7 @@ async function setup(){
   vi.stubGlobal('requestAnimationFrame',(cb:FrameRequestCallback)=>{pending.set(++next,cb);return next;});
   vi.stubGlobal('cancelAnimationFrame',(id:number)=>pending.delete(id));
   r=await rig(3);await r.settle();host=document.createElement('div');document.body.append(host);
-  const model={t:signal((key:string)=>key),shells:signal([])} as unknown as AppModel;
+  const model=scrollModel(r.handle);
   const mount=()=>render(<WindowedScroll model={model} win={r!.w} renderRow={row=><div>{row.id}</div>} live={null}/>,host!);
   await act(async()=>mount());
   const w=r.w;
@@ -46,7 +48,7 @@ it('RO delivery only invalidates, coalesces one RAF, and unchanged drains neithe
 it.each(['revoke','replace','dispose','unmount'] as const)('pending RO work is canceled by %s before any measurement/consumption',async boundary=>{
   const x=await setup();x.deliver();expect(pending.size).toBe(1);
   if(boundary==='revoke')x.w.acceptedView.revoke();
-  if(boundary==='replace')x.w.measure([[0,45]]);
+  if(boundary==='replace'){const old=x.w.acceptedView.peek();publishControlledAttempt(x.w,'resize-successor');expect(x.w.acceptedView.isCurrent(old)).toBe(false);}
   if(boundary==='dispose')x.w.dispose();
   if(boundary==='unmount')render(null,host!);
   for(const spy of Object.values(x.effects))spy.mockClear();

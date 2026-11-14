@@ -1,3 +1,4 @@
+import {publishControlledAttempt} from '../../../ui-core/test/controlled-window';
 // @vitest-environment happy-dom
 import {expect,it} from 'vitest';
 import {flush} from '../../../data/test/harness';
@@ -41,7 +42,7 @@ it.each(['replace','revoke','dispose'] as const)('actual Window G port %s during
  try{
   await r.settle();const ref=r.w.acceptedView.peek();const pending=r.w.peekScroll(ref);expect(pending).toBeDefined();
   let consumes=0,writes=0,captures=0;
-  const result=new CurrentScrollSync().run({acceptedView:r.w.acceptedView,peekScroll:value=>r.w.peekScroll(value),consumeScroll:(value,id)=>{consumes++;return r.w.consumeScroll(value,id)}},{measure(){if(action==='replace')r.w.layoutChanged();else if(action==='revoke')r.w.acceptedView.revoke();else r.w.dispose();},plan(){return{consume(){consumes++},write(){writes++},capture(){captures++}}}});
+  const result=new CurrentScrollSync().run({acceptedView:r.w.acceptedView,peekScroll:value=>r.w.peekScroll(value),consumeScroll:(value,id)=>{consumes++;return r.w.consumeScroll(value,id)}},{measure(){if(action==='replace')publishControlledAttempt(r.w,'measurement-successor');else if(action==='revoke')r.w.acceptedView.revoke();else r.w.dispose();},plan(){return{consume(){consumes++},write(){writes++},capture(){captures++}}}});
   expect(result).toBe('obsolete');expect(consumes).toBe(0);expect(writes).toBe(0);expect(captures).toBe(0);
   expect(r.w.consumeScroll(ref,pending!.id)).toBe(false);
   if(action==='revoke'){expect(r.w.acceptedView.peek()).toBe(ref);expect(r.w.acceptedView.isCurrent(ref)).toBe(false);}
@@ -83,13 +84,13 @@ it('actual Window/store snapshot drives real P and subscribed D, then visible ow
   let overlay=reconcileOverlay(overlayState(cap,[record]),{type:'begin',capRef:cap,operation});const authority=createAssociationAuthority<typeof cap>();
   const proof=authority.issue(overlay,cap,record,operation,{nodeId:'n0-0',itemIdentity:'text',revision:'body1'})!;overlay=authority.associate(overlay,proof);
   expect(overlay.records).toContain(record);
-  await act(async()=>r.w.layoutChanged());const accepted=r.w.acceptedView.peek();
+  await act(async()=>{publishControlledAttempt(r.w,'selection-successor');});const accepted=r.w.acceptedView.peek();
   expect(accepted).not.toBe(original);expect(host.querySelector('[data-accepted-generation]')?.getAttribute('data-accepted-generation')).toBe(String(accepted.generation));
   expect(host.querySelector('[data-item-key]')).toBe(first);expect(selection.anchorNode).toBe(text);expect(selection.toString()).toBe('SYNTHETIC');
   expect(r.w.acceptedView.isCurrent(accepted)).toBe(true);expect(host.textContent).toContain(record.text);
   overlay=authority.release(overlay,proof,record,operation,cap);expect(overlay.records).toHaveLength(0);
   let consumes=0,writes=0,captures=0;
-  const result=new CurrentScrollSync().run({acceptedView:r.w.acceptedView,peekScroll:ref=>r.w.peekScroll(ref),consumeScroll:(ref,id)=>{consumes++;return r.w.consumeScroll(ref,id)}},{measure(){r.w.layoutChanged()},plan(){return{consume(){consumes++},write(){writes++},capture(){captures++}}}});
+  const result=new CurrentScrollSync().run({acceptedView:r.w.acceptedView,peekScroll:ref=>r.w.peekScroll(ref),consumeScroll:(ref,id)=>{consumes++;return r.w.consumeScroll(ref,id)}},{measure(){publishControlledAttempt(r.w,'obsolete-selection-successor')},plan(){return{consume(){consumes++},write(){writes++},capture(){captures++}}}});
   expect(result).toBe('obsolete');expect(consumes).toBe(0);expect(writes).toBe(0);expect(captures).toBe(0);
   selection.removeAllRanges();authority.dispose();
  }finally{render(null,host);host.remove();r.w.dispose();r.data.stop();}
