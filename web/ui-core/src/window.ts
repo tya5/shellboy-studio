@@ -883,7 +883,11 @@ export class ConversationWindow {
     userDecision: unknown, scope: string): boolean {
     const capability = this.acceptedView.currentCapability;
     if (this.disposed || !this.acceptedView.isCurrent(ref) || ref.revision === undefined) return false;
-    if (ref.displayPlan?.userDecision === userDecision && ref.displayPlan?.capability === capability) return true;
+    if (ref.displayPlan?.capability === capability && ref.displayPlan?.acceptedGeneration === ref.generation) {
+      const candidateVersion = (userDecision as { cohortVersion?: unknown } | undefined)?.cohortVersion;
+      const currentVersion = (ref.displayPlan.userDecision as { cohortVersion?: unknown } | undefined)?.cohortVersion;
+      if (JSON.stringify(candidateVersion) === JSON.stringify(currentVersion)) return true;
+    }
     const plan = createConversationDisplayPlan({ acceptedRef: ref, capability, projection,
       assistantFacts: ref.assistantOwnership ?? [], userDecision, scope });
     const staged = this.acceptedView.stage({ ...ref, displayPlan: plan }, capability);

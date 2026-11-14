@@ -7,8 +7,9 @@ export type DisplayBodySource =
   | Readonly<{ kind: 'preview'; text: string; generation: number; revision: string | number }>
   | Readonly<{ kind: 'typed-canonical'; text: string; generation: number; revision: string | number; capability: AcceptedCapability }>
   | Readonly<{ kind: 'unavailable'; reason: string; generation: number; revision: string | number }>;
+
 export type DisplayLifetime = Readonly<{
-  kind: 'valid-owner' | 'retained' | 'revoked'; scope: string; generation: number; revision: string | number;
+  kind: 'valid-owner' | 'canonical-human' | 'retained' | 'revoked'; scope: string; generation: number; revision: string | number;
 }>;
 export interface ConversationDisplayPlanEntry {
   readonly item: ProjectedSavedItem;
@@ -22,6 +23,7 @@ export interface ConversationDisplayPlan {
   readonly capability: AcceptedCapability;
   readonly entries: readonly ConversationDisplayPlanEntry[];
   readonly userDecision: unknown;
+  readonly cohortKey: string;
 }
 
 /** Constructed only by accepted-window publication, never by a renderer. */
@@ -44,17 +46,21 @@ export function createConversationDisplayPlan(input: {
     }
   }
   const generation = input.acceptedRef.generation, revision = input.acceptedRef.revision;
+  const version = (input.userDecision as { cohortVersion?: { accepted?: readonly { operationId: string; phase: string; messageId?: string }[]; pending?: { operationId: string; phase: string } } } | undefined)?.cohortVersion;
+  const cohortKey = JSON.stringify({ accepted: version?.accepted?.map(row => [row.operationId, row.phase, row.messageId ?? '']) ?? [], pending: version?.pending ? [version.pending.operationId, version.pending.phase] : [] });
   const entries = input.projection.items.map(item => {
     const source = item.source;
     const owner = owners.get(item.key);
     const host = ('domain' in source ? source.presentationContainer : undefined) ?? (owner?.containerKey as string | undefined);
-    const body: DisplayBodySource = source.kind === 'text' && owner?.mode === 'canonical' && source.textComplete === true
+    const body: DisplayBodySource = ((source.kind === 'text' && owner?.mode === 'canonical' && source.textComplete === true) || human)
       ? { kind: 'typed-canonical', text: source.text, generation, revision, capability: input.capability }
       : source.kind === 'text' && owner?.mode === 'preview'
         ? { kind: 'preview', text: source.text, generation, revision }
         : { kind: 'unavailable', reason: source.kind, generation, revision };
-    const lifetime: DisplayLifetime = Object.freeze({ kind: owner ? 'valid-owner' : 'retained', scope: input.scope, generation, revision });
+    const retired = 'domain' in source && !!source.attemptId && input.acceptedRef.retiredAttempts?.some(item => item.scope === input.scope && item.attemptId === source.attemptId && item.revision === revision);
+    const human = (source.kind === 'user' || source.kind === 'summary') && source.textComplete === true;
+    const lifetime: DisplayLifetime = Object.freeze({ kind: retired ? 'revoked' : human && !owner ? 'canonical-human' : owner ? 'valid-owner' : 'retained', scope: input.scope, generation, revision });
     return Object.freeze({ item, ...(host ? { presentationContainer: host } : {}), body, lifetime });
   });
-  return Object.freeze({ acceptedGeneration: generation, revision, capability: input.capability, entries: Object.freeze(entries), userDecision: input.userDecision });
+  return Object.freeze({ acceptedGeneration: generation, revision, capability: input.capability, entries: Object.freeze(entries), userDecision: input.userDecision, cohortKey });
 }
