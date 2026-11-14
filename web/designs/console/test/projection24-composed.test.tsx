@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import {render} from 'preact';
-import {expect,it,afterEach} from 'vitest';
+import {describe,expect,it,afterEach} from 'vitest';
 import {projectSavedItems,type NormalizedSavedItem,type SavedItemProjection} from '../../../ui-core/src/conversation-items';
 import {AcceptedView} from '../../../ui-core/src/accepted-view';
 import {overlayState,reconcileOverlay,createAssociationAuthority} from '../../../data/src/overlay-reconcile';
@@ -123,4 +123,23 @@ it('#13 real FakeTransport held shell.read keeps successful empty Output cache/D
   r.db.outputs['transport-empty']='SYNTHETIC_CHANGED_OUTPUT';r.t.push({t:'changed',thread_ids:['lead'],list:false});await settle(r.t,r.db);draw();
   expect(host.textContent).toContain('SYNTHETIC_CHANGED_OUTPUT');
  }finally{stop?.();r.model.dispose();r.data.stop();}
+});
+
+describe('direct local insertion plan', () => {
+  it('keeps qualified beginning content across undefined-to-empty sequence publication', () => {
+    const host = document.createElement('div'); document.body.append(host);
+    const items = [{ key: 'saved-a', source: input[0]! }];
+    const local = <section data-own-presentation=""><div class="msg">A</div><div class="msg">B</div></section>;
+    const props = { items, workGroups: [], renderWorkGroup: (_: unknown, children: unknown) => children,
+      renderItem: () => <span>saved</span>, localRegion: { placement: { kind: 'qualified', insertion: { kind: 'beginning' } } as const, content: local } };
+    const paint = (sequence: undefined | readonly {kind:'conversation';itemKey:string}[]) => render(<ConversationItems {...props} sequence={sequence}/>, host);
+    paint(undefined);
+    expect(host.querySelectorAll('.msg')).toHaveLength(2);
+    const first = [...host.querySelectorAll('.msg')];
+    expect(first.every(node => node.isConnected && node.ownerDocument === document && host.contains(node))).toBe(true);
+    paint([]);
+    expect(host.querySelectorAll('.msg')).toHaveLength(2);
+    expect([...host.querySelectorAll('.msg')].every(node => node.isConnected && node.ownerDocument === document && host.contains(node))).toBe(true);
+    render(null, host); host.remove();
+  });
 });

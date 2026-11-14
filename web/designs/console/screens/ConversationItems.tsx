@@ -46,15 +46,18 @@ interface Props {
 
 /** Projection owns classification and membership; presentation only follows its sequence. */
 export function ConversationItems({ items, toolSummaries = [], renderItem, renderHeading, renderBefore, trailing, isItemAbsent, isItemHidden, sequence, workGroups, renderWorkGroup,localRegion }: Props) {
-  if (sequence && renderWorkGroup) {
+  const normalizedSequence = sequence ?? (localRegion ? items.map(item => ({ kind: "conversation" as const, itemKey: item.key })) : undefined);
+  const normalizedGroups = workGroups ?? [];
+  const normalizedRenderWorkGroup = renderWorkGroup ?? ((_group: ConversationWorkGroup, children: ComponentChildren) => children);
+  if (normalizedSequence) {
     const byKey = new Map(items.map(item => [item.key, item]));
-    const groups = new Map((workGroups ?? []).map(group => [group.key, group]));
+    const groups = new Map(normalizedGroups.map(group => [group.key, group]));
     const content = (item: ConversationItem, work: boolean) => <div class={`conversation-row${!work && item.presentationContainer ? " conversation-answer-child" : ""}`} key={`item:${item.key}`} data-item-key={item.key} data-key={item.key} data-node={item.source.nodeId} data-work-item-key={work ? item.key : undefined}>{renderItem(item)}</div>;
     const insertion=localRegion?.placement.kind==="qualified"?localRegion.placement.insertion:undefined;
     const same=(entry:NonNullable<Props["sequence"]>[number])=>insertion?.kind===entry.kind&&(entry.kind==="conversation"?insertion.kind==="conversation"&&insertion.itemKey===entry.itemKey:insertion.kind==="work"&&insertion.groupKey===entry.groupKey);
     const rendered: { entry: NonNullable<Props["sequence"]>[number]; view: ComponentChildren }[] = [];
-    for (let index = 0; index < sequence.length; index++) {
-      const entry = sequence[index]!;
+    for (let index = 0; index < normalizedSequence.length; index++) {
+      const entry = normalizedSequence[index]!;
       if (entry.kind === "conversation") {
         const item = byKey.get(entry.itemKey);
         if (!item || isItemAbsent?.(item)) continue;
@@ -65,8 +68,8 @@ export function ConversationItems({ items, toolSummaries = [], renderItem, rende
         }
         const children: ComponentChildren[] = [];
         let end = index;
-        while (end < sequence.length) {
-          const childEntry = sequence[end]!;
+        while (end < normalizedSequence.length) {
+          const childEntry = normalizedSequence[end]!;
           if (childEntry.kind !== "conversation") break;
           const child = byKey.get(childEntry.itemKey);
           if (!child || (child as ConversationItem & { presentationContainer?: string }).presentationContainer !== container) break;
@@ -82,7 +85,7 @@ export function ConversationItems({ items, toolSummaries = [], renderItem, rende
       }
       const group = groups.get(entry.groupKey);
       if (!group) continue;
-      rendered.push({ entry, view: <div key={`work:${group.key}`} class="conversation-row steps">{renderWorkGroup(group, group.memberKeys.map(key => {
+      rendered.push({ entry, view: <div key={`work:${group.key}`} class="conversation-row steps">{normalizedRenderWorkGroup(group, group.memberKeys.map(key => {
         const item = byKey.get(key); return item ? content(item, true) : null;
       }))}</div> });
     }
