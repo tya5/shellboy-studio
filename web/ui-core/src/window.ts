@@ -1,4 +1,5 @@
 import { assistantOwnership, type AssistantOwnership } from './assistant-ownership';
+import { projectHistoryWindowItems } from './conversation-items';
 import type { DisplayAssociation, DisplayObservation, DisplayTarget } from '../../data/src/handoff';
 import { terminalPresence, type TerminalPresence, type TerminalPresenceReason } from "./terminal-presence";
 import type { OwnedTerminalReadLease, TicketOutcome, TerminalReadTicketId, SelectedRequestId } from "../../data/src/terminal-read";
@@ -6,7 +7,7 @@ import type { TerminalPersistedProof } from "../../data/src/handoff";
 import type { AttemptPresentation, ThreadHandle, ThreadReadQualification } from "../../data/src/store";
 import type { HistoryBody } from "../../data/src/protocol";
 import { AcceptedView, type AcceptedCapability } from "./accepted-view";
-import { advanceConversationDisplayPlan, createConversationDisplayPlan, displaySemanticKey, type ConversationDisplayPlan, type OwnUserDecision } from './conversation-display-plan';
+import { createConversationDisplayPlan, displaySemanticKey, type ConversationDisplayPlan, type OwnUserDecision } from './conversation-display-plan';
 import type { HandoffRecord } from "../../data/src/handoff";
 // The long-thread reader's model (docs/design/long-threads.md): positional windows of a Thread's
 // path held in bounded buckets, a measured scroll space over one loaded run, and adjacent reads.
@@ -245,8 +246,12 @@ export class ConversationWindow {
         && JSON.stringify(receipts) === JSON.stringify(expected.terminalPersistedAttempts ?? [])
         && JSON.stringify(presence) === JSON.stringify(expected.terminalPresence ?? [])) return true;
       const generation = this.nextAcceptedGeneration();
+      const updatedPlan = expected.displayPlan && expected.revision !== undefined
+        ? createConversationDisplayPlan({ acceptedRef: expected, acceptedGeneration: generation, capability: cap,
+            projection: projectHistoryWindowItems({ revision: expected.revision, nodes: expected.rows, keyScope: [scope] }).projection,
+            assistantFacts: decisions, userDecision: { cohortVersion: expected.displayPlan.cohortVersion }, scope }) : undefined;
       const staged = this.acceptedView.stage({ ...expected, generation, assistantOwnership: decisions,
-        terminalPersistedAttempts: receipts, terminalPresence: presence }, cap);
+        terminalPersistedAttempts: receipts, terminalPresence: presence, displayPlan: updatedPlan }, cap);
       if (!qualified() || !this.acceptedView.isCurrent(expected) || observations.some(item => !item.lease.current() || !handle.handoff.peek().includes(item.lease.original))) return false;
       // Install only in the original held slots before the one synchronous successor publication.
       const undo = observations.filter(item => decisions.some(decision => decision.recordKey === item.lease.original.key && decision.attemptId === item.lease.original.attemptId)).map(item => item.lease.stage(generation, () => {
@@ -915,8 +920,10 @@ export class ConversationWindow {
       retiredAttempts: (this.retiredCapability === capability ? this.retiredAttempts : []).filter(item => item.revision === this.revision),
       displayPlan: (() => {
         const priorPlan = this.acceptedView.peek().displayPlan;
-        return priorPlan && priorPlan.capability === capability
-          ? advanceConversationDisplayPlan(priorPlan, generation, capability) : undefined;
+        if (!priorPlan || priorPlan.capability !== capability || this.revision === undefined) return undefined;
+        return createConversationDisplayPlan({ acceptedRef: this.acceptedView.peek(), acceptedGeneration: generation,
+          capability, projection: projectHistoryWindowItems({ revision: this.revision, nodes: currentRows, keyScope: [priorPlan.cohortVersion.accepted[0]?.operationId ?? ""] }).projection,
+          assistantFacts: this.acceptedView.peek().assistantOwnership ?? [], userDecision: { cohortVersion: priorPlan.cohortVersion }, scope: priorPlan.cohortVersion.accepted[0]?.operationId ?? "" });
       })() }, capability);
     if (this.disposed || epoch !== this.epoch || generation !== this.acceptedGeneration) return;
     if (!this.acceptedView.commit(staged)) return;

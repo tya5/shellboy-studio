@@ -26,6 +26,7 @@ export interface ConversationDisplayPlan {
   readonly capability: AcceptedCapability;
   readonly entries: readonly ConversationDisplayPlanEntry[];
   readonly cohortKey: string;
+  readonly cohortVersion: DisplayCohortVersion;
   readonly semanticKey: string;
 }
 
@@ -34,14 +35,6 @@ export function displaySemanticKey(projection: SavedItemProjection, facts: reado
   const items = projection.items.map(item => { const source = item.source; return [item.key, source.kind, 'text' in source ? source.text : '', 'textComplete' in source ? String(source.textComplete) : ''].join(':'); });
   const owners = facts.map(fact => [fact.scope, fact.attemptId, fact.turnId, fact.mode, fact.containerKey, fact.itemKeys.join(',')].join(':'));
   return [...items, ...owners].join('|');
-}
-
-export function advanceConversationDisplayPlan(plan: ConversationDisplayPlan, generation: number, capability: AcceptedCapability): ConversationDisplayPlan {
-  const entries = plan.entries.map(entry => Object.freeze({ ...entry,
-    body: Object.freeze({ ...entry.body, generation, ...(entry.body.kind === 'typed-canonical' ? { capability } : {}) }),
-    lifetime: Object.freeze({ ...entry.lifetime, generation })
-  }));
-  return Object.freeze({ ...plan, acceptedGeneration: generation, capability, entries: Object.freeze(entries) });
 }
 
 export function createConversationDisplayPlan(input: {
@@ -81,5 +74,5 @@ export function createConversationDisplayPlan(input: {
     const lifetime: DisplayLifetime = Object.freeze({ kind: retired ? 'revoked' : human && !owner ? 'canonical-human' : owner || host ? 'valid-owner' : 'retained', scope: input.scope, generation, revision });
     return Object.freeze({ item, ...(host ? { presentationContainer: host } : {}), body, lifetime });
   });
-  return Object.freeze({ acceptedGeneration: generation, revision, capability: input.capability, entries: Object.freeze(entries), cohortKey, semanticKey });
+  return Object.freeze({ acceptedGeneration: generation, revision, capability: input.capability, entries: Object.freeze(entries), cohortKey, cohortVersion: version, semanticKey });
 }
