@@ -1,4 +1,4 @@
-/* @vitest-environment jsdom */
+// @vitest-environment happy-dom
 import { expect, it } from "vitest";
 import { projectSavedItems, type NormalizedSavedItem } from "../src/conversation-items";
 
@@ -24,11 +24,12 @@ it("does not join unknown, deleted, or differently owned facts", () => {
 it("keeps the rendered conversation container when the qualified row becomes saved", async () => {
   const { render, h } = await import("preact");
   const { ConversationItems } = await import("../../designs/console/screens/ConversationItems");
+  const { Message } = await import("../../designs/console/system/components");
   const host = document.createElement("div");
   const row = (source: NormalizedSavedItem) => ({ key: projectSavedItems([source]).items[0]!.key, source });
   const renderProjection = (source: NormalizedSavedItem) => {
     const item = row(source);
-    render(h(ConversationItems, { items: [item], sequence: [{ kind: "conversation", itemKey: item.key }], renderItem: () => h("span", { "data-body": "" }, source.kind === "text" ? source.text : "") }), host);
+    render(h(ConversationItems, { items: [item], sequence: [{ kind: "conversation", itemKey: item.key }], renderItem: () => h(Message, { bot: true, who: "Shellboy", text: source.kind === "text" ? source.text : "", copyLabel: "Copy", copiedLabel: "Copied" }) }), host);
   };
   renderProjection(live);
   const before = host.querySelector(".conversation-row");
@@ -36,5 +37,5 @@ it("keeps the rendered conversation container when the qualified row becomes sav
   const after = host.querySelector(".conversation-row");
   expect(before).not.toBeNull();
   expect(after).toBe(before);
-  expect(after?.querySelector("[data-body]")?.textContent).toBe("saved");
+  expect(after?.textContent).toContain("saved");
 });
