@@ -85,6 +85,7 @@ export class FakeOwnerDb {
   threads: Record<string, ReturnType<typeof summary>> = {};
   details: Record<string, ReturnType<typeof details>> = {};
   history: Record<string, Record<string, unknown>[]> = {};
+  historyRevisions: Record<string, number> = {};
   expiredCursors = new Set<string>();
   shells: Record<string, Record<string, unknown>[]> = {};
   work: Record<string, Record<string, unknown>[]> = {};
@@ -143,16 +144,18 @@ export class FakeOwnerDb {
       case "thread.get":
         return this.details[a.thread_id!] ? { ok: true, result: this.details[a.thread_id!] } : { ok: false, code: "not_found" };
       case "history.window": {
-        const args = c.args as { thread_id: string; before?: number; after?: number; ordinal?: number; expect_node_id?: string; revision?: string | number };
+        const args = c.args as { thread_id: string; before?: number; after?: number; ordinal?: number; node_id?: string; expect_node_id?: string; revision?: number };
         const all = this.history[args.thread_id] ?? [];
         const total = all.length;
-        let first = args.ordinal ?? Math.max(0, total - 1 - (args.before ?? 0));
-        let last = Math.min(total - 1, first + (args.before ?? 0) + (args.after ?? 0));
-        first = Math.max(0, first);
-        if (args.expect_node_id !== undefined && (all[first] as { node_id?: string } | undefined)?.node_id !== args.expect_node_id)
+        const nodeOrdinal = args.node_id === undefined ? undefined : all.findIndex(item => (item as {node_id?:string}).node_id === args.node_id);
+        if (nodeOrdinal === -1) return { ok: false, code: "path_changed" };
+        const anchor = args.ordinal ?? nodeOrdinal ?? Math.max(0, total - 1);
+        const selectedFirst = Math.max(0, anchor - (args.before ?? 0));
+        const last = Math.min(total - 1, anchor + (args.after ?? 0));
+        if (args.expect_node_id !== undefined && (all[anchor] as { node_id?: string } | undefined)?.node_id !== args.expect_node_id)
           return { ok: false, code: "path_changed" };
-        const items = all.slice(first, last + 1).map((item, index) => ({ ...item, selection: { ordinal: first + index } }));
-        return { ok: true, result: { thread_id: args.thread_id, revision: args.revision ?? "fixture-revision", total, items } };
+        const items = all.slice(selectedFirst, last + 1).map((item, index) => ({ ...item, selection: { ordinal: selectedFirst + index } }));
+        return { ok: true, result: { thread_id: args.thread_id, revision: this.historyRevisions[args.thread_id] ?? 1, total, items } };
       }
       case "shell.list":
         return { ok: true, result: { items: this.shells[a.thread_id!] ?? [] } };

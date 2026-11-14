@@ -1,3 +1,4 @@
+import { signal, type Signal } from "@preact/signals-core";
 // Local authority identity only: never decoded or reconstructed from wire fields.
 declare const acceptedCapabilityBrand: unique symbol;
 export type AcceptedCapability = Readonly<{ readonly [acceptedCapabilityBrand]: true }>;
@@ -25,27 +26,43 @@ export function makeAcceptedPublication<T extends { readonly displayPlan?: { rea
 /** Materialize bounded plain data before qualification; no getters survive staging. */
 function materialize<T>(value: T): T {
   let nodes = 0;
-  const seen = new Set<object>();
-  const copy = (v: unknown, depth: number): unknown => {
+  const active = new Set<object>();
+  const captured = new Map<object, { readonly value: unknown; readonly height: number }>();
+  const copy = (v: unknown, depth: number): { readonly value: unknown; readonly height: number } => {
     if (++nodes > 65536 || depth > 64) throw new Error("accepted view staging bound exceeded");
-    if (v !== null && typeof v === "object" && Object.isFrozen(v) && Object.keys(v).length === 0) return v;
+    if (v !== null && typeof v === "object" && Object.isFrozen(v) && Object.keys(v).length === 0) return { value: v, height: 0 };
     if (v === null || typeof v !== "object") {
       if (typeof v === "function" || typeof v === "symbol") throw new Error("accepted view requires plain data");
-      return v;
+      return { value: v, height: 0 };
     }
-    if (seen.has(v)) throw new Error("accepted view requires acyclic data");
+    if (active.has(v)) throw new Error("accepted view requires acyclic data");
+    const prior = captured.get(v);
+    if (prior) {
+      if (depth + prior.height > 64) throw new Error("accepted view staging bound exceeded");
+      return prior;
+    }
     if (!Array.isArray(v) && Object.getPrototypeOf(v) !== Object.prototype && Object.getPrototypeOf(v) !== null) throw new Error("accepted view requires plain data");
-    seen.add(v);
-    const result = Array.isArray(v) ? v.map(item => copy(item, depth + 1)) : Object.fromEntries(Object.keys(v).map(key => [key, copy((v as Record<string, unknown>)[key], depth + 1)]));
-    seen.delete(v);
-    return Object.freeze(result);
+    active.add(v);
+    let height = 0;
+    const child = (item: unknown): unknown => {
+      const result = copy(item, depth + 1);
+      height = Math.max(height, result.height + 1);
+      return result.value;
+    };
+    // One publication graph: rows/plan/group aliases share one immutable capture,
+    // rather than expanding the same subtree again for each presentation path.
+    const result = Array.isArray(v) ? v.map(child) : Object.fromEntries(Object.keys(v).map(key => [key, child((v as Record<string, unknown>)[key])]));
+    active.delete(v);
+    const snapshot = { value: Object.freeze(result), height };
+    captured.set(v, snapshot);
+    return snapshot;
   };
-  return copy(value, 0) as T;
+  return copy(value, 0).value as T;
 }
 
 /** One current reference, one staged replacement, one coalesced notification slot. */
 export class AcceptedView<T> {
-  private value: T;
+  private readonly value: Signal<T>;
   private epoch = 0;
   private ended = false;
   private acceptedEpoch = 0;
@@ -56,17 +73,17 @@ export class AcceptedView<T> {
   private pending = false;
   private scheduled = false;
   constructor(initial: T) {
-    this.value = materialize(initial);
+    this.value = signal(materialize(initial));
     const initialPlan = (initial as { readonly displayPlan?: { readonly capability?: AcceptedCapability } }).displayPlan;
     if (initialPlan?.capability) this.capability = initialPlan.capability;
   }
-  get current(): T { return this.value; }
-  peek(): T { return this.value; }
-  isCurrent(ref: T): boolean { return !this.ended && this.value === ref && this.epoch === this.acceptedEpoch; }
+  get current(): T { return this.value.value; }
+  peek(): T { return this.value.peek(); }
+  isCurrent(ref: T): boolean { return !this.ended && this.value.peek() === ref && this.epoch === this.acceptedEpoch; }
   get currentCapability(): AcceptedCapability { return this.capability; }
   private stage(value: T, capability: AcceptedCapability = this.capability): StagedView<T> {
     const handle = Object.freeze({}) as StagedView<T>;
-    const slot = { handle, expected: this.value, epoch: this.epoch, capability, value: undefined as T | undefined };
+    const slot = { handle, expected: this.value.peek(), epoch: this.epoch, capability, value: undefined as T | undefined };
     this.staged = slot;
     slot.value = materialize(value);
     return handle;
@@ -74,8 +91,8 @@ export class AcceptedView<T> {
   publish<S extends { readonly displayPlan?: { readonly capability?: unknown }; readonly generation?: unknown }>(publication: AcceptedPublication<S>, capability: AcceptedCapability = this.capability): boolean {
     if (publication.snapshot.displayPlan !== publication.plan || publication.plan.capability !== capability
       || typeof publication.snapshot.generation !== "number"
-      || typeof (this.value as { readonly generation?: unknown }).generation !== "number"
-      || publication.snapshot.generation <= (this.value as { readonly generation: number }).generation) return false;
+      || typeof (this.value.peek() as { readonly generation?: unknown }).generation !== "number"
+      || publication.snapshot.generation <= (this.value.peek() as { readonly generation: number }).generation) return false;
     const staged = this.stage(publication.snapshot as unknown as T, capability);
     return this.commit(staged);
   }
@@ -84,12 +101,12 @@ export class AcceptedView<T> {
     const slot = this.staged;
     if (!slot || slot.handle !== handle || slot.value === undefined || this.ended) return false;
     // Only private materialized fields are read between this check and the swap.
-    if (this.staged !== slot || this.capability !== slot.capability || this.epoch !== slot.epoch || this.value !== slot.expected || this.ended) return false;
+    if (this.staged !== slot || this.capability !== slot.capability || this.epoch !== slot.epoch || this.value.peek() !== slot.expected || this.ended) return false;
     this.staged = undefined;
-    this.value = slot.value;
     ++this.epoch;
     this.acceptedEpoch = this.epoch;
     this.pending = true;
+    this.value.value = slot.value;
     this.notify();
     return true;
   }
@@ -108,7 +125,7 @@ export class AcceptedView<T> {
       // One synchronous trailing generation; further reentry uses one microtask slot.
       for (let pass = 0; pass < 2 && this.pending && !this.ended; pass++) {
         this.pending = false;
-        const value = this.value, epoch = this.epoch;
+        const value = this.value.peek(), epoch = this.epoch;
         for (const listener of [...this.listeners]) {
           if (this.ended || this.epoch !== epoch) break;
           if (this.listeners.has(listener)) listener(value);

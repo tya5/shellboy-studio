@@ -22,6 +22,32 @@ async function rig(partial=false) {
  const answer=(turn='turn',claim=false)=>transport.ok(lookup.id,{items:[{kind:'attempt',id:'attempt',attempt_id:'attempt',thread_id:'t',turn_id:turn,state:'completed',response_nodes_truncated:false,response_nodes:[{node_id:'answer',ordinal:0,kind:'message'}]},...(claim?[{kind:'attempt',id:'other',attempt_id:'other',thread_id:'t',turn_id:'other-turn',state:'completed',response_nodes_truncated:false,response_nodes:[{node_id:'answer',ordinal:0,kind:'message'}]}]:[])]});
  return {data,transport,db,handle,window,node,answer};
 }
+it("installs the first successful tail read as bootstrap without declaring a rewrite", async () => {
+ const node:HistoryItem={node_id:"bootstrap-node",kind:"user_message",selection:{ordinal:0},items:[{kind:"text",item_identity:"bootstrap-body",text:"first read",text_complete:true}]};
+ const reads:{before?:number;after?:number}[]=[];
+ const window=new ConversationWindow({read:async args=>{reads.push({before:args.before,after:args.after});return {ok:true,value:{thread_id:"bootstrap-thread",revision:7,total:1,items:[node]}};}});
+ try {
+  await flush();
+  expect(reads).toEqual([{before:99,after:0}]);
+  expect(window.pathChanged.peek()).toBe(false);
+  expect(window.itemAt(0)).toBe(node);
+  expect(window.acceptedView.peek().revision).toBe(7);
+ } finally { window.dispose(); }
+});
+
+it("rejects an older reply after the cursor is established and verifies the current tail", async () => {
+ const node:HistoryItem={node_id:"stable-node",kind:"user_message",selection:{ordinal:0},items:[{kind:"text",item_identity:"stable-body",text:"stable",text_complete:true}]};
+ const replies=[7,6,7];const reads:Record<string,unknown>[]=[];
+ const window=new ConversationWindow({read:async args=>{reads.push(args);const revision=replies.shift()??7;return {ok:true,value:{thread_id:"established-thread",revision,total:1,items:[node]}};}});
+ try {
+  await flush();window.changed();await flush();
+  expect(reads.slice(0,3).map(args=>args.expect_node_id??"initial")).toEqual(["initial","stable-node","stable-node"]);
+  expect(window.acceptedView.peek().revision).toBe(7);
+  expect(window.itemAt(0)?.node_id).toBe("stable-node");
+  expect(window.pathChanged.peek()).toBe(false);
+ } finally { window.dispose(); }
+});
+
 it.each([false,true])('one synchronous current successor publishes both ownership choices, partial=%s',async partial=>{
  const r=await rig(partial);const original=r.handle.handoff.peek()[0]!;
  const expectedProjection = projectHistoryWindowItems({ revision: 7, nodes: [r.node], keyScope: [r.handle.handoffScope()] }).projection;

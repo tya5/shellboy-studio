@@ -1,4 +1,5 @@
 import type { TerminalPresence } from "./terminal-presence";
+import type { HandoffRecord } from "../../data/src/handoff";
 import type { HistoryItem, HistorySavedItem, HistoryItemsUnavailableReason, WorkItem, ToolDescriptor, ToolDetailAvailability, NotificationDescriptor } from "../../data/src/protocol";
 /** Internal normalized contract only. Not a Core wire type or a body adapter. */
 export type WorkCategory = "Tools" | "Reasoning" | "Notifications" | "Problems";
@@ -80,6 +81,27 @@ function preserveDisplayMetadata(from: NormalizedSavedItem, to: NormalizedSavedI
   if (facts && displayIdentity.get(from) === metadataIdentity(from) && metadataIdentity(from) === metadataIdentity(to)
     && facts.scopeKey === JSON.stringify(to.keyScope ?? [])) issueDisplayMetadata(to, facts);
 }
+export function retainUnretiredLiveFacts(snapshot: { readonly terminalPersistedAttempts?: readonly { readonly scope: string; readonly attemptId: string }[]; readonly retiredAttempts?: readonly { readonly scope: string; readonly attemptId: string; readonly turnId: string; readonly revision: number }[]; readonly revision?: number }, scope: string, current: boolean, facts: readonly NormalizedSavedItem[]): readonly NormalizedSavedItem[] {
+  if (!current) return facts;
+  facts = facts.filter(fact => !("domain" in fact && fact.attemptId && snapshot.terminalPersistedAttempts?.some(receipt => receipt.scope === scope && receipt.attemptId === fact.attemptId)));
+  return facts.filter(fact => !("domain" in fact && fact.attemptId && fact.turnId && snapshot.retiredAttempts?.some(retired => retired.scope === scope && retired.revision === snapshot.revision && retired.attemptId === fact.attemptId && retired.turnId === fact.turnId)));
+}
+
+/** Project only facts carried by the selected Thread's exact handoff records. */
+export function projectOwnedHandoffFacts(scope: string, records: readonly HandoffRecord[]): readonly NormalizedSavedItem[] {
+  return normalizeConversationFacts(records.map(record => {
+    const proof = record.proof;
+    const ready = record.status === "ready" && proof !== undefined && record.nodeId !== undefined && record.readyAttempt !== undefined
+      && record.readyAttempt.scope === scope && record.readyAttempt.attemptId === record.attemptId
+      && record.readyAttempt.turnId === proof.turnId && record.readyAttempt.revision === proof.revision
+      && record.readyAttempt.refs.some(ref => ref.nodeId === record.nodeId);
+    const previewAuthorized = record.bodyAuthority === "preview" && (record.status === "streaming" || record.status === "confirming");
+    return record.text && record.transferred !== true && (previewAuthorized || (record.status === "ready" && ready))
+      ? { domain: "live" as const, namespace: "handoff" as const, scope, recordId: record.key, attemptId: record.attemptId, kind: "text" as const, text: record.text, presentationContainer: record.presentationContainer, ...(record.readyAttempt ? { turnId: record.readyAttempt.turnId } : {}) }
+      : { domain: "live" as const, namespace: "handoff" as const, scope, recordId: record.key, attemptId: record.attemptId, kind: "unknown" as const };
+  }));
+}
+
 /** Scope only issuer-owned Work facts; saved/body facts must remain untouched. */
 export function scopeIssuedWorkFacts(items: readonly NormalizedSavedItem[], keyScope: readonly string[]): readonly NormalizedSavedItem[] | undefined {
   if (!keyScope.length || keyScope.some(part => typeof part !== "string" || !part.length)) return undefined;

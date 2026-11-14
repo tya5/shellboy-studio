@@ -207,6 +207,14 @@ export class Handoff {
     h.record = staged; this.publish();
     return staged;
   }
+  /** The staged object, capture and lifetime jointly own selected-read admission. */
+  isReadyReadCurrent(record: HandoffRecord, scope: string): boolean {
+    const held = this.held.find(item => item.record === record);
+    const capture = held?.attemptCapture;
+    return !!held && !held.transferring && !!capture && capture.staged === record
+      && capture.proof === record.readyAttempt && record.readyAttempt?.scope === scope
+      && capture.epoch === this.epochValue && capture.lifetime === this.lifetimeValue;
+  }
   transferAttempt(original: HandoffRecord, proof: AttemptReadyProof | TerminalPersistedProof, accept: (staged: HandoffRecord, release: (reason: 'return' | 'end') => void) => boolean): boolean {
     const h = this.held.find(h => h.attemptCapture?.original === original);
     const c = h?.attemptCapture;

@@ -8,11 +8,11 @@ import { ownSendPresentation } from "../../../ui-core/src/own-send-presentation"
 import { Disclosure } from "../system/components/Disclosure";
 import type { HandoffRecord } from "../../../data/src/handoff";
 import { senderFact } from "../../../data/src/sender";
-import { CANONICAL_CASES, scopeIssuedWorkFacts, type CanonicalCase, normalizeConversationFacts, projectHistoryWindowItems, projectSavedItems, withPresentationContainers, normalizeLiveWorkFacts, normalizeTerminalPresenceFacts, type NormalizedSavedItem } from "../../../ui-core/src/conversation-items";
+import { CANONICAL_CASES, scopeIssuedWorkFacts, type CanonicalCase, projectHistoryWindowItems, projectSavedItems, withPresentationContainers, normalizeLiveWorkFacts, normalizeTerminalPresenceFacts, projectOwnedHandoffFacts, retainUnretiredLiveFacts, type NormalizedSavedItem } from "../../../ui-core/src/conversation-items";
 import type { HistoryItem } from "../../../data/src/protocol";
 import { Markdown } from "../system/components/Message";
 import type { WindowAcceptedSnapshot } from "../../../ui-core/src/window";
-import type { ConversationDisplayPlan } from "../../../ui-core/src/conversation-display-plan";
+import { projectionFromDisplayPlan, type ConversationDisplayPlan } from "../../../ui-core/src/conversation-display-plan";
 import type { ComponentChildren } from "preact";
 import type { SavedItemProjection } from "../../../ui-core/src/conversation-items";
 import { ConversationItems, type ConversationItem, type ConversationToolSummary, type ConversationWorkGroup } from "./ConversationItems";
@@ -85,15 +85,13 @@ function assistantTextMembership(item: ConversationItem): AssistantTextMembershi
   return source.textComplete===true?"empty-saved":"content-unavailable";
 }
 
-export function SavedConversationItems({ model, projection, displayPlan, renderBefore, trailing, nodes,localRegion }: { model: AppModel; projection: SavedItemProjection & { sequence?: readonly ({kind: "conversation"; itemKey: string} | {kind: "work"; groupKey: string})[]; workGroups?: readonly ConversationWorkGroup[] }; displayPlan?: ConversationDisplayPlan; nodes?: readonly HistoryItem[]; renderBefore?: (item: ConversationItem) => ComponentChildren; trailing?: ComponentChildren;localRegion?: { readonly kind: "qualified"; readonly slots: readonly {position:OwnSendSlotPosition;content:ComponentChildren}[] } | { readonly kind: "unqualified"; readonly content: ComponentChildren; readonly afterIndex?: number; readonly beforeIndex?: number } }) {
+export function SavedConversationItems({ model, projection: suppliedProjection, displayPlan, renderBefore, trailing, nodes,localRegion }: { model: AppModel; projection: SavedItemProjection & { sequence?: readonly ({kind: "conversation"; itemKey: string} | {kind: "work"; groupKey: string})[]; workGroups?: readonly ConversationWorkGroup[] }; displayPlan?: ConversationDisplayPlan; nodes?: readonly HistoryItem[]; renderBefore?: (item: ConversationItem) => ComponentChildren; trailing?: ComponentChildren;localRegion?: { readonly kind: "qualified"; readonly slots: readonly {position:OwnSendSlotPosition;content:ComponentChildren}[] } | { readonly kind: "unqualified"; readonly content: ComponentChildren; readonly afterIndex?: number; readonly beforeIndex?: number } }) {
+  const projection = displayPlan ? projectionFromDisplayPlan(displayPlan) : suppliedProjection;
   const planEntries = displayPlan?.entries ?? [];
   const planByKey = new Map(planEntries.map(entry => [entry.item.key, entry]));
-  const exactItems = !!displayPlan && displayPlan.coverage === "complete" && planEntries.length === projection.items.length
-    && projection.items.every((item, index) => planEntries[index]?.item.key === item.key
-      && JSON.stringify(planEntries[index]?.item) === JSON.stringify(item));
-  const exactOrder = !!displayPlan && JSON.stringify(displayPlan.sequence) === JSON.stringify(projection.sequence ?? [])
-    && JSON.stringify(displayPlan.workGroups) === JSON.stringify(projection.workGroups ?? []);
-  const planCurrent = exactItems && exactOrder && !!displayPlan;
+  // Coverage describes the whole assistant/work cut, not authority for each independently
+  // typed human item. Require an exact entry for every projected item, then gate bodies per entry.
+  const planCurrent = !!displayPlan;
   const planItems = planCurrent ? projection.items.map(item => { const entry = planByKey.get(item.key)!; return entry.presentationContainer ? { ...item, presentationContainer: entry.presentationContainer } : item; }) : [];
   const membership=new Map(projection.items.map(item=>{ const body=planByKey.get(item.key)?.body; return [item.key, !planCurrent || body?.kind === "unavailable" ? "content-unavailable" : assistantTextMembership(item)] as const; }));
   const t = model.t.value;
@@ -248,31 +246,9 @@ export function LiveRecordChrome({ model, record }: { model: AppModel; record: H
   </div>;
 }
 
-/** Only records read from the current owned ledger may enter this adapter. */
-export function projectOwnedHandoffFacts(scope: string, records: readonly HandoffRecord[]): readonly NormalizedSavedItem[] {
-  return normalizeConversationFacts(records.map(record => {
-    const proof = record.proof;
-    const ready = record.status === "ready" && proof !== undefined && record.nodeId !== undefined && record.readyAttempt !== undefined
-      && record.readyAttempt.scope === scope && record.readyAttempt.attemptId === record.attemptId
-      && record.readyAttempt.turnId === proof.turnId && record.readyAttempt.revision === proof.revision
-      && record.readyAttempt.refs.some(ref => ref.nodeId === record.nodeId);
-    const previewAuthorized = record.bodyAuthority === "preview" && (record.status === "streaming" || record.status === "confirming");
-    return record.text && record.transferred !== true && (previewAuthorized || (record.status === "ready" && ready))
-      ? {domain: "live", namespace: "handoff", scope, recordId: record.key, attemptId: record.attemptId, kind: "text", text: record.text, presentationContainer: record.presentationContainer}
-      : {domain: "live", namespace: "handoff", scope, recordId: record.key, attemptId: record.attemptId, kind: "unknown"};
-  }));
-}
-
-export function retainUnretiredLiveFacts(snapshot: WindowAcceptedSnapshot, scope: string, current: boolean, facts: readonly NormalizedSavedItem[]): readonly NormalizedSavedItem[] {
-  if (!current) return facts;
-  facts = facts.filter(fact => !("domain" in fact && fact.attemptId && snapshot.terminalPersistedAttempts?.some(proof => proof.scope === scope && proof.attemptId === fact.attemptId)));
-  return facts.filter(fact => !("domain" in fact && fact.attemptId && fact.turnId && snapshot.retiredAttempts?.some(retired => retired.scope === scope && retired.revision === snapshot.revision && retired.attemptId === fact.attemptId && retired.turnId === fact.turnId)));
-}
-
-function OwnSendContent<Ref>({model,projection,nodes,scope,acceptedRef,current,isCurrent,trailing,path,hiddenItemKeys=new Set<string>()}:{model:AppModel;projection:SavedItemProjection;nodes?:readonly HistoryItem[];scope:string;acceptedRef:Ref|undefined;current:boolean;isCurrent:()=>boolean;trailing?:ComponentChildren;path?:OwnSendPath;hiddenItemKeys?:ReadonlySet<string>}) {
+function OwnSendContent<Ref>({model,projection,nodes,scope,acceptedRef,current,isCurrent,trailing,path,hiddenItemKeys=new Set<string>()}: {model:AppModel;projection:SavedItemProjection;nodes?:readonly HistoryItem[];scope:string;acceptedRef:Ref|undefined;current:boolean;isCurrent:()=>boolean;trailing?:ComponentChildren;path?:OwnSendPath;hiddenItemKeys?:ReadonlySet<string>}) {
   const rows=model.ownMutationRows(scope);
   const decision=useMemo(()=>ownSendPresentation({ref:acceptedRef,current,scope,projection,localRows:rows,hiddenItemKeys,canonicalRows:nodes,path,nodeOrdinals:new Map((nodes??[]).flatMap(node=>node.node_id&&node.selection?.ordinal!==undefined?[[node.node_id,node.selection.ordinal] as const]:[])),reservation:model.ownSendReservation() as import("../../../ui-core/src/own-send-region").OwnSendReservation<Ref>|undefined,validateCurrent:isCurrent,cohortVersion:{accepted:model.acceptedOwnMessages.peek(),pending:model.pendingOwnMessage.peek()}}),[acceptedRef,current,scope,model.acceptedOwnMessages.value,model.pendingOwnMessage.value,projection]);
-  useLayoutEffect(()=>{if (acceptedRef && typeof acceptedRef === "object") model.admitOwnPresentation(decision, decision.projection, acceptedRef as unknown as WindowAcceptedSnapshot);},[decision, acceptedRef]);
   const renderLocal=(messages:readonly import("../../../ui-core/src/model").PendingOwnMessage[])=> <>{messages.map(message=><div key={message.operationId} data-own-presentation="" data-own-placement={decision.placement.kind} data-own-order-conflict={decision.conflictIds.length?decision.conflictIds.join(","):undefined}>
     {decision.localRows.length&&decision.placement.kind==="unqualified"?<div role="status" data-own-placement-reason={decision.placement.reason}>{model.t.value("composer.pending.placementUnqualified")}: {decision.placement.reason}</div>:null}{decision.conflictIds.length?<div role="status" class="caption muted" data-own-order-problem="">{model.t.value("composer.pending.orderConflict")} {decision.conflictIds.join(", ")}</div>:null}
     <aside data-pending-own-message={message.operationId} data-pending-phase={message.phase}><Message bot={false} who={model.t.value("convo.you")} text={message.text} at={model.t.value(`composer.pending.${message.phase}`)} copyLabel={model.t.value("code.copy")} copiedLabel={model.t.value("code.copied")}/>

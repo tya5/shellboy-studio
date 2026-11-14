@@ -54,3 +54,18 @@ it('eight readable canonical-owner slots do not admit a hidden ninth preview or 
  expect(h.records.value).toHaveLength(8);expect(h.retainedBytes).toBe(before);expect(h.overflow.value).toBe(true);
  expect(before).toBe(new TextEncoder().encode('\u6e2c\u5b9a\u{1f600}').byteLength*8);
 });
+
+
+it('selected-ready admission accepts only the exact current staged record', () => {
+ const {h,original,proof}=rig(); const staged=h.stageAttempt(original,proof)!;
+ expect(h.isReadyReadCurrent(staged,proof.scope)).toBe(true);
+ expect(h.isReadyReadCurrent({...staged},proof.scope)).toBe(false);
+ expect(h.isReadyReadCurrent(original,proof.scope)).toBe(false);
+ expect(h.isReadyReadCurrent(staged,'foreign')).toBe(false);
+});
+it.each(['invalidate','reconcile','discard','replace'] as const)('selected-ready admission cannot revive after %s', mode => {
+ const {h,original,proof}=rig(); const staged=h.stageAttempt(original,proof)!;
+ if(mode==='invalidate')h.invalidate(); else if(mode==='reconcile')h.reconcile();
+ else if(mode==='discard')h.discard('ended'); else h.stageAttempt(staged,{...proof});
+ expect(h.isReadyReadCurrent(staged,proof.scope)).toBe(false);
+});

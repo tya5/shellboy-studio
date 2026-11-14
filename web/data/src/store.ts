@@ -1,5 +1,5 @@
 import type { DisplayAssociation, DisplayTarget, DisplayObservation } from './handoff';
-import { TerminalReadSlots, type SelectedCanonicalRequest, type OwnedTerminalReadLease, type TicketOutcome } from "./terminal-read";
+import { TerminalReadSlots, type SelectedReadAdmission, type SelectedCanonicalRequest, type OwnedTerminalReadLease, type TicketOutcome } from "./terminal-read";
 import type { TerminalPersistedProof } from "./handoff";
 import { Handoff, type HandoffRecord } from "./handoff";
 // The view-model: signals holding saved facts re-read through the proxy, never invented.
@@ -101,8 +101,10 @@ export interface ThreadHandle extends Handle {
   captureDetail(): ThreadDetailObservation | undefined;
   bindDisplayOwner(capture: () => DisplayTarget | undefined): () => void;
   isDisplayOwnershipCurrent(record: HandoffRecord, generation: number): boolean;
-  requestTerminalRead(qualification: ThreadReadQualification, receipt: TerminalPersistedProof, request: SelectedCanonicalRequest): OwnedTerminalReadLease | TicketOutcome;
-  replaceTerminalRead(qualification: ThreadReadQualification, receipt: TerminalPersistedProof, request: SelectedCanonicalRequest): OwnedTerminalReadLease | TicketOutcome;
+  requestTerminalRead(qualification: ThreadReadQualification, admission: SelectedReadAdmission, request: SelectedCanonicalRequest): OwnedTerminalReadLease | TicketOutcome;
+  replaceTerminalRead(qualification: ThreadReadQualification, admission: SelectedReadAdmission, request: SelectedCanonicalRequest): OwnedTerminalReadLease | TicketOutcome;
+  transferReadyRead(qualification: ThreadReadQualification, record: HandoffRecord, lease: OwnedTerminalReadLease,
+    accept: (record: HandoffRecord, release: (reason: "return" | "end") => void) => boolean): boolean;
   readonly handoffRetryState: ReadonlySignal<HandoffRetryState>;
   readonly attemptPresentations: ReadonlySignal<readonly AttemptPresentation[]>;
   captureReadQualification(): ThreadReadQualification | undefined;
@@ -378,6 +380,14 @@ export class ShellboyData {
     // One private slot per handle; tokens contain no authority fields or callbacks.
     let qualification: { token: ThreadReadQualification; epoch: number; liveEpoch: number; cancel: Cancel } | undefined;
     const readable = () => !closed && !e.closed && !e.paused && !e.cancel.cancelled && this.entries.get(threadId) === e && this.canRead();
+    const selectedReadValid = (token: ThreadReadQualification, admission: SelectedReadAdmission) => {
+      if (!qualification || token !== qualification.token || !readable()
+        || qualification.epoch !== this.readQualificationEpoch || qualification.liveEpoch !== e.live.epoch
+        || qualification.cancel !== e.cancel || !this.capabilities.peek().includes(CAPABILITY_HISTORY_WINDOW)) return false;
+      const scope = this.handoffScope(e);
+      return admission.kind === "ready" ? admission.scope === scope && e.live.isReadyReadCurrent(admission.record, scope)
+        : admission.receipt.scope === scope && JSON.stringify(e.terminalReceipts.get(admission.receipt.attemptId)) === JSON.stringify(admission.receipt);
+    };
     return {
       handoffRetryState: computed(() => {
         const state = e.handoffRetryState.value;
@@ -437,27 +447,29 @@ export class ShellboyData {
         e.live.reconcile();
         return this.refresher.request(`history:${e.id}`);
       },
-      requestTerminalRead: (token, receipt, request) => {
-        const valid = () => !closed && !e.closed && !e.paused && !!qualification && token === qualification.token
-          && qualification.epoch === this.readQualificationEpoch && qualification.liveEpoch === e.live.epoch && qualification.cancel === e.cancel && !e.cancel.cancelled
-          && receipt.scope === this.handoffScope(e) && this.canRead();
+      requestTerminalRead: (token, admission, request) => {
+        const valid = () => selectedReadValid(token, admission);
         if (!this.capabilities.peek().includes(CAPABILITY_HISTORY_WINDOW)) return { phase: "unavailable", reason: "unsupported" };
-        const ownedReceipt = e.terminalReceipts.get(receipt.attemptId);
-        if (!valid() || !ownedReceipt || JSON.stringify(ownedReceipt) !== JSON.stringify(receipt) || request.args.thread_id !== e.id) return { phase: "unavailable", reason: "cancelled" };
-        const result = e.terminalReads.request(ownedReceipt, request, valid, e.cancel);
+        if (!valid() || request.args.thread_id !== e.id) return { phase: "unavailable", reason: "cancelled" };
+        const result = e.terminalReads.request(admission.kind === "persisted" ? { kind: "persisted", receipt: e.terminalReceipts.get(admission.receipt.attemptId)! } : admission, request, valid, e.cancel);
         if (e.resolving) e.resolveAgain = true;
         void this.resolveHandoff(e);
         return result;
       },
-      replaceTerminalRead: (token, receipt, request) => {
-        const valid = () => !closed && !e.closed && !e.paused && !!qualification && token === qualification.token
-          && qualification.epoch === this.readQualificationEpoch && qualification.liveEpoch === e.live.epoch && qualification.cancel === e.cancel && !e.cancel.cancelled
-          && receipt.scope === this.handoffScope(e) && this.canRead();
-        const ownedReceipt = e.terminalReceipts.get(receipt.attemptId);
-        if (!valid() || !ownedReceipt || JSON.stringify(ownedReceipt) !== JSON.stringify(receipt) || request.args.thread_id !== e.id) return { phase: "unavailable", reason: "cancelled" };
-        // The active resolver observes the queued replacement after its current dispatch;
-        // do not recursively re-enter it from this transition.
-        return e.terminalReads.replace(ownedReceipt, request, valid, e.cancel);
+      replaceTerminalRead: (token, admission, request) => {
+        const valid = () => selectedReadValid(token, admission);
+        if (!valid() || request.args.thread_id !== e.id) return { phase: "unavailable", reason: "cancelled" };
+        return e.terminalReads.replace(admission.kind === "persisted" ? { kind: "persisted", receipt: e.terminalReceipts.get(admission.receipt.attemptId)! } : admission, request, valid, e.cancel);
+      },
+      transferReadyRead: (token, record, lease, accept) => {
+        const admission = lease.ticket.admission, state = lease.state.peek();
+        if (admission.kind !== "ready" || admission.record !== record || !selectedReadValid(token, admission)
+          || !e.terminalReads.isCurrent(lease) || state.phase !== "settled" || !state.result.ok
+          || state.result.value.thread_id !== e.id || !record.readyAttempt) return false;
+        const value = state.result.value;
+        const proof = { ...record.readyAttempt, revision: value.revision, total: value.total, nodes: value.items };
+        if (!e.live.stageAttempt(record, proof)) return false;
+        return e.live.transferAttempt(record, proof, accept);
       },
       handoffScope: () => this.handoffScope(e),
       transferHandoff: (id, accept) => { if (closed || e.closed || e.paused) return false; return e.live.transfer(id, accept); },

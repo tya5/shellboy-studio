@@ -31,7 +31,7 @@ async function rig(windowCap = true) {
     }
     return original(call);
   };
-  const live = () => { t.push({ t: "live", thread_id: "a", attempt_id: "attempt", gap: false, deltas: [{ offset: 0, reasoning: false, text: "" }] }); frames.splice(0).forEach(f => f()); };
+  const live = (text = "") => { t.push({ t: "live", thread_id: "a", attempt_id: "attempt", gap: false, deltas: [{ offset: 0, reasoning: false, text }] }); frames.splice(0).forEach(f => f()); };
   const end = () => t.push({ t: "live_end", thread_id: "a" });
   return { t, db, data, h, state, live, end, pump: () => settle(t, db) };
 }
@@ -171,11 +171,11 @@ it("terminal slot successor dispatches one explicit whole-window request after a
   const calls: unknown[] = [];
   const valid = () => true;
   const point = { id: "point" as never, args: { thread_id: "thread", node_id: "answer", before: 0, after: 199, items: true } };
-  const first = slots.request(receipt, point, valid, parent);
+  const first = slots.request({ kind: "persisted", receipt }, point, valid, parent);
   expect("state" in first).toBe(true);
   await slots.dispatch(() => true, async args => { calls.push(args); return { ok: true, value: { thread_id: "thread", revision: 7, total: 2, items: [baseNodes[1]!] } }; }, false);
   const whole = { id: "whole" as never, args: { thread_id: "thread", before: 199, after: 0, items: true } };
-  const replacement = slots.replace(receipt, whole, valid, parent);
+  const replacement = slots.replace({ kind: "persisted", receipt }, whole, valid, parent);
   expect("state" in replacement).toBe(true);
   await slots.dispatch(() => true, async args => { calls.push(args); return { ok: true, value: { thread_id: "thread", revision: 8, total: 2, items: baseNodes } }; }, false);
   expect(calls).toEqual([point.args, whole.args]);
@@ -244,4 +244,71 @@ it("scoped ownership does not attach an unrelated saved assistant to one preview
   const fact = assistantOwnership(association, "record", rows, 8);
   expect(fact?.itemKeys).toEqual([JSON.stringify(["owned", "owned:text"])]);
   expect(fact?.itemKeys).not.toContain(JSON.stringify(["unrelated", "other:text"]));
+});
+
+
+async function readyTarget(total = 2) {
+ const r=await rig();
+ const w=new ConversationWindow({read:async()=>({ok:true,value:{thread_id:'a',revision:6,total:1,items:[baseNodes[0]!]}})});
+ await flush(); w.bindTerminalHandle(r.h);
+ if(total!==2){const answer=r.db.answer.bind(r.db);r.db.answer=call=>call.command==='history.window'
+   ?{ok:true,result:{thread_id:'a',revision:7,total,items:structuredClone(baseNodes)}}:answer(call);}
+ r.live('whole live preview'); r.end(); await r.pump();
+ const record=r.h.handoff.peek()[0]!; expect(record.readyAttempt).toBeDefined();
+ return {...r,w,record};
+}
+it('actual ready admission reads accepted range plus exact refs and atomically retires preview',async()=>{
+ const r=await readyTarget(), before=r.w.acceptedView.peek();
+ const lease=r.w.prepareBoundReadyRead(r.record); expect('state' in lease).toBe(true);
+ expect(r.w.acceptedView.peek()).toBe(before); expect(r.h.handoff.peek()[0]?.text).toBe('whole live preview');
+ await r.pump();
+ expect(r.w.acceptedView.peek().rows.map(row=>row.node_id)).toEqual(['tool','answer']);
+ expect(r.w.acceptedView.peek().revision).toBe(7); expect(r.h.handoff.peek()).toHaveLength(0);
+ expect(r.w.acceptedView.peek().retiredAttempts?.[0]?.attemptId).toBe('attempt');
+ r.w.dispose();r.data.stop();
+});
+it.each(['gap','revoke','cancel','dispose'] as const)('actual ready successor %s retains accepted rows and cannot blend old prefix',async mode=>{
+ const r=await readyTarget(), before=r.w.acceptedView.peek();
+ const lease=r.w.prepareBoundReadyRead(r.record); expect('state' in lease).toBe(true);
+ if(mode==='gap') {const answer=r.db.answer.bind(r.db);r.db.answer=call=>call.command==='history.window'?{ok:true,result:{thread_id:'a',revision:7,total:2,items:[baseNodes[1]!]}}:answer(call);}
+ else if(mode==='revoke')r.w.acceptedView.revoke(); else if(mode==='cancel')r.h.cancelReads(); else r.w.dispose();
+ await r.pump();
+ expect(r.w.acceptedView.peek().rows).toEqual(before.rows);
+ expect(r.w.acceptedView.peek().rows.some(row=>row.node_id==='answer')).toBe(false);
+ expect(r.h.handoff.peek()[0]?.text).toBe('whole live preview');
+ r.w.dispose();r.data.stop();
+});
+it('Store rejects copied ready record and foreign qualification before dispatch',async()=>{
+ const r=await readyTarget(), token=r.h.captureReadQualification()!;
+ const request={id:'ready-negative' as import('../../data/src/terminal-read').SelectedRequestId,args:{thread_id:'a',node_id:'answer',before:1,after:0,items:true}};
+ expect(r.h.requestTerminalRead(token,{kind:'ready',record:{...r.record},scope:r.h.handoffScope()},request)).toEqual({phase:'unavailable',reason:'cancelled'});
+ const foreign=r.data.openThread('a'), other=foreign.captureReadQualification()!;
+ expect(r.h.requestTerminalRead(other,{kind:'ready',record:r.record,scope:r.h.handoffScope()},request)).toEqual({phase:'unavailable',reason:'cancelled'});
+ foreign.close(); r.w.dispose();r.data.stop();
+});
+
+
+it('actual ready bounded selected coverage need not read the entire Thread total',async()=>{
+ const r=await readyTarget(1000);const reads=r.t.calls('history.window').length;
+ r.w.prepareBoundReadyRead(r.record);await r.pump();
+ const selected=r.t.calls('history.window').slice(reads);
+ expect(selected).toHaveLength(1);expect(selected[0]!.args).toMatchObject({node_id:'answer',before:1,after:0,items:true});
+ expect(r.w.acceptedView.peek().total).toBe(1000);
+ expect(r.w.acceptedView.peek().rows.map(row=>row.node_id)).toEqual(['tool','answer']);
+ expect(r.h.handoff.peek()).toHaveLength(0);r.w.dispose();r.data.stop();
+});
+
+
+it.each([{node_id:'answer',before:1,after:0},{ordinal:1,before:1,after:0},
+ {ordinal:1,expect_node_id:'answer',before:1,after:0},{before:1,after:0}])('shared fake owner applies before/after around the public anchor %#',args=>{
+ const db=new FakeOwnerDb();db.history.a=structuredClone(baseNodes);
+ const reply=db.answer({t:'call',id:1,command:'history.window',args:{thread_id:'a',items:true,...args}});
+ expect(reply).toMatchObject({ok:true,result:{revision:1,total:2,items:baseNodes}});
+});
+it('actual ready lease survives layout generation without a second selected read',async()=>{
+ const r=await readyTarget();const start=r.t.calls('history.window').length;
+ const lease=r.w.prepareBoundReadyRead(r.record);expect('state' in lease).toBe(true);
+ r.w.layoutChanged();expect(r.w.prepareBoundReadyRead(r.record)).toBe(lease);await r.pump();
+ expect(r.t.calls('history.window').slice(start)).toHaveLength(1);expect(r.h.handoff.peek()).toHaveLength(0);
+ r.w.dispose();r.data.stop();
 });

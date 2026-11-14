@@ -1,4 +1,8 @@
 import { expect, it } from "vitest";
+import { createConversationDisplayPlan } from "../src/conversation-display-plan";
+import { projectHistoryWindowItems } from "../src/conversation-items";
+import { WINDOW_NODES, WINDOWS_HELD, type WindowAcceptedSnapshot } from "../src/window";
+import type { HistoryItem } from "../../data/src/protocol";
 import { AcceptedView, makeAcceptedPublication } from "../src/accepted-view";
 
 type Page = { generation: number; revision: number; displayPlan: { acceptedGeneration: number; revision: number; capability: object; entries: readonly unknown[] }; total: number; range: { first: number; last: number }; rows: { nodeId: string }[] };
@@ -81,4 +85,65 @@ it("rejects duplicate and delayed old publications after a newer accepted genera
   expect(view.publish(publication)).toBe(false);
   expect(view.publish(old)).toBe(false);
   expect(view.current.revision).toBe(3); expect(view.current).not.toBe(newer);
+});
+
+
+it("captures shared publication subgraphs once without retaining caller-owned data", () => {
+  const shared = { items: Array.from({ length: 2000 }, (_, i) => ({ id: i, text: `item-${i}` })) };
+  const view = new AcceptedView({ ...page(0), graph: [shared] });
+  const candidate = { ...page(1, view.currentCapability), graph: Array.from({ length: 20 }, () => shared) };
+  expect(view.publish(makeAcceptedPublication(candidate, "read"))).toBe(true);
+  const captured = view.current.graph[0]!;
+  expect(captured).not.toBe(shared);expect(view.current.graph.every(node => node === captured)).toBe(true);
+  shared.items[0]!.text = "caller mutation";
+  expect(captured.items[0]!.text).toBe("item-0");expect(Object.isFrozen(captured.items[0])).toBe(true);
+});
+it("shared capture reads each getter once before qualification", () => {
+  let reads = 0;
+  const shared = { get body() { reads++; return "captured"; } };
+  const graph: { readonly body: string }[] = [];
+  const view = new AcceptedView({ ...page(0), graph });
+  expect(view.publish(makeAcceptedPublication({ ...page(1, view.currentCapability), graph: [shared, shared] }, "read"))).toBe(true);
+  expect(reads).toBe(1);expect(view.current.graph[0]).toBe(view.current.graph[1]);
+});
+it("keeps the original node budget for a genuinely large unique graph", () => {
+  const view = new AcceptedView({ ...page(0), graph: [{ value: "initial" }] });
+  const ref = view.current;
+  const candidate = { ...page(1, view.currentCapability), graph: Array.from({ length: 40000 }, () => ({ value: "unique" })) };
+  expect(() => view.publish(makeAcceptedPublication(candidate, "read"))).toThrow("staging bound exceeded");
+  expect(view.current).toBe(ref);
+});
+it("cached aliases cannot bypass the original maximum path depth", () => {
+  interface Branch { next?: Branch }
+  const chain = (length: number, tail: Branch = {}): Branch => {
+    let node = tail; for (let i = 0; i < length; i++) node = { next: node }; return node;
+  };
+  const shallow = chain(40);
+  const view = new AcceptedView({ ...page(0), graph: { shallow: {}, deep: {} } });
+  const candidate = { ...page(1, view.currentCapability), graph: { shallow, deep: chain(30, shallow) } };
+  expect(() => view.publish(makeAcceptedPublication(candidate, "read"))).toThrow("staging bound exceeded");
+  expect(view.current.revision).toBe(0);
+});
+
+
+it("stages the legal maximum selected range as one shared immutable publication graph", () => {
+  const rows: HistoryItem[] = Array.from({ length: WINDOW_NODES * WINDOWS_HELD }, (_, ordinal) => ({
+    node_id: `selected-${ordinal}`, kind: "assistant_response", selection: { ordinal },
+    items: [{ kind: "text", item_identity: "text", text: `complete-${ordinal}`, text_complete: true }],
+  }));
+  const initial: WindowAcceptedSnapshot = { generation: 0, epoch: 0, disposed: false, rows: [],
+    range: undefined, total: 0, revision: undefined, pending: true };
+  const view = new AcceptedView(initial);
+  const projection = projectHistoryWindowItems({ revision: 1, nodes: rows, keyScope: ["scope"] }).projection;
+  const plan = createConversationDisplayPlan({ generation: 1, revision: 1, capability: view.currentCapability,
+    rows, canonicalProjection: projection, projection, assistantFacts: [], scope: "scope",
+    userDecision: { cohortVersion: { accepted: [] } }, retiredAttempts: [] });
+  const candidate: WindowAcceptedSnapshot = { ...initial, generation: 1, revision: 1, pending: false,
+    rows, range: { first: 0, last: rows.length - 1 }, total: rows.length, displayPlan: plan };
+  expect(view.publish(makeAcceptedPublication(candidate, "read"))).toBe(true);
+  expect(view.current.rows).toHaveLength(WINDOW_NODES * WINDOWS_HELD);
+  const entries = view.current.displayPlan!.entries;
+  expect(entries).toHaveLength(rows.length);expect(entries[0]!.lifetime).toBe(entries[1]!.lifetime);
+  expect(entries[0]!.body).toMatchObject({ kind: "typed-canonical", text: "complete-0" });
+  expect(entries.at(-1)!.body).toMatchObject({ kind: "typed-canonical", text: `complete-${rows.length - 1}` });
 });

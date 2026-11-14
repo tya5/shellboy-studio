@@ -29,6 +29,7 @@ export interface ConversationDisplayPlan {
   readonly entries: readonly ConversationDisplayPlanEntry[];
   readonly sequence: readonly ConversationSequence[];
   readonly workGroups: readonly WorkGroup[];
+  readonly partitionUnknownKeys: readonly string[];
   readonly cohortKey: string;
   readonly cohortVersion: DisplayCohortVersion;
   readonly scope: string;
@@ -88,9 +89,28 @@ export function createConversationDisplayPlan(input: AcceptedPublicationInput): 
   const semanticKey = displaySemanticKey(input.canonicalProjection, input.projection, qualifiedFacts, input.retiredAttempts);
   const version = input.userDecision.cohortVersion;
   const cohortKey = [...version.accepted.map(row => `${row.operationId}:${row.phase}:${row.messageId ?? ''}`), version.pending ? `pending:${version.pending.operationId}:${version.pending.phase}` : 'pending:none'].join('|');
+  const canonicalItems = new Map(input.canonicalProjection.items.map(item => [item.key, item]));
+  const lifetimes = new Map<DisplayLifetime["kind"], DisplayLifetime>();
+  const unavailableBodies = new Map<string, DisplayBodySource>();
+  const unavailable = (reason: string): DisplayBodySource => {
+    let body = unavailableBodies.get(reason);
+    if (!body) {
+      body = Object.freeze({ kind: 'unavailable', reason, generation, revision });
+      unavailableBodies.set(reason, body);
+    }
+    return body;
+  };
+  const lifetimeFor = (kind: DisplayLifetime["kind"]): DisplayLifetime => {
+    let lifetime = lifetimes.get(kind);
+    if (!lifetime) {
+      lifetime = Object.freeze({ kind, scope: input.scope, generation, revision });
+      lifetimes.set(kind, lifetime);
+    }
+    return lifetime;
+  };
   const entries = input.projection.items.map(item => {
     const source = item.source;
-    const canonical = input.canonicalProjection.items.find(candidate => candidate.key === item.key);
+    const canonical = canonicalItems.get(item.key);
     const canonicalSource = canonical?.source;
     const owner = owners.get(item.key);
     const host = ('domain' in source ? (source as LiveWorkIdentity).presentationContainer : undefined) ?? (owner?.containerKey as string | undefined);
@@ -100,10 +120,47 @@ export function createConversationDisplayPlan(input: AcceptedPublicationInput): 
       ? { kind: 'typed-canonical', text: source.text, generation, revision, capability: input.capability }
       : source.kind === 'text' && (owner?.mode === 'preview' || !!host)
         ? { kind: 'preview', text: source.text, generation, revision }
-        : { kind: 'unavailable', reason: source.kind, generation, revision };
+        : unavailable(source.kind);
     const retired = 'domain' in source && !!source.attemptId && input.retiredAttempts.some(item => item.scope === input.scope && item.attemptId === source.attemptId && item.revision === revision);
-    const lifetime: DisplayLifetime = Object.freeze({ kind: retired ? 'revoked' : human && !owner ? 'canonical-human' : owner || host ? 'valid-owner' : 'retained', scope: input.scope, generation, revision });
+    const lifetime = lifetimeFor(retired ? 'revoked' : human && !owner ? 'canonical-human' : owner || host ? 'valid-owner' : 'retained');
     return Object.freeze({ item, ...(host ? { presentationContainer: host } : {}), body, lifetime });
   });
-  return Object.freeze({ acceptedGeneration: generation, revision, capability: input.capability, coverage: "complete" as const, sequence: Object.freeze([...(input.projection.sequence ?? [])]), workGroups: Object.freeze([...(input.projection.workGroups ?? [])]), entries: Object.freeze(entries), cohortKey, cohortVersion: version, scope: input.scope, semanticKey });
+  return Object.freeze({ acceptedGeneration: generation, revision, capability: input.capability, coverage: "complete" as const, sequence: Object.freeze([...(input.projection.sequence ?? [])]), workGroups: Object.freeze([...(input.projection.workGroups ?? [])]), partitionUnknownKeys: Object.freeze([...input.projection.partitionUnknownKeys]), entries: Object.freeze(entries), cohortKey, cohortVersion: version, scope: input.scope, semanticKey });
+}
+
+
+/** One captured set of accepted inputs for the window's conversation publication boundary. */
+export interface ConversationDisplayComposition extends AcceptedPublicationInput {}
+export interface ComposedConversationDisplay {
+  readonly projection: SavedItemProjection;
+  readonly plan: ConversationDisplayPlan;
+}
+
+export function composeConversationDisplayPlan(input: ConversationDisplayComposition): ComposedConversationDisplay {
+  const projection: SavedItemProjection = Object.freeze({
+    items: Object.freeze([...input.projection.items]),
+    toolSummaries: Object.freeze([...input.projection.toolSummaries]),
+    ...(input.projection.workGroups ? { workGroups: Object.freeze([...input.projection.workGroups]) } : {}),
+    ...(input.projection.sequence ? { sequence: Object.freeze([...input.projection.sequence]) } : {}),
+    partitionUnknownKeys: Object.freeze([...input.projection.partitionUnknownKeys]),
+  });
+  const cohortVersion: DisplayCohortVersion = Object.freeze({
+    accepted: Object.freeze(input.userDecision.cohortVersion.accepted.map(row => Object.freeze({ ...row }))),
+    ...(input.userDecision.cohortVersion.pending ? { pending: Object.freeze({ ...input.userDecision.cohortVersion.pending }) } : {}),
+  });
+  const captured = Object.freeze({ ...input, rows: Object.freeze([...input.rows]), projection,
+    userDecision: Object.freeze({ cohortVersion }), canonicalProjection: Object.freeze({ ...input.canonicalProjection,
+      items: Object.freeze([...input.canonicalProjection.items]),
+      toolSummaries: Object.freeze([...input.canonicalProjection.toolSummaries]),
+      ...(input.canonicalProjection.workGroups ? { workGroups: Object.freeze([...input.canonicalProjection.workGroups]) } : {}),
+      ...(input.canonicalProjection.sequence ? { sequence: Object.freeze([...input.canonicalProjection.sequence]) } : {}),
+      partitionUnknownKeys: Object.freeze([...input.canonicalProjection.partitionUnknownKeys]),
+    }), assistantFacts: Object.freeze([...input.assistantFacts]), retiredAttempts: Object.freeze([...input.retiredAttempts]) });
+  return Object.freeze({ projection, plan: createConversationDisplayPlan(captured) });
+}
+
+/** Read-only renderer input reconstructed solely from the accepted immutable plan. */
+export function projectionFromDisplayPlan(plan: ConversationDisplayPlan): SavedItemProjection {
+  return Object.freeze({ items: plan.entries.map(entry => entry.item), toolSummaries: plan.workGroups,
+    workGroups: plan.workGroups, sequence: plan.sequence, partitionUnknownKeys: plan.partitionUnknownKeys });
 }

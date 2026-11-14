@@ -7,7 +7,7 @@ import type { TerminalPersistedProof } from "../../data/src/handoff";
 import type { AttemptPresentation, ThreadHandle, ThreadReadQualification } from "../../data/src/store";
 import type { HistoryBody } from "../../data/src/protocol";
 import { AcceptedView, makeAcceptedPublication, type AcceptedCapability, type AcceptedPublication, type PublicationReason } from "./accepted-view";
-import { createConversationDisplayPlan, displaySemanticKey, validateQualifiedAssistantFacts, type ConversationDisplayPlan, type OwnUserDecision } from './conversation-display-plan';
+import { createConversationDisplayPlan, composeConversationDisplayPlan, displaySemanticKey, validateQualifiedAssistantFacts, type ConversationDisplayPlan, type OwnUserDecision } from './conversation-display-plan';
 import type { HandoffRecord } from "../../data/src/handoff";
 // The long-thread reader's model (docs/design/long-threads.md): positional windows of a Thread's
 // path held in bounded buckets, a measured scroll space over one loaded run, and adjacent reads.
@@ -72,8 +72,12 @@ export interface WindowAcceptedSnapshot {
   readonly retiredAttempts?: readonly RetiredAttempt[];
 }
 export interface WindowScrollRequest { readonly id: object; readonly target: number }
-type TerminalTarget = { ref: WindowAcceptedSnapshot; cap: AcceptedCapability; handle: ThreadHandle; token: ThreadReadQualification;
-  receipt: TerminalPersistedProof; requestId: SelectedRequestId; mode: "same-revision" | "fresh-window"; lease: OwnedTerminalReadLease; stop?: () => void };
+type TerminalTargetBase = { ref: WindowAcceptedSnapshot; cap: AcceptedCapability; handle: ThreadHandle; token: ThreadReadQualification;
+  requestId: SelectedRequestId; mode: "same-revision" | "fresh-window"; lease: OwnedTerminalReadLease; stop?: () => void };
+
+type PersistedTerminalTarget = TerminalTargetBase & { kind: "persisted"; receipt: TerminalPersistedProof };
+type ReadyTerminalTarget = TerminalTargetBase & { kind: "ready"; record: HandoffRecord; scope: string };
+type TerminalTarget = PersistedTerminalTarget | ReadyTerminalTarget;
 
 export type WindowStatus = "loading" | "ready" | "error";
 export interface Anchor {
@@ -123,14 +127,14 @@ class Heights {
   }
 }
 
-function revisionRelation(candidate: number, current: number | undefined): "same" | "newer" | "older" {
-  if (current === undefined) return "newer";
+function revisionRelation(candidate: number, current: number | undefined): "uninitialized" | "same" | "newer" | "older" {
+  if (current === undefined) return "uninitialized";
   return candidate === current ? "same" : candidate > current ? "newer" : "older";
 }
 
 function revisionIsCurrentOrNewer(candidate: number, current: number | undefined): boolean {
   const relation = revisionRelation(candidate, current);
-  return relation === "same" || relation === "newer";
+  return relation === "uninitialized" || relation === "same" || relation === "newer";
 }
 
 export class ConversationWindow {
@@ -163,6 +167,7 @@ export class ConversationWindow {
   private acceptedGeneration = 0;
   private terminalPresence: readonly TerminalPresence[] = [];
   private terminalBinding: { handle: ThreadHandle; token: ThreadReadQualification; scope: string } | undefined;
+  private semanticDisplayInput: { projection: import('./conversation-items').SavedItemProjection; decision: OwnUserDecision; scope: string } | undefined;
   private terminalRequestSerial = 0;
   private terminalIdentitySerial = 0;
   private terminalIdentity = new WeakMap<object, number>();
@@ -328,7 +333,7 @@ export class ConversationWindow {
       this.terminalPreparedRequests.set(key, prepared);
     }
     const request = prepared.request;
-    const outcome = handle.requestTerminalRead(original, receipt, request);
+    const outcome = handle.requestTerminalRead(original, { kind: "persisted", receipt }, request);
     if (!handle.isReadQualificationCurrent(original) || receipt.scope !== handle.handoffScope() || !this.acceptedView.isCurrent(ref) || cap !== this.acceptedView.currentCapability) {
       if ("state" in outcome) outcome.cancel();
       return { phase: "unavailable", reason: "cancelled" };
@@ -337,11 +342,54 @@ export class ConversationWindow {
       if (outcome.phase === "unavailable") this.publishTerminalPresence(ref, cap, receipt, outcome.reason === "cancelled" ? "read-error" : outcome.reason);
       return outcome;
     }
-    const target: TerminalTarget = { ref, cap, handle, token: original, receipt, requestId: request.id, mode: "same-revision", lease: outcome, stop: undefined };
+    const target: PersistedTerminalTarget = { kind: "persisted", ref, cap, handle, token: original, receipt, requestId: request.id, mode: "same-revision", lease: outcome, stop: undefined };
     this.terminalTargets.set(key, target);
     target.stop = outcome.state.subscribe(() => this.applyTerminalRead(outcome));
     if (this.terminalTargets.get(key) !== target) target.stop();
     return outcome;
+  }
+
+  prepareBoundReadyRead(record: HandoffRecord): OwnedTerminalReadLease | TicketOutcome {
+    const binding = this.terminalBinding, proof = record.readyAttempt;
+    const ref = this.acceptedView.peek(), cap = this.acceptedView.currentCapability;
+    if (!binding || !proof || !this.isTerminalHandleCurrent(binding.handle) || !this.acceptedView.isCurrent(ref) || ref.pending
+      || proof.scope !== binding.scope) return { phase: "unavailable", reason: "cancelled" };
+    const key = JSON.stringify([proof.scope, record.attemptId]);
+    const held = this.terminalTargets.get(key);
+    if (held) return held.kind === "ready" && held.record === record && held.cap === cap
+      ? held.lease : { phase: "unavailable", reason: "cancelled" };
+    if (this.terminalTargets.size >= 8 || this.readsInFlight) return { phase: "unavailable", reason: "capacity" };
+    const refs = proof.refs.map(ref => proof.nodes.find(node => node.node_id === ref.nodeId));
+    const ordinals = refs.map(node => node?.selection?.ordinal);
+    if (!ordinals.length || ordinals.some(n => n === undefined || !Number.isSafeInteger(n))) return { phase: "unavailable", reason: "cancelled" };
+    const anchor = refs[0]!, ordinal = anchor.selection!.ordinal!;
+    const first = Math.min(ref.range?.first ?? ordinal, ...ordinals as number[]);
+    const last = Math.max(ref.range?.last ?? ordinal, ...ordinals as number[]);
+    if (last - first + 1 > 200) return { phase: "unavailable", reason: "capacity" };
+    const request = Object.freeze({ id: `selected-${++this.terminalRequestSerial}` as SelectedRequestId,
+      args: Object.freeze({ thread_id: binding.handle.threadId, node_id: anchor.node_id, before: ordinal - first, after: last - ordinal, items: true }) });
+    const lease = binding.handle.requestTerminalRead(binding.token, { kind: "ready", record, scope: proof.scope }, request);
+    if (!("state" in lease)) return lease;
+    const target: ReadyTerminalTarget = { kind: "ready", record, scope: proof.scope, ref, cap,
+      handle: binding.handle, token: binding.token, requestId: request.id, mode: "fresh-window", lease };
+    this.terminalTargets.set(key, target);
+    target.stop = lease.state.subscribe(() => this.applyTerminalRead(lease));
+    if (this.terminalTargets.get(key) !== target) target.stop();
+    return lease;
+  }
+
+  private applyReadyRead(target: ReadyTerminalTarget): boolean {
+    if (this.disposed || !target.handle.isReadQualificationCurrent(target.token)
+      || target.scope !== target.handle.handoffScope() || !this.acceptedView.isCurrent(this.acceptedView.peek())
+      || target.cap !== this.acceptedView.currentCapability) {
+      this.cancelTerminalRead(target.lease.ticket.id); return false;
+    }
+    // Presentation-only generations do not revoke selected-read authority. The
+    // capability fences path changes; acceptHandoff rechecks complete coverage
+    // against the latest selected range at the atomic transfer boundary.
+    if (target.lease.state.peek().phase !== "settled") return false;
+    return target.handle.transferReadyRead(target.token, target.record, target.lease,
+      (record, release) => this.acceptHandoff(record, target.scope, release));
   }
 
   private terminalIdentityId(value: object): number {
@@ -349,7 +397,7 @@ export class ConversationWindow {
     if (id === undefined) { id = ++this.terminalIdentitySerial; this.terminalIdentity.set(value, id); }
     return id;
   }
-  private replaceTerminalTarget(target: TerminalTarget): void {
+  private replaceTerminalTarget(target: PersistedTerminalTarget): void {
     const ref = this.acceptedView.peek();
     if (!this.acceptedView.isCurrent(ref) || ref === target.ref) return;
     // A revision change needs an explicit whole-window successor, not another
@@ -357,7 +405,7 @@ export class ConversationWindow {
     const request = Object.freeze({ id: `selected-${++this.terminalRequestSerial}` as SelectedRequestId, args: Object.freeze({ thread_id: target.handle.threadId, before: 199, after: 0, items: true }) });
     // Retire the old callback before replacement can synchronously settle it as cancelled.
     target.stop?.(); target.stop = undefined;
-    const next = target.handle.replaceTerminalRead(target.token, target.receipt, request);
+    const next = target.handle.replaceTerminalRead(target.token, { kind: "persisted", receipt: target.receipt }, request);
     if (!("state" in next)) return;
     target.ref = ref; target.requestId = request.id; target.mode = "fresh-window"; target.lease = next;
     target.stop = next.state.subscribe(() => this.applyTerminalRead(next));
@@ -385,6 +433,7 @@ export class ConversationWindow {
 
   applyTerminalRead(lease: OwnedTerminalReadLease): boolean {
     const target = [...this.terminalTargets.values()].find(t => t.lease === lease);
+    if (target?.kind === "ready") return this.applyReadyRead(target);
     if (!target || this.disposed || !target.handle.isReadQualificationCurrent(target.token)
       || target.receipt.scope !== target.handle.handoffScope() || !this.acceptedView.isCurrent(target.ref) || target.cap !== this.acceptedView.currentCapability) {
       this.cancelTerminalRead(lease.ticket.id); return false;
@@ -595,7 +644,7 @@ export class ConversationWindow {
         || !proof.refs.length || proof.refs.length > 64 || !proof.nodes.length) return false;
       if (!Number.isSafeInteger(proof.total) || proof.total < this.total || proof.nodes.length > 200 || expected.pending) return false;
       const incoming = new Map<string, HistoryItem>();
-      const stagedBuckets = new Map(this.buckets);
+      const stagedBuckets = new Map<number, Bucket>();
       const copied = new Set<number>();
       for (const node of proof.nodes) {
         const ordinal = node.selection?.ordinal;
@@ -617,7 +666,7 @@ export class ConversationWindow {
         holder!.items[slot] = node;
       }
       if (stagedBuckets.size > WINDOWS_HELD || proof.refs.some(ref => !incoming.has(ref.nodeId))
-        || proof.nodes.length !== proof.total || new Set(proof.nodes.map(node => node.selection?.ordinal)).size !== proof.total) return false;
+        || new Set(proof.nodes.map(node => node.selection?.ordinal)).size !== proof.nodes.length) return false;
       // The owned staging transaction may extend one contiguous selected run, never
       // fabricate a gap or evict an independent saved row to make the attempt fit.
       const ordinals = proof.nodes.map(node => node.selection!.ordinal!);
@@ -868,7 +917,7 @@ export class ConversationWindow {
   }
 
   /** A live child changed layout; the screen remains the sole owner of DOM scroll writes. */
-  layoutChanged(): void { if (!this.disposed) this.bump(); }
+  layoutChanged(): void { if (!this.disposed) this.version.value++; }
 
   /** Called after hints for this Thread. At the bottom this reads the last window only. */
   changed(): void {
@@ -927,19 +976,27 @@ export class ConversationWindow {
     this.tailCancel = undefined;
   }
 
+  setSemanticDisplayInput(input: { projection: import('./conversation-items').SavedItemProjection; decision: OwnUserDecision; scope: string }): void {
+    this.semanticDisplayInput = input;
+  }
+
   /** Publish the plan only against the exact accepted reference/capability that admitted it. */
   publishConversationDisplayPlan(ref: WindowAcceptedSnapshot, projection: import('./conversation-items').SavedItemProjection,
     userDecision: OwnUserDecision, scope: string): boolean {
+    const current = this.acceptedView.peek();
     const capability = this.acceptedView.currentCapability;
-    if (this.disposed || !this.acceptedView.isCurrent(ref) || ref.revision === undefined) return false;
-    if (ref.displayPlan?.capability === capability && ref.displayPlan?.acceptedGeneration === ref.generation) {
-      const candidateKey = [...userDecision.cohortVersion.accepted.map(row => `${row.operationId}:${row.phase}:${row.messageId ?? ''}`), userDecision.cohortVersion.pending ? `pending:${userDecision.cohortVersion.pending.operationId}:${userDecision.cohortVersion.pending.phase}` : 'pending:none'].join('|');
-      if (candidateKey === ref.displayPlan.cohortKey && displaySemanticKey(projectHistoryWindowItems({ revision: ref.revision!, nodes: ref.rows, keyScope: [scope] }).projection, projection, validateQualifiedAssistantFacts({ rows: ref.rows, canonicalProjection: projectHistoryWindowItems({ revision: ref.revision!, nodes: ref.rows, keyScope: [scope] }).projection, facts: ref.assistantOwnership ?? [], revision: ref.revision!, scope }), ref.retiredAttempts ?? []) === ref.displayPlan.semanticKey) return true;
-    }
+    if (this.disposed || current !== ref || !this.acceptedView.isCurrent(ref) || ref.revision === undefined) return false;
+    const canonicalProjection = projectHistoryWindowItems({ revision: ref.revision, nodes: ref.rows, keyScope: [scope] }).projection;
+    const assistantFacts = validateQualifiedAssistantFacts({ rows: ref.rows, canonicalProjection, facts: ref.assistantOwnership ?? [], revision: ref.revision, scope });
+    const retiredAttempts = ref.retiredAttempts ?? [];
+    const composition = { generation: ref.generation, revision: ref.revision, capability, rows: ref.rows,
+      canonicalProjection, projection, assistantFacts, userDecision, scope, retiredAttempts };
+    if (ref.displayPlan?.capability === capability && ref.displayPlan.acceptedGeneration === ref.generation
+      && displaySemanticKey(canonicalProjection, projection, assistantFacts, retiredAttempts) === ref.displayPlan.semanticKey
+      && ([...userDecision.cohortVersion.accepted.map(row => `${row.operationId}:${row.phase}:${row.messageId ?? ""}`), userDecision.cohortVersion.pending ? `pending:${userDecision.cohortVersion.pending.operationId}:${userDecision.cohortVersion.pending.phase}` : "pending:none"].join("|") === ref.displayPlan.cohortKey)) return true;
     const generation = this.nextAcceptedGeneration();
-    const plan = createConversationDisplayPlan({ generation, revision: ref.revision, capability, rows: ref.rows, canonicalProjection: projectHistoryWindowItems({ revision: ref.revision, nodes: ref.rows, keyScope: [scope] }).projection, projection,
-      assistantFacts: ref.assistantOwnership ?? [], userDecision, scope, retiredAttempts: ref.retiredAttempts ?? [] });
-    const staged = this.prepareAccepted({ ...ref, generation, displayPlan: plan }, capability);
+    const composed = composeConversationDisplayPlan({ ...composition, generation });
+    const staged = this.prepareAccepted({ ...ref, generation, displayPlan: composed.plan }, capability);
     if (!this.acceptedView.isCurrent(ref) || capability !== this.acceptedView.currentCapability) return false;
     return this.commitAccepted(staged, this.acceptedView.currentCapability);
   }
@@ -959,7 +1016,7 @@ export class ConversationWindow {
   private unavailablePlan(generation: number, revision: number | undefined, capability: AcceptedCapability,
     prior?: ConversationDisplayPlan): ConversationDisplayPlan {
     return Object.freeze({ acceptedGeneration: generation, revision, capability, coverage: "unavailable",
-      entries: Object.freeze([]), sequence: Object.freeze([]), workGroups: Object.freeze([]),
+      entries: Object.freeze([]), sequence: Object.freeze([]), workGroups: Object.freeze([]), partitionUnknownKeys: Object.freeze([]),
       cohortKey: prior?.cohortKey ?? "pending:none", cohortVersion: prior?.cohortVersion ?? { accepted: [] },
       scope: prior?.scope ?? this.terminalBinding?.scope ?? "", semanticKey: "unavailable" });
   }
@@ -1047,13 +1104,12 @@ export class ConversationWindow {
       assistantOwnership: requalifiedOwnership,
       retiredAttempts: this.retiredCapability === capability ? this.retiredAttempts : [],
       displayPlan: (() => {
-        const priorPlan = this.acceptedView.peek().displayPlan;
-        if (!priorPlan || priorPlan.capability !== capability || this.revision === undefined) return undefined;
-        const plan = createConversationDisplayPlan({ generation, revision: this.revision, capability, rows: currentRows, canonicalProjection: projectHistoryWindowItems({ revision: this.revision, nodes: currentRows, keyScope: [priorPlan.scope] }).projection,
-          projection: projectHistoryWindowItems({ revision: this.revision, nodes: currentRows, keyScope: [priorPlan.scope] }).projection,
-          assistantFacts: requalifiedOwnership, userDecision: { cohortVersion: priorPlan.cohortVersion }, scope: priorPlan.scope,
-          retiredAttempts: this.acceptedView.peek().retiredAttempts ?? [] });
-        return Object.freeze({ ...plan, coverage: "unavailable" });
+        const input = this.semanticDisplayInput;
+        if (!input || this.revision === undefined) return undefined;
+        const canonicalProjection = projectHistoryWindowItems({ revision: this.revision, nodes: currentRows, keyScope: [input.scope] }).projection;
+        return composeConversationDisplayPlan({ generation, revision: this.revision, capability, rows: currentRows, canonicalProjection,
+          projection: input.projection, assistantFacts: requalifiedOwnership, userDecision: input.decision, scope: input.scope,
+          retiredAttempts: this.acceptedView.peek().retiredAttempts ?? [] }).plan;
       })() }, capability);
     if (this.disposed || epoch !== this.epoch || generation !== this.acceptedGeneration) return;
     if (!this.commitAccepted(staged, this.acceptedView.currentCapability)) return;
@@ -1133,7 +1189,8 @@ export class ConversationWindow {
       else if (out.error.kind !== "cancelled") this.fail(out.error.message);
       return;
     }
-    if (revisionRelation(out.value.revision, this.revision) === "older") {
+    const relation = revisionRelation(out.value.revision, this.revision);
+    if (relation === "older") {
       this.drainTailHint();
       this.pump();
       return;
@@ -1180,7 +1237,9 @@ export class ConversationWindow {
       return;
     }
     this.tailFailed = false;
-    if (revisionRelation(out.value.revision, this.revision) !== "same") {
+    const relation = revisionRelation(out.value.revision, this.revision);
+    // The first successful tail read establishes the cursor; only established cursors need verification.
+    if (relation === "newer" || relation === "older") {
       this.tailAgain = true;
       void this.verify();
       return;
@@ -1368,6 +1427,6 @@ export class ConversationWindow {
         this.viewTop = top;
       }
     }
-    if (changed && publish) this.bump();
+    if (changed && publish) this.version.value++;
   }
 }

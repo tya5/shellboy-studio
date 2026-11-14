@@ -1,17 +1,18 @@
 // @vitest-environment happy-dom
 import { render } from 'preact';
-import {flush} from '../../../data/test/harness';
+import {flush,settle} from '../../../data/test/harness';
 import '@preact/signals';
 import {signal} from '@preact/signals';
 import {useLayoutEffect,useState} from 'preact/hooks';
 import {ConversationWindow,type WindowAcceptedSnapshot} from '../../../ui-core/src/window';
 import {Handoff} from '../../../data/src/handoff';
 import type {AppModel} from '../../../ui-core/src/model';
-import {SavedWindowContent as ActualSavedWindowContent} from '../screens/Conversation';
+import {SavedWindowContent as ActualSavedWindowContent, OrderedHistory} from '../screens/Conversation';
+import {WindowedScroll} from '../screens/WindowedScroll';
 import { act } from 'preact/test-utils';
 import { afterAll, expect, it, vi } from 'vitest';
 import { fixtureModel } from '../../../ui-core/test/fixture';
-import { normalizeConversationFacts, normalizeLiveWorkFacts, projectSavedItems } from '../../../ui-core/src/conversation-items';
+import { normalizeConversationFacts, normalizeLiveWorkFacts, projectHistoryWindowItems, projectSavedItems, scopeIssuedWorkFacts, projectOwnedHandoffFacts, retainUnretiredLiveFacts } from '../../../ui-core/src/conversation-items';
 
 // Control the real lazy renderer boundary: cold text and warm Markdown are different DOM contracts.
 const rendererGate=vi.hoisted(()=>{
@@ -25,18 +26,172 @@ vi.mock('../system/components/Message/markdown',async importOriginal=>{
 });
 afterAll(()=>rendererGate.release());
 
+it("production model publishes the read plus exact handoff overlay before OrderedHistory renders", async () => {
+  rendererGate.release();
+  const user:import("../../../data/src/protocol").HistoryItem={node_id:"production-user",kind:"user",selection:{ordinal:0},items:[{kind:"text",item_identity:"production-user-text",text:"Independent user",text_complete:true}],provenance:{kind:"human",sender:{kind:"human"}}};
+  const fixture=await fixtureModel({route:"conversation",threadId:"lead",configure:db=>{db.history.lead=[user];}});
+  const host=document.createElement("div");document.body.append(host);
+  try {
+    const handle=fixture.model.handle.value!,reader=fixture.model.longReader.value!;
+    const liveFrame:import("../../../data/src/protocol").ServerFrame={t:"live",thread_id:handle.threadId,attempt_id:"production-attempt",gap:false,deltas:[{offset:0,reasoning:false,text:"Owned stream body"}]};
+    fixture.t.push(liveFrame);
+    await flush();await flush();
+    expect(handle.handoff.value.map(record=>({attemptId:record.attemptId,status:record.status,text:record.text,bodyAuthority:record.bodyAuthority}))).toContainEqual({attemptId:"production-attempt",status:"streaming",text:"Owned stream body",bodyAuthority:"preview"});
+    const accepted=reader.acceptedView.peek();
+    expect(reader.acceptedView.isCurrent(accepted)).toBe(true);
+    expect(accepted.displayPlan?.coverage).toBe("complete");
+    expect(accepted.displayPlan?.entries.flatMap(entry=>"text" in entry.item.source?[entry.item.source.text]:[])).toEqual(["Independent user","Owned stream body"]);
+    const readsBeforeMount=fixture.t.calls("history.window").length,generationBeforeMount=reader.acceptedView.peek().generation;
+    await act(async()=>render(<OrderedHistory model={fixture.model} handle={handle} win={reader} t={fixture.model.t.value}/>,host));
+    expect(host.textContent).toContain("Independent user");
+    expect(host.textContent).toContain("Owned stream body");
+    expect(host.querySelector('[data-live-overlay]')).not.toBeNull();
+    const mountedGeneration=reader.acceptedView.peek().generation,mountedReads=fixture.t.calls("history.window").length;
+    await act(async()=>render(<OrderedHistory model={fixture.model} handle={handle} win={reader} t={fixture.model.t.value}/>,host));
+    expect(reader.acceptedView.peek().generation).toBe(mountedGeneration);
+    expect(fixture.t.calls("history.window").length).toBe(mountedReads);
+    expect(mountedReads).toBe(readsBeforeMount);
+    expect(mountedGeneration).toBe(generationBeforeMount);
+  } finally { render(null,host);host.remove();fixture.model.dispose();fixture.data.stop(); }
+});
+
+it("production model preserves one host across preview, saved canonical body, empty ledger, and the next live turn", async () => {
+  rendererGate.release();
+  const user:import("../../../data/src/protocol").HistoryItem={node_id:"lifecycle-user",kind:"user",selection:{ordinal:0},items:[{kind:"text",item_identity:"lifecycle-user-text",text:"Independent user",text_complete:true}],provenance:{kind:"human",sender:{kind:"human"}}};
+  const fixture=await fixtureModel({route:"conversation",threadId:"lead",configure:db=>{db.history.lead=[user];}});
+  const host=document.createElement("div");document.body.append(host);
+  try {
+    const handle=fixture.model.handle.value!,reader=fixture.model.longReader.value!;
+    const sendLive=(attempt_id:string,text:string)=>fixture.t.push({t:"live",thread_id:handle.threadId,attempt_id,gap:false,deltas:[{offset:0,reasoning:false,text}]});
+    sendLive("turn-one","Preview answer");await flush();await flush();
+    await act(async()=>render(<OrderedHistory model={fixture.model} handle={handle} win={reader} t={fixture.model.t.value}/>,host));
+    const stableHost=host;
+    expect(stableHost.textContent).toContain("Independent user");expect(stableHost.textContent).toContain("Preview answer");
+    const saved:import("../../../data/src/protocol").HistoryItem={node_id:"lifecycle-answer",kind:"assistant_response",selection:{ordinal:1},items:[{kind:"text",item_identity:"lifecycle-answer-text",text:"Committed saved answer",text_complete:true}],provenance:{kind:"assistant"}};
+    fixture.db.history.lead=[user,saved];fixture.db.bodies["lifecycle-answer"]="Committed saved answer";
+    fixture.db.work.lead=[{kind:"attempt",id:"turn-one",attempt_id:"turn-one",turn_id:"turn-one-id",thread_id:handle.threadId,state:"completed",response_nodes:[{node_id:"lifecycle-answer",ordinal:1,kind:"assistant_response"}],response_nodes_truncated:false}];
+    fixture.t.push({t:"live_end",thread_id:handle.threadId});
+    fixture.t.push({t:"changed",thread_ids:[handle.threadId],list:false});
+    await flush();await flush();
+    await settle(fixture.t,fixture.db);
+    await act(async()=>render(<OrderedHistory model={fixture.model} handle={handle} win={reader} t={fixture.model.t.value}/>,stableHost));
+    expect(stableHost).toBe(host);expect(stableHost.textContent).toContain("Independent user");expect(stableHost.textContent, JSON.stringify({ calls: fixture.t.calls("status").map(call=>call.args), records: handle.handoff.value, historyReads: fixture.t.calls("history.window").map(call=>call.args), handoffRetry: handle.handoffRetryState.value, accepted: reader.acceptedView.peek().displayPlan?.entries.map(entry=>[entry.item.source.kind,"text" in entry.item.source?entry.item.source.text:undefined]) })).toContain("Committed saved answer");
+    expect(handle.handoff.value.some(record=>record.attemptId==='turn-one')).toBe(false);
+    expect(reader.acceptedView.peek().retiredAttempts?.some(record=>record.attemptId==='turn-one')).toBe(true);
+    const nextTurn:import("../../../data/src/protocol").ServerFrame={t:"live",thread_id:handle.threadId,attempt_id:"turn-two",gap:false,deltas:[{offset:0,reasoning:false,text:"Next turn preview"}]};
+    fixture.t.push(nextTurn);await flush();await flush();
+    await act(async()=>render(<OrderedHistory model={fixture.model} handle={handle} win={reader} t={fixture.model.t.value}/>,stableHost));
+    expect(stableHost).toBe(host);expect(stableHost.textContent).toContain("Committed saved answer");expect(stableHost.textContent).toContain("Next turn preview");
+    expect(handle.handoff.value.some(record=>record.attemptId==="turn-two"&&record.text==="Next turn preview"&&record.bodyAuthority==="preview")).toBe(true);
+    reader.layoutChanged();await flush();
+    reader.jumpToEnd();await settle(fixture.t,fixture.db);
+    await act(async()=>render(<OrderedHistory model={fixture.model} handle={handle} win={reader} t={fixture.model.t.value}/>,stableHost));
+    expect(stableHost).toBe(host);expect(stableHost.textContent).toContain('Independent user');
+    expect(stableHost.textContent).toContain('Committed saved answer');expect(stableHost.textContent).toContain('Next turn preview');
+    expect(handle.handoff.value.some(record=>record.attemptId==='turn-one')).toBe(false);
+
+  } finally { render(null,host);host.remove();fixture.model.dispose();fixture.data.stop(); }
+});
+
+it('production model keeps latest answers and order after an older revision completes on the same host',async()=>{
+ rendererGate.release();
+ const user:import('../../../data/src/protocol').HistoryItem={node_id:'rollback-user',kind:'user',selection:{ordinal:0},items:[{kind:'text',item_identity:'user-text',text:'Synthetic reader question',text_complete:true}],provenance:{kind:'human',sender:{kind:'human'}}};
+ const older:import('../../../data/src/protocol').HistoryItem={node_id:'rollback-older',kind:'assistant_response',selection:{ordinal:1},items:[{kind:'text',item_identity:'older-text',text:'Synthetic older answer',text_complete:true}],provenance:{kind:'assistant'}};
+ const latest:import('../../../data/src/protocol').HistoryItem={node_id:'rollback-latest',kind:'assistant_response',selection:{ordinal:2},items:[{kind:'text',item_identity:'latest-text',text:'Synthetic latest answer',text_complete:true}],provenance:{kind:'assistant'}};
+ const fixture=await fixtureModel({route:'conversation',threadId:'lead',configure:db=>{db.history.lead=[user,older];db.historyRevisions.lead=1;}});
+ const host=document.createElement('div');document.body.append(host);
+ try{
+  const handle=fixture.model.handle.value!,reader=fixture.model.longReader.value!;
+  const draw=()=>render(<OrderedHistory model={fixture.model} handle={handle} win={reader} t={fixture.model.t.value}/>,host);
+  await act(async()=>draw());expect(host.textContent).toContain('Synthetic older answer');
+  fixture.db.history.lead=[user,older,latest];fixture.db.historyRevisions.lead=2;
+  reader.changed();await settle(fixture.t,fixture.db);await act(async()=>draw());
+  expect(host.textContent).toContain('Synthetic latest answer');
+  const accepted=reader.acceptedView.peek();expect(accepted.revision).toBe(2);
+  const publications:{revision:number|undefined;ids:(string|undefined)[]}[]=[];
+  const stop=reader.acceptedView.subscribe(ref=>publications.push({revision:ref.revision,ids:ref.rows.map(row=>row.node_id)}));
+  try{
+   reader.changed();await flush();
+   const held=fixture.t.calls('history.window').filter(call=>!fixture.db.answered.has(call.id));
+   expect(held).toHaveLength(1);
+   fixture.db.answered.add(held[0]!.id);
+   fixture.t.ok(held[0]!.id,{thread_id:'lead',revision:1,total:2,items:[older]});
+   await flush();await act(async()=>draw());
+   expect(reader.acceptedView.peek().revision).toBe(2);expect(host.textContent).toContain('Synthetic latest answer');
+   await settle(fixture.t,fixture.db);reader.layoutChanged();reader.jumpToEnd();await settle(fixture.t,fixture.db);await act(async()=>draw());
+   expect(host.textContent).toContain('Synthetic latest answer');
+   expect(reader.acceptedView.peek().rows.map(row=>row.node_id)).toEqual(['rollback-user','rollback-older','rollback-latest']);
+   expect(publications.every(ref=>ref.revision===2&&ref.ids.includes('rollback-latest'))).toBe(true);
+  }finally{stop();}
+  reader.changed();await flush();
+  const retiredCall=fixture.t.calls('history.window').filter(call=>!fixture.db.answered.has(call.id));
+  expect(retiredCall).toHaveLength(1);fixture.db.answered.add(retiredCall[0]!.id);
+  fixture.model.openThread('synthetic-other');await settle(fixture.t,fixture.db);
+  fixture.model.openThread('lead');await settle(fixture.t,fixture.db);
+  const replacement=fixture.model.longReader.value!,replacementHandle=fixture.model.handle.value!;
+  expect(replacement).not.toBe(reader);
+  await act(async()=>render(<OrderedHistory model={fixture.model} handle={replacementHandle} win={replacement} t={fixture.model.t.value}/>,host));
+  const replacementView=replacement.acceptedView.peek();
+  fixture.t.ok(retiredCall[0]!.id,{thread_id:'lead',revision:1,total:2,items:[user,older]});await flush();
+  await act(async()=>render(<OrderedHistory model={fixture.model} handle={replacementHandle} win={replacement} t={fixture.model.t.value}/>,host));
+  expect(replacement.acceptedView.peek()).toBe(replacementView);
+  expect(host.textContent).toContain('Synthetic latest answer');
+  expect(replacement.acceptedView.peek().rows.map(row=>row.node_id)).toEqual(['rollback-user','rollback-older','rollback-latest']);
+ }finally{render(null,host);host.remove();fixture.model.dispose();fixture.data.stop();}
+});
+
+it('production model publishes only semantic changes across one history edge and layout',async()=>{
+ const rows:import('../../../data/src/protocol').HistoryItem[]=Array.from({length:400},(_,ordinal)=>({
+  node_id:`finite-${ordinal}`,kind:'user',selection:{ordinal},
+  items:[{kind:'text',item_identity:'body',text:`Finite human ${ordinal}`,text_complete:true}],
+  provenance:{kind:'human',sender:{kind:'human'}},
+ }));
+ const f=await fixtureModel({route:'conversation',threadId:'lead',configure:db=>{db.history.lead=rows;}});
+ try{
+  const reader=f.model.longReader.value!;let notifications=0,compositions=0;
+  const publish=reader.publishConversationDisplayPlan.bind(reader);
+  reader.publishConversationDisplayPlan=(...args)=>{compositions++;return publish(...args);};
+  const stop=reader.acceptedView.subscribe(()=>notifications++);
+  const sample=()=>({generation:reader.acceptedView.peek().generation,reads:f.t.calls('history.window').length,
+   notifications,compositions,selected:reader.acceptedView.peek().rows.length});
+  try{
+   const before=sample(),first=reader.acceptedView.peek().range!.first;
+   reader.layoutChanged();reader.measure([[first,40]]);reader.measure([[first,40]]);await flush();
+   const layout=sample();
+   reader.requestOlder();await settle(f.t,f.db);const edge=sample();
+   reader.layoutChanged();reader.measure([[first,40]]);await flush();const unchanged=sample();
+   console.log('PUBLICATION_STEPS',JSON.stringify({before,layout,edge,unchanged}));
+   expect(layout).toEqual(before);
+   expect(edge.reads-layout.reads).toBe(1);expect(edge.selected).toBe(200);
+   expect(edge.generation-layout.generation).toBe(2);expect(edge.notifications-layout.notifications).toBe(2);
+   expect(edge.compositions-layout.compositions).toBe(2);
+   expect(unchanged).toEqual(edge);
+   expect(reader.acceptedView.peek().rows.map(row=>row.node_id)).toEqual(rows.slice(200).map(row=>row.node_id));
+  }finally{stop();}
+ }finally{f.model.dispose();f.data.stop();}
+});
+
 type IssuedProps=Parameters<typeof ActualSavedWindowContent>[0];
-// The real reader owns and publishes this ref; a fixture object is never current.
-function IssuedWindowContent(props:IssuedProps & {onIssued?:(reader:ConversationWindow,snapshot:WindowAcceptedSnapshot)=>void}){
- const [issued,setIssued]=useState<{reader:ConversationWindow;snapshot:WindowAcceptedSnapshot}>();
+function IssuedWindowContent(props:IssuedProps & {onPublished?:(reader:ConversationWindow,snapshot:WindowAcceptedSnapshot)=>void; trace?:string[]; evidence?:Record<string,unknown>[]}){
+ const [reader,setReader]=useState<ConversationWindow>();
  useLayoutEffect(()=>{
   const rows=props.snapshot.rows.map((row,index)=>({...row,selection:{...row.selection,ordinal:row.selection?.ordinal??index}}));
   const total=rows.length?Math.max(...rows.map(row=>row.selection.ordinal))+1:0;
-  const reader=new ConversationWindow({read:async()=>({ok:true,value:{thread_id:'issued-fixture',revision:1,total,items:rows}})});
-  let preparing=false;
-  const publish=()=>{
-   if(preparing||reader.acceptedView.peek().revision===undefined)return;
-   preparing=true;
+  const owner=props.model.handle.value;const replyRevision=props.snapshot.revision??1;
+  let readerRef!: {revision:number|undefined;epoch:number;reset:()=>void;bindTerminalHandle:(handle:unknown)=>boolean};
+  let reader!:ConversationWindow;
+  reader=new ConversationWindow({read:async(args)=>{const before={revision:readerRef?.revision,epoch:readerRef?.epoch};const result={ok:true as const,value:{thread_id:owner?.threadId??'issued-fixture',revision:replyRevision,total,items:rows}};props.evidence?.push({kind:'read',args,owner:owner?.threadId,reply:{thread_id:result.value.thread_id,revision:result.value.revision,total,itemOrdinals:rows.map(row=>row.selection?.ordinal)},before,after:{revision:replyRevision,epoch:readerRef?.epoch}});return result;}});
+  readerRef=reader as unknown as {revision:number|undefined;epoch:number;reset:()=>void;bindTerminalHandle:(handle:unknown)=>boolean};
+  const reset=readerRef.reset;readerRef.reset=function(){const before={revision:readerRef.revision,epoch:readerRef.epoch,current:reader.acceptedView.isCurrent(reader.acceptedView.peek()),generation:reader.acceptedView.peek().generation};props.evidence?.push({kind:'reset-enter',before,stack:new Error().stack});reset.call(reader);props.evidence?.push({kind:'reset-exit',after:{revision:readerRef.revision,epoch:readerRef.epoch,current:reader.acceptedView.isCurrent(reader.acceptedView.peek()),generation:reader.acceptedView.peek().generation}});};
+  const bind=reader.bindTerminalHandle.bind(reader);reader.bindTerminalHandle=(handle)=>{const before={revision:readerRef.revision,epoch:readerRef.epoch,tailKnown:(reader as unknown as {tailKnown:unknown}).tailKnown,generation:reader.acceptedView.peek().generation};const result=bind(handle as never);props.evidence?.push({kind:'bindTerminalHandle',before,result,after:{revision:readerRef.revision,epoch:readerRef.epoch,current:reader.acceptedView.isCurrent(reader.acceptedView.peek()),generation:reader.acceptedView.peek().generation}});return result;};
+  let resolveRead!: (ref:WindowAcceptedSnapshot)=>void;
+  const readReady=new Promise<WindowAcceptedSnapshot>(resolve=>{resolveRead=resolve;});
+  let firstRead=true;
+  const stop=reader.acceptedView.subscribe(ref=>{
+   if(ref.revision===undefined||!firstRead)return;
+   firstRead=false;props.trace?.push(`read-complete:${ref.generation}`);resolveRead(ref);
+  });
+  const publication=readReady.then(async ref=>{
    for(const retired of props.snapshot.retiredAttempts??[]){
     const ledger=new Handoff(fn=>fn());ledger.apply({attempt_id:retired.attemptId,gap:false,deltas:[{offset:0,reasoning:false,text:'Owned stream'}]});
     const original=ledger.records.value[0]!;
@@ -44,14 +199,21 @@ function IssuedWindowContent(props:IssuedProps & {onIssued?:(reader:Conversation
     if(ledger.stageAttempt(original,proof))ledger.transferAttempt(original,proof,(record,release)=>reader.acceptHandoff(record,retired.scope,release));
     ledger.discard('ended');
    }
-   preparing=false;const snapshot=reader.acceptedView.peek();props.onIssued?.(reader,snapshot);setIssued({reader,snapshot});
-  };
-  const stop=reader.acceptedView.subscribe(publish);
-  publish();return()=>{stop();reader.dispose();};
+   const current=reader.acceptedView.peek(),scope=props.model.handle.value?.handoffScope()??"";
+   const history=projectHistoryWindowItems({revision:current.revision!,nodes:current.rows,keyScope:[scope]}).projection;
+   const handoffs=projectOwnedHandoffFacts(props.model.handle.value?.threadId??"",props.model.handle.value?.handoff.value??[]);
+   const scoped=scopeIssuedWorkFacts(props.liveFacts??[],[scope])??[];
+   const projection=projectSavedItems([...history.items.map(item=>item.source),...handoffs,...scoped]);
+   reader.publishConversationDisplayPlan(current,projection,{cohortVersion:{accepted:[]}},scope);
+   const afterPublish=reader.acceptedView.peek();props.trace?.push(`plan-published:g${afterPublish.generation}:e${afterPublish.epoch}:cap=${afterPublish.displayPlan?.capability===reader.acceptedView.currentCapability}`);
+   setReader(reader);props.onPublished?.(reader,reader.acceptedView.peek());
+  });
+  if(reader.acceptedView.peek().revision!==undefined)resolveRead(reader.acceptedView.peek());
+  return()=>{stop();reader.dispose();};
  },[props.snapshot]);
- if(!issued)return null;
- const model=new Proxy(props.model,{get(target,key){if(key==='longReader')return {value:issued.reader,peek:()=>issued.reader};return Reflect.get(target,key);}});
- return <ActualSavedWindowContent {...props} model={model} snapshot={issued.snapshot}/>;
+ if(!reader)return null;
+ const model=new Proxy(props.model,{get(target,key){if(key==='longReader')return {value:reader,peek:()=>reader};return Reflect.get(target,key);}});
+ return <WindowedScroll model={model} win={reader} live={null} renderRow={()=> <></>} renderAcceptedView={snapshot=>{props.trace?.push(`window-render:g${snapshot.generation}:e${snapshot.epoch}:current=${reader.acceptedView.isCurrent(snapshot)}:reader=g${reader.acceptedView.peek().generation}/e${reader.acceptedView.peek().epoch}`);return <ActualSavedWindowContent {...props} model={model} snapshot={snapshot}/>;}}/>;
 }
 
 it('provides a Console-owned saved-text renderer without a fixture render callback',async()=>{
@@ -291,7 +453,6 @@ it.each(['live-only','mixed'] as const)('contains all %s Work facts and keeps au
 
 it('admits text only from never-ready owned ledger records, not ready or identified bodies after status changes',async()=>{
   const { Handoff }=await import('../../../data/src/handoff');
-  const { projectOwnedHandoffFacts }=await import('../screens/Conversation');
   const scheduled:(()=>void)[]=[];const ledger=new Handoff(callback=>scheduled.push(callback));
   const begin=(id:string)=>{ledger.apply({attempt_id:id,gap:false,deltas:[{offset:0,reasoning:false,text:'Synthetic stream text'}]});while(scheduled.length)scheduled.shift()!();};
   const fact=(id:string)=>projectOwnedHandoffFacts('owned-scope',ledger.records.value).find(item=>'domain' in item&&item.recordId===`handoff:${id}`)!;
@@ -360,16 +521,19 @@ it('keeps one identical footer element through known states and unknown loading 
 });
 
 it('publishes saved rows and whole-attempt retirement in the same DOM frame, retaining partial and invalid-scope overlays',async()=>{
+  rendererGate.release(); await import('../system/components/Message/markdown'); await vi.dynamicImportSettled();
   const fixture=await fixtureModel(),host=document.createElement('div');document.body.append(host);
+  const trace:string[]=[];const evidence:Record<string,unknown>[]=[];const diagnostics:{phase:string;detail:Record<string,unknown>}[]=[];
   try{
     const SavedWindowContent=IssuedWindowContent;
-    const scope='owner-thread-lifetime';let current:object;let publication:{reader:ConversationWindow;snapshot:WindowAcceptedSnapshot}|undefined;
+    const scope='thread';let current:object;let publication:{reader:ConversationWindow;snapshot:WindowAcceptedSnapshot}|undefined;
+    const previewLedger=new Handoff(fn=>fn());previewLedger.apply({attempt_id:'attempt',gap:false,deltas:[{offset:0,reasoning:false,text:'Whole live answer'}]});
     const model=new Proxy(fixture.model,{get(target,key){
-      if(key==='handle')return {value:{threadId:'thread',handoffScope:()=>scope,handoff:{value:[]},handoffOverflow:{value:false},work:{value:{}}}};
+      if(key==='handle')return {value:{threadId:'thread',handoffScope:()=>scope,handoff:{value:previewLedger.records.value},handoffOverflow:{value:false},work:{value:{}}}};
       if(key==='longReader')return {value:{acceptedView:{isCurrent:(ref:object)=>ref===current}}};
       return Reflect.get(target,key);
     }});
-    const liveFacts=[{domain:'live' as const,scope:'thread',recordId:'live-text',kind:'text' as const,text:'Whole live answer',attemptId:'attempt',turnId:'turn'},...normalizeLiveWorkFacts({scope:'thread',items:[{kind:'progress',id:'live-work',thread_id:'thread',state:'running',attempt_id:'attempt',turn_id:'turn'}]})];
+    const liveFacts=[...normalizeLiveWorkFacts({scope,items:[{kind:'progress',id:'live-work',thread_id:'thread',state:'running',attempt_id:'attempt',turn_id:'turn'}]})];
     const independent:import('../../../data/src/protocol').HistoryItem={node_id:'independent',kind:'user',selection:{ordinal:0},items:[{item_identity:'text',kind:'text',text:'Independent user',text_complete:true}]};
     const saved:import('../../../data/src/protocol').HistoryItem={node_id:'saved-answer',kind:'assistant_response',selection:{ordinal:1},items:[{item_identity:'answer',kind:'text',text:'Committed saved answer',text_complete:true}]};
     const base={range:{first:0,last:1},revision:7,generation:1,epoch:1,disposed:false,pending:false};
@@ -381,16 +545,17 @@ it('publishes saved rows and whole-attempt retirement in the same DOM frame, ret
       {...base,rows:[independent,saved],total:2,retiredAttempts:[{scope,attemptId:'attempt',turnId:'turn',nodeIds:['saved-answer'],refs:[{nodeId:'saved-answer',ordinal:1,kind:'assistant_response'}],recordKey:'record',containerKey:'message',revision:7}]},
     ];
     for(let i=0;i<frames.length;i++){
-      current=frames[i]!;await act(async()=>render(<SavedWindowContent model={model} snapshot={frames[i]!} onIssued={(reader,snapshot)=>{publication={reader,snapshot};}} liveFacts={liveFacts}/>,host));
-      expect(host.textContent).toContain('Independent user');
-      expect(host.textContent?.includes('Whole live answer')).toBe(i!==4);
+      current=frames[i]!;let published!:()=>void;const publicationReady=new Promise<void>(resolve=>{published=resolve;});
+      trace.push(`act-start:${i}`);
+      await act(async()=>{render(<SavedWindowContent model={model} snapshot={frames[i]!} onPublished={(reader,snapshot)=>{publication={reader,snapshot};published();}} liveFacts={liveFacts} trace={trace} evidence={evidence}/>,host);await publicationReady;trace.push(`act-end:${i}`);});
+      expect(host.textContent,`trace=${JSON.stringify(trace)} evidence=${JSON.stringify(evidence)} frame ${i}: current=${publication?.reader.acceptedView.isCurrent(publication.snapshot)} coverage=${publication?.snapshot.displayPlan?.coverage} cap=${publication?.snapshot.displayPlan?.capability===publication?.reader.acceptedView.currentCapability} plan=${JSON.stringify(publication?.snapshot.displayPlan?.entries.map(entry=>[entry.item.key,entry.item.source.kind,entry.body.kind]))} html=${host.innerHTML}`).toContain('Independent user');
+      expect(host.textContent?.includes('Whole live answer'),`trace=${JSON.stringify(trace)} frame=${i}`).toBe(i!==4);
       expect(host.querySelectorAll('[data-work-item-key]').length).toBe(i===4?0:i===1?2:1);
       if(i>=2)expect(host.textContent).toContain('Committed saved answer');
     }
     const revoked=publication!;
     revoked.reader.dispose();
     expect(revoked.reader.acceptedView.isCurrent(revoked.snapshot)).toBe(false);
-    const {retainUnretiredLiveFacts}=await import('../screens/Conversation');
     // Revocation cannot consume the overlay; it also cannot authorize stale public DOM.
     expect(retainUnretiredLiveFacts(revoked.snapshot,scope,false,liveFacts)).toEqual(liveFacts);
     const revokedModel=new Proxy(model,{get(target,key){return key==='longReader'?{value:revoked.reader,peek:()=>revoked.reader}:Reflect.get(target,key);}});
