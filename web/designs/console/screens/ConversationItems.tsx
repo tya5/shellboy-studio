@@ -61,9 +61,8 @@ export function ConversationItems({ items, toolSummaries = [], renderItem, rende
       if (!entry || entry.kind !== "conversation") return undefined;
       return byKey.get(entry.itemKey)?.presentationContainer;
     };
-    // Build one span for each association only when its interval contains no other
-    // association. Work and local slots may live inside that span without changing
-    // the authoritative sequence; crossing ownership remains unqualified.
+    // A span may cross only work entries. Any conversation without this exact
+    // association, including a missing/phantom item, makes the association unqualified.
     const spans = new Map<number, { end: number; container: string }>();
     const invalidContainers = new Set<string>();
     for (let index = 0; index < normalizedSequence.length; index++) {
@@ -71,10 +70,8 @@ export function ConversationItems({ items, toolSummaries = [], renderItem, rende
       if (!container) continue;
       const positions = normalizedSequence.flatMap((_, position) => containerAt(position) === container ? [position] : []);
       const end = positions.at(-1)!;
-      if (normalizedSequence.slice(index, end + 1).some((_, offset) => {
-        const other = containerAt(index + offset);
-        return other !== undefined && other !== container;
-      })) invalidContainers.add(container);
+      const valid = normalizedSequence.slice(index, end + 1).every((entry, offset) => entry.kind === "work" || containerAt(index + offset) === container);
+      if (!valid) invalidContainers.add(container);
       else if (index === positions[0]) spans.set(index, { end, container });
     }
     const content = (item: ConversationItem, work: boolean, hosted = !work && !!item.presentationContainer) => <div class={`conversation-row${hosted ? " conversation-answer-child" : ""}`} key={`item:${item.key}`} data-item-key={item.key} data-key={item.key} data-node={item.source.nodeId} data-work-item-key={work ? item.key : undefined}>{renderItem(item)}</div>;
@@ -84,29 +81,35 @@ export function ConversationItems({ items, toolSummaries = [], renderItem, rende
         const item = byKey.get(key); return item ? content(item, true, false) : null;
       }))}</div> : null;
     };
+    const renderPosition = (position: number, hostedContainer?: string): ComponentChildren[] => {
+      const entry = normalizedSequence[position]!;
+      const output: ComponentChildren[] = [];
+      if (entry.kind === "work") {
+        const work = renderWork(entry); if (work) output.push(work);
+      } else {
+        const item = byKey.get(entry.itemKey);
+        if (item && !isItemAbsent?.(item)) output.push(<Fragment key={`conversation:${item.key}`}>{renderBefore?.(item)}{content(item, false, hostedContainer !== undefined)} </Fragment>);
+      }
+      // Slots belong to the sequence position, not to the nearest child.
+      output.push(...emitSlotsAt(position));
+      return output;
+    };
     const rendered: { entry: NonNullable<Props["sequence"]>[number]; view: ComponentChildren; first:number; last:number }[] = [];
     for (let index = 0; index < normalizedSequence.length; index++) {
       const entry = normalizedSequence[index]!;
       const span = spans.get(index);
       if (span && !invalidContainers.has(span.container)) {
         const children: ComponentChildren[] = [];
-        for (let position = index; position <= span.end; position++) {
-          const childEntry = normalizedSequence[position]!;
-          if (childEntry.kind === "work") children.push(renderWork(childEntry));
-          else {
-            const child = byKey.get(childEntry.itemKey);
-            if (child && !isItemAbsent?.(child)) children.push(<Fragment key={`answer-child:${child.key}`}>{renderBefore?.(child)}{content(child, false, true)}{emitSlotsAt(position)}</Fragment>);
-          }
-        }
+        for (let position = index; position <= span.end; position++) children.push(...renderPosition(position, span.container));
         rendered.push({ entry, view: <div class="conversation-row answer-container" key={`answer:${span.container}`} data-answer-container={span.container}>{children}</div>, first:index, last:span.end });
         index = span.end;
         continue;
       }
-      if (entry.kind === "work") { rendered.push({ entry, view: renderWork(entry), first:index, last:index }); continue; }
+      if (entry.kind === "work") { rendered.push({ entry, view: <>{renderPosition(index)}</>, first:index, last:index }); continue; }
       const item = byKey.get(entry.itemKey);
-      if (!item || isItemAbsent?.(item)) continue;
+      if (!item || isItemAbsent?.(item)) { emitSlotsAt(index); continue; }
       const unsafe = !!item.presentationContainer && invalidContainers.has(item.presentationContainer);
-      rendered.push({ entry, view: <Fragment key={`conversation:${item.key}`}>{renderBefore?.(item)}{content(item, false, !unsafe && !!item.presentationContainer)}{emitSlotsAt(index)}</Fragment>, first:index, last:index });
+      rendered.push({ entry, view: <>{renderPosition(index, unsafe ? undefined : item.presentationContainer)}</>, first:index, last:index });
     }
     const region:ComponentChildren[]=[];
     if (localRegion?.placement.kind === "unqualified") region.push(localRegion.unqualified);

@@ -97,11 +97,12 @@ it("renders one stable host for nonadjacent children while preserving intervenin
       items: projection.items,
       sequence: [{ kind: "conversation", itemKey: base.items[0]!.key }, { kind: "work", groupKey: "work-1" }, { kind: "conversation", itemKey: base.items[1]!.key }],
       workGroups: [{ key: "work-1", firstMemberKey: "work-1", memberKeys: [], executionIds: [], toolItemKeys: [], unknownToolCount: 0, interrupted: false }],
+      localRegion: { placement: { kind: "qualified" as const, insertion: { kind: "middle" as const, index: 1 } }, slots: [{ position: { kind: "after" as const, index: 1 }, content: h("span", { "data-local-marker": "local-between" }, "local-between") }] },
       renderItem: item => h("span", {}, item.source.kind === "text" ? item.source.text : ""), renderWorkGroup: (_group, children) => h("div", { class: "intervening-work", "data-work-marker": "other-attempt-work" }, [h("span", {}, "other-attempt-work"), children]),
     }), host);
     expect(host.querySelectorAll("[data-answer-container]")).toHaveLength(1);
     expect(host.querySelectorAll("[data-answer-container] [data-item-key]")).toHaveLength(2);
-    expect([...host.querySelectorAll("[data-item-key], [data-work-marker]")].map(node => node.textContent?.trim())).toEqual(["saved", "other-attempt-work", "second"]);
+    expect([...host.querySelectorAll("[data-item-key], [data-work-marker], [data-local-marker]")].map(node => node.textContent?.trim())).toEqual(["saved", "other-attempt-work", "local-between", "second"]);
   } finally { render(null, host); host.remove(); }
 });
 
