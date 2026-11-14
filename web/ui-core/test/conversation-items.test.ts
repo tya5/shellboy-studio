@@ -89,7 +89,7 @@ it("maps authoritative v3 arrays without inventing item revision or splitting mu
 });
 it("keeps null/legacy ordinary nodes and ordinal retry outside fabricated item identity", async () => {
   const { projectHistoryWindowItems } = await import("../src/conversation-items");
-  const out = projectHistoryWindowItems({ revision: "v", nodes: [{ node_id: "A", selection: { ordinal: 0 }, items: [{ kind: "tool_call", item_identity: "a", execution_ids: ["x"] }] }, { node_id: "B", selection: { ordinal: 1 }, items: null, items_unavailable_reason: "response_budget", excerpt: "ordinary retained" }, { node_id: "C", selection: { ordinal: 2 }, items: null, items_unavailable_reason: "response_budget" }] });
+  const out = projectHistoryWindowItems({ revision: 7, nodes: [{ node_id: "A", selection: { ordinal: 0 }, items: [{ kind: "tool_call", item_identity: "a", execution_ids: ["x"] }] }, { node_id: "B", selection: { ordinal: 1 }, items: null, items_unavailable_reason: "response_budget", excerpt: "ordinary retained" }, { node_id: "C", selection: { ordinal: 2 }, items: null, items_unavailable_reason: "response_budget" }] });
   expect(out.nodes).toHaveLength(3);
   expect(out.nodes[1]).toMatchObject({ nodeId: "B", state: "deferred", reason: "response_budget", ordinal: 1 });
   expect(out.retryFrom).toEqual({ ordinal: 1, expect_node_id: "B" });
@@ -98,7 +98,7 @@ it("keeps null/legacy ordinary nodes and ordinal retry outside fabricated item i
 });
 
 it("FINAL keeps empty ordinary presence without exposing reasoning or inventing item identity", () => {
-  const out = projectHistoryWindowItems({ revision: "v", nodes: [
+  const out = projectHistoryWindowItems({ revision: 7, nodes: [
     { node_id: "user", kind: "user", items: [] },
     { node_id: "model", kind: "assistant_response", items: [{ kind: "reasoning_unavailable", item_identity: "r" }] },
     { node_id: "event", kind: "event", items: [] },
