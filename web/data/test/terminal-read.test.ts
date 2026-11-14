@@ -57,3 +57,13 @@ it("only explicit manual owner reset can admit a new automatic marker in a retai
  slots.clear(); const next = slots.request(receipt, request, () => true, parent) as OwnedTerminalReadLease;
  await slots.dispatch(() => true, async () => { starts++; return result; }); expect(starts).toBe(1); expect(next.state.peek().phase).toBe("settled");
 });
+it("settled successor is dispatched once without resolver re-entry", async () => {
+ const slots = new TerminalReadSlots(), parent = new Cancel(); let reads = 0;
+ const old = slots.request(receipt, request, () => true, parent) as OwnedTerminalReadLease;
+ old.state.subscribe(state => {
+   if (state.phase === "settled") slots.replace(receipt, { ...request, id: "fresh" as SelectedCanonicalRequest["id"] }, () => true, parent);
+ });
+ await slots.dispatch(() => true, async () => { reads++; return { ...result, value: { ...result.value, revision: reads } }; });
+ expect(reads).toBe(2);
+ expect(slots.queued).toBe(false);
+});
