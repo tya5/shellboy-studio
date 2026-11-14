@@ -138,7 +138,7 @@ describe('direct local insertion plan', () => {
     const items = [{ key: 'saved-a', source: input[0]! }];
     const local = <section data-own-presentation=""><div class="msg">A</div><div class="msg">B</div></section>;
     const props = { items, workGroups: [], renderWorkGroup: (_: unknown, children: any) => children,
-      renderItem: () => <span>saved</span>, localRegion: { placement: { kind: 'qualified', insertion: { kind: 'beginning' } } as const, slots: [{position:0,content:<div class="msg">A</div>},{position:1,content:<div class="msg">B</div>}] } };
+      renderItem: () => <span>saved</span>, localRegion: { placement: { kind: 'qualified', insertion: { kind: 'beginning' } } as const, slots: [{position:{kind:"before-first" as const},content:<div class="msg">A</div>},{position:{kind:"after" as const,index:1},content:<div class="msg">B</div>}] } };
     const paint = (sequence: undefined | readonly {kind:'conversation';itemKey:string}[]) => render(<ConversationItems {...props} sequence={sequence}/>, host);
     paint(undefined);
     expect(host.querySelectorAll('.msg')).toHaveLength(2);
@@ -169,7 +169,7 @@ it('SavedConversationItems preserves the same beginning cohort with empty accept
  f.model.acceptedOwnMessages.value=[{threadId:'t',scope:'t',operationId:'op-a',text:'A',phase:'accepted',messageId:'a'},{threadId:'t',scope:'t',operationId:'op-b',text:'B',phase:'accepted',messageId:'b'}];
  const local=<section data-own-presentation=""><div class="msg">A</div><div class="msg">B</div></section>;
  const projection=projectSavedItems([]);
- render(<SavedConversationItems model={f.model} projection={projection} localRegion={{placement:{kind:'qualified',insertion:{kind:'beginning'}},slots:[{position:0,content:<div class='msg'>A</div>},{position:1,content:<div class='msg'>B</div>}]}}/>,host);
+ render(<SavedConversationItems model={f.model} projection={projection} localRegion={{placement:{kind:'qualified',insertion:{kind:'beginning'}},slots:[{position:{kind:"before-first" as const},content:<div class='msg'>A</div>},{position:{kind:"after" as const,index:1},content:<div class='msg'>B</div>}]}}/>,host);
  expect(host.querySelectorAll('.msg')).toHaveLength(2);
  expect([...host.querySelectorAll('.msg')].every(node=>node.isConnected&&node.ownerDocument===document&&host.contains(node))).toBe(true);
 });
