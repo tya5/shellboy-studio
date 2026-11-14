@@ -26,3 +26,11 @@ it('does not split an extended Work group or duplicate its key around the local 
  const extended=projectSavedItems([fact('a'),fact('b')]);
  expect(placeOwnSendRegion(reservation,'scope',true,extended,path,new Map([['a',0]]) )).toEqual({kind:'unqualified',reason:'boundary-conflict'});
 });
+
+it('keeps a valid beginning reservation distinct from a missing anchored reservation', () => {
+ const projection=projectSavedItems([item('saved')]);
+ const beginning={token:{},observation:{installedToken:{},ref:{},scope:'scope',boundary:{kind:'beginning' as const},isCurrent:()=>true}};
+ expect(placeOwnSendRegion(beginning,'scope',true,projection,undefined,new Map())).toEqual({kind:'qualified',insertion:{kind:'beginning'}});
+ const anchored={token:{},observation:{installedToken:{},ref:{},scope:'scope',boundary:{kind:'item' as const,itemKey:'missing',nodeId:'missing',ordinal:0,nodeMembers:['missing'],},isCurrent:()=>true}};
+ expect(placeOwnSendRegion(anchored,'scope',true,projection,undefined,new Map())).toEqual({kind:'unqualified',reason:'boundary-missing'});
+});
