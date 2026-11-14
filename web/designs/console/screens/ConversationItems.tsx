@@ -122,9 +122,12 @@ export function ConversationItems({ items, toolSummaries = [], renderItem, rende
     const plan = localRegion?.kind === "unqualified"
       ? [{ view: localRegion.content, first: -1, last: -1 }, ...rendered]
       : rendered;
+    // Keep top-level rows as direct siblings. Nested arrays create implicit
+    // unkeyed VNodes and can change an unchanged row's DOM parent on handoff.
+    const directChildren = (views: readonly ComponentChildren[]): ComponentChildren[] => views.flatMap(view => Array.isArray(view) ? view : [view]);
     const region:ComponentChildren[] = localRegion?.kind === "unqualified"
-      ? plan.map(row => row.view)
-      : [...beforeFirstSlots, ...plan.map(row => row.view), ...slotOnly];
+      ? directChildren(plan.map(row => row.view))
+      : [...beforeFirstSlots, ...directChildren(plan.map(row => row.view)), ...slotOnly];
     return <div class="conversation-items">{region}{trailing}</div>;
   }
   const rows: ComponentChildren[] = [];
