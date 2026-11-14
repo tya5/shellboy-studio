@@ -924,7 +924,7 @@ export class ConversationWindow {
         if (!priorPlan || priorPlan.capability !== capability || this.revision === undefined) return undefined;
         return createConversationDisplayPlan({ generation, revision: this.revision, capability, rows: currentRows,
           projection: projectHistoryWindowItems({ revision: this.revision, nodes: currentRows, keyScope: [priorPlan.scope] }).projection,
-          assistantFacts: this.acceptedView.peek().assistantOwnership ?? [], userDecision: { cohortVersion: priorPlan.cohortVersion }, scope: priorPlan.scope,
+          assistantFacts: this.acceptedView.peek().revision === this.revision ? this.acceptedView.peek().assistantOwnership ?? [] : [], userDecision: { cohortVersion: priorPlan.cohortVersion }, scope: priorPlan.scope,
           retiredAttempts: this.acceptedView.peek().retiredAttempts ?? [] });
       })() }, capability);
     if (this.disposed || epoch !== this.epoch || generation !== this.acceptedGeneration) return;

@@ -1,6 +1,6 @@
 import type { AssistantOwnership } from './assistant-ownership';
 import type { AcceptedCapability } from './accepted-view';
-import type { SavedItemProjection, ProjectedSavedItem } from './conversation-items';
+import { projectHistoryWindowItems, type SavedItemProjection, type ProjectedSavedItem } from './conversation-items';
 import type { HistoryItem } from '../../data/src/protocol';
 import type { LiveWorkIdentity } from './conversation-items';
 
@@ -33,10 +33,28 @@ export interface ConversationDisplayPlan {
 }
 
 /** Constructed only by accepted-window publication, never by a renderer. */
-export function displaySemanticKey(projection: SavedItemProjection, facts: readonly AssistantOwnership[]): string {
-  const items = projection.items.map(item => { const source = item.source; return [item.key, source.kind, 'text' in source ? source.text : '', 'textComplete' in source ? String(source.textComplete) : ''].join(':'); });
-  const owners = facts.map(fact => [fact.scope, fact.attemptId, fact.turnId, fact.mode, fact.containerKey, fact.itemKeys.join(',')].join(':'));
-  return [...items, ...owners].join('|');
+export type QualifiedAssistantFacts = readonly AssistantOwnership[];
+
+export function validateQualifiedAssistantFacts(input: {
+  readonly rows: readonly HistoryItem[];
+  readonly projection: SavedItemProjection;
+  readonly facts: readonly AssistantOwnership[];
+  readonly revision: string | number;
+  readonly scope: string;
+}): QualifiedAssistantFacts {
+  const rebuilt = projectHistoryWindowItems({ revision: input.revision, nodes: input.rows, keyScope: [input.scope] }).projection;
+  if (rebuilt.items.length !== input.projection.items.length || rebuilt.items.some((item, index) => item.key !== input.projection.items[index]?.key)) return Object.freeze([]);
+  const keys = new Set(rebuilt.items.map(item => item.key));
+  const accepted = input.facts.filter(fact => fact.scope === input.scope && fact.proofRevision === input.revision
+    && fact.itemKeys.length > 0 && fact.itemKeys.every(key => keys.has(key)));
+  return Object.freeze(accepted);
+}
+
+export function displaySemanticKey(projection: SavedItemProjection, facts: QualifiedAssistantFacts): string {
+  return JSON.stringify({
+    items: projection.items.map(item => ({ key: item.key, canonicalKey: item.canonicalKey, classification: item.classification })),
+    facts: facts.map(fact => ({ scope: fact.scope, attemptId: fact.attemptId, turnId: fact.turnId, mode: fact.mode, proofRevision: fact.proofRevision, containerKey: fact.containerKey, itemKeys: fact.itemKeys }))
+  });
 }
 
 export interface AcceptedPublicationInput {
@@ -53,8 +71,9 @@ export interface AcceptedPublicationInput {
 
 export function createConversationDisplayPlan(input: AcceptedPublicationInput): ConversationDisplayPlan {
   if (!Number.isSafeInteger(input.generation)) throw new Error('display plan requires accepted generation');
+  const qualifiedFacts = validateQualifiedAssistantFacts({ rows: input.rows, projection: input.projection, facts: input.assistantFacts, revision: input.revision, scope: input.scope });
   const owners = new Map<string, AssistantOwnership>();
-  for (const fact of input.assistantFacts) {
+  for (const fact of qualifiedFacts) {
     if (fact.scope !== input.scope || !fact.itemKeys.length) continue;
     for (const key of fact.itemKeys) {
       const prior = owners.get(key);
@@ -63,7 +82,7 @@ export function createConversationDisplayPlan(input: AcceptedPublicationInput): 
     }
   }
   const generation = input.generation, revision = input.revision;
-  const semanticKey = displaySemanticKey(input.projection, input.assistantFacts);
+  const semanticKey = displaySemanticKey(input.projection, qualifiedFacts);
   const version = input.userDecision.cohortVersion;
   const cohortKey = [...version.accepted.map(row => `${row.operationId}:${row.phase}:${row.messageId ?? ''}`), version.pending ? `pending:${version.pending.operationId}:${version.pending.phase}` : 'pending:none'].join('|');
   const entries = input.projection.items.map(item => {
