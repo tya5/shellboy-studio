@@ -1210,7 +1210,18 @@ export class ConversationWindow {
   private setTotal(total: number): void {
     if (total === this.total) return;
     this.total = total;
-    for (const b of [...this.buckets.keys()]) if (b * WINDOW_NODES >= total) this.dropBucket(b);
+    for (const b of [...this.buckets.keys()]) {
+      if (b * WINDOW_NODES >= total) { this.dropBucket(b); continue; }
+      const held = this.buckets.get(b)!;
+      const first = b * WINDOW_NODES;
+      const limit = Math.max(0, total - first);
+      for (let slot = limit; slot < held.items.length; slot++) {
+        if (held.items[slot] !== undefined) held.filled--;
+        held.items[slot] = undefined;
+        held.handoffs.get(first + slot)?.release("return");
+        held.handoffs.delete(first + slot);
+      }
+    }
     for (const i of this.heights.h.keys()) if (i >= total) this.heights.clear(i);
   }
 
