@@ -17,7 +17,7 @@ async function rig(windowCap = true) {
   const state = { available: true, truncated: false, partial: false, deferred: false, unknown: false, missing: false, error: false, changing: false, nonterminal: false, wrongid: false, empty: false, hold: false };
   const original = db.answer.bind(db); let reads = 0;
   db.answer = call => {
-    if (call.command === "status") return { ok: true, result: { items: state.available ? [{ kind: "attempt", id: state.wrongid ? "other" : "attempt", attempt_id: "attempt", turn_id: "turn", thread_id: "a", state: state.nonterminal ? "inflight" : "completed", response_nodes: state.empty ? [] : baseNodes.map(node => ({ node_id: node.node_id, ordinal: node.selection!.ordinal!, kind: "message", phase: "final_answer", item_id: null })), response_nodes_truncated: state.truncated }] : [] } };
+    if (call.command === "status") return { ok: true, result: { items: state.available ? [{ kind: "attempt", id: state.wrongid ? "other" : "attempt", attempt_id: "attempt", turn_id: "turn", thread_id: "a", state: state.nonterminal ? "inflight" : "completed", response_nodes: state.empty ? [] : baseNodes.filter(node => node.items?.some(item => item.kind === "text")).map(node => ({ node_id: node.node_id, ordinal: node.selection!.ordinal!, kind: "message", phase: "final_answer", item_id: null })), response_nodes_truncated: state.truncated }] : [] } };
     if (call.command === "history.window") {
       if (state.error) return { ok: false, code: "not_found", message: "synthetic" };
       const items: unknown[] = structuredClone(baseNodes);
@@ -236,6 +236,6 @@ it("scoped ownership does not attach an unrelated saved assistant to one preview
   ];
   const association = { scope: "scope", attemptId: "attempt", turnId: "turn", presentationContainer: "container" as never, refs: [{ nodeId: "owned", ordinal: 0, kind: "message" }] };
   const fact = assistantOwnership(association, "record", rows, 8);
-  expect(fact?.itemKeys).toEqual(["owned:/output/0/content/0"]);
-  expect(fact?.itemKeys).not.toContain("unrelated:/output/0/content/0");
+  expect(fact?.itemKeys).toEqual([JSON.stringify(["owned", "owned:text"])]);
+  expect(fact?.itemKeys).not.toContain(JSON.stringify(["unrelated", "other:text"]));
 });
