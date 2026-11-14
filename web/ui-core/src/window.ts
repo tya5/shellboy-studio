@@ -1,4 +1,3 @@
-import { captureHistoryWindowRows } from "./history-window-capture";
 import { captureConversationInput, type ConversationSemanticInput } from "./conversation-input";
 import { normalizeLiveWorkFacts } from "./conversation-items";
 import { assistantOwnership, type AssistantOwnership } from './assistant-ownership';
@@ -9,7 +8,7 @@ import type { OwnedTerminalReadLease, TicketOutcome, TerminalReadTicketId, Selec
 import type { TerminalPersistedProof } from "../../data/src/handoff";
 import type { AttemptPresentation, ThreadHandle, ThreadReadQualification } from "../../data/src/store";
 import type { HistoryBody } from "../../data/src/protocol";
-import { AcceptedView, makeAcceptedPublication, type AcceptedCapability, type AcceptedPublication, type PublicationReason } from "./accepted-view";
+import { AcceptedView, makeAcceptedPublication, prepareAcceptedPublication, type AcceptedCapability, type AcceptedPublication, type PublicationReason } from "./accepted-view";
 import { composeConversationDisplayPlan, conversationCohortKey, type ConversationDisplayPlan } from './conversation-display-plan';
 import type { HandoffRecord } from "../../data/src/handoff";
 // The long-thread reader's model (docs/design/long-threads.md): positional windows of a Thread's
@@ -1007,8 +1006,10 @@ export class ConversationWindow {
   /** Every transition captures the current input before its single accepted swap. */
   private prepareAccepted(snapshot: WindowAcceptedSnapshot, capability: AcceptedCapability,
     reason: PublicationReason = "read"): AcceptedPublication<WindowAcceptedSnapshot> {
-    const candidate = { ...snapshot, rows: captureHistoryWindowRows(snapshot.rows) };
-    return this.prepareCaptured(candidate, capability, this.captureConversationInput(candidate), reason);
+    return prepareAcceptedPublication(capture => {
+      const candidate = { ...snapshot, rows: capture(snapshot.rows) };
+      return this.prepareCaptured(candidate, capability, this.captureConversationInput(candidate), reason);
+    });
   }
 
   private prepareCaptured(snapshot: WindowAcceptedSnapshot, capability: AcceptedCapability,

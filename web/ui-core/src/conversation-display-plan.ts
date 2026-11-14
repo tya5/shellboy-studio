@@ -6,13 +6,17 @@ import { projectHistoryWindowItems, type SavedItemProjection, type ProjectedSave
 import type { HistoryItem } from '../../data/src/protocol';
 import type { LiveWorkIdentity } from './conversation-items';
 
+export interface DisplayCut {
+  readonly generation: number; readonly revision: number; readonly scope: string;
+  readonly capability: AcceptedCapability;
+}
 export type DisplayBodySource =
-  | Readonly<{ kind: 'preview'; text: string; generation: number; revision: number }>
-  | Readonly<{ kind: 'typed-canonical'; text: string; generation: number; revision: number; capability: AcceptedCapability }>
-  | Readonly<{ kind: 'unavailable'; reason: string; generation: number; revision: number }>;
+  | Readonly<{ kind: 'preview'; text: string; cut: DisplayCut }>
+  | Readonly<{ kind: 'typed-canonical'; text: string; cut: DisplayCut }>
+  | Readonly<{ kind: 'unavailable'; reason: string; cut: DisplayCut }>;
 
 export type DisplayLifetime = Readonly<{
-  kind: 'valid-owner' | 'canonical-human' | 'retained' | 'revoked'; scope: string; generation: number; revision: number;
+  kind: 'valid-owner' | 'canonical-human' | 'retained' | 'revoked'; cut: DisplayCut;
 }>;
 export interface ConversationDisplayPlanEntry {
   readonly item: ProjectedSavedItem;
@@ -96,6 +100,7 @@ export function createConversationDisplayPlan(input: AcceptedPublicationInput): 
     }
   }
   const generation = input.generation, revision = input.revision;
+  const cut: DisplayCut = Object.freeze({ generation, revision, capability: input.capability, scope: input.scope });
   const work = new Map<string, CapturedWorkElement>();
   const workContexts = new Map<string, CapturedWorkElement["metadata"]>();
   for (const item of input.projection.items) {
@@ -118,7 +123,7 @@ export function createConversationDisplayPlan(input: AcceptedPublicationInput): 
   const unavailable = (reason: string): DisplayBodySource => {
     let body = unavailableBodies.get(reason);
     if (!body) {
-      body = Object.freeze({ kind: 'unavailable', reason, generation, revision });
+      body = Object.freeze({ kind: 'unavailable', reason, cut });
       unavailableBodies.set(reason, body);
     }
     return body;
@@ -126,7 +131,7 @@ export function createConversationDisplayPlan(input: AcceptedPublicationInput): 
   const lifetimeFor = (kind: DisplayLifetime["kind"]): DisplayLifetime => {
     let lifetime = lifetimes.get(kind);
     if (!lifetime) {
-      lifetime = Object.freeze({ kind, scope: input.scope, generation, revision });
+      lifetime = Object.freeze({ kind, cut });
       lifetimes.set(kind, lifetime);
     }
     return lifetime;
@@ -140,9 +145,9 @@ export function createConversationDisplayPlan(input: AcceptedPublicationInput): 
     const human = (source.kind === 'user' || source.kind === 'summary') && source.textComplete === true;
     const typedCanonical = source.kind === 'text' && source.textComplete === true && canonicalSource?.kind === 'text' && canonicalSource.textComplete === true;
     const body: DisplayBodySource = (typedCanonical || human)
-      ? { kind: 'typed-canonical', text: source.text, generation, revision, capability: input.capability }
+      ? { kind: 'typed-canonical', text: source.text, cut }
       : source.kind === 'text' && (owner?.mode === 'preview' || !!host)
-        ? { kind: 'preview', text: source.text, generation, revision }
+        ? { kind: 'preview', text: source.text, cut }
         : unavailable(source.kind);
     const retired = 'domain' in source && !!source.attemptId && input.retiredAttempts.some(item => item.scope === input.scope && item.attemptId === source.attemptId && item.revision === revision);
     const lifetime = lifetimeFor(retired ? 'revoked' : human && !owner ? 'canonical-human' : owner || host ? 'valid-owner' : 'retained');

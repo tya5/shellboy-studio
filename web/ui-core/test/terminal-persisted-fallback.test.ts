@@ -25,9 +25,9 @@ for (const state of ["completed", "failed", "incomplete", "cancelled"] as const)
   expect(plan.entries.map(entry => entry.item)).toEqual(expectedProjection.items);
   expect(plan.sequence).toEqual(expectedProjection.sequence ?? []);
   expect(plan.workGroups).toEqual(expectedProjection.workGroups ?? []);
-  expect(plan.entries.map(entry => entry.body)).toEqual([{ kind: "unavailable", reason: "ordinaryEmpty", generation: plan.acceptedGeneration, revision: 1 }]);
+  expect(plan.entries.map(entry => entry.body)).toEqual([{ kind: "unavailable", reason: "ordinaryEmpty", cut:{generation: plan.acceptedGeneration, revision: 1,capability:plan.capability,scope:plan.scope} }]);
   expect(plan.entries.map(entry => entry.presentationContainer)).toEqual([undefined]);
-  expect(plan.entries.map(entry => entry.lifetime)).toEqual([{ kind: "retained", scope: "", generation: plan.acceptedGeneration, revision: 1 }]);
+  expect(plan.entries.map(entry => entry.lifetime)).toEqual([{ kind: "retained", scope: "", cut:{generation: plan.acceptedGeneration, revision: 1,capability:plan.capability,scope:plan.scope} }]);
   w.dispose();
 });
 it.each(["empty", "wrongscope", "wrongattempt", "revoke"])("does not retire when authority is %s", async mode => {

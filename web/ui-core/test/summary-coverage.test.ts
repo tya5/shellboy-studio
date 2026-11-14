@@ -3,7 +3,7 @@ import { ConversationWindow } from "../src/window";
 import { ShellboyData } from "../../data/src/store";
 import type { HistoryItem } from "../../data/src";
 import { connected, FakeTransport, flush } from "../../data/test/harness";
-import { currentInputPlanExpectation, observePublishedPlans } from "./publication-contract";
+import { declaredPlanExpectation, observePublishedPlans, type DeclaredPlanCut } from "./publication-contract";
 async function rig() {
   const t = new FakeTransport(); let id = 0; const data = new ShellboyData({ transport: t, newId: () => `coverage-${++id}` });
   data.start(); t.open(); t.push({ t: "hello", bridge_version: "synthetic", owner: connected }); await flush();
@@ -13,7 +13,18 @@ async function rig() {
   const w = new ConversationWindow({ read: async () => ({ ok: true, value: { thread_id: "t", revision: target ? 2 : 1, total: 2,
     items: target ? [{ node_id: "summary", kind: "summary", selection: { ordinal: 0 }, items: [] }, source[1]!] : source } }) });
   await flush(); const ref = w.acceptedView.peek();
-  const publications = observePublishedPlans(w, ref => currentInputPlanExpectation(ref, "unavailable"));
+  const declaredCut = (revision: 1 | 2): DeclaredPlanCut => {
+    const ids = revision === 1 ? ['a', 'b'] : ['summary', 'b'];
+    return { revision, scope: 'history', coverage: 'complete', rows: ids,
+      entries: ids.map(id=>({key:JSON.stringify(['node',id]),case:id==='summary'?'summary':'ordinaryEmpty',
+        source:{identityDomain:'node',nodeId:id,itemIdentity:id,windowRevision:revision,
+          ...(id==='summary'?{classificationCase:'summary',kind:'summary',text:''}:{classificationCase:'ordinaryEmpty',kind:'ordinaryEmpty'}),keyScope:['history']},
+        body:{kind:'unavailable',reason:id==='summary'?'summary':'ordinaryEmpty'},lifetime:'retained'})),
+      sequence:ids.map(id=>({kind:'conversation',itemKey:JSON.stringify(['node',id])})),groups:[] };
+  };
+  const cuts = { source: declaredCut(1), target: declaredCut(2) };
+  const publications = observePublishedPlans(w, ref => declaredPlanExpectation(ref, w.acceptedView.currentCapability,
+    ref.revision === 1 ? cuts.source : cuts.target));
   return { t, data, h, w, ref, publications, change: async () => { target = true; w.changed(); await flush(); } };
 }
 it.each(["inside", "below"] as const)("publishes direct %s membership on a separately current target, consumes once without callbacks/ref changes", async kind => {

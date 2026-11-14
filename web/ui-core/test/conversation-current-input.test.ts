@@ -27,9 +27,9 @@ it('captures B rather than relabeling A or two revoked handoffs on every rewrite
    expect(snapshot.revision).toBe(authorized.revision);expect(snapshot.rows.map(row=>row.node_id)).toEqual([authorized.node]);
    expect(texts).toEqual(authorized.texts);expect(kinds).toEqual(authorized.kinds);
    for(const entry of snapshot.displayPlan?.entries??[]){
-    expect(entry.body.generation).toBe(snapshot.generation);expect(entry.body.revision).toBe(authorized.revision);
-    expect(entry.lifetime.scope).toBe(r.handle.handoffScope());
-    if(entry.body.kind==='typed-canonical')expect(entry.body.capability).toBe(r.w.acceptedView.currentCapability);
+    expect(entry.body.cut.generation).toBe(snapshot.generation);expect(entry.body.cut.revision).toBe(authorized.revision);
+    expect(entry.lifetime.cut.scope).toBe(r.handle.handoffScope());
+    if(entry.body.kind==='typed-canonical')expect(entry.body.cut.capability).toBe(r.w.acceptedView.currentCapability);
    }
   }
   publications.push({revision:snapshot.revision,texts,kinds});
@@ -62,7 +62,7 @@ it('keeps an invalid current Work cut unavailable without withdrawing an indepen
  try{
   await r.settle();const invalid=r.w.acceptedView.peek();expect(invalid.displayPlan?.coverage).toBe('unavailable');
   expect(invalid.displayPlan?.entries.map(entry=>entry.body)).toEqual([{kind:'typed-canonical',text:'independent-human',
-   generation:invalid.generation,revision:invalid.revision,capability:r.w.acceptedView.currentCapability}]);
+   cut:{generation:invalid.generation,revision:invalid.revision,capability:r.w.acceptedView.currentCapability,scope:r.handle.handoffScope()}}]);
   expect(invalid.displayPlan?.entries[0]?.lifetime.kind).toBe('canonical-human');
   expect(r.w.refreshConversationInput(invalid)).toBe(true);expect(r.w.acceptedView.peek()).toBe(invalid);
   work=valid;r.w.refreshConversationInput(invalid);const qualified=r.w.acceptedView.peek();

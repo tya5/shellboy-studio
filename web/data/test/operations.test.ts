@@ -298,3 +298,24 @@ describe('302 optional notification across public history routes',()=>{
   });
  }
 });
+
+
+it.each(['work','handoff'] as const)('scoped %s decoder rejects the whole foreign batch before model admission',async mode=>{
+ const {t,ops}=setup();const pending=mode==='work'?ops.threadWork('selected'):ops.handoffAttempts('selected');
+ const call=t.calls('status')[0]!;
+ t.ok(call.id,{items:[{kind:'run',id:'current',thread_id:'selected',state:'live'},
+  {kind:'attempt',id:'foreign',thread_id:'other',state:'completed',response_nodes:[{node_id:'private-foreign'}]}]});
+ const out=await pending;expect(out).toMatchObject({ok:false,error:{kind:'invalid_response'}});
+ expect(JSON.stringify(out)).not.toContain('private-foreign');expect(t.calls()).toHaveLength(1);
+});
+it.each(['work','handoff'] as const)('scoped %s decoder preserves valid operation multiplicity without inferring retired fields',async mode=>{
+ const {t,ops}=setup();const pending=mode==='work'?ops.threadWork('selected'):ops.handoffAttempts('selected');
+ const items=[{kind:'shell',id:'operation-a',thread_id:'selected',state:'running',execution_id:'execution-a'},
+  {kind:'shell',id:'operation-b',thread_id:'selected',state:'running',execution_id:'execution-b'}];
+ t.ok(t.calls('status')[0]!.id,{items});expect(await pending).toEqual({ok:true,value:{items}});
+});
+it.each(['work','handoff'] as const)('scoped %s decoder keeps missing public thread identity rejected',async mode=>{
+ const {t,ops}=setup();const pending=mode==='work'?ops.threadWork('selected'):ops.handoffAttempts('selected');
+ t.ok(t.calls('status')[0]!.id,{items:[{kind:'run',id:'missing-scope',state:'live'}]});
+ expect(await pending).toMatchObject({ok:false,error:{kind:'invalid_response'}});
+});

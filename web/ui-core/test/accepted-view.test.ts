@@ -1,4 +1,3 @@
-import { captureHistoryWindowRows } from "../src/history-window-capture";
 import { emptyOwnSendLocalRegion, ownSendPresentation, captureOwnSendLocalRegion } from "../src/own-send-presentation";
 import { expect, it } from "vitest";
 import { createConversationDisplayPlan } from "../src/conversation-display-plan";
@@ -128,12 +127,12 @@ it("cached aliases cannot bypass the original maximum path depth", () => {
 });
 
 
-it("stages the legal maximum selected range as one shared immutable publication graph", () => {
-  const rows = captureHistoryWindowRows(Array.from<unknown, HistoryItem>({ length: WINDOW_NODES * WINDOWS_HELD }, (_, ordinal) => ({
-    node_id: `selected-${ordinal}`, kind: "assistant_response", selection: { ordinal },
-    ...(ordinal % 7 === 3 ? {} : { items: [{ kind: "text" as const, item_identity: "text", text: `complete-${ordinal}`, text_complete: true }] }),
+it.each(["mixed", "all-work"] as const)("stages the legal maximum %s selected range plus eight local rows as one bounded graph", mode => {
+  const rows = Array.from<unknown, HistoryItem>({ length: WINDOW_NODES * WINDOWS_HELD }, (_, ordinal) => ({
+    node_id: `selected-${ordinal}`, kind: mode === "all-work" || ordinal % 7 === 3 ? "event" : "assistant_response", selection: { ordinal },
+    ...(mode === "all-work" || ordinal % 7 === 3 ? {} : { items: [{ kind: "text" as const, item_identity: "text", text: `complete-${ordinal}`, text_complete: true }] }),
     provenance: { created_at: '2026-01-01', sender: { kind: 'human' } },
-  })));
+  }));
   const initial: WindowAcceptedSnapshot = { generation: 0, epoch: 0, disposed: false, rows: [],
     range: undefined, total: 0, revision: undefined, pending: true };
   const view = new AcceptedView(initial);
@@ -158,8 +157,15 @@ it("stages the legal maximum selected range as one shared immutable publication 
   expect(view.current.displayPlan!.localRegion.localRows[0]).toBe(view.current.displayPlan!.localRegion.cohort[0]);
   const entries = view.current.displayPlan!.entries;
   expect(entries).toHaveLength(rows.length);expect(entries[0]!.lifetime).toBe(entries[1]!.lifetime);
-  expect(entries[0]!.body).toMatchObject({ kind: "typed-canonical", text: "complete-0" });
-  expect(entries.at(-2)!.body).toMatchObject({ kind: "typed-canonical", text: `complete-${rows.length - 2}` });
+  if(mode==='mixed'){
+    expect(entries[0]!.body).toMatchObject({ kind: "typed-canonical", text: "complete-0" });
+    expect(entries.at(-2)!.body).toMatchObject({ kind: "typed-canonical", text: `complete-${rows.length - 2}` });
+  }else{
+    expect(entries.every(entry=>entry.work&&entry.item.classification?.headingCategory==='Notifications')).toBe(true);
+    expect(view.current.displayPlan!.workGroups).toHaveLength(1);
+    expect(view.current.displayPlan!.workGroups[0]!.memberKeys).toEqual(rows.map(row=>JSON.stringify(['node',row.node_id])));
+    expect(view.current.displayPlan!.workGroups[0]!.executionIds).toEqual([]);
+  }
   expect(entries.at(-1)!.work).toBeDefined();
 });
 
@@ -193,17 +199,4 @@ it('reentrant input qualification cannot replace a newer committed local cut',()
  const view=new AcceptedView(page(0));let once=true;
  const candidate=makeAcceptedPublication(next(view,1),'read',()=>{if(once){once=false;publish(view,next(view,2));}return true;});
  expect(view.publish(candidate)).toBe(false);expect(view.current.revision).toBe(2);
-});
-
-
-it('shares equal row provenance without dropping fields or joining different message provenance',()=>{
- const provenance={created_at:'at',sender:{kind:'human' as const},message:{expect_reply:false as const,reply_to:'a'}};
- const rows:HistoryItem[]=[{node_id:'one',kind:'user',provenance},
-  {node_id:'two',kind:'user',provenance:structuredClone(provenance)},
-  {node_id:'three',kind:'user',provenance:{...provenance,message:{expect_reply:false as const,reply_to:'b'}}}];
- const captured=captureHistoryWindowRows(rows);
- expect(captured).toEqual(rows);expect(captured[0]!.provenance).toBe(captured[1]!.provenance);
- expect(captured[0]!.provenance).not.toBe(captured[2]!.provenance);
- provenance.sender.kind='human';provenance.message.reply_to='mutated';
- expect(captured[0]!.provenance?.message).toEqual({expect_reply:false,reply_to:'a'});
 });

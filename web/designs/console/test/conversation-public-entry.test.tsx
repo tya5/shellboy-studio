@@ -83,10 +83,10 @@ it("production model preserves one host across preview, saved canonical body, em
       const plan=snapshot.displayPlan!;expect(plan.acceptedGeneration).toBe(snapshot.generation);
       expect(plan.capability).toBe(reader.acceptedView.currentCapability);expect(plan.scope).toBe(scope);
       for(const entry of plan.entries){
-        expect(entry.body.generation).toBe(snapshot.generation);expect(entry.body.revision).toBe(snapshot.revision);
-        expect(entry.lifetime.generation).toBe(snapshot.generation);expect(entry.lifetime.revision).toBe(snapshot.revision);
-        expect(entry.lifetime.scope).toBe(scope);
-        if(entry.body.kind==='typed-canonical')expect(entry.body.capability).toBe(reader.acceptedView.currentCapability);
+        expect(entry.body.cut.generation).toBe(snapshot.generation);expect(entry.body.cut.revision).toBe(snapshot.revision);
+        expect(entry.lifetime.cut.generation).toBe(snapshot.generation);expect(entry.lifetime.cut.revision).toBe(snapshot.revision);
+        expect(entry.lifetime.cut.scope).toBe(scope);
+        if(entry.body.kind==='typed-canonical')expect(entry.body.cut.capability).toBe(reader.acceptedView.currentCapability);
       }
       const texts=plan.entries.flatMap(entry=>entry.body.kind==='typed-canonical'||entry.body.kind==='preview'?[entry.body.text]:[]);
       expect(texts.every(text=>['Independent user','Preview answer','Committed saved answer','Retained concurrent preview'].includes(text))).toBe(true);

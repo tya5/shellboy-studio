@@ -160,9 +160,12 @@ const workPage = pageOf<WorkItem>((v) =>
   isObject(v) && typeof v.kind === "string" && typeof v.id === "string" && typeof v.state === "string" && typeof v.thread_id === "string"
     ? undefined : "status item lacks kind, id, state or thread_id",
 );
-const decodeWorkPage: Decoder<Page<WorkItem>> = (v) => {
+const decodeThreadWorkPage = (threadId: string): Decoder<Page<WorkItem>> => (v) => {
   const decoded = workPage(v);
-  return decoded.ok && decoded.value.items.length > 200 ? { ok: false, reason: "status page exceeds 200 items" } : decoded;
+  if (!decoded.ok) return decoded;
+  if (decoded.value.items.length > 200) return { ok: false, reason: "status page exceeds 200 items" };
+  if (decoded.value.items.some(item => item.thread_id !== threadId)) return { ok: false, reason: "status page contains a foreign Thread" };
+  return decoded;
 };
 const decodeBody: Decoder<HistoryBody> = (v) => {
   if (!isObject(v) || typeof v.node_id !== 'string' || typeof v.text !== 'string') return { ok: false, reason: 'history.get result lacks node_id or text' };
@@ -332,10 +335,10 @@ export class Operations {
   }
   /** Activity status, for `receipt_budget`. One row is enough; the rows are not used. */
   handoffAttempts(threadId: string, read?: ReadOptions): Promise<Outcome<Page<WorkItem>>> {
-    return this.run("status", { thread_id: threadId, all: true, limit: 200 }, decodeWorkPage, undefined, read);
+    return this.run("status", { thread_id: threadId, all: true, limit: 200 }, decodeThreadWorkPage(threadId), undefined, read);
   }
   threadWork(threadId: string, read?: ReadOptions): Promise<Outcome<Page<WorkItem>>> {
-    return this.run("status", { thread_id: threadId, state: ["starting", "running", "stopping", "accepted", "held"], limit: 200 }, decodeWorkPage, undefined, read);
+    return this.run("status", { thread_id: threadId, state: ["starting", "running", "stopping", "accepted", "held"], limit: 200 }, decodeThreadWorkPage(threadId), undefined, read);
   }
   statusSummary(read?: ReadOptions): Promise<Outcome<Record<string, unknown>>> {
     return this.run("status", { limit: 1 }, decodeRecord, undefined, read);

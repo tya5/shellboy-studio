@@ -62,9 +62,9 @@ it.each([false,true])('one synchronous current successor publishes both ownershi
   expect(plan.sequence).toEqual(expectedProjection.sequence ?? []);
   expect(plan.workGroups).toEqual(expectedProjection.workGroups ?? []);
   expect(plan.entries.map(entry => entry.body)).toEqual(expectedProjection.items.map(item => item.source.kind === "text"
-   ? partial ? { kind: "preview", text: "saved", generation: ref.generation, revision: 7 }
-     : { kind: "typed-canonical", text: "saved", generation: ref.generation, revision: 7, capability: r.window.acceptedView.currentCapability }
-   : { kind: "unavailable", reason: "tool", generation: ref.generation, revision: 7 }));
+   ? partial ? { kind: "preview", text: "saved", cut: {generation: ref.generation, revision: 7, capability: r.window.acceptedView.currentCapability, scope:r.handle.handoffScope()} }
+     : { kind: "typed-canonical", text: "saved", cut: {generation: ref.generation, revision: 7, capability: r.window.acceptedView.currentCapability, scope:r.handle.handoffScope()} }
+   : { kind: "unavailable", reason: "tool", cut: {generation: ref.generation, revision: 7, capability: r.window.acceptedView.currentCapability, scope:r.handle.handoffScope()} }));
   expect(plan.entries.map(entry => entry.presentationContainer)).toEqual([original.presentationContainer, undefined]);
   expect(plan.entries.map(entry => entry.lifetime.kind)).toEqual(["valid-owner", "retained"]);
   planCuts.push(ref.generation);
@@ -123,8 +123,8 @@ it("ready reentry revocation preserves exact original record, revokes body autho
   const plan=ref.displayPlan!;
   expect(plan.entries.map(entry=>entry.item)).toEqual(expectedProjection.items);
   expect(plan.entries.map(entry=>entry.body)).toEqual([
-   {kind:"typed-canonical",text:"saved",generation:ref.generation,revision:7,capability:r.window.acceptedView.currentCapability},
-   {kind:"unavailable",reason:"tool",generation:ref.generation,revision:7},
+   {kind:"typed-canonical",text:"saved",cut:{generation:ref.generation,revision:7,capability:r.window.acceptedView.currentCapability,scope:r.handle.handoffScope()}},
+   {kind:"unavailable",reason:"tool",cut:{generation:ref.generation,revision:7,capability:r.window.acceptedView.currentCapability,scope:r.handle.handoffScope()}},
   ]);
   expect(plan.entries.map(entry=>entry.presentationContainer)).toEqual([original.presentationContainer,undefined]);
   expect(plan.entries.map(entry=>entry.lifetime.kind)).toEqual(["valid-owner","retained"]);
@@ -138,8 +138,8 @@ it("ready reentry revocation preserves exact original record, revokes body autho
   expect(current.displayPlan?.acceptedGeneration).toBe(current.generation);
   expect(current.displayPlan?.capability).toBe(r.window.acceptedView.currentCapability);
   expect(current.displayPlan?.entries.map(entry=>entry.body)).toEqual([
-   {kind:"typed-canonical",text:"saved",generation:current.generation,revision:7,capability:r.window.acceptedView.currentCapability},
-   {kind:"unavailable",reason:"tool",generation:current.generation,revision:7},
+   {kind:"typed-canonical",text:"saved",cut:{generation:current.generation,revision:7,capability:r.window.acceptedView.currentCapability,scope:r.handle.handoffScope()}},
+   {kind:"unavailable",reason:"tool",cut:{generation:current.generation,revision:7,capability:r.window.acceptedView.currentCapability,scope:r.handle.handoffScope()}},
   ]);
   expect(current.displayPlan?.entries.map(entry=>entry.lifetime.kind)).toEqual(["retained","retained"]);
   expect(r.handle.handoff.peek()).toHaveLength(1);

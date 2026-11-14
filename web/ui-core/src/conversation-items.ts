@@ -95,7 +95,9 @@ export function projectOwnedHandoffFacts(scope: string, records: readonly Handof
       && record.readyAttempt.scope === scope && record.readyAttempt.attemptId === record.attemptId
       && record.readyAttempt.turnId === proof.turnId && record.readyAttempt.revision === proof.revision
       && record.readyAttempt.refs.some(ref => ref.nodeId === record.nodeId);
-    const previewAuthorized = record.bodyAuthority === "preview" && (record.status === "streaming" || record.status === "confirming");
+    // A lookup failure changes retry chrome, not the authority of the held original.
+    const previewAuthorized = record.bodyAuthority === "preview"
+      && (record.status === "streaming" || record.status === "confirming" || record.status === "failed");
     return record.text && record.transferred !== true && (previewAuthorized || (record.status === "ready" && ready))
       ? { domain: "live" as const, namespace: "handoff" as const, scope, recordId: record.key, attemptId: record.attemptId, kind: "text" as const, text: record.text, presentationContainer: record.presentationContainer, ...(record.readyAttempt ? { turnId: record.readyAttempt.turnId } : {}) }
       : { domain: "live" as const, namespace: "handoff" as const, scope, recordId: record.key, attemptId: record.attemptId, kind: "unknown" as const };
