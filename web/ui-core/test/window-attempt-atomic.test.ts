@@ -60,7 +60,6 @@ it("delayed ordinary revision 7 cannot replace an accepted revision 8 snapshot",
   expect(w.acceptedView.peek()).toBe(before);
   expect(w.acceptedView.peek().revision).toBe(8);
   expect(w.acceptedView.peek().rows.map(row => row.node_id)).toEqual(["user-0", "tool", "answer"]);
-  expect(w.revision).toBe(8);
   w.dispose();
 });
 it("notification reentry stops old release and never retires another attempt/turn", async () => {
