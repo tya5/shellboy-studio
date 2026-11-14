@@ -138,5 +138,10 @@ it("publishes one capability-bound display plan and reaches a fixed point", asyn
   const generation = published.generation;
   expect(r.w.publishConversationDisplayPlan(published, projection, { cohortVersion: { accepted: [], pending: undefined } }, "thread")).toBe(true);
   expect(r.w.acceptedView.peek().generation).toBe(generation);
+  r.w.layoutChanged();
+  const ordinary = r.w.acceptedView.peek();
+  expect(ordinary.generation).toBeGreaterThan(generation);
+  expect(r.w.publishConversationDisplayPlan(ordinary, projection, { cohortVersion: { accepted: [], pending: undefined } }, "thread")).toBe(true);
+  expect(r.w.acceptedView.peek().generation).toBeGreaterThan(ordinary.generation);
   r.w.dispose(); r.data.stop();
 });
