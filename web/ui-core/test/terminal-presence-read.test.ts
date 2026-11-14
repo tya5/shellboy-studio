@@ -166,11 +166,11 @@ it("terminal slot successor dispatches one explicit whole-window request after a
   const point = { id: "point" as never, args: { thread_id: "thread", node_id: "answer", before: 0, after: 199, items: true } };
   const first = slots.request(receipt, point, valid, parent);
   expect("state" in first).toBe(true);
-  await slots.dispatch(() => true, async args => { calls.push(args); return { ok: true, value: { thread_id: "thread", revision: 7, total: 4, items: [] } }; }, false);
+  await slots.dispatch(() => true, async args => { calls.push(args); return { ok: true, value: { thread_id: "thread", revision: 7, total: 2, items: [baseNodes[1]!] } }; }, false);
   const whole = { id: "whole" as never, args: { thread_id: "thread", before: 199, after: 0, items: true } };
   const replacement = slots.replace(receipt, whole, valid, parent);
   expect("state" in replacement).toBe(true);
-  await slots.dispatch(() => true, async args => { calls.push(args); return { ok: true, value: { thread_id: "thread", revision: 8, total: 4, items: [] } }; }, false);
+  await slots.dispatch(() => true, async args => { calls.push(args); return { ok: true, value: { thread_id: "thread", revision: 8, total: 2, items: baseNodes } }; }, false);
   expect(calls).toEqual([point.args, whole.args]);
 });
 
@@ -182,13 +182,8 @@ it("Window rebinds a revision-changing point read through one bounded whole-wind
     if (call.command === "history.window") {
       const args = call.args as Record<string, unknown>;
       requests.push(args);
-      if (args.node_id !== undefined) return { ok: true, result: { thread_id: "a", revision: 8, total: 4, items: [
-        { node_id: "answer", kind: "assistant_response", selection: { ordinal: 2 }, items: [{ kind: "text", item_identity: "text", text: "saved", text_complete: true }] },
-      ] } };
-      if (args.before === 199 && args.after === 0 && args.items === true) return { ok: true, result: { thread_id: "a", revision: 8, total: 4, items: [
-        { node_id: "tool", kind: "assistant_response", selection: { ordinal: 1 }, items: [{ kind: "tool_call", item_identity: "call", execution_ids: ["exec"] }] },
-        { node_id: "answer", kind: "assistant_response", selection: { ordinal: 2 }, items: [{ kind: "text", item_identity: "text", text: "saved", text_complete: true }] },
-      ] } };
+      if (args.node_id !== undefined) return { ok: true, result: { thread_id: "a", revision: 8, total: 2, items: [baseNodes[1]!] } };
+      if (args.before === 199 && args.after === 0 && args.items === true) return { ok: true, result: { thread_id: "a", revision: 8, total: 2, items: baseNodes } };
       throw new Error(`unexpected history.window args: ${JSON.stringify(call.args)}`);
     }
     return original(call);
@@ -200,6 +195,8 @@ it("Window rebinds a revision-changing point read through one bounded whole-wind
   const calls = r.t.calls("history.window");
   expect(calls.length - callsBefore).toBe(2);
   expect(requests).toHaveLength(2);
+  const wholeItems = baseNodes.map(node => node.selection.ordinal);
+  expect(wholeItems).toEqual([0, 1]);
   expect(requests[0]).toMatchObject({ node_id: "answer", items: true });
   expect(requests[1]).toEqual({ thread_id: "a", before: 199, after: 0, items: true });
   expect(r.w.acceptedView.peek().revision).toBe(8);
