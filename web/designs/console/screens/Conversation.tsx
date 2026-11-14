@@ -278,10 +278,8 @@ export function SavedWindowContent({ model, snapshot, live, liveBoundary, liveFa
   }) : [];
   const scope = handle?.handoffScope() ?? "";
   const current = model.longReader.value?.acceptedView.isCurrent(snapshot) ?? false;
-  const ownership = current && handle ? (snapshot.assistantOwnership ?? []).filter(decision => {
-    const original = handle.handoff.value.find(record => record.key === decision.recordKey && record.attemptId === decision.attemptId);
-    return decision.scope === scope && !!original && handle.isDisplayOwnershipCurrent(original, snapshot.generation);
-  }) : [];
+  const ownership = current && handle ? (snapshot.assistantOwnership ?? []).filter(decision =>
+    decision.scope === scope && decision.containerKey.length > 0 && decision.itemKeys.length > 0) : [];
   const canonicalOwners = new Set(ownership.filter(decision => decision.mode === 'canonical').map(decision => decision.recordKey));
   const reservedItems = new Set(ownership.filter(decision => decision.mode === 'preview').flatMap(decision => decision.itemKeys));
   const retained = [...handoffs.filter(fact => !('domain' in fact) || !canonicalOwners.has(fact.recordId)),
@@ -294,7 +292,9 @@ export function SavedWindowContent({ model, snapshot, live, liveBoundary, liveFa
     const node = snapshot.rows.find(node => node.node_id === source.nodeId);
     return node?.selection?.ordinal !== undefined && node.selection.ordinal >= liveBoundary;
   });
-  const ordered = cut < 0 ? [...saved, ...retainedHandoffs] : [...saved.slice(0, cut), ...retainedHandoffs, ...saved.slice(cut)];
+  // Accepted history rows already carry the authoritative chronological order. A retained
+  // preview has no accepted ordinal, so it must not be inserted at a stale captured cut.
+  const ordered = [...saved, ...retainedHandoffs];
   const issuedWork=[...retainedRecords,...normalizeTerminalPresenceFacts(current ? snapshot.terminalPresence ?? [] : [])];
   const scopedWork=keyScope?scopeIssuedWorkFacts(issuedWork,keyScope):issuedWork;
   const workScopeRejected=scopedWork===undefined;
@@ -304,11 +304,11 @@ export function SavedWindowContent({ model, snapshot, live, liveBoundary, liveFa
   for (const decision of ownership.filter(item => item.mode === "canonical")) {
     for (const itemKey of decision.itemKeys) {
       if (!baseProjection.items.some(item => item.key === itemKey)) continue;
-      // Keep each canonical child distinct while making its owner stable after ledger retirement.
-      displayKeys.set(itemKey, `answer:${decision.recordKey}:${itemKey}`);
+      displayKeys.set(itemKey, `${decision.containerKey}:${itemKey}`);
     }
   }
-  const projection = rekeyConversationPresentation(baseProjection, displayKeys);
+  const containers = new Map([...displayKeys].map(([itemKey]) => [itemKey, ownership.find(decision => decision.itemKeys.includes(itemKey) && decision.mode === "canonical")?.containerKey ?? ""]));
+  const projection = rekeyConversationPresentation(baseProjection, displayKeys, containers);
   // Live text without item-kind proof cannot unlock or replace saved Conversation text.
   return <OwnSendContent model={model} projection={projection} nodes={snapshot.rows} scope={model.ownMutationScope()} acceptedRef={snapshot} current={current} isCurrent={()=>model.longReader.peek()?.acceptedView.isCurrent(snapshot)??false} path={{tail:!snapshot.pending&&!snapshot.disposed&&(snapshot.total===0||snapshot.range?.last===snapshot.total-1),empty:snapshot.total===0,revision:snapshot.revision,lastNodeId:snapshot.rows.at(-1)?.node_id,lastOrdinal:snapshot.rows.at(-1)?.selection?.ordinal}} hiddenItemKeys={reservedItems} trailing={<>{workScopeRejected&&current?<div key="work-scope-rejected" role="status" data-work-scope-rejected="" data-state-source="client" data-state-value="scope-qualification-rejected">CLIENT: {model.t.value("work.textUnavailable")} (scope-qualification-rejected)</div>:null}{handle?.handoffOverflow.value ? <div class="caption muted" data-live-overflow="">{model.t.value("convo.handoffLimit")} <HandoffRetryControl model={model}/></div> : undefined}</>} />;
 }

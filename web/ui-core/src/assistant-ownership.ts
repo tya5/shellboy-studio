@@ -8,6 +8,8 @@ export interface AssistantOwnership {
   readonly attemptId: string;
   readonly turnId: string;
   readonly recordKey: string;
+  /** Stable answer container identity for the accepted presentation lifetime. */
+  readonly containerKey: string;
   readonly mode: 'preview' | 'canonical';
   readonly itemKeys: readonly string[];
 }
@@ -32,5 +34,5 @@ export function assistantOwnership(association: DisplayAssociation, recordKey: s
   const complete = ordinary.every(item => item.source.kind === 'text' && item.source.textComplete === true);
   const nonempty = ordinary.some(item => item.source.kind === 'text' && !!item.source.text);
   return Object.freeze({ scope: association.scope, attemptId: association.attemptId, turnId: association.turnId,
-    recordKey, mode: complete && nonempty ? 'canonical' : 'preview', itemKeys: Object.freeze(ordinary.map(item => item.key)) });
+    recordKey, containerKey: `answer:${recordKey}`, mode: complete && nonempty ? 'canonical' : 'preview', itemKeys: Object.freeze(ordinary.map(item => item.key)) });
 }
