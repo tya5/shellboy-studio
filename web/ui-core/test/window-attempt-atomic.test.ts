@@ -46,6 +46,23 @@ it("rejects a partial newer proof instead of publishing it over copied older row
   expect(w.acceptedView.peek().revision).toBe(7);
   w.dispose();
 });
+it("delayed ordinary revision 7 cannot replace an accepted revision 8 snapshot", async () => {
+  const { w, record, proof } = await rig();
+  const acceptedProof = { ...proof, revision: 8, total: 4, nodes: [
+    { ...nodes[0]!, node_id: "user-0", kind: "user", selection: { ordinal: 0 }, items: [] },
+    ...nodes.map((node, ordinal) => ({ ...node, selection: { ordinal: ordinal + 1 } })),
+  ] } as AttemptReadyProof;
+  const acceptedRecord = { ...record, readyAttempt: acceptedProof };
+  expect(w.acceptHandoff(acceptedRecord, acceptedProof.scope, () => {})).toBe(true);
+  const before = w.acceptedView.peek();
+  expect(before.revision).toBe(8);
+  w.layoutChanged();
+  expect(w.acceptedView.peek()).toBe(before);
+  expect(w.acceptedView.peek().revision).toBe(8);
+  expect(w.acceptedView.peek().rows.map(row => row.node_id)).toEqual(["user-0", "tool", "answer"]);
+  expect(w.revision).toBe(8);
+  w.dispose();
+});
 it("notification reentry stops old release and never retires another attempt/turn", async () => {
   const { w, record, proof } = await rig(); let nested = false, releases = 0;
   w.acceptedView.subscribe(() => { if (!nested) { nested = true; w.layoutChanged(); } });
