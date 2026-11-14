@@ -202,3 +202,21 @@ it("Window rebinds a revision-changing point read through one bounded whole-wind
   expect(r.w.acceptedView.peek().revision).toBe(8);
   r.w.dispose(); r.data.stop();
 });
+
+it("rejects an incomplete revision successor page before publication", async () => {
+  const r = await target();
+  const original = r.db.answer.bind(r.db);
+  r.db.answer = call => {
+    if (call.command === "history.window") {
+      const args = call.args as Record<string, unknown>;
+      if (args.node_id !== undefined) return { ok: true, result: { thread_id: "a", revision: 8, total: 2, items: [baseNodes[1]!] } };
+      if (args.before === 199 && args.after === 0 && args.items === true) return { ok: true, result: { thread_id: "a", revision: 8, total: 2, items: [baseNodes[1]!] } };
+    }
+    return original(call);
+  };
+  r.w.prepareTerminalRead(r.h, r.token, r.receipt);
+  await r.pump();
+  expect(r.w.acceptedView.peek().revision).toBe(7);
+  expect(r.w.acceptedView.peek().rows.every(row => row.node_id !== "answer")).toBe(true);
+  r.w.dispose(); r.data.stop();
+});
