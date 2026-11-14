@@ -102,6 +102,7 @@ export interface ThreadHandle extends Handle {
   bindDisplayOwner(capture: () => DisplayTarget | undefined): () => void;
   isDisplayOwnershipCurrent(record: HandoffRecord, generation: number): boolean;
   requestTerminalRead(qualification: ThreadReadQualification, receipt: TerminalPersistedProof, request: SelectedCanonicalRequest): OwnedTerminalReadLease | TicketOutcome;
+  replaceTerminalRead(qualification: ThreadReadQualification, receipt: TerminalPersistedProof, request: SelectedCanonicalRequest): OwnedTerminalReadLease | TicketOutcome;
   readonly handoffRetryState: ReadonlySignal<HandoffRetryState>;
   readonly attemptPresentations: ReadonlySignal<readonly AttemptPresentation[]>;
   captureReadQualification(): ThreadReadQualification | undefined;
@@ -447,6 +448,12 @@ export class ShellboyData {
         if (e.resolving) e.resolveAgain = true;
         void this.resolveHandoff(e);
         return result;
+      },
+      replaceTerminalRead: (token, receipt, request) => {
+        const valid = () => !closed && !e.closed && !e.paused && token.epoch === this.readQualificationEpoch && token.liveEpoch === e.live.epoch && token.cancel === e.cancel && !e.cancel.cancelled && receipt.scope === this.handoffScope(e) && this.canRead();
+        const ownedReceipt = e.terminalReceipts.get(receipt.attemptId);
+        if (!valid() || !ownedReceipt || JSON.stringify(ownedReceipt) !== JSON.stringify(receipt) || request.args.thread_id !== e.id) return { phase: "unavailable", reason: "cancelled" };
+        const result = e.terminalReads.replace(ownedReceipt, request, valid, e.cancel); void this.resolveHandoff(e); return result;
       },
       handoffScope: () => this.handoffScope(e),
       transferHandoff: (id, accept) => { if (closed || e.closed || e.paused) return false; return e.live.transfer(id, accept); },

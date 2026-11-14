@@ -43,6 +43,12 @@ export class TerminalReadSlots {
       // Keep the consumed marker: cancellation is never automatic-read permission.
     } };
   }
+  replace(receipt: TerminalPersistedProof, request: SelectedCanonicalRequest, valid: () => boolean, parent: Cancel): OwnedTerminalReadLease | TicketOutcome {
+    const key = JSON.stringify([receipt.scope, receipt.attemptId]), marker = this.markers.get(key);
+    if (!marker || marker.state.peek().phase !== "settled") return { phase: "unavailable", reason: "cancelled" };
+    marker.cancel.cancel(); marker.detach?.(); this.markers.delete(key);
+    return this.request(receipt, request, valid, parent);
+  }
   get queued(): boolean { return [...this.markers.values()].some(m => m.state.peek().phase === "queued"); }
   async dispatch(takeRead: () => boolean, read: (args: HistoryWindowArgs, cancel: Cancel) => Promise<Outcome<HistoryWindowResult>>): Promise<void> {
     const marker = [...this.markers.values()].find(m => m.state.peek().phase === "queued");
