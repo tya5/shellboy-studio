@@ -6,7 +6,7 @@ import type { TerminalPersistedProof } from "../../data/src/handoff";
 import type { AttemptPresentation, ThreadHandle, ThreadReadQualification } from "../../data/src/store";
 import type { HistoryBody } from "../../data/src/protocol";
 import { AcceptedView, type AcceptedCapability } from "./accepted-view";
-import { createConversationDisplayPlan, displaySemanticKey, type ConversationDisplayPlan, type OwnUserDecision } from './conversation-display-plan';
+import { advanceConversationDisplayPlan, createConversationDisplayPlan, displaySemanticKey, type ConversationDisplayPlan, type OwnUserDecision } from './conversation-display-plan';
 import type { HandoffRecord } from "../../data/src/handoff";
 // The long-thread reader's model (docs/design/long-threads.md): positional windows of a Thread's
 // path held in bounded buckets, a measured scroll space over one loaded run, and adjacent reads.
@@ -912,7 +912,9 @@ export class ConversationWindow {
       terminalPresence: this.terminalCapability === capability ? this.terminalPresence : [],
       terminalPersistedAttempts: this.terminalCapability === capability ? this.terminalPersistedAttempts : [],
       coverage: this.summaryTransition?.targetCap === capability && !this.summaryTransition?.consumed ? this.summaryTransition?.coverage : undefined,
-      retiredAttempts: (this.retiredCapability === capability ? this.retiredAttempts : []).filter(item => item.revision === this.revision) }, capability);
+      retiredAttempts: (this.retiredCapability === capability ? this.retiredAttempts : []).filter(item => item.revision === this.revision),
+      displayPlan: this.acceptedView.peek().displayPlan && this.acceptedView.peek().displayPlan.capability === capability
+        ? advanceConversationDisplayPlan(this.acceptedView.peek().displayPlan, generation, capability) : undefined }, capability);
     if (this.disposed || epoch !== this.epoch || generation !== this.acceptedGeneration) return;
     if (!this.acceptedView.commit(staged)) return;
     if (this.disposed || epoch !== this.epoch || generation !== this.acceptedGeneration) return;
