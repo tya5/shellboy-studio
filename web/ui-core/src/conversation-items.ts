@@ -458,7 +458,7 @@ export function normalizeTerminalPresenceFacts(presences: readonly TerminalPrese
   }));
 }
 
-/** Rebinds only presentation row keys after an owned display association is qualified.
+/** Assigns only the stable presentation host after an owned display association is qualified.
  * Canonical node/item identities and duplicate checks remain untouched. */
 export function withPresentationContainers<T extends SavedItemProjection>(projection: T, containers: ReadonlyMap<string, string> = new Map()): T {
   const items = projection.items.map(item => ({ ...item, presentationContainer: containers.get(item.key) }));
