@@ -43,7 +43,7 @@ export interface HandoffRecord {
   readonly text: string;
   readonly incomplete: boolean;
   readonly status: HandoffStatus;
-  readonly bodyAuthority: 'preview' | 'identified' | 'saved';
+  readonly bodyAuthority?: 'preview' | 'identified' | 'saved';
   readonly nodeId?: string;
   readonly proof?: Readonly<{ scope: string; turnId: string; ordinal: number; revision: string | number; kind: 'assistant_response' }>;
   readonly transferred?: boolean;

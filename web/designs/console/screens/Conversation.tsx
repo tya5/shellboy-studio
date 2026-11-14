@@ -295,7 +295,9 @@ export function SavedWindowContent({ model, snapshot, live, liveBoundary, liveFa
   });
   // Accepted history rows already carry the authoritative chronological order. A retained
   // preview has no accepted ordinal, so it must not be inserted at a stale captured cut.
-  const ordered = [...saved, ...retainedHandoffs];
+  const ordered = cut >= 0
+    ? [...saved.slice(0, cut), ...retainedHandoffs, ...saved.slice(cut)]
+    : [...saved, ...retainedHandoffs];
   const issuedWork=[...retainedRecords,...normalizeTerminalPresenceFacts(current ? snapshot.terminalPresence ?? [] : [])];
   const scopedWork=keyScope?scopeIssuedWorkFacts(issuedWork,keyScope):issuedWork;
   const workScopeRejected=scopedWork===undefined;
