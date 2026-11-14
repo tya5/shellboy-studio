@@ -16,8 +16,7 @@ declare const presentationContainerBrand: unique symbol;
 export type PresentationContainerId = string & { readonly [presentationContainerBrand]: true };
 
 function mintPresentationContainer(attemptId: string): PresentationContainerId {
-  const randomUUID = globalThis.crypto?.randomUUID;
-  if (randomUUID) return `presentation:${randomUUID()}` as PresentationContainerId;
+  if (globalThis.crypto?.randomUUID) return `presentation:${globalThis.crypto.randomUUID()}` as PresentationContainerId;
   // The attempt is only a non-colliding fallback in runtimes without Web Crypto.
   return `presentation:${attemptId}` as PresentationContainerId;
 }

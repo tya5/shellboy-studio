@@ -937,6 +937,7 @@ export class AppModel {
   publishConversationDisplayPlan(ref: import('./window').WindowAcceptedSnapshot, projection: import('./conversation-items').SavedItemProjection, decision: OwnUserDecision, current: () => boolean): boolean {
     const window = this.longReader.peek();
     if (!window || !current() || !window.acceptedView.isCurrent(ref)) return false;
+    if (typeof window.publishConversationDisplayPlan !== 'function') return false;
     return window.publishConversationDisplayPlan(ref, projection, decision, this.ownMutationScope());
   }
   installOwnPresentation<Ref>(result: OwnSendDecision<Ref>, current: () => boolean): void {
