@@ -6,16 +6,16 @@ export type StagedView<T> = Readonly<{ readonly [stagedBrand]: T }>;
 
 declare const publicationBrand: unique symbol;
 export type PublicationReason = "receipt" | "ready" | "read" | "revoke" | "bump" | "own-send";
-export type AcceptedPublication<T, P> = Readonly<{
+export type AcceptedPublication<T extends { readonly displayPlan?: unknown }> = Readonly<{
   readonly [publicationBrand]: true;
   readonly snapshot: T;
-  readonly plan: P;
+  readonly plan: NonNullable<T["displayPlan"]>;
   readonly reason: PublicationReason;
 }>;
 
-export function makeAcceptedPublication<T, P>(input: { readonly snapshot: T; readonly plan: P; readonly reason: PublicationReason }): AcceptedPublication<T, P> {
-  if (input.snapshot === undefined || input.plan === undefined) throw new Error("qualified publication requires snapshot and plan");
-  return Object.freeze({ ...input, [publicationBrand]: true } as AcceptedPublication<T, P>);
+export function makeAcceptedPublication<T extends { readonly displayPlan?: unknown }>(input: { readonly snapshot: T; readonly plan: NonNullable<T["displayPlan"]>; readonly reason: PublicationReason }): AcceptedPublication<T> {
+  if (input.snapshot === undefined || input.snapshot.displayPlan === undefined || input.plan === undefined || input.snapshot.displayPlan !== input.plan) throw new Error("qualified publication requires the snapshot's exact plan");
+  return Object.freeze({ ...input, [publicationBrand]: true } as AcceptedPublication<T>);
 }
 
 /** Materialize bounded plain data before qualification; no getters survive staging. */
@@ -63,8 +63,9 @@ export class AcceptedView<T> {
     slot.value = materialize(value);
     return handle;
   }
-  publish(publication: AcceptedPublication<T, unknown>, capability: AcceptedCapability = this.capability): boolean {
-    const staged = this.stage(publication.snapshot, capability);
+  publish<S extends { readonly displayPlan?: unknown }>(publication: AcceptedPublication<S>, capability: AcceptedCapability = this.capability): boolean {
+    if (publication.snapshot.displayPlan !== publication.plan) return false;
+    const staged = this.stage(publication.snapshot as unknown as T, capability);
     return this.commit(staged);
   }
 
