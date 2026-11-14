@@ -10,6 +10,10 @@ export interface TypedHandoffFixture {
   readonly text: string;
 }
 
+export interface TypedHandoffRef {
+  readonly ordinal: number; readonly item_id: null; readonly kind: "message"; readonly phase: "final_answer"; readonly node_id: string;
+}
+
 export interface TypedHandoffAttempt {
   readonly kind: "attempt";
   readonly id: string;
@@ -17,7 +21,7 @@ export interface TypedHandoffAttempt {
   readonly turn_id: string;
   readonly thread_id: string;
   readonly state: "completed";
-  readonly response_nodes: readonly [{ readonly ordinal: number; readonly item_id: null; readonly kind: "message"; readonly phase: "final_answer"; readonly node_id: string }];
+  readonly response_nodes: readonly TypedHandoffRef[];
   readonly response_nodes_truncated: false;
 }
 
@@ -65,21 +69,54 @@ export function typedHistoryWindow(fixture: TypedHandoffFixture, args: { node_id
   return { thread_id: fixture.threadId, revision: fixture.revision, total: fixture.total, item_count: 1, items: [node] };
 }
 
+export function validTypedHandoffRef(fixture: TypedHandoffFixture, attempt: TypedHandoffAttempt, window: TypedHistoryWindow): boolean {
+  const ref = attempt.response_nodes.find(candidate => candidate.node_id === fixture.nodeId && candidate.ordinal === fixture.ordinal);
+  const node = window.items.length === 1 ? window.items[0] : undefined;
+  return !!ref && attempt.attempt_id === fixture.attemptId && attempt.turn_id === fixture.turnId && attempt.thread_id === fixture.threadId
+    && node?.node_id === ref.node_id && node.selection.ordinal === ref.ordinal && window.thread_id === fixture.threadId
+    && window.revision === fixture.revision && window.total === fixture.total && window.item_count === window.items.length
+    && node.items[0]?.text === fixture.text;
+}
+
 export function validTypedHandoff(fixture: TypedHandoffFixture, attempt: TypedHandoffAttempt, window: TypedHistoryWindow): boolean {
-  const ref = attempt.response_nodes[0], node = window.items[0];
-  return attempt.attempt_id === fixture.attemptId && attempt.turn_id === fixture.turnId && attempt.thread_id === fixture.threadId
-    && ref.node_id === fixture.nodeId && ref.ordinal === fixture.ordinal && node.node_id === ref.node_id
-    && node.selection.ordinal === ref.ordinal && window.thread_id === fixture.threadId && window.revision === fixture.revision
-    && window.total === fixture.total && window.item_count === window.items.length && node.items[0]?.text === fixture.text;
+  return validTypedHandoffRef(fixture, attempt, window);
+}
+
+export interface TypedHandoffRegistryRef { readonly nodeId: string; readonly ordinal: number; readonly text: string }
+export interface TypedHandoffRegistry {
+  readonly threadId: string; readonly attemptId: string; readonly turnId: string; readonly scope: string;
+  readonly refs: readonly TypedHandoffFixture[];
+  revision: string | number; total: number; canonical: boolean;
+  attempt(): TypedHandoffAttempt;
+  history(args: { node_id?: string; ordinal?: number; before?: number; after?: number }): TypedHistoryWindow | undefined;
+}
+
+export function typedHandoffRegistry(input: { threadId: string; attemptId: string; turnId: string; revision: string | number; total: number; refs: readonly TypedHandoffRegistryRef[] }): TypedHandoffRegistry {
+  if (!input.refs.length || input.refs.some((ref, index) => index > 0 && ref.ordinal <= input.refs[index - 1]!.ordinal)) throw new Error("Non-monotonic typed handoff refs");
+  const scope = `${input.threadId}/${input.attemptId}/${input.turnId}`;
+  const refs = input.refs.map(ref => typedHandoff({ threadId: input.threadId, attemptId: input.attemptId, turnId: input.turnId, scope, nodeId: ref.nodeId, ordinal: ref.ordinal, revision: input.revision, total: input.total, text: ref.text }));
+  const registry: TypedHandoffRegistry = {
+    threadId: input.threadId, attemptId: input.attemptId, turnId: input.turnId, scope, refs,
+    revision: input.revision, total: input.total, canonical: false,
+    attempt: () => typedAttemptMany(refs),
+    history: args => {
+      const selected = refs.filter(ref => (args.node_id === undefined || args.node_id === ref.nodeId) && (args.ordinal === undefined || args.ordinal === ref.ordinal));
+      if (args.node_id === undefined && args.ordinal === undefined) {
+        if (args.before === undefined && args.after === undefined) return;
+        return undefined;
+      }
+      if (selected.length !== 1) return;
+      const fixture = selected[0]!;
+      if (!registry.canonical) return typedHistoryWindow({...fixture, revision: registry.revision, total: registry.total, text: ""}, { node_id: fixture.nodeId, ordinal: fixture.ordinal });
+      return typedHistoryWindow({...fixture, revision: registry.revision, total: registry.total}, { node_id: fixture.nodeId, ordinal: fixture.ordinal });
+    },
+  };
+  return registry;
 }
 
 export function typedAttemptMany(fixtures: readonly TypedHandoffFixture[]): TypedHandoffAttempt {
   if (!fixtures.length || fixtures.some((fixture, index) => index > 0 && fixture.ordinal <= fixtures[index - 1]!.ordinal)) throw new Error("Non-monotonic typed handoff refs");
   const first = fixtures[0]!;
-  return {
-    kind: "attempt", id: first.attemptId, attempt_id: first.attemptId, turn_id: first.turnId,
-    thread_id: first.threadId, state: "completed",
-    response_nodes: fixtures.map(fixture => ({ ordinal: fixture.ordinal, item_id: null, kind: "message" as const, phase: "final_answer" as const, node_id: fixture.nodeId })) as TypedHandoffAttempt["response_nodes"],
-    response_nodes_truncated: false,
-  };
+  return { kind: "attempt", id: first.attemptId, attempt_id: first.attemptId, turn_id: first.turnId, thread_id: first.threadId, state: "completed",
+    response_nodes: fixtures.map(fixture => ({ ordinal: fixture.ordinal, item_id: null, kind: "message" as const, phase: "final_answer" as const, node_id: fixture.nodeId })), response_nodes_truncated: false };
 }

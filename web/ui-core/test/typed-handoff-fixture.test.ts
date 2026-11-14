@@ -21,3 +21,13 @@ it("rejects mismatched receipt identity and node ordinal", () => {
   expect(typedHistoryWindow(fixture, { node_id: "wrong-node" })).toBeUndefined();
   expect(typedHistoryWindow(fixture, { ordinal: 299 })).toBeUndefined();
 });
+
+it('routes registry refs exactly and keeps deferred body until canonical publication', () => {
+  const registry = typedHandoffRegistry({threadId:'thread',attemptId:'attempt',turnId:'turn',revision:7,total:4,refs:[{nodeId:'n2',ordinal:2,text:'A'},{nodeId:'n3',ordinal:3,text:'B'}]});
+  expect(registry.scope).toBe('thread/attempt/turn');
+  expect(registry.history({})).toBeUndefined();
+  expect(registry.history({node_id:'n3', ordinal:3})?.items[0]?.items[0]?.text).toBe('');
+  registry.canonical = true;
+  expect(registry.history({node_id:'n3', ordinal:3})?.items[0]?.items[0]?.text).toBe('B');
+  expect(() => typedHandoffRegistry({threadId:'t',attemptId:'a',turnId:'u',revision:1,total:2,refs:[{nodeId:'x',ordinal:1,text:'x'},{nodeId:'y',ordinal:1,text:'y'}]})).toThrow();
+});
