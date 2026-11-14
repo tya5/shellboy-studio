@@ -89,10 +89,13 @@ export function createConversationDisplayPlan(input: AcceptedPublicationInput): 
   const cohortKey = [...version.accepted.map(row => `${row.operationId}:${row.phase}:${row.messageId ?? ''}`), version.pending ? `pending:${version.pending.operationId}:${version.pending.phase}` : 'pending:none'].join('|');
   const entries = input.projection.items.map(item => {
     const source = item.source;
+    const canonical = input.canonicalProjection.items.find(candidate => candidate.key === item.key);
+    const canonicalSource = canonical?.source;
     const owner = owners.get(item.key);
     const host = ('domain' in source ? (source as LiveWorkIdentity).presentationContainer : undefined) ?? (owner?.containerKey as string | undefined);
     const human = (source.kind === 'user' || source.kind === 'summary') && source.textComplete === true;
-    const body: DisplayBodySource = ((source.kind === 'text' && owner?.mode === 'canonical' && source.textComplete === true) || human)
+    const typedCanonical = source.kind === 'text' && source.textComplete === true && canonicalSource?.kind === 'text' && canonicalSource.textComplete === true;
+    const body: DisplayBodySource = (typedCanonical || human)
       ? { kind: 'typed-canonical', text: source.text, generation, revision, capability: input.capability }
       : source.kind === 'text' && (owner?.mode === 'preview' || !!host)
         ? { kind: 'preview', text: source.text, generation, revision }
