@@ -409,16 +409,34 @@ export class ConversationWindow {
     if (id === undefined) { id = ++this.terminalIdentitySerial; this.terminalIdentity.set(value, id); }
     return id;
   }
-  private replaceTerminalTarget(target: PersistedTerminalTarget): void {
+  private terminalSelectionEnvelope(ref: WindowAcceptedSnapshot, receipt: TerminalPersistedProof): { first: number; last: number } | undefined {
+    const refs = receipt.refs;
+    if (!refs?.length || refs.length !== receipt.nodeIds.length || refs.some((node,index) =>
+      node.nodeId !== receipt.nodeIds[index] || !Number.isSafeInteger(node.ordinal) || node.ordinal < 0)) return;
+    const first = Math.min(ref.range?.first ?? Infinity, ...refs.map(node => node.ordinal));
+    const last = Math.max(ref.range?.last ?? -1, ...refs.map(node => node.ordinal));
+    if (!Number.isSafeInteger(first) || !Number.isSafeInteger(last) || first < 0 || last < first
+      || last - first + 1 > WINDOW_NODES * WINDOWS_HELD) return;
+    return { first, last };
+  }
+
+  private replaceTerminalTarget(target: PersistedTerminalTarget, revision: number): void {
     const ref = this.acceptedView.peek();
     if (!this.acceptedView.isCurrent(ref) || ref === target.ref) return;
-    // A revision change needs an explicit whole-window successor, not another
-    // point read around the first receipt node.
-    const request = Object.freeze({ id: `selected-${++this.terminalRequestSerial}` as SelectedRequestId, args: Object.freeze({ thread_id: target.handle.threadId, before: 199, after: 0, items: true }) });
-    // Retire the old callback before replacement can synchronously settle it as cancelled.
+    const range = this.terminalSelectionEnvelope(ref, target.receipt);
+    if (!range) { this.advanceTerminalTarget(target, ref); return; }
+    // The selected range and exact attempt refs own coverage, not the Thread total.
+    const request = Object.freeze({ id: `selected-${++this.terminalRequestSerial}` as SelectedRequestId,
+      args: Object.freeze({ thread_id: target.handle.threadId, ordinal: range.first, before: 0,
+        after: range.last - range.first, items: true }), selection: Object.freeze({ ...range, revision }) });
     target.stop?.(); target.stop = undefined;
     const next = target.handle.replaceTerminalRead(target.token, { kind: "persisted", receipt: target.receipt }, request);
-    if (!("state" in next)) return;
+    if (!("state" in next)) {
+      const settled = this.publishTerminalPresence(ref, target.cap, target.receipt,
+        next.phase === 'unavailable' && next.reason === 'budget-exhausted' ? 'budget-exhausted' : 'selection-gap', 'settled');
+      if (settled) this.advanceTerminalTarget(target, settled);
+      return;
+    }
     target.ref = ref; target.requestId = request.id; target.mode = "fresh-window"; target.lease = next;
     target.stop = next.state.subscribe(() => this.applyTerminalRead(next));
   }
@@ -476,10 +494,15 @@ export class ConversationWindow {
             merged.set(ordinal, row);
           }
           const ordinals = [...merged.keys()].sort((a, b) => a - b);
-          if (target.mode === "fresh-window" && (ordinals[0] !== 0 || ordinals.length !== value.total)) reason = "selection-gap";
-          if (reason !== "selection-gap" && ordinals.length && ordinals.length <= 200 && ordinals.at(-1)! - ordinals[0]! + 1 === ordinals.length) {
+          if (target.mode === "fresh-window") {
+            const range = this.terminalSelectionEnvelope(target.ref, target.receipt), args = lease.ticket.request.args, selection = lease.ticket.request.selection;
+            if (!range || args.ordinal !== range.first || args.before !== 0 || args.after !== range.last - range.first
+              || selection?.first !== range.first || selection.last !== range.last || selection.revision !== value.revision || ordinals[0] !== range.first || ordinals.at(-1) !== range.last
+              || ordinals.length !== range.last - range.first + 1) reason = "selection-gap";
+          }
+          if (reason !== "selection-gap" && ordinals.length && ordinals.length <= WINDOW_NODES * WINDOWS_HELD && ordinals.at(-1)! - ordinals[0]! + 1 === ordinals.length) {
             const rows = ordinals.map(i => merged.get(i)!);
-            const buckets = new Map(this.buckets), copied = new Set<number>();
+            const buckets = target.mode === 'fresh-window' ? new Map<number, Bucket>() : new Map(this.buckets), copied = new Set<number>();
             for (const row of rows) {
               const ordinal = row.selection!.ordinal!, index = Math.floor(ordinal / WINDOW_NODES);
               if (!copied.has(index)) { const old = buckets.get(index), clone = new Bucket(); if (old) { clone.items = [...old.items]; clone.filled = old.filled; for (const [k, v] of old.handoffs) clone.handoffs.set(k, v); } buckets.set(index, clone); copied.add(index); }
@@ -535,7 +558,7 @@ export class ConversationWindow {
     if (target.mode === "same-revision" && reason === "selection-gap" && out.phase === "settled" && out.result.ok && out.result.value.revision !== target.ref.revision) {
       // The presence publication above is the boundary: replace only after its
       // successor is current, while the old lease remains non-authoritative.
-      this.replaceTerminalTarget(target);
+      this.replaceTerminalTarget(target, out.result.value.revision);
     } else {
       this.advanceTerminalTarget(target, next);
     }

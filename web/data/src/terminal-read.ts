@@ -5,7 +5,13 @@ import type { Outcome } from "./errors";
 import { Cancel } from "./operations";
 export type TerminalReadTicketId = string & { readonly terminalTicket: unique symbol };
 export type SelectedRequestId = string & { readonly selectedRequest: unique symbol };
-export interface SelectedCanonicalRequest { readonly id: SelectedRequestId; readonly args: Readonly<HistoryWindowArgs> }
+export interface SelectedReadPlan { readonly first:number; readonly last:number; readonly revision:number }
+export interface SelectedCanonicalRequest {
+  readonly id: SelectedRequestId;
+  readonly args: Readonly<HistoryWindowArgs>;
+  /** Owned logical-cut intent, never an invented public RPC argument. */
+  readonly selection?: Readonly<SelectedReadPlan>;
+}
 export type SelectedReadAdmission =
   | { readonly kind: "persisted"; readonly receipt: TerminalPersistedProof }
   | { readonly kind: "ready"; readonly record: HandoffRecord; readonly scope: string };
@@ -36,12 +42,14 @@ export class TerminalReadSlots {
     let marker = this.markers.get(key);
     if (!marker) {
       if (this.markers.size >= 8) return { phase: "unavailable", reason: "capacity" };
-      const ticket = Object.freeze({ id: `terminal-${++this.serial}` as TerminalReadTicketId, admission: Object.freeze({ ...admission }), request: Object.freeze({ id: request.id, args: Object.freeze({ ...request.args }) }) });
+      const ticket = Object.freeze({ id: `terminal-${++this.serial}` as TerminalReadTicketId, admission: Object.freeze({ ...admission }), request: Object.freeze({ id: request.id, args: Object.freeze({ ...request.args }),
+        ...(request.selection ? { selection: Object.freeze({ ...request.selection }) } : {}) }) });
       marker = { ticket, state: signal<TicketOutcome>({ phase: "queued", ticket }), leases: new Set(), valid, cancel: new Cancel() };
       this.markers.set(key, marker);
       const owned = marker;
       marker.detach = parent.add(() => { owned.cancel.cancel(); owned.state.value = { phase: "unavailable", reason: "cancelled" }; owned.leases.clear(); });
-    } else if (marker.ticket.request.id !== request.id || JSON.stringify(marker.ticket.request.args) !== JSON.stringify(request.args) || !sameAdmission(marker.ticket.admission, admission)) {
+    } else if (marker.ticket.request.id !== request.id || JSON.stringify(marker.ticket.request.args) !== JSON.stringify(request.args)
+      || JSON.stringify(marker.ticket.request.selection) !== JSON.stringify(request.selection) || !sameAdmission(marker.ticket.admission, admission)) {
       return { phase: "unavailable", reason: "cancelled" };
     }
     if (marker.leases.size >= 2) return { phase: "unavailable", reason: "capacity" };

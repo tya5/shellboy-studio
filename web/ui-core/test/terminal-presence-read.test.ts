@@ -225,7 +225,7 @@ it("Window rebinds a revision-changing point read through one bounded whole-wind
       const args = call.args as Record<string, unknown>;
       requests.push(args);
       if (args.node_id !== undefined) return { ok: true, result: { thread_id: "a", revision: 8, total: 2, items: [baseNodes[1]!] } };
-      if (args.before === 199 && args.after === 0 && args.items === true) return { ok: true, result: { thread_id: "a", revision: 8, total: 2, items: baseNodes } };
+      if (args.ordinal === 0 && args.before === 0 && args.after === 1 && args.items === true) return { ok: true, result: { thread_id: "a", revision: 8, total: 2, items: baseNodes } };
       throw new Error(`unexpected history.window args: ${JSON.stringify(call.args)}`);
     }
     return original(call);
@@ -240,7 +240,7 @@ it("Window rebinds a revision-changing point read through one bounded whole-wind
   const wholeItems = baseNodes.map(node => node.selection?.ordinal);
   expect(wholeItems).toEqual([0, 1]);
   expect(requests[0]).toMatchObject({ node_id: "answer", items: true });
-  expect(requests[1]).toEqual({ thread_id: "a", before: 199, after: 0, items: true });
+  expect(requests[1]).toEqual({ thread_id: "a", ordinal: 0, before: 0, after: 1, items: true });
   const after = r.w.acceptedView.peek();
   expect(after.terminalPresence ?? []).toEqual([]);
   expect(r.receipt.nodeIds).toEqual(baseNodes.filter(node => node.items?.some(item => item.kind === "text")).map(node => node.node_id));
@@ -278,7 +278,7 @@ it("rejects an incomplete revision successor page before publication", async () 
     if (call.command === "history.window") {
       const args = call.args as Record<string, unknown>;
       if (args.node_id !== undefined) return { ok: true, result: { thread_id: "a", revision: 8, total: 2, items: [baseNodes[1]!] } };
-      if (args.before === 199 && args.after === 0 && args.items === true) return { ok: true, result: { thread_id: "a", revision: 8, total: 2, items: [baseNodes[1]!] } };
+      if (args.ordinal === 0 && args.before === 0 && args.after === 1 && args.items === true) return { ok: true, result: { thread_id: "a", revision: 8, total: 2, items: [baseNodes[1]!] } };
     }
     return original(call);
   };

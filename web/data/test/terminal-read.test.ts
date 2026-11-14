@@ -106,3 +106,14 @@ it('a revoked settled marker cannot be replaced to mint fresh automatic permissi
    .toEqual({phase:'unavailable',reason:'cancelled'});
  expect(slots.queued).toBe(false);
 });
+
+it('the existing ticket owns an immutable selected plan and equal RPC args cannot rebind its revision',()=>{
+ const slots=new TerminalReadSlots(),parent=new Cancel(),selection={first:0,last:2,revision:2};
+ const selected={...request,args:{thread_id:'t',ordinal:0,before:0,after:2,items:true},selection};
+ const lease=slots.request({kind:'persisted',receipt},selected,()=>true,parent);
+ if(!('state' in lease))throw new Error('Expected an actual selected lease');
+ selection.first=1;
+ expect(lease.ticket.request.selection).toEqual({first:0,last:2,revision:2});expect(Object.isFrozen(lease.ticket.request.selection)).toBe(true);
+ expect(slots.request({kind:'persisted',receipt},{...selected,selection:{first:0,last:2,revision:3}},()=>true,parent)).toEqual({phase:'unavailable',reason:'cancelled'});
+ expect(slots.isCurrent(lease)).toBe(true);
+});
