@@ -38,7 +38,7 @@ it('keeps one answer presentation through the complete real Conversation lifecyc
   const previewIds=[...host.querySelectorAll('[data-answer-container] [data-item-key]')].map(e=>[e.getAttribute('data-node'),e.getAttribute('data-key')]);
   expect(previewIds.length).toBeGreaterThan(0);
 
-  ended=true;nodes[2]={...answer,items:[
+  ended=true;const {items_unavailable_reason:_,...answerMeta}=answer;nodes[2]={...answerMeta,items:[
    {kind:'text',item_identity:'answer-1:/output/0/content/0',text:'Canonical answer',text_complete:true},
    {kind:'text',item_identity:'answer-1:/output/0/content/1',text:'Canonical continuation',text_complete:true},
   ]};f.db.history.thread=nodes;revision++;
