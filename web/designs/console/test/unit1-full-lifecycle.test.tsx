@@ -38,10 +38,10 @@ it('keeps one answer presentation through the complete real Conversation lifecyc
   const previewIds=[...host.querySelectorAll('[data-answer-container] [data-item-key]')].map(e=>[e.getAttribute('data-node'),e.getAttribute('data-key')]);
   expect(previewIds.length).toBeGreaterThan(0);
 
-  ended=true;answer.items=[
+  ended=true;nodes[2]={...answer,items:[
    {kind:'text',item_identity:'answer-1:/output/0/content/0',text:'Canonical answer',text_complete:true},
    {kind:'text',item_identity:'answer-1:/output/0/content/1',text:'Canonical continuation',text_complete:true},
-  ];delete answer.items_unavailable_reason;f.db.history.thread=nodes;revision++;
+  ]};f.db.history.thread=nodes;revision++;
   await act(async()=>{f.t.push({t:'live_end',thread_id:'thread'});await settle(f.t,f.db);await flush(24);});
   expect(host.querySelector('[data-answer-container]')).toBe(identity);
   expect(host.textContent).toContain('Canonical answer');expect(host.textContent).toContain('Canonical continuation');
