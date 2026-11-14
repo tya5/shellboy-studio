@@ -1,6 +1,6 @@
 import {render} from 'preact';
 import {projectSavedItems,type NormalizedSavedItem,type SavedItemProjection} from '../../../../ui-core/src/conversation-items';
-import {AcceptedView} from '../../../../ui-core/src/accepted-view';
+import {SnapshotViewFixture as AcceptedView} from '../../../../ui-core/test/snapshot-view-fixture';
 import {overlayState,reconcileOverlay,createAssociationAuthority} from '../../../../data/src/overlay-reconcile';
 import {ConversationItems} from '../../screens/ConversationItems';
 import {SnapshotConversation} from '../../screens/Conversation';

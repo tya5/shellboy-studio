@@ -149,9 +149,10 @@ it('validated zero-execution descriptor survives accepted snapshot without fake 
  const {AcceptedView}=await import('../src/accepted-view');
  const descriptor={call_id:'exact-call',call_id_state:'available' as const,name:'safe_tool',name_state:'available' as const};
  const input:HistoryItem[]=[{node_id:'n',kind:'assistant_response',items:[{kind:'tool_call',item_identity:'c',execution_ids:[],descriptor,detail_availability:'unavailable'}]}];
- const owner=new AcceptedView(input);const staged=owner.stage(input);owner.commit(staged);
- const item=owner.peek()[0]!.items![0]!;expect(item.kind==='tool_call'&&item.descriptor).toEqual(descriptor);
- const [row]=display(owner.peek());expect(row!.value).toMatchObject({contentLabel:{text:'safe_tool',context:expect.arrayContaining([{name:'call_id',value:'exact-call'}])},state:null,detailPolicy:'unavailable'});
+ const capability=Object.freeze({});const displayPlan=Object.freeze({acceptedGeneration:1,revision:1,capability,coverage:'complete' as const,entries:[],sequence:[],workGroups:[],cohortKey:'',cohortVersion:{accepted:[]},scope:'test',semanticKey:''});
+ const owner=new AcceptedView({generation:1,revision:1,displayPlan,rows:input});
+ const item=owner.peek().rows[0]!.items![0]!;expect(item.kind==='tool_call'&&item.descriptor).toEqual(descriptor);
+ const [row]=display(owner.peek().rows);expect(row!.value).toMatchObject({contentLabel:{text:'safe_tool',context:expect.arrayContaining([{name:'call_id',value:'exact-call'}])},state:null,detailPolicy:'unavailable'});
  expect(Object.isFrozen(row!.value!.contentLabel.context)).toBe(true);
 });
 it.each(['description','command','missing'] as const)('validated name fallback preserves actual shell content priority %s',variant=>{

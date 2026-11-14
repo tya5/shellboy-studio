@@ -23,8 +23,9 @@ export interface OwnUserDecision { readonly cohortVersion: DisplayCohortVersion;
 
 export interface ConversationDisplayPlan {
   readonly acceptedGeneration: number;
-  readonly revision: number;
+  readonly revision: number | undefined;
   readonly capability: AcceptedCapability;
+  readonly coverage: "complete" | "unavailable";
   readonly entries: readonly ConversationDisplayPlanEntry[];
   readonly sequence: readonly ConversationSequence[];
   readonly workGroups: readonly WorkGroup[];
@@ -104,5 +105,5 @@ export function createConversationDisplayPlan(input: AcceptedPublicationInput): 
     const lifetime: DisplayLifetime = Object.freeze({ kind: retired ? 'revoked' : human && !owner ? 'canonical-human' : owner || host ? 'valid-owner' : 'retained', scope: input.scope, generation, revision });
     return Object.freeze({ item, ...(host ? { presentationContainer: host } : {}), body, lifetime });
   });
-  return Object.freeze({ acceptedGeneration: generation, revision, capability: input.capability, sequence: Object.freeze([...(input.projection.sequence ?? [])]), workGroups: Object.freeze([...(input.projection.workGroups ?? [])]), entries: Object.freeze(entries), cohortKey, cohortVersion: version, scope: input.scope, semanticKey });
+  return Object.freeze({ acceptedGeneration: generation, revision, capability: input.capability, coverage: "complete" as const, sequence: Object.freeze([...(input.projection.sequence ?? [])]), workGroups: Object.freeze([...(input.projection.workGroups ?? [])]), entries: Object.freeze(entries), cohortKey, cohortVersion: version, scope: input.scope, semanticKey });
 }

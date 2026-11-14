@@ -4,7 +4,7 @@ export type AcceptedCapability = Readonly<{ readonly [acceptedCapabilityBrand]: 
 declare const stagedBrand: unique symbol;
 export type StagedView<T> = Readonly<{ readonly [stagedBrand]: T }>;
 
-declare const publicationBrand: unique symbol;
+const publicationBrand: unique symbol = Symbol("accepted publication");
 export type PublicationReason = "receipt" | "ready" | "read" | "revoke" | "bump" | "own-send";
 export type AcceptedPublication<T extends { readonly displayPlan?: unknown }> = Readonly<{
   readonly [publicationBrand]: true;
@@ -13,9 +13,13 @@ export type AcceptedPublication<T extends { readonly displayPlan?: unknown }> = 
   readonly reason: PublicationReason;
 }>;
 
-export function makeAcceptedPublication<T extends { readonly displayPlan?: unknown }>(input: { readonly snapshot: T; readonly plan: NonNullable<T["displayPlan"]>; readonly reason: PublicationReason }): AcceptedPublication<T> {
-  if (input.snapshot === undefined || input.snapshot.displayPlan === undefined || input.plan === undefined || input.snapshot.displayPlan !== input.plan) throw new Error("qualified publication requires the snapshot's exact plan");
-  return Object.freeze({ ...input, [publicationBrand]: true } as AcceptedPublication<T>);
+export function makeAcceptedPublication<T extends { readonly displayPlan?: { readonly acceptedGeneration?: unknown; readonly revision?: unknown; readonly capability?: unknown }; readonly generation?: unknown; readonly revision?: unknown }>(snapshot: T, reason: PublicationReason): AcceptedPublication<T> {
+  const plan = snapshot.displayPlan;
+  if (snapshot === undefined || plan === undefined || plan.acceptedGeneration !== snapshot.generation
+    || plan.revision !== snapshot.revision || plan.capability === undefined) {
+    throw new Error("accepted publication requires a matching snapshot display plan");
+  }
+  return Object.freeze({ snapshot, plan, reason, [publicationBrand]: true } as AcceptedPublication<T>);
 }
 
 /** Materialize bounded plain data before qualification; no getters survive staging. */
@@ -51,7 +55,11 @@ export class AcceptedView<T> {
   private notifying = false;
   private pending = false;
   private scheduled = false;
-  constructor(initial: T) { this.value = materialize(initial); }
+  constructor(initial: T) {
+    this.value = materialize(initial);
+    const initialPlan = (initial as { readonly displayPlan?: { readonly capability?: AcceptedCapability } }).displayPlan;
+    if (initialPlan?.capability) this.capability = initialPlan.capability;
+  }
   get current(): T { return this.value; }
   peek(): T { return this.value; }
   isCurrent(ref: T): boolean { return !this.ended && this.value === ref && this.epoch === this.acceptedEpoch; }
@@ -63,8 +71,8 @@ export class AcceptedView<T> {
     slot.value = materialize(value);
     return handle;
   }
-  publish<S extends { readonly displayPlan?: unknown }>(publication: AcceptedPublication<S>, capability: AcceptedCapability = this.capability): boolean {
-    if (publication.snapshot.displayPlan !== publication.plan) return false;
+  publish<S extends { readonly displayPlan?: { readonly capability?: unknown } }>(publication: AcceptedPublication<S>, capability: AcceptedCapability = this.capability): boolean {
+    if (publication.snapshot.displayPlan !== publication.plan || publication.plan.capability !== capability) return false;
     const staged = this.stage(publication.snapshot as unknown as T, capability);
     return this.commit(staged);
   }

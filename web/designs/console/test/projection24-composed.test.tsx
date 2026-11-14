@@ -3,7 +3,7 @@ import {render} from 'preact';
 import {act} from 'preact/test-utils';
 import {describe,expect,it,afterEach} from 'vitest';
 import {projectSavedItems,type NormalizedSavedItem,type SavedItemProjection} from '../../../ui-core/src/conversation-items';
-import {AcceptedView} from '../../../ui-core/src/accepted-view';
+import {SnapshotViewFixture as AcceptedView} from '../../../ui-core/test/snapshot-view-fixture';
 import {overlayState,reconcileOverlay,createAssociationAuthority} from '../../../data/src/overlay-reconcile';
 import {ConversationItems} from '../screens/ConversationItems';
 import {SavedConversationItems,SavedWindowContent,OrderedHistory} from '../screens/Conversation';

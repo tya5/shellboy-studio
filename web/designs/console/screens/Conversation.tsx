@@ -88,8 +88,14 @@ function assistantTextMembership(item: ConversationItem): AssistantTextMembershi
 export function SavedConversationItems({ model, projection, displayPlan, renderBefore, trailing, nodes,localRegion }: { model: AppModel; projection: SavedItemProjection & { sequence?: readonly ({kind: "conversation"; itemKey: string} | {kind: "work"; groupKey: string})[]; workGroups?: readonly ConversationWorkGroup[] }; displayPlan?: ConversationDisplayPlan; nodes?: readonly HistoryItem[]; renderBefore?: (item: ConversationItem) => ComponentChildren; trailing?: ComponentChildren;localRegion?: { readonly kind: "qualified"; readonly slots: readonly {position:OwnSendSlotPosition;content:ComponentChildren}[] } | { readonly kind: "unqualified"; readonly content: ComponentChildren; readonly afterIndex?: number; readonly beforeIndex?: number } }) {
   const planEntries = displayPlan?.entries ?? [];
   const planByKey = new Map(planEntries.map(entry => [entry.item.key, entry]));
-  const planItems = displayPlan ? projection.items.map(item => { const entry = planByKey.get(item.key); return entry?.presentationContainer ? { ...item, presentationContainer: entry.presentationContainer } : item; }) : projection.items;
-  const membership=new Map(projection.items.map(item=>{ const body=planByKey.get(item.key)?.body; return [item.key, body?.kind === "unavailable" ? "content-unavailable" : assistantTextMembership(item)] as const; }));
+  const exactItems = !!displayPlan && displayPlan.coverage === "complete" && planEntries.length === projection.items.length
+    && projection.items.every((item, index) => planEntries[index]?.item.key === item.key
+      && JSON.stringify(planEntries[index]?.item) === JSON.stringify(item));
+  const exactOrder = !!displayPlan && JSON.stringify(displayPlan.sequence) === JSON.stringify(projection.sequence ?? [])
+    && JSON.stringify(displayPlan.workGroups) === JSON.stringify(projection.workGroups ?? []);
+  const planCurrent = exactItems && exactOrder && !!displayPlan;
+  const planItems = planCurrent ? projection.items.map(item => { const entry = planByKey.get(item.key)!; return entry.presentationContainer ? { ...item, presentationContainer: entry.presentationContainer } : item; }) : [];
+  const membership=new Map(projection.items.map(item=>{ const body=planByKey.get(item.key)?.body; return [item.key, !planCurrent || body?.kind === "unavailable" ? "content-unavailable" : assistantTextMembership(item)] as const; }));
   const t = model.t.value;
   const savedSteps = collectExecutionSteps(nodes ?? [], model.shells.value);
   const savedExecutionIds = new Set(savedSteps.map(step => step.executionId));
@@ -146,7 +152,8 @@ export function SavedConversationItems({ model, projection, displayPlan, renderB
     if(bundle.detailPolicy!=="none"&&bundle.detailPolicy!=="unavailable")return null;
     return <WorkElementRow display={display} anchorKey={item.key} detailPolicy={bundle.detailPolicy}/>;
   };
-  return <ConversationItems {...projection} items={planItems} sequence={displayPlan?.sequence ?? projection.sequence} workGroups={displayPlan?.workGroups ?? projection.workGroups} isItemAbsent={item=>membership.get(item.key)==="empty-saved"} localRegion={localRegion} renderWorkGroup={renderWorkGroup} renderBefore={renderBefore} trailing={trailing} isItemHidden={hidden} renderHeading={summary => {
+  if (!planCurrent) return <section role="status" data-display-plan-unavailable="">{t("work.textUnavailable")}</section>;
+  return <ConversationItems {...projection} items={planItems} sequence={displayPlan!.sequence} workGroups={displayPlan!.workGroups} isItemAbsent={item=>membership.get(item.key)==="empty-saved"} localRegion={localRegion} renderWorkGroup={renderWorkGroup} renderBefore={renderBefore} trailing={trailing} isItemHidden={hidden} renderHeading={summary => {
     const steps = allSteps.filter(step => summary.executionIds.includes(step.executionId));
     const active = steps.find(step => step.status === "running");
     const nonzero = steps.filter(step => typeof step.exitCode === "number" && step.exitCode !== 0).length;
@@ -165,7 +172,7 @@ export function SavedConversationItems({ model, projection, displayPlan, renderB
   }}
     renderItem={item => {
       const displayEntry = planByKey.get(item.key);
-      const displayText = displayEntry?.body.kind === "preview" || displayEntry?.body.kind === "typed-canonical" ? displayEntry.body.text : item.source.kind === "text" || item.source.kind === "user" || item.source.kind === "summary" ? item.source.text : undefined;
+      const displayText = displayEntry?.body.kind === "preview" || displayEntry?.body.kind === "typed-canonical" ? displayEntry.body.text : undefined;
       if (item.source.kind === "text" || item.source.kind === "user" || item.source.kind === "summary") {
         const node = item.source.nodeId ? nodes?.find(node => node.node_id === item.source.nodeId) : undefined;
         if(membership.get(item.key)==="content-unavailable")return <div data-assistant-content-unavailable="">{t("work.textUnavailable")}</div>;
@@ -277,7 +284,7 @@ function OwnSendContent<Ref>({model,projection,nodes,scope,acceptedRef,current,i
   const sequence = decision.projection.sequence ?? [];
   const reservationIndex = reservationItemKey ? sequence.findIndex(entry => entry.kind === "conversation" && entry.itemKey === reservationItemKey) : -1;
   const assistantIndex = sequence.findIndex(entry => entry.kind === "conversation" && decision.projection.items.find(item => item.key === entry.itemKey)?.source.kind === "text");
-  return <SavedConversationItems model={model} projection={decision.projection} displayPlan={(acceptedRef && typeof acceptedRef === "object" ? (acceptedRef as unknown as WindowAcceptedSnapshot).displayPlan : undefined)} nodes={current?nodes:[]} localRegion={decision.placement.kind === "qualified" ? {kind:"qualified",slots:decision.slots.map(slot=>({position:slot.position,content:renderLocal([slot.row])}))} : {kind:"unqualified",afterIndex:reservationIndex >= 0 ? reservationIndex : undefined,beforeIndex:reservationIndex < 0 && assistantIndex >= 0 ? assistantIndex : undefined,content:<section role="region" aria-label="Unplaced local submissions" data-own-unqualified-region="">{renderLocal(decision.localRows)}</section>}} trailing={trailing}/>;
+  return <SavedConversationItems model={model} projection={decision.projection} displayPlan={(acceptedRef && typeof acceptedRef === "object" ? (() => { const ref = acceptedRef as unknown as WindowAcceptedSnapshot; const plan = ref.displayPlan; return plan?.acceptedGeneration === ref.generation && plan.revision === ref.revision ? plan : undefined; })() : undefined)} nodes={current?nodes:[]} localRegion={decision.placement.kind === "qualified" ? {kind:"qualified",slots:decision.slots.map(slot=>({position:slot.position,content:renderLocal([slot.row])}))} : {kind:"unqualified",afterIndex:reservationIndex >= 0 ? reservationIndex : undefined,beforeIndex:reservationIndex < 0 && assistantIndex >= 0 ? assistantIndex : undefined,content:<section role="region" aria-label="Unplaced local submissions" data-own-unqualified-region="">{renderLocal(decision.localRows)}</section>}} trailing={trailing}/>;
 }
 
 export function SavedWindowContent({ model, snapshot, live, liveBoundary, liveFacts }: { model: AppModel; snapshot: WindowAcceptedSnapshot; live?: ComponentChildren; liveBoundary?: number; liveFacts?: readonly NormalizedSavedItem[] }) {
