@@ -94,6 +94,12 @@ it("production model preserves one host across preview, saved canonical body, em
       expect(retainedEntry?.body.kind).toBe('preview');expect(retainedEntry?.presentationContainer).toBe(retained.presentationContainer);
       const cohort=[...plan.cohortVersion.accepted.map(row=>row.operationId),...(plan.cohortVersion.pending?[plan.cohortVersion.pending.operationId]:[])];
       expect(cohort).toEqual([operation]);
+      const local=plan.localRegion;
+      expect(local.cohort.map(row=>row.operationId)).toEqual([operation]);
+      expect(local.localRows.map(row=>row.operationId)).toEqual([operation]);
+      expect(local.localRows[0]?.text).toBe('Local concurrent cohort');
+      expect(local.placement).toEqual({kind:'unqualified',reason:'tail-unproved'});
+      expect(local.slots).toEqual([]);expect(local.conflictIds).toEqual([]);expect(local.retire).toEqual([]);
       if(snapshot.retiredAttempts?.some(record=>record.attemptId==='turn-one')){
         readyCuts++;expect(texts).toEqual(['Independent user','Committed saved answer','Retained concurrent preview']);
         expect(snapshot.rows.map(row=>row.node_id)).toEqual(['lifecycle-user','lifecycle-answer']);
@@ -119,6 +125,25 @@ it("production model preserves one host across preview, saved canonical body, em
     expect(stableHost).toBe(host);expect(stableHost.textContent).toContain('Independent user');
     expect(stableHost.textContent).toContain('Committed saved answer');expect(stableHost.textContent).toContain('Next turn preview');
     expect(handle.handoff.value.some(record=>record.attemptId==='turn-one')).toBe(false);
+    let echoCuts=0;
+    stopPublication=reader.acceptedView.subscribe(snapshot=>{
+      const plan=snapshot.displayPlan!;expect(reader.acceptedView.isCurrent(snapshot)).toBe(true);
+      expect(plan.capability).toBe(reader.acceptedView.currentCapability);
+      if(plan.localRegion.retire.length){
+        echoCuts++;expect(plan.localRegion.retire.map(row=>row.operationId)).toEqual([operation]);
+        expect(plan.localRegion.localRows).toEqual([]);expect(plan.localRegion.slots).toEqual([]);
+        expect(plan.entries.some(entry=>entry.item.source.nodeId==='concurrent-local'&&entry.body.kind==='typed-canonical')).toBe(true);
+        expect(fixture.model.acceptedOwnMessages.peek().map(row=>row.operationId)).toEqual([operation]);
+      }
+    });
+    const echo:import('../../../data/src/protocol').HistoryItem={node_id:'concurrent-local',kind:'user',selection:{ordinal:2},
+      items:[{kind:'text',item_identity:'echo',text:'Echo local cohort',text_complete:true}],provenance:{kind:'human',sender:{kind:'human'}}};
+    fixture.db.history.lead=[user,saved,echo];fixture.t.push({t:'changed',thread_ids:[handle.threadId],list:false});
+    await settle(fixture.t,fixture.db);expect(echoCuts).toBeGreaterThan(0);
+    expect(fixture.model.acceptedOwnMessages.peek()).toHaveLength(0);
+    await act(async()=>render(<OrderedHistory model={fixture.model} handle={handle} win={reader} t={fixture.model.t.value}/>,stableHost));
+    expect(stableHost.textContent).toContain('Echo local cohort');expect(stableHost.querySelector('[data-pending-own-message]')).toBeNull();
+    expect(stableHost.textContent).toContain('Next turn preview');
 
   } finally { stopPublication();render(null,host);host.remove();fixture.model.dispose();fixture.data.stop(); }
 });

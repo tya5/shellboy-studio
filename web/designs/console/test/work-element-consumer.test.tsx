@@ -4,24 +4,23 @@ import '@preact/signals';
 import {render} from 'preact';
 import {act} from 'preact/test-utils';
 import {expect,it} from 'vitest';
-import {fixtureModel} from '../../../ui-core/test/fixture';
-import {projectLegacyHistoryItems,normalizeTerminalPresenceFacts,projectSavedItems} from '../../../ui-core/src/conversation-items';
-import {projectHistoryWindowItems} from '../../../ui-core/src/conversation-items';
-import {SavedConversationItems} from '../screens/Conversation';
+import {fixtureModel,fixtureConversation} from '../../../ui-core/test/fixture';
+import {SavedWindowContent} from '../screens/Conversation';
 import type {HistoryItem} from '../../../data/src/protocol';
 
-for(const windowed of [false,true])it(`actual four Work categories consume identical chrome and factual content: window=${windowed}`,async()=>{
- const f=await fixtureModel(),host=document.createElement('div');document.body.append(host);
+it('actual four Work categories consume identical chrome and factual content through the public model',async()=>{
+ const host=document.createElement('div');document.body.append(host);
  const nodes:HistoryItem[]=[
   {node_id:'r',kind:'reasoning_unavailable'},
   {node_id:'n',kind:'event',provenance:{created_at:'2026-01-01T00:00:00Z'}},
   {node_id:'p',kind:'assistant_response',items:[{item_identity:'p',kind:'unavailable',reason:'response_budget'}]},
   {node_id:'t',kind:'assistant_response',items:[{item_identity:'call',kind:'tool_call',execution_ids:['one','two']}],executions:[{execution_id:'one',command_excerpt:'printf one',state:'exited',exit_code:0},{execution_id:'two',command_excerpt:'printf two',state:'running'}]},
  ];
+ const f=await fixtureConversation({nodes});
  try{
   f.model.shells.value=new Map([['one',{execution_id:'one',state:'exited'}],['two',{execution_id:'two',state:'running'}]]);
-  const projection=windowed?projectHistoryWindowItems({revision:1,nodes,keyScope:['scope']}):projectLegacyHistoryItems({nodes,keyScope:['scope']});
-  await act(async()=>render(<SavedConversationItems model={f.model} nodes={nodes} projection={projection.projection}/>,host));
+  const snapshot=f.model.longReader.value!.acceptedView.peek();
+  await act(async()=>render(<SavedWindowContent model={f.model} snapshot={snapshot}/>,host));
   const group=host.querySelector<HTMLDetailsElement>('[data-work-group]')!;
   const heading=group.querySelector(':scope > summary')!;
   expect(heading.textContent).not.toContain(f.model.t.value('work.group'));
@@ -50,18 +49,28 @@ for(const windowed of [false,true])it(`actual four Work categories consume ident
  }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
 });
 it('actual CLIENT receipt uses common chrome without implying a Core wire error',async()=>{
- const f=await fixtureModel(),host=document.createElement('div');document.body.append(host);
+ const {settle,flush}=await import('../../../data/test/harness');
+ const f=await fixtureConversation({nodes:[{node_id:'independent',kind:'user',items:[{kind:'text',item_identity:'body',text:'Independent human',text_complete:true}]},
+   {node_id:'answer',kind:'assistant_response',items:null,items_unavailable_reason:'response_budget'}]}),host=document.createElement('div');document.body.append(host);
  try{
-  const presence={scope:'scope',attemptId:'a',receipt:{scope:'scope',attemptId:'a',nodeIds:['n'],terminalState:'completed' as const},phase:'settled' as const,reason:'read-error' as const,answerAvailability:'unknown' as const};
-  const projection=projectSavedItems(normalizeTerminalPresenceFacts([presence]));
-  await act(async()=>render(<SavedConversationItems model={f.model} projection={projection}/>,host));
+  const handle=f.model.handle.value!,base=f.db.answer.bind(f.db);
+  f.db.answer=call=>call.command==='history.window'&&typeof call.args==='object'&&call.args!==null&&'node_id' in call.args&&call.args.node_id==='answer'
+   ?{ok:false,code:'not_found',message:'synthetic scoped read refusal'}:base(call);
+  f.db.work.lead=[{kind:'attempt',id:'receipt-attempt',attempt_id:'receipt-attempt',turn_id:'turn',thread_id:'lead',state:'completed',
+    response_nodes:[{node_id:'answer',ordinal:1,kind:'assistant_response'}],response_nodes_truncated:false}];
+  f.t.push({t:'live',thread_id:'lead',attempt_id:'receipt-attempt',gap:false,deltas:[{offset:0,reasoning:false,text:''}]});await flush();
+  f.t.push({t:'live_end',thread_id:'lead'});await settle(f.t,f.db);
+  const snapshot=f.model.longReader.value!.acceptedView.peek();
+  expect(snapshot.terminalPresence?.[0]).toMatchObject({scope:handle.handoffScope(),phase:'settled',reason:'read-error'});
+  await act(async()=>render(<SavedWindowContent model={f.model} snapshot={snapshot}/>,host));
   const group=host.querySelector<HTMLDetailsElement>('[data-work-group]')!;await act(async()=>{group.open=true;group.dispatchEvent(new Event('toggle'));});
-  const opened=host.querySelector('.work-element-row')!;const row=opened;
-  expect(opened.getAttribute('data-state-source')).toBe('client');expect(row.getAttribute('data-state-value')).toBe('read-error');
+  const row=host.querySelector('[data-terminal-presence] .work-element-row')!;
+  expect(row.getAttribute('data-state-source')).toBe('client');expect(row.getAttribute('data-state-value')).toBe('read-error');
   expect(row.textContent).toContain('CLIENT');expect(row.querySelector('.work-element-row__line')?.getAttribute('aria-label')).toContain('CLIENT');
   expect(row.querySelector('summary,details')).toBeNull();
  }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
 });
+
 it('renders an explicit unavailable Work cut when a mixed issued/foreign scope batch is rejected',async()=>{
  const {ConversationWindow}=await import('../../../ui-core/src/window');
  const {normalizeLiveWorkFacts}=await import('../../../ui-core/src/conversation-items');

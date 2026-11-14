@@ -224,6 +224,13 @@ export function projectSavedItems(input: readonly NormalizedSavedItem[]) {
 
 function projectSavedItemsCore(rawInput: readonly NormalizedSavedItem[], decodedLegacy = false): SavedItemProjection & { readonly workGroups: readonly WorkGroup[]; readonly sequence: readonly ConversationSequence[] } {
   const input = normalizeConversationFacts(rawInput);
+  const scopes = new Map<string, readonly string[]>();
+  const captureScope = (scope: readonly string[]): readonly string[] => {
+    const identity = JSON.stringify(scope);
+    let captured = scopes.get(identity);
+    if (!captured) { captured = Object.freeze([...scope]); scopes.set(identity, captured); }
+    return captured;
+  };
   const items: ProjectedSavedItem[] = [];
   const groups: WorkGroup[] = [];
   const sequence: ConversationSequence[] = [];
@@ -284,7 +291,7 @@ function projectSavedItemsCore(rawInput: readonly NormalizedSavedItem[], decoded
     }
     if (proven) selectedTools.set(key, items.length);
     const identity = "domain" in source ? { domain: source.domain, ...(source.presentationContainer ? { presentationContainer: source.presentationContainer } : {}), ...(source.terminalPresence ? { terminalPresence: source.terminalPresence } : {}), namespace: source.namespace ?? "work", scope: source.scope, recordId: source.recordId, ...(source.attemptId !== undefined ? { attemptId: source.attemptId } : {}), ...(source.turnId !== undefined ? { turnId: source.turnId } : {}) } : { ...(source.identityDomain ? { identityDomain: source.identityDomain } : {}), nodeId: source.nodeId, itemIdentity: source.itemIdentity, ...(source.revision !== undefined ? { revision: source.revision } : {}), ...(source.windowRevision !== undefined ? { windowRevision: source.windowRevision } : {}) };
-    const scopedIdentity = { ...identity, classificationCase: canonicalItemCase(source).id, ...(source.keyScope ? { keyScope: Object.freeze([...source.keyScope]) } : {}) };
+    const scopedIdentity = { ...identity, classificationCase: canonicalItemCase(source).id, ...(source.keyScope ? { keyScope: captureScope(source.keyScope) } : {}) };
     let copy: NormalizedSavedItem;
     if (source.kind === "tool") {
       if (source.executionId !== undefined && !source.executionId) throw new Error("Empty execution identity");

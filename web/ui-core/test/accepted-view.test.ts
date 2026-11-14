@@ -1,3 +1,5 @@
+import { captureHistoryWindowRows } from "../src/history-window-capture";
+import { emptyOwnSendLocalRegion, ownSendPresentation, captureOwnSendLocalRegion } from "../src/own-send-presentation";
 import { expect, it } from "vitest";
 import { createConversationDisplayPlan } from "../src/conversation-display-plan";
 import { projectHistoryWindowItems } from "../src/conversation-items";
@@ -127,25 +129,38 @@ it("cached aliases cannot bypass the original maximum path depth", () => {
 
 
 it("stages the legal maximum selected range as one shared immutable publication graph", () => {
-  const rows: HistoryItem[] = Array.from({ length: WINDOW_NODES * WINDOWS_HELD }, (_, ordinal) => ({
+  const rows = captureHistoryWindowRows(Array.from<unknown, HistoryItem>({ length: WINDOW_NODES * WINDOWS_HELD }, (_, ordinal) => ({
     node_id: `selected-${ordinal}`, kind: "assistant_response", selection: { ordinal },
-    items: [{ kind: "text", item_identity: "text", text: `complete-${ordinal}`, text_complete: true }],
-  }));
+    ...(ordinal % 7 === 3 ? {} : { items: [{ kind: "text" as const, item_identity: "text", text: `complete-${ordinal}`, text_complete: true }] }),
+    provenance: { created_at: '2026-01-01', sender: { kind: 'human' } },
+  })));
   const initial: WindowAcceptedSnapshot = { generation: 0, epoch: 0, disposed: false, rows: [],
     range: undefined, total: 0, revision: undefined, pending: true };
   const view = new AcceptedView(initial);
   const projection = projectHistoryWindowItems({ revision: 1, nodes: rows, keyScope: ["scope"] }).projection;
+  const localRows = Array.from({ length: 8 }, (_, index) => ({ threadId: 't', scope: 'scope', operationId: `local-${index}`,
+    text: `pending-${index}`, phase: 'accepted' as const, messageId: `pending-node-${index}`, plainMessageSend: true as const }));
+  const decision = ownSendPresentation({ ref: initial, current: true, scope: 'scope', projection,
+    localRows, canonicalRows: rows, hiddenItemKeys: new Set<string>(),
+    path: { tail: true, empty: false, revision: 1, lastNodeId: rows.at(-1)?.node_id, lastOrdinal: rows.length - 1 },
+    nodeOrdinals: new Map(rows.map((row, ordinal) => [row.node_id!, ordinal])),
+    cohortVersion: { accepted: localRows, pending: undefined } });
+  const localRegion = captureOwnSendLocalRegion(decision);
   const plan = createConversationDisplayPlan({ coverage: "complete", generation: 1, revision: 1, capability: view.currentCapability,
-    rows, canonicalProjection: projection, projection, assistantFacts: [], scope: "scope",
-    userDecision: { cohortVersion: { accepted: [] } }, retiredAttempts: [] });
+    rows, canonicalProjection: projection, projection: decision.projection, assistantFacts: [], scope: "scope",
+    userDecision: { cohortVersion: { accepted: localRows, pending: undefined }, localRegion }, retiredAttempts: [] });
   const candidate: WindowAcceptedSnapshot = { ...initial, generation: 1, revision: 1, pending: false,
     rows, range: { first: 0, last: rows.length - 1 }, total: rows.length, displayPlan: plan };
   expect(view.publish(makeAcceptedPublication(candidate, "read"))).toBe(true);
   expect(view.current.rows).toHaveLength(WINDOW_NODES * WINDOWS_HELD);
+  expect(view.current.displayPlan!.localRegion.localRows).toHaveLength(8);
+  expect(view.current.displayPlan!.localRegion.placement).toEqual(localRegion.placement);
+  expect(view.current.displayPlan!.localRegion.localRows[0]).toBe(view.current.displayPlan!.localRegion.cohort[0]);
   const entries = view.current.displayPlan!.entries;
   expect(entries).toHaveLength(rows.length);expect(entries[0]!.lifetime).toBe(entries[1]!.lifetime);
   expect(entries[0]!.body).toMatchObject({ kind: "typed-canonical", text: "complete-0" });
-  expect(entries.at(-1)!.body).toMatchObject({ kind: "typed-canonical", text: `complete-${rows.length - 1}` });
+  expect(entries.at(-2)!.body).toMatchObject({ kind: "typed-canonical", text: `complete-${rows.length - 2}` });
+  expect(entries.at(-1)!.work).toBeDefined();
 });
 
 
@@ -164,4 +179,31 @@ it('preserves only minted capability identity, not arbitrary frozen empty object
  expect(view.publish(makeAcceptedPublication(candidate,'read'))).toBe(true);
  expect(view.current.payload).not.toBe(value);
  expect(view.current.displayPlan.capability).toBe(view.currentCapability);
+});
+
+
+it('rejects a changed input qualification after materialization without replacing the old reference',()=>{
+ const view=new AcceptedView(page(0)),before=view.current;let current=true;
+ const candidate=next(view,1);
+ Object.defineProperty(candidate,'rows',{get(){current=false;return [{nodeId:'new'}];}});
+ expect(view.publish(makeAcceptedPublication(candidate,'read',()=>current))).toBe(false);
+ expect(view.current).toBe(before);expect(view.isCurrent(before)).toBe(true);
+});
+it('reentrant input qualification cannot replace a newer committed local cut',()=>{
+ const view=new AcceptedView(page(0));let once=true;
+ const candidate=makeAcceptedPublication(next(view,1),'read',()=>{if(once){once=false;publish(view,next(view,2));}return true;});
+ expect(view.publish(candidate)).toBe(false);expect(view.current.revision).toBe(2);
+});
+
+
+it('shares equal row provenance without dropping fields or joining different message provenance',()=>{
+ const provenance={created_at:'at',sender:{kind:'human' as const},message:{expect_reply:false as const,reply_to:'a'}};
+ const rows:HistoryItem[]=[{node_id:'one',kind:'user',provenance},
+  {node_id:'two',kind:'user',provenance:structuredClone(provenance)},
+  {node_id:'three',kind:'user',provenance:{...provenance,message:{expect_reply:false as const,reply_to:'b'}}}];
+ const captured=captureHistoryWindowRows(rows);
+ expect(captured).toEqual(rows);expect(captured[0]!.provenance).toBe(captured[1]!.provenance);
+ expect(captured[0]!.provenance).not.toBe(captured[2]!.provenance);
+ provenance.sender.kind='human';provenance.message.reply_to='mutated';
+ expect(captured[0]!.provenance?.message).toEqual({expect_reply:false,reply_to:'a'});
 });

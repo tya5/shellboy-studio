@@ -246,3 +246,28 @@ it.each([['turn','live'],['run','running'],['turn','recovery_wait'],['turn','fai
  const item=projectSavedItems(normalizeLiveWorkFacts({scope:'t',items:[{kind,state,id:'a',thread_id:'t'}]})).items[0]!;
  expect(workElementDisplay(item)).toMatchObject({typeAccessibleLabel:'Unsupported item',contentLabel:{text:'Item details are not supported'},state:{value:state}});
 });
+
+it('committed Work capture retains only issuer-associated executions and rejects source substitution',async()=>{
+ const {ConversationWindow}=await import('../src/window');
+ const {capturedWorkElementDisplay,capturedWorkExecutionDisplay}=await import('../src/work-element-display');
+ const node:HistoryItem={node_id:'tool',kind:'assistant_response',selection:{ordinal:0},items:[{kind:'tool_call',item_identity:'call',execution_ids:['a','b']}],executions:[
+  {execution_id:'a',command_excerpt:'first-associated',state:'exited',exit_code:0},
+  {execution_id:'b',command_excerpt:'second-associated',state:'running'},
+  {execution_id:'foreign',command_excerpt:'foreign-secret',state:'running'}]};
+ const win=new ConversationWindow({read:async()=>({ok:true,value:{thread_id:'t',revision:1,total:1,items:[node]}})});
+ const {flush}=await import('../../data/test/harness');await flush();
+ try{
+  const ref=win.acceptedView.peek(),entry=ref.displayPlan!.entries[0]!;
+  expect(win.acceptedView.isCurrent(ref)).toBe(true);expect(entry.work!.source).toBe(entry.item.source);
+  expect(entry.work!.classification).toBe(entry.item.classification);
+  expect(workElementDisplay(entry.item)).toBeUndefined();
+  expect(capturedWorkExecutionDisplay(entry.item,entry.work,'a')).toMatchObject({contentLabel:{text:'first-associated'},state:{source:'wire',exitCode:0}});
+  expect(capturedWorkExecutionDisplay(entry.item,entry.work,'b')).toMatchObject({contentLabel:{text:'second-associated'},state:{value:'running'}});
+  expect(capturedWorkExecutionDisplay(entry.item,entry.work,'foreign')).toBeUndefined();
+  expect(JSON.stringify(entry.work)).not.toContain('foreign-secret');
+  expect(capturedWorkElementDisplay({...entry.item,source:{...entry.item.source}},entry.work)).toBeUndefined();
+  expect(capturedWorkElementDisplay({...entry.item,key:'foreign-key'},entry.work)).toBeUndefined();
+  win.acceptedView.revoke();expect(win.acceptedView.isCurrent(ref)).toBe(false);
+  expect(win.acceptedView.peek()).toBe(ref);
+ }finally{win.dispose();}
+});

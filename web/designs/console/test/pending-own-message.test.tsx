@@ -176,25 +176,42 @@ for (const renderMode of ['app','ordered'] as const) it(`actual own cohort diffe
   f.db.history.t=[node('a','Saved A',true),node('b','Saved B',true)];await act(paint);expect(host.querySelectorAll('[data-pending-own-message]')).toHaveLength(0);expect(host.querySelectorAll('.msg')).toHaveLength(2);expect([...host.querySelectorAll('.md')].map(x=>x.textContent?.trim())).toEqual(['Saved A','Saved B']);
  }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
 });
-it('actual model installed receipt rejects cohort changes during qualification and retires once atomically',async()=>{
- const f=await fixtureModel({configure(db){db.threads={t:summary('t')};db.details.t=details('t');db.history.t=[];}});
+it('actual committed local region rejects stale cohort retirement and retires once after the echo',async()=>{
+ const f=await fixtureModel({route:'conversation',threadId:'lead',configure(db){db.history.lead=[];db.work.lead=[];}});
  try{
-  const accept=async(text:string,id:string)=>{const sent=f.model.send(text);await flush();const call=f.t.calls('message.send').at(-1)!;f.db.answered.add(call.id);f.t.ok(call.id,{message_id:id,thread_id:'t'});expect(await sent).toBe(true);};
+  const accept=async(text:string,id:string)=>{const sent=f.model.send(text);await flush();const call=f.t.calls('message.send').at(-1)!;f.db.answered.add(call.id);f.t.ok(call.id,{message_id:id,thread_id:'lead'});expect(await sent).toBe(true);};
   await accept('A','a');
-  const {ownSendPresentation}=await import('../../../ui-core/src/own-send-presentation');
-  const {projectSavedItems}=await import('../../../ui-core/src/conversation-items');
-  const make=()=>ownSendPresentation({canonicalRows:f.model.acceptedOwnMessages.peek().map(row=>({node_id:row.messageId!,kind:'user',items:[{kind:'text' as const,item_identity:row.messageId!,text:row.text,text_complete:true}]})),reservation:{token:{},observation:{installedToken:{},ref:{},scope:f.model.ownMutationScope(),boundary:{kind:"beginning"},isCurrent:()=>true}},ref:{},current:true,scope:f.model.ownMutationScope(),localRows:f.model.ownMutationRows(f.model.ownMutationScope()),cohortVersion:{accepted:f.model.acceptedOwnMessages.peek(),pending:f.model.pendingOwnMessage.peek()},projection:projectSavedItems(f.model.acceptedOwnMessages.peek().map(row=>({windowRevision:1,nodeId:row.messageId!,itemIdentity:row.messageId!,kind:'user',text:row.text,textComplete:true}))),hiddenItemKeys:new Set<string>()});
-  const old=make();let newer:Promise<boolean>|undefined;
-  f.model.installOwnPresentation(old,()=>{newer=f.model.send('B');return true;});
+  const win=f.model.longReader.value!,old=win.acceptedView.peek();
+  const initialLocal=old.displayPlan!.localRegion;
+  expect(initialLocal.localRows.map(row=>row.messageId)).toEqual(['a']);
+  expect(initialLocal.placement).toEqual({kind:'qualified',insertion:{kind:'beginning'}});
+  expect(initialLocal.slots.map(slot=>({id:slot.row.messageId,position:slot.position}))).toEqual([{id:'a',position:{kind:'before-first'}}]);
+  const node=(id:string,ordinal:number):HistoryItem=>({node_id:id,kind:'user',selection:{ordinal},items:[{kind:'text',item_identity:id,text:id,text_complete:true}],provenance:{sender:{kind:'human'}}});
+  f.db.history.lead=[node('a',0)];let newer:Promise<boolean>|undefined,reentered=false;
+  const stop=win.acceptedView.subscribe(ref=>{
+   const local=ref.displayPlan!.localRegion;expect(win.acceptedView.isCurrent(ref)).toBe(true);
+   expect(local.slots.every(slot=>local.localRows.some(row=>row.operationId===slot.row.operationId))).toBe(true);
+   if(local.placement.kind==='qualified')expect(local.slots.map(slot=>slot.row.operationId)).toEqual(local.localRows.map(row=>row.operationId));
+   if(!reentered&&local.retire.length){
+    reentered=true;newer=f.model.send('B');
+  }});
+  win.changed();await flush();
+  const read=f.t.calls('history.window').find(call=>!f.db.answered.has(call.id))!;expect(read).toBeDefined();
+  const reply=f.db.answer(read);f.db.answered.add(read.id);if(reply.ok)f.t.ok(read.id,reply.result);else f.t.ownerError(read.id,reply.code);
+  await flush(16);stop();expect(reentered).toBe(true);
   expect(f.model.acceptedOwnMessages.peek()).toHaveLength(1);expect(f.model.pendingOwnMessage.peek()?.text).toBe('B');
-  await flush();const call=f.t.calls('message.send').at(-1)!;f.db.answered.add(call.id);f.t.ok(call.id,{message_id:'b',thread_id:'t'});expect(await newer).toBe(true);
-  f.model.installOwnPresentation(old,()=>true);expect(f.model.acceptedOwnMessages.peek()).toHaveLength(2);
-  const ready=make(),before=f.model.acceptedOwnMessages.peek();
-  f.model.installOwnPresentation(ready,()=>false);expect(f.model.acceptedOwnMessages.peek()).toBe(before);
-  f.model.installOwnPresentation(ready,()=>true);expect(f.model.acceptedOwnMessages.peek()).toHaveLength(0);
-  const empty=f.model.acceptedOwnMessages.peek();f.model.installOwnPresentation(ready,()=>true);expect(f.model.acceptedOwnMessages.peek()).toBe(empty);
+  const call=f.t.calls('message.send').at(-1)!;f.db.answered.add(call.id);f.t.ok(call.id,{message_id:'b',thread_id:'lead'});expect(await newer).toBe(true);
+  expect(win.refreshConversationInput(old)).toBe(false);expect(f.model.acceptedOwnMessages.peek()).toHaveLength(2);
+  const before=win.acceptedView.peek(),cohort=f.model.acceptedOwnMessages.peek();
+  win.acceptedView.revoke();expect(win.refreshConversationInput(before)).toBe(false);
+  expect(win.acceptedView.peek()).toBe(before);expect(f.model.acceptedOwnMessages.peek()).toBe(cohort);
+  f.db.history.lead=[node('a',0),node('b',1)];win.changed();await settle(f.t,f.db);
+  expect(f.model.acceptedOwnMessages.peek()).toHaveLength(0);
+  const final=win.acceptedView.peek();expect(final.displayPlan?.localRegion.localRows).toHaveLength(0);
+  expect(win.refreshConversationInput(final)).toBe(true);expect(f.model.acceptedOwnMessages.peek()).toHaveLength(0);
  }finally{f.model.dispose();f.data.stop();}
 });
+
 for(const withPrefix of [false,true])for(const ids of [['2'],['2','3','4','5']])it(`actual four rapid ACKs precede new assistant while own saved bodies are unavailable: prefix=${withPrefix} count=${ids.length}`,async()=>{
  let revision=1;
  const f=await fixtureModel({capabilities:['history.window'],configure(db){

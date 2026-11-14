@@ -56,6 +56,17 @@ export interface OwnSendDecision<Ref> extends OwnSendPresentation<Ref> {
   readonly observation?:OwnSendTailObservation<Ref>;
 }
 
+/** Plain semantic facts belong to the accepted cut, not a renderer-side decision cache. */
+export type OwnSendLocalRegion = Pick<OwnSendDecision<unknown>, 'scope' | 'cohort' | 'localRows' | 'slots' | 'placement' | 'conflictIds' | 'retire'>;
+export function captureOwnSendLocalRegion(result: OwnSendDecision<unknown>): OwnSendLocalRegion {
+  return Object.freeze({ scope: result.scope, cohort: result.cohort, localRows: result.localRows,
+    slots: result.slots, placement: result.placement, conflictIds: result.conflictIds, retire: result.retire });
+}
+export function emptyOwnSendLocalRegion(scope: string): OwnSendLocalRegion {
+  return Object.freeze({ scope, cohort: Object.freeze([]), localRows: Object.freeze([]), slots: Object.freeze([]),
+    placement: Object.freeze({ kind: 'unqualified', reason: 'tail-unproved' }), conflictIds: Object.freeze([]), retire: Object.freeze([]) });
+}
+
 export function ownSendPresentation<Ref>(input: OwnSendPresentationInput<Ref>): OwnSendDecision<Ref> {
   const cohort = Object.freeze(input.localRows.filter(row => row.scope === input.scope));
   const displayed = completeDisplayedOwnUserIds(input);

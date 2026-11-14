@@ -1,3 +1,4 @@
+import { emptyOwnSendLocalRegion } from "./own-send-presentation";
 import type { HandoffRecord } from '../../data/src/handoff';
 import type { WindowAcceptedSnapshot } from './window';
 import type { OwnUserDecision, ConversationDisplayPlan } from './conversation-display-plan';
@@ -6,6 +7,7 @@ import { projectHistoryWindowItems, projectOwnedHandoffFacts, projectSavedItems,
   type NormalizedSavedItem, type SavedItemProjection } from './conversation-items';
 
 export interface ConversationSemanticInput {
+  readonly isCurrent: () => boolean;
   readonly scope: string;
   readonly canonicalProjection: SavedItemProjection;
   readonly projection: SavedItemProjection;
@@ -24,7 +26,7 @@ export function captureConversationInput(snapshot: WindowAcceptedSnapshot, input
   const canonicalOwners = new Set(ownership.filter(item => item.mode === 'canonical').map(item => item.recordKey));
   const reserved = new Set(ownership.filter(item => item.mode === 'preview').flatMap(item => item.itemKeys));
   const handoffs = retainUnretiredLiveFacts(snapshot, input.scope, input.current,
-    projectOwnedHandoffFacts(input.threadId, input.records).filter(fact => !('domain' in fact) || !canonicalOwners.has(fact.recordId)));
+    projectOwnedHandoffFacts(input.threadId, input.current ? input.records : []).filter(fact => !('domain' in fact) || !canonicalOwners.has(fact.recordId)));
   const retained = retainUnretiredLiveFacts(snapshot, input.scope, input.current,
     input.work.filter(fact => !('domain' in fact && fact.namespace === 'handoff')));
   const work = input.current ? scopeIssuedWorkFacts([...retained,
@@ -39,6 +41,6 @@ export function captureConversationInput(snapshot: WindowAcceptedSnapshot, input
   const keys = new Set(projection.items.map(item => item.key));
   for (const owner of ownership.filter(item => item.mode === 'canonical'))
     for (const key of owner.itemKeys) if (keys.has(key)) containers.set(key, owner.containerKey);
-  return { scope: input.scope, canonicalProjection, projection: withPresentationContainers(projection, containers),
-    decision: { cohortVersion: { accepted: [] } }, coverage: work === undefined ? 'unavailable' : 'complete' };
+  return { isCurrent: () => true, scope: input.scope, canonicalProjection, projection: withPresentationContainers(projection, containers),
+    decision: { cohortVersion: { accepted: [] }, localRegion: emptyOwnSendLocalRegion(input.scope) }, coverage: work === undefined ? 'unavailable' : 'complete' };
 }

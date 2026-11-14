@@ -1,3 +1,5 @@
+import type { OwnSendLocalRegion } from "./own-send-presentation";
+import { captureWorkElement, type CapturedWorkElement } from "./work-element-display";
 import type { AssistantOwnership } from './assistant-ownership';
 import type { AcceptedCapability } from './accepted-view';
 import { projectHistoryWindowItems, type SavedItemProjection, type ProjectedSavedItem, type ConversationSequence, type WorkGroup } from './conversation-items';
@@ -16,10 +18,11 @@ export interface ConversationDisplayPlanEntry {
   readonly item: ProjectedSavedItem;
   readonly presentationContainer?: string;
   readonly body: DisplayBodySource;
+  readonly work?: CapturedWorkElement;
   readonly lifetime: DisplayLifetime;
 }
 export interface DisplayCohortVersion { readonly accepted: readonly { readonly operationId: string; readonly phase: string; readonly messageId?: string }[]; readonly pending?: { readonly operationId: string; readonly phase: string }; }
-export interface OwnUserDecision { readonly cohortVersion: DisplayCohortVersion; }
+export interface OwnUserDecision { readonly cohortVersion: DisplayCohortVersion; readonly localRegion: OwnSendLocalRegion; }
 
 export interface ConversationDisplayPlan {
   readonly acceptedGeneration: number;
@@ -32,6 +35,7 @@ export interface ConversationDisplayPlan {
   readonly partitionUnknownKeys: readonly string[];
   readonly cohortKey: string;
   readonly cohortVersion: DisplayCohortVersion;
+  readonly localRegion: OwnSendLocalRegion;
   readonly scope: string;
   readonly semanticKey: string;
 }
@@ -46,6 +50,7 @@ export function validateQualifiedAssistantFacts(input: {
   readonly revision: number;
   readonly scope: string;
 }): QualifiedAssistantFacts {
+  if (!input.facts.length) return Object.freeze([]);
   const rebuilt = projectHistoryWindowItems({ revision: input.revision, nodes: input.rows, keyScope: [input.scope] }).projection;
   if (rebuilt.items.length !== input.canonicalProjection.items.length || rebuilt.items.some((item, index) => item.key !== input.canonicalProjection.items[index]?.key)) return Object.freeze([]);
   const keys = new Set(rebuilt.items.map(item => item.key));
@@ -55,9 +60,9 @@ export function validateQualifiedAssistantFacts(input: {
 }
 
 export function displaySemanticKey(canonicalProjection: SavedItemProjection, displayProjection: SavedItemProjection,
-  facts: QualifiedAssistantFacts, retiredAttempts: readonly { readonly scope: string; readonly attemptId: string; readonly revision: number }[]): string {
+  facts: QualifiedAssistantFacts, retiredAttempts: readonly { readonly scope: string; readonly attemptId: string; readonly revision: number }[], work: ReadonlyMap<string, CapturedWorkElement>, localRegion: OwnSendLocalRegion): string {
   // Version the complete authoritative projections and proofs, including body/read state and path order.
-  return JSON.stringify({ canonical: { items: canonicalProjection.items, sequence: canonicalProjection.sequence, workGroups: canonicalProjection.workGroups, partitionUnknownKeys: canonicalProjection.partitionUnknownKeys }, display: { items: displayProjection.items, sequence: displayProjection.sequence, workGroups: displayProjection.workGroups, partitionUnknownKeys: displayProjection.partitionUnknownKeys }, facts, retiredAttempts });
+  return JSON.stringify({ canonical: { items: canonicalProjection.items, sequence: canonicalProjection.sequence, workGroups: canonicalProjection.workGroups, partitionUnknownKeys: canonicalProjection.partitionUnknownKeys }, display: { items: displayProjection.items, sequence: displayProjection.sequence, workGroups: displayProjection.workGroups, partitionUnknownKeys: displayProjection.partitionUnknownKeys }, facts, retiredAttempts, work: [...work.values()].map(capture => ({ key: capture.key, metadata: capture.metadata })), localRegion });
 }
 
 export interface AcceptedPublicationInput {
@@ -91,7 +96,20 @@ export function createConversationDisplayPlan(input: AcceptedPublicationInput): 
     }
   }
   const generation = input.generation, revision = input.revision;
-  const semanticKey = displaySemanticKey(input.canonicalProjection, input.projection, qualifiedFacts, input.retiredAttempts);
+  const work = new Map<string, CapturedWorkElement>();
+  const workContexts = new Map<string, CapturedWorkElement["metadata"]>();
+  for (const item of input.projection.items) {
+    const capture = captureWorkElement(item);
+    if (!capture) continue;
+    // Equal immutable issuer contexts share one bounded capture in this cut.
+    // Receipt identity is source-owned and must never be interned by value.
+    if (capture.metadata.receipt) { work.set(item.key, capture); continue; }
+    const key = JSON.stringify(capture.metadata);
+    const metadata = workContexts.get(key) ?? capture.metadata;
+    workContexts.set(key, metadata);
+    work.set(item.key, Object.freeze({ ...capture, metadata }));
+  }
+  const semanticKey = displaySemanticKey(input.canonicalProjection, input.projection, qualifiedFacts, input.retiredAttempts, work, input.userDecision.localRegion);
   const version = input.userDecision.cohortVersion;
   const cohortKey = conversationCohortKey(version);
   const canonicalItems = new Map(input.canonicalProjection.items.map(item => [item.key, item]));
@@ -128,9 +146,9 @@ export function createConversationDisplayPlan(input: AcceptedPublicationInput): 
         : unavailable(source.kind);
     const retired = 'domain' in source && !!source.attemptId && input.retiredAttempts.some(item => item.scope === input.scope && item.attemptId === source.attemptId && item.revision === revision);
     const lifetime = lifetimeFor(retired ? 'revoked' : human && !owner ? 'canonical-human' : owner || host ? 'valid-owner' : 'retained');
-    return Object.freeze({ item, ...(host ? { presentationContainer: host } : {}), body, lifetime });
+    return Object.freeze({ item, ...(host ? { presentationContainer: host } : {}), body, lifetime, ...(work.has(item.key) ? { work: work.get(item.key) } : {}) });
   });
-  return Object.freeze({ acceptedGeneration: generation, revision, capability: input.capability, coverage: input.coverage, sequence: Object.freeze([...(input.projection.sequence ?? [])]), workGroups: Object.freeze([...(input.projection.workGroups ?? [])]), partitionUnknownKeys: Object.freeze([...input.projection.partitionUnknownKeys]), entries: Object.freeze(entries), cohortKey, cohortVersion: version, scope: input.scope, semanticKey });
+  return Object.freeze({ acceptedGeneration: generation, revision, capability: input.capability, coverage: input.coverage, sequence: Object.freeze([...(input.projection.sequence ?? [])]), workGroups: Object.freeze([...(input.projection.workGroups ?? [])]), partitionUnknownKeys: Object.freeze([...input.projection.partitionUnknownKeys]), entries: Object.freeze(entries), cohortKey, cohortVersion: version, localRegion: input.userDecision.localRegion, scope: input.scope, semanticKey });
 }
 
 
@@ -154,7 +172,7 @@ export function composeConversationDisplayPlan(input: ConversationDisplayComposi
     ...(input.userDecision.cohortVersion.pending ? { pending: Object.freeze({ ...input.userDecision.cohortVersion.pending }) } : {}),
   });
   const captured = Object.freeze({ ...input, rows: Object.freeze([...input.rows]), projection,
-    userDecision: Object.freeze({ cohortVersion }), canonicalProjection: Object.freeze({ ...input.canonicalProjection,
+    userDecision: Object.freeze({ cohortVersion, localRegion: input.userDecision.localRegion }), canonicalProjection: Object.freeze({ ...input.canonicalProjection,
       items: Object.freeze([...input.canonicalProjection.items]),
       toolSummaries: Object.freeze([...input.canonicalProjection.toolSummaries]),
       ...(input.canonicalProjection.workGroups ? { workGroups: Object.freeze([...input.canonicalProjection.workGroups]) } : {}),

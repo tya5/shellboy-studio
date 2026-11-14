@@ -1,5 +1,5 @@
 import { statusOfShell, type StatusKey } from "./status";
-import { CANONICAL_CASES, workDisplayMetadata, type CanonicalCase, type ProjectedSavedItem } from "./conversation-items";
+import { CANONICAL_CASES, workDisplayMetadata, type NormalizedSavedItem, type WorkDisplayMetadata, type CanonicalCase, type ProjectedSavedItem } from "./conversation-items";
 export type WorkTypeIcon = NonNullable<CanonicalCase["icon"]>;
 export interface WorkElementDisplay {
   readonly typeIcon: WorkTypeIcon;
@@ -8,19 +8,40 @@ export interface WorkElementDisplay {
   readonly state: { readonly source: "wire" | "client"; readonly value: string; readonly executionStatus?: StatusKey; readonly exitCode?: number | null } | null;
   readonly detailPolicy: "none" | "unavailable" | "actual-safe-typed" | "existing-shell-output";
 }
-/** Display facts are issued with normalized source objects, never joined in JSX. */
-export function workElementDisplay(item: ProjectedSavedItem): WorkElementDisplay | undefined {
-  return display(item);
+/** Issuer-qualified inputs captured inside the capability-bound accepted plan. */
+export interface CapturedWorkElement {
+  readonly key: string;
+  readonly source: NormalizedSavedItem;
+  readonly classification: Extract<CanonicalCase, { readonly classification: "work" }>;
+  readonly metadata: WorkDisplayMetadata;
 }
-/** Select only an execution already associated by this item's original issuer. */
-export function workExecutionDisplay(item: ProjectedSavedItem, executionId: string): WorkElementDisplay | undefined {
-  const facts = workDisplayMetadata(item);
-  if (!facts || !facts.shells.some(shell => shell.execution_id === executionId)) return undefined;
-  return display(item, executionId);
-}
-function display(item: ProjectedSavedItem, executionId?: string): WorkElementDisplay | undefined {
+export function captureWorkElement(item: ProjectedSavedItem): CapturedWorkElement | undefined {
   const facts = workDisplayMetadata(item), c = item.classification;
-  if (!facts || !c || c !== CANONICAL_CASES[c.id] || c.classification !== "work" || !("displayPolicy" in c)) return undefined;
+  if (!facts || !c || c !== CANONICAL_CASES[c.id] || c.classification !== "work" || !("displayPolicy" in c)) return;
+  return Object.freeze({ key: item.key, source: item.source, classification: c, metadata: facts });
+}
+
+/** Direct issuer path, for pre-publication composition only. */
+export function workElementDisplay(item: ProjectedSavedItem): WorkElementDisplay | undefined {
+  return capturedWorkElementDisplay(item, captureWorkElement(item));
+}
+export function workExecutionDisplay(item: ProjectedSavedItem, executionId: string): WorkElementDisplay | undefined {
+  return capturedWorkExecutionDisplay(item, captureWorkElement(item), executionId);
+}
+
+/** Caller qualifies the containing accepted reference/capability; no proof is reissued here. */
+export function capturedWorkElementDisplay(item: ProjectedSavedItem, capture: CapturedWorkElement | undefined): WorkElementDisplay | undefined {
+  if (!capture || capture.key !== item.key || capture.source !== item.source
+    || capture.classification !== item.classification || capture.metadata.scopeKey !== JSON.stringify(item.source.keyScope ?? [])) return;
+  return display(item, capture);
+}
+export function capturedWorkExecutionDisplay(item: ProjectedSavedItem, capture: CapturedWorkElement | undefined, executionId: string): WorkElementDisplay | undefined {
+  if (!capture?.metadata.shells.some(shell => shell.execution_id === executionId)) return;
+  if (!capturedWorkElementDisplay(item, capture)) return;
+  return display(item, capture, executionId);
+}
+function display(item: ProjectedSavedItem, capture: CapturedWorkElement, executionId?: string): WorkElementDisplay | undefined {
+  const facts = capture.metadata, c = capture.classification;
   const source = item.source;
   const context: { name: string; value: string }[] = [];
   if (facts.nodeKind) context.push({ name: "kind", value: facts.nodeKind });

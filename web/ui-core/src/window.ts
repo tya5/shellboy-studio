@@ -1,3 +1,4 @@
+import { captureHistoryWindowRows } from "./history-window-capture";
 import { captureConversationInput, type ConversationSemanticInput } from "./conversation-input";
 import { normalizeLiveWorkFacts } from "./conversation-items";
 import { assistantOwnership, type AssistantOwnership } from './assistant-ownership';
@@ -984,7 +985,7 @@ export class ConversationWindow {
   /** A semantic source change uses the same constructor as an arriving history cut. */
   refreshConversationInput(ref: WindowAcceptedSnapshot): boolean {
     const capability = this.acceptedView.currentCapability;
-    if (this.disposed || !this.acceptedView.isCurrent(ref) || ref.revision === undefined) return false;
+    if (this.disposed || !this.acceptedView.isCurrent(ref)) return false;
     const input = this.captureConversationInput(ref);
     const probe = this.prepareCaptured(ref, capability, input);
     if (probe.plan.semanticKey === ref.displayPlan?.semanticKey && probe.plan.cohortKey === ref.displayPlan.cohortKey
@@ -999,14 +1000,15 @@ export class ConversationWindow {
     input: ConversationSemanticInput): ConversationDisplayPlan {
     return Object.freeze({ acceptedGeneration: generation, revision, capability, coverage: "unavailable",
       entries: Object.freeze([]), sequence: Object.freeze([]), workGroups: Object.freeze([]), partitionUnknownKeys: Object.freeze([]),
-      cohortKey: conversationCohortKey(input.decision.cohortVersion), cohortVersion: input.decision.cohortVersion,
-      scope: input.scope, semanticKey: "unavailable" });
+      cohortKey: conversationCohortKey(input.decision.cohortVersion), cohortVersion: input.decision.cohortVersion, localRegion: input.decision.localRegion,
+      scope: input.scope, semanticKey: JSON.stringify({ unavailable: true, scope: input.scope, localRegion: input.decision.localRegion }) });
   }
 
   /** Every transition captures the current input before its single accepted swap. */
   private prepareAccepted(snapshot: WindowAcceptedSnapshot, capability: AcceptedCapability,
     reason: PublicationReason = "read"): AcceptedPublication<WindowAcceptedSnapshot> {
-    return this.prepareCaptured(snapshot, capability, this.captureConversationInput(snapshot), reason);
+    const candidate = { ...snapshot, rows: captureHistoryWindowRows(snapshot.rows) };
+    return this.prepareCaptured(candidate, capability, this.captureConversationInput(candidate), reason);
   }
 
   private prepareCaptured(snapshot: WindowAcceptedSnapshot, capability: AcceptedCapability,
@@ -1018,7 +1020,11 @@ export class ConversationWindow {
           projection: input.projection, assistantFacts: snapshot.assistantOwnership ?? [],
           userDecision: input.decision, scope: input.scope, coverage: input.coverage,
           retiredAttempts: snapshot.retiredAttempts ?? [] }).plan;
-    return makeAcceptedPublication({ ...snapshot, displayPlan }, reason);
+    const binding = this.terminalBinding;
+    const qualification = binding?.handle.isReadQualificationCurrent(binding.token);
+    return makeAcceptedPublication({ ...snapshot, displayPlan }, reason, () => input.isCurrent()
+      && this.terminalBinding === binding
+      && (!binding || binding.handle.handoffScope() === binding.scope && binding.handle.isReadQualificationCurrent(binding.token) === qualification));
   }
 
   private commitAccepted(publication: AcceptedPublication<WindowAcceptedSnapshot>,

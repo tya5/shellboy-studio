@@ -2,7 +2,7 @@ import {hasVisibleTerminalText} from "../../../ui-core/src/terminal-presence";
 import {messageRelationship,senderHeaderDisplay} from "../../../ui-core/src/sender-display";
 import type {OwnSendPath,OwnSendPlacement} from "../../../ui-core/src/own-send-region";
 import type {OwnSendSlotPosition} from "../../../ui-core/src/own-send-presentation";
-import { workElementDisplay, workExecutionDisplay, type WorkElementDisplay } from "../../../ui-core/src/work-element-display";
+import { capturedWorkElementDisplay, capturedWorkExecutionDisplay, type WorkElementDisplay } from "../../../ui-core/src/work-element-display";
 import { WorkElementRow, formatWorkElementDisplay } from "../system/components/WorkElementRow";
 import { Disclosure } from "../system/components/Disclosure";
 import type { HandoffRecord } from "../../../data/src/handoff";
@@ -143,7 +143,7 @@ export function SavedConversationItems({ model, projection: suppliedProjection, 
     }}><summary data-work-heading="" aria-label={`${t("work.group")}: ${label}`}><Icon name="layers" /><span class="tool-group-label">{label}</span>{status ? <StatusMark status={status} label={statusLabel(t, status)} /> : null}<span class="meta" /></summary><div class="step-group-list">{children}</div></Disclosure>;
   };
   const workRow = (item: ConversationItem) => {
-    const bundle=workElementDisplay(item);
+    const bundle=capturedWorkElementDisplay(item, planByKey.get(item.key)?.work);
     if(!bundle)return <div data-work-display-unavailable="">{t("work.textUnavailable")}</div>;
     const display=formatWorkElementDisplay(bundle);
     if(bundle.detailPolicy!=="none"&&bundle.detailPolicy!=="unavailable")return null;
@@ -197,7 +197,7 @@ export function SavedConversationItems({ model, projection: suppliedProjection, 
         const badge = source.compressed ? <span class="caption muted" data-tool-compressed="">{t("work.compressed")}</span> : null;
         return <div data-tool-call-id={source.callId} data-tool-detail-unavailable={source.detailUnavailable ? "true" : undefined}>{badge}{!ids.length ? <div class="caption muted" data-execution-unavailable="">{workRow(item)}</div> : ids.map(id => {
           const step = steps.find(step => step.executionId === id);
-          const display=workExecutionDisplay(item,id);
+          const display=capturedWorkExecutionDisplay(item, planByKey.get(item.key)?.work,id);
           return <div key={id} data-execution-id={id}>{hidden(item) ? null : step && display ? <StepView model={model} step={step} display={display} openPolicy={item.classification!.openPolicy} /> : <div class="caption muted" data-execution-unresolved="">{workRow(item)}</div>}</div>;
         })}</div>;
       }
@@ -246,28 +246,19 @@ export function LiveRecordChrome({ model, record }: { model: AppModel; record: H
 }
 
 function OwnSendContent({model,snapshot,plan,trailing}: {model:AppModel;snapshot:WindowAcceptedSnapshot;plan:ConversationDisplayPlan;trailing?:ComponentChildren}) {
-  const projection=projectionFromDisplayPlan(plan),scope=model.ownMutationScope();
-  const acceptedRef=snapshot;
-  const decision=model.ownSendDecision(acceptedRef);
-  const placement=decision?.placement??{kind:'unqualified' as const,reason:'tail-unproved' as const};
-  const localRows=decision?.localRows??model.ownMutationRows(scope);
-  const conflicts=decision?.conflictIds??[];
+  const projection=projectionFromDisplayPlan(plan),region=plan.localRegion;
+  const placement=region.placement, localRows=region.localRows, conflicts=region.conflictIds;
   const renderLocal=(messages:readonly import("../../../ui-core/src/model").PendingOwnMessage[])=> <>{messages.map(message=><div key={message.operationId} data-own-presentation="" data-own-placement={placement.kind} data-own-order-conflict={conflicts.length?conflicts.join(","):undefined}>
     {localRows.length&&placement.kind==="unqualified"?<div role="status" data-own-placement-reason={placement.reason}>{model.t.value("composer.pending.placementUnqualified")}: {placement.reason}</div>:null}{conflicts.length?<div role="status" class="caption muted" data-own-order-problem="">{model.t.value("composer.pending.orderConflict")} {conflicts.join(", ")}</div>:null}
     <aside data-pending-own-message={message.operationId} data-pending-phase={message.phase}><Message bot={false} who={model.t.value("convo.you")} text={message.text} at={model.t.value(`composer.pending.${message.phase}`)} copyLabel={model.t.value("code.copy")} copiedLabel={model.t.value("code.copied")}/>
     {message.phase==="failed"||message.phase==="unconfirmed"?<><Button variant="link" disabled={!model.canResend(message)} onClick={()=>void model.resend(message)}>{model.t.value("action.retry")}</Button>{!model.canResend(message)?<span class="caption">{model.t.value("composer.retryUnavailable")}</span>:null}</>:null}</aside>
   </div>)}</>;
-  const reservation = model.ownSendReservation();
-  const reservationBoundary = reservation?.observation.boundary;
-  const reservationItemKey = reservationBoundary?.kind === "item" ? reservationBoundary.itemKey : undefined;
-  const sequence = projection.sequence ?? [];
-  const reservationIndex = reservationItemKey ? sequence.findIndex(entry => entry.kind === "conversation" && entry.itemKey === reservationItemKey) : -1;
+  const sequence = plan.sequence;
   const assistantIndex = sequence.findIndex(entry => entry.kind === "conversation" && projection.items.find(item => item.key === entry.itemKey)?.source.kind === "text");
-  return <SavedConversationItems model={model} projection={projection} displayPlan={plan} nodes={snapshot.rows} localRegion={placement.kind === "qualified" ? {kind:"qualified",slots:(decision?.slots??[]).map(slot=>({position:slot.position,content:renderLocal([slot.row])}))} : {kind:"unqualified",afterIndex:reservationIndex >= 0 ? reservationIndex : undefined,beforeIndex:reservationIndex < 0 && assistantIndex >= 0 ? assistantIndex : undefined,content:<section role="region" aria-label="Unplaced local submissions" data-own-unqualified-region="">{renderLocal(localRows)}</section>}} trailing={trailing}/>;
+  return <SavedConversationItems model={model} projection={projection} displayPlan={plan} nodes={snapshot.rows} localRegion={placement.kind === "qualified" ? {kind:"qualified",slots:region.slots.map(slot=>({position:slot.position,content:renderLocal([slot.row])}))} : {kind:"unqualified",beforeIndex:assistantIndex >= 0 ? assistantIndex : undefined,content:<section role="region" aria-label="Unplaced local submissions" data-own-unqualified-region="">{renderLocal(localRows)}</section>}} trailing={trailing}/>;
 }
 
 export function SavedWindowContent({ model, snapshot }: { model: AppModel; snapshot: WindowAcceptedSnapshot }) {
-  if (snapshot.revision === undefined) return null;
   const handle = model.handle.value;
   const acceptedPlan = snapshot.displayPlan;
   const capability = model.longReader.value?.acceptedView.currentCapability;

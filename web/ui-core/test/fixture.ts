@@ -1,3 +1,4 @@
+import type { HistoryItem, WorkItem } from "../../data/src/protocol";
 // The shared fixture: one fake owner behind the data layer's fake transport, with records in the
 // shapes observed on a real owner. Every design's smoke test renders this. Examples, not data.
 import { signal } from "@preact/signals-core";
@@ -341,3 +342,11 @@ export async function fixtureModel(options: { realPending?: boolean; pending?: P
 }
 
 export { settle };
+
+
+/** Tests declare public owner inputs; the actual model owns publication and rendering authority. */
+export function fixtureConversation(input: { nodes: readonly HistoryItem[]; work?: readonly WorkItem[] }) {
+  return fixtureModel({ route: 'conversation', threadId: 'lead', capabilities: ['history.window'], configure(db) {
+    db.history.lead = [...input.nodes]; db.work.lead = (input.work ?? []).map(item => ({ ...item }));
+  } });
+}
