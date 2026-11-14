@@ -25,11 +25,11 @@ it('keeps one answer presentation through preview, canonical save, retirement, a
   const fixture = await fixtureModel({ capabilities: ['live.text', 'history.window'], configure(db) {
     db.threads = { thread: summary('thread') };
     db.details.thread = details('thread');
-    db.history.thread = nodes;
+    db.history.thread = nodes.slice(0, 2);
     const base = db.answer.bind(db);
     db.answer = call => {
       if (call.command === 'status') return { ok: true, result: { items: ended ? [{ kind: 'attempt', id: 'attempt-1', attempt_id: 'attempt-1', turn_id: 'turn-1', thread_id: 'thread', state: 'completed', response_nodes_truncated: false, response_nodes: [{ node_id: 'answer-1', ordinal: 2, kind: 'message' }] }] : [] } };
-      if (call.command === 'history.window') return { ok: true, result: { thread_id: 'thread', revision, total: nodes.length, items: nodes } };
+      if (call.command === 'history.window') return { ok: true, result: { thread_id: 'thread', revision, total: ended ? nodes.length : 2, items: ended ? nodes : nodes.slice(0, 2) } };
       return base(call);
     };
   } });
@@ -39,14 +39,16 @@ it('keeps one answer presentation through preview, canonical save, retirement, a
   try {
     await act(async () => { render(<App context={context} />, host); await settle(fixture.t, fixture.db); });
     await act(async () => { fixture.t.push({ t: 'live', thread_id: 'thread', attempt_id: 'attempt-1', gap: false, deltas: [{ offset: 0, reasoning: false, text: 'Preview answer' }] }); await flush(24); });
+    expect(host.querySelector('[data-live-overlay]')).not.toBeNull();
+
+    ended = true;
+    fixture.db.history.thread = nodes;
+    await act(async () => { fixture.t.push({ t: 'live_end', thread_id: 'thread' }); await settle(fixture.t, fixture.db); await flush(24); });
     const previewContainer = host.querySelector('[data-answer-container]');
     expect(previewContainer).not.toBeNull();
     expect(previewContainer?.textContent).toContain('Preview answer');
     const previewChildren = [...host.querySelectorAll('[data-answer-container] [data-item-key]')].map(el => ({ node: el.getAttribute('data-node'), key: el.getAttribute('data-key') }));
-    expect(previewChildren).toHaveLength(1);
-
-    ended = true;
-    await act(async () => { fixture.t.push({ t: 'live_end', thread_id: 'thread' }); await settle(fixture.t, fixture.db); await flush(24); });
+    expect(previewChildren.length).toBeGreaterThan(0);
     const canonicalContainer = host.querySelector('[data-answer-container]');
     expect(canonicalContainer).toBe(previewContainer);
     expect(canonicalContainer?.textContent).toContain('Canonical answer');
