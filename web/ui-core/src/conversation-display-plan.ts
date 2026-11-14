@@ -17,12 +17,14 @@ export interface ConversationDisplayPlanEntry {
   readonly body: DisplayBodySource;
   readonly lifetime: DisplayLifetime;
 }
+export interface DisplayCohortVersion { readonly accepted: readonly { readonly operationId: string; readonly phase: string; readonly messageId?: string }[]; readonly pending?: { readonly operationId: string; readonly phase: string }; }
+export interface OwnUserDecision { readonly cohortVersion: DisplayCohortVersion; }
+
 export interface ConversationDisplayPlan {
   readonly acceptedGeneration: number;
   readonly revision: string | number;
   readonly capability: AcceptedCapability;
   readonly entries: readonly ConversationDisplayPlanEntry[];
-  readonly userDecision: unknown;
   readonly cohortKey: string;
 }
 
@@ -32,7 +34,7 @@ export function createConversationDisplayPlan(input: {
   readonly capability: AcceptedCapability;
   readonly projection: SavedItemProjection;
   readonly assistantFacts: readonly AssistantOwnership[];
-  readonly userDecision: unknown;
+  readonly userDecision: OwnUserDecision;
   readonly scope: string;
   readonly acceptedGeneration?: number;
 }): ConversationDisplayPlan {
@@ -47,8 +49,8 @@ export function createConversationDisplayPlan(input: {
     }
   }
   const generation = input.acceptedGeneration ?? input.acceptedRef.generation, revision = input.acceptedRef.revision;
-  const version = (input.userDecision as { cohortVersion?: { accepted?: readonly { operationId: string; phase: string; messageId?: string }[]; pending?: { operationId: string; phase: string } } } | undefined)?.cohortVersion;
-  const cohortKey = JSON.stringify({ accepted: version?.accepted?.map(row => [row.operationId, row.phase, row.messageId ?? '']) ?? [], pending: version?.pending ? [version.pending.operationId, version.pending.phase] : [] });
+  const version = input.userDecision.cohortVersion;
+  const cohortKey = [...version.accepted.map(row => `${row.operationId}:${row.phase}:${row.messageId ?? ''}`), version.pending ? `pending:${version.pending.operationId}:${version.pending.phase}` : 'pending:none'].join('|');
   const entries = input.projection.items.map(item => {
     const source = item.source;
     const owner = owners.get(item.key);
@@ -63,5 +65,5 @@ export function createConversationDisplayPlan(input: {
     const lifetime: DisplayLifetime = Object.freeze({ kind: retired ? 'revoked' : human && !owner ? 'canonical-human' : owner ? 'valid-owner' : 'retained', scope: input.scope, generation, revision });
     return Object.freeze({ item, ...(host ? { presentationContainer: host } : {}), body, lifetime });
   });
-  return Object.freeze({ acceptedGeneration: generation, revision, capability: input.capability, entries: Object.freeze(entries), userDecision: input.userDecision, cohortKey });
+  return Object.freeze({ acceptedGeneration: generation, revision, capability: input.capability, entries: Object.freeze(entries), cohortKey });
 }

@@ -6,7 +6,7 @@ import type { TerminalPersistedProof } from "../../data/src/handoff";
 import type { AttemptPresentation, ThreadHandle, ThreadReadQualification } from "../../data/src/store";
 import type { HistoryBody } from "../../data/src/protocol";
 import { AcceptedView, type AcceptedCapability } from "./accepted-view";
-import { createConversationDisplayPlan, type ConversationDisplayPlan } from './conversation-display-plan';
+import { createConversationDisplayPlan, type ConversationDisplayPlan, type OwnUserDecision } from './conversation-display-plan';
 import type { HandoffRecord } from "../../data/src/handoff";
 // The long-thread reader's model (docs/design/long-threads.md): positional windows of a Thread's
 // path held in bounded buckets, a measured scroll space over one loaded run, and adjacent reads.
@@ -880,15 +880,14 @@ export class ConversationWindow {
 
   /** Publish the plan only against the exact accepted reference/capability that admitted it. */
   publishConversationDisplayPlan(ref: WindowAcceptedSnapshot, projection: import('./conversation-items').SavedItemProjection,
-    userDecision: unknown, scope: string): boolean {
+    userDecision: OwnUserDecision, scope: string): boolean {
     const capability = this.acceptedView.currentCapability;
     if (this.disposed || !this.acceptedView.isCurrent(ref) || ref.revision === undefined) return false;
     if (ref.displayPlan?.capability === capability && ref.displayPlan?.acceptedGeneration === ref.generation) {
-      const candidateVersion = (userDecision as { cohortVersion?: unknown } | undefined)?.cohortVersion;
-      const currentVersion = (ref.displayPlan.userDecision as { cohortVersion?: unknown } | undefined)?.cohortVersion;
-      if (JSON.stringify(candidateVersion) === JSON.stringify(currentVersion)) return true;
+      const candidateKey = [...userDecision.cohortVersion.accepted.map(row => `${row.operationId}:${row.phase}:${row.messageId ?? ''}`), userDecision.cohortVersion.pending ? `pending:${userDecision.cohortVersion.pending.operationId}:${userDecision.cohortVersion.pending.phase}` : 'pending:none'].join('|');
+      if (candidateKey === ref.displayPlan.cohortKey) return true;
     }
-    const generation = ref.generation + 1;
+    const generation = ++this.acceptedGeneration;
     const plan = createConversationDisplayPlan({ acceptedRef: ref, acceptedGeneration: generation, capability, projection,
       assistantFacts: ref.assistantOwnership ?? [], userDecision, scope });
     const staged = this.acceptedView.stage({ ...ref, generation, displayPlan: plan }, capability);

@@ -10,6 +10,7 @@ function materialize<T>(value: T): T {
   const seen = new Set<object>();
   const copy = (v: unknown, depth: number): unknown => {
     if (++nodes > 65536 || depth > 64) throw new Error("accepted view staging bound exceeded");
+    if (v !== null && typeof v === "object" && Object.isFrozen(v) && Object.keys(v).length === 0) return v;
     if (v === null || typeof v !== "object") {
       if (typeof v === "function" || typeof v === "symbol") throw new Error("accepted view requires plain data");
       return v;

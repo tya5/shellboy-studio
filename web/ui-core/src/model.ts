@@ -2,6 +2,7 @@ import { readThreadSettings, type OutputLimitReadback, type ThreadSettings } fro
 import {localSendAdmission} from "./local-send-admission";
 import type { OwnSendTailObservation,OwnSendReservation } from "./own-send-region";
 import type { OwnSendDecision } from "./own-send-presentation";
+import type { OwnUserDecision } from './conversation-display-plan';
 import { SenderTitles } from "./sender-titles";
 import { senderFact } from "../../data/src/sender";
 import { BranchCompare } from "./branch-compare";
@@ -933,7 +934,7 @@ export class AppModel {
     return [...accepted,...(pending?[pending]:[])].filter(row=>row.scope===scope);
   }
   pendingOwnIsCurrent(): boolean { return !!this.pendingOwnRetryCurrent?.(); }
-  publishConversationDisplayPlan(ref: import('./window').WindowAcceptedSnapshot, projection: import('./conversation-items').SavedItemProjection, decision: unknown, current: () => boolean): boolean {
+  publishConversationDisplayPlan(ref: import('./window').WindowAcceptedSnapshot, projection: import('./conversation-items').SavedItemProjection, decision: OwnUserDecision, current: () => boolean): boolean {
     const window = this.longReader.peek();
     if (!window || !current() || !window.acceptedView.isCurrent(ref)) return false;
     return window.publishConversationDisplayPlan(ref, projection, decision, this.ownMutationScope());
