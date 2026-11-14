@@ -7,7 +7,7 @@ import { projectSavedItems, withPresentationContainers, type NormalizedSavedItem
 const saved: NormalizedSavedItem = { nodeId: "node-1", itemIdentity: "node-1:/output/0/content/0", identityDomain: "node", windowRevision: 2, kind: "text", text: "saved", textComplete: true };
 const live: NormalizedSavedItem = { domain: "live", namespace: "handoff", scope: "thread/attempt/turn", recordId: "handoff:attempt", attemptId: "attempt", kind: "text", text: "live" };
 
-it("keeps the same projected row key while qualified live content becomes saved content", () => {
+it("keeps canonical saved identity separate while assigning the qualified host", () => {
   const before = projectSavedItems([live]);
   const savedProjection = projectSavedItems([saved]);
   const after = withPresentationContainers(savedProjection, new Map([[savedProjection.items[0]!.key, "answer:handoff"]]));
