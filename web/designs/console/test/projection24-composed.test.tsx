@@ -149,6 +149,19 @@ describe('direct local insertion plan', () => {
     expect([...host.querySelectorAll('.msg')].every(node => node.isConnected && node.ownerDocument === document && host.contains(node))).toBe(true);
     render(null, host); host.remove();
   });
+  it('renders each owned slot once when canonical anchors are suppressed', () => {
+    const host = document.createElement('div'); document.body.append(host);
+    const items = [{ key: 'a', source: input[0]! }, { key: 'b', source: input[0]! }];
+    const local = <section class="aggregate"><div class="msg">aggregate</div></section>;
+    const props = { items, sequence: [{kind:'conversation' as const,itemKey:'a'}, {kind:'conversation' as const,itemKey:'b'}],
+      renderItem: () => <span>hidden</span>, isItemAbsent: () => true,
+      localRegion: { placement: { kind:'qualified' as const, insertion:{kind:'beginning' as const} }, content: local,
+        slots: [{position:0, insertion:{kind:'conversation' as const,itemKey:'a'}, content:<div class="owned">A</div>}, {position:1, insertion:{kind:'conversation' as const,itemKey:'b'}, content:<div class="owned">B</div>}] } };
+    render(<ConversationItems {...props}/>, host);
+    expect([...host.querySelectorAll('.owned')].map(node=>node.textContent)).toEqual(['A','B']);
+    expect(host.querySelectorAll('.aggregate')).toHaveLength(0);
+    render(null, host); host.remove();
+  });
 });
 
 it('SavedConversationItems preserves the same beginning cohort with empty accepted rows', async()=>{
