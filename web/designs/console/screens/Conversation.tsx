@@ -283,6 +283,10 @@ function OwnSendContent<Ref>({model,projection,nodes,scope,acceptedRef,current,i
 export function SavedWindowContent({ model, snapshot, live, liveBoundary, liveFacts }: { model: AppModel; snapshot: WindowAcceptedSnapshot; live?: ComponentChildren; liveBoundary?: number; liveFacts?: readonly NormalizedSavedItem[] }) {
   if (snapshot.revision === undefined) return null;
   const handle = model.handle.value;
+  const acceptedPlan = snapshot.displayPlan;
+  const capability = model.longReader.value?.acceptedView.currentCapability;
+  if (!acceptedPlan || acceptedPlan.acceptedGeneration !== snapshot.generation || acceptedPlan.revision !== snapshot.revision
+    || acceptedPlan.capability !== capability || !(model.longReader.value?.acceptedView.isCurrent(snapshot) ?? false)) return null;
   const keyScope = handle ? [handle.handoffScope()] : undefined;
   const mapped = projectHistoryWindowItems({ revision: snapshot.revision, nodes: snapshot.rows, keyScope });
   const records = liveFacts ?? (handle ? normalizeLiveWorkFacts({scope: handle.threadId, items: handle.work.value.value?.items ?? []}) : []);
