@@ -247,9 +247,10 @@ export class ConversationWindow {
         && JSON.stringify(presence) === JSON.stringify(expected.terminalPresence ?? [])) return true;
       const generation = this.nextAcceptedGeneration();
       const updatedPlan = expected.displayPlan && expected.revision !== undefined
-        ? createConversationDisplayPlan({ acceptedRef: expected, acceptedGeneration: generation, capability: cap,
+        ? createConversationDisplayPlan({ generation, revision: expected.revision, capability: cap, rows: expected.rows,
             projection: projectHistoryWindowItems({ revision: expected.revision, nodes: expected.rows, keyScope: [scope] }).projection,
-            assistantFacts: decisions, userDecision: { cohortVersion: expected.displayPlan.cohortVersion }, scope }) : undefined;
+            assistantFacts: decisions, userDecision: { cohortVersion: expected.displayPlan.cohortVersion }, scope,
+            retiredAttempts: expected.retiredAttempts ?? [] }) : undefined;
       const staged = this.acceptedView.stage({ ...expected, generation, assistantOwnership: decisions,
         terminalPersistedAttempts: receipts, terminalPresence: presence, displayPlan: updatedPlan }, cap);
       if (!qualified() || !this.acceptedView.isCurrent(expected) || observations.some(item => !item.lease.current() || !handle.handoff.peek().includes(item.lease.original))) return false;
@@ -891,8 +892,8 @@ export class ConversationWindow {
       if (candidateKey === ref.displayPlan.cohortKey && displaySemanticKey(projection, ref.assistantOwnership ?? []) === ref.displayPlan.semanticKey) return true;
     }
     const generation = this.nextAcceptedGeneration();
-    const plan = createConversationDisplayPlan({ acceptedRef: ref, acceptedGeneration: generation, capability, projection,
-      assistantFacts: ref.assistantOwnership ?? [], userDecision, scope });
+    const plan = createConversationDisplayPlan({ generation, revision: ref.revision, capability, rows: ref.rows, projection,
+      assistantFacts: ref.assistantOwnership ?? [], userDecision, scope, retiredAttempts: ref.retiredAttempts ?? [] });
     const staged = this.acceptedView.stage({ ...ref, generation, displayPlan: plan }, capability);
     if (!this.acceptedView.isCurrent(ref) || capability !== this.acceptedView.currentCapability) return false;
     return this.acceptedView.commit(staged);
@@ -921,9 +922,10 @@ export class ConversationWindow {
       displayPlan: (() => {
         const priorPlan = this.acceptedView.peek().displayPlan;
         if (!priorPlan || priorPlan.capability !== capability || this.revision === undefined) return undefined;
-        return createConversationDisplayPlan({ acceptedRef: this.acceptedView.peek(), acceptedGeneration: generation,
-          capability, projection: projectHistoryWindowItems({ revision: this.revision, nodes: currentRows, keyScope: [priorPlan.scope] }).projection,
-          assistantFacts: this.acceptedView.peek().assistantOwnership ?? [], userDecision: { cohortVersion: priorPlan.cohortVersion }, scope: priorPlan.scope });
+        return createConversationDisplayPlan({ generation, revision: this.revision, capability, rows: currentRows,
+          projection: projectHistoryWindowItems({ revision: this.revision, nodes: currentRows, keyScope: [priorPlan.scope] }).projection,
+          assistantFacts: this.acceptedView.peek().assistantOwnership ?? [], userDecision: { cohortVersion: priorPlan.cohortVersion }, scope: priorPlan.scope,
+          retiredAttempts: this.acceptedView.peek().retiredAttempts ?? [] });
       })() }, capability);
     if (this.disposed || epoch !== this.epoch || generation !== this.acceptedGeneration) return;
     if (!this.acceptedView.commit(staged)) return;

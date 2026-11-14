@@ -1,7 +1,7 @@
 import type { AssistantOwnership } from './assistant-ownership';
 import type { AcceptedCapability } from './accepted-view';
-import type { SavedItemProjection, ProjectedSavedItem } from './conversation-items';
-import type { WindowAcceptedSnapshot } from './window';
+import type { SavedItemProjection, ProjectedSavedItem, HistoryItem } from './conversation-items';
+import type { LiveWorkIdentity } from './conversation-items';
 
 export type DisplayBodySource =
   | Readonly<{ kind: 'preview'; text: string; generation: number; revision: string | number }>
@@ -38,16 +38,20 @@ export function displaySemanticKey(projection: SavedItemProjection, facts: reado
   return [...items, ...owners].join('|');
 }
 
-export function createConversationDisplayPlan(input: {
-  readonly acceptedRef: WindowAcceptedSnapshot;
+export interface AcceptedPublicationInput {
+  readonly generation: number;
+  readonly revision: string | number;
   readonly capability: AcceptedCapability;
+  readonly rows: readonly HistoryItem[];
   readonly projection: SavedItemProjection;
   readonly assistantFacts: readonly AssistantOwnership[];
   readonly userDecision: OwnUserDecision;
   readonly scope: string;
-  readonly acceptedGeneration?: number;
-}): ConversationDisplayPlan {
-  if (input.acceptedRef.revision === undefined || input.acceptedRef.revision === null) throw new Error('display plan requires accepted revision');
+  readonly retiredAttempts: readonly { readonly scope: string; readonly attemptId: string; readonly revision: string | number }[];
+}
+
+export function createConversationDisplayPlan(input: AcceptedPublicationInput): ConversationDisplayPlan {
+  if (!Number.isSafeInteger(input.generation)) throw new Error('display plan requires accepted generation');
   const owners = new Map<string, AssistantOwnership>();
   for (const fact of input.assistantFacts) {
     if (fact.scope !== input.scope || !fact.itemKeys.length) continue;
@@ -57,21 +61,21 @@ export function createConversationDisplayPlan(input: {
       owners.set(key, fact);
     }
   }
-  const generation = input.acceptedGeneration ?? input.acceptedRef.generation, revision = input.acceptedRef.revision;
+  const generation = input.generation, revision = input.revision;
   const semanticKey = displaySemanticKey(input.projection, input.assistantFacts);
   const version = input.userDecision.cohortVersion;
   const cohortKey = [...version.accepted.map(row => `${row.operationId}:${row.phase}:${row.messageId ?? ''}`), version.pending ? `pending:${version.pending.operationId}:${version.pending.phase}` : 'pending:none'].join('|');
   const entries = input.projection.items.map(item => {
     const source = item.source;
     const owner = owners.get(item.key);
-    const host = (('domain' in source && source.domain === 'live' && 'presentationContainer' in source) ? source.presentationContainer : undefined) ?? (owner?.containerKey as string | undefined);
+    const host = ('domain' in source ? (source as LiveWorkIdentity).presentationContainer : undefined) ?? (owner?.containerKey as string | undefined);
     const human = (source.kind === 'user' || source.kind === 'summary') && source.textComplete === true;
     const body: DisplayBodySource = ((source.kind === 'text' && owner?.mode === 'canonical' && source.textComplete === true) || human)
       ? { kind: 'typed-canonical', text: source.text, generation, revision, capability: input.capability }
       : source.kind === 'text' && (owner?.mode === 'preview' || !!host)
         ? { kind: 'preview', text: source.text, generation, revision }
         : { kind: 'unavailable', reason: source.kind, generation, revision };
-    const retired = 'domain' in source && !!source.attemptId && input.acceptedRef.retiredAttempts?.some(item => item.scope === input.scope && item.attemptId === source.attemptId && item.revision === revision);
+    const retired = 'domain' in source && !!source.attemptId && input.retiredAttempts.some(item => item.scope === input.scope && item.attemptId === source.attemptId && item.revision === revision);
     const lifetime: DisplayLifetime = Object.freeze({ kind: retired ? 'revoked' : human && !owner ? 'canonical-human' : owner || host ? 'valid-owner' : 'retained', scope: input.scope, generation, revision });
     return Object.freeze({ item, ...(host ? { presentationContainer: host } : {}), body, lifetime });
   });
