@@ -36,7 +36,8 @@ it("keeps the rendered conversation container when the qualified row becomes sav
     const item = source === saved ? withPresentationContainers(projectSavedItems([source]), new Map([[row(source).key, "answer:handoff"]])).items[0]! : row(source);
     render(h(ConversationItems, { items: [item], sequence: [{ kind: "conversation", itemKey: item.key }], renderItem: () => h(Message, { bot: true, who: "Shellboy", text: source.kind === "text" ? source.text : "", copyLabel: "Copy", copiedLabel: "Copied" }) }), host);
   };
-  render(withPresentationContainers(liveProjection, new Map([[liveProjection.items[0]!.key, "answer:handoff"]])) && h(ConversationItems, { items: withPresentationContainers(liveProjection, new Map([[liveProjection.items[0]!.key, "answer:handoff"]])).items, sequence: withPresentationContainers(liveProjection, new Map([[liveProjection.items[0]!.key, "answer:handoff"]])).sequence, renderItem: () => h(Message, { bot: true, who: "Shellboy", text: "live", copyLabel: "Copy", copiedLabel: "Copied" }) }), host);
+  const liveWithContainer = withPresentationContainers(liveProjection, new Map([[liveProjection.items[0]!.key, "answer:handoff"]]));
+  render(h(ConversationItems, { items: liveWithContainer.items, sequence: liveWithContainer.sequence, renderItem: () => h(Message, { bot: true, who: "Shellboy", text: "live", copyLabel: "Copy", copiedLabel: "Copied" }) }), host);
   const before = host.querySelector("[data-answer-container]");
   renderProjection(saved);
   const after = host.querySelector("[data-answer-container]");

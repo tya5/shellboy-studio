@@ -808,14 +808,13 @@ export class ShellboyData {
         if (!attempt || !Array.isArray(attempt.response_nodes)) continue;
         // Readable originals stay in their existing slot. Receipt and display choice were
         // published together above; persistence alone no longer discards their bytes.
-        const observation = observations.find(item => item.lease.original === record);
-        // A qualified receipt must still retire the preview; association publication alone does not.
-        if (record.text && displayPublished && !observation?.receipt) continue;
+        // Association publication is not body coverage. Text-bearing previews must remain
+        // eligible for the typed body read below; only that proof may stage replacement.
         // A terminal exact attempt with any committed public node reference proves
         // partial persistence, even when full readback coverage is unavailable.
         const terminal = attempt.state === "completed" || attempt.state === "failed" || attempt.state === "incomplete" || attempt.state === "cancelled";
         const persisted = attempt.response_nodes;
-        if (terminal && persisted.length > 0 && persisted.length <= 64
+        if (!record.text && terminal && persisted.length > 0 && persisted.length <= 64
           && persisted.every(ref => ref && typeof ref.node_id === "string" && !!ref.node_id)) {
           const proof = Object.freeze({ scope: this.handoffScope(entry), attemptId: record.attemptId,
             ...(typeof attempt.turn_id === "string" ? { turnId: attempt.turn_id } : {}),
