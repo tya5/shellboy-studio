@@ -113,7 +113,7 @@ export function ConversationItems({ items, toolSummaries = [], renderItem, rende
       }
       const unsafe = entry.kind === "conversation" && !!containerAt(index) && invalidContainers.has(containerAt(index)!);
       const nodes = renderPosition(index, unsafe ? undefined : containerAt(index));
-      if (nodes.length) rendered.push({ entry, view: <>{nodes}</>, first:index, last:index });
+      if (nodes.length) rendered.push({ entry, view: nodes, first:index, last:index });
     }
     // Preserve slot-only positions when canonical sequence publication is empty;
     // they are plan entries, not a discarded side effect of a missing anchor.
