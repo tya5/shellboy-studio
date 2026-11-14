@@ -4,6 +4,20 @@ export type AcceptedCapability = Readonly<{ readonly [acceptedCapabilityBrand]: 
 declare const stagedBrand: unique symbol;
 export type StagedView<T> = Readonly<{ readonly [stagedBrand]: T }>;
 
+declare const publicationBrand: unique symbol;
+export type PublicationReason = "receipt" | "ready" | "read" | "revoke" | "bump" | "own-send";
+export type AcceptedPublication<T, P> = Readonly<{
+  readonly [publicationBrand]: true;
+  readonly snapshot: T;
+  readonly plan: P;
+  readonly reason: PublicationReason;
+}>;
+
+export function makeAcceptedPublication<T, P>(input: { readonly snapshot: T; readonly plan: P; readonly reason: PublicationReason }): AcceptedPublication<T, P> {
+  if (input.snapshot === undefined || input.plan === undefined) throw new Error("qualified publication requires snapshot and plan");
+  return Object.freeze({ ...input, [publicationBrand]: true } as AcceptedPublication<T, P>);
+}
+
 /** Materialize bounded plain data before qualification; no getters survive staging. */
 function materialize<T>(value: T): T {
   let nodes = 0;
@@ -49,6 +63,11 @@ export class AcceptedView<T> {
     slot.value = materialize(value);
     return handle;
   }
+  publish(publication: AcceptedPublication<T, unknown>, capability: AcceptedCapability = this.capability): boolean {
+    const staged = this.stage(publication.snapshot, capability);
+    return this.commit(staged);
+  }
+
   commit(handle: StagedView<T>): boolean {
     const slot = this.staged;
     if (!slot || slot.handle !== handle || slot.value === undefined || this.ended) return false;
