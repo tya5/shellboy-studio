@@ -326,9 +326,11 @@ export class ConversationWindow {
     const ref = this.acceptedView.peek();
     if (!this.acceptedView.isCurrent(ref) || ref === target.ref) return;
     const request = Object.freeze({ id: `selected-${++this.terminalRequestSerial}` as SelectedRequestId, args: Object.freeze({ thread_id: target.handle.threadId, node_id: target.receipt.nodeIds[0], before: 99, after: 100, items: true }) });
+    // Retire the old callback before replacement can synchronously settle it as cancelled.
+    target.stop?.(); target.stop = undefined;
     const next = target.handle.replaceTerminalRead(target.token, target.receipt, request);
     if (!("state" in next)) return;
-    target.stop?.(); target.stop = undefined; target.ref = ref; target.requestId = request.id; target.lease = next;
+    target.ref = ref; target.requestId = request.id; target.lease = next;
     target.stop = next.state.subscribe(() => this.applyTerminalRead(next));
   }
 

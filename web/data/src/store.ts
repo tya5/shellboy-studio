@@ -450,7 +450,9 @@ export class ShellboyData {
         return result;
       },
       replaceTerminalRead: (token, receipt, request) => {
-        const valid = () => !closed && !e.closed && !e.paused && token.epoch === this.readQualificationEpoch && token.liveEpoch === e.live.epoch && token.cancel === e.cancel && !e.cancel.cancelled && receipt.scope === this.handoffScope(e) && this.canRead();
+        const valid = () => !closed && !e.closed && !e.paused && !!qualification && token === qualification.token
+          && qualification.epoch === this.readQualificationEpoch && qualification.liveEpoch === e.live.epoch && qualification.cancel === e.cancel && !e.cancel.cancelled
+          && receipt.scope === this.handoffScope(e) && this.canRead();
         const ownedReceipt = e.terminalReceipts.get(receipt.attemptId);
         if (!valid() || !ownedReceipt || JSON.stringify(ownedReceipt) !== JSON.stringify(receipt) || request.args.thread_id !== e.id) return { phase: "unavailable", reason: "cancelled" };
         const result = e.terminalReads.replace(ownedReceipt, request, valid, e.cancel); void this.resolveHandoff(e); return result;
