@@ -173,3 +173,18 @@ it("terminal slot successor dispatches one explicit whole-window request after a
   await slots.dispatch(() => true, async args => { calls.push(args); return { ok: true, value: { thread_id: "thread", revision: 8, total: 4, items: [] } }; }, false);
   expect(calls).toEqual([point.args, whole.args]);
 });
+
+it("Window rebinds a revision-changing point read through one bounded whole-window successor", async () => {
+  const r = await target();
+  r.state.changing = true;
+  const callsBefore = r.t.calls("history.window").length;
+  const lease = r.w.prepareTerminalRead(r.h, r.token, r.receipt);
+  expect("state" in lease).toBe(true);
+  await r.pump();
+  const calls = r.t.calls("history.window");
+  expect(calls.length - callsBefore).toBe(2);
+  expect(calls.at(-1)?.args).toMatchObject({ thread_id: "a", before: 199, after: 0, items: true });
+  expect(calls.at(-1)?.args).not.toHaveProperty("node_id");
+  expect(r.w.acceptedView.peek().revision).toBe(8);
+  r.w.dispose(); r.data.stop();
+});
