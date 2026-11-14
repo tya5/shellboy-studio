@@ -3,7 +3,11 @@ import { ConversationWindow } from '../src/window';
 import { ShellboyData } from '../../data/src/store';
 import type { HistoryItem } from '../../data/src/protocol';
 import { FakeTransport, FakeOwnerDb, flush, settle } from '../../data/test/harness';
-import { projectHistoryWindowItems } from '../src/conversation-items';
+import {captureConversationInput} from '../src/conversation-input';
+import {declaredWorkGroup} from './declared-attempt-cuts';
+import type {WindowAcceptedSnapshot} from '../src/window';
+import type {HandoffRecord} from '../../data/src/handoff';
+import {attemptWork} from '../../data/test/work-fixture';
 
 async function rig(partial=false) {
  const transport=new FakeTransport(),db=new FakeOwnerDb();let id=0;
@@ -13,13 +17,15 @@ async function rig(partial=false) {
  const node:HistoryItem={node_id:'answer',kind:'assistant_response',selection:{ordinal:5},items:[{kind:'text',item_identity:'exact-body',text:'saved',text_complete:!partial},{kind:'tool_call',item_identity:'tool',execution_ids:['execution']}]};
  const window=new ConversationWindow({read:async()=>({ok:true,value:{thread_id:'t',revision:7,total:6,items:[node]}})});await flush();
  expect(window.bindTerminalHandle(handle)).toBe(true);
+ expect(window.bindConversationInput(snapshot=>captureConversationInput(snapshot,{scope:handle.handoffScope(),threadId:'t',records:handle.handoff.peek(),work:[],current:true}))).toBe(true);
  const send=transport.send.bind(transport);
  transport.send=frame=>{const result=send(frame);if(frame.t==='call'&&frame.command==='status'&&(frame.args as {all?:boolean}).all===true)db.answered.add(frame.id);return result;};
  transport.push({t:'live',thread_id:'t',attempt_id:'attempt',gap:false,deltas:[{offset:0,reasoning:false,text:'preview'}]});await flush();
  transport.push({t:'live_end',thread_id:'t'});await flush();
  const lookup=[...transport.calls('status')].reverse().find(call=>(call.args as {all?:boolean}).all===true)!;
  expect(lookup).toBeDefined();
- const answer=(turn='turn',claim=false)=>transport.ok(lookup.id,{items:[{kind:'attempt',id:'attempt',attempt_id:'attempt',thread_id:'t',turn_id:turn,state:'completed',response_nodes_truncated:false,response_nodes:[{node_id:'answer',ordinal:0,kind:'message'}]},...(claim?[{kind:'attempt',id:'other',attempt_id:'other',thread_id:'t',turn_id:'other-turn',state:'completed',response_nodes_truncated:false,response_nodes:[{node_id:'answer',ordinal:0,kind:'message'}]}]:[])]});
+
+ const answer=(turn='turn',claim=false)=>transport.ok(lookup.id,{items:[attemptWork({threadId:'t',attemptId:'attempt',turnId:turn,state:'completed',refs:[{node_id:'answer',ordinal:5,kind:'assistant_response'}]}),...(claim?[attemptWork({threadId:'t',attemptId:'other',turnId:'other-turn',state:'completed',refs:[{node_id:'answer',ordinal:5,kind:'assistant_response'}]})]:[])]});
  return {data,transport,db,handle,window,node,answer};
 }
 it("installs the first successful tail read as bootstrap without declaring a rewrite", async () => {
@@ -48,103 +54,77 @@ it("rejects an older reply after the cursor is established and verifies the curr
  } finally { window.dispose(); }
 });
 
-it.each([false,true])('one synchronous current successor publishes both ownership choices, partial=%s',async partial=>{
- const r=await rig(partial);const original=r.handle.handoff.peek()[0]!;
- const expectedProjection = projectHistoryWindowItems({ revision: 7, nodes: [r.node], keyScope: [r.handle.handoffScope()] }).projection;
- const planCuts: number[] = [];
- const stopPlan = r.window.acceptedView.subscribe(ref => {
-  const plan = ref.displayPlan!;
-  expect(plan.coverage).toBe(planCuts.length === 0 ? "complete" : "unavailable");
-  expect(plan.acceptedGeneration).toBe(ref.generation);
-  expect(plan.revision).toBe(ref.revision);
-  expect(plan.capability).toBe(r.window.acceptedView.currentCapability);
-  expect(plan.entries.map(entry => entry.item)).toEqual(expectedProjection.items);
-  expect(plan.sequence).toEqual(expectedProjection.sequence ?? []);
-  expect(plan.workGroups).toEqual(expectedProjection.workGroups ?? []);
-  expect(plan.entries.map(entry => entry.body)).toEqual(expectedProjection.items.map(item => item.source.kind === "text"
-   ? partial ? { kind: "preview", text: "saved", cut: {generation: ref.generation, revision: 7, capability: r.window.acceptedView.currentCapability, scope:r.handle.handoffScope()} }
-     : { kind: "typed-canonical", text: "saved", cut: {generation: ref.generation, revision: 7, capability: r.window.acceptedView.currentCapability, scope:r.handle.handoffScope()} }
-   : { kind: "unavailable", reason: "tool", cut: {generation: ref.generation, revision: 7, capability: r.window.acceptedView.currentCapability, scope:r.handle.handoffScope()} }));
-  expect(plan.entries.map(entry => entry.presentationContainer)).toEqual([original.presentationContainer, undefined]);
-  expect(plan.entries.map(entry => entry.lifetime.kind)).toEqual(["valid-owner", "retained"]);
-  planCuts.push(ref.generation);
- });
+
+/** Independent authorized body/order/host/cut oracle; no composition or projection factory. */
+function assertOwnedCut(ref:WindowAcceptedSnapshot,scope:string,original:HandoffRecord,partial:boolean){
+ const plan=ref.displayPlan!,cut={generation:ref.generation,revision:7,scope,capability:plan.capability};
+ const text=JSON.stringify(['answer','exact-body']),tool=JSON.stringify(['tool',[scope],'execution',['execution']]);
+ const live=JSON.stringify(['live','handoff','t',original.key]),receipt=JSON.stringify(['receipt','work',scope,'attempt']);
+ expect(plan.coverage).toBe('complete');expect(plan.acceptedGeneration).toBe(ref.generation);expect(plan.revision).toBe(7);expect(plan.scope).toBe(scope);
+ expect(ref.rows.map(row=>row.node_id)).toEqual(['answer']);
+ expect(plan.entries.map(entry=>({key:entry.item.key,case:entry.item.classification?.id,body:entry.body,container:entry.presentationContainer,lifetime:entry.lifetime.kind}))).toEqual(partial?[
+  {key:tool,case:'toolCall',body:{kind:'unavailable',reason:'tool',cut},container:undefined,lifetime:'retained'},
+  {key:live,case:'assistantText',body:{kind:'preview',text:'preview',cut},container:original.presentationContainer,lifetime:'valid-owner'},
+  {key:receipt,case:'terminalPending',body:{kind:'unavailable',reason:'record',cut},container:undefined,lifetime:'retained'},
+ ]:[
+  {key:text,case:'assistantText',body:{kind:'typed-canonical',text:'saved',cut},container:original.presentationContainer,lifetime:'valid-owner'},
+  {key:tool,case:'toolCall',body:{kind:'unavailable',reason:'tool',cut},container:undefined,lifetime:'retained'},
+ ]);
+ const tools=declaredWorkGroup({members:[tool],tools:[tool],executions:['execution'],counts:{Tools:1,Reasoning:0,Notifications:0,Problems:0},before:partial?'unknown':'closed',after:partial?'closed':'unknown'});
+ const last=declaredWorkGroup({members:[receipt],tools:[],executions:[],counts:{Tools:0,Reasoning:0,Notifications:1,Problems:0},before:'closed',after:'unknown'});
+ expect(plan.workGroups).toEqual(partial?[tools,last]:[tools]);
+ expect(plan.sequence).toEqual(partial?[{kind:'work',groupKey:tools.key},{kind:'conversation',itemKey:live},{kind:'work',groupKey:last.key}]:[{kind:'conversation',itemKey:text},{kind:'work',groupKey:tools.key}]);
+ expect(plan.partitionUnknownKeys).toEqual([]);
+ for(const entry of plan.entries){expect(entry.body.cut).toEqual(cut);expect(entry.lifetime.cut).toBe(entry.body.cut);}
+}
+it.each([false,true])('one synchronous current successor keeps exact canonical or original-preview body authority, partial=%s',async partial=>{
+ const r=await rig(partial),original=r.handle.handoff.peek()[0]!,scope=r.handle.handoffScope();
  const cuts:{mode:string;valid:boolean;held:boolean}[]=[];
  const stop=r.window.acceptedView.subscribe(ref=>{
+  expect(ref.displayPlan?.capability).toBe(r.window.acceptedView.currentCapability);
+  assertOwnedCut(ref,scope,original,partial);
   for(const decision of ref.assistantOwnership??[])cuts.push({mode:decision.mode,valid:r.handle.isDisplayOwnershipCurrent(original,ref.generation),held:r.handle.handoff.peek().includes(original)});
  });
  try{
   r.answer();await settle(r.transport,r.db);
   expect(cuts).toEqual([{mode:partial?'preview':'canonical',valid:true,held:true}]);
-  const ref=r.window.acceptedView.peek();expect(ref.assistantOwnership![0]!.itemKeys).toHaveLength(1);
-  expect(ref.terminalPersistedAttempts).toHaveLength(1);expect(r.handle.handoff.peek()[0]).toBe(original);
-  expect(r.transport.calls('history.get')).toHaveLength(0);
-  const ready = r.window.acceptedView.peek();
-  r.window.layoutChanged();
-  expect(r.window.acceptedView.peek().generation).toBeGreaterThan(ready.generation);
-  expect(r.window.acceptedView.peek().assistantOwnership).toEqual(ready.assistantOwnership);
-  expect(r.window.acceptedView.peek().displayPlan?.acceptedGeneration).toBe(r.window.acceptedView.peek().generation);
-  expect(planCuts.length).toBeGreaterThan(0); stopPlan();
+  const ref=r.window.acceptedView.peek();expect(ref.assistantOwnership![0]!.itemKeys).toEqual([JSON.stringify(['answer','exact-body'])]);
+  expect(ref.terminalPersistedAttempts).toMatchObject([{scope,attemptId:'attempt',recordKey:original.key,turnId:'turn',nodeIds:['answer'],refs:[{nodeId:'answer',ordinal:5,kind:'assistant_response'}],presentationContainer:original.presentationContainer}]);
+  expect(r.handle.handoff.peek()[0]).toMatchObject({key:original.key,presentationContainer:original.presentationContainer,text:'preview',bodyAuthority:'preview'});
+  expect(r.handle.handoff.peek()[0]?.readyAttempt).toBeUndefined();expect(r.transport.calls('history.get')).toHaveLength(0);
+  r.window.layoutChanged();expect(r.window.acceptedView.peek()).toBe(ref);expect(cuts).toHaveLength(1);
  }finally{stop();r.window.dispose();r.handle.close();r.data.stop();}
 });
 it.each(['generation','capability','close','owner','epoch','missing-turn','conflict'] as const)('does not apply stale or ambiguous exact-ID display authority: %s',async mode=>{
- const r=await rig();
- const expectedProjection = projectHistoryWindowItems({ revision: 7, nodes: [r.node], keyScope: [r.handle.handoffScope()] }).projection;
- const order: string[] = [];
+ const r=await rig(),original=r.handle.handoff.peek()[0]!;
  try{
-  if(mode==='generation')r.window.layoutChanged();
+  if(mode==='generation')r.window.setAttemptPresentations([{scope:r.handle.handoffScope(),attemptId:'other',turnId:'other-turn',nodeIds:['unselected'],state:'pending'}]);
   if(mode==='capability')r.window.acceptedView.revoke();
   if(mode==='close')r.window.dispose();
   if(mode==='owner')r.transport.push({t:'owner',event:'restarted',owner:{state:'connected',info:{protocol_version:5,instance_id:'owner',capabilities:['history.window','live.text']}}});
   if(mode==='epoch')r.handle.cancelReads();
   r.answer(mode==='missing-turn'?'':'turn',mode==='conflict');await settle(r.transport,r.db);
-  const ref=r.window.acceptedView.peek();
-  expect(ref.assistantOwnership??[]).toHaveLength(0);
-  for(const original of r.handle.handoff.peek())expect(r.handle.isDisplayOwnershipCurrent(original,ref.generation)).toBe(false);
-  if(!['owner','close'].includes(mode))expect(r.handle.handoff.peek()[0]!.text).toBe('preview');
- }finally{stop();r.window.dispose();r.handle.close();r.data.stop();}
+  const ref=r.window.acceptedView.peek();expect(ref.assistantOwnership??[]).toHaveLength(0);
+  for(const record of r.handle.handoff.peek())expect(r.handle.isDisplayOwnershipCurrent(record,ref.generation)).toBe(false);
+  if(!['owner','close'].includes(mode))expect(r.handle.handoff.peek()[0]?.text).toBe('preview');
+  expect(ref.retiredAttempts??[]).toEqual([]);expect(ref.rows.map(node=>node.node_id)).toEqual(['answer']);
+  expect(r.transport.calls('history.window').filter(call=>typeof call.args==='object'&&call.args!==null&&'node_id' in call.args)).toHaveLength(['owner','epoch','missing-turn','conflict'].includes(mode)?0:1);
+ }finally{r.window.dispose();r.handle.close();r.data.stop();}
 });
-
-
-it("ready reentry revocation preserves exact original record, revokes body authority, and blocks old proof", async () => {
- const r=await rig();
- const original=r.handle.handoff.peek()[0]!;
- const expectedProjection=projectHistoryWindowItems({revision:7,nodes:[r.node],keyScope:[r.handle.handoffScope()]}).projection;
- const order:string[]=[]; let revoked=false;
+it('ready reentry revocation preserves exact original and leaves the historical cut invalid without repainting it',async()=>{
+ const r=await rig(),original=r.handle.handoff.peek()[0]!,scope=r.handle.handoffScope();let published:WindowAcceptedSnapshot|undefined;
+ const order:string[]=[];
  const stop=r.window.acceptedView.subscribe(ref=>{
-  if(!ref.assistantOwnership?.length) return;
-  order.push(`ready:${ref.generation}`);
-  if(revoked){
-   expect(ref.displayPlan?.acceptedGeneration).toBe(ref.generation);
-   expect(ref.displayPlan?.capability).toBe(r.window.acceptedView.currentCapability);
-   expect(ref.assistantOwnership??[]).toHaveLength(0);
-   return;
-  }
-  const plan=ref.displayPlan!;
-  expect(plan.entries.map(entry=>entry.item)).toEqual(expectedProjection.items);
-  expect(plan.entries.map(entry=>entry.body)).toEqual([
-   {kind:"typed-canonical",text:"saved",cut:{generation:ref.generation,revision:7,capability:r.window.acceptedView.currentCapability,scope:r.handle.handoffScope()}},
-   {kind:"unavailable",reason:"tool",cut:{generation:ref.generation,revision:7,capability:r.window.acceptedView.currentCapability,scope:r.handle.handoffScope()}},
-  ]);
-  expect(plan.entries.map(entry=>entry.presentationContainer)).toEqual([original.presentationContainer,undefined]);
-  expect(plan.entries.map(entry=>entry.lifetime.kind)).toEqual(["valid-owner","retained"]);
-  if(!revoked){revoked=true;r.window.acceptedView.revoke();r.handle.cancelReads();r.window.layoutChanged();order.push(`revoked:${r.window.acceptedView.peek().generation}`);}
+  if(!ref.assistantOwnership?.length)return;
+  expect(published).toBeUndefined();assertOwnedCut(ref,scope,original,false);published=ref;order.push('ready');
+  r.window.acceptedView.revoke();r.handle.cancelReads();r.window.layoutChanged();order.push('revoked');
  });
- try {
-  r.answer();await settle(r.transport,r.db);
-  const current=r.window.acceptedView.peek();
-  expect(order).toEqual([`ready:${current.generation-1}`,`revoked:${current.generation}`]);
-  expect(current.assistantOwnership??[]).toHaveLength(0);
-  expect(current.displayPlan?.acceptedGeneration).toBe(current.generation);
-  expect(current.displayPlan?.capability).toBe(r.window.acceptedView.currentCapability);
-  expect(current.displayPlan?.entries.map(entry=>entry.body)).toEqual([
-   {kind:"typed-canonical",text:"saved",cut:{generation:current.generation,revision:7,capability:r.window.acceptedView.currentCapability,scope:r.handle.handoffScope()}},
-   {kind:"unavailable",reason:"tool",cut:{generation:current.generation,revision:7,capability:r.window.acceptedView.currentCapability,scope:r.handle.handoffScope()}},
-  ]);
-  expect(current.displayPlan?.entries.map(entry=>entry.lifetime.kind)).toEqual(["retained","retained"]);
-  expect(r.handle.handoff.peek()).toHaveLength(1);
-  expect(r.handle.handoff.peek()[0]).toBe(original);
-  expect(r.handle.handoff.peek()[0]?.text).toBe("preview");
-  expect(r.handle.isDisplayOwnershipCurrent(original,current.generation)).toBe(false);
+ try{
+  r.answer();await settle(r.transport,r.db);expect(order).toEqual(['ready','revoked']);
+  expect(r.window.acceptedView.peek()).toBe(published);expect(r.window.acceptedView.isCurrent(published!)).toBe(false);
+  expect(published!.displayPlan?.capability).not.toBe(r.window.acceptedView.currentCapability);
+  expect(r.handle.handoff.peek()[0]).toBe(original);expect(original.text).toBe('preview');
+  expect(r.handle.isDisplayOwnershipCurrent(original,published!.generation)).toBe(false);
+  expect(published!.retiredAttempts??[]).toEqual([]);expect(r.transport.calls('history.get')).toHaveLength(0);
  }finally{stop();r.window.dispose();r.handle.close();r.data.stop();}
 });
