@@ -1,8 +1,8 @@
 // @vitest-environment happy-dom
 import { expect, it } from "vitest";
 import type { ComponentChildren } from "preact";
-import type { ConversationWorkGroup } from "../../designs/console/screens/ConversationItems";
-import { projectSavedItems, rekeyConversationPresentation, type NormalizedSavedItem } from "../src/conversation-items";
+import type { ConversationWorkGroup } from "../screens/ConversationItems";
+import { projectSavedItems, rekeyConversationPresentation, type NormalizedSavedItem } from "../../../ui-core/src/conversation-items";
 
 const saved: NormalizedSavedItem = { nodeId: "node-1", itemIdentity: "node-1:/output/0/content/0", identityDomain: "node", windowRevision: 2, kind: "text", text: "saved", textComplete: true };
 const live: NormalizedSavedItem = { domain: "live", namespace: "handoff", scope: "thread/attempt/turn", recordId: "handoff:attempt", attemptId: "attempt", kind: "text", text: "live" };

@@ -66,6 +66,8 @@ export interface WindowAcceptedSnapshot {
   readonly retiredAttempts?: readonly RetiredAttempt[];
 }
 export interface WindowScrollRequest { readonly id: object; readonly target: number }
+type TerminalTarget = { ref: WindowAcceptedSnapshot; cap: AcceptedCapability; handle: ThreadHandle; token: ThreadReadQualification;
+  receipt: TerminalPersistedProof; requestId: SelectedRequestId; mode: "same-revision" | "fresh-window"; lease: OwnedTerminalReadLease; stop?: () => void };
 
 export type WindowStatus = "loading" | "ready" | "error";
 export interface Anchor {
@@ -149,8 +151,7 @@ export class ConversationWindow {
   private terminalIdentitySerial = 0;
   private terminalIdentity = new WeakMap<object, number>();
   private terminalPreparedRequests = new Map<string, { refId: number; capId: number; tokenId: number; argsKey: string; request: import("../../data/src/terminal-read").SelectedCanonicalRequest }>();
-  private terminalTargets = new Map<string, { ref: WindowAcceptedSnapshot; cap: AcceptedCapability; handle: ThreadHandle; token: ThreadReadQualification;
-    receipt: TerminalPersistedProof; requestId: SelectedRequestId; mode: "same-revision" | "fresh-window"; lease: OwnedTerminalReadLease; stop?: () => void }>();
+  private terminalTargets = new Map<string, TerminalTarget>();
   private terminalPersistedAttempts: readonly TerminalPersistedProof[] = [];
   private terminalCapability: AcceptedCapability | undefined;
   private retiredAttempts: readonly RetiredAttempt[] = [];
@@ -315,7 +316,7 @@ export class ConversationWindow {
       if (outcome.phase === "unavailable") this.publishTerminalPresence(ref, cap, receipt, outcome.reason === "cancelled" ? "read-error" : outcome.reason);
       return outcome;
     }
-    const target = { ref, cap, handle, token: original, receipt, requestId: request.id, mode: "same-revision", lease: outcome, stop: undefined as (() => void) | undefined };
+    const target: TerminalTarget = { ref, cap, handle, token: original, receipt, requestId: request.id, mode: "same-revision", lease: outcome, stop: undefined };
     this.terminalTargets.set(key, target);
     target.stop = outcome.state.subscribe(() => this.applyTerminalRead(outcome));
     if (this.terminalTargets.get(key) !== target) target.stop();
@@ -327,7 +328,7 @@ export class ConversationWindow {
     if (id === undefined) { id = ++this.terminalIdentitySerial; this.terminalIdentity.set(value, id); }
     return id;
   }
-  private replaceTerminalTarget(target: { ref: WindowAcceptedSnapshot; cap: AcceptedCapability; handle: ThreadHandle; token: ThreadReadQualification; receipt: TerminalPersistedProof; requestId: SelectedRequestId; mode: "same-revision" | "fresh-window"; lease: OwnedTerminalReadLease; stop?: () => void }): void {
+  private replaceTerminalTarget(target: TerminalTarget): void {
     const ref = this.acceptedView.peek();
     if (!this.acceptedView.isCurrent(ref) || ref === target.ref) return;
     const request = Object.freeze({ id: `selected-${++this.terminalRequestSerial}` as SelectedRequestId, args: Object.freeze({ thread_id: target.handle.threadId, node_id: target.receipt.nodeIds[0], before: 99, after: 100, items: true }) });
@@ -416,9 +417,12 @@ export class ConversationWindow {
                 const association: DisplayAssociation | undefined = record && target.receipt.turnId && refs.every((ref): ref is { nodeId: string; ordinal: number; kind: string } => !!ref)
                   ? { scope: target.receipt.scope, attemptId: target.receipt.attemptId, turnId: target.receipt.turnId, refs }
                   : undefined;
-                const decision = association ? assistantOwnership(association, record.key, rows, value.revision) : undefined;
-                if (!decision || decision.mode !== "canonical") { reason = "selection-gap"; }
-                else ownership = [decision];
+                if (!record || !association) { reason = "selection-gap"; }
+                else {
+                  const decision = assistantOwnership(association, record.key, rows, value.revision);
+                  if (!decision || decision.mode !== "canonical") reason = "selection-gap";
+                  else ownership = [...ownership.filter(item => item.attemptId !== decision.attemptId), decision];
+                }
               }
               if (reason === "selection-gap") {
                 // Keep the old bounded display while proof is incomplete; never stage
