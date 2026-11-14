@@ -937,6 +937,17 @@ export class ConversationWindow {
 
   private nextAcceptedGeneration(): number { return ++this.acceptedGeneration; }
 
+  private requalifyOwnership(revision: string | number, rows: readonly HistoryItem[]): readonly AssistantOwnership[] {
+    const prior = this.acceptedView.peek().assistantOwnership ?? [];
+    if (!prior.length) return [];
+    const canonical = projectHistoryWindowItems({ revision, nodes: rows, keyScope: [prior[0]!.scope] }).projection;
+    const byKey = new Map(canonical.items.map(item => [item.key, item]));
+    return prior.filter(fact => fact.proofRevision !== revision && fact.itemKeys.every(key => {
+      const item = byKey.get(key);
+      return item?.classification?.id === "assistantText" && item.source.kind === "text" && item.source.textComplete === true;
+    })).map(fact => Object.freeze({ ...fact, proofRevision: revision }));
+  }
+
   private bump(capability: AcceptedCapability = this.acceptedView.currentCapability): void {
     if (this.disposed || capability !== this.acceptedView.currentCapability) return;
     const epoch = this.epoch;
@@ -948,23 +959,21 @@ export class ConversationWindow {
       return value ? [{ ...value, phase: previous?.phase ?? value.phase }] : [];
     }) : [];
     this.terminalPresence = presence;
+    const requalifiedOwnership = this.revision === undefined ? [] : this.requalifyOwnership(this.revision, currentRows);
     const staged = this.acceptedView.stage({ generation, epoch, disposed: false,
       rows: currentRows, range: this.renderRange(), total: this.total,
       revision: this.revision, pending: this.status.peek() === "loading", attemptPresentations: this.attemptPresentations.filter(p => !this.terminalPersistedAttempts.some(done => this.terminalCapability === capability && done.scope === p.scope && done.attemptId === p.attemptId)),
       terminalPresence: this.terminalCapability === capability ? this.terminalPresence : [],
       terminalPersistedAttempts: this.terminalCapability === capability ? this.terminalPersistedAttempts : [],
       coverage: this.summaryTransition?.targetCap === capability && !this.summaryTransition?.consumed ? this.summaryTransition?.coverage : undefined,
-      assistantOwnership: (() => {
-        const prior = this.acceptedView.peek();
-        return prior.revision === this.revision ? prior.assistantOwnership : undefined;
-      })(),
+      assistantOwnership: requalifiedOwnership,
       retiredAttempts: (this.retiredCapability === capability ? this.retiredAttempts : []).filter(item => item.revision === this.revision),
       displayPlan: (() => {
         const priorPlan = this.acceptedView.peek().displayPlan;
         if (!priorPlan || priorPlan.capability !== capability || this.revision === undefined) return undefined;
         return createConversationDisplayPlan({ generation, revision: this.revision, capability, rows: currentRows, canonicalProjection: projectHistoryWindowItems({ revision: this.revision, nodes: currentRows, keyScope: [priorPlan.scope] }).projection,
           projection: projectHistoryWindowItems({ revision: this.revision, nodes: currentRows, keyScope: [priorPlan.scope] }).projection,
-          assistantFacts: this.acceptedView.peek().revision === this.revision ? this.acceptedView.peek().assistantOwnership ?? [] : [], userDecision: { cohortVersion: priorPlan.cohortVersion }, scope: priorPlan.scope,
+          assistantFacts: requalifiedOwnership, userDecision: { cohortVersion: priorPlan.cohortVersion }, scope: priorPlan.scope,
           retiredAttempts: this.acceptedView.peek().retiredAttempts ?? [] });
       })() }, capability);
     if (this.disposed || epoch !== this.epoch || generation !== this.acceptedGeneration) return;
