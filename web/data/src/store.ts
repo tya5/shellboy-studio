@@ -808,7 +808,9 @@ export class ShellboyData {
         if (!attempt || !Array.isArray(attempt.response_nodes)) continue;
         // Readable originals stay in their existing slot. Receipt and display choice were
         // published together above; persistence alone no longer discards their bytes.
-        if (record.text && displayPublished) continue;
+        const observation = observations.find(item => item.lease.original === record);
+        // A qualified receipt must still retire the preview; association publication alone does not.
+        if (record.text && displayPublished && !observation?.receipt) continue;
         // A terminal exact attempt with any committed public node reference proves
         // partial persistence, even when full readback coverage is unavailable.
         const terminal = attempt.state === "completed" || attempt.state === "failed" || attempt.state === "incomplete" || attempt.state === "cancelled";

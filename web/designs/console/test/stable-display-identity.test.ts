@@ -12,7 +12,7 @@ it("keeps the same projected row key while qualified live content becomes saved 
   const savedProjection = projectSavedItems([saved]);
   const after = withPresentationContainers(savedProjection, new Map([[savedProjection.items[0]!.key, "answer:handoff"]]));
   expect(before.items[0]?.key).not.toBe(after.items[0]?.key);
-  expect(after.items[0]?.presentationContainer).toBe("answer:handoff");
+  expect((after.items[0] as typeof after.items[0] & { presentationContainer?: string }).presentationContainer).toBe("answer:handoff");
   expect(after.items).toHaveLength(1);
   expect(after.items[0]?.source.kind === "text" && after.items[0].source.text).toBe("saved");
 });
@@ -36,10 +36,10 @@ it("keeps the rendered conversation container when the qualified row becomes sav
     const item = source === saved ? withPresentationContainers(projectSavedItems([source]), new Map([[row(source).key, "answer:handoff"]])).items[0]! : row(source);
     render(h(ConversationItems, { items: [item], sequence: [{ kind: "conversation", itemKey: item.key }], renderItem: () => h(Message, { bot: true, who: "Shellboy", text: source.kind === "text" ? source.text : "", copyLabel: "Copy", copiedLabel: "Copied" }) }), host);
   };
-  renderProjection(live);
-  const before = host.querySelector(".conversation-row");
+  render(withPresentationContainers(liveProjection, new Map([[liveProjection.items[0]!.key, "answer:handoff"]])) && h(ConversationItems, { items: withPresentationContainers(liveProjection, new Map([[liveProjection.items[0]!.key, "answer:handoff"]])).items, sequence: withPresentationContainers(liveProjection, new Map([[liveProjection.items[0]!.key, "answer:handoff"]])).sequence, renderItem: () => h(Message, { bot: true, who: "Shellboy", text: "live", copyLabel: "Copy", copiedLabel: "Copied" }) }), host);
+  const before = host.querySelector("[data-answer-container]");
   renderProjection(saved);
-  const after = host.querySelector(".conversation-row");
+  const after = host.querySelector("[data-answer-container]");
   expect(before).not.toBeNull();
   expect(after).toBe(before);
   expect(after?.textContent).toContain("saved");
