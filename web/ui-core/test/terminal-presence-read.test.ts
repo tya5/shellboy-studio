@@ -17,7 +17,7 @@ async function rig(windowCap = true) {
   const state = { available: true, truncated: false, partial: false, deferred: false, unknown: false, missing: false, error: false, changing: false, nonterminal: false, wrongid: false, empty: false, hold: false };
   const original = db.answer.bind(db); let reads = 0;
   db.answer = call => {
-    if (call.command === "status") return { ok: true, result: { items: state.available ? [{ kind: "attempt", id: state.wrongid ? "other" : "attempt", attempt_id: "attempt", turn_id: "turn", thread_id: "a", state: state.nonterminal ? "inflight" : "completed", response_nodes: state.empty ? [] : baseNodes.filter(node => node.items?.some(item => item.kind === "text")).map(node => ({ node_id: node.node_id, ordinal: node.selection!.ordinal!, kind: "message", phase: "final_answer", item_id: null })), response_nodes_truncated: state.truncated }] : [] } };
+    if (call.command === "status") return { ok: true, result: { items: state.available ? [{ kind: "attempt", id: state.wrongid ? "other" : "attempt", attempt_id: "attempt", turn_id: "turn", thread_id: "a", state: state.nonterminal ? "inflight" : "completed", response_nodes: state.empty ? [] : baseNodes.filter(node => node.items?.some(item => item.kind === "text")).map(node => ({ node_id: node.node_id, ordinal: node.selection!.ordinal!, kind: node.kind, phase: "final_answer", item_id: null })), response_nodes_truncated: state.truncated }] : [] } };
     if (call.command === "history.window") {
       if (state.error) return { ok: false, code: "not_found", message: "synthetic" };
       const items: unknown[] = structuredClone(baseNodes);
