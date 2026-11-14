@@ -1,3 +1,4 @@
+/* @vitest-environment jsdom */
 import { expect, it } from "vitest";
 import { projectSavedItems, type NormalizedSavedItem } from "../src/conversation-items";
 
@@ -18,4 +19,22 @@ it("does not join unknown, deleted, or differently owned facts", () => {
   const otherOwner: NormalizedSavedItem = { ...live, recordId: "handoff:other", scope: "other/attempt/turn", canonicalScope: "other/attempt/turn" };
   expect(projectSavedItems([unknown, deleted]).items.map(item => item.key)).toHaveLength(2);
   expect(projectSavedItems([otherOwner, saved]).items).toHaveLength(2);
+});
+
+it("keeps the rendered conversation container when the qualified row becomes saved", async () => {
+  const { render, h } = await import("preact");
+  const { ConversationItems } = await import("../../designs/console/screens/ConversationItems");
+  const host = document.createElement("div");
+  const row = (source: NormalizedSavedItem) => ({ key: projectSavedItems([source]).items[0]!.key, source });
+  const renderProjection = (source: NormalizedSavedItem) => {
+    const item = row(source);
+    render(h(ConversationItems, { items: [item], sequence: [{ kind: "conversation", itemKey: item.key }], renderItem: () => h("span", { "data-body": "" }, source.kind === "text" ? source.text : "") }), host);
+  };
+  renderProjection(live);
+  const before = host.querySelector(".conversation-row");
+  renderProjection(saved);
+  const after = host.querySelector(".conversation-row");
+  expect(before).not.toBeNull();
+  expect(after).toBe(before);
+  expect(after?.querySelector("[data-body]")?.textContent).toBe("saved");
 });
