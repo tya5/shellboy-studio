@@ -415,7 +415,7 @@ export class ConversationWindow {
                   return row?.selection?.ordinal === undefined ? undefined : { nodeId, ordinal: row.selection.ordinal, kind: row.kind };
                 });
                 const association: DisplayAssociation | undefined = record && target.receipt.turnId && refs.every((ref): ref is { nodeId: string; ordinal: number; kind: string } => !!ref)
-                  ? { scope: target.receipt.scope, attemptId: target.receipt.attemptId, turnId: target.receipt.turnId, refs }
+                  ? { scope: target.receipt.scope, attemptId: target.receipt.attemptId, turnId: target.receipt.turnId, presentationContainer: record.presentationContainer, refs }
                   : undefined;
                 if (!record || !association) { reason = "selection-gap"; }
                 else {

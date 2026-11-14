@@ -797,6 +797,7 @@ export class ShellboyData {
             && Number.isSafeInteger(ref.ordinal) && ref.ordinal >= 0 && (index === 0 || ref.ordinal > refs[index-1]!.ordinal))
           && !out.value.items.some(other => other !== attempt && other.response_nodes?.some(ref => refs.some(own => own.node_id === ref?.node_id)));
         const association: DisplayAssociation | undefined = qualified ? Object.freeze({ scope: proof.scope, attemptId: record.attemptId,
+          presentationContainer: record.presentationContainer,
           turnId: attempt.turn_id!, refs: Object.freeze(refs.map(ref => Object.freeze({ nodeId: ref.node_id, ordinal: ref.ordinal, kind: ref.kind }))) }) : undefined;
         observations.push({ lease, ...(association ? { association } : {}), ...(receipt ? { receipt } : {}) });
       }

@@ -245,7 +245,7 @@ export function projectOwnedHandoffFacts(scope: string, records: readonly Handof
       && record.readyAttempt.refs.some(ref => ref.nodeId === record.nodeId);
     const previewAuthorized = record.bodyAuthority === "preview" && (record.status === "streaming" || record.status === "confirming");
     return record.text && record.transferred !== true && (previewAuthorized || (record.status === "ready" && ready))
-      ? {domain: "live", namespace: "handoff", scope, recordId: record.key, attemptId: record.attemptId, kind: "text", text: record.text}
+      ? {domain: "live", namespace: "handoff", scope, recordId: record.key, attemptId: record.attemptId, kind: "text", text: record.text, presentationContainer: record.presentationContainer}
       : {domain: "live", namespace: "handoff", scope, recordId: record.key, attemptId: record.attemptId, kind: "unknown"};
   }));
 }
@@ -310,8 +310,8 @@ export function SavedWindowContent({ model, snapshot, live, liveBoundary, liveFa
   // while the accepted canonical proof later supplies the ordered child identities.
   for (const item of baseProjection.items) {
     const source = item.source;
-    if ("domain" in source && source.domain === "live" && source.recordId) {
-      containers.set(item.key, `answer:${source.recordId}`);
+    if ("domain" in source && source.domain === "live" && source.presentationContainer) {
+      containers.set(item.key, source.presentationContainer);
     }
   }
   for (const decision of ownership.filter(item => item.mode === "canonical")) {

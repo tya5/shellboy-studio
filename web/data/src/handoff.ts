@@ -12,10 +12,21 @@ export interface TerminalPersistedProof {
 }
 export interface AttemptReadyProof { readonly scope: string; readonly attemptId: string; readonly turnId: string; readonly revision: string | number; readonly total: number; readonly refs: readonly { readonly nodeId: string }[]; readonly nodes: readonly HistoryItem[] }
 
+declare const presentationContainerBrand: unique symbol;
+export type PresentationContainerId = string & { readonly [presentationContainerBrand]: true };
+
+function mintPresentationContainer(attemptId: string): PresentationContainerId {
+  const randomUUID = globalThis.crypto?.randomUUID;
+  if (randomUUID) return `presentation:${randomUUID()}` as PresentationContainerId;
+  // The attempt is only a non-colliding fallback in runtimes without Web Crypto.
+  return `presentation:${attemptId}` as PresentationContainerId;
+}
+
 export interface DisplayAssociation {
   readonly scope: string;
   readonly attemptId: string;
   readonly turnId: string;
+  readonly presentationContainer: PresentationContainerId;
   readonly refs: readonly { readonly nodeId: string; readonly ordinal: number; readonly kind: string }[];
 }
 /** Borrowed original held slot; no second preview or receipt ledger. */
@@ -39,6 +50,7 @@ const bytes = (s: string) => new TextEncoder().encode(s).byteLength;
 export type HandoffStatus = 'streaming' | 'confirming' | 'failed' | 'ready';
 export interface HandoffRecord {
   readonly key: string;
+  readonly presentationContainer: PresentationContainerId;
   readonly attemptId: string;
   readonly text: string;
   readonly incomplete: boolean;
@@ -98,7 +110,7 @@ export class Handoff {
       if (this.held.length + this.publicationSlots >= MAX_HANDOFF_RECORDS || this.blockedAttempt === frame.attempt_id) { this.overflowSig.value = true; this.blockedAttempt = frame.attempt_id; return; }
       if (this.active) this.finish();
       const source = new LiveText(this.schedule);
-      const record: HandoffRecord = { key: `handoff:${frame.attempt_id}`, attemptId: frame.attempt_id, text: '', incomplete: frame.gap, status: 'streaming', bodyAuthority: 'preview' };
+      const record: HandoffRecord = { key: `handoff:${frame.attempt_id}`, presentationContainer: mintPresentationContainer(frame.attempt_id), attemptId: frame.attempt_id, text: '', incomplete: frame.gap, status: 'streaming', bodyAuthority: 'preview' };
       h = { admitted: 0, attemptId: frame.attempt_id, source, stop: () => {}, record };
       const held = h;
       this.held.push(h);

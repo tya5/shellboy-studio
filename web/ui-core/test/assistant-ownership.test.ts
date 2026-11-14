@@ -1,8 +1,8 @@
 import { expect, it } from 'vitest';
 import { assistantOwnership } from '../src/assistant-ownership';
-import type { DisplayAssociation } from '../../data/src/handoff';
+import type { DisplayAssociation, PresentationContainerId } from '../../data/src/handoff';
 import type { HistoryItem } from '../../data/src/protocol';
-const association: DisplayAssociation = { scope: 'owner/thread/lifetime', attemptId: 'attempt', turnId: 'turn', refs: [{nodeId:'answer',ordinal:0,kind:'message'}] };
+const association: DisplayAssociation = { scope: 'owner/thread/lifetime', attemptId: 'attempt', turnId: 'turn', presentationContainer: 'presentation:test' as PresentationContainerId, refs: [{nodeId:'answer',ordinal:0,kind:'message'}] };
 const answer = (): HistoryItem => ({node_id:'answer',kind:'assistant_response',selection:{ordinal:9},items:[{kind:'text',item_identity:'exact-text',text:'Same body',text_complete:true},{kind:'tool_call',item_identity:'independent-tool',execution_ids:['exec']}]});
 it('owns exact ordinary item keys, preserving Work siblings and independent equal text identities',()=>{
  const other={...answer(),node_id:'other'};
@@ -11,6 +11,13 @@ it('owns exact ordinary item keys, preserving Work siblings and independent equa
  expect(decision.itemKeys).toHaveLength(1);
  expect(decision.itemKeys[0]).toContain('answer');expect(decision.itemKeys[0]).toContain('exact-text');
  expect(decision.itemKeys[0]).not.toContain('independent-tool');expect(decision.itemKeys[0]).not.toContain('other');
+});
+it('keeps the owner-minted host from preview through canonical admission',()=>{
+ const preview=assistantOwnership(association,'original',[answer()],7)!;
+ const canonical=assistantOwnership(association,'original',[answer()],7)!;
+ expect(preview.mode).toBe('canonical');
+ expect(canonical.containerKey).toBe(preview.containerKey);
+ expect(canonical.containerKey).not.toMatch(/^answer:/);
 });
 it.each(['partial','empty'] as const)('retains preview and reserves only exact ordinary membership for %s',mode=>{
  const node=answer();node.items=[{kind:'text',item_identity:'exact-text',text:mode==='empty'?'':'prefix',text_complete:mode!=='partial'},node.items![1]!];

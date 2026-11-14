@@ -131,6 +131,8 @@ export interface LiveWorkIdentity {
   readonly domain: "live" | "receipt";
   readonly terminalPresence?: TerminalPresence;
   readonly namespace?: "work" | "handoff";
+  /** Owned answer host, minted by the handoff ledger and never synthesized here. */
+  readonly presentationContainer?: string;
   readonly classificationCase?: CanonicalCaseId;
   readonly keyScope?: readonly string[];
   readonly scope: string;
@@ -259,7 +261,7 @@ function projectSavedItemsCore(rawInput: readonly NormalizedSavedItem[], decoded
       continue;
     }
     if (proven) selectedTools.set(key, items.length);
-    const identity = "domain" in source ? { domain: source.domain, ...(source.terminalPresence ? { terminalPresence: source.terminalPresence } : {}), namespace: source.namespace ?? "work", scope: source.scope, recordId: source.recordId, ...(source.attemptId !== undefined ? { attemptId: source.attemptId } : {}), ...(source.turnId !== undefined ? { turnId: source.turnId } : {}) } : { ...(source.identityDomain ? { identityDomain: source.identityDomain } : {}), nodeId: source.nodeId, itemIdentity: source.itemIdentity, ...(source.revision !== undefined ? { revision: source.revision } : {}), ...(source.windowRevision !== undefined ? { windowRevision: source.windowRevision } : {}) };
+    const identity = "domain" in source ? { domain: source.domain, ...(source.presentationContainer ? { presentationContainer: source.presentationContainer } : {}), ...(source.terminalPresence ? { terminalPresence: source.terminalPresence } : {}), namespace: source.namespace ?? "work", scope: source.scope, recordId: source.recordId, ...(source.attemptId !== undefined ? { attemptId: source.attemptId } : {}), ...(source.turnId !== undefined ? { turnId: source.turnId } : {}) } : { ...(source.identityDomain ? { identityDomain: source.identityDomain } : {}), nodeId: source.nodeId, itemIdentity: source.itemIdentity, ...(source.revision !== undefined ? { revision: source.revision } : {}), ...(source.windowRevision !== undefined ? { windowRevision: source.windowRevision } : {}) };
     const scopedIdentity = { ...identity, classificationCase: canonicalItemCase(source).id, ...(source.keyScope ? { keyScope: Object.freeze([...source.keyScope]) } : {}) };
     let copy: NormalizedSavedItem;
     if (source.kind === "tool") {

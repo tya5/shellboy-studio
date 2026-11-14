@@ -1,7 +1,7 @@
 import { ShellboyData } from "../../data/src/store";
 import { expect, it } from "vitest";
 import { ConversationWindow } from "../src/window";
-import type { HandoffRecord, AttemptReadyProof } from "../../data/src/handoff";
+import type { HandoffRecord, PresentationContainerId, AttemptReadyProof } from "../../data/src/handoff";
 import type { HistoryItem } from "../../data/src";
 import { FakeOwnerDb, FakeTransport, connectedWithHistory, settle, flush } from "../../data/test/harness";
 const nodes: HistoryItem[] = [
@@ -11,7 +11,7 @@ const nodes: HistoryItem[] = [
 async function rig(items = nodes) {
   const w = new ConversationWindow({ read: async () => ({ ok: true, value: { thread_id: "thread", revision: 7, total: 2, items } }) }); await flush();
   const proof: AttemptReadyProof = { scope: '["owner","thread",1]', attemptId: "attempt", turnId: "turn", revision: 7, total: 2, refs: [{ nodeId: "answer" }, { nodeId: "tool" }, { nodeId: "answer" }], nodes };
-  const record: HandoffRecord = { key: "live-record", attemptId: "attempt", status: "confirming", bodyAuthority: "preview", text: "whole live block", incomplete: false, readyAttempt: proof };
+  const record: HandoffRecord = { key: "live-record", presentationContainer: "presentation:test" as PresentationContainerId, attemptId: "attempt", status: "confirming", bodyAuthority: "preview", text: "whole live block", incomplete: false, readyAttempt: proof };
   return { w, record, proof };
 }
 it("all-ref retirement and saved-order sequence publish once in the SAME observed snapshot", async () => {
@@ -86,7 +86,7 @@ it("materializes already-qualified all-ref nodes and retirement together without
   const w = new ConversationWindow({ read: async () => { reads++; return { ok: true, value: { thread_id: "thread", revision: 7, total: 1, items: [initial] } }; } }); await flush();
   const proof: AttemptReadyProof = { scope: "scope", attemptId: "attempt", turnId: "turn", revision: 7, total: 3,
     refs: [{ nodeId: "answer" }, { nodeId: "tool" }], nodes: nodes.map((node, i) => ({ ...node, selection: { ordinal: i + 1 } })) };
-  const record: HandoffRecord = { key: "original", attemptId: "attempt", text: "whole live", incomplete: false, status: "confirming", bodyAuthority: "preview", readyAttempt: proof };
+  const record: HandoffRecord = { key: "original", presentationContainer: "presentation:test" as PresentationContainerId, attemptId: "attempt", text: "whole live", incomplete: false, status: "confirming", bodyAuthority: "preview", readyAttempt: proof };
   const frames: { ids: string[]; total: number; retired: number }[] = [];
   w.acceptedView.subscribe(ref => frames.push({ ids: ref.rows.map(row => row.node_id!), total: ref.total, retired: ref.retiredAttempts?.length ?? 0 }));
   let releases = 0; expect(w.acceptHandoff(record, "scope", () => { releases++; })).toBe(true);
