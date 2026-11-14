@@ -1,6 +1,7 @@
 import type { AssistantOwnership } from './assistant-ownership';
 import type { AcceptedCapability } from './accepted-view';
-import type { SavedItemProjection, ProjectedSavedItem, HistoryItem } from './conversation-items';
+import type { SavedItemProjection, ProjectedSavedItem } from './conversation-items';
+import type { HistoryItem } from '../../data/src/protocol';
 import type { LiveWorkIdentity } from './conversation-items';
 
 export type DisplayBodySource =
