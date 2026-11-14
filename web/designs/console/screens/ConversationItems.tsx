@@ -39,7 +39,7 @@ interface Props {
   renderItem: (item: ConversationItem) => ComponentChildren;
   renderBefore?: (item: ConversationItem) => ComponentChildren;
   trailing?: ComponentChildren;
-  localRegion?: { readonly kind: "qualified"; readonly slots: readonly {position:OwnSendSlotPosition;content:ComponentChildren}[] } | { readonly kind: "unqualified"; readonly content: ComponentChildren };
+  localRegion?: { readonly kind: "qualified"; readonly slots: readonly {position:OwnSendSlotPosition;content:ComponentChildren}[] } | { readonly kind: "unqualified"; readonly content: ComponentChildren; readonly afterIndex?: number };
   isItemAbsent?: (item: ConversationItem) => boolean;
   isItemHidden?: (item: ConversationItem) => boolean;
   renderHeading?: (summary: ConversationToolSummary) => ComponentChildren;
@@ -119,8 +119,11 @@ export function ConversationItems({ items, toolSummaries = [], renderItem, rende
     // they are plan entries, not a discarded side effect of a missing anchor.
     const slotOnly = slots.filter(slot => slot.position.kind === "after" && slot.position.index >= normalizedSequence.length)
       .flatMap(slot => [slot.content]);
-    const plan = localRegion?.kind === "unqualified"
-      ? [{ view: localRegion.content, first: -1, last: -1 }, ...rendered]
+    const local = localRegion?.kind === "unqualified" ? { view: localRegion.content, first: -1, last: -1 } : undefined;
+    const plan = local
+      ? localRegion.afterIndex === undefined
+        ? [local, ...rendered]
+        : [...rendered.slice(0, localRegion.afterIndex + 1), local, ...rendered.slice(localRegion.afterIndex + 1)]
       : rendered;
     // Keep top-level rows as direct siblings. Nested arrays create implicit
     // unkeyed VNodes and can change an unchanged row's DOM parent on handoff.
