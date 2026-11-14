@@ -97,7 +97,7 @@ it("renders one stable host for nonadjacent children while preserving intervenin
       items: projection.items,
       sequence: [{ kind: "conversation", itemKey: base.items[0]!.key }, { kind: "work", groupKey: "work-1" }, { kind: "conversation", itemKey: base.items[1]!.key }],
       workGroups: [{ key: "work-1", firstMemberKey: "work-1", memberKeys: [], executionIds: [], toolItemKeys: [], unknownToolCount: 0, interrupted: false }],
-      localRegion: { placement: { kind: "qualified" as const, insertion: { kind: "work" as const, groupKey: "work-1" } }, slots: [{ position: { kind: "after" as const, index: 1 }, content: h("span", { "data-local-marker": "local-between" }, "local-between") }] },
+      localRegion: { kind: "qualified" as const, slots: [{ position: { kind: "after" as const, index: 1 }, content: h("span", { "data-local-marker": "local-between" }, "local-between") }] },
       renderItem: item => h("span", {}, item.source.kind === "text" ? item.source.text : ""), renderWorkGroup: (_group, children) => h("div", { class: "intervening-work", "data-work-marker": "other-attempt-work" }, [h("span", {}, "other-attempt-work"), children]),
     }), host);
     expect(host.querySelectorAll("[data-answer-container]")).toHaveLength(1);
