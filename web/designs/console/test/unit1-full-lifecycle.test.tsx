@@ -52,9 +52,14 @@ it('keeps one answer presentation through the complete real Conversation lifecyc
   await act(async()=>{f.t.push({t:'live_end',thread_id:'thread'});await settle(f.t,f.db);await flush(24);await settle(f.t,f.db);await flush(24);});
   const liveHandle=f.model.handle.peek(); const window=f.model.longReader.peek(); trace.push({stage:'live_end_state',handoff:liveHandle?.handoff.peek().map(record=>({key:record.key,attemptId:record.attemptId,status:record.status,text:record.text,terminal:!!record.terminalPersisted,transferred:!!record.transferred,readyAttempt:record.readyAttempt,proof:record.proof})),retry:liveHandle?.handoffRetryState.peek(),window:window?{revision:window.acceptedView.peek().revision,total:window.acceptedView.peek().total,pending:window.acceptedView.peek().pending,generation:window.acceptedView.peek().generation,ownership:window.acceptedView.peek().assistantOwnership,terminalPresence:window.acceptedView.peek().terminalPresence,rows:window.acceptedView.peek().rows.map(row=>({node_id:row.node_id,ordinal:row.selection?.ordinal,body:row.items?.length??null,unavailable:row.items_unavailable_reason}))}:undefined,calls:f.t.calls().map(call=>({command:call.command,args:call.args}))}); console.log('UNIT1_HANDOFF_TRACE',JSON.stringify(trace));
   expect(host.querySelector('[data-answer-container]')).toBe(identity);expect(host.textContent).toContain('Canonical answer');expect(host.textContent).toContain('Canonical continuation');
+  expect([...host.querySelectorAll('[data-answer-container] [data-item-key]')].map(node=>node.textContent?.trim())).toEqual(['Canonical answer','Canonical continuation']);
+  expect([...host.querySelectorAll('.msg')].map(node=>node.textContent?.trim()).filter(Boolean)).toEqual(['Question','intervening work','Canonical answer','Canonical continuation']);
   expect([...host.querySelectorAll('[data-answer-container] [data-item-key]')]).toHaveLength(2);
+  expect(f.model.handle.peek()?.handoff.peek().filter(record=>record.terminalPersisted || record.transferred)).toHaveLength(0);
   registry.total=5;registry.revision=9;nodes.push({node_id:'local-1',kind:'user',selection:{ordinal:4},items:[{kind:'text',item_identity:'local1',text:'Next turn',text_complete:true}]});revision=9;
   await act(async()=>{f.t.push({t:'changed',thread_ids:['thread'],list:false});await settle(f.t,f.db);await flush(24);});
   expect(host.textContent).toContain('Next turn');expect(host.textContent).toContain('Canonical answer');
+  expect(host.querySelector('[data-answer-container]')).toBe(identity);
+  expect([...host.querySelectorAll('[data-answer-container] [data-item-key]')].map(node=>node.textContent?.trim())).toEqual(['Canonical answer','Canonical continuation']);
  }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
 });
