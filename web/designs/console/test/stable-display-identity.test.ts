@@ -111,11 +111,14 @@ it("keeps crossing associations unqualified without reordering canonical data", 
   const { ConversationItems } = await import("../screens/ConversationItems");
   const host = document.createElement("div"); document.body.append(host);
   const second: NormalizedSavedItem = { ...saved, nodeId: "node-2", itemIdentity: "node-2:/output/0/content/0", text: "second" };
-  const base = projectSavedItems([saved, second]);
-  const firstProjection = withPresentationContainers(base, new Map([[base.items[0]!.key, "answer:a"], [base.items[1]!.key, "answer:b"]]));
+  const third: NormalizedSavedItem = { ...saved, nodeId: "node-3", itemIdentity: "node-3:/output/0/content/0", text: "third" };
+  const base = projectSavedItems([saved, second, third]);
+  const containers = new Map([[base.items[0]!.key, "answer:a"], [base.items[1]!.key, "answer:b"], [base.items[2]!.key, "answer:a"]]);
+  const projection = withPresentationContainers(base, containers);
   try {
-    render(h(ConversationItems, { items: firstProjection.items, sequence: firstProjection.sequence, renderItem: item => h("span", {}, item.source.kind === "text" ? item.source.text : "") }), host);
-    expect(host.querySelectorAll("[data-answer-container]")).toHaveLength(0);
-    expect([...host.querySelectorAll("[data-item-key]")].map(node => node.textContent)).toEqual(["saved", "second"]);
+    render(h(ConversationItems, { items: projection.items, sequence: base.items.map(item => ({ kind: "conversation" as const, itemKey: item.key })), renderItem: item => h("span", {}, item.source.kind === "text" ? item.source.text : "") }), host);
+    expect(host.querySelectorAll('[data-answer-container="answer:a"]')).toHaveLength(0);
+    expect(host.querySelectorAll('[data-answer-container="answer:b"]')).toHaveLength(1);
+    expect([...host.querySelectorAll("[data-item-key]")].map(node => node.textContent)).toEqual(["saved", "second", "third"]);
   } finally { render(null, host); host.remove(); }
 });
