@@ -413,8 +413,13 @@ export class ConversationWindow {
     }
     const next = this.publishTerminalPresence(target.ref, target.cap, target.receipt, reason, out.phase === "queued" ? "pending" : out.phase === "reading" ? "reading" : "settled");
     if (!next || !target.handle.isReadQualificationCurrent(target.token)) return false;
-    this.advanceTerminalTarget(target, next);
-    if (reason === "selection-gap" && out.phase === "settled" && out.result.ok && out.result.value.revision !== target.ref.revision) this.replaceTerminalTarget(target);
+    if (reason === "selection-gap" && out.phase === "settled" && out.result.ok && out.result.value.revision !== target.ref.revision) {
+      // The presence publication above is the boundary: replace only after its
+      // successor is current, while the old lease remains non-authoritative.
+      this.replaceTerminalTarget(target);
+    } else {
+      this.advanceTerminalTarget(target, next);
+    }
     return true;
   }
 
