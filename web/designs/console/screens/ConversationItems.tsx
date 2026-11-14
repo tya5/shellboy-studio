@@ -89,16 +89,34 @@ export function ConversationItems({ items, toolSummaries = [], renderItem, rende
     const canonical = rendered.map(item => item.view);
     const canonicalEntries = rendered.map(item => item.entry);
     const region:ComponentChildren[]=[];
-    if(!localRegion?.slots?.length&&insertion?.kind==="beginning")region.push(localRegion?.content);
+    const slots = localRegion?.slots ?? [];
+    const renderInsertion = (kind: NonNullable<OwnSendInsertion>["kind"], key?: string) => {
+      for (const slot of slots) {
+        if (slot.insertion.kind !== kind) continue;
+        if (kind === "conversation" && slot.insertion.itemKey !== key) continue;
+        if (kind === "work" && slot.insertion.groupKey !== key) continue;
+        region.push(slot.content);
+      }
+    };
+    if (localRegion?.placement.kind === "unqualified") region.push(localRegion.unqualified);
+    else if (insertion?.kind === "beginning") {
+      if (slots.length) renderInsertion("beginning");
+      else region.push(localRegion?.content);
+    }
     canonical.forEach((row,index)=>{if(Array.isArray(row))region.push(...row);else region.push(row);
       const entry=canonicalEntries[index]!;
       const grouped = entry.kind === "conversation" && byKey.get(entry.itemKey)?.presentationContainer !== undefined;
       if (!grouped) {
-        for(const slot of localRegion?.slots??[])if(slot.insertion.kind===entry.kind&&(entry.kind==="conversation"?slot.insertion.kind==="conversation"&&slot.insertion.itemKey===entry.itemKey:slot.insertion.kind==="work"&&slot.insertion.groupKey===entry.groupKey))region.push(slot.content);
+        renderInsertion(entry.kind, entry.kind === "conversation" ? entry.itemKey : entry.groupKey);
         if(!localRegion?.slots?.length&&same(entry))region.push(localRegion?.content);
       }
     });
-    if(!localRegion?.slots?.length&&!insertion)region.push(localRegion?.unqualified);
+    if (insertion?.kind === "conversation" || insertion?.kind === "work") {
+      if (!slots.length && insertion.kind === "conversation") {
+        const target = canonicalEntries.find(entry => entry.kind === "conversation" && entry.itemKey === insertion.itemKey);
+        if (!target) region.push(localRegion?.content);
+      }
+    }
     return <div class="conversation-items">{region}{trailing}</div>;
   }
   const rows: ComponentChildren[] = [];
