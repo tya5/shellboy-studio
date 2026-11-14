@@ -6,7 +6,7 @@ import {projectSavedItems,type NormalizedSavedItem,type SavedItemProjection} fro
 import {AcceptedView} from '../../../ui-core/src/accepted-view';
 import {overlayState,reconcileOverlay,createAssociationAuthority} from '../../../data/src/overlay-reconcile';
 import {ConversationItems} from '../screens/ConversationItems';
-import {SavedConversationItems,SavedWindowContent} from '../screens/Conversation';
+import {SavedConversationItems,SavedWindowContent,OrderedHistory} from '../screens/Conversation';
 import {ConversationWindow} from '../../../ui-core/src/window';
 import {WindowedScroll} from '../screens/WindowedScroll';
 import {rig as windowRig} from '../../../ui-core/test/window-owner';
@@ -176,4 +176,11 @@ it('WindowedScroll preserves accepted cohort across real revision publication', 
  f.model.acceptedOwnMessages.value=[{scope:'t',operationId:'op-a',text:'A',phase:'accepted',messageId:'a'},{scope:'t',operationId:'op-b',text:'B',phase:'accepted',messageId:'b'}];
  const generations:number[]=[]; const renderAccepted=(snapshot: any)=>{generations.push(snapshot.generation);return <SavedWindowContent model={model} snapshot={snapshot}/>};
  try { await r.settle(); await act(async()=>render(<WindowedScroll model={model} win={r.w} renderRow={()=> <div/>} live={null} renderAcceptedView={renderAccepted}/>,host)); expect(host.querySelectorAll('[data-pending-own-message]')).toHaveLength(2); r.owner.append(2); r.w.changed(); await r.settle(); await act(async()=>render(<WindowedScroll model={model} win={r.w} renderRow={()=> <div/>} live={null} renderAcceptedView={renderAccepted}/>,host)); expect(host.querySelectorAll('[data-pending-own-message]')).toHaveLength(2); expect(generations.length).toBeGreaterThan(1); } finally {render(null,host);host.remove();r.w.dispose();r.data.stop();f.model.dispose();f.data.stop();}
+});
+
+it('OrderedHistory real owner path preserves A/B without parent rerender', async()=>{
+ const r=await windowRig(0); const f=await fixtureModel(); const host=document.createElement('div');document.body.append(host);
+ const model=new Proxy(f.model,{get(target,key){if(key==='longReader')return {value:r.w,peek:()=>r.w};if(key==='handle')return {value:r.handle,peek:()=>r.handle};return Reflect.get(target,key);}});
+ const scope=r.handle.handoffScope(); f.model.acceptedOwnMessages.value=[{scope,operationId:'op-a',text:'A',phase:'accepted',messageId:'a'},{scope,operationId:'op-b',text:'B',phase:'accepted',messageId:'b'}];
+ try { await r.settle(); await act(async()=>render(<OrderedHistory model={model} handle={r.handle} win={r.w} t={(key:string)=>key}/>,host)); expect(host.querySelectorAll('[data-pending-own-message]')).toHaveLength(2); r.owner.append(2); r.w.changed(); await r.settle(); await act(async()=>{await Promise.resolve();}); expect(host.querySelectorAll('[data-pending-own-message]')).toHaveLength(2); } finally {render(null,host);host.remove();r.w.dispose();r.data.stop();f.model.dispose();f.data.stop();}
 });

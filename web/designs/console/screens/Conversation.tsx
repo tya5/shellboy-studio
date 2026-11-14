@@ -500,7 +500,7 @@ function Details({ model }: { model: AppModel }) {
   );
 }
 
-function OrderedHistory({ model, handle, win, t }: { model: AppModel; handle: NonNullable<AppModel["handle"]["value"]>; win: AppModel["longReader"]["value"]; t: AppModel["t"]["value"] }) {
+export function OrderedHistory({ model, handle, win, t }: { model: AppModel; handle: NonNullable<AppModel["handle"]["value"]>; win: AppModel["longReader"]["value"]; t: AppModel["t"]["value"] }) {
   const [boundary, setBoundary] = useState<{ attempt: string; ordinal: number } | undefined>();
   useEffect(() => {
     let attempt: string | undefined;
