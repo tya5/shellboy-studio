@@ -1,6 +1,7 @@
 import {hasVisibleTerminalText} from "../../../ui-core/src/terminal-presence";
 import {messageRelationship,senderHeaderDisplay} from "../../../ui-core/src/sender-display";
-import type {OwnSendPath,OwnSendPlacement,OwnSendSlotPosition} from "../../../ui-core/src/own-send-region";
+import type {OwnSendPath,OwnSendPlacement} from "../../../ui-core/src/own-send-region";
+import type {OwnSendSlotPosition} from "../../../ui-core/src/own-send-presentation";
 import { workElementDisplay, workExecutionDisplay, type WorkElementDisplay } from "../../../ui-core/src/work-element-display";
 import { WorkElementRow, formatWorkElementDisplay } from "../system/components/WorkElementRow";
 import { ownSendPresentation } from "../../../ui-core/src/own-send-presentation";
