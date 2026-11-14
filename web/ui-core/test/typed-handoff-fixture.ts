@@ -30,7 +30,7 @@ export interface TypedHistoryNode {
   readonly kind: "assistant_response";
   readonly selection: { readonly ordinal: number };
   readonly excerpt: string;
-  readonly items: readonly [{ readonly kind: "text"; readonly item_identity: string; readonly text: string; readonly text_complete: true }] | null;
+  readonly items: readonly { readonly kind: "text"; readonly item_identity: string; readonly text: string; readonly text_complete: true }[] | null;
   readonly items_unavailable_reason?: "response_budget";
 }
 

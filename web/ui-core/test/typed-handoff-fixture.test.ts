@@ -16,8 +16,8 @@ it("rejects mismatched receipt identity and node ordinal", () => {
   const fixture = typedHandoff();
   const attempt = typedAttempt(fixture);
   const window = typedHistoryWindow(fixture, { node_id: fixture.nodeId })!;
-  expect(validTypedHandoff(fixture, { ...attempt, response_nodes: [{ ...attempt.response_nodes[0], ordinal: 299 }] }, window)).toBe(false);
-  expect(validTypedHandoff(fixture, attempt, { ...window, items: [{ ...window.items[0], selection: { ordinal: 299 } }] })).toBe(false);
+  expect(validTypedHandoff(fixture, { ...attempt, response_nodes: [{ ordinal: 299, item_id: null, kind: "message", phase: "final_answer", node_id: fixture.nodeId }] }, window)).toBe(false);
+  expect(validTypedHandoff(fixture, attempt, { ...window, items: [{ ...window.items[0]!, selection: { ordinal: 299 } }] })).toBe(false);
   expect(typedHistoryWindow(fixture, { node_id: "wrong-node" })).toBeUndefined();
   expect(typedHistoryWindow(fixture, { ordinal: 299 })).toBeUndefined();
 });
@@ -28,6 +28,6 @@ it('routes registry refs exactly and keeps deferred body until canonical publica
   expect(registry.history({})).toBeUndefined();
   expect(registry.history({node_id:'n3', ordinal:3})?.items[0]?.items).toBeNull();
   registry.canonical = true;
-  expect(registry.history({node_id:'n3', ordinal:3})?.items[0]?.items[0]?.text).toBe('B');
+  expect(registry.history({node_id:'n3', ordinal:3})!.items[0]!.items![0]?.text).toBe('B');
   expect(() => typedHandoffRegistry({threadId:'t',attemptId:'a',turnId:'u',revision:1,total:2,refs:[{nodeId:'x',ordinal:1,text:'x'},{nodeId:'y',ordinal:1,text:'y'}]})).toThrow();
 });
