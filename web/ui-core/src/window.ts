@@ -310,7 +310,7 @@ export class ConversationWindow {
       if (outcome.phase === "unavailable") this.publishTerminalPresence(ref, cap, receipt, outcome.reason === "cancelled" ? "read-error" : outcome.reason);
       return outcome;
     }
-    const target = { ref, cap, handle, token: original, receipt, requestId: request.id, lease: outcome, stop: undefined as (() => void) | undefined };
+    const target = { ref, cap, handle, token: original, receipt, requestId: request.id, fresh: false, lease: outcome, stop: undefined as (() => void) | undefined };
     this.terminalTargets.set(key, target);
     target.stop = outcome.state.subscribe(() => this.applyTerminalRead(outcome));
     if (this.terminalTargets.get(key) !== target) target.stop();
@@ -322,7 +322,7 @@ export class ConversationWindow {
     if (id === undefined) { id = ++this.terminalIdentitySerial; this.terminalIdentity.set(value, id); }
     return id;
   }
-  private replaceTerminalTarget(target: { ref: WindowAcceptedSnapshot; cap: AcceptedCapability; handle: ThreadHandle; token: ThreadReadQualification; receipt: TerminalPersistedProof; requestId: SelectedRequestId; lease: OwnedTerminalReadLease; stop?: () => void }): void {
+  private replaceTerminalTarget(target: { ref: WindowAcceptedSnapshot; cap: AcceptedCapability; handle: ThreadHandle; token: ThreadReadQualification; receipt: TerminalPersistedProof; requestId: SelectedRequestId; fresh: boolean; lease: OwnedTerminalReadLease; stop?: () => void }): void {
     const ref = this.acceptedView.peek();
     if (!this.acceptedView.isCurrent(ref) || ref === target.ref) return;
     const request = Object.freeze({ id: `selected-${++this.terminalRequestSerial}` as SelectedRequestId, args: Object.freeze({ thread_id: target.handle.threadId, node_id: target.receipt.nodeIds[0], before: 99, after: 100, items: true }) });
@@ -330,7 +330,7 @@ export class ConversationWindow {
     target.stop?.(); target.stop = undefined;
     const next = target.handle.replaceTerminalRead(target.token, target.receipt, request);
     if (!("state" in next)) return;
-    target.ref = ref; target.requestId = request.id; target.lease = next;
+    target.ref = ref; target.requestId = request.id; target.fresh = true; target.lease = next;
     target.stop = next.state.subscribe(() => this.applyTerminalRead(next));
   }
 
@@ -369,7 +369,7 @@ export class ConversationWindow {
         const value = out.result.value;
         // Readback can only extend the same qualified selected run; revision changes
         // need a separate fresh transaction, never a silent rebind here.
-        if (value.thread_id !== target.handle.threadId || value.revision !== target.ref.revision || value.total < target.ref.total || value.items.length > 200) reason = "selection-gap";
+        if (value.thread_id !== target.handle.threadId || (!target.fresh && value.revision !== target.ref.revision) || value.total < target.ref.total || value.items.length > 200) reason = "selection-gap";
         else if (value.items.some(row => {
           const existing = target.ref.rows.find(saved => saved.selection?.ordinal === row.selection?.ordinal);
           return existing !== undefined && JSON.stringify(existing) !== JSON.stringify(row);
