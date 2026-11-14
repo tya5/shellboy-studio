@@ -944,7 +944,7 @@ export class ConversationWindow {
     const byKey = new Map(canonical.items.map(item => [item.key, item]));
     return prior.filter(fact => fact.proofRevision !== revision && fact.itemKeys.every(key => {
       const item = byKey.get(key);
-      return item?.classification?.id === "assistantText" && item.source.kind === "text" && item.source.textComplete === true;
+      return item?.source.kind === "text" && item.source.textComplete === true && item.source.text.length > 0;
     })).map(fact => Object.freeze({ ...fact, proofRevision: revision }));
   }
 
