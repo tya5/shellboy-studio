@@ -156,7 +156,7 @@ describe('direct local insertion plan', () => {
     const props = { items, sequence: [{kind:'conversation' as const,itemKey:'a'}, {kind:'conversation' as const,itemKey:'b'}],
       renderItem: () => <span>hidden</span>, isItemAbsent: () => true,
       localRegion: { placement: { kind:'qualified' as const, insertion:{kind:'beginning' as const} }, content: local,
-        slots: [{position:0, insertion:{kind:'conversation' as const,itemKey:'a'}, content:<div class="owned">A</div>}, {position:1, insertion:{kind:'conversation' as const,itemKey:'b'}, content:<div class="owned">B</div>}] } };
+        slots: [{position:0, content:<div class="owned">A</div>}, {position:1, content:<div class="owned">B</div>}] } };
     render(<ConversationItems {...props}/>, host);
     expect([...host.querySelectorAll('.owned')].map(node=>node.textContent)).toEqual(['A','B']);
     expect(host.querySelectorAll('.aggregate')).toHaveLength(0);

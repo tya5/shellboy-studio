@@ -38,7 +38,7 @@ interface Props {
   renderItem: (item: ConversationItem) => ComponentChildren;
   renderBefore?: (item: ConversationItem) => ComponentChildren;
   trailing?: ComponentChildren;
-  localRegion?:{placement:OwnSendPlacement;content:ComponentChildren;slots?:readonly {insertion:OwnSendInsertion;position:number;content:ComponentChildren}[];unqualified?:ComponentChildren};
+  localRegion?:{placement:OwnSendPlacement;content:ComponentChildren;slots?:readonly {position:number;content:ComponentChildren}[];unqualified?:ComponentChildren};
   isItemAbsent?: (item: ConversationItem) => boolean;
   isItemHidden?: (item: ConversationItem) => boolean;
   renderHeading?: (summary: ConversationToolSummary) => ComponentChildren;
@@ -52,6 +52,9 @@ export function ConversationItems({ items, toolSummaries = [], renderItem, rende
   if (normalizedSequence) {
     const byKey = new Map(items.map(item => [item.key, item]));
     const groups = new Map(normalizedGroups.map(group => [group.key, group]));
+    const slots = localRegion?.slots ?? [];
+    const emittedSlots = new Set<object>();
+    const emitSlotsAt = (position:number): ComponentChildren[] => slots.filter(slot => slot.position === position && !emittedSlots.has(slot)).map(slot => { emittedSlots.add(slot); return slot.content; });
     const content = (item: ConversationItem, work: boolean) => <div class={`conversation-row${!work && item.presentationContainer ? " conversation-answer-child" : ""}`} key={`item:${item.key}`} data-item-key={item.key} data-key={item.key} data-node={item.source.nodeId} data-work-item-key={work ? item.key : undefined}>{renderItem(item)}</div>;
     const rendered: { entry: NonNullable<Props["sequence"]>[number]; view: ComponentChildren; first:number; last:number }[] = [];
     for (let index = 0; index < normalizedSequence.length; index++) {
@@ -72,7 +75,7 @@ export function ConversationItems({ items, toolSummaries = [], renderItem, rende
           const child = byKey.get(childEntry.itemKey);
           if (!child || (child as ConversationItem & { presentationContainer?: string }).presentationContainer !== container) break;
           if (!isItemAbsent?.(child)) {
-            children.push(<Fragment key={`answer-child:${child.key}`}>{renderBefore?.(child)}{content(child, false)}</Fragment>);
+            children.push(<Fragment key={`answer-child:${child.key}`}>{renderBefore?.(child)}{content(child, false)}{emitSlotsAt(end)}</Fragment>);
           }
           end++;
         }
@@ -87,17 +90,15 @@ export function ConversationItems({ items, toolSummaries = [], renderItem, rende
       }))}</div>, first:index, last:index });
     }
     const region:ComponentChildren[]=[];
-    const slots = localRegion?.slots ?? [];
     if (localRegion?.placement.kind === "unqualified") region.push(localRegion.unqualified);
     const ownedSlots=[...slots].sort((a,b)=>a.position-b.position);
     let slotIndex=0;
     rendered.forEach(row=>{
-      while(slotIndex<ownedSlots.length&&ownedSlots[slotIndex]!.position<row.first)region.push(ownedSlots[slotIndex++]!.content);
+      while(slotIndex<ownedSlots.length&&ownedSlots[slotIndex]!.position<row.first){const slot=ownedSlots[slotIndex++]!;if(!emittedSlots.has(slot)){emittedSlots.add(slot);region.push(slot.content);}}
       region.push(row.view);
-      while(slotIndex<ownedSlots.length&&ownedSlots[slotIndex]!.position<=row.last)region.push(ownedSlots[slotIndex++]!.content);
+      while(slotIndex<ownedSlots.length&&ownedSlots[slotIndex]!.position<=row.last){const slot=ownedSlots[slotIndex++]!;if(!emittedSlots.has(slot)){emittedSlots.add(slot);region.push(slot.content);}}
     });
-    while(slotIndex<ownedSlots.length)region.push(ownedSlots[slotIndex++]!.content);
-    if(localRegion?.placement.kind === "qualified" && !ownedSlots.length)region.push(localRegion.content);
+    while(slotIndex<ownedSlots.length){const slot=ownedSlots[slotIndex++]!;if(!emittedSlots.has(slot)){emittedSlots.add(slot);region.push(slot.content);}}
     return <div class="conversation-items">{region}{trailing}</div>;
   }
   const rows: ComponentChildren[] = [];
