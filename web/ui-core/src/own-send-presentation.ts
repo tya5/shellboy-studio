@@ -102,11 +102,10 @@ export function ownSendPresentation<Ref>(input: OwnSendPresentationInput<Ref>): 
       entry.kind === "conversation" && insertion.kind === "conversation" ? entry.itemKey === insertion.itemKey :
       entry.kind === "work" && insertion.kind === "work" ? entry.groupKey === insertion.groupKey : false);
   }
-  const conflictSlots=conflict && placement.kind === "qualified" && reservationPosition >= 0 ? cohort.map(row=>({row,insertion:placement.insertion,position:reservationPosition})) : [];
-  const planSlots=conflict ? conflictSlots : positionedSlots;
+  const reservationSlots=placement.kind === "qualified" && reservationPosition >= 0 ? cohort.map(row=>({row,insertion:placement.insertion,position:reservationPosition})) : [];
+  const planSlots=conflict ? reservationSlots : allSlots ? positionedSlots : reservationSlots;
   const usableSlots=positionedSlots.length>0&&!conflict?positionedSlots:[];
-  const finalPlacement=placement.kind === "qualified" && cohort.length > 0 && !allSlots
-    ? Object.freeze({kind:"unqualified" as const,reason:"cohort-unplaced" as const}) : placement;
+  const finalPlacement=placement;
   // Fresh canonical replacement is independent of the old local placement proof.
   const freshReplacement=input.current&&!!input.ref;
   const transfer = complete && !conflict && freshReplacement;
