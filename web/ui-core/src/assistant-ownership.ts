@@ -39,8 +39,12 @@ export function assistantOwnership(association: DisplayAssociation, recordKey: s
   // Final membership is known before reserving any item; unknown siblings confer no authority.
   if (projection.items.some(item => item.classification?.id === 'unknown' || item.source.kind === 'unavailable')) return;
   const complete = ordinary.every(item => item.source.kind === 'text' && item.source.textComplete === true);
-  const nonempty = ordinary.some(item => item.source.kind === 'text' && !!item.source.text);
+  const nonempty = ordinary.every(item => item.source.kind === 'text' && !!item.source.text);
+  const canonical = complete && nonempty;
+  // Preview owns only unavailable members, never a separately complete saved sibling.
+  const members = canonical ? ordinary : ordinary.filter(item => item.source.kind === 'text'
+    && (!item.source.textComplete || !item.source.text));
   return Object.freeze({ scope: association.scope, attemptId: association.attemptId, turnId: association.turnId,
-    recordKey, containerKey: association.presentationContainer, proofRevision: revision, receiptRevision: revision, mode: complete && nonempty ? 'canonical' : 'preview',
-    itemKeys: Object.freeze(ordinary.map(item => item.key)), refs: Object.freeze(association.refs.map(ref => Object.freeze({ ...ref }))) });
+    recordKey, containerKey: association.presentationContainer, proofRevision: revision, receiptRevision: revision, mode: canonical ? 'canonical' : 'preview',
+    itemKeys: Object.freeze(members.map(item => item.key)), refs: Object.freeze(association.refs.map(ref => Object.freeze({ ...ref }))) });
 }

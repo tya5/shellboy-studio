@@ -1,6 +1,6 @@
 import { signal, type Signal, type ReadonlySignal } from "@preact/signals-core";
 import type { TerminalPersistedProof, HandoffRecord } from "./handoff";
-import type { HistoryWindowArgs, HistoryWindowResult } from "./protocol";
+import type { HistoryItem, HistoryWindowArgs, HistoryWindowResult } from "./protocol";
 import type { Outcome } from "./errors";
 import { Cancel } from "./operations";
 export type TerminalReadTicketId = string & { readonly terminalTicket: unique symbol };
@@ -26,18 +26,24 @@ export interface TerminalReadTicket { readonly id: TerminalReadTicketId; readonl
 export type TicketOutcome =
   | { readonly phase: "queued" | "reading"; readonly ticket: TerminalReadTicket }
   | { readonly phase: "settled"; readonly ticket: TerminalReadTicket; readonly result: Outcome<HistoryWindowResult> }
-  | { readonly phase: "unavailable"; readonly reason: "unsupported" | "budget-exhausted" | "capacity" | "cancelled" };
+  | { readonly phase: "unavailable"; readonly reason: "unsupported" | "budget-exhausted" | "capacity" | "cancelled" | "selection-gap" };
 export interface OwnedTerminalReadLease { readonly ticket: TerminalReadTicket; readonly state: ReadonlySignal<TicketOutcome>; cancel(): void }
 interface Marker { ticket: TerminalReadTicket; state: Signal<TicketOutcome>; leases: Set<OwnedTerminalReadLease>; valid: () => boolean; cancel: Cancel; detach?: () => void }
+function validRequest(request:SelectedCanonicalRequest):boolean{
+ const {args,selection}=request,before=args.before??0,after=args.after??0;
+ if(args.items!==true||!Number.isInteger(before)||!Number.isInteger(after)||before<0||after<0||before+after+1>200)return false;
+ return !selection||(Number.isSafeInteger(selection.first)&&Number.isSafeInteger(selection.last)&&Number.isSafeInteger(selection.revision)
+  &&selection.first>=0&&selection.last>=selection.first&&selection.last-selection.first+1<=1600&&selection.revision>=0
+  &&args.ordinal===selection.first&&args.node_id===undefined&&before===0&&after===Math.min(199,selection.last-selection.first));
+}
+
 /** Marker ownership is the existing receipt's scope, not the lifetime of a lease. */
 export class TerminalReadSlots {
   private markers = new Map<string, Marker>();
   private serial = 0;
   request(admission: SelectedReadAdmission, request: SelectedCanonicalRequest, valid: () => boolean, parent: Cancel): OwnedTerminalReadLease | TicketOutcome {
-    const args = request.args, before = args.before ?? 0, after = args.after ?? 0;
     if (!valid()) return { phase: "unavailable", reason: "cancelled" };
-    if (args.items !== true || !Number.isInteger(before) || !Number.isInteger(after) || before < 0 || after < 0 || before + after + 1 > 200)
-      return { phase: "unavailable", reason: "capacity" };
+    if (!validRequest(request)) return { phase: "unavailable", reason: "capacity" };
     const key = JSON.stringify(identity(admission));
     let marker = this.markers.get(key);
     if (!marker) {
@@ -65,6 +71,7 @@ export class TerminalReadSlots {
   }
 
   replace(admission: SelectedReadAdmission, request: SelectedCanonicalRequest, valid: () => boolean, parent: Cancel): OwnedTerminalReadLease | TicketOutcome {
+    if (!validRequest(request)) return {phase:'unavailable',reason:'capacity'};
     const key = JSON.stringify(identity(admission)), marker = this.markers.get(key);
     if (!marker || !valid() || !marker.valid() || marker.cancel.cancelled
       || !sameAdmission(marker.ticket.admission, admission) || marker.state.peek().phase !== "settled") return { phase: "unavailable", reason: "cancelled" };
@@ -85,13 +92,35 @@ export class TerminalReadSlots {
     marker.state.value = { phase: "reading", ticket: marker.ticket };
     if (!valid()) { marker.state.value = { phase: "unavailable", reason: "cancelled" }; return; }
     try {
-      const result = await read(marker.ticket.request.args, marker.cancel);
-      marker.state.value = valid() ? { phase: "settled", ticket: marker.ticket, result: structuredClone(result) }
-        : { phase: "unavailable", reason: "cancelled" };
+      const result = await this.readOwned(marker, valid, read);
+      marker.state.value = !valid() ? {phase:'unavailable',reason:'cancelled'} : typeof result==='string'
+        ? {phase:'unavailable',reason:result} : {phase:'settled',ticket:marker.ticket,result:structuredClone(result)};
     } finally { marker.detach?.(); }
     // A replacement can be queued synchronously by the settled callback. Consume
     // that one successor in this owned dispatch, not via resolver re-entry.
     if (followup && this.queued) await this.dispatch(takeRead, read, false);
+  }
+  private async readOwned(marker:Marker,valid:()=>boolean,
+    read:(args:HistoryWindowArgs,cancel:Cancel)=>Promise<Outcome<HistoryWindowResult>>):
+    Promise<Outcome<HistoryWindowResult>|'cancelled'|'budget-exhausted'|'selection-gap'>{
+    const request=marker.ticket.request,plan=request.selection;
+    if(!plan)return read(request.args,marker.cancel);
+    const rows:HistoryItem[]=[],ids=new Set<string>();let cursor:HistoryWindowResult|undefined;
+    for(let first=plan.first;first<=plan.last;first+=200){
+      if(!valid())return 'cancelled';
+      const count=Math.min(200,plan.last-first+1);
+      const page=await read({...request.args,ordinal:first,before:0,after:count-1},marker.cancel);
+      if(!valid())return 'cancelled';
+      if(!page.ok)return page;
+      const value=page.value;
+      if(value.thread_id!==request.args.thread_id||value.revision!==plan.revision||value.total<=plan.last
+        ||cursor&&value.total!==cursor.total||value.items.length!==count
+        ||value.items.some((row,index)=>!row.node_id||ids.has(row.node_id)||row.selection?.ordinal!==first+index))return 'selection-gap';
+      for(const row of value.items){if(ids.has(row.node_id!))return 'selection-gap';ids.add(row.node_id!);rows.push(row);}
+      cursor??=value;
+    }
+    if(!cursor)return 'selection-gap';
+    return{ok:true,value:{...cursor,items:rows}};
   }
   clear(): void {
     const old = [...this.markers.values()]; this.markers.clear();

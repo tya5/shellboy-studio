@@ -69,3 +69,17 @@ it.each(['invalidate','reconcile','discard','replace'] as const)('selected-ready
  else if(mode==='discard')h.discard('ended'); else h.stageAttempt(staged,{...proof});
  expect(h.isReadyReadCurrent(staged,proof.scope)).toBe(false);
 });
+
+it('live placement is frozen on the exact original source and later deltas cannot rebase it after a newer human row',()=>{
+ const h=new Handoff(fn=>fn());
+ h.apply({attempt_id:'a',gap:false,deltas:[{offset:0,reasoning:false,text:'A'}]},
+  {scope:'current',revision:1,anchor:{kind:'after-node',nodeId:'old-tail',ordinal:7}});
+ const first=h.records.peek()[0]!,placement=first.placement!;
+ expect(placement).toEqual({scope:'current',revision:1,anchor:{kind:'after-node',nodeId:'old-tail',ordinal:7}});
+ expect(Object.isFrozen(placement)).toBe(true);expect(Object.isFrozen(placement.anchor)).toBe(true);
+ h.apply({attempt_id:'a',gap:false,deltas:[{offset:1,reasoning:false,text:'B'}]},
+  {scope:'current',revision:2,anchor:{kind:'after-node',nodeId:'later-human',ordinal:8}});
+ expect(h.records.peek()[0]?.placement).toBe(placement);expect(h.records.peek()[0]?.text).toBe('AB');
+ expect(h.records.peek()[0]?.readyAttempt).toBeUndefined();expect(h.records.peek()[0]?.terminalPersisted).toBeUndefined();
+ h.discard('ended');expect(h.records.peek()).toEqual([]);expect(first.placement).toBe(placement);
+});

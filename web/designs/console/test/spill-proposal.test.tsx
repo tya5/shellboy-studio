@@ -1,3 +1,5 @@
+import '@preact/signals';
+import {publicConversationFixture,CurrentSavedView} from './conversation-fixture';
 // @vitest-environment happy-dom
 import { render } from 'preact';
 import { act } from 'preact/test-utils';
@@ -17,9 +19,9 @@ async function decode(rows:readonly HistoryItem[]){
   const result=await pending;link.stop();if(!result.ok)throw new Error(result.error.message);return result.value.items;
 }
 it.each(['execution','call'] as const)('retains scoped %s identity and open DOM across decoded replacement',async kind=>{
-  const fixture=await fixtureModel(),host=document.createElement('div');document.body.append(host);
+  const setup=await fixtureModel(),host=document.createElement('div');document.body.append(host);let cleanup=()=>{};
   try{
-    const step=fixture.model.conversation.value.flatMap(row=>row.type==='steps'?row.steps:[])[0]!;
+    const step=setup.model.conversation.value.flatMap(row=>row.type==='steps'?row.steps:[])[0]!;
     const ids=kind==='execution'?[step.executionId]:[];
     const executions=ids.map(execution_id=>({execution_id,state:'exited',command_excerpt:step.command??'safe command',exit_code:0}));
     const before=await decode([{node_id:'original-node',kind:'assistant_response',executions,selection:{ordinal:0},items:[{item_identity:'tool-item',kind:'tool_call',execution_ids:ids}]}]);
@@ -27,14 +29,16 @@ it.each(['execution','call'] as const)('retains scoped %s identity and open DOM 
     const keyScope=['synthetic-owner','synthetic-thread'];
     // Current saved DTO has execution associations but no public call ID.
     const original=kind==='execution'?projectHistoryWindowItems({revision:7,nodes:before,keyScope}).projection:projectHistoryWindowItems({revision:7,nodes:await decode([{...after[0]!,node_id:'prior-spill-node'}]),keyScope}).projection;
-    await act(async()=>render(<SavedConversationItems model={fixture.model} projection={original}/>,host));
+    const fixture=await publicConversationFixture({nodes:kind==='execution'?before:await decode([{...after[0]!,node_id:'prior-spill-node'}])});
+    cleanup=()=>{fixture.model.dispose();fixture.data.stop();};
+    await act(async()=>render(<CurrentSavedView fixture={fixture}/>,host));
     const group=host.querySelector('details[data-work-group]')! as HTMLDetailsElement;
     await act(async()=>{group.open=true;group.dispatchEvent(new Event('toggle'));});
     const row=host.querySelector('[data-work-item-key]')!;
     const nested=row.querySelector('details.work-element-row') as HTMLDetailsElement|null;
     if(kind==='execution'){expect(nested).not.toBeNull();expect(nested!.open).toBe(false);await act(async()=>{nested!.open=true;nested!.dispatchEvent(new Event('toggle'));});}
     const replaced=projectHistoryWindowItems({revision:7,nodes:after,keyScope}).projection;
-    await act(async()=>render(<SavedConversationItems model={fixture.model} projection={replaced}/>,host));
+    await act(async()=>{await fixture.publish({nodes:after});});
     expect(host.querySelector('details[data-work-group]')).toBe(group);expect(group.open).toBe(true);
     expect(host.querySelector('[data-work-item-key]')).toBe(row);
     if(nested){expect(row.querySelector('details.work-element-row')).toBe(nested);expect(nested.open).toBe(true);}
@@ -44,5 +48,5 @@ it.each(['execution','call'] as const)('retains scoped %s identity and open DOM 
     expect(row.querySelector('[data-tool-detail-unavailable="true"]')).not.toBeNull();
     if(kind==='call'){expect(row.textContent).toContain('execution content was not provided');expect(row.textContent).not.toContain(fixture.model.t.value('work.textUnavailable'));}
     expect(row.textContent).not.toContain('original-node');
-  }finally{render(null,host);host.remove();fixture.model.dispose();fixture.data.stop();}
+  }finally{render(null,host);host.remove();cleanup();setup.model.dispose();setup.data.stop();}
 });

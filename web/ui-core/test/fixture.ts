@@ -346,8 +346,9 @@ export { settle };
 
 
 /** Tests declare public owner inputs; the actual model owns publication and rendering authority. */
-export function fixtureConversation(input: { nodes: readonly HistoryItem[]; work?: readonly WorkItem[] }) {
+export function fixtureConversation(input: { nodes: readonly HistoryItem[]; work?: readonly WorkItem[]; revision?:number }) {
   return fixtureModel({ route: 'conversation', threadId: 'lead', capabilities: ['history.window'], configure(db) {
     db.history.lead = [...input.nodes]; db.work.lead = (input.work ?? []).map(item => ({ ...item }));
+    db.historyRevisions.lead=input.revision??1;
   } });
 }

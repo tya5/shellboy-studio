@@ -1,3 +1,5 @@
+import {publicConversationFixture,CurrentSavedView} from './conversation-fixture';
+import {settle,flush} from '../../../data/test/harness';
 // @vitest-environment happy-dom
 import {render} from 'preact';
 import {act} from 'preact/test-utils';
@@ -173,36 +175,41 @@ describe('direct local insertion plan', () => {
   });
 });
 
-it('SavedConversationItems preserves the same beginning cohort with empty accepted rows', async()=>{
- const f=await fixtureModel({capabilities:[],configure(db){db.threads={t:summary('t')};db.details.t=details('t');db.history.t=[];}});
- f.model.acceptedOwnMessages.value=[{threadId:'t',scope:'t',operationId:'op-a',text:'A',phase:'accepted',messageId:'a'},{threadId:'t',scope:'t',operationId:'op-b',text:'B',phase:'accepted',messageId:'b'}];
- const local=<section data-own-presentation=""><div class="msg">A</div><div class="msg">B</div></section>;
- const projection=projectSavedItems([]);
- render(<SavedConversationItems model={f.model} projection={projection} localRegion={{kind:"qualified",slots:[{position:{kind:"before-first" as const},content:<div class='msg'>A</div>},{position:{kind:"after" as const,index:1},content:<div class='msg'>B</div>}]}}/>,host);
- expect(host.querySelectorAll('.msg')).toHaveLength(2);
- expect([...host.querySelectorAll('.msg')].every(node=>node.isConnected&&node.ownerDocument===document&&host.contains(node))).toBe(true);
+async function beginningCohort(){
+ const f=await publicConversationFixture({nodes:[]});
+ for(const [text,id] of [['A','a'],['B','b']]){
+  const sent=f.model.send(text!);await flush();const call=f.t.calls('message.send').at(-1)!;
+  f.db.answered.add(call.id);f.t.ok(call.id,{message_id:id,thread_id:'lead'});if(!await sent)throw new Error('Actual local cohort send failed');
+ }
+ await settle(f.t,f.db);return f;
+}
+it('SavedConversationItems preserves the same beginning cohort with empty accepted rows',async()=>{
+ const f=await beginningCohort();
+ try{await act(async()=>render(<CurrentSavedView fixture={f}/>,host));
+  expect(host.querySelectorAll('.msg')).toHaveLength(2);expect([...host.querySelectorAll('[data-pending-own-message] .md')].map(node=>node.textContent)).toEqual(['A','B']);
+  expect([...host.querySelectorAll('.msg')].every(node=>node.isConnected&&node.ownerDocument===document&&host.contains(node))).toBe(true);
+ }finally{render(null,host);f.model.dispose();f.data.stop();}
 });
-
-it('SavedWindowContent preserves accepted beginning cohort through empty saved projection', async()=>{
- const f=await fixtureModel({configure(db){db.threads={t:summary('t')};db.details.t=details('t');db.history.t=[];}});
- const snapshot={rows:[],range:{first:0,last:-1},total:0,revision:2,generation:7,epoch:1,disposed:false,pending:false};
- const model=new Proxy(f.model,{get(target,key){return key==='longReader'?{value:{acceptedView:{isCurrent:()=>true}},peek:()=>({acceptedView:{isCurrent:()=>true}})}:Reflect.get(target,key);}});
- f.model.acceptedOwnMessages.value=[{threadId:'t',scope:'t',operationId:'op-a',text:'A',phase:'accepted',messageId:'a'},{threadId:'t',scope:'t',operationId:'op-b',text:'B',phase:'accepted',messageId:'b'}];
- const host=document.createElement('div');document.body.append(host);
- try { await act(async()=>render(<SavedWindowContent model={model} snapshot={snapshot}/>,host)); expect(host.querySelectorAll('.msg')).toHaveLength(2); expect([...host.querySelectorAll('.msg')].every(n=>n.isConnected&&host.contains(n))).toBe(true); } finally {render(null,host);host.remove();f.model.dispose();f.data.stop();}
+it('SavedWindowContent preserves accepted beginning cohort through empty saved projection',async()=>{
+ const f=await beginningCohort();
+ try{await act(async()=>render(<CurrentSavedView fixture={f}/>,host));expect(host.querySelectorAll('.msg')).toHaveLength(2);
+  expect(f.model.longReader.peek()!.acceptedView.peek().displayPlan?.localRegion.localRows.map(row=>row.text)).toEqual(['A','B']);
+  expect([...host.querySelectorAll('.msg')].every(node=>node.isConnected&&host.contains(node))).toBe(true);
+ }finally{render(null,host);f.model.dispose();f.data.stop();}
 });
-
-it('WindowedScroll preserves accepted cohort across real revision publication', async()=>{
- const r=await windowRig(0); const f=await fixtureModel(); const host=document.createElement('div');document.body.append(host);
- const model=new Proxy(f.model,{get(target,key){return key==='longReader'?{value:r.w,peek:()=>r.w}:Reflect.get(target,key);}});
- f.model.acceptedOwnMessages.value=[{threadId:'t',scope:'t',operationId:'op-a',text:'A',phase:'accepted',messageId:'a'},{threadId:'t',scope:'t',operationId:'op-b',text:'B',phase:'accepted',messageId:'b'}];
- const generations:number[]=[]; const renderAccepted=(snapshot: any)=>{generations.push(snapshot.generation);return <SavedWindowContent model={model} snapshot={snapshot}/>};
- try { await r.settle(); await act(async()=>render(<WindowedScroll model={model} win={r.w} renderRow={()=> <div/>} live={null} renderAcceptedView={renderAccepted}/>,host)); expect(host.querySelectorAll('[data-pending-own-message]')).toHaveLength(2); r.owner.append(2); r.w.changed(); await r.settle(); await act(async()=>render(<WindowedScroll model={model} win={r.w} renderRow={()=> <div/>} live={null} renderAcceptedView={renderAccepted}/>,host)); expect(host.querySelectorAll('[data-pending-own-message]')).toHaveLength(2); expect(generations.length).toBeGreaterThan(1); } finally {render(null,host);host.remove();r.w.dispose();r.data.stop();f.model.dispose();f.data.stop();}
+it('WindowedScroll preserves accepted cohort across real revision publication',async()=>{
+ const f=await beginningCohort(),reader=f.model.longReader.peek()!;const generations:number[]=[];
+ const view=(snapshot:import('../../../ui-core/src/window').WindowAcceptedSnapshot)=>{generations.push(snapshot.generation);return <SavedWindowContent model={f.model} snapshot={snapshot}/>;};
+ try{await act(async()=>render(<WindowedScroll model={f.model} win={reader} renderRow={()=><div/>} live={null} renderAcceptedView={view}/>,host));
+  expect(host.querySelectorAll('[data-pending-own-message]')).toHaveLength(2);
+  await act(async()=>{await f.publish({nodes:[{node_id:'note-1',kind:'event'},{node_id:'note-2',kind:'event'}]});});
+  expect(host.querySelectorAll('[data-pending-own-message]')).toHaveLength(2);expect(generations.length).toBeGreaterThan(1);
+ }finally{render(null,host);f.model.dispose();f.data.stop();}
 });
-
-it('OrderedHistory real owner path preserves A/B without parent rerender', async()=>{
- const r=await windowRig(0); const f=await fixtureModel(); const host=document.createElement('div');document.body.append(host);
- const model=new Proxy(f.model,{get(target,key){if(key==='longReader')return {value:r.w,peek:()=>r.w};if(key==='handle')return {value:r.handle,peek:()=>r.handle};return Reflect.get(target,key);}});
- const scope=r.handle.handoffScope(); f.model.acceptedOwnMessages.value=[{threadId:'t',scope,operationId:'op-a',text:'A',phase:'accepted',messageId:'a'},{threadId:'t',scope,operationId:'op-b',text:'B',phase:'accepted',messageId:'b'}];
- try { await r.settle(); await act(async()=>render(<OrderedHistory model={model} handle={r.handle} win={r.w} t={(key:string)=>key}/>,host)); expect(host.querySelectorAll('[data-pending-own-message]')).toHaveLength(2); r.owner.append(2); r.w.changed(); await r.settle(); await act(async()=>{await Promise.resolve();}); expect(host.querySelectorAll('[data-pending-own-message]')).toHaveLength(2); } finally {render(null,host);host.remove();r.w.dispose();r.data.stop();f.model.dispose();f.data.stop();}
+it('OrderedHistory real owner path preserves A/B without parent rerender',async()=>{
+ const f=await beginningCohort(),reader=f.model.longReader.peek()!,handle=f.model.handle.peek()!;
+ try{await act(async()=>render(<OrderedHistory model={f.model} handle={handle} win={reader} t={key=>key}/>,host));expect(host.querySelectorAll('[data-pending-own-message]')).toHaveLength(2);
+  await act(async()=>{await f.publish({nodes:[{node_id:'note-1',kind:'event'},{node_id:'note-2',kind:'event'}]});});
+  expect(host.querySelectorAll('[data-pending-own-message]')).toHaveLength(2);
+ }finally{render(null,host);f.model.dispose();f.data.stop();}
 });

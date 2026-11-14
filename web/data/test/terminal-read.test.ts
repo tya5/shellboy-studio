@@ -117,3 +117,38 @@ it('the existing ticket owns an immutable selected plan and equal RPC args canno
  expect(slots.request({kind:'persisted',receipt},{...selected,selection:{first:0,last:2,revision:3}},()=>true,parent)).toEqual({phase:'unavailable',reason:'cancelled'});
  expect(slots.isCurrent(lease)).toBe(true);
 });
+
+it.each([201,1600])('one actual selected lease assembles %i rows from original <=200-row pages at one revision',async count=>{
+ const slots=new TerminalReadSlots(),parent=new Cancel(),first=400;
+ const selected={...request,args:{thread_id:'t',ordinal:first,before:0,after:199,items:true},selection:{first,last:first+count-1,revision:2}};
+ const lease=slots.request({kind:'persisted',receipt},selected,()=>true,parent);
+ if(!('state' in lease))throw new Error('Expected actual paged lease');
+ let budget=8;const calls:{ordinal?:number;before?:number;after?:number}[]=[],states:string[]=[];
+ const stop=lease.state.subscribe(state=>states.push(state.phase));
+ await slots.dispatch(()=>budget>0&&(budget--,true),async args=>{
+  calls.push(args);const start=args.ordinal??-1,n=(args.after??0)+1;
+  return{ok:true,value:{thread_id:'t',revision:2,total:2400,items:Array.from({length:n},(_,index)=>({node_id:`node-${start+index}`,kind:'assistant_response',selection:{ordinal:start+index},
+   items:[{kind:'text',item_identity:'body',text:`R2:${start+index}`,text_complete:true}]}))}};
+ });
+ const out=lease.state.peek();expect(out.phase).toBe('settled');
+ if(out.phase!=='settled'||!out.result.ok)throw new Error('Missing complete paged result');
+ expect(out.result.value.items).toHaveLength(count);expect(out.result.value.items.map(row=>row.selection?.ordinal)).toEqual(Array.from({length:count},(_,i)=>first+i));
+ expect(calls).toHaveLength(Math.ceil(count/200));expect(budget).toBe(7);expect(calls.every(args=>args.before===0&&(args.after??200)<200)).toBe(true);
+ expect(states.filter(state=>state==='settled')).toHaveLength(1);expect(slots.isCurrent(lease)).toBe(true);stop();
+});
+it.each(['gap','revision','total','cancel','budget'] as const)('paged selected %s never exposes a partially assembled cut',async mode=>{
+ const slots=new TerminalReadSlots(),parent=new Cancel();let current=true,reads=0,budget=mode==='budget'?0:8;
+ const selected={...request,args:{thread_id:'t',ordinal:100,before:0,after:199,items:true},selection:{first:100,last:500,revision:2}};
+ const lease=slots.request({kind:'persisted',receipt},selected,()=>current,parent);
+ if(!('state' in lease))throw new Error('Expected actual paged lease');
+ const settled:number[]=[];const stop=lease.state.subscribe(state=>{if(state.phase==='settled'&&state.result.ok)settled.push(state.result.value.items.length);});
+ await slots.dispatch(()=>budget>0&&(budget--,true),async args=>{
+  reads++;const first=args.ordinal??-1,n=(args.after??0)+1;
+  if(reads===2&&mode==='cancel'){current=false;parent.cancel();}
+  const items=Array.from({length:n},(_,index)=>({node_id:`node-${first+index}`,selection:{ordinal:first+index},kind:'event',items:[]}));
+  if(reads===2&&mode==='gap')items.splice(1,1);
+  return{ok:true,value:{thread_id:'t',revision:reads===2&&mode==='revision'?3:2,total:reads===2&&mode==='total'?1001:1000,items}};
+ });
+ expect(settled).toEqual([]);expect(lease.state.peek()).toMatchObject({phase:'unavailable',reason:mode==='cancel'?'cancelled':mode==='budget'?'budget-exhausted':'selection-gap'});
+ expect(reads).toBe(mode==='budget'?0:2);stop();
+});

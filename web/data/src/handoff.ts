@@ -49,10 +49,14 @@ export const MAX_HANDOFF_BYTES = 1024 * 1024;
 export const MAX_HANDOFF_READS = 8;
 const bytes = (s: string) => new TextEncoder().encode(s).byteLength;
 export type HandoffStatus = 'streaming' | 'confirming' | 'failed' | 'ready';
+export type HandoffPathAnchor={readonly kind:'beginning'}|{readonly kind:'after-node';readonly nodeId:string;readonly ordinal:number};
+export interface HandoffPlacement {readonly scope:string;readonly revision:number;readonly anchor:HandoffPathAnchor|
+ {readonly kind:'after-record';readonly recordKey:string;readonly container:PresentationContainerId;readonly path:HandoffPathAnchor}}
 export interface HandoffRecord {
   readonly key: string;
   readonly presentationContainer: PresentationContainerId;
   readonly attemptId: string;
+  readonly placement?:HandoffPlacement;
   readonly text: string;
   readonly incomplete: boolean;
   readonly status: HandoffStatus;
@@ -104,14 +108,14 @@ export class Handoff {
   reconcile(): void { this.clearDisplay(); this.reads = MAX_HANDOFF_READS; this.epochValue++; }
   invalidate(): void { this.clearDisplay(); this.epochValue++; }
 
-  apply(frame: LiveFrame): void {
+  apply(frame: LiveFrame,placement?:HandoffPlacement): void {
     let h = this.held.find(h => h.attemptId === frame.attempt_id);
     if (h && (h.record.status === "ready" || (this.active !== h.attemptId && h.record.status !== "streaming"))) return;
     if (!h) {
       if (this.held.length + this.publicationSlots >= MAX_HANDOFF_RECORDS || this.blockedAttempt === frame.attempt_id) { this.overflowSig.value = true; this.blockedAttempt = frame.attempt_id; return; }
       if (this.active) this.finish();
       const source = new LiveText(this.schedule);
-      const record: HandoffRecord = { key: `handoff:${frame.attempt_id}`, presentationContainer: mintPresentationContainer(frame.attempt_id), attemptId: frame.attempt_id, text: '', incomplete: frame.gap, status: 'streaming', bodyAuthority: 'preview' };
+      const record: HandoffRecord = { key: `handoff:${frame.attempt_id}`, presentationContainer: mintPresentationContainer(frame.attempt_id), attemptId: frame.attempt_id, text: '', incomplete: frame.gap, status: 'streaming', bodyAuthority: 'preview', ...(placement?{placement:Object.freeze({...placement,anchor:Object.freeze({...placement.anchor})})}:{}) };
       h = { admitted: 0, attemptId: frame.attempt_id, source, stop: () => {}, record };
       const held = h;
       this.held.push(h);

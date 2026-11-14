@@ -100,7 +100,7 @@ export interface ThreadDetailObservation {
 
 export interface ThreadHandle extends Handle {
   captureDetail(): ThreadDetailObservation | undefined;
-  bindDisplayOwner(capture: () => DisplayTarget | undefined): () => void;
+  bindDisplayOwner(capture: () => DisplayTarget | undefined, capturePlacement?:()=>import("./handoff").HandoffPlacement|undefined): () => void;
   isDisplayOwnershipCurrent(record: HandoffRecord, generation: number): boolean;
   isReceiptObservationCurrent(record: HandoffRecord, receipt: TerminalPersistedProof): boolean;
   isTerminalReadCurrent(qualification: ThreadReadQualification, lease: OwnedTerminalReadLease): boolean;
@@ -154,7 +154,7 @@ const emptyPaged = <T>(): PagedState<T> => ({
 });
 
 class ThreadEntry {
-  displayOwner?: { capture: () => DisplayTarget | undefined };
+  displayOwner?: { capture: () => DisplayTarget | undefined; capturePlacement?:()=>import("./handoff").HandoffPlacement|undefined };
   refs = 0;
   closed = false;
   detailOwnerEpoch = -1;
@@ -424,9 +424,9 @@ export class ShellboyData {
       work: e.work,
       setWorkActive,
       preview: e.preview,
-      bindDisplayOwner: capture => {
+      bindDisplayOwner: (capture,capturePlacement) => {
         e.live.clearDisplay();
-        const owner = { capture }; e.displayOwner = owner;
+        const owner = { capture,capturePlacement }; e.displayOwner = owner;
         return () => { if (e.displayOwner === owner) { e.live.clearDisplay(); e.displayOwner = undefined; } };
       },
       isDisplayOwnershipCurrent: (record, generation) => readable() && e.live.isDisplayCurrent(record, generation),
@@ -601,7 +601,8 @@ export class ShellboyData {
         }
         break;
       case "live":
-        this.entries.get(f.thread_id)?.live.apply(f);
+        { const entry=this.entries.get(f.thread_id);
+          entry?.live.apply(f,entry.displayOwner?.capturePlacement?.()); }
         break;
       case "live_end": {
         const entry = this.entries.get(f.thread_id);
@@ -855,6 +856,8 @@ export class ShellboyData {
           if (!valid()) return;
         }
         if (!refs.length || typeof attempt.turn_id !== "string" || !attempt.turn_id || !["completed", "failed", "incomplete", "cancelled"].includes(attempt.state)) continue;
+        // Backpressure cannot replace the still-owned readable source with a staged record.
+        if (receiptBlocked.has(record.attemptId)) continue;
         const nodes = new Map<string, HistoryItem>();
         let revision: number | undefined;
         let total: number | undefined;

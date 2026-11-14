@@ -1,3 +1,4 @@
+import {publishControlledAttempt} from '../../../ui-core/test/controlled-window';
 // @vitest-environment happy-dom
 import { render } from 'preact';
 import { act } from 'preact/test-utils';
@@ -22,7 +23,7 @@ it('consumes actual immutable Window publications without deriving item bodies f
     const ref=r.w.acceptedView.peek(),first=host.querySelector('[data-item-key]');
     expect(seen.at(-1)).toBe(ref);expect(Object.isFrozen(ref.rows)).toBe(true);
     expect([...host.querySelectorAll('[data-item-key]')].map(el=>el.getAttribute('data-node'))).toEqual(ref.rows.flatMap(row=>[row.node_id,row.node_id]));
-    await act(async()=>r.w.layoutChanged());const next=r.w.acceptedView.peek();
+    await act(async()=>{publishControlledAttempt(r.w,'item-view-successor');});const next=r.w.acceptedView.peek();
     expect(next).not.toBe(ref);expect(seen.at(-1)).toBe(next);expect(host.querySelector('[data-item-key]')).toBe(first);
     expect(host.querySelector('[data-accepted-generation]')?.getAttribute('data-accepted-generation')).toBe(String(next.generation));
     expect(host.querySelector('[data-accepted-revision]')?.getAttribute('data-accepted-revision')).toBe(String(next.revision));

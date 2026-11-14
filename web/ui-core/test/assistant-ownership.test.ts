@@ -47,3 +47,11 @@ it.each(['ordinal','kind'] as const)('cannot borrow body ownership from a wrong 
  const node=answer();expect(assistantOwnership(mismatched,'original',[node],7)).toBeUndefined();
  expect(node.items?.[0]).toMatchObject({text:'Same body',text_complete:true});
 });
+
+it.each(['partial','empty'] as const)('a %s companion cannot suppress a separately complete saved member or retire the original',mode=>{
+ const first=answer(),second:HistoryItem={node_id:'second',kind:'assistant_response',selection:{ordinal:10},items:[{kind:'text',item_identity:'companion',text:mode==='partial'?'Prefix':'',text_complete:mode==='empty'}]};
+ const refs=[...association.refs,{nodeId:'second',ordinal:10,kind:'assistant_response'}];
+ const decision=assistantOwnership({...association,refs},'original',[first,second],7)!;
+ expect(decision.mode).toBe('preview');expect(decision.itemKeys).toEqual([JSON.stringify(['second','companion'])]);
+ expect(decision.refs).toEqual(refs);expect(decision.containerKey).toBe(association.presentationContainer);
+});

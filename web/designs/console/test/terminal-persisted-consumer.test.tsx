@@ -1,3 +1,5 @@
+import {attemptWork} from '../../../data/test/work-fixture';
+import {typedSelectedCoverageWindow} from '../../../ui-core/test/typed-handoff-fixture';
 // @vitest-environment happy-dom
 import '@preact/signals';
 import {signal} from '@preact/signals-core';
@@ -11,6 +13,17 @@ import type {DesignContext} from '../../../ui-core/src';
 import {loadPrefs} from '../../../ui-core/src/prefs';
 import {App} from '../screens/App';
 
+function selectedReply(call:{readonly args?:unknown},revision:number,nodes:readonly HistoryItem[]){
+ const args=call.args;
+ if(!args||typeof args!=='object'||Array.isArray(args))throw new Error('Expected public window args');
+ return{ok:true as const,result:typedSelectedCoverageWindow('t',revision,nodes.length,nodes,{
+  node_id:'node_id' in args&&typeof args.node_id==='string'?args.node_id:undefined,
+  ordinal:'ordinal' in args&&typeof args.ordinal==='number'?args.ordinal:undefined,
+  before:'before' in args&&typeof args.before==='number'?args.before:undefined,
+  after:'after' in args&&typeof args.after==='number'?args.after:undefined,
+ })};
+}
+
 for(const mode of ['terminal-publication-trace','empty-complete','truncated','partial','budget','nonterminal','empty','wrong-attempt'] as const)it(`actual terminal persisted consumer: ${mode}`,async()=>{
  let ended=false,revision=7;
  const nodes:HistoryItem[]=[
@@ -21,8 +34,8 @@ for(const mode of ['terminal-publication-trace','empty-complete','truncated','pa
  const f=await fixtureModel({capabilities:['live.text','history.window'],configure(db){
   db.threads={t:summary('t')};db.details.t=details('t');db.history.t=nodes;
   const base=db.answer.bind(db);db.answer=call=>{
-   if(call.command==='status')return {ok:true,result:{items:ended?[{kind:'attempt',id:mode==='wrong-attempt'?'other-attempt':'attempt',attempt_id:mode==='wrong-attempt'?'other-attempt':'attempt',thread_id:'t',state:mode==='nonterminal'?'inflight':'completed',response_nodes_truncated:mode==='truncated',response_nodes:mode==='empty'?[]:[{node_id:'unready',ordinal:2,kind:'message'},{node_id:'saved',ordinal:1,kind:'message'}]}]:[]}};
-   if(call.command==='history.window')return {ok:true,result:{thread_id:'t',revision,total:3,items:nodes}};
+   if(call.command==='status')return {ok:true,result:{items:ended?[attemptWork({threadId:'t',attemptId:mode==='wrong-attempt'?'other-attempt':'attempt',turnId:'turn',state:mode==='nonterminal'?'running':'completed',truncated:mode==='truncated',refs:mode==='empty'?[]:[{node_id:'saved',ordinal:1,kind:'assistant_response'},{node_id:'unready',ordinal:2,kind:'assistant_response'}]})]:[]}};
+   if(call.command==='history.window')return selectedReply(call,revision,nodes);
    return base(call);
   };
  }});
@@ -52,8 +65,9 @@ for(const mode of ['terminal-publication-trace','empty-complete','truncated','pa
   const publications:typeof before[]=[];const stop=win.acceptedView.subscribe(ref=>publications.push(ref));
   ended=true;await act(async()=>{f.t.push({t:'live_end',thread_id:'t'});await settle(f.t,f.db);await flush(24);});stop();
   expect(host.textContent).toContain('Independent user');expect(host.textContent).toContain('Available saved answer');
-  if(mode==='partial')expect(host.textContent).toContain('Available partial prefix');
-  else expect(host.textContent).not.toContain('Available partial prefix');
+  // Incomplete assistant text cannot borrow the independent partial-human display contract.
+  expect(host.textContent).not.toContain('Available partial prefix');
+  if(mode==='partial')expect(win.acceptedView.peek().rows[2]?.items?.[0]).toMatchObject({kind:'text',text:'Available partial prefix',text_complete:false});
   if(['terminal-publication-trace','empty-complete','truncated','partial','budget'].includes(mode)){
    expect(host.textContent).toContain('Original live answer');
    const current=win.acceptedView.peek();expect(current.terminalPersistedAttempts).toHaveLength(1);
@@ -88,7 +102,7 @@ for(const resultMode of ['complete','partial','error','cancel'] as const)it(`act
  const f=await fixtureModel({capabilities:['live.text','history.window'],configure(db){
   db.threads={t:summary('t')};db.details.t=details('t');db.history.t=[available];
   const base=db.answer.bind(db);db.answer=call=>{
-   if(call.command==='status')return {ok:true,result:{items:ended?[{kind:'attempt',id:'terminal',attempt_id:'terminal',thread_id:'t',state:'completed',response_nodes:[{node_id:'missing',ordinal:1,kind:'message'}]}]:[]}};
+   if(call.command==='status')return {ok:true,result:{items:ended?[attemptWork({threadId:'t',attemptId:'terminal',turnId:'terminal-turn',state:'completed',truncated:true,refs:[{node_id:'missing',ordinal:1,kind:'assistant_response'}]})]:[]}};
    if(call.command==='history.window'){
     return {ok:true,result:{thread_id:'t',revision:1,total:1,items:[available]}};
    }
@@ -99,18 +113,22 @@ for(const resultMode of ['complete','partial','error','cancel'] as const)it(`act
  const context:DesignContext={model:f.model,prefs:signal(loadPrefs({read:()=>null,write:()=>{}},[{name:'console',themes:[{name:'light'}]}])),setPrefs:()=>{},designs:[],submitToken:async()=>false};
  try{
   await act(async()=>{render(<App context={context}/>,host);await settle(f.t,f.db);});
-  await act(async()=>{f.t.push({t:'live',thread_id:'t',attempt_id:'terminal',gap:false,deltas:[{offset:0,reasoning:false,text:'Live before exact receipt'}]});await flush(24);});
-  expect(host.textContent).toContain('Live before exact receipt');
+  await act(async()=>{f.t.push({t:'live',thread_id:'t',attempt_id:'terminal',gap:false,deltas:[{offset:0,reasoning:false,text:''}]});await flush(24);});
+  expect(host.querySelector('[data-assistant-presence]')).not.toBeNull();
   const send=f.t.send.bind(f.t);f.t.send=frame=>{const sent=send(frame);if(frame.t==='call'&&frame.command==='history.window'&&(frame.args as {node_id?:string}).node_id==='missing')f.db.answered.add(frame.id);return sent;};
   ended=true;await act(async()=>{f.t.push({t:'live_end',thread_id:'t'});await settle(f.t,f.db);await flush(24);});
   const read=f.t.calls('history.window').filter(call=>(call.args as {node_id?:string}).node_id==='missing');expect(read).toHaveLength(1);
   const held=read[0]!;f.db.answered.add(held.id);
-  expect(host.textContent).toContain('Live before exact receipt');expect(host.textContent).toContain('Already available unchanged');
+  expect(host.querySelector('[data-live-overlay]')).toBeNull();expect(host.textContent).toContain('Already available unchanged');
   expect(host.querySelector('[data-terminal-phase="reading"]')?.closest('[data-work-group]')).not.toBeNull();
   expect(host.querySelector('[data-terminal-phase="reading"] .work-element-row__line')?.getAttribute('title')).toBe('Saved-history confirmation');
   expect(host.querySelector('[data-terminal-phase="reading"] [data-state-source="client"]')?.getAttribute('data-state-value')).toBe('read-inflight');
   expect(host.querySelector('[data-terminal-phase="reading"]')?.textContent).toContain('CLIENT');
   const before=f.model.longReader.peek()!.acceptedView.peek();
+  const actual=f.model.handle.peek()!.handoff.peek()[0]!;
+  expect(actual.text).toBe('');expect(actual.readyAttempt).toBeUndefined();
+  expect(f.model.handle.peek()!.isReceiptObservationCurrent(actual,actual.terminalPersisted!)).toBe(true);
+  expect(f.model.handle.peek()!.isDisplayOwnershipCurrent(actual,before.generation)).toBe(false);
   if(resultMode==='cancel')await act(async()=>{f.model.navigate({view:'threads'});await flush(12);});
   await act(async()=>{
    if(resultMode==='error')f.t.ownerError(held.id,'synthetic_read_failure','synthetic read failure');
@@ -134,8 +152,8 @@ it('observes ninth same-scope exact terminal receipt backpressure separately fro
  const f=await fixtureModel({capabilities:['live.text','history.window'],configure(db){
   db.threads={t:summary('t')};db.details.t=details('t');db.history.t=nodes;
   const base=db.answer.bind(db);db.answer=call=>{
-   if(call.command==='status')return {ok:true,result:{items:ended?[{kind:'attempt',id:`attempt-${active}`,attempt_id:`attempt-${active}`,thread_id:'t',state:'completed',response_nodes_truncated:false,response_nodes:[{node_id:`saved-${active}`,ordinal:active-1,kind:'message'}]}]:[]}};
-   if(call.command==='history.window')return {ok:true,result:{thread_id:'t',revision:1,total:9,items:nodes}};
+   if(call.command==='status')return {ok:true,result:{items:ended?[{kind:'attempt',id:`attempt-${active}`,attempt_id:`attempt-${active}`,thread_id:'t',state:'completed',turn_id:`turn-${active}`,response_nodes_truncated:active===9,response_nodes:[{node_id:active===9?'missing-ninth':`saved-${active}`,ordinal:active===9?9:active-1,kind:'assistant_response'}]}]:[]}};
+   if(call.command==='history.window')return selectedReply(call,1,nodes);
    return base(call);
   };
  }});
@@ -147,7 +165,7 @@ it('observes ninth same-scope exact terminal receipt backpressure separately fro
   const handle=f.model.handle.peek()!,scope=handle.handoffScope();
   for(active=1;active<=9;active++){
    ended=false;
-   await act(async()=>{f.t.push({t:'live',thread_id:'t',attempt_id:`attempt-${active}`,gap:false,deltas:[{offset:0,reasoning:false,text:active===9?'Preview 9':''} ]});await flush(12);});
+   await act(async()=>{f.t.push({t:'live',thread_id:'t',attempt_id:`attempt-${active}`,gap:false,deltas:[{offset:0,reasoning:false,text:active===9?'Preview 9':`Readable ${active}`} ]});await flush(12);});
    ended=true;
    await act(async()=>{f.t.push({t:'live_end',thread_id:'t'});await settle(f.t,f.db);await flush(12);});
    // Exercise only the existing explicit Retry budget; do not refill implicitly.
@@ -179,8 +197,8 @@ it('qualified ninth readable preview transfers only its exact FINAL bundle, not 
  const f=await fixtureModel({capabilities:['live.text','history.window'],configure(db){
   db.threads={t:summary('t')};db.details.t=details('t');db.history.t=nodes;
   const base=db.answer.bind(db);db.answer=call=>{
-   if(call.command==='status')return {ok:true,result:{items:ended?[{kind:'attempt',id:`qualified-${active}`,attempt_id:`qualified-${active}`,thread_id:'t',turn_id:`turn-${active}`,state:'completed',response_nodes_truncated:false,response_nodes:[{node_id:`owned-node-${active}`,ordinal:0,kind:'message'}]}]:[]}};
-   if(call.command==='history.window')return {ok:true,result:{thread_id:'t',revision:1,total:nodes.length,items:nodes}};
+   if(call.command==='status')return {ok:true,result:{items:ended?[{kind:'attempt',id:`qualified-${active}`,attempt_id:`qualified-${active}`,thread_id:'t',turn_id:`turn-${active}`,state:'completed',response_nodes_truncated:false,response_nodes:[{node_id:`owned-node-${active}`,ordinal:active-1,kind:'assistant_response'}]}]:[]}};
+   if(call.command==='history.window')return selectedReply(call,1,nodes);
    return base(call);
   };
  }});
@@ -191,11 +209,11 @@ it('qualified ninth readable preview transfers only its exact FINAL bundle, not 
   const handle=f.model.handle.peek()!,scope=handle.handoffScope();
   for(active=1;active<=9;active++){
    ended=false;
-   // Empty previews establish receipt backpressure without retaining eight readable owners.
-   await act(async()=>{f.t.push({t:'live',thread_id:'t',attempt_id:`qualified-${active}`,gap:false,deltas:[{offset:0,reasoning:false,text:active===9?text:''}]});await flush(12);});
+   // Eight genuine readable proofs retire their originals before the next readable owner.
+   await act(async()=>{f.t.push({t:'live',thread_id:'t',attempt_id:`qualified-${active}`,gap:false,deltas:[{offset:0,reasoning:false,text:active===9?text:`Readable ${active}`}]});await flush(12);});
    ended=true;
    await act(async()=>{f.t.push({t:'live_end',thread_id:'t'});await settle(f.t,f.db);await flush(12);});
-   await act(async()=>{const retry=handle.retryHandoff();await settle(f.t,f.db);await retry;await flush(12);});
+   if(active<=8)await act(async()=>{const retry=handle.retryHandoff();await settle(f.t,f.db);await retry;await flush(12);});
    expect(handle.handoffScope()).toBe(scope);
    if(active<=8)expect(handle.handoff.peek()).toHaveLength(0);
   }
@@ -217,7 +235,7 @@ it('readable owned preview survives terminal persistence while exact body is hel
  const f=await fixtureModel({capabilities:['live.text','history.window'],configure(db){
   db.threads={t:summary('t')};db.details.t=details('t');db.history.t=[user];
   const base=db.answer.bind(db);db.answer=call=>{
-   if(call.command==='status')return {ok:true,result:{items:ended?[{kind:'attempt',id:'owned-attempt',attempt_id:'owned-attempt',thread_id:'t',turn_id:'owned-turn',state:'completed',response_nodes_truncated:false,response_nodes:[{node_id:'held-answer',ordinal:0,kind:'message'}]}]:[]}};
+   if(call.command==='status')return {ok:true,result:{items:ended?[{kind:'attempt',id:'owned-attempt',attempt_id:'owned-attempt',thread_id:'t',turn_id:'owned-turn',state:'completed',response_nodes_truncated:false,response_nodes:[{node_id:'held-answer',ordinal:1,kind:'assistant_response'}]}]:[]}};
    if(call.command==='history.window')return {ok:true,result:{thread_id:'t',revision:1,total:1,items:[user]}};
    return base(call);
   };

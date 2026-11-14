@@ -227,7 +227,7 @@ describe("Conversation live text", () => {
 
   it("keeps the live answer before a later human row in the windowed reader", async () => {
     const owner = new WindowOwner(8);
-    owner.decorate = (i, item) => i === 8 ? { ...item, kind: "user", excerpt: "Window human" } : item;
+    owner.decorate = (i, item) => i === 8 ? { ...item, kind: "user", excerpt: "Forbidden aggregate human", items:[{kind:"text",item_identity:"body",text:"Window human",text_complete:true}] } : item;
     const { model, t, db } = await fixtureModel({ capabilities: ["live.text", "history.window"], configure(db) {
       const base = db.answer.bind(db);
       db.answer = (c) => c.command === "history.window" ? owner.answer(c) : base(c);

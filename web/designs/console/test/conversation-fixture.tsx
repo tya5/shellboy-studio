@@ -3,7 +3,7 @@ import {fixtureConversation} from '../../../ui-core/test/fixture';
 import {settle} from '../../../data/test/harness';
 import type {HistoryItem,WorkItem} from '../../../data/src/protocol';
 
-type PublicConversationInput={readonly nodes:readonly HistoryItem[];readonly work?:readonly WorkItem[]};
+type PublicConversationInput={readonly nodes:readonly HistoryItem[];readonly work?:readonly WorkItem[];readonly revision?:number};
 /** Public owner inputs enter the real model once; no projection or display-plan fixture authority. */
 export async function publicConversationFixture(input:PublicConversationInput){
  const fixture=await fixtureConversation(input);
