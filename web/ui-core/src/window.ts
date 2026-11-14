@@ -224,19 +224,24 @@ export class ConversationWindow {
       if (consumed || observations.length > 8 || !qualified() || !this.acceptedView.isCurrent(expected)
         || observations.some(item => !item.lease.current() || !handle.handoff.peek().includes(item.lease.original))) return false;
       consumed = true;
-      const decisions = observations.flatMap(item => {
-        if (!item.association || item.association.scope !== scope || item.association.attemptId !== item.lease.original.attemptId) return [];
+      const decisionByAttempt = new Map((expected.assistantOwnership ?? []).map(decision => [decision.attemptId, decision]));
+      for (const item of observations) {
+        if (!item.association || item.association.scope !== scope || item.association.attemptId !== item.lease.original.attemptId) continue;
         const result = assistantOwnership(item.association, item.lease.original.key, expected.rows, expected.revision!);
-        return result ? [result] : [];
-      });
+        if (result) decisionByAttempt.set(result.attemptId, result);
+      }
+      const decisions = [...decisionByAttempt.values()];
       const receipts = [...(this.terminalCapability === cap ? this.terminalPersistedAttempts : [])];
       for (const item of observations) if (item.receipt && item.receipt.scope === scope
         && item.receipt.attemptId === item.lease.original.attemptId && !receipts.some(receipt => receipt.attemptId === item.receipt!.attemptId)) {
         if (receipts.length >= 8) return false;
         receipts.push(item.receipt);
       }
-      const generation = this.acceptedGeneration + 1;
       const presence = receipts.flatMap(receipt => { const result = terminalPresence(receipt, expected.rows); return result ? [result] : []; });
+      if (JSON.stringify(decisions) === JSON.stringify(expected.assistantOwnership ?? [])
+        && JSON.stringify(receipts) === JSON.stringify(expected.terminalPersistedAttempts ?? [])
+        && JSON.stringify(presence) === JSON.stringify(expected.terminalPresence ?? [])) return true;
+      const generation = this.acceptedGeneration + 1;
       const staged = this.acceptedView.stage({ ...expected, generation, assistantOwnership: decisions,
         terminalPersistedAttempts: receipts, terminalPresence: presence }, cap);
       if (!qualified() || !this.acceptedView.isCurrent(expected) || observations.some(item => !item.lease.current() || !handle.handoff.peek().includes(item.lease.original))) return false;
