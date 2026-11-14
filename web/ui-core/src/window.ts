@@ -150,7 +150,7 @@ export class ConversationWindow {
   private terminalIdentity = new WeakMap<object, number>();
   private terminalPreparedRequests = new Map<string, { refId: number; capId: number; tokenId: number; argsKey: string; request: import("../../data/src/terminal-read").SelectedCanonicalRequest }>();
   private terminalTargets = new Map<string, { ref: WindowAcceptedSnapshot; cap: AcceptedCapability; handle: ThreadHandle; token: ThreadReadQualification;
-    receipt: TerminalPersistedProof; requestId: SelectedRequestId; lease: OwnedTerminalReadLease; stop?: () => void }>();
+    receipt: TerminalPersistedProof; requestId: SelectedRequestId; mode: "same-revision" | "fresh-window"; lease: OwnedTerminalReadLease; stop?: () => void }>();
   private terminalPersistedAttempts: readonly TerminalPersistedProof[] = [];
   private terminalCapability: AcceptedCapability | undefined;
   private retiredAttempts: readonly RetiredAttempt[] = [];
@@ -310,7 +310,7 @@ export class ConversationWindow {
       if (outcome.phase === "unavailable") this.publishTerminalPresence(ref, cap, receipt, outcome.reason === "cancelled" ? "read-error" : outcome.reason);
       return outcome;
     }
-    const target = { ref, cap, handle, token: original, receipt, requestId: request.id, fresh: false, lease: outcome, stop: undefined as (() => void) | undefined };
+    const target = { ref, cap, handle, token: original, receipt, requestId: request.id, mode: "same-revision", lease: outcome, stop: undefined as (() => void) | undefined };
     this.terminalTargets.set(key, target);
     target.stop = outcome.state.subscribe(() => this.applyTerminalRead(outcome));
     if (this.terminalTargets.get(key) !== target) target.stop();
@@ -322,7 +322,7 @@ export class ConversationWindow {
     if (id === undefined) { id = ++this.terminalIdentitySerial; this.terminalIdentity.set(value, id); }
     return id;
   }
-  private replaceTerminalTarget(target: { ref: WindowAcceptedSnapshot; cap: AcceptedCapability; handle: ThreadHandle; token: ThreadReadQualification; receipt: TerminalPersistedProof; requestId: SelectedRequestId; fresh: boolean; lease: OwnedTerminalReadLease; stop?: () => void }): void {
+  private replaceTerminalTarget(target: { ref: WindowAcceptedSnapshot; cap: AcceptedCapability; handle: ThreadHandle; token: ThreadReadQualification; receipt: TerminalPersistedProof; requestId: SelectedRequestId; mode: "same-revision" | "fresh-window"; lease: OwnedTerminalReadLease; stop?: () => void }): void {
     const ref = this.acceptedView.peek();
     if (!this.acceptedView.isCurrent(ref) || ref === target.ref) return;
     const request = Object.freeze({ id: `selected-${++this.terminalRequestSerial}` as SelectedRequestId, args: Object.freeze({ thread_id: target.handle.threadId, node_id: target.receipt.nodeIds[0], before: 99, after: 100, items: true }) });
@@ -330,7 +330,7 @@ export class ConversationWindow {
     target.stop?.(); target.stop = undefined;
     const next = target.handle.replaceTerminalRead(target.token, target.receipt, request);
     if (!("state" in next)) return;
-    target.ref = ref; target.requestId = request.id; target.fresh = true; target.lease = next;
+    target.ref = ref; target.requestId = request.id; target.mode = "fresh-window"; target.lease = next;
     target.stop = next.state.subscribe(() => this.applyTerminalRead(next));
   }
 
@@ -369,7 +369,7 @@ export class ConversationWindow {
         const value = out.result.value;
         // Readback can only extend the same qualified selected run; revision changes
         // need a separate fresh transaction, never a silent rebind here.
-        if (value.thread_id !== target.handle.threadId || (!target.fresh && value.revision !== target.ref.revision) || value.total < target.ref.total || value.items.length > 200) reason = "selection-gap";
+        if (value.thread_id !== target.handle.threadId || (target.mode === "same-revision" && value.revision !== target.ref.revision) || value.total < target.ref.total || value.items.length > 200) reason = "selection-gap";
         else if (value.items.some(row => {
           const existing = target.ref.rows.find(saved => saved.selection?.ordinal === row.selection?.ordinal);
           return existing !== undefined && JSON.stringify(existing) !== JSON.stringify(row);
@@ -379,13 +379,14 @@ export class ConversationWindow {
           reason = "partial-items";
         } else {
           const merged = new Map<number, HistoryItem>();
-          for (const row of [...target.ref.rows, ...value.items]) {
+          for (const row of target.mode === "fresh-window" ? value.items : [...target.ref.rows, ...value.items]) {
             const ordinal = row.selection?.ordinal;
             if (ordinal === undefined || !Number.isSafeInteger(ordinal) || ordinal < 0 || ordinal >= value.total || !row.node_id
               || (merged.has(ordinal) && merged.get(ordinal)!.node_id !== row.node_id)) { reason = "selection-gap"; break; }
             merged.set(ordinal, row);
           }
           const ordinals = [...merged.keys()].sort((a, b) => a - b);
+          if (target.mode === "fresh-window" && (ordinals[0] !== 0 || ordinals.length !== value.total)) reason = "selection-gap";
           if (reason !== "selection-gap" && ordinals.length && ordinals.length <= 200 && ordinals.at(-1)! - ordinals[0]! + 1 === ordinals.length) {
             const rows = ordinals.map(i => merged.get(i)!);
             const buckets = new Map(this.buckets), copied = new Set<number>();
@@ -401,7 +402,7 @@ export class ConversationWindow {
               const presence = terminalPresence(target.receipt, rows, "missing-candidate");
               const next = [...(target.ref.terminalPresence ?? []).filter(p => p.scope !== target.receipt.scope || p.attemptId !== target.receipt.attemptId), ...(presence ? [presence] : [])];
               const generation = this.acceptedGeneration + 1;
-              const staged = this.acceptedView.stage({ ...target.ref, generation, rows, range: { first: ordinals[0]!, last: ordinals.at(-1)! }, total: value.total, terminalPresence: next }, target.cap);
+              const staged = this.acceptedView.stage({ ...target.ref, generation, rows, revision: target.mode === "fresh-window" ? value.revision : target.ref.revision, range: { first: ordinals[0]!, last: ordinals.at(-1)! }, total: value.total, terminalPresence: next }, target.cap);
               if (!target.handle.isReadQualificationCurrent(target.token) || !this.acceptedView.isCurrent(target.ref)) return false;
               this.buckets = buckets; this.total = value.total; this.terminalPresence = next; this.acceptedGeneration = generation;
               if (!this.acceptedView.commit(staged)) return false;
@@ -415,7 +416,7 @@ export class ConversationWindow {
     }
     const next = this.publishTerminalPresence(target.ref, target.cap, target.receipt, reason, out.phase === "queued" ? "pending" : out.phase === "reading" ? "reading" : "settled");
     if (!next || !target.handle.isReadQualificationCurrent(target.token)) return false;
-    if (reason === "selection-gap" && out.phase === "settled" && out.result.ok && out.result.value.revision !== target.ref.revision) {
+    if (target.mode === "same-revision" && reason === "selection-gap" && out.phase === "settled" && out.result.ok && out.result.value.revision !== target.ref.revision) {
       // The presence publication above is the boundary: replace only after its
       // successor is current, while the old lease remains non-authoritative.
       this.replaceTerminalTarget(target);

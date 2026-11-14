@@ -50,7 +50,7 @@ export class TerminalReadSlots {
     return this.request(receipt, request, valid, parent);
   }
   get queued(): boolean { return [...this.markers.values()].some(m => m.state.peek().phase === "queued"); }
-  async dispatch(takeRead: () => boolean, read: (args: HistoryWindowArgs, cancel: Cancel) => Promise<Outcome<HistoryWindowResult>>): Promise<void> {
+  async dispatch(takeRead: () => boolean, read: (args: HistoryWindowArgs, cancel: Cancel) => Promise<Outcome<HistoryWindowResult>>, followup = true): Promise<void> {
     const marker = [...this.markers.values()].find(m => m.state.peek().phase === "queued");
     if (!marker) return;
     const valid = () => marker.valid() && !marker.cancel.cancelled && marker.leases.size > 0;
@@ -62,6 +62,9 @@ export class TerminalReadSlots {
       const result = await read(marker.ticket.request.args, marker.cancel);
       if (valid()) marker.state.value = { phase: "settled", ticket: marker.ticket, result: structuredClone(result) };
     } finally { marker.detach?.(); }
+    // A replacement can be queued synchronously by the settled callback. Consume
+    // that one successor in this owned dispatch, not via resolver re-entry.
+    if (followup && this.queued) await this.dispatch(takeRead, read, false);
   }
   clear(): void {
     const old = [...this.markers.values()]; this.markers.clear();
