@@ -18,7 +18,7 @@ export interface OwnSendTailObservation<Ref> {
 }
 export interface OwnSendReservation<Ref> { readonly token:object; readonly observation:OwnSendTailObservation<Ref> }
 export type OwnSendInsertion = Readonly<{kind:"beginning"}> | Readonly<{kind:"conversation";itemKey:string}> | Readonly<{kind:"work";groupKey:string}>;
-export type OwnSendPlacement = Readonly<{kind:"qualified";insertion:OwnSendInsertion}> | Readonly<{kind:"unqualified";reason:"tail-unproved"|"scope-changed"|"revision-changed"|"boundary-missing"|"boundary-conflict"}>;
+export type OwnSendPlacement = Readonly<{kind:"qualified";insertion:OwnSendInsertion}> | Readonly<{kind:"unqualified";reason:"tail-unproved"|"scope-changed"|"revision-changed"|"boundary-missing"|"boundary-conflict"|"cohort-unplaced"}>;
 
 /** Called with an installed final CASE projection, never with a second history projection. */
 export function observeOwnSendTail<Ref>(token:object,ref:Ref|undefined,scope:string,current:boolean,projection:SavedItemProjection,path:OwnSendPath|undefined,isCurrent:()=>boolean):OwnSendTailObservation<Ref>|undefined {
