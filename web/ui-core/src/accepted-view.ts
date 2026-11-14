@@ -91,3 +91,80 @@ export class AcceptedView<T> {
     }
   }
 }
+
+import type { AssistantOwnership } from './assistant-ownership';
+import type { SavedItemProjection, ProjectedSavedItem } from './conversation-items';
+
+/** The body authority is explicit and never inferred from a UI status flag. */
+export type DisplayBodySource =
+  | Readonly<{ kind: 'preview'; text: string; generation: number; revision: string | number }>
+  | Readonly<{ kind: 'typed-canonical'; text: string; generation: number; revision: string | number; lease: AcceptedCapability }>
+  | Readonly<{ kind: 'unavailable'; reason: string; generation: number; revision: string | number }>;
+
+export type DisplayLifetime = Readonly<{
+  kind: 'live' | 'retained' | 'revoked';
+  scope: string;
+  revision: string | number;
+  capability: AcceptedCapability;
+}>;
+
+export interface ConversationDisplayPlanEntry {
+  readonly item: ProjectedSavedItem;
+  readonly presentationContainer?: string;
+  readonly body: DisplayBodySource;
+  readonly lifetime: DisplayLifetime;
+}
+
+export interface ConversationDisplayPlan {
+  readonly projection: SavedItemProjection;
+  readonly entries: readonly ConversationDisplayPlanEntry[];
+  readonly assistantFacts: readonly AssistantOwnership[];
+  readonly userDecision: unknown;
+  readonly answerContainerIds: ReadonlyMap<string, string>;
+  readonly capability: AcceptedCapability;
+}
+
+/**
+ * Build the single accepted owner plan. It is immutable, capability-bound, and
+ * keeps body-read authority separate from display lifetime.
+ */
+export function createConversationDisplayPlan(input: {
+  projection: SavedItemProjection;
+  assistantFacts: readonly AssistantOwnership[];
+  userDecision: unknown;
+  capability: AcceptedCapability;
+  generation: number;
+  revision: string | number;
+  scope: string;
+}): ConversationDisplayPlan {
+  const owners = new Map<string, AssistantOwnership>();
+  for (const fact of input.assistantFacts) {
+    if (fact.scope !== input.scope || !fact.containerKey || !fact.itemKeys.length) continue;
+    for (const key of fact.itemKeys) {
+      if (owners.has(key) && owners.get(key)!.containerKey !== fact.containerKey) throw new Error('conflicting assistant display ownership');
+      owners.set(key, fact);
+    }
+  }
+  const entries = input.projection.items.map(item => {
+    const source = item.source;
+    const owner = owners.get(item.key);
+    const host = item.presentationContainer ?? (owner?.containerKey as string | undefined);
+    const body: DisplayBodySource = source.kind === 'text'
+      ? source.textComplete === true && owner
+        ? { kind: 'typed-canonical', text: source.text, generation: input.generation, revision: input.revision, lease: input.capability }
+        : { kind: 'preview', text: source.text, generation: input.generation, revision: input.revision }
+      : source.kind === 'unknown' || source.kind === 'unavailable'
+        ? { kind: 'unavailable', reason: source.kind, generation: input.generation, revision: input.revision }
+        : { kind: 'unavailable', reason: 'no-body', generation: input.generation, revision: input.revision };
+    const lifetime: DisplayLifetime = Object.freeze({ kind: owner ? 'live' : 'retained', scope: input.scope, revision: input.revision, capability: input.capability });
+    return Object.freeze({ item, ...(host ? { presentationContainer: host } : {}), body, lifetime });
+  });
+  return Object.freeze({
+    projection: input.projection,
+    entries: Object.freeze(entries),
+    assistantFacts: Object.freeze([...input.assistantFacts]),
+    userDecision: input.userDecision,
+    answerContainerIds: new Map([...owners].map(([key, owner]) => [key, owner.containerKey as string])),
+    capability: input.capability,
+  });
+}

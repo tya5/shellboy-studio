@@ -51,6 +51,7 @@ export interface AcceptedCoverage {
 }
 export interface WindowAcceptedSnapshot {
   readonly assistantOwnership?: readonly AssistantOwnership[];
+  readonly displayPlan?: ConversationDisplayPlan;
   readonly generation: number;
   readonly epoch: number;
   readonly disposed: boolean;
