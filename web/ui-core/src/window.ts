@@ -357,15 +357,10 @@ export class ConversationWindow {
         const value = out.result.value;
         // Readback can only extend the same qualified selected run; revision changes
         // need a separate fresh transaction, never a silent rebind here.
-        const coveredReceiptRefs = target.receipt.nodeIds.every(nodeId => value.items.some(row => row.node_id === nodeId));
-        if (value.thread_id !== target.handle.threadId || value.total < target.ref.total || value.items.length > 200
-          || (value.revision !== target.ref.revision && !coveredReceiptRefs)) reason = "selection-gap";
+        if (value.thread_id !== target.handle.threadId || value.revision !== target.ref.revision || value.total < target.ref.total || value.items.length > 200) reason = "selection-gap";
         else if (value.items.some(row => {
           const existing = target.ref.rows.find(saved => saved.selection?.ordinal === row.selection?.ordinal);
-          if (existing === undefined || JSON.stringify(existing) === JSON.stringify(row)) return false;
-          const deferredBody = existing.items == null && existing.items_unavailable_reason === "response_budget"
-            && Array.isArray(row.items) && row.items.length > 0;
-          return !(value.revision !== target.ref.revision && deferredBody);
+          return existing !== undefined && JSON.stringify(existing) !== JSON.stringify(row);
         })) {
           // Same selection revision does not authorize replacement of saved body
           // facts. Without canonical merge proof reject the whole changed page.
