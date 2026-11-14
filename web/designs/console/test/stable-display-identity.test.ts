@@ -26,6 +26,15 @@ it("keeps canonical keys and sequence authoritative while assigning only the hos
   expect(result.items.map(item => item.presentationContainer)).toEqual(["answer:attempt-1", "answer:attempt-1"]);
 });
 
+it("preserves nonadjacent canonical sequence and intervening work authority", () => {
+  const second: NormalizedSavedItem = { ...saved, nodeId: "node-2", itemIdentity: "node-2:/output/0/content/0", text: "second" };
+  const base = projectSavedItems([saved, second]);
+  const sequence = [{ kind: "conversation" as const, itemKey: base.items[0]!.key }, { kind: "work" as const, groupKey: "work-1" }, { kind: "conversation" as const, itemKey: base.items[1]!.key }];
+  const result = withPresentationContainers({ ...base, sequence }, new Map(base.items.map(item => [item.key, "answer:attempt-1"])));
+  expect(result.sequence).toEqual(sequence);
+  expect(result.items.map(item => item.key)).toEqual(base.items.map(item => item.key));
+});
+
 it("does not join unknown, deleted, or differently owned facts", () => {
   const unknown: NormalizedSavedItem = { domain: "live", namespace: "handoff", scope: "thread/attempt/turn", recordId: "handoff:unknown", attemptId: "attempt", kind: "text", text: "preview" };
   const deleted: NormalizedSavedItem = { nodeId: "node-2", itemIdentity: "node-2:/output/0/content/0", identityDomain: "node", windowRevision: 2, kind: "text", text: "deleted", textComplete: true };
