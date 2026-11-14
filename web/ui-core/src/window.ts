@@ -888,9 +888,10 @@ export class ConversationWindow {
       const currentVersion = (ref.displayPlan.userDecision as { cohortVersion?: unknown } | undefined)?.cohortVersion;
       if (JSON.stringify(candidateVersion) === JSON.stringify(currentVersion)) return true;
     }
-    const plan = createConversationDisplayPlan({ acceptedRef: ref, capability, projection,
+    const generation = ref.generation + 1;
+    const plan = createConversationDisplayPlan({ acceptedRef: ref, acceptedGeneration: generation, capability, projection,
       assistantFacts: ref.assistantOwnership ?? [], userDecision, scope });
-    const staged = this.acceptedView.stage({ ...ref, displayPlan: plan }, capability);
+    const staged = this.acceptedView.stage({ ...ref, generation, displayPlan: plan }, capability);
     if (!this.acceptedView.isCurrent(ref) || capability !== this.acceptedView.currentCapability) return false;
     return this.acceptedView.commit(staged);
   }

@@ -34,6 +34,7 @@ export function createConversationDisplayPlan(input: {
   readonly assistantFacts: readonly AssistantOwnership[];
   readonly userDecision: unknown;
   readonly scope: string;
+  readonly acceptedGeneration?: number;
 }): ConversationDisplayPlan {
   if (input.acceptedRef.revision === undefined || input.acceptedRef.revision === null) throw new Error('display plan requires accepted revision');
   const owners = new Map<string, AssistantOwnership>();
@@ -45,7 +46,7 @@ export function createConversationDisplayPlan(input: {
       owners.set(key, fact);
     }
   }
-  const generation = input.acceptedRef.generation, revision = input.acceptedRef.revision;
+  const generation = input.acceptedGeneration ?? input.acceptedRef.generation, revision = input.acceptedRef.revision;
   const version = (input.userDecision as { cohortVersion?: { accepted?: readonly { operationId: string; phase: string; messageId?: string }[]; pending?: { operationId: string; phase: string } } } | undefined)?.cohortVersion;
   const cohortKey = JSON.stringify({ accepted: version?.accepted?.map(row => [row.operationId, row.phase, row.messageId ?? '']) ?? [], pending: version?.pending ? [version.pending.operationId, version.pending.phase] : [] });
   const entries = input.projection.items.map(item => {

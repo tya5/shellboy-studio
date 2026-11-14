@@ -122,3 +122,21 @@ it("deferred retry respects the global bucket admission and succeeds after a slo
   expect(held).toHaveLength(2); expect(held.at(-1)!.args).toMatchObject({ ordinal: 400, expect_node_id: "deferred", items: true });
   w.dispose();
 });
+
+it("publishes one capability-bound display plan and reaches a fixed point", async () => {
+  const r = await rig(2); await r.settle();
+  const ref = r.w.acceptedView.peek();
+  const projection = (await import("../src/conversation-items")).projectSavedItems([{
+    domain: "live", namespace: "handoff", scope: "thread", recordId: "handoff:a", attemptId: "a",
+    presentationContainer: "presentation:test", kind: "text", text: "preview"
+  }]).projection;
+  const decision = { cohortVersion: { accepted: [], pending: undefined } };
+  expect(r.w.publishConversationDisplayPlan(ref, projection, decision, "thread")).toBe(true);
+  const published = r.w.acceptedView.peek();
+  expect(published.displayPlan?.acceptedGeneration).toBe(published.generation);
+  expect(published.displayPlan?.capability).toBe(r.w.acceptedView.currentCapability);
+  const generation = published.generation;
+  expect(r.w.publishConversationDisplayPlan(published, projection, { cohortVersion: { accepted: [], pending: undefined } }, "thread")).toBe(true);
+  expect(r.w.acceptedView.peek().generation).toBe(generation);
+  r.w.dispose(); r.data.stop();
+});
