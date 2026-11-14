@@ -30,7 +30,8 @@ export interface TypedHistoryNode {
   readonly kind: "assistant_response";
   readonly selection: { readonly ordinal: number };
   readonly excerpt: string;
-  readonly items: readonly [{ readonly kind: "text"; readonly item_identity: string; readonly text: string; readonly text_complete: true }];
+  readonly items: readonly [{ readonly kind: "text"; readonly item_identity: string; readonly text: string; readonly text_complete: true }] | null;
+  readonly items_unavailable_reason?: "response_budget";
 }
 
 export interface TypedHistoryWindow {
@@ -71,7 +72,7 @@ export function typedHistoryWindow(fixture: TypedHandoffFixture, args: { node_id
 
 export function validTypedHandoffRef(fixture: TypedHandoffFixture, attempt: TypedHandoffAttempt, window: TypedHistoryWindow): boolean {
   const ref = attempt.response_nodes.find(candidate => candidate.node_id === fixture.nodeId && candidate.ordinal === fixture.ordinal);
-  const node = window.items.length === 1 ? window.items[0] : undefined;
+  const node = window.items.find(candidate => candidate.node_id === ref?.node_id);
   return !!ref && attempt.attempt_id === fixture.attemptId && attempt.turn_id === fixture.turnId && attempt.thread_id === fixture.threadId
     && node?.node_id === ref.node_id && node.selection.ordinal === ref.ordinal && window.thread_id === fixture.threadId
     && window.revision === fixture.revision && window.total === fixture.total && window.item_count === window.items.length
@@ -106,9 +107,13 @@ export function typedHandoffRegistry(input: { threadId: string; attemptId: strin
         return undefined;
       }
       if (selected.length !== 1) return;
-      const fixture = selected[0]!;
-      if (!registry.canonical) return typedHistoryWindow({...fixture, revision: registry.revision, total: registry.total, text: ""}, { node_id: fixture.nodeId, ordinal: fixture.ordinal });
-      return typedHistoryWindow({...fixture, revision: registry.revision, total: registry.total}, { node_id: fixture.nodeId, ordinal: fixture.ordinal });
+      const anchor = selected[0]!;
+      const before = args.before ?? 0, after = args.after ?? 0;
+      const rows = refs.filter(ref => ref.ordinal >= anchor.ordinal - before && ref.ordinal <= anchor.ordinal + after).map(ref => ({
+        node_id: ref.nodeId, kind: "assistant_response" as const, selection: { ordinal: ref.ordinal }, excerpt: ref.text,
+        ...(registry.canonical ? { items: [{ kind: "text" as const, item_identity: `${ref.nodeId}:/output/0/content/0`, text: ref.text, text_complete: true as const }] } : { items: null, items_unavailable_reason: "response_budget" as const }),
+      }));
+      return { thread_id: registry.threadId, revision: registry.revision, total: registry.total, item_count: rows.length, items: rows };
     },
   };
   return registry;
