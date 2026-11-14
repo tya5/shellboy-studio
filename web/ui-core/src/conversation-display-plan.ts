@@ -5,12 +5,12 @@ import type { HistoryItem } from '../../data/src/protocol';
 import type { LiveWorkIdentity } from './conversation-items';
 
 export type DisplayBodySource =
-  | Readonly<{ kind: 'preview'; text: string; generation: number; revision: string | number }>
-  | Readonly<{ kind: 'typed-canonical'; text: string; generation: number; revision: string | number; capability: AcceptedCapability }>
-  | Readonly<{ kind: 'unavailable'; reason: string; generation: number; revision: string | number }>;
+  | Readonly<{ kind: 'preview'; text: string; generation: number; revision: number }>
+  | Readonly<{ kind: 'typed-canonical'; text: string; generation: number; revision: number; capability: AcceptedCapability }>
+  | Readonly<{ kind: 'unavailable'; reason: string; generation: number; revision: number }>;
 
 export type DisplayLifetime = Readonly<{
-  kind: 'valid-owner' | 'canonical-human' | 'retained' | 'revoked'; scope: string; generation: number; revision: string | number;
+  kind: 'valid-owner' | 'canonical-human' | 'retained' | 'revoked'; scope: string; generation: number; revision: number;
 }>;
 export interface ConversationDisplayPlanEntry {
   readonly item: ProjectedSavedItem;
@@ -23,7 +23,7 @@ export interface OwnUserDecision { readonly cohortVersion: DisplayCohortVersion;
 
 export interface ConversationDisplayPlan {
   readonly acceptedGeneration: number;
-  readonly revision: string | number;
+  readonly revision: number;
   readonly capability: AcceptedCapability;
   readonly entries: readonly ConversationDisplayPlanEntry[];
   readonly sequence: readonly ConversationSequence[];
@@ -41,7 +41,7 @@ export function validateQualifiedAssistantFacts(input: {
   readonly rows: readonly HistoryItem[];
   readonly canonicalProjection: SavedItemProjection;
   readonly facts: readonly AssistantOwnership[];
-  readonly revision: string | number;
+  readonly revision: number;
   readonly scope: string;
 }): QualifiedAssistantFacts {
   const rebuilt = projectHistoryWindowItems({ revision: input.revision, nodes: input.rows, keyScope: [input.scope] }).projection;
@@ -53,14 +53,14 @@ export function validateQualifiedAssistantFacts(input: {
 }
 
 export function displaySemanticKey(canonicalProjection: SavedItemProjection, displayProjection: SavedItemProjection,
-  facts: QualifiedAssistantFacts, retiredAttempts: readonly { readonly scope: string; readonly attemptId: string; readonly revision: string | number }[]): string {
+  facts: QualifiedAssistantFacts, retiredAttempts: readonly { readonly scope: string; readonly attemptId: string; readonly revision: number }[]): string {
   // Version the complete authoritative projections and proofs, including body/read state and path order.
   return JSON.stringify({ canonical: { items: canonicalProjection.items, sequence: canonicalProjection.sequence, workGroups: canonicalProjection.workGroups, partitionUnknownKeys: canonicalProjection.partitionUnknownKeys }, display: { items: displayProjection.items, sequence: displayProjection.sequence, workGroups: displayProjection.workGroups, partitionUnknownKeys: displayProjection.partitionUnknownKeys }, facts, retiredAttempts });
 }
 
 export interface AcceptedPublicationInput {
   readonly generation: number;
-  readonly revision: string | number;
+  readonly revision: number;
   readonly capability: AcceptedCapability;
   readonly rows: readonly HistoryItem[];
   readonly projection: SavedItemProjection;
@@ -68,7 +68,7 @@ export interface AcceptedPublicationInput {
   readonly assistantFacts: readonly AssistantOwnership[];
   readonly userDecision: OwnUserDecision;
   readonly scope: string;
-  readonly retiredAttempts: readonly { readonly scope: string; readonly attemptId: string; readonly revision: string | number }[];
+  readonly retiredAttempts: readonly { readonly scope: string; readonly attemptId: string; readonly revision: number }[];
 }
 
 export function createConversationDisplayPlan(input: AcceptedPublicationInput): ConversationDisplayPlan {

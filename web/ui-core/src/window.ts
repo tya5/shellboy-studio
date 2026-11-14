@@ -38,7 +38,7 @@ export interface RetiredAttempt {
   readonly attemptId: string;
   readonly turnId: string;
   readonly nodeIds: readonly string[];
-  readonly revision: string | number;
+  readonly revision: number;
 }
 declare const summaryIdBrand: unique symbol;
 export type SummaryTransitionId = string & { readonly [summaryIdBrand]: true };
@@ -47,8 +47,8 @@ export interface AcceptedCoverage {
   readonly scope: string;
   readonly summaryNodeId: string;
   readonly sourceNodeIds: readonly string[];
-  readonly source: { readonly nodeId: string; readonly offset: number; readonly revision: string | number };
-  readonly targetRevision: string | number;
+  readonly source: { readonly nodeId: string; readonly offset: number; readonly revision: number };
+  readonly targetRevision: number;
   readonly kind: "inside" | "below";
 }
 export interface WindowAcceptedSnapshot {
@@ -60,7 +60,7 @@ export interface WindowAcceptedSnapshot {
   readonly rows: readonly HistoryItem[];
   readonly range: Readonly<{ first: number; last: number }> | undefined;
   readonly total: number;
-  readonly revision: string | number | undefined;
+  readonly revision: number | undefined;
   readonly pending: boolean;
   readonly coverage?: AcceptedCoverage;
   readonly attemptPresentations?: readonly AttemptPresentation[];
@@ -120,16 +120,12 @@ class Heights {
   }
 }
 
-type RevisionRelation = "same" | "newer" | "older" | "opaque-change";
-
-/** Numeric revisions are ordered; string revisions are opaque generations. */
-function revisionRelation(candidate: string | number, current: string | number | undefined): RevisionRelation {
+function revisionRelation(candidate: number, current: number | undefined): "same" | "newer" | "older" {
   if (current === undefined) return "newer";
-  if (typeof candidate === "number" && typeof current === "number") return candidate === current ? "same" : candidate > current ? "newer" : "older";
-  return candidate === current ? "same" : "opaque-change";
+  return candidate === current ? "same" : candidate > current ? "newer" : "older";
 }
 
-function revisionIsCurrentOrNewer(candidate: string | number, current: string | number | undefined): boolean {
+function revisionIsCurrentOrNewer(candidate: number, current: number | undefined): boolean {
   const relation = revisionRelation(candidate, current);
   return relation === "same" || relation === "newer";
 }
@@ -139,7 +135,7 @@ export class ConversationWindow {
   private readonly setTimer: (fn: () => void, ms: number) => () => void;
   private buckets = new Map<number, Bucket>();
   private heights = new Heights();
-  private revision: string | number | undefined;
+  private revision: number | undefined;
   private tailKnown: { ordinal: number; nodeId: string } | undefined;
   private epoch = 0;
   private disposed = false;
@@ -946,7 +942,7 @@ export class ConversationWindow {
 
   private nextAcceptedGeneration(): number { return ++this.acceptedGeneration; }
 
-  private acceptedOwnershipForBump(revision: string | number, rows: readonly HistoryItem[], capability: AcceptedCapability): readonly AssistantOwnership[] {
+  private acceptedOwnershipForBump(revision: number, rows: readonly HistoryItem[], capability: AcceptedCapability): readonly AssistantOwnership[] {
     const prior = this.acceptedView.peek().assistantOwnership ?? [];
     if (!prior.length || prior.some(fact => fact.scope !== prior[0]!.scope)) return [];
     if (prior.every(fact => fact.proofRevision === revision)) return prior;

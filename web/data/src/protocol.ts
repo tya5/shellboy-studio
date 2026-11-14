@@ -433,7 +433,7 @@ export interface HistoryWindowArgs {
 export interface HistoryWindowResult {
   thread_id: string;
   /** Advances on append, rewind and compaction. */
-  revision: string | number;
+  revision: number;
   /** One past the last ordinal. */
   total: number;
   /** selected-path items, ascending; `selection.ordinal` is the position. */

@@ -124,7 +124,7 @@ export interface SavedItemIdentity {
   /** Content authorization version, not automatically part of the DOM key. */
   readonly revision?: string;
   /** Existing window revision, never an invented item revision. */
-  readonly windowRevision?: string | number;
+  readonly windowRevision?: number;
 }
 
 export interface LiveWorkIdentity {
@@ -353,14 +353,14 @@ export function canonicalItemCase(item: NormalizedSavedItem): CanonicalCase {
 }
 
 /** Accept ONLY the strict-decoded v3 DTO; does not decode unknown JSON. */
-export function projectHistoryWindowItems(input: { readonly keyScope?: readonly string[]; readonly revision: string | number; readonly nodes: readonly HistoryItem[] }): HistoryWindowItemProjection {
+export function projectHistoryWindowItems(input: { readonly keyScope?: readonly string[]; readonly revision: number; readonly nodes: readonly HistoryItem[] }): HistoryWindowItemProjection {
   return projectHistoryNodes(input);
 }
 /** Strict projection for normalized legacy-shaped items within the current typed HistoryWindow DTO. */
 export function projectLegacyHistoryItems(input: { readonly keyScope?: readonly string[]; readonly nodes: readonly HistoryItem[]; readonly liveFacts?: readonly NormalizedSavedItem[] }): HistoryWindowItemProjection {
   return projectHistoryNodes(input, true);
 }
-function projectHistoryNodes(input: { readonly keyScope?: readonly string[]; readonly revision?: string | number; readonly nodes: readonly HistoryItem[]; readonly liveFacts?: readonly NormalizedSavedItem[] }, decodedLegacy = false): HistoryWindowItemProjection {
+function projectHistoryNodes(input: { readonly keyScope?: readonly string[]; readonly revision?: number; readonly nodes: readonly HistoryItem[]; readonly liveFacts?: readonly NormalizedSavedItem[] }, decodedLegacy = false): HistoryWindowItemProjection {
   const nodes: ProjectedHistoryNode[] = [];
   const segment: NormalizedSavedItem[] = [];
   let retryFrom: HistoryWindowItemProjection["retryFrom"];

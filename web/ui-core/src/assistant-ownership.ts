@@ -12,14 +12,14 @@ export interface AssistantOwnership {
   /** Stable answer container identity for the accepted presentation lifetime. */
   readonly containerKey: PresentationContainerId;
   readonly mode: 'preview' | 'canonical';
-  readonly proofRevision: string | number;
+  readonly proofRevision: number;
   readonly itemKeys: readonly string[];
   /** Canonical node/ordinal evidence retained for a fresh revision requalification. */
   readonly refs: readonly { readonly nodeId: string; readonly ordinal: number; readonly kind: string }[];
 }
 
 export function assistantOwnership(association: DisplayAssociation, recordKey: string,
-  rows: readonly HistoryItem[], revision: string | number): AssistantOwnership | undefined {
+  rows: readonly HistoryItem[], revision: number): AssistantOwnership | undefined {
   const nodeIds = new Set(association.refs.map(ref => ref.nodeId));
   const nodes = rows.filter(row => row.node_id && nodeIds.has(row.node_id));
   if (!nodeIds.size || nodeIds.size > 64 || nodes.length !== nodeIds.size

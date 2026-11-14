@@ -88,7 +88,7 @@ export interface HistoryPresentation {
   readonly nodeIdByRowId: ReadonlyMap<string, string>;
 }
 /** Presentation only: canonical semantic order is produced once for the whole input. */
-export function materializeHistoryPresentation(items: readonly HistoryItem[], shells: ReadonlyMap<string, ShellEntry> = new Map(), revision: string | number = 0): HistoryPresentation {
+export function materializeHistoryPresentation(items: readonly HistoryItem[], shells: ReadonlyMap<string, ShellEntry> = new Map(), revision: number = 0): HistoryPresentation {
   const projection = projectHistoryWindowItems({ revision, nodes: items }).projection;
   const rows: ConversationRow[] = [];
   const nodes = new Map(items.map(node => [node.node_id, node]));

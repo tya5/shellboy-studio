@@ -16,7 +16,7 @@ export interface TerminalPersistedProof {
   readonly refs?: readonly { readonly nodeId: string; readonly ordinal: number; readonly kind: string }[];
   readonly terminalState: 'completed' | 'failed' | 'incomplete' | 'cancelled';
 }
-export interface AttemptReadyProof { readonly scope: string; readonly attemptId: string; readonly turnId: string; readonly revision: string | number; readonly total: number; readonly refs: readonly { readonly nodeId: string }[]; readonly nodes: readonly HistoryItem[] }
+export interface AttemptReadyProof { readonly scope: string; readonly attemptId: string; readonly turnId: string; readonly revision: number; readonly total: number; readonly refs: readonly { readonly nodeId: string }[]; readonly nodes: readonly HistoryItem[] }
 
 function mintPresentationContainer(attemptId: string): PresentationContainerId {
   if (globalThis.crypto?.randomUUID) return `presentation:${globalThis.crypto.randomUUID()}` as PresentationContainerId;
@@ -59,7 +59,7 @@ export interface HandoffRecord {
   readonly status: HandoffStatus;
   readonly bodyAuthority: 'preview' | 'identified' | 'saved';
   readonly nodeId?: string;
-  readonly proof?: Readonly<{ scope: string; turnId: string; ordinal: number; revision: string | number; kind: 'assistant_response' }>;
+  readonly proof?: Readonly<{ scope: string; turnId: string; ordinal: number; revision: number; kind: 'assistant_response' }>;
   readonly transferred?: boolean;
   readonly readyAttempt?: AttemptReadyProof;
   readonly terminalPersisted?: TerminalPersistedProof;

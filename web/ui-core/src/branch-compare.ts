@@ -5,7 +5,7 @@ import type { BranchFamily, BranchItem } from "./branches";
 
 export const compareInteger = (v: unknown): v is number => typeof v === "number" && Number.isSafeInteger(v) && v >= 0;
 const object = (v: unknown): Record<string, unknown> | undefined => v !== null && typeof v === "object" && !Array.isArray(v) ? v as Record<string, unknown> : undefined;
-const revision = (v: unknown): v is string | number => typeof v === "string" && v.length > 0 || compareInteger(v);
+const revision = (v: unknown): v is number => typeof v === "string" && v.length > 0 || compareInteger(v);
 export interface RecordedCounter { known?: number; unknown?: number; overflow: boolean; exact: boolean }
 export function recordedCounter(v: unknown): RecordedCounter {
   const o = object(v);
@@ -33,7 +33,7 @@ export function anchorCandidate(a: BranchItem, b: BranchItem, family: BranchFami
   return;
 }
 export interface CompareSide {
-  item: BranchItem; anchor?: string; ordinal?: number; revision?: string | number; total?: number;
+  item: BranchItem; anchor?: string; ordinal?: number; revision?: number; total?: number;
   pages: HistoryItem[][]; next?: number; busy: boolean; error?: string; usage?: CompareUsageFacts;
   usageCalls: number; usageCursor?: string; usageSeen: string[]; period?: unknown; coverage?: unknown;
 }
@@ -128,7 +128,7 @@ export class BranchCompare {
       await this.window(i, token, ordinal, anchor, p.revision);
     }, token)));
   }
-  private async window(index: number, token: CompareInvocation, ordinal: number, expected: string, rev: string | number): Promise<void> {
+  private async window(index: number, token: CompareInvocation, ordinal: number, expected: string, rev: number): Promise<void> {
     if (!this.valid(token)) return;
     const side = this.state.peek().sides[index]; if (!side) return;
     const out = await this.ops.historyWindow({ thread_id: token.pair[index]!, ordinal, expect_node_id: expected, before: 0, after: 49, excerpt_chars: 256 }, { cancel: token.cancel });

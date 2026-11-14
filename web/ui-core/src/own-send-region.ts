@@ -2,7 +2,7 @@ import type { SavedItemProjection } from "./conversation-items";
 
 export interface OwnSendPath {
   readonly tail: boolean;
-  readonly revision?: string | number;
+  readonly revision?: number;
   readonly lastNodeId?: string;
   readonly lastOrdinal?: number;
   readonly empty: boolean;

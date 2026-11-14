@@ -280,7 +280,7 @@ export class Branches {
 
   async excerpts(item: import("./branches").BranchItem, cancel: Cancel): Promise<{ split?: string; request?: string; answer?: string }> {
     const result: { split?: string; request?: string; answer?: string } = {};
-    let revision: string | number | undefined;
+    let revision: number | undefined;
     if (cancel.cancelled) return {};
     if (item.divergence) {
       const out = await this.ops.historyWindow({ thread_id: item.threadId, node_id: item.divergence.nodeId, before: 0, after: 24, excerpt_chars: 256 }, { cancel });

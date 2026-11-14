@@ -846,7 +846,7 @@ export class ShellboyData {
         }
         if (!refs.length || typeof attempt.turn_id !== "string" || !attempt.turn_id || !["completed", "failed", "incomplete", "cancelled"].includes(attempt.state)) continue;
         const nodes = new Map<string, HistoryItem>();
-        let revision: string | number | undefined;
+        let revision: number | undefined;
         let total: number | undefined;
         let unavailable = false;
         // Resolve exact identities sequentially inside the existing attempt-wide read budget.
