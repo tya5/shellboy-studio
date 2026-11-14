@@ -31,3 +31,25 @@ it('routes registry refs exactly and keeps deferred body until canonical publica
   expect(registry.history({node_id:'n3', ordinal:3})!.items[0]!.items![0]?.text).toBe('B');
   expect(() => typedHandoffRegistry({threadId:'t',attemptId:'a',turnId:'u',revision:1,total:2,refs:[{nodeId:'x',ordinal:1,text:'x'},{nodeId:'y',ordinal:1,text:'y'}]})).toThrow();
 });
+
+it("rejects stale revision/total and preserves bounded budget/deletion evidence", () => {
+  const fixture = typedHandoff({ revision: 8, total: 4 });
+  const attempt = typedAttempt(fixture);
+  const window = typedHistoryWindow(fixture, { node_id: fixture.nodeId })!;
+  expect(validTypedHandoff(fixture, attempt, window)).toBe(true);
+  expect(validTypedHandoff({ ...fixture, revision: 7 }, attempt, window)).toBe(false);
+  expect(validTypedHandoff({ ...fixture, total: 5 }, attempt, window)).toBe(false);
+  expect(validTypedHandoff(fixture, attempt, { ...window, items: [{ ...window.items[0]!, items: null, items_unavailable_reason: "response_budget" }] })).toBe(false);
+  expect(validTypedHandoff(fixture, attempt, { ...window, items: [] })).toBe(false);
+});
+
+it("keeps multiple attempts and interleaved ordinals strictly distinct", () => {
+  const registry = typedHandoffRegistry({ threadId: "thread", attemptId: "attempt-2", turnId: "turn-2", revision: 9, total: 8,
+    refs: [{ nodeId: "answer-a", ordinal: 2, text: "A" }, { nodeId: "answer-b", ordinal: 5, text: "B" }] });
+  const attempt = registry.attempt();
+  expect(attempt.response_nodes.map(node => [node.node_id, node.ordinal])).toEqual([["answer-a", 2], ["answer-b", 5]]);
+  expect(registry.history({ node_id: "answer-a", ordinal: 5 })).toBeUndefined();
+  expect(registry.history({ node_id: "answer-b", ordinal: 5 })?.items[0]?.selection.ordinal).toBe(5);
+  expect(() => typedHandoffRegistry({ threadId: "thread", attemptId: "attempt-2", turnId: "turn-2", revision: 9, total: 8,
+    refs: [{ nodeId: "answer-a", ordinal: 5, text: "A" }, { nodeId: "answer-b", ordinal: 5, text: "B" }] })).toThrow();
+});
