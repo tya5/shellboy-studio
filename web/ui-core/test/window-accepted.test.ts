@@ -1,13 +1,14 @@
+import { captureConversationInput } from '../src/conversation-input';
 import { expect, it } from "vitest";
 import { ConversationWindow } from "../src/window";
 import { flush } from "../../data/test/harness";
 import type { HistoryItem } from "../../data/src";
 import { rig } from "./window-owner";
-import { canonicalPlanExpectation, observePublishedPlans } from "./publication-contract";
+import { currentInputPlanExpectation, observePublishedPlans } from "./publication-contract";
 
 it("publishes immutable coherent window tuples and stops obsolete notifications", async () => {
   const r = await rig(10); await r.settle();
-  const publications = observePublishedPlans(r.w, ref => canonicalPlanExpectation(ref, "unavailable"));
+  const publications = observePublishedPlans(r.w, ref => currentInputPlanExpectation(ref, "unavailable"));
   const first = r.w.acceptedView.peek();
   expect(first.total).toBe(10); expect(first.pending).toBe(false); expect(first.range).toEqual(r.w.renderRange());
   expect(first.rows).toEqual(r.w.rangeItems()); expect(Object.isFrozen(first.rows[0])).toBe(true);
@@ -137,24 +138,20 @@ it("deferred retry respects the global bucket admission and succeeds after a slo
 
 it("publishes one capability-bound display plan and reaches a fixed point", async () => {
   const r = await rig(2); await r.settle();
+  expect(r.w.bindConversationInput(snapshot => captureConversationInput(snapshot, {
+    scope: 'thread', threadId: 'thread', records: [], work: [], current: true }))).toBe(true);
   const ref = r.w.acceptedView.peek();
-  const publications = observePublishedPlans(r.w, (_ref, index) => canonicalPlanExpectation(_ref, index === 1 ? "unavailable" : "complete"));
-  const projection = (await import("../src/conversation-items")).projectSavedItems([{
-    domain: "live", namespace: "handoff", scope: "thread", recordId: "handoff:a", attemptId: "a",
-    presentationContainer: "presentation:test", kind: "text", text: "preview"
-  }]);
-  const decision = { cohortVersion: { accepted: [], pending: undefined } };
-  expect(r.w.publishConversationDisplayPlan(ref, projection, decision, "thread")).toBe(true);
+  expect(r.w.refreshConversationInput(ref)).toBe(true);
   const published = r.w.acceptedView.peek();
   expect(published.displayPlan?.acceptedGeneration).toBe(published.generation);
   expect(published.displayPlan?.capability).toBe(r.w.acceptedView.currentCapability);
   const generation = published.generation;
-  expect(r.w.publishConversationDisplayPlan(published, projection, { cohortVersion: { accepted: [], pending: undefined } }, "thread")).toBe(true);
+  expect(r.w.refreshConversationInput(published)).toBe(true);
   expect(r.w.acceptedView.peek().generation).toBe(generation);
   r.w.layoutChanged();
-  const ordinary = r.w.acceptedView.peek();
-  expect(ordinary.generation).toBeGreaterThan(generation);
-  expect(r.w.publishConversationDisplayPlan(ordinary, projection, { cohortVersion: { accepted: [], pending: undefined } }, "thread")).toBe(true);
-  expect(r.w.acceptedView.peek().generation).toBeGreaterThan(ordinary.generation);
-  expect(publications.generations.length).toBeGreaterThan(0); publications.stop(); r.w.dispose(); r.data.stop();
+  expect(r.w.acceptedView.peek()).toBe(published);
+  expect(r.w.refreshConversationInput(published)).toBe(true);
+  expect(r.w.acceptedView.peek().generation).toBe(generation);
+  expect(r.w.refreshConversationInput(ref)).toBe(false);
+  r.w.dispose(); r.data.stop();
 });

@@ -5,7 +5,7 @@ import { assistantOwnership } from "../src/assistant-ownership";
 import { expect, it } from "vitest";
 import { ShellboyData } from "../../data/src/store";
 import { FakeOwnerDb, FakeTransport, connected, settle, flush } from "../../data/test/harness";
-import { canonicalPlanExpectation, observePublishedPlans } from "./publication-contract";
+import { currentInputPlanExpectation, observePublishedPlans } from "./publication-contract";
 const baseNodes: HistoryItem[] = [
   { node_id: "tool", kind: "assistant_response", selection: { ordinal: 0 }, items: [{ kind: "tool_call", item_identity: "call", execution_ids: ["exec"] }] },
   { node_id: "answer", kind: "assistant_response", selection: { ordinal: 1 }, items: [{ kind: "text", item_identity: "text", text: "saved", text_complete: true }] },
@@ -39,7 +39,7 @@ async function target() {
  const r = await rig(); const token = r.h.captureReadQualification()!;
  const w = new ConversationWindow({ read: async () => ({ ok: true, value: { thread_id: "a", revision: 7, total: 1,
  items: [{ node_id: "tool", kind: "assistant_response", selection: { ordinal: 0 }, items: [{ kind: "tool_call", item_identity: "call", execution_ids: ["exec"] }] }] } }) }); await flush();
- const publications=observePublishedPlans(w, ref => canonicalPlanExpectation(ref, "complete"));
+ const publications=observePublishedPlans(w, ref => currentInputPlanExpectation(ref, "complete"));
  r.live(); r.end(); await r.pump(); const record = r.h.handoff.peek()[0]!;
  expect(r.h.transferHandoff("attempt", (captured, end) => w.acceptHandoff(captured, r.h.handoffScope(), end))).toBe(true);
  return { ...r, w, token, receipt: record.terminalPersisted!, publications };

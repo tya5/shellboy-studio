@@ -1,3 +1,4 @@
+import { captureConversationInput } from '../../../ui-core/src/conversation-input';
 // @vitest-environment happy-dom
 import { render } from 'preact';
 import {flush,settle} from '../../../data/test/harness';
@@ -58,8 +59,9 @@ it("production model publishes the read plus exact handoff overlay before Ordere
 it("production model preserves one host across preview, saved canonical body, empty ledger, and the next live turn", async () => {
   rendererGate.release();
   const user:import("../../../data/src/protocol").HistoryItem={node_id:"lifecycle-user",kind:"user",selection:{ordinal:0},items:[{kind:"text",item_identity:"lifecycle-user-text",text:"Independent user",text_complete:true}],provenance:{kind:"human",sender:{kind:"human"}}};
-  const fixture=await fixtureModel({route:"conversation",threadId:"lead",configure:db=>{db.history.lead=[user];}});
+  const fixture=await fixtureModel({route:"conversation",threadId:"lead",configure:db=>{db.history.lead=[user];const answer=db.answer.bind(db);db.answer=call=>call.command==='message.send'?{ok:true,result:{thread_id:'lead',message_id:'concurrent-local'}}:answer(call);}});
   const host=document.createElement("div");document.body.append(host);
+  let stopPublication=()=>{};
   try {
     const handle=fixture.model.handle.value!,reader=fixture.model.longReader.value!;
     const sendLive=(attempt_id:string,text:string)=>fixture.t.push({t:"live",thread_id:handle.threadId,attempt_id,gap:false,deltas:[{offset:0,reasoning:false,text}]});
@@ -71,9 +73,37 @@ it("production model preserves one host across preview, saved canonical body, em
     fixture.db.history.lead=[user,saved];fixture.db.bodies["lifecycle-answer"]="Committed saved answer";
     fixture.db.work.lead=[{kind:"attempt",id:"turn-one",attempt_id:"turn-one",turn_id:"turn-one-id",thread_id:handle.threadId,state:"completed",response_nodes:[{node_id:"lifecycle-answer",ordinal:1,kind:"assistant_response"}],response_nodes_truncated:false}];
     fixture.t.push({t:"live_end",thread_id:handle.threadId});
+    sendLive('retained-owner','Retained concurrent preview');await flush();await flush();
+    const localSend=fixture.model.send('Local concurrent cohort');await flush();
+    const operation=fixture.model.pendingOwnMessage.peek()!.operationId,scope=handle.handoffScope();
+    const retained=handle.handoff.peek().find(record=>record.attemptId==='retained-owner')!;
+    let readyCuts=0;
+    stopPublication=reader.acceptedView.subscribe(snapshot=>{
+      expect(reader.acceptedView.isCurrent(snapshot)).toBe(true);
+      const plan=snapshot.displayPlan!;expect(plan.acceptedGeneration).toBe(snapshot.generation);
+      expect(plan.capability).toBe(reader.acceptedView.currentCapability);expect(plan.scope).toBe(scope);
+      for(const entry of plan.entries){
+        expect(entry.body.generation).toBe(snapshot.generation);expect(entry.body.revision).toBe(snapshot.revision);
+        expect(entry.lifetime.generation).toBe(snapshot.generation);expect(entry.lifetime.revision).toBe(snapshot.revision);
+        expect(entry.lifetime.scope).toBe(scope);
+        if(entry.body.kind==='typed-canonical')expect(entry.body.capability).toBe(reader.acceptedView.currentCapability);
+      }
+      const texts=plan.entries.flatMap(entry=>entry.body.kind==='typed-canonical'||entry.body.kind==='preview'?[entry.body.text]:[]);
+      expect(texts.every(text=>['Independent user','Preview answer','Committed saved answer','Retained concurrent preview'].includes(text))).toBe(true);
+      const retainedEntry=plan.entries.find(entry=>entry.item.source.kind==='text'&&'domain' in entry.item.source&&entry.item.source.recordId===retained.key);
+      expect(retainedEntry?.body.kind).toBe('preview');expect(retainedEntry?.presentationContainer).toBe(retained.presentationContainer);
+      const cohort=[...plan.cohortVersion.accepted.map(row=>row.operationId),...(plan.cohortVersion.pending?[plan.cohortVersion.pending.operationId]:[])];
+      expect(cohort).toEqual([operation]);
+      if(snapshot.retiredAttempts?.some(record=>record.attemptId==='turn-one')){
+        readyCuts++;expect(texts).toEqual(['Independent user','Committed saved answer','Retained concurrent preview']);
+        expect(snapshot.rows.map(row=>row.node_id)).toEqual(['lifecycle-user','lifecycle-answer']);
+        const canonical=plan.entries.find(entry=>entry.item.source.nodeId==='lifecycle-answer')!;
+        expect(canonical.body.kind).toBe('typed-canonical');expect(canonical.lifetime.kind).toBe('valid-owner');
+      }
+    });
     fixture.t.push({t:"changed",thread_ids:[handle.threadId],list:false});
     await flush();await flush();
-    await settle(fixture.t,fixture.db);
+    await settle(fixture.t,fixture.db);expect(await localSend).toBe(true);expect(readyCuts).toBeGreaterThan(0);stopPublication();stopPublication=()=>{};
     await act(async()=>render(<OrderedHistory model={fixture.model} handle={handle} win={reader} t={fixture.model.t.value}/>,stableHost));
     expect(stableHost).toBe(host);expect(stableHost.textContent).toContain("Independent user");expect(stableHost.textContent, JSON.stringify({ calls: fixture.t.calls("status").map(call=>call.args), records: handle.handoff.value, historyReads: fixture.t.calls("history.window").map(call=>call.args), handoffRetry: handle.handoffRetryState.value, accepted: reader.acceptedView.peek().displayPlan?.entries.map(entry=>[entry.item.source.kind,"text" in entry.item.source?entry.item.source.text:undefined]) })).toContain("Committed saved answer");
     expect(handle.handoff.value.some(record=>record.attemptId==='turn-one')).toBe(false);
@@ -90,7 +120,7 @@ it("production model preserves one host across preview, saved canonical body, em
     expect(stableHost.textContent).toContain('Committed saved answer');expect(stableHost.textContent).toContain('Next turn preview');
     expect(handle.handoff.value.some(record=>record.attemptId==='turn-one')).toBe(false);
 
-  } finally { render(null,host);host.remove();fixture.model.dispose();fixture.data.stop(); }
+  } finally { stopPublication();render(null,host);host.remove();fixture.model.dispose();fixture.data.stop(); }
 });
 
 it('production model keeps latest answers and order after an older revision completes on the same host',async()=>{
@@ -149,8 +179,8 @@ it('production model publishes only semantic changes across one history edge and
  const f=await fixtureModel({route:'conversation',threadId:'lead',configure:db=>{db.history.lead=rows;}});
  try{
   const reader=f.model.longReader.value!;let notifications=0,compositions=0;
-  const publish=reader.publishConversationDisplayPlan.bind(reader);
-  reader.publishConversationDisplayPlan=(...args)=>{compositions++;return publish(...args);};
+  const publish=reader.captureConversationInput.bind(reader);
+  reader.captureConversationInput=(...args)=>{compositions++;return publish(...args);};
   const stop=reader.acceptedView.subscribe(()=>notifications++);
   const sample=()=>({generation:reader.acceptedView.peek().generation,reads:f.t.calls('history.window').length,
    notifications,compositions,selected:reader.acceptedView.peek().rows.length});
@@ -163,7 +193,7 @@ it('production model publishes only semantic changes across one history edge and
    console.log('PUBLICATION_STEPS',JSON.stringify({before,layout,edge,unchanged}));
    expect(layout).toEqual(before);
    expect(edge.reads-layout.reads).toBe(1);expect(edge.selected).toBe(200);
-   expect(edge.generation-layout.generation).toBe(2);expect(edge.notifications-layout.notifications).toBe(2);
+   expect(edge.generation-layout.generation).toBe(1);expect(edge.notifications-layout.notifications).toBe(1);
    expect(edge.compositions-layout.compositions).toBe(2);
    expect(unchanged).toEqual(edge);
    expect(reader.acceptedView.peek().rows.map(row=>row.node_id)).toEqual(rows.slice(200).map(row=>row.node_id));
@@ -171,44 +201,34 @@ it('production model publishes only semantic changes across one history edge and
  }finally{f.model.dispose();f.data.stop();}
 });
 
-type IssuedProps=Parameters<typeof ActualSavedWindowContent>[0];
+type IssuedProps=Parameters<typeof ActualSavedWindowContent>[0] & {liveFacts?:readonly import("../../../ui-core/src/conversation-items").NormalizedSavedItem[]};
 function IssuedWindowContent(props:IssuedProps & {onPublished?:(reader:ConversationWindow,snapshot:WindowAcceptedSnapshot)=>void; trace?:string[]; evidence?:Record<string,unknown>[]}){
  const [reader,setReader]=useState<ConversationWindow>();
  useLayoutEffect(()=>{
   const rows=props.snapshot.rows.map((row,index)=>({...row,selection:{...row.selection,ordinal:row.selection?.ordinal??index}}));
   const total=rows.length?Math.max(...rows.map(row=>row.selection.ordinal))+1:0;
   const owner=props.model.handle.value;const replyRevision=props.snapshot.revision??1;
-  let readerRef!: {revision:number|undefined;epoch:number;reset:()=>void;bindTerminalHandle:(handle:unknown)=>boolean};
-  let reader!:ConversationWindow;
-  reader=new ConversationWindow({read:async(args)=>{const before={revision:readerRef?.revision,epoch:readerRef?.epoch};const result={ok:true as const,value:{thread_id:owner?.threadId??'issued-fixture',revision:replyRevision,total,items:rows}};props.evidence?.push({kind:'read',args,owner:owner?.threadId,reply:{thread_id:result.value.thread_id,revision:result.value.revision,total,itemOrdinals:rows.map(row=>row.selection?.ordinal)},before,after:{revision:replyRevision,epoch:readerRef?.epoch}});return result;}});
-  readerRef=reader as unknown as {revision:number|undefined;epoch:number;reset:()=>void;bindTerminalHandle:(handle:unknown)=>boolean};
-  const reset=readerRef.reset;readerRef.reset=function(){const before={revision:readerRef.revision,epoch:readerRef.epoch,current:reader.acceptedView.isCurrent(reader.acceptedView.peek()),generation:reader.acceptedView.peek().generation};props.evidence?.push({kind:'reset-enter',before,stack:new Error().stack});reset.call(reader);props.evidence?.push({kind:'reset-exit',after:{revision:readerRef.revision,epoch:readerRef.epoch,current:reader.acceptedView.isCurrent(reader.acceptedView.peek()),generation:reader.acceptedView.peek().generation}});};
-  const bind=reader.bindTerminalHandle.bind(reader);reader.bindTerminalHandle=(handle)=>{const before={revision:readerRef.revision,epoch:readerRef.epoch,tailKnown:(reader as unknown as {tailKnown:unknown}).tailKnown,generation:reader.acceptedView.peek().generation};const result=bind(handle as never);props.evidence?.push({kind:'bindTerminalHandle',before,result,after:{revision:readerRef.revision,epoch:readerRef.epoch,current:reader.acceptedView.isCurrent(reader.acceptedView.peek()),generation:reader.acceptedView.peek().generation}});return result;};
-  let resolveRead!: (ref:WindowAcceptedSnapshot)=>void;
-  const readReady=new Promise<WindowAcceptedSnapshot>(resolve=>{resolveRead=resolve;});
+  const reader=new ConversationWindow({read:async(args)=>{const result={ok:true as const,value:{thread_id:owner?.threadId??'issued-fixture',revision:replyRevision,total,items:rows}};
+    props.evidence?.push({kind:'read',args,reply:result.value});return result;}});
+  reader.bindConversationInput(snapshot=>captureConversationInput(snapshot,{scope:owner?.handoffScope()??'fixture',threadId:owner?.threadId??'fixture',
+    records:owner?.handoff.value??[],work:props.liveFacts??[],current:true}));
   let firstRead=true;
-  const stop=reader.acceptedView.subscribe(ref=>{
+  const admit=(ref:WindowAcceptedSnapshot)=>{
    if(ref.revision===undefined||!firstRead)return;
-   firstRead=false;props.trace?.push(`read-complete:${ref.generation}`);resolveRead(ref);
-  });
-  const publication=readReady.then(async ref=>{
+   firstRead=false;props.trace?.push(`read-complete:${ref.generation}`);
    for(const retired of props.snapshot.retiredAttempts??[]){
     const ledger=new Handoff(fn=>fn());ledger.apply({attempt_id:retired.attemptId,gap:false,deltas:[{offset:0,reasoning:false,text:'Owned stream'}]});
     const original=ledger.records.value[0]!;
-    const proof={scope:retired.scope,attemptId:retired.attemptId,turnId:retired.turnId,revision:1,total:rows.length,refs:retired.nodeIds.map(nodeId=>({nodeId})),nodes:rows.filter(row=>retired.nodeIds.includes(row.node_id!))};
+    const proof={scope:retired.scope,attemptId:retired.attemptId,turnId:retired.turnId,revision:replyRevision,total,
+      refs:retired.nodeIds.map(nodeId=>({nodeId})),nodes:rows};
     if(ledger.stageAttempt(original,proof))ledger.transferAttempt(original,proof,(record,release)=>reader.acceptHandoff(record,retired.scope,release));
     ledger.discard('ended');
    }
-   const current=reader.acceptedView.peek(),scope=props.model.handle.value?.handoffScope()??"";
-   const history=projectHistoryWindowItems({revision:current.revision!,nodes:current.rows,keyScope:[scope]}).projection;
-   const handoffs=projectOwnedHandoffFacts(props.model.handle.value?.threadId??"",props.model.handle.value?.handoff.value??[]);
-   const scoped=scopeIssuedWorkFacts(props.liveFacts??[],[scope])??[];
-   const projection=projectSavedItems([...history.items.map(item=>item.source),...handoffs,...scoped]);
-   reader.publishConversationDisplayPlan(current,projection,{cohortVersion:{accepted:[]}},scope);
-   const afterPublish=reader.acceptedView.peek();props.trace?.push(`plan-published:g${afterPublish.generation}:e${afterPublish.epoch}:cap=${afterPublish.displayPlan?.capability===reader.acceptedView.currentCapability}`);
-   setReader(reader);props.onPublished?.(reader,reader.acceptedView.peek());
-  });
-  if(reader.acceptedView.peek().revision!==undefined)resolveRead(reader.acceptedView.peek());
+   const current=reader.acceptedView.peek();props.trace?.push(`plan-published:g${current.generation}:e${current.epoch}:cap=${current.displayPlan?.capability===reader.acceptedView.currentCapability}`);
+   setReader(reader);props.onPublished?.(reader,current);
+  };
+  const stop=reader.acceptedView.subscribe(admit);
+  admit(reader.acceptedView.peek());
   return()=>{stop();reader.dispose();};
  },[props.snapshot]);
  if(!reader)return null;
@@ -559,7 +579,7 @@ it('publishes saved rows and whole-attempt retirement in the same DOM frame, ret
     // Revocation cannot consume the overlay; it also cannot authorize stale public DOM.
     expect(retainUnretiredLiveFacts(revoked.snapshot,scope,false,liveFacts)).toEqual(liveFacts);
     const revokedModel=new Proxy(model,{get(target,key){return key==='longReader'?{value:revoked.reader,peek:()=>revoked.reader}:Reflect.get(target,key);}});
-    await act(async()=>render(<ActualSavedWindowContent model={revokedModel} snapshot={revoked.snapshot} liveFacts={liveFacts}/>,host));
+    await act(async()=>render(<ActualSavedWindowContent model={revokedModel} snapshot={revoked.snapshot}/>,host));
     expect(host.textContent).not.toContain('Whole live answer');expect(host.textContent).not.toContain('Committed saved answer');
   }finally{render(null,host);host.remove();fixture.model.dispose();fixture.data.stop();}
 });
@@ -607,14 +627,15 @@ it('keeps typed assistant empty/presence membership distinct across live, termin
  const model=new Proxy(f.model,{get(target,key){return key==='longReader'?{value:reader,peek:()=>reader}:Reflect.get(target,key);}});
  let live:import('../../../ui-core/src/conversation-items').NormalizedSavedItem[]=[];
  const frames:unknown[]=[];
- const paint=()=>{const snapshot=reader.acceptedView.peek();render(<ActualSavedWindowContent model={model} snapshot={snapshot} liveFacts={[...live]}/>,host);};
+ reader.bindConversationInput(snapshot=>captureConversationInput(snapshot,{scope:'fixture',threadId:'t',records:[],work:live,current:true}));
+ const paint=()=>{const snapshot=reader.acceptedView.peek();render(<ActualSavedWindowContent model={model} snapshot={snapshot}/>,host);};
  let stop=()=>{};
  try{
   await act(async()=>{await Promise.resolve();await Promise.resolve();paint();});
   const oldElement=host.querySelector('[data-node="prior-answer"]');expect(oldElement).not.toBeNull();
   const record=(text:string)=>({domain:'live' as const,namespace:'handoff' as const,scope:'t',recordId:'stable-live',kind:'text' as const,text});
   const frame=async(label:string)=>{
-   await act(async()=>paint());
+   await act(async()=>{reader.refreshConversationInput(reader.acceptedView.peek());paint();});
    frames.push({frame:frames.length,label,current:reader.acceptedView.isCurrent(reader.acceptedView.peek()),messages:host.querySelectorAll('.msg').length,presence:host.querySelectorAll('[data-assistant-presence]').length,keys:[...host.querySelectorAll('[data-item-key]')].map(row=>row.getAttribute('data-item-key'))});
    expect(host.querySelector('[data-node="prior-answer"]')).toBe(oldElement);
   };
@@ -639,7 +660,7 @@ it('publishes a newly appended readable assistant after a hint held during path 
  const model=new Proxy(f.model,{get(target,key){return key==='longReader'?{value:r.w,peek:()=>r.w}:Reflect.get(target,key);}});
  const paint=()=>{
   const snapshot=r.w.acceptedView.peek();
-  render(<ActualSavedWindowContent model={model} snapshot={snapshot} liveFacts={[]}/>,host);
+  render(<ActualSavedWindowContent model={model} snapshot={snapshot}/>,host);
   frames.push({frame:frames.length,current:r.w.acceptedView.isCurrent(snapshot),raw:snapshot.rows.map(row=>row.node_id),mounted:[...host.querySelectorAll('[data-node]')].map(row=>row.getAttribute('data-node')),reads:r.calls().length});
  };
  const stop=r.w.acceptedView.subscribe(paint);

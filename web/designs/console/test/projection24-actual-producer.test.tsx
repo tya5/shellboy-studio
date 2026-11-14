@@ -132,10 +132,10 @@ it('revokes the source header label and href together with its accepted owner sn
  const {SavedWindowContent}=await import('../screens/Conversation');
  try{
   await r.settle();const snapshot=r.w.acceptedView.peek();
-  await act(async()=>render(<SavedWindowContent model={model} snapshot={snapshot} liveFacts={[]}/>,host));
+  await act(async()=>render(<SavedWindowContent model={model} snapshot={snapshot}/>,host));
   expect(host.querySelector('.who a')?.getAttribute('href')).toContain('exact-source');expect(host.querySelector('.who a')?.textContent).toContain('exact-so');
   r.w.dispose();expect(r.w.acceptedView.isCurrent(snapshot)).toBe(false);
-  await act(async()=>render(<SavedWindowContent model={model} snapshot={snapshot} liveFacts={[]}/>,host));
+  await act(async()=>render(<SavedWindowContent model={model} snapshot={snapshot}/>,host));
   expect(host.querySelector('.who a')).toBeNull();expect(host.textContent).not.toContain('Independent readable sender body');
  }finally{render(null,host);host.remove();r.w.dispose();r.data.stop();f.model.dispose();f.data.stop();}
 });

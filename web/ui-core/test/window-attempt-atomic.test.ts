@@ -1,7 +1,7 @@
 import { ShellboyData } from "../../data/src/store";
 import { expect, it } from "vitest";
 import { ConversationWindow } from "../src/window";
-import { canonicalPlanExpectation, observePublishedPlans } from "./publication-contract";
+import { currentInputPlanExpectation, observePublishedPlans } from "./publication-contract";
 import type { HandoffRecord, PresentationContainerId, AttemptReadyProof } from "../../data/src/handoff";
 import type { HistoryItem } from "../../data/src";
 import { FakeOwnerDb, FakeTransport, connectedWithHistory, settle, flush } from "../../data/test/harness";
@@ -16,7 +16,7 @@ async function rig(items = nodes) {
   return { w, record, proof };
 }
 it("all-ref retirement and saved-order sequence publish once in the SAME observed snapshot", async () => {
-  const { w, record, proof } = await rig(); const publications=observePublishedPlans(w, ref => canonicalPlanExpectation(ref, "complete")); const trace: { saved: string[]; retired: string[] }[] = [];
+  const { w, record, proof } = await rig(); const publications=observePublishedPlans(w, ref => currentInputPlanExpectation(ref, "complete")); const trace: { saved: string[]; retired: string[] }[] = [];
   const stop = w.acceptedView.subscribe(ref => { expect(w.acceptedView.isCurrent(ref)).toBe(true); trace.push({ saved: ref.rows.map(row => row.node_id!), retired: ref.retiredAttempts?.map(item => item.attemptId) ?? [] }); });
   let releases = 0; expect(w.acceptHandoff(record, proof.scope, () => { releases++; expect(w.acceptedView.peek().retiredAttempts).toHaveLength(1); })).toBe(true);
   expect(trace).toEqual([{ saved: ["tool", "answer"], retired: ["attempt"] }]); expect(releases).toBe(1);

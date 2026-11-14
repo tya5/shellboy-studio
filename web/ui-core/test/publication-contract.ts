@@ -1,3 +1,4 @@
+import { captureConversationInput } from '../src/conversation-input';
 import { expect } from 'vitest';
 import type { AcceptedCapability } from '../src/accepted-view';
 import type { ConversationDisplayPlan, DisplayBodySource } from '../src/conversation-display-plan';
@@ -39,10 +40,9 @@ export function observePublishedPlans(window: { acceptedView: { currentCapabilit
   return { generations, stop };
 }
 
-export function canonicalPlanExpectation(ref: WindowAcceptedSnapshot, coverage: 'complete' | 'unavailable'): ExactPlanExpectation {
-  const { projectHistoryWindowItems } = requireConversationItems();
-  const projection = projectHistoryWindowItems({ revision: ref.revision ?? 0, nodes: ref.rows,
-    keyScope: [ref.displayPlan?.scope ?? ''] }).projection;
+export function currentInputPlanExpectation(ref: WindowAcceptedSnapshot, coverage: 'complete' | 'unavailable'): ExactPlanExpectation {
+  const projection = captureConversationInput(ref, { scope: ref.displayPlan?.scope ?? 'history',
+    threadId: 'fixture', records: [], work: [], current: true }).projection;
   const owners = new Map<string, { containerKey: string }>();
   for (const fact of ref.assistantOwnership ?? []) for (const key of fact.itemKeys) owners.set(key, fact);
   return {
@@ -56,7 +56,7 @@ export function canonicalPlanExpectation(ref: WindowAcceptedSnapshot, coverage: 
             capability: ref.displayPlan?.capability! }
         : { kind: 'unavailable', reason: source.kind, generation: ref.generation, revision: ref.revision ?? 0 };
     }),
-    containers: projection.items.map(item => owners.get(item.key)?.containerKey),
+    containers: projection.items.map(item => ('domain' in item.source ? item.source.presentationContainer : undefined) ?? owners.get(item.key)?.containerKey),
     lifetimes: projection.items.map(item => {
       const source = item.source;
       return (source.kind === 'user' || source.kind === 'summary') && source.textComplete === true
@@ -64,8 +64,3 @@ export function canonicalPlanExpectation(ref: WindowAcceptedSnapshot, coverage: 
     }),
   };
 }
-function requireConversationItems(): typeof import('../src/conversation-items') {
-  // Static import avoided here only to keep test helpers' runtime module graph narrow.
-  return conversationItems;
-}
-import * as conversationItems from '../src/conversation-items';

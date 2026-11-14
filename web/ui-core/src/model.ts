@@ -1,3 +1,4 @@
+import { captureConversationInput, type ConversationSemanticInput } from "./conversation-input";
 import { readThreadSettings, type OutputLimitReadback, type ThreadSettings } from "./resources";
 import {localSendAdmission} from "./local-send-admission";
 import type { OwnSendTailObservation,OwnSendReservation } from "./own-send-region";
@@ -665,6 +666,7 @@ export class AppModel {
       this.readerTick = h.historyTick.peek();
       const reader = new ConversationWindow({ read: (a, c) => h.readWindow(a, c) });
       reader.bindTerminalHandle(h);
+      reader.bindConversationInput(snapshot => this.captureWindowConversation(reader, h, snapshot).input);
       this.longReader.value = reader;
     }
     const tick = h.historyTick.value; // a hint: the reader decides what to read
@@ -693,33 +695,16 @@ export class AppModel {
     this.readerShells(reader);
   }
 
-  private composeWindowDisplay(reader: ConversationWindow, handle: ThreadHandle): void {
-    const snapshot = reader.acceptedView.peek();
-    const current = () => this.longReader.peek() === reader && this.handle.peek() === handle && reader.acceptedView.isCurrent(snapshot);
-    if (!current() || snapshot.revision === undefined) return;
-    const scope = handle.handoffScope(), keyScope = [scope];
-    const canonical = projectHistoryWindowItems({ revision: snapshot.revision, nodes: snapshot.rows, keyScope }).projection;
-    const handoffFacts = projectOwnedHandoffFacts(handle.threadId, handle.handoff.value);
-    const liveFacts = normalizeLiveWorkFacts({ scope: handle.threadId, items: handle.work.value.value?.items ?? [] });
-    const ownership = snapshot.assistantOwnership ?? [];
-    const canonicalOwners = new Set(ownership.filter(item => item.mode === "canonical").map(item => item.recordKey));
-    const reserved = new Set(ownership.filter(item => item.mode === "preview").flatMap(item => item.itemKeys));
-    const retainedHandoffs = retainUnretiredLiveFacts(snapshot, scope, true,
-      handoffFacts.filter(fact => !("domain" in fact) || !canonicalOwners.has(fact.recordId)));
-    const retainedWork = retainUnretiredLiveFacts(snapshot, scope, true,
-      liveFacts.filter(fact => !("domain" in fact && fact.namespace === "handoff")));
-    const saved = canonical.items.filter(item => !reserved.has(item.key)).map(item => item.source);
-    const workInput = [...retainedWork, ...normalizeTerminalPresenceFacts(snapshot.terminalPresence ?? [])];
-    const work = scopeIssuedWorkFacts(workInput, keyScope);
-    const projected = projectSavedItems([...saved, ...retainedHandoffs, ...(work ?? [])]);
-    const projection = work === undefined ? Object.freeze({ ...projected,
-      partitionUnknownKeys: Object.freeze([...projected.partitionUnknownKeys, `work-unavailable:${scope}`]) }) : projected;
-    const containers = new Map<string, string>();
-    for (const item of projection.items) if ("domain" in item.source && item.source.presentationContainer) containers.set(item.key, item.source.presentationContainer);
-    for (const decision of ownership.filter(item => item.mode === "canonical")) for (const key of decision.itemKeys) {
-      if (projection.items.some(item => item.key === key)) containers.set(key, decision.containerKey);
-    }
-    const display = withPresentationContainers(projection, containers);
+  private captureWindowConversation(reader: ConversationWindow, handle: ThreadHandle, snapshot: WindowAcceptedSnapshot) {
+    const scope = handle.handoffScope();
+    const capability = reader.acceptedView.currentCapability;
+    const current = () => this.longReader.peek() === reader && this.handle.peek() === handle
+      && reader.acceptedView.currentCapability === capability && reader.isTerminalHandleCurrent(handle);
+    const input = captureConversationInput(snapshot, { scope, threadId: handle.threadId,
+      records: handle.handoff.value, work: normalizeLiveWorkFacts({ scope: handle.threadId,
+        items: handle.work.value.value?.items ?? [] }), current: current() });
+    const reserved = new Set((snapshot.assistantOwnership ?? []).filter(item => item.mode === 'preview').flatMap(item => item.itemKeys));
+    const display = input.projection;
     const ownScope = this.ownMutationScope();
     const rows = this.ownMutationRows(ownScope);
     const decision = ownSendPresentation({ ref: snapshot, current: current(), scope: ownScope, projection: display,
@@ -728,12 +713,18 @@ export class AppModel {
         revision: snapshot.revision, lastNodeId: snapshot.rows.at(-1)?.node_id, lastOrdinal: snapshot.rows.at(-1)?.selection?.ordinal },
       nodeOrdinals: new Map(snapshot.rows.flatMap(node => node.node_id && node.selection?.ordinal !== undefined ? [[node.node_id, node.selection.ordinal] as const] : [])),
       reservation: this.ownSendReservation() as import("./own-send-region").OwnSendReservation<WindowAcceptedSnapshot> | undefined,
-      validateCurrent: current, cohortVersion: { accepted: this.acceptedOwnMessages.value, pending: this.pendingOwnMessage.value } });
-    this.installOwnPresentation(decision, current);
-    if (!current()) return;
-    const cohortVersion = { accepted: this.acceptedOwnMessages.peek(), pending: this.pendingOwnMessage.peek() };
-    reader.setSemanticDisplayInput({ projection: decision.projection, decision: { cohortVersion }, scope });
-    reader.publishConversationDisplayPlan(snapshot, decision.projection, { cohortVersion }, scope);
+      validateCurrent: () => current() && reader.acceptedView.isCurrent(snapshot), cohortVersion: { accepted: this.acceptedOwnMessages.value, pending: this.pendingOwnMessage.value } });
+    const captured: ConversationSemanticInput = { ...input, projection: decision.projection,
+      decision: { cohortVersion: { accepted: this.acceptedOwnMessages.value, pending: this.pendingOwnMessage.value } } };
+    return { input: captured, decision, current };
+  }
+
+  private composeWindowDisplay(reader: ConversationWindow, handle: ThreadHandle): void {
+    const snapshot = reader.acceptedView.peek();
+    if (!reader.acceptedView.isCurrent(snapshot) || snapshot.revision === undefined) return;
+    const captured = this.captureWindowConversation(reader, handle, snapshot);
+    this.installOwnPresentation(captured.decision, () => captured.current() && reader.acceptedView.isCurrent(snapshot));
+    reader.refreshConversationInput(snapshot);
   }
 
   /** Shell facts for the steps in view, read while it shows some. */
@@ -974,7 +965,10 @@ export class AppModel {
     return !!this.pendingOwnMessage.value || this.acceptedOwnMessages.value.length >= 8;
   }
 
-  private installedOwnResult: object | undefined;
+  private installedOwnDecision: OwnSendDecision<unknown> | undefined;
+  ownSendDecision(ref: unknown): OwnSendDecision<unknown> | undefined {
+    return this.installedOwnDecision?.ref === ref ? this.installedOwnDecision : undefined;
+  }
   private ownTailObservation:OwnSendTailObservation<unknown>|undefined;
   private ownReservation:OwnSendReservation<unknown>|undefined;
   ownSendReservation():OwnSendReservation<unknown>|undefined{return this.ownReservation;}
@@ -985,14 +979,14 @@ export class AppModel {
   }
   pendingOwnIsCurrent(): boolean { return !!this.pendingOwnRetryCurrent?.(); }
   installOwnPresentation<Ref>(result: OwnSendDecision<Ref>, current: () => boolean): void {
-    this.installedOwnResult=result.token;
+    this.installedOwnDecision=result;
     this.ownTailObservation=result.observation;
     if(!this.acceptedOwnMessages.peek().length&&!this.pendingOwnMessage.peek())this.ownReservation=undefined;
     if (!result.retire.length || !current() || !this.pendingOwnRetryCurrent?.()) return;
     if (!result.cohortVersion || result.cohortVersion.accepted!==this.acceptedOwnMessages.peek() || result.cohortVersion.pending!==this.pendingOwnMessage.peek()) return;
     const rows=this.ownMutationRows(result.scope);
     if (rows.length!==result.cohort.length || rows.some((row,index)=>row!==result.cohort[index])) return;
-    if (this.installedOwnResult!==result.token) return;
+    if (this.installedOwnDecision?.token!==result.token) return;
     const previous=this.acceptedOwnMessages.peek(),kept=previous.filter(row=>!result.retire.includes(row));
     if(kept.length!==previous.length)batch(()=>{this.acceptedOwnMessages.value=kept;this.ownSendCapacityReason.value=false;});
   }
@@ -1021,7 +1015,7 @@ export class AppModel {
     this.pendingOwnRetryCurrent = retryCurrent;
     if(!this.acceptedOwnMessages.peek().length&&!this.pendingOwnMessage.peek()){
       const observation=this.ownTailObservation;
-      this.ownReservation=observation&&observation.scope===scope&&observation.installedToken===this.installedOwnResult&&observation.isCurrent()
+      this.ownReservation=observation&&observation.scope===scope&&observation.installedToken===this.installedOwnDecision?.token&&observation.isCurrent()
         ?Object.freeze({token:Object.freeze({}),observation}):undefined;
     }
     this.pendingOwnMessage.value = {threadId,scope,operationId,text,phase:"sending",plainMessageSend:true};

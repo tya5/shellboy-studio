@@ -1,3 +1,4 @@
+import { captureConversationInput } from '../../../ui-core/src/conversation-input';
 // @vitest-environment happy-dom
 import '@preact/signals';
 import {render} from 'preact';
@@ -70,22 +71,26 @@ it('renders an explicit unavailable Work cut when a mixed issued/foreign scope b
  const reader=new ConversationWindow({read:async()=>({ok:true,value:{thread_id:'t',revision:1,total:1,items:[node]}})});
  try{
   await act(async()=>{await Promise.resolve();await Promise.resolve();});
-  const snapshot=reader.acceptedView.peek();expect(reader.acceptedView.isCurrent(snapshot)).toBe(true);
+  let snapshot=reader.acceptedView.peek();expect(reader.acceptedView.isCurrent(snapshot)).toBe(true);
   const model=new Proxy(f.model,{get(target,key){return key==='longReader'?{value:reader,peek:()=>reader}:Reflect.get(target,key);}});
   const valid=normalizeLiveWorkFacts({scope:'t',items:[{kind:'progress',id:'valid',thread_id:'t',state:'running'}]});
   const foreign={domain:'live' as const,scope:'foreign',recordId:'unissued',kind:'unknown' as const};
-  await act(async()=>render(<SavedWindowContent model={model} snapshot={snapshot} liveFacts={[...valid,foreign]}/>,host));
+  let work:readonly import('../../../ui-core/src/conversation-items').NormalizedSavedItem[]=[...valid,foreign];
+  reader.bindConversationInput(candidate=>captureConversationInput(candidate,{scope:'fixture',threadId:'t',records:[],work,current:true}));
+  reader.refreshConversationInput(snapshot);snapshot=reader.acceptedView.peek();
+  await act(async()=>render(<SavedWindowContent model={model} snapshot={snapshot}/>,host));
   expect(host.textContent).toContain('Independent saved text');
   const rejected=host.querySelector('[data-work-scope-rejected]')!;
   expect(rejected.getAttribute('role')).toBe('status');expect(rejected.textContent).toContain('CLIENT');expect(rejected.textContent).toContain('scope-qualification-rejected');
   expect(reader.acceptedView.isCurrent(snapshot)).toBe(true);
-  await act(async()=>render(<SavedWindowContent model={model} snapshot={snapshot} liveFacts={[...valid,foreign]}/>,host));
+  await act(async()=>render(<SavedWindowContent model={model} snapshot={snapshot}/>,host));
   expect(host.querySelector('[data-work-scope-rejected]')).toBe(rejected);
   expect(host.textContent).not.toContain('foreign');expect(host.textContent).not.toContain('unissued');
-  await act(async()=>render(<SavedWindowContent model={model} snapshot={snapshot} liveFacts={valid}/>,host));
+  work=valid;reader.refreshConversationInput(snapshot);snapshot=reader.acceptedView.peek();
+  await act(async()=>render(<SavedWindowContent model={model} snapshot={snapshot}/>,host));
   expect(host.querySelector('[data-work-scope-rejected]')).toBeNull();expect(host.querySelector('.work-element-row')).not.toBeNull();
   reader.dispose();expect(reader.acceptedView.isCurrent(snapshot)).toBe(false);
-  await act(async()=>render(<SavedWindowContent model={model} snapshot={snapshot} liveFacts={[...valid,foreign]}/>,host));
+  await act(async()=>render(<SavedWindowContent model={model} snapshot={snapshot}/>,host));
   expect(host.querySelector('[data-work-scope-rejected]')).toBeNull();expect(host.textContent).not.toContain('Independent saved text');
 
  }finally{render(null,host);reader.dispose();host.remove();f.model.dispose();f.data.stop();}

@@ -61,6 +61,7 @@ export function displaySemanticKey(canonicalProjection: SavedItemProjection, dis
 }
 
 export interface AcceptedPublicationInput {
+  readonly coverage: ConversationDisplayPlan["coverage"];
   readonly generation: number;
   readonly revision: number;
   readonly capability: AcceptedCapability;
@@ -71,6 +72,10 @@ export interface AcceptedPublicationInput {
   readonly userDecision: OwnUserDecision;
   readonly scope: string;
   readonly retiredAttempts: readonly { readonly scope: string; readonly attemptId: string; readonly revision: number }[];
+}
+
+export function conversationCohortKey(version: DisplayCohortVersion): string {
+  return [...version.accepted.map(row => `${row.operationId}:${row.phase}:${row.messageId ?? ''}`), version.pending ? `pending:${version.pending.operationId}:${version.pending.phase}` : 'pending:none'].join('|');
 }
 
 export function createConversationDisplayPlan(input: AcceptedPublicationInput): ConversationDisplayPlan {
@@ -88,7 +93,7 @@ export function createConversationDisplayPlan(input: AcceptedPublicationInput): 
   const generation = input.generation, revision = input.revision;
   const semanticKey = displaySemanticKey(input.canonicalProjection, input.projection, qualifiedFacts, input.retiredAttempts);
   const version = input.userDecision.cohortVersion;
-  const cohortKey = [...version.accepted.map(row => `${row.operationId}:${row.phase}:${row.messageId ?? ''}`), version.pending ? `pending:${version.pending.operationId}:${version.pending.phase}` : 'pending:none'].join('|');
+  const cohortKey = conversationCohortKey(version);
   const canonicalItems = new Map(input.canonicalProjection.items.map(item => [item.key, item]));
   const lifetimes = new Map<DisplayLifetime["kind"], DisplayLifetime>();
   const unavailableBodies = new Map<string, DisplayBodySource>();
@@ -125,7 +130,7 @@ export function createConversationDisplayPlan(input: AcceptedPublicationInput): 
     const lifetime = lifetimeFor(retired ? 'revoked' : human && !owner ? 'canonical-human' : owner || host ? 'valid-owner' : 'retained');
     return Object.freeze({ item, ...(host ? { presentationContainer: host } : {}), body, lifetime });
   });
-  return Object.freeze({ acceptedGeneration: generation, revision, capability: input.capability, coverage: "complete" as const, sequence: Object.freeze([...(input.projection.sequence ?? [])]), workGroups: Object.freeze([...(input.projection.workGroups ?? [])]), partitionUnknownKeys: Object.freeze([...input.projection.partitionUnknownKeys]), entries: Object.freeze(entries), cohortKey, cohortVersion: version, scope: input.scope, semanticKey });
+  return Object.freeze({ acceptedGeneration: generation, revision, capability: input.capability, coverage: input.coverage, sequence: Object.freeze([...(input.projection.sequence ?? [])]), workGroups: Object.freeze([...(input.projection.workGroups ?? [])]), partitionUnknownKeys: Object.freeze([...input.projection.partitionUnknownKeys]), entries: Object.freeze(entries), cohortKey, cohortVersion: version, scope: input.scope, semanticKey });
 }
 
 

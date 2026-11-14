@@ -135,7 +135,7 @@ it("stages the legal maximum selected range as one shared immutable publication 
     range: undefined, total: 0, revision: undefined, pending: true };
   const view = new AcceptedView(initial);
   const projection = projectHistoryWindowItems({ revision: 1, nodes: rows, keyScope: ["scope"] }).projection;
-  const plan = createConversationDisplayPlan({ generation: 1, revision: 1, capability: view.currentCapability,
+  const plan = createConversationDisplayPlan({ coverage: "complete", generation: 1, revision: 1, capability: view.currentCapability,
     rows, canonicalProjection: projection, projection, assistantFacts: [], scope: "scope",
     userDecision: { cohortVersion: { accepted: [] } }, retiredAttempts: [] });
   const candidate: WindowAcceptedSnapshot = { ...initial, generation: 1, revision: 1, pending: false,
@@ -146,4 +146,22 @@ it("stages the legal maximum selected range as one shared immutable publication 
   expect(entries).toHaveLength(rows.length);expect(entries[0]!.lifetime).toBe(entries[1]!.lifetime);
   expect(entries[0]!.body).toMatchObject({ kind: "typed-canonical", text: "complete-0" });
   expect(entries.at(-1)!.body).toMatchObject({ kind: "typed-canonical", text: `complete-${rows.length - 1}` });
+});
+
+
+it.each([Object.freeze(new Map()),Object.freeze(new Set()),Object.freeze(new Date(0))])("rejects frozen non-plain objects rather than retaining mutable internals %#", payload=>{
+ const view=new AcceptedView({...page(0),payload:{}}),ref=view.current;
+ expect(()=>view.publish(makeAcceptedPublication({...page(1,view.currentCapability),payload},'read'))).toThrow('plain data');
+ if(payload instanceof Map){payload.set('later','mutation');expect(payload.size).toBe(1);}
+ else if(payload instanceof Set){payload.add('later');expect(payload.size).toBe(1);}
+ else if(payload instanceof Date){payload.setTime(1);expect(payload.getTime()).toBe(1);}
+ else throw new Error('unsupported frozen-object fixture');
+ expect(view.current).toBe(ref);expect(view.current.payload).toEqual({});expect(view.current.revision).toBe(0);
+});
+it('preserves only minted capability identity, not arbitrary frozen empty objects',()=>{
+ const value=Object.freeze({}),view=new AcceptedView({...page(0),payload:value});
+ const candidate={...page(1,view.currentCapability),payload:value};
+ expect(view.publish(makeAcceptedPublication(candidate,'read'))).toBe(true);
+ expect(view.current.payload).not.toBe(value);
+ expect(view.current.displayPlan.capability).toBe(view.currentCapability);
 });

@@ -5,6 +5,13 @@ export type AcceptedCapability = Readonly<{ readonly [acceptedCapabilityBrand]: 
 declare const stagedBrand: unique symbol;
 export type StagedView<T> = Readonly<{ readonly [stagedBrand]: T }>;
 
+const capabilityTokens = new WeakSet<object>();
+function mintCapability(): AcceptedCapability {
+  const token = Object.freeze({}) as AcceptedCapability;
+  capabilityTokens.add(token);
+  return token;
+}
+
 const publicationBrand: unique symbol = Symbol("accepted publication");
 export type PublicationReason = "receipt" | "ready" | "read" | "revoke" | "bump" | "own-send";
 export type AcceptedPublication<T extends { readonly displayPlan?: unknown }> = Readonly<{
@@ -30,7 +37,7 @@ function materialize<T>(value: T): T {
   const captured = new Map<object, { readonly value: unknown; readonly height: number }>();
   const copy = (v: unknown, depth: number): { readonly value: unknown; readonly height: number } => {
     if (++nodes > 65536 || depth > 64) throw new Error("accepted view staging bound exceeded");
-    if (v !== null && typeof v === "object" && Object.isFrozen(v) && Object.keys(v).length === 0) return { value: v, height: 0 };
+    if (v !== null && typeof v === "object" && capabilityTokens.has(v)) return { value: v, height: 0 };
     if (v === null || typeof v !== "object") {
       if (typeof v === "function" || typeof v === "symbol") throw new Error("accepted view requires plain data");
       return { value: v, height: 0 };
@@ -66,7 +73,7 @@ export class AcceptedView<T> {
   private epoch = 0;
   private ended = false;
   private acceptedEpoch = 0;
-  private capability = Object.freeze({}) as AcceptedCapability;
+  private capability = mintCapability();
   private staged?: { handle: StagedView<T>; expected: T; epoch: number; capability: AcceptedCapability; value?: T };
   private listeners = new Set<(value: T) => void>();
   private notifying = false;
@@ -75,7 +82,7 @@ export class AcceptedView<T> {
   constructor(initial: T) {
     this.value = signal(materialize(initial));
     const initialPlan = (initial as { readonly displayPlan?: { readonly capability?: AcceptedCapability } }).displayPlan;
-    if (initialPlan?.capability) this.capability = initialPlan.capability;
+    if (initialPlan?.capability && capabilityTokens.has(initialPlan.capability)) this.capability = initialPlan.capability;
   }
   get current(): T { return this.value.value; }
   peek(): T { return this.value.peek(); }
@@ -115,7 +122,7 @@ export class AcceptedView<T> {
     this.listeners.add(listener); return () => { this.listeners.delete(listener); };
   }
   /** Revoke before cancellation/other external callbacks, without replacing display. */
-  invalidate(): void { this.capability = Object.freeze({}) as AcceptedCapability; ++this.epoch; this.staged = undefined; this.pending = false; }
+  invalidate(): void { this.capability = mintCapability(); ++this.epoch; this.staged = undefined; this.pending = false; }
   revoke(): void { this.invalidate(); }
   dispose(): void { this.ended = true; this.invalidate(); this.listeners.clear(); }
   private notify(): void {

@@ -4,7 +4,6 @@ import type {OwnSendPath,OwnSendPlacement} from "../../../ui-core/src/own-send-r
 import type {OwnSendSlotPosition} from "../../../ui-core/src/own-send-presentation";
 import { workElementDisplay, workExecutionDisplay, type WorkElementDisplay } from "../../../ui-core/src/work-element-display";
 import { WorkElementRow, formatWorkElementDisplay } from "../system/components/WorkElementRow";
-import { ownSendPresentation } from "../../../ui-core/src/own-send-presentation";
 import { Disclosure } from "../system/components/Disclosure";
 import type { HandoffRecord } from "../../../data/src/handoff";
 import { senderFact } from "../../../data/src/sender";
@@ -246,82 +245,37 @@ export function LiveRecordChrome({ model, record }: { model: AppModel; record: H
   </div>;
 }
 
-function OwnSendContent<Ref>({model,projection,nodes,scope,acceptedRef,current,isCurrent,trailing,path,hiddenItemKeys=new Set<string>()}: {model:AppModel;projection:SavedItemProjection;nodes?:readonly HistoryItem[];scope:string;acceptedRef:Ref|undefined;current:boolean;isCurrent:()=>boolean;trailing?:ComponentChildren;path?:OwnSendPath;hiddenItemKeys?:ReadonlySet<string>}) {
-  const rows=model.ownMutationRows(scope);
-  const decision=useMemo(()=>ownSendPresentation({ref:acceptedRef,current,scope,projection,localRows:rows,hiddenItemKeys,canonicalRows:nodes,path,nodeOrdinals:new Map((nodes??[]).flatMap(node=>node.node_id&&node.selection?.ordinal!==undefined?[[node.node_id,node.selection.ordinal] as const]:[])),reservation:model.ownSendReservation() as import("../../../ui-core/src/own-send-region").OwnSendReservation<Ref>|undefined,validateCurrent:isCurrent,cohortVersion:{accepted:model.acceptedOwnMessages.peek(),pending:model.pendingOwnMessage.peek()}}),[acceptedRef,current,scope,model.acceptedOwnMessages.value,model.pendingOwnMessage.value,projection]);
-  const renderLocal=(messages:readonly import("../../../ui-core/src/model").PendingOwnMessage[])=> <>{messages.map(message=><div key={message.operationId} data-own-presentation="" data-own-placement={decision.placement.kind} data-own-order-conflict={decision.conflictIds.length?decision.conflictIds.join(","):undefined}>
-    {decision.localRows.length&&decision.placement.kind==="unqualified"?<div role="status" data-own-placement-reason={decision.placement.reason}>{model.t.value("composer.pending.placementUnqualified")}: {decision.placement.reason}</div>:null}{decision.conflictIds.length?<div role="status" class="caption muted" data-own-order-problem="">{model.t.value("composer.pending.orderConflict")} {decision.conflictIds.join(", ")}</div>:null}
+function OwnSendContent({model,snapshot,plan,trailing}: {model:AppModel;snapshot:WindowAcceptedSnapshot;plan:ConversationDisplayPlan;trailing?:ComponentChildren}) {
+  const projection=projectionFromDisplayPlan(plan),scope=model.ownMutationScope();
+  const acceptedRef=snapshot;
+  const decision=model.ownSendDecision(acceptedRef);
+  const placement=decision?.placement??{kind:'unqualified' as const,reason:'tail-unproved' as const};
+  const localRows=decision?.localRows??model.ownMutationRows(scope);
+  const conflicts=decision?.conflictIds??[];
+  const renderLocal=(messages:readonly import("../../../ui-core/src/model").PendingOwnMessage[])=> <>{messages.map(message=><div key={message.operationId} data-own-presentation="" data-own-placement={placement.kind} data-own-order-conflict={conflicts.length?conflicts.join(","):undefined}>
+    {localRows.length&&placement.kind==="unqualified"?<div role="status" data-own-placement-reason={placement.reason}>{model.t.value("composer.pending.placementUnqualified")}: {placement.reason}</div>:null}{conflicts.length?<div role="status" class="caption muted" data-own-order-problem="">{model.t.value("composer.pending.orderConflict")} {conflicts.join(", ")}</div>:null}
     <aside data-pending-own-message={message.operationId} data-pending-phase={message.phase}><Message bot={false} who={model.t.value("convo.you")} text={message.text} at={model.t.value(`composer.pending.${message.phase}`)} copyLabel={model.t.value("code.copy")} copiedLabel={model.t.value("code.copied")}/>
     {message.phase==="failed"||message.phase==="unconfirmed"?<><Button variant="link" disabled={!model.canResend(message)} onClick={()=>void model.resend(message)}>{model.t.value("action.retry")}</Button>{!model.canResend(message)?<span class="caption">{model.t.value("composer.retryUnavailable")}</span>:null}</>:null}</aside>
   </div>)}</>;
   const reservation = model.ownSendReservation();
   const reservationBoundary = reservation?.observation.boundary;
   const reservationItemKey = reservationBoundary?.kind === "item" ? reservationBoundary.itemKey : undefined;
-  const sequence = decision.projection.sequence ?? [];
+  const sequence = projection.sequence ?? [];
   const reservationIndex = reservationItemKey ? sequence.findIndex(entry => entry.kind === "conversation" && entry.itemKey === reservationItemKey) : -1;
-  const assistantIndex = sequence.findIndex(entry => entry.kind === "conversation" && decision.projection.items.find(item => item.key === entry.itemKey)?.source.kind === "text");
-  return <SavedConversationItems model={model} projection={decision.projection} displayPlan={(acceptedRef && typeof acceptedRef === "object" ? (() => { const ref = acceptedRef as unknown as WindowAcceptedSnapshot; const plan = ref.displayPlan; return plan?.acceptedGeneration === ref.generation && plan.revision === ref.revision ? plan : undefined; })() : undefined)} nodes={current?nodes:[]} localRegion={decision.placement.kind === "qualified" ? {kind:"qualified",slots:decision.slots.map(slot=>({position:slot.position,content:renderLocal([slot.row])}))} : {kind:"unqualified",afterIndex:reservationIndex >= 0 ? reservationIndex : undefined,beforeIndex:reservationIndex < 0 && assistantIndex >= 0 ? assistantIndex : undefined,content:<section role="region" aria-label="Unplaced local submissions" data-own-unqualified-region="">{renderLocal(decision.localRows)}</section>}} trailing={trailing}/>;
+  const assistantIndex = sequence.findIndex(entry => entry.kind === "conversation" && projection.items.find(item => item.key === entry.itemKey)?.source.kind === "text");
+  return <SavedConversationItems model={model} projection={projection} displayPlan={plan} nodes={snapshot.rows} localRegion={placement.kind === "qualified" ? {kind:"qualified",slots:(decision?.slots??[]).map(slot=>({position:slot.position,content:renderLocal([slot.row])}))} : {kind:"unqualified",afterIndex:reservationIndex >= 0 ? reservationIndex : undefined,beforeIndex:reservationIndex < 0 && assistantIndex >= 0 ? assistantIndex : undefined,content:<section role="region" aria-label="Unplaced local submissions" data-own-unqualified-region="">{renderLocal(localRows)}</section>}} trailing={trailing}/>;
 }
 
-export function SavedWindowContent({ model, snapshot, live, liveBoundary, liveFacts }: { model: AppModel; snapshot: WindowAcceptedSnapshot; live?: ComponentChildren; liveBoundary?: number; liveFacts?: readonly NormalizedSavedItem[] }) {
+export function SavedWindowContent({ model, snapshot }: { model: AppModel; snapshot: WindowAcceptedSnapshot }) {
   if (snapshot.revision === undefined) return null;
   const handle = model.handle.value;
   const acceptedPlan = snapshot.displayPlan;
   const capability = model.longReader.value?.acceptedView.currentCapability;
   if (!acceptedPlan || acceptedPlan.acceptedGeneration !== snapshot.generation || acceptedPlan.revision !== snapshot.revision
     || acceptedPlan.capability !== capability || !(model.longReader.value?.acceptedView.isCurrent(snapshot) ?? false)) return null;
-  const keyScope = handle ? [handle.handoffScope()] : undefined;
-  const mapped = projectHistoryWindowItems({ revision: snapshot.revision, nodes: snapshot.rows, keyScope });
-  const records = liveFacts ?? (handle ? normalizeLiveWorkFacts({scope: handle.threadId, items: handle.work.value.value?.items ?? []}) : []);
-  const handoffs = handle ? projectOwnedHandoffFacts(handle.threadId, handle.handoff.value).map(fact => {
-    if (!("domain" in fact)) return fact;
-    const original = handle.handoff.value.find(record => record.key === fact.recordId);
-    return original?.readyAttempt ? {...fact, turnId: original.readyAttempt.turnId} : fact;
-  }) : [];
-  const scope = handle?.handoffScope() ?? "";
-  const current = model.longReader.value?.acceptedView.isCurrent(snapshot) ?? false;
-  const ownership = current && handle ? (snapshot.assistantOwnership ?? []).filter(decision =>
-    decision.scope === scope && decision.containerKey.length > 0 && decision.itemKeys.length > 0) : [];
-  const canonicalOwners = new Set(ownership.filter(decision => decision.mode === 'canonical').map(decision => decision.recordKey));
-  const reservedItems = new Set(ownership.filter(decision => decision.mode === 'preview').flatMap(decision => decision.itemKeys));
-  const retained = [...handoffs.filter(fact => !('domain' in fact) || !canonicalOwners.has(fact.recordId)),
-    ...retainUnretiredLiveFacts(snapshot, scope, current, records)];
-  const retainedHandoffs = retained.filter(fact => handoffs.includes(fact) || ("domain" in fact && (fact.namespace === "handoff" || fact.kind === "text")));
-  const retainedRecords = retained.filter(fact => records.includes(fact) && !("domain" in fact && (fact.namespace === "handoff" || fact.kind === "text")));
-  const saved = mapped.projection.items.filter(item => !reservedItems.has(item.key)).map(item => item.source);
-  // This is the captured history cut, not an ordinal assigned to a live record.
-  const cut = liveBoundary === undefined ? -1 : saved.findIndex(source => {
-    const node = snapshot.rows.find(node => node.node_id === source.nodeId);
-    return node?.selection?.ordinal !== undefined && node.selection.ordinal >= liveBoundary;
-  });
-  // Accepted history rows already carry the authoritative chronological order. A retained
-  // preview has no accepted ordinal, so it must not be inserted at a stale captured cut.
-  const ordered = cut >= 0
-    ? [...saved.slice(0, cut), ...retainedHandoffs, ...saved.slice(cut)]
-    : [...saved, ...retainedHandoffs];
-  const issuedWork=[...retainedRecords,...normalizeTerminalPresenceFacts(current ? snapshot.terminalPresence ?? [] : [])];
-  const scopedWork=keyScope?scopeIssuedWorkFacts(issuedWork,keyScope):issuedWork;
-  const workScopeRejected=scopedWork===undefined;
-  // Rejection is an unavailable Work cut, never a successful empty publication.
-  const baseProjection = workScopeRejected ? projectSavedItems(ordered) : projectSavedItems([...ordered,...scopedWork]);
-  const containers = new Map<string, string>();
-  // The current owned ledger is the preview authority; retain its answer host key
-  // while the accepted canonical proof later supplies the ordered child identities.
-  for (const item of baseProjection.items) {
-    const source = item.source;
-    if ("domain" in source && source.domain === "live" && source.presentationContainer) {
-      containers.set(item.key, source.presentationContainer);
-    }
-  }
-  for (const decision of ownership.filter(item => item.mode === "canonical")) {
-    for (const itemKey of decision.itemKeys) {
-      if (!baseProjection.items.some(item => item.key === itemKey)) continue;
-      containers.set(itemKey, decision.containerKey);
-    }
-  }
-  const projection = withPresentationContainers(baseProjection, containers);
-  // Live text without item-kind proof cannot unlock or replace saved Conversation text.
-  return <OwnSendContent model={model} projection={projection} nodes={snapshot.rows} scope={model.ownMutationScope()} acceptedRef={snapshot} current={current} isCurrent={()=>model.longReader.peek()?.acceptedView.isCurrent(snapshot)??false} path={{tail:!snapshot.pending&&!snapshot.disposed&&(snapshot.total===0||snapshot.range?.last===snapshot.total-1),empty:snapshot.total===0,revision:snapshot.revision,lastNodeId:snapshot.rows.at(-1)?.node_id,lastOrdinal:snapshot.rows.at(-1)?.selection?.ordinal}} hiddenItemKeys={reservedItems} trailing={<>{workScopeRejected&&current?<div key="work-scope-rejected" role="status" data-work-scope-rejected="" data-state-source="client" data-state-value="scope-qualification-rejected">CLIENT: {model.t.value("work.textUnavailable")} (scope-qualification-rejected)</div>:null}{handle?.handoffOverflow.value ? <div class="caption muted" data-live-overflow="">{model.t.value("convo.handoffLimit")} <HandoffRetryControl model={model}/></div> : undefined}</>} />;
+  return <OwnSendContent model={model} snapshot={snapshot} plan={acceptedPlan}
+    trailing={<>{acceptedPlan.coverage==='unavailable' ? <div role="status" data-work-scope-rejected="" data-state-source="client" data-state-value="scope-qualification-rejected">CLIENT: {model.t.value('work.textUnavailable')} (scope-qualification-rejected)</div> : null}
+    {handle?.handoffOverflow.value ? <div class="caption muted" data-live-overflow="">{model.t.value('convo.handoffLimit')} <HandoffRetryControl model={model}/></div> : null}</>} />;
 }
 
 const stepDuration = (s: Step, now: number): string | undefined => {
@@ -513,7 +467,7 @@ export function OrderedHistory({ model, handle, win, t }: { model: AppModel; han
   if (!model.historySupported) return <Notice tone="bad" title={t("convo.unsupportedOwner")} />;
   if (!win) return <LoadingRows label={t("convo.loading")} rows={5} />;
   return <WindowedScroll model={model} win={win} live={null} renderRow={() => <></>}
-    renderAcceptedView={snapshot => <SavedWindowContent model={model} snapshot={snapshot} liveBoundary={boundary?.ordinal} />}
+    renderAcceptedView={snapshot => <SavedWindowContent model={model} snapshot={snapshot} />}
     liveBoundary={boundary?.ordinal} />;
 }
 
