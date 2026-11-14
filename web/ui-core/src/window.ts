@@ -370,7 +370,7 @@ export class ConversationWindow {
         // Readback can only extend the same qualified selected run; revision changes
         // need a separate fresh transaction, never a silent rebind here.
         if (value.thread_id !== target.handle.threadId || (target.mode === "same-revision" && value.revision !== target.ref.revision) || value.total < target.ref.total || value.items.length > 200) reason = "selection-gap";
-        else if (value.items.some(row => {
+        else if (target.mode === "same-revision" && value.items.some(row => {
           const existing = target.ref.rows.find(saved => saved.selection?.ordinal === row.selection?.ordinal);
           return existing !== undefined && JSON.stringify(existing) !== JSON.stringify(row);
         })) {
