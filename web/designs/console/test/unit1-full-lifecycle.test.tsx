@@ -13,7 +13,7 @@ import {App} from '../screens/App';
 import {typedHandoffRegistry,validTypedHandoffRef} from '../../../ui-core/test/typed-handoff-fixture';
 
 it('keeps one answer presentation through the complete real Conversation lifecycle',async()=>{
- let ended=false,revision: string|number=7;
+ let ended=false,revision: string|number=7; const trace: unknown[]=[];
  const registry=typedHandoffRegistry({threadId:'thread',attemptId:'attempt-1',turnId:'turn-1',revision:7,total:4,refs:[{nodeId:'answer-1',ordinal:2,text:'Canonical answer'},{nodeId:'answer-2',ordinal:3,text:'Canonical continuation'}]});
  const first=registry.refs[0]!,second=registry.refs[1]!;
  const attempt=registry.attempt();
@@ -26,11 +26,11 @@ it('keeps one answer presentation through the complete real Conversation lifecyc
  const f=await fixtureModel({capabilities:['live.text','history.window'],configure(db){
   db.threads={thread:summary('thread')};db.details.thread=details('thread');db.history.thread=nodes;
   const base=db.answer.bind(db);db.answer=call=>{
-   if(call.command==='status')return {ok:true,result:{items:ended?[attempt]:[]}};
+   if(call.command==='status'){const result={items:ended?[attempt]:[]};trace.push({stage:'transport',command:call.command,args:call.args,result});return {ok:true,result};}
    if(call.command==='history.window'){
     const point=typeof call.node_id==='string'?call.node_id:undefined;
     const ordinal=Number.isSafeInteger(call.ordinal)?call.ordinal:undefined;
-    if(point!==undefined||ordinal!==undefined){const fixture=[first,second].find(item=>(point===undefined||item.nodeId===point)&&(ordinal===undefined||item.ordinal===ordinal));const window=registry.history({node_id:point,ordinal});if(!fixture||!window||!validTypedHandoffRef({...fixture,revision:registry.revision,total:registry.total},attempt,window))throw new Error(`typed handoff rejection ${point}:${ordinal}`);return {ok:true,result:window};}
+    if(point!==undefined||ordinal!==undefined){const fixture=[first,second].find(item=>(point===undefined||item.nodeId===point)&&(ordinal===undefined||item.ordinal===ordinal));const window=registry.history({node_id:point,ordinal});if(!fixture||!window||!validTypedHandoffRef({...fixture,revision:registry.revision,total:registry.total},attempt,window))throw new Error(`typed handoff rejection ${point}:${ordinal}`);const result=window;trace.push({stage:'transport',command:call.command,args:call.args,result:{revision:result.revision,total:result.total,item_count:result.item_count,items:result.items.map(item=>({node_id:item.node_id,ordinal:item.selection?.ordinal,body:Array.isArray(item.items)?item.items.map(value=>value.kind):null,unavailable:item.items_unavailable_reason}))}});return {ok:true,result};}
     return {ok:true,result:{thread_id:'thread',revision:registry.revision,total:nodes.length,items:nodes}};
    }
    return base(call);
@@ -44,6 +44,7 @@ it('keeps one answer presentation through the complete real Conversation lifecyc
   const identity=host.querySelector('[data-answer-container]');expect(identity).not.toBeNull();expect(identity?.textContent).toContain('Preview answer');
   ended=true;registry.canonical=true;registry.revision=8;nodes[2]=canonical(first);nodes[3]=canonical(second);f.db.history.thread=nodes;revision=8;
   await act(async()=>{f.t.push({t:'live_end',thread_id:'thread'});await settle(f.t,f.db);await flush(24);});
+  const liveHandle=f.model.handle.peek(); trace.push({stage:'live_end_state',handoff:liveHandle?.handoff.peek().map(record=>({key:record.key,attemptId:record.attemptId,status:record.status,text:record.text,terminal:!!record.terminalPersisted,transferred:!!record.transferred,readyAttempt:record.readyAttempt,proof:record.proof})),retry:liveHandle?.handoffRetryState.peek(),calls:f.t.calls().map(call=>({command:call.command,args:call.args}))}); console.log('UNIT1_HANDOFF_TRACE',JSON.stringify(trace));
   expect(host.querySelector('[data-answer-container]')).toBe(identity);expect(host.textContent).toContain('Canonical answer');expect(host.textContent).toContain('Canonical continuation');
   expect([...host.querySelectorAll('[data-answer-container] [data-item-key]')]).toHaveLength(2);
   registry.total=5;registry.revision=9;nodes.push({node_id:'local-1',kind:'user',selection:{ordinal:4},items:[{kind:'text',item_identity:'local1',text:'Next turn',text_complete:true}]});revision=9;
