@@ -2089,7 +2089,7 @@ const ja: Record<MessageKey, string> = {
 
 export const MESSAGES: Record<Lang, Record<MessageKey, string>> = { en, ja };
 
-export type Translate = (key: MessageKey, params?: Record<string, number>) => string;
+export type Translate = (key: MessageKey, params?: Record<string, string | number>) => string;
 
 export function translator(lang: Lang): Translate {
   const table = MESSAGES[lang];
