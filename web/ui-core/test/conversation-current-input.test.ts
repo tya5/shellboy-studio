@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest';
 import { Handoff } from '../../data/src/handoff';
 import { captureConversationInput } from '../src/conversation-input';
-import { normalizeLiveWorkFacts, type NormalizedSavedItem } from '../src/conversation-items';
+import { normalizeLiveWorkFacts, projectOwnedHandoffFacts, type NormalizedSavedItem } from '../src/conversation-items';
 import { rig } from './window-owner';
 
 it('captures B rather than relabeling A or two revoked handoffs on every rewrite publication',async()=>{
@@ -69,4 +69,17 @@ it('keeps an invalid current Work cut unavailable without withdrawing an indepen
   expect(qualified.displayPlan?.coverage).toBe('complete');expect(qualified.displayPlan?.workGroups).toHaveLength(1);
   r.w.acceptedView.revoke();expect(r.w.refreshConversationInput(qualified)).toBe(false);
  }finally{r.w.dispose();r.data.stop();}
+});
+
+it('empty streaming presence never creates a readable display lease or terminal body authority',()=>{
+ const ledger=new Handoff(fn=>fn());
+ ledger.apply({attempt_id:'empty',gap:false,deltas:[{offset:0,reasoning:false,text:''}]});
+ const original=ledger.records.peek()[0]!;
+ expect(projectOwnedHandoffFacts('thread',[original])).toMatchObject([{kind:'text',text:'',attemptId:'empty'}]);
+ expect(ledger.captureDisplay(original)).toBeUndefined();expect(original.readyAttempt).toBeUndefined();expect(original.proof).toBeUndefined();
+ ledger.finish();const confirming=ledger.records.peek()[0]!;
+ expect(projectOwnedHandoffFacts('thread',[confirming])).toMatchObject([{kind:'unknown',attemptId:'empty'}]);
+ expect(ledger.captureDisplay(confirming)).toBeUndefined();
+ ledger.fail('empty');expect(projectOwnedHandoffFacts('thread',ledger.records.peek())).toMatchObject([{kind:'unknown',attemptId:'empty'}]);
+ ledger.discard('ended');expect(ledger.records.peek()).toEqual([]);
 });

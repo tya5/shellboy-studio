@@ -169,7 +169,7 @@ export function SavedConversationItems({ model, projection: suppliedProjection, 
   }}
     renderItem={item => {
       const displayEntry = planByKey.get(item.key);
-      const displayText = displayEntry?.body.kind === "preview" || displayEntry?.body.kind === "typed-canonical" ? displayEntry.body.text : undefined;
+      const displayText = displayEntry?.body.kind === "preview" || displayEntry?.body.kind === "typed-canonical" || displayEntry?.body.kind === "typed-partial" ? displayEntry.body.text : undefined;
       if (item.source.kind === "text" || item.source.kind === "user" || item.source.kind === "summary") {
         const node = item.source.nodeId ? nodes?.find(node => node.node_id === item.source.nodeId) : undefined;
         if(membership.get(item.key)==="content-unavailable")return <div data-assistant-content-unavailable="">{t("work.textUnavailable")}</div>;
@@ -188,7 +188,7 @@ export function SavedConversationItems({ model, projection: suppliedProjection, 
           : fact.kind === "human" ? { kind: "you" } : fact.kind === "model" ? fact
           : fact.kind === "external_cli" ? (fact.label?.trim() ? { kind: "other", label: `CLI: ${fact.label}` } : { kind: "cli" })
           : { kind: "unknown", model: fact.kind === "unknown_model", label: fact.label };
-        return <><ProjectedMessage model={model} relationship={messageRelationship(node.provenance?.message,node.node_id)} authorizedText={displayText ?? ""} row={{ type: "message", id: node.node_id!, speaker, text: displayText ?? "", truncated: false, at: node.provenance?.created_at }} />{(item.source.kind === "text" || item.source.kind === "user" || item.source.kind === "summary") && displayEntry?.body.kind === "preview" ? <div class="caption muted" data-item-partial="">{t("work.partial")}</div> : null}</>;
+        return <><ProjectedMessage model={model} relationship={messageRelationship(node.provenance?.message,node.node_id)} authorizedText={displayText ?? ""} row={{ type: "message", id: node.node_id!, speaker, text: displayText ?? "", truncated: false, at: node.provenance?.created_at }} />{(item.source.kind === "text" || item.source.kind === "user" || item.source.kind === "summary") && (displayEntry?.body.kind === "preview" || displayEntry?.body.kind === "typed-partial") ? <div class="caption muted" data-item-partial="">{t("work.partial")}</div> : null}</>;
       }
       if (item.source.kind === "tool") {
         const ids = item.source.executionIds ?? (item.source.executionId ? [item.source.executionId] : []);

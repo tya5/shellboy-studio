@@ -14,6 +14,12 @@ async function rig(partial=false) {
  const data=new ShellboyData({transport,newId:()=>`display-${++id}`,schedule:fn=>fn()});
  data.start();transport.open();transport.push({t:'hello',bridge_version:'synthetic',owner:{state:'connected',info:{protocol_version:5,instance_id:'owner',capabilities:['history.window','live.text']}}});await settle(transport,db);
  const handle=data.openThread('t');await settle(transport,db);
+ let changeAfterCapture=false;const bind=handle.bindDisplayOwner;
+ handle.bindDisplayOwner=capture=>bind(()=>{
+  const target=capture();
+  if(changeAfterCapture){changeAfterCapture=false;window.setAttemptPresentations([{scope:handle.handoffScope(),attemptId:'other',turnId:'other-turn',nodeIds:['unselected'],state:'pending'}]);}
+  return target;
+ });
  const node:HistoryItem={node_id:'answer',kind:'assistant_response',selection:{ordinal:5},items:[{kind:'text',item_identity:'exact-body',text:'saved',text_complete:!partial},{kind:'tool_call',item_identity:'tool',execution_ids:['execution']}]};
  const window=new ConversationWindow({read:async()=>({ok:true,value:{thread_id:'t',revision:7,total:6,items:[node]}})});await flush();
  expect(window.bindTerminalHandle(handle)).toBe(true);
@@ -26,7 +32,7 @@ async function rig(partial=false) {
  expect(lookup).toBeDefined();
 
  const answer=(turn='turn',claim=false)=>transport.ok(lookup.id,{items:[attemptWork({threadId:'t',attemptId:'attempt',turnId:turn,state:'completed',refs:[{node_id:'answer',ordinal:5,kind:'assistant_response'}]}),...(claim?[attemptWork({threadId:'t',attemptId:'other',turnId:'other-turn',state:'completed',refs:[{node_id:'answer',ordinal:5,kind:'assistant_response'}]})]:[])]});
- return {data,transport,db,handle,window,node,answer};
+ return {data,transport,db,handle,window,node,answer,invalidateCapturedFrame:()=>{changeAfterCapture=true;}};
 }
 it("installs the first successful tail read as bootstrap without declaring a rewrite", async () => {
  const node:HistoryItem={node_id:"bootstrap-node",kind:"user_message",selection:{ordinal:0},items:[{kind:"text",item_identity:"bootstrap-body",text:"first read",text_complete:true}]};
@@ -98,7 +104,7 @@ it.each([false,true])('one synchronous current successor keeps exact canonical o
 it.each(['generation','capability','close','owner','epoch','missing-turn','conflict'] as const)('does not apply stale or ambiguous exact-ID display authority: %s',async mode=>{
  const r=await rig(),original=r.handle.handoff.peek()[0]!;
  try{
-  if(mode==='generation')r.window.setAttemptPresentations([{scope:r.handle.handoffScope(),attemptId:'other',turnId:'other-turn',nodeIds:['unselected'],state:'pending'}]);
+  if(mode==='generation')r.invalidateCapturedFrame();
   if(mode==='capability')r.window.acceptedView.revoke();
   if(mode==='close')r.window.dispose();
   if(mode==='owner')r.transport.push({t:'owner',event:'restarted',owner:{state:'connected',info:{protocol_version:5,instance_id:'owner',capabilities:['history.window','live.text']}}});
@@ -126,5 +132,24 @@ it('ready reentry revocation preserves exact original and leaves the historical 
   expect(r.handle.handoff.peek()[0]).toBe(original);expect(original.text).toBe('preview');
   expect(r.handle.isDisplayOwnershipCurrent(original,published!.generation)).toBe(false);
   expect(published!.retiredAttempts??[]).toEqual([]);expect(r.transport.calls('history.get')).toHaveLength(0);
+ }finally{stop();r.window.dispose();r.handle.close();r.data.stop();}
+});
+
+it('a semantic generation before source observation is captured current, never restamped from the earlier read-start frame',async()=>{
+ const r=await rig(),before=r.window.acceptedView.peek(),original=r.handle.handoff.peek()[0]!;let observed=0;
+ const stop=r.window.acceptedView.subscribe(ref=>{
+  if(!ref.assistantOwnership?.length)return;
+  expect(r.window.acceptedView.isCurrent(ref)).toBe(true);
+  expect(r.handle.isDisplayOwnershipCurrent(r.handle.handoff.peek()[0]!,ref.generation)).toBe(true);observed++;
+ });
+ try{
+  r.window.setAttemptPresentations([{scope:r.handle.handoffScope(),attemptId:'other',turnId:'other-turn',nodeIds:['unselected'],state:'pending'}]);
+  const current=r.window.acceptedView.peek();expect(current).not.toBe(before);
+  r.answer();await settle(r.transport,r.db);
+  const accepted=r.window.acceptedView.peek();expect(accepted.assistantOwnership).toMatchObject([{scope:r.handle.handoffScope(),attemptId:'attempt',turnId:'turn',recordKey:original.key,containerKey:original.presentationContainer,mode:'canonical'}]);
+  expect(accepted.displayPlan?.entries.find(entry=>entry.item.key===JSON.stringify(['answer','exact-body']))?.body).toMatchObject({kind:'typed-canonical',text:'saved'});
+  expect(observed).toBe(1);
+  expect(r.window.acceptedView.isCurrent(before)).toBe(false);expect(before.assistantOwnership??[]).toEqual([]);
+  expect(r.window.acceptedView.isCurrent(current)).toBe(false);expect(accepted.retiredAttempts??[]).toEqual([]);
  }finally{stop();r.window.dispose();r.handle.close();r.data.stop();}
 });

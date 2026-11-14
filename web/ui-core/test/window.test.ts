@@ -246,14 +246,16 @@ describe("append, rewind and delayed replies", () => {
 });
 
 describe("following and leaving", () => {
-  it("reads only after the known tail for a small append", async () => {
+  it("discovers after the known tail then atomically qualifies the fresh selected window for a small append", async () => {
     const r = await open(300);
     r.w.view(r.w.totalHeight() - VIEW, VIEW, true);
     r.owner.append(2);
     const mark = r.calls().length;
     r.w.changed(); await r.settle();
-    expect(r.since(mark)).toHaveLength(1);
-    expect(args(r.since(mark)[0]!)).toMatchObject({ ordinal: 299, before: 0, expect_node_id: "n0-299" });
+    expect(r.since(mark)).toHaveLength(2);
+    expect(args(r.since(mark)[0]!)).toMatchObject({ ordinal: 299, before: 0, after:199, expect_node_id: "n0-299" });
+    expect(args(r.since(mark)[1]!)).toMatchObject({before:99,after:0,items:true});
+    expect(r.since(mark).every(call=>args(call).after!==undefined&&Number(args(call).after)+Number(args(call).before)+1<=200)).toBe(true);
     expect(r.w.total).toBe(302);
     expect(r.w.isLoaded(301)).toBe(true);
     expect(r.w.following.value).toBe(true);

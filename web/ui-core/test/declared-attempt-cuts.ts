@@ -9,7 +9,7 @@ export function declaredWorkGroup(input:{members:readonly string[];tools:readonl
   continuationBefore:input.before,continuationAfter:input.after};
 }
 export function declaredToolAnswerCut(input:{scope:string;revision:number;toolIdentity:'call'|'tc';
- answer?:'saved'|'partial'|'deferred'|'opaque';container?:string;presence?:TerminalPresence}):DeclaredPlanCut{
+ answer?:'saved'|'partial'|'deferred'|'opaque';container?:string;presence?:TerminalPresence;emptyOriginal?:{scope:string;recordKey:string}}):DeclaredPlanCut{
  const {scope,revision}=input;
  const tool=JSON.stringify(['tool',[scope],'execution',['exec']]),answer=JSON.stringify(['answer','text']);
  const receipt=JSON.stringify(['receipt','work',scope,'attempt']);
@@ -26,18 +26,22 @@ export function declaredToolAnswerCut(input:{scope:string;revision:number;toolId
   source:input.answer==='deferred'?{nodeId:'answer',itemIdentity:'answer',identityDomain:'node',windowRevision:revision,keyScope:[scope],classificationCase:'unavailable',kind:'unavailable',reason:'response_budget'}:
    {nodeId:'answer',itemIdentity:'missing',windowRevision:revision,keyScope:[scope],classificationCase:'unavailable',kind:'unavailable',reason:'opaque'},
   body:{kind:'unavailable',reason:'unavailable'},lifetime:'retained'});
+ const original=input.emptyOriginal?JSON.stringify(['live','handoff',input.emptyOriginal.scope,input.emptyOriginal.recordKey]):undefined;
+ if(input.emptyOriginal)entries.push({key:original!,case:'unknown',source:{domain:'live',namespace:'handoff',scope:input.emptyOriginal.scope,
+  recordId:input.emptyOriginal.recordKey,attemptId:'attempt',classificationCase:'unknown',kind:'unknown'},
+  body:{kind:'unavailable',reason:'unknown'},lifetime:'retained'});
  if(input.presence){const phase=input.presence.phase;const name=phase==='pending'?'terminalPending':phase==='reading'?'terminalReading':'terminalSettled';
   entries.push({key:receipt,case:name,source:{domain:'receipt',scope,recordId:'attempt',attemptId:'attempt',namespace:'work',keyScope:[scope],classificationCase:name,
    terminalPresence:input.presence,kind:'record'},body:{kind:'unavailable',reason:'record'},lifetime:'retained'});}
  const conversation=input.answer==='saved'||input.answer==='partial';
- const firstMembers=[tool,...(!conversation&&input.answer?[unavailable]:[]),...(!conversation&&input.presence?[receipt]:[])];
+ const firstMembers=[tool,...(!conversation&&input.answer?[unavailable]:[]),...(!conversation&&original?[original]:[]),...(!conversation&&input.presence?[receipt]:[])];
  const first=declaredWorkGroup({members:firstMembers,tools:[tool],executions:['exec'],
-  counts:{Tools:1,Reasoning:0,Notifications:!conversation&&input.presence&&input.presence.phase!=='settled'?1:0,Problems:(!conversation&&input.answer?1:0)+(!conversation&&input.presence?.phase==='settled'?1:0)},before:'unknown',after:conversation?'closed':'unknown'});
+  counts:{Tools:1,Reasoning:0,Notifications:!conversation&&input.presence&&input.presence.phase!=='settled'?1:0,Problems:(!conversation&&original?1:0)+(!conversation&&input.answer?1:0)+(!conversation&&input.presence?.phase==='settled'?1:0)},before:'unknown',after:conversation?'closed':'unknown'});
  const groups=[first];
  const sequence:DeclaredPlanCut['sequence'][number][]=[{kind:'work',groupKey:first.key}];
- if(conversation){sequence.push({kind:'conversation',itemKey:answer});if(input.presence){
-  const last=declaredWorkGroup({members:[receipt],tools:[],executions:[],counts:{Tools:0,Reasoning:0,Notifications:input.presence.phase==='settled'?0:1,Problems:input.presence.phase==='settled'?1:0},before:'closed',after:'unknown'});
+ if(conversation){sequence.push({kind:'conversation',itemKey:answer});if(input.presence||original){
+  const last=declaredWorkGroup({members:[...(original?[original]:[]),...(input.presence?[receipt]:[])],tools:[],executions:[],counts:{Tools:0,Reasoning:0,Notifications:input.presence&&input.presence.phase!=='settled'?1:0,Problems:(original?1:0)+(input.presence?.phase==='settled'?1:0)},before:'closed',after:'unknown'});
   groups.push(last);sequence.push({kind:'work',groupKey:last.key});}}
  return{revision,scope,coverage:'complete',rows:input.answer?['tool','answer']:['tool'],entries,sequence,groups,
-  unknownKeys:input.answer==='deferred'||input.answer==='opaque'?[unavailable]:[]};
+  unknownKeys:[...(input.answer==='deferred'||input.answer==='opaque'?[unavailable]:[]),...(original?[original]:[])]};
 }

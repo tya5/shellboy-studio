@@ -13,6 +13,7 @@ export interface DisplayCut {
 export type DisplayBodySource =
   | Readonly<{ kind: 'preview'; text: string; cut: DisplayCut }>
   | Readonly<{ kind: 'typed-canonical'; text: string; cut: DisplayCut }>
+  | Readonly<{ kind: 'typed-partial'; text: string; cut: DisplayCut }>
   | Readonly<{ kind: 'unavailable'; reason: string; cut: DisplayCut }>;
 
 export type DisplayLifetime = Readonly<{
@@ -146,6 +147,8 @@ export function createConversationDisplayPlan(input: AcceptedPublicationInput): 
     const typedCanonical = source.kind === 'text' && source.textComplete === true && canonicalSource?.kind === 'text' && canonicalSource.textComplete === true;
     const body: DisplayBodySource = (typedCanonical || human)
       ? { kind: 'typed-canonical', text: source.text, cut }
+      : source.kind === 'user' && canonicalSource?.kind === 'user'
+        ? { kind: 'typed-partial', text: canonicalSource.text, cut }
       : source.kind === 'text' && (owner?.mode === 'preview' || !!host)
         ? { kind: 'preview', text: source.text, cut }
         : unavailable(source.kind);

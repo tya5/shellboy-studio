@@ -75,9 +75,27 @@ for(const mode of ['ready','ready-with-change','reentry','wrong-lifetime','parti
 
 for(const scenario of ['persisted','failed','separate-attempt','owner-lifetime','other-attempt-member'] as const)it(`actual scoped pending presentation: ${scenario}`,async()=>{
  let ended=false;
+ const trace:Record<string,unknown>[]=[];
+ const cuts:{snapshot:import('../../../ui-core/src/window').WindowAcceptedSnapshot;current:boolean;authority:readonly boolean[]}[]=[];
+ let selected:()=>import('../../../ui-core/src/window').WindowAcceptedSnapshot|undefined=()=>undefined;
  const member:HistoryItem={node_id:'member',kind:'assistant_response',selection:{ordinal:1},items:[{kind:'text',item_identity:'member-text',text:'Saved member fragment',text_complete:true}]};
  const otherMember:HistoryItem={node_id:'other-member',kind:'assistant_response',selection:{ordinal:2},items:[{kind:'text',item_identity:'other-text',text:'Other attempt saved text',text_complete:true}]};
- const f=await fixtureModel({capabilities:['history.window'],configure(db){
+ const f=await fixtureModel({capabilities:['history.window'],configureData(data){
+  const open=data.openThread.bind(data);data.openThread=threadId=>{
+   const handle=open(threadId);if(threadId!=='t')return handle;
+   const bind=handle.bindDisplayOwner;
+   handle.bindDisplayOwner=capture=>bind(()=>{
+    const before=selected();const target=capture();trace.push({kind:'capture',generation:before?.generation,revision:before?.revision,available:!!target});
+    return target?{publish:observations=>{
+     const current=selected();trace.push({kind:'publish-before',capturedGeneration:before?.generation,currentGeneration:current?.generation,
+      observations:observations.map(item=>({kind:item.kind,attempt:item.kind==='receipt'?item.record.attemptId:item.lease.original.attemptId,
+       current:item.kind==='receipt'?handle.isReceiptObservationCurrent(item.record,item.receipt):item.lease.current(),
+       association:item.kind==='readable'?item.association:undefined,receipt:item.receipt}))});
+     const accepted=target.publish(observations);trace.push({kind:'publish-after',accepted,generation:selected()?.generation});return accepted;
+    }}:undefined;
+   });return handle;
+  };
+ },configure(db){
   db.threads={t:summary('t')};db.details.t=details('t');db.history.t=[];
   const base=db.answer.bind(db);db.answer=call=>{
    if(call.command==='status')return {ok:true,result:{items:ended?[{...attemptWork({threadId:'t',attemptId:'attempt',turnId:'turn',state:scenario==='failed'?'failed':'completed',refs:[{node_id:'member',ordinal:1,kind:'assistant_response'}]}),attempt_id:scenario==='separate-attempt'?'retry-attempt':'attempt'},...(scenario==='other-attempt-member'?[attemptWork({threadId:'t',attemptId:'previous-attempt',turnId:'previous-turn',state:'completed',refs:[{node_id:'other-member',ordinal:2,kind:'assistant_response'}]})]:[])]:[]}};
@@ -89,13 +107,37 @@ for(const scenario of ['persisted','failed','separate-attempt','owner-lifetime',
  const context:DesignContext={model:f.model,prefs:signal(loadPrefs({read:()=>null,write:()=>{}},[{name:'console',themes:[{name:'light'}]}])),setPrefs:()=>{},designs:[],submitToken:async()=>false};
  try{
   await act(async()=>{render(<App context={context}/>,host);await settle(f.t,f.db);});
+  const reader=f.model.longReader.peek()!,handle=f.model.handle.peek()!;selected=()=>reader.acceptedView.peek();
+  const stop=reader.acceptedView.subscribe(ref=>{
+   cuts.push({snapshot:ref,current:reader.isTerminalHandleCurrent(handle),authority:(ref.assistantOwnership??[]).map(owner=>handle.handoff.peek().some(record=>record.key===owner.recordKey&&handle.isDisplayOwnershipCurrent(record,ref.generation)))});
+   trace.push({kind:'publication',generation:ref.generation,revision:ref.revision,
+   rows:ref.rows.map(row=>row.node_id),owners:(ref.assistantOwnership??[]).map(owner=>({mode:owner.mode,attemptId:owner.attemptId,turnId:owner.turnId,
+    recordKey:owner.recordKey,refs:owner.refs,valid:handle.handoff.peek().some(record=>record.key===owner.recordKey&&handle.isDisplayOwnershipCurrent(record,ref.generation))})),
+   receipts:ref.terminalPersistedAttempts?.map(receipt=>({attemptId:receipt.attemptId,recordKey:receipt.recordKey,refs:receipt.refs})),
+   bodies:ref.displayPlan?.entries.flatMap(entry=>entry.body.kind==='unavailable'?[]:[{key:entry.item.key,kind:entry.body.kind,text:entry.body.text,container:entry.presentationContainer}]),
+   originals:handle.handoff.peek().map(record=>({attemptId:record.attemptId,text:record.text,status:record.status,authority:record.bodyAuthority,ready:!!record.readyAttempt}))});});
   expect(host.textContent).toContain('Saved member fragment');
   await act(async()=>{f.t.push({t:'live',thread_id:'t',attempt_id:'attempt',gap:false,deltas:[{offset:0,reasoning:false,text:'Whole live answer'}]});await flush(24);});
+  const original=handle.handoff.peek().find(record=>record.attemptId==='attempt')!;
   if(scenario==='owner-lifetime')f.model.handle.peek()!.pause();
   ended=true;await act(async()=>{f.t.push({t:'live_end',thread_id:'t'});await flush(24);});
   // Deliver the genuine attempt fact but hold all subsequent item readback.
   await act(async()=>{for(let n=0;n<6;n++){for(const call of f.t.calls().filter(c=>!f.db.answered.has(c.id)&&c.command!=='history.window')){const out=f.db.answer(call);f.db.answered.add(call.id);if(out.ok)f.t.ok(call.id,out.result);else f.t.ownerError(call.id,out.code,out.message);}await flush();}});
-  const snapshot=f.model.longReader.peek()!.acceptedView.peek();
+  const snapshot=f.model.longReader.peek()!.acceptedView.peek();stop();
+  let admitted=false;
+  for(const cut of cuts){
+   const owners=cut.snapshot.assistantOwnership??[];
+   if(owners.some(owner=>owner.attemptId==='attempt')){
+    expect(owners).toMatchObject([{attemptId:'attempt',turnId:'turn',recordKey:original.key,containerKey:original.presentationContainer,mode:'canonical',refs:[{nodeId:'member',ordinal:1,kind:'assistant_response'}]}]);
+    expect(cut.authority).toEqual([true]);admitted=true;
+   }
+   const expected=['Independent saved user','Saved member fragment',...(scenario==='other-attempt-member'?['Other attempt saved text']:[]),
+    ...(!admitted&&cut.current?['Whole live answer']:[])];
+   expect(cut.snapshot.displayPlan?.entries.flatMap(entry=>entry.body.kind==='unavailable'?[]:[entry.body.text]),`pending cut ${cut.snapshot.generation} trace=${JSON.stringify(trace)}`).toEqual(expected);
+   expect(cut.snapshot.rows.map(row=>row.node_id)).toEqual(['independent','member',...(scenario==='other-attempt-member'?['other-member']:[])]);
+   expect(cut.snapshot.retiredAttempts??[]).toEqual([]);
+  }
+  if(['persisted','failed','other-attempt-member'].includes(scenario))expect(admitted).toBe(true);
   expect(snapshot.rows.some(row=>row.node_id==='member')).toBe(true);
   expect(snapshot.attemptPresentations??[]).toHaveLength(0);
   if(scenario==='failed'||scenario==='persisted'||scenario==='other-attempt-member'){expect(snapshot.terminalPersistedAttempts).toHaveLength(1);expect(host.textContent).not.toContain('Whole live answer');}

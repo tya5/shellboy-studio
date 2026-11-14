@@ -4,6 +4,8 @@ import type { OwnedTerminalReadLease } from "../../data/src/terminal-read";
 import type { HistoryItem } from "../../data/src/protocol";
 import { assistantOwnership } from "../src/assistant-ownership";
 import { expect, it } from "vitest";
+import type {ThreadHandle,ThreadReadQualification} from "../../data/src/store";
+import type {TerminalPersistedProof} from "../../data/src/handoff";
 import { ShellboyData } from "../../data/src/store";
 import { FakeOwnerDb, FakeTransport, connected, settle, flush } from "../../data/test/harness";
 import { observeDeclaredCuts, type DeclaredPlanCut } from "./publication-contract";
@@ -18,7 +20,7 @@ async function rig(windowCap = true) {
   const data = new ShellboyData({ transport: t, newId: () => `atomic-${++n}`, schedule: cb => frames.push(cb) });
   data.start(); t.open(); t.push({ t: "hello", bridge_version: "synthetic", owner: { state: "connected", info: { protocol_version: 5, instance_id: "i1", capabilities: windowCap ? ["history.window"] : [] } } }); await settle(t, db);
   const h = data.openThread("a"); await settle(t, db);
-  const state = { selectedRevision: 7, available: true, truncated: false, partial: false, deferred: false, unknown: false, missing: false, error: false, changing: false, nonterminal: false, wrongid: false, empty: false, hold: false };
+  const state = { selectedRevision: 7, selectedOwnerAvailable: true, available: true, truncated: false, partial: false, deferred: false, unknown: false, missing: false, error: false, changing: false, nonterminal: false, wrongid: false, empty: false, hold: false };
   const original = db.answer.bind(db); let reads = 0;
   db.answer = call => {
     if (call.command === "status") return { ok: true, result: { items: state.available ? [{ kind: "attempt", id: state.wrongid ? "other" : "attempt", attempt_id: "attempt", turn_id: "turn", thread_id: "a", state: state.nonterminal ? "inflight" : "completed", response_nodes: state.empty ? [] : baseNodes.filter(node => node.items?.some(item => item.kind === "text")).map(node => ({ node_id: node.node_id, ordinal: node.selection!.ordinal!, kind: node.kind, phase: "final_answer", item_id: null })), response_nodes_truncated: state.truncated }] : [] } };
@@ -38,32 +40,44 @@ async function rig(windowCap = true) {
   const end = () => t.push({ t: "live_end", thread_id: "a" });
   return { t, db, data, h, state, live, end, pump: () => settle(t, db) };
 }
-async function target() {
- const r = await rig(); const token = r.h.captureReadQualification()!;
+async function target(wrap:(handle:ThreadHandle)=>ThreadHandle=handle=>handle) {
+ const base=await rig();let token:ThreadReadQualification|undefined;
+ const capture=base.h.captureReadQualification;
+ base.h.captureReadQualification=()=>{token=capture();return token;};
+ const r={...base,h:wrap(base.h)};
  const w = new ConversationWindow({ read: async () => ({ ok: true, value: { thread_id: "a", revision: 7, total: 1,
  items: [{ node_id: "tool", kind: "assistant_response", selection: { ordinal: 0 }, items: [{ kind: "tool_call", item_identity: "call", execution_ids: ["exec"] }] }] } }) }); await flush();
- r.live(); r.end(); await r.pump(); const record = r.h.handoff.peek()[0]!;
- const receipt=record.terminalPersisted!;
+ expect(w.bindTerminalHandle(r.h)).toBe(true);
+ const currentReceipt=():TerminalPersistedProof=>{
+  const receipt=r.h.handoff.peek().find(record=>record.attemptId==='attempt')?.terminalPersisted;
+  if(!receipt)throw new Error('fixture requires the actual Store-staged receipt');return receipt;
+ };
+ const cut=(input:Parameters<typeof declaredToolAnswerCut>[0])=>declaredToolAnswerCut({...input,emptyOriginal:input.container?undefined:{scope:'a',recordKey:'handoff:attempt'}});
  const publications=observeDeclaredCuts(w,()=>{
+  const receipt=currentReceipt();
   const pending:TerminalPresence={scope:receipt.scope,attemptId:'attempt',receipt,phase:'pending',reason:'canonical-pending',answerAvailability:'unknown'};
   const inputs=[pending,{...pending,reason:'read-inflight' as const},{...pending,phase:'reading' as const,reason:'read-inflight' as const}];
   const reasons:TerminalPresence['reason'][]=['missing-candidate','body-unavailable','partial-items','read-error','selection-gap','unsupported','capacity','budget-exhausted'];
-  const cuts:DeclaredPlanCut[]=inputs.map(presence=>declaredToolAnswerCut({scope:receipt.scope,revision:7,toolIdentity:'call',presence}));
+  const cuts:DeclaredPlanCut[]=inputs.map(presence=>cut({scope:receipt.scope,revision:7,toolIdentity:'call',presence}));
   for(const reason of reasons){const presence:TerminalPresence={...pending,phase:'settled',reason};
-   cuts.push(declaredToolAnswerCut({scope:receipt.scope,revision:7,toolIdentity:'call',presence}));
+   cuts.push(cut({scope:receipt.scope,revision:7,toolIdentity:'call',presence}));
    const answer=r.state.partial?'partial':r.state.deferred?'deferred':r.state.unknown?'opaque':undefined;
-   if(answer)cuts.push(declaredToolAnswerCut({scope:receipt.scope,revision:7,toolIdentity:'call',answer,presence}));
+   if(answer)cuts.push(cut({scope:receipt.scope,revision:7,toolIdentity:'call',answer,presence}));
   }
-  cuts.push(declaredToolAnswerCut({scope:receipt.scope,revision:7,toolIdentity:'call',answer:'saved'}));
-  if(r.state.selectedRevision===8)cuts.push(declaredToolAnswerCut({scope:receipt.scope,revision:8,toolIdentity:'call',answer:'saved',container:receipt.presentationContainer}));
+  cuts.push(cut({scope:receipt.scope,revision:7,toolIdentity:'call',answer:'saved'}));
+  if(r.state.selectedRevision===8)cuts.push(cut({scope:receipt.scope,revision:8,toolIdentity:'call',answer:'saved',container:r.state.selectedOwnerAvailable?receipt.presentationContainer:undefined}));
   return cuts;
  });
- expect(r.h.transferHandoff("attempt", (captured, end) => w.acceptHandoff(captured, r.h.handoffScope(), end))).toBe(true);
- return { ...r, w, token, receipt: record.terminalPersisted!, publications };
+ r.live();r.end();await r.pump();
+ if(!token)throw new Error('fixture Window binding did not capture qualification');
+ const receipt=currentReceipt();
+ expect(w.acceptedView.peek().terminalPersistedAttempts).toMatchObject([{scope:r.h.handoffScope(),attemptId:'attempt',recordKey:'handoff:attempt'}]);
+ expect(r.h.isReceiptObservationCurrent(r.h.handoff.peek()[0]!,receipt)).toBe(true);
+ return { ...r, w, token, receipt, publications };
 }
 it("actual status/Store/O/Window publishes honest same-ref missing-answer presence, one held canonical read then available rows", async () => {
  const r = await target(); const initial = r.w.acceptedView.peek();
- expect(r.h.handoff.peek()).toHaveLength(0); expect(r.receipt.presentationContainer).toBeDefined();
+ expect(r.h.handoff.peek()).toHaveLength(1);expect(r.h.handoff.peek()[0]?.text).toBe(""); expect(r.receipt.presentationContainer).toBeDefined();
  expect(r.receipt.refs?.map(ref => ref.nodeId)).toEqual(r.receipt.nodeIds);
  expect(initial.rows.map(row => row.node_id)).toEqual(["tool"]);
  expect(initial.terminalPresence?.[0]).toMatchObject({ phase: "pending", answerAvailability: "unknown" });
@@ -74,7 +88,7 @@ it("actual status/Store/O/Window publishes honest same-ref missing-answer presen
  expect(r.w.acceptedView.peek().terminalPresence?.[0]?.phase).toBe("reading");
  await r.pump();
  expect(r.w.acceptedView.peek().rows.map(row => row.node_id)).toEqual(["tool", "answer"]);
- expect(r.h.handoff.peek()).toHaveLength(0);
+ expect(r.h.handoff.peek()).toHaveLength(1);expect(r.h.handoff.peek()[0]?.readyAttempt).toBeUndefined();
  expect(r.w.acceptedView.peek().terminalPresence ?? []).toEqual([]);
  expect(r.t.calls("history.window")).toHaveLength(1); expect(r.t.calls("history.get")).toHaveLength(0);
  expect(r.publications.generations.length).toBeGreaterThan(0); r.publications.stop(); r.w.dispose(); r.data.stop();
@@ -132,19 +146,20 @@ it("synchronous request notification revoking the original token cannot publish 
  expect(r.w.acceptedView.peek()).toBe(before); expect(writes).toBe(0); stop(); r.w.dispose(); r.data.stop();
 });
 it("Window binding captures once and shares original authority with same-handle summary registration", async () => {
- const r = await target(); let captures = 0; const original = r.h.captureReadQualification;
- const handle = { ...r.h, captureReadQualification: () => { captures++; return original(); } };
+ let captures=0;const r=await target(handle=>({...handle,captureReadQualification:()=>{captures++;return handle.captureReadQualification();}}));
+ const handle=r.h;
  expect(r.w.bindTerminalHandle(handle)).toBe(true); expect(r.w.bindTerminalHandle(handle)).toBe(true); expect(captures).toBe(1);
  const ref = r.w.acceptedView.peek();
  r.w.beginSummaryTransition(handle, ref, "tool", 0);
  expect(captures).toBe(1); expect(r.w.isTerminalHandleCurrent(handle)).toBe(true);
  const lease = r.w.prepareBoundTerminalRead(r.receipt); expect("state" in lease).toBe(true); await r.pump();
  expect(r.w.acceptedView.peek().rows.map(row => row.node_id)).toEqual(["tool", "answer"]); expect(captures).toBe(1);
- r.w.dispose(); expect(r.w.isTerminalHandleCurrent(handle)).toBe(false); expect(r.h.isReadQualificationCurrent(r.token)).toBe(false); r.data.stop();
+ const old=r.w.acceptedView.peek();r.w.dispose();expect(r.w.isTerminalHandleCurrent(handle)).toBe(false);
+ expect(r.w.acceptedView.isCurrent(old)).toBe(false);expect(r.h.isReadQualificationCurrent(r.token)).toBe(true);r.data.stop();
 });
 it("invalidated binding cannot recapture on repeated bind or admit a lease", async () => {
- const r = await target(); let captures = 0; const original = r.h.captureReadQualification;
- const handle = { ...r.h, captureReadQualification: () => { captures++; return original(); } };
+ let captures=0;const r=await target(handle=>({...handle,captureReadQualification:()=>{captures++;return handle.captureReadQualification();}}));
+ const handle=r.h;
  expect(r.w.bindTerminalHandle(handle)).toBe(true); handle.cancelReads();
  expect(r.w.bindTerminalHandle(handle)).toBe(false); expect(r.w.prepareBoundTerminalRead(r.receipt)).toEqual({ phase: "unavailable", reason: "cancelled" });
  expect(captures).toBe(1); r.w.dispose(); r.data.stop();
@@ -155,8 +170,8 @@ it("a different handle cannot replace an owned Window binding", async () => {
  other.close(); r.h.close(); expect(r.w.isTerminalHandleCurrent(r.h)).toBe(false); r.w.dispose(); r.data.stop();
 });
 it("bound terminal then summary shares one token and owner change denies both paths", async () => {
- const r = await target(); let captures = 0; const capture = r.h.captureReadQualification;
- const handle = { ...r.h, captureReadQualification: () => { captures++; return capture(); } };
+ let captures=0;const r=await target(handle=>({...handle,captureReadQualification:()=>{captures++;return handle.captureReadQualification();}}));
+ const handle=r.h;
  expect(r.w.bindTerminalHandle(handle)).toBe(true); r.w.prepareBoundTerminalRead(r.receipt); await r.pump();
  const ref = r.w.acceptedView.peek(), id = r.w.beginSummaryTransition(handle, ref, "tool", 0);
  expect(id).toBeDefined(); expect(captures).toBe(1);
@@ -166,7 +181,8 @@ it("bound terminal then summary shares one token and owner change denies both pa
  expect(captures).toBe(1); r.w.dispose(); r.data.stop();
 });
 it("existing unbound summary remains valid when first binding is denied", async () => {
- const r = await target(); const ref = r.w.acceptedView.peek();
+ const source=await rig();const w=new ConversationWindow({read:async()=>({ok:true,value:{thread_id:'a',revision:7,total:1,items:[baseNodes[0]!]}})});await flush();
+ const r={...source,w};const ref = r.w.acceptedView.peek();
  const id = r.w.beginSummaryTransition(r.h, ref, "tool", 0); expect(id).toBeDefined();
  expect(r.w.bindTerminalHandle(r.h)).toBe(false); expect(r.w.peekSummaryTransitionId()).toBe(id);
  expect(r.w.beginSummaryTransition(r.h, ref, "tool", 0)).toBe(id);
@@ -200,6 +216,8 @@ it("terminal slot successor dispatches one explicit whole-window request after a
 
 it("Window rebinds a revision-changing point read through one bounded whole-window successor", async () => {
   const r = await target(); r.state.selectedRevision=8;
+  let successorLease:OwnedTerminalReadLease|undefined;const replace=r.h.replaceTerminalRead;
+  r.h.replaceTerminalRead=(token,admission,request)=>{const out=replace(token,admission,request);if('state' in out)successorLease=out;return out;};
   const original = r.db.answer.bind(r.db);
   const requests: unknown[] = [];
   r.db.answer = call => {
@@ -230,6 +248,26 @@ it("Window rebinds a revision-changing point read through one bounded whole-wind
   expect(after.rows.map(row => row.selection?.ordinal)).toEqual([0, 1]);
   expect(after.displayPlan?.entries.some(entry => entry.presentationContainer === r.receipt.presentationContainer)).toBe(true);
   expect(after.revision).toBe(8);
+  r.w.setAttemptPresentations([{scope:r.h.handoffScope(),attemptId:'other',turnId:'other-turn',nodeIds:['unselected'],state:'pending'}]);
+  const successor=r.w.acceptedView.peek();
+  expect(successor.revision).toBe(8);
+  expect(successor.displayPlan?.entries.find(entry=>entry.item.key===JSON.stringify(['answer','text']))?.presentationContainer).toBe(r.receipt.presentationContainer);
+  expect(successor.assistantOwnership).toMatchObject([{attemptId:'attempt',mode:'canonical',proofRevision:8}]);
+  r.w.setAttemptPresentations([{scope:r.h.handoffScope(),attemptId:'another',turnId:'another-turn',nodeIds:['also-unselected'],state:'pending'}]);
+  expect(r.w.refreshConversationInput(r.w.acceptedView.peek())).toBe(true);
+  const stable=r.w.acceptedView.peek();expect(stable.revision).toBe(8);
+  expect(stable.displayPlan?.entries.find(entry=>entry.item.key===JSON.stringify(['answer','text']))?.presentationContainer).toBe(r.receipt.presentationContainer);
+  if(!('state' in lease))throw new Error('fixture requires the actual owned lease');
+  expect(r.h.isTerminalReadCurrent(r.token,lease)).toBe(false); // the point lease was replaced
+  if(!successorLease)throw new Error('fixture requires the actual public successor lease');
+  expect(r.h.isTerminalReadCurrent(r.token,successorLease)).toBe(true);
+  expect(r.h.isTerminalReadCurrent(r.token,{...successorLease})).toBe(false);
+  successorLease.cancel();r.state.selectedOwnerAvailable=false;
+  expect(r.h.isTerminalReadCurrent(r.token,successorLease)).toBe(false);
+  r.w.setAttemptPresentations([{scope:r.h.handoffScope(),attemptId:'after-revoke',turnId:'after-revoke-turn',nodeIds:['unselected'],state:'pending'}]);
+  const denied=r.w.acceptedView.peek();expect(denied.revision).toBe(8);expect(denied.assistantOwnership??[]).toEqual([]);
+  expect(denied.displayPlan?.entries.find(entry=>entry.item.key===JSON.stringify(['answer','text']))?.presentationContainer).toBeUndefined();
+  expect(stable.displayPlan?.entries.find(entry=>entry.item.key===JSON.stringify(['answer','text']))?.presentationContainer).toBe(r.receipt.presentationContainer);
   r.w.dispose(); r.data.stop();
 });
 

@@ -16,6 +16,6 @@ it("ordinary accepted-reference/read/geometry work preserves handle qualificatio
   r.t.ok(call.id, { thread_id: "a", revision: 1, total: 1, items: [{ node_id: "n", kind: "user", items: [{ kind: "text", item_identity: "i", text: "saved", text_complete: true }], selection: { ordinal: 0 } }] });
   await flush(); const ref = w.acceptedView.peek();
   expect(ref.total).toBe(1); w.measure([[0, 123]]);
-  expect(w.acceptedView.peek()).not.toBe(ref); expect(r.a.isReadQualificationCurrent(token)).toBe(true);
+  expect(w.acceptedView.peek()).toBe(ref);expect(w.acceptedView.isCurrent(ref)).toBe(true);expect(w.heightOf(0)).toBe(123); expect(r.a.isReadQualificationCurrent(token)).toBe(true);
   w.dispose(); r.a.pause(); r.a.close(); expect(r.a.isReadQualificationCurrent(token)).toBe(false); r.data.stop();
 });

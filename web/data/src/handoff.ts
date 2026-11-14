@@ -36,13 +36,11 @@ export interface DisplayAssociation {
 export interface DisplayLease {
   readonly original: HandoffRecord;
   current(): boolean;
-  stage(generation: number, current: () => boolean): () => void;
+  stage(generation: number, current: (generation: number) => boolean): () => void;
 }
-export interface DisplayObservation {
-  readonly lease: DisplayLease;
-  readonly association?: DisplayAssociation;
-  readonly receipt?: TerminalPersistedProof;
-}
+export type DisplayObservation =
+  | Readonly<{ kind: 'readable'; lease: DisplayLease; association?: DisplayAssociation; receipt?: TerminalPersistedProof }>
+  | Readonly<{ kind: 'receipt'; record: HandoffRecord; receipt: TerminalPersistedProof }>;
 export interface DisplayTarget { publish(observations: readonly DisplayObservation[]): boolean }
 
 /** ADR-C1: UTF-8 retained text accounting, not a JavaScript heap guarantee. */
@@ -65,7 +63,7 @@ export interface HandoffRecord {
   readonly readyAttempt?: AttemptReadyProof;
   readonly terminalPersisted?: TerminalPersistedProof;
 }
-interface Held { display?: { generation: number; current: () => boolean }; attemptCapture?: { original: HandoffRecord; staged: HandoffRecord; proof: AttemptReadyProof | TerminalPersistedProof; epoch: number; lifetime: number }; admitted: number; transferring?: boolean; attemptId: string; source: LiveText; stop: () => void; record: HandoffRecord }
+interface Held { display?: { generation: number; sourceCurrent: () => boolean; current: (generation: number) => boolean }; attemptCapture?: { original: HandoffRecord; staged: HandoffRecord; proof: AttemptReadyProof | TerminalPersistedProof; epoch: number; lifetime: number }; admitted: number; transferring?: boolean; attemptId: string; source: LiveText; stop: () => void; record: HandoffRecord }
 
 /** One ledger per watched Thread. No queue, spill or timer. Hints cannot refill read budget. */
 export class Handoff {
@@ -146,16 +144,16 @@ export class Handoff {
     if (!held || !original.text) return;
     const epoch = this.epochValue, lifetime = this.lifetimeValue;
     const current = () => this.held.includes(held) && held.record === original && epoch === this.epochValue && lifetime === this.lifetimeValue;
-    return Object.freeze({ original, current, stage: (generation: number, valid: () => boolean) => {
+    return Object.freeze({ original, current, stage: (generation: number, valid: (generation: number) => boolean) => {
       if (!current()) return () => {};
-      const candidate = { generation, current: () => current() && valid() };
+      const candidate = { generation, sourceCurrent: current, current: (at: number) => at >= generation && current() && valid(at) };
       held.display = candidate;
       return () => { if (held.display === candidate) held.display = undefined; };
     } });
   }
   isDisplayCurrent(original: HandoffRecord, generation: number): boolean {
     const held = this.held.find(item => item.record === original);
-    return !!held?.display && held.display.generation === generation && held.display.current();
+    return !!held?.display && held.display.current(generation);
   }
   finish(): void {
     const h = this.held.find(h => h.attemptId === this.active);
@@ -285,7 +283,7 @@ export class Handoff {
     const h = this.held.find(h => h.attemptId === id); if (!h) return; h.record = fn(h.record); this.publish();
   }
   private publish(): void {
-    for (const held of this.held) if (held.display && !held.display.current()) held.display = undefined;
+    for (const held of this.held) if (held.display && !held.display.sourceCurrent()) held.display = undefined;
     this.publicationDirty = true;
     if (this.publishing) return;
     this.publishing = true;

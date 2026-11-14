@@ -102,6 +102,8 @@ export interface ThreadHandle extends Handle {
   captureDetail(): ThreadDetailObservation | undefined;
   bindDisplayOwner(capture: () => DisplayTarget | undefined): () => void;
   isDisplayOwnershipCurrent(record: HandoffRecord, generation: number): boolean;
+  isReceiptObservationCurrent(record: HandoffRecord, receipt: TerminalPersistedProof): boolean;
+  isTerminalReadCurrent(qualification: ThreadReadQualification, lease: OwnedTerminalReadLease): boolean;
   requestTerminalRead(qualification: ThreadReadQualification, admission: SelectedReadAdmission, request: SelectedCanonicalRequest): OwnedTerminalReadLease | TicketOutcome;
   replaceTerminalRead(qualification: ThreadReadQualification, admission: SelectedReadAdmission, request: SelectedCanonicalRequest): OwnedTerminalReadLease | TicketOutcome;
   transferReadyRead(qualification: ThreadReadQualification, record: HandoffRecord, lease: OwnedTerminalReadLease,
@@ -428,6 +430,10 @@ export class ShellboyData {
         return () => { if (e.displayOwner === owner) { e.live.clearDisplay(); e.displayOwner = undefined; } };
       },
       isDisplayOwnershipCurrent: (record, generation) => readable() && e.live.isDisplayCurrent(record, generation),
+      isReceiptObservationCurrent: (record, receipt) => readable() && e.live.records.peek().includes(record)
+        && e.terminalReceipts.get(record.attemptId) === receipt && receipt.scope === this.handoffScope(e)
+        && receipt.attemptId === record.attemptId && receipt.recordKey === record.key
+        && receipt.presentationContainer === record.presentationContainer,
       handoff: e.live.records,
       handoffOverflow: e.live.overflow,
       retryPublication: () => {
@@ -437,6 +443,7 @@ export class ShellboyData {
         e.live.reconcile();
         return this.refresher.request(`history:${e.id}`);
       },
+      isTerminalReadCurrent: (token, lease) => selectedReadValid(token, lease.ticket.admission) && e.terminalReads.isCurrent(lease),
       requestTerminalRead: (token, admission, request) => {
         const valid = () => selectedReadValid(token, admission);
         if (!this.capabilities.peek().includes(CAPABILITY_HISTORY_WINDOW)) return { phase: "unavailable", reason: "unsupported" };
@@ -763,7 +770,6 @@ export class ShellboyData {
       entry.handoffRetryState.value = { phase: "reading", canRetry: false };
       if (!valid()) return;
       const displayOwner = entry.displayOwner;
-      const display = displayOwner?.capture();
       const leases = targets.flatMap(record => { const lease = entry.live.captureDisplay(record); return lease ? [lease] : []; });
       const out = await this.operations.handoffAttempts(entry.id, { cancel: cancelled });
       if (!valid()) return;
@@ -802,9 +808,11 @@ export class ShellboyData {
           && !out.value.items.some(other => other !== attempt && other.response_nodes?.some(ref => refs.some(own => own.node_id === ref?.node_id)))
           ? Object.freeze({ scope: proof.scope, attemptId: record.attemptId,
               presentationContainer: record.presentationContainer, turnId: attempt.turn_id!, refs: qualifiedRefs }) : undefined;
-        observations.push({ lease, ...(association ? { association } : {}), ...(receipt ? { receipt } : {}) });
+        observations.push({ kind: 'readable', lease, ...(association ? { association } : {}), ...(receipt ? { receipt } : {}) });
       }
-      const displayPublished = valid() && displayOwner === entry.displayOwner && observations.length > 0 && !!display?.publish(observations);
+      if (valid() && displayOwner === entry.displayOwner && observations.length > 0)
+        displayOwner?.capture()?.publish(observations);
+      const receiptObservations: DisplayObservation[] = [];
 
       for (const record of targets) {
         const attempt = out.value.items.find(i => i.kind === "attempt" && i.id === record.attemptId
@@ -830,7 +838,8 @@ export class ShellboyData {
           if (!entry.terminalReceipts.has(record.attemptId) && entry.terminalReceipts.size >= 8) { receiptBlocked.add(record.attemptId); continue; }
           const ownedProof = entry.terminalReceipts.get(record.attemptId) ?? proof;
           entry.terminalReceipts.set(record.attemptId, ownedProof);
-          entry.live.stageTerminalPersisted(record, ownedProof);
+          const staged = entry.live.stageTerminalPersisted(record, ownedProof);
+          if (staged) receiptObservations.push({ kind: 'receipt', record: staged, receipt: ownedProof });
           continue;
         }
         const refs = publicScope.references.get(attempt);
@@ -885,6 +894,10 @@ export class ShellboyData {
           turnId: attempt.turn_id!, revision, total: total!, refs, nodes: saved });
         entry.live.stageAttempt(record, proof);
       }
+      // Empty originals contribute source-qualified metadata, never a borrowed body lease.
+      // Capture the current selected frame after the exact receipt record exists.
+      if (receiptObservations.length && valid() && displayOwner === entry.displayOwner)
+        displayOwner?.capture()?.publish(receiptObservations);
     }).finally(() => {
       entry.resolving = undefined;
       if (this.handoffRead?.entry === entry) this.handoffRead = undefined;

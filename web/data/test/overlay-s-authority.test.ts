@@ -5,9 +5,9 @@ import { createAssociationAuthority, overlayState, reconcileOverlay } from '../s
 const runtime = globalThis as typeof globalThis & { process?: { env: Record<string,string|undefined> } };
 const source = runtime.process?.env.OVERLAY_S_AUTHORITY_SOURCE ?? new URL('../../ui-core/src/accepted-view.ts', import.meta.url).pathname;
 it('actual S authority gates O release after visible commit and same-capability reentry', async()=>{
- const { AcceptedView } = await import(/* @vite-ignore */ source!);
+ const { AcceptedView,makeAcceptedPublication } = await import(/* @vite-ignore */ source!);
  for (const reenter of [false,true]) {
-  const view = new AcceptedView({revision:'v1',items:[]});
+  const view = new AcceptedView({generation:0,revision:'v1',items:[]});
   const cap=view.currentCapability;const op=Object.freeze({});
   const record=Object.freeze({key:'preview',attemptId:'attempt',text:'sole preview'});
   const other=Object.freeze({key:'other',attemptId:'other',text:'other preview'});
@@ -16,17 +16,20 @@ it('actual S authority gates O release after visible commit and same-capability 
   const proof=authority.issue(state,cap,record,op,Object.freeze({nodeId:'node',itemIdentity:'item',revision:'body1'}))!;
   state=authority.associate(state,proof);
   let obsolete=0;let releases=0;let reentries=0;
+  const publish=(revision:string,generation:number,items:readonly unknown[])=>view.publish(makeAcceptedPublication({
+   generation,revision,items,displayPlan:{acceptedGeneration:generation,revision,capability:cap}},'read'),cap);
+  let obsoleteRef:object|undefined;
   view.subscribe((v: {revision:string})=>{
-   if(reenter&&v.revision==='v2'){reentries++;view.commit(view.stage({revision:'v3',items:[]}));}
+   if(reenter&&v.revision==='v2'){obsoleteRef=v;reentries++;expect(publish('v3',2,[])).toBe(true);expect(view.isCurrent(v)).toBe(false);}
   });
   view.subscribe((v: {revision:string})=>{
    if(v.revision!=='v2')return;
    if(!view.isCurrent(v)){obsolete++;return;}
    state=authority.release(state,proof,record,op,cap);releases++;
   });
-  expect(view.commit(view.stage({revision:'v2',items:[{nodeId:'node',itemIdentity:'item',revision:'body1',text:'saved'}]}))).toBe(true);
+  expect(publish('v2',1,[{nodeId:'node',itemIdentity:'item',revision:'body1',text:'saved'}])).toBe(true);
   expect(state.lookup).toBe(op);expect(state.starts).toBe(1);
-  if(reenter){expect(reentries).toBe(1);expect(view.current.revision).toBe('v3');expect(state.records).toContain(record);expect(releases).toBe(0);}
+  if(reenter){expect(reentries).toBe(1);expect(view.isCurrent(obsoleteRef!)).toBe(false);expect(view.current.revision).toBe('v3');expect(state.records).toContain(record);expect(releases).toBe(0);}
   else {expect(view.current.revision).toBe('v2');expect(state.records).toEqual([other]);expect(releases).toBe(1);}
   expect(obsolete).toBe(0);
   state=reconcileOverlay(state,{type:'settled',operation:op});expect(state.lookup).toBeUndefined();

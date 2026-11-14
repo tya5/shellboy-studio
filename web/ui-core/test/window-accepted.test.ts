@@ -1,3 +1,5 @@
+import {Handoff} from '../../data/src/handoff';
+import {selectedReadyRefs} from '../../data/test/work-fixture';
 import {controlledWindow} from './controlled-window';
 import { captureConversationInput } from '../src/conversation-input';
 import { expect, it } from "vitest";
@@ -14,7 +16,7 @@ it("publishes immutable coherent window tuples and stops obsolete notifications"
     source:{nodeId:id,itemIdentity:'body',windowRevision:revision,keyScope:['history'],classificationCase:'human',kind:'user',text:`Declared ${i}`,textComplete:true},
     body:{kind:'typed-canonical',text:`Declared ${i}`},lifetime:'canonical-human'})),
     sequence:ids.map(id=>({kind:'conversation',itemKey:JSON.stringify([id,'body'])})),groups:[]};};
-  const authorized=[cut(1,10),cut(2,10),cut(2,11)];
+  const authorized=[cut(1,10),cut(2,11)];
   const publications = observeDeclaredCuts(r.w,()=>authorized);
   const first = r.w.acceptedView.peek();
   expect(first.total).toBe(10); expect(first.pending).toBe(false); expect(first.range).toEqual(r.w.renderRange());
@@ -23,7 +25,7 @@ it("publishes immutable coherent window tuples and stops obsolete notifications"
   r.w.acceptedView.subscribe(() => { if (!nested) { nested = true; r.w.layoutChanged(); } });
   r.w.acceptedView.subscribe(ref => { expect(ref).toBe(r.w.acceptedView.peek()); seen.push(ref.generation); });
   r.w.layoutChanged(); expect(seen).toHaveLength(0);expect(r.w.acceptedView.peek()).toBe(first);
-  r.owner.append(1);r.w.view(0,10_000,true);r.w.changed();await r.settle();expect(seen).toHaveLength(4);expect(seen.at(-1)).toBe(r.w.acceptedView.peek().generation);
+  r.owner.append(1);r.w.view(0,10_000,true);r.w.changed();await r.settle();expect(seen).toHaveLength(1);expect(seen.at(-1)).toBe(r.w.acceptedView.peek().generation);
   expect(first.rows).toHaveLength(10); expect(publications.generations.length).toBeGreaterThan(0); publications.stop(); r.w.dispose(); expect(r.w.acceptedView.isCurrent(first)).toBe(false); r.data.stop();
 });
 it("scroll peek is non-consuming and only an unchanged current view consumes once without publication", async () => {
@@ -96,13 +98,13 @@ it("pending latest-tail evidence preserves existing follow but cannot recreate d
     w.changed();const tail=r.pending()[0]!;expect(tail.args).toMatchObject({ordinal:99,expect_node_id:'n99',before:0,after:199});
     tail.reply({ok:true,value:{thread_id:'t',revision:2,total:1100,items:rows(99,298)}});await flush();
     const verification=r.pending();expect(verification).toHaveLength(1);
-    expect(verification[0]!.args).toMatchObject({ordinal:99,expect_node_id:'n99',before:0,after:0});
+    expect(verification[0]!.args).toMatchObject({before:99,after:0,items:true});
     expect(w.acceptedView.peek()).toBe(before);expect(w.following.peek()).toBe(true);
     w.view(0,600,true);expect(w.following.peek()).toBe(true);
     w.view(0,600,false);expect(w.following.peek()).toBe(false);
     w.view(0,600,true);expect(w.following.peek()).toBe(false);
     expect(w.acceptedView.peek()).toBe(before);expect(r.pending()).toHaveLength(1);
-    verification[0]!.reply({ok:true,value:{thread_id:'t',revision:2,total:1100,items:rows(99,99)}});await flush();
+    verification[0]!.reply({ok:true,value:{thread_id:'t',revision:2,total:1100,items:rows(1000,1099)}});await flush();
     expect(w.following.peek()).toBe(false);expect(w.acceptedView.peek().rows.map(row=>row.node_id)).toEqual(rows(0,99).map(row=>row.node_id));
     w.jumpToEnd();expect(w.following.peek()).toBe(true);
     expect(w.acceptedView.peek().rows.map(row=>row.node_id)).toEqual(rows(0,99).map(row=>row.node_id));
@@ -127,38 +129,59 @@ it("requests authoritative saved items, preserves whole deferred nodes and retri
   r.w.dispose(); r.data.stop();
 });
 
-it("deferred retry shares two distinct bucket slots and waits for the separately held tail", async () => {
+it("deferred retry shares two other public bucket slots without borrowing their leases", async () => {
   const r=controlledWindow(),w=r.win;
-  const rows=(first:number,last:number):HistoryItem[]=>Array.from({length:last-first+1},(_,offset)=>{
-    const ordinal=first+offset;return{node_id:ordinal===800?'deferred':`n${ordinal}`,kind:'user',selection:{ordinal},
-      ...(ordinal>=800?{items:null,items_unavailable_reason:'response_budget' as const}:
+  const rows=(first:number,last:number,deferred=false):HistoryItem[]=>Array.from({length:last-first+1},(_,offset)=>{
+    const ordinal=first+offset;return{node_id:ordinal===700?'deferred':`n${ordinal}`,kind:ordinal===650?'assistant_response':'user',selection:{ordinal},
+      ...(deferred&&ordinal===700?{items:null,items_unavailable_reason:'response_budget' as const}:
         {items:[{kind:'text' as const,item_identity:'body',text:`Saved ${ordinal}`,text_complete:true}]})};
   });
   try{
-    r.requests[0]!.reply({ok:true,value:{thread_id:'t',total:750,revision:1,items:rows(650,749)}});await flush();
-    w.changed();r.pending()[0]!.reply({ok:true,value:{thread_id:'t',total:1000,revision:2,items:rows(749,948)}});await flush();
-    const verify=r.pending()[0]!;expect(verify.args).toMatchObject({ordinal:749,before:0,after:0});
-    verify.reply({ok:true,value:{thread_id:'t',total:1000,revision:2,items:rows(749,749)}});await flush();
-    const forward=r.pending()[0]!;expect(forward.args).toMatchObject({ordinal:749,before:0,after:199});
-    w.view(0,600,false);
-    forward.reply({ok:true,value:{thread_id:'t',total:1000,revision:2,items:rows(749,948)}});await flush();
-    const tail=r.pending()[0]!;expect(tail.args).toMatchObject({before:99,after:0});
-    expect(w.acceptedView.peek().rows.map(row=>row.node_id)).toEqual(rows(650,948).map(row=>row.node_id));
-    w.view(Math.max(0,w.totalHeight()-600),600,false);r.viewportPause();
+    r.requests[0]!.reply({ok:true,value:{thread_id:'t',total:749,revision:1,items:rows(649,748)}});await flush();
+    // Seed a complete, legitimately bounded 200-row selected proof, then refresh it
+    // through the actual public revision path with one deferred middle bucket.
+    const ledger=new Handoff(fn=>fn());ledger.apply({attempt_id:'seed',gap:false,deltas:[{offset:0,reasoning:false,text:'Seed original'}]});ledger.finish();
+    const original=ledger.records.peek()[0]!,selected=rows(649,848);
+    const proof={scope:'history',attemptId:'seed',turnId:'seed-turn',revision:2,total:1000,nodes:selected,refs:selectedReadyRefs(['n650'],selected)};
+    expect(ledger.stageAttempt(original,proof)).toBeDefined();
+    expect(ledger.transferAttempt(original,proof,(record,release)=>w.acceptHandoff(record,'history',release))).toBe(true);
+    w.measure(Array.from({length:200},(_,i)=>[649+i,40] as const));w.view(0,600,false);r.viewportPause();
+    const discovery=r.pending().find(request=>request.args.ordinal===600)!;expect(discovery).toBeDefined();
+    discovery.reply({ok:true,value:{thread_id:'t',total:1000,revision:3,items:rows(600,699,true)}});await flush();
+    const verify=r.pending().find(request=>request.args.after===0)!;expect(verify.args).toMatchObject({ordinal:748,before:0,after:0});
+    verify.reply({ok:true,value:{thread_id:'t',total:1000,revision:3,items:rows(748,748,true)}});await flush();
+    const refresh=r.pending().find(request=>request.args.ordinal===649)!;expect(refresh.args).toMatchObject({before:0,after:199});
+    refresh.reply({ok:true,value:{thread_id:'t',total:1000,revision:3,items:rows(649,848,true)}});await flush();
+    expect(w.acceptedView.peek().revision).toBe(3);expect(w.acceptedView.peek().rows).toHaveLength(200);
+    w.view(0,600,false);r.viewportPause();
     const first=r.pending().find(request=>request.args.ordinal===600)!;
-    const second=r.pending().find(request=>request.args.ordinal===900)!;
-    expect(first).toBeDefined();expect(second,JSON.stringify({pending:r.pending().map(request=>request.args),total:w.total,range:w.renderRange(),height:w.totalHeight(),scroll:w.scrollTop})).toBeDefined();expect(r.pending()).toHaveLength(3);expect(w.readsInFlight).toBe(3);
+    const second=r.pending().find(request=>request.args.ordinal===800)!;
+    expect(first).toBeDefined();expect(second).toBeDefined();expect(r.pending()).toHaveLength(2);expect(w.readsInFlight).toBe(2);
     const before=w.acceptedView.peek(),count=r.requests.length;
     expect(w.retryDeferred(before)).toBe(false);expect(r.requests).toHaveLength(count);expect(w.acceptedView.peek()).toBe(before);
-    tail.reply({ok:true,value:{thread_id:'t',total:1000,revision:2,items:rows(900,999)}});await flush();
-    expect(w.readsInFlight).toBe(2);expect(w.retryDeferred(w.acceptedView.peek())).toBe(false);expect(r.requests).toHaveLength(count);
-    first.reply({ok:true,value:{thread_id:'t',total:1000,revision:2,items:rows(600,699)}});await flush();
+    first.reply({ok:true,value:{thread_id:'t',total:1000,revision:3,items:rows(600,699,true)}});await flush();
     expect(w.readsInFlight).toBe(1);expect(w.retryDeferred(w.acceptedView.peek())).toBe(true);
     expect(r.requests).toHaveLength(count+1);expect(r.pending()).toHaveLength(2);
-    expect(r.requests.at(-1)!.args).toMatchObject({ordinal:800,expect_node_id:'deferred',before:0,after:99,items:true});
+    expect(r.requests.at(-1)!.args).toMatchObject({ordinal:700,expect_node_id:'deferred',before:0,after:99,items:true});
     expect(w.retryDeferred(w.acceptedView.peek())).toBe(false);expect(r.requests).toHaveLength(count+1);
-    expect(w.acceptedView.peek().rows.map(row=>row.node_id)).toEqual(rows(600,999).map(row=>row.node_id));
+    expect(w.acceptedView.peek().rows.map(row=>row.node_id)).toEqual(rows(600,848,true).map(row=>row.node_id));ledger.discard('ended');
   }finally{w.dispose();expect(r.pending()).toHaveLength(0);}
+});
+
+it("deferred retry cannot borrow the separately owned tail slot even when both bucket slots are free",async()=>{
+ const r=controlledWindow(),w=r.win;
+ const rows:HistoryItem[]=Array.from({length:100},(_,i)=>({node_id:i===0?'deferred':`n${900+i}`,kind:'user',selection:{ordinal:900+i},
+  ...(i===0?{items:null,items_unavailable_reason:'response_budget' as const}:{items:[]})}));
+ try{
+  r.requests[0]!.reply({ok:true,value:{thread_id:'t',revision:1,total:1000,items:rows}});await flush();
+  const before=w.acceptedView.peek();w.changed();const tail=r.pending()[0]!,count=r.requests.length;
+  expect(tail.args).toMatchObject({ordinal:999,before:0,after:199,expect_node_id:'n999'});
+  expect(w.readsInFlight).toBe(1);expect(w.retryDeferred(before)).toBe(false);expect(r.requests).toHaveLength(count);
+  tail.reply({ok:true,value:{thread_id:'t',revision:1,total:1000,items:[rows[99]!]}});await flush();
+  expect(w.readsInFlight).toBe(0);expect(w.retryDeferred(w.acceptedView.peek())).toBe(true);
+  expect(r.requests.at(-1)!.args).toMatchObject({ordinal:900,expect_node_id:'deferred',before:0,after:99,items:true});
+  expect(w.retryDeferred(before)).toBe(false);expect(r.requests).toHaveLength(count+1);
+ }finally{w.dispose();expect(r.pending()).toHaveLength(0);}
 });
 
 it("publishes one capability-bound display plan and reaches a fixed point", async () => {

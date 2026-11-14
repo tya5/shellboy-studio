@@ -1,10 +1,10 @@
+import {publicConversationFixture,CurrentSavedView} from './conversation-fixture';
 import { captureConversationInput } from '../../../ui-core/src/conversation-input';
 // @vitest-environment happy-dom
 import { render } from 'preact';
 import {flush,settle} from '../../../data/test/harness';
 import '@preact/signals';
 import {signal} from '@preact/signals';
-import {useLayoutEffect,useState} from 'preact/hooks';
 import {ConversationWindow,type WindowAcceptedSnapshot} from '../../../ui-core/src/window';
 import {Handoff} from '../../../data/src/handoff';
 import type {AppModel} from '../../../ui-core/src/model';
@@ -226,49 +226,13 @@ it('production model publishes only semantic changes across one history edge and
  }finally{f.model.dispose();f.data.stop();}
 });
 
-type IssuedProps=Parameters<typeof ActualSavedWindowContent>[0] & {liveFacts?:readonly import("../../../ui-core/src/conversation-items").NormalizedSavedItem[]};
-function IssuedWindowContent(props:IssuedProps & {onPublished?:(reader:ConversationWindow,snapshot:WindowAcceptedSnapshot)=>void; trace?:string[]; evidence?:Record<string,unknown>[]}){
- const [reader,setReader]=useState<ConversationWindow>();
- useLayoutEffect(()=>{
-  const rows=props.snapshot.rows.map((row,index)=>({...row,selection:{...row.selection,ordinal:row.selection?.ordinal??index}}));
-  const total=rows.length?Math.max(...rows.map(row=>row.selection.ordinal))+1:0;
-  const owner=props.model.handle.value;const replyRevision=props.snapshot.revision??1;
-  const reader=new ConversationWindow({read:async(args)=>{const result={ok:true as const,value:{thread_id:owner?.threadId??'issued-fixture',revision:replyRevision,total,items:rows}};
-    props.evidence?.push({kind:'read',args,reply:result.value});return result;}});
-  reader.bindConversationInput(snapshot=>captureConversationInput(snapshot,{scope:owner?.handoffScope()??'fixture',threadId:owner?.threadId??'fixture',
-    records:owner?.handoff.value??[],work:props.liveFacts??[],current:true}));
-  let firstRead=true;
-  const admit=(ref:WindowAcceptedSnapshot)=>{
-   if(ref.revision===undefined||!firstRead)return;
-   firstRead=false;props.trace?.push(`read-complete:${ref.generation}`);
-   for(const retired of props.snapshot.retiredAttempts??[]){
-    const ledger=new Handoff(fn=>fn());ledger.apply({attempt_id:retired.attemptId,gap:false,deltas:[{offset:0,reasoning:false,text:'Owned stream'}]});
-    const original=ledger.records.value[0]!;
-    const proof={scope:retired.scope,attemptId:retired.attemptId,turnId:retired.turnId,revision:replyRevision,total,
-      refs:retired.refs,nodes:rows};
-    if(ledger.stageAttempt(original,proof))ledger.transferAttempt(original,proof,(record,release)=>reader.acceptHandoff(record,retired.scope,release));
-    ledger.discard('ended');
-   }
-   const current=reader.acceptedView.peek();props.trace?.push(`plan-published:g${current.generation}:e${current.epoch}:cap=${current.displayPlan?.capability===reader.acceptedView.currentCapability}`);
-   setReader(reader);props.onPublished?.(reader,current);
-  };
-  const stop=reader.acceptedView.subscribe(admit);
-  admit(reader.acceptedView.peek());
-  return()=>{stop();reader.dispose();};
- },[props.snapshot]);
- if(!reader)return null;
- const model=new Proxy(props.model,{get(target,key){if(key==='longReader')return {value:reader,peek:()=>reader};return Reflect.get(target,key);}});
- return <WindowedScroll model={model} win={reader} live={null} renderRow={()=> <></>} renderAcceptedView={snapshot=>{props.trace?.push(`window-render:g${snapshot.generation}:e${snapshot.epoch}:current=${reader.acceptedView.isCurrent(snapshot)}:reader=g${reader.acceptedView.peek().generation}/e${reader.acceptedView.peek().epoch}`);return <ActualSavedWindowContent {...props} model={model} snapshot={snapshot}/>;}}/>;
-}
 
 it('provides a Console-owned saved-text renderer without a fixture render callback',async()=>{
-  const fixture=await fixtureModel(),host=document.createElement('div');document.body.append(host);
+  const fixture=await publicConversationFixture({nodes:[{node_id:'synthetic-saved-node',kind:'assistant_response',selection:{ordinal:0},
+    items:[{kind:'text',item_identity:'text-0',text:'Synthetic saved text without registry callback',text_complete:true}]}]}),host=document.createElement('div');document.body.append(host);
   try{
-    const screen=await import('../screens/Conversation') as unknown as Record<string,any>;
-    expect(screen.SavedConversationItems).toBeTypeOf('function');
-    const Saved=screen.SavedConversationItems;
-    const projection=projectSavedItems([{nodeId:'synthetic-saved-node',itemIdentity:'text-0',revision:'synthetic-r1',kind:'text',text:'Synthetic saved text without registry callback'}]);
-    await act(async()=>render(<Saved model={fixture.model} projection={projection}/>,host));
+    const {SavedConversationItems}=await import('../screens/Conversation');expect(SavedConversationItems).toBeTypeOf('function');
+    await act(async()=>render(<CurrentSavedView fixture={fixture}/>,host));
     expect(host.textContent).toContain('Synthetic saved text without registry callback');
     expect(host.querySelector('[data-item-key]')?.getAttribute('data-node')).toBe('synthetic-saved-node');
   }finally{render(null,host);host.remove();fixture.model.dispose();fixture.data.stop();}
@@ -288,27 +252,25 @@ it('shows a deferred whole-node placeholder without exposing its unproved aggreg
 });
 
 it('keeps all execution IDs under the single authoritative tool item wrapper',async()=>{
-  const fixture=await fixtureModel(),host=document.createElement('div');document.body.append(host);
+  const fixture=await publicConversationFixture({nodes:[{node_id:'multi-node',kind:'assistant_response',selection:{ordinal:0},
+    items:[{kind:'tool_call',item_identity:'multi-tool',execution_ids:['execution-one','execution-two']}]}]}),host=document.createElement('div');document.body.append(host);
   try{
-    const { SavedConversationItems }=await import('../screens/Conversation');
-    const projection=projectSavedItems([{nodeId:'multi-node',itemIdentity:'multi-tool',windowRevision:1,kind:'tool',executionIds:['execution-one','execution-two']}]);
-    await act(async()=>render(<SavedConversationItems model={fixture.model} projection={projection}/>,host));
+    await act(async()=>render(<CurrentSavedView fixture={fixture}/>,host));
     expect(host.querySelectorAll('[data-item-key]')).toHaveLength(1);
     expect([...host.querySelectorAll('[data-execution-id]')].map(el=>el.getAttribute('data-execution-id'))).toEqual(['execution-one','execution-two']);
   }finally{render(null,host);host.remove();fixture.model.dispose();fixture.data.stop();}
 });
 
 it('maps actual typed window rows without a registry and preserves ordinary/deferred node ordering',async()=>{
-  const fixture=await fixtureModel(),host=document.createElement('div');document.body.append(host);
-  try{
-    const SavedWindowContent=IssuedWindowContent;
-    const rows:import('../../../data/src/protocol').HistoryItem[]=[
+  const rows:import('../../../data/src/protocol').HistoryItem[]=[
       {node_id:'saved',kind:'assistant_response',selection:{ordinal:0},items:[{item_identity:'t0',kind:'text',text:'Actual typed saved content',text_complete:true}]},
-      {node_id:'ordinary',kind:'user',excerpt:'Ordinary node survives',selection:{ordinal:1}},
+      {node_id:'ordinary',kind:'user',excerpt:'Forbidden ordinary aggregate',selection:{ordinal:1},items:[{kind:'text',item_identity:'body',text:'Ordinary node survives',text_complete:true}]},
       {node_id:'deferred',kind:'assistant_response',excerpt:'Unproved deferred body',selection:{ordinal:2},items:null,items_unavailable_reason:'response_budget'},
     ];
-    const snapshot={rows,range:{first:0,last:2},total:3,revision:1,generation:1,epoch:1,disposed:false,pending:false};
-    await act(async()=>render(<SavedWindowContent model={fixture.model} snapshot={snapshot}/>,host));
+  const fixture=await publicConversationFixture({nodes:rows}),host=document.createElement('div');document.body.append(host);
+  try{
+
+    await act(async()=>render(<CurrentSavedView fixture={fixture}/>,host));
     expect(host.textContent).toContain('Actual typed saved content');expect(host.textContent).toContain('Ordinary node survives');
     expect(host.textContent).not.toContain('Unproved deferred body');expect(host.querySelector('[data-node="deferred"]')).not.toBeNull();
     const content=host.querySelector('[data-item-key]')!;expect(content.parentElement?.className).toBe('conversation-items');
@@ -317,15 +279,14 @@ it('maps actual typed window rows without a registry and preserves ordinary/defe
 
 
 it.each(['empty', 'reasoning', 'deferred', 'undefined', 'empty-window'] as const)('places explicit live Work exactly once with %s boundary input',async mode=>{
-  const fixture=await fixtureModel(),host=document.createElement('div');document.body.append(host);
-  try{
-    const SavedWindowContent=IssuedWindowContent;
-    const rows:import('../../../data/src/protocol').HistoryItem[]=mode==='empty-window'?[]:[
+  const rows:import('../../../data/src/protocol').HistoryItem[]=mode==='empty-window'?[]:[
       {node_id:'boundary-node',kind:'assistant_response',selection:{ordinal:1},...(mode==='deferred'?{items:null,items_unavailable_reason:'response_budget' as const}:{items:mode==='reasoning'?[{item_identity:'reasoning',kind:'reasoning_unavailable' as const}]:[]})},
-      {node_id:'later-human',kind:'user',excerpt:'Later human',selection:{ordinal:2}},
+      {node_id:'later-human',kind:'user',selection:{ordinal:2},items:[{kind:'text',item_identity:'body',text:'Later human',text_complete:true}]},
     ];
-    const snapshot={rows,range:{first:0,last:2},total:rows.length,revision:1,generation:1,epoch:1,disposed:false,pending:false};
-    await act(async()=>render(<SavedWindowContent model={fixture.model} snapshot={snapshot} liveFacts={normalizeLiveWorkFacts({scope:'synthetic-thread',items:[{kind:'progress',id:'live-record',thread_id:'synthetic-thread',state:'running'}]})}/>,host));
+  const fixture=await publicConversationFixture({nodes:mode==='deferred'?[rows[1]!,rows[0]!]:rows,work:[{kind:'progress',id:'live-record',thread_id:'lead',state:'running'}]}),host=document.createElement('div');document.body.append(host);
+  try{
+
+    await act(async()=>render(<CurrentSavedView fixture={fixture}/>,host));
     const records=[...host.querySelectorAll('[data-work-item-key]')].filter(item=>item.getAttribute('data-item-key')?.includes('live-record'));
     expect(records).toHaveLength(1);expect(records[0]!.closest('[data-work-group]')).not.toBeNull();
     if(mode!=='empty-window')expect(host.textContent).toContain('Later human');
@@ -334,12 +295,11 @@ it.each(['empty', 'reasoning', 'deferred', 'undefined', 'empty-window'] as const
 
 
 it('restores authoritative user Message chrome without substituting aggregate text for typed content',async()=>{
-  const fixture=await fixtureModel(),host=document.createElement('div');document.body.append(host);
+  const rows:import('../../../data/src/protocol').HistoryItem[]=[{node_id:'user-chrome',kind:'user',excerpt:'Aggregate must not replace item',provenance:{created_at:'2099-01-01T00:00:00Z',sender:{kind:'human'}},selection:{ordinal:0},items:[{item_identity:'user-text',kind:'text',text:'Authoritative typed user content',text_complete:true}]}];
+  const fixture=await publicConversationFixture({nodes:rows}),host=document.createElement('div');document.body.append(host);
   try{
-    const SavedWindowContent=IssuedWindowContent;
-    const rows:import('../../../data/src/protocol').HistoryItem[]=[{node_id:'user-chrome',kind:'user',excerpt:'Aggregate must not replace item',provenance:{created_at:'2099-01-01T00:00:00Z',sender:{kind:'human'}},selection:{ordinal:0},items:[{item_identity:'user-text',kind:'text',text:'Authoritative typed user content',text_complete:true}]}];
-    const snapshot={rows,range:{first:0,last:0},total:1,revision:1,generation:1,epoch:1,disposed:false,pending:false};
-    await act(async()=>render(<SavedWindowContent model={fixture.model} snapshot={snapshot}/>,host));
+
+    await act(async()=>render(<CurrentSavedView fixture={fixture}/>,host));
     const item=host.querySelector('[data-item-key]')!;
     expect(item.querySelector('.msg .av')).not.toBeNull();expect(item.querySelector('.who')?.textContent).toContain(fixture.model.t.value('convo.you'));
     expect(item.querySelector('.who small')).not.toBeNull();expect(item.querySelector('.msg-acts')).not.toBeNull();
@@ -349,11 +309,9 @@ it('restores authoritative user Message chrome without substituting aggregate te
 });
 
 it('restores Work group toggle with real parent containment and retains same-membership item DOM',async()=>{
-  const fixture=await fixtureModel(),host=document.createElement('div');document.body.append(host);
+  const fixture=await publicConversationFixture({nodes:[{node_id:'group-node',kind:'assistant_response',selection:{ordinal:0},items:[{kind:'tool_call',item_identity:'tool-1',execution_ids:['group-exec-1']},{kind:'tool_call',item_identity:'tool-2',execution_ids:['group-exec-2']}]}]}),host=document.createElement('div');document.body.append(host);
   try{
-    const { SavedConversationItems }=await import('../screens/Conversation');
-    const projection=projectSavedItems([{nodeId:'group-node',itemIdentity:'tool-1',windowRevision:1,kind:'tool',executionIds:['group-exec-1']},{nodeId:'group-node',itemIdentity:'tool-2',windowRevision:1,kind:'tool',executionIds:['group-exec-2']}]);
-    await act(async()=>render(<SavedConversationItems model={fixture.model} projection={projection}/>,host));
+    await act(async()=>render(<CurrentSavedView fixture={fixture}/>,host));
     const details=host.querySelector('details[data-work-group]')! as HTMLDetailsElement,heading=details.querySelector('summary')!;
     expect(details).not.toBeNull();expect(details.open).toBe(false);
     const items=[...host.querySelectorAll('[data-item-key]')];expect(items).toHaveLength(2);
@@ -370,12 +328,17 @@ it('restores Work group toggle with real parent containment and retains same-mem
 
 it.each([['cold',''],['cold','Partial authoritative item'],['warm',''],['warm','Partial authoritative item']])('never replaces authorized item text in %s renderer: %j with a cached aggregate body',async (phase,text)=>{
   if(phase==='warm'){rendererGate.release();await act(async()=>{await import('../system/components/Message/markdown');await vi.dynamicImportSettled();});}
-  const fixture=await fixtureModel(),host=document.createElement('div');document.body.append(host);
+  const rows:import('../../../data/src/protocol').HistoryItem[]=[{node_id:'item-authority',kind:'user',provenance:{sender:{kind:'human'}},excerpt:'Forbidden aggregate excerpt',selection:{ordinal:0},items:[{item_identity:'text',kind:'text',text,text_complete:false}]}];
+  const fixture=await publicConversationFixture({nodes:rows}),host=document.createElement('div');document.body.append(host);
   try{
-    const SavedWindowContent=IssuedWindowContent;
     fixture.model.bodies.value=new Map([['item-authority',{text:'Forbidden cached aggregate body',loading:false,error:undefined}]]);
-    const rows:import('../../../data/src/protocol').HistoryItem[]=[{node_id:'item-authority',kind:'user',provenance:{sender:{kind:'human'}},excerpt:'Forbidden aggregate excerpt',selection:{ordinal:0},items:[{item_identity:'text',kind:'text',text,text_complete:false}]}];
-    await act(async()=>render(<SavedWindowContent model={fixture.model} snapshot={{rows,range:{first:0,last:0},total:1,revision:1,generation:1,epoch:1,disposed:false,pending:false}}/>,host));
+    const snapshot=fixture.model.longReader.peek()!.acceptedView.peek();
+    expect(snapshot.rows).toMatchObject(rows);
+    expect(snapshot.displayPlan?.entries[0]?.item.source).toMatchObject({kind:'user',text,textComplete:false});
+    expect(snapshot.displayPlan?.entries[0]?.body).toMatchObject({kind:'typed-partial',text});
+    expect(snapshot.assistantOwnership??[]).toEqual([]);expect(snapshot.retiredAttempts??[]).toEqual([]);
+    expect(snapshot.displayPlan?.localRegion.retire??[]).toEqual([]);
+    await act(async()=>render(<CurrentSavedView fixture={fixture}/>,host));
     expect(host.textContent).not.toContain('Forbidden');expect(host.querySelector('.more')).toBeNull();
     expect(host.querySelector('[data-item-partial]')).not.toBeNull();
     const body=host.querySelector('.msg .md')!;
@@ -394,11 +357,11 @@ it.each([['cold',''],['cold','Partial authoritative item'],['warm',''],['warm','
 });
 
 it.each(['empty-user','reasoning-only','unknown-item'] as const)('keeps honest ordinary node presence for %s without aggregate fallback',async mode=>{
-  const fixture=await fixtureModel(),host=document.createElement('div');document.body.append(host);
+  const row:import('../../../data/src/protocol').HistoryItem={node_id:'quiet-node',kind:mode==='empty-user'?'user':'assistant_response',excerpt:'Forbidden private aggregate fallback',selection:{ordinal:0},items:mode==='empty-user'?[]:mode==='reasoning-only'?[{item_identity:'r',kind:'reasoning_unavailable'}]:[{item_identity:'unknown',kind:'unavailable',reason:'opaque'}]};
+  const fixture=await publicConversationFixture({nodes:[row]}),host=document.createElement('div');document.body.append(host);
   try{
-    const SavedWindowContent=IssuedWindowContent;
-    const row:import('../../../data/src/protocol').HistoryItem={node_id:'quiet-node',kind:mode==='empty-user'?'user':'assistant_response',excerpt:'Forbidden private aggregate fallback',selection:{ordinal:0},items:mode==='empty-user'?[]:mode==='reasoning-only'?[{item_identity:'r',kind:'reasoning_unavailable'}]:[{item_identity:'unknown',kind:'unavailable',reason:'opaque'}]};
-    await act(async()=>render(<SavedWindowContent model={fixture.model} snapshot={{rows:[row],range:{first:0,last:0},total:1,revision:1,generation:1,epoch:1,disposed:false,pending:false}}/>,host));
+
+    await act(async()=>render(<CurrentSavedView fixture={fixture}/>,host));
     expect(host.querySelector('[data-node="quiet-node"]')).not.toBeNull();expect(host.textContent).toContain(mode==='unknown-item'?'opaque':fixture.model.t.value(mode==='reasoning-only'?'work.reasoning':'work.textUnavailable'));
     expect(host.textContent).not.toContain('Forbidden');expect(host.querySelector('.more')).toBeNull();
   }finally{render(null,host);host.remove();fixture.model.dispose();fixture.data.stop();}
@@ -406,30 +369,25 @@ it.each(['empty-user','reasoning-only','unknown-item'] as const)('keeps honest o
 
 
 it('retains a no-execution tool as a visible unavailable item without inventing execution identity',async()=>{
-  const fixture=await fixtureModel(),host=document.createElement('div');document.body.append(host);
+  const fixture=await publicConversationFixture({nodes:[{node_id:'no-exec',kind:'assistant_response',selection:{ordinal:0},items:[{kind:'tool_call',item_identity:'tool',execution_ids:[]}]}]}),host=document.createElement('div');document.body.append(host);
   try{
-    const { SavedConversationItems }=await import('../screens/Conversation');
-    const projection=projectSavedItems(normalizeConversationFacts([{nodeId:'no-exec',itemIdentity:'tool',windowRevision:1,kind:'tool',executionIds:[]}]));
-    await act(async()=>render(<SavedConversationItems model={fixture.model} projection={projection}/>,host));
+    await act(async()=>render(<CurrentSavedView fixture={fixture}/>,host));
     expect(host.querySelectorAll('[data-item-key]')).toHaveLength(1);expect(host.querySelector('[data-execution-id]')).toBeNull();
     const heading=host.querySelector('summary[data-work-heading]')!;expect(heading.textContent).toContain(fixture.model.t.value('tools.count',{n:1}));expect(heading.textContent).not.toContain(fixture.model.t.value('work.textUnavailable'));expect(heading.textContent).not.toContain(fixture.model.t.value('status.completed'));
     const details=host.querySelector('details')!;await act(async()=>{details.open=true;details.dispatchEvent(new Event('toggle'));});
-    expect(host.querySelector('[data-execution-unavailable]')?.textContent).toContain(fixture.model.t.value('work.textUnavailable'));expect(host.querySelector('[data-execution-unavailable]')?.closest('[data-work-group]')).toBe(details);
+    expect(host.querySelector('[data-execution-unavailable]')?.textContent).toBe('Execution content was not provided');expect(host.querySelector('[data-execution-unavailable]')?.closest('[data-work-group]')).toBe(details);
   }finally{render(null,host);host.remove();fixture.model.dispose();fixture.data.stop();}
 });
 
 it('bounds output watches to opened tool details and preserves item DOM when membership changes',async()=>{
-  const fixture=await fixtureModel(),host=document.createElement('div');document.body.append(host);
+  const node:import('../../../data/src/protocol').HistoryItem={node_id:'watch-node',kind:'assistant_response',items:[{kind:'tool_call',item_identity:'watch-item',execution_ids:['watched-execution']}],executions:[{execution_id:'watched-execution',command_excerpt:'synthetic watch',state:'running'}]};
+  const fixture=await publicConversationFixture({nodes:[node]}),host=document.createElement('div');document.body.append(host);
   const original=fixture.model.watchOutput.bind(fixture.model);let active=0,maximum=0;
+  fixture.model.toolStepChoices.value=new Map([['watched-execution',true]]);
   fixture.model.watchOutput=()=>{active++;maximum=Math.max(maximum,active);return()=>{active--;};};
   try{
-    const { SavedConversationItems }=await import('../screens/Conversation');
-    const step=fixture.model.conversation.value.flatMap(row=>row.type==='steps'?row.steps:[])[0]!;
-    expect(step).toBeDefined();fixture.model.toolStepChoices.value=new Map([[step.executionId,true]]);
-    const source={nodeId:'watch-node',itemIdentity:'watch-item',windowRevision:1,kind:'tool' as const,executionIds:[step.executionId]};
-    const projection=(await import('../../../ui-core/src/conversation-items')).projectLegacyHistoryItems({nodes:[{node_id:source.nodeId,kind:'assistant_response',items:[{item_identity:source.itemIdentity,kind:'tool_call',execution_ids:source.executionIds}],executions:[{execution_id:step.executionId,command_excerpt:step.command,state:step.state}]}]}).projection;
-    const paint=async(p:typeof projection)=>act(async()=>render(<SavedConversationItems model={fixture.model} projection={p}/>,host));
-    await paint(projection);const item=host.querySelector('[data-item-key]')!,parent=item.parentElement;
+    const projection=fixture.model.longReader.peek()!.acceptedView.peek().displayPlan!;
+    await act(async()=>render(<CurrentSavedView fixture={fixture}/>,host));const item=host.querySelector('[data-item-key]')!,parent=item.parentElement;
     expect(active).toBe(0);
     for(let i=0;i<3;i++){
       const details=host.querySelector('details.step-group')! as HTMLDetailsElement;
@@ -438,19 +396,16 @@ it('bounds output watches to opened tool details and preserves item DOM when mem
     }
     const details=host.querySelector('details.step-group')! as HTMLDetailsElement;
     await act(async()=>{details.open=true;details.dispatchEvent(new Event('toggle'));});expect(active).toBe(1);
-    await paint(projectSavedItems(normalizeConversationFacts([{...source,nodeId:'preceding',itemIdentity:'preceding',executionIds:['other-execution']},source])));
-    expect(active).toBe(0);const replacement=[...host.querySelectorAll('[data-item-key]')].find(el=>el.getAttribute('data-item-key')===projection.items[0]!.key)!;
+    await act(async()=>{await fixture.publish({nodes:[{node_id:'preceding',kind:'assistant_response',items:[{kind:'tool_call',item_identity:'preceding',execution_ids:['other-execution']}]},node]});render(<CurrentSavedView fixture={fixture}/>,host);});
+    expect(active).toBe(0);const replacement=[...host.querySelectorAll('[data-item-key]')].find(el=>el.getAttribute('data-item-key')===projection.entries[0]!.item.key)!;
     expect(replacement).not.toBe(item);expect((replacement.closest('details') as HTMLDetailsElement).open).toBe(false);expect(maximum).toBe(1);
   }finally{render(null,host);expect(active).toBe(0);fixture.model.watchOutput=original;host.remove();fixture.model.dispose();fixture.data.stop();}
 });
 
 it('does not claim completion for a closed local summary mixing proved and no-ID members',async()=>{
-  const fixture=await fixtureModel(),host=document.createElement('div');document.body.append(host);
+  const fixture=await publicConversationFixture({nodes:[{node_id:'mixed-summary',kind:'assistant_response',items:[{kind:'tool_call',item_identity:'known',execution_ids:['known-execution']},{kind:'tool_call',item_identity:'unknown',execution_ids:[]}],executions:[{execution_id:'known-execution',state:'exited',exit_code:0}]}]}),host=document.createElement('div');document.body.append(host);
   try{
-    const { SavedConversationItems }=await import('../screens/Conversation');
-    const step=fixture.model.conversation.value.flatMap(row=>row.type==='steps'?row.steps:[])[0]!;
-    const projection=projectSavedItems([{nodeId:'mixed-summary',itemIdentity:'known',windowRevision:1,kind:'tool',executionIds:[step.executionId]},{nodeId:'mixed-summary',itemIdentity:'unknown',windowRevision:1,kind:'tool',executionIds:[]}]);
-    await act(async()=>render(<SavedConversationItems model={fixture.model} projection={projection}/>,host));
+    await act(async()=>render(<CurrentSavedView fixture={fixture}/>,host));
     const details=host.querySelector('details[data-work-group]')! as HTMLDetailsElement,heading=details.querySelector('summary')!;
     expect(details.open).toBe(false);expect(heading.textContent).toContain(fixture.model.t.value('tools.count',{n:2}));
     expect(heading.textContent).not.toContain(fixture.model.t.value('work.textUnavailable'));expect(heading.querySelector('[data-status="completed"]')).toBeNull();
@@ -459,15 +414,15 @@ it('does not claim completion for a closed local summary mixing proved and no-ID
 });
 
 it('contains saved Work in actual group parents even for a singleton and never drops thinking records',async()=>{
-  const fixture=await fixtureModel(),host=document.createElement('div');document.body.append(host);
-  try{
-    const SavedWindowContent=IssuedWindowContent;
-    const rows:import('../../../data/src/protocol').HistoryItem[]=[
+  const rows:import('../../../data/src/protocol').HistoryItem[]=[
       {node_id:'work-a',kind:'assistant_response',selection:{ordinal:0},items:[{item_identity:'think',kind:'reasoning_unavailable'},{item_identity:'tool',kind:'tool_call',execution_ids:[]}]},
       {node_id:'conversation',kind:'assistant_response',selection:{ordinal:1},items:[{item_identity:'text',kind:'text',text:'Authoritative answer',text_complete:true}]},
       {node_id:'work-b',kind:'assistant_response',selection:{ordinal:2},items:[{item_identity:'unknown',kind:'unavailable',reason:'unsupported'}]},
     ];
-    await act(async()=>render(<SavedWindowContent model={fixture.model} snapshot={{rows,range:{first:0,last:2},total:3,revision:1,generation:1,epoch:1,disposed:false,pending:false}}/>,host));
+  const fixture=await publicConversationFixture({nodes:rows}),host=document.createElement('div');document.body.append(host);
+  try{
+
+    await act(async()=>render(<CurrentSavedView fixture={fixture}/>,host));
     const groups=[...host.querySelectorAll('[data-work-group]')];expect(groups).toHaveLength(2);
     expect(host.querySelectorAll('[data-work-item-key]')).toHaveLength(3);
     for(const item of host.querySelectorAll('[data-work-item-key]'))expect(item.closest('[data-work-group]')).not.toBeNull();
@@ -478,13 +433,11 @@ it('contains saved Work in actual group parents even for a singleton and never d
 });
 
 it.each(['live-only','mixed'] as const)('contains all %s Work facts and keeps authoritative live text outside Work',async mode=>{
-  const fixture=await fixtureModel(),host=document.createElement('div');document.body.append(host);
+  const rows:import('../../../data/src/protocol').HistoryItem[]=mode==='mixed'?[{node_id:'saved-work',kind:'assistant_response',selection:{ordinal:0},items:[{item_identity:'thinking',kind:'reasoning_unavailable'}]}]:[];
+  const fixture=await publicConversationFixture({nodes:rows,work:[{kind:'shell',id:'shell-record',state:'running',thread_id:'lead',execution_id:'actual-exec'},{kind:'pending_message',id:'pending',state:'pending',thread_id:'lead',message_id:'pending-message'},{kind:'progress',id:'progress-record',state:'running',thread_id:'lead'}]}),host=document.createElement('div');document.body.append(host);
   try{
-    const SavedWindowContent=IssuedWindowContent;
-    const { normalizeLiveWorkFacts }=await import('../../../ui-core/src/conversation-items');
-    const rows:import('../../../data/src/protocol').HistoryItem[]=mode==='mixed'?[{node_id:'saved-work',kind:'assistant_response',selection:{ordinal:0},items:[{item_identity:'thinking',kind:'reasoning_unavailable'}]}]:[];
-    const liveFacts=[...normalizeLiveWorkFacts({scope:'synthetic-scope',items:[{kind:'shell',id:'shell-record',state:'running',thread_id:'synthetic-scope',execution_id:'actual-exec'},{kind:'pending_message',id:'pending',state:'pending',thread_id:'synthetic-scope',message_id:'pending-message'},{kind:'progress',id:'progress-record',state:'running',thread_id:'synthetic-scope'}]}),{domain:'live' as const,namespace:'handoff' as const,scope:'synthetic-scope',recordId:'actual-stream-record',kind:'text' as const,text:'Authoritative live nonreasoning text'}];
-    await act(async()=>render(<SavedWindowContent model={fixture.model} snapshot={{rows,range:{first:0,last:rows.length-1},total:rows.length,revision:1,generation:1,epoch:1,disposed:false,pending:false}} liveFacts={liveFacts}/>,host));
+    fixture.t.push({t:'live',thread_id:'lead',attempt_id:'actual-stream-record',gap:false,deltas:[{offset:0,reasoning:false,text:'Authoritative live nonreasoning text'}]});await flush();await flush();
+    await act(async()=>render(<CurrentSavedView fixture={fixture}/>,host));
     const members=[...host.querySelectorAll('[data-work-item-key]')];expect(members).toHaveLength(mode==='mixed'?3:2);
     for(const item of members)expect(item.closest('details[data-work-group]')).not.toBeNull();
     expect(host.querySelectorAll('[data-work-group]')).toHaveLength(mode==='mixed'?2:1);
@@ -512,11 +465,11 @@ it('retains original preview through identity lookup but never revives ready bod
 });
 
 it('retains the actual response budget reason in closed and open saved Work without aggregate fallback',async()=>{
-  const fixture=await fixtureModel(),host=document.createElement('div');document.body.append(host);
+  const rows:import('../../../data/src/protocol').HistoryItem[]=[{node_id:'budget-reason',kind:'assistant_response',excerpt:'Forbidden deferred aggregate',selection:{ordinal:0},items:null,items_unavailable_reason:'response_budget'}];
+  const fixture=await publicConversationFixture({nodes:rows}),host=document.createElement('div');document.body.append(host);
   try{
-    const SavedWindowContent=IssuedWindowContent;
-    const rows:import('../../../data/src/protocol').HistoryItem[]=[{node_id:'budget-reason',kind:'assistant_response',excerpt:'Forbidden deferred aggregate',selection:{ordinal:0},items:null,items_unavailable_reason:'response_budget'}];
-    await act(async()=>render(<SavedWindowContent model={fixture.model} snapshot={{rows,range:{first:0,last:0},total:1,revision:1,generation:1,epoch:1,disposed:false,pending:false}}/>,host));
+
+    await act(async()=>render(<CurrentSavedView fixture={fixture}/>,host));
     const details=host.querySelector('details[data-work-group]')! as HTMLDetailsElement;
     expect(details.open).toBe(false);expect(details.querySelector('summary')?.textContent).not.toContain('response_budget');
     expect(host.textContent).not.toContain('Forbidden');
@@ -567,63 +520,85 @@ it('keeps one identical footer element through known states and unknown loading 
 });
 
 it('publishes saved rows and whole-attempt retirement in the same DOM frame, retaining partial and invalid-scope overlays',async()=>{
-  rendererGate.release(); await import('../system/components/Message/markdown'); await vi.dynamicImportSettled();
-  const fixture=await fixtureModel(),host=document.createElement('div');document.body.append(host);
-  const trace:string[]=[];const evidence:Record<string,unknown>[]=[];const diagnostics:{phase:string;detail:Record<string,unknown>}[]=[];
+ rendererGate.release();await import('../system/components/Message/markdown');await vi.dynamicImportSettled();
+ const {attemptWork}=await import('../../../data/test/work-fixture');
+ const independent:import('../../../data/src/protocol').HistoryItem={node_id:'independent',kind:'user',items:[{kind:'text',item_identity:'text',text:'Independent user',text_complete:true}]};
+ const saved:import('../../../data/src/protocol').HistoryItem={node_id:'saved-answer',kind:'assistant_response',items:[{kind:'text',item_identity:'answer',text:'Committed saved answer',text_complete:true}]};
+ for(let frame=0;frame<5;frame++){
+  const nodes=frame===0?[independent]:[independent,frame===1?{...saved,items:null,items_unavailable_reason:'response_budget' as const}:saved];
+  const f=await publicConversationFixture({nodes,work:[{kind:'progress',id:'live-work',thread_id:'lead',state:'running',attempt_id:'attempt',turn_id:'turn'}]});
+  const host=document.createElement('div');document.body.append(host);
+  const reader=f.model.longReader.peek()!,handle=f.model.handle.peek()!,scope=handle.handoffScope();
+  const cuts=new Map<number,WindowAcceptedSnapshot>();let stop=()=>{};
+  const fixed=(snapshot:WindowAcceptedSnapshot)=>{
+   const canonical=snapshot.assistantOwnership?.some(owner=>owner.attemptId==='attempt'&&owner.mode==='canonical');
+   expect(snapshot.displayPlan!.entries.flatMap(entry=>entry.body.kind==='unavailable'||entry.body.text===''?[]:[entry.body.text])).toEqual([
+    'Independent user',...(frame>=2?['Committed saved answer']:[]),...(!canonical?['Whole live answer']:[])]);
+   for(const owner of snapshot.assistantOwnership??[]){
+    expect(owner).toMatchObject({scope,attemptId:'attempt',turnId:'turn',refs:[{nodeId:'saved-answer',ordinal:1,kind:'assistant_response'}]});
+    expect(snapshot.retiredAttempts?.some(retired=>retired.recordKey===owner.recordKey&&retired.containerKey===owner.containerKey)
+      ||handle.handoff.peek().some(record=>record.key===owner.recordKey&&handle.isDisplayOwnershipCurrent(record,snapshot.generation))).toBe(true);
+   }
+  };
+  const captureDom=()=>{
+   const generation=host.querySelector('[data-fixture-accepted-generation]')?.getAttribute('data-fixture-accepted-generation');
+   if(generation===undefined||generation===null)return;
+   const cut=cuts.get(Number(generation));expect(cut).toBeDefined();
+   expect(host.textContent).toContain('Independent user');
+   if(frame>=2)expect(host.textContent).toContain('Committed saved answer');
+   expect(host.textContent?.includes('Whole live answer')).toBe(!cut!.assistantOwnership?.some(owner=>owner.attemptId==='attempt'&&owner.mode==='canonical'));
+  };
+  const observer=new MutationObserver(captureDom);
   try{
-    const SavedWindowContent=IssuedWindowContent;
-    const scope='thread';let current:object;let publication:{reader:ConversationWindow;snapshot:WindowAcceptedSnapshot}|undefined;
-    const previewLedger=new Handoff(fn=>fn());previewLedger.apply({attempt_id:'attempt',gap:false,deltas:[{offset:0,reasoning:false,text:'Whole live answer'}]});
-    const model=new Proxy(fixture.model,{get(target,key){
-      if(key==='handle')return {value:{threadId:'thread',handoffScope:()=>scope,handoff:{value:previewLedger.records.value},handoffOverflow:{value:false},work:{value:{}}}};
-      if(key==='longReader')return {value:{acceptedView:{isCurrent:(ref:object)=>ref===current}}};
-      return Reflect.get(target,key);
-    }});
-    const liveFacts=[...normalizeLiveWorkFacts({scope,items:[{kind:'progress',id:'live-work',thread_id:'thread',state:'running',attempt_id:'attempt',turn_id:'turn'}]})];
-    const independent:import('../../../data/src/protocol').HistoryItem={node_id:'independent',kind:'user',selection:{ordinal:0},items:[{item_identity:'text',kind:'text',text:'Independent user',text_complete:true}]};
-    const saved:import('../../../data/src/protocol').HistoryItem={node_id:'saved-answer',kind:'assistant_response',selection:{ordinal:1},items:[{item_identity:'answer',kind:'text',text:'Committed saved answer',text_complete:true}]};
-    const base={range:{first:0,last:1},revision:7,generation:1,epoch:1,disposed:false,pending:false};
-    const frames=[
-      {...base,rows:[independent],total:1},
-      {...base,rows:[independent,{...saved,items:null,items_unavailable_reason:'response_budget' as const}],total:2},
-      {...base,rows:[independent,saved],total:2,retiredAttempts:[{scope:'other-lifetime',attemptId:'attempt',turnId:'turn',nodeIds:['saved-answer'],refs:[{nodeId:'saved-answer',ordinal:1,kind:'assistant_response'}],recordKey:'record',containerKey:'message',revision:7}]},
-      {...base,rows:[independent,saved],total:2,retiredAttempts:[{scope,attemptId:'attempt',turnId:'other-turn',nodeIds:['saved-answer'],refs:[{nodeId:'saved-answer',ordinal:1,kind:'assistant_response'}],recordKey:'record',containerKey:'message',revision:7}]},
-      {...base,rows:[independent,saved],total:2,retiredAttempts:[{scope,attemptId:'attempt',turnId:'turn',nodeIds:['saved-answer'],refs:[{nodeId:'saved-answer',ordinal:1,kind:'assistant_response'}],recordKey:'record',containerKey:'message',revision:7}]},
-    ];
-    for(let i=0;i<frames.length;i++){
-      current=frames[i]!;let published!:()=>void;const publicationReady=new Promise<void>(resolve=>{published=resolve;});
-      trace.push(`act-start:${i}`);
-      await act(async()=>{render(<SavedWindowContent model={model} snapshot={frames[i]!} onPublished={(reader,snapshot)=>{publication={reader,snapshot};published();}} liveFacts={liveFacts} trace={trace} evidence={evidence}/>,host);await publicationReady;trace.push(`act-end:${i}`);});
-      expect(host.textContent,`trace=${JSON.stringify(trace)} evidence=${JSON.stringify(evidence)} frame ${i}: current=${publication?.reader.acceptedView.isCurrent(publication.snapshot)} coverage=${publication?.snapshot.displayPlan?.coverage} cap=${publication?.snapshot.displayPlan?.capability===publication?.reader.acceptedView.currentCapability} plan=${JSON.stringify(publication?.snapshot.displayPlan?.entries.map(entry=>[entry.item.key,entry.item.source.kind,entry.body.kind]))} html=${host.innerHTML}`).toContain('Independent user');
-      expect(host.textContent?.includes('Whole live answer'),`trace=${JSON.stringify(trace)} frame=${i}`).toBe(i!==4);
-      expect(host.querySelectorAll('[data-work-item-key]').length).toBe(i===4?0:i===1?2:1);
-      if(i>=2)expect(host.textContent).toContain('Committed saved answer');
-    }
-    const revoked=publication!;
-    revoked.reader.dispose();
-    expect(revoked.reader.acceptedView.isCurrent(revoked.snapshot)).toBe(false);
-    // Revocation cannot consume the overlay; it also cannot authorize stale public DOM.
-    expect(retainUnretiredLiveFacts(revoked.snapshot,scope,false,liveFacts)).toEqual(liveFacts);
-    const revokedModel=new Proxy(model,{get(target,key){return key==='longReader'?{value:revoked.reader,peek:()=>revoked.reader}:Reflect.get(target,key);}});
-    await act(async()=>render(<ActualSavedWindowContent model={revokedModel} snapshot={revoked.snapshot}/>,host));
+   f.t.push({t:'live',thread_id:'lead',attempt_id:'attempt',gap:false,deltas:[{offset:0,reasoning:false,text:'Whole live answer'}]});await flush();await flush();
+   const initial=reader.acceptedView.peek(),initialRows=JSON.stringify(initial.rows),original=handle.handoff.peek()[0]!;cuts.set(initial.generation,initial);fixed(initial);
+   stop=reader.acceptedView.subscribe(snapshot=>{expect(reader.acceptedView.isCurrent(snapshot)).toBe(true);fixed(snapshot);cuts.set(snapshot.generation,snapshot);});
+   observer.observe(host,{subtree:true,childList:true,characterData:true,attributes:true});
+   await act(async()=>render(<CurrentSavedView fixture={f}/>,host));captureDom();
+   if(frame>=2){
+    f.db.work.lead=[{...attemptWork({threadId:'lead',attemptId:'attempt',turnId:'turn',state:'completed',truncated:frame!==4,
+      refs:[{node_id:'saved-answer',ordinal:1,kind:'assistant_response'}]})}];
+    await act(async()=>{f.t.push({t:'live_end',thread_id:'lead'});await settle(f.t,f.db);});
+   }
+   const snapshot=reader.acceptedView.peek();captureDom();
+   if(frame===2||frame===3){
+    const receipt=snapshot.terminalPersistedAttempts![0]!;expect(receipt).toMatchObject({scope,attemptId:'attempt',turnId:'turn',recordKey:original.key});
+    const bad=frame===2?{...receipt,scope:'other-lifetime'}:{...receipt,turnId:'other-turn'};
+    const count=f.t.calls('history.window').length,ref=reader.acceptedView.peek();
+    expect('state' in reader.prepareBoundTerminalRead(bad)).toBe(false);
+    expect(reader.acceptHandoff({...original,terminalPersisted:bad},scope,()=>{throw new Error('invalid receipt released an original');})).toBe(false);
+    expect(reader.acceptedView.peek()).toBe(ref);expect(f.t.calls('history.window')).toHaveLength(count);captureDom();
+   }
+   expect(host.textContent?.includes('Whole live answer'),`frame ${frame}`).toBe(frame!==4);
+   expect(host.querySelectorAll('[data-work-item-key]')).toHaveLength(frame===4?0:frame===1?2:1);
+   if(frame===4){
+    expect(snapshot.retiredAttempts).toMatchObject([{scope,attemptId:'attempt',turnId:'turn',recordKey:original.key,containerKey:original.presentationContainer}]);
+    expect(snapshot.displayPlan?.entries.find(entry=>entry.item.key===JSON.stringify(['saved-answer','answer']))?.presentationContainer).toBe(original.presentationContainer);
+    const facts=normalizeLiveWorkFacts({scope:'lead',items:handle.work.peek().value?.items??[]});
+    reader.dispose();expect(reader.acceptedView.isCurrent(snapshot)).toBe(false);
+    expect(retainUnretiredLiveFacts(snapshot,scope,false,facts)).toEqual(facts);
+    await act(async()=>render(<ActualSavedWindowContent model={f.model} snapshot={snapshot}/>,host));
     expect(host.textContent).not.toContain('Whole live answer');expect(host.textContent).not.toContain('Committed saved answer');
-  }finally{render(null,host);host.remove();fixture.model.dispose();fixture.data.stop();}
+   }
+   expect(JSON.stringify(initial.rows)).toBe(initialRows);
+   if(frame>=2)expect(reader.acceptedView.isCurrent(initial)).toBe(false);
+  }finally{observer.disconnect();stop();render(null,host);host.remove();f.model.dispose();f.data.stop();}
+ }
 });
 
+
 it('retains the actual tool element and open group when thinking prepends under a scoped first-tool identity',async()=>{
-  const fixture=await fixtureModel(),host=document.createElement('div');document.body.append(host);
+  const tool:import('../../../data/src/protocol').HistoryItem={node_id:'actual-tool-node',kind:'assistant_response',items:[{kind:'tool_call',item_identity:'actual-tool-item',execution_ids:['exec-structural']}]};
+  const fixture=await publicConversationFixture({nodes:[tool]}),host=document.createElement('div');document.body.append(host);
   try{
-    const { SavedConversationItems }=await import('../screens/Conversation');
-    const tool={nodeId:'actual-tool-node',itemIdentity:'actual-tool-item',windowRevision:1,kind:'tool' as const,executionIds:['exec-structural'],keyScope:['actual-owner','actual-thread']};
-    const before=projectSavedItems([tool]);
-    await act(async()=>render(<SavedConversationItems model={fixture.model} projection={before}/>,host));
+    const before=fixture.model.longReader.peek()!.acceptedView.peek().displayPlan!;
+    await act(async()=>render(<CurrentSavedView fixture={fixture}/>,host));
     const group=host.querySelector('details[data-work-group]')! as HTMLDetailsElement;
     await act(async()=>{group.open=true;group.dispatchEvent(new Event('toggle'));});
     const item=host.querySelector('[data-work-item-key]')!;
-    const after=projectSavedItems([{nodeId:'thinking-node',itemIdentity:'thinking',windowRevision:1,kind:'reasoning_unavailable',keyScope:tool.keyScope},tool]);
-    await act(async()=>render(<SavedConversationItems model={fixture.model} projection={after}/>,host));
+    await act(async()=>{await fixture.publish({nodes:[{node_id:'thinking-node',kind:'reasoning_unavailable'},tool]});render(<CurrentSavedView fixture={fixture}/>,host);});
     expect(host.querySelector('details[data-work-group]')).toBe(group);expect(group.open).toBe(true);
-    expect([...host.querySelectorAll('[data-work-item-key]')].find(el=>el.getAttribute('data-item-key')===before.items[0]!.key)).toBe(item);
+    expect([...host.querySelectorAll('[data-work-item-key]')].find(el=>el.getAttribute('data-item-key')===before.entries[0]!.item.key)).toBe(item);
     expect(item.getAttribute('data-node')).toBe('actual-tool-node');
     expect(host.querySelector('[data-thinking-marker]')).not.toBeNull();
   }finally{render(null,host);host.remove();fixture.model.dispose();fixture.data.stop();}
@@ -651,31 +626,31 @@ it('keeps typed assistant empty/presence membership distinct across live, termin
  let nodes:Node[]=[old],revision=1;
  const reader=new ConversationWindow({read:async()=>({ok:true,value:{thread_id:'t',revision,total:nodes.length,items:nodes}})});
  const model=new Proxy(f.model,{get(target,key){return key==='longReader'?{value:reader,peek:()=>reader}:Reflect.get(target,key);}});
- let live:import('../../../ui-core/src/conversation-items').NormalizedSavedItem[]=[];
+ const ledger=new Handoff(fn=>fn());
  const frames:unknown[]=[];
- reader.bindConversationInput(snapshot=>captureConversationInput(snapshot,{scope:'fixture',threadId:'t',records:[],work:live,current:true}));
+ reader.bindConversationInput(snapshot=>captureConversationInput(snapshot,{scope:'fixture',threadId:'t',records:ledger.records.peek(),work:[],current:true}));
  const paint=()=>{const snapshot=reader.acceptedView.peek();render(<ActualSavedWindowContent model={model} snapshot={snapshot}/>,host);};
  let stop=()=>{};
  try{
   await act(async()=>{await Promise.resolve();await Promise.resolve();paint();});
   const oldElement=host.querySelector('[data-node="prior-answer"]');expect(oldElement).not.toBeNull();
-  const record=(text:string)=>({domain:'live' as const,namespace:'handoff' as const,scope:'t',recordId:'stable-live',kind:'text' as const,text});
+  const record=(text:string)=>ledger.apply({attempt_id:'stable-live',gap:false,deltas:[{offset:0,reasoning:false,text}]});
   const frame=async(label:string)=>{
    await act(async()=>{reader.refreshConversationInput(reader.acceptedView.peek());paint();});
    frames.push({frame:frames.length,label,current:reader.acceptedView.isCurrent(reader.acceptedView.peek()),messages:host.querySelectorAll('.msg').length,presence:host.querySelectorAll('[data-assistant-presence]').length,keys:[...host.querySelectorAll('[data-item-key]')].map(row=>row.getAttribute('data-item-key'))});
    expect(host.querySelector('[data-node="prior-answer"]')).toBe(oldElement);
   };
-  live=[record('')];await frame('empty-live');expect(host.querySelectorAll('.msg')).toHaveLength(1);expect(host.querySelector('[data-assistant-presence]')?.textContent).toContain(f.model.t.value('convo.live'));
+  record('');await frame('empty-live');expect(host.querySelectorAll('.msg')).toHaveLength(1);expect(host.querySelector('[data-assistant-presence]')?.textContent).toContain(f.model.t.value('convo.live'));
   const liveRow=host.querySelector('[data-assistant-presence]')!.closest('[data-item-key]');
-  live=[record('New live answer')];await frame('live-text');expect(host.querySelectorAll('.msg')).toHaveLength(2);expect(host.querySelector('[data-live-overlay]')?.closest('[data-item-key]')).toBe(liveRow);
-  live=[];await frame('terminal-live-off');expect(host.textContent).not.toContain('New live answer');
+  record('New live answer');await frame('live-text');expect(host.querySelectorAll('.msg')).toHaveLength(2);expect(host.querySelector('[data-live-overlay]')?.closest('[data-item-key]')).toBe(liveRow);
+  ledger.discard('ended');await frame('terminal-live-off');expect(host.textContent).not.toContain('New live answer');
   stop=reader.acceptedView.subscribe(()=>paint());
   nodes=[old,{node_id:'saved-answer',kind:'assistant_response',selection:{ordinal:1},items:[{kind:'text',item_identity:'saved',text:'Saved readable answer',text_complete:true}]},{node_id:'empty-complete',kind:'assistant_response',selection:{ordinal:2},items:[{kind:'text',item_identity:'empty',text:'',text_complete:true}]},{node_id:'empty-partial',kind:'assistant_response',selection:{ordinal:3},items:[{kind:'text',item_identity:'partial',text:'',text_complete:false}]}];revision++;
   await act(async()=>{reader.changed();await new Promise(resolve=>setTimeout(resolve,0));});await frame('saved');
   expect(host.querySelector('[data-node="empty-complete"]')).toBeNull();expect(host.querySelector('[data-assistant-content-unavailable]')).not.toBeNull();expect(host.querySelectorAll('.msg')).toHaveLength(2);
   const saved=host.querySelector('[data-node="saved-answer"]');await act(async()=>{reader.changed();await new Promise(resolve=>setTimeout(resolve,0));});await frame('refresh');expect(host.querySelector('[data-node="saved-answer"]')).toBe(saved);
   await act(async()=>{reader.dispose();paint();});expect(host.textContent).not.toContain('Already readable answer');expect(host.textContent).not.toContain('Saved readable answer');
- }finally{console.log('ASSISTANT_MEMBERSHIP_FRAMES',JSON.stringify(frames));stop();render(null,host);reader.dispose();host.remove();f.model.dispose();f.data.stop();}
+ }finally{console.log('ASSISTANT_MEMBERSHIP_FRAMES',JSON.stringify(frames));stop();render(null,host);ledger.discard('ended');reader.dispose();host.remove();f.model.dispose();f.data.stop();}
 });
 
 it('publishes a newly appended readable assistant after a hint held during path recovery without another input',async()=>{

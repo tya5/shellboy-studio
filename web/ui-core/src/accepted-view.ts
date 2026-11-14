@@ -90,10 +90,14 @@ function materialize<T>(value: T): T { return plainCapture()(value); }
 
 /** Preparation and final staging share the same private counter and memo, with no reset. */
 export function prepareAcceptedPublication<T extends { readonly displayPlan?: unknown }>(
-  prepare: (capture: PlainCapture) => AcceptedPublication<T>): AcceptedPublication<T> {
+  prepare: (capture: PlainCapture) => AcceptedPublication<T>): AcceptedPublication<T>;
+export function prepareAcceptedPublication<T extends { readonly displayPlan?: unknown }>(
+  prepare: (capture: PlainCapture) => AcceptedPublication<T> | undefined): AcceptedPublication<T> | undefined;
+export function prepareAcceptedPublication<T extends { readonly displayPlan?: unknown }>(
+  prepare: (capture: PlainCapture) => AcceptedPublication<T> | undefined): AcceptedPublication<T> | undefined {
   const capture = plainCapture();
   const publication = prepare(capture);
-  return Object.freeze({ ...publication, [captureBrand]: capture });
+  return publication === undefined ? undefined : Object.freeze({ ...publication, [captureBrand]: capture });
 }
 
 /** One current reference, one staged replacement, one coalesced notification slot. */

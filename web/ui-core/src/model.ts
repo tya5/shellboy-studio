@@ -679,18 +679,20 @@ export class AppModel {
     reader.setAttemptPresentations(h.attemptPresentations.value);
     const records = h.handoff.value;
     reader.acceptedView.current;
-    for (const record of records) if ((record.terminalPersisted || record.readyAttempt || record.status === "ready") && !record.transferred) {
+    for (const record of records) if ((record.readyAttempt || record.status === "ready") && !record.transferred) {
       if (record.readyAttempt) reader.prepareBoundReadyRead(record);
       else batch(() => h.transferHandoff(record.attemptId, (attachment, release) => reader.acceptHandoff(attachment, h.handoffScope(), release)));
     }
     if (reader.isTerminalHandleCurrent(h)) {
       const accepted = reader.acceptedView.peek();
       if (reader.acceptedView.isCurrent(accepted))
-        // A held original is still owned by the resolver/ready-record path. Only
-        // a transferred receipt owns selected readback; the two cannot race for
-        // the same automatic-once marker.
-        for (const receipt of accepted.terminalPersistedAttempts ?? [])
-          if (!h.handoff.peek().some(record => record.attemptId === receipt.attemptId)) reader.prepareBoundTerminalRead(receipt);
+        // Readable originals stay on the resolver/ready path. An exact metadata-only
+        // observation owns no body read there, so its receipt may use the existing slot.
+        for (const receipt of accepted.terminalPersistedAttempts ?? []) {
+          const held = h.handoff.peek().find(record => record.attemptId === receipt.attemptId);
+          if (!held || held.text === '' && !held.readyAttempt && !!held.terminalPersisted
+            && h.isReceiptObservationCurrent(held, held.terminalPersisted)) reader.prepareBoundTerminalRead(receipt);
+        }
     }
     this.composeWindowDisplay(reader, h);
     this.readerShells(reader);

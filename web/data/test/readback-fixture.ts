@@ -13,10 +13,10 @@ export async function readbackFixture(){
  const h=data.openThread('a');await settle(t,db);
  const window=new ConversationWindow({read:async()=>({ok:true,value:{thread_id:'a',revision:6,total:1,items:[{node_id:'human',kind:'user',selection:{ordinal:0},items:[{kind:'text',item_identity:'human-text',text:'Independent human',text_complete:true}]}]}})});
  await settle(t,db);window.bindTerminalHandle(h);onTestFinished(()=>{window.dispose();data.stop();});
- const state={attempt:'attempt',available:true,truncated:true,partial:false,deferred:false,unknown:false,missing:false,error:false,changing:false,nonterminal:false,wrongid:false,empty:false};
+ const state={terminalState:'completed' as 'completed'|'failed'|'incomplete'|'cancelled',attempt:'attempt',available:true,truncated:true,partial:false,deferred:false,unknown:false,missing:false,error:false,changing:false,nonterminal:false,wrongid:false,empty:false};
  const original=db.answer.bind(db);let reads=0;
  db.answer=call=>{
-  if(call.command==='status')return{ok:true,result:{items:state.available?[{...attemptWork({threadId:'a',attemptId:state.attempt,turnId:'turn',state:state.nonterminal?'inflight':'completed',truncated:state.truncated,
+  if(call.command==='status')return{ok:true,result:{items:state.available?[{...attemptWork({threadId:'a',attemptId:state.attempt,turnId:'turn',state:state.nonterminal?'inflight':state.terminalState,truncated:state.truncated,
    refs:state.empty?[]:[{node_id:'tool',ordinal:0,kind:'assistant_response'},{node_id:'answer',ordinal:1,kind:'assistant_response'}]}),id:state.wrongid?'other':state.attempt}]:[]}};
   if(call.command==='history.window'){
    reads++;if(state.error)return{ok:false,code:'not_found',message:'synthetic'};

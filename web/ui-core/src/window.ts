@@ -240,25 +240,32 @@ export class ConversationWindow {
       || this.terminalBinding?.handle !== handle || handle.handoffScope() !== this.terminalBinding.scope) return;
     const scope = handle.handoffScope();
     const bound = this.terminalBinding;
-    const token = handle.isReadQualificationCurrent(bound.token) ? bound.token : handle.captureReadQualification();
+    const token = bound.token;
     if (!token || !handle.isReadQualificationCurrent(token)) return;
     const qualified = () => !this.disposed && this.terminalBinding?.handle === handle
       && handle.isReadQualificationCurrent(token) && handle.handoffScope() === scope && this.acceptedView.currentCapability === cap;
     let consumed = false;
+    const recordOf = (item: DisplayObservation): HandoffRecord => item.kind === 'receipt' ? item.record : item.lease.original;
+    const observationCurrent = (item: DisplayObservation): boolean => {
+      const record = recordOf(item);
+      return handle.handoff.peek().includes(record)
+        && (item.kind === 'receipt' ? record.text === '' && handle.isReceiptObservationCurrent(record, item.receipt)
+          : item.lease.current() && (!item.receipt || handle.isReceiptObservationCurrent(record, item.receipt)));
+    };
     return { publish: (observations: readonly DisplayObservation[]) => {
       if (consumed || observations.length > 8 || !qualified() || !this.acceptedView.isCurrent(expected)
-        || observations.some(item => !item.lease.current() || !handle.handoff.peek().includes(item.lease.original))) return false;
+        || observations.some(item => !observationCurrent(item))) return false;
       consumed = true;
       const decisionByAttempt = new Map((expected.assistantOwnership ?? []).map(decision => [decision.attemptId, decision]));
       for (const item of observations) {
-        if (!item.association || item.association.scope !== scope || item.association.attemptId !== item.lease.original.attemptId) continue;
+        if (item.kind !== 'readable' || !item.association || item.association.scope !== scope || item.association.attemptId !== item.lease.original.attemptId) continue;
         const result = assistantOwnership(item.association, item.lease.original.key, expected.rows, expected.revision!);
         if (result) decisionByAttempt.set(result.attemptId, result);
       }
       const decisions = [...decisionByAttempt.values()];
       const receipts = [...(this.terminalCapability === cap ? this.terminalPersistedAttempts : [])];
       for (const item of observations) if (item.receipt && item.receipt.scope === scope
-        && item.receipt.attemptId === item.lease.original.attemptId && !receipts.some(receipt => receipt.attemptId === item.receipt!.attemptId)) {
+        && item.receipt.attemptId === recordOf(item).attemptId && !receipts.some(receipt => receipt.attemptId === item.receipt!.attemptId)) {
         if (receipts.length >= 8) return false;
         receipts.push(item.receipt);
       }
@@ -269,12 +276,20 @@ export class ConversationWindow {
       const generation = this.nextAcceptedGeneration();
       const staged = this.prepareAccepted({ ...expected, generation, assistantOwnership: decisions,
         terminalPersistedAttempts: receipts, terminalPresence: presence }, cap);
-      if (!qualified() || !this.acceptedView.isCurrent(expected) || observations.some(item => !item.lease.current() || !handle.handoff.peek().includes(item.lease.original))) return false;
+      if (!qualified() || !this.acceptedView.isCurrent(expected) || observations.some(item => !observationCurrent(item))) return false;
       // Install only in the original held slots before the one synchronous successor publication.
-      const undo = observations.filter(item => decisions.some(decision => decision.recordKey === item.lease.original.key && decision.attemptId === item.lease.original.attemptId)).map(item => item.lease.stage(generation, () => {
-        const ref = this.acceptedView.peek();
-        return qualified() && this.acceptedView.isCurrent(ref) && ref.generation === generation;
-      }));
+      const undo = observations.flatMap(item => item.kind === 'readable'
+        && decisions.some(decision => decision.recordKey === item.lease.original.key && decision.attemptId === item.lease.original.attemptId)
+        ? [item.lease.stage(generation, at => {
+          const ref = this.acceptedView.peek();
+          const issued = decisions.find(decision => decision.recordKey === item.lease.original.key && decision.attemptId === item.lease.original.attemptId)!;
+          return qualified() && this.acceptedView.isCurrent(ref) && ref.generation === at
+            && ref.assistantOwnership?.some(owner => owner.recordKey === issued.recordKey && owner.attemptId === issued.attemptId
+              && owner.scope === issued.scope && owner.turnId === issued.turnId && owner.containerKey === issued.containerKey
+              && owner.receiptRevision === issued.receiptRevision && owner.refs.length === issued.refs.length
+              && owner.refs.every((node,index) => node.nodeId === issued.refs[index]?.nodeId
+                && node.ordinal === issued.refs[index]?.ordinal && node.kind === issued.refs[index]?.kind)) === true;
+        })] : []);
       const oldReceipts = this.terminalPersistedAttempts, oldCap = this.terminalCapability, oldPresence = this.terminalPresence;
       this.terminalPersistedAttempts = receipts; this.terminalCapability = cap; this.terminalPresence = presence;
       if (!this.commitAccepted(staged, this.acceptedView.currentCapability)) {
@@ -506,8 +521,7 @@ export class ConversationWindow {
                 range: { first: ordinals[0]!, last: ordinals.at(-1)! }, total: value.total,
                 assistantOwnership: ownership, terminalPresence: next }, target.cap);
               if (!target.handle.isReadQualificationCurrent(target.token) || !this.acceptedView.isCurrent(target.ref)) return false;
-              this.buckets = buckets; this.total = value.total; this.terminalPresence = next;
-              if (!this.commitAccepted(staged, this.acceptedView.currentCapability)) return false;
+              if (!this.commitSelectedPublication(staged, buckets, target.ref, target.cap)) return false;
               const ref = this.acceptedView.peek();
               if (ref.generation !== generation || !this.acceptedView.isCurrent(ref) || target.cap !== this.acceptedView.currentCapability || !target.handle.isReadQualificationCurrent(target.token)) return false;
               this.advanceTerminalTarget(target, ref); return true;
@@ -604,30 +618,8 @@ export class ConversationWindow {
   }
 
   acceptHandoff(record: HandoffRecord, scope: string, release: (reason: "return" | "end") => void): boolean {
-    if (record.terminalPersisted) {
-      const proof = record.terminalPersisted, cap = this.acceptedView.currentCapability, expected = this.acceptedView.peek();
-      if (this.disposed || !this.acceptedView.isCurrent(expected) || scope !== proof.scope || proof.attemptId !== record.attemptId
-        || !["completed", "failed", "incomplete", "cancelled"].includes(proof.terminalState)
-        || !proof.nodeIds.length || proof.nodeIds.length > 64 || proof.nodeIds.some(id => !id)
-        || !proof.recordKey || !proof.presentationContainer || !proof.refs || proof.refs.length !== proof.nodeIds.length
-        || proof.refs.some((ref, index) => ref.nodeId !== proof.nodeIds[index] || !Number.isSafeInteger(ref.ordinal) || ref.ordinal < 0 || !ref.kind)) return false;
-      const before = this.terminalCapability === cap ? this.terminalPersistedAttempts : [];
-      if (before.length >= 8 && !before.some(p => p.scope === scope && p.attemptId === proof.attemptId)) return false;
-      const next = [...before.filter(p => p.scope !== scope || p.attemptId !== proof.attemptId), proof];
-      const generation = this.nextAcceptedGeneration();
-      const presence = next.flatMap(p => { const item = terminalPresence(p, expected.rows); return item ? [item] : []; });
-      const staged = this.prepareAccepted({ ...expected, generation, terminalPersistedAttempts: next, terminalPresence: presence,
-        attemptPresentations: (expected.attemptPresentations ?? []).filter(p => p.scope !== scope || p.attemptId !== proof.attemptId) }, cap);
-      if (!this.acceptedView.isCurrent(expected) || cap !== this.acceptedView.currentCapability) return false;
-      const old = this.terminalPersistedAttempts, oldCap = this.terminalCapability;
-      this.terminalPresence = presence; this.terminalPersistedAttempts = next; this.terminalCapability = cap;
-      if (!this.commitAccepted(staged, this.acceptedView.currentCapability)) { this.terminalPersistedAttempts = old; this.terminalCapability = oldCap; return false; }
-      const committed = this.acceptedView.peek();
-      if (committed.generation !== generation || !this.acceptedView.isCurrent(committed) || cap !== this.acceptedView.currentCapability) return false;
-      this.version.value++;
-      if (!this.acceptedView.isCurrent(committed) || cap !== this.acceptedView.currentCapability) return false;
-      release(record.text ? "return" : "end"); return true;
-    }
+    // Persistence is published by the bound display owner; it is never a transfer proof.
+    if (record.terminalPersisted && !record.readyAttempt) return false;
     if (record.readyAttempt) {
       const proof = record.readyAttempt;
       const capability = this.acceptedView.currentCapability;
@@ -690,14 +682,10 @@ export class ConversationWindow {
         range: { first, last }, total: proof.total, assistantOwnership: [ownership], retiredAttempts: next }, capability);
       if (this.disposed || !this.acceptedView.isCurrent(expected) || capability !== this.acceptedView.currentCapability) return false;
       // Publish retirement and saved rows together, before any subscriber can run.
-      const oldBuckets = this.buckets, oldTotal = this.total, oldRevision = this.revision;
-      this.buckets = stagedBuckets;
-      this.total = proof.total;
-      this.revision = proof.revision;
       this.retiredAttempts = next;
       this.retiredCapability = capability;
-      const published = this.commitAccepted(staged, this.acceptedView.currentCapability);
-      if (!published) { if (this.retiredAttempts === next) { this.retiredAttempts = previous; this.retiredCapability = previousCapability; this.buckets = oldBuckets; this.total = oldTotal; this.revision = oldRevision; } return false; }
+      const published = this.commitSelectedPublication(staged, stagedBuckets, expected, capability);
+      if (!published) { if (this.retiredAttempts === next && this.acceptedView.peek() === expected) { this.retiredAttempts = previous; this.retiredCapability = previousCapability; } return false; }
       const committed = this.acceptedView.peek();
       if (committed.generation !== generation || this.acceptedGeneration !== generation || capability !== this.acceptedView.currentCapability
         || !this.acceptedView.isCurrent(committed) || committed.retiredAttempts?.at(-1)?.attemptId !== record.attemptId) return false;
@@ -980,12 +968,11 @@ export class ConversationWindow {
   refreshConversationInput(ref: WindowAcceptedSnapshot): boolean {
     const capability = this.acceptedView.currentCapability;
     if (this.disposed || !this.acceptedView.isCurrent(ref)) return false;
-    const input = this.captureConversationInput(ref);
-    const probe = this.prepareCaptured(ref, capability, input);
+    const probe = this.prepareAccepted(ref, capability, 'bump');
     if (probe.plan.semanticKey === ref.displayPlan?.semanticKey && probe.plan.cohortKey === ref.displayPlan.cohortKey
       && probe.plan.coverage === ref.displayPlan.coverage && probe.plan.scope === ref.displayPlan.scope) return true;
     const generation = this.nextAcceptedGeneration();
-    const staged = this.prepareCaptured({ ...ref, generation }, capability, input);
+    const staged = this.prepareAccepted({ ...ref, generation }, capability, 'bump');
     if (!this.acceptedView.isCurrent(ref) || capability !== this.acceptedView.currentCapability) return false;
     return this.commitAccepted(staged, capability);
   }
@@ -998,11 +985,19 @@ export class ConversationWindow {
       scope: input.scope, semanticKey: JSON.stringify({ unavailable: true, scope: input.scope, localRegion: input.decision.localRegion }) });
   }
 
+  private qualifyRetainedOwners(snapshot: WindowAcceptedSnapshot, capability: AcceptedCapability): WindowAcceptedSnapshot {
+    const accepted = this.acceptedView.peek(), prior = accepted.assistantOwnership ?? [], facts = snapshot.assistantOwnership ?? [];
+    if (snapshot.revision === undefined || !facts.some(fact => prior.includes(fact))) return snapshot;
+    const current = this.acceptedOwnershipForBump(snapshot.revision, snapshot.rows, capability);
+    return { ...snapshot, assistantOwnership: facts.flatMap(fact => prior.includes(fact)
+      ? current.filter(owner => owner.recordKey === fact.recordKey && owner.attemptId === fact.attemptId) : [fact]) };
+  }
+
   /** Every transition captures the current input before its single accepted swap. */
   private prepareAccepted(snapshot: WindowAcceptedSnapshot, capability: AcceptedCapability,
     reason: PublicationReason = "read"): AcceptedPublication<WindowAcceptedSnapshot> {
     return prepareAcceptedPublication(capture => {
-      const candidate = { ...snapshot, rows: capture(snapshot.rows) };
+      const candidate = this.qualifyRetainedOwners({ ...snapshot, rows: capture(snapshot.rows) }, capability);
       return this.prepareCaptured(candidate, capability, this.captureConversationInput(candidate), reason);
     });
   }
@@ -1030,14 +1025,34 @@ export class ConversationWindow {
 
   private nextAcceptedGeneration(): number { return ++this.acceptedGeneration; }
 
+  private commitSelectedPublication(publication: AcceptedPublication<WindowAcceptedSnapshot>, buckets: Map<number, Bucket>,
+    expected: WindowAcceptedSnapshot, capability: AcceptedCapability): boolean {
+    if (this.disposed || capability !== this.acceptedView.currentCapability || !this.acceptedView.isCurrent(expected)) return false;
+    const previous = { buckets: this.buckets, total: this.total, revision: this.revision, presence: this.terminalPresence };
+    const selected = publication.snapshot;
+    this.buckets = buckets; this.total = selected.total; this.revision = selected.revision;
+    this.terminalPresence = selected.terminalPresence ?? [];
+    if (this.commitAccepted(publication, capability)) return true;
+    if (this.buckets === buckets && this.acceptedView.peek() === expected) {
+      this.buckets = previous.buckets; this.total = previous.total; this.revision = previous.revision; this.terminalPresence = previous.presence;
+    }
+    return false;
+  }
+
+
   private acceptedOwnershipForBump(revision: number, rows: readonly HistoryItem[], capability: AcceptedCapability): readonly AssistantOwnership[] {
     const snapshot = this.acceptedView.peek();
     const prior = snapshot.assistantOwnership ?? [];
     const handle = this.terminalBinding?.handle;
-    if (!prior.length || prior.some(fact => fact.scope !== prior[0]!.scope)) return [];
+    if (!prior.length || !this.acceptedView.isCurrent(snapshot) || capability !== this.acceptedView.currentCapability
+      || snapshot.displayPlan?.capability !== capability) return [];
+    const binding = this.terminalBinding;
+    if (binding && (!binding.handle.isReadQualificationCurrent(binding.token) || binding.handle.handoffScope() !== binding.scope)) return [];
+    const qualified: AssistantOwnership[] = [];
     // A live overlay needs its exact current lease. Once transferred, only the
     // accepted ready receipt may own it; saved-row reprojection alone is not authority.
     for (const fact of prior) {
+      if (fact.scope !== snapshot.displayPlan.scope || !fact.refs.length) continue;
       const record = handle?.handoff.peek().find(item => item.key === fact.recordKey && item.attemptId === fact.attemptId);
       const liveOwner = !!record && handle!.isDisplayOwnershipCurrent(record, snapshot.generation);
       const retired = this.retiredCapability === capability && snapshot.retiredAttempts?.find(item => item.scope === fact.scope && item.attemptId === fact.attemptId
@@ -1045,48 +1060,128 @@ export class ConversationWindow {
         && item.containerKey === fact.containerKey && item.refs.length === fact.refs.length
         && item.refs.every((ref, index) => ref.nodeId === fact.refs[index]?.nodeId
           && ref.ordinal === fact.refs[index]?.ordinal && ref.kind === fact.refs[index]?.kind));
-      if (!liveOwner && !retired) return [];
-    }
-    if (prior.every(fact => fact.proofRevision === revision)) return prior;
-    const qualified: AssistantOwnership[] = [];
-    for (const fact of prior) {
-      if (!fact.refs.length) return [];
+      const target = this.terminalTargets.get(JSON.stringify([fact.scope, fact.attemptId]));
+      const read = target?.lease.state.peek();
+      // A settled body proof lives with its actual owned lease, not a presentation generation.
+      const selectedOwner = target?.kind === 'persisted' && target.mode === 'fresh-window' && target.cap === capability
+        && target.receipt.recordKey === fact.recordKey && target.receipt.turnId === fact.turnId
+        && target.receipt.presentationContainer === fact.containerKey && !!read && read.phase === 'settled' && read.result.ok
+        && read.result.value.revision === fact.receiptRevision && target.handle.isTerminalReadCurrent(target.token, target.lease)
+        && target.receipt.refs?.length === fact.refs.length && target.receipt.refs.every((ref,index) =>
+          ref.nodeId === fact.refs[index]?.nodeId && ref.ordinal === fact.refs[index]?.ordinal && ref.kind === fact.refs[index]?.kind);
+      if (!liveOwner && !retired && !selectedOwner) continue;
       const next = assistantOwnership({ scope: fact.scope, attemptId: fact.attemptId, turnId: fact.turnId,
         presentationContainer: fact.containerKey, refs: fact.refs }, fact.recordKey, rows, revision);
-      if (!next || next.mode !== "canonical" || capability !== this.acceptedView.currentCapability) return [];
+      if (!next || fact.mode === 'canonical' && next.mode !== 'canonical') continue;
       qualified.push(Object.freeze({ ...next, receiptRevision: fact.receiptRevision }));
     }
+    if (capability !== this.acceptedView.currentCapability) return [];
     return Object.freeze(qualified);
   }
 
-  private bump(capability: AcceptedCapability = this.acceptedView.currentCapability): void {
-    if (this.disposed || capability !== this.acceptedView.currentCapability) return;
-    const epoch = this.epoch;
-    const generation = this.nextAcceptedGeneration();
-    const currentRows = this.rangeItems();
+  private snapshotForSelection(selection: Pick<WindowAcceptedSnapshot,'generation'|'epoch'|'rows'|'range'|'total'|'revision'|'pending'>,
+    capability: AcceptedCapability): WindowAcceptedSnapshot {
+    const currentRows=selection.rows;
     const presence = this.terminalCapability === capability ? this.terminalPersistedAttempts.flatMap(receipt => {
       const previous = this.terminalPresence.find(p => p.scope === receipt.scope && p.attemptId === receipt.attemptId);
       const value = terminalPresence(receipt, currentRows, previous?.reason ?? "canonical-pending");
       return value ? [{ ...value, phase: previous?.phase ?? value.phase }] : [];
     }) : [];
-    this.terminalPresence = presence;
-    // A notification-reentrant bump supersedes an in-progress ready transaction;
-    // it may retain saved/retirement facts, but cannot restamp that transaction's owner.
-    const requalifiedOwnership = this.revision === undefined ? []
-      : this.acceptedOwnershipForBump(this.revision, currentRows, capability);
-    const staged = this.prepareAccepted({ generation, epoch, disposed: false,
-      rows: currentRows, range: this.renderRange(), total: this.total,
-      revision: this.revision, pending: this.status.peek() === "loading", attemptPresentations: this.attemptPresentations.filter(p => !this.terminalPersistedAttempts.some(done => this.terminalCapability === capability && done.scope === p.scope && done.attemptId === p.attemptId)),
-      terminalPresence: this.terminalCapability === capability ? this.terminalPresence : [],
+    const requalifiedOwnership = selection.revision === undefined ? []
+      : this.acceptedOwnershipForBump(selection.revision, currentRows, capability);
+    return { ...selection, disposed: false,
+      attemptPresentations: this.attemptPresentations.filter(p => !this.terminalPersistedAttempts.some(done => this.terminalCapability === capability && done.scope === p.scope && done.attemptId === p.attemptId)),
+      terminalPresence: this.terminalCapability === capability ? presence : [],
       terminalPersistedAttempts: this.terminalCapability === capability ? this.terminalPersistedAttempts : [],
       coverage: this.summaryTransition?.targetCap === capability && !this.summaryTransition?.consumed ? this.summaryTransition?.coverage : undefined,
       assistantOwnership: requalifiedOwnership,
       retiredAttempts: this.retiredCapability === capability ? this.retiredAttempts : [],
-    }, capability);
+    };
+  }
+
+  private bump(capability: AcceptedCapability = this.acceptedView.currentCapability): void {
+    if (this.disposed || capability !== this.acceptedView.currentCapability) return;
+    const epoch = this.epoch, generation = this.nextAcceptedGeneration();
+    const snapshot=this.snapshotForSelection({generation,epoch,rows:this.rangeItems(),range:this.renderRange(),
+      total:this.total,revision:this.revision,pending:this.status.peek()==='loading'},capability);
+    const staged=this.prepareAccepted(snapshot,capability);
     if (this.disposed || epoch !== this.epoch || generation !== this.acceptedGeneration) return;
-    if (!this.commitAccepted(staged, this.acceptedView.currentCapability)) return;
+    if (!this.commitAccepted(staged, capability)) return;
     if (this.disposed || epoch !== this.epoch || generation !== this.acceptedGeneration) return;
+    this.terminalPresence=snapshot.terminalPresence??[];
     this.version.value++;
+  }
+
+  /** A discovered revision never makes retained buckets current. Materialize one whole selected successor first. */
+  private async refreshSelection(minimumRevision:number):Promise<void>{
+    if(this.disposed||this.tailCancel||this.verifying)return;
+    const expected=this.acceptedView.peek(),capability=this.acceptedView.currentCapability,epoch=this.epoch;
+    if(!this.acceptedView.isCurrent(expected))return;
+    const follow=this.following.peek(),cancel=new Cancel();this.tailCancel=cancel;
+    const current=()=>!this.disposed&&this.tailCancel===cancel&&!cancel.cancelled&&this.epoch===epoch
+      &&this.acceptedView.currentCapability===capability&&this.acceptedView.isCurrent(expected);
+    const range=expected.range,rows:HistoryItem[]=[];let revision:number|undefined,total:number|undefined;
+    try{
+      if(!follow&&(!range||range.last-range.first+1>WINDOW_NODES*WINDOWS_HELD))return;
+      const first=follow?0:range!.first,last=follow?0:range!.last;
+      for(let ordinal=first;ordinal<=last;ordinal+=2*WINDOW_NODES){
+        const args:WindowReadArgs=follow?{before:WINDOW_NODES-1,after:0,excerpt_chars:HISTORY_WINDOW_EXCERPT_CHARS,items:true}:
+          {ordinal,before:0,after:Math.min(2*WINDOW_NODES-1,last-ordinal),expect_node_id:expected.rows[ordinal-first]?.node_id,excerpt_chars:HISTORY_WINDOW_EXCERPT_CHARS,items:true};
+        const out=await this.reader.read(args,cancel);if(!current())return;
+        if(!out.ok){if(out.error.kind!=='cancelled')this.error.value=out.error.message;return;}
+        const page=out.value;
+        if(page.revision<minimumRevision||revision!==undefined&&(revision!==page.revision||total!==page.total))return;
+        revision=page.revision;total=page.total;
+        const begin=follow?Math.max(0,page.total-WINDOW_NODES):ordinal;
+        const end=follow?page.total-1:Math.min(last,ordinal+2*WINDOW_NODES-1);
+        if(page.items.length!==Math.max(0,end-begin+1))return;
+        rows.push(...page.items);
+      }
+      if(!current()||revision===undefined||total===undefined)return;
+      // An upward gesture during the owned latest read is not permission to navigate away.
+      if(follow&&!this.following.peek()){this.newer.value=true;return;}
+      const generation=this.nextAcceptedGeneration(),cursor={revision,total};
+      const firstOrdinal=follow?Math.max(0,total-WINDOW_NODES):range!.first,lastOrdinal=follow?total-1:range!.last;
+      // Validate and compose from the one bounded plain capture, then retain those exact rows.
+      const staged=prepareAcceptedPublication(capture=>{
+        const selected=capture(rows);
+        if(selected.length!==Math.max(0,lastOrdinal-firstOrdinal+1)||new Set(selected.map(row=>row.node_id)).size!==selected.length
+          ||selected.some((row,index)=>!row.node_id||row.selection?.ordinal!==firstOrdinal+index))return;
+        const snapshot=this.snapshotForSelection({generation,epoch,rows:selected,range:selected.length?{first:firstOrdinal,last:lastOrdinal}:undefined,
+          total:cursor.total,revision:cursor.revision,pending:false},capability);
+        return this.prepareCaptured(snapshot,capability,this.captureConversationInput(snapshot),'read');
+      });
+      if(!staged||!current()||generation!==this.acceptedGeneration||follow&&!this.following.peek())return;
+      const selected=staged.snapshot.rows,replacement=new Map<number,Bucket>();
+      for(const row of selected){const ordinal=row.selection!.ordinal!,index=Math.floor(ordinal/WINDOW_NODES);
+        let bucket=replacement.get(index);if(!bucket){bucket=new Bucket();replacement.set(index,bucket);}
+        bucket.items[ordinal%WINDOW_NODES]=row;bucket.filled++;
+      }
+      if(replacement.size>WINDOWS_HELD)return;
+      const old={buckets:this.buckets,total:this.total,revision:this.revision,tailKnown:this.tailKnown,lastAnchor:this.lastAnchor,heights:this.heights,scroll:this.scrollRequest,
+        inflight:new Map(this.inflight),wanted:this.wanted};
+      this.heights=new Heights();
+      for(const row of selected){const ordinal=row.selection!.ordinal!,prior=old.buckets.get(Math.floor(ordinal/WINDOW_NODES))?.items[ordinal%WINDOW_NODES];
+        const height=old.heights.h.get(ordinal);if(prior&&prior.node_id===row.node_id&&prior.kind===row.kind&&height!==undefined)this.heights.set(ordinal,height);
+      }
+      this.tailKnown=selected.at(-1)?.node_id?{nodeId:selected.at(-1)!.node_id!,ordinal:lastOrdinal}:undefined;
+      if(follow){this.lastAnchor=undefined;this.scrollRequest=Number.MAX_SAFE_INTEGER;}
+      if(!this.commitSelectedPublication(staged,replacement,expected,capability)){
+        if(this.buckets===old.buckets&&this.acceptedView.peek()===expected){
+          this.tailKnown=old.tailKnown;this.lastAnchor=old.lastAnchor;this.heights=old.heights;this.scrollRequest=old.scroll;
+        }
+        return;
+      }
+      if(this.buckets!==replacement||this.disposed||capability!==this.acceptedView.currentCapability)return;
+      this.terminalPresence=this.acceptedView.peek().terminalPresence??[];
+      for(const [index,read] of old.inflight)if(this.inflight.get(index)===read){read.cancel.cancel();this.inflight.delete(index);}
+      if(follow&&this.following.peek()&&this.wanted===old.wanted)this.wanted.clear();this.failed.clear();
+      if(follow&&!this.following.peek())this.scrollRequest=undefined;
+      this.status.value='ready';this.error.value=undefined;this.jumping=false;this.version.value++;
+      for(const bucket of old.buckets.values())for(const attachment of bucket.handoffs.values())attachment.release('return');
+    }finally{
+      if(this.tailCancel===cancel){this.tailCancel=undefined;this.drainTailHint();this.pump();}
+    }
   }
 
   private complete(b: number): boolean {
@@ -1156,6 +1251,9 @@ export class ConversationWindow {
     this.verifying = false;
     this.tailCancel = undefined;
     if (!out.ok) {
+      if (out.error.kind === "owner" && out.error.code === "path_changed" && this.revision !== undefined && this.following.peek()) {
+        void this.refreshSelection(this.revision); return;
+      }
       if (out.error.kind === "owner" && out.error.code === "cursor_expired") this.reset();
       else if (out.error.kind !== "cancelled") this.fail(out.error.message);
       return;
@@ -1166,6 +1264,7 @@ export class ConversationWindow {
       this.pump();
       return;
     }
+    if (relation === "newer") { void this.refreshSelection(out.value.revision); return; }
     this.revision = out.value.revision;
     this.setTotal(out.value.total);
     // Verification is evidence, not navigation to an evicted tail island.
@@ -1193,6 +1292,9 @@ export class ConversationWindow {
     if (this.disposed || capability !== this.acceptedView.currentCapability || epoch !== this.epoch || this.tailCancel !== cancel) return;
     this.tailCancel = undefined;
     if (!out.ok) {
+      if (out.error.kind === "owner" && out.error.code === "path_changed" && this.revision !== undefined && this.following.peek()) {
+        void this.refreshSelection(this.revision); return;
+      }
       if (out.error.kind === "owner" && out.error.code === "cursor_expired") this.reset();
       else if (out.error.kind !== "cancelled") {
         this.tailFailed = true;
@@ -1210,7 +1312,8 @@ export class ConversationWindow {
     this.tailFailed = false;
     const relation = revisionRelation(out.value.revision, this.revision);
     // The first successful tail read establishes the cursor; only established cursors need verification.
-    if (relation === "newer" || relation === "older") {
+    if (relation === "newer") { void this.refreshSelection(out.value.revision); return; }
+    if (relation === "older") {
       this.tailAgain = true;
       void this.verify();
       return;
