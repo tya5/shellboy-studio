@@ -5,7 +5,7 @@ import type { OwnedTerminalReadLease, TicketOutcome, TerminalReadTicketId, Selec
 import type { TerminalPersistedProof } from "../../data/src/handoff";
 import type { AttemptPresentation, ThreadHandle, ThreadReadQualification } from "../../data/src/store";
 import type { HistoryBody } from "../../data/src/protocol";
-import { AcceptedView, type AcceptedCapability } from "./accepted-view";
+import { AcceptedView, type AcceptedCapability, type ConversationDisplayPlan } from "./accepted-view";
 import type { HandoffRecord } from "../../data/src/handoff";
 // The long-thread reader's model (docs/design/long-threads.md): positional windows of a Thread's
 // path held in bounded buckets, a measured scroll space over one loaded run, and adjacent reads.
