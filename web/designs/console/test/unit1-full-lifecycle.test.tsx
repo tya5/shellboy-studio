@@ -59,7 +59,7 @@ it('keeps one answer presentation through the complete real Conversation lifecyc
   expect([...host.querySelectorAll('[data-answer-container] [data-item-key]')].map(node=>node.getAttribute('data-item-key'))).toEqual(['[\"answer-1\",\"answer-1:/output/0/content/0\"]','[\"answer-2\",\"answer-2:/output/0/content/0\"]']);
   expect([...host.querySelectorAll('[data-item-key]')].map(node=>node.getAttribute('data-item-key'))).toEqual(['[\"user-0\",\"u0\"]','[\"tool-1\",\"tool1\"]','[\"answer-1\",\"answer-1:/output/0/content/0\"]','[\"answer-2\",\"answer-2:/output/0/content/0\"]']);
   expect([...host.querySelectorAll('[data-answer-container] [data-item-key]')]).toHaveLength(2);
-  const ownership=window?.acceptedView.peek().assistantOwnership?.filter(record=>record.mode === 'canonical' && record.itemKeys.length === 2) ?? []; expect(ownership).toHaveLength(1); expect(f.model.handle.peek()?.handoff.peek().some(record=>record.terminalPersisted || record.transferred)).toBe(true);
+  const ownership=window?.acceptedView.peek().assistantOwnership?.filter(record=>record.mode === 'canonical' && record.itemKeys.length === 2) ?? []; expect(ownership).toHaveLength(1); expect(window?.acceptedView.peek().retiredAttempts?.some(record => record.attemptId === 'attempt-1')).toBe(true); expect(f.model.handle.peek()?.handoff.peek()).toHaveLength(0);
   registry.total=5;registry.revision=9;nodes.push({node_id:'local-1',kind:'user',selection:{ordinal:4},items:[{kind:'text',item_identity:'local1',text:'Next turn',text_complete:true}]});revision=9;
   await act(async()=>{f.t.push({t:'changed',thread_ids:['thread'],list:false});await settle(f.t,f.db);await flush(24);});
   expect(host.textContent).toContain('Next turn');expect(host.textContent).toContain('Canonical answer');
