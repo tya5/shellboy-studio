@@ -155,7 +155,7 @@ describe('direct local insertion plan', () => {
     const local = <section class="aggregate"><div class="msg">aggregate</div></section>;
     const props = { items, sequence: [{kind:'conversation' as const,itemKey:'a'}, {kind:'conversation' as const,itemKey:'b'}],
       renderItem: () => <span>hidden</span>, isItemAbsent: () => true,
-      localRegion: { placement: { kind:'qualified' as const, insertion:{kind:'beginning' as const} }, content: local,
+      localRegion: { placement: { kind:'qualified' as const, insertion:{kind:'beginning' as const} },
         slots: [{position:0, content:<div class="owned">A</div>}, {position:1, content:<div class="owned">B</div>}] } };
     render(<ConversationItems {...props}/>, host);
     expect([...host.querySelectorAll('.owned')].map(node=>node.textContent)).toEqual(['A','B']);
@@ -169,7 +169,7 @@ it('SavedConversationItems preserves the same beginning cohort with empty accept
  f.model.acceptedOwnMessages.value=[{scope:'t',operationId:'op-a',text:'A',phase:'accepted',messageId:'a'},{scope:'t',operationId:'op-b',text:'B',phase:'accepted',messageId:'b'}];
  const local=<section data-own-presentation=""><div class="msg">A</div><div class="msg">B</div></section>;
  const projection=projectSavedItems([]);
- render(<SavedConversationItems model={f.model} projection={projection} localRegion={{placement:{kind:'qualified',insertion:{kind:'beginning'}},content:local}}/>,host);
+ render(<SavedConversationItems model={f.model} projection={projection} localRegion={{placement:{kind:'qualified',insertion:{kind:'beginning'}},slots:[{position:0,content:<div class='msg'>A</div>},{position:1,content:<div class='msg'>B</div>}]}}/>,host);
  expect(host.querySelectorAll('.msg')).toHaveLength(2);
  expect([...host.querySelectorAll('.msg')].every(node=>node.isConnected&&node.ownerDocument===document&&host.contains(node))).toBe(true);
 });

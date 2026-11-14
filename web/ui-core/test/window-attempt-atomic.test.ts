@@ -86,7 +86,7 @@ it("materializes already-qualified all-ref nodes and retirement together without
   const w = new ConversationWindow({ read: async () => { reads++; return { ok: true, value: { thread_id: "thread", revision: 7, total: 1, items: [initial] } }; } }); await flush();
   const proof: AttemptReadyProof = { scope: "scope", attemptId: "attempt", turnId: "turn", revision: 7, total: 3,
     refs: [{ nodeId: "answer" }, { nodeId: "tool" }], nodes: nodes.map((node, i) => ({ ...node, selection: { ordinal: i + 1 } })) };
-  const record: HandoffRecord = { key: "original", attemptId: "attempt", text: "whole live", incomplete: false, status: "confirming", readyAttempt: proof };
+  const record: HandoffRecord = { key: "original", attemptId: "attempt", text: "whole live", incomplete: false, status: "confirming", bodyAuthority: "preview", readyAttempt: proof };
   const frames: { ids: string[]; total: number; retired: number }[] = [];
   w.acceptedView.subscribe(ref => frames.push({ ids: ref.rows.map(row => row.node_id!), total: ref.total, retired: ref.retiredAttempts?.length ?? 0 }));
   let releases = 0; expect(w.acceptHandoff(record, "scope", () => { releases++; })).toBe(true);

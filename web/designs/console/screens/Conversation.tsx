@@ -83,7 +83,7 @@ function assistantTextMembership(item: ConversationItem): AssistantTextMembershi
   return source.textComplete===true?"empty-saved":"content-unavailable";
 }
 
-export function SavedConversationItems({ model, projection, renderBefore, trailing, nodes,localRegion }: { model: AppModel; projection: SavedItemProjection & { sequence?: readonly ({kind: "conversation"; itemKey: string} | {kind: "work"; groupKey: string})[]; workGroups?: readonly ConversationWorkGroup[] }; nodes?: readonly HistoryItem[]; renderBefore?: (item: ConversationItem) => ComponentChildren; trailing?: ComponentChildren;localRegion?:{placement:OwnSendPlacement;content:ComponentChildren;slots?:readonly {position:number;content:ComponentChildren}[];unqualified?:ComponentChildren} }) {
+export function SavedConversationItems({ model, projection, renderBefore, trailing, nodes,localRegion }: { model: AppModel; projection: SavedItemProjection & { sequence?: readonly ({kind: "conversation"; itemKey: string} | {kind: "work"; groupKey: string})[]; workGroups?: readonly ConversationWorkGroup[] }; nodes?: readonly HistoryItem[]; renderBefore?: (item: ConversationItem) => ComponentChildren; trailing?: ComponentChildren;localRegion?:{placement:OwnSendPlacement;slots?:readonly {position:number;content:ComponentChildren}[];unqualified?:ComponentChildren} }) {
   const membership=new Map(projection.items.map(item=>[item.key,assistantTextMembership(item)]));
   const t = model.t.value;
   const savedSteps = collectExecutionSteps(nodes ?? [], model.shells.value);
@@ -263,7 +263,7 @@ function OwnSendContent<Ref>({model,projection,nodes,scope,acceptedRef,current,i
     <Message bot={false} who={model.t.value("convo.you")} text={message.text} at={model.t.value(`composer.pending.${message.phase}`)} copyLabel={model.t.value("code.copy")} copiedLabel={model.t.value("code.copied")}/>
     {message.phase==="failed"||message.phase==="unconfirmed"?<><Button variant="link" disabled={!model.canResend(message)} onClick={()=>void model.resend(message)}>{model.t.value("action.retry")}</Button>{!model.canResend(message)?<span class="caption">{model.t.value("composer.retryUnavailable")}</span>:null}</>:null}
   </aside>)}</div>;
-  return <SavedConversationItems model={model} projection={decision.projection} nodes={current?nodes:[]} localRegion={{placement:decision.placement,content:renderLocal(decision.localRows),slots:decision.slots.map(slot=>({position:slot.position,content:renderLocal([slot.row])})),unqualified:<section role="region" aria-label="Unplaced local submissions" data-own-unqualified-region="">{renderLocal(decision.localRows)}</section>}} trailing={trailing}/>;
+  return <SavedConversationItems model={model} projection={decision.projection} nodes={current?nodes:[]} localRegion={{placement:decision.placement,slots:decision.slots.map(slot=>({position:slot.position,content:renderLocal([slot.row])})),unqualified:<section role="region" aria-label="Unplaced local submissions" data-own-unqualified-region="">{renderLocal(decision.localRows)}</section>}} trailing={trailing}/>;
 }
 
 export function SavedWindowContent({ model, snapshot, live, liveBoundary, liveFacts }: { model: AppModel; snapshot: WindowAcceptedSnapshot; live?: ComponentChildren; liveBoundary?: number; liveFacts?: readonly NormalizedSavedItem[] }) {

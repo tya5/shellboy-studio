@@ -38,7 +38,7 @@ interface Props {
   renderItem: (item: ConversationItem) => ComponentChildren;
   renderBefore?: (item: ConversationItem) => ComponentChildren;
   trailing?: ComponentChildren;
-  localRegion?:{placement:OwnSendPlacement;content:ComponentChildren;slots?:readonly {position:number;content:ComponentChildren}[];unqualified?:ComponentChildren};
+  localRegion?:{placement:OwnSendPlacement;slots?:readonly {position:number;content:ComponentChildren}[];unqualified?:ComponentChildren};
   isItemAbsent?: (item: ConversationItem) => boolean;
   isItemHidden?: (item: ConversationItem) => boolean;
   renderHeading?: (summary: ConversationToolSummary) => ComponentChildren;
