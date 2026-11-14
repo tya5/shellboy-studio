@@ -98,7 +98,9 @@ export function ownSendPresentation<Ref>(input: OwnSendPresentationInput<Ref>): 
   let reservationPosition=-1;
   if (placement.kind === "qualified") {
     const insertion=placement.insertion;
-    reservationPosition=insertion.kind === "beginning" ? 0 : sequence.findIndex(entry => entry.kind === insertion.kind && (entry.kind === "conversation" ? entry.itemKey === insertion.itemKey : entry.groupKey === insertion.groupKey));
+    reservationPosition=insertion.kind === "beginning" ? 0 : sequence.findIndex(entry =>
+      entry.kind === "conversation" && insertion.kind === "conversation" ? entry.itemKey === insertion.itemKey :
+      entry.kind === "work" && insertion.kind === "work" ? entry.groupKey === insertion.groupKey : false);
   }
   const conflictSlots=conflict && placement.kind === "qualified" && reservationPosition >= 0 ? cohort.map(row=>({row,insertion:placement.insertion,position:reservationPosition})) : [];
   const planSlots=conflict ? conflictSlots : positionedSlots;
