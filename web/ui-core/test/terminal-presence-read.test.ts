@@ -1,9 +1,10 @@
 import { ConversationWindow } from "../src/window";
 import type { OwnedTerminalReadLease } from "../../data/src/terminal-read";
+import type { HistoryItem } from "../../data/src/protocol";
 import { expect, it } from "vitest";
 import { ShellboyData } from "../../data/src/store";
 import { FakeOwnerDb, FakeTransport, connected, settle, flush } from "../../data/test/harness";
-const baseNodes = [
+const baseNodes: HistoryItem[] = [
   { node_id: "tool", kind: "assistant_response", selection: { ordinal: 0 }, items: [{ kind: "tool_call", item_identity: "call", execution_ids: ["exec"] }] },
   { node_id: "answer", kind: "assistant_response", selection: { ordinal: 1 }, items: [{ kind: "text", item_identity: "text", text: "saved", text_complete: true }] },
 ];
