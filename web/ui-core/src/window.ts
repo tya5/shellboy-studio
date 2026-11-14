@@ -940,6 +940,7 @@ export class ConversationWindow {
   private requalifyOwnership(revision: string | number, rows: readonly HistoryItem[]): readonly AssistantOwnership[] {
     const prior = this.acceptedView.peek().assistantOwnership ?? [];
     if (!prior.length) return [];
+    if (prior.every(fact => fact.proofRevision === revision)) return prior;
     const canonical = projectHistoryWindowItems({ revision, nodes: rows, keyScope: [prior[0]!.scope] }).projection;
     const byKey = new Map(canonical.items.map(item => [item.key, item]));
     return prior.filter(fact => fact.proofRevision !== revision && fact.itemKeys.every(key => {
