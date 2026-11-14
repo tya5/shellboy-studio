@@ -129,7 +129,7 @@ it("publishes one capability-bound display plan and reaches a fixed point", asyn
   const projection = (await import("../src/conversation-items")).projectSavedItems([{
     domain: "live", namespace: "handoff", scope: "thread", recordId: "handoff:a", attemptId: "a",
     presentationContainer: "presentation:test", kind: "text", text: "preview"
-  }]).projection;
+  }]);
   const decision = { cohortVersion: { accepted: [], pending: undefined } };
   expect(r.w.publishConversationDisplayPlan(ref, projection, decision, "thread")).toBe(true);
   const published = r.w.acceptedView.peek();
