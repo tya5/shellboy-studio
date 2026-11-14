@@ -443,7 +443,14 @@ export class ConversationWindow {
                 return true;
               }
               const generation = this.nextAcceptedGeneration();
-              const staged = this.acceptedView.stage({ ...target.ref, generation, rows, revision: target.mode === "fresh-window" ? value.revision : target.ref.revision, range: { first: ordinals[0]!, last: ordinals.at(-1)!, }, total: value.total, assistantOwnership: ownership, terminalPresence: next }, target.cap);
+              const stagedPlan = target.mode === "fresh-window" && ownership.length
+                ? createConversationDisplayPlan({ generation, revision: value.revision, capability: target.cap,
+                    rows, canonicalProjection: projectHistoryWindowItems({ revision: value.revision, nodes: rows, keyScope: [target.receipt.scope] }).projection,
+                    projection: projectHistoryWindowItems({ revision: value.revision, nodes: rows, keyScope: [target.receipt.scope] }).projection,
+                    assistantFacts: ownership, userDecision: { cohortVersion: target.ref.displayPlan?.cohortVersion ?? { accepted: [] } },
+                    scope: target.receipt.scope, retiredAttempts: target.ref.retiredAttempts ?? [] })
+                : target.ref.displayPlan;
+              const staged = this.acceptedView.stage({ ...target.ref, generation, rows, revision: target.mode === "fresh-window" ? value.revision : target.ref.revision, range: { first: ordinals[0]!, last: ordinals.at(-1)!, }, total: value.total, assistantOwnership: ownership, terminalPresence: next, displayPlan: stagedPlan }, target.cap);
               if (!target.handle.isReadQualificationCurrent(target.token) || !this.acceptedView.isCurrent(target.ref)) return false;
               this.buckets = buckets; this.total = value.total; this.terminalPresence = next;
               if (!this.acceptedView.commit(staged)) return false;
