@@ -4,6 +4,7 @@ import { mount } from '../..';
 import { DESIGNS } from '../../../registry';
 import { WindowOwner } from '../../../../ui-core/test/window-owner';
 import type { Prefs } from '../../../../ui-core/src';
+import { typedAttempt, typedHandoff, typedHistoryWindow } from '../../../../ui-core/test/typed-handoff-fixture';
 const params=new URLSearchParams(location.search);
 const text='Synthetic retained answer.\n\nThis paragraph stays visible across a delayed saved response and the following generation.\n\nThird paragraph for frame-height observation.';
 const scenario=params.get('scenario')??'normal';
@@ -11,10 +12,11 @@ const state={ready:false,error:false,blocked:true};
 let phase='streaming';
 const windowed=params.get('windowed')==='1';
 const windowOwner=new WindowOwner(300);
+const handoffContract=()=>typedHandoff({revision:windowOwner.revision});
 const {model,t,db}=await fixtureModel({capabilities:['live.text',...(windowed?['history.window']:[])],configure(db){
   const base=db.answer.bind(db);
-  db.answer=c=>c.command==='status'?{ok:true,result:{items:state.ready?[{kind:'attempt',id:'a1',attempt_id:'a1',turn_id:'turn1',thread_id:'lead',state:'completed',response_nodes:[{ordinal:0,item_id:null,kind:'message',phase:'final_answer',node_id:'canonical-node'}],response_nodes_truncated:false}]:[]}}
-    :c.command==='history.window'?(windowed && !(c.args as {node_id?:string}).node_id ? (()=>{const out=windowOwner.answer(c);return out.ok?{ok:true,result:{...out.result as object,thread_id:'lead'}}:out;})():{ok:true,result:{thread_id:'lead',revision:windowed?windowOwner.revision:'r',total:301,items:[{node_id:'canonical-node',kind:'assistant_response',selection:{ordinal:300},excerpt:''}]}})
+  db.answer=c=>c.command==='status'?{ok:true,result:{items:state.ready?[typedAttempt(handoffContract())]:[]}}
+    :c.command==='history.window'?(windowed && (c.args as {node_id?:string}).node_id==='canonical-node' ? (()=>{const out=typedHistoryWindow(handoffContract(),c.args as {node_id?:string;ordinal?:number});return out?{ok:true,result:out}: {ok:false,code:'not_found',message:'synthetic identity mismatch'};})() : windowed && !(c.args as {node_id?:string}).node_id ? (()=>{const out=windowOwner.answer(c);return out.ok?{ok:true,result:{...out.result as object,thread_id:'lead'}}:out;})():{ok:true,result:{thread_id:'lead',revision:windowed?windowOwner.revision:'r',total:301,items:[{node_id:'canonical-node',kind:'assistant_response',selection:{ordinal:300},excerpt:''}]}})
     :c.command==='history.get'?state.error?{ok:false,code:'not_found',message:'Synthetic readback error'}:{ok:true,result:{node_id:state.blocked&&scenario==='wrong-node'?'unrelated-node':'canonical-node',kind:'assistant_response',text,...(state.blocked&&scenario==='partial'?{next_cursor:'synthetic-next-page'}:{})}}
     :base(c);
 }});
