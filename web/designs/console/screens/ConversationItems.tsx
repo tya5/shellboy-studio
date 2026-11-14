@@ -56,39 +56,57 @@ export function ConversationItems({ items, toolSummaries = [], renderItem, rende
     const slots = localRegion?.slots ?? [];
     const emittedSlots = new Set<object>();
     const emitSlotsAt = (position:number): ComponentChildren[] => slots.filter(slot => slot.position.kind === "after" && slot.position.index === position && !emittedSlots.has(slot)).map(slot => { emittedSlots.add(slot); return slot.content; });
-    const content = (item: ConversationItem, work: boolean) => <div class={`conversation-row${!work && item.presentationContainer ? " conversation-answer-child" : ""}`} key={`item:${item.key}`} data-item-key={item.key} data-key={item.key} data-node={item.source.nodeId} data-work-item-key={work ? item.key : undefined}>{renderItem(item)}</div>;
+    const containerAt = (position: number): string | undefined => {
+      const entry = normalizedSequence[position];
+      if (!entry || entry.kind !== "conversation") return undefined;
+      return byKey.get(entry.itemKey)?.presentationContainer;
+    };
+    // Build one span for each association only when its interval contains no other
+    // association. Work and local slots may live inside that span without changing
+    // the authoritative sequence; crossing ownership remains unqualified.
+    const spans = new Map<number, { end: number; container: string }>();
+    const invalidContainers = new Set<string>();
+    for (let index = 0; index < normalizedSequence.length; index++) {
+      const container = containerAt(index);
+      if (!container) continue;
+      const positions = normalizedSequence.flatMap((_, position) => containerAt(position) === container ? [position] : []);
+      const end = positions.at(-1)!;
+      if (normalizedSequence.slice(index, end + 1).some((_, offset) => {
+        const other = containerAt(index + offset);
+        return other !== undefined && other !== container;
+      })) invalidContainers.add(container);
+      else if (index === positions[0]) spans.set(index, { end, container });
+    }
+    const content = (item: ConversationItem, work: boolean, hosted = !work && !!item.presentationContainer) => <div class={`conversation-row${hosted ? " conversation-answer-child" : ""}`} key={`item:${item.key}`} data-item-key={item.key} data-key={item.key} data-node={item.source.nodeId} data-work-item-key={work ? item.key : undefined}>{renderItem(item)}</div>;
+    const renderWork = (entry: Extract<NonNullable<Props["sequence"]>[number], { kind: "work" }>): ComponentChildren => {
+      const group = groups.get(entry.groupKey);
+      return group ? <div key={`work:${group.key}`} class="conversation-row steps">{normalizedRenderWorkGroup(group, group.memberKeys.map(key => {
+        const item = byKey.get(key); return item ? content(item, true, false) : null;
+      }))}</div> : null;
+    };
     const rendered: { entry: NonNullable<Props["sequence"]>[number]; view: ComponentChildren; first:number; last:number }[] = [];
     for (let index = 0; index < normalizedSequence.length; index++) {
       const entry = normalizedSequence[index]!;
-      if (entry.kind === "conversation") {
-        const item = byKey.get(entry.itemKey);
-        if (!item || isItemAbsent?.(item)) continue;
-        const container = (item as ConversationItem & { presentationContainer?: string }).presentationContainer;
-        if (!container) {
-          rendered.push({ entry, view: <Fragment key={`conversation:${item.key}`}>{renderBefore?.(item)}{content(item, false)}</Fragment>, first:index, last:index });
-          continue;
-        }
+      const span = spans.get(index);
+      if (span && !invalidContainers.has(span.container)) {
         const children: ComponentChildren[] = [];
-        let end = index;
-        while (end < normalizedSequence.length) {
-          const childEntry = normalizedSequence[end]!;
-          if (childEntry.kind !== "conversation") break;
-          const child = byKey.get(childEntry.itemKey);
-          if (!child || (child as ConversationItem & { presentationContainer?: string }).presentationContainer !== container) break;
-          if (!isItemAbsent?.(child)) {
-            children.push(<Fragment key={`answer-child:${child.key}`}>{renderBefore?.(child)}{content(child, false)}{emitSlotsAt(end)}</Fragment>);
+        for (let position = index; position <= span.end; position++) {
+          const childEntry = normalizedSequence[position]!;
+          if (childEntry.kind === "work") children.push(renderWork(childEntry));
+          else {
+            const child = byKey.get(childEntry.itemKey);
+            if (child && !isItemAbsent?.(child)) children.push(<Fragment key={`answer-child:${child.key}`}>{renderBefore?.(child)}{content(child, false, true)}{emitSlotsAt(position)}</Fragment>);
           }
-          end++;
         }
-        rendered.push({ entry, view: <div class="conversation-row answer-container" key={`answer:${container}`} data-answer-container={container}>{children}</div>, first:index, last:end-1 });
-        index = end - 1;
+        rendered.push({ entry, view: <div class="conversation-row answer-container" key={`answer:${span.container}`} data-answer-container={span.container}>{children}</div>, first:index, last:span.end });
+        index = span.end;
         continue;
       }
-      const group = groups.get(entry.groupKey);
-      if (!group) continue;
-      rendered.push({ entry, view: <div key={`work:${group.key}`} class="conversation-row steps">{normalizedRenderWorkGroup(group, group.memberKeys.map(key => {
-        const item = byKey.get(key); return item ? content(item, true) : null;
-      }))}</div>, first:index, last:index });
+      if (entry.kind === "work") { rendered.push({ entry, view: renderWork(entry), first:index, last:index }); continue; }
+      const item = byKey.get(entry.itemKey);
+      if (!item || isItemAbsent?.(item)) continue;
+      const unsafe = !!item.presentationContainer && invalidContainers.has(item.presentationContainer);
+      rendered.push({ entry, view: <Fragment key={`conversation:${item.key}`}>{renderBefore?.(item)}{content(item, false, !unsafe && !!item.presentationContainer)}{emitSlotsAt(index)}</Fragment>, first:index, last:index });
     }
     const region:ComponentChildren[]=[];
     if (localRegion?.placement.kind === "unqualified") region.push(localRegion.unqualified);
