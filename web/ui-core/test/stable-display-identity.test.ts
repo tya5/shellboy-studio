@@ -1,13 +1,14 @@
 // @vitest-environment happy-dom
 import { expect, it } from "vitest";
-import { projectSavedItems, type NormalizedSavedItem } from "../src/conversation-items";
+import { projectSavedItems, rekeyConversationPresentation, type NormalizedSavedItem } from "../src/conversation-items";
 
-const saved: NormalizedSavedItem = { nodeId: "node-1", itemIdentity: "node-1:/output/0/content/0", identityDomain: "node", windowRevision: 2, keyScope: ["thread/attempt/turn"], kind: "text", text: "saved", textComplete: true };
-const live: NormalizedSavedItem = { domain: "live", namespace: "handoff", scope: "thread/attempt/turn", recordId: "handoff:attempt", attemptId: "attempt", canonicalNodeId: "node-1", canonicalScope: "thread/attempt/turn", kind: "text", text: "live" };
+const saved: NormalizedSavedItem = { nodeId: "node-1", itemIdentity: "node-1:/output/0/content/0", identityDomain: "node", windowRevision: 2, kind: "text", text: "saved", textComplete: true };
+const live: NormalizedSavedItem = { domain: "live", namespace: "handoff", scope: "thread/attempt/turn", recordId: "handoff:attempt", attemptId: "attempt", kind: "text", text: "live" };
 
 it("keeps the same projected row key while qualified live content becomes saved content", () => {
   const before = projectSavedItems([live]);
-  const after = projectSavedItems([live, saved]);
+  const savedProjection = projectSavedItems([saved]);
+  const after = rekeyConversationPresentation(savedProjection, new Map([[savedProjection.items[0]!.key, before.items[0]!.key]]));
   expect(before.items[0]?.key).toBe(after.items[0]?.key);
   expect(after.items).toHaveLength(1);
   expect(after.items[0]?.source.kind === "text" && after.items[0].source.text).toBe("saved");
@@ -15,8 +16,8 @@ it("keeps the same projected row key while qualified live content becomes saved 
 
 it("does not join unknown, deleted, or differently owned facts", () => {
   const unknown: NormalizedSavedItem = { domain: "live", namespace: "handoff", scope: "thread/attempt/turn", recordId: "handoff:unknown", attemptId: "attempt", kind: "text", text: "preview" };
-  const deleted: NormalizedSavedItem = { nodeId: "node-2", itemIdentity: "node-2:/output/0/content/0", identityDomain: "node", windowRevision: 2, keyScope: ["thread/attempt/turn"], kind: "text", text: "deleted", textComplete: true };
-  const otherOwner: NormalizedSavedItem = { ...live, recordId: "handoff:other", scope: "other/attempt/turn", canonicalScope: "other/attempt/turn" };
+  const deleted: NormalizedSavedItem = { nodeId: "node-2", itemIdentity: "node-2:/output/0/content/0", identityDomain: "node", windowRevision: 2, kind: "text", text: "deleted", textComplete: true };
+  const otherOwner: NormalizedSavedItem = { ...live, recordId: "handoff:other", scope: "other/attempt/turn" };
   expect(projectSavedItems([unknown, deleted]).items.map(item => item.key)).toHaveLength(2);
   expect(projectSavedItems([otherOwner, saved]).items).toHaveLength(2);
 });
@@ -26,9 +27,10 @@ it("keeps the rendered conversation container when the qualified row becomes sav
   const { ConversationItems } = await import("../../designs/console/screens/ConversationItems");
   const { Message } = await import("../../designs/console/system/components");
   const host = document.createElement("div");
+  const liveProjection = projectSavedItems([live]);
   const row = (source: NormalizedSavedItem) => ({ key: projectSavedItems([source]).items[0]!.key, source });
   const renderProjection = (source: NormalizedSavedItem) => {
-    const item = row(source);
+    const item = source === saved ? rekeyConversationPresentation(projectSavedItems([source]), new Map([[row(source).key, liveProjection.items[0]!.key]])).items[0]! : row(source);
     render(h(ConversationItems, { items: [item], sequence: [{ kind: "conversation", itemKey: item.key }], renderItem: () => h(Message, { bot: true, who: "Shellboy", text: source.kind === "text" ? source.text : "", copyLabel: "Copy", copiedLabel: "Copied" }) }), host);
   };
   renderProjection(live);
@@ -38,4 +40,10 @@ it("keeps the rendered conversation container when the qualified row becomes sav
   expect(before).not.toBeNull();
   expect(after).toBe(before);
   expect(after?.textContent).toContain("saved");
+});
+
+it("keeps duplicate canonical identities rejected while preserving node item multiplicity", () => {
+  const second: NormalizedSavedItem = { ...saved, itemIdentity: "node-1:/output/0/content/1", text: "second" };
+  expect(projectSavedItems([saved, second]).items).toHaveLength(2);
+  expect(() => projectSavedItems([saved, saved])).toThrow("Duplicate normalized saved item identity");
 });

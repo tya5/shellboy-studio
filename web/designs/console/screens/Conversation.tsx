@@ -7,7 +7,7 @@ import { ownSendPresentation } from "../../../ui-core/src/own-send-presentation"
 import { Disclosure } from "../system/components/Disclosure";
 import type { HandoffRecord } from "../../../data/src/handoff";
 import { senderFact } from "../../../data/src/sender";
-import { CANONICAL_CASES, scopeIssuedWorkFacts, type CanonicalCase, normalizeConversationFacts, projectHistoryWindowItems, projectSavedItems, normalizeLiveWorkFacts, normalizeTerminalPresenceFacts, type NormalizedSavedItem } from "../../../ui-core/src/conversation-items";
+import { CANONICAL_CASES, scopeIssuedWorkFacts, type CanonicalCase, normalizeConversationFacts, projectHistoryWindowItems, projectSavedItems, rekeyConversationPresentation, normalizeLiveWorkFacts, normalizeTerminalPresenceFacts, type NormalizedSavedItem } from "../../../ui-core/src/conversation-items";
 import type { HistoryItem } from "../../../data/src/protocol";
 import { Markdown } from "../system/components/Message";
 import type { WindowAcceptedSnapshot } from "../../../ui-core/src/window";
@@ -236,11 +236,9 @@ export function LiveRecordChrome({ model, record }: { model: AppModel; record: H
 
 /** Only records read from the current owned ledger may enter this adapter. */
 export function projectOwnedHandoffFacts(scope: string, records: readonly HandoffRecord[]): readonly NormalizedSavedItem[] {
-  return normalizeConversationFacts(records.map(record => record.nodeId !== undefined && record.proof !== undefined
-    ? {domain: "live", namespace: "handoff", scope, recordId: record.key, attemptId: record.attemptId, canonicalNodeId: record.nodeId, canonicalScope: record.proof.scope, kind: "text", text: record.text, textComplete: record.status === "ready"}
-    : record.nodeId === undefined && record.proof === undefined && record.transferred !== true && record.status !== "ready" && record.text
-      ? {domain: "live", namespace: "handoff", scope, recordId: record.key, attemptId: record.attemptId, kind: "text", text: record.text}
-      : {domain: "live", namespace: "handoff", scope, recordId: record.key, attemptId: record.attemptId, kind: "unknown"}));
+  return normalizeConversationFacts(records.map(record => record.text && record.transferred !== true
+    ? {domain: "live", namespace: "handoff", scope, recordId: record.key, attemptId: record.attemptId, kind: "text", text: record.text}
+    : {domain: "live", namespace: "handoff", scope, recordId: record.key, attemptId: record.attemptId, kind: "unknown"}));
 }
 
 export function retainUnretiredLiveFacts(snapshot: WindowAcceptedSnapshot, scope: string, current: boolean, facts: readonly NormalizedSavedItem[]): readonly NormalizedSavedItem[] {
@@ -294,7 +292,15 @@ export function SavedWindowContent({ model, snapshot, live, liveBoundary, liveFa
   const scopedWork=keyScope?scopeIssuedWorkFacts(issuedWork,keyScope):issuedWork;
   const workScopeRejected=scopedWork===undefined;
   // Rejection is an unavailable Work cut, never a successful empty publication.
-  const projection = workScopeRejected ? projectSavedItems(ordered) : projectSavedItems([...ordered,...scopedWork]);
+  const baseProjection = workScopeRejected ? projectSavedItems(ordered) : projectSavedItems([...ordered,...scopedWork]);
+  const liveProjection = projectSavedItems(handoffs);
+  const displayKeys = new Map<string, string>();
+  for (const decision of ownership.filter(item => item.mode === "canonical")) {
+    const live = liveProjection.items.find(item => "domain" in item.source && item.source.recordId === decision.recordKey);
+    if (!live) continue;
+    for (const key of decision.itemKeys) if (baseProjection.items.some(item => item.key === key)) displayKeys.set(key, live.key);
+  }
+  const projection = rekeyConversationPresentation(baseProjection, displayKeys);
   // Live text without item-kind proof cannot unlock or replace saved Conversation text.
   return <OwnSendContent model={model} projection={projection} nodes={snapshot.rows} scope={model.ownMutationScope()} acceptedRef={snapshot} current={current} isCurrent={()=>model.longReader.peek()?.acceptedView.isCurrent(snapshot)??false} path={{tail:!snapshot.pending&&!snapshot.disposed&&(snapshot.total===0||snapshot.range?.last===snapshot.total-1),empty:snapshot.total===0,revision:snapshot.revision,lastNodeId:snapshot.rows.at(-1)?.node_id,lastOrdinal:snapshot.rows.at(-1)?.selection?.ordinal}} hiddenItemKeys={reservedItems} trailing={<>{workScopeRejected&&current?<div key="work-scope-rejected" role="status" data-work-scope-rejected="" data-state-source="client" data-state-value="scope-qualification-rejected">CLIENT: {model.t.value("work.textUnavailable")} (scope-qualification-rejected)</div>:null}{handle?.handoffOverflow.value ? <div class="caption muted" data-live-overflow="">{model.t.value("convo.handoffLimit")} <HandoffRetryControl model={model}/></div> : undefined}</>} />;
 }
