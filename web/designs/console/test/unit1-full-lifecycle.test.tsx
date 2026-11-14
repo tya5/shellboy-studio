@@ -49,12 +49,6 @@ it('keeps one answer presentation through the complete real Conversation lifecyc
  const context:DesignContext={model:f.model,prefs:signal(loadPrefs({read:()=>null,write:()=>{}},[{name:'console',themes:[{name:'light'}]}])),setPrefs:()=>{},designs:[],submitToken:async()=>false};
  try{
   await act(async()=>{render(<App context={context}/>,host);await settle(f.t,f.db);});
-  const diagnosticWindow=f.model.longReader.peek();
-  if (diagnosticWindow) {
-   const view=diagnosticWindow.acceptedView, originalCommit=view.commit.bind(view);
-   view.commit=(handle:any)=>{const before=view.peek(); diagnosticTrace('accepted-commit-enter',{generation:before.generation,revision:before.revision,rows:before.rows.map(row=>row.node_id),ownership:before.assistantOwnership,presence:before.terminalPresence}); const result=originalCommit(handle); const after=view.peek(); diagnosticTrace('accepted-commit-exit',{result,generation:after.generation,revision:after.revision,rows:after.rows.map(row=>row.node_id),ownership:after.assistantOwnership,presence:after.terminalPresence}); return result;};
-   view.subscribe(value=>diagnosticTrace('accepted-notify',{generation:value.generation,revision:value.revision,rows:value.rows.map(row=>row.node_id),ownership:value.assistantOwnership,presence:value.terminalPresence}));
-  }
   await act(async()=>{f.t.push({t:'live',thread_id:'thread',attempt_id:'attempt-1',gap:false,deltas:[{offset:0,reasoning:false,text:'Preview answer'}]});await flush(24);}); diagnosticTrace('preview-render');
   const identity=host.querySelector('[data-answer-container]');expect(identity).not.toBeNull();expect(identity?.textContent).toContain('Preview answer');
   ended=true;registry.canonical=true;registry.revision=8;nodes[2]=canonical(first);nodes[3]=canonical(second);f.db.history.thread=nodes;revision=8;
