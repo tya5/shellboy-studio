@@ -176,16 +176,31 @@ it("terminal slot successor dispatches one explicit whole-window request after a
 
 it("Window rebinds a revision-changing point read through one bounded whole-window successor", async () => {
   const r = await target();
-  r.state.changing = true;
+  const original = r.db.answer.bind(r.db);
+  const requests: unknown[] = [];
+  r.db.answer = call => {
+    if (call.command === "history.window") {
+      requests.push(call.args);
+      if (call.args.node_id !== undefined) return { ok: true, result: { thread_id: "a", revision: 8, total: 4, items: [
+        { node_id: "answer", kind: "assistant_response", selection: { ordinal: 2 }, items: [{ kind: "text", item_identity: "text", text: "saved", text_complete: true }] },
+      ] } };
+      if (call.args.before === 199 && call.args.after === 0 && call.args.items === true) return { ok: true, result: { thread_id: "a", revision: 8, total: 4, items: [
+        { node_id: "tool", kind: "assistant_response", selection: { ordinal: 1 }, items: [{ kind: "tool_call", item_identity: "call", execution_ids: ["exec"] }] },
+        { node_id: "answer", kind: "assistant_response", selection: { ordinal: 2 }, items: [{ kind: "text", item_identity: "text", text: "saved", text_complete: true }] },
+      ] } };
+      throw new Error(`unexpected history.window args: ${JSON.stringify(call.args)}`);
+    }
+    return original(call);
+  };
   const callsBefore = r.t.calls("history.window").length;
   const lease = r.w.prepareTerminalRead(r.h, r.token, r.receipt);
   expect("state" in lease).toBe(true);
   await r.pump();
-  await r.pump();
   const calls = r.t.calls("history.window");
   expect(calls.length - callsBefore).toBe(2);
-  expect(calls.at(-1)?.args).toMatchObject({ thread_id: "a", before: 199, after: 0, items: true });
-  expect(calls.at(-1)?.args).not.toHaveProperty("node_id");
+  expect(requests).toHaveLength(2);
+  expect(requests[0]).toMatchObject({ node_id: "answer", items: true });
+  expect(requests[1]).toEqual({ thread_id: "a", before: 199, after: 0, items: true });
   expect(r.w.acceptedView.peek().revision).toBe(8);
   r.w.dispose(); r.data.stop();
 });
