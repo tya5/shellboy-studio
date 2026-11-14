@@ -38,23 +38,23 @@ export type QualifiedAssistantFacts = readonly AssistantOwnership[];
 export function validateQualifiedAssistantFacts(input: {
   readonly rows: readonly HistoryItem[];
   readonly projection: SavedItemProjection;
+  readonly canonicalProjection: SavedItemProjection;
   readonly facts: readonly AssistantOwnership[];
   readonly revision: string | number;
   readonly scope: string;
 }): QualifiedAssistantFacts {
   const rebuilt = projectHistoryWindowItems({ revision: input.revision, nodes: input.rows, keyScope: [input.scope] }).projection;
-  if (rebuilt.items.length !== input.projection.items.length || rebuilt.items.some((item, index) => item.key !== input.projection.items[index]?.key)) return Object.freeze([]);
+  if (rebuilt.items.length !== input.canonicalProjection.items.length || rebuilt.items.some((item, index) => item.key !== input.canonicalProjection.items[index]?.key)) return Object.freeze([]);
   const keys = new Set(rebuilt.items.map(item => item.key));
   const accepted = input.facts.filter(fact => fact.scope === input.scope && fact.proofRevision === input.revision
     && fact.itemKeys.length > 0 && fact.itemKeys.every(key => keys.has(key)));
   return Object.freeze(accepted);
 }
 
-export function displaySemanticKey(projection: SavedItemProjection, facts: QualifiedAssistantFacts): string {
-  return JSON.stringify({
-    items: projection.items.map(item => ({ key: item.key, canonicalKey: item.canonicalKey, classification: item.classification })),
-    facts: facts.map(fact => ({ scope: fact.scope, attemptId: fact.attemptId, turnId: fact.turnId, mode: fact.mode, proofRevision: fact.proofRevision, containerKey: fact.containerKey, itemKeys: fact.itemKeys }))
-  });
+export function displaySemanticKey(canonicalProjection: SavedItemProjection, displayProjection: SavedItemProjection,
+  facts: QualifiedAssistantFacts, retiredAttempts: readonly { readonly scope: string; readonly attemptId: string; readonly revision: string | number }[]): string {
+  // Version the complete authoritative projections and proofs, including body/read state and path order.
+  return JSON.stringify({ canonical: canonicalProjection.items, display: displayProjection.items, facts, retiredAttempts });
 }
 
 export interface AcceptedPublicationInput {
@@ -63,6 +63,7 @@ export interface AcceptedPublicationInput {
   readonly capability: AcceptedCapability;
   readonly rows: readonly HistoryItem[];
   readonly projection: SavedItemProjection;
+  readonly canonicalProjection: SavedItemProjection;
   readonly assistantFacts: readonly AssistantOwnership[];
   readonly userDecision: OwnUserDecision;
   readonly scope: string;
@@ -82,7 +83,7 @@ export function createConversationDisplayPlan(input: AcceptedPublicationInput): 
     }
   }
   const generation = input.generation, revision = input.revision;
-  const semanticKey = displaySemanticKey(input.projection, qualifiedFacts);
+  const semanticKey = displaySemanticKey(input.canonicalProjection, input.projection, qualifiedFacts, input.retiredAttempts);
   const version = input.userDecision.cohortVersion;
   const cohortKey = [...version.accepted.map(row => `${row.operationId}:${row.phase}:${row.messageId ?? ''}`), version.pending ? `pending:${version.pending.operationId}:${version.pending.phase}` : 'pending:none'].join('|');
   const entries = input.projection.items.map(item => {
