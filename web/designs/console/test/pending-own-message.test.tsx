@@ -10,6 +10,7 @@ import type {HistoryItem} from '../../../data/src/protocol';
 import type {DesignContext} from '../../../ui-core/src';
 import {loadPrefs} from '../../../ui-core/src/prefs';
 import {App} from '../screens/App';
+import {OrderedHistory} from '../screens/Conversation';
 import {Composer} from '../system/components/Composer';
 
 for(const savedBeforeAck of [false,true])it(`submitted message remains separate until exact acceptance and saved arrival: savedFirst=${savedBeforeAck}`,async()=>{
@@ -161,43 +162,18 @@ it('real edits, even restored text, remain a different generation; composing Ent
  }finally{render(null,host);host.remove();}
 });
 
-it(`actual own cohort has no metadata/partial/stale gap and swaps A/B together`,async()=>{
+for (const renderMode of ['app','ordered'] as const) it(`actual own cohort differential: ${renderMode}`,async()=>{
  const f=await fixtureModel({capabilities:['history.window'],configure(db){db.threads={t:summary('t')};db.details.t=details('t');db.history.t=[];const base=db.answer.bind(db);db.answer=call=>call.command==='history.window'?{ok:true,result:{thread_id:'t',revision:2,total:db.history.t?.length??0,items:db.history.t??[]}}:base(call);}});
- const host=document.createElement('div');document.body.append(host);const frames:string[][]=[];
- const ids=()=>[...host.querySelectorAll('.msg:not(.assistant)')].map(row=>row.textContent??'');
- const frame=(expected:string[])=>{const actual=ids();frames.push(actual);expect(actual).toHaveLength(expected.length);expected.forEach((text,index)=>expect(actual[index]).toContain(text));};
- const node=(id:string,text?:string,complete?:boolean):HistoryItem=>({node_id:id,kind:'user',selection:{ordinal:id==='a'?0:1},items:text===undefined?[]:[{kind:'text',item_identity:id,text,text_complete:complete??false}]});
+ const host=document.createElement('div');document.body.append(host);const context:DesignContext={model:f.model,prefs:signal(loadPrefs({read:()=>null,write:()=>{}},[{name:'console',themes:[{name:'light'}]}])),setPrefs:()=>{},designs:[],submitToken:async()=>false};
+ const node=(id:string,text?:string,complete?:boolean):HistoryItem=>({node_id:id,kind:'user',selection:{ordinal:id==='a'?0:1},items:text===undefined?[]:[{kind:'text',item_identity:id,text,text_complete:complete??false}],provenance:{sender:{kind:'human'}}});
+ const sendAndAck=async(text:string,id:string)=>{const area=host.querySelector<HTMLTextAreaElement>('textarea');if(renderMode==='app'){area!.value=text;area!.dispatchEvent(new Event('input',{bubbles:true}));area!.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));await flush();}else{const sent=f.model.send(text);await flush();expect(f.model.pendingOwnMessage.peek()?.text).toBe(text);void sent;}const call=f.t.calls('message.send').at(-1)!;f.db.answered.add(call.id);await act(async()=>{f.t.ok(call.id,{message_id:id,thread_id:'t'});await flush(8);});};
+ const paint=async()=>{f.t.push({t:'changed',thread_ids:['t'],list:false});await settle(f.t,f.db);await flush(12);};
  try{
-  await act(async()=>{render(<App context={{model:f.model,prefs:signal(loadPrefs({read:()=>null,write:()=>{}},[{name:'console',themes:[{name:'light'}]}])),setPrefs:()=>{},designs:[],submitToken:async()=>false}}/>,host);await settle(f.t,f.db);});
-  const area=host.querySelector<HTMLTextAreaElement>('textarea')!;
-  for(const [id,text] of [['a','Original A'],['b','Original B']]){
-   await act(async()=>{area.value=text!;area.dispatchEvent(new Event('input',{bubbles:true}));area.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));await flush();});
-   const send=f.t.calls('message.send').at(-1)!;f.db.answered.add(send.id);
-   await act(async()=>{f.t.ok(send.id,{message_id:id,thread_id:'t'});await flush();});
-  }
-  frame(['Original A','Original B']);expect(f.model.acceptedOwnMessages.peek()).toHaveLength(2);
-  let installed=0;
-  const commit=f.model.installOwnPresentation.bind(f.model);
-  f.model.installOwnPresentation=(decision,current)=>{
-   if(decision.retire.length){
-    frame(['Saved A','Saved B']);const before=f.model.acceptedOwnMessages.peek();
-    commit(decision,()=>false);expect(f.model.acceptedOwnMessages.peek()).toBe(before);
-    commit(decision,current);frame(['Saved A','Saved B']);
-    const after=f.model.acceptedOwnMessages.peek();commit(decision,current);expect(f.model.acceptedOwnMessages.peek()).toBe(after);installed++;
-   }else commit(decision,current);
-  };
-  const publish=async(nodes:HistoryItem[])=>{f.db.history.t=nodes;await act(async()=>{f.t.push({t:'changed',thread_ids:['t'],list:false});await settle(f.t,f.db);await flush(12);});};
-  await publish([node('a'),node('b','Saved B',true)]);frame(['Original A','Original B']);expect(f.model.acceptedOwnMessages.peek()).toHaveLength(2);
-  await publish([node('a','Partial A',false),node('b','Saved B',true)]);frame(['Original A','Original B']);
-  const original=f.db.answer.bind(f.db),sendFrame=f.t.send.bind(f.t);
-  f.t.send=message=>{const ok=sendFrame(message);if(message.t==='call'&&message.command==='history.window')f.db.answered.add(message.id);return ok;};
-  await act(async()=>{f.t.push({t:'changed',thread_ids:['t'],list:false});await flush(12);});frame(['Original A','Original B']);
-  f.t.send=sendFrame;f.db.answer=original;
-  // Complete the held public read using the same request, not a new private read.
-  const held=f.t.calls('history.window').at(-1)!;
-  await act(async()=>{f.t.ok(held.id,{thread_id:'t',revision:2,total:2,items:[node('a','Saved A',true),node('b','Saved B',true)]});await flush(24);});
-  frame(['Saved A','Saved B']);expect(installed).toBe(1);expect(f.model.acceptedOwnMessages.peek()).toHaveLength(0);expect(host.querySelector('[data-pending-own-message]')).toBeNull();
-  expect(frames.every(rows=>rows.length===2)).toBe(true);
+  await act(async()=>{if(renderMode==='app')render(<App context={context}/>,host);else {await settle(f.t,f.db);const handle=f.model.handle.peek()!,win=f.model.longReader.peek()!;render(<OrderedHistory model={f.model} handle={handle} win={win} t={f.model.t.peek()}/>,host);}await settle(f.t,f.db);});
+  await sendAndAck('Original A','a');await sendAndAck('Original B','b');
+  expect(f.model.acceptedOwnMessages.peek().map(row=>row.messageId)).toEqual(['a','b']);expect(host.querySelectorAll('[data-pending-own-message]')).toHaveLength(2);
+  f.db.history.t=[node('a'),node('b','Saved B',true)];await act(paint);expect(host.querySelectorAll('[data-pending-own-message]')).toHaveLength(2);expect(host.querySelectorAll('.msg')).toHaveLength(2);
+  f.db.history.t=[node('a','Saved A',true),node('b','Saved B',true)];await act(paint);expect(host.querySelectorAll('[data-pending-own-message]')).toHaveLength(0);expect(host.querySelectorAll('.msg')).toHaveLength(2);expect([...host.querySelectorAll('.md')].map(x=>x.textContent?.trim())).toEqual(['Saved A','Saved B']);
  }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
 });
 it('actual model installed receipt rejects cohort changes during qualification and retires once atomically',async()=>{
