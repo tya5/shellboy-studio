@@ -72,3 +72,14 @@ export function validTypedHandoff(fixture: TypedHandoffFixture, attempt: TypedHa
     && node.selection.ordinal === ref.ordinal && window.thread_id === fixture.threadId && window.revision === fixture.revision
     && window.total === fixture.total && window.item_count === window.items.length && node.items[0]?.text === fixture.text;
 }
+
+export function typedAttemptMany(fixtures: readonly TypedHandoffFixture[]): TypedHandoffAttempt {
+  if (!fixtures.length || fixtures.some((fixture, index) => index > 0 && fixture.ordinal <= fixtures[index - 1]!.ordinal)) throw new Error("Non-monotonic typed handoff refs");
+  const first = fixtures[0]!;
+  return {
+    kind: "attempt", id: first.attemptId, attempt_id: first.attemptId, turn_id: first.turnId,
+    thread_id: first.threadId, state: "completed",
+    response_nodes: fixtures.map(fixture => ({ ordinal: fixture.ordinal, item_id: null, kind: "message" as const, phase: "final_answer" as const, node_id: fixture.nodeId })) as TypedHandoffAttempt["response_nodes"],
+    response_nodes_truncated: false,
+  };
+}
