@@ -181,6 +181,7 @@ it("Window rebinds a revision-changing point read through one bounded whole-wind
   const lease = r.w.prepareTerminalRead(r.h, r.token, r.receipt);
   expect("state" in lease).toBe(true);
   await r.pump();
+  await r.pump();
   const calls = r.t.calls("history.window");
   expect(calls.length - callsBefore).toBe(2);
   expect(calls.at(-1)?.args).toMatchObject({ thread_id: "a", before: 199, after: 0, items: true });
