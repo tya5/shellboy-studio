@@ -97,15 +97,17 @@ export function ownSendPresentation<Ref>(input: OwnSendPresentationInput<Ref>): 
   const mutualConflict=allSlots&&slots.some((slot,index)=>index>0&&slot!.first<=slots[index-1]!.last);
   const boundaryConflict=boundaryIndex>=0&&slots.some(slot=>slot&&slot.first<=boundaryIndex);
   const conflict=mutualConflict||boundaryConflict;
-  const positionedSlots=allSlots?slots.flatMap(slot=>slot?[{row:slot.row,insertion:slot.insertion,position:{kind:"after",index:slot.last}}]:[]):[];
-  let reservationPosition=-1;
+  const positionedSlots=allSlots?slots.flatMap(slot=>slot?[{row:slot.row,insertion:slot.insertion,position:{kind:"after" as const,index:slot.last}}]:[]):[];
+  let reservationPosition: OwnSendSlotPosition | undefined;
   if (placement.kind === "qualified") {
     const insertion=placement.insertion;
-    reservationPosition=insertion.kind === "beginning" ? -1 : sequence.findIndex(entry =>
-      entry.kind === "conversation" && insertion.kind === "conversation" ? entry.itemKey === insertion.itemKey :
-      entry.kind === "work" && insertion.kind === "work" ? entry.groupKey === insertion.groupKey : false);
+    if (insertion.kind === "beginning") reservationPosition={kind:"before-first"};
+    else {
+      const index=sequence.findIndex(entry => entry.kind === "conversation" && insertion.kind === "conversation" ? entry.itemKey === insertion.itemKey : entry.kind === "work" && insertion.kind === "work" ? entry.groupKey === insertion.groupKey : false);
+      if (index >= 0) reservationPosition={kind:"after",index};
+    }
   }
-  const reservationSlots=placement.kind === "qualified" && reservationPosition >= 0 ? cohort.map(row=>({row,insertion:placement.insertion,position:(reservationPosition<0?{kind:"before-first"}:{kind:"after",index:reservationPosition}) as OwnSendSlotPosition})) : [];
+  const reservationSlots=placement.kind === "qualified" && reservationPosition ? cohort.map(row=>({row,insertion:placement.insertion,position:reservationPosition!})) : [];
   const planSlots=conflict ? reservationSlots : allSlots ? positionedSlots : reservationSlots;
   const usableSlots=positionedSlots.length>0&&!conflict?positionedSlots:[];
   const finalPlacement=placement;
