@@ -100,8 +100,21 @@ it("renders one stable host for nonadjacent children while preserving intervenin
       renderItem: item => h("span", {}, item.source.kind === "text" ? item.source.text : ""), renderWorkGroup: (_group, children) => h("div", { class: "intervening-work", "data-work-marker": "other-attempt-work" }, [h("span", {}, "other-attempt-work"), children]),
     }), host);
     expect(host.querySelectorAll("[data-answer-container]")).toHaveLength(1);
-    expect(host.querySelectorAll("[data-answer-container]")).toHaveLength(1);
     expect(host.querySelectorAll("[data-answer-container] [data-item-key]")).toHaveLength(2);
     expect([...host.querySelectorAll("[data-item-key], [data-work-marker]")].map(node => node.textContent?.trim())).toEqual(["saved", "other-attempt-work", "second"]);
+  } finally { render(null, host); host.remove(); }
+});
+
+it("keeps crossing associations unqualified without reordering canonical data", async () => {
+  const { render, h } = await import("preact");
+  const { ConversationItems } = await import("../screens/ConversationItems");
+  const host = document.createElement("div"); document.body.append(host);
+  const second: NormalizedSavedItem = { ...saved, nodeId: "node-2", itemIdentity: "node-2:/output/0/content/0", text: "second" };
+  const base = projectSavedItems([saved, second]);
+  const firstProjection = withPresentationContainers(base, new Map([[base.items[0]!.key, "answer:a"], [base.items[1]!.key, "answer:b"]]));
+  try {
+    render(h(ConversationItems, { items: firstProjection.items, sequence: firstProjection.sequence, renderItem: item => h("span", {}, item.source.kind === "text" ? item.source.text : "") }), host);
+    expect(host.querySelectorAll("[data-answer-container]")).toHaveLength(0);
+    expect([...host.querySelectorAll("[data-item-key]")].map(node => node.textContent)).toEqual(["saved", "second"]);
   } finally { render(null, host); host.remove(); }
 });
