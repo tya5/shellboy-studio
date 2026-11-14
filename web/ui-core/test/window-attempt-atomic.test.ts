@@ -11,7 +11,7 @@ const nodes: HistoryItem[] = [
 async function rig(items = nodes) {
   const w = new ConversationWindow({ read: async () => ({ ok: true, value: { thread_id: "thread", revision: 7, total: 2, items } }) }); await flush();
   const proof: AttemptReadyProof = { scope: '["owner","thread",1]', attemptId: "attempt", turnId: "turn", revision: 7, total: 2, refs: [{ nodeId: "answer" }, { nodeId: "tool" }, { nodeId: "answer" }], nodes };
-  const record: HandoffRecord = { key: "live-record", attemptId: "attempt", status: "confirming", text: "whole live block", incomplete: false, readyAttempt: proof };
+  const record: HandoffRecord = { key: "live-record", attemptId: "attempt", status: "confirming", bodyAuthority: "preview", text: "whole live block", incomplete: false, readyAttempt: proof };
   return { w, record, proof };
 }
 it("all-ref retirement and saved-order sequence publish once in the SAME observed snapshot", async () => {
