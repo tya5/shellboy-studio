@@ -120,7 +120,7 @@ export function ConversationItems({ items, toolSummaries = [], renderItem, rende
     const slotOnly = slots.filter(slot => slot.position.kind === "after" && slot.position.index >= normalizedSequence.length)
       .flatMap(slot => [slot.content]);
     const plan = localRegion?.kind === "unqualified"
-      ? [{ view: localRegion.content, first: -1, last: -1 }]
+      ? [{ view: localRegion.content, first: -1, last: -1 }, ...rendered]
       : rendered;
     const region:ComponentChildren[] = localRegion?.kind === "unqualified"
       ? plan.map(row => row.view)
