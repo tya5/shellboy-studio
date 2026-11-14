@@ -159,7 +159,7 @@ it("dispose cancels a bound held lease without closing its external handle", asy
 it("terminal slot successor dispatches one explicit whole-window request after a point revision", async () => {
   const { TerminalReadSlots } = await import("../../data/src/terminal-read");
   const slots = new TerminalReadSlots();
-  const parent = { add: (fn: () => void) => fn } as never;
+  const parent = { add: (_fn: () => void) => () => {} } as never;
   const receipt = { scope: "scope", attemptId: "attempt", turnId: "turn", nodeIds: ["answer"] as string[], terminalState: "completed" as const };
   const calls: unknown[] = [];
   const valid = () => true;
