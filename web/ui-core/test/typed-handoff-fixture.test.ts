@@ -8,8 +8,8 @@ it("builds one strict receipt/owner history contract for node and ordinal reads"
   const byOrdinal = typedHistoryWindow(fixture, { ordinal: fixture.ordinal });
   expect(byNode).toEqual(byOrdinal);
   expect(byNode && validTypedHandoff(fixture, attempt, byNode)).toBe(true);
-  expect(byNode?.items[0]?.items[0]?.text_complete).toBe(true);
-  expect(byNode?.item_count).toBe(1);
+  expect(byNode!.items[0]!.items![0]!.text_complete).toBe(true);
+  expect(byNode!.item_count).toBe(1);
 });
 
 it("rejects mismatched receipt identity and node ordinal", () => {
@@ -26,7 +26,7 @@ it('routes registry refs exactly and keeps deferred body until canonical publica
   const registry = typedHandoffRegistry({threadId:'thread',attemptId:'attempt',turnId:'turn',revision:7,total:4,refs:[{nodeId:'n2',ordinal:2,text:'A'},{nodeId:'n3',ordinal:3,text:'B'}]});
   expect(registry.scope).toBe('thread/attempt/turn');
   expect(registry.history({})).toBeUndefined();
-  expect(registry.history({node_id:'n3', ordinal:3})?.items[0]?.items[0]?.text).toBe('');
+  expect(registry.history({node_id:'n3', ordinal:3})?.items[0]?.items).toBeNull();
   registry.canonical = true;
   expect(registry.history({node_id:'n3', ordinal:3})?.items[0]?.items[0]?.text).toBe('B');
   expect(() => typedHandoffRegistry({threadId:'t',attemptId:'a',turnId:'u',revision:1,total:2,refs:[{nodeId:'x',ordinal:1,text:'x'},{nodeId:'y',ordinal:1,text:'y'}]})).toThrow();

@@ -26,8 +26,8 @@ it("does not join unknown, deleted, or differently owned facts", () => {
 
 it("keeps the rendered conversation container when the qualified row becomes saved", async () => {
   const { render, h } = await import("preact");
-  const { ConversationItems } = await import("../../designs/console/screens/ConversationItems");
-  const { Message } = await import("../../designs/console/system/components");
+  const { ConversationItems } = await import("../screens/ConversationItems");
+  const { Message } = await import("../system/components");
   const host = document.createElement("div");
   const liveProjection = projectSavedItems([live]);
   const row = (source: NormalizedSavedItem) => ({ key: projectSavedItems([source]).items[0]!.key, source });
@@ -52,7 +52,7 @@ it("keeps duplicate canonical identities rejected while preserving node item mul
 
 it("keeps one answer container while preserving ordered canonical children", async () => {
   const { render, h } = await import("preact");
-  const { ConversationItems } = await import("../../designs/console/screens/ConversationItems");
+  const { ConversationItems } = await import("../screens/ConversationItems");
   const second: NormalizedSavedItem = { ...saved, itemIdentity: "node-1:/output/0/content/1", text: "second" };
   const base = projectSavedItems([saved, second]);
   const keys = new Map(base.items.map(item => [item.key, `answer:a1:${item.key}`]));

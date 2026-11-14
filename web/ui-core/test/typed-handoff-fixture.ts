@@ -39,7 +39,7 @@ export interface TypedHistoryWindow {
   readonly revision: string | number;
   readonly total: number;
   readonly item_count: number;
-  readonly items: readonly [TypedHistoryNode];
+  readonly items: readonly TypedHistoryNode[];
 }
 
 export function typedHandoff(overrides: Partial<TypedHandoffFixture> = {}): TypedHandoffFixture {
@@ -76,7 +76,7 @@ export function validTypedHandoffRef(fixture: TypedHandoffFixture, attempt: Type
   return !!ref && attempt.attempt_id === fixture.attemptId && attempt.turn_id === fixture.turnId && attempt.thread_id === fixture.threadId
     && node?.node_id === ref.node_id && node.selection.ordinal === ref.ordinal && window.thread_id === fixture.threadId
     && window.revision === fixture.revision && window.total === fixture.total && window.item_count === window.items.length
-    && node.items[0]?.text === fixture.text;
+    && node.items !== null && node.items[0]?.text === fixture.text;
 }
 
 export function validTypedHandoff(fixture: TypedHandoffFixture, attempt: TypedHandoffAttempt, window: TypedHistoryWindow): boolean {
