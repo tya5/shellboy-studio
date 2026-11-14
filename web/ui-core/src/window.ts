@@ -1,5 +1,5 @@
 import { assistantOwnership, type AssistantOwnership } from './assistant-ownership';
-import type { DisplayObservation, DisplayTarget } from '../../data/src/handoff';
+import type { DisplayAssociation, DisplayObservation, DisplayTarget } from '../../data/src/handoff';
 import { terminalPresence, type TerminalPresence, type TerminalPresenceReason } from "./terminal-presence";
 import type { OwnedTerminalReadLease, TicketOutcome, TerminalReadTicketId, SelectedRequestId } from "../../data/src/terminal-read";
 import type { TerminalPersistedProof } from "../../data/src/handoff";
@@ -401,8 +401,23 @@ export class ConversationWindow {
             else {
               const presence = terminalPresence(target.receipt, rows, "missing-candidate");
               const next = [...(target.ref.terminalPresence ?? []).filter(p => p.scope !== target.receipt.scope || p.attemptId !== target.receipt.attemptId), ...(presence ? [presence] : [])];
+              let ownership: readonly AssistantOwnership[] = target.ref.assistantOwnership ?? [];
+              if (target.mode === "fresh-window") {
+                const record = target.handle.handoff.peek().find(item => item.attemptId === target.receipt.attemptId);
+                const refs = target.receipt.nodeIds.map(nodeId => {
+                  const row = rows.find(item => item.node_id === nodeId);
+                  return row?.selection?.ordinal === undefined ? undefined : { nodeId, ordinal: row.selection.ordinal, kind: row.kind };
+                });
+                const association: DisplayAssociation | undefined = record && target.receipt.turnId && refs.every((ref): ref is { nodeId: string; ordinal: number; kind: string } => !!ref)
+                  ? { scope: target.receipt.scope, attemptId: target.receipt.attemptId, turnId: target.receipt.turnId, refs }
+                  : undefined;
+                const decision = association ? assistantOwnership(association, record.key, rows, value.revision) : undefined;
+                if (!decision || decision.mode !== "canonical") { reason = "selection-gap"; }
+                else ownership = [decision];
+              }
+              if (reason === "selection-gap") { /* Keep the old bounded display while proof is incomplete. */ }
               const generation = this.acceptedGeneration + 1;
-              const staged = this.acceptedView.stage({ ...target.ref, generation, rows, revision: target.mode === "fresh-window" ? value.revision : target.ref.revision, range: { first: ordinals[0]!, last: ordinals.at(-1)! }, total: value.total, terminalPresence: next }, target.cap);
+              const staged = this.acceptedView.stage({ ...target.ref, generation, rows, revision: target.mode === "fresh-window" ? value.revision : target.ref.revision, range: { first: ordinals[0]!, last: ordinals.at(-1)!, }, total: value.total, assistantOwnership: ownership, terminalPresence: next }, target.cap);
               if (!target.handle.isReadQualificationCurrent(target.token) || !this.acceptedView.isCurrent(target.ref)) return false;
               this.buckets = buckets; this.total = value.total; this.terminalPresence = next; this.acceptedGeneration = generation;
               if (!this.acceptedView.commit(staged)) return false;
