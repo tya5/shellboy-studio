@@ -10,7 +10,7 @@ import type { HistoryItem } from '../../../data/src/protocol';
 import type { DesignContext } from '../../../ui-core/src';
 import { loadPrefs } from '../../../ui-core/src/prefs';
 import { App } from '../screens/App';
-import { typedHandoffRegistry, validTypedHandoffRef, type TypedHistoryWindow } from '../../../ui-core/test/typed-handoff-fixture';
+import { typedHandoffRegistry, type TypedHistoryWindow } from '../../../ui-core/test/typed-handoff-fixture';
 
 const context = (model: DesignContext['model']): DesignContext => ({
   model,
@@ -19,7 +19,7 @@ const context = (model: DesignContext['model']): DesignContext => ({
 });
 
 async function realLifecycle(mode: 'budget' | 'stale' | 'delete' | 'aba') {
-  let ended = false;
+  let ended = false, deleted = false;
   const registry = typedHandoffRegistry({ threadId: 'thread', attemptId: 'attempt-1', turnId: 'turn-1', revision: 8, total: 4,
     refs: [{ nodeId: 'answer-1', ordinal: 2, text: 'Canonical answer' }, { nodeId: 'answer-2', ordinal: 3, text: 'Canonical continuation' }] });
   const first = registry.refs[0]!, second = registry.refs[1]!;
@@ -40,7 +40,7 @@ async function realLifecycle(mode: 'budget' | 'stale' | 'delete' | 'aba') {
         const ordinal = Number.isSafeInteger(args.ordinal) ? args.ordinal as number : undefined;
         const ref = [first, second].find(item => (point === undefined || item.nodeId === point) && (ordinal === undefined || item.ordinal === ordinal));
         const proof = ref && registry.history({ node_id: point, ordinal, before: 99, after: 100 });
-        if (!ref || !proof) return { ok: true, result: { thread_id: 'thread', revision: 8, total: 4, item_count: 0, items: [] } };
+        if (!ref || !proof || deleted) return { ok: true, result: { thread_id: 'thread', revision: 9, total: 2, item_count: 0, items: [] } };
         if (mode === 'budget') return { ok: true, result: proof };
         if (mode === 'stale') return { ok: true, result: { ...proof, revision: 7 } as TypedHistoryWindow };
         if (mode === 'delete') return { ok: true, result: proof };
@@ -58,7 +58,7 @@ async function realLifecycle(mode: 'budget' | 'stale' | 'delete' | 'aba') {
   if (registry.canonical) { nodes[2] = canonical(first); nodes[3] = canonical(second); }
   await act(async () => { f.t.push({ t: 'live_end', thread_id: 'thread' }); await settle(f.t, f.db); await flush(24); });
   if (mode === 'delete') {
-    registry.revision = 9; registry.total = 2; nodes.splice(2); f.db.history.thread = nodes;
+    registry.revision = 9; registry.total = 2; deleted = true; nodes.splice(2); f.db.history.thread = nodes;
     await act(async () => { f.t.push({ t: 'changed', thread_ids: ['thread'], list: false }); await settle(f.t, f.db); await flush(24); });
   }
   if (mode === 'aba') {
