@@ -46,9 +46,9 @@ interface Props {
 
 /** Projection owns classification and membership; presentation only follows its sequence. */
 export function ConversationItems({ items, toolSummaries = [], renderItem, renderHeading, renderBefore, trailing, isItemAbsent, isItemHidden, sequence, workGroups, renderWorkGroup,localRegion }: Props) {
-  if (sequence && workGroups && renderWorkGroup) {
+  if (sequence && renderWorkGroup) {
     const byKey = new Map(items.map(item => [item.key, item]));
-    const groups = new Map(workGroups.map(group => [group.key, group]));
+    const groups = new Map((workGroups ?? []).map(group => [group.key, group]));
     const content = (item: ConversationItem, work: boolean) => <div class={`conversation-row${!work && item.presentationContainer ? " conversation-answer-child" : ""}`} key={`item:${item.key}`} data-item-key={item.key} data-key={item.key} data-node={item.source.nodeId} data-work-item-key={work ? item.key : undefined}>{renderItem(item)}</div>;
     const insertion=localRegion?.placement.kind==="qualified"?localRegion.placement.insertion:undefined;
     const same=(entry:NonNullable<Props["sequence"]>[number])=>insertion?.kind===entry.kind&&(entry.kind==="conversation"?insertion.kind==="conversation"&&insertion.itemKey===entry.itemKey:insertion.kind==="work"&&insertion.groupKey===entry.groupKey);
