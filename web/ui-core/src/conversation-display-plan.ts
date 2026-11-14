@@ -52,13 +52,13 @@ export function createConversationDisplayPlan(input: {
     const source = item.source;
     const owner = owners.get(item.key);
     const host = ('domain' in source ? source.presentationContainer : undefined) ?? (owner?.containerKey as string | undefined);
+    const human = (source.kind === 'user' || source.kind === 'summary') && source.textComplete === true;
     const body: DisplayBodySource = ((source.kind === 'text' && owner?.mode === 'canonical' && source.textComplete === true) || human)
       ? { kind: 'typed-canonical', text: source.text, generation, revision, capability: input.capability }
       : source.kind === 'text' && owner?.mode === 'preview'
         ? { kind: 'preview', text: source.text, generation, revision }
         : { kind: 'unavailable', reason: source.kind, generation, revision };
     const retired = 'domain' in source && !!source.attemptId && input.acceptedRef.retiredAttempts?.some(item => item.scope === input.scope && item.attemptId === source.attemptId && item.revision === revision);
-    const human = (source.kind === 'user' || source.kind === 'summary') && source.textComplete === true;
     const lifetime: DisplayLifetime = Object.freeze({ kind: retired ? 'revoked' : human && !owner ? 'canonical-human' : owner ? 'valid-owner' : 'retained', scope: input.scope, generation, revision });
     return Object.freeze({ item, ...(host ? { presentationContainer: host } : {}), body, lifetime });
   });
