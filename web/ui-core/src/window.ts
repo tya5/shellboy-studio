@@ -122,7 +122,7 @@ class Heights {
 
 function revisionIsCurrentOrNewer(candidate: string | number, current: string | number | undefined): boolean {
   if (current === undefined || typeof candidate !== typeof current) return false;
-  return typeof candidate === "number" ? candidate >= current : candidate === current;
+  return typeof candidate === "number" && typeof current === "number" ? candidate >= current : candidate === current;
 }
 
 export class ConversationWindow {
