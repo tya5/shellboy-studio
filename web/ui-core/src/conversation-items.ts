@@ -460,10 +460,7 @@ export function normalizeTerminalPresenceFacts(presences: readonly TerminalPrese
 
 /** Rebinds only presentation row keys after an owned display association is qualified.
  * Canonical node/item identities and duplicate checks remain untouched. */
-export function rekeyConversationPresentation<T extends SavedItemProjection>(projection: T, keys: ReadonlyMap<string, string>, containers: ReadonlyMap<string, string> = new Map()): T {
-  const items = projection.items.map(item => ({ ...item, presentationContainer: containers.get(item.key), key: keys.get(item.key) ?? item.key }));
-  if (new Set(items.map(item => item.key)).size !== items.length) throw new Error("Conflicting presentation identity");
-  const sequence = projection.sequence?.map(entry => entry.kind === "conversation"
-    ? { ...entry, itemKey: keys.get(entry.itemKey) ?? entry.itemKey } : entry);
-  return { ...projection, items, ...(sequence ? { sequence } : {}) } as T;
+export function withPresentationContainers<T extends SavedItemProjection>(projection: T, containers: ReadonlyMap<string, string> = new Map()): T {
+  const items = projection.items.map(item => ({ ...item, presentationContainer: containers.get(item.key) }));
+  return { ...projection, items } as T;
 }
