@@ -202,8 +202,8 @@ it("Window rebinds a revision-changing point read through one bounded whole-wind
   expect(requests[0]).toMatchObject({ node_id: "answer", items: true });
   expect(requests[1]).toEqual({ thread_id: "a", before: 199, after: 0, items: true });
   const after = r.w.acceptedView.peek();
-  expect(after.terminalPresence?.[0]).toMatchObject({ phase: "settled", reason: "missing-candidate" });
-  expect(r.receipt.nodeIds).toEqual(baseNodes.map(node => node.node_id));
+  expect(after.terminalPresence?.[0]).toMatchObject({ phase: "settled", reason: "selection-gap" });
+  expect(r.receipt.nodeIds).toEqual(baseNodes.filter(node => node.items?.some(item => item.kind === "text")).map(node => node.node_id));
   expect(r.receipt.nodeIds).toHaveLength(new Set(r.receipt.nodeIds).size);
   expect(after.rows.map(row => row.selection?.ordinal)).toEqual([0, 1]);
   expect(after.revision).toBe(8);
