@@ -415,7 +415,14 @@ export class ConversationWindow {
                 if (!decision || decision.mode !== "canonical") { reason = "selection-gap"; }
                 else ownership = [decision];
               }
-              if (reason === "selection-gap") { /* Keep the old bounded display while proof is incomplete. */ }
+              if (reason === "selection-gap") {
+                // Keep the old bounded display while proof is incomplete; never stage
+                // the candidate rows without their canonical ownership proof.
+                const retained = this.publishTerminalPresence(target.ref, target.cap, target.receipt, reason, "settled");
+                if (!retained) return false;
+                this.advanceTerminalTarget(target, retained);
+                return true;
+              }
               const generation = this.acceptedGeneration + 1;
               const staged = this.acceptedView.stage({ ...target.ref, generation, rows, revision: target.mode === "fresh-window" ? value.revision : target.ref.revision, range: { first: ordinals[0]!, last: ordinals.at(-1)!, }, total: value.total, assistantOwnership: ownership, terminalPresence: next }, target.cap);
               if (!target.handle.isReadQualificationCurrent(target.token) || !this.acceptedView.isCurrent(target.ref)) return false;
