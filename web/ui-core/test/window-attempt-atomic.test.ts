@@ -36,6 +36,16 @@ for (const mode of ["missing", "partial", "deferred", "unavailable", "revision",
   let released = false; expect(w.acceptHandoff(record, mode === "scope" ? "other" : proof.scope, () => { released = true; })).toBe(false);
   expect(w.acceptedView.peek()).toBe(before); expect(before.rows).toHaveLength(items.length); expect(released).toBe(false); expect(record.text).toBe("whole live block"); w.dispose();
 });
+it("rejects a partial newer proof instead of publishing it over copied older rows", async () => {
+  const { w, record, proof } = await rig();
+  (proof as { revision: number }).revision = 8;
+  (proof as { nodes: readonly HistoryItem[] }).nodes = [nodes[1]!];
+  const before = w.acceptedView.peek();
+  expect(w.acceptHandoff(record, proof.scope, () => {})).toBe(false);
+  expect(w.acceptedView.peek()).toBe(before);
+  expect(w.acceptedView.peek().revision).toBe(7);
+  w.dispose();
+});
 it("notification reentry stops old release and never retires another attempt/turn", async () => {
   const { w, record, proof } = await rig(); let nested = false, releases = 0;
   w.acceptedView.subscribe(() => { if (!nested) { nested = true; w.layoutChanged(); } });
