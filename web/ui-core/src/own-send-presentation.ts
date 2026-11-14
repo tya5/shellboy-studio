@@ -95,8 +95,12 @@ export function ownSendPresentation<Ref>(input: OwnSendPresentationInput<Ref>): 
   const boundaryConflict=boundaryIndex>=0&&slots.some(slot=>slot&&slot.first<=boundaryIndex);
   const conflict=mutualConflict||boundaryConflict;
   const positionedSlots=allSlots?slots.flatMap(slot=>slot?[{row:slot.row,insertion:slot.insertion,position:slot.last}]:[]):[];
-  const reservationPosition=placement.kind === "qualified" ? (placement.insertion.kind === "beginning" ? 0 : sequence.findIndex(entry => entry.kind === placement.insertion.kind && (entry.kind === "conversation" ? entry.itemKey === placement.insertion.itemKey : entry.groupKey === placement.insertion.groupKey))) : -1;
-  const conflictSlots=conflict && reservationPosition >= 0 ? cohort.map(row=>({row,insertion:placement.insertion,position:reservationPosition})) : [];
+  let reservationPosition=-1;
+  if (placement.kind === "qualified") {
+    const insertion=placement.insertion;
+    reservationPosition=insertion.kind === "beginning" ? 0 : sequence.findIndex(entry => entry.kind === insertion.kind && (entry.kind === "conversation" ? entry.itemKey === insertion.itemKey : entry.groupKey === insertion.groupKey));
+  }
+  const conflictSlots=conflict && placement.kind === "qualified" && reservationPosition >= 0 ? cohort.map(row=>({row,insertion:placement.insertion,position:reservationPosition})) : [];
   const planSlots=conflict ? conflictSlots : positionedSlots;
   const usableSlots=positionedSlots.length>0&&!conflict?positionedSlots:[];
   const finalPlacement=placement.kind === "qualified" && cohort.length > 0 && !allSlots
