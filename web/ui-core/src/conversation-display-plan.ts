@@ -68,7 +68,7 @@ export function createConversationDisplayPlan(input: {
     const human = (source.kind === 'user' || source.kind === 'summary') && source.textComplete === true;
     const body: DisplayBodySource = ((source.kind === 'text' && owner?.mode === 'canonical' && source.textComplete === true) || human)
       ? { kind: 'typed-canonical', text: source.text, generation, revision, capability: input.capability }
-      : source.kind === 'text' && (owner?.mode === 'preview' || !!source.presentationContainer)
+      : source.kind === 'text' && (owner?.mode === 'preview' || !!host)
         ? { kind: 'preview', text: source.text, generation, revision }
         : { kind: 'unavailable', reason: source.kind, generation, revision };
     const retired = 'domain' in source && !!source.attemptId && input.acceptedRef.retiredAttempts?.some(item => item.scope === input.scope && item.attemptId === source.attemptId && item.revision === revision);
