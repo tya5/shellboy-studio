@@ -59,7 +59,9 @@ export function captureConversationInput(snapshot: WindowAcceptedSnapshot, input
   }
   const ordered:NormalizedSavedItem[]=[];
   for(let index=0;index<=canonical.length;index++){ordered.push(...positioned.get(index)??[]);if(index<canonical.length)ordered.push(canonical[index]!);}
-  const projected = projectSavedItems([...ordered,...unplaced,...(work ?? [])]);
+  // Canonical-only input already is this exact current projection; retain its graph aliases.
+  const projected = !reserved.size && !handoffs.length && !work?.length
+    ? canonicalProjection : projectSavedItems([...ordered,...unplaced,...(work ?? [])]);
   const projection = work === undefined ? Object.freeze({ ...projected,
     partitionUnknownKeys: Object.freeze([...projected.partitionUnknownKeys, 'unavailable-work-cut']) }) : projected;
   const containers = new Map<string, string>();
@@ -68,6 +70,6 @@ export function captureConversationInput(snapshot: WindowAcceptedSnapshot, input
   const keys = new Set(projection.items.map(item => item.key));
   for (const owner of ownership.filter(item => item.mode === 'canonical'))
     for (const key of owner.itemKeys) if (keys.has(key)) containers.set(key, owner.containerKey);
-  return { isCurrent: () => true, scope: input.scope, canonicalProjection, projection: withPresentationContainers(projection, containers),
+  return { isCurrent: () => true, scope: input.scope, canonicalProjection, projection: containers.size ? withPresentationContainers(projection, containers) : projection,
     decision: { cohortVersion: { accepted: [] }, localRegion: emptyOwnSendLocalRegion(input.scope) }, coverage: work === undefined ? 'unavailable' : 'complete' };
 }

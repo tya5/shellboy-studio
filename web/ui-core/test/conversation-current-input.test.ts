@@ -83,3 +83,18 @@ it('empty streaming presence never creates a readable display lease or terminal 
  ledger.fail('empty');expect(projectOwnedHandoffFacts('thread',ledger.records.peek())).toMatchObject([{kind:'unknown',attemptId:'empty'}]);
  ledger.discard('ended');expect(ledger.records.peek()).toEqual([]);
 });
+
+it('canonical-only current input has one projection graph, while actual reservations and work still compose independently',async()=>{
+ const r=await rig(2,{decorate:(ordinal,node)=>({...node,kind:'user',items:[{kind:'text',item_identity:'body',text:`Body ${ordinal}`,text_complete:true}]})});
+ try{
+  await r.settle();const snapshot=r.w.acceptedView.peek(),scope=r.handle.handoffScope();
+  const input=captureConversationInput(snapshot,{scope,threadId:'t',records:[],work:[],current:true});
+  expect(input.projection).toBe(input.canonicalProjection);expect(input.projection.items.map(item=>'text' in item.source?item.source.text:undefined)).toEqual(['Body 0','Body 1']);
+  const work=normalizeLiveWorkFacts({scope:'t',items:[{id:'event',thread_id:'t',kind:'event',state:'running'}]});
+  const mixed=captureConversationInput(snapshot,{scope,threadId:'t',records:[],work,current:true});
+  expect(mixed.projection).not.toBe(mixed.canonicalProjection);expect(mixed.projection.items).toHaveLength(3);
+  const denied=captureConversationInput(snapshot,{scope,threadId:'t',records:[],work:[],current:false});
+  expect(denied.coverage).toBe('unavailable');expect(denied.projection.partitionUnknownKeys).toContain('unavailable-work-cut');
+  expect(input.projection.items).toHaveLength(2);expect(r.w.acceptedView.isCurrent(snapshot)).toBe(true);
+ }finally{r.w.dispose();r.data.stop();}
+});
