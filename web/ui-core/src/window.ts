@@ -325,7 +325,7 @@ export class ConversationWindow {
   private replaceTerminalTarget(target: { ref: WindowAcceptedSnapshot; cap: AcceptedCapability; handle: ThreadHandle; token: ThreadReadQualification; receipt: TerminalPersistedProof; requestId: SelectedRequestId; lease: OwnedTerminalReadLease; stop?: () => void }): void {
     const ref = this.acceptedView.peek();
     if (!this.acceptedView.isCurrent(ref) || ref === target.ref) return;
-    const request = Object.freeze({ id:  as SelectedRequestId, args: Object.freeze({ thread_id: target.handle.threadId, node_id: target.receipt.nodeIds[0], before: 99, after: 100, items: true }) });
+    const request = Object.freeze({ id: `selected-${++this.terminalRequestSerial}` as SelectedRequestId, args: Object.freeze({ thread_id: target.handle.threadId, node_id: target.receipt.nodeIds[0], before: 99, after: 100, items: true }) });
     const next = target.handle.replaceTerminalRead(target.token, target.receipt, request);
     if (!("state" in next)) return;
     target.stop?.(); target.stop = undefined; target.ref = ref; target.requestId = request.id; target.lease = next;
