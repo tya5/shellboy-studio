@@ -200,3 +200,14 @@ it('reentrant input qualification cannot replace a newer committed local cut',()
  const candidate=makeAcceptedPublication(next(view,1),'read',()=>{if(once){once=false;publish(view,next(view,2));}return true;});
  expect(view.publish(candidate)).toBe(false);expect(view.current.revision).toBe(2);
 });
+
+it('captures an own prototype-named data field without prototype mutation or repeated getter evaluation',()=>{
+ let reads=0;const nested={value:'kept'},source:Record<string,unknown>={};
+ Object.defineProperty(source,'__proto__',{enumerable:true,get(){reads++;return nested;}});
+ const view=new AcceptedView({...page(0),graph:{initial:true}});
+ expect(view.publish(makeAcceptedPublication({...page(1,view.currentCapability),graph:source},'read'))).toBe(true);
+ const graph=view.current.graph;
+ expect(reads).toBe(1);expect(Object.prototype.hasOwnProperty.call(graph,'__proto__')).toBe(true);
+ expect(Object.getPrototypeOf(graph)).toBe(Object.prototype);expect(Object.getOwnPropertyDescriptor(graph,'__proto__')?.value).toEqual(nested);
+ expect(Object.isFrozen(graph)).toBe(true);
+});

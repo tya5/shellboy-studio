@@ -35,6 +35,8 @@ export interface DisplayAssociation {
 /** Borrowed original held slot; no second preview or receipt ledger. */
 export interface DisplayLease {
   readonly original: HandoffRecord;
+  /** Returns the current immutable record for the same held source transition. */
+  currentRecord(): HandoffRecord | undefined;
   current(): boolean;
   stage(generation: number, current: (generation: number) => boolean): () => void;
 }
@@ -146,13 +148,26 @@ export class Handoff {
   captureDisplay(original: HandoffRecord): DisplayLease | undefined {
     const held = this.held.find(item => item.record === original);
     if (!held || !original.text) return;
-    const epoch = this.epochValue, lifetime = this.lifetimeValue;
-    const current = () => this.held.includes(held) && held.record === original && epoch === this.epochValue && lifetime === this.lifetimeValue;
-    return Object.freeze({ original, current, stage: (generation: number, valid: (generation: number) => boolean) => {
+    const epoch = this.epochValue, lifetime = this.lifetimeValue, capturedStatus = original.status;
+    const sameSource = (record: HandoffRecord) => record.attemptId === original.attemptId
+      && record.key === original.key && record.presentationContainer === original.presentationContainer
+      && record.text === original.text && record.nodeId === original.nodeId
+      && record.incomplete === original.incomplete && record.bodyAuthority === original.bodyAuthority
+      && record.proof === original.proof && record.readyAttempt === original.readyAttempt
+      && record.terminalPersisted === original.terminalPersisted;
+    const currentRecord = () => this.held.includes(held) && epoch === this.epochValue && lifetime === this.lifetimeValue
+      // A confirming-to-failed transition revokes a prior lease; a lease
+      // captured from an issuer-failed record remains a valid failed-readable source.
+      && (held.record.status !== 'failed' || capturedStatus === 'failed') && sameSource(held.record) ? held.record : undefined;
+    const current = () => currentRecord() !== undefined;
+    return Object.freeze({ original, currentRecord, current, stage: (generation: number, valid: (generation: number) => boolean) => {
       if (!current()) return () => {};
+      const previous = held.display;
       const candidate = { generation, sourceCurrent: current, current: (at: number) => at >= generation && current() && valid(at) };
       held.display = candidate;
-      return () => { if (held.display === candidate) held.display = undefined; };
+      // Rollback restores the prior lease rather than turning a rejected
+      // successor into an unintended source revocation.
+      return () => { if (held.display === candidate) held.display = previous; };
     } });
   }
   isDisplayCurrent(original: HandoffRecord, generation: number): boolean {

@@ -67,19 +67,10 @@ function associatedDisplayShells(node: HistoryItem, ids: readonly string[]): Wor
         ...((typeof shell.exit_code === "number" && Number.isFinite(shell.exit_code)) || shell.exit_code === null ? { exit_code: shell.exit_code } : {}) }));
 }
 const displayMetadata = new WeakMap<object, WorkDisplayMetadata>();
-const displayIdentity = new WeakMap<object, string>();
-function metadataIdentity(source: NormalizedSavedItem): string {
-  return JSON.stringify([source.keyScope, source.nodeId, source.itemIdentity, source.kind,
-    source.kind === "tool" ? [source.executionIds, source.executionId, source.callId] : null,
-    "domain" in source ? [source.domain, source.scope, source.recordId, source.attemptId, source.domain === "receipt" ? source.terminalPresence : null] : null]);
-}
-function issueDisplayMetadata(source: NormalizedSavedItem, facts: WorkDisplayMetadata): void {
-  displayMetadata.set(source, facts); displayIdentity.set(source, metadataIdentity(source));
-}
-function preserveDisplayMetadata(from: NormalizedSavedItem, to: NormalizedSavedItem): void {
-  const facts = displayMetadata.get(from);
-  if (facts && displayIdentity.get(from) === metadataIdentity(from) && metadataIdentity(from) === metadataIdentity(to)
-    && facts.scopeKey === JSON.stringify(to.keyScope ?? [])) issueDisplayMetadata(to, facts);
+const displaySourceIdentity = new WeakMap<object, object>();
+function issueDisplayMetadata(source:NormalizedSavedItem,facts:WorkDisplayMetadata,identity:object=displaySourceIdentity.get(source)??{}):void{displayMetadata.set(source,facts);displaySourceIdentity.set(source,identity);}
+function preserveDisplayMetadata(from:NormalizedSavedItem,to:NormalizedSavedItem):void{
+ const facts=displayMetadata.get(from),identity=displaySourceIdentity.get(from);if(facts&&identity){displayMetadata.set(to,facts);displaySourceIdentity.set(to,identity);}
 }
 export function retainUnretiredLiveFacts(snapshot: { readonly terminalPersistedAttempts?: readonly { readonly scope: string; readonly attemptId: string }[]; readonly retiredAttempts?: readonly { readonly scope: string; readonly attemptId: string; readonly turnId: string; readonly revision: number }[]; readonly revision?: number }, scope: string, current: boolean, facts: readonly NormalizedSavedItem[]): readonly NormalizedSavedItem[] {
   if (!current) return facts;
@@ -108,9 +99,9 @@ export function projectOwnedHandoffFacts(scope: string, records: readonly Handof
 export function scopeIssuedWorkFacts(items: readonly NormalizedSavedItem[], keyScope: readonly string[]): readonly NormalizedSavedItem[] | undefined {
   if (!keyScope.length || keyScope.some(part => typeof part !== "string" || !part.length)) return undefined;
   const scope = Object.freeze([...keyScope]), scopeKey = JSON.stringify(scope);
-  const captured = items.map(source => ({ source, facts: displayMetadata.get(source), identity: metadataIdentity(source) }));
-  for (const { source, facts, identity } of captured) {
-    if (!facts || displayIdentity.get(source) !== identity || facts.scopeKey !== JSON.stringify(source.keyScope ?? [])) return undefined;
+  const captured = items.map(source => ({ source, facts: displayMetadata.get(source) }));
+  for (const { source, facts } of captured) {
+    if (!facts || !displaySourceIdentity.has(source) || facts.scopeKey !== JSON.stringify(source.keyScope ?? [])) return undefined;
     if (source.keyScope?.length) { if (facts.scopeKey !== scopeKey) return undefined; }
     else if (!("domain" in source) || (source.domain !== "live" && source.domain !== "receipt")) return undefined;
     if (facts.receipt && (!("domain" in source) || source.domain !== "receipt" || source.terminalPresence !== facts.receipt
@@ -119,12 +110,9 @@ export function scopeIssuedWorkFacts(items: readonly NormalizedSavedItem[], keyS
   const result = captured.map(({ source, facts }) => {
     if (source.keyScope?.length) return source;
     const copy = Object.freeze({ ...source, keyScope: scope });
-    // Check association with the scope field removed, before issuing the clone.
-    if (metadataIdentity({ ...copy, keyScope: source.keyScope }) !== metadataIdentity(source)) throw new Error("Changed Work association");
     issueDisplayMetadata(copy, Object.freeze({ ...facts!, scopeKey }));
     return copy;
   });
-  if (captured.some(({ source, identity }) => identity !== metadataIdentity(source))) return undefined;
   return Object.freeze(result);
 }
 
@@ -132,7 +120,7 @@ export function scopeIssuedWorkFacts(items: readonly NormalizedSavedItem[], keyS
 export function workDisplayMetadata(item: ProjectedSavedItem): WorkDisplayMetadata | undefined {
   const facts = displayMetadata.get(item.source);
   if (item.classification !== canonicalItemCase(item.source)) return undefined;
-  if (!facts || displayIdentity.get(item.source) !== metadataIdentity(item.source) || facts.scopeKey !== JSON.stringify(item.source.keyScope ?? [])) return undefined;
+  if (!facts || !displaySourceIdentity.has(item.source) || facts.scopeKey !== JSON.stringify(item.source.keyScope ?? [])) return undefined;
   if (facts.receipt && (!("domain" in item.source) || item.source.domain !== "receipt"
     || item.source.terminalPresence !== facts.receipt || item.source.scope !== facts.receipt.scope || item.source.attemptId !== facts.receipt.attemptId)) return undefined;
   return facts;

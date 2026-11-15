@@ -6,8 +6,21 @@ import { projectHistoryWindowItems, projectOwnedHandoffFacts, projectSavedItems,
   normalizeTerminalPresenceFacts, scopeIssuedWorkFacts, withPresentationContainers,
   type NormalizedSavedItem, type SavedItemProjection } from './conversation-items';
 
+export interface CanonicalHistoryInput {
+ readonly rows:WindowAcceptedSnapshot['rows'];readonly revision:number|undefined;readonly scope:string;
+ readonly projection:SavedItemProjection;
+}
+function canonicalHistoryInput(snapshot:WindowAcceptedSnapshot,scope:string):CanonicalHistoryInput{
+ const held=snapshot.canonicalInput;
+ if(held&&held.rows===snapshot.rows&&held.revision===snapshot.revision&&held.scope===scope)return held;
+ return Object.freeze({rows:snapshot.rows,revision:snapshot.revision,scope,
+  projection:projectHistoryWindowItems({revision:snapshot.revision??0,nodes:snapshot.rows,keyScope:Object.freeze([scope])}).projection});
+}
+
 export interface ConversationSemanticInput {
   readonly isCurrent: () => boolean;
+  readonly identity:readonly unknown[];
+  readonly canonicalInput:CanonicalHistoryInput;
   readonly scope: string;
   readonly canonicalProjection: SavedItemProjection;
   readonly projection: SavedItemProjection;
@@ -20,8 +33,7 @@ export function captureConversationInput(snapshot: WindowAcceptedSnapshot, input
   readonly scope: string; readonly threadId: string; readonly records: readonly HandoffRecord[];
   readonly work: readonly NormalizedSavedItem[]; readonly current: boolean;
 }): ConversationSemanticInput {
-  const canonicalProjection = projectHistoryWindowItems({ revision: snapshot.revision ?? 0,
-    nodes: snapshot.rows, keyScope: [input.scope] }).projection;
+  const canonicalInput=canonicalHistoryInput(snapshot,input.scope),canonicalProjection=canonicalInput.projection;
   const ownership = snapshot.assistantOwnership ?? [];
   const canonicalOwners = new Set(ownership.filter(item => item.mode === 'canonical').map(item => item.recordKey));
   const reserved = new Set(ownership.filter(item => item.mode === 'preview').flatMap(item => item.itemKeys));
@@ -70,6 +82,7 @@ export function captureConversationInput(snapshot: WindowAcceptedSnapshot, input
   const keys = new Set(projection.items.map(item => item.key));
   for (const owner of ownership.filter(item => item.mode === 'canonical'))
     for (const key of owner.itemKeys) if (keys.has(key)) containers.set(key, owner.containerKey);
-  return { isCurrent: () => true, scope: input.scope, canonicalProjection, projection: containers.size ? withPresentationContainers(projection, containers) : projection,
+  return { isCurrent: () => true,identity:[snapshot.rows,snapshot.revision,snapshot.assistantOwnership,snapshot.terminalPresence,snapshot.retiredAttempts,
+      input.records.length?input.records:undefined,input.work.length?input.work:undefined,input.scope,input.current],canonicalInput,scope: input.scope, canonicalProjection, projection: containers.size ? withPresentationContainers(projection, containers) : projection,
     decision: { cohortVersion: { accepted: [] }, localRegion: emptyOwnSendLocalRegion(input.scope) }, coverage: work === undefined ? 'unavailable' : 'complete' };
 }

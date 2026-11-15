@@ -260,7 +260,7 @@ it('committed Work capture retains only issuer-associated executions and rejects
   const ref=win.acceptedView.peek(),entry=ref.displayPlan!.entries[0]!;
   expect(win.acceptedView.isCurrent(ref)).toBe(true);expect(entry.work!.source).toBe(entry.item.source);
   expect(entry.work!.classification).toBe(entry.item.classification);
-  expect(workElementDisplay(entry.item)).toBeUndefined();
+  expect(capturedWorkElementDisplay(entry.item,undefined)).toBeUndefined();
   expect(capturedWorkExecutionDisplay(entry.item,entry.work,'a')).toMatchObject({contentLabel:{text:'first-associated'},state:{source:'wire',exitCode:0}});
   expect(capturedWorkExecutionDisplay(entry.item,entry.work,'b')).toMatchObject({contentLabel:{text:'second-associated'},state:{value:'running'}});
   expect(capturedWorkExecutionDisplay(entry.item,entry.work,'foreign')).toBeUndefined();

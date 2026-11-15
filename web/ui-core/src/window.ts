@@ -1,7 +1,8 @@
+import {ownHistoryOutcome} from '../../data/src/history-input';
 import {responseRefsMatchSelected} from "../../data/src/public-response-refs";
 import { captureConversationInput, type ConversationSemanticInput } from "./conversation-input";
 import { normalizeLiveWorkFacts } from "./conversation-items";
-import { assistantOwnership, type AssistantOwnership } from './assistant-ownership';
+import { assistantOwnership, assistantOwnershipEqual, type AssistantOwnership } from './assistant-ownership';
 import { projectHistoryWindowItems } from './conversation-items';
 import type { DisplayAssociation, DisplayObservation, DisplayTarget } from '../../data/src/handoff';
 import { terminalPresence, type TerminalPresence, type TerminalPresenceReason } from "./terminal-presence";
@@ -9,7 +10,7 @@ import type { OwnedTerminalReadLease, TicketOutcome, TerminalReadTicketId, Selec
 import type { TerminalPersistedProof } from "../../data/src/handoff";
 import type { AttemptPresentation, ThreadHandle, ThreadReadQualification } from "../../data/src/store";
 import type { HistoryBody } from "../../data/src/protocol";
-import { AcceptedView, makeAcceptedPublication, prepareAcceptedPublication, type AcceptedCapability, type AcceptedPublication, type PublicationReason } from "./accepted-view";
+import { AcceptedView, makeConversationPublication, type AcceptedCapability, type AcceptedPublication, type PublicationReason } from "./accepted-view";
 import { composeConversationDisplayPlan, conversationCohortKey, type ConversationDisplayPlan } from './conversation-display-plan';
 import type { HandoffRecord } from "../../data/src/handoff";
 // The long-thread reader's model (docs/design/long-threads.md): positional windows of a Thread's
@@ -60,6 +61,7 @@ export interface AcceptedCoverage {
 export interface WindowAcceptedSnapshot {
   readonly assistantOwnership?: readonly AssistantOwnership[];
   readonly displayPlan?: ConversationDisplayPlan;
+  readonly canonicalInput?:import("./conversation-input").CanonicalHistoryInput;
   readonly generation: number;
   readonly epoch: number;
   readonly disposed: boolean;
@@ -168,6 +170,7 @@ export class ConversationWindow {
     sourceRef: WindowAcceptedSnapshot; sourceCap: AcceptedCapability; nodeId: string; offset: number; scope: string;
     consumed: boolean; targetCap?: AcceptedCapability; coverage?: AcceptedCoverage } | undefined;
   private acceptedGeneration = 0;
+  private acceptedInput?:{ref:WindowAcceptedSnapshot;identity:readonly unknown[]};
   private terminalPresence: readonly TerminalPresence[] = [];
   private terminalBinding: { handle: ThreadHandle; token: ThreadReadQualification; scope: string } | undefined;
   private conversationInputOwner: ((snapshot: WindowAcceptedSnapshot) => ConversationSemanticInput) | undefined;
@@ -191,6 +194,7 @@ export class ConversationWindow {
   readonly version = signal(0);
   readonly status = signal<WindowStatus>("loading");
   readonly error = signal<string | undefined>(undefined);
+  readonly diagnostic=signal<Readonly<{reason:'input-bound'|'invalid-input'|'cyclic-input'|'publication-rejected';generation:number;revision:number|undefined;ownerEpoch:number;at:number}>|undefined>(undefined);
   /** At the newest node with the view at the bottom: new rows keep it there. */
   readonly following = signal(true);
   /** Rows exist past what is shown, while not following: offer the jump to the newest. */
@@ -200,7 +204,17 @@ export class ConversationWindow {
   total = 0;
 
   constructor(reader: WindowReader, options: WindowOptions = {}) {
-    this.reader = reader;
+    this.reader={read:async(args,cancel)=>{
+      const raw=await reader.read(args,cancel),expected=this.acceptedView.peek(),owner=this.acceptedView.currentCapability;
+      const out=ownHistoryOutcome(raw);
+      if(this.acceptedView.peek()!==expected||this.acceptedView.currentCapability!==owner)
+        return{ok:false,error:{kind:'cancelled',message:'input ownership changed while normalizing'}};
+      if(!out.ok&&out.error.kind==='invalid_response'){
+        const ref=this.acceptedView.peek(),reason=out.error.message;
+        this.diagnostic.value=Object.freeze({reason:reason==='input-bound'||reason==='cyclic-input'?reason:'invalid-input',generation:ref.generation,revision:ref.revision,ownerEpoch:this.epoch,at:Date.now()});
+      }
+      return out;
+    }};
     this.setTimer =
       options.setTimer ??
       ((fn, ms) => {
@@ -256,7 +270,7 @@ export class ConversationWindow {
     const qualified = () => !this.disposed && this.terminalBinding?.handle === handle
       && handle.isReadQualificationCurrent(token) && handle.handoffScope() === scope && this.acceptedView.currentCapability === cap;
     let consumed = false;
-    const recordOf = (item: DisplayObservation): HandoffRecord => item.kind === 'receipt' ? item.record : item.lease.original;
+    const recordOf = (item: DisplayObservation): HandoffRecord => item.kind === 'receipt' ? item.record : item.lease.currentRecord() ?? item.lease.original;
     const observationCurrent = (item: DisplayObservation): boolean => {
       const record = recordOf(item);
       return handle.handoff.peek().includes(record)
@@ -269,8 +283,8 @@ export class ConversationWindow {
       consumed = true;
       const decisionByAttempt = new Map((expected.assistantOwnership ?? []).map(decision => [decision.attemptId, decision]));
       for (const item of observations) {
-        if (item.kind !== 'readable' || !item.association || item.association.scope !== scope || item.association.attemptId !== item.lease.original.attemptId) continue;
-        const result = assistantOwnership(item.association, item.lease.original.key, expected.rows, expected.revision!);
+        if (item.kind !== 'readable' || !item.association || item.association.scope !== scope || item.association.attemptId !== recordOf(item).attemptId) continue;
+        const result = assistantOwnership(item.association, recordOf(item).key, expected.rows, expected.revision!);
         if (result) decisionByAttempt.set(result.attemptId, result);
       }
       const decisions = [...decisionByAttempt.values()];
@@ -294,7 +308,7 @@ export class ConversationWindow {
         ? [item.lease.stage(generation, at => {
           const ref = this.acceptedView.peek();
           const issued = decisions.find(decision => decision.recordKey === item.lease.original.key && decision.attemptId === item.lease.original.attemptId)!;
-          return qualified() && this.acceptedView.isCurrent(ref) && ref.generation === at
+          return qualified() && this.acceptedView.isCurrent(ref) && ref.generation >= at
             && ref.assistantOwnership?.some(owner => owner.recordKey === issued.recordKey && owner.attemptId === issued.attemptId
               && owner.scope === issued.scope && owner.turnId === issued.turnId && owner.containerKey === issued.containerKey
               && owner.receiptRevision === issued.receiptRevision && owner.refs.length === issued.refs.length
@@ -309,7 +323,13 @@ export class ConversationWindow {
         return false;
       }
       const committed = this.acceptedView.peek();
-      if (!qualified() || !this.acceptedView.isCurrent(committed) || committed.generation !== generation) { undo.forEach(cancel => cancel()); return false; }
+      const ownerContinuity = observations.every(item => item.kind !== 'readable' || (() => {
+        const issued = decisions.find(decision => decision.recordKey === item.lease.original.key && decision.attemptId === item.lease.original.attemptId);
+        return !!issued && committed.assistantOwnership?.some(owner => assistantOwnershipEqual(owner, issued));
+      })());
+      if (!qualified() || !this.acceptedView.isCurrent(committed) || committed.generation < generation || !ownerContinuity) {
+        undo.forEach(cancel => cancel()); return false;
+      }
       this.version.value++;
       return true;
     } };
@@ -629,7 +649,13 @@ export class ConversationWindow {
     if (!this.acceptedView.isCurrent(ref) || tx !== this.summaryTransition || !handle.isReadQualificationCurrent(tx.token)) return false;
     tx.coverage = coverage; tx.targetCap = cap;
     if (!this.commitAccepted(staged, this.acceptedView.currentCapability)) { tx.coverage = undefined; tx.targetCap = undefined; return false; }
-    return this.acceptedView.peek().generation === generation && this.peekSummaryCoverage(this.acceptedView.peek()) !== undefined;
+    const committed = this.acceptedView.peek();
+    // A synchronous consumer may consume coverage during notify(). Report the
+    // committed transaction, not the post-consumption availability predicate.
+    return this.acceptedView.isCurrent(committed) && committed.generation >= generation
+      && committed.coverage?.transitionId === id && committed.coverage.targetRevision === committed.revision
+      && this.summaryTransition === tx && tx.handle === handle && tx.scope === handle.handoffScope()
+      && tx.targetCap === this.acceptedView.currentCapability && handle.isReadQualificationCurrent(tx.token);
   }
   peekSummaryCoverage(ref: WindowAcceptedSnapshot): AcceptedCoverage | undefined {
     const tx = this.summaryTransition;
@@ -1003,15 +1029,15 @@ export class ConversationWindow {
 
   /** A semantic source change uses the same constructor as an arriving history cut. */
   refreshConversationInput(ref: WindowAcceptedSnapshot): boolean {
-    const capability = this.acceptedView.currentCapability;
-    if (this.disposed || !this.acceptedView.isCurrent(ref)) return false;
-    const probe = this.prepareAccepted(ref, capability, 'bump');
-    if (probe.plan.semanticKey === ref.displayPlan?.semanticKey && probe.plan.cohortKey === ref.displayPlan.cohortKey
-      && probe.plan.coverage === ref.displayPlan.coverage && probe.plan.scope === ref.displayPlan.scope) return true;
-    const generation = this.nextAcceptedGeneration();
-    const staged = this.prepareAccepted({ ...ref, generation }, capability, 'bump');
-    if (!this.acceptedView.isCurrent(ref) || capability !== this.acceptedView.currentCapability) return false;
-    return this.commitAccepted(staged, capability);
+    const capability=this.acceptedView.currentCapability;
+    if(this.disposed||!this.acceptedView.isCurrent(ref))return false;
+    const candidate=this.qualifyRetainedOwners(ref,capability),input=this.captureConversationInput(candidate);
+    const prior=this.acceptedInput;
+    if(prior?.ref===ref&&prior.identity.length===input.identity.length&&prior.identity.every((value,index)=>value===input.identity[index]))return true;
+    const generation=this.nextAcceptedGeneration();
+    const staged=this.prepareCaptured({...candidate,generation},capability,input,'bump');
+    if(!this.acceptedView.isCurrent(ref)||capability!==this.acceptedView.currentCapability)return false;
+    return this.commitAccepted(staged,capability);
   }
 
   private unavailablePlan(generation: number, revision: number | undefined, capability: AcceptedCapability,
@@ -1019,24 +1045,23 @@ export class ConversationWindow {
     return Object.freeze({ acceptedGeneration: generation, revision, capability, coverage: "unavailable",
       entries: Object.freeze([]), sequence: Object.freeze([]), workGroups: Object.freeze([]), partitionUnknownKeys: Object.freeze([]),
       cohortKey: conversationCohortKey(input.decision.cohortVersion), cohortVersion: input.decision.cohortVersion, localRegion: input.decision.localRegion,
-      scope: input.scope, semanticKey: JSON.stringify({ unavailable: true, scope: input.scope, localRegion: input.decision.localRegion }) });
+      scope: input.scope });
   }
 
   private qualifyRetainedOwners(snapshot: WindowAcceptedSnapshot, capability: AcceptedCapability): WindowAcceptedSnapshot {
     const accepted = this.acceptedView.peek(), prior = accepted.assistantOwnership ?? [], facts = snapshot.assistantOwnership ?? [];
     if (snapshot.revision === undefined || !facts.some(fact => prior.includes(fact))) return snapshot;
     const current = this.acceptedOwnershipForBump(snapshot.revision, snapshot.rows, capability);
-    return { ...snapshot, assistantOwnership: facts.flatMap(fact => prior.includes(fact)
-      ? current.filter(owner => owner.recordKey === fact.recordKey && owner.attemptId === fact.attemptId) : [fact]) };
+    const qualified=facts.flatMap(fact=>prior.includes(fact)?current.filter(owner=>owner.recordKey===fact.recordKey&&owner.attemptId===fact.attemptId):[fact]);
+    return qualified.length===facts.length&&qualified.every((fact,index)=>assistantOwnershipEqual(fact,facts[index]!))
+      ? snapshot : {...snapshot,assistantOwnership:Object.freeze(qualified)};
   }
 
   /** Every transition captures the current input before its single accepted swap. */
   private prepareAccepted(snapshot: WindowAcceptedSnapshot, capability: AcceptedCapability,
     reason: PublicationReason = "read"): AcceptedPublication<WindowAcceptedSnapshot> {
-    return prepareAcceptedPublication(capture => {
-      const candidate = this.qualifyRetainedOwners({ ...snapshot, rows: capture(snapshot.rows) }, capability);
-      return this.prepareCaptured(candidate, capability, this.captureConversationInput(candidate), reason);
-    });
+    const candidate=this.qualifyRetainedOwners(snapshot,capability);
+    return this.prepareCaptured(candidate,capability,this.captureConversationInput(candidate),reason);
   }
 
   private prepareCaptured(snapshot: WindowAcceptedSnapshot, capability: AcceptedCapability,
@@ -1050,14 +1075,17 @@ export class ConversationWindow {
           retiredAttempts: snapshot.retiredAttempts ?? [] }).plan;
     const binding = this.terminalBinding;
     const qualification = binding?.handle.isReadQualificationCurrent(binding.token);
-    return makeAcceptedPublication({ ...snapshot, displayPlan }, reason, () => input.isCurrent()
+    return makeConversationPublication({ ...snapshot,canonicalInput:input.canonicalInput, displayPlan }, reason, () => input.isCurrent()
       && this.terminalBinding === binding
-      && (!binding || binding.handle.handoffScope() === binding.scope && binding.handle.isReadQualificationCurrent(binding.token) === qualification));
+      && (!binding || binding.handle.handoffScope() === binding.scope && binding.handle.isReadQualificationCurrent(binding.token) === qualification),input.identity);
   }
 
   private commitAccepted(publication: AcceptedPublication<WindowAcceptedSnapshot>,
     capability: AcceptedCapability): boolean {
-    return this.acceptedView.publish(publication, capability);
+    const published=this.acceptedView.publish(publication,capability),ref=this.acceptedView.peek();
+    if(published&&ref===publication.snapshot&&publication.inputIdentity)this.acceptedInput={ref,identity:publication.inputIdentity};
+    if(!published)this.diagnostic.value=Object.freeze({reason:'publication-rejected',generation:ref.generation,revision:ref.revision,ownerEpoch:this.epoch,at:Date.now()});
+    return published;
   }
 
   private nextAcceptedGeneration(): number { return ++this.acceptedGeneration; }
@@ -1107,9 +1135,14 @@ export class ConversationWindow {
         && read.result.value.revision === fact.receiptRevision && target.handle.isTerminalReadCurrent(target.token, target.lease)
         && target.receipt.refs?.length === fact.refs.length && target.receipt.refs.every((ref,index) =>
           ref.nodeId === fact.refs[index]?.nodeId && ref.ordinal === fact.refs[index]?.ordinal && ref.kind === fact.refs[index]?.kind);
-      if (!liveOwner && !retired && !selectedOwner) continue;
       const next = assistantOwnership({ scope: fact.scope, attemptId: fact.attemptId, turnId: fact.turnId,
         presentationContainer: fact.containerKey, refs: fact.refs }, fact.recordKey, rows, revision);
+      // A complete current canonical body is authoritative without a live overlay lease.
+      // Overlay ownership remains required for preview-only facts.
+      // Canonical body qualification is handled by the selected history projection.
+      // This list only carries live/retired presentation ownership; a revoked
+      // overlay must not survive merely because its saved body is still current.
+      if (!liveOwner && !retired && !selectedOwner) continue;
       if (!next || fact.mode === 'canonical' && next.mode !== 'canonical') continue;
       qualified.push(Object.freeze({ ...next, receiptRevision: fact.receiptRevision }));
     }
@@ -1181,16 +1214,14 @@ export class ConversationWindow {
       const generation=this.nextAcceptedGeneration(),cursor={revision,total};
       const firstOrdinal=follow?Math.max(0,total-WINDOW_NODES):range!.first,lastOrdinal=follow?total-1:range!.last;
       // Validate and compose from the one bounded plain capture, then retain those exact rows.
-      const staged=prepareAcceptedPublication(capture=>{
-        const selected=capture(rows);
-        if(selected.length!==Math.max(0,lastOrdinal-firstOrdinal+1)||new Set(selected.map(row=>row.node_id)).size!==selected.length
-          ||selected.some((row,index)=>!row.node_id||row.selection?.ordinal!==firstOrdinal+index))return;
-        const snapshot=this.snapshotForSelection({generation,epoch,rows:selected,range:selected.length?{first:firstOrdinal,last:lastOrdinal}:undefined,
-          total:cursor.total,revision:cursor.revision,pending:false},capability);
-        return this.prepareCaptured(snapshot,capability,this.captureConversationInput(snapshot),'read');
-      });
+      const selected=Object.freeze(rows);
+      if(selected.length!==Math.max(0,lastOrdinal-firstOrdinal+1)||new Set(selected.map(row=>row.node_id)).size!==selected.length
+        ||selected.some((row,index)=>!row.node_id||row.selection?.ordinal!==firstOrdinal+index))return;
+      const snapshot=this.snapshotForSelection({generation,epoch,rows:selected,range:selected.length?{first:firstOrdinal,last:lastOrdinal}:undefined,
+        total:cursor.total,revision:cursor.revision,pending:false},capability);
+      const staged=this.prepareCaptured(snapshot,capability,this.captureConversationInput(snapshot),'read');
       if(!staged||!current()||generation!==this.acceptedGeneration||follow&&!this.following.peek())return;
-      const selected=staged.snapshot.rows,replacement=new Map<number,Bucket>();
+      const replacement=new Map<number,Bucket>();
       for(const row of selected){const ordinal=row.selection!.ordinal!,index=Math.floor(ordinal/WINDOW_NODES);
         let bucket=replacement.get(index);if(!bucket){bucket=new Bucket();replacement.set(index,bucket);}
         bucket.items[ordinal%WINDOW_NODES]=row;bucket.filled++;
@@ -1338,7 +1369,7 @@ export class ConversationWindow {
         this.tailFailed = true;
         if (this.jumping) { this.jumping = false; this.following.value = false; }
         this.fail(out.error.message);
-        this.bump(capability);
+        this.version.value++;
       }
       return;
     }

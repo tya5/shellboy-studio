@@ -1,3 +1,5 @@
+import {ownHistoryOutcome} from './history-input';
+import {ownInputOutcome} from './immutable-input';
 import {sanitizeMessageRelation} from "./message-provenance";
 // Typed operations: the UX boundary for requests. Stateless wrappers over `Link.call`;
 // they never touch the store (saved facts change only by re-reading after a hint).
@@ -304,7 +306,7 @@ export class Operations {
   }
   historyWindow(args: HistoryWindowArgs, read?: ReadOptions): Promise<Outcome<HistoryWindowResult>> {
     if (!this.historyWindowSupported()) return Promise.resolve({ ok: false, error: { kind: "invalid_response", message: "owner does not advertise history.window" } });
-    return this.run("history.window", args, decodeHistoryWindow, undefined, read);
+    return this.run("history.window", args, decodeHistoryWindow, undefined, read).then(ownHistoryOutcome);
   }
   historyGet(args: HistoryGetArgs, read?: ReadOptions): Promise<Outcome<HistoryBody>> {
     return this.run("history.get", args, decodeBody, undefined, read);
@@ -335,10 +337,10 @@ export class Operations {
   }
   /** Activity status, for `receipt_budget`. One row is enough; the rows are not used. */
   handoffAttempts(threadId: string, read?: ReadOptions): Promise<Outcome<Page<WorkItem>>> {
-    return this.run("status", { thread_id: threadId, all: true, limit: 200 }, decodeThreadWorkPage(threadId), undefined, read);
+    return this.run("status", { thread_id: threadId, all: true, limit: 200 }, decodeThreadWorkPage(threadId), undefined, read).then(ownInputOutcome);
   }
   threadWork(threadId: string, read?: ReadOptions): Promise<Outcome<Page<WorkItem>>> {
-    return this.run("status", { thread_id: threadId, state: ["starting", "running", "stopping", "accepted", "held"], limit: 200 }, decodeThreadWorkPage(threadId), undefined, read);
+    return this.run("status", { thread_id: threadId, state: ["starting", "running", "stopping", "accepted", "held"], limit: 200 }, decodeThreadWorkPage(threadId), undefined, read).then(ownInputOutcome);
   }
   statusSummary(read?: ReadOptions): Promise<Outcome<Record<string, unknown>>> {
     return this.run("status", { limit: 1 }, decodeRecord, undefined, read);

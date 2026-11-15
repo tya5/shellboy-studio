@@ -37,12 +37,17 @@ async function rig(partial=false) {
 it("installs the first successful tail read as bootstrap without declaring a rewrite", async () => {
  const node:HistoryItem={node_id:"bootstrap-node",kind:"user_message",selection:{ordinal:0},items:[{kind:"text",item_identity:"bootstrap-body",text:"first read",text_complete:true}]};
  const reads:{before?:number;after?:number}[]=[];
- const window=new ConversationWindow({read:async args=>{reads.push({before:args.before,after:args.after});return {ok:true,value:{thread_id:"bootstrap-thread",revision:7,total:1,items:[node]}};}});
+ const externalItems=[...node.items!]; const external={...node,items:externalItems};
+ const window=new ConversationWindow({read:async args=>{reads.push({before:args.before,after:args.after});return {ok:true,value:{thread_id:"bootstrap-thread",revision:7,total:1,items:[external]}};}});
  try {
   await flush();
   expect(reads).toEqual([{before:99,after:0}]);
   expect(window.pathChanged.peek()).toBe(false);
-  expect(window.itemAt(0)).toBe(node);
+  const accepted = window.itemAt(0);
+  expect(accepted).toMatchObject(node);
+  expect(accepted).not.toBe(node);
+  externalItems[0] = { kind: 'text', item_identity: 'mutated', text: 'mutated', text_complete: true };
+  expect(accepted!.items![0]).toMatchObject({ item_identity: 'bootstrap-body', text: 'first read' });
   expect(window.acceptedView.peek().revision).toBe(7);
  } finally { window.dispose(); }
 });

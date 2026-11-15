@@ -81,7 +81,15 @@ Non-goals:
    Layout and visual design start only after the foundation works end to end;
    at that point stop and brainstorm the look with the user.
 
-### 2.2 Debug page
+### 2.2 Current conversation publication (Studio #24)
+
+The adopted conversation contract, including the reasons for rejected alternatives,
+now lives in [conversation-publication.md](conversation-publication.md). It
+supersedes this historical baseline for canonical body ownership, live overlays,
+currentness, immutable input construction, atomic publication, and bounded failure.
+Source and CI qualification are not evidence of deployment or incident closure.
+
+### 2.3 Debug page
 
 A separate entry and bundle, shipped in production builds but enabled only by
 an explicit debug startup option (off by default; the route is not registered

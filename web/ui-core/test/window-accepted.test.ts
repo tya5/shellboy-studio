@@ -69,7 +69,7 @@ it("tail response publishes rows/range/total/revision coherently without treatin
   stop(); r.w.dispose(); r.data.stop();
 });
 
-it("getter reentry during actual Window staging cannot overwrite a nested accepted generation", async () => {
+it("getter reentry during typed Window input admission cannot overwrite a nested accepted generation", async () => {
   const row: HistoryItem = { node_id: "plain-local", kind: "user", excerpt: "local", selection: { ordinal: 0 } };
   const w = new ConversationWindow({ read: async () => ({ ok: true, value: { thread_id: "t", total: 1, revision: 1, items: [row] } }) });
   await flush(); let nested = false;
@@ -79,7 +79,7 @@ it("getter reentry during actual Window staging cannot overwrite a nested accept
   } });
   const seen: number[] = [];
   const stop = w.acceptedView.subscribe(ref => seen.push(ref.generation));
-  w.setAttemptPresentations([{scope:'history',attemptId:'older',turnId:'turn',nodeIds:['plain-local'],state:'pending'}]);
+  w.changed();await flush();
   expect(nested).toBe(true); expect(seen).toHaveLength(1);
   expect(seen[0]).toBe(w.acceptedView.peek().generation);
   stop(); w.dispose();

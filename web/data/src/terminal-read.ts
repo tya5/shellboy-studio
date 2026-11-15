@@ -1,3 +1,5 @@
+import {HistoryWindowInput,ownHistoryOutcome} from './history-input';
+import {InputCaptureError} from './immutable-input';
 import { signal, type Signal, type ReadonlySignal } from "@preact/signals-core";
 import type { TerminalPersistedProof, HandoffRecord } from "./handoff";
 import type { HistoryItem, HistoryWindowArgs, HistoryWindowResult } from "./protocol";
@@ -94,7 +96,7 @@ export class TerminalReadSlots {
     try {
       const result = await this.readOwned(marker, valid, read);
       marker.state.value = !valid() ? {phase:'unavailable',reason:'cancelled'} : typeof result==='string'
-        ? {phase:'unavailable',reason:result} : {phase:'settled',ticket:marker.ticket,result:structuredClone(result)};
+        ? {phase:'unavailable',reason:result} : {phase:'settled',ticket:marker.ticket,result};
     } finally { marker.detach?.(); }
     // A replacement can be queued synchronously by the settled callback. Consume
     // that one successor in this owned dispatch, not via resolver re-entry.
@@ -104,12 +106,12 @@ export class TerminalReadSlots {
     read:(args:HistoryWindowArgs,cancel:Cancel)=>Promise<Outcome<HistoryWindowResult>>):
     Promise<Outcome<HistoryWindowResult>|'cancelled'|'budget-exhausted'|'selection-gap'>{
     const request=marker.ticket.request,plan=request.selection;
-    if(!plan)return read(request.args,marker.cancel);
-    const rows:HistoryItem[]=[],ids=new Set<string>();let cursor:HistoryWindowResult|undefined;
+    if(!plan)return ownHistoryOutcome(await read(request.args,marker.cancel));
+    const rows:HistoryItem[]=[],pages:HistoryWindowInput[]=[],ids=new Set<string>();let cursor:HistoryWindowResult|undefined;
     for(let first=plan.first;first<=plan.last;first+=200){
       if(!valid())return 'cancelled';
       const count=Math.min(200,plan.last-first+1);
-      const page=await read({...request.args,ordinal:first,before:0,after:count-1},marker.cancel);
+      const page=ownHistoryOutcome(await read({...request.args,ordinal:first,before:0,after:count-1},marker.cancel));
       if(!valid())return 'cancelled';
       if(!page.ok)return page;
       const value=page.value;
@@ -117,10 +119,10 @@ export class TerminalReadSlots {
         ||cursor&&value.total!==cursor.total||value.items.length!==count
         ||value.items.some((row,index)=>!row.node_id||ids.has(row.node_id)||row.selection?.ordinal!==first+index))return 'selection-gap';
       for(const row of value.items){if(ids.has(row.node_id!))return 'selection-gap';ids.add(row.node_id!);rows.push(row);}
-      cursor??=value;
+      pages.push(HistoryWindowInput.own(value));cursor??=value;
     }
     if(!cursor)return 'selection-gap';
-    return{ok:true,value:{...cursor,items:rows}};
+    try{return{ok:true,value:HistoryWindowInput.join(pages)};}catch(error){if(error instanceof InputCaptureError)return 'selection-gap';throw error;}
   }
   clear(): void {
     const old = [...this.markers.values()]; this.markers.clear();

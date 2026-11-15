@@ -58,5 +58,5 @@ it('ninth exact readable owner uses a genuinely retired eight-original bootstrap
    }
   }
   expect(f.t.calls('history.get')).toHaveLength(0);
- }finally{console.log('NINTH_ACTUAL_READABLE_COHORT',JSON.stringify(trace));stop();render(null,host);host.remove();f.model.dispose();f.data.stop();}
+ }finally{stop();render(null,host);host.remove();f.model.dispose();f.data.stop();}
 });

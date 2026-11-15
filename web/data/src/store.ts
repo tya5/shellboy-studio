@@ -24,19 +24,6 @@ import type {
 import { Refresher } from "./refresher";
 import type { Transport } from "./transport";
 
-/** Owned immutable snapshot of decoded bounded saved data; no UI-layer dependency. */
-function immutableSaved<T>(value: T): T {
-  const copy = structuredClone(value);
-  const freeze = (value: unknown): void => {
-    if (value && typeof value === "object") {
-      for (const child of Object.values(value)) freeze(child);
-      Object.freeze(value);
-    }
-  };
-  freeze(copy);
-  return copy;
-}
-
 /** Threads watched at once. Equals the bridge's per-tab bound; beyond it `openThread` throws. */
 export const MAX_WATCHED_THREADS = 64;
 /** Default page size for list reads (the owner's own maximum applies). */
@@ -481,7 +468,7 @@ export class ShellboyData {
         if (!out.ok || !valid()) return out.ok ? { ok: false, error: { kind: "cancelled", message: "window owner changed" } } : out;
         if (out.value.thread_id !== threadId) return { ok: false, error: { kind: "cancelled", message: "window Thread mismatch" } };
         // Saved ordinary nodes are independent of overlay/publication evidence.
-        const saved = immutableSaved(out.value);
+        const saved = out.value;
         if (!valid()) return { ok: false, error: { kind: "cancelled", message: "window owner changed while materializing" } };
         return { ok: true, value: saved };
       },
@@ -788,7 +775,8 @@ export class ShellboyData {
       const observations: DisplayObservation[] = [];
       for (const lease of leases) {
         if (!valid() || !lease.current()) continue;
-        const record = lease.original;
+        const record = lease.currentRecord();
+        if (!record) continue;
         const matches = out.value.items.filter(item => item.kind === 'attempt' && item.id === record.attemptId
           && item.attempt_id === record.attemptId && item.thread_id === entry.id);
         if (matches.length !== 1) continue;
@@ -892,7 +880,7 @@ export class ShellboyData {
         }
         const selected = [...nodes.values()].sort((a,b)=>a.selection!.ordinal!-b.selection!.ordinal!);
         if (!responseRefsMatchSelected(refs, selected)) continue;
-        const saved = immutableSaved(selected);
+        const saved = Object.freeze(selected);
         // A replacement must contain a visible authoritative item, not just bookkeeping.
         if (!saved.some(node => node.items?.some(item => item.kind === "text" || item.kind === "tool_call" || item.kind === "tool_result"))) continue;
         const proof = Object.freeze({ scope: this.handoffScope(entry), attemptId: record.attemptId,
