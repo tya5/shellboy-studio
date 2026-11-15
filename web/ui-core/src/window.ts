@@ -2,7 +2,7 @@ import type { HistoryWindowInput } from '../../data/src/history-input';
 import {responseRefsMatchSelected} from "../../data/src/public-response-refs";
 import { captureConversationInput, conversationIdentityEqual, type ConversationSemanticInput } from "./conversation-input";
 import { normalizeLiveWorkFacts } from "./conversation-items";
-import { assistantOwnership, assistantOwnershipEqual, type AssistantOwnership } from './assistant-ownership';
+import { assistantOwnership, assistantOwnershipEqual, assistantOwnershipRefsEqual, type AssistantOwnership } from './assistant-ownership';
 import { projectHistoryWindowItems } from './conversation-items';
 import type { DisplayAssociation, DisplayObservation, DisplayTarget } from '../../data/src/handoff';
 import { terminalPresence, type TerminalPresence, type TerminalPresenceReason } from "./terminal-presence";
@@ -1123,9 +1123,7 @@ export class ConversationWindow {
       const liveOwner = !!record && handle!.isDisplayOwnershipCurrent(record, snapshot.generation);
       const retired = this.retiredCapability === capability && snapshot.retiredAttempts?.find(item => item.scope === fact.scope && item.attemptId === fact.attemptId
         && item.turnId === fact.turnId && item.revision === fact.receiptRevision && item.recordKey === fact.recordKey
-        && item.containerKey === fact.containerKey && item.refs.length === fact.refs.length
-        && item.refs.every((ref, index) => ref.nodeId === fact.refs[index]?.nodeId
-          && ref.ordinal === fact.refs[index]?.ordinal && ref.kind === fact.refs[index]?.kind));
+        && item.containerKey === fact.containerKey && assistantOwnershipRefsEqual({refs:item.refs},{refs:fact.refs}));
       const target = this.terminalTargets.get(JSON.stringify([fact.scope, fact.attemptId]));
       const read = target?.lease.state.peek();
       // A settled body proof lives with its actual owned lease, not a presentation generation.
@@ -1133,8 +1131,7 @@ export class ConversationWindow {
         && target.receipt.recordKey === fact.recordKey && target.receipt.turnId === fact.turnId
         && target.receipt.presentationContainer === fact.containerKey && !!read && read.phase === 'settled' && read.result.ok
         && read.result.value.revision === fact.receiptRevision && target.handle.isTerminalReadCurrent(target.token, target.lease)
-        && target.receipt.refs?.length === fact.refs.length && target.receipt.refs.every((ref,index) =>
-          ref.nodeId === fact.refs[index]?.nodeId && ref.ordinal === fact.refs[index]?.ordinal && ref.kind === fact.refs[index]?.kind);
+        && !!target.receipt.refs && assistantOwnershipRefsEqual({refs:target.receipt.refs},{refs:fact.refs});
       const next = assistantOwnership({ scope: fact.scope, attemptId: fact.attemptId, turnId: fact.turnId,
         presentationContainer: fact.containerKey, refs: fact.refs }, fact.recordKey, rows, revision);
       // A complete current canonical body is authoritative without a live overlay lease.

@@ -21,14 +21,19 @@ export interface AssistantOwnership {
   readonly refs: readonly { readonly nodeId: string; readonly ordinal: number; readonly kind: string }[];
 }
 
+/** Shared exact relation for source-owned selected references. */
+export function assistantOwnershipRefsEqual(a: Pick<AssistantOwnership, 'refs'>, b: Pick<AssistantOwnership, 'refs'>): boolean {
+  return a.refs.length === b.refs.length && a.refs.every((ref,index) => ref.nodeId === b.refs[index]?.nodeId
+    && ref.ordinal === b.refs[index]?.ordinal && ref.kind === b.refs[index]?.kind);
+}
+
 /** Full immutable identity used for both requalification and postcommit continuity. */
 export function assistantOwnershipEqual(a: AssistantOwnership, b: AssistantOwnership): boolean {
   return a.scope === b.scope && a.attemptId === b.attemptId && a.turnId === b.turnId
     && a.recordKey === b.recordKey && a.containerKey === b.containerKey && a.mode === b.mode
     && a.proofRevision === b.proofRevision && a.receiptRevision === b.receiptRevision
     && a.itemKeys.length === b.itemKeys.length && a.itemKeys.every((key,index) => key === b.itemKeys[index])
-    && a.refs.length === b.refs.length && a.refs.every((ref,index) => ref.nodeId === b.refs[index]?.nodeId
-      && ref.ordinal === b.refs[index]?.ordinal && ref.kind === b.refs[index]?.kind);
+    && assistantOwnershipRefsEqual(a,b);
 }
 
 export function assistantOwnership(association: DisplayAssociation, recordKey: string,
