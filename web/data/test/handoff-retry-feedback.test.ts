@@ -144,6 +144,20 @@ it("queued terminal owner failure preserves error result without waking history"
   } finally { r.data.stop(); }
 });
 
+it.each(["cancel","pause"] as const)("%s display-owner observer clears pending facts without waking or body reads", async mode => {
+  const r=await rig({initialAvailable:false,windowHistory:{revision:7,total:2,items:[{node_id:"tool",kind:"assistant_response",selection:{ordinal:0},items:[{kind:"tool_call",item_identity:"call",execution_ids:["exec"]}]},{node_id:"answer",kind:"assistant_response",selection:{ordinal:1},items:[{kind:"text",item_identity:"answer",text:"saved",text_complete:true}]}]}}); expect(r.window.bindTerminalHandle(r.h)).toBe(true); r.window.jumpToEnd(); await r.pump(); let armed=false,hit=false;
+  const stop=r.window.acceptedView.subscribe(snapshot=>{
+    if(armed && (snapshot.assistantOwnership?.length ?? 0)>0){ armed=false; hit=true; if(mode==="pause")r.h.pause(); else r.h.cancelReads(); }
+  });
+  try {
+    r.state.truncated=false; r.live(); r.end(); await flush(); const initial=r.t.calls("status").at(-1)!; r.db.answered.add(initial.id); const initialOut=r.db.answer(initial); if(initialOut.ok)r.t.ok(initial.id,initialOut.result); await flush(); expect(r.h.handoff.peek()).toHaveLength(1); expect(r.h.attemptPresentations.peek()).toHaveLength(0); expect(r.window.acceptedView.peek().assistantOwnership ?? []).toHaveLength(0); const beforeTick=r.h.historyTick.peek(), beforeBody=r.t.calls("history.window").length; armed=true; r.state.available=true;
+    r.t.push({t:"changed",thread_ids:["a"],list:false}); await flush();
+    const changed=r.t.calls("status").at(-1)!; r.db.answered.add(changed.id); const changedOut=r.db.answer(changed); if(changedOut.ok)r.t.ok(changed.id,changedOut.result); await flush(); await r.pump();
+    expect(hit).toBe(true); expect(r.h.attemptPresentations.peek()).toHaveLength(0);
+    expect(r.h.historyTick.peek()).toBe(beforeTick); expect(r.t.calls("history.window")).toHaveLength(beforeBody);
+  } finally { stop(); r.data.stop(); }
+});
+
 it("lookup failure is explicit and retry performs only one new readonly lookup", async () => {
   const r = await rig(); r.live(); r.end(); await flush();
   const held = r.t.calls("status").at(-1)!; r.db.answered.add(held.id); r.t.ownerError(held.id, "unavailable", "synthetic"); await flush();

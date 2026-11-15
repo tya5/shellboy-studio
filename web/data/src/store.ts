@@ -783,7 +783,8 @@ export class ShellboyData {
       const incompleteScope = !!out.value.next_cursor || !publicScope.complete;
       const observations: DisplayObservation[] = [];
       for (const lease of leases) {
-        if (!valid() || !lease.current()) continue;
+        if (!valid()) return;
+        if (!lease.current()) continue;
         const record = lease.currentRecord();
         if (!record) continue;
         const matches = out.value.items.filter(item => item.kind === 'attempt' && item.id === record.attemptId
@@ -811,8 +812,10 @@ export class ShellboyData {
         observations.push({ kind: 'readable', lease, ...(association ? { association } : {}), ...(receipt ? { receipt } : {}) });
       }
       if (observations.length > 0) {
-        if (!valid() || displayOwner !== entry.displayOwner) displayRejected = true;
+        if (!valid()) return;
+        if (displayOwner !== entry.displayOwner) displayRejected = true;
         else if (displayOwner) { const target = displayOwner.capture(); if (!target || !target.publish(observations)) displayRejected = true; }
+        if (!valid()) return;
       }
       const receiptObservations: DisplayObservation[] = [];
 
@@ -851,6 +854,7 @@ export class ShellboyData {
           const fact: AttemptPresentation = Object.freeze({ scope: this.handoffScope(entry), attemptId: record.attemptId,
             turnId: attempt.turn_id, nodeIds: Object.freeze(refs.map(ref => ref.nodeId)),
             state: attempt.state === "failed" || attempt.state === "cancelled" || record.status === "failed" ? "failed" : "pending" });
+          if (!valid()) return;
           entry.pendingAttempts.value = Object.freeze([...entry.pendingAttempts.peek().filter(item => item.attemptId !== record.attemptId && item.scope === fact.scope), fact].slice(-8));
           if (!valid()) return;
         }

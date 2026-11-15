@@ -7,15 +7,15 @@ import {FakeOwnerDb,FakeTransport,connectedWithHistory,settle} from './harness';
 import {ownedHistory} from './owned-history';
 
 /** Status-only fixtures deliberately declare incomplete public output; body probes are explicit. */
-export async function readbackFixture(options:{readonly threadIds?:readonly string[]}={}){
+export async function readbackFixture(options:{readonly threadIds?:readonly string[]; readonly initialAvailable?:boolean; readonly windowHistory?:{readonly revision:number;readonly total:number;readonly items:readonly HistoryItem[]}}={}){
  const t=new FakeTransport(),db=new FakeOwnerDb(),frames:(()=>void)[]=[];let serial=0;
  const data=new ShellboyData({transport:t,newId:()=>`readback-${++serial}`,schedule:fn=>frames.push(fn)});
  data.start();t.open();t.push({t:'hello',bridge_version:'synthetic',owner:connectedWithHistory});await settle(t,db);
  const threadIds=options.threadIds??['a'];const handles=Object.fromEntries(threadIds.map(id=>[id,data.openThread(id)])) as Record<string,ReturnType<ShellboyData['openThread']>>;await settle(t,db);
  const h=handles.a!;
- const window=new ConversationWindow({read:async()=>({ok:true,value:ownedHistory({thread_id:'a',revision:6,total:1,items:[{node_id:'human',kind:'user',selection:{ordinal:0},items:[{kind:'text',item_identity:'human-text',text:'Independent human',text_complete:true}]}]})})});
+ const window=new ConversationWindow({read:async()=>({ok:true,value:ownedHistory({thread_id:'a',...(options.windowHistory ?? {revision:6,total:1,items:[{node_id:'human',kind:'user',selection:{ordinal:0},items:[{kind:'text',item_identity:'human-text',text:'Independent human',text_complete:true}]}]})})})});
  await settle(t,db);window.bindTerminalHandle(h);onTestFinished(()=>{window.dispose();data.stop();});
- const state={terminalState:'completed' as 'completed'|'failed'|'incomplete'|'cancelled',attempt:'attempt',available:true,truncated:true,partial:false,deferred:false,unknown:false,missing:false,error:false,changing:false,nonterminal:false,wrongid:false,empty:false};
+ const state={terminalState:'completed' as 'completed'|'failed'|'incomplete'|'cancelled',attempt:'attempt',available:options.initialAvailable ?? true,truncated:true,partial:false,deferred:false,unknown:false,missing:false,error:false,changing:false,nonterminal:false,wrongid:false,empty:false};
  const original=db.answer.bind(db);let reads=0;
  db.answer=call=>{
   if(call.command==='status'){const threadId=(call.args as {thread_id?:string}).thread_id??'a';const attemptId=threadId==='a'?state.attempt:`attempt-${threadId}`;return{ok:true,result:{items:state.available?[{...attemptWork({threadId,attemptId,turnId:'turn',state:state.nonterminal?'inflight':state.terminalState,truncated:state.truncated,
