@@ -1,5 +1,6 @@
 import {createInputCapture} from '../../data/src/immutable-input';
 import type {WindowAcceptedSnapshot} from './window';
+import type {ConversationIdentity} from './conversation-input';
 import { batch, signal, type Signal } from "@preact/signals-core";
 // Local authority identity only: never decoded or reconstructed from wire fields.
 declare const acceptedCapabilityBrand: unique symbol;
@@ -18,12 +19,12 @@ function mintCapability(): AcceptedCapability {
 type PlainCapture = <T>(value: T) => T;
 const publicationBrand: unique symbol = Symbol("accepted publication");
 export type PublicationReason = "receipt" | "ready" | "read" | "revoke" | "bump" | "own-send";
-export type AcceptedPublication<T extends { readonly displayPlan?: unknown }> = Readonly<{
+export type AcceptedPublication<T extends { readonly displayPlan?: unknown }, I = ConversationIdentity> = Readonly<{
   readonly [publicationBrand]: true;
   readonly snapshot: T;
   readonly plan: NonNullable<T["displayPlan"]>;
   readonly reason: PublicationReason;
-  readonly inputIdentity?:unknown;
+  readonly inputIdentity?:I;
   readonly lease: AcceptedLease;
 }>;
 
@@ -44,7 +45,7 @@ function materialize<T>(value: T): T { return plainCapture()(value); }
 
 /** The Window's private typed producer; external callers use makeAcceptedPublication. */
 export function makeConversationPublication(snapshot:WindowAcceptedSnapshot,reason:PublicationReason,lease:AcceptedLease,
- inputIdentity:unknown):AcceptedPublication<WindowAcceptedSnapshot>{
+ inputIdentity:ConversationIdentity):AcceptedPublication<WindowAcceptedSnapshot,ConversationIdentity>{
  const freeze=<T>(items:readonly T[]|undefined)=>items?Object.freeze(items):items;
  const value=Object.freeze({...snapshot,rows:freeze(snapshot.rows)!,range:snapshot.range?Object.freeze(snapshot.range):undefined,
   assistantOwnership:freeze(snapshot.assistantOwnership),retiredAttempts:freeze(snapshot.retiredAttempts),

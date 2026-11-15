@@ -2,7 +2,7 @@ import type { HistoryWindowInput } from '../../data/src/history-input';
 import {responseRefsMatchSelected} from "../../data/src/public-response-refs";
 import { captureConversationInput, conversationIdentityEqual, type ConversationSemanticInput } from "./conversation-input";
 import { normalizeLiveWorkFacts } from "./conversation-items";
-import { assistantOwnership, assistantOwnershipEqual, assistantOwnershipRefsEqual, type AssistantOwnership } from './assistant-ownership';
+import { assistantOwnership, assistantOwnershipEqual, assistantOwnershipRefsEqual, assistantOwnershipRetiredEqual, type AssistantOwnership } from './assistant-ownership';
 import { projectHistoryWindowItems } from './conversation-items';
 import type { DisplayAssociation, DisplayObservation, DisplayTarget } from '../../data/src/handoff';
 import { terminalPresence, type TerminalPresence, type TerminalPresenceReason } from "./terminal-presence";
@@ -1081,16 +1081,16 @@ export class ConversationWindow {
         && (!binding || binding.handle.handoffScope() === binding.scope && binding.handle.isReadQualificationCurrent(binding.token) === qualification)}, input.identity);
   }
 
-  private commitAccepted(publication: AcceptedPublication<WindowAcceptedSnapshot>): boolean {
+  private commitAccepted(publication: AcceptedPublication<WindowAcceptedSnapshot, import("./conversation-input").ConversationIdentity>): boolean {
     const published=this.acceptedView.publish(publication),ref=this.acceptedView.peek();
-    if(published&&ref===publication.snapshot&&publication.inputIdentity)this.acceptedInput={ref,identity:publication.inputIdentity as ConversationSemanticInput["identity"]};
+    if(published&&ref===publication.snapshot&&publication.inputIdentity)this.acceptedInput={ref,identity:publication.inputIdentity};
     if(!published)this.diagnostic.value=Object.freeze({reason:'publication-rejected',generation:ref.generation,revision:ref.revision,ownerEpoch:this.epoch,at:Date.now()});
     return published;
   }
 
   private nextAcceptedGeneration(): number { return ++this.acceptedGeneration; }
 
-  private commitSelectedPublication(publication: AcceptedPublication<WindowAcceptedSnapshot>, buckets: Map<number, Bucket>,
+  private commitSelectedPublication(publication: AcceptedPublication<WindowAcceptedSnapshot, import("./conversation-input").ConversationIdentity>, buckets: Map<number, Bucket>,
     expected: WindowAcceptedSnapshot, capability: AcceptedCapability): boolean {
     if (this.disposed || capability !== this.acceptedView.currentCapability || !this.acceptedView.isCurrent(expected)) return false;
     const previous = { buckets: this.buckets, total: this.total, revision: this.revision, presence: this.terminalPresence };
@@ -1121,9 +1121,7 @@ export class ConversationWindow {
       if (fact.scope !== snapshot.displayPlan.scope || !fact.refs.length) continue;
       const record = handle?.handoff.peek().find(item => item.key === fact.recordKey && item.attemptId === fact.attemptId);
       const liveOwner = !!record && handle!.isDisplayOwnershipCurrent(record, snapshot.generation);
-      const retired = this.retiredCapability === capability && snapshot.retiredAttempts?.find(item => item.scope === fact.scope && item.attemptId === fact.attemptId
-        && item.turnId === fact.turnId && item.revision === fact.receiptRevision && item.recordKey === fact.recordKey
-        && item.containerKey === fact.containerKey && assistantOwnershipRefsEqual({refs:item.refs},{refs:fact.refs}));
+      const retired = this.retiredCapability === capability && snapshot.retiredAttempts?.find(item => assistantOwnershipRetiredEqual(fact, item));
       const target = this.terminalTargets.get(JSON.stringify([fact.scope, fact.attemptId]));
       const read = target?.lease.state.peek();
       // A settled body proof lives with its actual owned lease, not a presentation generation.

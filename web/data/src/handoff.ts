@@ -70,6 +70,7 @@ export interface HandoffRecord {
   readonly terminalPersisted?: TerminalPersistedProof;
 }
 interface SourceIdentity { readonly attemptId: string; readonly key: string; readonly presentationContainer: PresentationContainerId }
+type RecordTransition = 'source' | 'bookkeeping';
 interface Held { display?: { generation: number; sourceCurrent: () => boolean; current: (generation: number) => boolean };
   attemptCapture?: { original: HandoffRecord; staged: HandoffRecord; proof: AttemptReadyProof | TerminalPersistedProof; epoch: number; lifetime: number };
   admitted: number; sourceRevision: number; identity: SourceIdentity; transferring?: boolean; attemptId: string; source: LiveText; stop: () => void; record: HandoffRecord }
@@ -95,6 +96,7 @@ export class Handoff {
   private readonly discarded = signal<PreviewDiscardReason | undefined>(undefined);
   private publishing = false;
   private publicationDirty = false;
+  private publicationForce = false;
   private readonly sig = signal<readonly HandoffRecord[]>([]);
   readonly records: ReadonlySignal<readonly HandoffRecord[]> = this.sig;
   private readonly overflowSig = signal(false);
@@ -177,7 +179,12 @@ export class Handoff {
     const h = this.held.find(h => h.attemptId === this.active);
     if (h && h.record.status !== 'ready') h.source.finish();
   }
-  fail(attemptId: string): void { this.update(attemptId, r => ({ ...r, status: 'failed' })); }
+  fail(attemptId: string): void {
+    const held=this.held.find(item=>item.attemptId===attemptId);
+    if (!held) return;
+    if (held.record.status === 'failed') { this.publish(true); return; }
+    this.updateRecord(held, {...held.record,status:'failed'}); this.publish();
+  }
   confirming(attemptId: string): void { this.update(attemptId, r => ({ ...r, status: 'confirming' })); }
   /** Reserve exact saved identity without claiming its body is safe to display. */
   identify(attemptId: string, nodeId: string): void {
@@ -270,13 +277,13 @@ export class Handoff {
         if (receiving) { deferred = reason; return; }
         if (this.lifetimeValue !== epoch || h.record !== moved || !this.held.includes(h)) return;
         if (reason === 'end') this.release(attemptId);
-        else { this.updateRecord(h, { ...moved, transferred: false }); this.publish(); }
+        else { this.updateRecord(h, { ...moved, transferred: false }, 'bookkeeping'); this.publish(); }
       })) return false;
       if (epoch !== this.lifetimeValue || !this.held.includes(h)) return false;
       receiving = false;
-      this.updateRecord(h, moved);
+      this.updateRecord(h, moved, 'bookkeeping');
       if (deferred === 'end') this.release(attemptId);
-      else if (deferred === 'return') { this.updateRecord(h, { ...moved, transferred: false }); this.publish(); }
+      else if (deferred === 'return') { this.updateRecord(h, { ...moved, transferred: false }, 'bookkeeping'); this.publish(); }
       else this.publish();
       return true;
     } finally { h.transferring = false; }
@@ -298,25 +305,27 @@ export class Handoff {
     this.overflowSig.value = false; this.publish();
   }
   /** Every held-record transition revokes leases captured from the prior source state. */
-  private updateRecord(held: Held, next: HandoffRecord): void {
-    held.sourceRevision++;
+  private updateRecord(held: Held, next: HandoffRecord, transition: RecordTransition = 'source'): void {
+    if (transition === 'source') held.sourceRevision++;
     held.record = Object.freeze(next);
   }
   private update(id: string, fn: (r: HandoffRecord) => HandoffRecord): void {
     const h = this.held.find(h => h.attemptId === id); if (!h) return; this.updateRecord(h, fn(h.record)); this.publish();
   }
-  private publish(): void {
+  private publish(force = false): void {
     for (const held of this.held) if (held.display && !held.display.sourceCurrent()) held.display = undefined;
     this.publicationDirty = true;
+    this.publicationForce ||= force;
     if (this.publishing) return;
     this.publishing = true;
     try {
       // Coalesce nested mutations without recursive notification or a queued task.
       for (let pass = 0; pass < MAX_HANDOFF_RECORDS; pass++) {
         this.publicationDirty = false;
+        const forcePass = this.publicationForce; this.publicationForce = false;
         const latest = this.held.map(h => h.record);
         const current = this.sig.peek();
-        if (latest.length !== current.length || latest.some((record, i) => record !== current[i])) this.sig.value = latest;
+        if (forcePass || latest.length !== current.length || latest.some((record, i) => record !== current[i])) this.sig.value = latest;
         if (!this.publicationDirty) return;
       }
       // A continuously mutating observer cannot keep old capture authority alive.

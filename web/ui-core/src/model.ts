@@ -1,4 +1,4 @@
-import { captureConversationInput, type ConversationSemanticInput } from "./conversation-input";
+import { captureConversationInput, createConversationIdentity, type ConversationSemanticInput } from "./conversation-input";
 import { readThreadSettings, type OutputLimitReadback, type ThreadSettings } from "./resources";
 import {localSendAdmission} from "./local-send-admission";
 import type { OwnSendTailObservation,OwnSendReservation } from "./own-send-region";
@@ -724,8 +724,8 @@ export class AppModel {
       reservation,
       validateCurrent: () => current() && reader.acceptedView.isCurrent(snapshot), cohortVersion: { accepted: cohortAccepted, pending: cohortPending } });
     const captured: ConversationSemanticInput = { ...input,
-      identity:{rows:snapshot.rows,revision:snapshot.revision,assistantOwnership:snapshot.assistantOwnership,terminalPresence:snapshot.terminalPresence,retiredAttempts:snapshot.retiredAttempts,
-        records:records.length?records:undefined,work:work.value?.items.length?work.value.items:undefined,own:[accepted,pending,reservation,retryCurrent,eligible],scope,current:current()},
+      identity:createConversationIdentity({rows:snapshot.rows,revision:snapshot.revision,assistantOwnership:snapshot.assistantOwnership,terminalPresence:snapshot.terminalPresence,retiredAttempts:snapshot.retiredAttempts,
+        records:records.length?records:undefined,work:work.value?.items.length?work.value.items:undefined,scope,current:current()}, {accepted:accepted as object,pending:pending as object|undefined,reservation:reservation as object|undefined,retryCurrent:retryCurrent as (()=>boolean)|undefined,eligible}),
       projection: current() ? decision.projection : input.projection,
       decision: { cohortVersion: { accepted: cohortAccepted, pending: cohortPending }, localRegion: captureOwnSendLocalRegion(decision) },
       isCurrent: () => this.longReader.peek() === reader && this.handle.peek() === handle

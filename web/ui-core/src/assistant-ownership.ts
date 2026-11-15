@@ -36,6 +36,14 @@ export function assistantOwnershipEqual(a: AssistantOwnership, b: AssistantOwner
     && assistantOwnershipRefsEqual(a,b);
 }
 
+/** Exact relation between an accepted owner and its retired source proof. */
+export function assistantOwnershipRetiredEqual(owner: Pick<AssistantOwnership, 'scope'|'attemptId'|'turnId'|'recordKey'|'containerKey'|'receiptRevision'|'refs'>,
+  retired: { readonly scope: string; readonly attemptId: string; readonly turnId: string; readonly recordKey: string; readonly containerKey: string; readonly revision: number; readonly refs: readonly { readonly nodeId: string; readonly ordinal: number; readonly kind: string }[] }): boolean {
+  return owner.scope === retired.scope && owner.attemptId === retired.attemptId && owner.turnId === retired.turnId
+    && owner.recordKey === retired.recordKey && owner.containerKey === retired.containerKey
+    && owner.receiptRevision === retired.revision && assistantOwnershipRefsEqual(owner, retired);
+}
+
 export function assistantOwnership(association: DisplayAssociation, recordKey: string,
   rows: readonly HistoryItem[], revision: number): AssistantOwnership | undefined {
   const nodeIds = new Set(association.refs.map(ref => ref.nodeId));
