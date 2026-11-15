@@ -21,6 +21,7 @@ import { MonitorPopover } from "../system/components/MonitorPopover";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
 import { collectExecutionSteps, toolLabel, activityLabel, renderOutput, formatClock, formatDuration, formatRoute, formatTokens, parseTime, statusLabel, type AppModel, type ConversationRow, type StepRow as Step } from "../../../ui-core/src";
 import { WindowedScroll } from "./WindowedScroll";
+import { handoffLabelKey } from "./handoffLabel";
 import { BranchMark, Button, Composer, LoadingRows, EmptyState, Icon, KeyValue, LogBlock, Message, Notice, QuestionCard, StatusMark, StepRow, SummaryStrip, WorkSheet } from "../system/components";
 
 /** Internal immutable publication seam; deliberately not a Core transport type. */
@@ -177,8 +178,8 @@ export function SavedConversationItems({ model, projection: suppliedProjection, 
           const source = item.source;
           const handle = model.handle.value;
           const record = source.namespace === "handoff" ? handle?.handoff.value.find(record => record.key === source.recordId) : undefined;
-          if(membership.get(item.key)==="live-presence")return <div data-live-overlay="" data-assistant-presence="">{t(record?.status==="confirming"?"convo.handoffConfirming":"convo.live")}{record ? <LiveRecordChrome model={model} record={record} retry={() => handle?.retryHandoff()} /> : null}</div>;
-          return <div data-live-overlay=""><Message bot who={t("convo.shellboy")} at={t(record?.status==="confirming"?"convo.handoffConfirming":"convo.live")} text={displayText ?? ""} copyLabel={t("code.copy")} copiedLabel={t("code.copied")}>
+          if(membership.get(item.key)==="live-presence")return <div data-live-overlay="" data-assistant-presence="">{t(record ? handoffLabelKey(record, handle?.handoffRetryState.value) : "convo.live")}{record ? <LiveRecordChrome model={model} record={record} retry={() => handle?.retryHandoff()} /> : null}</div>;
+          return <div data-live-overlay=""><Message bot who={t("convo.shellboy")} at={t(record ? handoffLabelKey(record, handle?.handoffRetryState.value) : "convo.live")} text={displayText ?? ""} copyLabel={t("code.copy")} copiedLabel={t("code.copied")}>
             {record ? <LiveRecordChrome model={model} record={record} retry={() => handle?.retryHandoff()} /> : null}
           </Message></div>;
         }

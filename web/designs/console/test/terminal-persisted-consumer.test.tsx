@@ -181,7 +181,7 @@ it('observes ninth same-scope exact terminal receipt backpressure separately fro
     expect(handle.handoffRetryState.peek()).not.toMatchObject({reason:'budget-exhausted'});
     expect(handle.handoffRetryState.peek()).toMatchObject({phase:'unavailable',reason:'receipt_capacity',canRetry:false});
     const preview=host.querySelector('[data-live-overlay]')!;
-    expect(preview.querySelector('small.mono')?.textContent).toBe(f.model.t.value('convo.handoffConfirming'));
+    expect(preview.querySelector('small.mono')?.textContent).toBe(f.model.t.value('convo.retry.receipt_capacity'));
     expect(preview.textContent).toContain('Preview 9');
     expect(preview.querySelector('[data-handoff-retry-reason="receipt_capacity"]')?.textContent).toContain(f.model.t.value('convo.retry.receipt_capacity'));
     expect(preview.querySelector('[data-handoff-retry-reason="receipt_capacity"] button')).toBeNull();

@@ -9,6 +9,7 @@ import {expect,it} from 'vitest';
 import {fixtureModel} from '../../../ui-core/test/fixture';
 import {normalizeConversationFacts,projectHistoryWindowItems,projectLegacyHistoryItems,projectSavedItems} from '../../../ui-core/src/conversation-items';
 import {LiveRecordChrome,SavedConversationItems} from '../screens/Conversation';
+import {LiveMessage} from '../screens/LiveMessage';
 import type {HandoffRetryState} from '../../../data/src/store';
 it('headings consume canonical category counts, omit zero and keep reasons only inside Problems',async()=>{
  const f=await publicConversationFixture({nodes:[{node_id:'t',kind:'assistant_response',items:[{kind:'tool_call',item_identity:'t',execution_ids:['one']}]},{node_id:'r',kind:'reasoning_unavailable'},{node_id:'n',kind:'event'},{node_id:'p',kind:'assistant_response',items:[{kind:'unavailable',item_identity:'p',reason:'response_budget'}]}]}),host=document.createElement('div');document.body.append(host);
@@ -154,5 +155,19 @@ for(const windowed of [false,true])it(`all actual Work member boundaries own one
   }
   expect(members[0]!.querySelectorAll('[data-execution-id]>.work-element-row')).toHaveLength(2);
   expect(host.querySelector('[data-work-item-key] [data-work-item-key]')).toBeNull();
+ }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
+});
+
+it('exposes typed budget exhaustion alongside retained confirming preview for the same record',async()=>{
+ const f=await fixtureModel({capabilities:['live.text']}),host=document.createElement('div');document.body.append(host);
+ const record={key:'budget-record',presentationContainer:'presentation:test' as import('../../../data/src/handoff').PresentationContainerId,attemptId:'attempt',status:'confirming' as const,bodyAuthority:'preview' as const,text:'retained preview body',incomplete:false};
+ const state:{phase:'unavailable';reason:'budget-exhausted';canRetry:true}={phase:'unavailable',reason:'budget-exhausted',canRetry:true};
+ const handle={handoff:{value:[record]},handoffOverflow:{value:false},handoffRetryState:{value:state},retryHandoff:async()=>{}} as unknown as import('../../../data/src').ThreadHandle;
+ const model=new Proxy(f.model,{get(target,key){return key==='handle'?{value:handle}:Reflect.get(target,key);}});
+ try{
+  await act(async()=>render(<><LiveMessage model={model} handle={handle} follow={()=>{}}/><LiveRecordChrome model={model} record={record} retry={()=>{}}/></>,host));
+  expect(host.textContent).not.toContain(f.model.t.value('convo.handoffConfirming'));
+  expect(host.textContent).toContain(f.model.t.value('convo.retry.budget-exhausted'));
+  expect(host.textContent).toContain('retained preview body');
  }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
 });
