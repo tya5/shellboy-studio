@@ -308,11 +308,7 @@ export class ConversationWindow {
           const ref = this.acceptedView.peek();
           const issued = decisions.find(decision => decision.recordKey === item.lease.original.key && decision.attemptId === item.lease.original.attemptId)!;
           return qualified() && this.acceptedView.isCurrent(ref) && ref.generation >= at
-            && ref.assistantOwnership?.some(owner => owner.recordKey === issued.recordKey && owner.attemptId === issued.attemptId
-              && owner.scope === issued.scope && owner.turnId === issued.turnId && owner.containerKey === issued.containerKey
-              && owner.receiptRevision === issued.receiptRevision && owner.refs.length === issued.refs.length
-              && owner.refs.every((node,index) => node.nodeId === issued.refs[index]?.nodeId
-                && node.ordinal === issued.refs[index]?.ordinal && node.kind === issued.refs[index]?.kind)) === true;
+            && ref.assistantOwnership?.some(owner => assistantOwnershipEqual(owner, issued)) === true;
         })] : []);
       const oldReceipts = this.terminalPersistedAttempts, oldCap = this.terminalCapability, oldPresence = this.terminalPresence;
       this.terminalPersistedAttempts = receipts; this.terminalCapability = cap; this.terminalPresence = presence;
