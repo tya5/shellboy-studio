@@ -194,9 +194,9 @@ an aggregate-positive eight-page input whose individually bounded pages join to
 a secret sentinel. These focused receipts do not establish full-suite, review,
 CI, or three-OS qualification.
 
-Remaining qualification work is removal of the obsolete test-only generic
-accepted-publication mint/materialization path and the complete-unit validation
-sequence. No compatibility fallback is permitted while those paths are removed.
+The obsolete test-only generic accepted-publication mint/materialization path has
+been removed from the typed producer unit. Remaining qualification is the complete
+unit validation sequence; no compatibility fallback was retained.
 
 The public-entry fixed-point proof now uses the existing captured base identity:
 model capture extends `input.identity` with typed own-send fields, while the base
