@@ -19,9 +19,22 @@ function canonicalHistoryInput(snapshot:WindowAcceptedSnapshot,scope:string):Can
   projection:projectHistoryWindowItems({revision:snapshot.revision??0,nodes:snapshot.rows,keyScope:Object.freeze([scope])}).projection});
 }
 
+export interface ConversationIdentity {
+  readonly rows: WindowAcceptedSnapshot['rows']; readonly revision: number | undefined;
+  readonly assistantOwnership: WindowAcceptedSnapshot['assistantOwnership'];
+  readonly terminalPresence: WindowAcceptedSnapshot['terminalPresence']; readonly retiredAttempts: WindowAcceptedSnapshot['retiredAttempts'];
+  readonly records?: readonly unknown[]; readonly work?: readonly unknown[];
+  readonly own?: readonly unknown[]; readonly scope: string; readonly current: boolean;
+}
+export function conversationIdentityEqual(a: ConversationIdentity, b: ConversationIdentity): boolean {
+  return a.rows === b.rows && a.revision === b.revision && a.assistantOwnership === b.assistantOwnership
+    && a.terminalPresence === b.terminalPresence && a.retiredAttempts === b.retiredAttempts
+    && a.records === b.records && a.work === b.work && a.own === b.own && a.scope === b.scope && a.current === b.current;
+}
+
 export interface ConversationSemanticInput {
   readonly isCurrent: () => boolean;
-  readonly identity:readonly unknown[];
+  readonly identity:ConversationIdentity;
   readonly canonicalInput:CanonicalHistoryInput;
   readonly scope: string;
   readonly canonicalProjection: SavedItemProjection;
@@ -84,7 +97,7 @@ export function captureConversationInput(snapshot: WindowAcceptedSnapshot, input
   const keys = new Set(projection.items.map(item => item.key));
   for (const owner of ownership.filter(item => item.mode === 'canonical'))
     for (const key of owner.itemKeys) if (keys.has(key)) containers.set(key, owner.containerKey);
-  return { isCurrent: () => true,identity:[snapshot.rows,snapshot.revision,snapshot.assistantOwnership,snapshot.terminalPresence,snapshot.retiredAttempts,
-      input.records.length?input.records:undefined,input.work.length?input.work:undefined,input.scope,input.current],canonicalInput,scope: input.scope, canonicalProjection, projection: containers.size ? withPresentationContainers(projection, containers) : projection,
+  return { isCurrent: () => true,identity:{rows:snapshot.rows,revision:snapshot.revision,assistantOwnership:snapshot.assistantOwnership,terminalPresence:snapshot.terminalPresence,retiredAttempts:snapshot.retiredAttempts,
+      records:input.records.length?input.records:undefined,work:input.work.length?input.work:undefined,scope:input.scope,current:input.current},canonicalInput,scope: input.scope, canonicalProjection, projection: containers.size ? withPresentationContainers(projection, containers) : projection,
     decision: { cohortVersion: { accepted: [] }, localRegion: emptyOwnSendLocalRegion(input.scope) }, coverage: work === undefined ? 'unavailable' : 'complete' };
 }

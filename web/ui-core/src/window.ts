@@ -1,6 +1,6 @@
 import type { HistoryWindowInput } from '../../data/src/history-input';
 import {responseRefsMatchSelected} from "../../data/src/public-response-refs";
-import { captureConversationInput, type ConversationSemanticInput } from "./conversation-input";
+import { captureConversationInput, conversationIdentityEqual, type ConversationSemanticInput } from "./conversation-input";
 import { normalizeLiveWorkFacts } from "./conversation-items";
 import { assistantOwnership, assistantOwnershipEqual, type AssistantOwnership } from './assistant-ownership';
 import { projectHistoryWindowItems } from './conversation-items';
@@ -170,7 +170,7 @@ export class ConversationWindow {
     sourceRef: WindowAcceptedSnapshot; sourceCap: AcceptedCapability; nodeId: string; offset: number; scope: string;
     consumed: boolean; targetCap?: AcceptedCapability; coverage?: AcceptedCoverage } | undefined;
   private acceptedGeneration = 0;
-  private acceptedInput?:{ref:WindowAcceptedSnapshot;identity:readonly unknown[]};
+  private acceptedInput?:{ref:WindowAcceptedSnapshot;identity:ConversationSemanticInput["identity"]};
   private terminalPresence: readonly TerminalPresence[] = [];
   private terminalBinding: { handle: ThreadHandle; token: ThreadReadQualification; scope: string } | undefined;
   private conversationInputOwner: ((snapshot: WindowAcceptedSnapshot) => ConversationSemanticInput) | undefined;
@@ -1032,7 +1032,7 @@ export class ConversationWindow {
     if(this.disposed||!this.acceptedView.isCurrent(ref))return false;
     const candidate=this.qualifyRetainedOwners(ref,capability),input=this.captureConversationInput(candidate);
     const prior=this.acceptedInput;
-    if(prior?.ref===ref&&prior.identity.length===input.identity.length&&prior.identity.every((value,index)=>value===input.identity[index]))return true;
+    if(prior?.ref===ref&&conversationIdentityEqual(prior.identity,input.identity))return true;
     const generation=this.nextAcceptedGeneration();
     const staged=this.prepareCaptured({...candidate,generation},capability,input,'bump');
     if(!this.acceptedView.isCurrent(ref)||capability!==this.acceptedView.currentCapability)return false;
@@ -1083,7 +1083,7 @@ export class ConversationWindow {
 
   private commitAccepted(publication: AcceptedPublication<WindowAcceptedSnapshot>): boolean {
     const published=this.acceptedView.publish(publication),ref=this.acceptedView.peek();
-    if(published&&ref===publication.snapshot&&publication.inputIdentity)this.acceptedInput={ref,identity:publication.inputIdentity};
+    if(published&&ref===publication.snapshot&&publication.inputIdentity)this.acceptedInput={ref,identity:publication.inputIdentity as ConversationSemanticInput["identity"]};
     if(!published)this.diagnostic.value=Object.freeze({reason:'publication-rejected',generation:ref.generation,revision:ref.revision,ownerEpoch:this.epoch,at:Date.now()});
     return published;
   }

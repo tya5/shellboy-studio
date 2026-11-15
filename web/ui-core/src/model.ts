@@ -724,8 +724,8 @@ export class AppModel {
       reservation,
       validateCurrent: () => current() && reader.acceptedView.isCurrent(snapshot), cohortVersion: { accepted: cohortAccepted, pending: cohortPending } });
     const captured: ConversationSemanticInput = { ...input,
-      identity:[snapshot.rows,snapshot.revision,snapshot.assistantOwnership,snapshot.terminalPresence,snapshot.retiredAttempts,
-        records.length?records:undefined,work.value?.items.length?work.value.items:undefined,accepted,pending,reservation,retryCurrent,eligible,scope,current()],
+      identity:{rows:snapshot.rows,revision:snapshot.revision,assistantOwnership:snapshot.assistantOwnership,terminalPresence:snapshot.terminalPresence,retiredAttempts:snapshot.retiredAttempts,
+        records:records.length?records:undefined,work:work.value?.items.length?work.value.items:undefined,own:[accepted,pending,reservation,retryCurrent,eligible],scope,current:current()},
       projection: current() ? decision.projection : input.projection,
       decision: { cohortVersion: { accepted: cohortAccepted, pending: cohortPending }, localRegion: captureOwnSendLocalRegion(decision) },
       isCurrent: () => this.longReader.peek() === reader && this.handle.peek() === handle

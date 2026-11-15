@@ -23,7 +23,7 @@ export type AcceptedPublication<T extends { readonly displayPlan?: unknown }> = 
   readonly snapshot: T;
   readonly plan: NonNullable<T["displayPlan"]>;
   readonly reason: PublicationReason;
-  readonly inputIdentity?:readonly unknown[];
+  readonly inputIdentity?:unknown;
   readonly lease: AcceptedLease;
 }>;
 
@@ -44,7 +44,7 @@ function materialize<T>(value: T): T { return plainCapture()(value); }
 
 /** The Window's private typed producer; external callers use makeAcceptedPublication. */
 export function makeConversationPublication(snapshot:WindowAcceptedSnapshot,reason:PublicationReason,lease:AcceptedLease,
- inputIdentity:readonly unknown[]):AcceptedPublication<WindowAcceptedSnapshot>{
+ inputIdentity:unknown):AcceptedPublication<WindowAcceptedSnapshot>{
  const freeze=<T>(items:readonly T[]|undefined)=>items?Object.freeze(items):items;
  const value=Object.freeze({...snapshot,rows:freeze(snapshot.rows)!,range:snapshot.range?Object.freeze(snapshot.range):undefined,
   assistantOwnership:freeze(snapshot.assistantOwnership),retiredAttempts:freeze(snapshot.retiredAttempts),
