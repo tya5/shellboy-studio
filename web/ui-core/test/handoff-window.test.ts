@@ -33,7 +33,24 @@ describe('bounded canonical attachment receive',()=>{
     h.transfer('a',()=>true);oldRelease!('end');
     expect(h.records.value).toHaveLength(1);expect(h.records.value[0]!.transferred).toBe(true);r.w.dispose();r.data.stop();
   });
-  it('same-content confirming reentry keeps the original lease while bookkeeping changes do not advance source',async()=>{
+  it('does not transfer ownership after an accept callback changes the source record',async()=>{
+  const cases:[string,(h:Handoff,record:HandoffRecord)=>boolean][]=[
+    ['true', (h,record)=>{ expect(h.ready('a','n0-9','callback source',record.proof)).toBe(true); return true; }],
+    ['false', (h,record)=>{ expect(h.ready('a','n0-9','false source',record.proof)).toBe(true); return false; }],
+    ['throw', (h,record)=>{ expect(h.ready('a','n0-9','throw source',record.proof)).toBe(true); throw new Error('callback source changed'); }],
+  ];
+  for(const [name,accept] of cases){
+    const {r,h}=await setup(); const before=h.records.value[0]!;
+    if(name==='true') expect(h.transfer('a',record=>accept(h,record))).toBe(false);
+    else if(name==='false') expect(h.transfer('a',record=>accept(h,record))).toBe(false);
+    else expect(()=>h.transfer('a',record=>accept(h,record))).toThrow('callback source changed');
+    const after=h.records.value[0]!;
+    expect(after.text).toContain('source'); expect(after.transferred).toBeUndefined(); expect(after).not.toBe(before);
+    r.w.dispose();r.data.stop();
+  }
+});
+
+it('same-content confirming reentry keeps the original lease while bookkeeping changes do not advance source',async()=>{
   const {r,h}=await setup();
   h.confirming('a');
   const original=h.records.value[0]!; const lease=h.captureDisplay(original)!;
