@@ -5,7 +5,8 @@ import { mount } from '../..';
 import { DESIGNS } from '../../../registry';
 
 const params = new URLSearchParams(location.search);
-const { model, t, db } = await fixtureModel({ configure(db) {
+const fixtureOptions = params.get('view') === 'memory' ? { route: 'analytics' as const, section: 'memory' as const } : {};
+const { model, t, db } = await fixtureModel({ ...fixtureOptions, configure(db) {
   if (params.get('state') === 'awaiting') {
     Object.assign(db.details.lead!, { parent_id: 'organization', shells_count: 1, awaiting_replies: [
       { message_id: 'human-5', recipient_kind: 'human', recipient_thread_id: 'lead', excerpt: 'P5_HUMAN_QUESTION', delivery_status: 'accepted' },
@@ -26,7 +27,7 @@ if (params.get('state') === 'empty') {
 }
 const send = t.send.bind(t);
 t.send = (frame) => { const ok = send(frame); if (frame.t === 'call') queueMicrotask(() => void settle(t, db)); return ok; };
-const prefs = signal<Prefs>({ design: 'console', theme: params.get('theme') === 'light' ? 'light' : params.get('theme') === 'terminal' ? 'terminal' : 'console', lang: 'en', monitorView: 'cards', weights: { cached: 0.1, output: 5 } });
+const prefs = signal<Prefs>({ design: 'console', theme: params.get('theme') === 'light' ? 'light' : params.get('theme') === 'terminal' ? 'terminal' : 'console', lang: params.get('lang') === 'ja' ? 'ja' : 'en', monitorView: 'cards', weights: { cached: 0.1, output: 5 } });
 effect(() => { document.documentElement.dataset.ds = prefs.value.theme; });
 mount(document.getElementById('app')!, { model, designs: DESIGNS, prefs, setPrefs: (change) => { prefs.value = { ...prefs.value, ...change }; }, submitToken: async () => true });
 
