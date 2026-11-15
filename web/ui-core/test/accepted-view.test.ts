@@ -51,6 +51,15 @@ it("rejects a captured capability after revoke", () => {
   expect(publish(view, next(view, 2), cap)).toBe(false);
   expect(publish(view, next(view, 3))).toBe(true);
 });
+it("revocation permanently invalidates retained leases and publications", () => {
+  const view = new AcceptedView(page(1)), oldLease = view.currentLease, old = makeAcceptedPublication(next(view, 2), "read");
+  view.revoke();
+  const newLease = view.currentLease;
+  expect(oldLease.isCurrent()).toBe(false); expect(newLease.isCurrent()).toBe(true);
+  view.revoke(); expect(oldLease.isCurrent()).toBe(false); expect(newLease.isCurrent()).toBe(false);
+  expect(view.publish(old)).toBe(false); expect(view.current.revision).toBe(1);
+});
+
 it("a getter-triggered nested publication wins over the outer publication", () => {
   const view = new AcceptedView(page(0)); const value = next(view, 2);
   Object.defineProperty(value, "generation", { get() { publish(view, next(view, 3)); return 2; } });

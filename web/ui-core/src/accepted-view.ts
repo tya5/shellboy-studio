@@ -72,11 +72,12 @@ export class AcceptedView<T> {
     const initialPlan = (initial as { readonly displayPlan?: { readonly capability?: AcceptedCapability } }).displayPlan;
     if (initialPlan?.capability && capabilityTokens.has(initialPlan.capability)) this.capability.value = initialPlan.capability;
     this.acceptedCapability=this.capability.peek();
-    this.lease=Object.freeze({capability:this.acceptedCapability,isCurrent:()=>this.isCurrentLease(this.lease)});
+    const capability=this.acceptedCapability;
+    this.lease=Object.freeze({capability,isCurrent:()=>this.isCurrentLease(capability)});
   }
   get current(): T { return this.value.value; }
   peek(): T { return this.value.peek(); }
-  private isCurrentLease(lease: AcceptedLease): boolean { return !this.ended && this.capability.peek() === lease.capability; }
+  private isCurrentLease(capability: AcceptedCapability): boolean { return !this.ended && this.capability.peek() === capability; }
   isCurrent(ref: T): boolean { return !this.ended && this.value.peek() === ref && this.capability.peek() === this.acceptedCapability; }
   get currentCapability(): AcceptedCapability { return this.capability.value; }
   get currentLease(): AcceptedLease { return this.lease; }
@@ -117,7 +118,7 @@ export class AcceptedView<T> {
     this.listeners.add(listener); return () => { this.listeners.delete(listener); };
   }
   /** Revoke before cancellation/other external callbacks, without replacing display. */
-  revoke(): void { batch(() => { this.staged = undefined; this.pending = false; const capability=mintCapability(); this.capability.value=capability; this.lease=Object.freeze({capability,isCurrent:()=>this.isCurrentLease(this.lease)}); }); }
+  revoke(): void { batch(() => { this.staged = undefined; this.pending = false; const capability=mintCapability(); this.capability.value=capability; this.lease=Object.freeze({capability,isCurrent:()=>this.isCurrentLease(capability)}); }); }
   dispose(): void { this.ended = true; this.revoke(); this.listeners.clear(); }
   private notify(): void {
     if (this.notifying || this.ended) return;
