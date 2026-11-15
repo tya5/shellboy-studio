@@ -106,6 +106,8 @@ it('retains same-entry dirty work until the current resolver admits it',async()=
   expect(status).toBeDefined();
   r.live();r.end();await flush();
   expect(r.t.calls('status').filter(call=>(call.args as {thread_id?:string}).thread_id==='a')).toHaveLength(1);
+  expect(r.t.calls('status')).toHaveLength(1);
+  expect(r.h.handoff.peek()).toHaveLength(1);
   const result=r.db.answer(status!);r.db.answered.add(status!.id);
   if(result.ok)r.t.ok(status!.id,result.result);else r.t.ownerError(status!.id,result.code,result.message);
   await r.pump();

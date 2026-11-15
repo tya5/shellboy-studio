@@ -678,11 +678,7 @@ export class ShellboyData {
     if (kind === "thread") return this.readDetail(entry, onSent);
     if (kind === "work") return this.readWork(entry, onSent);
     if (kind !== "history" || !this.capabilities.peek().includes(CAPABILITY_HISTORY_WINDOW)) return;
-    entry.historyTick.value++; // current contract: only the positional reader may load history
-    if (entry.refreshAfterHandoff) {
-      entry.refreshAfterHandoff = false;
-      void this.resolveHandoff(entry);
-    }
+    entry.historyTick.value++; // notification only; positional reads own history admission
   }
 
   private listFilterRead: ListFilter | undefined;
