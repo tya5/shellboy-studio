@@ -594,6 +594,7 @@ export class ShellboyData {
         const entry = this.entries.get(f.thread_id);
         if (!entry) break;
         entry.live.finish();
+        entry.refreshAfterHandoff = true;
         void this.resolveHandoff(entry);
         void this.requestThread(f.thread_id, false); // history ownership is reconciled separately
         break;
@@ -678,6 +679,10 @@ export class ShellboyData {
     if (kind === "work") return this.readWork(entry, onSent);
     if (kind !== "history" || !this.capabilities.peek().includes(CAPABILITY_HISTORY_WINDOW)) return;
     entry.historyTick.value++; // current contract: only the positional reader may load history
+    if (entry.refreshAfterHandoff) {
+      entry.refreshAfterHandoff = false;
+      void this.resolveHandoff(entry);
+    }
   }
 
   private listFilterRead: ListFilter | undefined;
@@ -901,7 +906,7 @@ export class ShellboyData {
           : { phase: "idle", canRetry: false };
       }
       if (entry.refreshAfterHandoff && !entry.live.records.peek().some(r => r.status === "failed")) {
-        entry.refreshAfterHandoff = false; if (!entry.closed && !entry.paused) this.refreshHint(entry.id);
+        this.refreshHint(entry.id);
       }
     });
     this.handoffRead = { entry, done: entry.resolving };
