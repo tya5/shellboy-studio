@@ -205,7 +205,8 @@ export class ConversationWindow {
 
   constructor(reader: WindowReader, options: WindowOptions = {}) {
     this.reader={read:async(args,cancel)=>{
-      const out=await reader.read(args,cancel),expected=this.acceptedView.peek(),owner=this.acceptedView.currentCapability;
+      const expected=this.acceptedView.peek(),owner=this.acceptedView.currentCapability;
+      const out=await reader.read(args,cancel);
       if(this.acceptedView.peek()!==expected||this.acceptedView.currentCapability!==owner)
         return{ok:false,error:{kind:'cancelled',message:'input ownership changed while normalizing'}};
       if(!out.ok&&out.error.kind==='invalid_response'){
@@ -1072,9 +1073,8 @@ export class ConversationWindow {
           retiredAttempts: snapshot.retiredAttempts ?? [] }).plan;
     const binding = this.terminalBinding;
     const qualification = binding?.handle.isReadQualificationCurrent(binding.token);
-    const lease=this.acceptedView.currentLease;
     return makeConversationPublication({ ...snapshot,canonicalInput:input.canonicalInput, displayPlan }, reason,
-      {capability, isCurrent:()=>input.isCurrent() && this.acceptedView.currentLease===lease
+      {capability, isCurrent:()=>input.isCurrent()
         && this.terminalBinding === binding
         && (!binding || binding.handle.handoffScope() === binding.scope && binding.handle.isReadQualificationCurrent(binding.token) === qualification)}, input.identity);
   }

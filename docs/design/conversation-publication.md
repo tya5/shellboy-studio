@@ -257,3 +257,20 @@ for transfer/acceptance and semantic publication. These are intentionally distin
 inputs: live Work records are normalized against their Thread source identity;
 accepted ready proofs and handoff records are checked against the owner/thread/session
 lease scope.
+
+## S-b..i Ownership Simplification Contract (2026-11-15)
+
+The handoff source lease has one authoritative semantic transition boundary:
+`updateRecord` compares typed source content and status, increments source revision
+only for real source changes, and preserves display continuity for same-content
+confirming repeats and bookkeeping-only transfer changes. Failed-readable and
+bookkeeping continuity positives remain required, as do real source invalidation
+negatives. Work capture uses one mandatory shared source/facts descriptor; empty
+Work is an explicit descriptor, not an independent identity recipe.
+
+Accepted publication uses the View capability and currentness/disposal guards as
+one lifetime identity. History joins use one named 1,600-row contract while
+retaining both per-admission and joined-output checks. Unused visit accounting and
+ineffective post-await recapture checks are not authority. Body authority and
+validation/test correspondence are documented separately; visual diagnostic work
+is intentionally outside this source unit.

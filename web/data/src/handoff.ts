@@ -69,11 +69,10 @@ export interface HandoffRecord {
   readonly readyAttempt?: AttemptReadyProof;
   readonly terminalPersisted?: TerminalPersistedProof;
 }
-interface SourceIdentity { readonly attemptId: string; readonly key: string; readonly presentationContainer: PresentationContainerId }
 type RecordTransition = 'source' | 'bookkeeping';
 interface Held { display?: { generation: number; sourceCurrent: () => boolean; current: (generation: number) => boolean };
   attemptCapture?: { original: HandoffRecord; staged: HandoffRecord; proof: AttemptReadyProof | TerminalPersistedProof; epoch: number; lifetime: number };
-  admitted: number; sourceRevision: number; identity: SourceIdentity; transferring?: boolean; attemptId: string; source: LiveText; stop: () => void; record: HandoffRecord }
+  admitted: number; sourceRevision: number; transferring?: boolean; attemptId: string; source: LiveText; stop: () => void; record: HandoffRecord }
 
 /** One ledger per watched Thread. No queue, spill or timer. Hints cannot refill read budget. */
 export class Handoff {
@@ -122,7 +121,7 @@ export class Handoff {
       if (this.active) this.finish();
       const source = new LiveText(this.schedule);
       const record: HandoffRecord = { key: `handoff:${frame.attempt_id}`, presentationContainer: mintPresentationContainer(frame.attempt_id), attemptId: frame.attempt_id, text: '', incomplete: frame.gap, status: 'streaming', bodyAuthority: 'preview', ...(placement?{placement:Object.freeze({...placement,anchor:Object.freeze({...placement.anchor})})}:{}) };
-      h = { admitted: 0, sourceRevision: 0, identity: Object.freeze({attemptId: record.attemptId, key: record.key, presentationContainer: record.presentationContainer}), attemptId: frame.attempt_id, source, stop: () => {}, record };
+      h = { admitted: 0, sourceRevision: 0, attemptId: frame.attempt_id, source, stop: () => {}, record };
       const held = h;
       this.held.push(h);
       h.stop = source.preview.subscribe(p => {
@@ -152,9 +151,8 @@ export class Handoff {
   captureDisplay(original: HandoffRecord): DisplayLease | undefined {
     const held = this.held.find(item => item.record === original);
     if (!held || !original.text) return;
-    const epoch = this.epochValue, lifetime = this.lifetimeValue, capturedStatus = original.status, sourceRevision = held.sourceRevision, identity = held.identity;
-    const currentRecord = () => this.held.includes(held) && identity.attemptId === original.attemptId && identity.key === original.key
-      && identity.presentationContainer === original.presentationContainer && epoch === this.epochValue && lifetime === this.lifetimeValue
+    const epoch = this.epochValue, lifetime = this.lifetimeValue, capturedStatus = original.status, sourceRevision = held.sourceRevision;
+    const currentRecord = () => this.held.includes(held) && epoch === this.epochValue && lifetime === this.lifetimeValue
       && sourceRevision === held.sourceRevision
       // A confirming-to-failed transition revokes a prior lease; a lease
       // captured from an issuer-failed record remains a valid failed-readable source.
@@ -305,7 +303,14 @@ export class Handoff {
   }
   /** Every held-record transition revokes leases captured from the prior source state. */
   private updateRecord(held: Held, next: HandoffRecord, transition: RecordTransition = 'source'): void {
-    if (transition === 'source') held.sourceRevision++;
+    const previous = held.record;
+    const semanticChange = previous.attemptId !== next.attemptId || previous.key !== next.key
+      || previous.presentationContainer !== next.presentationContainer || previous.text !== next.text
+      || previous.incomplete !== next.incomplete || previous.status !== next.status
+      || previous.bodyAuthority !== next.bodyAuthority || previous.nodeId !== next.nodeId
+      || previous.proof !== next.proof || previous.readyAttempt !== next.readyAttempt
+      || previous.terminalPersisted !== next.terminalPersisted || previous.placement !== next.placement;
+    if (transition === 'source' && semanticChange) held.sourceRevision++;
     held.record = Object.freeze(next);
   }
   private update(id: string, fn: (r: HandoffRecord) => HandoffRecord): void {

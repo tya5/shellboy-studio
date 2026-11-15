@@ -1,6 +1,5 @@
 import { emptyOwnSendLocalRegion } from "./own-send-presentation";
 import type { HandoffRecord } from '../../data/src/handoff';
-import type { WorkItem } from '../../data/src/protocol';
 import type { WindowAcceptedSnapshot } from './window';
 import type { OwnUserDecision, ConversationDisplayPlan } from './conversation-display-plan';
 import { projectHistoryWindowItems, projectOwnedHandoffFacts, projectSavedItems, retainUnretiredLiveFacts,
@@ -27,7 +26,6 @@ export interface ConversationIdentity {
   readonly records?: readonly HandoffRecord[]; readonly work?: WorkCaptureDescriptor;
   readonly own?: OwnSendIdentity; readonly scope: string; readonly current: boolean;
 }
-export const EMPTY_WORK_ITEMS: readonly WorkItem[] = Object.freeze([]);
 export interface WorkCaptureDescriptor {
   readonly source: object;
   readonly facts: readonly NormalizedSavedItem[];

@@ -1,4 +1,4 @@
-import {HistoryWindowInput} from './history-input';
+import {HistoryWindowInput, MAX_HISTORY_ROWS} from './history-input';
 import {InputCaptureError} from './immutable-input';
 import { signal, type Signal, type ReadonlySignal } from "@preact/signals-core";
 import type { TerminalPersistedProof, HandoffRecord } from "./handoff";
@@ -35,7 +35,7 @@ function validRequest(request:SelectedCanonicalRequest):boolean{
  const {args,selection}=request,before=args.before??0,after=args.after??0;
  if(args.items!==true||!Number.isInteger(before)||!Number.isInteger(after)||before<0||after<0||before+after+1>200)return false;
  return !selection||(Number.isSafeInteger(selection.first)&&Number.isSafeInteger(selection.last)&&Number.isSafeInteger(selection.revision)
-  &&selection.first>=0&&selection.last>=selection.first&&selection.last-selection.first+1<=1600&&selection.revision>=0
+  &&selection.first>=0&&selection.last>=selection.first&&selection.last-selection.first+1<=MAX_HISTORY_ROWS&&selection.revision>=0
   &&args.ordinal===selection.first&&args.node_id===undefined&&before===0&&after===Math.min(199,selection.last-selection.first));
 }
 

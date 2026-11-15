@@ -2,6 +2,7 @@ import {captureDecode,createInputCapture,InputCaptureError} from './immutable-in
 import type {HistoryItem,HistoryWindowResult} from './protocol';
 import {decodeHistoryWindow} from './history-decoder';
 import type {Outcome} from './errors';
+export const MAX_HISTORY_ROWS = 1600;
 
 function freezeHistory(value:HistoryWindowResult):HistoryWindowResult{
  for(const row of value.items){
@@ -14,24 +15,23 @@ function freezeHistory(value:HistoryWindowResult):HistoryWindowResult{
 }
 export class HistoryWindowInput implements HistoryWindowResult {
  readonly thread_id:string;readonly revision:number;readonly total:number;readonly items:HistoryItem[];
- readonly #visits:number;
- private constructor(value:HistoryWindowResult,visits:number){
+
+ private constructor(value:HistoryWindowResult){
   value=freezeHistory(value);
-  this.thread_id=value.thread_id;this.revision=value.revision;this.total=value.total;this.items=value.items;this.#visits=visits;Object.freeze(this);
+  this.thread_id=value.thread_id;this.revision=value.revision;this.total=value.total;this.items=value.items;Object.freeze(this);
  }
  static decode(raw:unknown):Outcome<HistoryWindowInput>{
-  return captureDecode(raw,(owned,visits)=>{
+  return captureDecode(raw,(owned)=>{
    const decoded=decodeHistoryWindow(owned); if(!decoded.ok) throw new InputCaptureError('invalid-input');
-   return new HistoryWindowInput(decoded.value,visits);
+   return new HistoryWindowInput(decoded.value);
   });
  }
  static join(pages:readonly HistoryWindowInput[]):HistoryWindowInput{
   const first=pages[0];if(!first)throw new InputCaptureError('invalid-input');
-  const visits=pages.reduce((total,page)=>total+page.#visits,0);
   const rows=pages.flatMap(page=>page.items);
-  if(rows.length>1600)throw new InputCaptureError('input-bound');
+  if(rows.length>MAX_HISTORY_ROWS)throw new InputCaptureError('input-bound');
   Object.freeze(rows);
-  return new HistoryWindowInput({...first,items:rows},visits);
+  return new HistoryWindowInput({...first,items:rows});
  }
 }
 

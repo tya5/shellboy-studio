@@ -67,6 +67,18 @@ describe('bounded canonical attachment receive',()=>{
   });
 });
 
+it('repeated confirming is a semantic no-op while a real source text change revokes the display lease',async()=>{
+  const {r,h}=await setup();
+  h.confirming('a');
+  const current=h.records.value[0]!; const lease=h.captureDisplay(current)!;
+  expect(lease.current()).toBe(true);
+  h.confirming('a');
+  expect(lease.current()).toBe(true);
+  expect(h.ready('a','n0-9','changed source',current.proof)).toBe(true);
+  expect(lease.current()).toBe(false);
+  r.w.dispose();r.data.stop();
+});
+
 it('a synchronous receiver close is settled after attachment reservation',async()=>{
   const {r,h}=await setup();h.transfer('a',(_record,release)=>{release('end');return true;});
   expect(h.records.value).toEqual([]);r.w.dispose();r.data.stop();

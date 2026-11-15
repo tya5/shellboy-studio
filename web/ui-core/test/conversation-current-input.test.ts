@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 import { Handoff } from '../../data/src/handoff';
-import { captureConversationInput, captureWork, EMPTY_WORK_DESCRIPTOR, conversationIdentityEqual, createConversationIdentity, EMPTY_WORK_ITEMS } from '../src/conversation-input';
+import { captureConversationInput, captureWork, EMPTY_WORK_DESCRIPTOR, conversationIdentityEqual, createConversationIdentity } from '../src/conversation-input';
 import { normalizeLiveWorkFacts, projectOwnedHandoffFacts, type NormalizedSavedItem } from '../src/conversation-items';
 import { rig } from './window-owner';
 
