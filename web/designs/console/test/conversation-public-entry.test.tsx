@@ -45,6 +45,20 @@ it('renders only bounded window diagnostic metadata without body or payload fiel
   } finally { render(null,host);host.remove();fixture.model.dispose();fixture.data.stop(); }
 });
 
+it('renders a real capture failure diagnostic without the captured secret', async () => {
+  rendererGate.release();
+  const secret='ui-capture-secret-must-not-render';
+  const fixture=await fixtureModel({route:'conversation',threadId:'lead',configure:db=>{db.history.lead=[{node_id:'oversized',kind:'user',selection:{ordinal:0},provenance:{secret,values:Array.from({length:70000},()=>({value:'x'}))},items:[]}];}});
+  const host=document.createElement('div');document.body.append(host);
+  try {
+    await flush(); await flush();
+    await act(async()=>render(<Conversation model={fixture.model}/>,host));
+    const diagnostic=host.querySelector('[data-window-diagnostic]');
+    expect(diagnostic).not.toBeNull(); expect(diagnostic?.getAttribute('data-reason')).toBe('input-bound');
+    expect(diagnostic?.textContent).not.toContain(secret); expect(diagnostic?.textContent).not.toContain('x');
+  } finally { render(null,host);host.remove();fixture.model.dispose();fixture.data.stop(); }
+});
+
 it("production model publishes the read plus exact handoff overlay before OrderedHistory renders", async () => {
   rendererGate.release();
   const user:import("../../../data/src/protocol").HistoryItem={node_id:"production-user",kind:"user",selection:{ordinal:0},items:[{kind:"text",item_identity:"production-user-text",text:"Independent user",text_complete:true}],provenance:{kind:"human",sender:{kind:"human"}}};
