@@ -237,3 +237,19 @@ operation/error path. No response body, private owner data, guessed version, RPC
 or compatibility fallback is introduced. Owner application version remains
 unreported unless an existing public hello/status route supplies it; protocol and
 bridge versions remain separate facts.
+
+
+## Studio 18 Producer Trace
+
+The public synthetic trace is `Operations.memoryStatus()` in
+`web/data/src/operations.ts:248-252` (`status` with `{ memory: true }`), through
+`Insights.refreshRead("memory")` and `readMemory()` in `web/ui-core/src/resources.ts`,
+to `MemoryPane`/`CacheMeter` in `web/designs/console/screens/Resources.tsx`. The
+response contract exposes cache objects with retained/limit/entries/unit/live/pinned
+values and an optional `unavailable_reason`; it does not expose an owner-wide state.
+The structural `CacheFact.availability` value is derived once from the typed retained
+value, while the raw reason remains attached as diagnostic data. Cards render a
+localized missing value for unreported retained bytes, preserving other cache cards.
+Unsupported operation, invalid response, and disconnected transport remain typed
+operation outcomes rather than cache-card reason strings. Installed-owner version
+reporting is not asserted here; the public source trace is insufficient to claim it.

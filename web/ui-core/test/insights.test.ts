@@ -129,7 +129,8 @@ describe("resource facts", () => {
     const m = readMemory(fixtureMemory);
     expect(m.metrics.map((x) => x.name)).toEqual(["footprint", "rss"]);
     const body = m.caches.find((c) => c.name === "body")!;
-    expect(body).toMatchObject({ retained: undefined, limit: 33554432, reason: "UI cache owner is not available" });
+    expect(body).toMatchObject({ retained: undefined, limit: 33554432, reason: "UI cache owner is not available", availability: "unreported" });
+    expect(m.caches.find((c) => c.name === "replay")).toMatchObject({ availability: "reported" });
     expect(m.caches.find((c) => c.name === "replay")).toMatchObject({ retained: 57373, entries: 1, unit: "thread" });
   });
   it("storage keeps flags, categories and an absent free size", () => {
@@ -523,13 +524,3 @@ describe("what the charts draw", () => {
 });
 
 
-it('memory cache owner absence is localized without collapsing other cache facts',async()=>{
- const {cacheReason}=await import('../../designs/console/screens/Resources');
- const {fixtureModel}=await import('./fixture');
- const f=await fixtureModel();
- try{
-  expect(cacheReason(f.model.t.value,'UI cache owner is not available')).toBe('Not reported');
-  expect(cacheReason(f.model.t.value,'owner is not available')).toBe('Not reported');
-  expect(cacheReason(f.model.t.value,'cache backend refused')).toBe('cache backend refused');
- }finally{f.model.dispose();f.data.stop();}
-});

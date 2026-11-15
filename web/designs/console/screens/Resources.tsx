@@ -4,18 +4,13 @@ import { Rich } from "./Rich";
 
 const cacheName = (t: Translate, name: string): string => (["body", "layout", "attachment", "replay"].includes(name) ? t(`res.cache.${name}` as "res.cache.body") : name);
 const metricName = (t: Translate, name: string): string => (["footprint", "rss", "pss", "working_set", "private_bytes"].includes(name) ? t(`res.metric.${name}` as "res.metric.rss") : name);
-export const cacheReason = (t: Translate, reason: string | undefined): string =>
-  reason === "UI cache owner is not available" || reason === "owner is not available"
-    ? t("common.notReported")
-    : reason ?? t("common.notReported");
-
 function CacheMeter({ t, c }: { t: Translate; c: CacheFact }) {
   const name = cacheName(t, c.name);
   const used = c.retained !== undefined ? formatBytes(c.retained) : undefined;
   const limit = c.limit !== undefined ? formatBytes(c.limit) : "";
   const text =
     used === undefined
-      ? t("res.cacheUnknown", { reason: cacheReason(t, c.reason), limit })
+      ? t("res.cacheUnknown", { reason: c.availability === "unreported" ? t("common.notReported") : c.reason ?? t("common.notReported"), limit })
       : c.entries !== undefined
         ? t("res.cacheEntries", { used, limit, entries: c.entries })
         : t("res.cacheText", { used, limit });

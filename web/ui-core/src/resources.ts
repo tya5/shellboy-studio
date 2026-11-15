@@ -20,6 +20,7 @@ export interface CacheFact {
   live: number | undefined;
   pinned: number | undefined;
   reason: string | undefined;
+  availability: "reported" | "unreported";
 }
 
 export interface MemoryFacts {
@@ -52,6 +53,7 @@ export function readMemory(v: Record<string, unknown>): MemoryFacts {
         live: num(o.live_bytes) ?? num(o.live_encoded_bytes),
         pinned: num(o.pinned_bytes),
         reason: str(o.unavailable_reason),
+        availability: num(o.retained_bytes) === undefined ? "unreported" : "reported",
       };
     }),
     accounting: str(v.accounting),
