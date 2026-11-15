@@ -10,7 +10,7 @@ import type {HandoffRecord} from '../../data/src/handoff';
 import {attemptWork} from '../../data/test/work-fixture';
 
 import {ownedHistory} from '../../data/test/owned-history';
-async function rig(partial=false) {
+async function rig(partial=false, bindInput=true) {
  const transport=new FakeTransport(),db=new FakeOwnerDb();let id=0;
  const data=new ShellboyData({transport,newId:()=>`display-${++id}`,schedule:fn=>fn()});
  data.start();transport.open();transport.push({t:'hello',bridge_version:'synthetic',owner:{state:'connected',info:{protocol_version:5,instance_id:'owner',capabilities:['history.window','live.text']}}});await settle(transport,db);
@@ -24,7 +24,7 @@ async function rig(partial=false) {
  const node:HistoryItem={node_id:'answer',kind:'assistant_response',selection:{ordinal:5},items:[{kind:'text',item_identity:'exact-body',text:'saved',text_complete:!partial},{kind:'tool_call',item_identity:'tool',execution_ids:['execution']}]};
  const window=new ConversationWindow({read:async()=>({ok:true,value:ownedHistory({thread_id:'t',revision:7,total:6,items:[node]})})});await flush();
  expect(window.bindTerminalHandle(handle)).toBe(true);
- expect(window.bindConversationInput(snapshot=>captureConversationInput(snapshot,{scope:handle.handoffScope(),threadId:'t',records:handle.handoff.peek(),work: EMPTY_WORK_DESCRIPTOR,current:true}))).toBe(true);
+ if (bindInput) expect(window.bindConversationInput(snapshot=>captureConversationInput(snapshot,{scope:handle.handoffScope(),threadId:'t',records:handle.handoff.peek(),work: EMPTY_WORK_DESCRIPTOR,current:true}))).toBe(true);
  const send=transport.send.bind(transport);
  transport.send=frame=>{const result=send(frame);if(frame.t==='call'&&frame.command==='status'&&(frame.args as {all?:boolean}).all===true)db.answered.add(frame.id);return result;};
  transport.push({t:'live',thread_id:'t',attempt_id:'attempt',gap:false,deltas:[{offset:0,reasoning:false,text:'preview'}]});await flush();
@@ -158,4 +158,25 @@ it('a semantic generation before source observation is captured current, never r
   expect(r.window.acceptedView.isCurrent(before)).toBe(false);expect(before.assistantOwnership??[]).toEqual([]);
   expect(r.window.acceptedView.isCurrent(current)).toBe(false);expect(accepted.retiredAttempts??[]).toEqual([]);
  }finally{stop();r.window.dispose();r.handle.close();r.data.stop();}
+});
+
+
+it("default bound Window capture uses the Thread source scope for nonempty Work and rejects a foreign thread", async () => {
+ const r=await rig(false,false);
+ try {
+  r.db.work.t=[{kind:'progress',id:'work-t',thread_id:'t',state:'running'}];
+  r.handle.setWorkActive(true); await settle(r.transport,r.db);
+  const valid=r.window.captureConversationInput(r.window.acceptedView.peek());
+  expect(valid.coverage).toBe('complete');
+  expect(valid.projection.items.some(item=>'domain' in item.source && item.source.recordId==='work-t')).toBe(true);
+  r.handle.setWorkActive(false);
+  const foreignRig=await rig(false,false);
+  try {
+   foreignRig.db.work.t=[{kind:'progress',id:'work-foreign',thread_id:'foreign',state:'running'}];
+   foreignRig.handle.setWorkActive(true); await settle(foreignRig.transport,foreignRig.db);
+   const foreign=foreignRig.window.captureConversationInput(foreignRig.window.acceptedView.peek());
+   expect(foreign.projection.items.some(item=>'domain' in item.source && item.source.recordId==='work-foreign')).toBe(false);
+   expect(foreign.identity.work?.facts).toHaveLength(0);
+  } finally { foreignRig.window.dispose(); foreignRig.handle.close(); foreignRig.data.stop(); }
+ } finally { r.window.dispose(); r.handle.close(); r.data.stop(); }
 });
