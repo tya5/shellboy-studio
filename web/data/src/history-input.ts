@@ -1,5 +1,6 @@
 import {captureDecode,createInputCapture,InputCaptureError} from './immutable-input';
 import type {HistoryItem,HistoryWindowResult} from './protocol';
+import {decodeHistoryWindow} from './history-decoder';
 import type {Outcome} from './errors';
 
 function freezeHistory(value:HistoryWindowResult):HistoryWindowResult{
@@ -23,9 +24,9 @@ export class HistoryWindowInput implements HistoryWindowResult {
   const capture=createInputCapture(),owned=capture(value);
   return new HistoryWindowInput(owned,capture.visits??0);
  }
- static decode(raw:unknown,decoder:(value:unknown)=>{ok:true;value:HistoryWindowResult}|{ok:false;reason:string}):Outcome<HistoryWindowResult>{
+ static decode(raw:unknown):Outcome<HistoryWindowResult>{
   return captureDecode(raw,(owned,visits)=>{
-   const decoded=decoder(owned); if(!decoded.ok) throw new InputCaptureError('invalid-input');
+   const decoded=decodeHistoryWindow(owned); if(!decoded.ok) throw new InputCaptureError('invalid-input');
    return new HistoryWindowInput(decoded.value,visits);
   });
  }
@@ -41,5 +42,5 @@ export class HistoryWindowInput implements HistoryWindowResult {
 export function ownHistoryOutcome(out:Outcome<HistoryWindowResult>):Outcome<HistoryWindowResult>{
  if(!out.ok)return out;
  if(out.value instanceof HistoryWindowInput)return out;
- return HistoryWindowInput.decode(out.value,value=>({ok:true,value:value as HistoryWindowResult}));
+ return HistoryWindowInput.decode(out.value);
 }

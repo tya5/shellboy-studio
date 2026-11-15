@@ -1,6 +1,6 @@
 import {HistoryWindowInput} from './history-input';
-import {sanitizeMessageRelation} from './message-provenance';
 import {decodeHistoryWindow} from './history-decoder';
+import {sanitizeMessageRelation} from './message-provenance';
 import {captureDecode,InputCaptureError} from './immutable-input';
 // Typed operations: the UX boundary for requests. Stateless wrappers over `Link.call`;
 // they never touch the store (saved facts change only by re-reading after a hint).
@@ -231,7 +231,7 @@ export class Operations {
   historyWindow(args: HistoryWindowArgs, read?: ReadOptions): Promise<Outcome<HistoryWindowResult>> {
     if (!this.historyWindowSupported()) return Promise.resolve({ ok: false, error: { kind: "invalid_response", message: "owner does not advertise history.window" } });
     return this.run("history.window", args, decodeHistoryWindow, undefined, read,
-      raw => HistoryWindowInput.decode(raw, decodeHistoryWindow));
+      raw => HistoryWindowInput.decode(raw));
   }
   historyGet(args: HistoryGetArgs, read?: ReadOptions): Promise<Outcome<HistoryBody>> {
     return this.run("history.get", args, decodeBody, undefined, read);
