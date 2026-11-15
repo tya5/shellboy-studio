@@ -69,7 +69,6 @@ export interface HandoffRecord {
   readonly readyAttempt?: AttemptReadyProof;
   readonly terminalPersisted?: TerminalPersistedProof;
 }
-type RecordTransition = 'source' | 'bookkeeping';
 interface Held { display?: { generation: number; sourceCurrent: () => boolean; current: (generation: number) => boolean };
   attemptCapture?: { original: HandoffRecord; staged: HandoffRecord; proof: AttemptReadyProof | TerminalPersistedProof; epoch: number; lifetime: number };
   admitted: number; sourceRevision: number; transferring?: boolean; attemptId: string; source: LiveText; stop: () => void; record: HandoffRecord }
@@ -264,8 +263,9 @@ export class Handoff {
     if (h?.attemptCapture) return this.transferAttempt(h.attemptCapture.original, h.attemptCapture.proof, accept);
     if (!h || h.transferring || h.record.status !== 'ready' || !h.record.proof || h.record.transferred) return false;
     const epoch = this.lifetimeValue;
+    const moved = Object.freeze({ ...h.record, transferred: true });
     h.transferring = true;
-    const moved = this.updateTransferred(h, true);
+    let canonicalMoved: HandoffRecord | undefined;
     let deferred: 'return' | 'end' | undefined;
     let receiving = true;
     try {
@@ -273,22 +273,22 @@ export class Handoff {
       try {
         accepted = accept(moved, reason => {
           if (receiving) { deferred = reason; return; }
-          if (this.lifetimeValue !== epoch || h.record !== moved || !this.held.includes(h)) return;
+          if (!canonicalMoved || this.lifetimeValue !== epoch || h.record !== canonicalMoved || !this.held.includes(h)) return;
           if (reason === 'end') this.release(attemptId);
           else { this.updateTransferred(h, false); this.publish(); }
         });
       } catch (error) {
-        this.updateTransferred(h, false);
         throw error;
       }
-      if (!accepted) { this.updateTransferred(h, false); return false; }
+      if (!accepted) return false;
       if (epoch !== this.lifetimeValue || !this.held.includes(h)) return false;
       receiving = false;
+      canonicalMoved = this.updateTransferred(h, true);
       if (deferred === 'end') this.release(attemptId);
       else if (deferred === 'return') { this.updateTransferred(h, false); this.publish(); }
       else this.publish();
       return true;
-    } finally { h.transferring = false; }
+    } finally { receiving = false; h.transferring = false; }
   }
 
   /** Release only after the canonical window has accepted the exact record's display ownership. */
@@ -306,8 +306,8 @@ export class Handoff {
     this.held = []; this.active = undefined; this.blockedAttempt = undefined;
     this.overflowSig.value = false; this.publish();
   }
-  private sameOwnRecord(a: HandoffRecord, b: HandoffRecord, includeTransferred = true): boolean {
-    const entries = (value: HandoffRecord) => Object.entries(value).filter(([key]) => includeTransferred || key !== 'transferred');
+  private sameOwnRecord(a: HandoffRecord, b: HandoffRecord): boolean {
+    const entries = (value: HandoffRecord) => Object.entries(value);
     const left = entries(a), right = entries(b);
     return left.length === right.length && left.every(([key, value]) => right.some(([other, otherValue]) => key === other && Object.is(value, otherValue)));
   }
