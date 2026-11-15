@@ -57,7 +57,7 @@ export interface ConversationSemanticInput {
 /** One current semantic recipe for both candidate publication and fixture admission. */
 export function captureConversationInput(snapshot: WindowAcceptedSnapshot, input: {
   readonly scope: string; readonly threadId: string; readonly records: readonly HandoffRecord[];
-  readonly work: readonly NormalizedSavedItem[]; readonly current: boolean;
+  readonly work: readonly NormalizedSavedItem[]; readonly current: boolean; readonly identityWork?: readonly unknown[];
 }): ConversationSemanticInput {
   const canonicalInput=canonicalHistoryInput(snapshot,input.scope),canonicalProjection=canonicalInput.projection;
   const ownership = snapshot.assistantOwnership ?? [];
@@ -109,6 +109,6 @@ export function captureConversationInput(snapshot: WindowAcceptedSnapshot, input
   for (const owner of ownership.filter(item => item.mode === 'canonical'))
     for (const key of owner.itemKeys) if (keys.has(key)) containers.set(key, owner.containerKey);
   return { isCurrent: () => true,identity:createConversationIdentity({rows:snapshot.rows,revision:snapshot.revision,assistantOwnership:snapshot.assistantOwnership,terminalPresence:snapshot.terminalPresence,retiredAttempts:snapshot.retiredAttempts,
-      records:input.records.length?input.records:undefined,work:input.work.length?input.work:undefined,scope:input.scope,current:input.current}),canonicalInput,scope: input.scope, canonicalProjection, projection: containers.size ? withPresentationContainers(projection, containers) : projection,
+      records:input.records.length?input.records:undefined,work:input.identityWork ?? (input.work.length?input.work:undefined),scope:input.scope,current:input.current}),canonicalInput,scope: input.scope, canonicalProjection, projection: containers.size ? withPresentationContainers(projection, containers) : projection,
     decision: { cohortVersion: { accepted: [] }, localRegion: emptyOwnSendLocalRegion(input.scope) }, coverage: work === undefined ? 'unavailable' : 'complete' };
 }
