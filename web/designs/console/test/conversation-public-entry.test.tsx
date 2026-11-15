@@ -55,7 +55,7 @@ it('renders a real capture failure diagnostic without the captured secret', asyn
     await act(async()=>render(<Conversation model={fixture.model}/>,host));
     const diagnostic=host.querySelector('[data-window-diagnostic]');
     expect(diagnostic).not.toBeNull(); expect(diagnostic?.getAttribute('data-reason')).toBe('input-bound');
-    expect(diagnostic?.textContent).not.toContain(secret); expect(diagnostic?.textContent).not.toContain('x');
+    expect(diagnostic?.textContent).not.toContain(secret); expect(diagnostic?.outerHTML).not.toContain(secret); expect(diagnostic?.outerHTML).not.toContain('x'); expect([...diagnostic!.attributes].every(attribute=>!attribute.value.includes(secret))).toBe(true);
   } finally { render(null,host);host.remove();fixture.model.dispose();fixture.data.stop(); }
 });
 
