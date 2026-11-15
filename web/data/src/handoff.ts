@@ -151,12 +151,10 @@ export class Handoff {
   captureDisplay(original: HandoffRecord): DisplayLease | undefined {
     const held = this.held.find(item => item.record === original);
     if (!held || !original.text) return;
-    const epoch = this.epochValue, lifetime = this.lifetimeValue, capturedStatus = original.status, sourceRevision = held.sourceRevision;
+    const epoch = this.epochValue, lifetime = this.lifetimeValue, sourceRevision = held.sourceRevision;
     const currentRecord = () => this.held.includes(held) && epoch === this.epochValue && lifetime === this.lifetimeValue
       && sourceRevision === held.sourceRevision
-      // A confirming-to-failed transition revokes a prior lease; a lease
-      // captured from an issuer-failed record remains a valid failed-readable source.
-      && (held.record.status !== 'failed' || capturedStatus === 'failed') ? held.record : undefined;
+      ? held.record : undefined;
     const current = () => currentRecord() !== undefined;
     return Object.freeze({ original, currentRecord, current, stage: (generation: number, valid: (generation: number) => boolean) => {
       if (!current()) return () => {};
@@ -179,7 +177,6 @@ export class Handoff {
   fail(attemptId: string): void {
     const held=this.held.find(item=>item.attemptId===attemptId);
     if (!held) return;
-    if (held.record.status === 'failed') return;
     this.updateRecord(held, {...held.record,status:'failed'}); this.publish();
   }
   confirming(attemptId: string): void { this.update(attemptId, r => ({ ...r, status: 'confirming' })); }
@@ -301,7 +298,7 @@ export class Handoff {
     this.held = []; this.active = undefined; this.blockedAttempt = undefined;
     this.overflowSig.value = false; this.publish();
   }
-  /** Every held-record transition revokes leases captured from the prior source state. */
+  /** Semantic source changes revoke leases; bookkeeping and true no-ops preserve them. */
   private updateRecord(held: Held, next: HandoffRecord, transition: RecordTransition = 'source'): void {
     const previous = held.record;
     const semanticChange = previous.attemptId !== next.attemptId || previous.key !== next.key
@@ -310,6 +307,7 @@ export class Handoff {
       || previous.bodyAuthority !== next.bodyAuthority || previous.nodeId !== next.nodeId
       || previous.proof !== next.proof || previous.readyAttempt !== next.readyAttempt
       || previous.terminalPersisted !== next.terminalPersisted || previous.placement !== next.placement;
+    if (!semanticChange && previous.transferred === next.transferred) return;
     if (transition === 'source' && semanticChange) held.sourceRevision++;
     held.record = Object.freeze(next);
   }

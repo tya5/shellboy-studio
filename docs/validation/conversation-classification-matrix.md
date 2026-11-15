@@ -85,3 +85,18 @@ run/turn state pairs; generic and saved unknown records stay Problems. Existing
 conversation-items.test.ts verifies pairs, negative pairs, identity and scoping;
 work-element-consumer.test.tsx verifies actual App headings, visible row/raw state,
 active-page removal without fabricated completion, and retained saved Problems.
+
+
+## Ownership Validation Correspondence
+
+- Ownership and stale-source negatives: `web/ui-core/test/handoff-window.test.ts`,
+  `web/ui-core/test/window-attempt-atomic.test.ts`, and
+  `web/ui-core/test/window-provenance-capture.test.ts`.
+- Input, row-bound, aggregate, and selected-read contracts:
+  `web/data/test/terminal-read.test.ts`, `web/data/test/operations.test.ts`, and
+  `web/ui-core/test/conversation-current-input.test.ts`.
+- Reentrant publication and public producer coverage:
+  `web/designs/console/test/conversation-public-entry.test.tsx` and
+  `web/designs/console/test/work-element-consumer.test.tsx`.
+- Generic publication minting is removed; typed producer boundaries are the
+  replacement contract surfaces for focused and native validation.
