@@ -19,7 +19,10 @@ it("busy explicit retry promise waits for its one coalesced follow-up read", asy
   let done = false; const retry = r.h.retryHandoff().then(() => { done = true; });
   const out = r.db.answer(first); r.db.answered.add(first.id); if (out.ok) r.t.ok(first.id, out.result); await flush();
   expect(r.t.calls("status").length).toBe(2); expect(done).toBe(false);
-  await r.pump(); await retry; expect(done).toBe(true); r.data.stop();
+  await r.pump(); await retry; expect(done).toBe(true);
+  expect(r.bodyReads()).toHaveLength(0);
+  expect(r.t.calls().filter(call => !r.db.answered.has(call.id))).toHaveLength(0);
+  r.data.stop();
 });
 it("paused retry reports an honest disabled reason and performs no read", async () => {
   const r = await rig(); r.live(); r.end(); await r.pump(); r.h.pause(); const before = r.t.calls().length;

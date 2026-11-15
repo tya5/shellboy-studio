@@ -456,7 +456,7 @@ export class ShellboyData {
       },
       handoffScope: () => this.handoffScope(e),
       transferHandoff: (id, accept) => { if (closed || e.closed || e.paused) return false; return e.live.transfer(id, accept); },
-      retryHandoff: () => { if (closed || e.closed || e.paused || !this.canRead()) { e.handoffRetryState.value = { phase: "unavailable", reason: closed || e.closed ? "closed" : e.paused ? "paused" : "owner-unavailable", canRetry: false }; return Promise.resolve(); } if (e.cancel.cancelled) e.cancel = new Cancel(); if (e.resolving) { e.live.reconcile(); e.terminalReads.clear(); return e.resolving; } e.live.reconcile(); e.terminalReads.clear(); return this.resolveHandoff(e); },
+      retryHandoff: () => { if (closed || e.closed || e.paused || !this.canRead()) { e.handoffRetryState.value = { phase: "unavailable", reason: closed || e.closed ? "closed" : e.paused ? "paused" : "owner-unavailable", canRetry: false }; return Promise.resolve(); } if (e.cancel.cancelled) e.cancel = new Cancel(); if (e.resolving) { e.refreshAfterHandoff = true; e.live.reconcile(); e.terminalReads.clear(); const active = e.resolving; return active.then(() => e.resolving ?? Promise.resolve()); } e.live.reconcile(); e.terminalReads.clear(); return this.resolveHandoff(e); },
       historyTick: e.historyTick,
       readWindow: async (args, cancel) => {
         if (e.closed || e.paused) return Promise.resolve({ ok: false, error: { kind: "cancelled", message: "thread is not being read" } });
