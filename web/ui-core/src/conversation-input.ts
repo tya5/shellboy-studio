@@ -24,12 +24,19 @@ export interface ConversationIdentity {
   readonly rows: WindowAcceptedSnapshot['rows']; readonly revision: number | undefined;
   readonly assistantOwnership: WindowAcceptedSnapshot['assistantOwnership'];
   readonly terminalPresence: WindowAcceptedSnapshot['terminalPresence']; readonly retiredAttempts: WindowAcceptedSnapshot['retiredAttempts'];
-  readonly records?: readonly HandoffRecord[]; readonly work?: WorkIdentity;
+  readonly records?: readonly HandoffRecord[]; readonly work?: WorkCaptureDescriptor;
   readonly own?: OwnSendIdentity; readonly scope: string; readonly current: boolean;
 }
 export const EMPTY_WORK_ITEMS: readonly WorkItem[] = Object.freeze([]);
+export interface WorkCaptureDescriptor {
+  readonly source: object;
+  readonly facts: readonly NormalizedSavedItem[];
+}
 export const EMPTY_WORK_SOURCE = Object.freeze({});
-export interface WorkIdentity { readonly items: readonly WorkItem[]; readonly source: object; }
+export const EMPTY_WORK_DESCRIPTOR: WorkCaptureDescriptor = Object.freeze({ source: EMPTY_WORK_SOURCE, facts: Object.freeze([]) });
+export function captureWork(source: object, facts: readonly NormalizedSavedItem[]): WorkCaptureDescriptor {
+  return Object.freeze({ source, facts: Object.freeze([...facts]) });
+}
 export interface OwnSendIdentity {
   readonly accepted: object; readonly pending: object | undefined; readonly reservation: object | undefined;
   readonly retryCurrent: (() => boolean) | undefined; readonly eligible: boolean;
@@ -62,7 +69,7 @@ export interface ConversationSemanticInput {
 /** One current semantic recipe for both candidate publication and fixture admission. */
 export function captureConversationInput(snapshot: WindowAcceptedSnapshot, input: {
   readonly scope: string; readonly threadId: string; readonly records: readonly HandoffRecord[];
-  readonly work: readonly NormalizedSavedItem[]; readonly current: boolean; readonly identityWork?: WorkIdentity;
+  readonly work: WorkCaptureDescriptor; readonly current: boolean;
 }): ConversationSemanticInput {
   const canonicalInput=canonicalHistoryInput(snapshot,input.scope),canonicalProjection=canonicalInput.projection;
   const ownership = snapshot.assistantOwnership ?? [];
@@ -71,7 +78,7 @@ export function captureConversationInput(snapshot: WindowAcceptedSnapshot, input
   const handoffs = retainUnretiredLiveFacts(snapshot, input.scope, input.current,
     projectOwnedHandoffFacts(input.threadId, input.current ? input.records : []).filter(fact => !('domain' in fact) || !canonicalOwners.has(fact.recordId)));
   const retained = retainUnretiredLiveFacts(snapshot, input.scope, input.current,
-    input.work.filter(fact => !('domain' in fact && fact.namespace === 'handoff')));
+    input.work.facts.filter(fact => !('domain' in fact && fact.namespace === 'handoff')));
   const work = input.current ? scopeIssuedWorkFacts([...retained,
     ...normalizeTerminalPresenceFacts(snapshot.terminalPresence ?? [])], [input.scope]) : undefined;
   const canonical=canonicalProjection.items.filter(item=>!reserved.has(item.key)).map(item=>item.source);
@@ -114,6 +121,6 @@ export function captureConversationInput(snapshot: WindowAcceptedSnapshot, input
   for (const owner of ownership.filter(item => item.mode === 'canonical'))
     for (const key of owner.itemKeys) if (keys.has(key)) containers.set(key, owner.containerKey);
   return { isCurrent: () => true,identity:createConversationIdentity({rows:snapshot.rows,revision:snapshot.revision,assistantOwnership:snapshot.assistantOwnership,terminalPresence:snapshot.terminalPresence,retiredAttempts:snapshot.retiredAttempts,
-      records:input.records.length?input.records:undefined,work:input.identityWork ?? {items:EMPTY_WORK_ITEMS,source:EMPTY_WORK_SOURCE},scope:input.scope,current:input.current}),canonicalInput,scope: input.scope, canonicalProjection, projection: containers.size ? withPresentationContainers(projection, containers) : projection,
+      records:input.records.length?input.records:undefined,work:input.work,scope:input.scope,current:input.current}),canonicalInput,scope: input.scope, canonicalProjection, projection: containers.size ? withPresentationContainers(projection, containers) : projection,
     decision: { cohortVersion: { accepted: [] }, localRegion: emptyOwnSendLocalRegion(input.scope) }, coverage: work === undefined ? 'unavailable' : 'complete' };
 }

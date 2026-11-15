@@ -5,7 +5,7 @@ import type {OwnedTerminalReadLease} from '../../data/src/terminal-read';
 import {FakeTransport,FakeOwnerDb,connectedWithHistory,settle,flush} from '../../data/test/harness';
 import {attemptWork} from '../../data/test/work-fixture';
 import {ConversationWindow} from '../src/window';
-import {captureConversationInput} from '../src/conversation-input';
+import {captureConversationInput, captureWork, EMPTY_WORK_DESCRIPTOR} from '../src/conversation-input';
 import {ownSendPresentation,captureOwnSendLocalRegion} from '../src/own-send-presentation';
 
 async function rig(){
@@ -28,7 +28,7 @@ async function rig(){
  const w=new ConversationWindow({read:(args,cancel)=>h.readWindow(args,cancel)});await settle(t,db);expect(w.bindTerminalHandle(h)).toBe(true);
  const local=[{threadId:'t',scope:h.handoffScope(),operationId:'local-op',messageId:'local-message',text:'Independent local',phase:'accepted' as const,plainMessageSend:true as const}];
  w.bindConversationInput(snapshot=>{
-  const input=captureConversationInput(snapshot,{scope:h.handoffScope(),threadId:'t',records:h.handoff.peek(),work:[],current:w.isTerminalHandleCurrent(h)});
+  const input=captureConversationInput(snapshot,{scope:h.handoffScope(),threadId:'t',records:h.handoff.peek(),work: EMPTY_WORK_DESCRIPTOR,current:w.isTerminalHandleCurrent(h)});
   const decision=ownSendPresentation({ref:snapshot,current:w.isTerminalHandleCurrent(h),scope:h.handoffScope(),projection:input.projection,localRows:local,
    canonicalRows:snapshot.rows,hiddenItemKeys:new Set<string>(),path:{tail:true,empty:false,revision:snapshot.revision,lastNodeId:snapshot.rows.at(-1)?.node_id,lastOrdinal:snapshot.rows.at(-1)?.selection?.ordinal},
    nodeOrdinals:new Map(snapshot.rows.map(row=>[row.node_id!,row.selection!.ordinal!])),cohortVersion:{accepted:local,pending:undefined}});

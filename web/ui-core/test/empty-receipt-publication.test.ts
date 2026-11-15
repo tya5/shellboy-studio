@@ -5,7 +5,7 @@ import type {HistoryItem} from '../../data/src/protocol';
 import {FakeOwnerDb,FakeTransport,connectedWithHistory,settle,flush} from '../../data/test/harness';
 import {attemptWork} from '../../data/test/work-fixture';
 import {ConversationWindow} from '../src/window';
-import {captureConversationInput} from '../src/conversation-input';
+import {captureConversationInput, captureWork, EMPTY_WORK_DESCRIPTOR} from '../src/conversation-input';
 
 async function rig(readable=false,during:'none'|'revoke'|'newer'='none'){
  const t=new FakeTransport(),db=new FakeOwnerDb();let serial=0;
@@ -27,7 +27,7 @@ async function rig(readable=false,during:'none'|'revoke'|'newer'='none'){
  let action=false;
  expect(w.bindConversationInput(snapshot=>{
   if(action){action=false;if(during==='revoke')w.acceptedView.revoke();else if(during==='newer')w.setAttemptPresentations([{scope:h.handoffScope(),attemptId:'nested',turnId:'nested-turn',nodeIds:['unselected'],state:'pending'}]);}
-  return captureConversationInput(snapshot,{scope:h.handoffScope(),threadId:'t',records:h.handoff.peek(),work:[],current:w.isTerminalHandleCurrent(h)});
+  return captureConversationInput(snapshot,{scope:h.handoffScope(),threadId:'t',records:h.handoff.peek(),work: EMPTY_WORK_DESCRIPTOR,current:w.isTerminalHandleCurrent(h)});
  })).toBe(true);
  const before=w.acceptedView.peek(),publications:typeof before[]=[];
  const stop=w.acceptedView.subscribe(ref=>{

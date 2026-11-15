@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 import { Handoff } from '../../data/src/handoff';
-import { captureConversationInput, conversationIdentityEqual, createConversationIdentity, EMPTY_WORK_ITEMS } from '../src/conversation-input';
+import { captureConversationInput, captureWork, EMPTY_WORK_DESCRIPTOR, conversationIdentityEqual, createConversationIdentity, EMPTY_WORK_ITEMS } from '../src/conversation-input';
 import { normalizeLiveWorkFacts, projectOwnedHandoffFacts, type NormalizedSavedItem } from '../src/conversation-items';
 import { rig } from './window-owner';
 
@@ -11,7 +11,7 @@ it('captures B rather than relabeling A or two revoked handoffs on every rewrite
   provenance:{kind:'human',sender:{kind:'human'}}})});
  const ledger=new Handoff(fn=>fn());
  r.w.bindConversationInput(snapshot=>captureConversationInput(snapshot,{scope:r.handle.handoffScope(),threadId:'t',
-  records:ledger.records.value,work:[],current:true}));
+  records:ledger.records.value,work: EMPTY_WORK_DESCRIPTOR,current:true}));
  let authorized={revision:1,node:'n0-0',texts:['canonical-A'],kinds:['canonical-human']};
  const publications:{revision:number|undefined;texts:string[];kinds:string[]}[]=[];
  const stop=r.w.acceptedView.subscribe(snapshot=>{
@@ -57,15 +57,15 @@ it('keeps an invalid current Work cut unavailable without withdrawing an indepen
   items:[{kind:'text',item_identity:'human',text:'independent-human',text_complete:true}],
   provenance:{kind:'human',sender:{kind:'human'}}})});
  const valid=normalizeLiveWorkFacts({scope:'t',items:[{kind:'progress',id:'valid',thread_id:'t',state:'running'}]});
- let work:readonly NormalizedSavedItem[]=[...valid,{domain:'live',scope:'foreign',recordId:'unissued',kind:'unknown'}]; let workSource=Object.freeze({});
- r.w.bindConversationInput(snapshot=>captureConversationInput(snapshot,{scope:r.handle.handoffScope(),threadId:'t',records:[],work,identityWork:{items:[],source:workSource},current:true}));
+ let work:readonly NormalizedSavedItem[]=[...valid,{domain:'live',scope:'foreign',recordId:'unissued',kind:'unknown'}];
+ r.w.bindConversationInput(snapshot=>captureConversationInput(snapshot,{scope:r.handle.handoffScope(),threadId:'t',records:[],work: captureWork(work, work),current:true}));
  try{
   await r.settle();const invalid=r.w.acceptedView.peek();expect(invalid.displayPlan?.coverage).toBe('unavailable');
   expect(invalid.displayPlan?.entries.map(entry=>entry.body)).toEqual([{kind:'typed-canonical',text:'independent-human',
    cut:{generation:invalid.generation,revision:invalid.revision,capability:r.w.acceptedView.currentCapability,scope:r.handle.handoffScope()}}]);
   expect(invalid.displayPlan?.entries[0]?.lifetime.kind).toBe('canonical-human');
   expect(r.w.refreshConversationInput(invalid)).toBe(true);expect(r.w.acceptedView.peek()).toBe(invalid);
-  work=valid;workSource=Object.freeze({});r.w.refreshConversationInput(invalid);const qualified=r.w.acceptedView.peek();
+  work=valid;r.w.refreshConversationInput(invalid);const qualified=r.w.acceptedView.peek();
   expect(qualified.displayPlan?.coverage).toBe('complete');expect(qualified.displayPlan?.workGroups).toHaveLength(1);
   r.w.acceptedView.revoke();expect(r.w.refreshConversationInput(qualified)).toBe(false);
  }finally{r.w.dispose();r.data.stop();}
@@ -88,12 +88,12 @@ it('canonical-only current input has one projection graph, while actual reservat
  const r=await rig(2,{decorate:(ordinal,node)=>({...node,kind:'user',items:[{kind:'text',item_identity:'body',text:`Body ${ordinal}`,text_complete:true}]})});
  try{
   await r.settle();const snapshot=r.w.acceptedView.peek(),scope=r.handle.handoffScope();
-  const input=captureConversationInput(snapshot,{scope,threadId:'t',records:[],work:[],current:true});
+  const input=captureConversationInput(snapshot,{scope,threadId:'t',records:[],work: EMPTY_WORK_DESCRIPTOR,current:true});
   expect(input.projection).toBe(input.canonicalProjection);expect(input.projection.items.map(item=>'text' in item.source?item.source.text:undefined)).toEqual(['Body 0','Body 1']);
   const work=normalizeLiveWorkFacts({scope:'t',items:[{id:'event',thread_id:'t',kind:'event',state:'running'}]});
-  const mixed=captureConversationInput(snapshot,{scope,threadId:'t',records:[],work,current:true});
+  const mixed=captureConversationInput(snapshot,{scope,threadId:'t',records:[],work:captureWork(work, work),current:true});
   expect(mixed.projection).not.toBe(mixed.canonicalProjection);expect(mixed.projection.items).toHaveLength(3);
-  const denied=captureConversationInput(snapshot,{scope,threadId:'t',records:[],work:[],current:false});
+  const denied=captureConversationInput(snapshot,{scope,threadId:'t',records:[],work: EMPTY_WORK_DESCRIPTOR,current:false});
   expect(denied.coverage).toBe('unavailable');expect(denied.projection.partitionUnknownKeys).toContain('unavailable-work-cut');
   expect(input.projection.items).toHaveLength(2);expect(r.w.acceptedView.isCurrent(snapshot)).toBe(true);
  }finally{r.w.dispose();r.data.stop();}
@@ -103,7 +103,7 @@ it('reuses canonical projection only for identity-stable selection cuts', async 
  const r = await rig(2, { decorate: (_ordinal, node) => ({ ...node, kind: 'user', items: [{ kind: 'text', item_identity: 'body', text: 'stable', text_complete: true }] }) });
  try {
   await r.settle();
-  const options = { scope: r.handle.handoffScope(), threadId: 't', records: [], work: [], current: true } as const;
+  const options = { scope: r.handle.handoffScope(), threadId: 't', records: [], work: EMPTY_WORK_DESCRIPTOR, current: true } as const;
   expect(r.w.bindConversationInput(snapshot => captureConversationInput(snapshot, options))).toBe(true);
   expect(r.w.refreshConversationInput(r.w.acceptedView.peek())).toBe(true);
   const firstSnapshot = r.w.acceptedView.peek();
@@ -132,7 +132,7 @@ it('reuses canonical projection only for identity-stable selection cuts', async 
 it('compares stable work source items rather than wrapper identity',()=>{
  const base={rows:[],revision:1,assistantOwnership:[],terminalPresence:[],retiredAttempts:[],records:[],scope:'s',current:true} as const;
  const items=[{id:'work'}] as never[]; const source=Object.freeze({});
- const a=createConversationIdentity({...base,work:{items,source}}),b=createConversationIdentity({...base,work:{items,source}}),c=createConversationIdentity({...base,work:{items:[{id:'work'}] as never[],source:Object.freeze({})}});
+ const a=createConversationIdentity({...base,work:captureWork(source, items)}),b=createConversationIdentity({...base,work:captureWork(source, items)}),c=createConversationIdentity({...base,work:captureWork(Object.freeze({}), [{id:'work'}] as never[])});
  expect(conversationIdentityEqual(a,b)).toBe(true);expect(conversationIdentityEqual(a,c)).toBe(false);
- const emptySource=Object.freeze({});expect(conversationIdentityEqual(createConversationIdentity({...base,work:{items:EMPTY_WORK_ITEMS,source:emptySource}}),createConversationIdentity({...base,work:{items:EMPTY_WORK_ITEMS,source:emptySource}}))).toBe(true);
+ expect(conversationIdentityEqual(createConversationIdentity({...base,work:EMPTY_WORK_DESCRIPTOR}),createConversationIdentity({...base,work:EMPTY_WORK_DESCRIPTOR}))).toBe(true);
 });

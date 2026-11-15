@@ -33,6 +33,33 @@ describe('bounded canonical attachment receive',()=>{
     h.transfer('a',()=>true);oldRelease!('end');
     expect(h.records.value).toHaveLength(1);expect(h.records.value[0]!.transferred).toBe(true);r.w.dispose();r.data.stop();
   });
+  it('a detached source before turn cannot transfer, and a thrown receiver leaves it recoverable',async()=>{
+    const {r,h}=await setup();
+    h.discard('owner_restarted');
+    expect(h.transfer('a',()=>true)).toBe(false);
+    expect(h.records.value).toEqual([]);
+    r.w.dispose();r.data.stop();
+
+    const second=await setup();
+    expect(()=>second.h.transfer('a',()=>{ throw new Error('receiver failed before admission'); })).toThrow('receiver failed before admission');
+    expect(second.h.records.value[0]).toMatchObject({text:'safe saved body'});
+    expect(second.h.records.value[0]?.transferred).toBeUndefined();
+    let finish:(reason:'return'|'end')=>void=()=>{};
+    expect(second.h.transfer('a',(_record,release)=>{ finish=release; return true; })).toBe(true);
+    expect(second.h.records.value[0]).toMatchObject({transferred:true});
+    finish('end'); expect(second.h.records.value).toEqual([]);
+    second.r.w.dispose();second.r.data.stop();
+  });
+
+  it('committed body admission is once-only and stale release is idempotent',async()=>{
+    const {r,h}=await setup(); let receiverCalls=0; let release:(reason:'return'|'end')=>void=()=>{};
+    expect(h.transfer('a',(_record,done)=>{ receiverCalls++; release=done; return true; })).toBe(true);
+    expect(receiverCalls).toBe(1);
+    release('end'); release('end'); release('return');
+    expect(h.records.value).toEqual([]);
+    r.w.dispose();r.data.stop();
+  });
+
   it('reserves transfer before reentrant receiver code and refuses callbacks across owner teardown',async()=>{
     const {r,h}=await setup();let replacement:HandoffRecord|undefined;
     const result=h.transfer('a',(record)=>{replacement=record;expect(h.transfer('a',()=>true)).toBe(false);h.discard('owner_restarted');return true;});

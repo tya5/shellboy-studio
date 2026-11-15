@@ -1,7 +1,7 @@
 import {Handoff} from '../../data/src/handoff';
 import {selectedReadyRefs} from '../../data/test/work-fixture';
 import {controlledWindow} from './controlled-window';
-import { captureConversationInput } from '../src/conversation-input';
+import { captureConversationInput, captureWork, EMPTY_WORK_DESCRIPTOR } from '../src/conversation-input';
 import { expect, it } from "vitest";
 import { ConversationWindow } from "../src/window";
 import { flush } from "../../data/test/harness";
@@ -197,7 +197,7 @@ it("deferred retry cannot borrow the separately owned tail slot even when both b
 it("publishes one capability-bound display plan and reaches a fixed point", async () => {
   const r = await rig(2); await r.settle();
   expect(r.w.bindConversationInput(snapshot => captureConversationInput(snapshot, {
-    scope: 'thread', threadId: 'thread', records: [], work: [], current: true }))).toBe(true);
+    scope: 'thread', threadId: 'thread', records: [], work: EMPTY_WORK_DESCRIPTOR, current: true }))).toBe(true);
   const ref = r.w.acceptedView.peek();
   expect(r.w.refreshConversationInput(ref)).toBe(true);
   const published = r.w.acceptedView.peek();

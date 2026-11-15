@@ -3,7 +3,7 @@ import { ConversationWindow } from '../src/window';
 import { ShellboyData } from '../../data/src/store';
 import type { HistoryItem } from '../../data/src/protocol';
 import { FakeTransport, FakeOwnerDb, flush, settle } from '../../data/test/harness';
-import {captureConversationInput} from '../src/conversation-input';
+import {captureConversationInput, captureWork, EMPTY_WORK_DESCRIPTOR} from '../src/conversation-input';
 import {declaredWorkGroup} from './declared-attempt-cuts';
 import type {WindowAcceptedSnapshot} from '../src/window';
 import type {HandoffRecord} from '../../data/src/handoff';
@@ -24,7 +24,7 @@ async function rig(partial=false) {
  const node:HistoryItem={node_id:'answer',kind:'assistant_response',selection:{ordinal:5},items:[{kind:'text',item_identity:'exact-body',text:'saved',text_complete:!partial},{kind:'tool_call',item_identity:'tool',execution_ids:['execution']}]};
  const window=new ConversationWindow({read:async()=>({ok:true,value:ownedHistory({thread_id:'t',revision:7,total:6,items:[node]})})});await flush();
  expect(window.bindTerminalHandle(handle)).toBe(true);
- expect(window.bindConversationInput(snapshot=>captureConversationInput(snapshot,{scope:handle.handoffScope(),threadId:'t',records:handle.handoff.peek(),work:[],current:true}))).toBe(true);
+ expect(window.bindConversationInput(snapshot=>captureConversationInput(snapshot,{scope:handle.handoffScope(),threadId:'t',records:handle.handoff.peek(),work: EMPTY_WORK_DESCRIPTOR,current:true}))).toBe(true);
  const send=transport.send.bind(transport);
  transport.send=frame=>{const result=send(frame);if(frame.t==='call'&&frame.command==='status'&&(frame.args as {all?:boolean}).all===true)db.answered.add(frame.id);return result;};
  transport.push({t:'live',thread_id:'t',attempt_id:'attempt',gap:false,deltas:[{offset:0,reasoning:false,text:'preview'}]});await flush();

@@ -1,5 +1,5 @@
 import {publicConversationFixture,CurrentSavedView} from './conversation-fixture';
-import { captureConversationInput } from '../../../ui-core/src/conversation-input';
+import { captureConversationInput, captureWork, EMPTY_WORK_DESCRIPTOR } from '../../../ui-core/src/conversation-input';
 // @vitest-environment happy-dom
 import { render } from 'preact';
 import {flush,settle} from '../../../data/test/harness';
@@ -660,7 +660,7 @@ it('keeps typed assistant empty/presence membership distinct across live, termin
  const model=new Proxy(f.model,{get(target,key){return key==='longReader'?{value:reader,peek:()=>reader}:Reflect.get(target,key);}});
  const ledger=new Handoff(fn=>fn());
  const frames:unknown[]=[];
- reader.bindConversationInput(snapshot=>captureConversationInput(snapshot,{scope:'fixture',threadId:'t',records:ledger.records.peek(),work:[],current:true}));
+ reader.bindConversationInput(snapshot=>captureConversationInput(snapshot,{scope:'fixture',threadId:'t',records:ledger.records.peek(),work: EMPTY_WORK_DESCRIPTOR,current:true}));
  const paint=()=>{const snapshot=reader.acceptedView.peek();render(<ActualSavedWindowContent model={model} snapshot={snapshot}/>,host);};
  let stop=()=>{};
  try{
