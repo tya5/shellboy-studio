@@ -2,7 +2,7 @@ import {selectedReadyRefs,syntheticPresentation,CANONICAL_ATTEMPT_ID} from '../.
 import { expect, it } from 'vitest';
 import { assistantOwnership } from '../src/assistant-ownership';
 import type { DisplayAssociation, PresentationContainerId } from '../../data/src/handoff';
-import type { AttemptId, HistoryItem } from '../../data/src/protocol';
+import type { HistoryItem } from '../../data/src/protocol';
 
 const answer = (): HistoryItem => ({node_id:'answer',kind:'assistant_response',provenance:{attempt_id:CANONICAL_ATTEMPT_ID},selection:{ordinal:9},items:[{kind:'text',item_identity:'exact-text',text:'Same body',text_complete:true},{kind:'tool_call',item_identity:'independent-tool',execution_ids:['exec']}]});
 const association:DisplayAssociation={scope:'owner/thread/lifetime',attemptId:CANONICAL_ATTEMPT_ID,turnId:'turn',presentationContainer:syntheticPresentation(CANONICAL_ATTEMPT_ID),refs:selectedReadyRefs(['answer'],[answer()])};
@@ -62,8 +62,8 @@ it('admits canonical saved ownership only with matching provenance on every sele
  expect(assistantOwnership(association,'original',[node],7)).toMatchObject({mode:'canonical',attemptId:association.attemptId});
 });
 it.each(['missing','mismatch'] as const)('keeps %s saved association unknown without changing preview semantics',mode=>{
- const node=mode==='missing'?(({provenance: _ignored, ...rest})=>rest)(answer()):{...answer(),provenance:{attempt_id:'other-attempt' as AttemptId}};
+ const node=mode==='missing'?(({provenance: _ignored, ...rest})=>rest)(answer()):{...answer(),provenance:{attempt_id:CANONICAL_ATTEMPT_ID.replace(/1$/,'2')}};
  expect(assistantOwnership(association,'original',[node],7)).toBeUndefined();
- const partial={...answer()};partial.items=[{kind:'text',item_identity:'exact-text',text:'prefix',text_complete:false},partial.items![1]!];
+ const partial={...node};partial.items=[{kind:'text',item_identity:'exact-text',text:'prefix',text_complete:false},partial.items![1]!];
  expect(assistantOwnership(association,'original',[partial],7)).toMatchObject({mode:'preview'});
 });

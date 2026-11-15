@@ -14,7 +14,7 @@ export async function readbackFixture(options:{readonly threadIds?:readonly stri
  const threadIds=options.threadIds??['a'];const handles=Object.fromEntries(threadIds.map(id=>[id,data.openThread(id)])) as Record<string,ReturnType<ShellboyData['openThread']>>;await settle(t,db);
  const h=handles.a!;
  const windowHistory=options.windowHistory ?? {revision:6,total:1,items:[{node_id:'human',kind:'user',selection:{ordinal:0},items:[{kind:'text',item_identity:'human-text',text:'Independent human',text_complete:true}]}]};
- const window=new ConversationWindow({read:async()=>({ok:true,value:ownedHistory({thread_id:'a',...windowHistory,items:withCanonicalAttemptProvenance(windowHistory.items,CANONICAL_ATTEMPT_ID)})})});
+ const window=new ConversationWindow({read:async()=>({ok:true,value:ownedHistory({thread_id:'a',...windowHistory,items:windowHistory.items})})});
  await settle(t,db);window.bindTerminalHandle(h);onTestFinished(()=>{window.dispose();data.stop();});
  const state={terminalState:'completed' as 'completed'|'failed'|'incomplete'|'cancelled',attempt:CANONICAL_ATTEMPT_ID,available:options.initialAvailable ?? true,truncated:true,partial:false,deferred:false,unknown:false,missing:false,error:false,changing:false,nonterminal:false,wrongid:false,empty:false};
  const original=db.answer.bind(db);let reads=0;

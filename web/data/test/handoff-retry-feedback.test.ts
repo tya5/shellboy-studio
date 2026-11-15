@@ -2,7 +2,7 @@ import { expect, it } from "vitest";
 import { ShellboyData } from "../src/store";
 import { FakeOwnerDb, FakeTransport, connected, settle, flush } from "./harness";
 import {readbackFixture as rig} from './readback-fixture';
-import {CANONICAL_ATTEMPT_ID} from './work-fixture';
+import {withCanonicalAttemptProvenance,CANONICAL_ATTEMPT_ID} from './work-fixture';
 
 it("explicit retry publishes real read progress and unresolved outcome without executing a model/tool/send", async () => {
   const r = await rig(); r.state.available = false; r.live(); r.end(); await r.pump();
@@ -146,7 +146,7 @@ it("queued terminal owner failure preserves error result without waking history"
 });
 
 it.each(["cancel","pause"] as const)("%s display-owner observer clears pending facts without waking or body reads", async mode => {
-  const r=await rig({initialAvailable:false,windowHistory:{revision:7,total:2,items:[{node_id:"tool",kind:"assistant_response",selection:{ordinal:0},items:[{kind:"tool_call",item_identity:"call",execution_ids:["exec"]}]},{node_id:"answer",kind:"assistant_response",selection:{ordinal:1},items:[{kind:"text",item_identity:"answer",text:"saved",text_complete:true}]}]}}); expect(r.window.bindTerminalHandle(r.h)).toBe(true); r.window.jumpToEnd(); await r.pump(); let armed=false,hit=false;
+  const r=await rig({initialAvailable:false,windowHistory:{revision:7,total:2,items:withCanonicalAttemptProvenance([{node_id:"tool",kind:"assistant_response",selection:{ordinal:0},items:[{kind:"tool_call",item_identity:"call",execution_ids:["exec"]}]},{node_id:"answer",kind:"assistant_response",selection:{ordinal:1},items:[{kind:"text",item_identity:"answer",text:"saved",text_complete:true}]}],CANONICAL_ATTEMPT_ID)}}); expect(r.window.bindTerminalHandle(r.h)).toBe(true); r.window.jumpToEnd(); await r.pump(); let armed=false,hit=false;
   const stop=r.window.acceptedView.subscribe(snapshot=>{
     if(armed && (snapshot.assistantOwnership?.length ?? 0)>0){ armed=false; hit=true; if(mode==="pause")r.h.pause(); else r.h.cancelReads(); }
   });
