@@ -16,7 +16,7 @@ afterEach(()=>{stop?.();stop=undefined;vi.restoreAllMocks();});
 async function rig(kind:'inside'|'below', invalid?:'duplicate'|'hidden'|'revoke'|'reject', notify?:'consume'|'pause'|'cancel'|'owner'|'revoke'){
  const t=new FakeTransport();let serial=0;const data=new ShellboyData({transport:t,newId:()=>`g-${++serial}`});data.start();t.open();t.push({t:'hello',bridge_version:'synthetic',owner:connected});await flush();const handle=data.openThread('t');
  let target=false;const w=new ConversationWindow({read:async()=>({ok:true,value:{thread_id:'t',revision:target?2:1,total:2,items:target?[{node_id:'summary',kind:'summary',selection:{ordinal:0},items:[]},{node_id:'b',kind:'user',selection:{ordinal:1},items:[]}]:[{node_id:'a',kind:'user',selection:{ordinal:0},items:[]},{node_id:'b',kind:'user',selection:{ordinal:1},items:[]}]}})});await flush();
- const root=document.createElement('div');document.body.append(root);stop=()=>{render(null,root);root.remove();w.dispose();handle.close();data.stop();};
+ const root=document.createElement('div');document.body.append(root);let unsubscribe=()=>{};stop=()=>{unsubscribe();render(null,root);root.remove();w.dispose();handle.close();data.stop();};
  const model={t:signal((key:string)=>key),shells:signal(new Map()),handle:signal(handle)} as unknown as AppModel;
  const rect=vi.spyOn(HTMLElement.prototype,'getBoundingClientRect').mockImplementation(function(this:HTMLElement){const top=this.dataset.node?(target?130:40):0;return{top,bottom:top+20,height:20} as DOMRect;});
  const slot=(ref:WindowAcceptedSnapshot)=><div class="conversation-items">{ref.rows.map(row=><div hidden={target&&invalid==='hidden'&&row.node_id==='summary'} data-item-key={row.node_id} data-node={row.node_id} key={row.node_id}/>)}{target&&invalid==='duplicate'&&<div data-node="summary" data-item-key="dup"/>}</div>;
@@ -30,7 +30,8 @@ async function rig(kind:'inside'|'below', invalid?:'duplicate'|'hidden'|'revoke'
  // S isolated fixture supplies literal membership: NOT a claim about D body-read authority.
  const consume=vi.spyOn(w,'consumeSummaryCoverage'); let armed=true; const subscription=notify&&w.acceptedView.subscribe(()=>{if(!armed)return;armed=false;if(notify==='consume')w.consumeSummaryCoverage(w.acceptedView.peek(),id!);else if(notify==='pause')handle.pause();else if(notify==='cancel')handle.cancelReads();else if(notify==='owner')t.push({t:'owner',event:'restarted',owner:connected});else w.acceptedView.revoke();});
  const accepted=w.acceptSummaryCoverage(handle,w.acceptedView.peek(),id!,{node_id:'summary',kind:'summary',text:'',source_node_ids:['a']});
- subscription;
+ if(subscription)unsubscribe=subscription;
+ if(!notify)expect(accepted).toBe(true);
  const capture=vi.spyOn(ReadingAnchor.prototype,'capture'),heading=vi.spyOn(HeadingAnchor.prototype,'consume');
  const ref=w.acceptedView.peek(),scroll=vi.spyOn(w,'consumeScroll');
  if(invalid==='reject')consume.mockReturnValue(false);
@@ -49,7 +50,7 @@ it.each(['duplicate','hidden','revoke','reject'] as const)('preserves coverage a
 
 it.each(['consume','pause','cancel','owner','revoke'] as const)('classifies synchronous notify %s after summary publication',async action=>{
  const x=await rig('inside',undefined,action);expect(x.accepted).toBe(action==='consume');
- if(action==='consume'){expect(x.consume).toHaveBeenCalledTimes(1);}else{expect(x.consume).not.toHaveBeenCalled();}
+ if(action==='consume'){expect(x.consume).toHaveBeenCalledTimes(1);expect(x.consume.mock.results[0]!.value).toBe(true);}else{expect(x.consume).not.toHaveBeenCalled();}
 });
 
 it.each(['inside','below','pause','navigation','missing'] as const)('uses actual AppModel qualified historyGet for %s without an added read',async mode=>{
