@@ -366,6 +366,22 @@ it('complete canonical ownership avoids a redundant ready readback',async()=>{
  expect(r.w.acceptedView.peek().assistantOwnership).toEqual(firstState.owners);
  r.w.dispose();r.data.stop();
 });
+it('canonical publication subscriber observes atomic state before release',async()=>{
+ const r=await readyTarget(); const generation=r.w.acceptedView.peek().generation;
+ const trace:{rows:readonly string[];owner:boolean;retired:boolean;rawHeld:number;presentations:number;generation:number}[]=[];
+ const stop=r.w.acceptedView.subscribe(snapshot=>{
+  const owner=snapshot.assistantOwnership?.some(item=>item.attemptId===CANONICAL_ATTEMPT_ID&&item.mode==='canonical') ?? false;
+  if(owner){trace.push({rows:snapshot.rows.map(row=>row.node_id!),owner,retired:snapshot.retiredAttempts?.some(item=>item.attemptId===CANONICAL_ATTEMPT_ID)??false,rawHeld:r.h.handoff.peek().length,presentations:snapshot.displayPlan?.entries.filter(entry=>entry.presentationContainer===r.record.presentationContainer).length??0,generation:snapshot.generation});r.w.layoutChanged();}
+ });
+ const lease=r.w.prepareBoundReadyRead(r.record);expect('state' in lease).toBe(true);await r.pump();stop();
+ const settled=r.w.acceptedView.peek();
+ expect(trace.map(({rows,owner,retired,presentations})=>({rows,owner,retired,presentations}))).toEqual([{rows:['tool','answer'],owner:true,retired:true,presentations:1}]);
+ expect(trace.every(item=>item.generation>generation&&item.presentations===1)).toBe(true);
+ expect(settled.assistantOwnership?.some(item=>item.attemptId===CANONICAL_ATTEMPT_ID&&item.mode==='canonical')).toBe(true);
+ expect(settled.retiredAttempts?.some(item=>item.attemptId===CANONICAL_ATTEMPT_ID)).toBe(true);expect(r.h.handoff.peek()).toHaveLength(0);
+ expect((lease as OwnedTerminalReadLease).state.peek().phase).toBe('settled');
+ r.w.dispose();r.data.stop();
+});
 it.each(['gap','revoke','cancel','dispose'] as const)('actual ready successor %s retains accepted rows and cannot blend old prefix',async mode=>{
  const r=await readyTarget(), before=r.w.acceptedView.peek();
  const lease=r.w.prepareBoundReadyRead(r.record); expect('state' in lease).toBe(true);
