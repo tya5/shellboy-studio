@@ -474,10 +474,16 @@ export function Conversation({ model }: { model: AppModel }) {
   const sendBlocked = model.ownSendBlocked();
   const conn = model.connection.value;
   const recovery = model.recovery.value;
+  const diagnostic = win?.diagnostic.value;
 
   return (
     <>
       <div class="convo">
+        {diagnostic ? <output class="convo-diagnostic" data-window-diagnostic="true"
+          data-reason={diagnostic.reason} data-generation={diagnostic.generation}
+          data-revision={diagnostic.revision ?? ""} data-owner-epoch={diagnostic.ownerEpoch}>
+          {diagnostic.reason} · generation {diagnostic.generation} · revision {diagnostic.revision ?? "uninitialized"} · owner epoch {diagnostic.ownerEpoch}
+        </output> : null}
         {handle ? <OrderedHistory model={model} handle={handle} win={win} t={t} /> :
           <EmptyState icon="chat" title={t("convo.noThread")} body={t("convo.noThreadBody")}>
             <Button variant="primary" onClick={() => void model.createThread()}>{t("action.new")}</Button>
