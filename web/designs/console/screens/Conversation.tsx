@@ -479,11 +479,9 @@ export function Conversation({ model }: { model: AppModel }) {
   return (
     <>
       <div class="convo">
-        {diagnostic ? <output class="convo-diagnostic" data-window-diagnostic="true"
+        {diagnostic ? <output hidden data-window-diagnostic="true"
           data-reason={diagnostic.reason} data-generation={diagnostic.generation}
-          data-revision={diagnostic.revision ?? ""} data-owner-epoch={diagnostic.ownerEpoch}>
-          {diagnostic.reason} · generation {diagnostic.generation} · revision {diagnostic.revision ?? "uninitialized"} · owner epoch {diagnostic.ownerEpoch}
-        </output> : null}
+          data-revision={diagnostic.revision ?? ""} data-owner-epoch={diagnostic.ownerEpoch} /> : null}
         {handle ? <OrderedHistory model={model} handle={handle} win={win} t={t} /> :
           <EmptyState icon="chat" title={t("convo.noThread")} body={t("convo.noThreadBody")}>
             <Button variant="primary" onClick={() => void model.createThread()}>{t("action.new")}</Button>

@@ -40,8 +40,8 @@ it('renders only bounded window diagnostic metadata without body or payload fiel
     const diagnostic=host.querySelector('[data-window-diagnostic]');
     expect(diagnostic).not.toBeNull(); expect(diagnostic?.getAttribute('data-reason')).toBe('input-bound');
     expect(diagnostic?.getAttribute('data-generation')).toBe('4'); expect(diagnostic?.getAttribute('data-revision')).toBe('2');
-    expect(diagnostic?.textContent).toContain('input-bound'); expect(diagnostic?.textContent).not.toContain('body');
-    expect(diagnostic?.textContent).not.toContain('payload');
+    expect(diagnostic?.hasAttribute('hidden')).toBe(true); expect(diagnostic?.textContent).toBe('');
+    expect([...diagnostic!.attributes].map(attribute=>attribute.name).sort()).toEqual(['data-generation','data-owner-epoch','data-reason','data-revision','data-window-diagnostic','hidden'].sort());
   } finally { render(null,host);host.remove();fixture.model.dispose();fixture.data.stop(); }
 });
 
@@ -55,7 +55,7 @@ it('renders a real capture failure diagnostic without the captured secret', asyn
     await act(async()=>render(<Conversation model={fixture.model}/>,host));
     const diagnostic=host.querySelector('[data-window-diagnostic]');
     expect(diagnostic).not.toBeNull(); expect(diagnostic?.getAttribute('data-reason')).toBe('input-bound');
-    expect(diagnostic?.textContent).not.toContain(secret); expect(diagnostic?.outerHTML).not.toContain(secret); expect(diagnostic?.outerHTML).not.toContain('x'); expect([...diagnostic!.attributes].every(attribute=>!attribute.value.includes(secret))).toBe(true);
+    expect(diagnostic?.hasAttribute('hidden')).toBe(true); expect(diagnostic?.textContent).toBe(''); expect(diagnostic?.outerHTML).not.toContain(secret); expect(diagnostic?.outerHTML).not.toContain('x'); expect([...diagnostic!.attributes].every(attribute=>!attribute.value.includes(secret))).toBe(true);
   } finally { render(null,host);host.remove();fixture.model.dispose();fixture.data.stop(); }
 });
 
