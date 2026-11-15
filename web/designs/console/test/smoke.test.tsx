@@ -619,7 +619,7 @@ describe("Analytics", () => {
     await act(async () => {
       await settle(t, db);
     });
-    expect(text(el)).toContain("UI cache owner is not available");
+    expect(text(el)).toContain("Not reported");
     expect(el.querySelector('[role="meter"]')).toBeTruthy();
     expect(text(el)).toContain("Bridge resident memory");
     expect(text(el)).toContain("40 MiB");
