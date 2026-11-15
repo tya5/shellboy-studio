@@ -78,7 +78,7 @@ describe("Operations", () => {
     Object.defineProperty(item.items[0], "text", { enumerable: true, get: () => { textReads++; return textReads <= 2 ? externalText : "x".repeat(20000); }, set: (value: string) => { externalText = value; } });
     const pending = ops.historyWindow({ thread_id: "a" }); t.ok(t.calls()[0]!.id, { thread_id: "a", revision: 1, total: 1, items: [item] });
     const out = await pending; expect(out.ok).toBe(true); expect(textReads).toBe(1); expect(ordinalReads).toBe(1);
-    if (out.ok) { const result = out.value.items[0]!; expect(result.items?.[0]).toMatchObject({ text: "short" }); item.items[0]!.text = "caller mutation"; expect(result.items?.[0]).toMatchObject({ text: "short" }); }
+    if (out.ok) { const result = out.value.items[0]!; expect(result.items?.[0]).toMatchObject({ text: "short" }); item.items[0]!.text = "caller mutation"; expect(result.items?.[0]).toMatchObject({ text: "short" }); expect(Object.isFrozen(result)).toBe(true); expect(() => { result.node_id = "changed"; }).toThrow(); }
   });
 
   it("public history capture rejects the first oversized value with a body-free bound error", async () => {
