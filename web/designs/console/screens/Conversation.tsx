@@ -226,12 +226,12 @@ export function DeferredHistoryNode({ model, row }: { model: AppModel; row: Hist
   </div>;
 }
 
-function HandoffRetryControl({model}: {model:AppModel}) {
+function HandoffRetryControl({model,record}: {model:AppModel;record?:HandoffRecord}) {
   const handle=model.handle.value;
   const state=handle?.handoffRetryState.value;
-  if(!handle||!state||state.phase==="idle")return null;
+  if(!handle||!state||state.phase==="idle"||(record && record.status!=="confirming"&&record.status!=="failed"))return null;
   return <span data-handoff-retry-phase={state.phase} data-handoff-retry-reason={state.phase!=="reading"?state.reason:undefined}>
-    <span class="caption muted">{model.t.value(state.phase==="reading"?"convo.handoffConfirming":`convo.retry.${state.reason}`)}</span>
+    <span class="caption muted">{model.t.value(record ? handoffLabelKey(record,state) : state.phase==="reading" ? "convo.handoffConfirming" : `convo.retry.${state.reason}` as import("../../../ui-core/src/i18n").MessageKey)}</span>
     {state.phase==="reading"||state.canRetry?<Button variant="link" disabled={!state.canRetry} onClick={()=>void handle.retryHandoff()}>{model.t.value("action.retry")}</Button>:null}
   </span>;
 }
@@ -241,7 +241,7 @@ export function LiveRecordChrome({ model, record }: { model: AppModel; record: H
   const incomplete = record.incomplete || record.status === "failed";
   return <div data-live-record-chrome={record.key}>
     {incomplete ? <div class="caption muted" data-live-incomplete="">{t("convo.liveIncomplete")}</div> : null}
-    <HandoffRetryControl model={model}/>
+    <HandoffRetryControl model={model} record={record}/>
     {record.status === "failed" && !model.handle.value?.handoffRetryState.value ? <div class="caption muted">{t("convo.handoffFailed")}</div> : null}
   </div>;
 }

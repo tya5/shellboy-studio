@@ -158,16 +158,16 @@ for(const windowed of [false,true])it(`all actual Work member boundaries own one
  }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
 });
 
-it('exposes typed budget exhaustion alongside retained confirming preview for the same record',async()=>{
+it.each(['budget-exhausted','lookup-failed'] as const)('uses terminal typed retry reason instead of confirming header for %s',async reason=>{
  const f=await fixtureModel({capabilities:['live.text']}),host=document.createElement('div');document.body.append(host);
  const record={key:'budget-record',presentationContainer:'presentation:test' as import('../../../data/src/handoff').PresentationContainerId,attemptId:'attempt',status:'confirming' as const,bodyAuthority:'preview' as const,text:'retained preview body',incomplete:false};
- const state:{phase:'unavailable';reason:'budget-exhausted';canRetry:true}={phase:'unavailable',reason:'budget-exhausted',canRetry:true};
+ const state={phase:reason==='lookup-failed'?'failed':'unavailable',reason,canRetry:true} as const;
  const handle={handoff:{value:[record]},handoffOverflow:{value:false},handoffRetryState:{value:state},retryHandoff:async()=>{}} as unknown as import('../../../data/src').ThreadHandle;
  const model=new Proxy(f.model,{get(target,key){return key==='handle'?{value:handle}:Reflect.get(target,key);}});
  try{
   await act(async()=>render(<><LiveMessage model={model} handle={handle} follow={()=>{}}/><LiveRecordChrome model={model} record={record} retry={()=>{}}/></>,host));
   expect(host.textContent).not.toContain(f.model.t.value('convo.handoffConfirming'));
-  expect(host.textContent).toContain(f.model.t.value('convo.retry.budget-exhausted'));
+  expect(host.textContent).toContain(f.model.t.value(`convo.retry.${reason}`));
   expect(host.textContent).toContain('retained preview body');
  }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
 });
