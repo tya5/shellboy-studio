@@ -122,7 +122,7 @@ export class TerminalReadSlots {
       pages.push(HistoryWindowInput.own(value));cursor??=value;
     }
     if(!cursor)return 'selection-gap';
-    try{return{ok:true,value:HistoryWindowInput.join(pages)};}catch(error){if(error instanceof InputCaptureError)return 'selection-gap';throw error;}
+    try{return{ok:true,value:HistoryWindowInput.join(pages)};}catch(error){if(error instanceof InputCaptureError)return{ok:false,error:{kind:'invalid_response',message:error.reason}};throw error;}
   }
   clear(): void {
     const old = [...this.markers.values()]; this.markers.clear();

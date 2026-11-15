@@ -33,8 +33,9 @@ export class HistoryWindowInput implements HistoryWindowResult {
  static join(pages:readonly HistoryWindowInput[]):HistoryWindowInput{
   const first=pages[0];if(!first)throw new InputCaptureError('invalid-input');
   const visits=pages.reduce((total,page)=>total+page.#visits,0);
-  if(visits>65536)throw new InputCaptureError('input-bound');
-  const rows=pages.flatMap(page=>page.items);Object.freeze(rows);
+  const rows=pages.flatMap(page=>page.items);
+  if(rows.length>1600)throw new InputCaptureError('input-bound');
+  Object.freeze(rows);
   return new HistoryWindowInput({...first,items:rows},visits);
  }
 }

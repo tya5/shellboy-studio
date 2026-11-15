@@ -78,6 +78,8 @@ as alternate producers or renamed compatibility fallbacks.
 
 ## Versions and Lifetime
 
+Validated selected pages are joined as owned typed DTOs under the existing row, page, revision, scope, ordinal, and selected-row limits. Raw capture depth/visit bounds apply at each untrusted page boundary; joining already-owned pages does not reapply that raw-graph budget. A raw capture failure remains a body-free `invalid_response` outcome, while an ordinal/revision/identity mismatch remains a selection-gap outcome. Rich multi-page rows are therefore legal when each page independently qualifies; no limit or worker increase is implied.
+
 Core **revision** identifies the selected history state. Local **generation**
 orders semantic display publications, including live/Work changes at the same
 history revision. The local **owner identity** invalidates callbacks on cancel,
