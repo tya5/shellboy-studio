@@ -12,7 +12,9 @@ export interface CanonicalHistoryInput {
 }
 function canonicalHistoryInput(snapshot:WindowAcceptedSnapshot,scope:string):CanonicalHistoryInput{
  const held=snapshot.canonicalInput;
- if(held&&held.rows===snapshot.rows&&held.revision===snapshot.revision&&held.scope===scope)return held;
+ const sameRows=held&&held.revision===snapshot.revision&&held.rows.length===snapshot.rows.length
+   &&held.rows.every((row,index)=>row===snapshot.rows[index]);
+ if(held&&sameRows&&held.scope===scope)return held;
  return Object.freeze({rows:snapshot.rows,revision:snapshot.revision,scope,
   projection:projectHistoryWindowItems({revision:snapshot.revision??0,nodes:snapshot.rows,keyScope:Object.freeze([scope])}).projection});
 }

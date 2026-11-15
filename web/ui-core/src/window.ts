@@ -1151,7 +1151,7 @@ export class ConversationWindow {
   }
 
   private snapshotForSelection(selection: Pick<WindowAcceptedSnapshot,'generation'|'epoch'|'rows'|'range'|'total'|'revision'|'pending'>,
-    capability: AcceptedCapability): WindowAcceptedSnapshot {
+    capability: AcceptedCapability, canonicalInput?: WindowAcceptedSnapshot['canonicalInput']): WindowAcceptedSnapshot {
     const currentRows=selection.rows;
     const presence = this.terminalCapability === capability ? this.terminalPersistedAttempts.flatMap(receipt => {
       const previous = this.terminalPresence.find(p => p.scope === receipt.scope && p.attemptId === receipt.attemptId);
@@ -1160,7 +1160,7 @@ export class ConversationWindow {
     }) : [];
     const requalifiedOwnership = selection.revision === undefined ? []
       : this.acceptedOwnershipForBump(selection.revision, currentRows, capability);
-    return { ...selection, disposed: false,
+    return { ...selection, ...(canonicalInput ? { canonicalInput } : {}), disposed: false,
       attemptPresentations: this.attemptPresentations.filter(p => !this.terminalPersistedAttempts.some(done => this.terminalCapability === capability && done.scope === p.scope && done.attemptId === p.attemptId)),
       terminalPresence: this.terminalCapability === capability ? presence : [],
       terminalPersistedAttempts: this.terminalCapability === capability ? this.terminalPersistedAttempts : [],
@@ -1173,8 +1173,12 @@ export class ConversationWindow {
   private bump(capability: AcceptedCapability = this.acceptedView.currentCapability): void {
     if (this.disposed || capability !== this.acceptedView.currentCapability) return;
     const epoch = this.epoch, generation = this.nextAcceptedGeneration();
-    const snapshot=this.snapshotForSelection({generation,epoch,rows:this.rangeItems(),range:this.renderRange(),
-      total:this.total,revision:this.revision,pending:this.status.peek()==='loading'},capability);
+    const accepted = this.acceptedView.peek(), rows = this.rangeItems();
+    const canonicalInput = accepted.canonicalInput && accepted.revision === this.revision
+      && accepted.rows.length === rows.length && accepted.rows.every((row,index)=>row===rows[index])
+      ? accepted.canonicalInput : undefined;
+    const snapshot=this.snapshotForSelection({generation,epoch,rows,range:this.renderRange(),
+      total:this.total,revision:this.revision,pending:this.status.peek()==='loading'},capability,canonicalInput);
     const staged=this.prepareAccepted(snapshot,capability);
     if (this.disposed || epoch !== this.epoch || generation !== this.acceptedGeneration) return;
     if (!this.commitAccepted(staged, capability)) return;
