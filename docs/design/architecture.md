@@ -787,3 +787,42 @@ retained text and confirming/retry (or failure) chrome; they never promote a bod
 by inference. All existing owner epoch/cancellation invalidation and eight-record,
 UTF-8 one-MiB, eight-start read budget and single-resolver bounds remain unchanged.
 No new read, queue, guessed span, or public protocol is introduced.
+
+### Canonical successor CAS across derived publications
+
+A fresh canonical window read owns the canonical history input captured by its
+accepted snapshot. A derived-only publication may replace that snapshot for
+presentation facts, but it must not invalidate the in-flight canonical read when
+`canonicalInput` identity and the captured `ConversationIdentity` semantic input
+are unchanged, with revision, epoch, and capability unchanged. The read may
+perform one strict successor CAS against those exact authorities;
+any canonical-input, revision, epoch, capability, lifetime, or ownership change
+still rejects the response. Retained derived bumps reuse the accepted
+`terminalPresence` and `assistantOwnership` references; fresh canonical rows
+construct new facts, so reference identity represents the authoritative fact
+producer rather than incidental recomputation churn. This is not a loose capability check, unconditional
+rebase, retry loop, new registry, or new state bit. Tests retain the selected
+read count, typed refs/scope/lifetime negatives, and late body positive control.
+
+
+### History wake ordering
+
+`syncWindow` records a history tick but wakes the existing reader only after
+attempt presentations, terminal ownership/read admission, conversation input,
+and display composition have committed for that tick. The wake therefore owns
+one reader instance and sees the semantic facts it is meant to refresh. No
+scheduler delay, duplicate notification, new reader, retry loop, or new state
+is introduced; disposal, scope, capability, and reentrant negative controls
+remain strict.
+
+
+### Typed handoff demand ownership
+
+The existing entry-owned demand is typed as `none`, `reconcile`, or `canonical`.
+Changed notifications set only `canonical`; live-end, retry, terminal resolver,
+and busy coalescing set or merge only `reconcile`, without downgrading an
+already canonical demand. The resolver consumes one local demand, and only a
+successful current entry pass may emit its canonical wake. Same-entry dirty demand
+remains for the next pass; another entry's demand is scheduled independently.
+Cancellation, owner failure, revoke, and decoder reentry produce no fabricated
+wake.

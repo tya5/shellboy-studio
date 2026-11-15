@@ -27,6 +27,24 @@ export const READS_IN_FLIGHT = 2;
 /** Fast scrolling must pause this long before a window is requested. */
 export const PAUSE_MS = 80;
 
+function terminalProofEqual(a: TerminalPersistedProof, b: TerminalPersistedProof): boolean {
+  return a.scope === b.scope && a.attemptId === b.attemptId && a.recordKey === b.recordKey && a.turnId === b.turnId
+    && a.presentationContainer === b.presentationContainer && a.terminalState === b.terminalState
+    && a.nodeIds.length === b.nodeIds.length && a.nodeIds.every((id,index) => id === b.nodeIds[index])
+    && (a.refs?.length ?? 0) === (b.refs?.length ?? 0)
+    && (a.refs ?? []).every((ref,index) => ref.nodeId === b.refs?.[index]?.nodeId && ref.ordinal === b.refs?.[index]?.ordinal && ref.kind === b.refs?.[index]?.kind);
+}
+function terminalPresenceEqual(a: TerminalPresence, b: TerminalPresence): boolean {
+  return a.scope === b.scope && a.attemptId === b.attemptId && a.phase === b.phase && a.reason === b.reason
+    && a.answerAvailability === b.answerAvailability && terminalProofEqual(a.receipt,b.receipt);
+}
+function terminalPresenceListEqual(a: readonly TerminalPresence[], b: readonly TerminalPresence[]): boolean {
+  return a.length === b.length && a.every((fact,index) => terminalPresenceEqual(fact,b[index]!));
+}
+function ownershipListEqual(a: readonly AssistantOwnership[], b: readonly AssistantOwnership[]): boolean {
+  return a.length === b.length && a.every((fact,index) => assistantOwnershipEqual(fact,b[index]!));
+}
+
 export type WindowReadArgs = Omit<HistoryWindowArgs, "thread_id">;
 export interface WindowReader {
   read(args: WindowReadArgs, cancel: Cancel): Promise<Outcome<HistoryWindowInput>>;
@@ -474,6 +492,7 @@ export class ConversationWindow {
     if (this.disposed || !this.acceptedView.isCurrent(ref) || cap !== this.acceptedView.currentCapability) return undefined;
     const present = terminalPresence(receipt, ref.rows, reason);
     const next = [...(ref.terminalPresence ?? []).filter(p => p.scope !== receipt.scope || p.attemptId !== receipt.attemptId), ...(present ? [{ ...present, ...(phase ? { phase } : {}) }] : [])];
+    const current=this.acceptedView.peek(),startPresence=ref.terminalPresence ?? [],currentPresence=current.terminalPresence ?? [],startOwnership=ref.assistantOwnership ?? [],currentOwnership=current.assistantOwnership ?? [];
     if (JSON.stringify(next) === JSON.stringify(ref.terminalPresence ?? [])) return ref;
     const generation = this.nextAcceptedGeneration();
     const staged = this.prepareAccepted({ ...ref, generation, terminalPresence: next }, cap);
@@ -1138,16 +1157,23 @@ export class ConversationWindow {
   }
 
   private snapshotForSelection(selection: Pick<WindowAcceptedSnapshot,'generation'|'epoch'|'rows'|'range'|'total'|'revision'|'pending'>,
-    capability: AcceptedCapability, canonicalInput?: WindowAcceptedSnapshot['canonicalInput']): WindowAcceptedSnapshot {
-    const currentRows=selection.rows;
-    const presence = this.terminalCapability === capability ? this.terminalPersistedAttempts.flatMap(receipt => {
+    capability: AcceptedCapability, canonicalInput?: WindowAcceptedSnapshot['canonicalInput'], retainDerived = false): WindowAcceptedSnapshot {
+    const currentRows=selection.rows,accepted=this.acceptedView.peek(),acceptedCanonical=accepted.canonicalInput;
+    const retainedProof = retainDerived && canonicalInput !== undefined && acceptedCanonical === canonicalInput
+      && canonicalInput.scope === acceptedCanonical.scope && accepted.revision === selection.revision
+      && accepted.rows.length === currentRows.length && accepted.rows.every((row,index) => row === currentRows[index])
+      && capability === this.acceptedView.currentCapability;
+    const producedPresence = this.terminalCapability === capability ? this.terminalPersistedAttempts.flatMap(receipt => {
       const previous = this.terminalPresence.find(p => p.scope === receipt.scope && p.attemptId === receipt.attemptId);
       const value = terminalPresence(receipt, currentRows, previous?.reason ?? "canonical-pending");
       return value ? [{ ...value, phase: previous?.phase ?? value.phase }] : [];
     }) : [];
-    const requalifiedOwnership = selection.revision === undefined ? []
-      : this.acceptedOwnershipForBump(selection.revision, currentRows, capability);
-    return { ...selection, ...(canonicalInput ? { canonicalInput } : {}), disposed: false,
+    const existingPresence=accepted.terminalPresence ?? [];
+    const presence = retainedProof && terminalPresenceListEqual(producedPresence,existingPresence) ? existingPresence : producedPresence;
+    const producedOwnership = selection.revision === undefined ? [] : this.acceptedOwnershipForBump(selection.revision, currentRows, capability);
+    const existingOwnership=accepted.assistantOwnership ?? [];
+    const requalifiedOwnership = retainedProof && ownershipListEqual(producedOwnership,existingOwnership) ? existingOwnership : producedOwnership;
+    return { ...selection, rows: retainedProof && canonicalInput ? canonicalInput.rows : selection.rows, ...(canonicalInput ? { canonicalInput } : {}), disposed: false,
       attemptPresentations: this.attemptPresentations.filter(p => !this.terminalPersistedAttempts.some(done => this.terminalCapability === capability && done.scope === p.scope && done.attemptId === p.attemptId)),
       terminalPresence: this.terminalCapability === capability ? presence : [],
       terminalPersistedAttempts: this.terminalCapability === capability ? this.terminalPersistedAttempts : [],
@@ -1165,7 +1191,7 @@ export class ConversationWindow {
       && accepted.rows.length === rows.length && accepted.rows.every((row,index)=>row===rows[index])
       ? accepted.canonicalInput : undefined;
     const snapshot=this.snapshotForSelection({generation,epoch,rows,range:this.renderRange(),
-      total:this.total,revision:this.revision,pending:this.status.peek()==='loading'},capability,canonicalInput);
+      total:this.total,revision:this.revision,pending:this.status.peek()==='loading'},capability,canonicalInput,true);
     const staged=this.prepareAccepted(snapshot,capability);
     if (this.disposed || epoch !== this.epoch || generation !== this.acceptedGeneration) return;
     if (!this.commitAccepted(staged)) return;
@@ -1179,9 +1205,26 @@ export class ConversationWindow {
     if(this.disposed||this.tailCancel||this.verifying)return;
     const expected=this.acceptedView.peek(),capability=this.acceptedView.currentCapability,epoch=this.epoch;
     if(!this.acceptedView.isCurrent(expected))return;
+    const startIdentity=this.acceptedInput?.ref===expected?this.acceptedInput.identity:undefined;
     const follow=this.following.peek(),cancel=new Cancel();this.tailCancel=cancel;
-    const current=()=>!this.disposed&&this.tailCancel===cancel&&!cancel.cancelled&&this.epoch===epoch
-      &&this.acceptedView.currentCapability===capability&&this.acceptedView.isCurrent(expected);
+    let owner=expected;
+    const semanticOwnerCurrent=()=>{
+      const accepted=this.acceptedView.peek(),input=this.acceptedInput;
+      return !!startIdentity&&input?.ref===accepted&&conversationIdentityEqual(startIdentity,input.identity);
+    };
+    const captureResponseOwner=()=>{
+      const accepted=this.acceptedView.peek();
+      const sameCanonical=accepted===expected || accepted.canonicalInput !== undefined && accepted.canonicalInput === expected.canonicalInput
+        && accepted.revision === expected.revision && accepted.epoch === expected.epoch
+        && capability === this.acceptedView.currentCapability;
+      if(!sameCanonical || accepted!==expected&&!semanticOwnerCurrent())return false;
+      owner=accepted; return true;
+    };
+    const readOwnerCurrent=()=>{
+      const state={disposed:this.disposed,cancelled:cancel.cancelled,tailCurrent:this.tailCancel===cancel,epochMatch:this.epoch===epoch,capMatch:this.acceptedView.currentCapability===capability,refCurrent:this.acceptedView.isCurrent(owner)};
+      const ok=!state.disposed&&!state.cancelled&&state.tailCurrent&&state.epochMatch&&state.capMatch&&state.refCurrent;
+      return ok;
+    };
     const range=expected.range,rows:HistoryItem[]=[];let revision:number|undefined,total:number|undefined;
     try{
       if(!follow&&(!range||range.last-range.first+1>WINDOW_NODES*WINDOWS_HELD))return;
@@ -1189,7 +1232,7 @@ export class ConversationWindow {
       for(let ordinal=first;ordinal<=last;ordinal+=2*WINDOW_NODES){
         const args:WindowReadArgs=follow?{before:WINDOW_NODES-1,after:0,excerpt_chars:HISTORY_WINDOW_EXCERPT_CHARS,items:true}:
           {ordinal,before:0,after:Math.min(2*WINDOW_NODES-1,last-ordinal),expect_node_id:expected.rows[ordinal-first]?.node_id,excerpt_chars:HISTORY_WINDOW_EXCERPT_CHARS,items:true};
-        const out=await this.reader.read(args,cancel);if(!current())return;
+        const out=await this.reader.read(args,cancel);if(!captureResponseOwner()||!readOwnerCurrent())return;
         if(!out.ok){if(out.error.kind!=='cancelled')this.error.value=out.error.message;return;}
         const page=out.value;
         if(page.revision<minimumRevision||revision!==undefined&&(revision!==page.revision||total!==page.total))return;
@@ -1199,19 +1242,21 @@ export class ConversationWindow {
         if(page.items.length!==Math.max(0,end-begin+1))return;
         rows.push(...page.items);
       }
-      if(!current()||revision===undefined||total===undefined)return;
+      if(!readOwnerCurrent()||revision===undefined||total===undefined)return;
       // An upward gesture during the owned latest read is not permission to navigate away.
       if(follow&&!this.following.peek()){this.newer.value=true;return;}
-      const generation=this.nextAcceptedGeneration(),cursor={revision,total};
+      const cursor={revision,total};
       const firstOrdinal=follow?Math.max(0,total-WINDOW_NODES):range!.first,lastOrdinal=follow?total-1:range!.last;
       // Validate and compose from the one bounded plain capture, then retain those exact rows.
       const selected=Object.freeze(rows);
       if(selected.length!==Math.max(0,lastOrdinal-firstOrdinal+1)||new Set(selected.map(row=>row.node_id)).size!==selected.length
         ||selected.some((row,index)=>!row.node_id||row.selection?.ordinal!==firstOrdinal+index))return;
+      const commitExpected=owner;
+      const generation=this.nextAcceptedGeneration();
       const snapshot=this.snapshotForSelection({generation,epoch,rows:selected,range:selected.length?{first:firstOrdinal,last:lastOrdinal}:undefined,
         total:cursor.total,revision:cursor.revision,pending:false},capability);
       const staged=this.prepareCaptured(snapshot,capability,this.captureConversationInput(snapshot),'read');
-      if(!staged||!current()||generation!==this.acceptedGeneration||follow&&!this.following.peek())return;
+      if(!staged||!readOwnerCurrent()||generation!==this.acceptedGeneration||follow&&!this.following.peek())return;
       const replacement=new Map<number,Bucket>();
       for(const row of selected){const ordinal=row.selection!.ordinal!,index=Math.floor(ordinal/WINDOW_NODES);
         let bucket=replacement.get(index);if(!bucket){bucket=new Bucket();replacement.set(index,bucket);}
@@ -1220,19 +1265,16 @@ export class ConversationWindow {
       if(replacement.size>WINDOWS_HELD)return;
       const old={buckets:this.buckets,total:this.total,revision:this.revision,tailKnown:this.tailKnown,lastAnchor:this.lastAnchor,heights:this.heights,scroll:this.scrollRequest,
         inflight:new Map(this.inflight),wanted:this.wanted};
-      this.heights=new Heights();
+      const nextHeights=new Heights();
       for(const row of selected){const ordinal=row.selection!.ordinal!,prior=old.buckets.get(Math.floor(ordinal/WINDOW_NODES))?.items[ordinal%WINDOW_NODES];
-        const height=old.heights.h.get(ordinal);if(prior&&prior.node_id===row.node_id&&prior.kind===row.kind&&height!==undefined)this.heights.set(ordinal,height);
+        const height=old.heights.h.get(ordinal);if(prior&&prior.node_id===row.node_id&&prior.kind===row.kind&&height!==undefined)nextHeights.set(ordinal,height);
       }
-      this.tailKnown=selected.at(-1)?.node_id?{nodeId:selected.at(-1)!.node_id!,ordinal:lastOrdinal}:undefined;
-      if(follow){this.lastAnchor=undefined;this.scrollRequest=Number.MAX_SAFE_INTEGER;}
-      if(!this.commitSelectedPublication(staged,replacement,expected,capability)){
-        if(this.buckets===old.buckets&&this.acceptedView.peek()===expected){
-          this.tailKnown=old.tailKnown;this.lastAnchor=old.lastAnchor;this.heights=old.heights;this.scrollRequest=old.scroll;
-        }
-        return;
-      }
+      const nextTailKnown=selected.at(-1)?.node_id?{nodeId:selected.at(-1)!.node_id!,ordinal:lastOrdinal}:undefined;
+      const nextLastAnchor=follow?undefined:old.lastAnchor, nextScroll=follow?Number.MAX_SAFE_INTEGER:old.scroll;
+      if(!readOwnerCurrent()||this.acceptedView.peek()!==commitExpected||this.acceptedGeneration!==generation||capability!==this.acceptedView.currentCapability)return;
+      if(!this.commitSelectedPublication(staged,replacement,commitExpected,capability)){ return; }
       if(this.buckets!==replacement||this.disposed||capability!==this.acceptedView.currentCapability)return;
+      this.heights=nextHeights; this.tailKnown=nextTailKnown; this.lastAnchor=nextLastAnchor; this.scrollRequest=nextScroll;
       this.terminalPresence=this.acceptedView.peek().terminalPresence??[];
       for(const [index,read] of old.inflight)if(this.inflight.get(index)===read){read.cancel.cancel();this.inflight.delete(index);}
       if(follow&&this.following.peek()&&this.wanted===old.wanted)this.wanted.clear();this.failed.clear();
@@ -1240,7 +1282,10 @@ export class ConversationWindow {
       this.status.value='ready';this.error.value=undefined;this.jumping=false;this.version.value++;
       for(const bucket of old.buckets.values())for(const attachment of bucket.handoffs.values())attachment.release('return');
     }finally{
-      if(this.tailCancel===cancel){this.tailCancel=undefined;this.drainTailHint();this.pump();}
+      if(this.tailCancel===cancel){
+        this.tailCancel=undefined;
+        this.drainTailHint();this.pump();
+      }
     }
   }
 

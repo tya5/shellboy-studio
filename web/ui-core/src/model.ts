@@ -670,11 +670,9 @@ export class AppModel {
       reader.bindConversationInput(snapshot => this.captureWindowConversation(reader, h, snapshot));
       this.longReader.value = reader;
     }
-    const tick = h.historyTick.value; // a hint: the reader decides what to read
-    if (tick !== this.readerTick) {
-      this.readerTick = tick;
-      this.longReader.peek()!.changed();
-    }
+    const tick = h.historyTick.value; // a hint: publish semantic facts before waking the reader
+    const tickChanged = tick !== this.readerTick;
+    if (tickChanged) this.readerTick = tick;
     const reader = this.longReader.peek()!;
     reader.setAttemptPresentations(h.attemptPresentations.value);
     const records = h.handoff.value;
@@ -696,6 +694,7 @@ export class AppModel {
     }
     this.composeWindowDisplay(reader, h);
     this.readerShells(reader);
+    if (tickChanged && this.longReader.peek() === reader && this.handle.peek() === h && this.readerHandoffScope === h.handoffScope()) reader.changed();
   }
 
   private captureWindowConversation(reader: ConversationWindow, handle: ThreadHandle, snapshot: WindowAcceptedSnapshot) {

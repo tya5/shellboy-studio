@@ -13,6 +13,32 @@ it("explicit retry publishes real read progress and unresolved outcome without e
   expect(phases).toContain("reading"); expect(r.h.handoffRetryState.value.phase).toBe("unavailable");
   expect(r.t.calls().some(call => ["message.send", "run.retry", "shell.run"].includes(call.command))).toBe(false); stop(); r.data.stop();
 });
+it("canonical demand survives same-entry reconcile and wakes once after commit", async () => {
+  const r = await rig();
+  try {
+    r.live(); r.end(); await flush();
+    const initial = r.t.calls("status").at(-1)!; expect(initial).toBeDefined();
+    let out = r.db.answer(initial); r.db.answered.add(initial.id); if (out.ok) r.t.ok(initial.id, out.result);
+    await flush();
+    const beforeStatus = r.t.calls("status").length, beforeTick = r.h.historyTick.peek();
+    r.t.push({ t: "changed", thread_ids: ["a"], list: false }); await flush();
+    expect(r.t.calls("status").length).toBe(beforeStatus + 1);
+    const retry = r.h.retryHandoff(); await flush();
+    expect(r.t.calls("status").length).toBe(beforeStatus + 1);
+    const first = r.t.calls("status").at(-1)!;
+    out = r.db.answer(first); r.db.answered.add(first.id); if (out.ok) r.t.ok(first.id, out.result);
+    await flush();
+    expect(r.h.historyTick.peek()).toBe(beforeTick);
+    expect(r.t.calls("status").length).toBe(beforeStatus + 2);
+    const followup = r.t.calls("status").at(-1)!;
+    out = r.db.answer(followup); r.db.answered.add(followup.id); if (out.ok) r.t.ok(followup.id, out.result);
+    await flush(); await retry; await r.pump();
+    expect(r.h.historyTick.peek()).toBe(beforeTick + 1);
+    await flush(); await r.pump();
+    expect(r.h.historyTick.peek()).toBe(beforeTick + 1);
+    expect(r.t.calls("status").length).toBe(beforeStatus + 2);
+  } finally { r.data.stop(); }
+});
 it("busy explicit retry promise waits for its one coalesced follow-up read", async () => {
   const r = await rig(); r.state.available = false; r.live(); r.end(); await flush();
   const first = r.t.calls("status").at(-1)!; expect(first).toBeDefined();
