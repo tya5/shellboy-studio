@@ -19,11 +19,6 @@ export class HistoryWindowInput implements HistoryWindowResult {
   value=freezeHistory(value);
   this.thread_id=value.thread_id;this.revision=value.revision;this.total=value.total;this.items=value.items;this.#visits=visits;Object.freeze(this);
  }
- static own(value:HistoryWindowResult):HistoryWindowInput{
-  if(value instanceof HistoryWindowInput)return value;
-  const capture=createInputCapture(),owned=capture(value);
-  return new HistoryWindowInput(owned,capture.visits??0);
- }
  static decode(raw:unknown):Outcome<HistoryWindowInput>{
   return captureDecode(raw,(owned,visits)=>{
    const decoded=decodeHistoryWindow(owned); if(!decoded.ok) throw new InputCaptureError('invalid-input');

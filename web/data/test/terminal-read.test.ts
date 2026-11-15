@@ -148,8 +148,8 @@ it('joined validated pages preserve rich rows without reusing the aggregate raw 
 
 it('join rejects selected cuts above the existing 1600-row bound with input-bound',()=>{
  const page={thread_id:'t',revision:2,total:1600,items:Array.from({length:200},(_,i)=>({node_id:`n${i}`,kind:'event',selection:{ordinal:i},items:[]}))};
- const pages=Array.from({length:8},()=>HistoryWindowInput.own(page));
- let error:unknown;try{HistoryWindowInput.join([...pages,HistoryWindowInput.own({...page,items:[{...page.items[0]!,node_id:'extra',selection:{ordinal:1600}}]})]);}catch(value){error=value;}expect((error as {reason?:string}).reason).toBe('input-bound');
+ const pages=Array.from({length:8},()=>ownedHistory(page));
+ let error:unknown;try{HistoryWindowInput.join([...pages,ownedHistory({...page,items:[{...page.items[0]!,node_id:'extra',selection:{ordinal:1600}}]})]);}catch(value){error=value;}expect((error as {reason?:string}).reason).toBe('input-bound');
 });
 
 it.each(['gap','revision','total','cancel','budget'] as const)('paged selected %s never exposes a partially assembled cut',async mode=>{

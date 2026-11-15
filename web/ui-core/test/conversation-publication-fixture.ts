@@ -14,5 +14,5 @@ export function publicationSnapshot(base: Omit<WindowAcceptedSnapshot, 'generati
 }
 
 export function publishSnapshot(view: AcceptedView<WindowAcceptedSnapshot>, snapshot: WindowAcceptedSnapshot) {
-  return view.publish(makeAcceptedPublication(snapshot, 'read'), view.currentCapability);
+  return view.publish(makeAcceptedPublication(snapshot, 'read'));
 }

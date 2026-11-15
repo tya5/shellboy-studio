@@ -316,7 +316,7 @@ export class ConversationWindow {
         })] : []);
       const oldReceipts = this.terminalPersistedAttempts, oldCap = this.terminalCapability, oldPresence = this.terminalPresence;
       this.terminalPersistedAttempts = receipts; this.terminalCapability = cap; this.terminalPresence = presence;
-      if (!this.commitAccepted(staged, this.acceptedView.currentCapability)) {
+      if (!this.commitAccepted(staged)) {
         undo.forEach(cancel => cancel());
         this.terminalPersistedAttempts = oldReceipts; this.terminalCapability = oldCap; this.terminalPresence = oldPresence;
         return false;
@@ -485,7 +485,7 @@ export class ConversationWindow {
     const generation = this.nextAcceptedGeneration();
     const staged = this.prepareAccepted({ ...ref, generation, terminalPresence: next }, cap);
     this.terminalPresence = next;
-    if (!this.acceptedView.isCurrent(ref) || !this.commitAccepted(staged, this.acceptedView.currentCapability)) return undefined;
+    if (!this.acceptedView.isCurrent(ref) || !this.commitAccepted(staged)) return undefined;
     const committed = this.acceptedView.peek();
     if (committed.generation !== generation || !this.acceptedView.isCurrent(committed) || cap !== this.acceptedView.currentCapability) return undefined;
     return committed;
@@ -647,7 +647,7 @@ export class ConversationWindow {
     const staged = this.prepareAccepted({ ...ref, generation, coverage }, cap);
     if (!this.acceptedView.isCurrent(ref) || tx !== this.summaryTransition || !handle.isReadQualificationCurrent(tx.token)) return false;
     tx.coverage = coverage; tx.targetCap = cap;
-    if (!this.commitAccepted(staged, this.acceptedView.currentCapability)) { tx.coverage = undefined; tx.targetCap = undefined; return false; }
+    if (!this.commitAccepted(staged)) { tx.coverage = undefined; tx.targetCap = undefined; return false; }
     const committed = this.acceptedView.peek();
     // A synchronous consumer may consume coverage during notify(). Report the
     // committed transaction, not the post-consumption availability predicate.
@@ -1036,7 +1036,7 @@ export class ConversationWindow {
     const generation=this.nextAcceptedGeneration();
     const staged=this.prepareCaptured({...candidate,generation},capability,input,'bump');
     if(!this.acceptedView.isCurrent(ref)||capability!==this.acceptedView.currentCapability)return false;
-    return this.commitAccepted(staged,capability);
+    return this.commitAccepted(staged);
   }
 
   private unavailablePlan(generation: number, revision: number | undefined, capability: AcceptedCapability,
@@ -1074,14 +1074,15 @@ export class ConversationWindow {
           retiredAttempts: snapshot.retiredAttempts ?? [] }).plan;
     const binding = this.terminalBinding;
     const qualification = binding?.handle.isReadQualificationCurrent(binding.token);
-    return makeConversationPublication({ ...snapshot,canonicalInput:input.canonicalInput, displayPlan }, reason, () => input.isCurrent()
-      && this.terminalBinding === binding
-      && (!binding || binding.handle.handoffScope() === binding.scope && binding.handle.isReadQualificationCurrent(binding.token) === qualification),input.identity);
+    const lease=this.acceptedView.currentLease;
+    return makeConversationPublication({ ...snapshot,canonicalInput:input.canonicalInput, displayPlan }, reason,
+      {capability, isCurrent:()=>input.isCurrent() && this.acceptedView.currentLease===lease
+        && this.terminalBinding === binding
+        && (!binding || binding.handle.handoffScope() === binding.scope && binding.handle.isReadQualificationCurrent(binding.token) === qualification)}, input.identity);
   }
 
-  private commitAccepted(publication: AcceptedPublication<WindowAcceptedSnapshot>,
-    capability: AcceptedCapability): boolean {
-    const published=this.acceptedView.publish(publication,capability),ref=this.acceptedView.peek();
+  private commitAccepted(publication: AcceptedPublication<WindowAcceptedSnapshot>): boolean {
+    const published=this.acceptedView.publish(publication),ref=this.acceptedView.peek();
     if(published&&ref===publication.snapshot&&publication.inputIdentity)this.acceptedInput={ref,identity:publication.inputIdentity};
     if(!published)this.diagnostic.value=Object.freeze({reason:'publication-rejected',generation:ref.generation,revision:ref.revision,ownerEpoch:this.epoch,at:Date.now()});
     return published;
@@ -1097,7 +1098,7 @@ export class ConversationWindow {
     if (selected.revision !== undefined && revisionRelation(selected.revision, expected.revision) === 'older') return false;
     this.buckets = buckets; this.total = selected.total; this.revision = selected.revision;
     this.terminalPresence = selected.terminalPresence ?? [];
-    if (this.commitAccepted(publication, capability)) return true;
+    if (this.commitAccepted(publication)) return true;
     if (this.buckets === buckets && this.acceptedView.peek() === expected) {
       this.buckets = previous.buckets; this.total = previous.total; this.revision = previous.revision; this.terminalPresence = previous.presence;
     }
@@ -1180,7 +1181,7 @@ export class ConversationWindow {
       total:this.total,revision:this.revision,pending:this.status.peek()==='loading'},capability,canonicalInput);
     const staged=this.prepareAccepted(snapshot,capability);
     if (this.disposed || epoch !== this.epoch || generation !== this.acceptedGeneration) return;
-    if (!this.commitAccepted(staged, capability)) return;
+    if (!this.commitAccepted(staged)) return;
     if (this.disposed || epoch !== this.epoch || generation !== this.acceptedGeneration) return;
     this.terminalPresence=snapshot.terminalPresence??[];
     this.version.value++;

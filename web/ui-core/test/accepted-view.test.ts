@@ -13,7 +13,7 @@ const page = (revision: number, capability: object = Object.freeze({})): Page =>
 };
 const next = (view: AcceptedView<Page>, revision: number) => page(revision, view.currentCapability);
 const publish = (view: AcceptedView<Page>, value: Page, capability = view.currentCapability) =>
-  view.publish(makeAcceptedPublication(value, "read"), capability);
+  view.publish(makeAcceptedPublication({ ...value, displayPlan: { ...value.displayPlan, capability } }, "read"));
 
 it("stages external getters before qualification and never swaps a revoked page", () => {
   const view = new AcceptedView(page(1));
