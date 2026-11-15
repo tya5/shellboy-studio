@@ -4,7 +4,7 @@ import type { HistoryItem, WorkItem } from "../../data/src/protocol";
 import { signal } from "@preact/signals-core";
 import { connected, details, FakeOwnerDb, FakeTransport, settle, summary } from "../../data/test/harness";
 import { ShellboyData, type ReplyWaitAdapter } from "../../data/src";
-import { AppModel, noPending, type PendingAdapter, type PendingItem, type Route, type ViewName } from "../src";
+import { AppModel, noPending, type PendingAdapter, type PendingItem, type Route, type ViewName, type Lang } from "../src";
 
 export const NOW = Date.parse("2026-11-07T10:20:00+00:00");
 const at = (minute: number, second = 0) => `2026-11-07T10:${String(minute).padStart(2, "0")}:${String(second).padStart(2, "0")}.000000+00:00`;
@@ -323,7 +323,7 @@ export function answerInsights(db: FakeOwnerDb, usage: Record<string, unknown> =
   };
 }
 
-export async function fixtureModel(options: { realPending?: boolean; pending?: PendingAdapter; replyWait?: ReplyWaitAdapter; route?: ViewName; threadId?: string; section?: Route["section"]; usage?: Record<string, unknown>; capabilities?: string[]; configure?: (db: FakeOwnerDb) => void; configureData?: (data: ShellboyData) => void } = {}) {
+export async function fixtureModel(options: { realPending?: boolean; pending?: PendingAdapter; replyWait?: ReplyWaitAdapter; route?: ViewName; threadId?: string; section?: Route["section"]; lang?: Lang; usage?: Record<string, unknown>; capabilities?: string[]; configure?: (db: FakeOwnerDb) => void; configureData?: (data: ShellboyData) => void } = {}) {
   const t = new FakeTransport();
   const db = fixtureDb();
   answerInsights(db, options.usage);
@@ -331,7 +331,7 @@ export async function fixtureModel(options: { realPending?: boolean; pending?: P
   let operationSequence = 0;
   const data = new ShellboyData({ transport: t, newId: () => `op-${++operationSequence}` });
   options.configureData?.(data);
-  const model = new AppModel({ data, ...(options.realPending ? {} : { pending: options.pending ?? noPending }), ...(options.replyWait ? { replyWait: options.replyWait } : {}), nowMs: () => NOW, offsetMinutes: () => 540 });
+  const model = new AppModel({ data, lang: options.lang, ...(options.realPending ? {} : { pending: options.pending ?? noPending }), ...(options.replyWait ? { replyWait: options.replyWait } : {}), nowMs: () => NOW, offsetMinutes: () => 540 });
   if (options.route === "conversation" && options.threadId) model.applyRoute({ view: "conversation", threadId: options.threadId });
   else if (options.route) model.applyRoute({ view: options.route, ...(options.section && { section: options.section }) });
   model.start();

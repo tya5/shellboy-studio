@@ -29,7 +29,7 @@ try {
   for(const width of [1280,390]) for(const lang of ['en','ja']){
     await cmd('Emulation.setDeviceMetricsOverride',{width,height:900,deviceScaleFactor:1,mobile:width===390});
     await cmd('Page.navigate',{url:`http://127.0.0.1:19430/?view=memory&lang=${lang}`});
-    let ready=false;for(let i=0;i<100;i++){await new Promise(r=>setTimeout(r,100));if(await evaluate("!!document.querySelector('section[aria-label] .meters')")){ready=true;break;}}
+    let ready=false;for(let i=0;i<100;i++){await new Promise(r=>setTimeout(r,100));if(await evaluate(`document.documentElement.dataset.memoryFixture===${JSON.stringify(lang)} && !!document.querySelector('section[aria-label] .meters')`)){ready=true;break;}}
     if(!ready)throw Error(`MemoryPane did not render ${width}/${lang}`);
     const result=await evaluate(`(()=>{const section=[...document.querySelectorAll('section[aria-label]')].find(e=>e.querySelector('.meters'));if(!section)throw Error('memory section missing');const cards=[...section.querySelectorAll('.meter')],root=section.getBoundingClientRect(),rects=cards.map(e=>{const r=e.getBoundingClientRect();return {left:r.left,right:r.right,top:r.top,bottom:r.bottom};});return {cardCount:cards.length,text:section.textContent??'',overflow:document.documentElement.scrollWidth>innerWidth,root:{left:root.left,right:root.right},rects}})()`);
     const overlap=result.rects.some((a,i)=>result.rects.some((b,j)=>i!==j&&a.left<b.right&&b.left<a.right&&a.top<b.bottom&&b.top<a.bottom));
