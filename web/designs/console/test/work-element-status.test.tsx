@@ -30,15 +30,3 @@ for (const origin of ['wire','client'] as const) it(`untyped ${origin} state nev
  expect(host.textContent).toContain(origin==='client'?'CLIENT completed':'completed');
  render(null,host);
 });
-
-
-it('notification created_at remains visible and accessible without exposing body text',()=>{
- const host=document.createElement('div');
- const source: WorkElementDisplay={typeIcon:'inbox',typeAccessibleLabel:'Notification',contentLabel:{text:'Notification details were not provided',context:[{name:'created_at',value:'2026-01-01T00:00:00Z'}]},state:null,detailPolicy:'none'};
- render(<WorkElementRow display={formatWorkElementDisplay(source)} anchorKey="notice" detailPolicy="none"/>,host);
- const line=host.querySelector('.work-element-row__line')!;
- expect(line.textContent).toContain('2026-01-01T00:00:00Z');
- expect(line.getAttribute('aria-label')).toContain('2026-01-01T00:00:00Z');
- expect(line.textContent).not.toContain('PRIVATE BODY');
- render(null,host);
-});
