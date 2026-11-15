@@ -81,7 +81,7 @@ function display(item: ProjectedSavedItem, capture: CapturedWorkElement, executi
       label = "Notification";
       const notification = facts.notification;
       if (!notification) {
-        text = "Notification details were not provided";
+        text = facts.createdAt ? `Notification details were not provided (${facts.createdAt})` : "Notification details were not provided";
         break;
       }
       switch (notification.kind) {

@@ -220,7 +220,7 @@ it('legacy absent or quarantined optional notification leaves the honest unknown
 it('notification text preserves created_at context and does not infer body details',()=>{
  const withTime=display([{node_id:'with-time',kind:'notification',excerpt:'PRIVATE BODY',provenance:{created_at:'2026-11-15T08:20:00Z',sender:{kind:'user'}}}])[0]!;
  const withoutTime=display([{node_id:'without-time',kind:'notification',excerpt:'PRIVATE BODY',provenance:{sender:{kind:'user'}}}])[0]!;
- expect(withTime.value!.contentLabel.text).toBe('Notification details were not provided');
+ expect(withTime.value!.contentLabel.text).toBe('Notification details were not provided (2026-11-15T08:20:00Z)');
  expect(withTime.value!.contentLabel.context).toContainEqual({name:'created_at',value:'2026-11-15T08:20:00Z'});
  expect(withoutTime.value!.contentLabel.context.some(context=>context.name==='created_at')).toBe(false);
  expect(JSON.stringify(withTime.value)).not.toContain('PRIVATE BODY');

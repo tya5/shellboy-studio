@@ -163,3 +163,22 @@ it.each(['run', 'turn'])('actual App classifies a supported live %s as Notificat
   expect(f.t.calls('history.get')).toHaveLength(0);
  }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
 });
+
+
+it('raw notification facts reach the existing row with factual time and no body',async()=>{
+ const host=document.createElement('div');document.body.append(host);
+ const f=await fixtureConversation({nodes:[
+  {node_id:'with-time',kind:'notification',excerpt:'PRIVATE BODY',provenance:{created_at:'2026-01-01T00:00:00Z',sender:{kind:'user'}}},
+  {node_id:'without-time',kind:'notification',excerpt:'PRIVATE BODY',provenance:{sender:{kind:'user'}}},
+ ]});
+ try{
+  const snapshot=f.model.longReader.value!.acceptedView.peek();
+  await act(async()=>render(<SavedWindowContent model={f.model} snapshot={snapshot}/>,host));
+  const rows=[...host.querySelectorAll('.work-element-row__line')];
+  expect(rows).toHaveLength(2);
+  expect(rows[0]!.textContent).toContain('Notification details were not provided (2026-01-01T00:00:00Z)');
+  expect(rows[0]!.getAttribute('aria-label')).toContain('2026-01-01T00:00:00Z');
+  expect(rows[1]!.textContent).toBe('Notification details were not provided');
+  expect(host.textContent).not.toContain('PRIVATE BODY');
+ }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
+});

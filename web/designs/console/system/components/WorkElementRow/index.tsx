@@ -23,7 +23,7 @@ export function formatWorkElementDisplay(source: WorkElementDisplay): FormattedW
   const typeIcon: IconName = source.typeIcon;
   return {
     source, context: source.contentLabel.context, typeIcon,
-    visibleContext: source.contentLabel.context.filter(entry => entry.name === "description" || entry.name === "time" || entry.name === "created_at").map(entry => entry.value),
+    visibleContext: source.contentLabel.context.filter(entry => entry.name === "description" || entry.name === "time").map(entry => entry.value),
     typeAccessibleLabel: source.typeAccessibleLabel,
     contentLabel: source.contentLabel.text,
     state: source.state === null ? null : source.state.value,

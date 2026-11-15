@@ -219,8 +219,9 @@ style, or fallback.
 
 The missing-facts notification label is a factual unavailable-details statement,
 not a content-summary inference. The existing public `created_at` fact remains in
-the display context and is included in the existing WorkElementRow visible and
-ARIA context, matching prior notification timestamp behavior. Alternatives were
-not chosen: a global formatter change would widen the unit, while dropping the
-time fact would regress accessibility and visible context. The regression covers
-time present/absent, body non-inference, and rendered text/ARIA retention.
+the display context and, for notification facts without a typed summary, is
+rendered as a factual timestamp suffix in the notification label and ARIA context.
+Missing time stays the literal facts-only label. Alternatives were not chosen: a
+global formatter change would widen every row consumer, while dropping the time
+fact would regress accessibility and visible context. The regression covers time
+present/absent, body non-inference, and rendered text/ARIA retention.
