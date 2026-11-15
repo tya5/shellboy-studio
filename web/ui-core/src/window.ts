@@ -1019,7 +1019,7 @@ export class ConversationWindow {
     return captureConversationInput(snapshot, { scope, threadId: binding?.handle.threadId ?? '',
       records: binding?.handle.handoff.value ?? [],
       work: (() => { const workValue = binding?.handle.work.value.value;
-        return workValue ? captureWork(workValue, normalizeLiveWorkFacts({ scope, items: workValue.items })) : EMPTY_WORK_DESCRIPTOR;
+        return workValue ? captureWork(workValue, normalizeLiveWorkFacts({ scope: binding?.handle.threadId ?? scope, items: workValue.items })) : EMPTY_WORK_DESCRIPTOR;
       })(),
       current: !this.disposed && (!binding || binding.handle.isReadQualificationCurrent(binding.token) && binding.handle.handoffScope() === scope) });
   }
