@@ -614,7 +614,7 @@ describe("Analytics", () => {
     expect(text(el)).toContain("Recreating an index costs money");
     expect(text(el)).toContain("mock-embed");
   });
-  it("Memory shows the cache limits as reported, and the owner's reason when a value is unavailable", async () => {
+  it("Memory shows cache limits and localized missing values when a value is unavailable", async () => {
     const { el, t, db } = await open("memory");
     await act(async () => {
       await settle(t, db);
