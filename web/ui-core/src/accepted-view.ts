@@ -43,7 +43,6 @@ export function makeConversationPublication(snapshot:WindowAcceptedSnapshot,reas
 export class AcceptedView<T> {
   private readonly value: Signal<T>;
   private acceptedCapability:AcceptedCapability;
-  private lease:AcceptedLease;
   private ended = false;
 
   private readonly capability = signal(mintCapability());
@@ -57,15 +56,11 @@ export class AcceptedView<T> {
     const initialPlan = (initial as { readonly displayPlan?: { readonly capability?: AcceptedCapability } }).displayPlan;
     if (initialPlan?.capability && capabilityTokens.has(initialPlan.capability)) this.capability.value = initialPlan.capability;
     this.acceptedCapability=this.capability.peek();
-    const capability=this.acceptedCapability;
-    this.lease=Object.freeze({capability,isCurrent:()=>this.isCurrentLease(capability)});
   }
   get current(): T { return this.value.value; }
   peek(): T { return this.value.peek(); }
-  private isCurrentLease(capability: AcceptedCapability): boolean { return !this.ended && this.capability.peek() === capability; }
   isCurrent(ref: T): boolean { return !this.ended && this.value.peek() === ref && this.capability.peek() === this.acceptedCapability; }
   get currentCapability(): AcceptedCapability { return this.capability.value; }
-  get currentLease(): AcceptedLease { return this.lease; }
   private stage(value: T, lease: AcceptedLease): StagedView<T> {
     const handle = Object.freeze({}) as StagedView<T>;
     const slot = { handle, expected: this.value.peek(), lease, value: undefined as T | undefined };
@@ -103,7 +98,7 @@ export class AcceptedView<T> {
     this.listeners.add(listener); return () => { this.listeners.delete(listener); };
   }
   /** Revoke before cancellation/other external callbacks, without replacing display. */
-  revoke(): void { batch(() => { this.staged = undefined; this.pending = false; const capability=mintCapability(); this.capability.value=capability; this.lease=Object.freeze({capability,isCurrent:()=>this.isCurrentLease(capability)}); }); }
+  revoke(): void { batch(() => { this.staged = undefined; this.pending = false; const capability=mintCapability(); this.capability.value=capability; }); }
   dispose(): void { this.ended = true; this.revoke(); this.listeners.clear(); }
   private notify(): void {
     if (this.notifying || this.ended) return;

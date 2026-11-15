@@ -1,7 +1,6 @@
 import type { HistoryWindowInput } from '../../data/src/history-input';
 import {responseRefsMatchSelected} from "../../data/src/public-response-refs";
-import { captureConversationInput, conversationIdentityEqual, captureWork, EMPTY_WORK_DESCRIPTOR, type ConversationSemanticInput } from "./conversation-input";
-import { normalizeLiveWorkFacts } from "./conversation-items";
+import { captureConversationInput, conversationIdentityEqual, captureCurrentWork, type ConversationSemanticInput } from "./conversation-input";
 import { assistantOwnership, assistantOwnershipEqual, assistantOwnershipRefsEqual, assistantOwnershipRetiredEqual, type AssistantOwnership } from './assistant-ownership';
 import { projectHistoryWindowItems } from './conversation-items';
 import type { DisplayAssociation, DisplayObservation, DisplayTarget } from '../../data/src/handoff';
@@ -1017,7 +1016,7 @@ export class ConversationWindow {
     return captureConversationInput(snapshot, { scope, threadId: binding?.handle.threadId ?? '',
       records: binding?.handle.handoff.value ?? [],
       work: (() => { const workValue = binding?.handle.work.value.value;
-        return workValue ? captureWork(workValue, normalizeLiveWorkFacts({ scope: binding?.handle.threadId ?? scope, items: workValue.items })) : EMPTY_WORK_DESCRIPTOR;
+        return captureCurrentWork(binding?.handle.threadId ?? scope, workValue);
       })(),
       current: !this.disposed && (!binding || binding.handle.isReadQualificationCurrent(binding.token) && binding.handle.handoffScope() === scope) });
   }

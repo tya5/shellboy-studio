@@ -1,4 +1,4 @@
-import { captureConversationInput, createConversationIdentity, captureWork, EMPTY_WORK_DESCRIPTOR, type ConversationSemanticInput } from "./conversation-input";
+import { captureConversationInput, createConversationIdentity, captureCurrentWork, type ConversationSemanticInput } from "./conversation-input";
 import { readThreadSettings, type OutputLimitReadback, type ThreadSettings } from "./resources";
 import {localSendAdmission} from "./local-send-admission";
 import type { OwnSendTailObservation,OwnSendReservation } from "./own-send-region";
@@ -705,7 +705,7 @@ export class AppModel {
       && reader.acceptedView.currentCapability === capability && reader.isTerminalHandleCurrent(handle);
     const input = captureConversationInput(snapshot, { scope, threadId: handle.threadId,
       records: handle.handoff.value, work: (() => { const workValue = handle.work.value.value;
-        return workValue ? captureWork(workValue, normalizeLiveWorkFacts({ scope: handle.threadId, items: workValue.items })) : EMPTY_WORK_DESCRIPTOR;
+        return captureCurrentWork(handle.threadId, workValue);
       })(), current: current() });
     const reserved = new Set((snapshot.assistantOwnership ?? []).filter(item => item.mode === 'preview').flatMap(item => item.itemKeys));
     const display = input.projection;

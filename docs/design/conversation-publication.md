@@ -173,63 +173,38 @@ before a swap, not in a catch-all that hides a partly installed cursor.
   landing, deployment and actual user confirmation. No private owner/DB access or
   deployment permission follows from a green source test.
 
-## Verified Ownership Boundary Notes (2026-11-15)
+## Ownership And Validation Contract
 
-The accepted source lease is producer-owned. Record transitions are typed: source
-or authority changes revoke a captured lease, while transfer metadata bookkeeping
-preserves the immutable source token. A confirming-to-failed transition revokes;
-an already-failed readable source remains readable. Repeated failure with no state
-change is a no-op and must not force a publication repaint.
+The accepted source lease is producer-owned. Typed `updateRecord` transitions
+increment source revision only for semantic source changes; same-content
+confirming repeats and transfer bookkeeping preserve a captured display lease.
+Confirming-to-failed revokes a prior lease, while an already-failed readable source
+remains readable. Repeated failure and same-content updates are true no-ops.
 
-Conversation semantic identity is built from one captured base descriptor and a
-typed own-send extension. Equality compares the named identity fields, including
-own-send fields, rather than comparing a freshly allocated extension object.
-Accepted owner successor staging uses the full `AssistantOwnership` relation,
+Conversation identity uses one captured Work source/facts descriptor plus the typed
+own-send extension. Equality compares named identity fields and the stable Work
+source. Accepted successor staging retains the full `AssistantOwnership` relation,
 including mode, proof revision, receipt revision, item keys, and selected refs.
 
-The verified focused matrix includes the true ready-proof transfer path, the
-bookkeeping/failed transition oracle, the changed-reentry notification contract,
-an aggregate-positive eight-page input whose individually bounded pages join to
-1,600 rows, and a capture failure that reaches the UI diagnostic without exposing
-a secret sentinel. These focused receipts do not establish full-suite, review,
-CI, or three-OS qualification.
+Accepted publication uses the View capability and currentness/disposal guards as
+one lifetime identity. History joins use `MAX_HISTORY_ROWS` for both admission and
+joined-output checks; raw page capture remains independently bounded. Visual
+window diagnostics remain a separate body-free UI concern and are not changed by
+this unit.
 
-The obsolete test-only generic accepted-publication mint/materialization path has
-been removed from the typed producer unit. Remaining qualification is the complete
-unit validation sequence; no compatibility fallback was retained.
+## Validation Correspondence
 
-The public-entry fixed-point proof now uses the existing captured base identity:
-model capture extends `input.identity` with typed own-send fields, while the base
-work identity uses the stable owner work source rather than a freshly normalized
-array. This prevents a same-source publication from recursively committing while
-`syncWindow` observes the accepted view. The complete public-entry group and its
-cycle path are validated at the final focused SHA, including the saved/retirement
-and next-live-turn cases.
-
-## Generic Publication Test Replacement Map (2026-11-15)
-
-The removed generic `AcceptedView` mint tests are not a qualification gap by
-name alone. Their contract coverage is exercised at typed producer boundaries:
-
-- Lease revoke, stale callbacks, atomic replacement, and same-ref invalidation:
-  `web/ui-core/test/accepted-window-revoke.test.ts`,
-  `web/ui-core/test/terminal-presence-read.test.ts`, and
-  `web/data/test/handoff-attempt.test.ts`.
-- Getter, input-bound, cyclic, `toJSON`, retained-cut, and capability negatives:
-  `web/ui-core/test/window-provenance-capture.test.ts`,
-  `web/ui-core/test/public-persistence-append-boundary.test.ts`, and
-  `web/ui-core/test/window-accepted.test.ts`.
-- Reentrant publication and bounded successor behavior:
-  `web/data/test/handoff-reentrant-publication.test.ts`,
-  `web/ui-core/test/empty-receipt-publication.test.ts`, and
-  `web/ui-core/test/accepted-window-revoke.test.ts`.
-- Shared graph/aggregate/page ownership and real producer transfer paths:
-  `web/data/test/terminal-read.test.ts`,
-  `web/data/test/handoff-readback.test.ts`, and
-  `web/data/test/handoff-attempt.test.ts`.
-
-The old generic mint boundary is removed; these producer tests are the
-replacement contract surfaces and must remain in the affected native matrix.
+- Ownership and stale-source negatives: `web/ui-core/test/handoff-window.test.ts`,
+  `web/ui-core/test/window-attempt-atomic.test.ts`, and
+  `web/ui-core/test/window-provenance-capture.test.ts`.
+- Input, row-bound, aggregate, and selected-read contracts:
+  `web/data/test/terminal-read.test.ts`, `web/data/test/operations.test.ts`, and
+  `web/ui-core/test/conversation-current-input.test.ts`.
+- Reentrant publication and public producer coverage:
+  `web/designs/console/test/conversation-public-entry.test.tsx` and
+  `web/designs/console/test/work-element-consumer.test.tsx`.
+- Generic publication minting is removed; these typed producer boundaries are the
+  replacement contract surfaces for focused and native validation.
 
 ## Lifecycle Evidence Addendum (2026-11-15)
 

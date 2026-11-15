@@ -1,9 +1,10 @@
 import { emptyOwnSendLocalRegion } from "./own-send-presentation";
 import type { HandoffRecord } from '../../data/src/handoff';
+import type { WorkItem } from '../../data/src/protocol';
 import type { WindowAcceptedSnapshot } from './window';
 import type { OwnUserDecision, ConversationDisplayPlan } from './conversation-display-plan';
 import { projectHistoryWindowItems, projectOwnedHandoffFacts, projectSavedItems, retainUnretiredLiveFacts,
-  normalizeTerminalPresenceFacts, scopeIssuedWorkFacts, withPresentationContainers,
+  normalizeLiveWorkFacts, normalizeTerminalPresenceFacts, scopeIssuedWorkFacts, withPresentationContainers,
   type NormalizedSavedItem, type SavedItemProjection } from './conversation-items';
 
 export interface CanonicalHistoryInput {
@@ -23,7 +24,7 @@ export interface ConversationIdentity {
   readonly rows: WindowAcceptedSnapshot['rows']; readonly revision: number | undefined;
   readonly assistantOwnership: WindowAcceptedSnapshot['assistantOwnership'];
   readonly terminalPresence: WindowAcceptedSnapshot['terminalPresence']; readonly retiredAttempts: WindowAcceptedSnapshot['retiredAttempts'];
-  readonly records?: readonly HandoffRecord[]; readonly work?: WorkCaptureDescriptor;
+  readonly records?: readonly HandoffRecord[]; readonly work: WorkCaptureDescriptor;
   readonly own?: OwnSendIdentity; readonly scope: string; readonly current: boolean;
 }
 export interface WorkCaptureDescriptor {
@@ -34,6 +35,9 @@ export const EMPTY_WORK_SOURCE = Object.freeze({});
 export const EMPTY_WORK_DESCRIPTOR: WorkCaptureDescriptor = Object.freeze({ source: EMPTY_WORK_SOURCE, facts: Object.freeze([]) });
 export function captureWork(source: object, facts: readonly NormalizedSavedItem[]): WorkCaptureDescriptor {
   return Object.freeze({ source, facts: Object.freeze([...facts]) });
+}
+export function captureCurrentWork(scope: string, value: { readonly items: readonly WorkItem[] } | undefined): WorkCaptureDescriptor {
+  return value ? captureWork(value, normalizeLiveWorkFacts({ scope, items: value.items })) : EMPTY_WORK_DESCRIPTOR;
 }
 export interface OwnSendIdentity {
   readonly accepted: object; readonly pending: object | undefined; readonly reservation: object | undefined;
@@ -49,7 +53,7 @@ function ownSendIdentityEqual(a: OwnSendIdentity | undefined, b: OwnSendIdentity
 export function conversationIdentityEqual(a: ConversationIdentity, b: ConversationIdentity): boolean {
   return a.rows === b.rows && a.revision === b.revision && a.assistantOwnership === b.assistantOwnership
     && a.terminalPresence === b.terminalPresence && a.retiredAttempts === b.retiredAttempts
-    && a.records === b.records && (!!a.work && !!b.work ? a.work.source === b.work.source : a.work === b.work) && ownSendIdentityEqual(a.own,b.own) && a.scope === b.scope && a.current === b.current;
+    && a.records === b.records && a.work.source === b.work.source && ownSendIdentityEqual(a.own,b.own) && a.scope === b.scope && a.current === b.current;
 
 }
 
