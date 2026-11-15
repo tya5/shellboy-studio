@@ -214,3 +214,13 @@ Notification labels use only admitted public `kind`, time, and notification
 facts. Missing facts use an honest unavailable-details label; body text is never
 used to infer a notification. This patch adds no new surface, RPC, private fact,
 style, or fallback.
+
+## Notification Timestamp Decision
+
+The missing-facts notification label is a factual unavailable-details statement,
+not a content-summary inference. The existing public `created_at` fact remains in
+the display context and is included in the existing WorkElementRow visible and
+ARIA context, matching prior notification timestamp behavior. Alternatives were
+not chosen: a global formatter change would widen the unit, while dropping the
+time fact would regress accessibility and visible context. The regression covers
+time present/absent, body non-inference, and rendered text/ARIA retention.
