@@ -345,12 +345,14 @@ export class Operations {
   /** Activity status, for `receipt_budget`. One row is enough; the rows are not used. */
   handoffAttempts(threadId: string, read?: ReadOptions): Promise<Outcome<Page<WorkItem>>> {
     const decode=decodeThreadWorkPage(threadId);
-    const owned=(raw:unknown)=>captureDecode(raw,(value)=>{const out=decode(value);if(!out.ok)throw new InputCaptureError('invalid-input');return out.value;});
+    const owned=(raw:unknown)=>captureDecode(raw,(value)=>{const out=decode(value);if(!out.ok)throw new InputCaptureError('invalid-input');
+      Object.freeze(out.value.items); for(const item of out.value.items){if(item.response_nodes)Object.freeze(item.response_nodes);Object.freeze(item);} Object.freeze(out.value); return out.value;});
     return this.run("status", { thread_id: threadId, all: true, limit: 200 }, decode, undefined, read, owned);
   }
   threadWork(threadId: string, read?: ReadOptions): Promise<Outcome<Page<WorkItem>>> {
     const decode=decodeThreadWorkPage(threadId);
-    const owned=(raw:unknown)=>captureDecode(raw,(value)=>{const out=decode(value);if(!out.ok)throw new InputCaptureError('invalid-input');return out.value;});
+    const owned=(raw:unknown)=>captureDecode(raw,(value)=>{const out=decode(value);if(!out.ok)throw new InputCaptureError('invalid-input');
+      Object.freeze(out.value.items); for(const item of out.value.items){if(item.response_nodes)Object.freeze(item.response_nodes);Object.freeze(item);} Object.freeze(out.value); return out.value;});
     return this.run("status", { thread_id: threadId, state: ["starting", "running", "stopping", "accepted", "held"], limit: 200 }, decode, undefined, read, owned);
   }
   statusSummary(read?: ReadOptions): Promise<Outcome<Record<string, unknown>>> {

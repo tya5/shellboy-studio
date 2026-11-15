@@ -71,6 +71,32 @@ describe("Operations", () => {
     await expect(second).resolves.toMatchObject({ ok: false, error: { kind: "invalid_response" } });
   });
 
+  it("public history capture reads text and ordinal once and isolates caller mutation", async () => {
+    const { t, ops } = setup(); let textReads = 0; let ordinalReads = 0; let externalText = "short";
+    const item = { node_id: "n", kind: "assistant_response", selection: {} as { ordinal?: number }, items: [{ kind: "text", item_identity: "body", text_complete: true, text: "short" }] };
+    Object.defineProperty(item.selection, "ordinal", { enumerable: true, get: () => { ordinalReads++; return 0; } });
+    Object.defineProperty(item.items[0], "text", { enumerable: true, get: () => { textReads++; return textReads <= 2 ? externalText : "x".repeat(20000); }, set: (value: string) => { externalText = value; } });
+    const pending = ops.historyWindow({ thread_id: "a" }); t.ok(t.calls()[0]!.id, { thread_id: "a", revision: 1, total: 1, items: [item] });
+    const out = await pending; expect(out.ok).toBe(true); expect(textReads).toBe(1); expect(ordinalReads).toBe(1);
+    if (out.ok) { const result = out.value.items[0]!; expect(result.items?.[0]).toMatchObject({ text: "short" }); item.items[0]!.text = "caller mutation"; expect(result.items?.[0]).toMatchObject({ text: "short" }); }
+  });
+
+  it("public history capture rejects the first oversized value with a body-free bound error", async () => {
+    const { t, ops } = setup(); let reads = 0;
+    const item = { node_id: "n", kind: "assistant_response", selection: { ordinal: 0 }, items: [{ kind: "text", item_identity: "body", text_complete: true, text: "short" }] };
+    Object.defineProperty(item.items[0], "text", { enumerable: true, get: () => { reads++; return "x".repeat(20000); } });
+    const pending = ops.historyWindow({ thread_id: "a" }); t.ok(t.calls()[0]!.id, { thread_id: "a", revision: 1, total: 1, items: [item] });
+    await expect(pending).resolves.toMatchObject({ ok: false, error: { kind: "invalid_response", message: "invalid-input" } }); expect(reads).toBe(1);
+  });
+
+  it.each(["handoffAttempts", "threadWork"] as const)("public Work capture never invokes metadata toJSON: %s", async route => {
+    const { t, ops } = setup(); let calls = 0; const metadata = { value: "kept" };
+    Object.defineProperty(metadata, "toJSON", { enumerable: false, get: () => { calls++; throw new Error("must not run"); } });
+    const pending = route === "handoffAttempts" ? ops.handoffAttempts("selected") : ops.threadWork("selected");
+    t.ok(t.calls("status")[0]!.id, { items: [{ kind: "run", id: "r", thread_id: "selected", state: "live", metadata }] });
+    const out = await pending; expect(out.ok).toBe(true); expect(calls).toBe(0);
+  });
+
   it("history.window fails closed when capability was not advertised", async () => {
     const t = new FakeTransport();
     const link = new Link(t);

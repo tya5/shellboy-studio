@@ -1,10 +1,21 @@
 import {captureDecode,createInputCapture,InputCaptureError} from './immutable-input';
 import type {HistoryItem,HistoryWindowResult} from './protocol';
 import type {Outcome} from './errors';
+
+function freezeHistory(value:HistoryWindowResult):HistoryWindowResult{
+ for(const row of value.items){
+  if(row.selection&&typeof row.selection==='object')Object.freeze(row.selection);
+  if(Array.isArray(row.items)){for(const item of row.items)if(item&&typeof item==='object')Object.freeze(item);Object.freeze(row.items);}
+  if(row.provenance&&typeof row.provenance==='object')Object.freeze(row.provenance);
+  Object.freeze(row);
+ }
+ Object.freeze(value.items);Object.freeze(value);return value;
+}
 export class HistoryWindowInput implements HistoryWindowResult {
  readonly thread_id:string;readonly revision:number;readonly total:number;readonly items:HistoryItem[];
  readonly #visits:number;
  private constructor(value:HistoryWindowResult,visits:number){
+  value=freezeHistory(value);
   this.thread_id=value.thread_id;this.revision=value.revision;this.total=value.total;this.items=value.items;this.#visits=visits;Object.freeze(this);
  }
  static own(value:HistoryWindowResult):HistoryWindowInput{
