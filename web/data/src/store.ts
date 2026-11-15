@@ -754,7 +754,7 @@ export class ShellboyData {
     const cancelled = entry.cancel;
     const valid = () => !entry.closed && !entry.paused && epoch === entry.live.epoch && !cancelled.cancelled && cancelled === entry.cancel && this.canRead();
     const receiptBlocked = new Set<string>();
-    let outcome: "success" | "failed" = "failed";
+    let outcome: "success" | "failed" = "failed", displayRejected = false;
     // Dirty ownership is consumed when this resolver acquires the global read
     // admission, not when a display observer publishes a projection.
     entry.resolving = Promise.resolve().then(async () => {
@@ -811,8 +811,8 @@ export class ShellboyData {
         observations.push({ kind: 'readable', lease, ...(association ? { association } : {}), ...(receipt ? { receipt } : {}) });
       }
       if (observations.length > 0) {
-        if (!valid() || displayOwner !== entry.displayOwner) return;
-        if (displayOwner) { const target = displayOwner.capture(); if (!target || !target.publish(observations)) return; }
+        if (!valid() || displayOwner !== entry.displayOwner) displayRejected = true;
+        else if (displayOwner) { const target = displayOwner.capture(); if (!target || !target.publish(observations)) displayRejected = true; }
       }
       const receiptObservations: DisplayObservation[] = [];
 
@@ -901,10 +901,10 @@ export class ShellboyData {
       // Empty originals contribute source-qualified metadata, never a borrowed body lease.
       // Capture the current selected frame after the exact receipt record exists.
       if (receiptObservations.length > 0) {
-        if (!valid() || displayOwner !== entry.displayOwner) return;
-        if (displayOwner) { const target = displayOwner.capture(); if (!target || !target.publish(receiptObservations)) return; }
+        if (!valid() || displayOwner !== entry.displayOwner) displayRejected = true;
+        else if (displayOwner) { const target = displayOwner.capture(); if (!target || !target.publish(receiptObservations)) displayRejected = true; }
       }
-      outcome = "success";
+      outcome = displayRejected ? "failed" : "success";
     }).finally(() => {
       const ownFollowup = entry.handoffDemand !== "none";
       if (wakeCanonical && ownFollowup) entry.handoffDemand = joinHandoffDemand(entry.handoffDemand, "canonical");
