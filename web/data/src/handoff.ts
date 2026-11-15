@@ -69,7 +69,10 @@ export interface HandoffRecord {
   readonly readyAttempt?: AttemptReadyProof;
   readonly terminalPersisted?: TerminalPersistedProof;
 }
-interface Held { display?: { generation: number; sourceCurrent: () => boolean; current: (generation: number) => boolean }; attemptCapture?: { original: HandoffRecord; staged: HandoffRecord; proof: AttemptReadyProof | TerminalPersistedProof; epoch: number; lifetime: number }; admitted: number; transferring?: boolean; attemptId: string; source: LiveText; stop: () => void; record: HandoffRecord }
+interface SourceIdentity { readonly attemptId: string; readonly key: string; readonly presentationContainer: PresentationContainerId }
+interface Held { display?: { generation: number; sourceCurrent: () => boolean; current: (generation: number) => boolean };
+  attemptCapture?: { original: HandoffRecord; staged: HandoffRecord; proof: AttemptReadyProof | TerminalPersistedProof; epoch: number; lifetime: number };
+  admitted: number; sourceRevision: number; identity: SourceIdentity; transferring?: boolean; attemptId: string; source: LiveText; stop: () => void; record: HandoffRecord }
 
 /** One ledger per watched Thread. No queue, spill or timer. Hints cannot refill read budget. */
 export class Handoff {
@@ -118,7 +121,7 @@ export class Handoff {
       if (this.active) this.finish();
       const source = new LiveText(this.schedule);
       const record: HandoffRecord = { key: `handoff:${frame.attempt_id}`, presentationContainer: mintPresentationContainer(frame.attempt_id), attemptId: frame.attempt_id, text: '', incomplete: frame.gap, status: 'streaming', bodyAuthority: 'preview', ...(placement?{placement:Object.freeze({...placement,anchor:Object.freeze({...placement.anchor})})}:{}) };
-      h = { admitted: 0, attemptId: frame.attempt_id, source, stop: () => {}, record };
+      h = { admitted: 0, sourceRevision: 0, identity: Object.freeze({attemptId: record.attemptId, key: record.key, presentationContainer: record.presentationContainer}), attemptId: frame.attempt_id, source, stop: () => {}, record };
       const held = h;
       this.held.push(h);
       h.stop = source.preview.subscribe(p => {
@@ -126,8 +129,8 @@ export class Handoff {
         const used = this.retainedBytes - bytes(held.record.text);
         if (used + bytes(p.text) > MAX_HANDOFF_BYTES) {
           this.overflowSig.value = true;
-          held.record = { ...held.record, incomplete: true };
-        } else held.record = { ...held.record, text: p.text, incomplete: p.incomplete, status: p.ending ? 'confirming' : 'streaming' };
+          this.updateRecord(held, { ...held.record, incomplete: true });
+        } else this.updateRecord(held, { ...held.record, text: p.text, incomplete: p.incomplete, status: p.ending ? 'confirming' : 'streaming' });
         held.admitted = bytes(p.text);
         this.publish();
       });
@@ -138,7 +141,7 @@ export class Handoff {
     const incoming = frame.deltas.reduce((n, d) => n + (d.reasoning ? 0 : bytes(d.text)), 0);
     if (this.held.reduce((n,h)=>n+Math.max(bytes(h.record.text),h.admitted),0) + incoming > MAX_HANDOFF_BYTES) {
       this.overflowSig.value = true;
-      h.record = { ...h.record, incomplete: true };
+      this.updateRecord(h, { ...h.record, incomplete: true });
       this.publish();
       return;
     }
@@ -148,17 +151,13 @@ export class Handoff {
   captureDisplay(original: HandoffRecord): DisplayLease | undefined {
     const held = this.held.find(item => item.record === original);
     if (!held || !original.text) return;
-    const epoch = this.epochValue, lifetime = this.lifetimeValue, capturedStatus = original.status;
-    const sameSource = (record: HandoffRecord) => record.attemptId === original.attemptId
-      && record.key === original.key && record.presentationContainer === original.presentationContainer
-      && record.text === original.text && record.nodeId === original.nodeId
-      && record.incomplete === original.incomplete && record.bodyAuthority === original.bodyAuthority
-      && record.proof === original.proof && record.readyAttempt === original.readyAttempt
-      && record.terminalPersisted === original.terminalPersisted;
-    const currentRecord = () => this.held.includes(held) && epoch === this.epochValue && lifetime === this.lifetimeValue
+    const epoch = this.epochValue, lifetime = this.lifetimeValue, capturedStatus = original.status, sourceRevision = held.sourceRevision, identity = held.identity;
+    const currentRecord = () => this.held.includes(held) && identity.attemptId === original.attemptId && identity.key === original.key
+      && identity.presentationContainer === original.presentationContainer && epoch === this.epochValue && lifetime === this.lifetimeValue
+      && sourceRevision === held.sourceRevision
       // A confirming-to-failed transition revokes a prior lease; a lease
       // captured from an issuer-failed record remains a valid failed-readable source.
-      && (held.record.status !== 'failed' || capturedStatus === 'failed') && sameSource(held.record) ? held.record : undefined;
+      && (held.record.status !== 'failed' || capturedStatus === 'failed') ? held.record : undefined;
     const current = () => currentRecord() !== undefined;
     return Object.freeze({ original, currentRecord, current, stage: (generation: number, valid: (generation: number) => boolean) => {
       if (!current()) return () => {};
@@ -191,7 +190,7 @@ export class Handoff {
     h.stop();
     h.source.discard('saved');
     h.admitted = bytes(text);
-    h.record = { ...h.record, text, nodeId, proof, incomplete: false, status: 'ready', bodyAuthority: 'saved' };
+    this.updateRecord(h, { ...h.record, text, nodeId, proof, incomplete: false, status: 'ready', bodyAuthority: 'saved' });
     this.publish();
     return true;
   }
@@ -202,7 +201,7 @@ export class Handoff {
     const { readyAttempt: _readyAttempt, ...retained } = original;
     const staged = Object.freeze({ ...retained, terminalPersisted: proof });
     h.attemptCapture = { original, staged, proof, epoch: this.epochValue, lifetime: this.lifetimeValue };
-    h.record = staged; this.publish();
+    this.updateRecord(h, staged); this.publish();
     return staged;
   }
   stageAttempt(original: HandoffRecord, proof: AttemptReadyProof): HandoffRecord | undefined {
@@ -222,7 +221,7 @@ export class Handoff {
     if (!visible) return;
     const staged = Object.freeze({ ...original, readyAttempt: proof });
     h.attemptCapture = { original, staged, proof, epoch: this.epochValue, lifetime: this.lifetimeValue };
-    h.record = staged; this.publish();
+    this.updateRecord(h, staged); this.publish();
     return staged;
   }
   /** The staged object, capture and lifetime jointly own selected-read admission. */
@@ -243,7 +242,7 @@ export class Handoff {
       if (!accepted || h.attemptCapture !== c || h.record !== c.staged || c.epoch !== this.epochValue || c.lifetime !== this.lifetimeValue || !this.held.includes(h)) return;
       h.attemptCapture = undefined;
       if (reason === 'end') { h.stop(); this.held = this.held.filter(x => x !== h); }
-      else h.record = original;
+      else this.updateRecord(h, original);
       this.publish();
     };
     h.transferring = true;
@@ -271,13 +270,13 @@ export class Handoff {
         if (receiving) { deferred = reason; return; }
         if (this.lifetimeValue !== epoch || h.record !== moved || !this.held.includes(h)) return;
         if (reason === 'end') this.release(attemptId);
-        else { h.record = { ...moved, transferred: false }; this.publish(); }
+        else { this.updateRecord(h, { ...moved, transferred: false }); this.publish(); }
       })) return false;
       if (epoch !== this.lifetimeValue || !this.held.includes(h)) return false;
       receiving = false;
-      h.record = moved;
+      this.updateRecord(h, moved);
       if (deferred === 'end') this.release(attemptId);
-      else if (deferred === 'return') { h.record = { ...moved, transferred: false }; this.publish(); }
+      else if (deferred === 'return') { this.updateRecord(h, { ...moved, transferred: false }); this.publish(); }
       else this.publish();
       return true;
     } finally { h.transferring = false; }
@@ -298,8 +297,13 @@ export class Handoff {
     this.held = []; this.active = undefined; this.blockedAttempt = undefined;
     this.overflowSig.value = false; this.publish();
   }
+  /** Every held-record transition revokes leases captured from the prior source state. */
+  private updateRecord(held: Held, next: HandoffRecord): void {
+    held.sourceRevision++;
+    held.record = Object.freeze(next);
+  }
   private update(id: string, fn: (r: HandoffRecord) => HandoffRecord): void {
-    const h = this.held.find(h => h.attemptId === id); if (!h) return; h.record = fn(h.record); this.publish();
+    const h = this.held.find(h => h.attemptId === id); if (!h) return; this.updateRecord(h, fn(h.record)); this.publish();
   }
   private publish(): void {
     for (const held of this.held) if (held.display && !held.display.sourceCurrent()) held.display = undefined;
