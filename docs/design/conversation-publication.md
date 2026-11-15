@@ -226,30 +226,37 @@ global formatter change would widen every row consumer, while dropping the time
 fact would regress accessibility and visible context. The regression covers time
 present/absent, body non-inference, and rendered text/ARIA retention.
 
-## Studio 18 Memory Card Boundary
-
-`status --memory` is a bounded owner read. Cache entries whose public response
-reports an unavailable owner are localized as `Not reported` at the card boundary;
-that card-level absence does not become whole-owner unavailable, and other cache
-entries remain renderable. Unsupported operations, malformed responses, and
-transport disconnects remain distinct read outcomes through the existing typed
-operation/error path. No response body, private owner data, guessed version, RPC,
-or compatibility fallback is introduced. Owner application version remains
-unreported unless an existing public hello/status route supplies it; protocol and
-bridge versions remain separate facts.
-
-
-## Studio 18 Producer Trace
+## Studio 18 Memory Card Contract
 
 The public synthetic trace is `Operations.memoryStatus()` in
-`web/data/src/operations.ts:248-252` (`status` with `{ memory: true }`), through
-`Insights.refreshRead("memory")` and `readMemory()` in `web/ui-core/src/resources.ts`,
-to `MemoryPane`/`CacheMeter` in `web/designs/console/screens/Resources.tsx`. The
-response contract exposes cache objects with retained/limit/entries/unit/live/pinned
-values and an optional `unavailable_reason`; it does not expose an owner-wide state.
-The structural `CacheFact.availability` value is derived once from the typed retained
-value, while the raw reason remains attached as diagnostic data. Cards render a
-localized missing value for unreported retained bytes, preserving other cache cards.
-Unsupported operation, invalid response, and disconnected transport remain typed
-operation outcomes rather than cache-card reason strings. Installed-owner version
-reporting is not asserted here; the public source trace is insufficient to claim it.
+`web/data/src/operations.ts:248-252`, which issues `status` with `{ memory: true }`.
+`Insights.refreshRead("memory")` calls the typed operation and `readInto`; its
+successful result is decoded by `readMemory()` in `web/ui-core/src/resources.ts`
+and rendered by `MemoryPane`/`CacheMeter` in
+`web/designs/console/screens/Resources.tsx`. The public cache object contains
+`retained_bytes`, limits, entries, units, live/pinned values, and optional
+`unavailable_reason`. `CacheFact.retained` is the only value/missing authority;
+the raw reason remains diagnostic data and is not parsed into owner state.
+
+A missing retained value is rendered through the existing localized
+`common.notReported` card contract. Other cache facts remain renderable, so one
+cache absence does not make the owner unavailable. Unsupported operation,
+malformed response, and disconnected transport remain separate typed outcomes
+from `operations.ts:47-48,170-171,249`; the existing synthetic tests covering
+bridge reads and invalid/error outcomes remain the evidence boundary. This unit
+adds no compatibility fallback, body/private data, RPC, guessed field, or owner
+state inference.
+
+The mounted regression in
+`web/designs/console/test/resources-memory.test.tsx` sets the successful
+`readMemory` value on the existing Insights signal and mounts `MemoryPane` in
+English and Japanese. It proves localized missing text, retained replay value,
+raw diagnostic-reason non-leakage, and preservation of the other cache cards.
+This is a mounted card oracle, not proof of transport execution, geometry at
+browser widths, disconnect behavior, or installed-owner version reporting.
+
+Owner application version remains an open source-gap investigation. The current
+public trace only establishes bridge/protocol hello facts and the memory route;
+it does not establish an application-version field or historical installed
+v0.11.1 behavior. Read-only owner verification belongs to the separately
+authorized lane and is not performed by this source/synthetic unit.
