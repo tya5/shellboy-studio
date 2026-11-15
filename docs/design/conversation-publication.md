@@ -205,3 +205,28 @@ array. This prevents a same-source publication from recursively committing while
 `syncWindow` observes the accepted view. The complete public-entry group and its
 cycle path are validated at the final focused SHA, including the saved/retirement
 and next-live-turn cases.
+
+## Generic Publication Test Replacement Map (2026-11-15)
+
+The removed generic `AcceptedView` mint tests are not a qualification gap by
+name alone. Their contract coverage is exercised at typed producer boundaries:
+
+- Lease revoke, stale callbacks, atomic replacement, and same-ref invalidation:
+  `web/ui-core/test/accepted-window-revoke.test.ts`,
+  `web/ui-core/test/terminal-presence-read.test.ts`, and
+  `web/data/test/handoff-attempt.test.ts`.
+- Getter, input-bound, cyclic, `toJSON`, retained-cut, and capability negatives:
+  `web/ui-core/test/window-provenance-capture.test.ts`,
+  `web/ui-core/test/public-persistence-append-boundary.test.ts`, and
+  `web/ui-core/test/window-accepted.test.ts`.
+- Reentrant publication and bounded successor behavior:
+  `web/data/test/handoff-reentrant-publication.test.ts`,
+  `web/ui-core/test/empty-receipt-publication.test.ts`, and
+  `web/ui-core/test/accepted-window-revoke.test.ts`.
+- Shared graph/aggregate/page ownership and real producer transfer paths:
+  `web/data/test/terminal-read.test.ts`,
+  `web/data/test/handoff-readback.test.ts`, and
+  `web/data/test/handoff-attempt.test.ts`.
+
+The old generic mint boundary is removed; these producer tests are the
+replacement contract surfaces and must remain in the affected native matrix.
