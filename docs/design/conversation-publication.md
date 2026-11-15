@@ -225,3 +225,15 @@ Missing time stays the literal facts-only label. Alternatives were not chosen: a
 global formatter change would widen every row consumer, while dropping the time
 fact would regress accessibility and visible context. The regression covers time
 present/absent, body non-inference, and rendered text/ARIA retention.
+
+## Studio 18 Memory Card Boundary
+
+`status --memory` is a bounded owner read. Cache entries whose public response
+reports an unavailable owner are localized as `Not reported` at the card boundary;
+that card-level absence does not become whole-owner unavailable, and other cache
+entries remain renderable. Unsupported operations, malformed responses, and
+transport disconnects remain distinct read outcomes through the existing typed
+operation/error path. No response body, private owner data, guessed version, RPC,
+or compatibility fallback is introduced. Owner application version remains
+unreported unless an existing public hello/status route supplies it; protocol and
+bridge versions remain separate facts.

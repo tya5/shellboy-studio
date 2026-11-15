@@ -521,3 +521,15 @@ describe("what the charts draw", () => {
     expect(periodTotals(new Map(), WEIGHTS)).toMatchObject({ effective: undefined, days: 0 });
   });
 });
+
+
+it('memory cache owner absence is localized without collapsing other cache facts',async()=>{
+ const {cacheReason}=await import('../../designs/console/screens/Resources');
+ const {fixtureModel}=await import('./fixture');
+ const f=await fixtureModel();
+ try{
+  expect(cacheReason(f.model.t.value,'UI cache owner is not available')).toBe('Not reported');
+  expect(cacheReason(f.model.t.value,'owner is not available')).toBe('Not reported');
+  expect(cacheReason(f.model.t.value,'cache backend refused')).toBe('cache backend refused');
+ }finally{f.model.dispose();f.data.stop();}
+});
