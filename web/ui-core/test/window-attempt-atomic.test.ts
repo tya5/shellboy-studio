@@ -1,4 +1,4 @@
-import {attemptWork,selectedReadyRefs,declaredAttemptIdentity} from '../../data/test/work-fixture';
+import {attemptWork,selectedReadyRefs,declaredAttemptIdentity,CANONICAL_ATTEMPT_ID,withCanonicalAttemptProvenance} from '../../data/test/work-fixture';
 import { ShellboyData } from "../../data/src/store";
 import { expect, it } from "vitest";
 import { ConversationWindow } from "../src/window";
@@ -8,15 +8,15 @@ import type { HandoffRecord, PresentationContainerId, AttemptReadyProof } from "
 import type { HistoryItem } from "../../data/src";
 import { FakeOwnerDb, FakeTransport, connectedWithHistory, settle, flush } from "../../data/test/harness";
 import {ownedHistory} from '../../data/test/owned-history';
-const nodes: HistoryItem[] = [
+const nodes: HistoryItem[] = withCanonicalAttemptProvenance([
   { node_id: "tool", kind: "assistant_response", selection: { ordinal: 0 }, items: [{ kind: "tool_call", item_identity: "tc", execution_ids: ["exec"] }] },
   { node_id: "answer", kind: "assistant_response", selection: { ordinal: 1 }, items: [{ kind: "text", item_identity: "text", text: "saved", text_complete: true }] },
-];
+], CANONICAL_ATTEMPT_ID);
 async function rig(items = nodes) {
   const source={revision:7,items,total:2};
   const w = new ConversationWindow({ read: async () => ({ ok: true, value: ownedHistory({ thread_id: "thread", revision: source.revision, total: source.total, items:source.items }) }) }); await flush();
-  const proof: AttemptReadyProof = { scope: '["owner","thread",1]', attemptId: "attempt", turnId: "turn", revision: 7, total: 2, refs: selectedReadyRefs(["answer","tool","answer"],nodes), nodes };
-  const record: HandoffRecord = { key: "live-record", presentationContainer: "presentation:test" as PresentationContainerId, attemptId: "attempt", status: "confirming", bodyAuthority: "preview", text: "whole live block", incomplete: false, readyAttempt: proof };
+  const proof: AttemptReadyProof = { scope: '["owner","thread",1]', attemptId: CANONICAL_ATTEMPT_ID, turnId: "turn", revision: 7, total: 2, refs: selectedReadyRefs(["answer","tool","answer"],nodes), nodes };
+  const record: HandoffRecord = { key: "live-record", presentationContainer: "presentation:test" as PresentationContainerId, attemptId: CANONICAL_ATTEMPT_ID, status: "confirming", bodyAuthority: "preview", text: "whole live block", incomplete: false, readyAttempt: proof };
   return { w, record, proof, source, settle: (async () => { await flush(); }) };
 }
 it("all-ref retirement and saved-order sequence publish once in the SAME observed snapshot", async () => {
@@ -25,7 +25,7 @@ it("all-ref retirement and saved-order sequence publish once in the SAME observe
   const publications=observePublishedPlans(w, ref => declaredPlanExpectation(ref,w.acceptedView.currentCapability,declared)); const trace: { saved: string[]; retired: string[] }[] = [];
   const stop = w.acceptedView.subscribe(ref => { expect(w.acceptedView.isCurrent(ref)).toBe(true); trace.push({ saved: ref.rows.map(row => row.node_id!), retired: ref.retiredAttempts?.map(item => item.attemptId) ?? [] }); });
   let releases = 0; expect(w.acceptHandoff(record, proof.scope, () => { releases++; expect(w.acceptedView.peek().retiredAttempts).toHaveLength(1); })).toBe(true);
-  expect(trace).toEqual([{ saved: ["tool", "answer"], retired: ["attempt"] }]); expect(releases).toBe(1);
+  expect(trace).toEqual([{ saved: ["tool", "answer"], retired: [CANONICAL_ATTEMPT_ID] }]); expect(releases).toBe(1);
   expect(w.acceptedView.peek().retiredAttempts![0]!.nodeIds).toEqual(["answer", "tool", "answer"]);
   const retiredSnapshot = w.acceptedView.peek();
   expect(retiredSnapshot.assistantOwnership).toHaveLength(1);
@@ -107,7 +107,7 @@ it("notification reentry stops old release and never retires another attempt/tur
     w.setAttemptPresentations([{scope:proof.scope,attemptId:'another',turnId:'another-turn',nodeIds:['unselected'],state:'pending'}]);
   } });
   expect(w.acceptHandoff(record, proof.scope, () => { releases++; })).toBe(false);
-  expect(releases).toBe(0); expect(w.acceptedView.peek().retiredAttempts!.every(item => item.turnId === "turn" && item.attemptId === "attempt")).toBe(true); w.dispose();
+  expect(releases).toBe(0); expect(w.acceptedView.peek().retiredAttempts!.every(item => item.turnId === proof.turnId && item.attemptId === proof.attemptId)).toBe(true); w.dispose();
 });
 it("actual partial persistence observes one bound receipt without transferring or retiring the original", async () => {
   const t=new FakeTransport(),db=new FakeOwnerDb(),ticks:(()=>void)[]=[];let id=0;
@@ -150,9 +150,9 @@ it("materializes already-qualified all-ref nodes and retirement together without
   const initial: HistoryItem = { node_id: "user", kind: "user", items: [], selection: { ordinal: 0 } };
   let reads = 0;
   const w = new ConversationWindow({ read: async () => { reads++; return { ok: true, value: ownedHistory({ thread_id: "thread", revision: 7, total: 1, items: [initial] }) }; } }); await flush();
-  const proof: AttemptReadyProof = { scope: "scope", attemptId: "attempt", turnId: "turn", revision: 7, total: 3,
+  const proof: AttemptReadyProof = { scope: "scope", attemptId: CANONICAL_ATTEMPT_ID, turnId: "turn", revision: 7, total: 3,
     refs: [{ nodeId: "answer",ordinal:2,kind:'assistant_response' }, { nodeId: "tool",ordinal:1,kind:'assistant_response' }], nodes: [initial, ...nodes.map((node, i) => ({ ...node, selection: { ordinal: i + 1 } }))] };
-  const record: HandoffRecord = { key: "original", presentationContainer: "presentation:test" as PresentationContainerId, attemptId: "attempt", text: "whole live", incomplete: false, status: "confirming", bodyAuthority: "preview", readyAttempt: proof };
+  const record: HandoffRecord = { key: "original", presentationContainer: "presentation:test" as PresentationContainerId, attemptId: proof.attemptId, text: "whole live", incomplete: false, status: "confirming", bodyAuthority: "preview", readyAttempt: proof };
   const frames: { ids: string[]; total: number; retired: number }[] = [];
   w.acceptedView.subscribe(ref => frames.push({ ids: ref.rows.map(row => row.node_id!), total: ref.total, retired: ref.retiredAttempts?.length ?? 0 }));
   let releases = 0; expect(w.acceptHandoff(record, "scope", () => { releases++; })).toBe(true);

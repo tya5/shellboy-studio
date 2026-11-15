@@ -7,7 +7,7 @@ import {captureConversationInput, captureWork, EMPTY_WORK_DESCRIPTOR} from '../s
 import {declaredWorkGroup} from './declared-attempt-cuts';
 import type {WindowAcceptedSnapshot} from '../src/window';
 import type {HandoffRecord} from '../../data/src/handoff';
-import {attemptWork} from '../../data/test/work-fixture';
+import {attemptWork,CANONICAL_ATTEMPT_ID,withCanonicalAttemptProvenance} from '../../data/test/work-fixture';
 
 import {ownedHistory} from '../../data/test/owned-history';
 async function rig(partial=false, bindInput=true) {
@@ -21,18 +21,18 @@ async function rig(partial=false, bindInput=true) {
   if(changeAfterCapture){changeAfterCapture=false;window.setAttemptPresentations([{scope:handle.handoffScope(),attemptId:'other',turnId:'other-turn',nodeIds:['unselected'],state:'pending'}]);}
   return target;
  });
- const node:HistoryItem={node_id:'answer',kind:'assistant_response',selection:{ordinal:5},items:[{kind:'text',item_identity:'exact-body',text:'saved',text_complete:!partial},{kind:'tool_call',item_identity:'tool',execution_ids:['execution']}]};
+ const node=withCanonicalAttemptProvenance([{node_id:'answer',kind:'assistant_response',selection:{ordinal:5},items:[{kind:'text',item_identity:'exact-body',text:'saved',text_complete:!partial},{kind:'tool_call',item_identity:'tool',execution_ids:['execution']}] }],CANONICAL_ATTEMPT_ID)[0]!;
  const window=new ConversationWindow({read:async()=>({ok:true,value:ownedHistory({thread_id:'t',revision:7,total:6,items:[node]})})});await flush();
  expect(window.bindTerminalHandle(handle)).toBe(true);
  if (bindInput) expect(window.bindConversationInput(snapshot=>captureConversationInput(snapshot,{scope:handle.handoffScope(),threadId:'t',records:handle.handoff.peek(),work: EMPTY_WORK_DESCRIPTOR,current:true}))).toBe(true);
  const send=transport.send.bind(transport);
  transport.send=frame=>{const result=send(frame);if(frame.t==='call'&&frame.command==='status'&&(frame.args as {all?:boolean}).all===true)db.answered.add(frame.id);return result;};
- transport.push({t:'live',thread_id:'t',attempt_id:'attempt',gap:false,deltas:[{offset:0,reasoning:false,text:'preview'}]});await flush();
+ transport.push({t:'live',thread_id:'t',attempt_id:CANONICAL_ATTEMPT_ID,gap:false,deltas:[{offset:0,reasoning:false,text:'preview'}]});await flush();
  transport.push({t:'live_end',thread_id:'t'});await flush();
  const lookup=[...transport.calls('status')].reverse().find(call=>(call.args as {all?:boolean}).all===true)!;
  expect(lookup).toBeDefined();
 
- const answer=(turn='turn',claim=false)=>transport.ok(lookup.id,{items:[attemptWork({threadId:'t',attemptId:'attempt',turnId:turn,state:'completed',refs:[{node_id:'answer',ordinal:5,kind:'assistant_response'}]}),...(claim?[attemptWork({threadId:'t',attemptId:'other',turnId:'other-turn',state:'completed',refs:[{node_id:'answer',ordinal:5,kind:'assistant_response'}]})]:[])]});
+ const answer=(turn='turn',claim=false)=>transport.ok(lookup.id,{items:[attemptWork({threadId:'t',attemptId:CANONICAL_ATTEMPT_ID,turnId:turn,state:'completed',refs:[{node_id:'answer',ordinal:5,kind:'assistant_response'}]}),...(claim?[attemptWork({threadId:'t',attemptId:'other',turnId:'other-turn',state:'completed',refs:[{node_id:'answer',ordinal:5,kind:'assistant_response'}]})]:[])]});
  return {data,transport,db,handle,window,node,answer,invalidateCapturedFrame:()=>{changeAfterCapture=true;}};
 }
 it("installs the first successful tail read as bootstrap without declaring a rewrite", async () => {
@@ -71,7 +71,7 @@ it("rejects an older reply after the cursor is established and verifies the curr
 function assertOwnedCut(ref:WindowAcceptedSnapshot,scope:string,original:HandoffRecord,partial:boolean){
  const plan=ref.displayPlan!,cut={generation:ref.generation,revision:7,scope,capability:plan.capability};
  const text=JSON.stringify(['answer','exact-body']),tool=JSON.stringify(['tool',[scope],'execution',['execution']]);
- const live=JSON.stringify(['live','handoff','t',original.key]),receipt=JSON.stringify(['receipt','work',scope,'attempt']);
+ const live=JSON.stringify(['live','handoff','t',original.key]),receipt=JSON.stringify(['receipt','work',scope,CANONICAL_ATTEMPT_ID]);
  expect(plan.coverage).toBe('complete');expect(plan.acceptedGeneration).toBe(ref.generation);expect(plan.revision).toBe(7);expect(plan.scope).toBe(scope);
  expect(ref.rows.map(row=>row.node_id)).toEqual(['answer']);
  expect(plan.entries.map(entry=>({key:entry.item.key,case:entry.item.classification?.id,body:entry.body,container:entry.presentationContainer,lifetime:entry.lifetime.kind}))).toEqual(partial?[
@@ -101,7 +101,7 @@ it.each([false,true])('one synchronous current successor keeps exact canonical o
   r.answer();await settle(r.transport,r.db);
   expect(cuts).toEqual([{mode:partial?'preview':'canonical',valid:true,held:true}]);
   const ref=r.window.acceptedView.peek();expect(ref.assistantOwnership![0]!.itemKeys).toEqual([JSON.stringify(['answer','exact-body'])]);
-  expect(ref.terminalPersistedAttempts).toMatchObject([{scope,attemptId:'attempt',recordKey:original.key,turnId:'turn',nodeIds:['answer'],refs:[{nodeId:'answer',ordinal:5,kind:'assistant_response'}],presentationContainer:original.presentationContainer}]);
+  expect(ref.terminalPersistedAttempts).toMatchObject([{scope,attemptId:CANONICAL_ATTEMPT_ID,recordKey:original.key,turnId:'turn',nodeIds:['answer'],refs:[{nodeId:'answer',ordinal:5,kind:'assistant_response'}],presentationContainer:original.presentationContainer}]);
   expect(r.handle.handoff.peek()[0]).toMatchObject({key:original.key,presentationContainer:original.presentationContainer,text:'preview',bodyAuthority:'preview'});
   expect(r.handle.handoff.peek()[0]?.readyAttempt).toBeUndefined();expect(r.transport.calls('history.get')).toHaveLength(0);
   r.window.layoutChanged();expect(r.window.acceptedView.peek()).toBe(ref);expect(cuts).toHaveLength(1);
@@ -152,7 +152,7 @@ it('a semantic generation before source observation is captured current, never r
   r.window.setAttemptPresentations([{scope:r.handle.handoffScope(),attemptId:'other',turnId:'other-turn',nodeIds:['unselected'],state:'pending'}]);
   const current=r.window.acceptedView.peek();expect(current).not.toBe(before);
   r.answer();await settle(r.transport,r.db);
-  const accepted=r.window.acceptedView.peek();expect(accepted.assistantOwnership).toMatchObject([{scope:r.handle.handoffScope(),attemptId:'attempt',turnId:'turn',recordKey:original.key,containerKey:original.presentationContainer,mode:'canonical'}]);
+  const accepted=r.window.acceptedView.peek();expect(accepted.assistantOwnership).toMatchObject([{scope:r.handle.handoffScope(),attemptId:original.attemptId,turnId:'turn',recordKey:original.key,containerKey:original.presentationContainer,mode:'canonical'}]);
   expect(accepted.displayPlan?.entries.find(entry=>entry.item.key===JSON.stringify(['answer','exact-body']))?.body).toMatchObject({kind:'typed-canonical',text:'saved'});
   expect(observed).toBe(1);
   expect(r.window.acceptedView.isCurrent(before)).toBe(false);expect(before.assistantOwnership??[]).toEqual([]);

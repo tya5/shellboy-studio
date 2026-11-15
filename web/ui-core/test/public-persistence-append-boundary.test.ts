@@ -11,10 +11,10 @@ it('an actual public persistence observation cannot be copied into readable-orig
  try{
   r.live();r.end();await r.pump();
   const original=r.h.handoff.peek()[0]!,receipt=r.receipt()!,before=r.window.acceptedView.peek();
-  expect(receipt).toMatchObject({scope:r.h.handoffScope(),attemptId:'attempt',recordKey:original.key,
+  expect(receipt).toMatchObject({scope:r.h.handoffScope(),attemptId:r.state.attempt,recordKey:original.key,
    presentationContainer:original.presentationContainer,nodeIds:['tool','answer'],
    refs:[{nodeId:'tool',ordinal:0,kind:'assistant_response'},{nodeId:'answer',ordinal:1,kind:'assistant_response'}]});
-  let releases=0;expect(r.h.transferHandoff('attempt',()=>{releases++;return true;})).toBe(false);
+  let releases=0;expect(r.h.transferHandoff(r.state.attempt,()=>{releases++;return true;})).toBe(false);
   expect(releases).toBe(0);expect(r.h.handoff.peek()[0]).toBe(original);
   expect(r.window.acceptHandoff({...original,terminalPersisted:receipt},r.h.handoffScope(),()=>{releases++;})).toBe(false);
   expect(releases).toBe(0);expect(r.window.acceptedView.peek()).toBe(before);

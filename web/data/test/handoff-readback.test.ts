@@ -2,13 +2,14 @@ import { expect, it } from "vitest";
 import { ShellboyData } from "../src/store";
 import { FakeOwnerDb, FakeTransport, connected, settle, flush } from "./harness";
 import {readbackFixture as rig} from './readback-fixture';
+import {CANONICAL_ATTEMPT_ID} from './work-fixture';
 
 it("stages exact public persistence before an incomplete output cut without replacing stream text", async () => {
   const r = await rig(); r.live(); r.end(); await r.pump();
   const record = r.h.handoff.value[0]!;
   expect(record.text).toBe("whole live block"); expect(record.proof).toBeUndefined();
   expect(record.readyAttempt).toBeUndefined();
-  expect(r.receipt()).toMatchObject({ scope: r.h.handoffScope(), attemptId: "attempt", turnId: "turn",
+  expect(r.receipt()).toMatchObject({ scope: r.h.handoffScope(), attemptId: CANONICAL_ATTEMPT_ID, turnId: "turn",
     terminalState: "completed", nodeIds: ["tool", "answer"] });
   expect(r.t.calls("history.get")).toHaveLength(0);
   expect(r.bodyReads()).toHaveLength(0); r.data.stop();
@@ -44,7 +45,7 @@ it("hints cannot refill eight starts and explicit retry preserves original attem
   for (let n = 0; n < 20; n++) { r.t.push({ t: "changed", thread_ids: ["a"], list: false }); await r.pump(); }
   expect(r.t.calls("status")).toHaveLength(8);
   r.state.available = true; const retry = r.h.retryHandoff(); await r.pump(); await retry;
-  expect(r.receipt()).toMatchObject({ scope: r.h.handoffScope(), attemptId: "attempt", terminalState: "completed" });
+  expect(r.receipt()).toMatchObject({ scope: r.h.handoffScope(), attemptId: CANONICAL_ATTEMPT_ID, terminalState: "completed" });
   expect(r.t.calls("status")).toHaveLength(9);
   expect(r.bodyReads()).toHaveLength(0);
   expect(r.t.calls("history.get")).toHaveLength(0); r.data.stop();

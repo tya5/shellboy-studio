@@ -1,4 +1,4 @@
-import {selectedReadyRefs,syntheticPresentation,CANONICAL_ATTEMPT_ID} from '../../data/test/work-fixture';
+import {selectedReadyRefs,syntheticPresentation,CANONICAL_ATTEMPT_ID,canonicalAttemptId} from '../../data/test/work-fixture';
 import { expect, it } from 'vitest';
 import { assistantOwnership } from '../src/assistant-ownership';
 import type { DisplayAssociation, PresentationContainerId } from '../../data/src/handoff';
@@ -62,7 +62,7 @@ it('admits canonical saved ownership only with matching provenance on every sele
  expect(assistantOwnership(association,'original',[node],7)).toMatchObject({mode:'canonical',attemptId:association.attemptId});
 });
 it.each(['missing','mismatch'] as const)('keeps %s saved association unknown without changing preview semantics',mode=>{
- const node=mode==='missing'?(({provenance: _ignored, ...rest})=>rest)(answer()):{...answer(),provenance:{attempt_id:CANONICAL_ATTEMPT_ID.replace(/1$/,'2')}};
+ const node=mode==='missing'?(({provenance: _ignored, ...rest})=>rest)(answer()):{...answer(),provenance:{attempt_id:canonicalAttemptId(2)}};
  expect(assistantOwnership(association,'original',[node],7)).toBeUndefined();
  const partial={...node};partial.items=[{kind:'text',item_identity:'exact-text',text:'prefix',text_complete:false},partial.items![1]!];
  expect(assistantOwnership(association,'original',[partial],7)).toMatchObject({mode:'preview'});

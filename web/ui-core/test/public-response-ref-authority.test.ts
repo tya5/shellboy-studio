@@ -1,12 +1,12 @@
 import {expect,it} from 'vitest';
 import {fixtureConversation} from './fixture';
-import {attemptWork} from '../../data/test/work-fixture';
+import {attemptWork,CANONICAL_ATTEMPT_ID,withCanonicalAttemptProvenance} from '../../data/test/work-fixture';
 import {settle,flush} from '../../data/test/harness';
 import {capturePublicResponseScope,responseRefsMatchSelected} from '../../data/src/public-response-refs';
 import type {HistoryItem,ResponseNodeRef} from '../../data/src/protocol';
 const user:HistoryItem={node_id:'human',kind:'user',selection:{ordinal:0},items:[{kind:'text',item_identity:'human-text',text:'Independent human',text_complete:true}],provenance:{sender:{kind:'human'}}};
-const tool:HistoryItem={node_id:'tool',kind:'assistant_response',selection:{ordinal:1},items:[{kind:'tool_call',item_identity:'call',execution_ids:['execution']}]};
-const answer:HistoryItem={node_id:'answer',kind:'assistant_response',selection:{ordinal:2},items:[{kind:'text',item_identity:'text',text:'Exact saved answer',text_complete:true}]};
+const canonicalNodes=withCanonicalAttemptProvenance([{node_id:'tool',kind:'assistant_response',selection:{ordinal:1},items:[{kind:'tool_call',item_identity:'call',execution_ids:['execution']}]},{node_id:'answer',kind:'assistant_response',selection:{ordinal:2},items:[{kind:'text',item_identity:'text',text:'Exact saved answer',text_complete:true}]}],CANONICAL_ATTEMPT_ID);
+const tool=canonicalNodes[0]!,answer=canonicalNodes[1]!;
 const valid:ResponseNodeRef[]=[{node_id:'tool',ordinal:1,kind:'assistant_response'},{node_id:'answer',ordinal:2,kind:'assistant_response'}];
 it.each(['same-id','wrong-ordinal','wrong-kind','conflicting-page','valid'] as const)('actual public response %s keeps source authority, body/order and read bounds',async mode=>{
  const f=await fixtureConversation({nodes:[user]});let ended=false;
@@ -15,7 +15,7 @@ it.each(['same-id','wrong-ordinal','wrong-kind','conflicting-page','valid'] as c
   mode==='wrong-kind'?[valid[0]!,{node_id:'answer',ordinal:2,kind:'user'}]:valid;
  const base=f.db.answer.bind(f.db);
  f.db.answer=call=>{
-  if(call.command==='status')return{ok:true,result:{items:ended?[attemptWork({threadId:'lead',attemptId:'attempt',turnId:'turn',state:'completed',refs})]:[]}};
+  if(call.command==='status')return{ok:true,result:{items:ended?[attemptWork({threadId:'lead',attemptId:CANONICAL_ATTEMPT_ID,turnId:'turn',state:'completed',refs})]:[]}};
   const args=call.args;
   if(call.command==='history.window'&&typeof args==='object'&&args!==null&&'node_id' in args){
    const items='before' in args&&args.before===0?[tool,answer,...(mode==='conflicting-page'?[{...answer,selection:{ordinal:3}}]:[])]:[user,tool,answer];
@@ -25,7 +25,7 @@ it.each(['same-id','wrong-ordinal','wrong-kind','conflicting-page','valid'] as c
  };
  try{
   const h=f.model.handle.value!,w=f.model.longReader.value!;
-  f.t.push({t:'live',thread_id:'lead',attempt_id:'attempt',gap:false,deltas:[{offset:0,reasoning:false,text:'Owned preview'}]});await flush();
+  f.t.push({t:'live',thread_id:'lead',attempt_id:CANONICAL_ATTEMPT_ID,gap:false,deltas:[{offset:0,reasoning:false,text:'Owned preview'}]});await flush();
   const original=h.handoff.peek()[0]!;expect(original.text).toBe('Owned preview');
   ended=true;f.t.push({t:'live_end',thread_id:'lead'});await settle(f.t,f.db);
   const ref=w.acceptedView.peek();
@@ -35,7 +35,7 @@ it.each(['same-id','wrong-ordinal','wrong-kind','conflicting-page','valid'] as c
   if(mode==='valid'){
    expect(points).toHaveLength(1);expect(publicReads).toHaveLength(2);
    expect(ref.rows.map(node=>node.node_id)).toEqual(['human','tool','answer']);
-   expect(h.handoff.peek()).toHaveLength(0);expect(ref.retiredAttempts).toMatchObject([{attemptId:'attempt',turnId:'turn',nodeIds:['tool','answer']}]);
+   expect(h.handoff.peek()).toHaveLength(0);expect(ref.retiredAttempts).toMatchObject([{attemptId:CANONICAL_ATTEMPT_ID,turnId:'turn',nodeIds:['tool','answer']}]);
    expect(ref.displayPlan?.entries.some(entry=>entry.body.kind==='typed-canonical'&&entry.body.text==='Exact saved answer')).toBe(true);
   }else{
    expect(points).toHaveLength(mode==='same-id'?0:1);expect(publicReads).toHaveLength(mode==='same-id'?0:1);
@@ -47,9 +47,9 @@ it.each(['same-id','wrong-ordinal','wrong-kind','conflicting-page','valid'] as c
  }finally{f.model.dispose();f.data.stop();}
 });
 it('one public reference capture rejects duplicate IDs even at distinct ordered ordinals',()=>{
- const row=attemptWork({threadId:'lead',attemptId:'attempt',turnId:'turn',state:'completed',refs:[{node_id:'answer',ordinal:1,kind:'assistant_response'},{node_id:'answer',ordinal:2,kind:'assistant_response'}]});
+ const row=attemptWork({threadId:'lead',attemptId:CANONICAL_ATTEMPT_ID,turnId:'turn',state:'completed',refs:[{node_id:'answer',ordinal:1,kind:'assistant_response'},{node_id:'answer',ordinal:2,kind:'assistant_response'}]});
  const scope=capturePublicResponseScope([row],'lead');expect(scope.complete).toBe(false);expect(scope.references.has(row)).toBe(false);
- const good=attemptWork({threadId:'lead',attemptId:'attempt',turnId:'turn',state:'completed',refs:valid});
+ const good=attemptWork({threadId:'lead',attemptId:CANONICAL_ATTEMPT_ID,turnId:'turn',state:'completed',refs:valid});
  const captured=capturePublicResponseScope([good],'lead');expect(captured.complete).toBe(true);
  expect(responseRefsMatchSelected(captured.references.get(good)!,[user,tool,answer])).toBe(true);
  expect(responseRefsMatchSelected(captured.references.get(good)!,[user,tool,{...answer,selection:{ordinal:3}}])).toBe(false);
@@ -64,11 +64,11 @@ it.each(([
  [{node_id:'b',ordinal:1,kind:'assistant_response'},{node_id:'a',ordinal:0,kind:'assistant_response'}],
  [{node_id:'a',ordinal:0,kind:''}],
 ] satisfies ResponseNodeRef[][]).map(refs=>({refs})))('one public capture rejects invalid identity/order/kind %#',({refs})=>{
- const row=attemptWork({threadId:'lead',attemptId:'attempt',turnId:'turn',state:'completed',refs});
+ const row=attemptWork({threadId:'lead',attemptId:CANONICAL_ATTEMPT_ID,turnId:'turn',state:'completed',refs});
  const scope=capturePublicResponseScope([row],'lead');expect(scope.complete).toBe(false);expect(scope.references.has(row)).toBe(false);
 });
 it('empty public output cannot mint a readable response proof',()=>{
- const row=attemptWork({threadId:'lead',attemptId:'attempt',turnId:'turn',state:'completed',refs:[]});
+ const row=attemptWork({threadId:'lead',attemptId:CANONICAL_ATTEMPT_ID,turnId:'turn',state:'completed',refs:[]});
  expect(capturePublicResponseScope([row],'lead').references.has(row)).toBe(false);
 });
 
@@ -79,7 +79,7 @@ it('a fresh selected read cannot restamp a prior public answer ordinal into a ne
  const f=await fixtureConversation({nodes:initial});let ended=false;
  const base=f.db.answer.bind(f.db);
  f.db.answer=call=>{
-  if(call.command==='status')return{ok:true,result:{items:ended?[attemptWork({threadId:'lead',attemptId:'attempt',turnId:'turn',state:'completed',refs:valid})]:[]}};
+  if(call.command==='status')return{ok:true,result:{items:ended?[attemptWork({threadId:'lead',attemptId:CANONICAL_ATTEMPT_ID,turnId:'turn',state:'completed',refs:valid})]:[]}};
   const args=call.args;
   if(call.command==='history.window'&&typeof args==='object'&&args!==null&&'node_id' in args){
    if('before' in args&&args.before===0)return{ok:true,result:{thread_id:'lead',revision:2,total:4,items:[tool,answer,tail]}};
@@ -89,7 +89,7 @@ it('a fresh selected read cannot restamp a prior public answer ordinal into a ne
  };
  try{
   const h=f.model.handle.value!,w=f.model.longReader.value!;
-  f.t.push({t:'live',thread_id:'lead',attempt_id:'attempt',gap:false,deltas:[{offset:0,reasoning:false,text:'Owned preview'}]});await flush();
+  f.t.push({t:'live',thread_id:'lead',attempt_id:CANONICAL_ATTEMPT_ID,gap:false,deltas:[{offset:0,reasoning:false,text:'Owned preview'}]});await flush();
   ended=true;f.t.push({t:'live_end',thread_id:'lead'});await settle(f.t,f.db);
   const held=h.handoff.peek()[0]!;
   expect(held.text).toBe('Owned preview');expect(held.readyAttempt?.revision).toBe(2);
