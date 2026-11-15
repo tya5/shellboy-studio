@@ -94,6 +94,29 @@ it("actual status/Store/O/Window publishes honest same-ref missing-answer presen
  expect(r.t.calls("history.window")).toHaveLength(1); expect(r.t.calls("history.get")).toHaveLength(0);
  expect(r.publications.generations.length).toBeGreaterThan(0); r.publications.stop(); r.w.dispose(); r.data.stop();
 });
+it("receipt-admitted missing-answer needs bounded readback", async () => {
+ const r = await target();
+ const before = r.w.acceptedView.peek();
+ expect(before.terminalPersistedAttempts?.map(item => item.attemptId)).toEqual([CANONICAL_ATTEMPT_ID]);
+ expect(before.assistantOwnership ?? []).toEqual([]);
+ expect(before.rows).toHaveLength(1);
+ expect(before.rows[0]).toMatchObject({node_id:"tool",kind:"assistant_response",selection:{ordinal:0},items:[{kind:"tool_call",item_identity:"call",execution_ids:["exec"]}]});
+ expect(before.rows.some(row => row.node_id === "answer")).toBe(false);
+ expect(r.receipt.scope).toBe(r.h.handoffScope());
+ expect(r.receipt.refs).toEqual([{nodeId:"answer",ordinal:1,kind:"assistant_response"}]);
+ expect(r.h.isReadQualificationCurrent(r.token)).toBe(true);
+ const readBefore = r.t.calls("history.window").length, generationBefore = before.generation;
+ const lease = r.w.prepareTerminalRead(r.h, r.token, r.receipt); expect("state" in lease).toBe(true); await r.pump();
+ const after = r.w.acceptedView.peek();
+ expect(r.t.calls("history.window").length - readBefore).toBe(1);
+ expect(after.rows.map(row => row.node_id)).toEqual(["tool", "answer"]);
+ expect(after.rows[0]).toMatchObject({node_id:"tool",items:[{kind:"tool_call",item_identity:"call",execution_ids:["exec"]}]});
+ expect(after.rows[1]).toMatchObject({node_id:"answer",items:[{kind:"text",item_identity:"text",text:"saved",text_complete:true}]});
+ expect(after.terminalPresence ?? []).toEqual([]);
+ expect(after.generation).toBeGreaterThan(generationBefore);
+ expect(r.h.isReadQualificationCurrent(r.token)).toBe(true);
+ r.publications.stop(); r.w.dispose(); r.data.stop();
+});
 it.each(["partial", "deferred", "unknown", "missing", "error"] as const)("canonical %s preserves rows and an honest settled reason", async mode => {
  const r = await target(); r.state[mode] = true; r.w.prepareTerminalRead(r.h, r.token, r.receipt); await r.pump();
  const ref = r.w.acceptedView.peek(); expect(ref.rows.some(row => row.node_id === "tool")).toBe(true);
@@ -322,6 +345,25 @@ it('actual ready admission reads accepted range plus exact refs and atomically r
  expect(r.w.acceptedView.peek().rows.map(row=>row.node_id)).toEqual(['tool','answer']);
  expect(r.w.acceptedView.peek().revision).toBe(7); expect(r.h.handoff.peek()).toHaveLength(0);
  expect(r.w.acceptedView.peek().retiredAttempts?.[0]?.attemptId).toBe(CANONICAL_ATTEMPT_ID);
+ r.w.dispose();r.data.stop();
+});
+it('complete canonical ownership avoids a redundant ready readback',async()=>{
+ const r=await readyTarget();
+ const first=r.w.prepareBoundReadyRead(r.record);expect('state' in first).toBe(true);await r.pump();
+ const token=r.h.captureReadQualification()!;
+ const owner=r.w.acceptedView.peek().assistantOwnership?.find(item=>item.attemptId===CANONICAL_ATTEMPT_ID);
+ expect(owner).toMatchObject({attemptId:CANONICAL_ATTEMPT_ID,mode:'canonical',refs:r.record.readyAttempt?.refs});
+ expect(r.h.isReadQualificationCurrent(token)).toBe(true);
+ expect(r.w.acceptedView.peek().retiredAttempts?.some(item=>item.attemptId===CANONICAL_ATTEMPT_ID)).toBe(true);
+ expect(r.h.handoff.peek()).toHaveLength(0);expect((first as OwnedTerminalReadLease).state.peek().phase).toBe('settled');
+ const firstState={retired:r.w.acceptedView.peek().retiredAttempts,handedOff:r.h.handoff.peek(),owners:r.w.acceptedView.peek().assistantOwnership};
+ const beforeReads=r.t.calls('history.window').length;
+ const second=r.w.prepareBoundReadyRead(r.record);expect(second).toEqual({phase:'unavailable',reason:'cancelled'});await r.pump();
+ expect(r.t.calls('history.window').length-beforeReads).toBe(0);
+ expect(r.h.isReadQualificationCurrent(token)).toBe(true);
+ expect(r.w.acceptedView.peek().retiredAttempts).toEqual(firstState.retired);
+ expect(r.h.handoff.peek()).toEqual(firstState.handedOff);
+ expect(r.w.acceptedView.peek().assistantOwnership).toEqual(firstState.owners);
  r.w.dispose();r.data.stop();
 });
 it.each(['gap','revoke','cancel','dispose'] as const)('actual ready successor %s retains accepted rows and cannot blend old prefix',async mode=>{
