@@ -1,6 +1,5 @@
-import {ownCapturedHistoryOutcome,ownHistoryOutcome} from './history-input';
-import {createInputCapture} from './immutable-input';
-import {ownInputOutcome} from './immutable-input';
+import {HistoryWindowInput} from './history-input';
+import {captureDecode,InputCaptureError} from './immutable-input';
 import {sanitizeMessageRelation} from "./message-provenance";
 // Typed operations: the UX boundary for requests. Stateless wrappers over `Link.call`;
 // they never touch the store (saved facts change only by re-reading after a hint).
@@ -245,7 +244,7 @@ export class Cancel {
 
 export type UuidFn = () => string;
 
-function unwrap<T>(response: OwnerResponse, decode: Decoder<T>, capture?: (raw: unknown) => unknown): Outcome<T> {
+function unwrap<T>(response: OwnerResponse, decode: Decoder<T>, captureDecode?: (raw: unknown) => Outcome<T>): Outcome<T> {
   if (!response.ok) {
     return response.error
       ? { ok: false, error: fromApiError(response.error) }
@@ -253,10 +252,15 @@ function unwrap<T>(response: OwnerResponse, decode: Decoder<T>, capture?: (raw: 
   }
   if (response.result === undefined)
     return { ok: false, error: { kind: "invalid_response", message: "owner reply without result" } };
-  const value = decode(capture ? capture(response.result) : response.result);
-  return value.ok
-    ? { ok: true, value: value.value }
-    : { ok: false, error: { kind: "invalid_response", message: value.reason } };
+  try {
+    if (captureDecode) return captureDecode(response.result);
+    const value = decode(response.result);
+    return value.ok
+      ? { ok: true, value: value.value }
+      : { ok: false, error: { kind: "invalid_response", message: value.reason } };
+  } catch (error) {
+    return { ok: false, error: { kind: "invalid_response", message: error instanceof Error ? error.message : "invalid-input" } };
+  }
 }
 
 export class Operations {
@@ -275,7 +279,7 @@ export class Operations {
     decode: Decoder<T>,
     mutation?: { operationId: string },
     read?: ReadOptions,
-    capture?: (raw: unknown) => unknown,
+    captureDecode?: (raw: unknown) => Outcome<T>,
   ): Promise<Outcome<T>> {
     const { cancel, ...options } = read ?? {};
     const handle = this.link.call(command, args, mutation ? { operationId: mutation.operationId, mutation: true } : options);
@@ -284,7 +288,7 @@ export class Operations {
     forget?.();
     const extra = mutation ? { operationId: mutation.operationId } : {};
     if (!reply.ok) return { ok: false, error: reply.error, ...extra };
-    return { ...unwrap(reply.response, decode, capture), ...extra };
+    return { ...unwrap(reply.response, decode, captureDecode), ...extra };
   }
 
   // ---- reads ----
@@ -308,9 +312,8 @@ export class Operations {
   }
   historyWindow(args: HistoryWindowArgs, read?: ReadOptions): Promise<Outcome<HistoryWindowResult>> {
     if (!this.historyWindowSupported()) return Promise.resolve({ ok: false, error: { kind: "invalid_response", message: "owner does not advertise history.window" } });
-    const capture=createInputCapture();
-    return this.run("history.window", args, decodeHistoryWindow, undefined, read, capture)
-      .then(out=>ownCapturedHistoryOutcome(out,capture.visits??0));
+    return this.run("history.window", args, decodeHistoryWindow, undefined, read,
+      raw => HistoryWindowInput.decode(raw, decodeHistoryWindow));
   }
   historyGet(args: HistoryGetArgs, read?: ReadOptions): Promise<Outcome<HistoryBody>> {
     return this.run("history.get", args, decodeBody, undefined, read);
@@ -341,10 +344,14 @@ export class Operations {
   }
   /** Activity status, for `receipt_budget`. One row is enough; the rows are not used. */
   handoffAttempts(threadId: string, read?: ReadOptions): Promise<Outcome<Page<WorkItem>>> {
-    return this.run("status", { thread_id: threadId, all: true, limit: 200 }, decodeThreadWorkPage(threadId), undefined, read).then(ownInputOutcome);
+    const decode=decodeThreadWorkPage(threadId);
+    const owned=(raw:unknown)=>captureDecode(raw,(value)=>{const out=decode(value);if(!out.ok)throw new InputCaptureError('invalid-input');return out.value;});
+    return this.run("status", { thread_id: threadId, all: true, limit: 200 }, decode, undefined, read, owned);
   }
   threadWork(threadId: string, read?: ReadOptions): Promise<Outcome<Page<WorkItem>>> {
-    return this.run("status", { thread_id: threadId, state: ["starting", "running", "stopping", "accepted", "held"], limit: 200 }, decodeThreadWorkPage(threadId), undefined, read).then(ownInputOutcome);
+    const decode=decodeThreadWorkPage(threadId);
+    const owned=(raw:unknown)=>captureDecode(raw,(value)=>{const out=decode(value);if(!out.ok)throw new InputCaptureError('invalid-input');return out.value;});
+    return this.run("status", { thread_id: threadId, state: ["starting", "running", "stopping", "accepted", "held"], limit: 200 }, decode, undefined, read, owned);
   }
   statusSummary(read?: ReadOptions): Promise<Outcome<Record<string, unknown>>> {
     return this.run("status", { limit: 1 }, decodeRecord, undefined, read);

@@ -70,8 +70,13 @@ export function createInputCapture(preserveIdentity:(value:object)=>boolean=()=>
   Object.defineProperty(capture,'visits',{get:()=>nodes});return capture;
 }
 
-export function ownInputOutcome<T>(out:Outcome<T>):Outcome<T>{
- if(!out.ok)return out;
- try{return{ok:true,value:createInputCapture()(out.value)};}
- catch(error){return{ok:false,error:{kind:'invalid_response',message:error instanceof InputCaptureError?error.reason:'invalid-input'}};}
+
+/** Capture an untrusted response once, then shape only the owned graph. */
+export function captureDecode<T>(raw: unknown, decode: (owned: unknown, visits: number) => T): Outcome<T> {
+  try {
+    const capture = createInputCapture();
+    return { ok: true, value: decode(capture(raw), capture.visits ?? 0) };
+  } catch (error) {
+    return { ok: false, error: { kind: "invalid_response", message: error instanceof InputCaptureError ? error.reason : "invalid-input" } };
+  }
 }

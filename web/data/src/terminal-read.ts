@@ -1,4 +1,4 @@
-import {HistoryWindowInput,ownHistoryOutcome} from './history-input';
+import {HistoryWindowInput} from './history-input';
 import {InputCaptureError} from './immutable-input';
 import { signal, type Signal, type ReadonlySignal } from "@preact/signals-core";
 import type { TerminalPersistedProof, HandoffRecord } from "./handoff";
@@ -106,12 +106,12 @@ export class TerminalReadSlots {
     read:(args:HistoryWindowArgs,cancel:Cancel)=>Promise<Outcome<HistoryWindowResult>>):
     Promise<Outcome<HistoryWindowResult>|'cancelled'|'budget-exhausted'|'selection-gap'>{
     const request=marker.ticket.request,plan=request.selection;
-    if(!plan)return ownHistoryOutcome(await read(request.args,marker.cancel));
+    if(!plan)return read(request.args,marker.cancel);
     const rows:HistoryItem[]=[],pages:HistoryWindowInput[]=[],ids=new Set<string>();let cursor:HistoryWindowResult|undefined;
     for(let first=plan.first;first<=plan.last;first+=200){
       if(!valid())return 'cancelled';
       const count=Math.min(200,plan.last-first+1);
-      const page=ownHistoryOutcome(await read({...request.args,ordinal:first,before:0,after:count-1},marker.cancel));
+      const page=await read({...request.args,ordinal:first,before:0,after:count-1},marker.cancel);
       if(!valid())return 'cancelled';
       if(!page.ok)return page;
       const value=page.value;

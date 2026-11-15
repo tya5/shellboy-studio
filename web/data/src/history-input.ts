@@ -1,4 +1,4 @@
-import {createInputCapture,InputCaptureError} from './immutable-input';
+import {captureDecode,createInputCapture,InputCaptureError} from './immutable-input';
 import type {HistoryItem,HistoryWindowResult} from './protocol';
 import type {Outcome} from './errors';
 export class HistoryWindowInput implements HistoryWindowResult {
@@ -12,9 +12,11 @@ export class HistoryWindowInput implements HistoryWindowResult {
   const capture=createInputCapture(),owned=capture(value);
   return new HistoryWindowInput(owned,capture.visits??0);
  }
- static fromCaptured(value:HistoryWindowResult,visits:number):HistoryWindowInput{
-  if(value instanceof HistoryWindowInput)return value;
-  return new HistoryWindowInput(value,visits);
+ static decode(raw:unknown,decoder:(value:unknown)=>{ok:true;value:HistoryWindowResult}|{ok:false;reason:string}):Outcome<HistoryWindowResult>{
+  return captureDecode(raw,(owned,visits)=>{
+   const decoded=decoder(owned); if(!decoded.ok) throw new InputCaptureError('invalid-input');
+   return new HistoryWindowInput(decoded.value,visits);
+  });
  }
  static join(pages:readonly HistoryWindowInput[]):HistoryWindowInput{
   const first=pages[0];if(!first)throw new InputCaptureError('invalid-input');
@@ -24,12 +26,9 @@ export class HistoryWindowInput implements HistoryWindowResult {
   return new HistoryWindowInput({...first,items:rows},visits);
  }
 }
-export function ownCapturedHistoryOutcome(out:Outcome<HistoryWindowResult>,visits:number):Outcome<HistoryWindowResult>{
- if(!out.ok)return out;
- return{ok:true,value:HistoryWindowInput.fromCaptured(out.value,visits)};
-}
+
 export function ownHistoryOutcome(out:Outcome<HistoryWindowResult>):Outcome<HistoryWindowResult>{
  if(!out.ok)return out;
- try{return{ok:true,value:HistoryWindowInput.own(out.value)};}
- catch(error){return{ok:false,error:{kind:'invalid_response',message:error instanceof InputCaptureError?error.reason:'invalid-input'}};}
+ if(out.value instanceof HistoryWindowInput)return out;
+ return HistoryWindowInput.decode(out.value,value=>({ok:true,value:value as HistoryWindowResult}));
 }
