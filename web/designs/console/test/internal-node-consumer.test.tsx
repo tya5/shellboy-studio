@@ -97,7 +97,7 @@ it('Core302 notification descriptors reach actual App through the issued Work bu
   expect(host.querySelector('[data-execution-id="exact-notification-exec"]')).toBeNull();
   for(const suffix of ['absent','unknown','invalid']){
    const row=host.querySelector(`[data-node="notification-${suffix}"] .work-element-row`)!;
-   expect(row.textContent).toContain('A content summary was not provided');expect(row.getAttribute('data-state-value')).toBeNull();
+   expect(row.textContent).toContain('Notification details were not provided');expect(row.getAttribute('data-state-value')).toBeNull();
   }
   expect(host.textContent).not.toContain('PRIVATE-');expect(host.textContent).not.toContain('invalid-exec');
   const human=host.querySelector('[data-node="human-invalid-notification"]')!;

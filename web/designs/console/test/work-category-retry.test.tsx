@@ -60,10 +60,10 @@ it('uses CASE closed Work defaults and visible kind when a notification has no e
   expect(record.tagName).toBe('DIV');expect(record.querySelector('details,summary')).toBeNull();
   const line=record.querySelector('.work-element-row__line')!;
   expect(line.getAttribute('title')).toBe('Notification');
-  expect(line.getAttribute('aria-label')).toContain('A content summary was not provided');
+  expect(line.getAttribute('aria-label')).toContain('Notification details were not provided');
   expect(line.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true');
   expect(line.querySelector('svg path')?.getAttribute('d')).toBe('M3 13l3-8h12l3 8v6H3zM3 13h5l1.5 3h5L16 13h5');
-  expect(line.querySelector('.work-element-row__content')?.textContent).toBe('A content summary was not provided');
+  expect(line.querySelector('.work-element-row__content')?.textContent).toBe('Notification details were not provided');
   expect(line.classList.contains('work-element-row__line')).toBe(true);
   await act(async()=>show());expect(group.open).toBe(true);
   await act(async()=>{group.open=false;group.dispatchEvent(new Event('toggle'));});
@@ -111,7 +111,7 @@ it('non-tool Work rows keep visible authorized content and the existing DS summa
   const group=host.querySelector<HTMLDetailsElement>('[data-work-group]')!;await act(async()=>{group.open=true;group.dispatchEvent(new Event('toggle'));});
   const contents=[...host.querySelectorAll('.work-element-row__content')];
   expect(contents).toHaveLength(5);for(const content of contents)expect(content.textContent?.trim()).not.toBe('');
-  expect(contents.map(content=>content.textContent)).toEqual(['Reasoning content is not publicly available','A content summary was not provided',"Display data exceeded this response's read budget",'Item details are not supported',"Display data exceeded this response's read budget"]);
+  expect(contents.map(content=>content.textContent)).toEqual(['Reasoning content is not publicly available','Notification details were not provided',"Display data exceeded this response's read budget",'Item details are not supported',"Display data exceeded this response's read budget"]);
   expect(host.textContent).toContain('response_budget');
   expect(host.textContent).not.toContain(f.model.t.value('work.thinking'));
   expect(host.querySelector('[data-internal-records] details')).toBeNull();
