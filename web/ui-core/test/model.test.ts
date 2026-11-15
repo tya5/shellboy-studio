@@ -356,6 +356,16 @@ it('reservation notification is synchronous, owns text/op before dispatch and is
   expect(await f.model.send(' ',()=>{notified++;})).toBe(false);expect(notified).toBe(1);
  }finally{f.model.dispose();f.data.stop();}
 });
+it('reservation clear before dispatch fails without spreading an absent pending record',async()=>{
+ const f=await fixtureModel();
+ try{
+  const sent=f.model.send('Clear before dispatch',()=>{f.model.pendingOwnMessage.value=undefined;});
+  expect(await sent).toBe(false);
+  expect(f.model.pendingOwnMessage.peek()).toBeUndefined();
+  expect(f.model.sendState.peek()).toMatchObject({kind:'failed'});
+  expect(f.t.calls('message.send')).toHaveLength(0);
+ }finally{f.model.dispose();f.data.stop();}
+});
 it('reservation reentrant route loss prevents dispatch and preserves the owned original draft',async()=>{
  const f=await fixtureModel();
  try{

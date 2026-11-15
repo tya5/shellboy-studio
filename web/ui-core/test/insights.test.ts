@@ -125,11 +125,12 @@ describe("compaction events", () => {
 });
 
 describe("resource facts", () => {
-  it("memory leaves out what the platform doesn't provide and keeps the owner's reason for a cache", () => {
+  it("memory leaves out what the platform does not provide and keeps cache availability structural", () => {
     const m = readMemory(fixtureMemory);
     expect(m.metrics.map((x) => x.name)).toEqual(["footprint", "rss"]);
     const body = m.caches.find((c) => c.name === "body")!;
-    expect(body).toMatchObject({ retained: undefined, limit: 33554432, reason: "UI cache owner is not available" });
+    expect(body).toMatchObject({ retained: undefined, limit: 33554432 });
+    expect("reason" in body).toBe(false);
     expect(m.caches.find((c) => c.name === "replay")).toMatchObject({ retained: 57373, entries: 1, unit: "thread" });
   });
   it("storage keeps flags, categories and an absent free size", () => {

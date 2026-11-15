@@ -210,37 +210,8 @@ Canonical staging and observer publication consume the returned held record.
 
 ## Studio 18 Memory Card Contract
 
-The public synthetic trace is `Operations.memoryStatus()` in
-`web/data/src/operations.ts:248-252`, which issues `status` with `{ memory: true }`.
-`Insights.refreshRead("memory")` calls the typed operation and `readInto`; its
-successful result is decoded by `readMemory()` in `web/ui-core/src/resources.ts`
-and rendered by `MemoryPane`/`CacheMeter` in
-`web/designs/console/screens/Resources.tsx`. The public cache object contains
-`retained_bytes`, limits, entries, units, live/pinned values, and optional
-`unavailable_reason`. `CacheFact.retained` is the only value/missing authority;
-the raw reason remains diagnostic data and is not parsed into owner state.
+`status --memory` supplies typed process metrics and cache facts to `MemoryPane`; a missing `CacheFact.retained` value renders through localized `common.notReported`, while other cache facts remain visible. Cache availability is structural, and owner-provided diagnostic reasons are not part of the cache contract or UI state.
 
-A missing retained value is rendered through the existing localized
-`common.notReported` card contract. Other cache facts remain renderable, so one
-cache absence does not make the owner unavailable. Unsupported operation,
-malformed response, and disconnected transport remain separate typed outcomes
-from `operations.ts:47-48,170-171,249`; the existing synthetic tests covering
-bridge reads and invalid/error outcomes remain the evidence boundary. This unit
-adds no compatibility fallback, body/private data, RPC, guessed field, or owner
-state inference.
-
-The mounted regression in
-`web/designs/console/test/resources-memory.test.tsx` sets the successful
-`readMemory` value on the existing Insights signal and mounts `MemoryPane` in
-English and Japanese. It proves localized missing text, retained replay value,
-raw diagnostic-reason non-leakage, and preservation of the other cache cards.
-This is a mounted card oracle, not proof of transport execution, geometry at
-browser widths, disconnect behavior, or installed-owner version reporting.
-
-Owner application version remains an open source-gap investigation. The current
-public trace only establishes bridge/protocol hello facts and the memory route;
-it does not establish an application-version field or historical installed
-v0.11.1 behavior. Read-only owner verification belongs to the separately
-authorized lane and is not performed by this source/synthetic unit.
+Unsupported, malformed, and disconnected reads remain distinct typed outcomes at the operation boundary. This design covers the public synthetic Resources contract only; installed-owner version reporting and browser/owner acceptance remain outside it.
 
 Notification rendering keeps factual kind/time context and never infers body text; routine copy decisions remain delegated and hidden diagnostics are separate.

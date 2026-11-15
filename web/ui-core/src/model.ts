@@ -1046,11 +1046,13 @@ export class AppModel {
       // A UI observer cannot orphan an already-owned send by throwing.
       try { onReserved?.(); } catch { /* The pending operation still owns the text. */ }
     }
-    if(!current()||!originalPlainOperation||this.pendingOwnMessage.peek()!==originalPlainOperation||this.sendState.peek().kind!=="sending"){
-      if(this.pendingOwnMessage.peek()===originalPlainOperation){
-        this.pendingOwnMessage.value={...originalPlainOperation!,phase:"failed"};
-        this.sendState.value={kind:"failed",message:"Send reservation is no longer current"};
+    const currentPending = this.pendingOwnMessage.peek();
+    if(!current() || originalPlainOperation === undefined || currentPending !== originalPlainOperation || this.sendState.peek().kind!=="sending"){
+      // The callback may clear the optional record; only a present matching record can be failed.
+      if(currentPending !== undefined && currentPending === originalPlainOperation){
+        this.pendingOwnMessage.value={...currentPending,phase:"failed"};
       }
+      this.sendState.value={kind:"failed",message:"Send reservation is no longer current"};
       return false;
     }
     const out = await this.ops.messageSend({ thread_id: threadId, text }, operationId);

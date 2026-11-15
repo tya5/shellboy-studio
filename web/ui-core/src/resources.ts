@@ -1,5 +1,5 @@
 // Owner resource facts from `status --memory`, `storage.status`, `index.status` and `status`.
-// A value the owner doesn't report stays absent, with the owner's reason where it gives one.
+// A value the owner does not report stays absent.
 const obj = (v: unknown): Record<string, unknown> | undefined =>
   typeof v === "object" && v !== null && !Array.isArray(v) ? (v as Record<string, unknown>) : undefined;
 const num = (v: unknown): number | undefined => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
@@ -19,13 +19,12 @@ export interface CacheFact {
   unit: string | undefined;
   live: number | undefined;
   pinned: number | undefined;
-  reason: string | undefined;
 }
 
 export interface MemoryFacts {
   platform: string | undefined;
   observedAt: string | undefined;
-  /** Metrics this platform provides; the rest carry a reason and are left out. */
+  /** Metrics this platform provides; unsupported metrics are left out. */
   metrics: ProcessMetric[];
   caches: CacheFact[];
   accounting: string | undefined;
@@ -51,7 +50,6 @@ export function readMemory(v: Record<string, unknown>): MemoryFacts {
         unit: str(o.entry_unit),
         live: num(o.live_bytes) ?? num(o.live_encoded_bytes),
         pinned: num(o.pinned_bytes),
-        reason: str(o.unavailable_reason),
       };
     }),
     accounting: str(v.accounting),
