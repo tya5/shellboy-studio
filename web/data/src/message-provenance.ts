@@ -54,5 +54,8 @@ export function sanitizeMessageRelation<T extends {node_id?:string;provenance?:u
  const {message,notification,...independent}=provenance;
  const admitted=hasMessage?admitMessageProvenance(message,node.node_id):undefined;
  const admittedNotification=hasNotification?admitNotificationDescriptor(notification):undefined;
- return {...node,provenance:{...independent,...(admitted?{message:admitted}:{}),...(admittedNotification?{notification:admittedNotification}:{})}};
+ if(admitted)Object.freeze(admitted);
+ if(admittedNotification)Object.freeze(admittedNotification);
+ const nextProvenance=Object.freeze({...independent,...(admitted?{message:admitted}:{}),...(admittedNotification?{notification:admittedNotification}:{})});
+ return {...node,provenance:nextProvenance};
 }

@@ -73,12 +73,12 @@ describe("Operations", () => {
 
   it("public history capture reads text and ordinal once and isolates caller mutation", async () => {
     const { t, ops } = setup(); let textReads = 0; let ordinalReads = 0; let externalText = "short";
-    const item = { node_id: "n", kind: "assistant_response", selection: {} as { ordinal?: number }, items: [{ kind: "text", item_identity: "body", text_complete: true, text: "short" }] };
+    const item = { node_id: "n", kind: "assistant_response", selection: {} as { ordinal?: number }, provenance: { message: { expect_reply: false, reply_to: "prior" } }, items: [{ kind: "text", item_identity: "body", text_complete: true, text: "short" }] };
     Object.defineProperty(item.selection, "ordinal", { enumerable: true, get: () => { ordinalReads++; return 0; } });
     Object.defineProperty(item.items[0], "text", { enumerable: true, get: () => { textReads++; return textReads <= 2 ? externalText : "x".repeat(20000); }, set: (value: string) => { externalText = value; } });
     const pending = ops.historyWindow({ thread_id: "a" }); t.ok(t.calls()[0]!.id, { thread_id: "a", revision: 1, total: 1, items: [item] });
     const out = await pending; expect(out.ok).toBe(true); expect(textReads).toBe(1); expect(ordinalReads).toBe(1);
-    if (out.ok) { const result = out.value.items[0]!; expect(result.items?.[0]).toMatchObject({ text: "short" }); item.items[0]!.text = "caller mutation"; expect(result.items?.[0]).toMatchObject({ text: "short" }); expect(Object.isFrozen(result)).toBe(true); expect(() => { result.node_id = "changed"; }).toThrow(); }
+    if (out.ok) { const result = out.value.items[0]!; expect(result.items?.[0]).toMatchObject({ text: "short" }); item.items[0]!.text = "caller mutation"; expect(result.items?.[0]).toMatchObject({ text: "short" }); expect(Object.isFrozen(result)).toBe(true); expect(Object.isFrozen(result.provenance?.message)).toBe(true); expect(() => { result.node_id = "changed"; }).toThrow(); expect(() => { if(result.provenance?.message && "reply_to" in result.provenance.message) result.provenance.message.reply_to = "changed"; }).toThrow(); }
   });
 
   it("public history capture rejects the first oversized value with a body-free bound error", async () => {
