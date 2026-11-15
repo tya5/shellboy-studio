@@ -761,8 +761,8 @@ export class ShellboyData {
       const targets = entry.live.records.peek().filter(r => r.status === "confirming" || r.status === "failed");
       if (!valid()) return;
       if (entry.terminalReads.queued) {
-        await entry.terminalReads.dispatch(() => entry.live.takeRead(), (args, cancel) => this.operations.historyWindow(args, { cancel }));
-        outcome = "success"; return;
+        const dispatchResult = await entry.terminalReads.dispatch(() => entry.live.takeRead(), (args, cancel) => this.operations.historyWindow(args, { cancel }));
+        outcome = dispatchResult === "success" || dispatchResult === "no-work" ? "success" : "failed"; return;
       }
       if (!targets.length) { entry.handoffRetryState.value = { phase: "idle", reason: "no-pending", canRetry: false }; outcome = "success"; return; }
       if (!entry.live.takeRead()) { entry.handoffRetryState.value = { phase: "unavailable", reason: "budget-exhausted", canRetry: true }; return; }
@@ -810,8 +810,10 @@ export class ShellboyData {
               presentationContainer: record.presentationContainer, turnId: attempt.turn_id!, refs: qualifiedRefs }) : undefined;
         observations.push({ kind: 'readable', lease, ...(association ? { association } : {}), ...(receipt ? { receipt } : {}) });
       }
-      if (valid() && displayOwner === entry.displayOwner && observations.length > 0)
-        displayOwner?.capture()?.publish(observations);
+      if (observations.length > 0) {
+        if (!valid() || displayOwner !== entry.displayOwner) return;
+        if (displayOwner) { const target = displayOwner.capture(); if (!target || !target.publish(observations)) return; }
+      }
       const receiptObservations: DisplayObservation[] = [];
 
       for (const record of targets) {
@@ -898,8 +900,10 @@ export class ShellboyData {
       }
       // Empty originals contribute source-qualified metadata, never a borrowed body lease.
       // Capture the current selected frame after the exact receipt record exists.
-      if (receiptObservations.length && valid() && displayOwner === entry.displayOwner)
-        displayOwner?.capture()?.publish(receiptObservations);
+      if (receiptObservations.length > 0) {
+        if (!valid() || displayOwner !== entry.displayOwner) return;
+        if (displayOwner) { const target = displayOwner.capture(); if (!target || !target.publish(receiptObservations)) return; }
+      }
       outcome = "success";
     }).finally(() => {
       const ownFollowup = entry.handoffDemand !== "none";

@@ -23,6 +23,18 @@ it("cancel then prepare cannot reset automatic-once even before dispatch", async
  await slots.dispatch(() => true, async () => { reads++; return result; }); expect(reads).toBe(0);
  expect(slots.request({ kind: "persisted", receipt }, { ...request, id: "new" as SelectedCanonicalRequest["id"] }, () => true, parent)).toEqual({ phase: "unavailable", reason: "cancelled" });
 });
+it("primary error keeps its settled error while a successful successor is bounded", async () => {
+ const slots=new TerminalReadSlots(), parent=new Cancel(), first=slots.request({kind:'persisted',receipt},request,()=>true,parent) as OwnedTerminalReadLease; let reads=0;
+ first.state.subscribe(state=>{if(state.phase==='settled')slots.request({kind:'persisted',receipt:{...receipt,attemptId:'successor-error'}},{...request,id:'successor' as SelectedCanonicalRequest['id']},()=>true,parent);});
+ const error={ok:false as const,error:{kind:'invalid_response' as const,message:'owner error'}};
+ const out=await slots.dispatch(()=>true,async()=>{reads++;return reads===1?error:result}); expect(reads).toBe(2); expect(out).toBe('error'); expect(first.state.peek()).toMatchObject({phase:'settled',result:error});
+});
+it("primary success reports a failed bounded successor without losing the primary state", async () => {
+ const slots=new TerminalReadSlots(), parent=new Cancel(), first=slots.request({kind:'persisted',receipt},request,()=>true,parent) as OwnedTerminalReadLease;
+ first.state.subscribe(state=>{if(state.phase==='settled')slots.request({kind:'persisted',receipt:{...receipt,attemptId:'successor'}},{...request,id:'failure' as SelectedCanonicalRequest['id']},()=>true,parent);});
+ let reads=0; const out=await slots.dispatch(()=>true,async()=>{reads++;return reads===1?result:{ok:false as const,error:{kind:'invalid_response' as const,message:'successor error'}}});
+ expect(out).toBe('error'); expect(first.state.peek()).toMatchObject({phase:'settled',result});
+});
 it("budget denial settles without dispatch and no automatic retry", async () => {
  const slots = new TerminalReadSlots(); const lease = slots.request({ kind: "persisted", receipt }, request, () => true, new Cancel()) as OwnedTerminalReadLease;
  let reads = 0; await slots.dispatch(() => false, async () => { reads++; return result; });

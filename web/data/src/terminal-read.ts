@@ -25,6 +25,7 @@ function sameAdmission(a: SelectedReadAdmission, b: SelectedReadAdmission): bool
     : b.kind === "ready" && a.record === b.record && a.scope === b.scope;
 }
 export interface TerminalReadTicket { readonly id: TerminalReadTicketId; readonly request: SelectedCanonicalRequest; readonly admission: SelectedReadAdmission }
+export type TerminalDispatchOutcome = "success" | "cancelled" | "budget-exhausted" | "selection-gap" | "error" | "no-work";
 export type TicketOutcome =
   | { readonly phase: "queued" | "reading"; readonly ticket: TerminalReadTicket }
   | { readonly phase: "settled"; readonly ticket: TerminalReadTicket; readonly result: Outcome<HistoryWindowInput> }
@@ -85,22 +86,31 @@ export class TerminalReadSlots {
     return !!marker && marker.ticket === lease.ticket && marker.valid() && !marker.cancel.cancelled && marker.leases.has(lease);
   }
   get queued(): boolean { return [...this.markers.values()].some(m => m.state.peek().phase === "queued"); }
-  async dispatch(takeRead: () => boolean, read: (args: HistoryWindowArgs, cancel: Cancel) => Promise<Outcome<HistoryWindowInput>>, followup = true): Promise<void> {
+  async dispatch(takeRead: () => boolean, read: (args: HistoryWindowArgs, cancel: Cancel) => Promise<Outcome<HistoryWindowInput>>, followup = true): Promise<TerminalDispatchOutcome> {
     const marker = [...this.markers.values()].find(m => m.state.peek().phase === "queued");
-    if (!marker) return;
+    if (!marker) return "no-work";
     const valid = () => marker.valid() && !marker.cancel.cancelled && marker.leases.size > 0;
-    if (!valid()) { marker.state.value = { phase: "unavailable", reason: "cancelled" }; return; }
-    if (!takeRead()) { marker.state.value = { phase: "unavailable", reason: "budget-exhausted" }; return; }
-    marker.state.value = { phase: "reading", ticket: marker.ticket };
-    if (!valid()) { marker.state.value = { phase: "unavailable", reason: "cancelled" }; return; }
+    let primary: TerminalDispatchOutcome = "cancelled", admitted = false;
     try {
-      const result = await this.readOwned(marker, valid, read);
-      marker.state.value = !valid() ? {phase:'unavailable',reason:'cancelled'} : typeof result==='string'
-        ? {phase:'unavailable',reason:result} : {phase:'settled',ticket:marker.ticket,result};
+      if (!valid()) marker.state.value = { phase: "unavailable", reason: "cancelled" };
+      else if (!takeRead()) { marker.state.value = { phase: "unavailable", reason: "budget-exhausted" }; primary = "budget-exhausted"; }
+      else {
+        marker.state.value = { phase: "reading", ticket: marker.ticket };
+        if (!valid()) marker.state.value = { phase: "unavailable", reason: "cancelled" };
+        else {
+          admitted = true;
+          const result = await this.readOwned(marker, valid, read);
+          if (!valid()) marker.state.value = { phase: "unavailable", reason: "cancelled" };
+          else if (typeof result === "string") { marker.state.value = { phase: "unavailable", reason: result }; primary = result; }
+          else { primary = result.ok ? "success" : "error"; marker.state.value = { phase: "settled", ticket: marker.ticket, result }; }
+        }
+      }
     } finally { marker.detach?.(); }
-    // A replacement can be queued synchronously by the settled callback. Consume
-    // that one successor in this owned dispatch, not via resolver re-entry.
-    if (followup && this.queued) await this.dispatch(takeRead, read, false);
+    if (admitted && followup && this.queued) {
+      const successor = await this.dispatch(takeRead, read, false);
+      if (primary === "success" && successor !== "success" && successor !== "no-work") return successor;
+    }
+    return primary;
   }
   private async readOwned(marker:Marker,valid:()=>boolean,
     read:(args:HistoryWindowArgs,cancel:Cancel)=>Promise<Outcome<HistoryWindowInput>>):
