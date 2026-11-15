@@ -264,22 +264,28 @@ export class Handoff {
     if (h?.attemptCapture) return this.transferAttempt(h.attemptCapture.original, h.attemptCapture.proof, accept);
     if (!h || h.transferring || h.record.status !== 'ready' || !h.record.proof || h.record.transferred) return false;
     const epoch = this.lifetimeValue;
-    const moved = Object.freeze({ ...h.record, transferred: true });
     h.transferring = true;
+    const moved = this.updateTransferred(h, true);
     let deferred: 'return' | 'end' | undefined;
     let receiving = true;
     try {
-      if (!accept(moved, reason => {
-        if (receiving) { deferred = reason; return; }
-        if (this.lifetimeValue !== epoch || h.record !== moved || !this.held.includes(h)) return;
-        if (reason === 'end') this.release(attemptId);
-        else { this.updateRecord(h, { ...moved, transferred: false }, 'bookkeeping'); this.publish(); }
-      })) return false;
+      let accepted = false;
+      try {
+        accepted = accept(moved, reason => {
+          if (receiving) { deferred = reason; return; }
+          if (this.lifetimeValue !== epoch || h.record !== moved || !this.held.includes(h)) return;
+          if (reason === 'end') this.release(attemptId);
+          else { this.updateTransferred(h, false); this.publish(); }
+        });
+      } catch (error) {
+        this.updateTransferred(h, false);
+        throw error;
+      }
+      if (!accepted) { this.updateTransferred(h, false); return false; }
       if (epoch !== this.lifetimeValue || !this.held.includes(h)) return false;
       receiving = false;
-      this.updateRecord(h, moved, 'bookkeeping');
       if (deferred === 'end') this.release(attemptId);
-      else if (deferred === 'return') { this.updateRecord(h, { ...moved, transferred: false }, 'bookkeeping'); this.publish(); }
+      else if (deferred === 'return') { this.updateTransferred(h, false); this.publish(); }
       else this.publish();
       return true;
     } finally { h.transferring = false; }
@@ -300,19 +306,22 @@ export class Handoff {
     this.held = []; this.active = undefined; this.blockedAttempt = undefined;
     this.overflowSig.value = false; this.publish();
   }
-  /** All own source keys define semantic identity; only `transferred` is bookkeeping. */
-  private updateRecord(held: Held, next: HandoffRecord, transition: RecordTransition = 'source'): HandoffRecord {
+  private sameOwnRecord(a: HandoffRecord, b: HandoffRecord, includeTransferred = true): boolean {
+    const entries = (value: HandoffRecord) => Object.entries(value).filter(([key]) => includeTransferred || key !== 'transferred');
+    const left = entries(a), right = entries(b);
+    return left.length === right.length && left.every(([key, value]) => right.some(([other, otherValue]) => key === other && Object.is(value, otherValue)));
+  }
+  /** All own keys define source identity; only the typed transfer entry is bookkeeping. */
+  private updateRecord(held: Held, next: HandoffRecord): HandoffRecord {
     const previous = held.record;
-    const sameOwnKeys = (a: HandoffRecord, b: HandoffRecord, includeTransferred: boolean): boolean => {
-      const entries = (value: HandoffRecord) => Object.entries(value).filter(([key]) => includeTransferred || key !== 'transferred');
-      const left = entries(a), right = entries(b);
-      return left.length === right.length && left.every(([key, value]) => right.some(([other, otherValue]) => key === other && Object.is(value, otherValue)));
-    };
-    const sourceChanged = !sameOwnKeys(previous, next, false);
-    const bookkeepingChanged = previous.transferred !== next.transferred;
-    if (!sourceChanged && !bookkeepingChanged) return previous;
-    if (transition === 'source' && sourceChanged) held.sourceRevision++;
+    if (this.sameOwnRecord(previous, next)) return previous;
+    held.sourceRevision++;
     held.record = Object.freeze(next);
+    return held.record;
+  }
+  private updateTransferred(held: Held, transferred: boolean): HandoffRecord {
+    if (held.record.transferred === transferred) return held.record;
+    held.record = Object.freeze({ ...held.record, transferred });
     return held.record;
   }
   private update(id: string, fn: (r: HandoffRecord) => HandoffRecord): void {
