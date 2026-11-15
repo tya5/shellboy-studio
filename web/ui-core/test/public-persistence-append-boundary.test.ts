@@ -5,6 +5,7 @@ import {expect,it} from 'vitest';
 import {readbackFixture} from '../../data/test/readback-fixture';
 import {rig} from './window-owner';
 
+import {ownedHistory} from '../../data/test/owned-history';
 it('an actual public persistence observation cannot be copied into readable-original transfer authority',async()=>{
  const r=await readbackFixture();
  try{
@@ -49,10 +50,10 @@ it.each(['valid','getter','successor-read','gap','older','revoked','detached','r
   const ordinal=first+i;return{node_id:`node-${ordinal}`,kind:'user',selection:{ordinal},items:[{kind:'text',item_identity:'body',text:`R${revision}:${ordinal}`,text_complete:true}]};
  });
  try{
-  r.requests[0]!.reply({ok:true,value:{thread_id:'t',revision:1,total:100,items:rows(0,99,1)}});await flush();
+  r.requests[0]!.reply({ok:true,value:ownedHistory({thread_id:'t',revision:1,total:100,items:rows(0,99,1)})});await flush();
   const before=w.acceptedView.peek(),cap=w.acceptedView.currentCapability;let publications=0;
   const stop=w.acceptedView.subscribe(ref=>{publications++;if(mode==='successor-read'&&ref.revision===2)w.requestOlder();});
-  w.changed();r.pending()[0]!.reply({ok:true,value:{thread_id:'t',revision:2,total:101,items:rows(99,100,2)}});await flush();
+  w.changed();r.pending()[0]!.reply({ok:true,value:ownedHistory({thread_id:'t',revision:2,total:101,items:rows(99,100,2)})});await flush();
   expect(w.acceptedView.peek()).toBe(before);expect(w.acceptedView.currentCapability).toBe(cap);expect(publications).toBe(0);
   const fresh=r.pending()[0]!;expect(fresh.args).toMatchObject({before:99,after:0,items:true});
   let selected=rows(1,100,2),nested:ReturnType<typeof w.acceptedView.peek>|undefined;
@@ -64,7 +65,7 @@ it.each(['valid','getter','successor-read','gap','older','revoked','detached','r
   if(mode==='reentrant')selected[0]!.provenance={get created_at(){
    w.setAttemptPresentations([{scope:'history',attemptId:'nested',turnId:'nested-turn',nodeIds:['unselected'],state:'pending'}]);nested=w.acceptedView.peek();return 'synthetic';
   }};
-  fresh.reply({ok:true,value:{thread_id:'t',revision:mode==='older'?1:2,total:101,items:selected}});await flush();
+  fresh.reply({ok:true,value:ownedHistory({thread_id:'t',revision:mode==='older'?1:2,total:101,items:selected})});await flush();
   if(['valid','getter','successor-read'].includes(mode)){
    expect(publications).toBe(1);expect(w.acceptedView.peek().revision).toBe(2);
    expect(w.acceptedView.peek().rows.map(row=>row.node_id)).toEqual(rows(1,100,2).map(row=>row.node_id));

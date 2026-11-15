@@ -5,6 +5,7 @@ import { render } from 'preact';
 import { act } from 'preact/test-utils';
 import { afterEach,expect,it,vi } from 'vitest';
 import { connected,FakeTransport,flush } from '../../../data/test/harness';
+import { ownedHistory } from '../../../data/test/owned-history';
 import { ShellboyData } from '../../../data/src';
 import { ConversationWindow,type WindowAcceptedSnapshot } from '../../../ui-core/src/window';
 import type { AppModel } from '../../../ui-core/src';
@@ -15,7 +16,7 @@ let stop:(()=>void)|undefined;
 afterEach(()=>{stop?.();stop=undefined;vi.restoreAllMocks();});
 async function rig(kind:'inside'|'below', invalid?:'duplicate'|'hidden'|'revoke'|'reject', notify?:'consume'|'pause'|'cancel'|'owner'|'revoke'){
  const t=new FakeTransport();let serial=0;const data=new ShellboyData({transport:t,newId:()=>`g-${++serial}`});data.start();t.open();t.push({t:'hello',bridge_version:'synthetic',owner:connected});await flush();const handle=data.openThread('t');
- let target=false;const w=new ConversationWindow({read:async()=>({ok:true,value:{thread_id:'t',revision:target?2:1,total:2,items:target?[{node_id:'summary',kind:'summary',selection:{ordinal:0},items:[]},{node_id:'b',kind:'user',selection:{ordinal:1},items:[]}]:[{node_id:'a',kind:'user',selection:{ordinal:0},items:[]},{node_id:'b',kind:'user',selection:{ordinal:1},items:[]}]}})});await flush();
+ let target=false;const w=new ConversationWindow({read:async()=>({ok:true,value:ownedHistory({thread_id:'t',revision:target?2:1,total:2,items:target?[{node_id:'summary',kind:'summary',selection:{ordinal:0},items:[]},{node_id:'b',kind:'user',selection:{ordinal:1},items:[]}]:[{node_id:'a',kind:'user',selection:{ordinal:0},items:[]},{node_id:'b',kind:'user',selection:{ordinal:1},items:[]}]})})});await flush();
  const root=document.createElement('div');document.body.append(root);let unsubscribe=()=>{};stop=()=>{unsubscribe();render(null,root);root.remove();w.dispose();handle.close();data.stop();};
  const model={t:signal((key:string)=>key),shells:signal(new Map()),handle:signal(handle)} as unknown as AppModel;
  const rect=vi.spyOn(HTMLElement.prototype,'getBoundingClientRect').mockImplementation(function(this:HTMLElement){const top=this.dataset.node?(target?130:40):0;return{top,bottom:top+20,height:20} as DOMRect;});

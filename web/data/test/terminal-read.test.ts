@@ -66,7 +66,7 @@ it("settled successor is dispatched once without resolver re-entry", async () =>
  old.state.subscribe(state => {
    if (state.phase === "settled") slots.replace({ kind: "persisted", receipt }, { ...request, id: "fresh" as SelectedCanonicalRequest["id"] }, () => true, parent);
  });
- await slots.dispatch(() => true, async () => { reads++; return { ...result, value: { ...result.value, revision: reads } }; });
+ await slots.dispatch(() => true, async () => { reads++; return { ...result, value: ownedHistory({ ...result.value, revision: reads }) }; });
  expect(reads).toBe(2);
  expect(slots.queued).toBe(false);
 });
@@ -129,8 +129,8 @@ it.each([201,1600])('one actual selected lease assembles %i rows from original <
  const stop=lease.state.subscribe(state=>states.push(state.phase));
  await slots.dispatch(()=>budget>0&&(budget--,true),async args=>{
   calls.push(args);const start=args.ordinal??-1,n=(args.after??0)+1;
-  return{ok:true,value:{thread_id:'t',revision:2,total:2400,items:Array.from({length:n},(_,index)=>({node_id:`node-${start+index}`,kind:'assistant_response',selection:{ordinal:start+index},
-   items:[{kind:'text',item_identity:'body',text:`R2:${start+index}`,text_complete:true},{kind:'text',item_identity:'detail',text:`detail-${start+index}`,text_complete:true}],provenance:{message:{reply_to:'prior',expect_reply:false}}}))}};
+  return{ok:true,value:ownedHistory({thread_id:'t',revision:2,total:2400,items:Array.from({length:n},(_,index)=>({node_id:`node-${start+index}`,kind:'assistant_response',selection:{ordinal:start+index},
+   items:[{kind:'text',item_identity:'body',text:`R2:${start+index}`,text_complete:true},{kind:'text',item_identity:'detail',text:`detail-${start+index}`,text_complete:true}],provenance:{message:{reply_to:'prior',expect_reply:false}}}))})};
  });
  const out=lease.state.peek();expect(out.phase).toBe('settled');
  if(out.phase!=='settled'||!out.result.ok)throw new Error('Missing complete paged result');
@@ -141,7 +141,7 @@ it.each([201,1600])('one actual selected lease assembles %i rows from original <
 it('joined validated pages preserve rich rows without reusing the aggregate raw visit bound',async()=>{
  const slots=new TerminalReadSlots(),parent=new Cancel();const selected={...request,args:{thread_id:'t',ordinal:0,before:0,after:199,items:true},selection:{first:0,last:399,revision:2}};
  const lease=slots.request({kind:'persisted',receipt},selected,()=>true,parent);if(!('state' in lease))throw new Error('Expected actual paged lease');let reads=0;
- await slots.dispatch(()=>true,async args=>{const first=args.ordinal??0;const n=(args.after??0)+1;reads++;return{ok:true,value:{thread_id:'t',revision:2,total:400,items:Array.from({length:n},(_,i)=>({node_id:`rich-${first+i}`,kind:'assistant_response',selection:{ordinal:first+i},items:[{kind:'text',item_identity:'a',text:'a',text_complete:true},{kind:'text',item_identity:'b',text:'b',text_complete:true}],provenance:{message:{reply_to:'prior',expect_reply:false}}}))}};});
+ await slots.dispatch(()=>true,async args=>{const first=args.ordinal??0;const n=(args.after??0)+1;reads++;return{ok:true,value:ownedHistory({thread_id:'t',revision:2,total:400,items:Array.from({length:n},(_,i)=>({node_id:`rich-${first+i}`,kind:'assistant_response',selection:{ordinal:first+i},items:[{kind:'text',item_identity:'a',text:'a',text_complete:true},{kind:'text',item_identity:'b',text:'b',text_complete:true}],provenance:{message:{reply_to:'prior',expect_reply:false}}}))})};});
  const out=lease.state.peek();expect(reads).toBe(2);expect(out.phase).toBe('settled');if(out.phase!=='settled'||!out.result.ok)throw new Error('Expected rich selected cut');expect(out.result.value.items.at(-1)?.provenance?.message).toMatchObject({reply_to:'prior'});
 });
 
@@ -163,7 +163,7 @@ it.each(['gap','revision','total','cancel','budget'] as const)('paged selected %
   if(reads===2&&mode==='cancel'){current=false;parent.cancel();}
   const items=Array.from({length:n},(_,index)=>({node_id:`node-${first+index}`,selection:{ordinal:first+index},kind:'event',items:[]}));
   if(reads===2&&mode==='gap')items.splice(1,1);
-  return{ok:true,value:{thread_id:'t',revision:reads===2&&mode==='revision'?3:2,total:reads===2&&mode==='total'?1001:1000,items}};
+  return{ok:true,value:ownedHistory({thread_id:'t',revision:reads===2&&mode==='revision'?3:2,total:reads===2&&mode==='total'?1001:1000,items})};
  });
  expect(settled).toEqual([]);expect(lease.state.peek()).toMatchObject({phase:'unavailable',reason:mode==='cancel'?'cancelled':mode==='budget'?'budget-exhausted':'selection-gap'});
  expect(reads).toBe(mode==='budget'?0:2);stop();

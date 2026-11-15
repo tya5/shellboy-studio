@@ -1,12 +1,13 @@
 import {expect,it} from 'vitest';
 import {ConversationWindow,type WindowReadArgs} from '../src/window';
 import {flush} from '../../data/test/harness';
+import {ownedHistory} from '../../data/test/owned-history';
 
 it('older tail and verification replies do not manufacture retry demand or change the accepted current cut',async()=>{
  let revision=8;const reads:WindowReadArgs[]=[];
  const w=new ConversationWindow({read:async args=>{
-  reads.push(args);return{ok:true,value:{thread_id:'t',revision,total:1,items:[{node_id:'human',kind:'user',selection:{ordinal:0},
-   provenance:{sender:{kind:'human'}},items:[{kind:'text',item_identity:'body',text:revision===8?'Current human':'Forbidden old human',text_complete:true}]}]}};
+  reads.push(args);return{ok:true,value:ownedHistory({thread_id:'t',revision,total:1,items:[{node_id:'human',kind:'user',selection:{ordinal:0},
+   provenance:{sender:{kind:'human'}},items:[{kind:'text',item_identity:'body',text:revision===8?'Current human':'Forbidden old human',text_complete:true}]}]})};
  }});
  try{
   await flush();const before=w.acceptedView.peek();expect(reads).toHaveLength(1);

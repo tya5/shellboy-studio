@@ -7,13 +7,14 @@ import { declaredToolAnswerCut } from "./declared-attempt-cuts";
 import type { HandoffRecord, PresentationContainerId, AttemptReadyProof } from "../../data/src/handoff";
 import type { HistoryItem } from "../../data/src";
 import { FakeOwnerDb, FakeTransport, connectedWithHistory, settle, flush } from "../../data/test/harness";
+import {ownedHistory} from '../../data/test/owned-history';
 const nodes: HistoryItem[] = [
   { node_id: "tool", kind: "assistant_response", selection: { ordinal: 0 }, items: [{ kind: "tool_call", item_identity: "tc", execution_ids: ["exec"] }] },
   { node_id: "answer", kind: "assistant_response", selection: { ordinal: 1 }, items: [{ kind: "text", item_identity: "text", text: "saved", text_complete: true }] },
 ];
 async function rig(items = nodes) {
   const source={revision:7,items,total:2};
-  const w = new ConversationWindow({ read: async () => ({ ok: true, value: { thread_id: "thread", revision: source.revision, total: source.total, items:source.items } }) }); await flush();
+  const w = new ConversationWindow({ read: async () => ({ ok: true, value: ownedHistory({ thread_id: "thread", revision: source.revision, total: source.total, items:source.items }) }) }); await flush();
   const proof: AttemptReadyProof = { scope: '["owner","thread",1]', attemptId: "attempt", turnId: "turn", revision: 7, total: 2, refs: selectedReadyRefs(["answer","tool","answer"],nodes), nodes };
   const record: HandoffRecord = { key: "live-record", presentationContainer: "presentation:test" as PresentationContainerId, attemptId: "attempt", status: "confirming", bodyAuthority: "preview", text: "whole live block", incomplete: false, readyAttempt: proof };
   return { w, record, proof, source };
@@ -148,7 +149,7 @@ it("a revoked Window capability cannot re-publish old retirement metadata on a l
 it("materializes already-qualified all-ref nodes and retirement together without requiring another changed hint/read", async () => {
   const initial: HistoryItem = { node_id: "user", kind: "user", items: [], selection: { ordinal: 0 } };
   let reads = 0;
-  const w = new ConversationWindow({ read: async () => { reads++; return { ok: true, value: { thread_id: "thread", revision: 7, total: 1, items: [initial] } }; } }); await flush();
+  const w = new ConversationWindow({ read: async () => { reads++; return { ok: true, value: ownedHistory({ thread_id: "thread", revision: 7, total: 1, items: [initial] }) }; } }); await flush();
   const proof: AttemptReadyProof = { scope: "scope", attemptId: "attempt", turnId: "turn", revision: 7, total: 3,
     refs: [{ nodeId: "answer",ordinal:2,kind:'assistant_response' }, { nodeId: "tool",ordinal:1,kind:'assistant_response' }], nodes: [initial, ...nodes.map((node, i) => ({ ...node, selection: { ordinal: i + 1 } }))] };
   const record: HandoffRecord = { key: "original", presentationContainer: "presentation:test" as PresentationContainerId, attemptId: "attempt", text: "whole live", incomplete: false, status: "confirming", bodyAuthority: "preview", readyAttempt: proof };

@@ -9,6 +9,8 @@ import type { HistoryItem } from "../../data/src";
 import { rig } from "./window-owner";
 import { observeDeclaredCuts, type DeclaredPlanCut } from "./publication-contract";
 
+import {ownedHistory} from '../../data/test/owned-history';
+import {HistoryWindowInput} from '../../data/src/history-input';
 it("publishes immutable coherent window tuples and stops obsolete notifications", async () => {
   const r = await rig(10,{decorate:(ordinal,node)=>({...node,kind:'user',items:[{kind:'text',item_identity:'body',text:`Declared ${ordinal}`,text_complete:true}],provenance:{sender:{kind:'human'}}})}); await r.settle();
   const cut=(revision:1|2,count:number):DeclaredPlanCut=>{const ids=Array.from({length:count},(_,i)=>`n0-${i}`);
@@ -71,17 +73,25 @@ it("tail response publishes rows/range/total/revision coherently without treatin
 
 it("getter reentry during typed Window input admission cannot overwrite a nested accepted generation", async () => {
   const row: HistoryItem = { node_id: "plain-local", kind: "user", excerpt: "local", selection: { ordinal: 0 } };
-  const w = new ConversationWindow({ read: async () => ({ ok: true, value: { thread_id: "t", total: 1, revision: 1, items: [row] } }) });
-  await flush(); let nested = false;
+  const stable = ownedHistory({ thread_id: "t", total: 1, revision: 1, items: [row] });
+  let nested = false;
+  let w!: ConversationWindow;
   Object.defineProperty(row, "syntheticGetter", { configurable: true, enumerable: true, get() {
     if (!nested) { nested = true; w.setAttemptPresentations([{scope:'history',attemptId:'newer',turnId:'turn',nodeIds:['plain-local'],state:'pending'}]); }
     return "materialized";
   } });
+  let first = true;
+  w = new ConversationWindow({ read: async () => first
+    ? (first = false, HistoryWindowInput.decode({ thread_id: "t", total: 1, revision: 1, items: [row] }))
+    : {ok:true,value:stable} });
+  await flush();
   const seen: number[] = [];
   const stop = w.acceptedView.subscribe(ref => seen.push(ref.generation));
+  seen.length = 0;
   w.changed();await flush();
-  expect(nested).toBe(true); expect(seen).toHaveLength(1);
-  expect(seen[0]).toBe(w.acceptedView.peek().generation);
+  expect(nested).toBe(true); expect(seen).toHaveLength(2);
+  expect(seen[0]).not.toBe(seen[1]);
+  expect(seen[1]).toBe(w.acceptedView.peek().generation);
   stop(); w.dispose();
 });
 
@@ -93,10 +103,10 @@ it("pending latest-tail evidence preserves existing follow but cannot recreate d
   });
   try{
     expect(r.requests[0]!.args).toMatchObject({before:99,after:0,items:true});
-    r.requests[0]!.reply({ok:true,value:{thread_id:'t',revision:1,total:100,items:rows(0,99)}});await flush();
+    r.requests[0]!.reply({ok:true,value:ownedHistory({thread_id:'t',revision:1,total:100,items:rows(0,99)})});await flush();
     const before=w.acceptedView.peek();expect(before.rows.map(row=>row.node_id)).toEqual(rows(0,99).map(row=>row.node_id));
     w.changed();const tail=r.pending()[0]!;expect(tail.args).toMatchObject({ordinal:99,expect_node_id:'n99',before:0,after:199});
-    tail.reply({ok:true,value:{thread_id:'t',revision:2,total:1100,items:rows(99,298)}});await flush();
+    tail.reply({ok:true,value:ownedHistory({thread_id:'t',revision:2,total:1100,items:rows(99,298)})});await flush();
     const verification=r.pending();expect(verification).toHaveLength(1);
     expect(verification[0]!.args).toMatchObject({before:99,after:0,items:true});
     expect(w.acceptedView.peek()).toBe(before);expect(w.following.peek()).toBe(true);
@@ -104,7 +114,7 @@ it("pending latest-tail evidence preserves existing follow but cannot recreate d
     w.view(0,600,false);expect(w.following.peek()).toBe(false);
     w.view(0,600,true);expect(w.following.peek()).toBe(false);
     expect(w.acceptedView.peek()).toBe(before);expect(r.pending()).toHaveLength(1);
-    verification[0]!.reply({ok:true,value:{thread_id:'t',revision:2,total:1100,items:rows(1000,1099)}});await flush();
+    verification[0]!.reply({ok:true,value:ownedHistory({thread_id:'t',revision:2,total:1100,items:rows(1000,1099)})});await flush();
     expect(w.following.peek()).toBe(false);expect(w.acceptedView.peek().rows.map(row=>row.node_id)).toEqual(rows(0,99).map(row=>row.node_id));
     w.jumpToEnd();expect(w.following.peek()).toBe(true);
     expect(w.acceptedView.peek().rows.map(row=>row.node_id)).toEqual(rows(0,99).map(row=>row.node_id));
@@ -137,7 +147,7 @@ it("deferred retry shares two other public bucket slots without borrowing their 
         {items:[{kind:'text' as const,item_identity:'body',text:`Saved ${ordinal}`,text_complete:true}]})};
   });
   try{
-    r.requests[0]!.reply({ok:true,value:{thread_id:'t',total:749,revision:1,items:rows(649,748)}});await flush();
+    r.requests[0]!.reply({ok:true,value:ownedHistory({thread_id:'t',total:749,revision:1,items:rows(649,748)})});await flush();
     // Seed a complete, legitimately bounded 200-row selected proof, then refresh it
     // through the actual public revision path with one deferred middle bucket.
     const ledger=new Handoff(fn=>fn());ledger.apply({attempt_id:'seed',gap:false,deltas:[{offset:0,reasoning:false,text:'Seed original'}]});ledger.finish();
@@ -147,11 +157,11 @@ it("deferred retry shares two other public bucket slots without borrowing their 
     expect(ledger.transferAttempt(original,proof,(record,release)=>w.acceptHandoff(record,'history',release))).toBe(true);
     w.measure(Array.from({length:200},(_,i)=>[649+i,40] as const));w.view(0,600,false);r.viewportPause();
     const discovery=r.pending().find(request=>request.args.ordinal===600)!;expect(discovery).toBeDefined();
-    discovery.reply({ok:true,value:{thread_id:'t',total:1000,revision:3,items:rows(600,699,true)}});await flush();
+    discovery.reply({ok:true,value:ownedHistory({thread_id:'t',total:1000,revision:3,items:rows(600,699,true)})});await flush();
     const verify=r.pending().find(request=>request.args.after===0)!;expect(verify.args).toMatchObject({ordinal:748,before:0,after:0});
-    verify.reply({ok:true,value:{thread_id:'t',total:1000,revision:3,items:rows(748,748,true)}});await flush();
+    verify.reply({ok:true,value:ownedHistory({thread_id:'t',total:1000,revision:3,items:rows(748,748,true)})});await flush();
     const refresh=r.pending().find(request=>request.args.ordinal===649)!;expect(refresh.args).toMatchObject({before:0,after:199});
-    refresh.reply({ok:true,value:{thread_id:'t',total:1000,revision:3,items:rows(649,848,true)}});await flush();
+    refresh.reply({ok:true,value:ownedHistory({thread_id:'t',total:1000,revision:3,items:rows(649,848,true)})});await flush();
     expect(w.acceptedView.peek().revision).toBe(3);expect(w.acceptedView.peek().rows).toHaveLength(200);
     w.view(0,600,false);r.viewportPause();
     const first=r.pending().find(request=>request.args.ordinal===600)!;
@@ -159,7 +169,7 @@ it("deferred retry shares two other public bucket slots without borrowing their 
     expect(first).toBeDefined();expect(second).toBeDefined();expect(r.pending()).toHaveLength(2);expect(w.readsInFlight).toBe(2);
     const before=w.acceptedView.peek(),count=r.requests.length;
     expect(w.retryDeferred(before)).toBe(false);expect(r.requests).toHaveLength(count);expect(w.acceptedView.peek()).toBe(before);
-    first.reply({ok:true,value:{thread_id:'t',total:1000,revision:3,items:rows(600,699,true)}});await flush();
+    first.reply({ok:true,value:ownedHistory({thread_id:'t',total:1000,revision:3,items:rows(600,699,true)})});await flush();
     expect(w.readsInFlight).toBe(1);expect(w.retryDeferred(w.acceptedView.peek())).toBe(true);
     expect(r.requests).toHaveLength(count+1);expect(r.pending()).toHaveLength(2);
     expect(r.requests.at(-1)!.args).toMatchObject({ordinal:700,expect_node_id:'deferred',before:0,after:99,items:true});
@@ -173,11 +183,11 @@ it("deferred retry cannot borrow the separately owned tail slot even when both b
  const rows:HistoryItem[]=Array.from({length:100},(_,i)=>({node_id:i===0?'deferred':`n${900+i}`,kind:'user',selection:{ordinal:900+i},
   ...(i>=0?{items:null,items_unavailable_reason:'response_budget' as const}:{items:[]})}));
  try{
-  r.requests[0]!.reply({ok:true,value:{thread_id:'t',revision:1,total:1000,items:rows}});await flush();
+  r.requests[0]!.reply({ok:true,value:ownedHistory({thread_id:'t',revision:1,total:1000,items:rows})});await flush();
   const before=w.acceptedView.peek();w.changed();const tail=r.pending()[0]!,count=r.requests.length;
   expect(tail.args).toMatchObject({ordinal:999,before:0,after:199,expect_node_id:'n999'});
   expect(w.readsInFlight).toBe(1);expect(w.retryDeferred(before)).toBe(false);expect(r.requests).toHaveLength(count);
-  tail.reply({ok:true,value:{thread_id:'t',revision:1,total:1000,items:[rows[99]!]}});await flush();
+  tail.reply({ok:true,value:ownedHistory({thread_id:'t',revision:1,total:1000,items:[rows[99]!]})});await flush();
   expect(w.readsInFlight).toBe(0);expect(w.retryDeferred(w.acceptedView.peek())).toBe(true);
   expect(r.requests.at(-1)!.args).toMatchObject({ordinal:900,expect_node_id:'deferred',before:0,after:99,items:true});
   expect(w.retryDeferred(before)).toBe(false);expect(r.requests).toHaveLength(count+1);

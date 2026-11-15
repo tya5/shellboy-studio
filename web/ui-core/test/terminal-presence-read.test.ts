@@ -11,6 +11,7 @@ import { FakeOwnerDb, FakeTransport, connected, settle, flush } from "../../data
 import { observeDeclaredCuts, type DeclaredPlanCut } from "./publication-contract";
 import { declaredToolAnswerCut } from "./declared-attempt-cuts";
 import type { TerminalPresence } from "../src/terminal-presence";
+import {ownedHistory} from '../../data/test/owned-history';
 const baseNodes: HistoryItem[] = [
   { node_id: "tool", kind: "assistant_response", selection: { ordinal: 0 }, items: [{ kind: "tool_call", item_identity: "call", execution_ids: ["exec"] }] },
   { node_id: "answer", kind: "assistant_response", selection: { ordinal: 1 }, items: [{ kind: "text", item_identity: "text", text: "saved", text_complete: true }] },
@@ -45,8 +46,8 @@ async function target(wrap:(handle:ThreadHandle)=>ThreadHandle=handle=>handle) {
  const capture=base.h.captureReadQualification;
  base.h.captureReadQualification=()=>{token=capture();return token;};
  const r={...base,h:wrap(base.h)};
- const w = new ConversationWindow({ read: async () => ({ ok: true, value: { thread_id: "a", revision: 7, total: 1,
- items: [{ node_id: "tool", kind: "assistant_response", selection: { ordinal: 0 }, items: [{ kind: "tool_call", item_identity: "call", execution_ids: ["exec"] }] }] } }) }); await flush();
+ const w = new ConversationWindow({ read: async () => ({ ok: true, value: ownedHistory({ thread_id: "a", revision: 7, total: 1,
+ items: [{ node_id: "tool", kind: "assistant_response", selection: { ordinal: 0 }, items: [{ kind: "tool_call", item_identity: "call", execution_ids: ["exec"] }] }] }) }) }); await flush();
  expect(w.bindTerminalHandle(r.h)).toBe(true);
  const currentReceipt=():TerminalPersistedProof=>{
   const receipt=r.h.handoff.peek().find(record=>record.attemptId==='attempt')?.terminalPersisted;
@@ -181,7 +182,7 @@ it("bound terminal then summary shares one token and owner change denies both pa
  expect(captures).toBe(1); r.w.dispose(); r.data.stop();
 });
 it("existing unbound summary remains valid when first binding is denied", async () => {
- const source=await rig();const w=new ConversationWindow({read:async()=>({ok:true,value:{thread_id:'a',revision:7,total:1,items:[baseNodes[0]!]}})});await flush();
+ const source=await rig();const w=new ConversationWindow({read:async()=>({ok:true,value:ownedHistory({thread_id:'a',revision:7,total:1,items:[baseNodes[0]!]})})});await flush();
  const r={...source,w};const ref = r.w.acceptedView.peek();
  const id = r.w.beginSummaryTransition(r.h, ref, "tool", 0); expect(id).toBeDefined();
  expect(r.w.bindTerminalHandle(r.h)).toBe(false); expect(r.w.peekSummaryTransitionId()).toBe(id);
@@ -206,11 +207,11 @@ it("terminal slot successor dispatches one explicit whole-window request after a
   const point = { id: "point" as never, args: { thread_id: "thread", node_id: "answer", before: 0, after: 199, items: true } };
   const first = slots.request({ kind: "persisted", receipt }, point, valid, parent);
   expect("state" in first).toBe(true);
-  await slots.dispatch(() => true, async args => { calls.push(args); return { ok: true, value: { thread_id: "thread", revision: 7, total: 2, items: [baseNodes[1]!] } }; }, false);
+  await slots.dispatch(() => true, async args => { calls.push(args); return { ok: true, value: ownedHistory({ thread_id: "thread", revision: 7, total: 2, items: [baseNodes[1]!] }) }; }, false);
   const whole = { id: "whole" as never, args: { thread_id: "thread", before: 199, after: 0, items: true } };
   const replacement = slots.replace({ kind: "persisted", receipt }, whole, valid, parent);
   expect("state" in replacement).toBe(true);
-  await slots.dispatch(() => true, async args => { calls.push(args); return { ok: true, value: { thread_id: "thread", revision: 8, total: 2, items: baseNodes } }; }, false);
+  await slots.dispatch(() => true, async args => { calls.push(args); return { ok: true, value: ownedHistory({ thread_id: "thread", revision: 8, total: 2, items: baseNodes }) }; }, false);
   expect(calls).toEqual([point.args, whole.args]);
 });
 
@@ -304,7 +305,7 @@ it("scoped ownership does not attach an unrelated saved assistant to one preview
 
 async function readyTarget(total = 2) {
  const r=await rig();
- const w=new ConversationWindow({read:async()=>({ok:true,value:{thread_id:'a',revision:6,total:1,items:[baseNodes[0]!]}})});
+ const w=new ConversationWindow({read:async()=>({ok:true,value:ownedHistory({thread_id:'a',revision:6,total:1,items:[baseNodes[0]!]})})});
  await flush(); w.bindTerminalHandle(r.h);
  if(total!==2){const answer=r.db.answer.bind(r.db);r.db.answer=call=>call.command==='history.window'
    ?{ok:true,result:{thread_id:'a',revision:7,total,items:structuredClone(baseNodes)}}:answer(call);}

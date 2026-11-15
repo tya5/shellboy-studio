@@ -4,14 +4,15 @@ import { ShellboyData } from "../../data/src/store";
 import type { HistoryItem } from "../../data/src";
 import { connected, FakeTransport, flush } from "../../data/test/harness";
 import { declaredPlanExpectation, observePublishedPlans, type DeclaredPlanCut } from "./publication-contract";
+import {ownedHistory} from '../../data/test/owned-history';
 async function rig() {
   const t = new FakeTransport(); let id = 0; const data = new ShellboyData({ transport: t, newId: () => `coverage-${++id}` });
   data.start(); t.open(); t.push({ t: "hello", bridge_version: "synthetic", owner: connected }); await flush();
   const h = data.openThread("t");
   const source: HistoryItem[] = [{ node_id: "a", kind: "user", selection: { ordinal: 0 }, items: [] }, { node_id: "b", kind: "user", selection: { ordinal: 1 }, items: [] }];
   let target = false;
-  const w = new ConversationWindow({ read: async () => ({ ok: true, value: { thread_id: "t", revision: target ? 2 : 1, total: 2,
-    items: target ? [{ node_id: "summary", kind: "summary", selection: { ordinal: 0 }, items: [] }, source[1]!] : source } }) });
+  const w = new ConversationWindow({ read: async () => ({ ok: true, value: ownedHistory({ thread_id: "t", revision: target ? 2 : 1, total: 2,
+    items: target ? [{ node_id: "summary", kind: "summary", selection: { ordinal: 0 }, items: [] }, source[1]!] : source }) }) });
   await flush(); const ref = w.acceptedView.peek();
   const declaredCut = (revision: 1 | 2): DeclaredPlanCut => {
     const ids = revision === 1 ? ['a', 'b'] : ['summary', 'b'];

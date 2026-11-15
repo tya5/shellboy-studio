@@ -2,6 +2,7 @@ import { expect, it } from "vitest";
 import { normalizeTerminalPresenceFacts, normalizeLiveWorkFacts, projectSavedItems, projectLegacyHistoryItems, CANONICAL_CASES } from "../src/conversation-items";
 import { workElementDisplay } from "../src/work-element-display";
 import type { HistoryItem } from "../../data/src/protocol";
+import {ownedHistory} from '../../data/test/owned-history';
 function display(nodes: HistoryItem[]) {
  const result = projectLegacyHistoryItems({ nodes, keyScope: ["owner", "thread", "life"] });
  return result.projection.items.filter(item => item.classification?.classification === "work").map(item => ({ item, value: workElementDisplay(item) }));
@@ -254,7 +255,7 @@ it('committed Work capture retains only issuer-associated executions and rejects
   {execution_id:'a',command_excerpt:'first-associated',state:'exited',exit_code:0},
   {execution_id:'b',command_excerpt:'second-associated',state:'running'},
   {execution_id:'foreign',command_excerpt:'foreign-secret',state:'running'}]};
- const win=new ConversationWindow({read:async()=>({ok:true,value:{thread_id:'t',revision:1,total:1,items:[node]}})});
+ const win=new ConversationWindow({read:async()=>({ok:true,value:ownedHistory({thread_id:'t',revision:1,total:1,items:[node]})})});
  const {flush}=await import('../../data/test/harness');await flush();
  try{
   const ref=win.acceptedView.peek(),entry=ref.displayPlan!.entries[0]!;

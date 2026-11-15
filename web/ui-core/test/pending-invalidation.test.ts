@@ -3,6 +3,7 @@ import { expect, it } from "vitest";
 import { ShellboyData } from "../../data/src/store";
 import { ConversationWindow } from "../src/window";
 import { connected, FakeTransport, flush } from "../../data/test/harness";
+import {ownedHistory} from '../../data/test/owned-history';
 for (const action of ["cancel", "pause", "discard", "resync"] as const) it(`invalidates original read authority before synchronous pending-clear callbacks: ${action}`, async () => {
   const t = new FakeTransport(); let n = 0;
   const data = new ShellboyData({ transport: t, newId: () => `ordering-${++n}` });
@@ -11,7 +12,7 @@ for (const action of ["cancel", "pause", "discard", "resync"] as const) it(`inva
   let token = h.captureReadQualification()!;
   const capture = h.captureReadQualification.bind(h);
   h.captureReadQualification = () => { const value = capture(); if (value) token = value; return value; };
-  const w = new ConversationWindow({ read: async () => ({ ok: true, value: { thread_id: "t", revision: 1, total: 1, items: [{ node_id: "n", kind: "summary", selection: { ordinal: 0 }, items: [] }] } }) }); await flush();
+  const w = new ConversationWindow({ read: async () => ({ ok: true, value: ownedHistory({ thread_id: "t", revision: 1, total: 1, items: [{ node_id: "n", kind: "summary", selection: { ordinal: 0 }, items: [] }] }) }) }); await flush();
   const transition = w.beginSummaryTransition(h, w.acceptedView.peek(), "n", 0)!;
   const accepts: boolean[] = [];
   let armed = false; const results: boolean[] = [], captures: unknown[] = [];

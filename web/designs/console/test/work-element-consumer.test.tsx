@@ -5,6 +5,7 @@ import {render} from 'preact';
 import {act} from 'preact/test-utils';
 import {expect,it} from 'vitest';
 import {fixtureModel,fixtureConversation} from '../../../ui-core/test/fixture';
+import {ownedHistory} from '../../../data/test/owned-history';
 import {SavedWindowContent} from '../screens/Conversation';
 import type {HistoryItem} from '../../../data/src/protocol';
 
@@ -77,7 +78,7 @@ it('renders an explicit unavailable Work cut when a mixed issued/foreign scope b
  const {SavedWindowContent}=await import('../screens/Conversation');
  const f=await fixtureModel(),host=document.createElement('div');document.body.append(host);
  const node:HistoryItem={node_id:'independent',kind:'user',selection:{ordinal:0},items:[{kind:'text',item_identity:'body',text:'Independent saved text',text_complete:true}]};
- const reader=new ConversationWindow({read:async()=>({ok:true,value:{thread_id:'t',revision:1,total:1,items:[node]}})});
+ const reader=new ConversationWindow({read:async()=>({ok:true,value:ownedHistory({thread_id:'t',revision:1,total:1,items:[node]})})});
  try{
   await act(async()=>{await Promise.resolve();await Promise.resolve();});
   let snapshot=reader.acceptedView.peek();expect(reader.acceptedView.isCurrent(snapshot)).toBe(true);

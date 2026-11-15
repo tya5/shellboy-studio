@@ -3,6 +3,7 @@ import { captureConversationInput } from '../../../ui-core/src/conversation-inpu
 // @vitest-environment happy-dom
 import { render } from 'preact';
 import {flush,settle} from '../../../data/test/harness';
+import {ownedHistory} from '../../../data/test/owned-history';
 import '@preact/signals';
 import {signal} from '@preact/signals';
 import {ConversationWindow,type WindowAcceptedSnapshot} from '../../../ui-core/src/window';
@@ -641,7 +642,7 @@ it('keeps typed assistant empty/presence membership distinct across live, termin
  type Node=import('../../../data/src/protocol').HistoryItem;
  const old:Node={node_id:'prior-answer',kind:'assistant_response',selection:{ordinal:0},items:[{kind:'text',item_identity:'prior',text:'Already readable answer',text_complete:true}]};
  let nodes:Node[]=[old],revision=1;
- const reader=new ConversationWindow({read:async()=>({ok:true,value:{thread_id:'t',revision,total:nodes.length,items:nodes}})});
+ const reader=new ConversationWindow({read:async()=>({ok:true,value:ownedHistory({thread_id:'t',revision,total:nodes.length,items:nodes})})});
  const model=new Proxy(f.model,{get(target,key){return key==='longReader'?{value:reader,peek:()=>reader}:Reflect.get(target,key);}});
  const ledger=new Handoff(fn=>fn());
  const frames:unknown[]=[];

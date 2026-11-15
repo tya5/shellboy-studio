@@ -9,6 +9,7 @@ import type {WindowAcceptedSnapshot} from '../src/window';
 import type {HandoffRecord} from '../../data/src/handoff';
 import {attemptWork} from '../../data/test/work-fixture';
 
+import {ownedHistory} from '../../data/test/owned-history';
 async function rig(partial=false) {
  const transport=new FakeTransport(),db=new FakeOwnerDb();let id=0;
  const data=new ShellboyData({transport,newId:()=>`display-${++id}`,schedule:fn=>fn()});
@@ -21,7 +22,7 @@ async function rig(partial=false) {
   return target;
  });
  const node:HistoryItem={node_id:'answer',kind:'assistant_response',selection:{ordinal:5},items:[{kind:'text',item_identity:'exact-body',text:'saved',text_complete:!partial},{kind:'tool_call',item_identity:'tool',execution_ids:['execution']}]};
- const window=new ConversationWindow({read:async()=>({ok:true,value:{thread_id:'t',revision:7,total:6,items:[node]}})});await flush();
+ const window=new ConversationWindow({read:async()=>({ok:true,value:ownedHistory({thread_id:'t',revision:7,total:6,items:[node]})})});await flush();
  expect(window.bindTerminalHandle(handle)).toBe(true);
  expect(window.bindConversationInput(snapshot=>captureConversationInput(snapshot,{scope:handle.handoffScope(),threadId:'t',records:handle.handoff.peek(),work:[],current:true}))).toBe(true);
  const send=transport.send.bind(transport);
@@ -38,7 +39,7 @@ it("installs the first successful tail read as bootstrap without declaring a rew
  const node:HistoryItem={node_id:"bootstrap-node",kind:"user_message",selection:{ordinal:0},items:[{kind:"text",item_identity:"bootstrap-body",text:"first read",text_complete:true}]};
  const reads:{before?:number;after?:number}[]=[];
  const externalItems=[...node.items!]; const external={...node,items:externalItems};
- const window=new ConversationWindow({read:async args=>{reads.push({before:args.before,after:args.after});return {ok:true,value:{thread_id:"bootstrap-thread",revision:7,total:1,items:[external]}};}});
+ const window=new ConversationWindow({read:async args=>{reads.push({before:args.before,after:args.after});return {ok:true,value:ownedHistory({thread_id:"bootstrap-thread",revision:7,total:1,items:[external]})};}});
  try {
   await flush();
   expect(reads).toEqual([{before:99,after:0}]);
@@ -55,7 +56,7 @@ it("installs the first successful tail read as bootstrap without declaring a rew
 it("rejects an older reply after the cursor is established and verifies the current tail", async () => {
  const node:HistoryItem={node_id:"stable-node",kind:"user_message",selection:{ordinal:0},items:[{kind:"text",item_identity:"stable-body",text:"stable",text_complete:true}]};
  const replies=[7,6,7];const reads:Record<string,unknown>[]=[];
- const window=new ConversationWindow({read:async args=>{reads.push(args);const revision=replies.shift()??7;return {ok:true,value:{thread_id:"established-thread",revision,total:1,items:[node]}};}});
+ const window=new ConversationWindow({read:async args=>{reads.push(args);const revision=replies.shift()??7;return {ok:true,value:ownedHistory({thread_id:"established-thread",revision,total:1,items:[node]})};}});
  try {
   await flush();window.changed();await flush();
   expect(reads.slice(0,3).map(args=>args.expect_node_id??"initial")).toEqual(["initial","stable-node","stable-node"]);

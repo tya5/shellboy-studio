@@ -1,21 +1,23 @@
 import {expect,it} from 'vitest';
 import {ConversationWindow} from '../src/window';
 import {HistoryWindowInput} from '../../data/src/history-input';
+import type {Outcome} from '../../data/src/errors';
+import {ownedHistory} from '../../data/test/owned-history';
 import type {HistoryItem,HistoryWindowResult} from '../../data/src/protocol';
 import {flush} from '../../data/test/harness';
 async function rig(){
  const rows:HistoryItem[]=[{node_id:'one',kind:'user',selection:{ordinal:0},items:[{kind:'text',item_identity:'body',text:'Independent one',text_complete:true}],provenance:{created_at:'initial'}},
   {node_id:'two',kind:'user',selection:{ordinal:1},items:[{kind:'text',item_identity:'body',text:'Independent two',text_complete:true}],provenance:{created_at:'initial'}}];
- let value:HistoryWindowResult=HistoryWindowInput.own({thread_id:'t',revision:1,total:2,items:rows}),reads=0;
- const win=new ConversationWindow({read:async()=>{reads++;return{ok:true,value};}});
+ let result:Outcome<HistoryWindowInput>={ok:true,value:ownedHistory({thread_id:'t',revision:1,total:2,items:rows})},reads=0;
+ const win=new ConversationWindow({read:async()=>{reads++;return result;}});
  await flush();return{rows,win,reads:()=>reads,raw:()=>({thread_id:'t',revision:2,total:2,items:rows}),
-  publish:async(next:HistoryWindowResult)=>{value=next;win.changed();await flush();}};
+  publish:async(raw:unknown)=>{result=raw instanceof HistoryWindowInput?{ok:true,value:raw}:HistoryWindowInput.decode(raw);win.changed();await flush();}};
 }
 it('public Window reads changing provenance getters once at typed admission and pools only the captured value',async()=>{
  const r=await rig(),before=r.win.acceptedView.peek();let reads=0;
  r.rows[0]!.provenance={get created_at(){reads++;return reads===1?'A':'B';}};r.rows[1]!.provenance={created_at:'A'};
  try{
-  const input=HistoryWindowInput.own(r.raw());expect(reads).toBe(1);await r.publish(input);
+  const input=ownedHistory(r.raw());expect(reads).toBe(1);await r.publish(input);
   const after=r.win.acceptedView.peek();expect(reads).toBe(1);expect(after.rows.map(row=>row.provenance?.created_at)).toEqual(['A','A']);
   expect(after.rows[0]!.provenance).toBe(after.rows[1]!.provenance);
   expect(before.rows.map(row=>row.provenance?.created_at)).toEqual(['initial','initial']);expect(after).not.toBe(before);
@@ -32,7 +34,8 @@ it.each(['toJSON','nonplain','depth','cycle'] as const)('typed input rejects pro
  if(mode==='depth'){let tail=payload;for(let i=0;i<70;i++){const next:Record<string,unknown>={};tail.next=next;tail=next;}}
  r.rows[0]!.provenance=payload;
  try{
-  expect(()=>HistoryWindowInput.own(r.raw())).toThrow(mode==='cycle'?'acyclic':mode==='depth'?'bound exceeded':'plain data');
+  const decoded=HistoryWindowInput.decode(r.raw());
+  expect(decoded).toMatchObject({ok:false,error:{kind:'invalid_response',message:mode==='cycle'?'cyclic-input':mode==='depth'?'input-bound':'invalid-input'}});
   await r.publish(r.raw());expect(calls).toBe(0);expect(r.win.acceptedView.peek()).toBe(before);
   expect(r.win.acceptedView.currentCapability).toBe(cap);expect(r.win.acceptedView.isCurrent(before)).toBe(true);
   expect(before.rows[0]!.provenance).toEqual({created_at:'initial'});expect(r.reads()).toBe(2);
@@ -43,16 +46,16 @@ it.each(['toJSON','nonplain','depth','cycle'] as const)('typed input rejects pro
 it('typed provenance never invokes non-enumerable toJSON and later caller mutation cannot alter the published input',async()=>{
  const r=await rig();let calls=0;const provenance={created_at:'safe'};
  Object.defineProperty(provenance,'toJSON',{value:()=>{calls++;return{created_at:'unsafe'};}});r.rows[0]!.provenance=provenance;
- try{const input=HistoryWindowInput.own(r.raw());provenance.created_at='mutated';await r.publish(input);
+ try{const input=ownedHistory(r.raw());provenance.created_at='mutated';await r.publish(input);
   expect(calls).toBe(0);expect(r.win.acceptedView.peek().rows[0]!.provenance).toEqual({created_at:'safe'});
  }finally{r.win.dispose();}
 });
 it.each([false,true])('over-bound external read has explicit initial/error behavior and no partial publication: prior=%s',async prior=>{
  const valid:HistoryWindowResult={thread_id:'t',revision:1,total:1,items:[{node_id:'human',kind:'user',selection:{ordinal:0},items:[{kind:'text',item_identity:'body',text:'Current human',text_complete:true}]}]};
  const invalid:HistoryWindowResult={thread_id:'t',revision:2,total:99,items:[{...valid.items[0]!,provenance:{large:Array.from({length:40000},()=>({value:'too much'}))}}]};
- let value=prior?valid:invalid;const w=new ConversationWindow({read:async()=>({ok:true,value})});
+ let value=prior?valid:invalid,result=HistoryWindowInput.decode(value);const w=new ConversationWindow({read:async()=>result});
  try{await flush();const before=w.acceptedView.peek(),cap=w.acceptedView.currentCapability,height=w.totalHeight();
-  if(prior){value=invalid;w.changed();await flush();expect(w.acceptedView.peek()).toBe(before);expect(w.isLoaded(98)).toBe(false);expect(w.itemAt(0)).toEqual(before.rows[0]);expect(w.acceptedView.peek().total).toBe(1);}
+  if(prior){value=invalid;result=HistoryWindowInput.decode(value);w.changed();await flush();expect(w.acceptedView.peek()).toBe(before);expect(w.isLoaded(98)).toBe(false);expect(w.itemAt(0)).toEqual(before.rows[0]);expect(w.acceptedView.peek().total).toBe(1);}
   else{expect(w.status.peek()).toBe('error');expect(w.acceptedView.peek().rows).toEqual([]);expect(w.acceptedView.peek().total).toBe(0);}
   expect(w.totalHeight()).toBe(height);expect(w.error.peek()).toBe('input-bound');expect(w.acceptedView.currentCapability).toBe(cap);
   expect(w.diagnostic.peek()).toMatchObject({reason:'input-bound',generation:before.generation,revision:before.revision});
