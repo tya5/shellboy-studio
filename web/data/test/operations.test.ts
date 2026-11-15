@@ -56,6 +56,21 @@ describe("Operations", () => {
     expect(await p).toEqual({ ok: true, value: { items: [summary("a")], next_cursor: "c1" } });
   });
 
+  it("public history capture contains toJSON and getter failures as Outcomes", async () => {
+    const { t, ops } = setup();
+    const toJson = { thread_id: "a", revision: 1, total: 0, items: [] as unknown[] };
+    Object.defineProperty(toJson, "toJSON", { value: () => { throw new Error("secret getter text"); } });
+    const first = ops.historyWindow({ thread_id: "a" });
+    t.ok(t.calls()[0]!.id, toJson);
+    await expect(first).resolves.toMatchObject({ ok: true });
+
+    const second = ops.historyWindow({ thread_id: "a" });
+    const raw = { thread_id: "a", revision: 1, total: 0, items: [] as unknown[] } as { thread_id: string; revision: number; total: number; items: unknown[]; revision_text?: string };
+    Object.defineProperty(raw, "revision_text", { get: () => { throw new Error("private getter text"); }, enumerable: true });
+    t.ok(t.calls()[1]!.id, raw);
+    await expect(second).resolves.toMatchObject({ ok: false, error: { kind: "invalid_response" } });
+  });
+
   it("history.window fails closed when capability was not advertised", async () => {
     const t = new FakeTransport();
     const link = new Link(t);

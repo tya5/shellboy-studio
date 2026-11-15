@@ -259,7 +259,7 @@ function unwrap<T>(response: OwnerResponse, decode: Decoder<T>, captureDecode?: 
       ? { ok: true, value: value.value }
       : { ok: false, error: { kind: "invalid_response", message: value.reason } };
   } catch (error) {
-    return { ok: false, error: { kind: "invalid_response", message: error instanceof Error ? error.message : "invalid-input" } };
+    return { ok: false, error: { kind: "invalid_response", message: error instanceof InputCaptureError ? error.reason : "invalid-input" } };
   }
 }
 
