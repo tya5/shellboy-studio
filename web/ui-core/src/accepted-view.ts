@@ -16,34 +16,18 @@ function mintCapability(): AcceptedCapability {
   return token;
 }
 
-type PlainCapture = <T>(value: T) => T;
 const publicationBrand: unique symbol = Symbol("accepted publication");
 export type PublicationReason = "receipt" | "ready" | "read" | "revoke" | "bump" | "own-send";
 export type AcceptedPublication<T extends { readonly displayPlan?: unknown }, I = ConversationIdentity> = Readonly<{
-  readonly [publicationBrand]: true;
-  readonly snapshot: T;
-  readonly plan: NonNullable<T["displayPlan"]>;
-  readonly reason: PublicationReason;
-  readonly inputIdentity?:I;
-  readonly lease: AcceptedLease;
+  readonly [publicationBrand]: true; readonly snapshot: T; readonly plan: NonNullable<T["displayPlan"]>;
+  readonly reason: PublicationReason; readonly inputIdentity?: I; readonly lease: AcceptedLease;
 }>;
 
-export function makeAcceptedPublication<T extends { readonly displayPlan?: { readonly acceptedGeneration?: unknown; readonly revision?: unknown; readonly capability?: unknown }; readonly generation?: unknown; readonly revision?: unknown }>(snapshot: T, reason: PublicationReason, isCurrent: () => boolean = () => true): AcceptedPublication<T> {
-  snapshot = materialize(snapshot);
-  const plan = snapshot.displayPlan;
-  if (snapshot === undefined || plan === undefined || plan.acceptedGeneration !== snapshot.generation
-    || plan.revision !== snapshot.revision || plan.capability === undefined) {
-    throw new Error("accepted publication requires a matching snapshot display plan");
-  }
-  return Object.freeze({ snapshot, plan, reason, lease: Object.freeze({ capability: plan.capability as AcceptedCapability, isCurrent }), [publicationBrand]: true } as AcceptedPublication<T>);
+function captureAcceptedInput<T>(value: T): T {
+  return createInputCapture(value => capabilityTokens.has(value))(value);
 }
 
-/** Materialize bounded plain data before qualification; no getters survive staging. */
-function plainCapture():PlainCapture{return createInputCapture(value=>capabilityTokens.has(value));}
-
-function materialize<T>(value: T): T { return plainCapture()(value); }
-
-/** The Window's private typed producer; external callers use makeAcceptedPublication. */
+/** The Window's private typed producer; external callers use the concrete conversation constructor. */
 export function makeConversationPublication(snapshot:WindowAcceptedSnapshot,reason:PublicationReason,lease:AcceptedLease,
  inputIdentity:ConversationIdentity):AcceptedPublication<WindowAcceptedSnapshot,ConversationIdentity>{
  const freeze=<T>(items:readonly T[]|undefined)=>items?Object.freeze(items):items;
@@ -69,7 +53,7 @@ export class AcceptedView<T> {
   private pending = false;
   private scheduled = false;
   constructor(initial: T) {
-    this.value = signal(materialize(initial));
+    this.value = signal(captureAcceptedInput(initial));
     const initialPlan = (initial as { readonly displayPlan?: { readonly capability?: AcceptedCapability } }).displayPlan;
     if (initialPlan?.capability && capabilityTokens.has(initialPlan.capability)) this.capability.value = initialPlan.capability;
     this.acceptedCapability=this.capability.peek();

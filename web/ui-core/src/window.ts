@@ -1048,7 +1048,7 @@ export class ConversationWindow {
     const accepted = this.acceptedView.peek(), prior = accepted.assistantOwnership ?? [], facts = snapshot.assistantOwnership ?? [];
     if (snapshot.revision === undefined || !facts.some(fact => prior.includes(fact))) return snapshot;
     const current = this.acceptedOwnershipForBump(snapshot.revision, snapshot.rows, capability);
-    const qualified=facts.flatMap(fact=>prior.includes(fact)?current.filter(owner=>assistantOwnershipEqual(owner,fact)):[fact]);
+    const qualified=facts.flatMap(fact=>prior.includes(fact)?current.filter(owner=>owner.recordKey===fact.recordKey&&owner.attemptId===fact.attemptId):[fact]);
     return qualified.length===facts.length&&qualified.every((fact,index)=>assistantOwnershipEqual(fact,facts[index]!))
       ? snapshot : {...snapshot,assistantOwnership:Object.freeze(qualified)};
   }
