@@ -263,6 +263,7 @@ export class Handoff {
     if (h?.attemptCapture) return this.transferAttempt(h.attemptCapture.original, h.attemptCapture.proof, accept);
     if (!h || h.transferring || h.record.status !== 'ready' || !h.record.proof || h.record.transferred) return false;
     const epoch = this.lifetimeValue;
+    const sourceRevision = h.sourceRevision;
     const moved = Object.freeze({ ...h.record, transferred: true });
     h.transferring = true;
     let canonicalMoved: HandoffRecord | undefined;
@@ -281,7 +282,7 @@ export class Handoff {
         throw error;
       }
       if (!accepted) return false;
-      if (epoch !== this.lifetimeValue || !this.held.includes(h)) return false;
+      if (epoch !== this.lifetimeValue || !this.held.includes(h) || h.sourceRevision !== sourceRevision) return false;
       receiving = false;
       canonicalMoved = this.updateTransferred(h, true);
       if (deferred === 'end') this.release(attemptId);
