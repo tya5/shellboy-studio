@@ -1018,6 +1018,7 @@ export class ConversationWindow {
       ?? snapshot.terminalPersistedAttempts?.[0]?.scope ?? snapshot.displayPlan?.scope ?? 'history';
     return captureConversationInput(snapshot, { scope, threadId: binding?.handle.threadId ?? '',
       records: binding?.handle.handoff.value ?? [],
+      identityWork: {items: binding?.handle.work.value.value?.items ?? []},
       work: binding ? normalizeLiveWorkFacts({ scope: binding.handle.threadId, items: binding.handle.work.value.value?.items ?? [] }) : [],
       current: !this.disposed && (!binding || binding.handle.isReadQualificationCurrent(binding.token) && binding.handle.handoffScope() === scope) });
   }

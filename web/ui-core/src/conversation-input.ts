@@ -1,5 +1,6 @@
 import { emptyOwnSendLocalRegion } from "./own-send-presentation";
 import type { HandoffRecord } from '../../data/src/handoff';
+import type { WorkItem } from '../../data/src/protocol';
 import type { WindowAcceptedSnapshot } from './window';
 import type { OwnUserDecision, ConversationDisplayPlan } from './conversation-display-plan';
 import { projectHistoryWindowItems, projectOwnedHandoffFacts, projectSavedItems, retainUnretiredLiveFacts,
@@ -23,9 +24,10 @@ export interface ConversationIdentity {
   readonly rows: WindowAcceptedSnapshot['rows']; readonly revision: number | undefined;
   readonly assistantOwnership: WindowAcceptedSnapshot['assistantOwnership'];
   readonly terminalPresence: WindowAcceptedSnapshot['terminalPresence']; readonly retiredAttempts: WindowAcceptedSnapshot['retiredAttempts'];
-  readonly records?: readonly unknown[]; readonly work?: readonly unknown[];
+  readonly records?: readonly HandoffRecord[]; readonly work?: WorkIdentity;
   readonly own?: OwnSendIdentity; readonly scope: string; readonly current: boolean;
 }
+export interface WorkIdentity { readonly items: readonly WorkItem[]; }
 export interface OwnSendIdentity {
   readonly accepted: object; readonly pending: object | undefined; readonly reservation: object | undefined;
   readonly retryCurrent: (() => boolean) | undefined; readonly eligible: boolean;
@@ -57,7 +59,7 @@ export interface ConversationSemanticInput {
 /** One current semantic recipe for both candidate publication and fixture admission. */
 export function captureConversationInput(snapshot: WindowAcceptedSnapshot, input: {
   readonly scope: string; readonly threadId: string; readonly records: readonly HandoffRecord[];
-  readonly work: readonly NormalizedSavedItem[]; readonly current: boolean; readonly identityWork?: readonly unknown[];
+  readonly work: readonly NormalizedSavedItem[]; readonly current: boolean; readonly identityWork?: WorkIdentity;
 }): ConversationSemanticInput {
   const canonicalInput=canonicalHistoryInput(snapshot,input.scope),canonicalProjection=canonicalInput.projection;
   const ownership = snapshot.assistantOwnership ?? [];
@@ -109,6 +111,6 @@ export function captureConversationInput(snapshot: WindowAcceptedSnapshot, input
   for (const owner of ownership.filter(item => item.mode === 'canonical'))
     for (const key of owner.itemKeys) if (keys.has(key)) containers.set(key, owner.containerKey);
   return { isCurrent: () => true,identity:createConversationIdentity({rows:snapshot.rows,revision:snapshot.revision,assistantOwnership:snapshot.assistantOwnership,terminalPresence:snapshot.terminalPresence,retiredAttempts:snapshot.retiredAttempts,
-      records:input.records.length?input.records:undefined,work:input.identityWork ?? (input.work.length?input.work:undefined),scope:input.scope,current:input.current}),canonicalInput,scope: input.scope, canonicalProjection, projection: containers.size ? withPresentationContainers(projection, containers) : projection,
+      records:input.records.length?input.records:undefined,work:input.identityWork ?? Object.freeze({items:Object.freeze([])}),scope:input.scope,current:input.current}),canonicalInput,scope: input.scope, canonicalProjection, projection: containers.size ? withPresentationContainers(projection, containers) : projection,
     decision: { cohortVersion: { accepted: [] }, localRegion: emptyOwnSendLocalRegion(input.scope) }, coverage: work === undefined ? 'unavailable' : 'complete' };
 }
