@@ -24,7 +24,7 @@ export class HistoryWindowInput implements HistoryWindowResult {
   const capture=createInputCapture(),owned=capture(value);
   return new HistoryWindowInput(owned,capture.visits??0);
  }
- static decode(raw:unknown):Outcome<HistoryWindowResult>{
+ static decode(raw:unknown):Outcome<HistoryWindowInput>{
   return captureDecode(raw,(owned,visits)=>{
    const decoded=decodeHistoryWindow(owned); if(!decoded.ok) throw new InputCaptureError('invalid-input');
    return new HistoryWindowInput(decoded.value,visits);

@@ -2,10 +2,11 @@ import { Handoff, type AttemptReadyProof } from "../src/handoff";
 import { expect, it } from "vitest";
 import { TerminalReadSlots, type SelectedCanonicalRequest, type OwnedTerminalReadLease } from "../src/terminal-read";
 import { HistoryWindowInput } from "../src/history-input";
+import { ownedHistory } from "./owned-history";
 import { Cancel } from "../src/operations";
 const receipt = { scope: "s", attemptId: "a", nodeIds: ["n"], terminalState: "completed" as const };
 const request = { id: "r", args: { thread_id: "t", items: true, before: 99, after: 100 } } as SelectedCanonicalRequest;
-const result = { ok: true as const, value: { thread_id: "t", revision: 1, total: 0, items: [] } };
+const result = { ok: true as const, value: ownedHistory({ thread_id: "t", revision: 1, total: 0, items: [] }) };
 it("two leases coalesce one bounded read, third denied", async () => {
  const slots = new TerminalReadSlots(), cancel = new Cancel();
  const a = slots.request({ kind: "persisted", receipt }, request, () => true, cancel) as OwnedTerminalReadLease;

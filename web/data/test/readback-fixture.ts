@@ -4,6 +4,7 @@ import {ShellboyData} from '../src/store';
 import type {HistoryItem} from '../src/protocol';
 import {attemptWork} from './work-fixture';
 import {FakeOwnerDb,FakeTransport,connectedWithHistory,settle} from './harness';
+import {ownedHistory} from './owned-history';
 
 /** Status-only fixtures deliberately declare incomplete public output; body probes are explicit. */
 export async function readbackFixture(){
@@ -11,7 +12,7 @@ export async function readbackFixture(){
  const data=new ShellboyData({transport:t,newId:()=>`readback-${++serial}`,schedule:fn=>frames.push(fn)});
  data.start();t.open();t.push({t:'hello',bridge_version:'synthetic',owner:connectedWithHistory});await settle(t,db);
  const h=data.openThread('a');await settle(t,db);
- const window=new ConversationWindow({read:async()=>({ok:true,value:{thread_id:'a',revision:6,total:1,items:[{node_id:'human',kind:'user',selection:{ordinal:0},items:[{kind:'text',item_identity:'human-text',text:'Independent human',text_complete:true}]}]}})});
+ const window=new ConversationWindow({read:async()=>({ok:true,value:ownedHistory({thread_id:'a',revision:6,total:1,items:[{node_id:'human',kind:'user',selection:{ordinal:0},items:[{kind:'text',item_identity:'human-text',text:'Independent human',text_complete:true}]}]})})});
  await settle(t,db);window.bindTerminalHandle(h);onTestFinished(()=>{window.dispose();data.stop();});
  const state={terminalState:'completed' as 'completed'|'failed'|'incomplete'|'cancelled',attempt:'attempt',available:true,truncated:true,partial:false,deferred:false,unknown:false,missing:false,error:false,changing:false,nonterminal:false,wrongid:false,empty:false};
  const original=db.answer.bind(db);let reads=0;
