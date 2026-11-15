@@ -27,7 +27,9 @@ export interface ConversationIdentity {
   readonly records?: readonly HandoffRecord[]; readonly work?: WorkIdentity;
   readonly own?: OwnSendIdentity; readonly scope: string; readonly current: boolean;
 }
-export interface WorkIdentity { readonly items: readonly WorkItem[]; }
+export const EMPTY_WORK_ITEMS: readonly WorkItem[] = Object.freeze([]);
+export const EMPTY_WORK_SOURCE = Object.freeze({});
+export interface WorkIdentity { readonly items: readonly WorkItem[]; readonly source: object; }
 export interface OwnSendIdentity {
   readonly accepted: object; readonly pending: object | undefined; readonly reservation: object | undefined;
   readonly retryCurrent: (() => boolean) | undefined; readonly eligible: boolean;
@@ -42,7 +44,8 @@ function ownSendIdentityEqual(a: OwnSendIdentity | undefined, b: OwnSendIdentity
 export function conversationIdentityEqual(a: ConversationIdentity, b: ConversationIdentity): boolean {
   return a.rows === b.rows && a.revision === b.revision && a.assistantOwnership === b.assistantOwnership
     && a.terminalPresence === b.terminalPresence && a.retiredAttempts === b.retiredAttempts
-    && a.records === b.records && a.work === b.work && ownSendIdentityEqual(a.own,b.own) && a.scope === b.scope && a.current === b.current;
+    && a.records === b.records && (!!a.work && !!b.work ? a.work.source === b.work.source : a.work === b.work) && ownSendIdentityEqual(a.own,b.own) && a.scope === b.scope && a.current === b.current;
+
 }
 
 export interface ConversationSemanticInput {
@@ -111,6 +114,6 @@ export function captureConversationInput(snapshot: WindowAcceptedSnapshot, input
   for (const owner of ownership.filter(item => item.mode === 'canonical'))
     for (const key of owner.itemKeys) if (keys.has(key)) containers.set(key, owner.containerKey);
   return { isCurrent: () => true,identity:createConversationIdentity({rows:snapshot.rows,revision:snapshot.revision,assistantOwnership:snapshot.assistantOwnership,terminalPresence:snapshot.terminalPresence,retiredAttempts:snapshot.retiredAttempts,
-      records:input.records.length?input.records:undefined,work:input.identityWork ?? Object.freeze({items:Object.freeze([])}),scope:input.scope,current:input.current}),canonicalInput,scope: input.scope, canonicalProjection, projection: containers.size ? withPresentationContainers(projection, containers) : projection,
+      records:input.records.length?input.records:undefined,work:input.identityWork ?? {items:EMPTY_WORK_ITEMS,source:EMPTY_WORK_SOURCE},scope:input.scope,current:input.current}),canonicalInput,scope: input.scope, canonicalProjection, projection: containers.size ? withPresentationContainers(projection, containers) : projection,
     decision: { cohortVersion: { accepted: [] }, localRegion: emptyOwnSendLocalRegion(input.scope) }, coverage: work === undefined ? 'unavailable' : 'complete' };
 }

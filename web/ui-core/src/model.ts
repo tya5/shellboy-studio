@@ -705,7 +705,7 @@ export class AppModel {
       && reader.acceptedView.currentCapability === capability && reader.isTerminalHandleCurrent(handle);
     const input = captureConversationInput(snapshot, { scope, threadId: handle.threadId,
       records: handle.handoff.value, work: normalizeLiveWorkFacts({ scope: handle.threadId,
-        items: handle.work.value.value?.items ?? [] }), identityWork: {items: handle.work.value.value?.items ?? []}, current: current() });
+        items: handle.work.value.value?.items ?? [] }), identityWork: {items: handle.work.value.value?.items ?? [],source:handle.work}, current: current() });
     const reserved = new Set((snapshot.assistantOwnership ?? []).filter(item => item.mode === 'preview').flatMap(item => item.itemKeys));
     const display = input.projection;
     const ownScope = this.ownMutationScope();
