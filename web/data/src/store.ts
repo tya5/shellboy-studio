@@ -1,5 +1,6 @@
 import {capturePublicResponseScope,responseRefsMatchSelected} from "./public-response-refs";
 import type { DisplayAssociation, DisplayTarget, DisplayObservation } from './handoff';
+import type { HistoryWindowInput } from './history-input';
 import { TerminalReadSlots, type SelectedReadAdmission, type SelectedCanonicalRequest, type OwnedTerminalReadLease, type TicketOutcome } from "./terminal-read";
 import type { TerminalPersistedProof } from "./handoff";
 import { Handoff, type HandoffRecord } from "./handoff";
@@ -113,7 +114,7 @@ export interface ThreadHandle extends Handle {
   /** Counts hints for this Thread's history while the owner has `history.window`; the window reader follows it. */
   readonly historyTick: ReadonlySignal<number>;
   /** One positional read. Nothing is sent for a closed or paused Thread. */
-  readWindow(args: Omit<HistoryWindowArgs, "thread_id">, cancel: Cancel): Promise<Outcome<HistoryWindowResult>>;
+  readWindow(args: Omit<HistoryWindowArgs, "thread_id">, cancel: Cancel): Promise<Outcome<HistoryWindowInput>>;
   /** Cancels this Thread's reads (what leaving the view does). */
   cancelReads(): void;
   refresh(): Promise<void>;

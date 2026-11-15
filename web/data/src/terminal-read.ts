@@ -27,7 +27,7 @@ function sameAdmission(a: SelectedReadAdmission, b: SelectedReadAdmission): bool
 export interface TerminalReadTicket { readonly id: TerminalReadTicketId; readonly request: SelectedCanonicalRequest; readonly admission: SelectedReadAdmission }
 export type TicketOutcome =
   | { readonly phase: "queued" | "reading"; readonly ticket: TerminalReadTicket }
-  | { readonly phase: "settled"; readonly ticket: TerminalReadTicket; readonly result: Outcome<HistoryWindowResult> }
+  | { readonly phase: "settled"; readonly ticket: TerminalReadTicket; readonly result: Outcome<HistoryWindowInput> }
   | { readonly phase: "unavailable"; readonly reason: "unsupported" | "budget-exhausted" | "capacity" | "cancelled" | "selection-gap" };
 export interface OwnedTerminalReadLease { readonly ticket: TerminalReadTicket; readonly state: ReadonlySignal<TicketOutcome>; cancel(): void }
 interface Marker { ticket: TerminalReadTicket; state: Signal<TicketOutcome>; leases: Set<OwnedTerminalReadLease>; valid: () => boolean; cancel: Cancel; detach?: () => void }
@@ -85,7 +85,7 @@ export class TerminalReadSlots {
     return !!marker && marker.ticket === lease.ticket && marker.valid() && !marker.cancel.cancelled && marker.leases.has(lease);
   }
   get queued(): boolean { return [...this.markers.values()].some(m => m.state.peek().phase === "queued"); }
-  async dispatch(takeRead: () => boolean, read: (args: HistoryWindowArgs, cancel: Cancel) => Promise<Outcome<HistoryWindowResult>>, followup = true): Promise<void> {
+  async dispatch(takeRead: () => boolean, read: (args: HistoryWindowArgs, cancel: Cancel) => Promise<Outcome<HistoryWindowInput>>, followup = true): Promise<void> {
     const marker = [...this.markers.values()].find(m => m.state.peek().phase === "queued");
     if (!marker) return;
     const valid = () => marker.valid() && !marker.cancel.cancelled && marker.leases.size > 0;
@@ -103,11 +103,11 @@ export class TerminalReadSlots {
     if (followup && this.queued) await this.dispatch(takeRead, read, false);
   }
   private async readOwned(marker:Marker,valid:()=>boolean,
-    read:(args:HistoryWindowArgs,cancel:Cancel)=>Promise<Outcome<HistoryWindowResult>>):
-    Promise<Outcome<HistoryWindowResult>|'cancelled'|'budget-exhausted'|'selection-gap'>{
+    read:(args:HistoryWindowArgs,cancel:Cancel)=>Promise<Outcome<HistoryWindowInput>>):
+    Promise<Outcome<HistoryWindowInput>|'cancelled'|'budget-exhausted'|'selection-gap'>{
     const request=marker.ticket.request,plan=request.selection;
     if(!plan)return read(request.args,marker.cancel);
-    const rows:HistoryItem[]=[],pages:HistoryWindowInput[]=[],ids=new Set<string>();let cursor:HistoryWindowResult|undefined;
+    const rows:HistoryItem[]=[],pages:HistoryWindowInput[]=[],ids=new Set<string>();let cursor:HistoryWindowInput|undefined;
     for(let first=plan.first;first<=plan.last;first+=200){
       if(!valid())return 'cancelled';
       const count=Math.min(200,plan.last-first+1);
@@ -119,7 +119,7 @@ export class TerminalReadSlots {
         ||cursor&&value.total!==cursor.total||value.items.length!==count
         ||value.items.some((row,index)=>!row.node_id||ids.has(row.node_id)||row.selection?.ordinal!==first+index))return 'selection-gap';
       for(const row of value.items){if(ids.has(row.node_id!))return 'selection-gap';ids.add(row.node_id!);rows.push(row);}
-      pages.push(HistoryWindowInput.own(value));cursor??=value;
+      pages.push(value);cursor??=value;
     }
     if(!cursor)return 'selection-gap';
     try{return{ok:true,value:HistoryWindowInput.join(pages)};}catch(error){if(error instanceof InputCaptureError)return{ok:false,error:{kind:'invalid_response',message:error.reason}};throw error;}

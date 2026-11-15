@@ -162,7 +162,7 @@ export class Cancel {
 
 export type UuidFn = () => string;
 
-function unwrap<T>(response: OwnerResponse, decode: Decoder<T>, captureDecode?: (raw: unknown) => Outcome<T>): Outcome<T> {
+function unwrap<T>(response: OwnerResponse, decode: Decoder<T> | undefined, captureDecode?: (raw: unknown) => Outcome<T>): Outcome<T> {
   if (!response.ok) {
     return response.error
       ? { ok: false, error: fromApiError(response.error) }
@@ -172,6 +172,7 @@ function unwrap<T>(response: OwnerResponse, decode: Decoder<T>, captureDecode?: 
     return { ok: false, error: { kind: "invalid_response", message: "owner reply without result" } };
   try {
     if (captureDecode) return captureDecode(response.result);
+    if (!decode) return { ok: false, error: { kind: "invalid_response", message: "owned decoder required" } };
     const value = decode(response.result);
     return value.ok
       ? { ok: true, value: value.value }
@@ -194,7 +195,7 @@ export class Operations {
   private async run<T>(
     command: string,
     args: unknown,
-    decode: Decoder<T>,
+    decode: Decoder<T> | undefined,
     mutation?: { operationId: string },
     read?: ReadOptions,
     captureDecode?: (raw: unknown) => Outcome<T>,
@@ -228,9 +229,9 @@ export class Operations {
   threadGet(threadId: string, read?: ReadOptions): Promise<Outcome<ThreadDetails>> {
     return this.run("thread.get", { thread_id: threadId }, decodeDetails, undefined, read);
   }
-  historyWindow(args: HistoryWindowArgs, read?: ReadOptions): Promise<Outcome<HistoryWindowResult>> {
+  historyWindow(args: HistoryWindowArgs, read?: ReadOptions): Promise<Outcome<HistoryWindowInput>> {
     if (!this.historyWindowSupported()) return Promise.resolve({ ok: false, error: { kind: "invalid_response", message: "owner does not advertise history.window" } });
-    return this.run("history.window", args, decodeHistoryWindow, undefined, read,
+    return this.run<HistoryWindowInput>("history.window", args, undefined, undefined, read,
       raw => HistoryWindowInput.decode(raw));
   }
   historyGet(args: HistoryGetArgs, read?: ReadOptions): Promise<Outcome<HistoryBody>> {

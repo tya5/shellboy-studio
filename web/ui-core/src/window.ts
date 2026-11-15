@@ -1,4 +1,4 @@
-import {ownHistoryOutcome} from '../../data/src/history-input';
+import type { HistoryWindowInput } from '../../data/src/history-input';
 import {responseRefsMatchSelected} from "../../data/src/public-response-refs";
 import { captureConversationInput, type ConversationSemanticInput } from "./conversation-input";
 import { normalizeLiveWorkFacts } from "./conversation-items";
@@ -30,7 +30,7 @@ export const PAUSE_MS = 80;
 
 export type WindowReadArgs = Omit<HistoryWindowArgs, "thread_id">;
 export interface WindowReader {
-  read(args: WindowReadArgs, cancel: Cancel): Promise<Outcome<HistoryWindowResult>>;
+  read(args: WindowReadArgs, cancel: Cancel): Promise<Outcome<HistoryWindowInput>>;
 }
 export interface WindowOptions {
   /** Defaults to `setTimeout`; returns the canceller. */
@@ -205,8 +205,7 @@ export class ConversationWindow {
 
   constructor(reader: WindowReader, options: WindowOptions = {}) {
     this.reader={read:async(args,cancel)=>{
-      const raw=await reader.read(args,cancel),expected=this.acceptedView.peek(),owner=this.acceptedView.currentCapability;
-      const out=ownHistoryOutcome(raw);
+      const out=await reader.read(args,cancel),expected=this.acceptedView.peek(),owner=this.acceptedView.currentCapability;
       if(this.acceptedView.peek()!==expected||this.acceptedView.currentCapability!==owner)
         return{ok:false,error:{kind:'cancelled',message:'input ownership changed while normalizing'}};
       if(!out.ok&&out.error.kind==='invalid_response'){
