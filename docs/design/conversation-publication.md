@@ -67,7 +67,12 @@ fingerprinting to invent permission.
 The main publication loop must not stringify the entire canonical/display/Work/
 local graph to determine whether it changed. A typed current input change and a
 single prepared publication own that transition. Exact graph sharing removes
-copies; it does not create another body-authority store. Superseded copy,
+copies; it does not create another body-authority store. The accepted input is
+one projection authority: canonical body, live owner qualification, and
+presentation metadata are composed from that input without an unused whole
+projection recomputation. This is an architecture invariant, not a deadline
+optimization; test-fixture, assertion, and trace overhead remain UNKNOWN unless
+measured separately. Superseded copy,
 fingerprint, and whole-graph-key paths must be removed in the same unit, not kept
 as alternate producers or renamed compatibility fallbacks.
 
