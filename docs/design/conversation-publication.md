@@ -239,10 +239,21 @@ singleton. Model and Window capture the raw Work value once and derive both fiel
 from that value. This prevents normalized facts from changing while semantic
 identity remains an empty fallback; fixtures use the same descriptor constructor.
 
-The producer lifecycle tests also retain finite evidence for source detachment
-before turn admission, receiver-throw recovery followed by a later transfer,
-repeated stale release callbacks, and zero-obsolete release after rejection. The
-accepted Window/Store paths remain the authority; no generic publication mint was
-restored. `qualifyRetainedOwners` intentionally does not use blind full ownership
+The typed Window lifecycle tests retain finite evidence for listener detachment
+during a real body commit, post-swap subscriber-throw recovery followed by a
+later real publication, more than two genuinely changed successors with explicit
+flush/newest tracing, revoke/dispose stale suppression, and exactly-once body
+release paired with the existing zero-release rejection path. The separate Handoff
+tests retain source detach/receiver-throw transfer evidence; they do not stand in
+for the accepted Window body tests. The accepted Window/Store paths remain the
+authority; no generic publication mint was restored. `qualifyRetainedOwners` intentionally does not use blind full ownership
 structural equality: rematerialization is not exact post-commit acceptance, and a
 legitimate new proof revision or item membership must qualify as a new successor.
+
+
+The model and Window use `handle.threadId` for the live Work fact normalizer's
+source scope, while `handle.handoffScope()` remains the composite ownership scope
+for transfer/acceptance and semantic publication. These are intentionally distinct
+inputs: live Work records are normalized against their Thread source identity;
+accepted ready proofs and handoff records are checked against the owner/thread/session
+lease scope.

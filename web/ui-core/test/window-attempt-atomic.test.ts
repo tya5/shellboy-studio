@@ -17,7 +17,7 @@ async function rig(items = nodes) {
   const w = new ConversationWindow({ read: async () => ({ ok: true, value: ownedHistory({ thread_id: "thread", revision: source.revision, total: source.total, items:source.items }) }) }); await flush();
   const proof: AttemptReadyProof = { scope: '["owner","thread",1]', attemptId: "attempt", turnId: "turn", revision: 7, total: 2, refs: selectedReadyRefs(["answer","tool","answer"],nodes), nodes };
   const record: HandoffRecord = { key: "live-record", presentationContainer: "presentation:test" as PresentationContainerId, attemptId: "attempt", status: "confirming", bodyAuthority: "preview", text: "whole live block", incomplete: false, readyAttempt: proof };
-  return { w, record, proof, source };
+  return { w, record, proof, source, settle: (async () => { await flush(); }) };
 }
 it("all-ref retirement and saved-order sequence publish once in the SAME observed snapshot", async () => {
   const { w, record, proof, source } = await rig();
@@ -158,4 +158,46 @@ it("materializes already-qualified all-ref nodes and retirement together without
   let releases = 0; expect(w.acceptHandoff(record, "scope", () => { releases++; })).toBe(true);
   expect(frames).toEqual([{ ids: ["user", "tool", "answer"], total: 3, retired: 1 }]);
   expect(w.rangeItems().map(row => row.node_id)).toEqual(["user", "tool", "answer"]); expect(w.total).toBe(3); expect(reads).toBe(1); expect(releases).toBe(1); w.dispose();
+});
+
+it("typed Window detaches a later listener during the real body commit notification", async () => {
+  const { w, record, proof } = await rig();
+  const trace: string[] = []; let stopB = () => {};
+  w.acceptedView.subscribe(() => { trace.push("A"); stopB(); });
+  stopB = w.acceptedView.subscribe(() => { trace.push("B"); });
+  let releases = 0;
+  expect(w.acceptHandoff(record, proof.scope, () => { releases++; })).toBe(true);
+  expect(trace).toEqual(["A"]);
+  expect(releases).toBe(1);
+  expect(w.acceptedView.peek().rows.map(row => row.node_id)).toEqual(["tool", "answer"]);
+  w.dispose();
+});
+
+it("typed Window recovers after a subscriber throws post-swap and a later real publication", async () => {
+  const { w, record, proof, source, settle } = await rig();
+  let first = true; let unsubscribe = () => {}; const trace: number[] = [];
+  unsubscribe = w.acceptedView.subscribe(ref => {
+    trace.push(ref.generation);
+    if (first) { first = false; unsubscribe(); throw new Error("post-swap observer"); }
+  });
+  expect(() => w.acceptHandoff(record, proof.scope, () => {})).toThrow("post-swap observer");
+  const committed = w.acceptedView.peek();
+  expect(committed.rows.map(row => row.node_id)).toEqual(["tool", "answer"]);
+  source.revision = 8; w.changed(); await settle();
+  expect(w.acceptedView.peek().revision).toBe(8);
+  expect(w.acceptedView.peek().generation).toBeGreaterThan(committed.generation);
+  expect(trace.length).toBe(1);
+  w.dispose();
+});
+
+it("coalesces more than two real changed successors to the newest accepted Window ref", async () => {
+  const { w, source, settle } = await rig(); const trace: { generation: number; revision: number | undefined }[] = [];
+  w.acceptedView.subscribe(ref => trace.push({ generation: ref.generation, revision: ref.revision }));
+  for (const revision of [8, 9, 10]) { source.revision = revision; w.changed(); }
+  await flush(); await settle();
+  expect(trace.length).toBeGreaterThan(2);
+  expect(trace.at(-1)?.revision).toBe(10);
+  expect(trace.at(-1)?.generation).toBe(w.acceptedView.peek().generation);
+  expect(trace.map(item => item.generation)).toEqual([...trace].sort((a, b) => a.generation - b.generation).map(item => item.generation));
+  w.dispose();
 });
