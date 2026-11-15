@@ -183,21 +183,29 @@ it("typed Window recovers after a subscriber throws post-swap and a later real p
   expect(() => w.acceptHandoff(record, proof.scope, () => {})).toThrow("post-swap observer");
   const committed = w.acceptedView.peek();
   expect(committed.rows.map(row => row.node_id)).toEqual(["tool", "answer"]);
+  let later: typeof committed | undefined;
+  w.acceptedView.subscribe(ref => { later = ref; });
   source.revision = 8; w.changed(); await settle();
-  expect(w.acceptedView.peek().revision).toBe(8);
-  expect(w.acceptedView.peek().generation).toBeGreaterThan(committed.generation);
+  expect(later?.revision).toBe(8);
+  expect(later?.generation).toBeGreaterThan(committed.generation);
   expect(trace.length).toBe(1);
   w.dispose();
 });
 
-it("coalesces more than two real changed successors to the newest accepted Window ref", async () => {
-  const { w, source, settle } = await rig(); const trace: { generation: number; revision: number | undefined }[] = [];
-  w.acceptedView.subscribe(ref => trace.push({ generation: ref.generation, revision: ref.revision }));
-  for (const revision of [8, 9, 10]) { source.revision = revision; w.changed(); }
-  await flush(); await settle();
-  expect(trace.length).toBeGreaterThan(2);
-  expect(trace.at(-1)?.revision).toBe(10);
+it("coalesces more than two semantic successors from one notification to the newest ref", async () => {
+  const { w } = await rig(); const trace: { generation: number; attempt: string | undefined }[] = [];
+  let passes = 0;
+  w.acceptedView.subscribe(ref => {
+    trace.push({ generation: ref.generation, attempt: ref.attemptPresentations?.[0]?.attemptId });
+    passes++;
+    if (passes === 1) w.setAttemptPresentations([{ scope: "scope", attemptId: "successor-a", turnId: "turn-a", nodeIds: [], state: "pending" }]);
+    if (passes === 2) w.setAttemptPresentations([{ scope: "scope", attemptId: "successor-b", turnId: "turn-b", nodeIds: [], state: "pending" }]);
+  });
+  w.setAttemptPresentations([{ scope: "scope", attemptId: "successor-start", turnId: "turn-start", nodeIds: [], state: "pending" }]);
+  expect(trace).toHaveLength(2);
+  await flush();
+  expect(trace).toHaveLength(3);
+  expect(trace.map(item => item.attempt)).toEqual(["successor-start", "successor-a", "successor-b"]);
   expect(trace.at(-1)?.generation).toBe(w.acceptedView.peek().generation);
-  expect(trace.map(item => item.generation)).toEqual([...trace].sort((a, b) => a.generation - b.generation).map(item => item.generation));
   w.dispose();
 });
