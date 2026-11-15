@@ -744,12 +744,15 @@ export class ShellboyData {
 
   /** ADR-C1: one resolver, at most eight starts until explicit retry/open. Hints never refill. */
   private resolveHandoff(entry: ThreadEntry): Promise<void> {
-    if (entry.resolving) { return entry.resolving; }
-    if (this.handoffRead) { return this.handoffRead.done; }
+    if (entry.resolving) { entry.refreshAfterHandoff = true; return entry.resolving; }
+    if (this.handoffRead) { entry.refreshAfterHandoff = true; return this.handoffRead.done; }
     const epoch = entry.live.epoch;
     const cancelled = entry.cancel;
     const valid = () => !entry.closed && !entry.paused && epoch === entry.live.epoch && !cancelled.cancelled && cancelled === entry.cancel && this.canRead();
     const receiptBlocked = new Set<string>();
+    // Dirty ownership is consumed when this resolver acquires the global read
+    // admission, not when a display observer publishes a projection.
+    entry.refreshAfterHandoff = false;
     entry.resolving = Promise.resolve().then(async () => {
       const targets = entry.live.records.peek().filter(r => r.status === "confirming" || r.status === "failed");
       if (!valid()) return;
@@ -905,9 +908,8 @@ export class ShellboyData {
           ? { phase: "unavailable", reason: entry.live.remainingReads ? "unresolved" : "budget-exhausted", canRetry: true }
           : { phase: "idle", canRetry: false };
       }
-      if (entry.refreshAfterHandoff && !entry.live.records.peek().some(r => r.status === "failed")) {
-        this.refreshHint(entry.id);
-      }
+      const waiting = [...this.entries.values()].find(e => e !== entry && e.refreshAfterHandoff && !e.closed && !e.paused);
+      if (waiting) void this.resolveHandoff(waiting);
     });
     this.handoffRead = { entry, done: entry.resolving };
     return entry.resolving;

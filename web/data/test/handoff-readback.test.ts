@@ -70,3 +70,29 @@ it('complete public output stages exact readable tuples once without retiring th
   expect(r.bodyReads()).toHaveLength(1);expect(r.h.handoff.peek()).toHaveLength(1);
  }finally{r.data.stop();}
 });
+
+it('keeps B canonical handoff progress across A global resolver busy without a second hint',async()=>{
+ const r=await rig({threadIds:['a','b']});
+ try{
+  const a=r.handles.a!,b=r.handles.b!;
+  r.liveFor('a');r.endFor('a');await flush();
+  const statusA=r.t.calls('status').find(call=>(call.args as {thread_id?:string}).thread_id==='a');
+  expect(statusA).toBeDefined();
+  r.liveFor('b');r.endFor('b');await flush();
+  expect(r.t.calls('status').some(call=>(call.args as {thread_id?:string}).thread_id==='b')).toBe(false);
+  const bBefore=b.handoff.peek()[0]!;expect(bBefore.status).toBe('confirming');
+  const aResult=r.db.answer(statusA!);r.db.answered.add(statusA!.id);if(aResult.ok)r.t.ok(statusA!.id,aResult.result);else r.t.ownerError(statusA!.id,aResult.code,aResult.message);
+  for(let n=0;n<20;n++){
+   const aCalls=r.t.calls().filter(call=>!r.db.answered.has(call.id)&&(call.args as {thread_id?:string}).thread_id==='a');
+   if(!aCalls.length)break;
+   for(const call of aCalls){const result=r.db.answer(call);r.db.answered.add(call.id);if(result.ok)r.t.ok(call.id,result.result);else r.t.ownerError(call.id,result.code,result.message);}
+   await flush();
+  }
+  expect(r.t.calls().some(call=>!r.db.answered.has(call.id)&&(call.args as {thread_id?:string}).thread_id==='a')).toBe(false);
+  const bStatus=r.t.calls('status').find(call=>(call.args as {thread_id?:string}).thread_id==='b');
+  expect(bStatus).toBeDefined();
+  await r.pump();
+  expect(r.db.answered.has(bStatus!.id)).toBe(true);
+  expect(b.handoff.peek()[0]?.status).toBe('confirming');
+ }finally{r.data.stop();}
+});
