@@ -13,7 +13,7 @@ import { HeadingAnchor,ReadingAnchor } from '../screens/scrollIntent';
 import { WindowedScroll } from '../screens/WindowedScroll';
 let stop:(()=>void)|undefined;
 afterEach(()=>{stop?.();stop=undefined;vi.restoreAllMocks();});
-async function rig(kind:'inside'|'below', invalid?:'duplicate'|'hidden'|'revoke'|'reject'){
+async function rig(kind:'inside'|'below', invalid?:'duplicate'|'hidden'|'revoke'|'reject', notify?:'consume'|'pause'|'cancel'|'owner'|'revoke'){
  const t=new FakeTransport();let serial=0;const data=new ShellboyData({transport:t,newId:()=>`g-${++serial}`});data.start();t.open();t.push({t:'hello',bridge_version:'synthetic',owner:connected});await flush();const handle=data.openThread('t');
  let target=false;const w=new ConversationWindow({read:async()=>({ok:true,value:{thread_id:'t',revision:target?2:1,total:2,items:target?[{node_id:'summary',kind:'summary',selection:{ordinal:0},items:[]},{node_id:'b',kind:'user',selection:{ordinal:1},items:[]}]:[{node_id:'a',kind:'user',selection:{ordinal:0},items:[]},{node_id:'b',kind:'user',selection:{ordinal:1},items:[]}]}})});await flush();
  const root=document.createElement('div');document.body.append(root);stop=()=>{render(null,root);root.remove();w.dispose();handle.close();data.stop();};
@@ -28,13 +28,15 @@ async function rig(kind:'inside'|'below', invalid?:'duplicate'|'hidden'|'revoke'
  const id=w.peekSummaryTransitionId();expect(id).toBeDefined();
  target=true;w.changed();await flush();
  // S isolated fixture supplies literal membership: NOT a claim about D body-read authority.
- expect(w.acceptSummaryCoverage(handle,w.acceptedView.peek(),id!,{node_id:'summary',kind:'summary',text:'',source_node_ids:['a']})).toBe(true);
+ const consume=vi.spyOn(w,'consumeSummaryCoverage'); let armed=true; const subscription=notify&&w.acceptedView.subscribe(()=>{if(!armed)return;armed=false;if(notify==='consume')w.consumeSummaryCoverage(w.acceptedView.peek(),id!);else if(notify==='pause')handle.pause();else if(notify==='cancel')handle.cancelReads();else if(notify==='owner')t.push({t:'owner',event:'restarted',owner:connected});else w.acceptedView.revoke();});
+ const accepted=w.acceptSummaryCoverage(handle,w.acceptedView.peek(),id!,{node_id:'summary',kind:'summary',text:'',source_node_ids:['a']});
+ subscription;
  const capture=vi.spyOn(ReadingAnchor.prototype,'capture'),heading=vi.spyOn(HeadingAnchor.prototype,'consume');
- const ref=w.acceptedView.peek(),consume=vi.spyOn(w,'consumeSummaryCoverage'),scroll=vi.spyOn(w,'consumeScroll');
+ const ref=w.acceptedView.peek(),scroll=vi.spyOn(w,'consumeScroll');
  if(invalid==='reject')consume.mockReturnValue(false);
  if(invalid==='revoke')rect.mockImplementation(function(this:HTMLElement){if(this.dataset.node==='summary')w.acceptedView.revoke();return{top:130,bottom:150,height:20} as DOMRect;});
  const box=root.querySelector<HTMLElement>('.scroll')!;let top=100,writes=0;Object.defineProperty(box,'scrollTop',{configurable:true,get:()=>top,set:(value:number)=>{writes++;top=value;}});
- await act(async()=>mount());return{w,ref,consume,scroll,capture,heading,top:()=>top,writes:()=>writes,root,mount};
+ await act(async()=>mount());return{w,ref,consume,scroll,capture,heading,top:()=>top,writes:()=>writes,root,mount,accepted};
 }
 it.each(['inside','below'] as const)('actual G source capture and fresh %s geometry consume coverage once at the saved offset',async kind=>{
  const x=await rig(kind);expect(x.consume).toHaveBeenCalledTimes(1);expect(x.consume.mock.results[0]!.value).toBe(true);expect(x.top()).toBe(190);expect(x.scroll).not.toHaveBeenCalled();
@@ -43,6 +45,11 @@ it.each(['inside','below'] as const)('actual G source capture and fresh %s geome
 it.each(['duplicate','hidden','revoke','reject'] as const)('preserves coverage and scroll request when target %s prevents commit',async mode=>{
  const x=await rig('inside',mode);expect(x.top()).toBe(100);expect(x.writes()).toBe(0);expect(x.scroll).not.toHaveBeenCalled();expect(x.capture).not.toHaveBeenCalled();expect(x.heading).not.toHaveBeenCalled();
  if(mode==='reject')expect(x.consume).toHaveBeenCalledTimes(1);else expect(x.consume).not.toHaveBeenCalled();
+});
+
+it.each(['consume','pause','cancel','owner','revoke'] as const)('classifies synchronous notify %s after summary publication',async action=>{
+ const x=await rig('inside',undefined,action);expect(x.accepted).toBe(action==='consume');
+ if(action==='consume'){expect(x.consume).toHaveBeenCalledTimes(1);}else{expect(x.consume).not.toHaveBeenCalled();}
 });
 
 it.each(['inside','below','pause','navigation','missing'] as const)('uses actual AppModel qualified historyGet for %s without an added read',async mode=>{
