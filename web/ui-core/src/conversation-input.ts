@@ -37,6 +37,13 @@ export function captureConversationInput(snapshot: WindowAcceptedSnapshot, input
 }): ConversationSemanticInput {
   const canonicalInput=canonicalHistoryInput(snapshot,input.scope),canonicalProjection=canonicalInput.projection;
   const ownership = snapshot.assistantOwnership ?? [];
+  // Canonical-only publications do not need placement, path, or container scans.
+  if(input.current && ownership.length===0 && (snapshot.terminalPresence?.length ?? 0)===0
+    && (snapshot.retiredAttempts?.length ?? 0)===0 && input.records.length===0 && input.work.length===0){
+    return { isCurrent: () => true, identity:[snapshot.rows,snapshot.revision,snapshot.assistantOwnership,snapshot.terminalPresence,snapshot.retiredAttempts,
+      undefined,undefined,input.scope,input.current], canonicalInput,scope: input.scope, canonicalProjection,
+      projection: canonicalProjection, decision:{ cohortVersion:{ accepted:[] }, localRegion:emptyOwnSendLocalRegion(input.scope) }, coverage:'complete' };
+  }
   const canonicalOwners = new Set(ownership.filter(item => item.mode === 'canonical').map(item => item.recordKey));
   const reserved = new Set(ownership.filter(item => item.mode === 'preview').flatMap(item => item.itemKeys));
   const handoffs = retainUnretiredLiveFacts(snapshot, input.scope, input.current,
