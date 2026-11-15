@@ -207,3 +207,10 @@ key is the sole typed bookkeeping exception. An unchanged source returns the
 canonical previous record, a source change advances the source revision, and a
 bookkeeping-only transfer changes only the transferred field without revocation.
 Canonical staging and observer publication consume the returned held record.
+
+## Notification Facts Label Boundary
+
+Notification labels use only admitted public `kind`, time, and notification
+facts. Missing facts use an honest unavailable-details label; body text is never
+used to infer a notification. This patch adds no new surface, RPC, private fact,
+style, or fallback.

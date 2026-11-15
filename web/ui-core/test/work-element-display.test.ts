@@ -20,7 +20,7 @@ it.each(["reasoning", "reasoning_unavailable"])("%s publishes no inferred reason
 });
 it.each(["event", "context", "model_stream_observation", "message", "notification"])("%s reports honest missing context, not a fabricated cause", kind => {
  const [row] = display([{ node_id: "e", kind, provenance: { created_at: "2026-01-01T00:00:00Z" } }]);
- expect(row!.value!.contentLabel.text).toContain("2026-01-01T00:00:00Z");
+ expect(row!.value!.contentLabel.context).toContainEqual({name: "created_at", value: "2026-01-01T00:00:00Z"});
  expect(row!.value!.contentLabel.text).not.toContain(kind + ":"); expect(row!.value!.state).toBeNull();
 });
 it.each(["interruption_details", "interruption_context", "incomplete_response", "interrupted_wait"])("%s does not infer missing response detail", kind => {
@@ -215,7 +215,16 @@ it('issued notification changed fields are frozen independently of the admitted 
 });
 it('legacy absent or quarantined optional notification leaves the honest unknown label',()=>{
  const [row]=display([{node_id:'legacy',kind:'notification',provenance:{sender:{kind:'user'}}}]);
- expect(row!.value!.contentLabel.text).toBe('A content summary was not provided');
+ expect(row!.value!.contentLabel.text).toBe('Notification details were not provided');
+});
+it('notification text preserves created_at context and does not infer body details',()=>{
+ const withTime=display([{node_id:'with-time',kind:'notification',excerpt:'PRIVATE BODY',provenance:{created_at:'2026-11-15T08:20:00Z',sender:{kind:'user'}}}])[0]!;
+ const withoutTime=display([{node_id:'without-time',kind:'notification',excerpt:'PRIVATE BODY',provenance:{sender:{kind:'user'}}}])[0]!;
+ expect(withTime.value!.contentLabel.text).toBe('Notification details were not provided');
+ expect(withTime.value!.contentLabel.context).toContainEqual({name:'created_at',value:'2026-11-15T08:20:00Z'});
+ expect(withoutTime.value!.contentLabel.context.some(context=>context.name==='created_at')).toBe(false);
+ expect(JSON.stringify(withTime.value)).not.toContain('PRIVATE BODY');
+ expect(JSON.stringify(withoutTime.value)).not.toContain('PRIVATE BODY');
 });
 
 it('history links without an exit code show the exited state but no failure status', () => {
