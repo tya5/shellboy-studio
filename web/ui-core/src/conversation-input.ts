@@ -33,10 +33,14 @@ export interface OwnSendIdentity {
 export function createConversationIdentity(base: Omit<ConversationIdentity, 'own'>, own?: OwnSendIdentity): ConversationIdentity {
   return Object.freeze(own ? { ...base, own } : base);
 }
+function ownSendIdentityEqual(a: OwnSendIdentity | undefined, b: OwnSendIdentity | undefined): boolean {
+  return a === b || (!!a && !!b && a.accepted === b.accepted && a.pending === b.pending
+    && a.reservation === b.reservation && a.retryCurrent === b.retryCurrent && a.eligible === b.eligible);
+}
 export function conversationIdentityEqual(a: ConversationIdentity, b: ConversationIdentity): boolean {
   return a.rows === b.rows && a.revision === b.revision && a.assistantOwnership === b.assistantOwnership
     && a.terminalPresence === b.terminalPresence && a.retiredAttempts === b.retiredAttempts
-    && a.records === b.records && a.work === b.work && a.own === b.own && a.scope === b.scope && a.current === b.current;
+    && a.records === b.records && a.work === b.work && ownSendIdentityEqual(a.own,b.own) && a.scope === b.scope && a.current === b.current;
 }
 
 export interface ConversationSemanticInput {

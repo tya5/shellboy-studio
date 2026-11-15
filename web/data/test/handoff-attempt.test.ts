@@ -23,13 +23,11 @@ it('terminal proof without saved nodes cannot stage',()=>{const{h,original}=rig(
 it.each(['completed','failed','incomplete','cancelled'] as const)('terminal %s accepts incomplete preview but revoked release is false',terminalState=>{const{h,original}=rig();h.fail('a');const incomplete=h.records.value[0]!;const proof={scope:'s',attemptId:'a',nodeIds:['saved'],terminalState};expect(h.stageTerminalPersisted(incomplete,proof)?.text).toBe(original.text);expect(h.transfer('a',(_,end)=>{h.invalidate();end('end');return true;})).toBe(false);expect(h.records.value[0]?.text).toBe(original.text);});
 it('terminal staging rejects wrong attempt, nonterminal state, malformed IDs and >64 refs',()=>{for(const bad of [{attemptId:'other'},{terminalState:'inflight'},{nodeIds:['']},{nodeIds:Array(65).fill('saved')}]){const{h,original}=rig();const proof={scope:'s',attemptId:'a',nodeIds:['saved'],terminalState:'completed' as const,...bad};expect(h.stageTerminalPersisted(original,proof as Parameters<Handoff['stageTerminalPersisted']>[1])).toBeUndefined();expect(h.records.value[0]).toBe(original);}});
 
-it('transfer bookkeeping preserves the source lease while issuer failure revokes it',()=>{
- const {h,original}=rig(); const lease=h.captureDisplay(original)!; lease.stage(2,()=>true);
- expect(h.transfer('a',(_,release)=>{release('return');return true;})).toBe(false);
- expect(lease.current()).toBe(true);
- h.fail('a'); expect(lease.current()).toBe(false);
- const failed=h.records.value[0]!, failedLease=h.captureDisplay(failed)!; failedLease.stage(3,()=>true);
- h.fail('a'); expect(failedLease.current()).toBe(true);
+it('ready transfer success revokes only after the accepted return callback',()=>{
+ const {h,original,proof}=rig(); expect(h.stageAttempt(original,proof)).toBeDefined();
+ const staged=h.records.value[0]!, lease=h.captureDisplay(staged)!; lease.stage(2,()=>true);
+ expect(h.transfer('a',(record,release)=>{expect(record).toBe(staged);release('end');return true;})).toBe(true);
+ expect(lease.current()).toBe(false); expect(h.records.value).toHaveLength(0);
 });
 
 it('display authority borrows one original held slot without transfer or a body copy',()=>{

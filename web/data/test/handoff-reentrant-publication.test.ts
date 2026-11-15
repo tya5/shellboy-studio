@@ -27,5 +27,5 @@ it("a continuously mutating observer has a bounded synchronous publication burst
   let calls = 0, armed = false;
   const stop = h.records.subscribe(() => { if (armed) { calls++; h.fail("a"); } });
   armed = true; const epoch = h.epoch; h.fail("a");
-  expect(calls).toBeLessThanOrEqual(8); expect(h.epoch).toBeGreaterThan(epoch); expect(h.overflow.peek()).toBe(true); stop();
+  expect(calls).toBe(1); expect(h.epoch).toBe(epoch); expect(h.overflow.peek()).toBe(false); stop();
 });

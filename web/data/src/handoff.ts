@@ -96,7 +96,6 @@ export class Handoff {
   private readonly discarded = signal<PreviewDiscardReason | undefined>(undefined);
   private publishing = false;
   private publicationDirty = false;
-  private publicationForce = false;
   private readonly sig = signal<readonly HandoffRecord[]>([]);
   readonly records: ReadonlySignal<readonly HandoffRecord[]> = this.sig;
   private readonly overflowSig = signal(false);
@@ -182,7 +181,7 @@ export class Handoff {
   fail(attemptId: string): void {
     const held=this.held.find(item=>item.attemptId===attemptId);
     if (!held) return;
-    if (held.record.status === 'failed') { this.publish(true); return; }
+    if (held.record.status === 'failed') return;
     this.updateRecord(held, {...held.record,status:'failed'}); this.publish();
   }
   confirming(attemptId: string): void { this.update(attemptId, r => ({ ...r, status: 'confirming' })); }
@@ -312,20 +311,18 @@ export class Handoff {
   private update(id: string, fn: (r: HandoffRecord) => HandoffRecord): void {
     const h = this.held.find(h => h.attemptId === id); if (!h) return; this.updateRecord(h, fn(h.record)); this.publish();
   }
-  private publish(force = false): void {
+  private publish(): void {
     for (const held of this.held) if (held.display && !held.display.sourceCurrent()) held.display = undefined;
     this.publicationDirty = true;
-    this.publicationForce ||= force;
     if (this.publishing) return;
     this.publishing = true;
     try {
       // Coalesce nested mutations without recursive notification or a queued task.
       for (let pass = 0; pass < MAX_HANDOFF_RECORDS; pass++) {
         this.publicationDirty = false;
-        const forcePass = this.publicationForce; this.publicationForce = false;
         const latest = this.held.map(h => h.record);
         const current = this.sig.peek();
-        if (forcePass || latest.length !== current.length || latest.some((record, i) => record !== current[i])) this.sig.value = latest;
+        if (latest.length !== current.length || latest.some((record, i) => record !== current[i])) this.sig.value = latest;
         if (!this.publicationDirty) return;
       }
       // A continuously mutating observer cannot keep old capture authority alive.
