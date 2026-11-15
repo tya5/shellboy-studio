@@ -1,6 +1,6 @@
 import {HistoryWindowInput} from './history-input';
 import {decodeHistoryWindow} from './history-decoder';
-import {sanitizeMessageRelation} from './message-provenance';
+import {sanitizeMessageRelation,validHistoryProvenance} from './message-provenance';
 import {captureDecode,InputCaptureError} from './immutable-input';
 // Typed operations: the UX boundary for requests. Stateless wrappers over `Link.call`;
 // they never touch the store (saved facts change only by re-reading after a hint).
@@ -93,6 +93,7 @@ const decodeThreadWorkPage = (threadId: string): Decoder<Page<WorkItem>> => (v) 
 };
 const decodeBody: Decoder<HistoryBody> = (v) => {
   if (!isObject(v) || typeof v.node_id !== 'string' || typeof v.text !== 'string') return { ok: false, reason: 'history.get result lacks node_id or text' };
+  if (!validHistoryProvenance(v.provenance)) return { ok: false, reason: 'history.get has invalid provenance attempt_id' };
   if (Object.hasOwn(v, 'source_node_ids')) {
     const ids = v.source_node_ids;
     if (!Array.isArray(ids) || ids.length > 4096 || !ids.every(id => typeof id === 'string' && id.length > 0) || new Set(ids).size !== ids.length) return { ok: false, reason: 'history.get has invalid explicit source identities' };

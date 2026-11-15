@@ -1,4 +1,5 @@
 import { expect, it } from "vitest";
+import type { AttemptId } from "../../data/src/protocol";
 import { typedAttempt, typedHandoff, typedHistoryWindow, validTypedHandoff, typedHandoffRegistry,typedSelectedCoverageWindow } from "./typed-handoff-fixture";
 
 it("builds one strict receipt/owner history contract for node and ordinal reads", () => {
@@ -62,4 +63,10 @@ it('public response tuples use current selected kinds and selected replies prese
  expect(typedSelectedCoverageWindow('t',8,4,rows,{node_id:'a',before:0,after:199}).items.map(row=>row.node_id)).toEqual(['a','b']);
  expect(typedSelectedCoverageWindow('t',8,4,rows,{node_id:'a',before:2,after:1}).items.map(row=>row.node_id)).toEqual(['human','tool','a','b']);
  expect(()=>typedSelectedCoverageWindow('t',8,4,rows,{node_id:'a',before:200,after:0})).toThrow('bounds');
+});
+
+it('shared typed fixture carries only the optional strict attempt association',()=>{
+ const fixture=typedHandoff({provenanceAttemptId:'00000000-0000-4000-8000-000000000001' as AttemptId});
+ const window=typedHistoryWindow(fixture,{node_id:fixture.nodeId})!;
+ expect(window.items[0]!.provenance).toEqual({attempt_id:fixture.provenanceAttemptId});
 });

@@ -1,4 +1,4 @@
-import type {HistoryItem,HistorySavedItem,HistoryWindowArgs,ResponseNodeRef,WorkItem} from '../../data/src/protocol';
+import type {AttemptId,HistoryItem,HistorySavedItem,HistoryWindowArgs,ResponseNodeRef,WorkItem} from '../../data/src/protocol';
 
 export interface TypedHandoffFixture {
   readonly threadId: string;
@@ -10,6 +10,7 @@ export interface TypedHandoffFixture {
   readonly revision: number;
   readonly total: number;
   readonly text: string;
+  readonly provenanceAttemptId?: AttemptId;
 }
 
 export type TypedHandoffRef = ResponseNodeRef & {readonly kind:'assistant_response'};
@@ -34,7 +35,7 @@ export function typedHandoff(overrides: Partial<TypedHandoffFixture> = {}): Type
   return {
     threadId: "lead", attemptId: "a1", turnId: "turn1", scope: "lead/a1/turn1",
     nodeId: "canonical-node", ordinal: 300, revision: 2, total: 301,
-    text: "Synthetic retained answer.", ...overrides,
+    text: "Synthetic retained answer.", provenanceAttemptId: undefined, ...overrides,
   };
 }
 
@@ -54,6 +55,7 @@ export function typedHistoryWindow(fixture: TypedHandoffFixture, args: { node_id
   const node: TypedHistoryNode = {
     node_id: fixture.nodeId, kind: "assistant_response", selection: { ordinal: fixture.ordinal }, excerpt: fixture.text,
     items: [{ kind: "text", item_identity: `${fixture.nodeId}:/output/0/content/0`, text: fixture.text, text_complete: true }],
+    ...(fixture.provenanceAttemptId ? { provenance: { attempt_id: fixture.provenanceAttemptId } } : {}),
   };
   return { thread_id: fixture.threadId, revision: fixture.revision, total: fixture.total, item_count: 1, items: [node] };
 }

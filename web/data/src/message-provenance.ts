@@ -1,6 +1,12 @@
-import type {MessageProvenance, NotificationDescriptor} from './protocol';
+import type {AttemptId, MessageProvenance, NotificationDescriptor} from './protocol';
 const bytes=new TextEncoder();
 const object=(v:unknown):v is Record<string,unknown>=>typeof v==='object'&&v!==null&&!Array.isArray(v);
+const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+export function admitAttemptId(value:unknown):value is AttemptId{return typeof value==='string'&&UUID.test(value);}
+export function validHistoryProvenance(value:unknown):boolean{
+ if(!object(value)||!Object.hasOwn(value,'attempt_id'))return true;
+ return admitAttemptId(value.attempt_id);
+}
 /** Optional metadata rejection cannot reject independent sender or body facts. */
 export function admitMessageProvenance(value:unknown,nodeId:unknown):MessageProvenance|undefined{
  if(!object(value)||bytes.encode(JSON.stringify(value)).length>4096)return;

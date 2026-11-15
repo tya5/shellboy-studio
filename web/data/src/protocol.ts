@@ -276,6 +276,8 @@ export type MessageProvenance =
   | {expect_reply:true;reply_state:'pending'|'ignored'|'cancelled';reply_node_id?:never}
   | {expect_reply:true;reply_state:'replied';reply_node_id:string};
 
+export type AttemptId = string & { readonly __attemptId: unique symbol };
+
 export interface HistoryItem {
   spill_tools?: SpillToolSources | null;
   /** Absent on legacy owners/reads; null is a deferred whole node, never prose. */
@@ -289,7 +291,7 @@ export interface HistoryItem {
   excerpt?: string;
   execution_count?: number;
   executions?: HistoryExecution[];
-  provenance?: { notification?: NotificationDescriptor; message?: MessageProvenance; created_at?: string; sender?: { kind?: string; [extra: string]: unknown }; [extra: string]: unknown };
+  provenance?: { attempt_id?: AttemptId; notification?: NotificationDescriptor; message?: MessageProvenance; created_at?: string; sender?: { kind?: string; [extra: string]: unknown }; [extra: string]: unknown };
   /** Position on the Thread's selected path; `ordinal` ascends. */
   selection?: { ordinal?: number; [extra: string]: unknown };
   [extra: string]: unknown;

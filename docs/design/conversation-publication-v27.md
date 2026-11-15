@@ -40,3 +40,8 @@ change, same-proof no-op, duplicate refs, interleaved old/new live attempts,
 manual scroll/tail-follow, and own-send pending ownership. Add the producer
 contract only in a separate Core unit; do not mix it with Core #301 or the
 archived Studio S6/label qualification.
+
+
+## Attempt association boundary (Studio follow-on)
+
+Core c591 exposes only the optional `NodeProvenance.attempt_id` association; existing provenance supplies the other identity fields. Studio may retain this field as a strict optional lowercase canonical UUID (8-4-4-4-12 hex; no version/variant restriction) on `HistoryItem` and `history.get`/owned `history.window` decoding. Missing or producer-absent/ambiguous association remains unknown; malformed values are rejected, while unrelated provenance extras remain under the existing contract. This association alone does not prove complete body, current capability, accepted generation, receipt, live retirement, readiness, or permission to remove history readback. Those are separate source contracts and must not be inferred or implemented by this follow-on unit.
