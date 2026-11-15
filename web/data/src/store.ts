@@ -908,7 +908,7 @@ export class ShellboyData {
           ? { phase: "unavailable", reason: entry.live.remainingReads ? "unresolved" : "budget-exhausted", canRetry: true }
           : { phase: "idle", canRetry: false };
       }
-      const waiting = [...this.entries.values()].find(e => e !== entry && e.refreshAfterHandoff && !e.closed && !e.paused);
+      const waiting = [...this.entries.values()].find(e => e.refreshAfterHandoff && !e.closed && !e.paused);
       if (waiting) void this.resolveHandoff(waiting);
     });
     this.handoffRead = { entry, done: entry.resolving };

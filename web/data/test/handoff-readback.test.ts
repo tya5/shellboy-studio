@@ -96,3 +96,20 @@ it('keeps B canonical handoff progress across A global resolver busy without a s
   expect(b.handoff.peek()[0]?.status).toBe('confirming');
  }finally{r.data.stop();}
 });
+
+
+it('retains same-entry dirty work until the current resolver admits it',async()=>{
+ const r=await rig();
+ try{
+  r.live();r.end();await flush();
+  const status=r.t.calls('status').find(call=>(call.args as {thread_id?:string}).thread_id==='a');
+  expect(status).toBeDefined();
+  r.live();r.end();await flush();
+  expect(r.t.calls('status').filter(call=>(call.args as {thread_id?:string}).thread_id==='a')).toHaveLength(1);
+  const result=r.db.answer(status!);r.db.answered.add(status!.id);
+  if(result.ok)r.t.ok(status!.id,result.result);else r.t.ownerError(status!.id,result.code,result.message);
+  await r.pump();
+  expect(r.h.handoffRetryState.peek().phase).not.toBe('reading');
+  expect(r.t.calls('status').filter(call=>(call.args as {thread_id?:string}).thread_id==='a').length).toBeGreaterThan(1);
+ }finally{r.data.stop();}
+});
