@@ -1051,8 +1051,8 @@ export class AppModel {
       // The callback may clear the optional record; only a present matching record can be failed.
       if(currentPending !== undefined && currentPending === originalPlainOperation){
         this.pendingOwnMessage.value={...currentPending,phase:"failed"};
+        this.sendState.value={kind:"failed",message:"Send reservation is no longer current"};
       }
-      this.sendState.value={kind:"failed",message:"Send reservation is no longer current"};
       return false;
     }
     const out = await this.ops.messageSend({ thread_id: threadId, text }, operationId);

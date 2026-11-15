@@ -97,6 +97,10 @@ summed `cached_tokens / input_tokens`, the mean input is re-derived from `known_
 aren't shown. Conversation sums take the terminal states only (`completed`, `failed`, `incomplete`), because
 other states carry no usage and would read as unknown.
 
+## Resources Memory Contract
+
+`status --memory` supplies typed process metrics and cache facts to `MemoryPane`. A missing `CacheFact.retained` value uses localized `common.notReported`; cache availability is structural and cache diagnostic reasons are not UI state. Unsupported, malformed, and disconnected reads remain distinct typed operation outcomes.
+
 ## What isn't shown, and what core would need
 
 | Missing | Why | Core need |

@@ -207,11 +207,3 @@ key is the sole typed bookkeeping exception. An unchanged source returns the
 canonical previous record, a source change advances the source revision, and a
 bookkeeping-only transfer changes only the transferred field without revocation.
 Canonical staging and observer publication consume the returned held record.
-
-## Studio 18 Memory Card Contract
-
-`status --memory` supplies typed process metrics and cache facts to `MemoryPane`; a missing `CacheFact.retained` value renders through localized `common.notReported`, while other cache facts remain visible. Cache availability is structural, and owner-provided diagnostic reasons are not part of the cache contract or UI state.
-
-Unsupported, malformed, and disconnected reads remain distinct typed outcomes at the operation boundary. This design covers the public synthetic Resources contract only; installed-owner version reporting and browser/owner acceptance remain outside it.
-
-Notification rendering keeps factual kind/time context and never infers body text; routine copy decisions remain delegated and hidden diagnostics are separate.
