@@ -1,6 +1,7 @@
 import { Handoff, type AttemptReadyProof } from "../src/handoff";
 import { expect, it } from "vitest";
 import { TerminalReadSlots, type SelectedCanonicalRequest, type OwnedTerminalReadLease } from "../src/terminal-read";
+import { HistoryWindowInput } from "../src/history-input";
 import { Cancel } from "../src/operations";
 const receipt = { scope: "s", attemptId: "a", nodeIds: ["n"], terminalState: "completed" as const };
 const request = { id: "r", args: { thread_id: "t", items: true, before: 99, after: 100 } } as SelectedCanonicalRequest;
@@ -141,6 +142,13 @@ it('joined validated pages preserve rich rows without reusing the aggregate raw 
  const lease=slots.request({kind:'persisted',receipt},selected,()=>true,parent);if(!('state' in lease))throw new Error('Expected actual paged lease');let reads=0;
  await slots.dispatch(()=>true,async args=>{const first=args.ordinal??0;const n=(args.after??0)+1;reads++;return{ok:true,value:{thread_id:'t',revision:2,total:400,items:Array.from({length:n},(_,i)=>({node_id:`rich-${first+i}`,kind:'assistant_response',selection:{ordinal:first+i},items:[{kind:'text',item_identity:'a',text:'a',text_complete:true},{kind:'text',item_identity:'b',text:'b',text_complete:true}],provenance:{message:{reply_to:'prior',expect_reply:false}}}))}};});
  const out=lease.state.peek();expect(reads).toBe(2);expect(out.phase).toBe('settled');if(out.phase!=='settled'||!out.result.ok)throw new Error('Expected rich selected cut');expect(out.result.value.items.at(-1)?.provenance?.message).toMatchObject({reply_to:'prior'});
+});
+
+
+it('join rejects selected cuts above the existing 1600-row bound with input-bound',()=>{
+ const page={thread_id:'t',revision:2,total:1600,items:Array.from({length:200},(_,i)=>({node_id:`n${i}`,kind:'event',selection:{ordinal:i},items:[]}))};
+ const pages=Array.from({length:8},()=>HistoryWindowInput.own(page));
+ let error:unknown;try{HistoryWindowInput.join([...pages,HistoryWindowInput.own({...page,items:[{...page.items[0]!,node_id:'extra',selection:{ordinal:1600}}]})]);}catch(value){error=value;}expect((error as {reason?:string}).reason).toBe('input-bound');
 });
 
 it.each(['gap','revision','total','cancel','budget'] as const)('paged selected %s never exposes a partially assembled cut',async mode=>{

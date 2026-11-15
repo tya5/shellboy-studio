@@ -8,7 +8,7 @@ import {signal} from '@preact/signals';
 import {ConversationWindow,type WindowAcceptedSnapshot} from '../../../ui-core/src/window';
 import {Handoff} from '../../../data/src/handoff';
 import type {AppModel} from '../../../ui-core/src/model';
-import {SavedWindowContent as ActualSavedWindowContent, OrderedHistory} from '../screens/Conversation';
+import {Conversation, SavedWindowContent as ActualSavedWindowContent, OrderedHistory} from '../screens/Conversation';
 import {WindowedScroll} from '../screens/WindowedScroll';
 import { act } from 'preact/test-utils';
 import { afterAll, expect, it, vi } from 'vitest';
@@ -26,6 +26,23 @@ vi.mock('../system/components/Message/markdown',async importOriginal=>{
  return importOriginal();
 });
 afterAll(()=>rendererGate.release());
+
+
+it('renders only bounded window diagnostic metadata without body or payload fields', async () => {
+  rendererGate.release();
+  const fixture=await fixtureModel({route:'conversation',threadId:'lead'});
+  const host=document.createElement('div');document.body.append(host);
+  try {
+    const reader=fixture.model.longReader.value!;
+    reader.diagnostic.value={reason:'input-bound',generation:4,revision:2,ownerEpoch:3,at:Date.now()};
+    await act(async()=>render(<Conversation model={fixture.model}/>,host));
+    const diagnostic=host.querySelector('[data-window-diagnostic]');
+    expect(diagnostic).not.toBeNull(); expect(diagnostic?.getAttribute('data-reason')).toBe('input-bound');
+    expect(diagnostic?.getAttribute('data-generation')).toBe('4'); expect(diagnostic?.getAttribute('data-revision')).toBe('2');
+    expect(diagnostic?.textContent).toContain('input-bound'); expect(diagnostic?.textContent).not.toContain('body');
+    expect(diagnostic?.textContent).not.toContain('payload');
+  } finally { render(null,host);host.remove();fixture.model.dispose();fixture.data.stop(); }
+});
 
 it("production model publishes the read plus exact handoff overlay before OrderedHistory renders", async () => {
   rendererGate.release();
