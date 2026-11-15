@@ -33,7 +33,26 @@ describe('bounded canonical attachment receive',()=>{
     h.transfer('a',()=>true);oldRelease!('end');
     expect(h.records.value).toHaveLength(1);expect(h.records.value[0]!.transferred).toBe(true);r.w.dispose();r.data.stop();
   });
-  it('a detached source before turn cannot transfer, and a thrown receiver leaves it recoverable',async()=>{
+  it('same-content confirming reentry keeps the original lease while bookkeeping changes do not advance source',async()=>{
+  const {r,h}=await setup();
+  h.confirming('a');
+  const original=h.records.value[0]!; const lease=h.captureDisplay(original)!;
+  const epoch=h.epoch; let notifications=0;
+  const stop=h.records.subscribe(records=>{ notifications++; if(notifications===1) h.confirming('a'); });
+  h.confirming('a'); stop();
+  expect(h.records.value[0]).toBe(original);
+  expect(h.epoch).toBe(epoch); expect(h.overflow.value).toBe(false); expect(lease.current()).toBe(true);
+  const second=await setup();
+  const ready=second.h.records.value[0]!; const readyLease=second.h.captureDisplay(ready)!; const readyEpoch=second.h.epoch;
+  let release:(reason:'return'|'end')=>void=()=>{};
+  expect(second.h.transfer('a',(_record,done)=>{ release=done; return true; })).toBe(true);
+  expect(second.h.records.value[0]).not.toBe(ready); expect(second.h.records.value[0]?.transferred).toBe(true);
+  expect(second.h.epoch).toBe(readyEpoch); expect(second.h.overflow.value).toBe(false); expect(readyLease.current()).toBe(true);
+  release('return'); expect(second.h.records.value[0]?.transferred).toBe(false); expect(readyLease.current()).toBe(true);
+  r.w.dispose();r.data.stop();second.r.w.dispose();second.r.data.stop();
+});
+
+it('a detached source before turn cannot transfer, and a thrown receiver leaves it recoverable',async()=>{
     const {r,h}=await setup();
     h.discard('owner_restarted');
     expect(h.transfer('a',()=>true)).toBe(false);

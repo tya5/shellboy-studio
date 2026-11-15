@@ -14,6 +14,7 @@ function freezeHistory(value:HistoryWindowResult):HistoryWindowResult{
  Object.freeze(value.items);Object.freeze(value);return value;
 }
 export class HistoryWindowInput implements HistoryWindowResult {
+ declare private readonly __ownedHistoryWindow: void;
  readonly thread_id:string;readonly revision:number;readonly total:number;readonly items:HistoryItem[];
 
  private constructor(value:HistoryWindowResult){
