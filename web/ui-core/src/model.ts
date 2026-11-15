@@ -704,9 +704,7 @@ export class AppModel {
     const current = () => this.longReader.peek() === reader && this.handle.peek() === handle
       && reader.acceptedView.currentCapability === capability && reader.isTerminalHandleCurrent(handle);
     const input = captureConversationInput(snapshot, { scope, threadId: handle.threadId,
-      records: handle.handoff.value, work: (() => { const workValue = handle.work.value.value;
-        return captureCurrentWork(handle.threadId, workValue);
-      })(), current: current() });
+      records: handle.handoff.value, work: captureCurrentWork(handle.threadId, handle.work.value.value), current: current() });
     const reserved = new Set((snapshot.assistantOwnership ?? []).filter(item => item.mode === 'preview').flatMap(item => item.itemKeys));
     const display = input.projection;
     const ownScope = this.ownMutationScope();

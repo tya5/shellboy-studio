@@ -1015,9 +1015,7 @@ export class ConversationWindow {
       ?? snapshot.terminalPersistedAttempts?.[0]?.scope ?? snapshot.displayPlan?.scope ?? 'history';
     return captureConversationInput(snapshot, { scope, threadId: binding?.handle.threadId ?? '',
       records: binding?.handle.handoff.value ?? [],
-      work: (() => { const workValue = binding?.handle.work.value.value;
-        return captureCurrentWork(binding?.handle.threadId ?? scope, workValue);
-      })(),
+      work: captureCurrentWork(binding?.handle.threadId ?? scope, binding?.handle.work.value.value),
       current: !this.disposed && (!binding || binding.handle.isReadQualificationCurrent(binding.token) && binding.handle.handoffScope() === scope) });
   }
 
