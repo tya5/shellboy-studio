@@ -208,24 +208,6 @@ canonical previous record, a source change advances the source revision, and a
 bookkeeping-only transfer changes only the transferred field without revocation.
 Canonical staging and observer publication consume the returned held record.
 
-## Notification Facts Label Boundary
-
-Notification labels use only admitted public `kind`, time, and notification
-facts. Missing facts use an honest unavailable-details label; body text is never
-used to infer a notification. This patch adds no new surface, RPC, private fact,
-style, or fallback.
-
-## Notification Timestamp Decision
-
-The missing-facts notification label is a factual unavailable-details statement,
-not a content-summary inference. The existing public `created_at` fact remains in
-the display context and, for notification facts without a typed summary, is
-rendered as a factual timestamp suffix in the notification label and ARIA context.
-Missing time stays the literal facts-only label. Alternatives were not chosen: a
-global formatter change would widen every row consumer, while dropping the time
-fact would regress accessibility and visible context. The regression covers time
-present/absent, body non-inference, and rendered text/ARIA retention.
-
 ## Studio 18 Memory Card Contract
 
 The public synthetic trace is `Operations.memoryStatus()` in
@@ -260,3 +242,5 @@ public trace only establishes bridge/protocol hello facts and the memory route;
 it does not establish an application-version field or historical installed
 v0.11.1 behavior. Read-only owner verification belongs to the separately
 authorized lane and is not performed by this source/synthetic unit.
+
+Notification rendering keeps factual kind/time context and never infers body text; routine copy decisions remain delegated and hidden diagnostics are separate.

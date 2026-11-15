@@ -271,16 +271,12 @@ export class Handoff {
     let receiving = true;
     try {
       let accepted = false;
-      try {
-        accepted = accept(moved, reason => {
-          if (receiving) { deferred = reason; return; }
-          if (!canonicalMoved || this.lifetimeValue !== epoch || h.record !== canonicalMoved || !this.held.includes(h)) return;
-          if (reason === 'end') this.release(attemptId);
-          else { this.updateTransferred(h, false); this.publish(); }
-        });
-      } catch (error) {
-        throw error;
-      }
+      accepted = accept(moved, reason => {
+        if (receiving) { deferred = reason; return; }
+        if (!canonicalMoved || this.lifetimeValue !== epoch || h.record !== canonicalMoved || !this.held.includes(h)) return;
+        if (reason === 'end') this.release(attemptId);
+        else { this.updateTransferred(h, false); this.publish(); }
+      });
       if (!accepted) return false;
       if (epoch !== this.lifetimeValue || !this.held.includes(h) || h.sourceRevision !== sourceRevision) return false;
       receiving = false;
