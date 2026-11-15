@@ -16,5 +16,5 @@ const server=createServer(async(req,res)=>{
  try { if(!file)throw Error('No route');const bytes=await readFile(out+'/'+file);res.writeHead(200,{'Content-Type':path==='/'?'text/html; charset=utf-8':types[file.split('.').at(-1)]??'application/octet-stream','Content-Security-Policy':csp,'X-Content-Type-Options':'nosniff','Cache-Control':path==='/'?'no-cache':'public, max-age=31536000, immutable'});res.end(bytes);requests.push({path,status:200}); }
  catch {res.writeHead(404);res.end();requests.push({path,status:404});}
 });
-server.listen(Number(process.env.FIXTURE_PORT ?? 19430),'127.0.0.1',()=>console.log('Production built synthetic UI; exact existing bridge CSP, only / and /assets routes'));
+server.listen(Number(process.env.FIXTURE_PORT ?? 19430),'127.0.0.1',()=>{const address=server.address();const port=typeof address==='object'&&address?address.port:Number(process.env.FIXTURE_PORT??19430);console.log(`STUDIO_FIXTURE_READY ${JSON.stringify({host:'127.0.0.1',port})}`);});
 process.on('SIGTERM',async()=>{await writeFile(process.env.REQUEST_LOG ?? join(out, 'requests.json'),JSON.stringify({csp,requests},null,2));server.close(()=>process.exit(0));});

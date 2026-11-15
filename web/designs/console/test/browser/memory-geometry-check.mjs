@@ -1,13 +1,14 @@
 import { fileURLToPath } from 'node:url';
+import { readFile } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 const repo = fileURLToPath(new URL('../../../../../', import.meta.url));
-const server = spawn(process.execPath, [join(repo, 'web/designs/console/test/browser/production-serve.mjs')], { env: { ...process.env, FIXTURE_PORT: '19430' }, stdio: 'inherit' });
+const server = spawn(process.execPath, [join(repo, 'web/designs/console/test/browser/production-serve.mjs')], { env: { ...process.env, FIXTURE_PORT: '0' }, stdio: ['ignore','pipe','inherit'] });
 const browserDir = await mkdtemp(join(tmpdir(), 'studio-memory-'));
-const debugPort = 19431;
-const chrome = spawn(process.env.CHROME_BIN ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', ['--headless','--disable-gpu','--no-first-run','--user-data-dir='+browserDir,'--remote-debugging-port='+debugPort,'--remote-allow-origins=*','about:blank'], { stdio: 'ignore' });
+const serverReady = new Promise((resolve, reject) => { let text=''; server.stdout.on('data', chunk => { text += chunk; const line=text.split('\n').find(line => line.startsWith('STUDIO_FIXTURE_READY ')); if(line) resolve(JSON.parse(line.slice('STUDIO_FIXTURE_READY '.length))); }); server.once('error', reject); server.once('exit', (code, signal) => reject(new Error(`fixture server exited ${code}/${signal}`))); });
+const chrome = spawn(process.env.CHROME_BIN ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', ['--headless','--disable-gpu','--no-first-run','--user-data-dir='+browserDir,'--remote-debugging-port=0','--remote-allow-origins=*','about:blank'], { stdio: 'ignore' });
 const terminal = child => new Promise(resolve => {
   let done = false;
   const finish = (code, signal, error) => { if (!done) { done = true; resolve({ code, signal, error }); } };
@@ -18,6 +19,9 @@ const terminal = child => new Promise(resolve => {
 const serverTerminal = terminal(server), chromeTerminal = terminal(chrome);
 const stop = async (child, wait) => { if (child.exitCode === null && child.signalCode === null) child.kill('SIGTERM'); await wait; };
 try {
+  const fixture=await serverReady;
+  let debugPort; for(let i=0;i<100;i++){try{const port=Number((await readFile(join(browserDir,'DevToolsActivePort'),'utf8')).split('\n')[0]);debugPort=port;break}catch{await new Promise(r=>setTimeout(r,100));}}
+  if(!debugPort) throw Error('Chrome DevToolsActivePort did not appear');
   let info; for(let i=0;i<100;i++){try{info=await (await fetch(`http://127.0.0.1:${debugPort}/json`)).json();break}catch{await new Promise(r=>setTimeout(r,100));}}
   if(!info) throw Error('Chrome did not start');
   const target=info.find(target=>target.type==='page'); if(!target) throw Error('Chrome page target missing');
@@ -28,7 +32,7 @@ try {
   await cmd('Runtime.enable'); await cmd('Page.enable');
   for(const width of [1280,390]) for(const lang of ['en','ja']){
     await cmd('Emulation.setDeviceMetricsOverride',{width,height:900,deviceScaleFactor:1,mobile:width===390});
-    await cmd('Page.navigate',{url:`http://127.0.0.1:19430/?view=memory&lang=${lang}`});
+    await cmd('Page.navigate',{url:`http://${fixture.host}:${fixture.port}/?view=memory&lang=${lang}`});
     let ready=false;for(let i=0;i<100;i++){await new Promise(r=>setTimeout(r,100));if(await evaluate(`document.documentElement.dataset.memoryFixture===${JSON.stringify(lang)} && !!document.querySelector('section[aria-label] .meters')`)){ready=true;break;}}
     if(!ready)throw Error(`MemoryPane did not render ${width}/${lang}`);
     const result=await evaluate(`(()=>{const section=[...document.querySelectorAll('section[aria-label]')].find(e=>e.querySelector('.meters'));if(!section)throw Error('memory section missing');const cards=[...section.querySelectorAll('.meter')],root=section.getBoundingClientRect(),rects=cards.map(e=>{const r=e.getBoundingClientRect();return {left:r.left,right:r.right,top:r.top,bottom:r.bottom};});return {cardCount:cards.length,text:section.textContent??'',overflow:document.documentElement.scrollWidth>innerWidth,root:{left:root.left,right:root.right},rects}})()`);
