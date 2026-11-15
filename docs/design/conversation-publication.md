@@ -197,3 +197,11 @@ CI, or three-OS qualification.
 Remaining qualification work is removal of the obsolete test-only generic
 accepted-publication mint/materialization path and the complete-unit validation
 sequence. No compatibility fallback is permitted while those paths are removed.
+
+The public-entry fixed-point proof now uses the existing captured base identity:
+model capture extends `input.identity` with typed own-send fields, while the base
+work identity uses the stable owner work source rather than a freshly normalized
+array. This prevents a same-source publication from recursively committing while
+`syncWindow` observes the accepted view. The complete public-entry group and its
+cycle path are validated at the final focused SHA, including the saved/retirement
+and next-live-turn cases.
