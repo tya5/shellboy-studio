@@ -1057,15 +1057,8 @@ export class AppModel {
     }
     const out = await this.ops.messageSend({ thread_id: threadId, text }, operationId);
     if ((!current() && !(!out.ok && out.error.kind === "unconfirmed" && retryCurrent())) || this.pendingOwnMessage.peek()?.operationId !== operationId) return false;
-    if (out.ok && out.value.thread_id === threadId) {
-      // Publish the original operation's ownership transfer as one observable frame.
-      batch(()=>{
-        this.acceptedOwnMessages.value = [...this.acceptedOwnMessages.peek(),{threadId,scope,operationId,text,phase:"accepted",messageId:out.value.message_id,plainMessageSend:originalPlainOperation?.plainMessageSend}];
-        this.pendingOwnMessage.value = undefined;
-        this.sendState.value = { kind: "idle" };
-      });
-      return true;
-    }
+    if (out.ok && out.value.thread_id === threadId)
+      return this.commitOwnAcceptance(originalPlainOperation, out.value.message_id, threadId, scope);
     if (out.ok) {
       this.pendingOwnMessage.value = {threadId,scope,operationId,text,phase:"failed"};
       this.sendState.value = {kind:"failed",message:"Message acceptance belongs to a different Thread"};
@@ -1077,6 +1070,16 @@ export class AppModel {
       ? { kind: "unconfirmed", operationId, text }
       : { kind: "failed", message: errorMessage(out.error) };
     return false;
+  }
+
+  private commitOwnAcceptance(original: PendingOwnMessage | undefined, messageId: string, threadId: string, scope: string): boolean {
+    if (!original || this.pendingOwnMessage.peek() !== original || original.threadId !== threadId || original.scope !== scope) return false;
+    batch(() => {
+      this.acceptedOwnMessages.value = [...this.acceptedOwnMessages.peek(), { ...original, phase: "accepted", messageId }];
+      this.pendingOwnMessage.value = undefined;
+      this.sendState.value = { kind: "idle" };
+    });
+    return true;
   }
 
   async createAppRequest(text: string, cwd: string): Promise<boolean> {

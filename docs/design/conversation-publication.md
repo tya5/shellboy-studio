@@ -191,3 +191,11 @@ one lifetime identity. History joins use `MAX_HISTORY_ROWS` for both admission a
 joined-output checks; raw page capture remains independently bounded. Visual
 window diagnostics remain a separate body-free UI concern and are not changed by
 this unit.
+
+## Composer Send Ownership
+
+The composer owns a draft generation until the send reservation is accepted. The
+model commits acceptance through one typed pending-to-accepted transition matching
+operation, Thread, and scope; failure, retry, Stop, navigation, and a newer draft
+retain the current owner. The existing send acceptance regression remains the
+producer boundary for clear-on-accept and draft retention.
