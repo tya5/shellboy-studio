@@ -12,6 +12,10 @@ export class HistoryWindowInput implements HistoryWindowResult {
   const capture=createInputCapture(),owned=capture(value);
   return new HistoryWindowInput(owned,capture.visits??0);
  }
+ static fromCaptured(value:HistoryWindowResult,visits:number):HistoryWindowInput{
+  if(value instanceof HistoryWindowInput)return value;
+  return new HistoryWindowInput(value,visits);
+ }
  static join(pages:readonly HistoryWindowInput[]):HistoryWindowInput{
   const first=pages[0];if(!first)throw new InputCaptureError('invalid-input');
   const visits=pages.reduce((total,page)=>total+page.#visits,0);
@@ -19,6 +23,10 @@ export class HistoryWindowInput implements HistoryWindowResult {
   const rows=pages.flatMap(page=>page.items);Object.freeze(rows);
   return new HistoryWindowInput({...first,items:rows},visits);
  }
+}
+export function ownCapturedHistoryOutcome(out:Outcome<HistoryWindowResult>,visits:number):Outcome<HistoryWindowResult>{
+ if(!out.ok)return out;
+ return{ok:true,value:HistoryWindowInput.fromCaptured(out.value,visits)};
 }
 export function ownHistoryOutcome(out:Outcome<HistoryWindowResult>):Outcome<HistoryWindowResult>{
  if(!out.ok)return out;

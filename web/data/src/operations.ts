@@ -1,4 +1,5 @@
-import {ownHistoryOutcome} from './history-input';
+import {ownCapturedHistoryOutcome,ownHistoryOutcome} from './history-input';
+import {createInputCapture} from './immutable-input';
 import {ownInputOutcome} from './immutable-input';
 import {sanitizeMessageRelation} from "./message-provenance";
 // Typed operations: the UX boundary for requests. Stateless wrappers over `Link.call`;
@@ -244,7 +245,7 @@ export class Cancel {
 
 export type UuidFn = () => string;
 
-function unwrap<T>(response: OwnerResponse, decode: Decoder<T>): Outcome<T> {
+function unwrap<T>(response: OwnerResponse, decode: Decoder<T>, capture?: (raw: unknown) => unknown): Outcome<T> {
   if (!response.ok) {
     return response.error
       ? { ok: false, error: fromApiError(response.error) }
@@ -252,7 +253,7 @@ function unwrap<T>(response: OwnerResponse, decode: Decoder<T>): Outcome<T> {
   }
   if (response.result === undefined)
     return { ok: false, error: { kind: "invalid_response", message: "owner reply without result" } };
-  const value = decode(response.result);
+  const value = decode(capture ? capture(response.result) : response.result);
   return value.ok
     ? { ok: true, value: value.value }
     : { ok: false, error: { kind: "invalid_response", message: value.reason } };
@@ -274,6 +275,7 @@ export class Operations {
     decode: Decoder<T>,
     mutation?: { operationId: string },
     read?: ReadOptions,
+    capture?: (raw: unknown) => unknown,
   ): Promise<Outcome<T>> {
     const { cancel, ...options } = read ?? {};
     const handle = this.link.call(command, args, mutation ? { operationId: mutation.operationId, mutation: true } : options);
@@ -282,7 +284,7 @@ export class Operations {
     forget?.();
     const extra = mutation ? { operationId: mutation.operationId } : {};
     if (!reply.ok) return { ok: false, error: reply.error, ...extra };
-    return { ...unwrap(reply.response, decode), ...extra };
+    return { ...unwrap(reply.response, decode, capture), ...extra };
   }
 
   // ---- reads ----
@@ -306,7 +308,9 @@ export class Operations {
   }
   historyWindow(args: HistoryWindowArgs, read?: ReadOptions): Promise<Outcome<HistoryWindowResult>> {
     if (!this.historyWindowSupported()) return Promise.resolve({ ok: false, error: { kind: "invalid_response", message: "owner does not advertise history.window" } });
-    return this.run("history.window", args, decodeHistoryWindow, undefined, read).then(ownHistoryOutcome);
+    const capture=createInputCapture();
+    return this.run("history.window", args, decodeHistoryWindow, undefined, read, capture)
+      .then(out=>ownCapturedHistoryOutcome(out,capture.visits??0));
   }
   historyGet(args: HistoryGetArgs, read?: ReadOptions): Promise<Outcome<HistoryBody>> {
     return this.run("history.get", args, decodeBody, undefined, read);
