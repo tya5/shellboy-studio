@@ -201,9 +201,10 @@ export class Handoff {
     // Partial saved-node evidence deliberately does not require complete preview or items.
     const { readyAttempt: _readyAttempt, ...retained } = original;
     const staged = Object.freeze({ ...retained, terminalPersisted: proof });
-    h.attemptCapture = { original, staged, proof, epoch: this.epochValue, lifetime: this.lifetimeValue };
-    this.updateRecord(h, staged); this.publish();
-    return staged;
+    const canonical = this.updateRecord(h, staged);
+    h.attemptCapture = { original, staged: canonical, proof, epoch: this.epochValue, lifetime: this.lifetimeValue };
+    this.publish();
+    return canonical;
   }
   stageAttempt(original: HandoffRecord, proof: AttemptReadyProof): HandoffRecord | undefined {
     const h = this.held.find(h => h.record === original);
@@ -221,9 +222,10 @@ export class Handoff {
     }
     if (!visible) return;
     const staged = Object.freeze({ ...original, readyAttempt: proof });
-    h.attemptCapture = { original, staged, proof, epoch: this.epochValue, lifetime: this.lifetimeValue };
-    this.updateRecord(h, staged); this.publish();
-    return staged;
+    const canonical = this.updateRecord(h, staged);
+    h.attemptCapture = { original, staged: canonical, proof, epoch: this.epochValue, lifetime: this.lifetimeValue };
+    this.publish();
+    return canonical;
   }
   /** The staged object, capture and lifetime jointly own selected-read admission. */
   isReadyReadCurrent(record: HandoffRecord, scope: string): boolean {
@@ -299,7 +301,7 @@ export class Handoff {
     this.overflowSig.value = false; this.publish();
   }
   /** Semantic source changes revoke leases; bookkeeping and true no-ops preserve them. */
-  private updateRecord(held: Held, next: HandoffRecord, transition: RecordTransition = 'source'): void {
+  private updateRecord(held: Held, next: HandoffRecord, transition: RecordTransition = 'source'): HandoffRecord {
     const previous = held.record;
     const semanticChange = previous.attemptId !== next.attemptId || previous.key !== next.key
       || previous.presentationContainer !== next.presentationContainer || previous.text !== next.text
@@ -307,9 +309,10 @@ export class Handoff {
       || previous.bodyAuthority !== next.bodyAuthority || previous.nodeId !== next.nodeId
       || previous.proof !== next.proof || previous.readyAttempt !== next.readyAttempt
       || previous.terminalPersisted !== next.terminalPersisted || previous.placement !== next.placement;
-    if (!semanticChange && previous.transferred === next.transferred) return;
+    if (!semanticChange && previous.transferred === next.transferred) return previous;
     if (transition === 'source' && semanticChange) held.sourceRevision++;
     held.record = Object.freeze(next);
+    return held.record;
   }
   private update(id: string, fn: (r: HandoffRecord) => HandoffRecord): void {
     const h = this.held.find(h => h.attemptId === id); if (!h) return; this.updateRecord(h, fn(h.record)); this.publish();
