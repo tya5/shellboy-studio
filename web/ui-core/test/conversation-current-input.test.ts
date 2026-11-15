@@ -98,3 +98,27 @@ it('canonical-only current input has one projection graph, while actual reservat
   expect(input.projection.items).toHaveLength(2);expect(r.w.acceptedView.isCurrent(snapshot)).toBe(true);
  }finally{r.w.dispose();r.data.stop();}
 });
+
+it('reuses canonical projection only for identity-stable selection cuts', async () => {
+ const r = await rig(1, { decorate: (_ordinal, node) => ({ ...node, kind: 'user', items: [{ kind: 'text', item_identity: 'body', text: 'stable', text_complete: true }] }) });
+ try {
+  await r.settle();
+  const options = { scope: r.handle.handoffScope(), threadId: 't', records: [], work: [], current: true } as const;
+  expect(r.w.bindConversationInput(snapshot => captureConversationInput(snapshot, options))).toBe(true);
+  expect(r.w.refreshConversationInput(r.w.acceptedView.peek())).toBe(true);
+  const firstSnapshot = r.w.acceptedView.peek();
+  expect(firstSnapshot.canonicalInput?.scope).toBe(options.scope);
+  expect(firstSnapshot.canonicalInput).toBeDefined();
+  const first = captureConversationInput(firstSnapshot, options);
+  expect(first.canonicalInput).toBe(firstSnapshot.canonicalInput);
+  r.w.setAttemptPresentations([{ scope: options.scope, attemptId: 'owner-only', turnId: 'turn', nodeIds: ['unselected'], state: 'pending' }]);
+  const second = captureConversationInput(r.w.acceptedView.peek(), options);
+  expect(second.canonicalInput.projection).toBe(first.canonicalInput.projection);
+  const replaced = { ...r.w.acceptedView.peek(), rows: r.w.acceptedView.peek().rows.map(row => ({ ...row, items: [{ kind: 'text' as const, item_identity: 'body', text: 'replaced', text_complete: true }] })) };
+  const third = captureConversationInput(replaced, options);
+  expect(third.canonicalInput.projection).not.toBe(first.canonicalInput.projection);
+  expect(third.canonicalProjection.items[0]?.source).toMatchObject({ text: 'replaced' });
+  const otherScope = captureConversationInput(r.w.acceptedView.peek(), { ...options, scope: 'other-scope' });
+  expect(otherScope.canonicalInput.projection).not.toBe(second.canonicalInput.projection);
+ } finally { r.w.dispose(); r.data.stop(); }
+});
