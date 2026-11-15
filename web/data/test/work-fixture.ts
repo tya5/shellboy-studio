@@ -1,6 +1,7 @@
 import {Handoff,type PresentationContainerId} from '../src/handoff';
+import {admitAttemptId} from '../src/message-provenance';
 import type {SelectedResponseRef} from '../src/public-response-refs';
-import type {HistoryItem, ResponseNodeRef, WorkItem} from '../src/protocol';
+import type {AttemptId, HistoryItem, ResponseNodeRef, WorkItem} from '../src/protocol';
 
 /** Public status DTO construction; references are supplied from fixture-owned selected inputs. */
 export function attemptWork(input:{threadId:string;attemptId:string;turnId:string;state:string;
@@ -24,3 +25,14 @@ export function syntheticPresentation(attemptId:string):PresentationContainerId{
  const ledger=new Handoff(fn=>fn());ledger.apply({attempt_id:attemptId,gap:false,deltas:[]});
  const container=ledger.records.peek()[0]!.presentationContainer;ledger.discard('ended');return container;
 }
+
+
+export function canonicalAttemptId(n:number):AttemptId{const value=`00000000-0000-4000-8000-${String(n).padStart(12,'0')}`;if(!admitAttemptId(value))throw new Error('invalid canonical fixture ID');return value;}
+export const CANONICAL_ATTEMPT_ID = canonicalAttemptId(1);
+export function withCanonicalAttemptProvenance(rows:readonly HistoryItem[], attemptId:AttemptId=CANONICAL_ATTEMPT_ID):HistoryItem[]{
+ return rows.map(row=>row.kind==='assistant_response' ? {...row,provenance:{...row.provenance,attempt_id:attemptId}} : row);
+}
+
+
+export interface DeclaredAttemptIdentity { readonly attemptId:string; readonly recordKey:string; readonly receiptRecordId:string }
+export function declaredAttemptIdentity(attemptId:string):DeclaredAttemptIdentity{return{attemptId,recordKey:`handoff:${attemptId}`,receiptRecordId:attemptId};}

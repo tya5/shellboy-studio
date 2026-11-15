@@ -2,6 +2,7 @@ import { expect, it } from "vitest";
 import { ShellboyData } from "../src/store";
 import { FakeOwnerDb, FakeTransport, connected, settle, flush } from "./harness";
 import {readbackFixture as rig} from './readback-fixture';
+import {CANONICAL_ATTEMPT_ID} from './work-fixture';
 
 it("explicit retry publishes real read progress and unresolved outcome without executing a model/tool/send", async () => {
   const r = await rig(); r.state.available = false; r.live(); r.end(); await r.pump();
@@ -164,7 +165,7 @@ it("lookup failure is explicit and retry performs only one new readonly lookup",
   expect(r.h.handoffRetryState.value).toEqual({ phase: "failed", reason: "lookup-failed", canRetry: true });
   const retry = r.h.retryHandoff(); await r.pump(); await retry;
   expect(r.t.calls("status")).toHaveLength(2);
-  expect(r.receipt()).toMatchObject({scope:r.h.handoffScope(),attemptId:'attempt',nodeIds:['tool','answer']});
+  expect(r.receipt()).toMatchObject({scope:r.h.handoffScope(),attemptId:CANONICAL_ATTEMPT_ID,nodeIds:['tool','answer']});
   expect(r.h.handoff.peek()[0]?.text).toBe('whole live block');expect(r.h.handoff.peek()[0]?.readyAttempt).toBeUndefined();
   expect(r.h.handoffRetryState.value).toEqual({phase:'unavailable',reason:'unresolved',canRetry:true});
   expect(r.bodyReads()).toHaveLength(0);r.data.stop();

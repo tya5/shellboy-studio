@@ -67,6 +67,7 @@ export function assistantOwnership(association: DisplayAssociation, recordKey: s
   // Preview owns only unavailable members, never a separately complete saved sibling.
   const members = canonical ? ordinary : ordinary.filter(item => item.source.kind === 'text'
     && (!item.source.textComplete || !item.source.text));
+  if (canonical && nodes.some(node => node.provenance?.attempt_id !== association.attemptId)) return;
   return Object.freeze({ scope: association.scope, attemptId: association.attemptId, turnId: association.turnId,
     recordKey, containerKey: association.presentationContainer, proofRevision: revision, receiptRevision: revision, mode: canonical ? 'canonical' : 'preview',
     itemKeys: Object.freeze(members.map(item => item.key)), refs: Object.freeze(association.refs.map(ref => Object.freeze({ ...ref }))) });

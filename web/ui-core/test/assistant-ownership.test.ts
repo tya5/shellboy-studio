@@ -1,15 +1,15 @@
-import {selectedReadyRefs,syntheticPresentation} from '../../data/test/work-fixture';
+import {selectedReadyRefs,syntheticPresentation,CANONICAL_ATTEMPT_ID} from '../../data/test/work-fixture';
 import { expect, it } from 'vitest';
 import { assistantOwnership } from '../src/assistant-ownership';
 import type { DisplayAssociation, PresentationContainerId } from '../../data/src/handoff';
-import type { HistoryItem } from '../../data/src/protocol';
+import type { AttemptId, HistoryItem } from '../../data/src/protocol';
 
-const answer = (): HistoryItem => ({node_id:'answer',kind:'assistant_response',selection:{ordinal:9},items:[{kind:'text',item_identity:'exact-text',text:'Same body',text_complete:true},{kind:'tool_call',item_identity:'independent-tool',execution_ids:['exec']}]});
-const association:DisplayAssociation={scope:'owner/thread/lifetime',attemptId:'attempt',turnId:'turn',presentationContainer:syntheticPresentation('attempt'),refs:selectedReadyRefs(['answer'],[answer()])};
+const answer = (): HistoryItem => ({node_id:'answer',kind:'assistant_response',provenance:{attempt_id:CANONICAL_ATTEMPT_ID},selection:{ordinal:9},items:[{kind:'text',item_identity:'exact-text',text:'Same body',text_complete:true},{kind:'tool_call',item_identity:'independent-tool',execution_ids:['exec']}]});
+const association:DisplayAssociation={scope:'owner/thread/lifetime',attemptId:CANONICAL_ATTEMPT_ID,turnId:'turn',presentationContainer:syntheticPresentation(CANONICAL_ATTEMPT_ID),refs:selectedReadyRefs(['answer'],[answer()])};
 it('owns exact ordinary item keys, preserving Work siblings and independent equal text identities',()=>{
  const other={...answer(),node_id:'other',selection:{ordinal:10}};
  const decision=assistantOwnership(association,'original',[answer(),other],7)!;
- expect(decision).toMatchObject({scope:association.scope,attemptId:'attempt',turnId:'turn',mode:'canonical',recordKey:'original'});
+ expect(decision).toMatchObject({scope:association.scope,attemptId:CANONICAL_ATTEMPT_ID,turnId:'turn',mode:'canonical',recordKey:'original'});
  expect(decision.itemKeys).toHaveLength(1);
  expect(decision.itemKeys[0]).toContain('answer');expect(decision.itemKeys[0]).toContain('exact-text');
  expect(decision.itemKeys[0]).not.toContain('independent-tool');expect(decision.itemKeys[0]).not.toContain('other');
@@ -54,4 +54,16 @@ it.each(['partial','empty'] as const)('a %s companion cannot suppress a separate
  const decision=assistantOwnership({...association,refs},'original',[first,second],7)!;
  expect(decision.mode).toBe('preview');expect(decision.itemKeys).toEqual([JSON.stringify(['second','companion'])]);
  expect(decision.refs).toEqual(refs);expect(decision.containerKey).toBe(association.presentationContainer);
+});
+
+
+it('admits canonical saved ownership only with matching provenance on every selected node',()=>{
+ const node={...answer(),provenance:{attempt_id:CANONICAL_ATTEMPT_ID}};
+ expect(assistantOwnership(association,'original',[node],7)).toMatchObject({mode:'canonical',attemptId:association.attemptId});
+});
+it.each(['missing','mismatch'] as const)('keeps %s saved association unknown without changing preview semantics',mode=>{
+ const node=mode==='missing'?(({provenance: _ignored, ...rest})=>rest)(answer()):{...answer(),provenance:{attempt_id:'other-attempt' as AttemptId}};
+ expect(assistantOwnership(association,'original',[node],7)).toBeUndefined();
+ const partial={...answer()};partial.items=[{kind:'text',item_identity:'exact-text',text:'prefix',text_complete:false},partial.items![1]!];
+ expect(assistantOwnership(association,'original',[partial],7)).toMatchObject({mode:'preview'});
 });

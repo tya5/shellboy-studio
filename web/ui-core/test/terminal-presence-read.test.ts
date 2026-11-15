@@ -1,4 +1,4 @@
-import {selectedReadyRefs,syntheticPresentation} from '../../data/test/work-fixture';
+import {selectedReadyRefs,syntheticPresentation,CANONICAL_ATTEMPT_ID,withCanonicalAttemptProvenance,declaredAttemptIdentity} from '../../data/test/work-fixture';
 import { ConversationWindow } from "../src/window";
 import type { OwnedTerminalReadLease } from "../../data/src/terminal-read";
 import type { HistoryItem } from "../../data/src/protocol";
@@ -12,10 +12,10 @@ import { observeDeclaredCuts, type DeclaredPlanCut } from "./publication-contrac
 import { declaredToolAnswerCut } from "./declared-attempt-cuts";
 import type { TerminalPresence } from "../src/terminal-presence";
 import {ownedHistory} from '../../data/test/owned-history';
-const baseNodes: HistoryItem[] = [
+const baseNodes: HistoryItem[] = withCanonicalAttemptProvenance([
   { node_id: "tool", kind: "assistant_response", selection: { ordinal: 0 }, items: [{ kind: "tool_call", item_identity: "call", execution_ids: ["exec"] }] },
   { node_id: "answer", kind: "assistant_response", selection: { ordinal: 1 }, items: [{ kind: "text", item_identity: "text", text: "saved", text_complete: true }] },
-];
+]);
 async function rig(windowCap = true) {
   const t = new FakeTransport(), db = new FakeOwnerDb(), frames: (() => void)[] = []; let n = 0;
   const data = new ShellboyData({ transport: t, newId: () => `atomic-${++n}`, schedule: cb => frames.push(cb) });
@@ -24,7 +24,7 @@ async function rig(windowCap = true) {
   const state = { selectedRevision: 7, selectedOwnerAvailable: true, available: true, truncated: false, partial: false, deferred: false, unknown: false, missing: false, error: false, changing: false, nonterminal: false, wrongid: false, empty: false, hold: false };
   const original = db.answer.bind(db); let reads = 0;
   db.answer = call => {
-    if (call.command === "status") return { ok: true, result: { items: state.available ? [{ kind: "attempt", id: state.wrongid ? "other" : "attempt", attempt_id: "attempt", turn_id: "turn", thread_id: "a", state: state.nonterminal ? "inflight" : "completed", response_nodes: state.empty ? [] : baseNodes.filter(node => node.items?.some(item => item.kind === "text")).map(node => ({ node_id: node.node_id, ordinal: node.selection!.ordinal!, kind: node.kind, phase: "final_answer", item_id: null })), response_nodes_truncated: state.truncated }] : [] } };
+    if (call.command === "status") return { ok: true, result: { items: state.available ? [{ kind: "attempt", id: state.wrongid ? "other" : CANONICAL_ATTEMPT_ID, attempt_id: CANONICAL_ATTEMPT_ID, turn_id: "turn", thread_id: "a", state: state.nonterminal ? "inflight" : "completed", response_nodes: state.empty ? [] : baseNodes.filter(node => node.items?.some(item => item.kind === "text")).map(node => ({ node_id: node.node_id, ordinal: node.selection!.ordinal!, kind: node.kind, phase: "final_answer", item_id: null })), response_nodes_truncated: state.truncated }] : [] } };
     if (call.command === "history.window") {
       if (state.error) return { ok: false, code: "not_found", message: "synthetic" };
       const items: unknown[] = structuredClone(baseNodes);
@@ -37,7 +37,7 @@ async function rig(windowCap = true) {
     }
     return original(call);
   };
-  const live = (text = "") => { t.push({ t: "live", thread_id: "a", attempt_id: "attempt", gap: false, deltas: [{ offset: 0, reasoning: false, text }] }); frames.splice(0).forEach(f => f()); };
+  const live = (text = "") => { t.push({ t: "live", thread_id: "a", attempt_id: CANONICAL_ATTEMPT_ID, gap: false, deltas: [{ offset: 0, reasoning: false, text }] }); frames.splice(0).forEach(f => f()); };
   const end = () => t.push({ t: "live_end", thread_id: "a" });
   return { t, db, data, h, state, live, end, pump: () => settle(t, db) };
 }
@@ -47,16 +47,16 @@ async function target(wrap:(handle:ThreadHandle)=>ThreadHandle=handle=>handle) {
  base.h.captureReadQualification=()=>{token=capture();return token;};
  const r={...base,h:wrap(base.h)};
  const w = new ConversationWindow({ read: async () => ({ ok: true, value: ownedHistory({ thread_id: "a", revision: 7, total: 1,
- items: [{ node_id: "tool", kind: "assistant_response", selection: { ordinal: 0 }, items: [{ kind: "tool_call", item_identity: "call", execution_ids: ["exec"] }] }] }) }) }); await flush();
+ items: withCanonicalAttemptProvenance([{ node_id: "tool", kind: "assistant_response", selection: { ordinal: 0 }, items: [{ kind: "tool_call", item_identity: "call", execution_ids: ["exec"] }] }], CANONICAL_ATTEMPT_ID) }) }) }); await flush();
  expect(w.bindTerminalHandle(r.h)).toBe(true);
  const currentReceipt=():TerminalPersistedProof=>{
-  const receipt=r.h.handoff.peek().find(record=>record.attemptId==='attempt')?.terminalPersisted;
+  const receipt=r.h.handoff.peek().find(record=>record.attemptId===CANONICAL_ATTEMPT_ID)?.terminalPersisted;
   if(!receipt)throw new Error('fixture requires the actual Store-staged receipt');return receipt;
  };
- const cut=(input:Parameters<typeof declaredToolAnswerCut>[0])=>declaredToolAnswerCut({...input,emptyOriginal:input.container?undefined:{scope:'a',recordKey:'handoff:attempt'}});
+ const cut=(input:Omit<Parameters<typeof declaredToolAnswerCut>[0],'identity'|'emptyOriginal'>)=>declaredToolAnswerCut({...input,identity:declaredAttemptIdentity(CANONICAL_ATTEMPT_ID),emptyOriginal:input.container?undefined:{scope:'a',identity:declaredAttemptIdentity(CANONICAL_ATTEMPT_ID)}});
  const publications=observeDeclaredCuts(w,()=>{
   const receipt=currentReceipt();
-  const pending:TerminalPresence={scope:receipt.scope,attemptId:'attempt',receipt,phase:'pending',reason:'canonical-pending',answerAvailability:'unknown'};
+  const pending:TerminalPresence={scope:receipt.scope,attemptId:CANONICAL_ATTEMPT_ID,receipt,phase:'pending',reason:'canonical-pending',answerAvailability:'unknown'};
   const inputs=[pending,{...pending,reason:'read-inflight' as const},{...pending,phase:'reading' as const,reason:'read-inflight' as const}];
   const reasons:TerminalPresence['reason'][]=['missing-candidate','body-unavailable','partial-items','read-error','selection-gap','unsupported','capacity','budget-exhausted'];
   const cuts:DeclaredPlanCut[]=inputs.map(presence=>cut({scope:receipt.scope,revision:7,toolIdentity:'call',presence}));
@@ -72,7 +72,7 @@ async function target(wrap:(handle:ThreadHandle)=>ThreadHandle=handle=>handle) {
  r.live();r.end();await r.pump();
  if(!token)throw new Error('fixture Window binding did not capture qualification');
  const receipt=currentReceipt();
- expect(w.acceptedView.peek().terminalPersistedAttempts).toMatchObject([{scope:r.h.handoffScope(),attemptId:'attempt',recordKey:'handoff:attempt'}]);
+ expect(w.acceptedView.peek().terminalPersistedAttempts).toMatchObject([{scope:r.h.handoffScope(),attemptId:CANONICAL_ATTEMPT_ID,recordKey:`handoff:${CANONICAL_ATTEMPT_ID}`}]);
  expect(r.h.isReceiptObservationCurrent(r.h.handoff.peek()[0]!,receipt)).toBe(true);
  return { ...r, w, token, receipt, publications };
 }
@@ -201,7 +201,7 @@ it("terminal slot successor dispatches one explicit whole-window request after a
   const { TerminalReadSlots } = await import("../../data/src/terminal-read");
   const slots = new TerminalReadSlots();
   const parent = { add: (_fn: () => void) => () => {} } as never;
-  const receipt = { scope: "scope", attemptId: "attempt", turnId: "turn", nodeIds: ["answer"] as string[], terminalState: "completed" as const };
+  const receipt = { scope: "scope", attemptId: CANONICAL_ATTEMPT_ID, turnId: "turn", nodeIds: ["answer"] as string[], terminalState: "completed" as const };
   const calls: unknown[] = [];
   const valid = () => true;
   const point = { id: "point" as never, args: { thread_id: "thread", node_id: "answer", before: 0, after: 199, items: true } };
@@ -253,7 +253,7 @@ it("Window rebinds a revision-changing point read through one bounded whole-wind
   const successor=r.w.acceptedView.peek();
   expect(successor.revision).toBe(8);
   expect(successor.displayPlan?.entries.find(entry=>entry.item.key===JSON.stringify(['answer','text']))?.presentationContainer).toBe(r.receipt.presentationContainer);
-  expect(successor.assistantOwnership).toMatchObject([{attemptId:'attempt',mode:'canonical',proofRevision:8}]);
+  expect(successor.assistantOwnership).toMatchObject([{attemptId:CANONICAL_ATTEMPT_ID,mode:'canonical',proofRevision:8}]);
   r.w.setAttemptPresentations([{scope:r.h.handoffScope(),attemptId:'another',turnId:'another-turn',nodeIds:['also-unselected'],state:'pending'}]);
   expect(r.w.refreshConversationInput(r.w.acceptedView.peek())).toBe(true);
   const stable=r.w.acceptedView.peek();expect(stable.revision).toBe(8);
@@ -293,11 +293,12 @@ it("rejects an incomplete revision successor page before publication", async () 
 
 it("scoped ownership does not attach an unrelated saved assistant to one preview", () => {
   const rows: HistoryItem[] = [
-    { node_id: "owned", kind: "assistant_response", selection: { ordinal: 0 }, items: [{ kind: "text", item_identity: "owned:text", text: "owned", text_complete: true }] },
+    { node_id: "owned", kind: "assistant_response", provenance: { attempt_id: CANONICAL_ATTEMPT_ID }, selection: { ordinal: 0 }, items: [{ kind: "text", item_identity: "owned:text", text: "owned", text_complete: true }] },
     { node_id: "unrelated", kind: "assistant_response", selection: { ordinal: 1 }, items: [{ kind: "text", item_identity: "other:text", text: "other", text_complete: true }] },
   ];
-  const association = { scope: "scope", attemptId: "attempt", turnId: "turn", presentationContainer: syntheticPresentation("attempt"), refs: selectedReadyRefs(["owned"],rows) };
+  const association = { scope: "scope", attemptId: CANONICAL_ATTEMPT_ID, turnId: "turn", presentationContainer: syntheticPresentation(CANONICAL_ATTEMPT_ID), refs: selectedReadyRefs(["owned"],rows) };
   const fact = assistantOwnership(association, "record", rows, 8);
+  expect(fact?.mode).toBe("canonical");
   expect(fact?.itemKeys).toEqual([JSON.stringify(["owned", "owned:text"])]);
   expect(fact?.itemKeys).not.toContain(JSON.stringify(["unrelated", "other:text"]));
 });
@@ -320,7 +321,7 @@ it('actual ready admission reads accepted range plus exact refs and atomically r
  await r.pump();
  expect(r.w.acceptedView.peek().rows.map(row=>row.node_id)).toEqual(['tool','answer']);
  expect(r.w.acceptedView.peek().revision).toBe(7); expect(r.h.handoff.peek()).toHaveLength(0);
- expect(r.w.acceptedView.peek().retiredAttempts?.[0]?.attemptId).toBe('attempt');
+ expect(r.w.acceptedView.peek().retiredAttempts?.[0]?.attemptId).toBe(CANONICAL_ATTEMPT_ID);
  r.w.dispose();r.data.stop();
 });
 it.each(['gap','revoke','cancel','dispose'] as const)('actual ready successor %s retains accepted rows and cannot blend old prefix',async mode=>{

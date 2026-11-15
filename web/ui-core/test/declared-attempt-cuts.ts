@@ -1,6 +1,7 @@
 import type {DeclaredPlanCut} from './publication-contract';
 import type {TerminalPresence} from '../src/terminal-presence';
 import type {WorkGroup} from '../src/conversation-items';
+import type {DeclaredAttemptIdentity} from '../../data/test/work-fixture';
 export function declaredWorkGroup(input:{members:readonly string[];tools:readonly string[];executions:readonly string[];
  counts:{Tools:number;Reasoning:number;Notifications:number;Problems:number};before:'closed'|'unknown';after:'closed'|'unknown'}):WorkGroup{
  const first=input.members[0]!;
@@ -9,10 +10,10 @@ export function declaredWorkGroup(input:{members:readonly string[];tools:readonl
   continuationBefore:input.before,continuationAfter:input.after};
 }
 export function declaredToolAnswerCut(input:{scope:string;revision:number;toolIdentity:'call'|'tc';
- answer?:'saved'|'partial'|'deferred'|'opaque';container?:string;presence?:TerminalPresence;emptyOriginal?:{scope:string;recordKey:string}}):DeclaredPlanCut{
+ answer?:'saved'|'partial'|'deferred'|'opaque';container?:string;presence?:TerminalPresence;identity:DeclaredAttemptIdentity;emptyOriginal?:{scope:string;identity:DeclaredAttemptIdentity}}):DeclaredPlanCut{
  const {scope,revision}=input;
  const tool=JSON.stringify(['tool',[scope],'execution',['exec']]),answer=JSON.stringify(['answer','text']);
- const receipt=JSON.stringify(['receipt','work',scope,'attempt']);
+ const receipt=JSON.stringify(['receipt','work',scope,input.identity.receiptRecordId]);
  const entries:DeclaredPlanCut['entries'][number][]=[{key:tool,canonicalKey:JSON.stringify(['tool',input.toolIdentity]),toolIdentity:'execution',case:'toolCall',
   source:{nodeId:'tool',itemIdentity:input.toolIdentity,windowRevision:revision,keyScope:[scope],classificationCase:'toolCall',kind:'tool',executionIds:['exec']},
   body:{kind:'unavailable',reason:'tool'},lifetime:'retained'}];
@@ -26,12 +27,12 @@ export function declaredToolAnswerCut(input:{scope:string;revision:number;toolId
   source:input.answer==='deferred'?{nodeId:'answer',itemIdentity:'answer',identityDomain:'node',windowRevision:revision,keyScope:[scope],classificationCase:'unavailable',kind:'unavailable',reason:'response_budget'}:
    {nodeId:'answer',itemIdentity:'missing',windowRevision:revision,keyScope:[scope],classificationCase:'unavailable',kind:'unavailable',reason:'opaque'},
   body:{kind:'unavailable',reason:'unavailable'},lifetime:'retained'});
- const original=input.emptyOriginal?JSON.stringify(['live','handoff',input.emptyOriginal.scope,input.emptyOriginal.recordKey]):undefined;
+ const original=input.emptyOriginal?JSON.stringify(['live','handoff',input.emptyOriginal.scope,input.emptyOriginal.identity.recordKey]):undefined;
  if(input.emptyOriginal)entries.push({key:original!,case:'unknown',source:{domain:'live',namespace:'handoff',scope:input.emptyOriginal.scope,
-  recordId:input.emptyOriginal.recordKey,attemptId:'attempt',classificationCase:'unknown',kind:'unknown'},
+  recordId:input.emptyOriginal.identity.recordKey,attemptId:input.emptyOriginal.identity.attemptId,classificationCase:'unknown',kind:'unknown'},
   body:{kind:'unavailable',reason:'unknown'},lifetime:'retained'});
  if(input.presence){const phase=input.presence.phase;const name=phase==='pending'?'terminalPending':phase==='reading'?'terminalReading':'terminalSettled';
-  entries.push({key:receipt,case:name,source:{domain:'receipt',scope,recordId:'attempt',attemptId:'attempt',namespace:'work',keyScope:[scope],classificationCase:name,
+  entries.push({key:receipt,case:name,source:{domain:'receipt',scope,recordId:input.identity.receiptRecordId,attemptId:input.identity.attemptId,namespace:'work',keyScope:[scope],classificationCase:name,
    terminalPresence:input.presence,kind:'record'},body:{kind:'unavailable',reason:'record'},lifetime:'retained'});}
  const conversation=input.answer==='saved'||input.answer==='partial';
  const firstMembers=[tool,...(!conversation&&input.answer?[unavailable]:[]),...(!conversation&&original?[original]:[]),...(!conversation&&input.presence?[receipt]:[])];
