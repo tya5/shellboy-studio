@@ -199,3 +199,11 @@ model commits acceptance through one typed pending-to-accepted transition matchi
 operation, Thread, and scope; failure, retry, Stop, navigation, and a newer draft
 retain the current owner. The existing send acceptance regression remains the
 producer boundary for clear-on-accept and draft retention.
+
+## Handoff Record Transition Contract
+
+Handoff source identity compares all own record keys shallowly; the `transferred`
+key is the sole typed bookkeeping exception. An unchanged source returns the
+canonical previous record, a source change advances the source revision, and a
+bookkeeping-only transfer changes only the transferred field without revocation.
+Canonical staging and observer publication consume the returned held record.

@@ -300,17 +300,18 @@ export class Handoff {
     this.held = []; this.active = undefined; this.blockedAttempt = undefined;
     this.overflowSig.value = false; this.publish();
   }
-  /** Semantic source changes revoke leases; bookkeeping and true no-ops preserve them. */
+  /** All own source keys define semantic identity; only `transferred` is bookkeeping. */
   private updateRecord(held: Held, next: HandoffRecord, transition: RecordTransition = 'source'): HandoffRecord {
     const previous = held.record;
-    const semanticChange = previous.attemptId !== next.attemptId || previous.key !== next.key
-      || previous.presentationContainer !== next.presentationContainer || previous.text !== next.text
-      || previous.incomplete !== next.incomplete || previous.status !== next.status
-      || previous.bodyAuthority !== next.bodyAuthority || previous.nodeId !== next.nodeId
-      || previous.proof !== next.proof || previous.readyAttempt !== next.readyAttempt
-      || previous.terminalPersisted !== next.terminalPersisted || previous.placement !== next.placement;
-    if (!semanticChange && previous.transferred === next.transferred) return previous;
-    if (transition === 'source' && semanticChange) held.sourceRevision++;
+    const sameOwnKeys = (a: HandoffRecord, b: HandoffRecord, includeTransferred: boolean): boolean => {
+      const entries = (value: HandoffRecord) => Object.entries(value).filter(([key]) => includeTransferred || key !== 'transferred');
+      const left = entries(a), right = entries(b);
+      return left.length === right.length && left.every(([key, value]) => right.some(([other, otherValue]) => key === other && Object.is(value, otherValue)));
+    };
+    const sourceChanged = !sameOwnKeys(previous, next, false);
+    const bookkeepingChanged = previous.transferred !== next.transferred;
+    if (!sourceChanged && !bookkeepingChanged) return previous;
+    if (transition === 'source' && sourceChanged) held.sourceRevision++;
     held.record = Object.freeze(next);
     return held.record;
   }
