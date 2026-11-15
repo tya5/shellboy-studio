@@ -133,7 +133,7 @@ it("deferred retry shares two other public bucket slots without borrowing their 
   const r=controlledWindow(),w=r.win;
   const rows=(first:number,last:number,deferred=false):HistoryItem[]=>Array.from({length:last-first+1},(_,offset)=>{
     const ordinal=first+offset;return{node_id:ordinal===700?'deferred':`n${ordinal}`,kind:ordinal===650?'assistant_response':'user',selection:{ordinal},
-      ...(deferred&&ordinal===700?{items:null,items_unavailable_reason:'response_budget' as const}:
+      ...(deferred&&ordinal>=700?{items:null,items_unavailable_reason:'response_budget' as const}:
         {items:[{kind:'text' as const,item_identity:'body',text:`Saved ${ordinal}`,text_complete:true}]})};
   });
   try{
@@ -171,7 +171,7 @@ it("deferred retry shares two other public bucket slots without borrowing their 
 it("deferred retry cannot borrow the separately owned tail slot even when both bucket slots are free",async()=>{
  const r=controlledWindow(),w=r.win;
  const rows:HistoryItem[]=Array.from({length:100},(_,i)=>({node_id:i===0?'deferred':`n${900+i}`,kind:'user',selection:{ordinal:900+i},
-  ...(i===0?{items:null,items_unavailable_reason:'response_budget' as const}:{items:[]})}));
+  ...(i>=0?{items:null,items_unavailable_reason:'response_budget' as const}:{items:[]})}));
  try{
   r.requests[0]!.reply({ok:true,value:{thread_id:'t',revision:1,total:1000,items:rows}});await flush();
   const before=w.acceptedView.peek();w.changed();const tail=r.pending()[0]!,count=r.requests.length;
