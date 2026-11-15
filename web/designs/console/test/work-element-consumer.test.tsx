@@ -86,7 +86,7 @@ it('renders an explicit unavailable Work cut when a mixed issued/foreign scope b
   const valid=normalizeLiveWorkFacts({scope:'t',items:[{kind:'progress',id:'valid',thread_id:'t',state:'running'}]});
   const foreign={domain:'live' as const,scope:'foreign',recordId:'unissued',kind:'unknown' as const};
   let work:readonly import('../../../ui-core/src/conversation-items').NormalizedSavedItem[]=[...valid,foreign];
-  reader.bindConversationInput(candidate=>captureConversationInput(candidate,{scope:'fixture',threadId:'t',records:[],work,current:true}));
+  reader.bindConversationInput(candidate=>captureConversationInput(candidate,{scope:'fixture',threadId:'t',records:[],work,identityWork:{items:[],source:work},current:true}));
   reader.refreshConversationInput(snapshot);snapshot=reader.acceptedView.peek();
   await act(async()=>render(<SavedWindowContent model={model} snapshot={snapshot}/>,host));
   expect(host.textContent).toContain('Independent saved text');
