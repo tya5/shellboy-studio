@@ -100,7 +100,7 @@ it('canonical-only current input has one projection graph, while actual reservat
 });
 
 it('reuses canonical projection only for identity-stable selection cuts', async () => {
- const r = await rig(1, { decorate: (_ordinal, node) => ({ ...node, kind: 'user', items: [{ kind: 'text', item_identity: 'body', text: 'stable', text_complete: true }] }) });
+ const r = await rig(2, { decorate: (_ordinal, node) => ({ ...node, kind: 'user', items: [{ kind: 'text', item_identity: 'body', text: 'stable', text_complete: true }] }) });
  try {
   await r.settle();
   const options = { scope: r.handle.handoffScope(), threadId: 't', records: [], work: [], current: true } as const;
@@ -118,6 +118,12 @@ it('reuses canonical projection only for identity-stable selection cuts', async 
   const third = captureConversationInput(replaced, options);
   expect(third.canonicalInput.projection).not.toBe(first.canonicalInput.projection);
   expect(third.canonicalProjection.items[0]?.source).toMatchObject({ text: 'replaced' });
+  const reordered = { ...r.w.acceptedView.peek(), rows: [...r.w.acceptedView.peek().rows].reverse() };
+  const reorderedInput = captureConversationInput(reordered, options);
+  expect(reorderedInput.canonicalInput.projection).not.toBe(second.canonicalInput.projection);
+  const revised = { ...r.w.acceptedView.peek(), revision: (r.w.acceptedView.peek().revision ?? 0) + 1 };
+  const revisedInput = captureConversationInput(revised, options);
+  expect(revisedInput.canonicalInput.projection).not.toBe(second.canonicalInput.projection);
   const otherScope = captureConversationInput(r.w.acceptedView.peek(), { ...options, scope: 'other-scope' });
   expect(otherScope.canonicalInput.projection).not.toBe(second.canonicalInput.projection);
  } finally { r.w.dispose(); r.data.stop(); }
