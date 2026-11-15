@@ -168,3 +168,9 @@ it.each(['gap','revision','total','cancel','budget'] as const)('paged selected %
  expect(settled).toEqual([]);expect(lease.state.peek()).toMatchObject({phase:'unavailable',reason:mode==='cancel'?'cancelled':mode==='budget'?'budget-exhausted':'selection-gap'});
  expect(reads).toBe(mode==='budget'?0:2);stop();
 });
+
+it('joins individually valid rich pages beyond the raw aggregate budget while preserving the 1600-row bound',()=>{
+ const pages=Array.from({length:8},(_,page)=>ownedHistory({thread_id:'aggregate',revision:1,total:1600,items:Array.from({length:200},(_,row)=>({node_id:`n-${page}-${row}`,kind:'user',selection:{ordinal:page*200+row},provenance:{values:Array.from({length:42},(_,i)=>({i}))},items:[]}))}));
+ const joined=HistoryWindowInput.join(pages);
+ expect(joined.items).toHaveLength(1600);expect(joined.items[0]!.selection?.ordinal).toBe(0);expect(joined.items.at(-1)!.selection?.ordinal).toBe(1599);
+});

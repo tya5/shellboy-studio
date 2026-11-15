@@ -61,3 +61,11 @@ it.each([false,true])('over-bound external read has explicit initial/error behav
   expect(w.diagnostic.peek()).toMatchObject({reason:'input-bound',generation:before.generation,revision:before.revision});
  }finally{w.dispose();}
 });
+
+it('capture failure reaches the UI diagnostic without exposing secret input',async()=>{
+ const secret='capture-secret-must-not-leak';
+ const raw={thread_id:'secret',revision:1,total:1,items:[{node_id:'secret-node',kind:'user',selection:{ordinal:0},provenance:{secret,values:Array.from({length:70000},()=>({value:'x'}))},items:[]}]};
+ const w=new ConversationWindow({read:async()=>HistoryWindowInput.decode(raw)});
+ try{await flush();expect(w.status.peek()).toBe('error');expect(w.error.peek()).not.toContain(secret);expect(JSON.stringify(w.diagnostic.peek())).not.toContain(secret);expect(w.diagnostic.peek()?.reason).toBe('input-bound');}
+ finally{w.dispose();}
+});

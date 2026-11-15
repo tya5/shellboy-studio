@@ -172,3 +172,28 @@ before a swap, not in a catch-all that hides a partly installed cursor.
 - Reported incident evidence is separate from synthetic tests, source review, CI,
   landing, deployment and actual user confirmation. No private owner/DB access or
   deployment permission follows from a green source test.
+
+## Verified Ownership Boundary Notes (2026-11-15)
+
+The accepted source lease is producer-owned. Record transitions are typed: source
+or authority changes revoke a captured lease, while transfer metadata bookkeeping
+preserves the immutable source token. A confirming-to-failed transition revokes;
+an already-failed readable source remains readable. Repeated failure with no state
+change is a no-op and must not force a publication repaint.
+
+Conversation semantic identity is built from one captured base descriptor and a
+typed own-send extension. Equality compares the named identity fields, including
+own-send fields, rather than comparing a freshly allocated extension object.
+Accepted owner successor staging uses the full `AssistantOwnership` relation,
+including mode, proof revision, receipt revision, item keys, and selected refs.
+
+The verified focused matrix includes the true ready-proof transfer path, the
+bookkeeping/failed transition oracle, the changed-reentry notification contract,
+an aggregate-positive eight-page input whose individually bounded pages join to
+1,600 rows, and a capture failure that reaches the UI diagnostic without exposing
+a secret sentinel. These focused receipts do not establish full-suite, review,
+CI, or three-OS qualification.
+
+Remaining qualification work is removal of the obsolete test-only generic
+accepted-publication mint/materialization path and the complete-unit validation
+sequence. No compatibility fallback is permitted while those paths are removed.
