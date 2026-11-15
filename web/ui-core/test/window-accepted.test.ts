@@ -1,5 +1,5 @@
 import {Handoff} from '../../data/src/handoff';
-import {selectedReadyRefs} from '../../data/test/work-fixture';
+import {canonicalAttemptId,selectedReadyRefs} from '../../data/test/work-fixture';
 import {controlledWindow} from './controlled-window';
 import { captureConversationInput, captureWork, EMPTY_WORK_DESCRIPTOR } from '../src/conversation-input';
 import { expect, it } from "vitest";
@@ -142,7 +142,7 @@ it("requests authoritative saved items, preserves whole deferred nodes and retri
 it("deferred retry shares two other public bucket slots without borrowing their leases", async () => {
   const r=controlledWindow(),w=r.win;
   const rows=(first:number,last:number,deferred=false):HistoryItem[]=>Array.from({length:last-first+1},(_,offset)=>{
-    const ordinal=first+offset;return{node_id:ordinal===700?'deferred':`n${ordinal}`,kind:ordinal===650?'assistant_response':'user',selection:{ordinal},
+    const ordinal=first+offset;return{node_id:ordinal===700?'deferred':`n${ordinal}`,kind:ordinal===650?'assistant_response':'user',selection:{ordinal},...(ordinal===650?{provenance:{attempt_id:canonicalAttemptId(1)}}:{}),
       ...(deferred&&ordinal>=700?{items:null,items_unavailable_reason:'response_budget' as const}:
         {items:[{kind:'text' as const,item_identity:'body',text:`Saved ${ordinal}`,text_complete:true}]})};
   });
@@ -150,9 +150,9 @@ it("deferred retry shares two other public bucket slots without borrowing their 
     r.requests[0]!.reply({ok:true,value:ownedHistory({thread_id:'t',total:749,revision:1,items:rows(649,748)})});await flush();
     // Seed a complete, legitimately bounded 200-row selected proof, then refresh it
     // through the actual public revision path with one deferred middle bucket.
-    const ledger=new Handoff(fn=>fn());ledger.apply({attempt_id:'seed',gap:false,deltas:[{offset:0,reasoning:false,text:'Seed original'}]});ledger.finish();
+    const attemptId=canonicalAttemptId(1);const ledger=new Handoff(fn=>fn());ledger.apply({attempt_id:attemptId,gap:false,deltas:[{offset:0,reasoning:false,text:'Seed original'}]});ledger.finish();
     const original=ledger.records.peek()[0]!,selected=rows(649,848);
-    const proof={scope:'history',attemptId:'seed',turnId:'seed-turn',revision:2,total:1000,nodes:selected,refs:selectedReadyRefs(['n650'],selected)};
+    const proof={scope:'history',attemptId,turnId:'seed-turn',revision:2,total:1000,nodes:selected,refs:selectedReadyRefs(['n650'],selected)};
     expect(ledger.stageAttempt(original,proof)).toBeDefined();
     expect(ledger.transferAttempt(original,proof,(record,release)=>w.acceptHandoff(record,'history',release))).toBe(true);
     w.measure(Array.from({length:200},(_,i)=>[649+i,40] as const));w.view(0,600,false);r.viewportPause();

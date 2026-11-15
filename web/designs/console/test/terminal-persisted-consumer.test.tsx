@@ -1,4 +1,4 @@
-import {attemptWork} from '../../../data/test/work-fixture';
+import {attemptWork,canonicalAttemptId} from '../../../data/test/work-fixture';
 import {typedSelectedCoverageWindow} from '../../../ui-core/test/typed-handoff-fixture';
 // @vitest-environment happy-dom
 import '@preact/signals';
@@ -148,11 +148,12 @@ for(const resultMode of ['complete','partial','error','cancel'] as const)it(`act
 
 it('observes ninth same-scope exact terminal receipt backpressure separately from read budget',async()=>{
  let active=0,ended=false;
- const nodes:HistoryItem[]=Array.from({length:9},(_,i)=>({node_id:`saved-${i+1}`,kind:'assistant_response',selection:{ordinal:i},items:[{kind:'text',item_identity:`body-${i+1}`,text:`Canonical answer ${i+1}`,text_complete:true}]}));
+ const attempts=Array.from({length:9},(_,i)=>canonicalAttemptId(i+1));
+ const nodes:HistoryItem[]=Array.from({length:9},(_,i)=>({node_id:`saved-${i+1}`,kind:'assistant_response',provenance:{attempt_id:attempts[i]},selection:{ordinal:i},items:[{kind:'text',item_identity:`body-${i+1}`,text:`Canonical answer ${i+1}`,text_complete:true}]}));
  const f=await fixtureModel({capabilities:['live.text','history.window'],configure(db){
   db.threads={t:summary('t')};db.details.t=details('t');db.history.t=nodes;
   const base=db.answer.bind(db);db.answer=call=>{
-   if(call.command==='status')return {ok:true,result:{items:ended?[{kind:'attempt',id:`attempt-${active}`,attempt_id:`attempt-${active}`,thread_id:'t',state:'completed',turn_id:`turn-${active}`,response_nodes_truncated:active===9,response_nodes:[{node_id:active===9?'missing-ninth':`saved-${active}`,ordinal:active===9?9:active-1,kind:'assistant_response'}]}]:[]}};
+   if(call.command==='status')return {ok:true,result:{items:ended?[{kind:'attempt',id:attempts[active-1],attempt_id:attempts[active-1],thread_id:'t',state:'completed',turn_id:`turn-${active}`,response_nodes_truncated:active===9,response_nodes:[{node_id:active===9?'missing-ninth':`saved-${active}`,ordinal:active===9?9:active-1,kind:'assistant_response'}]}]:[]}};
    if(call.command==='history.window')return selectedReply(call,1,nodes);
    return base(call);
   };
@@ -165,7 +166,7 @@ it('observes ninth same-scope exact terminal receipt backpressure separately fro
   const handle=f.model.handle.peek()!,scope=handle.handoffScope();
   for(active=1;active<=9;active++){
    ended=false;
-   await act(async()=>{f.t.push({t:'live',thread_id:'t',attempt_id:`attempt-${active}`,gap:false,deltas:[{offset:0,reasoning:false,text:active===9?'Preview 9':`Readable ${active}`} ]});await flush(12);});
+   await act(async()=>{f.t.push({t:'live',thread_id:'t',attempt_id:attempts[active-1]!,gap:false,deltas:[{offset:0,reasoning:false,text:active===9?'Preview 9':`Readable ${active}`} ]});await flush(12);});
    ended=true;
    await act(async()=>{f.t.push({t:'live_end',thread_id:'t'});await settle(f.t,f.db);await flush(12);});
    // Exercise only the existing explicit Retry budget; do not refill implicitly.
@@ -176,7 +177,7 @@ it('observes ninth same-scope exact terminal receipt backpressure separately fro
    if(active<=8){expect(handle.handoff.peek()).toHaveLength(0);expect(snapshot.terminalPersistedAttempts).toHaveLength(active);}
    else {
     expect(snapshot.terminalPersistedAttempts).toHaveLength(8);expect(handle.handoff.peek()).toHaveLength(1);
-    expect(handle.handoff.peek()[0]).toMatchObject({attemptId:'attempt-9',status:'confirming'});expect(handle.handoff.peek()[0]!.terminalPersisted).toBeUndefined();
+    expect(handle.handoff.peek()[0]).toMatchObject({attemptId:attempts[8]!,status:'confirming'});expect(handle.handoff.peek()[0]!.terminalPersisted).toBeUndefined();
     expect(host.querySelector('[data-live-overlay]')).not.toBeNull();expect(host.textContent).toContain('Canonical answer 9');
     expect(handle.handoffRetryState.peek()).not.toMatchObject({reason:'budget-exhausted'});
     expect(handle.handoffRetryState.peek()).toMatchObject({phase:'unavailable',reason:'receipt_capacity',canRetry:false});
@@ -193,11 +194,12 @@ it('observes ninth same-scope exact terminal receipt backpressure separately fro
 it('qualified ninth readable preview transfers only its exact FINAL bundle, not an equal-text independent identity',async()=>{
  let active=0,ended=false;
  const text='Equal answer text';
- const nodes:HistoryItem[]=Array.from({length:10},(_,i)=>({node_id:`owned-node-${i+1}`,kind:'assistant_response',selection:{ordinal:i},items:[{kind:'text',item_identity:`owned-item-${i+1}`,text:i>=8?text:'Prior saved answer',text_complete:true}]}));
+ const attempts=Array.from({length:10},(_,i)=>canonicalAttemptId(i+1));
+ const nodes:HistoryItem[]=Array.from({length:10},(_,i)=>({node_id:`owned-node-${i+1}`,kind:'assistant_response',provenance:{attempt_id:attempts[i]},selection:{ordinal:i},items:[{kind:'text',item_identity:`owned-item-${i+1}`,text:i>=8?text:'Prior saved answer',text_complete:true}]}));
  const f=await fixtureModel({capabilities:['live.text','history.window'],configure(db){
   db.threads={t:summary('t')};db.details.t=details('t');db.history.t=nodes;
   const base=db.answer.bind(db);db.answer=call=>{
-   if(call.command==='status')return {ok:true,result:{items:ended?[{kind:'attempt',id:`qualified-${active}`,attempt_id:`qualified-${active}`,thread_id:'t',turn_id:`turn-${active}`,state:'completed',response_nodes_truncated:false,response_nodes:[{node_id:`owned-node-${active}`,ordinal:active-1,kind:'assistant_response'}]}]:[]}};
+   if(call.command==='status')return {ok:true,result:{items:ended?[{kind:'attempt',id:attempts[active-1]!,attempt_id:attempts[active-1]!,thread_id:'t',turn_id:`turn-${active}`,state:'completed',response_nodes_truncated:false,response_nodes:[{node_id:`owned-node-${active}`,ordinal:active-1,kind:'assistant_response'}]}]:[]}};
    if(call.command==='history.window')return selectedReply(call,1,nodes);
    return base(call);
   };
@@ -210,7 +212,7 @@ it('qualified ninth readable preview transfers only its exact FINAL bundle, not 
   for(active=1;active<=9;active++){
    ended=false;
    // Eight genuine readable proofs retire their originals before the next readable owner.
-   await act(async()=>{f.t.push({t:'live',thread_id:'t',attempt_id:`qualified-${active}`,gap:false,deltas:[{offset:0,reasoning:false,text:active===9?text:`Readable ${active}`}]});await flush(12);});
+   await act(async()=>{f.t.push({t:'live',thread_id:'t',attempt_id:attempts[active-1]!,gap:false,deltas:[{offset:0,reasoning:false,text:active===9?text:`Readable ${active}`}]});await flush(12);});
    ended=true;
    await act(async()=>{f.t.push({t:'live_end',thread_id:'t'});await settle(f.t,f.db);await flush(12);});
    if(active<=8)await act(async()=>{const retry=handle.retryHandoff();await settle(f.t,f.db);await retry;await flush(12);});
@@ -224,7 +226,7 @@ it('qualified ninth readable preview transfers only its exact FINAL bundle, not 
   expect(host.querySelectorAll('[data-node="owned-node-10"] .msg')).toHaveLength(1);
   expect(host.querySelectorAll('[data-live-overlay]')).toHaveLength(0);
   expect(handle.handoff.peek()).toHaveLength(1);
-  expect(handle.handoff.peek()[0]).toMatchObject({attemptId:'qualified-9',text,status:'confirming'});
+  expect(handle.handoff.peek()[0]).toMatchObject({attemptId:attempts[8]!,text,status:'confirming'});
   expect(f.t.calls('history.get')).toHaveLength(0);
  }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
 });

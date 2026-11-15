@@ -3,7 +3,7 @@ import {ShellboyData,type ThreadReadQualification} from '../../data/src/store';
 import type {HistoryItem} from '../../data/src/protocol';
 import type {OwnedTerminalReadLease} from '../../data/src/terminal-read';
 import {FakeTransport,FakeOwnerDb,connectedWithHistory,settle,flush} from '../../data/test/harness';
-import {attemptWork} from '../../data/test/work-fixture';
+import {attemptWork,CANONICAL_ATTEMPT_ID,canonicalAttemptId,withCanonicalAttemptProvenance} from '../../data/test/work-fixture';
 import {ConversationWindow} from '../src/window';
 import {captureConversationInput, captureWork, EMPTY_WORK_DESCRIPTOR} from '../src/conversation-input';
 import {ownSendPresentation,captureOwnSendLocalRegion} from '../src/own-send-presentation';
@@ -13,13 +13,16 @@ async function rig(){
  const data=new ShellboyData({transport:t,newId:()=>`isolation-${++serial}`,schedule:fn=>fn()});
  data.start();t.open();t.push({t:'hello',bridge_version:'synthetic',owner:connectedWithHistory});await settle(t,db);
  const h=data.openThread('t');await settle(t,db);
+ const attemptIds={a:CANONICAL_ATTEMPT_ID,b:canonicalAttemptId(2)} as const;
  const source={revision:1,a:false,b:false,prunedB:false,attempts:[] as string[]};
  const rows=():HistoryItem[]=>[{node_id:'human',kind:'user',selection:{ordinal:0},items:[{kind:'text',item_identity:'body',text:'Independent human',text_complete:true}],provenance:{sender:{kind:'human'}}},
-  ...(['a','b'] as const).map((id,index):HistoryItem=>({node_id:id,kind:'assistant_response',selection:{ordinal:index+1},
+  ...(['a','b'] as const).map((id,index)=>withCanonicalAttemptProvenance([{
+   node_id:id,kind:'assistant_response',selection:{ordinal:index+1},
    items:id==='b'&&source.prunedB?[{kind:'unavailable',item_identity:'body',reason:'pruned'}]:source[id]?[{kind:'text',item_identity:'body',text:`Canonical ${id.toUpperCase()}`,text_complete:true}]:null,
-   ...(!source[id]?{items_unavailable_reason:'response_budget' as const}:{})}))];
+   ...(!source[id]?{items_unavailable_reason:'response_budget' as const}:{})
+  }],id==='a'?attemptIds.a:attemptIds.b)[0]!)];
  const base=db.answer.bind(db);
- db.answer=call=>call.command==='status'?{ok:true,result:{items:source.attempts.map(id=>attemptWork({threadId:'t',attemptId:id,turnId:`turn-${id}`,state:'completed',truncated:true,
+ db.answer=call=>call.command==='status'?{ok:true,result:{items:source.attempts.map(id=>attemptWork({threadId:'t',attemptId:id==='a'?attemptIds.a:attemptIds.b,turnId:`turn-${id}`,state:'completed',truncated:true,
   refs:[{node_id:id,ordinal:id==='a'?1:2,kind:'assistant_response'}]}))}}:call.command==='history.window'?{ok:true,result:{thread_id:'t',revision:source.revision,total:3,items:rows()}}:base(call);
  let token:ThreadReadQualification|undefined;const capture=h.captureReadQualification;
  h.captureReadQualification=()=>{token=capture();return token;};
@@ -35,22 +38,23 @@ async function rig(){
   return{...input,projection:decision.projection,decision:{cohortVersion:{accepted:local,pending:undefined},localRegion:captureOwnSendLocalRegion(decision)}};
  });
  const admit=async(id:'a'|'b')=>{
-  source.attempts.push(id);t.push({t:'live',thread_id:'t',attempt_id:id,gap:false,deltas:[{offset:0,reasoning:false,text:''}]});await flush();
+  source.attempts.push(id);t.push({t:'live',thread_id:'t',attempt_id:attemptIds[id],gap:false,deltas:[{offset:0,reasoning:false,text:''}]});await flush();
   t.push({t:'live_end',thread_id:'t'});await settle(t,db);
-  const receipt=h.handoff.peek().find(record=>record.attemptId===id)?.terminalPersisted;expect(receipt).toBeDefined();
+  const receipt=h.handoff.peek().find(record=>record.attemptId===attemptIds[id])?.terminalPersisted;expect(receipt).toBeDefined();
   source.revision++;source[id]=true;expect('state' in w.prepareBoundTerminalRead(receipt!)).toBe(true);await settle(t,db);
-  expect(w.acceptedView.peek().assistantOwnership?.some(owner=>owner.attemptId===id&&owner.mode==='canonical')).toBe(true);
+  expect(w.acceptedView.peek().assistantOwnership?.some(owner=>owner.attemptId===attemptIds[id]&&owner.mode==='canonical')).toBe(true);
  };
  await admit('a');await admit('b');if(!token)throw new Error('missing actual binding token');
- return{t,db,data,h,w,source,local,leases,token};
+ return{t,db,data,h,w,source,local,leases,token,attemptIds};
 }
 it.each(['cancel-b','delete-b-body','replace-b-proof','global-capability','global-epoch','global-owner'] as const)('actual independent A/B owners isolate %s at the new accepted cut',async action=>{
  const r=await rig();
  try{
+  const {attemptIds}=r;
   const before=r.w.acceptedView.peek(),cap=r.w.acceptedView.currentCapability;
-  expect(before.assistantOwnership?.map(owner=>owner.attemptId)).toEqual(['a','b']);
-  const a=before.assistantOwnership!.find(owner=>owner.attemptId==='a')!,b=before.assistantOwnership!.find(owner=>owner.attemptId==='b')!;
-  const leaseA=r.leases.get('a')!,leaseB=r.leases.get('b')!;expect(r.h.isTerminalReadCurrent(r.token,leaseA)).toBe(true);expect(r.h.isTerminalReadCurrent(r.token,leaseB)).toBe(true);
+  expect(before.assistantOwnership?.map(owner=>owner.attemptId)).toEqual([attemptIds.a,attemptIds.b]);
+  const a=before.assistantOwnership!.find(owner=>owner.attemptId===attemptIds.a)!,b=before.assistantOwnership!.find(owner=>owner.attemptId===attemptIds.b)!;
+  const leaseA=r.leases.get(attemptIds.a)!,leaseB=r.leases.get(attemptIds.b)!;expect(r.h.isTerminalReadCurrent(r.token,leaseA)).toBe(true);expect(r.h.isTerminalReadCurrent(r.token,leaseB)).toBe(true);
   expect(r.h.isTerminalReadCurrent(r.token,{...leaseA})).toBe(false);
   if(action==='cancel-b')leaseB.cancel();
   if(action==='replace-b-proof'){
@@ -64,7 +68,7 @@ it.each(['cancel-b','delete-b-body','replace-b-proof','global-capability','globa
   if(action==='global-owner')r.t.push({t:'owner',event:'restarted',owner:{state:'connected',info:{protocol_version:5,instance_id:'new-owner',capabilities:['history.window']}}});
   r.w.setAttemptPresentations([{scope:r.h.handoffScope(),attemptId:'unrelated',turnId:'unrelated-turn',nodeIds:['unselected'],state:'pending'}]);
   const after=r.w.acceptedView.peek();
-  expect(before.assistantOwnership?.map(owner=>owner.attemptId)).toEqual(['a','b']);
+  expect(before.assistantOwnership?.map(owner=>owner.attemptId)).toEqual([attemptIds.a,attemptIds.b]);
   if(action==='global-owner'){
    expect(r.h.isTerminalReadCurrent(r.token,leaseA)).toBe(false);expect(r.h.isTerminalReadCurrent(r.token,leaseB)).toBe(false);
    expect(r.w.isTerminalHandleCurrent(r.h)).toBe(false);expect(r.w.refreshConversationInput(before)).toBe(false);
@@ -74,7 +78,7 @@ it.each(['cancel-b','delete-b-body','replace-b-proof','global-capability','globa
   if(action.startsWith('global-'))expect(after.assistantOwnership??[]).toEqual([]);
   else{
    expect(r.w.acceptedView.currentCapability).toBe(cap);expect(r.h.isTerminalReadCurrent(r.token,leaseA)).toBe(true);
-   expect(after.assistantOwnership?.map(owner=>owner.attemptId)).toEqual(['a']);
+   expect(after.assistantOwnership?.map(owner=>owner.attemptId)).toEqual([attemptIds.a]);
    expect(after.assistantOwnership![0]).toMatchObject({recordKey:a.recordKey,containerKey:a.containerKey,turnId:'turn-a',receiptRevision:a.receiptRevision,mode:'canonical'});
    const entries=after.displayPlan!.entries;
    expect(entries.find(entry=>entry.item.key===JSON.stringify(['a','body']))).toMatchObject({presentationContainer:a.containerKey,body:{kind:'typed-canonical',text:'Canonical A'},lifetime:{kind:'valid-owner'}});

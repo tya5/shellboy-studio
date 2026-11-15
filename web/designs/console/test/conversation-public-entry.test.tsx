@@ -1,4 +1,5 @@
 import {publicConversationFixture,CurrentSavedView} from './conversation-fixture';
+import {canonicalAttemptId} from '../../../data/test/work-fixture';
 import { captureConversationInput, captureWork, EMPTY_WORK_DESCRIPTOR } from '../../../ui-core/src/conversation-input';
 // @vitest-environment happy-dom
 import { render } from 'preact';
@@ -93,17 +94,17 @@ it("production model preserves one host across preview, saved canonical body, em
   const user:import("../../../data/src/protocol").HistoryItem={node_id:"lifecycle-user",kind:"user",selection:{ordinal:0},items:[{kind:"text",item_identity:"lifecycle-user-text",text:"Independent user",text_complete:true}],provenance:{kind:"human",sender:{kind:"human"}}};
   const fixture=await fixtureModel({route:"conversation",threadId:"lead",configure:db=>{db.history.lead=[user];const answer=db.answer.bind(db);db.answer=call=>call.command==='message.send'?{ok:true,result:{thread_id:'lead',message_id:'concurrent-local'}}:answer(call);}});
   const host=document.createElement("div");document.body.append(host);
-  let stopPublication=()=>{};
+  let stopPublication=()=>{};const turnOne=canonicalAttemptId(1);
   try {
     const handle=fixture.model.handle.value!,reader=fixture.model.longReader.value!;
     const sendLive=(attempt_id:string,text:string)=>fixture.t.push({t:"live",thread_id:handle.threadId,attempt_id,gap:false,deltas:[{offset:0,reasoning:false,text}]});
-    sendLive("turn-one","Preview answer");await flush();await flush();
+    sendLive(turnOne,"Preview answer");await flush();await flush();
     await act(async()=>render(<OrderedHistory model={fixture.model} handle={handle} win={reader} t={fixture.model.t.value}/>,host));
     const stableHost=host;
     expect(stableHost.textContent).toContain("Independent user");expect(stableHost.textContent).toContain("Preview answer");
-    const saved:import("../../../data/src/protocol").HistoryItem={node_id:"lifecycle-answer",kind:"assistant_response",selection:{ordinal:1},items:[{kind:"text",item_identity:"lifecycle-answer-text",text:"Committed saved answer",text_complete:true}],provenance:{kind:"assistant"}};
+    const saved:import("../../../data/src/protocol").HistoryItem={node_id:"lifecycle-answer",kind:"assistant_response",selection:{ordinal:1},items:[{kind:"text",item_identity:"lifecycle-answer-text",text:"Committed saved answer",text_complete:true}],provenance:{kind:"assistant",attempt_id:turnOne}};
     fixture.db.history.lead=[user,saved];fixture.db.bodies["lifecycle-answer"]="Committed saved answer";
-    fixture.db.work.lead=[{kind:"attempt",id:"turn-one",attempt_id:"turn-one",turn_id:"turn-one-id",thread_id:handle.threadId,state:"completed",response_nodes:[{node_id:"lifecycle-answer",ordinal:1,kind:"assistant_response"}],response_nodes_truncated:false}];
+    fixture.db.work.lead=[{kind:"attempt",id:turnOne,attempt_id:turnOne,turn_id:"turn-one-id",thread_id:handle.threadId,state:"completed",response_nodes:[{node_id:"lifecycle-answer",ordinal:1,kind:"assistant_response"}],response_nodes_truncated:false}];
     fixture.t.push({t:"live_end",thread_id:handle.threadId});
     sendLive('retained-owner','Retained concurrent preview');await flush();await flush();
     const localSend=fixture.model.send('Local concurrent cohort');await flush();
@@ -132,7 +133,7 @@ it("production model preserves one host across preview, saved canonical body, em
       expect(local.localRows[0]?.text).toBe('Local concurrent cohort');
       expect(local.placement).toEqual({kind:'unqualified',reason:'tail-unproved'});
       expect(local.slots).toEqual([]);expect(local.conflictIds).toEqual([]);expect(local.retire).toEqual([]);
-      if(snapshot.retiredAttempts?.some(record=>record.attemptId==='turn-one')){
+      if(snapshot.retiredAttempts?.some(record=>record.attemptId===turnOne)){
         readyCuts++;expect(texts).toEqual(['Independent user','Committed saved answer','Retained concurrent preview']);
         expect(snapshot.rows.map(row=>row.node_id)).toEqual(['lifecycle-user','lifecycle-answer']);
         const canonical=plan.entries.find(entry=>entry.item.source.nodeId==='lifecycle-answer')!;
@@ -144,8 +145,8 @@ it("production model preserves one host across preview, saved canonical body, em
     await settle(fixture.t,fixture.db);expect(await localSend).toBe(true);expect(readyCuts).toBeGreaterThan(0);stopPublication();stopPublication=()=>{};
     await act(async()=>render(<OrderedHistory model={fixture.model} handle={handle} win={reader} t={fixture.model.t.value}/>,stableHost));
     expect(stableHost).toBe(host);expect(stableHost.textContent).toContain("Independent user");expect(stableHost.textContent, JSON.stringify({ calls: fixture.t.calls("status").map(call=>call.args), records: handle.handoff.value, historyReads: fixture.t.calls("history.window").map(call=>call.args), handoffRetry: handle.handoffRetryState.value, accepted: reader.acceptedView.peek().displayPlan?.entries.map(entry=>[entry.item.source.kind,"text" in entry.item.source?entry.item.source.text:undefined]) })).toContain("Committed saved answer");
-    expect(handle.handoff.value.some(record=>record.attemptId==='turn-one')).toBe(false);
-    expect(reader.acceptedView.peek().retiredAttempts?.some(record=>record.attemptId==='turn-one')).toBe(true);
+    expect(handle.handoff.value.some(record=>record.attemptId===turnOne)).toBe(false);
+    expect(reader.acceptedView.peek().retiredAttempts?.some(record=>record.attemptId===turnOne)).toBe(true);
     const nextTurn:import("../../../data/src/protocol").ServerFrame={t:"live",thread_id:handle.threadId,attempt_id:"turn-two",gap:false,deltas:[{offset:0,reasoning:false,text:"Next turn preview"}]};
     fixture.t.push(nextTurn);await flush();await flush();
     await act(async()=>render(<OrderedHistory model={fixture.model} handle={handle} win={reader} t={fixture.model.t.value}/>,stableHost));
@@ -156,7 +157,7 @@ it("production model preserves one host across preview, saved canonical body, em
     await act(async()=>render(<OrderedHistory model={fixture.model} handle={handle} win={reader} t={fixture.model.t.value}/>,stableHost));
     expect(stableHost).toBe(host);expect(stableHost.textContent).toContain('Independent user');
     expect(stableHost.textContent).toContain('Committed saved answer');expect(stableHost.textContent).toContain('Next turn preview');
-    expect(handle.handoff.value.some(record=>record.attemptId==='turn-one')).toBe(false);
+    expect(handle.handoff.value.some(record=>record.attemptId===turnOne)).toBe(false);
     let echoCuts=0;
     stopPublication=reader.acceptedView.subscribe(snapshot=>{
       const plan=snapshot.displayPlan!;expect(reader.acceptedView.isCurrent(snapshot)).toBe(true);
@@ -555,19 +556,20 @@ it('publishes saved rows and whole-attempt retirement in the same DOM frame, ret
  rendererGate.release();await import('../system/components/Message/markdown');await vi.dynamicImportSettled();
  const {attemptWork}=await import('../../../data/test/work-fixture');
  const independent:import('../../../data/src/protocol').HistoryItem={node_id:'independent',kind:'user',items:[{kind:'text',item_identity:'text',text:'Independent user',text_complete:true}]};
- const saved:import('../../../data/src/protocol').HistoryItem={node_id:'saved-answer',kind:'assistant_response',items:[{kind:'text',item_identity:'answer',text:'Committed saved answer',text_complete:true}]};
+ const attemptId=canonicalAttemptId(1);
+ const saved:import('../../../data/src/protocol').HistoryItem={node_id:'saved-answer',kind:'assistant_response',provenance:{attempt_id:attemptId},items:[{kind:'text',item_identity:'answer',text:'Committed saved answer',text_complete:true}]};
  for(let frame=0;frame<5;frame++){
   const nodes=frame===0?[independent]:[independent,frame===1?{...saved,items:null,items_unavailable_reason:'response_budget' as const}:saved];
-  const f=await publicConversationFixture({nodes,work:[{kind:'progress',id:'live-work',thread_id:'lead',state:'running',attempt_id:'attempt',turn_id:'turn'}]});
+  const f=await publicConversationFixture({nodes,work:[{kind:'progress',id:'live-work',thread_id:'lead',state:'running',attempt_id:attemptId,turn_id:'turn'}]});
   const host=document.createElement('div');document.body.append(host);
   const reader=f.model.longReader.peek()!,handle=f.model.handle.peek()!,scope=handle.handoffScope();
   const cuts=new Map<number,WindowAcceptedSnapshot>();let stop=()=>{};
   const fixed=(snapshot:WindowAcceptedSnapshot)=>{
-   const canonical=snapshot.assistantOwnership?.some(owner=>owner.attemptId==='attempt'&&owner.mode==='canonical');
+   const canonical=snapshot.assistantOwnership?.some(owner=>owner.attemptId===attemptId&&owner.mode==='canonical');
    expect(snapshot.displayPlan!.entries.flatMap(entry=>entry.body.kind==='unavailable'||entry.body.text===''?[]:[entry.body.text])).toEqual([
     'Independent user',...(frame>=2?['Committed saved answer']:[]),...(!canonical?['Whole live answer']:[])]);
    for(const owner of snapshot.assistantOwnership??[]){
-    expect(owner).toMatchObject({scope,attemptId:'attempt',turnId:'turn',refs:[{nodeId:'saved-answer',ordinal:1,kind:'assistant_response'}]});
+    expect(owner).toMatchObject({scope,attemptId:attemptId,turnId:'turn',refs:[{nodeId:'saved-answer',ordinal:1,kind:'assistant_response'}]});
     expect(snapshot.retiredAttempts?.some(retired=>retired.recordKey===owner.recordKey&&retired.containerKey===owner.containerKey)
       ||handle.handoff.peek().some(record=>record.key===owner.recordKey&&handle.isDisplayOwnershipCurrent(record,snapshot.generation))).toBe(true);
    }
@@ -578,23 +580,23 @@ it('publishes saved rows and whole-attempt retirement in the same DOM frame, ret
    const cut=cuts.get(Number(generation));expect(cut).toBeDefined();
    expect(host.textContent).toContain('Independent user');
    if(frame>=2)expect(host.textContent).toContain('Committed saved answer');
-   expect(host.textContent?.includes('Whole live answer')).toBe(!cut!.assistantOwnership?.some(owner=>owner.attemptId==='attempt'&&owner.mode==='canonical'));
+   expect(host.textContent?.includes('Whole live answer')).toBe(!cut!.assistantOwnership?.some(owner=>owner.attemptId===attemptId&&owner.mode==='canonical'));
   };
   const observer=new MutationObserver(captureDom);
   try{
-   f.t.push({t:'live',thread_id:'lead',attempt_id:'attempt',gap:false,deltas:[{offset:0,reasoning:false,text:'Whole live answer'}]});await flush();await flush();
+   f.t.push({t:'live',thread_id:'lead',attempt_id:attemptId,gap:false,deltas:[{offset:0,reasoning:false,text:'Whole live answer'}]});await flush();await flush();
    const initial=reader.acceptedView.peek(),initialRows=JSON.stringify(initial.rows),original=handle.handoff.peek()[0]!;cuts.set(initial.generation,initial);fixed(initial);
    stop=reader.acceptedView.subscribe(snapshot=>{expect(reader.acceptedView.isCurrent(snapshot)).toBe(true);fixed(snapshot);cuts.set(snapshot.generation,snapshot);});
    observer.observe(host,{subtree:true,childList:true,characterData:true,attributes:true});
    await act(async()=>render(<CurrentSavedView fixture={f}/>,host));captureDom();
    if(frame>=2){
-    f.db.work.lead=[{...attemptWork({threadId:'lead',attemptId:'attempt',turnId:'turn',state:'completed',truncated:frame!==4,
+    f.db.work.lead=[{...attemptWork({threadId:'lead',attemptId:attemptId,turnId:'turn',state:'completed',truncated:frame!==4,
       refs:[{node_id:'saved-answer',ordinal:1,kind:'assistant_response'}]})}];
     await act(async()=>{f.t.push({t:'live_end',thread_id:'lead'});await settle(f.t,f.db);});
    }
    const snapshot=reader.acceptedView.peek();captureDom();
    if(frame===2||frame===3){
-    const receipt=snapshot.terminalPersistedAttempts![0]!;expect(receipt).toMatchObject({scope,attemptId:'attempt',turnId:'turn',recordKey:original.key});
+    const receipt=snapshot.terminalPersistedAttempts![0]!;expect(receipt).toMatchObject({scope,attemptId:attemptId,turnId:'turn',recordKey:original.key});
     const bad=frame===2?{...receipt,scope:'other-lifetime'}:{...receipt,turnId:'other-turn'};
     const count=f.t.calls('history.window').length,ref=reader.acceptedView.peek();
     expect('state' in reader.prepareBoundTerminalRead(bad)).toBe(false);
@@ -604,7 +606,7 @@ it('publishes saved rows and whole-attempt retirement in the same DOM frame, ret
    expect(host.textContent?.includes('Whole live answer'),`frame ${frame}`).toBe(frame!==4);
    expect(host.querySelectorAll('[data-work-item-key]')).toHaveLength(frame===4?0:frame===1?2:1);
    if(frame===4){
-    expect(snapshot.retiredAttempts).toMatchObject([{scope,attemptId:'attempt',turnId:'turn',recordKey:original.key,containerKey:original.presentationContainer}]);
+    expect(snapshot.retiredAttempts).toMatchObject([{scope,attemptId:attemptId,turnId:'turn',recordKey:original.key,containerKey:original.presentationContainer}]);
     expect(snapshot.displayPlan?.entries.find(entry=>entry.item.key===JSON.stringify(['saved-answer','answer']))?.presentationContainer).toBe(original.presentationContainer);
     const facts=normalizeLiveWorkFacts({scope:'lead',items:handle.work.peek().value?.items??[]});
     reader.dispose();expect(reader.acceptedView.isCurrent(snapshot)).toBe(false);

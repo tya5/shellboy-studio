@@ -4,14 +4,15 @@ import {render} from 'preact';
 import {act} from 'preact/test-utils';
 import {expect,it} from 'vitest';
 import type {HistoryItem} from '../../../data/src/protocol';
-import {attemptWork} from '../../../data/test/work-fixture';
+import {attemptWork,CANONICAL_ATTEMPT_ID,canonicalAttemptId} from '../../../data/test/work-fixture';
 import {flush,settle} from '../../../data/test/harness';
 import {publicConversationFixture,CurrentSavedView} from './conversation-fixture';
 
 it('ninth exact readable owner uses a genuinely retired eight-original bootstrap, never empty-receipt transfer',async()=>{
  const same='Equal answer text';
+ const attempts=Array.from({length:10},(_,i)=>canonicalAttemptId(i+1));
  const nodes:HistoryItem[]=[{node_id:'human',kind:'user',items:[{kind:'text',item_identity:'body',text:'Independent human',text_complete:true}],provenance:{sender:{kind:'human'}}},
-  ...Array.from({length:10},(_,index):HistoryItem=>({node_id:`answer-${index+1}`,kind:'assistant_response',items:[{kind:'text',item_identity:'body',text:index>=8?same:`Canonical ${index+1}`,text_complete:true}]}))];
+  ...Array.from({length:10},(_,index):HistoryItem=>({node_id:`answer-${index+1}`,kind:'assistant_response',provenance:{attempt_id:attempts[index]},items:[{kind:'text',item_identity:'body',text:index>=8?same:`Canonical ${index+1}`,text_complete:true}]}))];
  const f=await publicConversationFixture({nodes}),host=document.createElement('div');document.body.append(host);
  const h=f.model.handle.peek()!,w=f.model.longReader.peek()!,scope=h.handoffScope(),trace:Record<string,unknown>[]=[],containers=new Map<string,string>();
  const stop=w.acceptedView.subscribe(ref=>{
@@ -32,23 +33,23 @@ it('ninth exact readable owner uses a genuinely retired eight-original bootstrap
   await act(async()=>render(<CurrentSavedView fixture={f}/>,host));
   for(let active=1;active<=9;active++){
    f.db.work.lead=[];
-   await act(async()=>{f.t.push({t:'live',thread_id:'lead',attempt_id:`attempt-${active}`,gap:false,deltas:[{offset:0,reasoning:false,text:active===9?same:`Readable ${active}`}]});await flush();});
-   const original=h.handoff.peek().find(record=>record.attemptId===`attempt-${active}`)!;
+   await act(async()=>{f.t.push({t:'live',thread_id:'lead',attempt_id:attempts[active-1]!,gap:false,deltas:[{offset:0,reasoning:false,text:active===9?same:`Readable ${active}`}]});await flush();});
+   const original=h.handoff.peek().find(record=>record.attemptId===attempts[active-1])!;
    containers.set(original.attemptId,original.presentationContainer);
    expect(original.text).toBe(active===9?same:`Readable ${active}`);expect(original.readyAttempt).toBeUndefined();
-   f.db.work.lead=[{...attemptWork({threadId:'lead',attemptId:`attempt-${active}`,turnId:`turn-${active}`,state:'completed',refs:[{node_id:`answer-${active}`,ordinal:active,kind:'assistant_response'}]})}];
+   f.db.work.lead=[{...attemptWork({threadId:'lead',attemptId:attempts[active-1]!,turnId:`turn-${active}`,state:'completed',refs:[{node_id:`answer-${active}`,ordinal:active,kind:'assistant_response'}]})}];
    await act(async()=>{f.t.push({t:'live_end',thread_id:'lead'});await settle(f.t,f.db);});
    const current=w.acceptedView.peek();expect(h.handoffScope()).toBe(scope);
    trace.push({kind:'cohort',active,receipts:current.terminalPersistedAttempts?.length,held:h.handoff.peek().map(record=>({attempt:record.attemptId,ready:!!record.readyAttempt,status:record.status})),retry:h.handoffRetryState.peek(),
     reads:f.t.calls('history.window').map(call=>call.args)});
    if(active<=8){
-    expect(current.retiredAttempts?.find(record=>record.attemptId===`attempt-${active}`)).toMatchObject({scope,turnId:`turn-${active}`,recordKey:original.key,containerKey:original.presentationContainer});
+    expect(current.retiredAttempts?.find(record=>record.attemptId===attempts[active-1])).toMatchObject({scope,turnId:`turn-${active}`,recordKey:original.key,containerKey:original.presentationContainer});
     expect(h.handoff.peek()).toHaveLength(0);expect(current.terminalPersistedAttempts).toHaveLength(active);
     await act(async()=>{const retry=h.retryHandoff();await settle(f.t,f.db);await retry;});
    }else{
     expect(current.terminalPersistedAttempts).toHaveLength(8);
     expect(host.querySelectorAll('[data-node="answer-9"] .msg')).toHaveLength(1);expect(host.querySelectorAll('[data-node="answer-10"] .msg')).toHaveLength(1);
-    expect(current.assistantOwnership?.find(owner=>owner.attemptId==='attempt-9')).toMatchObject({scope,turnId:'turn-9',recordKey:original.key,containerKey:original.presentationContainer,mode:'canonical'});
+    expect(current.assistantOwnership?.find(owner=>owner.attemptId===attempts[8])).toMatchObject({scope,turnId:'turn-9',recordKey:original.key,containerKey:original.presentationContainer,mode:'canonical'});
     expect(host.querySelectorAll('[data-live-overlay]')).toHaveLength(0);
     expect(h.handoff.peek()).toHaveLength(1);expect(h.handoff.peek()[0]?.text).toBe(same);
     expect(h.handoff.peek()[0]?.readyAttempt).toBeUndefined();expect(h.handoff.peek()[0]?.terminalPersisted).toBeUndefined();

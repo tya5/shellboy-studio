@@ -6,7 +6,7 @@ import {expect,it} from 'vitest';
 import type {HistoryItem} from '../../../data/src/protocol';
 import type {ThreadReadQualification} from '../../../data/src/store';
 import type {OwnedTerminalReadLease} from '../../../data/src/terminal-read';
-import {attemptWork} from '../../../data/test/work-fixture';
+import {attemptWork,CANONICAL_ATTEMPT_ID,withCanonicalAttemptProvenance} from '../../../data/test/work-fixture';
 import {flush,settle} from '../../../data/test/harness';
 import {publicConversationFixture,CurrentSavedView} from './conversation-fixture';
 
@@ -16,13 +16,13 @@ const cases:{total:number;mode:string;selected?:number}[]=[{total:3,mode:'valid'
  {total:2000,selected:1600,mode:'valid'}];
 for(const {total,mode,selected=Math.min(total,100)} of cases)it(`actual empty receipt selected-cut ${total}/${mode}`,async()=>{
  const first=Math.max(0,total-selected),answerOrdinal=total-1,humanOrdinal=total-2,initialRevision=mode==='older-point'?2:1,pointRevision=mode==='older-point'?1:2;
- const path=(revision:number):HistoryItem[]=>Array.from({length:total},(_,ordinal)=>({
+ const path=(revision:number):HistoryItem[]=>withCanonicalAttemptProvenance(Array.from({length:total},(_,ordinal)=>({
   node_id:ordinal===answerOrdinal?'answer':`node-${ordinal}`,
   kind:ordinal===humanOrdinal?'user':'assistant_response',selection:{ordinal},
   ...(ordinal===humanOrdinal?{provenance:{sender:{kind:'human'}}}:{}),
   ...(revision===initialRevision&&ordinal===answerOrdinal?{items:null,items_unavailable_reason:'response_budget' as const}:
    {items:[{kind:'text',item_identity:'body',text:`R${revision}:${ordinal}`,text_complete:true}]}),
- }));
+ })),CANONICAL_ATTEMPT_ID);
  const f=await publicConversationFixture({nodes:path(initialRevision),revision:initialRevision}),host=document.createElement('div');document.body.append(host);
  const reader=f.model.longReader.peek()!,handle=f.model.handle.peek()!,scope=handle.handoffScope();
  for(let page=0;page<16&&reader.acceptedView.peek().rows.length<selected;page++){reader.requestOlder();await settle(f.t,f.db);}
@@ -37,7 +37,7 @@ for(const {total,mode,selected=Math.min(total,100)} of cases)it(`actual empty re
   for(const row of ref.rows)for(const item of row.items??[])if(item.kind==='text')expect(item.text).toBe(`R${ref.revision}:${row.selection!.ordinal}`);
   const human=ref.displayPlan?.entries.find(entry=>entry.item.key===JSON.stringify([`node-${humanOrdinal}`,'body']));
   expect(human?.body).toMatchObject({kind:'typed-canonical',text:`R${ref.revision}:${humanOrdinal}`});
-  for(const receipt of ref.terminalPersistedAttempts??[])expect(receipt).toMatchObject({scope,attemptId:'attempt',turnId:'turn',recordKey:'handoff:attempt',
+  for(const receipt of ref.terminalPersistedAttempts??[])expect(receipt).toMatchObject({scope,attemptId:CANONICAL_ATTEMPT_ID,turnId:'turn',recordKey:`handoff:${CANONICAL_ATTEMPT_ID}`,
    nodeIds:['answer'],refs:[{nodeId:'answer',ordinal:answerOrdinal,kind:'assistant_response'}]});
   trace.push({kind:'publication',generation:ref.generation,revision:ref.revision,total:ref.total,range:ref.range,
    rows:ref.rows.map(row=>row.node_id),owners:ref.assistantOwnership,presence:ref.terminalPresence});
@@ -53,13 +53,13 @@ for(const {total,mode,selected=Math.min(total,100)} of cases)it(`actual empty re
     &&'node_id' in frame.args&&frame.args.node_id==='answer')f.db.answered.add(frame.id);
    return sent;
   };
-  f.db.work.lead=[{...attemptWork({threadId:'lead',attemptId:'attempt',turnId:'turn',state:'completed',truncated:true,
+  f.db.work.lead=[{...attemptWork({threadId:'lead',attemptId:CANONICAL_ATTEMPT_ID,turnId:'turn',state:'completed',truncated:true,
    refs:[{node_id:'answer',ordinal:answerOrdinal,kind:'assistant_response'}]})}];
   await act(async()=>{
-   f.t.push({t:'live',thread_id:'lead',attempt_id:'attempt',gap:false,deltas:[{offset:0,reasoning:false,text:''}]});await flush();
+   f.t.push({t:'live',thread_id:'lead',attempt_id:CANONICAL_ATTEMPT_ID,gap:false,deltas:[{offset:0,reasoning:false,text:''}]});await flush();
    f.t.push({t:'live_end',thread_id:'lead'});await settle(f.t,f.db);
   });
-  const record=handle.handoff.peek().find(item=>item.attemptId==='attempt');expect(record).toBeDefined();
+  const record=handle.handoff.peek().find(item=>item.attemptId===CANONICAL_ATTEMPT_ID);expect(record).toBeDefined();
   const receipt=record!.terminalPersisted;expect(receipt).toBeDefined();
   expect(handle.isReceiptObservationCurrent(record!,receipt!)).toBe(true);
   expect(handle.isDisplayOwnershipCurrent(record!,reader.acceptedView.peek().generation)).toBe(false);expect(record!.readyAttempt).toBeUndefined();
@@ -130,7 +130,7 @@ for(const {total,mode,selected=Math.min(total,100)} of cases)it(`actual empty re
   expect(trace.filter(entry=>entry.kind==='publication'&&entry.revision===2)).toHaveLength(1);
   expect(current.revision,JSON.stringify(trace)).toBe(2);
   expect(current.total).toBe(total);expect(current.range).toEqual({first,last:answerOrdinal});expect(current.rows).toHaveLength(selected);
-  expect(current.assistantOwnership).toMatchObject([{scope,attemptId:'attempt',turnId:'turn',recordKey:record!.key,containerKey:record!.presentationContainer,mode:'canonical',
+  expect(current.assistantOwnership).toMatchObject([{scope,attemptId:CANONICAL_ATTEMPT_ID,turnId:'turn',recordKey:record!.key,containerKey:record!.presentationContainer,mode:'canonical',
    refs:[{nodeId:'answer',ordinal:answerOrdinal,kind:'assistant_response'}]}]);
   expect(host.textContent).toContain(`R2:${answerOrdinal}`);expect(host.textContent).toContain(`R2:${humanOrdinal}`);
   expect(reader.acceptedView.isCurrent(before)).toBe(false);expect(JSON.stringify(initial.rows)).toBe(oldRows);

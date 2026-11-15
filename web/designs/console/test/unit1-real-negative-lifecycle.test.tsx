@@ -10,7 +10,8 @@ import type { HistoryItem } from '../../../data/src/protocol';
 import type { DesignContext } from '../../../ui-core/src';
 import { loadPrefs } from '../../../ui-core/src/prefs';
 import { App } from '../screens/App';
-import { typedHandoffRegistry, typedSelectedCoverageWindow, type TypedHistoryWindow } from '../../../ui-core/test/typed-handoff-fixture';
+import { CANONICAL_ATTEMPT_ID } from '../../../data/test/work-fixture';
+import { typedHandoffRegistry, typedHandoffNode, typedSelectedCoverageWindow, type TypedHistoryWindow } from '../../../ui-core/test/typed-handoff-fixture';
 
 const context = (model: DesignContext['model']): DesignContext => ({
   model, prefs: signal(loadPrefs({ read: () => null, write: () => {} }, [{ name: 'console', themes: [{ name: 'light' }] }])),
@@ -20,15 +21,15 @@ const context = (model: DesignContext['model']): DesignContext => ({
 type Mode = 'budget' | 'stale' | 'delete' | 'aba' | 'canonical';
 async function realLifecycle(mode: Mode) {
   let ended = false, deleted = false, deliverOld = false;
-  const registry = typedHandoffRegistry({ threadId: 'thread', attemptId: 'attempt-1', turnId: 'turn-1', revision: 8, total: 4,
+  const registry = typedHandoffRegistry({ threadId: 'thread', attemptId: CANONICAL_ATTEMPT_ID, turnId: 'turn-1', revision: 8, total: 4, provenanceAttemptId: CANONICAL_ATTEMPT_ID,
     refs: [{ nodeId: 'answer-1', ordinal: 2, text: 'Canonical answer' }, { nodeId: 'answer-2', ordinal: 3, text: 'Canonical continuation' }] });
   const first = registry.refs[0]!, second = registry.refs[1]!, attempt = registry.attempt();
   const nodes: HistoryItem[] = [
     { node_id: 'user-0', kind: 'user', selection: { ordinal: 0 }, items: [{ kind: 'text', item_identity: 'u0', text: 'Question', text_complete: true }] },
     { node_id: 'tool-1', kind: 'tool', selection: { ordinal: 1 }, items: [{ kind: 'text', item_identity: 'tool1', text: 'intervening work', text_complete: true }] },
-    ...registry.refs.map(ref => ({ node_id: ref.nodeId, kind: 'assistant_response' as const, selection: { ordinal: ref.ordinal }, items: null, items_unavailable_reason: 'response_budget' as const })),
+    ...registry.refs.map(ref => (typedHandoffNode(ref,false))),
   ];
-  const canonical = (ref: typeof first): HistoryItem => ({ node_id: ref.nodeId, kind: 'assistant_response', selection: { ordinal: ref.ordinal }, items: [{ kind: 'text', item_identity: `${ref.nodeId}:/output/0/content/0`, text: ref.text, text_complete: true }] });
+  const canonical = (ref: typeof first): HistoryItem => typedHandoffNode(ref, true);
   const f = await fixtureModel({ capabilities: ['live.text', 'history.window'], configure(db) {
     db.threads = { thread: summary('thread') }; db.details.thread = details('thread'); db.history.thread = nodes;
     const base = db.answer.bind(db); db.answer = call => {
@@ -54,7 +55,7 @@ async function realLifecycle(mode: Mode) {
   const host = document.createElement('div'); document.body.append(host);
   const cleanup = () => { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); };
   await act(async () => { render(<App context={context(f.model)} />, host); await settle(f.t, f.db); });
-  await act(async () => { f.t.push({ t: 'live', thread_id: 'thread', attempt_id: 'attempt-1', gap: false, deltas: [{ offset: 0, reasoning: false, text: 'Preview answer' }] }); await flush(24); });
+  await act(async () => { f.t.push({ t: 'live', thread_id: 'thread', attempt_id: CANONICAL_ATTEMPT_ID, gap: false, deltas: [{ offset: 0, reasoning: false, text: 'Preview answer' }] }); await flush(24); });
   const answerHost = host.querySelector('[data-answer-container]');
   ended = true; registry.canonical = mode === 'canonical' || mode === 'delete' || mode === 'aba';
   if (registry.canonical) { nodes[2] = canonical(first); nodes[3] = canonical(second); }

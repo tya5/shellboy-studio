@@ -48,15 +48,20 @@ export function typedAttempt(fixture: TypedHandoffFixture): TypedHandoffAttempt 
   };
 }
 
+export function typedHandoffNode(fixture: TypedHandoffFixture, canonical: boolean): TypedHistoryNode {
+  return {
+    node_id: fixture.nodeId, kind: "assistant_response", selection: { ordinal: fixture.ordinal }, excerpt: fixture.text,
+    items: canonical ? [{ kind: "text", item_identity: `${fixture.nodeId}:/output/0/content/0`, text: fixture.text, text_complete: true }] : null,
+    ...(!canonical ? { items_unavailable_reason: "response_budget" as const } : {}),
+    ...(canonical && fixture.provenanceAttemptId ? { provenance: { attempt_id: fixture.provenanceAttemptId } } : {}),
+  };
+}
+
 export function typedHistoryWindow(fixture: TypedHandoffFixture, args: { node_id?: string; ordinal?: number }): TypedHistoryWindow | undefined {
   if (args.node_id !== undefined && args.node_id !== fixture.nodeId) return;
   if (args.ordinal !== undefined && args.ordinal !== fixture.ordinal) return;
   if (args.node_id === undefined && args.ordinal === undefined) return;
-  const node: TypedHistoryNode = {
-    node_id: fixture.nodeId, kind: "assistant_response", selection: { ordinal: fixture.ordinal }, excerpt: fixture.text,
-    items: [{ kind: "text", item_identity: `${fixture.nodeId}:/output/0/content/0`, text: fixture.text, text_complete: true }],
-    ...(fixture.provenanceAttemptId ? { provenance: { attempt_id: fixture.provenanceAttemptId } } : {}),
-  };
+  const node = typedHandoffNode(fixture, true);
   return { thread_id: fixture.threadId, revision: fixture.revision, total: fixture.total, item_count: 1, items: [node] };
 }
 
@@ -95,10 +100,10 @@ export interface TypedHandoffRegistry {
   history(args: { node_id?: string; ordinal?: number; before?: number; after?: number }): TypedHistoryWindow | undefined;
 }
 
-export function typedHandoffRegistry(input: { threadId: string; attemptId: string; turnId: string; revision: number; total: number; refs: readonly TypedHandoffRegistryRef[] }): TypedHandoffRegistry {
+export function typedHandoffRegistry(input: { threadId: string; attemptId: string; turnId: string; revision: number; total: number; refs: readonly TypedHandoffRegistryRef[]; provenanceAttemptId?: AttemptId }): TypedHandoffRegistry {
   if (!input.refs.length || input.refs.some((ref, index) => index > 0 && ref.ordinal <= input.refs[index - 1]!.ordinal)) throw new Error("Non-monotonic typed handoff refs");
   const scope = `${input.threadId}/${input.attemptId}/${input.turnId}`;
-  const refs = input.refs.map(ref => typedHandoff({ threadId: input.threadId, attemptId: input.attemptId, turnId: input.turnId, scope, nodeId: ref.nodeId, ordinal: ref.ordinal, revision: input.revision, total: input.total, text: ref.text }));
+  const refs = input.refs.map(ref => typedHandoff({ threadId: input.threadId, attemptId: input.attemptId, turnId: input.turnId, scope, nodeId: ref.nodeId, ordinal: ref.ordinal, revision: input.revision, total: input.total, text: ref.text, provenanceAttemptId: input.provenanceAttemptId }));
   const registry: TypedHandoffRegistry = {
     threadId: input.threadId, attemptId: input.attemptId, turnId: input.turnId, scope, refs,
     revision: input.revision, total: input.total, canonical: false,
@@ -112,10 +117,8 @@ export function typedHandoffRegistry(input: { threadId: string; attemptId: strin
       if (selected.length !== 1) return;
       const anchor = selected[0]!;
       const before = args.before ?? 0, after = args.after ?? 0;
-      const rows = refs.filter(ref => ref.ordinal >= anchor.ordinal - before && ref.ordinal <= anchor.ordinal + after).map(ref => ({
-        node_id: ref.nodeId, kind: "assistant_response" as const, selection: { ordinal: ref.ordinal }, excerpt: ref.text,
-        ...(registry.canonical ? { items: [{ kind: "text" as const, item_identity: `${ref.nodeId}:/output/0/content/0`, text: ref.text, text_complete: true as const }] } : { items: null, items_unavailable_reason: "response_budget" as const }),
-      }));
+      const rows = refs.filter(ref => ref.ordinal >= anchor.ordinal - before && ref.ordinal <= anchor.ordinal + after)
+        .map(ref => typedHandoffNode(ref, registry.canonical));
       return { thread_id: registry.threadId, revision: registry.revision, total: registry.total, item_count: rows.length, items: rows };
     },
   };

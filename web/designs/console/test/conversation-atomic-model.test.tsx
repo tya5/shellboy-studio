@@ -1,4 +1,4 @@
-import {attemptWork} from '../../../data/test/work-fixture';
+import {attemptWork,CANONICAL_ATTEMPT_ID,canonicalAttemptId,withCanonicalAttemptProvenance} from '../../../data/test/work-fixture';
 // @vitest-environment happy-dom
 import '@preact/signals';
 import {signal} from '@preact/signals-core';
@@ -13,11 +13,11 @@ import {App} from '../screens/App';
 import {loadPrefs} from '../../../ui-core/src/prefs';
 
 const independent:HistoryItem={node_id:'independent',kind:'user',selection:{ordinal:0},items:[{kind:'text',item_identity:'u',text:'Independent saved user',text_complete:true}]};
-const saved:HistoryItem[]=[independent,{node_id:'tool',kind:'assistant_response',selection:{ordinal:1},items:[{kind:'tool_call',item_identity:'call',execution_ids:['exec']}]},{node_id:'answer',kind:'assistant_response',selection:{ordinal:2},items:[{kind:'text',item_identity:'answer-text',text:'Qualified saved answer',text_complete:true}]}];
+const saved:HistoryItem[]=withCanonicalAttemptProvenance([independent,{node_id:'tool',kind:'assistant_response',selection:{ordinal:1},items:[{kind:'tool_call',item_identity:'call',execution_ids:['exec']}]},{node_id:'answer',kind:'assistant_response',selection:{ordinal:2},items:[{kind:'text',item_identity:'answer-text',text:'Qualified saved answer',text_complete:true}]}],CANONICAL_ATTEMPT_ID);
 for(const mode of ['ready','ready-with-change','reentry','wrong-lifetime','partial','deferred','truncated','empty-refs','nonterminal','wrong-thread','duplicate-refs'] as const)it(`real Store/O/model/Window -> App whole attempt under ${mode}`,async()=>{
  let ended=false;
  const f=await fixtureModel({capabilities:['history.window'],configure(db){db.threads={t:summary('t')};db.details.t=details('t');db.history.t=[];const base=db.answer.bind(db);db.answer=call=>{
-  if(call.command==='status')return {ok:true,result:{items:ended?[attemptWork({threadId:mode==='wrong-thread'?'other-thread':'t',attemptId:'attempt',turnId:'turn',state:mode==='nonterminal'?'running':'completed',truncated:mode==='truncated',refs:mode==='empty-refs'?[]:mode==='duplicate-refs'?[{node_id:'answer',ordinal:2,kind:'assistant_response'},{node_id:'answer',ordinal:2,kind:'assistant_response'}]:[{node_id:'tool',ordinal:1,kind:'assistant_response'},{node_id:'answer',ordinal:2,kind:'assistant_response'}]})]:[]}};
+  if(call.command==='status')return {ok:true,result:{items:ended?[attemptWork({threadId:mode==='wrong-thread'?'other-thread':'t',attemptId:CANONICAL_ATTEMPT_ID,turnId:'turn',state:mode==='nonterminal'?'running':'completed',truncated:mode==='truncated',refs:mode==='empty-refs'?[]:mode==='duplicate-refs'?[{node_id:'answer',ordinal:2,kind:'assistant_response'},{node_id:'answer',ordinal:2,kind:'assistant_response'}]:[{node_id:'tool',ordinal:1,kind:'assistant_response'},{node_id:'answer',ordinal:2,kind:'assistant_response'}]})]:[]}};
   if(call.command==='history.window')return {ok:true,result:{thread_id:'t',revision:7,total:ended?3:1,items:!ended?[independent]:mode==='partial'?[independent,saved[1],{...saved[2],items:[{kind:'text',item_identity:'answer-text',text:'prefix',text_complete:false}]}]:mode==='deferred'?[independent,saved[1],{...saved[2],items:null,items_unavailable_reason:'response_budget'}]:saved}};
   return base(call);
  };}});
@@ -27,7 +27,7 @@ for(const mode of ['ready','ready-with-change','reentry','wrong-lifetime','parti
  try{
   await act(async()=>{render(<App context={context}/>,host);await settle(f.t,f.db);});
   const win=f.model.longReader.peek()!;expect(win).toBeDefined();
-  await act(async()=>{f.t.push({t:'live',thread_id:'t',attempt_id:'attempt',gap:false,deltas:[{offset:0,reasoning:false,text:'Whole live answer'}]});await flush(24);});
+  await act(async()=>{f.t.push({t:'live',thread_id:'t',attempt_id:CANONICAL_ATTEMPT_ID,gap:false,deltas:[{offset:0,reasoning:false,text:'Whole live answer'}]});await flush(24);});
   expect(host.textContent).toContain('Whole live answer');expect(host.textContent).toContain('Independent saved user');
   const sample=()=>frames.push({independent:host.textContent!.includes('Independent saved user'),live:host.textContent!.includes('Whole live answer'),saved:host.textContent!.includes('Qualified saved answer'),retired:win.acceptedView.peek().retiredAttempts?.length??0});
   sample();if(mode==='wrong-lifetime')f.model.handle.peek()!.pause();ended=true;
@@ -47,10 +47,10 @@ for(const mode of ['ready','ready-with-change','reentry','wrong-lifetime','parti
   let reentered=false;
   const stop=mode==='reentry'?win.acceptedView.subscribe(()=>{if(!reentered){
     reentered=true;
-    const original=f.model.handle.peek()!.handoff.peek().find(record=>record.attemptId==='attempt')!;
+    const original=f.model.handle.peek()!.handoff.peek().find(record=>record.attemptId===CANONICAL_ATTEMPT_ID)!;
     expect(original.text).toBe('Whole live answer');
     win.setAttemptPresentations([{scope:f.model.handle.peek()!.handoffScope(),attemptId:'other',turnId:'other-turn',nodeIds:['unselected'],state:'pending'}]);
-    expect(f.model.handle.peek()!.handoff.peek().find(record=>record.attemptId==='attempt')).toBe(original);
+    expect(f.model.handle.peek()!.handoff.peek().find(record=>record.attemptId===CANONICAL_ATTEMPT_ID)).toBe(original);
     expect(win.acceptedView.peek().assistantOwnership?.some(owner=>owner.turnId==='other-turn')).toBe(false);
   }}):()=>{};
   await act(async()=>{await settle(f.t,f.db);await flush(24);});sample();stop();
@@ -62,8 +62,8 @@ for(const mode of ['ready','ready-with-change','reentry','wrong-lifetime','parti
    await act(async()=>{const retry=f.model.handle.peek()!.retryHandoff();await settle(f.t,f.db);await retry;await flush(24);});sample();
    if(['ready','ready-with-change','reentry'].includes(mode)){
     expect(host.textContent).not.toContain('Whole live answer');expect(host.textContent).toContain('Qualified saved answer');
-    expect(f.model.handle.peek()!.handoff.peek().filter(record=>record.attemptId==='attempt')).toHaveLength(0);
-    expect(win.acceptedView.peek().retiredAttempts).toMatchObject([{attemptId:'attempt',turnId:'turn',nodeIds:['tool','answer']}]);
+    expect(f.model.handle.peek()!.handoff.peek().filter(record=>record.attemptId===CANONICAL_ATTEMPT_ID)).toHaveLength(0);
+    expect(win.acceptedView.peek().retiredAttempts).toMatchObject([{attemptId:CANONICAL_ATTEMPT_ID,turnId:'turn',nodeIds:['tool','answer']}]);
    }else expect(host.textContent).toContain('Whole live answer');
   }
   if(mode==='wrong-lifetime')expect(frames.every(frame=>!frame.saved)).toBe(true);
@@ -78,8 +78,8 @@ for(const scenario of ['persisted','failed','separate-attempt','owner-lifetime',
  const trace:Record<string,unknown>[]=[];
  const cuts:{snapshot:import('../../../ui-core/src/window').WindowAcceptedSnapshot;current:boolean;authority:readonly boolean[]}[]=[];
  let selected:()=>import('../../../ui-core/src/window').WindowAcceptedSnapshot|undefined=()=>undefined;
- const member:HistoryItem={node_id:'member',kind:'assistant_response',selection:{ordinal:1},items:[{kind:'text',item_identity:'member-text',text:'Saved member fragment',text_complete:true}]};
- const otherMember:HistoryItem={node_id:'other-member',kind:'assistant_response',selection:{ordinal:2},items:[{kind:'text',item_identity:'other-text',text:'Other attempt saved text',text_complete:true}]};
+ const member=withCanonicalAttemptProvenance([{node_id:'member',kind:'assistant_response',selection:{ordinal:1},items:[{kind:'text',item_identity:'member-text',text:'Saved member fragment',text_complete:true}]}],CANONICAL_ATTEMPT_ID)[0]!;
+ const otherMember=withCanonicalAttemptProvenance([{node_id:'other-member',kind:'assistant_response',selection:{ordinal:2},items:[{kind:'text',item_identity:'other-text',text:'Other attempt saved text',text_complete:true}]}],canonicalAttemptId(2))[0]!;
  const f=await fixtureModel({capabilities:['history.window'],configureData(data){
   const open=data.openThread.bind(data);data.openThread=threadId=>{
    const handle=open(threadId);if(threadId!=='t')return handle;
@@ -98,7 +98,7 @@ for(const scenario of ['persisted','failed','separate-attempt','owner-lifetime',
  },configure(db){
   db.threads={t:summary('t')};db.details.t=details('t');db.history.t=[];
   const base=db.answer.bind(db);db.answer=call=>{
-   if(call.command==='status')return {ok:true,result:{items:ended?[{...attemptWork({threadId:'t',attemptId:'attempt',turnId:'turn',state:scenario==='failed'?'failed':'completed',refs:[{node_id:'member',ordinal:1,kind:'assistant_response'}]}),attempt_id:scenario==='separate-attempt'?'retry-attempt':'attempt'},...(scenario==='other-attempt-member'?[attemptWork({threadId:'t',attemptId:'previous-attempt',turnId:'previous-turn',state:'completed',refs:[{node_id:'other-member',ordinal:2,kind:'assistant_response'}]})]:[])]:[]}};
+   if(call.command==='status')return {ok:true,result:{items:ended?[{...attemptWork({threadId:'t',attemptId:CANONICAL_ATTEMPT_ID,turnId:'turn',state:scenario==='failed'?'failed':'completed',refs:[{node_id:'member',ordinal:1,kind:'assistant_response'}]}),attempt_id:scenario==='separate-attempt'?'retry-attempt':CANONICAL_ATTEMPT_ID},...(scenario==='other-attempt-member'?[attemptWork({threadId:'t',attemptId:'previous-attempt',turnId:'previous-turn',state:'completed',refs:[{node_id:'other-member',ordinal:2,kind:'assistant_response'}]})]:[])]:[]}};
    if(call.command==='history.window')return {ok:true,result:{thread_id:'t',revision:8,total:scenario==='other-attempt-member'?3:2,items:scenario==='other-attempt-member'?[independent,member,otherMember]:[independent,member]}};
    return base(call);
   };
@@ -117,8 +117,8 @@ for(const scenario of ['persisted','failed','separate-attempt','owner-lifetime',
    bodies:ref.displayPlan?.entries.flatMap(entry=>entry.body.kind==='unavailable'?[]:[{key:entry.item.key,kind:entry.body.kind,text:entry.body.text,container:entry.presentationContainer}]),
    originals:handle.handoff.peek().map(record=>({attemptId:record.attemptId,text:record.text,status:record.status,authority:record.bodyAuthority,ready:!!record.readyAttempt}))});});
   expect(host.textContent).toContain('Saved member fragment');
-  await act(async()=>{f.t.push({t:'live',thread_id:'t',attempt_id:'attempt',gap:false,deltas:[{offset:0,reasoning:false,text:'Whole live answer'}]});await flush(24);});
-  const original=handle.handoff.peek().find(record=>record.attemptId==='attempt')!;
+  await act(async()=>{f.t.push({t:'live',thread_id:'t',attempt_id:CANONICAL_ATTEMPT_ID,gap:false,deltas:[{offset:0,reasoning:false,text:'Whole live answer'}]});await flush(24);});
+  const original=handle.handoff.peek().find(record=>record.attemptId===CANONICAL_ATTEMPT_ID)!;
   if(scenario==='owner-lifetime')f.model.handle.peek()!.pause();
   ended=true;await act(async()=>{f.t.push({t:'live_end',thread_id:'t'});await flush(24);});
   // Deliver the genuine attempt fact but hold all subsequent item readback.
@@ -127,8 +127,8 @@ for(const scenario of ['persisted','failed','separate-attempt','owner-lifetime',
   let admitted=false;
   for(const cut of cuts){
    const owners=cut.snapshot.assistantOwnership??[];
-   if(owners.some(owner=>owner.attemptId==='attempt')){
-    expect(owners).toMatchObject([{attemptId:'attempt',turnId:'turn',recordKey:original.key,containerKey:original.presentationContainer,mode:'canonical',refs:[{nodeId:'member',ordinal:1,kind:'assistant_response'}]}]);
+   if(owners.some(owner=>owner.attemptId===CANONICAL_ATTEMPT_ID)){
+    expect(owners).toMatchObject([{attemptId:CANONICAL_ATTEMPT_ID,turnId:'turn',recordKey:original.key,containerKey:original.presentationContainer,mode:'canonical',refs:[{nodeId:'member',ordinal:1,kind:'assistant_response'}]}]);
     expect(cut.authority).toEqual([true]);admitted=true;
    }
    const expected=['Independent saved user','Saved member fragment',...(scenario==='other-attempt-member'?['Other attempt saved text']:[]),
