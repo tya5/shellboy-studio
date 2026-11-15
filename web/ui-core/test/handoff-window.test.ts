@@ -50,6 +50,21 @@ describe('bounded canonical attachment receive',()=>{
   }
 });
 
+it('typed transfer return/end/no-release paths keep canonical source and release only the accepted record',async()=>{
+  const noRelease=await setup();
+  expect(noRelease.h.transfer('a',()=>true)).toBe(true);
+  expect(noRelease.h.records.value[0]?.transferred).toBe(true);
+  noRelease.r.w.dispose();noRelease.r.data.stop();
+  const returned=await setup();
+  expect(returned.h.transfer('a',(_record,release)=>{release('return');return true;})).toBe(true);
+  expect(returned.h.records.value[0]?.transferred).toBe(false);
+  returned.r.w.dispose();returned.r.data.stop();
+  const ended=await setup();
+  expect(ended.h.transfer('a',(_record,release)=>{release('end');return true;})).toBe(true);
+  expect(ended.h.records.value).toEqual([]);
+  ended.r.w.dispose();ended.r.data.stop();
+});
+
 it('same-content confirming reentry keeps the original lease while bookkeeping changes do not advance source',async()=>{
   const {r,h}=await setup();
   h.confirming('a');
