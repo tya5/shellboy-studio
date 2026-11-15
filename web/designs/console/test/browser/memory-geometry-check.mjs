@@ -34,7 +34,7 @@ try {
     const result=await evaluate(`(()=>{const section=[...document.querySelectorAll('section[aria-label]')].find(e=>e.querySelector('.meters'));if(!section)throw Error('memory section missing');const cards=[...section.querySelectorAll('.meter')],root=section.getBoundingClientRect(),rects=cards.map(e=>{const r=e.getBoundingClientRect();return {left:r.left,right:r.right,top:r.top,bottom:r.bottom};});return {cardCount:cards.length,text:section.textContent??'',overflow:document.documentElement.scrollWidth>innerWidth,root:{left:root.left,right:root.right},rects}})()`);
     const overlap=result.rects.some((a,i)=>result.rects.some((b,j)=>i!==j&&a.left<b.right&&b.left<a.right&&a.top<b.bottom&&b.top<a.bottom));
     if(result.cardCount!==4||result.overflow||result.root.left<0||result.root.right>width||overlap)throw Error(`memory geometry failed ${width}/${lang}: ${JSON.stringify(result)}`);
-    if(!result.text.includes(lang==='ja'?'報告なし':'Not reported')||!result.text.includes('56 KiB')||result.text.includes('UI cache owner is not available'))throw Error(`memory facts failed ${width}/${lang}`);
+    if(!result.text.includes(lang==='ja'?'報告なし':'Not reported')||!result.text.includes('56 KiB')||result.text.includes('UI cache owner is not available'))throw Error(`memory facts failed ${width}/${lang}: ${JSON.stringify(result.text)}`);
     console.log(JSON.stringify({width,lang,cardCount:result.cardCount,overflow:result.overflow,overlap}));
   }
   ws.close();
