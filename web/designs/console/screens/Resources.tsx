@@ -10,7 +10,7 @@ function CacheMeter({ t, c }: { t: Translate; c: CacheFact }) {
   const limit = c.limit !== undefined ? formatBytes(c.limit) : "";
   const text =
     used === undefined
-      ? t("res.cacheUnknown", { reason: c.availability === "unreported" ? t("common.notReported") : c.reason ?? t("common.notReported"), limit })
+      ? t("res.cacheUnknown", { reason: t("common.notReported"), limit })
       : c.entries !== undefined
         ? t("res.cacheEntries", { used, limit, entries: c.entries })
         : t("res.cacheText", { used, limit });

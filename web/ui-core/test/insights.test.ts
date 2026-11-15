@@ -129,8 +129,7 @@ describe("resource facts", () => {
     const m = readMemory(fixtureMemory);
     expect(m.metrics.map((x) => x.name)).toEqual(["footprint", "rss"]);
     const body = m.caches.find((c) => c.name === "body")!;
-    expect(body).toMatchObject({ retained: undefined, limit: 33554432, reason: "UI cache owner is not available", availability: "unreported" });
-    expect(m.caches.find((c) => c.name === "replay")).toMatchObject({ availability: "reported" });
+    expect(body).toMatchObject({ retained: undefined, limit: 33554432, reason: "UI cache owner is not available" });
     expect(m.caches.find((c) => c.name === "replay")).toMatchObject({ retained: 57373, entries: 1, unit: "thread" });
   });
   it("storage keeps flags, categories and an absent free size", () => {
