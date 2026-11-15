@@ -43,6 +43,10 @@ const isObject = (v: unknown): v is Record<string, unknown> =>
 
 type Decoded<T> = { ok: true; value: T } | { ok: false; reason: string };
 type Decoder<T> = (v: unknown) => Decoded<T>;
+const outcomeDecoder = <T>(decoder: Decoder<T>) => (raw: unknown): Outcome<T> => {
+  try { const value=decoder(raw); return value.ok ? { ok:true, value:value.value } : { ok:false, error:{kind:'invalid_response',message:value.reason} }; }
+  catch(error) { return { ok:false, error:{kind:'invalid_response',message:error instanceof InputCaptureError ? error.reason : 'invalid-input'} }; }
+};
 
 function pageOf<T>(item: (v: unknown) => string | undefined): Decoder<Page<T>> {
   return (v) => {
@@ -162,24 +166,10 @@ export class Cancel {
 
 export type UuidFn = () => string;
 
-function unwrap<T>(response: OwnerResponse, decode: Decoder<T> | undefined, captureDecode?: (raw: unknown) => Outcome<T>): Outcome<T> {
-  if (!response.ok) {
-    return response.error
-      ? { ok: false, error: fromApiError(response.error) }
-      : { ok: false, error: { kind: "invalid_response", message: "owner error without error body" } };
-  }
-  if (response.result === undefined)
-    return { ok: false, error: { kind: "invalid_response", message: "owner reply without result" } };
-  try {
-    if (captureDecode) return captureDecode(response.result);
-    if (!decode) return { ok: false, error: { kind: "invalid_response", message: "owned decoder required" } };
-    const value = decode(response.result);
-    return value.ok
-      ? { ok: true, value: value.value }
-      : { ok: false, error: { kind: "invalid_response", message: value.reason } };
-  } catch (error) {
-    return { ok: false, error: { kind: "invalid_response", message: error instanceof InputCaptureError ? error.reason : "invalid-input" } };
-  }
+function unwrap<T>(response: OwnerResponse, decode: (raw: unknown) => Outcome<T>): Outcome<T> {
+  if (!response.ok) return response.error ? { ok:false,error:fromApiError(response.error) } : { ok:false,error:{kind:'invalid_response',message:'owner error without error body'} };
+  if (response.result === undefined) return { ok:false,error:{kind:'invalid_response',message:'owner reply without result'} };
+  return decode(response.result);
 }
 
 export class Operations {
@@ -195,10 +185,9 @@ export class Operations {
   private async run<T>(
     command: string,
     args: unknown,
-    decode: Decoder<T> | undefined,
+    decode: (raw: unknown) => Outcome<T>,
     mutation?: { operationId: string },
     read?: ReadOptions,
-    captureDecode?: (raw: unknown) => Outcome<T>,
   ): Promise<Outcome<T>> {
     const { cancel, ...options } = read ?? {};
     const handle = this.link.call(command, args, mutation ? { operationId: mutation.operationId, mutation: true } : options);
@@ -207,16 +196,16 @@ export class Operations {
     forget?.();
     const extra = mutation ? { operationId: mutation.operationId } : {};
     if (!reply.ok) return { ok: false, error: reply.error, ...extra };
-    return { ...unwrap(reply.response, decode, captureDecode), ...extra };
+    return { ...unwrap(reply.response, decode), ...extra };
   }
 
   // ---- reads ----
   threadList(args: ThreadListArgs = {}, read?: ReadOptions): Promise<Outcome<Page<ThreadSummary>>> {
-    return this.run("thread.list", args, decodeThreadPage, undefined, read);
+    return this.run("thread.list", args, outcomeDecoder(decodeThreadPage), undefined, read);
   }
   /** Distinct tag names in byte order. Names only: the owner reports no counts. Needs `thread.tags`. */
   threadTags(args: NamesArgs = {}, read?: ReadOptions): Promise<Outcome<Page<string>>> {
-    return this.run("thread.tags", args, decodeNames, undefined, read);
+    return this.run("thread.tags", args, outcomeDecoder(decodeNames), undefined, read);
   }
   /**
    * Distinct working directories. Shellboy `thread.cwds` mirrors
@@ -224,96 +213,95 @@ export class Operations {
    * Needs `thread.cwds`.
    */
   threadCwds(args: NamesArgs = {}, read?: ReadOptions): Promise<Outcome<Page<string>>> {
-    return this.run("thread.cwds", args, decodeNames, undefined, read);
+    return this.run("thread.cwds", args, outcomeDecoder(decodeNames), undefined, read);
   }
   threadGet(threadId: string, read?: ReadOptions): Promise<Outcome<ThreadDetails>> {
-    return this.run("thread.get", { thread_id: threadId }, decodeDetails, undefined, read);
+    return this.run("thread.get", { thread_id: threadId }, outcomeDecoder(decodeDetails), undefined, read);
   }
   historyWindow(args: HistoryWindowArgs, read?: ReadOptions): Promise<Outcome<HistoryWindowInput>> {
     if (!this.historyWindowSupported()) return Promise.resolve({ ok: false, error: { kind: "invalid_response", message: "owner does not advertise history.window" } });
-    return this.run<HistoryWindowInput>("history.window", args, undefined, undefined, read,
-      raw => HistoryWindowInput.decode(raw));
+    return this.run<HistoryWindowInput>("history.window", args, raw => HistoryWindowInput.decode(raw), undefined, read);
   }
   historyGet(args: HistoryGetArgs, read?: ReadOptions): Promise<Outcome<HistoryBody>> {
-    return this.run("history.get", args, decodeBody, undefined, read);
+    return this.run("history.get", args, outcomeDecoder(decodeBody), undefined, read);
   }
   shellList(args: ShellListArgs, read?: ReadOptions): Promise<Outcome<Page<ShellEntry>>> {
-    return this.run("shell.list", args, decodeShellPage, undefined, read);
+    return this.run("shell.list", args, outcomeDecoder(decodeShellPage), undefined, read);
   }
   shellRead(args: ShellReadArgs, read?: ReadOptions): Promise<Outcome<ShellOutput>> {
-    return this.run("shell.read", args, decodeShellOutput, undefined, read);
+    return this.run("shell.read", args, outcomeDecoder(decodeShellOutput), undefined, read);
   }
   /** Saved usage totals, or one page of a grouped scan when `group_by` is set. No provider call. */
   usageGet(args: UsageGetArgs, read?: ReadOptions): Promise<Outcome<Record<string, unknown>>> {
-    return this.run("usage.get", args, decodeRecord, undefined, read);
+    return this.run("usage.get", args, outcomeDecoder(decodeRecord), undefined, read);
   }
   /** Compaction observations of one Thread, newest first. */
   compactList(args: CompactListArgs, read?: ReadOptions): Promise<Outcome<Record<string, unknown>>> {
-    return this.run("compact.list", args, decodeRecord, undefined, read);
+    return this.run("compact.list", args, outcomeDecoder(decodeRecord), undefined, read);
   }
   storageStatus(read?: ReadOptions): Promise<Outcome<Record<string, unknown>>> {
-    return this.run("storage.status", {}, decodeRecord, undefined, read);
+    return this.run("storage.status", {}, outcomeDecoder(decodeRecord), undefined, read);
   }
   indexStatus(read?: ReadOptions): Promise<Outcome<Record<string, unknown>>> {
-    return this.run("index.status", {}, decodeRecord, undefined, read);
+    return this.run("index.status", {}, outcomeDecoder(decodeRecord), undefined, read);
   }
   /** `status --memory`: owner cache accounting and process memory, taken on request. */
   memoryStatus(read?: ReadOptions): Promise<Outcome<Record<string, unknown>>> {
-    return this.run("status", { memory: true }, decodeRecord, undefined, read);
+    return this.run("status", { memory: true }, outcomeDecoder(decodeRecord), undefined, read);
   }
   /** Activity status, for `receipt_budget`. One row is enough; the rows are not used. */
   handoffAttempts(threadId: string, read?: ReadOptions): Promise<Outcome<Page<WorkItem>>> {
     const decode=decodeThreadWorkPage(threadId);
     const owned=(raw:unknown)=>captureDecode(raw,(value)=>{const out=decode(value);if(!out.ok)throw new InputCaptureError('invalid-input');
       Object.freeze(out.value.items); for(const item of out.value.items){if(item.response_nodes)Object.freeze(item.response_nodes);Object.freeze(item);} Object.freeze(out.value); return out.value;});
-    return this.run("status", { thread_id: threadId, all: true, limit: 200 }, decode, undefined, read, owned);
+    return this.run("status", { thread_id: threadId, all: true, limit: 200 }, owned, undefined, read);
   }
   threadWork(threadId: string, read?: ReadOptions): Promise<Outcome<Page<WorkItem>>> {
     const decode=decodeThreadWorkPage(threadId);
     const owned=(raw:unknown)=>captureDecode(raw,(value)=>{const out=decode(value);if(!out.ok)throw new InputCaptureError('invalid-input');
       Object.freeze(out.value.items); for(const item of out.value.items){if(item.response_nodes)Object.freeze(item.response_nodes);Object.freeze(item);} Object.freeze(out.value); return out.value;});
-    return this.run("status", { thread_id: threadId, state: ["starting", "running", "stopping", "accepted", "held"], limit: 200 }, decode, undefined, read, owned);
+    return this.run("status", { thread_id: threadId, state: ["starting", "running", "stopping", "accepted", "held"], limit: 200 }, owned, undefined, read);
   }
   statusSummary(read?: ReadOptions): Promise<Outcome<Record<string, unknown>>> {
-    return this.run("status", { limit: 1 }, decodeRecord, undefined, read);
+    return this.run("status", { limit: 1 }, outcomeDecoder(decodeRecord), undefined, read);
   }
   /** Asks the connection's endpoint for its model list (one GET). No conversation request. */
   modelList(args: ModelListArgs = {}, read?: ReadOptions): Promise<Outcome<ModelListResult>> {
-    return this.run("model.list", args, decodeModelList, undefined, read);
+    return this.run("model.list", args, outcomeDecoder(decodeModelList), undefined, read);
   }
   /** Update only model settings for this Thread; owner validates values. */
   setThreadModel(threadId: string, changes: { model: string; connection: string; effort?: string; agents?: string; auto_compact_at?: string; max_tokens?: string }): Promise<Outcome<ThreadDetails>> {
-    return this.run("thread.set", { thread_id: threadId, ...changes }, decodeDetails, { operationId: this.newId() });
+    return this.run("thread.set", { thread_id: threadId, ...changes }, outcomeDecoder(decodeDetails), { operationId: this.newId() });
   }
   /** One page of a Thread's family: ancestors, then breadth first. */
   threadBranches(args: ThreadBranchesArgs, read?: ReadOptions): Promise<Outcome<Record<string, unknown>>> {
-    return this.run("thread.branches", args, decodeRecord, undefined, read);
+    return this.run("thread.branches", args, outcomeDecoder(decodeRecord), undefined, read);
   }
   /** `dry_run`: runs in a rolled-back savepoint and writes nothing, so it carries no operation id. */
   threadRewindPreview(args: ThreadRewindArgs, read?: ReadOptions): Promise<Outcome<Record<string, unknown>>> {
-    return this.run("thread.rewind", { ...args, dry_run: true }, decodeRecord, undefined, read);
+    return this.run("thread.rewind", { ...args, dry_run: true }, outcomeDecoder(decodeRecord), undefined, read);
   }
   /** The gateway's own process memory, as the OS reports it. */
   bridgeMemory(read?: ReadOptions): Promise<Outcome<Record<string, unknown>>> {
-    return this.run("bridge.memory", {}, decodeRecord, undefined, read);
+    return this.run("bridge.memory", {}, outcomeDecoder(decodeRecord), undefined, read);
   }
   /** The gateway's own: apps found in the apps folder. Doesn't reach the owner. */
   appsList(): Promise<Outcome<Record<string, unknown>>> {
-    return this.run("apps.list", {}, decodeRecord);
+    return this.run("apps.list", {}, outcomeDecoder(decodeRecord));
   }
   appsInstances(name: string): Promise<Outcome<Record<string, unknown>>> {
-    return this.run("apps.instances", { name }, decodeRecord);
+    return this.run("apps.instances", { name }, outcomeDecoder(decodeRecord));
   }
   appsCreateInstance(name: string, instance: string): Promise<Outcome<Record<string, unknown>>> {
-    return this.run("apps.instance.create", { name, instance }, decodeRecord);
+    return this.run("apps.instance.create", { name, instance }, outcomeDecoder(decodeRecord));
   }
   /** A one-time URL that opens an app on its own origin. */
   appsOpen(name: string): Promise<Outcome<Record<string, unknown>>> {
-    return this.run("apps.open", { name }, decodeRecord);
+    return this.run("apps.open", { name }, outcomeDecoder(decodeRecord));
   }
   /** One API call from an app's page, for the app the caller named. */
   appsCall(name: string, op: string, args: unknown, read?: ReadOptions, instance?: string): Promise<Outcome<Record<string, unknown>>> {
-    return this.run("apps.call", { name, op, args, ...(instance ? { instance } : {}) }, decodeRecord, undefined, read);
+    return this.run("apps.call", { name, op, args, ...(instance ? { instance } : {}) }, outcomeDecoder(decodeRecord), undefined, read);
   }
   /** Look up a mutation's receipt, e.g. after an `unconfirmed` error. */
   /** Opaque saved outcomes are diagnostic only, never mutation acknowledgments. */
@@ -326,64 +314,64 @@ export class Operations {
     return { ok: false, error: { kind: "invalid_response", message: known ? "Opaque original receipt remains unconfirmed" : "Receipt identity, state or policy is invalid" }, operationId };
   }
   operationGet(operationId: string): Promise<Outcome<Record<string, unknown>>> {
-    return this.run("operation.get", { operation_id: operationId }, decodeRecord);
+    return this.run("operation.get", { operation_id: operationId }, outcomeDecoder(decodeRecord));
   }
 
   // ---- mutations: pass `operationId` to retry the same logical mutation idempotently ----
   threadCreate(args: ThreadCreateArgs = {}, operationId = this.newId()): Promise<Outcome<ThreadDetails>> {
-    return this.run("thread.create", args, decodeDetails, { operationId });
+    return this.run("thread.create", args, outcomeDecoder(decodeDetails), { operationId });
   }
   /** Sender identity (`human`, `sender_label: "web"`) is set by the bridge, not here. */
   messageSend(args: MessageSendArgs, operationId = this.newId()): Promise<Outcome<MessageAccepted>> {
-    return this.run("message.send", args, decodeMessageAccepted, { operationId });
+    return this.run("message.send", args, outcomeDecoder(decodeMessageAccepted), { operationId });
   }
   messageReply(messageId: string, text: string, operationId = this.newId()): Promise<Outcome<MutationResult>> {
-    return this.run("message.reply", { message_id: messageId, text }, decodeRecord, { operationId });
+    return this.run("message.reply", { message_id: messageId, text }, outcomeDecoder(decodeRecord), { operationId });
   }
   messageCancel(messageId: string, operationId = this.newId()): Promise<Outcome<MutationResult>> {
-    return this.run("message.cancel", { message_ids: [messageId] }, decodeRecord, { operationId });
+    return this.run("message.cancel", { message_ids: [messageId] }, outcomeDecoder(decodeRecord), { operationId });
   }
   runStop(runId: string, operationId = this.newId()): Promise<Outcome<MutationResult>> {
-    return this.run("run.stop", { run_id: runId }, decodeRecord, { operationId });
+    return this.run("run.stop", { run_id: runId }, outcomeDecoder(decodeRecord), { operationId });
   }
   runRetry(runId: string, operationId = this.newId()): Promise<Outcome<MutationResult>> {
-    return this.run("run.retry", { run_id: runId }, decodeRecord, { operationId });
+    return this.run("run.retry", { run_id: runId }, outcomeDecoder(decodeRecord), { operationId });
   }
   threadFork(args: ThreadForkArgs, operationId = this.newId()): Promise<Outcome<ThreadDetails>> {
-    return this.run("thread.fork", args, decodeDetails, { operationId });
+    return this.run("thread.fork", args, outcomeDecoder(decodeDetails), { operationId });
   }
   /** `parent: ""` detaches. Needs an owner and bridge with the `thread.reparent` capability. */
   /** Needs an owner newer than v0.10.0; see `CAPABILITY_CONFIG`. */
   configGet(read?: ReadOptions): Promise<Outcome<Record<string, unknown>>> {
-    return this.run("config.get", {}, decodeRecord, undefined, read);
+    return this.run("config.get", {}, outcomeDecoder(decodeRecord), undefined, read);
   }
   /** Not cancellable: a started write finishes and is reported. A missing `value` removes the key. */
   configSet(expectedHash: string, changes: { field: string; value?: unknown }[], operationId = this.newId()): Promise<Outcome<Record<string, unknown>>> {
-    return this.run("config.set", { expected_hash: expectedHash, changes }, decodeRecord, { operationId });
+    return this.run("config.set", { expected_hash: expectedHash, changes }, outcomeDecoder(decodeRecord), { operationId });
   }
   /** One model-list GET against a saved connection or a candidate. Needs the `connection.setup` capability. */
   connectionTest(target: TestTarget, read?: ReadOptions): Promise<Outcome<TestFacts>> {
-    return this.run("connection.test", encodeTest(target), decodeTest, undefined, read);
+    return this.run("connection.test", encodeTest(target), outcomeDecoder(decodeTest), undefined, read);
   }
   /** Write-only. The value is sent once and never returned. */
   credentialsSet(connection: string, value: string, operationId = this.newId()): Promise<Outcome<StoredFacts>> {
-    return this.run("credentials.set", encodeCredentialsSet(connection, value), decodeStored, { operationId });
+    return this.run("credentials.set", encodeCredentialsSet(connection, value), outcomeDecoder(decodeStored), { operationId });
   }
   credentialsClear(connection: string, operationId = this.newId()): Promise<Outcome<StoredFacts>> {
-    return this.run("credentials.clear", encodeCredentialsClear(connection), decodeStored, { operationId });
+    return this.run("credentials.clear", encodeCredentialsClear(connection), outcomeDecoder(decodeStored), { operationId });
   }
   threadSetTitle(threadId: string, title: string, operationId = this.newId()): Promise<Outcome<ThreadDetails>> {
-    return this.run("thread.set", { thread_id: threadId, title }, decodeDetails, { operationId });
+    return this.run("thread.set", { thread_id: threadId, title }, outcomeDecoder(decodeDetails), { operationId });
   }
   threadSetParent(threadId: string, parent: string, operationId = this.newId()): Promise<Outcome<ThreadDetails>> {
-    return this.run("thread.set", { thread_id: threadId, parent_id: parent }, decodeDetails, { operationId });
+    return this.run("thread.set", { thread_id: threadId, parent_id: parent }, outcomeDecoder(decodeDetails), { operationId });
   }
   /** Add and remove tags on several Threads at once. Needs `thread.tags`. */
   threadTag(args: ThreadTagArgs, operationId = this.newId()): Promise<Outcome<TagResult>> {
-    return this.run("thread.tag", args, decodeTagResult, { operationId });
+    return this.run("thread.tag", args, outcomeDecoder(decodeTagResult), { operationId });
   }
   threadRewind(args: ThreadRewindArgs, operationId = this.newId()): Promise<Outcome<MutationResult>> {
-    return this.run("thread.rewind", args, decodeRecord, { operationId });
+    return this.run("thread.rewind", args, outcomeDecoder(decodeRecord), { operationId });
   }
   threadUnarchive(
     threadIds: string[],
@@ -392,7 +380,7 @@ export class Operations {
   ): Promise<Outcome<ArchiveResult>> {
     const args: Record<string, unknown> = { thread_ids: threadIds };
     if (options.descendants) args.descendants = true;
-    return this.run("thread.unarchive", args, decodeRecord, { operationId });
+    return this.run("thread.unarchive", args, outcomeDecoder(decodeRecord), { operationId });
   }
   threadArchive(
     threadIds: string[],
@@ -401,6 +389,6 @@ export class Operations {
   ): Promise<Outcome<ArchiveResult>> {
     const args: Record<string, unknown> = { thread_ids: threadIds };
     if (options.descendants) args.descendants = true;
-    return this.run("thread.archive", args, decodeRecord, { operationId });
+    return this.run("thread.archive", args, outcomeDecoder(decodeRecord), { operationId });
   }
 }
