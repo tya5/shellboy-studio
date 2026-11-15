@@ -70,12 +70,6 @@ export function emptyOwnSendLocalRegion(scope: string): OwnSendLocalRegion {
 export function ownSendPresentation<Ref>(input: OwnSendPresentationInput<Ref>): OwnSendDecision<Ref> {
   const cohort = Object.freeze(input.localRows.filter(row => row.scope === input.scope));
   const displayed = completeDisplayedOwnUserIds(input);
-  const orderedIds: string[] = [];
-  for (const entry of input.projection.sequence ?? []) {
-    if (entry.kind !== "conversation") continue;
-    const item = input.projection.items.find(candidate => candidate.key === entry.itemKey);
-    if (item?.source.nodeId && displayed.has(item.source.nodeId)) orderedIds.push(item.source.nodeId);
-  }
   const complete = cohort.length > 0 && cohort.every(row => {
     if(row.phase!=="accepted"||!row.messageId||!displayed.has(row.messageId)||row.plainMessageSend!==true)return false;
     const candidates=(input.canonicalRows??[]).filter(node=>node.node_id===row.messageId);
@@ -127,7 +121,6 @@ export function ownSendPresentation<Ref>(input: OwnSendPresentationInput<Ref>): 
   const transfer = complete && !conflict && freshReplacement;
   const suppressedIds = new Set(transfer ? [] : cohort.flatMap(row => row.messageId ? [row.messageId] : []));
   const items = input.current ? input.projection.items.filter(item => !input.hiddenItemKeys.has(item.key) && !suppressedIds.has(item.source.nodeId ?? "")) : [];
-  const keys = new Set(items.map(item => item.key));
   const projection = Object.freeze({...input.projection, items: Object.freeze(items), sequence: Object.freeze(input.current ? input.projection.sequence ?? [] : [])});
   const token=Object.freeze({});
   const observation=observeOwnSendTail(token,input.ref,input.scope,input.current,input.projection,input.path,input.validateCurrent??(()=>false));
