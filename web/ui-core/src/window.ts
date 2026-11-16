@@ -451,12 +451,13 @@ export class ConversationWindow {
     return this.prepareCaptured(snapshot, capability, this.captureConversationInput(snapshot), reason);
   }
 
-  private commitAccepted(candidate: PreparedConversationPublication): boolean {
+  private commitAccepted(candidate: PreparedConversationPublication, afterCommit: () => void = () => {}): boolean {
     const { publication, binding } = candidate;
     let published = false;
     batch(() => {
       published = this.acceptedView.publish(publication, snapshot => {
         const savedAttempts = new Set(snapshot.rows.flatMap(row => row.kind === "assistant_response" && row.provenance?.attempt_id ? [row.provenance.attempt_id] : []));
+        afterCommit();
         for (const attemptId of savedAttempts)
           if (binding.handle.handoff.peek().some(record => record.attemptId === attemptId)) binding.handle.releaseAcceptedHandoff(attemptId);
       });
@@ -467,10 +468,14 @@ export class ConversationWindow {
     return published;
   }
 
-  private commitSelectedPublication(candidate: PreparedConversationPublication, buckets: Map<number, Bucket>, expected: WindowAcceptedSnapshot, capability: AcceptedCapability): boolean {
+  private commitSelectedPublication(candidate: PreparedConversationPublication, buckets: Map<number, Bucket>, expected: WindowAcceptedSnapshot, capability: AcceptedCapability, geometry: () => void): boolean {
     if (this.disposed || capability !== this.acceptedView.currentCapability || !this.acceptedView.isCurrent(expected)) return false;
-    this.buckets = buckets; this.total = candidate.publication.snapshot.total; this.revision = candidate.publication.snapshot.revision;
-    return this.commitAccepted(candidate);
+    return this.commitAccepted(candidate, () => {
+      this.buckets = buckets;
+      this.total = candidate.publication.snapshot.total;
+      this.revision = candidate.publication.snapshot.revision;
+      geometry();
+    });
   }
 
   private nextAcceptedGeneration(): number { return ++this.acceptedGeneration; }
@@ -566,9 +571,10 @@ export class ConversationWindow {
       const nextTailKnown=selected.at(-1)?.node_id?{nodeId:selected.at(-1)!.node_id!,ordinal:lastOrdinal}:undefined;
       const nextLastAnchor=follow?undefined:old.lastAnchor, nextScroll=follow?Number.MAX_SAFE_INTEGER:old.scroll;
       if(!readOwnerCurrent()||this.acceptedView.peek()!==commitExpected||this.acceptedGeneration!==generation||capability!==this.acceptedView.currentCapability)return;
-      if(!this.commitSelectedPublication(staged,replacement,commitExpected,capability)){ return; }
+      if(!this.commitSelectedPublication(staged,replacement,commitExpected,capability,()=>{
+        this.heights=nextHeights; this.tailKnown=nextTailKnown; this.lastAnchor=nextLastAnchor; this.scrollRequest=nextScroll;
+      })){ return; }
       if(this.buckets!==replacement||this.disposed||capability!==this.acceptedView.currentCapability)return;
-      this.heights=nextHeights; this.tailKnown=nextTailKnown; this.lastAnchor=nextLastAnchor; this.scrollRequest=nextScroll;
         for(const [index,read] of old.inflight)if(this.inflight.get(index)===read){read.cancel.cancel();this.inflight.delete(index);}
       if(follow&&this.following.peek()&&this.wanted===old.wanted)this.wanted.clear();this.failed.clear();
       if(follow&&!this.following.peek())this.scrollRequest=undefined;

@@ -19,6 +19,14 @@ describe("internal saved ordered-item projection (no wire adapter)", () => {
     expect(next.toolSummaries[0]?.executionIds).toEqual(["x", "y"]);
     expect(next.toolSummaries[0]?.anchorKey).not.toBe(old.toolSummaries[0]?.anchorKey);
   });
+  it("keeps first qualified tool source when a live duplicate shares execution", () => {
+    const live: NormalizedSavedItem = { domain: "live", namespace: "handoff", scope: "test-thread", recordId: "live-tool", keyScope: ["test-owner", "test-thread"], classificationCase: "toolCall", kind: "tool", executionId: "x" };
+    const out = projectSavedItems([tool("A", "saved", "x"), live, text("B", "body", "after")]);
+    expect(out.items.filter(item => item.source.kind === "tool")).toHaveLength(1);
+    expect(out.items[0]?.source).toMatchObject({ nodeId: "A", itemIdentity: "saved" });
+    expect(out.items.at(-1)?.source).toMatchObject({ nodeId: "B", itemIdentity: "body" });
+  });
+
   it("deduplicates actual execution association without erasing body boundaries", () => {
     const out = projectSavedItems([tool("A", "request", "x"), tool("B", "result", "x"), text("C", "t", "body"), tool("D", "other", "y")]);
     expect(out.toolSummaries.map(s => s.executionIds)).toEqual([["x"], ["y"]]);

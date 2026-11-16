@@ -18,9 +18,8 @@ export function LiveMessage({ model, handle, follow }: { model: AppModel; handle
   if (!on) return null;
   return <div ref={box}>
     {records.map(record => <div class="conversation-row" key={record.key} data-handoff-key={record.key}>
-      <Message bot who={t("convo.shellboy")} at={record.status === "failed" ? t("convo.handoffFailed") : t("convo.live")} text={record.text} copyLabel={t("code.copy")} copiedLabel={t("code.copied")}>
+      <Message bot who={t("convo.shellboy")} at={t("convo.live")} text={record.text} copyLabel={t("code.copy")} copiedLabel={t("code.copied")}>
         {record.incomplete ? <div class="caption muted">{t("convo.liveIncomplete")}</div> : null}
-        {record.status === "failed" ? <div class="caption muted">{t("convo.handoffHistoryStale")}</div> : null}
       </Message>
     </div>)}
     {overflow ? <div class="caption muted" role="status">{t("convo.handoffLimit")}</div> : null}

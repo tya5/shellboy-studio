@@ -6,17 +6,22 @@ private owner/database integration.
 
 ## Current Scope
 
-One accepted update is an immutable cut containing the selected history rows,
-source revision, scope JSON, owner/capability lifetime, accepted generation,
-canonical projection, live projection, presentation containers, and local-send
-ownership. The cut is admitted only when the Window's current ThreadHandle,
-live lifetime, capability, reader epoch, and semantic input are current.
+One accepted update is an immutable cut in which a saved replacement occupies
+the same logical slot as its matching live source, preserving the surrounding
+ordered multiplicity in that same accepted update. The cut contains the selected
+history rows, source revision, scope JSON, owner/capability lifetime, accepted
+generation, canonical projection, live projection, presentation containers, and
+local-send ownership.
 
-The publication authority is `ConversationWindow.commitAccepted`. It qualifies
-the whole candidate before `AcceptedView.publish`; the accepted callback only
-performs retirement inside that same accepted transaction. There is no second
-post-publication binding guard, reconcile pass, fallback registry, or callback
-that silently skips retirement after saved content is visible.
+After the staged semantic lease and pure candidate checks qualify, the selected
+rows, projection, geometry, and related state are installed by the single
+successful commit callback; only then does that callback retire the matching live
+record and notify subscribers. `ConversationWindow.commitAccepted` performs the
+whole candidate qualification before `AcceptedView.publish`, with the callback
+handling state installation and matching retirement as one accepted transition.
+There is no second post-publication binding guard, reconcile pass, fallback
+registry, or callback that silently skips retirement after saved content is
+visible.
 
 A stale owner/thread/lifetime/capability/reader candidate is rejected as a
 whole. It must not publish saved rows while retaining a matching live overlay.
@@ -39,6 +44,8 @@ Rejected candidates preserve the prior accepted ref and live identity.
   on the accepted publication.
 - Body reads remain bounded by the existing page/read budget and current
   handle, route, reader, capability, and cancellation checks.
+
+Tool projection uses first qualified association wins: the first source with the exact scoped execution/call association owns the selected tool row; later same-association sources may contribute only the documented compression metadata and never replace the owner's body. Missing, conflicting, foreign-scope, and live-tool associations remain separate unresolved facts.
 
 ## Scope And Lifetime
 
@@ -98,3 +105,21 @@ selection/geometry stability, obsolete-effect rejection, and public projection
 mapping. It does not prove a real owner transport, a public typed producer, or
 full device behavior. Its runner records the assertion mapping and unsupported
 claims explicitly; screenshots are supporting artifacts, not acceptance proof.
+
+### Owned live chronology edge
+
+The handoff ledger is the authoritative owner of live chronology. A newly admitted
+record stores `afterAttemptId` when it follows an active record; the edge remains
+part of that live record while the predecessor is replaced by saved history.
+Capture merges own-attempt replacement separately from predecessor placement: the
+former retires only the matching live record, while the latter keeps the surviving
+record in the same ordered stream. The edge is scoped to the same Thread ledger
+and is discarded with that ledger; it is not a UI cache, retired-record shadow,
+or an execution-association alias. Saved history contributes the canonical node
+group and its attempt identity, and non-contiguous groups are not assigned a
+synthetic slot.
+
+Prepending all live facts, anchoring at the latest saved row, and mirroring
+placement in presentation state are invalid alternatives because they cannot
+preserve relative order after a saved replacement or place a foreign/unmatched
+record from authoritative provenance.

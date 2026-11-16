@@ -19,7 +19,7 @@ import { CAPABILITY_HISTORY_WINDOW, threadReplyItems, noReplyWait, type ReplyWai
 import { MissingPins, MonitorSelection, type MonitorArchive } from "./monitor-selection";
 import { workRegions, type WorkRegions } from "./work";
 import { ConversationWindow, type WindowAcceptedSnapshot } from "./window";
-import { projectHistoryWindowItems, projectSavedItems, projectOwnedHandoffFacts, normalizeLiveWorkFacts, scopeIssuedWorkFacts, retainUnretiredLiveFacts } from "./conversation-items";
+import { projectHistoryWindowItems, projectSavedItems, projectOwnedHandoffFacts, normalizeLiveWorkFacts, scopeIssuedWorkFacts } from "./conversation-items";
 import { branchRowMarks, collectExecutionSteps, materializeHistoryPresentation, type ConversationRow, type StepRow } from "./conversation";
 import { translator, type Lang, type Translate } from "./i18n";
 import { AppsModel } from "./apps";
@@ -673,6 +673,11 @@ export class AppModel {
     const tickChanged = tick !== this.readerTick;
     if (tickChanged) this.readerTick = tick;
     const reader = this.longReader.peek()!;
+    if (tickChanged && reader.isCurrentThread(h)) {
+      const boundary = reader.acceptedView.peek().rows.at(-1)?.node_id;
+      const first = h.handoff.peek()[0];
+      if (boundary && first) h.placeLiveAfter(first.attemptId, boundary);
+    }
     this.composeWindowDisplay(reader, h);
     this.readerShells(reader);
     if (tickChanged && this.longReader.peek() === reader && this.handle.peek() === h) reader.changed();

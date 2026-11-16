@@ -77,6 +77,7 @@ export interface ThreadHandle extends Handle {
   readonly handoffOverflow: ReadonlySignal<boolean>;
   liveEpoch(): number;
   releaseAcceptedHandoff(attemptId: string): void;
+  placeLiveAfter(attemptId: string, nodeId: string): void;
   /** Counts hints for this Thread's history while the owner has `history.window`; the window reader follows it. */
   readonly historyTick: ReadonlySignal<number>;
   /** One positional read. Nothing is sent for a closed or paused Thread. */
@@ -332,6 +333,7 @@ export class ShellboyData {
       handoffOverflow: e.live.overflow,
       liveEpoch: () => e.live.epoch,
       releaseAcceptedHandoff: attemptId => { if (!closed && !e.closed) e.live.releaseAccepted(attemptId); },
+      placeLiveAfter: (attemptId, nodeId) => { if (!closed && !e.closed) e.live.placeAfter(attemptId, nodeId); },
       historyTick: e.historyTick,
       readWindow: async (args, cancel) => {
         if (e.closed || e.paused) return Promise.resolve({ ok: false, error: { kind: "cancelled", message: "thread is not being read" } });

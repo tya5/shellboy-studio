@@ -70,15 +70,11 @@ function issueDisplayMetadata(source:NormalizedSavedItem,facts:WorkDisplayMetada
 function preserveDisplayMetadata(from:NormalizedSavedItem,to:NormalizedSavedItem):void{
  const facts=displayMetadata.get(from),identity=displaySourceIdentity.get(from);if(facts&&identity){displayMetadata.set(to,facts);displaySourceIdentity.set(to,identity);}
 }
-export function retainUnretiredLiveFacts(_snapshot: unknown, _scope: string, _current: boolean, facts: readonly NormalizedSavedItem[]): readonly NormalizedSavedItem[] {
-  return facts;
-}
-
 /** Project the current live preview directly; saved rows remain the sole persisted body owner. */
-export function projectOwnedHandoffFacts(scope: string, records: readonly HandoffRecord[]): readonly NormalizedSavedItem[] {
+export function projectOwnedHandoffFacts(scope: string, records: readonly HandoffRecord[], afterNodeId?: string): readonly NormalizedSavedItem[] {
   const sources = records.flatMap(record => record.text ? [{
     domain: "live" as const, namespace: "handoff" as const, scope, recordId: record.key,
-    attemptId: record.attemptId, kind: "text" as const, text: record.text,
+    attemptId: record.attemptId, ...(record.afterAttemptId ? { afterAttemptId: record.afterAttemptId } : {}), ...(record.placement?.afterNodeId ? { afterNodeId: record.placement.afterNodeId } : {}), ...(afterNodeId && records[0] === record ? { afterNodeId } : {}), kind: "text" as const, text: record.text,
   }] : []);
   const normalized = normalizeConversationFacts(sources);
   for (const source of normalized) issueDisplayMetadata(source, Object.freeze({ scopeKey: "[]", nodeKind: "assistant_response", shells: Object.freeze([]) }));
@@ -119,6 +115,7 @@ export interface SavedItemIdentity {
   readonly identityDomain?: "node" | "spill";
   /** Authoritative node-local identity; never a window/array index. */
   readonly itemIdentity: string;
+  readonly attemptId?: string;
   /** Content authorization version, not automatically part of the DOM key. */
   readonly revision?: string;
   /** Existing window revision, never an invented item revision. */
@@ -134,6 +131,8 @@ export interface LiveWorkIdentity {
   readonly scope: string;
   readonly recordId: string;
   readonly attemptId?: string;
+  readonly afterAttemptId?: string;
+  readonly afterNodeId?: string;
   readonly turnId?: string;
   readonly nodeId?: never;
   readonly itemIdentity?: never;
@@ -386,7 +385,7 @@ function projectHistoryNodes(input: { readonly keyScope?: readonly string[]; rea
         segment.push(value);
       }
       if (metadata.status !== "known" || metadata.truncated || !metadata.items.length) {
-        const value: NormalizedSavedItem = { nodeId: node.node_id, itemIdentity: node.node_id, identityDomain: "node", ...(input.revision !== undefined ? { windowRevision: input.revision } : {}), ...(input.keyScope ? { keyScope: input.keyScope } : {}), kind: "unavailable" };
+        const value: NormalizedSavedItem = { nodeId: node.node_id, itemIdentity: node.node_id, identityDomain: "node", ...(node.provenance?.attempt_id ? { attemptId: node.provenance.attempt_id } : {}), ...(input.revision !== undefined ? { windowRevision: input.revision } : {}), ...(input.keyScope ? { keyScope: input.keyScope } : {}), kind: "unavailable" };
         issueDisplayMetadata(value, Object.freeze({ scopeKey: JSON.stringify(value.keyScope ?? []), nodeKind: node.kind, shells: Object.freeze([]) }));
         segment.push(value);
       }
@@ -419,7 +418,7 @@ function projectHistoryNodes(input: { readonly keyScope?: readonly string[]; rea
         default: { const unreachable: never = kind; return unreachable; }
       }
     };
-    const nodeIdentity: SavedItemIdentity = { nodeId: node.node_id, itemIdentity: node.node_id, identityDomain: "node", ...(input.revision !== undefined ? { windowRevision: input.revision } : {}), ...(input.keyScope ? { keyScope: input.keyScope } : {}) };
+    const nodeIdentity: SavedItemIdentity = { nodeId: node.node_id, itemIdentity: node.node_id, identityDomain: "node", ...(node.provenance?.attempt_id ? { attemptId: node.provenance.attempt_id } : {}), ...(input.revision !== undefined ? { windowRevision: input.revision } : {}), ...(input.keyScope ? { keyScope: input.keyScope } : {}) };
     if (!node.items) {
       segment.push(normalize(classifySavedHistoryCase(node.kind, node.items === null ? "deferred" : "legacy", !!node.items_unavailable_reason, node.provenance?.sender?.kind), nodeIdentity));
       if (!retryFrom && node.items_unavailable_reason === "response_budget" && ordinal !== undefined) retryFrom = Object.freeze({ ordinal, expect_node_id: node.node_id });
@@ -427,7 +426,7 @@ function projectHistoryNodes(input: { readonly keyScope?: readonly string[]; rea
     }
     if (!node.items.length) segment.push(normalize(classifySavedHistoryCase(node.kind, "empty"), nodeIdentity));
     for (const item of node.items) {
-      const identity: SavedItemIdentity = { ...(input.keyScope ? { keyScope: input.keyScope } : {}), nodeId: node.node_id, itemIdentity: item.item_identity, windowRevision: input.revision };
+      const identity: SavedItemIdentity = { ...(input.keyScope ? { keyScope: input.keyScope } : {}), nodeId: node.node_id, itemIdentity: item.item_identity, ...(node.provenance?.attempt_id ? { attemptId: node.provenance.attempt_id } : {}), windowRevision: input.revision };
       segment.push(normalize(classifySavedHistoryCase(node.kind, item.kind, false, node.provenance?.sender?.kind), identity, item));
     }
   }

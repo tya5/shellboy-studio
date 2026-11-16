@@ -6,7 +6,7 @@ import { WorkElementRow, formatWorkElementDisplay } from "../system/components/W
 import { Disclosure } from "../system/components/Disclosure";
 import type { HandoffRecord } from "../../../data/src/handoff";
 import { senderFact } from "../../../data/src/sender";
-import { CANONICAL_CASES, scopeIssuedWorkFacts, type CanonicalCase, projectHistoryWindowItems, projectSavedItems, withPresentationContainers, normalizeLiveWorkFacts, projectOwnedHandoffFacts, retainUnretiredLiveFacts, type NormalizedSavedItem } from "../../../ui-core/src/conversation-items";
+import { CANONICAL_CASES, scopeIssuedWorkFacts, type CanonicalCase, projectHistoryWindowItems, projectSavedItems, withPresentationContainers, normalizeLiveWorkFacts, projectOwnedHandoffFacts, type NormalizedSavedItem } from "../../../ui-core/src/conversation-items";
 import type { HistoryItem } from "../../../data/src/protocol";
 import { Markdown } from "../system/components/Message";
 import type { WindowAcceptedSnapshot } from "../../../ui-core/src/window";
@@ -205,6 +205,7 @@ export function SavedConversationItems({ model, projection: suppliedProjection, 
       if (item.source.kind === "reasoning" || item.source.kind === "reasoning_unavailable") return <div data-thinking-marker="">{workRow(item)}</div>;
       if (item.source.kind === "interruption") return workRow(item);
       if (item.source.kind === "record") return <div data-internal-records="">{workRow(item)}</div>;
+      if (item.source.kind === "unavailable" && sharedNode && (sharedNode.kind === "assistant_response" || sharedNode.kind === "user")) return <div data-items-unavailable-reason={item.source.reason}><BodyReadMessage model={model} node={sharedNode} displayText={displayText} />{item.source.reason ? <div class="caption muted" data-unavailable-reason="">{item.source.reason}</div> : null}</div>;
       if (item.source.kind === "unknown" || item.source.kind === "unavailable") {
         const source=item.source,handle=model.handle.value;
         const record="domain" in source&&source.namespace==="handoff"?handle?.handoff.value.find(record=>record.key===source.recordId):undefined;
@@ -223,10 +224,9 @@ export function DeferredHistoryNode({ model, row }: { model: AppModel; row: Hist
 
 export function LiveRecordChrome({ model, record }: { model: AppModel; record: HandoffRecord }) {
   const t=model.t.value;
-  const incomplete = record.incomplete || record.status === "failed";
+  const incomplete = record.incomplete;
   return <div data-live-record-chrome={record.key}>
     {incomplete ? <div class="caption muted" data-live-incomplete="">{t("convo.liveIncomplete")}</div> : null}
-    {record.status === "failed" ? <div class="caption muted">{t("convo.handoffFailed")}</div> : null}
   </div>;
 }
 

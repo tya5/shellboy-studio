@@ -3,7 +3,7 @@ import type { HandoffRecord } from '../../data/src/handoff';
 import type { WorkItem } from '../../data/src/protocol';
 import type { WindowAcceptedSnapshot } from './window';
 import type { OwnUserDecision, ConversationDisplayPlan } from './conversation-display-plan';
-import { projectHistoryWindowItems, projectOwnedHandoffFacts, projectSavedItems, retainUnretiredLiveFacts,
+import { projectHistoryWindowItems, projectOwnedHandoffFacts, projectSavedItems,
   normalizeLiveWorkFacts, scopeIssuedWorkFacts,
   type NormalizedSavedItem, type SavedItemProjection } from './conversation-items';
 
@@ -54,6 +54,37 @@ export function conversationIdentityEqual(a: ConversationIdentity, b: Conversati
 }
 
 
+/** Keep canonical history as the chronology spine; replace matching live attempts at their saved slot.
+ * Unmatched live/work facts stay in their captured order after the nearest matched slot. */
+export function orderSemanticSources(
+  snapshot: WindowAcceptedSnapshot,
+  canonical: readonly NormalizedSavedItem[],
+  overlays: readonly NormalizedSavedItem[],
+): readonly NormalizedSavedItem[] {
+  const nodeIndexes = new Map<string, number[]>();
+  canonical.forEach((item, index) => { if ("nodeId" in item && typeof item.nodeId === "string") nodeIndexes.set(item.nodeId, [...(nodeIndexes.get(item.nodeId) ?? []), index]); });
+  const nodeIndex = new Map([...nodeIndexes].flatMap(([nodeId, indexes]) => indexes.every((index, offset) => index === indexes[0]! + offset)
+    ? [[nodeId, indexes.at(-1)!] as const] : []));
+  const attemptIndex = new Map(snapshot.rows.flatMap(row => row.kind === "assistant_response" && row.provenance?.attempt_id && row.node_id
+    ? [[String(row.provenance.attempt_id), nodeIndex.get(row.node_id)] as const] : []));
+  const pending: NormalizedSavedItem[][] = Array.from({ length: canonical.length + 1 }, () => []);
+  let anchor: number | undefined;
+  for (const item of overlays) {
+    if (!("domain" in item) || item.domain !== "live") { pending[anchor ?? canonical.length]!.push(item); continue; }
+    const ownMatch = item.attemptId ? attemptIndex.get(String(item.attemptId)) : undefined;
+    const predecessorMatch = ownMatch === undefined ? (item.afterAttemptId ? attemptIndex.get(String(item.afterAttemptId)) : item.afterNodeId ? nodeIndex.get(item.afterNodeId) : undefined) : undefined;
+    if (ownMatch !== undefined) { anchor = ownMatch + 1; continue; }
+    if (predecessorMatch !== undefined) { anchor = predecessorMatch + 1; pending[anchor]!.push(item); continue; }
+    // No observed placement provenance: keep the canonical boundary, never invent an anchor.
+    pending[anchor ?? canonical.length]!.push(item);
+  }
+  const ordered: NormalizedSavedItem[] = [];
+  for (let index = 0; index <= canonical.length; index++) {
+    if (index) ordered.push(canonical[index - 1]!);
+    ordered.push(...pending[index]!);
+  }
+  return Object.freeze(ordered);
+}
 export interface ConversationSemanticInput {
   readonly isCurrent: () => boolean;
   readonly identity:ConversationIdentity;
@@ -73,10 +104,9 @@ export function captureConversationInput(snapshot: WindowAcceptedSnapshot, input
   const canonicalInput=canonicalHistoryInput(snapshot,input.scope),canonicalProjection=canonicalInput.projection;
   const current = input.current();
   const retained = current ? input.work.facts : [];
-  const matchingAttempts = new Set<string>(snapshot.rows.flatMap(row => row.kind === "assistant_response" && row.provenance?.attempt_id ? [row.provenance.attempt_id] : []));
-  const live = current ? projectOwnedHandoffFacts(input.scope, input.records.filter(record => !matchingAttempts.has(record.attemptId))) : [];
-  const work = current ? scopeIssuedWorkFacts([...retained, ...live], [input.scope]) : undefined;
-  const projected = work?.length ? projectSavedItems([...work, ...canonicalProjection.items.map(item => item.source)]) : canonicalProjection;
+  const live = current ? projectOwnedHandoffFacts(input.scope, input.records) : [];
+  const work = current ? scopeIssuedWorkFacts([...live, ...retained], [input.scope]) : undefined;
+  const projected = work?.length ? projectSavedItems(orderSemanticSources(snapshot, canonicalProjection.items.map(item => item.source), work)) : canonicalProjection;
   return { isCurrent: input.current,
     identity: createConversationIdentity({ rows: snapshot.rows, revision: snapshot.revision, records: input.records,
       work: input.work, scope: input.scope, current }),

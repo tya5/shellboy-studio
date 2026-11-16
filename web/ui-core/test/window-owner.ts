@@ -70,7 +70,8 @@ export class WindowOwner {
   }
 }
 
-export type BoundWindowInput = { capture: (snapshot: import("../src/window").WindowAcceptedSnapshot) => import("../src/conversation-input").ConversationSemanticInput; state?: unknown };
+export interface FixtureSemanticProducer { advance(attemptId: string): void; }
+export type BoundWindowInput = { state: FixtureSemanticProducer; capture: (snapshot: import("../src/window").WindowAcceptedSnapshot) => import("../src/conversation-input").ConversationSemanticInput; }
 const boundInputs = new WeakMap<ConversationWindow, BoundWindowInput>();
 export const boundWindowInput = (window: ConversationWindow): BoundWindowInput | undefined => boundInputs.get(window);
 
@@ -100,11 +101,17 @@ export interface Rig {
   calls(): CallFrame[];
   /** Window calls sent since the mark. */
   since(mark: number): CallFrame[];
+  producer: FixtureSemanticProducer;
 }
 
 export async function rig(total: number, options: { capability?: boolean; decorate?: (i: number, item: Record<string, unknown>) => Record<string, unknown>; schedule?: Schedule } = {}): Promise<Rig> {
   const t = new FakeTransport();
-  const data = new ShellboyData({ transport: t, newId: () => "id", schedule: options.schedule });
+  const liveQueue = new Set<() => void>();
+  const schedule = options.schedule ?? ((callback: () => void) => {
+    liveQueue.add(callback);
+    queueMicrotask(() => { if (liveQueue.delete(callback)) callback(); });
+  });
+  const data = new ShellboyData({ transport: t, newId: () => "id", schedule });
   data.start();
   t.open();
   if (connected.state !== "connected") throw new Error("fixture");
@@ -123,29 +130,36 @@ export async function rig(total: number, options: { capability?: boolean; decora
       };
     },
   };
-  const semantic = {};
+  const producer: FixtureSemanticProducer = { advance: attemptId => {
+    t.push({ t: "live", thread_id: handle.threadId, attempt_id: attemptId, gap: false, deltas: [{ offset: 0, reasoning: false, text: attemptId }] });
+    if (!options.schedule) while (liveQueue.size) { const callback = liveQueue.values().next().value!; liveQueue.delete(callback); callback(); }
+  } };
   let windowRef: ConversationWindow;
-  windowRef = createBoundWindow({ read: (a, c) => handle.readWindow(a, c) }, handle, { state: semantic, capture: snapshot => {
+  windowRef = createBoundWindow({ read: (a, c) => handle.readWindow(a, c) }, handle, { state: producer, capture: snapshot => {
     const capability = windowRef.acceptedView.currentCapability;
     return captureConversationInput(snapshot, { scope: handle.threadId, threadId: handle.threadId, records: handle.handoff.value, work: captureCurrentWork(handle.threadId, handle.work.value.value), current: () => windowRef.isCurrentThread(handle) && windowRef.acceptedView.currentCapability === capability });
   } }, opts);
   const w = windowRef;
   const calls = () => t.calls("history.window");
-  const settle = async () => {
+  const settle = async (done?: () => boolean) => {
     for (let i = 0; i < 20; i++) {
       await flush();
       const todo = t.calls().filter((c) => !owner.answered.has(c.id));
-      if (todo.length === 0) return;
       for (const c of todo) {
         owner.answered.add(c.id);
         const r = owner.answer(c);
         if (r.ok) t.ok(c.id, r.result);
         else t.ownerError(c.id, r.code, r.code, r.details);
       }
+      await flush();
+      const pending = t.calls().filter((c) => !owner.answered.has(c.id));
+      if (done ? done() : pending.length === 0) return;
+      if (done && pending.length === 0) throw new Error("fixture settle incomplete: no owned RPC pending before completion predicate");
     }
+    throw new Error("fixture settle incomplete: owned RPC completion bound exhausted");
   };
   return {
-    t, owner, handle, data, w,
+    t, owner, handle, data, w, producer,
     pause: () => {
       const f = armed;
       armed = undefined;

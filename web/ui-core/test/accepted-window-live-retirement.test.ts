@@ -75,7 +75,7 @@ it("semantic lease cancellation rejects publication and preserves accepted ref/l
  const attempt=canonicalAttemptId(1),f=await rig(2);let w!:typeof f.w;try{
  f.t.push({t:"live",thread_id:f.handle.threadId,attempt_id:attempt,gap:false,deltas:[{offset:0,reasoning:false,text:"live"}]});await flush();f.w.dispose();
  let armed=false,phase="idle";
- const input={capture:(snapshot:import("../src/window").WindowAcceptedSnapshot)=>captureConversationInput(snapshot,{scope:f.handle.threadId,threadId:f.handle.threadId,records:f.handle.handoff.value,work:captureCurrentWork(f.handle.threadId,f.handle.work.value.value),current:()=>{
+ const input={state:f.producer,capture:(snapshot:import("../src/window").WindowAcceptedSnapshot)=>captureConversationInput(snapshot,{scope:f.handle.threadId,threadId:f.handle.threadId,records:f.handle.handoff.value,work:captureCurrentWork(f.handle.threadId,f.handle.work.value.value),current:()=>{
   if(!armed)return w.isCurrentThread(f.handle);
   if(phase==="capture"){phase="lease";return w.isCurrentThread(f.handle);}
   f.handle.cancelReads();return true;
@@ -90,18 +90,48 @@ it("semantic lease cancellation rejects publication and preserves accepted ref/l
 
 it("semantic callback rebind rejection preserves accepted ref/rows/live identity", async () => {
  const attempt=canonicalAttemptId(1),f=await rig(2),foreign=await rig(2);let w!:typeof f.w;try{
- f.t.push({t:"live",thread_id:f.handle.threadId,attempt_id:attempt,gap:false,deltas:[{offset:0,reasoning:false,text:"live"}]});await flush();f.w.dispose();let armed=false,phase="idle";
- const input={capture:(snapshot:import("../src/window").WindowAcceptedSnapshot)=>captureConversationInput(snapshot,{scope:f.handle.threadId,threadId:f.handle.threadId,records:f.handle.handoff.value,work:captureCurrentWork(f.handle.threadId,f.handle.work.value.value),current:()=>{if(!armed)return w.isCurrentThread(f.handle);if(phase==="capture"){phase="lease";return w.isCurrentThread(f.handle);}expect(w.bindCurrentThread(foreign.handle)).toBe(false);return true;}})};
- w=createBoundWindow({read:(args,cancel)=>f.handle.readWindow(args,cancel)},f.handle,input);await f.settle();const beforeRef=w.acceptedView.peek(),beforeRows=beforeRef.rows,before=f.handle.handoff.value[0]!;expect(beforeRows.length).toBeGreaterThan(0);armed=true;phase="capture";expect(w.refreshConversationInput(beforeRef)).toBe(false);expect(w.acceptedView.peek()).toBe(beforeRef);expect(w.acceptedView.peek().rows).toBe(beforeRows);expect(f.handle.handoff.value.some(record=>record===before)).toBe(true);
+ f.t.push({t:"live",thread_id:f.handle.threadId,attempt_id:attempt,gap:false,deltas:[{offset:0,reasoning:false,text:"live"}]});await flush();f.w.dispose();let armed=false,phase="idle",callbackHits=0;
+ const input={state:f.producer,capture:(snapshot:import("../src/window").WindowAcceptedSnapshot)=>captureConversationInput(snapshot,{scope:f.handle.threadId,threadId:f.handle.threadId,records:f.handle.handoff.value,work:captureCurrentWork(f.handle.threadId,f.handle.work.value.value),current:()=>{callbackHits++;if(!armed)return w.isCurrentThread(f.handle);if(phase==="capture"){phase="lease";return w.isCurrentThread(f.handle);}expect(w.bindCurrentThread(foreign.handle)).toBe(false);return true;}})};
+ w=createBoundWindow({read:(args,cancel)=>f.handle.readWindow(args,cancel)},f.handle,input);await f.settle();f.producer.advance(canonicalAttemptId(2));await flush();expect(w.bindCurrentThread(f.handle)).toBe(true);const beforeRef=w.acceptedView.peek(),beforeRows=beforeRef.rows,before=f.handle.handoff.value[0]!;expect(beforeRows.length).toBeGreaterThan(0);armed=true;phase="capture";expect(w.refreshConversationInput(beforeRef)).toBe(false);expect(w.acceptedView.peek()).toBe(beforeRef);expect(w.acceptedView.peek().rows).toBe(beforeRows);expect(f.handle.handoff.value.some(record=>record===before)).toBe(true);expect(callbackHits).toBeGreaterThanOrEqual(2);
  }finally{w?.dispose();f.data.stop();foreign.w.dispose();foreign.data.stop();}
 });
 
 it("semantic false rejects publication with seeded accepted ref/live identity", async () => {
  const attempt=canonicalAttemptId(1),f=await rig(2);let w!:typeof f.w;try{f.t.push({t:"live",thread_id:f.handle.threadId,attempt_id:attempt,gap:false,deltas:[{offset:0,reasoning:false,text:"live"}]});await flush();f.w.dispose();let armed=false;
- const input={capture:(snapshot:import("../src/window").WindowAcceptedSnapshot)=>captureConversationInput(snapshot,{scope:f.handle.threadId,threadId:f.handle.threadId,records:f.handle.handoff.value,work:captureCurrentWork(f.handle.threadId,f.handle.work.value.value),current:()=>armed?false:w.isCurrentThread(f.handle)})};
+ const input={state:f.producer,capture:(snapshot:import("../src/window").WindowAcceptedSnapshot)=>captureConversationInput(snapshot,{scope:f.handle.threadId,threadId:f.handle.threadId,records:f.handle.handoff.value,work:captureCurrentWork(f.handle.threadId,f.handle.work.value.value),current:()=>armed?false:w.isCurrentThread(f.handle)})};
  w=createBoundWindow({read:(args,cancel)=>f.handle.readWindow(args,cancel)},f.handle,input);await f.settle();
  const beforeRef=w.acceptedView.peek(),before=f.handle.handoff.value[0]!;armed=true;expect(w.refreshConversationInput(beforeRef)).toBe(false);expect(w.acceptedView.peek()).toBe(beforeRef);expect(f.handle.handoff.value.some(record=>record===before)).toBe(true);}finally{w?.dispose();f.data.stop();}
 });
 
 it('rejected publication reply preserves accepted ref and live identity',async()=>{
  const attempt=canonicalAttemptId(1),f=await liveCase(attempt);try{const beforeRef=f.w.acceptedView.peek(),before=f.handle.handoff.value[0]!;f.owner.append(1);f.w.changed();await flush();const call=f.calls().filter(item=>item.command==='history.window'&&!f.owner.answered.has(item.id)).at(-1);expect(call).toBeDefined();f.w.acceptedView.revoke();f.owner.answered.add(call!.id);const answer=f.owner.answer(call!);expect(answer.ok).toBe(true);if(answer.ok)f.t.ok(call!.id,answer.result);await flush(8);expect(f.w.acceptedView.peek()).toBe(beforeRef);expect(f.handle.handoff.value.some(record=>record===before)).toBe(true)}finally{f.w.dispose();f.data.stop()}});
+
+it("preserves real chronology when a new saved replacement arrives", async () => {
+ const f=await rig(18),a=canonicalAttemptId(1),b=canonicalAttemptId(2),c=canonicalAttemptId(3);
+ try {
+  f.w.bindCurrentThread(f.handle);
+  for (const attempt of [a,b,c]) f.t.push({t:"live",thread_id:"t",attempt_id:attempt,gap:false,deltas:[{offset:0,reasoning:false,text:attempt}]});
+  await flush();f.w.changed();await f.settle();
+  const ids=()=>f.w.acceptedView.peek().displayPlan?.entries.map(entry=>{const source=entry.item.source;return "domain" in source?source.recordId:source.nodeId;}).filter((id):id is string=>id!==undefined) ?? [];
+  const before=ids(),beforeA=before.indexOf(`handoff:${a}`),beforeB=before.indexOf(`handoff:${b}`),beforeC=before.indexOf(`handoff:${c}`);
+  expect(before).toEqual([...Array.from({length:18},(_,i)=>f.owner.nodeId(i)),`handoff:${a}`,`handoff:${b}`,`handoff:${c}`]);
+  expect(beforeA).toBe(18);expect(beforeB).toBe(beforeA+1);expect(beforeC).toBe(beforeB+1);
+  const beforeBRecord=f.handle.handoff.value.find(record=>record.attemptId===b)!,beforeCRecord=f.handle.handoff.value.find(record=>record.attemptId===c)!;
+  const beforeWithoutA=before.filter(id=>id!==`handoff:${a}`);
+  f.owner.append(2);
+  f.owner.decorate=(i,item)=>i===18?{...item,kind:"assistant_response",provenance:{attempt_id:a},items:[{kind:"text",item_identity:"first",text:"A1"},{kind:"text",item_identity:"second",text:"A2"}]}:i===19?{...item,kind:"user",items:[{kind:"text",item_identity:"next",text:"Next user",text_complete:true}]}:item;
+  f.w.changed();await f.settle(()=>f.w.acceptedView.peek().revision===f.owner.revision && f.w.acceptedView.peek().rows.some(row=>row.node_id===f.owner.nodeId(18)));
+  const savedA=f.owner.nodeId(18),nextUser=f.owner.nodeId(19),after=ids();
+  const expected=[...beforeWithoutA.slice(0,beforeA),savedA,savedA,...beforeWithoutA.slice(beforeA),nextUser];
+  expect(after).toEqual(expected);
+  expect(after.filter(id=>id===savedA)).toHaveLength(2);
+  expect(f.handle.handoff.value.find(record=>record.attemptId===a)).toBeUndefined();
+  const survivingB=f.handle.handoff.value.find(record=>record.attemptId===b)!,survivingC=f.handle.handoff.value.find(record=>record.attemptId===c)!;
+  expect(survivingB.afterAttemptId).toBe(a);expect(survivingC.afterAttemptId).toBe(b);
+  f.w.changed();await f.settle();
+  expect(ids()).toEqual(expected);
+  expect(survivingB).toBe(beforeBRecord);expect(survivingC).toBe(beforeCRecord);
+  expect(f.handle.handoff.value.find(record=>record.attemptId===b)).toBe(survivingB);
+  expect(f.handle.handoff.value.find(record=>record.attemptId===c)).toBe(survivingC);
+ } finally { f.w.dispose();f.data.stop(); }
+});

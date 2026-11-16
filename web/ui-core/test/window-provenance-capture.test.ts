@@ -8,19 +8,28 @@ import {flush} from '../../data/test/harness';
 import {rig as ownerRig,createBoundWindow} from './window-owner';
 import {captureConversationInput,captureCurrentWork} from '../src/conversation-input';
 async function boundWindow(read:(args:unknown)=>Promise<Outcome<HistoryWindowInput>>){
- const owner=await ownerRig(0);owner.w.dispose();
- const win=createBoundWindow({read},owner.handle,{capture:snapshot=>captureConversationInput(snapshot,{scope:'history',threadId:owner.handle.threadId,records:owner.handle.handoff.value,work:captureCurrentWork(owner.handle.threadId,owner.handle.work.value.value),current:()=>true})});
+ const owner=await ownerRig(0);owner.w.dispose();let win!:ConversationWindow;
+ win=createBoundWindow({read},owner.handle,{state:owner.producer,capture:snapshot=>{
+  const capability=win.acceptedView.currentCapability;
+  return captureConversationInput(snapshot,{scope:owner.handle.threadId,threadId:owner.handle.threadId,records:owner.handle.handoff.value,work:captureCurrentWork(owner.handle.threadId,owner.handle.work.value.value),current:()=>win.isCurrentThread(owner.handle)&&win.acceptedView.currentCapability===capability});
+ }});
+ await flush();
  return {win,dispose:()=>{win.dispose();owner.handle.close();owner.data.stop();}};
 }
 
 async function rig(){
+ let semanticCurrent=()=>true;
  const rows:HistoryItem[]=[{node_id:'one',kind:'user',selection:{ordinal:0},items:[{kind:'text',item_identity:'body',text:'Independent one',text_complete:true}],provenance:{created_at:'initial'}},
   {node_id:'two',kind:'user',selection:{ordinal:1},items:[{kind:'text',item_identity:'body',text:'Independent two',text_complete:true}],provenance:{created_at:'initial'}}];
  let result:Outcome<HistoryWindowInput>={ok:true,value:ownedHistory({thread_id:'t',revision:1,total:2,items:rows})},reads=0;
  const owner=await ownerRig(0);owner.w.dispose();
- const win=createBoundWindow({read:async()=>{reads++;return result;}},owner.handle,{capture:snapshot=>captureConversationInput(snapshot,{scope:'history',threadId:owner.handle.threadId,records:owner.handle.handoff.value,work:captureCurrentWork(owner.handle.threadId,owner.handle.work.value.value),current:()=>true})});
- await flush();return{rows,win,reads:()=>reads,raw:()=>({thread_id:'t',revision:2,total:2,items:rows}),
-  publish:async(raw:unknown)=>{result=raw instanceof HistoryWindowInput?{ok:true,value:raw}:HistoryWindowInput.decode(raw);win.changed();await flush();},
+ const win=createBoundWindow({read:async()=>{reads++;return result;}},owner.handle,{state:owner.producer,capture:snapshot=>{
+  const capability=win.acceptedView.currentCapability,currentThread=win.isCurrentThread(owner.handle);
+  return captureConversationInput(snapshot,{scope:'history',threadId:owner.handle.threadId,records:owner.handle.handoff.value,work:captureCurrentWork(owner.handle.threadId,owner.handle.work.value.value),current:()=>currentThread&&win.isCurrentThread(owner.handle)&&win.acceptedView.currentCapability===capability&&semanticCurrent()});
+ }});
+ await flush();
+  return{rows,win,producer:owner.producer,rebind:()=>win.bindCurrentThread(owner.handle),live:()=>owner.handle.handoff.value,reads:()=>reads,raw:()=>({thread_id:'t',revision:2,total:rows.length,items:rows}),setSemanticCurrent:(current:()=>boolean)=>{semanticCurrent=current},
+  publish:async(raw:unknown)=>{result=raw instanceof HistoryWindowInput?{ok:true,value:raw}:HistoryWindowInput.decode(raw);if(!win.bindCurrentThread(owner.handle)) throw new Error('window owner rebind failed');win.changed();await flush();},
   dispose:()=>{win.dispose();owner.handle.close();owner.data.stop();}};
 }
 it('public Window reads changing provenance getters once at typed admission and pools only the captured value',async()=>{
@@ -79,3 +88,6 @@ it('capture failure reaches the UI diagnostic without exposing secret input',asy
  try{await flush();expect(w.status.peek()).toBe('error');expect(w.error.peek()).not.toContain(secret);expect(JSON.stringify(w.diagnostic.peek())).not.toContain(secret);expect(w.diagnostic.peek()?.reason).toBe('input-bound');}
  finally{bound.dispose();}
 });
+it("selected R1 to R2 semantic rejection preserves storage and live identity",async()=>{const r=await rig();try{await r.publish(r.raw());r.producer.advance('seed-live');await flush();if(!r.rebind()) throw new Error('window owner rebind failed');const before=r.win.acceptedView.peek(),beforeRows=before.rows,beforeItem=r.win.itemAt(0),beforeHeight=r.win.totalHeight(),beforeScroll=r.win.scrollTop,beforeLive=r.live();expect(beforeRows).toHaveLength(2);expect(before.total).toBe(2);expect(beforeLive.length).toBeGreaterThan(0);const row={node_id:'three',kind:'user' as const,selection:{ordinal:2},items:[{kind:'text' as const,item_identity:'body',text:'three',text_complete:true}],provenance:{created_at:'r2'}};r.rows.push(row);let leaseChecks=0;r.setSemanticCurrent(()=>{leaseChecks++;return leaseChecks===1});await r.publish({thread_id:'t',revision:3,total:3,items:r.rows});expect(leaseChecks).toBeGreaterThanOrEqual(2);expect(r.win.acceptedView.peek()).toBe(before);expect(r.win.acceptedView.peek().rows).toBe(beforeRows);expect(r.win.itemAt(0)).toBe(beforeItem);expect(r.win.acceptedView.peek().total).toBe(2);expect(r.win.totalHeight()).toBe(beforeHeight);expect(r.win.scrollTop).toBe(beforeScroll);expect(r.live()[0]).toBe(beforeLive[0]);}finally{r.dispose();}});
+
+it("selected R1 to R2 accepted subscriber observes coherent rows and geometry",async()=>{const r=await rig();try{await r.publish(r.raw());const seen:unknown[]=[];r.win.acceptedView.subscribe(ref=>seen.push({ref,total:r.win.acceptedView.peek().total,item:r.win.itemAt(2),height:r.win.totalHeight(),scroll:r.win.scrollTop}));r.rows.push({node_id:'three',kind:'user',selection:{ordinal:2},items:[{kind:'text',item_identity:'body',text:'three',text_complete:true}],provenance:{created_at:'r2'}});await r.publish({thread_id:'t',revision:3,total:3,items:r.rows});const after=r.win.acceptedView.peek();expect(seen.length).toBeGreaterThan(0);expect(after.total).toBe(3);expect(after.rows).toHaveLength(3);expect(r.win.itemAt(2)?.node_id).toBe('three');expect(r.win.totalHeight()).toBe((seen.at(-1) as {height:number}).height);expect((seen.at(-1) as {scroll:number}).scroll).toBe(r.win.scrollTop);expect(seen.at(-1)).toMatchObject({ref:after,total:3,item:{node_id:'three'}});}finally{r.dispose();}});

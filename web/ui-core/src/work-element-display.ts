@@ -107,7 +107,7 @@ function display(item: ProjectedSavedItem, capture: CapturedWorkElement, executi
     case "wire-problem": {
       label = "Unavailable item";
       const reason = source.kind === "unavailable" ? source.reason : undefined;
-      text = reason === "response_budget" ? "Display content is unavailable" : "Display content is unavailable";
+      text = "Display content is unavailable";
       if (reason) { state = { source: "wire", value: reason }; context.push({ name: "reason", value: reason }); }
       break;
     }

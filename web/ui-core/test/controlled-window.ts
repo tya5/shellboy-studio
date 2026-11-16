@@ -8,11 +8,12 @@ import {rig as ownerRig,createBoundWindow,boundWindowInput} from './window-owner
 export async function controlledWindow(){
  const requests:{args:WindowReadArgs;cancel:Cancel;settled:boolean;reply:(value:Outcome<HistoryWindowInput>)=>void}[]=[];
  const timers=new Set<()=>void>();
- const liveSchedule:(callback:()=>void)=>void=callback=>timers.add(callback);
+ const liveCallbacks=new Set<()=>void>();
+ const liveSchedule:(callback:()=>void)=>void=callback=>liveCallbacks.add(callback);
  const owner=await ownerRig(0,{schedule:liveSchedule});owner.w.dispose();
- const semantic={advance:(attemptId:string)=>{owner.t.push({t:"live",thread_id:owner.handle.threadId,attempt_id:attemptId,gap:false,deltas:[{offset:0,reasoning:false,text:attemptId}]});while(timers.size){const callback=timers.values().next().value as (()=>void);timers.delete(callback);callback();}}};
+ const producer={advance:(attemptId:string)=>{owner.producer.advance(attemptId);while(liveCallbacks.size){const callback=liveCallbacks.values().next().value!;liveCallbacks.delete(callback);callback();}}};
  let boundWindow:ConversationWindow;
- const input={state:semantic,capture:(snapshot:import('../src/window').WindowAcceptedSnapshot)=>{const capability=boundWindow.acceptedView.currentCapability;return captureConversationInput(snapshot,{scope:owner.handle.threadId,threadId:owner.handle.threadId,records:owner.handle.handoff.value,work:captureCurrentWork(owner.handle.threadId,owner.handle.work.value.value),current:()=>boundWindow.isCurrentThread(owner.handle)&&boundWindow.acceptedView.currentCapability===capability});}};
+ const input={state:producer,capture:(snapshot:import('../src/window').WindowAcceptedSnapshot)=>{const capability=boundWindow.acceptedView.currentCapability;return captureConversationInput(snapshot,{scope:owner.handle.threadId,threadId:owner.handle.threadId,records:owner.handle.handoff.value,work:captureCurrentWork(owner.handle.threadId,owner.handle.work.value.value),current:()=>boundWindow.isCurrentThread(owner.handle)&&boundWindow.acceptedView.currentCapability===capability});}};
  boundWindow=createBoundWindow({read:(args,cancel)=>new Promise(resolve=>{
   const request={args,cancel,settled:false,reply:(value:Outcome<HistoryWindowInput>)=>{request.settled=true;resolve(value);}};
   requests.push(request);
@@ -23,11 +24,11 @@ export async function controlledWindow(){
 }
 
 /** A real pending-owner input replaces semantics while retaining the selected rows and scroll intent. */
-type ControlledSemanticState={advance:(attemptId:string)=>void};
 export function publishControlledAttempt(win:ConversationWindow,attemptId:string){
  const before=win.acceptedView.peek();
- const input=boundWindowInput(win),state=input?.state as ControlledSemanticState|undefined;
- if(!input||!state)throw new Error('Controlled semantic input was not constructed');
+ const input=boundWindowInput(win);
+ if(!input||!input.state)throw new Error('Controlled semantic input was not constructed');
+ const state=input.state;
  if(!before.displayPlan?.scope)throw new Error('Controlled semantic replacement requires an accepted scope');
  state.advance(attemptId);
  if(!win.refreshConversationInput(before))throw new Error(`Controlled publication rejected: ${attemptId}`);

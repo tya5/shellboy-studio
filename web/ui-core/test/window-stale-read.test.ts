@@ -11,7 +11,7 @@ it('older tail and verification replies do not manufacture retry demand or chang
  const w=createBoundWindow({read:async args=>{
   reads.push(args);return{ok:true,value:ownedHistory({thread_id:owner.handle.threadId,revision,total:1,items:[{node_id:'human',kind:'user',selection:{ordinal:0},
    provenance:{sender:{kind:'human'}},items:[{kind:'text',item_identity:'body',text:revision===8?'Current human':'Forbidden old human',text_complete:true}]}]})};
- }},owner.handle,{capture:snapshot=>captureConversationInput(snapshot,{scope:'history',threadId:owner.handle.threadId,records:owner.handle.handoff.value,work:captureCurrentWork(owner.handle.threadId,owner.handle.work.value.value),current:()=>true})});
+ }},owner.handle,{state:owner.producer,capture:snapshot=>captureConversationInput(snapshot,{scope:'history',threadId:owner.handle.threadId,records:owner.handle.handoff.value,work:captureCurrentWork(owner.handle.threadId,owner.handle.work.value.value),current:()=>true})});
  try{
   await flush();const before=w.acceptedView.peek();expect(reads).toHaveLength(1);
   const original=JSON.stringify(before.rows);revision=7;
