@@ -39,8 +39,8 @@ try {
   if(!beforeHeld?.attemptId||!beforeHeld?.scope||!beforeHeld?.recordKey||!beforeHeld?.containerKey||!beforeHeld?.status||!summary.afterTrace?.hasReader||!owner||!retired||summary.afterTrace?.held?.some(item=>item.attemptId===result.canonicalAttemptId)) summary.failures.push('public accepted owner/retired/held boundary');
   if(owner&&retired&&(!beforeHeld||owner.scope!==beforeHeld.scope||owner.recordKey!==beforeHeld.recordKey||owner.containerKey!==beforeHeld.containerKey||owner.attemptId!==beforeHeld.attemptId||owner.scope!==retired.scope||owner.recordKey!==retired.recordKey||owner.containerKey!==retired.containerKey||owner.attemptId!==retired.attemptId)) summary.failures.push('before/owner/retired identity boundary');
   const expectedKey=JSON.stringify(['canonical-node','canonical-node:/output/0/content/0']);
-  const expectedParagraphs=['Synthetic retained answer.','This paragraph stays visible across a delayed saved response and the following generation.','Third paragraph for frame-height observation.'];
-  if(summary.domCount!==1||summary.identity!==expectedKey||JSON.stringify(summary.paragraphs)!==JSON.stringify(expectedParagraphs)||!summary.textPresent||!(summary.bounds?.width>0&&summary.bounds?.height>0)) summary.failures.push('DOM canonical body/identity/count/bounds');
+  const expectedParagraphText=['Synthetic retained answer.','This paragraph stays visible across a delayed saved response and the following generation.','Third paragraph for frame-height observation.'];
+  if(summary.domCount!==1||summary.identity!==expectedKey||JSON.stringify(summary.paragraphText)!==JSON.stringify(expectedParagraphText)||!summary.textPresent||!(summary.bounds?.width>0&&summary.bounds?.height>0)) summary.failures.push('DOM canonical body/identity/count/bounds');
   assert.equal(summary.failures.length,0,JSON.stringify({summary,result,dom}));
   records.push(summary);console.log(JSON.stringify(summary));
   await writeFile(join(out,'contract-summary.json'),JSON.stringify({summary,result},null,2));
