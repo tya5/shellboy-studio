@@ -171,7 +171,6 @@ export function SavedConversationItems({ model, projection: suppliedProjection, 
       const displayEntry = planByKey.get(item.key);
       const displayText = displayEntry?.body.kind === "preview" || displayEntry?.body.kind === "typed-canonical" || displayEntry?.body.kind === "typed-partial" ? displayEntry.body.text : undefined;
       const sharedNode = item.source.nodeId ? nodes?.find(node => node.node_id === item.source.nodeId) : undefined;
-      if (sharedNode && displayEntry?.body.kind === "unavailable") return <BodyReadMessage model={model} node={sharedNode} displayText={displayText} />;
       if (item.source.kind === "text" || item.source.kind === "user" || item.source.kind === "summary") {
         const node = item.source.nodeId ? nodes?.find(node => node.node_id === item.source.nodeId) : undefined;
         if(membership.get(item.key)==="content-unavailable" && node)return <BodyReadMessage model={model} node={node} displayText={displayText} />;

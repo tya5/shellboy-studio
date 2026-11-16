@@ -110,6 +110,7 @@ export class ConversationWindow {
   private tailFailed = false;
   private verifying = false;
   private stopTimer: (() => void) | undefined;
+  private readonly publicationAuthority = { version: 0 };
   private viewTop = 0;
   private viewHeight = 0;
   private wanted = new Set<number>();
@@ -383,7 +384,11 @@ export class ConversationWindow {
 
   // ---- reads ----
 
+  /** Cancel owned reads and invalidate the current publication authority. */
+  cancelReads(): void { this.cancelAll(); }
+
   private cancelAll(): void {
+    this.publicationAuthority.version++;
     for (const r of this.inflight.values()) r.cancel.cancel();
     this.inflight.clear();
     this.tailCancel?.cancel();
@@ -449,13 +454,18 @@ export class ConversationWindow {
       this.diagnostic.value = Object.freeze({ reason: 'publication-rejected', generation: this.acceptedView.peek().generation, revision: this.acceptedView.peek().revision, ownerEpoch: this.epoch, at: Date.now() });
       return false;
     }
+    const token = Object.freeze({ handle: binding.handle, threadId: binding.threadId, epoch: binding.epoch,
+      capability: publication.lease.capability, revision: publication.snapshot.revision,
+      authority: { state: this.publicationAuthority, version: this.publicationAuthority.version } });
+    // The semantic lease runs once here; AcceptedView owns the pure final token comparison.
+    if (!publication.lease.isCurrent() || token.handle.liveEpoch() !== token.epoch) return false;
     let published = false;
     batch(() => {
       published = this.acceptedView.publish(publication, snapshot => {
-        const savedAttempts = new Set(snapshot.rows.flatMap(row => row.kind === "assistant_response" && row.provenance?.attempt_id ? [row.provenance.attempt_id] : []));
+        const savedAttempts = new Set(snapshot.rows.flatMap(row => row.kind === "assistant_response" && row.provenance?.attempt_id ? [row.provenance?.attempt_id] : []));
         for (const attemptId of savedAttempts)
-          if (binding.handle.handoff.peek().some(record => record.attemptId === attemptId)) binding.handle.releaseAcceptedHandoff(attemptId);
-      });
+          if (token.handle.handoff.peek().some(record => record.attemptId === attemptId)) token.handle.releaseAcceptedHandoff(attemptId);
+      }, token.authority);
       const ref = this.acceptedView.peek();
       if (published && ref === publication.snapshot && publication.inputIdentity) this.acceptedInput = { ref, identity: publication.inputIdentity };
       if (!published) this.diagnostic.value = Object.freeze({ reason: 'publication-rejected', generation: ref.generation, revision: ref.revision, ownerEpoch: this.epoch, at: Date.now() });

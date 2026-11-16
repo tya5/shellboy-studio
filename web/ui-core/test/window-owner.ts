@@ -122,12 +122,11 @@ export async function rig(total: number, options: { capability?: boolean; decora
       };
     },
   };
-  const semantic = { version: 0 };
+  const semantic = {};
   let windowRef: ConversationWindow;
   windowRef = createBoundWindow({ read: (a, c) => handle.readWindow(a, c) }, handle, { state: semantic, capture: snapshot => {
-    const capturedVersion = semantic.version;
     const capability = windowRef.acceptedView.currentCapability;
-    return captureConversationInput(snapshot, { scope: handle.threadId, threadId: handle.threadId, records: handle.handoff.value, work: captureCurrentWork(handle.threadId, handle.work.value.value), current: () => windowRef.isCurrentThread(handle) && windowRef.acceptedView.currentCapability === capability && semantic.version === capturedVersion });
+    return captureConversationInput(snapshot, { scope: handle.threadId, threadId: handle.threadId, records: handle.handoff.value, work: captureCurrentWork(handle.threadId, handle.work.value.value), current: () => windowRef.isCurrentThread(handle) && windowRef.acceptedView.currentCapability === capability });
   } }, opts);
   const w = windowRef;
   const calls = () => t.calls("history.window");
