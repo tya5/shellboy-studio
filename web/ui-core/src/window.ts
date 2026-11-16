@@ -402,6 +402,21 @@ export class ConversationWindow {
     return outcome;
   }
 
+  /** Reconcile saved assistant provenance with live records in one accepted publication. */
+  reconcileSavedAssistantRows(records: readonly HandoffRecord[], scope: string): boolean {
+    const current = this.acceptedView.peek(), capability = this.acceptedView.currentCapability;
+    if (this.disposed || current.pending || !this.acceptedView.isCurrent(current)) return false;
+    const savedAttempts = new Set<string>(current.rows.flatMap(row => row.provenance?.attempt_id ? [row.provenance.attempt_id] : []));
+    const liveAttempts = new Set(records.filter(record => record.attemptId && scope === record.terminalPersisted?.scope).map(record => record.attemptId));
+    const owners = (current.assistantOwnership ?? []).filter(owner =>
+      owner.mode !== 'canonical' || (savedAttempts.has(owner.attemptId) && liveAttempts.has(owner.attemptId)));
+    if (owners.length === (current.assistantOwnership ?? []).length) return false;
+    const candidate = { ...current, assistantOwnership: owners };
+    const input = this.captureConversationInput(candidate);
+    const staged = this.prepareCaptured({ ...candidate, generation: this.nextAcceptedGeneration() }, capability, input, 'bump');
+    return this.acceptedView.isCurrent(current) && capability === this.acceptedView.currentCapability && this.commitAccepted(staged);
+  }
+
   prepareBoundReadyRead(record: HandoffRecord): OwnedTerminalReadLease | TicketOutcome {
     const binding = this.terminalBinding, proof = record.readyAttempt;
     const ref = this.acceptedView.peek(), cap = this.acceptedView.currentCapability;
