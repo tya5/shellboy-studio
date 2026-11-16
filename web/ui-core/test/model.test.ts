@@ -151,8 +151,14 @@ describe("AppModel over the fake transport", () => {
       await settle(t, db);
       model.modelPicker.value = { ...model.modelPicker.value, model: "aba-model", effort: "high" };
       const owner = model.data.owner.peek();
-      if (owner.state === "connected") t.push({ t: "owner", event: "connected", owner: { ...owner, info: { ...owner.info, instance_id: "picker-aba-owner" } } });
+      expect(owner.state).toBe("connected");
+      const ownerA = owner;
+      t.push({ t: "owner", event: "connected", owner: { ...ownerA, info: { ...ownerA.info, instance_id: "picker-aba-owner-b" } } });
       await flush();
+      expect(model.data.owner.peek().info.instance_id).toBe("picker-aba-owner-b");
+      t.push({ t: "owner", event: "connected", owner: ownerA });
+      await flush();
+      expect(model.data.owner.peek().info.instance_id).toBe(ownerA.info.instance_id);
       await model.saveThreadModel();
       expect(t.calls("thread.set")).toHaveLength(0);
     } finally { model.dispose(); }

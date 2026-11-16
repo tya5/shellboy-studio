@@ -49,20 +49,22 @@ Tool projection uses first qualified association wins: the first source with the
 
 ## Scope And Lifetime
 
-The captured scope is the current `ThreadHandle.threadId` passed to
-`captureConversationInput`; it is not a fabricated owner-instance JSON tuple.
-The captured identity retains the accepted rows/revision, handoff-record array,
-Work source object, scope string, and currentness callback. Attempt identity is
-only an association within that captured scope. A changed ThreadHandle, thread,
-live epoch, reader epoch, capability, or accepted generation invalidates the
-candidate before publication.
+The semantic `scope` is obtained from the model's `ownMutationScope()`.
+Depending on the current own-send state it is an own-mutation scope or the
+literal history scope; it is not necessarily `ThreadHandle.threadId`. The
+captured identity separately retains the accepted rows/revision, handoff-record
+array, Work source object, scope string, ThreadHandle/thread identity, live
+and reader epochs, capability, and currentness callback. Attempt identity is
+only an association within the captured scope. A changed handle, thread, epoch,
+reader, capability, or accepted generation invalidates the candidate before
+publication.
 
-`createBoundWindow` binds the current ThreadHandle and typed semantic input
-before reads are admitted. The production and controlled factories use the same
-public handle/read/capture methods; history-only callers remain explicitly
-separate and do not manufacture live ownership facts. Currentness is checked
-against the captured handle/thread/epoch/capability values, not against a
-presentation container or a fallback registry.
+`createBoundWindow` is a test fixture helper only. Production `AppModel`
+construction creates a `ConversationWindow`; its constructor can admit the
+initial read before the model later binds the current handle and semantic input.
+The production contract therefore relies on the later captured currentness and
+publication guards, not on a factory-before-read guarantee. History-only callers
+remain separate and do not manufacture live ownership facts.
 
 ## Ordinary Loading And Scroll
 
@@ -134,9 +136,9 @@ guidance only; it is not implemented here and does not authorize a new ordering
 architecture or permission. The current Studio contract is canonical-prefix-first
 with captured unmatched live/Work suffix.
 
-The public binding is ThreadHandle plus thread identity, owner lifetime, reader
-epoch, capability, and accepted generation. Factory construction binds these
-values before reads are admitted; a candidate is accepted only when the captured
-values still identify the current handle and scope. This contract does not claim
-universal immutability outside the published containers, nor does it claim a
-stronger owner lifetime guarantee than the actual epoch/cancellation checks.
+The public binding uses the captured ThreadHandle/thread identity, owner/live
+and reader epochs, capability, accepted generation, and the model's separate
+scope value. A candidate is accepted only when those captured values still
+identify the current handle and scope. This contract does not claim universal
+immutability outside the published containers, nor a stronger owner lifetime
+guarantee than the actual epoch/cancellation checks.
