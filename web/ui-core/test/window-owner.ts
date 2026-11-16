@@ -97,7 +97,7 @@ export interface Rig {
   /** Fire the pause timer, if one is armed. */
   pause(): void;
   /** Answer every unanswered call from the owner. */
-  settle(): Promise<void>;
+  settle(done?: () => boolean): Promise<void>;
   calls(): CallFrame[];
   /** Window calls sent since the mark. */
   since(mark: number): CallFrame[];
