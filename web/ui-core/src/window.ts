@@ -403,9 +403,10 @@ export class ConversationWindow {
   }
 
   /** Reconcile saved assistant provenance with live records in one accepted publication. */
-  reconcileSavedAssistantRows(records: readonly HandoffRecord[], scope: string, release?: (attemptId: string) => void): boolean {
+  reconcileSavedAssistantRows(records: readonly HandoffRecord[], scope: string, release: (attemptId: string) => void): boolean {
     const current = this.acceptedView.peek(), capability = this.acceptedView.currentCapability;
-    if (this.disposed || current.pending || current.revision === undefined || !this.acceptedView.isCurrent(current)) return false;
+    const binding = this.terminalBinding;
+    if (this.disposed || current.pending || current.revision === undefined || !this.acceptedView.isCurrent(current) || !binding || binding.scope !== scope || !this.isTerminalHandleCurrent(binding.handle)) return false;
     const revision = current.revision;
     const savedNodes = current.rows.filter(row => row.kind === 'assistant_response' && row.provenance?.attempt_id
       && Array.isArray(row.items) && Number.isSafeInteger(row.selection?.ordinal));
@@ -422,7 +423,7 @@ export class ConversationWindow {
     const owners = [...(current.assistantOwnership ?? []).filter(owner => owner.mode !== 'canonical'), ...generated];
     const previous = current.assistantOwnership ?? [];
     if (owners.length === previous.length && owners.every((owner, index) => assistantOwnershipEqual(owner, previous[index]!))) {
-      if (release) for (const record of records) if (savedNodes.some(node => node.provenance?.attempt_id === record.attemptId)) release(record.attemptId);
+      for (const record of records) if (savedNodes.some(node => node.provenance?.attempt_id === record.attemptId)) release(record.attemptId);
       return false;
     }
     const input = this.captureConversationInput({ ...current, assistantOwnership: owners });
