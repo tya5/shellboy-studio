@@ -381,6 +381,10 @@ it('accepted live preview retires after saved >16KiB body loads through the ordi
   rows=[{node_id:'saved-assistant',kind:'assistant_response',selection:{ordinal:0},items:[{kind:'text',item_identity:'answer',text:excerpt,text_complete:false}],provenance:{sender:{kind:'assistant'},attempt_id:attempt}}];f.db.history.t=rows;
   await act(async()=>{f.t.push({t:'changed',thread_ids:['t'],list:false});await settle(f.t,f.db);});
   expect(handle.handoff.value.some(record=>record.attemptId===attempt)).toBe(false);expect(tuples.length).toBeGreaterThan(1);
+  const committedRef=f.model.longReader.peek()!.acceptedView.peek(),planSources=committedRef.displayPlan!.entries.map(entry=>entry.item.source);
+  expect(committedRef.rows.some(row=>row.node_id==='saved-assistant'&&row.kind==='assistant_response'&&row.provenance?.attempt_id===attempt)).toBe(true);
+  expect(planSources.filter(source=>"domain" in source&&source.domain==='live'&&source.attemptId===attempt)).toHaveLength(0);
+  expect(f.model.handle.peek()!.handoff.value).toHaveLength(0);
   const states=tuples.map(({source,canonical,live})=>({source,canonical,live}));
   const invalid=states.filter(tuple=>!(tuple.canonical===false&&tuple.live===1 || tuple.canonical===true&&tuple.live===0));
   if(invalid.length)throw new Error(`Invalid accepted/live transition tuples: ${JSON.stringify(states)}`);
