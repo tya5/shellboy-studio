@@ -140,6 +140,16 @@ full device behavior. Its runner records the assertion mapping and unsupported
 claims explicitly; screenshots are supporting artifacts, not acceptance proof.
 
 
+## Adjacent Scope Boundaries
+
+The current #27 publication layer preserves the canonical saved prefix and
+unmatched unsaved suffix; #29 own-send stable-position behavior remains a
+separate next unit, while existing own-send tests retain multiplicity, scope,
+currentness, cancellation, and rejection controls. Existing conversation-item
+projection tests cover interleaved tool-call/result grouping by explicit
+execution association; #24 is not closed by this source fact alone. #30 remains
+non-display pending scope.
+
 ## Known Boundary
 
 The later Core #308 one-boundary append direction is recorded as feasibility

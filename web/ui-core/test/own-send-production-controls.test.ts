@@ -19,6 +19,15 @@ describe("ordinary own-send production controls", () => {
     expect(decide(rows, [saved("a"), saved("b")]).retire).toEqual(rows);
   });
 
+  it("keeps the saved canonical prefix and multiplicity when the own row is accepted", () => {
+    const row = local("own");
+    const savedRows = [saved("before"), saved("own"), saved("after")];
+    const result = decide([row], savedRows);
+    expect(result.retire).toEqual([row]);
+    expect(result.projection.items.map(item => item.source.nodeId)).toEqual(["before", "own", "after"]);
+    expect(result.projection.items.filter(item => item.source.nodeId === "own")).toHaveLength(1);
+  });
+
   it("rejects foreign route/current and partial canonical bodies", () => {
     const row = local("a");
     expect(decide([row], [saved("a")], false).retire).toEqual([]);
