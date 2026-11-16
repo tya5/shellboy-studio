@@ -67,13 +67,13 @@ export interface ConversationSemanticInput {
 
 /** One current semantic recipe for both candidate publication and fixture admission. */
 export function captureConversationInput(snapshot: WindowAcceptedSnapshot, input: {
-  readonly scope: string; readonly threadId: string; readonly records: readonly HandoffRecord[];
+  readonly scope: string; readonly threadId: string; readonly records: readonly HandoffRecord[]; readonly projectionRecords?: readonly HandoffRecord[];
   readonly work: WorkCaptureDescriptor; readonly current: () => boolean;
 }): ConversationSemanticInput {
   const canonicalInput=canonicalHistoryInput(snapshot,input.scope),canonicalProjection=canonicalInput.projection;
   const current = input.current();
   const retained = current ? input.work.facts : [];
-  const live = current ? projectOwnedHandoffFacts(input.scope, input.records) : [];
+  const live = current ? projectOwnedHandoffFacts(input.scope, input.projectionRecords ?? input.records) : [];
   const work = current ? scopeIssuedWorkFacts([...retained, ...live], [input.scope]) : undefined;
   const projected = work?.length ? projectSavedItems([...work, ...canonicalProjection.items.map(item => item.source)]) : canonicalProjection;
   return { isCurrent: input.current,

@@ -390,6 +390,11 @@ export class ConversationWindow {
     this.tailCancel = undefined;
   }
 
+  isCurrentThread(handle: ThreadHandle): boolean {
+    const current = this.currentThread;
+    return !!current && current.handle === handle && current.threadId === handle.threadId && current.epoch === handle.liveEpoch();
+  }
+
   bindCurrentThread(handle: ThreadHandle): boolean {
     const current = this.currentThread;
     if (current && (current.handle !== handle || current.threadId !== handle.threadId || current.epoch !== handle.liveEpoch())) {

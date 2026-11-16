@@ -654,8 +654,8 @@ export class AppModel {
     const h = this.handle.value;
     const want = this.route.value.view === "conversation" && h !== undefined && this.data.capabilities.value.includes(CAPABILITY_HISTORY_WINDOW);
     const cur = this.longReader.peek();
-    if (cur && (!want || this.readerThread !== h?.threadId || this.handle.peek() !== h)) {
-      cur.dispose(); // leaving the view or the Thread cancels its reads
+    if (cur && (!want || this.readerThread !== h?.threadId || this.handle.peek() !== h || (h !== undefined && !cur.isCurrentThread(h)))) {
+      cur.dispose(); // leaving the view, Thread, or owner lifetime cancels its reads
       this.longReader.value = undefined;
       this.readerThread = undefined;
     }
@@ -686,8 +686,10 @@ export class AppModel {
     const capturedWork = captureCurrentWork(handle.threadId, workValue);
     const current = () => this.handle.peek() === handle
       && handle.liveEpoch() === lifetime && reader.acceptedView.currentCapability === capability;
+    const records = handle.handoff.value;
+    const matchedAttempts = new Set<string>(snapshot.rows.flatMap(row => row.kind === "assistant_response" && row.provenance?.attempt_id ? [row.provenance.attempt_id] : []));
     const input = captureConversationInput(snapshot, { scope, threadId: handle.threadId,
-      records: handle.handoff.value, work: capturedWork, current });
+      records, projectionRecords: records.filter(record => !matchedAttempts.has(record.attemptId)), work: capturedWork, current });
     const accepted = this.acceptedOwnMessages.value;
     const pending = this.pendingOwnMessage.value;
     const reservation = this.ownReservation;
