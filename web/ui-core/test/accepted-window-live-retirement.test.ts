@@ -149,3 +149,16 @@ it("rejects a stale placement candidate from actual handle identity, then accept
   const beforeFresh=w.acceptedView.peek();expect(w.refreshConversationInput(beforeFresh)).toBe(true);const fresh=w.acceptedView.peek();expect(fresh).not.toBe(before);expect(fresh.generation).toBeGreaterThan(before.generation);expect(f.handle.handoff.value.find(record=>record.attemptId===b)).toBeDefined();expect(f.handle.handoff.value.find(record=>record.attemptId===c)).toBe(beforeC);expect(f.handle.liveEpoch()).toBe(beforeEpoch);expect(w.acceptedView.currentCapability).toBe(beforeCapability);
  } finally { w?.dispose();f.data.stop(); }
 });
+
+it("collapses a saved tool association without leaving a matching live preview", async () => {
+ const attempt=canonicalAttemptId(4),f=await rig(3);
+ try {
+  f.owner.decorate=(i,item)=>i===0?{...item,kind:"assistant_response",items:[{kind:"tool_call",item_identity:"tool",execution_ids:["shared"]}]}:i===1?{...item,kind:"assistant_response",provenance:{attempt_id:attempt},items:[{kind:"tool_call",item_identity:"tool",execution_ids:["shared"]}]}:item;
+  f.producer.advance(attempt);await flush();f.w.changed();await f.settle();
+  const entries=f.w.acceptedView.peek().displayPlan?.entries ?? [];
+  expect(entries.some(entry=>"domain" in entry.item.source&&entry.item.source.attemptId===attempt)).toBe(false);
+  expect(entries.some(entry=>entry.item.source.nodeId===f.owner.nodeId(0)&&entry.item.source.kind==="tool")).toBe(true);
+  expect(entries.some(entry=>entry.item.source.nodeId===f.owner.nodeId(2))).toBe(true);
+  expect(f.handle.handoff.value.some(record=>record.attemptId===attempt)).toBe(false);
+ }finally{f.w.dispose();f.data.stop();}
+});
