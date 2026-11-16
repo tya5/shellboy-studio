@@ -288,6 +288,13 @@ export class Handoff {
     } finally { receiving = false; h.transferring = false; }
   }
 
+  /** Release a matching source after accepted-window ownership is published. */
+  releaseAccepted(attemptId: string): void {
+    const h = this.held.find(h => h.attemptId === attemptId);
+    if (!h) return;
+    h.stop(); this.held = this.held.filter(x => x !== h); this.publish();
+  }
+
   /** Release only after the canonical window has accepted the exact record's display ownership. */
   release(attemptId: string): void {
     const h = this.held.find(h => h.attemptId === attemptId);
