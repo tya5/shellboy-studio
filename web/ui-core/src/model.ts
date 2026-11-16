@@ -692,7 +692,7 @@ export class AppModel {
     const current = () => this.handle.peek() === handle
       && handle.liveEpoch() === lifetime && reader.acceptedView.currentCapability === capability;
     const input = captureConversationInput(snapshot, { scope, threadId: handle.threadId,
-      records: handle.handoff.value, work: capturedWork, current });
+      records: handle.handoff.value, placements: handle.handoffPlacements.value, work: capturedWork, current });
     const accepted = this.acceptedOwnMessages.value;
     const pending = this.pendingOwnMessage.value;
     const reservation = this.ownReservation;

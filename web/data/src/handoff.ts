@@ -11,7 +11,6 @@ export interface HandoffRecord {
   readonly attemptId: string;
   /** Owned chronology edge used after an earlier live record becomes saved. */
   readonly afterAttemptId?: string;
-  readonly placement?: { afterNodeId?: string };
   readonly text: string;
   readonly incomplete: boolean;
   readonly status: HandoffStatus;
@@ -33,7 +32,9 @@ export class Handoff {
   private readonly sig = signal<readonly HandoffRecord[]>([]);
   readonly records: ReadonlySignal<readonly HandoffRecord[]> = this.sig;
   private readonly overflowSig = signal(false);
+  private readonly placementSig = signal<ReadonlyMap<string, string>>(new Map());
   readonly overflow: ReadonlySignal<boolean> = this.overflowSig;
+  readonly placements: ReadonlySignal<ReadonlyMap<string, string>> = this.placementSig;
   readonly preview: ReadonlySignal<Preview> = computed(() => {
     const r = this.records.value.find(r => r.attemptId === this.active);
     return r ? { kind: 'live', attemptId: r.attemptId, text: r.text, incomplete: r.incomplete, ending: r.status !== 'streaming' } : { kind: 'none', ...(this.discarded.value ? { discarded: this.discarded.value } : {}) };
@@ -50,7 +51,7 @@ export class Handoff {
       if (this.held.length >= MAX_HANDOFF_RECORDS || this.blockedAttempt === frame.attempt_id) { this.overflowSig.value = true; this.blockedAttempt = frame.attempt_id; return; }
       if (this.active) this.finish();
       const source = new LiveText(this.schedule);
-      const record: HandoffRecord = { key: `handoff:${frame.attempt_id}`, attemptId: frame.attempt_id, ...(this.active ? { afterAttemptId: this.active } : {}), placement: {}, text: '', incomplete: frame.gap, status: 'streaming' };
+      const record: HandoffRecord = { key: `handoff:${frame.attempt_id}`, attemptId: frame.attempt_id, ...(this.active ? { afterAttemptId: this.active } : {}), text: '', incomplete: frame.gap, status: 'streaming' };
       h = { admitted: 0, attemptId: frame.attempt_id, source, stop: () => {}, record };
       const held = h;
       this.held.push(h);
@@ -85,8 +86,10 @@ export class Handoff {
   /** Record the accepted canonical boundary once for the first live source. */
   placeAfter(attemptId: string, nodeId: string): void {
     const held = this.held.find(item => item.attemptId === attemptId);
-    if (!held || held.record.placement?.afterNodeId || held.record.afterAttemptId) return;
-    if (held.record.placement) held.record.placement.afterNodeId = nodeId;
+    if (!held || this.placementSig.peek().has(attemptId) || held.record.afterAttemptId) return;
+    const placements = new Map(this.placementSig.peek());
+    placements.set(attemptId, nodeId);
+    this.placementSig.value = Object.freeze(placements);
     this.publish();
   }
 
@@ -101,7 +104,7 @@ export class Handoff {
     this.advanceEpoch();
     this.discarded.value = _reason;
     for (const h of this.held) { h.stop(); h.source.discard(_reason); }
-    this.held = []; this.active = undefined; this.blockedAttempt = undefined;
+    this.held = []; this.active = undefined; this.blockedAttempt = undefined; this.placementSig.value = new Map();
     this.overflowSig.value = false; this.publish();
   }
   private sameOwnRecord(a: HandoffRecord, b: HandoffRecord): boolean {

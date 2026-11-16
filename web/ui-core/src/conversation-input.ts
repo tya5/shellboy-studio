@@ -104,7 +104,7 @@ export function captureConversationInput(snapshot: WindowAcceptedSnapshot, input
   const canonicalInput=canonicalHistoryInput(snapshot,input.scope),canonicalProjection=canonicalInput.projection;
   const current = input.current();
   const retained = current ? input.work.facts : [];
-  const live = current ? projectOwnedHandoffFacts(input.scope, input.records) : [];
+  const live = current ? projectOwnedHandoffFacts(input.scope, input.records, input.placements) : [];
   const work = current ? scopeIssuedWorkFacts([...live, ...retained], [input.scope]) : undefined;
   const projected = work?.length ? projectSavedItems(orderSemanticSources(snapshot, canonicalProjection.items.map(item => item.source), work)) : canonicalProjection;
   return { isCurrent: input.current,
