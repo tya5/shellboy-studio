@@ -174,7 +174,7 @@ export function SavedConversationItems({ model, projection: suppliedProjection, 
       if (sharedNode && displayEntry?.body.kind === "unavailable") return <Message bot={sharedNode.kind === "assistant_response"} who={sharedNode.kind === "assistant_response" ? t("convo.shellboy") : t("convo.you")} at={formatClock(sharedNode.provenance?.created_at)} text={model.bodies.value.get(sharedNode.node_id!)?.text ?? displayText ?? ""} copyLabel={t("code.copy")} copiedLabel={t("code.copied")}><Button variant="link" disabled={model.bodies.value.get(sharedNode.node_id!)?.loading} onClick={() => void model.loadBody(sharedNode.node_id!)}>{model.bodies.value.get(sharedNode.node_id!)?.loading ? t("convo.loadingBody") : t("convo.fullMessage")}</Button></Message>;
       if (item.source.kind === "text" || item.source.kind === "user" || item.source.kind === "summary") {
         const node = item.source.nodeId ? nodes?.find(node => node.node_id === item.source.nodeId) : undefined;
-        if(membership.get(item.key)==="content-unavailable" && node)return <Message bot={node.kind === "assistant_response"} who={node.kind === "assistant_response" ? t("convo.shellboy") : t("convo.you")} at={formatClock(node.provenance?.created_at)} text={model.bodies.value.get(node.node_id!)?.text ?? displayText ?? ""} copyLabel={t("code.copy")} copiedLabel={t("code.copied")}><Button variant="link" disabled={model.bodies.value.get(node.node_id!)?.loading} onClick={() => void model.loadBody(node.node_id!)}>{model.bodies.value.get(node.node_id!)?.loading ? t("convo.loadingBody") : t("convo.fullMessage")}</Button></Message>;
+        if(membership.get(item.key)==="content-unavailable" && node)return <Message bot={node.kind === "assistant_response"} who={node.kind === "assistant_response" ? t("convo.shellboy") : t("convo.you")} at={formatClock(node.provenance?.created_at)} text={model.bodies.value.get(node.node_id!)?.text ?? displayText ?? ""} copyLabel={t("code.copy")} copiedLabel={t("code.copied")}><BodyReadButton model={model} nodeId={node.node_id!} /></Message>;
         if (!node && "domain" in item.source) {
           const source = item.source;
           const handle = model.handle.value;
@@ -324,6 +324,11 @@ export function StepView({ model, step, display, openPolicy = CANONICAL_CASES.to
     {step.description ? <div class="mono muted caption">{step.command}</div> : null}
     <Output model={model} id={step.executionId} command={step.command ?? ""} complete={step.status === "completed" || step.status === "failed" || step.state === "exited"}/>
   </WorkElementRow>;
+}
+
+function BodyReadButton({model,nodeId}:{model:AppModel;nodeId:string}) {
+  const body=model.bodies.value.get(nodeId);
+  return <Button variant="link" disabled={body?.loading} onClick={() => void model.loadBody(nodeId)}>{body?.loading ? model.t.value("convo.loadingBody") : model.t.value("convo.fullMessage")}</Button>;
 }
 
 function ProjectedMessage({ model, row, authorizedText, relationship, bodyPartial }: { relationship:ReturnType<typeof messageRelationship>; model: AppModel; row: Extract<ConversationRow, {type:"message"}>; authorizedText: string; bodyPartial?: boolean }) {
