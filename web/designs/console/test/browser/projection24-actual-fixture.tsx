@@ -56,10 +56,10 @@ const frame=()=>new Promise<void>(resolve=>requestAnimationFrame(()=>resolve()))
  const consume={observed,successful,bad,once,twice,pendingAfterMount:!!pending,unobserved:observed?[]:['initial pending command']};
  const boundaries=[];
  for(const action of ['replace','revoke'] as const){
-  if(action==='revoke')r.w.layoutChanged();ref=r.w.acceptedView.peek();let consume=0,write=0,capture=0;
+  ref=r.w.acceptedView.peek();let consume=0,write=0,capture=0;const oldRef=ref;
   const port={acceptedView:r.w.acceptedView,peekScroll:(value:typeof ref)=>r.w.peekScroll(value),consumeScroll:(value:typeof ref,id:object)=>{consume++;return r.w.consumeScroll(value,id)}};
-  const result=new CurrentScrollSync().run(port,{measure(){if(action==='replace')r.w.layoutChanged();else r.w.acceptedView.revoke()},plan(){return{consume(){consume++},write(){write++},capture(){capture++}}}});
-  const sameRef=r.w.acceptedView.peek()===ref,current=r.w.acceptedView.isCurrent(ref);boundaries.push({action,result,consume,write,capture,sameRef,current});check(result==='obsolete'&&consume===0&&write===0&&capture===0,'obsolete effects '+action);if(action==='revoke')check(sameRef&&!current,'same ref revoke');
+  const result=new CurrentScrollSync().run(port,{measure(){if(action==='replace'){r.producer.advance(canonicalAttemptId(77));const accepted=r.w.refreshConversationInput(oldRef);check(accepted&&r.w.acceptedView.peek()!==oldRef&&!r.w.acceptedView.isCurrent(oldRef),'actual semantic replacement');}else r.w.acceptedView.revoke()},plan(){return{consume(){consume++},write(){write++},capture(){capture++}}}});
+  const sameRef=r.w.acceptedView.peek()===ref,current=r.w.acceptedView.isCurrent(ref);boundaries.push({action,result,consume,write,capture,sameRef,current});check(result==='obsolete'&&consume===0&&write===0&&capture===0,'obsolete effects '+action);if(action==='replace')check(!sameRef&&!current,'actual replacement stale ref');if(action==='revoke')check(sameRef&&!current,'same ref revoke');
  }
  trace.phase='complete';r.w.dispose();r.data.stop();return{failures,production:(trace as unknown as {production:unknown}).production,actualWindow:true,defaultGMounted:true,syntheticRegistry:true,samples,ownership,consume,boundaries,unsupported:['tail-follow pixel compensation','arbitrary remount anchor','public typed producer','real owner']};
 };

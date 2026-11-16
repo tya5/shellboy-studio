@@ -29,6 +29,7 @@ try {
     await cmd('Page.navigate',{url:`http://127.0.0.1:${appPort}/designs/console/test/browser/projection24-actual-fixture.html`});
     let loaded=false;for(let n=0;n<100;n++){await new Promise(r=>setTimeout(r,50));if(await evaluate("typeof window.runActual==='function'")){loaded=true;break;}}
     assert(loaded,'normalized DOM fixture ready');let result;try{result=await evaluate('window.runActual()')}catch(error){const trace=await evaluate('window.actualTrace ?? null');await writeFile(join(out,`error-${width}.json`),JSON.stringify({error:String(error),trace},null,2));throw error;}
+    await writeFile(join(out,`result-${width}.json`),JSON.stringify(result,null,2));
     assert(result.boundaries.every(b=>b.result==='obsolete'&&b.consume===0&&b.write===0&&b.capture===0),'actual obsolete effects zero');
     assert(result.consume.observed&&result.consume.successful===1&&result.consume.bad===false&&result.consume.twice===false,'observed actual pending request consumes once');
     assert(result.production?.beforeMatching===1&&result.production.beforeForeign===1&&result.production.planSaved===1&&result.production.planLiveMatching===0&&result.production.planLiveForeign===1&&result.production.planLiveMissing===1&&result.production.planLiveDifferent===1&&result.production.acceptedCurrent===true&&result.production.matchingLive===0,'production accepted plan/live retirement');
