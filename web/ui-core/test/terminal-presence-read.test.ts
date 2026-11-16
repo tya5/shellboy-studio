@@ -355,7 +355,9 @@ it('accepted saved partial row keeps live ownership empty without a proof receip
  r.live('live preview');await r.pump();const liveBefore=r.h.handoff.peek().some(record=>record.attemptId===CANONICAL_ATTEMPT_ID);expect(liveBefore).toBe(true);
  expect(w.acceptedView.peek().rows[0]?.items?.[0]).toMatchObject({text_complete:false});
  const record={key:'handoff:partial',presentationContainer:syntheticPresentation(CANONICAL_ATTEMPT_ID),attemptId:CANONICAL_ATTEMPT_ID,text:'prefix',incomplete:true,status:'confirming' as const,bodyAuthority:'preview' as const};
+ const observations:{accepted:boolean;live:boolean}[]=[];const observe=()=>observations.push({accepted:(w.acceptedView.peek().rows[0]?.items?.[0]?.text_complete===false),live:r.h.handoff.peek().some(item=>item.attemptId===CANONICAL_ATTEMPT_ID)});const stopAccepted=w.acceptedView.subscribe(observe);const stopHandoff=r.h.handoff.subscribe(observe);
  const liveRecord=r.h.handoff.peek().find(item=>item.attemptId===CANONICAL_ATTEMPT_ID)!;w.reconcileSavedAssistantRows([liveRecord],r.h.handoffScope(),id=>r.h.releaseHandoff(id));
+ stopAccepted();stopHandoff();expect(observations.some(item=>item.accepted&&item.live)).toBe(false);
  expect(w.acceptedView.peek().assistantOwnership??[]).toEqual([]);
  expect(r.h.handoff.peek().some(item=>item.attemptId===CANONICAL_ATTEMPT_ID)).toBe(false);
  expect(w.acceptedView.peek().rows[0]?.items?.[0]).toMatchObject({text_complete:false});
