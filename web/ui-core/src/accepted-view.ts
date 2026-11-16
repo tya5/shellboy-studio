@@ -84,8 +84,6 @@ export class AcceptedView<T> {
     if (this.staged !== slot || this.capability.peek() !== slot.lease.capability || this.value.peek() !== slot.expected || this.ended) return false;
     let published = false;
     batch(() => {
-      // Final ownership qualification is a pure staged-token comparison before publication.
-      if (this.staged !== slot || this.capability.peek() !== slot.lease.capability || this.value.peek() !== slot.expected || this.ended) return;
       this.staged = undefined;
       this.acceptedCapability=slot.lease.capability;
       this.pending = true;

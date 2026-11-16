@@ -27,6 +27,17 @@ A stale owner/thread/lifetime/capability/reader candidate is rejected as a
 whole. It must not publish saved rows while retaining a matching live overlay.
 Rejected candidates preserve the prior accepted ref and live identity.
 
+## Window Coverage Invariant
+
+The canonical saved projection is authoritative for every accepted window.
+Unsaved live/Work facts are appended only when the accepted range is tail-complete
+(`total === 0` or `range.last === total - 1`); an older/non-tail window publishes
+only its canonical saved prefix and never places an unsaved suffix at that
+window's middle or end. The normal following reader refills the tail before its
+settled publication. This is one coverage predicate in the existing
+model/window projection path, not a frontend anchor, fallback registry, or
+duplicated ordering state.
+
 ## Body And Live Semantics
 
 - Saved rows retain node identity, item identity, source revision, and body
@@ -138,7 +149,9 @@ with captured unmatched live/Work suffix.
 
 The public binding uses the captured ThreadHandle/thread identity, owner/live
 and reader epochs, capability, accepted generation, and the model's separate
-scope value. A candidate is accepted only when those captured values still
+scope value. Semantic reading-position preservation is not supplied by the
+removed unreferenced summary-anchor helper; remaining Window anchor/geometry
+behavior is independent. A candidate is accepted only when those captured values still
 identify the current handle and scope. This contract does not claim universal
 immutability outside the published containers, nor a stronger owner lifetime
 guarantee than the actual epoch/cancellation checks.

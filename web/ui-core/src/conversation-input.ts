@@ -73,8 +73,11 @@ export function captureConversationInput(snapshot: WindowAcceptedSnapshot, input
   const canonicalInput=canonicalHistoryInput(snapshot,input.scope),canonicalProjection=canonicalInput.projection;
   const current = input.current();
   const retained = current ? input.work.facts : [];
-  const live = current ? projectOwnedHandoffFacts(input.scope, input.records) : [];
-  const work = current ? scopeIssuedWorkFacts([...live, ...retained], [input.scope]) : undefined;
+  // Unsaved facts are only a suffix of a tail-complete accepted cut. An older
+  // window must not render them after an incomplete canonical prefix.
+  const tailComplete = snapshot.total === 0 || snapshot.range?.last === snapshot.total - 1;
+  const live = current && tailComplete ? projectOwnedHandoffFacts(input.scope, input.records) : [];
+  const work = current && tailComplete ? scopeIssuedWorkFacts([...live, ...retained], [input.scope]) : undefined;
   const acceptedAttempts = new Set(snapshot.rows.flatMap(row => row.kind === "assistant_response" && row.provenance?.attempt_id ? [String(row.provenance.attempt_id)] : []));
   const remainingWork = work?.filter(item => !("domain" in item && item.domain === "live" && item.namespace === "handoff" && item.attemptId && acceptedAttempts.has(String(item.attemptId)))) ?? [];
   const projected = work?.length ? projectSavedItems([...canonicalProjection.items.map(item => item.source), ...remainingWork]) : canonicalProjection;
