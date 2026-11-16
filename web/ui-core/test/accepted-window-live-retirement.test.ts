@@ -135,3 +135,16 @@ it("preserves real chronology when a new saved replacement arrives", async () =>
   expect(f.handle.handoff.value.find(record=>record.attemptId===c)).toBe(survivingC);
  } finally { f.w.dispose();f.data.stop(); }
 });
+
+it("rejects a stale placement candidate from actual handle identity, then accepts fresh capture", async () => {
+ const a=canonicalAttemptId(1),f=await rig(2);let old!:typeof f.w;try{
+  f.w.dispose();f.producer.advance(a);f.producer.advance(canonicalAttemptId(2));f.producer.advance(canonicalAttemptId(3));await flush();
+  const records=f.handle.handoff.value;let armed=false,phase=0,calls=0;
+  const input={state:f.producer,capture:(snapshot:import("../src/window").WindowAcceptedSnapshot)=>captureConversationInput(snapshot,{scope:f.handle.threadId,threadId:f.handle.threadId,records,work:captureCurrentWork(f.handle.threadId,f.handle.work.value.value),current:()=>{calls++;const actual=old.isCurrentThread(f.handle)&&f.handle.handoff.peek()===records;if(!armed)return actual;if(phase===0){phase=1;return actual;}f.handle.placeLiveAfter(a,f.owner.nodeId(0));return old.isCurrentThread(f.handle)&&f.handle.handoff.peek()===records;}})};
+  old=createBoundWindow({read:(args,cancel)=>f.handle.readWindow(args,cancel)},f.handle,input);await f.settle();const before=old.acceptedView.peek();armed=true;
+  expect(old.refreshConversationInput(before)).toBe(false);expect(old.acceptedView.peek()).toBe(before);expect(old.acceptedView.isCurrent(before)).toBe(true);expect(calls).toBeGreaterThanOrEqual(2);
+  const b=records.find(record=>record.attemptId===canonicalAttemptId(2))!,c=records.find(record=>record.attemptId===canonicalAttemptId(3))!;expect(f.handle.handoff.value.find(record=>record.attemptId===b.attemptId)).toBe(b);expect(f.handle.handoff.value.find(record=>record.attemptId===c.attemptId)).toBe(c);
+  old.dispose();const freshRecords=f.handle.handoff.value;let fresh!:typeof f.w;const freshInput={state:f.producer,capture:(snapshot:import("../src/window").WindowAcceptedSnapshot)=>captureConversationInput(snapshot,{scope:f.handle.threadId,threadId:f.handle.threadId,records:freshRecords,work:captureCurrentWork(f.handle.threadId,f.handle.work.value.value),current:()=>fresh.isCurrentThread(f.handle)&&f.handle.handoff.peek()===freshRecords})};
+  fresh=createBoundWindow({read:(args,cancel)=>f.handle.readWindow(args,cancel)},f.handle,freshInput);await f.settle();expect(fresh.acceptedView.peek().generation).toBeGreaterThan(before.generation);expect(fresh.isCurrentThread(f.handle)).toBe(true);
+ }finally{old?.dispose();f.data.stop();}
+});
