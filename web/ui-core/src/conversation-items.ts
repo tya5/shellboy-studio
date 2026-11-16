@@ -74,7 +74,7 @@ function preserveDisplayMetadata(from:NormalizedSavedItem,to:NormalizedSavedItem
 export function projectOwnedHandoffFacts(scope: string, records: readonly HandoffRecord[]): readonly NormalizedSavedItem[] {
   const sources = records.flatMap(record => record.text ? [{
     domain: "live" as const, namespace: "handoff" as const, scope, recordId: record.key,
-    attemptId: record.attemptId, ...(record.afterAttemptId ? { afterAttemptId: record.afterAttemptId } : {}), ...(record.placement?.afterNodeId ? { afterNodeId: record.placement.afterNodeId } : {}), kind: "text" as const, text: record.text,
+    attemptId: record.attemptId, kind: "text" as const, text: record.text,
   }] : []);
   const normalized = normalizeConversationFacts(sources);
   for (const source of normalized) issueDisplayMetadata(source, Object.freeze({ scopeKey: "[]", nodeKind: "assistant_response", shells: Object.freeze([]) }));
@@ -131,8 +131,6 @@ export interface LiveWorkIdentity {
   readonly scope: string;
   readonly recordId: string;
   readonly attemptId?: string;
-  readonly afterAttemptId?: string;
-  readonly afterNodeId?: string;
   readonly turnId?: string;
   readonly nodeId?: never;
   readonly itemIdentity?: never;

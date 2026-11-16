@@ -105,21 +105,3 @@ selection/geometry stability, obsolete-effect rejection, and public projection
 mapping. It does not prove a real owner transport, a public typed producer, or
 full device behavior. Its runner records the assertion mapping and unsupported
 claims explicitly; screenshots are supporting artifacts, not acceptance proof.
-
-### Owned live chronology edge
-
-The handoff ledger is the authoritative owner of live chronology. A newly admitted
-record stores `afterAttemptId` when it follows an active record; the edge remains
-part of that live record while the predecessor is replaced by saved history.
-Capture merges own-attempt replacement separately from predecessor placement: the
-former retires only the matching live record, while the latter keeps the surviving
-record in the same ordered stream. The edge is scoped to the same Thread ledger
-and is discarded with that ledger; it is not a UI cache, retired-record shadow,
-or an execution-association alias. Saved history contributes the canonical node
-group and its attempt identity, and non-contiguous groups are not assigned a
-synthetic slot.
-
-Prepending all live facts, anchoring at the latest saved row, and mirroring
-placement in presentation state are invalid alternatives because they cannot
-preserve relative order after a saved replacement or place a foreign/unmatched
-record from authoritative provenance.

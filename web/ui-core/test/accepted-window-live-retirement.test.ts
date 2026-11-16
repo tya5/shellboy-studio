@@ -106,50 +106,6 @@ it("semantic false rejects publication with seeded accepted ref/live identity", 
 it('rejected publication reply preserves accepted ref and live identity',async()=>{
  const attempt=canonicalAttemptId(1),f=await liveCase(attempt);try{const beforeRef=f.w.acceptedView.peek(),before=f.handle.handoff.value[0]!;f.owner.append(1);f.w.changed();await flush();const call=f.calls().filter(item=>item.command==='history.window'&&!f.owner.answered.has(item.id)).at(-1);expect(call).toBeDefined();f.w.acceptedView.revoke();f.owner.answered.add(call!.id);const answer=f.owner.answer(call!);expect(answer.ok).toBe(true);if(answer.ok)f.t.ok(call!.id,answer.result);await flush(8);expect(f.w.acceptedView.peek()).toBe(beforeRef);expect(f.handle.handoff.value.some(record=>record===before)).toBe(true)}finally{f.w.dispose();f.data.stop()}});
 
-it("preserves real chronology when a new saved replacement arrives", async () => {
- const f=await rig(18),a=canonicalAttemptId(1),b=canonicalAttemptId(2),c=canonicalAttemptId(3);
- try {
-  f.w.bindCurrentThread(f.handle);
-  for (const attempt of [a,b,c]) f.t.push({t:"live",thread_id:"t",attempt_id:attempt,gap:false,deltas:[{offset:0,reasoning:false,text:attempt}]});
-  await flush();f.w.changed();await f.settle();
-  const ids=()=>f.w.acceptedView.peek().displayPlan?.entries.map(entry=>{const source=entry.item.source;return "domain" in source?source.recordId:source.nodeId;}).filter((id):id is string=>id!==undefined) ?? [];
-  const before=ids(),beforeA=before.indexOf(`handoff:${a}`),beforeB=before.indexOf(`handoff:${b}`),beforeC=before.indexOf(`handoff:${c}`);
-  expect(before).toEqual([...Array.from({length:18},(_,i)=>f.owner.nodeId(i)),`handoff:${a}`,`handoff:${b}`,`handoff:${c}`]);
-  expect(beforeA).toBe(18);expect(beforeB).toBe(beforeA+1);expect(beforeC).toBe(beforeB+1);
-  const beforeBRecord=f.handle.handoff.value.find(record=>record.attemptId===b)!,beforeCRecord=f.handle.handoff.value.find(record=>record.attemptId===c)!;
-  const beforeWithoutA=before.filter(id=>id!==`handoff:${a}`);
-  f.owner.append(2);
-  f.owner.decorate=(i,item)=>i===18?{...item,kind:"assistant_response",provenance:{attempt_id:a},items:[{kind:"text",item_identity:"first",text:"A1",text_complete:true},{kind:"text",item_identity:"second",text:"A2",text_complete:true}]}:i===19?{...item,kind:"user",items:[{kind:"text",item_identity:"next",text:"Next user",text_complete:true}]}:item;
-  f.w.changed();await f.settle(()=>f.w.acceptedView.peek().revision===f.owner.revision && f.w.acceptedView.peek().rows.some(row=>row.node_id===f.owner.nodeId(18)));
-  const savedA=f.owner.nodeId(18),nextUser=f.owner.nodeId(19),after=ids();
-  const expected=[...beforeWithoutA.slice(0,beforeA),savedA,savedA,...beforeWithoutA.slice(beforeA),nextUser];
-  expect(after).toEqual(expected);
-  expect(after.filter(id=>id===savedA)).toHaveLength(2);
-  expect(f.handle.handoff.value.find(record=>record.attemptId===a)).toBeUndefined();
-  const survivingB=f.handle.handoff.value.find(record=>record.attemptId===b)!,survivingC=f.handle.handoff.value.find(record=>record.attemptId===c)!;
-  expect(survivingB.afterAttemptId).toBe(a);expect(survivingC.afterAttemptId).toBe(b);
-  f.w.changed();await f.settle();
-  expect(ids()).toEqual(expected);
-  expect(survivingB).toBe(beforeBRecord);expect(survivingC).toBe(beforeCRecord);
-  expect(f.handle.handoff.value.find(record=>record.attemptId===b)).toBe(survivingB);
-  expect(f.handle.handoff.value.find(record=>record.attemptId===c)).toBe(survivingC);
- } finally { f.w.dispose();f.data.stop(); }
-});
-
-it("rejects a stale placement candidate from actual handle identity, then accepts fresh capture", async () => {
- const a=canonicalAttemptId(1),b=canonicalAttemptId(2),c=canonicalAttemptId(3),f=await rig(2);let w!:typeof f.w;
- try {
-  f.w.dispose();f.producer.advance(a);await flush();let armed=false,phase=0,calls=0;
-  const input={state:f.producer,capture:(snapshot:import("../src/window").WindowAcceptedSnapshot)=>{const records=f.handle.handoff.value;return captureConversationInput(snapshot,{scope:f.handle.threadId,threadId:f.handle.threadId,records,work:captureCurrentWork(f.handle.threadId,f.handle.work.value.value),current:()=>{calls++;const actual=w.isCurrentThread(f.handle)&&f.handle.handoff.peek()===records;if(!armed)return actual;if(phase===0){phase=1;return actual;}if(phase===1){phase=2;f.handle.placeLiveAfter(a,f.owner.nodeId(0));return w.isCurrentThread(f.handle)&&f.handle.handoff.peek()===records;}return actual;}})}};
-  w=createBoundWindow({read:(args,cancel)=>f.handle.readWindow(args,cancel)},f.handle,input);await f.settle();const before=w.acceptedView.peek();armed=true;
-  f.producer.advance(b);f.producer.advance(c);await flush();
-  const beforeB=f.handle.handoff.value.find(record=>record.attemptId===b)!,beforeC=f.handle.handoff.value.find(record=>record.attemptId===c)!,beforeEpoch=f.handle.liveEpoch(),beforeCapability=w.acceptedView.currentCapability;
-  expect(f.handle.handoff.value.length).toBeGreaterThan(0);
-  expect(w.refreshConversationInput(before)).toBe(false);expect(w.acceptedView.peek()).toBe(before);expect(w.acceptedView.isCurrent(before)).toBe(true);expect(calls).toBeGreaterThanOrEqual(2);expect(phase).toBe(2);expect(f.handle.handoff.value.find(record=>record.attemptId===b)).toBe(beforeB);expect(f.handle.handoff.value.find(record=>record.attemptId===c)).toBe(beforeC);expect(f.handle.liveEpoch()).toBe(beforeEpoch);expect(w.acceptedView.currentCapability).toBe(beforeCapability);
-  const beforeFresh=w.acceptedView.peek();expect(w.refreshConversationInput(beforeFresh)).toBe(true);const fresh=w.acceptedView.peek();expect(fresh).not.toBe(before);expect(fresh.generation).toBeGreaterThan(before.generation);expect(f.handle.handoff.value.find(record=>record.attemptId===b)).toBeDefined();expect(f.handle.handoff.value.find(record=>record.attemptId===c)).toBe(beforeC);expect(f.handle.liveEpoch()).toBe(beforeEpoch);expect(w.acceptedView.currentCapability).toBe(beforeCapability);
- } finally { w?.dispose();f.data.stop(); }
-});
-
 it("collapses a saved tool association without leaving a matching live preview", async () => {
  const attempt=canonicalAttemptId(4),f=await rig(3);
  try {

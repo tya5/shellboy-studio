@@ -76,7 +76,7 @@ export function captureConversationInput(snapshot: WindowAcceptedSnapshot, input
   const live = current ? projectOwnedHandoffFacts(input.scope, input.records) : [];
   const work = current ? scopeIssuedWorkFacts([...live, ...retained], [input.scope]) : undefined;
   const acceptedAttempts = new Set(snapshot.rows.flatMap(row => row.kind === "assistant_response" && row.provenance?.attempt_id ? [String(row.provenance.attempt_id)] : []));
-  const remainingWork = work?.filter(item => !("domain" in item && item.domain === "live" && item.attemptId && acceptedAttempts.has(String(item.attemptId)))) ?? [];
+  const remainingWork = work?.filter(item => !("domain" in item && item.domain === "live" && item.namespace === "handoff" && item.attemptId && acceptedAttempts.has(String(item.attemptId)))) ?? [];
   const projected = work?.length ? projectSavedItems([...canonicalProjection.items.map(item => item.source), ...remainingWork]) : canonicalProjection;
   return { isCurrent: input.current,
     identity: createConversationIdentity({ rows: snapshot.rows, revision: snapshot.revision, records: input.records,

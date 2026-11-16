@@ -107,7 +107,7 @@ describe("AppModel over the fake transport", () => {
     expect(publicationState.pendingCommands).toEqual([]);
     expect(handle!.handoff.value.some(record => record.attemptId === newMatching)).toBe(false);
     expect(retirementRef.displayPlan?.entries.filter(entry => entry.item.source.nodeId === "saved-a3")).toHaveLength(1);
-    expect(handle!.handoff.value.find(record => record.attemptId === other)).toMatchObject({ attemptId: other, text: postRestartIdentity!.text, placement: { afterNodeId: "saved-a1" } });
+    expect(handle!.handoff.value.find(record => record.attemptId === other)).toMatchObject({ attemptId: other, text: postRestartIdentity!.text });
     const afterHealthyRef = retirementReader.acceptedView.peek();
     db.answered.add(held!.id);
     const oldResult = db.answer(held!);
@@ -115,7 +115,7 @@ describe("AppModel over the fake transport", () => {
     await flush();
     expect(model.longReader.peek()).toBe(retirementReader);
     expect(retirementReader.acceptedView.peek()).toBe(afterHealthyRef);
-    expect(handle!.handoff.value.find(record => record.attemptId === other)).toMatchObject({ attemptId: other, text: postRestartIdentity!.text, placement: { afterNodeId: "saved-a1" } });
+    expect(handle!.handoff.value.find(record => record.attemptId === other)).toMatchObject({ attemptId: other, text: postRestartIdentity!.text });
     model.dispose();
   });
 

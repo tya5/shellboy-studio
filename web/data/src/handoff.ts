@@ -9,9 +9,6 @@ export type HandoffStatus = 'streaming' | 'ended';
 export interface HandoffRecord {
   readonly key: string;
   readonly attemptId: string;
-  /** Owned chronology edge used after an earlier live record becomes saved. */
-  readonly afterAttemptId?: string;
-  readonly placement?: Readonly<{ afterNodeId: string }>;
   readonly text: string;
   readonly incomplete: boolean;
   readonly status: HandoffStatus;
@@ -50,7 +47,7 @@ export class Handoff {
       if (this.held.length >= MAX_HANDOFF_RECORDS || this.blockedAttempt === frame.attempt_id) { this.overflowSig.value = true; this.blockedAttempt = frame.attempt_id; return; }
       if (this.active) this.finish();
       const source = new LiveText(this.schedule);
-      const record: HandoffRecord = { key: `handoff:${frame.attempt_id}`, attemptId: frame.attempt_id, ...(this.active ? { afterAttemptId: this.active } : {}), text: '', incomplete: frame.gap, status: 'streaming' };
+      const record: HandoffRecord = { key: `handoff:${frame.attempt_id}`, attemptId: frame.attempt_id, text: '', incomplete: frame.gap, status: 'streaming' };
       h = { admitted: 0, attemptId: frame.attempt_id, source, stop: () => {}, record };
       const held = h;
       this.held.push(h);
@@ -82,13 +79,6 @@ export class Handoff {
     const h = this.held.find(h => h.attemptId === this.active);
     if (h) h.source.finish();
   }
-  /** Record the accepted canonical boundary once for the first live source. */
-  placeAfter(attemptId: string, nodeId: string): void {
-    const held = this.held.find(item => item.attemptId === attemptId);
-    if (!held || held.record.placement?.afterNodeId || held.record.afterAttemptId) return;
-    this.update(attemptId, record => ({ ...record, placement: Object.freeze({ afterNodeId: nodeId }) }));
-  }
-
   /** Release a matching source after accepted-window ownership is published. */
   releaseAccepted(attemptId: string): void {
     const h = this.held.find(h => h.attemptId === attemptId);

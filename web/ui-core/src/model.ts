@@ -673,11 +673,6 @@ export class AppModel {
     const tickChanged = tick !== this.readerTick;
     if (tickChanged) this.readerTick = tick;
     const reader = this.longReader.peek()!;
-    if (tickChanged && reader.isCurrentThread(h)) {
-      const boundary = reader.acceptedView.peek().rows.at(-1)?.node_id;
-      const first = h.handoff.peek()[0];
-      if (boundary && first) h.placeLiveAfter(first.attemptId, boundary);
-    }
     this.composeWindowDisplay(reader, h);
     this.readerShells(reader);
     if (tickChanged && this.longReader.peek() === reader && this.handle.peek() === h) reader.changed();
