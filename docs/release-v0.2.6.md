@@ -6,6 +6,8 @@ Fixes for tool rows and live activity rows, paired with Core v0.13.0. This note 
 
 Studio 0.2.6 is paired with published Core [v0.13.0](https://github.com/tya5/shellboy/releases/tag/v0.13.0), tag commit `c212ecb8e3f56e2f7e8cee0ee49f9e7bd942c3bd` (protocol 5, conversation schema 44). `Cargo.toml` pins the official tag and `Cargo.lock` records that exact commit; the exact-pair owner acceptance builds Core from that verified tag. Use 0.2.6 only with Core v0.13.0; Studio 0.2.5 stays paired with Core v0.12.0.
 
+Studio #27 handoff retirement additionally requires a saved node `provenance.attempt_id`, introduced by Core `576c76f180` and present in its `1dfc414b` descendant; this prerequisite is absent from Core `v0.13.0`/`10cfe2`.
+
 Installing Core 0.13.0 over real data migrates the conversation database from schema 43 to schema 44 (adds the nullable `thread.max_tokens`) on its first write-capable start, and older Core binaries cannot open the upgraded store. Back up the data directory first.
 
 ## Fixes
