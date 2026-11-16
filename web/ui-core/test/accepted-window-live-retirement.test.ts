@@ -129,22 +129,25 @@ it("preserves canonical prefix and captured live suffix across accepted replacem
 it("records live text changes during a lease and accepts a fresh same-window capture", async () => {
  const a=canonicalAttemptId(1),f=await liveCase(a);let w!:typeof f.w;
  try {
-  f.w.dispose();let armed=false,phase="initial";
-  const input={state:f.producer,capture:(snapshot:import("../src/window").WindowAcceptedSnapshot)=>{const records=f.handle.handoff.value;return captureConversationInput(snapshot,{scope:f.handle.threadId,threadId:f.handle.threadId,records,work:captureCurrentWork(f.handle.threadId,f.handle.work.value.value),current:()=>{const current=w.isCurrentThread(f.handle)&&f.handle.handoff.peek()===records;if(!armed)return current;if(phase==="initial"){phase="leased";f.producer.emitLive(a,2,`${a}-lease`);return w.isCurrentThread(f.handle)&&f.handle.handoff.peek()===records;}return current;}})}};
+  f.w.dispose();let armed=false,phase=0,leaseChecks=0;
+  const input={state:f.producer,capture:(snapshot:import("../src/window").WindowAcceptedSnapshot)=>{const records=f.handle.handoff.value;return captureConversationInput(snapshot,{scope:f.handle.threadId,threadId:f.handle.threadId,records,work:captureCurrentWork(f.handle.threadId,f.handle.work.value.value),current:()=>{const current=w.isCurrentThread(f.handle)&&f.handle.handoff.peek()===records;if(!armed)return current;if(phase===0){phase=1;return current;}if(phase===1){phase=2;leaseChecks++;f.producer.emitLive(a,2,`${a}-lease`);return w.isCurrentThread(f.handle)&&f.handle.handoff.peek()===records;}return current;}})}};
   w=createBoundWindow({read:(args,cancel)=>f.handle.readWindow(args,cancel)},f.handle,input);await f.settle();
-  const beforeRef=w.acceptedView.peek(),beforeRecord=f.handle.handoff.value.find(record=>record.attemptId===a)!;expect(beforeRecord.text).toBe(a);armed=true;f.producer.emitLive(a,1,`${a}-delta`);
-  expect(w.refreshConversationInput(beforeRef)).toBe(false);expect(w.acceptedView.peek()).toBe(beforeRef);const changed=f.handle.handoff.value.find(record=>record.attemptId===a)!;expect(changed).not.toBe(beforeRecord);expect(changed.text.length).toBeGreaterThan(beforeRecord.text.length);expect(w.refreshConversationInput(w.acceptedView.peek())).toBe(true);expect(w.acceptedView.peek()).not.toBe(beforeRef);expect(w.isCurrentThread(f.handle)).toBe(true);
+  const beforeRef=w.acceptedView.peek(),beforeRecord=f.handle.handoff.value.find(record=>record.attemptId===a)!;const beforeEpoch=f.handle.liveEpoch(),beforeCapability=w.acceptedView.currentCapability;expect(beforeRef.rows.length).toBeGreaterThan(0);expect(beforeRecord.text).toBe(a);armed=true;f.producer.emitLive(a,1,`${a}-delta`);
+  expect(w.refreshConversationInput(beforeRef)).toBe(false);expect(phase).toBe(2);expect(leaseChecks).toBe(1);expect(w.acceptedView.peek()).toBe(beforeRef);expect(w.acceptedView.isCurrent(beforeRef)).toBe(true);const changed=f.handle.handoff.value.find(record=>record.attemptId===a)!;expect(changed).not.toBe(beforeRecord);expect(changed.text.length).toBeGreaterThan(beforeRecord.text.length);expect(f.handle.liveEpoch()).toBe(beforeEpoch);expect(w.acceptedView.currentCapability).toBe(beforeCapability);
+  expect(w.refreshConversationInput(w.acceptedView.peek())).toBe(true);expect(w.acceptedView.peek()).not.toBe(beforeRef);expect(f.handle.liveEpoch()).toBe(beforeEpoch);expect(w.acceptedView.currentCapability).toBe(beforeCapability);
  } finally { w?.dispose();f.data.stop(); }
 });
 
 it("collapses a saved tool association without leaving a matching live preview", async () => {
  const attempt=canonicalAttemptId(4),f=await rig(3);
  try {
-  f.owner.decorate=(i,item)=>i===0?{...item,kind:"assistant_response",items:[{kind:"tool_call",item_identity:"tool",execution_ids:["shared"]}]}:i===1?{...item,kind:"assistant_response",provenance:{attempt_id:attempt},items:[{kind:"tool_call",item_identity:"tool",execution_ids:["shared"]}]}:item;
-  f.producer.advance(attempt);await flush();f.w.changed();await f.settle();
+  f.producer.advance(attempt);await flush();f.w.changed();await f.settle();const beforeRef=f.w.acceptedView.peek(),beforeRecord=f.handle.handoff.value.find(record=>record.attemptId===attempt)!;expect(beforeRecord).toBeDefined();
+  f.owner.append(1);
+  f.owner.decorate=(i,item)=>i===0?{...item,kind:"assistant_response",items:[{kind:"tool_call",item_identity:"tool",execution_ids:["shared"]}]}:i===3?{...item,kind:"assistant_response",provenance:{attempt_id:attempt},items:[{kind:"tool_call",item_identity:"tool",execution_ids:["shared"]}]}:item;
+  f.w.changed();await f.settle();
   const entries=f.w.acceptedView.peek().displayPlan?.entries ?? [];
   expect(entries.some(entry=>"domain" in entry.item.source&&entry.item.source.attemptId===attempt)).toBe(false);
-  expect(entries.some(entry=>entry.item.source.nodeId===f.owner.nodeId(0)&&entry.item.source.kind==="tool")).toBe(true);
+  expect(entries.filter(entry=>entry.item.source.nodeId===f.owner.nodeId(0)&&entry.item.source.kind==="tool")).toHaveLength(1);expect(f.w.acceptedView.peek()).not.toBe(beforeRef);
   expect(entries.some(entry=>entry.item.source.nodeId===f.owner.nodeId(2))).toBe(true);
   expect(f.handle.handoff.value.some(record=>record.attemptId===attempt)).toBe(false);
  }finally{f.w.dispose();f.data.stop();}

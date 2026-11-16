@@ -49,18 +49,20 @@ Tool projection uses first qualified association wins: the first source with the
 
 ## Scope And Lifetime
 
-The scope JSON is exactly `[owner.instance_id, entry.id, entry.live.lifetime]`.
-It is the issuer-owned identity for live and saved association. Entry identity
-and attempt identity are not interchangeable, and a saved attempt association
-must remain in that exact scope. Presentation container names are not authority. A changed owner,
-ThreadHandle, live lifetime, reader epoch, capability, or accepted generation
-invalidates the candidate before publication.
+The captured scope is the current `ThreadHandle.threadId` passed to
+`captureConversationInput`; it is not a fabricated owner-instance JSON tuple.
+The captured identity retains the accepted rows/revision, handoff-record array,
+Work source object, scope string, and currentness callback. Attempt identity is
+only an association within that captured scope. A changed ThreadHandle, thread,
+live epoch, reader epoch, capability, or accepted generation invalidates the
+candidate before publication.
 
-The `Window` source uses one typed binding contract. Production construction
-binds the current ThreadHandle and semantic input before reads are admitted.
-History-only Window callers use an explicit typed history binding; live-capable
-callers use the ThreadHandle binding. There is no unbound current-commit path
-and no optional runtime fallback that manufactures ownership facts.
+`createBoundWindow` binds the current ThreadHandle and typed semantic input
+before reads are admitted. The production and controlled factories use the same
+public handle/read/capture methods; history-only callers remain explicitly
+separate and do not manufacture live ownership facts. Currentness is checked
+against the captured handle/thread/epoch/capability values, not against a
+presentation container or a fallback registry.
 
 ## Ordinary Loading And Scroll
 
@@ -95,7 +97,13 @@ Lifecycle, scope, multiplicity, scroll, cancellation, ABA, and own-send cases
 remain additional registered negatives and are not replaced by these four cases.
 
 These are minimum controls, not a replacement for the existing lifecycle,
-scope, multiplicity, scroll, cancellation, and ABA suites.
+scope, multiplicity, scroll, cancellation, and ABA suites. Work-source and
+picker/session ABA remain covered by the registered `branch-compare.test.ts`
+controls (`owner ABA during initial publish does not revive old invocation` and
+the inventory B/ABA cases), plus the console smoke tests `with the capability:
+picker, preview, then Move; a refusal shows the owner's words` and the model
+picker warning case. Those controls validate public owner/session rebinding;
+this document does not claim a universal Work-source lifetime guarantee.
 
 ## Browser Witness
 
