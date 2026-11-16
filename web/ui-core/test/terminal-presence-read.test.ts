@@ -352,10 +352,12 @@ it('accepted saved partial row keeps live ownership empty without a proof receip
  const partial={node_id:'answer',kind:'assistant_response' as const,provenance:{attempt_id:CANONICAL_ATTEMPT_ID},selection:{ordinal:0},items:[{kind:'text' as const,item_identity:'answer:text',text:'prefix',text_complete:false}]};
  const w=new ConversationWindow({read:async()=>({ok:true,value:ownedHistory({thread_id:'a',revision:7,total:1,items:[partial]})})});
  await flush();expect(w.bindTerminalHandle(r.h)).toBe(true);await flush();
+ r.live('live preview');await r.pump();const liveBefore=r.h.handoff.peek().some(record=>record.attemptId===CANONICAL_ATTEMPT_ID);expect(liveBefore).toBe(true);
  expect(w.acceptedView.peek().rows[0]?.items?.[0]).toMatchObject({text_complete:false});
  const record={key:'handoff:partial',presentationContainer:syntheticPresentation(CANONICAL_ATTEMPT_ID),attemptId:CANONICAL_ATTEMPT_ID,text:'prefix',incomplete:true,status:'confirming' as const,bodyAuthority:'preview' as const};
- w.reconcileSavedAssistantRows([record],r.h.handoffScope());
+ const liveRecord=r.h.handoff.peek().find(item=>item.attemptId===CANONICAL_ATTEMPT_ID)!;w.reconcileSavedAssistantRows([liveRecord],r.h.handoffScope());
  expect(w.acceptedView.peek().assistantOwnership??[]).toEqual([]);
+ expect(r.h.handoff.peek().some(item=>item.attemptId===CANONICAL_ATTEMPT_ID)).toBe(false);
  expect(w.acceptedView.peek().rows[0]?.items?.[0]).toMatchObject({text_complete:false});
  w.dispose();r.data.stop();
 });
