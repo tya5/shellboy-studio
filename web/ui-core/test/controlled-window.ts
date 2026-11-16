@@ -9,7 +9,7 @@ export async function controlledWindow(){
  const requests:{args:WindowReadArgs;cancel:Cancel;settled:boolean;reply:(value:Outcome<HistoryWindowInput>)=>void}[]=[];
  const timers=new Set<()=>void>();
  const owner=await ownerRig(0);owner.w.dispose();
- const semantic={};
+ const semantic={advance:(attemptId:string)=>owner.t.push({t:"live",thread_id:owner.handle.threadId,attempt_id:attemptId,gap:false,deltas:[{offset:0,reasoning:false,text:attemptId}]})};
  let boundWindow:ConversationWindow;
  const input={state:semantic,capture:(snapshot:import('../src/window').WindowAcceptedSnapshot)=>{const capability=boundWindow.acceptedView.currentCapability;return captureConversationInput(snapshot,{scope:owner.handle.threadId,threadId:owner.handle.threadId,records:owner.handle.handoff.value,work:captureCurrentWork(owner.handle.threadId,owner.handle.work.value.value),current:()=>boundWindow.isCurrentThread(owner.handle)&&boundWindow.acceptedView.currentCapability===capability});}};
  boundWindow=createBoundWindow({read:(args,cancel)=>new Promise(resolve=>{
@@ -22,12 +22,13 @@ export async function controlledWindow(){
 }
 
 /** A real pending-owner input replaces semantics while retaining the selected rows and scroll intent. */
-type ControlledSemanticState=Record<string, never>;
+type ControlledSemanticState={advance:(attemptId:string)=>void};
 export function publishControlledAttempt(win:ConversationWindow,attemptId:string){
  const before=win.acceptedView.peek();
  const input=boundWindowInput(win),state=input?.state as ControlledSemanticState|undefined;
  if(!input||!state)throw new Error('Controlled semantic input was not constructed');
  if(!before.displayPlan?.scope)throw new Error('Controlled semantic replacement requires an accepted scope');
+ state.advance(attemptId);
  if(!win.refreshConversationInput(before))throw new Error(`Controlled publication rejected: ${attemptId}`);
  const after=win.acceptedView.peek();
  if(after===before||after.generation<=before.generation)throw new Error(`Controlled publication did not advance: ${attemptId}`);
