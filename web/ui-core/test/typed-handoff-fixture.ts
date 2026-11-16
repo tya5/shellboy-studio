@@ -131,3 +131,37 @@ export function typedAttemptMany(fixtures: readonly TypedHandoffFixture[]): Type
   return { kind: "attempt", id: first.attemptId, attempt_id: first.attemptId, turn_id: first.turnId, thread_id: first.threadId, state: "completed",
     response_nodes: fixtures.map(fixture => ({ ordinal: fixture.ordinal, kind: "assistant_response" as const, node_id: fixture.nodeId })), response_nodes_truncated: false };
 }
+
+export interface TypedReadyRefreshFixture {
+  readonly threadId: string; readonly revision: number; readonly initialTotal: number; readonly total: number;
+  readonly ordinal: number; readonly nodeId: string; readonly text: string; readonly attempt: TypedHandoffAttempt;
+  readonly initialItems: readonly HistoryItem[]; readonly appendedItems: readonly HistoryItem[];
+  readonly phase: 'initial'|'appended'; readonly currentRevision: number; readonly currentTotal: number;
+  advance(): void;
+  read(args?: Pick<HistoryWindowArgs, 'node_id'|'ordinal'|'before'|'after'>): TypedHistoryWindow<HistoryItem>;
+}
+
+/** Builds the same complete 300 -> 301 selection path for model and browser fixtures. */
+export function typedReadyRefreshFixture(input: {threadId: string; attemptId: string; turnId: string; revision: number; nodeId: string; text: string}): TypedReadyRefreshFixture {
+  const initialTotal = 300, total = 301, ordinal = 300;
+  const initialItems: HistoryItem[] = Array.from({length: initialTotal}, (_, index) => ({
+    node_id: `history-${index}`, kind: 'assistant_response', selection: {ordinal: index},
+    items: [{kind: 'text', item_identity: `history-${index}:text`, text: `history-${index}`, text_complete: true}],
+  }));
+  const appendedNode = typedHandoffNode(typedHandoff({threadId: input.threadId, attemptId: input.attemptId, turnId: input.turnId, nodeId: input.nodeId, ordinal, revision: input.revision, total, text: input.text, provenanceAttemptId: input.attemptId as AttemptId}), true);
+  const appendedItems = [...initialItems, appendedNode];
+  const attempt = typedAttempt(typedHandoff({threadId: input.threadId, attemptId: input.attemptId, turnId: input.turnId, nodeId: input.nodeId, ordinal, revision: input.revision, total, text: input.text, provenanceAttemptId: input.attemptId as AttemptId}));
+  let phase: 'initial'|'appended' = 'initial';
+  const read = (args: Pick<HistoryWindowArgs, 'node_id'|'ordinal'|'before'|'after'> = {}) => {
+    const items = phase === 'initial' ? initialItems : appendedItems;
+    const revision = phase === 'initial' ? input.revision : input.revision + 1;
+    const currentTotal = phase === 'initial' ? initialTotal : total;
+    const selectedArgs = args.node_id === undefined && args.ordinal === undefined
+      ? {ordinal: currentTotal - 1, before: args.before ?? 0, after: args.after ?? 0}
+      : args;
+    return typedSelectedCoverageWindow(input.threadId, revision, currentTotal, items, selectedArgs);
+  };
+  return {threadId: input.threadId, revision: input.revision, initialTotal, total, ordinal, nodeId: input.nodeId, text: input.text, attempt, initialItems, appendedItems,
+    get phase(){return phase;}, get currentRevision(){return phase === 'initial' ? input.revision : input.revision + 1;}, get currentTotal(){return phase === 'initial' ? initialTotal : total;},
+    advance:()=>{phase='appended';}, read};
+}

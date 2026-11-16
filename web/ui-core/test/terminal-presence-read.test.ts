@@ -1,4 +1,5 @@
 import {selectedReadyRefs,syntheticPresentation,CANONICAL_ATTEMPT_ID,withCanonicalAttemptProvenance,declaredAttemptIdentity} from '../../data/test/work-fixture';
+import { typedReadyRefreshFixture } from './typed-handoff-fixture';
 import { ConversationWindow } from "../src/window";
 import type { OwnedTerminalReadLease } from "../../data/src/terminal-read";
 import type { HistoryItem } from "../../data/src/protocol";
@@ -16,7 +17,7 @@ const baseNodes: HistoryItem[] = withCanonicalAttemptProvenance([
   { node_id: "tool", kind: "assistant_response", selection: { ordinal: 0 }, items: [{ kind: "tool_call", item_identity: "call", execution_ids: ["exec"] }] },
   { node_id: "answer", kind: "assistant_response", selection: { ordinal: 1 }, items: [{ kind: "text", item_identity: "text", text: "saved", text_complete: true }] },
 ]);
-async function rig(windowCap = true) {
+async function rig(windowCap = true, refresh?: ReturnType<typeof typedReadyRefreshFixture>) {
   const t = new FakeTransport(), db = new FakeOwnerDb(), frames: (() => void)[] = []; let n = 0;
   const data = new ShellboyData({ transport: t, newId: () => `atomic-${++n}`, schedule: cb => frames.push(cb) });
   data.start(); t.open(); t.push({ t: "hello", bridge_version: "synthetic", owner: { state: "connected", info: { protocol_version: 5, instance_id: "i1", capabilities: windowCap ? ["history.window"] : [] } } }); await settle(t, db);
@@ -24,9 +25,10 @@ async function rig(windowCap = true) {
   const state = { selectedRevision: 7, selectedOwnerAvailable: true, available: true, truncated: false, partial: false, deferred: false, unknown: false, missing: false, error: false, changing: false, nonterminal: false, wrongid: false, empty: false, hold: false };
   const original = db.answer.bind(db); let reads = 0;
   db.answer = call => {
-    if (call.command === "status") return { ok: true, result: { items: state.available ? [{ kind: "attempt", id: state.wrongid ? "other" : CANONICAL_ATTEMPT_ID, attempt_id: CANONICAL_ATTEMPT_ID, turn_id: "turn", thread_id: "a", state: state.nonterminal ? "inflight" : "completed", response_nodes: state.empty ? [] : baseNodes.filter(node => node.items?.some(item => item.kind === "text")).map(node => ({ node_id: node.node_id, ordinal: node.selection!.ordinal!, kind: node.kind, phase: "final_answer", item_id: null })), response_nodes_truncated: state.truncated }] : [] } };
+    if (call.command === "status") return { ok: true, result: { items: state.available ? (refresh && refresh.phase === "initial" ? [] : [refresh ? refresh.attempt : { kind: "attempt", id: state.wrongid ? "other" : CANONICAL_ATTEMPT_ID, attempt_id: CANONICAL_ATTEMPT_ID, turn_id: "turn", thread_id: "a", state: state.nonterminal ? "inflight" : "completed", response_nodes: state.empty ? [] : baseNodes.filter(node => node.items?.some(item => item.kind === "text")).map(node => ({ node_id: node.node_id, ordinal: node.selection!.ordinal!, kind: node.kind, phase: "final_answer", item_id: null })), response_nodes_truncated: state.truncated }]) : [] } };
     if (call.command === "history.window") {
       if (state.error) return { ok: false, code: "not_found", message: "synthetic" };
+      if (refresh) { const result=refresh.read(call.args as {node_id?:string;ordinal?:number;before?:number;after?:number}); return {ok:true,result}; }
       const items: unknown[] = structuredClone(baseNodes);
       if (state.partial) (items[1] as { items: unknown }).items = [{ kind: "text", item_identity: "text", text: "prefix", text_complete: false }];
       if (state.deferred) { (items[1] as { items: unknown }).items = null; (items[1] as object & { items_unavailable_reason: string }).items_unavailable_reason = "response_budget"; }
@@ -240,8 +242,8 @@ it("terminal slot successor dispatches one explicit whole-window request after a
 
 it("Window rebinds a revision-changing point read through one bounded whole-window successor", async () => {
   const r = await target(); r.state.selectedRevision=8;
-  let successorLease:OwnedTerminalReadLease|undefined;const replace=r.h.replaceTerminalRead;
-  r.h.replaceTerminalRead=(token,admission,request)=>{const out=replace(token,admission,request);if('state' in out)successorLease=out;return out;};
+  let successorLease:OwnedTerminalReadLease|undefined;const leasePhases:string[]=[];const replace=r.h.replaceTerminalRead;
+  r.h.replaceTerminalRead=(token,admission,request)=>{const out=replace(token,admission,request);if('state' in out){successorLease=out;leasePhases.push(out.state.peek().phase);out.state.subscribe(value=>leasePhases.push(value.phase));}return out;};
   const original = r.db.answer.bind(r.db);
   const requests: unknown[] = [];
   r.db.answer = call => {
@@ -289,6 +291,7 @@ it("Window rebinds a revision-changing point read through one bounded whole-wind
   if(!('state' in lease))throw new Error('fixture requires the actual owned lease');
   expect(r.h.isTerminalReadCurrent(r.token,lease)).toBe(false); // the point lease was replaced
   if(!successorLease)throw new Error('fixture requires the actual public successor lease');
+  expect(leasePhases).toContain('reading');expect(leasePhases.at(-1)).toBe('settled');
   expect(r.h.isTerminalReadCurrent(r.token,successorLease)).toBe(true);
   expect(r.h.isTerminalReadCurrent(r.token,{...successorLease})).toBe(false);
   successorLease.cancel();r.state.selectedOwnerAvailable=false;
@@ -332,16 +335,33 @@ it("scoped ownership does not attach an unrelated saved assistant to one preview
 });
 
 
-async function readyTarget(total = 2) {
- const r=await rig();
- const w=new ConversationWindow({read:async()=>({ok:true,value:ownedHistory({thread_id:'a',revision:6,total:1,items:[baseNodes[0]!]})})});
+async function readyTarget(options: {refresh?: ReturnType<typeof typedReadyRefreshFixture>; total?: number} = {}) {
+ const refresh=options.refresh; const total=options.total; const r=await rig(true, refresh); const readEvents:{args:unknown;revision:number|string;total:number;itemCount:number}[]=[];
+ const w=new ConversationWindow({read:async(args)=>{const reply=refresh ? refresh.read(args) : {thread_id:'a',revision:6,total:1,item_count:1,items:[baseNodes[0]!]};const owned=ownedHistory(reply);readEvents.push({args,revision:owned.revision,total:owned.total,itemCount:owned.items.length});return {ok:true,value:owned};}});
  await flush(); w.bindTerminalHandle(r.h);
- if(total!==2){const answer=r.db.answer.bind(r.db);r.db.answer=call=>call.command==='history.window'
-   ?{ok:true,result:{thread_id:'a',revision:7,total,items:structuredClone(baseNodes)}}:answer(call);}
- r.live('whole live preview'); r.end(); await r.pump();
+ if(total !== undefined && !refresh){const answer=r.db.answer.bind(r.db);r.db.answer=call=>call.command==='history.window'?{ok:true,result:{thread_id:'a',revision:7,total,items:structuredClone(baseNodes)}}:answer(call);}
+ if(refresh){const initial=refresh.read();expect(initial.revision).toBe(refresh.currentRevision);expect(initial.total).toBe(refresh.currentTotal);}
+ r.live(refresh?.text ?? 'whole live preview'); await r.pump();
+ if(refresh){expect(r.h.handoff.peek()[0]?.readyAttempt).toBeUndefined();refresh.advance();r.end();r.t.push({t:'changed',thread_ids:['a'],list:false});await r.pump();}
+ else {r.end();await r.pump();}
  const record=r.h.handoff.peek()[0]!; expect(record.readyAttempt).toBeDefined();
- return {...r,w,record};
+ return {...r,w,record,readEvents};
 }
+it('shared typed fixture drives the public 300-to-301 ready refresh contract',async()=>{
+ const fixture=typedReadyRefreshFixture({threadId:'a',attemptId:CANONICAL_ATTEMPT_ID,turnId:'turn',revision:7,nodeId:'answer-300',text:'saved'});
+ expect(fixture.initialItems).toHaveLength(300);expect(fixture.appendedItems).toHaveLength(301);
+ expect(fixture.appendedItems.at(-1)?.selection?.ordinal).toBe(300);
+ expect(fixture.read({node_id:'history-299',ordinal:299,before:0,after:0}).items).toHaveLength(1);
+ expect(fixture.phase).toBe('initial');
+ expect(fixture.attempt.response_nodes).toEqual([{node_id:'answer-300',ordinal:300,kind:'assistant_response'}]);
+ fixture.advance();const tail=fixture.read({before:99,after:0});expect(tail.item_count).toBe(100);expect(tail.items.map(item=>item.selection?.ordinal)).toEqual(Array.from({length:100},(_,i)=>i+201));const selected=fixture.read({node_id:'answer-300',ordinal:300,before:1,after:0});expect(selected.item_count).toBe(2);expect(selected.items.map(item=>item.selection?.ordinal)).toEqual([299,300]);expect(tail.revision).toBe(fixture.currentRevision);expect(tail.total).toBe(fixture.currentTotal);fixture.advance();
+ const consumer=typedReadyRefreshFixture({threadId:'a',attemptId:CANONICAL_ATTEMPT_ID,turnId:'turn',revision:7,nodeId:'answer-300',text:'saved'});const r=await readyTarget({refresh:consumer});expect(r.w.acceptedView.peek().total).toBe(300);expect(r.w.following.peek()).toBe(true);const readsBefore=r.readEvents.length;consumer.advance();r.w.changed();await r.pump();await flush();await r.pump();expect(r.readEvents.length).toBeGreaterThan(readsBefore);expect(r.readEvents.at(-1)).toMatchObject({revision:8,total:301});expect(r.w.acceptedView.peek().total).toBe(301);const lease=r.w.prepareBoundReadyRead(r.record);expect('state' in lease).toBe(true);await r.pump();
+ const settled=r.w.acceptedView.peek();
+ expect(settled.assistantOwnership?.some(item=>item.attemptId===CANONICAL_ATTEMPT_ID&&item.mode==='canonical')).toBe(true);
+ expect(settled.retiredAttempts?.some(item=>item.attemptId===CANONICAL_ATTEMPT_ID)).toBe(true);expect(r.h.handoff.peek()).toHaveLength(0);
+ r.w.dispose();r.data.stop();
+});
+
 it('actual ready admission reads accepted range plus exact refs and atomically retires preview',async()=>{
  const r=await readyTarget(), before=r.w.acceptedView.peek();
  const lease=r.w.prepareBoundReadyRead(r.record); expect('state' in lease).toBe(true);
@@ -418,7 +438,7 @@ it('Store rejects copied ready record and foreign qualification before dispatch'
 
 
 it('actual ready bounded selected coverage need not read the entire Thread total',async()=>{
- const r=await readyTarget(1000);const reads=r.t.calls('history.window').length;
+ const r=await readyTarget({total:1000});const reads=r.t.calls('history.window').length;
  r.w.prepareBoundReadyRead(r.record);await r.pump();
  const selected=r.t.calls('history.window').slice(reads);
  expect(selected).toHaveLength(1);expect(selected[0]!.args).toMatchObject({node_id:'answer',before:1,after:0,items:true});
