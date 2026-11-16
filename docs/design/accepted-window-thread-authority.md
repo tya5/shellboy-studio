@@ -1,6 +1,6 @@
 # Accepted Window Thread Authority
 
-The accepted Window binding is the authority for saved/live ownership. Its scope is the current ThreadHandle handoff scope, which includes the owner instance, thread identity, and conversation turn identity. The publication namespace/container is presentation identity only; it must not substitute for ThreadHandle scope.
+The accepted Window binding is the authority for saved/live ownership. Its scope is the current ThreadHandle handoff scope, which includes the owner instance id, entry id, and live lifetime (the JSON handoff scope). The publication namespace/container is presentation identity only; it must not substitute for ThreadHandle scope.
 
 A saved assistant row can affect live ownership only when its `provenance.attempt_id` matches a live record in the current binding scope. Missing or mismatched provenance remains an ordinary saved row. `text_complete=false`, excerpt truncation, and body loading are saved-row facts, not completion or retirement authority.
 
