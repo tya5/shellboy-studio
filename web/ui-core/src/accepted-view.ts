@@ -5,7 +5,6 @@ import { batch, signal, type Signal } from "@preact/signals-core";
 // Local authority identity only: never decoded or reconstructed from wire fields.
 declare const acceptedCapabilityBrand: unique symbol;
 export type AcceptedCapability = Readonly<{ readonly [acceptedCapabilityBrand]: true }>;
-export type AcceptedAuthority = Readonly<{ readonly state: Readonly<{ readonly version: number }>; readonly version: number }>;
 export type AcceptedLease = Readonly<{ readonly capability: AcceptedCapability; readonly isCurrent: () => boolean }>;
 declare const stagedBrand: unique symbol;
 export type StagedView<T> = Readonly<{ readonly [stagedBrand]: T }>;
@@ -45,7 +44,7 @@ export class AcceptedView<T> {
   private ended = false;
 
   private readonly capability = signal(mintCapability());
-  private staged?: { handle: StagedView<T>; expected: T; lease: AcceptedLease; authority?: AcceptedAuthority; value?: T; onCommitted?: (value: T) => void };
+  private staged?: { handle: StagedView<T>; expected: T; lease: AcceptedLease; value?: T; onCommitted?: (value: T) => void };
   private listeners = new Set<(value: T) => void>();
   private notifying = false;
   private pending = false;
@@ -60,34 +59,33 @@ export class AcceptedView<T> {
   peek(): T { return this.value.peek(); }
   isCurrent(ref: T): boolean { return !this.ended && this.value.peek() === ref && this.capability.peek() === this.acceptedCapability; }
   get currentCapability(): AcceptedCapability { return this.capability.value; }
-  private stage(value: T, lease: AcceptedLease, authority?: AcceptedAuthority, onCommitted?: (value: T) => void): StagedView<T> {
+  private stage(value: T, lease: AcceptedLease, onCommitted?: (value: T) => void): StagedView<T> {
     const handle = Object.freeze({}) as StagedView<T>;
-    const slot = { handle, expected: this.value.peek(), lease, authority, value: undefined as T | undefined, onCommitted };
+    const slot = { handle, expected: this.value.peek(), lease, value: undefined as T | undefined, onCommitted };
     this.staged = slot;
     slot.value = value;
     return handle;
   }
-  publish<S extends { readonly displayPlan?: { readonly capability?: unknown }; readonly generation?: unknown }>(publication: AcceptedPublication<S>, onCommitted?: (value: S) => void, authority?: AcceptedAuthority): boolean {
+  publish<S extends { readonly displayPlan?: { readonly capability?: unknown }; readonly generation?: unknown }>(publication: AcceptedPublication<S>, onCommitted?: (value: S) => void): boolean {
     const capability=publication.lease.capability;
     if (publication.snapshot.displayPlan !== publication.plan || publication.plan.capability !== capability
       || typeof publication.snapshot.generation !== "number"
       || typeof (this.value.peek() as { readonly generation?: unknown }).generation !== "number"
       || publication.snapshot.generation <= (this.value.peek() as { readonly generation: number }).generation) return false;
-    const staged = this.stage(publication.snapshot as unknown as T, publication.lease, authority, onCommitted as ((value: T) => void) | undefined);
+    const staged = this.stage(publication.snapshot as unknown as T, publication.lease, onCommitted as ((value: T) => void) | undefined);
     return this.commit(staged);
   }
 
   private commit(handle: StagedView<T>): boolean {
     const slot = this.staged;
     if (!slot || slot.handle !== handle || slot.value === undefined || this.ended) return false;
-    // The semantic lease is evaluated once by publish; the final check is state-only.
-    // Input qualification runs before the final callback-free ownership checks.
+    // Evaluate the semantic lease exactly once after staging, then use only pure state checks.
+    if (!slot.lease.isCurrent()) return false;
     if (this.staged !== slot || this.capability.peek() !== slot.lease.capability || this.value.peek() !== slot.expected || this.ended) return false;
     let published = false;
     batch(() => {
       // Final ownership qualification is a pure staged-token comparison before publication.
-      if (this.staged !== slot || (slot.authority && slot.authority.state.version !== slot.authority.version)
-        || this.capability.peek() !== slot.lease.capability || this.value.peek() !== slot.expected || this.ended) return;
+      if (this.staged !== slot || this.capability.peek() !== slot.lease.capability || this.value.peek() !== slot.expected || this.ended) return;
       this.staged = undefined;
       this.acceptedCapability=slot.lease.capability;
       this.pending = true;

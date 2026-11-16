@@ -72,26 +72,35 @@ it('revoke preserves live identity before a publication reply arrives',async()=>
 
 
 it("semantic lease cancellation rejects publication and preserves accepted ref/live identity", async () => {
- const attempt=canonicalAttemptId(1),f=await rig(2);f.w.dispose();
- let w!: typeof f.w;let armed=false,phase="idle";
+ const attempt=canonicalAttemptId(1),f=await rig(2);let w!:typeof f.w;try{
+ f.t.push({t:"live",thread_id:f.handle.threadId,attempt_id:attempt,gap:false,deltas:[{offset:0,reasoning:false,text:"live"}]});await flush();f.w.dispose();
+ let armed=false,phase="idle";
  const input={capture:(snapshot:import("../src/window").WindowAcceptedSnapshot)=>captureConversationInput(snapshot,{scope:f.handle.threadId,threadId:f.handle.threadId,records:f.handle.handoff.value,work:captureCurrentWork(f.handle.threadId,f.handle.work.value.value),current:()=>{
   if(!armed)return w.isCurrentThread(f.handle);
   if(phase==="capture"){phase="lease";return w.isCurrentThread(f.handle);}
-  w.cancelReads();return true;
+  f.handle.cancelReads();return true;
  }})};
- w=createBoundWindow({read:(args,cancel)=>f.handle.readWindow(args,cancel)},f.handle,input);
- f.t.push({t:"live",thread_id:f.handle.threadId,attempt_id:attempt,gap:false,deltas:[{offset:0,reasoning:false,text:"live"}]});await flush();
+ w=createBoundWindow({read:(args,cancel)=>f.handle.readWindow(args,cancel)},f.handle,input);await f.settle();
  const beforeRef=w.acceptedView.peek(),beforeRows=beforeRef.rows,before=f.handle.handoff.value[0]!;
- expect(beforeRows.length).toBeGreaterThan(0);expect(f.handle.handoff.value).toHaveLength(1);expect(w.acceptedView.isCurrent(beforeRef)).toBe(true);
- armed=true;phase="capture";expect(w.refreshConversationInput(beforeRef)).toBe(false);expect(w.acceptedView.peek()).toBe(beforeRef);expect(w.acceptedView.peek().rows).toBe(beforeRows);expect(f.handle.handoff.value).toHaveLength(1);expect(f.handle.handoff.value.some(record=>record===before)).toBe(true);
- f.data.stop();
+ f.t.push({t:"live",thread_id:f.handle.threadId,attempt_id:canonicalAttemptId(2),gap:false,deltas:[{offset:0,reasoning:false,text:"semantic change"}]});await flush();
+ const afterSecond=f.handle.handoff.value.slice();expect(beforeRows.length).toBeGreaterThan(0);expect(afterSecond).toHaveLength(2);expect(w.acceptedView.isCurrent(beforeRef)).toBe(true);
+ armed=true;phase="capture";expect(w.refreshConversationInput(beforeRef)).toBe(false);expect(w.acceptedView.peek()).toBe(beforeRef);expect(w.acceptedView.peek().rows).toBe(beforeRows);expect(f.handle.handoff.value).toHaveLength(afterSecond.length);expect(f.handle.handoff.value[0]).toBe(afterSecond[0]);expect(f.handle.handoff.value[1]).toBe(afterSecond[1]);
+ }finally{w?.dispose();f.data.stop();}
+});
+
+it("semantic callback rebind rejection preserves accepted ref/rows/live identity", async () => {
+ const attempt=canonicalAttemptId(1),f=await rig(2),foreign=await rig(2);let w!:typeof f.w;try{
+ f.t.push({t:"live",thread_id:f.handle.threadId,attempt_id:attempt,gap:false,deltas:[{offset:0,reasoning:false,text:"live"}]});await flush();f.w.dispose();let armed=false,phase="idle";
+ const input={capture:(snapshot:import("../src/window").WindowAcceptedSnapshot)=>captureConversationInput(snapshot,{scope:f.handle.threadId,threadId:f.handle.threadId,records:f.handle.handoff.value,work:captureCurrentWork(f.handle.threadId,f.handle.work.value.value),current:()=>{if(!armed)return w.isCurrentThread(f.handle);if(phase==="capture"){phase="lease";return w.isCurrentThread(f.handle);}expect(w.bindCurrentThread(foreign.handle)).toBe(false);return true;}})};
+ w=createBoundWindow({read:(args,cancel)=>f.handle.readWindow(args,cancel)},f.handle,input);await f.settle();const beforeRef=w.acceptedView.peek(),beforeRows=beforeRef.rows,before=f.handle.handoff.value[0]!;expect(beforeRows.length).toBeGreaterThan(0);armed=true;phase="capture";expect(w.refreshConversationInput(beforeRef)).toBe(false);expect(w.acceptedView.peek()).toBe(beforeRef);expect(w.acceptedView.peek().rows).toBe(beforeRows);expect(f.handle.handoff.value.some(record=>record===before)).toBe(true);
+ }finally{w?.dispose();f.data.stop();foreign.w.dispose();foreign.data.stop();}
 });
 
 it("semantic false rejects publication with seeded accepted ref/live identity", async () => {
- const attempt=canonicalAttemptId(1),f=await rig(2);f.w.dispose();let w!:typeof f.w,armed=false;
+ const attempt=canonicalAttemptId(1),f=await rig(2);let w!:typeof f.w;try{f.t.push({t:"live",thread_id:f.handle.threadId,attempt_id:attempt,gap:false,deltas:[{offset:0,reasoning:false,text:"live"}]});await flush();f.w.dispose();let armed=false;
  const input={capture:(snapshot:import("../src/window").WindowAcceptedSnapshot)=>captureConversationInput(snapshot,{scope:f.handle.threadId,threadId:f.handle.threadId,records:f.handle.handoff.value,work:captureCurrentWork(f.handle.threadId,f.handle.work.value.value),current:()=>armed?false:w.isCurrentThread(f.handle)})};
- w=createBoundWindow({read:(args,cancel)=>f.handle.readWindow(args,cancel)},f.handle,input);f.t.push({t:"live",thread_id:f.handle.threadId,attempt_id:attempt,gap:false,deltas:[{offset:0,reasoning:false,text:"live"}]});await flush();
- const beforeRef=w.acceptedView.peek(),before=f.handle.handoff.value[0]!;armed=true;expect(w.refreshConversationInput(beforeRef)).toBe(false);expect(w.acceptedView.peek()).toBe(beforeRef);expect(f.handle.handoff.value.some(record=>record===before)).toBe(true);w.dispose();f.data.stop();
+ w=createBoundWindow({read:(args,cancel)=>f.handle.readWindow(args,cancel)},f.handle,input);await f.settle();
+ const beforeRef=w.acceptedView.peek(),before=f.handle.handoff.value[0]!;armed=true;expect(w.refreshConversationInput(beforeRef)).toBe(false);expect(w.acceptedView.peek()).toBe(beforeRef);expect(f.handle.handoff.value.some(record=>record===before)).toBe(true);}finally{w?.dispose();f.data.stop();}
 });
 
 it('rejected publication reply preserves accepted ref and live identity',async()=>{

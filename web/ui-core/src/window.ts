@@ -94,6 +94,8 @@ function revisionIsCurrentOrNewer(candidate: number, current: number | undefined
   return relation === "uninitialized" || relation === "same" || relation === "newer";
 }
 
+type PreparedConversationPublication = { publication: AcceptedPublication<WindowAcceptedSnapshot, import("./conversation-input").ConversationIdentity>; binding: { handle: ThreadHandle; threadId: string; epoch: number } };
+
 export class ConversationWindow {
   private readonly reader: WindowReader;
   private readonly setTimer: (fn: () => void, ms: number) => () => void;
@@ -110,7 +112,6 @@ export class ConversationWindow {
   private tailFailed = false;
   private verifying = false;
   private stopTimer: (() => void) | undefined;
-  private readonly publicationAuthority = { version: 0 };
   private viewTop = 0;
   private viewHeight = 0;
   private wanted = new Set<number>();
@@ -384,11 +385,7 @@ export class ConversationWindow {
 
   // ---- reads ----
 
-  /** Cancel owned reads and invalidate the current publication authority. */
-  cancelReads(): void { this.cancelAll(); }
-
   private cancelAll(): void {
-    this.publicationAuthority.version++;
     for (const r of this.inflight.values()) r.cancel.cancel();
     this.inflight.clear();
     this.tailCancel?.cancel();
@@ -430,42 +427,39 @@ export class ConversationWindow {
     if(prior?.ref===ref&&conversationIdentityEqual(prior.identity,input.identity))return true;
     const generation=this.nextAcceptedGeneration();
     const staged=this.prepareCaptured({...ref,generation},capability,input,'bump');
-    if(!this.acceptedView.isCurrent(ref)||capability!==this.acceptedView.currentCapability)return false;
-    return this.commitAccepted(staged);
+    if(!staged||!this.acceptedView.isCurrent(ref)||capability!==this.acceptedView.currentCapability)return false;
+    return staged ? this.commitAccepted(staged) : false;
   }
 
-  private prepareCaptured(snapshot: WindowAcceptedSnapshot, capability: AcceptedCapability, input: ConversationSemanticInput, reason: PublicationReason): AcceptedPublication<WindowAcceptedSnapshot> {
+  private prepareCaptured(snapshot: WindowAcceptedSnapshot, capability: AcceptedCapability, input: ConversationSemanticInput, reason: PublicationReason): PreparedConversationPublication | undefined {
     const displayPlan = composeConversationDisplayPlan({ generation: snapshot.generation, revision: snapshot.revision,
       capability, rows: snapshot.rows, canonicalProjection: input.canonicalProjection, projection: input.projection,
       userDecision: input.decision, scope: input.scope, coverage: input.coverage }).plan;
-    return makeConversationPublication({ ...snapshot, canonicalInput: input.canonicalInput, displayPlan }, reason,
-      { capability, isCurrent: () => !this.disposed && input.isCurrent() }, input.identity);
+    const binding = this.currentThread;
+    if (!binding) return undefined;
+    const lease = {
+      capability,
+      isCurrent: () => input.isCurrent() && !this.disposed && this.currentThread?.handle === binding.handle
+        && this.currentThread.threadId === binding.threadId && this.currentThread.epoch === binding.epoch
+        && binding.handle.liveEpoch() === binding.epoch,
+    };
+    const publication = makeConversationPublication({ ...snapshot, canonicalInput: input.canonicalInput, displayPlan }, reason, lease, input.identity);
+    return { publication, binding };
   }
 
-  private prepareAccepted(snapshot: WindowAcceptedSnapshot, capability: AcceptedCapability, reason: PublicationReason = "read"): AcceptedPublication<WindowAcceptedSnapshot> {
+  private prepareAccepted(snapshot: WindowAcceptedSnapshot, capability: AcceptedCapability, reason: PublicationReason = "read"): PreparedConversationPublication | undefined {
     return this.prepareCaptured(snapshot, capability, this.captureConversationInput(snapshot), reason);
   }
 
-  private commitAccepted(publication: AcceptedPublication<WindowAcceptedSnapshot, import("./conversation-input").ConversationIdentity>): boolean {
-    // Reject stale owner/thread candidates before AcceptedView can publish them; retirement is
-    // part of the same accepted transaction and must never run against a stale binding.
-    const binding = this.currentThread;
-    if (!binding || binding.threadId !== binding.handle.threadId || binding.handle.liveEpoch() !== binding.epoch) {
-      this.diagnostic.value = Object.freeze({ reason: 'publication-rejected', generation: this.acceptedView.peek().generation, revision: this.acceptedView.peek().revision, ownerEpoch: this.epoch, at: Date.now() });
-      return false;
-    }
-    const token = Object.freeze({ handle: binding.handle, threadId: binding.threadId, epoch: binding.epoch,
-      capability: publication.lease.capability, revision: publication.snapshot.revision,
-      authority: { state: this.publicationAuthority, version: this.publicationAuthority.version } });
-    // The semantic lease runs once here; AcceptedView owns the pure final token comparison.
-    if (!publication.lease.isCurrent() || token.handle.liveEpoch() !== token.epoch) return false;
+  private commitAccepted(candidate: PreparedConversationPublication): boolean {
+    const { publication, binding } = candidate;
     let published = false;
     batch(() => {
       published = this.acceptedView.publish(publication, snapshot => {
-        const savedAttempts = new Set(snapshot.rows.flatMap(row => row.kind === "assistant_response" && row.provenance?.attempt_id ? [row.provenance?.attempt_id] : []));
+        const savedAttempts = new Set(snapshot.rows.flatMap(row => row.kind === "assistant_response" && row.provenance?.attempt_id ? [row.provenance.attempt_id] : []));
         for (const attemptId of savedAttempts)
-          if (token.handle.handoff.peek().some(record => record.attemptId === attemptId)) token.handle.releaseAcceptedHandoff(attemptId);
-      }, token.authority);
+          if (binding.handle.handoff.peek().some(record => record.attemptId === attemptId)) binding.handle.releaseAcceptedHandoff(attemptId);
+      });
       const ref = this.acceptedView.peek();
       if (published && ref === publication.snapshot && publication.inputIdentity) this.acceptedInput = { ref, identity: publication.inputIdentity };
       if (!published) this.diagnostic.value = Object.freeze({ reason: 'publication-rejected', generation: ref.generation, revision: ref.revision, ownerEpoch: this.epoch, at: Date.now() });
@@ -473,10 +467,10 @@ export class ConversationWindow {
     return published;
   }
 
-  private commitSelectedPublication(publication: AcceptedPublication<WindowAcceptedSnapshot, import("./conversation-input").ConversationIdentity>, buckets: Map<number, Bucket>, expected: WindowAcceptedSnapshot, capability: AcceptedCapability): boolean {
+  private commitSelectedPublication(candidate: PreparedConversationPublication, buckets: Map<number, Bucket>, expected: WindowAcceptedSnapshot, capability: AcceptedCapability): boolean {
     if (this.disposed || capability !== this.acceptedView.currentCapability || !this.acceptedView.isCurrent(expected)) return false;
-    this.buckets = buckets; this.total = publication.snapshot.total; this.revision = publication.snapshot.revision;
-    return this.commitAccepted(publication);
+    this.buckets = buckets; this.total = candidate.publication.snapshot.total; this.revision = candidate.publication.snapshot.revision;
+    return this.commitAccepted(candidate);
   }
 
   private nextAcceptedGeneration(): number { return ++this.acceptedGeneration; }
@@ -496,8 +490,8 @@ export class ConversationWindow {
     const snapshot = this.snapshotForSelection({ generation, epoch, rows, range: this.renderRange(),
       total: this.total, revision: this.revision, pending: this.status.peek() === 'loading' }, capability, canonicalInput);
     const staged = this.prepareAccepted(snapshot, capability);
-    if (!this.disposed && epoch === this.epoch && generation === this.acceptedGeneration) {
-      if (this.commitAccepted(staged)) this.version.value++;
+    if (staged && !this.disposed && epoch === this.epoch && generation === this.acceptedGeneration) {
+      if (staged && this.commitAccepted(staged)) this.version.value++;
     }
   }
 
