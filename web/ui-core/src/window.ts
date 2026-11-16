@@ -474,7 +474,7 @@ export class ConversationWindow {
     const next = target.handle.replaceTerminalRead(target.token, { kind: "persisted", receipt: target.receipt }, request);
     if (!("state" in next)) {
       const settled = this.publishTerminalPresence(ref, target.cap, target.receipt,
-        next.phase === 'unavailable' && next.reason === 'budget-exhausted' ? 'budget-exhausted' : 'selection-gap', 'settled');
+        'selection-gap', 'settled');
       if (settled) this.advanceTerminalTarget(target, settled);
       return;
     }

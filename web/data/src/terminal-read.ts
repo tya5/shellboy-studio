@@ -25,11 +25,11 @@ function sameAdmission(a: SelectedReadAdmission, b: SelectedReadAdmission): bool
     : b.kind === "ready" && a.record === b.record && a.scope === b.scope;
 }
 export interface TerminalReadTicket { readonly id: TerminalReadTicketId; readonly request: SelectedCanonicalRequest; readonly admission: SelectedReadAdmission }
-export type TerminalDispatchOutcome = "success" | "cancelled" | "budget-exhausted" | "selection-gap" | "error" | "no-work";
+export type TerminalDispatchOutcome = "success" | "cancelled" | "selection-gap" | "error" | "no-work";
 export type TicketOutcome =
   | { readonly phase: "queued" | "reading"; readonly ticket: TerminalReadTicket }
   | { readonly phase: "settled"; readonly ticket: TerminalReadTicket; readonly result: Outcome<HistoryWindowInput> }
-  | { readonly phase: "unavailable"; readonly reason: "unsupported" | "budget-exhausted" | "capacity" | "cancelled" | "selection-gap" };
+  | { readonly phase: "unavailable"; readonly reason: "unsupported" | "capacity" | "cancelled" | "selection-gap" };
 export interface OwnedTerminalReadLease { readonly ticket: TerminalReadTicket; readonly state: ReadonlySignal<TicketOutcome>; cancel(): void }
 interface Marker { ticket: TerminalReadTicket; state: Signal<TicketOutcome>; leases: Set<OwnedTerminalReadLease>; valid: () => boolean; cancel: Cancel; detach?: () => void }
 function validRequest(request:SelectedCanonicalRequest):boolean{
@@ -86,14 +86,13 @@ export class TerminalReadSlots {
     return !!marker && marker.ticket === lease.ticket && marker.valid() && !marker.cancel.cancelled && marker.leases.has(lease);
   }
   get queued(): boolean { return [...this.markers.values()].some(m => m.state.peek().phase === "queued"); }
-  async dispatch(takeRead: () => boolean, read: (args: HistoryWindowArgs, cancel: Cancel) => Promise<Outcome<HistoryWindowInput>>, followup = true): Promise<TerminalDispatchOutcome> {
+  async dispatch(read: (args: HistoryWindowArgs, cancel: Cancel) => Promise<Outcome<HistoryWindowInput>>, followup = true): Promise<TerminalDispatchOutcome> {
     const marker = [...this.markers.values()].find(m => m.state.peek().phase === "queued");
     if (!marker) return "no-work";
     const valid = () => marker.valid() && !marker.cancel.cancelled && marker.leases.size > 0;
     let primary: TerminalDispatchOutcome = "cancelled", admitted = false;
     try {
       if (!valid()) marker.state.value = { phase: "unavailable", reason: "cancelled" };
-      else if (!takeRead()) { marker.state.value = { phase: "unavailable", reason: "budget-exhausted" }; primary = "budget-exhausted"; }
       else {
         marker.state.value = { phase: "reading", ticket: marker.ticket };
         if (!valid()) marker.state.value = { phase: "unavailable", reason: "cancelled" };
@@ -107,14 +106,14 @@ export class TerminalReadSlots {
       }
     } finally { marker.detach?.(); }
     if (admitted && followup && this.queued) {
-      const successor = await this.dispatch(takeRead, read, false);
+      const successor = await this.dispatch(read, false);
       if (primary === "success" && successor !== "success" && successor !== "no-work") return successor;
     }
     return primary;
   }
   private async readOwned(marker:Marker,valid:()=>boolean,
     read:(args:HistoryWindowArgs,cancel:Cancel)=>Promise<Outcome<HistoryWindowInput>>):
-    Promise<Outcome<HistoryWindowInput>|'cancelled'|'budget-exhausted'|'selection-gap'>{
+    Promise<Outcome<HistoryWindowInput>|'cancelled'|'selection-gap'>{
     const request=marker.ticket.request,plan=request.selection;
     if(!plan)return read(request.args,marker.cancel);
     const rows:HistoryItem[]=[],pages:HistoryWindowInput[]=[],ids=new Set<string>();let cursor:HistoryWindowInput|undefined;

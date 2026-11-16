@@ -1,6 +1,6 @@
 import type { TerminalPersistedProof } from "../../data/src/handoff";
 import type { HistoryItem } from "../../data/src/protocol";
-export type TerminalPresenceReason = "canonical-pending" | "read-inflight" | "missing-candidate" | "body-unavailable" | "partial-items" | "read-error" | "budget-exhausted" | "unsupported" | "capacity" | "selection-gap";
+export type TerminalPresenceReason = "canonical-pending" | "read-inflight" | "missing-candidate" | "body-unavailable" | "partial-items" | "read-error" | "unsupported" | "capacity" | "selection-gap";
 export interface TerminalPresence {
   readonly scope: string; readonly attemptId: string; readonly receipt: TerminalPersistedProof;
   readonly phase: "pending" | "reading" | "settled";

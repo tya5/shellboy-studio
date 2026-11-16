@@ -60,7 +60,7 @@ async function target(wrap:(handle:ThreadHandle)=>ThreadHandle=handle=>handle) {
   const receipt=currentReceipt();
   const pending:TerminalPresence={scope:receipt.scope,attemptId:CANONICAL_ATTEMPT_ID,receipt,phase:'pending',reason:'canonical-pending',answerAvailability:'unknown'};
   const inputs=[pending,{...pending,reason:'read-inflight' as const},{...pending,phase:'reading' as const,reason:'read-inflight' as const}];
-  const reasons:TerminalPresence['reason'][]=['missing-candidate','body-unavailable','partial-items','read-error','selection-gap','unsupported','capacity','budget-exhausted'];
+  const reasons:TerminalPresence['reason'][]=['missing-candidate','body-unavailable','partial-items','read-error','selection-gap','unsupported','capacity'];
   const cuts:DeclaredPlanCut[]=inputs.map(presence=>cut({scope:receipt.scope,revision:7,toolIdentity:'call',presence}));
   for(const reason of reasons){const presence:TerminalPresence={...pending,phase:'settled',reason};
    cuts.push(cut({scope:receipt.scope,revision:7,toolIdentity:'call',presence}));

@@ -102,7 +102,7 @@ export type HandoffRetryState =
   | { readonly phase: "idle"; readonly reason?: "no-pending"; readonly canRetry: false }
   | { readonly phase: "reading"; readonly canRetry: false }
   | { readonly phase: "failed"; readonly reason: "lookup-failed"; readonly canRetry: true }
-  | { readonly phase: "unavailable"; readonly reason: "unresolved" | "budget-exhausted"; readonly canRetry: true }
+  | { readonly phase: "unavailable"; readonly reason: "unresolved"; readonly canRetry: true }
   | { readonly phase: "unavailable"; readonly reason: "closed" | "paused" | "owner-unavailable" | "receipt_capacity"; readonly canRetry: false };
 /** One borrowed detail observation, qualified by its successful read's owner epoch. */
 export interface ThreadDetailObservation {
@@ -787,7 +787,7 @@ export class ShellboyData {
       const targets = entry.live.records.peek().filter(r => r.status === "confirming" || r.status === "failed");
       if (!valid()) return;
       if (entry.terminalReads.queued) {
-        const dispatchResult = await entry.terminalReads.dispatch(() => true, (args, cancel) => this.operations.historyWindow(args, { cancel }));
+        const dispatchResult = await entry.terminalReads.dispatch((args, cancel) => this.operations.historyWindow(args, { cancel }));
         outcome = dispatchResult === "success" || dispatchResult === "no-work" ? "success" : "failed"; return;
       }
       if (!targets.length) { entry.handoffRetryState.value = { phase: "idle", reason: "no-pending", canRetry: false }; outcome = "success"; return; }
