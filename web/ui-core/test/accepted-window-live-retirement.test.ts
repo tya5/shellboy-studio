@@ -126,15 +126,16 @@ it("preserves canonical prefix and captured live suffix across accepted replacem
  } finally { f.w.dispose();f.data.stop(); }
 });
 
-it("records live text changes during a lease and accepts a fresh same-window capture", async () => {
+it("observes actual batch visibility across a live delta and fresh same-window cut", async () => {
  const a=canonicalAttemptId(1),f=await liveCase(a);let w!:typeof f.w;
  try {
-  f.w.dispose();let armed=false,phase=0,leaseChecks=0;
-  const input={state:f.producer,capture:(snapshot:import("../src/window").WindowAcceptedSnapshot)=>{const records=f.handle.handoff.value;return captureConversationInput(snapshot,{scope:f.handle.threadId,threadId:f.handle.threadId,records,work:captureCurrentWork(f.handle.threadId,f.handle.work.value.value),current:()=>{const current=w.isCurrentThread(f.handle)&&f.handle.handoff.peek()===records;if(!armed)return current;if(phase===0){phase=1;return current;}if(phase===1){phase=2;leaseChecks++;f.producer.emitLive(a,2,`${a}-lease`);return w.isCurrentThread(f.handle)&&f.handle.handoff.peek()===records;}return current;}})}};
+  f.w.dispose();let armed=false,phase=0,leaseChecks=0;const trace:string[]=[];
+  const input={state:f.producer,capture:(snapshot:import("../src/window").WindowAcceptedSnapshot)=>{const records=f.handle.handoff.value;trace.push(`capture:${records.length}`);return captureConversationInput(snapshot,{scope:f.handle.threadId,threadId:f.handle.threadId,records,work:captureCurrentWork(f.handle.threadId,f.handle.work.value.value),current:()=>{const current=w.isCurrentThread(f.handle)&&f.handle.handoff.peek()===records;if(!armed)return current;if(phase===0){phase=1;trace.push("capture-current");return current;}if(phase===1){phase=2;leaseChecks++;trace.push(`lease-current:${records.length}`);return current;}return current;}})}};
   w=createBoundWindow({read:(args,cancel)=>f.handle.readWindow(args,cancel)},f.handle,input);await f.settle();
-  const beforeRef=w.acceptedView.peek(),beforeRecord=f.handle.handoff.value.find(record=>record.attemptId===a)!;const beforeEpoch=f.handle.liveEpoch(),beforeCapability=w.acceptedView.currentCapability;expect(beforeRef.rows.length).toBeGreaterThan(0);expect(beforeRecord.text).toBe(a);armed=true;f.producer.emitLive(a,1,`${a}-delta`);
-  expect(w.refreshConversationInput(beforeRef)).toBe(false);expect(phase).toBe(2);expect(leaseChecks).toBe(1);expect(w.acceptedView.peek()).toBe(beforeRef);expect(w.acceptedView.isCurrent(beforeRef)).toBe(true);const changed=f.handle.handoff.value.find(record=>record.attemptId===a)!;expect(changed).not.toBe(beforeRecord);expect(changed.text.length).toBeGreaterThan(beforeRecord.text.length);expect(f.handle.liveEpoch()).toBe(beforeEpoch);expect(w.acceptedView.currentCapability).toBe(beforeCapability);
-  expect(w.refreshConversationInput(w.acceptedView.peek())).toBe(true);expect(w.acceptedView.peek()).not.toBe(beforeRef);expect(f.handle.liveEpoch()).toBe(beforeEpoch);expect(w.acceptedView.currentCapability).toBe(beforeCapability);
+  const beforeRef=w.acceptedView.peek(),beforeRecords=f.handle.handoff.value,beforeRecord=beforeRecords.find(record=>record.attemptId===a)!;const beforeEpoch=f.handle.liveEpoch(),beforeCapability=w.acceptedView.currentCapability;expect(beforeRef.rows.length).toBeGreaterThan(0);expect(beforeRecords.length).toBeGreaterThan(0);expect(beforeRecord.text).toBe(a);armed=true;f.producer.emitLive(a,Array.from(beforeRecord.text).length,`-delta`);trace.push("delta-event");
+  const committed=w.refreshConversationInput(beforeRef);trace.push(`commit:${committed}`);expect(committed).toBe(true);expect(phase).toBe(2);expect(leaseChecks).toBe(1);const duringRef=w.acceptedView.peek(),duringRecords=f.handle.handoff.value;expect(duringRef).not.toBe(beforeRef);expect(w.acceptedView.isCurrent(beforeRef)).toBe(false);expect(f.handle.liveEpoch()).toBe(beforeEpoch);expect(w.acceptedView.currentCapability).toBe(beforeCapability);
+  await flush();const afterRecords=f.handle.handoff.value,afterRecord=afterRecords.find(record=>record.attemptId===a)!;trace.push(`after-batch:${afterRecords.length}`);expect(afterRecord.text).toContain(`${a}-delta`.slice(0,3));expect(afterRecords).not.toBe(beforeRecords);expect(duringRecords).toBe(afterRecords);expect(trace).toContain("delta-event");
+  expect(w.refreshConversationInput(duringRef)).toBe(true);expect(w.acceptedView.peek().projection?.items.some(item=>"domain" in item.source&&item.source.attemptId===a)).toBe(true);expect(w.acceptedView.isCurrent(duringRef)).toBe(true);expect(f.handle.liveEpoch()).toBe(beforeEpoch);expect(w.acceptedView.currentCapability).toBe(beforeCapability);
  } finally { w?.dispose();f.data.stop(); }
 });
 
@@ -144,7 +145,7 @@ it("collapses a saved tool association without leaving a matching live preview",
   f.producer.advance(attempt);await flush();f.w.changed();await f.settle();const beforeRef=f.w.acceptedView.peek(),beforeRecord=f.handle.handoff.value.find(record=>record.attemptId===attempt)!;expect(beforeRecord).toBeDefined();
   f.owner.append(1);
   f.owner.decorate=(i,item)=>i===0?{...item,kind:"assistant_response",items:[{kind:"tool_call",item_identity:"tool",execution_ids:["shared"]}]}:i===3?{...item,kind:"assistant_response",provenance:{attempt_id:attempt},items:[{kind:"tool_call",item_identity:"tool",execution_ids:["shared"]}]}:item;
-  f.w.changed();await f.settle();
+  f.w.changed();await f.settle(()=>f.w.acceptedView.peek().revision===f.owner.revision&&f.w.acceptedView.peek().rows.some(row=>row.node_id===f.owner.nodeId(3)));
   const entries=f.w.acceptedView.peek().displayPlan?.entries ?? [];
   expect(entries.some(entry=>"domain" in entry.item.source&&entry.item.source.attemptId===attempt)).toBe(false);
   expect(entries.filter(entry=>entry.item.source.nodeId===f.owner.nodeId(0)&&entry.item.source.kind==="tool")).toHaveLength(1);expect(f.w.acceptedView.peek()).not.toBe(beforeRef);
