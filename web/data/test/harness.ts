@@ -8,6 +8,7 @@ export class FakeTransport implements Transport {
   handlers: TransportHandlers | undefined;
   isOpen = false;
   sent: ClientFrame[] = [];
+  onCall?: (call: CallFrame) => void;
 
   start(handlers: TransportHandlers): void {
     this.handlers = handlers;
@@ -15,6 +16,7 @@ export class FakeTransport implements Transport {
   send(frame: ClientFrame): boolean {
     if (!this.isOpen) return false;
     this.sent.push(frame);
+    if (frame.t === "call") this.onCall?.(frame);
     return true;
   }
   stop(): void {

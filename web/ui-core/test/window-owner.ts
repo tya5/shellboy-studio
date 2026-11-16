@@ -142,21 +142,35 @@ export async function rig(total: number, options: { capability?: boolean; decora
   const w = windowRef;
   const calls = () => t.calls("history.window");
   const settle = async (done?: () => boolean) => {
-    for (let i = 0; i < 20; i++) {
-      await flush();
-      const todo = t.calls().filter((c) => !owner.answered.has(c.id));
-      for (const c of todo) {
-        owner.answered.add(c.id);
-        const r = owner.answer(c);
-        if (r.ok) t.ok(c.id, r.result);
-        else t.ownerError(c.id, r.code, r.code, r.details);
+    if (!done) {
+      for (let i = 0; i < 20; i++) {
+        await flush();
+        const todo = t.calls().filter((c) => !owner.answered.has(c.id));
+        if (todo.length === 0) return;
+        for (const c of todo) {
+          owner.answered.add(c.id);
+          const r = owner.answer(c);
+          if (r.ok) t.ok(c.id, r.result);
+          else t.ownerError(c.id, r.code, r.code, r.details);
+        }
       }
-      await flush();
-      const pending = t.calls().filter((c) => !owner.answered.has(c.id));
-      if (done ? done() : pending.length === 0) return;
-      if (done && pending.length === 0) throw new Error("fixture settle incomplete: no owned RPC pending before completion predicate");
+      throw new Error("fixture settle incomplete: owned RPC completion bound exhausted");
     }
-    throw new Error("fixture settle incomplete: owned RPC completion bound exhausted");
+    let finish!: () => void, fail!: (error: Error) => void;
+    const completion = new Promise<void>((resolve, reject) => { finish = resolve; fail = reject; });
+    const stop = setTimeout(() => fail(new Error("fixture settle incomplete: accepted completion deadline")), 1000);
+    const answer = (call: CallFrame) => {
+      if (owner.answered.has(call.id)) return;
+      owner.answered.add(call.id);
+      const r = owner.answer(call);
+      if (r.ok) t.ok(call.id, r.result);
+      else { t.ownerError(call.id, r.code, r.code, r.details); fail(new Error(`fixture owner error: ${r.code}`)); }
+    };
+    const unsubscribe = w.acceptedView.subscribe(() => { if (done()) finish(); });
+    t.onCall = answer;
+    for (const call of t.calls().filter(c => !owner.answered.has(c.id))) answer(call);
+    if (done()) finish();
+    try { await completion; } finally { clearTimeout(stop); unsubscribe(); t.onCall = undefined; }
   };
   return {
     t, owner, handle, data, w, producer,
