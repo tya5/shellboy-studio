@@ -405,15 +405,25 @@ export class ConversationWindow {
   /** Reconcile saved assistant provenance with live records in one accepted publication. */
   reconcileSavedAssistantRows(records: readonly HandoffRecord[], scope: string): boolean {
     const current = this.acceptedView.peek(), capability = this.acceptedView.currentCapability;
-    if (this.disposed || current.pending || !this.acceptedView.isCurrent(current)) return false;
-    const savedAttempts = new Set<string>(current.rows.flatMap(row => row.provenance?.attempt_id ? [row.provenance.attempt_id] : []));
-    const liveAttempts = new Set(records.filter(record => record.attemptId && scope === record.terminalPersisted?.scope).map(record => record.attemptId));
-    const owners = (current.assistantOwnership ?? []).filter(owner =>
-      owner.mode !== 'canonical' || (savedAttempts.has(owner.attemptId) && liveAttempts.has(owner.attemptId)));
-    if (owners.length === (current.assistantOwnership ?? []).length) return false;
-    const candidate = { ...current, assistantOwnership: owners };
-    const input = this.captureConversationInput(candidate);
-    const staged = this.prepareCaptured({ ...candidate, generation: this.nextAcceptedGeneration() }, capability, input, 'bump');
+    if (this.disposed || current.pending || current.revision === undefined || !this.acceptedView.isCurrent(current)) return false;
+    const revision = current.revision;
+    const savedNodes = current.rows.filter(row => row.kind === 'assistant_response' && row.provenance?.attempt_id
+      && Array.isArray(row.items) && Number.isSafeInteger(row.selection?.ordinal));
+    const generated = records.flatMap(record => {
+      const turnId = record.proof?.turnId ?? record.readyAttempt?.turnId;
+      if (!turnId) return [];
+      const nodes = savedNodes.filter(node => node.provenance?.attempt_id === record.attemptId);
+      if (nodes.some(node => node.selection?.ordinal === undefined)) return [];
+      const refs = nodes.map(node => ({ nodeId: node.node_id!, ordinal: node.selection!.ordinal!, kind: 'assistant_response' }));
+      if (!refs.length) return [];
+      const owner = assistantOwnership({scope, attemptId: record.attemptId, turnId, presentationContainer: record.presentationContainer, refs}, record.key, current.rows, revision);
+      return owner?.mode === 'canonical' ? [owner] : [];
+    });
+    const owners = [...(current.assistantOwnership ?? []).filter(owner => owner.mode !== 'canonical'), ...generated];
+    const previous = current.assistantOwnership ?? [];
+    if (owners.length === previous.length && owners.every((owner, index) => assistantOwnershipEqual(owner, previous[index]!))) return false;
+    const input = this.captureConversationInput({ ...current, assistantOwnership: owners });
+    const staged = this.prepareCaptured({ ...current, generation: this.nextAcceptedGeneration(), assistantOwnership: owners }, capability, input, 'bump');
     return this.acceptedView.isCurrent(current) && capability === this.acceptedView.currentCapability && this.commitAccepted(staged);
   }
 
