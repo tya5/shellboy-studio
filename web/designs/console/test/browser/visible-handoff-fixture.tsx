@@ -20,7 +20,7 @@ const handoffContract=()=>typedHandoff({revision:readyFixture.revision,total:rea
 const {model,t,db}=await fixtureModel({capabilities:['live.text',...(windowed?['history.window']:[])],configure(db){
   const base=db.answer.bind(db);
   db.answer=c=>c.command==='status'?{ok:true,result:{items:state.ready?[readyFixture.attempt]:[]}}
-    :c.command==='history.window'?((contract&&windowed) ? (()=>{const out=readyFixture.read(c.args as {node_id?:string;ordinal?:number;before?:number;after?:number});return {ok:true,result:out};})() : {ok:true,result:{thread_id:'lead',revision:'r',total:301,items:[{node_id:'canonical-node',kind:'assistant_response',selection:{ordinal:300},excerpt:''}]}})
+    :c.command==='history.window'?((contract&&windowed) ? (()=>{const out=readyFixture.read(c.args as {node_id?:string;ordinal?:number;before?:number;after?:number});return {ok:true,result:out};})() : windowed ? (()=>{const out=windowOwner.answer(c);return out.ok?{ok:true,result:{...out.result as object,thread_id:'lead'}}:out;})() : {ok:true,result:{thread_id:'lead',revision:'r',total:301,items:[{node_id:'canonical-node',kind:'assistant_response',selection:{ordinal:300},excerpt:''}]}})
     :c.command==='history.get'?state.error?{ok:false,code:'not_found',message:'Synthetic readback error'}:{ok:true,result:{node_id:state.blocked&&scenario==='wrong-node'?'unrelated-node':'canonical-node',kind:'assistant_response',text,...(state.blocked&&scenario==='partial'?{next_cursor:'synthetic-next-page'}:{})}}
     :base(c);
 }});
