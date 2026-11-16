@@ -1,6 +1,7 @@
 // An owner double for `history.window`, behind the data layer's fake transport.
 import { connected, FakeTransport, flush, type CallFrame } from "../../data/test/harness";
 import { ShellboyData, type ThreadHandle } from "../../data/src";
+import type { Schedule } from "../../data/src/live";
 import { ConversationWindow, type WindowOptions } from "../src/window";
 import { captureConversationInput, captureCurrentWork } from "../src/conversation-input";
 
@@ -101,9 +102,9 @@ export interface Rig {
   since(mark: number): CallFrame[];
 }
 
-export async function rig(total: number, options: { capability?: boolean; decorate?: (i: number, item: Record<string, unknown>) => Record<string, unknown> } = {}): Promise<Rig> {
+export async function rig(total: number, options: { capability?: boolean; decorate?: (i: number, item: Record<string, unknown>) => Record<string, unknown>; schedule?: Schedule } = {}): Promise<Rig> {
   const t = new FakeTransport();
-  const data = new ShellboyData({ transport: t, newId: () => "id" });
+  const data = new ShellboyData({ transport: t, newId: () => "id", schedule: options.schedule });
   data.start();
   t.open();
   if (connected.state !== "connected") throw new Error("fixture");
