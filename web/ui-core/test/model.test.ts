@@ -144,6 +144,20 @@ describe("AppModel over the fake transport", () => {
     model.dispose();
   });
 
+  it("rejects a held model-picker save after owner/session ABA without dispatch", async () => {
+    const { model, t, db } = await fixtureModel({ capabilities: ["thread.settings"] });
+    try {
+      model.openModelPicker();
+      await settle(t, db);
+      model.modelPicker.value = { ...model.modelPicker.value, model: "aba-model", effort: "high" };
+      const owner = model.data.owner.peek();
+      if (owner.state === "connected") t.push({ t: "owner", event: "connected", owner: { ...owner, info: { ...owner.info, instance_id: "picker-aba-owner" } } });
+      await flush();
+      await model.saveThreadModel();
+      expect(t.calls("thread.set")).toHaveLength(0);
+    } finally { model.dispose(); }
+  });
+
   it("sends changed thread summary settings and the instruction reference only", async () => {
     const { model, t, db } = await fixtureModel({ capabilities: ["thread.settings"] });
     model.openModelPicker();

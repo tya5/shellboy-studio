@@ -97,13 +97,25 @@ Lifecycle, scope, multiplicity, scroll, cancellation, ABA, and own-send cases
 remain additional registered negatives and are not replaced by these four cases.
 
 These are minimum controls, not a replacement for the existing lifecycle,
-scope, multiplicity, scroll, cancellation, and ABA suites. Work-source and
-picker/session ABA remain covered by the registered `branch-compare.test.ts`
-controls (`owner ABA during initial publish does not revive old invocation` and
-the inventory B/ABA cases), plus the console smoke tests `with the capability:
-picker, preview, then Move; a refusal shows the owner's words` and the model
-picker warning case. Those controls validate public owner/session rebinding;
-this document does not claim a universal Work-source lifetime guarantee.
+scope, multiplicity, scroll, cancellation, and ABA suites. The actual retained
+public controls are:
+
+- Work-source normalization and substitution rejection in
+  `web/ui-core/test/conversation-items.test.ts` (`issues supported live activity
+  CASE` and the cloned-source `scopeIssuedWorkFacts` rejection), which verifies
+  the captured source object rather than a generic owner ABA model.
+- Model picker/session owner ABA in `web/ui-core/test/model.test.ts` (`rejects a
+  held model-picker save after owner/session ABA without dispatch`), alongside
+  the existing `lists models and sends only this Thread's model settings` and
+  `does not write thread settings without the capability` controls.
+- Published semantic currentness remains separately covered by
+  `accepted-window-live-retirement.test.ts`, including `foreign current handle
+  does not retire the old live identity` and `semantic callback rebind rejection
+  preserves accepted ref/rows/live identity`.
+
+These mappings are component-specific; BranchCompare and Thread REPARENT smoke
+controls are not used as evidence for Work-source substitution or picker-save
+ownership.
 
 ## Browser Witness
 
