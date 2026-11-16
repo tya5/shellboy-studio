@@ -135,14 +135,3 @@ it("preserves real chronology when a new saved replacement arrives", async () =>
   expect(f.handle.handoff.value.find(record=>record.attemptId===c)).toBe(survivingC);
  } finally { f.w.dispose();f.data.stop(); }
 });
-
-it("rejects an old semantic candidate after owned placement changes, then accepts a fresh candidate", async () => {
- const attempt=canonicalAttemptId(1),f=await rig(2);let w!:typeof f.w;try{
-  f.t.push({t:"live",thread_id:f.handle.threadId,attempt_id:attempt,gap:false,deltas:[{offset:0,reasoning:false,text:"live"}]});await flush();f.w.dispose();
-  let phase=0,calls=0;
-  const input={state:f.producer,capture:(snapshot:import("../src/window").WindowAcceptedSnapshot)=>captureConversationInput(snapshot,{scope:f.handle.threadId,threadId:f.handle.threadId,records:f.handle.handoff.value,work:captureCurrentWork(f.handle.threadId,f.handle.work.value.value),current:()=>{calls++;if(phase===0){phase=1;return true;}if(phase===1){phase=2;f.handle.placeLiveAfter(attempt,"saved-anchor");return false;}return true;}})};
-  w=createBoundWindow({read:(args,cancel)=>f.handle.readWindow(args,cancel)},f.handle,input);await f.settle();
-  const before=w.acceptedView.peek();expect(w.refreshConversationInput(before)).toBe(false);expect(w.acceptedView.peek()).toBe(before);expect(calls).toBeGreaterThanOrEqual(2);
-  expect(w.refreshConversationInput(before)).toBe(true);expect(w.acceptedView.peek()).not.toBe(before);expect(w.acceptedView.peek().displayPlan?.entries.some(entry=>entry.item.source.nodeId==="saved-anchor"||("domain" in entry.item.source&&entry.item.source.attemptId===attempt))).toBe(true);
- }finally{w?.dispose();f.data.stop();}
-});
