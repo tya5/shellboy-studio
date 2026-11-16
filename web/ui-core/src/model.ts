@@ -677,7 +677,6 @@ export class AppModel {
     reader.setAttemptPresentations(h.attemptPresentations.value);
     const records = h.handoff.value;
     reader.acceptedView.current;
-    batch(() => reader.reconcileSavedAssistantRows(records, h.handoffScope(), id => h.releaseHandoff(id)));
     for (const record of records) if (record.status === "ready" && !record.transferred)
       batch(() => h.transferHandoff(record.attemptId, (attachment, release) => reader.acceptHandoff(attachment, h.handoffScope(), release)));
     if (reader.isTerminalHandleCurrent(h)) {

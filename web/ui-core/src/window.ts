@@ -402,37 +402,6 @@ export class ConversationWindow {
     return outcome;
   }
 
-  /** Reconcile saved assistant provenance with live records in one accepted publication. */
-  reconcileSavedAssistantRows(records: readonly HandoffRecord[], scope: string, release: (attemptId: string) => void): boolean {
-    const current = this.acceptedView.peek(), capability = this.acceptedView.currentCapability;
-    const binding = this.terminalBinding;
-    if (this.disposed || current.pending || current.revision === undefined || !this.acceptedView.isCurrent(current) || !binding || binding.scope !== scope || !this.isTerminalHandleCurrent(binding.handle)) return false;
-    const revision = current.revision;
-    const savedNodes = current.rows.filter(row => row.kind === 'assistant_response' && row.provenance?.attempt_id
-      && Array.isArray(row.items) && Number.isSafeInteger(row.selection?.ordinal));
-    const generated = records.flatMap(record => {
-      const turnId = record.proof?.turnId ?? record.readyAttempt?.turnId;
-      if (!turnId) return [];
-      const nodes = savedNodes.filter(node => node.provenance?.attempt_id === record.attemptId);
-      if (nodes.some(node => node.selection?.ordinal === undefined)) return [];
-      const refs = nodes.map(node => ({ nodeId: node.node_id!, ordinal: node.selection!.ordinal!, kind: 'assistant_response' }));
-      if (!refs.length) return [];
-      const owner = assistantOwnership({scope, attemptId: record.attemptId, turnId, presentationContainer: record.presentationContainer, refs}, record.key, current.rows, revision);
-      return owner?.mode === 'canonical' ? [owner] : [];
-    });
-    const owners = [...(current.assistantOwnership ?? []).filter(owner => owner.mode !== 'canonical'), ...generated];
-    const previous = current.assistantOwnership ?? [];
-    if (owners.length === previous.length && owners.every((owner, index) => assistantOwnershipEqual(owner, previous[index]!))) {
-      for (const record of records) if (savedNodes.some(node => node.provenance?.attempt_id === record.attemptId)) release(record.attemptId);
-      return false;
-    }
-    const input = this.captureConversationInput({ ...current, assistantOwnership: owners });
-    const staged = this.prepareCaptured({ ...current, generation: this.nextAcceptedGeneration(), assistantOwnership: owners }, capability, input, 'bump');
-    const committed = this.acceptedView.isCurrent(current) && capability === this.acceptedView.currentCapability && this.commitAccepted(staged);
-    if (committed && release) for (const record of records) if (savedNodes.some(node => node.provenance?.attempt_id === record.attemptId)) release(record.attemptId);
-    return committed;
-  }
-
   prepareBoundReadyRead(record: HandoffRecord): OwnedTerminalReadLease | TicketOutcome {
     const binding = this.terminalBinding, proof = record.readyAttempt;
     const ref = this.acceptedView.peek(), cap = this.acceptedView.currentCapability;
@@ -1124,9 +1093,17 @@ export class ConversationWindow {
   }
 
   private commitAccepted(publication: AcceptedPublication<WindowAcceptedSnapshot, import("./conversation-input").ConversationIdentity>): boolean {
-    const published=this.acceptedView.publish(publication),ref=this.acceptedView.peek();
-    if(published&&ref===publication.snapshot&&publication.inputIdentity)this.acceptedInput={ref,identity:publication.inputIdentity};
-    if(!published)this.diagnostic.value=Object.freeze({reason:'publication-rejected',generation:ref.generation,revision:ref.revision,ownerEpoch:this.epoch,at:Date.now()});
+    let published=false;
+    batch(() => {
+      published=this.acceptedView.publish(publication);
+      const ref=this.acceptedView.peek(), binding=this.terminalBinding;
+      if(published&&ref===publication.snapshot&&publication.inputIdentity)this.acceptedInput={ref,identity:publication.inputIdentity};
+      if(published&&binding&&binding.scope===publication.snapshot.displayPlan?.scope&&this.isTerminalHandleCurrent(binding.handle)) {
+        const attempts=new Set(publication.snapshot.rows.filter(row=>row.kind==='assistant_response'&&row.provenance?.attempt_id).map(row=>row.provenance!.attempt_id!));
+        for(const record of binding.handle.handoff.peek()) if(attempts.has(record.attemptId)) binding.handle.releaseHandoff(record.attemptId);
+      }
+      if(!published)this.diagnostic.value=Object.freeze({reason:'publication-rejected',generation:ref.generation,revision:ref.revision,ownerEpoch:this.epoch,at:Date.now()});
+    });
     return published;
   }
 
