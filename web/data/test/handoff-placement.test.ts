@@ -13,6 +13,7 @@ it("publishes one immutable placement transition and preserves unrelated record 
   handoff.apply(frame("C"));
   await flush();
   const before = handoff.records.peek(), recordA = before[0]!, recordB = before[1]!, recordC = before[2]!;
+  const beforePlacementNotifications = seen.length;
   handoff.placeAfter("A", "saved-a");
   await flush();
   const placed = handoff.records.peek();
@@ -23,6 +24,7 @@ it("publishes one immutable placement transition and preserves unrelated record 
   expect(Object.isFrozen(placed[0]?.placement)).toBe(true);
   expect(placed[1]).toBe(recordB);
   expect(placed[2]).toBe(recordC);
+  expect(seen.length).toBe(beforePlacementNotifications + 1);
   const afterFirstPlacement = seen.length;
   handoff.placeAfter("A", "ignored-second-placement");
   await flush();
