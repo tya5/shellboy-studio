@@ -1,4 +1,3 @@
-import type { TerminalPresence } from "./terminal-presence";
 import type { HandoffRecord } from "../../data/src/handoff";
 import type { HistoryItem, HistorySavedItem, HistoryItemsUnavailableReason, WorkItem, ToolDescriptor, ToolDetailAvailability, NotificationDescriptor } from "../../data/src/protocol";
 /** Internal normalized contract only. Not a Core wire type or a body adapter. */
@@ -56,7 +55,6 @@ export interface WorkDisplayMetadata {
   readonly createdAt?: string;
   readonly publicState?: string;
   readonly shells: readonly Readonly<{ execution_id: string; description?: string; command_excerpt?: string; state?: string; exit_code?: number | null }>[];
-  readonly receipt?: TerminalPresence;
 }
 function associatedDisplayShells(node: HistoryItem, ids: readonly string[]): WorkDisplayMetadata["shells"] {
   if (ids.length > 64 || (node.executions?.length ?? 0) > 64) return Object.freeze([]);
@@ -72,27 +70,19 @@ function issueDisplayMetadata(source:NormalizedSavedItem,facts:WorkDisplayMetada
 function preserveDisplayMetadata(from:NormalizedSavedItem,to:NormalizedSavedItem):void{
  const facts=displayMetadata.get(from),identity=displaySourceIdentity.get(from);if(facts&&identity){displayMetadata.set(to,facts);displaySourceIdentity.set(to,identity);}
 }
-export function retainUnretiredLiveFacts(snapshot: { readonly terminalPersistedAttempts?: readonly { readonly scope: string; readonly attemptId: string }[]; readonly retiredAttempts?: readonly { readonly scope: string; readonly attemptId: string; readonly turnId: string; readonly revision: number }[]; readonly revision?: number }, scope: string, current: boolean, facts: readonly NormalizedSavedItem[]): readonly NormalizedSavedItem[] {
-  if (!current) return facts;
-  return facts.filter(fact => !("domain" in fact && fact.attemptId && fact.turnId && snapshot.retiredAttempts?.some(retired => retired.scope === scope && retired.revision === snapshot.revision && retired.attemptId === fact.attemptId && retired.turnId === fact.turnId)));
+export function retainUnretiredLiveFacts(_snapshot: unknown, _scope: string, _current: boolean, facts: readonly NormalizedSavedItem[]): readonly NormalizedSavedItem[] {
+  return facts;
 }
 
-/** Project only facts carried by the selected Thread's exact handoff records. */
+/** Project the current live preview directly; saved rows remain the sole persisted body owner. */
 export function projectOwnedHandoffFacts(scope: string, records: readonly HandoffRecord[]): readonly NormalizedSavedItem[] {
-  return normalizeConversationFacts(records.map(record => {
-    const proof = record.proof;
-    const ready = record.status === "ready" && proof !== undefined && record.nodeId !== undefined && record.readyAttempt !== undefined
-      && record.readyAttempt.scope === scope && record.readyAttempt.attemptId === record.attemptId
-      && record.readyAttempt.turnId === proof.turnId && record.readyAttempt.revision === proof.revision
-      && record.readyAttempt.refs.some(ref => ref.nodeId === record.nodeId);
-    // A lookup failure changes retry chrome, not the authority of the held original.
-    const previewAuthorized = record.bodyAuthority === "preview"
-      && (record.status === "streaming" || record.status === "confirming" || record.status === "failed");
-    const streamingPresence = record.status === "streaming" && record.bodyAuthority === "preview";
-    return (record.text || streamingPresence) && record.transferred !== true && (previewAuthorized || (record.status === "ready" && ready))
-      ? { domain: "live" as const, namespace: "handoff" as const, scope, recordId: record.key, attemptId: record.attemptId, kind: "text" as const, text: record.text, presentationContainer: record.presentationContainer, ...(record.readyAttempt ? { turnId: record.readyAttempt.turnId } : {}) }
-      : { domain: "live" as const, namespace: "handoff" as const, scope, recordId: record.key, attemptId: record.attemptId, kind: "unknown" as const };
-  }));
+  const sources = records.flatMap(record => record.text ? [{
+    domain: "live" as const, namespace: "handoff" as const, scope, recordId: record.key,
+    attemptId: record.attemptId, kind: "text" as const, text: record.text,
+  }] : []);
+  const normalized = normalizeConversationFacts(sources);
+  for (const source of normalized) issueDisplayMetadata(source, Object.freeze({ scopeKey: "[]", nodeKind: "assistant_response", shells: Object.freeze([]) }));
+  return normalized;
 }
 
 /** Scope only issuer-owned Work facts; saved/body facts must remain untouched. */
@@ -103,9 +93,7 @@ export function scopeIssuedWorkFacts(items: readonly NormalizedSavedItem[], keyS
   for (const { source, facts } of captured) {
     if (!facts || !displaySourceIdentity.has(source) || facts.scopeKey !== JSON.stringify(source.keyScope ?? [])) return undefined;
     if (source.keyScope?.length) { if (facts.scopeKey !== scopeKey) return undefined; }
-    else if (!("domain" in source) || (source.domain !== "live" && source.domain !== "receipt")) return undefined;
-    if (facts.receipt && (!("domain" in source) || source.domain !== "receipt" || source.terminalPresence !== facts.receipt
-      || source.scope !== facts.receipt.scope || source.attemptId !== facts.receipt.attemptId)) return undefined;
+    else if (!("domain" in source) || source.domain !== "live") return undefined;
   }
   const result = captured.map(({ source, facts }) => {
     if (source.keyScope?.length) return source;
@@ -121,8 +109,6 @@ export function workDisplayMetadata(item: ProjectedSavedItem): WorkDisplayMetada
   const facts = displayMetadata.get(item.source);
   if (item.classification !== canonicalItemCase(item.source)) return undefined;
   if (!facts || !displaySourceIdentity.has(item.source) || facts.scopeKey !== JSON.stringify(item.source.keyScope ?? [])) return undefined;
-  if (facts.receipt && (!("domain" in item.source) || item.source.domain !== "receipt"
-    || item.source.terminalPresence !== facts.receipt || item.source.scope !== facts.receipt.scope || item.source.attemptId !== facts.receipt.attemptId)) return undefined;
   return facts;
 }
 
@@ -141,10 +127,8 @@ export interface SavedItemIdentity {
 
 export interface LiveWorkIdentity {
   readonly domain: "live" | "receipt";
-  readonly terminalPresence?: TerminalPresence;
   readonly namespace?: "work" | "handoff";
   /** Owned answer host, minted by the handoff ledger and never synthesized here. */
-  readonly presentationContainer?: string;
   readonly classificationCase?: CanonicalCaseId;
   readonly keyScope?: readonly string[];
   readonly scope: string;
@@ -280,7 +264,7 @@ function projectSavedItemsCore(rawInput: readonly NormalizedSavedItem[], decoded
       continue;
     }
     if (proven) selectedTools.set(key, items.length);
-    const identity = "domain" in source ? { domain: source.domain, ...(source.presentationContainer ? { presentationContainer: source.presentationContainer } : {}), ...(source.terminalPresence ? { terminalPresence: source.terminalPresence } : {}), namespace: source.namespace ?? "work", scope: source.scope, recordId: source.recordId, ...(source.attemptId !== undefined ? { attemptId: source.attemptId } : {}), ...(source.turnId !== undefined ? { turnId: source.turnId } : {}) } : { ...(source.identityDomain ? { identityDomain: source.identityDomain } : {}), nodeId: source.nodeId, itemIdentity: source.itemIdentity, ...(source.revision !== undefined ? { revision: source.revision } : {}), ...(source.windowRevision !== undefined ? { windowRevision: source.windowRevision } : {}) };
+    const identity = "domain" in source ? { domain: source.domain, namespace: source.namespace ?? "work", scope: source.scope, recordId: source.recordId, ...(source.attemptId !== undefined ? { attemptId: source.attemptId } : {}), ...(source.turnId !== undefined ? { turnId: source.turnId } : {}) } : { ...(source.identityDomain ? { identityDomain: source.identityDomain } : {}), nodeId: source.nodeId, itemIdentity: source.itemIdentity, ...(source.revision !== undefined ? { revision: source.revision } : {}), ...(source.windowRevision !== undefined ? { windowRevision: source.windowRevision } : {}) };
     const scopedIdentity = { ...identity, classificationCase: canonicalItemCase(source).id, ...(source.keyScope ? { keyScope: captureScope(source.keyScope) } : {}) };
     let copy: NormalizedSavedItem;
     if (source.kind === "tool") {
@@ -448,7 +432,7 @@ function projectHistoryNodes(input: { readonly keyScope?: readonly string[]; rea
     }
   }
   for (const live of input.liveFacts ?? []) {
-    if (!("domain" in live) || (live.domain !== "live" && live.domain !== "receipt")) throw new Error("Legacy liveFacts requires explicit live or receipt domain");
+    if (!("domain" in live) || live.domain !== "live") throw new Error("Live facts require the live domain");
     segment.push(live);
   }
   const projection = projectSavedItemsCore(segment, decodedLegacy);
@@ -464,17 +448,6 @@ export function normalizeLiveWorkFacts(input: { readonly scope: string; readonly
     const activity = item.kind === "run" ? ["live", "stopping"].includes(item.state) : item.kind === "turn" && ["preparing", "running", "waiting"].includes(item.state);
     const value = Object.freeze(item.kind === "shell" && item.execution_id ? { ...identity, kind: "tool" as const, executionIds: Object.freeze([item.execution_id]) } : { ...identity, kind: "record" as const, ...(activity ? { classificationCase: "liveActivity" as const } : {}) });
     issueDisplayMetadata(value, Object.freeze({ scopeKey: "[]", nodeKind: item.kind, publicState: item.state, shells: Object.freeze([]) }));
-    return value;
-  }));
-}
-
-const TERMINAL_PHASE_CASES = { pending: "terminalPending", reading: "terminalReading", settled: "terminalSettled" } as const satisfies Record<TerminalPresence["phase"], CanonicalCaseId>;
-/** Only the same accepted reference's qualified S facts; omission means no extra row. */
-export function normalizeTerminalPresenceFacts(presences: readonly TerminalPresence[]): readonly NormalizedSavedItem[] {
-  return normalizeConversationFacts(presences.map(presence => {
-    if (!presence.scope || !presence.attemptId || presence.receipt.scope !== presence.scope || presence.receipt.attemptId !== presence.attemptId) throw new Error("Mismatched terminal receipt scope");
-    const value = { domain: "receipt" as const, scope: presence.scope, recordId: presence.attemptId, attemptId: presence.attemptId, terminalPresence: presence, kind: "record" as const, classificationCase: TERMINAL_PHASE_CASES[presence.phase] };
-    issueDisplayMetadata(value, Object.freeze({ scopeKey: "[]", shells: Object.freeze([]), receipt: presence }));
     return value;
   }));
 }

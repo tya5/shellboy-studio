@@ -23,7 +23,7 @@ it('retains canonical record identity and explicit Work choice without an empty 
   expect(replaced.querySelector('details,summary')).toBeNull();expect(replaced.closest<HTMLDetailsElement>('[data-work-group]')!.open).toBe(false);
  }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
 });
-it('retains retry chrome for a nontext failed live record and exposes overflow without a duplicate footer',async()=>{
+it('omits retired retry chrome while retaining failed live text and overflow',async()=>{
  const f=await publicConversationFixture({nodes:[]}),host=document.createElement('div');document.body.append(host);
  const base=f.db.answer.bind(f.db);f.db.answer=call=>call.command==='status'?{ok:false,code:'lookup-failed',message:'Synthetic lookup failure'}:base(call);
  try{
@@ -33,9 +33,8 @@ it('retains retry chrome for a nontext failed live record and exposes overflow w
    f.t.push({t:'live_end',thread_id:'lead'});await settle(f.t,f.db);});
   expect(host.querySelector('[data-live-record-chrome="handoff:actual-record"]')?.closest('[data-work-group]')).not.toBeNull();
   expect(host.querySelector('[data-live-overflow]')).not.toBeNull();expect(host.querySelector('[role="status"]')).toBeNull();
-  const before=f.t.calls('status').length;
-  await act(async()=>{host.querySelector<HTMLButtonElement>('[data-live-record-chrome] button')!.click();await settle(f.t,f.db);});
-  expect(f.t.calls('status')).toHaveLength(before+1);
+  expect(host.querySelector('[data-live-record-chrome] button')).toBeNull();
+  expect(host.textContent).toContain(f.model.t.value('convo.handoffLimit'));
  }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
 });
 it('does not synthesize a body-unavailable error for normal tool presence, but retains actual Core reasons',async()=>{

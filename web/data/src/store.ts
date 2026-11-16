@@ -1,8 +1,4 @@
-import {capturePublicResponseScope,responseRefsMatchSelected} from "./public-response-refs";
-import type { DisplayAssociation, DisplayTarget, DisplayObservation } from './handoff';
 import type { HistoryWindowInput } from './history-input';
-import { TerminalReadSlots, type SelectedReadAdmission, type SelectedCanonicalRequest, type OwnedTerminalReadLease, type TicketOutcome } from "./terminal-read";
-import type { AttemptReadyProof, TerminalPersistedProof } from "./handoff";
 import { Handoff, type HandoffRecord } from "./handoff";
 // The view-model: signals holding saved facts re-read through the proxy, never invented.
 // Hints (`changed`, `resync`, `owner`) are triggers only; their payloads carry no data.
@@ -34,30 +30,6 @@ export const MAX_LIST_ROWS = 1000;
 /** The owner reads `history.window` (Shellboy #268). With it, history is read by position and never walked. */
 export const CAPABILITY_HISTORY_WINDOW = "history.window";
 
-type TerminalAttempt = WorkItem & {kind:"attempt"};
-
-// Resolve identity before constructing proof; conflicting candidates never hide
-// behind a filtered exact match.
-function resolveTerminalAttempt(items:readonly WorkItem[],attemptId:string,threadId:string):TerminalAttempt|undefined{
- const candidates=items.filter(item=>item.kind==='attempt'&&item.id===attemptId&&item.thread_id===threadId);
- if(candidates.length!==1) return undefined;
- const item=candidates[0]!;
- return item.attempt_id===attemptId ? item as TerminalAttempt : undefined;
-}
-
-function constructTerminalProof(attempt:TerminalAttempt,scope:string,recordKey:string,presentationContainer:TerminalPersistedProof['presentationContainer']):TerminalPersistedProof|undefined{
- const refs=attempt.response_nodes;
- const terminal=['completed','failed','incomplete','cancelled'].includes(attempt.state);
- if(!terminal||!Array.isArray(refs)||!refs.length||refs.length>64||refs.some(ref=>!ref||typeof ref.node_id!=='string'||!ref.node_id||!Number.isInteger(ref.ordinal)||typeof ref.kind!=='string'||!ref.kind)) return undefined;
- const nodeIds=Object.freeze(refs.map(ref=>ref.node_id));
- const proofRefs=Object.freeze(refs.map(ref=>Object.freeze({nodeId:ref.node_id,ordinal:ref.ordinal,kind:ref.kind})));
- return Object.freeze({scope,attemptId:attempt.id,recordKey, ...(typeof attempt.turn_id==='string'?{turnId:attempt.turn_id}:{}),nodeIds,presentationContainer,refs:proofRefs,terminalState:attempt.state as TerminalPersistedProof['terminalState']});
-}
-
-function receiptMatchesRecord(receipt:TerminalPersistedProof,scope:string,recordKey:string):boolean{
- return receipt.scope===scope&&receipt.recordKey===recordKey;
-}
-
 export interface Resource<T> {
   value: T | undefined;
   loading: boolean;
@@ -88,22 +60,6 @@ export interface Handle {
   close(): void;
 }
 
-declare const threadReadBrand: unique symbol;
-export type ThreadReadQualification = Readonly<{ readonly [threadReadBrand]: true }>;
-
-export interface AttemptPresentation {
-  readonly scope: string;
-  readonly attemptId: string;
-  readonly turnId: string;
-  readonly nodeIds: readonly string[];
-  readonly state: "pending" | "failed";
-}
-export type HandoffRetryState =
-  | { readonly phase: "idle"; readonly reason?: "no-pending"; readonly canRetry: false }
-  | { readonly phase: "reading"; readonly canRetry: false }
-  | { readonly phase: "failed"; readonly reason: "lookup-failed"; readonly canRetry: true }
-  | { readonly phase: "unavailable"; readonly reason: "unresolved"; readonly canRetry: true }
-  | { readonly phase: "unavailable"; readonly reason: "closed" | "paused" | "owner-unavailable" | "receipt_capacity"; readonly canRetry: false };
 /** One borrowed detail observation, qualified by its successful read's owner epoch. */
 export interface ThreadDetailObservation {
   readonly value: ThreadDetails;
@@ -112,18 +68,6 @@ export interface ThreadDetailObservation {
 
 export interface ThreadHandle extends Handle {
   captureDetail(): ThreadDetailObservation | undefined;
-  bindDisplayOwner(capture: () => DisplayTarget | undefined, capturePlacement?:()=>import("./handoff").HandoffPlacement|undefined): () => void;
-  isDisplayOwnershipCurrent(record: HandoffRecord, generation: number): boolean;
-  isReceiptObservationCurrent(record: HandoffRecord, receipt: TerminalPersistedProof): boolean;
-  isTerminalReadCurrent(qualification: ThreadReadQualification, lease: OwnedTerminalReadLease): boolean;
-  requestTerminalRead(qualification: ThreadReadQualification, admission: SelectedReadAdmission, request: SelectedCanonicalRequest): OwnedTerminalReadLease | TicketOutcome;
-  replaceTerminalRead(qualification: ThreadReadQualification, admission: SelectedReadAdmission, request: SelectedCanonicalRequest): OwnedTerminalReadLease | TicketOutcome;
-  transferReadyRead(qualification: ThreadReadQualification, record: HandoffRecord, lease: OwnedTerminalReadLease,
-    accept: (record: HandoffRecord, release: (reason: "return" | "end") => void) => boolean): boolean;
-  readonly handoffRetryState: ReadonlySignal<HandoffRetryState>;
-  readonly attemptPresentations: ReadonlySignal<readonly AttemptPresentation[]>;
-  captureReadQualification(): ThreadReadQualification | undefined;
-  isReadQualificationCurrent(token: ThreadReadQualification): boolean;
   readonly threadId: string;
   readonly detail: ReadonlySignal<Resource<ThreadDetails>>;
   readonly work: ReadonlySignal<Resource<Page<WorkItem>>>;
@@ -131,11 +75,8 @@ export interface ThreadHandle extends Handle {
   readonly preview: ReadonlySignal<Preview>;
   readonly handoff: ReadonlySignal<readonly HandoffRecord[]>;
   readonly handoffOverflow: ReadonlySignal<boolean>;
-  retryHandoff(): Promise<void>;
-  retryPublication(): Promise<void>;
-  handoffScope(): string;
-  transferHandoff(attemptId: string, accept: (record: HandoffRecord, release: (reason: "return" | "end") => void) => boolean): boolean;
-  releaseHandoff(attemptId: string): void;
+  liveEpoch(): number;
+  releaseAcceptedHandoff(attemptId: string): void;
   /** Counts hints for this Thread's history while the owner has `history.window`; the window reader follows it. */
   readonly historyTick: ReadonlySignal<number>;
   /** One positional read. Nothing is sent for a closed or paused Thread. */
@@ -166,15 +107,7 @@ const emptyPaged = <T>(): PagedState<T> => ({
   error: undefined,
 });
 
-type HandoffDemand = "none" | "reconcile" | "canonical";
-function joinHandoffDemand(current: HandoffDemand, next: HandoffDemand): HandoffDemand {
-  if (current === "canonical" || next === "canonical") return "canonical";
-  if (current === "reconcile" || next === "reconcile") return "reconcile";
-  return "none";
-}
-
 class ThreadEntry {
-  displayOwner?: { capture: () => DisplayTarget | undefined; capturePlacement?:()=>import("./handoff").HandoffPlacement|undefined };
   refs = 0;
   closed = false;
   detailOwnerEpoch = -1;
@@ -185,12 +118,6 @@ class ThreadEntry {
   workBodies = new Map<string, string>();
   /** Unsaved model text; its signal is the handle's `preview`. */
   live: Handoff;
-  pendingAttempts = signal<readonly AttemptPresentation[]>([]);
-  handoffRetryState = signal<HandoffRetryState>({ phase: "idle", canRetry: false });
-  terminalReads = new TerminalReadSlots();
-  terminalReceipts = new Map<string, TerminalPersistedProof>();
-  resolving: Promise<void> | undefined;
-  handoffDemand: HandoffDemand = "none";
   historyTick = signal(0);
   /** Cancels this Thread's reads: dropped if queued, a `cancel` frame if sent. Replaced on resume. */
   cancel = new Cancel();
@@ -234,7 +161,6 @@ export class ShellboyData {
   private listRefs = 0;
   private listGen = 0;
   private entries = new Map<string, ThreadEntry>();
-  private handoffRead: { entry: ThreadEntry; done: Promise<void> } | undefined;
   private watchQueued = false;
   private hintWatchers = new Map<string, Set<() => void>>();
   private readonly schedule: Schedule;
@@ -286,7 +212,6 @@ export class ShellboyData {
   }
   stop(): void {
     ++this.readQualificationEpoch;
-    for (const entry of this.entries.values()) { entry.terminalReads.clear(); entry.terminalReceipts.clear(); }
     this.link.stop();
   }
 
@@ -388,38 +313,8 @@ export class ShellboyData {
       e.workRefs += active ? 1 : -1;
       if (active && e.workRefs === 1 && !e.paused && this.canRead()) void this.refresher.request(`work:${threadId}`);
     };
-    // One private slot per handle; tokens contain no authority fields or callbacks.
-    let qualification: { token: ThreadReadQualification; epoch: number; lifetime: number; cancel: Cancel } | undefined;
     const readable = () => !closed && !e.closed && !e.paused && !e.cancel.cancelled && this.entries.get(threadId) === e && this.canRead();
-    const selectedReadValid = (token: ThreadReadQualification, admission: SelectedReadAdmission) => {
-      if (!qualification || token !== qualification.token || !readable()
-        || qualification.epoch !== this.readQualificationEpoch || qualification.lifetime !== e.live.lifetime
-        || qualification.cancel !== e.cancel || !this.capabilities.peek().includes(CAPABILITY_HISTORY_WINDOW)) return false;
-      const scope = this.handoffScope(e);
-      return admission.kind === "ready" ? admission.scope === scope && e.live.isReadyReadCurrent(admission.record, scope)
-        : admission.receipt.scope === scope && JSON.stringify(e.terminalReceipts.get(admission.receipt.attemptId)) === JSON.stringify(admission.receipt);
-    };
     return {
-      handoffRetryState: computed(() => {
-        const state = e.handoffRetryState.value;
-        e.pendingAttempts.value;
-        const locallyClosed = handleClosed.value;
-        const owner = this.ownerSig.value;
-        if (locallyClosed || closed || e.closed) return { phase: "unavailable" as const, reason: "closed" as const, canRetry: false };
-        if (e.paused) return { phase: "unavailable" as const, reason: "paused" as const, canRetry: false };
-        if (owner.state !== "connected") return { phase: "unavailable" as const, reason: "owner-unavailable" as const, canRetry: false };
-        return state;
-      }),
-      attemptPresentations: computed(() => {
-        const held = e.live.records.value;
-        const facts = e.pendingAttempts.value;
-        const scope = this.handoffScope(e);
-        if (closed || e.closed || e.paused || !this.canRead()) return [];
-        return facts.filter(fact => fact.scope === scope).map(fact => {
-          const record = held.find(record => record.attemptId === fact.attemptId);
-          return { ...fact, state: !record || record.status === "failed" ? "failed" as const : fact.state };
-        });
-      }),
       captureDetail: () => {
         const epoch = this.readQualificationEpoch;
         const cancel = e.cancel;
@@ -428,68 +323,15 @@ export class ShellboyData {
         const value = e.detail.peek().value;
         return value && valid() ? { value, isCurrent: valid } : undefined;
       },
-      captureReadQualification: () => {
-        qualification = undefined;
-        if (!readable()) return undefined;
-        const token = Object.freeze({}) as ThreadReadQualification;
-        qualification = { token, epoch: this.readQualificationEpoch, lifetime: e.live.lifetime, cancel: e.cancel };
-        return token;
-      },
-      isReadQualificationCurrent: token => !!qualification && qualification.token === token && readable()
-        && qualification.epoch === this.readQualificationEpoch && qualification.lifetime === e.live.lifetime
-        && qualification.cancel === e.cancel && !qualification.cancel.cancelled,
       threadId,
       detail: e.detail,
       work: e.work,
       setWorkActive,
       preview: e.preview,
-      bindDisplayOwner: (capture,capturePlacement) => {
-        e.live.clearDisplay();
-        const owner = { capture,capturePlacement }; e.displayOwner = owner;
-        return () => { if (e.displayOwner === owner) { e.live.clearDisplay(); e.displayOwner = undefined; } };
-      },
-      isDisplayOwnershipCurrent: (record, generation) => readable() && e.live.isDisplayCurrent(record, generation),
-      isReceiptObservationCurrent: (record, receipt) => readable() && e.live.records.peek().includes(record)
-        && e.terminalReceipts.get(record.attemptId) === receipt && receipt.scope === this.handoffScope(e)
-        && receipt.attemptId === record.attemptId && receipt.recordKey === record.key
-        && receipt.presentationContainer === record.presentationContainer,
       handoff: e.live.records,
       handoffOverflow: e.live.overflow,
-      retryPublication: () => {
-        if (closed || e.closed || e.paused || !this.capabilities.peek().includes(CAPABILITY_HISTORY_WINDOW)) return Promise.resolve();
-        if (e.cancel.cancelled) e.cancel = new Cancel();
-        e.live.resetPublicationPriority();
-        e.live.reconcile();
-        return this.refresher.request(`history:${e.id}`);
-      },
-      isTerminalReadCurrent: (token, lease) => selectedReadValid(token, lease.ticket.admission) && e.terminalReads.isCurrent(lease),
-      requestTerminalRead: (token, admission, request) => {
-        const valid = () => selectedReadValid(token, admission);
-        if (!this.capabilities.peek().includes(CAPABILITY_HISTORY_WINDOW)) return { phase: "unavailable", reason: "unsupported" };
-        if (!valid() || request.args.thread_id !== e.id) return { phase: "unavailable", reason: "cancelled" };
-        const result = e.terminalReads.request(admission.kind === "persisted" ? { kind: "persisted", receipt: e.terminalReceipts.get(admission.receipt.attemptId)! } : admission, request, valid, e.cancel);
-        void this.resolveHandoff(e);
-        return result;
-      },
-      replaceTerminalRead: (token, admission, request) => {
-        const valid = () => selectedReadValid(token, admission);
-        if (!valid() || request.args.thread_id !== e.id) return { phase: "unavailable", reason: "cancelled" };
-        return e.terminalReads.replace(admission.kind === "persisted" ? { kind: "persisted", receipt: e.terminalReceipts.get(admission.receipt.attemptId)! } : admission, request, valid, e.cancel);
-      },
-      transferReadyRead: (token, record, lease, accept) => {
-        const admission = lease.ticket.admission, state = lease.state.peek();
-        if (admission.kind !== "ready" || admission.record !== record || !selectedReadValid(token, admission)
-          || !e.terminalReads.isCurrent(lease) || state.phase !== "settled" || !state.result.ok
-          || state.result.value.thread_id !== e.id || !record.readyAttempt) return false;
-        const value = state.result.value;
-        const proof = { ...record.readyAttempt, revision: value.revision, total: value.total, nodes: value.items };
-        if (!e.live.stageAttempt(record, proof)) return false;
-        return e.live.transferAttempt(record, proof, accept);
-      },
-      handoffScope: () => this.handoffScope(e),
-      transferHandoff: (id, accept) => { if (closed || e.closed || e.paused) return false; return e.live.transfer(id, accept); },
-      releaseHandoff: id => { if (!closed && !e.closed) e.live.releaseAccepted(id); },
-      retryHandoff: () => { if (closed || e.closed || e.paused || !this.canRead()) { e.handoffRetryState.value = { phase: "unavailable", reason: closed || e.closed ? "closed" : e.paused ? "paused" : "owner-unavailable", canRetry: false }; return Promise.resolve(); } if (e.cancel.cancelled) e.cancel = new Cancel(); if (e.resolving) { e.handoffDemand = joinHandoffDemand(e.handoffDemand, "reconcile"); e.live.reconcile(); e.terminalReads.clear(); const active = e.resolving; return active.then(() => e.resolving ?? Promise.resolve()); } e.live.reconcile(); e.terminalReads.clear(); return this.resolveHandoff(e); },
+      liveEpoch: () => e.live.epoch,
+      releaseAcceptedHandoff: attemptId => { if (!closed && !e.closed) e.live.releaseAccepted(attemptId); },
       historyTick: e.historyTick,
       readWindow: async (args, cancel) => {
         if (e.closed || e.paused) return Promise.resolve({ ok: false, error: { kind: "cancelled", message: "thread is not being read" } });
@@ -504,20 +346,18 @@ export class ShellboyData {
         if (!valid()) return { ok: false, error: { kind: "cancelled", message: "window owner changed while materializing" } };
         return { ok: true, value: saved };
       },
-      cancelReads: () => { e.live.invalidate(); e.cancel.cancel(); e.terminalReads.clear(); e.terminalReceipts.clear(); e.pendingAttempts.value = []; },
+      cancelReads: () => { e.live.invalidate(); e.cancel.cancel(); },
       refresh: () => this.requestThread(threadId),
       pause: () => this.pauseEntry(e),
       resume: () => this.resumeEntry(e),
       close: () => {
         if (closed) return;
-        qualification = undefined;
         closed = true;
         handleClosed.value = true;
         // setWorkActive normally rejects a closed handle; release its ownership directly.
         if (watchingWork) { watchingWork = false; e.workRefs--; }
         if (--e.refs === 0) {
           e.closed = true;
-          e.terminalReads.clear(); e.terminalReceipts.clear();
           e.live.discard("connection_closed");
           e.cancel.cancel();
           this.entries.delete(threadId);
@@ -532,9 +372,6 @@ export class ShellboyData {
     if (entry.paused || entry.closed) return;
     entry.paused = true;
     entry.live.invalidate();
-    entry.terminalReads.clear(); entry.terminalReceipts.clear();
-    entry.pendingAttempts.value = [];
-    entry.handoffDemand = "none";
     entry.cancel.cancel();
     this.scheduleWatch();
   }
@@ -611,23 +448,17 @@ export class ShellboyData {
         if (f.list && this.listRefs > 0) void this.refresher.request("list");
         for (const id of f.thread_ids) {
           for (const notify of this.hintWatchers.get(id) ?? []) notify();
-          const entry = this.entries.get(id);
-          if (entry?.live.records.peek().length) {
-            entry.handoffDemand = joinHandoffDemand(entry.handoffDemand, "canonical");
-            void this.resolveHandoff(entry);
-          } else this.refreshHint(id);
+          this.refreshHint(id);
         }
         break;
       case "live":
         { const entry=this.entries.get(f.thread_id);
-          entry?.live.apply(f,entry.displayOwner?.capturePlacement?.()); }
+          entry?.live.apply(f); }
         break;
       case "live_end": {
         const entry = this.entries.get(f.thread_id);
         if (!entry) break;
         entry.live.finish();
-        entry.handoffDemand = joinHandoffDemand(entry.handoffDemand, "reconcile");
-        void this.resolveHandoff(entry);
         void this.requestThread(f.thread_id, false); // history ownership is reconciled separately
         break;
       }
@@ -663,10 +494,7 @@ export class ShellboyData {
     // Revoke every old read before any synchronous clear/discard observer can run.
     ++this.readQualificationEpoch;
     for (const e of this.entries.values()) {
-      e.handoffDemand = "none";
       e.live.invalidate();
-      e.terminalReads.clear(); e.terminalReceipts.clear();
-      e.pendingAttempts.value = [];
       e.live.discard(reason);
     }
   }
@@ -761,187 +589,11 @@ export class ShellboyData {
       : { ...cur, loading: false, stale: cur.value !== undefined, error: out.error };
   }
 
-  private handoffScope(entry: ThreadEntry): string {
-    const owner = this.ownerSig.peek();
-    return JSON.stringify([owner.state === "connected" ? owner.info.instance_id : null, entry.id, entry.live.lifetime]);
-  }
-
   private refreshHint(id: string): void {
     if (this.entries.has(id)) void this.requestThread(id);
   }
 
   /** ADR-C1: one resolver, at most eight starts until explicit retry/open. Hints never refill. */
-  private resolveHandoff(entry: ThreadEntry): Promise<void> {
-    if (entry.resolving) { entry.handoffDemand = joinHandoffDemand(entry.handoffDemand, "reconcile"); return entry.resolving; }
-    if (this.handoffRead) { entry.handoffDemand = joinHandoffDemand(entry.handoffDemand, "reconcile"); return this.handoffRead.done; }
-    const wakeCanonical = entry.handoffDemand === "canonical";
-    entry.handoffDemand = "none";
-    const epoch = entry.live.epoch;
-    const cancelled = entry.cancel;
-    const valid = () => !entry.closed && !entry.paused && epoch === entry.live.epoch && !cancelled.cancelled && cancelled === entry.cancel && this.canRead();
-    const receiptBlocked = new Set<string>();
-    let outcome: "success" | "failed" = "failed", displayRejected = false;
-    // Dirty ownership is consumed when this resolver acquires the global read
-    // admission, not when a display observer publishes a projection.
-    entry.resolving = Promise.resolve().then(async () => {
-      const targets = entry.live.records.peek().filter(r => r.status === "confirming" || r.status === "failed");
-      if (!valid()) return;
-      if (entry.terminalReads.queued) {
-        const dispatchResult = await entry.terminalReads.dispatch((args, cancel) => this.operations.historyWindow(args, { cancel }));
-        outcome = dispatchResult === "success" || dispatchResult === "no-work" ? "success" : "failed"; return;
-      }
-      if (!targets.length) { entry.handoffRetryState.value = { phase: "idle", reason: "no-pending", canRetry: false }; outcome = "success"; return; }
-      entry.handoffRetryState.value = { phase: "reading", canRetry: false };
-      if (!valid()) return;
-      const displayOwner = entry.displayOwner;
-      const leases = targets.flatMap(record => { const lease = entry.live.captureDisplay(record); return lease ? [lease] : []; });
-      const out = await this.operations.handoffAttempts(entry.id, { cancel: cancelled });
-      if (!valid()) return;
-      if (!out.ok) {
-        if (out.error.kind !== "cancelled") {
-          for (const r of targets) { if (!valid()) return; entry.live.fail(r.attemptId); }
-          if (valid()) entry.handoffRetryState.value = { phase: "failed", reason: "lookup-failed", canRetry: true };
-        }
-        return;
-      }
-      const publicScope = capturePublicResponseScope(out.value.items, entry.id);
-      const incompleteScope = !!out.value.next_cursor || !publicScope.complete;
-      const observations: DisplayObservation[] = [];
-      for (const lease of leases) {
-        if (!valid()) return;
-        if (!lease.current()) continue;
-        const record = lease.currentRecord();
-        if (!record) continue;
-        const attempt = resolveTerminalAttempt(out.value.items,record.attemptId,entry.id);
-        if (!attempt) continue;
-        const proof = constructTerminalProof(attempt,this.handoffScope(entry),record.key,record.presentationContainer);
-        if (!proof) continue;
-        const storedReceipt = entry.terminalReceipts.get(record.attemptId);
-        if (storedReceipt && !receiptMatchesRecord(storedReceipt,proof.scope,record.key)) continue;
-        let receipt = storedReceipt;
-        if (!receipt && entry.terminalReceipts.size < 8) { receipt = proof; entry.terminalReceipts.set(record.attemptId, proof); }
-        if (!receipt) receiptBlocked.add(record.attemptId);
-        const qualifiedRefs = publicScope.references.get(attempt);
-        const association: DisplayAssociation | undefined = !incompleteScope && qualifiedRefs
-          && !out.value.items.some(other => other !== attempt && other.response_nodes?.some(ref => attempt.response_nodes?.some(own => own.node_id === ref?.node_id)))
-          ? Object.freeze({ scope: proof.scope, attemptId: record.attemptId,
-              presentationContainer: record.presentationContainer, turnId: attempt.turn_id!, refs: qualifiedRefs }) : undefined;
-        observations.push({ kind: 'readable', lease, ...(association ? { association } : {}), ...(receipt ? { receipt } : {}) });
-      }
-      if (observations.length > 0) {
-        if (!valid()) return;
-        if (displayOwner !== entry.displayOwner) displayRejected = true;
-        else if (displayOwner) { const target = displayOwner.capture(); if (!target || !target.publish(observations)) displayRejected = true; }
-        if (!valid()) return;
-      }
-      const receiptObservations: DisplayObservation[] = [];
-
-      for (const record of targets) {
-        const attempt = resolveTerminalAttempt(out.value.items,record.attemptId,entry.id);
-        if (!attempt || !Array.isArray(attempt.response_nodes)) continue;
-        // Readable originals stay in their existing slot. Receipt and display choice were
-        // published together above; persistence alone no longer discards their bytes.
-        // Association publication is not body coverage. Text-bearing previews must remain
-        // eligible for the typed body read below; only that proof may stage replacement.
-        // A terminal exact attempt with any committed public node reference proves
-        // partial persistence, even when full readback coverage is unavailable.
-        const persisted = attempt.response_nodes;
-        const receiptProof = !record.text ? constructTerminalProof(attempt,this.handoffScope(entry),record.key,record.presentationContainer) : undefined;
-        if (receiptProof) {
-          if (!valid()) return;
-          if (!entry.terminalReceipts.has(record.attemptId) && entry.terminalReceipts.size >= 8) { receiptBlocked.add(record.attemptId); continue; }
-          const storedReceipt = entry.terminalReceipts.get(record.attemptId);
-          if (storedReceipt && !receiptMatchesRecord(storedReceipt,receiptProof.scope,record.key)) continue;
-          const ownedProof = storedReceipt ?? receiptProof;
-          entry.terminalReceipts.set(record.attemptId, ownedProof);
-          const staged = entry.live.stageTerminalPersisted(record, ownedProof);
-          if (staged) receiptObservations.push({ kind: 'receipt', record: staged, receipt: ownedProof });
-          continue;
-        }
-        const refs = publicScope.references.get(attempt);
-        if (incompleteScope || !refs) continue;
-        if (out.value.items.some(other => other !== attempt && other.response_nodes?.some(ref => refs.some(own => own.nodeId === ref?.node_id)))) continue;
-        if (refs.length && typeof attempt.turn_id === "string" && attempt.turn_id) {
-          const fact: AttemptPresentation = Object.freeze({ scope: this.handoffScope(entry), attemptId: record.attemptId,
-            turnId: attempt.turn_id, nodeIds: Object.freeze(refs.map(ref => ref.nodeId)),
-            state: attempt.state === "failed" || attempt.state === "cancelled" || record.status === "failed" ? "failed" : "pending" });
-          if (!valid()) return;
-          entry.pendingAttempts.value = Object.freeze([...entry.pendingAttempts.peek().filter(item => item.attemptId !== record.attemptId && item.scope === fact.scope), fact].slice(-8));
-          if (!valid()) return;
-        }
-        if (!refs.length || typeof attempt.turn_id !== "string" || !attempt.turn_id || !["completed", "failed", "incomplete", "cancelled"].includes(attempt.state)) continue;
-        // Backpressure cannot replace the still-owned readable source with a staged record.
-        if (receiptBlocked.has(record.attemptId)) continue;
-        const nodes = new Map<string, HistoryItem>();
-        let revision: number | undefined;
-        let total: number | undefined;
-        let unavailable = false;
-        // Qualified public refs are unique; one page may satisfy several of them.
-        // Overlapping pages may reuse only the same exact selected identities.
-        for (const ref of refs) {
-          if (nodes.has(ref.nodeId)) continue;
-          if (!valid()) { unavailable = true; break; }
-          const page = await this.operations.historyWindow({ thread_id: entry.id, node_id: ref.nodeId,
-            before: 0, after: 199, excerpt_chars: 0, items: true }, { cancel: cancelled });
-          if (!valid()) return;
-          if (!page.ok) { unavailable = true; if (page.error.kind !== "cancelled") entry.live.fail(record.attemptId); break; }
-          if (page.value.thread_id !== entry.id || revision !== undefined && (revision !== page.value.revision || total !== page.value.total)) { unavailable = true; break; }
-          revision = page.value.revision;
-          total = page.value.total;
-          const present = refs.filter(ref => page.value.items.some(node => node.node_id === ref.nodeId));
-          if (!responseRefsMatchSelected(present, page.value.items)) { unavailable = true; break; }
-          for (const node of page.value.items) {
-            if (!node.node_id) { unavailable = true; break; }
-            const previous = nodes.get(node.node_id);
-            if (previous && (previous.selection?.ordinal !== node.selection?.ordinal || previous.kind !== node.kind)) { unavailable = true; break; }
-            if (!Number.isSafeInteger(node.selection?.ordinal) || !Array.isArray(node.items)
-              || node.items.some(item => item.kind === "unavailable" || item.kind === "text" && !item.text_complete)) { unavailable = true; break; }
-            nodes.set(node.node_id, node);
-          }
-          if (unavailable) break;
-        }
-        if (!valid()) return;
-        if (unavailable || revision === undefined || refs.some(ref => !nodes.has(ref.nodeId))) {
-          continue;
-        }
-        const selected = [...nodes.values()].sort((a,b)=>a.selection!.ordinal!-b.selection!.ordinal!);
-        if (!responseRefsMatchSelected(refs, selected)) continue;
-        const saved = Object.freeze(selected);
-        // A replacement must contain a visible authoritative item, not just bookkeeping.
-        if (!saved.some(node => node.items?.some(item => item.kind === "text" || item.kind === "tool_call" || item.kind === "tool_result"))) continue;
-        const selectedProof:AttemptReadyProof = Object.freeze({ scope: this.handoffScope(entry), attemptId: record.attemptId,
-          turnId: attempt.turn_id!, revision, total: total!, refs, nodes: saved });
-        entry.live.stageAttempt(record, selectedProof);
-      }
-      // Empty originals contribute source-qualified metadata, never a borrowed body lease.
-      // Capture the current selected frame after the exact receipt record exists.
-      if (receiptObservations.length > 0) {
-        if (!valid() || displayOwner !== entry.displayOwner) displayRejected = true;
-        else if (displayOwner) { const target = displayOwner.capture(); if (!target || !target.publish(receiptObservations)) displayRejected = true; }
-      }
-      outcome = displayRejected ? "failed" : "success";
-    }).finally(() => {
-      const ownFollowup = entry.handoffDemand !== "none";
-      if (wakeCanonical && ownFollowup) entry.handoffDemand = joinHandoffDemand(entry.handoffDemand, "canonical");
-      entry.resolving = undefined;
-      if (this.handoffRead?.entry === entry) this.handoffRead = undefined;
-      if (entry.handoffRetryState.peek().phase === "reading") {
-        const unresolved = entry.live.records.peek().filter(r => (r.status === "confirming" || r.status === "failed") && !r.readyAttempt && !r.terminalPersisted);
-        const capacityBlocked = valid() && unresolved.length > 0 && unresolved.every(r => receiptBlocked.has(r.attemptId));
-        entry.handoffRetryState.value = capacityBlocked
-          ? { phase: "unavailable", reason: "receipt_capacity", canRetry: false }
-          : unresolved.length > 0
-          ? { phase: "unavailable", reason: "unresolved", canRetry: true }
-          : { phase: "idle", canRetry: false };
-      }
-      const waiting = [...this.entries.values()].find(e => e.handoffDemand !== "none" && !e.closed && !e.paused);
-      if (waiting) void this.resolveHandoff(waiting);
-      if (!ownFollowup && waiting !== entry && outcome === "success" && wakeCanonical && valid() && this.entries.get(entry.id) === entry) void this.requestThread(entry.id);
-    });
-    this.handoffRead = { entry, done: entry.resolving };
-    return entry.resolving;
-  }
-
   private async readWork(entry: ThreadEntry, onSent: () => void): Promise<void> {
     if (entry.workRefs === 0 || entry.paused) return;
     const cancel = entry.cancel; const epoch = entry.live.epoch;

@@ -1,4 +1,4 @@
-import {Handoff,type PresentationContainerId} from '../src/handoff';
+import {Handoff} from '../src/handoff';
 import {admitAttemptId} from '../src/message-provenance';
 import type {SelectedResponseRef} from '../src/public-response-refs';
 import type {AttemptId, HistoryItem, ResponseNodeRef, WorkItem} from '../src/protocol';
@@ -20,12 +20,6 @@ export function selectedReadyRefs(nodeIds:readonly string[],rows:readonly Histor
   return{nodeId,ordinal,kind};
  });
 }
-
-export function syntheticPresentation(attemptId:string):PresentationContainerId{
- const ledger=new Handoff(fn=>fn());ledger.apply({attempt_id:attemptId,gap:false,deltas:[]});
- const container=ledger.records.peek()[0]!.presentationContainer;ledger.discard('ended');return container;
-}
-
 
 export function canonicalAttemptId(n:number):AttemptId{const value=`00000000-0000-4000-8000-${String(n).padStart(12,'0')}`;if(!admitAttemptId(value))throw new Error('invalid canonical fixture ID');return value;}
 export const CANONICAL_ATTEMPT_ID = canonicalAttemptId(1);

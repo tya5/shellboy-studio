@@ -1,4 +1,3 @@
-import {hasVisibleTerminalText} from "../../../ui-core/src/terminal-presence";
 import {messageRelationship,senderHeaderDisplay} from "../../../ui-core/src/sender-display";
 import type {OwnSendPath,OwnSendPlacement} from "../../../ui-core/src/own-send-region";
 import type {OwnSendSlotPosition} from "../../../ui-core/src/own-send-presentation";
@@ -7,7 +6,7 @@ import { WorkElementRow, formatWorkElementDisplay } from "../system/components/W
 import { Disclosure } from "../system/components/Disclosure";
 import type { HandoffRecord } from "../../../data/src/handoff";
 import { senderFact } from "../../../data/src/sender";
-import { CANONICAL_CASES, scopeIssuedWorkFacts, type CanonicalCase, projectHistoryWindowItems, projectSavedItems, withPresentationContainers, normalizeLiveWorkFacts, normalizeTerminalPresenceFacts, projectOwnedHandoffFacts, retainUnretiredLiveFacts, type NormalizedSavedItem } from "../../../ui-core/src/conversation-items";
+import { CANONICAL_CASES, scopeIssuedWorkFacts, type CanonicalCase, projectHistoryWindowItems, projectSavedItems, withPresentationContainers, normalizeLiveWorkFacts, projectOwnedHandoffFacts, retainUnretiredLiveFacts, type NormalizedSavedItem } from "../../../ui-core/src/conversation-items";
 import type { HistoryItem } from "../../../data/src/protocol";
 import { Markdown } from "../system/components/Message";
 import type { WindowAcceptedSnapshot } from "../../../ui-core/src/window";
@@ -79,9 +78,10 @@ export function AcceptedWindowConversation({ reader, project, renderItem, render
 type AssistantTextMembership = "message" | "live-presence" | "empty-saved" | "content-unavailable";
 function assistantTextMembership(item: ConversationItem): AssistantTextMembership {
   const source=item.source;
-  if(source.kind!=="text"||typeof source.text!=="string"||hasVisibleTerminalText(source.text))return "message";
-  if("domain" in source)return "live-presence";
-  return source.textComplete===true?"empty-saved":"content-unavailable";
+  if(source.kind!=="text"||typeof source.text!=="string")return "message";
+  if(source.text.length > 0 && "domain" in source)return "live-presence";
+  if(source.text.length === 0)return source.textComplete===true?"empty-saved":"content-unavailable";
+  return "message";
 }
 
 export function SavedConversationItems({ model, projection: suppliedProjection, displayPlan, renderBefore, trailing, nodes,localRegion }: { model: AppModel; projection: SavedItemProjection & { sequence?: readonly ({kind: "conversation"; itemKey: string} | {kind: "work"; groupKey: string})[]; workGroups?: readonly ConversationWorkGroup[] }; displayPlan?: ConversationDisplayPlan; nodes?: readonly HistoryItem[]; renderBefore?: (item: ConversationItem) => ComponentChildren; trailing?: ComponentChildren;localRegion?: { readonly kind: "qualified"; readonly slots: readonly {position:OwnSendSlotPosition;content:ComponentChildren}[] } | { readonly kind: "unqualified"; readonly content: ComponentChildren; readonly afterIndex?: number; readonly beforeIndex?: number } }) {
@@ -172,14 +172,13 @@ export function SavedConversationItems({ model, projection: suppliedProjection, 
       const displayText = displayEntry?.body.kind === "preview" || displayEntry?.body.kind === "typed-canonical" || displayEntry?.body.kind === "typed-partial" ? displayEntry.body.text : undefined;
       if (item.source.kind === "text" || item.source.kind === "user" || item.source.kind === "summary") {
         const node = item.source.nodeId ? nodes?.find(node => node.node_id === item.source.nodeId) : undefined;
-        if(membership.get(item.key)==="content-unavailable")return <div data-assistant-content-unavailable="">{t("work.textUnavailable")}</div>;
+        if(membership.get(item.key)==="content-unavailable" && node)return <Message bot={node.kind === "assistant_response"} who={node.kind === "assistant_response" ? t("convo.shellboy") : t("convo.you")} at={formatClock(node.provenance?.created_at)} text={model.bodies.value.get(node.node_id!)?.text ?? displayText ?? ""} copyLabel={t("code.copy")} copiedLabel={t("code.copied")}><Button variant="link" disabled={model.bodies.value.get(node.node_id!)?.loading} onClick={() => void model.loadBody(node.node_id!)}>{model.bodies.value.get(node.node_id!)?.loading ? t("convo.loadingBody") : t("convo.fullMessage")}</Button></Message>;
         if (!node && "domain" in item.source) {
           const source = item.source;
           const handle = model.handle.value;
           const record = source.namespace === "handoff" ? handle?.handoff.value.find(record => record.key === source.recordId) : undefined;
-          if(membership.get(item.key)==="live-presence")return <div data-live-overlay="" data-assistant-presence="">{t(record?.status==="confirming"?"convo.handoffConfirming":"convo.live")}{record ? <LiveRecordChrome model={model} record={record} retry={() => handle?.retryHandoff()} /> : null}</div>;
-          return <div data-live-overlay=""><Message bot who={t("convo.shellboy")} at={t(record?.status==="confirming"?"convo.handoffConfirming":"convo.live")} text={displayText ?? ""} copyLabel={t("code.copy")} copiedLabel={t("code.copied")}>
-            {record ? <LiveRecordChrome model={model} record={record} retry={() => handle?.retryHandoff()} /> : null}
+          return <div data-live-overlay={membership.get(item.key)==="live-presence" ? "" : undefined}><Message bot who={t("convo.shellboy")} at={t("convo.live")} text={displayText ?? ""} copyLabel={t("code.copy")} copiedLabel={t("code.copied")}>
+            {record ? <LiveRecordChrome model={model} record={record} /> : null}
           </Message></div>;
         }
         if (!node) return <Markdown text={displayText ?? ""} copyLabel={t("code.copy")} copiedLabel={t("code.copied")} />;
@@ -188,7 +187,7 @@ export function SavedConversationItems({ model, projection: suppliedProjection, 
           : fact.kind === "human" ? { kind: "you" } : fact.kind === "model" ? fact
           : fact.kind === "external_cli" ? (fact.label?.trim() ? { kind: "other", label: `CLI: ${fact.label}` } : { kind: "cli" })
           : { kind: "unknown", model: fact.kind === "unknown_model", label: fact.label };
-        return <><ProjectedMessage model={model} relationship={messageRelationship(node.provenance?.message,node.node_id)} authorizedText={displayText ?? ""} row={{ type: "message", id: node.node_id!, speaker, text: displayText ?? "", truncated: false, at: node.provenance?.created_at }} />{(item.source.kind === "text" || item.source.kind === "user" || item.source.kind === "summary") && (displayEntry?.body.kind === "preview" || displayEntry?.body.kind === "typed-partial") ? <div class="caption muted" data-item-partial="">{t("work.partial")}</div> : null}</>;
+        return <><ProjectedMessage model={model} relationship={messageRelationship(node.provenance?.message,node.node_id)} authorizedText={displayText ?? ""} bodyPartial={item.source.kind === "text" && item.source.textComplete === false} row={{ type: "message", id: node.node_id!, speaker, text: displayText ?? "", truncated: false, at: node.provenance?.created_at }} />{(item.source.kind === "text" || item.source.kind === "user" || item.source.kind === "summary") && (displayEntry?.body.kind === "preview" || displayEntry?.body.kind === "typed-partial") ? <div class="caption muted" data-item-partial="">{t("work.partial")}</div> : null}</>;
       }
       if (item.source.kind === "tool") {
         const ids = item.source.executionIds ?? (item.source.executionId ? [item.source.executionId] : []);
@@ -204,15 +203,11 @@ export function SavedConversationItems({ model, projection: suppliedProjection, 
       if (item.source.kind === "ordinaryEmpty") return <div class="caption muted" data-empty-ordinary="">{t("work.textUnavailable")}</div>;
       if (item.source.kind === "reasoning" || item.source.kind === "reasoning_unavailable") return <div data-thinking-marker="">{workRow(item)}</div>;
       if (item.source.kind === "interruption") return workRow(item);
-      if ("terminalPresence" in item.source && item.source.terminalPresence) {
-        const presence=item.source.terminalPresence;
-        return <div data-terminal-presence="" data-terminal-phase={presence.phase} data-client-reason={presence.reason}>{workRow(item)}</div>;
-      }
       if (item.source.kind === "record") return <div data-internal-records="">{workRow(item)}</div>;
       if (item.source.kind === "unknown" || item.source.kind === "unavailable") {
         const source=item.source,handle=model.handle.value;
         const record="domain" in source&&source.namespace==="handoff"?handle?.handoff.value.find(record=>record.key===source.recordId):undefined;
-        return <><div data-item-unavailable="" data-items-unavailable-reason={source.kind==="unavailable"?source.reason:undefined}>{workRow(item)}</div>{record?<LiveRecordChrome model={model} record={record} retry={()=>handle?.retryHandoff()}/>:null}</>;
+        return <><div data-item-unavailable="" data-items-unavailable-reason={source.kind==="unavailable"?source.reason:undefined}>{workRow(item)}</div>{record?<LiveRecordChrome model={model} record={record}/>:null}</>;
       }
       return null;
     }} />;
@@ -225,23 +220,12 @@ export function DeferredHistoryNode({ model, row }: { model: AppModel; row: Hist
   </div>;
 }
 
-function HandoffRetryControl({model}: {model:AppModel}) {
-  const handle=model.handle.value;
-  const state=handle?.handoffRetryState.value;
-  if(!handle||!state||state.phase==="idle")return null;
-  return <span data-handoff-retry-phase={state.phase} data-handoff-retry-reason={state.phase!=="reading"?state.reason:undefined}>
-    <span class="caption muted">{model.t.value(state.phase==="reading"?"convo.handoffConfirming":`convo.retry.${state.reason}`)}</span>
-    {state.phase==="reading"||state.canRetry?<Button variant="link" disabled={!state.canRetry} onClick={()=>void handle.retryHandoff()}>{model.t.value("action.retry")}</Button>:null}
-  </span>;
-}
-
-export function LiveRecordChrome({ model, record }: { model: AppModel; record: HandoffRecord; retry: () => void }) {
+export function LiveRecordChrome({ model, record }: { model: AppModel; record: HandoffRecord }) {
   const t=model.t.value;
   const incomplete = record.incomplete || record.status === "failed";
   return <div data-live-record-chrome={record.key}>
     {incomplete ? <div class="caption muted" data-live-incomplete="">{t("convo.liveIncomplete")}</div> : null}
-    <HandoffRetryControl model={model}/>
-    {record.status === "failed" && !model.handle.value?.handoffRetryState.value ? <div class="caption muted">{t("convo.handoffFailed")}</div> : null}
+    {record.status === "failed" ? <div class="caption muted">{t("convo.handoffFailed")}</div> : null}
   </div>;
 }
 
@@ -266,7 +250,7 @@ export function SavedWindowContent({ model, snapshot }: { model: AppModel; snaps
     || acceptedPlan.capability !== capability || !(model.longReader.value?.acceptedView.isCurrent(snapshot) ?? false)) return null;
   return <OwnSendContent model={model} snapshot={snapshot} plan={acceptedPlan}
     trailing={<>{acceptedPlan.coverage==='unavailable' ? <div role="status" data-work-scope-rejected="" data-state-source="client" data-state-value="scope-qualification-rejected">CLIENT: {model.t.value('work.textUnavailable')} (scope-qualification-rejected)</div> : null}
-    {handle?.handoffOverflow.value ? <div class="caption muted" data-live-overflow="">{model.t.value('convo.handoffLimit')} <HandoffRetryControl model={model}/></div> : null}</>} />;
+    {handle?.handoffOverflow.value ? <div class="caption muted" data-live-overflow="">{model.t.value('convo.handoffLimit')}</div> : null}</>} />;
 }
 
 const stepDuration = (s: Step, now: number): string | undefined => {
@@ -340,7 +324,7 @@ export function StepView({ model, step, display, openPolicy = CANONICAL_CASES.to
   </WorkElementRow>;
 }
 
-function ProjectedMessage({ model, row, authorizedText, relationship }: { relationship:ReturnType<typeof messageRelationship>; model: AppModel; row: Extract<ConversationRow, {type:"message"}>; authorizedText: string }) {
+function ProjectedMessage({ model, row, authorizedText, relationship, bodyPartial }: { relationship:ReturnType<typeof messageRelationship>; model: AppModel; row: Extract<ConversationRow, {type:"message"}>; authorizedText: string; bodyPartial?: boolean }) {
   const t = model.t.value;
   const threadId = model.handle.value?.threadId;
   const point = threadId !== undefined ? formatRoute({ view: "branches", threadId, nodeId: row.id }) : undefined;
@@ -350,13 +334,14 @@ function ProjectedMessage({ model, row, authorizedText, relationship }: { relati
   const senderHeader = row.speaker.kind === "model" ? senderHeaderDisplay(row.speaker.threadId, model.senderTitles.values.value.get(row.speaker.threadId), t("convo.modelSender")) : undefined;
   const header = senderHeader ? {...senderHeader,role:t("convo.modelSender")} : who;
   const body = model.bodies.value.get(row.id);
+  const renderedText = body?.text ?? authorizedText;
   return (
-    <Message bot={row.speaker.kind === "shellboy"} who={header} at={formatClock(row.at)} text={authorizedText} copyLabel={t("code.copy")} copiedLabel={t("code.copied")}>
+    <Message bot={row.speaker.kind === "shellboy"} who={header} at={formatClock(row.at)} text={renderedText} copyLabel={t("code.copy")} copiedLabel={t("code.copied")}>
       {relationship.kind==="request" ? <div class="caption" data-message-relation="request">{t("convo.relationRequest")} · {t(`convo.relation.${relationship.state}`)}{relationship.replyId ? <> <code>{relationship.replyId}</code></> : null}</div> : relationship.kind==="reply" ? <div class="caption" data-message-relation="reply">{t("convo.relationReply")} <code>{relationship.requestId}</code></div> : null}
       {row.speaker.kind === "model" ? <div class="caption sender-fact">
         {row.speaker.label !== undefined ? <div>{t("convo.senderClaimedLabel", { label: row.speaker.label })}</div> : null}
       </div> : row.speaker.kind === "unknown" && row.speaker.label !== undefined ? <div class="caption">{t("convo.senderClaimedLabel", { label: row.speaker.label })}</div> : null}
-      {row.truncated && body?.text === undefined ? (
+      {(row.truncated || bodyPartial) && body?.text === undefined ? (
         <span class="more">
           <Button variant="link" disabled={body?.loading} onClick={() => void model.loadBody(row.id)}>
             {body?.loading ? t("convo.loadingBody") : t("convo.fullMessage")}
@@ -518,7 +503,7 @@ export function Conversation({ model }: { model: AppModel }) {
             sendLabel={t("composer.send")}
             canSend={conn === "connected" && !sendBlocked}
             busy={send.kind === "sending"}
-            draftScope={handle?.handoffScope()}
+            draftScope="history"
             onSend={(text,onReserved) => model.send(text,onReserved)}
             stop={
               model.canStop.value ? (

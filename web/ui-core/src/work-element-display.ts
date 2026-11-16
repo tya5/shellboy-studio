@@ -117,12 +117,7 @@ function display(item: ProjectedSavedItem, capture: CapturedWorkElement, executi
     case "unknown-problem": label = "Unsupported item"; text = facts.nodeKind ? "Item details are not supported" : "The item kind was not provided"; break;
     case "client-terminal": {
       label = "Saved-history confirmation";
-      const presence = facts.receipt;
-      if (!presence || !("domain" in source) || source.terminalPresence !== presence) return undefined;
-      state = { source: "client", value: presence.reason };
-      context.push({ name: "client_reason", value: presence.reason });
-      text = presence.phase === "reading" ? "Checking saved content" : presence.phase === "pending" ? "Saved content is awaiting confirmation" : "Saved content could not be fully confirmed";
-      detail = "none";
+      return undefined;
       break;
     }
   }

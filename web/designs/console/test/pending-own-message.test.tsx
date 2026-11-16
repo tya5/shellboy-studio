@@ -12,6 +12,9 @@ import {loadPrefs} from '../../../ui-core/src/prefs';
 import {App} from '../screens/App';
 import {OrderedHistory} from '../screens/Conversation';
 import {Composer} from '../system/components/Composer';
+import {canonicalAttemptId} from '../../../data/test/work-fixture';
+
+
 
 for(const savedBeforeAck of [false,true])it(`submitted message remains separate until exact acceptance and saved arrival: savedFirst=${savedBeforeAck}`,async()=>{
  let rows:HistoryItem[]=[];
@@ -357,4 +360,38 @@ it('retry display eligibility rejects owner ABA and route ABA without dispatch s
    expect(f.model.canResend(original)).toBe(false);expect(await f.model.resend(original)).toBe(false);expect(f.t.calls('message.send')).toHaveLength(count);
   }finally{f.model.dispose();f.data.stop();}
  }
+});
+
+it('accepted live preview retires after saved >16KiB body loads through the ordinary button',async()=>{
+ const excerpt='E'.repeat(16000),full=`${excerpt}${'X'.repeat(1024)}FULL_BODY`;
+ expect(new TextEncoder().encode(full).byteLength).toBeGreaterThan(16 * 1024);
+ let rows:HistoryItem[]=[];const attempt=canonicalAttemptId(1);
+ const f=await fixtureModel({capabilities:['history.window'],route:'conversation',threadId:'t',configure(db){db.threads={t:summary('t')};db.details.t=details('t');db.history.t=rows;const base=db.answer.bind(db);db.answer=call=>{if(call.command==='history.get')return {ok:true,result:{node_id:'saved-assistant',kind:'assistant_response',text:full,provenance:{sender:{kind:'assistant'},attempt_id:attempt}}};return call.command==='history.window'?{ok:true,result:{thread_id:'t',revision:1,total:rows.length,items:rows}}:base(call)}}});
+ const host=document.createElement('div');document.body.append(host);const context:DesignContext={model:f.model,prefs:signal(loadPrefs({read:()=>null,write:()=>{}},[{name:'console',themes:[{name:'light'}]}])),setPrefs:()=>{},designs:[],submitToken:async()=>false};
+ try{await act(async()=>{render(<App context={context}/>,host);await settle(f.t,f.db);});
+  const handle=f.model.handle.peek()!,accepted=f.model.longReader.peek()!.acceptedView;
+  type Tuple={source:'accepted'|'live';generation:number;live:number;canonical:boolean};
+  const tuples:Tuple[]=[];let collecting=false;
+  const record=(tuple:Tuple)=>{if(collecting)tuples.push(tuple);};
+  const stopAccepted=accepted.subscribe(ref=>record({source:'accepted',generation:ref.generation,live:handle.handoff.value.length,canonical:ref.rows.some(row=>row.node_id==='saved-assistant')}));
+  const stopLive=handle.handoff.subscribe(records=>record({source:'live',generation:accepted.peek().generation,live:records.length,canonical:accepted.peek().rows.some(row=>row.node_id==='saved-assistant')}));
+  f.t.push({t:'live',thread_id:'t',attempt_id:attempt,gap:false,deltas:[{offset:0,reasoning:false,text:'live preview'}]});await flush(8);
+  expect(host.textContent).toContain('live preview');expect(handle.handoff.value.some(record=>record.attemptId===attempt)).toBe(true);
+  tuples.length=0;collecting=true;
+  rows=[{node_id:'saved-assistant',kind:'assistant_response',selection:{ordinal:0},items:[{kind:'text',item_identity:'answer',text:excerpt,text_complete:false}],provenance:{sender:{kind:'assistant'},attempt_id:attempt}}];f.db.history.t=rows;
+  await act(async()=>{f.t.push({t:'changed',thread_ids:['t'],list:false});await settle(f.t,f.db);});
+  expect(handle.handoff.value.some(record=>record.attemptId===attempt)).toBe(false);expect(tuples.length).toBeGreaterThan(1);
+  const states=tuples.map(({source,canonical,live})=>({source,canonical,live}));
+  const invalid=states.filter(tuple=>!(tuple.canonical===false&&tuple.live===1 || tuple.canonical===true&&tuple.live===0));
+  if(invalid.length)throw new Error(`Invalid accepted/live transition tuples: ${JSON.stringify(states)}`);
+  expect(states.some(tuple=>tuple.canonical===false&&tuple.live===1)).toBe(true);
+  expect(states.some(tuple=>tuple.canonical===true&&tuple.live===0)).toBe(true);
+  let acceptedSeen=false;for(const tuple of states){if(tuple.canonical)acceptedSeen=true;if(acceptedSeen)expect(tuple.canonical).toBe(true);}
+  expect(states.at(-1)).toMatchObject({canonical:true,live:0});
+  expect(new Set(states.map(tuple=>tuple.source))).toEqual(new Set(['accepted','live']));
+  const button=[...host.querySelectorAll('button')].find(node=>node.textContent?.includes(f.model.t.value('convo.fullMessage')));expect(button).toBeDefined();
+  await act(async()=>{(button as HTMLButtonElement).click();await settle(f.t,f.db)});
+  expect(f.t.calls('history.get')).toHaveLength(1);expect(host.textContent).toContain('FULL_BODY');
+  expect(tuples.length).toBeGreaterThan(1);stopAccepted();stopLive();
+ }finally{render(null,host);host.remove();f.data.stop()}
 });

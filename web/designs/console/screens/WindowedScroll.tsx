@@ -4,9 +4,8 @@ import { useLayoutEffect, useRef, useState } from "preact/hooks";
 import { materializeHistoryPresentation, type AppModel, type ConversationRow, type ConversationWindow } from "../../../ui-core/src";
 import { Button, EmptyState, LoadingRows, Notice } from "../system/components";
 
-import { measureSummaryTransition } from "./summaryAnchor";
 import { measureAcceptedRows } from "./acceptedRowMeasure";
-import type { WindowAcceptedSnapshot, SummaryTransitionId } from "../../../ui-core/src/window";
+import type { WindowAcceptedSnapshot } from "../../../ui-core/src/window";
 import { CurrentScrollSync, type ScrollViewPort } from "./scrollTransaction";
 import { HeadingAnchor, ReadingAnchor, ScrollIntent, type ReadingContext } from "./scrollIntent";
 
@@ -42,23 +41,6 @@ export function WindowedScroll({ model, win, renderRow, live, liveBoundary, stat
   const touchY = useRef<number | undefined>(undefined);
   const readingAnchor = useRef(new ReadingAnchor());
 
-  const sourceRegistration = useRef<{ owner: ConversationWindow; id: SummaryTransitionId; revision: string | number | undefined; node: string; offset: number }>();
-  const captureReading = (box: HTMLElement, context?: ReadingContext, snapshot?: WindowAcceptedSnapshot) => {
-    readingAnchor.current.capture(box, context);
-    if (!snapshot || !context?.isCurrent()) return;
-    const source = readingAnchor.current.source(context), handle = model.handle.peek();
-    if (!source || !handle) return;
-    const old = sourceRegistration.current;
-    // Update only a changed reader in the same source revision, not a target transaction.
-    if (old?.owner === win && win.peekSummaryTransitionId() === old.id && old.revision === snapshot.revision && (old.node !== source.nodeId || old.offset !== source.offset))
-      win.clearSummaryTransition(old.id);
-    const id = win.beginSummaryTransition(handle, snapshot, source.nodeId, source.offset);
-    if (id) sourceRegistration.current = { owner: win, id, revision: snapshot.revision, node: source.nodeId, offset: source.offset };
-  };
-  useLayoutEffect(() => () => {
-    const owned = sourceRegistration.current;
-    if (owned?.owner === win) win.clearSummaryTransition(owned.id);
-  }, [win]);
   const origin = useRef<number | undefined>(undefined);
   const rowOrigin = (box: HTMLElement): number => {
     const rows = box.querySelector<HTMLElement>(".vspace");
@@ -85,20 +67,14 @@ export function WindowedScroll({ model, win, renderRow, live, liveBoundary, stat
             nodes: snapshot.rows.flatMap(row => row.node_id ? [row.node_id] : []),
             isCurrent: () => port.acceptedView.isCurrent(_ref) && win.acceptedView.isCurrent(snapshot) } : undefined;
 
-          const coverage = snapshot && win.peekSummaryCoverage(snapshot);
-          const coverageDelta = coverage ? measureSummaryTransition(box, coverage, () => context!.isCurrent()) : undefined;
-          const heading = coverage ? undefined : headingAnchor.current.peek();
-          const delta = coverage ? coverageDelta : heading?.delta ?? readingAnchor.current.correction(box, context);
+          const heading = headingAnchor.current.peek();
+          const delta = heading?.delta ?? readingAnchor.current.correction(box, context);
           return {
-            ownsScrollRequest: !!coverage,
-            consume: () => {
-              if (coverage) return coverageDelta !== undefined && context!.isCurrent() && win.consumeSummaryCoverage(snapshot!, coverage.transitionId);
-              if (heading) headingAnchor.current.consume(heading);
-            },
+            ownsScrollRequest: false,
+            consume: () => { if (heading) headingAnchor.current.consume(heading); },
             write: () => {
               const following = intent.current.following && win.following.peek();
-              if (coverage && coverageDelta !== undefined) intent.current.program(box, box.scrollTop + coverageDelta);
-              else if (following) intent.current.program(box, box.scrollHeight);
+              if (following) intent.current.program(box, box.scrollHeight);
               else if (delta !== undefined) intent.current.program(box, box.scrollTop + delta);
               else if (request) intent.current.program(box, request.target + start);
               else if (origin.current !== undefined && start !== origin.current)
@@ -106,7 +82,7 @@ export function WindowedScroll({ model, win, renderRow, live, liveBoundary, stat
               origin.current = start;
               win.view(box.scrollTop - start, box.clientHeight, intent.current.following);
             },
-            capture: () => captureReading(box, context, snapshot),
+            capture: () => readingAnchor.current.capture(box, context),
           };
         },
     });
@@ -215,7 +191,7 @@ export function WindowedScroll({ model, win, renderRow, live, liveBoundary, stat
         const context: ReadingContext | undefined = snapshot ? { revision: snapshot.revision, epoch: snapshot.epoch,
           capability: win.acceptedView.currentCapability, nodes: snapshot.rows.flatMap(row => row.node_id ? [row.node_id] : []),
           isCurrent: () => win.acceptedView.isCurrent(snapshot) } : undefined;
-        captureReading(b, context, snapshot);
+        readingAnchor.current.capture(b, context);
       }}
     >
       {win.pathChanged.value ? <Notice tone="wait">{t("convo.pathChanged")}</Notice> : null}

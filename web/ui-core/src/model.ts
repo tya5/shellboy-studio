@@ -19,7 +19,7 @@ import { CAPABILITY_HISTORY_WINDOW, threadReplyItems, noReplyWait, type ReplyWai
 import { MissingPins, MonitorSelection, type MonitorArchive } from "./monitor-selection";
 import { workRegions, type WorkRegions } from "./work";
 import { ConversationWindow, type WindowAcceptedSnapshot } from "./window";
-import { projectHistoryWindowItems, projectSavedItems, projectOwnedHandoffFacts, normalizeLiveWorkFacts, normalizeTerminalPresenceFacts, scopeIssuedWorkFacts, retainUnretiredLiveFacts, withPresentationContainers } from "./conversation-items";
+import { projectHistoryWindowItems, projectSavedItems, projectOwnedHandoffFacts, normalizeLiveWorkFacts, scopeIssuedWorkFacts, retainUnretiredLiveFacts } from "./conversation-items";
 import { branchRowMarks, collectExecutionSteps, materializeHistoryPresentation, type ConversationRow, type StepRow } from "./conversation";
 import { translator, type Lang, type Translate } from "./i18n";
 import { AppsModel } from "./apps";
@@ -650,12 +650,11 @@ export class AppModel {
   }
 
   /** One reader per open Thread while the Conversation shows and the owner has the positional read. */
-  private readerHandoffScope: string | undefined;
   private syncWindow(): void {
     const h = this.handle.value;
     const want = this.route.value.view === "conversation" && h !== undefined && this.data.capabilities.value.includes(CAPABILITY_HISTORY_WINDOW);
     const cur = this.longReader.peek();
-    if (cur && (!want || this.readerThread !== h.threadId || this.readerHandoffScope !== h.handoffScope())) {
+    if (cur && (!want || this.readerThread !== h?.threadId || this.handle.peek() !== h)) {
       cur.dispose(); // leaving the view or the Thread cancels its reads
       this.longReader.value = undefined;
       this.readerThread = undefined;
@@ -663,72 +662,53 @@ export class AppModel {
     if (!want || !h) return;
     if (!this.longReader.peek()) {
       this.readerThread = h.threadId;
-      this.readerHandoffScope = h.handoffScope();
       this.readerTick = h.historyTick.peek();
       const reader = new ConversationWindow({ read: (a, c) => h.readWindow(a, c) });
-      reader.bindTerminalHandle(h);
+      reader.bindCurrentThread(h);
       reader.bindConversationInput(snapshot => this.captureWindowConversation(reader, h, snapshot));
       this.longReader.value = reader;
+      reader.refreshConversationInput(reader.acceptedView.peek());
     }
     const tick = h.historyTick.value; // a hint: publish semantic facts before waking the reader
     const tickChanged = tick !== this.readerTick;
     if (tickChanged) this.readerTick = tick;
     const reader = this.longReader.peek()!;
-    reader.setAttemptPresentations(h.attemptPresentations.value);
-    const records = h.handoff.value;
-    reader.acceptedView.current;
-    for (const record of records) if (record.status === "ready" && !record.transferred)
-      batch(() => h.transferHandoff(record.attemptId, (attachment, release) => reader.acceptHandoff(attachment, h.handoffScope(), release)));
-    if (reader.isTerminalHandleCurrent(h)) {
-      const accepted = reader.acceptedView.peek();
-      if (reader.acceptedView.isCurrent(accepted))
-        // Readable originals stay on the resolver/ready path. An exact metadata-only
-        // observation owns no body read there, so its receipt may use the existing slot.
-        for (const receipt of accepted.terminalPersistedAttempts ?? []) {
-          const held = h.handoff.peek().find(record => record.attemptId === receipt.attemptId);
-          if (!held || held.text === '' && !held.readyAttempt && !!held.terminalPersisted
-            && h.isReceiptObservationCurrent(held, held.terminalPersisted)) reader.prepareBoundTerminalRead(receipt);
-        }
-    }
     this.composeWindowDisplay(reader, h);
     this.readerShells(reader);
-    if (tickChanged && this.longReader.peek() === reader && this.handle.peek() === h && this.readerHandoffScope === h.handoffScope()) reader.changed();
+    if (tickChanged && this.longReader.peek() === reader && this.handle.peek() === h) reader.changed();
   }
 
   private captureWindowConversation(reader: ConversationWindow, handle: ThreadHandle, snapshot: WindowAcceptedSnapshot) {
-    const scope = handle.handoffScope();
+    const scope = this.ownMutationScope();
     const capability = reader.acceptedView.currentCapability;
-    const current = () => this.longReader.peek() === reader && this.handle.peek() === handle
-      && reader.acceptedView.currentCapability === capability && reader.isTerminalHandleCurrent(handle);
+    const lifetime = handle.liveEpoch();
+    const workValue = handle.work.value.value;
+    const capturedWork = captureCurrentWork(handle.threadId, workValue);
+    const current = () => this.handle.peek() === handle
+      && handle.liveEpoch() === lifetime && reader.acceptedView.currentCapability === capability;
     const input = captureConversationInput(snapshot, { scope, threadId: handle.threadId,
-      records: handle.handoff.value, work: captureCurrentWork(handle.threadId, handle.work.value.value), current: current() });
-    const reserved = new Set((snapshot.assistantOwnership ?? []).filter(item => item.mode === 'preview').flatMap(item => item.itemKeys));
-    const display = input.projection;
-    const ownScope = this.ownMutationScope();
-    const accepted = this.acceptedOwnMessages.value, pending = this.pendingOwnMessage.value;
-    const records = handle.handoff.peek(), work = handle.work.peek(), reservation = this.ownReservation;
+      records: handle.handoff.value, work: capturedWork, current });
+    const accepted = this.acceptedOwnMessages.value;
+    const pending = this.pendingOwnMessage.value;
+    const reservation = this.ownReservation;
     const retryCurrent = this.pendingOwnRetryCurrent;
     const eligible = !!retryCurrent?.();
-    const cohortAccepted = eligible ? accepted.filter(row => row.scope === ownScope && row.threadId === handle.threadId) : [];
-    const cohortPending = eligible && pending?.scope === ownScope && pending.threadId === handle.threadId ? pending : undefined;
-    const rows = [...cohortAccepted, ...(cohortPending ? [cohortPending] : [])];
-    const decision = ownSendPresentation<unknown>({ ref: snapshot, current: current(), scope: ownScope, projection: display,
-      localRows: rows, hiddenItemKeys: reserved, canonicalRows: snapshot.rows,
-      path: { tail: !snapshot.pending && !snapshot.disposed && (snapshot.total === 0 || snapshot.range?.last === snapshot.total - 1), empty: snapshot.total === 0,
-        revision: snapshot.revision, lastNodeId: snapshot.rows.at(-1)?.node_id, lastOrdinal: snapshot.rows.at(-1)?.selection?.ordinal },
+    const cohortAccepted = eligible ? accepted.filter(row => row.scope === scope && row.threadId === handle.threadId) : [];
+    const cohortPending = eligible && pending?.scope === scope && pending.threadId === handle.threadId ? pending : undefined;
+    const localRows = [...cohortAccepted, ...(cohortPending ? [cohortPending] : [])];
+    const decision = ownSendPresentation<unknown>({ ref: snapshot, current: current(), scope, projection: input.projection,
+      localRows, hiddenItemKeys: new Set(), canonicalRows: snapshot.rows,
+      path: { tail: !snapshot.pending && !snapshot.disposed && (snapshot.total === 0 || snapshot.range?.last === snapshot.total - 1),
+        empty: snapshot.total === 0, revision: snapshot.revision, lastNodeId: snapshot.rows.at(-1)?.node_id, lastOrdinal: snapshot.rows.at(-1)?.selection?.ordinal },
       nodeOrdinals: new Map(snapshot.rows.flatMap(node => node.node_id && node.selection?.ordinal !== undefined ? [[node.node_id, node.selection.ordinal] as const] : [])),
-      reservation,
-      validateCurrent: () => current() && reader.acceptedView.isCurrent(snapshot), cohortVersion: { accepted: cohortAccepted, pending: cohortPending } });
-    const captured: ConversationSemanticInput = { ...input,
-      identity:createConversationIdentity(input.identity, {accepted:accepted as object,pending:pending as object|undefined,reservation:reservation as object|undefined,retryCurrent:retryCurrent as (()=>boolean)|undefined,eligible}),
+      reservation, validateCurrent: () => current() && reader.acceptedView.isCurrent(snapshot),
+      cohortVersion: { accepted: cohortAccepted, pending: cohortPending } });
+    return { ...input, identity: createConversationIdentity(input.identity, { accepted: accepted as object, pending: pending as object | undefined,
+      reservation: reservation as object | undefined, retryCurrent: retryCurrent as (() => boolean) | undefined, eligible }),
       projection: current() ? decision.projection : input.projection,
       decision: { cohortVersion: { accepted: cohortAccepted, pending: cohortPending }, localRegion: captureOwnSendLocalRegion(decision) },
-      isCurrent: () => this.longReader.peek() === reader && this.handle.peek() === handle
-        && reader.acceptedView.currentCapability === capability && handle.handoffScope() === scope
-        && handle.handoff.peek() === records && handle.work.peek() === work
-        && this.acceptedOwnMessages.peek() === accepted && this.pendingOwnMessage.peek() === pending
-        && this.ownReservation === reservation && this.pendingOwnRetryCurrent === retryCurrent };
-    return captured;
+      isCurrent: () => current() && handle.handoff.peek() === input.identity.records
+        && (handle.work.peek().value === input.identity.work.source || handle.work.peek().value === undefined && input.identity.work.facts.length === 0) };
   }
 
   private composeWindowDisplay(reader: ConversationWindow, handle: ThreadHandle): void {
@@ -918,7 +898,6 @@ export class AppModel {
     };
     const handle = this.handle.peek();
     const reader = this.longReader.peek();
-    const transition = reader?.peekSummaryTransitionId();
     const cancel = this.threadReads;
     const route = this.route.peek();
     const qualified = () => this.handle.peek() === handle && this.longReader.peek() === reader && this.threadReads === cancel && this.route.peek() === route;
@@ -932,11 +911,6 @@ export class AppModel {
         return;
       }
       if (!qualified()) return;
-      if (page === 0 && handle && reader && transition && reader.peekSummaryTransitionId() === transition) {
-        const target = reader.acceptedView.peek();
-        if (reader.acceptedView.isCurrent(target)) reader.acceptSummaryCoverage(handle, target, transition, out.value);
-        if (!qualified()) return;
-      }
       text += out.value.text;
       cursor = out.value.next_cursor;
       if (cursor === undefined) break;
@@ -979,7 +953,7 @@ export class AppModel {
   private ownTailObservation:OwnSendTailObservation<unknown>|undefined;
   private ownReservation:OwnSendReservation<unknown>|undefined;
   ownSendReservation():OwnSendReservation<unknown>|undefined{return this.ownReservation;}
-  ownMutationScope(): string { return this.acceptedOwnMessages.value[0]?.scope ?? this.pendingOwnMessage.value?.scope ?? this.handle.value?.handoffScope() ?? ""; }
+  ownMutationScope(): string { return this.acceptedOwnMessages.value[0]?.scope ?? this.pendingOwnMessage.value?.scope ?? "history"; }
   ownMutationRows(scope: string): readonly PendingOwnMessage[] {
     const accepted=this.acceptedOwnMessages.value, pending=this.pendingOwnMessage.value;
     return [...accepted,...(pending?[pending]:[])].filter(row=>row.scope===scope);
@@ -1020,9 +994,9 @@ export class AppModel {
       if(admission!=="ready"){this.ownSendCapacityReason.value=true;return false;}
     }
     this.ownSendCapacityReason.value=false;
-    const owner = this.data.owner.peek(), scope = handle.handoffScope();
+    const owner = this.data.owner.peek(), scope = "history";
     if (owner.state !== "connected") return false;
-    const current = () => this.handle.peek() === handle && this.route.peek() === route && this.data.owner.peek() === owner && handle.handoffScope() === scope;
+    const current = () => this.handle.peek() === handle && this.route.peek() === route && this.data.owner.peek() === owner;
     // A read-preview lifetime may end on disconnect; the mutation identity survives it.
     const retryCurrent = () => {
       const now = this.data.owner.peek();

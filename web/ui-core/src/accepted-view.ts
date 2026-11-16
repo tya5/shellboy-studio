@@ -32,9 +32,7 @@ export function makeConversationPublication(snapshot:WindowAcceptedSnapshot,reas
  inputIdentity:ConversationIdentity):AcceptedPublication<WindowAcceptedSnapshot,ConversationIdentity>{
  const freeze=<T>(items:readonly T[]|undefined)=>items?Object.freeze(items):items;
  const value=Object.freeze({...snapshot,rows:freeze(snapshot.rows)!,range:snapshot.range?Object.freeze(snapshot.range):undefined,
-  assistantOwnership:freeze(snapshot.assistantOwnership),retiredAttempts:freeze(snapshot.retiredAttempts),
-  terminalPersistedAttempts:freeze(snapshot.terminalPersistedAttempts),terminalPresence:freeze(snapshot.terminalPresence),
-  attemptPresentations:freeze(snapshot.attemptPresentations)});
+  });
  const publication:AcceptedPublication<WindowAcceptedSnapshot>={snapshot:value,plan:value.displayPlan!,reason,lease,inputIdentity:Object.freeze(inputIdentity),[publicationBrand]:true};
  return Object.freeze(publication);
 }
