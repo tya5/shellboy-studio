@@ -77,3 +77,32 @@ it.each(['revoke','newer'] as const)('receipt capture cannot overwrite %s during
  if(mode==='revoke'){expect(ref).toBe(r.before);expect(r.w.acceptedView.isCurrent(ref)).toBe(false);expect(r.publications).toHaveLength(0);}
  else{expect(ref).not.toBe(r.before);expect(ref.attemptPresentations).toMatchObject([{attemptId:'nested'}]);expect(r.publications).toHaveLength(1);}
 });
+
+it.each(['exact','missing-attempt-id','duplicate-attempt-id'] as const)('exercises receipt-only terminal status identity: %s',async mode=>{
+ const r=await rig();
+ const base=r.db.answer.bind(r.db);
+ r.db.answer=call=>{
+  const out=base(call);
+  if(call.command!=='status'||!out.ok)return out;
+  const result=out.result as {items:Array<Record<string,unknown>>};
+  if(mode==='exact')return out;
+  if(mode==='missing-attempt-id')return {...out,result:{...result,items:result.items.map(({attempt_id: _attemptId,...item})=>item)}};
+  return {...out,result:{...result,items:[...result.items,result.items[0]!]}};
+ };
+ try{
+  const before=r.w.acceptedView.peek();
+  r.t.push({t:'live',thread_id:'t',attempt_id:'attempt',gap:false,deltas:[{offset:0,reasoning:false,text:''}]});await flush();
+  const record=r.h.handoff.peek()[0]!;
+  const beforeIdentity={attempt:record.attemptId,scope:r.h.handoffScope(),key:record.key};
+  r.t.push({t:'live_end',thread_id:'t'});await settle(r.t,r.db);
+  const after=r.w.acceptedView.peek(), receipt=after.terminalPersistedAttempts?.[0];
+  expect({attempt:record.attemptId,scope:r.h.handoffScope(),key:record.key}).toEqual(beforeIdentity);
+  if(mode==='exact')expect(after).not.toBe(before);
+  else expect(after).toBe(before);
+  if(mode==='exact')expect(receipt).toMatchObject({scope:beforeIdentity.scope,attemptId:beforeIdentity.attempt,recordKey:beforeIdentity.key,nodeIds:['answer']});
+  else expect(receipt).toBeUndefined();
+  expect(after.assistantOwnership??[]).toEqual([]);
+  expect(after.rows.map(row=>row.node_id)).toEqual(['human','answer']);
+  expect(r.h.handoff.peek()[0]).toMatchObject({attemptId:beforeIdentity.attempt,key:beforeIdentity.key,text:''});
+ }finally{r.w.dispose();r.data.stop();}
+});

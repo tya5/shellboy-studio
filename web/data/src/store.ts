@@ -2,7 +2,7 @@ import {capturePublicResponseScope,responseRefsMatchSelected} from "./public-res
 import type { DisplayAssociation, DisplayTarget, DisplayObservation } from './handoff';
 import type { HistoryWindowInput } from './history-input';
 import { TerminalReadSlots, type SelectedReadAdmission, type SelectedCanonicalRequest, type OwnedTerminalReadLease, type TicketOutcome } from "./terminal-read";
-import type { TerminalPersistedProof } from "./handoff";
+import type { AttemptReadyProof, TerminalPersistedProof } from "./handoff";
 import { Handoff, type HandoffRecord } from "./handoff";
 // The view-model: signals holding saved facts re-read through the proxy, never invented.
 // Hints (`changed`, `resync`, `owner`) are triggers only; their payloads carry no data.
@@ -33,6 +33,30 @@ export const PAGE_LIMIT = 50;
 export const MAX_LIST_ROWS = 1000;
 /** The owner reads `history.window` (Shellboy #268). With it, history is read by position and never walked. */
 export const CAPABILITY_HISTORY_WINDOW = "history.window";
+
+type TerminalAttempt = WorkItem & {kind:"attempt"};
+
+// Resolve identity before constructing proof; conflicting candidates never hide
+// behind a filtered exact match.
+function resolveTerminalAttempt(items:readonly WorkItem[],attemptId:string,threadId:string):TerminalAttempt|undefined{
+ const candidates=items.filter(item=>item.kind==='attempt'&&item.id===attemptId&&item.thread_id===threadId);
+ if(candidates.length!==1) return undefined;
+ const item=candidates[0]!;
+ return item.attempt_id===attemptId ? item as TerminalAttempt : undefined;
+}
+
+function constructTerminalProof(attempt:TerminalAttempt,scope:string,recordKey:string,presentationContainer:TerminalPersistedProof['presentationContainer']):TerminalPersistedProof|undefined{
+ const refs=attempt.response_nodes;
+ const terminal=['completed','failed','incomplete','cancelled'].includes(attempt.state);
+ if(!terminal||!Array.isArray(refs)||!refs.length||refs.length>64||refs.some(ref=>!ref||typeof ref.node_id!=='string'||!ref.node_id||!Number.isInteger(ref.ordinal)||typeof ref.kind!=='string'||!ref.kind)) return undefined;
+ const nodeIds=Object.freeze(refs.map(ref=>ref.node_id));
+ const proofRefs=Object.freeze(refs.map(ref=>Object.freeze({nodeId:ref.node_id,ordinal:ref.ordinal,kind:ref.kind})));
+ return Object.freeze({scope,attemptId:attempt.id,recordKey, ...(typeof attempt.turn_id==='string'?{turnId:attempt.turn_id}:{}),nodeIds,presentationContainer,refs:proofRefs,terminalState:attempt.state as TerminalPersistedProof['terminalState']});
+}
+
+function receiptMatchesRecord(receipt:TerminalPersistedProof,scope:string,recordKey:string):boolean{
+ return receipt.scope===scope&&receipt.recordKey===recordKey;
+}
 
 export interface Resource<T> {
   value: T | undefined;
@@ -787,26 +811,18 @@ export class ShellboyData {
         if (!lease.current()) continue;
         const record = lease.currentRecord();
         if (!record) continue;
-        const matches = out.value.items.filter(item => item.kind === 'attempt' && item.id === record.attemptId
-          && item.attempt_id === record.attemptId && item.thread_id === entry.id);
-        if (matches.length !== 1) continue;
-        const attempt = matches[0]!;
-        const refs = attempt.response_nodes;
-        const terminal = ['completed', 'failed', 'incomplete', 'cancelled'].includes(attempt.state);
-        if (!terminal || !Array.isArray(refs) || !refs.length || refs.length > 64
-          || refs.some(ref => !ref || typeof ref.node_id !== 'string' || !ref.node_id)) continue;
-        const proof = Object.freeze({ scope: this.handoffScope(entry), attemptId: record.attemptId, recordKey: record.key,
-          ...(typeof attempt.turn_id === 'string' ? { turnId: attempt.turn_id } : {}),
-          nodeIds: Object.freeze(refs.map(ref => ref.node_id)),
-          presentationContainer: record.presentationContainer,
-          refs: Object.freeze(refs.map(ref => Object.freeze({ nodeId: ref.node_id, ordinal: ref.ordinal, kind: ref.kind }))),
-          terminalState: attempt.state as TerminalPersistedProof['terminalState'] });
-        let receipt = entry.terminalReceipts.get(record.attemptId);
+        const attempt = resolveTerminalAttempt(out.value.items,record.attemptId,entry.id);
+        if (!attempt) continue;
+        const proof = constructTerminalProof(attempt,this.handoffScope(entry),record.key,record.presentationContainer);
+        if (!proof) continue;
+        const storedReceipt = entry.terminalReceipts.get(record.attemptId);
+        if (storedReceipt && !receiptMatchesRecord(storedReceipt,proof.scope,record.key)) continue;
+        let receipt = storedReceipt;
         if (!receipt && entry.terminalReceipts.size < 8) { receipt = proof; entry.terminalReceipts.set(record.attemptId, proof); }
         if (!receipt) receiptBlocked.add(record.attemptId);
         const qualifiedRefs = publicScope.references.get(attempt);
         const association: DisplayAssociation | undefined = !incompleteScope && qualifiedRefs
-          && !out.value.items.some(other => other !== attempt && other.response_nodes?.some(ref => refs.some(own => own.node_id === ref?.node_id)))
+          && !out.value.items.some(other => other !== attempt && other.response_nodes?.some(ref => attempt.response_nodes?.some(own => own.node_id === ref?.node_id)))
           ? Object.freeze({ scope: proof.scope, attemptId: record.attemptId,
               presentationContainer: record.presentationContainer, turnId: attempt.turn_id!, refs: qualifiedRefs }) : undefined;
         observations.push({ kind: 'readable', lease, ...(association ? { association } : {}), ...(receipt ? { receipt } : {}) });
@@ -820,8 +836,7 @@ export class ShellboyData {
       const receiptObservations: DisplayObservation[] = [];
 
       for (const record of targets) {
-        const attempt = out.value.items.find(i => i.kind === "attempt" && i.id === record.attemptId
-          && (i.attempt_id === undefined || i.attempt_id === record.attemptId) && i.thread_id === entry.id);
+        const attempt = resolveTerminalAttempt(out.value.items,record.attemptId,entry.id);
         if (!attempt || !Array.isArray(attempt.response_nodes)) continue;
         // Readable originals stay in their existing slot. Receipt and display choice were
         // published together above; persistence alone no longer discards their bytes.
@@ -829,19 +844,14 @@ export class ShellboyData {
         // eligible for the typed body read below; only that proof may stage replacement.
         // A terminal exact attempt with any committed public node reference proves
         // partial persistence, even when full readback coverage is unavailable.
-        const terminal = attempt.state === "completed" || attempt.state === "failed" || attempt.state === "incomplete" || attempt.state === "cancelled";
         const persisted = attempt.response_nodes;
-        if (!record.text && terminal && persisted.length > 0 && persisted.length <= 64
-          && persisted.every(ref => ref && typeof ref.node_id === "string" && !!ref.node_id)) {
-          const proof = Object.freeze({ scope: this.handoffScope(entry), attemptId: record.attemptId, recordKey: record.key,
-            ...(typeof attempt.turn_id === "string" ? { turnId: attempt.turn_id } : {}),
-            nodeIds: Object.freeze(persisted.map(ref => ref.node_id)),
-            presentationContainer: record.presentationContainer,
-            refs: Object.freeze(persisted.map(ref => Object.freeze({ nodeId: ref.node_id, ordinal: ref.ordinal, kind: ref.kind }))),
-            terminalState: attempt.state as "completed" | "failed" | "incomplete" | "cancelled" });
+        const receiptProof = !record.text ? constructTerminalProof(attempt,this.handoffScope(entry),record.key,record.presentationContainer) : undefined;
+        if (receiptProof) {
           if (!valid()) return;
           if (!entry.terminalReceipts.has(record.attemptId) && entry.terminalReceipts.size >= 8) { receiptBlocked.add(record.attemptId); continue; }
-          const ownedProof = entry.terminalReceipts.get(record.attemptId) ?? proof;
+          const storedReceipt = entry.terminalReceipts.get(record.attemptId);
+          if (storedReceipt && !receiptMatchesRecord(storedReceipt,receiptProof.scope,record.key)) continue;
+          const ownedProof = storedReceipt ?? receiptProof;
           entry.terminalReceipts.set(record.attemptId, ownedProof);
           const staged = entry.live.stageTerminalPersisted(record, ownedProof);
           if (staged) receiptObservations.push({ kind: 'receipt', record: staged, receipt: ownedProof });
@@ -898,9 +908,9 @@ export class ShellboyData {
         const saved = Object.freeze(selected);
         // A replacement must contain a visible authoritative item, not just bookkeeping.
         if (!saved.some(node => node.items?.some(item => item.kind === "text" || item.kind === "tool_call" || item.kind === "tool_result"))) continue;
-        const proof = Object.freeze({ scope: this.handoffScope(entry), attemptId: record.attemptId,
+        const selectedProof:AttemptReadyProof = Object.freeze({ scope: this.handoffScope(entry), attemptId: record.attemptId,
           turnId: attempt.turn_id!, revision, total: total!, refs, nodes: saved });
-        entry.live.stageAttempt(record, proof);
+        entry.live.stageAttempt(record, selectedProof);
       }
       // Empty originals contribute source-qualified metadata, never a borrowed body lease.
       // Capture the current selected frame after the exact receipt record exists.
