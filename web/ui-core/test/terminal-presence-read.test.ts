@@ -347,6 +347,18 @@ async function readyTarget(options: {refresh?: ReturnType<typeof typedReadyRefre
  const record=r.h.handoff.peek()[0]!; expect(record.readyAttempt).toBeDefined();
  return {...r,w,record,readEvents};
 }
+it('accepted saved partial row keeps live ownership empty without a proof receipt',async()=>{
+ const r=await rig();
+ const partial={node_id:'answer',kind:'assistant_response' as const,provenance:{attempt_id:CANONICAL_ATTEMPT_ID},selection:{ordinal:0},items:[{kind:'text' as const,item_identity:'answer:text',text:'prefix',text_complete:false}]};
+ const w=new ConversationWindow({read:async()=>({ok:true,value:ownedHistory({thread_id:'a',revision:7,total:1,items:[partial]})})});
+ await flush();expect(w.bindTerminalHandle(r.h)).toBe(true);await flush();
+ expect(w.acceptedView.peek().rows[0]?.items?.[0]).toMatchObject({text_complete:false});
+ const record={key:'handoff:partial',presentationContainer:syntheticPresentation(CANONICAL_ATTEMPT_ID),attemptId:CANONICAL_ATTEMPT_ID,text:'prefix',incomplete:true,status:'confirming' as const,bodyAuthority:'preview' as const};
+ w.reconcileSavedAssistantRows([record],r.h.handoffScope());
+ expect(w.acceptedView.peek().assistantOwnership??[]).toEqual([]);
+ expect(w.acceptedView.peek().rows[0]?.items?.[0]).toMatchObject({text_complete:false});
+ w.dispose();r.data.stop();
+});
 it('shared typed fixture drives the public 300-to-301 ready refresh contract',async()=>{
  const fixture=typedReadyRefreshFixture({threadId:'a',attemptId:CANONICAL_ATTEMPT_ID,turnId:'turn',revision:7,nodeId:'answer-300',text:'saved'});
  expect(fixture.initialItems).toHaveLength(300);expect(fixture.appendedItems).toHaveLength(301);
