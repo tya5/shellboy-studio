@@ -75,7 +75,6 @@ export interface ThreadHandle extends Handle {
   readonly preview: ReadonlySignal<Preview>;
   readonly handoff: ReadonlySignal<readonly HandoffRecord[]>;
   readonly handoffOverflow: ReadonlySignal<boolean>;
-  readonly handoffPlacements: ReadonlySignal<ReadonlyMap<string, string>>;
   liveEpoch(): number;
   releaseAcceptedHandoff(attemptId: string): void;
   placeLiveAfter(attemptId: string, nodeId: string): void;
@@ -332,7 +331,6 @@ export class ShellboyData {
       preview: e.preview,
       handoff: e.live.records,
       handoffOverflow: e.live.overflow,
-      handoffPlacements: e.live.placements,
       liveEpoch: () => e.live.epoch,
       releaseAcceptedHandoff: attemptId => { if (!closed && !e.closed) e.live.releaseAccepted(attemptId); },
       placeLiveAfter: (attemptId, nodeId) => { if (!closed && !e.closed) e.live.placeAfter(attemptId, nodeId); },

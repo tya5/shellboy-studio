@@ -11,6 +11,7 @@ export interface HandoffRecord {
   readonly attemptId: string;
   /** Owned chronology edge used after an earlier live record becomes saved. */
   readonly afterAttemptId?: string;
+  readonly placement?: Readonly<{ afterNodeId: string }>;
   readonly text: string;
   readonly incomplete: boolean;
   readonly status: HandoffStatus;
@@ -32,9 +33,7 @@ export class Handoff {
   private readonly sig = signal<readonly HandoffRecord[]>([]);
   readonly records: ReadonlySignal<readonly HandoffRecord[]> = this.sig;
   private readonly overflowSig = signal(false);
-  private readonly placementSig = signal<ReadonlyMap<string, string>>(new Map());
   readonly overflow: ReadonlySignal<boolean> = this.overflowSig;
-  readonly placements: ReadonlySignal<ReadonlyMap<string, string>> = this.placementSig;
   readonly preview: ReadonlySignal<Preview> = computed(() => {
     const r = this.records.value.find(r => r.attemptId === this.active);
     return r ? { kind: 'live', attemptId: r.attemptId, text: r.text, incomplete: r.incomplete, ending: r.status !== 'streaming' } : { kind: 'none', ...(this.discarded.value ? { discarded: this.discarded.value } : {}) };
@@ -86,11 +85,8 @@ export class Handoff {
   /** Record the accepted canonical boundary once for the first live source. */
   placeAfter(attemptId: string, nodeId: string): void {
     const held = this.held.find(item => item.attemptId === attemptId);
-    if (!held || this.placementSig.peek().has(attemptId) || held.record.afterAttemptId) return;
-    const placements = new Map(this.placementSig.peek());
-    placements.set(attemptId, nodeId);
-    this.placementSig.value = Object.freeze(placements);
-    this.publish();
+    if (!held || held.record.placement?.afterNodeId || held.record.afterAttemptId) return;
+    this.update(attemptId, record => ({ ...record, placement: Object.freeze({ afterNodeId: nodeId }) }));
   }
 
   /** Release a matching source after accepted-window ownership is published. */
@@ -104,7 +100,7 @@ export class Handoff {
     this.advanceEpoch();
     this.discarded.value = _reason;
     for (const h of this.held) { h.stop(); h.source.discard(_reason); }
-    this.held = []; this.active = undefined; this.blockedAttempt = undefined; this.placementSig.value = new Map();
+    this.held = []; this.active = undefined; this.blockedAttempt = undefined;
     this.overflowSig.value = false; this.publish();
   }
   private sameOwnRecord(a: HandoffRecord, b: HandoffRecord): boolean {

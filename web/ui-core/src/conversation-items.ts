@@ -71,10 +71,10 @@ function preserveDisplayMetadata(from:NormalizedSavedItem,to:NormalizedSavedItem
  const facts=displayMetadata.get(from),identity=displaySourceIdentity.get(from);if(facts&&identity){displayMetadata.set(to,facts);displaySourceIdentity.set(to,identity);}
 }
 /** Project the current live preview directly; saved rows remain the sole persisted body owner. */
-export function projectOwnedHandoffFacts(scope: string, records: readonly HandoffRecord[], placements: ReadonlyMap<string, string> = new Map()): readonly NormalizedSavedItem[] {
+export function projectOwnedHandoffFacts(scope: string, records: readonly HandoffRecord[]): readonly NormalizedSavedItem[] {
   const sources = records.flatMap(record => record.text ? [{
     domain: "live" as const, namespace: "handoff" as const, scope, recordId: record.key,
-    attemptId: record.attemptId, ...(record.afterAttemptId ? { afterAttemptId: record.afterAttemptId } : {}), ...(placements.get(record.attemptId) ? { afterNodeId: placements.get(record.attemptId) } : {}), kind: "text" as const, text: record.text,
+    attemptId: record.attemptId, ...(record.afterAttemptId ? { afterAttemptId: record.afterAttemptId } : {}), ...(record.placement?.afterNodeId ? { afterNodeId: record.placement.afterNodeId } : {}), kind: "text" as const, text: record.text,
   }] : []);
   const normalized = normalizeConversationFacts(sources);
   for (const source of normalized) issueDisplayMetadata(source, Object.freeze({ scopeKey: "[]", nodeKind: "assistant_response", shells: Object.freeze([]) }));
