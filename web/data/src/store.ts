@@ -346,7 +346,7 @@ export class ShellboyData {
         if (!valid()) return { ok: false, error: { kind: "cancelled", message: "window owner changed while materializing" } };
         return { ok: true, value: saved };
       },
-      cancelReads: () => { e.live.invalidate(); e.cancel.cancel(); },
+      cancelReads: () => { e.live.advanceEpoch(); e.cancel.cancel(); },
       refresh: () => this.requestThread(threadId),
       pause: () => this.pauseEntry(e),
       resume: () => this.resumeEntry(e),
@@ -371,7 +371,7 @@ export class ShellboyData {
   private pauseEntry(entry: ThreadEntry): void {
     if (entry.paused || entry.closed) return;
     entry.paused = true;
-    entry.live.invalidate();
+    entry.live.advanceEpoch();
     entry.cancel.cancel();
     this.scheduleWatch();
   }
@@ -381,7 +381,7 @@ export class ShellboyData {
     if (!entry.paused || entry.closed) return;
     entry.paused = false;
     entry.cancel = new Cancel();
-    entry.live.reconcile();
+    entry.live.advanceEpoch();
     this.scheduleWatch();
     if (this.canRead()) this.requestThread(entry.id);
   }
@@ -494,7 +494,7 @@ export class ShellboyData {
     // Revoke every old read before any synchronous clear/discard observer can run.
     ++this.readQualificationEpoch;
     for (const e of this.entries.values()) {
-      e.live.invalidate();
+      e.live.advanceEpoch();
       e.live.discard(reason);
     }
   }

@@ -169,7 +169,6 @@ describe("Conversation live text", () => {
     expect(retainedPreview).not.toBeNull();
     expect(retainedPreview.textContent).toContain("later");
     expect(retainedPreview.querySelector('small.mono')?.textContent).toBe(model.t.value("convo.live"));
-    expect(retainedPreview.querySelector('small.mono')?.textContent).not.toBe(model.t.value("convo.handoffConfirming"));
     expect(el.querySelector('[data-node="saved-1"]')?.textContent).toContain("Final saved answer");
     expect(retainedPreview.contains(el.querySelector('[data-node="saved-1"]'))).toBe(false);
     expect(el.textContent).toContain("Final saved answer");

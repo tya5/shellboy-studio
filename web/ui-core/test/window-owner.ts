@@ -2,6 +2,7 @@
 import { connected, FakeTransport, flush, type CallFrame } from "../../data/test/harness";
 import { ShellboyData, type ThreadHandle } from "../../data/src";
 import { ConversationWindow, type WindowOptions } from "../src/window";
+import { captureConversationInput, captureCurrentWork } from "../src/conversation-input";
 
 export class WindowOwner {
   revision = 1;
@@ -68,6 +69,23 @@ export class WindowOwner {
   }
 }
 
+export type BoundWindowInput = { capture: (snapshot: import("../src/window").WindowAcceptedSnapshot) => import("../src/conversation-input").ConversationSemanticInput; state?: unknown };
+const boundInputs = new WeakMap<ConversationWindow, BoundWindowInput>();
+export const boundWindowInput = (window: ConversationWindow): BoundWindowInput | undefined => boundInputs.get(window);
+
+export function createBoundWindow(
+  reader: ConstructorParameters<typeof ConversationWindow>[0],
+  handle: ThreadHandle,
+  input: BoundWindowInput,
+  options: WindowOptions = {},
+): ConversationWindow {
+  const window = new ConversationWindow(reader, options);
+  if (!window.bindCurrentThread(handle)) throw new Error("window owner binding failed");
+  if (!window.bindConversationInput(input.capture)) throw new Error("window semantic binding failed");
+  boundInputs.set(window, input);
+  return window;
+}
+
 export interface Rig {
   t: FakeTransport;
   owner: WindowOwner;
@@ -104,7 +122,9 @@ export async function rig(total: number, options: { capability?: boolean; decora
       };
     },
   };
-  const w = new ConversationWindow({ read: (a, c) => handle.readWindow(a, c) }, opts);
+  let windowRef: ConversationWindow;
+  windowRef = createBoundWindow({ read: (a, c) => handle.readWindow(a, c) }, handle, { capture: snapshot => captureConversationInput(snapshot, { scope: "history", threadId: handle.threadId, records: handle.handoff.value, work: captureCurrentWork(handle.threadId, handle.work.value.value), current: () => windowRef.isCurrentThread(handle) }) }, opts);
+  const w = windowRef;
   const calls = () => t.calls("history.window");
   const settle = async () => {
     for (let i = 0; i < 20; i++) {

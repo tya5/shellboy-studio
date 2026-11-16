@@ -14,17 +14,15 @@ export interface HandoffRecord {
   readonly status: HandoffStatus;
 }
 interface Held {
-  admitted: number; sourceRevision: number; attemptId: string; source: LiveText; stop: () => void; record: HandoffRecord
+  admitted: number; attemptId: string; source: LiveText; stop: () => void; record: HandoffRecord
 }
 
-/** One ledger per watched Thread. No queue, spill or timer. Hints cannot refill read budget. */
+/** One ledger per watched Thread. No queue, spill, or timer; retained bytes are bounded. */
 export class Handoff {
   private held: Held[] = [];
 
   private active: string | undefined;
   private epochValue = 0;
-  private lifetimeValue = 0;
-  get lifetime(): number { return this.lifetimeValue; }
   private blockedAttempt: string | undefined;
   private readonly discarded = signal<PreviewDiscardReason | undefined>(undefined);
   private publishing = false;
@@ -40,8 +38,7 @@ export class Handoff {
   constructor(private readonly schedule: Schedule) {}
   get epoch(): number { return this.epochValue; }
   get retainedBytes(): number { return this.held.reduce((n, h) => n + bytes(h.record.text), 0); }
-  reconcile(): void { this.epochValue++; }
-  invalidate(): void { this.epochValue++; }
+  advanceEpoch(): void { this.epochValue++; }
 
   apply(frame: LiveFrame): void {
     let h = this.held.find(h => h.attemptId === frame.attempt_id);
@@ -51,7 +48,7 @@ export class Handoff {
       if (this.active) this.finish();
       const source = new LiveText(this.schedule);
       const record: HandoffRecord = { key: `handoff:${frame.attempt_id}`, attemptId: frame.attempt_id, text: '', incomplete: frame.gap, status: 'streaming' };
-      h = { admitted: 0, sourceRevision: 0, attemptId: frame.attempt_id, source, stop: () => {}, record };
+      h = { admitted: 0, attemptId: frame.attempt_id, source, stop: () => {}, record };
       const held = h;
       this.held.push(h);
       h.stop = source.preview.subscribe(p => {
@@ -95,8 +92,7 @@ export class Handoff {
   }
 
   discard(_reason: PreviewDiscardReason): void {
-    this.epochValue++;
-    this.lifetimeValue++;
+    this.advanceEpoch();
     this.discarded.value = _reason;
     for (const h of this.held) { h.stop(); h.source.discard(_reason); }
     this.held = []; this.active = undefined; this.blockedAttempt = undefined;
@@ -111,7 +107,6 @@ export class Handoff {
   private updateRecord(held: Held, next: HandoffRecord): HandoffRecord {
     const previous = held.record;
     if (this.sameOwnRecord(previous, next)) return previous;
-    held.sourceRevision++;
     held.record = Object.freeze(next);
     return held.record;
   }
@@ -132,7 +127,7 @@ export class Handoff {
         if (!this.publicationDirty) return;
       }
       // A continuously mutating observer cannot keep old capture authority alive.
-      this.invalidate();
+      this.advanceEpoch();
       this.overflowSig.value = true;
     } finally { this.publishing = false; }
   }

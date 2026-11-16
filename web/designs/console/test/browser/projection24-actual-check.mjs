@@ -31,7 +31,8 @@ try {
     assert(loaded,'normalized DOM fixture ready');let result;try{result=await evaluate('window.runActual()')}catch(error){const trace=await evaluate('window.actualTrace ?? null');await writeFile(join(out,`error-${width}.json`),JSON.stringify({error:String(error),trace},null,2));throw error;}
     assert(result.boundaries.every(b=>b.result==='obsolete'&&b.consume===0&&b.write===0&&b.capture===0),'actual obsolete effects zero');
     assert(result.consume.observed&&result.consume.successful===1&&result.consume.bad===false&&result.consume.twice===false,'observed actual pending request consumes once');
-    const record={width,samples:result.samples.length,failures:result.failures,boundaries:result.boundaries,consume:result.consume};records.push(record);console.log(JSON.stringify(record));
+    assert(result.production?.rows===3&&result.production.matchingLive===0&&result.production.foreignLive===1&&result.production.missingLive===1&&result.production.differentLive===1&&result.production.readerCurrent===true,'production accepted retirement/negative mapping');
+    const record={width,samples:result.samples.length,failures:result.failures,boundaries:result.boundaries,consume:result.consume,production:result.production};records.push(record);console.log(JSON.stringify(record));
     await writeFile(join(out,`dom-${width}.json`),JSON.stringify(result,null,2));const shot=await cmd('Page.captureScreenshot',{format:'png'});await writeFile(join(out,`dom-${width}.png`),Buffer.from(shot.data,'base64'));
   }
   await writeFile(join(out,'summary.json'),JSON.stringify({records,errors},null,2));

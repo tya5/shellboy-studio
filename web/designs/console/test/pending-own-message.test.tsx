@@ -15,6 +15,30 @@ import {Composer} from '../system/components/Composer';
 import {canonicalAttemptId} from '../../../data/test/work-fixture';
 
 
+async function bodyReadControlCase(partial: boolean) {
+ let rows: HistoryItem[] = [{ node_id: "savedassistant", kind: "assistant_response", selection: { ordinal: 0 },
+  ...(partial ? { items: [{ kind: "text" as const, item_identity: "answer", text: "typed prefix", text_complete: false }] } : { items: null, items_unavailable_reason: "response_budget" as const }),
+  excerpt: "typed prefix" }];
+ const f = await fixtureModel({capabilities: ["history.window"], route: "conversation", threadId: "t", configure(db) {
+  db.threads = { t: summary("t") }; db.details.t = details("t"); db.history.t = rows;
+  const base = db.answer.bind(db);
+  db.answer = call => call.command === "history.get"
+   ? { ok: true, result: { node_id: "savedassistant", kind: "assistant_response", text: "full visible", provenance: { sender: { kind: "assistant" } } } }
+   : call.command === "history.window" ? { ok: true, result: { thread_id: "t", revision: 1, total: rows.length, items: rows } } : base(call);
+ }});
+ const host = document.createElement("div"); document.body.append(host);
+ const context: DesignContext = { model: f.model, prefs: signal(loadPrefs({ read: () => null, write: () => {} }, [{ name: "console", themes: [{ name: "light" }] }])), setPrefs: () => {}, designs: [], submitToken: async () => false };
+ try {
+  await act(async () => { render(<App context={context} />, host); await settle(f.t, f.db); });
+  const button = [...host.querySelectorAll<HTMLButtonElement>("button")].find(node => node.textContent?.includes(f.model.t.value("convo.fullMessage")));
+  expect(button).toBeDefined();
+  await act(async () => { button!.click(); await settle(f.t, f.db); });
+  expect(f.t.calls("history.get")).toHaveLength(1);
+  expect(host.textContent).toContain("full visible");
+ } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
+}
+
+
 
 for(const savedBeforeAck of [false,true])it(`submitted message remains separate until exact acceptance and saved arrival: savedFirst=${savedBeforeAck}`,async()=>{
  let rows:HistoryItem[]=[];
@@ -360,6 +384,14 @@ it('retry display eligibility rejects owner ABA and route ABA without dispatch s
    expect(f.model.canResend(original)).toBe(false);expect(await f.model.resend(original)).toBe(false);expect(f.t.calls('message.send')).toHaveLength(count);
   }finally{f.model.dispose();f.data.stop();}
  }
+});
+
+it("deferred response_budget body button reads typed history and renders full visible", async () => {
+ await bodyReadControlCase(false);
+});
+
+it("partial response_budget body button reads typed history and renders full visible", async () => {
+ await bodyReadControlCase(true);
 });
 
 it('accepted live preview retires after saved >16KiB body loads through the ordinary button',async()=>{

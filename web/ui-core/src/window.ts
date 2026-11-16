@@ -412,10 +412,8 @@ export class ConversationWindow {
   }
 
   captureConversationInput(snapshot: WindowAcceptedSnapshot): ConversationSemanticInput {
-    if (this.conversationInputOwner) return this.conversationInputOwner(snapshot);
-    const scope = snapshot.displayPlan?.scope ?? 'history';
-    return captureConversationInput(snapshot, { scope, threadId: '', records: [],
-      work: captureCurrentWork(scope, undefined), current: () => !this.disposed });
+    if (!this.conversationInputOwner) throw new Error('ConversationWindow requires a typed input binding');
+    return this.conversationInputOwner(snapshot);
   }
 
   /** A semantic source change uses the same constructor as an arriving history cut. */
@@ -444,11 +442,16 @@ export class ConversationWindow {
   }
 
   private commitAccepted(publication: AcceptedPublication<WindowAcceptedSnapshot, import("./conversation-input").ConversationIdentity>): boolean {
+    // Reject stale owner/thread candidates before AcceptedView can publish them; retirement is
+    // part of the same accepted transaction and must never run against a stale binding.
+    const binding = this.currentThread;
+    if (!binding || binding.threadId !== binding.handle.threadId || binding.handle.liveEpoch() !== binding.epoch) {
+      this.diagnostic.value = Object.freeze({ reason: 'publication-rejected', generation: this.acceptedView.peek().generation, revision: this.acceptedView.peek().revision, ownerEpoch: this.epoch, at: Date.now() });
+      return false;
+    }
     let published = false;
     batch(() => {
       published = this.acceptedView.publish(publication, snapshot => {
-        const binding = this.currentThread;
-        if (!binding || binding.handle.liveEpoch() !== binding.epoch || binding.threadId !== binding.handle.threadId) return;
         const savedAttempts = new Set(snapshot.rows.flatMap(row => row.kind === "assistant_response" && row.provenance?.attempt_id ? [row.provenance.attempt_id] : []));
         for (const attemptId of savedAttempts)
           if (binding.handle.handoff.peek().some(record => record.attemptId === attemptId)) binding.handle.releaseAcceptedHandoff(attemptId);

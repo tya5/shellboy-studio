@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { flush } from "../../data/test/harness";
 import { rig } from "./window-owner";
 import { canonicalAttemptId } from "../../data/test/work-fixture";
+import { captureConversationInput, captureCurrentWork } from "../src/conversation-input";
 
 describe("production accepted window live retirement", () => {
   it("releases the matching live attempt only after accepted saved rows commit", async () => {
@@ -14,6 +15,36 @@ describe("production accepted window live retirement", () => {
     f.w.changed();
     await f.settle();
     expect(f.handle.handoff.value.some(record => record.attemptId === canonicalAttemptId(1))).toBe(false);
+    f.w.dispose();
+    f.data.stop();
+  });
+
+  it("accepted plan multiplicity retires one matching live record from one to zero", async () => {
+    const f = await rig(20);
+    const attempt = canonicalAttemptId(1);
+    f.w.bindCurrentThread(f.handle);
+    f.w.bindConversationInput(snapshot => captureConversationInput(snapshot, {
+      scope: "history", threadId: "t", records: f.handle.handoff.value,
+      work: captureCurrentWork("t", undefined), current: () => true,
+    }));
+    f.t.push({ t: "live", thread_id: "t", attempt_id: attempt, gap: false, deltas: [{ offset: 0, reasoning: false, text: "live answer" }] });
+    await flush();
+    f.w.changed();
+    await f.settle();
+    const liveEntries = () => f.w.acceptedView.peek().displayPlan?.entries.filter(entry => {
+      const source = entry.item.source;
+      return "domain" in source && source.domain === "live" && source.attemptId === attempt;
+    }) ?? [];
+    expect(liveEntries()).toHaveLength(1);
+    expect(f.handle.handoff.value.filter(record => record.attemptId === attempt)).toHaveLength(1);
+    f.owner.decorate = (i, item) => i === 19 ? { ...item, kind: "assistant_response", provenance: { attempt_id: attempt } } : item;
+    f.w.changed();
+    await f.settle();
+    const accepted = f.w.acceptedView.peek();
+    expect(accepted.rows.filter(row => row.node_id === f.owner.nodeId(19))).toHaveLength(1);
+    expect(accepted.displayPlan?.entries.filter(entry => entry.item.source.nodeId === f.owner.nodeId(19))).toHaveLength(1);
+    expect(liveEntries()).toHaveLength(0);
+    expect(f.handle.handoff.value.filter(record => record.attemptId === attempt)).toHaveLength(0);
     f.w.dispose();
     f.data.stop();
   });
