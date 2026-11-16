@@ -54,48 +54,6 @@ export function conversationIdentityEqual(a: ConversationIdentity, b: Conversati
 }
 
 
-/** Keep canonical history as the chronology spine; replace matching live attempts at their saved slot.
- * Unmatched live/work facts stay in their captured order after the nearest matched slot. */
-export function orderSemanticSources(
-  snapshot: WindowAcceptedSnapshot,
-  canonical: readonly NormalizedSavedItem[],
-  overlays: readonly NormalizedSavedItem[],
-): readonly NormalizedSavedItem[] {
-  const nodeIndexes = new Map<string, number[]>();
-  canonical.forEach((item, index) => { if ("nodeId" in item && typeof item.nodeId === "string") nodeIndexes.set(item.nodeId, [...(nodeIndexes.get(item.nodeId) ?? []), index]); });
-  const nodeIndex = new Map([...nodeIndexes].flatMap(([nodeId, indexes]) => indexes.every((index, offset) => index === indexes[0]! + offset)
-    ? [[nodeId, indexes.at(-1)!] as const] : []));
-  const rowAttempts = new Map<string, { readonly row: WindowAcceptedSnapshot['rows'][number]; readonly slot: number | undefined }>();
-  const slotForRow = (row: WindowAcceptedSnapshot['rows'][number]): number | undefined => {
-    const indexes = row.node_id ? nodeIndexes.get(row.node_id) : undefined;
-    if (indexes?.length) return indexes.at(-1)! + 1;
-    const ordinal = row.selection?.ordinal;
-    if (ordinal === undefined) return undefined;
-    return snapshot.rows.filter(candidate => (candidate.selection?.ordinal ?? -1) > ordinal)
-      .flatMap(candidate => candidate.node_id ? [nodeIndexes.get(candidate.node_id)?.[0]] : [])
-      .find((index): index is number => index !== undefined) ?? canonical.length;
-  };
-  for (const row of snapshot.rows) if (row.kind === "assistant_response" && row.provenance?.attempt_id)
-    rowAttempts.set(String(row.provenance.attempt_id), { row, slot: slotForRow(row) });
-  const pending: NormalizedSavedItem[][] = Array.from({ length: canonical.length + 1 }, () => []);
-  let anchor: number | undefined;
-  for (const item of overlays) {
-    if (!("domain" in item) || item.domain !== "live") { pending[anchor ?? canonical.length]!.push(item); continue; }
-    const ownRow = item.attemptId ? rowAttempts.get(String(item.attemptId)) : undefined;
-    const ownMatch = ownRow?.slot;
-    const predecessorMatch = ownRow === undefined ? (item.afterAttemptId ? rowAttempts.get(String(item.afterAttemptId))?.slot : item.afterNodeId ? nodeIndex.get(item.afterNodeId) : undefined) : undefined;
-    if (ownRow !== undefined) { if (ownMatch !== undefined) anchor = ownMatch; continue; }
-    if (predecessorMatch !== undefined) { anchor = predecessorMatch; pending[anchor]!.push(item); continue; }
-    // No observed placement provenance: keep the canonical boundary, never invent an anchor.
-    pending[anchor ?? canonical.length]!.push(item);
-  }
-  const ordered: NormalizedSavedItem[] = [];
-  for (let index = 0; index <= canonical.length; index++) {
-    if (index) ordered.push(canonical[index - 1]!);
-    ordered.push(...pending[index]!);
-  }
-  return Object.freeze(ordered);
-}
 export interface ConversationSemanticInput {
   readonly isCurrent: () => boolean;
   readonly identity:ConversationIdentity;
@@ -117,7 +75,9 @@ export function captureConversationInput(snapshot: WindowAcceptedSnapshot, input
   const retained = current ? input.work.facts : [];
   const live = current ? projectOwnedHandoffFacts(input.scope, input.records) : [];
   const work = current ? scopeIssuedWorkFacts([...live, ...retained], [input.scope]) : undefined;
-  const projected = work?.length ? projectSavedItems(orderSemanticSources(snapshot, canonicalProjection.items.map(item => item.source), work)) : canonicalProjection;
+  const acceptedAttempts = new Set(snapshot.rows.flatMap(row => row.kind === "assistant_response" && row.provenance?.attempt_id ? [String(row.provenance.attempt_id)] : []));
+  const remainingWork = work?.filter(item => !("domain" in item && item.domain === "live" && item.attemptId && acceptedAttempts.has(String(item.attemptId)))) ?? [];
+  const projected = work?.length ? projectSavedItems([...canonicalProjection.items.map(item => item.source), ...remainingWork]) : canonicalProjection;
   return { isCurrent: input.current,
     identity: createConversationIdentity({ rows: snapshot.rows, revision: snapshot.revision, records: input.records,
       work: input.work, scope: input.scope, current }),
