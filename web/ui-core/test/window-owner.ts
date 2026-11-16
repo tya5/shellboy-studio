@@ -70,7 +70,7 @@ export class WindowOwner {
   }
 }
 
-export interface FixtureSemanticProducer { advance(attemptId: string): void; }
+export interface FixtureSemanticProducer { advance(attemptId: string): void; emitLive(attemptId: string, offset: number, text: string): void; }
 export type BoundWindowInput = { state: FixtureSemanticProducer; capture: (snapshot: import("../src/window").WindowAcceptedSnapshot) => import("../src/conversation-input").ConversationSemanticInput; }
 const boundInputs = new WeakMap<ConversationWindow, BoundWindowInput>();
 export const boundWindowInput = (window: ConversationWindow): BoundWindowInput | undefined => boundInputs.get(window);
@@ -130,9 +130,10 @@ export async function rig(total: number, options: { capability?: boolean; decora
       };
     },
   };
-  const producer: FixtureSemanticProducer = { advance: attemptId => {
-    t.push({ t: "live", thread_id: handle.threadId, attempt_id: attemptId, gap: false, deltas: [{ offset: 0, reasoning: false, text: attemptId }] });
-    if (!options.schedule) while (liveQueue.size) { const callback = liveQueue.values().next().value!; liveQueue.delete(callback); callback(); }
+  const drainLive = () => { if (!options.schedule) while (liveQueue.size) { const callback = liveQueue.values().next().value!; liveQueue.delete(callback); callback(); } };
+  const producer: FixtureSemanticProducer = { advance: attemptId => producer.emitLive(attemptId, 0, attemptId), emitLive: (attemptId, offset, text) => {
+    t.push({ t: "live", thread_id: handle.threadId, attempt_id: attemptId, gap: false, deltas: [{ offset, reasoning: false, text }] });
+    drainLive();
   } };
   let windowRef: ConversationWindow;
   windowRef = createBoundWindow({ read: (a, c) => handle.readWindow(a, c) }, handle, { state: producer, capture: snapshot => {

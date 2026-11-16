@@ -224,7 +224,7 @@ describe("Conversation live text", () => {
     model.dispose();
   });
 
-  it("keeps the live answer before a later human row in the windowed reader", async () => {
+  it("keeps the saved human row before the unmatched live suffix in the windowed reader", async () => {
     const owner = new WindowOwner(8);
     owner.decorate = (i, item) => i === 8 ? { ...item, kind: "user", excerpt: "Forbidden aggregate human", items:[{kind:"text",item_identity:"body",text:"Window human",text_complete:true}] } : item;
     const { model, t, db } = await fixtureModel({ capabilities: ["live.text", "history.window"], configure(db) {
@@ -240,7 +240,7 @@ describe("Conversation live text", () => {
     await act(async () => settle(t, db));
     expect(text(el)).toContain("Window live answer");
     expect(text(el)).toContain("Window human");
-    expect(text(el).indexOf("Window live answer")).toBeLessThan(text(el).indexOf("Window human"));
+    expect(text(el).indexOf("Window human")).toBeLessThan(text(el).indexOf("Window live answer"));
     model.dispose();
   });
 
