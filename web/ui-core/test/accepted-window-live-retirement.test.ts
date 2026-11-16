@@ -119,7 +119,7 @@ it("preserves real chronology when a new saved replacement arrives", async () =>
   const beforeBRecord=f.handle.handoff.value.find(record=>record.attemptId===b)!,beforeCRecord=f.handle.handoff.value.find(record=>record.attemptId===c)!;
   const beforeWithoutA=before.filter(id=>id!==`handoff:${a}`);
   f.owner.append(2);
-  f.owner.decorate=(i,item)=>i===18?{...item,kind:"assistant_response",provenance:{attempt_id:a},items:[{kind:"text",item_identity:"first",text:"A1"},{kind:"text",item_identity:"second",text:"A2"}]}:i===19?{...item,kind:"user",items:[{kind:"text",item_identity:"next",text:"Next user",text_complete:true}]}:item;
+  f.owner.decorate=(i,item)=>i===18?{...item,kind:"assistant_response",provenance:{attempt_id:a},items:[{kind:"text",item_identity:"first",text:"A1",text_complete:true},{kind:"text",item_identity:"second",text:"A2",text_complete:true}]}:i===19?{...item,kind:"user",items:[{kind:"text",item_identity:"next",text:"Next user",text_complete:true}]}:item;
   f.w.changed();await f.settle(()=>f.w.acceptedView.peek().revision===f.owner.revision && f.w.acceptedView.peek().rows.some(row=>row.node_id===f.owner.nodeId(18)));
   const savedA=f.owner.nodeId(18),nextUser=f.owner.nodeId(19),after=ids();
   const expected=[...beforeWithoutA.slice(0,beforeA),savedA,savedA,...beforeWithoutA.slice(beforeA),nextUser];
