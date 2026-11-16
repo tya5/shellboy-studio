@@ -11,7 +11,7 @@ export async function controlledWindow(){
  const liveCallbacks=new Set<()=>void>();
  const liveSchedule:(callback:()=>void)=>void=callback=>liveCallbacks.add(callback);
  const owner=await ownerRig(0,{schedule:liveSchedule});owner.w.dispose();
- const producer={advance:(attemptId:string)=>{owner.producer.advance(attemptId);while(liveCallbacks.size){const callback=liveCallbacks.values().next().value!;liveCallbacks.delete(callback);callback();}}};
+ const producer={advance:(attemptId:string)=>{owner.producer.advance(attemptId);while(liveCallbacks.size){const callback=liveCallbacks.values().next().value!;liveCallbacks.delete(callback);callback();},emitLive:(attemptId:string,offset:number,text:string)=>{owner.producer.emitLive(attemptId,offset,text);while(liveCallbacks.size){const callback=liveCallbacks.values().next().value!;liveCallbacks.delete(callback);callback();}}};
  let boundWindow:ConversationWindow;
  const input={state:producer,capture:(snapshot:import('../src/window').WindowAcceptedSnapshot)=>{const capability=boundWindow.acceptedView.currentCapability;return captureConversationInput(snapshot,{scope:owner.handle.threadId,threadId:owner.handle.threadId,records:owner.handle.handoff.value,work:captureCurrentWork(owner.handle.threadId,owner.handle.work.value.value),current:()=>boundWindow.isCurrentThread(owner.handle)&&boundWindow.acceptedView.currentCapability===capability});}};
  boundWindow=createBoundWindow({read:(args,cancel)=>new Promise(resolve=>{
