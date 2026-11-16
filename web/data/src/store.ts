@@ -787,11 +787,10 @@ export class ShellboyData {
       const targets = entry.live.records.peek().filter(r => r.status === "confirming" || r.status === "failed");
       if (!valid()) return;
       if (entry.terminalReads.queued) {
-        const dispatchResult = await entry.terminalReads.dispatch(() => entry.live.takeRead(), (args, cancel) => this.operations.historyWindow(args, { cancel }));
+        const dispatchResult = await entry.terminalReads.dispatch(() => true, (args, cancel) => this.operations.historyWindow(args, { cancel }));
         outcome = dispatchResult === "success" || dispatchResult === "no-work" ? "success" : "failed"; return;
       }
       if (!targets.length) { entry.handoffRetryState.value = { phase: "idle", reason: "no-pending", canRetry: false }; outcome = "success"; return; }
-      if (!entry.live.takeRead()) { entry.handoffRetryState.value = { phase: "unavailable", reason: "budget-exhausted", canRetry: true }; return; }
       entry.handoffRetryState.value = { phase: "reading", canRetry: false };
       if (!valid()) return;
       const displayOwner = entry.displayOwner;
@@ -881,7 +880,7 @@ export class ShellboyData {
         // Overlapping pages may reuse only the same exact selected identities.
         for (const ref of refs) {
           if (nodes.has(ref.nodeId)) continue;
-          if (!valid() || !entry.live.takeRead()) { unavailable = true; break; }
+          if (!valid()) { unavailable = true; break; }
           const page = await this.operations.historyWindow({ thread_id: entry.id, node_id: ref.nodeId,
             before: 0, after: 199, excerpt_chars: 0, items: true }, { cancel: cancelled });
           if (!valid()) return;
@@ -932,7 +931,7 @@ export class ShellboyData {
         entry.handoffRetryState.value = capacityBlocked
           ? { phase: "unavailable", reason: "receipt_capacity", canRetry: false }
           : unresolved.length > 0
-          ? { phase: "unavailable", reason: entry.live.remainingReads ? "unresolved" : "budget-exhausted", canRetry: true }
+          ? { phase: "unavailable", reason: "unresolved", canRetry: true }
           : { phase: "idle", canRetry: false };
       }
       const waiting = [...this.entries.values()].find(e => e.handoffDemand !== "none" && !e.closed && !e.paused);

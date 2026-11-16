@@ -48,7 +48,6 @@ export interface DisplayTarget { publish(observations: readonly DisplayObservati
 /** ADR-C1: UTF-8 retained text accounting, not a JavaScript heap guarantee. */
 export const MAX_HANDOFF_RECORDS = 8;
 export const MAX_HANDOFF_BYTES = 1024 * 1024;
-export const MAX_HANDOFF_READS = 8;
 const bytes = (s: string) => new TextEncoder().encode(s).byteLength;
 export type HandoffStatus = 'streaming' | 'confirming' | 'failed' | 'ready';
 export type HandoffPathAnchor={readonly kind:'beginning'}|{readonly kind:'after-node';readonly nodeId:string;readonly ordinal:number};
@@ -90,7 +89,6 @@ export class Handoff {
   private lifetimeValue = 0;
   get lifetime(): number { return this.lifetimeValue; }
   private blockedAttempt: string | undefined;
-  private reads = MAX_HANDOFF_READS;
   private readonly discarded = signal<PreviewDiscardReason | undefined>(undefined);
   private publishing = false;
   private publicationDirty = false;
@@ -104,12 +102,10 @@ export class Handoff {
   });
   constructor(private readonly schedule: Schedule) {}
   get epoch(): number { return this.epochValue; }
-  get remainingReads(): number { return this.reads; }
   get retainedBytes(): number { return this.held.reduce((n, h) => n + bytes(h.record.text), 0); }
   get isEnding(): boolean { return this.held.some(h => h.record.status === 'confirming'); }
-  takeRead(): boolean { if (!this.reads) return false; this.reads--; return true; }
   clearDisplay(): void { for (const held of this.held) held.display = undefined; }
-  reconcile(): void { this.clearDisplay(); this.reads = MAX_HANDOFF_READS; this.epochValue++; }
+  reconcile(): void { this.clearDisplay(); this.epochValue++; }
   invalidate(): void { this.clearDisplay(); this.epochValue++; }
 
   apply(frame: LiveFrame,placement?:HandoffPlacement): void {
