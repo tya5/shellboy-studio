@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { flush } from "../../data/test/harness";
 import { createBoundWindow, rig } from "./window-owner";
 import { canonicalAttemptId } from "../../data/test/work-fixture";
-import { captureConversationInput, captureCurrentWork, captureWork } from "../src/conversation-input";
+import { captureConversationInput, captureCurrentWork } from "../src/conversation-input";
 
 describe("production accepted window live retirement", () => {
   it("releases the matching live attempt only after accepted saved rows commit", async () => {
@@ -75,7 +75,7 @@ it("semantic lease cancellation rejects publication and preserves accepted ref/l
  const attempt=canonicalAttemptId(1),f=await rig(2);let w!:typeof f.w;try{
  f.t.push({t:"live",thread_id:f.handle.threadId,attempt_id:attempt,gap:false,deltas:[{offset:0,reasoning:false,text:"live"}]});await flush();f.w.dispose();
  let armed=false,phase="idle";
- const input={state:f.producer,capture:(snapshot:import("../src/window").WindowAcceptedSnapshot)=>captureConversationInput(snapshot,{scope:f.handle.threadId,threadId:f.handle.threadId,records:f.handle.handoff.value,work, current:()=>{
+ const input={state:f.producer,capture:(snapshot:import("../src/window").WindowAcceptedSnapshot)=>captureConversationInput(snapshot,{scope:f.handle.threadId,threadId:f.handle.threadId,records:f.handle.handoff.value,work:captureCurrentWork(f.handle.threadId,f.handle.work.value.value),current:()=>{
   if(!armed)return w.isCurrentThread(f.handle);
   if(phase==="capture"){phase="lease";return w.isCurrentThread(f.handle);}
   f.handle.cancelReads();return true;
@@ -144,7 +144,7 @@ it("rejects a stale placement candidate from actual handle identity, then accept
   old=createBoundWindow({read:(args,cancel)=>f.handle.readWindow(args,cancel)},f.handle,input);await f.settle();const before=old.acceptedView.peek();armed=true;
   expect(old.refreshConversationInput(before)).toBe(false);expect(old.acceptedView.peek()).toBe(before);expect(old.acceptedView.isCurrent(before)).toBe(true);expect(calls).toBeGreaterThanOrEqual(2);
   const b=records.find(record=>record.attemptId===canonicalAttemptId(2))!,c=records.find(record=>record.attemptId===canonicalAttemptId(3))!;expect(f.handle.handoff.value.find(record=>record.attemptId===b.attemptId)).toBe(b);expect(f.handle.handoff.value.find(record=>record.attemptId===c.attemptId)).toBe(c);
-  work=captureWork(Object.freeze({phase:2}),[]);old.dispose();const freshRecords=f.handle.handoff.value;let fresh!:typeof f.w;const freshInput={state:f.producer,capture:(snapshot:import("../src/window").WindowAcceptedSnapshot)=>captureConversationInput(snapshot,{scope:f.handle.threadId,threadId:f.handle.threadId,records:freshRecords,work:captureCurrentWork(f.handle.threadId,f.handle.work.value.value),current:()=>fresh.isCurrentThread(f.handle)&&f.handle.handoff.peek()===freshRecords})};
+  old.dispose();const freshRecords=f.handle.handoff.value;let fresh!:typeof f.w;const freshInput={state:f.producer,capture:(snapshot:import("../src/window").WindowAcceptedSnapshot)=>captureConversationInput(snapshot,{scope:f.handle.threadId,threadId:f.handle.threadId,records:freshRecords,work:captureCurrentWork(f.handle.threadId,f.handle.work.value.value),current:()=>fresh.isCurrentThread(f.handle)&&f.handle.handoff.peek()===freshRecords})};
   fresh=createBoundWindow({read:(args,cancel)=>f.handle.readWindow(args,cancel)},f.handle,freshInput);await f.settle();expect(fresh.acceptedView.peek().generation).toBeGreaterThan(before.generation);expect(fresh.isCurrentThread(f.handle)).toBe(true);
  }finally{old?.dispose();f.data.stop();}
 });
