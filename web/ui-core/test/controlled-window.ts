@@ -9,9 +9,9 @@ export async function controlledWindow(){
  const requests:{args:WindowReadArgs;cancel:Cancel;settled:boolean;reply:(value:Outcome<HistoryWindowInput>)=>void}[]=[];
  const timers=new Set<()=>void>();
  const owner=await ownerRig(0);owner.w.dispose();
- const semantic={version:0,capability:undefined as unknown};
+ const semantic={version:0};
  let boundWindow:ConversationWindow;
- const input={state:semantic,capture:(snapshot:import('../src/window').WindowAcceptedSnapshot)=>{const capturedVersion=semantic.version;const capability=semantic.capability??(semantic.capability=boundWindow.acceptedView.currentCapability);return captureConversationInput(snapshot,{scope:owner.handle.threadId,threadId:owner.handle.threadId,records:owner.handle.handoff.value,work:captureCurrentWork(owner.handle.threadId,owner.handle.work.value.value),current:()=>boundWindow.isCurrentThread(owner.handle)&&boundWindow.acceptedView.currentCapability===capability&&semantic.version===capturedVersion});}};
+ const input={state:semantic,capture:(snapshot:import('../src/window').WindowAcceptedSnapshot)=>{const capturedVersion=semantic.version;const capability=boundWindow.acceptedView.currentCapability;return captureConversationInput(snapshot,{scope:owner.handle.threadId,threadId:owner.handle.threadId,records:owner.handle.handoff.value,work:captureCurrentWork(owner.handle.threadId,owner.handle.work.value.value),current:()=>boundWindow.isCurrentThread(owner.handle)&&boundWindow.acceptedView.currentCapability===capability&&semantic.version===capturedVersion});}};
  boundWindow=createBoundWindow({read:(args,cancel)=>new Promise(resolve=>{
   const request={args,cancel,settled:false,reply:(value:Outcome<HistoryWindowInput>)=>{request.settled=true;resolve(value);}};
   requests.push(request);
@@ -22,7 +22,7 @@ export async function controlledWindow(){
 }
 
 /** A real pending-owner input replaces semantics while retaining the selected rows and scroll intent. */
-type ControlledSemanticState={version:number;capability:unknown};
+type ControlledSemanticState={version:number};
 export function publishControlledAttempt(win:ConversationWindow,attemptId:string){
  const before=win.acceptedView.peek();
  const input=boundWindowInput(win),state=input?.state as ControlledSemanticState|undefined;
