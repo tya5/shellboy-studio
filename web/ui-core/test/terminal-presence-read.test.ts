@@ -275,12 +275,17 @@ it("Window rebinds a revision-changing point read through one bounded whole-wind
   r.w.setAttemptPresentations([{scope:r.h.handoffScope(),attemptId:'other',turnId:'other-turn',nodeIds:['unselected'],state:'pending'}]);
   const successor=r.w.acceptedView.peek();
   expect(successor.revision).toBe(8);
-  expect(successor.displayPlan?.entries.find(entry=>entry.item.key===JSON.stringify(['answer','text']))?.presentationContainer).toBe(r.receipt.presentationContainer);
+  const visibleAnswer=successor.displayPlan?.entries.filter(entry=>entry.item.key===JSON.stringify(['answer','text']));
+  expect(visibleAnswer).toHaveLength(1);
+  expect(visibleAnswer?.[0]).toMatchObject({presentationContainer:r.receipt.presentationContainer,body:{kind:'typed-canonical',text:'saved'}});
+  expect(successor.rows.map(row=>row.selection?.ordinal)).toEqual([0,1]);
   expect(successor.assistantOwnership).toMatchObject([{attemptId:CANONICAL_ATTEMPT_ID,mode:'canonical',proofRevision:8}]);
   r.w.setAttemptPresentations([{scope:r.h.handoffScope(),attemptId:'another',turnId:'another-turn',nodeIds:['also-unselected'],state:'pending'}]);
   expect(r.w.refreshConversationInput(r.w.acceptedView.peek())).toBe(true);
   const stable=r.w.acceptedView.peek();expect(stable.revision).toBe(8);
-  expect(stable.displayPlan?.entries.find(entry=>entry.item.key===JSON.stringify(['answer','text']))?.presentationContainer).toBe(r.receipt.presentationContainer);
+  const stableAnswers=stable.displayPlan?.entries.filter(entry=>entry.item.key===JSON.stringify(['answer','text']));
+  expect(stableAnswers).toHaveLength(1);
+  expect(stableAnswers?.[0]).toMatchObject({presentationContainer:r.receipt.presentationContainer,body:{kind:'typed-canonical',text:'saved'}});
   if(!('state' in lease))throw new Error('fixture requires the actual owned lease');
   expect(r.h.isTerminalReadCurrent(r.token,lease)).toBe(false); // the point lease was replaced
   if(!successorLease)throw new Error('fixture requires the actual public successor lease');
@@ -345,6 +350,15 @@ it('actual ready admission reads accepted range plus exact refs and atomically r
  expect(r.w.acceptedView.peek().rows.map(row=>row.node_id)).toEqual(['tool','answer']);
  expect(r.w.acceptedView.peek().revision).toBe(7); expect(r.h.handoff.peek()).toHaveLength(0);
  expect(r.w.acceptedView.peek().retiredAttempts?.[0]?.attemptId).toBe(CANONICAL_ATTEMPT_ID);
+ const retired=r.w.acceptedView.peek();
+ r.w.changed();await r.pump();
+ const refreshed=r.w.acceptedView.peek(),answers=refreshed.displayPlan?.entries.filter(entry=>entry.item.key===JSON.stringify(['answer','text']));
+ expect(refreshed.rows.map(row=>row.selection?.ordinal)).toEqual([0,1]);
+ expect(answers).toHaveLength(1);
+ expect(answers?.[0]).toMatchObject({body:{kind:'typed-canonical',text:'saved'},presentationContainer:retired.displayPlan?.entries.find(entry=>entry.item.key===JSON.stringify(['answer','text']))?.presentationContainer});
+ expect(refreshed.retiredAttempts?.some(item=>item.attemptId===CANONICAL_ATTEMPT_ID)).toBe(true);
+ expect(refreshed.assistantOwnership?.some(item=>item.attemptId===CANONICAL_ATTEMPT_ID&&item.mode==='canonical')).toBe(true);
+ expect(refreshed.displayPlan?.entries.some(entry=>entry.body.kind==='preview')).toBe(false);
  r.w.dispose();r.data.stop();
 });
 it('complete canonical ownership avoids a redundant ready readback',async()=>{
