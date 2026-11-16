@@ -92,3 +92,18 @@ it('places an exact fresh partial/no-items ACK slot without retiring its origina
   expect(result.projection.items).toHaveLength(0);expect(result.projection.sequence).toHaveLength(1);
  }
 });
+
+it('documents the remaining position gap when canonical acceptance arrives after the reserved slot', () => {
+ const own=local('own');
+ const reservation={token:{},observation:{installedToken:{},ref:{},scope:'scope',boundary:{kind:'beginning' as const},isCurrent:()=>true}};
+ const provisional=ownSendPresentation({ref:{},current:true,scope:'scope',projection:projectSavedItems([{windowRevision:1,nodeId:'before',itemIdentity:'before',kind:'user',text:'before',textComplete:true}]),localRows:[own],hiddenItemKeys:new Set(),reservation});
+ expect(provisional.slots).toEqual([{row:own,insertion:{kind:'beginning'},position:{kind:'before-first'}}]);
+ const accepted=ownSendPresentation({ref:{},current:true,scope:'scope',projection:projectSavedItems([
+  {windowRevision:2,nodeId:'before',itemIdentity:'before',kind:'user',text:'before',textComplete:true},
+  {windowRevision:2,nodeId:'other',itemIdentity:'other',kind:'user',text:'other',textComplete:true},
+  {windowRevision:2,nodeId:'own',itemIdentity:'own',kind:'user',text:'own',textComplete:true},
+ ]),localRows:[own],hiddenItemKeys:new Set(),reservation});
+ expect(accepted.retire).toEqual([own]);
+ expect(accepted.projection.items.map(item=>item.source.nodeId)).toEqual(['before','other','own']);
+ expect(accepted.slots).toEqual([]);
+});
