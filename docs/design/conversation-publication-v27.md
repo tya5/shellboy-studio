@@ -6,12 +6,12 @@ private owner/database integration.
 
 ## Current Scope
 
-One accepted update is an immutable cut in which a saved replacement occupies
-the same logical slot as its matching live source, preserving the surrounding
-ordered multiplicity in that same accepted update. The cut contains the selected
-history rows, source revision, scope JSON, owner/capability lifetime, accepted
-generation, canonical projection, live projection, presentation containers, and
-local-send ownership.
+One accepted update is an immutable cut whose canonical saved projection is
+ordered first, followed by unmatched live and Work facts in their captured order.
+When a saved assistant replaces a live attempt, its complete canonical items
+remain at the saved ordinal position; the next canonical user follows them, and
+only unmatched live facts remain as the suffix. Multiplicity, canonical ordinals,
+source identity, and unrelated relative order are preserved.
 
 After the staged semantic lease and pure candidate checks qualify, the selected
 rows, projection, geometry, and related state are installed by the single
@@ -105,3 +105,18 @@ selection/geometry stability, obsolete-effect rejection, and public projection
 mapping. It does not prove a real owner transport, a public typed producer, or
 full device behavior. Its runner records the assertion mapping and unsupported
 claims explicitly; screenshots are supporting artifacts, not acceptance proof.
+
+
+## Known Boundary
+
+The later Core #308 one-boundary append direction is recorded as feasibility
+guidance only; it is not implemented here and does not authorize a new ordering
+architecture or permission. The current Studio contract is canonical-prefix-first
+with captured unmatched live/Work suffix.
+
+The public binding is ThreadHandle plus thread identity, owner lifetime, reader
+epoch, capability, and accepted generation. Factory construction binds these
+values before reads are admitted; a candidate is accepted only when the captured
+values still identify the current handle and scope. This contract does not claim
+universal immutability outside the published containers, nor does it claim a
+stronger owner lifetime guarantee than the actual epoch/cancellation checks.

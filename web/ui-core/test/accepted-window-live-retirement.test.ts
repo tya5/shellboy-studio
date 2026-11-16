@@ -106,6 +106,37 @@ it("semantic false rejects publication with seeded accepted ref/live identity", 
 it('rejected publication reply preserves accepted ref and live identity',async()=>{
  const attempt=canonicalAttemptId(1),f=await liveCase(attempt);try{const beforeRef=f.w.acceptedView.peek(),before=f.handle.handoff.value[0]!;f.owner.append(1);f.w.changed();await flush();const call=f.calls().filter(item=>item.command==='history.window'&&!f.owner.answered.has(item.id)).at(-1);expect(call).toBeDefined();f.w.acceptedView.revoke();f.owner.answered.add(call!.id);const answer=f.owner.answer(call!);expect(answer.ok).toBe(true);if(answer.ok)f.t.ok(call!.id,answer.result);await flush(8);expect(f.w.acceptedView.peek()).toBe(beforeRef);expect(f.handle.handoff.value.some(record=>record===before)).toBe(true)}finally{f.w.dispose();f.data.stop()}});
 
+it("preserves canonical prefix and captured live suffix across accepted replacement", async () => {
+ const f=await rig(18),a=canonicalAttemptId(1),b=canonicalAttemptId(2),c=canonicalAttemptId(3);
+ try {
+  f.w.bindCurrentThread(f.handle);
+  for (const attempt of [a,b,c]) f.t.push({t:"live",thread_id:"t",attempt_id:attempt,gap:false,deltas:[{offset:0,reasoning:false,text:attempt}]});
+  await flush();f.w.changed();await f.settle();
+  const ids=()=>f.w.acceptedView.peek().displayPlan?.entries.map(entry=>{const source=entry.item.source;return "domain" in source?source.recordId:source.nodeId;}).filter((id):id is string=>id!==undefined) ?? [];
+  const before=ids(), prefix=before.slice(0,18), liveA=`handoff:${a}`,liveB=`handoff:${b}`,liveC=`handoff:${c}`;
+  expect(before).toEqual([...prefix,liveA,liveB,liveC]);
+  const beforeB=f.handle.handoff.value.find(record=>record.attemptId===b)!,beforeC=f.handle.handoff.value.find(record=>record.attemptId===c)!;
+  f.owner.append(2);
+  f.owner.decorate=(i,item)=>i===18?{...item,kind:"assistant_response",provenance:{attempt_id:a},items:[{kind:"text",item_identity:"first",text:"A1",text_complete:true},{kind:"text",item_identity:"second",text:"A2",text_complete:true}]}:i===19?{...item,kind:"user",items:[{kind:"text",item_identity:"next",text:"Next user",text_complete:true}]}:item;
+  f.w.changed();await f.settle(()=>f.w.acceptedView.peek().revision===f.owner.revision && f.w.acceptedView.peek().rows.some(row=>row.node_id===f.owner.nodeId(18)));
+  const savedA=f.owner.nodeId(18),nextUser=f.owner.nodeId(19),expected=[...prefix,savedA,savedA,nextUser,liveB,liveC];
+  expect(ids()).toEqual(expected);expect(f.handle.handoff.value.find(record=>record.attemptId===a)).toBeUndefined();
+  expect(f.handle.handoff.value.find(record=>record.attemptId===b)).toBe(beforeB);expect(f.handle.handoff.value.find(record=>record.attemptId===c)).toBe(beforeC);
+  f.w.changed();await f.settle();expect(ids()).toEqual(expected);expect(f.handle.handoff.value.find(record=>record.attemptId===b)).toBe(beforeB);expect(f.handle.handoff.value.find(record=>record.attemptId===c)).toBe(beforeC);
+ } finally { f.w.dispose();f.data.stop(); }
+});
+
+it("records live text changes during a lease and accepts a fresh same-window capture", async () => {
+ const a=canonicalAttemptId(1),f=await liveCase(a);let w!:typeof f.w;
+ try {
+  f.w.dispose();let armed=false,phase="initial";
+  const input={state:f.producer,capture:(snapshot:import("../src/window").WindowAcceptedSnapshot)=>captureConversationInput(snapshot,{scope:f.handle.threadId,threadId:f.handle.threadId,records:f.handle.handoff.value,work:captureCurrentWork(f.handle.threadId,f.handle.work.value.value),current:()=>{if(!armed)return w.isCurrentThread(f.handle);if(phase==="capture"){phase="leased";return w.isCurrentThread(f.handle);}return w.isCurrentThread(f.handle);}})};
+  w=createBoundWindow({read:(args,cancel)=>f.handle.readWindow(args,cancel)},f.handle,input);await f.settle();
+  const beforeRef=w.acceptedView.peek(),beforeRecord=f.handle.handoff.value.find(record=>record.attemptId===a)!;expect(beforeRecord.text).toBe(a);armed=true;f.t.push({t:"live",thread_id:f.handle.threadId,attempt_id:a,gap:false,deltas:[{offset:1,reasoning:false,text:`${a}-delta`}]});await flush();
+  const changed=f.handle.handoff.value.find(record=>record.attemptId===a)!;expect(changed).not.toBe(beforeRecord);expect(changed.text.length).toBeGreaterThan(beforeRecord.text.length);expect(w.refreshConversationInput(beforeRef)).toBe(true);expect(w.acceptedView.peek()).not.toBe(beforeRef);expect(w.isCurrentThread(f.handle)).toBe(true);
+ } finally { w?.dispose();f.data.stop(); }
+});
+
 it("collapses a saved tool association without leaving a matching live preview", async () => {
  const attempt=canonicalAttemptId(4),f=await rig(3);
  try {
