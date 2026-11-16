@@ -353,10 +353,10 @@ it('accepted saved partial row keeps live ownership empty without a proof receip
  let resolveRead!:(value:{ok:true;value:ReturnType<typeof ownedHistory>})=>void;
  const w=new ConversationWindow({read:async()=>new Promise(resolve=>{resolveRead=resolve;})});
  await flush();expect(w.bindTerminalHandle(r.h)).toBe(true);await flush();
- const observations:{accepted:boolean;live:boolean}[]=[];const observe=()=>observations.push({accepted:(w.acceptedView.peek().rows[0]?.items?.[0]?.text_complete===false),live:r.h.handoff.peek().some(item=>item.attemptId===CANONICAL_ATTEMPT_ID)});const stopAccepted=w.acceptedView.subscribe(observe);const stopHandoff=r.h.handoff.subscribe(observe);
+ const observations:{accepted:boolean;live:boolean}[]=[];const observe=()=>{const item=w.acceptedView.peek().rows[0]?.items?.[0];observations.push({accepted:item?.kind==='text'&&item.text_complete===false,live:r.h.handoff.peek().some(item=>item.attemptId===CANONICAL_ATTEMPT_ID)});};const stopAccepted=w.acceptedView.subscribe(observe);const stopHandoff=r.h.handoff.subscribe(observe);
  r.live('live preview');await r.pump();expect(r.h.handoff.peek().some(record=>record.attemptId===CANONICAL_ATTEMPT_ID)).toBe(true);
  resolveRead({ok:true,value:ownedHistory({thread_id:'a',revision:7,total:1,items:[partial]})});await flush();await r.pump();
- const liveRecord=r.h.handoff.peek().find(item=>item.attemptId===CANONICAL_ATTEMPT_ID)!;w.changed();
+
  stopAccepted();stopHandoff();expect(observations.some(item=>item.accepted&&item.live)).toBe(false);
  expect(w.acceptedView.peek().assistantOwnership??[]).toEqual([]);expect(r.h.handoff.peek().some(item=>item.attemptId===CANONICAL_ATTEMPT_ID)).toBe(false);
  expect(w.acceptedView.peek().rows[0]?.items?.[0]).toMatchObject({text_complete:false});w.dispose();r.data.stop();

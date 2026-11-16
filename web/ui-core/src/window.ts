@@ -1095,13 +1095,15 @@ export class ConversationWindow {
   private commitAccepted(publication: AcceptedPublication<WindowAcceptedSnapshot, import("./conversation-input").ConversationIdentity>): boolean {
     let published=false;
     batch(() => {
-      published=this.acceptedView.publish(publication);
-      const ref=this.acceptedView.peek(), binding=this.terminalBinding;
+      published=this.acceptedView.publish(publication, snapshot => {
+        const binding=this.terminalBinding;
+        if(binding&&this.isTerminalHandleCurrent(binding.handle)) {
+          const attempts=new Set<string>(snapshot.rows.filter(row=>row.kind==='assistant_response'&&row.provenance?.attempt_id).map(row=>row.provenance!.attempt_id!));
+          for(const record of binding.handle.handoff.peek()) if(attempts.has(record.attemptId)) binding.handle.releaseHandoff(record.attemptId);
+        }
+      });
+      const ref=this.acceptedView.peek();
       if(published&&ref===publication.snapshot&&publication.inputIdentity)this.acceptedInput={ref,identity:publication.inputIdentity};
-      if(published&&binding&&binding.scope===publication.snapshot.displayPlan?.scope&&this.isTerminalHandleCurrent(binding.handle)) {
-        const attempts=new Set(publication.snapshot.rows.filter(row=>row.kind==='assistant_response'&&row.provenance?.attempt_id).map(row=>row.provenance!.attempt_id!));
-        for(const record of binding.handle.handoff.peek()) if(attempts.has(record.attemptId)) binding.handle.releaseHandoff(record.attemptId);
-      }
       if(!published)this.diagnostic.value=Object.freeze({reason:'publication-rejected',generation:ref.generation,revision:ref.revision,ownerEpoch:this.epoch,at:Date.now()});
     });
     return published;

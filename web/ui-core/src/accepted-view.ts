@@ -46,7 +46,7 @@ export class AcceptedView<T> {
   private ended = false;
 
   private readonly capability = signal(mintCapability());
-  private staged?: { handle: StagedView<T>; expected: T; lease: AcceptedLease; value?: T };
+  private staged?: { handle: StagedView<T>; expected: T; lease: AcceptedLease; value?: T; onCommitted?: (value: T) => void };
   private listeners = new Set<(value: T) => void>();
   private notifying = false;
   private pending = false;
@@ -61,20 +61,20 @@ export class AcceptedView<T> {
   peek(): T { return this.value.peek(); }
   isCurrent(ref: T): boolean { return !this.ended && this.value.peek() === ref && this.capability.peek() === this.acceptedCapability; }
   get currentCapability(): AcceptedCapability { return this.capability.value; }
-  private stage(value: T, lease: AcceptedLease): StagedView<T> {
+  private stage(value: T, lease: AcceptedLease, onCommitted?: (value: T) => void): StagedView<T> {
     const handle = Object.freeze({}) as StagedView<T>;
-    const slot = { handle, expected: this.value.peek(), lease, value: undefined as T | undefined };
+    const slot = { handle, expected: this.value.peek(), lease, value: undefined as T | undefined, onCommitted };
     this.staged = slot;
     slot.value = value;
     return handle;
   }
-  publish<S extends { readonly displayPlan?: { readonly capability?: unknown }; readonly generation?: unknown }>(publication: AcceptedPublication<S>): boolean {
+  publish<S extends { readonly displayPlan?: { readonly capability?: unknown }; readonly generation?: unknown }>(publication: AcceptedPublication<S>, onCommitted?: (value: S) => void): boolean {
     const capability=publication.lease.capability;
     if (publication.snapshot.displayPlan !== publication.plan || publication.plan.capability !== capability
       || typeof publication.snapshot.generation !== "number"
       || typeof (this.value.peek() as { readonly generation?: unknown }).generation !== "number"
       || publication.snapshot.generation <= (this.value.peek() as { readonly generation: number }).generation) return false;
-    const staged = this.stage(publication.snapshot as unknown as T, publication.lease);
+    const staged = this.stage(publication.snapshot as unknown as T, publication.lease, onCommitted as ((value: T) => void) | undefined);
     return this.commit(staged);
   }
 
@@ -89,6 +89,7 @@ export class AcceptedView<T> {
       this.acceptedCapability=slot.lease.capability;
       this.pending = true;
       this.value.value = slot.value!;
+      slot.onCommitted?.(slot.value!);
       this.notify();
     });
     return true;
