@@ -13,6 +13,24 @@ describe("AppModel over the fake transport", () => {
     expect(model.usage.value).toMatchObject({ cachedPercent: 75, attempts: 4 });
   });
 
+  it("rejects a late full-body fetch after the conversation binding changes", async () => {
+    const { model, t, db } = await fixtureModel({ route: "conversation", threadId: "lead", capabilities: ["history.window"], configure(owner) {
+      owner.history.lead = [{ node_id: "savedassistant", kind: "assistant_response", selection: { ordinal: 0 }, items: [{ kind: "text", item_identity: "answer", text: "prefix", text_complete: false }] }];
+      owner.historyRevisions.lead = 2;
+    }});
+    try {
+      const pending = model.loadBody("savedassistant");
+      await flush();
+      const call = t.calls("history.get").at(-1);
+      expect(call).toBeDefined();
+      model.navigate({ view: "threads" });
+      t.ok(call!.id, { node_id: "savedassistant", kind: "assistant_response", text: "late full body" });
+      await pending;
+      expect(model.bodies.peek().get("savedassistant")?.text).toBeUndefined();
+      expect(db.history.lead?.[0]?.node_id).toBe("savedassistant");
+    } finally { model.dispose(); }
+  });
+
   it("restarts the same handle, retires matching live, and rejects the old held callback", async () => {
     const { model, t, db } = await fixtureModel({ route: "conversation", threadId: "lead", capabilities: ["history.window"] });
     const handle = model.handle.peek();
