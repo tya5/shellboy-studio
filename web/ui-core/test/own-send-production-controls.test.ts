@@ -39,8 +39,8 @@ describe("ordinary own-send production controls", () => {
       localRows: [idless], hiddenItemKeys: new Set<string>(), canonicalRows: [] });
     expect(result.localRows).toEqual([idless]);
     expect(result.retire).toEqual([]);
-    expect(result.projection.items.map(item => item.source.domain)).toEqual(["live", "live"]);
-    expect(result.projection.items.map(item => item.source.recordId)).toEqual(["handoff:live", "receipt"]);
+    expect(result.projection.items.every(item => "domain" in item.source && item.source.domain === "live")).toBe(true);
+    expect(result.projection.items.map(item => "domain" in item.source ? item.source.recordId : undefined)).toEqual(["handoff:live", "receipt"]);
   });
 
   it("rejects foreign route/current and partial canonical bodies", () => {
