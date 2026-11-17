@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ownSendPresentation } from "../src/own-send-presentation";
-import { projectSavedItems } from "../src/conversation-items";
+import { projectOwnedHandoffFacts, normalizeLiveWorkFacts, projectSavedItems } from "../src/conversation-items";
 import type { PendingOwnMessage } from "../src/model";
 
 const local = (id: string): PendingOwnMessage => ({ scope: "scope", threadId: "t", operationId: id, messageId: id, text: `Original ${id}`, phase: "accepted", plainMessageSend: true });
@@ -28,14 +28,19 @@ describe("ordinary own-send production controls", () => {
     expect(result.projection.items.filter(item => item.source.nodeId === "own")).toHaveLength(1);
   });
 
-  it("does not suppress live or Work projection items for an ID-less sending row", () => {
+  it("does not suppress issued live and Work facts for an ID-less sending row", () => {
     const idless = { ...local("sending"), messageId: undefined, phase: "sending" as const };
-    const projection = projectSavedItems([saved("live-assistant"), saved("work-receipt")]);
+    const live = projectOwnedHandoffFacts("scope", [{ key: "handoff:live", attemptId: "live", text: "live assistant", incomplete: false, status: "streaming" }]);
+    const work = normalizeLiveWorkFacts({ scope: "scope", items: [{ kind: "shell", state: "running", id: "receipt", thread_id: "scope", execution_id: "exec" }] });
+    expect(live.every(item => !item.nodeId)).toBe(true);
+    expect(work.every(item => !item.nodeId)).toBe(true);
+    const projection = projectSavedItems([...live, ...work]);
     const result = ownSendPresentation({ ref: {}, current: true, scope: "scope", projection,
       localRows: [idless], hiddenItemKeys: new Set<string>(), canonicalRows: [] });
     expect(result.localRows).toEqual([idless]);
     expect(result.retire).toEqual([]);
-    expect(result.projection.items.map(item => item.source.nodeId)).toEqual(["live-assistant", "work-receipt"]);
+    expect(result.projection.items.map(item => item.source.domain)).toEqual(["live", "live"]);
+    expect(result.projection.items.map(item => item.source.recordId)).toEqual(["handoff:live", "receipt"]);
   });
 
   it("rejects foreign route/current and partial canonical bodies", () => {
