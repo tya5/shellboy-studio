@@ -82,8 +82,9 @@ remain separate and do not manufacture live ownership facts.
 `loadBody` uses the ordinary `history.get` path and publishes only when its
 captured handle, route, reader, cancellation token, and capability remain
 current. The registered model/body controls cover the truncate -> user click ->
-one full-body read path and reject a late result after the conversation binding
-changes. Transport/page bounds and general cache bounds remain separate from
+one full-body read path, reject a late result after navigation cancellation, and
+reject a successful transport result when navigation changes the binding before
+its continuation. Transport/page bounds and general cache bounds remain separate from
 publication semantics; no retired handoff read budget is imposed on ordinary
 body loading. `changed()` follows the normal Window refresh path; tests answer
 all required synthetic RPC commands except one deliberately held old request.

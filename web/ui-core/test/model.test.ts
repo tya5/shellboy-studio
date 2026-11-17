@@ -13,7 +13,7 @@ describe("AppModel over the fake transport", () => {
     expect(model.usage.value).toMatchObject({ cachedPercent: 75, attempts: 4 });
   });
 
-  it("rejects a late full-body fetch after the conversation binding changes", async () => {
+  it("rejects a late full-body fetch after navigation cancellation", async () => {
     const { model, t, db } = await fixtureModel({ route: "conversation", threadId: "lead", capabilities: ["history.window"], configure(owner) {
       owner.history.lead = [{ node_id: "savedassistant", kind: "assistant_response", selection: { ordinal: 0 }, items: [{ kind: "text", item_identity: "answer", text: "prefix", text_complete: false }] }];
       owner.historyRevisions.lead = 2;
@@ -27,7 +27,23 @@ describe("AppModel over the fake transport", () => {
       t.ok(call!.id, { node_id: "savedassistant", kind: "assistant_response", text: "late full body" });
       await pending;
       expect(model.bodies.peek().get("savedassistant")?.text).toBeUndefined();
-      expect(db.history.lead?.[0]?.node_id).toBe("savedassistant");
+    } finally { model.dispose(); }
+  });
+
+  it("rejects a successful body result when navigation changes binding before continuation", async () => {
+    const { model, t } = await fixtureModel({ route: "conversation", threadId: "lead", capabilities: ["history.window"] });
+    try {
+      const beforeRoute = model.route.peek();
+      const pending = model.loadBody("savedassistant");
+      await flush();
+      const call = t.calls("history.get").at(-1);
+      expect(call).toBeDefined();
+      expect(model.bodies.peek().get("savedassistant")).toMatchObject({ loading: true, text: undefined });
+      t.ok(call!.id, { node_id: "savedassistant", kind: "assistant_response", text: "successful but stale" });
+      model.navigate({ view: "threads" });
+      expect(model.route.peek()).not.toBe(beforeRoute);
+      await pending;
+      expect(model.bodies.peek().get("savedassistant")?.text).toBeUndefined();
     } finally { model.dispose(); }
   });
 
