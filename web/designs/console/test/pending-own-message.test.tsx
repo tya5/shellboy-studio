@@ -87,8 +87,8 @@ for(const savedBeforeAck of [false,true])it(`submitted message remains separate 
   expect(host.querySelector('[data-pending-own-message]')).not.toBeNull();
   rows=[{...equalText,node_id:'canonical-own',selection:{ordinal:0}}];f.db.history.t=rows;
   await act(async()=>{f.t.push({t:'changed',thread_ids:['t'],list:false});await settle(f.t,f.db);});
-  expect([...host.querySelectorAll('[data-pending-own-message]')].map(row=>row.textContent)).toEqual([expect.stringContaining('Own submitted message'),expect.stringContaining('Next unsent draft')]);
-  expect(host.querySelectorAll('[data-node="canonical-own"] .md')).toHaveLength(0);
+  expect([...host.querySelectorAll('[data-pending-own-message]')].map(row=>row.textContent)).toEqual([expect.stringContaining('Next unsent draft')]);
+  expect(host.querySelectorAll('[data-node="canonical-own"] .md')).toHaveLength(1);
   rows=[...rows,{...equalText,node_id:'second-canonical',selection:{ordinal:1},items:[{kind:'text',item_identity:'second',text:'Next unsent draft',text_complete:true}]}];f.db.history.t=rows;
   await act(async()=>{f.t.push({t:'changed',thread_ids:['t'],list:false});await settle(f.t,f.db);});
   expect(host.querySelector('[data-pending-own-message]')).toBeNull();
@@ -199,7 +199,7 @@ for (const renderMode of ['app','ordered'] as const) it(`actual own cohort diffe
   await act(async()=>{if(renderMode==='app')render(<App context={context}/>,host);else {await settle(f.t,f.db);const handle=f.model.handle.peek()!,win=f.model.longReader.peek()!;render(<OrderedHistory model={f.model} handle={handle} win={win} t={f.model.t.peek()}/>,host);}await settle(f.t,f.db);});
   await sendAndAck('Original A','a');await sendAndAck('Original B','b');
   expect(f.model.acceptedOwnMessages.peek().map(row=>row.messageId)).toEqual(['a','b']);expect(host.querySelectorAll('[data-pending-own-message]')).toHaveLength(2);
-  f.db.history.t=[node('a'),node('b','Saved B',true)];await act(paint);expect(host.querySelectorAll('[data-pending-own-message]')).toHaveLength(2);expect(host.querySelectorAll('.msg')).toHaveLength(2);
+  f.db.history.t=[node('a'),node('b','Saved B',true)];await act(paint);expect(host.querySelectorAll('[data-pending-own-message]')).toHaveLength(1);expect(host.querySelectorAll('.msg')).toHaveLength(2);
   f.db.history.t=[node('a','Saved A',true),node('b','Saved B',true)];await act(paint);expect(host.querySelectorAll('[data-pending-own-message]')).toHaveLength(0);expect(host.querySelectorAll('.msg')).toHaveLength(2);expect([...host.querySelectorAll('.md')].map(x=>x.textContent?.trim())).toEqual(['Saved A','Saved B']);
  }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
 });
@@ -209,26 +209,20 @@ it('actual committed local region rejects stale cohort retirement and retires on
   const accept=async(text:string,id:string)=>{const sent=f.model.send(text);await flush();const call=f.t.calls('message.send').at(-1)!;f.db.answered.add(call.id);f.t.ok(call.id,{message_id:id,thread_id:'lead'});expect(await sent).toBe(true);};
   await accept('A','a');
   const win=f.model.longReader.value!,old=win.acceptedView.peek();
-  const initialLocal=old.displayPlan!.localRegion;
-  expect(initialLocal.localRows.map(row=>row.messageId)).toEqual(['a']);
-  expect(initialLocal.placement).toEqual({kind:'qualified',insertion:{kind:'beginning'}});
-  expect(initialLocal.slots.map(slot=>({id:slot.row.messageId,position:slot.position}))).toEqual([{id:'a',position:{kind:'before-first'}}]);
   const node=(id:string,ordinal:number):HistoryItem=>({node_id:id,kind:'user',selection:{ordinal},items:[{kind:'text',item_identity:id,text:id,text_complete:true}],provenance:{sender:{kind:'human'}}});
   f.db.history.lead=[node('a',0)];let newer:Promise<boolean>|undefined,reentered=false;
   const stop=win.acceptedView.subscribe(ref=>{
-   const local=ref.displayPlan!.localRegion;expect(win.acceptedView.isCurrent(ref)).toBe(true);
-   expect(local.slots.every(slot=>local.localRows.some(row=>row.operationId===slot.row.operationId))).toBe(true);
-   if(local.placement.kind==='qualified')expect(local.slots.map(slot=>slot.row.operationId)).toEqual(local.localRows.map(row=>row.operationId));
-   if(!reentered&&local.retire.length){
+   expect(win.acceptedView.isCurrent(ref)).toBe(true);
+   if(!reentered&&ref.displayPlan!.localRegion.retire.length){
     reentered=true;newer=f.model.send('B');
   }});
   win.changed();await flush();
   const read=f.t.calls('history.window').find(call=>!f.db.answered.has(call.id))!;expect(read).toBeDefined();
   const reply=f.db.answer(read);f.db.answered.add(read.id);if(reply.ok)f.t.ok(read.id,reply.result);else f.t.ownerError(read.id,reply.code);
   await flush(16);stop();expect(reentered).toBe(true);
-  expect(f.model.acceptedOwnMessages.peek()).toHaveLength(1);expect(f.model.pendingOwnMessage.peek()?.text).toBe('B');
+  expect(f.model.acceptedOwnMessages.peek()).toHaveLength(0);expect(f.model.pendingOwnMessage.peek()?.text).toBe('B');
   const call=f.t.calls('message.send').at(-1)!;f.db.answered.add(call.id);f.t.ok(call.id,{message_id:'b',thread_id:'lead'});expect(await newer).toBe(true);
-  expect(win.refreshConversationInput(old)).toBe(false);expect(f.model.acceptedOwnMessages.peek()).toHaveLength(2);
+  expect(win.refreshConversationInput(old)).toBe(false);expect(f.model.acceptedOwnMessages.peek()).toHaveLength(1);
   const before=win.acceptedView.peek(),cohort=f.model.acceptedOwnMessages.peek();
   win.acceptedView.revoke();expect(win.refreshConversationInput(before)).toBe(false);
   expect(win.acceptedView.peek()).toBe(before);expect(f.model.acceptedOwnMessages.peek()).toBe(cohort);
@@ -239,41 +233,24 @@ it('actual committed local region rejects stale cohort retirement and retires on
  }finally{f.model.dispose();f.data.stop();}
 });
 
-for(const withPrefix of [false,true])for(const ids of [['2'],['2','3','4','5']])it(`actual four rapid ACKs precede new assistant while own saved bodies are unavailable: prefix=${withPrefix} count=${ids.length}`,async()=>{
+for(const withPrefix of [false,true])for(const ids of [['2'],['2','3','4','5']])it(`unrelated assistant stays canonical before own local suffix: prefix=${withPrefix} count=${ids.length}`,async()=>{
  let revision=1;
- const f=await fixtureModel({capabilities:['history.window'],configure(db){
-  db.threads={t:summary('t')};db.details.t=details('t');db.history.t=withPrefix?[{node_id:'prefix',kind:'user',selection:{ordinal:0},items:[{kind:'text',item_identity:'prefix-a',text:'Existing prefix A',text_complete:true},{kind:'text',item_identity:'prefix-b',text:'Existing prefix B',text_complete:true}]}]:[];
-  const base=db.answer.bind(db);db.answer=call=>call.command==='history.window'?{ok:true,result:{thread_id:'t',revision,total:db.history.t?.length??0,items:db.history.t??[]}}:base(call);
- }});
+ const prefixRows=withPrefix?[{node_id:'prefix',kind:'user' as const,selection:{ordinal:0},items:[{kind:'text' as const,item_identity:'prefix-a',text:'Existing prefix A',text_complete:true},{kind:'text' as const,item_identity:'prefix-b',text:'Existing prefix B',text_complete:true}]}]:[];
+ const f=await fixtureModel({capabilities:['history.window'],configure(db){db.threads={t:summary('t')};db.details.t=details('t');db.history.t=prefixRows;const base=db.answer.bind(db);db.answer=call=>call.command==='history.window'?{ok:true,result:{thread_id:'t',revision,total:db.history.t?.length??0,items:db.history.t??[]}}:base(call);}});
  const host=document.createElement('div');document.body.append(host);
  const context:DesignContext={model:f.model,prefs:signal(loadPrefs({read:()=>null,write:()=>{}},[{name:'console',themes:[{name:'light'}]}])),setPrefs:()=>{},designs:[],submitToken:async()=>false};
  try{
   await act(async()=>{render(<App context={context}/>,host);await settle(f.t,f.db);});
   const area=host.querySelector<HTMLTextAreaElement>('textarea')!;
-  for(const id of ids){
-   await act(async()=>{area.value=`Diagnostic own ${id}`;area.dispatchEvent(new Event('input',{bubbles:true}));area.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));await flush();});
-   const call=f.t.calls('message.send').at(-1)!;f.db.answered.add(call.id);
-   await act(async()=>{f.t.ok(call.id,{message_id:`own-${id}`,thread_id:'t'});await flush();});
-  }
-  expect(host.querySelectorAll('[data-pending-own-message]')).toHaveLength(ids.length);
-  expect(f.model.acceptedOwnMessages.peek().map(row=>row.messageId)).toEqual(ids.map(id=>`own-${id}`));
-  const prefix=withPrefix?f.db.history.t!:[];
-  revision++;
-  f.db.history.t=[...prefix,{node_id:'assistant-arrival',kind:'assistant_response',selection:{ordinal:withPrefix?1:0},items:[{kind:'text',item_identity:'response',text:'Diagnostic assistant receipt response',text_complete:true}]}];
-  await act(async()=>{f.t.push({t:'changed',thread_ids:['t'],list:false});await settle(f.t,f.db);await flush(12);});
-  expect(host.querySelectorAll('[data-pending-own-message]')).toHaveLength(ids.length);
-  expect(f.model.acceptedOwnMessages.peek()).toHaveLength(ids.length);
-  const actual=[...host.querySelectorAll('.msg')].map(row=>row.querySelector('.md')?.textContent?.trim());
-  expect(actual).toEqual([...(withPrefix?['Existing prefix A','Existing prefix B']:[]),...ids.map(id=>`Diagnostic own ${id}`),'Diagnostic assistant receipt response']);
-  const assistant=host.querySelector('[data-node="assistant-arrival"]');
-  revision+=5;
-  f.db.history.t=[...prefix,...ids.map((id,index)=>({node_id:`own-${id}`,kind:'user',selection:{ordinal:index+(withPrefix?1:0)},items:[{kind:'text' as const,item_identity:`body-${id}`,text:`Diagnostic own ${id}`,text_complete:true}]})),{node_id:'assistant-arrival',kind:'assistant_response',selection:{ordinal:ids.length+(withPrefix?1:0)},items:[{kind:'text',item_identity:'response',text:'Diagnostic assistant receipt response',text_complete:true}]}];
-  await act(async()=>{f.t.push({t:'changed',thread_ids:['t'],list:false});await settle(f.t,f.db);await flush(12);});
-  expect([...host.querySelectorAll('.msg')].map(row=>row.querySelector('.md')?.textContent?.trim())).toEqual(actual);
-  expect(host.querySelectorAll('[data-pending-own-message]')).toHaveLength(0);
-  expect(f.model.acceptedOwnMessages.peek()).toHaveLength(0);
-  expect(host.querySelector('[data-node="assistant-arrival"]')).toBe(assistant);
-
+  for(const id of ids){await act(async()=>{area.value=`Diagnostic own ${id}`;area.dispatchEvent(new Event('input',{bubbles:true}));area.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));await flush();});const call=f.t.calls('message.send').at(-1)!;f.db.answered.add(call.id);await act(async()=>{f.t.ok(call.id,{message_id:`own-${id}`,thread_id:'t'});await flush();});}
+  const assistantRow={node_id:'assistant-arrival',kind:'assistant_response' as const,selection:{ordinal:prefixRows.length},items:[{kind:'text' as const,item_identity:'response',text:'Diagnostic assistant receipt response',text_complete:true}]};
+  const prefixTexts=prefixRows.flatMap(row=>row.items?.flatMap(item=>item.kind==='text'?[item.text]:[])??[]);
+  const ownTexts=ids.map(id=>`Diagnostic own ${id}`),expectedBefore=[...prefixTexts,'Diagnostic assistant receipt response',...ownTexts];
+  f.db.history.t=[...prefixRows,assistantRow];revision++;await act(async()=>{f.t.push({t:'changed',thread_ids:['t'],list:false});await settle(f.t,f.db);await flush(12);});
+  expect(host.querySelectorAll('[data-pending-own-message]')).toHaveLength(ids.length);expect([...host.querySelectorAll('.msg')].map(row=>row.querySelector('.md')?.textContent?.trim())).toEqual(expectedBefore);const assistant=host.querySelector('[data-node="assistant-arrival"]');
+  const savedOwnRows=ids.map((id,index)=>({node_id:`own-${id}`,kind:'user' as const,selection:{ordinal:prefixRows.length+1+index},items:[{kind:'text' as const,item_identity:`body-${id}`,text:`Diagnostic own ${id}`,text_complete:true}]}));
+  f.db.history.t=[...prefixRows,assistantRow,...savedOwnRows];revision+=5;await act(async()=>{f.t.push({t:'changed',thread_ids:['t'],list:false});await settle(f.t,f.db);await flush(12);});
+  expect([...host.querySelectorAll('.msg')].map(row=>row.querySelector('.md')?.textContent?.trim())).toEqual(expectedBefore);expect(host.querySelectorAll('[data-pending-own-message]')).toHaveLength(0);expect(f.model.acceptedOwnMessages.peek()).toHaveLength(0);expect(host.querySelector('[data-node="assistant-arrival"]')).toBe(assistant);
  }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
 });
 it('Composer clears the reserved original immediately while ACK is held and preserves the next draft',async()=>{

@@ -1,6 +1,4 @@
 import {messageRelationship,senderHeaderDisplay} from "../../../ui-core/src/sender-display";
-import type {OwnSendPath,OwnSendPlacement} from "../../../ui-core/src/own-send-region";
-import type {OwnSendSlotPosition} from "../../../ui-core/src/own-send-presentation";
 import { capturedWorkElementDisplay, capturedWorkExecutionDisplay, type WorkElementDisplay } from "../../../ui-core/src/work-element-display";
 import { WorkElementRow, formatWorkElementDisplay } from "../system/components/WorkElementRow";
 import { Disclosure } from "../system/components/Disclosure";
@@ -84,7 +82,7 @@ function assistantTextMembership(item: ConversationItem): AssistantTextMembershi
   return "message";
 }
 
-export function SavedConversationItems({ model, projection: suppliedProjection, displayPlan, renderBefore, trailing, nodes,localRegion }: { model: AppModel; projection: SavedItemProjection & { sequence?: readonly ({kind: "conversation"; itemKey: string} | {kind: "work"; groupKey: string})[]; workGroups?: readonly ConversationWorkGroup[] }; displayPlan?: ConversationDisplayPlan; nodes?: readonly HistoryItem[]; renderBefore?: (item: ConversationItem) => ComponentChildren; trailing?: ComponentChildren;localRegion?: { readonly kind: "qualified"; readonly slots: readonly {position:OwnSendSlotPosition;content:ComponentChildren}[] } | { readonly kind: "unqualified"; readonly content: ComponentChildren; readonly afterIndex?: number; readonly beforeIndex?: number } }) {
+export function SavedConversationItems({ model, projection: suppliedProjection, displayPlan, renderBefore, trailing, nodes,localRegion }: { model: AppModel; projection: SavedItemProjection & { sequence?: readonly ({kind: "conversation"; itemKey: string} | {kind: "work"; groupKey: string})[]; workGroups?: readonly ConversationWorkGroup[] }; displayPlan?: ConversationDisplayPlan; nodes?: readonly HistoryItem[]; renderBefore?: (item: ConversationItem) => ComponentChildren; trailing?: ComponentChildren;localRegion?: { readonly kind: "unqualified"; readonly content: ComponentChildren } }) {
   const projection = displayPlan ? projectionFromDisplayPlan(displayPlan) : suppliedProjection;
   const planEntries = displayPlan?.entries ?? [];
   const planByKey = new Map(planEntries.map(entry => [entry.item.key, entry]));
@@ -231,16 +229,14 @@ export function LiveRecordChrome({ model, record }: { model: AppModel; record: H
 }
 
 function OwnSendContent({model,snapshot,plan,trailing}: {model:AppModel;snapshot:WindowAcceptedSnapshot;plan:ConversationDisplayPlan;trailing?:ComponentChildren}) {
-  const projection=projectionFromDisplayPlan(plan),region=plan.localRegion;
-  const placement=region.placement, localRows=region.localRows, conflicts=region.conflictIds;
-  const renderLocal=(messages:readonly import("../../../ui-core/src/model").PendingOwnMessage[])=> <>{messages.map(message=><div key={message.operationId} data-own-presentation="" data-own-placement={placement.kind} data-own-order-conflict={conflicts.length?conflicts.join(","):undefined}>
-    {localRows.length&&placement.kind==="unqualified"?<div role="status" data-own-placement-reason={placement.reason}>{model.t.value("composer.pending.placementUnqualified")}: {placement.reason}</div>:null}{conflicts.length?<div role="status" class="caption muted" data-own-order-problem="">{model.t.value("composer.pending.orderConflict")} {conflicts.join(", ")}</div>:null}
+  const projection=projectionFromDisplayPlan(plan),localRows=plan.localRegion.localRows;
+  const renderLocal=(messages:readonly import("../../../ui-core/src/model").PendingOwnMessage[])=> <>{messages.map(message=><div key={message.operationId} data-own-presentation="" data-own-placement="suffix">
     <aside data-pending-own-message={message.operationId} data-pending-phase={message.phase}><Message bot={false} who={model.t.value("convo.you")} text={message.text} at={model.t.value(`composer.pending.${message.phase}`)} copyLabel={model.t.value("code.copy")} copiedLabel={model.t.value("code.copied")}/>
     {message.phase==="failed"||message.phase==="unconfirmed"?<><Button variant="link" disabled={!model.canResend(message)} onClick={()=>void model.resend(message)}>{model.t.value("action.retry")}</Button>{!model.canResend(message)?<span class="caption">{model.t.value("composer.retryUnavailable")}</span>:null}</>:null}</aside>
   </div>)}</>;
-  const sequence = plan.sequence;
-  const assistantIndex = sequence.findIndex(entry => entry.kind === "conversation" && projection.items.find(item => item.key === entry.itemKey)?.source.kind === "text");
-  return <SavedConversationItems model={model} projection={projection} displayPlan={plan} nodes={snapshot.rows} localRegion={placement.kind === "qualified" ? {kind:"qualified",slots:region.slots.map(slot=>({position:slot.position,content:renderLocal([slot.row])}))} : {kind:"unqualified",beforeIndex:assistantIndex >= 0 ? assistantIndex : undefined,content:<section role="region" aria-label="Unplaced local submissions" data-own-unqualified-region="">{renderLocal(localRows)}</section>}} trailing={trailing}/>;
+  return <SavedConversationItems model={model} projection={projection} displayPlan={plan} nodes={snapshot.rows}
+    localRegion={localRows.length?{kind:"unqualified",content:<section role="region" aria-label="Unmatched local submissions" data-own-unqualified-region="">{renderLocal(localRows)}</section>}:undefined}
+    trailing={trailing}/>;
 }
 
 export function SavedWindowContent({ model, snapshot }: { model: AppModel; snapshot: WindowAcceptedSnapshot }) {

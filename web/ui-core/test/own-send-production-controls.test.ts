@@ -15,7 +15,7 @@ describe("ordinary own-send production controls", () => {
   it("keeps pending local rows visible until matching canonical order is accepted", () => {
     const rows = [local("a"), local("b")];
     expect(decide(rows, []).retire).toEqual([]);
-    expect(decide(rows, [saved("b"), saved("a")]).retire).toEqual([]);
+    expect(decide(rows, [saved("b"), saved("a")]).retire).toEqual(rows);
     expect(decide(rows, [saved("a"), saved("b")]).retire).toEqual(rows);
   });
 

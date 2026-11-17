@@ -1,9 +1,7 @@
 import { captureConversationInput, createConversationIdentity, captureCurrentWork, type ConversationSemanticInput } from "./conversation-input";
 import { readThreadSettings, type OutputLimitReadback, type ThreadSettings } from "./resources";
 import {localSendAdmission} from "./local-send-admission";
-import type { OwnSendTailObservation,OwnSendReservation } from "./own-send-region";
 import { captureOwnSendLocalRegion } from "./own-send-presentation";
-import { observeOwnSendTail } from "./own-send-region";
 import { ownSendPresentation } from "./own-send-presentation";
 import { SenderTitles } from "./sender-titles";
 import { senderFact } from "../../data/src/sender";
@@ -690,7 +688,6 @@ export class AppModel {
       records: handle.handoff.value, work: capturedWork, current });
     const accepted = this.acceptedOwnMessages.value;
     const pending = this.pendingOwnMessage.value;
-    const reservation = this.ownReservation;
     const retryCurrent = this.pendingOwnRetryCurrent;
     const eligible = !!retryCurrent?.();
     const cohortAccepted = eligible ? accepted.filter(row => row.scope === scope && row.threadId === handle.threadId) : [];
@@ -698,13 +695,9 @@ export class AppModel {
     const localRows = [...cohortAccepted, ...(cohortPending ? [cohortPending] : [])];
     const decision = ownSendPresentation<unknown>({ ref: snapshot, current: current(), scope, projection: input.projection,
       localRows, hiddenItemKeys: new Set(), canonicalRows: snapshot.rows,
-      path: { tail: !snapshot.pending && !snapshot.disposed && (snapshot.total === 0 || snapshot.range?.last === snapshot.total - 1),
-        empty: snapshot.total === 0, revision: snapshot.revision, lastNodeId: snapshot.rows.at(-1)?.node_id, lastOrdinal: snapshot.rows.at(-1)?.selection?.ordinal },
-      nodeOrdinals: new Map(snapshot.rows.flatMap(node => node.node_id && node.selection?.ordinal !== undefined ? [[node.node_id, node.selection.ordinal] as const] : [])),
-      reservation, validateCurrent: () => current() && reader.acceptedView.isCurrent(snapshot),
       cohortVersion: { accepted: cohortAccepted, pending: cohortPending } });
     return { ...input, identity: createConversationIdentity(input.identity, { accepted: accepted as object, pending: pending as object | undefined,
-      reservation: reservation as object | undefined, retryCurrent: retryCurrent as (() => boolean) | undefined, eligible }),
+      retryCurrent: retryCurrent as (() => boolean) | undefined, eligible }),
       projection: current() ? decision.projection : input.projection,
       decision: { cohortVersion: { accepted: cohortAccepted, pending: cohortPending }, localRegion: captureOwnSendLocalRegion(decision) },
       isCurrent: () => current() && handle.handoff.peek() === input.identity.records
@@ -950,9 +943,6 @@ export class AppModel {
     return !!this.pendingOwnMessage.value || this.acceptedOwnMessages.value.length >= 8;
   }
 
-  private ownTailObservation:OwnSendTailObservation<unknown>|undefined;
-  private ownReservation:OwnSendReservation<unknown>|undefined;
-  ownSendReservation():OwnSendReservation<unknown>|undefined{return this.ownReservation;}
   ownMutationScope(): string { return this.acceptedOwnMessages.value[0]?.scope ?? this.pendingOwnMessage.value?.scope ?? "history"; }
   ownMutationRows(scope: string): readonly PendingOwnMessage[] {
     const accepted=this.acceptedOwnMessages.value, pending=this.pendingOwnMessage.value;
@@ -965,13 +955,6 @@ export class AppModel {
       && reader.acceptedView.isCurrent(snapshot) && plan?.capability === reader.acceptedView.currentCapability;
     if (!plan || !current()) return;
     const region = plan.localRegion;
-    this.ownTailObservation = observeOwnSendTail(Object.freeze({}), snapshot, region.scope, true,
-      { items: plan.entries.map(entry => entry.item), toolSummaries: plan.workGroups, workGroups: plan.workGroups,
-        sequence: plan.sequence, partitionUnknownKeys: plan.partitionUnknownKeys },
-      { tail: !snapshot.pending && !snapshot.disposed && (snapshot.total === 0 || snapshot.range?.last === snapshot.total - 1),
-        empty: snapshot.total === 0, revision: snapshot.revision, lastNodeId: snapshot.rows.at(-1)?.node_id,
-        lastOrdinal: snapshot.rows.at(-1)?.selection?.ordinal }, current);
-    if (!this.acceptedOwnMessages.peek().length && !this.pendingOwnMessage.peek()) this.ownReservation = undefined;
     if (!region.retire.length || !this.pendingOwnRetryCurrent?.()) return;
     const rows = this.ownMutationRows(region.scope);
     const sameRow = (a: PendingOwnMessage, b: PendingOwnMessage) => a.operationId === b.operationId
@@ -1005,11 +988,6 @@ export class AppModel {
     };
     this.pendingOwnCurrent = current;
     this.pendingOwnRetryCurrent = retryCurrent;
-    if(!this.acceptedOwnMessages.peek().length&&!this.pendingOwnMessage.peek()){
-      const observation=this.ownTailObservation;
-      this.ownReservation=observation&&observation.scope===scope&&observation.isCurrent()
-        ?Object.freeze({token:Object.freeze({}),observation}):undefined;
-    }
     this.pendingOwnMessage.value = {threadId,scope,operationId,text,phase:"sending",plainMessageSend:true};
     this.sendState.value = { kind: "sending" };
     const originalPlainOperation=this.pendingOwnMessage.peek();

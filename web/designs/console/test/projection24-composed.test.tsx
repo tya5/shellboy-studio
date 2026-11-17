@@ -135,22 +135,7 @@ it('#13 real FakeTransport held shell.read keeps successful empty Output cache/D
 });
 
 describe('direct local insertion plan', () => {
-  it('keeps qualified beginning content across undefined-to-empty sequence publication', () => {
-    const host = document.createElement('div'); document.body.append(host);
-    const items = [{ key: 'saved-a', source: input[0]! }];
-    const local = <section data-own-presentation=""><div class="msg">A</div><div class="msg">B</div></section>;
-    const props = { items, workGroups: [], renderWorkGroup: (_: unknown, children: any) => children,
-      renderItem: () => <span>saved</span>, localRegion: { kind: "qualified" as const, slots: [{position:{kind:"before-first" as const},content:<div class="msg">A</div>},{position:{kind:"after" as const,index:1},content:<div class="msg">B</div>}] } };
-    const paint = (sequence: undefined | readonly {kind:'conversation';itemKey:string}[]) => render(<ConversationItems {...props} sequence={sequence}/>, host);
-    paint(undefined);
-    expect(host.querySelectorAll('.msg')).toHaveLength(2);
-    const first = [...host.querySelectorAll('.msg')];
-    expect(first.every(node => node.isConnected && node.ownerDocument === document && host.contains(node))).toBe(true);
-    paint([]);
-    expect(host.querySelectorAll('.msg')).toHaveLength(2);
-    expect([...host.querySelectorAll('.msg')].every(node => node.isConnected && node.ownerDocument === document && host.contains(node))).toBe(true);
-    render(null, host); host.remove();
-  });
+  ;
   it('keeps canonical rows when the exclusive unqualified local branch is empty', () => {
     const host = document.createElement('div'); document.body.append(host);
     const items = [{ key: 'saved-a', source: input[0]! }, { key: 'saved-b', source: input[0]! }];
@@ -161,18 +146,7 @@ describe('direct local insertion plan', () => {
     expect([...host.querySelectorAll('.canonical-row')].map(node => node.textContent)).toEqual(['saved-a', 'saved-b']);
     render(null, host); host.remove();
   });
-  it('renders each owned slot once when canonical anchors are suppressed', () => {
-    const host = document.createElement('div'); document.body.append(host);
-    const items = [{ key: 'a', source: input[0]! }, { key: 'b', source: input[0]! }];
-    const local = <section class="aggregate"><div class="msg">aggregate</div></section>;
-    const props = { items, sequence: [{kind:'conversation' as const,itemKey:'a'}, {kind:'conversation' as const,itemKey:'b'}],
-      renderItem: () => <span>hidden</span>, isItemAbsent: () => true,
-      localRegion: { kind: "qualified" as const, slots: [{position:{kind:"before-first" as const}, content:<div class="owned">A</div>}, {position:{kind:"after" as const,index:0}, content:<div class="owned">B</div>}] } };
-    render(<ConversationItems {...props}/>, host);
-    expect([...host.querySelectorAll('.owned')].map(node=>node.textContent)).toEqual(['A','B']);
-    expect(host.querySelectorAll('.aggregate')).toHaveLength(0);
-    render(null, host); host.remove();
-  });
+  ;
 });
 
 async function beginningCohort(){

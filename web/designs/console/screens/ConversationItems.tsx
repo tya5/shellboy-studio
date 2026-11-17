@@ -1,5 +1,3 @@
-import type {OwnSendPlacement} from "../../../ui-core/src/own-send-region";
-import type {OwnSendSlotPosition} from "../../../ui-core/src/own-send-presentation";
 import { Fragment, type ComponentChildren } from 'preact';
 
 /** Internal normalized presentation input, not a Core wire DTO or a body proof. */
@@ -39,7 +37,7 @@ interface Props {
   renderItem: (item: ConversationItem) => ComponentChildren;
   renderBefore?: (item: ConversationItem) => ComponentChildren;
   trailing?: ComponentChildren;
-  localRegion?: { readonly kind: "qualified"; readonly slots: readonly {position:OwnSendSlotPosition;content:ComponentChildren}[] } | { readonly kind: "unqualified"; readonly content: ComponentChildren; readonly afterIndex?: number; readonly beforeIndex?: number };
+  localRegion?: { readonly kind: "unqualified"; readonly content: ComponentChildren };
   isItemAbsent?: (item: ConversationItem) => boolean;
   isItemHidden?: (item: ConversationItem) => boolean;
   renderHeading?: (summary: ConversationToolSummary) => ComponentChildren;
@@ -53,9 +51,6 @@ export function ConversationItems({ items, toolSummaries = [], renderItem, rende
   if (normalizedSequence) {
     const byKey = new Map(items.map(item => [item.key, item]));
     const groups = new Map(normalizedGroups.map(group => [group.key, group]));
-    const slots = localRegion?.kind === "qualified" ? localRegion.slots : [];
-    const slotsAt = (position: number): ComponentChildren[] => slots.filter(slot => slot.position.kind === "after" && slot.position.index === position).map(slot => slot.content);
-    const beforeFirstSlots = slots.filter(slot => slot.position.kind === "before-first").map(slot => slot.content);
     const containerAt = (position: number): string | undefined => {
       const entry = normalizedSequence[position];
       if (!entry || entry.kind !== "conversation") return undefined;
@@ -97,7 +92,6 @@ export function ConversationItems({ items, toolSummaries = [], renderItem, rende
         const item = byKey.get(entry.itemKey);
         if (item && !isItemAbsent?.(item)) output.push(<Fragment key={`conversation:${item.key}`}>{renderBefore?.(item)}{content(item, false, hostedContainer !== undefined)}</Fragment>);
       }
-      output.push(...slotsAt(position));
       return output;
     };
     const rendered: { entry: NonNullable<Props["sequence"]>[number]; view: ComponentChildren; first:number; last:number }[] = [];
@@ -117,25 +111,17 @@ export function ConversationItems({ items, toolSummaries = [], renderItem, rende
     }
     // Preserve slot-only positions when canonical sequence publication is empty;
     // they are plan entries, not a discarded side effect of a missing anchor.
-    const slotOnly = slots.filter(slot => slot.position.kind === "after" && slot.position.index >= normalizedSequence.length)
-      .flatMap(slot => [slot.content]);
     const unqualified = localRegion?.kind === "unqualified" ? localRegion : undefined;
     const local = unqualified ? { view: unqualified.content, first: -1, last: -1 } : undefined;
-    const afterIndex = unqualified?.afterIndex;
-    const beforeIndex = unqualified?.beforeIndex;
-    const plan = local
-      ? beforeIndex !== undefined
-        ? [...rendered.slice(0, beforeIndex), local, ...rendered.slice(beforeIndex)]
-        : afterIndex === undefined
-          ? [local, ...rendered]
-          : [...rendered.slice(0, afterIndex + 1), local, ...rendered.slice(afterIndex + 1)]
-      : rendered;
+    // Unqualified own-send rows are the scoped unsaved suffix; never place them
+    // through an anchor or a saved-row index.
+    const plan = local ? [...rendered, local] : rendered;
     // Keep top-level rows as direct siblings. Nested arrays create implicit
     // unkeyed VNodes and can change an unchanged row's DOM parent on handoff.
     const directChildren = (views: readonly ComponentChildren[]): ComponentChildren[] => views.flatMap(view => Array.isArray(view) ? view : [view]);
     const region:ComponentChildren[] = localRegion?.kind === "unqualified"
       ? directChildren(plan.map(row => row.view))
-      : [...beforeFirstSlots, ...directChildren(plan.map(row => row.view)), ...slotOnly];
+      : directChildren(plan.map(row => row.view));
     return <div class="conversation-items">{region}{trailing}</div>;
   }
   const rows: ComponentChildren[] = [];
