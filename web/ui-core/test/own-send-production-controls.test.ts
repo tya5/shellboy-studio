@@ -28,6 +28,16 @@ describe("ordinary own-send production controls", () => {
     expect(result.projection.items.filter(item => item.source.nodeId === "own")).toHaveLength(1);
   });
 
+  it("does not suppress live or Work projection items for an ID-less sending row", () => {
+    const idless = { ...local("sending"), messageId: undefined, phase: "sending" as const };
+    const projection = projectSavedItems([saved("live-assistant"), saved("work-receipt")]);
+    const result = ownSendPresentation({ ref: {}, current: true, scope: "scope", projection,
+      localRows: [idless], hiddenItemKeys: new Set<string>(), canonicalRows: [] });
+    expect(result.localRows).toEqual([idless]);
+    expect(result.retire).toEqual([]);
+    expect(result.projection.items.map(item => item.source.nodeId)).toEqual(["live-assistant", "work-receipt"]);
+  });
+
   it("rejects foreign route/current and partial canonical bodies", () => {
     const row = local("a");
     expect(decide([row], [saved("a")], false).retire).toEqual([]);

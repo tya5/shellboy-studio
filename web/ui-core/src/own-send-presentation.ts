@@ -62,8 +62,13 @@ export function ownSendPresentation<Ref>(input: OwnSendPresentationInput<Ref>): 
       && part.text.trim().length > 0;
   });
   const matchingIds = new Set(matches.flatMap(row => row.messageId ? [row.messageId] : []));
-  const visible = input.current ? input.projection.items.filter(item =>
-    !cohort.some(row => row.messageId === item.source.nodeId && !matchingIds.has(row.messageId!))) : [];
+  const suppressedIds = new Set(cohort.flatMap(row =>
+    typeof row.messageId === "string" && row.messageId.length > 0 && !matchingIds.has(row.messageId)
+      ? [row.messageId] : []));
+  const visible = input.current ? input.projection.items.filter(item => {
+    const nodeId = item.source.nodeId;
+    return !(typeof nodeId === "string" && nodeId.length > 0 && suppressedIds.has(nodeId));
+  }) : [];
   const projection = Object.freeze({
     ...input.projection,
     items: Object.freeze(visible),
