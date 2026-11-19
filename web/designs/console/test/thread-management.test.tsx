@@ -1,54 +1,54 @@
 // @vitest-environment happy-dom
-import { signal } from "@preact/signals-core";
-import { act, render } from "preact/test-utils";
+import "@preact/signals";
+import { render } from "preact";
+import { act } from "preact/test-utils";
 import { expect, it } from "vitest";
-import type { ThreadDetails } from "../../../data/src";
-import type { AppModel } from "../../../ui-core/src";
+import { details, flush, fixtureModel, summary } from "../../../data/test/harness";
 import { ThreadManagement } from "../screens/ThreadManagement";
 
-const detail = (id: string): ThreadDetails => ({ thread_id: id, title: `Thread ${id}`, cwd: "/tmp", connection: "local", model: "test", shells_count: 0 });
-const deferred = <T,>() => {
-  let resolve!: (value: T) => void;
-  const promise = new Promise<T>((done) => { resolve = done; });
-  return { promise, resolve };
-};
+async function answer(f: Awaited<ReturnType<typeof fixtureModel>>, command: string, id = -1): Promise<void> {
+  const call = f.t.calls(command).find((candidate) => !f.db.answered.has(candidate.id) && (id < 0 || candidate.id === id));
+  if (!call) throw new Error(`missing unanswered ${command}`);
+  f.db.answered.add(call.id);
+  const out = f.db.answer(call);
+  if (out.ok) f.t.ok(call.id, out.result);
+  else f.t.ownerError(call.id, out.code, out.message, out.details);
+  await flush();
+}
 
-it("does not retain A detail or late mutation state after an A-to-B route change", async () => {
-  const route = signal({ view: "thread-management" as const, threadId: "A" });
-  const owner = signal({ state: "connected" as const, info: { protocol_version: 5, instance_id: "owner-a", capabilities: [] } });
-  const reads = new Map<string, ReturnType<typeof deferred<{ ok: true; value: ThreadDetails }>>>();
-  const archive = deferred<{ ok: true; value: { archived: string[]; already: string[]; not_found: string[] } }>();
-  const ops = {
-    threadGet: (id: string) => {
-      const next = deferred<{ ok: true; value: ThreadDetails }>();
-      reads.set(id, next);
-      return next.promise;
-    },
-    threadArchive: () => archive.promise,
-    threadUnarchive: async () => ({ ok: true as const, value: {} }),
-  };
-  const model = { route, owner, ops, t: signal((key: string) => key) } as unknown as AppModel;
+it("keeps a fresh route visit isolated from a late singleton mutation", async () => {
+  const f = await fixtureModel({ route: "threads", configure(db) {
+    db.threads = { A: summary("A"), B: summary("B") };
+    db.details = { A: details("A"), B: details("B") };
+  } });
   const host = document.createElement("div");
   document.body.append(host);
   try {
-    await act(async () => { render(<ThreadManagement model={model} />, host); });
-    reads.get("A")!.resolve({ ok: true, value: detail("A") });
-    await act(async () => { await Promise.resolve(); });
-    expect(host.textContent).toContain("Thread A");
+    f.model.applyRoute({ view: "thread-management", threadId: "A" });
+    await act(async () => { render(<ThreadManagement model={f.model} />, host); });
+    await answer(f, "thread.get");
+    expect(host.textContent).toContain("t-A");
     (host.querySelector("button") as HTMLButtonElement).click();
-    route.value = { view: "thread-management", threadId: "B" };
-    await act(async () => { await Promise.resolve(); });
-    expect(host.textContent).not.toContain("Thread A");
-    expect(host.textContent).toContain("common.loading");
-    reads.get("B")!.resolve({ ok: true, value: detail("B") });
-    await act(async () => { await Promise.resolve(); });
-    expect(host.textContent).toContain("Thread B");
-    archive.resolve({ ok: true, value: { archived: ["A"], already: [], not_found: [] } });
-    await act(async () => { await Promise.resolve(); });
-    expect(host.textContent).toContain("Thread B");
-    expect(host.textContent).not.toContain("Thread A");
+    const archive = f.t.calls("thread.archive").at(-1);
+    expect(archive?.args).toEqual({ thread_ids: ["A"] });
+
+    f.model.applyRoute({ view: "thread-management", threadId: "B" });
+    await answer(f, "thread.get");
+    expect(host.textContent).toContain("t-B");
+    expect(host.textContent).not.toContain("t-A");
+
+    f.model.applyRoute({ view: "thread-management", threadId: "A" });
+    await answer(f, "thread.get");
+    expect(host.textContent).toContain("t-A");
+    f.t.ok(archive!.id, { archived: ["A"], already: [], not_found: [] });
+    await act(async () => { await flush(); });
+    expect(host.textContent).toContain("t-A");
+    expect(host.textContent).not.toContain("org.archivedResult");
+    expect(host.querySelector("button")?.textContent).toBe("action.archive");
   } finally {
     render(null, host);
     host.remove();
+    f.model.dispose();
+    f.data.stop();
   }
 });

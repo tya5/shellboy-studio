@@ -1,9 +1,9 @@
-import { useEffect, useState } from "preact/hooks";
+import { useEffect, useRef, useState } from "preact/hooks";
 import { formatRoute, type AppModel } from "../../../ui-core/src";
 import { Button, Notice, Section } from "../system/components";
 import type { ThreadDetails } from "../../../data/src";
 
-type OwnerIdentity = AppModel["owner"]["value"];
+type OwnerIdentity = AppModel["data"]["owner"]["value"];
 type DetailState = { id: string; owner: OwnerIdentity; loading: boolean; value?: ThreadDetails; error?: string };
 type ActionState = { id: string; owner: OwnerIdentity; kind: "idle" | "running" } | { id: string; owner: OwnerIdentity; kind: "done"; archived: boolean; count: number; already: number; notFound: number } | { id: string; owner: OwnerIdentity; kind: "failed"; message: string };
 
@@ -11,7 +11,8 @@ type ActionState = { id: string; owner: OwnerIdentity; kind: "idle" | "running" 
 export function ThreadManagement({ model }: { model: AppModel }) {
   const t = model.t.value;
   const id = model.route.value.threadId;
-  const owner = model.owner.value;
+  const owner = model.data.owner.value;
+  const session = useRef(0);
   const [detailState, setDetailState] = useState<DetailState>();
   const [actionState, setActionState] = useState<ActionState>({ id: id ?? "", owner, kind: "idle" });
   const currentDetail = detailState?.id === id && detailState.owner === owner ? detailState : undefined;
@@ -20,14 +21,16 @@ export function ThreadManagement({ model }: { model: AppModel }) {
   useEffect(() => {
     let current = true;
     if (!id) return () => { current = false; };
-    const readOwner = model.owner.value;
+    const readOwner = model.data.owner.value;
+    const readSession = ++session.current;
+    const currentTarget = () => current && session.current === readSession && model.route.peek().threadId === id && model.data.owner.peek() === readOwner;
     const read = (next: DetailState) => {
-      if (current && model.route.peek().threadId === id && model.owner.peek() === readOwner) setDetailState(next);
+      if (currentTarget()) setDetailState(next);
     };
     read({ id, owner: readOwner, loading: true });
     setActionState({ id, owner: readOwner, kind: "idle" });
     void model.ops.threadGet(id).then((out) => {
-      if (!current || model.route.peek().threadId !== id || model.owner.peek() !== readOwner) return;
+      if (!currentTarget()) return;
       read(out.ok ? { id, owner: readOwner, loading: false, value: out.value } : { id, owner: readOwner, loading: false, error: out.error.message });
     });
     return () => { current = false; };
@@ -41,20 +44,22 @@ export function ThreadManagement({ model }: { model: AppModel }) {
   const archived = detail.archived_at !== undefined;
   const actionable = !currentAction || currentAction.kind === "idle" || currentAction.kind === "done";
   const mutate = async () => {
-    const mutationOwner = model.owner.peek();
+    const mutationOwner = model.data.owner.peek();
     const mutationId = id;
-    if (mutationOwner !== owner || currentAction?.kind === "running") return;
+    const mutationSession = session.current;
+    const currentMutation = () => session.current === mutationSession && model.route.peek().threadId === mutationId && model.data.owner.peek() === mutationOwner;
+    if (!currentMutation() || currentAction?.kind === "running") return;
     setActionState({ id: mutationId, owner: mutationOwner, kind: "running" });
     const out = archived
       ? await model.ops.threadUnarchive([mutationId], { descendants: false })
       : await model.ops.threadArchive([mutationId], { descendants: false });
-    if (model.route.peek().threadId !== mutationId || model.owner.peek() !== mutationOwner) return;
+    if (!currentMutation()) return;
     if (!out.ok) {
       setActionState({ id: mutationId, owner: mutationOwner, kind: "failed", message: out.error.message });
       return;
     }
     const refreshed = await model.ops.threadGet(mutationId);
-    if (model.route.peek().threadId !== mutationId || model.owner.peek() !== mutationOwner) return;
+    if (!currentMutation()) return;
     if (!refreshed.ok) {
       setActionState({ id: mutationId, owner: mutationOwner, kind: "failed", message: refreshed.error.message });
       return;
