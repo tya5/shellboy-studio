@@ -52,6 +52,24 @@ async function bodyReadControlCase(partial: boolean) {
 }
 
 
+it("auto-loads one authoritative body for ordered prose leaves", async () => {
+ const rows: HistoryItem[] = [{ node_id: "two-prose", kind: "assistant_response", selection: { ordinal: 0 }, items: [
+  { kind: "text", item_identity: "first", text: "first provisional", text_complete: true },
+  { kind: "text", item_identity: "second", text: "second provisional", text_complete: false }
+ ]}];
+ const f=await fixtureModel({capabilities:["history.window"],route:"conversation",threadId:"t",configure(db){
+  db.threads={t:summary("t")};db.details.t=details("t");db.history.t=rows;
+  const base=db.answer.bind(db);db.answer=call=>call.command==='history.get'
+   ? {ok:true,result:{node_id:requestedHistoryNode(call),kind:'assistant_response',text:'FIRST FULL\nSECOND FULL',provenance:{sender:{kind:'assistant'}}}}
+   : call.command==='history.window'?{ok:true,result:{thread_id:'t',revision:1,total:1,items:rows}}:base(call);
+ }});
+ const host=document.createElement('div');document.body.append(host);
+ const context:DesignContext={model:f.model,prefs:signal(loadPrefs({read:()=>null,write:()=>{}},[{name:'console',themes:[{name:'light'}]}])),setPrefs:()=>{},designs:[],submitToken:async()=>false};
+ try{await act(async()=>{render(<App context={context}/>,host);await settle(f.t,f.db);});
+  const reads=f.t.calls('history.get');expect(reads).toHaveLength(1);expect(requestedHistoryNode(reads[0]!)).toBe('two-prose');
+  const row=host.querySelector('[data-node="two-prose"]');expect(row).toBeDefined();expect(row!.querySelectorAll('.md')).toHaveLength(1);expect(row!.querySelector('.md')?.textContent).toContain('FIRST FULL');expect(row!.querySelector('.md')?.textContent).toContain('SECOND FULL');
+ }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
+});
 
 for(const savedBeforeAck of [false,true])it(`submitted message remains separate until exact acceptance and saved arrival: savedFirst=${savedBeforeAck}`,async()=>{
  let rows:HistoryItem[]=[];

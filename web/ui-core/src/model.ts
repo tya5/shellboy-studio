@@ -738,7 +738,8 @@ export class AppModel {
     if (candidate?.node_id !== undefined && (candidate.items === null || candidate.items?.some((item) => item.kind === "text" && item.text_complete === false))) {
       const incomplete = candidate.items?.find((item) => item.kind === "text" && item.text_complete === false);
       const kind = candidate.items === null ? "deferred" as const : "typed" as const;
-      const identity = incomplete?.item_identity;
+      const allProse = candidate.items !== null && candidate.items !== undefined && candidate.items.length > 0 && candidate.items.every(item => item.kind === "text");
+      const identity = allProse ? undefined : incomplete?.item_identity;
       let readerKeys = this.autoBodyReads.get(handle);
       if (!readerKeys) { readerKeys = new WeakMap(); this.autoBodyReads.set(handle, readerKeys); }
       let keys = readerKeys.get(reader);
@@ -944,7 +945,7 @@ export class AppModel {
       && this.longReader.peek() === reader && this.threadReads === cancel && this.route.peek() === route
       && (expected === undefined || (reader !== undefined
         ? reader.acceptedView.isCurrent(reader.acceptedView.peek()) && reader.acceptedView.peek().rows.some((row) => row.node_id === nodeId
-          && (expected.kind === "deferred" ? row.items === null : row.items?.some((item) => item.item_identity === expected.identity)))
+          && (expected.kind === "deferred" ? row.items === null : expected.identity === undefined ? row.items?.length !== undefined && row.items.length > 0 && row.items.every((item) => item.kind === "text") : row.items?.some((item) => item.item_identity === expected.identity)))
         : false));
     const current = () => this.handle.peek() === handle && handle.liveEpoch() === lifetime
       && this.longReader.peek() === reader && this.threadReads === cancel && this.route.peek() === route;
