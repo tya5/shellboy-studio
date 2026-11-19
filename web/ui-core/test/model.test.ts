@@ -1,3 +1,4 @@
+import { computed } from "@preact/signals-core";
 import { describe, expect, it } from "vitest";
 import { connected, flush, settle } from "../../data/test/harness";
 import { fixtureModel, fixturePendingAdapter } from "./fixture";
@@ -64,22 +65,19 @@ describe("AppModel over the fake transport", () => {
       expect(call).toBeDefined();
       t.ok(call!.id, { node_id: "body-node", kind: "assistant_response", text: "saved body" });
       await pending;
-      const before = model.bodyCacheKey("body-node");
-      expect(model.bodyState("body-node")?.text).toBe("saved body");
+      const visible = computed(() => model.bodyState("body-node")?.text);
+      expect(visible.value).toBe("saved body");
       t.push({ t: "owner", event: "restarted", owner: { state: "connected", info: { protocol_version: 5, instance_id: "i2", capabilities: ["history.window"] } } });
       await flush(8);
       expect(model.handle.peek()).toBe(handle);
-      expect(model.bodyCacheKey("body-node")).not.toBe(before);
-      expect(model.bodyState("body-node")).toBeUndefined();
+      expect(visible.value).toBeUndefined();
     } finally { model.dispose(); }
   });
 
-  it("coalesces an evicted body read and guards the next cursor", async () => {
-    const { model, t, db } = await fixtureModel({ route: "conversation", threadId: "lead", capabilities: ["history.window"], configure(owner) {
+  it("cancels an evicted body read before its stale next cursor", async () => {
+    const { model, t } = await fixtureModel({ route: "conversation", threadId: "lead", capabilities: ["history.window"], configure(owner) {
       owner.history.lead = [{ node_id: "body-node", kind: "assistant_response", selection: { ordinal: 0 }, items: [{ kind: "text", item_identity: "answer", text: "saved", text_complete: true }] }];
       owner.historyRevisions.lead = 2;
-      const base = owner.answer.bind(owner);
-      owner.answer = call => call.command === "history.get" ? { ok: true, result: { node_id: "body-node", kind: "assistant_response", text: call.args.cursor ? "second" : "first", next_cursor: call.args.cursor ? undefined : "next" } } : base(call);
     }});
     try {
       const firstRead = model.loadBody("body-node", { kind: "typed", identity: "answer" });
@@ -87,11 +85,33 @@ describe("AppModel over the fake transport", () => {
       const first = t.calls("history.get").at(-1);
       expect(first).toBeDefined();
       const key = model.bodyCacheKey("body-node", "answer");
-      const before = t.calls("history.get").length;
-      const duplicate = model.loadBody("body-node", { kind: "typed", identity: "answer" });
       const evicted = new Map(model.bodies.peek()); evicted.delete(key); model.bodies.value = evicted;
+      const duplicate = model.loadBody("body-node", { kind: "typed", identity: "answer" });
       await flush();
-      expect(t.calls("history.get")).toHaveLength(before);
+      expect(t.calls("history.get")).toHaveLength(1);
+      model.navigate({ view: "threads" });
+      t.ok(first!.id, { node_id: "body-node", kind: "assistant_response", text: "first", next_cursor: "next" });
+      await firstRead; await duplicate;
+      expect(t.calls("history.get")).toHaveLength(1);
+      expect(model.bodies.peek().get(key)?.text).toBeUndefined();
+    } finally { model.dispose(); }
+  });
+
+  it("coalesces an evicted body read through successful cursor pagination", async () => {
+    const { model, t } = await fixtureModel({ route: "conversation", threadId: "lead", capabilities: ["history.window"], configure(owner) {
+      owner.history.lead = [{ node_id: "body-node", kind: "assistant_response", selection: { ordinal: 0 }, items: [{ kind: "text", item_identity: "answer", text: "saved", text_complete: true }] }];
+      owner.historyRevisions.lead = 2;
+    }});
+    try {
+      const firstRead = model.loadBody("body-node", { kind: "typed", identity: "answer" });
+      await flush();
+      const first = t.calls("history.get").at(-1);
+      expect(first).toBeDefined();
+      const key = model.bodyCacheKey("body-node", "answer");
+      const evicted = new Map(model.bodies.peek()); evicted.delete(key); model.bodies.value = evicted;
+      const duplicate = model.loadBody("body-node", { kind: "typed", identity: "answer" });
+      await flush();
+      expect(t.calls("history.get")).toHaveLength(1);
       t.ok(first!.id, { node_id: "body-node", kind: "assistant_response", text: "first", next_cursor: "next" });
       await flush();
       const second = t.calls("history.get").at(-1);
