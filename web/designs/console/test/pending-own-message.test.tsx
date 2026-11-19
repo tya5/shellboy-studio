@@ -475,7 +475,7 @@ it("auto-loads only the newest typed prose body once", async () => {
 
 it("mounted stale auto body refuses an old cursor after rev2/rev3 windows", async () => {
  const f=await fixtureModel({capabilities:["history.window"],route:"threads",threadId:"t",configure(db){db.threads={t:summary("t")};db.details.t=details("t");db.history.t=[];db.historyRevisions.t=1;}});
- const readWindowCalls:unknown[]=[];let restoreReadWindow:(()=>void)|undefined;let capturedHandle:typeof f.model.handle.peek()=undefined,capturedReader:typeof f.model.longReader.peek()=undefined,capturedKey:string|undefined;
+ const readWindowCalls:unknown[]=[];let restoreReadWindow:(()=>void)|undefined;let capturedHandle:ReturnType<typeof f.model.handle.peek>=undefined,capturedReader:ReturnType<typeof f.model.longReader.peek>=undefined,capturedKey:string|undefined;
  const host=document.createElement('div');document.body.append(host);const context:DesignContext={model:f.model,prefs:signal(loadPrefs({read:()=>null,write:()=>{}},[{name:'console',themes:[{name:'light'}]}])),setPrefs:()=>{},designs:[],submitToken:async()=>false};
  const old:HistoryItem={node_id:'old-tail',kind:'assistant_response',selection:{ordinal:0},items:[{kind:'text',item_identity:'answer',text:'old prefix',text_complete:false}]};
  const newer:HistoryItem={node_id:'new-tail',kind:'assistant_response',selection:{ordinal:1},items:[{kind:'text',item_identity:'answer',text:'new complete',text_complete:true}]};
