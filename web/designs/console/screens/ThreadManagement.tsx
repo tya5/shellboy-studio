@@ -109,11 +109,11 @@ export function ThreadManagement({ model }: { model: AppModel }) {
       {actionable ? <Button disabled={currentAction?.kind === "running"} onClick={() => void mutate()}>{archived ? t("org.unarchive") : t("action.archive")}</Button> : null}
     </div>
     {settings ? <div class="band" data-thread-settings="">
-      <Field ariaLabel={t("model.model")} value={settings.model} disabled={settings.saving} onInput={(e) => setSettingsState({ ...settings, model: e.currentTarget.value, saved: false })} />
+      <Field ariaLabel={t("model.change")} value={settings.model} disabled={settings.saving} onInput={(e) => setSettingsState({ ...settings, model: e.currentTarget.value, saved: false })} />
       <Field ariaLabel={t("model.effort")} value={settings.effort} disabled={settings.saving} onInput={(e) => setSettingsState({ ...settings, effort: e.currentTarget.value, saved: false })} />
       {model.data.capabilities.value.includes("thread.settings") ? <Button variant="primary" disabled={settings.saving || !settings.model.trim()} onClick={() => void saveSettings()}>{t("model.save")}</Button> : <Notice tone="wait">{t("thread.readOnly")}</Notice>}
       {settings.error ? <Notice tone="bad">{settings.error}</Notice> : null}
-      {settings.saved ? <Notice>{t("model.saved")}</Notice> : null}
+      {settings.saved ? <Notice>{t("thread.settingsSaved")}</Notice> : null}
     </div> : null}
     {currentAction?.kind === "failed" ? <Notice tone="bad">{currentAction.message}</Notice> : null}
     {currentAction?.kind === "done" ? <>
