@@ -65,12 +65,16 @@ describe("AppModel over the fake transport", () => {
       expect(call).toBeDefined();
       t.ok(call!.id, { node_id: "body-node", kind: "assistant_response", text: "saved body" });
       await pending;
+      const reader = model.longReader.peek();
       const visible = computed(() => model.bodyState("body-node")?.text);
+      const stop = visible.subscribe(() => {});
       expect(visible.value).toBe("saved body");
       t.push({ t: "owner", event: "restarted", owner: { state: "connected", info: { protocol_version: 5, instance_id: "i2", capabilities: ["history.window"] } } });
       await flush(8);
       expect(model.handle.peek()).toBe(handle);
+      expect(model.longReader.peek()).toBe(reader);
       expect(visible.value).toBeUndefined();
+      stop();
     } finally { model.dispose(); }
   });
 
@@ -89,8 +93,8 @@ describe("AppModel over the fake transport", () => {
       const duplicate = model.loadBody("body-node", { kind: "typed", identity: "answer" });
       await flush();
       expect(t.calls("history.get")).toHaveLength(1);
-      model.navigate({ view: "threads" });
       t.ok(first!.id, { node_id: "body-node", kind: "assistant_response", text: "first", next_cursor: "next" });
+      model.navigate({ view: "threads" });
       await firstRead; await duplicate;
       expect(t.calls("history.get")).toHaveLength(1);
       expect(model.bodies.peek().get(key)?.text).toBeUndefined();

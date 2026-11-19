@@ -23,18 +23,20 @@ async function bodyReadControlCase(partial: boolean) {
   db.threads = { t: summary("t") }; db.details.t = details("t"); db.history.t = rows;
   const base = db.answer.bind(db);
   db.answer = call => call.command === "history.get"
-   ? { ok: true, result: { node_id: "savedassistant", kind: "assistant_response", text: "full visible", provenance: { sender: { kind: "assistant" } } } }
+   ? { ok: true, result: { node_id: call.args.node_id, kind: "assistant_response", text: "full visible", provenance: { sender: { kind: "assistant" } } } }
    : call.command === "history.window" ? { ok: true, result: { thread_id: "t", revision: 1, total: rows.length, items: rows } } : base(call);
  }});
  const host = document.createElement("div"); document.body.append(host);
  const context: DesignContext = { model: f.model, prefs: signal(loadPrefs({ read: () => null, write: () => {} }, [{ name: "console", themes: [{ name: "light" }] }])), setPrefs: () => {}, designs: [], submitToken: async () => false };
  try {
   await act(async () => { render(<App context={context} />, host); await settle(f.t, f.db); });
-  const automaticReads = f.t.calls("history.get").length;
-  const button = [...host.querySelectorAll<HTMLButtonElement>("button")].find(node => node.textContent?.includes(f.model.t.value("convo.fullMessage")));
+  const automatic = f.t.calls("history.get").map(call => call.args.node_id);
+  expect(automatic).toEqual(partial ? [] : ["newer-deferred"]);
+  const olderRow = host.querySelector('[data-node="savedassistant"]');
+  expect(olderRow).toBeDefined();
+  const button = [...olderRow!.querySelectorAll<HTMLButtonElement>("button")].find(node => node.textContent?.includes(f.model.t.value("convo.fullMessage")));
   expect(button).toBeDefined();
   await act(async () => { button!.click(); await settle(f.t, f.db); });
-  expect(f.t.calls("history.get")).toHaveLength(automaticReads + 1);
   expect(f.t.calls("history.get").at(-1)?.args).toMatchObject({ node_id: "savedassistant" });
   expect(host.textContent).toContain("full visible");
  } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
