@@ -18,7 +18,7 @@ import {canonicalAttemptId} from '../../../data/test/work-fixture';
 async function bodyReadControlCase(partial: boolean) {
  let rows: HistoryItem[] = [{ node_id: "savedassistant", kind: "assistant_response", selection: { ordinal: 0 },
   ...(partial ? { items: [{ kind: "text" as const, item_identity: "answer", text: "typed prefix", text_complete: false }] } : { items: null, items_unavailable_reason: "response_budget" as const }),
-  excerpt: "typed prefix" }];
+  excerpt: "typed prefix" }, { node_id: "newer-user", kind: "user", selection: { ordinal: 1 }, items: [{ kind: "text", item_identity: "text", text: "newer user", text_complete: true }] }];
  const f = await fixtureModel({capabilities: ["history.window"], route: "conversation", threadId: "t", configure(db) {
   db.threads = { t: summary("t") }; db.details.t = details("t"); db.history.t = rows;
   const base = db.answer.bind(db);

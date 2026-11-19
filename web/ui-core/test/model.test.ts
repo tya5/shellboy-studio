@@ -51,6 +51,53 @@ describe("AppModel over the fake transport", () => {
     } finally { model.dispose(); }
   });
 
+  it("invalidates saved body display on an empty same-handle owner restart", async () => {
+    const { model, t } = await fixtureModel({ route: "conversation", threadId: "lead", capabilities: ["history.window"], configure(owner) {
+      owner.history.lead = [{ node_id: "body-node", kind: "assistant_response", selection: { ordinal: 0 }, items: [{ kind: "text", item_identity: "answer", text: "saved", text_complete: true }] }];
+      owner.historyRevisions.lead = 2;
+    }});
+    try {
+      const handle = model.handle.peek();
+      const pending = model.loadBody("body-node");
+      await flush();
+      const call = t.calls("history.get").at(-1);
+      expect(call).toBeDefined();
+      t.ok(call!.id, { node_id: "body-node", kind: "assistant_response", text: "saved body" });
+      await pending;
+      const before = model.bodyCacheKey("body-node");
+      expect(model.bodyState("body-node")?.text).toBe("saved body");
+      t.push({ t: "owner", event: "restarted", owner: { state: "connected", info: { protocol_version: 5, instance_id: "i2", capabilities: ["history.window"] } } });
+      await flush(8);
+      expect(model.handle.peek()).toBe(handle);
+      expect(model.bodyCacheKey("body-node")).not.toBe(before);
+      expect(model.bodyState("body-node")).toBeUndefined();
+    } finally { model.dispose(); }
+  });
+
+  it("coalesces an evicted body read and guards the next cursor", async () => {
+    const { model, t, db } = await fixtureModel({ route: "conversation", threadId: "lead", capabilities: ["history.window"], configure(owner) {
+      owner.history.lead = [{ node_id: "body-node", kind: "assistant_response", selection: { ordinal: 0 }, items: [{ kind: "text", item_identity: "answer", text: "saved", text_complete: true }] }];
+      owner.historyRevisions.lead = 2;
+      const base = owner.answer.bind(owner);
+      owner.answer = call => call.command === "history.get" ? { ok: true, result: { node_id: "body-node", kind: "assistant_response", text: call.args.cursor ? "second" : "first", next_cursor: call.args.cursor ? undefined : "next" } } : base(call);
+    }});
+    try {
+      const firstRead = model.loadBody("body-node", { kind: "typed", identity: "answer" });
+      await flush();
+      const first = t.calls("history.get").at(-1);
+      expect(first).toBeDefined();
+      const key = model.bodyCacheKey("body-node", "answer");
+      const before = t.calls("history.get").length;
+      const duplicate = model.loadBody("body-node", { kind: "typed", identity: "answer" });
+      const evicted = new Map(model.bodies.peek()); evicted.delete(key); model.bodies.value = evicted;
+      await flush();
+      expect(t.calls("history.get")).toHaveLength(before);
+      await firstRead; await duplicate;
+      expect(model.bodyState("body-node", "answer")?.text).toBe("firstsecond");
+      expect(t.calls("history.get").at(-1)?.args).toMatchObject({ node_id: "body-node", cursor: "next" });
+    } finally { model.dispose(); }
+  });
+
   it("restarts the same handle, retires matching live, and rejects the old held callback", async () => {
     const { model, t, db } = await fixtureModel({ route: "conversation", threadId: "lead", capabilities: ["history.window"] });
     const handle = model.handle.peek();
