@@ -30,10 +30,12 @@ async function bodyReadControlCase(partial: boolean) {
  const context: DesignContext = { model: f.model, prefs: signal(loadPrefs({ read: () => null, write: () => {} }, [{ name: "console", themes: [{ name: "light" }] }])), setPrefs: () => {}, designs: [], submitToken: async () => false };
  try {
   await act(async () => { render(<App context={context} />, host); await settle(f.t, f.db); });
+  const automaticReads = f.t.calls("history.get").length;
   const button = [...host.querySelectorAll<HTMLButtonElement>("button")].find(node => node.textContent?.includes(f.model.t.value("convo.fullMessage")));
   expect(button).toBeDefined();
   await act(async () => { button!.click(); await settle(f.t, f.db); });
-  expect(f.t.calls("history.get")).toHaveLength(1);
+  expect(f.t.calls("history.get")).toHaveLength(automaticReads + 1);
+  expect(f.t.calls("history.get").at(-1)?.args).toMatchObject({ node_id: "savedassistant" });
   expect(host.textContent).toContain("full visible");
  } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
 }
