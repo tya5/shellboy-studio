@@ -34,6 +34,28 @@ import { statusOfShell, type StatusKey } from "./status";
 import { StableMonitorOrder, countByStatus, threadTree, type StatusCounts, type ThreadRow } from "./threads";
 import { contextFacts, recoveryFacts, usageFacts, type ContextFacts, type RecoveryFacts, type UsageFacts } from "./usage";
 
+export interface ThreadModelDraft {
+  model: string;
+  connection: string;
+  effort: string;
+  agents: string;
+  autoCompactAt: string;
+  maxTokens: string;
+  clearMaxTokens: boolean;
+}
+
+/** Encode the one Thread settings delta used by both conversation and management editors. */
+export function threadModelChanges(draft: ThreadModelDraft, initial: ThreadModelDraft): { model: string; connection: string; effort?: string; agents?: string; auto_compact_at?: string; max_tokens?: string } {
+  return {
+    model: draft.model.trim(),
+    connection: draft.connection,
+    ...(draft.effort !== initial.effort ? { effort: draft.effort } : {}),
+    ...(draft.agents !== initial.agents ? { agents: draft.agents } : {}),
+    ...(draft.autoCompactAt !== initial.autoCompactAt ? { auto_compact_at: draft.autoCompactAt } : {}),
+    ...(draft.clearMaxTokens || draft.maxTokens !== initial.maxTokens ? { max_tokens: draft.maxTokens } : {}),
+  };
+}
+
 interface ModelPickerSession {
   readonly route: Route;
   readonly owner: ShellboyData["owner"]["value"];
@@ -199,7 +221,7 @@ export class AppModel {
     const current = () => this.pickerCurrent(session) && session.save === save;
     const initial = session.initial;
     this.modelPicker.value = { ...p, saving: true, error: undefined };
-    const out = await this.ops.setThreadModel(p.thread, { model: p.model.trim(), connection: p.connection, ...(p.effort !== initial.effort ? { effort: p.effort } : {}), ...(p.agents !== initial.agents ? { agents: p.agents } : {}), ...(p.autoCompactAt !== initial.autoCompactAt ? { auto_compact_at: p.autoCompactAt } : {}), ...(p.clearMaxTokens || p.maxTokens !== initial.maxTokens ? { max_tokens: p.maxTokens } : {}) });
+    const out = await this.ops.setThreadModel(p.thread, threadModelChanges(p, initial));
     // The mutation may already be accepted. Retiring a draft only revokes its UI authority.
     if (!current()) return;
     if (!out.ok) {

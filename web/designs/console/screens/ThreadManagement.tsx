@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "preact/hooks";
-import { formatRoute, type AppModel, type Route } from "../../../ui-core/src";
+import { formatRoute, threadModelChanges, type AppModel, type Route, type ThreadModelDraft } from "../../../ui-core/src";
 import { Button, Field, Notice, Section } from "../system/components";
 import type { ThreadDetails } from "../../../data/src";
 
@@ -88,16 +88,28 @@ export function ThreadManagement({ model }: { model: AppModel }) {
     const currentTarget = () => visitRef.current === target.visit && model.route.peek() === target.route && model.route.peek().view === "thread-management" && model.data.owner.peek() === target.owner;
     if (!currentTarget()) return;
     setSettingsState({ ...settings, saving: true, saved: false, error: undefined });
-    const out = await model.ops.setThreadModel(target.id, { model: settings.model.trim(), connection: detail.connection, ...(settings.effort !== settings.initialEffort ? { effort: settings.effort.trim() } : {}) });
+    const draft: ThreadModelDraft = { model: settings.model, connection: detail.connection, effort: settings.effort, agents: "", autoCompactAt: "", maxTokens: "", clearMaxTokens: false };
+    const initial: ThreadModelDraft = { model: detail.model, connection: detail.connection, effort: settings.initialEffort, agents: "", autoCompactAt: "", maxTokens: "", clearMaxTokens: false };
+    const changes = threadModelChanges(draft, initial);
+    const out = await model.ops.setThreadModel(target.id, changes);
     if (!currentTarget()) return;
     if (!out.ok) {
       setSettingsState({ ...settings, saving: false, saved: false, error: out.error.message });
+      return;
+    }
+    if (out.value.thread_id !== target.id) {
+      setSettingsState({ ...settings, saving: false, saved: false, error: t("thread.settingsMismatch") });
       return;
     }
     const refreshed = await model.ops.threadGet(target.id);
     if (!currentTarget()) return;
     if (!refreshed.ok) {
       setSettingsState({ ...settings, saving: false, saved: false, error: refreshed.error.message });
+      return;
+    }
+    const expectedEffort = changes.effort === undefined ? (detail.effort ?? "") : changes.effort;
+    if (refreshed.value.thread_id !== target.id || refreshed.value.model !== changes.model || (refreshed.value.effort ?? "") !== expectedEffort) {
+      setSettingsState({ ...settings, saving: false, saved: false, error: t("thread.settingsMismatch") });
       return;
     }
     setDetailState({ id: target.id, route: target.route, owner: target.owner, visit: target.visit, loading: false, value: refreshed.value });
