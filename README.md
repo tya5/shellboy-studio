@@ -79,7 +79,7 @@ retrying; the page shows "Shellboy isn't reachable" until an owner appears.
 Run Studio and the owner as the same OS user.
 
 If no model connection exists yet, Studio can set one up from the browser (Anthropic,
-OpenAI, OpenRouter, LiteLLM, local, other) with the matching Core owner (currently v0.13.0).
+OpenAI, OpenRouter, LiteLLM, local, other) with the matching Core owner (currently v0.13.1).
 Older owners are not a supported pairing; no protocol downgrade is provided.
 A Claude or ChatGPT subscription is not an API key; an API key is required.
 
@@ -167,7 +167,7 @@ Studio v0.1.0 follows Core's protocol 5 / schema 39 contract (#276).
 There is no protocol-4 downgrade or ownership alias. Use the exact validated
 Core release pair; the published Core tag, lockfile and installed binaries must
 be checked separately when installing or replacing binaries. The current manifest/lock establish the
-public v0.13.0 pin; earlier preparation checkpoints alone did not.
+public v0.13.1 pin; earlier preparation checkpoints alone did not.
 Never restart a working owner or change its data to resolve a mismatch without
 explicit approval.
 
