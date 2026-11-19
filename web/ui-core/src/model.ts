@@ -275,12 +275,21 @@ export class AppModel {
   readonly shells: Signal<ReadonlyMap<string, ShellEntry>> = signal(new Map());
   readonly outputs: Signal<ReadonlyMap<string, OutputState>> = signal(new Map());
   readonly bodies: Signal<ReadonlyMap<string, BodyState>> = signal(new Map());
-  bodyCacheKey(nodeId: string, itemIdentity?: string): string {
-    const handle = this.handle.peek();
-    if (!handle) return `unbound:${nodeId}:${itemIdentity ?? "manual"}`;
+  private bodyReaderKeys = new WeakMap<ConversationWindow, string>();
+  private bodyRouteKeys = new WeakMap<Route, string>();
+  private bodyScopeKey(handle: ThreadHandle, reader: ConversationWindow | undefined, route: Route): string {
     let owner = this.bodyOwnerKeys.get(handle);
     if (!owner) { owner = `owner-${++this.nextBodyOwnerKey}`; this.bodyOwnerKeys.set(handle, owner); }
-    return `${owner}:${nodeId}:${itemIdentity ?? "manual"}`;
+    let readerKey = reader === undefined ? "readerless" : this.bodyReaderKeys.get(reader);
+    if (reader !== undefined && !readerKey) { readerKey = `reader-${++this.nextBodyOwnerKey}`; this.bodyReaderKeys.set(reader, readerKey); }
+    let routeKey = this.bodyRouteKeys.get(route);
+    if (!routeKey) { routeKey = `route-${++this.nextBodyOwnerKey}`; this.bodyRouteKeys.set(route, routeKey); }
+    return `${owner}:${handle.liveEpoch()}:${readerKey}:${routeKey}`;
+  }
+  bodyCacheKey(nodeId: string, itemIdentity?: string): string {
+    const handle = this.handle.value;
+    if (!handle) return `unbound:${nodeId}:${itemIdentity ?? "manual"}`;
+    return `${this.bodyScopeKey(handle, this.longReader.value, this.route.value)}:${nodeId}:${itemIdentity ?? "manual"}`;
   }
   bodyState(nodeId: string, itemIdentity?: string): BodyState | undefined { return this.bodies.value.get(this.bodyCacheKey(nodeId, itemIdentity)); }
   readonly selectedStepId: Signal<string | undefined> = signal(undefined);
@@ -915,49 +924,64 @@ export class AppModel {
 
   /** Read one message beyond its excerpt. On request only. */
   async loadBody(nodeId: string, expected?: { handle?: ThreadHandle; reader?: ConversationWindow; kind: "deferred" | "typed"; identity?: string }): Promise<void> {
-    const cacheKey = this.bodyCacheKey(nodeId, expected?.identity);
+    const handle = expected?.handle ?? this.handle.peek();
+    const reader = expected !== undefined && Object.prototype.hasOwnProperty.call(expected, "reader") ? expected.reader : this.longReader.peek();
+    const route = this.route.peek();
+    if (!handle) return;
+    const cacheKey = `${this.bodyScopeKey(handle, reader, route)}:${nodeId}:${expected?.identity ?? "manual"}`;
     const set = (b: BodyState) => {
       this.bodies.value = setBounded(this.bodies.peek() as Map<string, BodyState>, cacheKey, b);
     };
-    if (this.bodies.peek().get(cacheKey)?.loading) return;
-    const handle = expected?.handle ?? this.handle.peek();
-    const reader = expected?.reader ?? this.longReader.peek();
-    if (!handle || (expected?.handle !== undefined && !reader)) return;
+    const existing = this.bodyReadTokens.get(cacheKey);
+    if (existing !== undefined) return;
     const token = {};
     this.bodyReadTokens.set(cacheKey, token);
     const cancel = this.threadReads;
-    const route = this.route.peek();
-    const qualified = () => this.handle.peek() === handle && this.longReader.peek() === reader && this.threadReads === cancel && this.route.peek() === route
-      && (expected === undefined || (reader !== undefined && reader.acceptedView.isCurrent(reader.acceptedView.peek()) && reader.acceptedView.peek().rows.some((row) => row.node_id === nodeId && (expected.kind === "deferred" ? row.items === null : row.items?.some((item) => item.item_identity === expected.identity)))));
+    const lifetime = handle.liveEpoch();
+    const savedRowCurrent = () => this.conversation.peek().some((row) => row.type === "message" && row.id === nodeId
+      && (expected?.kind === "deferred" ? expected.identity === undefined : row.itemIdentity === expected.identity));
+    const qualified = () => this.handle.peek() === handle && handle.liveEpoch() === lifetime
+      && this.longReader.peek() === reader && this.threadReads === cancel && this.route.peek() === route
+      && (expected === undefined || (reader !== undefined
+        ? reader.acceptedView.isCurrent(reader.acceptedView.peek()) && reader.acceptedView.peek().rows.some((row) => row.node_id === nodeId
+          && (expected.kind === "deferred" ? row.items === null : row.items?.some((item) => item.item_identity === expected.identity)))
+        : savedRowCurrent()));
+    const current = () => this.handle.peek() === handle && handle.liveEpoch() === lifetime
+      && this.longReader.peek() === reader && this.threadReads === cancel && this.route.peek() === route;
     set({ text: undefined, loading: true, error: undefined });
     let text = "";
     let cursor: string | undefined;
-    for (let page = 0; page < MAX_PAGES; page++) {
-      if (!qualified() || this.bodyReadTokens.get(cacheKey) !== token) {
-        if (this.bodyReadTokens.get(cacheKey) === token) { const next = new Map(this.bodies.peek()); next.delete(cacheKey); this.bodies.value = next; this.bodyReadTokens.delete(cacheKey); }
-        return;
-      }
-      const out = await this.ops.historyGet({ node_id: nodeId, ...(cursor !== undefined && { cursor }) }, { cancel: this.threadReads });
-      const owns = () => this.bodyReadTokens.get(cacheKey) === token;
-      if (!qualified()) {
-        if (owns() && this.bodies.peek().get(cacheKey)?.loading) {
-          const next = new Map(this.bodies.peek()); next.delete(cacheKey); this.bodies.value = next; this.bodyReadTokens.delete(cacheKey);
+    try {
+      for (let page = 0; page < MAX_PAGES; page++) {
+        if (!current() || !qualified() || this.bodyReadTokens.get(cacheKey) !== token) {
+          if (this.bodyReadTokens.get(cacheKey) === token && this.bodies.peek().get(cacheKey)?.loading) {
+            const next = new Map(this.bodies.peek()); next.delete(cacheKey); this.bodies.value = next;
+          }
+          return;
         }
-        return;
+        const out = await this.ops.historyGet({ node_id: nodeId, ...(cursor !== undefined && { cursor }) }, { cancel: cancel });
+        if (!current() || !qualified() || this.bodyReadTokens.get(cacheKey) !== token) {
+          if (this.bodyReadTokens.get(cacheKey) === token && this.bodies.peek().get(cacheKey)?.loading) {
+            const next = new Map(this.bodies.peek()); next.delete(cacheKey); this.bodies.value = next;
+          }
+          return;
+        }
+        if (!out.ok) {
+          set({ text: undefined, loading: false, error: out.error.kind === "cancelled" ? undefined : errorMessage(out.error) });
+          return;
+        }
+        if (out.value.node_id !== nodeId) {
+          set({ text: undefined, loading: false, error: "history body node mismatch" });
+          return;
+        }
+        text += out.value.text;
+        cursor = out.value.next_cursor;
+        if (cursor === undefined) break;
       }
-      if (!out.ok) {
-        if (owns()) { set({ text: undefined, loading: false, error: out.error.kind === "cancelled" ? undefined : errorMessage(out.error) }); this.bodyReadTokens.delete(cacheKey); }
-        return;
-      }
-      if (out.value.node_id !== nodeId) {
-        if (owns()) { set({ text: undefined, loading: false, error: "history body node mismatch" }); this.bodyReadTokens.delete(cacheKey); }
-        return;
-      }
-      text += out.value.text;
-      cursor = out.value.next_cursor;
-      if (cursor === undefined) break;
+      if (current() && qualified() && this.bodyReadTokens.get(cacheKey) === token) set({ text, loading: false, error: undefined });
+    } finally {
+      if (this.bodyReadTokens.get(cacheKey) === token) this.bodyReadTokens.delete(cacheKey);
     }
-    if (this.bodyReadTokens.get(cacheKey) === token) { set({ text, loading: false, error: undefined }); this.bodyReadTokens.delete(cacheKey); }
   }
 
   // ---- actions (state changes arrive through hints and re-reads) ----
