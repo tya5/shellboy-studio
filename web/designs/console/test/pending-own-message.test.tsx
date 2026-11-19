@@ -491,3 +491,24 @@ it("mounted stale auto body refuses an old cursor after rev2/rev3 windows", asyn
   expect(f.t.calls('history.get')).toHaveLength(1);expect(f.model.bodies.peek().get(oldKey)).toBeUndefined();const oldMarkdown=[...host.querySelectorAll('[data-node="old-tail"] .md')].map(node=>node.textContent??'').join('\n');expect(oldMarkdown).not.toContain('OLD_FULL_SHOULD_NOT_RENDER');expect(oldMarkdown).toContain('old prefix');
  }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
 });
+
+it("mounted click joins the held old cursor read", async () => {
+ const f=await fixtureModel({capabilities:["history.window"],route:"conversation",threadId:"t",configure(db){db.threads={t:summary("t")};db.details.t=details("t");db.history.t=[];db.historyRevisions.t=1;}});
+ const host=document.createElement('div');document.body.append(host);const context:DesignContext={model:f.model,prefs:signal(loadPrefs({read:()=>null,write:()=>{}},[{name:'console',themes:[{name:'light'}]}])),setPrefs:()=>{},designs:[],submitToken:async()=>false};
+ const old:HistoryItem={node_id:'old-tail',kind:'assistant_response',selection:{ordinal:0},items:[{kind:'text',item_identity:'answer',text:'old prefix',text_complete:false}]};
+ const newer:HistoryItem={node_id:'new-tail',kind:'assistant_response',selection:{ordinal:1},items:[{kind:'text',item_identity:'answer',text:'new complete',text_complete:true}]};
+ const answerWindows=async()=>{const ids:string[]=[];for(let pass=0;pass<4;pass++){const pending=f.t.calls('history.window').filter(call=>!f.db.answered.has(call.id));if(!pending.length)break;for(const call of pending){ids.push(call.id);f.db.answered.add(call.id);const result=f.db.answer(call);if(result.ok)f.t.ok(call.id,result.result);else f.t.ownerError(call.id,result.code,result.message??result.code,result.details);}await flush(2);}return ids;};
+ try{await act(async()=>{render(<App context={context}/>,host);await settle(f.t,f.db);});
+  f.db.history.t=[old];f.db.historyRevisions.t=2;f.t.push({t:'changed',thread_ids:['t'],list:false});await flush(4);const rev2Ids=await answerWindows();await flush(6);
+  expect(new Set(rev2Ids).size).toBeGreaterThanOrEqual(2);expect(f.model.longReader.peek()!.acceptedView.peek().revision).toBe(2);
+  const rev2Handle=f.model.handle.peek(),rev2Reader=f.model.longReader.peek(),oldKey=f.model.bodyCacheKey('old-tail');expect(rev2Handle).not.toBeNull();expect(rev2Reader).not.toBeNull();const rev2Body=f.model.bodies.peek().get(oldKey);expect(rev2Body).toMatchObject({loading:true});
+  const oldCall=f.t.calls('history.get').at(-1);expect(oldCall).not.toBeNull();expect(f.t.calls('history.get').map(call=>requestedHistoryNode(call))).toEqual(['old-tail']);expect(host.querySelector('[data-node="old-tail"]')).not.toBeNull();expect(host.querySelector('[data-node="old-tail"]')!.textContent).toContain('old prefix');
+  const oldButton=host.querySelector<HTMLButtonElement>('[data-node="old-tail"] button');expect(oldButton).not.toBeNull();await act(async()=>{oldButton!.click();await flush(2);});expect(f.t.calls('history.get')).toHaveLength(1);
+  f.db.history.t=[old,newer];f.db.historyRevisions.t=3;f.t.push({t:'changed',thread_ids:['t'],list:false});await flush(4);const rev3Ids=await answerWindows();await flush(6);
+  expect(new Set(rev3Ids).size).toBeGreaterThanOrEqual(2);expect(f.model.longReader.peek()!.acceptedView.peek().revision).toBe(3);
+  expect(f.model.handle.peek()).toBe(rev2Handle);expect(f.model.longReader.peek()).toBe(rev2Reader);expect(f.model.bodyCacheKey('old-tail')).toBe(oldKey);expect(f.model.bodies.peek().get(oldKey)).toBe(rev2Body);expect(f.model.bodies.peek().get(oldKey)).toMatchObject({loading:true});expect(f.model.longReader.peek()!.acceptedView.peek().rows.map(row=>row.node_id)).toEqual(['old-tail','new-tail']);expect(host.querySelector('[data-node="new-tail"]')?.textContent).toContain('new complete');
+  f.t.ok(oldCall!.id,{node_id:'old-tail',kind:'assistant_response',text:'OLD_PREFIX\nOLD_FULL',next_cursor:'stale-next'});await flush(6);
+  const cursorCalls=f.t.calls('history.get').filter(call=>call.args.cursor==='stale-next');expect(cursorCalls).toHaveLength(1);expect(cursorCalls[0]!.args).toMatchObject({node_id:'old-tail',cursor:'stale-next'});f.t.ok(cursorCalls[0]!.id,{node_id:'old-tail',kind:'assistant_response',text:'OLD_REST'});await flush(8);
+  const oldMarkdown=[...host.querySelectorAll('[data-node="old-tail"] .md')].map(node=>node.textContent??'').join('\n');expect(oldMarkdown).toContain('OLD_PREFIX');expect(oldMarkdown).toContain('OLD_REST');
+ }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
+});
