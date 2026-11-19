@@ -7,8 +7,12 @@ import { details, flush, summary } from "../../../data/test/harness";
 import { fixtureModel } from "../../../ui-core/test/fixture";
 import { ThreadManagement } from "../screens/ThreadManagement";
 
-async function answer(f: Awaited<ReturnType<typeof fixtureModel>>, command: string, id = -1): Promise<void> {
-  const call = f.t.calls(command).find((candidate) => !f.db.answered.has(candidate.id) && (id < 0 || candidate.id === id));
+async function answer(f: Awaited<ReturnType<typeof fixtureModel>>, command: string, threadId?: string): Promise<void> {
+  const call = f.t.calls(command).find((candidate) => {
+    if (f.db.answered.has(candidate.id)) return false;
+    if (threadId === undefined) return true;
+    return (candidate.args as { thread_id?: unknown } | undefined)?.thread_id === threadId;
+  });
   if (!call) throw new Error(`missing unanswered ${command}`);
   f.db.answered.add(call.id);
   const out = f.db.answer(call);
@@ -33,13 +37,13 @@ it("keeps a fresh route visit isolated from a late singleton mutation", async ()
     const archive = f.t.calls("thread.archive").at(-1);
     expect(archive?.args).toEqual({ thread_ids: ["A"] });
 
-    f.model.applyRoute({ view: "thread-management", threadId: "B" });
-    await answer(f, "thread.get");
+    await act(async () => { f.model.applyRoute({ view: "thread-management", threadId: "B" }); await flush(); });
+    await answer(f, "thread.get", "B");
     expect(host.textContent).toContain("t-B");
     expect(host.textContent).not.toContain("t-A");
 
-    f.model.applyRoute({ view: "thread-management", threadId: "A" });
-    await answer(f, "thread.get");
+    await act(async () => { f.model.applyRoute({ view: "thread-management", threadId: "A" }); await flush(); });
+    await answer(f, "thread.get", "A");
     expect(host.textContent).toContain("t-A");
     f.t.ok(archive!.id, { archived: ["A"], already: [], not_found: [] });
     await act(async () => { await flush(); });
