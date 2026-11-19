@@ -20,13 +20,15 @@ describe("AppModel over the fake transport", () => {
     }});
     try {
       const pending = model.loadBody("savedassistant");
+      const bodyKey = model.bodyCacheKey("savedassistant");
       await flush();
       const call = t.calls("history.get").at(-1);
       expect(call).toBeDefined();
+      expect(call!.args).toMatchObject({ node_id: "savedassistant" });
       model.navigate({ view: "threads" });
       t.ok(call!.id, { node_id: "savedassistant", kind: "assistant_response", text: "late full body" });
       await pending;
-      expect(model.bodies.peek().get("savedassistant")?.text).toBeUndefined();
+      expect(model.bodies.peek().get(bodyKey)?.text).toBeUndefined();
     } finally { model.dispose(); }
   });
 
@@ -38,12 +40,14 @@ describe("AppModel over the fake transport", () => {
       await flush();
       const call = t.calls("history.get").at(-1);
       expect(call).toBeDefined();
-      expect(model.bodies.peek().get("savedassistant")).toMatchObject({ loading: true, text: undefined });
+      expect(call!.args).toMatchObject({ node_id: "savedassistant" });
+      const bodyKey = model.bodyCacheKey("savedassistant");
+      expect(model.bodies.peek().get(bodyKey)).toMatchObject({ loading: true, text: undefined });
       t.ok(call!.id, { node_id: "savedassistant", kind: "assistant_response", text: "successful but stale" });
       model.navigate({ view: "threads" });
       expect(model.route.peek()).not.toBe(beforeRoute);
       await pending;
-      expect(model.bodies.peek().get("savedassistant")?.text).toBeUndefined();
+      expect(model.bodies.peek().get(bodyKey)?.text).toBeUndefined();
     } finally { model.dispose(); }
   });
 

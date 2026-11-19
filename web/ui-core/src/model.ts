@@ -289,6 +289,8 @@ export class AppModel {
   bodyCacheKey(nodeId: string, itemIdentity?: string): string {
     const handle = this.handle.value;
     if (!handle) return `unbound:${nodeId}:${itemIdentity ?? "manual"}`;
+    // Handoff records are the existing reactive seam for same-handle owner changes.
+    handle.handoff.value;
     return `${this.bodyScopeKey(handle, this.longReader.value, this.route.value)}:${nodeId}:${itemIdentity ?? "manual"}`;
   }
   bodyState(nodeId: string, itemIdentity?: string): BodyState | undefined { return this.bodies.value.get(this.bodyCacheKey(nodeId, itemIdentity)); }
@@ -938,14 +940,12 @@ export class AppModel {
     this.bodyReadTokens.set(cacheKey, token);
     const cancel = this.threadReads;
     const lifetime = handle.liveEpoch();
-    const savedRowCurrent = () => this.conversation.peek().some((row) => row.type === "message" && row.id === nodeId
-      && (expected?.kind === "deferred" ? expected.identity === undefined : row.itemIdentity === expected.identity));
     const qualified = () => this.handle.peek() === handle && handle.liveEpoch() === lifetime
       && this.longReader.peek() === reader && this.threadReads === cancel && this.route.peek() === route
       && (expected === undefined || (reader !== undefined
         ? reader.acceptedView.isCurrent(reader.acceptedView.peek()) && reader.acceptedView.peek().rows.some((row) => row.node_id === nodeId
           && (expected.kind === "deferred" ? row.items === null : row.items?.some((item) => item.item_identity === expected.identity)))
-        : savedRowCurrent()));
+        : false));
     const current = () => this.handle.peek() === handle && handle.liveEpoch() === lifetime
       && this.longReader.peek() === reader && this.threadReads === cancel && this.route.peek() === route;
     set({ text: undefined, loading: true, error: undefined });
