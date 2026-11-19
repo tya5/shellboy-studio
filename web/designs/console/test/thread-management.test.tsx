@@ -58,3 +58,42 @@ it("keeps a fresh route visit isolated from a late singleton mutation", async ()
     f.data.stop();
   }
 });
+
+it("saves management model and effort only after same-thread readback", async () => {
+  const f = await fixtureModel({ route: "threads", capabilities: ["thread.settings"], configure(db) {
+    db.threads = { A: summary("A") };
+    db.details = { A: details("A", { effort: "low" }) };
+  } });
+  const host = document.createElement("div");
+  document.body.append(host);
+  try {
+    f.model.applyRoute({ view: "thread-management", threadId: "A" });
+    await act(async () => { render(<ThreadManagement model={f.model} />, host); await flush(); });
+    await answer(f, "thread.get", "A");
+    const fields = host.querySelectorAll<HTMLInputElement>("[data-thread-settings] input");
+    expect(fields).toHaveLength(2);
+    await act(async () => {
+      fields[0]!.value = "next-model";
+      fields[0]!.dispatchEvent(new Event("input", { bubbles: true }));
+      fields[1]!.value = "high";
+      fields[1]!.dispatchEvent(new Event("input", { bubbles: true }));
+      await flush();
+    });
+    const save = [...host.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === f.model.t.value("model.save"));
+    expect(save).toBeDefined();
+    save!.click();
+    await flush();
+    const setCall = f.t.calls("thread.set").at(-1);
+    expect(setCall?.args).toEqual({ thread_id: "A", model: "next-model", connection: "c", effort: "high" });
+    f.t.ok(setCall!.id, details("A", { model: "next-model", effort: "high" }));
+    await act(async () => { await flush(); });
+    await answer(f, "thread.get", "A");
+    expect(host.querySelector("[data-thread-settings]")?.textContent).toContain(f.model.t.value("thread.settingsSaved"));
+    expect((host.querySelectorAll<HTMLInputElement>("[data-thread-settings] input")[0])?.value).toBe("next-model");
+  } finally {
+    render(null, host);
+    host.remove();
+    f.model.dispose();
+    f.data.stop();
+  }
+});
