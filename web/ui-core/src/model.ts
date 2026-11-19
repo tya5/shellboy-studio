@@ -62,7 +62,7 @@ interface ModelPickerSession {
   readonly handle: ThreadHandle;
   readonly observation: NonNullable<ReturnType<ThreadHandle["captureDetail"]>>;
   readonly settings: ThreadSettings;
-  readonly initial: { effort: string; agents: string; autoCompactAt: string; maxTokens: string };
+  readonly initial: ThreadModelDraft;
   save?: object;
 }
 
@@ -175,7 +175,7 @@ export class AppModel {
       || this.selectedId.peek() !== handle.threadId || observation.value.thread_id !== handle.threadId) return;
     const d = observation.value;
     const settings = readThreadSettings(d);
-    const initial = { effort: settings.effort ?? "", agents: settings.agentsPath ?? "", autoCompactAt: settings.autoCompactAt === undefined ? "" : String(settings.autoCompactAt), maxTokens: settings.maxTokensState.kind === "value" ? String(settings.maxTokensState.value) : "" };
+    const initial: ThreadModelDraft = { model: d.model, connection: d.connection, effort: settings.effort ?? "", agents: settings.agentsPath ?? "", autoCompactAt: settings.autoCompactAt === undefined ? "" : String(settings.autoCompactAt), maxTokens: settings.maxTokensState.kind === "value" ? String(settings.maxTokensState.value) : "", clearMaxTokens: false };
     const session: ModelPickerSession = { route, handle, owner, observation, settings, initial };
     batch(() => {
       this.pickerSession.value = session;
