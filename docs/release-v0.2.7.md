@@ -1,6 +1,6 @@
 # Studio 0.2.7
 
-Fixes for tool rows and live activity rows, paired with Core v0.13.0. This note does not authorize a tag or publication.
+Fixes for tool rows and live activity rows. This candidate note does not authorize a tag or publication.
 
 ## Core pairing
 
@@ -8,7 +8,7 @@ Studio 0.2.7 requires an exact reviewed Core v0.13.1 release ref; no Core tag or
 
 Studio #27 handoff retirement additionally requires a saved node `provenance.attempt_id`, introduced by Core `576c76f180` and present in its `1dfc414b` descendant; this prerequisite is absent from Core `v0.13.0`/`10cfe2`.
 
-Installing Core 0.13.0 over real data migrates the conversation database from schema 43 to schema 44 (adds the nullable `thread.max_tokens`) on its first write-capable start, and older Core binaries cannot open the upgraded store. Back up the data directory first.
+Core installation, data migration, and pairing instructions are intentionally deferred until the exact reviewed v0.13.1 ref is bound. No installed-data operation is authorized by this candidate.
 
 ## Fixes
 
@@ -18,4 +18,4 @@ Installing Core 0.13.0 over real data migrates the conversation database from sc
 
 ## Not in this release
 
-Studio does not yet expose Core 0.13.0's per-Thread output limit (`thread set --max-tokens`); use the CLI or TUI. The model dialog still shows the `segment`/`rounds` fields, which Core 0.12.0 and later reject.
+Studio does not yet expose the paired Core's per-Thread output limit (`thread set --max-tokens`); use the CLI or TUI. The model dialog still shows the `segment`/`rounds` fields, which Core 0.12.0 and later reject.
