@@ -75,6 +75,7 @@ export interface BodyState {
   loading: boolean;
   error: string | undefined;
 }
+interface BodyReadToken { manualAuthorized: boolean; }
 
 /** Failed connection attempts before suggesting that the token may be the problem. */
 const AUTH_HINT_ATTEMPTS = 2;
