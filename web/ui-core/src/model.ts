@@ -906,7 +906,7 @@ export class AppModel {
   }
 
   /** Read one message beyond its excerpt. On request only. */
-  async loadBody(nodeId: string, expected?: { handle: ThreadHandle; reader: ConversationWindow; kind: "deferred" | "typed"; identity?: string }): Promise<void> {
+  async loadBody(nodeId: string, expected?: { handle?: ThreadHandle; reader?: ConversationWindow; kind: "deferred" | "typed"; identity?: string }): Promise<void> {
     const cacheKey = this.bodyCacheKey(nodeId, expected?.identity);
     const set = (b: BodyState) => {
       this.bodies.value = setBounded(this.bodies.peek() as Map<string, BodyState>, cacheKey, b);
@@ -914,7 +914,7 @@ export class AppModel {
     if (this.bodies.peek().get(cacheKey)?.loading) return;
     const handle = expected?.handle ?? this.handle.peek();
     const reader = expected?.reader ?? this.longReader.peek();
-    if (!handle || (expected !== undefined && !reader)) return;
+    if (!handle || (expected?.handle !== undefined && !reader)) return;
     const token = {};
     this.bodyReadTokens.set(cacheKey, token);
     const cancel = this.threadReads;

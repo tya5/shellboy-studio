@@ -349,7 +349,7 @@ function ProjectedMessage({ model, row, authorizedText, relationship, bodyPartia
       </div> : row.speaker.kind === "unknown" && row.speaker.label !== undefined ? <div class="caption">{t("convo.senderClaimedLabel", { label: row.speaker.label })}</div> : null}
       {(row.truncated || bodyPartial) && body?.text === undefined ? (
         <span class="more">
-          <Button variant="link" disabled={body?.loading} onClick={() => void model.loadBody(row.id, row.itemIdentity === undefined ? undefined : { handle: model.handle.peek()!, reader: model.longReader.peek()!, kind: "typed", identity: row.itemIdentity })}>
+          <Button variant="link" disabled={body?.loading} onClick={() => void model.loadBody(row.id, row.itemIdentity === undefined ? undefined : { kind: "typed", identity: row.itemIdentity })}>
             {body?.loading ? t("convo.loadingBody") : t("convo.fullMessage")}
           </Button>
           {body?.error ? <span class="muted caption">{body.error}</span> : null}
