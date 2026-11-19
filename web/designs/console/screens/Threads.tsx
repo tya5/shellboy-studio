@@ -187,7 +187,7 @@ export function Threads({ model }: { model: AppModel }) {
         tagsLabel={t("org.tag.list")}
         note={notes || undefined}
         age={formatAge(s.updated_at, model.coarseNow.value)}
-        action={canMove ? <button type="button" class="srow-act" onClick={() => org.pickParent(s.thread_id)}>{t("org.move")}</button> : undefined}
+        action={<><a class="srow-act" href={formatRoute({ view: "thread-management", threadId: s.thread_id })}>{t("view.threads")}</a>{canMove ? <button type="button" class="srow-act" onClick={() => org.pickParent(s.thread_id)}>{t("org.move")}</button> : null}</>}
         drag={
           canMove
             ? {

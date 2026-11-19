@@ -1,5 +1,5 @@
 // Location of the UI, as a fragment. `#token=` belongs to the entry point, not to routing.
-export type ViewName = "conversation" | "monitor" | "inbox" | "analytics" | "settings" | "branches" | "threads" | "apps" | "setup";
+export type ViewName = "thread-management" | "conversation" | "monitor" | "inbox" | "analytics" | "settings" | "branches" | "threads" | "apps" | "setup";
 export const SETTINGS_SECTIONS = ["general", "connections", "compaction", "storage", "index", "agent", "studio"] as const;
 export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
 export const ANALYTICS_SECTIONS = ["overview", "tokens", "compaction", "threads", "storage", "memory", "index"] as const;
@@ -34,6 +34,7 @@ export function parseRoute(hash: string): Route {
   if (parts[0] === "inbox") return { view: "inbox" };
   if (parts[0] === "setup") return parts[1] === "embedding" ? { view: "setup", step: "embedding" } : { view: "setup" };
   if (parts[0] === "threads") return { view: "threads" };
+  if (parts[0] === "thread-management" && parts[1]) return { view: "thread-management", threadId: decodeURIComponent(parts[1]) };
   if (parts[0] === "apps") {
     try {
       if (!parts[1] || parts.length > 3) return { view: "apps" };
@@ -61,6 +62,7 @@ export function parseRoute(hash: string): Route {
 }
 
 export function formatRoute(route: Route): string {
+  if (route.view === "thread-management") return route.threadId ? `#/thread-management/${encodeURIComponent(route.threadId)}` : "#/threads";
   if (route.view === "conversation")
     return route.threadId ? `#/conversation/${encodeURIComponent(route.threadId)}` : "#/conversation";
   if (route.view === "apps" && route.appName) return `#/apps/${encodeURIComponent(route.appName)}${route.appInstance && validAppInstance(route.appInstance) ? `/${encodeURIComponent(route.appInstance)}` : ""}`;
