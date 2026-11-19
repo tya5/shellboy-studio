@@ -82,13 +82,13 @@ export function ThreadManagement({ model }: { model: AppModel }) {
     const out = archived
       ? await model.ops.threadUnarchive([mutationId], { descendants: false })
       : await model.ops.threadArchive([mutationId], { descendants: false });
-    if (!currentMutation()) return;
+    if (!currentMutation()) { release(token); return; }
     if (!out.ok) {
       setActionState({ id: mutationId, route: mutationRoute, owner: mutationOwner, visit: mutationVisit, kind: "failed", message: out.error.message });
       return;
     }
     const refreshed = await model.ops.threadGet(mutationId);
-    if (!currentMutation()) return;
+    if (!currentMutation()) { release(token); return; }
     if (!refreshed.ok) {
       setDetailState({ id: mutationId, route: mutationRoute, owner: mutationOwner, visit: mutationVisit, loading: false, error: refreshed.error.message });
       setActionState({ id: mutationId, route: mutationRoute, owner: mutationOwner, visit: mutationVisit, kind: "failed", message: refreshed.error.message });
@@ -121,7 +121,7 @@ export function ThreadManagement({ model }: { model: AppModel }) {
     const initial: ThreadModelDraft = { model: detail.model, connection: detail.connection, effort: settings.initialEffort, agents: "", autoCompactAt: "", maxTokens: "", clearMaxTokens: false };
     const changes = threadModelChanges(draft, initial);
     const out = await model.ops.setThreadModel(target.id, changes);
-    if (!currentTarget()) return;
+    if (!currentTarget()) { release(token); return; }
     if (!out.ok) {
       setSettingsState({ ...settings, saving: false, saved: false, error: out.error.message });
       release(token);
@@ -133,7 +133,7 @@ export function ThreadManagement({ model }: { model: AppModel }) {
       return;
     }
     const refreshed = await model.ops.threadGet(target.id);
-    if (!currentTarget()) return;
+    if (!currentTarget()) { release(token); return; }
     if (!refreshed.ok) {
       setDetailState({ id: target.id, route: target.route, owner: target.owner, visit: target.visit, loading: false, error: refreshed.error.message });
       setSettingsState({ ...settings, saving: false, saved: false, error: refreshed.error.message });
@@ -155,7 +155,6 @@ export function ThreadManagement({ model }: { model: AppModel }) {
       release(token);
       return;
     }
-    setSettingsState({ id: target.id, route: target.route, owner: target.owner, visit: target.visit, loading: false, value: refreshed.value });
     setSettingsState({ ...settings, model: refreshed.value.model, effort: refreshed.value.effort ?? "", initialEffort: refreshed.value.effort ?? "", saving: false, saved: true, error: undefined });
   };
 
