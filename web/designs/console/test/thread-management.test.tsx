@@ -3,7 +3,8 @@ import "@preact/signals";
 import { render } from "preact";
 import { act } from "preact/test-utils";
 import { expect, it } from "vitest";
-import { details, flush, fixtureModel, summary } from "../../../data/test/harness";
+import { details, flush, summary } from "../../../data/test/harness";
+import { fixtureModel } from "../../../ui-core/test/fixture";
 import { ThreadManagement } from "../screens/ThreadManagement";
 
 async function answer(f: Awaited<ReturnType<typeof fixtureModel>>, command: string, id = -1): Promise<void> {
@@ -43,8 +44,9 @@ it("keeps a fresh route visit isolated from a late singleton mutation", async ()
     f.t.ok(archive!.id, { archived: ["A"], already: [], not_found: [] });
     await act(async () => { await flush(); });
     expect(host.textContent).toContain("t-A");
-    expect(host.textContent).not.toContain("org.archivedResult");
-    expect(host.querySelector("button")?.textContent).toBe("action.archive");
+    expect(host.textContent).not.toContain(f.model.t.value("org.archivedResult", { n: 1, already: 0 }));
+    expect(host.querySelector("button")?.textContent).toBe(f.model.t.value("action.archive"));
+    expect(f.t.calls("thread.get")).toHaveLength(3);
   } finally {
     render(null, host);
     host.remove();

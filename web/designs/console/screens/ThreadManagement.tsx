@@ -1,40 +1,45 @@
 import { useEffect, useRef, useState } from "preact/hooks";
-import { formatRoute, type AppModel } from "../../../ui-core/src";
+import { formatRoute, type AppModel, type Route } from "../../../ui-core/src";
 import { Button, Notice, Section } from "../system/components";
 import type { ThreadDetails } from "../../../data/src";
 
 type OwnerIdentity = AppModel["data"]["owner"]["value"];
-type DetailState = { id: string; owner: OwnerIdentity; loading: boolean; value?: ThreadDetails; error?: string };
-type ActionState = { id: string; owner: OwnerIdentity; kind: "idle" | "running" } | { id: string; owner: OwnerIdentity; kind: "done"; archived: boolean; count: number; already: number; notFound: number } | { id: string; owner: OwnerIdentity; kind: "failed"; message: string };
+type Visit = object;
+type DetailState = { id: string; route: Route; owner: OwnerIdentity; visit: Visit; loading: boolean; value?: ThreadDetails; error?: string };
+type ActionState = { id: string; route: Route; owner: OwnerIdentity; visit: Visit; kind: "idle" | "running" } | { id: string; route: Route; owner: OwnerIdentity; visit: Visit; kind: "done"; archived: boolean; count: number; already: number; notFound: number } | { id: string; route: Route; owner: OwnerIdentity; visit: Visit; kind: "failed"; message: string };
 
 /** One-thread management entry; route reads and mutations are independent of bulk selection. */
 export function ThreadManagement({ model }: { model: AppModel }) {
   const t = model.t.value;
-  const id = model.route.value.threadId;
+  const route = model.route.value;
+  const id = route.view === "thread-management" ? route.threadId : undefined;
   const owner = model.data.owner.value;
-  const session = useRef(0);
+  const visitRef = useRef<Visit>();
   const [detailState, setDetailState] = useState<DetailState>();
-  const [actionState, setActionState] = useState<ActionState>({ id: id ?? "", owner, kind: "idle" });
-  const currentDetail = detailState?.id === id && detailState.owner === owner ? detailState : undefined;
-  const currentAction = actionState.id === id && actionState.owner === owner ? actionState : undefined;
+  const [actionState, setActionState] = useState<ActionState>();
+  const currentDetail = detailState?.id === id && detailState.route === route && detailState.owner === owner && detailState.visit === visitRef.current ? detailState : undefined;
+  const currentAction = actionState?.id === id && actionState.route === route && actionState.owner === owner && actionState.visit === visitRef.current ? actionState : undefined;
 
   useEffect(() => {
-    let current = true;
-    if (!id) return () => { current = false; };
-    const readOwner = model.data.owner.value;
-    const readSession = ++session.current;
-    const currentTarget = () => current && session.current === readSession && model.route.peek().threadId === id && model.data.owner.peek() === readOwner;
-    const read = (next: DetailState) => {
-      if (currentTarget()) setDetailState(next);
-    };
-    read({ id, owner: readOwner, loading: true });
-    setActionState({ id, owner: readOwner, kind: "idle" });
+    let active = true;
+    if (!id) return () => { active = false; };
+    const readOwner = owner;
+    const readRoute = route;
+    const readVisit: Visit = {};
+    visitRef.current = readVisit;
+    const currentTarget = () => active && visitRef.current === readVisit && model.route.peek() === readRoute && model.route.peek().view === "thread-management" && model.data.owner.peek() === readOwner;
+    const read = (next: DetailState) => { if (currentTarget()) setDetailState(next); };
+    read({ id, route: readRoute, owner: readOwner, visit: readVisit, loading: true });
+    setActionState({ id, route: readRoute, owner: readOwner, visit: readVisit, kind: "idle" });
     void model.ops.threadGet(id).then((out) => {
       if (!currentTarget()) return;
-      read(out.ok ? { id, owner: readOwner, loading: false, value: out.value } : { id, owner: readOwner, loading: false, error: out.error.message });
+      read(out.ok ? { id, route: readRoute, owner: readOwner, visit: readVisit, loading: false, value: out.value } : { id, route: readRoute, owner: readOwner, visit: readVisit, loading: false, error: out.error.message });
     });
-    return () => { current = false; };
-  }, [id, model.ops, owner]);
+    return () => {
+      active = false;
+      if (visitRef.current === readVisit) visitRef.current = undefined;
+    };
+  }, [id, model.ops, owner, route]);
 
   if (!id) return <Section title={t("view.threads")}><Notice tone="wait">{t("threads.empty")}</Notice></Section>;
   if (!currentDetail || currentDetail.loading) return <Section title={t("view.threads")}><Notice tone="wait">{t("common.loading")}</Notice></Section>;
@@ -44,29 +49,30 @@ export function ThreadManagement({ model }: { model: AppModel }) {
   const archived = detail.archived_at !== undefined;
   const actionable = !currentAction || currentAction.kind === "idle" || currentAction.kind === "done";
   const mutate = async () => {
-    const mutationOwner = model.data.owner.peek();
     const mutationId = id;
-    const mutationSession = session.current;
-    const currentMutation = () => session.current === mutationSession && model.route.peek().threadId === mutationId && model.data.owner.peek() === mutationOwner;
+    const mutationRoute = route;
+    const mutationOwner = owner;
+    const mutationVisit = currentDetail.visit;
+    const currentMutation = () => visitRef.current === mutationVisit && model.route.peek() === mutationRoute && model.route.peek().view === "thread-management" && model.data.owner.peek() === mutationOwner;
     if (!currentMutation() || currentAction?.kind === "running") return;
-    setActionState({ id: mutationId, owner: mutationOwner, kind: "running" });
+    setActionState({ id: mutationId, route: mutationRoute, owner: mutationOwner, visit: mutationVisit, kind: "running" });
     const out = archived
       ? await model.ops.threadUnarchive([mutationId], { descendants: false })
       : await model.ops.threadArchive([mutationId], { descendants: false });
     if (!currentMutation()) return;
     if (!out.ok) {
-      setActionState({ id: mutationId, owner: mutationOwner, kind: "failed", message: out.error.message });
+      setActionState({ id: mutationId, route: mutationRoute, owner: mutationOwner, visit: mutationVisit, kind: "failed", message: out.error.message });
       return;
     }
     const refreshed = await model.ops.threadGet(mutationId);
     if (!currentMutation()) return;
     if (!refreshed.ok) {
-      setActionState({ id: mutationId, owner: mutationOwner, kind: "failed", message: refreshed.error.message });
+      setActionState({ id: mutationId, route: mutationRoute, owner: mutationOwner, visit: mutationVisit, kind: "failed", message: refreshed.error.message });
       return;
     }
-    setDetailState({ id: mutationId, owner: mutationOwner, loading: false, value: refreshed.value });
+    setDetailState({ id: mutationId, route: mutationRoute, owner: mutationOwner, visit: mutationVisit, loading: false, value: refreshed.value });
     const result = archived ? out.value.unarchived : out.value.archived;
-    setActionState({ id: mutationId, owner: mutationOwner, kind: "done", archived: !archived, count: result?.length ?? 0, already: out.value.already?.length ?? 0, notFound: out.value.not_found?.length ?? 0 });
+    setActionState({ id: mutationId, route: mutationRoute, owner: mutationOwner, visit: mutationVisit, kind: "done", archived: !archived, count: result?.length ?? 0, already: out.value.already?.length ?? 0, notFound: out.value.not_found?.length ?? 0 });
   };
 
   return <Section title={detail.title} sub={detail.thread_id} actions={<a class="btn" href={formatRoute({ view: "conversation", threadId: id })}>{t("view.conversation")}</a>}>
