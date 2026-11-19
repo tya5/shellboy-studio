@@ -92,9 +92,14 @@ describe("AppModel over the fake transport", () => {
       const evicted = new Map(model.bodies.peek()); evicted.delete(key); model.bodies.value = evicted;
       await flush();
       expect(t.calls("history.get")).toHaveLength(before);
+      t.ok(first!.id, { node_id: "body-node", kind: "assistant_response", text: "first", next_cursor: "next" });
+      await flush();
+      const second = t.calls("history.get").at(-1);
+      expect(second).toBeDefined();
+      expect(second!.args).toMatchObject({ node_id: "body-node", cursor: "next" });
+      t.ok(second!.id, { node_id: "body-node", kind: "assistant_response", text: "second" });
       await firstRead; await duplicate;
       expect(model.bodyState("body-node", "answer")?.text).toBe("firstsecond");
-      expect(t.calls("history.get").at(-1)?.args).toMatchObject({ node_id: "body-node", cursor: "next" });
     } finally { model.dispose(); }
   });
 
