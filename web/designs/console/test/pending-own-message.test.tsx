@@ -67,7 +67,10 @@ it("auto-loads one authoritative body for ordered prose leaves", async () => {
  const context:DesignContext={model:f.model,prefs:signal(loadPrefs({read:()=>null,write:()=>{}},[{name:'console',themes:[{name:'light'}]}])),setPrefs:()=>{},designs:[],submitToken:async()=>false};
  try{await act(async()=>{render(<App context={context}/>,host);await settle(f.t,f.db);});
   const reads=f.t.calls('history.get');expect(reads).toHaveLength(1);expect(requestedHistoryNode(reads[0]!)).toBe('two-prose');
-  const row=host.querySelector('[data-node="two-prose"]');expect(row).toBeDefined();expect(row!.querySelectorAll('.md')).toHaveLength(1);expect(row!.querySelector('.md')?.textContent).toContain('FIRST FULL');expect(row!.querySelector('.md')?.textContent).toContain('SECOND FULL');
+  const bodies=[...host.querySelectorAll('[data-node="two-prose"] .md')].map(node=>node.textContent?.trim());
+  expect(bodies).toEqual(['FIRST FULL\nSECOND FULL']);
+  expect(bodies.filter(text=>text?.includes('FIRST FULL'))).toHaveLength(1);
+  expect(bodies.filter(text=>text?.includes('SECOND FULL'))).toHaveLength(1);
  }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
 });
 

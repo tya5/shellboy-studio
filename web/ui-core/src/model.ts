@@ -739,6 +739,7 @@ export class AppModel {
       const incomplete = candidate.items?.find((item) => item.kind === "text" && item.text_complete === false);
       const kind = candidate.items === null ? "deferred" as const : "typed" as const;
       const allProse = candidate.items !== null && candidate.items !== undefined && candidate.items.length > 0 && candidate.items.every(item => item.kind === "text");
+      if (candidate.items !== null && candidate.items !== undefined && !allProse) return;
       const identity = allProse ? undefined : incomplete?.item_identity;
       let readerKeys = this.autoBodyReads.get(handle);
       if (!readerKeys) { readerKeys = new WeakMap(); this.autoBodyReads.set(handle, readerKeys); }
@@ -935,6 +936,10 @@ export class AppModel {
     const set = (b: BodyState) => {
       this.bodies.value = setBounded(this.bodies.peek() as Map<string, BodyState>, cacheKey, b);
     };
+    if (expected?.kind === "typed" && reader !== undefined) {
+      const row = reader.acceptedView.peek().rows.find(row => row.node_id === nodeId);
+      if (!row || !row.items || row.items.length === 0 || !row.items.every(item => item.kind === "text")) return;
+    }
     const existing = this.bodyReadTokens.get(cacheKey);
     if (existing !== undefined) return;
     const token = {};
@@ -945,7 +950,7 @@ export class AppModel {
       && this.longReader.peek() === reader && this.threadReads === cancel && this.route.peek() === route
       && (expected === undefined || (reader !== undefined
         ? reader.acceptedView.isCurrent(reader.acceptedView.peek()) && reader.acceptedView.peek().rows.some((row) => row.node_id === nodeId
-          && (expected.kind === "deferred" ? row.items === null : expected.identity === undefined ? row.items?.length !== undefined && row.items.length > 0 && row.items.every((item) => item.kind === "text") : row.items?.some((item) => item.item_identity === expected.identity)))
+          && (expected.kind === "deferred" ? row.items === null : row.items !== null && row.items !== undefined && row.items.length > 0 && row.items.every((item) => item.kind === "text") && (expected.identity === undefined || row.items.some((item) => item.item_identity === expected.identity))))
         : false));
     const current = () => this.handle.peek() === handle && handle.liveEpoch() === lifetime
       && this.longReader.peek() === reader && this.threadReads === cancel && this.route.peek() === route;
