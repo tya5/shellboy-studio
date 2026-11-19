@@ -103,6 +103,8 @@ export function App({ context }: { context: DesignContext }) {
                 <ThreadItem
                   key={r.summary.thread_id}
                   href={formatRoute({ view: "conversation", threadId: r.summary.thread_id })}
+                  manageHref={formatRoute({ view: "thread-management", threadId: r.summary.thread_id })}
+                  manageLabel={t("view.threads")}
                   title={r.summary.title}
                   status={r.status}
                   statusLabel={r.status ? statusLabel(t, r.status) : ""}
@@ -122,7 +124,7 @@ export function App({ context }: { context: DesignContext }) {
             <span class="menu"><Button icon label={t("threads.open")} onClick={() => setDrawer(true)}><Icon name="menu" /></Button></span>
             <div class="crumb">
               {folder ? <>{folder}<span>/</span></> : null}
-              <b>{title ?? ""}</b>
+              <b>{title ?? ""}</b>{route.view === "conversation" && selected ? <a class="crumb-link" href={formatRoute({ view: "thread-management", threadId: selected })}>{t("view.threads")}</a> : null}
             </div>
             <div class="right">
               {ctx ? (
