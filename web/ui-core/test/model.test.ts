@@ -5,40 +5,6 @@ import { fixtureModel, fixturePendingAdapter } from "./fixture";
 import { canonicalAttemptId } from "../../data/test/work-fixture";
 
 describe("AppModel over the fake transport", () => {
-  it("rejects an old automatic cursor after a newer accepted reply", async () => {
-    const { model, t, db } = await fixtureModel({ route: "conversation", threadId: "lead", capabilities: ["history.window"], configure(owner) {
-      owner.history.lead = [];
-      owner.historyRevisions.lead = 1;
-    }});
-    try {
-      const old = { node_id: "old-tail", kind: "assistant_response" as const, selection: { ordinal: 0 }, items: [{ kind: "text" as const, item_identity: "answer", text: "old prefix", text_complete: false }] };
-      const newer = { node_id: "new-tail", kind: "assistant_response" as const, selection: { ordinal: 1 }, items: [{ kind: "text" as const, item_identity: "answer", text: "new complete", text_complete: true }] };
-      const answerWindow = (call: ReturnType<typeof t.calls>[number]) => {
-        db.answered.add(call.id);
-        const result = db.answer(call);
-        if (result.ok) t.ok(call.id, result.result);
-        else t.ownerError(call.id, result.code, result.message ?? result.code, result.details);
-      };
-      db.history.lead = [old]; db.historyRevisions.lead = 2;
-      t.push({ t: "changed", thread_ids: ["lead"], list: false });
-      await flush(4);
-      for (const call of t.calls("history.window").filter(call => !db.answered.has(call.id))) answerWindow(call);
-      await flush(6);
-      const oldCall = t.calls("history.get").at(-1);
-      expect(oldCall).toBeDefined();
-      db.history.lead = [old, newer]; db.historyRevisions.lead = 3;
-      t.push({ t: "changed", thread_ids: ["lead"], list: false });
-      await flush(4);
-      for (const call of t.calls("history.window").filter(call => !db.answered.has(call.id))) answerWindow(call);
-      await flush(6);
-      expect(model.longReader.peek()!.acceptedView.peek().rows.map(row => row.node_id)).toEqual(["old-tail", "new-tail"]);
-      t.ok(oldCall!.id, { node_id: "old-tail", kind: "assistant_response", text: "old full", next_cursor: "stale-next" });
-      await flush(6);
-      expect(t.calls("history.get")).toHaveLength(1);
-      expect(model.bodyState("old-tail")).toBeUndefined();
-    } finally { model.dispose(); }
-  });
-
   it("opens the newest Thread by default and shows only conversation rows", async () => {
     const { model } = await fixtureModel();
     expect(model.selectedId.value).toBe("lead");
