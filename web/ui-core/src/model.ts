@@ -715,8 +715,9 @@ export class AppModel {
     const tailComplete = currentSnapshot.total === 0 || currentSnapshot.range?.last === currentSnapshot.total - 1;
     const candidate = tailComplete ? [...currentSnapshot.rows].reverse().find((node) => node.kind === "assistant_response") : undefined;
     if (candidate?.node_id !== undefined && (candidate.items === null || candidate.items?.some((item) => item.kind === "text" && item.text_complete === false))) {
+      const incomplete = candidate.items?.find((item) => item.kind === "text" && item.text_complete === false);
       const kind = candidate.items === null ? "deferred" as const : "typed" as const;
-      const identity = candidate.items?.find((item) => item.kind === "text")?.item_identity;
+      const identity = incomplete?.item_identity;
       let readerKeys = this.autoBodyReads.get(handle);
       if (!readerKeys) { readerKeys = new WeakMap(); this.autoBodyReads.set(handle, readerKeys); }
       let keys = readerKeys.get(reader);
@@ -910,37 +911,38 @@ export class AppModel {
     if (this.bodies.peek().get(nodeId)?.loading) return;
     const handle = expected?.handle ?? this.handle.peek();
     const reader = expected?.reader ?? this.longReader.peek();
-    if (!handle || !reader) return;
+    if (!handle || (expected !== undefined && !reader)) return;
     const token = {};
     this.bodyReadTokens.set(nodeId, token);
     const cancel = this.threadReads;
     const route = this.route.peek();
     const qualified = () => this.handle.peek() === handle && this.longReader.peek() === reader && this.threadReads === cancel && this.route.peek() === route
-      && (expected === undefined || reader.acceptedView.isCurrent(reader.acceptedView.peek()) && reader.acceptedView.peek().rows.some((row) => row.node_id === nodeId && (expected.kind === "deferred" ? row.items === null : row.items?.some((item) => item.item_identity === expected.identity))));
+      && (expected === undefined || (reader !== undefined && reader.acceptedView.isCurrent(reader.acceptedView.peek()) && reader.acceptedView.peek().rows.some((row) => row.node_id === nodeId && (expected.kind === "deferred" ? row.items === null : row.items?.some((item) => item.item_identity === expected.identity)))));
     set({ text: undefined, loading: true, error: undefined });
     let text = "";
     let cursor: string | undefined;
     for (let page = 0; page < MAX_PAGES; page++) {
       const out = await this.ops.historyGet({ node_id: nodeId, ...(cursor !== undefined && { cursor }) }, { cancel: this.threadReads });
+      const owns = () => this.bodyReadTokens.get(nodeId) === token;
       if (!qualified()) {
-        if (this.bodyReadTokens.get(nodeId) === token && this.bodies.peek().get(nodeId)?.loading) {
+        if (owns() && this.bodies.peek().get(nodeId)?.loading) {
           const next = new Map(this.bodies.peek()); next.delete(nodeId); this.bodies.value = next; this.bodyReadTokens.delete(nodeId);
         }
         return;
       }
       if (!out.ok) {
-        set({ text: undefined, loading: false, error: out.error.kind === "cancelled" ? undefined : errorMessage(out.error) }); this.bodyReadTokens.delete(nodeId);
+        if (owns()) { set({ text: undefined, loading: false, error: out.error.kind === "cancelled" ? undefined : errorMessage(out.error) }); this.bodyReadTokens.delete(nodeId); }
         return;
       }
       if (out.value.node_id !== nodeId) {
-        set({ text: undefined, loading: false, error: "history body node mismatch" });
+        if (owns()) { set({ text: undefined, loading: false, error: "history body node mismatch" }); this.bodyReadTokens.delete(nodeId); }
         return;
       }
       text += out.value.text;
       cursor = out.value.next_cursor;
       if (cursor === undefined) break;
     }
-    set({ text, loading: false, error: undefined }); this.bodyReadTokens.delete(nodeId);
+    if (this.bodyReadTokens.get(nodeId) === token) { set({ text, loading: false, error: undefined }); this.bodyReadTokens.delete(nodeId); }
   }
 
   // ---- actions (state changes arrive through hints and re-reads) ----
