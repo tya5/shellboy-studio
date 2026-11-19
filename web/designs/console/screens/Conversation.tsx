@@ -322,11 +322,11 @@ export function StepView({ model, step, display, openPolicy = CANONICAL_CASES.to
 }
 
 function BodyReadMessage({model,node,displayText}:{model:AppModel;node:HistoryItem;displayText:string|undefined}) {
-  return <Message bot={node.kind === "assistant_response"} who={node.kind === "assistant_response" ? model.t.value("convo.shellboy") : model.t.value("convo.you")} at={formatClock(node.provenance?.created_at)} text={model.bodies.value.get(node.node_id!)?.text ?? displayText ?? ""} copyLabel={model.t.value("code.copy")} copiedLabel={model.t.value("code.copied")}><BodyReadButton model={model} nodeId={node.node_id!} /></Message>;
+  return <Message bot={node.kind === "assistant_response"} who={node.kind === "assistant_response" ? model.t.value("convo.shellboy") : model.t.value("convo.you")} at={formatClock(node.provenance?.created_at)} text={model.bodyState(node.node_id!, node.items?.find(item => item.kind === "text")?.item_identity)?.text ?? displayText ?? ""} copyLabel={model.t.value("code.copy")} copiedLabel={model.t.value("code.copied")}><BodyReadButton model={model} nodeId={node.node_id!} itemIdentity={node.items?.find(item => item.kind === "text")?.item_identity} /></Message>;
 }
 
-function BodyReadButton({model,nodeId}:{model:AppModel;nodeId:string}) {
-  const body=model.bodies.value.get(nodeId);
+function BodyReadButton({model,nodeId,itemIdentity}:{model:AppModel;nodeId:string;itemIdentity?:string}) {
+  const body=model.bodyState(nodeId,itemIdentity);
   return <Button variant="link" disabled={body?.loading} onClick={() => void model.loadBody(nodeId)}>{body?.loading ? model.t.value("convo.loadingBody") : model.t.value("convo.fullMessage")}</Button>;
 }
 
@@ -339,7 +339,7 @@ function ProjectedMessage({ model, row, authorizedText, relationship, bodyPartia
   const who = row.speaker.kind === "you" ? t("convo.you") : row.speaker.kind === "shellboy" ? t("convo.shellboy") : row.speaker.kind === "cli" ? t("convo.cli") : row.speaker.kind === "model" ? t("convo.modelSender") : row.speaker.kind === "unknown" ? t(row.speaker.model ? "convo.unknownModelSender" : "convo.unknownSender") : row.speaker.label;
   const senderHeader = row.speaker.kind === "model" ? senderHeaderDisplay(row.speaker.threadId, model.senderTitles.values.value.get(row.speaker.threadId), t("convo.modelSender")) : undefined;
   const header = senderHeader ? {...senderHeader,role:t("convo.modelSender")} : who;
-  const body = model.bodies.value.get(row.id);
+  const body = model.bodyState(row.id, row.itemIdentity);
   const renderedText = body?.text ?? authorizedText;
   return (
     <Message bot={row.speaker.kind === "shellboy"} who={header} at={formatClock(row.at)} text={renderedText} copyLabel={t("code.copy")} copiedLabel={t("code.copied")}>
@@ -349,7 +349,7 @@ function ProjectedMessage({ model, row, authorizedText, relationship, bodyPartia
       </div> : row.speaker.kind === "unknown" && row.speaker.label !== undefined ? <div class="caption">{t("convo.senderClaimedLabel", { label: row.speaker.label })}</div> : null}
       {(row.truncated || bodyPartial) && body?.text === undefined ? (
         <span class="more">
-          <Button variant="link" disabled={body?.loading} onClick={() => void model.loadBody(row.id)}>
+          <Button variant="link" disabled={body?.loading} onClick={() => void model.loadBody(row.id, row.itemIdentity === undefined ? undefined : { handle: model.handle.peek()!, reader: model.longReader.peek()!, kind: "typed", identity: row.itemIdentity })}>
             {body?.loading ? t("convo.loadingBody") : t("convo.fullMessage")}
           </Button>
           {body?.error ? <span class="muted caption">{body.error}</span> : null}

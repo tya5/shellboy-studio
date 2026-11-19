@@ -275,6 +275,8 @@ export class AppModel {
   readonly shells: Signal<ReadonlyMap<string, ShellEntry>> = signal(new Map());
   readonly outputs: Signal<ReadonlyMap<string, OutputState>> = signal(new Map());
   readonly bodies: Signal<ReadonlyMap<string, BodyState>> = signal(new Map());
+  bodyCacheKey(nodeId: string, itemIdentity?: string): string { return `${this.handle.peek()?.threadId ?? ""}:${nodeId}:${itemIdentity ?? "manual"}`; }
+  bodyState(nodeId: string, itemIdentity?: string): BodyState | undefined { return this.bodies.value.get(this.bodyCacheKey(nodeId, itemIdentity)); }
   readonly selectedStepId: Signal<string | undefined> = signal(undefined);
   readonly selectedStep: ReadonlySignal<StepRow | undefined>;
   readonly pendingOwnMessage: Signal<PendingOwnMessage | undefined> = signal(undefined);
@@ -723,7 +725,7 @@ export class AppModel {
       let keys = readerKeys.get(reader);
       if (!keys) { keys = new Set(); readerKeys.set(reader, keys); }
       const key = `${candidate.node_id}:${kind}:${identity ?? "deferred"}`;
-      if (this.bodies.peek().get(candidate.node_id) === undefined && !keys.has(key)) {
+      if (this.bodyState(candidate.node_id, identity) === undefined && !keys.has(key)) {
         keys.add(key);
         void this.loadBody(candidate.node_id, { handle, reader, kind, identity });
       }
@@ -905,15 +907,16 @@ export class AppModel {
 
   /** Read one message beyond its excerpt. On request only. */
   async loadBody(nodeId: string, expected?: { handle: ThreadHandle; reader: ConversationWindow; kind: "deferred" | "typed"; identity?: string }): Promise<void> {
+    const cacheKey = this.bodyCacheKey(nodeId, expected?.identity);
     const set = (b: BodyState) => {
-      this.bodies.value = setBounded(this.bodies.peek() as Map<string, BodyState>, nodeId, b);
+      this.bodies.value = setBounded(this.bodies.peek() as Map<string, BodyState>, cacheKey, b);
     };
-    if (this.bodies.peek().get(nodeId)?.loading) return;
+    if (this.bodies.peek().get(cacheKey)?.loading) return;
     const handle = expected?.handle ?? this.handle.peek();
     const reader = expected?.reader ?? this.longReader.peek();
     if (!handle || (expected !== undefined && !reader)) return;
     const token = {};
-    this.bodyReadTokens.set(nodeId, token);
+    this.bodyReadTokens.set(cacheKey, token);
     const cancel = this.threadReads;
     const route = this.route.peek();
     const qualified = () => this.handle.peek() === handle && this.longReader.peek() === reader && this.threadReads === cancel && this.route.peek() === route
@@ -923,26 +926,26 @@ export class AppModel {
     let cursor: string | undefined;
     for (let page = 0; page < MAX_PAGES; page++) {
       const out = await this.ops.historyGet({ node_id: nodeId, ...(cursor !== undefined && { cursor }) }, { cancel: this.threadReads });
-      const owns = () => this.bodyReadTokens.get(nodeId) === token;
+      const owns = () => this.bodyReadTokens.get(cacheKey) === token;
       if (!qualified()) {
-        if (owns() && this.bodies.peek().get(nodeId)?.loading) {
-          const next = new Map(this.bodies.peek()); next.delete(nodeId); this.bodies.value = next; this.bodyReadTokens.delete(nodeId);
+        if (owns() && this.bodies.peek().get(cacheKey)?.loading) {
+          const next = new Map(this.bodies.peek()); next.delete(cacheKey); this.bodies.value = next; this.bodyReadTokens.delete(cacheKey);
         }
         return;
       }
       if (!out.ok) {
-        if (owns()) { set({ text: undefined, loading: false, error: out.error.kind === "cancelled" ? undefined : errorMessage(out.error) }); this.bodyReadTokens.delete(nodeId); }
+        if (owns()) { set({ text: undefined, loading: false, error: out.error.kind === "cancelled" ? undefined : errorMessage(out.error) }); this.bodyReadTokens.delete(cacheKey); }
         return;
       }
       if (out.value.node_id !== nodeId) {
-        if (owns()) { set({ text: undefined, loading: false, error: "history body node mismatch" }); this.bodyReadTokens.delete(nodeId); }
+        if (owns()) { set({ text: undefined, loading: false, error: "history body node mismatch" }); this.bodyReadTokens.delete(cacheKey); }
         return;
       }
       text += out.value.text;
       cursor = out.value.next_cursor;
       if (cursor === undefined) break;
     }
-    if (this.bodyReadTokens.get(nodeId) === token) { set({ text, loading: false, error: undefined }); this.bodyReadTokens.delete(nodeId); }
+    if (this.bodyReadTokens.get(cacheKey) === token) { set({ text, loading: false, error: undefined }); this.bodyReadTokens.delete(cacheKey); }
   }
 
   // ---- actions (state changes arrive through hints and re-reads) ----

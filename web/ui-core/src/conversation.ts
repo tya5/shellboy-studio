@@ -25,7 +25,7 @@ export type Speaker = { kind: "model"; threadId: string; label?: string } | { ki
 
 export type ConversationRow =
   | { type: "publication"; id: string; state: "tool" | "unknown"; attemptId?: string; ordinal?: number; kind?: string; error?: boolean }
-  | { type: "message"; id: string; speaker: Speaker; text: string; truncated: boolean; at: string | undefined }
+  | { type: "message"; id: string; itemIdentity?: string; speaker: Speaker; text: string; truncated: boolean; at: string | undefined }
   | { type: "steps"; id: string; steps: StepRow[]; entries: ({ kind: "step"; step: StepRow } | { kind: "compacted"; id: string; text: string })[] }
   | { type: "note"; id: string; kind: string; text: string; at: string | undefined };
 
@@ -106,7 +106,7 @@ export function materializeHistoryPresentation(items: readonly HistoryItem[], sh
     const render = (item.classification ?? canonicalItemCase(source)).render;
     switch (render) {
       case "human-message": case "received-model": case "received-cli": case "received-unknown": case "model-message": case "summary":
-        rows.push({ type: "message", id, speaker: speakerOf(node), text: "text" in source ? source.text : "", truncated: source.kind === "text" && source.textComplete === false, at });
+        rows.push({ type: "message", id, itemIdentity: "itemIdentity" in source ? source.itemIdentity : undefined, speaker: speakerOf(node), text: "text" in source ? source.text : "", truncated: source.kind === "text" && source.textComplete === false, at });
         break;
       case "tool": case "compressed-tool": case "thinking": case "thinking-marker": case "state-change": case "stream-change": case "notification": case "child-notification": case "shell-notification": case "interruption": case "unsupported": case "unavailable": case "empty-ordinary":
         rows.push({ type: "note", id, kind: source.kind, text: "", at });
