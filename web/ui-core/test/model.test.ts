@@ -52,6 +52,21 @@ describe("AppModel over the fake transport", () => {
     } finally { model.dispose(); }
   });
 
+  it("does not auto-read an opaque deferred node without prose authority", async () => {
+    const { model, t } = await fixtureModel({ route: "conversation", threadId: "lead", capabilities: ["history.window"], configure(owner) {
+      owner.history.lead = [{ node_id: "deferred-opaque", kind: "assistant_response", selection: { ordinal: 0 }, items: null, items_unavailable_reason: "response_budget", excerpt: "mixed-looking deferred excerpt" }];
+      owner.historyRevisions.lead = 2;
+      const base = owner.answer.bind(owner);
+      owner.answer = call => call.command === "history.get" ? { ok: true, result: { node_id: "deferred-opaque", kind: "assistant_response", text: "HIDDEN-MIXED-SENTINEL" } } : base(call);
+    }});
+    try {
+      await flush(8);
+      expect(model.longReader.peek()!.acceptedView.peek().rows.find(row => row.node_id === "deferred-opaque")?.items).toBeNull();
+      expect(t.calls("history.get")).toHaveLength(0);
+      expect(model.bodyState("deferred-opaque")).toBeUndefined();
+    } finally { model.dispose(); }
+  });
+
   it("forbids mixed-node body dispatch and publication without item authority", async () => {
     const { model, t } = await fixtureModel({ route: "conversation", threadId: "lead", capabilities: ["history.window"], configure(owner) {
       owner.history.lead = [{ node_id: "mixed-node", kind: "assistant_response", selection: { ordinal: 0 }, items: [

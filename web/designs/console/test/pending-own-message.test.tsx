@@ -37,7 +37,7 @@ async function bodyReadControlCase(partial: boolean) {
  try {
   await act(async () => { render(<App context={context} />, host); await settle(f.t, f.db); });
   const automatic = f.t.calls("history.get").map(call => requestedHistoryNode(call));
-  expect(automatic).toEqual(partial ? [] : ["newer-deferred"]);
+  expect(automatic).toEqual([]);
   const olderRow = host.querySelector('[data-node="savedassistant"]');
   expect(olderRow).toBeDefined();
   const button = [...olderRow!.querySelectorAll<HTMLButtonElement>("button")].find(node => node.textContent?.includes(f.model.t.value("convo.fullMessage")));

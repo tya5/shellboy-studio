@@ -736,11 +736,11 @@ export class AppModel {
     const tailComplete = currentSnapshot.total === 0 || currentSnapshot.range?.last === currentSnapshot.total - 1;
     const candidate = tailComplete ? [...currentSnapshot.rows].reverse().find((node) => node.kind === "assistant_response") : undefined;
     if (candidate?.node_id !== undefined && (candidate.items === null || candidate.items?.some((item) => item.kind === "text" && item.text_complete === false))) {
-      const incomplete = candidate.items?.find((item) => item.kind === "text" && item.text_complete === false);
       const kind = candidate.items === null ? "deferred" as const : "typed" as const;
-      const allProse = candidate.items !== null && candidate.items !== undefined && candidate.items.length > 0 && candidate.items.every(item => item.kind === "text");
-      if (candidate.items !== null && candidate.items !== undefined && !allProse) return;
-      const identity = allProse ? undefined : incomplete?.item_identity;
+      if (candidate.items === null) return;
+      const allProse = candidate.items !== undefined && candidate.items.length > 0 && candidate.items.every(item => item.kind === "text");
+      if (!allProse) return;
+      const identity = undefined;
       let readerKeys = this.autoBodyReads.get(handle);
       if (!readerKeys) { readerKeys = new WeakMap(); this.autoBodyReads.set(handle, readerKeys); }
       let keys = readerKeys.get(reader);
