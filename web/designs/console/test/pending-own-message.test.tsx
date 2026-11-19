@@ -482,11 +482,12 @@ it("mounted stale auto body refuses an old cursor after rev2/rev3 windows", asyn
  try{await act(async()=>{render(<App context={context}/>,host);await settle(f.t,f.db);});
   f.db.history.t=[old];f.db.historyRevisions.t=2;f.t.push({t:'changed',thread_ids:['t'],list:false});await flush(4);const rev2Ids=await answerWindows();await flush(6);
   expect(new Set(rev2Ids).size).toBeGreaterThanOrEqual(2);expect(f.model.longReader.peek()!.acceptedView.peek().revision).toBe(2);
+  const rev2Handle=f.model.handle.peek(),rev2Reader=f.model.longReader.peek();expect(rev2Handle).not.toBeNull();expect(rev2Reader).not.toBeNull();expect(f.model.bodyState('old-tail')).toMatchObject({loading:true});
   const oldCall=f.t.calls('history.get').at(-1);expect(oldCall).not.toBeNull();expect(f.t.calls('history.get').map(call=>requestedHistoryNode(call))).toEqual(['old-tail']);expect(host.querySelector('[data-node="old-tail"]')).not.toBeNull();expect(host.querySelector('[data-node="old-tail"]')!.textContent).toContain('old prefix');
   f.db.history.t=[old,newer];f.db.historyRevisions.t=3;f.t.push({t:'changed',thread_ids:['t'],list:false});await flush(4);const rev3Ids=await answerWindows();await flush(6);
   expect(new Set(rev3Ids).size).toBeGreaterThanOrEqual(2);expect(f.model.longReader.peek()!.acceptedView.peek().revision).toBe(3);
-  expect(f.model.handle.peek()).toBeDefined();expect(f.model.longReader.peek()).toBeDefined();expect(f.model.longReader.peek()!.acceptedView.peek().rows.map(row=>row.node_id)).toEqual(['old-tail','new-tail']);expect(host.querySelector('[data-node="new-tail"]')?.textContent).toContain('new complete');
+  expect(f.model.handle.peek()).toBe(rev2Handle);expect(f.model.longReader.peek()).toBe(rev2Reader);expect(f.model.longReader.peek()!.acceptedView.peek().rows.map(row=>row.node_id)).toEqual(['old-tail','new-tail']);expect(host.querySelector('[data-node="new-tail"]')?.textContent).toContain('new complete');
   f.t.ok(oldCall!.id,{node_id:'old-tail',kind:'assistant_response',text:'OLD_FULL_SHOULD_NOT_RENDER',next_cursor:'stale-next'});await flush(8);
-  expect(f.t.calls('history.get')).toHaveLength(1);expect([...host.querySelectorAll('[data-node="old-tail"] .md')].map(node=>node.textContent)).not.toContain('OLD_FULL_SHOULD_NOT_RENDER');expect(host.querySelector('[data-node="old-tail"]')!.textContent).toContain('old prefix');
+  expect(f.t.calls('history.get')).toHaveLength(1);const oldMarkdown=[...host.querySelectorAll('[data-node="old-tail"] .md')].map(node=>node.textContent??'').join('\n');expect(oldMarkdown).not.toContain('OLD_FULL_SHOULD_NOT_RENDER');expect(oldMarkdown).toContain('old prefix');
  }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
 });
