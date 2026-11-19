@@ -302,6 +302,7 @@ export class AppModel {
   /** A step's output read, cancelled when its row closes. */
   private outputReads = new Map<string, Cancel>();
   private autoBodyReads = new WeakMap<ThreadHandle, WeakMap<ConversationWindow, Set<string>>>;
+  private bodyReadTokens = new Map<string, object>();
 
   readonly senderTitles: SenderTitles;
   private readonly senderPage = signal(0);
@@ -714,15 +715,16 @@ export class AppModel {
     const tailComplete = currentSnapshot.total === 0 || currentSnapshot.range?.last === currentSnapshot.total - 1;
     const candidate = tailComplete ? [...currentSnapshot.rows].reverse().find((node) => node.kind === "assistant_response") : undefined;
     if (candidate?.node_id !== undefined && (candidate.items === null || candidate.items?.some((item) => item.kind === "text" && item.text_complete === false))) {
-      const identity = candidate.items?.find((item) => item.kind === "text")?.item_identity ?? `${candidate.node_id}:deferred`;
+      const kind = candidate.items === null ? "deferred" as const : "typed" as const;
+      const identity = candidate.items?.find((item) => item.kind === "text")?.item_identity;
       let readerKeys = this.autoBodyReads.get(handle);
       if (!readerKeys) { readerKeys = new WeakMap(); this.autoBodyReads.set(handle, readerKeys); }
       let keys = readerKeys.get(reader);
       if (!keys) { keys = new Set(); readerKeys.set(reader, keys); }
-      const key = `${candidate.node_id}:${identity}`;
+      const key = `${candidate.node_id}:${kind}:${identity ?? "deferred"}`;
       if (this.bodies.peek().get(candidate.node_id) === undefined && !keys.has(key)) {
         keys.add(key);
-        void this.loadBody(candidate.node_id, { handle, reader, identity });
+        void this.loadBody(candidate.node_id, { handle, reader, kind, identity });
       }
     }
   }
@@ -901,30 +903,33 @@ export class AppModel {
   }
 
   /** Read one message beyond its excerpt. On request only. */
-  async loadBody(nodeId: string, expected?: { handle: ThreadHandle; reader: ConversationWindow; identity: string }): Promise<void> {
+  async loadBody(nodeId: string, expected?: { handle: ThreadHandle; reader: ConversationWindow; kind: "deferred" | "typed"; identity?: string }): Promise<void> {
     const set = (b: BodyState) => {
       this.bodies.value = setBounded(this.bodies.peek() as Map<string, BodyState>, nodeId, b);
     };
     if (this.bodies.peek().get(nodeId)?.loading) return;
-    const handle = this.handle.peek();
-    const reader = this.longReader.peek();
+    const handle = expected?.handle ?? this.handle.peek();
+    const reader = expected?.reader ?? this.longReader.peek();
+    if (!handle || !reader) return;
+    const token = {};
+    this.bodyReadTokens.set(nodeId, token);
     const cancel = this.threadReads;
     const route = this.route.peek();
     const qualified = () => this.handle.peek() === handle && this.longReader.peek() === reader && this.threadReads === cancel && this.route.peek() === route
-      && (expected === undefined || reader.acceptedView.peek().rows.some((row) => row.node_id === nodeId && (row.items === null || row.items?.some((item) => item.item_identity === expected.identity))));
+      && (expected === undefined || reader.acceptedView.isCurrent(reader.acceptedView.peek()) && reader.acceptedView.peek().rows.some((row) => row.node_id === nodeId && (expected.kind === "deferred" ? row.items === null : row.items?.some((item) => item.item_identity === expected.identity))));
     set({ text: undefined, loading: true, error: undefined });
     let text = "";
     let cursor: string | undefined;
     for (let page = 0; page < MAX_PAGES; page++) {
       const out = await this.ops.historyGet({ node_id: nodeId, ...(cursor !== undefined && { cursor }) }, { cancel: this.threadReads });
       if (!qualified()) {
-        if (expected !== undefined && this.bodies.peek().get(nodeId)?.loading) {
-          const next = new Map(this.bodies.peek()); next.delete(nodeId); this.bodies.value = next;
+        if (this.bodyReadTokens.get(nodeId) === token && this.bodies.peek().get(nodeId)?.loading) {
+          const next = new Map(this.bodies.peek()); next.delete(nodeId); this.bodies.value = next; this.bodyReadTokens.delete(nodeId);
         }
         return;
       }
       if (!out.ok) {
-        set({ text: undefined, loading: false, error: out.error.kind === "cancelled" ? undefined : errorMessage(out.error) });
+        set({ text: undefined, loading: false, error: out.error.kind === "cancelled" ? undefined : errorMessage(out.error) }); this.bodyReadTokens.delete(nodeId);
         return;
       }
       if (out.value.node_id !== nodeId) {
@@ -935,7 +940,7 @@ export class AppModel {
       cursor = out.value.next_cursor;
       if (cursor === undefined) break;
     }
-    set({ text, loading: false, error: undefined });
+    set({ text, loading: false, error: undefined }); this.bodyReadTokens.delete(nodeId);
   }
 
   // ---- actions (state changes arrive through hints and re-reads) ----
