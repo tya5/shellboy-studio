@@ -415,9 +415,16 @@ it('accepted live preview retires after saved >16KiB body loads through the ordi
   let acceptedSeen=false;for(const tuple of states){if(tuple.canonical)acceptedSeen=true;if(acceptedSeen)expect(tuple.canonical).toBe(true);}
   expect(states.at(-1)).toMatchObject({canonical:true,live:0});
   expect(new Set(states.map(tuple=>tuple.source))).toEqual(new Set(['accepted','live']));
-  const button=[...host.querySelectorAll('button')].find(node=>node.textContent?.includes(f.model.t.value('convo.fullMessage')));expect(button).toBeDefined();
+  const automatic=f.t.calls('history.get').map(call=>requestedHistoryNode(call));
+  expect(automatic).not.toContain('saved-assistant');
+  const olderRow=host.querySelector('[data-node="saved-assistant"]');
+  expect(olderRow).toBeDefined();
+  const button=[...olderRow!.querySelectorAll<HTMLButtonElement>('button')].find(node=>node.textContent?.includes(f.model.t.value('convo.fullMessage')));expect(button).toBeDefined();
+  const beforeClick=f.t.calls('history.get').length;
   await act(async()=>{(button as HTMLButtonElement).click();await settle(f.t,f.db)});
-  expect(f.t.calls('history.get')).toHaveLength(1);expect(host.textContent).toContain('FULL_BODY');
+  const fresh=f.t.calls('history.get').slice(beforeClick);
+  expect(fresh).toHaveLength(1);expect(requestedHistoryNode(fresh[0]!)).toBe('saved-assistant');
+  expect(olderRow!.querySelector('.md')?.textContent).toContain('FULL_BODY');
   expect(tuples.length).toBeGreaterThan(1);stopAccepted();stopLive();
  }finally{render(null,host);host.remove();f.data.stop()}
 });
