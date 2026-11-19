@@ -18,7 +18,6 @@ it("does not retain A detail or late mutation state after an A-to-B route change
   const owner = signal({ state: "connected" as const, info: { protocol_version: 5, instance_id: "owner-a", capabilities: [] } });
   const reads = new Map<string, ReturnType<typeof deferred<{ ok: true; value: ThreadDetails }>>>();
   const archive = deferred<{ ok: true; value: { archived: string[]; already: string[]; not_found: string[] } }>();
-  const refresh = deferred<{ ok: true; value: ThreadDetails }>();
   const ops = {
     threadGet: (id: string) => {
       const next = deferred<{ ok: true; value: ThreadDetails }>();
@@ -45,7 +44,6 @@ it("does not retain A detail or late mutation state after an A-to-B route change
     await act(async () => { await Promise.resolve(); });
     expect(host.textContent).toContain("Thread B");
     archive.resolve({ ok: true, value: { archived: ["A"], already: [], not_found: [] } });
-    refresh.resolve({ ok: true, value: detail("A") });
     await act(async () => { await Promise.resolve(); });
     expect(host.textContent).toContain("Thread B");
     expect(host.textContent).not.toContain("Thread A");
