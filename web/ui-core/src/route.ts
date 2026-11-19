@@ -34,7 +34,10 @@ export function parseRoute(hash: string): Route {
   if (parts[0] === "inbox") return { view: "inbox" };
   if (parts[0] === "setup") return parts[1] === "embedding" ? { view: "setup", step: "embedding" } : { view: "setup" };
   if (parts[0] === "threads") return { view: "threads" };
-  if (parts[0] === "thread-management" && parts[1]) return { view: "thread-management", threadId: decodeURIComponent(parts[1]) };
+  if (parts[0] === "thread-management" && parts[1]) {
+    try { return { view: "thread-management", threadId: decodeURIComponent(parts[1]) }; }
+    catch { return START_ROUTE; }
+  }
   if (parts[0] === "apps") {
     try {
       if (!parts[1] || parts.length > 3) return { view: "apps" };
