@@ -474,13 +474,13 @@ it("auto-loads only the newest typed prose body once", async () => {
 });
 
 it("mounted stale auto body refuses an old cursor after rev2/rev3 windows", async () => {
- const f=await fixtureModel({capabilities:["history.window"],route:"conversation",threadId:"t",configure(db){db.threads={t:summary("t")};db.details.t=details("t");db.history.t=[];db.historyRevisions.t=1;}});
+ const f=await fixtureModel({capabilities:["history.window"],route:"threads",threadId:"t",configure(db){db.threads={t:summary("t")};db.details.t=details("t");db.history.t=[];db.historyRevisions.t=1;}});
  const host=document.createElement('div');document.body.append(host);const context:DesignContext={model:f.model,prefs:signal(loadPrefs({read:()=>null,write:()=>{}},[{name:'console',themes:[{name:'light'}]}])),setPrefs:()=>{},designs:[],submitToken:async()=>false};
  const old:HistoryItem={node_id:'old-tail',kind:'assistant_response',selection:{ordinal:0},items:[{kind:'text',item_identity:'answer',text:'old prefix',text_complete:false}]};
  const newer:HistoryItem={node_id:'new-tail',kind:'assistant_response',selection:{ordinal:1},items:[{kind:'text',item_identity:'answer',text:'new complete',text_complete:true}]};
  const answerWindows=async()=>{const ids:string[]=[];for(let pass=0;pass<4;pass++){const pending=f.t.calls('history.window').filter(call=>!f.db.answered.has(call.id));if(!pending.length)break;for(const call of pending){ids.push(call.id);f.db.answered.add(call.id);const result=f.db.answer(call);if(result.ok)f.t.ok(call.id,result.result);else f.t.ownerError(call.id,result.code,result.message??result.code,result.details);}await flush(2);}return ids;};
  try{await act(async()=>{render(<App context={context}/>,host);await settle(f.t,f.db);});
-  f.db.history.t=[old];f.db.historyRevisions.t=2;f.t.push({t:'changed',thread_ids:['t'],list:false});await flush(4);const rev2Ids=await answerWindows();await flush(6);
+  f.db.history.t=[old];f.db.historyRevisions.t=2;f.model.openThread('t');await flush(4);const rev2Ids=await answerWindows();await flush(6);
   expect(rev2Ids.length).toBeGreaterThan(0);expect(new Set(rev2Ids).size).toBe(rev2Ids.length);expect(f.model.longReader.peek()!.acceptedView.peek().revision).toBe(2);
   const rev2Handle=f.model.handle.peek(),rev2Reader=f.model.longReader.peek(),oldKey=f.model.bodyCacheKey('old-tail');expect(rev2Handle).not.toBeNull();expect(rev2Reader).not.toBeNull();const rev2Body=f.model.bodies.peek().get(oldKey);expect(rev2Body).toMatchObject({loading:true});
   const oldCall=f.t.calls('history.get').at(-1);expect(oldCall).not.toBeNull();expect(f.t.calls('history.get').map(call=>requestedHistoryNode(call))).toEqual(['old-tail']);expect(host.querySelector('[data-node="old-tail"]')).not.toBeNull();expect(host.querySelector('[data-node="old-tail"]')!.textContent).toContain('old prefix');
@@ -493,13 +493,13 @@ it("mounted stale auto body refuses an old cursor after rev2/rev3 windows", asyn
 });
 
 it("mounted click joins the held old cursor read", async () => {
- const f=await fixtureModel({capabilities:["history.window"],route:"conversation",threadId:"t",configure(db){db.threads={t:summary("t")};db.details.t=details("t");db.history.t=[];db.historyRevisions.t=1;}});
+ const f=await fixtureModel({capabilities:["history.window"],route:"threads",threadId:"t",configure(db){db.threads={t:summary("t")};db.details.t=details("t");db.history.t=[];db.historyRevisions.t=1;}});
  const host=document.createElement('div');document.body.append(host);const context:DesignContext={model:f.model,prefs:signal(loadPrefs({read:()=>null,write:()=>{}},[{name:'console',themes:[{name:'light'}]}])),setPrefs:()=>{},designs:[],submitToken:async()=>false};
  const old:HistoryItem={node_id:'old-tail',kind:'assistant_response',selection:{ordinal:0},items:[{kind:'text',item_identity:'answer',text:'old prefix',text_complete:false}]};
  const newer:HistoryItem={node_id:'new-tail',kind:'assistant_response',selection:{ordinal:1},items:[{kind:'text',item_identity:'answer',text:'new complete',text_complete:true}]};
  const answerWindows=async()=>{const ids:string[]=[];for(let pass=0;pass<4;pass++){const pending=f.t.calls('history.window').filter(call=>!f.db.answered.has(call.id));if(!pending.length)break;for(const call of pending){ids.push(call.id);f.db.answered.add(call.id);const result=f.db.answer(call);if(result.ok)f.t.ok(call.id,result.result);else f.t.ownerError(call.id,result.code,result.message??result.code,result.details);}await flush(2);}return ids;};
  try{await act(async()=>{render(<App context={context}/>,host);await settle(f.t,f.db);});
-  f.db.history.t=[old];f.db.historyRevisions.t=2;f.t.push({t:'changed',thread_ids:['t'],list:false});await flush(4);const rev2Ids=await answerWindows();await flush(6);
+  f.db.history.t=[old];f.db.historyRevisions.t=2;f.model.openThread('t');await flush(4);const rev2Ids=await answerWindows();await flush(6);
   expect(rev2Ids.length).toBeGreaterThan(0);expect(new Set(rev2Ids).size).toBe(rev2Ids.length);expect(f.model.longReader.peek()!.acceptedView.peek().revision).toBe(2);
   const rev2Handle=f.model.handle.peek(),rev2Reader=f.model.longReader.peek(),oldKey=f.model.bodyCacheKey('old-tail');expect(rev2Handle).not.toBeNull();expect(rev2Reader).not.toBeNull();const rev2Body=f.model.bodies.peek().get(oldKey);expect(rev2Body).toMatchObject({loading:true});
   const oldCall=f.t.calls('history.get').at(-1);expect(oldCall).not.toBeNull();expect(f.t.calls('history.get').map(call=>requestedHistoryNode(call))).toEqual(['old-tail']);expect(host.querySelector('[data-node="old-tail"]')).not.toBeNull();expect(host.querySelector('[data-node="old-tail"]')!.textContent).toContain('old prefix');
