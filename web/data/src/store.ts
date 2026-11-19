@@ -348,7 +348,7 @@ export class ShellboyData {
         if (!valid()) return { ok: false, error: { kind: "cancelled", message: "window owner changed while materializing" } };
         return { ok: true, value: saved };
       },
-      cancelReads: () => { e.live.advanceEpoch(); e.cancel.cancel(); },
+      cancelReads: () => batch(() => { e.live.advanceEpoch(); e.cancel.cancel(); }),
       refresh: () => this.requestThread(threadId),
       pause: () => this.pauseEntry(e),
       resume: () => this.resumeEntry(e),
@@ -372,19 +372,23 @@ export class ShellboyData {
   /** Stops reading a Thread nobody is looking at, and keeps what it has. */
   private pauseEntry(entry: ThreadEntry): void {
     if (entry.paused || entry.closed) return;
-    entry.paused = true;
-    entry.live.advanceEpoch();
-    entry.cancel.cancel();
-    this.scheduleWatch();
+    batch(() => {
+      entry.paused = true;
+      entry.live.advanceEpoch();
+      entry.cancel.cancel();
+      this.scheduleWatch();
+    });
   }
 
   /** A later read asks only for what's new, unless a first walk was cancelled before it finished. */
   private resumeEntry(entry: ThreadEntry): void {
     if (!entry.paused || entry.closed) return;
-    entry.paused = false;
-    entry.cancel = new Cancel();
-    entry.live.advanceEpoch();
-    this.scheduleWatch();
+    batch(() => {
+      entry.paused = false;
+      entry.cancel = new Cancel();
+      entry.live.advanceEpoch();
+      this.scheduleWatch();
+    });
     if (this.canRead()) this.requestThread(entry.id);
   }
 
@@ -494,11 +498,13 @@ export class ShellboyData {
 
   private discardAllPreviews(reason: PreviewDiscardReason): void {
     // Revoke every old read before any synchronous clear/discard observer can run.
-    ++this.readQualificationEpoch;
-    for (const e of this.entries.values()) {
-      e.live.advanceEpoch();
-      e.live.discard(reason);
-    }
+    batch(() => {
+      ++this.readQualificationEpoch;
+      for (const e of this.entries.values()) {
+        e.live.advanceEpoch();
+        e.live.discard(reason);
+      }
+    });
   }
 
   // ---- subscription ----

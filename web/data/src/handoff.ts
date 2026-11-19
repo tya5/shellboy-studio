@@ -1,4 +1,4 @@
-import { computed, signal, type ReadonlySignal } from '@preact/signals-core';
+import { batch, computed, signal, type ReadonlySignal } from '@preact/signals-core';
 import { LiveText, type LiveFrame, type Preview, type PreviewDiscardReason, type Schedule } from './live';
 
 /** ADR-C1: UTF-8 retained text accounting, not a JavaScript heap guarantee. */
@@ -22,8 +22,9 @@ export class Handoff {
   private held: Held[] = [];
 
   private active: string | undefined;
-  /** Canonical owner-lifetime epoch; the signal is the epoch, not a mirror observer. */
-  readonly epochSignal = signal(0);
+  /** Canonical owner-lifetime epoch; the public view is read-only. */
+  private readonly epochState = signal(0);
+  readonly epochSignal: ReadonlySignal<number> = this.epochState;
   private blockedAttempt: string | undefined;
   private readonly discarded = signal<PreviewDiscardReason | undefined>(undefined);
   private publishing = false;
@@ -37,9 +38,9 @@ export class Handoff {
     return r ? { kind: 'live', attemptId: r.attemptId, text: r.text, incomplete: r.incomplete, ending: r.status !== 'streaming' } : { kind: 'none', ...(this.discarded.value ? { discarded: this.discarded.value } : {}) };
   });
   constructor(private readonly schedule: Schedule) {}
-  get epoch(): number { return this.epochSignal.peek(); }
+  get epoch(): number { return this.epochState.peek(); }
   get retainedBytes(): number { return this.held.reduce((n, h) => n + bytes(h.record.text), 0); }
-  advanceEpoch(): void { this.epochSignal.value++; }
+  advanceEpoch(): void { this.epochState.value = this.epochState.peek() + 1; }
 
   apply(frame: LiveFrame): void {
     let h = this.held.find(h => h.attemptId === frame.attempt_id);
@@ -88,11 +89,13 @@ export class Handoff {
   }
 
   discard(_reason: PreviewDiscardReason): void {
-    this.advanceEpoch();
-    this.discarded.value = _reason;
-    for (const h of this.held) { h.stop(); h.source.discard(_reason); }
-    this.held = []; this.active = undefined; this.blockedAttempt = undefined;
-    this.overflowSig.value = false; this.publish();
+    batch(() => {
+      this.advanceEpoch();
+      this.discarded.value = _reason;
+      for (const h of this.held) { h.stop(); h.source.discard(_reason); }
+      this.held = []; this.active = undefined; this.blockedAttempt = undefined;
+      this.overflowSig.value = false; this.publish();
+    });
   }
   private sameOwnRecord(a: HandoffRecord, b: HandoffRecord): boolean {
     const entries = (value: HandoffRecord) => Object.entries(value);
