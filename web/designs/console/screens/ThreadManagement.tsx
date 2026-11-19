@@ -19,9 +19,24 @@ export function ThreadManagement({ model }: { model: AppModel }) {
   const [detailState, setDetailState] = useState<DetailState>();
   const [actionState, setActionState] = useState<ActionState>();
   const [settingsState, setSettingsState] = useState<SettingsState>();
+  const mutationRef = useRef<object>();
+  const [busyVersion, setBusyVersion] = useState(0);
   const currentDetail = detailState && detailState.id === id && detailState.route === route && detailState.owner === owner && detailState.visit === visitRef.current ? detailState : undefined;
   const currentAction = actionState && actionState.id === id && actionState.route === route && actionState.owner === owner && actionState.visit === visitRef.current ? actionState : undefined;
   const currentSettings = settingsState && settingsState.id === id && settingsState.route === route && settingsState.owner === owner && settingsState.visit === visitRef.current ? settingsState : undefined;
+  const surfaceBusy = busyVersion >= 0 && mutationRef.current !== undefined;
+  const admit = (visit: Visit): object | undefined => {
+    if (mutationRef.current !== undefined || visitRef.current !== visit) return undefined;
+    const token = {};
+    mutationRef.current = token;
+    setBusyVersion((n) => n + 1);
+    return token;
+  };
+  const release = (token: object) => {
+    if (mutationRef.current !== token) return;
+    mutationRef.current = undefined;
+    setBusyVersion((n) => n + 1);
+  };
 
   useEffect(() => {
     let active = true;
@@ -36,10 +51,10 @@ export function ThreadManagement({ model }: { model: AppModel }) {
     setActionState({ id, route: readRoute, owner: readOwner, visit: readVisit, kind: "idle" });
     void model.ops.threadGet(id).then((out) => {
       if (!currentTarget()) return;
-      if (out.ok) {
+      if (out.ok && out.value.thread_id === id) {
         read({ id, route: readRoute, owner: readOwner, visit: readVisit, loading: false, value: out.value });
         setSettingsState({ id, route: readRoute, owner: readOwner, visit: readVisit, model: out.value.model, effort: out.value.effort ?? "", initialEffort: out.value.effort ?? "", saving: false, saved: false });
-      } else read({ id, route: readRoute, owner: readOwner, visit: readVisit, loading: false, error: out.error.message });
+      } else read({ id, route: readRoute, owner: readOwner, visit: readVisit, loading: false, error: out.ok ? t("thread.detailMismatch") : out.error.message });
     });
     return () => {
       active = false;
@@ -60,7 +75,9 @@ export function ThreadManagement({ model }: { model: AppModel }) {
     const mutationOwner = owner;
     const mutationVisit = currentDetail.visit;
     const currentMutation = () => visitRef.current === mutationVisit && model.route.peek() === mutationRoute && model.route.peek().view === "thread-management" && model.data.owner.peek() === mutationOwner;
-    if (!currentMutation() || currentAction?.kind === "running") return;
+    if (!currentMutation() || currentAction?.kind === "running" || currentSettings?.saving) return;
+    const token = admit(mutationVisit);
+    if (!token) return;
     setActionState({ id: mutationId, route: mutationRoute, owner: mutationOwner, visit: mutationVisit, kind: "running" });
     const out = archived
       ? await model.ops.threadUnarchive([mutationId], { descendants: false })
@@ -73,20 +90,32 @@ export function ThreadManagement({ model }: { model: AppModel }) {
     const refreshed = await model.ops.threadGet(mutationId);
     if (!currentMutation()) return;
     if (!refreshed.ok) {
+      setDetailState({ id: mutationId, route: mutationRoute, owner: mutationOwner, visit: mutationVisit, loading: false, error: refreshed.error.message });
       setActionState({ id: mutationId, route: mutationRoute, owner: mutationOwner, visit: mutationVisit, kind: "failed", message: refreshed.error.message });
+      release(token);
+      return;
+    }
+    if (refreshed.value.thread_id !== mutationId) {
+      const message = t("thread.detailMismatch");
+      setDetailState({ id: mutationId, route: mutationRoute, owner: mutationOwner, visit: mutationVisit, loading: false, error: message });
+      setActionState({ id: mutationId, route: mutationRoute, owner: mutationOwner, visit: mutationVisit, kind: "failed", message });
+      release(token);
       return;
     }
     setDetailState({ id: mutationId, route: mutationRoute, owner: mutationOwner, visit: mutationVisit, loading: false, value: refreshed.value });
     const result = archived ? out.value.unarchived : out.value.archived;
     setActionState({ id: mutationId, route: mutationRoute, owner: mutationOwner, visit: mutationVisit, kind: "done", archived: !archived, count: result?.length ?? 0, already: out.value.already?.length ?? 0, notFound: out.value.not_found?.length ?? 0 });
+    release(token);
   };
 
   const settings = currentSettings;
   const saveSettings = async () => {
-    if (!settings || settings.saving || !model.data.capabilities.peek().includes("thread.settings") || !settings.model.trim()) return;
+    if (!settings || settings.saving || currentAction?.kind === "running" || surfaceBusy || !model.data.capabilities.peek().includes("thread.settings") || !settings.model.trim()) return;
     const target = { id, route, owner, visit: settings.visit };
     const currentTarget = () => visitRef.current === target.visit && model.route.peek() === target.route && model.route.peek().view === "thread-management" && model.data.owner.peek() === target.owner;
     if (!currentTarget()) return;
+    const token = admit(target.visit);
+    if (!token) return;
     setSettingsState({ ...settings, saving: true, saved: false, error: undefined });
     const draft: ThreadModelDraft = { model: settings.model, connection: detail.connection, effort: settings.effort, agents: "", autoCompactAt: "", maxTokens: "", clearMaxTokens: false };
     const initial: ThreadModelDraft = { model: detail.model, connection: detail.connection, effort: settings.initialEffort, agents: "", autoCompactAt: "", maxTokens: "", clearMaxTokens: false };
@@ -95,35 +124,49 @@ export function ThreadManagement({ model }: { model: AppModel }) {
     if (!currentTarget()) return;
     if (!out.ok) {
       setSettingsState({ ...settings, saving: false, saved: false, error: out.error.message });
+      release(token);
       return;
     }
     if (out.value.thread_id !== target.id) {
       setSettingsState({ ...settings, saving: false, saved: false, error: t("thread.settingsMismatch") });
+      release(token);
       return;
     }
     const refreshed = await model.ops.threadGet(target.id);
     if (!currentTarget()) return;
     if (!refreshed.ok) {
+      setDetailState({ id: target.id, route: target.route, owner: target.owner, visit: target.visit, loading: false, error: refreshed.error.message });
       setSettingsState({ ...settings, saving: false, saved: false, error: refreshed.error.message });
+      release(token);
+      return;
+    }
+    if (refreshed.value.thread_id !== target.id) {
+      const message = t("thread.detailMismatch");
+      setDetailState({ id: target.id, route: target.route, owner: target.owner, visit: target.visit, loading: false, error: message });
+      setSettingsState({ ...settings, saving: false, saved: false, error: message });
+      release(token);
       return;
     }
     const expectedEffort = changes.effort === undefined ? (detail.effort ?? "") : changes.effort;
-    if (refreshed.value.thread_id !== target.id || refreshed.value.model !== changes.model || (refreshed.value.effort ?? "") !== expectedEffort) {
-      setSettingsState({ ...settings, saving: false, saved: false, error: t("thread.settingsMismatch") });
+    const readbackMismatch = refreshed.value.model !== changes.model || refreshed.value.connection !== changes.connection || (refreshed.value.effort ?? "") !== expectedEffort;
+    setDetailState({ id: target.id, route: target.route, owner: target.owner, visit: target.visit, loading: false, value: refreshed.value });
+    if (readbackMismatch) {
+      setSettingsState({ ...settings, model: refreshed.value.model, effort: refreshed.value.effort ?? "", initialEffort: refreshed.value.effort ?? "", saving: false, saved: false, error: t("thread.settingsMismatch") });
+      release(token);
       return;
     }
-    setDetailState({ id: target.id, route: target.route, owner: target.owner, visit: target.visit, loading: false, value: refreshed.value });
+    setSettingsState({ id: target.id, route: target.route, owner: target.owner, visit: target.visit, loading: false, value: refreshed.value });
     setSettingsState({ ...settings, model: refreshed.value.model, effort: refreshed.value.effort ?? "", initialEffort: refreshed.value.effort ?? "", saving: false, saved: true, error: undefined });
   };
 
   return <Section title={detail.title} sub={detail.thread_id} actions={<a class="btn" href={formatRoute({ view: "conversation", threadId: id })}>{t("view.conversation")}</a>}>
     <div class="band" data-thread-management="">
-      {actionable ? <Button disabled={currentAction?.kind === "running"} onClick={() => void mutate()}>{archived ? t("org.unarchive") : t("action.archive")}</Button> : null}
+      {actionable ? <Button disabled={surfaceBusy || currentAction?.kind === "running"} onClick={() => void mutate()}>{archived ? t("org.unarchive") : t("action.archive")}</Button> : null}
     </div>
     {settings ? <div class="band" data-thread-settings="">
-      <Field ariaLabel={t("model.change")} value={settings.model} disabled={settings.saving} onInput={(e) => setSettingsState((prev) => prev && prev.id === id && prev.route === route && prev.owner === owner && prev.visit === visitRef.current ? { ...prev, model: e.currentTarget.value, saved: false, error: undefined } : prev)} />
-      <Field ariaLabel={t("model.effort")} value={settings.effort} disabled={settings.saving} onInput={(e) => setSettingsState((prev) => prev && prev.id === id && prev.route === route && prev.owner === owner && prev.visit === visitRef.current ? { ...prev, effort: e.currentTarget.value, saved: false, error: undefined } : prev)} />
-      {model.data.capabilities.value.includes("thread.settings") ? <Button variant="primary" disabled={settings.saving || !settings.model.trim()} onClick={() => void saveSettings()}>{t("model.save")}</Button> : <Notice tone="wait">{t("thread.readOnly")}</Notice>}
+      <Field ariaLabel={t("model.change")} value={settings.model} disabled={surfaceBusy || settings.saving} onInput={(e) => setSettingsState((prev) => prev && prev.id === id && prev.route === route && prev.owner === owner && prev.visit === visitRef.current ? { ...prev, model: e.currentTarget.value, saved: false, error: undefined } : prev)} />
+      <Field ariaLabel={t("model.effort")} value={settings.effort} disabled={surfaceBusy || settings.saving} onInput={(e) => setSettingsState((prev) => prev && prev.id === id && prev.route === route && prev.owner === owner && prev.visit === visitRef.current ? { ...prev, effort: e.currentTarget.value, saved: false, error: undefined } : prev)} />
+      {model.data.capabilities.value.includes("thread.settings") ? <Button variant="primary" disabled={surfaceBusy || settings.saving || !settings.model.trim()} onClick={() => void saveSettings()}>{t("model.save")}</Button> : <Notice tone="wait">{t("thread.readOnly")}</Notice>}
       {settings.error ? <Notice tone="bad">{settings.error}</Notice> : null}
       {settings.saved ? <Notice>{t("thread.settingsSaved")}</Notice> : null}
     </div> : null}
