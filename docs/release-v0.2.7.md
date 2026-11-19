@@ -1,6 +1,6 @@
 # Studio 0.2.7
 
-Fixes for tool rows and live activity rows. This candidate note does not authorize a tag or publication.
+Metadata-only Studio 0.2.7 candidate; no since-release runtime fixes are attributed here. This note does not authorize a tag or publication.
 
 ## Core pairing
 
@@ -14,4 +14,4 @@ Core installation and data migration instructions remain outside this source can
 
 This version-only candidate carries metadata and documentation updates only; no
 new runtime behavior is asserted here. Validation must use the existing release
-workflow after an immutable Core v0.13.1 ref is supplied.
+workflow against the bound immutable Core v0.13.1 ref.
