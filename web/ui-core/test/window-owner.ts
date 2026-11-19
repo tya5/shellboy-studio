@@ -104,7 +104,7 @@ export interface Rig {
   producer: FixtureSemanticProducer;
 }
 
-export async function rig(total: number, options: { capability?: boolean; decorate?: (i: number, item: Record<string, unknown>) => Record<string, unknown>; schedule?: Schedule } = {}): Promise<Rig> {
+export async function rig(total: number, options: { capability?: boolean; threadId?: string; decorate?: (i: number, item: Record<string, unknown>) => Record<string, unknown>; schedule?: Schedule } = {}): Promise<Rig> {
   const t = new FakeTransport();
   const liveQueue = new Set<() => void>();
   const schedule = options.schedule ?? ((callback: () => void) => {
@@ -120,7 +120,7 @@ export async function rig(total: number, options: { capability?: boolean; decora
   await flush();
   const owner = new WindowOwner(total);
   if (options.decorate) owner.decorate = options.decorate;
-  const handle = data.openThread("t");
+  const handle = data.openThread(options.threadId ?? "t");
   let armed: (() => void) | undefined;
   const opts: WindowOptions = {
     setTimer: (fn) => {

@@ -1112,19 +1112,24 @@ async fn live_text_reaches_a_watching_tab_and_the_saved_message_follows() {
 
     // Frames in order, with everything else skipped, until the first text is seen.
     let mut text = String::new();
-    let mut attempt = String::new();
+    let mut attempt: Option<String> = None;
     while !text.contains("Hello ") {
         let frame = next_t(&mut c.ws, "live").await;
         assert_eq!(frame["thread_id"], thread.as_str());
         assert_eq!(frame["gap"], false, "{frame}");
-        attempt = frame["attempt_id"].as_str().unwrap().to_owned();
+        let frame_attempt = frame["attempt_id"].as_str().filter(|id| !id.is_empty()).expect("live frame attempt_id");
+        if let Some(original) = attempt.as_deref() {
+            assert_eq!(frame_attempt, original, "live attempt changed before saved response: {frame}");
+        } else {
+            attempt = Some(frame_attempt.to_owned());
+        }
         for d in frame["deltas"].as_array().unwrap() {
             if d["reasoning"] == false {
                 text.push_str(d["text"].as_str().unwrap());
             }
         }
     }
-    assert!(!attempt.is_empty());
+    let attempt = attempt.expect("initial live attempt");
     // Still being written: nothing is saved yet.
     let before = c
         .ok("history.list", json!({"thread_id":thread,"limit":50}), None)
@@ -1164,6 +1169,10 @@ async fn live_text_reaches_a_watching_tab_and_the_saved_message_follows() {
         "{text}"
     );
     c.settled(&thread).await;
+    let window_args = json!({"thread_id":thread,"before":99,"after":0,"excerpt_chars":4096,"items":true});
+    let window = c.ok("history.window", window_args.clone(), None).await;
+    assert_eq!(window["thread_id"], thread.as_str(), "{window}");
+    println!("STUDIO_ROW12_PRODUCER_CONSUMER_RECORD {}", json!({"request":window_args,"original_attempt_id":attempt,"result":window}));
     let after = c
         .ok("history.list", json!({"thread_id":thread,"limit":50}), None)
         .await;
@@ -1171,6 +1180,18 @@ async fn live_text_reaches_a_watching_tab_and_the_saved_message_follows() {
         after["items"].to_string().contains("Hello world"),
         "{after}"
     );
+    let saved_matches: Vec<&Value> = after["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|item| {
+            item["kind"] == "assistant_response"
+                && item["excerpt"] == "Hello world"
+                && item["selection"]["thread_id"] == thread.as_str()
+        })
+        .collect();
+    assert_eq!(saved_matches.len(), 1, "saved assistant witness must be unique: {after}");
+    assert_eq!(saved_matches[0]["provenance"]["attempt_id"], attempt.as_str());
     cancel.cancel();
     drop(serve);
     let _ = std::fs::remove_dir_all(&root);

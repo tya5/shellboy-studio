@@ -5,6 +5,333 @@ import { canonicalAttemptId } from "../../data/test/work-fixture";
 import { captureConversationInput, captureCurrentWork } from "../src/conversation-input";
 
 describe("production accepted window live retirement", () => {
+  it("consumes the captured public history window for the original live attempt", async () => {
+    const captured = {
+  "original_attempt_id": "43e63032-8cbf-4fda-af1a-f28841228f76",
+  "request": {
+    "after": 0,
+    "before": 99,
+    "excerpt_chars": 4096,
+    "items": true,
+    "thread_id": "14f6e9d8-21e8-40e3-87fb-480d5ae0d963"
+  },
+  "result": {
+    "items": [
+      {
+        "context": {
+          "created_at": "2026-11-19T09:50:23.687405+00:00",
+          "node_id": "9c0b69a4-ccaa-49c4-8eda-56b661d9ea1b",
+          "run_id": "8bc9da13-6c85-411c-ae82-29a5c9568bd2",
+          "state": "present",
+          "thread_id": "14f6e9d8-21e8-40e3-87fb-480d5ae0d963",
+          "turn_id": "8ec11ffd-8c8b-4330-8501-b6a1af5d2173"
+        },
+        "excerpt": "hi",
+        "execution_count": 0,
+        "executions_truncated": false,
+        "items": [
+          {
+            "item_identity": "[\"9c0b69a4-ccaa-49c4-8eda-56b661d9ea1b\",\"/content/0\"]",
+            "kind": "text",
+            "text": "hi",
+            "text_complete": true
+          }
+        ],
+        "kind": "user",
+        "node_id": "9c0b69a4-ccaa-49c4-8eda-56b661d9ea1b",
+        "payload_chars": 61,
+        "provenance": {
+          "created_at": "2026-11-19T09:50:23.687405+00:00",
+          "kind": "user",
+          "message": {
+            "expect_reply": false
+          },
+          "origin_thread_id": "14f6e9d8-21e8-40e3-87fb-480d5ae0d963",
+          "run_id": "8bc9da13-6c85-411c-ae82-29a5c9568bd2",
+          "sender": {
+            "kind": "human",
+            "label": "web"
+          },
+          "source_revision": 0,
+          "turn_id": "8ec11ffd-8c8b-4330-8501-b6a1af5d2173"
+        },
+        "selection": {
+          "current_cwd": "/tmp/studio24-producer-capture.JTMAKX/tmp/shellboy-studio-it-c9c3db30-2947-44a7-9d1d-64e748160c03",
+          "ordinal": 0,
+          "thread_id": "14f6e9d8-21e8-40e3-87fb-480d5ae0d963"
+        }
+      },
+      {
+        "context": {
+          "created_at": "2026-11-19T09:50:23.692897+00:00",
+          "node_id": "event-b3ed45d4-6ca3-4768-8c8b-b51cde34d4fe",
+          "run_id": "8bc9da13-6c85-411c-ae82-29a5c9568bd2",
+          "state": "present",
+          "thread_id": "14f6e9d8-21e8-40e3-87fb-480d5ae0d963",
+          "turn_id": "8ec11ffd-8c8b-4330-8501-b6a1af5d2173"
+        },
+        "excerpt": "Shellboy event v1: {\"event_id\":\"b3ed45d4-6ca3-4768-8c8b-b51cde34d4fe\",\"kind\":\"context_changed\",\"payload\":{\"actor\":{\"kind\":\"human\"},\"change\":{\"run_id\":\"8bc9da13-6c85-411c-ae82-29a5c9568bd2\"},\"kind\":\"run_started\",\"observed_at\":\"2026-11-19T09:50:23.687405+00:00\",\"timezone\":\"+09:00\"}}",
+        "execution_count": 0,
+        "executions_truncated": false,
+        "items": [
+          {
+            "item_identity": "[\"event-b3ed45d4-6ca3-4768-8c8b-b51cde34d4fe\",\"/content/0\"]",
+            "kind": "text",
+            "text": "Shellboy event v1: {\"event_id\":\"b3ed45d4-6ca3-4768-8c8b-b51cde34d4fe\",\"kind\":\"context_changed\",\"payload\":{\"actor\":{\"kind\":\"human\"},\"change\":{\"run_id\":\"8bc9da13-6c85-411c-ae82-29a5c9568bd2\"},\"kind\":\"run_started\",\"observed_at\":\"2026-11-19T09:50:23.687405+00:00\",\"timezone\":\"+09:00\"}}",
+            "text_complete": true
+          }
+        ],
+        "kind": "event",
+        "node_id": "event-b3ed45d4-6ca3-4768-8c8b-b51cde34d4fe",
+        "payload_chars": 429,
+        "provenance": {
+          "created_at": "2026-11-19T09:50:23.692897+00:00",
+          "kind": "event",
+          "origin_thread_id": "14f6e9d8-21e8-40e3-87fb-480d5ae0d963",
+          "run_id": "8bc9da13-6c85-411c-ae82-29a5c9568bd2",
+          "source_revision": 0,
+          "turn_id": "8ec11ffd-8c8b-4330-8501-b6a1af5d2173"
+        },
+        "selection": {
+          "current_cwd": "/tmp/studio24-producer-capture.JTMAKX/tmp/shellboy-studio-it-c9c3db30-2947-44a7-9d1d-64e748160c03",
+          "ordinal": 1,
+          "thread_id": "14f6e9d8-21e8-40e3-87fb-480d5ae0d963"
+        }
+      },
+      {
+        "context": {
+          "created_at": "2026-11-19T09:50:23.693266+00:00",
+          "node_id": "event-e5b68b30-a87a-4acc-a3e4-31cee8d67987",
+          "run_id": "8bc9da13-6c85-411c-ae82-29a5c9568bd2",
+          "state": "present",
+          "thread_id": "14f6e9d8-21e8-40e3-87fb-480d5ae0d963",
+          "turn_id": "8ec11ffd-8c8b-4330-8501-b6a1af5d2173"
+        },
+        "excerpt": "Shellboy event v1: {\"event_id\":\"e5b68b30-a87a-4acc-a3e4-31cee8d67987\",\"kind\":\"context_changed\",\"payload\":{\"actor\":{\"kind\":\"shellboy\"},\"change\":{\"previous_turn_ended_at\":null,\"run_id\":\"8bc9da13-6c85-411c-ae82-29a5c9568bd2\",\"turn_id\":\"8ec11ffd-8c8b-4330-8501-b6a1af5d2173\"},\"kind\":\"turn_started\",\"observed_at\":\"2026-11-19T09:50:23.687405+00:00\",\"timezone\":\"+09:00\"}}",
+        "execution_count": 0,
+        "executions_truncated": false,
+        "items": [
+          {
+            "item_identity": "[\"event-e5b68b30-a87a-4acc-a3e4-31cee8d67987\",\"/content/0\"]",
+            "kind": "text",
+            "text": "Shellboy event v1: {\"event_id\":\"e5b68b30-a87a-4acc-a3e4-31cee8d67987\",\"kind\":\"context_changed\",\"payload\":{\"actor\":{\"kind\":\"shellboy\"},\"change\":{\"previous_turn_ended_at\":null,\"run_id\":\"8bc9da13-6c85-411c-ae82-29a5c9568bd2\",\"turn_id\":\"8ec11ffd-8c8b-4330-8501-b6a1af5d2173\"},\"kind\":\"turn_started\",\"observed_at\":\"2026-11-19T09:50:23.687405+00:00\",\"timezone\":\"+09:00\"}}",
+            "text_complete": true
+          }
+        ],
+        "kind": "event",
+        "node_id": "event-e5b68b30-a87a-4acc-a3e4-31cee8d67987",
+        "payload_chars": 518,
+        "provenance": {
+          "created_at": "2026-11-19T09:50:23.693266+00:00",
+          "kind": "event",
+          "notification": {
+            "kind": "turn_started"
+          },
+          "origin_thread_id": "14f6e9d8-21e8-40e3-87fb-480d5ae0d963",
+          "run_id": "8bc9da13-6c85-411c-ae82-29a5c9568bd2",
+          "source_revision": 0,
+          "turn_id": "8ec11ffd-8c8b-4330-8501-b6a1af5d2173"
+        },
+        "selection": {
+          "current_cwd": "/tmp/studio24-producer-capture.JTMAKX/tmp/shellboy-studio-it-c9c3db30-2947-44a7-9d1d-64e748160c03",
+          "ordinal": 2,
+          "thread_id": "14f6e9d8-21e8-40e3-87fb-480d5ae0d963"
+        }
+      },
+      {
+        "context": {
+          "created_at": "2026-11-19T09:50:23.693545+00:00",
+          "node_id": "event-6ddeb06a-6093-49e9-93d2-c48faae8485d",
+          "run_id": "8bc9da13-6c85-411c-ae82-29a5c9568bd2",
+          "state": "present",
+          "thread_id": "14f6e9d8-21e8-40e3-87fb-480d5ae0d963",
+          "turn_id": "8ec11ffd-8c8b-4330-8501-b6a1af5d2173"
+        },
+        "excerpt": "Shellboy event v1: {\"event_id\":\"6ddeb06a-6093-49e9-93d2-c48faae8485d\",\"kind\":\"context_changed\",\"payload\":{\"actor\":{\"kind\":\"shellboy\"},\"change\":{\"after\":{\"active_space\":null,\"active_state\":null,\"dimension\":null,\"model\":null,\"pause_id\":null,\"pause_kind\":null,\"paused\":false,\"paused_at\":null,\"profile\":null},\"before\":null},\"kind\":\"index_state\",\"observed_at\":\"2026-11-19T09:50:23.691927+00:00\",\"timezone\":\"+09:00\"}}",
+        "execution_count": 0,
+        "executions_truncated": false,
+        "items": [
+          {
+            "item_identity": "[\"event-6ddeb06a-6093-49e9-93d2-c48faae8485d\",\"/content/0\"]",
+            "kind": "text",
+            "text": "Shellboy event v1: {\"event_id\":\"6ddeb06a-6093-49e9-93d2-c48faae8485d\",\"kind\":\"context_changed\",\"payload\":{\"actor\":{\"kind\":\"shellboy\"},\"change\":{\"after\":{\"active_space\":null,\"active_state\":null,\"dimension\":null,\"model\":null,\"pause_id\":null,\"pause_kind\":null,\"paused\":false,\"paused_at\":null,\"profile\":null},\"before\":null},\"kind\":\"index_state\",\"observed_at\":\"2026-11-19T09:50:23.691927+00:00\",\"timezone\":\"+09:00\"}}",
+            "text_complete": true
+          }
+        ],
+        "kind": "event",
+        "node_id": "event-6ddeb06a-6093-49e9-93d2-c48faae8485d",
+        "payload_chars": 577,
+        "provenance": {
+          "created_at": "2026-11-19T09:50:23.693545+00:00",
+          "kind": "event",
+          "origin_thread_id": "14f6e9d8-21e8-40e3-87fb-480d5ae0d963",
+          "run_id": "8bc9da13-6c85-411c-ae82-29a5c9568bd2",
+          "source_revision": 0,
+          "turn_id": "8ec11ffd-8c8b-4330-8501-b6a1af5d2173"
+        },
+        "selection": {
+          "current_cwd": "/tmp/studio24-producer-capture.JTMAKX/tmp/shellboy-studio-it-c9c3db30-2947-44a7-9d1d-64e748160c03",
+          "ordinal": 3,
+          "thread_id": "14f6e9d8-21e8-40e3-87fb-480d5ae0d963"
+        }
+      },
+      {
+        "context": {
+          "created_at": "2026-11-19T09:50:23.696906+00:00",
+          "node_id": "event-d05ebe13-5fde-4248-8dc0-bc8724d3c2ed",
+          "run_id": "8bc9da13-6c85-411c-ae82-29a5c9568bd2",
+          "state": "present",
+          "thread_id": "14f6e9d8-21e8-40e3-87fb-480d5ae0d963",
+          "turn_id": "8ec11ffd-8c8b-4330-8501-b6a1af5d2173"
+        },
+        "excerpt": "Shellboy event v1: {\"event_id\":\"d05ebe13-5fde-4248-8dc0-bc8724d3c2ed\",\"kind\":\"context_changed\",\"payload\":{\"actor\":{\"kind\":\"shellboy\",\"run_id\":\"8bc9da13-6c85-411c-ae82-29a5c9568bd2\"},\"change\":{\"after\":{\"hash\":\"instruction-bundle-v1:sha256:787b7232bc2c2fa208c738993d369bf0b0cea4b50dec1dd66adf9a645acabec2\",\"path\":\"/tmp/studio24-producer-capture.JTMAKX/tmp/shellboy-studio-it-c9c3db30-2947-44a7-9d1d-64e748160c03/AGENTS.md\",\"present\":true},\"before\":null},\"kind\":\"instructions_observed\",\"observed_at\":\"2026-11-19T09:50:23.695860+00:00\",\"timezone\":\"+09:00\"}}",
+        "execution_count": 0,
+        "executions_truncated": false,
+        "items": [
+          {
+            "item_identity": "[\"event-d05ebe13-5fde-4248-8dc0-bc8724d3c2ed\",\"/content/0\"]",
+            "kind": "text",
+            "text": "Shellboy event v1: {\"event_id\":\"d05ebe13-5fde-4248-8dc0-bc8724d3c2ed\",\"kind\":\"context_changed\",\"payload\":{\"actor\":{\"kind\":\"shellboy\",\"run_id\":\"8bc9da13-6c85-411c-ae82-29a5c9568bd2\"},\"change\":{\"after\":{\"hash\":\"instruction-bundle-v1:sha256:787b7232bc2c2fa208c738993d369bf0b0cea4b50dec1dd66adf9a645acabec2\",\"path\":\"/tmp/studio24-producer-capture.JTMAKX/tmp/shellboy-studio-it-c9c3db30-2947-44a7-9d1d-64e748160c03/AGENTS.md\",\"present\":true},\"before\":null},\"kind\":\"instructions_observed\",\"observed_at\":\"2026-11-19T09:50:23.695860+00:00\",\"timezone\":\"+09:00\"}}",
+            "text_complete": true
+          }
+        ],
+        "kind": "event",
+        "node_id": "event-d05ebe13-5fde-4248-8dc0-bc8724d3c2ed",
+        "payload_chars": 715,
+        "provenance": {
+          "created_at": "2026-11-19T09:50:23.696906+00:00",
+          "kind": "event",
+          "notification": {
+            "kind": "instructions_observed",
+            "observation": "first_seen"
+          },
+          "origin_thread_id": "14f6e9d8-21e8-40e3-87fb-480d5ae0d963",
+          "run_id": "8bc9da13-6c85-411c-ae82-29a5c9568bd2",
+          "source_revision": 0,
+          "turn_id": "8ec11ffd-8c8b-4330-8501-b6a1af5d2173"
+        },
+        "selection": {
+          "current_cwd": "/tmp/studio24-producer-capture.JTMAKX/tmp/shellboy-studio-it-c9c3db30-2947-44a7-9d1d-64e748160c03",
+          "ordinal": 4,
+          "thread_id": "14f6e9d8-21e8-40e3-87fb-480d5ae0d963"
+        }
+      },
+      {
+        "context": {
+          "created_at": "2026-11-19T09:50:23.697156+00:00",
+          "node_id": "context-ee840f73-8865-4f6c-a0c3-1fd2e704fd14",
+          "run_id": "8bc9da13-6c85-411c-ae82-29a5c9568bd2",
+          "state": "present",
+          "thread_id": "14f6e9d8-21e8-40e3-87fb-480d5ae0d963",
+          "turn_id": "8ec11ffd-8c8b-4330-8501-b6a1af5d2173"
+        },
+        "excerpt": "Shellboy context v1: thread=14f6e9d8-21e8-40e3-87fb-480d5ae0d963 run=8bc9da13-6c85-411c-ae82-29a5c9568bd2 turn=8ec11ffd-8c8b-4330-8501-b6a1af5d2173 cwd=/tmp/studio24-producer-capture.JTMAKX/tmp/shellboy-studio-it-c9c3db30-2947-44a7-9d1d-64e748160c03 connection=local model=mock effort=None; AGENTS reference=/tmp/studio24-producer-capture.JTMAKX/tmp/shellboy-studio-it-c9c3db30-2947-44a7-9d1d-64e748160c03/AGENTS.md",
+        "execution_count": 0,
+        "executions_truncated": false,
+        "items": [
+          {
+            "item_identity": "[\"context-ee840f73-8865-4f6c-a0c3-1fd2e704fd14\",\"/content/0\"]",
+            "kind": "text",
+            "text": "Shellboy context v1: thread=14f6e9d8-21e8-40e3-87fb-480d5ae0d963 run=8bc9da13-6c85-411c-ae82-29a5c9568bd2 turn=8ec11ffd-8c8b-4330-8501-b6a1af5d2173 cwd=/tmp/studio24-producer-capture.JTMAKX/tmp/shellboy-studio-it-c9c3db30-2947-44a7-9d1d-64e748160c03 connection=local model=mock effort=None; AGENTS reference=/tmp/studio24-producer-capture.JTMAKX/tmp/shellboy-studio-it-c9c3db30-2947-44a7-9d1d-64e748160c03/AGENTS.md",
+            "text_complete": true
+          }
+        ],
+        "kind": "context",
+        "node_id": "context-ee840f73-8865-4f6c-a0c3-1fd2e704fd14",
+        "payload_chars": 479,
+        "provenance": {
+          "created_at": "2026-11-19T09:50:23.697156+00:00",
+          "kind": "context",
+          "origin_thread_id": "14f6e9d8-21e8-40e3-87fb-480d5ae0d963",
+          "run_id": "8bc9da13-6c85-411c-ae82-29a5c9568bd2",
+          "source_revision": 0,
+          "turn_id": "8ec11ffd-8c8b-4330-8501-b6a1af5d2173"
+        },
+        "selection": {
+          "current_cwd": "/tmp/studio24-producer-capture.JTMAKX/tmp/shellboy-studio-it-c9c3db30-2947-44a7-9d1d-64e748160c03",
+          "ordinal": 5,
+          "thread_id": "14f6e9d8-21e8-40e3-87fb-480d5ae0d963"
+        }
+      },
+      {
+        "context": {
+          "created_at": "2026-11-19T09:50:23.707429+00:00",
+          "node_id": "01acdd4a-18cd-4201-93a5-2d37caa39a9a",
+          "run_id": "8bc9da13-6c85-411c-ae82-29a5c9568bd2",
+          "state": "present",
+          "thread_id": "14f6e9d8-21e8-40e3-87fb-480d5ae0d963",
+          "turn_id": "8ec11ffd-8c8b-4330-8501-b6a1af5d2173"
+        },
+        "excerpt": "Hello world",
+        "execution_count": 0,
+        "executions_truncated": false,
+        "items": [
+          {
+            "item_identity": "[\"01acdd4a-18cd-4201-93a5-2d37caa39a9a\",\"/output/0/content/0\"]",
+            "kind": "text",
+            "text": "Hello world",
+            "text_complete": true
+          }
+        ],
+        "kind": "assistant_response",
+        "node_id": "01acdd4a-18cd-4201-93a5-2d37caa39a9a",
+        "payload_chars": 172,
+        "provenance": {
+          "attempt_id": "43e63032-8cbf-4fda-af1a-f28841228f76",
+          "created_at": "2026-11-19T09:50:23.707429+00:00",
+          "kind": "assistant_response",
+          "origin_thread_id": "14f6e9d8-21e8-40e3-87fb-480d5ae0d963",
+          "run_id": "8bc9da13-6c85-411c-ae82-29a5c9568bd2",
+          "source_revision": 0,
+          "turn_id": "8ec11ffd-8c8b-4330-8501-b6a1af5d2173"
+        },
+        "selection": {
+          "current_cwd": "/tmp/studio24-producer-capture.JTMAKX/tmp/shellboy-studio-it-c9c3db30-2947-44a7-9d1d-64e748160c03",
+          "ordinal": 6,
+          "thread_id": "14f6e9d8-21e8-40e3-87fb-480d5ae0d963"
+        }
+      }
+    ],
+    "revision": 7,
+    "thread_id": "14f6e9d8-21e8-40e3-87fb-480d5ae0d963",
+    "total": 7
+  }
+};
+    const f = await rig(0, { threadId: captured.result.thread_id });
+    const attempt = captured.original_attempt_id;
+    const unmatchedAttempt = "unmatched-live-sentinel";
+    try {
+      f.w.bindCurrentThread(f.handle);
+      f.t.push({ t: "live", thread_id: captured.result.thread_id, attempt_id: unmatchedAttempt, gap: false, deltas: [{ offset: 0, reasoning: false, text: "UNMATCHED_LIVE_SENTINEL" }] });
+      await flush(8);
+      expect(f.handle.handoff.value.filter(record => record.attemptId === unmatchedAttempt)).toHaveLength(1);
+      const call = f.calls().find(item => item.command === "history.window" && !f.owner.answered.has(item.id));
+      expect(call).toBeDefined();
+      expect(call!.args).toEqual(captured.request);
+      f.t.push({ t: "live", thread_id: captured.result.thread_id, attempt_id: attempt, gap: false, deltas: [{ offset: 0, reasoning: false, text: "captured live" }] });
+      await flush(8);
+      expect(f.handle.handoff.value.filter(record => record.attemptId === attempt)).toHaveLength(1);
+      f.owner.answered.add(call!.id);
+      f.t.ok(call!.id, captured.result);
+      await flush(8);
+      const saved = captured.result.items.filter((item: any) => item.kind === "assistant_response" && item.excerpt === "Hello world");
+      expect(saved).toHaveLength(1);
+      const savedNode = saved.at(0);
+      expect(savedNode).toBeDefined();
+      if (!savedNode) throw new Error("expected saved assistant response");
+      const savedId = savedNode.node_id;
+      expect(savedNode.provenance?.attempt_id).toBe(attempt);
+      const afterSources = f.w.acceptedView.peek().displayPlan?.entries.map(entry => entry.item.source) ?? [];
+      const prose = afterSources.flatMap(source =>
+        !("domain" in source) && source.nodeId === savedId && source.kind === "text" ? [source.text] : []
+      );
+      expect(prose).toEqual(["Hello world"]);
+      expect(f.handle.handoff.value.filter(record => record.attemptId === attempt)).toHaveLength(0);
+      expect(f.handle.handoff.value.filter(record => record.attemptId === unmatchedAttempt)).toHaveLength(1);
+      expect(afterSources.some(source => "domain" in source && source.attemptId === attempt)).toBe(false);
+      expect(afterSources.some(source => "domain" in source && source.attemptId === unmatchedAttempt)).toBe(true);
+    } finally { f.w.dispose(); f.data.stop(); }
+  });
   it("releases the matching live attempt only after accepted saved rows commit", async () => {
     const f = await rig(20);
     f.owner.decorate = (i, item) => i === 19 ? { ...item, kind: "assistant_response", provenance: { attempt_id: canonicalAttemptId(1) } } : item;
