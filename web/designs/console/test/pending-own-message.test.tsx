@@ -5,7 +5,7 @@ import {render} from 'preact';
 import {act} from 'preact/test-utils';
 import {expect,it} from 'vitest';
 import {fixtureModel} from '../../../ui-core/test/fixture';
-import {summary,details,settle,flush} from '../../../data/test/harness';
+import {summary,details,settle,flush, type FakeTransport, type FakeOwnerDb} from '../../../data/test/harness';
 import type {HistoryItem} from '../../../data/src/protocol';
 import type {DesignContext} from '../../../ui-core/src';
 import {loadPrefs} from '../../../ui-core/src/prefs';
@@ -19,6 +19,25 @@ function requestedHistoryNode(call: HistoryGetCall): string {
  const args=call.args;
  if (args===null || typeof args!=="object" || !("node_id" in args) || typeof args.node_id!=="string") throw new Error("history.get missing string node_id");
  return args.node_id;
+}
+
+async function answerMountedAncillary(f: { t: FakeTransport; db: FakeOwnerDb }): Promise<void> {
+ for (let pass = 0; pass < 4; pass++) {
+  const pending = f.t.calls().filter(call => call.command !== "history.get" && !f.db.answered.has(call.id) && !f.t.cancels().includes(call.id));
+  if (!pending.length) break;
+  for (const call of pending) {
+   f.db.answered.add(call.id); const result = f.db.answer(call);
+   if (result.ok) f.t.ok(call.id, result.result); else f.t.ownerError(call.id, result.code, result.message ?? result.code, result.details);
+  }
+  await flush(2);
+ }
+}
+function installMountedWindowResponder(f: { t: FakeTransport; db: FakeOwnerDb }): () => void {
+ const previous = f.t.onCall; let alive = true; let replies = 0;
+ f.t.onCall = call => { previous?.(call); if (!alive || replies >= 4 || call.command !== "history.window" || f.db.answered.has(call.id) || f.t.cancels().includes(call.id)) return;
+  queueMicrotask(() => { if (!alive || replies >= 4 || f.db.answered.has(call.id) || f.t.cancels().includes(call.id)) return; replies++; f.db.answered.add(call.id); const result = f.db.answer(call); if (result.ok) f.t.ok(call.id, result.result); else f.t.ownerError(call.id, result.code, result.message ?? result.code, result.details); });
+ };
+ return () => { alive = false; f.t.onCall = previous; };
 }
 
 async function bodyReadControlCase(partial: boolean) {
@@ -475,22 +494,22 @@ it("auto-loads only the newest typed prose body once", async () => {
 
 it("mounted stale auto body refuses an old cursor after rev2/rev3 windows", async () => {
  const f=await fixtureModel({capabilities:["history.window"],route:"threads",threadId:"t",configure(db){db.threads={t:summary("t")};db.details.t=details("t");db.history.t=[];db.historyRevisions.t=1;}});
- const readWindowCalls:unknown[]=[];let restoreReadWindow:(()=>void)|undefined;let previousOnCall=f.t.onCall;let hookAlive=false;let hookReplies=0;const hookReplyBudget=4;let capturedHandle:ReturnType<typeof f.model.handle.peek>=undefined,capturedReader:ReturnType<typeof f.model.longReader.peek>=undefined,capturedKey:string|undefined;
+ const readWindowCalls:unknown[]=[];let restoreReadWindow:(()=>void)|undefined;let restoreResponder:(()=>void)|undefined;let capturedHandle:ReturnType<typeof f.model.handle.peek>=undefined,capturedReader:ReturnType<typeof f.model.longReader.peek>=undefined,capturedKey:string|undefined;
  const host=document.createElement('div');document.body.append(host);const context:DesignContext={model:f.model,prefs:signal(loadPrefs({read:()=>null,write:()=>{}},[{name:'console',themes:[{name:'light'}]}])),setPrefs:()=>{},designs:[],submitToken:async()=>false};
  const old:HistoryItem={node_id:'old-tail',kind:'assistant_response',selection:{ordinal:0},items:[{kind:'text',item_identity:'answer',text:'old prefix',text_complete:false}]};
  const newer:HistoryItem={node_id:'new-tail',kind:'assistant_response',selection:{ordinal:1},items:[{kind:'text',item_identity:'answer',text:'new complete',text_complete:true}]};
- const windowTrace:{phase:string;emitted:number[];pending:number[];answered:number[];canceled:number[];revision:number|undefined;readWindow:number;handleSame:boolean;readerSame:boolean;keySame:boolean}[]=[];const traceWindows=(phase:string)=>{const emitted=f.t.calls('history.window').map(call=>call.id),canceled=f.t.cancels();return windowTrace.push({phase,emitted,pending:f.t.calls('history.window').filter(call=>!f.db.answered.has(call.id)&&!canceled.includes(call.id)).map(call=>call.id),answered:f.t.calls('history.window').filter(call=>f.db.answered.has(call.id)).map(call=>call.id),canceled:emitted.filter(id=>canceled.includes(id)),revision:f.model.longReader.peek()?.acceptedView.peek().revision,readWindow:readWindowCalls.length,handleSame:capturedHandle!==undefined&&f.model.handle.peek()===capturedHandle,readerSame:capturedReader!==undefined&&f.model.longReader.peek()===capturedReader,keySame:capturedKey!==undefined&&f.model.bodyCacheKey('old-tail')===capturedKey});};const answerPending=async()=>{for(let pass=0;pass<4;pass++){const pending=f.t.calls().filter(call=>call.command!=='history.get'&&!f.db.answered.has(call.id)&&!f.t.cancels().includes(call.id));if(!pending.length)break;for(const call of pending){f.db.answered.add(call.id);const result=f.db.answer(call);if(result.ok)f.t.ok(call.id,result.result);else f.t.ownerError(call.id,result.code,result.message??result.code,result.details);}await flush(2);}};
+ const windowTrace:{phase:string;emitted:number[];pending:number[];answered:number[];canceled:number[];revision:number|undefined;readWindow:number;handleSame:boolean;readerSame:boolean;keySame:boolean}[]=[];const traceWindows=(phase:string)=>{const emitted=f.t.calls('history.window').map(call=>call.id),canceled=f.t.cancels();return windowTrace.push({phase,emitted,pending:f.t.calls('history.window').filter(call=>!f.db.answered.has(call.id)&&!canceled.includes(call.id)).map(call=>call.id),answered:f.t.calls('history.window').filter(call=>f.db.answered.has(call.id)).map(call=>call.id),canceled:emitted.filter(id=>canceled.includes(id)),revision:f.model.longReader.peek()?.acceptedView.peek().revision,readWindow:readWindowCalls.length,handleSame:capturedHandle!==undefined&&f.model.handle.peek()===capturedHandle,readerSame:capturedReader!==undefined&&f.model.longReader.peek()===capturedReader,keySame:capturedKey!==undefined&&f.model.bodyCacheKey('old-tail')===capturedKey});};const answerPending=()=>answerMountedAncillary(f);
  try{await act(async()=>{render(<App context={context}/>,host);await settle(f.t,f.db);});
   f.db.history.t=[old];f.db.historyRevisions.t=2;f.model.openThread('t');await flush(4);await answerPending();await flush(6);traceWindows('after-rev2-answer');
   expect(f.model.longReader.peek()!.acceptedView.peek().revision,JSON.stringify(windowTrace)).toBe(2);
-  const rev2Handle=f.model.handle.peek(),rev2Reader=f.model.longReader.peek(),oldKey=f.model.bodyCacheKey('old-tail');capturedHandle=rev2Handle;capturedReader=rev2Reader;capturedKey=oldKey;expect(rev2Handle).not.toBeNull();expect(rev2Reader).not.toBeNull();const rev2Body=f.model.bodies.peek().get(oldKey);expect(rev2Body).toMatchObject({loading:true}); const tracedHandle=rev2Handle!;const originalReadWindow=tracedHandle.readWindow;const originalDescriptor=Object.getOwnPropertyDescriptor(tracedHandle,'readWindow');if(!originalDescriptor)throw new Error('missing readWindow descriptor');Object.defineProperty(tracedHandle,'readWindow',{...originalDescriptor,value:(...args:Parameters<typeof originalReadWindow>)=>{readWindowCalls.push(args[0]);return originalReadWindow.apply(tracedHandle,args);}});restoreReadWindow=()=>Object.defineProperty(tracedHandle,'readWindow',originalDescriptor); previousOnCall=f.t.onCall;hookAlive=true;f.t.onCall=call=>{previousOnCall?.(call);if(!hookAlive||hookReplies>=hookReplyBudget||call.command!=='history.window'||f.db.answered.has(call.id)||f.t.cancels().includes(call.id))return;void Promise.resolve().then(()=>{if(!hookAlive||hookReplies>=hookReplyBudget||f.db.answered.has(call.id)||f.t.cancels().includes(call.id))return;hookReplies++;f.db.answered.add(call.id);const result=f.db.answer(call);if(result.ok)f.t.ok(call.id,result.result);else f.t.ownerError(call.id,result.code,result.message??result.code,result.details);});};
+  const rev2Handle=f.model.handle.peek(),rev2Reader=f.model.longReader.peek(),oldKey=f.model.bodyCacheKey('old-tail');capturedHandle=rev2Handle;capturedReader=rev2Reader;capturedKey=oldKey;expect(rev2Handle).not.toBeNull();expect(rev2Reader).not.toBeNull();const rev2Body=f.model.bodies.peek().get(oldKey);expect(rev2Body).toMatchObject({loading:true}); const tracedHandle=rev2Handle!;const originalReadWindow=tracedHandle.readWindow;const originalDescriptor=Object.getOwnPropertyDescriptor(tracedHandle,'readWindow');if(!originalDescriptor)throw new Error('missing readWindow descriptor');Object.defineProperty(tracedHandle,'readWindow',{...originalDescriptor,value:(...args:Parameters<typeof originalReadWindow>)=>{readWindowCalls.push(args[0]);return originalReadWindow.apply(tracedHandle,args);}});restoreReadWindow=()=>Object.defineProperty(tracedHandle,'readWindow',originalDescriptor);restoreResponder=installMountedWindowResponder(f);
   const oldCall=f.t.calls('history.get').at(-1);expect(oldCall).not.toBeNull();expect(f.t.calls('history.get').map(call=>requestedHistoryNode(call))).toEqual(['old-tail']);expect(host.querySelector('[data-node="old-tail"]')).not.toBeNull();expect(host.querySelector('[data-node="old-tail"]')!.textContent).toContain('old prefix');
   f.db.history.t=[old,newer];f.db.historyRevisions.t=3;traceWindows('before-rev3-jump');f.model.longReader.peek()!.jumpToEnd();await flush(4);traceWindows('after-rev3-jump');await answerPending();await flush(6);traceWindows('after-rev3-answer');
   expect(f.model.longReader.peek()!.acceptedView.peek().revision,JSON.stringify(windowTrace)).toBe(3);
   expect(f.model.handle.peek()).toBe(rev2Handle);expect(f.model.longReader.peek()).toBe(rev2Reader);expect(f.model.bodyCacheKey('old-tail')).toBe(oldKey);expect(f.model.bodies.peek().get(oldKey)).toBe(rev2Body);expect(f.model.bodies.peek().get(oldKey)).toMatchObject({loading:true});expect(f.model.longReader.peek()!.acceptedView.peek().rows.map(row=>row.node_id)).toEqual(['old-tail','new-tail']);expect(host.querySelector('[data-node="new-tail"]')?.textContent).toContain('new complete');
   f.t.ok(oldCall!.id,{node_id:'old-tail',kind:'assistant_response',text:'OLD_FULL_SHOULD_NOT_RENDER',next_cursor:'stale-next'});await flush(8);
   expect(f.t.calls('history.get')).toHaveLength(1);expect(f.model.bodies.peek().get(oldKey)).toBeUndefined();const oldMarkdown=[...host.querySelectorAll('[data-node="old-tail"] .md')].map(node=>node.textContent??'').join('\n');expect(oldMarkdown).not.toContain('OLD_FULL_SHOULD_NOT_RENDER');expect(oldMarkdown).toContain('old prefix');
- }finally{hookAlive=false;f.t.onCall=previousOnCall;restoreReadWindow?.();render(null,host);host.remove();f.model.dispose();f.data.stop();}
+ }finally{restoreResponder?.();restoreReadWindow?.();render(null,host);host.remove();f.model.dispose();f.data.stop();}
 });
 
 it("mounted click joins the held old cursor read", async () => {
@@ -498,18 +517,18 @@ it("mounted click joins the held old cursor read", async () => {
  const host=document.createElement('div');document.body.append(host);const context:DesignContext={model:f.model,prefs:signal(loadPrefs({read:()=>null,write:()=>{}},[{name:'console',themes:[{name:'light'}]}])),setPrefs:()=>{},designs:[],submitToken:async()=>false};
  const old:HistoryItem={node_id:'old-tail',kind:'assistant_response',selection:{ordinal:0},items:[{kind:'text',item_identity:'answer',text:'old prefix',text_complete:false}]};
  const newer:HistoryItem={node_id:'new-tail',kind:'assistant_response',selection:{ordinal:1},items:[{kind:'text',item_identity:'answer',text:'new complete',text_complete:true}]};
- const answerPending=async()=>{for(let pass=0;pass<4;pass++){const pending=f.t.calls().filter(call=>call.command!=='history.get'&&!f.db.answered.has(call.id)&&!f.t.cancels().includes(call.id));if(!pending.length)break;for(const call of pending){f.db.answered.add(call.id);const result=f.db.answer(call);if(result.ok)f.t.ok(call.id,result.result);else f.t.ownerError(call.id,result.code,result.message??result.code,result.details);}await flush(2);}};
+ const answerPending=()=>answerMountedAncillary(f);
  try{await act(async()=>{render(<App context={context}/>,host);await settle(f.t,f.db);});
   f.db.history.t=[old];f.db.historyRevisions.t=2;f.model.openThread('t');await flush(4);await answerPending();await flush(6);
   expect(f.model.longReader.peek()!.acceptedView.peek().revision).toBe(2);
   const rev2Handle=f.model.handle.peek(),rev2Reader=f.model.longReader.peek(),oldKey=f.model.bodyCacheKey('old-tail');expect(rev2Handle).not.toBeNull();expect(rev2Reader).not.toBeNull();const rev2Body=f.model.bodies.peek().get(oldKey);expect(rev2Body).toMatchObject({loading:true});
   const oldCall=f.t.calls('history.get').at(-1);expect(oldCall).not.toBeNull();expect(f.t.calls('history.get').map(call=>requestedHistoryNode(call))).toEqual(['old-tail']);expect(host.querySelector('[data-node="old-tail"]')).not.toBeNull();expect(host.querySelector('[data-node="old-tail"]')!.textContent).toContain('old prefix');
   const oldRow=host.querySelector('[data-node="old-tail"]');expect(oldRow).not.toBeNull();const oldButton=[...oldRow!.querySelectorAll<HTMLButtonElement>('button')].find(button=>button.textContent?.includes(f.model.t.value('convo.loadingBody')));expect(oldButton).not.toBeNull();expect(oldButton!.disabled).toBe(false);expect(f.t.calls('history.get').map(call=>call.args)).toEqual([{node_id:'old-tail'}]);await act(async()=>{oldButton!.click();await flush(2);});expect(f.t.calls('history.get').map(call=>call.args)).toEqual([{node_id:'old-tail'}]);
-  f.db.history.t=[old,newer];f.db.historyRevisions.t=3;f.model.longReader.peek()!.jumpToEnd();await flush(4);await answerPending();await flush(6);
+  f.db.history.t=[old,newer];f.db.historyRevisions.t=3;const restoreResponder=installMountedWindowResponder(f);f.model.longReader.peek()!.jumpToEnd();await flush(4);await answerPending();await flush(6);
   expect(f.model.longReader.peek()!.acceptedView.peek().revision).toBe(3);
   expect(f.model.handle.peek()).toBe(rev2Handle);expect(f.model.longReader.peek()).toBe(rev2Reader);expect(f.model.bodyCacheKey('old-tail')).toBe(oldKey);expect(f.model.bodies.peek().get(oldKey)).toBe(rev2Body);expect(f.model.bodies.peek().get(oldKey)).toMatchObject({loading:true});expect(f.model.longReader.peek()!.acceptedView.peek().rows.map(row=>row.node_id)).toEqual(['old-tail','new-tail']);expect(host.querySelector('[data-node="new-tail"]')?.textContent).toContain('new complete');
   f.t.ok(oldCall!.id,{node_id:'old-tail',kind:'assistant_response',text:'OLD_PREFIX\nOLD_FULL',next_cursor:'stale-next'});await flush(6);
   expect(f.t.calls('history.get').map(call=>call.args)).toEqual([{node_id:'old-tail'},{node_id:'old-tail',cursor:'stale-next'}]);const cursorCall=f.t.calls('history.get')[1]!;f.t.ok(cursorCall.id,{node_id:'old-tail',kind:'assistant_response',text:'\nOLD_REST'});await flush(8);
   expect(f.t.calls('history.get').map(call=>call.args)).toEqual([{node_id:'old-tail'},{node_id:'old-tail',cursor:'stale-next'}]);expect(f.model.bodies.peek().get(oldKey)?.text).toBe('OLD_PREFIX\nOLD_FULL\nOLD_REST');const oldMarkdown=[...host.querySelectorAll('[data-node="old-tail"] .md')].map(node=>(node.textContent??'').replace(/\s+$/,'')).join('\n');expect(oldMarkdown).toBe('OLD_PREFIX\nOLD_FULL\nOLD_REST');
- }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
+ }finally{restoreResponder?.();render(null,host);host.remove();f.model.dispose();f.data.stop();}
 });
