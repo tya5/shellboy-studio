@@ -7,7 +7,7 @@ type OwnerIdentity = AppModel["data"]["owner"]["value"];
 type Visit = object;
 type DetailState = { id: string; route: Route; owner: OwnerIdentity; visit: Visit; loading: boolean; value?: ThreadDetails; error?: string };
 type ActionState = { id: string; route: Route; owner: OwnerIdentity; visit: Visit; kind: "idle" | "running" } | { id: string; route: Route; owner: OwnerIdentity; visit: Visit; kind: "done"; archived: boolean; count: number; already: number; notFound: number } | { id: string; route: Route; owner: OwnerIdentity; visit: Visit; kind: "failed"; message: string };
-type SettingsState = { id: string; route: Route; owner: OwnerIdentity; visit: Visit; model: string; effort: string; saving: boolean; saved: boolean; error?: string };
+type SettingsState = { id: string; route: Route; owner: OwnerIdentity; visit: Visit; model: string; effort: string; initialEffort: string; saving: boolean; saved: boolean; error?: string };
 
 /** One-thread management entry; route reads and mutations are independent of bulk selection. */
 export function ThreadManagement({ model }: { model: AppModel }) {
@@ -38,7 +38,7 @@ export function ThreadManagement({ model }: { model: AppModel }) {
       if (!currentTarget()) return;
       if (out.ok) {
         read({ id, route: readRoute, owner: readOwner, visit: readVisit, loading: false, value: out.value });
-        setSettingsState({ id, route: readRoute, owner: readOwner, visit: readVisit, model: out.value.model, effort: out.value.effort ?? "", saving: false, saved: false });
+        setSettingsState({ id, route: readRoute, owner: readOwner, visit: readVisit, model: out.value.model, effort: out.value.effort ?? "", initialEffort: out.value.effort ?? "", saving: false, saved: false });
       } else read({ id, route: readRoute, owner: readOwner, visit: readVisit, loading: false, error: out.error.message });
     });
     return () => {
@@ -88,7 +88,7 @@ export function ThreadManagement({ model }: { model: AppModel }) {
     const currentTarget = () => visitRef.current === target.visit && model.route.peek() === target.route && model.route.peek().view === "thread-management" && model.data.owner.peek() === target.owner;
     if (!currentTarget()) return;
     setSettingsState({ ...settings, saving: true, saved: false, error: undefined });
-    const out = await model.ops.setThreadModel(target.id, { model: settings.model.trim(), connection: detail.connection, ...(settings.effort.trim() ? { effort: settings.effort.trim() } : {}) });
+    const out = await model.ops.setThreadModel(target.id, { model: settings.model.trim(), connection: detail.connection, ...(settings.effort !== settings.initialEffort ? { effort: settings.effort.trim() } : {}) });
     if (!currentTarget()) return;
     if (!out.ok) {
       setSettingsState({ ...settings, saving: false, saved: false, error: out.error.message });
@@ -101,7 +101,7 @@ export function ThreadManagement({ model }: { model: AppModel }) {
       return;
     }
     setDetailState({ id: target.id, route: target.route, owner: target.owner, visit: target.visit, loading: false, value: refreshed.value });
-    setSettingsState({ ...settings, model: refreshed.value.model, effort: refreshed.value.effort ?? "", saving: false, saved: true, error: undefined });
+    setSettingsState({ ...settings, model: refreshed.value.model, effort: refreshed.value.effort ?? "", initialEffort: refreshed.value.effort ?? "", saving: false, saved: true, error: undefined });
   };
 
   return <Section title={detail.title} sub={detail.thread_id} actions={<a class="btn" href={formatRoute({ view: "conversation", threadId: id })}>{t("view.conversation")}</a>}>
@@ -109,8 +109,8 @@ export function ThreadManagement({ model }: { model: AppModel }) {
       {actionable ? <Button disabled={currentAction?.kind === "running"} onClick={() => void mutate()}>{archived ? t("org.unarchive") : t("action.archive")}</Button> : null}
     </div>
     {settings ? <div class="band" data-thread-settings="">
-      <Field ariaLabel={t("model.change")} value={settings.model} disabled={settings.saving} onInput={(e) => setSettingsState({ ...settings, model: e.currentTarget.value, saved: false })} />
-      <Field ariaLabel={t("model.effort")} value={settings.effort} disabled={settings.saving} onInput={(e) => setSettingsState({ ...settings, effort: e.currentTarget.value, saved: false })} />
+      <Field ariaLabel={t("model.change")} value={settings.model} disabled={settings.saving} onInput={(e) => setSettingsState((prev) => prev && prev.id === id && prev.route === route && prev.owner === owner && prev.visit === visitRef.current ? { ...prev, model: e.currentTarget.value, saved: false, error: undefined } : prev)} />
+      <Field ariaLabel={t("model.effort")} value={settings.effort} disabled={settings.saving} onInput={(e) => setSettingsState((prev) => prev && prev.id === id && prev.route === route && prev.owner === owner && prev.visit === visitRef.current ? { ...prev, effort: e.currentTarget.value, saved: false, error: undefined } : prev)} />
       {model.data.capabilities.value.includes("thread.settings") ? <Button variant="primary" disabled={settings.saving || !settings.model.trim()} onClick={() => void saveSettings()}>{t("model.save")}</Button> : <Notice tone="wait">{t("thread.readOnly")}</Notice>}
       {settings.error ? <Notice tone="bad">{settings.error}</Notice> : null}
       {settings.saved ? <Notice>{t("thread.settingsSaved")}</Notice> : null}

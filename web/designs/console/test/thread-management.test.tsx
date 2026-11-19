@@ -85,11 +85,15 @@ it("saves management model and effort only after same-thread readback", async ()
     await flush();
     const setCall = f.t.calls("thread.set").at(-1);
     expect(setCall?.args).toEqual({ thread_id: "A", model: "next-model", connection: "c", effort: "high" });
-    f.t.ok(setCall!.id, details("A", { model: "next-model", effort: "high" }));
+    f.t.ok(setCall!.id, {});
     await act(async () => { await flush(); });
+    expect(host.querySelector("[data-thread-settings]")?.textContent).not.toContain(f.model.t.value("thread.settingsSaved"));
+    f.db.details.A = details("A", { model: "next-model", effort: "high" });
     await answer(f, "thread.get", "A");
     expect(host.querySelector("[data-thread-settings]")?.textContent).toContain(f.model.t.value("thread.settingsSaved"));
-    expect((host.querySelectorAll<HTMLInputElement>("[data-thread-settings] input")[0])?.value).toBe("next-model");
+    const readback = host.querySelectorAll<HTMLInputElement>("[data-thread-settings] input");
+    expect(readback[0]?.value).toBe("next-model");
+    expect(readback[1]?.value).toBe("high");
   } finally {
     render(null, host);
     host.remove();
