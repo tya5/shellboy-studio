@@ -25,7 +25,7 @@ required-features = ["real-owner-tests"]
 # Explicit integration suite: never part of owner-free unit/synthetic checks.
 real-owner-tests = []
 default = ["next-shellboy", "next-connection-setup", "next-tags", "next-cwds"]
-# Core v0.13.1 pairing remains pending an exact reviewed release ref; do not bind moving main here.
+# Core v0.13.1 pairing is bound to the exact reviewed peeled tag commit in Cargo.lock; do not use moving main.
 next-shellboy = []
 # #262 owner branch adds message.ask; never forward it from Studio.
 next-reply = ["next-shellboy"]
