@@ -710,8 +710,10 @@ export class AppModel {
     if (!reader.acceptedView.isCurrent(snapshot)) return;
     reader.refreshConversationInput(snapshot);
     this.applyCommittedOwnRegion(reader, handle, reader.acceptedView.peek());
-    const candidate = [...reader.rangeItems()].reverse().find((node) => node.kind === "assistant_response" && (node.items === null || node.items?.some((item) => item.kind === "text" && item.text_complete === false)));
-    if (candidate?.node_id !== undefined) {
+    const currentSnapshot = reader.acceptedView.peek();
+    const tailComplete = currentSnapshot.total === 0 || currentSnapshot.range?.last === currentSnapshot.total - 1;
+    const candidate = tailComplete ? [...currentSnapshot.rows].reverse().find((node) => node.kind === "assistant_response") : undefined;
+    if (candidate?.node_id !== undefined && (candidate.items === null || candidate.items?.some((item) => item.kind === "text" && item.text_complete === false))) {
       const identity = candidate.items?.find((item) => item.kind === "text")?.item_identity ?? `${candidate.node_id}:deferred`;
       let readerKeys = this.autoBodyReads.get(handle);
       if (!readerKeys) { readerKeys = new WeakMap(); this.autoBodyReads.set(handle, readerKeys); }
@@ -903,6 +905,7 @@ export class AppModel {
     const set = (b: BodyState) => {
       this.bodies.value = setBounded(this.bodies.peek() as Map<string, BodyState>, nodeId, b);
     };
+    if (this.bodies.peek().get(nodeId)?.loading) return;
     const handle = this.handle.peek();
     const reader = this.longReader.peek();
     const cancel = this.threadReads;
@@ -914,7 +917,12 @@ export class AppModel {
     let cursor: string | undefined;
     for (let page = 0; page < MAX_PAGES; page++) {
       const out = await this.ops.historyGet({ node_id: nodeId, ...(cursor !== undefined && { cursor }) }, { cancel: this.threadReads });
-      if (!qualified()) return;
+      if (!qualified()) {
+        if (expected !== undefined && this.bodies.peek().get(nodeId)?.loading) {
+          const next = new Map(this.bodies.peek()); next.delete(nodeId); this.bodies.value = next;
+        }
+        return;
+      }
       if (!out.ok) {
         set({ text: undefined, loading: false, error: out.error.kind === "cancelled" ? undefined : errorMessage(out.error) });
         return;
