@@ -472,3 +472,19 @@ it("auto-loads only the newest typed prose body once", async () => {
   const host = document.createElement("div"); document.body.append(host);
   try { await act(async () => { render(<App context={{ model: f.model, prefs: signal(loadPrefs({ read: () => null, write: () => {} }, [{ name: "console", themes: [{ name: "light" }] }])), designs: [], setPrefs() {}, submitToken: async () => false }} />, host); await settle(f.t, f.db); await flush(8); }); expect(f.t.calls("history.get").map(call => requestedHistoryNode(call))).toEqual(["new"]); const autoId=f.t.calls("history.get")[0]!.id; expect(host.textContent).toContain("Newest full"); f.t.push({t:"changed",thread_ids:["t"],list:false}); await settle(f.t,f.db); expect(f.t.calls("history.get")).toHaveLength(1); expect(f.t.calls("history.get")[0]!.id).toBe(autoId); } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
 });
+
+it("mounted stale auto body refuses an old cursor after rev2/rev3 windows", async () => {
+ const f=await fixtureModel({capabilities:["history.window"],route:"conversation",threadId:"t",configure(db){db.threads={t:summary("t")};db.details.t=details("t");db.history.t=[];db.historyRevisions.t=1;}});
+ const host=document.createElement('div');document.body.append(host);const context:DesignContext={model:f.model,prefs:signal(loadPrefs({read:()=>null,write:()=>{}},[{name:'console',themes:[{name:'light'}]}])),setPrefs:()=>{},designs:[],submitToken:async()=>false};
+ const old:HistoryItem={node_id:'old-tail',kind:'assistant_response',selection:{ordinal:0},items:[{kind:'text',item_identity:'answer',text:'old prefix',text_complete:false}};
+ const newer:HistoryItem={node_id:'new-tail',kind:'assistant_response',selection:{ordinal:1},items:[{kind:'text',item_identity:'answer',text:'new complete',text_complete:true}]};
+ const answerWindows=()=>{for(const call of f.t.calls('history.window').filter(call=>!f.db.answered.has(call.id)){f.db.answered.add(call.id);const result=f.db.answer(call);if(result.ok)f.t.ok(call.id,result.result);else f.t.ownerError(call.id,result.code,result.message??result.code,result.details);}};
+ try{await act(async()=>{render(<App context={context}/>,host);await settle(f.t,f.db);});
+  f.db.history.t=[old];f.db.historyRevisions.t=2;f.t.push({t:'changed',thread_ids:['t'],list:false});await flush(4);answerWindows();await flush(6);
+  const oldCall=f.t.calls('history.get').at(-1);expect(oldCall).toBeDefined();expect(f.t.calls('history.get').map(call=>requestedHistoryNode(call))).toEqual(['old-tail']);expect(host.querySelector('[data-node="old-tail"]')).toBeDefined();
+  f.db.history.t=[old,newer];f.db.historyRevisions.t=3;f.t.push({t:'changed',thread_ids:['t'],list:false});await flush(4);answerWindows();await flush(6);
+  expect(f.model.handle.peek()).toBeDefined();expect(f.model.longReader.peek()!.acceptedView.peek().rows.map(row=>row.node_id)).toEqual(['old-tail','new-tail']);expect(host.querySelector('[data-node="new-tail"]')?.textContent).toContain('new complete');
+  f.t.ok(oldCall!.id,{node_id:'old-tail',kind:'assistant_response',text:'OLD_FULL_SHOULD_NOT_RENDER',next_cursor:'stale-next'});await flush(8);
+  expect(f.t.calls('history.get')).toHaveLength(1);expect([...host.querySelectorAll('[data-node="old-tail"] .md')].map(node=>node.textContent)).not.toContain('OLD_FULL_SHOULD_NOT_RENDER');
+ }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
+});
