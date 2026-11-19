@@ -400,7 +400,7 @@ it('accepted live preview retires after saved >16KiB body loads through the ordi
   f.t.push({t:'live',thread_id:'t',attempt_id:attempt,gap:false,deltas:[{offset:0,reasoning:false,text:'live preview'}]});await flush(8);
   expect(host.textContent).toContain('live preview');expect(handle.handoff.value.some(record=>record.attemptId===attempt)).toBe(true);
   tuples.length=0;collecting=true;
-  rows=[{node_id:'saved-assistant',kind:'assistant_response',selection:{ordinal:0},items:[{kind:'text',item_identity:'answer',text:excerpt,text_complete:false}],provenance:{sender:{kind:'assistant'},attempt_id:attempt}}];f.db.history.t=rows;
+  rows=[{node_id:'saved-assistant',kind:'assistant_response',selection:{ordinal:0},items:[{kind:'text',item_identity:'answer',text:excerpt,text_complete:false}],provenance:{sender:{kind:'assistant'},attempt_id:attempt}},{node_id:'newer-complete',kind:'assistant_response',selection:{ordinal:1},items:[{kind:'text',item_identity:'newer',text:'newer complete',text_complete:true}],provenance:{sender:{kind:'assistant'}}}];f.db.history.t=rows;
   await act(async()=>{f.t.push({t:'changed',thread_ids:['t'],list:false});await settle(f.t,f.db);});
   expect(handle.handoff.value.some(record=>record.attemptId===attempt)).toBe(false);expect(tuples.length).toBeGreaterThan(1);
   const committedRef=f.model.longReader.peek()!.acceptedView.peek(),planSources=committedRef.displayPlan!.entries.map(entry=>entry.item.source);
