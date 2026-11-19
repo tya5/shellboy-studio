@@ -408,3 +408,10 @@ it('accepted live preview retires after saved >16KiB body loads through the ordi
   expect(tuples.length).toBeGreaterThan(1);stopAccepted();stopLive();
  }finally{render(null,host);host.remove();f.data.stop()}
 });
+
+it("auto-loads only the newest deferred saved body once without live handoff", async () => {
+  let rows: HistoryItem[] = [{ node_id: "old", kind: "assistant_response", selection: { ordinal: 0 }, items: [{ kind: "text", item_identity: "old-body", text: "Older", text_complete: true }], excerpt: "Older" }, { node_id: "new", kind: "assistant_response", selection: { ordinal: 1 }, items: null, items_unavailable_reason: "response_budget", excerpt: "Newest" }];
+  const f = await fixtureModel({ capabilities: ["history.window"], route: "conversation", threadId: "t", configure(db) { db.threads = { t: summary("t") }; db.details.t = details("t"); db.history.t = rows; const base = db.answer.bind(db); db.answer = call => call.command === "history.get" ? { ok: true, result: { node_id: "new", kind: "assistant_response", text: "Newest full", provenance: { sender: { kind: "assistant" } } } } : call.command === "history.window" ? { ok: true, result: { thread_id: "t", revision: 1, total: rows.length, items: rows } } : base(call); } });
+  const host = document.createElement("div"); document.body.append(host);
+  try { await act(async () => { render(<App context={{ model: f.model, prefs: signal(loadPrefs({ read: () => null, write: () => {} }, [{ name: "console", themes: [{ name: "light" }] }])), designs: [], setPrefs() {}, submitToken: async () => false }} />, host); await settle(f.t, f.db); await flush(8); }); expect(f.t.calls("history.get").map(call => call.args)).toEqual([{ node_id: "new" }]); expect(host.textContent).toContain("Newest full"); expect(host.textContent).toContain("Older"); } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
+});
