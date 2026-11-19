@@ -275,7 +275,13 @@ export class AppModel {
   readonly shells: Signal<ReadonlyMap<string, ShellEntry>> = signal(new Map());
   readonly outputs: Signal<ReadonlyMap<string, OutputState>> = signal(new Map());
   readonly bodies: Signal<ReadonlyMap<string, BodyState>> = signal(new Map());
-  bodyCacheKey(nodeId: string, itemIdentity?: string): string { return `${this.handle.peek()?.threadId ?? ""}:${nodeId}:${itemIdentity ?? "manual"}`; }
+  bodyCacheKey(nodeId: string, itemIdentity?: string): string {
+    const handle = this.handle.peek();
+    if (!handle) return `unbound:${nodeId}:${itemIdentity ?? "manual"}`;
+    let owner = this.bodyOwnerKeys.get(handle);
+    if (!owner) { owner = `owner-${++this.nextBodyOwnerKey}`; this.bodyOwnerKeys.set(handle, owner); }
+    return `${owner}:${nodeId}:${itemIdentity ?? "manual"}`;
+  }
   bodyState(nodeId: string, itemIdentity?: string): BodyState | undefined { return this.bodies.value.get(this.bodyCacheKey(nodeId, itemIdentity)); }
   readonly selectedStepId: Signal<string | undefined> = signal(undefined);
   readonly selectedStep: ReadonlySignal<StepRow | undefined>;
@@ -305,6 +311,8 @@ export class AppModel {
   private outputReads = new Map<string, Cancel>();
   private autoBodyReads = new WeakMap<ThreadHandle, WeakMap<ConversationWindow, Set<string>>>;
   private bodyReadTokens = new Map<string, object>();
+  private bodyOwnerKeys = new WeakMap<ThreadHandle, string>();
+  private nextBodyOwnerKey = 0;
 
   readonly senderTitles: SenderTitles;
   private readonly senderPage = signal(0);
@@ -925,6 +933,10 @@ export class AppModel {
     let text = "";
     let cursor: string | undefined;
     for (let page = 0; page < MAX_PAGES; page++) {
+      if (!qualified() || this.bodyReadTokens.get(cacheKey) !== token) {
+        if (this.bodyReadTokens.get(cacheKey) === token) { const next = new Map(this.bodies.peek()); next.delete(cacheKey); this.bodies.value = next; this.bodyReadTokens.delete(cacheKey); }
+        return;
+      }
       const out = await this.ops.historyGet({ node_id: nodeId, ...(cursor !== undefined && { cursor }) }, { cancel: this.threadReads });
       const owns = () => this.bodyReadTokens.get(cacheKey) === token;
       if (!qualified()) {
