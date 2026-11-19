@@ -301,6 +301,7 @@ export class AppModel {
   private threadReads = new Cancel();
   /** A step's output read, cancelled when its row closes. */
   private outputReads = new Map<string, Cancel>();
+  private autoBodyReads = new Set<string>();
 
   readonly senderTitles: SenderTitles;
   private readonly senderPage = signal(0);
@@ -709,6 +710,15 @@ export class AppModel {
     if (!reader.acceptedView.isCurrent(snapshot)) return;
     reader.refreshConversationInput(snapshot);
     this.applyCommittedOwnRegion(reader, handle, reader.acceptedView.peek());
+    const candidate = [...reader.rangeItems()].reverse().find((node) => node.kind === "assistant_response" && (node.items === null || node.items?.some((item) => item.kind === "text" && item.text_complete === false)));
+    if (candidate?.node_id !== undefined) {
+      const identity = candidate.items?.find((item) => item.kind === "text")?.item_identity ?? `${candidate.node_id}:deferred`;
+      const key = `${handle.threadId}:${candidate.node_id}:${identity}`;
+      if (this.bodies.peek().get(candidate.node_id) === undefined && !this.autoBodyReads.has(key)) {
+        this.autoBodyReads.add(key);
+        void this.loadBody(candidate.node_id, { handle, reader, identity }).finally(() => this.autoBodyReads.delete(key));
+      }
+    }
   }
 
   /** Shell facts for the steps in view, read while it shows some. */
@@ -885,7 +895,7 @@ export class AppModel {
   }
 
   /** Read one message beyond its excerpt. On request only. */
-  async loadBody(nodeId: string): Promise<void> {
+  async loadBody(nodeId: string, expected?: { handle: ThreadHandle; reader: ConversationWindow; identity: string }): Promise<void> {
     const set = (b: BodyState) => {
       this.bodies.value = setBounded(this.bodies.peek() as Map<string, BodyState>, nodeId, b);
     };
@@ -893,17 +903,18 @@ export class AppModel {
     const reader = this.longReader.peek();
     const cancel = this.threadReads;
     const route = this.route.peek();
-    const qualified = () => this.handle.peek() === handle && this.longReader.peek() === reader && this.threadReads === cancel && this.route.peek() === route;
+    const qualified = () => this.handle.peek() === handle && this.longReader.peek() === reader && this.threadReads === cancel && this.route.peek() === route
+      && (expected === undefined || reader.acceptedView.peek().rows.some((row) => row.node_id === nodeId && row.items?.some((item) => item.item_identity === expected.identity)));
     set({ text: undefined, loading: true, error: undefined });
     let text = "";
     let cursor: string | undefined;
     for (let page = 0; page < MAX_PAGES; page++) {
       const out = await this.ops.historyGet({ node_id: nodeId, ...(cursor !== undefined && { cursor }) }, { cancel: this.threadReads });
+      if (!qualified()) return;
       if (!out.ok) {
         set({ text: undefined, loading: false, error: out.error.kind === "cancelled" ? undefined : errorMessage(out.error) });
         return;
       }
-      if (!qualified()) return;
       text += out.value.text;
       cursor = out.value.next_cursor;
       if (cursor === undefined) break;
