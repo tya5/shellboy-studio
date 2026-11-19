@@ -301,7 +301,7 @@ export class AppModel {
   private threadReads = new Cancel();
   /** A step's output read, cancelled when its row closes. */
   private outputReads = new Map<string, Cancel>();
-  private autoBodyReads = new Set<string>();
+  private autoBodyReads = new WeakMap<ThreadHandle, WeakMap<ConversationWindow, Set<string>>>;
 
   readonly senderTitles: SenderTitles;
   private readonly senderPage = signal(0);
@@ -713,10 +713,14 @@ export class AppModel {
     const candidate = [...reader.rangeItems()].reverse().find((node) => node.kind === "assistant_response" && (node.items === null || node.items?.some((item) => item.kind === "text" && item.text_complete === false)));
     if (candidate?.node_id !== undefined) {
       const identity = candidate.items?.find((item) => item.kind === "text")?.item_identity ?? `${candidate.node_id}:deferred`;
-      const key = `${handle.threadId}:${candidate.node_id}:${identity}`;
-      if (this.bodies.peek().get(candidate.node_id) === undefined && !this.autoBodyReads.has(key)) {
-        this.autoBodyReads.add(key);
-        void this.loadBody(candidate.node_id, { handle, reader, identity }).finally(() => this.autoBodyReads.delete(key));
+      let readerKeys = this.autoBodyReads.get(handle);
+      if (!readerKeys) { readerKeys = new WeakMap(); this.autoBodyReads.set(handle, readerKeys); }
+      let keys = readerKeys.get(reader);
+      if (!keys) { keys = new Set(); readerKeys.set(reader, keys); }
+      const key = `${candidate.node_id}:${identity}`;
+      if (this.bodies.peek().get(candidate.node_id) === undefined && !keys.has(key)) {
+        keys.add(key);
+        void this.loadBody(candidate.node_id, { handle, reader, identity });
       }
     }
   }
@@ -904,7 +908,7 @@ export class AppModel {
     const cancel = this.threadReads;
     const route = this.route.peek();
     const qualified = () => this.handle.peek() === handle && this.longReader.peek() === reader && this.threadReads === cancel && this.route.peek() === route
-      && (expected === undefined || reader.acceptedView.peek().rows.some((row) => row.node_id === nodeId && row.items?.some((item) => item.item_identity === expected.identity)));
+      && (expected === undefined || reader.acceptedView.peek().rows.some((row) => row.node_id === nodeId && (row.items === null || row.items?.some((item) => item.item_identity === expected.identity))));
     set({ text: undefined, loading: true, error: undefined });
     let text = "";
     let cursor: string | undefined;
@@ -913,6 +917,10 @@ export class AppModel {
       if (!qualified()) return;
       if (!out.ok) {
         set({ text: undefined, loading: false, error: out.error.kind === "cancelled" ? undefined : errorMessage(out.error) });
+        return;
+      }
+      if (out.value.node_id !== nodeId) {
+        set({ text: undefined, loading: false, error: "history body node mismatch" });
         return;
       }
       text += out.value.text;
