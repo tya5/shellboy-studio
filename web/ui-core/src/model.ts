@@ -946,7 +946,7 @@ export class AppModel {
     };
     if (expected?.kind === "typed" && reader !== undefined) {
       const row = reader.acceptedView.peek().rows.find(row => row.node_id === nodeId);
-      if (!row || !row.items || row.items.length === 0 || !row.items.every(item => item.kind === "text") || expected.identity === undefined && !autoQualified()) return;
+      if (!row || !row.items || row.items.length === 0 || !row.items.every(item => item.kind === "text") || expected.handle !== undefined && !autoQualified()) return;
     }
     // One cache-slot owner; a manual click upgrades that token without a second RPC.
     const existing = this.bodyReadTokens.get(cacheKey);
@@ -962,7 +962,7 @@ export class AppModel {
       && this.longReader.peek() === reader && this.threadReads === cancel && this.route.peek() === route
       && (expected === undefined || (reader !== undefined
         ? reader.acceptedView.isCurrent(reader.acceptedView.peek()) && reader.acceptedView.peek().rows.some((row) => row.node_id === nodeId
-          && (expected.kind === "deferred" ? row.items === null : row.items !== null && row.items !== undefined && row.items.length > 0 && row.items.every((item) => item.kind === "text") && (expected.identity === undefined ? (token.manualAuthorized || autoQualified()) : row.items.some((item) => item.item_identity === expected.identity))))
+          && (expected.kind === "deferred" ? row.items === null : row.items !== null && row.items !== undefined && row.items.length > 0 && row.items.every((item) => item.kind === "text") && (expected.identity === undefined ? (token.manualAuthorized || expected.handle === undefined || autoQualified()) : row.items.some((item) => item.item_identity === expected.identity))))
         : false));
     const current = () => this.handle.peek() === handle && handle.liveEpoch() === lifetime
       && this.longReader.peek() === reader && this.threadReads === cancel && this.route.peek() === route;

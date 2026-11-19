@@ -332,13 +332,13 @@ function allProseNode(node: HistoryItem): boolean {
 function BodyReadMessage({model,node,displayText}:{model:AppModel;node:HistoryItem;displayText:string|undefined}) {
   const nodeAuthoritative = allProseNode(node);
   const itemIdentity = nodeAuthoritative ? undefined : node.items?.find(item => item.kind === "text")?.item_identity;
-  return <Message bot={node.kind === "assistant_response"} who={node.kind === "assistant_response" ? model.t.value("convo.shellboy") : model.t.value("convo.you")} at={formatClock(node.provenance?.created_at)} text={model.bodyState(node.node_id!, itemIdentity)?.text ?? displayText ?? ""} copyLabel={model.t.value("code.copy")} copiedLabel={model.t.value("code.copied")}><BodyReadButton model={model} nodeId={node.node_id!} itemIdentity={itemIdentity} unavailable={!nodeAuthoritative && node.items !== null} /></Message>;
+  return <Message bot={node.kind === "assistant_response"} who={node.kind === "assistant_response" ? model.t.value("convo.shellboy") : model.t.value("convo.you")} at={formatClock(node.provenance?.created_at)} text={model.bodyState(node.node_id!, itemIdentity)?.text ?? displayText ?? ""} copyLabel={model.t.value("code.copy")} copiedLabel={model.t.value("code.copied")}><BodyReadButton model={model} nodeId={node.node_id!} itemIdentity={itemIdentity} typedNode={nodeAuthoritative} unavailable={!nodeAuthoritative && node.items !== null} /></Message>;
 }
 
-function BodyReadButton({model,nodeId,itemIdentity,unavailable}:{model:AppModel;nodeId:string;itemIdentity?:string;unavailable?:boolean}) {
+function BodyReadButton({model,nodeId,itemIdentity,typedNode,unavailable}:{model:AppModel;nodeId:string;itemIdentity?:string;typedNode?:boolean;unavailable?:boolean}) {
   const body=model.bodyState(nodeId,itemIdentity);
   if (unavailable) return <span class="muted caption" data-body-unavailable="">{model.t.value("work.textUnavailable")}</span>;
-  return <Button variant="link" disabled={body?.loading} onClick={() => void model.loadBody(nodeId, itemIdentity === undefined ? undefined : { kind: "typed", identity: itemIdentity })}>{body?.loading ? model.t.value("convo.loadingBody") : model.t.value("convo.fullMessage")}</Button>;
+  return <Button variant="link" onClick={() => void model.loadBody(nodeId, typedNode ? { kind: "typed", identity: undefined } : itemIdentity === undefined ? undefined : { kind: "typed", identity: itemIdentity })}>{body?.loading ? model.t.value("convo.loadingBody") : model.t.value("convo.fullMessage")}</Button>;
 }
 
 function ProjectedMessage({ model, row, authorizedText, relationship, bodyPartial, bodyUnavailable }: { relationship:ReturnType<typeof messageRelationship>; model: AppModel; row: Extract<ConversationRow, {type:"message"}>; authorizedText: string; bodyPartial?: boolean; bodyUnavailable?: boolean }) {
@@ -360,7 +360,7 @@ function ProjectedMessage({ model, row, authorizedText, relationship, bodyPartia
       </div> : row.speaker.kind === "unknown" && row.speaker.label !== undefined ? <div class="caption">{t("convo.senderClaimedLabel", { label: row.speaker.label })}</div> : null}
       {(row.truncated || bodyPartial) && body?.text === undefined ? (
         <span class="more">
-          {bodyUnavailable ? <span class="muted caption" data-body-unavailable="">{t("work.textUnavailable")}</span> : <Button variant="link" disabled={body?.loading} onClick={() => void model.loadBody(row.id, row.itemIdentity === undefined ? undefined : { kind: "typed", identity: row.itemIdentity })}>
+          {bodyUnavailable ? <span class="muted caption" data-body-unavailable="">{t("work.textUnavailable")}</span> : <Button variant="link" disabled={body?.loading} onClick={() => void model.loadBody(row.id, nodeAuthoritative ? { kind: "typed", identity: undefined } : row.itemIdentity === undefined ? undefined : { kind: "typed", identity: row.itemIdentity })}>
             {body?.loading ? t("convo.loadingBody") : t("convo.fullMessage")}
           </Button>}
           {body?.error ? <span class="muted caption">{body.error}</span> : null}
