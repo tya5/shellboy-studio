@@ -101,3 +101,36 @@ it("saves management model and effort only after same-thread readback", async ()
     f.data.stop();
   }
 });
+
+it("drops a late management settings completion after navigation", async () => {
+  const f = await fixtureModel({ route: "threads", capabilities: ["thread.settings"], configure(db) {
+    db.threads = { A: summary("A"), B: summary("B") };
+    db.details = { A: details("A"), B: details("B") };
+  } });
+  const host = document.createElement("div");
+  document.body.append(host);
+  try {
+    f.model.applyRoute({ view: "thread-management", threadId: "A" });
+    await act(async () => { render(<ThreadManagement model={f.model} />, host); await flush(); });
+    await answer(f, "thread.get", "A");
+    const modelField = host.querySelector<HTMLInputElement>("[data-thread-settings] input");
+    modelField!.value = "late-model";
+    await act(async () => { modelField!.dispatchEvent(new Event("input", { bubbles: true })); await flush(); });
+    host.querySelector<HTMLButtonElement>("[data-thread-settings] button")!.click();
+    await flush();
+    const setCall = f.t.calls("thread.set").at(-1)!;
+    await act(async () => { f.model.applyRoute({ view: "thread-management", threadId: "B" }); await flush(); });
+    await answer(f, "thread.get", "B");
+    const readsBeforeAck = f.t.calls("thread.get").length;
+    f.t.ok(setCall.id, details("A", { model: "late-model" }));
+    await act(async () => { await flush(); });
+    expect(f.t.calls("thread.get")).toHaveLength(readsBeforeAck);
+    expect(host.textContent).toContain("t-B");
+    expect(host.textContent).not.toContain(f.model.t.value("thread.settingsSaved"));
+  } finally {
+    render(null, host);
+    host.remove();
+    f.model.dispose();
+    f.data.stop();
+  }
+});
