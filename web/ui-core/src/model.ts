@@ -936,21 +936,30 @@ export class AppModel {
     const set = (b: BodyState) => {
       this.bodies.value = setBounded(this.bodies.peek() as Map<string, BodyState>, cacheKey, b);
     };
+    const autoQualified = () => {
+      if (reader === undefined) return false;
+      const snapshot = reader.acceptedView.peek();
+      if (!reader.acceptedView.isCurrent(snapshot) || snapshot.range?.last !== snapshot.total - 1) return false;
+      const newest = [...snapshot.rows].reverse().find(row => row.kind === "assistant_response");
+      return newest?.node_id === nodeId && newest.items !== null && newest.items !== undefined && newest.items.length > 0 && newest.items.every(item => item.kind === "text");
+    };
     if (expected?.kind === "typed" && reader !== undefined) {
       const row = reader.acceptedView.peek().rows.find(row => row.node_id === nodeId);
-      if (!row || !row.items || row.items.length === 0 || !row.items.every(item => item.kind === "text")) return;
+      if (!row || !row.items || row.items.length === 0 || !row.items.every(item => item.kind === "text") || expected.identity === undefined && !autoQualified()) return;
     }
-    const existing = this.bodyReadTokens.get(cacheKey);
+    // Explicit manual intent must not disappear behind an automatic request for the same body.
+    const tokenKey = `${cacheKey}:${expected?.handle === undefined ? "manual" : "automatic"}`;
+    const existing = this.bodyReadTokens.get(tokenKey);
     if (existing !== undefined) return;
     const token = {};
-    this.bodyReadTokens.set(cacheKey, token);
+    this.bodyReadTokens.set(tokenKey, token);
     const cancel = this.threadReads;
     const lifetime = handle.liveEpoch();
     const qualified = () => this.handle.peek() === handle && handle.liveEpoch() === lifetime
       && this.longReader.peek() === reader && this.threadReads === cancel && this.route.peek() === route
       && (expected === undefined || (reader !== undefined
         ? reader.acceptedView.isCurrent(reader.acceptedView.peek()) && reader.acceptedView.peek().rows.some((row) => row.node_id === nodeId
-          && (expected.kind === "deferred" ? row.items === null : row.items !== null && row.items !== undefined && row.items.length > 0 && row.items.every((item) => item.kind === "text") && (expected.identity === undefined || row.items.some((item) => item.item_identity === expected.identity))))
+          && (expected.kind === "deferred" ? row.items === null : row.items !== null && row.items !== undefined && row.items.length > 0 && row.items.every((item) => item.kind === "text") && (expected.identity === undefined ? autoQualified() : row.items.some((item) => item.item_identity === expected.identity))))
         : false));
     const current = () => this.handle.peek() === handle && handle.liveEpoch() === lifetime
       && this.longReader.peek() === reader && this.threadReads === cancel && this.route.peek() === route;
@@ -959,15 +968,15 @@ export class AppModel {
     let cursor: string | undefined;
     try {
       for (let page = 0; page < MAX_PAGES; page++) {
-        if (!current() || !qualified() || this.bodyReadTokens.get(cacheKey) !== token) {
-          if (this.bodyReadTokens.get(cacheKey) === token && this.bodies.peek().get(cacheKey)?.loading) {
+        if (!current() || !qualified() || this.bodyReadTokens.get(tokenKey) !== token) {
+          if (this.bodyReadTokens.get(tokenKey) === token && this.bodies.peek().get(cacheKey)?.loading) {
             const next = new Map(this.bodies.peek()); next.delete(cacheKey); this.bodies.value = next;
           }
           return;
         }
         const out = await this.ops.historyGet({ node_id: nodeId, ...(cursor !== undefined && { cursor }) }, { cancel: cancel });
-        if (!current() || !qualified() || this.bodyReadTokens.get(cacheKey) !== token) {
-          if (this.bodyReadTokens.get(cacheKey) === token && this.bodies.peek().get(cacheKey)?.loading) {
+        if (!current() || !qualified() || this.bodyReadTokens.get(tokenKey) !== token) {
+          if (this.bodyReadTokens.get(tokenKey) === token && this.bodies.peek().get(cacheKey)?.loading) {
             const next = new Map(this.bodies.peek()); next.delete(cacheKey); this.bodies.value = next;
           }
           return;
@@ -984,9 +993,9 @@ export class AppModel {
         cursor = out.value.next_cursor;
         if (cursor === undefined) break;
       }
-      if (current() && qualified() && this.bodyReadTokens.get(cacheKey) === token) set({ text, loading: false, error: undefined });
+      if (current() && qualified() && this.bodyReadTokens.get(tokenKey) === token) set({ text, loading: false, error: undefined });
     } finally {
-      if (this.bodyReadTokens.get(cacheKey) === token) this.bodyReadTokens.delete(cacheKey);
+      if (this.bodyReadTokens.get(tokenKey) === token) this.bodyReadTokens.delete(tokenKey);
     }
   }
 
