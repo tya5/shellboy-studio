@@ -1117,9 +1117,15 @@ async fn live_text_reaches_a_watching_tab_and_the_saved_message_follows() {
         let frame = next_t(&mut c.ws, "live").await;
         assert_eq!(frame["thread_id"], thread.as_str());
         assert_eq!(frame["gap"], false, "{frame}");
-        let frame_attempt = frame["attempt_id"].as_str().filter(|id| !id.is_empty()).expect("live frame attempt_id");
+        let frame_attempt = frame["attempt_id"]
+            .as_str()
+            .filter(|id| !id.is_empty())
+            .expect("live frame attempt_id");
         if let Some(original) = attempt.as_deref() {
-            assert_eq!(frame_attempt, original, "live attempt changed before saved response: {frame}");
+            assert_eq!(
+                frame_attempt, original,
+                "live attempt changed before saved response: {frame}"
+            );
         } else {
             attempt = Some(frame_attempt.to_owned());
         }
@@ -1169,10 +1175,14 @@ async fn live_text_reaches_a_watching_tab_and_the_saved_message_follows() {
         "{text}"
     );
     c.settled(&thread).await;
-    let window_args = json!({"thread_id":thread,"before":99,"after":0,"excerpt_chars":4096,"items":true});
+    let window_args =
+        json!({"thread_id":thread,"before":99,"after":0,"excerpt_chars":4096,"items":true});
     let window = c.ok("history.window", window_args.clone(), None).await;
     assert_eq!(window["thread_id"], thread.as_str(), "{window}");
-    println!("STUDIO_ROW12_PRODUCER_CONSUMER_RECORD {}", json!({"request":window_args,"original_attempt_id":attempt,"result":window}));
+    println!(
+        "STUDIO_ROW12_PRODUCER_CONSUMER_RECORD {}",
+        json!({"request":window_args,"original_attempt_id":attempt,"result":window})
+    );
     let after = c
         .ok("history.list", json!({"thread_id":thread,"limit":50}), None)
         .await;
@@ -1190,8 +1200,15 @@ async fn live_text_reaches_a_watching_tab_and_the_saved_message_follows() {
                 && item["selection"]["thread_id"] == thread.as_str()
         })
         .collect();
-    assert_eq!(saved_matches.len(), 1, "saved assistant witness must be unique: {after}");
-    assert_eq!(saved_matches[0]["provenance"]["attempt_id"], attempt.as_str());
+    assert_eq!(
+        saved_matches.len(),
+        1,
+        "saved assistant witness must be unique: {after}"
+    );
+    assert_eq!(
+        saved_matches[0]["provenance"]["attempt_id"],
+        attempt.as_str()
+    );
     cancel.cancel();
     drop(serve);
     let _ = std::fs::remove_dir_all(&root);
