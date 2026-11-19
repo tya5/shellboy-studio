@@ -67,13 +67,15 @@ describe("AppModel over the fake transport", () => {
       await pending;
       const reader = model.longReader.peek();
       const visible = computed(() => model.bodyState("body-node")?.text);
-      const stop = visible.subscribe(() => {});
+      const notifications: (string | undefined)[] = [];
+      const stop = visible.subscribe(value => notifications.push(value));
       expect(visible.value).toBe("saved body");
       t.push({ t: "owner", event: "restarted", owner: { state: "connected", info: { protocol_version: 5, instance_id: "i2", capabilities: ["history.window"] } } });
       await flush(8);
       expect(model.handle.peek()).toBe(handle);
-      expect(model.longReader.peek()).toBe(reader);
+      expect(model.longReader.peek()).not.toBe(reader);
       expect(visible.value).toBeUndefined();
+      expect(notifications).toContain(undefined);
       stop();
     } finally { model.dispose(); }
   });

@@ -14,6 +14,12 @@ import {OrderedHistory} from '../screens/Conversation';
 import {Composer} from '../system/components/Composer';
 import {canonicalAttemptId} from '../../../data/test/work-fixture';
 
+type HistoryGetCall = { args?: unknown };
+function requestedHistoryNode(call: HistoryGetCall): string {
+ const args=call.args;
+ if (args===null || typeof args!=="object" || !("node_id" in args) || typeof args.node_id!=="string") throw new Error("history.get missing string node_id");
+ return args.node_id;
+}
 
 async function bodyReadControlCase(partial: boolean) {
  let rows: HistoryItem[] = [{ node_id: "savedassistant", kind: "assistant_response", selection: { ordinal: 0 },
@@ -23,22 +29,25 @@ async function bodyReadControlCase(partial: boolean) {
   db.threads = { t: summary("t") }; db.details.t = details("t"); db.history.t = rows;
   const base = db.answer.bind(db);
   db.answer = call => call.command === "history.get"
-   ? { ok: true, result: { node_id: call.args.node_id, kind: "assistant_response", text: "full visible", provenance: { sender: { kind: "assistant" } } } }
+   ? { ok: true, result: { node_id: requestedHistoryNode(call), kind: "assistant_response", text: requestedHistoryNode(call)==="savedassistant" ? (partial ? "older full" : "older deferred full") : "newer automatic full", provenance: { sender: { kind: "assistant" } } } }
    : call.command === "history.window" ? { ok: true, result: { thread_id: "t", revision: 1, total: rows.length, items: rows } } : base(call);
  }});
  const host = document.createElement("div"); document.body.append(host);
  const context: DesignContext = { model: f.model, prefs: signal(loadPrefs({ read: () => null, write: () => {} }, [{ name: "console", themes: [{ name: "light" }] }])), setPrefs: () => {}, designs: [], submitToken: async () => false };
  try {
   await act(async () => { render(<App context={context} />, host); await settle(f.t, f.db); });
-  const automatic = f.t.calls("history.get").map(call => call.args.node_id);
+  const automatic = f.t.calls("history.get").map(call => requestedHistoryNode(call));
   expect(automatic).toEqual(partial ? [] : ["newer-deferred"]);
   const olderRow = host.querySelector('[data-node="savedassistant"]');
   expect(olderRow).toBeDefined();
   const button = [...olderRow!.querySelectorAll<HTMLButtonElement>("button")].find(node => node.textContent?.includes(f.model.t.value("convo.fullMessage")));
   expect(button).toBeDefined();
+  const beforeClick = f.t.calls("history.get").length;
   await act(async () => { button!.click(); await settle(f.t, f.db); });
-  expect(f.t.calls("history.get").at(-1)?.args).toMatchObject({ node_id: "savedassistant" });
-  expect(host.textContent).toContain("full visible");
+  const fresh = f.t.calls("history.get").slice(beforeClick);
+  expect(fresh).toHaveLength(1);
+  expect(requestedHistoryNode(fresh[0]!)).toBe("savedassistant");
+  expect(olderRow!.querySelector(".md")?.textContent).toContain(partial ? "older full" : "older deferred full");
  } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
 }
 
