@@ -54,7 +54,7 @@ async function bodyReadControlCase(partial: boolean) {
 
 it("auto-loads one authoritative body for ordered prose leaves", async () => {
  const rows: HistoryItem[] = [{ node_id: "two-prose", kind: "assistant_response", selection: { ordinal: 0 }, items: [
-  { kind: "text", item_identity: "first", text: "first provisional", text_complete: true },
+  { kind: "text", item_identity: "first", text: "FIRST FULL", text_complete: true },
   { kind: "text", item_identity: "second", text: "second provisional", text_complete: false }
  ]}];
  const f=await fixtureModel({capabilities:["history.window"],route:"conversation",threadId:"t",configure(db){
@@ -71,6 +71,22 @@ it("auto-loads one authoritative body for ordered prose leaves", async () => {
   expect(bodies).toEqual(['FIRST FULL\nSECOND FULL']);
   expect(bodies.filter(text=>text?.includes('FIRST FULL'))).toHaveLength(1);
   expect(bodies.filter(text=>text?.includes('SECOND FULL'))).toHaveLength(1);
+ }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
+});
+
+it("shows mixed partial prose as unavailable without a dead body action", async () => {
+ const rows: HistoryItem[] = [{ node_id: "mixed-render", kind: "assistant_response", selection: { ordinal: 0 }, items: [
+  { kind: "text", item_identity: "prose", text: "provisional prose", text_complete: false },
+  { kind: "reasoning_unavailable", item_identity: "reasoning" }
+ ]}];
+ const f=await fixtureModel({capabilities:["history.window"],route:"conversation",threadId:"t",configure(db){
+  db.threads={t:summary("t")};db.details.t=details("t");db.history.t=rows;
+  const base=db.answer.bind(db);db.answer=call=>call.command==='history.window'?{ok:true,result:{thread_id:'t',revision:1,total:1,items:rows}}:base(call);
+ }});
+ const host=document.createElement('div');document.body.append(host);
+ const context:DesignContext={model:f.model,prefs:signal(loadPrefs({read:()=>null,write:()=>{}},[{name:'console',themes:[{name:'light'}]}])),setPrefs:()=>{},designs:[],submitToken:async()=>false};
+ try{await act(async()=>{render(<App context={context}/>,host);await settle(f.t,f.db);});
+  const row=host.querySelector('[data-node="mixed-render"]');expect(row).toBeDefined();expect(row!.textContent).toContain('provisional prose');expect(row!.querySelector('[data-body-unavailable]')).not.toBeNull();expect(row!.querySelector('button')).toBeNull();
  }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
 });
 

@@ -56,12 +56,14 @@ describe("AppModel over the fake transport", () => {
     const { model, t } = await fixtureModel({ route: "conversation", threadId: "lead", capabilities: ["history.window"], configure(owner) {
       owner.history.lead = [{ node_id: "mixed-node", kind: "assistant_response", selection: { ordinal: 0 }, items: [
         { kind: "text", item_identity: "prose", text: "provisional", text_complete: false },
-        { kind: "reasoning", item_identity: "reasoning", text: "hidden", text_complete: false }
+        { kind: "reasoning_unavailable", item_identity: "reasoning" }
       ] }];
       owner.historyRevisions.lead = 2;
     }});
     try {
       await flush(8);
+      const mixedRows = model.longReader.peek()!.acceptedView.peek().rows;
+      expect(mixedRows.find(row => row.node_id === "mixed-node")?.items?.map(item => item.kind)).toEqual(["text", "reasoning_unavailable"]);
       expect(t.calls("history.get")).toHaveLength(0);
       await model.loadBody("mixed-node", { kind: "typed", identity: "prose" });
       expect(t.calls("history.get")).toHaveLength(0);

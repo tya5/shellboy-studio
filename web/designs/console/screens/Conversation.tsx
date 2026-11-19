@@ -190,7 +190,7 @@ export function SavedConversationItems({ model, projection: suppliedProjection, 
           : fact.kind === "human" ? { kind: "you" } : fact.kind === "model" ? fact
           : fact.kind === "external_cli" ? (fact.label?.trim() ? { kind: "other", label: `CLI: ${fact.label}` } : { kind: "cli" })
           : { kind: "unknown", model: fact.kind === "unknown_model", label: fact.label };
-        return <><ProjectedMessage model={model} relationship={messageRelationship(node.provenance?.message,node.node_id)} authorizedText={displayText ?? ""} bodyPartial={item.source.kind === "text" && item.source.textComplete === false} row={{ type: "message", id: node.node_id!, itemIdentity: nodeAuthoritative ? undefined : item.source.kind === "text" ? item.source.itemIdentity : undefined, speaker, text: displayText ?? "", truncated: false, at: node.provenance?.created_at }} />{(item.source.kind === "text" || item.source.kind === "user" || item.source.kind === "summary") && (displayEntry?.body.kind === "preview" || displayEntry?.body.kind === "typed-partial") && body?.text === undefined ? <div class="caption muted" data-item-partial="">{t("work.partial")}</div> : null}</>;
+        return <><ProjectedMessage model={model} relationship={messageRelationship(node.provenance?.message,node.node_id)} authorizedText={displayText ?? ""} bodyPartial={item.source.kind === "text" && item.source.textComplete === false} bodyUnavailable={!nodeAuthoritative && item.source.kind === "text" && item.source.textComplete === false} row={{ type: "message", id: node.node_id!, itemIdentity: nodeAuthoritative ? undefined : item.source.kind === "text" ? item.source.itemIdentity : undefined, speaker, text: displayText ?? "", truncated: false, at: node.provenance?.created_at }} />{(item.source.kind === "text" || item.source.kind === "user" || item.source.kind === "summary") && (displayEntry?.body.kind === "preview" || displayEntry?.body.kind === "typed-partial") && body?.text === undefined ? <div class="caption muted" data-item-partial="">{t("work.partial")}</div> : null}</>;
       }
       if (item.source.kind === "tool") {
         const ids = item.source.executionIds ?? (item.source.executionId ? [item.source.executionId] : []);
@@ -332,15 +332,16 @@ function allProseNode(node: HistoryItem): boolean {
 function BodyReadMessage({model,node,displayText}:{model:AppModel;node:HistoryItem;displayText:string|undefined}) {
   const nodeAuthoritative = allProseNode(node);
   const itemIdentity = nodeAuthoritative ? undefined : node.items?.find(item => item.kind === "text")?.item_identity;
-  return <Message bot={node.kind === "assistant_response"} who={node.kind === "assistant_response" ? model.t.value("convo.shellboy") : model.t.value("convo.you")} at={formatClock(node.provenance?.created_at)} text={model.bodyState(node.node_id!, itemIdentity)?.text ?? displayText ?? ""} copyLabel={model.t.value("code.copy")} copiedLabel={model.t.value("code.copied")}><BodyReadButton model={model} nodeId={node.node_id!} itemIdentity={itemIdentity} /></Message>;
+  return <Message bot={node.kind === "assistant_response"} who={node.kind === "assistant_response" ? model.t.value("convo.shellboy") : model.t.value("convo.you")} at={formatClock(node.provenance?.created_at)} text={model.bodyState(node.node_id!, itemIdentity)?.text ?? displayText ?? ""} copyLabel={model.t.value("code.copy")} copiedLabel={model.t.value("code.copied")}><BodyReadButton model={model} nodeId={node.node_id!} itemIdentity={itemIdentity} unavailable={!nodeAuthoritative && node.items !== null} /></Message>;
 }
 
-function BodyReadButton({model,nodeId,itemIdentity}:{model:AppModel;nodeId:string;itemIdentity?:string}) {
+function BodyReadButton({model,nodeId,itemIdentity,unavailable}:{model:AppModel;nodeId:string;itemIdentity?:string;unavailable?:boolean}) {
   const body=model.bodyState(nodeId,itemIdentity);
+  if (unavailable) return <span class="muted caption" data-body-unavailable="">{model.t.value("work.textUnavailable")}</span>;
   return <Button variant="link" disabled={body?.loading} onClick={() => void model.loadBody(nodeId, itemIdentity === undefined ? undefined : { kind: "typed", identity: itemIdentity })}>{body?.loading ? model.t.value("convo.loadingBody") : model.t.value("convo.fullMessage")}</Button>;
 }
 
-function ProjectedMessage({ model, row, authorizedText, relationship, bodyPartial }: { relationship:ReturnType<typeof messageRelationship>; model: AppModel; row: Extract<ConversationRow, {type:"message"}>; authorizedText: string; bodyPartial?: boolean }) {
+function ProjectedMessage({ model, row, authorizedText, relationship, bodyPartial, bodyUnavailable }: { relationship:ReturnType<typeof messageRelationship>; model: AppModel; row: Extract<ConversationRow, {type:"message"}>; authorizedText: string; bodyPartial?: boolean; bodyUnavailable?: boolean }) {
   const t = model.t.value;
   const threadId = model.handle.value?.threadId;
   const point = threadId !== undefined ? formatRoute({ view: "branches", threadId, nodeId: row.id }) : undefined;
@@ -359,9 +360,9 @@ function ProjectedMessage({ model, row, authorizedText, relationship, bodyPartia
       </div> : row.speaker.kind === "unknown" && row.speaker.label !== undefined ? <div class="caption">{t("convo.senderClaimedLabel", { label: row.speaker.label })}</div> : null}
       {(row.truncated || bodyPartial) && body?.text === undefined ? (
         <span class="more">
-          <Button variant="link" disabled={body?.loading} onClick={() => void model.loadBody(row.id, row.itemIdentity === undefined ? undefined : { kind: "typed", identity: row.itemIdentity })}>
+          {bodyUnavailable ? <span class="muted caption" data-body-unavailable="">{t("work.textUnavailable")}</span> : <Button variant="link" disabled={body?.loading} onClick={() => void model.loadBody(row.id, row.itemIdentity === undefined ? undefined : { kind: "typed", identity: row.itemIdentity })}>
             {body?.loading ? t("convo.loadingBody") : t("convo.fullMessage")}
-          </Button>
+          </Button>}
           {body?.error ? <span class="muted caption">{body.error}</span> : null}
         </span>
       ) : null}
