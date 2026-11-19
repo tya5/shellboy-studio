@@ -22,7 +22,8 @@ export class Handoff {
   private held: Held[] = [];
 
   private active: string | undefined;
-  private epochValue = 0;
+  /** Canonical owner-lifetime epoch; the signal is the epoch, not a mirror observer. */
+  readonly epochSignal = signal(0);
   private blockedAttempt: string | undefined;
   private readonly discarded = signal<PreviewDiscardReason | undefined>(undefined);
   private publishing = false;
@@ -36,9 +37,9 @@ export class Handoff {
     return r ? { kind: 'live', attemptId: r.attemptId, text: r.text, incomplete: r.incomplete, ending: r.status !== 'streaming' } : { kind: 'none', ...(this.discarded.value ? { discarded: this.discarded.value } : {}) };
   });
   constructor(private readonly schedule: Schedule) {}
-  get epoch(): number { return this.epochValue; }
+  get epoch(): number { return this.epochSignal.peek(); }
   get retainedBytes(): number { return this.held.reduce((n, h) => n + bytes(h.record.text), 0); }
-  advanceEpoch(): void { this.epochValue++; }
+  advanceEpoch(): void { this.epochSignal.value++; }
 
   apply(frame: LiveFrame): void {
     let h = this.held.find(h => h.attemptId === frame.attempt_id);

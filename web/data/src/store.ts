@@ -76,6 +76,7 @@ export interface ThreadHandle extends Handle {
   readonly handoff: ReadonlySignal<readonly HandoffRecord[]>;
   readonly handoffOverflow: ReadonlySignal<boolean>;
   liveEpoch(): number;
+  readonly liveEpochSignal: ReadonlySignal<number>;
   releaseAcceptedHandoff(attemptId: string): void;
   /** Counts hints for this Thread's history while the owner has `history.window`; the window reader follows it. */
   readonly historyTick: ReadonlySignal<number>;
@@ -331,6 +332,7 @@ export class ShellboyData {
       handoff: e.live.records,
       handoffOverflow: e.live.overflow,
       liveEpoch: () => e.live.epoch,
+      liveEpochSignal: e.live.epochSignal,
       releaseAcceptedHandoff: attemptId => { if (!closed && !e.closed) e.live.releaseAccepted(attemptId); },
       historyTick: e.historyTick,
       readWindow: async (args, cancel) => {

@@ -289,8 +289,8 @@ export class AppModel {
   bodyCacheKey(nodeId: string, itemIdentity?: string): string {
     const handle = this.handle.value;
     if (!handle) return `unbound:${nodeId}:${itemIdentity ?? "manual"}`;
-    // Handoff records are the existing reactive seam for same-handle owner changes.
-    handle.handoff.value;
+    // Read the canonical epoch signal so empty-to-empty restarts invalidate display.
+    handle.liveEpochSignal.value;
     return `${this.bodyScopeKey(handle, this.longReader.value, this.route.value)}:${nodeId}:${itemIdentity ?? "manual"}`;
   }
   bodyState(nodeId: string, itemIdentity?: string): BodyState | undefined { return this.bodies.value.get(this.bodyCacheKey(nodeId, itemIdentity)); }
