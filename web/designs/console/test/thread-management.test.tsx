@@ -266,7 +266,7 @@ it("requires a complete marker and carries it into singleton deletion", async ()
     preview!.click(); await flush();
     const previewCall = f.t.calls("thread.delete_preview").at(-1)!;
     expect(previewCall.args).toEqual({ thread_id: "A", descendants: false });
-    f.t.ok(previewCall.id, { thread_id: "A", deletable_now: true, preview_marker: { thread_count: 1, ids_hash: "a".repeat(64), selection: { thread_count: 1, descendant_thread_count: 2, surviving_descendant_thread_count: 2 }, observation: { observed_lower_bounds: { live_run_count: 0, stopping_run_count: 0 } } } });
+    f.t.ok(previewCall.id, { thread_id: "A", deletable_now: true, preview_marker: { thread_count: 1, ids_hash: "a".repeat(64) }, selection: { thread_count: 1, descendant_thread_count: 2, surviving_descendant_thread_count: 2 }, blockers: { live_run_count: 0, stopping_run_count: 0 } });
     await act(async () => { await flush(); });
     expect(host.textContent).toContain("Surviving child scope: 2 Thread(s).");
     const confirm = [...host.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === f.model.t.value("thread.deleteConfirm"));
@@ -288,7 +288,7 @@ it("shows bounded blocker counts without exposing confirm", async () => {
     await answer(f, "thread.get", "A");
     host.querySelector<HTMLButtonElement>("[data-thread-delete-preview]")!.click(); await flush();
     const preview = f.t.calls("thread.delete_preview").at(-1)!;
-    f.t.ok(preview.id, { thread_id: "A", deletable_now: false, preview_marker: { thread_count: 1, ids_hash: "b".repeat(64), selection: { thread_count: 1, descendant_thread_count: null, surviving_descendant_thread_count: null }, observation: { observed_lower_bounds: { live_run_count: 1, stopping_run_count: 2 } } });
+    f.t.ok(preview.id, { thread_id: "A", deletable_now: false, preview_marker: { thread_count: 1, ids_hash: "b".repeat(64) }, selection: { thread_count: 1, descendant_thread_count: null, surviving_descendant_thread_count: null }, blockers: { live_run_count: 1, stopping_run_count: 2 });
     await act(async () => { await flush(); });
     expect(host.textContent).toContain("Blockers observed: 1 live, 2 stopping.");
     expect(host.textContent).toContain("Surviving child scope: ? Thread(s).");
