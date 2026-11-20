@@ -353,7 +353,7 @@ export function ThreadManagement({ model }: { model: AppModel }) {
     <div class="band" data-thread-management="">
       {actionable ? <Button disabled={surfaceBusy || currentAction?.kind === "running"} onClick={() => void mutate()}>{archived ? t("org.unarchive") : t("action.archive")}</Button> : null}
     </div>
-    {(((currentObservation?.kind === "ready" && currentObservation.runState === "live" && ((currentObservation.turnState === "running") || (currentObservation.turnState === "recovery_wait" && currentObservation.recoveryReason)) && detail.run_id && detail.turn_id)) || unresolvedRetry || retryReservation) ? <div class="band" data-run-actions="">
+    {(((currentObservation?.kind === "ready" && currentObservation.runState === "live" && ((currentObservation.turnState === "running") || (currentObservation.turnState === "recovery_wait" && currentObservation.recoveryReason)) && detail.run_id && detail.turn_id)) || unresolvedRetry || retryReservation || durableUnresolvedStop) ? <div class="band" data-run-actions="">
       {!unresolvedRetry && !retryReservation && currentObservation?.turnState === "running" ? <Button variant="stop" disabled={surfaceBusy || currentRunAction?.kind === "running"} onClick={() => void stop()}>{t("action.stop")}</Button> : null}
       {!unresolvedRetry && !retryReservation && currentObservation?.turnState === "recovery_wait" && currentObservation.recoveryReason ? <Button variant="primary" disabled={surfaceBusy || currentRunAction?.kind === "running"} onClick={() => void retry()}>{t("action.retry")}</Button> : null}
       {durableUnresolvedStop ? <Notice tone="wait">{t("action.stopUnknown")}<div>{durableUnresolvedStop.operationId}</div></Notice> : null}

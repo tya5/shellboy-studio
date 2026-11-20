@@ -857,8 +857,22 @@ it("retains lost quick Stop identity across same-owner reconnect on both surface
     render(null, host);
     await act(async () => { f.model.applyRoute({ view: "threads" }); render(<App context={context} />, host); await flush(); });
     for (let i = 0; i < 4; i++) { if (!f.t.calls("thread.list").find((call) => !f.db.answered.has(call.id))) break; await answer(f, "thread.list"); }
-    expect(host.querySelector('[data-thread-quick-surface="list"][data-thread-quick-action="A"] [data-thread-quick-stop]')).toBeNull();
-    expect(host.querySelector('[data-thread-quick-surface="sidebar"][data-thread-quick-action="A"] [data-thread-quick-stop]')).toBeNull();
-    expect(host.textContent).toContain(stop.operation_id);
+    const listRow = host.querySelector('[data-thread-quick-surface="list"][data-thread-quick-action="A"]');
+    const sidebarRow = host.querySelector('[data-thread-quick-surface="sidebar"][data-thread-quick-action="A"]');
+    expect(listRow).not.toBeNull();
+    expect(sidebarRow).not.toBeNull();
+    expect(listRow?.querySelector("[data-thread-quick-stop]")).toBeNull();
+    expect(sidebarRow?.querySelector("[data-thread-quick-stop]")).toBeNull();
+    expect(listRow?.textContent).toContain(stop.operation_id);
+    expect(sidebarRow?.textContent).toContain(stop.operation_id);
+    f.model.applyRoute({ view: "thread-management", threadId: "A" });
+    await act(async () => { await flush(); });
+    await answer(f, "thread.get", "A");
+    f.t.ok(f.t.calls("run.get").at(-1)!.id, { run_id: "run-a", thread_id: "A", turn_id: "turn-a", state: "live" });
+    await act(async () => { await flush(); });
+    f.t.ok(f.t.calls("turn.get").at(-1)!.id, { turn_id: "turn-a", run_id: "run-a", thread_id: "A", state: "running" });
+    await act(async () => { await flush(); });
+    expect(host.querySelector("[data-run-actions] .notice")?.textContent).toContain(stop.operation_id);
+    expect(host.querySelectorAll("[data-run-actions] button")).toHaveLength(0);
   } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
 });
