@@ -383,6 +383,13 @@ export class Operations {
     if (options.descendants) args.descendants = true;
     return this.run("thread.unarchive", args, outcomeDecoder(decodeRecord), { operationId });
   }
+  threadDeletePreview(threadId: string): Promise<Outcome<Record<string, unknown>>> {
+    return this.run("thread.delete_preview", { thread_id: threadId, descendants: false }, outcomeDecoder(decodeRecord));
+  }
+  threadDelete(threadId: string, previewMarker: { thread_count: number; ids_hash: string }, operationId = this.newId()): Promise<Outcome<Record<string, unknown>>> {
+    return this.run("thread.delete", { thread_id: threadId, descendants: false, preview_marker: previewMarker }, outcomeDecoder(decodeRecord), { operationId });
+  }
+
   threadArchive(
     threadIds: string[],
     options: { descendants?: boolean } = {},

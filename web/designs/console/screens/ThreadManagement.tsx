@@ -8,6 +8,7 @@ type Visit = object;
 type DetailState = { id: string; route: Route; owner: OwnerIdentity; visit: Visit; loading: boolean; value?: ThreadDetails; error?: string };
 type ActionState = { id: string; route: Route; owner: OwnerIdentity; visit: Visit; kind: "idle" | "running" } | { id: string; route: Route; owner: OwnerIdentity; visit: Visit; kind: "done"; archived: boolean; count: number; already: number; notFound: number } | { id: string; route: Route; owner: OwnerIdentity; visit: Visit; kind: "failed"; message: string };
 type SettingsState = { id: string; route: Route; owner: OwnerIdentity; visit: Visit; model: string; effort: string; initialEffort: string; saving: boolean; saved: boolean; error?: string };
+type DeleteState = { id: string; route: Route; owner: OwnerIdentity; visit: Visit; kind: "previewing" | "confirm" | "deleting" | "failed" | "done"; marker?: { thread_count: number; ids_hash: string }; message?: string };
 
 /** One-thread management entry; route reads and mutations are independent of bulk selection. */
 export function ThreadManagement({ model }: { model: AppModel }) {
@@ -19,6 +20,7 @@ export function ThreadManagement({ model }: { model: AppModel }) {
   const [detailState, setDetailState] = useState<DetailState>();
   const [actionState, setActionState] = useState<ActionState>();
   const [settingsState, setSettingsState] = useState<SettingsState>();
+  const [deleteState, setDeleteState] = useState<DeleteState>();
   const mutationRef = useRef<object>();
   const [busyVersion, setBusyVersion] = useState(0);
   const currentDetail = detailState && detailState.id === id && detailState.route === route && detailState.owner === owner && detailState.visit === visitRef.current ? detailState : undefined;
@@ -155,6 +157,42 @@ export function ThreadManagement({ model }: { model: AppModel }) {
     } finally { release(token); }
   };
 
+  const deletion = deleteState && deleteState.id === id && deleteState.route === route && deleteState.owner === owner && deleteState.visit === visitRef.current ? deleteState : undefined;
+  const deleteTargetCurrent = (target: DeleteState) => visitRef.current === target.visit && model.route.peek() === target.route && model.route.peek().view === "thread-management" && model.data.owner.peek() === target.owner;
+  const previewDelete = async () => {
+    if (!id || surfaceBusy || !currentDetail?.value || !visitRef.current || !model.data.capabilities.peek()) return;
+    const target: DeleteState = { id, route, owner, visit: visitRef.current, kind: "previewing" };
+    const token = admit(target.visit);
+    if (!token) return;
+    setDeleteState(target);
+    try {
+      const out = await model.ops.threadDeletePreview(id);
+      if (!deleteTargetCurrent(target)) return;
+      const marker = out.ok ? out.value.preview_marker : undefined;
+      if (!out.ok || out.value.thread_id !== id || out.value.deletable_now !== true || !marker || typeof marker !== "object" || typeof marker.thread_count !== "number" || marker.thread_count < 1 || typeof marker.ids_hash !== "string" || !/^[0-9a-f]{64}$/.test(marker.ids_hash)) {
+        setDeleteState({ ...target, kind: "failed", message: out.ok ? t("thread.deleteBlocked") : out.error.message });
+        return;
+      }
+      setDeleteState({ ...target, kind: "confirm", marker: { thread_count: marker.thread_count, ids_hash: marker.ids_hash } });
+    } catch (error) { if (deleteTargetCurrent(target)) setDeleteState({ ...target, kind: "failed", message: error instanceof Error ? error.message : t("thread.deleteBlocked") }); }
+    finally { release(token); }
+  };
+  const confirmDelete = async () => {
+    if (!deletion?.marker || !deleteTargetCurrent(deletion) || surfaceBusy) return;
+    const token = admit(deletion.visit);
+    if (!token) return;
+    setDeleteState({ ...deletion, kind: "deleting" });
+    try {
+      const out = await model.ops.threadDelete(deletion.id, deletion.marker);
+      if (!deleteTargetCurrent(deletion)) return;
+      if (!out.ok) { setDeleteState({ ...deletion, kind: "failed", message: out.error.message }); return; }
+      setDeleteState({ ...deletion, kind: "done" });
+      await model.data.refreshThreadList();
+      await model.org.read();
+    } catch (error) { if (deleteTargetCurrent(deletion)) setDeleteState({ ...deletion, kind: "failed", message: error instanceof Error ? error.message : t("thread.deleteBlocked") }); }
+    finally { release(token); }
+  };
+
   return <Section title={detail.title} sub={detail.thread_id} actions={<a class="btn" href={formatRoute({ view: "conversation", threadId: id })}>{t("view.conversation")}</a>}>
     <div class="band" data-thread-management="">
       {actionable ? <Button disabled={surfaceBusy || currentAction?.kind === "running"} onClick={() => void mutate()}>{archived ? t("org.unarchive") : t("action.archive")}</Button> : null}
@@ -166,6 +204,11 @@ export function ThreadManagement({ model }: { model: AppModel }) {
       {settings.error ? <Notice tone="bad">{settings.error}</Notice> : null}
       {settings.saved ? <Notice>{t("thread.settingsSaved")}</Notice> : null}
     </div> : null}
+    {!deletion ? <Button variant="warn" disabled={surfaceBusy} onClick={() => void previewDelete()}>{t("thread.deletePreview")}</Button> : null}
+    {deletion?.kind === "confirm" ? <Notice actions={<Button variant="warn" disabled={surfaceBusy} onClick={() => void confirmDelete()}>{t("thread.deleteConfirm")}</Button>}>{t("thread.deleteConfirmBody", { n: deletion.marker!.thread_count })}</Notice> : null}
+    {deletion?.kind === "previewing" || deletion?.kind === "deleting" ? <Notice tone="wait">{t("common.loading")}</Notice> : null}
+    {deletion?.kind === "failed" ? <Notice tone="bad">{deletion.message ?? t("thread.deleteBlocked")}</Notice> : null}
+    {deletion?.kind === "done" ? <Notice>{t("thread.deleteDone")}</Notice> : null}
     {currentAction?.kind === "failed" ? <Notice tone="bad">{currentAction.message}</Notice> : null}
     {currentAction?.kind === "done" ? <>
       <Notice>{currentAction.archived ? t("org.archivedResult", { n: currentAction.count, already: currentAction.already }) : t("org.unarchivedResult", { n: currentAction.count, already: currentAction.already })}</Notice>
