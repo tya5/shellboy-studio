@@ -367,7 +367,12 @@ it("opens and navigates the shared row menu from row focus", async () => {
     expect(host.querySelector('[role="menu"]')).not.toBeNull();
     expect(host.querySelector('[role="menuitem"]')).toBe(document.activeElement);
     expect(host.querySelector('[role="menuitem"]')?.textContent).toBe(f.model.t.value("view.thread-management"));
-    host.querySelector('[role="menu"]')!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true }));
+    host.querySelector('[role="menu"] [role="menuitem"]')!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(host.querySelector('[role="menu"]')).toBeNull();
+    expect(document.activeElement).toBe(row);
+    row.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
     document.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(host.querySelector('[role="menu"]')).toBeNull();
