@@ -39,7 +39,7 @@ export function ThreadQuickAction({ model, row, status, surface }: { model: AppM
   });
   const retry = () => void run("retry", async () => { await model.retry(row.thread_id); });
   const invokeMenu = (event: Event) => { event.preventDefault(); setOpen(true); };
-  const label = model.t.value("view.threads");
+  const label = model.t.value("nav.more");
   return <span ref={root} data-thread-quick-action={row.thread_id} data-thread-quick-surface={surface} onContextMenu={invokeMenu}>
     <Button icon label={label} title={label} aria-expanded={open} onClick={() => setOpen((value) => !value)}><Icon name="menu" small /></Button>
     {open ? <span role="menu" class="thread-menu" onKeyDown={(event) => { if (event.key === "Escape") setOpen(false); }}>

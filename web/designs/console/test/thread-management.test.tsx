@@ -345,11 +345,13 @@ it("shows only state-appropriate quick row actions", async () => {
       <ThreadQuickAction model={f.model} row={summary("retry")} status="recovery" surface="list" />
       <ThreadQuickAction model={f.model} row={summary("archived", { archived_at: "now" })} status="completed" surface="list" />
     </>, host);
-    expect([...host.querySelectorAll('[data-thread-quick-action="run"] [data-thread-quick-stop]')]).toHaveLength(1);
+    for (const id of ["run", "retry", "archived"]) host.querySelector<HTMLButtonElement>(`[data-thread-quick-action="${id}"] button[aria-label]`)!.click();
+    expect(host.querySelector('[data-thread-quick-action="run"] [role="menuitem"]')?.textContent).toBe(f.model.t.value("nav.more"));
+    expect(host.querySelector('[data-thread-quick-action="run"] [data-thread-quick-stop]')?.textContent).toBe(f.model.t.value("action.stop"));
     expect(host.querySelector('[data-thread-quick-action="run"] [data-thread-quick-retry]')).toBeNull();
-    expect([...host.querySelectorAll('[data-thread-quick-action="retry"] [data-thread-quick-retry]')]).toHaveLength(1);
+    expect(host.querySelector('[data-thread-quick-action="retry"] [data-thread-quick-retry]')?.textContent).toBe(f.model.t.value("action.retry"));
     expect(host.querySelector('[data-thread-quick-action="retry"] [data-thread-quick-stop]')).toBeNull();
-    expect(host.querySelector('[data-thread-quick-action="archived"]')?.textContent).toContain(f.model.t.value("org.unarchive"));
+    expect(host.querySelector('[data-thread-quick-action="archived"] [role="menuitem"]')?.textContent).toContain(f.model.t.value("org.unarchive"));
     expect(host.querySelector('[data-thread-quick-action="archived"] [data-thread-quick-stop]')).toBeNull();
     expect(host.querySelector('[data-thread-quick-action="archived"] [data-thread-quick-retry]')).toBeNull();
   } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
