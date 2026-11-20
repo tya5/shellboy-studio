@@ -1044,3 +1044,44 @@ it("drops quick Stop after mounted row invalidation without follow-on reads or w
     expect(f.t.calls("run.stop")).toHaveLength(0);
   } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
 });
+
+it("keeps an opted-in mounted Retry row route-fenced before exact re-admission", async () => {
+  const f = await fixtureModel({ route: "threads", configure(db) {
+    db.threads = { A: summary("A") };
+    db.details = { A: details("A", { run_id: "run-a", turn_id: "turn-a" }) };
+  } });
+  const host = document.createElement("div"); document.body.append(host);
+  try {
+    const row = summary("A");
+    await act(async () => { render(<ThreadQuickAction model={f.model} row={row} surface="list" enableRetry />, host); await flush(); });
+    for (let i = 0; i < 4; i++) { if (!f.t.calls("thread.list").find((call) => !f.db.answered.has(call.id))) break; await answer(f, "thread.list"); }
+    expect(f.t.calls("thread.get")).toHaveLength(0);
+    host.querySelector<HTMLButtonElement>("[data-thread-quick-retry]")!.click();
+    const firstRead = f.t.calls("thread.get").at(-1)!;
+    expect(firstRead.args).toEqual({ thread_id: "A" });
+    await act(async () => { f.model.applyRoute({ view: "threads", threadId: "A" }); await flush(); });
+    f.t.ok(firstRead.id, details("A", { run_id: "run-a", turn_id: "turn-a" }));
+    await act(async () => { await flush(); });
+    expect(f.t.calls("run.get")).toHaveLength(0);
+    expect(f.t.calls("turn.get")).toHaveLength(0);
+    expect(f.t.calls("run.retry")).toHaveLength(0);
+    expect(host.querySelector("[data-thread-quick-retry] + .notice")).toBeNull();
+    expect(f.model.managementRetryReservations.value.has("i1:A:retry")).toBe(false);
+
+    await act(async () => { f.model.applyRoute({ view: "threads" }); await flush(); });
+    host.querySelector<HTMLButtonElement>("[data-thread-quick-retry]")!.click();
+    const secondRead = f.t.calls("thread.get").at(-1)!;
+    f.t.ok(secondRead.id, details("A", { run_id: "run-a", turn_id: "turn-a" }));
+    await act(async () => { await flush(); });
+    f.t.ok(f.t.calls("run.get").at(-1)!.id, { run_id: "run-a", thread_id: "A", turn_id: "turn-a", state: "live" });
+    await act(async () => { await flush(); });
+    f.t.ok(f.t.calls("turn.get").at(-1)!.id, { turn_id: "turn-a", run_id: "run-a", thread_id: "A", state: "recovery_wait", recovery_hint: "provider interrupted" });
+    await act(async () => { await flush(); });
+    const retry = f.t.calls("run.retry");
+    expect(retry).toHaveLength(1);
+    expect(retry[0]!.args).toEqual({ run_id: "run-a" });
+    f.t.ok(retry[0]!.id, { run_id: "run-a", thread_id: "A", turn_id: "turn-a", state: "live" });
+    await act(async () => { await flush(); });
+    expect(host.textContent).not.toContain(f.model.t.value("action.retryAccepted"));
+  } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
+});
