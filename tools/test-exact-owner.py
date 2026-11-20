@@ -35,9 +35,10 @@ class ExactOwner(unittest.TestCase):
         self.run_git("add", "Cargo.toml")
         self.run_git("commit", "-m", "Synthetic source")
         self.commit = self.run_git("rev-parse", "HEAD")
+        self.manifest_rev = self.commit
         self.studio = self.root / "studio"
         self.studio.mkdir()
-        (self.studio / "Cargo.toml").write_text('[dependencies]\nshellboy={git="'+gate.OFFICIAL+'", rev="'+gate.MANIFEST_REV+'"}\n', encoding="utf-8")
+        (self.studio / "Cargo.toml").write_text('[dependencies]\nshellboy={git="'+gate.OFFICIAL+'", rev="'+self.manifest_rev+'"}\n', encoding="utf-8")
         self.lock = self.studio / "Cargo.lock"
         self.write_lock()
         self.version = self.root / "binary-version.txt"
@@ -48,12 +49,18 @@ class ExactOwner(unittest.TestCase):
                                        stderr=subprocess.DEVNULL, text=True, encoding="utf-8").strip()
 
     def write_lock(self, commit=None, version="0.13.1", repository=None, rev=None):
-        self.lock.write_text('version=4\n[[package]]\nname="shellboy"\nversion="'+version+'"\nsource="git+'+(repository or gate.OFFICIAL)+'?rev='+(rev or gate.MANIFEST_REV)+'#'+(self.commit if commit is None else commit)+'"\n', encoding="utf-8")
+        self.lock.write_text('version=4\n[[package]]\nname="shellboy"\nversion="'+version+'"\nsource="git+'+(repository or gate.OFFICIAL)+'?rev='+(rev or self.manifest_rev)+'#'+(self.commit if commit is None else commit)+'"\n', encoding="utf-8")
 
     def check(self):
         return gate.verify(self.studio, self.owner, self.version)
 
 
+
+    def test_exact_manifest_revision_accepts_clean_pair(self):
+        evidence = self.check()
+        self.assertEqual(evidence["manifest_revision"], self.manifest_rev)
+        self.assertEqual(evidence["lock_commit"], self.manifest_rev)
+        self.assertEqual(evidence["owner_commit"], self.manifest_rev)
 
     def test_same_version_different_commit_is_rejected(self):
         (self.owner / "fixture.txt").write_text("same version, distinct source\n", encoding="utf-8")
@@ -97,7 +104,7 @@ class ExactOwner(unittest.TestCase):
 
     def test_wrong_manifest_pin(self):
         path = self.studio / "Cargo.toml"
-        path.write_text(path.read_text(encoding="utf-8").replace(gate.MANIFEST_REV, "0"*40), encoding="utf-8")
+        path.write_text(path.read_text(encoding="utf-8").replace(self.manifest_rev, "0"*40), encoding="utf-8")
         with self.assertRaisesRegex(ValueError, "Studio must pin"): self.check()
 
     def test_wrong_remote(self):
