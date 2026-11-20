@@ -133,19 +133,9 @@ export function setBounded<V>(map: Map<string, V>, key: string, value: V): Map<s
 
 export const errorMessage = (e: OpError): string => e.message;
 
-type QuickActionStatus = { kind: "running" | "failed" | "verified"; error?: string; archived?: boolean };
-
 export class AppModel {
   private readonly threadReservations = new WeakMap<object, Map<string, object>>();
   private readonly bulkReservations = new WeakMap<object, object>();
-  threadActionReserve(owner: object, ids: readonly string[]): object | undefined {
-    let reservations = this.threadReservations.get(owner);
-    if (!reservations) { reservations = new Map(); this.threadReservations.set(owner, reservations); }
-    if (this.bulkReservations.has(owner) || ids.some((id) => reservations!.has(id))) return undefined;
-    const token = {};
-    for (const id of ids) reservations.set(id, token);
-    return token;
-  }
   threadActionOwns(owner: object, ids: readonly string[], token: object): boolean {
     const reservations = this.threadReservations.get(owner);
     return reservations !== undefined && ids.every((id) => reservations.get(id) === token);
