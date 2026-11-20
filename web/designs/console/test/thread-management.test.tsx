@@ -501,12 +501,12 @@ it("stops only after fresh exact running preflight", async () => {
     await act(async () => { await flush(); });
     const stops = f.t.calls("run.stop");
     expect(stops).toHaveLength(1);
+    expect(host.querySelector("[data-run-actions] .notice")).toBeNull();
     const call = stops[0]!;
     expect(call.args).toEqual({ run_id: "run-a" });
-    f.t.ok(call.id, {});
+    f.t.ok(call.id, { run_id: "run-a", thread_id: "A", state: "stopping", turn_id: "turn-a" });
     await act(async () => { await flush(); });
-    expect(host.textContent).toContain(f.model.t.value("action.stop"));
-    expect(host.textContent).not.toContain(f.model.t.value("action.retry"));
+    expect(host.querySelector("[data-run-actions] .notice")?.textContent).toBe(f.model.t.value("action.stopAccepted"));
   } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
 });
 

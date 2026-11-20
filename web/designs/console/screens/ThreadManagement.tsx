@@ -321,7 +321,7 @@ export function ThreadManagement({ model }: { model: AppModel }) {
       {currentObservation.turnState === "running" ? <Button variant="stop" disabled={surfaceBusy || currentRunAction?.kind === "running"} onClick={() => void stop()}>{t("action.stop")}</Button> : null}
       {currentObservation.turnState === "recovery_wait" && currentObservation.recoveryReason ? <Button variant="primary" disabled={surfaceBusy || currentRunAction?.kind === "running"} onClick={() => void retry()}>{t("action.retry")}</Button> : null}
       {currentRunAction?.kind === "refused" ? <Notice tone="bad">{currentRunAction.message}</Notice> : null}
-      {currentRunAction?.kind === "accepted" ? <Notice>{currentRunAction.action === "stop" ? t("action.stop") : t("action.retry")}</Notice> : null}
+      {currentRunAction?.kind === "accepted" ? <Notice>{currentRunAction.action === "stop" ? t("action.stopAccepted") : t("action.retry")}</Notice> : null}
     </div> : null}
     {settings ? <div class="band" data-thread-settings="">
       <Field ariaLabel={t("model.change")} value={settings.model} disabled={surfaceBusy || settings.saving} onInput={(e) => setSettingsState((prev) => prev && prev.id === id && prev.route === route && prev.owner === owner && prev.visit === visitRef.current ? { ...prev, model: e.currentTarget.value, saved: false, error: undefined } : prev)} />
