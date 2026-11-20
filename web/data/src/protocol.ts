@@ -173,6 +173,26 @@ export interface AwaitingReply {
   elapsed_ms?: number;
 }
 
+/** Exact owner observation returned by run.get for a management-target Run. */
+export interface RunDetails {
+  run_id: string;
+  thread_id: string;
+  state: string;
+  turn_id?: string;
+  recovery_hint?: string;
+  [extra: string]: unknown;
+}
+
+/** Exact owner observation returned by turn.get for a management-target Turn. */
+export interface TurnDetails {
+  turn_id: string;
+  run_id: string;
+  thread_id: string;
+  state: string;
+  recovery_hint?: string;
+  [extra: string]: unknown;
+}
+
 export interface ThreadDetails {
   max_tokens?: number | null;
   effective_max_tokens?: number;
