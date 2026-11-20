@@ -1,10 +1,13 @@
 // @vitest-environment happy-dom
 import "@preact/signals";
 import { render } from "preact";
+import { signal } from "@preact/signals-core";
 import { act } from "preact/test-utils";
 import { expect, it } from "vitest";
 import { details, flush, summary } from "../../../data/test/harness";
 import { fixtureModel } from "../../../ui-core/test/fixture";
+import { loadPrefs, type DesignContext } from "../../../ui-core/src";
+import { App } from "../screens/App";
 import { ThreadManagement } from "../screens/ThreadManagement";
 import { ThreadQuickAction } from "../screens/ThreadQuickAction";
 
@@ -182,18 +185,23 @@ it("does not arm actions for a foreign detail or dispatch a second visit mutatio
 });
 
 
-it("shares one admission across both mounted row action entries", async () => {
+it("shares one admission across the real sidebar and Threads surfaces", async () => {
   const f = await fixtureModel({ route: "threads", configure(db) { db.threads = { A: summary("A"), B: summary("B") }; } });
   const host = document.createElement("div");
   document.body.append(host);
+  const context: DesignContext = { model: f.model, prefs: signal(loadPrefs({ read: () => null, write: () => {} }, [{ name: "console", themes: [{ name: "light" }] }])), setPrefs: () => {}, designs: [], submitToken: async () => false };
   try {
     f.model.org.selected.value = new Set(["A"]);
-    await act(async () => {
-      render(<><ThreadQuickAction model={f.model} row={summary("B")} surface="sidebar" /><ThreadQuickAction model={f.model} row={summary("B")} surface="list" /></>, host);
-      await flush();
-    });
+    await act(async () => { render(<App context={context} />, host); await flush(); });
+    for (let i = 0; i < 4; i++) {
+      const pending = f.t.calls("thread.list").find((call) => !f.db.answered.has(call.id));
+      if (!pending) break;
+      await answer(f, "thread.list");
+    }
     const listAction = host.querySelector<HTMLButtonElement>('[data-thread-quick-surface="list"][data-thread-quick-action="B"] button')!;
     const sidebarAction = host.querySelector<HTMLButtonElement>('[data-thread-quick-surface="sidebar"][data-thread-quick-action="B"] button')!;
+    expect(listAction).toBeDefined();
+    expect(sidebarAction).toBeDefined();
     listAction.click();
     await flush();
     sidebarAction.click();
@@ -203,20 +211,19 @@ it("shares one admission across both mounted row action entries", async () => {
     await act(async () => { await flush(); });
     const read = f.t.calls("thread.get").find((call) => !f.db.answered.has(call.id) && (call.args as { thread_id?: string }).thread_id === "B")!;
     expect(read).toBeDefined();
-    sidebarAction.click();
-    expect(f.t.calls("thread.archive")).toHaveLength(1);
+    expect(host.querySelector<HTMLButtonElement>('[data-thread-quick-surface="list"][data-thread-quick-action="B"] button')?.disabled).toBe(true);
     f.db.details.B = details("B", { archived_at: "now" });
     f.db.threads.B = summary("B", { archived_at: "now" });
     f.t.ok(read.id, f.db.details.B);
     await act(async () => { await flush(); });
-    await answer(f, "thread.list");
-    await answer(f, "thread.list");
-    await act(async () => {
-      render(<><ThreadQuickAction model={f.model} row={summary("B", { archived_at: "now" })} surface="sidebar" /><ThreadQuickAction model={f.model} row={summary("B", { archived_at: "now" })} surface="list" /></>, host);
-      await flush();
-    });
-    expect(host.querySelector<HTMLButtonElement>('[data-thread-quick-surface="list"] button')?.disabled).toBe(false);
-    expect(host.querySelector<HTMLButtonElement>('[data-thread-quick-surface="list"] button')?.textContent).toBe(f.model.t.value("org.unarchive"));
+    for (let i = 0; i < 6; i++) {
+      const pending = f.t.calls("thread.list").find((call) => !f.db.answered.has(call.id));
+      if (!pending) break;
+      await answer(f, "thread.list");
+    }
+    await act(async () => { await flush(); });
+    expect(host.querySelector<HTMLButtonElement>('[data-thread-quick-surface="list"][data-thread-quick-action="B"] button')?.textContent).toBe(f.model.t.value("org.unarchive"));
+    expect(host.querySelector<HTMLButtonElement>('[data-thread-quick-surface="list"][data-thread-quick-action="B"] button')?.disabled).toBe(false);
   } finally {
     render(null, host); host.remove(); f.model.dispose(); f.data.stop();
   }
