@@ -55,8 +55,8 @@ def verify(studio, owner, binary_version=None):
     require(version == VERSION, "wrong source package version")
     if binary_version is not None:
         require(binary_version.read_text(encoding="utf-8").strip() == f"shellboy {VERSION}", "wrong binary version")
-    return {"official_repository": OFFICIAL, "tag": TAG, "peeled_commit": commit,
-            "lock_commit": source.fragment, "package_version": VERSION,
+    return {"official_repository": OFFICIAL, "manifest_revision": MANIFEST_REV, "lock_commit": source.fragment, "owner_commit": commit,
+            "package_version": VERSION,
             "binary_version": VERSION if binary_version is not None else "not yet checked"}
 
 
