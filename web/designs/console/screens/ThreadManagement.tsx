@@ -178,8 +178,13 @@ export function ThreadManagement({ model }: { model: AppModel }) {
     try {
       const freshDetail = await model.ops.threadGet(id);
       if (!currentTarget()) return;
-      const runId = freshDetail.ok && freshDetail.value.thread_id === id ? freshDetail.value.run_id : undefined;
-      const turnId = freshDetail.ok && freshDetail.value.thread_id === id ? freshDetail.value.turn_id : undefined;
+      if (!freshDetail.ok || freshDetail.value.thread_id !== id) {
+        setRunActionState({ id, route, owner, visit: targetVisit, detailToken, kind: "refused", message: "Stop refused: the exact Thread read failed" });
+        return;
+      }
+      const freshThread = freshDetail.value;
+      const runId = freshThread.run_id;
+      const turnId = freshThread.turn_id;
       if (runId !== admissionIdentity.runId || turnId !== admissionIdentity.turnId || typeof runId !== "string" || typeof turnId !== "string") {
         setRunActionState({ id, route, owner, visit: targetVisit, detailToken, kind: "refused", message: "Retry refused: the accepted Thread identity changed" });
         return;
@@ -236,7 +241,7 @@ export function ThreadManagement({ model }: { model: AppModel }) {
       if (!currentTarget()) return;
       const turn = await model.ops.turnGet(turnId, { runId, threadId: id });
       if (!currentTarget()) return;
-      const correlated = run.ok && turn.ok ? correlateManagementRun(freshDetail.value, run.value, turn.value) : undefined;
+      const correlated = run.ok && turn.ok ? correlateManagementRun(freshThread, run.value, turn.value) : undefined;
       if (!correlated || !managementRunStopEligible(correlated)) {
         setRunActionState({ id, route, owner, visit: targetVisit, detailToken, kind: "refused", message: "Stop refused: the exact Run/Turn is no longer running" });
         return;
