@@ -27,8 +27,9 @@ export function ThreadManagement({ model }: { model: AppModel }) {
   const [observationState, setObservationState] = useState<ObservationState>();
   const [runActionState, setRunActionState] = useState<RunActionState>();
   const ownerInstanceId = owner.state === "connected" ? owner.info.instance_id : undefined;
-  const durableUnresolvedRetry = model.managementUnconfirmedRetry.value;
-  const unresolvedRetry = durableUnresolvedRetry && durableUnresolvedRetry.threadId === id && durableUnresolvedRetry.ownerInstanceId === ownerInstanceId && route.view === "thread-management";
+  const unresolvedKey = `${ownerInstanceId ?? "unknown"}:${id ?? ""}`;
+  const durableUnresolvedRetry = id ? model.managementUnconfirmedRetry.value.get(unresolvedKey) : undefined;
+  const unresolvedRetry = durableUnresolvedRetry !== undefined && route.view === "thread-management";
   const deleteProofRef = useRef<{ id: string; visit: Visit; marker: { thread_count: number; ids_hash: string }; used: boolean }>();
   const mutationRef = useRef<object>();
   const [busyVersion, setBusyVersion] = useState(0);
@@ -36,7 +37,6 @@ export function ThreadManagement({ model }: { model: AppModel }) {
   const currentAction = actionState && actionState.id === id && actionState.route === route && actionState.owner === owner && actionState.visit === visitRef.current ? actionState : undefined;
   const currentSettings = settingsState && settingsState.id === id && settingsState.route === route && settingsState.owner === owner && settingsState.visit === visitRef.current ? settingsState : undefined;
   const currentObservation = observationState && observationState.id === id && observationState.route === route && observationState.owner === owner && observationState.visit === visitRef.current && observationState.detailToken === detailIdentityRef.current?.token ? observationState : undefined;
-  const unresolvedRetry = unresolvedRetryRef.current && unresolvedRetryRef.current.id === id && unresolvedRetryRef.current.owner === owner && route.view === "thread-management";
   const currentRunAction = unresolvedRetry ? { id, route, owner, visit: visitRef.current!, detailToken: detailIdentityRef.current?.token ?? {}, kind: "unknown" as const, message: t("action.retryUnknown", { id: durableUnresolvedRetry?.operationId ?? "unknown" }), reason: durableUnresolvedRetry?.recoveryReason, operationId: durableUnresolvedRetry?.operationId } : runActionState && ((runActionState.kind === "unknown" && unresolvedRetry) || (runActionState.id === id && runActionState.route === route && runActionState.owner === owner && runActionState.visit === visitRef.current && runActionState.detailToken === detailIdentityRef.current?.token)) ? runActionState : undefined;
   const surfaceBusy = busyVersion >= 0 && mutationRef.current !== undefined;
   const admit = (visit: Visit): object | undefined => {
@@ -186,9 +186,11 @@ export function ThreadManagement({ model }: { model: AppModel }) {
       }
       const out = await model.ops.runRetry(runId);
       if (!out.ok && out.error.kind === "unconfirmed") {
-        model.managementUnconfirmedRetry.value = { threadId: id, runId, turnId, operationId: out.error.operationId, recoveryReason, ownerInstanceId };
+        const key = `${ownerInstanceId ?? "unknown"}:${id}`;
+        if (!model.managementUnconfirmedRetry.peek().has(key)) model.managementUnconfirmedRetry.value = new Map(model.managementUnconfirmedRetry.peek()).set(key, { threadId: id, runId, turnId, operationId: out.error.operationId, recoveryReason, ownerInstanceId });
       } else if (!out.ok && out.error.kind !== "owner") {
-        model.managementUnconfirmedRetry.value = { threadId: id, runId, turnId, operationId: out.operationId, recoveryReason, ownerInstanceId };
+        const key = `${ownerInstanceId ?? "unknown"}:${id}`;
+        if (!model.managementUnconfirmedRetry.peek().has(key)) model.managementUnconfirmedRetry.value = new Map(model.managementUnconfirmedRetry.peek()).set(key, { threadId: id, runId, turnId, operationId: out.operationId, recoveryReason, ownerInstanceId });
       }
       if (!currentTarget()) return;
       if (out.ok) setRunActionState({ id, route, owner, visit: targetVisit, detailToken, kind: "accepted", action: "retry" });

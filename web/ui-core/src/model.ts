@@ -404,7 +404,7 @@ export class AppModel {
   private pendingOwnCurrent: (() => boolean) | undefined;
   readonly sendState: Signal<SendState> = signal({ kind: "idle" });
   readonly actionError: Signal<string | undefined> = signal(undefined);
-  readonly managementUnconfirmedRetry: Signal<ManagementUnconfirmedRetry | undefined> = signal(undefined);
+  readonly managementUnconfirmedRetry: Signal<ReadonlyMap<string, ManagementUnconfirmedRetry>> = signal(new Map());
   readonly appRequestState: Signal<{ kind: "idle" | "sending" | "failed" | "unconfirmed"; message?: string }> = signal({ kind: "idle" });
   readonly uncertainCancels: Signal<ReadonlySet<string>> = signal(new Set());
 
