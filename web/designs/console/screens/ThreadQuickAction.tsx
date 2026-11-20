@@ -15,7 +15,7 @@ export function ThreadQuickAction({ model, row, surface, enableRetry = false }: 
   const unresolvedStopKey = ownerInstanceId ? `${ownerInstanceId}:${row.thread_id}:stop` : undefined;
   const unresolvedStop = unresolvedStopKey ? model.managementUnconfirmedRetry.value.get(unresolvedStopKey)?.action === "stop" : false;
   const status = model.threadQuickActionStatus(owner as object, row.thread_id);
-  const [retryState, setRetryState] = useState<{ attemptId: number; targetKey: string; state: "running" | "accepted" | "failed" | "unknown" }>();
+  const [retryState, setRetryState] = useState<{ attemptId: number; targetId: string; route: Route; owner: Target["owner"]; surface: "sidebar" | "list"; state: "running" | "accepted" | "failed" | "unknown" }>();
   const retryAttemptRef = useRef(0);
   const [stopState, setStopState] = useState<"idle" | "running" | "accepted" | "failed" | "unknown">("idle");
   const mounted = useRef(true);
@@ -33,21 +33,22 @@ export function ThreadQuickAction({ model, row, surface, enableRetry = false }: 
 
   const retry = async (event: MouseEvent) => {
     event.preventDefault(); event.stopPropagation();
-    if (!enableRetry || !mounted.current || !renderedCurrent() || retryState?.state === "running") return;
+    const retryIsCurrent = retryState?.targetId === target.id && retryState.route === route && retryState.owner === owner && retryState.surface === surface;
+    if (!enableRetry || !mounted.current || !renderedCurrent() || (retryIsCurrent && retryState?.state === "running")) return;
     const key = ownerInstanceId ? `${ownerInstanceId}:${target.id}:retry` : undefined;
     const liveUnresolved = key ? model.managementUnconfirmedRetry.peek().get(key)?.action === "retry" : false;
     if (!key || liveUnresolved) return;
     const attemptId = ++retryAttemptRef.current;
     const targetKey = `${target.id}:${ownerInstanceId}:${target.route.view}`;
-    if (retryState?.state === "running") return;
+    if (retryIsCurrent && retryState?.state === "running") return;
     const token = model.threadQuickActionAdmit(owner as object, target.id);
     if (!token) return;
     const reservation = model.reserveManagementRetry(key, target.id, ownerInstanceId!);
     if (!reservation) { model.threadQuickActionDrop(owner as object, target.id, token); return; }
     const capturedRoute = target.route; const capturedOwner = target.owner;
     const current = () => mounted.current && renderedCurrent() && model.route.peek() === capturedRoute && model.data.owner.peek() === capturedOwner;
-    setRetryState({ attemptId, targetKey, state: "running" });
-    const setAttemptState = (state: "accepted" | "failed" | "unknown") => setRetryState((previous) => previous?.attemptId === attemptId && previous.targetKey === targetKey ? { attemptId, targetKey, state } : previous);
+    setRetryState({ attemptId, targetId: target.id, route, owner, surface, state: "running" });
+    const setAttemptState = (state: "accepted" | "failed" | "unknown") => setRetryState((previous) => previous?.attemptId === attemptId && previous.targetId === target.id && previous.route === capturedRoute && previous.owner === capturedOwner && previous.surface === surface ? { attemptId, targetId: target.id, route: capturedRoute, owner: capturedOwner, surface, state } : previous);
     let sent = false;
     try {
       const result = await managementRetry(model.ops, target.id, { kind: "discovered" }, reservation.operationId, current);
@@ -62,7 +63,7 @@ export function ThreadQuickAction({ model, row, surface, enableRetry = false }: 
     } finally {
       if (!sent) model.releaseManagementRetry(key, reservation.operationId);
       if (!model.managementUnconfirmedRetry.peek().has(key)) model.threadQuickActionDrop(owner as object, target.id, token);
-      if (!current()) setRetryState((previous) => previous?.attemptId === attemptId && previous.targetKey === targetKey ? undefined : previous);
+      if (!current()) setRetryState((previous) => previous?.attemptId === attemptId && previous.targetId === target.id && previous.route === capturedRoute && previous.owner === capturedOwner && previous.surface === surface ? undefined : previous);
     }
   };
 
@@ -145,7 +146,7 @@ export function ThreadQuickAction({ model, row, surface, enableRetry = false }: 
   const disabled = status?.kind === "running" || !renderedCurrent();
   return <span data-thread-quick-action={row.thread_id} data-thread-quick-surface={surface} data-quick-action-state={status?.kind ?? "idle"}>
     <Button disabled={disabled} aria-busy={status?.kind === "running"} onClick={run}>{archived ? model.t.value("org.unarchive") : model.t.value("action.archive")}</Button>
-    {enableRetry ? <Button data-thread-quick-retry="" disabled={retryState?.state === "running" || unresolvedStop || !renderedCurrent()} onClick={retry}>{model.t.value("action.retry")}</Button> : null}
+    {enableRetry ? <Button data-thread-quick-retry="" disabled={(retryIsCurrent && retryState?.state === "running") || unresolvedStop || !renderedCurrent()} onClick={retry}>{model.t.value("action.retry")}</Button> : null}
     {status?.kind === "failed" ? <>
       {status.error ? <Notice tone="bad">{status.error}</Notice> : null}
       <a class="btn link" href={formatRoute({ view: "thread-management", threadId: target.id })}>{model.t.value("view.threads")}</a>
