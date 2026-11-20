@@ -8,7 +8,8 @@ type Visit = object;
 type DetailState = { id: string; route: Route; owner: OwnerIdentity; visit: Visit; loading: boolean; value?: ThreadDetails; error?: string };
 type ActionState = { id: string; route: Route; owner: OwnerIdentity; visit: Visit; kind: "idle" | "running" } | { id: string; route: Route; owner: OwnerIdentity; visit: Visit; kind: "done"; archived: boolean; count: number; already: number; notFound: number } | { id: string; route: Route; owner: OwnerIdentity; visit: Visit; kind: "failed"; message: string };
 type SettingsState = { id: string; route: Route; owner: OwnerIdentity; visit: Visit; model: string; effort: string; initialEffort: string; saving: boolean; saved: boolean; error?: string };
-type DeleteState = { id: string; route: Route; owner: OwnerIdentity; visit: Visit; kind: "previewing" | "confirm" | "deleting" | "failed" | "done"; marker?: { thread_count: number; ids_hash: string }; message?: string };
+type DeletePreviewFacts = { threadCount?: number; descendantCount?: number; survivingDescendantCount?: number; liveRunCount?: number; stoppingRunCount?: number };
+type DeleteState = { id: string; route: Route; owner: OwnerIdentity; visit: Visit; kind: "previewing" | "confirm" | "deleting" | "failed" | "done"; marker?: { thread_count: number; ids_hash: string }; facts?: DeletePreviewFacts; message?: string };
 type ObservationState = { id: string; route: Route; owner: OwnerIdentity; visit: Visit; detailToken?: object; kind: "loading" | "ready" | "unavailable"; runId?: string; turnId?: string; runState?: string; turnState?: string; recoveryReason?: string; error?: string };
 type RunActionState = { id: string; route: Route; owner: OwnerIdentity; visit: Visit; detailToken: object; kind: "running" | "refused" | "accepted" | "unknown"; action?: "retry" | "stop"; message?: string; reason?: string; ownerError?: string; operationId?: string };
 
@@ -314,13 +315,22 @@ export function ThreadManagement({ model }: { model: AppModel }) {
       if (!deleteTargetCurrent(target)) return;
       const marker = out.ok ? out.value.preview_marker : undefined;
       const markerValue = marker && typeof marker === "object" ? marker as Record<string, unknown> : undefined;
-      if (!out.ok || out.value.thread_id !== id || out.value.deletable_now !== true || !markerValue || typeof markerValue.thread_count !== "number" || markerValue.thread_count !== 1 || typeof markerValue.ids_hash !== "string" || !/^[0-9a-f]{64}$/.test(markerValue.ids_hash)) {
-        setDeleteState({ ...target, kind: "failed", message: out.ok ? t("thread.deleteBlocked") : out.error.message });
+      const selection = out.ok && markerValue?.selection && typeof markerValue.selection === "object" ? markerValue.selection as Record<string, unknown> : undefined;
+      const lower = out.ok && markerValue?.observation && typeof markerValue.observation === "object" && (markerValue.observation as Record<string, unknown>).observed_lower_bounds && typeof (markerValue.observation as Record<string, unknown>).observed_lower_bounds === "object" ? (markerValue.observation as Record<string, unknown>).observed_lower_bounds as Record<string, unknown> : undefined;
+      const facts: DeletePreviewFacts = {
+        threadCount: typeof selection?.thread_count === "number" ? selection.thread_count : undefined,
+        descendantCount: typeof selection?.descendant_thread_count === "number" ? selection.descendant_thread_count : undefined,
+        survivingDescendantCount: typeof selection?.surviving_descendant_thread_count === "number" ? selection.surviving_descendant_thread_count : undefined,
+        liveRunCount: typeof lower?.live_run_count === "number" ? lower.live_run_count : undefined,
+        stoppingRunCount: typeof lower?.stopping_run_count === "number" ? lower.stopping_run_count : undefined,
+      };
+      if (!out.ok || out.value.thread_id !== id || !markerValue || typeof markerValue.thread_count !== "number" || markerValue.thread_count !== 1 || typeof markerValue.ids_hash !== "string" || !/^[0-9a-f]{64}$/.test(markerValue.ids_hash)) {
+        setDeleteState({ ...target, kind: "failed", facts, message: out.ok ? t("thread.deleteBlocked") : out.error.message });
         return;
       }
-      const proof = { thread_count: markerValue!.thread_count as number, ids_hash: markerValue!.ids_hash as string };
+      const proof = { thread_count: markerValue.thread_count as number, ids_hash: markerValue.ids_hash as string };
       deleteProofRef.current = { id, visit: target.visit, marker: proof, used: false };
-      setDeleteState({ ...target, kind: "confirm", marker: proof });
+      setDeleteState({ ...target, kind: out.value.deletable_now === true ? "confirm" : "failed", marker: proof, facts, message: out.value.deletable_now === true ? undefined : t("thread.deleteBlocked") });
     } catch (error) { if (deleteTargetCurrent(target)) setDeleteState({ ...target, kind: "failed", message: error instanceof Error ? error.message : t("thread.deleteBlocked") }); }
     finally { release(token); }
   };
@@ -373,9 +383,9 @@ export function ThreadManagement({ model }: { model: AppModel }) {
       {settings.saved ? <Notice>{t("thread.settingsSaved")}</Notice> : null}
     </div> : null}
     {!deletion || deletion.kind === "failed" ? <Button data-thread-delete-preview="" variant="warn" disabled={surfaceBusy} onClick={() => void previewDelete()}>{t("thread.deletePreview")}</Button> : null}
-    {deletion?.kind === "confirm" ? <Notice actions={<><Button variant="link" onClick={cancelDelete}>{t("thread.deleteCancel")}</Button><Button variant="warn" disabled={surfaceBusy} onClick={() => void confirmDelete()}>{t("thread.deleteConfirm")}</Button></>}>{t("thread.deleteConfirmBody", { n: deletion.marker!.thread_count })}</Notice> : null}
+    {deletion?.kind === "confirm" ? <Notice actions={<><Button variant="link" onClick={cancelDelete}>{t("thread.deleteCancel")}</Button><Button variant="warn" disabled={surfaceBusy} onClick={() => void confirmDelete()}>{t("thread.deleteConfirm")}</Button></>}>{t("thread.deleteConfirmBody", { n: deletion.marker!.thread_count })}<div>{t("thread.deleteScope", { n: deletion.facts?.survivingDescendantCount ?? "?" })}</div></Notice> : null}
     {deletion?.kind === "previewing" || deletion?.kind === "deleting" ? <Notice tone="wait">{t("common.loading")}</Notice> : null}
-    {deletion?.kind === "failed" ? <Notice tone="bad">{deletion.message ?? t("thread.deleteBlocked")}</Notice> : null}
+    {deletion?.kind === "failed" ? <Notice tone="bad">{deletion.message ?? t("thread.deleteBlocked")}<div>{t("thread.deleteBlockerCounts", { live: deletion.facts?.liveRunCount ?? "?", stopping: deletion.facts?.stoppingRunCount ?? "?" })}</div><div>{t("thread.deleteSurviving", { n: deletion.facts?.survivingDescendantCount ?? "?" })}</div></Notice> : null}
     {currentAction?.kind === "failed" ? <Notice tone="bad">{currentAction.message}</Notice> : null}
     {currentAction?.kind === "done" ? <>
       <Notice>{currentAction.archived ? t("org.archivedResult", { n: currentAction.count, already: currentAction.already }) : t("org.unarchivedResult", { n: currentAction.count, already: currentAction.already })}</Notice>
