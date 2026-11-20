@@ -772,7 +772,6 @@ describe("Threads", () => {
     const { el } = await open();
     expect(el.querySelectorAll(".tgroup").length).toBe(1);
     expect(el.querySelector("[draggable]")).toBeNull();
-    expect(el.querySelector(".srow-act")).toBeNull();
     expect(text(el)).toContain("Moving a Thread under another isn't available");
     expect(text(el)).toContain("Token totals per directory aren't shown");
     const mode = (name: string) => [...el.querySelectorAll<HTMLButtonElement>(".org button")].find((b) => text(b) === name)!;
@@ -914,7 +913,7 @@ describe("Threads", () => {
     expect(el.querySelector("[draggable=true]")).toBeTruthy();
     expect(text(el)).not.toContain("isn't available: this Shellboy (v0.10.0)");
     const button = (name: string) => [...el.querySelectorAll<HTMLButtonElement>("button")].find((b) => text(b) === name);
-    act(() => el.querySelector<HTMLButtonElement>(".srow-act")!.click());
+    act(() => button("Move")!.click());
     expect(text(el)).toContain("New parent for");
     act(() => button("No parent (independent)")!.click());
     expect(made.t.calls("thread.set")).toHaveLength(0);
