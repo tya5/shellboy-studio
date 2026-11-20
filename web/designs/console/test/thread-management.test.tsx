@@ -567,3 +567,32 @@ it("shows Retry acceptance without claiming completion", async () => {
     expect(host.querySelector("[data-run-actions] .notice")?.textContent).toBe(f.model.t.value("action.retryAccepted"));
   } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
 });
+
+it("keeps an unconfirmed Retry unknown without reminting its operation", async () => {
+  const f = await fixtureModel({ route: "threads", configure(db) {
+    db.threads = { A: summary("A") };
+    db.details = { A: details("A", { run_id: "run-a", turn_id: "turn-a" }) };
+  } });
+  const host = document.createElement("div"); document.body.append(host);
+  try {
+    f.model.applyRoute({ view: "thread-management", threadId: "A" });
+    await act(async () => { render(<ThreadManagement model={f.model} />, host); await flush(); });
+    await answer(f, "thread.get", "A");
+    f.t.ok(f.t.calls("run.get").at(-1)!.id, { run_id: "run-a", thread_id: "A", state: "live", turn_id: "turn-a" });
+    await act(async () => { await flush(); });
+    f.t.ok(f.t.calls("turn.get").at(-1)!.id, { turn_id: "turn-a", run_id: "run-a", thread_id: "A", state: "recovery_wait", recovery_hint: "provider interrupted" });
+    await act(async () => { await flush(); });
+    host.querySelector<HTMLButtonElement>("[data-run-actions] button")!.click();
+    await answer(f, "thread.get", "A");
+    f.t.ok(f.t.calls("run.get").at(-1)!.id, { run_id: "run-a", thread_id: "A", state: "live", turn_id: "turn-a" });
+    await act(async () => { await flush(); });
+    f.t.ok(f.t.calls("turn.get").at(-1)!.id, { turn_id: "turn-a", run_id: "run-a", thread_id: "A", state: "recovery_wait", recovery_hint: "provider interrupted" });
+    await act(async () => { await flush(); });
+    const retry = f.t.calls("run.retry").at(-1)!;
+    f.t.drop();
+    await act(async () => { await flush(); });
+    expect(host.textContent).toContain(retry.operation_id);
+    expect(host.textContent).toContain("unknown");
+    expect(f.t.calls("run.retry")).toHaveLength(1);
+  } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
+});
