@@ -774,7 +774,7 @@ describe("Threads", () => {
     expect(el.querySelector("[draggable]")).toBeNull();
     const leadRow = [...el.querySelectorAll<HTMLElement>(".srow")].find((row) => text(row).includes("Improve history search"));
     expect(leadRow).toBeDefined();
-    expect([...leadRow!.querySelectorAll<HTMLButtonElement>("button")].find((button) => text(button) === "Move")).toBeUndefined();
+    expect([...leadRow!.querySelectorAll<HTMLButtonElement>("button")].find((button) => text(button) === "Set parent")).toBeUndefined();
     expect(leadRow!.querySelector<HTMLAnchorElement>('a[href="#/thread-management/lead"]')).toBeTruthy();
     expect(text(el)).toContain("Moving a Thread under another isn't available");
     expect(text(el)).toContain("Token totals per directory aren't shown");
@@ -917,7 +917,7 @@ describe("Threads", () => {
     expect(el.querySelector("[draggable=true]")).toBeTruthy();
     expect(text(el)).not.toContain("isn't available: this Shellboy (v0.10.0)");
     const button = (name: string) => [...el.querySelectorAll<HTMLButtonElement>("button")].find((b) => text(b) === name);
-    act(() => button("Move")!.click());
+    act(() => button("Set parent")!.click());
     expect(text(el)).toContain("New parent for");
     act(() => button("No parent (independent)")!.click());
     expect(made.t.calls("thread.set")).toHaveLength(0);
