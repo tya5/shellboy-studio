@@ -280,6 +280,36 @@ it("requires a complete marker and carries it into singleton deletion", async ()
   } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
 });
 
+it("accepts singleton deletion then retires action after a causal list refresh", async () => {
+  const f = await fixtureModel({ route: "threads", configure(db) { db.threads = { A: summary("A") }; db.details = { A: details("A") }; } });
+  const host = document.createElement("div"); document.body.append(host);
+  try {
+    f.model.applyRoute({ view: "thread-management", threadId: "A" });
+    await act(async () => { render(<ThreadManagement model={f.model} />, host); await flush(); });
+    await answer(f, "thread.get", "A");
+    host.querySelector<HTMLButtonElement>("[data-thread-delete-preview]")!.click(); await flush();
+    const preview = f.t.calls("thread.delete_preview").at(-1)!;
+    f.t.ok(preview.id, { thread_id: "A", descendants: false, deletable_now: true, preview_marker: { thread_count: 1, ids_hash: "e".repeat(64) }, selection: { thread_count: 1, surviving_descendant_thread_count: 0 }, blockers: { live_run_count: 0, stopping_run_count: 0 } });
+    await act(async () => { await flush(); });
+    const confirm = [...host.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === f.model.t.value("thread.deleteConfirm"));
+    expect(confirm).toBeDefined();
+    expect(f.t.calls("thread.delete")).toHaveLength(0);
+    confirm!.click(); await flush();
+    const deletion = f.t.calls("thread.delete").at(-1)!;
+    expect(f.t.calls("thread.delete")).toHaveLength(1);
+    f.t.ok(deletion.id, { accepted: true });
+    await act(async () => { await flush(); });
+    expect(host.querySelector("[data-thread-delete-preview]")).toBeNull();
+    expect(host.textContent).toContain(f.model.t.value("thread.deleteDone"));
+    const listBefore = f.t.calls("thread.list").length;
+    f.db.threads = {};
+    await answer(f, "thread.list");
+    expect(f.t.calls("thread.list").length).toBeGreaterThan(listBefore);
+    expect(host.querySelector("[data-thread-delete-preview]")).toBeNull();
+    expect(f.t.calls("thread.delete")).toHaveLength(1);
+  } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
+});
+
 it("rejects same-ID descendant scope before preview facts or confirmation", async () => {
   const f = await fixtureModel({ route: "threads", configure(db) { db.threads = { A: summary("A") }; db.details = { A: details("A") }; } });
   const host = document.createElement("div"); document.body.append(host);
