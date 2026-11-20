@@ -35,6 +35,7 @@ export function ThreadQuickAction({ model, row, surface }: { model: AppModel; ro
         await publish();
         return;
       }
+      if (!renderedCurrent()) { model.threadQuickActionDrop(owner as object, target.id, token); return; }
       const out = target.archived ? await model.ops.threadUnarchive([target.id], { descendants: false }) : await model.ops.threadArchive([target.id], { descendants: false });
       if (!ownerRouteCurrent()) { model.threadQuickActionDrop(owner as object, target.id, token); return; }
       if (!out.ok) {

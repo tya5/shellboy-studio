@@ -136,7 +136,7 @@ type QuickActionStatus = { kind: "running" | "failed" | "verified"; error?: stri
 
 export class AppModel {
   readonly quickActionEpoch = signal(0);
-  private readonly quickActions = new WeakMap<object, Map<string, { token: object; status: QuickActionStatus }>>();
+  private readonly quickActions = new WeakMap<object, Map<string, { token?: object; status: QuickActionStatus }>>();
   threadQuickActionAdmit(owner: object, threadId: string): object | undefined {
     let actions = this.quickActions.get(owner);
     if (!actions) { actions = new Map(); this.quickActions.set(owner, actions); }

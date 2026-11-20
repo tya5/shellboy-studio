@@ -187,6 +187,16 @@ it("does not arm actions for a foreign detail or dispatch a second visit mutatio
 
 it("shares one admission across the real sidebar and Threads surfaces", async () => {
   const f = await fixtureModel({ route: "threads", configure(db) { db.threads = { A: summary("A"), B: summary("B") }; } });
+  const baseAnswer = f.db.answer.bind(f.db);
+  f.db.answer = (call) => {
+    const out = baseAnswer(call);
+    if (call.command === "thread.list" && out.ok) {
+      const archived = (call.args as { archived?: string }).archived;
+      const items = (out.result as { items: Array<{ archived_at?: string }> }).items.filter((item) => archived === "only" ? item.archived_at !== undefined : item.archived_at === undefined);
+      return { ok: true, result: { ...(out.result as object), items } };
+    }
+    return out;
+  };
   const host = document.createElement("div");
   document.body.append(host);
   const context: DesignContext = { model: f.model, prefs: signal(loadPrefs({ read: () => null, write: () => {} }, [{ name: "console", themes: [{ name: "light" }] }])), setPrefs: () => {}, designs: [], submitToken: async () => false };
@@ -220,6 +230,14 @@ it("shares one admission across the real sidebar and Threads surfaces", async ()
     f.db.threads.B = summary("B", { archived_at: "now" });
     f.t.ok(read.id, f.db.details.B);
     await act(async () => { await flush(); });
+    for (let i = 0; i < 6; i++) {
+      if (i === 2) break;
+      const pending = f.t.calls("thread.list").find((call) => !f.db.answered.has(call.id));
+      if (!pending) break;
+      await answer(f, "thread.list");
+    }
+    await act(async () => { await flush(); });
+    expect(host.querySelector('[data-thread-quick-surface="list"][data-thread-quick-action="B"]')).toBeNull();
     f.model.org.setMode("only");
     await act(async () => { await flush(); });
     for (let i = 0; i < 6; i++) {
