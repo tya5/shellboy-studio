@@ -220,7 +220,7 @@ for (const site of mutationSites) for (const transition of transitions) it(`R1 B
   const invalid = transition !== "same" && !(transition === "target" && site.startsWith("rename"));
   f.b.actionError.value = "old error";
   const stop = effect(() => {
-    const error = f.b.actionError.value, selection = f.b.selection.value, rewind = f.b.rewind.value;
+    const error = f.b.actionError.value, rewind = f.b.rewind.value;
     if (!armed || fired) return;
     const hit = site === "rename-error" ? error === undefined : site === "rewinding" ? rewind.kind === "rewinding" :
       site === "rewind-failed" ? rewind.kind === "failed" : site === "rewind-done" ? rewind.kind === "done" :
