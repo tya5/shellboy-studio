@@ -42,7 +42,7 @@ jobs:
           git -C "$RUNNER_TEMP/exact-owner-source" remote add origin https://github.com/tya5/shellboy
           CORE_REV=$(python3 - <<'PY'
           import tomllib
-          print(tomllib.load(open("Cargo.toml"))["dependencies"]["shellboy"]["rev"])
+          print(tomllib.load(open("Cargo.toml", "rb"))["dependencies"]["shellboy"]["rev"])
           PY
           )
           git -C "$RUNNER_TEMP/exact-owner-source" fetch --depth 1 origin "$CORE_REV"
