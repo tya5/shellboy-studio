@@ -27,8 +27,10 @@ export function ThreadManagement({ model }: { model: AppModel }) {
   const [observationState, setObservationState] = useState<ObservationState>();
   const [runActionState, setRunActionState] = useState<RunActionState>();
   const ownerInstanceId = owner.state === "connected" ? owner.info.instance_id : undefined;
-  const unresolvedKey = `${ownerInstanceId ?? "unknown"}:${id ?? ""}`;
+  const unresolvedKey = `${ownerInstanceId ?? "unknown"}:${id ?? ""}:retry`;
+  const unresolvedStopKey = `${ownerInstanceId ?? "unknown"}:${id ?? ""}:stop`;
   const durableUnresolvedRetry = id ? model.managementUnconfirmedRetry.value.get(unresolvedKey)?.action === "retry" ? model.managementUnconfirmedRetry.value.get(unresolvedKey) : undefined : undefined;
+  const unresolvedStop = id ? model.managementUnconfirmedRetry.value.get(unresolvedStopKey)?.action === "stop" : false;
   const retryReservation = id ? model.managementRetryReservations.value.get(unresolvedKey) : undefined;
   const unresolvedRetry = durableUnresolvedRetry !== undefined && route.view === "thread-management";
   const deleteProofRef = useRef<{ id: string; visit: Visit; marker: { thread_count: number; ids_hash: string }; used: boolean }>();
@@ -219,25 +221,33 @@ export function ThreadManagement({ model }: { model: AppModel }) {
     const detailToken = detailIdentityRef.current?.token;
     const targetVisit = target?.visit;
     const expected = detailIdentityRef.current;
-    if (!target || !detailToken || !targetVisit || !expected || surfaceBusy || currentRunAction?.kind === "running") return;
+    if (!target || !detailToken || !targetVisit || !expected || unresolvedStop || surfaceBusy || currentRunAction?.kind === "running") return;
     const currentTarget = () => visitRef.current === targetVisit && model.route.peek() === route && model.route.peek().view === "thread-management" && model.data.owner.peek() === owner && detailIdentityRef.current?.token === detailToken;
     const token = admit(targetVisit);
     if (!token) return;
     const sharedToken = model.threadQuickActionAdmit(owner as object, id);
     if (!sharedToken) { release(token); return; }
     setRunActionState({ id, route, owner, visit: targetVisit, detailToken, kind: "running" });
+    let keepStopReservation = false;
     try {
       const result = await managementStop(model.ops, id, { runId: expected.runId, turnId: expected.turnId }, currentTarget);
+      if (result.kind === "sent" && !result.outcome.ok) {
+        const error = result.outcome.error;
+        const operationId = error.kind === "unconfirmed" ? error.operationId : result.outcome.operationId;
+        if (error.kind !== "owner" && error.kind !== "not_connected" && error.kind !== "busy" && operationId) {
+          keepStopReservation = true;
+          if (!model.managementUnconfirmedRetry.peek().has(unresolvedStopKey)) model.managementUnconfirmedRetry.value = new Map(model.managementUnconfirmedRetry.peek()).set(unresolvedStopKey, { threadId: id, runId: result.runId, turnId: result.turnId, operationId, ownerInstanceId: ownerInstanceId!, action: "stop" });
+        }
+      }
       if (!currentTarget()) return;
       if (result.kind === "stale") return;
       if (result.kind === "refused") {
         setRunActionState({ id, route, owner, visit: targetVisit, detailToken, kind: "refused", message: "Stop refused: the exact Run/Turn is no longer running" });
         return;
       }
-      if (!currentTarget()) return;
       setRunActionState(result.outcome.ok ? { id, route, owner, visit: targetVisit, detailToken, kind: "accepted", action: "stop" } : { id, route, owner, visit: targetVisit, detailToken, kind: "refused", message: result.outcome.error.message });
     } finally {
-      model.threadQuickActionDrop(owner as object, id, sharedToken);
+      if (!keepStopReservation) model.threadQuickActionDrop(owner as object, id, sharedToken);
       release(token);
     }
   };
