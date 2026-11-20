@@ -136,12 +136,34 @@ type QuickActionStatus = { kind: "running" | "failed" | "verified"; error?: stri
 
 export class AppModel {
   readonly quickActionEpoch = signal(0);
+  private readonly threadReservations = new WeakMap<object, Map<string, object>>();
   private readonly quickActions = new WeakMap<object, Map<string, { token?: object; status: QuickActionStatus }>>();
+  threadActionReserve(owner: object, ids: readonly string[]): object | undefined {
+    let reservations = this.threadReservations.get(owner);
+    if (!reservations) { reservations = new Map(); this.threadReservations.set(owner, reservations); }
+    if (ids.some((id) => reservations!.has(id))) return undefined;
+    const token = {};
+    for (const id of ids) reservations.set(id, token);
+    this.quickActionEpoch.value++;
+    return token;
+  }
+  threadActionOwns(owner: object, ids: readonly string[], token: object): boolean {
+    const reservations = this.threadReservations.get(owner);
+    return reservations !== undefined && ids.every((id) => reservations.get(id) === token);
+  }
+  threadActionRelease(owner: object, ids: readonly string[], token: object): void {
+    const reservations = this.threadReservations.get(owner);
+    if (!reservations || !ids.every((id) => reservations.get(id) === token)) return;
+    for (const id of ids) reservations.delete(id);
+    this.quickActionEpoch.value++;
+  }
+
   threadQuickActionAdmit(owner: object, threadId: string): object | undefined {
     let actions = this.quickActions.get(owner);
     if (!actions) { actions = new Map(); this.quickActions.set(owner, actions); }
     if (actions.get(threadId)?.status.kind === "running") return undefined;
-    const token = {};
+    const token = this.threadActionReserve(owner, [threadId]);
+    if (!token) return undefined;
     actions.set(threadId, { token, status: { kind: "running" } });
     this.quickActionEpoch.value++;
     return token;
@@ -154,12 +176,14 @@ export class AppModel {
     if (!action || action.token !== token) return;
     action.status = status;
     action.token = undefined;
+    this.threadActionRelease(owner, [threadId], token);
     this.quickActionEpoch.value++;
   }
   threadQuickActionDrop(owner: object, threadId: string, token: object): void {
     const actions = this.quickActions.get(owner);
     if (actions?.get(threadId)?.token !== token) return;
     actions.delete(threadId);
+    this.threadActionRelease(owner, [threadId], token);
     this.quickActionEpoch.value++;
   }
 
@@ -421,7 +445,7 @@ export class AppModel {
     }));
     this.disposers.push(effect(() => { this.data.threadList.value; this.branchCompare.hint(); }));
     this.senderTitles = new SenderTitles(this.ops);
-    this.org = new ThreadOrg(this.ops, () => this.data.capabilities.peek(), () => { const owner = this.data.owner.peek(); const route = this.route.peek(); return route.view === "threads" && owner.state === "connected" ? { owner: owner as object, route } : undefined; }, (owner, id) => this.threadQuickActionStatus(owner, id)?.kind === "running");
+    this.org = new ThreadOrg(this.ops, () => this.data.capabilities.peek(), () => { const owner = this.data.owner.peek(); const route = this.route.peek(); return route.view === "threads" && owner.state === "connected" ? { owner: owner as object, route } : undefined; }, undefined, (owner, ids) => this.threadActionReserve(owner, ids), (owner, ids, token) => this.threadActionRelease(owner, ids, token), (owner, ids, token) => this.threadActionOwns(owner, ids, token));
     this.config = new ConfigEditor(this.ops);
     this.guideRegistration = new GuideRegistration(this.ops);
     this.setup = new ConnectionSetup(this.ops);

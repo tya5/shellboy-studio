@@ -583,7 +583,9 @@ export class ThreadOrg {
   private revision = 0;
   private publishedOwner: object | undefined;
   private readonly authority: (() => { owner: object; route: object } | undefined) | undefined;
-  private readonly quickActionBusy: ((owner: object, id: string) => boolean) | undefined;
+  private readonly reserve: ((owner: object, ids: readonly string[]) => object | undefined) | undefined;
+  private readonly releaseReservation: ((owner: object, ids: readonly string[], token: object) => void) | undefined;
+  private readonly ownsReservation: ((owner: object, ids: readonly string[], token: object) => boolean) | undefined;
   private pages = 1;
   private cancel = new Cancel();
   /** Names for the Tag and Directory groupings, and their members. Used only when the owner can list them. */
@@ -595,10 +597,15 @@ export class ThreadOrg {
     private readonly ops: Operations,
     private readonly capabilities: () => readonly string[] = () => [],
     authority?: () => { owner: object; route: object } | undefined,
-    quickActionBusy?: (owner: object, id: string) => boolean,
+    _unused?: undefined,
+    reserve?: (owner: object, ids: readonly string[]) => object | undefined,
+    releaseReservation?: (owner: object, ids: readonly string[], token: object) => void,
+    ownsReservation?: (owner: object, ids: readonly string[], token: object) => boolean,
   ) {
     this.authority = authority;
-    this.quickActionBusy = quickActionBusy;
+    this.reserve = reserve;
+    this.releaseReservation = releaseReservation;
+    this.ownsReservation = ownsReservation;
     this.headings = new ThreadHeadings(ops, () => ({ mode: this.state.peek().mode, query: this.state.peek().query }), () => this.prune());
   }
 
@@ -798,11 +805,13 @@ export class ThreadOrg {
     const revision = this.revision;
     const authority = this.authority?.();
     if (ids.length === 0 || !authority || authority.owner !== this.publishedOwner || ids.some((id) => !shown.some((row) => row.thread_id === id))) return;
-    if (ids.some((id) => this.quickActionBusy?.(authority.owner, id))) return;
+    const token = this.reserve?.(authority.owner, ids);
+    if (!token) return;
     const verb = this.state.peek().mode === "exclude" ? "archive" : "unarchive";
     const options = { descendants: false };
-    const current = () => this.revision === revision && this.authority?.()?.owner === authority.owner && this.authority?.()?.route === authority.route && ids.every((id) => this.shown().some((row) => row.thread_id === id)) && !ids.some((id) => this.quickActionBusy?.(authority.owner, id));
+    const current = () => this.revision === revision && this.authority?.()?.owner === authority.owner && this.authority?.()?.route === authority.route && this.ownsReservation?.(authority.owner, ids, token) === true && ids.every((id) => this.shown().some((row) => row.thread_id === id));
     this.action.value = { kind: "running" };
+    try {
     const out = verb === "archive" ? await this.ops.threadArchive(ids, options) : await this.ops.threadUnarchive(ids, options);
     if (!current()) {
       this.action.value = { kind: "failed", error: { kind: "invalid_response", message: "The selected Threads changed before the owner result was accepted." } };
@@ -817,6 +826,9 @@ export class ThreadOrg {
       this.selected.value = new Set();
     });
     await this.read();
+    } finally {
+      this.releaseReservation?.(authority.owner, ids, token);
+    }
   }
 
   // ---- tags ----
