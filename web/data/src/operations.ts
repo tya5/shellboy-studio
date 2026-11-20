@@ -81,12 +81,13 @@ const decodeDetails: Decoder<ThreadDetails> = (v) =>
     : { ok: false, reason: "thread.get result lacks thread_id or title" };
 const runStates = new Set<RunState>(["live", "stopping", "stopped", "completed", "failed"]);
 const turnStates = new Set<TurnState>(["preparing", "running", "waiting", "recovery_wait", "completed", "stopped", "failed"]);
-const decodeRunDetails = (runId: string): Decoder<RunDetails> => (v) =>
-  isObject(v) && v.run_id === runId && typeof v.thread_id === "string" && typeof v.state === "string" && runStates.has(v.state as RunState)
+const optionalString = (v: Record<string, unknown>, key: string): boolean => v[key] === undefined || typeof v[key] === "string";
+const decodeRunDetails = (runId: string, threadId?: string): Decoder<RunDetails> => (v) =>
+  isObject(v) && v.run_id === runId && typeof v.thread_id === "string" && (threadId === undefined || v.thread_id === threadId) && typeof v.state === "string" && runStates.has(v.state as RunState) && optionalString(v, "turn_id") && optionalString(v, "recovery_hint")
     ? { ok: true, value: v as RunDetails }
-    : { ok: false, reason: "run.get result lacks the requested run_id, thread_id or state" };
+    : { ok: false, reason: "run.get result lacks the requested identity, state or optional field types" };
 const decodeTurnDetails = (turnId: string, runId?: string, threadId?: string): Decoder<TurnDetails> => (v) =>
-  isObject(v) && v.turn_id === turnId && (runId === undefined || v.run_id === runId) && (threadId === undefined || v.thread_id === threadId) && typeof v.state === "string" && turnStates.has(v.state as TurnState)
+  isObject(v) && v.turn_id === turnId && (runId === undefined || v.run_id === runId) && typeof v.run_id === "string" && typeof v.thread_id === "string" && (threadId === undefined || v.thread_id === threadId) && typeof v.state === "string" && turnStates.has(v.state as TurnState) && optionalString(v, "recovery_hint")
     ? { ok: true, value: v as TurnDetails }
     : { ok: false, reason: "turn.get result does not match the requested identity or lacks state" };
 const decodeShellPage = pageOf<ShellEntry>((v) =>
@@ -233,8 +234,8 @@ export class Operations {
   threadGet(threadId: string, read?: ReadOptions): Promise<Outcome<ThreadDetails>> {
     return this.run("thread.get", { thread_id: threadId }, outcomeDecoder(decodeDetails), undefined, read);
   }
-  runGet(runId: string, read?: ReadOptions): Promise<Outcome<RunDetails>> {
-    return this.run("run.get", { run_id: runId }, outcomeDecoder(decodeRunDetails(runId)), undefined, read);
+  runGet(runId: string, identity?: { threadId?: string }, read?: ReadOptions): Promise<Outcome<RunDetails>> {
+    return this.run("run.get", { run_id: runId }, outcomeDecoder(decodeRunDetails(runId, identity?.threadId)), undefined, read);
   }
   turnGet(turnId: string, identity?: { runId?: string; threadId?: string }, read?: ReadOptions): Promise<Outcome<TurnDetails>> {
     return this.run("turn.get", { turn_id: turnId }, outcomeDecoder(decodeTurnDetails(turnId, identity?.runId, identity?.threadId)), undefined, read);
