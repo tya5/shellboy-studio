@@ -582,7 +582,7 @@ export class ThreadOrg {
   private again = false;
   private revision = 0;
   private publishedView: { owner: object; route: object; mode: string; query: string; grouping: ThreadGrouping; memberIds?: ReadonlySet<string> } | undefined;
-  private headingReadProvenance: { owner: object; route: object; mode: string; query: string; grouping: ThreadGrouping } | undefined;
+  private readonly headingReadProvenance = new Map<string, { owner: object; route: object; mode: string; query: string; grouping: ThreadGrouping }>();
   private readonly authority: (() => { owner: object; route: object } | undefined) | undefined;
   private readonly reserve: ((owner: object, ids: readonly string[]) => object | undefined) | undefined;
   private readonly releaseReservation: ((owner: object, ids: readonly string[], token: object) => void) | undefined;
@@ -610,9 +610,9 @@ export class ThreadOrg {
     this.reserve = reserve;
     this.releaseReservation = releaseReservation;
     this.ownsReservation = ownsReservation;
-    this.headings = new ThreadHeadings(ops, () => {
+    this.headings = new ThreadHeadings(ops, (name) => {
       const authority = this.authority?.();
-      this.headingReadProvenance = authority ? { owner: authority.owner, route: authority.route, mode: this.state.peek().mode, query: this.state.peek().query, grouping: this.groupBy.peek() } : undefined;
+      if (name && authority) this.headingReadProvenance.set(name, { owner: authority.owner, route: authority.route, mode: this.state.peek().mode, query: this.state.peek().query, grouping: this.groupBy.peek() });
       return { mode: this.state.peek().mode, query: this.state.peek().query };
     }, () => { this.prune(); this.publishHeadings(); });
   }
@@ -620,11 +620,12 @@ export class ThreadOrg {
   private publishHeadings(): void {
     const kind = this.headingKind();
     const authority = this.authority?.();
-    const provenance = this.headingReadProvenance;
-    if (!kind || !authority || !provenance || provenance.owner !== authority.owner || provenance.route !== authority.route || provenance.mode !== this.state.peek().mode || provenance.query !== this.state.peek().query || provenance.grouping !== this.groupBy.peek() || !this.headings.loadedFor(kind)) { this.publishedView = undefined; return; }
-    const members = [...this.headings.open.peek().values()];
-    if (members.some((member) => !member.loaded || member.loading || member.error)) { this.publishedView = undefined; return; }
-    this.publishedView = { owner: authority.owner, route: authority.route, mode: this.state.peek().mode, query: this.state.peek().query, grouping: this.groupBy.peek(), memberIds: new Set(this.headings.members().map((row) => row.thread_id)) };
+    if (!kind || !authority || this.headings.headings.peek().loading || !this.headings.loadedFor(kind)) { this.publishedView = undefined; return; }
+    const members = [...this.headings.open.peek().entries()];
+    const currentMode = this.state.peek().mode;
+    const currentQuery = this.state.peek().query;
+    if (members.some(([name, member]) => !member.loaded || member.loading || member.error || (() => { const p = this.headingReadProvenance.get(name); return !p || p.owner !== authority.owner || p.route !== authority.route || p.mode !== currentMode || p.query !== currentQuery || p.grouping !== this.groupBy.peek(); })())) { this.publishedView = undefined; return; }
+    this.publishedView = { owner: authority.owner, route: authority.route, mode: currentMode, query: currentQuery, grouping: this.groupBy.peek(), memberIds: new Set(this.headings.members().map((row) => row.thread_id)) };
   }
 
   canTag(): boolean {
@@ -926,14 +927,14 @@ export class ThreadOrg {
     const heading = this.headingKind();
     const publication = this.publishedView;
     const publicationCurrent = publication !== undefined && publication.owner === authority?.owner && publication.route === authority?.route && publication.mode === this.state.peek().mode && publication.query === this.state.peek().query && publication.grouping === this.groupBy.peek();
-    const groupedReady = heading !== undefined && publicationCurrent && publication?.grouping === this.groupBy.peek() && publication.memberIds !== undefined && ids.every((id) => publication.memberIds.has(id)) && [...this.headings.open.peek().values()].every((member) => member.loaded && !member.loading && !member.error);
+    const groupedReady = heading !== undefined && publicationCurrent && publication?.grouping === this.groupBy.peek() && !this.headings.headings.peek().loading && publication.memberIds !== undefined && ids.every((id) => publication.memberIds.has(id)) && [...this.headings.open.peek().values()].every((member) => member.loaded && !member.loading && !member.error);
     const flatReady = heading === undefined && publicationCurrent && publication?.grouping === this.groupBy.peek() && publication !== undefined;
     const publicationValid = groupedReady || flatReady;
     if (this.running || ids.length === 0 || !authority || !publicationValid || ids.length > TAG_SELECTION_MAX || ids.some((id) => !shown.some((row) => row.thread_id === id)) || (draft.add.length === 0 && draft.remove.size === 0)) return;
     const token = this.reserve?.(authority.owner, ids);
     if (!token) return;
     this.tagAttempt = token;
-    const mutationCurrent = () => this.tagAttempt === token && this.publishedView === publication && this.authority?.()?.owner === authority.owner && this.ownsReservation?.(authority.owner, ids, token) === true;
+    const mutationCurrent = () => this.tagAttempt === token && this.authority?.()?.owner === authority.owner && this.ownsReservation?.(authority.owner, ids, token) === true;
     const uiCurrent = () => mutationCurrent() && this.revision === revision && this.selectionGeneration === selectionGeneration && this.tagDraftGeneration === draftGeneration && this.authority?.()?.route === authority.route;
     this.tagAction.value = { kind: "running" };
     try {

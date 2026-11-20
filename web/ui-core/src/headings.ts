@@ -55,7 +55,7 @@ export class ThreadHeadings {
 
   constructor(
     private readonly ops: Operations,
-    private readonly filter: () => MemberFilter,
+    private readonly filter: (name?: string) => MemberFilter,
     /** Rows that can be selected changed. */
     private readonly changed: () => void,
   ) {}
@@ -180,7 +180,7 @@ export class ThreadHeadings {
     const before = this.open.peek().get(name);
     if (!before) return;
     this.setMember(name, { ...before, loading: true });
-    const { mode, query } = this.filter();
+    const { mode, query } = this.filter(name);
     const where = kind === "tag" ? { tags: [name] } : { cwd: name };
     const read = await this.walk(
       (cursor) => this.ops.threadList({ limit: MEMBER_PAGE, archived: mode, ...where, ...(query ? { query } : {}), ...(cursor !== undefined && { cursor }) }, { cancel }),
