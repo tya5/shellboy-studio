@@ -27,8 +27,6 @@ export interface HeadingsState {
   loading: boolean;
   loaded: boolean;
   error: OpError | undefined;
-  /** Identity of the member-page request that owns this state. */
-  readToken?: object;
 }
 
 export interface MemberState {
@@ -38,6 +36,8 @@ export interface MemberState {
   loading: boolean;
   loaded: boolean;
   error: OpError | undefined;
+  /** Identity of the member-page request that owns this state. */
+  readToken?: object;
 }
 
 export interface MemberFilter {
@@ -57,7 +57,7 @@ export class ThreadHeadings {
 
   constructor(
     private readonly ops: Operations,
-    private readonly filter: (name?: string) => MemberFilter,
+    private readonly filter: (name?: string, readToken?: object) => MemberFilter,
     /** Rows that can be selected changed. */
     private readonly changed: () => void,
   ) {}
@@ -183,7 +183,7 @@ export class ThreadHeadings {
     if (!before) return;
     const readToken = {};
     this.setMember(name, { ...before, loading: true, readToken });
-    const { mode, query } = this.filter(name);
+    const { mode, query } = this.filter(name, readToken);
     const where = kind === "tag" ? { tags: [name] } : { cwd: name };
     const read = await this.walk(
       (cursor) => this.ops.threadList({ limit: MEMBER_PAGE, archived: mode, ...where, ...(query ? { query } : {}), ...(cursor !== undefined && { cursor }) }, { cancel }),
