@@ -744,3 +744,42 @@ it("retains mounted Stop exclusion through ACK then permits exact re-admission",
     expect(f.t.calls("run.stop")).toHaveLength(2);
   } finally { render(null, host); render(null, second); host.remove(); second.remove(); f.model.dispose(); f.data.stop(); }
 });
+
+it("on-demand Stop is wired on mounted sidebar and list rows", async () => {
+  const f = await fixtureModel({ route: "threads", configure(db) {
+    db.threads = { A: summary("A") };
+    db.details = { A: details("A", { run_id: "run-a", turn_id: "turn-a" }) };
+  } });
+  const host = document.createElement("div"); document.body.append(host);
+  const context: DesignContext = { model: f.model, prefs: signal(loadPrefs({ read: () => null, write: () => {} }, [{ name: "console", themes: [{ name: "light" }] }])), setPrefs: () => {}, designs: [], submitToken: async () => false };
+  try {
+    f.model.org.selected.value = new Set(["A"]);
+    await act(async () => { render(<App context={context} />, host); await flush(); });
+    for (let i = 0; i < 4; i++) {
+      const pending = f.t.calls("thread.list").find((call) => !f.db.answered.has(call.id));
+      if (!pending) break;
+      await answer(f, "thread.list");
+    }
+    const listStop = host.querySelector<HTMLButtonElement>('[data-thread-quick-surface="list"][data-thread-quick-action="A"] [data-thread-quick-stop]')!;
+    const sidebarStop = host.querySelector<HTMLButtonElement>('[data-thread-quick-surface="sidebar"][data-thread-quick-action="A"] [data-thread-quick-stop]')!;
+    expect(listStop).toBeDefined();
+    expect(sidebarStop).toBeDefined();
+    expect(f.t.calls("thread.get")).toHaveLength(0);
+    listStop.click();
+    const preflight = f.t.calls("thread.get").at(-1)!;
+    expect(preflight.args).toEqual({ thread_id: "A" });
+    sidebarStop.click();
+    expect(f.t.calls("thread.get")).toHaveLength(1);
+    f.t.ok(preflight.id, details("A", { run_id: "run-a", turn_id: "turn-a" }));
+    await act(async () => { await flush(); });
+    f.t.ok(f.t.calls("run.get").at(-1)!.id, { run_id: "run-a", thread_id: "A", turn_id: "turn-a", state: "live" });
+    await act(async () => { await flush(); });
+    f.t.ok(f.t.calls("turn.get").at(-1)!.id, { turn_id: "turn-a", run_id: "run-a", thread_id: "A", state: "running" });
+    await act(async () => { await flush(); });
+    const stop = f.t.calls("run.stop").at(-1)!;
+    expect(stop.args).toEqual({ run_id: "run-a" });
+    f.t.ok(stop.id, { run_id: "run-a", thread_id: "A", turn_id: "turn-a", state: "stopping" });
+    await act(async () => { await flush(); });
+    expect(host.querySelector('[data-thread-quick-surface="list"][data-thread-quick-action="A"]')?.textContent).toContain(f.model.t.value("action.stopAccepted"));
+  } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
+});
