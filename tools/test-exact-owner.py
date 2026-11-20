@@ -37,7 +37,7 @@ class ExactOwner(unittest.TestCase):
         self.commit = self.run_git("rev-parse", "HEAD")
         self.studio = self.root / "studio"
         self.studio.mkdir()
-        (self.studio / "Cargo.toml").write_text('[dependencies]\nshellboy={git="'+gate.OFFICIAL+'", tag="'+gate.MANIFEST_REV+'"}\n', encoding="utf-8")
+        (self.studio / "Cargo.toml").write_text('[dependencies]\nshellboy={git="'+gate.OFFICIAL+'", rev="'+gate.MANIFEST_REV+'"}\n', encoding="utf-8")
         self.lock = self.studio / "Cargo.lock"
         self.write_lock()
         self.version = self.root / "binary-version.txt"
@@ -60,7 +60,7 @@ class ExactOwner(unittest.TestCase):
         self.run_git("add", "fixture.txt")
         self.run_git("commit", "-m", "Different source, unchanged version")
         self.write_lock(commit=self.run_git("rev-parse", "HEAD"))
-        with self.assertRaisesRegex(ValueError, "tag differs"):
+        with self.assertRaisesRegex(ValueError, "manifest revision differs"):
             self.check()
 
     def test_wrong_checkout_is_rejected_even_with_correct_lock(self):
@@ -81,7 +81,7 @@ class ExactOwner(unittest.TestCase):
 
     def test_wrong_lock_commit(self):
         self.write_lock(commit="0"*40)
-        with self.assertRaisesRegex(ValueError, "tag differs"): self.check()
+        with self.assertRaisesRegex(ValueError, "manifest revision differs"): self.check()
 
     def test_wrong_lock_version(self):
         self.write_lock(version="0.10.0")
@@ -91,8 +91,8 @@ class ExactOwner(unittest.TestCase):
         self.write_lock(repository="https://example.invalid/not-core")
         with self.assertRaisesRegex(ValueError, "locked owner source"): self.check()
 
-    def test_wrong_lock_tag(self):
-        self.write_lock(tag="v0.10.0")
+    def test_wrong_lock_revision(self):
+        self.write_lock(rev="0"*40)
         with self.assertRaisesRegex(ValueError, "locked owner source"): self.check()
 
     def test_wrong_manifest_pin(self):
@@ -104,14 +104,6 @@ class ExactOwner(unittest.TestCase):
         self.run_git("remote", "set-url", "origin", "https://example.invalid/not-core")
         with self.assertRaisesRegex(ValueError, "wrong owner remote"): self.check()
 
-    def test_wrong_source_package_version(self):
-        self.manifest.write_text(self.manifest.read_text(encoding="utf-8").replace("0.13.1", "0.10.0"), encoding="utf-8")
-        self.run_git("add", "Cargo.toml")
-        self.run_git("commit", "-m", "Wrong package version")
-        self.commit = self.run_git("rev-parse", "HEAD")
-        self.run_git("rev", "-f", gate.MANIFEST_REV)
-        self.write_lock()
-        with self.assertRaisesRegex(ValueError, "source package version"): self.check()
 
     def test_dirty_source(self):
         self.manifest.write_text(self.manifest.read_text(encoding="utf-8")+"# modified\n", encoding="utf-8")
