@@ -645,3 +645,88 @@ it("shows Retry ACK on the same visit without claiming completion", async () => 
     expect(host.querySelector("[data-run-actions] .notice")?.textContent).toBe(f.model.t.value("action.retryAccepted"));
   } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
 });
+
+it("holds one mounted Stop preflight across same-target management competitors", async () => {
+  const f = await fixtureModel({ route: "threads", configure(db) {
+    db.threads = { A: summary("A") };
+    db.details = { A: details("A", { run_id: "run-a", turn_id: "turn-a" }) };
+  } });
+  const first = document.createElement("div"); const second = document.createElement("div"); document.body.append(first, second);
+  try {
+    f.model.applyRoute({ view: "thread-management", threadId: "A" });
+    await act(async () => { render(<ThreadManagement model={f.model} />, first); render(<ThreadManagement model={f.model} />, second); await flush(); });
+    await answer(f, "thread.get", "A"); await answer(f, "thread.get", "A");
+    f.t.ok(f.t.calls("run.get")[0]!.id, { run_id: "run-a", thread_id: "A", state: "live", turn_id: "turn-a" });
+    f.t.ok(f.t.calls("run.get")[1]!.id, { run_id: "run-a", thread_id: "A", state: "live", turn_id: "turn-a" });
+    await act(async () => { await flush(); });
+    f.t.ok(f.t.calls("turn.get")[0]!.id, { turn_id: "turn-a", run_id: "run-a", thread_id: "A", state: "running" });
+    f.t.ok(f.t.calls("turn.get")[1]!.id, { turn_id: "turn-a", run_id: "run-a", thread_id: "A", state: "running" });
+    await act(async () => { await flush(); });
+    (first.querySelector("[data-run-actions] button") as HTMLButtonElement).click();
+    expect(f.t.calls("thread.get")).toHaveLength(3);
+    const competitor = second.querySelector<HTMLButtonElement>("[data-run-actions] button");
+    expect(competitor?.disabled).toBe(true);
+    competitor?.click();
+    expect(f.t.calls("thread.get")).toHaveLength(3);
+    expect(f.t.calls("run.stop")).toHaveLength(0);
+  } finally { render(null, first); render(null, second); first.remove(); second.remove(); f.model.dispose(); f.data.stop(); }
+});
+
+it("drops a mounted Stop preflight after invalidation without a Stop wire", async () => {
+  const f = await fixtureModel({ route: "threads", configure(db) {
+    db.threads = { A: summary("A") };
+    db.details = { A: details("A", { run_id: "run-a", turn_id: "turn-a" }) };
+  } });
+  const host = document.createElement("div"); document.body.append(host);
+  try {
+    f.model.applyRoute({ view: "thread-management", threadId: "A" });
+    await act(async () => { render(<ThreadManagement model={f.model} />, host); await flush(); });
+    await answer(f, "thread.get", "A");
+    f.t.ok(f.t.calls("run.get")[0]!.id, { run_id: "run-a", thread_id: "A", state: "live", turn_id: "turn-a" });
+    await act(async () => { await flush(); });
+    f.t.ok(f.t.calls("turn.get")[0]!.id, { turn_id: "turn-a", run_id: "run-a", thread_id: "A", state: "running" });
+    await act(async () => { await flush(); });
+    host.querySelector<HTMLButtonElement>("[data-run-actions] button")!.click();
+    expect(f.t.calls("thread.get")).toHaveLength(2);
+    await act(async () => { f.model.applyRoute({ view: "threads" }); await flush(); });
+    await answer(f, "thread.get", "A");
+    expect(f.t.calls("run.get")).toHaveLength(1);
+    expect(f.t.calls("run.stop")).toHaveLength(0);
+  } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
+});
+
+it("retains mounted Stop exclusion through ACK then permits exact re-admission", async () => {
+  const f = await fixtureModel({ route: "threads", configure(db) {
+    db.threads = { A: summary("A") };
+    db.details = { A: details("A", { run_id: "run-a", turn_id: "turn-a" }) };
+  } });
+  const host = document.createElement("div"); document.body.append(host);
+  try {
+    f.model.applyRoute({ view: "thread-management", threadId: "A" });
+    await act(async () => { render(<ThreadManagement model={f.model} />, host); await flush(); });
+    await answer(f, "thread.get", "A");
+    f.t.ok(f.t.calls("run.get")[0]!.id, { run_id: "run-a", thread_id: "A", state: "live", turn_id: "turn-a" });
+    await act(async () => { await flush(); });
+    f.t.ok(f.t.calls("turn.get")[0]!.id, { turn_id: "turn-a", run_id: "run-a", thread_id: "A", state: "running" });
+    await act(async () => { await flush(); });
+    host.querySelector<HTMLButtonElement>("[data-run-actions] button")!.click();
+    await answer(f, "thread.get", "A");
+    f.t.ok(f.t.calls("run.get")[1]!.id, { run_id: "run-a", thread_id: "A", state: "live", turn_id: "turn-a" });
+    await act(async () => { await flush(); });
+    f.t.ok(f.t.calls("turn.get")[1]!.id, { turn_id: "turn-a", run_id: "run-a", thread_id: "A", state: "running" });
+    await act(async () => { await flush(); });
+    const firstStop = f.t.calls("run.stop")[0]!;
+    expect(firstStop.args).toEqual({ run_id: "run-a" });
+    expect(host.querySelector<HTMLButtonElement>("[data-run-actions] button")?.disabled).toBe(true);
+    f.t.ok(firstStop.id, { run_id: "run-a", thread_id: "A", state: "stopping", turn_id: "turn-a" });
+    await act(async () => { await flush(); });
+    expect(host.querySelector("[data-run-actions] .notice")?.textContent).toBe(f.model.t.value("action.stopAccepted"));
+    host.querySelector<HTMLButtonElement>("[data-run-actions] button")!.click();
+    await answer(f, "thread.get", "A");
+    f.t.ok(f.t.calls("run.get")[2]!.id, { run_id: "run-a", thread_id: "A", state: "live", turn_id: "turn-a" });
+    await act(async () => { await flush(); });
+    f.t.ok(f.t.calls("turn.get")[2]!.id, { turn_id: "turn-a", run_id: "run-a", thread_id: "A", state: "running" });
+    await act(async () => { await flush(); });
+    expect(f.t.calls("run.stop")).toHaveLength(2);
+  } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
+});
