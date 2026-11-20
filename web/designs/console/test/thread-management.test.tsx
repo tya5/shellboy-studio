@@ -598,8 +598,13 @@ it("keeps an unconfirmed Retry unknown without reminting its operation", async (
     expect(f.t.calls("run.retry")).toHaveLength(1);
     f.t.open();
     f.t.push({ t: "hello", bridge_version: "0.0.1", data_dir: "/temp/owner-a", owner: { state: "connected", info: { protocol_version: 5, instance_id: "i1", capabilities: ["history.window"] } } });
-    await act(async () => { await flush(); f.model.applyRoute({ view: "threads" }); await flush(); f.model.applyRoute({ view: "thread-management", threadId: "A" }); await flush(); });
+    render(null, host);
+    await act(async () => { f.model.applyRoute({ view: "threads" }); await flush(); f.model.applyRoute({ view: "thread-management", threadId: "A" }); render(<ThreadManagement model={f.model} />, host); await flush(); });
     await answer(f, "thread.get", "A");
+    f.t.ok(f.t.calls("run.get").at(-1)!.id, { run_id: "run-a", thread_id: "A", state: "live", turn_id: "turn-a" });
+    await act(async () => { await flush(); });
+    f.t.ok(f.t.calls("turn.get").at(-1)!.id, { turn_id: "turn-a", run_id: "run-a", thread_id: "A", state: "recovery_wait", recovery_hint: "provider interrupted" });
+    await act(async () => { await flush(); });
     expect(host.querySelector("[data-run-actions] .notice")?.textContent).toContain(retry.operation_id);
     expect(host.querySelectorAll("[data-run-actions] button")).toHaveLength(0);
     expect(f.t.calls("run.retry")).toHaveLength(1);
