@@ -597,7 +597,6 @@ export class ThreadOrg {
     private readonly ops: Operations,
     private readonly capabilities: () => readonly string[] = () => [],
     authority?: () => { owner: object; route: object } | undefined,
-    _unused?: undefined,
     reserve?: (owner: object, ids: readonly string[]) => object | undefined,
     releaseReservation?: (owner: object, ids: readonly string[], token: object) => void,
     ownsReservation?: (owner: object, ids: readonly string[], token: object) => boolean,
