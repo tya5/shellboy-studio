@@ -28,6 +28,7 @@ const en = {
   "b3.tokens": "Recorded terminal conversation tokens only (input / cached / output). Summary and unknown coverage are separate, not zero.",
 
   "view.conversation": "Conversation",
+  "view.thread-management": "Thread management",
   "view.monitor": "Monitor",
   "view.inbox": "Awaiting you",
   "nav.views": "Views",
@@ -1078,6 +1079,7 @@ const ja: Record<MessageKey, string> = {
   "b3.tokens": "記録済みの終端会話トークンのみ（入力・キャッシュ・出力）。要約や不明な範囲は別で、ゼロではありません。",
 
   "view.conversation": "会話",
+  "view.thread-management": "スレッド管理",
   "view.monitor": "モニター",
   "view.inbox": "あなた待ち",
   "nav.views": "表示",
