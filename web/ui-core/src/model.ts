@@ -68,7 +68,7 @@ interface ModelPickerSession {
 
 export type ConnectionView = "connected" | "connecting" | "ownerDown" | "authNeeded";
 
-export type ManagementUnconfirmedRetry = { threadId: string; runId: string; turnId: string; operationId: string; recoveryReason?: string; ownerInstanceId: string };
+export type ManagementUnconfirmedRetry = { threadId: string; runId: string; turnId: string; operationId: string; recoveryReason?: string; ownerInstanceId: string; action: "retry" | "stop" };
 export type ManagementRetryReservation = { threadId: string; operationId: string; ownerInstanceId: string };
 
 export type SendState =

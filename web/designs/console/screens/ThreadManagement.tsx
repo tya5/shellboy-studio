@@ -28,7 +28,7 @@ export function ThreadManagement({ model }: { model: AppModel }) {
   const [runActionState, setRunActionState] = useState<RunActionState>();
   const ownerInstanceId = owner.state === "connected" ? owner.info.instance_id : undefined;
   const unresolvedKey = `${ownerInstanceId ?? "unknown"}:${id ?? ""}`;
-  const durableUnresolvedRetry = id ? model.managementUnconfirmedRetry.value.get(unresolvedKey) : undefined;
+  const durableUnresolvedRetry = id ? model.managementUnconfirmedRetry.value.get(unresolvedKey)?.action === "retry" ? model.managementUnconfirmedRetry.value.get(unresolvedKey) : undefined : undefined;
   const retryReservation = id ? model.managementRetryReservations.value.get(unresolvedKey) : undefined;
   const unresolvedRetry = durableUnresolvedRetry !== undefined && route.view === "thread-management";
   const deleteProofRef = useRef<{ id: string; visit: Visit; marker: { thread_count: number; ids_hash: string }; used: boolean }>();
@@ -197,7 +197,7 @@ export function ThreadManagement({ model }: { model: AppModel }) {
       const out = await model.ops.runRetry(runId, retryOperationId);
       const key = unresolvedKey;
       if (!out.ok && out.error.kind !== "owner" && out.error.kind !== "not_connected" && out.error.kind !== "busy" && !model.managementUnconfirmedRetry.peek().has(key)) {
-        model.managementUnconfirmedRetry.value = new Map(model.managementUnconfirmedRetry.peek()).set(key, { threadId: id, runId, turnId, operationId: retryOperationId, recoveryReason, ownerInstanceId: ownerInstanceId! });
+        model.managementUnconfirmedRetry.value = new Map(model.managementUnconfirmedRetry.peek()).set(key, { threadId: id, runId, turnId, operationId: retryOperationId, recoveryReason, ownerInstanceId: ownerInstanceId!, action: "retry" });
       }
       if (out.ok || (!out.ok && (out.error.kind === "owner" || out.error.kind === "not_connected" || out.error.kind === "busy"))) {
         model.releaseManagementRetry(key, retryOperationId);
