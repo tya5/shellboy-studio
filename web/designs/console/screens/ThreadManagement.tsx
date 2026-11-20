@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "preact/hooks";
-import { formatRoute, threadModelChanges, type AppModel, type Route, type ThreadModelDraft } from "../../../ui-core/src";
+import { correlateManagementRun, formatRoute, managementRunStopEligible, threadModelChanges, type AppModel, type Route, type ThreadModelDraft } from "../../../ui-core/src";
 import { Button, Field, Notice, Section } from "../system/components";
 import type { ThreadDetails } from "../../../data/src";
 
@@ -92,17 +92,14 @@ export function ThreadManagement({ model }: { model: AppModel }) {
         setObservationState({ id, route: readRoute, owner: readOwner, visit: readVisit, detailToken, kind: "loading", runId, turnId });
         const run = await model.ops.runGet(runId, { threadId: id });
         if (!currentTarget(detailToken)) return;
-        if (!run.ok || run.value.run_id !== runId || run.value.thread_id !== id || run.value.turn_id !== turnId) {
-          setObservationState({ id, route: readRoute, owner: readOwner, visit: readVisit, detailToken, kind: "unavailable", runId, turnId, error: "Run observation does not match Thread" });
-          return;
-        }
         const turn = await model.ops.turnGet(turnId, { runId, threadId: id });
         if (!currentTarget(detailToken)) return;
-        if (!turn.ok || turn.value.turn_id !== turnId || turn.value.run_id !== runId || turn.value.thread_id !== id) {
-          setObservationState({ id, route: readRoute, owner: readOwner, visit: readVisit, detailToken, kind: "unavailable", runId, turnId, error: "Turn observation does not match Run" });
+        const correlated = run.ok && turn.ok ? correlateManagementRun(out.value, run.value, turn.value) : undefined;
+        if (!correlated) {
+          setObservationState({ id, route: readRoute, owner: readOwner, visit: readVisit, detailToken, kind: "unavailable", runId, turnId, error: "Run/Turn observation does not match Thread" });
           return;
         }
-        setObservationState({ id, route: readRoute, owner: readOwner, visit: readVisit, detailToken, kind: "ready", runId, turnId, runState: run.value.state, turnState: turn.value.state, recoveryReason: turn.value.recovery_hint?.trim() });
+        setObservationState({ id, route: readRoute, owner: readOwner, visit: readVisit, detailToken, kind: "ready", runId, turnId, runState: correlated.runState, turnState: correlated.turnState, recoveryReason: correlated.recoveryReason });
       } else read({ id, route: readRoute, owner: readOwner, visit: readVisit, loading: false, error: out.ok ? t("thread.detailMismatch") : out.error.message });
     })();
     return () => {
@@ -235,7 +232,8 @@ export function ThreadManagement({ model }: { model: AppModel }) {
       if (!currentTarget()) return;
       const turn = await model.ops.turnGet(turnId, { runId, threadId: id });
       if (!currentTarget()) return;
-      if (!run.ok || run.value.run_id !== runId || run.value.thread_id !== id || run.value.turn_id !== turnId || !turn.ok || turn.value.turn_id !== turnId || turn.value.run_id !== runId || turn.value.thread_id !== id || run.value.state !== "live" || turn.value.state !== "running") {
+      const correlated = run.ok && turn.ok ? correlateManagementRun(detail.value, run.value, turn.value) : undefined;
+      if (!correlated || !managementRunStopEligible(correlated)) {
         setRunActionState({ id, route, owner, visit: targetVisit, detailToken, kind: "refused", message: "Stop refused: the exact Run/Turn is no longer running" });
         return;
       }
