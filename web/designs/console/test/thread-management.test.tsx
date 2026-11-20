@@ -383,17 +383,22 @@ it("opens and navigates the shared row menu from row focus", async () => {
     const row = host.querySelector<HTMLElement>(".tree-main")!;
     row.focus();
     expect(document.activeElement).toBe(row);
-    row.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true }));
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await act(async () => {
+      row.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true }));
+      await flush();
+    });
     expect(host.querySelector('[role="menu"]')).not.toBeNull();
     expect(host.querySelector('[role="menuitem"]')).toBe(document.activeElement);
     expect(host.querySelector('[role="menuitem"]')?.textContent).toBe(f.model.t.value("view.thread-management"));
     const items = host.querySelectorAll<HTMLElement>('[role="menu"] [role="menuitem"]');
     items[0]!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true }));
     expect(document.activeElement).toBe(items[1]);
-    items[1]!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await act(async () => {
+      items[1]!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+      await flush();
+    });
     expect(host.querySelector('[role="menu"]')).toBeNull();
+    expect(document.activeElement).not.toBe(items[1]);
     expect(document.activeElement).toBe(row);
     row.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true }));
     await new Promise((resolve) => setTimeout(resolve, 0));
