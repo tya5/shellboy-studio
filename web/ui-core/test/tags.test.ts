@@ -202,10 +202,11 @@ describe("editing tags", () => {
     expect(org.tagDraft.value.add).toEqual(["one-too-many"]);
   });
 
-  it("refuses more than 200 Threads before calling", async () => {
-    const { t, db, model } = await setup();
+  it("refuses more than 200 published Threads before calling", async () => {
+    const { t, db, model } = await setup({ count: TAG_SELECTION_MAX + 1 });
     const org = model.org;
-    org.selected.value = new Set(Array.from({ length: TAG_SELECTION_MAX + 1 }, (_, k) => `s${k}`));
+    await settle(t, db);
+    org.selected.value = new Set(model.org.shown().map((row) => row.thread_id));
     org.addTag("x");
     await org.applyTags();
     await settle(t, db);
