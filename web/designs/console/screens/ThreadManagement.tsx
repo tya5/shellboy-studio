@@ -313,14 +313,8 @@ export function ThreadManagement({ model }: { model: AppModel }) {
     try {
       const out = await model.ops.threadDeletePreview(id);
       if (!deleteTargetCurrent(target)) return;
-      if (!out.ok || out.value.thread_id !== id) {
+      if (!out.ok || out.value.thread_id !== id || out.value.descendants !== false) {
         setDeleteState({ ...target, kind: "failed", message: out.ok ? t("thread.deleteBlocked") : out.error.message });
-        return;
-      }
-      const marker = out.value.preview_marker;
-      const markerValue = marker && typeof marker === "object" ? marker as Record<string, unknown> : undefined;
-      if (!markerValue || typeof markerValue.thread_count !== "number" || markerValue.thread_count !== 1 || typeof markerValue.ids_hash !== "string" || !/^[0-9a-f]{64}$/.test(markerValue.ids_hash)) {
-        setDeleteState({ ...target, kind: "failed", message: t("thread.deleteBlocked") });
         return;
       }
       const selection = out.value.selection && typeof out.value.selection === "object" ? out.value.selection as Record<string, unknown> : undefined;
@@ -332,6 +326,12 @@ export function ThreadManagement({ model }: { model: AppModel }) {
         liveRunCount: typeof blockers?.live_run_count === "number" ? blockers.live_run_count : undefined,
         stoppingRunCount: typeof blockers?.stopping_run_count === "number" ? blockers.stopping_run_count : undefined,
       };
+      const marker = out.value.preview_marker;
+      const markerValue = marker && typeof marker === "object" ? marker as Record<string, unknown> : undefined;
+      if (!markerValue || typeof markerValue.thread_count !== "number" || markerValue.thread_count !== 1 || typeof markerValue.ids_hash !== "string" || !/^[0-9a-f]{64}$/.test(markerValue.ids_hash)) {
+        setDeleteState({ ...target, kind: "failed", facts, message: t("thread.deleteBlocked") });
+        return;
+      }
       const proof = { thread_count: markerValue.thread_count as number, ids_hash: markerValue.ids_hash as string };
       if (out.value.deletable_now !== true) {
         setDeleteState({ ...target, kind: "failed", facts, message: t("thread.deleteBlocked") });
