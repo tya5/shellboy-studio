@@ -273,6 +273,8 @@ it("rejects a late closed heading read and authorizes only the reopened read", a
   await flush();
   org.headings.toggle("old");
   await flush();
+  org.headings.toggle("old");
+  await flush();
   const pending = f.t.calls("thread.list").filter((call) => (call.args as { tags?: string[] }).tags?.[0] === "old" && !f.db.answered.has(call.id));
   expect(pending).toHaveLength(2);
   const oldRead = pending[0]!;
@@ -294,6 +296,8 @@ it("rejects a late closed heading read and authorizes only the reopened read", a
   await flush();
   const call = f.t.calls("thread.tag").at(-1)!;
   expect(call.args).toEqual({ thread_ids: ["new-current"], add: ["fresh"] });
+  f.db.answered.add(call.id);
   f.t.ok(call.id, { changed: ["new-current"], unchanged: [], not_found: [] });
+  await settle(f.t, f.db);
   await tagging;
 });
