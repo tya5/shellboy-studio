@@ -415,8 +415,7 @@ async fn branches_fork_rewind_and_unarchive_against_a_real_owner() {
     );
     let root = temp_root();
     let data = root.join("data");
-    let gate = Arc::new(tokio::sync::Notify::new());
-    let url = streaming_provider(gate.clone()).await;
+    let url = mock_provider().await;
     let serve = start_owner_with(&bin, &root, &data, &url);
     let instance = serve.instance.clone();
     let op = |n: &str| Some(format!("{instance}:web-it-{n}"));
@@ -450,7 +449,6 @@ async fn branches_fork_rewind_and_unarchive_against_a_real_owner() {
             op(&format!("send-{n}")),
         )
         .await;
-        gate.notify_one();
         c.settled(&thread).await;
     }
     let history = c
