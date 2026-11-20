@@ -253,3 +253,27 @@ it("shares one admission across the real sidebar and Threads surfaces", async ()
     render(null, host); host.remove(); f.model.dispose(); f.data.stop();
   }
 });
+
+
+it("requires a complete marker and carries it into singleton deletion", async () => {
+  const f = await fixtureModel({ route: "threads", configure(db) { db.threads = { A: summary("A") }; db.details = { A: details("A") }; } });
+  const host = document.createElement("div"); document.body.append(host);
+  try {
+    f.model.applyRoute({ view: "thread-management", threadId: "A" });
+    await act(async () => { render(<ThreadManagement model={f.model} />, host); await flush(); });
+    await answer(f, "thread.get", "A");
+    const preview = host.querySelector<HTMLButtonElement>("button");
+    preview!.click(); await flush();
+    const previewCall = f.t.calls("thread.delete_preview").at(-1)!;
+    expect(previewCall.args).toEqual({ thread_id: "A", descendants: false });
+    f.t.ok(previewCall.id, { thread_id: "A", deletable_now: true, preview_marker: { thread_count: 1, ids_hash: "a".repeat(64) } });
+    await act(async () => { await flush(); });
+    const confirm = [...host.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === f.model.t.value("thread.deleteConfirm"));
+    expect(confirm).toBeDefined(); confirm!.click(); await flush();
+    const deletion = f.t.calls("thread.delete").at(-1)!;
+    expect(deletion.args).toEqual({ thread_id: "A", descendants: false, preview_marker: { thread_count: 1, ids_hash: "a".repeat(64) } });
+    f.t.ownerError(deletion.id, "preview_stale", "stale preview");
+    await act(async () => { await flush(); });
+    expect(f.t.calls("thread.delete")).toHaveLength(1);
+  } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
+});

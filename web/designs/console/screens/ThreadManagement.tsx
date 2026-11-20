@@ -169,11 +169,12 @@ export function ThreadManagement({ model }: { model: AppModel }) {
       const out = await model.ops.threadDeletePreview(id);
       if (!deleteTargetCurrent(target)) return;
       const marker = out.ok ? out.value.preview_marker : undefined;
-      if (!out.ok || out.value.thread_id !== id || out.value.deletable_now !== true || !marker || typeof marker !== "object" || typeof marker.thread_count !== "number" || marker.thread_count < 1 || typeof marker.ids_hash !== "string" || !/^[0-9a-f]{64}$/.test(marker.ids_hash)) {
+      const markerValue = marker && typeof marker === "object" ? marker as Record<string, unknown> : undefined;
+      if (!out.ok || out.value.thread_id !== id || out.value.deletable_now !== true || !markerValue || typeof markerValue.thread_count !== "number" || markerValue.thread_count < 1 || typeof markerValue.ids_hash !== "string" || !/^[0-9a-f]{64}$/.test(markerValue.ids_hash)) {
         setDeleteState({ ...target, kind: "failed", message: out.ok ? t("thread.deleteBlocked") : out.error.message });
         return;
       }
-      setDeleteState({ ...target, kind: "confirm", marker: { thread_count: marker.thread_count, ids_hash: marker.ids_hash } });
+      setDeleteState({ ...target, kind: "confirm", marker: { thread_count: markerValue!.thread_count as number, ids_hash: markerValue!.ids_hash as string } });
     } catch (error) { if (deleteTargetCurrent(target)) setDeleteState({ ...target, kind: "failed", message: error instanceof Error ? error.message : t("thread.deleteBlocked") }); }
     finally { release(token); }
   };
