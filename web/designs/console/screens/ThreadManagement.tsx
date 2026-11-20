@@ -180,7 +180,7 @@ export function ThreadManagement({ model }: { model: AppModel }) {
     setRunActionState({ id, route, owner, visit: targetVisit, detailToken, kind: "running" });
     let sent = false;
     try {
-      const result = await managementRetry(model.ops, id, { runId: admissionIdentity.runId, turnId: admissionIdentity.turnId }, retryOperationId, currentTarget);
+      const result = await managementRetry(model.ops, id, { kind: "strict", expected: { runId: admissionIdentity.runId, turnId: admissionIdentity.turnId } }, retryOperationId, currentTarget);
       if (result.kind === "stale") return;
       if (result.kind === "refused") {
         if (currentTarget()) setRunActionState({ id, route, owner, visit: targetVisit, detailToken, kind: "refused", message: t("action.retryRefused"), reason: result.recoveryReason });

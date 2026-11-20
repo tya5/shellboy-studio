@@ -45,7 +45,7 @@ export function ThreadQuickAction({ model, row, surface, enableRetry = false }: 
     setRetryState("running");
     let sent = false;
     try {
-      const result = await managementRetry(model.ops, target.id, undefined, reservation.operationId, current);
+      const result = await managementRetry(model.ops, target.id, { kind: "discovered" }, reservation.operationId, current);
       if (result.kind !== "sent") { if (current()) setRetryState("failed"); return; }
       sent = true;
       const out = result.outcome;

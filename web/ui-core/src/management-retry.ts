@@ -1,6 +1,10 @@
 import type { Operations, ThreadDetails } from "../../data/src";
 import { managementRunRead } from "./management-run-read";
 
+export type ManagementRetryMode =
+  | { kind: "strict"; expected: { runId: string; turnId: string } }
+  | { kind: "discovered" };
+
 export type ManagementRetryResult =
   | { kind: "stale" }
   | { kind: "refused"; reason: "thread" | "identity" | "run" | "turn" | "ineligible"; recoveryReason?: string }
@@ -9,11 +13,11 @@ export type ManagementRetryResult =
 export async function managementRetry(
   ops: Pick<Operations, "threadGet" | "runGet" | "turnGet" | "runRetry">,
   threadId: string,
-  expected: { runId: string; turnId: string },
+  mode: ManagementRetryMode,
   operationId: string,
   isCurrent: () => boolean,
 ): Promise<ManagementRetryResult> {
-  const read = await managementRunRead(ops, threadId, expected, isCurrent);
+  const read = await managementRunRead(ops, threadId, mode.kind === "strict" ? mode.expected : undefined, isCurrent);
   if (read.kind === "stale") return read;
   if (read.kind === "refused") return { kind: "refused", reason: read.reason === "mismatch" ? "identity" : read.reason, recoveryReason: undefined };
   const observation = read.observation;
@@ -21,6 +25,6 @@ export async function managementRetry(
   if (observation.runState !== "live" || observation.turnState !== "recovery_wait" || !recoveryReason) return { kind: "refused", reason: "ineligible", recoveryReason };
   if (!isCurrent()) return { kind: "stale" };
 
-  const outcome = await ops.runRetry(expected.runId, operationId);
+  const outcome = await ops.runRetry(observation.runId, operationId);
   return { kind: "sent", runId: observation.runId, turnId: observation.turnId, recoveryReason, outcome };
 }
