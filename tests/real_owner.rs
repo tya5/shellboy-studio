@@ -415,7 +415,8 @@ async fn branches_fork_rewind_and_unarchive_against_a_real_owner() {
     );
     let root = temp_root();
     let data = root.join("data");
-    let url = mock_provider().await;
+    let gate = Arc::new(tokio::sync::Notify::new());
+    let url = streaming_provider(gate.clone()).await;
     let serve = start_owner_with(&bin, &root, &data, &url);
     let instance = serve.instance.clone();
     let op = |n: &str| Some(format!("{instance}:web-it-{n}"));
@@ -449,6 +450,7 @@ async fn branches_fork_rewind_and_unarchive_against_a_real_owner() {
             op(&format!("send-{n}")),
         )
         .await;
+        gate.notify_one();
         c.settled(&thread).await;
     }
     // Separate plain Stop phase: the owner reports the active Run, and Core settles that exact Run.
@@ -458,9 +460,14 @@ async fn branches_fork_rewind_and_unarchive_against_a_real_owner() {
     c.ok("message.send", json!({"thread_id":stop_thread,"text":"stop me"}), op("stop-send")).await;
     let live = c.ok("thread.get", json!({"thread_id":stop_thread}), None).await;
     let run_id = live["run_id"].as_str().expect("active exact Run").to_owned();
-    let stopped = c.ok("run.stop", json!({"run_id":run_id}), op("stop")).await;
-    assert_eq!(stopped["run_id"], run_id.as_str(), "{stopped}");
+    let stopping = c.ok("run.stop", json!({"run_id":run_id}), op("stop")).await;
+    assert_eq!(stopping["run_id"], run_id.as_str(), "{stopping}");
+    assert_eq!(stopping["state"], "stopping", "{stopping}");
+    gate.notify_one();
     c.settled(&stop_thread).await;
+    let stopped = c.ok("run.get", json!({"run_id":run_id}), None).await;
+    assert_eq!(stopped["run_id"], run_id.as_str(), "{stopped}");
+    assert_eq!(stopped["state"], "stopped", "{stopped}");
 
     let history = c
         .ok(
