@@ -10,7 +10,7 @@ type ActionState = { id: string; route: Route; owner: OwnerIdentity; visit: Visi
 type SettingsState = { id: string; route: Route; owner: OwnerIdentity; visit: Visit; model: string; effort: string; initialEffort: string; saving: boolean; saved: boolean; error?: string };
 type DeleteState = { id: string; route: Route; owner: OwnerIdentity; visit: Visit; kind: "previewing" | "confirm" | "deleting" | "failed" | "done"; marker?: { thread_count: number; ids_hash: string }; message?: string };
 type ObservationState = { id: string; route: Route; owner: OwnerIdentity; visit: Visit; detailToken?: object; kind: "loading" | "ready" | "unavailable"; runId?: string; turnId?: string; runState?: string; turnState?: string; recoveryReason?: string; error?: string };
-type RunActionState = { id: string; route: Route; owner: OwnerIdentity; visit: Visit; detailToken: object; kind: "running" | "refused" | "accepted"; message?: string };
+type RunActionState = { id: string; route: Route; owner: OwnerIdentity; visit: Visit; detailToken: object; kind: "running" | "refused" | "accepted"; action?: "retry" | "stop"; message?: string };
 
 /** One-thread management entry; route reads and mutations are independent of bulk selection. */
 export function ThreadManagement({ model }: { model: AppModel }) {
@@ -181,7 +181,7 @@ export function ThreadManagement({ model }: { model: AppModel }) {
       }
       const out = await model.ops.runRetry(runId);
       if (!currentTarget()) return;
-      setRunActionState(out.ok ? { id, route, owner, visit: targetVisit, detailToken, kind: "accepted" } : { id, route, owner, visit: targetVisit, detailToken, kind: "refused", message: out.error.message });
+      setRunActionState(out.ok ? { id, route, owner, visit: targetVisit, detailToken, kind: "accepted", action: "retry" } : { id, route, owner, visit: targetVisit, detailToken, kind: "refused", message: out.error.message });
     } finally { release(token); }
   };
 
@@ -213,7 +213,7 @@ export function ThreadManagement({ model }: { model: AppModel }) {
       }
       const out = await model.ops.runStop(runId);
       if (!currentTarget()) return;
-      setRunActionState(out.ok ? { id, route, owner, visit: targetVisit, detailToken, kind: "accepted" } : { id, route, owner, visit: targetVisit, detailToken, kind: "refused", message: out.error.message });
+      setRunActionState(out.ok ? { id, route, owner, visit: targetVisit, detailToken, kind: "accepted", action: "stop" } : { id, route, owner, visit: targetVisit, detailToken, kind: "refused", message: out.error.message });
     } finally { release(token); }
   };
 
@@ -321,7 +321,7 @@ export function ThreadManagement({ model }: { model: AppModel }) {
       {currentObservation.turnState === "running" ? <Button variant="stop" disabled={surfaceBusy || currentRunAction?.kind === "running"} onClick={() => void stop()}>{t("action.stop")}</Button> : null}
       {currentObservation.turnState === "recovery_wait" && currentObservation.recoveryReason ? <Button variant="primary" disabled={surfaceBusy || currentRunAction?.kind === "running"} onClick={() => void retry()}>{t("action.retry")}</Button> : null}
       {currentRunAction?.kind === "refused" ? <Notice tone="bad">{currentRunAction.message}</Notice> : null}
-      {currentRunAction?.kind === "accepted" ? <Notice>{t("action.retry")}</Notice> : null}
+      {currentRunAction?.kind === "accepted" ? <Notice>{currentRunAction.action === "stop" ? t("action.stop") : t("action.retry")}</Notice> : null}
     </div> : null}
     {settings ? <div class="band" data-thread-settings="">
       <Field ariaLabel={t("model.change")} value={settings.model} disabled={surfaceBusy || settings.saving} onInput={(e) => setSettingsState((prev) => prev && prev.id === id && prev.route === route && prev.owner === owner && prev.visit === visitRef.current ? { ...prev, model: e.currentTarget.value, saved: false, error: undefined } : prev)} />

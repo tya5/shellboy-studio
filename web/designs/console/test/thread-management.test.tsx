@@ -499,9 +499,14 @@ it("stops only after fresh exact running preflight", async () => {
     await act(async () => { await flush(); });
     f.t.ok(f.t.calls("turn.get").at(-1)!.id, { turn_id: "turn-a", run_id: "run-a", thread_id: "A", state: "running" });
     await act(async () => { await flush(); });
-    const call = f.t.calls("run.stop").at(-1)!;
+    const stops = f.t.calls("run.stop");
+    expect(stops).toHaveLength(1);
+    const call = stops[0]!;
     expect(call.args).toEqual({ run_id: "run-a" });
     f.t.ok(call.id, {});
+    await act(async () => { await flush(); });
+    expect(host.textContent).toContain(f.model.t.value("action.stop"));
+    expect(host.textContent).not.toContain(f.model.t.value("action.retry"));
   } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
 });
 
