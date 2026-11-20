@@ -168,10 +168,14 @@ readback failure is not treated as saved.
 
 Use the row action in the sidebar or Threads list to archive or unarchive one
 Thread. The action targets the clicked Thread, does not include descendants, and
-rechecks the owner result before publishing the refreshed row. The management
-page exposes the same archive/unarchive operation.
+rechecks the owner result with an exact same-Thread readback before attempting the
+existing list refresh. Archiving may remove the row; a settled refresh is not
+proof that a row was published. The management page exposes the same
+archive/unarchive operation.
 
-Bulk archive/unarchive and tag actions use the current published selection only.
+Bulk archive/unarchive is limited to the flat `tree` view; tag actions may use
+qualified grouped publications as well. Both use the current published selection
+only.
 They fail closed when the owner, view, filter, grouping, selected rows, or
 publication is stale. Results preserve changed, unchanged, and not-found
 outcomes; a refresh completing is not by itself proof that the owner published a
@@ -182,7 +186,8 @@ silently discarded.
 
 Deletion is currently available only for one Thread from its management page.
 Studio first requests an owner preview. Confirmation is a separate explicit step
-and carries the exact one-use preview marker; stale, blocked, rejected, unmarked,
+and Studio uses that confirmation once, passing the exact owner-provided marker
+verbatim; stale, blocked, rejected, unmarked,
 or descendant deletion requests are not retried. A successful deletion requires
 the owner's accepted result and retires the page's action controls. List-refresh
 warnings are shown separately from the owner's deletion acceptance.
