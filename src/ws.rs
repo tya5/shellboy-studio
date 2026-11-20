@@ -7,24 +7,24 @@
 //! connections. Replies go through a channel of `RESULT_CHANNEL` slots, which can never
 //! fill: at most `SESSION_IN_FLIGHT + SESSION_QUEUE` calls can be outstanding.
 use crate::{
-    allowlist::{access, Access},
+    allowlist::{Access, access},
     envelope::{BridgeError, ClientFrame, OwnerState, ServerFrame},
     hub::SessionGuard,
     owner::Owner,
     server::AppState,
 };
 use axum::extract::ws::{Message, WebSocket};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use shellboy::protocol::Command;
 use std::{
     collections::HashMap,
     sync::{
-        atomic::{AtomicUsize, Ordering},
         Arc,
+        atomic::{AtomicUsize, Ordering},
     },
 };
 use tokio::{
-    sync::{mpsc, Semaphore},
+    sync::{Semaphore, mpsc},
     task::{AbortHandle, JoinSet},
 };
 
@@ -480,19 +480,23 @@ mod tests {
     #[test]
     fn data_layer_mutations_are_allowed() {
         assert!(build_command("run.retry", Some(json!({"run_id":"r"}))).is_ok());
-        assert!(build_command(
-            "thread.archive",
-            Some(json!({"thread_ids":["a"],"descendants":true}))
-        )
-        .is_ok());
+        assert!(
+            build_command(
+                "thread.archive",
+                Some(json!({"thread_ids":["a"],"descendants":true}))
+            )
+            .is_ok()
+        );
         assert!(build_command("thread.list", Some(json!({"archived":"only"}))).is_ok());
         assert!(build_command("thread.unarchive", Some(json!({"thread_ids":["a"]}))).is_ok());
         assert!(build_command("thread.fork", Some(json!({"thread_id":"t","node_id":"n"}))).is_ok());
-        assert!(build_command(
-            "thread.rewind",
-            Some(json!({"thread_id":"t","node_id":"n","dry_run":true}))
-        )
-        .is_ok());
+        assert!(
+            build_command(
+                "thread.rewind",
+                Some(json!({"thread_id":"t","node_id":"n","dry_run":true}))
+            )
+            .is_ok()
+        );
         assert_eq!(
             access(
                 &build_command(
