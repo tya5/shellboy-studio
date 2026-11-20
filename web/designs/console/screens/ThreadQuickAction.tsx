@@ -1,5 +1,5 @@
 import { useEffect } from "preact/hooks";
-import { type AppModel, type Route } from "../../../ui-core/src";
+import { formatRoute, type AppModel, type Route } from "../../../ui-core/src";
 import { Button, Notice } from "../system/components";
 import type { ThreadSummary } from "../../../data/src";
 
@@ -47,12 +47,17 @@ export function ThreadQuickAction({ model, row, surface }: { model: AppModel; ro
       const message = error instanceof Error ? error.message : model.t.value("thread.quickReadbackFailed");
       if (current()) model.threadQuickActionFinish(target.owner as object, target.id, token, { kind: "failed", error: message });
       else model.threadQuickActionDrop(target.owner as object, target.id, token);
+    } finally {
+      if (model.threadQuickActionStatus(target.owner as object, target.id)?.kind === "running") model.threadQuickActionDrop(target.owner as object, target.id, token);
     }
   };
 
   const disabled = status !== undefined || !current();
   return <span data-thread-quick-action={row.thread_id} data-thread-quick-surface={surface} data-quick-action-state={status?.kind ?? "idle"}>
     <Button disabled={disabled} aria-busy={status?.kind === "running"} onClick={run}>{row.archived_at !== undefined ? model.t.value("org.unarchive") : model.t.value("action.archive")}</Button>
-    {status?.kind === "failed" && status.error ? <Notice tone="bad">{status.error}</Notice> : null}
+    {status?.kind === "failed" ? <>
+      {status.error ? <Notice tone="bad">{status.error}</Notice> : null}
+      <a class="btn link" href={formatRoute({ view: "thread-management", threadId: target.id })}>{model.t.value("view.threads")}</a>
+    </> : null}
   </span>;
 }
