@@ -87,7 +87,7 @@ export function ThreadQuickAction({ model, row, status, surface, onMove, report 
       }
     }}>
       <a role="menuitem" href={formatRoute({ view: "thread-management", threadId: row.thread_id })}>{model.t.value("view.thread-management")}</a>
-      {status === "completed" || status === "stopped" || status === "failed" ? <Button role="menuitem" disabled={pending !== undefined} onClick={archive}>{archived ? model.t.value("org.unarchive") : model.t.value("action.archive")}</Button> : null}
+      {archived || status === "completed" || status === "stopped" || status === "failed" ? <Button role="menuitem" disabled={pending !== undefined} onClick={archive}>{archived ? model.t.value("org.unarchive") : model.t.value("action.archive")}</Button> : null}
       {status === "running" ? <Button role="menuitem" variant="stop" disabled={pending !== undefined} onClick={stop}>{model.t.value("action.stop")}</Button> : null}
       {status === "recovery" ? <Button role="menuitem" variant="warn" disabled={pending !== undefined} onClick={retry}>{model.t.value("action.retry")}</Button> : null}
       {onMove ? <Button role="menuitem" onClick={() => { setOpen(false); onMove(); }}>{model.t.value("org.move")}</Button> : null}

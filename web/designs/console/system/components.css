@@ -66,7 +66,8 @@ a{color:var(--accent)}
 /* ThreadItem */
 .tree{display:flex;flex-direction:column;gap:1px}
 .tree-item{content-visibility:visible;contain-intrinsic-size:auto 32px;display:flex;align-items:center;gap:var(--space-8);min-height:32px;padding:0 var(--space-8);border-radius:var(--radius-s);color:var(--fg);text-decoration:none;font:var(--type-label);min-width:0}
-.tree-item span.name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tree-item .tree-main{display:flex;align-items:center;flex:1 1 auto;min-width:0;overflow:hidden}
+.tree-item span.name{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .tree-item:hover{background:var(--raised)}
 .tree-item[aria-current=true]{background:var(--accent-bg);color:var(--fg)}
 .tree-item.child{color:var(--muted)}

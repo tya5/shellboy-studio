@@ -343,7 +343,7 @@ it("shows only state-appropriate quick row actions", async () => {
     render(<>
       <ThreadQuickAction model={f.model} row={summary("run")} status="running" surface="list" />
       <ThreadQuickAction model={f.model} row={summary("retry")} status="recovery" surface="list" />
-      <ThreadQuickAction model={f.model} row={summary("archived", { archived_at: "now" })} status="completed" surface="list" />
+      <ThreadQuickAction model={f.model} row={summary("archived", { archived_at: "now" })} status="idle" surface="list" />
     </>, host);
     for (const id of ["run", "retry", "archived"]) host.querySelector<HTMLButtonElement>(`[data-thread-quick-action="${id}"] button[aria-label]`)!.click();
     await new Promise((resolve) => setTimeout(resolve, 0));
