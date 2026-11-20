@@ -132,7 +132,7 @@ export function setBounded<V>(map: Map<string, V>, key: string, value: V): Map<s
 
 export const errorMessage = (e: OpError): string => e.message;
 
-type QuickActionStatus = { kind: "running" | "done" | "failed"; error?: string; expectedArchived?: boolean };
+type QuickActionStatus = { kind: "running" | "failed" | "verified"; error?: string; archived?: boolean };
 
 export class AppModel {
   readonly quickActionEpoch = signal(0);
@@ -153,6 +153,7 @@ export class AppModel {
     const action = this.quickActions.get(owner)?.get(threadId);
     if (!action || action.token !== token) return;
     action.status = status;
+    action.token = undefined;
     this.quickActionEpoch.value++;
   }
   threadQuickActionDrop(owner: object, threadId: string, token: object): void {
@@ -161,15 +162,7 @@ export class AppModel {
     actions.delete(threadId);
     this.quickActionEpoch.value++;
   }
-  threadQuickActionReset(owner: object, threadId: string, archived: boolean): void {
-    const actions = this.quickActions.get(owner);
-    const action = actions?.get(threadId);
-    if (!action || action.status.kind === "running") return;
-    if (action.status.kind === "done" && action.status.expectedArchived === archived) {
-      actions!.delete(threadId);
-      this.quickActionEpoch.value++;
-    }
-  }
+
 
   readonly pairing = signal<{ hosts: string[]; links: Record<string, { url: string; expires: number }>; error?: string }>({ hosts: [], links: {} });
   async loadPairingHosts(): Promise<void> {
