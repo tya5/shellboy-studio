@@ -1059,18 +1059,28 @@ it("keeps an opted-in mounted Retry row route-fenced before exact re-admission",
     host.querySelector<HTMLButtonElement>("[data-thread-quick-retry]")!.click();
     const firstRead = f.t.calls("thread.get").at(-1)!;
     expect(firstRead.args).toEqual({ thread_id: "A" });
+    const firstReservation = f.model.managementRetryReservations.value.get("i1:A:retry");
+    expect(firstReservation?.threadId).toBe("A");
+    expect(firstReservation?.operationId).toBeTruthy();
+    const firstOperationId = firstReservation!.operationId;
     await act(async () => { f.model.applyRoute({ view: "threads", threadId: "A" }); await flush(); });
     f.t.ok(firstRead.id, details("A", { run_id: "run-a", turn_id: "turn-a" }));
     await act(async () => { await flush(); });
     expect(f.t.calls("run.get")).toHaveLength(0);
     expect(f.t.calls("turn.get")).toHaveLength(0);
     expect(f.t.calls("run.retry")).toHaveLength(0);
-    expect(host.querySelector("[data-thread-quick-retry] + .notice")).toBeNull();
     expect(f.model.managementRetryReservations.value.has("i1:A:retry")).toBe(false);
+    expect(firstOperationId).not.toBe("");
 
     await act(async () => { f.model.applyRoute({ view: "threads" }); await flush(); });
     host.querySelector<HTMLButtonElement>("[data-thread-quick-retry]")!.click();
     const secondRead = f.t.calls("thread.get").at(-1)!;
+    expect(secondRead.id).not.toBe(firstRead.id);
+    const secondReservation = f.model.managementRetryReservations.value.get("i1:A:retry");
+    expect(secondReservation?.threadId).toBe("A");
+    expect(secondReservation?.operationId).toBeTruthy();
+    expect(secondReservation?.operationId).not.toBe(firstOperationId);
+    const secondOperationId = secondReservation!.operationId;
     f.t.ok(secondRead.id, details("A", { run_id: "run-a", turn_id: "turn-a" }));
     await act(async () => { await flush(); });
     f.t.ok(f.t.calls("run.get").at(-1)!.id, { run_id: "run-a", thread_id: "A", turn_id: "turn-a", state: "live" });
@@ -1081,7 +1091,9 @@ it("keeps an opted-in mounted Retry row route-fenced before exact re-admission",
     expect(retry).toHaveLength(1);
     expect(retry[0]!.args).toEqual({ run_id: "run-a" });
     f.t.ok(retry[0]!.id, { run_id: "run-a", thread_id: "A", turn_id: "turn-a", state: "live" });
+    expect(f.model.managementRetryReservations.value.get("i1:A:retry")?.operationId).toBe(secondOperationId);
     await act(async () => { await flush(); });
-    expect(host.textContent).not.toContain(f.model.t.value("action.retryAccepted"));
+    expect(f.model.managementRetryReservations.value.has("i1:A:retry")).toBe(false);
+    expect(host.querySelector<HTMLButtonElement>("[data-thread-quick-retry]")?.disabled).toBe(false);
   } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
 });
