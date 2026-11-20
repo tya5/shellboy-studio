@@ -592,6 +592,8 @@ it("keeps an unconfirmed Retry unknown without reminting its operation", async (
     f.t.drop();
     await act(async () => { await flush(); });
     expect(host.textContent).toContain(retry.operation_id);
+    expect(host.querySelector("[data-run-actions] .notice")?.textContent).toContain(retry.operation_id);
+    expect(host.querySelectorAll("[data-run-actions] button")).toHaveLength(0);
     expect(host.textContent).toContain("unknown");
     expect(f.t.calls("run.retry")).toHaveLength(1);
   } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
