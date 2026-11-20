@@ -141,6 +141,12 @@ it("owner change after a known rewind never starts the unsent send stage", async
   owner="a";const resume=b.confirmRewind("text");await flush();t.ok(t.calls("message.send")[0]!.id,{message_id:"accepted-message",thread_id:(t.calls("message.send")[0]!.args as {thread_id:string}).thread_id});await resume;link.stop();
 });
 
+function ownerFixture() {
+  const t=new FakeTransport(),link=new Link(t);link.start();t.open();let owner:string|undefined="a",seq=0;
+  const b=new Branches(new Operations(link,()=>`${owner}:${++seq}`, () => true),()=>owner);
+  const change=(next:string|undefined)=>{owner=next;b.ownerChanged(next);};change("a");
+  return {t,link,b,change};
+}
 it("cached canonical success belongs only to the original owner, retained through opaque lookup",async()=>{
   const f=ownerFixture();const p=f.b.renameBranch("selected","x");f.t.ok(f.t.calls("thread.set")[0]!.id,{thread_id:"selected",title:"x"});await p;
   f.change("b");f.b.actionError.value="new owner";const other=f.b.renameBranch("selected","x");
