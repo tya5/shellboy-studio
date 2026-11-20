@@ -273,6 +273,9 @@ export class Branches {
   private familyGeneration = 0;
   private running = false;
   private again = false;
+  private revision = 0;
+  private readonly authority: (() => { owner: object; route: object } | undefined) | undefined;
+  private readonly quickActionBusy: ((owner: object, id: string) => boolean) | undefined;
   private cancel = new Cancel();
 
   constructor(private readonly ops: Operations, private readonly owner: () => string | undefined = () => "synthetic-owner", private readonly view?: () => string | undefined) {}
@@ -590,7 +593,11 @@ export class ThreadOrg {
   constructor(
     private readonly ops: Operations,
     private readonly capabilities: () => readonly string[] = () => [],
+    authority?: () => { owner: object; route: object } | undefined,
+    quickActionBusy?: (owner: object, id: string) => boolean,
   ) {
+    this.authority = authority;
+    this.quickActionBusy = quickActionBusy;
     this.headings = new ThreadHeadings(ops, () => ({ mode: this.state.peek().mode, query: this.state.peek().query }), () => this.prune());
   }
 
@@ -689,7 +696,10 @@ export class ThreadOrg {
         const known = new Set(items.map((s) => s.thread_id));
         batch(() => {
           this.state.value = error ? { ...now, loading: this.again, error } : { ...now, loading: this.again, items, nextCursor: cursor, loaded: true, error: undefined };
-          if (!error) this.selected.value = new Set([...this.selected.peek()].filter((id) => known.has(id)));
+          if (!error) {
+            this.revision++;
+            this.selected.value = new Set([...this.selected.peek()].filter((id) => known.has(id)));
+          }
         });
       } while (this.again);
     } finally {
@@ -712,6 +722,7 @@ export class ThreadOrg {
     if (this.state.peek().mode === mode) return;
     this.cancel.cancel();
     this.pages = 1;
+    this.revision++;
     batch(() => {
       this.state.value = { ...this.state.peek(), mode, items: [], nextCursor: undefined, loaded: false };
       this.selected.value = new Set();
@@ -724,6 +735,7 @@ export class ThreadOrg {
     if (this.state.peek().query === query) return;
     this.cancel.cancel();
     this.pages = 1;
+    this.revision++;
     this.state.value = { ...this.state.peek(), query };
     void this.read();
   }
@@ -776,12 +788,20 @@ export class ThreadOrg {
 
   /** Archive in Active, unarchive in Archived. Nothing changes here until the owner says so. */
   async apply(): Promise<void> {
+    const shown = this.shown();
     const ids = [...this.selected.peek()];
-    if (ids.length === 0) return;
+    const revision = this.revision;
+    const authority = this.authority?.();
+    if (ids.length === 0 || !authority || ids.some((id) => !shown.some((row) => row.thread_id === id))) return;
+    if (ids.some((id) => this.quickActionBusy?.(authority.owner, id))) return;
     const verb = this.state.peek().mode === "exclude" ? "archive" : "unarchive";
-    const options = { descendants: this.descendants.peek() };
+    const current = () => this.revision === revision && this.authority?.()?.owner === authority.owner && this.authority?.()?.route === authority.route && ids.every((id) => this.shown().some((row) => row.thread_id === id)) && !ids.some((id) => this.quickActionBusy?.(authority.owner, id));
     this.action.value = { kind: "running" };
     const out = verb === "archive" ? await this.ops.threadArchive(ids, options) : await this.ops.threadUnarchive(ids, options);
+    if (!current()) {
+      this.action.value = { kind: "failed", error: { kind: "invalid_response", message: "The selected Threads changed before the owner result was accepted." } };
+      return;
+    }
     if (!out.ok) {
       this.action.value = { kind: "failed", error: out.error };
       return;

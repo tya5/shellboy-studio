@@ -421,7 +421,7 @@ export class AppModel {
     }));
     this.disposers.push(effect(() => { this.data.threadList.value; this.branchCompare.hint(); }));
     this.senderTitles = new SenderTitles(this.ops);
-    this.org = new ThreadOrg(this.ops, () => this.data.capabilities.peek());
+    this.org = new ThreadOrg(this.ops, () => this.data.capabilities.peek(), () => ({ owner: this.data.owner.peek() as object, route: this.route.peek() }), (owner, id) => this.threadQuickActionStatus(owner, id)?.kind === "running");
     this.config = new ConfigEditor(this.ops);
     this.guideRegistration = new GuideRegistration(this.ops);
     this.setup = new ConnectionSetup(this.ops);
