@@ -902,14 +902,13 @@ export class ThreadOrg {
     const revision = this.revision;
     const selectionGeneration = this.selectionGeneration;
     const authority = this.authority?.();
-    const published = this.publishedView;
     const draft = this.tagDraft.peek();
-    if (this.groupBy.peek() !== "tree" || ids.length === 0 || !authority || !published || authority.owner !== published.owner || authority.route !== published.route || this.state.peek().mode !== published.mode || this.state.peek().query !== published.query || this.groupBy.peek() !== published.grouping || ids.length > TAG_SELECTION_MAX || ids.some((id) => !shown.some((row) => row.thread_id === id)) || (draft.add.length === 0 && draft.remove.size === 0)) return;
+    if (ids.length === 0 || !authority || ids.length > TAG_SELECTION_MAX || ids.some((id) => !shown.some((row) => row.thread_id === id)) || (draft.add.length === 0 && draft.remove.size === 0)) return;
     const token = this.reserve?.(authority.owner, ids);
     if (!token) return;
     this.tagAttempt = token;
-    const mutationCurrent = () => this.tagAttempt === token && this.revision === revision && this.authority?.()?.owner === authority.owner && this.ownsReservation?.(authority.owner, ids, token) === true;
-    const uiCurrent = () => mutationCurrent() && this.selectionGeneration === selectionGeneration && this.authority?.()?.route === authority.route;
+    const mutationCurrent = () => this.tagAttempt === token && this.revision === revision && this.authority?.()?.owner === authority.owner && this.authority?.()?.route === authority.route && this.ownsReservation?.(authority.owner, ids, token) === true;
+    const uiCurrent = () => mutationCurrent() && this.selectionGeneration === selectionGeneration;
     this.tagAction.value = { kind: "running" };
     try {
       const remove = [...draft.remove];
@@ -919,7 +918,6 @@ export class ThreadOrg {
         if (uiCurrent()) this.tagAction.value = { kind: "failed", limit: out.error.kind === "owner" && out.error.code === "input_limit", message: out.error.message };
         return;
       }
-      this.publishedView = undefined;
       if (uiCurrent()) {
         batch(() => {
           this.tagAction.value = { kind: "done", result: out.value };
