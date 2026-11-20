@@ -7,7 +7,7 @@ type Target = { id: string; archived: boolean; route: Route; owner: AppModel["da
 type ActionState = "idle" | "running" | "done" | "failed";
 
 /** One row-qualified archive action shared by sidebar and the Threads list. */
-export function ThreadQuickAction({ model, row }: { model: AppModel; row: ThreadSummary }) {
+export function ThreadQuickAction({ model, row, surface }: { model: AppModel; row: ThreadSummary; surface: "sidebar" | "list" }) {
   const targetRef = useRef<Target>();
   const tokenRef = useRef<object>();
   const [state, setState] = useState<ActionState>("idle");
@@ -45,5 +45,5 @@ export function ThreadQuickAction({ model, row }: { model: AppModel; row: Thread
   };
 
   const disabled = state !== "idle" || !current;
-  return <Button data-thread-quick-action={row.thread_id} data-quick-action-state={state} disabled={disabled} aria-busy={state === "running"} onClick={run}>{row.archived_at !== undefined ? model.t.value("org.unarchive") : model.t.value("action.archive")}</Button>;
+  return <Button data-thread-quick-action={row.thread_id} data-thread-quick-surface={surface} data-quick-action-state={state} disabled={disabled} aria-busy={state === "running"} onClick={run}>{row.archived_at !== undefined ? model.t.value("org.unarchive") : model.t.value("action.archive")}</Button>;
 }

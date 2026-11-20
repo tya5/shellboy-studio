@@ -6,6 +6,7 @@ import { expect, it } from "vitest";
 import { details, flush, summary } from "../../../data/test/harness";
 import { fixtureModel } from "../../../ui-core/test/fixture";
 import { ThreadManagement } from "../screens/ThreadManagement";
+import { ThreadQuickAction } from "../screens/ThreadQuickAction";
 
 async function answer(f: Awaited<ReturnType<typeof fixtureModel>>, command: string, threadId?: string): Promise<void> {
   const call = f.t.calls(command).find((candidate) => {
@@ -177,5 +178,26 @@ it("does not arm actions for a foreign detail or dispatch a second visit mutatio
     host.remove();
     f.model.dispose();
     f.data.stop();
+  }
+});
+
+
+it("routes both mounted row action entries to the clicked singleton", async () => {
+  const f = await fixtureModel({ route: "threads", configure(db) { db.threads = { A: summary("A"), B: summary("B") }; } });
+  const host = document.createElement("div");
+  document.body.append(host);
+  try {
+    f.model.org.selected.value = new Set(["A"]);
+    await act(async () => {
+      render(<><ThreadQuickAction model={f.model} row={summary("A")} surface="sidebar" /><ThreadQuickAction model={f.model} row={summary("B")} surface="list" /></>, host);
+      await flush();
+    });
+    const listAction = host.querySelector<HTMLButtonElement>('[data-thread-quick-surface="list"][data-thread-quick-action="B"]')!;
+    listAction.click();
+    await flush();
+    expect(f.t.calls("thread.archive").at(-1)?.args).toEqual({ thread_ids: ["B"] });
+    expect(host.querySelector('[data-thread-quick-surface="sidebar"][data-thread-quick-action="A"]')).toBeDefined();
+  } finally {
+    render(null, host); host.remove(); f.model.dispose(); f.data.stop();
   }
 });
