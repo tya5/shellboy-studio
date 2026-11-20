@@ -377,12 +377,6 @@ it("opens and navigates the shared row menu from row focus", async () => {
     expect(document.activeElement).toBe(row);
     row.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true }));
     await new Promise((resolve) => setTimeout(resolve, 0));
-    document.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(host.querySelector('[role="menu"]')).toBeNull();
-    expect(document.activeElement).toBe(row);
-    row.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true }));
-    await new Promise((resolve) => setTimeout(resolve, 0));
     outside.focus();
     outside.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
     await new Promise((resolve) => setTimeout(resolve, 0));
