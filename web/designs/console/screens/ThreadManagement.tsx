@@ -21,6 +21,7 @@ export function ThreadManagement({ model }: { model: AppModel }) {
   const [actionState, setActionState] = useState<ActionState>();
   const [settingsState, setSettingsState] = useState<SettingsState>();
   const [deleteState, setDeleteState] = useState<DeleteState>();
+  const deleteProofRef = useRef<{ id: string; visit: Visit; marker: { thread_count: number; ids_hash: string }; used: boolean }>();
   const mutationRef = useRef<object>();
   const [busyVersion, setBusyVersion] = useState(0);
   const currentDetail = detailState && detailState.id === id && detailState.route === route && detailState.owner === owner && detailState.visit === visitRef.current ? detailState : undefined;
@@ -60,6 +61,7 @@ export function ThreadManagement({ model }: { model: AppModel }) {
     });
     return () => {
       active = false;
+      if (deleteProofRef.current?.visit === readVisit) deleteProofRef.current = undefined;
       if (visitRef.current === readVisit) visitRef.current = undefined;
     };
   }, [id, model.ops, owner, route]);
@@ -174,18 +176,23 @@ export function ThreadManagement({ model }: { model: AppModel }) {
         setDeleteState({ ...target, kind: "failed", message: out.ok ? t("thread.deleteBlocked") : out.error.message });
         return;
       }
-      setDeleteState({ ...target, kind: "confirm", marker: { thread_count: markerValue!.thread_count as number, ids_hash: markerValue!.ids_hash as string } });
+      const proof = { thread_count: markerValue!.thread_count as number, ids_hash: markerValue!.ids_hash as string };
+      deleteProofRef.current = { id, visit: target.visit, marker: proof, used: false };
+      setDeleteState({ ...target, kind: "confirm", marker: proof });
     } catch (error) { if (deleteTargetCurrent(target)) setDeleteState({ ...target, kind: "failed", message: error instanceof Error ? error.message : t("thread.deleteBlocked") }); }
     finally { release(token); }
   };
-  const cancelDelete = () => { if (deletion && deleteTargetCurrent(deletion)) setDeleteState(undefined); };
+  const cancelDelete = () => { if (deletion && deleteTargetCurrent(deletion)) { deleteProofRef.current = undefined; setDeleteState(undefined); } };
   const confirmDelete = async () => {
-    if (!deletion || deletion.kind !== "confirm" || !deletion.marker || !deleteTargetCurrent(deletion) || surfaceBusy) return;
+    const proof = deleteProofRef.current;
+    if (!deletion || deletion.kind !== "confirm" || !proof || proof.used || proof.id !== deletion.id || proof.visit !== deletion.visit || !deleteTargetCurrent(deletion) || surfaceBusy) return;
+    proof.used = true;
+    deleteProofRef.current = proof;
     const token = admit(deletion.visit);
     if (!token) return;
     setDeleteState({ ...deletion, kind: "deleting" });
     try {
-      const out = await model.ops.threadDelete(deletion.id, deletion.marker);
+      const out = await model.ops.threadDelete(deletion.id, proof.marker);
       if (!deleteTargetCurrent(deletion)) return;
       if (!out.ok || out.value.accepted !== true) { setDeleteState({ ...deletion, kind: "failed", message: out.ok ? t("thread.deleteBlocked") : out.error.message }); return; }
       setDeleteState({ ...deletion, kind: "done" });
@@ -193,15 +200,12 @@ export function ThreadManagement({ model }: { model: AppModel }) {
         await model.data.refreshThreadList();
         if (!deleteTargetCurrent(deletion)) return;
         if (model.data.threadList.value.error) throw new Error(model.data.threadList.value.error.message);
-        await model.org.read();
-        if (!deleteTargetCurrent(deletion)) return;
-        if (model.org.state.value.error) throw new Error(model.org.state.value.error.message);
       } catch (error) { if (deleteTargetCurrent(deletion)) setDeleteState({ ...deletion, kind: "done", message: error instanceof Error ? error.message : t("thread.deleteRefreshFailed") }); }
     } catch (error) { if (deleteTargetCurrent(deletion)) setDeleteState({ ...deletion, kind: "failed", message: error instanceof Error ? error.message : t("thread.deleteBlocked") }); }
-    finally { release(token); }
+    finally { deleteProofRef.current = undefined; release(token); }
   };
 
-  if (deletion?.kind === "done") return <Section title={detail.title}><Notice>{deletion.message ?? t("thread.deleteDone")}</Notice><a class="btn" href={formatRoute({ view: "threads" })}>{t("view.threads")}</a></Section>;
+  if (deletion?.kind === "done") return <Section title={detail.title}><Notice>{t("thread.deleteDone")}</Notice>{deletion.message ? <Notice tone="bad">{deletion.message}</Notice> : null}<a class="btn" href={formatRoute({ view: "threads" })}>{t("view.threads")}</a></Section>;
 
   return <Section title={detail.title} sub={detail.thread_id} actions={<a class="btn" href={formatRoute({ view: "conversation", threadId: id })}>{t("view.conversation")}</a>}>
     <div class="band" data-thread-management="">
