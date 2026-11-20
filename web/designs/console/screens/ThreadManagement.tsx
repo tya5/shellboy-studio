@@ -99,6 +99,7 @@ export function ThreadManagement({ model }: { model: AppModel }) {
   const detail = currentDetail.value;
   const rowStatus = model.rowById.value.get(id)?.status;
   const archived = detail.archived_at !== undefined;
+  const displayedArchived = currentAction?.kind === "done" ? currentAction.archived : archived;
   const actionable = !currentAction || currentAction.kind === "idle" || currentAction.kind === "done";
   const mutate = async () => {
     const mutationId = id;
@@ -111,7 +112,7 @@ export function ThreadManagement({ model }: { model: AppModel }) {
     if (!token) return;
     try {
       setActionState({ id: mutationId, route: mutationRoute, owner: mutationOwner, visit: mutationVisit, kind: "running" });
-    const out = archived
+    const out = displayedArchived
       ? await model.ops.threadUnarchive([mutationId], { descendants: false })
       : await model.ops.threadArchive([mutationId], { descendants: false });
     if (!currentMutation()) { return; }
@@ -120,7 +121,7 @@ export function ThreadManagement({ model }: { model: AppModel }) {
       return;
     }
     try { await model.data.refreshThreadList(); } catch { /* Core outcome remains authoritative. */ }
-    const result = archived ? out.value.unarchived : out.value.archived;
+    const result = displayedArchived ? out.value.unarchived : out.value.archived;
     setActionState({ id: mutationId, route: mutationRoute, owner: mutationOwner, visit: mutationVisit, kind: "done", archived: !archived, count: result?.length ?? 0, already: out.value.already?.length ?? 0, notFound: out.value.not_found?.length ?? 0 });
     } finally { release(token); }
   };
@@ -240,7 +241,7 @@ export function ThreadManagement({ model }: { model: AppModel }) {
 
   return <Section title={detail.title} sub={detail.thread_id} actions={<a class="btn" href={formatRoute({ view: "conversation", threadId: id })}>{t("view.conversation")}</a>}>
     <div class="band" data-thread-management="">
-      {actionable ? <Button disabled={surfaceBusy || currentAction?.kind === "running"} onClick={() => void mutate()}>{archived ? t("org.unarchive") : t("action.archive")}</Button> : null}
+      {actionable ? <Button disabled={surfaceBusy || currentAction?.kind === "running"} onClick={() => void mutate()}>{displayedArchived ? t("org.unarchive") : t("action.archive")}</Button> : null}
     </div>
     <RunActionPanel key={id} model={model} id={id} status={rowStatus === "running" || rowStatus === "recovery" ? rowStatus : undefined} runId={detail.run_id} />
     {settings ? <div class="band" data-thread-settings="">

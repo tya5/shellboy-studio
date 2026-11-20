@@ -2,16 +2,6 @@ import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { activityLabel, formatAge, formatDuration, formatRoute, parseTime, TilePreviews, statusLabel, STATUS_KEYS, type AppModel, type DesignContext, type ThreadRow } from "../../../ui-core/src";
 import { Button, ButtonGroup, Chip, EmptyState, Field, Icon, StatusMark, ThreadCard, MonitorTile, MonitorPopover } from "../system/components";
 
-function Archive({ model, id }: { model: AppModel; id: string }) {
-  const t = model.t.value;
-  const [armed, setArmed] = useState(false);
-  return (
-    <Button variant={armed ? "warn" : "plain"} onBlur={() => setArmed(false)} onClick={() => (armed ? void model.archive(id) : setArmed(true))}>
-      {t(armed ? "action.archiveConfirm" : "action.archive")}
-    </Button>
-  );
-}
-
 function Card({ model, row, pinned, togglePin, outOfFilter }: { model: AppModel; row: ThreadRow; pinned: boolean; togglePin: () => void; outOfFilter: boolean }) {
   const t = model.t.value;
   const s = row.summary;
