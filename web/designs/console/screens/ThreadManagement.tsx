@@ -18,6 +18,7 @@ export function ThreadManagement({ model }: { model: AppModel }) {
   const id = route.view === "thread-management" ? route.threadId : undefined;
   const owner = model.data.owner.value;
   const visitRef = useRef<Visit>();
+  const detailIdentityRef = useRef<{ id: string; runId: string; turnId: string; visit: Visit }>();
   const [detailState, setDetailState] = useState<DetailState>();
   const [actionState, setActionState] = useState<ActionState>();
   const [settingsState, setSettingsState] = useState<SettingsState>();
@@ -51,12 +52,15 @@ export function ThreadManagement({ model }: { model: AppModel }) {
     const readRoute = route;
     const readVisit: Visit = {};
     visitRef.current = readVisit;
+    detailIdentityRef.current = undefined;
+    const currentTargetWithoutDetail = () => active && visitRef.current === readVisit && model.route.peek() === readRoute && model.route.peek().view === "thread-management" && model.data.owner.peek() === readOwner;
     const currentTarget = () => active && visitRef.current === readVisit && model.route.peek() === readRoute && model.route.peek().view === "thread-management" && model.data.owner.peek() === readOwner;
     const read = (next: DetailState) => { if (currentTarget()) setDetailState(next); };
     read({ id, route: readRoute, owner: readOwner, visit: readVisit, loading: true });
     setActionState({ id, route: readRoute, owner: readOwner, visit: readVisit, kind: "idle" });
-    void model.ops.threadGet(id).then((out) => {
-      if (!currentTarget()) return;
+    void (async () => {
+      const out = await model.ops.threadGet(id);
+      if (!currentTargetWithoutDetail()) return;
       if (out.ok && out.value.thread_id === id) {
         read({ id, route: readRoute, owner: readOwner, visit: readVisit, loading: false, value: out.value });
         setSettingsState({ id, route: readRoute, owner: readOwner, visit: readVisit, model: out.value.model, effort: out.value.effort ?? "", initialEffort: out.value.effort ?? "", saving: false, saved: false });
@@ -66,6 +70,7 @@ export function ThreadManagement({ model }: { model: AppModel }) {
           setObservationState({ id, route: readRoute, owner: readOwner, visit: readVisit, kind: "unavailable", error: "Thread has no complete Run/Turn identity" });
           return;
         }
+        detailIdentityRef.current = { id, runId, turnId, visit: readVisit };
         setObservationState({ id, route: readRoute, owner: readOwner, visit: readVisit, kind: "loading", runId, turnId });
         const run = await model.ops.runGet(runId, { threadId: id });
         if (!currentTarget()) return;
@@ -81,11 +86,11 @@ export function ThreadManagement({ model }: { model: AppModel }) {
         }
         setObservationState({ id, route: readRoute, owner: readOwner, visit: readVisit, kind: "ready", runId, turnId });
       } else read({ id, route: readRoute, owner: readOwner, visit: readVisit, loading: false, error: out.ok ? t("thread.detailMismatch") : out.error.message });
-    });
+    })();
     return () => {
       active = false;
       if (deleteProofRef.current?.visit === readVisit) deleteProofRef.current = undefined;
-      if (visitRef.current === readVisit) visitRef.current = undefined;
+      if (visitRef.current === readVisit) { detailIdentityRef.current = undefined; visitRef.current = undefined; }
     };
   }, [id, model.ops, owner, route]);
 
@@ -230,7 +235,8 @@ export function ThreadManagement({ model }: { model: AppModel }) {
 
   if (deletion?.kind === "done") return <Section title={detail.title}><Notice>{t("thread.deleteDone")}</Notice>{deletion.message ? <Notice tone="bad">{deletion.message}</Notice> : null}<a class="btn" href={formatRoute({ view: "threads" })}>{t("view.threads")}</a></Section>;
 
-  return <Section title={detail.title} sub={detail.thread_id} data-management-observation={currentObservation?.kind ?? "unavailable"} actions={<a class="btn" href={formatRoute({ view: "conversation", threadId: id })}>{t("view.conversation")}</a>}>
+  return <Section title={detail.title} sub={detail.thread_id} actions={<a class="btn" href={formatRoute({ view: "conversation", threadId: id })}>{t("view.conversation")}</a>}>
+    <span data-management-observation={currentObservation?.kind ?? "unavailable"} aria-hidden="true" />
     <div class="band" data-thread-management="">
       {actionable ? <Button disabled={surfaceBusy || currentAction?.kind === "running"} onClick={() => void mutate()}>{archived ? t("org.unarchive") : t("action.archive")}</Button> : null}
     </div>
