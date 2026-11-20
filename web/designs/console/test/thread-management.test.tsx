@@ -342,7 +342,6 @@ it("shows only state-appropriate quick row actions from projected Threads rows",
     db.threads = {
       run: summary("run", { activity: "tools" }),
       retry: summary("retry", { activity: "recovery" }),
-      archived: summary("archived", { activity: "idle", archived_at: "now" }),
     };
   } });
   const host = document.createElement("div"); document.body.append(host);
@@ -356,7 +355,15 @@ it("shows only state-appropriate quick row actions from projected Threads rows",
     expect(await labels("retry")).toEqual([f.model.t.value("view.thread-management"), f.model.t.value("action.retry")]);
     const archivedMode = [...host.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === f.model.t.value("org.archived"));
     expect(archivedMode).toBeDefined();
-    await act(async () => { archivedMode!.click(); await answer(f, "thread.list"); await flush(); });
+    await act(async () => {
+      archivedMode!.click();
+      await flush();
+      const archivedCall = f.t.calls("thread.list").find((call) => !f.db.answered.has(call.id) && (call.args as { archived?: string }).archived === "only");
+      expect(archivedCall).toBeDefined();
+      f.db.answered.add(archivedCall!.id);
+      f.t.ok(archivedCall!.id, { items: [summary("archived", { activity: "idle", archived_at: "now" })] });
+      await flush();
+    });
     expect(await labels("archived")).toEqual([f.model.t.value("view.thread-management"), f.model.t.value("org.unarchive")]);
   } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
 });
