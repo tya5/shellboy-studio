@@ -209,7 +209,7 @@ bounded live/stopping blocker counts. Null or incomplete fields remain unknown;
 Studio does not infer zero or invent child IDs. Confirmation is a separate
 explicit step and Studio uses that confirmation once, passing the exact
 owner-provided marker verbatim; stale, blocked, rejected, unmarked, or
- descendant deletion requests are not retried. A successful deletion requires
+descendant deletion requests are not retried. A successful deletion requires
 the owner's accepted result and retires the page's action controls. List-refresh
 warnings are shown separately from the owner's deletion acceptance.
 
