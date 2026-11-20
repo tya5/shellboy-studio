@@ -19,7 +19,7 @@ import { AuthPrompt } from "./AuthPrompt";
 
 const SEARCH_DEBOUNCE_MS = 200;
 
-export function App({ context }: { context: DesignContext }) {
+export function App({ context, enableRetryRows = false }: { context: DesignContext; enableRetryRows?: boolean }) {
   const model = context.model;
   const t = model.t.value;
   const route = model.route.value;
@@ -106,7 +106,7 @@ export function App({ context }: { context: DesignContext }) {
                   href={formatRoute({ view: "conversation", threadId: r.summary.thread_id })}
                   manageHref={formatRoute({ view: "thread-management", threadId: r.summary.thread_id })}
                   manageLabel={t("view.threads")}
-                  action={<ThreadQuickAction model={model} row={r.summary} surface="sidebar" />}
+                  action={<ThreadQuickAction model={model} row={r.summary} surface="sidebar" enableRetry={enableRetryRows} />}
                   title={r.summary.title}
                   status={r.status}
                   statusLabel={r.status ? statusLabel(t, r.status) : ""}
