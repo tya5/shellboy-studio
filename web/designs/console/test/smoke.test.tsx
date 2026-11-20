@@ -772,6 +772,10 @@ describe("Threads", () => {
     const { el } = await open();
     expect(el.querySelectorAll(".tgroup").length).toBe(1);
     expect(el.querySelector("[draggable]")).toBeNull();
+    const leadRow = [...el.querySelectorAll<HTMLElement>(".srow")].find((row) => text(row).includes("Improve history search"));
+    expect(leadRow).toBeDefined();
+    expect([...leadRow!.querySelectorAll<HTMLButtonElement>("button")].find((button) => text(button) === "Move")).toBeUndefined();
+    expect(leadRow!.querySelector<HTMLAnchorElement>('a[href="#/thread-management/lead"]')).toBeTruthy();
     expect(text(el)).toContain("Moving a Thread under another isn't available");
     expect(text(el)).toContain("Token totals per directory aren't shown");
     const mode = (name: string) => [...el.querySelectorAll<HTMLButtonElement>(".org button")].find((b) => text(b) === name)!;
