@@ -197,7 +197,7 @@ export function ThreadManagement({ model }: { model: AppModel }) {
       else if (out.error.kind === "unconfirmed") {
         setRunActionState({ id, route, owner, visit: targetVisit, detailToken, kind: "unknown", message: t("action.retryUnknown", { id: out.error.operationId }), reason: recoveryReason, operationId: out.error.operationId });
       } else if (out.error.kind === "owner") setRunActionState({ id, route, owner, visit: targetVisit, detailToken, kind: "refused", message: t("action.retryOwnerRefused"), reason: recoveryReason, ownerError: out.error.message });
-      else setRunActionState({ id, route, owner, visit: targetVisit, detailToken, kind: "refused", message: t("action.retryFailed"), reason: recoveryReason, ownerError: out.error.message });
+      else setRunActionState({ id, route, owner, visit: targetVisit, detailToken, kind: "unknown", message: t("action.retryUncertain"), reason: recoveryReason, operationId: out.operationId });
     } finally { release(token); }
   };
 
