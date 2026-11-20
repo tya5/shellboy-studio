@@ -128,7 +128,7 @@ export function ThreadManagement({ model }: { model: AppModel }) {
     const currentTarget = () => model.route.peek() === targetRoute && model.route.peek().view === "thread-management" && model.route.peek().threadId === targetId;
     setRunPending({ id: targetId, action: "retry" }); setRunResult(undefined);
     try { await model.retry(targetId); }
-    finally { release(token); if (currentTarget() && runPending?.id === targetId && runPending.action === "retry") setRunPending(undefined); }
+    finally { release(token); if (currentTarget()) setRunPending((previous) => previous?.id === targetId && previous.action === "retry" ? undefined : previous); }
   };
   const stop = async () => {
     if (rowStatus !== "running" || surfaceBusy || runPending?.id === id || !detail.run_id) return;
@@ -141,7 +141,7 @@ export function ThreadManagement({ model }: { model: AppModel }) {
     try {
       const out = await model.ops.runStop(detail.run_id);
       if (currentTarget()) setRunResult({ id: targetId, action: "stop", message: out.ok ? t("action.stopAccepted") : out.error.message });
-    } finally { release(token); if (currentTarget() && runPending?.id === targetId && runPending.action === "stop") setRunPending(undefined); }
+    } finally { release(token); if (currentTarget()) setRunPending((previous) => previous?.id === targetId && previous.action === "stop" ? undefined : previous); }
   };
 
   const saveSettings = async () => {
