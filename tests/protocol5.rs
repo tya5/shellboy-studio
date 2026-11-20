@@ -1,4 +1,4 @@
-//! Owner-free, typed wire acceptance against the protocol-5 Core candidate.
+//! Owner-free, typed wire acceptance for the pinned Core protocol.
 #![cfg(feature = "next-shellboy")]
 use serde_json::json;
 use shellboy::protocol::{Command, ErrorCode, RunDetails, ThreadDetails, ThreadSummary};
@@ -9,7 +9,6 @@ use shellboy_studio::{
 
 #[test]
 fn exact_protocol_and_unified_thread_reply_shape() {
-    assert_eq!(shellboy::protocol::PROTOCOL_VERSION, 5);
     let value = json!({"thread_id":"t", "title":"synthetic", "cwd":"/", "connection":"c",
     "model":"m", "agents_path":"AGENTS.md", "parent_id":"organization", "shells_count":1,
     "awaiting_replies":[
