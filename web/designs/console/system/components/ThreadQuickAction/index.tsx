@@ -12,6 +12,7 @@ export function ThreadQuickAction({ model, row, status, surface, onMove, report 
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLSpanElement>(null);
   const opener = useRef<HTMLElement | null>(null);
+  const [sidebarPlacement, setSidebarPlacement] = useState<{ left: number; top: number; width: number; maxHeight: number }>();
 
   const menu = useRef<HTMLSpanElement>(null);
   const archived = row.archived_at !== undefined;
@@ -40,6 +41,37 @@ export function ThreadQuickAction({ model, row, status, surface, onMove, report 
     document.addEventListener("pointerdown", outside);
     return () => document.removeEventListener("pointerdown", outside);
   }, [open]);
+  useEffect(() => {
+    if (!open || surface !== "sidebar") { setSidebarPlacement(undefined); return; }
+    const anchor = root.current;
+    if (!anchor) return;
+    const reposition = () => {
+      const rect = anchor.getBoundingClientRect();
+      const scrollport = anchor.closest<HTMLElement>(".side");
+      const portRect = scrollport?.getBoundingClientRect();
+      if (portRect && (rect.bottom <= portRect.top || rect.top >= portRect.bottom)) { closeMenu(); return; }
+      const viewportWidth = window.innerWidth || 1024;
+      const viewportHeight = window.innerHeight || 768;
+      const width = Math.min(340, Math.max(1, viewportWidth - 24));
+      const minimumHeight = Math.min(80, Math.max(1, viewportHeight - 24));
+      const desiredTop = viewportHeight - rect.top - 12 < minimumHeight ? rect.top - minimumHeight : rect.top;
+      const top = Math.min(Math.max(12, desiredTop), Math.max(12, viewportHeight - minimumHeight - 12));
+      const maxHeight = Math.max(minimumHeight, viewportHeight - top - 12);
+      setSidebarPlacement({
+        left: Math.min(Math.max(12, rect.right + 8), Math.max(12, viewportWidth - width - 12)),
+        top,
+        width,
+        maxHeight,
+      });
+    };
+    reposition();
+    window.addEventListener("resize", reposition);
+    document.addEventListener("scroll", reposition, true);
+    return () => {
+      window.removeEventListener("resize", reposition);
+      document.removeEventListener("scroll", reposition, true);
+    };
+  }, [open, surface]);
   useEffect(() => {
     if (open) queueMicrotask(() => menu.current?.querySelector<HTMLElement>("[role=menuitem]")?.focus());
   }, [open]);
@@ -80,7 +112,7 @@ export function ThreadQuickAction({ model, row, status, surface, onMove, report 
   };
   return <span ref={root} class="model-picker-anchor thread-menu-anchor" data-thread-quick-action={row.thread_id} data-thread-quick-surface={surface} onContextMenu={invokeMenu}>
     <Button class="srow-act" icon label={label} title={label} aria-haspopup="menu" aria-expanded={open} onKeyDown={openFromKeyboard} onClick={(event) => { rememberOpener(event.currentTarget); setOpen((value) => !value); }}><Icon name="more" small /></Button>
-    {open ? <span ref={menu} role="menu" class="model-picker" onKeyDown={(event) => {
+    {open ? <span ref={menu} role="menu" class="model-picker" style={surface === "sidebar" && sidebarPlacement ? { position: "fixed", left: `${sidebarPlacement.left}px`, top: `${sidebarPlacement.top}px`, right: "auto", width: `${sidebarPlacement.width}px`, maxHeight: `${sidebarPlacement.maxHeight}px` } : undefined} onKeyDown={(event) => {
       if (event.key === "Escape") { event.preventDefault(); closeMenu(true); }
       if (event.key === "ArrowDown" || event.key === "ArrowUp") {
         event.preventDefault(); const items = [...(menu.current?.querySelectorAll<HTMLElement>("[role=menuitem]") ?? [])]; const index = items.indexOf(event.target as HTMLElement); items[(index + (event.key === "ArrowDown" ? 1 : items.length - 1)) % items.length]?.focus();
