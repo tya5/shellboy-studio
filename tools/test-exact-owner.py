@@ -104,8 +104,8 @@ class ExactOwner(unittest.TestCase):
 
     def test_wrong_manifest_pin(self):
         path = self.studio / "Cargo.toml"
-        path.write_text(path.read_text(encoding="utf-8").replace(self.manifest_rev, "0"*40), encoding="utf-8")
-        with self.assertRaisesRegex(ValueError, "Studio must pin"): self.check()
+        path.write_text(path.read_text(encoding="utf-8").replace(self.manifest_rev, "not-a-revision"), encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "manifest revision missing or malformed"): self.check()
 
     def test_wrong_remote(self):
         self.run_git("remote", "set-url", "origin", "https://example.invalid/not-core")
