@@ -205,7 +205,7 @@ export function ThreadManagement({ model }: { model: AppModel }) {
       {settings.error ? <Notice tone="bad">{settings.error}</Notice> : null}
       {settings.saved ? <Notice>{t("thread.settingsSaved")}</Notice> : null}
     </div> : null}
-    {!deletion ? <Button variant="warn" disabled={surfaceBusy} onClick={() => void previewDelete()}>{t("thread.deletePreview")}</Button> : null}
+    {!deletion ? <Button data-thread-delete-preview="" variant="warn" disabled={surfaceBusy} onClick={() => void previewDelete()}>{t("thread.deletePreview")}</Button> : null}
     {deletion?.kind === "confirm" ? <Notice actions={<Button variant="warn" disabled={surfaceBusy} onClick={() => void confirmDelete()}>{t("thread.deleteConfirm")}</Button>}>{t("thread.deleteConfirmBody", { n: deletion.marker!.thread_count })}</Notice> : null}
     {deletion?.kind === "previewing" || deletion?.kind === "deleting" ? <Notice tone="wait">{t("common.loading")}</Notice> : null}
     {deletion?.kind === "failed" ? <Notice tone="bad">{deletion.message ?? t("thread.deleteBlocked")}</Notice> : null}

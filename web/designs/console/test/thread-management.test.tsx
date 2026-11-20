@@ -262,7 +262,7 @@ it("requires a complete marker and carries it into singleton deletion", async ()
     f.model.applyRoute({ view: "thread-management", threadId: "A" });
     await act(async () => { render(<ThreadManagement model={f.model} />, host); await flush(); });
     await answer(f, "thread.get", "A");
-    const preview = host.querySelector<HTMLButtonElement>("button");
+    const preview = host.querySelector<HTMLButtonElement>("[data-thread-delete-preview]");
     preview!.click(); await flush();
     const previewCall = f.t.calls("thread.delete_preview").at(-1)!;
     expect(previewCall.args).toEqual({ thread_id: "A", descendants: false });
