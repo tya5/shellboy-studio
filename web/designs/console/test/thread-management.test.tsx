@@ -320,3 +320,47 @@ it("does not delete on foreign or stale singleton deletion proof", async () => {
     expect(f.t.calls("thread.delete")).toHaveLength(0);
   } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
 });
+
+it("publishes only a fully correlated current management Run/Turn observation", async () => {
+  const f = await fixtureModel({ route: "threads", configure(db) {
+    db.threads = { A: summary("A") };
+    db.details = { A: details("A", { run_id: "run-a", turn_id: "turn-a" }) };
+  } });
+  const host = document.createElement("div"); document.body.append(host);
+  try {
+    f.model.applyRoute({ view: "thread-management", threadId: "A" });
+    await act(async () => { render(<ThreadManagement model={f.model} />, host); await flush(); });
+    await answer(f, "thread.get", "A");
+    const run = f.t.calls("run.get").at(-1)!;
+    f.t.ok(run.id, { run_id: "run-a", thread_id: "A", state: "live", turn_id: "turn-a" });
+    await act(async () => { await flush(); });
+    const turn = f.t.calls("turn.get").at(-1)!;
+    f.t.ok(turn.id, { turn_id: "turn-a", run_id: "run-a", thread_id: "A", state: "recovery_wait", recovery_hint: "retry" });
+    await act(async () => { await flush(); });
+    expect(host.querySelector("[data-management-observation]")?.getAttribute("data-management-observation")).toBe("ready");
+  } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
+});
+
+it("drops stale and mismatched management observations", async () => {
+  const f = await fixtureModel({ route: "threads", configure(db) {
+    db.threads = { A: summary("A") };
+    db.details = { A: details("A", { run_id: "run-old", turn_id: "turn-old" }) };
+  } });
+  const host = document.createElement("div"); document.body.append(host);
+  try {
+    f.model.applyRoute({ view: "thread-management", threadId: "A" });
+    await act(async () => { render(<ThreadManagement model={f.model} />, host); await flush(); });
+    await answer(f, "thread.get", "A");
+    const oldRun = f.t.calls("run.get").at(-1)!;
+    f.db.details.A = details("A", { run_id: "run-new", turn_id: "turn-new" });
+    await act(async () => { f.model.applyRoute({ view: "thread-management", threadId: "A" }); await flush(); });
+    await answer(f, "thread.get", "A");
+    const newRun = f.t.calls("run.get").at(-1)!;
+    f.t.ok(oldRun.id, { run_id: "run-old", thread_id: "A", state: "live", turn_id: "turn-old" });
+    await act(async () => { await flush(); });
+    expect(host.querySelector("[data-management-observation]")?.getAttribute("data-management-observation")).not.toBe("ready");
+    f.t.ok(newRun.id, { run_id: "run-new", thread_id: "other", state: "live", turn_id: "turn-new" });
+    await act(async () => { await flush(); });
+    expect(host.querySelector("[data-management-observation]")?.getAttribute("data-management-observation")).toBe("unavailable");
+  } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
+});
