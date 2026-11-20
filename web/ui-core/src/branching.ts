@@ -581,7 +581,7 @@ export class ThreadOrg {
   private running = false;
   private again = false;
   private revision = 0;
-  private publishedView: { owner: object; route: object; mode: string; query: string; grouping: ThreadGrouping } | undefined;
+  private publishedView: { owner: object; route: object; mode: string; query: string; grouping: ThreadGrouping; memberIds?: ReadonlySet<string> } | undefined;
   private readonly authority: (() => { owner: object; route: object } | undefined) | undefined;
   private readonly reserve: ((owner: object, ids: readonly string[]) => object | undefined) | undefined;
   private readonly releaseReservation: ((owner: object, ids: readonly string[], token: object) => void) | undefined;
@@ -609,7 +609,16 @@ export class ThreadOrg {
     this.reserve = reserve;
     this.releaseReservation = releaseReservation;
     this.ownsReservation = ownsReservation;
-    this.headings = new ThreadHeadings(ops, () => ({ mode: this.state.peek().mode, query: this.state.peek().query }), () => this.prune());
+    this.headings = new ThreadHeadings(ops, () => ({ mode: this.state.peek().mode, query: this.state.peek().query }), () => { this.prune(); this.publishHeadings(); });
+  }
+
+  private publishHeadings(): void {
+    const kind = this.headingKind();
+    const authority = this.authority?.();
+    if (!kind || !authority || !this.headings.loadedFor(kind)) { this.publishedView = undefined; return; }
+    const members = [...this.headings.open.peek().values()];
+    if (members.some((member) => !member.loaded || member.loading || member.error)) { this.publishedView = undefined; return; }
+    this.publishedView = { owner: authority.owner, route: authority.route, mode: this.state.peek().mode, query: this.state.peek().query, grouping: this.groupBy.peek(), memberIds: new Set(this.headings.members().map((row) => row.thread_id)) };
   }
 
   canTag(): boolean {
@@ -909,8 +918,11 @@ export class ThreadOrg {
     const draft = this.tagDraft.peek();
     const draftGeneration = this.tagDraftGeneration;
     const heading = this.headingKind();
-    const publicationValid = heading ? this.headings.loadedFor(heading) : this.publishedView !== undefined && this.publishedView.grouping === this.groupBy.peek();
-    if (ids.length === 0 || !authority || !publicationValid || ids.length > TAG_SELECTION_MAX || ids.some((id) => !shown.some((row) => row.thread_id === id)) || (draft.add.length === 0 && draft.remove.size === 0)) return;
+    const publication = this.publishedView;
+    const groupedReady = heading !== undefined && publication?.grouping === this.groupBy.peek() && publication.memberIds !== undefined && ids.every((id) => publication.memberIds.has(id)) && [...this.headings.open.peek().values()].every((member) => member.loaded && !member.loading && !member.error);
+    const flatReady = heading === undefined && publication?.grouping === this.groupBy.peek() && publication !== undefined;
+    const publicationValid = groupedReady || flatReady;
+    if (this.running || ids.length === 0 || !authority || !publicationValid || ids.length > TAG_SELECTION_MAX || ids.some((id) => !shown.some((row) => row.thread_id === id)) || (draft.add.length === 0 && draft.remove.size === 0)) return;
     const token = this.reserve?.(authority.owner, ids);
     if (!token) return;
     this.tagAttempt = token;
