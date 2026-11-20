@@ -277,3 +277,28 @@ it("requires a complete marker and carries it into singleton deletion", async ()
     expect(f.t.calls("thread.delete")).toHaveLength(1);
   } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
 });
+
+it("does not delete on foreign or stale singleton deletion proof", async () => {
+  const f = await fixtureModel({ route: "threads", configure(db) { db.threads = { A: summary("A"), B: summary("B") }; db.details = { A: details("A"), B: details("B") }; } });
+  const host = document.createElement("div"); document.body.append(host);
+  try {
+    f.model.applyRoute({ view: "thread-management", threadId: "A" });
+    await act(async () => { render(<ThreadManagement model={f.model} />, host); await flush(); });
+    await answer(f, "thread.get", "A");
+    host.querySelector<HTMLButtonElement>("[data-thread-delete-preview]")!.click(); await flush();
+    const preview = f.t.calls("thread.delete_preview").at(-1)!;
+    f.t.ok(preview.id, { thread_id: "B", deletable_now: true, preview_marker: { thread_count: 1, ids_hash: "b".repeat(64) } });
+    await act(async () => { await flush(); });
+    expect(f.t.calls("thread.delete")).toHaveLength(0);
+    const retry = host.querySelector<HTMLButtonElement>("[data-thread-delete-preview]");
+    expect(retry).toBeDefined();
+    retry!.click(); await flush();
+    const valid = f.t.calls("thread.delete_preview").at(-1)!;
+    f.t.ok(valid.id, { thread_id: "A", deletable_now: true, preview_marker: { thread_count: 1, ids_hash: "a".repeat(64) } });
+    await act(async () => { await flush(); });
+    f.model.applyRoute({ view: "thread-management", threadId: "B" });
+    await act(async () => { await flush(); });
+    await answer(f, "thread.get", "B");
+    expect(f.t.calls("thread.delete")).toHaveLength(0);
+  } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
+});
