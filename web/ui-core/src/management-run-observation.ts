@@ -26,9 +26,3 @@ export function correlateManagementRun(thread: ThreadDetails, run: RunDetails, t
 export function managementRunStopEligible(observation: ManagementRunObservation): boolean {
   return observation.runState === "live" && observation.turnState === "running";
 }
-
-export function managementObservationCurrent(captured: ManagementObservationFence, current: ManagementObservationFence): boolean {
-  return captured.threadId === current.threadId && captured.runId === current.runId && captured.turnId === current.turnId
-    && captured.visit === current.visit && captured.token === current.token
-    && captured.route === current.route && captured.owner === current.owner;
-}
