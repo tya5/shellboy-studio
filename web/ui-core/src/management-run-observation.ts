@@ -9,21 +9,10 @@ export type ManagementRunObservation = {
   recoveryReason?: string;
 };
 
-export type ManagementObservationFence = {
-  threadId: string;
-  runId: string;
-  turnId: string;
-  visit: object;
-  token: object;
-  route: object;
-  owner: object;
-};
-
-/** Correlates independently read identities; no list status participates. */
 export function correlateManagementRun(thread: ThreadDetails, run: RunDetails, turn: TurnDetails): ManagementRunObservation | undefined {
   if (thread.thread_id !== run.thread_id || thread.thread_id !== turn.thread_id) return undefined;
   if (thread.run_id !== run.run_id || thread.turn_id !== turn.turn_id) return undefined;
-  if (run.turn_id !== turn.turn_id || run.thread_id !== turn.thread_id) return undefined;
+  if (run.turn_id !== turn.turn_id || run.run_id !== turn.run_id || run.thread_id !== turn.thread_id) return undefined;
   return {
     threadId: thread.thread_id,
     runId: run.run_id,

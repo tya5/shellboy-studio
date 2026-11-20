@@ -92,6 +92,10 @@ export function ThreadManagement({ model }: { model: AppModel }) {
         setObservationState({ id, route: readRoute, owner: readOwner, visit: readVisit, detailToken, kind: "loading", runId, turnId });
         const run = await model.ops.runGet(runId, { threadId: id });
         if (!currentTarget(detailToken)) return;
+        if (!run.ok || run.value.run_id !== runId || run.value.thread_id !== id || run.value.turn_id !== turnId) {
+          setObservationState({ id, route: readRoute, owner: readOwner, visit: readVisit, detailToken, kind: "unavailable", runId, turnId, error: "Run observation does not match Thread" });
+          return;
+        }
         const turn = await model.ops.turnGet(turnId, { runId, threadId: id });
         if (!currentTarget(detailToken)) return;
         const correlated = run.ok && turn.ok ? correlateManagementRun(out.value, run.value, turn.value) : undefined;
@@ -232,7 +236,7 @@ export function ThreadManagement({ model }: { model: AppModel }) {
       if (!currentTarget()) return;
       const turn = await model.ops.turnGet(turnId, { runId, threadId: id });
       if (!currentTarget()) return;
-      const correlated = run.ok && turn.ok ? correlateManagementRun(detail.value, run.value, turn.value) : undefined;
+      const correlated = run.ok && turn.ok ? correlateManagementRun(freshDetail.value, run.value, turn.value) : undefined;
       if (!correlated || !managementRunStopEligible(correlated)) {
         setRunActionState({ id, route, owner, visit: targetVisit, detailToken, kind: "refused", message: "Stop refused: the exact Run/Turn is no longer running" });
         return;
