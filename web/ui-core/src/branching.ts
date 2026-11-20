@@ -588,6 +588,7 @@ export class ThreadOrg {
   private readonly ownsReservation: ((owner: object, ids: readonly string[], token: object) => boolean) | undefined;
   private bulkAttempt: object | undefined;
   private tagAttempt: object | undefined;
+  private tagDraftGeneration = 0;
   private selectionGeneration = 0;
   private pages = 1;
   private cancel = new Cancel();
@@ -879,12 +880,14 @@ export class ThreadOrg {
     if (draft.remove.has(checked.tag)) return "both";
     if (draft.add.includes(checked.tag)) return undefined;
     if (draft.add.length >= TAGS_PER_CALL) return "many";
+    this.tagDraftGeneration++;
     this.tagDraft.value = { ...draft, add: [...draft.add, checked.tag] };
     return undefined;
   }
 
   unaddTag(tag: string): void {
     const draft = this.tagDraft.peek();
+    this.tagDraftGeneration++;
     this.tagDraft.value = { ...draft, add: draft.add.filter((t) => t !== tag) };
   }
 
@@ -892,6 +895,7 @@ export class ThreadOrg {
     const draft = this.tagDraft.peek();
     const remove = new Set(draft.remove);
     if (!remove.delete(tag)) remove.add(tag);
+    this.tagDraftGeneration++;
     this.tagDraft.value = { ...draft, add: draft.add.filter((t) => t !== tag), remove };
   }
 
@@ -903,12 +907,15 @@ export class ThreadOrg {
     const selectionGeneration = this.selectionGeneration;
     const authority = this.authority?.();
     const draft = this.tagDraft.peek();
-    if (ids.length === 0 || !authority || ids.length > TAG_SELECTION_MAX || ids.some((id) => !shown.some((row) => row.thread_id === id)) || (draft.add.length === 0 && draft.remove.size === 0)) return;
+    const draftGeneration = this.tagDraftGeneration;
+    const heading = this.headingKind();
+    const publicationValid = heading ? this.headings.loadedFor(heading) : this.publishedView !== undefined && this.publishedView.grouping === this.groupBy.peek();
+    if (ids.length === 0 || !authority || !publicationValid || ids.length > TAG_SELECTION_MAX || ids.some((id) => !shown.some((row) => row.thread_id === id)) || (draft.add.length === 0 && draft.remove.size === 0)) return;
     const token = this.reserve?.(authority.owner, ids);
     if (!token) return;
     this.tagAttempt = token;
-    const mutationCurrent = () => this.tagAttempt === token && this.revision === revision && this.authority?.()?.owner === authority.owner && this.authority?.()?.route === authority.route && this.ownsReservation?.(authority.owner, ids, token) === true;
-    const uiCurrent = () => mutationCurrent() && this.selectionGeneration === selectionGeneration;
+    const mutationCurrent = () => this.tagAttempt === token && this.authority?.()?.owner === authority.owner && this.ownsReservation?.(authority.owner, ids, token) === true;
+    const uiCurrent = () => mutationCurrent() && this.revision === revision && this.selectionGeneration === selectionGeneration && this.tagDraftGeneration === draftGeneration && this.authority?.()?.route === authority.route;
     this.tagAction.value = { kind: "running" };
     try {
       const remove = [...draft.remove];

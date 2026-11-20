@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { summary, settle, type FakeOwnerDb } from "../../data/test/harness";
+import { flush, summary, settle, type FakeOwnerDb } from "../../data/test/harness";
 import { checkTag, HEADING_PAGE, MEMBER_PAGE, OPEN_MAX, TAG_SELECTION_MAX } from "../src";
 import { fixtureModel } from "./fixture";
 
@@ -257,8 +257,9 @@ it("binds a bulk tag call to the published IDs and preserves a newer selection",
   const call = t.calls("thread.tag")[0]!;
   expect(call.args).toEqual({ thread_ids: ["lead", "done"], add: ["fresh"] });
   org.setMany(["ghost"], true);
+  org.addTag("later");
   await settle(t, db);
   await running;
   expect(org.selected.value.has("ghost")).toBe(true);
-  expect(org.tagDraft.value.add).toEqual(["fresh"]);
+  expect(org.tagDraft.value.add).toEqual(["fresh", "later"]);
 });
