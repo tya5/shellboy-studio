@@ -132,7 +132,41 @@ export function setBounded<V>(map: Map<string, V>, key: string, value: V): Map<s
 
 export const errorMessage = (e: OpError): string => e.message;
 
+type QuickActionStatus = { kind: "running" | "done" | "failed"; error?: string };
+
 export class AppModel {
+  readonly quickActionEpoch = signal(0);
+  private readonly quickActions = new WeakMap<object, Map<string, { token: object; status: QuickActionStatus }>>();
+  threadQuickActionAdmit(owner: object, threadId: string): object | undefined {
+    let actions = this.quickActions.get(owner);
+    if (!actions) { actions = new Map(); this.quickActions.set(owner, actions); }
+    if (actions.get(threadId)?.status.kind === "running") return undefined;
+    const token = {};
+    actions.set(threadId, { token, status: { kind: "running" } });
+    this.quickActionEpoch.value++;
+    return token;
+  }
+  threadQuickActionStatus(owner: object, threadId: string): QuickActionStatus | undefined {
+    return this.quickActions.get(owner)?.get(threadId)?.status;
+  }
+  threadQuickActionFinish(owner: object, threadId: string, token: object, status: QuickActionStatus): void {
+    const action = this.quickActions.get(owner)?.get(threadId);
+    if (!action || action.token !== token) return;
+    action.status = status;
+    this.quickActionEpoch.value++;
+  }
+  threadQuickActionDrop(owner: object, threadId: string, token: object): void {
+    const actions = this.quickActions.get(owner);
+    if (actions?.get(threadId)?.token !== token) return;
+    actions.delete(threadId);
+    this.quickActionEpoch.value++;
+  }
+  threadQuickActionReset(owner: object, threadId: string): void {
+    const actions = this.quickActions.get(owner);
+    if (!actions || actions.get(threadId)?.status.kind === "running") return;
+    if (actions.delete(threadId)) this.quickActionEpoch.value++;
+  }
+
   readonly pairing = signal<{ hosts: string[]; links: Record<string, { url: string; expires: number }>; error?: string }>({ hosts: [], links: {} });
   async loadPairingHosts(): Promise<void> {
     try { this.pairing.value = { ...this.pairing.peek(), hosts: await pairingHosts(), error: undefined }; }
