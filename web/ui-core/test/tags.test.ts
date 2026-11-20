@@ -176,12 +176,13 @@ describe("editing tags", () => {
   it("shows a partial result: Threads the owner no longer has are reported", async () => {
     const { t, db, model } = await setup();
     const org = model.org;
-    org.selected.value = new Set(["lead", "ghost"]);
+    org.selected.value = new Set(["lead", "done"]);
     org.addTag("keep");
     const running = org.applyTags();
+    delete db.threads.done;
     await settle(t, db);
     await running;
-    expect(org.tagAction.value).toMatchObject({ kind: "done", result: { changed: [], unchanged: ["lead"], not_found: ["ghost"] } });
+    expect(org.tagAction.value).toMatchObject({ kind: "done", result: { changed: [], unchanged: ["lead"], not_found: ["done"] } });
   });
 
   it("reports the 64-tag limit as such, changes nothing, and keeps the draft", async () => {
@@ -190,7 +191,6 @@ describe("editing tags", () => {
       configure: (d) => populate(d, Object.fromEntries(Array.from({ length: 64 }, (_, k) => [`t${String(k).padStart(2, "0")}`, ["full"]]))),
     });
     const org = model.org;
-    org.setGrouping("tag");
     await settle(t, db);
     org.setMany(["full"], true);
     org.addTag("one-too-many");
@@ -256,11 +256,11 @@ it("binds a bulk tag call to the published IDs and preserves a newer selection",
   await flush();
   const call = t.calls("thread.tag")[0]!;
   expect(call.args).toEqual({ thread_ids: ["lead", "done"], add: ["fresh"] });
-  org.setMany(["ghost"], true);
+  org.setMany(["done"], true);
   org.addTag("later");
   await settle(t, db);
   await running;
-  expect(org.selected.value.has("ghost")).toBe(true);
+  expect(org.selected.value.has("done")).toBe(true);
   expect(org.tagDraft.value.add).toEqual(["fresh", "later"]);
 });
 
