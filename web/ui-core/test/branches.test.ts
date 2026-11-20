@@ -326,7 +326,8 @@ describe("Threads over the fake transport", () => {
   it("reads the largest page in the Active mode when opened, and not before", async () => {
     const before = await fixtureModel({ route: "monitor" });
     expect(before.t.calls("thread.list").filter((c) => (c.args as { limit?: number }).limit === 200)).toHaveLength(0);
-    const { t, model } = await open();
+    const f = await open();
+    const { t, db, model } = f;
     expect(t.calls("thread.list").some((c) => (c.args as { limit?: number; archived?: string }).limit === 200 && (c.args as { archived?: string }).archived === "exclude")).toBe(true);
     expect(model.org.state.value.loaded).toBe(true);
   });
@@ -378,10 +379,15 @@ describe("Threads over the fake transport", () => {
     model.org.setMany(["done"], true);
     const archive = t.calls("thread.archive")[0]!;
     expect(archive).toBeDefined();
+    const baseline = t.calls("thread.list").length;
     t.ok(archive.id, { archived: ["lead"] });
+    await flush();
+    const refresh = t.calls("thread.list").find((call) => !db.answered.has(call.id));
+    expect(refresh).toBeDefined();
+    expect(t.calls("thread.list").length).toBeGreaterThan(baseline);
+    await answer(f, "thread.list");
     await running;
     expect(model.org.selected.value.has("done")).toBe(true);
-    expect(t.calls("thread.list").length).toBeGreaterThan(1);
   });
   it("in Archived the same action unarchives; turning descendants off sends none", async () => {
     const { t, db, model } = await open();

@@ -828,12 +828,12 @@ export class ThreadOrg {
     const verb = this.state.peek().mode === "exclude" ? "archive" : "unarchive";
     const options = { descendants: false };
     this.bulkAttempt = token;
-    const mutationCurrent = () => this.bulkAttempt === token && this.revision === revision && this.authority?.()?.owner === authority.owner && this.authority?.()?.route === authority.route && this.ownsReservation?.(authority.owner, ids, token) === true;
-    const uiCurrent = () => mutationCurrent() && this.selectionGeneration === selectionGeneration;
+    const ownerMutationCurrent = () => this.bulkAttempt === token && this.authority?.()?.owner === authority.owner && this.ownsReservation?.(authority.owner, ids, token) === true;
+    const uiCurrent = () => ownerMutationCurrent() && this.revision === revision && this.authority?.()?.route === authority.route && this.selectionGeneration === selectionGeneration;
     this.action.value = { kind: "running" };
     try {
     const out = verb === "archive" ? await this.ops.threadArchive(ids, options) : await this.ops.threadUnarchive(ids, options);
-    if (!mutationCurrent()) return;
+    if (!ownerMutationCurrent()) return;
     if (!out.ok) {
       if (uiCurrent()) this.action.value = { kind: "failed", error: out.error };
       return;
@@ -845,7 +845,7 @@ export class ThreadOrg {
         this.selected.value = new Set();
       });
     } else this.action.value = { kind: "idle" };
-    await this.read();
+    if (this.authority?.()?.owner === authority.owner) await this.read();
     } finally {
       if (this.bulkAttempt === token) {
         this.bulkAttempt = undefined;
