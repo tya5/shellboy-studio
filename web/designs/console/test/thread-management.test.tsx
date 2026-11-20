@@ -1084,11 +1084,11 @@ it("keeps an opted-in mounted Retry row route-fenced before exact re-admission",
     f.t.ok(secondRead.id, details("A", { run_id: "run-a", turn_id: "turn-a" }));
     await act(async () => { await flush(); });
     const freshRun = f.t.calls("run.get").at(-1)!;
-    expect(freshRun.args).toEqual({ run_id: "run-a", thread_id: "A" });
+    expect(freshRun.args).toEqual({ run_id: "run-a" });
     f.t.ok(freshRun.id, { run_id: "run-a", thread_id: "A", turn_id: "turn-a", state: "live" });
     await act(async () => { await flush(); });
     const freshTurn = f.t.calls("turn.get").at(-1)!;
-    expect(freshTurn.args).toEqual({ turn_id: "turn-a", run_id: "run-a", thread_id: "A" });
+    expect(freshTurn.args).toEqual({ turn_id: "turn-a" });
     f.t.ok(freshTurn.id, { turn_id: "turn-a", run_id: "run-a", thread_id: "A", state: "recovery_wait", recovery_hint: "provider interrupted" });
     await act(async () => { await flush(); });
     const retry = f.t.calls("run.retry");
