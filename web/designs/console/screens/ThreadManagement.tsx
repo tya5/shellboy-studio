@@ -26,7 +26,9 @@ export function ThreadManagement({ model }: { model: AppModel }) {
   const [deleteState, setDeleteState] = useState<DeleteState>();
   const [observationState, setObservationState] = useState<ObservationState>();
   const [runActionState, setRunActionState] = useState<RunActionState>();
-  const unresolvedRetryRef = useRef<{ id: string; owner: OwnerIdentity; operationId: string }>();
+  const ownerInstanceId = owner.state === "connected" ? owner.info.instance_id : undefined;
+  const durableUnresolvedRetry = model.managementUnconfirmedRetry.value;
+  const unresolvedRetry = durableUnresolvedRetry && durableUnresolvedRetry.threadId === id && durableUnresolvedRetry.ownerInstanceId === ownerInstanceId && route.view === "thread-management";
   const deleteProofRef = useRef<{ id: string; visit: Visit; marker: { thread_count: number; ids_hash: string }; used: boolean }>();
   const mutationRef = useRef<object>();
   const [busyVersion, setBusyVersion] = useState(0);
@@ -35,7 +37,7 @@ export function ThreadManagement({ model }: { model: AppModel }) {
   const currentSettings = settingsState && settingsState.id === id && settingsState.route === route && settingsState.owner === owner && settingsState.visit === visitRef.current ? settingsState : undefined;
   const currentObservation = observationState && observationState.id === id && observationState.route === route && observationState.owner === owner && observationState.visit === visitRef.current && observationState.detailToken === detailIdentityRef.current?.token ? observationState : undefined;
   const unresolvedRetry = unresolvedRetryRef.current && unresolvedRetryRef.current.id === id && unresolvedRetryRef.current.owner === owner && route.view === "thread-management";
-  const currentRunAction = runActionState && ((runActionState.kind === "unknown" && unresolvedRetry) || (runActionState.id === id && runActionState.route === route && runActionState.owner === owner && runActionState.visit === visitRef.current && runActionState.detailToken === detailIdentityRef.current?.token)) ? runActionState : undefined;
+  const currentRunAction = unresolvedRetry ? { id, route, owner, visit: visitRef.current!, detailToken: detailIdentityRef.current?.token ?? {}, kind: "unknown" as const, message: t("action.retryUnknown", { id: durableUnresolvedRetry?.operationId ?? "unknown" }), reason: durableUnresolvedRetry?.recoveryReason, operationId: durableUnresolvedRetry?.operationId } : runActionState && ((runActionState.kind === "unknown" && unresolvedRetry) || (runActionState.id === id && runActionState.route === route && runActionState.owner === owner && runActionState.visit === visitRef.current && runActionState.detailToken === detailIdentityRef.current?.token)) ? runActionState : undefined;
   const surfaceBusy = busyVersion >= 0 && mutationRef.current !== undefined;
   const admit = (visit: Visit): object | undefined => {
     if (mutationRef.current !== undefined || visitRef.current !== visit) return undefined;
@@ -183,10 +185,14 @@ export function ThreadManagement({ model }: { model: AppModel }) {
         return;
       }
       const out = await model.ops.runRetry(runId);
+      if (!out.ok && out.error.kind === "unconfirmed") {
+        model.managementUnconfirmedRetry.value = { threadId: id, runId, turnId, operationId: out.error.operationId, recoveryReason, ownerInstanceId };
+      } else if (!out.ok && out.error.kind !== "owner") {
+        model.managementUnconfirmedRetry.value = { threadId: id, runId, turnId, operationId: out.operationId, recoveryReason, ownerInstanceId };
+      }
       if (!currentTarget()) return;
       if (out.ok) setRunActionState({ id, route, owner, visit: targetVisit, detailToken, kind: "accepted", action: "retry" });
       else if (out.error.kind === "unconfirmed") {
-        unresolvedRetryRef.current = { id, owner, operationId: out.error.operationId };
         setRunActionState({ id, route, owner, visit: targetVisit, detailToken, kind: "unknown", message: t("action.retryUnknown", { id: out.error.operationId }), reason: recoveryReason, operationId: out.error.operationId });
       } else if (out.error.kind === "owner") setRunActionState({ id, route, owner, visit: targetVisit, detailToken, kind: "refused", message: t("action.retryOwnerRefused"), reason: recoveryReason, ownerError: out.error.message });
       else setRunActionState({ id, route, owner, visit: targetVisit, detailToken, kind: "refused", message: t("action.retryFailed"), reason: recoveryReason, ownerError: out.error.message });
@@ -328,7 +334,7 @@ export function ThreadManagement({ model }: { model: AppModel }) {
     {(((currentObservation?.kind === "ready" && currentObservation.runState === "live" && ((currentObservation.turnState === "running") || (currentObservation.turnState === "recovery_wait" && currentObservation.recoveryReason)) && detail.run_id && detail.turn_id)) || unresolvedRetry) ? <div class="band" data-run-actions="">
       {!unresolvedRetry && currentObservation?.turnState === "running" ? <Button variant="stop" disabled={surfaceBusy || currentRunAction?.kind === "running"} onClick={() => void stop()}>{t("action.stop")}</Button> : null}
       {!unresolvedRetry && currentObservation?.turnState === "recovery_wait" && currentObservation.recoveryReason ? <Button variant="primary" disabled={surfaceBusy || currentRunAction?.kind === "running"} onClick={() => void retry()}>{t("action.retry")}</Button> : null}
-      {currentRunAction?.kind === "unknown" ? <Notice tone="wait">{currentRunAction.message}{currentRunAction.reason ? <div>{currentRunAction.reason}</div> : null}</Notice> : null}
+      {currentRunAction?.kind === "unknown" ? <Notice tone="wait">{currentRunAction.message}{currentRunAction.operationId ? <div>{currentRunAction.operationId}</div> : null}{currentRunAction.reason ? <div>{currentRunAction.reason}</div> : null}</Notice> : null}
       {currentRunAction?.kind === "refused" ? <>
         <Notice tone="bad">{currentRunAction.message}{currentRunAction.reason ? <div>{currentRunAction.reason}</div> : null}</Notice>
         {currentRunAction.ownerError ? <Notice tone="bad">{currentRunAction.ownerError}</Notice> : null}

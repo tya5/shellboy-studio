@@ -68,6 +68,8 @@ interface ModelPickerSession {
 
 export type ConnectionView = "connected" | "connecting" | "ownerDown" | "authNeeded";
 
+export type ManagementUnconfirmedRetry = { threadId: string; runId: string; turnId: string; operationId?: string; recoveryReason?: string; ownerInstanceId?: string };
+
 export type SendState =
   | { kind: "idle" }
   | { kind: "sending" }
@@ -402,6 +404,7 @@ export class AppModel {
   private pendingOwnCurrent: (() => boolean) | undefined;
   readonly sendState: Signal<SendState> = signal({ kind: "idle" });
   readonly actionError: Signal<string | undefined> = signal(undefined);
+  readonly managementUnconfirmedRetry: Signal<ManagementUnconfirmedRetry | undefined> = signal(undefined);
   readonly appRequestState: Signal<{ kind: "idle" | "sending" | "failed" | "unconfirmed"; message?: string }> = signal({ kind: "idle" });
   readonly uncertainCancels: Signal<ReadonlySet<string>> = signal(new Set());
 
