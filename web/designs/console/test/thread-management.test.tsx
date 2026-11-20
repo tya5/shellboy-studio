@@ -303,6 +303,13 @@ it("does not delete on foreign or stale singleton deletion proof", async () => {
     cancel!.click();
     staleConfirm!.click();
     expect(f.t.calls("thread.delete")).toHaveLength(0);
+    host.querySelector<HTMLButtonElement>("[data-thread-delete-preview]")!.click();
+    await flush();
+    const replacement = f.t.calls("thread.delete_preview").at(-1)!;
+    f.t.ok(replacement.id, { thread_id: "A", deletable_now: true, preview_marker: { thread_count: 1, ids_hash: "c".repeat(64) } });
+    await act(async () => { await flush(); });
+    staleConfirm!.click();
+    expect(f.t.calls("thread.delete")).toHaveLength(0);
     f.model.applyRoute({ view: "thread-management", threadId: "B" });
     await act(async () => { await flush(); });
     await answer(f, "thread.get", "B");

@@ -182,10 +182,10 @@ export function ThreadManagement({ model }: { model: AppModel }) {
     } catch (error) { if (deleteTargetCurrent(target)) setDeleteState({ ...target, kind: "failed", message: error instanceof Error ? error.message : t("thread.deleteBlocked") }); }
     finally { release(token); }
   };
-  const cancelDelete = () => { if (deletion && deleteTargetCurrent(deletion)) { deleteProofRef.current = undefined; setDeleteState(undefined); } };
+  const cancelDelete = () => { if (deletion && deleteProofRef.current?.marker === deletion.marker && deleteTargetCurrent(deletion)) { deleteProofRef.current = undefined; setDeleteState(undefined); } };
   const confirmDelete = async () => {
     const proof = deleteProofRef.current;
-    if (!deletion || deletion.kind !== "confirm" || !proof || proof.used || proof.id !== deletion.id || proof.visit !== deletion.visit || !deleteTargetCurrent(deletion) || surfaceBusy) return;
+    if (!deletion || deletion.kind !== "confirm" || !proof || proof.used || proof.id !== deletion.id || proof.visit !== deletion.visit || proof.marker !== deletion.marker || !deleteTargetCurrent(deletion) || surfaceBusy) return;
     proof.used = true;
     deleteProofRef.current = proof;
     const token = admit(deletion.visit);
