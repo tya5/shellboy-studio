@@ -9,7 +9,7 @@ type DetailState = { id: string; route: Route; owner: OwnerIdentity; visit: Visi
 type ActionState = { id: string; route: Route; owner: OwnerIdentity; visit: Visit; kind: "idle" | "running" } | { id: string; route: Route; owner: OwnerIdentity; visit: Visit; kind: "done"; archived: boolean; count: number; already: number; notFound: number } | { id: string; route: Route; owner: OwnerIdentity; visit: Visit; kind: "failed"; message: string };
 type SettingsState = { id: string; route: Route; owner: OwnerIdentity; visit: Visit; model: string; effort: string; initialEffort: string; saving: boolean; saved: boolean; error?: string };
 type DeleteState = { id: string; route: Route; owner: OwnerIdentity; visit: Visit; kind: "previewing" | "confirm" | "deleting" | "failed" | "done"; marker?: { thread_count: number; ids_hash: string }; message?: string };
-type ObservationState = { id: string; route: Route; owner: OwnerIdentity; visit: Visit; kind: "loading" | "ready" | "unavailable"; runId?: string; turnId?: string; error?: string };
+type ObservationState = { id: string; route: Route; owner: OwnerIdentity; visit: Visit; detailToken?: object; kind: "loading" | "ready" | "unavailable"; runId?: string; turnId?: string; error?: string };
 
 /** One-thread management entry; route reads and mutations are independent of bulk selection. */
 export function ThreadManagement({ model }: { model: AppModel }) {
@@ -18,7 +18,7 @@ export function ThreadManagement({ model }: { model: AppModel }) {
   const id = route.view === "thread-management" ? route.threadId : undefined;
   const owner = model.data.owner.value;
   const visitRef = useRef<Visit>();
-  const detailIdentityRef = useRef<{ id: string; runId: string; turnId: string; visit: Visit }>();
+  const detailIdentityRef = useRef<{ id: string; runId: string; turnId: string; visit: Visit; token: object }>();
   const [detailState, setDetailState] = useState<DetailState>();
   const [actionState, setActionState] = useState<ActionState>();
   const [settingsState, setSettingsState] = useState<SettingsState>();
@@ -30,7 +30,7 @@ export function ThreadManagement({ model }: { model: AppModel }) {
   const currentDetail = detailState && detailState.id === id && detailState.route === route && detailState.owner === owner && detailState.visit === visitRef.current ? detailState : undefined;
   const currentAction = actionState && actionState.id === id && actionState.route === route && actionState.owner === owner && actionState.visit === visitRef.current ? actionState : undefined;
   const currentSettings = settingsState && settingsState.id === id && settingsState.route === route && settingsState.owner === owner && settingsState.visit === visitRef.current ? settingsState : undefined;
-  const currentObservation = observationState && observationState.id === id && observationState.route === route && observationState.owner === owner && observationState.visit === visitRef.current ? observationState : undefined;
+  const currentObservation = observationState && observationState.id === id && observationState.route === route && observationState.owner === owner && observationState.visit === visitRef.current && observationState.detailToken === detailIdentityRef.current?.token ? observationState : undefined;
   const surfaceBusy = busyVersion >= 0 && mutationRef.current !== undefined;
   const admit = (visit: Visit): object | undefined => {
     if (mutationRef.current !== undefined || visitRef.current !== visit) return undefined;
@@ -43,6 +43,17 @@ export function ThreadManagement({ model }: { model: AppModel }) {
     if (mutationRef.current !== token) return;
     mutationRef.current = undefined;
     setBusyVersion((n) => n + 1);
+  };
+
+  const publishDetail = (next: DetailState): object => {
+    const token = {};
+    const value = next.value;
+    if (value && typeof value.run_id === "string" && value.run_id !== "" && typeof value.turn_id === "string" && value.turn_id !== "") {
+      detailIdentityRef.current = { id: next.id, runId: value.run_id, turnId: value.turn_id, visit: next.visit, token };
+    } else detailIdentityRef.current = undefined;
+    setObservationState({ id: next.id, route: next.route, owner: next.owner, visit: next.visit, detailToken: token, kind: "unavailable", error: "Thread detail changed; observation requires a fresh exact read" });
+    setDetailState(next);
+    return token;
   };
 
   useEffect(() => {
@@ -62,7 +73,7 @@ export function ThreadManagement({ model }: { model: AppModel }) {
       const out = await model.ops.threadGet(id);
       if (!currentTargetWithoutDetail()) return;
       if (out.ok && out.value.thread_id === id) {
-        read({ id, route: readRoute, owner: readOwner, visit: readVisit, loading: false, value: out.value });
+        const detailToken = publishDetail({ id, route: readRoute, owner: readOwner, visit: readVisit, loading: false, value: out.value });
         setSettingsState({ id, route: readRoute, owner: readOwner, visit: readVisit, model: out.value.model, effort: out.value.effort ?? "", initialEffort: out.value.effort ?? "", saving: false, saved: false });
         const runId = out.value.run_id;
         const turnId = out.value.turn_id;
@@ -70,21 +81,21 @@ export function ThreadManagement({ model }: { model: AppModel }) {
           setObservationState({ id, route: readRoute, owner: readOwner, visit: readVisit, kind: "unavailable", error: "Thread has no complete Run/Turn identity" });
           return;
         }
-        detailIdentityRef.current = { id, runId, turnId, visit: readVisit };
-        setObservationState({ id, route: readRoute, owner: readOwner, visit: readVisit, kind: "loading", runId, turnId });
+        detailIdentityRef.current = { id, runId, turnId, visit: readVisit, token: detailToken };
+        setObservationState({ id, route: readRoute, owner: readOwner, visit: readVisit, detailToken, kind: "loading", runId, turnId });
         const run = await model.ops.runGet(runId, { threadId: id });
         if (!currentTarget()) return;
         if (!run.ok || run.value.run_id !== runId || run.value.thread_id !== id || run.value.turn_id !== turnId) {
-          setObservationState({ id, route: readRoute, owner: readOwner, visit: readVisit, kind: "unavailable", runId, turnId, error: "Run observation does not match Thread" });
+          setObservationState({ id, route: readRoute, owner: readOwner, visit: readVisit, detailToken, kind: "unavailable", runId, turnId, error: "Run observation does not match Thread" });
           return;
         }
         const turn = await model.ops.turnGet(turnId, { runId, threadId: id });
         if (!currentTarget()) return;
         if (!turn.ok || turn.value.turn_id !== turnId || turn.value.run_id !== runId || turn.value.thread_id !== id) {
-          setObservationState({ id, route: readRoute, owner: readOwner, visit: readVisit, kind: "unavailable", runId, turnId, error: "Turn observation does not match Run" });
+          setObservationState({ id, route: readRoute, owner: readOwner, visit: readVisit, detailToken, kind: "unavailable", runId, turnId, error: "Turn observation does not match Run" });
           return;
         }
-        setObservationState({ id, route: readRoute, owner: readOwner, visit: readVisit, kind: "ready", runId, turnId });
+        setObservationState({ id, route: readRoute, owner: readOwner, visit: readVisit, detailToken, kind: "ready", runId, turnId });
       } else read({ id, route: readRoute, owner: readOwner, visit: readVisit, loading: false, error: out.ok ? t("thread.detailMismatch") : out.error.message });
     })();
     return () => {
@@ -133,7 +144,7 @@ export function ThreadManagement({ model }: { model: AppModel }) {
       setActionState({ id: mutationId, route: mutationRoute, owner: mutationOwner, visit: mutationVisit, kind: "failed", message });
       return;
     }
-    setDetailState({ id: mutationId, route: mutationRoute, owner: mutationOwner, visit: mutationVisit, loading: false, value: refreshed.value });
+    publishDetail({ id: mutationId, route: mutationRoute, owner: mutationOwner, visit: mutationVisit, loading: false, value: refreshed.value });
     const result = archived ? out.value.unarchived : out.value.archived;
     setActionState({ id: mutationId, route: mutationRoute, owner: mutationOwner, visit: mutationVisit, kind: "done", archived: !archived, count: result?.length ?? 0, already: out.value.already?.length ?? 0, notFound: out.value.not_found?.length ?? 0 });
     } finally { release(token); }
@@ -178,7 +189,7 @@ export function ThreadManagement({ model }: { model: AppModel }) {
     }
     const expectedEffort = changes.effort === undefined ? (detail.effort ?? "") : changes.effort;
     const readbackMismatch = refreshed.value.model !== changes.model || refreshed.value.connection !== changes.connection || (refreshed.value.effort ?? "") !== expectedEffort;
-    setDetailState({ id: target.id, route: target.route, owner: target.owner, visit: target.visit, loading: false, value: refreshed.value });
+    publishDetail({ id: target.id, route: target.route, owner: target.owner, visit: target.visit, loading: false, value: refreshed.value });
     if (readbackMismatch) {
       setSettingsState({ ...settings, model: refreshed.value.model, effort: refreshed.value.effort ?? "", initialEffort: refreshed.value.effort ?? "", saving: false, saved: false, error: t("thread.settingsMismatch") });
       return;
