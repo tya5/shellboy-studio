@@ -935,7 +935,7 @@ export class ThreadOrg {
     if (!token) return;
     this.tagAttempt = token;
     const mutationCurrent = () => this.tagAttempt === token && this.authority?.()?.owner === authority.owner && this.ownsReservation?.(authority.owner, ids, token) === true;
-    const uiCurrent = () => mutationCurrent() && this.revision === revision && this.selectionGeneration === selectionGeneration && this.tagDraftGeneration === draftGeneration && this.authority?.()?.route === authority.route;
+    const uiCurrent = () => mutationCurrent() && this.publishedView === publication && this.revision === revision && this.selectionGeneration === selectionGeneration && this.tagDraftGeneration === draftGeneration && this.authority?.()?.route === authority.route;
     this.tagAction.value = { kind: "running" };
     try {
       const remove = [...draft.remove];

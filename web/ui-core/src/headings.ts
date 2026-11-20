@@ -27,6 +27,8 @@ export interface HeadingsState {
   loading: boolean;
   loaded: boolean;
   error: OpError | undefined;
+  /** Identity of the member-page request that owns this state. */
+  readToken?: object;
 }
 
 export interface MemberState {
@@ -179,7 +181,8 @@ export class ThreadHeadings {
   private async readMembers(kind: HeadingKind, name: string, generation: number, cancel: Cancel): Promise<void> {
     const before = this.open.peek().get(name);
     if (!before) return;
-    this.setMember(name, { ...before, loading: true });
+    const readToken = {};
+    this.setMember(name, { ...before, loading: true, readToken });
     const { mode, query } = this.filter(name);
     const where = kind === "tag" ? { tags: [name] } : { cwd: name };
     const read = await this.walk(
@@ -188,8 +191,8 @@ export class ThreadHeadings {
     );
     if (generation !== this.generation || read.error?.kind === "cancelled") return;
     const now = this.open.peek().get(name);
-    if (!now) return;
-    this.setMember(name, read.error ? { ...now, loading: false, error: read.error } : { ...now, loading: false, loaded: true, error: undefined, items: read.items, nextCursor: read.next });
+    if (!now || now.readToken !== readToken) return;
+    this.setMember(name, read.error ? { ...now, loading: false, error: read.error, readToken } : { ...now, loading: false, loaded: true, error: undefined, items: read.items, nextCursor: read.next, readToken });
     this.changed();
   }
 
