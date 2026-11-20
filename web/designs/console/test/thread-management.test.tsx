@@ -377,13 +377,6 @@ it("invalidates ready Run/Turn observation after same-visit accepted detail repl
     await act(async () => { render(<ThreadManagement model={f.model} />, host); await flush(); });
     await answer(f, "thread.get", "A");
     const oldRun = f.t.calls("run.get").at(-1)!;
-    f.t.ok(oldRun.id, { run_id: "run-old", thread_id: "A", state: "live", turn_id: "turn-old" });
-    await act(async () => { await flush(); });
-    const oldTurn = f.t.calls("turn.get").at(-1)!;
-    f.t.ok(oldTurn.id, { turn_id: "turn-old", run_id: "run-old", thread_id: "A", state: "recovery_wait", recovery_hint: "retry" });
-    await act(async () => { await flush(); });
-    expect(host.querySelector("[data-management-observation]")?.getAttribute("data-management-observation")).toBe("ready");
-
     (host.querySelector("[data-thread-management] button") as HTMLButtonElement).click();
     const archive = f.t.calls("thread.archive").at(-1)!;
     f.t.ok(archive.id, { archived: ["A"], already: [], not_found: [] });
@@ -394,6 +387,8 @@ it("invalidates ready Run/Turn observation after same-visit accepted detail repl
     f.t.ok(refresh.id, f.db.details.A);
     await act(async () => { await flush(); });
     expect(host.querySelector("[data-management-observation]")?.getAttribute("data-management-observation")).toBe("unavailable");
-    expect(f.t.calls("turn.get")).toHaveLength(1);
+    f.t.ok(oldRun.id, { run_id: "run-old", thread_id: "A", state: "live", turn_id: "turn-old" });
+    await act(async () => { await flush(); });
+    expect(f.t.calls("turn.get")).toHaveLength(0);
   } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
 });

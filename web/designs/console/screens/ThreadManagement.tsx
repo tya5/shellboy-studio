@@ -65,8 +65,8 @@ export function ThreadManagement({ model }: { model: AppModel }) {
     visitRef.current = readVisit;
     detailIdentityRef.current = undefined;
     const currentTargetWithoutDetail = () => active && visitRef.current === readVisit && model.route.peek() === readRoute && model.route.peek().view === "thread-management" && model.data.owner.peek() === readOwner;
-    const capturedDetailToken = () => detailIdentityRef.current?.token;
-    const currentTarget = () => currentTargetWithoutDetail() && detailIdentityRef.current?.visit === readVisit && detailIdentityRef.current?.token === capturedDetailToken();
+    let acceptedDetailToken: object | undefined;
+    const currentTarget = () => currentTargetWithoutDetail() && detailIdentityRef.current?.visit === readVisit && detailIdentityRef.current?.token === acceptedDetailToken;
     const read = (next: DetailState) => { if (currentTargetWithoutDetail()) setDetailState(next); };
     read({ id, route: readRoute, owner: readOwner, visit: readVisit, loading: true });
     setActionState({ id, route: readRoute, owner: readOwner, visit: readVisit, kind: "idle" });
@@ -75,6 +75,7 @@ export function ThreadManagement({ model }: { model: AppModel }) {
       if (!currentTargetWithoutDetail()) return;
       if (out.ok && out.value.thread_id === id) {
         const detailToken = publishDetail({ id, route: readRoute, owner: readOwner, visit: readVisit, loading: false, value: out.value });
+        acceptedDetailToken = detailToken;
         setSettingsState({ id, route: readRoute, owner: readOwner, visit: readVisit, model: out.value.model, effort: out.value.effort ?? "", initialEffort: out.value.effort ?? "", saving: false, saved: false });
         const runId = out.value.run_id;
         const turnId = out.value.turn_id;
