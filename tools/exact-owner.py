@@ -45,7 +45,7 @@ def verify(studio, owner, binary_version=None):
             "locked owner commit missing or malformed")
     require(package.get("version") == VERSION, "wrong locked owner package version")
     require(git(owner, "remote", "get-url", "origin") == OFFICIAL, "wrong owner remote")
-    commit = git(owner, "rev-parse", "--verify", MANIFEST_REV)
+    commit = git(owner, "rev-parse", "--verify", manifest_rev)
     require(commit == source.fragment == manifest_rev, "manifest revision differs from lock commit")
     require(git(owner, "rev-parse", "HEAD") == commit, "owner checkout differs from release commit")
     require(not git(owner, "status", "--porcelain"), "owner checkout is not clean")
