@@ -851,7 +851,7 @@ it("retains lost quick Stop identity across same-owner reconnect on both surface
     const stop = f.t.calls("run.stop").at(-1)!;
     f.t.drop();
     await act(async () => { await flush(); });
-    expect(host.textContent).toContain(stop.operation_id);
+    expect(f.model.managementUnconfirmedRetry.value.get("i1:A:stop")?.operationId).toBe(stop.operation_id);
     f.t.open();
     f.t.push({ t: "hello", bridge_version: "0.0.1", data_dir: "/temp/owner-a", owner: { state: "connected", info: { protocol_version: 5, instance_id: "i1", capabilities: ["history.window"] } } });
     render(null, host);

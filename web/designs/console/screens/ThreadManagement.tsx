@@ -222,7 +222,8 @@ export function ThreadManagement({ model }: { model: AppModel }) {
     const detailToken = detailIdentityRef.current?.token;
     const targetVisit = target?.visit;
     const expected = detailIdentityRef.current;
-    if (!target || !detailToken || !targetVisit || !expected || unresolvedStop || surfaceBusy || currentRunAction?.kind === "running") return;
+    const liveUnresolvedStop = model.managementUnconfirmedRetry.peek().get(unresolvedStopKey)?.action === "stop";
+    if (!target || !detailToken || !targetVisit || !expected || liveUnresolvedStop || surfaceBusy || currentRunAction?.kind === "running") return;
     const currentTarget = () => visitRef.current === targetVisit && model.route.peek() === route && model.route.peek().view === "thread-management" && model.data.owner.peek() === owner && detailIdentityRef.current?.token === detailToken;
     const token = admit(targetVisit);
     if (!token) return;
@@ -354,7 +355,7 @@ export function ThreadManagement({ model }: { model: AppModel }) {
       {actionable ? <Button disabled={surfaceBusy || currentAction?.kind === "running"} onClick={() => void mutate()}>{archived ? t("org.unarchive") : t("action.archive")}</Button> : null}
     </div>
     {(((currentObservation?.kind === "ready" && currentObservation.runState === "live" && ((currentObservation.turnState === "running") || (currentObservation.turnState === "recovery_wait" && currentObservation.recoveryReason)) && detail.run_id && detail.turn_id)) || unresolvedRetry || retryReservation || durableUnresolvedStop) ? <div class="band" data-run-actions="">
-      {!unresolvedRetry && !retryReservation && currentObservation?.turnState === "running" ? <Button variant="stop" disabled={surfaceBusy || currentRunAction?.kind === "running"} onClick={() => void stop()}>{t("action.stop")}</Button> : null}
+      {!unresolvedStop && !unresolvedRetry && !retryReservation && currentObservation?.turnState === "running" ? <Button variant="stop" disabled={surfaceBusy || currentRunAction?.kind === "running"} onClick={() => void stop()}>{t("action.stop")}</Button> : null}
       {!unresolvedRetry && !retryReservation && currentObservation?.turnState === "recovery_wait" && currentObservation.recoveryReason ? <Button variant="primary" disabled={surfaceBusy || currentRunAction?.kind === "running"} onClick={() => void retry()}>{t("action.retry")}</Button> : null}
       {durableUnresolvedStop ? <Notice tone="wait">{t("action.stopUnknown")}<div>{durableUnresolvedStop.operationId}</div></Notice> : null}
       {currentRunAction?.kind === "unknown" ? <Notice tone="wait">{currentRunAction.message}{currentRunAction.operationId ? <div>{currentRunAction.operationId}</div> : null}{currentRunAction.reason ? <div>{currentRunAction.reason}</div> : null}</Notice> : null}
