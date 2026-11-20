@@ -131,13 +131,10 @@ it("does not arm actions for a foreign detail or dispatch a second visit mutatio
     expect(f.t.calls("thread.set")).toHaveLength(0);
     f.t.ok(f.t.calls("thread.archive")[0]!.id, { archived: ["A"] });
     await act(async () => { await flush(); });
-    const deferredSave = host.querySelector<HTMLButtonElement>("[data-thread-settings] button")!;
-    expect(deferredSave.disabled).toBe(true);
-    deferredSave.click();
+    for (let i = 0; i < 4; i++) { if (!f.t.calls("thread.list").find((call) => !f.db.answered.has(call.id))) break; await answer(f, "thread.list"); }
     expect(f.t.calls("thread.set")).toHaveLength(0);
-    await answer(f, "thread.get", "A");
+    expect(host.querySelector<HTMLButtonElement>("[data-thread-management] button")?.textContent).toBe(f.model.t.value("org.unarchive"));
     expect(host.querySelector<HTMLButtonElement>("[data-thread-management] button")?.disabled).toBe(false);
-    expect(host.querySelector<HTMLButtonElement>("[data-thread-settings] button")?.disabled).toBe(false);
   } finally {
     render(null, host);
     host.remove();

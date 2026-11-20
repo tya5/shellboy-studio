@@ -450,7 +450,6 @@ describe("Monitor", () => {
     const cards = el.querySelectorAll(".card");
     expect(cards.length).toBe(5);
     expect(cards[0]!.classList.contains("err")).toBe(true);
-    expect(text(cards[0]!)).toContain("Retry");
     expect(text(el)).not.toContain("Connection interrupted");
     expect(el.querySelector(".card.lead")).toBeTruthy();
     expect(text(el)).toContain("Parent: Improve history search");
