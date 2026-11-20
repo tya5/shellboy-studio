@@ -783,3 +783,48 @@ it("on-demand Stop is wired on mounted sidebar and list rows", async () => {
     expect(host.querySelector('[data-thread-quick-surface="list"][data-thread-quick-action="A"]')?.textContent).toContain(f.model.t.value("action.stopAccepted"));
   } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
 });
+
+it("drops a quick Stop after row unmount without a Stop wire", async () => {
+  const f = await fixtureModel({ route: "threads", configure(db) {
+    db.threads = { A: summary("A") };
+    db.details = { A: details("A", { run_id: "run-a", turn_id: "turn-a" }) };
+  } });
+  const host = document.createElement("div"); document.body.append(host);
+  const context: DesignContext = { model: f.model, prefs: signal(loadPrefs({ read: () => null, write: () => {} }, [{ name: "console", themes: [{ name: "light" }] }])), setPrefs: () => {}, designs: [], submitToken: async () => false };
+  try {
+    f.model.org.selected.value = new Set(["A"]);
+    await act(async () => { render(<App context={context} />, host); await flush(); });
+    for (let i = 0; i < 4; i++) { if (!f.t.calls("thread.list").find((call) => !f.db.answered.has(call.id))) break; await answer(f, "thread.list"); }
+    host.querySelector<HTMLButtonElement>('[data-thread-quick-surface="list"][data-thread-quick-action="A"] [data-thread-quick-stop]')!.click();
+    const preflight = f.t.calls("thread.get").at(-1)!;
+    render(null, host);
+    f.t.ok(preflight.id, details("A", { run_id: "run-a", turn_id: "turn-a" }));
+    await flush();
+    expect(f.t.calls("run.get")).toHaveLength(0);
+    expect(f.t.calls("run.stop")).toHaveLength(0);
+  } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
+});
+
+it("refuses an ineligible quick Stop after exact reads", async () => {
+  const f = await fixtureModel({ route: "threads", configure(db) {
+    db.threads = { A: summary("A") };
+    db.details = { A: details("A", { run_id: "run-a", turn_id: "turn-a" }) };
+  } });
+  const host = document.createElement("div"); document.body.append(host);
+  const context: DesignContext = { model: f.model, prefs: signal(loadPrefs({ read: () => null, write: () => {} }, [{ name: "console", themes: [{ name: "light" }] }])), setPrefs: () => {}, designs: [], submitToken: async () => false };
+  try {
+    f.model.org.selected.value = new Set(["A"]);
+    await act(async () => { render(<App context={context} />, host); await flush(); });
+    for (let i = 0; i < 4; i++) { if (!f.t.calls("thread.list").find((call) => !f.db.answered.has(call.id))) break; await answer(f, "thread.list"); }
+    host.querySelector<HTMLButtonElement>('[data-thread-quick-surface="list"][data-thread-quick-action="A"] [data-thread-quick-stop]')!.click();
+    const preflight = f.t.calls("thread.get").at(-1)!;
+    f.t.ok(preflight.id, details("A", { run_id: "run-a", turn_id: "turn-a" }));
+    await act(async () => { await flush(); });
+    f.t.ok(f.t.calls("run.get").at(-1)!.id, { run_id: "run-a", thread_id: "A", turn_id: "turn-a", state: "live" });
+    await act(async () => { await flush(); });
+    f.t.ok(f.t.calls("turn.get").at(-1)!.id, { turn_id: "turn-a", run_id: "run-a", thread_id: "A", state: "recovery_wait", recovery_hint: "provider interrupted" });
+    await act(async () => { await flush(); });
+    expect(f.t.calls("run.stop")).toHaveLength(0);
+    expect(host.textContent).toContain(f.model.t.value("action.stopRefused"));
+  } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
+});
