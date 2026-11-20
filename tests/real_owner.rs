@@ -453,22 +453,6 @@ async fn branches_fork_rewind_and_unarchive_against_a_real_owner() {
         gate.notify_one();
         c.settled(&thread).await;
     }
-    // Separate plain Stop phase: the owner reports the active Run, and Core settles that exact Run.
-    let stop_thread = c
-        .ok("thread.create", json!({"cwd": root.to_str().unwrap()}), op("stop-create"))
-        .await["thread_id"].as_str().unwrap().to_owned();
-    c.ok("message.send", json!({"thread_id":stop_thread,"text":"stop me"}), op("stop-send")).await;
-    let live = c.ok("thread.get", json!({"thread_id":stop_thread}), None).await;
-    let run_id = live["run_id"].as_str().expect("active exact Run").to_owned();
-    let stopping = c.ok("run.stop", json!({"run_id":run_id}), op("stop")).await;
-    assert_eq!(stopping["run_id"], run_id.as_str(), "{stopping}");
-    assert_eq!(stopping["state"], "stopping", "{stopping}");
-    gate.notify_one();
-    c.settled(&stop_thread).await;
-    let stopped = c.ok("run.get", json!({"run_id":run_id}), None).await;
-    assert_eq!(stopped["run_id"], run_id.as_str(), "{stopped}");
-    assert_eq!(stopped["state"], "stopped", "{stopped}");
-
     let history = c
         .ok(
             "history.list",
@@ -1227,6 +1211,19 @@ async fn live_text_reaches_a_watching_tab_and_the_saved_message_follows() {
         saved_matches[0]["provenance"]["attempt_id"],
         attempt.as_str()
     );
+    // Separate plain Stop phase on the same gated owner stream.
+    let stop_thread = c.ok("thread.create", json!({"cwd": root.to_str().unwrap()}), op("stop-create")).await["thread_id"].as_str().unwrap().to_owned();
+    c.ok("message.send", json!({"thread_id":stop_thread,"text":"stop me"}), op("stop-send")).await;
+    let live = c.ok("thread.get", json!({"thread_id":stop_thread}), None).await;
+    let run_id = live["run_id"].as_str().expect("active exact Run").to_owned();
+    let stopping = c.ok("run.stop", json!({"run_id":run_id}), op("stop")).await;
+    assert_eq!(stopping["run_id"], run_id.as_str(), "{stopping}");
+    assert_eq!(stopping["state"], "stopping", "{stopping}");
+    gate.notify_one();
+    c.settled(&stop_thread).await;
+    let stopped = c.ok("run.get", json!({"run_id":run_id}), None).await;
+    assert_eq!(stopped["run_id"], run_id.as_str(), "{stopped}");
+    assert_eq!(stopped["state"], "stopped", "{stopped}");
     cancel.cancel();
     drop(serve);
     let _ = std::fs::remove_dir_all(&root);
