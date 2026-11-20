@@ -233,9 +233,9 @@ export function Threads({ model }: { model: AppModel }) {
       <Field ariaLabel={t("org.filter")} placeholder={t("org.filter")} leading={<Icon name="search" small />} value={query} onInput={(e) => setQuery(e.currentTarget.value)} />
       {selected.size > 0 ? (
         <SelectionBar text={t("org.selected", { n: selected.size })}>
-          <Button variant={armed ? "warn" : "plain"} disabled={action.kind === "running"} onClick={run}>
+          {by === "tree" ? <Button variant={armed ? "warn" : "plain"} disabled={action.kind === "running"} onClick={run}>
             {archiving ? t(armed ? "org.archiveConfirm" : "action.archive") : t("org.unarchive")}
-          </Button>
+          </Button> : null}
           {canTag ? <Button aria-pressed={org.tagDraft.value.open} onClick={() => org.openTags(!org.tagDraft.value.open)}>{t("org.tag.button")}</Button> : null}
           <Button variant="link" onClick={() => org.clear()}>{t("org.clear")}</Button>
         </SelectionBar>

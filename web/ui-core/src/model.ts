@@ -137,11 +137,12 @@ type QuickActionStatus = { kind: "running" | "failed" | "verified"; error?: stri
 export class AppModel {
   readonly quickActionEpoch = signal(0);
   private readonly threadReservations = new WeakMap<object, Map<string, object>>();
+  private readonly bulkReservations = new WeakMap<object, object>();
   private readonly quickActions = new WeakMap<object, Map<string, { token?: object; status: QuickActionStatus }>>();
   threadActionReserve(owner: object, ids: readonly string[]): object | undefined {
     let reservations = this.threadReservations.get(owner);
     if (!reservations) { reservations = new Map(); this.threadReservations.set(owner, reservations); }
-    if (ids.some((id) => reservations!.has(id))) return undefined;
+    if (this.bulkReservations.has(owner) || ids.some((id) => reservations!.has(id))) return undefined;
     const token = {};
     for (const id of ids) reservations.set(id, token);
     this.quickActionEpoch.value++;
@@ -156,6 +157,26 @@ export class AppModel {
     if (!reservations || !ids.every((id) => reservations.get(id) === token)) return;
     for (const id of ids) reservations.delete(id);
     this.quickActionEpoch.value++;
+  }
+
+  bulkActionReserve(owner: object, ids: readonly string[]): object | undefined {
+    if (this.bulkReservations.has(owner)) return undefined;
+    let reservations = this.threadReservations.get(owner);
+    if (!reservations) { reservations = new Map(); this.threadReservations.set(owner, reservations); }
+    if (ids.some((id) => reservations!.has(id))) return undefined;
+    const token = {};
+    this.bulkReservations.set(owner, token);
+    for (const id of ids) reservations.set(id, token);
+    this.quickActionEpoch.value++;
+    return token;
+  }
+  bulkActionOwns(owner: object, ids: readonly string[], token: object): boolean {
+    return this.bulkReservations.get(owner) === token && this.threadActionOwns(owner, ids, token);
+  }
+  bulkActionRelease(owner: object, ids: readonly string[], token: object): void {
+    if (this.bulkReservations.get(owner) !== token) return;
+    this.bulkReservations.delete(owner);
+    this.threadActionRelease(owner, ids, token);
   }
 
   threadQuickActionAdmit(owner: object, threadId: string): object | undefined {
@@ -445,7 +466,7 @@ export class AppModel {
     }));
     this.disposers.push(effect(() => { this.data.threadList.value; this.branchCompare.hint(); }));
     this.senderTitles = new SenderTitles(this.ops);
-    this.org = new ThreadOrg(this.ops, () => this.data.capabilities.peek(), () => { const owner = this.data.owner.peek(); const route = this.route.peek(); return route.view === "threads" && owner.state === "connected" ? { owner: owner as object, route } : undefined; }, (owner, ids) => this.threadActionReserve(owner, ids), (owner, ids, token) => this.threadActionRelease(owner, ids, token), (owner, ids, token) => this.threadActionOwns(owner, ids, token));
+    this.org = new ThreadOrg(this.ops, () => this.data.capabilities.peek(), () => { const owner = this.data.owner.peek(); const route = this.route.peek(); return route.view === "threads" && owner.state === "connected" ? { owner: owner as object, route } : undefined; }, (owner, ids) => this.bulkActionReserve(owner, ids), (owner, ids, token) => this.bulkActionRelease(owner, ids, token), (owner, ids, token) => this.bulkActionOwns(owner, ids, token));
     this.config = new ConfigEditor(this.ops);
     this.guideRegistration = new GuideRegistration(this.ops);
     this.setup = new ConnectionSetup(this.ops);

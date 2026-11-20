@@ -807,7 +807,7 @@ export class ThreadOrg {
     const revision = this.revision;
     const authority = this.authority?.();
     const published = this.publishedView;
-    if (ids.length === 0 || !authority || !published || authority.owner !== published.owner || authority.route !== published.route || this.state.peek().mode !== published.mode || this.state.peek().query !== published.query || this.groupBy.peek() !== published.grouping || ids.some((id) => !shown.some((row) => row.thread_id === id))) return;
+    if (this.groupBy.peek() !== "tree" || ids.length === 0 || !authority || !published || authority.owner !== published.owner || authority.route !== published.route || this.state.peek().mode !== published.mode || this.state.peek().query !== published.query || this.groupBy.peek() !== published.grouping || ids.some((id) => !shown.some((row) => row.thread_id === id))) return;
     const token = this.reserve?.(authority.owner, ids);
     if (!token) return;
     const verb = this.state.peek().mode === "exclude" ? "archive" : "unarchive";
