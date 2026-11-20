@@ -445,7 +445,10 @@ it("retries only after fresh exact Thread/Run/Turn admission", async () => {
     await act(async () => { await flush(); });
     const retry = f.t.calls("run.retry").at(-1)!;
     expect(retry.args).toEqual({ run_id: "run-a" });
-    f.t.ok(retry.id, {});
+    f.t.ownerError(retry.id, "invalid_state", "recovery changed at Core");
+    await act(async () => { await flush(); });
+    expect(f.t.calls("run.retry")).toHaveLength(1);
+    expect(host.textContent).toContain("recovery changed at Core");
   } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
 });
 
@@ -467,7 +470,7 @@ it("refuses changed Run state without a retry write", async () => {
     await answer(f, "thread.get", "A");
     f.t.ok(f.t.calls("run.get").at(-1)!.id, { run_id: "run-a", thread_id: "A", state: "completed", turn_id: "turn-a" });
     await act(async () => { await flush(); });
-    f.t.ok(f.t.calls("turn.get").at(-1)!.id, { turn_id: "turn-a", run_id: "run-a", thread_id: "A", state: "completed" });
+    f.t.ok(f.t.calls("turn.get").at(-1)!.id, { turn_id: "turn-a", run_id: "run-a", thread_id: "A", state: "recovery_wait", recovery_hint: "provider interrupted" });
     await act(async () => { await flush(); });
     expect(f.t.calls("run.retry")).toHaveLength(0);
     expect(host.textContent).toContain("Retry refused");
