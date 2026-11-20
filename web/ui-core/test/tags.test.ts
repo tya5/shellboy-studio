@@ -245,3 +245,20 @@ describe("an owner without tags (v0.10.0)", () => {
     expect(org.state.value.loaded).toBe(true);
   });
 });
+
+it("binds a bulk tag call to the published IDs and preserves a newer selection", async () => {
+  const { t, db, model } = await open({ capabilities: both, configure: (d) => populate(d, { old: ["lead", "done"] }) });
+  await settle(t, db);
+  const org = model.org;
+  org.setMany(["lead", "done"], true);
+  org.addTag("fresh");
+  const running = org.applyTags();
+  await flush();
+  const call = t.calls("thread.tag")[0]!;
+  expect(call.args).toEqual({ thread_ids: ["lead", "done"], add: ["fresh"] });
+  org.setMany(["ghost"], true);
+  await settle(t, db);
+  await running;
+  expect(org.selected.value.has("ghost")).toBe(true);
+  expect(org.tagDraft.value.add).toEqual(["fresh"]);
+});
