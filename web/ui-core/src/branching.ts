@@ -273,9 +273,6 @@ export class Branches {
   private familyGeneration = 0;
   private running = false;
   private again = false;
-  private revision = 0;
-  private readonly authority: (() => { owner: object; route: object } | undefined) | undefined;
-  private readonly quickActionBusy: ((owner: object, id: string) => boolean) | undefined;
   private cancel = new Cancel();
 
   constructor(private readonly ops: Operations, private readonly owner: () => string | undefined = () => "synthetic-owner", private readonly view?: () => string | undefined) {}
@@ -583,6 +580,10 @@ export class ThreadOrg {
   readonly action: Signal<OrgAction> = signal({ kind: "idle" });
   private running = false;
   private again = false;
+  private revision = 0;
+  private publishedOwner: object | undefined;
+  private readonly authority: (() => { owner: object; route: object } | undefined) | undefined;
+  private readonly quickActionBusy: ((owner: object, id: string) => boolean) | undefined;
   private pages = 1;
   private cancel = new Cancel();
   /** Names for the Tag and Directory groupings, and their members. Used only when the owner can list them. */
@@ -620,6 +621,8 @@ export class ThreadOrg {
   }
 
   setGrouping(by: ThreadGrouping): void {
+    this.revision++;
+    this.selected.value = new Set();
     this.groupBy.value = by;
     this.ensure();
   }
@@ -698,6 +701,7 @@ export class ThreadOrg {
           this.state.value = error ? { ...now, loading: this.again, error } : { ...now, loading: this.again, items, nextCursor: cursor, loaded: true, error: undefined };
           if (!error) {
             this.revision++;
+            this.publishedOwner = this.authority?.()?.owner;
             this.selected.value = new Set([...this.selected.peek()].filter((id) => known.has(id)));
           }
         });
@@ -793,7 +797,7 @@ export class ThreadOrg {
     const ids = [...this.selected.peek()];
     const revision = this.revision;
     const authority = this.authority?.();
-    if (ids.length === 0 || !authority || ids.some((id) => !shown.some((row) => row.thread_id === id))) return;
+    if (ids.length === 0 || !authority || authority.owner !== this.publishedOwner || ids.some((id) => !shown.some((row) => row.thread_id === id))) return;
     if (ids.some((id) => this.quickActionBusy?.(authority.owner, id))) return;
     const verb = this.state.peek().mode === "exclude" ? "archive" : "unarchive";
     const options = { descendants: false };

@@ -233,7 +233,7 @@ export function Threads({ model }: { model: AppModel }) {
       <TagPanel model={model} />
       <Field ariaLabel={t("org.filter")} placeholder={t("org.filter")} leading={<Icon name="search" small />} value={query} onInput={(e) => setQuery(e.currentTarget.value)} />
       {selected.size > 0 ? (
-        <SelectionBar text={extra > 0 ? t("org.selectedWith", { n: selected.size, extra }) : t("org.selected", { n: selected.size })} option={{ label: t("org.descendants"), checked: descendants, onChange: (on) => (org.descendants.value = on) }}>
+        <SelectionBar text={t("org.selected", { n: selected.size })}>
           <Button variant={armed ? "warn" : "plain"} disabled={action.kind === "running"} onClick={run}>
             {archiving ? t(armed ? "org.archiveConfirm" : "action.archive") : t("org.unarchive")}
           </Button>
