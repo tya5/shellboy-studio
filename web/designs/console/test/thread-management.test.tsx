@@ -9,7 +9,7 @@ import { fixtureModel } from "../../../ui-core/test/fixture";
 import { loadPrefs, type DesignContext } from "../../../ui-core/src";
 import { App } from "../screens/App";
 import { ThreadManagement } from "../screens/ThreadManagement";
-import { SelectRow, ThreadQuickAction } from "../system/components"
+import { SelectRow, ThreadItem, ThreadQuickAction } from "../system/components"
 
 async function answer(f: Awaited<ReturnType<typeof fixtureModel>>, command: string, threadId?: string): Promise<void> {
   const call = f.t.calls(command).find((candidate) => {
@@ -357,10 +357,13 @@ it("shows only state-appropriate quick row actions", async () => {
 it("opens and navigates the shared row menu from row focus", async () => {
   const f = await fixtureModel({ route: "threads" });
   const host = document.createElement("div"); document.body.append(host);
+  const outside = document.createElement("button"); outside.textContent = "Outside"; document.body.append(outside);
   try {
-    render(<SelectRow href="#" title="A" status="Running" depth={0} checked={false} checkLabel="Select A" onToggle={() => {}} action={<ThreadQuickAction model={f.model} row={summary("A")} status="running" surface="list" />} />, host);
+    render(<>
+      <SelectRow href="#" title="A" status="Running" depth={0} checked={false} checkLabel="Select A" onToggle={() => {}} action={<ThreadQuickAction model={f.model} row={summary("A")} status="running" surface="list" />} />
+      <ThreadItem href="#" title="Sidebar A" status="running" statusLabel="Running" depth={0} current={false} pending={0} action={<ThreadQuickAction model={f.model} row={summary("sidebar")} status="running" surface="sidebar" />} />
+    </>, host);
     const row = host.querySelector<HTMLElement>(".tree-main")!;
-    const outside = document.createElement("button"); outside.textContent = "Outside"; document.body.append(outside);
     row.focus();
     expect(document.activeElement).toBe(row);
     row.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true }));
@@ -382,6 +385,21 @@ it("opens and navigates the shared row menu from row focus", async () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(host.querySelector('[role="menu"]')).toBeNull();
     expect(document.activeElement).toBe(outside);
-    outside.remove();
-  } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
+    const listShell = host.querySelector<HTMLElement>(".srow")!;
+    listShell.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(host.querySelector('[data-thread-quick-surface="list"] [role="menu"]')).not.toBeNull();
+    const listTitle = host.querySelector<HTMLElement>(".srow .tree-main")!;
+    host.querySelector('[data-thread-quick-surface="list"] [role="menuitem"]')!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(document.activeElement).toBe(listTitle);
+    const sidebarShell = host.querySelector<HTMLElement>(".tree-item")!;
+    sidebarShell.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(host.querySelector('[data-thread-quick-surface="sidebar"] [role="menu"]')).not.toBeNull();
+    const sidebarTitle = host.querySelector<HTMLElement>(".tree-item .tree-main")!;
+    host.querySelector('[data-thread-quick-surface="sidebar"] [role="menuitem"]')!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(document.activeElement).toBe(sidebarTitle);
+  } finally { outside.remove(); render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
 });

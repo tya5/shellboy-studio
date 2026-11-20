@@ -16,8 +16,10 @@ export function ThreadQuickAction({ model, row, status, surface, onMove, report 
   const menu = useRef<HTMLSpanElement>(null);
   const archived = row.archived_at !== undefined;
   const rememberOpener = (target: EventTarget | null) => {
-    const element = target instanceof HTMLElement ? target : null;
-    opener.current = element?.closest<HTMLElement>("a,button,input,[tabindex]") ?? null;
+    const element = target instanceof Element ? target : null;
+    const row = root.current?.closest<HTMLElement>(".srow, .tree-item");
+    const candidate = element?.closest("a,button,input,[tabindex]");
+    opener.current = candidate instanceof HTMLElement ? candidate : row?.querySelector<HTMLElement>(".tree-main") ?? null;
   };
   useEffect(() => {
     const node = root.current;
