@@ -154,10 +154,7 @@ export function ThreadManagement({ model }: { model: AppModel }) {
     publishDetail({ id: mutationId, route: mutationRoute, owner: mutationOwner, visit: mutationVisit, loading: false, value: refreshed.value });
     const result = archived ? out.value.unarchived : out.value.archived;
     setActionState({ id: mutationId, route: mutationRoute, owner: mutationOwner, visit: mutationVisit, kind: "done", archived: !archived, count: result?.length ?? 0, already: out.value.already?.length ?? 0, notFound: out.value.not_found?.length ?? 0 });
-    } finally {
-      if (!sent) { const reservations = new Map(model.managementRetryReservations.peek()); reservations.delete(unresolvedKey); model.managementRetryReservations.value = reservations; }
-      release(token);
-    }
+    } finally { release(token); }
   };
 
   const settings = currentSettings;
@@ -207,7 +204,10 @@ export function ThreadManagement({ model }: { model: AppModel }) {
         setRunActionState({ id, route, owner, visit: targetVisit, detailToken, kind: "unknown", message: t("action.retryUnknown", { id: out.error.operationId }), reason: recoveryReason, operationId: out.error.operationId });
       } else if (out.error.kind === "owner") setRunActionState({ id, route, owner, visit: targetVisit, detailToken, kind: "refused", message: t("action.retryOwnerRefused"), reason: recoveryReason, ownerError: out.error.message });
       else setRunActionState({ id, route, owner, visit: targetVisit, detailToken, kind: "unknown", message: t("action.retryUncertain"), reason: recoveryReason, operationId: out.operationId });
-    } finally { release(token); }
+    } finally {
+      if (!sent) { const reservations = new Map(model.managementRetryReservations.peek()); reservations.delete(unresolvedKey); model.managementRetryReservations.value = reservations; }
+      release(token);
+    }
   };
 
   const stop = async () => {
