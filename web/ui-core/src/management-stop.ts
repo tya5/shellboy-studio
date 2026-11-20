@@ -10,7 +10,7 @@ export type ManagementStopResult =
 export async function managementStop(
   ops: Pick<Operations, "threadGet" | "runGet" | "turnGet" | "runStop">,
   threadId: string,
-  expected?: { runId: string; turnId: string },
+  expected: { runId: string; turnId: string } | undefined,
   isCurrent: () => boolean,
 ): Promise<ManagementStopResult> {
   const fresh = await ops.threadGet(threadId);

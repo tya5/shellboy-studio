@@ -1,7 +1,7 @@
 
 import { formatRoute, managementStop, type AppModel, type Route } from "../../../ui-core/src";
 import { Button, Notice } from "../system/components";
-import { useState } from "preact/hooks";
+import { useEffect, useRef, useState } from "preact/hooks";
 import type { ThreadSummary } from "../../../data/src";
 
 type Target = { id: string; archived: boolean; route: Route; owner: AppModel["data"]["owner"]["value"] };
@@ -12,7 +12,9 @@ export function ThreadQuickAction({ model, row, surface }: { model: AppModel; ro
   const route = model.route.value;
   const owner = model.data.owner.value;
   const status = model.threadQuickActionStatus(owner as object, row.thread_id);
-  const [stopState, setStopState] = useState<"idle" | "running" | "accepted" | "failed">("idle");
+  const [stopState, setStopState] = useState<"idle" | "running" | "accepted" | "failed" | "unknown">("idle");
+  const mounted = useRef(true);
+  useEffect(() => () => { mounted.current = false; }, []);
   const archived = status?.kind === "verified" ? status.archived! : row.archived_at !== undefined;
   const target: Target = { id: row.thread_id, archived, route, owner };
   const liveRow = () => (surface === "sidebar" ? model.data.threadList.peek().items : model.org.shown()).find((item) => item.thread_id === target.id);
@@ -26,16 +28,19 @@ export function ThreadQuickAction({ model, row, surface }: { model: AppModel; ro
   const stop = async (event: MouseEvent) => {
     event.preventDefault();
     event.stopPropagation();
-    if (!renderedCurrent() || stopState === "running") return;
+    if (!mounted.current || !renderedCurrent() || stopState === "running") return;
     const token = model.threadQuickActionAdmit(owner as object, target.id);
     if (!token) return;
     setStopState("running");
     try {
-      const result = await managementStop(model.ops, target.id, undefined, ownerRouteCurrent);
-      if (!ownerRouteCurrent()) return;
+      const current = () => mounted.current && renderedCurrent();
+      const result = await managementStop(model.ops, target.id, undefined, current);
+      if (!current()) return;
       if (result.kind !== "sent") { setStopState("failed"); return; }
-      if (!ownerRouteCurrent()) return;
-      setStopState(result.outcome.ok ? "accepted" : "failed");
+      if (!current()) return;
+      if (result.outcome.ok) setStopState("accepted");
+      else if (result.outcome.error.kind === "unconfirmed") setStopState("unknown");
+      else setStopState("failed");
     } finally {
       model.threadQuickActionDrop(owner as object, target.id, token);
     }
@@ -89,6 +94,7 @@ export function ThreadQuickAction({ model, row, surface }: { model: AppModel; ro
     </> : null}
     <Button data-thread-quick-stop="" variant="stop" disabled={stopState === "running" || !renderedCurrent()} onClick={stop}>{model.t.value("action.stop")}</Button>
     {stopState === "accepted" ? <Notice>{model.t.value("action.stopAccepted")}</Notice> : null}
-    {stopState === "failed" ? <Notice tone="bad">{model.t.value("action.retryFailed")}</Notice> : null}
+    {stopState === "failed" ? <Notice tone="bad">{model.t.value("action.stopRefused")}</Notice> : null}
+    {stopState === "unknown" ? <Notice tone="wait">{model.t.value("action.stopUnknown")}</Notice> : null}
   </span>;
 }
