@@ -354,6 +354,9 @@ it("shows only state-appropriate quick row actions from projected Threads rows",
     };
     expect(await labels("run")).toEqual([f.model.t.value("view.thread-management"), f.model.t.value("action.stop")]);
     expect(await labels("retry")).toEqual([f.model.t.value("view.thread-management"), f.model.t.value("action.retry")]);
+    const archivedMode = [...host.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === f.model.t.value("org.archived"));
+    expect(archivedMode).toBeDefined();
+    await act(async () => { archivedMode!.click(); await answer(f, "thread.list"); await flush(); });
     expect(await labels("archived")).toEqual([f.model.t.value("view.thread-management"), f.model.t.value("org.unarchive")]);
   } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
 });
