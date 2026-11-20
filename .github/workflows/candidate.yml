@@ -183,7 +183,7 @@ jobs:
           archive, = Path('dist').iterdir()
           binary = Path('target') / os.environ['RELEASE_TARGET'] / 'release' / os.environ['RELEASE_EXECUTABLE']
           lock = Path('Cargo.lock').read_text()
-          pin = '116e82e5965dbc2c736849659f9f48db21788873'
+          pin = __import__('tomllib').load(open('Cargo.toml'))['dependencies']['shellboy']['rev']
           assert pin in lock
           proof = dict(source_sha=git('rev-parse', 'HEAD'), tree=git('rev-parse', 'HEAD^{tree}'),
                        version=os.environ['CANDIDATE_VERSION'], target=os.environ['RELEASE_TARGET'],
