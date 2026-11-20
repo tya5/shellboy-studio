@@ -38,13 +38,6 @@ function Card({ model, row, pinned, togglePin, outOfFilter }: { model: AppModel;
               <span>{t("monitor.parent", { title: row.parentTitle })}</span>
             </span>
           ) : null}
-          {row.status === "recovery" ? (
-            <Button variant="warn" onClick={() => void model.retry(s.thread_id)}>
-              <Icon name="retry" small />
-              {t("action.retry")}
-            </Button>
-          ) : null}
-          {row.status === "completed" || row.status === "stopped" || row.status === "failed" ? <Archive model={model} id={s.thread_id} /> : null}
           <a class="btn link go" href={formatRoute({ view: "conversation", threadId: s.thread_id })}>
             {t("monitor.open")}
             <Icon name="arrow" small />

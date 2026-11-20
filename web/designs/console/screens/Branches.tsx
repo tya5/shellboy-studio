@@ -189,7 +189,6 @@ export function Branches({ model }: { model: AppModel }) {
               startText={t("branches.start")}
               aria={t("branches.aria", { threads: items.length, points: layout.points.length })}
             />
-            <div class="band"><Button disabled={!b.selection.value.size || b.actionBusy.value} onClick={() => void b.archiveSelected()}>{t("branches.archiveSelected")}</Button></div>
             {b.actionError.value ? <Notice tone="bad">{b.actionError.value}</Notice> : null}
             <BranchCompare model={model} family={family!} />
             <BranchList

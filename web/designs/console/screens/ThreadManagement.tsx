@@ -119,20 +119,7 @@ export function ThreadManagement({ model }: { model: AppModel }) {
       setActionState({ id: mutationId, route: mutationRoute, owner: mutationOwner, visit: mutationVisit, kind: "failed", message: out.error.message });
       return;
     }
-    const refreshed = await model.ops.threadGet(mutationId);
-    if (!currentMutation()) { return; }
-    if (!refreshed.ok) {
-      publishDetail({ id: mutationId, route: mutationRoute, owner: mutationOwner, visit: mutationVisit, loading: false, error: refreshed.error.message });
-      setActionState({ id: mutationId, route: mutationRoute, owner: mutationOwner, visit: mutationVisit, kind: "failed", message: refreshed.error.message });
-      return;
-    }
-    if (refreshed.value.thread_id !== mutationId) {
-      const message = t("thread.detailMismatch");
-      publishDetail({ id: mutationId, route: mutationRoute, owner: mutationOwner, visit: mutationVisit, loading: false, error: message });
-      setActionState({ id: mutationId, route: mutationRoute, owner: mutationOwner, visit: mutationVisit, kind: "failed", message });
-      return;
-    }
-    publishDetail({ id: mutationId, route: mutationRoute, owner: mutationOwner, visit: mutationVisit, loading: false, value: refreshed.value });
+    try { await model.data.refreshThreadList(); } catch { /* Core outcome remains authoritative. */ }
     const result = archived ? out.value.unarchived : out.value.archived;
     setActionState({ id: mutationId, route: mutationRoute, owner: mutationOwner, visit: mutationVisit, kind: "done", archived: !archived, count: result?.length ?? 0, already: out.value.already?.length ?? 0, notFound: out.value.not_found?.length ?? 0 });
     } finally { release(token); }
