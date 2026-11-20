@@ -22,7 +22,7 @@ export function SelectRow({ title, href, status, depth, checked, checkLabel, onT
       }
     : {};
   return (
-    <div class={`srow${checked ? " on" : ""}${drag?.over ? " drop" : ""}`} style={depth > 0 ? { paddingLeft: `${Math.min(depth, 4) * 20}px` } : undefined} {...dnd}>
+    <div onContextMenu={(event) => { event.preventDefault(); (event.currentTarget as HTMLElement).querySelector<HTMLElement>("[data-thread-quick-action]")?.dispatchEvent(new Event("thread-menu-open")); }} class={`srow${checked ? " on" : ""}${drag?.over ? " drop" : ""}`} style={depth > 0 ? { paddingLeft: `${Math.min(depth, 4) * 20}px` } : undefined} {...dnd}>
       <label class="tcheck">
         <input type="checkbox" aria-label={checkLabel} checked={checked} onChange={onToggle} />
       </label>

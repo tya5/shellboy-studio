@@ -104,8 +104,6 @@ export function App({ context }: { context: DesignContext }) {
                 <ThreadItem
                   key={r.summary.thread_id}
                   href={formatRoute({ view: "conversation", threadId: r.summary.thread_id })}
-                  manageHref={formatRoute({ view: "thread-management", threadId: r.summary.thread_id })}
-                  manageLabel={t("view.threads")}
                   action={<ThreadQuickAction model={model} row={r.summary} status={r.status} surface="sidebar" />}
                   title={r.summary.title}
                   status={r.status}
