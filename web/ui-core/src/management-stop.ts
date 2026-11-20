@@ -4,7 +4,7 @@ import { correlateManagementRun, managementRunStopEligible } from "./management-
 export type ManagementStopResult =
   | { kind: "stale" }
   | { kind: "refused"; reason: "thread" | "identity" | "run" | "turn" | "ineligible" }
-  | { kind: "sent"; outcome: Outcome<MutationResult> };
+  | { kind: "sent"; runId: string; turnId: string; outcome: Outcome<MutationResult> };
 
 /** Exact on-demand Stop preflight; caller owns the lifetime and mutation reservation. */
 export async function managementStop(
@@ -34,5 +34,5 @@ export async function managementStop(
   if (!isCurrent()) return { kind: "stale" };
 
   const outcome = await ops.runStop(runId);
-  return { kind: "sent", outcome };
+  return { kind: "sent", runId, turnId, outcome };
 }

@@ -14,6 +14,7 @@ export function ThreadQuickAction({ model, row, surface }: { model: AppModel; ro
   const status = model.threadQuickActionStatus(owner as object, row.thread_id);
   const [stopState, setStopState] = useState<"idle" | "running" | "accepted" | "failed" | "unknown">("idle");
   const mounted = useRef(true);
+  const stopTargetRef = useRef<{ id: string; route: Route; owner: Target["owner"] }>();
   useEffect(() => () => { mounted.current = false; }, []);
   const archived = status?.kind === "verified" ? status.archived! : row.archived_at !== undefined;
   const target: Target = { id: row.thread_id, archived, route, owner };
@@ -29,9 +30,11 @@ export function ThreadQuickAction({ model, row, surface }: { model: AppModel; ro
     event.preventDefault();
     event.stopPropagation();
     if (!mounted.current || !renderedCurrent() || stopState === "running") return;
+    stopTargetRef.current = { id: target.id, route: target.route, owner: target.owner };
     const token = model.threadQuickActionAdmit(owner as object, target.id);
     if (!token) return;
     setStopState("running");
+    let keepReservation = false;
     try {
       const current = () => mounted.current && renderedCurrent();
       const result = await managementStop(model.ops, target.id, undefined, current);
@@ -39,10 +42,19 @@ export function ThreadQuickAction({ model, row, surface }: { model: AppModel; ro
       if (result.kind !== "sent") { setStopState("failed"); return; }
       if (!current()) return;
       if (result.outcome.ok) setStopState("accepted");
-      else if (result.outcome.error.kind === "unconfirmed") setStopState("unknown");
-      else setStopState("failed");
+      else if (result.outcome.error.kind === "unconfirmed") {
+        keepReservation = true;
+        const instanceId = owner.state === "connected" ? owner.info.instance_id : undefined;
+        const operationId = result.outcome.error.operationId;
+        if (instanceId) {
+          const key = `${instanceId}:${target.id}`;
+          if (!model.managementUnconfirmedRetry.peek().has(key)) model.managementUnconfirmedRetry.value = new Map(model.managementUnconfirmedRetry.peek()).set(key, { threadId: target.id, runId: result.runId, turnId: result.turnId, operationId, ownerInstanceId: instanceId });
+        }
+        setStopState("unknown");
+      } else setStopState("failed");
     } finally {
-      model.threadQuickActionDrop(owner as object, target.id, token);
+      if (!current()) setStopState("idle");
+      if (!keepReservation) model.threadQuickActionDrop(owner as object, target.id, token);
     }
   };
 
@@ -93,8 +105,8 @@ export function ThreadQuickAction({ model, row, surface }: { model: AppModel; ro
       <a class="btn link" href={formatRoute({ view: "thread-management", threadId: target.id })}>{model.t.value("view.threads")}</a>
     </> : null}
     <Button data-thread-quick-stop="" variant="stop" disabled={stopState === "running" || !renderedCurrent()} onClick={stop}>{model.t.value("action.stop")}</Button>
-    {stopState === "accepted" ? <Notice>{model.t.value("action.stopAccepted")}</Notice> : null}
-    {stopState === "failed" ? <Notice tone="bad">{model.t.value("action.stopRefused")}</Notice> : null}
-    {stopState === "unknown" ? <Notice tone="wait">{model.t.value("action.stopUnknown")}</Notice> : null}
+    {stopTargetRef.current?.id === target.id && stopTargetRef.current.owner === owner && stopTargetRef.current.route === route && stopState === "accepted" ? <Notice>{model.t.value("action.stopAccepted")}</Notice> : null}
+    {stopTargetRef.current?.id === target.id && stopTargetRef.current.owner === owner && stopTargetRef.current.route === route && stopState === "failed" ? <Notice tone="bad">{model.t.value("action.stopRefused")}</Notice> : null}
+    {stopTargetRef.current?.id === target.id && stopTargetRef.current.owner === owner && stopTargetRef.current.route === route && stopState === "unknown" ? <Notice tone="wait">{model.t.value("action.stopUnknown")}</Notice> : null}
   </span>;
 }
