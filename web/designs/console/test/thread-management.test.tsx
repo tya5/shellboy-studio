@@ -257,7 +257,7 @@ it("shares one admission across the real sidebar and Threads surfaces", async ()
 
 it("requires a complete marker and carries it into singleton deletion", async () => {
   const f = await fixtureModel({ route: "threads", configure(db) { db.threads = { A: summary("A") }; db.details = { A: details("A") }; } });
-  const host = document.createElement("div"); const second = document.createElement("div"); document.body.append(host, second);
+  const host = document.createElement("div"); const second = document.createElement("div"); document.body.append(host);
   try {
     f.model.applyRoute({ view: "thread-management", threadId: "A" });
     await act(async () => { render(<ThreadManagement model={f.model} />, host); await flush(); });
@@ -666,7 +666,8 @@ it("holds one mounted Stop preflight across same-target management competitors",
     expect(f.t.calls("thread.get")).toHaveLength(3);
     const competitor = second.querySelector<HTMLButtonElement>("[data-run-actions] button");
     expect(competitor).toBeDefined();
-    competitor?.click();
+    expect(competitor?.disabled).toBe(false);
+    competitor!.click();
     expect(f.t.calls("thread.get")).toHaveLength(3);
     expect(f.t.calls("run.stop")).toHaveLength(0);
   } finally { render(null, first); render(null, second); first.remove(); second.remove(); f.model.dispose(); f.data.stop(); }
@@ -700,7 +701,7 @@ it("retains mounted Stop exclusion through ACK then permits exact re-admission",
     db.threads = { A: summary("A") };
     db.details = { A: details("A", { run_id: "run-a", turn_id: "turn-a" }) };
   } });
-  const host = document.createElement("div"); document.body.append(host);
+  const host = document.createElement("div"); const second = document.createElement("div"); document.body.append(host);
   try {
     f.model.applyRoute({ view: "thread-management", threadId: "A" });
     await act(async () => { render(<ThreadManagement model={f.model} />, host); await flush(); });
@@ -715,7 +716,6 @@ it("retains mounted Stop exclusion through ACK then permits exact re-admission",
     await act(async () => { await flush(); });
     f.t.ok(f.t.calls("turn.get")[1]!.id, { turn_id: "turn-a", run_id: "run-a", thread_id: "A", state: "running" });
     await act(async () => { await flush(); });
-    const second = document.createElement("div");
     document.body.append(second);
     await act(async () => { render(<ThreadManagement model={f.model} />, second); await flush(); });
     await answer(f, "thread.get", "A");
@@ -731,11 +731,11 @@ it("retains mounted Stop exclusion through ACK then permits exact re-admission",
     f.t.ok(firstStop.id, { run_id: "run-a", thread_id: "A", state: "stopping", turn_id: "turn-a" });
     await act(async () => { await flush(); });
     expect(host.querySelector("[data-run-actions] .notice")?.textContent).toBe(f.model.t.value("action.stopAccepted"));
-    host.querySelector<HTMLButtonElement>("[data-run-actions] button")!.click();
+    second.querySelector<HTMLButtonElement>("[data-run-actions] button")!.click();
     await answer(f, "thread.get", "A");
-    f.t.ok(f.t.calls("run.get")[2]!.id, { run_id: "run-a", thread_id: "A", state: "live", turn_id: "turn-a" });
+    f.t.ok(f.t.calls("run.get").at(-1)!.id, { run_id: "run-a", thread_id: "A", state: "live", turn_id: "turn-a" });
     await act(async () => { await flush(); });
-    f.t.ok(f.t.calls("turn.get")[2]!.id, { turn_id: "turn-a", run_id: "run-a", thread_id: "A", state: "running" });
+    f.t.ok(f.t.calls("turn.get").at(-1)!.id, { turn_id: "turn-a", run_id: "run-a", thread_id: "A", state: "running" });
     await act(async () => { await flush(); });
     expect(f.t.calls("run.stop")).toHaveLength(2);
   } finally { render(null, host); render(null, second); host.remove(); second.remove(); f.model.dispose(); f.data.stop(); }
