@@ -59,9 +59,8 @@ export function App({ context }: { context: DesignContext }) {
 
   const nav = (view: ViewName, icon: IconName, label: string, count?: number) => <NavItem key={view} href={formatRoute({ view })} icon={icon} label={label} current={route.view === view} {...(count !== undefined ? { count } : {})} />;
   const conversationNav = nav("conversation", "chat", t("view.conversation"));
-  const monitorNav = nav("monitor", "monitor", t("view.monitor"));
   const inboxNav = nav("inbox", "inbox", t("view.inbox"), model.pendingCount.value);
-  const moreItems = ([["apps", "apps"], ["branches", "branch"], ["threads", "tree"], ["analytics", "chart"], ["settings", "gear"]] as const).map(([view, icon]) => ({ key: view, href: formatRoute({ view }), icon, label: t(`view.${view}`), current: route.view === view }));
+  const moreItems = ([["threads", "tree"], ["analytics", "chart"], ["settings", "gear"]] as const).map(([view, icon]) => ({ key: view, href: formatRoute({ view }), icon, label: t(`view.${view}`), current: route.view === view }));
 
   const list = model.data.threadList.value;
   const selected = model.selectedId.value;
@@ -84,7 +83,6 @@ export function App({ context }: { context: DesignContext }) {
           <div class="nav-toggle"><Button icon label={context.prefs.value.navCollapsed ? t("nav.expand") : t("nav.collapse")} title={context.prefs.value.navCollapsed ? t("nav.expand") : t("nav.collapse")} aria-expanded={!context.prefs.value.navCollapsed} onClick={() => context.setPrefs({ navCollapsed: !context.prefs.value.navCollapsed })}><Icon name="menu" /></Button></div>
           <nav class="nav" aria-label={t("nav.views")}>
             {conversationNav}
-            {monitorNav}
             {inboxNav}
             {moreItems.map((i) => <NavItem key={i.key} href={i.href} icon={i.icon} label={i.label} current={i.current} />)}
           </nav>
@@ -172,7 +170,6 @@ export function App({ context }: { context: DesignContext }) {
           <nav class="tabbar" aria-label={t("nav.views")}>
             {inboxNav}
             {conversationNav}
-            {monitorNav}
             <MoreMenu label={t("nav.more")} items={moreItems} />
           </nav>
         </div>
