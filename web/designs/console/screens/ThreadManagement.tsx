@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "preact/hooks";
-import { correlateManagementRun, formatRoute, managementRetry, managementStop, threadModelChanges, type AppModel, type Route, type ThreadModelDraft } from "../../../ui-core/src";
+import { formatRoute, threadModelChanges, type AppModel, type Route, type ThreadModelDraft } from "../../../ui-core/src";
 import { Button, Field, Notice, Section } from "../system/components";
 import type { ThreadDetails } from "../../../data/src";
 
@@ -87,27 +87,8 @@ export function ThreadManagement({ model }: { model: AppModel }) {
       if (out.ok && out.value.thread_id === id) {
         const detailToken = publishDetail({ id, route: readRoute, owner: readOwner, visit: readVisit, loading: false, value: out.value });
         setSettingsState({ id, route: readRoute, owner: readOwner, visit: readVisit, model: out.value.model, effort: out.value.effort ?? "", initialEffort: out.value.effort ?? "", saving: false, saved: false });
-        const runId = out.value.run_id;
-        const turnId = out.value.turn_id;
-        if (typeof runId !== "string" || runId === "" || typeof turnId !== "string" || turnId === "") {
-          setObservationState({ id, route: readRoute, owner: readOwner, visit: readVisit, kind: "unavailable", error: "Thread has no complete Run/Turn identity" });
-          return;
-        }
-        setObservationState({ id, route: readRoute, owner: readOwner, visit: readVisit, detailToken, kind: "loading", runId, turnId });
-        const run = await model.ops.runGet(runId, { threadId: id });
-        if (!currentTarget(detailToken)) return;
-        if (!run.ok || run.value.run_id !== runId || run.value.thread_id !== id || run.value.turn_id !== turnId) {
-          setObservationState({ id, route: readRoute, owner: readOwner, visit: readVisit, detailToken, kind: "unavailable", runId, turnId, error: "Run observation does not match Thread" });
-          return;
-        }
-        const turn = await model.ops.turnGet(turnId, { runId, threadId: id });
-        if (!currentTarget(detailToken)) return;
-        const correlated = run.ok && turn.ok ? correlateManagementRun(out.value, run.value, turn.value) : undefined;
-        if (!correlated) {
-          setObservationState({ id, route: readRoute, owner: readOwner, visit: readVisit, detailToken, kind: "unavailable", runId, turnId, error: "Run/Turn observation does not match Thread" });
-          return;
-        }
-        setObservationState({ id, route: readRoute, owner: readOwner, visit: readVisit, detailToken, kind: "ready", runId, turnId, runState: correlated.runState, turnState: correlated.turnState, recoveryReason: correlated.recoveryReason });
+        const projectedStatus = model.rowById.value.get(id)?.status;
+        setObservationState({ id, route: readRoute, owner: readOwner, visit: readVisit, detailToken, kind: projectedStatus ? "ready" : "unavailable", runId: out.value.run_id, turnId: out.value.turn_id, runState: projectedStatus === "running" || projectedStatus === "recovery" ? "live" : undefined, turnState: projectedStatus === "running" ? "running" : projectedStatus === "recovery" ? "recovery_wait" : undefined });
       } else read({ id, route: readRoute, owner: readOwner, visit: readVisit, loading: false, error: out.ok ? t("thread.detailMismatch") : out.error.message });
     })();
     return () => {
@@ -122,6 +103,7 @@ export function ThreadManagement({ model }: { model: AppModel }) {
   if (!currentDetail.value) return <Section title={t("view.threads")}><Notice tone="bad">{currentDetail.error ?? t("threads.empty")}</Notice></Section>;
 
   const detail = currentDetail.value;
+  const rowStatus = model.rowById.value.get(id)?.status;
   const archived = detail.archived_at !== undefined;
   const actionable = !currentAction || currentAction.kind === "idle" || currentAction.kind === "done";
   const mutate = async () => {
@@ -164,81 +146,23 @@ export function ThreadManagement({ model }: { model: AppModel }) {
 
   const settings = currentSettings;
   const retry = async () => {
-    const target = currentDetail;
-    const admissionIdentity = detailIdentityRef.current;
-    const detailToken = admissionIdentity?.token;
-    const targetVisit = target?.visit;
-    if (!target || !ownerInstanceId || !admissionIdentity || admissionIdentity.id !== id || !detailToken || !targetVisit || unresolvedRetry || unresolvedStop || surfaceBusy || currentRunAction?.kind === "running") return;
-    const liveReservation = model.managementRetryReservations.peek().get(unresolvedKey);
-    if (liveReservation) return;
-    const currentTarget = () => visitRef.current === targetVisit && model.route.peek() === route && model.route.peek().view === "thread-management" && model.data.owner.peek() === owner && detailIdentityRef.current?.token === detailToken;
-    const token = admit(targetVisit);
+    if (rowStatus !== "recovery" || surfaceBusy || currentRunAction?.kind === "running") return;
+    const token = admit(visitRef.current!);
     if (!token) return;
-    const reservation = model.reserveManagementRetry(unresolvedKey, id, ownerInstanceId);
-    if (!reservation) { release(token); return; }
-    const retryOperationId = reservation.operationId;
-    setRunActionState({ id, route, owner, visit: targetVisit, detailToken, kind: "running" });
-    let sent = false;
-    try {
-      const result = await managementRetry(model.ops, id, { kind: "strict", expected: { runId: admissionIdentity.runId, turnId: admissionIdentity.turnId } }, retryOperationId, currentTarget);
-      if (result.kind === "stale") return;
-      if (result.kind === "refused") {
-        if (currentTarget()) setRunActionState({ id, route, owner, visit: targetVisit, detailToken, kind: "refused", message: t("action.retryRefused"), reason: result.recoveryReason });
-        return;
-      }
-      sent = true;
-      const out = result.outcome;
-      const key = unresolvedKey;
-      if (!out.ok && out.error.kind !== "owner" && out.error.kind !== "not_connected" && out.error.kind !== "busy" && !model.managementUnconfirmedRetry.peek().has(key)) {
-        model.managementUnconfirmedRetry.value = new Map(model.managementUnconfirmedRetry.peek()).set(key, { threadId: id, runId: result.runId, turnId: result.turnId, operationId: retryOperationId, recoveryReason: result.recoveryReason, ownerInstanceId: ownerInstanceId, action: "retry" });
-      }
-      if (out.ok || (!out.ok && (out.error.kind === "owner" || out.error.kind === "not_connected" || out.error.kind === "busy"))) model.releaseManagementRetry(key, retryOperationId);
-      if (!currentTarget()) return;
-      if (out.ok) setRunActionState({ id, route, owner, visit: targetVisit, detailToken, kind: "accepted", action: "retry" });
-      else if (out.error.kind === "unconfirmed") setRunActionState({ id, route, owner, visit: targetVisit, detailToken, kind: "unknown", message: t("action.retryUnknown", { id: out.error.operationId }), reason: result.recoveryReason, operationId: out.error.operationId });
-      else if (out.error.kind === "owner") setRunActionState({ id, route, owner, visit: targetVisit, detailToken, kind: "refused", message: t("action.retryOwnerRefused"), reason: result.recoveryReason, ownerError: out.error.message });
-      else setRunActionState({ id, route, owner, visit: targetVisit, detailToken, kind: "unknown", message: t("action.retryUncertain"), reason: result.recoveryReason, operationId: out.operationId });
-    } finally {
-      if (!sent) model.releaseManagementRetry(unresolvedKey, retryOperationId);
-      release(token);
-    }
+    setRunActionState({ id, route, owner, visit: visitRef.current!, detailToken: detailIdentityRef.current?.token ?? {}, kind: "running", action: "retry" });
+    try { await model.retry(id); }
+    finally { release(token); if (visitRef.current === token) setRunActionState(undefined); }
   };
-
   const stop = async () => {
-    const target = currentDetail;
-    const detailToken = detailIdentityRef.current?.token;
-    const targetVisit = target?.visit;
-    const expected = detailIdentityRef.current;
-    const liveUnresolvedStop = model.managementUnconfirmedRetry.peek().get(unresolvedStopKey)?.action === "stop";
-    if (!target || !detailToken || !targetVisit || !expected || liveUnresolvedStop || surfaceBusy || currentRunAction?.kind === "running") return;
-    const currentTarget = () => visitRef.current === targetVisit && model.route.peek() === route && model.route.peek().view === "thread-management" && model.data.owner.peek() === owner && detailIdentityRef.current?.token === detailToken;
-    const token = admit(targetVisit);
+    if (rowStatus !== "running" || surfaceBusy || currentRunAction?.kind === "running" || !detail.run_id) return;
+    const token = admit(visitRef.current!);
     if (!token) return;
-    const sharedToken = model.threadQuickActionAdmit(owner as object, id);
-    if (!sharedToken) { release(token); return; }
-    setRunActionState({ id, route, owner, visit: targetVisit, detailToken, kind: "running" });
-    let keepStopReservation = false;
+    setRunActionState({ id, route, owner, visit: visitRef.current!, detailToken: detailIdentityRef.current?.token ?? {}, kind: "running", action: "stop" });
     try {
-      const result = await managementStop(model.ops, id, { runId: expected.runId, turnId: expected.turnId }, currentTarget);
-      if (result.kind === "sent" && !result.outcome.ok) {
-        const error = result.outcome.error;
-        const operationId = error.kind === "unconfirmed" ? error.operationId : result.outcome.operationId;
-        if (error.kind !== "owner" && error.kind !== "not_connected" && error.kind !== "busy" && operationId) {
-          keepStopReservation = true;
-          if (!model.managementUnconfirmedRetry.peek().has(unresolvedStopKey)) model.managementUnconfirmedRetry.value = new Map(model.managementUnconfirmedRetry.peek()).set(unresolvedStopKey, { threadId: id, runId: result.runId, turnId: result.turnId, operationId, ownerInstanceId: ownerInstanceId!, action: "stop" });
-        }
-      }
-      if (!currentTarget()) return;
-      if (result.kind === "stale") return;
-      if (result.kind === "refused") {
-        setRunActionState({ id, route, owner, visit: targetVisit, detailToken, kind: "refused", message: "Stop refused: the exact Run/Turn is no longer running" });
-        return;
-      }
-      setRunActionState(result.outcome.ok ? { id, route, owner, visit: targetVisit, detailToken, kind: "accepted", action: "stop" } : { id, route, owner, visit: targetVisit, detailToken, kind: "refused", message: result.outcome.error.message });
-    } finally {
-      if (!keepStopReservation) model.threadQuickActionDrop(owner as object, id, sharedToken);
-      release(token);
-    }
+      const out = await model.ops.runStop(detail.run_id);
+      if (out.ok && visitRef.current === visitRef.current) setRunActionState({ id, route, owner, visit: visitRef.current!, detailToken: detailIdentityRef.current?.token ?? {}, kind: "accepted", action: "stop" });
+      else if (!out.ok) setRunActionState({ id, route, owner, visit: visitRef.current!, detailToken: detailIdentityRef.current?.token ?? {}, kind: "refused", message: out.error.message });
+    } finally { release(token); }
   };
 
   const saveSettings = async () => {
