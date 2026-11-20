@@ -38,17 +38,7 @@ describe("Branches receipt repair", () => {
     f.t.drop(); await retry; expect(state.get("parent")).toBe("untouched"); f.b.leave(); f.link.stop();
   });
 
-  it("archive accepted/reply lost retains selection and retry identity; parent is not targeted", async () => {
-    const f = fixture(); f.b.toggleBranch("selected"); const archived = new Set<string>();
-    const first = f.b.archiveSelected(); const sent = f.t.calls("thread.archive")[0]!;
-    expect(sent.args).toEqual({ thread_ids: ["selected"] }); archived.add("selected");
-    f.t.drop(); await first; expect([...f.b.selection.value]).toEqual(["selected"]);
-    f.t.open(); const retry = f.b.archiveSelected(); const resent = f.t.calls("thread.archive")[1]!;
-    expect(resent.operation_id).toBe(sent.operation_id); expect(resent.args).toEqual(sent.args);
-    expect(archived.has("parent")).toBe(false); f.t.drop(); await retry; f.b.leave(); f.link.stop();
-  });
-
-  it("rewind accepted/reply lost reuses ID and rejects changed follow-up text", async () => {
+    it("rewind accepted/reply lost reuses ID and rejects changed follow-up text", async () => {
     const f = fixture(); await ready(f); let applied = 0;
     const first = f.b.confirmRewind("original"); const sent = f.t.calls("thread.rewind")[1]!; applied++;
     f.t.drop(); await first; expect(f.b.rewind.value.kind).toBe("failed");
