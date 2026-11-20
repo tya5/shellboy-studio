@@ -178,13 +178,8 @@ export function ThreadManagement({ model }: { model: AppModel }) {
     try {
       const freshDetail = await model.ops.threadGet(id);
       if (!currentTarget()) return;
-      if (!freshDetail.ok || freshDetail.value.thread_id !== id) {
-        setRunActionState({ id, route, owner, visit: targetVisit, detailToken, kind: "refused", message: "Stop refused: the exact Thread read failed" });
-        return;
-      }
-      const freshThread = freshDetail.value;
-      const runId = freshThread.run_id;
-      const turnId = freshThread.turn_id;
+      const runId = freshDetail.ok && freshDetail.value.thread_id === id ? freshDetail.value.run_id : undefined;
+      const turnId = freshDetail.ok && freshDetail.value.thread_id === id ? freshDetail.value.turn_id : undefined;
       if (runId !== admissionIdentity.runId || turnId !== admissionIdentity.turnId || typeof runId !== "string" || typeof turnId !== "string") {
         setRunActionState({ id, route, owner, visit: targetVisit, detailToken, kind: "refused", message: "Retry refused: the accepted Thread identity changed" });
         return;
@@ -231,8 +226,13 @@ export function ThreadManagement({ model }: { model: AppModel }) {
     try {
       const freshDetail = await model.ops.threadGet(id);
       if (!currentTarget()) return;
-      const runId = freshDetail.ok && freshDetail.value.thread_id === id ? freshDetail.value.run_id : undefined;
-      const turnId = freshDetail.ok && freshDetail.value.thread_id === id ? freshDetail.value.turn_id : undefined;
+      if (!freshDetail.ok || freshDetail.value.thread_id !== id) {
+        setRunActionState({ id, route, owner, visit: targetVisit, detailToken, kind: "refused", message: "Stop refused: the exact Thread read failed" });
+        return;
+      }
+      const freshThread = freshDetail.value;
+      const runId = freshThread.run_id;
+      const turnId = freshThread.turn_id;
       if (runId !== target.value?.run_id || turnId !== target.value?.turn_id || typeof runId !== "string" || typeof turnId !== "string") {
         setRunActionState({ id, route, owner, visit: targetVisit, detailToken, kind: "refused", message: "Stop refused: the accepted Thread identity changed" });
         return;
