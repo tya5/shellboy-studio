@@ -7,7 +7,7 @@ import type { ThreadSummary } from "../../../data/src";
 type Target = { id: string; archived: boolean; route: Route; owner: AppModel["data"]["owner"]["value"] };
 
 /** One row-qualified archive action shared by sidebar and the Threads list. */
-export function ThreadQuickAction({ model, row, surface, enableRetry = false }: { model: AppModel; row: ThreadSummary; surface: "sidebar" | "list"; enableRetry?: boolean }) {
+export function ThreadQuickAction({ model, row, surface }: { model: AppModel; row: ThreadSummary; surface: "sidebar" | "list" }) {
   model.quickActionEpoch.value;
   const route = model.route.value;
   const owner = model.data.owner.value;
@@ -106,7 +106,6 @@ export function ThreadQuickAction({ model, row, surface, enableRetry = false }: 
     }
   };
   const disabled = status?.kind === "running" || !renderedCurrent();
-  if (enableRetry) { /* Reserved row proof boundary; UI remains off by default. */ }
   return <span data-thread-quick-action={row.thread_id} data-thread-quick-surface={surface} data-quick-action-state={status?.kind ?? "idle"}>
     <Button disabled={disabled} aria-busy={status?.kind === "running"} onClick={run}>{archived ? model.t.value("org.unarchive") : model.t.value("action.archive")}</Button>
     {status?.kind === "failed" ? <>
