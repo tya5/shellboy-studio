@@ -774,7 +774,8 @@ describe("Threads", () => {
     const leadRow = [...el.querySelectorAll<HTMLElement>(".srow")].find((row) => text(row).includes("Improve history search"));
     expect(leadRow).toBeDefined();
     expect([...leadRow!.querySelectorAll<HTMLButtonElement>("button")].find((button) => text(button) === "Set parent")).toBeUndefined();
-    expect(leadRow!.querySelector<HTMLAnchorElement>('a[href="#/thread-management/lead"]')).toBeTruthy();
+    expect(leadRow!.querySelector<HTMLAnchorElement>('a[href="#/thread-management/lead"]')).toBeNull();
+    expect(leadRow!.querySelector<HTMLButtonElement>('[data-thread-quick-action] button[aria-haspopup="menu"]')).toBeTruthy();
     expect(text(el)).toContain("Moving a Thread under another isn't available");
     expect(text(el)).toContain("Token totals per directory aren't shown");
     const mode = (name: string) => [...el.querySelectorAll<HTMLButtonElement>(".org button")].find((b) => text(b) === name)!;
@@ -916,7 +917,12 @@ describe("Threads", () => {
     expect(el.querySelector("[draggable=true]")).toBeTruthy();
     expect(text(el)).not.toContain("isn't available: this Shellboy (v0.10.0)");
     const button = (name: string) => [...el.querySelectorAll<HTMLButtonElement>("button")].find((b) => text(b) === name);
-    act(() => button("Set parent")!.click());
+    const menuTrigger = el.querySelector<HTMLButtonElement>('[data-thread-quick-action] button[aria-haspopup="menu"]')!;
+    act(() => menuTrigger.click());
+    await act(async () => { await flushPromises(); });
+    const move = [...el.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find((candidate) => text(candidate) === made.model.t.value("org.move"));
+    expect(move).toBeDefined();
+    act(() => move!.click());
     expect(text(el)).toContain("New parent for");
     act(() => button("No parent (independent)")!.click());
     expect(made.t.calls("thread.set")).toHaveLength(0);

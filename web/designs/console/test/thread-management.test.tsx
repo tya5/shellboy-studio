@@ -359,10 +359,13 @@ it("opens and navigates the shared row menu from row focus", async () => {
   const host = document.createElement("div"); document.body.append(host);
   const outside = document.createElement("button"); outside.textContent = "Outside"; document.body.append(outside);
   try {
-    render(<>
-      <SelectRow href="#" title="A" status="Running" depth={0} checked={false} checkLabel="Select A" onToggle={() => {}} action={<ThreadQuickAction model={f.model} row={summary("A")} status="running" surface="list" />} />
-      <ThreadItem href="#" title="Sidebar A" status="running" statusLabel="Running" depth={0} current={false} pending={0} action={<ThreadQuickAction model={f.model} row={summary("sidebar")} status="running" surface="sidebar" />} />
-    </>, host);
+    await act(async () => {
+      render(<>
+        <SelectRow href="#" title="A" status="Running" depth={0} checked={false} checkLabel="Select A" onToggle={() => {}} action={<ThreadQuickAction model={f.model} row={summary("A")} status="running" surface="list" />} />
+        <ThreadItem href="#" title="Sidebar A" status="running" statusLabel="Running" depth={0} current={false} pending={0} action={<ThreadQuickAction model={f.model} row={summary("sidebar")} status="running" surface="sidebar" />} />
+      </>, host);
+      await flush();
+    });
     const row = host.querySelector<HTMLElement>(".tree-main")!;
     row.focus();
     expect(document.activeElement).toBe(row);
