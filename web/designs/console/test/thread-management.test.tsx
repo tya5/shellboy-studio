@@ -257,7 +257,7 @@ it("shares one admission across the real sidebar and Threads surfaces", async ()
 
 it("requires a complete marker and carries it into singleton deletion", async () => {
   const f = await fixtureModel({ route: "threads", configure(db) { db.threads = { A: summary("A") }; db.details = { A: details("A") }; } });
-  const host = document.createElement("div"); const second = document.createElement("div"); document.body.append(host);
+  const host = document.createElement("div"); document.body.append(host);
   try {
     f.model.applyRoute({ view: "thread-management", threadId: "A" });
     await act(async () => { render(<ThreadManagement model={f.model} />, host); await flush(); });
@@ -725,13 +725,17 @@ it("retains mounted Stop exclusion through ACK then permits exact re-admission",
     await act(async () => { await flush(); });
     const firstStop = f.t.calls("run.stop")[0]!;
     expect(firstStop.args).toEqual({ run_id: "run-a" });
+    const threadReadsBeforePendingContender = f.t.calls("thread.get").length;
     second.querySelector<HTMLButtonElement>("[data-run-actions] button")!.click();
+    expect(f.t.calls("thread.get")).toHaveLength(threadReadsBeforePendingContender);
     expect(f.t.calls("run.stop")).toHaveLength(1);
     expect(host.querySelector<HTMLButtonElement>("[data-run-actions] button")?.disabled).toBe(true);
     f.t.ok(firstStop.id, { run_id: "run-a", thread_id: "A", state: "stopping", turn_id: "turn-a" });
     await act(async () => { await flush(); });
     expect(host.querySelector("[data-run-actions] .notice")?.textContent).toBe(f.model.t.value("action.stopAccepted"));
+    const threadReadsBeforeReAdmit = f.t.calls("thread.get").length;
     second.querySelector<HTMLButtonElement>("[data-run-actions] button")!.click();
+    expect(f.t.calls("thread.get")).toHaveLength(threadReadsBeforeReAdmit + 1);
     await answer(f, "thread.get", "A");
     f.t.ok(f.t.calls("run.get").at(-1)!.id, { run_id: "run-a", thread_id: "A", state: "live", turn_id: "turn-a" });
     await act(async () => { await flush(); });
