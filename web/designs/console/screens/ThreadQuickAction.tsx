@@ -30,17 +30,15 @@ export function ThreadQuickAction({ model, row, surface, enableRetry = false }: 
     return ownerRouteCurrent() && live !== undefined && (status?.kind === "verified" || (live.archived_at !== undefined) === (row.archived_at !== undefined));
   };
   const publish = async () => { try { await model.data.refreshThreadList(); await model.org.read(); } catch { /* Exact readback remains authoritative. */ } };
+  const retryIsCurrent = retryState?.targetId === target.id && retryState.route === route && retryState.owner === owner && retryState.surface === surface;
 
   const retry = async (event: MouseEvent) => {
     event.preventDefault(); event.stopPropagation();
-    const retryIsCurrent = retryState?.targetId === target.id && retryState.route === route && retryState.owner === owner && retryState.surface === surface;
     if (!enableRetry || !mounted.current || !renderedCurrent() || (retryIsCurrent && retryState?.state === "running")) return;
     const key = ownerInstanceId ? `${ownerInstanceId}:${target.id}:retry` : undefined;
     const liveUnresolved = key ? model.managementUnconfirmedRetry.peek().get(key)?.action === "retry" : false;
     if (!key || liveUnresolved) return;
     const attemptId = ++retryAttemptRef.current;
-    const targetKey = `${target.id}:${ownerInstanceId}:${target.route.view}`;
-    if (retryIsCurrent && retryState?.state === "running") return;
     const token = model.threadQuickActionAdmit(owner as object, target.id);
     if (!token) return;
     const reservation = model.reserveManagementRetry(key, target.id, ownerInstanceId!);
