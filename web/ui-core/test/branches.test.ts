@@ -361,7 +361,7 @@ describe("Threads over the fake transport", () => {
     const { t, db, model } = await open();
     model.org.setMany(["lead"], true);
     model.org.setQuery("different");
-    expect(model.org.apply()).resolves.toBeUndefined();
+    await expect(model.org.apply()).resolves.toBeUndefined();
     expect(t.calls("thread.archive")).toHaveLength(0);
     t.push({ t: "hello", bridge_version: "0.0.1", data_dir: "/temp/owner-b", owner: { state: "connected", info: { protocol_version: 5, instance_id: "i2", capabilities: [] } } });
     await flush();
