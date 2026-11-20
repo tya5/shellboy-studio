@@ -30,7 +30,8 @@ export function ThreadManagement({ model }: { model: AppModel }) {
   const unresolvedKey = `${ownerInstanceId ?? "unknown"}:${id ?? ""}:retry`;
   const unresolvedStopKey = `${ownerInstanceId ?? "unknown"}:${id ?? ""}:stop`;
   const durableUnresolvedRetry = id ? model.managementUnconfirmedRetry.value.get(unresolvedKey)?.action === "retry" ? model.managementUnconfirmedRetry.value.get(unresolvedKey) : undefined : undefined;
-  const unresolvedStop = id ? model.managementUnconfirmedRetry.value.get(unresolvedStopKey)?.action === "stop" : false;
+  const durableUnresolvedStop = id && model.managementUnconfirmedRetry.value.get(unresolvedStopKey)?.action === "stop" ? model.managementUnconfirmedRetry.value.get(unresolvedStopKey) : undefined;
+  const unresolvedStop = durableUnresolvedStop !== undefined;
   const retryReservation = id ? model.managementRetryReservations.value.get(unresolvedKey) : undefined;
   const unresolvedRetry = durableUnresolvedRetry !== undefined && route.view === "thread-management";
   const deleteProofRef = useRef<{ id: string; visit: Visit; marker: { thread_count: number; ids_hash: string }; used: boolean }>();
@@ -355,6 +356,7 @@ export function ThreadManagement({ model }: { model: AppModel }) {
     {(((currentObservation?.kind === "ready" && currentObservation.runState === "live" && ((currentObservation.turnState === "running") || (currentObservation.turnState === "recovery_wait" && currentObservation.recoveryReason)) && detail.run_id && detail.turn_id)) || unresolvedRetry || retryReservation) ? <div class="band" data-run-actions="">
       {!unresolvedRetry && !retryReservation && currentObservation?.turnState === "running" ? <Button variant="stop" disabled={surfaceBusy || currentRunAction?.kind === "running"} onClick={() => void stop()}>{t("action.stop")}</Button> : null}
       {!unresolvedRetry && !retryReservation && currentObservation?.turnState === "recovery_wait" && currentObservation.recoveryReason ? <Button variant="primary" disabled={surfaceBusy || currentRunAction?.kind === "running"} onClick={() => void retry()}>{t("action.retry")}</Button> : null}
+      {durableUnresolvedStop ? <Notice tone="wait">{t("action.stopUnknown")}<div>{durableUnresolvedStop.operationId}</div></Notice> : null}
       {currentRunAction?.kind === "unknown" ? <Notice tone="wait">{currentRunAction.message}{currentRunAction.operationId ? <div>{currentRunAction.operationId}</div> : null}{currentRunAction.reason ? <div>{currentRunAction.reason}</div> : null}</Notice> : null}
       {currentRunAction?.kind === "refused" ? <>
         <Notice tone="bad">{currentRunAction.message}{currentRunAction.reason ? <div>{currentRunAction.reason}</div> : null}</Notice>

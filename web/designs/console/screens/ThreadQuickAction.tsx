@@ -43,7 +43,7 @@ export function ThreadQuickAction({ model, row, surface }: { model: AppModel; ro
       const liveOwner = model.data.owner.peek();
       const live = liveRow();
       const liveInstance = liveOwner.state === "connected" ? liveOwner.info.instance_id : undefined;
-      return mounted.current && live !== undefined && liveOwner.state === "connected" && liveInstance === ownerInstanceId && model.route.peek().view === target.route.view;
+      return mounted.current && live !== undefined && liveOwner.state === "connected" && liveInstance === ownerInstanceId && model.route.peek() === target.route && liveOwner === target.owner;
     };
     try {
       const result = await managementStop(model.ops, target.id, undefined, current);
@@ -112,7 +112,7 @@ export function ThreadQuickAction({ model, row, surface }: { model: AppModel; ro
       {status.error ? <Notice tone="bad">{status.error}</Notice> : null}
       <a class="btn link" href={formatRoute({ view: "thread-management", threadId: target.id })}>{model.t.value("view.threads")}</a>
     </> : null}
-    <Button data-thread-quick-stop="" variant="stop" disabled={unresolvedStop || stopState === "running" || !renderedCurrent()} onClick={stop}>{model.t.value("action.stop")}</Button>
+    {!unresolvedStop ? <Button data-thread-quick-stop="" variant="stop" disabled={stopState === "running" || !renderedCurrent()} onClick={stop}>{model.t.value("action.stop")}</Button> : <Notice tone="wait">{model.t.value("action.stopUnknown")}<div>{model.managementUnconfirmedRetry.value.get(unresolvedStopKey!)?.operationId}</div></Notice>}
     {stopTargetRef.current?.id === target.id && stopTargetRef.current.owner === owner && stopTargetRef.current.route === route && stopState === "accepted" ? <Notice>{model.t.value("action.stopAccepted")}</Notice> : null}
     {stopTargetRef.current?.id === target.id && stopTargetRef.current.owner === owner && stopTargetRef.current.route === route && stopState === "failed" ? <Notice tone="bad">{model.t.value("action.stopRefused")}</Notice> : null}
     {stopTargetRef.current?.id === target.id && stopTargetRef.current.owner === owner && stopTargetRef.current.route === route && stopState === "unknown" ? <Notice tone="wait">{model.t.value("action.stopUnknown")}</Notice> : null}
