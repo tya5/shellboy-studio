@@ -116,19 +116,32 @@ it("partial-send error notification invalidation cannot publish stale done",asyn
 
 it("targets original parent after rewind and new child after fork", async () => {
   const f = fixture();
-  const preview = f.b.previewRewind(f.target);
-  f.t.ok(f.t.calls("thread.rewind")[0]!.id, { removed_node_count: 1 });
-  await preview;
-  const rewind = f.b.confirmRewind("rewind input");
-  const rewindSend = f.t.calls("message.send").at(-1)!;
-  expect((rewindSend.args as { thread_id: string }).thread_id).toBe("parent");
-  f.t.ok(rewindSend.id, { message_id: "accepted-message", thread_id: "parent" });
-  await rewind;
-  const fork = f.b.forkAt(f.target, "fork input");
-  f.t.ok(f.t.calls("thread.fork").at(-1)!.id, child);
-  const forkSend = f.t.calls("message.send").at(-1)!;
-  expect((forkSend.args as { thread_id: string }).thread_id).toBe("child");
-  f.t.ok(forkSend.id, { message_id: "accepted-message", thread_id: "child" });
-  await fork;
-  f.link.stop();
+  try {
+    const preview = f.b.previewRewind(f.target);
+    const previewCall = f.t.calls("thread.rewind")[0]!;
+    f.t.ok(previewCall.id, { removed_node_count: 1 });
+    await preview;
+    const sendsBeforeRewind = f.t.calls("message.send").length;
+    const rewind = f.b.confirmRewind("rewind input");
+    const rewindCall = f.t.calls("thread.rewind")[1]!;
+    f.t.ok(rewindCall.id, { removed_node_count: 1 });
+    await flush();
+    const rewindSends = f.t.calls("message.send").slice(sendsBeforeRewind);
+    expect(rewindSends).toHaveLength(1);
+    const rewindSend = rewindSends[0]!;
+    expect((rewindSend.args as { thread_id: string }).thread_id).toBe("parent");
+    f.t.ok(rewindSend.id, { message_id: "accepted-message", thread_id: "parent" });
+    await rewind;
+    const sendsBeforeFork = f.t.calls("message.send").length;
+    const fork = f.b.forkAt(f.target, "fork input");
+    const forkCall = f.t.calls("thread.fork").at(-1)!;
+    f.t.ok(forkCall.id, child);
+    await flush();
+    const forkSends = f.t.calls("message.send").slice(sendsBeforeFork);
+    expect(forkSends).toHaveLength(1);
+    const forkSend = forkSends[0]!;
+    expect((forkSend.args as { thread_id: string }).thread_id).toBe("child");
+    f.t.ok(forkSend.id, { message_id: "accepted-message", thread_id: "child" });
+    await fork;
+  } finally { f.link.stop(); }
 });
