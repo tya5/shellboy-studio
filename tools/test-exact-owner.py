@@ -112,7 +112,7 @@ class ExactOwner(unittest.TestCase):
 
     def test_wrong_manifest_pin(self):
         path = self.studio / "Cargo.toml"
-        path.write_text(path.read_text(encoding="utf-8").replace("v0.13.1", "v0.10.0"), encoding="utf-8")
+        path.write_text(path.read_text(encoding="utf-8").replace("116e82e5965dbc2c736849659f9f48db21788873", "v0.10.0"), encoding="utf-8")
         with self.assertRaisesRegex(ValueError, "Studio must pin"): self.check()
 
     def test_wrong_remote(self):
