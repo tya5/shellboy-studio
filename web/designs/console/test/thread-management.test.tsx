@@ -320,10 +320,12 @@ it("accepts singleton deletion then retires action after a causal list refresh",
     await act(async () => { await flush(); });
     expect(host.querySelector("[data-thread-delete-preview]")).toBeNull();
     expect(host.textContent).toContain(f.model.t.value("thread.deleteDone"));
+    const refreshFrontierBeforeReply = f.t.calls("thread.list").slice(listBeforeAck);
+    expect(refreshFrontierBeforeReply).toHaveLength(1);
     expect(f.model.data.threadList.value.items.some((item) => item.thread_id === "A")).toBe(true);
     expect(f.model.data.threadList.value.items.some((item) => item.thread_id === "B")).toBe(true);
     const refreshes = f.t.calls("thread.list").slice(listBeforeAck);
-    expect(refreshes).toHaveLength(1);
+    expect(refreshes).toEqual(refreshFrontierBeforeReply);
     const refresh = refreshes[0]!;
     f.db.threads = { B: summary("B") };
     f.db.answered.add(refresh.id);
