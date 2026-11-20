@@ -1251,6 +1251,14 @@ it("retains a mounted sidebar Retry operation across same-owner reconnect", asyn
     render(null, host);
     await act(async () => { f.model.applyRoute({ view: "threads" }); render(<App context={context} enableRetryRows />, host); await flush(); });
     for (let i = 0; i < 4; i++) { if (!f.t.calls("thread.list").find((call) => !f.db.answered.has(call.id))) break; await answer(f, "thread.list"); }
+    render(null, host);
+    await act(async () => { render(<App context={context} />, host); await flush(); });
+    const defaultRow = host.querySelector('[data-thread-quick-surface="sidebar"][data-thread-quick-action="A"]');
+    expect(defaultRow?.querySelector("[data-thread-quick-retry]")).toBeNull();
+    expect(defaultRow?.textContent).not.toContain(operationId);
+    expect(f.t.calls("run.retry")).toHaveLength(1);
+    render(null, host);
+    await act(async () => { render(<App context={context} enableRetryRows />, host); await flush(); });
     const row = host.querySelector('[data-thread-quick-surface="sidebar"][data-thread-quick-action="A"]');
     expect(row?.querySelector("[data-thread-quick-retry]")).toBeNull();
     expect(row?.textContent).toContain(operationId);
