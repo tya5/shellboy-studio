@@ -27,14 +27,6 @@ export function ThreadManagement({ model }: { model: AppModel }) {
   const [deleteState, setDeleteState] = useState<DeleteState>();
   const [observationState, setObservationState] = useState<ObservationState>();
   const [runActionState, setRunActionState] = useState<RunActionState>();
-  const ownerInstanceId = owner.state === "connected" ? owner.info.instance_id : undefined;
-  const unresolvedKey = `${ownerInstanceId ?? "unknown"}:${id ?? ""}:retry`;
-  const unresolvedStopKey = `${ownerInstanceId ?? "unknown"}:${id ?? ""}:stop`;
-  const durableUnresolvedRetry = id ? model.managementUnconfirmedRetry.value.get(unresolvedKey)?.action === "retry" ? model.managementUnconfirmedRetry.value.get(unresolvedKey) : undefined : undefined;
-  const durableUnresolvedStop = id && model.managementUnconfirmedRetry.value.get(unresolvedStopKey)?.action === "stop" ? model.managementUnconfirmedRetry.value.get(unresolvedStopKey) : undefined;
-  const unresolvedStop = durableUnresolvedStop !== undefined;
-  const retryReservation = id ? model.managementRetryReservations.value.get(unresolvedKey) : undefined;
-  const unresolvedRetry = durableUnresolvedRetry !== undefined && route.view === "thread-management";
   const deleteProofRef = useRef<{ id: string; visit: Visit; marker: { thread_count: number; ids_hash: string }; used: boolean }>();
   const mutationRef = useRef<object>();
   const [busyVersion, setBusyVersion] = useState(0);
@@ -42,7 +34,7 @@ export function ThreadManagement({ model }: { model: AppModel }) {
   const currentAction = actionState && actionState.id === id && actionState.route === route && actionState.owner === owner && actionState.visit === visitRef.current ? actionState : undefined;
   const currentSettings = settingsState && settingsState.id === id && settingsState.route === route && settingsState.owner === owner && settingsState.visit === visitRef.current ? settingsState : undefined;
   const currentObservation = observationState && observationState.id === id && observationState.route === route && observationState.owner === owner && observationState.visit === visitRef.current && observationState.detailToken === detailIdentityRef.current?.token ? observationState : undefined;
-  const currentRunAction = unresolvedRetry ? { id, route, owner, visit: visitRef.current!, detailToken: detailIdentityRef.current?.token ?? {}, kind: "unknown" as const, message: t("action.retryUnknown", { id: durableUnresolvedRetry?.operationId ?? "" }), reason: durableUnresolvedRetry?.recoveryReason, operationId: durableUnresolvedRetry?.operationId } : runActionState && ((runActionState.kind === "unknown" && unresolvedRetry) || (runActionState.id === id && runActionState.route === route && runActionState.owner === owner && runActionState.visit === visitRef.current && runActionState.detailToken === detailIdentityRef.current?.token)) ? runActionState : undefined;
+  const currentRunAction = runActionState && runActionState.id === id && runActionState.route === route && runActionState.owner === owner && runActionState.visit === visitRef.current && runActionState.detailToken === detailIdentityRef.current?.token ? runActionState : undefined;
   const surfaceBusy = busyVersion >= 0 && mutationRef.current !== undefined;
   const admit = (visit: Visit): object | undefined => {
     if (mutationRef.current !== undefined || visitRef.current !== visit) return undefined;
@@ -151,7 +143,7 @@ export function ThreadManagement({ model }: { model: AppModel }) {
     if (!token) return;
     setRunActionState({ id, route, owner, visit: visitRef.current!, detailToken: detailIdentityRef.current?.token ?? {}, kind: "running", action: "retry" });
     try { await model.retry(id); }
-    finally { release(token); if (visitRef.current === token) setRunActionState(undefined); }
+    finally { release(token); setRunActionState(undefined); }
   };
   const stop = async () => {
     if (rowStatus !== "running" || surfaceBusy || currentRunAction?.kind === "running" || !detail.run_id) return;
@@ -282,10 +274,9 @@ export function ThreadManagement({ model }: { model: AppModel }) {
     <div class="band" data-thread-management="">
       {actionable ? <Button disabled={surfaceBusy || currentAction?.kind === "running"} onClick={() => void mutate()}>{archived ? t("org.unarchive") : t("action.archive")}</Button> : null}
     </div>
-    {(((currentObservation?.kind === "ready" && currentObservation.runState === "live" && ((currentObservation.turnState === "running") || (currentObservation.turnState === "recovery_wait" && currentObservation.recoveryReason)) && detail.run_id && detail.turn_id)) || unresolvedRetry || retryReservation || durableUnresolvedStop) ? <div class="band" data-run-actions="">
-      {!unresolvedStop && !unresolvedRetry && !retryReservation && currentObservation?.turnState === "running" ? <Button variant="stop" disabled={surfaceBusy || currentRunAction?.kind === "running"} onClick={() => void stop()}>{t("action.stop")}</Button> : null}
-      {!unresolvedRetry && !retryReservation && currentObservation?.turnState === "recovery_wait" && currentObservation.recoveryReason ? <Button variant="primary" disabled={surfaceBusy || currentRunAction?.kind === "running"} onClick={() => void retry()}>{t("action.retry")}</Button> : null}
-      {durableUnresolvedStop ? <Notice tone="wait">{t("action.stopUnknown")}<div>{durableUnresolvedStop.operationId}</div></Notice> : null}
+    {(rowStatus === "running" || rowStatus === "recovery" || currentRunAction) ? <div class="band" data-run-actions="">
+      {rowStatus === "running" ? <Button variant="stop" disabled={surfaceBusy || currentRunAction?.kind === "running"} onClick={() => void stop()}>{t("action.stop")}</Button> : null}
+      {rowStatus === "recovery" ? <Button variant="primary" disabled={surfaceBusy || currentRunAction?.kind === "running"} onClick={() => void retry()}>{t("action.retry")}</Button> : null}
       {currentRunAction?.kind === "unknown" ? <Notice tone="wait">{currentRunAction.message}{currentRunAction.operationId ? <div>{currentRunAction.operationId}</div> : null}{currentRunAction.reason ? <div>{currentRunAction.reason}</div> : null}</Notice> : null}
       {currentRunAction?.kind === "refused" ? <>
         <Notice tone="bad">{currentRunAction.message}{currentRunAction.reason ? <div>{currentRunAction.reason}</div> : null}</Notice>
