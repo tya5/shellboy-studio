@@ -422,3 +422,54 @@ it("invalidates ready Run/Turn observation after same-visit accepted detail repl
     expect(f.t.calls("turn.get")).toHaveLength(0);
   } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
 });
+
+it("retries only after fresh exact Thread/Run/Turn admission", async () => {
+  const f = await fixtureModel({ route: "threads", configure(db) {
+    db.threads = { A: summary("A") };
+    db.details = { A: details("A", { run_id: "run-a", turn_id: "turn-a" }) };
+  } });
+  const host = document.createElement("div"); document.body.append(host);
+  try {
+    f.model.applyRoute({ view: "thread-management", threadId: "A" });
+    await act(async () => { render(<ThreadManagement model={f.model} />, host); await flush(); });
+    await answer(f, "thread.get", "A");
+    f.t.ok(f.t.calls("run.get").at(-1)!.id, { run_id: "run-a", thread_id: "A", state: "live", turn_id: "turn-a" });
+    await act(async () => { await flush(); });
+    f.t.ok(f.t.calls("turn.get").at(-1)!.id, { turn_id: "turn-a", run_id: "run-a", thread_id: "A", state: "recovery_wait", recovery_hint: "provider interrupted" });
+    await act(async () => { await flush(); });
+    host.querySelector<HTMLButtonElement>("[data-run-actions] button")!.click();
+    await answer(f, "thread.get", "A");
+    f.t.ok(f.t.calls("run.get").at(-1)!.id, { run_id: "run-a", thread_id: "A", state: "live", turn_id: "turn-a" });
+    await act(async () => { await flush(); });
+    f.t.ok(f.t.calls("turn.get").at(-1)!.id, { turn_id: "turn-a", run_id: "run-a", thread_id: "A", state: "recovery_wait", recovery_hint: "provider interrupted" });
+    await act(async () => { await flush(); });
+    const retry = f.t.calls("run.retry").at(-1)!;
+    expect(retry.args).toEqual({ run_id: "run-a" });
+    f.t.ok(retry.id, {});
+  } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
+});
+
+it("refuses changed Run state without a retry write", async () => {
+  const f = await fixtureModel({ route: "threads", configure(db) {
+    db.threads = { A: summary("A") };
+    db.details = { A: details("A", { run_id: "run-a", turn_id: "turn-a" }) };
+  } });
+  const host = document.createElement("div"); document.body.append(host);
+  try {
+    f.model.applyRoute({ view: "thread-management", threadId: "A" });
+    await act(async () => { render(<ThreadManagement model={f.model} />, host); await flush(); });
+    await answer(f, "thread.get", "A");
+    f.t.ok(f.t.calls("run.get").at(-1)!.id, { run_id: "run-a", thread_id: "A", state: "live", turn_id: "turn-a" });
+    await act(async () => { await flush(); });
+    f.t.ok(f.t.calls("turn.get").at(-1)!.id, { turn_id: "turn-a", run_id: "run-a", thread_id: "A", state: "recovery_wait", recovery_hint: "provider interrupted" });
+    await act(async () => { await flush(); });
+    host.querySelector<HTMLButtonElement>("[data-run-actions] button")!.click();
+    await answer(f, "thread.get", "A");
+    f.t.ok(f.t.calls("run.get").at(-1)!.id, { run_id: "run-a", thread_id: "A", state: "completed", turn_id: "turn-a" });
+    await act(async () => { await flush(); });
+    f.t.ok(f.t.calls("turn.get").at(-1)!.id, { turn_id: "turn-a", run_id: "run-a", thread_id: "A", state: "completed" });
+    await act(async () => { await flush(); });
+    expect(f.t.calls("run.retry")).toHaveLength(0);
+    expect(host.textContent).toContain("Retry refused");
+  } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
+});
