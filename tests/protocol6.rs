@@ -8,7 +8,8 @@ use shellboy_studio::{
 };
 
 #[test]
-fn exact_protocol_and_unified_thread_reply_shape() {
+fn exact_protocol6_and_unified_thread_reply_shape() {
+    assert_eq!(shellboy::protocol::PROTOCOL_VERSION, 6);
     let value = json!({"thread_id":"t", "title":"synthetic", "cwd":"/", "connection":"c",
     "model":"m", "agents_path":"AGENTS.md", "parent_id":"organization", "shells_count":1,
     "awaiting_replies":[
