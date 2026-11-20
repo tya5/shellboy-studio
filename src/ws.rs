@@ -7,24 +7,24 @@
 //! connections. Replies go through a channel of `RESULT_CHANNEL` slots, which can never
 //! fill: at most `SESSION_IN_FLIGHT + SESSION_QUEUE` calls can be outstanding.
 use crate::{
-    allowlist::{Access, access},
+    allowlist::{access, Access},
     envelope::{BridgeError, ClientFrame, OwnerState, ServerFrame},
     hub::SessionGuard,
     owner::Owner,
     server::AppState,
 };
 use axum::extract::ws::{Message, WebSocket};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use shellboy::protocol::Command;
 use std::{
     collections::HashMap,
     sync::{
-        Arc,
         atomic::{AtomicUsize, Ordering},
+        Arc,
     },
 };
 use tokio::{
-    sync::{Semaphore, mpsc},
+    sync::{mpsc, Semaphore},
     task::{AbortHandle, JoinSet},
 };
 
@@ -480,23 +480,19 @@ mod tests {
     #[test]
     fn data_layer_mutations_are_allowed() {
         assert!(build_command("run.retry", Some(json!({"run_id":"r"}))).is_ok());
-        assert!(
-            build_command(
-                "thread.archive",
-                Some(json!({"thread_ids":["a"],"descendants":true}))
-            )
-            .is_ok()
-        );
+        assert!(build_command(
+            "thread.archive",
+            Some(json!({"thread_ids":["a"],"descendants":true}))
+        )
+        .is_ok());
         assert!(build_command("thread.list", Some(json!({"archived":"only"}))).is_ok());
         assert!(build_command("thread.unarchive", Some(json!({"thread_ids":["a"]}))).is_ok());
         assert!(build_command("thread.fork", Some(json!({"thread_id":"t","node_id":"n"}))).is_ok());
-        assert!(
-            build_command(
-                "thread.rewind",
-                Some(json!({"thread_id":"t","node_id":"n","dry_run":true}))
-            )
-            .is_ok()
-        );
+        assert!(build_command(
+            "thread.rewind",
+            Some(json!({"thread_id":"t","node_id":"n","dry_run":true}))
+        )
+        .is_ok());
         assert_eq!(
             access(
                 &build_command(
@@ -507,13 +503,34 @@ mod tests {
             ),
             Access::Read
         );
-        assert_eq!(access(&build_command("thread.delete_preview", Some(json!({"thread_id":"t","descendants":false}))).unwrap()), Access::Read);
+        assert_eq!(
+            access(
+                &build_command(
+                    "thread.delete_preview",
+                    Some(json!({"thread_id":"t","descendants":false}))
+                )
+                .unwrap()
+            ),
+            Access::Read
+        );
         assert_eq!(access(&build_command("thread.delete", Some(json!({"thread_id":"t","descendants":false,"preview_marker":{"thread_count":1,"ids_hash":"0".repeat(64)}}))).unwrap()), Access::Mutation);
         for (command, args) in [
-            ("thread.delete", json!({"thread_id":"t","descendants":true,"preview_marker":{"thread_count":1,"ids_hash":"0".repeat(64)}})),
-            ("thread.delete", json!({"thread_id":"t","descendants":false})),
-            ("thread.delete_preview", json!({"thread_id":"t","descendants":false,"preview_marker":{"thread_count":1,"ids_hash":"0".repeat(64)}})),
-            ("thread.delete_preview", json!({"thread_id":"","descendants":false})),
+            (
+                "thread.delete",
+                json!({"thread_id":"t","descendants":true,"preview_marker":{"thread_count":1,"ids_hash":"0".repeat(64)}}),
+            ),
+            (
+                "thread.delete",
+                json!({"thread_id":"t","descendants":false}),
+            ),
+            (
+                "thread.delete_preview",
+                json!({"thread_id":"t","descendants":false,"preview_marker":{"thread_count":1,"ids_hash":"0".repeat(64)}}),
+            ),
+            (
+                "thread.delete_preview",
+                json!({"thread_id":"","descendants":false}),
+            ),
         ] {
             let denied = match build_command(command, Some(args)) {
                 Err(e) => e.code == "not_allowed" || e.code == "invalid_call",
