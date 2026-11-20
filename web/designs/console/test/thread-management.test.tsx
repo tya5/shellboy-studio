@@ -448,7 +448,10 @@ it("retries only after fresh exact Thread/Run/Turn admission", async () => {
     f.t.ownerError(retry.id, "invalid_state", "recovery changed at Core");
     await act(async () => { await flush(); });
     expect(f.t.calls("run.retry")).toHaveLength(1);
+    expect(host.querySelector("[data-run-actions] .notice")?.textContent).toContain(f.model.t.value("action.retryOwnerRefused"));
+    expect(host.querySelector("[data-run-actions] .notice")?.textContent).toContain("provider interrupted");
     expect(host.textContent).toContain("recovery changed at Core");
+    expect(host.textContent).not.toContain(f.model.t.value("action.retryAccepted"));
   } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
 });
 
