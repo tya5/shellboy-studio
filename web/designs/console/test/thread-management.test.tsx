@@ -339,8 +339,8 @@ it("renders management actions from projected running recovery and archived stat
   } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
 });
 
-it("shows only state-appropriate quick row actions", () => {
-  const f = fixtureModel({ route: "threads" });
+it("shows only state-appropriate quick row actions", async () => {
+  const f = await fixtureModel({ route: "threads" });
   const host = document.createElement("div"); document.body.append(host);
   try {
     render(<>
