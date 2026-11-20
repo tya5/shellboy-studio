@@ -13,25 +13,27 @@ export function ThreadQuickAction({ model, row, status, surface }: { model: AppM
   const [result, setResult] = useState<string>();
   const archived = row.archived_at !== undefined;
   const publish = async () => { try { await model.data.refreshThreadList(); await model.org.read(); } catch { /* Core result remains authoritative. */ } };
-  const runAction = async (action: Action, work: () => Promise<void>) => {
+  const runAction = async (action: Action, work: () => Promise<string | undefined>) => {
     if (pending) return;
     setPending(action); setResult(undefined);
-    try { await work(); setResult(action === "retry" ? model.t.value("action.retryAccepted") : model.t.value(action === "stop" ? "action.stopAccepted" : "action.archive")); }
-    catch (error) { setResult(error instanceof Error ? error.message : model.t.value("action.refused")); }
+    try { setResult(await work()); }
+    catch (error) { setResult(error instanceof Error ? error.message : String(error)); }
     finally { setPending(undefined); }
   };
   const archive = () => void runAction("archive", async () => {
     const out = archived ? await model.ops.threadUnarchive([row.thread_id], { descendants: false }) : await model.ops.threadArchive([row.thread_id], { descendants: false });
     if (!out.ok) throw new Error(out.error.message);
     await publish();
+    return model.t.value("action.archive");
   });
   const stop = () => void runAction("stop", async () => {
     const details = await model.ops.threadGet(row.thread_id);
     if (!details.ok || details.value.thread_id !== row.thread_id || !details.value.run_id) throw new Error(model.t.value("action.stopRefused"));
     const out = await model.ops.runStop(details.value.run_id);
     if (!out.ok) throw new Error(out.error.message);
+    return model.t.value("action.stopAccepted");
   });
-  const retry = () => void runAction("retry", async () => { await model.retry(row.thread_id); });
+  const retry = () => void runAction("retry", async () => { await model.retry(row.thread_id); return model.actionError.value; });
   const disabled = pending !== undefined;
   return <span data-thread-quick-action={row.thread_id} data-thread-quick-surface={surface}>
     {status === "recovery" ? <Button data-thread-quick-retry="" variant="warn" disabled={disabled} onClick={retry}>{model.t.value("action.retry")}</Button> : null}
