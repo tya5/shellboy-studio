@@ -65,8 +65,7 @@ export function ThreadManagement({ model }: { model: AppModel }) {
     visitRef.current = readVisit;
     detailIdentityRef.current = undefined;
     const currentTargetWithoutDetail = () => active && visitRef.current === readVisit && model.route.peek() === readRoute && model.route.peek().view === "thread-management" && model.data.owner.peek() === readOwner;
-    let acceptedDetailToken: object | undefined;
-    const currentTarget = () => currentTargetWithoutDetail() && detailIdentityRef.current?.visit === readVisit && detailIdentityRef.current?.token === acceptedDetailToken;
+    const currentTarget = (detailToken: object) => currentTargetWithoutDetail() && detailIdentityRef.current?.visit === readVisit && detailIdentityRef.current?.token === detailToken;
     const read = (next: DetailState) => { if (currentTargetWithoutDetail()) setDetailState(next); };
     read({ id, route: readRoute, owner: readOwner, visit: readVisit, loading: true });
     setActionState({ id, route: readRoute, owner: readOwner, visit: readVisit, kind: "idle" });
@@ -75,7 +74,6 @@ export function ThreadManagement({ model }: { model: AppModel }) {
       if (!currentTargetWithoutDetail()) return;
       if (out.ok && out.value.thread_id === id) {
         const detailToken = publishDetail({ id, route: readRoute, owner: readOwner, visit: readVisit, loading: false, value: out.value });
-        acceptedDetailToken = detailToken;
         setSettingsState({ id, route: readRoute, owner: readOwner, visit: readVisit, model: out.value.model, effort: out.value.effort ?? "", initialEffort: out.value.effort ?? "", saving: false, saved: false });
         const runId = out.value.run_id;
         const turnId = out.value.turn_id;
@@ -85,13 +83,13 @@ export function ThreadManagement({ model }: { model: AppModel }) {
         }
         setObservationState({ id, route: readRoute, owner: readOwner, visit: readVisit, detailToken, kind: "loading", runId, turnId });
         const run = await model.ops.runGet(runId, { threadId: id });
-        if (!currentTarget()) return;
+        if (!currentTarget(detailToken)) return;
         if (!run.ok || run.value.run_id !== runId || run.value.thread_id !== id || run.value.turn_id !== turnId) {
           setObservationState({ id, route: readRoute, owner: readOwner, visit: readVisit, detailToken, kind: "unavailable", runId, turnId, error: "Run observation does not match Thread" });
           return;
         }
         const turn = await model.ops.turnGet(turnId, { runId, threadId: id });
-        if (!currentTarget()) return;
+        if (!currentTarget(detailToken)) return;
         if (!turn.ok || turn.value.turn_id !== turnId || turn.value.run_id !== runId || turn.value.thread_id !== id) {
           setObservationState({ id, route: readRoute, owner: readOwner, visit: readVisit, detailToken, kind: "unavailable", runId, turnId, error: "Turn observation does not match Run" });
           return;
