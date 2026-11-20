@@ -298,6 +298,7 @@ it("accepts singleton deletion then retires action after a causal list refresh",
     if (initialOut.ok) f.t.ok(initialList.id, initialOut.result);
     await initialRefresh;
     expect(f.model.data.threadList.value.items.some((item) => item.thread_id === "A")).toBe(true);
+    expect(f.model.data.threadList.value.items.some((item) => item.thread_id === "B")).toBe(true);
     host.querySelector<HTMLButtonElement>("[data-thread-delete-preview]")!.click(); await flush();
     const preview = f.t.calls("thread.delete_preview").at(-1)!;
     f.t.ok(preview.id, { thread_id: "A", descendants: false, deletable_now: true, preview_marker: { thread_count: 1, ids_hash: "e".repeat(64) }, selection: { thread_count: 1, surviving_descendant_thread_count: 0 }, blockers: { live_run_count: 0, stopping_run_count: 0 } });
@@ -311,10 +312,16 @@ it("accepts singleton deletion then retires action after a causal list refresh",
     const deletion = f.t.calls("thread.delete").at(-1)!;
     expect(f.t.calls("thread.delete")).toHaveLength(1);
     expect(deletion.args).toEqual({ thread_id: "A", descendants: false, preview_marker: { thread_count: 1, ids_hash: "e".repeat(64) } });
+    expect(f.t.calls("thread.list").length).toBe(listBeforeAck);
+    expect(host.textContent).not.toContain(f.model.t.value("thread.deleteDone"));
+    expect(f.model.data.threadList.value.items.some((item) => item.thread_id === "A")).toBe(true);
+    expect(f.model.data.threadList.value.items.some((item) => item.thread_id === "B")).toBe(true);
     f.t.ok(deletion.id, { accepted: true });
     await act(async () => { await flush(); });
     expect(host.querySelector("[data-thread-delete-preview]")).toBeNull();
     expect(host.textContent).toContain(f.model.t.value("thread.deleteDone"));
+    expect(f.model.data.threadList.value.items.some((item) => item.thread_id === "A")).toBe(true);
+    expect(f.model.data.threadList.value.items.some((item) => item.thread_id === "B")).toBe(true);
     const refreshes = f.t.calls("thread.list").slice(listBeforeAck);
     expect(refreshes).toHaveLength(1);
     const refresh = refreshes[0]!;
