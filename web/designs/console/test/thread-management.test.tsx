@@ -365,7 +365,7 @@ it("shows bounded blocker counts without exposing confirm", async () => {
     await answer(f, "thread.get", "A");
     host.querySelector<HTMLButtonElement>("[data-thread-delete-preview]")!.click(); await flush();
     const preview = f.t.calls("thread.delete_preview").at(-1)!;
-    f.t.ok(preview.id, { thread_id: "A", descendants: false, deletable_now: false, preview_marker: { thread_count: 1, ids_hash: "b".repeat(64) }, selection: { thread_count: 1, descendant_thread_count: null, surviving_descendant_thread_count: null }, blockers: { live_run_count: 1, stopping_run_count: 2 });
+    f.t.ok(preview.id, { thread_id: "A", descendants: false, deletable_now: false, preview_marker: { thread_count: 1, ids_hash: "b".repeat(64) }, selection: { thread_count: 1, descendant_thread_count: null, surviving_descendant_thread_count: null }, blockers: { live_run_count: 1, stopping_run_count: 2 }});
     await act(async () => { await flush(); });
     expect(host.textContent).toContain("Blockers observed: 1 live, 2 stopping.");
     expect(host.textContent).toContain("Surviving descendant scope: ? Thread(s).");
