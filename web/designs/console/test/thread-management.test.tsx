@@ -9,6 +9,7 @@ import { fixtureModel } from "../../../ui-core/test/fixture";
 import { loadPrefs, type DesignContext } from "../../../ui-core/src";
 import { App } from "../screens/App";
 import { ThreadManagement } from "../screens/ThreadManagement";
+import { ThreadQuickAction } from "../screens/ThreadQuickAction";
 
 async function answer(f: Awaited<ReturnType<typeof fixtureModel>>, command: string, threadId?: string): Promise<void> {
   const call = f.t.calls(command).find((candidate) => {
@@ -311,5 +312,22 @@ it("does not delete on foreign or stale singleton deletion proof", async () => {
     await act(async () => { await flush(); });
     await answer(f, "thread.get", "B");
     expect(f.t.calls("thread.delete")).toHaveLength(0);
+  } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
+});
+
+it("shows only state-appropriate row actions", async () => {
+  const f = await fixtureModel({ route: "threads" });
+  const host = document.createElement("div"); document.body.append(host);
+  try {
+    render(<>
+      <ThreadQuickAction model={f.model} row={summary("running")} status="running" surface="list" />
+      <ThreadQuickAction model={f.model} row={summary("recovery")} status="recovery" surface="list" />
+      <ThreadQuickAction model={f.model} row={summary("archived", { archived_at: "now" })} status="completed" surface="list" />
+    </>, host);
+    expect(host.querySelector('[data-thread-quick-action="running"] [data-thread-quick-stop]')).not.toBeNull();
+    expect(host.querySelector('[data-thread-quick-action="running"] [data-thread-quick-retry]')).toBeNull();
+    expect(host.querySelector('[data-thread-quick-action="recovery"] [data-thread-quick-retry]')).not.toBeNull();
+    expect(host.querySelector('[data-thread-quick-action="recovery"] [data-thread-quick-stop]')).toBeNull();
+    expect(host.querySelector('[data-thread-quick-action="archived"] button')).not.toBeNull();
   } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
 });
