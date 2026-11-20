@@ -9,6 +9,7 @@ import { fixtureModel } from "../../../ui-core/test/fixture";
 import { loadPrefs, type DesignContext } from "../../../ui-core/src";
 import { App } from "../screens/App";
 import { ThreadManagement } from "../screens/ThreadManagement";
+import { Threads } from "../screens/Threads";
 import { SelectRow, ThreadItem, ThreadQuickAction } from "../system/components"
 
 async function answer(f: Awaited<ReturnType<typeof fixtureModel>>, command: string, threadId?: string): Promise<void> {
@@ -336,21 +337,24 @@ it("renders management actions from projected running recovery and archived stat
   } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
 });
 
-it("shows only state-appropriate quick row actions", async () => {
-  const f = await fixtureModel({ route: "threads" });
+it("shows only state-appropriate quick row actions from projected Threads rows", async () => {
+  const f = await fixtureModel({ route: "threads", configure(db) {
+    db.threads = {
+      run: summary("run", { activity: "tools" }),
+      retry: summary("retry", { activity: "recovery" }),
+      archived: summary("archived", { activity: "idle", archived_at: "now" }),
+    };
+  } });
   const host = document.createElement("div"); document.body.append(host);
   try {
-    render(<>
-      <ThreadQuickAction model={f.model} row={summary("run")} status="running" surface="list" />
-      <ThreadQuickAction model={f.model} row={summary("retry")} status="recovery" surface="list" />
-      <ThreadQuickAction model={f.model} row={summary("archived", { archived_at: "now" })} status="idle" surface="list" />
-    </>, host);
-    for (const id of ["run", "retry", "archived"]) host.querySelector<HTMLButtonElement>(`[data-thread-quick-action="${id}"] button[aria-label]`)!.click();
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    const labels = (id: string) => [...host.querySelectorAll<HTMLElement>(`[data-thread-quick-action="${id}"] [role="menuitem"]`)].map((node) => node.textContent);
-    expect(labels("run")).toEqual([f.model.t.value("view.thread-management"), f.model.t.value("action.stop")]);
-    expect(labels("retry")).toEqual([f.model.t.value("view.thread-management"), f.model.t.value("action.retry")]);
-    expect(labels("archived")).toEqual([f.model.t.value("view.thread-management"), f.model.t.value("org.unarchive")]);
+    await act(async () => { render(<Threads model={f.model} />, host); await flush(); });
+    const labels = (id: string) => {
+      host.querySelector<HTMLButtonElement>(`[data-thread-quick-action="${id}"] button[aria-label]`)!.click();
+      return flush().then(() => [...host.querySelectorAll<HTMLElement>(`[data-thread-quick-action="${id}"] [role="menuitem"]`)].map((node) => node.textContent));
+    };
+    expect(await labels("run")).toEqual([f.model.t.value("view.thread-management"), f.model.t.value("action.stop")]);
+    expect(await labels("retry")).toEqual([f.model.t.value("view.thread-management"), f.model.t.value("action.retry")]);
+    expect(await labels("archived")).toEqual([f.model.t.value("view.thread-management"), f.model.t.value("org.unarchive")]);
   } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
 });
 
