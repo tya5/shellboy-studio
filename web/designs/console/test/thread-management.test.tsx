@@ -359,6 +359,7 @@ it("drops stale and mismatched management observations", async () => {
     f.t.ok(oldRun.id, { run_id: "run-old", thread_id: "A", state: "live", turn_id: "turn-old" });
     await act(async () => { await flush(); });
     expect(host.querySelector("[data-management-observation]")?.getAttribute("data-management-observation")).not.toBe("ready");
+    expect(f.t.calls("turn.get")).toHaveLength(0);
     f.t.ok(newRun.id, { run_id: "run-new", thread_id: "other", state: "live", turn_id: "turn-new" });
     await act(async () => { await flush(); });
     expect(host.querySelector("[data-management-observation]")?.getAttribute("data-management-observation")).toBe("unavailable");
