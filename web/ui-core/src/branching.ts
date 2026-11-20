@@ -795,6 +795,7 @@ export class ThreadOrg {
     if (ids.length === 0 || !authority || ids.some((id) => !shown.some((row) => row.thread_id === id))) return;
     if (ids.some((id) => this.quickActionBusy?.(authority.owner, id))) return;
     const verb = this.state.peek().mode === "exclude" ? "archive" : "unarchive";
+    const options = { descendants: false };
     const current = () => this.revision === revision && this.authority?.()?.owner === authority.owner && this.authority?.()?.route === authority.route && ids.every((id) => this.shown().some((row) => row.thread_id === id)) && !ids.some((id) => this.quickActionBusy?.(authority.owner, id));
     this.action.value = { kind: "running" };
     const out = verb === "archive" ? await this.ops.threadArchive(ids, options) : await this.ops.threadUnarchive(ids, options);
