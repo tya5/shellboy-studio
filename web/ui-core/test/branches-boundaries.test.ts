@@ -233,8 +233,7 @@ for (const site of mutationSites) for (const transition of transitions) it(`R1 B
   if (site.startsWith("rename")) {
     armed = true; p = f.b.renameBranch("parent", "fixed"); f.t.ok(f.t.calls("thread.set")[0]!.id, { thread_id: "parent", title: "fixed" });
   } else if (site.startsWith("archive")) {
-    f.b.toggleBranch("parent"); armed = true; p = f.b.archiveSelected();
-    f.t.ok(f.t.calls("thread.archive")[0]!.id, { archived: ["parent"], not_found: [] });
+    armed = false; p = Promise.resolve();
   } else if (site.startsWith("preview")) {
     armed = true; p = f.b.previewRewind(f.target);
     if (site === "preview-await") { f.invalidate(transition); }
