@@ -999,3 +999,48 @@ it("retains lost quick Stop identity across same-owner reconnect on both surface
     expect(f.t.calls("run.stop")).toHaveLength(1);
   } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
 });
+
+it("qualifies quick Stop from a clicked row and rejects a valid mismatched identity", async () => {
+  const f = await fixtureModel({ route: "threads", configure(db) {
+    db.threads = { A: summary("A") };
+    db.details = { A: details("A", { run_id: "run-a", turn_id: "turn-a" }), B: details("B", { run_id: "run-b", turn_id: "turn-b" }) };
+  } });
+  const host = document.createElement("div"); document.body.append(host);
+  const context: DesignContext = { model: f.model, prefs: signal(loadPrefs({ read: () => null, write: () => {} }, [{ name: "console", themes: [{ name: "light" }] }])), setPrefs: () => {}, designs: [], submitToken: async () => false };
+  try {
+    f.model.org.selected.value = new Set(["A"]);
+    await act(async () => { render(<App context={context} />, host); await flush(); });
+    for (let i = 0; i < 4; i++) { if (!f.t.calls("thread.list").find((call) => !f.db.answered.has(call.id))) break; await answer(f, "thread.list"); }
+    expect(f.t.calls("thread.get")).toHaveLength(0);
+    host.querySelector<HTMLButtonElement>('[data-thread-quick-surface="list"][data-thread-quick-action="A"] [data-thread-quick-stop]')!.click();
+    const preflight = f.t.calls("thread.get").at(-1)!;
+    expect(preflight.args).toEqual({ thread_id: "A" });
+    f.db.answered.add(preflight.id);
+    f.t.ok(preflight.id, details("B", { run_id: "run-b", turn_id: "turn-b" }));
+    await act(async () => { await flush(); });
+    expect(f.t.calls("run.get")).toHaveLength(0);
+    expect(f.t.calls("run.stop")).toHaveLength(0);
+  } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
+});
+
+it("drops quick Stop after mounted row invalidation without follow-on reads or wire", async () => {
+  const f = await fixtureModel({ route: "threads", configure(db) {
+    db.threads = { A: summary("A") };
+    db.details = { A: details("A", { run_id: "run-a", turn_id: "turn-a" }) };
+  } });
+  const host = document.createElement("div"); document.body.append(host);
+  const context: DesignContext = { model: f.model, prefs: signal(loadPrefs({ read: () => null, write: () => {} }, [{ name: "console", themes: [{ name: "light" }] }])), setPrefs: () => {}, designs: [], submitToken: async () => false };
+  try {
+    f.model.org.selected.value = new Set(["A"]);
+    await act(async () => { render(<App context={context} />, host); await flush(); });
+    for (let i = 0; i < 4; i++) { if (!f.t.calls("thread.list").find((call) => !f.db.answered.has(call.id))) break; await answer(f, "thread.list"); }
+    host.querySelector<HTMLButtonElement>('[data-thread-quick-surface="list"][data-thread-quick-action="A"] [data-thread-quick-stop]')!.click();
+    const preflight = f.t.calls("thread.get").at(-1)!;
+    await act(async () => { f.model.applyRoute({ view: "threads" }); render(null, host); await flush(); });
+    f.db.answered.add(preflight.id);
+    f.t.ok(preflight.id, details("A", { run_id: "run-a", turn_id: "turn-a" }));
+    await act(async () => { await flush(); });
+    expect(f.t.calls("run.get")).toHaveLength(0);
+    expect(f.t.calls("run.stop")).toHaveLength(0);
+  } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
+});
