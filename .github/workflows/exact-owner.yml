@@ -32,12 +32,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Verify the official peeled tag against the Studio lock before build
+      - name: Verify the official manifest revision against the Studio lock before build
         run: |
           git init "$RUNNER_TEMP/exact-owner-source"
           git -C "$RUNNER_TEMP/exact-owner-source" remote add origin https://github.com/tya5/shellboy
-          git -C "$RUNNER_TEMP/exact-owner-source" fetch --depth 1 origin refs/tags/v0.13.1:refs/tags/v0.13.1
-          git -C "$RUNNER_TEMP/exact-owner-source" checkout --detach 'refs/tags/v0.13.1^{commit}'
+          git -C "$RUNNER_TEMP/exact-owner-source" fetch --depth 1 origin 116e82e5965dbc2c736849659f9f48db21788873
+          git -C "$RUNNER_TEMP/exact-owner-source" checkout --detach 116e82e5965dbc2c736849659f9f48db21788873
           python3 tools/exact-owner.py --studio . --owner "$RUNNER_TEMP/exact-owner-source"
       - name: Build the verified source and assert package and binary version
         run: |

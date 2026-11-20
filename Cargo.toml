@@ -25,7 +25,7 @@ required-features = ["real-owner-tests"]
 # Explicit integration suite: never part of owner-free unit/synthetic checks.
 real-owner-tests = []
 default = ["next-shellboy", "next-connection-setup", "next-tags", "next-cwds"]
-# Core v0.13.1 pairing is bound to the exact reviewed peeled tag commit in Cargo.lock; do not use moving main.
+# Core pairing is bound to the exact reviewed manifest revision in Cargo.lock; do not use a tag or moving branch.
 next-shellboy = []
 # #262 owner branch adds message.ask; never forward it from Studio.
 next-reply = ["next-shellboy"]
@@ -40,8 +40,8 @@ next-tags = ["next-shellboy"]
 next-cwds = ["next-tags"]
 
 [dependencies]
-# Published owner pin; exact-pair acceptance verifies the tag and lock commit.
-shellboy = { git = "https://github.com/tya5/shellboy", tag = "v0.13.1" }
+# Published owner pin; exact-pair acceptance verifies the manifest revision and lock commit.
+shellboy = { git = "https://github.com/tya5/shellboy", rev = "116e82e5965dbc2c736849659f9f48db21788873" }
 tokio = { version = "=1.54.1", features = ["rt-multi-thread", "macros", "sync", "time", "net", "signal", "process", "fs", "io-util"] }
 tokio-util = { version = "=0.7.20", features = ["rt"] }
 axum = { version = "=0.8.9", default-features = false, features = ["http1", "tokio", "ws", "json"] }
