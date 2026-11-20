@@ -828,19 +828,23 @@ export class ThreadOrg {
     const verb = this.state.peek().mode === "exclude" ? "archive" : "unarchive";
     const options = { descendants: false };
     this.bulkAttempt = token;
-    const current = () => this.bulkAttempt === token && this.selectionGeneration === selectionGeneration && this.revision === revision && this.authority?.()?.owner === authority.owner && this.authority?.()?.route === authority.route && this.ownsReservation?.(authority.owner, ids, token) === true && ids.every((id) => this.shown().some((row) => row.thread_id === id));
+    const mutationCurrent = () => this.bulkAttempt === token && this.revision === revision && this.authority?.()?.owner === authority.owner && this.authority?.()?.route === authority.route && this.ownsReservation?.(authority.owner, ids, token) === true;
+    const uiCurrent = () => mutationCurrent() && this.selectionGeneration === selectionGeneration;
     this.action.value = { kind: "running" };
     try {
     const out = verb === "archive" ? await this.ops.threadArchive(ids, options) : await this.ops.threadUnarchive(ids, options);
-    if (!current()) return;
+    if (!mutationCurrent()) return;
     if (!out.ok) {
-      this.action.value = { kind: "failed", error: out.error };
+      if (uiCurrent()) this.action.value = { kind: "failed", error: out.error };
       return;
     }
-    batch(() => {
-      this.action.value = { kind: "done", verb, result: out.value };
-      this.selected.value = new Set();
-    });
+    this.publishedView = undefined;
+    if (uiCurrent()) {
+      batch(() => {
+        this.action.value = { kind: "done", verb, result: out.value };
+        this.selected.value = new Set();
+      });
+    } else this.action.value = { kind: "idle" };
     await this.read();
     } finally {
       if (this.bulkAttempt === token) {

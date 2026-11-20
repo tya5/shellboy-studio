@@ -370,6 +370,19 @@ describe("Threads over the fake transport", () => {
     await model.org.apply();
     expect(t.calls("thread.archive")).toHaveLength(0);
   });
+  it("refreshes after an accepted bulk result without clearing a newer selection", async () => {
+    const { t, model } = await open();
+    model.org.setMany(["lead"], true);
+    const running = model.org.apply();
+    await flush();
+    model.org.setMany(["done"], true);
+    const archive = t.calls("thread.archive")[0]!;
+    expect(archive).toBeDefined();
+    t.ok(archive.id, { archived: ["lead"] });
+    await running;
+    expect(model.org.selected.value.has("done")).toBe(true);
+    expect(t.calls("thread.list").length).toBeGreaterThan(1);
+  });
   it("in Archived the same action unarchives; turning descendants off sends none", async () => {
     const { t, db, model } = await open();
     const org = model.org;
