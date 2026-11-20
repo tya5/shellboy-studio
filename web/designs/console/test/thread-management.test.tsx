@@ -216,6 +216,7 @@ it("shares one admission across the real sidebar and Threads surfaces", async ()
     await flush();
     const preflight = f.t.calls("thread.get").find((call) => !f.db.answered.has(call.id) && (call.args as { thread_id?: string }).thread_id === "B")!;
     expect(preflight).toBeDefined();
+    f.db.answered.add(preflight.id);
     f.t.ok(preflight.id, details("B"));
     await act(async () => { await flush(); });
     sidebarAction.click();
@@ -223,7 +224,7 @@ it("shares one admission across the real sidebar and Threads surfaces", async ()
     expect(f.t.calls("thread.archive")[0]!.args).toEqual({ thread_ids: ["B"] });
     f.t.ok(f.t.calls("thread.archive")[0]!.id, { archived: ["B"] });
     await act(async () => { await flush(); });
-    const read = f.t.calls("thread.get").find((call) => !f.db.answered.has(call.id) && (call.args as { thread_id?: string }).thread_id === "B")!;
+    const read = f.t.calls("thread.get").find((call) => call.id !== preflight.id && !f.db.answered.has(call.id) && !f.t.cancels().includes(call.id) && (call.args as { thread_id?: string }).thread_id === "B")!;
     expect(read).toBeDefined();
     expect(host.querySelector<HTMLButtonElement>('[data-thread-quick-surface="list"][data-thread-quick-action="B"] button')?.disabled).toBe(true);
     f.db.details.B = details("B", { archived_at: "now" });
