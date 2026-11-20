@@ -587,6 +587,7 @@ export class ThreadOrg {
   private readonly releaseReservation: ((owner: object, ids: readonly string[], token: object) => void) | undefined;
   private readonly ownsReservation: ((owner: object, ids: readonly string[], token: object) => boolean) | undefined;
   private bulkAttempt: object | undefined;
+  private tagAttempt: object | undefined;
   private selectionGeneration = 0;
   private pages = 1;
   private cancel = new Cancel();
@@ -896,24 +897,39 @@ export class ThreadOrg {
 
   /** One `thread.tag` for the chosen Threads. Nothing is optimistic: the groups are read again after. */
   async applyTags(): Promise<void> {
+    const shown = this.shown();
     const ids = [...this.selected.peek()];
+    const revision = this.revision;
+    const selectionGeneration = this.selectionGeneration;
+    const authority = this.authority?.();
+    const published = this.publishedView;
     const draft = this.tagDraft.peek();
-    if (ids.length === 0 || (draft.add.length === 0 && draft.remove.size === 0)) return;
-    if (ids.length > TAG_SELECTION_MAX) {
-      this.tagAction.value = { kind: "selection", n: ids.length };
-      return;
-    }
+    if (this.groupBy.peek() !== "tree" || ids.length === 0 || !authority || !published || authority.owner !== published.owner || authority.route !== published.route || this.state.peek().mode !== published.mode || this.state.peek().query !== published.query || this.groupBy.peek() !== published.grouping || ids.length > TAG_SELECTION_MAX || ids.some((id) => !shown.some((row) => row.thread_id === id)) || (draft.add.length === 0 && draft.remove.size === 0)) return;
+    const token = this.reserve?.(authority.owner, ids);
+    if (!token) return;
+    this.tagAttempt = token;
+    const mutationCurrent = () => this.tagAttempt === token && this.revision === revision && this.authority?.()?.owner === authority.owner && this.ownsReservation?.(authority.owner, ids, token) === true;
+    const uiCurrent = () => mutationCurrent() && this.selectionGeneration === selectionGeneration && this.authority?.()?.route === authority.route;
     this.tagAction.value = { kind: "running" };
-    const remove = [...draft.remove];
-    const out = await this.ops.threadTag({ thread_ids: ids, ...(draft.add.length > 0 && { add: draft.add }), ...(remove.length > 0 && { remove }) });
-    if (!out.ok) {
-      this.tagAction.value = { kind: "failed", limit: out.error.kind === "owner" && out.error.code === "input_limit", message: out.error.message };
-      return;
+    try {
+      const remove = [...draft.remove];
+      const out = await this.ops.threadTag({ thread_ids: ids, ...(draft.add.length > 0 && { add: draft.add }), ...(remove.length > 0 && { remove }) });
+      if (!mutationCurrent()) return;
+      if (!out.ok) {
+        if (uiCurrent()) this.tagAction.value = { kind: "failed", limit: out.error.kind === "owner" && out.error.code === "input_limit", message: out.error.message };
+        return;
+      }
+      this.publishedView = undefined;
+      if (uiCurrent()) {
+        batch(() => {
+          this.tagAction.value = { kind: "done", result: out.value };
+          this.tagDraft.value = { ...draft, add: [], remove: new Set() };
+        });
+      } else this.tagAction.value = { kind: "idle" };
+      if (this.authority?.()?.owner === authority.owner) await this.read();
+    } finally {
+      if (this.tagAttempt === token) this.tagAttempt = undefined;
+      this.releaseReservation?.(authority.owner, ids, token);
     }
-    batch(() => {
-      this.tagAction.value = { kind: "done", result: out.value };
-      this.tagDraft.value = { ...draft, add: [], remove: new Set() };
-    });
-    await this.read();
   }
 }
