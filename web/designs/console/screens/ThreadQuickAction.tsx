@@ -17,7 +17,7 @@ export function ThreadQuickAction({ model, row, surface }: { model: AppModel; ro
   const ownerRouteCurrent = () => model.route.peek() === target.route && model.route.peek().view === target.route.view && model.data.owner.peek() === target.owner;
   const renderedCurrent = () => {
     const live = liveRow();
-    return ownerRouteCurrent() && live !== undefined && (status?.kind === "verified" || (live.archived_at !== undefined) === row.archived_at !== undefined);
+    return ownerRouteCurrent() && live !== undefined && (status?.kind === "verified" || (live.archived_at !== undefined) === (row.archived_at !== undefined));
   };
   const publish = async () => { try { await model.data.refreshThreadList(); await model.org.read(); } catch { /* Exact readback remains authoritative. */ } };
 
@@ -61,7 +61,7 @@ export function ThreadQuickAction({ model, row, surface }: { model: AppModel; ro
   };
   const disabled = status?.kind === "running" || !renderedCurrent();
   return <span data-thread-quick-action={row.thread_id} data-thread-quick-surface={surface} data-quick-action-state={status?.kind ?? "idle"}>
-    <Button disabled={disabled} aria-busy={status?.kind === "running"} onClick={run}>{row.archived_at !== undefined ? model.t.value("org.unarchive") : model.t.value("action.archive")}</Button>
+    <Button disabled={disabled} aria-busy={status?.kind === "running"} onClick={run}>{archived ? model.t.value("org.unarchive") : model.t.value("action.archive")}</Button>
     {status?.kind === "failed" ? <>
       {status.error ? <Notice tone="bad">{status.error}</Notice> : null}
       <a class="btn link" href={formatRoute({ view: "thread-management", threadId: target.id })}>{model.t.value("view.threads")}</a>
