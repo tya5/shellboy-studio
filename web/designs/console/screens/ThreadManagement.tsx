@@ -11,6 +11,28 @@ type SettingsState = { id: string; route: Route; owner: OwnerIdentity; visit: Vi
 type DeletePreviewFacts = { threadCount?: number; descendantCount?: number; survivingDescendantCount?: number; liveRunCount?: number; stoppingRunCount?: number };
 type DeleteState = { id: string; route: Route; owner: OwnerIdentity; visit: Visit; kind: "previewing" | "confirm" | "deleting" | "failed" | "done"; marker?: { thread_count: number; ids_hash: string }; facts?: DeletePreviewFacts; message?: string };
 
+
+function RunActionPanel({ model, id, status, runId }: { model: AppModel; id: string; status: "running" | "recovery"; runId?: string }) {
+  const [pending, setPending] = useState<"retry" | "stop">();
+  const [result, setResult] = useState<string>();
+  const run = async (action: "retry" | "stop") => {
+    if (pending) return;
+    setPending(action); setResult(undefined);
+    try {
+      if (action === "retry") await model.retry(id);
+      else if (runId) {
+        const out = await model.ops.runStop(runId);
+        setResult(out.ok ? model.t.value("action.stopAccepted") : out.error.message);
+      }
+    } finally { setPending(undefined); }
+  };
+  return <div class="band" data-run-actions="">
+    {status === "running" ? <Button variant="stop" disabled={pending !== undefined} onClick={() => void run("stop")}>{model.t.value("action.stop")}</Button> : null}
+    {status === "recovery" ? <Button variant="primary" disabled={pending !== undefined} onClick={() => void run("retry")}>{model.t.value("action.retry")}</Button> : null}
+    {result ? <Notice>{result}</Notice> : null}
+  </div>;
+}
+
 /** One-thread management entry; route reads and mutations are independent of bulk selection. */
 export function ThreadManagement({ model }: { model: AppModel }) {
   const t = model.t.value;
@@ -22,8 +44,6 @@ export function ThreadManagement({ model }: { model: AppModel }) {
   const [actionState, setActionState] = useState<ActionState>();
   const [settingsState, setSettingsState] = useState<SettingsState>();
   const [deleteState, setDeleteState] = useState<DeleteState>();
-  const [runPending, setRunPending] = useState<{ id: string; visit: Visit; action: "retry" | "stop" }>();
-  const [runResult, setRunResult] = useState<{ id: string; visit: Visit; action: "retry" | "stop"; message: string }>();
   const deleteProofRef = useRef<{ id: string; visit: Visit; marker: { thread_count: number; ids_hash: string }; used: boolean }>();
   const mutationRef = useRef<object>();
   const [busyVersion, setBusyVersion] = useState(0);
@@ -119,30 +139,6 @@ export function ThreadManagement({ model }: { model: AppModel }) {
   };
 
   const settings = currentSettings;
-  const retry = async () => {
-    if (rowStatus !== "recovery" || surfaceBusy || runPending?.id === id && runPending.visit === visitRef.current) return;
-    const token = admit(visitRef.current!);
-    if (!token) return;
-    const targetId = id;
-    const targetVisit = visitRef.current!;
-    setRunPending({ id: targetId, visit: targetVisit, action: "retry" }); setRunResult(undefined);
-    try { await model.retry(targetId); }
-    finally { release(token); setRunPending((previous) => previous?.id === targetId && previous.visit === targetVisit && previous.action === "retry" ? undefined : previous); }
-  };
-  const stop = async () => {
-    if (rowStatus !== "running" || surfaceBusy || runPending?.id === id && runPending.visit === visitRef.current || !detail.run_id) return;
-    const token = admit(visitRef.current!);
-    if (!token) return;
-    const targetId = id;
-    const targetVisit = visitRef.current!;
-    const currentTarget = () => visitRef.current === targetVisit && model.route.peek().threadId === targetId;
-    setRunPending({ id: targetId, visit: targetVisit, action: "stop" }); setRunResult(undefined);
-    try {
-      const out = await model.ops.runStop(detail.run_id);
-      if (currentTarget()) setRunResult({ id: targetId, visit: targetVisit, action: "stop", message: out.ok ? t("action.stopAccepted") : out.error.message });
-    } finally { release(token); setRunPending((previous) => previous?.id === targetId && previous.visit === targetVisit && previous.action === "stop" ? undefined : previous); }
-  };
-
   const saveSettings = async () => {
     if (!settings || settings.saving || currentAction?.kind === "running" || surfaceBusy || !model.data.capabilities.peek().includes("thread.settings") || !settings.model.trim()) return;
     const target = { id, route, owner, visit: settings.visit };
@@ -259,11 +255,7 @@ export function ThreadManagement({ model }: { model: AppModel }) {
     <div class="band" data-thread-management="">
       {actionable ? <Button disabled={surfaceBusy || currentAction?.kind === "running"} onClick={() => void mutate()}>{archived ? t("org.unarchive") : t("action.archive")}</Button> : null}
     </div>
-    {(rowStatus === "running" || rowStatus === "recovery" || runResult?.id === id && runResult.visit === visitRef.current) ? <div class="band" data-run-actions="">
-      {rowStatus === "running" ? <Button variant="stop" disabled={surfaceBusy || runPending?.id === id && runPending.visit === visitRef.current} onClick={() => void stop()}>{t("action.stop")}</Button> : null}
-      {rowStatus === "recovery" ? <Button variant="primary" disabled={surfaceBusy || runPending?.id === id && runPending.visit === visitRef.current} onClick={() => void retry()}>{t("action.retry")}</Button> : null}
-      {runResult?.id === id && runResult.visit === visitRef.current ? <Notice>{runResult.message}</Notice> : null}
-    </div> : null}
+    {rowStatus === "running" || rowStatus === "recovery" ? <RunActionPanel key={id} model={model} id={id} status={rowStatus} runId={detail.run_id} /> : null}
     {settings ? <div class="band" data-thread-settings="">
       <Field ariaLabel={t("model.change")} value={settings.model} disabled={surfaceBusy || settings.saving} onInput={(e) => setSettingsState((prev) => prev && prev.id === id && prev.route === route && prev.owner === owner && prev.visit === visitRef.current ? { ...prev, model: e.currentTarget.value, saved: false, error: undefined } : prev)} />
       <Field ariaLabel={t("model.effort")} value={settings.effort} disabled={surfaceBusy || settings.saving} onInput={(e) => setSettingsState((prev) => prev && prev.id === id && prev.route === route && prev.owner === owner && prev.visit === visitRef.current ? { ...prev, effort: e.currentTarget.value, saved: false, error: undefined } : prev)} />
