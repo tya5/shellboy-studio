@@ -562,6 +562,15 @@ it("shows Retry acceptance without claiming completion", async () => {
     expect(retries).toHaveLength(1);
     expect(retries[0]!.args).toEqual({ run_id: "run-a" });
     expect(host.querySelector("[data-run-actions] .notice")).toBeNull();
+    render(null, host);
+    await act(async () => { f.model.applyRoute({ view: "thread-management", threadId: "A" }); render(<ThreadManagement model={f.model} />, host); await flush(); });
+    await answer(f, "thread.get", "A");
+    f.t.ok(f.t.calls("run.get").at(-1)!.id, { run_id: "run-a", thread_id: "A", state: "live", turn_id: "turn-a" });
+    await act(async () => { await flush(); });
+    f.t.ok(f.t.calls("turn.get").at(-1)!.id, { turn_id: "turn-a", run_id: "run-a", thread_id: "A", state: "recovery_wait", recovery_hint: "provider interrupted" });
+    await act(async () => { await flush(); });
+    expect(host.querySelectorAll("[data-run-actions] button")).toHaveLength(0);
+    expect(f.t.calls("run.retry")).toHaveLength(1);
     f.t.ok(retries[0]!.id, { run_id: "run-a", thread_id: "A", state: "live", turn_id: "turn-a" });
     await act(async () => { await flush(); });
     expect(host.querySelector("[data-run-actions] .notice")?.textContent).toBe(f.model.t.value("action.retryAccepted"));
