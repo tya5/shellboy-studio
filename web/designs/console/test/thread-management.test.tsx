@@ -318,20 +318,25 @@ it("does not delete on foreign or stale singleton deletion proof", async () => {
 
 it("renders management actions from projected running recovery and archived state", async () => {
   const f = await fixtureModel({ route: "thread-management", configure(db) {
-    db.threads = { A: summary("A", { activity: "retrying" }), B: summary("B", { activity: "idle", archived_at: "now" }) };
-    db.details = { A: details("A"), B: details("B", { archived_at: "now" }) };
+    db.threads = { A: summary("A", { activity: "tools" }), B: summary("B", { activity: "retrying" }), C: summary("C", { activity: "idle", archived_at: "now" }) };
+    db.details = { A: details("A", { run_id: "run-a", turn_id: "turn-a" }), B: details("B"), C: details("C", { archived_at: "now" }) };
   } });
   const host = document.createElement("div"); document.body.append(host);
   try {
     f.model.applyRoute({ view: "thread-management", threadId: "A" });
     await act(async () => { render(<ThreadManagement model={f.model} />, host); await flush(); });
     await answer(f, "thread.get", "A");
-    expect(host.querySelector("[data-run-actions] button")?.textContent).toBe(f.model.t.value("action.retry"));
+    expect(host.querySelector("[data-run-actions] button")?.textContent).toBe(f.model.t.value("action.stop"));
+    expect(host.querySelector("[data-run-actions] button")?.textContent).not.toBe(f.model.t.value("action.retry"));
     f.model.applyRoute({ view: "thread-management", threadId: "B" });
     await act(async () => { await flush(); });
     await answer(f, "thread.get", "B");
-    expect(host.querySelector("[data-run-actions] [data-thread-quick-stop]")).toBeNull();
-    expect(host.querySelector("[data-run-actions] [data-thread-quick-retry]")).toBeNull();
+    expect(host.querySelector("[data-run-actions] button")?.textContent).toBe(f.model.t.value("action.retry"));
+    expect(host.querySelector("[data-run-actions] button")?.textContent).not.toBe(f.model.t.value("action.stop"));
+    f.model.applyRoute({ view: "thread-management", threadId: "C" });
+    await act(async () => { await flush(); });
+    await answer(f, "thread.get", "C");
+    expect(host.querySelector("[data-run-actions] button")).toBeNull();
     expect(host.querySelector("[data-thread-management] button")?.textContent).toBe(f.model.t.value("org.unarchive"));
   } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
 });
