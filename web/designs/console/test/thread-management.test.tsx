@@ -268,7 +268,7 @@ it("requires a complete marker and carries it into singleton deletion", async ()
     expect(previewCall.args).toEqual({ thread_id: "A", descendants: false });
     f.t.ok(previewCall.id, { thread_id: "A", deletable_now: true, preview_marker: { thread_count: 1, ids_hash: "a".repeat(64) }, selection: { thread_count: 1, descendant_thread_count: 2, surviving_descendant_thread_count: 2 }, blockers: { live_run_count: 0, stopping_run_count: 0 } });
     await act(async () => { await flush(); });
-    expect(host.textContent).toContain("Surviving child scope: 2 Thread(s).");
+    expect(host.textContent).toContain("Surviving descendant scope: 2 Thread(s).");
     expect(f.t.calls("thread.delete")).toHaveLength(0);
     const confirm = [...host.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === f.model.t.value("thread.deleteConfirm"));
     expect(confirm).toBeDefined(); confirm!.click(); await flush();
@@ -292,7 +292,7 @@ it("shows bounded blocker counts without exposing confirm", async () => {
     f.t.ok(preview.id, { thread_id: "A", deletable_now: false, preview_marker: { thread_count: 1, ids_hash: "b".repeat(64) }, selection: { thread_count: 1, descendant_thread_count: null, surviving_descendant_thread_count: null }, blockers: { live_run_count: 1, stopping_run_count: 2 });
     await act(async () => { await flush(); });
     expect(host.textContent).toContain("Blockers observed: 1 live, 2 stopping.");
-    expect(host.textContent).toContain("Surviving child scope: ? Thread(s).");
+    expect(host.textContent).toContain("Surviving descendant scope: ? Thread(s).");
     expect([...host.querySelectorAll("button")].some((button) => button.textContent === f.model.t.value("thread.deleteConfirm"))).toBe(false);
     expect(f.t.calls("thread.delete")).toHaveLength(0);
   } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
@@ -307,8 +307,10 @@ it("does not delete on foreign or stale singleton deletion proof", async () => {
     await answer(f, "thread.get", "A");
     host.querySelector<HTMLButtonElement>("[data-thread-delete-preview]")!.click(); await flush();
     const preview = f.t.calls("thread.delete_preview").at(-1)!;
-    f.t.ok(preview.id, { thread_id: "B", deletable_now: true, preview_marker: { thread_count: 1, ids_hash: "b".repeat(64) } });
+    f.t.ok(preview.id, { thread_id: "B", deletable_now: false, preview_marker: { thread_count: 1, ids_hash: "b".repeat(64) }, selection: { surviving_descendant_thread_count: 99 }, blockers: { live_run_count: 99, stopping_run_count: 98 } });
     await act(async () => { await flush(); });
+    expect(host.textContent).not.toContain("99 live");
+    expect(host.textContent).not.toContain("98 stopping");
     expect(f.t.calls("thread.delete")).toHaveLength(0);
     const retry = host.querySelector<HTMLButtonElement>("[data-thread-delete-preview]");
     expect(retry).toBeDefined();

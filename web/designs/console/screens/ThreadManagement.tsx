@@ -313,11 +313,18 @@ export function ThreadManagement({ model }: { model: AppModel }) {
     try {
       const out = await model.ops.threadDeletePreview(id);
       if (!deleteTargetCurrent(target)) return;
-      const marker = out.ok ? out.value.preview_marker : undefined;
+      if (!out.ok || out.value.thread_id !== id) {
+        setDeleteState({ ...target, kind: "failed", message: out.ok ? t("thread.deleteBlocked") : out.error.message });
+        return;
+      }
+      const marker = out.value.preview_marker;
       const markerValue = marker && typeof marker === "object" ? marker as Record<string, unknown> : undefined;
-      const matchingPreview = out.ok && out.value.thread_id === id;
-      const selection = matchingPreview && out.value.selection && typeof out.value.selection === "object" ? out.value.selection as Record<string, unknown> : undefined;
-      const blockers = matchingPreview && out.value.blockers && typeof out.value.blockers === "object" ? out.value.blockers as Record<string, unknown> : undefined;
+      if (!markerValue || typeof markerValue.thread_count !== "number" || markerValue.thread_count !== 1 || typeof markerValue.ids_hash !== "string" || !/^[0-9a-f]{64}$/.test(markerValue.ids_hash)) {
+        setDeleteState({ ...target, kind: "failed", message: t("thread.deleteBlocked") });
+        return;
+      }
+      const selection = out.value.selection && typeof out.value.selection === "object" ? out.value.selection as Record<string, unknown> : undefined;
+      const blockers = out.value.blockers && typeof out.value.blockers === "object" ? out.value.blockers as Record<string, unknown> : undefined;
       const facts: DeletePreviewFacts = {
         threadCount: typeof selection?.thread_count === "number" ? selection.thread_count : undefined,
         descendantCount: typeof selection?.descendant_thread_count === "number" ? selection.descendant_thread_count : undefined,
@@ -325,13 +332,13 @@ export function ThreadManagement({ model }: { model: AppModel }) {
         liveRunCount: typeof blockers?.live_run_count === "number" ? blockers.live_run_count : undefined,
         stoppingRunCount: typeof blockers?.stopping_run_count === "number" ? blockers.stopping_run_count : undefined,
       };
-      if (!matchingPreview || !markerValue || typeof markerValue.thread_count !== "number" || markerValue.thread_count !== 1 || typeof markerValue.ids_hash !== "string" || !/^[0-9a-f]{64}$/.test(markerValue.ids_hash)) {
-        setDeleteState({ ...target, kind: "failed", facts, message: out.ok ? t("thread.deleteBlocked") : out.error.message });
+      const proof = { thread_count: markerValue.thread_count as number, ids_hash: markerValue.ids_hash as string };
+      if (out.value.deletable_now !== true) {
+        setDeleteState({ ...target, kind: "failed", facts, message: t("thread.deleteBlocked") });
         return;
       }
-      const proof = { thread_count: markerValue.thread_count as number, ids_hash: markerValue.ids_hash as string };
       deleteProofRef.current = { id, visit: target.visit, marker: proof, used: false };
-      setDeleteState({ ...target, kind: out.value.deletable_now === true ? "confirm" : "failed", marker: proof, facts, message: out.value.deletable_now === true ? undefined : t("thread.deleteBlocked") });
+      setDeleteState({ ...target, kind: "confirm", marker: proof, facts });
     } catch (error) { if (deleteTargetCurrent(target)) setDeleteState({ ...target, kind: "failed", message: error instanceof Error ? error.message : t("thread.deleteBlocked") }); }
     finally { release(token); }
   };
