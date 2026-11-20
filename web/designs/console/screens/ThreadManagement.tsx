@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "preact/hooks";
-import { correlateManagementRun, formatRoute, managementStop, threadModelChanges, type AppModel, type Route, type ThreadModelDraft } from "../../../ui-core/src";
+import { formatRoute, managementRetry, managementStop, threadModelChanges, type AppModel, type Route, type ThreadModelDraft } from "../../../ui-core/src";
 import { Button, Field, Notice, Section } from "../system/components";
 import type { ThreadDetails } from "../../../data/src";
 
@@ -168,7 +168,7 @@ export function ThreadManagement({ model }: { model: AppModel }) {
     const admissionIdentity = detailIdentityRef.current;
     const detailToken = admissionIdentity?.token;
     const targetVisit = target?.visit;
-    if (!target || !ownerInstanceId || !admissionIdentity || admissionIdentity.id !== id || !detailToken || !targetVisit || unresolvedRetry || surfaceBusy || currentRunAction?.kind === "running") return;
+    if (!target || !ownerInstanceId || !admissionIdentity || admissionIdentity.id !== id || !detailToken || !targetVisit || unresolvedRetry || unresolvedStop || surfaceBusy || currentRunAction?.kind === "running") return;
     const liveReservation = model.managementRetryReservations.peek().get(unresolvedKey);
     if (liveReservation) return;
     const currentTarget = () => visitRef.current === targetVisit && model.route.peek() === route && model.route.peek().view === "thread-management" && model.data.owner.peek() === owner && detailIdentityRef.current?.token === detailToken;
@@ -180,38 +180,24 @@ export function ThreadManagement({ model }: { model: AppModel }) {
     setRunActionState({ id, route, owner, visit: targetVisit, detailToken, kind: "running" });
     let sent = false;
     try {
-      const freshDetail = await model.ops.threadGet(id);
+      const result = await managementRetry(model.ops, id, { runId: admissionIdentity.runId, turnId: admissionIdentity.turnId }, retryOperationId, currentTarget);
+      if (result.kind === "sent") sent = true;
       if (!currentTarget()) return;
-      const runId = freshDetail.ok && freshDetail.value.thread_id === id ? freshDetail.value.run_id : undefined;
-      const turnId = freshDetail.ok && freshDetail.value.thread_id === id ? freshDetail.value.turn_id : undefined;
-      if (runId !== admissionIdentity.runId || turnId !== admissionIdentity.turnId || typeof runId !== "string" || typeof turnId !== "string") {
-        setRunActionState({ id, route, owner, visit: targetVisit, detailToken, kind: "refused", message: "Retry refused: the accepted Thread identity changed" });
+      if (result.kind === "stale") return;
+      if (result.kind === "refused") {
+        setRunActionState({ id, route, owner, visit: targetVisit, detailToken, kind: "refused", message: t("action.retryRefused"), reason: result.recoveryReason });
         return;
       }
-      const run = await model.ops.runGet(runId, { threadId: id });
-      if (!currentTarget()) return;
-      const turn = await model.ops.turnGet(turnId, { runId, threadId: id });
-      if (!currentTarget()) return;
-      const recoveryReason = turn.ok && typeof turn.value.recovery_hint === "string" ? turn.value.recovery_hint.trim() : undefined;
-      if (!run.ok || run.value.run_id !== runId || run.value.thread_id !== id || run.value.turn_id !== turnId || !turn.ok || turn.value.turn_id !== turnId || turn.value.run_id !== runId || turn.value.thread_id !== id || run.value.state !== "live" || turn.value.state !== "recovery_wait" || !recoveryReason) {
-        setRunActionState({ id, route, owner, visit: targetVisit, detailToken, kind: "refused", message: t("action.retryRefused"), reason: recoveryReason });
-        return;
-      }
-      sent = true;
-      const out = await model.ops.runRetry(runId, retryOperationId);
+      const out = result.outcome;
       const key = unresolvedKey;
       if (!out.ok && out.error.kind !== "owner" && out.error.kind !== "not_connected" && out.error.kind !== "busy" && !model.managementUnconfirmedRetry.peek().has(key)) {
-        model.managementUnconfirmedRetry.value = new Map(model.managementUnconfirmedRetry.peek()).set(key, { threadId: id, runId, turnId, operationId: retryOperationId, recoveryReason, ownerInstanceId: ownerInstanceId!, action: "retry" });
+        model.managementUnconfirmedRetry.value = new Map(model.managementUnconfirmedRetry.peek()).set(key, { threadId: id, runId: result.runId, turnId: result.turnId, operationId: retryOperationId, recoveryReason: result.recoveryReason, ownerInstanceId: ownerInstanceId, action: "retry" });
       }
-      if (out.ok || (!out.ok && (out.error.kind === "owner" || out.error.kind === "not_connected" || out.error.kind === "busy"))) {
-        model.releaseManagementRetry(key, retryOperationId);
-      }
-      if (!currentTarget()) return;
+      if (out.ok || (!out.ok && (out.error.kind === "owner" || out.error.kind === "not_connected" || out.error.kind === "busy"))) model.releaseManagementRetry(key, retryOperationId);
       if (out.ok) setRunActionState({ id, route, owner, visit: targetVisit, detailToken, kind: "accepted", action: "retry" });
-      else if (out.error.kind === "unconfirmed") {
-        setRunActionState({ id, route, owner, visit: targetVisit, detailToken, kind: "unknown", message: t("action.retryUnknown", { id: out.error.operationId }), reason: recoveryReason, operationId: out.error.operationId });
-      } else if (out.error.kind === "owner") setRunActionState({ id, route, owner, visit: targetVisit, detailToken, kind: "refused", message: t("action.retryOwnerRefused"), reason: recoveryReason, ownerError: out.error.message });
-      else setRunActionState({ id, route, owner, visit: targetVisit, detailToken, kind: "unknown", message: t("action.retryUncertain"), reason: recoveryReason, operationId: out.operationId });
+      else if (out.error.kind === "unconfirmed") setRunActionState({ id, route, owner, visit: targetVisit, detailToken, kind: "unknown", message: t("action.retryUnknown", { id: out.error.operationId }), reason: result.recoveryReason, operationId: out.error.operationId });
+      else if (out.error.kind === "owner") setRunActionState({ id, route, owner, visit: targetVisit, detailToken, kind: "refused", message: t("action.retryOwnerRefused"), reason: result.recoveryReason, ownerError: out.error.message });
+      else setRunActionState({ id, route, owner, visit: targetVisit, detailToken, kind: "unknown", message: t("action.retryUncertain"), reason: result.recoveryReason, operationId: out.operationId });
     } finally {
       if (!sent) model.releaseManagementRetry(unresolvedKey, retryOperationId);
       release(token);
