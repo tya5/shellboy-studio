@@ -65,7 +65,8 @@ export function ThreadManagement({ model }: { model: AppModel }) {
     visitRef.current = readVisit;
     detailIdentityRef.current = undefined;
     const currentTargetWithoutDetail = () => active && visitRef.current === readVisit && model.route.peek() === readRoute && model.route.peek().view === "thread-management" && model.data.owner.peek() === readOwner;
-    const currentTarget = () => currentTargetWithoutDetail() && detailIdentityRef.current?.visit === readVisit;
+    const capturedDetailToken = () => detailIdentityRef.current?.token;
+    const currentTarget = () => currentTargetWithoutDetail() && detailIdentityRef.current?.visit === readVisit && detailIdentityRef.current?.token === capturedDetailToken();
     const read = (next: DetailState) => { if (currentTargetWithoutDetail()) setDetailState(next); };
     read({ id, route: readRoute, owner: readOwner, visit: readVisit, loading: true });
     setActionState({ id, route: readRoute, owner: readOwner, visit: readVisit, kind: "idle" });
@@ -81,7 +82,6 @@ export function ThreadManagement({ model }: { model: AppModel }) {
           setObservationState({ id, route: readRoute, owner: readOwner, visit: readVisit, kind: "unavailable", error: "Thread has no complete Run/Turn identity" });
           return;
         }
-        detailIdentityRef.current = { id, runId, turnId, visit: readVisit, token: detailToken };
         setObservationState({ id, route: readRoute, owner: readOwner, visit: readVisit, detailToken, kind: "loading", runId, turnId });
         const run = await model.ops.runGet(runId, { threadId: id });
         if (!currentTarget()) return;
@@ -134,13 +134,13 @@ export function ThreadManagement({ model }: { model: AppModel }) {
     const refreshed = await model.ops.threadGet(mutationId);
     if (!currentMutation()) { return; }
     if (!refreshed.ok) {
-      setDetailState({ id: mutationId, route: mutationRoute, owner: mutationOwner, visit: mutationVisit, loading: false, error: refreshed.error.message });
+      publishDetail({ id: mutationId, route: mutationRoute, owner: mutationOwner, visit: mutationVisit, loading: false, error: refreshed.error.message });
       setActionState({ id: mutationId, route: mutationRoute, owner: mutationOwner, visit: mutationVisit, kind: "failed", message: refreshed.error.message });
       return;
     }
     if (refreshed.value.thread_id !== mutationId) {
       const message = t("thread.detailMismatch");
-      setDetailState({ id: mutationId, route: mutationRoute, owner: mutationOwner, visit: mutationVisit, loading: false, error: message });
+      publishDetail({ id: mutationId, route: mutationRoute, owner: mutationOwner, visit: mutationVisit, loading: false, error: message });
       setActionState({ id: mutationId, route: mutationRoute, owner: mutationOwner, visit: mutationVisit, kind: "failed", message });
       return;
     }
@@ -170,20 +170,20 @@ export function ThreadManagement({ model }: { model: AppModel }) {
       return;
     }
     if (out.value.thread_id !== target.id) {
-      setDetailState({ id: target.id, route: target.route, owner: target.owner, visit: target.visit, loading: false, error: t("thread.detailMismatch") });
+      publishDetail({ id: target.id, route: target.route, owner: target.owner, visit: target.visit, loading: false, error: t("thread.detailMismatch") });
       setSettingsState({ ...settings, saving: false, saved: false, error: t("thread.settingsMismatch") });
       return;
     }
     const refreshed = await model.ops.threadGet(target.id);
     if (!currentTarget()) { return; }
     if (!refreshed.ok) {
-      setDetailState({ id: target.id, route: target.route, owner: target.owner, visit: target.visit, loading: false, error: refreshed.error.message });
+      publishDetail({ id: target.id, route: target.route, owner: target.owner, visit: target.visit, loading: false, error: refreshed.error.message });
       setSettingsState({ ...settings, saving: false, saved: false, error: refreshed.error.message });
       return;
     }
     if (refreshed.value.thread_id !== target.id) {
       const message = t("thread.detailMismatch");
-      setDetailState({ id: target.id, route: target.route, owner: target.owner, visit: target.visit, loading: false, error: message });
+      publishDetail({ id: target.id, route: target.route, owner: target.owner, visit: target.visit, loading: false, error: message });
       setSettingsState({ ...settings, saving: false, saved: false, error: message });
       return;
     }
