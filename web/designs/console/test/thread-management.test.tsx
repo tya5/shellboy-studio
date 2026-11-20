@@ -828,3 +828,37 @@ it("refuses an ineligible quick Stop after exact reads", async () => {
     expect(host.textContent).toContain(f.model.t.value("action.stopRefused"));
   } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
 });
+
+it("retains lost quick Stop identity across same-owner reconnect on both surfaces", async () => {
+  const f = await fixtureModel({ route: "threads", configure(db) {
+    db.threads = { A: summary("A") };
+    db.details = { A: details("A", { run_id: "run-a", turn_id: "turn-a" }) };
+  } });
+  const host = document.createElement("div"); document.body.append(host);
+  const context: DesignContext = { model: f.model, prefs: signal(loadPrefs({ read: () => null, write: () => {} }, [{ name: "console", themes: [{ name: "light" }] }])), setPrefs: () => {}, designs: [], submitToken: async () => false };
+  try {
+    f.model.org.selected.value = new Set(["A"]);
+    await act(async () => { render(<App context={context} />, host); await flush(); });
+    for (let i = 0; i < 4; i++) { if (!f.t.calls("thread.list").find((call) => !f.db.answered.has(call.id))) break; await answer(f, "thread.list"); }
+    host.querySelector<HTMLButtonElement>('[data-thread-quick-surface="list"][data-thread-quick-action="A"] [data-thread-quick-stop]')!.click();
+    const preflight = f.t.calls("thread.get").at(-1)!;
+    f.t.ok(preflight.id, details("A", { run_id: "run-a", turn_id: "turn-a" }));
+    await act(async () => { await flush(); });
+    f.t.ok(f.t.calls("run.get").at(-1)!.id, { run_id: "run-a", thread_id: "A", turn_id: "turn-a", state: "live" });
+    await act(async () => { await flush(); });
+    f.t.ok(f.t.calls("turn.get").at(-1)!.id, { turn_id: "turn-a", run_id: "run-a", thread_id: "A", state: "running" });
+    await act(async () => { await flush(); });
+    const stop = f.t.calls("run.stop").at(-1)!;
+    f.t.drop();
+    await act(async () => { await flush(); });
+    expect(host.textContent).toContain(stop.operation_id);
+    f.t.open();
+    f.t.push({ t: "hello", bridge_version: "0.0.1", data_dir: "/temp/owner-a", owner: { state: "connected", info: { protocol_version: 5, instance_id: "i1", capabilities: ["history.window"] } } });
+    render(null, host);
+    await act(async () => { f.model.applyRoute({ view: "threads" }); render(<App context={context} />, host); await flush(); });
+    for (let i = 0; i < 4; i++) { if (!f.t.calls("thread.list").find((call) => !f.db.answered.has(call.id))) break; await answer(f, "thread.list"); }
+    expect(host.querySelector('[data-thread-quick-surface="list"][data-thread-quick-action="A"] [data-thread-quick-stop]')).toBeNull();
+    expect(host.querySelector('[data-thread-quick-surface="sidebar"][data-thread-quick-action="A"] [data-thread-quick-stop]')).toBeNull();
+    expect(host.textContent).toContain(stop.operation_id);
+  } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
+});
