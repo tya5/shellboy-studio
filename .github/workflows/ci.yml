@@ -71,6 +71,11 @@ jobs:
 
   real-owner:
     name: Required exact-pair owner acceptance
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, macos-15, windows-latest]
     uses: ./.github/workflows/exact-owner.yml
     with:
       studio_ref: ${{ github.sha }}
+      runner_os: ${{ matrix.os }}
