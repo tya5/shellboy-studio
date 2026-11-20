@@ -296,6 +296,13 @@ it("does not delete on foreign or stale singleton deletion proof", async () => {
     const valid = f.t.calls("thread.delete_preview").at(-1)!;
     f.t.ok(valid.id, { thread_id: "A", deletable_now: true, preview_marker: { thread_count: 1, ids_hash: "a".repeat(64) } });
     await act(async () => { await flush(); });
+    const staleConfirm = [...host.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === f.model.t.value("thread.deleteConfirm"));
+    expect(staleConfirm).toBeDefined();
+    const cancel = [...host.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === f.model.t.value("thread.deleteCancel"));
+    expect(cancel).toBeDefined();
+    cancel!.click();
+    staleConfirm!.click();
+    expect(f.t.calls("thread.delete")).toHaveLength(0);
     f.model.applyRoute({ view: "thread-management", threadId: "B" });
     await act(async () => { await flush(); });
     await answer(f, "thread.get", "B");
