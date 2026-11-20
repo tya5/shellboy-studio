@@ -164,6 +164,24 @@ changed settings (an empty effort clears the effort), then shows success only
 when an authoritative same-Thread readback matches. A stale owner, route, or
 readback failure is not treated as saved.
 
+### Run controls
+
+The management page reads an exact Thread, Run, and Turn before showing Run
+controls. Stop is shown only when the fresh correlated state is Run `live` and
+Turn `running`; `Run=live` alone is not enough. The same on-demand Stop action
+is available from the clicked sidebar or Threads-list row. It reads that exact
+Thread, Run, and Turn only after the row action is invoked, so rows do not fan
+out status reads or infer eligibility from summary labels. Both surfaces share
+same-Thread mutation exclusion and reject stale route, owner, row, or visit
+completions. A Stop acknowledgement means the request was accepted; it does
+not prove termination, and the UI preserves the unresolved operation ID when a
+reply is lost rather than minting a blind retry.
+
+Retry is a management-page action only. It requires fresh Run `live`, Turn
+`recovery_wait`, and a nonblank saved recovery reason. A successful request is
+shown as accepted, not completed; owner refusal and unknown/lost-reply outcomes
+remain distinct, and an unresolved operation ID blocks blind repetition.
+
 ### Archive and tags
 
 Use the row action in the sidebar or Threads list to archive or unarchive one
@@ -185,10 +203,13 @@ silently discarded.
 ### Deletion
 
 Deletion is currently available only for one Thread from its management page.
-Studio first requests an owner preview. Confirmation is a separate explicit step
-and Studio uses that confirmation once, passing the exact owner-provided marker
-verbatim; stale, blocked, rejected, unmarked,
-or descendant deletion requests are not retried. A successful deletion requires
+Studio first requests an owner preview. The preview shows the exact singleton
+marker, visible surviving descendant scope when the owner provides it, and
+bounded live/stopping blocker counts. Null or incomplete fields remain unknown;
+Studio does not infer zero or invent child IDs. Confirmation is a separate
+explicit step and Studio uses that confirmation once, passing the exact
+owner-provided marker verbatim; stale, blocked, rejected, unmarked, or
+ descendant deletion requests are not retried. A successful deletion requires
 the owner's accepted result and retires the page's action controls. List-refresh
 warnings are shown separately from the owner's deletion acceptance.
 
