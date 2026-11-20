@@ -185,6 +185,38 @@ export function ThreadManagement({ model }: { model: AppModel }) {
     } finally { release(token); }
   };
 
+  const stop = async () => {
+    const target = currentDetail;
+    const detailToken = detailIdentityRef.current?.token;
+    const targetVisit = target?.visit;
+    if (!target || !detailToken || !targetVisit || surfaceBusy || currentRunAction?.kind === "running") return;
+    const currentTarget = () => visitRef.current === targetVisit && model.route.peek() === route && model.route.peek().view === "thread-management" && model.data.owner.peek() === owner && detailIdentityRef.current?.token === detailToken;
+    const token = admit(targetVisit);
+    if (!token) return;
+    setRunActionState({ id, route, owner, visit: targetVisit, detailToken, kind: "running" });
+    try {
+      const freshDetail = await model.ops.threadGet(id);
+      if (!currentTarget()) return;
+      const runId = freshDetail.ok && freshDetail.value.thread_id === id ? freshDetail.value.run_id : undefined;
+      const turnId = freshDetail.ok && freshDetail.value.thread_id === id ? freshDetail.value.turn_id : undefined;
+      if (runId !== target.value?.run_id || turnId !== target.value?.turn_id || typeof runId !== "string" || typeof turnId !== "string") {
+        setRunActionState({ id, route, owner, visit: targetVisit, detailToken, kind: "refused", message: "Stop refused: the accepted Thread identity changed" });
+        return;
+      }
+      const run = await model.ops.runGet(runId, { threadId: id });
+      if (!currentTarget()) return;
+      const turn = await model.ops.turnGet(turnId, { runId, threadId: id });
+      if (!currentTarget()) return;
+      if (!run.ok || run.value.run_id !== runId || run.value.thread_id !== id || run.value.turn_id !== turnId || !turn.ok || turn.value.turn_id !== turnId || turn.value.run_id !== runId || turn.value.thread_id !== id || run.value.state !== "live" || turn.value.state !== "running") {
+        setRunActionState({ id, route, owner, visit: targetVisit, detailToken, kind: "refused", message: "Stop refused: the exact Run/Turn is no longer running" });
+        return;
+      }
+      const out = await model.ops.runStop(runId);
+      if (!currentTarget()) return;
+      setRunActionState(out.ok ? { id, route, owner, visit: targetVisit, detailToken, kind: "accepted" } : { id, route, owner, visit: targetVisit, detailToken, kind: "refused", message: out.error.message });
+    } finally { release(token); }
+  };
+
   const saveSettings = async () => {
     if (!settings || settings.saving || currentAction?.kind === "running" || surfaceBusy || !model.data.capabilities.peek().includes("thread.settings") || !settings.model.trim()) return;
     const target = { id, route, owner, visit: settings.visit };
@@ -285,8 +317,9 @@ export function ThreadManagement({ model }: { model: AppModel }) {
     <div class="band" data-thread-management="">
       {actionable ? <Button disabled={surfaceBusy || currentAction?.kind === "running"} onClick={() => void mutate()}>{archived ? t("org.unarchive") : t("action.archive")}</Button> : null}
     </div>
-    {currentObservation?.kind === "ready" && currentObservation.runState === "live" && currentObservation.turnState === "recovery_wait" && currentObservation.recoveryReason && detail.run_id && detail.turn_id ? <div class="band" data-run-actions="">
-      <Button variant="primary" disabled={surfaceBusy || currentRunAction?.kind === "running"} onClick={() => void retry()}>{t("action.retry")}</Button>
+    {currentObservation?.kind === "ready" && currentObservation.runState === "live" && ((currentObservation.turnState === "running") || (currentObservation.turnState === "recovery_wait" && currentObservation.recoveryReason)) && detail.run_id && detail.turn_id ? <div class="band" data-run-actions="">
+      {currentObservation.turnState === "running" ? <Button variant="stop" disabled={surfaceBusy || currentRunAction?.kind === "running"} onClick={() => void stop()}>{t("action.stop")}</Button> : null}
+      {currentObservation.turnState === "recovery_wait" && currentObservation.recoveryReason ? <Button variant="primary" disabled={surfaceBusy || currentRunAction?.kind === "running"} onClick={() => void retry()}>{t("action.retry")}</Button> : null}
       {currentRunAction?.kind === "refused" ? <Notice tone="bad">{currentRunAction.message}</Notice> : null}
       {currentRunAction?.kind === "accepted" ? <Notice>{t("action.retry")}</Notice> : null}
     </div> : null}
