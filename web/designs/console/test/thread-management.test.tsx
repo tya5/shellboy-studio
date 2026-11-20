@@ -553,7 +553,6 @@ it("shows Retry acceptance without claiming completion", async () => {
     f.t.ok(f.t.calls("turn.get").at(-1)!.id, { turn_id: "turn-a", run_id: "run-a", thread_id: "A", state: "recovery_wait", recovery_hint: "provider interrupted" });
     await act(async () => { await flush(); });
     host.querySelector<HTMLButtonElement>("[data-run-actions] button")!.click();
-    expect(host.querySelector("[data-run-actions] .notice")).toBeNull();
     await answer(f, "thread.get", "A");
     f.t.ok(f.t.calls("run.get").at(-1)!.id, { run_id: "run-a", thread_id: "A", state: "live", turn_id: "turn-a" });
     await act(async () => { await flush(); });
@@ -562,6 +561,7 @@ it("shows Retry acceptance without claiming completion", async () => {
     const retries = f.t.calls("run.retry");
     expect(retries).toHaveLength(1);
     expect(retries[0]!.args).toEqual({ run_id: "run-a" });
+    expect(host.querySelector("[data-run-actions] .notice")).toBeNull();
     f.t.ok(retries[0]!.id, { run_id: "run-a", thread_id: "A", state: "live", turn_id: "turn-a" });
     await act(async () => { await flush(); });
     expect(host.querySelector("[data-run-actions] .notice")?.textContent).toBe(f.model.t.value("action.retryAccepted"));
