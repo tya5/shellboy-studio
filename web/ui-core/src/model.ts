@@ -132,7 +132,7 @@ export function setBounded<V>(map: Map<string, V>, key: string, value: V): Map<s
 
 export const errorMessage = (e: OpError): string => e.message;
 
-type QuickActionStatus = { kind: "running" | "done" | "failed"; error?: string };
+type QuickActionStatus = { kind: "running" | "done" | "failed"; error?: string; expectedArchived?: boolean };
 
 export class AppModel {
   readonly quickActionEpoch = signal(0);
@@ -161,10 +161,14 @@ export class AppModel {
     actions.delete(threadId);
     this.quickActionEpoch.value++;
   }
-  threadQuickActionReset(owner: object, threadId: string): void {
+  threadQuickActionReset(owner: object, threadId: string, archived: boolean): void {
     const actions = this.quickActions.get(owner);
-    if (!actions || actions.get(threadId)?.status.kind === "running") return;
-    if (actions.delete(threadId)) this.quickActionEpoch.value++;
+    const action = actions?.get(threadId);
+    if (!action || action.status.kind === "running") return;
+    if (action.status.kind === "done" && action.status.expectedArchived === archived) {
+      actions!.delete(threadId);
+      this.quickActionEpoch.value++;
+    }
   }
 
   readonly pairing = signal<{ hosts: string[]; links: Record<string, { url: string; expires: number }>; error?: string }>({ hosts: [], links: {} });

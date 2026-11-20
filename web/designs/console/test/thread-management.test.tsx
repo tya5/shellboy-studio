@@ -216,6 +216,8 @@ it("shares one admission across the real sidebar and Threads surfaces", async ()
     f.db.threads.B = summary("B", { archived_at: "now" });
     f.t.ok(read.id, f.db.details.B);
     await act(async () => { await flush(); });
+    f.model.org.setMode("only");
+    await act(async () => { await flush(); });
     for (let i = 0; i < 6; i++) {
       const pending = f.t.calls("thread.list").find((call) => !f.db.answered.has(call.id));
       if (!pending) break;
