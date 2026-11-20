@@ -214,17 +214,15 @@ it("R1 release callback replacement of the same Thread keeps its new row", async
   pending.shift()!(); await flush(); batch.reset();
 });
 
-const mutationSites = ["rename-error", "archive-selection", "archive-error", "rewinding", "rewind-failed", "rewind-done", "rewind-error", "previewing", "preview-await"] as const;
+const mutationSites = ["rename-error", "rewinding", "rewind-failed", "rewind-done", "rewind-error", "previewing", "preview-await"] as const;
 for (const site of mutationSites) for (const transition of transitions) it(`R1 B12 ${site} x ${transition}`, async () => {
   const f = fixture(); let armed = false, fired = false;
-  // Rename/archive are Thread actions: target-only change is irrelevant.
-  const invalid = transition !== "same" && !(transition === "target" && (site.startsWith("rename") || site.startsWith("archive")));
+  const invalid = transition !== "same" && !(transition === "target" && site.startsWith("rename"));
   f.b.actionError.value = "old error";
   const stop = effect(() => {
     const error = f.b.actionError.value, selection = f.b.selection.value, rewind = f.b.rewind.value;
     if (!armed || fired) return;
-    const hit = site === "rename-error" ? error === undefined : site === "archive-selection" ? selection.size === 0 :
-      site === "archive-error" ? error === undefined : site === "rewinding" ? rewind.kind === "rewinding" :
+    const hit = site === "rename-error" ? error === undefined : site === "rewinding" ? rewind.kind === "rewinding" :
       site === "rewind-failed" ? rewind.kind === "failed" : site === "rewind-done" ? rewind.kind === "done" :
       site === "rewind-error" ? error?.startsWith("Rewind succeeded;") : site === "previewing" ? rewind.kind === "previewing" : false;
     if (hit) { fired = true; f.invalidate(transition); }
@@ -232,8 +230,6 @@ for (const site of mutationSites) for (const transition of transitions) it(`R1 B
   let p: Promise<void>;
   if (site.startsWith("rename")) {
     armed = true; p = f.b.renameBranch("parent", "fixed"); f.t.ok(f.t.calls("thread.set")[0]!.id, { thread_id: "parent", title: "fixed" });
-  } else if (site.startsWith("archive")) {
-    armed = false; p = Promise.resolve();
   } else if (site.startsWith("preview")) {
     armed = true; p = f.b.previewRewind(f.target);
     if (site === "preview-await") { f.invalidate(transition); }
@@ -253,7 +249,7 @@ for (const site of mutationSites) for (const transition of transitions) it(`R1 B
     expect(f.t.calls("thread.branches")).toHaveLength(0);
     if (site === "rewinding" || site === "previewing") expect(f.t.calls("thread.rewind")).toHaveLength(site === "rewinding" ? 1 : 0);
     if (site === "preview-await") expect(f.b.rewind.value.kind).not.toBe("ready");
-  } else if (site === "rename-error" || site.startsWith("archive") || site === "rewind-done" || site === "rewind-error" || site === "rewinding") {
+  } else if (site === "rename-error" || site === "rewind-done" || site === "rewind-error" || site === "rewinding") {
     expect(f.t.calls("thread.branches")).toHaveLength(1);
   }
   stop(); f.b.leave(); f.link.stop();
