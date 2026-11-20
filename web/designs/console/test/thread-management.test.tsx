@@ -134,3 +134,41 @@ it("drops a late management settings completion after navigation", async () => {
     f.data.stop();
   }
 });
+
+it("does not arm actions for a foreign detail or dispatch a second visit mutation", async () => {
+  const f = await fixtureModel({ route: "threads", capabilities: ["thread.settings"], configure(db) {
+    db.threads = { A: summary("A"), B: summary("B") };
+    db.details = { A: details("A"), B: details("B") };
+  } });
+  const host = document.createElement("div");
+  document.body.append(host);
+  try {
+    f.model.applyRoute({ view: "thread-management", threadId: "A" });
+    await act(async () => { render(<ThreadManagement model={f.model} />, host); await flush(); });
+    const first = f.t.calls("thread.get").find((call) => !f.db.answered.has(call.id))!;
+    f.db.answered.add(first.id);
+    f.t.ok(first.id, details("B", { model: "foreign" }));
+    await act(async () => { await flush(); });
+    expect(host.querySelector("[data-thread-management] button")).toBeNull();
+    expect(host.querySelector("[data-thread-settings]")).toBeNull();
+
+    f.model.applyRoute({ view: "thread-management", threadId: "A" });
+    await act(async () => { await flush(); });
+    await answer(f, "thread.get", "A");
+    host.querySelector<HTMLButtonElement>("[data-thread-management] button")!.click();
+    await act(async () => { await flush(); });
+    expect(f.t.calls("thread.archive")).toHaveLength(1);
+    const save = host.querySelector<HTMLButtonElement>("[data-thread-settings] button")!;
+    expect(save.disabled).toBe(true);
+    save.click();
+    expect(f.t.calls("thread.set")).toHaveLength(0);
+    f.t.ok(f.t.calls("thread.archive")[0]!.id, { archived: ["A"] });
+    await act(async () => { await flush(); });
+    await answer(f, "thread.get", "A");
+  } finally {
+    render(null, host);
+    host.remove();
+    f.model.dispose();
+    f.data.stop();
+  }
+});
