@@ -15,19 +15,29 @@ export function ThreadQuickAction({ model, row, status, surface, onMove, report 
 
   const menu = useRef<HTMLSpanElement>(null);
   const archived = row.archived_at !== undefined;
+  const rememberOpener = (target: EventTarget | null) => {
+    const element = target instanceof HTMLElement ? target : null;
+    opener.current = element?.closest<HTMLElement>("a,button,input,[tabindex]") ?? null;
+  };
   useEffect(() => {
     const node = root.current;
     if (!node) return;
     const show = (event: Event) => {
       const detail = (event as CustomEvent<{ opener?: HTMLElement }>).detail;
-      opener.current = detail?.opener ?? null;
+      rememberOpener(detail?.opener ?? event.target);
       setOpen(true);
     };
     node.addEventListener("thread-menu-open", show);
-    const outside = (event: PointerEvent) => { if (!node.contains(event.target as Node)) closeMenu(true); };
-    document.addEventListener("pointerdown", outside);
-    return () => { node.removeEventListener("thread-menu-open", show); document.removeEventListener("pointerdown", outside); };
+    return () => node.removeEventListener("thread-menu-open", show);
   }, []);
+  useEffect(() => {
+    if (!open) return;
+    const node = root.current;
+    if (!node) return;
+    const outside = (event: PointerEvent) => { if (!node.contains(event.target as Node)) closeMenu(); };
+    document.addEventListener("pointerdown", outside);
+    return () => document.removeEventListener("pointerdown", outside);
+  }, [open]);
   useEffect(() => {
     if (open) queueMicrotask(() => menu.current?.querySelector<HTMLElement>("[role=menuitem]")?.focus());
   }, [open]);
@@ -55,14 +65,19 @@ export function ThreadQuickAction({ model, row, status, surface, onMove, report 
     if (!out.ok) throw new Error(out.error.message);
   });
   const retry = () => void run("retry", async () => { await model.retry(row.thread_id); });
-  const closeMenu = (restore = false) => { setOpen(false); if (restore) queueMicrotask(() => opener.current?.focus()); };
-  const invokeMenu = (event: Event) => { event.preventDefault(); opener.current = event.target instanceof HTMLElement ? event.target : null; setOpen(true); };
+  const closeMenu = (restore = false) => {
+    const target = opener.current;
+    setOpen(false);
+    opener.current = null;
+    if (restore) queueMicrotask(() => target?.focus());
+  };
+  const invokeMenu = (event: Event) => { event.preventDefault(); rememberOpener(event.target); setOpen(true); };
   const label = model.t.value("view.threads");
   const openFromKeyboard = (event: KeyboardEvent) => {
-    if (event.key === "ArrowDown") { event.preventDefault(); opener.current = event.currentTarget as HTMLElement; setOpen(true); }
+    if (event.key === "ArrowDown") { event.preventDefault(); rememberOpener(event.currentTarget); setOpen(true); }
   };
   return <span ref={root} class="model-picker-anchor thread-menu-anchor" data-thread-quick-action={row.thread_id} data-thread-quick-surface={surface} onContextMenu={invokeMenu}>
-    <Button class="srow-act" icon label={label} title={label} aria-haspopup="menu" aria-expanded={open} onKeyDown={openFromKeyboard} onClick={(event) => { opener.current = event.currentTarget as HTMLElement; setOpen((value) => !value); }}><Icon name="more" small /></Button>
+    <Button class="srow-act" icon label={label} title={label} aria-haspopup="menu" aria-expanded={open} onKeyDown={openFromKeyboard} onClick={(event) => { rememberOpener(event.currentTarget); setOpen((value) => !value); }}><Icon name="more" small /></Button>
     {open ? <span ref={menu} role="menu" class="model-picker" onKeyDown={(event) => {
       if (event.key === "Escape") { event.preventDefault(); closeMenu(true); }
       if (event.key === "ArrowDown" || event.key === "ArrowUp") {

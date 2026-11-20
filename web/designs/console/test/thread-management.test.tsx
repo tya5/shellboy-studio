@@ -9,7 +9,7 @@ import { fixtureModel } from "../../../ui-core/test/fixture";
 import { loadPrefs, type DesignContext } from "../../../ui-core/src";
 import { App } from "../screens/App";
 import { ThreadManagement } from "../screens/ThreadManagement";
-import { ThreadItem, ThreadQuickAction } from "../system/components"
+import { SelectRow, ThreadQuickAction } from "../system/components"
 
 async function answer(f: Awaited<ReturnType<typeof fixtureModel>>, command: string, threadId?: string): Promise<void> {
   const call = f.t.calls(command).find((candidate) => {
@@ -358,8 +358,9 @@ it("opens and navigates the shared row menu from row focus", async () => {
   const f = await fixtureModel({ route: "threads" });
   const host = document.createElement("div"); document.body.append(host);
   try {
-    render(<ThreadItem href="#" title="A" status="running" statusLabel="Running" depth={0} current={false} pending={0} action={<ThreadQuickAction model={f.model} row={summary("A")} status="running" surface="sidebar" />} />, host);
+    render(<SelectRow href="#" title="A" status="Running" depth={0} checked={false} checkLabel="Select A" onToggle={() => {}} action={<ThreadQuickAction model={f.model} row={summary("A")} status="running" surface="list" />} />, host);
     const row = host.querySelector<HTMLElement>(".tree-main")!;
+    const outside = document.createElement("button"); outside.textContent = "Outside"; document.body.append(outside);
     row.focus();
     expect(document.activeElement).toBe(row);
     row.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true }));
@@ -367,7 +368,10 @@ it("opens and navigates the shared row menu from row focus", async () => {
     expect(host.querySelector('[role="menu"]')).not.toBeNull();
     expect(host.querySelector('[role="menuitem"]')).toBe(document.activeElement);
     expect(host.querySelector('[role="menuitem"]')?.textContent).toBe(f.model.t.value("view.thread-management"));
-    host.querySelector('[role="menu"] [role="menuitem"]')!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+    const items = host.querySelectorAll<HTMLElement>('[role="menu"] [role="menuitem"]');
+    items[0]!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true }));
+    expect(document.activeElement).toBe(items[1]);
+    items[1]!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(host.querySelector('[role="menu"]')).toBeNull();
     expect(document.activeElement).toBe(row);
@@ -377,5 +381,13 @@ it("opens and navigates the shared row menu from row focus", async () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(host.querySelector('[role="menu"]')).toBeNull();
     expect(document.activeElement).toBe(row);
+    row.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    outside.focus();
+    outside.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(host.querySelector('[role="menu"]')).toBeNull();
+    expect(document.activeElement).toBe(outside);
+    outside.remove();
   } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
 });
