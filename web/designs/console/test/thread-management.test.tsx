@@ -346,19 +346,15 @@ it("shows only state-appropriate quick row actions", async () => {
       <ThreadQuickAction model={f.model} row={summary("archived", { archived_at: "now" })} status="completed" surface="list" />
     </>, host);
     for (const id of ["run", "retry", "archived"]) host.querySelector<HTMLButtonElement>(`[data-thread-quick-action="${id}"] button[aria-label]`)!.click();
-    expect(host.querySelector('[data-thread-quick-action="run"] [role="menuitem"]')?.textContent).toBe(f.model.t.value("view.thread-management"));
-    expect(host.querySelector('[data-thread-quick-action="run"] [role="menuitem"]')?.textContent).toBe(f.model.t.value("view.thread-management"));
-    expect(host.querySelector('[data-thread-quick-action="run"] [role="menuitem"]')?.textContent).toBe(f.model.t.value("action.stop"));
-    expect(host.querySelector('[data-thread-quick-action="run"] [data-thread-quick-retry]')).toBeNull();
-    expect(host.querySelector('[data-thread-quick-action="retry"] [role="menuitem"]')?.textContent).toBe(f.model.t.value("action.retry"));
-    expect(host.querySelector('[data-thread-quick-action="retry"] [data-thread-quick-stop]')).toBeNull();
-    expect(host.querySelector('[data-thread-quick-action="archived"] [role="menuitem"]')?.textContent).toContain(f.model.t.value("org.unarchive"));
-    expect(host.querySelector('[data-thread-quick-action="archived"] [data-thread-quick-stop]')).toBeNull();
-    expect(host.querySelector('[data-thread-quick-action="archived"] [data-thread-quick-retry]')).toBeNull();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const labels = (id: string) => [...host.querySelectorAll<HTMLElement>(`[data-thread-quick-action="${id}"] [role="menuitem"]`)].map((node) => node.textContent);
+    expect(labels("run")).toEqual([f.model.t.value("view.thread-management"), f.model.t.value("action.stop")]);
+    expect(labels("retry")).toEqual([f.model.t.value("view.thread-management"), f.model.t.value("action.retry")]);
+    expect(labels("archived")).toEqual([f.model.t.value("view.thread-management"), f.model.t.value("org.unarchive")]);
   } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
 });
 
-it("opens and navigates the shared row menu from row focus", () => {
+it("opens and navigates the shared row menu from row focus", async () => {
   const f = await fixtureModel({ route: "threads" });
   const host = document.createElement("div"); document.body.append(host);
   try {
@@ -367,11 +363,13 @@ it("opens and navigates the shared row menu from row focus", () => {
     row.focus();
     expect(document.activeElement).toBe(row);
     row.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
     expect(host.querySelector('[role="menu"]')).not.toBeNull();
     expect(host.querySelector('[role="menuitem"]')).toBe(document.activeElement);
     expect(host.querySelector('[role="menuitem"]')?.textContent).toBe(f.model.t.value("view.thread-management"));
     host.querySelector('[role="menu"]')!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true }));
     document.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
     expect(host.querySelector('[role="menu"]')).toBeNull();
     expect(document.activeElement).toBe(row);
   } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }

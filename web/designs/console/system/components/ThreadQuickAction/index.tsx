@@ -11,15 +11,20 @@ export function ThreadQuickAction({ model, row, status, surface, onMove, report 
   const [pending, setPending] = useState<Action>();
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLSpanElement>(null);
+  const opener = useRef<HTMLElement | null>(null);
 
   const menu = useRef<HTMLSpanElement>(null);
   const archived = row.archived_at !== undefined;
   useEffect(() => {
     const node = root.current;
     if (!node) return;
-    const show = () => setOpen(true);
+    const show = (event: Event) => {
+      const detail = (event as CustomEvent<{ opener?: HTMLElement }>).detail;
+      opener.current = detail?.opener ?? null;
+      setOpen(true);
+    };
     node.addEventListener("thread-menu-open", show);
-    const outside = (event: PointerEvent) => { if (!node.contains(event.target as Node)) setOpen(false); };
+    const outside = (event: PointerEvent) => { if (!node.contains(event.target as Node)) closeMenu(true); };
     document.addEventListener("pointerdown", outside);
     return () => { node.removeEventListener("thread-menu-open", show); document.removeEventListener("pointerdown", outside); };
   }, []);
@@ -29,7 +34,7 @@ export function ThreadQuickAction({ model, row, status, surface, onMove, report 
   const run = async (action: Action, work: () => Promise<void>) => {
     if (pending) return;
     setPending(action); setOpen(false); model.actionError.value = undefined; report?.(undefined);
-    try { await work(); if (action === "archive") report?.(model.t.value("action.archive")); else if (action === "stop") report?.(model.t.value("action.stopAccepted")); }
+    try { await work(); if (action === "stop") report?.(model.t.value("action.stopAccepted")); }
     catch (error) { model.actionError.value = error instanceof Error ? error.message : String(error); }
     finally { setPending(undefined); }
   };
@@ -39,7 +44,7 @@ export function ThreadQuickAction({ model, row, status, surface, onMove, report 
     if (!out.ok) throw new Error(out.error.message);
     const changed = (direction === "archive" ? out.value.archived : out.value.unarchived)?.includes(row.thread_id) === true;
     const already = out.value.already?.includes(row.thread_id) === true;
-    if (!changed && !already) throw new Error(model.t.value("action.refused"));
+    if (!changed && !already) throw new Error("Core did not confirm this thread action");
     report?.(direction === "archive" ? model.t.value("org.archivedResult", { n: changed ? 1 : 0, already: already ? 1 : 0 }) : model.t.value("org.unarchivedResult", { n: changed ? 1 : 0, already: already ? 1 : 0 }));
     try { await model.data.refreshThreadList(); await model.org.read(); } catch { /* Core outcome remains authoritative. */ }
   });
@@ -50,14 +55,14 @@ export function ThreadQuickAction({ model, row, status, surface, onMove, report 
     if (!out.ok) throw new Error(out.error.message);
   });
   const retry = () => void run("retry", async () => { await model.retry(row.thread_id); });
-  const closeMenu = (restore = false) => { setOpen(false); if (restore) queueMicrotask(() => root.current?.querySelector<HTMLButtonElement>("[aria-haspopup=menu]")?.focus()); };
-  const invokeMenu = (event: Event) => { event.preventDefault(); setOpen(true); };
+  const closeMenu = (restore = false) => { setOpen(false); if (restore) queueMicrotask(() => opener.current?.focus()); };
+  const invokeMenu = (event: Event) => { event.preventDefault(); opener.current = event.target instanceof HTMLElement ? event.target : null; setOpen(true); };
   const label = model.t.value("view.threads");
   const openFromKeyboard = (event: KeyboardEvent) => {
-    if (event.key === "ArrowDown") { event.preventDefault(); setOpen(true); }
+    if (event.key === "ArrowDown") { event.preventDefault(); opener.current = event.currentTarget as HTMLElement; setOpen(true); }
   };
   return <span ref={root} class="model-picker-anchor thread-menu-anchor" data-thread-quick-action={row.thread_id} data-thread-quick-surface={surface} onContextMenu={invokeMenu}>
-    <Button class="srow-act" icon label={label} title={label} aria-haspopup="menu" aria-expanded={open} onKeyDown={openFromKeyboard} onClick={() => setOpen((value) => !value)}><Icon name="more" small /></Button>
+    <Button class="srow-act" icon label={label} title={label} aria-haspopup="menu" aria-expanded={open} onKeyDown={openFromKeyboard} onClick={(event) => { opener.current = event.currentTarget as HTMLElement; setOpen((value) => !value); }}><Icon name="more" small /></Button>
     {open ? <span ref={menu} role="menu" class="model-picker" onKeyDown={(event) => {
       if (event.key === "Escape") { event.preventDefault(); closeMenu(true); }
       if (event.key === "ArrowDown" || event.key === "ArrowUp") {

@@ -22,13 +22,13 @@ export function SelectRow({ title, href, status, depth, checked, checkLabel, onT
       }
     : {};
   return (
-    <div onContextMenu={(event) => { event.preventDefault(); (event.currentTarget as HTMLElement).querySelector<HTMLElement>("[data-thread-quick-action]")?.dispatchEvent(new Event("thread-menu-open")); }} onKeyDown={(event) => { if (event.key === "ArrowDown" && (event.target as HTMLElement).matches(".tree-main, .tcheck input")) { event.preventDefault(); (event.currentTarget as HTMLElement).querySelector<HTMLElement>("[data-thread-quick-action]")?.dispatchEvent(new Event("thread-menu-open")); } }} class={`srow${checked ? " on" : ""}${drag?.over ? " drop" : ""}`} style={depth > 0 ? { paddingLeft: `${Math.min(depth, 4) * 20}px` } : undefined} {...dnd}>
+    <div onContextMenu={(event) => { event.preventDefault(); (event.currentTarget as HTMLElement).querySelector<HTMLElement>("[data-thread-quick-action]")?.dispatchEvent(new CustomEvent("thread-menu-open", { detail: { opener: event.target as HTMLElement } })); }} onKeyDown={(event) => { if (event.key === "ArrowDown" && (event.target as HTMLElement).matches(".tree-main, .tcheck input")) { event.preventDefault(); (event.currentTarget as HTMLElement).querySelector<HTMLElement>("[data-thread-quick-action]")?.dispatchEvent(new Event("thread-menu-open")); } }} class={`srow${checked ? " on" : ""}${drag?.over ? " drop" : ""}`} style={depth > 0 ? { paddingLeft: `${Math.min(depth, 4) * 20}px` } : undefined} {...dnd}>
       <label class="tcheck">
         <input type="checkbox" aria-label={checkLabel} checked={checked} onChange={onToggle} />
       </label>
       <span class="srow-status">{status}</span>
       <div class="srow-text">
-        <a class="tree-main" href={href} onKeyDown={(event) => { if (event.key === "ArrowDown") { event.preventDefault(); (event.currentTarget.closest(".srow") as HTMLElement)?.querySelector<HTMLElement>("[data-thread-quick-action]")?.dispatchEvent(new Event("thread-menu-open")); } }}>{title}</a>
+        <a class="tree-main" href={href}>{title}</a>
         {note ? <div class="muted caption">{note}</div> : null}
         {tags && tags.length > 0 ? (
           <ul class="tags" aria-label={tagsLabel}>
