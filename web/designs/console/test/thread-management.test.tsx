@@ -9,7 +9,7 @@ import { fixtureModel } from "../../../ui-core/test/fixture";
 import { loadPrefs, type DesignContext } from "../../../ui-core/src";
 import { App } from "../screens/App";
 import { ThreadManagement } from "../screens/ThreadManagement";
-import { ThreadQuickAction } from "../system/components"
+import { ThreadItem, ThreadQuickAction } from "../system/components"
 
 async function answer(f: Awaited<ReturnType<typeof fixtureModel>>, command: string, threadId?: string): Promise<void> {
   const call = f.t.calls(command).find((candidate) => {
@@ -346,7 +346,7 @@ it("shows only state-appropriate quick row actions", async () => {
       <ThreadQuickAction model={f.model} row={summary("archived", { archived_at: "now" })} status="completed" surface="list" />
     </>, host);
     for (const id of ["run", "retry", "archived"]) host.querySelector<HTMLButtonElement>(`[data-thread-quick-action="${id}"] button[aria-label]`)!.click();
-    expect(host.querySelector('[data-thread-quick-action="run"] [role="menuitem"]')?.textContent).toBe(f.model.t.value("nav.more"));
+    expect(host.querySelector('[data-thread-quick-action="run"] [role="menuitem"]')?.textContent).toBe(f.model.t.value("view.thread-management"));
     expect(host.querySelector('[data-thread-quick-action="run"] [data-thread-quick-stop]')?.textContent).toBe(f.model.t.value("action.stop"));
     expect(host.querySelector('[data-thread-quick-action="run"] [data-thread-quick-retry]')).toBeNull();
     expect(host.querySelector('[data-thread-quick-action="retry"] [data-thread-quick-retry]')?.textContent).toBe(f.model.t.value("action.retry"));
@@ -354,5 +354,20 @@ it("shows only state-appropriate quick row actions", async () => {
     expect(host.querySelector('[data-thread-quick-action="archived"] [role="menuitem"]')?.textContent).toContain(f.model.t.value("org.unarchive"));
     expect(host.querySelector('[data-thread-quick-action="archived"] [data-thread-quick-stop]')).toBeNull();
     expect(host.querySelector('[data-thread-quick-action="archived"] [data-thread-quick-retry]')).toBeNull();
+  } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
+});
+
+it("opens and navigates the shared row menu from row focus", () => {
+  const f = fixtureModel({ route: "threads" });
+  const host = document.createElement("div"); document.body.append(host);
+  try {
+    render(<ThreadItem href="#" title="A" status="running" statusLabel="Running" depth={0} current={false} pending={0} action={<ThreadQuickAction model={f.model} row={summary("A")} status="running" surface="sidebar" />} />, host);
+    const row = host.querySelector<HTMLElement>(".tree-main")!;
+    row.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true }));
+    expect(host.querySelector('[role="menu"]')).not.toBeNull();
+    expect(host.querySelector('[role="menuitem"]')?.textContent).toBe(f.model.t.value("view.thread-management"));
+    host.querySelector('[role="menu"]')!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true }));
+    document.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+    expect(host.querySelector('[role="menu"]')).toBeNull();
   } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
 });
