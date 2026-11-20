@@ -12,7 +12,7 @@ type DeletePreviewFacts = { threadCount?: number; descendantCount?: number; surv
 type DeleteState = { id: string; route: Route; owner: OwnerIdentity; visit: Visit; kind: "previewing" | "confirm" | "deleting" | "failed" | "done"; marker?: { thread_count: number; ids_hash: string }; facts?: DeletePreviewFacts; message?: string };
 
 
-function RunActionPanel({ model, id, status, runId }: { model: AppModel; id: string; status: "running" | "recovery"; runId?: string }) {
+function RunActionPanel({ model, id, status, runId }: { model: AppModel; id: string; status?: "running" | "recovery"; runId?: string }) {
   const [pending, setPending] = useState<"retry" | "stop">();
   const [result, setResult] = useState<string>();
   const run = async (action: "retry" | "stop") => {
@@ -27,7 +27,7 @@ function RunActionPanel({ model, id, status, runId }: { model: AppModel; id: str
     } finally { setPending(undefined); }
   };
   return <div class="band" data-run-actions="">
-    {status === "running" ? <Button variant="stop" disabled={pending !== undefined} onClick={() => void run("stop")}>{model.t.value("action.stop")}</Button> : null}
+    {status === "running" && runId ? <Button variant="stop" disabled={pending !== undefined} onClick={() => void run("stop")}>{model.t.value("action.stop")}</Button> : null}
     {status === "recovery" ? <Button variant="primary" disabled={pending !== undefined} onClick={() => void run("retry")}>{model.t.value("action.retry")}</Button> : null}
     {result ? <Notice>{result}</Notice> : null}
   </div>;
@@ -255,7 +255,7 @@ export function ThreadManagement({ model }: { model: AppModel }) {
     <div class="band" data-thread-management="">
       {actionable ? <Button disabled={surfaceBusy || currentAction?.kind === "running"} onClick={() => void mutate()}>{archived ? t("org.unarchive") : t("action.archive")}</Button> : null}
     </div>
-    {rowStatus === "running" || rowStatus === "recovery" ? <RunActionPanel key={id} model={model} id={id} status={rowStatus} runId={detail.run_id} /> : null}
+    <RunActionPanel key={id} model={model} id={id} status={rowStatus === "running" || rowStatus === "recovery" ? rowStatus : undefined} runId={detail.run_id} />
     {settings ? <div class="band" data-thread-settings="">
       <Field ariaLabel={t("model.change")} value={settings.model} disabled={surfaceBusy || settings.saving} onInput={(e) => setSettingsState((prev) => prev && prev.id === id && prev.route === route && prev.owner === owner && prev.visit === visitRef.current ? { ...prev, model: e.currentTarget.value, saved: false, error: undefined } : prev)} />
       <Field ariaLabel={t("model.effort")} value={settings.effort} disabled={surfaceBusy || settings.saving} onInput={(e) => setSettingsState((prev) => prev && prev.id === id && prev.route === route && prev.owner === owner && prev.visit === visitRef.current ? { ...prev, effort: e.currentTarget.value, saved: false, error: undefined } : prev)} />
