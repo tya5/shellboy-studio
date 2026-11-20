@@ -204,6 +204,10 @@ it("shares one admission across the real sidebar and Threads surfaces", async ()
     expect(sidebarAction).toBeDefined();
     listAction.click();
     await flush();
+    const preflight = f.t.calls("thread.get").find((call) => !f.db.answered.has(call.id) && (call.args as { thread_id?: string }).thread_id === "B")!;
+    expect(preflight).toBeDefined();
+    f.t.ok(preflight.id, details("B"));
+    await act(async () => { await flush(); });
     sidebarAction.click();
     expect(f.t.calls("thread.archive")).toHaveLength(1);
     expect(f.t.calls("thread.archive")[0]!.args).toEqual({ thread_ids: ["B"] });
