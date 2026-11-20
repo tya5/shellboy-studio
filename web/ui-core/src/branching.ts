@@ -586,6 +586,7 @@ export class ThreadOrg {
   private readonly reserve: ((owner: object, ids: readonly string[]) => object | undefined) | undefined;
   private readonly releaseReservation: ((owner: object, ids: readonly string[], token: object) => void) | undefined;
   private readonly ownsReservation: ((owner: object, ids: readonly string[], token: object) => boolean) | undefined;
+  private bulkAttempt: object | undefined;
   private pages = 1;
   private cancel = new Cancel();
   /** Names for the Tag and Directory groupings, and their members. Used only when the owner can list them. */
@@ -663,6 +664,7 @@ export class ThreadOrg {
 
   /** Reads again up to the pages shown. A cursor bound to another mode or list starts over. */
   async read(): Promise<void> {
+    if (!this.authority?.()) return;
     const kind = this.headingKind();
     if (kind) {
       await this.headings.reload(kind);
@@ -697,7 +699,11 @@ export class ThreadOrg {
         }
         const now = this.state.peek();
         const stillAuthoritative = readAuthority !== undefined && this.authority?.()?.owner === readAuthority.owner && this.authority?.()?.route === readAuthority.route && this.groupBy.peek() === readGrouping;
-        if (now.mode !== mode || now.query !== query || !stillAuthoritative) {
+        if (!stillAuthoritative) {
+          this.state.value = { ...now, loading: false };
+          return;
+        }
+        if (now.mode !== mode || now.query !== query) {
           this.again = true;
           continue;
         }
@@ -708,6 +714,7 @@ export class ThreadOrg {
         const known = new Set(items.map((s) => s.thread_id));
         batch(() => {
           this.state.value = error ? { ...now, loading: this.again, error } : { ...now, loading: this.again, items, nextCursor: cursor, loaded: true, error: undefined };
+          if (error) this.publishedView = undefined;
           if (!error) {
             this.revision++;
             this.publishedView = readAuthority ? { owner: readAuthority.owner, route: readAuthority.route, mode, query, grouping: readGrouping } : undefined;
@@ -812,7 +819,8 @@ export class ThreadOrg {
     if (!token) return;
     const verb = this.state.peek().mode === "exclude" ? "archive" : "unarchive";
     const options = { descendants: false };
-    const current = () => this.revision === revision && this.authority?.()?.owner === authority.owner && this.authority?.()?.route === authority.route && this.ownsReservation?.(authority.owner, ids, token) === true && ids.every((id) => this.shown().some((row) => row.thread_id === id));
+    this.bulkAttempt = token;
+    const current = () => this.bulkAttempt === token && this.revision === revision && this.authority?.()?.owner === authority.owner && this.authority?.()?.route === authority.route && this.ownsReservation?.(authority.owner, ids, token) === true && ids.every((id) => this.shown().some((row) => row.thread_id === id));
     this.action.value = { kind: "running" };
     try {
     const out = verb === "archive" ? await this.ops.threadArchive(ids, options) : await this.ops.threadUnarchive(ids, options);
@@ -827,6 +835,10 @@ export class ThreadOrg {
     });
     await this.read();
     } finally {
+      if (this.bulkAttempt === token) {
+        this.bulkAttempt = undefined;
+        if (this.action.peek().kind === "running") this.action.value = { kind: "idle" };
+      }
       this.releaseReservation?.(authority.owner, ids, token);
     }
   }
