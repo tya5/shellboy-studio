@@ -445,7 +445,7 @@ export class AppModel {
     }));
     this.disposers.push(effect(() => { this.data.threadList.value; this.branchCompare.hint(); }));
     this.senderTitles = new SenderTitles(this.ops);
-    this.org = new ThreadOrg(this.ops, () => this.data.capabilities.peek(), () => { const owner = this.data.owner.peek(); const route = this.route.peek(); return route.view === "threads" && owner.state === "connected" ? { owner: owner as object, route } : undefined; }, undefined, (owner, ids) => this.threadActionReserve(owner, ids), (owner, ids, token) => this.threadActionRelease(owner, ids, token), (owner, ids, token) => this.threadActionOwns(owner, ids, token));
+    this.org = new ThreadOrg(this.ops, () => this.data.capabilities.peek(), () => { const owner = this.data.owner.peek(); const route = this.route.peek(); return route.view === "threads" && owner.state === "connected" ? { owner: owner as object, route } : undefined; }, (owner, ids) => this.threadActionReserve(owner, ids), (owner, ids, token) => this.threadActionRelease(owner, ids, token), (owner, ids, token) => this.threadActionOwns(owner, ids, token));
     this.config = new ConfigEditor(this.ops);
     this.guideRegistration = new GuideRegistration(this.ops);
     this.setup = new ConnectionSetup(this.ops);

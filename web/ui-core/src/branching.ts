@@ -581,7 +581,7 @@ export class ThreadOrg {
   private running = false;
   private again = false;
   private revision = 0;
-  private publishedOwner: object | undefined;
+  private publishedView: { owner: object; route: object; mode: string; query: string; grouping: ThreadGrouping } | undefined;
   private readonly authority: (() => { owner: object; route: object } | undefined) | undefined;
   private readonly reserve: ((owner: object, ids: readonly string[]) => object | undefined) | undefined;
   private readonly releaseReservation: ((owner: object, ids: readonly string[], token: object) => void) | undefined;
@@ -677,6 +677,8 @@ export class ThreadOrg {
     try {
       do {
         this.again = false;
+        const readAuthority = this.authority?.();
+        const readGrouping = this.groupBy.peek();
         const { mode, query } = this.state.peek();
         this.cancel = new Cancel();
         const cancel = this.cancel;
@@ -694,7 +696,8 @@ export class ThreadOrg {
           if (cursor === undefined) break;
         }
         const now = this.state.peek();
-        if (now.mode !== mode || now.query !== query) {
+        const stillAuthoritative = readAuthority !== undefined && this.authority?.()?.owner === readAuthority.owner && this.authority?.()?.route === readAuthority.route && this.groupBy.peek() === readGrouping;
+        if (now.mode !== mode || now.query !== query || !stillAuthoritative) {
           this.again = true;
           continue;
         }
@@ -707,7 +710,7 @@ export class ThreadOrg {
           this.state.value = error ? { ...now, loading: this.again, error } : { ...now, loading: this.again, items, nextCursor: cursor, loaded: true, error: undefined };
           if (!error) {
             this.revision++;
-            this.publishedOwner = this.authority?.()?.owner;
+            this.publishedView = readAuthority ? { owner: readAuthority.owner, route: readAuthority.route, mode, query, grouping: readGrouping } : undefined;
             this.selected.value = new Set([...this.selected.peek()].filter((id) => known.has(id)));
           }
         });
@@ -803,7 +806,8 @@ export class ThreadOrg {
     const ids = [...this.selected.peek()];
     const revision = this.revision;
     const authority = this.authority?.();
-    if (ids.length === 0 || !authority || authority.owner !== this.publishedOwner || ids.some((id) => !shown.some((row) => row.thread_id === id))) return;
+    const published = this.publishedView;
+    if (ids.length === 0 || !authority || !published || authority.owner !== published.owner || authority.route !== published.route || this.state.peek().mode !== published.mode || this.state.peek().query !== published.query || this.groupBy.peek() !== published.grouping || ids.some((id) => !shown.some((row) => row.thread_id === id))) return;
     const token = this.reserve?.(authority.owner, ids);
     if (!token) return;
     const verb = this.state.peek().mode === "exclude" ? "archive" : "unarchive";
@@ -812,10 +816,7 @@ export class ThreadOrg {
     this.action.value = { kind: "running" };
     try {
     const out = verb === "archive" ? await this.ops.threadArchive(ids, options) : await this.ops.threadUnarchive(ids, options);
-    if (!current()) {
-      this.action.value = { kind: "failed", error: { kind: "invalid_response", message: "The selected Threads changed before the owner result was accepted." } };
-      return;
-    }
+    if (!current()) return;
     if (!out.ok) {
       this.action.value = { kind: "failed", error: out.error };
       return;
