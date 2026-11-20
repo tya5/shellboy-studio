@@ -587,6 +587,7 @@ export class ThreadOrg {
   private readonly releaseReservation: ((owner: object, ids: readonly string[], token: object) => void) | undefined;
   private readonly ownsReservation: ((owner: object, ids: readonly string[], token: object) => boolean) | undefined;
   private bulkAttempt: object | undefined;
+  private selectionGeneration = 0;
   private pages = 1;
   private cancel = new Cancel();
   /** Names for the Tag and Directory groupings, and their members. Used only when the owner can list them. */
@@ -700,6 +701,7 @@ export class ThreadOrg {
         const now = this.state.peek();
         const stillAuthoritative = readAuthority !== undefined && this.authority?.()?.owner === readAuthority.owner && this.authority?.()?.route === readAuthority.route && this.groupBy.peek() === readGrouping;
         if (!stillAuthoritative) {
+          if (this.again && this.authority?.()) continue;
           this.state.value = { ...now, loading: false };
           return;
         }
@@ -788,12 +790,16 @@ export class ThreadOrg {
   }
 
   toggle(id: string): void {
+    this.selectionGeneration++;
+    if (this.bulkAttempt) this.action.value = { kind: "idle" };
     const next = new Set(this.selected.peek());
     if (!next.delete(id)) next.add(id);
     this.selected.value = next;
   }
 
   setMany(ids: readonly string[], on: boolean): void {
+    this.selectionGeneration++;
+    if (this.bulkAttempt) this.action.value = { kind: "idle" };
     const next = new Set(this.selected.peek());
     for (const id of ids) {
       if (on) next.add(id);
@@ -803,6 +809,7 @@ export class ThreadOrg {
   }
 
   clear(): void {
+    this.selectionGeneration++;
     this.selected.value = new Set();
     this.action.value = { kind: "idle" };
   }
@@ -812,15 +819,16 @@ export class ThreadOrg {
     const shown = this.shown();
     const ids = [...this.selected.peek()];
     const revision = this.revision;
+    const selectionGeneration = this.selectionGeneration;
     const authority = this.authority?.();
     const published = this.publishedView;
-    if (this.groupBy.peek() !== "tree" || ids.length === 0 || !authority || !published || authority.owner !== published.owner || authority.route !== published.route || this.state.peek().mode !== published.mode || this.state.peek().query !== published.query || this.groupBy.peek() !== published.grouping || ids.some((id) => !shown.some((row) => row.thread_id === id))) return;
+    if (this.running || this.groupBy.peek() !== "tree" || ids.length === 0 || !authority || !published || authority.owner !== published.owner || authority.route !== published.route || this.state.peek().mode !== published.mode || this.state.peek().query !== published.query || this.groupBy.peek() !== published.grouping || ids.some((id) => !shown.some((row) => row.thread_id === id))) return;
     const token = this.reserve?.(authority.owner, ids);
     if (!token) return;
     const verb = this.state.peek().mode === "exclude" ? "archive" : "unarchive";
     const options = { descendants: false };
     this.bulkAttempt = token;
-    const current = () => this.bulkAttempt === token && this.revision === revision && this.authority?.()?.owner === authority.owner && this.authority?.()?.route === authority.route && this.ownsReservation?.(authority.owner, ids, token) === true && ids.every((id) => this.shown().some((row) => row.thread_id === id));
+    const current = () => this.bulkAttempt === token && this.selectionGeneration === selectionGeneration && this.revision === revision && this.authority?.()?.owner === authority.owner && this.authority?.()?.route === authority.route && this.ownsReservation?.(authority.owner, ids, token) === true && ids.every((id) => this.shown().some((row) => row.thread_id === id));
     this.action.value = { kind: "running" };
     try {
     const out = verb === "archive" ? await this.ops.threadArchive(ids, options) : await this.ops.threadUnarchive(ids, options);
