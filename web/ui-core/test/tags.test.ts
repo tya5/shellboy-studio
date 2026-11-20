@@ -263,3 +263,37 @@ it("binds a bulk tag call to the published IDs and preserves a newer selection",
   expect(org.selected.value.has("ghost")).toBe(true);
   expect(org.tagDraft.value.add).toEqual(["fresh", "later"]);
 });
+
+it("rejects a late closed heading read and authorizes only the reopened read", async () => {
+  const f = await open({ capabilities: both, configure: (d) => populate(d, { old: ["lead"] }) });
+  const org = f.model.org;
+  org.setGrouping("tag");
+  await settle(f.t, f.db);
+  org.headings.toggle("old");
+  await flush();
+  org.headings.toggle("old");
+  await flush();
+  const pending = f.t.calls("thread.list").filter((call) => (call.args as { tags?: string[] }).tags?.[0] === "old" && !f.db.answered.has(call.id));
+  expect(pending).toHaveLength(2);
+  const oldRead = pending[0]!;
+  const currentRead = pending[1]!;
+  f.db.answered.add(oldRead.id);
+  f.t.ok(oldRead.id, { items: [summary("old-late", { tags: ["old"] })] });
+  await flush();
+  expect(org.shown().some((row) => row.thread_id === "old-late")).toBe(false);
+  org.selected.value = new Set(["old-late"]);
+  org.addTag("fresh");
+  await org.applyTags();
+  expect(f.t.calls("thread.tag")).toHaveLength(0);
+  f.db.answered.add(currentRead.id);
+  f.t.ok(currentRead.id, { items: [summary("new-current", { tags: ["old"] })] });
+  await flush();
+  org.selected.value = new Set(["new-current"]);
+  org.addTag("fresh");
+  const tagging = org.applyTags();
+  await flush();
+  const call = f.t.calls("thread.tag").at(-1)!;
+  expect(call.args).toEqual({ thread_ids: ["new-current"], add: ["fresh"] });
+  f.t.ok(call.id, { changed: ["new-current"], unchanged: [], not_found: [] });
+  await tagging;
+});
