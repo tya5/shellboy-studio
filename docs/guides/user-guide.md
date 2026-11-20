@@ -148,3 +148,46 @@ per owner/view/explicit-page budget. Existing current owner-list titles are reus
 Background updates do not refill that budget or retry failures. Unresolved or
 additional IDs still display in full; open the ID link to inspect the Thread.
 Leaving the view cancels its lookups and discards view-owned title entries.
+
+## Thread management
+
+Studio's thread management page is available at `#/thread-management/<thread-id>`.
+Open it from a sidebar row, the Threads list, or the conversation header. The page
+is scoped to that exact Thread; it does not use another selected Thread or a bulk
+selection to decide which Thread an action affects.
+
+### Settings
+
+The management page reads the current model and effort from the owner. When the
+owner advertises `thread.settings`, edit those fields and save. Studio sends only
+changed settings (an empty effort clears the effort), then shows success only
+when an authoritative same-Thread readback matches. A stale owner, route, or
+readback failure is not treated as saved.
+
+### Archive and tags
+
+Use the row action in the sidebar or Threads list to archive or unarchive one
+Thread. The action targets the clicked Thread, does not include descendants, and
+rechecks the owner result before publishing the refreshed row. The management
+page exposes the same archive/unarchive operation.
+
+Bulk archive/unarchive and tag actions use the current published selection only.
+They fail closed when the owner, view, filter, grouping, selected rows, or
+publication is stale. Results preserve changed, unchanged, and not-found
+outcomes; a refresh completing is not by itself proof that the owner published a
+new list. Tag input limits and draft edits remain visible rather than being
+silently discarded.
+
+### Deletion
+
+Deletion is currently available only for one Thread from its management page.
+Studio first requests an owner preview. Confirmation is a separate explicit step
+and carries the exact one-use preview marker; stale, blocked, rejected, unmarked,
+or descendant deletion requests are not retried. A successful deletion requires
+the owner's accepted result and retires the page's action controls. List-refresh
+warnings are shown separately from the owner's deletion acceptance.
+
+Bulk deletion is unavailable. Core's current deletion contract accepts one
+`thread_id` and validates its marker and blockers transactionally for that one
+Thread. Studio has no atomic exact-set deletion operation or rollback boundary,
+so it does not emulate bulk deletion with sequential singleton writes.
