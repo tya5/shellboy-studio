@@ -136,7 +136,7 @@ function Members({ model, name, member, row }: { model: AppModel; name: string; 
   );
 }
 
-export function Threads({ model }: { model: AppModel }) {
+export function Threads({ model, report }: { model: AppModel; report?: (message: string | undefined) => void }) {
   const t = model.t.value;
   const org = model.org;
   const state = org.state.value;
@@ -187,7 +187,7 @@ export function Threads({ model }: { model: AppModel }) {
         tagsLabel={t("org.tag.list")}
         note={notes || undefined}
         age={formatAge(s.updated_at, model.coarseNow.value)}
-        action={<ThreadQuickAction model={model} row={s} status={r.status} surface="list" onMove={canMove ? () => org.pickParent(s.thread_id) : undefined} />}
+        action={<ThreadQuickAction model={model} row={s} status={r.status} surface="list" report={report} onMove={canMove ? () => org.pickParent(s.thread_id) : undefined} />}
         drag={
           canMove
             ? {

@@ -25,6 +25,7 @@ export function App({ context }: { context: DesignContext }) {
   const route = model.route.value;
   const [drawer, setDrawer] = useState(false);
   const [settings, setSettings] = useState(false);
+  const [actionNotice, setActionNotice] = useState<string>();
   const [query, setQuery] = useState("");
   const picker = model.modelPicker.value;
   useEffect(() => { if (picker.open && picker.thread !== model.selectedId.value) model.closeModelPicker(); }, [picker.open, picker.thread, model.selectedId.value]);
@@ -104,7 +105,7 @@ export function App({ context }: { context: DesignContext }) {
                 <ThreadItem
                   key={r.summary.thread_id}
                   href={formatRoute({ view: "conversation", threadId: r.summary.thread_id })}
-                  action={<ThreadQuickAction model={model} row={r.summary} status={r.status} surface="sidebar" />}
+                  action={<ThreadQuickAction model={model} row={r.summary} status={r.status} surface="sidebar" report={setActionNotice} />}
                   title={r.summary.title}
                   status={r.status}
                   statusLabel={r.status ? statusLabel(t, r.status) : ""}
@@ -146,11 +147,12 @@ export function App({ context }: { context: DesignContext }) {
           <div class="alerts">
             {conn === "authNeeded" ? <AuthPrompt context={context} /> : null}
             {conn === "ownerDown" ? <Notice tone="wait">{t("banner.ownerDown")}</Notice> : null}
+            {actionNotice ? <Notice>{actionNotice}</Notice> : null}
             {model.actionError.value ? <Notice tone="bad">{model.actionError.value}</Notice> : null}
           </div>
           <section class="view" aria-label={title}>
             <AppsHost context={context} />
-            {route.view === "apps" ? null : route.view === "conversation" ? <Conversation model={model} /> : route.view === "monitor" ? <Monitor context={context} /> : route.view === "inbox" ? <Inbox model={model} /> : route.view === "analytics" ? <Analytics context={context} /> : route.view === "branches" ? <Branches model={model} /> : route.view === "threads" ? <Threads model={model} /> : route.view === "thread-management" ? <ThreadManagement model={model} /> : route.view === "setup" ? <Setup context={context} /> : <SettingsView context={context} />}
+            {route.view === "apps" ? null : route.view === "conversation" ? <Conversation model={model} /> : route.view === "monitor" ? <Monitor context={context} /> : route.view === "inbox" ? <Inbox model={model} /> : route.view === "analytics" ? <Analytics context={context} /> : route.view === "branches" ? <Branches model={model} /> : route.view === "threads" ? <Threads model={model} report={setActionNotice} /> : route.view === "thread-management" ? <ThreadManagement model={model} /> : route.view === "setup" ? <Setup context={context} /> : <SettingsView context={context} />}
           </section>
           <footer class="status">
             <StatusMark

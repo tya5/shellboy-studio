@@ -7,7 +7,7 @@ import type { StatusKey } from "../../../../../ui-core/src/status";
 type Action = "archive" | "stop" | "retry";
 
 /** Shared row menu: the row remains navigable while mutations stay in one overflow surface. */
-export function ThreadQuickAction({ model, row, status, surface, onMove }: { model: AppModel; row: ThreadSummary; status: StatusKey | undefined; surface: "sidebar" | "list"; onMove?: () => void }) {
+export function ThreadQuickAction({ model, row, status, surface, onMove, report }: { model: AppModel; row: ThreadSummary; status: StatusKey | undefined; surface: "sidebar" | "list"; onMove?: () => void; report?: (message: string | undefined) => void }) {
   const [pending, setPending] = useState<Action>();
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLSpanElement>(null);
@@ -28,8 +28,8 @@ export function ThreadQuickAction({ model, row, status, surface, onMove }: { mod
   }, [open]);
   const run = async (action: Action, work: () => Promise<void>) => {
     if (pending) return;
-    setPending(action); setOpen(false); model.actionError.value = undefined;
-    try { await work(); }
+    setPending(action); setOpen(false); model.actionError.value = undefined; report?.(undefined);
+    try { await work(); if (action === "archive") report?.(model.t.value("action.archive")); else if (action === "stop") report?.(model.t.value("action.stopAccepted")); }
     catch (error) { model.actionError.value = error instanceof Error ? error.message : String(error); }
     finally { setPending(undefined); }
   };
