@@ -10,6 +10,7 @@ type ActionState = { id: string; route: Route; owner: OwnerIdentity; visit: Visi
 type SettingsState = { id: string; route: Route; owner: OwnerIdentity; visit: Visit; model: string; effort: string; initialEffort: string; saving: boolean; saved: boolean; error?: string };
 type DeleteState = { id: string; route: Route; owner: OwnerIdentity; visit: Visit; kind: "previewing" | "confirm" | "deleting" | "failed" | "done"; marker?: { thread_count: number; ids_hash: string }; message?: string };
 type ObservationState = { id: string; route: Route; owner: OwnerIdentity; visit: Visit; detailToken?: object; kind: "loading" | "ready" | "unavailable"; runId?: string; turnId?: string; error?: string };
+type RunActionState = { id: string; route: Route; owner: OwnerIdentity; visit: Visit; detailToken: object; kind: "running" | "refused" | "accepted"; message?: string };
 
 /** One-thread management entry; route reads and mutations are independent of bulk selection. */
 export function ThreadManagement({ model }: { model: AppModel }) {
@@ -24,6 +25,7 @@ export function ThreadManagement({ model }: { model: AppModel }) {
   const [settingsState, setSettingsState] = useState<SettingsState>();
   const [deleteState, setDeleteState] = useState<DeleteState>();
   const [observationState, setObservationState] = useState<ObservationState>();
+  const [runActionState, setRunActionState] = useState<RunActionState>();
   const deleteProofRef = useRef<{ id: string; visit: Visit; marker: { thread_count: number; ids_hash: string }; used: boolean }>();
   const mutationRef = useRef<object>();
   const [busyVersion, setBusyVersion] = useState(0);
@@ -31,6 +33,7 @@ export function ThreadManagement({ model }: { model: AppModel }) {
   const currentAction = actionState && actionState.id === id && actionState.route === route && actionState.owner === owner && actionState.visit === visitRef.current ? actionState : undefined;
   const currentSettings = settingsState && settingsState.id === id && settingsState.route === route && settingsState.owner === owner && settingsState.visit === visitRef.current ? settingsState : undefined;
   const currentObservation = observationState && observationState.id === id && observationState.route === route && observationState.owner === owner && observationState.visit === visitRef.current && observationState.detailToken === detailIdentityRef.current?.token ? observationState : undefined;
+  const currentRunAction = runActionState && runActionState.id === id && runActionState.route === route && runActionState.owner === owner && runActionState.visit === visitRef.current && runActionState.detailToken === detailIdentityRef.current?.token ? runActionState : undefined;
   const surfaceBusy = busyVersion >= 0 && mutationRef.current !== undefined;
   const admit = (visit: Visit): object | undefined => {
     if (mutationRef.current !== undefined || visitRef.current !== visit) return undefined;
@@ -150,6 +153,38 @@ export function ThreadManagement({ model }: { model: AppModel }) {
   };
 
   const settings = currentSettings;
+  const retry = async () => {
+    const target = currentDetail;
+    const detailToken = detailIdentityRef.current?.token;
+    const targetVisit = target?.visit;
+    if (!target || !detailToken || !targetVisit || surfaceBusy || currentRunAction?.kind === "running") return;
+    const currentTarget = () => visitRef.current === targetVisit && model.route.peek() === route && model.route.peek().view === "thread-management" && model.data.owner.peek() === owner && detailIdentityRef.current?.token === detailToken;
+    const token = admit(targetVisit);
+    if (!token) return;
+    setRunActionState({ id, route, owner, visit: targetVisit, detailToken, kind: "running" });
+    try {
+      const freshDetail = await model.ops.threadGet(id);
+      if (!currentTarget()) return;
+      const runId = freshDetail.ok && freshDetail.value.thread_id === id ? freshDetail.value.run_id : undefined;
+      const turnId = freshDetail.ok && freshDetail.value.thread_id === id ? freshDetail.value.turn_id : undefined;
+      if (runId !== target.value?.run_id || turnId !== target.value?.turn_id || typeof runId !== "string" || typeof turnId !== "string") {
+        setRunActionState({ id, route, owner, visit: targetVisit, detailToken, kind: "refused", message: "Retry refused: the accepted Thread identity changed" });
+        return;
+      }
+      const run = await model.ops.runGet(runId, { threadId: id });
+      if (!currentTarget()) return;
+      const turn = await model.ops.turnGet(turnId, { runId, threadId: id });
+      if (!currentTarget()) return;
+      if (!run.ok || run.value.run_id !== runId || run.value.thread_id !== id || run.value.turn_id !== turnId || !turn.ok || turn.value.turn_id !== turnId || turn.value.run_id !== runId || turn.value.thread_id !== id || run.value.state !== "live" || turn.value.state !== "recovery_wait") {
+        setRunActionState({ id, route, owner, visit: targetVisit, detailToken, kind: "refused", message: `Retry refused${turn.ok && turn.value.recovery_hint ? `: ${turn.value.recovery_hint}` : ""}` });
+        return;
+      }
+      const out = await model.ops.runRetry(runId);
+      if (!currentTarget()) return;
+      setRunActionState(out.ok ? { id, route, owner, visit: targetVisit, detailToken, kind: "accepted" } : { id, route, owner, visit: targetVisit, detailToken, kind: "refused", message: out.error.message });
+    } finally { release(token); }
+  };
+
   const saveSettings = async () => {
     if (!settings || settings.saving || currentAction?.kind === "running" || surfaceBusy || !model.data.capabilities.peek().includes("thread.settings") || !settings.model.trim()) return;
     const target = { id, route, owner, visit: settings.visit };
@@ -250,6 +285,11 @@ export function ThreadManagement({ model }: { model: AppModel }) {
     <div class="band" data-thread-management="">
       {actionable ? <Button disabled={surfaceBusy || currentAction?.kind === "running"} onClick={() => void mutate()}>{archived ? t("org.unarchive") : t("action.archive")}</Button> : null}
     </div>
+    {currentObservation?.kind === "ready" && detail.run_id && detail.turn_id ? <div class="band" data-run-actions="">
+      <Button variant="primary" disabled={surfaceBusy || currentRunAction?.kind === "running"} onClick={() => void retry()}>{t("action.retry")}</Button>
+      {currentRunAction?.kind === "refused" ? <Notice tone="bad">{currentRunAction.message}</Notice> : null}
+      {currentRunAction?.kind === "accepted" ? <Notice>{t("action.retry")}</Notice> : null}
+    </div> : null}
     {settings ? <div class="band" data-thread-settings="">
       <Field ariaLabel={t("model.change")} value={settings.model} disabled={surfaceBusy || settings.saving} onInput={(e) => setSettingsState((prev) => prev && prev.id === id && prev.route === route && prev.owner === owner && prev.visit === visitRef.current ? { ...prev, model: e.currentTarget.value, saved: false, error: undefined } : prev)} />
       <Field ariaLabel={t("model.effort")} value={settings.effort} disabled={surfaceBusy || settings.saving} onInput={(e) => setSettingsState((prev) => prev && prev.id === id && prev.route === route && prev.owner === owner && prev.visit === visitRef.current ? { ...prev, effort: e.currentTarget.value, saved: false, error: undefined } : prev)} />
