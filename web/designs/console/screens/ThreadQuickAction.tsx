@@ -33,7 +33,7 @@ export function ThreadQuickAction({ model, row, status, surface }: { model: AppM
     if (!out.ok) throw new Error(out.error.message);
     return model.t.value("action.stopAccepted");
   });
-  const retry = () => void runAction("retry", async () => { await model.retry(row.thread_id); return model.actionError.value; });
+  const retry = () => void runAction("retry", async () => { await model.retry(row.thread_id); return undefined; });
   const disabled = pending !== undefined;
   return <span data-thread-quick-action={row.thread_id} data-thread-quick-surface={surface}>
     {status === "recovery" ? <Button data-thread-quick-retry="" variant="warn" disabled={disabled} onClick={retry}>{model.t.value("action.retry")}</Button> : null}
