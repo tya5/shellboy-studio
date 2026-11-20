@@ -174,10 +174,13 @@ export interface AwaitingReply {
 }
 
 /** Exact owner observation returned by run.get for a management-target Run. */
+export type RunState = "live" | "stopping" | "stopped" | "completed" | "failed";
+export type TurnState = "preparing" | "running" | "waiting" | "recovery_wait" | "completed" | "stopped" | "failed";
+
 export interface RunDetails {
   run_id: string;
   thread_id: string;
-  state: string;
+  state: RunState;
   turn_id?: string;
   recovery_hint?: string;
   [extra: string]: unknown;
@@ -188,7 +191,7 @@ export interface TurnDetails {
   turn_id: string;
   run_id: string;
   thread_id: string;
-  state: string;
+  state: TurnState;
   recovery_hint?: string;
   [extra: string]: unknown;
 }

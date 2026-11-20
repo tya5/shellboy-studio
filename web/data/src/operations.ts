@@ -30,6 +30,8 @@ import type {
   ThreadDetails,
   RunDetails,
   TurnDetails,
+  RunState,
+  TurnState,
   ThreadForkArgs,
   ThreadListArgs,
   ThreadRewindArgs,
@@ -77,12 +79,14 @@ const decodeDetails: Decoder<ThreadDetails> = (v) =>
   isObject(v) && typeof v.thread_id === "string" && typeof v.title === "string"
     ? { ok: true, value: v as ThreadDetails }
     : { ok: false, reason: "thread.get result lacks thread_id or title" };
+const runStates = new Set<RunState>(["live", "stopping", "stopped", "completed", "failed"]);
+const turnStates = new Set<TurnState>(["preparing", "running", "waiting", "recovery_wait", "completed", "stopped", "failed"]);
 const decodeRunDetails = (runId: string): Decoder<RunDetails> => (v) =>
-  isObject(v) && v.run_id === runId && typeof v.thread_id === "string" && typeof v.state === "string"
+  isObject(v) && v.run_id === runId && typeof v.thread_id === "string" && typeof v.state === "string" && runStates.has(v.state as RunState)
     ? { ok: true, value: v as RunDetails }
     : { ok: false, reason: "run.get result lacks the requested run_id, thread_id or state" };
 const decodeTurnDetails = (turnId: string, runId?: string, threadId?: string): Decoder<TurnDetails> => (v) =>
-  isObject(v) && v.turn_id === turnId && (runId === undefined || v.run_id === runId) && (threadId === undefined || v.thread_id === threadId) && typeof v.state === "string"
+  isObject(v) && v.turn_id === turnId && (runId === undefined || v.run_id === runId) && (threadId === undefined || v.thread_id === threadId) && typeof v.state === "string" && turnStates.has(v.state as TurnState)
     ? { ok: true, value: v as TurnDetails }
     : { ok: false, reason: "turn.get result does not match the requested identity or lacks state" };
 const decodeShellPage = pageOf<ShellEntry>((v) =>
