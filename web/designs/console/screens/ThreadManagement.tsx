@@ -83,13 +83,13 @@ export function ThreadManagement({ model }: { model: AppModel }) {
     const out = archived
       ? await model.ops.threadUnarchive([mutationId], { descendants: false })
       : await model.ops.threadArchive([mutationId], { descendants: false });
-    if (!currentMutation()) { release(token); return; }
+    if (!currentMutation()) { return; }
     if (!out.ok) {
       setActionState({ id: mutationId, route: mutationRoute, owner: mutationOwner, visit: mutationVisit, kind: "failed", message: out.error.message });
       return;
     }
     const refreshed = await model.ops.threadGet(mutationId);
-    if (!currentMutation()) { release(token); return; }
+    if (!currentMutation()) { return; }
     if (!refreshed.ok) {
       setDetailState({ id: mutationId, route: mutationRoute, owner: mutationOwner, visit: mutationVisit, loading: false, error: refreshed.error.message });
       setActionState({ id: mutationId, route: mutationRoute, owner: mutationOwner, visit: mutationVisit, kind: "failed", message: refreshed.error.message });
@@ -121,7 +121,7 @@ export function ThreadManagement({ model }: { model: AppModel }) {
     const initial: ThreadModelDraft = { model: detail.model, connection: detail.connection, effort: settings.initialEffort, agents: "", autoCompactAt: "", maxTokens: "", clearMaxTokens: false };
     const changes = threadModelChanges(draft, initial);
     const out = await model.ops.setThreadModel(target.id, changes);
-    if (!currentTarget()) { release(token); return; }
+    if (!currentTarget()) { return; }
     if (!out.ok) {
       setSettingsState({ ...settings, saving: false, saved: false, error: out.error.message });
       return;
@@ -132,7 +132,7 @@ export function ThreadManagement({ model }: { model: AppModel }) {
       return;
     }
     const refreshed = await model.ops.threadGet(target.id);
-    if (!currentTarget()) { release(token); return; }
+    if (!currentTarget()) { return; }
     if (!refreshed.ok) {
       setDetailState({ id: target.id, route: target.route, owner: target.owner, visit: target.visit, loading: false, error: refreshed.error.message });
       setSettingsState({ ...settings, saving: false, saved: false, error: refreshed.error.message });

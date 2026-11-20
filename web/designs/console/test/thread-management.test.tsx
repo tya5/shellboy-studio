@@ -94,6 +94,7 @@ it("saves management model and effort only after same-thread readback", async ()
     const readback = host.querySelectorAll<HTMLInputElement>("[data-thread-settings] input");
     expect(readback[0]?.value).toBe("next-model");
     expect(readback[1]?.value).toBe("high");
+    expect(host.querySelector<HTMLButtonElement>("[data-thread-settings] button")?.disabled).toBe(false);
   } finally {
     render(null, host);
     host.remove();
@@ -165,6 +166,8 @@ it("does not arm actions for a foreign detail or dispatch a second visit mutatio
     f.t.ok(f.t.calls("thread.archive")[0]!.id, { archived: ["A"] });
     await act(async () => { await flush(); });
     await answer(f, "thread.get", "A");
+    expect(host.querySelector<HTMLButtonElement>("[data-thread-management] button")?.disabled).toBe(false);
+    expect(host.querySelector<HTMLButtonElement>("[data-thread-settings] button")?.disabled).toBe(false);
   } finally {
     render(null, host);
     host.remove();
