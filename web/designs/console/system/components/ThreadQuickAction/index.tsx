@@ -1,8 +1,8 @@
-import { formatRoute, type AppModel } from "../../../../ui-core/src";
+import { formatRoute, type AppModel } from "../../../../../ui-core/src";
 import { Button, Icon } from "..";
 import { useEffect, useRef, useState } from "preact/hooks";
-import type { ThreadSummary } from "../../../../data/src";
-import type { StatusKey } from "../../../../ui-core/src/status";
+import type { ThreadSummary } from "../../../../../data/src";
+import type { StatusKey } from "../../../../../ui-core/src/status";
 
 type Action = "archive" | "stop" | "retry";
 
@@ -11,6 +11,7 @@ export function ThreadQuickAction({ model, row, status, surface, onMove }: { mod
   const [pending, setPending] = useState<Action>();
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLSpanElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
   const menu = useRef<HTMLSpanElement>(null);
   const archived = row.archived_at !== undefined;
   useEffect(() => {
@@ -44,15 +45,16 @@ export function ThreadQuickAction({ model, row, status, surface, onMove }: { mod
     if (!out.ok) throw new Error(out.error.message);
   });
   const retry = () => void run("retry", async () => { await model.retry(row.thread_id); });
+  const closeMenu = (restore = false) => { setOpen(false); if (restore) queueMicrotask(() => trigger.current?.focus()); };
   const invokeMenu = (event: Event) => { event.preventDefault(); setOpen(true); };
   const label = model.t.value("view.threads");
   const openFromKeyboard = (event: KeyboardEvent) => {
     if (event.key === "ArrowDown") { event.preventDefault(); setOpen(true); }
   };
   return <span ref={root} class="model-picker-anchor thread-menu-anchor" data-thread-quick-action={row.thread_id} data-thread-quick-surface={surface} onContextMenu={invokeMenu}>
-    <Button class="srow-act" icon label={label} title={label} aria-haspopup="menu" aria-expanded={open} onKeyDown={openFromKeyboard} onClick={() => setOpen((value) => !value)}><Icon name="more" small /></Button>
+    <Button ref={trigger} class="srow-act" icon label={label} title={label} aria-haspopup="menu" aria-expanded={open} onKeyDown={openFromKeyboard} onClick={() => setOpen((value) => !value)}><Icon name="more" small /></Button>
     {open ? <span ref={menu} role="menu" class="model-picker" onKeyDown={(event) => {
-      if (event.key === "Escape") { event.preventDefault(); setOpen(false); }
+      if (event.key === "Escape") { event.preventDefault(); closeMenu(true); }
       if (event.key === "ArrowDown" || event.key === "ArrowUp") {
         event.preventDefault(); const items = [...(menu.current?.querySelectorAll<HTMLElement>("[role=menuitem]") ?? [])]; const index = items.indexOf(event.target as HTMLElement); items[(index + (event.key === "ArrowDown" ? 1 : items.length - 1)) % items.length]?.focus();
       }

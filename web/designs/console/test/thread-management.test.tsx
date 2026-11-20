@@ -347,6 +347,7 @@ it("shows only state-appropriate quick row actions", async () => {
     </>, host);
     for (const id of ["run", "retry", "archived"]) host.querySelector<HTMLButtonElement>(`[data-thread-quick-action="${id}"] button[aria-label]`)!.click();
     expect(host.querySelector('[data-thread-quick-action="run"] [role="menuitem"]')?.textContent).toBe(f.model.t.value("view.thread-management"));
+    expect(host.querySelector('[data-thread-quick-action="run"] [role="menuitem"]')?.textContent).toBe(f.model.t.value("view.thread-management"));
     expect(host.querySelector('[data-thread-quick-action="run"] [data-thread-quick-stop]')?.textContent).toBe(f.model.t.value("action.stop"));
     expect(host.querySelector('[data-thread-quick-action="run"] [data-thread-quick-retry]')).toBeNull();
     expect(host.querySelector('[data-thread-quick-action="retry"] [data-thread-quick-retry]')?.textContent).toBe(f.model.t.value("action.retry"));
