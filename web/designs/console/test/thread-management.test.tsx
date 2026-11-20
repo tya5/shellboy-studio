@@ -599,7 +599,7 @@ it("keeps an unconfirmed Retry unknown without reminting its operation", async (
     const retry = f.t.calls("run.retry").at(-1)!;
     f.t.drop();
     await act(async () => { await flush(); });
-    expect(f.model.managementUnconfirmedRetry.value.get("i1:A")?.operationId).toBe(retry.operation_id);
+    expect(f.model.managementUnconfirmedRetry.value.get("i1:A:retry")?.operationId).toBe(retry.operation_id);
     expect(f.t.calls("run.retry")).toHaveLength(1);
     f.t.open();
     f.t.push({ t: "hello", bridge_version: "0.0.1", data_dir: "/temp/owner-a", owner: { state: "connected", info: { protocol_version: 5, instance_id: "i1", capabilities: ["history.window"] } } });

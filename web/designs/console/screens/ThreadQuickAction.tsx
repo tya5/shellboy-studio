@@ -32,29 +32,34 @@ export function ThreadQuickAction({ model, row, surface }: { model: AppModel; ro
   const stop = async (event: MouseEvent) => {
     event.preventDefault();
     event.stopPropagation();
-    if (!mounted.current || unresolvedStop || !renderedCurrent() || stopState === "running") return;
+    const liveUnresolvedStop = unresolvedStopKey ? model.managementUnconfirmedRetry.peek().get(unresolvedStopKey)?.action === "stop" : false;
+    if (!mounted.current || liveUnresolvedStop || !renderedCurrent() || stopState === "running") return;
     stopTargetRef.current = { id: target.id, route: target.route, owner: target.owner };
     const token = model.threadQuickActionAdmit(owner as object, target.id);
     if (!token) return;
     setStopState("running");
     let keepReservation = false;
+    const current = () => {
+      const liveOwner = model.data.owner.peek();
+      const live = liveRow();
+      const liveInstance = liveOwner.state === "connected" ? liveOwner.info.instance_id : undefined;
+      return mounted.current && live !== undefined && liveOwner.state === "connected" && liveInstance === ownerInstanceId && model.route.peek().view === target.route.view;
+    };
     try {
-      const current = () => mounted.current && renderedCurrent();
       const result = await managementStop(model.ops, target.id, undefined, current);
+      if (result.kind === "sent" && !result.outcome.ok) {
+        const error = result.outcome.error;
+        const operationId = error.kind === "unconfirmed" ? error.operationId : result.outcome.operationId;
+        if (error.kind !== "owner" && error.kind !== "not_connected" && error.kind !== "busy" && operationId && unresolvedStopKey) {
+          keepReservation = true;
+          if (!model.managementUnconfirmedRetry.peek().has(unresolvedStopKey)) model.managementUnconfirmedRetry.value = new Map(model.managementUnconfirmedRetry.peek()).set(unresolvedStopKey, { threadId: target.id, runId: result.runId, turnId: result.turnId, operationId, ownerInstanceId: ownerInstanceId!, action: "stop" });
+        }
+      }
       if (!current()) return;
       if (result.kind !== "sent") { setStopState("failed"); return; }
-      if (!current()) return;
       if (result.outcome.ok) setStopState("accepted");
-      else if (result.outcome.error.kind === "unconfirmed") {
-        keepReservation = true;
-        const instanceId = owner.state === "connected" ? owner.info.instance_id : undefined;
-        const operationId = result.outcome.error.operationId;
-        if (instanceId) {
-          const key = `${instanceId}:${target.id}`;
-          if (!model.managementUnconfirmedRetry.peek().has(key)) model.managementUnconfirmedRetry.value = new Map(model.managementUnconfirmedRetry.peek()).set(key, { threadId: target.id, runId: result.runId, turnId: result.turnId, operationId, ownerInstanceId: instanceId, action: "stop" });
-        }
-        setStopState("unknown");
-      } else setStopState("failed");
+      else if (keepReservation) setStopState("unknown");
+      else setStopState("failed");
     } finally {
       if (!current()) setStopState("idle");
       if (!keepReservation) model.threadQuickActionDrop(owner as object, target.id, token);
