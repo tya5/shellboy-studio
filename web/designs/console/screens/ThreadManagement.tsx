@@ -78,7 +78,8 @@ export function ThreadManagement({ model }: { model: AppModel }) {
     if (!currentMutation() || currentAction?.kind === "running" || currentSettings?.saving) return;
     const token = admit(mutationVisit);
     if (!token) return;
-    setActionState({ id: mutationId, route: mutationRoute, owner: mutationOwner, visit: mutationVisit, kind: "running" });
+    try {
+      setActionState({ id: mutationId, route: mutationRoute, owner: mutationOwner, visit: mutationVisit, kind: "running" });
     const out = archived
       ? await model.ops.threadUnarchive([mutationId], { descendants: false })
       : await model.ops.threadArchive([mutationId], { descendants: false });
@@ -92,20 +93,18 @@ export function ThreadManagement({ model }: { model: AppModel }) {
     if (!refreshed.ok) {
       setDetailState({ id: mutationId, route: mutationRoute, owner: mutationOwner, visit: mutationVisit, loading: false, error: refreshed.error.message });
       setActionState({ id: mutationId, route: mutationRoute, owner: mutationOwner, visit: mutationVisit, kind: "failed", message: refreshed.error.message });
-      release(token);
       return;
     }
     if (refreshed.value.thread_id !== mutationId) {
       const message = t("thread.detailMismatch");
       setDetailState({ id: mutationId, route: mutationRoute, owner: mutationOwner, visit: mutationVisit, loading: false, error: message });
       setActionState({ id: mutationId, route: mutationRoute, owner: mutationOwner, visit: mutationVisit, kind: "failed", message });
-      release(token);
       return;
     }
     setDetailState({ id: mutationId, route: mutationRoute, owner: mutationOwner, visit: mutationVisit, loading: false, value: refreshed.value });
     const result = archived ? out.value.unarchived : out.value.archived;
     setActionState({ id: mutationId, route: mutationRoute, owner: mutationOwner, visit: mutationVisit, kind: "done", archived: !archived, count: result?.length ?? 0, already: out.value.already?.length ?? 0, notFound: out.value.not_found?.length ?? 0 });
-    release(token);
+    } finally { release(token); }
   };
 
   const settings = currentSettings;
@@ -116,7 +115,8 @@ export function ThreadManagement({ model }: { model: AppModel }) {
     if (!currentTarget()) return;
     const token = admit(target.visit);
     if (!token) return;
-    setSettingsState({ ...settings, saving: true, saved: false, error: undefined });
+    try {
+      setSettingsState({ ...settings, saving: true, saved: false, error: undefined });
     const draft: ThreadModelDraft = { model: settings.model, connection: detail.connection, effort: settings.effort, agents: "", autoCompactAt: "", maxTokens: "", clearMaxTokens: false };
     const initial: ThreadModelDraft = { model: detail.model, connection: detail.connection, effort: settings.initialEffort, agents: "", autoCompactAt: "", maxTokens: "", clearMaxTokens: false };
     const changes = threadModelChanges(draft, initial);
@@ -124,12 +124,11 @@ export function ThreadManagement({ model }: { model: AppModel }) {
     if (!currentTarget()) { release(token); return; }
     if (!out.ok) {
       setSettingsState({ ...settings, saving: false, saved: false, error: out.error.message });
-      release(token);
       return;
     }
     if (out.value.thread_id !== target.id) {
+      setDetailState({ id: target.id, route: target.route, owner: target.owner, visit: target.visit, loading: false, error: t("thread.detailMismatch") });
       setSettingsState({ ...settings, saving: false, saved: false, error: t("thread.settingsMismatch") });
-      release(token);
       return;
     }
     const refreshed = await model.ops.threadGet(target.id);
@@ -137,14 +136,12 @@ export function ThreadManagement({ model }: { model: AppModel }) {
     if (!refreshed.ok) {
       setDetailState({ id: target.id, route: target.route, owner: target.owner, visit: target.visit, loading: false, error: refreshed.error.message });
       setSettingsState({ ...settings, saving: false, saved: false, error: refreshed.error.message });
-      release(token);
       return;
     }
     if (refreshed.value.thread_id !== target.id) {
       const message = t("thread.detailMismatch");
       setDetailState({ id: target.id, route: target.route, owner: target.owner, visit: target.visit, loading: false, error: message });
       setSettingsState({ ...settings, saving: false, saved: false, error: message });
-      release(token);
       return;
     }
     const expectedEffort = changes.effort === undefined ? (detail.effort ?? "") : changes.effort;
@@ -152,10 +149,10 @@ export function ThreadManagement({ model }: { model: AppModel }) {
     setDetailState({ id: target.id, route: target.route, owner: target.owner, visit: target.visit, loading: false, value: refreshed.value });
     if (readbackMismatch) {
       setSettingsState({ ...settings, model: refreshed.value.model, effort: refreshed.value.effort ?? "", initialEffort: refreshed.value.effort ?? "", saving: false, saved: false, error: t("thread.settingsMismatch") });
-      release(token);
       return;
     }
     setSettingsState({ ...settings, model: refreshed.value.model, effort: refreshed.value.effort ?? "", initialEffort: refreshed.value.effort ?? "", saving: false, saved: true, error: undefined });
+    } finally { release(token); }
   };
 
   return <Section title={detail.title} sub={detail.thread_id} actions={<a class="btn" href={formatRoute({ view: "conversation", threadId: id })}>{t("view.conversation")}</a>}>
