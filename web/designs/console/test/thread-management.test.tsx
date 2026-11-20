@@ -596,5 +596,11 @@ it("keeps an unconfirmed Retry unknown without reminting its operation", async (
     expect(host.querySelectorAll("[data-run-actions] button")).toHaveLength(0);
     expect(host.textContent).toContain("unknown");
     expect(f.t.calls("run.retry")).toHaveLength(1);
+    f.t.open();
+    await act(async () => { f.model.applyRoute({ view: "threads" }); await flush(); f.model.applyRoute({ view: "thread-management", threadId: "A" }); await flush(); });
+    await answer(f, "thread.get", "A");
+    expect(host.querySelector("[data-run-actions] .notice")?.textContent).toContain(retry.operation_id);
+    expect(host.querySelectorAll("[data-run-actions] button")).toHaveLength(0);
+    expect(f.t.calls("run.retry")).toHaveLength(1);
   } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
 });
