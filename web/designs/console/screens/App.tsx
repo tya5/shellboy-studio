@@ -11,7 +11,7 @@ import { AppsHost } from "./Apps";
 import { Branches } from "./Branches";
 import { Threads } from "./Threads";
 import { ThreadManagement } from "./ThreadManagement";
-import { ThreadQuickAction } from "./ThreadQuickAction";
+import { ThreadQuickAction } from "../system/components";
 import { Settings } from "./Settings";
 import { Setup } from "./Setup";
 import { SettingsView } from "./SettingsView";

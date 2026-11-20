@@ -9,7 +9,7 @@ import { fixtureModel } from "../../../ui-core/test/fixture";
 import { loadPrefs, type DesignContext } from "../../../ui-core/src";
 import { App } from "../screens/App";
 import { ThreadManagement } from "../screens/ThreadManagement";
-import { ThreadQuickAction } from "../screens/ThreadQuickAction";
+import { ThreadQuickAction } from "../system/components"
 
 async function answer(f: Awaited<ReturnType<typeof fixtureModel>>, command: string, threadId?: string): Promise<void> {
   const call = f.t.calls(command).find((candidate) => {
