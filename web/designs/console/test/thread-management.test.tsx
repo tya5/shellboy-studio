@@ -1102,3 +1102,34 @@ it("keeps an opted-in mounted Retry row route-fenced before exact re-admission",
     expect(host.querySelector<HTMLButtonElement>("[data-thread-quick-retry]")?.disabled).toBe(false);
   } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
 });
+
+it("rejects a mounted Retry identity mismatch before downstream reads or wire", async () => {
+  const f = await fixtureModel({ route: "threads", configure(db) {
+    db.threads = { A: summary("A"), B: summary("B") };
+    db.details = {
+      A: details("A", { run_id: "run-a", turn_id: "turn-a" }),
+      B: details("B", { run_id: "run-b", turn_id: "turn-b" }),
+    };
+  } });
+  const host = document.createElement("div"); document.body.append(host);
+  try {
+    const row = summary("A");
+    await act(async () => { render(<ThreadQuickAction model={f.model} row={row} surface="list" enableRetry />, host); await flush(); });
+    for (let i = 0; i < 4; i++) { if (!f.t.calls("thread.list").find((call) => !f.db.answered.has(call.id))) break; await answer(f, "thread.list"); }
+    expect(f.t.calls("thread.get")).toHaveLength(0);
+    const control = host.querySelector<HTMLButtonElement>("[data-thread-quick-retry]")!;
+    control.click();
+    const threadRead = f.t.calls("thread.get").at(-1)!;
+    expect(threadRead.args).toEqual({ thread_id: "A" });
+    const reservation = f.model.managementRetryReservations.value.get("i1:A:retry");
+    expect(reservation?.threadId).toBe("A");
+    expect(reservation?.operationId).toBeTruthy();
+    f.t.ok(threadRead.id, details("B", { run_id: "run-b", turn_id: "turn-b" }));
+    await act(async () => { await flush(); });
+    expect(f.t.calls("run.get")).toHaveLength(0);
+    expect(f.t.calls("turn.get")).toHaveLength(0);
+    expect(f.t.calls("run.retry")).toHaveLength(0);
+    expect(f.model.managementRetryReservations.value.has("i1:A:retry")).toBe(false);
+    expect(control.disabled).toBe(false);
+  } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
+});
