@@ -366,6 +366,36 @@ it("drops stale and mismatched management observations", async () => {
   } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
 });
 
+it("revokes ready Run/Turn observation after same-visit accepted detail replacement", async () => {
+  const f = await fixtureModel({ route: "threads", configure(db) {
+    db.threads = { A: summary("A") };
+    db.details = { A: details("A", { run_id: "run-old", turn_id: "turn-old" }) };
+  } });
+  const host = document.createElement("div"); document.body.append(host);
+  try {
+    f.model.applyRoute({ view: "thread-management", threadId: "A" });
+    await act(async () => { render(<ThreadManagement model={f.model} />, host); await flush(); });
+    await answer(f, "thread.get", "A");
+    const oldRun = f.t.calls("run.get").at(-1)!;
+    f.t.ok(oldRun.id, { run_id: "run-old", thread_id: "A", state: "live", turn_id: "turn-old" });
+    await act(async () => { await flush(); });
+    const oldTurn = f.t.calls("turn.get").at(-1)!;
+    f.t.ok(oldTurn.id, { turn_id: "turn-old", run_id: "run-old", thread_id: "A", state: "recovery_wait", recovery_hint: "retry" });
+    await act(async () => { await flush(); });
+    expect(host.querySelector("[data-management-observation]")?.getAttribute("data-management-observation")).toBe("ready");
+    (host.querySelector("[data-thread-management] button") as HTMLButtonElement).click();
+    const archive = f.t.calls("thread.archive").at(-1)!;
+    f.t.ok(archive.id, { archived: ["A"], already: [], not_found: [] });
+    await act(async () => { await flush(); });
+    f.db.details.A = details("A", { run_id: "run-new", turn_id: "turn-new" });
+    const refresh = f.t.calls("thread.get").at(-1)!;
+    f.db.answered.add(refresh.id);
+    f.t.ok(refresh.id, f.db.details.A);
+    await act(async () => { await flush(); });
+    expect(host.querySelector("[data-management-observation]")?.getAttribute("data-management-observation")).toBe("unavailable");
+  } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
+});
+
 it("invalidates ready Run/Turn observation after same-visit accepted detail replacement", async () => {
   const f = await fixtureModel({ route: "threads", configure(db) {
     db.threads = { A: summary("A") };
