@@ -146,7 +146,7 @@ export function ThreadQuickAction({ model, row, surface, enableRetry = false }: 
   const disabled = status?.kind === "running" || !renderedCurrent();
   return <span data-thread-quick-action={row.thread_id} data-thread-quick-surface={surface} data-quick-action-state={status?.kind ?? "idle"}>
     <Button disabled={disabled} aria-busy={status?.kind === "running"} onClick={run}>{archived ? model.t.value("org.unarchive") : model.t.value("action.archive")}</Button>
-    {enableRetry && !unresolvedRetry ? <Button data-thread-quick-retry="" disabled={(retryIsCurrent && retryState?.state === "running") || unresolvedStop || !renderedCurrent()} onClick={retry}>{model.t.value("action.retry")}</Button> : unresolvedRetry ? <Notice tone="wait">{model.t.value("action.retryUnknown", { id: model.managementUnconfirmedRetry.value.get(unresolvedRetryKey!)?.operationId ?? "" })}</Notice> : null}
+    {enableRetry ? (!unresolvedRetry ? <Button data-thread-quick-retry="" disabled={(retryIsCurrent && retryState?.state === "running") || unresolvedStop || !renderedCurrent()} onClick={retry}>{model.t.value("action.retry")}</Button> : <Notice tone="wait">{model.t.value("action.retryUnknown", { id: model.managementUnconfirmedRetry.value.get(unresolvedRetryKey!)?.operationId ?? "" })}</Notice>) : null}
     {status?.kind === "failed" ? <>
       {status.error ? <Notice tone="bad">{status.error}</Notice> : null}
       <a class="btn link" href={formatRoute({ view: "thread-management", threadId: target.id })}>{model.t.value("view.threads")}</a>
