@@ -11,6 +11,7 @@ import { AppsHost } from "./Apps";
 import { Branches } from "./Branches";
 import { Threads } from "./Threads";
 import { ThreadManagement } from "./ThreadManagement";
+import { ThreadQuickAction } from "./ThreadQuickAction";
 import { Settings } from "./Settings";
 import { Setup } from "./Setup";
 import { SettingsView } from "./SettingsView";
@@ -105,6 +106,7 @@ export function App({ context }: { context: DesignContext }) {
                   href={formatRoute({ view: "conversation", threadId: r.summary.thread_id })}
                   manageHref={formatRoute({ view: "thread-management", threadId: r.summary.thread_id })}
                   manageLabel={t("view.threads")}
+                  action={<ThreadQuickAction model={model} row={r.summary} />}
                   title={r.summary.title}
                   status={r.status}
                   statusLabel={r.status ? statusLabel(t, r.status) : ""}

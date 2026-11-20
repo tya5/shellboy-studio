@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "preact/hooks";
 import { CAPABILITY_REPARENT, CAPABILITY_TAGS, formatAge, formatRoute, groupThreads, listedDescendants, OPEN_MAX, statusLabel, threadTree, THREAD_GROUPINGS, type AppModel, type MemberState, type StatusKey, type TagInvalid, type ThreadGrouping, type ThreadRow, type Translate } from "../../../ui-core/src";
 import { Button, ButtonGroup, EmptyState, Field, Icon, Notice, Section, SelectionBar, SelectRow, StatusMark, ThreadGroup } from "../system/components";
+import { ThreadQuickAction } from "./ThreadQuickAction";
 
 const SEARCH_DEBOUNCE_MS = 200;
 
@@ -187,7 +188,7 @@ export function Threads({ model }: { model: AppModel }) {
         tagsLabel={t("org.tag.list")}
         note={notes || undefined}
         age={formatAge(s.updated_at, model.coarseNow.value)}
-        action={<><a class="srow-act" href={formatRoute({ view: "thread-management", threadId: s.thread_id })}>{t("view.threads")}</a>{canMove ? <button type="button" class="srow-act" onClick={() => org.pickParent(s.thread_id)}>{t("org.move")}</button> : null}</>}
+        action={<><ThreadQuickAction model={model} row={s} /><a class="srow-act" href={formatRoute({ view: "thread-management", threadId: s.thread_id })}>{t("view.threads")}</a>{canMove ? <button type="button" class="srow-act" onClick={() => org.pickParent(s.thread_id)}>{t("org.move")}</button> : null}</>}
         drag={
           canMove
             ? {
