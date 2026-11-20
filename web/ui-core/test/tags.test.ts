@@ -142,8 +142,8 @@ describe("grouping by directory", () => {
 });
 
 describe("editing tags", () => {
-  const setup = async () => {
-    const made = await open({ capabilities: both, configure: (d) => populate(d, { old: ["lead", "done"], keep: ["lead"] }) });
+  const setup = async (configure?: (db: FakeOwnerDb) => void) => {
+    const made = await open({ capabilities: both, configure: (d) => { populate(d, { old: ["lead", "done"], keep: ["lead"] }); configure?.(d); } });
     made.model.org.setGrouping("tag");
     await settle(made.t, made.db);
     made.model.org.headings.toggle("old");
@@ -203,9 +203,10 @@ describe("editing tags", () => {
   });
 
   it("refuses more than 200 published Threads before calling", async () => {
-    const { t, db, model } = await setup({ count: TAG_SELECTION_MAX + 1 });
+    const { t, db, model } = await open({ capabilities: both, configure: (d) => populate(d, { old: Array.from({ length: TAG_SELECTION_MAX + 1 }, (_, k) => `big${k}`) }) });
     const org = model.org;
     await settle(t, db);
+    while (org.canLoadMore()) { org.loadMore(); await settle(t, db); }
     org.selected.value = new Set(model.org.shown().map((row) => row.thread_id));
     org.addTag("x");
     await org.applyTags();
@@ -248,7 +249,7 @@ describe("an owner without tags (v0.10.0)", () => {
 });
 
 it("binds a bulk tag call to the published IDs and preserves a newer selection", async () => {
-  const { t, db, model } = await open({ capabilities: both, configure: (d) => populate(d, { old: ["lead", "done"] }) });
+  const { t, db, model } = await open({ capabilities: both, configure: (d) => populate(d, { old: ["lead", "done"], later: ["later"] }) });
   await settle(t, db);
   const org = model.org;
   org.setMany(["lead", "done"], true);
@@ -257,12 +258,28 @@ it("binds a bulk tag call to the published IDs and preserves a newer selection",
   await flush();
   const call = t.calls("thread.tag")[0]!;
   expect(call.args).toEqual({ thread_ids: ["lead", "done"], add: ["fresh"] });
-  org.setMany(["done"], true);
+  org.setMany(["later"], true);
   org.addTag("later");
   await settle(t, db);
   await running;
-  expect(org.selected.value.has("done")).toBe(true);
+  expect(org.selected.value.has("later")).toBe(true);
   expect(org.tagDraft.value.add).toEqual(["fresh", "later"]);
+});
+
+it("preserves a draft-only edit while a real published tag write is pending", async () => {
+  const { t, db, model } = await setup();
+  const org = model.org;
+  org.setMany(["lead"], true);
+  org.addTag("first");
+  const running = org.applyTags();
+  await flush();
+  org.addTag("second");
+  const call = t.calls("thread.tag").at(-1)!;
+  db.answered.add(call.id);
+  t.ok(call.id, { changed: ["lead"], unchanged: [], not_found: [] });
+  await settle(t, db);
+  await running;
+  expect(org.tagDraft.value.add).toEqual(["first", "second"]);
 });
 
 it("rejects a late closed heading read and authorizes only the reopened read", async () => {

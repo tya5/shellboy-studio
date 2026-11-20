@@ -930,7 +930,11 @@ export class ThreadOrg {
     const groupedReady = heading !== undefined && publicationCurrent && publication?.grouping === this.groupBy.peek() && !this.headings.headings.peek().loading && publication.memberIds !== undefined && ids.every((id) => publication.memberIds.has(id)) && [...this.headings.open.peek().values()].every((member) => member.loaded && !member.loading && !member.error);
     const flatReady = heading === undefined && publicationCurrent && publication?.grouping === this.groupBy.peek() && publication !== undefined;
     const publicationValid = groupedReady || flatReady;
-    if (this.running || ids.length === 0 || !authority || !publicationValid || ids.length > TAG_SELECTION_MAX || ids.some((id) => !shown.some((row) => row.thread_id === id)) || (draft.add.length === 0 && draft.remove.size === 0)) return;
+    if (this.running || ids.length === 0 || !authority || !publicationValid || ids.some((id) => !shown.some((row) => row.thread_id === id)) || (draft.add.length === 0 && draft.remove.size === 0)) return;
+    if (ids.length > TAG_SELECTION_MAX) {
+      this.tagAction.value = { kind: "selection", n: ids.length };
+      return;
+    }
     const token = this.reserve?.(authority.owner, ids);
     if (!token) return;
     this.tagAttempt = token;
