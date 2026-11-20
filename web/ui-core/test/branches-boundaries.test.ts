@@ -204,3 +204,58 @@ it("R1 detached old clear never overwrites a same-ID replacement using the same 
   batch.show(item,publish);const invalidate=batch.detach();replace=true;invalidate();
   expect(displays.at(-1)).toBe("new UI");finish({answer:"old"});await flush();expect(displays.at(-1)).toBe("new UI");batch.reset();
 });
+
+it("R1 release callback replacement of the same Thread keeps its new row", async () => {
+  const pending: (() => void)[] = []; let reads = 0, replace = false;
+  const batch = new ExcerptBatch(async () => { reads++; await new Promise<void>(r => pending.push(r)); return {}; });
+  const item = { threadId: "x" } as Parameters<Branches["excerpts"]>[0];
+  const release = batch.show(item, () => { if (replace) { replace = false; batch.reset(); batch.show(item, () => {}); } });
+  replace = true; release(); pending.shift()!(); await flush(); expect(reads).toBe(2);
+  pending.shift()!(); await flush(); batch.reset();
+});
+
+const mutationSites = ["rename-error", "archive-selection", "archive-error", "rewinding", "rewind-failed", "rewind-done", "rewind-error", "previewing", "preview-await"] as const;
+for (const site of mutationSites) for (const transition of transitions) it(`R1 B12 ${site} x ${transition}`, async () => {
+  const f = fixture(); let armed = false, fired = false;
+  // Rename/archive are Thread actions: target-only change is irrelevant.
+  const invalid = transition !== "same" && !(transition === "target" && (site.startsWith("rename") || site.startsWith("archive")));
+  f.b.actionError.value = "old error";
+  const stop = effect(() => {
+    const error = f.b.actionError.value, selection = f.b.selection.value, rewind = f.b.rewind.value;
+    if (!armed || fired) return;
+    const hit = site === "rename-error" ? error === undefined : site === "archive-selection" ? selection.size === 0 :
+      site === "archive-error" ? error === undefined : site === "rewinding" ? rewind.kind === "rewinding" :
+      site === "rewind-failed" ? rewind.kind === "failed" : site === "rewind-done" ? rewind.kind === "done" :
+      site === "rewind-error" ? error?.startsWith("Rewind succeeded;") : site === "previewing" ? rewind.kind === "previewing" : false;
+    if (hit) { fired = true; f.invalidate(transition); }
+  });
+  let p: Promise<void>;
+  if (site.startsWith("rename")) {
+    armed = true; p = f.b.renameBranch("parent", "fixed"); f.t.ok(f.t.calls("thread.set")[0]!.id, { thread_id: "parent", title: "fixed" });
+  } else if (site.startsWith("archive")) {
+    f.b.toggleBranch("parent"); armed = true; p = f.b.archiveSelected();
+    f.t.ok(f.t.calls("thread.archive")[0]!.id, { archived: ["parent"], not_found: [] });
+  } else if (site.startsWith("preview")) {
+    armed = true; p = f.b.previewRewind(f.target);
+    if (site === "preview-await") { f.invalidate(transition); }
+    const call = f.t.calls("thread.rewind")[0]; if (call) f.t.ok(call.id, { removed_node_count: 1 });
+  } else {
+    const preview = f.b.previewRewind(f.target); f.t.ok(f.t.calls("thread.rewind")[0]!.id, { removed_node_count: 1 }); await preview;
+    armed = true; p = f.b.confirmRewind(site === "rewind-error" ? "fixed" : "");
+    const call = f.t.calls("thread.rewind")[1];
+    if (call) {
+      if (site === "rewind-failed") f.t.ownerError(call.id, "operation_expired"); else f.t.ok(call.id, { removed_node_count: 1 });
+      await flush();
+      if (site === "rewind-error") f.t.ownerError(f.t.calls("message.send")[0]!.id, "thread_busy");
+    }
+  }
+  await p;
+  if (invalid) {
+    expect(f.t.calls("thread.branches")).toHaveLength(0);
+    if (site === "rewinding" || site === "previewing") expect(f.t.calls("thread.rewind")).toHaveLength(site === "rewinding" ? 1 : 0);
+    if (site === "preview-await") expect(f.b.rewind.value.kind).not.toBe("ready");
+  } else if (site === "rename-error" || site.startsWith("archive") || site === "rewind-done" || site === "rewind-error" || site === "rewinding") {
+    expect(f.t.calls("thread.branches")).toHaveLength(1);
+  }
+  stop(); f.b.leave(); f.link.stop();
+});

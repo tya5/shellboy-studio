@@ -122,7 +122,8 @@ export function ThreadManagement({ model }: { model: AppModel }) {
     }
     try { await model.data.refreshThreadList(); } catch { /* Core outcome remains authoritative. */ }
     const result = displayedArchived ? out.value.unarchived : out.value.archived;
-    setActionState({ id: mutationId, route: mutationRoute, owner: mutationOwner, visit: mutationVisit, kind: "done", archived: !archived, count: result?.length ?? 0, already: out.value.already?.length ?? 0, notFound: out.value.not_found?.length ?? 0 });
+    const changed = result?.includes(mutationId) === true;
+    setActionState({ id: mutationId, route: mutationRoute, owner: mutationOwner, visit: mutationVisit, kind: "done", archived: changed ? !displayedArchived : displayedArchived, count: result?.length ?? 0, already: out.value.already?.length ?? 0, notFound: out.value.not_found?.length ?? 0 });
     } finally { release(token); }
   };
 
