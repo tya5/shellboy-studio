@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "preact/hooks";
-import { formatRoute, managementStop, threadModelChanges, type AppModel, type Route, type ThreadModelDraft } from "../../../ui-core/src";
+import { correlateManagementRun, formatRoute, managementStop, threadModelChanges, type AppModel, type Route, type ThreadModelDraft } from "../../../ui-core/src";
 import { Button, Field, Notice, Section } from "../system/components";
 import type { ThreadDetails } from "../../../data/src";
 
@@ -228,6 +228,7 @@ export function ThreadManagement({ model }: { model: AppModel }) {
     setRunActionState({ id, route, owner, visit: targetVisit, detailToken, kind: "running" });
     try {
       const result = await managementStop(model.ops, id, { runId: expected.runId, turnId: expected.turnId }, currentTarget);
+      if (!currentTarget()) return;
       if (result.kind === "stale") return;
       if (result.kind === "refused") {
         setRunActionState({ id, route, owner, visit: targetVisit, detailToken, kind: "refused", message: "Stop refused: the exact Run/Turn is no longer running" });

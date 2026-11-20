@@ -1,10 +1,10 @@
-import type { MutationResult, Operations, ThreadDetails } from "../../data/src";
+import type { MutationResult, Operations, Outcome, ThreadDetails } from "../../data/src";
 import { correlateManagementRun, managementRunStopEligible } from "./management-run-observation";
 
 export type ManagementStopResult =
   | { kind: "stale" }
   | { kind: "refused"; reason: "thread" | "identity" | "run" | "turn" | "ineligible" }
-  | { kind: "sent"; outcome: { ok: true; value: MutationResult } | { ok: false; error: unknown } };
+  | { kind: "sent"; outcome: Outcome<MutationResult> };
 
 /** Exact on-demand Stop preflight; caller owns the lifetime and mutation reservation. */
 export async function managementStop(
