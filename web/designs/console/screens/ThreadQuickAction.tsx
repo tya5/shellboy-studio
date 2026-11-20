@@ -14,7 +14,7 @@ export function ThreadQuickAction({ model, row }: { model: AppModel; row: Thread
   const route = model.route.value;
   const owner = model.data.owner.value;
   const target = targetRef.current;
-  const current = target?.id === row.thread_id && target.route === route && target.owner === owner && tokenRef.current !== undefined;
+  const current = target?.id === row.thread_id && target.route === route && target.owner === owner && tokenRef.current === undefined;
 
   useEffect(() => {
     targetRef.current = { id: row.thread_id, archived: row.archived_at !== undefined, route, owner };
