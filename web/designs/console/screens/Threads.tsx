@@ -136,7 +136,7 @@ function Members({ model, name, member, row }: { model: AppModel; name: string; 
   );
 }
 
-export function Threads({ model, enableRetryRows = false }: { model: AppModel; enableRetryRows?: boolean }) {
+export function Threads({ model }: { model: AppModel }) {
   const t = model.t.value;
   const org = model.org;
   const state = org.state.value;
@@ -187,7 +187,7 @@ export function Threads({ model, enableRetryRows = false }: { model: AppModel; e
         tagsLabel={t("org.tag.list")}
         note={notes || undefined}
         age={formatAge(s.updated_at, model.coarseNow.value)}
-        action={<><ThreadQuickAction model={model} row={s} surface="list" enableRetry={enableRetryRows} /><a class="srow-act" href={formatRoute({ view: "thread-management", threadId: s.thread_id })}>{t("view.threads")}</a>{canMove ? <button type="button" class="srow-act" onClick={() => org.pickParent(s.thread_id)}>{t("org.move")}</button> : null}</>}
+        action={<><ThreadQuickAction model={model} row={s} status={r.status} surface="list" /><a class="srow-act" href={formatRoute({ view: "thread-management", threadId: s.thread_id })}>{t("view.threads")}</a>{canMove ? <button type="button" class="srow-act" onClick={() => org.pickParent(s.thread_id)}>{t("org.move")}</button> : null}</>}
         drag={
           canMove
             ? {
