@@ -326,8 +326,7 @@ describe("Threads over the fake transport", () => {
   it("reads the largest page in the Active mode when opened, and not before", async () => {
     const before = await fixtureModel({ route: "monitor" });
     expect(before.t.calls("thread.list").filter((c) => (c.args as { limit?: number }).limit === 200)).toHaveLength(0);
-    const f = await open();
-    const { t, db, model } = f;
+    const { t, model } = await open();
     expect(t.calls("thread.list").some((c) => (c.args as { limit?: number; archived?: string }).limit === 200 && (c.args as { archived?: string }).archived === "exclude")).toBe(true);
     expect(model.org.state.value.loaded).toBe(true);
   });
@@ -372,7 +371,8 @@ describe("Threads over the fake transport", () => {
     expect(t.calls("thread.archive")).toHaveLength(0);
   });
   it("refreshes after an accepted bulk result without clearing a newer selection", async () => {
-    const { t, model } = await open();
+    const f = await open();
+    const { t, db, model } = f;
     model.org.setMany(["lead"], true);
     const running = model.org.apply();
     await flush();
