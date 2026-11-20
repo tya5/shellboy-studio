@@ -476,7 +476,7 @@ it("refuses changed Run state without a retry write", async () => {
     f.t.ok(f.t.calls("turn.get").at(-1)!.id, { turn_id: "turn-a", run_id: "run-a", thread_id: "A", state: "recovery_wait", recovery_hint: "provider interrupted" });
     await act(async () => { await flush(); });
     expect(f.t.calls("run.retry")).toHaveLength(0);
-    expect(host.textContent).toContain("Retry refused");
+    expect(host.querySelector("[data-run-actions] .notice")?.textContent).toContain(f.model.t.value("action.retryRefused"));
   } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
 });
 
