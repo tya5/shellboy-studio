@@ -410,6 +410,20 @@ export class AppModel {
   readonly appRequestState: Signal<{ kind: "idle" | "sending" | "failed" | "unconfirmed"; message?: string }> = signal({ kind: "idle" });
   readonly uncertainCancels: Signal<ReadonlySet<string>> = signal(new Set());
 
+  reserveManagementRetry(key: string, threadId: string, ownerInstanceId: string): ManagementRetryReservation | undefined {
+    const current = this.managementRetryReservations.peek();
+    if (current.has(key)) return undefined;
+    const reservation = { threadId, operationId: this.ops.mutationId(), ownerInstanceId };
+    this.managementRetryReservations.value = new Map(current).set(key, reservation);
+    return reservation;
+  }
+
+  releaseManagementRetry(key: string, operationId: string): void {
+    const current = this.managementRetryReservations.peek();
+    if (current.get(key)?.operationId !== operationId) return;
+    const next = new Map(current); next.delete(key); this.managementRetryReservations.value = next;
+  }
+
   private readonly lastThread = signal<string | undefined>(undefined);
   private readonly watchedOutputs = new Map<string, string | undefined>();
   private readonly nowMs: () => number;

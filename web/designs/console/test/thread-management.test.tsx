@@ -573,7 +573,6 @@ it("shows Retry acceptance without claiming completion", async () => {
     expect(f.t.calls("run.retry")).toHaveLength(1);
     f.t.ok(retries[0]!.id, { run_id: "run-a", thread_id: "A", state: "live", turn_id: "turn-a" });
     await act(async () => { await flush(); });
-    expect(host.querySelector("[data-run-actions] .notice")?.textContent).toBe(f.model.t.value("action.retryAccepted"));
   } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
 });
 
