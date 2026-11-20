@@ -16,7 +16,7 @@ export async function managementStop(
 ): Promise<ManagementStopResult> {
   const read = await managementRunRead(ops, threadId, expected, isCurrent);
   if (read.kind === "stale") return read;
-  if (read.kind === "refused") return { kind: "refused", reason: read.reason === "mismatch" ? "identity" : read.reason === "ineligible" ? "ineligible" : read.reason };
+  if (read.kind === "refused") return { kind: "refused", reason: read.reason === "mismatch" ? "identity" : read.reason };
   if (!managementRunStopEligible(read.observation)) return { kind: "refused", reason: "ineligible" };
   const { runId, turnId } = read.observation;
   if (!isCurrent()) return { kind: "stale" };
