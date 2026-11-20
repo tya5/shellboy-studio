@@ -7,7 +7,7 @@ import type { StatusKey } from "../../../../ui-core/src/status";
 type Action = "archive" | "stop" | "retry";
 
 /** Shared row menu: the row remains navigable while mutations stay in one overflow surface. */
-export function ThreadQuickAction({ model, row, status, surface }: { model: AppModel; row: ThreadSummary; status: StatusKey | undefined; surface: "sidebar" | "list" }) {
+export function ThreadQuickAction({ model, row, status, surface, onMove }: { model: AppModel; row: ThreadSummary; status: StatusKey | undefined; surface: "sidebar" | "list"; onMove?: () => void }) {
   const [pending, setPending] = useState<Action>();
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLSpanElement>(null);
@@ -46,15 +46,16 @@ export function ThreadQuickAction({ model, row, status, surface }: { model: AppM
   const openFromKeyboard = (event: KeyboardEvent) => {
     if (event.key === "ArrowDown") { event.preventDefault(); setOpen(true); }
   };
-  return <span ref={root} data-thread-quick-action={row.thread_id} data-thread-quick-surface={surface} onContextMenu={invokeMenu}>
-    <Button class="srow-act" icon label={label} title={label} aria-haspopup="menu" aria-expanded={open} onKeyDown={openFromKeyboard} onClick={() => setOpen((value) => !value)}><Icon name="menu" small /></Button>
-    {open ? <span ref={menu} role="menu" class="thread-menu" onKeyDown={(event) => {
+  return <span ref={root} class="model-picker-anchor thread-menu-anchor" data-thread-quick-action={row.thread_id} data-thread-quick-surface={surface} onContextMenu={invokeMenu}>
+    <Button class="srow-act" icon label={label} title={label} aria-haspopup="menu" aria-expanded={open} onKeyDown={openFromKeyboard} onClick={() => setOpen((value) => !value)}><Icon name="more" small /></Button>
+    {open ? <span ref={menu} role="menu" class="model-picker" onKeyDown={(event) => {
       if (event.key === "Escape") { event.preventDefault(); setOpen(false); }
       if (event.key === "ArrowDown" || event.key === "ArrowUp") {
         event.preventDefault(); const items = [...(menu.current?.querySelectorAll<HTMLElement>("[role=menuitem]") ?? [])]; const index = items.indexOf(event.target as HTMLElement); items[(index + (event.key === "ArrowDown" ? 1 : items.length - 1)) % items.length]?.focus();
       }
     }}>
       <a role="menuitem" href={formatRoute({ view: "thread-management", threadId: row.thread_id })}>{label}</a>
+      {onMove ? <Button role="menuitem" onClick={() => { setOpen(false); onMove(); }}>{model.t.value("org.move")}</Button> : null}
       {status === "completed" || status === "stopped" || status === "failed" ? <Button role="menuitem" disabled={pending !== undefined} onClick={archive}>{archived ? model.t.value("org.unarchive") : model.t.value("action.archive")}</Button> : null}
       {status === "running" ? <Button role="menuitem" variant="stop" disabled={pending !== undefined} onClick={stop}>{model.t.value("action.stop")}</Button> : null}
       {status === "recovery" ? <Button role="menuitem" variant="warn" disabled={pending !== undefined} onClick={retry}>{model.t.value("action.retry")}</Button> : null}
