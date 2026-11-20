@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "preact/hooks";
-import { formatRoute, managementRetry, managementStop, threadModelChanges, type AppModel, type Route, type ThreadModelDraft } from "../../../ui-core/src";
+import { correlateManagementRun, formatRoute, managementRetry, managementStop, threadModelChanges, type AppModel, type Route, type ThreadModelDraft } from "../../../ui-core/src";
 import { Button, Field, Notice, Section } from "../system/components";
 import type { ThreadDetails } from "../../../data/src";
 
@@ -181,19 +181,19 @@ export function ThreadManagement({ model }: { model: AppModel }) {
     let sent = false;
     try {
       const result = await managementRetry(model.ops, id, { runId: admissionIdentity.runId, turnId: admissionIdentity.turnId }, retryOperationId, currentTarget);
-      if (result.kind === "sent") sent = true;
-      if (!currentTarget()) return;
       if (result.kind === "stale") return;
       if (result.kind === "refused") {
-        setRunActionState({ id, route, owner, visit: targetVisit, detailToken, kind: "refused", message: t("action.retryRefused"), reason: result.recoveryReason });
+        if (currentTarget()) setRunActionState({ id, route, owner, visit: targetVisit, detailToken, kind: "refused", message: t("action.retryRefused"), reason: result.recoveryReason });
         return;
       }
+      sent = true;
       const out = result.outcome;
       const key = unresolvedKey;
       if (!out.ok && out.error.kind !== "owner" && out.error.kind !== "not_connected" && out.error.kind !== "busy" && !model.managementUnconfirmedRetry.peek().has(key)) {
         model.managementUnconfirmedRetry.value = new Map(model.managementUnconfirmedRetry.peek()).set(key, { threadId: id, runId: result.runId, turnId: result.turnId, operationId: retryOperationId, recoveryReason: result.recoveryReason, ownerInstanceId: ownerInstanceId, action: "retry" });
       }
       if (out.ok || (!out.ok && (out.error.kind === "owner" || out.error.kind === "not_connected" || out.error.kind === "busy"))) model.releaseManagementRetry(key, retryOperationId);
+      if (!currentTarget()) return;
       if (out.ok) setRunActionState({ id, route, owner, visit: targetVisit, detailToken, kind: "accepted", action: "retry" });
       else if (out.error.kind === "unconfirmed") setRunActionState({ id, route, owner, visit: targetVisit, detailToken, kind: "unknown", message: t("action.retryUnknown", { id: out.error.operationId }), reason: result.recoveryReason, operationId: out.error.operationId });
       else if (out.error.kind === "owner") setRunActionState({ id, route, owner, visit: targetVisit, detailToken, kind: "refused", message: t("action.retryOwnerRefused"), reason: result.recoveryReason, ownerError: out.error.message });
