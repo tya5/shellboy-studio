@@ -170,7 +170,7 @@ export function ThreadManagement({ model }: { model: AppModel }) {
       if (!deleteTargetCurrent(target)) return;
       const marker = out.ok ? out.value.preview_marker : undefined;
       const markerValue = marker && typeof marker === "object" ? marker as Record<string, unknown> : undefined;
-      if (!out.ok || out.value.thread_id !== id || out.value.deletable_now !== true || !markerValue || typeof markerValue.thread_count !== "number" || markerValue.thread_count < 1 || typeof markerValue.ids_hash !== "string" || !/^[0-9a-f]{64}$/.test(markerValue.ids_hash)) {
+      if (!out.ok || out.value.thread_id !== id || out.value.deletable_now !== true || !markerValue || typeof markerValue.thread_count !== "number" || markerValue.thread_count !== 1 || typeof markerValue.ids_hash !== "string" || !/^[0-9a-f]{64}$/.test(markerValue.ids_hash)) {
         setDeleteState({ ...target, kind: "failed", message: out.ok ? t("thread.deleteBlocked") : out.error.message });
         return;
       }
@@ -188,11 +188,13 @@ export function ThreadManagement({ model }: { model: AppModel }) {
       if (!deleteTargetCurrent(deletion)) return;
       if (!out.ok) { setDeleteState({ ...deletion, kind: "failed", message: out.error.message }); return; }
       setDeleteState({ ...deletion, kind: "done" });
-      await model.data.refreshThreadList();
-      await model.org.read();
+      try { await model.data.refreshThreadList(); await model.org.read(); }
+      catch (error) { if (deleteTargetCurrent(deletion)) setDeleteState({ ...deletion, kind: "done", message: error instanceof Error ? error.message : t("thread.deleteRefreshFailed") }); }
     } catch (error) { if (deleteTargetCurrent(deletion)) setDeleteState({ ...deletion, kind: "failed", message: error instanceof Error ? error.message : t("thread.deleteBlocked") }); }
     finally { release(token); }
   };
+
+  if (deletion?.kind === "done") return <Section title={detail.title}><Notice>{deletion.message ?? t("thread.deleteDone")}</Notice><a class="btn" href={formatRoute({ view: "threads" })}>{t("view.threads")}</a></Section>;
 
   return <Section title={detail.title} sub={detail.thread_id} actions={<a class="btn" href={formatRoute({ view: "conversation", threadId: id })}>{t("view.conversation")}</a>}>
     <div class="band" data-thread-management="">
@@ -205,10 +207,11 @@ export function ThreadManagement({ model }: { model: AppModel }) {
       {settings.error ? <Notice tone="bad">{settings.error}</Notice> : null}
       {settings.saved ? <Notice>{t("thread.settingsSaved")}</Notice> : null}
     </div> : null}
-    {!deletion ? <Button data-thread-delete-preview="" variant="warn" disabled={surfaceBusy} onClick={() => void previewDelete()}>{t("thread.deletePreview")}</Button> : null}
+    {!deletion || deletion.kind === "failed" ? <Button data-thread-delete-preview="" variant="warn" disabled={surfaceBusy} onClick={() => void previewDelete()}>{t("thread.deletePreview")}</Button> : null}
     {deletion?.kind === "confirm" ? <Notice actions={<Button variant="warn" disabled={surfaceBusy} onClick={() => void confirmDelete()}>{t("thread.deleteConfirm")}</Button>}>{t("thread.deleteConfirmBody", { n: deletion.marker!.thread_count })}</Notice> : null}
     {deletion?.kind === "previewing" || deletion?.kind === "deleting" ? <Notice tone="wait">{t("common.loading")}</Notice> : null}
     {deletion?.kind === "failed" ? <Notice tone="bad">{deletion.message ?? t("thread.deleteBlocked")}</Notice> : null}
+    {deletion?.kind === "done" ? <Notice>{deletion.message ?? t("thread.deleteDone")}</Notice> : null}
     {deletion?.kind === "done" ? <Notice>{t("thread.deleteDone")}</Notice> : null}
     {currentAction?.kind === "failed" ? <Notice tone="bad">{currentAction.message}</Notice> : null}
     {currentAction?.kind === "done" ? <>
