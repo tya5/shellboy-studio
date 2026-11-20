@@ -874,5 +874,6 @@ it("retains lost quick Stop identity across same-owner reconnect on both surface
     await act(async () => { await flush(); });
     expect(host.querySelector("[data-run-actions] .notice")?.textContent).toContain(stop.operation_id);
     expect(host.querySelectorAll("[data-run-actions] button")).toHaveLength(0);
+    expect(f.t.calls("run.stop")).toHaveLength(1);
   } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
 });
