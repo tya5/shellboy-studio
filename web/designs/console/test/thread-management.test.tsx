@@ -348,9 +348,9 @@ it("shows only state-appropriate quick row actions", async () => {
     for (const id of ["run", "retry", "archived"]) host.querySelector<HTMLButtonElement>(`[data-thread-quick-action="${id}"] button[aria-label]`)!.click();
     expect(host.querySelector('[data-thread-quick-action="run"] [role="menuitem"]')?.textContent).toBe(f.model.t.value("view.thread-management"));
     expect(host.querySelector('[data-thread-quick-action="run"] [role="menuitem"]')?.textContent).toBe(f.model.t.value("view.thread-management"));
-    expect(host.querySelector('[data-thread-quick-action="run"] [data-thread-quick-stop]')?.textContent).toBe(f.model.t.value("action.stop"));
+    expect(host.querySelector('[data-thread-quick-action="run"] [role="menuitem"]')?.textContent).toBe(f.model.t.value("action.stop"));
     expect(host.querySelector('[data-thread-quick-action="run"] [data-thread-quick-retry]')).toBeNull();
-    expect(host.querySelector('[data-thread-quick-action="retry"] [data-thread-quick-retry]')?.textContent).toBe(f.model.t.value("action.retry"));
+    expect(host.querySelector('[data-thread-quick-action="retry"] [role="menuitem"]')?.textContent).toBe(f.model.t.value("action.retry"));
     expect(host.querySelector('[data-thread-quick-action="retry"] [data-thread-quick-stop]')).toBeNull();
     expect(host.querySelector('[data-thread-quick-action="archived"] [role="menuitem"]')?.textContent).toContain(f.model.t.value("org.unarchive"));
     expect(host.querySelector('[data-thread-quick-action="archived"] [data-thread-quick-stop]')).toBeNull();
@@ -359,16 +359,20 @@ it("shows only state-appropriate quick row actions", async () => {
 });
 
 it("opens and navigates the shared row menu from row focus", () => {
-  const f = fixtureModel({ route: "threads" });
+  const f = await fixtureModel({ route: "threads" });
   const host = document.createElement("div"); document.body.append(host);
   try {
     render(<ThreadItem href="#" title="A" status="running" statusLabel="Running" depth={0} current={false} pending={0} action={<ThreadQuickAction model={f.model} row={summary("A")} status="running" surface="sidebar" />} />, host);
     const row = host.querySelector<HTMLElement>(".tree-main")!;
+    row.focus();
+    expect(document.activeElement).toBe(row);
     row.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true }));
     expect(host.querySelector('[role="menu"]')).not.toBeNull();
+    expect(host.querySelector('[role="menuitem"]')).toBe(document.activeElement);
     expect(host.querySelector('[role="menuitem"]')?.textContent).toBe(f.model.t.value("view.thread-management"));
     host.querySelector('[role="menu"]')!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true }));
     document.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
     expect(host.querySelector('[role="menu"]')).toBeNull();
+    expect(document.activeElement).toBe(row);
   } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
 });

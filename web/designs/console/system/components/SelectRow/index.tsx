@@ -28,7 +28,7 @@ export function SelectRow({ title, href, status, depth, checked, checkLabel, onT
       </label>
       <span class="srow-status">{status}</span>
       <div class="srow-text">
-        <a href={href}>{title}</a>
+        <a class="tree-main" href={href} onKeyDown={(event) => { if (event.key === "ArrowDown") { event.preventDefault(); (event.currentTarget.closest(".srow") as HTMLElement)?.querySelector<HTMLElement>("[data-thread-quick-action]")?.dispatchEvent(new Event("thread-menu-open")); } }}>{title}</a>
         {note ? <div class="muted caption">{note}</div> : null}
         {tags && tags.length > 0 ? (
           <ul class="tags" aria-label={tagsLabel}>
