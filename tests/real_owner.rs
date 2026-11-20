@@ -1210,10 +1210,29 @@ async fn live_text_reaches_a_watching_tab_and_the_saved_message_follows() {
         attempt.as_str()
     );
     // Separate plain Stop phase on the same gated owner stream.
-    let stop_thread = c.ok("thread.create", json!({"cwd": root.to_str().unwrap()}), op("stop-create")).await["thread_id"].as_str().unwrap().to_owned();
-    c.ok("message.send", json!({"thread_id":stop_thread,"text":"stop me"}), op("stop-send")).await;
-    let live = c.ok("thread.get", json!({"thread_id":stop_thread}), None).await;
-    let run_id = live["run_id"].as_str().expect("active exact Run").to_owned();
+    let stop_thread = c
+        .ok(
+            "thread.create",
+            json!({"cwd": root.to_str().unwrap()}),
+            op("stop-create"),
+        )
+        .await["thread_id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    c.ok(
+        "message.send",
+        json!({"thread_id":stop_thread,"text":"stop me"}),
+        op("stop-send"),
+    )
+    .await;
+    let live = c
+        .ok("thread.get", json!({"thread_id":stop_thread}), None)
+        .await;
+    let run_id = live["run_id"]
+        .as_str()
+        .expect("active exact Run")
+        .to_owned();
     let stopping = c.ok("run.stop", json!({"run_id":run_id}), op("stop")).await;
     assert_eq!(stopping["run_id"], run_id.as_str(), "{stopping}");
     assert_eq!(stopping["state"], "stopping", "{stopping}");
