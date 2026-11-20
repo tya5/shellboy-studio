@@ -281,12 +281,23 @@ it("requires a complete marker and carries it into singleton deletion", async ()
 });
 
 it("accepts singleton deletion then retires action after a causal list refresh", async () => {
-  const f = await fixtureModel({ route: "threads", configure(db) { db.threads = { A: summary("A") }; db.details = { A: details("A") }; } });
+  const f = await fixtureModel({ route: "threads", configure(db) { db.threads = { A: summary("A"), B: summary("B") }; db.details = { A: details("A") }; } });
   const host = document.createElement("div"); document.body.append(host);
   try {
     f.model.applyRoute({ view: "thread-management", threadId: "A" });
     await act(async () => { render(<ThreadManagement model={f.model} />, host); await flush(); });
     await answer(f, "thread.get", "A");
+    const initialRefresh = f.model.data.refreshThreadList();
+    await act(async () => { await flush(); });
+    const initialLists = f.t.calls("thread.list");
+    const initialList = initialLists.at(-1)!;
+    expect(initialList).toBeDefined();
+    f.db.answered.add(initialList.id);
+    const initialOut = f.db.answer(initialList);
+    expect(initialOut.ok).toBe(true);
+    if (initialOut.ok) f.t.ok(initialList.id, initialOut.result);
+    await initialRefresh;
+    expect(f.model.data.threadList.value.items.some((item) => item.thread_id === "A")).toBe(true);
     host.querySelector<HTMLButtonElement>("[data-thread-delete-preview]")!.click(); await flush();
     const preview = f.t.calls("thread.delete_preview").at(-1)!;
     f.t.ok(preview.id, { thread_id: "A", descendants: false, deletable_now: true, preview_marker: { thread_count: 1, ids_hash: "e".repeat(64) }, selection: { thread_count: 1, surviving_descendant_thread_count: 0 }, blockers: { live_run_count: 0, stopping_run_count: 0 } });
@@ -294,18 +305,27 @@ it("accepts singleton deletion then retires action after a causal list refresh",
     const confirm = [...host.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === f.model.t.value("thread.deleteConfirm"));
     expect(confirm).toBeDefined();
     expect(f.t.calls("thread.delete")).toHaveLength(0);
+    expect(host.textContent).toContain("Surviving descendant scope: 0 Thread(s).");
+    const listBeforeAck = f.t.calls("thread.list").length;
     confirm!.click(); await flush();
     const deletion = f.t.calls("thread.delete").at(-1)!;
     expect(f.t.calls("thread.delete")).toHaveLength(1);
+    expect(deletion.args).toEqual({ thread_id: "A", descendants: false, preview_marker: { thread_count: 1, ids_hash: "e".repeat(64) } });
     f.t.ok(deletion.id, { accepted: true });
     await act(async () => { await flush(); });
     expect(host.querySelector("[data-thread-delete-preview]")).toBeNull();
     expect(host.textContent).toContain(f.model.t.value("thread.deleteDone"));
-    const listBefore = f.t.calls("thread.list").length;
-    f.db.threads = {};
-    await answer(f, "thread.list");
-    expect(f.t.calls("thread.list").length).toBeGreaterThan(listBefore);
-    expect(host.querySelector("[data-thread-delete-preview]")).toBeNull();
+    const refreshes = f.t.calls("thread.list").slice(listBeforeAck);
+    expect(refreshes).toHaveLength(1);
+    const refresh = refreshes[0]!;
+    f.db.threads = { B: summary("B") };
+    f.db.answered.add(refresh.id);
+    const refreshOut = f.db.answer(refresh);
+    expect(refreshOut.ok).toBe(true);
+    if (refreshOut.ok) f.t.ok(refresh.id, refreshOut.result);
+    await act(async () => { await flush(); });
+    expect(f.model.data.threadList.value.items.some((item) => item.thread_id === "A")).toBe(false);
+    expect(f.model.data.threadList.value.items.some((item) => item.thread_id === "B")).toBe(true);
     expect(f.t.calls("thread.delete")).toHaveLength(1);
   } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
 });
