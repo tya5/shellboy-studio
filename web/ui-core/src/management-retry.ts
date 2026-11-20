@@ -1,5 +1,5 @@
 import type { Operations, ThreadDetails } from "../../data/src";
-import { correlateManagementRun } from "./management-run-observation";
+import { managementRunRead } from "./management-run-read";
 
 export type ManagementRetryResult =
   | { kind: "stale" }
@@ -13,21 +13,14 @@ export async function managementRetry(
   operationId: string,
   isCurrent: () => boolean,
 ): Promise<ManagementRetryResult> {
-  const fresh = await ops.threadGet(threadId);
+  const read = await managementRunRead(ops, threadId, expected, isCurrent);
+  if (read.kind === "stale") return read;
+  if (read.kind === "refused") return { kind: "refused", reason: read.reason === "mismatch" ? "identity" : read.reason, recoveryReason: undefined };
+  const observation = read.observation;
+  const recoveryReason = observation.recoveryReason;
+  if (observation.runState !== "live" || observation.turnState !== "recovery_wait" || !recoveryReason) return { kind: "refused", reason: "ineligible", recoveryReason };
   if (!isCurrent()) return { kind: "stale" };
-  if (!fresh.ok || fresh.value.thread_id !== threadId) return { kind: "refused", reason: "thread" };
-  const thread: ThreadDetails = fresh.value;
-  if (thread.run_id !== expected.runId || thread.turn_id !== expected.turnId) return { kind: "refused", reason: "identity" };
-  const run = await ops.runGet(expected.runId, { threadId });
-  if (!isCurrent()) return { kind: "stale" };
-  if (!run.ok || run.value.run_id !== expected.runId || run.value.thread_id !== threadId || run.value.turn_id !== expected.turnId) return { kind: "refused", reason: "run" };
-  const turn = await ops.turnGet(expected.turnId, { runId: expected.runId, threadId });
-  if (!isCurrent()) return { kind: "stale" };
-  if (!turn.ok || turn.value.turn_id !== expected.turnId || turn.value.run_id !== expected.runId || turn.value.thread_id !== threadId) return { kind: "refused", reason: "turn" };
-  const recoveryReason = typeof turn.value.recovery_hint === "string" ? turn.value.recovery_hint.trim() : "";
-  const correlated = correlateManagementRun(thread, run.value, turn.value);
-  if (!correlated || run.value.state !== "live" || turn.value.state !== "recovery_wait" || !recoveryReason) return { kind: "refused", reason: "ineligible", recoveryReason: recoveryReason || undefined };
-  if (!isCurrent()) return { kind: "stale" };
+
   const outcome = await ops.runRetry(expected.runId, operationId);
-  return { kind: "sent", runId: expected.runId, turnId: expected.turnId, recoveryReason, outcome };
+  return { kind: "sent", runId: observation.runId, turnId: observation.turnId, recoveryReason, outcome };
 }
