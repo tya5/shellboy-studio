@@ -269,6 +269,7 @@ it("requires a complete marker and carries it into singleton deletion", async ()
     f.t.ok(previewCall.id, { thread_id: "A", deletable_now: true, preview_marker: { thread_count: 1, ids_hash: "a".repeat(64) }, selection: { thread_count: 1, descendant_thread_count: 2, surviving_descendant_thread_count: 2 }, blockers: { live_run_count: 0, stopping_run_count: 0 } });
     await act(async () => { await flush(); });
     expect(host.textContent).toContain("Surviving child scope: 2 Thread(s).");
+    expect(f.t.calls("thread.delete")).toHaveLength(0);
     const confirm = [...host.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === f.model.t.value("thread.deleteConfirm"));
     expect(confirm).toBeDefined(); confirm!.click(); await flush();
     const deletion = f.t.calls("thread.delete").at(-1)!;

@@ -315,17 +315,17 @@ export function ThreadManagement({ model }: { model: AppModel }) {
       if (!deleteTargetCurrent(target)) return;
       const marker = out.ok ? out.value.preview_marker : undefined;
       const markerValue = marker && typeof marker === "object" ? marker as Record<string, unknown> : undefined;
-      const selection = out.ok && out.value.selection && typeof out.value.selection === "object" ? out.value.selection as Record<string, unknown> : undefined;
-      const blockers = out.ok && out.value.blockers && typeof out.value.blockers === "object" ? out.value.blockers as Record<string, unknown> : undefined;
-      const lower = out.ok && out.value.observation && typeof out.value.observation === "object" && (out.value.observation as Record<string, unknown>).observed_lower_bounds && typeof (out.value.observation as Record<string, unknown>).observed_lower_bounds === "object" ? (out.value.observation as Record<string, unknown>).observed_lower_bounds as Record<string, unknown> : undefined;
+      const matchingPreview = out.ok && out.value.thread_id === id;
+      const selection = matchingPreview && out.value.selection && typeof out.value.selection === "object" ? out.value.selection as Record<string, unknown> : undefined;
+      const blockers = matchingPreview && out.value.blockers && typeof out.value.blockers === "object" ? out.value.blockers as Record<string, unknown> : undefined;
       const facts: DeletePreviewFacts = {
         threadCount: typeof selection?.thread_count === "number" ? selection.thread_count : undefined,
         descendantCount: typeof selection?.descendant_thread_count === "number" ? selection.descendant_thread_count : undefined,
         survivingDescendantCount: typeof selection?.surviving_descendant_thread_count === "number" ? selection.surviving_descendant_thread_count : undefined,
-        liveRunCount: typeof blockers?.live_run_count === "number" ? blockers.live_run_count : typeof lower?.live_run_count === "number" ? lower.live_run_count : undefined,
-        stoppingRunCount: typeof blockers?.stopping_run_count === "number" ? blockers.stopping_run_count : typeof lower?.stopping_run_count === "number" ? lower.stopping_run_count : undefined,
+        liveRunCount: typeof blockers?.live_run_count === "number" ? blockers.live_run_count : undefined,
+        stoppingRunCount: typeof blockers?.stopping_run_count === "number" ? blockers.stopping_run_count : undefined,
       };
-      if (!out.ok || out.value.thread_id !== id || !markerValue || typeof markerValue.thread_count !== "number" || markerValue.thread_count !== 1 || typeof markerValue.ids_hash !== "string" || !/^[0-9a-f]{64}$/.test(markerValue.ids_hash)) {
+      if (!matchingPreview || !markerValue || typeof markerValue.thread_count !== "number" || markerValue.thread_count !== 1 || typeof markerValue.ids_hash !== "string" || !/^[0-9a-f]{64}$/.test(markerValue.ids_hash)) {
         setDeleteState({ ...target, kind: "failed", facts, message: out.ok ? t("thread.deleteBlocked") : out.error.message });
         return;
       }
