@@ -10,8 +10,6 @@ type ActionState = { id: string; route: Route; owner: OwnerIdentity; visit: Visi
 type SettingsState = { id: string; route: Route; owner: OwnerIdentity; visit: Visit; model: string; effort: string; initialEffort: string; saving: boolean; saved: boolean; error?: string };
 type DeletePreviewFacts = { threadCount?: number; descendantCount?: number; survivingDescendantCount?: number; liveRunCount?: number; stoppingRunCount?: number };
 type DeleteState = { id: string; route: Route; owner: OwnerIdentity; visit: Visit; kind: "previewing" | "confirm" | "deleting" | "failed" | "done"; marker?: { thread_count: number; ids_hash: string }; facts?: DeletePreviewFacts; message?: string };
-type ObservationState = { id: string; route: Route; owner: OwnerIdentity; visit: Visit; detailToken?: object; kind: "loading" | "ready" | "unavailable"; runId?: string; turnId?: string; runState?: string; turnState?: string; recoveryReason?: string; error?: string };
-type RunActionState = { id: string; route: Route; owner: OwnerIdentity; visit: Visit; detailToken: object; kind: "running" | "refused" | "accepted" | "unknown"; action?: "retry" | "stop"; message?: string; reason?: string; ownerError?: string; operationId?: string };
 
 /** One-thread management entry; route reads and mutations are independent of bulk selection. */
 export function ThreadManagement({ model }: { model: AppModel }) {
@@ -20,21 +18,19 @@ export function ThreadManagement({ model }: { model: AppModel }) {
   const id = route.view === "thread-management" ? route.threadId : undefined;
   const owner = model.data.owner.value;
   const visitRef = useRef<Visit>();
-  const detailIdentityRef = useRef<{ id: string; runId: string; turnId: string; visit: Visit; token: object }>();
   const [detailState, setDetailState] = useState<DetailState>();
   const [actionState, setActionState] = useState<ActionState>();
   const [settingsState, setSettingsState] = useState<SettingsState>();
   const [deleteState, setDeleteState] = useState<DeleteState>();
-  const [observationState, setObservationState] = useState<ObservationState>();
-  const [runActionState, setRunActionState] = useState<RunActionState>();
+  const [runPending, setRunPending] = useState<"retry" | "stop">();
+  const [runResult, setRunResult] = useState<{ action: "retry" | "stop"; message: string }>();
   const deleteProofRef = useRef<{ id: string; visit: Visit; marker: { thread_count: number; ids_hash: string }; used: boolean }>();
   const mutationRef = useRef<object>();
   const [busyVersion, setBusyVersion] = useState(0);
   const currentDetail = detailState && detailState.id === id && detailState.route === route && detailState.owner === owner && detailState.visit === visitRef.current ? detailState : undefined;
   const currentAction = actionState && actionState.id === id && actionState.route === route && actionState.owner === owner && actionState.visit === visitRef.current ? actionState : undefined;
   const currentSettings = settingsState && settingsState.id === id && settingsState.route === route && settingsState.owner === owner && settingsState.visit === visitRef.current ? settingsState : undefined;
-  const currentObservation = observationState && observationState.id === id && observationState.route === route && observationState.owner === owner && observationState.visit === visitRef.current && observationState.detailToken === detailIdentityRef.current?.token ? observationState : undefined;
-  const currentRunAction = runActionState && runActionState.id === id && runActionState.route === route && runActionState.owner === owner && runActionState.visit === visitRef.current && runActionState.detailToken === detailIdentityRef.current?.token ? runActionState : undefined;
+  const currentRunAction = runResult ? { kind: "accepted" as const, action: runResult.action, message: runResult.message } : undefined;
   const surfaceBusy = busyVersion >= 0 && mutationRef.current !== undefined;
   const admit = (visit: Visit): object | undefined => {
     if (mutationRef.current !== undefined || visitRef.current !== visit) return undefined;
@@ -49,16 +45,7 @@ export function ThreadManagement({ model }: { model: AppModel }) {
     setBusyVersion((n) => n + 1);
   };
 
-  const publishDetail = (next: DetailState): object => {
-    const token = {};
-    const value = next.value;
-    if (value && typeof value.run_id === "string" && value.run_id !== "" && typeof value.turn_id === "string" && value.turn_id !== "") {
-      detailIdentityRef.current = { id: next.id, runId: value.run_id, turnId: value.turn_id, visit: next.visit, token };
-    } else detailIdentityRef.current = undefined;
-    setObservationState({ id: next.id, route: next.route, owner: next.owner, visit: next.visit, detailToken: token, kind: "unavailable", error: "Thread detail changed; observation requires a fresh exact read" });
-    setDetailState(next);
-    return token;
-  };
+  const publishDetail = (next: DetailState): void => { setDetailState(next); };
 
   useEffect(() => {
     let active = true;
@@ -67,9 +54,7 @@ export function ThreadManagement({ model }: { model: AppModel }) {
     const readRoute = route;
     const readVisit: Visit = {};
     visitRef.current = readVisit;
-    detailIdentityRef.current = undefined;
     const currentTargetWithoutDetail = () => active && visitRef.current === readVisit && model.route.peek() === readRoute && model.route.peek().view === "thread-management" && model.data.owner.peek() === readOwner;
-    const currentTarget = (detailToken: object) => currentTargetWithoutDetail() && detailIdentityRef.current?.visit === readVisit && detailIdentityRef.current?.token === detailToken;
     const read = (next: DetailState) => { if (currentTargetWithoutDetail()) setDetailState(next); };
     read({ id, route: readRoute, owner: readOwner, visit: readVisit, loading: true });
     setActionState({ id, route: readRoute, owner: readOwner, visit: readVisit, kind: "idle" });
@@ -77,7 +62,7 @@ export function ThreadManagement({ model }: { model: AppModel }) {
       const out = await model.ops.threadGet(id);
       if (!currentTargetWithoutDetail()) return;
       if (out.ok && out.value.thread_id === id) {
-        const detailToken = publishDetail({ id, route: readRoute, owner: readOwner, visit: readVisit, loading: false, value: out.value });
+        publishDetail({ id, route: readRoute, owner: readOwner, visit: readVisit, loading: false, value: out.value });
         setSettingsState({ id, route: readRoute, owner: readOwner, visit: readVisit, model: out.value.model, effort: out.value.effort ?? "", initialEffort: out.value.effort ?? "", saving: false, saved: false });
         const projectedStatus = model.rowById.value.get(id)?.status;
         setObservationState({ id, route: readRoute, owner: readOwner, visit: readVisit, detailToken, kind: projectedStatus ? "ready" : "unavailable", runId: out.value.run_id, turnId: out.value.turn_id, runState: projectedStatus === "running" || projectedStatus === "recovery" ? "live" : undefined, turnState: projectedStatus === "running" ? "running" : projectedStatus === "recovery" ? "recovery_wait" : undefined });
@@ -86,7 +71,7 @@ export function ThreadManagement({ model }: { model: AppModel }) {
     return () => {
       active = false;
       if (deleteProofRef.current?.visit === readVisit) deleteProofRef.current = undefined;
-      if (visitRef.current === readVisit) { detailIdentityRef.current = undefined; visitRef.current = undefined; }
+      if (visitRef.current === readVisit) { visitRef.current = undefined; }
     };
   }, [id, model.ops, owner, route]);
 
@@ -138,22 +123,22 @@ export function ThreadManagement({ model }: { model: AppModel }) {
 
   const settings = currentSettings;
   const retry = async () => {
-    if (rowStatus !== "recovery" || surfaceBusy || currentRunAction?.kind === "running") return;
+    if (rowStatus !== "recovery" || surfaceBusy || runPending !== undefined) return;
     const token = admit(visitRef.current!);
     if (!token) return;
-    setRunActionState({ id, route, owner, visit: visitRef.current!, detailToken: detailIdentityRef.current?.token ?? {}, kind: "running", action: "retry" });
+    setRunPending("retry"); setRunResult(undefined);
     try { await model.retry(id); }
-    finally { release(token); setRunActionState(undefined); }
+    finally { release(token); setRunPending(undefined); }
   };
   const stop = async () => {
-    if (rowStatus !== "running" || surfaceBusy || currentRunAction?.kind === "running" || !detail.run_id) return;
+    if (rowStatus !== "running" || surfaceBusy || runPending !== undefined || !detail.run_id) return;
     const token = admit(visitRef.current!);
     if (!token) return;
-    setRunActionState({ id, route, owner, visit: visitRef.current!, detailToken: detailIdentityRef.current?.token ?? {}, kind: "running", action: "stop" });
+    setRunPending("stop"); setRunResult(undefined);
     try {
       const out = await model.ops.runStop(detail.run_id);
-      if (out.ok && visitRef.current === visitRef.current) setRunActionState({ id, route, owner, visit: visitRef.current!, detailToken: detailIdentityRef.current?.token ?? {}, kind: "accepted", action: "stop" });
-      else if (!out.ok) setRunActionState({ id, route, owner, visit: visitRef.current!, detailToken: detailIdentityRef.current?.token ?? {}, kind: "refused", message: out.error.message });
+      if (out.ok) setRunResult({ action: "stop", message: t("action.stopAccepted") });
+      else setRunResult({ action: "stop", message: out.error.message });
     } finally { release(token); }
   };
 
@@ -270,19 +255,12 @@ export function ThreadManagement({ model }: { model: AppModel }) {
   if (deletion?.kind === "done") return <Section title={detail.title}><Notice>{t("thread.deleteDone")}</Notice>{deletion.message ? <Notice tone="bad">{deletion.message}</Notice> : null}<a class="btn" href={formatRoute({ view: "threads" })}>{t("view.threads")}</a></Section>;
 
   return <Section title={detail.title} sub={detail.thread_id} actions={<a class="btn" href={formatRoute({ view: "conversation", threadId: id })}>{t("view.conversation")}</a>}>
-    <span data-management-observation={currentObservation?.kind ?? "unavailable"} aria-hidden="true" />
     <div class="band" data-thread-management="">
       {actionable ? <Button disabled={surfaceBusy || currentAction?.kind === "running"} onClick={() => void mutate()}>{archived ? t("org.unarchive") : t("action.archive")}</Button> : null}
     </div>
     {(rowStatus === "running" || rowStatus === "recovery" || currentRunAction) ? <div class="band" data-run-actions="">
-      {rowStatus === "running" ? <Button variant="stop" disabled={surfaceBusy || currentRunAction?.kind === "running"} onClick={() => void stop()}>{t("action.stop")}</Button> : null}
-      {rowStatus === "recovery" ? <Button variant="primary" disabled={surfaceBusy || currentRunAction?.kind === "running"} onClick={() => void retry()}>{t("action.retry")}</Button> : null}
-      {currentRunAction?.kind === "unknown" ? <Notice tone="wait">{currentRunAction.message}{currentRunAction.operationId ? <div>{currentRunAction.operationId}</div> : null}{currentRunAction.reason ? <div>{currentRunAction.reason}</div> : null}</Notice> : null}
-      {currentRunAction?.kind === "refused" ? <>
-        <Notice tone="bad">{currentRunAction.message}{currentRunAction.reason ? <div>{currentRunAction.reason}</div> : null}</Notice>
-        {currentRunAction.ownerError ? <Notice tone="bad">{currentRunAction.ownerError}</Notice> : null}
-      </> : null}
-      {currentRunAction?.kind === "accepted" ? <Notice>{currentRunAction.action === "stop" ? t("action.stopAccepted") : t("action.retryAccepted")}</Notice> : null}
+      {rowStatus === "running" ? <Button variant="stop" disabled={surfaceBusy || runPending !== undefined} onClick={() => void stop()}>{t("action.stop")}</Button> : null}
+      {rowStatus === "recovery" ? <Button variant="primary" disabled={surfaceBusy || runPending !== undefined} onClick={() => void retry()}>{t("action.retry")}</Button> : null}
     </div> : null}
     {settings ? <div class="band" data-thread-settings="">
       <Field ariaLabel={t("model.change")} value={settings.model} disabled={surfaceBusy || settings.saving} onInput={(e) => setSettingsState((prev) => prev && prev.id === id && prev.route === route && prev.owner === owner && prev.visit === visitRef.current ? { ...prev, model: e.currentTarget.value, saved: false, error: undefined } : prev)} />
