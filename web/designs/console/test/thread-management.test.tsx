@@ -192,8 +192,8 @@ it("shares one admission across both mounted row action entries", async () => {
       render(<><ThreadQuickAction model={f.model} row={summary("B")} surface="sidebar" /><ThreadQuickAction model={f.model} row={summary("B")} surface="list" /></>, host);
       await flush();
     });
-    const listAction = host.querySelector<HTMLButtonElement>('[data-thread-quick-surface="list"][data-thread-quick-action="B"]')!;
-    const sidebarAction = host.querySelector<HTMLButtonElement>('[data-thread-quick-surface="sidebar"][data-thread-quick-action="B"]')!;
+    const listAction = host.querySelector<HTMLButtonElement>('[data-thread-quick-surface="list"][data-thread-quick-action="B"] button')!;
+    const sidebarAction = host.querySelector<HTMLButtonElement>('[data-thread-quick-surface="sidebar"][data-thread-quick-action="B"] button')!;
     listAction.click();
     await flush();
     sidebarAction.click();
@@ -215,8 +215,8 @@ it("shares one admission across both mounted row action entries", async () => {
       render(<><ThreadQuickAction model={f.model} row={summary("B", { archived_at: "now" })} surface="sidebar" /><ThreadQuickAction model={f.model} row={summary("B", { archived_at: "now" })} surface="list" /></>, host);
       await flush();
     });
-    expect(host.querySelector<HTMLButtonElement>('[data-thread-quick-surface="list"]')?.disabled).toBe(false);
-    expect(host.querySelector<HTMLButtonElement>('[data-thread-quick-surface="list"]')?.textContent).toBe(f.model.t.value("org.unarchive"));
+    expect(host.querySelector<HTMLButtonElement>('[data-thread-quick-surface="list"] button')?.disabled).toBe(false);
+    expect(host.querySelector<HTMLButtonElement>('[data-thread-quick-surface="list"] button')?.textContent).toBe(f.model.t.value("org.unarchive"));
   } finally {
     render(null, host); host.remove(); f.model.dispose(); f.data.stop();
   }
