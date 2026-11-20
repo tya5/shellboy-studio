@@ -1220,3 +1220,40 @@ it("holds one opted-in sidebar Retry authority across a competing Stop action", 
     expect(f.t.calls("thread.get")).toHaveLength(readsBeforeAckCompetitor + 1);
   } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
 });
+
+it("retains a mounted sidebar Retry operation across same-owner reconnect", async () => {
+  const f = await fixtureModel({ route: "threads", configure(db) {
+    db.threads = { A: summary("A") };
+    db.details = { A: details("A", { run_id: "run-a", turn_id: "turn-a" }) };
+  } });
+  const host = document.createElement("div"); document.body.append(host);
+  const context: DesignContext = { model: f.model, prefs: signal(loadPrefs({ read: () => null, write: () => {} }, [{ name: "console", themes: [{ name: "light" }] }])), setPrefs: () => {}, designs: [], submitToken: async () => false };
+  try {
+    await act(async () => { render(<App context={context} enableRetryRows />, host); await flush(); });
+    for (let i = 0; i < 4; i++) { if (!f.t.calls("thread.list").find((call) => !f.db.answered.has(call.id))) break; await answer(f, "thread.list"); }
+    const retryControl = host.querySelector<HTMLButtonElement>('[data-thread-quick-surface="sidebar"][data-thread-quick-action="A"] [data-thread-quick-retry]')!;
+    retryControl.click();
+    const threadRead = f.t.calls("thread.get").at(-1)!;
+    f.t.ok(threadRead.id, details("A", { run_id: "run-a", turn_id: "turn-a" }));
+    await act(async () => { await flush(); });
+    f.t.ok(f.t.calls("run.get").at(-1)!.id, { run_id: "run-a", thread_id: "A", turn_id: "turn-a", state: "live" });
+    await act(async () => { await flush(); });
+    f.t.ok(f.t.calls("turn.get").at(-1)!.id, { turn_id: "turn-a", run_id: "run-a", thread_id: "A", state: "recovery_wait", recovery_hint: "provider interrupted" });
+    await act(async () => { await flush(); });
+    const retry = f.t.calls("run.retry").at(-1)!;
+    const operationId = retry.operation_id;
+    expect(operationId).toBeTruthy();
+    f.t.drop();
+    await act(async () => { await flush(); });
+    expect(f.model.managementUnconfirmedRetry.value.get("i1:A:retry")?.operationId).toBe(operationId);
+    f.t.open();
+    f.t.push({ t: "hello", bridge_version: "0.0.1", data_dir: "/temp/owner-a", owner: { state: "connected", info: { protocol_version: 5, instance_id: "i1", capabilities: ["history.window"] } } });
+    render(null, host);
+    await act(async () => { f.model.applyRoute({ view: "threads" }); render(<App context={context} enableRetryRows />, host); await flush(); });
+    for (let i = 0; i < 4; i++) { if (!f.t.calls("thread.list").find((call) => !f.db.answered.has(call.id))) break; await answer(f, "thread.list"); }
+    const row = host.querySelector('[data-thread-quick-surface="sidebar"][data-thread-quick-action="A"]');
+    expect(row?.querySelector("[data-thread-quick-retry]")).toBeNull();
+    expect(row?.textContent).toContain(operationId);
+    expect(f.t.calls("run.retry")).toHaveLength(1);
+  } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
+});
