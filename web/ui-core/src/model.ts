@@ -68,8 +68,6 @@ interface ModelPickerSession {
 
 export type ConnectionView = "connected" | "connecting" | "ownerDown" | "authNeeded";
 
-export type ManagementUnconfirmedRetry = { threadId: string; runId: string; turnId: string; operationId: string; recoveryReason?: string; ownerInstanceId: string; action: "retry" | "stop" };
-export type ManagementRetryReservation = { threadId: string; operationId: string; ownerInstanceId: string };
 
 export type SendState =
   | { kind: "idle" }
@@ -138,17 +136,14 @@ export const errorMessage = (e: OpError): string => e.message;
 type QuickActionStatus = { kind: "running" | "failed" | "verified"; error?: string; archived?: boolean };
 
 export class AppModel {
-  readonly quickActionEpoch = signal(0);
   private readonly threadReservations = new WeakMap<object, Map<string, object>>();
   private readonly bulkReservations = new WeakMap<object, object>();
-  private readonly quickActions = new WeakMap<object, Map<string, { token?: object; status: QuickActionStatus }>>();
   threadActionReserve(owner: object, ids: readonly string[]): object | undefined {
     let reservations = this.threadReservations.get(owner);
     if (!reservations) { reservations = new Map(); this.threadReservations.set(owner, reservations); }
     if (this.bulkReservations.has(owner) || ids.some((id) => reservations!.has(id))) return undefined;
     const token = {};
     for (const id of ids) reservations.set(id, token);
-    this.quickActionEpoch.value++;
     return token;
   }
   threadActionOwns(owner: object, ids: readonly string[], token: object): boolean {
@@ -159,7 +154,6 @@ export class AppModel {
     const reservations = this.threadReservations.get(owner);
     if (!reservations || !ids.every((id) => reservations.get(id) === token)) return;
     for (const id of ids) reservations.delete(id);
-    this.quickActionEpoch.value++;
   }
 
   bulkActionReserve(owner: object, ids: readonly string[]): object | undefined {
@@ -170,7 +164,6 @@ export class AppModel {
     const token = {};
     this.bulkReservations.set(owner, token);
     for (const id of ids) reservations.set(id, token);
-    this.quickActionEpoch.value++;
     return token;
   }
   bulkActionOwns(owner: object, ids: readonly string[], token: object): boolean {
@@ -182,34 +175,6 @@ export class AppModel {
     this.threadActionRelease(owner, ids, token);
   }
 
-  threadQuickActionAdmit(owner: object, threadId: string): object | undefined {
-    let actions = this.quickActions.get(owner);
-    if (!actions) { actions = new Map(); this.quickActions.set(owner, actions); }
-    if (actions.get(threadId)?.status.kind === "running") return undefined;
-    const token = this.threadActionReserve(owner, [threadId]);
-    if (!token) return undefined;
-    actions.set(threadId, { token, status: { kind: "running" } });
-    this.quickActionEpoch.value++;
-    return token;
-  }
-  threadQuickActionStatus(owner: object, threadId: string): QuickActionStatus | undefined {
-    return this.quickActions.get(owner)?.get(threadId)?.status;
-  }
-  threadQuickActionFinish(owner: object, threadId: string, token: object, status: QuickActionStatus): void {
-    const action = this.quickActions.get(owner)?.get(threadId);
-    if (!action || action.token !== token) return;
-    action.status = status;
-    action.token = undefined;
-    this.threadActionRelease(owner, [threadId], token);
-    this.quickActionEpoch.value++;
-  }
-  threadQuickActionDrop(owner: object, threadId: string, token: object): void {
-    const actions = this.quickActions.get(owner);
-    if (actions?.get(threadId)?.token !== token) return;
-    actions.delete(threadId);
-    this.threadActionRelease(owner, [threadId], token);
-    this.quickActionEpoch.value++;
-  }
 
 
   readonly pairing = signal<{ hosts: string[]; links: Record<string, { url: string; expires: number }>; error?: string }>({ hosts: [], links: {} });
@@ -405,24 +370,9 @@ export class AppModel {
   private pendingOwnCurrent: (() => boolean) | undefined;
   readonly sendState: Signal<SendState> = signal({ kind: "idle" });
   readonly actionError: Signal<string | undefined> = signal(undefined);
-  readonly managementUnconfirmedRetry: Signal<ReadonlyMap<string, ManagementUnconfirmedRetry>> = signal(new Map());
-  readonly managementRetryReservations: Signal<ReadonlyMap<string, ManagementRetryReservation>> = signal(new Map());
   readonly appRequestState: Signal<{ kind: "idle" | "sending" | "failed" | "unconfirmed"; message?: string }> = signal({ kind: "idle" });
   readonly uncertainCancels: Signal<ReadonlySet<string>> = signal(new Set());
 
-  reserveManagementRetry(key: string, threadId: string, ownerInstanceId: string): ManagementRetryReservation | undefined {
-    const current = this.managementRetryReservations.peek();
-    if (current.has(key)) return undefined;
-    const reservation = { threadId, operationId: this.ops.mutationId(), ownerInstanceId };
-    this.managementRetryReservations.value = new Map(current).set(key, reservation);
-    return reservation;
-  }
-
-  releaseManagementRetry(key: string, operationId: string): void {
-    const current = this.managementRetryReservations.peek();
-    if (current.get(key)?.operationId !== operationId) return;
-    const next = new Map(current); next.delete(key); this.managementRetryReservations.value = next;
-  }
 
   private readonly lastThread = signal<string | undefined>(undefined);
   private readonly watchedOutputs = new Map<string, string | undefined>();
