@@ -54,8 +54,8 @@ export function ThreadManagement({ model }: { model: AppModel }) {
     visitRef.current = readVisit;
     detailIdentityRef.current = undefined;
     const currentTargetWithoutDetail = () => active && visitRef.current === readVisit && model.route.peek() === readRoute && model.route.peek().view === "thread-management" && model.data.owner.peek() === readOwner;
-    const currentTarget = () => active && visitRef.current === readVisit && model.route.peek() === readRoute && model.route.peek().view === "thread-management" && model.data.owner.peek() === readOwner;
-    const read = (next: DetailState) => { if (currentTarget()) setDetailState(next); };
+    const currentTarget = () => currentTargetWithoutDetail() && detailIdentityRef.current?.visit === readVisit;
+    const read = (next: DetailState) => { if (currentTargetWithoutDetail()) setDetailState(next); };
     read({ id, route: readRoute, owner: readOwner, visit: readVisit, loading: true });
     setActionState({ id, route: readRoute, owner: readOwner, visit: readVisit, kind: "idle" });
     void (async () => {
