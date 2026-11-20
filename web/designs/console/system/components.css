@@ -509,3 +509,7 @@ a{color:var(--accent)}
 
 .work-inner-line{display:flex;align-items:center;gap:var(--space-8);width:100%;min-width:0;box-sizing:border-box;padding:var(--space-4) var(--space-12)}
 .work-inner-line>.work-inner-content{min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+
+/* The approved shared row menu stays at the trailing edge and is touch-visible only when selected. */
+.tree-item .thread-menu-anchor,.srow .thread-menu-anchor{margin-left:auto;position:relative;flex:none;visibility:hidden}
+.tree-item:hover .thread-menu-anchor,.tree-item:focus-within .thread-menu-anchor,.tree-item .tree-main[aria-current=true]~.thread-menu-anchor,.srow:hover .thread-menu-anchor,.srow:focus-within .thread-menu-anchor,.srow.on .thread-menu-anchor{visibility:visible}

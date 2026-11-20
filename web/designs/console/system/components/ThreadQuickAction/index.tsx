@@ -22,6 +22,9 @@ export function ThreadQuickAction({ model, row, status, surface, onMove }: { mod
     document.addEventListener("pointerdown", outside);
     return () => { node.removeEventListener("thread-menu-open", show); document.removeEventListener("pointerdown", outside); };
   }, []);
+  useEffect(() => {
+    if (open) queueMicrotask(() => menu.current?.querySelector<HTMLElement>("[role=menuitem]")?.focus());
+  }, [open]);
   const run = async (action: Action, work: () => Promise<void>) => {
     if (pending) return;
     setPending(action); setOpen(false); model.actionError.value = undefined;
@@ -54,7 +57,7 @@ export function ThreadQuickAction({ model, row, status, surface, onMove }: { mod
         event.preventDefault(); const items = [...(menu.current?.querySelectorAll<HTMLElement>("[role=menuitem]") ?? [])]; const index = items.indexOf(event.target as HTMLElement); items[(index + (event.key === "ArrowDown" ? 1 : items.length - 1)) % items.length]?.focus();
       }
     }}>
-      <a role="menuitem" href={formatRoute({ view: "thread-management", threadId: row.thread_id })}>{label}</a>
+      <a role="menuitem" href={formatRoute({ view: "thread-management", threadId: row.thread_id })}>{model.t.value("view.thread-management")}</a>
       {onMove ? <Button role="menuitem" onClick={() => { setOpen(false); onMove(); }}>{model.t.value("org.move")}</Button> : null}
       {status === "completed" || status === "stopped" || status === "failed" ? <Button role="menuitem" disabled={pending !== undefined} onClick={archive}>{archived ? model.t.value("org.unarchive") : model.t.value("action.archive")}</Button> : null}
       {status === "running" ? <Button role="menuitem" variant="stop" disabled={pending !== undefined} onClick={stop}>{model.t.value("action.stop")}</Button> : null}
