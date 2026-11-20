@@ -736,7 +736,8 @@ export class ThreadOrg {
     this.cancel.cancel();
     this.pages = 1;
     this.revision++;
-    this.state.value = { ...this.state.peek(), query };
+    this.state.value = { ...this.state.peek(), query, items: [], nextCursor: undefined, loaded: false };
+    this.selected.value = new Set();
     void this.read();
   }
 

@@ -351,10 +351,24 @@ describe("Threads over the fake transport", () => {
     await settle(t, db);
     await running;
     const call = t.calls("thread.archive")[0]!;
-    expect(call.args).toEqual({ thread_ids: ["lead", "done"], descendants: true });
+    expect(call.args).toEqual({ thread_ids: ["lead", "done"] });
     expect(call.operation_id).toBeTruthy();
     expect(org.selected.value.size).toBe(0);
     expect(org.action.value).toMatchObject({ kind: "done", verb: "archive" });
+  });
+
+  it("fails closed when the selected view becomes stale or the owner changes", async () => {
+    const { t, db, model } = await open();
+    model.org.setMany(["lead"], true);
+    model.org.setQuery("different");
+    expect(model.org.apply()).resolves.toBeUndefined();
+    expect(t.calls("thread.archive")).toHaveLength(0);
+    t.push({ t: "hello", bridge_version: "0.0.1", data_dir: "/temp/owner-b", owner: { state: "connected", info: { protocol_version: 5, instance_id: "i2", capabilities: [] } } });
+    await flush();
+    model.org.setQuery("");
+    model.org.setMany(["lead"], true);
+    await model.org.apply();
+    expect(t.calls("thread.archive")).toHaveLength(0);
   });
   it("in Archived the same action unarchives; turning descendants off sends none", async () => {
     const { t, db, model } = await open();
