@@ -1278,6 +1278,8 @@ it("excludes the real opted-in list Retry while sidebar Retry owns the target", 
     await act(async () => { render(<App context={context} enableRetryRows />, host); await flush(); });
     for (let i = 0; i < 4; i++) { if (!f.t.calls("thread.list").find((call) => !f.db.answered.has(call.id))) break; await answer(f, "thread.list"); }
     expect(f.t.calls("thread.get")).toHaveLength(0);
+    expect(f.t.calls("run.get")).toHaveLength(0);
+    expect(f.t.calls("turn.get")).toHaveLength(0);
     const sidebar = host.querySelector<HTMLButtonElement>('[data-thread-quick-surface="sidebar"][data-thread-quick-action="A"] [data-thread-quick-retry]')!;
     const list = host.querySelector<HTMLButtonElement>('[data-thread-quick-surface="list"][data-thread-quick-action="A"] [data-thread-quick-retry]')!;
     sidebar.click();
