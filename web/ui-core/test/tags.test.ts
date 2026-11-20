@@ -267,8 +267,12 @@ it("binds a bulk tag call to the published IDs and preserves a newer selection",
 });
 
 it("preserves a draft-only edit while a real published tag write is pending", async () => {
-  const { t, db, model } = await setup();
+  const { t, db, model } = await open({ capabilities: both, configure: (d) => populate(d, { old: ["lead", "done"], keep: ["lead"] }) });
   const org = model.org;
+  org.setGrouping("tag");
+  await settle(t, db);
+  org.headings.toggle("old");
+  await settle(t, db);
   org.setMany(["lead"], true);
   org.addTag("first");
   const running = org.applyTags();
