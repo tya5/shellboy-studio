@@ -507,13 +507,17 @@ mod tests {
             ),
             Access::Read
         );
+        assert_eq!(access(&build_command("thread.delete_preview", Some(json!({"thread_id":"t","descendants":false}))).unwrap()), Access::Read);
+        assert_eq!(access(&build_command("thread.delete", Some(json!({"thread_id":"t","descendants":false,"preview_marker":{"thread_count":1,"ids_hash":"0".repeat(64)}}))).unwrap()), Access::Mutation);
         for (command, args) in [
-            ("thread.delete", json!({"thread_ids":["t"]})),
-            ("thread.delete_preview", json!({"thread_ids":["t"]})),
+            ("thread.delete", json!({"thread_id":"t","descendants":true,"preview_marker":{"thread_count":1,"ids_hash":"0".repeat(64)}})),
+            ("thread.delete", json!({"thread_id":"t","descendants":false})),
+            ("thread.delete_preview", json!({"thread_id":"t","descendants":false,"preview_marker":{"thread_count":1,"ids_hash":"0".repeat(64)}})),
+            ("thread.delete_preview", json!({"thread_id":"","descendants":false})),
         ] {
             let denied = match build_command(command, Some(args)) {
                 Err(e) => e.code == "not_allowed" || e.code == "invalid_call",
-                Ok(_) => false,
+                Ok(value) => access(&value) == Access::Denied,
             };
             assert!(denied, "{command}");
         }

@@ -178,18 +178,25 @@ export function ThreadManagement({ model }: { model: AppModel }) {
     } catch (error) { if (deleteTargetCurrent(target)) setDeleteState({ ...target, kind: "failed", message: error instanceof Error ? error.message : t("thread.deleteBlocked") }); }
     finally { release(token); }
   };
+  const cancelDelete = () => { if (deletion && deleteTargetCurrent(deletion)) setDeleteState(undefined); };
   const confirmDelete = async () => {
-    if (!deletion?.marker || !deleteTargetCurrent(deletion) || surfaceBusy) return;
+    if (!deletion || deletion.kind !== "confirm" || !deletion.marker || !deleteTargetCurrent(deletion) || surfaceBusy) return;
     const token = admit(deletion.visit);
     if (!token) return;
     setDeleteState({ ...deletion, kind: "deleting" });
     try {
       const out = await model.ops.threadDelete(deletion.id, deletion.marker);
       if (!deleteTargetCurrent(deletion)) return;
-      if (!out.ok) { setDeleteState({ ...deletion, kind: "failed", message: out.error.message }); return; }
+      if (!out.ok || out.value.accepted !== true) { setDeleteState({ ...deletion, kind: "failed", message: out.ok ? t("thread.deleteBlocked") : out.error.message }); return; }
       setDeleteState({ ...deletion, kind: "done" });
-      try { await model.data.refreshThreadList(); await model.org.read(); }
-      catch (error) { if (deleteTargetCurrent(deletion)) setDeleteState({ ...deletion, kind: "done", message: error instanceof Error ? error.message : t("thread.deleteRefreshFailed") }); }
+      try {
+        await model.data.refreshThreadList();
+        if (!deleteTargetCurrent(deletion)) return;
+        if (model.data.threadList.value.error) throw new Error(model.data.threadList.value.error.message);
+        await model.org.read();
+        if (!deleteTargetCurrent(deletion)) return;
+        if (model.org.state.value.error) throw new Error(model.org.state.value.error.message);
+      } catch (error) { if (deleteTargetCurrent(deletion)) setDeleteState({ ...deletion, kind: "done", message: error instanceof Error ? error.message : t("thread.deleteRefreshFailed") }); }
     } catch (error) { if (deleteTargetCurrent(deletion)) setDeleteState({ ...deletion, kind: "failed", message: error instanceof Error ? error.message : t("thread.deleteBlocked") }); }
     finally { release(token); }
   };
@@ -208,11 +215,9 @@ export function ThreadManagement({ model }: { model: AppModel }) {
       {settings.saved ? <Notice>{t("thread.settingsSaved")}</Notice> : null}
     </div> : null}
     {!deletion || deletion.kind === "failed" ? <Button data-thread-delete-preview="" variant="warn" disabled={surfaceBusy} onClick={() => void previewDelete()}>{t("thread.deletePreview")}</Button> : null}
-    {deletion?.kind === "confirm" ? <Notice actions={<Button variant="warn" disabled={surfaceBusy} onClick={() => void confirmDelete()}>{t("thread.deleteConfirm")}</Button>}>{t("thread.deleteConfirmBody", { n: deletion.marker!.thread_count })}</Notice> : null}
+    {deletion?.kind === "confirm" ? <Notice actions={<><Button variant="link" onClick={cancelDelete}>{t("thread.deleteCancel")}</Button><Button variant="warn" disabled={surfaceBusy} onClick={() => void confirmDelete()}>{t("thread.deleteConfirm")}</Button></>}>{t("thread.deleteConfirmBody", { n: deletion.marker!.thread_count })}</Notice> : null}
     {deletion?.kind === "previewing" || deletion?.kind === "deleting" ? <Notice tone="wait">{t("common.loading")}</Notice> : null}
     {deletion?.kind === "failed" ? <Notice tone="bad">{deletion.message ?? t("thread.deleteBlocked")}</Notice> : null}
-    {deletion?.kind === "done" ? <Notice>{deletion.message ?? t("thread.deleteDone")}</Notice> : null}
-    {deletion?.kind === "done" ? <Notice>{t("thread.deleteDone")}</Notice> : null}
     {currentAction?.kind === "failed" ? <Notice tone="bad">{currentAction.message}</Notice> : null}
     {currentAction?.kind === "done" ? <>
       <Notice>{currentAction.archived ? t("org.archivedResult", { n: currentAction.count, already: currentAction.already }) : t("org.unarchivedResult", { n: currentAction.count, already: currentAction.already })}</Notice>
