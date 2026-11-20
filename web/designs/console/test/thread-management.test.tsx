@@ -182,21 +182,41 @@ it("does not arm actions for a foreign detail or dispatch a second visit mutatio
 });
 
 
-it("routes both mounted row action entries to the clicked singleton", async () => {
+it("shares one admission across both mounted row action entries", async () => {
   const f = await fixtureModel({ route: "threads", configure(db) { db.threads = { A: summary("A"), B: summary("B") }; } });
   const host = document.createElement("div");
   document.body.append(host);
   try {
     f.model.org.selected.value = new Set(["A"]);
     await act(async () => {
-      render(<><ThreadQuickAction model={f.model} row={summary("A")} surface="sidebar" /><ThreadQuickAction model={f.model} row={summary("B")} surface="list" /></>, host);
+      render(<><ThreadQuickAction model={f.model} row={summary("B")} surface="sidebar" /><ThreadQuickAction model={f.model} row={summary("B")} surface="list" /></>, host);
       await flush();
     });
     const listAction = host.querySelector<HTMLButtonElement>('[data-thread-quick-surface="list"][data-thread-quick-action="B"]')!;
+    const sidebarAction = host.querySelector<HTMLButtonElement>('[data-thread-quick-surface="sidebar"][data-thread-quick-action="B"]')!;
     listAction.click();
     await flush();
-    expect(f.t.calls("thread.archive").at(-1)?.args).toEqual({ thread_ids: ["B"] });
-    expect(host.querySelector('[data-thread-quick-surface="sidebar"][data-thread-quick-action="A"]')).toBeDefined();
+    sidebarAction.click();
+    expect(f.t.calls("thread.archive")).toHaveLength(1);
+    expect(f.t.calls("thread.archive")[0]!.args).toEqual({ thread_ids: ["B"] });
+    f.t.ok(f.t.calls("thread.archive")[0]!.id, { archived: ["B"] });
+    await act(async () => { await flush(); });
+    const read = f.t.calls("thread.get").find((call) => !f.db.answered.has(call.id) && (call.args as { thread_id?: string }).thread_id === "B")!;
+    expect(read).toBeDefined();
+    sidebarAction.click();
+    expect(f.t.calls("thread.archive")).toHaveLength(1);
+    f.db.details.B = details("B", { archived_at: "now" });
+    f.db.threads.B = summary("B", { archived_at: "now" });
+    f.t.ok(read.id, f.db.details.B);
+    await act(async () => { await flush(); });
+    await answer(f, "thread.list");
+    await answer(f, "thread.list");
+    await act(async () => {
+      render(<><ThreadQuickAction model={f.model} row={summary("B", { archived_at: "now" })} surface="sidebar" /><ThreadQuickAction model={f.model} row={summary("B", { archived_at: "now" })} surface="list" /></>, host);
+      await flush();
+    });
+    expect(host.querySelector<HTMLButtonElement>('[data-thread-quick-surface="list"]')?.disabled).toBe(false);
+    expect(host.querySelector<HTMLButtonElement>('[data-thread-quick-surface="list"]')?.textContent).toBe(f.model.t.value("org.unarchive"));
   } finally {
     render(null, host); host.remove(); f.model.dispose(); f.data.stop();
   }
