@@ -234,25 +234,7 @@ export class Branches {
     return pending;
   }
 
-  async archiveSelected(): Promise<void> {
-    const ids = [...this.selection.peek()].sort(); if (!ids.length) return;
-    const threadId = this.state.peek().threadId ?? ids[0]!;
-    const attempt = this.reserve(this.archiveAttempt, threadId, JSON.stringify({ thread_ids: ids })); if (!attempt) return;
-    this.archiveAttempt = attempt;
-    const token = this.invocation();
-    const out = await this.receipt(attempt, attempt.receipt, id => this.ops.threadArchive(ids, {}, id));
-    attempt.uncertain = uncertainOutcome(out);
-    if (!this.visible(attempt, token)) return;
-    if (!out.ok) this.actionError.value = outcomeMessage(out);
-    else {
-      const missing = (out.value as ArchiveResult).not_found ?? [];
-      this.selection.value = new Set(missing);
-      if (!this.visible(attempt, token)) return;
-      this.actionError.value = missing.length ? `Not found: ${missing.join(", ")}` : undefined;
-      if (!this.visible(attempt, token)) return;
-      const id = this.state.peek().threadId; if (id) void this.read(id);
-    }
-  }
+
   async renameBranch(id: string, title: string): Promise<void> {
     title = title.trim(); if (!title) return;
     const attempt = this.reserve(this.renameAttempt, id, JSON.stringify({ thread_id: id, title })); if (!attempt) return;

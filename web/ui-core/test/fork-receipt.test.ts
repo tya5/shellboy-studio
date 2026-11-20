@@ -79,17 +79,6 @@ it("expired/invalid canonical responses retain immutable ID and refuse changed p
   const retry=f.b.forkAt(f.target,"fixed");const same=f.t.calls("thread.fork")[1]!;expect(same.operation_id).toBe(sent.operation_id);f.t.ok(same.id,"malformed");await retry;
   await f.b.forkAt({threadId:"other",nodeId:"other"},"fixed");await f.b.forkAt(f.target,"changed");expect(f.t.calls("thread.fork")).toHaveLength(2);f.link.stop();
 });
-it("four independent slots reserve no more than six mutation receipts",async()=>{
-  const f=fixture();const rename=f.b.renameBranch("parent","name");f.b.toggleBranch("other");const archive=f.b.archiveSelected();
-  const preview=f.b.previewRewind(f.target);f.t.ok(f.t.calls("thread.rewind")[0]!.id,{removed_node_count:1});await preview;
-  const rewind=f.b.confirmRewind("rewind input");f.t.ok(f.t.calls("thread.rewind")[1]!.id,{removed_node_count:1});await flush();
-  const fork=f.b.forkAt(f.target,"fork input");f.t.ok(f.t.calls("thread.fork")[0]!.id,child);await flush();
-  const ids=()=>new Set(f.t.calls().filter(c=>c.operation_id).map(c=>c.operation_id));expect(ids().size).toBe(6);
-  await f.b.forkAt(f.target,"changed");expect(ids().size).toBe(6);
-  expect(f.t.calls("message.send").map(c=>(c.args as {thread_id:string}).thread_id)).toEqual(["parent","child"]);
-  f.t.drop();await Promise.all([rename,archive,rewind,fork]);f.link.stop();
-});
-
 it("synchronous forking notification invalidation cannot dispatch even after owner ABA",async()=>{
   const f=fixture();const stop=effect(()=>{if(f.b.fork.value.kind==="forking"){f.change("b");f.change("a");}});
   await f.b.forkAt(f.target,"fixed");expect(f.t.calls("thread.fork")).toHaveLength(0);expect(f.t.calls("message.send")).toHaveLength(0);
