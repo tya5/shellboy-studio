@@ -698,7 +698,7 @@ export class ThreadOrg {
     try {
       do {
         this.again = false;
-        const readAuthority = this.authority?.();
+        const readAuthority: { owner: object; route: object } | undefined = this.authority?.();
         const readGrouping = this.groupBy.peek();
         const { mode, query } = this.state.peek();
         this.cancel = new Cancel();
@@ -927,7 +927,8 @@ export class ThreadOrg {
     const heading = this.headingKind();
     const publication = this.publishedView;
     const publicationCurrent = publication !== undefined && publication.owner === authority?.owner && publication.route === authority?.route && publication.mode === this.state.peek().mode && publication.query === this.state.peek().query && publication.grouping === this.groupBy.peek();
-    const groupedReady = heading !== undefined && publicationCurrent && publication?.grouping === this.groupBy.peek() && !this.headings.headings.peek().loading && publication.memberIds !== undefined && ids.every((id) => publication.memberIds.has(id)) && [...this.headings.open.peek().values()].every((member) => member.loaded && !member.loading && !member.error);
+    const memberIds = publication?.memberIds;
+    const groupedReady = heading !== undefined && publicationCurrent && publication?.grouping === this.groupBy.peek() && !this.headings.headings.peek().loading && memberIds !== undefined && ids.every((id) => memberIds.has(id)) && [...this.headings.open.peek().values()].every((member) => member.loaded && !member.loading && !member.error);
     const flatReady = heading === undefined && publicationCurrent && publication?.grouping === this.groupBy.peek() && publication !== undefined;
     const publicationValid = groupedReady || flatReady;
     if (this.running || ids.length === 0 || !authority || !publicationValid || ids.some((id) => !shown.some((row) => row.thread_id === id)) || (draft.add.length === 0 && draft.remove.size === 0)) return;

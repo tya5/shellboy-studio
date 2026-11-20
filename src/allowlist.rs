@@ -68,8 +68,8 @@ pub fn access(command: &Command) -> Access {
         #[cfg(feature = "next-connection-setup")]
         Command::CredentialsSet(..) | Command::CredentialsClear(..) => Access::Mutation,
         Command::MessageReply(..) => Access::Mutation,
-        Command::ThreadDeletePreview(args) if args.thread_id.len() > 0 && !args.descendants && args.preview_marker.is_none() => Access::Read,
-        Command::ThreadDelete(args) if args.thread_id.len() > 0 && !args.descendants && args.preview_marker.as_ref().is_some_and(|m| m.thread_count == 1 && m.ids_hash.len() == 64 && m.ids_hash.bytes().all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())) => Access::Mutation,
+        Command::ThreadDeletePreview(args) if !args.thread_id.is_empty() && !args.descendants && args.preview_marker.is_none() => Access::Read,
+        Command::ThreadDelete(args) if !args.thread_id.is_empty() && !args.descendants && args.preview_marker.as_ref().is_some_and(|m| m.thread_count == 1 && m.ids_hash.len() == 64 && m.ids_hash.bytes().all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())) => Access::Mutation,
         Command::MessageAsk(..) => Access::Denied,
         // `events.wait` is bridge-internal (one shared long-poll). The rest has no UI yet.
         Command::OwnerShutdown(..)

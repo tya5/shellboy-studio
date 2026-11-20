@@ -255,7 +255,7 @@ export class AppModel {
     const session: ModelPickerSession = { route, handle, owner, observation, settings, initial };
     batch(() => {
       this.pickerSession.value = session;
-      this.modelPicker.value = { open: true, thread: d.thread_id, connection: d.connection, model: d.model, ...initial, maxTokensState: settings.maxTokensState, clearMaxTokens: false, models: [], loading: false, saving: false };
+      this.modelPicker.value = { open: true, thread: d.thread_id, ...initial, connection: d.connection, model: d.model, maxTokensState: settings.maxTokensState, clearMaxTokens: false, models: [], loading: false, saving: false };
     });
     if (this.data.capabilities.peek().includes(CAPABILITY_CONFIG)) this.config.ensure();
     this.chooseModelConnection(d.connection);
