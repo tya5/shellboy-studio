@@ -203,11 +203,14 @@ describe("editing tags", () => {
   });
 
   it("refuses more than 200 published Threads before calling", async () => {
-    const { t, db, model } = await open({ capabilities: both, configure: (d) => populate(d, { old: Array.from({ length: TAG_SELECTION_MAX + 1 }, (_, k) => `big${k}`) }) });
+    const ids = Array.from({ length: TAG_SELECTION_MAX + 1 }, (_, k) => `over-limit-${String(k).padStart(3, "0")}`);
+    const { t, db, model } = await open({ capabilities: both, configure: (d) => populate(d, { old: ids }) });
     const org = model.org;
     await settle(t, db);
     while (org.canLoadMore()) { org.loadMore(); await settle(t, db); }
-    org.selected.value = new Set(model.org.shown().map((row) => row.thread_id));
+    const published = new Set(org.shown().map((row) => row.thread_id));
+    expect(ids.every((id) => published.has(id))).toBe(true);
+    org.selected.value = new Set(ids);
     org.addTag("x");
     await org.applyTags();
     await settle(t, db);
