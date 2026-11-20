@@ -37,3 +37,4 @@ export * from "./guide-registration";
 
 export * from "./branch-compare";
 export * from "./management-run-observation";
+export * from "./management-stop";

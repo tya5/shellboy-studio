@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "preact/hooks";
-import { correlateManagementRun, formatRoute, managementRunStopEligible, threadModelChanges, type AppModel, type Route, type ThreadModelDraft } from "../../../ui-core/src";
+import { formatRoute, managementStop, threadModelChanges, type AppModel, type Route, type ThreadModelDraft } from "../../../ui-core/src";
 import { Button, Field, Notice, Section } from "../system/components";
 import type { ThreadDetails } from "../../../data/src";
 
@@ -218,38 +218,27 @@ export function ThreadManagement({ model }: { model: AppModel }) {
     const target = currentDetail;
     const detailToken = detailIdentityRef.current?.token;
     const targetVisit = target?.visit;
-    if (!target || !detailToken || !targetVisit || surfaceBusy || currentRunAction?.kind === "running") return;
+    const expected = detailIdentityRef.current;
+    if (!target || !detailToken || !targetVisit || !expected || surfaceBusy || currentRunAction?.kind === "running") return;
     const currentTarget = () => visitRef.current === targetVisit && model.route.peek() === route && model.route.peek().view === "thread-management" && model.data.owner.peek() === owner && detailIdentityRef.current?.token === detailToken;
     const token = admit(targetVisit);
     if (!token) return;
+    const sharedToken = model.threadQuickActionAdmit(owner as object, id);
+    if (!sharedToken) { release(token); return; }
     setRunActionState({ id, route, owner, visit: targetVisit, detailToken, kind: "running" });
     try {
-      const freshDetail = await model.ops.threadGet(id);
-      if (!currentTarget()) return;
-      if (!freshDetail.ok || freshDetail.value.thread_id !== id) {
-        setRunActionState({ id, route, owner, visit: targetVisit, detailToken, kind: "refused", message: "Stop refused: the exact Thread read failed" });
-        return;
-      }
-      const freshThread = freshDetail.value;
-      const runId = freshThread.run_id;
-      const turnId = freshThread.turn_id;
-      if (runId !== target.value?.run_id || turnId !== target.value?.turn_id || typeof runId !== "string" || typeof turnId !== "string") {
-        setRunActionState({ id, route, owner, visit: targetVisit, detailToken, kind: "refused", message: "Stop refused: the accepted Thread identity changed" });
-        return;
-      }
-      const run = await model.ops.runGet(runId, { threadId: id });
-      if (!currentTarget()) return;
-      const turn = await model.ops.turnGet(turnId, { runId, threadId: id });
-      if (!currentTarget()) return;
-      const correlated = run.ok && turn.ok ? correlateManagementRun(freshThread, run.value, turn.value) : undefined;
-      if (!correlated || !managementRunStopEligible(correlated)) {
+      const result = await managementStop(model.ops, id, { runId: expected.runId, turnId: expected.turnId }, currentTarget);
+      if (result.kind === "stale") return;
+      if (result.kind === "refused") {
         setRunActionState({ id, route, owner, visit: targetVisit, detailToken, kind: "refused", message: "Stop refused: the exact Run/Turn is no longer running" });
         return;
       }
-      const out = await model.ops.runStop(runId);
       if (!currentTarget()) return;
-      setRunActionState(out.ok ? { id, route, owner, visit: targetVisit, detailToken, kind: "accepted", action: "stop" } : { id, route, owner, visit: targetVisit, detailToken, kind: "refused", message: out.error.message });
-    } finally { release(token); }
+      setRunActionState(result.outcome.ok ? { id, route, owner, visit: targetVisit, detailToken, kind: "accepted", action: "stop" } : { id, route, owner, visit: targetVisit, detailToken, kind: "refused", message: result.outcome.error.message });
+    } finally {
+      model.threadQuickActionDrop(owner as object, id, sharedToken);
+      release(token);
+    }
   };
 
   const saveSettings = async () => {
