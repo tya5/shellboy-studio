@@ -103,6 +103,29 @@ describe("Thread row menu and delete", () => {
     render(null, host); host.remove(); invokingControl.remove();
   });
 
+  it("keeps the indented current thread as one link with a separate action button", () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    try {
+      act(() => render(<ThreadItem href="#/conversation/child" linkId="thread-link-sidebar-child"
+        title="A long nested thread title" status="running" statusLabel="Running" depth={2} current pending={3} menu={rowMenu} />, host));
+      const row = host.querySelector<HTMLElement>("[data-thread-row]")!;
+      const link = row.querySelector<HTMLAnchorElement>("a")!;
+      expect(row.style.marginLeft).toBe("32px");
+      expect(row.querySelectorAll("a")).toHaveLength(1);
+      expect(link.id).toBe("thread-link-sidebar-child");
+      expect(link.getAttribute("href")).toBe("#/conversation/child");
+      expect(link.getAttribute("aria-current")).toBe("true");
+      expect(link.textContent).toContain("A long nested thread title");
+      expect(link.textContent).toContain("3");
+      const trigger = row.querySelector<HTMLButtonElement>("[aria-haspopup=menu]")!;
+      expect(trigger).not.toBeNull();
+      expect(link.contains(trigger)).toBe(false);
+    } finally {
+      act(() => render(null, host));
+      host.remove();
+    }
+  });
   it("opens a visible Menu from the ThreadItem button", async () => {
     const host = document.createElement("div");
     document.body.append(host);
@@ -156,6 +179,26 @@ describe("Thread row menu and delete", () => {
     await act(async () => { host.querySelector<HTMLElement>("[data-thread-row]")!.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true })); await Promise.resolve(); });
     expectVisibleMenu();
     act(() => render(null, host)); host.remove();
+  });
+  it.each([["ThreadItem", treeRow], ["SelectRow", selectRow]] as const)("opens %s actions from a focused link with ArrowDown and restores that link", async (_name, makeRow) => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    try {
+      act(() => render(makeRow("One", true), host));
+      const link = host.querySelector<HTMLAnchorElement>("[data-thread-row] a")!;
+      link.focus();
+      const open = new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true });
+      await act(async () => { link.dispatchEvent(open); await Promise.resolve(); });
+      expect(open.defaultPrevented).toBe(true);
+      expectVisibleMenu();
+      expect(document.activeElement).toBe(document.body.querySelector('[role="menuitem"]'));
+      act(() => { document.activeElement?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); });
+      expect(document.activeElement).toBe(link);
+      expect(document.body.querySelector(".popover-panel")).toBeNull();
+    } finally {
+      act(() => render(null, host));
+      host.remove();
+    }
   });
   it("returns Escape focus to the link active before SelectRow contextmenu", async () => {
     const host = document.createElement("div");
