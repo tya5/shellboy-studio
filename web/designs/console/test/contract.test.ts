@@ -22,7 +22,7 @@ function readSystemCss(file: string): string {
   const relative = file.replace(/^system\//, "");
   const full = join(system, relative);
   const text = readFileSync(full, "utf8");
-  return relative === "components.css" ? text.replace(/@import\s+["']([^"']+)["'];/g, (_match, specifier: string) => readSystemCss(join("system", specifier.replace(/^\.\//, "")))) : text;
+  return relative === "components.css" ? text.replace(/@import\s+["']([^"']+)["'];/g, (_match, specifier: string) => readSystemCss(specifier.replace(/^\.\//, ""))) : text;
 }
 
 function luminance(hex: string): number {
