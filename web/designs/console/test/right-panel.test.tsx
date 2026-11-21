@@ -5,7 +5,7 @@ import { render } from 'preact';
 import { act } from 'preact/test-utils';
 import { afterEach, describe, expect, it } from 'vitest';
 import { fixtureModel } from '../../../ui-core/test/fixture';
-import { details, summary, settle } from '../../../data/test/harness';
+import { details, summary, settle, flush } from '../../../data/test/harness';
 import type { DesignContext, Prefs } from '../../../ui-core/src';
 import { DESIGNS } from '../../registry';
 import { loadPrefs, savePrefs, type PrefStore } from '../../../ui-core/src/prefs';
@@ -126,6 +126,56 @@ describe('right panel purpose',()=>{
   } finally {f.model.dispose();f.data.stop();}
  });
 
+ it('leaves the desktop preference untouched for step activation below 1180px', async () => {
+  const f=await setup();
+  try {
+   await act(async()=>f.model.togglePanel());
+   const saved=f.stored.value;
+   const app=f.host.querySelector('.app');
+   for (const width of [390,1179]) {
+    Object.defineProperty(app,'clientWidth',{configurable:true,value:width});
+    await act(async()=>f.model.openInPanel({kind:'step',id:'shell-running'}));
+    expect(f.model.panelDetail.peek()).toBeUndefined();
+    expect(f.prefs.value.panelCollapsed).toBe(true);
+    expect(f.stored.value).toBe(saved);
+   }
+   Object.defineProperty(app,'clientWidth',{configurable:true,value:1180});
+   await act(async()=>f.model.openInPanel({kind:'step',id:'shell-running'}));
+   expect(f.model.panelDetail.peek()?.id).toBe('shell-running');
+   expect(loadPrefs(f.store,DESIGNS).panelCollapsed).toBe(false);
+  } finally {f.model.dispose();f.data.stop();}
+ });
+
+ it.each(['pending','reply'] as const)('settles a successful %s cancellation only from a fresh owner read', async source => {
+  const f=await setup();
+  try {
+   const id=source==='pending'?'queued':'owed-human';
+   const update=async()=>{f.t.push({t:'changed',thread_ids:['lead'],list:false});await settle(f.t,f.db);};
+   if (source==='pending') {
+    f.db.work.lead!.push({kind:'message',id,thread_id:'lead',message_id:id,state:'accepted',excerpt:'Queued'});
+    await act(update);
+   }
+   let operation!: Promise<void>;
+   await act(async()=>{operation=f.model.runPanelOperation(id,{kind:'cancel',target:source});await flush();});
+   const call=f.t.calls('message.cancel')[0]!;
+   expect(f.model.panelOperations.peek().get(id)?.pending).toBe(true);
+   const reads=()=>f.t.calls('status').length+f.t.calls('thread.get').length;
+   const before=reads();
+   await act(async()=>{f.db.answered.add(call.id);f.t.ok(call.id,{items:[{message_id:id,outcome:source==='reply'?'reply_cancelled':'cancelled'}]});await operation;});
+   expect(f.model.panelOperations.peek().get(id)?.pending).toBe(true);
+   expect(reads()).toBe(before);
+   await act(update);
+   expect(f.model.panelOperations.peek().get(id)?.pending).toBe(true);
+   if (source==='pending') f.db.work.lead!.find(row=>row.message_id===id)!.state='held';
+   else f.db.details.lead!.awaiting_replies=f.db.details.lead!.awaiting_replies!.filter(row=>row.message_id!==id);
+   await act(async()=>{f.t.push({t:'changed',thread_ids:['lead'],list:false});await flush();});
+   expect(reads()).toBeGreaterThan(before);
+   expect(f.model.panelOperations.peek().get(id)?.pending).toBe(true);
+   await act(async()=>{await settle(f.t,f.db);});
+   expect(f.model.panelOperations.peek().has(id)).toBe(false);
+  } finally {f.model.dispose();f.data.stop();}
+ });
+
  it('Alt+9 collapses to a counted icon rail and restores the stored state after remount',async()=>{
   const f=await setup();
   try{
@@ -145,6 +195,7 @@ describe('right panel purpose',()=>{
    const prefs=signal<Prefs>(loadPrefs(f.store,DESIGNS));
    const context:DesignContext={model:f.model,prefs,setPrefs:change=>{prefs.value={...prefs.value,...change};savePrefs(f.store,prefs.value);},designs:DESIGNS,submitToken:async()=>false};
    await act(async()=>render(<App context={context}/>,f.host!));
+   Object.defineProperty(f.host.querySelector(".app"), "clientWidth", { configurable:true, value:1280 });
    expect(prefs.value.panelCollapsed).toBe(true);expect(f.stored.value).toBe(saved);
    await act(async()=>f.host.querySelector<HTMLButtonElement>('[data-panel-rail] [data-panel-tab="awaiting-reply"]')!.click());
    expect(prefs.value.panelCollapsed).toBe(false);

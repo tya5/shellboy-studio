@@ -76,8 +76,10 @@ export type SendState =
 export type RightPanelTab = "work" | "reply-needed" | "awaiting-reply" | "info";
 export type RightPanelTarget = Readonly<{ kind: "step" | "message" | "reply"; id: string }>;
 export type RightPanelDetail = RightPanelTarget & Readonly<{ opener?: () => void }>;
-type PanelOperation = Readonly<{ kind: "cancel" | "answer"; pending: boolean; error?: string }>;
-type PanelPreference = Readonly<{ collapsed: () => boolean; write: (collapsed: boolean) => void }>;
+type PanelOperation = Readonly<{ kind: "cancel" | "answer" } & (
+  { pending: true; source: "pending" | "reply"; state: string } | { pending: false; error: string }
+)>;
+type PanelPreference = Readonly<{ visible: () => boolean; collapsed: () => boolean; write: (collapsed: boolean) => void }>;
 
 export interface PendingOwnMessage {
   readonly threadId: string;
@@ -499,6 +501,7 @@ export class AppModel {
     let marksFor: string | undefined;
     this.listHandle = this.data.trackThreadList();
     this.disposers.push(effect(() => this.syncOpenThread()));
+    this.disposers.push(effect(() => this.settlePanelOperations()));
     this.disposers.push(effect(() => this.syncWindow()));
     this.disposers.push(effect(() => {
       const session = this.pickerSession.value;
@@ -1183,11 +1186,11 @@ export class AppModel {
 
   togglePanel(): void {
     const preference = this.panelPreference;
-    if (preference) preference.write(!preference.collapsed());
+    if (preference?.visible()) preference.write(!preference.collapsed());
   }
 
   private expandPanel(): void {
-    if (this.panelPreference?.collapsed()) this.panelPreference.write(false);
+    if (this.panelPreference?.visible() && this.panelPreference.collapsed()) this.panelPreference.write(false);
   }
 
   setPanelTab(tab: RightPanelTab): void {
@@ -1195,6 +1198,7 @@ export class AppModel {
   }
 
   openInPanel(target: RightPanelTarget, opener?: () => void): void {
+    if (this.panelPreference && !this.panelPreference.visible()) return;
     const tab: RightPanelTab = target.kind === "reply"
       ? this.threadReplies.peek().find(row => row.id === target.id)?.recipient.kind === "thread" ? "reply-needed" : "awaiting-reply"
       : "work";
@@ -1208,6 +1212,33 @@ export class AppModel {
 
   closePanelDetail(): void { this.panelDetail.value = undefined; }
 
+  private panelOperationFacts() {
+    const handle = this.handle.value;
+    const work = handle?.work.value;
+    const detail = handle?.detail.value;
+    const adapter = this.replyWait.supported(this.data.capabilities.value);
+    return {
+      pending: work?.value && !work.loading && !work.stale && !work.error ? work.value.items : undefined,
+      reply: adapter || (detail?.value && !detail.loading && !detail.stale && !detail.error) ? this.threadReplies.value : undefined,
+    };
+  }
+
+  private settlePanelOperations(): void {
+    const facts = this.panelOperationFacts();
+    const current = this.panelOperations.peek();
+    let next: Map<string, PanelOperation> | undefined;
+    for (const [id, operation] of current) {
+      if (!operation.pending) continue;
+      const rows = facts[operation.source];
+      if (!rows) continue;
+      const state = operation.source === "pending"
+        ? facts.pending?.find(row => row.kind === "message" && row.message_id === id)?.state
+        : facts.reply?.find(row => row.id === id)?.state;
+      if (state !== operation.state) (next ??= new Map(current)).delete(id);
+    }
+    if (next) this.panelOperations.value = next;
+  }
+
   async runPanelOperation(id: string, action: { kind: "cancel"; target: "pending" | "reply" } | { kind: "answer"; text: string }): Promise<void> {
     const next = new Map(this.panelOperations.peek());
     if (this.connection.peek() !== "connected" || next.get(id)?.pending || this.uncertainCancels.peek().has(id)) return;
@@ -1216,11 +1247,18 @@ export class AppModel {
       if (!settled) return;
       next.delete(settled[0]);
     }
-    const pending: PanelOperation = { kind: action.kind, pending: true };
+    const source = action.kind === "answer" ? "reply" : action.target;
+    const facts = this.panelOperationFacts();
+    const state = source === "pending"
+      ? facts.pending?.find(row => row.kind === "message" && row.message_id === id)?.state
+      : facts.reply?.find(row => row.id === id)?.state;
+    if (state === undefined) return;
+    const pending: PanelOperation = { kind: action.kind, pending: true, source, state };
     next.set(id, pending);
     this.panelOperations.value = next;
     const error = action.kind === "cancel" ? await this.cancelPending(id, action.target) : await this.answerReply(id, action.text);
-    if (this.panelOperations.peek().get(id) !== pending) return;
+    // Success is acknowledged by the next authoritative work or reply fact.
+    if (error === undefined || this.panelOperations.peek().get(id) !== pending) return;
     this.panelOperations.value = new Map(this.panelOperations.peek()).set(id, { kind: action.kind, pending: false, error });
   }
 

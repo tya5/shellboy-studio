@@ -343,6 +343,7 @@ describe("Conversation", () => {
     expect(text(el)).toContain("exited");
     const exitedExecution=[...el.querySelectorAll('[data-execution-id]')].find(row=>row.textContent?.includes('cargo test history::search'));
     expect(exitedExecution?.querySelector('.work-element-row')?.getAttribute('data-exit-code')).toBe('0');
+    Object.defineProperty(el.querySelector('.app'), 'clientWidth', { configurable: true, value: 1280 });
     await act(async () => {
       const row = model.conversation.value.find(row => row.type === "steps");
       if (row?.type === "steps") model.openInPanel({ kind: "step", id: row.steps[0]!.executionId });
