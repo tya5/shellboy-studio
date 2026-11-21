@@ -9,6 +9,7 @@ not expanded automatically.
 - Read the [architecture](docs/design/architecture.md) first. It is the adopted
   baseline once the user approves it; until then it is a proposal. Resolve
   discrepancies between code and design in the design before changing code.
+- Conversation display invariants: [architecture section 2.2](docs/design/architecture.md#22-current-conversation-publication).
 - Shellboy's adopted designs at the pinned tag are the contract for everything
   the owner does (`docs/design/protocol.md`, `docs/design/events-and-external-protocol.md`
   in the Shellboy repository). Do not infer contract from Shellboy internals,
@@ -52,6 +53,4 @@ not expanded automatically.
   directory and a local mock provider. No paid API calls, no user data.
 - Distinguish environment, command, observed result and untested cases.
   Browser device emulation is not a phone test.
-- Make local commits at meaningful boundaries. Push only when the user or their
-  delegated reviewer approves; tags, releases and binaries need the user's
-  explicit approval.
+- Push branches and request CI without individual approval. Main integration requires an independent review and same-SHA all-OS CI; tags, releases and binaries need the user's explicit approval.

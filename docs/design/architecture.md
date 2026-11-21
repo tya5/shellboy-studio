@@ -89,6 +89,12 @@ supersedes this historical baseline for canonical body ownership, live overlays,
 currentness, immutable input construction, atomic publication, and bounded failure.
 Source and CI qualification are not evidence of deployment or incident closure.
 
+Conversation display invariants (Studio #24/#29): Preserve the accepted current
+Window plus matching saved assistant attempt retirement (16 KiB excerpts), saved
+ordinal prefix, scoped unmatched unsaved suffix, own-send, identity, no-loss and
+multiplicity. No full-body gate. Do not restore the retired anchor, slot or
+conflict machinery without an authorized change.
+
 ### 2.3 Debug page
 
 A separate entry and bundle, shipped in production builds but enabled only by
