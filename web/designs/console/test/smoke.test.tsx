@@ -450,6 +450,7 @@ describe("Monitor", () => {
     const cards = el.querySelectorAll(".card");
     expect(cards.length).toBe(5);
     expect(cards[0]!.classList.contains("err")).toBe(true);
+    expect(text(cards[0]!)).toContain("Retry");
     expect(text(el)).not.toContain("Connection interrupted");
     expect(el.querySelector(".card.lead")).toBeTruthy();
     expect(text(el)).toContain("Parent: Improve history search");
@@ -771,11 +772,7 @@ describe("Threads", () => {
     const { el } = await open();
     expect(el.querySelectorAll(".tgroup").length).toBe(1);
     expect(el.querySelector("[draggable]")).toBeNull();
-    const leadRow = [...el.querySelectorAll<HTMLElement>(".srow")].find((row) => text(row).includes("Improve history search"));
-    expect(leadRow).toBeDefined();
-    expect([...leadRow!.querySelectorAll<HTMLButtonElement>("button")].find((button) => text(button) === "Set parent")).toBeUndefined();
-    expect(leadRow!.querySelector<HTMLAnchorElement>('a[href="#/thread-management/lead"]')).toBeNull();
-    expect(leadRow!.querySelector<HTMLButtonElement>('[data-thread-quick-action] button[aria-haspopup="menu"]')).toBeTruthy();
+    expect(el.querySelector(".srow-act")).toBeNull();
     expect(text(el)).toContain("Moving a Thread under another isn't available");
     expect(text(el)).toContain("Token totals per directory aren't shown");
     const mode = (name: string) => [...el.querySelectorAll<HTMLButtonElement>(".org button")].find((b) => text(b) === name)!;
@@ -917,14 +914,7 @@ describe("Threads", () => {
     expect(el.querySelector("[draggable=true]")).toBeTruthy();
     expect(text(el)).not.toContain("isn't available: this Shellboy (v0.10.0)");
     const button = (name: string) => [...el.querySelectorAll<HTMLButtonElement>("button")].find((b) => text(b) === name);
-    const threadsRow = [...el.querySelectorAll<HTMLElement>(".srow")].find((row) => text(row).includes("Improve history search"));
-    expect(threadsRow).toBeDefined();
-    const menuTrigger = threadsRow!.querySelector<HTMLButtonElement>('[data-thread-quick-action] button[aria-haspopup="menu"]')!;
-    act(() => menuTrigger.click());
-    await act(async () => { await flushPromises(); });
-    const move = [...threadsRow!.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find((candidate) => text(candidate) === made.model.t.value("org.move"));
-    expect(move).toBeDefined();
-    act(() => move!.click());
+    act(() => el.querySelector<HTMLButtonElement>(".srow-act")!.click());
     expect(text(el)).toContain("New parent for");
     act(() => button("No parent (independent)")!.click());
     expect(made.t.calls("thread.set")).toHaveLength(0);

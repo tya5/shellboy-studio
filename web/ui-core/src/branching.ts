@@ -234,7 +234,25 @@ export class Branches {
     return pending;
   }
 
-
+  async archiveSelected(): Promise<void> {
+    const ids = [...this.selection.peek()].sort(); if (!ids.length) return;
+    const threadId = this.state.peek().threadId ?? ids[0]!;
+    const attempt = this.reserve(this.archiveAttempt, threadId, JSON.stringify({ thread_ids: ids })); if (!attempt) return;
+    this.archiveAttempt = attempt;
+    const token = this.invocation();
+    const out = await this.receipt(attempt, attempt.receipt, id => this.ops.threadArchive(ids, {}, id));
+    attempt.uncertain = uncertainOutcome(out);
+    if (!this.visible(attempt, token)) return;
+    if (!out.ok) this.actionError.value = outcomeMessage(out);
+    else {
+      const missing = (out.value as ArchiveResult).not_found ?? [];
+      this.selection.value = new Set(missing);
+      if (!this.visible(attempt, token)) return;
+      this.actionError.value = missing.length ? `Not found: ${missing.join(", ")}` : undefined;
+      if (!this.visible(attempt, token)) return;
+      const id = this.state.peek().threadId; if (id) void this.read(id);
+    }
+  }
   async renameBranch(id: string, title: string): Promise<void> {
     title = title.trim(); if (!title) return;
     const attempt = this.reserve(this.renameAttempt, id, JSON.stringify({ thread_id: id, title })); if (!attempt) return;
@@ -562,17 +580,6 @@ export class ThreadOrg {
   readonly action: Signal<OrgAction> = signal({ kind: "idle" });
   private running = false;
   private again = false;
-  private revision = 0;
-  private publishedView: { owner: object; route: object; mode: string; query: string; grouping: ThreadGrouping; memberIds?: ReadonlySet<string> } | undefined;
-  private readonly headingReadProvenance = new Map<string, { token: object; owner: object; route: object; mode: string; query: string; grouping: ThreadGrouping }>();
-  private readonly authority: (() => { owner: object; route: object } | undefined) | undefined;
-  private readonly reserve: ((owner: object, ids: readonly string[]) => object | undefined) | undefined;
-  private readonly releaseReservation: ((owner: object, ids: readonly string[], token: object) => void) | undefined;
-  private readonly ownsReservation: ((owner: object, ids: readonly string[], token: object) => boolean) | undefined;
-  private bulkAttempt: object | undefined;
-  private tagAttempt: object | undefined;
-  private tagDraftGeneration = 0;
-  private selectionGeneration = 0;
   private pages = 1;
   private cancel = new Cancel();
   /** Names for the Tag and Directory groupings, and their members. Used only when the owner can list them. */
@@ -583,31 +590,8 @@ export class ThreadOrg {
   constructor(
     private readonly ops: Operations,
     private readonly capabilities: () => readonly string[] = () => [],
-    authority?: () => { owner: object; route: object } | undefined,
-    reserve?: (owner: object, ids: readonly string[]) => object | undefined,
-    releaseReservation?: (owner: object, ids: readonly string[], token: object) => void,
-    ownsReservation?: (owner: object, ids: readonly string[], token: object) => boolean,
   ) {
-    this.authority = authority;
-    this.reserve = reserve;
-    this.releaseReservation = releaseReservation;
-    this.ownsReservation = ownsReservation;
-    this.headings = new ThreadHeadings(ops, (name, token) => {
-      const authority = this.authority?.();
-      if (name && token && authority) this.headingReadProvenance.set(name, { token, owner: authority.owner, route: authority.route, mode: this.state.peek().mode, query: this.state.peek().query, grouping: this.groupBy.peek() });
-      return { mode: this.state.peek().mode, query: this.state.peek().query };
-    }, () => { this.prune(); this.publishHeadings(); });
-  }
-
-  private publishHeadings(): void {
-    const kind = this.headingKind();
-    const authority = this.authority?.();
-    if (!kind || !authority || this.headings.headings.peek().loading || !this.headings.loadedFor(kind)) { this.publishedView = undefined; return; }
-    const members = [...this.headings.open.peek().entries()];
-    const currentMode = this.state.peek().mode;
-    const currentQuery = this.state.peek().query;
-    if (members.some(([name, member]) => !member.loaded || member.loading || member.error || (() => { const p = this.headingReadProvenance.get(name); return !p || p.token !== member.readToken || p.owner !== authority.owner || p.route !== authority.route || p.mode !== currentMode || p.query !== currentQuery || p.grouping !== this.groupBy.peek(); })())) { this.publishedView = undefined; return; }
-    this.publishedView = { owner: authority.owner, route: authority.route, mode: currentMode, query: currentQuery, grouping: this.groupBy.peek(), memberIds: new Set(this.headings.members().map((row) => row.thread_id)) };
+    this.headings = new ThreadHeadings(ops, () => ({ mode: this.state.peek().mode, query: this.state.peek().query }), () => this.prune());
   }
 
   canTag(): boolean {
@@ -629,8 +613,6 @@ export class ThreadOrg {
   }
 
   setGrouping(by: ThreadGrouping): void {
-    this.revision++;
-    this.selected.value = new Set();
     this.groupBy.value = by;
     this.ensure();
   }
@@ -665,7 +647,6 @@ export class ThreadOrg {
 
   /** Reads again up to the pages shown. A cursor bound to another mode or list starts over. */
   async read(): Promise<void> {
-    if (!this.authority?.()) return;
     const kind = this.headingKind();
     if (kind) {
       await this.headings.reload(kind);
@@ -680,8 +661,6 @@ export class ThreadOrg {
     try {
       do {
         this.again = false;
-        const readAuthority: { owner: object; route: object } | undefined = this.authority?.();
-        const readGrouping = this.groupBy.peek();
         const { mode, query } = this.state.peek();
         this.cancel = new Cancel();
         const cancel = this.cancel;
@@ -699,12 +678,6 @@ export class ThreadOrg {
           if (cursor === undefined) break;
         }
         const now = this.state.peek();
-        const stillAuthoritative = readAuthority !== undefined && this.authority?.()?.owner === readAuthority.owner && this.authority?.()?.route === readAuthority.route && this.groupBy.peek() === readGrouping;
-        if (!stillAuthoritative) {
-          if (this.again && this.authority?.()) continue;
-          this.state.value = { ...now, loading: false };
-          return;
-        }
         if (now.mode !== mode || now.query !== query) {
           this.again = true;
           continue;
@@ -716,12 +689,7 @@ export class ThreadOrg {
         const known = new Set(items.map((s) => s.thread_id));
         batch(() => {
           this.state.value = error ? { ...now, loading: this.again, error } : { ...now, loading: this.again, items, nextCursor: cursor, loaded: true, error: undefined };
-          if (error) this.publishedView = undefined;
-          if (!error) {
-            this.revision++;
-            this.publishedView = readAuthority ? { owner: readAuthority.owner, route: readAuthority.route, mode, query, grouping: readGrouping } : undefined;
-            this.selected.value = new Set([...this.selected.peek()].filter((id) => known.has(id)));
-          }
+          if (!error) this.selected.value = new Set([...this.selected.peek()].filter((id) => known.has(id)));
         });
       } while (this.again);
     } finally {
@@ -744,7 +712,6 @@ export class ThreadOrg {
     if (this.state.peek().mode === mode) return;
     this.cancel.cancel();
     this.pages = 1;
-    this.revision++;
     batch(() => {
       this.state.value = { ...this.state.peek(), mode, items: [], nextCursor: undefined, loaded: false };
       this.selected.value = new Set();
@@ -757,9 +724,7 @@ export class ThreadOrg {
     if (this.state.peek().query === query) return;
     this.cancel.cancel();
     this.pages = 1;
-    this.revision++;
-    this.state.value = { ...this.state.peek(), query, items: [], nextCursor: undefined, loaded: false };
-    this.selected.value = new Set();
+    this.state.value = { ...this.state.peek(), query };
     void this.read();
   }
 
@@ -790,16 +755,12 @@ export class ThreadOrg {
   }
 
   toggle(id: string): void {
-    this.selectionGeneration++;
-    if (this.bulkAttempt) this.action.value = { kind: "idle" };
     const next = new Set(this.selected.peek());
     if (!next.delete(id)) next.add(id);
     this.selected.value = next;
   }
 
   setMany(ids: readonly string[], on: boolean): void {
-    this.selectionGeneration++;
-    if (this.bulkAttempt) this.action.value = { kind: "idle" };
     const next = new Set(this.selected.peek());
     for (const id of ids) {
       if (on) next.add(id);
@@ -809,50 +770,27 @@ export class ThreadOrg {
   }
 
   clear(): void {
-    this.selectionGeneration++;
     this.selected.value = new Set();
     this.action.value = { kind: "idle" };
   }
 
   /** Archive in Active, unarchive in Archived. Nothing changes here until the owner says so. */
   async apply(): Promise<void> {
-    const shown = this.shown();
     const ids = [...this.selected.peek()];
-    const revision = this.revision;
-    const selectionGeneration = this.selectionGeneration;
-    const authority = this.authority?.();
-    const published = this.publishedView;
-    if (this.running || this.groupBy.peek() !== "tree" || ids.length === 0 || !authority || !published || authority.owner !== published.owner || authority.route !== published.route || this.state.peek().mode !== published.mode || this.state.peek().query !== published.query || this.groupBy.peek() !== published.grouping || ids.some((id) => !shown.some((row) => row.thread_id === id))) return;
-    const token = this.reserve?.(authority.owner, ids);
-    if (!token) return;
+    if (ids.length === 0) return;
     const verb = this.state.peek().mode === "exclude" ? "archive" : "unarchive";
-    const options = { descendants: false };
-    this.bulkAttempt = token;
-    const ownerMutationCurrent = () => this.bulkAttempt === token && this.authority?.()?.owner === authority.owner && this.ownsReservation?.(authority.owner, ids, token) === true;
-    const uiCurrent = () => ownerMutationCurrent() && this.revision === revision && this.authority?.()?.route === authority.route && this.selectionGeneration === selectionGeneration;
+    const options = { descendants: this.descendants.peek() };
     this.action.value = { kind: "running" };
-    try {
     const out = verb === "archive" ? await this.ops.threadArchive(ids, options) : await this.ops.threadUnarchive(ids, options);
-    if (!ownerMutationCurrent()) return;
     if (!out.ok) {
-      if (uiCurrent()) this.action.value = { kind: "failed", error: out.error };
+      this.action.value = { kind: "failed", error: out.error };
       return;
     }
-    this.publishedView = undefined;
-    if (uiCurrent()) {
-      batch(() => {
-        this.action.value = { kind: "done", verb, result: out.value };
-        this.selected.value = new Set();
-      });
-    } else this.action.value = { kind: "idle" };
-    if (this.authority?.()?.owner === authority.owner) await this.read();
-    } finally {
-      if (this.bulkAttempt === token) {
-        this.bulkAttempt = undefined;
-        if (this.action.peek().kind === "running") this.action.value = { kind: "idle" };
-      }
-      this.releaseReservation?.(authority.owner, ids, token);
-    }
+    batch(() => {
+      this.action.value = { kind: "done", verb, result: out.value };
+      this.selected.value = new Set();
+    });
+    await this.read();
   }
 
   // ---- tags ----
@@ -878,14 +816,12 @@ export class ThreadOrg {
     if (draft.remove.has(checked.tag)) return "both";
     if (draft.add.includes(checked.tag)) return undefined;
     if (draft.add.length >= TAGS_PER_CALL) return "many";
-    this.tagDraftGeneration++;
     this.tagDraft.value = { ...draft, add: [...draft.add, checked.tag] };
     return undefined;
   }
 
   unaddTag(tag: string): void {
     const draft = this.tagDraft.peek();
-    this.tagDraftGeneration++;
     this.tagDraft.value = { ...draft, add: draft.add.filter((t) => t !== tag) };
   }
 
@@ -893,58 +829,29 @@ export class ThreadOrg {
     const draft = this.tagDraft.peek();
     const remove = new Set(draft.remove);
     if (!remove.delete(tag)) remove.add(tag);
-    this.tagDraftGeneration++;
     this.tagDraft.value = { ...draft, add: draft.add.filter((t) => t !== tag), remove };
   }
 
   /** One `thread.tag` for the chosen Threads. Nothing is optimistic: the groups are read again after. */
   async applyTags(): Promise<void> {
-    const shown = this.shown();
     const ids = [...this.selected.peek()];
-    const revision = this.revision;
-    const selectionGeneration = this.selectionGeneration;
-    const authority = this.authority?.();
     const draft = this.tagDraft.peek();
-    const draftGeneration = this.tagDraftGeneration;
-    const heading = this.headingKind();
-    const publication = this.publishedView;
-    const publicationCurrent = publication !== undefined && publication.owner === authority?.owner && publication.route === authority?.route && publication.mode === this.state.peek().mode && publication.query === this.state.peek().query && publication.grouping === this.groupBy.peek();
-    const memberIds = publication?.memberIds;
-    const groupedReady = heading !== undefined && publicationCurrent && publication?.grouping === this.groupBy.peek() && !this.headings.headings.peek().loading && memberIds !== undefined && ids.every((id) => memberIds.has(id)) && [...this.headings.open.peek().values()].every((member) => member.loaded && !member.loading && !member.error);
-    const flatReady = heading === undefined && publicationCurrent && publication?.grouping === this.groupBy.peek() && publication !== undefined;
-    const publicationValid = groupedReady || flatReady;
-    if (this.running || ids.length === 0 || !authority || !publicationValid || ids.some((id) => !shown.some((row) => row.thread_id === id)) || (draft.add.length === 0 && draft.remove.size === 0)) return;
+    if (ids.length === 0 || (draft.add.length === 0 && draft.remove.size === 0)) return;
     if (ids.length > TAG_SELECTION_MAX) {
       this.tagAction.value = { kind: "selection", n: ids.length };
       return;
     }
-    const token = this.reserve?.(authority.owner, ids);
-    if (!token) return;
-    this.tagAttempt = token;
-    const mutationCurrent = () => this.tagAttempt === token && this.authority?.()?.owner === authority.owner && this.ownsReservation?.(authority.owner, ids, token) === true;
-    const uiCurrent = () => mutationCurrent() && this.publishedView === publication && this.revision === revision && this.selectionGeneration === selectionGeneration && this.tagDraftGeneration === draftGeneration && this.authority?.()?.route === authority.route;
     this.tagAction.value = { kind: "running" };
-    try {
-      const remove = [...draft.remove];
-      const out = await this.ops.threadTag({ thread_ids: ids, ...(draft.add.length > 0 && { add: draft.add }), ...(remove.length > 0 && { remove }) });
-      if (!mutationCurrent()) return;
-      if (!out.ok) {
-        if (uiCurrent()) this.tagAction.value = { kind: "failed", limit: out.error.kind === "owner" && out.error.code === "input_limit", message: out.error.message };
-        return;
-      }
-      if (uiCurrent()) {
-        batch(() => {
-          this.tagAction.value = { kind: "done", result: out.value };
-          this.tagDraft.value = { ...draft, add: [], remove: new Set() };
-        });
-      } else this.tagAction.value = { kind: "idle" };
-      if (this.authority?.()?.owner === authority.owner) await this.read();
-    } finally {
-      if (this.tagAttempt === token) {
-        this.tagAttempt = undefined;
-        if (this.tagAction.peek().kind === "running") this.tagAction.value = { kind: "idle" };
-      }
-      this.releaseReservation?.(authority.owner, ids, token);
+    const remove = [...draft.remove];
+    const out = await this.ops.threadTag({ thread_ids: ids, ...(draft.add.length > 0 && { add: draft.add }), ...(remove.length > 0 && { remove }) });
+    if (!out.ok) {
+      this.tagAction.value = { kind: "failed", limit: out.error.kind === "owner" && out.error.code === "input_limit", message: out.error.message };
+      return;
     }
+    batch(() => {
+      this.tagAction.value = { kind: "done", result: out.value };
+      this.tagDraft.value = { ...draft, add: [], remove: new Set() };
+    });
+    await this.read();
   }
 }

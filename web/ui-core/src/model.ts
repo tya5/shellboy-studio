@@ -35,20 +35,20 @@ import { StableMonitorOrder, countByStatus, threadTree, type StatusCounts, type 
 import { contextFacts, recoveryFacts, usageFacts, type ContextFacts, type RecoveryFacts, type UsageFacts } from "./usage";
 
 export interface ThreadModelDraft {
-  model: string;
-  connection: string;
-  effort: string;
-  agents: string;
-  autoCompactAt: string;
-  maxTokens: string;
-  clearMaxTokens: boolean;
+  model?: string;
+  connection?: string;
+  effort?: string;
+  agents?: string;
+  autoCompactAt?: string;
+  maxTokens?: string;
+  clearMaxTokens?: boolean;
 }
 
-/** Encode the one Thread settings delta used by both conversation and management editors. */
+/** Encode the shared Thread model settings delta without coupling to UI state. */
 export function threadModelChanges(draft: ThreadModelDraft, initial: ThreadModelDraft): { model: string; connection: string; effort?: string; agents?: string; auto_compact_at?: string; max_tokens?: string } {
   return {
-    model: draft.model.trim(),
-    connection: draft.connection,
+    model: (draft.model ?? initial.model ?? "").trim(),
+    connection: draft.connection ?? initial.connection ?? "",
     ...(draft.effort !== initial.effort ? { effort: draft.effort } : {}),
     ...(draft.agents !== initial.agents ? { agents: draft.agents } : {}),
     ...(draft.autoCompactAt !== initial.autoCompactAt ? { auto_compact_at: draft.autoCompactAt } : {}),
@@ -62,12 +62,11 @@ interface ModelPickerSession {
   readonly handle: ThreadHandle;
   readonly observation: NonNullable<ReturnType<ThreadHandle["captureDetail"]>>;
   readonly settings: ThreadSettings;
-  readonly initial: ThreadModelDraft;
+  readonly initial: { effort: string; agents: string; autoCompactAt: string; maxTokens: string };
   save?: object;
 }
 
 export type ConnectionView = "connected" | "connecting" | "ownerDown" | "authNeeded";
-
 
 export type SendState =
   | { kind: "idle" }
@@ -134,39 +133,6 @@ export function setBounded<V>(map: Map<string, V>, key: string, value: V): Map<s
 export const errorMessage = (e: OpError): string => e.message;
 
 export class AppModel {
-  private readonly threadReservations = new WeakMap<object, Map<string, object>>();
-  private readonly bulkReservations = new WeakMap<object, object>();
-  threadActionOwns(owner: object, ids: readonly string[], token: object): boolean {
-    const reservations = this.threadReservations.get(owner);
-    return reservations !== undefined && ids.every((id) => reservations.get(id) === token);
-  }
-  threadActionRelease(owner: object, ids: readonly string[], token: object): void {
-    const reservations = this.threadReservations.get(owner);
-    if (!reservations || !ids.every((id) => reservations.get(id) === token)) return;
-    for (const id of ids) reservations.delete(id);
-  }
-
-  bulkActionReserve(owner: object, ids: readonly string[]): object | undefined {
-    if (this.bulkReservations.has(owner)) return undefined;
-    let reservations = this.threadReservations.get(owner);
-    if (!reservations) { reservations = new Map(); this.threadReservations.set(owner, reservations); }
-    if (ids.some((id) => reservations!.has(id))) return undefined;
-    const token = {};
-    this.bulkReservations.set(owner, token);
-    for (const id of ids) reservations.set(id, token);
-    return token;
-  }
-  bulkActionOwns(owner: object, ids: readonly string[], token: object): boolean {
-    return this.bulkReservations.get(owner) === token && this.threadActionOwns(owner, ids, token);
-  }
-  bulkActionRelease(owner: object, ids: readonly string[], token: object): void {
-    if (this.bulkReservations.get(owner) !== token) return;
-    this.bulkReservations.delete(owner);
-    this.threadActionRelease(owner, ids, token);
-  }
-
-
-
   readonly pairing = signal<{ hosts: string[]; links: Record<string, { url: string; expires: number }>; error?: string }>({ hosts: [], links: {} });
   async loadPairingHosts(): Promise<void> {
     try { this.pairing.value = { ...this.pairing.peek(), hosts: await pairingHosts(), error: undefined }; }
@@ -209,11 +175,11 @@ export class AppModel {
       || this.selectedId.peek() !== handle.threadId || observation.value.thread_id !== handle.threadId) return;
     const d = observation.value;
     const settings = readThreadSettings(d);
-    const initial: ThreadModelDraft = { model: d.model, connection: d.connection, effort: settings.effort ?? "", agents: settings.agentsPath ?? "", autoCompactAt: settings.autoCompactAt === undefined ? "" : String(settings.autoCompactAt), maxTokens: settings.maxTokensState.kind === "value" ? String(settings.maxTokensState.value) : "", clearMaxTokens: false };
+    const initial = { effort: settings.effort ?? "", agents: settings.agentsPath ?? "", autoCompactAt: settings.autoCompactAt === undefined ? "" : String(settings.autoCompactAt), maxTokens: settings.maxTokensState.kind === "value" ? String(settings.maxTokensState.value) : "" };
     const session: ModelPickerSession = { route, handle, owner, observation, settings, initial };
     batch(() => {
       this.pickerSession.value = session;
-      this.modelPicker.value = { open: true, thread: d.thread_id, ...initial, connection: d.connection, model: d.model, maxTokensState: settings.maxTokensState, clearMaxTokens: false, models: [], loading: false, saving: false };
+      this.modelPicker.value = { open: true, thread: d.thread_id, connection: d.connection, model: d.model, ...initial, maxTokensState: settings.maxTokensState, clearMaxTokens: false, models: [], loading: false, saving: false };
     });
     if (this.data.capabilities.peek().includes(CAPABILITY_CONFIG)) this.config.ensure();
     this.chooseModelConnection(d.connection);
@@ -363,7 +329,6 @@ export class AppModel {
   readonly appRequestState: Signal<{ kind: "idle" | "sending" | "failed" | "unconfirmed"; message?: string }> = signal({ kind: "idle" });
   readonly uncertainCancels: Signal<ReadonlySet<string>> = signal(new Set());
 
-
   private readonly lastThread = signal<string | undefined>(undefined);
   private readonly watchedOutputs = new Map<string, string | undefined>();
   private readonly nowMs: () => number;
@@ -425,7 +390,7 @@ export class AppModel {
     }));
     this.disposers.push(effect(() => { this.data.threadList.value; this.branchCompare.hint(); }));
     this.senderTitles = new SenderTitles(this.ops);
-    this.org = new ThreadOrg(this.ops, () => this.data.capabilities.peek(), () => { const owner = this.data.owner.peek(); const route = this.route.peek(); return route.view === "threads" && owner.state === "connected" ? { owner: owner as object, route } : undefined; }, (owner, ids) => this.bulkActionReserve(owner, ids), (owner, ids, token) => this.bulkActionRelease(owner, ids, token), (owner, ids, token) => this.bulkActionOwns(owner, ids, token));
+    this.org = new ThreadOrg(this.ops, () => this.data.capabilities.peek());
     this.config = new ConfigEditor(this.ops);
     this.guideRegistration = new GuideRegistration(this.ops);
     this.setup = new ConnectionSetup(this.ops);

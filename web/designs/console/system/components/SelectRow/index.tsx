@@ -22,13 +22,13 @@ export function SelectRow({ title, href, status, depth, checked, checkLabel, onT
       }
     : {};
   return (
-    <div onContextMenu={(event) => { event.preventDefault(); (event.currentTarget as HTMLElement).querySelector<HTMLElement>("[data-thread-quick-action]")?.dispatchEvent(new CustomEvent("thread-menu-open", { detail: { opener: event.target as HTMLElement } })); }} onKeyDown={(event) => { if (event.key === "ArrowDown" && (event.target as HTMLElement).matches(".tree-main, .tcheck input")) { event.preventDefault(); (event.currentTarget as HTMLElement).querySelector<HTMLElement>("[data-thread-quick-action]")?.dispatchEvent(new CustomEvent("thread-menu-open", { detail: { opener: event.target as HTMLElement } })); } }} class={`srow${checked ? " on" : ""}${drag?.over ? " drop" : ""}`} style={depth > 0 ? { paddingLeft: `${Math.min(depth, 4) * 20}px` } : undefined} {...dnd}>
+    <div class={`srow${checked ? " on" : ""}${drag?.over ? " drop" : ""}`} style={depth > 0 ? { paddingLeft: `${Math.min(depth, 4) * 20}px` } : undefined} {...dnd}>
       <label class="tcheck">
         <input type="checkbox" aria-label={checkLabel} checked={checked} onChange={onToggle} />
       </label>
       <span class="srow-status">{status}</span>
       <div class="srow-text">
-        <a class="tree-main" href={href}>{title}</a>
+        <a href={href}>{title}</a>
         {note ? <div class="muted caption">{note}</div> : null}
         {tags && tags.length > 0 ? (
           <ul class="tags" aria-label={tagsLabel}>
@@ -38,8 +38,8 @@ export function SelectRow({ title, href, status, depth, checked, checkLabel, onT
           </ul>
         ) : null}
       </div>
-      {age ? <span class="mono muted caption">{age}</span> : null}
       {action}
+      {age ? <span class="mono muted caption">{age}</span> : null}
     </div>
   );
 }

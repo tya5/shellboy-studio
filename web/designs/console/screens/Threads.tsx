@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "preact/hooks";
-import { CAPABILITY_REPARENT, CAPABILITY_TAGS, formatAge, formatRoute, groupThreads, OPEN_MAX, statusLabel, threadTree, THREAD_GROUPINGS, type AppModel, type MemberState, type StatusKey, type TagInvalid, type ThreadGrouping, type ThreadRow, type Translate } from "../../../ui-core/src";
+import { CAPABILITY_REPARENT, CAPABILITY_TAGS, formatAge, formatRoute, groupThreads, listedDescendants, OPEN_MAX, statusLabel, threadTree, THREAD_GROUPINGS, type AppModel, type MemberState, type StatusKey, type TagInvalid, type ThreadGrouping, type ThreadRow, type Translate } from "../../../ui-core/src";
 import { Button, ButtonGroup, EmptyState, Field, Icon, Notice, Section, SelectionBar, SelectRow, StatusMark, ThreadGroup } from "../system/components";
-import { ThreadQuickAction } from "../system/components";
 
 const SEARCH_DEBOUNCE_MS = 200;
 
@@ -136,13 +135,14 @@ function Members({ model, name, member, row }: { model: AppModel; name: string; 
   );
 }
 
-export function Threads({ model, report }: { model: AppModel; report?: (message: string | undefined) => void }) {
+export function Threads({ model }: { model: AppModel }) {
   const t = model.t.value;
   const org = model.org;
   const state = org.state.value;
   const by = org.groupBy.value;
   const selected = org.selected.value;
   const action = org.action.value;
+  const descendants = org.descendants.value;
   const [query, setQuery] = useState(state.query);
   const [armed, setArmed] = useState(false);
   useEffect(() => {
@@ -159,7 +159,7 @@ export function Threads({ model, report }: { model: AppModel; report?: (message:
   const groups = useMemo(() => (kind ? [] : groupThreads(state.items, by)), [state.items, by, kind]);
   const [dragging, setDragging] = useState<string | undefined>(undefined);
   const [over, setOver] = useState<string | undefined>(undefined);
-
+  const extra = descendants ? listedDescendants(state.items, selected) : 0;
   const archiving = state.mode === "exclude";
   const run = () => {
     if (archiving && !armed) {
@@ -187,7 +187,7 @@ export function Threads({ model, report }: { model: AppModel; report?: (message:
         tagsLabel={t("org.tag.list")}
         note={notes || undefined}
         age={formatAge(s.updated_at, model.coarseNow.value)}
-        action={<ThreadQuickAction model={model} row={s} status={r.status} surface="list" report={report} onMove={canMove ? () => org.pickParent(s.thread_id) : undefined} />}
+        action={canMove ? <button type="button" class="srow-act" onClick={() => org.pickParent(s.thread_id)}>{t("org.move")}</button> : undefined}
         drag={
           canMove
             ? {
@@ -232,10 +232,10 @@ export function Threads({ model, report }: { model: AppModel; report?: (message:
       <TagPanel model={model} />
       <Field ariaLabel={t("org.filter")} placeholder={t("org.filter")} leading={<Icon name="search" small />} value={query} onInput={(e) => setQuery(e.currentTarget.value)} />
       {selected.size > 0 ? (
-        <SelectionBar text={t("org.selected", { n: selected.size })}>
-          {by === "tree" ? <Button variant={armed ? "warn" : "plain"} disabled={action.kind === "running"} onClick={run}>
+        <SelectionBar text={extra > 0 ? t("org.selectedWith", { n: selected.size, extra }) : t("org.selected", { n: selected.size })} option={{ label: t("org.descendants"), checked: descendants, onChange: (on) => (org.descendants.value = on) }}>
+          <Button variant={armed ? "warn" : "plain"} disabled={action.kind === "running"} onClick={run}>
             {archiving ? t(armed ? "org.archiveConfirm" : "action.archive") : t("org.unarchive")}
-          </Button> : null}
+          </Button>
           {canTag ? <Button aria-pressed={org.tagDraft.value.open} onClick={() => org.openTags(!org.tagDraft.value.open)}>{t("org.tag.button")}</Button> : null}
           <Button variant="link" onClick={() => org.clear()}>{t("org.clear")}</Button>
         </SelectionBar>

@@ -36,8 +36,6 @@ export interface MemberState {
   loading: boolean;
   loaded: boolean;
   error: OpError | undefined;
-  /** Identity of the member-page request that owns this state. */
-  readToken?: object;
 }
 
 export interface MemberFilter {
@@ -57,7 +55,7 @@ export class ThreadHeadings {
 
   constructor(
     private readonly ops: Operations,
-    private readonly filter: (name?: string, readToken?: object) => MemberFilter,
+    private readonly filter: () => MemberFilter,
     /** Rows that can be selected changed. */
     private readonly changed: () => void,
   ) {}
@@ -181,9 +179,8 @@ export class ThreadHeadings {
   private async readMembers(kind: HeadingKind, name: string, generation: number, cancel: Cancel): Promise<void> {
     const before = this.open.peek().get(name);
     if (!before) return;
-    const readToken = {};
-    this.setMember(name, { ...before, loading: true, readToken });
-    const { mode, query } = this.filter(name, readToken);
+    this.setMember(name, { ...before, loading: true });
+    const { mode, query } = this.filter();
     const where = kind === "tag" ? { tags: [name] } : { cwd: name };
     const read = await this.walk(
       (cursor) => this.ops.threadList({ limit: MEMBER_PAGE, archived: mode, ...where, ...(query ? { query } : {}), ...(cursor !== undefined && { cursor }) }, { cancel }),
@@ -191,8 +188,8 @@ export class ThreadHeadings {
     );
     if (generation !== this.generation || read.error?.kind === "cancelled") return;
     const now = this.open.peek().get(name);
-    if (!now || now.readToken !== readToken) return;
-    this.setMember(name, read.error ? { ...now, loading: false, error: read.error, readToken } : { ...now, loading: false, loaded: true, error: undefined, items: read.items, nextCursor: read.next, readToken });
+    if (!now) return;
+    this.setMember(name, read.error ? { ...now, loading: false, error: read.error } : { ...now, loading: false, loaded: true, error: undefined, items: read.items, nextCursor: read.next });
     this.changed();
   }
 

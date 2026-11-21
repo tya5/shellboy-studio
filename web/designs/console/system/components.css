@@ -65,9 +65,8 @@ a{color:var(--accent)}
 
 /* ThreadItem */
 .tree{display:flex;flex-direction:column;gap:1px}
-.tree-item{content-visibility:visible;contain-intrinsic-size:auto 32px;display:flex;align-items:center;gap:var(--space-8);min-height:32px;padding:0 var(--space-8);border-radius:var(--radius-s);color:var(--fg);text-decoration:none;font:var(--type-label);min-width:0}
-.tree-item .tree-main{display:flex;align-items:center;flex:1 1 auto;min-width:0;overflow:hidden}
-.tree-item span.name{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tree-item{content-visibility:auto;contain-intrinsic-size:auto 32px;display:flex;align-items:center;gap:var(--space-8);min-height:32px;padding:0 var(--space-8);border-radius:var(--radius-s);color:var(--fg);text-decoration:none;font:var(--type-label);min-width:0}
+.tree-item span.name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .tree-item:hover{background:var(--raised)}
 .tree-item[aria-current=true]{background:var(--accent-bg);color:var(--fg)}
 .tree-item.child{color:var(--muted)}
@@ -360,7 +359,7 @@ a{color:var(--accent)}
 .tcheck-gap{flex:none;width:8px}
 .tcheck{display:inline-grid;place-items:center;flex:none;width:32px;height:32px;cursor:pointer}
 .tcheck input{width:15px;height:15px;margin:0;accent-color:var(--accent);cursor:pointer}
-.srow{content-visibility:visible;contain-intrinsic-size:auto 40px;display:flex;align-items:center;gap:var(--space-8);padding-right:var(--space-12);min-height:40px;border-bottom:1px solid var(--line);font:var(--type-label);min-width:0}
+.srow{content-visibility:auto;contain-intrinsic-size:auto 40px;display:flex;align-items:center;gap:var(--space-8);padding-right:var(--space-12);min-height:40px;border-bottom:1px solid var(--line);font:var(--type-label);min-width:0}
 .srow:last-child{border-bottom:0}
 .srow:hover{background:var(--raised)}
 .srow.on{background:var(--accent-bg)}
@@ -510,7 +509,3 @@ a{color:var(--accent)}
 
 .work-inner-line{display:flex;align-items:center;gap:var(--space-8);width:100%;min-width:0;box-sizing:border-box;padding:var(--space-4) var(--space-12)}
 .work-inner-line>.work-inner-content{min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
-
-/* The approved shared row menu stays at the trailing edge and is touch-visible only when selected. */
-.tree-item .thread-menu-anchor,.srow .thread-menu-anchor{margin-left:auto;position:relative;flex:none;visibility:hidden}
-.tree-item:hover .thread-menu-anchor,.tree-item:focus-within .thread-menu-anchor,.tree-item .tree-main[aria-current=true]~.thread-menu-anchor,.srow:hover .thread-menu-anchor,.srow:focus-within .thread-menu-anchor,.srow.on .thread-menu-anchor{visibility:visible}

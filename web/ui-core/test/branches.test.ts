@@ -26,7 +26,29 @@ describe("reading a family", () => {
 });
 
 describe("branch management", () => {
-      it("reads a bounded split window and a bounded tip window", async () => {
+  it("retains missing branches after a partial archive", async () => {
+    const { model, t, db } = await fixtureModel();
+    const plain = db.answer;
+    db.answer = c => c.command === "thread.archive" ? { ok: true, result: { archived: ["fork-a"], already: [], not_found: ["gone"], descendants: false } } : plain(c);
+    model.branches.toggleBranch("fork-a"); model.branches.toggleBranch("gone");
+    const pending = model.branches.archiveSelected(); await settle(t, db); await pending;
+    expect([...model.branches.selection.value]).toEqual(["gone"]);
+    expect(model.branches.actionError.value).toContain("gone");
+    model.dispose();
+  });
+  it("archives only selected branches and sends titles for the chosen branch", async () => {
+    const { model, t, db } = await fixtureModel();
+    model.branches.toggleBranch("fork-a");
+    const archive = model.branches.archiveSelected(); await settle(t, db); await archive;
+    expect(t.calls("thread.archive").at(-1)?.args).toEqual({ thread_ids: ["fork-a"] });
+    const rename = model.branches.renameBranch("fork-a", "Keep this"); await settle(t, db); await rename;
+    expect(t.calls("thread.set").at(-1)?.args).toEqual({ thread_id: "fork-a", title: "Keep this" });
+    model.dispose();
+  });
+});
+
+describe("branch excerpts", () => {
+  it("reads a bounded split window and a bounded tip window", async () => {
     const { model, t, db } = await fixtureModel({ route: "branches" });
     const answer = db.answer.bind(db);
     db.answer = c => c.command === "history.window" ? { ok: true, result: { thread_id: "fork-a", revision: 1, total: 103, items: (c.args as { node_id?: string }).node_id ? [{ node_id: "n100", kind: "user", excerpt: "split", selection: { ordinal: 100 } }, { node_id: "n101", kind: "user", excerpt: "first", selection: { ordinal: 101 } }] : [{ node_id: "n102", kind: "assistant_response", excerpt: "line one\nline two\nline three", selection: { ordinal: 102 } }] } } : answer(c);
@@ -329,47 +351,10 @@ describe("Threads over the fake transport", () => {
     await settle(t, db);
     await running;
     const call = t.calls("thread.archive")[0]!;
-    expect(call.args).toEqual({ thread_ids: ["lead", "done"] });
+    expect(call.args).toEqual({ thread_ids: ["lead", "done"], descendants: true });
     expect(call.operation_id).toBeTruthy();
     expect(org.selected.value.size).toBe(0);
     expect(org.action.value).toMatchObject({ kind: "done", verb: "archive" });
-  });
-
-  it("fails closed when the selected view becomes stale or the owner changes", async () => {
-    const { t, db, model } = await open();
-    model.org.setMany(["lead"], true);
-    model.org.setQuery("different");
-    await expect(model.org.apply()).resolves.toBeUndefined();
-    expect(t.calls("thread.archive")).toHaveLength(0);
-    t.push({ t: "hello", bridge_version: "0.0.1", data_dir: "/temp/owner-b", owner: { state: "connected", info: { protocol_version: 5, instance_id: "i2", capabilities: [] } } });
-    await flush();
-    model.org.setQuery("");
-    model.org.setMany(["lead"], true);
-    await model.org.apply();
-    expect(t.calls("thread.archive")).toHaveLength(0);
-  });
-  it("refreshes after an accepted bulk result without clearing a newer selection", async () => {
-    const f = await open();
-    const { t, db, model } = f;
-    model.org.setMany(["lead"], true);
-    const running = model.org.apply();
-    await flush();
-    model.org.setMany(["done"], true);
-    const archive = t.calls("thread.archive")[0]!;
-    expect(archive).toBeDefined();
-    const beforeRefresh = new Set(t.calls("thread.list").map((call) => call.id));
-    const baseline = beforeRefresh.size;
-    t.ok(archive.id, { archived: ["lead"] });
-    await flush();
-    const refresh = t.calls("thread.list").find((call) => !beforeRefresh.has(call.id) && !db.answered.has(call.id));
-    expect(refresh).toBeDefined();
-    expect(t.calls("thread.list").length).toBeGreaterThan(baseline);
-    db.answered.add(refresh!.id);
-    const refreshed = db.answer(refresh!);
-    if (refreshed.ok) t.ok(refresh!.id, refreshed.result);
-    else t.ownerError(refresh!.id, refreshed.code, refreshed.message, refreshed.details);
-    await running;
-    expect(model.org.selected.value.has("done")).toBe(true);
   });
   it("in Archived the same action unarchives; turning descendants off sends none", async () => {
     const { t, db, model } = await open();

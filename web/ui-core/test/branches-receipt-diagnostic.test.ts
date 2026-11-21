@@ -38,7 +38,17 @@ describe("Branches receipt repair", () => {
     f.t.drop(); await retry; expect(state.get("parent")).toBe("untouched"); f.b.leave(); f.link.stop();
   });
 
-    it("rewind accepted/reply lost reuses ID and rejects changed follow-up text", async () => {
+  it("archive accepted/reply lost retains selection and retry identity; parent is not targeted", async () => {
+    const f = fixture(); f.b.toggleBranch("selected"); const archived = new Set<string>();
+    const first = f.b.archiveSelected(); const sent = f.t.calls("thread.archive")[0]!;
+    expect(sent.args).toEqual({ thread_ids: ["selected"] }); archived.add("selected");
+    f.t.drop(); await first; expect([...f.b.selection.value]).toEqual(["selected"]);
+    f.t.open(); const retry = f.b.archiveSelected(); const resent = f.t.calls("thread.archive")[1]!;
+    expect(resent.operation_id).toBe(sent.operation_id); expect(resent.args).toEqual(sent.args);
+    expect(archived.has("parent")).toBe(false); f.t.drop(); await retry; f.b.leave(); f.link.stop();
+  });
+
+  it("rewind accepted/reply lost reuses ID and rejects changed follow-up text", async () => {
     const f = fixture(); await ready(f); let applied = 0;
     const first = f.b.confirmRewind("original"); const sent = f.t.calls("thread.rewind")[1]!; applied++;
     f.t.drop(); await first; expect(f.b.rewind.value.kind).toBe("failed");
@@ -73,6 +83,21 @@ describe("Branches receipt repair", () => {
     f.t.ok(resend.id,{message_id:"accepted-message",thread_id:(resend.args as {thread_id:string}).thread_id}); await recover;
     f.b.leave(); f.link.stop();
   });
+});
+
+it("bounds three independent slots, joins in-flight attempts and refuses new payloads without evicting", async () => {
+  const f = fixture();
+  const one = f.b.renameBranch("selected", "x"), joined = f.b.renameBranch("selected", "x");
+  await f.b.renameBranch("other", "y"); expect(f.t.calls("thread.set")).toHaveLength(1);
+  f.b.toggleBranch("selected"); const archive = f.b.archiveSelected(); expect(f.t.calls("thread.archive")).toHaveLength(1);
+  await ready(f); const chain = f.b.confirmRewind("x"); expect(f.t.calls("thread.rewind")).toHaveLength(2);
+  f.t.drop(); await Promise.all([one, joined, archive, chain]);
+  f.b.clearActions(); f.b.leave();
+  f.t.open(); await f.b.renameBranch("other", "y"); f.b.toggleBranch("parent"); await f.b.archiveSelected();
+  expect(f.t.calls("thread.set")).toHaveLength(1); expect(f.t.calls("thread.archive")).toHaveLength(1);
+  // The same three immutable slots remain recoverable after clear/leave.
+  const retry = f.b.renameBranch("selected", "x"); expect(f.t.calls("thread.set")[1]!.operation_id).toBe(f.t.calls("thread.set")[0]!.operation_id);
+  f.t.drop(); await retry; f.link.stop();
 });
 
 it("retains identities across expired/invalid outcomes and rejects cross-owner mutation replay", async () => {
@@ -141,12 +166,40 @@ it("owner change after a known rewind never starts the unsent send stage", async
   owner="a";const resume=b.confirmRewind("text");await flush();t.ok(t.calls("message.send")[0]!.id,{message_id:"accepted-message",thread_id:(t.calls("message.send")[0]!.args as {thread_id:string}).thread_id});await resume;link.stop();
 });
 
+it("admits no more than four mutation receipts across all three occupied slots", async () => {
+  const f=fixture();
+  const rename=f.b.renameBranch("selected","frozen");
+  f.b.toggleBranch("selected");const archive=f.b.archiveSelected();await ready(f);
+  const chain=f.b.confirmRewind("frozen");const rewind=f.t.calls("thread.rewind").at(-1)!;
+  f.t.ok(rewind.id,{...fixtureRewind,dry_run:false});await flush();
+  const mutations=()=>f.t.calls().filter(c=>c.operation_id);
+  expect(new Set(mutations().map(c=>c.operation_id)).size).toBe(4);
+  await f.b.renameBranch("other","changed");f.b.toggleBranch("parent");await f.b.archiveSelected();await f.b.confirmRewind("changed");
+  expect(new Set(mutations().map(c=>c.operation_id)).size).toBe(4);
+  expect(f.t.calls("message.send")[0]!.args).toEqual({thread_id:"selected",text:"frozen"});
+  f.t.drop();await Promise.all([rename,archive,chain]);f.link.stop();
+});
+
+it("reserves pending state before a synchronous transport callback can reenter", async () => {
+  const f=fixture();const original=f.t.send.bind(f.t);let reentered=false;let joined:Promise<void>|undefined;
+  f.t.send=frame=>{const sent=original(frame);if(frame.t==="call"&&frame.command==="thread.set"&&!reentered){reentered=true;joined=f.b.renameBranch("selected","fixed");}return sent;};
+  const first=f.b.renameBranch("selected","fixed");expect(f.t.calls("thread.set")).toHaveLength(1);
+  f.t.ok(f.t.calls("thread.set")[0]!.id,{thread_id:"selected",title:"fixed"});await first;await joined;f.link.stop();
+});
+
 function ownerFixture() {
   const t=new FakeTransport(),link=new Link(t);link.start();t.open();let owner:string|undefined="a",seq=0;
   const b=new Branches(new Operations(link,()=>`${owner}:${++seq}`, () => true),()=>owner);
   const change=(next:string|undefined)=>{owner=next;b.ownerChanged(next);};change("a");
   return {t,link,b,change};
 }
+for(const kind of ["rename","archive"] as const) for(const returns of [false,true]) it(`${kind} late success after owner ${returns?"A-B-A":"A-B"} has no projection or read effect`,async()=>{
+  const f=ownerFixture();f.b.state.value={...f.b.state.value,threadId:"selected"};f.b.toggleBranch("selected");
+  const p=kind==="rename"?f.b.renameBranch("selected","x"):f.b.archiveSelected();
+  const call=f.t.calls(kind==="rename"?"thread.set":"thread.archive")[0]!;f.change("b");if(returns)f.change("a");f.b.actionError.value="new owner";
+  f.t.ok(call.id,kind==="rename"?{thread_id:"selected",title:"x"}:{archived:["selected"],not_found:[]});await p;
+  expect(f.b.actionError.value).toBe("new owner");expect([...f.b.selection.value]).toEqual(["selected"]);expect(f.t.calls("thread.branches")).toHaveLength(0);f.link.stop();
+});
 it("cached canonical success belongs only to the original owner, retained through opaque lookup",async()=>{
   const f=ownerFixture();const p=f.b.renameBranch("selected","x");f.t.ok(f.t.calls("thread.set")[0]!.id,{thread_id:"selected",title:"x"});await p;
   f.change("b");f.b.actionError.value="new owner";const other=f.b.renameBranch("selected","x");
