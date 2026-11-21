@@ -3,3 +3,11 @@
 .panel-list-main { display:flex; align-items:baseline; gap:var(--space-8); flex:1; min-width:0; padding:var(--space-8); color:inherit; text-align:left; background:none; border:0; cursor:pointer; }
 .panel-list-title { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .panel-list-subtitle { margin-left:auto; color:var(--muted); font:var(--type-caption); white-space:nowrap; }
+
+.panel-list-row[data-waiting="true"] { background:var(--need-bg); }
+.panel-list-row[aria-current="true"] { background:var(--accent-bg); }
+.panel-list-main { min-height:var(--size-control); align-items:center; }
+.panel-list-actions { display:flex; flex:none; width:var(--size-row-action); visibility:hidden; }
+.panel-list-row[aria-current="true"] .panel-list-actions,.panel-list-row.panel-list-open .panel-list-actions { visibility:visible; }
+@media (hover:hover) { .panel-list-row:hover .panel-list-actions,.panel-list-row:focus-within .panel-list-actions { visibility:visible; } }
+@media (hover:none) { .panel-list-main { min-height:var(--size-touch); } .panel-list-actions { width:var(--size-row-action-touch); visibility:visible; } }

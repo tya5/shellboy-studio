@@ -395,24 +395,47 @@ const activitySections = [
   { key: "pending", label: "panel.pending", kind: "message", icon: "panel.awaiting_reply" },
 ] as const;
 
+function panelElapsed(now: number, startedAt?: string): string | undefined {
+  const started = parseTime(startedAt);
+  return started === undefined ? undefined : formatDuration(Math.max(0, now - started));
+}
+
+function usePanelCancel(model: AppModel) {
+  const [error, setError] = useState<string>();
+  const [busy, setBusy] = useState(false);
+  const action = (id: string, kind: "pending" | "reply" = "pending") => ({ key: "cancel", label: model.t.value("work.cancel"),
+    disabled: busy || model.connection.value !== "connected" || model.uncertainCancels.value.has(id),
+    run: () => {
+      if (busy) return;
+      setBusy(true);
+      void model.cancelPending(id, kind).then(failure => {
+        setBusy(false);
+        setError(failure ? model.t.value("work.cancelFailed", { message: failure }) : undefined);
+      });
+    },
+  });
+  return { action, error };
+}
+
 function PanelActivity({ model }: { model: AppModel }) {
   const t = model.t.value;
   const work = model.work.value;
-  const [error, setError] = useState<string>();
-  const [busy, setBusy] = useState(false);
-  const [selected, setSelected] = useState<string>();
-  const detail = model.panelDetail.value;
-  useEffect(() => { if (detail && detail.kind !== "reply") setSelected(detail.id); }, [detail]);
+  const cancel = usePanelCancel(model);
+  const selected = model.panelOpener.value.work;
+  const now = model.now.value;
   return <div class="panel-list" data-panel-list="work">
-    {error ? <div role="alert" class="caption">{error}</div> : null}
+    {cancel.error ? <div role="alert" class="caption">{cancel.error}</div> : null}
     {activitySections.map(section => {
       const rows = work[section.key];
-      return rows.length ? <section key={section.key}><ListDivider label={t(section.label)} count={rows.length} />{rows.map(row =>
-        <ListRow key={row.id} id={row.id} title={row.label || t("work.textUnavailable")} subtitle={row.state} icon={section.icon} selected={selected === row.id}
+      return rows.length ? <section key={section.key}><ListDivider label={t(section.label)} count={rows.length} />{rows.map(row => {
+        const elapsed = panelElapsed(now, row.startedAt);
+        const state = row.state === "accepted" ? t("work.accepted") : t("work.held");
+        return <ListRow key={row.id} id={row.id} title={(section.kind === "step" ? row.command ?? row.label : row.label) || t("work.textUnavailable")}
+          subtitle={section.kind === "step" ? elapsed : [state, elapsed].filter(Boolean).join(" · ")} icon={section.icon}
+          selected={selected?.kind === section.kind && selected.id === row.id}
           onSelect={() => model.openInPanel(section.kind, row.id)} menuLabel={t("panel.rowActions")}
-          actions={section.kind === "message" ? [{ key: "cancel", label: t("work.cancel"), disabled: busy || model.connection.value !== "connected" || model.uncertainCancels.value.has(row.id), run: () => {
-            setBusy(true); void model.cancelPending(row.id).then(failure => { setBusy(false); setError(failure ? t("work.cancelFailed", { message: failure }) : undefined); });
-          } }] : undefined} />)}</section> : null;
+          actions={section.kind === "message" ? [cancel.action(row.id)] : undefined} />;
+      })}</section> : null;
     })}
     {work.partial ? <div class="caption muted">{t("work.partial")}</div> : null}
     {model.handle.value?.work.value.stale && (work.running.length || work.pending.length) ? <div class="caption muted">{t("work.stale")}</div> : null}
@@ -424,12 +447,21 @@ function PanelReplies({ model, recipient }: { model: AppModel; recipient: "threa
   const t = model.t.value;
   const tab = recipient === "thread" ? "reply-needed" : "awaiting-reply";
   const rows = model.threadReplies.value.filter(reply => reply.recipient.kind === recipient);
-  const label = t(recipient === "thread" ? "panel.tab.reply_needed" : "panel.tab.awaiting_reply");
+  const cancel = usePanelCancel(model);
   return <div class="panel-list" data-panel-list={tab}>
-    <ListDivider label={label} count={rows.length} />
-    {rows.map(reply => <ListRow key={reply.id} id={reply.id} title={reply.question || t("work.textUnavailable")} subtitle={reply.state}
-      selected={model.panelDetail.value?.kind === "reply" && model.panelDetail.value.id === reply.id}
-      onSelect={() => model.openInPanel("reply", reply.id)} />)}
+    {cancel.error ? <div role="alert" class="caption">{cancel.error}</div> : null}
+    {rows.map(reply => {
+      const human = reply.recipient.kind === "human";
+      const peer = reply.recipient.kind === "thread" ? reply.recipient.threadId : undefined;
+      const party = human ? t("convo.you") : peer !== model.selectedId.value && peer ? (model.rowById.value.get(peer)?.summary.title || peer) : undefined;
+      const target = peer && peer !== model.selectedId.value ? formatRoute({ view: "conversation", threadId: peer }) : undefined;
+      const elapsed = reply.elapsedMs !== undefined ? formatDuration(reply.elapsedMs) : panelElapsed(model.now.value, reply.createdAt);
+      const actions = [...(target ? [{ key: "open", label: t("panel.openThread"), href: target }] : []),
+        ...(human ? [cancel.action(reply.id, "reply")] : [])];
+      return <ListRow key={reply.id} id={reply.id} title={[party, reply.question || t("work.textUnavailable")].filter(Boolean).join(" · ")}
+        subtitle={elapsed} waiting={human} selected={model.panelOpener.value[tab]?.id === reply.id}
+        menuLabel={t("panel.rowActions")} actions={actions} onSelect={() => model.openInPanel("reply", reply.id)} />;
+    })}
     {!rows.length ? <p class="muted caption">{t("panel.empty")}</p> : null}
   </div>;
 }
@@ -446,13 +478,17 @@ function PanelInfo({ model }: { model: AppModel }) {
     { key: t("usage.attempts"), value: usage.attempts, mono: true },
   ].filter(row => row.value !== undefined) : [];
   return <div class="panel-info" data-panel-info="">
-    <ListDivider label={t("details.thread")} />
-    {details ? <KeyValue rows={[{ key: t("details.model"), value: details.model, mono: true }]} /> : null}
-    {rows.length ? <><ListDivider label={t("usage.title")} /><KeyValue rows={rows} />{usage?.partial ? <div class="muted caption">{t("usage.partial")}</div> : null}</> : null}
+    {details ? <KeyValue rows={[
+      { key: t("details.model"), value: details.model, mono: true },
+      { key: t("model.effort"), value: details.effort },
+      { key: t("model.connection"), value: details.connection },
+      { key: t("details.directory"), value: details.cwd, mono: true },
+    ]} /> : null}
+    {rows.length ? <><h3>{t("usage.title")}</h3><KeyValue rows={rows} />{usage?.partial ? <div class="muted caption">{t("usage.partial")}</div> : null}</> : null}
   </div>;
 }
 
-function PanelDetail({ model, onBack }: { model: AppModel; onBack: () => void }) {
+function PanelDetail({ model, tabLabel, onBack }: { model: AppModel; tabLabel: string; onBack: () => void }) {
   const t = model.t.value;
   const detail = model.panelDetail.value;
   const step = model.selectedStep.value;
@@ -465,9 +501,10 @@ function PanelDetail({ model, onBack }: { model: AppModel; onBack: () => void })
     if (!detail || detail.kind !== "message" || model.bodyState(detail.id)) return;
     void model.loadBody(detail.id);
   }, [model, detail]);
+  const cancel = usePanelCancel(model);
   const backRef = useRef<HTMLButtonElement>(null);
   useLayoutEffect(() => { if (backRef.current?.offsetParent) backRef.current.focus(); }, []);
-  const back = <Button buttonRef={backRef} variant="link" data-panel-back onClick={onBack}>{t("panel.back")}</Button>;
+  const back = <Button buttonRef={backRef} variant="link" data-panel-back onClick={onBack}><Icon role="panel.back" size="small" />{tabLabel}</Button>;
   if (!detail) return null;
   if (detail.kind === "step") {
     const command = step?.command ?? running?.command;
@@ -487,16 +524,22 @@ function PanelDetail({ model, onBack }: { model: AppModel; onBack: () => void })
   }
   if (detail.kind === "message") {
     const row = model.work.value.pending.find(item => item.id === detail.id);
+    const action = row ? cancel.action(row.id) : undefined;
     return <section class="panel-detail" data-panel-detail=""><div class="panel-detail-head">{back}<h3>{t("work.pending")}</h3></div>
       {row ? <KeyValue rows={[{ key: t("work.pending"), value: model.bodyState(row.id)?.text ?? (row.label || t("work.textUnavailable")) }, { key: t("details.status"), value: row.state }]} /> : <p class="muted caption">{t("work.textUnavailable")}</p>}
+      {action ? <Button disabled={action.disabled} onClick={action.run}>{action.label}</Button> : null}
+      {cancel.error ? <p role="alert">{cancel.error}</p> : null}
       {model.bodyState(detail.id)?.loading ? <p role="status">{t("convo.loadingBody")}</p> : null}
     </section>;
   }
   const reply = model.threadReplies.value.find(row => row.id === detail.id);
+  const replyCancel = reply?.recipient.kind === "human" ? cancel.action(reply.id, "reply") : undefined;
   return <section class="panel-detail" data-panel-detail=""><div class="panel-detail-head">{back}<h3>{t(reply?.recipient.kind === "thread" ? "panel.tab.reply_needed" : "panel.tab.awaiting_reply")}</h3></div>
     {reply?.recipient.kind === "human" ? <QuestionCard id={`panel-${reply.id}`} label={t("work.replies")} waitingWord={t("status.awaiting")} question={reply.question} answerLabel={t("inbox.answer")} submitLabel={t("inbox.answerResume")} error={error} onAnswer={text => { void model.answerReply(reply.id, text).then(failure => setError(failure ? t("inbox.answerFailed", { message: failure }) : undefined)); }} /> : reply ? <><p>{reply.question}</p><KeyValue rows={[{ key: t("details.status"), value: reply.state }]} />
-      {reply.recipient.kind === "thread" ? <a href={formatRoute({ view: "conversation", threadId: reply.recipient.threadId })}>{reply.recipient.title}</a> : null}</>
+      {reply.recipient.kind === "thread" && reply.recipient.threadId !== model.selectedId.value ? <a href={formatRoute({ view: "conversation", threadId: reply.recipient.threadId })}>{reply.recipient.title}</a> : null}</>
       : <p class="muted caption">{t("work.textUnavailable")}</p>}
+    {replyCancel ? <Button disabled={replyCancel.disabled} onClick={replyCancel.run}>{replyCancel.label}</Button> : null}
+    {cancel.error ? <p role="alert">{cancel.error}</p> : null}
   </section>;
 }
 
@@ -532,13 +575,16 @@ function RightPanel({ model, panelCollapsed = false, onPanelCollapsedChange }: {
     <Button icon label={t(panelCollapsed ? "panel.expand" : "panel.collapse")} title={t(panelCollapsed ? "panel.expand" : "panel.collapse")} aria-expanded={!panelCollapsed}
       onClick={() => onPanelCollapsedChange?.(!panelCollapsed)}><Icon role={panelCollapsed ? "panel.expand" : "panel.collapse"} /></Button>
     <PanelTabs label={t("panel.title")} items={tabs} selected={model.panelTab.value} rail={panelCollapsed} onSelect={select} />
-    <div class="panel-pages" hidden={panelCollapsed || !!detail}>
-      <section role="tabpanel" id="panel-page-work" aria-labelledby="panel-tab-work" hidden={panelCollapsed || model.panelTab.value !== "work"}><PanelActivity model={model} /></section>
-      <section role="tabpanel" id="panel-page-reply-needed" aria-labelledby="panel-tab-reply-needed" hidden={panelCollapsed || model.panelTab.value !== "reply-needed"}><PanelReplies model={model} recipient="thread" /></section>
-      <section role="tabpanel" id="panel-page-awaiting-reply" aria-labelledby="panel-tab-awaiting-reply" hidden={panelCollapsed || model.panelTab.value !== "awaiting-reply"}><PanelReplies model={model} recipient="human" /></section>
-      <section role="tabpanel" id="panel-page-info" aria-labelledby="panel-tab-info" hidden={panelCollapsed || model.panelTab.value !== "info"}><PanelInfo model={model} /></section>
+    <div class="panel-pages" hidden={panelCollapsed}>
+      {tabs.map(tab => {
+        const active = tab.id === model.panelTab.value;
+        const drilledIn = active && !panelCollapsed && detail;
+        return <section key={tab.id} role="tabpanel" id={`panel-page-${tab.id}`} aria-labelledby={`panel-tab-${tab.id}`} hidden={!active}>
+          <div class="panel-list-frame" hidden={!!drilledIn}>{tab.id === "work" ? <PanelActivity model={model} /> : tab.id === "info" ? <PanelInfo model={model} /> : <PanelReplies model={model} recipient={tab.id === "reply-needed" ? "thread" : "human"} />}</div>
+          {drilledIn ? <PanelDetail key={`${detail.kind}:${detail.id}`} model={model} tabLabel={tab.label} onBack={closeDetail} /> : null}
+        </section>;
+      })}
     </div>
-    {!panelCollapsed && detail ? <PanelDetail key={`${detail.kind}:${detail.id}`} model={model} onBack={closeDetail} /> : null}
   </aside>;
 }
 

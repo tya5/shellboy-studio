@@ -83,7 +83,7 @@ export function App({ context }: { context: DesignContext }) {
         context.setPrefs({ navCollapsed: !context.prefs.value.navCollapsed });
         return;
       }
-      if (panelShortcut(e) && (document.querySelector(".app")?.clientWidth ?? 0) >= 900) {
+      if (panelShortcut(e) && model.route.peek().view === "conversation" && (document.querySelector(".app")?.clientWidth ?? 0) >= 1180) {
         e.preventDefault();
         context.setPrefs({ panelCollapsed: !context.prefs.value.panelCollapsed });
         return;

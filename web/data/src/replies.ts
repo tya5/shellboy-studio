@@ -8,6 +8,8 @@ export interface ReplyWait {
   question: string;
   recipient: { kind: "human" } | { kind: "thread"; threadId: string; title: string };
   state: string;
+  createdAt?: string;
+  elapsedMs?: number;
 }
 export interface ReplyWaitAdapter {
   supported(capabilities: readonly string[]): boolean;
@@ -30,6 +32,6 @@ export function threadReplyItems(threadId: string, raw: unknown): ReplyWait[] {
     const recipient = item.recipient_kind === "human" ? { kind: "human" as const }
       : item.recipient_kind === "thread" && typeof item.recipient_thread_id === "string"
         ? { kind: "thread" as const, threadId: item.recipient_thread_id, title: item.recipient_thread_id } : undefined;
-    return recipient ? [{ id: item.message_id, threadId, question: item.excerpt, recipient, state: item.delivery_status }] : [];
+    return recipient ? [{ id: item.message_id, threadId, question: item.excerpt, recipient, state: item.delivery_status, ...(typeof item.created_at === "string" ? { createdAt: item.created_at } : {}), ...(typeof item.elapsed_ms === "number" && Number.isFinite(item.elapsed_ms) && item.elapsed_ms >= 0 ? { elapsedMs: item.elapsed_ms } : {}) }] : [];
   });
 }

@@ -234,6 +234,7 @@ export interface WorkItem {
   execution_id?: string | null;
   message_id?: string | null;
   started_at?: string | null;
+  created_at?: string | null;
   /** Bounded history.get preview, absent when it could not be read. */
   excerpt?: string;
 }

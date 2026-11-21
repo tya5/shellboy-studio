@@ -57,8 +57,8 @@
 .scroll>.steps,.scroll>.strip,.scroll>.scroll-mark{margin-left:0}
 .dock{display:flex;flex-direction:column;gap:var(--space-8);padding:0 var(--space-24) var(--space-16)}
 .details{width:var(--size-details);flex:none;border-left:1px solid var(--line);background:var(--panel);overflow:auto;padding:var(--space-16);display:flex;flex-direction:column;gap:var(--space-12)}
-.details[data-panel-root]{container:panel / inline-size;box-sizing:border-box}
-.details.details-collapsed{width:calc(var(--size-touch) + 2 * var(--space-8));padding:var(--space-8);gap:var(--space-8);overflow:hidden}
+.details[data-panel-root]{box-sizing:border-box}
+.details.details-collapsed{width:calc(var(--size-touch) + 2 * var(--space-8));padding:var(--space-8);gap:var(--space-8);overflow:visible}
 .details .panel-pages:not([hidden]){flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden}
 .details .panel-pages [role=tabpanel]:not([hidden]){flex:1;min-height:0;display:flex;flex-direction:column;overflow:auto}
 .details .panel-list{display:flex;flex:1;flex-direction:column;gap:var(--space-12);min-height:0;overflow:auto}
@@ -158,9 +158,7 @@
 }
 
 @container app (max-width:899px){
-  .details{display:none}
-  .work-strip{display:block}
-  .work-strip .btn{width:100%;justify-content:flex-start;min-height:var(--size-touch);overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+
   .monitor-sort-wide,.monitor-tools>.monitor-count{display:none}
   .monitor-sort-narrow,.monitor-count-mobile{display:block}
   .monitor-popover-panel{position:fixed;left:var(--space-12);right:var(--space-12);top:auto;width:auto}
@@ -204,6 +202,11 @@
 .work-region h3,.detail-region h3{position:sticky;top:0;background:var(--panel)}
 .work-row{display:flex;flex-direction:column;gap:var(--space-4);overflow-wrap:anywhere;padding:var(--space-8);background:var(--inset);border-radius:var(--radius-s)}
 .work-strip{display:none}
+@container app (max-width:1179px){
+  .details{display:none}
+  .work-strip{display:block}
+  .work-strip .btn{width:100%;justify-content:flex-start;min-height:var(--size-touch);overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+}
 .work-sheet{border:1px solid var(--line-strong);border-radius:var(--radius);background:var(--panel);color:var(--fg);width:min(100%,600px);max-height:80dvh;padding:var(--space-16)}
 .work-sheet::backdrop{background:var(--scrim)}
 html:has(dialog:modal){overflow:hidden}
@@ -241,3 +244,7 @@ html:has(dialog:modal){overflow:hidden}
 @media(max-width:768px){.convo > .conversation-status{padding-inline:var(--space-12)}}
 
 .org-rows{display:contents}
+
+.details.details-collapsed{overflow:visible}
+
+.details .panel-list-frame:not([hidden]){display:flex;flex:1;min-height:0;flex-direction:column}

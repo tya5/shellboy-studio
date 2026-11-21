@@ -323,6 +323,7 @@ export class AppModel {
   }
   bodyState(nodeId: string, itemIdentity?: string): BodyState | undefined { return this.bodies.value.get(this.bodyCacheKey(nodeId, itemIdentity)); }
   readonly panelTab: Signal<RightPanelTab> = signal("work");
+  readonly panelOpener: Signal<Partial<Record<RightPanelTab, RightPanelDetail>>> = signal({});
   readonly panelDetail: Signal<RightPanelDetail | undefined> = signal(undefined);
   readonly selectedStepId: ReadonlySignal<string | undefined> = computed(() => this.panelDetail.value?.kind === "step" ? this.panelDetail.value.id : undefined);
   readonly selectedStep: ReadonlySignal<StepRow | undefined>;
@@ -841,6 +842,7 @@ export class AppModel {
     this.lastThread.value = id;
     this.shells.value = new Map();
     this.panelTab.value = "work";
+    this.panelOpener.value = {};
     this.panelDetail.value = undefined;
     this.watchedOutputs.clear();
     this.sendState.value = { kind: "idle" };
@@ -1173,7 +1175,7 @@ export class AppModel {
   openInPanel(kind: RightPanelDetail["kind"], id: string): void {
     const tab: RightPanelTab = kind === "step" || kind === "message" ? "work"
       : this.threadReplies.peek().find(row => row.id === id)?.recipient.kind === "thread" ? "reply-needed" : "awaiting-reply";
-    batch(() => { this.panelTab.value = tab; this.panelDetail.value = { kind, id }; });
+    batch(() => { const detail = { kind, id }; this.panelTab.value = tab; this.panelOpener.value = { ...this.panelOpener.peek(), [tab]: detail }; this.panelDetail.value = detail; });
   }
 
   closePanelDetail(): void { this.panelDetail.value = undefined; }
@@ -1185,7 +1187,7 @@ export class AppModel {
     return out.ok ? undefined : errorMessage(out.error);
   }
 
-  async cancelPending(messageId: string): Promise<string | undefined> {
+  async cancelPending(messageId: string, kind: "pending" | "reply" = "pending"): Promise<string | undefined> {
     const out = await this.ops.messageCancel(messageId);
     if (!out.ok) {
       if (out.error.kind === "unconfirmed") {
@@ -1195,7 +1197,7 @@ export class AppModel {
       return errorMessage(out.error);
     }
     const items = out.value.items;
-    if (!Array.isArray(items) || items.length !== 1 || items[0]?.message_id !== messageId || items[0]?.outcome !== "cancelled") {
+    if (!Array.isArray(items) || items.length !== 1 || items[0]?.message_id !== messageId || (items[0]?.outcome !== "cancelled" && !(kind === "reply" && items[0]?.outcome === "reply_cancelled"))) {
       return String(Array.isArray(items) ? items[0]?.outcome ?? "invalid response" : "invalid response");
     }
     return undefined;

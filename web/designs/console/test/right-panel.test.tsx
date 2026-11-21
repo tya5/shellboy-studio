@@ -17,8 +17,8 @@ afterEach(() => { if (host) render(null, host); host?.remove(); host = undefined
 async function setup() {
  const f=await fixtureModel({route:'conversation',threadId:'lead',lang:'ja',configure(db){
   db.threads={lead:summary('lead')};
-  db.details.lead=details('lead',{run_id:'run-1',model:'model-a',effort:'high',awaiting_replies:[
-   {message_id:'owed-human',recipient_kind:'human',recipient_thread_id:'lead',excerpt:'Need an answer from this conversation',delivery_status:'accepted',created_at:'2026-11-21T00:00:00Z'},
+  db.details.lead=details('lead',{run_id:'run-1',model:'model-a',effort:'high',connection:'test-connection',cwd:'/fixture/panel',awaiting_replies:[
+   {message_id:'owed-human',recipient_kind:'human',recipient_thread_id:'lead',excerpt:'Need an answer from this conversation',delivery_status:'accepted',elapsed_ms:2400,created_at:'2026-11-21T00:00:00Z'},
    {message_id:'asked-child',recipient_kind:'thread',recipient_thread_id:'child',excerpt:'Waiting for the child Thread',delivery_status:'applied',created_at:'2026-11-21T00:00:00Z'},
   ]});
   db.work.lead=[{kind:'shell',id:'shell-running',thread_id:'lead',run_id:'run-1',execution_id:'shell-running',state:'running',started_at:'2026-11-21T00:00:00Z'}];
@@ -53,7 +53,8 @@ describe('right panel purpose',()=>{
    expect(f.host.querySelector('section[role=tabpanel]:not([hidden]) [data-panel-row-id="owed-human"]')).not.toBeNull();
    expect(f.host.querySelector('section[role=tabpanel]:not([hidden]) [data-panel-row-id="asked-child"]')).toBeNull();
    await act(async()=>{tabs[3]!.click();});
-   expect(f.host.querySelector('#panel-page-info:not([hidden])')?.textContent).toContain('model-a');
+   const info=f.host.querySelector('#panel-page-info:not([hidden])')!;
+   for(const value of ['model-a','high','test-connection','/fixture/panel'])expect(info.textContent).toContain(value);
   }finally{f.model.dispose();f.data.stop();}
  });
 
@@ -65,7 +66,8 @@ describe('right panel purpose',()=>{
    const row=f.host.querySelector<HTMLElement>('[data-panel-row-id="shell-running"]')!;expect(row).not.toBeNull();
    await act(async()=>row.querySelector<HTMLButtonElement>('button')!.click());
    expect(f.model.selectedStepId.peek()).toBe('shell-running');
-   expect(f.host.querySelector('[data-panel-detail]')?.textContent).toContain('npm test');
+   expect(f.host.querySelector('#panel-page-work:not([hidden]) [data-panel-detail]')?.textContent).toContain('npm test');
+   expect(f.host.querySelector('[data-panel-back]')?.textContent).toBe('動作');
    const back=f.host.querySelector<HTMLButtonElement>('[data-panel-back]')!;
    await act(async()=>back.click());
    expect(f.host.querySelector('[data-panel-list="work"]')).toBe(list);
@@ -77,6 +79,26 @@ describe('right panel purpose',()=>{
   }finally{f.model.dispose();f.data.stop();}
  });
 
+ it('retains the human question opener after Back and leaves Alt+9 inactive at sheet width', async () => {
+  const f=await setup();
+  try {
+   Object.defineProperty(f.host.querySelector('.app'), 'clientWidth', {configurable:true,value:1179});
+   await act(async()=>{window.dispatchEvent(new KeyboardEvent('keydown',{key:'9',altKey:true,bubbles:true,cancelable:true}));});
+   expect(f.prefs.value.panelCollapsed).toBe(false);
+   await act(async()=>f.host.querySelector<HTMLButtonElement>('[data-panel-tab="awaiting-reply"]')!.click());
+   const panel=f.host.querySelector('#panel-page-awaiting-reply')!;
+   const row=panel.querySelector('[data-panel-row-id="owed-human"]')!;
+   expect(row.getAttribute('data-waiting')).toBe('true');
+   expect(row.textContent).toContain('2.4s');
+   await act(async()=>row.querySelector('button')!.click());
+   expect(panel.querySelector('[data-panel-detail] textarea')).not.toBeNull();
+   expect(panel.querySelector('[data-panel-back]')?.textContent).toBe('返信待ち');
+   await act(async()=>panel.querySelector<HTMLButtonElement>('[data-panel-back]')!.click());
+   expect(row.getAttribute('aria-current')).toBe('true');
+   expect(document.activeElement).toBe(row.querySelector('button'));
+  } finally {f.model.dispose();f.data.stop();}
+ });
+
  it('Alt+9 collapses to a counted icon rail and restores the stored state after remount',async()=>{
   const f=await setup();
   try{
@@ -85,7 +107,12 @@ describe('right panel purpose',()=>{
    expect(f.host.querySelector('[data-panel-rail]')).not.toBeNull();
    expect(f.host.querySelectorAll('[data-panel-rail] [role=tab]')).toHaveLength(4);
    const action=f.host.querySelector<HTMLButtonElement>('[data-panel-rail] [data-panel-tab="work"]')!;
-   expect(action.getAttribute('title')).toBeTruthy();
+   const tip=f.host.querySelector(`[id="${action.getAttribute('aria-describedby')}"]`);
+   expect(tip?.getAttribute('role')).toBe('tooltip');
+   await act(async()=>{action.focus();action.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowDown',bubbles:true,cancelable:true}));});
+   expect(document.activeElement?.getAttribute('data-panel-tab')).toBe('reply-needed');
+   expect(f.model.panelTab.peek()).toBe('work');
+   expect(f.prefs.value.panelCollapsed).toBe(true);
    const saved=f.stored.value;
    render(null,f.host);
    const prefs=signal<Prefs>(loadPrefs(f.store,DESIGNS));
