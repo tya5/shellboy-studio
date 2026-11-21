@@ -2,6 +2,8 @@
 export { Icon, type IconName } from "./Icon";
 export { StatusMark } from "./StatusMark";
 export { Button } from "./Button";
+export { Popover } from "./Popover";
+export { Menu } from "./Menu";
 export { LayoutSeparator } from "./LayoutSeparator";
 export { Field } from "./Field";
 export { Check } from "./Check";

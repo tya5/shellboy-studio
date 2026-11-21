@@ -1,0 +1,35 @@
+// @vitest-environment happy-dom
+import { act, render } from "preact/test-utils";
+import { expect, it } from "vitest";
+import { Menu, Popover } from "../system/components";
+
+it("renders Popover in the document layer and restores its anchor on outside close", async () => {
+  const host = document.createElement("div");
+  const anchor = document.createElement("button");
+  document.body.append(host, anchor);
+  let open = true;
+  const draw = () => render(<Popover open={open} anchor={anchor} onClose={() => { open = false; draw(); }}><span>content</span></Popover>, host);
+  anchor.focus();
+  await act(async () => { draw(); await Promise.resolve(); });
+  expect(document.body.querySelector(".popover")).not.toBeNull();
+  await act(async () => { document.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true })); await Promise.resolve(); });
+  expect(document.body.querySelector(".popover")).toBeNull();
+  expect(document.activeElement).toBe(anchor);
+  render(null, host); host.remove(); anchor.remove();
+});
+
+it("opens Menu with the first item focused and wraps keyboard navigation", async () => {
+  const host = document.createElement("div");
+  const anchor = document.createElement("button");
+  document.body.append(host, anchor);
+  let selected = "";
+  act(() => render(<Menu open anchor={anchor} onClose={() => {}} entries={[{ key: "one", label: "One", onSelect: () => { selected = "one"; } }, { key: "two", label: "Two", onSelect: () => { selected = "two"; } }]} />, host));
+  await act(async () => { await Promise.resolve(); });
+  const items = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')];
+  expect(document.activeElement).toBe(items[0]);
+  items[0]!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true }));
+  expect(document.activeElement).toBe(items[1]);
+  items[1]!.click();
+  expect(selected).toBe("two");
+  render(null, host); host.remove(); anchor.remove();
+});
