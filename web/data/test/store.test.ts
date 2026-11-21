@@ -1,3 +1,4 @@
+const nextOrdinal = () => { let ordinal = 0; return () => ++ordinal; };
 import { describe, expect, it } from "vitest";
 import { MAX_PREVIEW_CHARS, type Preview } from "../src/live";
 import { MAX_LIST_ROWS, PAGE_LIMIT, MAX_WATCHED_THREADS, ShellboyData } from "../src/store";
@@ -22,9 +23,9 @@ describe("shared subscription", () => {
     const { t, data, db } = await setup();
     const before = t.watches().length;
     const list = data.trackThreadList();
-    const a = data.openThread("a");
-    const b = data.openThread("b");
-    const a2 = data.openThread("a"); // same Thread twice: still one id
+    const a = data.openThread("a", nextOrdinal());
+    const b = data.openThread("b", nextOrdinal());
+    const a2 = data.openThread("a", nextOrdinal()); // same Thread twice: still one id
     await settle(t, db);
     expect(t.watches().length - before).toBe(1);
     expect(t.watches().at(-1)).toEqual({ t: "watch", thread_ids: ["a", "b"], list: true });
@@ -40,7 +41,7 @@ describe("shared subscription", () => {
 
   it("re-sends the subscription after the socket reopens", async () => {
     const { t, data } = await setup();
-    data.openThread("a");
+    data.openThread("a", nextOrdinal());
     await flush();
     t.drop();
     const n = t.watches().length;
@@ -51,16 +52,16 @@ describe("shared subscription", () => {
 
   it("bounds open Threads", async () => {
     const { data } = await setup();
-    for (let i = 0; i < MAX_WATCHED_THREADS; i++) data.openThread(`t${i}`);
-    expect(() => data.openThread("one-too-many")).toThrow(RangeError);
-    data.openThread("t0"); // already open: fine
+    for (let i = 0; i < MAX_WATCHED_THREADS; i++) data.openThread(`t${i}`, nextOrdinal());
+    expect(() => data.openThread("one-too-many", nextOrdinal())).toThrow(RangeError);
+    data.openThread("t0", nextOrdinal()); // already open: fine
   });
 });
 
 describe("history capability is required", () => {
   it("fails closed before both current and removed RPCs when capability is absent", async () => {
     const { t, data, db } = await setup({ capabilities: [] });
-    const h = data.openThread("a");
+    const h = data.openThread("a", nextOrdinal());
     await settle(t, db);
     const out = await h.readWindow({ before: 0, after: 0 }, new Cancel());
     expect(out).toMatchObject({ ok: false, error: { kind: "invalid_response" } });
@@ -77,8 +78,8 @@ describe("resync, restart and loss", () => {
     db.details.a = details("a");
     db.details.b = details("b");
     data.trackThreadList();
-    data.openThread("a");
-    data.openThread("b");
+    data.openThread("a", nextOrdinal());
+    data.openThread("b", nextOrdinal());
     await settle(t, db);
     db.reads.length = 0;
     t.push({ t: "resync" });
@@ -89,7 +90,7 @@ describe("resync, restart and loss", () => {
   it("restarted followed by resync (the bridge sends both) costs at most one trailing read per target", async () => {
     const { t, data, db } = await setup();
     db.details.a = details("a");
-    data.openThread("a");
+    data.openThread("a", nextOrdinal());
     await settle(t, db);
     db.reads.length = 0;
     t.push({ t: "owner", event: "restarted", owner: connected });
@@ -102,7 +103,7 @@ describe("resync, restart and loss", () => {
   it("owner unreachable keeps values but marks them stale; recovery re-reads", async () => {
     const { t, data, db } = await setup();
     db.details.a = details("a");
-    const h = data.openThread("a");
+    const h = data.openThread("a", nextOrdinal());
     await settle(t, db);
     t.push({ t: "owner", event: "unreachable", owner: { state: "unreachable" } });
     expect(data.owner.value).toEqual({ state: "unreachable" });
@@ -118,7 +119,7 @@ describe("resync, restart and loss", () => {
   it("socket close marks stale and forgets the owner; hello after reconnect re-reads", async () => {
     const { t, data, db } = await setup();
     db.details.a = details("a");
-    const h = data.openThread("a");
+    const h = data.openThread("a", nextOrdinal());
     await settle(t, db);
     t.drop();
     expect(data.owner.value).toEqual({ state: "unknown" });
@@ -134,7 +135,7 @@ describe("resync, restart and loss", () => {
   it("a failed re-read keeps the old value, flags it stale and records the error", async () => {
     const { t, data, db } = await setup();
     db.details.a = details("a");
-    const h = data.openThread("a");
+    const h = data.openThread("a", nextOrdinal());
     await settle(t, db);
     delete db.details.a;
     t.push({ t: "changed", thread_ids: ["a"], list: false });
@@ -148,7 +149,7 @@ describe("resync, restart and loss", () => {
 
   it("does not read before the owner is known to be connected", async () => {
     const { t, data, db } = await setup({ owner: false });
-    const h = data.openThread("a");
+    const h = data.openThread("a", nextOrdinal());
     await settle(t, db);
     expect(t.calls()).toEqual([]);
     db.details.a = details("a");
@@ -161,7 +162,7 @@ describe("resync, restart and loss", () => {
     const { t, data, db } = await setup({ capabilities: ["history.window"] });
     db.details.a = details("a");
     db.history.a = [];
-    const h = data.openThread("a");
+    const h = data.openThread("a", nextOrdinal());
     const pending = t.calls("thread.get")[0]!;
     const window = h.readWindow({ before: 0, after: 0 }, new Cancel());
     await flush();
@@ -223,7 +224,7 @@ describe("live text preview", () => {
     t.open();
     t.push({ t: "hello", bridge_version: "0", owner: connected });
     await settle(t, owner);
-    const h = data.openThread("a");
+    const h = data.openThread("a", nextOrdinal());
     await settle(t, owner);
     return { t, owner, data, h, f };
   }
@@ -468,7 +469,7 @@ describe("reads nobody needs are cancelled", () => {
     t.open();
     t.push({ t: "hello", bridge_version: "0", owner: connected });
     await flush();
-    const h = data.openThread("a");
+    const h = data.openThread("a", nextOrdinal());
     await flush();
     return { t, db, data, h };
   }

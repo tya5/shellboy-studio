@@ -1,6 +1,6 @@
 import { Fragment, type ComponentChildren } from 'preact';
 import type { PendingOwnMessage } from '../../../ui-core/src/model';
-import { ownSendRowKey, type OwnSendTailRow } from '../../../ui-core/src/own-send-presentation';
+import type { OwnSendTailRow } from '../../../ui-core/src/own-send-presentation';
 
 /** Internal normalized presentation input, not a Core wire DTO or a body proof. */
 export type ConversationItemSource = import("../../../ui-core/src/conversation-items").NormalizedSavedItem;
@@ -79,11 +79,15 @@ export function ConversationItems({ items, toolSummaries = [], renderItem, rende
     }
     const spans = new Map<number, { end: number; container: string }>();
     for (const [container, span] of candidates) if (!invalidContainers.has(container)) spans.set(span.start, { end: span.end, container });
-    const keyForSavedItem = (item: ConversationItem) => item.source.kind === "user" && item.source.nodeId && localRegion?.kind === "unqualified" && localRegion.ownMessageIds?.has(item.source.nodeId) ? ownSendRowKey(item.source.nodeId) : item.key;
-    const content = (item: ConversationItem, work: boolean, hosted = !work && !!item.presentationContainer) => {
-      const key = keyForSavedItem(item);
-      return <div class={`conversation-row${hosted ? " conversation-answer-child" : ""}`} key={`item:${key}`} data-item-key={item.key} data-key={item.key} data-node={item.source.nodeId} data-work-item-key={work ? item.key : undefined}>{renderItem(item)}</div>;
-    };
+    const adopted = new Map<string, string>();
+    for (const item of items) {
+      const id = item.source.nodeId;
+      if (id && localRegion?.ownMessageIds?.has(id) && item.source.kind === "user" && !adopted.has(id)) adopted.set(id, item.key);
+    }
+    const keyForSavedItem = (item: ConversationItem) => item.source.nodeId && adopted.get(item.source.nodeId) === item.key ? `own:${item.source.nodeId}` : item.key;
+    const row = (key: string, children: ComponentChildren, item?: ConversationItem, work = false, hosted = false) =>
+      <div class={`conversation-row${hosted ? " conversation-answer-child" : ""}`} key={`item:${key}`} data-item-key={item?.key} data-key={item?.key} data-node={item?.source.nodeId} data-work-item-key={work ? item?.key : undefined} data-own-presentation={item ? undefined : ""} data-own-placement={item ? undefined : "suffix"}>{children}</div>;
+    const content = (item: ConversationItem, work: boolean, hosted = !work && !!item.presentationContainer) => row(keyForSavedItem(item), renderItem(item), item, work, hosted);
     const renderWork = (entry: Extract<NonNullable<Props["sequence"]>[number], { kind: "work" }>): ComponentChildren => {
       const group = groups.get(entry.groupKey);
       return group ? <div key={`work:${group.key}`} class="conversation-row steps">{normalizedRenderWorkGroup(group, group.memberKeys.map(key => {
@@ -119,9 +123,9 @@ export function ConversationItems({ items, toolSummaries = [], renderItem, rende
     const tailRows = localRegion?.kind === "unqualified" ? localRegion.tailRows : [];
     const pendingRows = localRegion?.kind === "unqualified"
       ? tailRows.map(tail => {
-        if (tail.kind === "own") return <Fragment key={`conversation:${tail.row.messageId ? ownSendRowKey(tail.row.messageId) : `own:${tail.row.operationId}`}`}><div key={`item:${tail.row.messageId ? ownSendRowKey(tail.row.messageId) : `own:${tail.row.operationId}`}`} class="conversation-row" data-own-presentation="" data-own-placement="suffix">{localRegion.renderRow(tail.row)}</div></Fragment>;
-        const item = byKey.get(tail.item.key);
-        return item ? <div key={`item:${item.key}`} class="conversation-row" data-item-key={item.key} data-key={item.key} data-node={item.source.nodeId} data-live-tail-attempt={tail.item.source.attemptId}>{renderItem(item)}</div> : null;
+        if (tail.kind === "live") return content(tail.item, false, false);
+        const key = `own:${tail.row.messageId ?? tail.row.operationId}`;
+        return <Fragment key={`conversation:${key}`}>{undefined}{row(key, localRegion.renderRow(tail.row))}</Fragment>;
       })
       : [];
     // Own rows share the canonical key; live responses retain their projection identity.

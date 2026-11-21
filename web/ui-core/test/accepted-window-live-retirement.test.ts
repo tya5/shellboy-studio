@@ -328,8 +328,8 @@ describe("production accepted window live retirement", () => {
       expect(prose).toEqual(["Hello world"]);
       expect(f.handle.handoff.value.filter(record => record.attemptId === attempt)).toHaveLength(0);
       expect(f.handle.handoff.value.filter(record => record.attemptId === unmatchedAttempt)).toHaveLength(1);
-      expect(afterSources.some(source => "domain" in source && source.attemptId === attempt)).toBe(false);
-      expect(afterSources.some(source => "domain" in source && source.attemptId === unmatchedAttempt)).toBe(true);
+      const tail = f.w.acceptedView.peek().displayPlan?.localRegion.tailRows;
+      expect(tail?.flatMap(row => row.kind === "live" ? [row.item.source.attemptId] : [])).toEqual([unmatchedAttempt]);
     } finally { f.w.dispose(); f.data.stop(); }
   });
   it("releases the matching live attempt only after accepted saved rows commit", async () => {
@@ -358,7 +358,8 @@ describe("production accepted window live retirement", () => {
     await flush();
     f.w.changed();
     await f.settle();
-    const liveEntries = () => f.w.acceptedView.peek().displayPlan?.entries.filter(entry => {
+    const liveEntries = () => f.w.acceptedView.peek().displayPlan?.localRegion.tailRows.filter(entry => {
+      if (entry.kind !== "live") return false;
       const source = entry.item.source;
       return "domain" in source && source.domain === "live" && source.attemptId === attempt;
     }) ?? [];
@@ -439,7 +440,10 @@ it("preserves canonical prefix and captured live suffix across accepted replacem
   f.w.bindCurrentThread(f.handle);
   for (const attempt of [a,b,c]) f.t.push({t:"live",thread_id:"t",attempt_id:attempt,gap:false,deltas:[{offset:0,reasoning:false,text:attempt}]});
   await flush();f.w.changed();await f.settle();
-  const ids=()=>f.w.acceptedView.peek().displayPlan?.entries.map(entry=>{const source=entry.item.source;return "domain" in source?source.recordId:source.nodeId;}).filter((id):id is string=>id!==undefined) ?? [];
+  const ids = () => {
+   const plan = f.w.acceptedView.peek().displayPlan!;
+   return [...plan.entries.map(entry => entry.item.source.nodeId), ...plan.localRegion.tailRows.flatMap(row => row.kind === "live" && "domain" in row.item.source ? [row.item.source.recordId] : [])];
+  };
   const before=ids(), prefix=before.slice(0,18), liveA=`handoff:${a}`,liveB=`handoff:${b}`,liveC=`handoff:${c}`;
   expect(before).toEqual([...prefix,liveA,liveB,liveC]);
   const beforeB=f.handle.handoff.value.find(record=>record.attemptId===b)!,beforeC=f.handle.handoff.value.find(record=>record.attemptId===c)!;
@@ -462,7 +466,7 @@ it("observes actual batch visibility across a live delta and fresh same-window c
   const beforeRef=w.acceptedView.peek(),beforeRecords=f.handle.handoff.value,beforeRecord=beforeRecords.find(record=>record.attemptId===a)!;const beforeEpoch=f.handle.liveEpoch(),beforeCapability=w.acceptedView.currentCapability;expect(beforeRef.rows.length).toBeGreaterThan(0);expect(beforeRecords.length).toBeGreaterThan(0);expect(beforeRecord.text).toBe(a);armed=true;f.producer.emitLive(a,Array.from(beforeRecord.text).length,`-delta`);trace.push("delta-event");
   const committed=w.refreshConversationInput(beforeRef);trace.push(`commit:${committed}`);expect(committed).toBe(true);expect(phase).toBe(2);expect(leaseChecks).toBe(1);const duringRef=w.acceptedView.peek(),duringRecords=f.handle.handoff.value;expect(duringRef).not.toBe(beforeRef);expect(w.acceptedView.isCurrent(beforeRef)).toBe(false);expect(f.handle.liveEpoch()).toBe(beforeEpoch);expect(w.acceptedView.currentCapability).toBe(beforeCapability);
   await flush();const afterRecords=f.handle.handoff.value,afterRecord=afterRecords.find(record=>record.attemptId===a)!;trace.push(`after-batch:${afterRecords.length}`);expect(afterRecord.text).toContain(`${a}-delta`.slice(0,3));expect(afterRecords).not.toBe(beforeRecords);expect(duringRecords).toBe(afterRecords);expect(trace).toContain("delta-event");
-  expect(w.refreshConversationInput(duringRef)).toBe(true);expect(w.acceptedView.peek().displayPlan?.entries.some(entry=>"domain" in entry.item.source&&entry.item.source.attemptId===a)).toBe(true);expect(w.acceptedView.isCurrent(duringRef)).toBe(true);expect(f.handle.liveEpoch()).toBe(beforeEpoch);expect(w.acceptedView.currentCapability).toBe(beforeCapability);
+  expect(w.refreshConversationInput(duringRef)).toBe(true);expect(w.acceptedView.peek().displayPlan?.localRegion.tailRows.some(entry=>entry.kind==="live"&&entry.item.source.attemptId===a)).toBe(true);expect(w.acceptedView.isCurrent(duringRef)).toBe(true);expect(f.handle.liveEpoch()).toBe(beforeEpoch);expect(w.acceptedView.currentCapability).toBe(beforeCapability);
  } finally { w?.dispose();f.data.stop(); }
 });
 

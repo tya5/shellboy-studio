@@ -1,7 +1,6 @@
 import { captureConversationInput, createConversationIdentity, captureCurrentWork, type ConversationSemanticInput } from "./conversation-input";
 import { readThreadSettings, type OutputLimitReadback, type ThreadSettings } from "./resources";
 import {localSendAdmission} from "./local-send-admission";
-import { captureOwnSendLocalRegion } from "./own-send-presentation";
 import { ownSendPresentation } from "./own-send-presentation";
 import { SenderTitles } from "./sender-titles";
 import { senderFact } from "../../data/src/sender";
@@ -743,12 +742,10 @@ export class AppModel {
     const cohortAccepted = eligible ? accepted.filter(row => row.scope === scope && row.threadId === handle.threadId) : [];
     const cohortPending = eligible && pending?.scope === scope && pending.threadId === handle.threadId ? pending : undefined;
     const localRows = [...cohortAccepted, ...(cohortPending ? [cohortPending] : [])];
-    const decision = ownSendPresentation({ current: current(), scope, projection: input.projection,
-      localRows, canonicalRows: snapshot.rows, records });
+    const decision = ownSendPresentation(scope, current() ? localRows : [], snapshot.rows, input.liveTail ?? []);
     return { ...input, identity: createConversationIdentity(input.identity, { accepted: accepted as object, pending: pending as object | undefined,
       retryCurrent: retryCurrent as (() => boolean) | undefined, eligible }),
-      projection: current() ? decision.projection : input.projection,
-      decision: { cohortVersion: { accepted: cohortAccepted, pending: cohortPending }, localRegion: captureOwnSendLocalRegion(decision) },
+      decision: { cohortVersion: { accepted: cohortAccepted, pending: cohortPending }, localRegion: decision },
       isCurrent: () => current() && handle.handoff.peek() === input.identity.records
         && (handle.work.peek().value === input.identity.work.source || handle.work.peek().value === undefined && input.identity.work.facts.length === 0) };
   }

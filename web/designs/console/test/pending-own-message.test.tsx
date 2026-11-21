@@ -269,7 +269,7 @@ for (const renderMode of ['app','ordered'] as const) it(`actual own cohort diffe
   await act(async()=>{if(renderMode==='app')render(<App context={context}/>,host);else {await settle(f.t,f.db);const handle=f.model.handle.peek()!,win=f.model.longReader.peek()!;render(<OrderedHistory model={f.model} handle={handle} win={win} t={f.model.t.peek()}/>,host);}await settle(f.t,f.db);});
   await sendAndAck('Original A','a');await sendAndAck('Original B','b');
   expect(f.model.acceptedOwnMessages.peek().map(row=>row.messageId)).toEqual(['a','b']);expect(host.querySelectorAll('[data-pending-own-message]')).toHaveLength(2);
-  f.db.history.t=[node('a'),node('b','Saved B',true)];await act(paint);expect(host.querySelectorAll('[data-pending-own-message]')).toHaveLength(1);expect(host.querySelectorAll('.msg')).toHaveLength(2);
+  f.db.history.t=[node('a'),node('b','Saved B',true)];await act(paint);expect(host.querySelectorAll('[data-pending-own-message]')).toHaveLength(0);expect(f.model.acceptedOwnMessages.peek()).toEqual([]);expect(host.textContent).toContain('Saved B');
   f.db.history.t=[node('a','Saved A',true),node('b','Saved B',true)];await act(paint);expect(host.querySelectorAll('[data-pending-own-message]')).toHaveLength(0);expect(host.querySelectorAll('.msg')).toHaveLength(2);expect([...host.querySelectorAll('.message-markdown')].map(x=>x.textContent?.trim())).toEqual(['Saved A','Saved B']);
  }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
 });
@@ -536,7 +536,7 @@ it("mounted click joins the held old cursor read", async () => {
 
 
 
-it.each(['streaming', 'two sends', 'held'] as const)('preserves own row indices through real successive publications: %s', async scenario => {
+it.each(['streaming', 'two sends', 'held', 'partial cut'] as const)('preserves own row indices through real successive publications: %s', async scenario => {
  const saved = (id: string, ordinal: number, attempt?: ReturnType<typeof canonicalAttemptId>): HistoryItem => ({ node_id: id,
   kind: attempt ? 'assistant_response' : 'user', selection: {ordinal},
   items: [{kind:'text', item_identity:id, text:id, text_complete:true}],
@@ -547,7 +547,7 @@ it.each(['streaming', 'two sends', 'held'] as const)('preserves own row indices 
  const host = document.createElement('div'); document.body.append(host);
  const r0 = canonicalAttemptId(71), r1 = canonicalAttemptId(72);
  const live = (attempt_id: string, text: string) => f.t.push({t:'live', thread_id:'lead', attempt_id, gap:false, deltas:[{offset:0, reasoning:false, text}]});
- const paint = () => render(<SavedWindowContent model={f.model} snapshot={f.model.longReader.peek()!.acceptedView.peek()}/>, host);
+ const paint = (snapshot = f.model.longReader.peek()!.acceptedView.peek()) => render(<SavedWindowContent model={f.model} snapshot={snapshot}/>, host);
  const rows = () => [...host.querySelectorAll('.conversation-items > .conversation-row')];
  const order = () => rows().map(row => row.querySelector('.message-markdown')?.textContent?.trim());
  const send = async (id: string, held = false) => {
@@ -558,31 +558,50 @@ it.each(['streaming', 'two sends', 'held'] as const)('preserves own row indices 
  };
  const adopt = async (...savedRows: HistoryItem[]) => {
   history.push(...savedRows); f.db.history.lead = [...history]; f.db.historyRevisions.lead!++;
-  f.model.longReader.peek()!.changed(); await settle(f.t,f.db); await flush(16); paint();
+  const win = f.model.longReader.peek()!;
+  let painted = false;
+  const stop = win.acceptedView.subscribe(snapshot => {
+   if (!painted && win.acceptedView.isCurrent(snapshot) && snapshot.displayPlan?.localRegion.ownMessageIds.has(savedRows.at(-1)!.node_id!)) {
+    paint(snapshot); painted = true;
+   }
+  });
+  try { win.changed(); await settle(f.t,f.db); await flush(16); expect(painted).toBe(true); } finally { stop(); }
  };
  try {
-  if (scenario === 'streaming') { live(r0,'R0'); await flush(); expect(scheduled.length).toBeGreaterThan(0); }
+  if ((scenario === 'streaming' || scenario === 'partial cut')) { live(r0,'R0'); await flush(); expect(scheduled.length).toBeGreaterThan(0); }
   await send('P', scenario === 'held');
-  if (scenario === 'streaming') {
+  if ((scenario === 'streaming' || scenario === 'partial cut')) {
    expect(f.model.handle.peek()!.handoff.peek()).toEqual([]);
    live(r1,'R1'); await flush(); scheduled.splice(0).forEach(publish => publish());
   }
   if (scenario === 'two sends') await send('Q');
   await flush(); paint();
-  const expected = scenario === 'streaming' ? ['H','R0','P','R1'] : scenario === 'two sends' ? ['H','P','Q'] : ['H','P'];
+  const expected = (scenario === 'streaming' || scenario === 'partial cut') ? ['H','R0','P','R1'] : scenario === 'two sends' ? ['H','P','Q'] : ['H','P'];
   expect(order()).toEqual(expected);
   const pIndex = expected.indexOf('P');
+  const pRow = rows()[pIndex];
+  if (scenario === 'partial cut') {
+   await adopt(saved('P',1));
+   expect(order()).toEqual(['H','P','R0','R1']);
+   expect(f.model.handle.peek()!.handoff.peek().some(record => record.attemptId === r0)).toBe(true);
+   return;
+  }
   if (scenario === 'held') expect(rows()[pIndex]!.textContent).toContain('送信待ち');
   await adopt(...(scenario === 'streaming' ? [saved('R0',1,r0),saved('P',2)] : [saved('P',1)]));
   expect(order()).toEqual(expected);
   expect(rows()[pIndex]!.getAttribute('data-node')).toBe('P');
+  expect(rows()[pIndex]).toBe(pRow);
   if (scenario === 'two sends') {
    const qIndex = expected.indexOf('Q');
    expect(rows()[qIndex]!.querySelector('[data-pending-own-message]')).not.toBeNull();
+   const qRow = rows()[qIndex];
    await adopt(saved('Q',2));
    expect(order()).toEqual(expected);
    expect(rows()[qIndex]!.getAttribute('data-node')).toBe('Q');
+   expect(rows()[qIndex]).toBe(qRow);
   }
   expect(f.model.acceptedOwnMessages.peek()).toEqual([]);
  } finally { render(null,host);host.remove();f.model.dispose();f.data.stop(); }
 });
+
+it.todo("#29: [H, P saved] without R0 provenance must not paint ahead of R0 before its confirmed non-adopted end; awaiting Core delivery contract");

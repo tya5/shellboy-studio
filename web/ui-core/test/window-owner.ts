@@ -1,3 +1,4 @@
+const nextOrdinal = () => { let ordinal = 0; return () => ++ordinal; };
 // An owner double for `history.window`, behind the data layer's fake transport.
 import { connected, FakeTransport, flush, type CallFrame } from "../../data/test/harness";
 import { ShellboyData, type ThreadHandle } from "../../data/src";
@@ -120,7 +121,7 @@ export async function rig(total: number, options: { capability?: boolean; thread
   await flush();
   const owner = new WindowOwner(total);
   if (options.decorate) owner.decorate = options.decorate;
-  const handle = data.openThread(options.threadId ?? "t");
+  const handle = data.openThread(options.threadId ?? "t", nextOrdinal());
   let armed: (() => void) | undefined;
   const opts: WindowOptions = {
     setTimer: (fn) => {

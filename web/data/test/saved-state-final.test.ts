@@ -1,3 +1,4 @@
+const nextOrdinal = () => { let ordinal = 0; return () => ++ordinal; };
 import { expect, it } from "vitest";
 import { ShellboyData } from "../src/store";
 import { Cancel } from "../src/operations";
@@ -6,7 +7,7 @@ it("new ordinary saved nodes publish without waiting for publication lookup or s
   const t = new FakeTransport(); let id = 0;
   const data = new ShellboyData({ transport: t, newId: () => `saved-${++id}` });
   data.start(); t.open(); t.push({ t: "hello", bridge_version: "synthetic", owner: connectedWithHistory }); await flush();
-  const view = data.openThread("saved");
+  const view = data.openThread("saved", nextOrdinal());
   const first = view.readWindow({}, new Cancel()); await flush();
   t.ok(t.calls("history.window").at(-1)!.id, { thread_id: "saved", revision: 1, total: 1, items: [{ node_id: "a", kind: "user", selection: { ordinal: 0 } }] }); await first;
   let done = false;
@@ -22,7 +23,7 @@ it("preserves empty, partial text, zero-ID tool and whole deferred ordinary node
   const t = new FakeTransport(); let n = 0;
   const data = new ShellboyData({ transport: t, newId: () => `ordinary-${++n}` });
   data.start(); t.open(); t.push({ t: "hello", bridge_version: "synthetic", owner: connectedWithHistory }); await flush();
-  const view = data.openThread("saved"); const pending = view.readWindow({ items: true }, new Cancel()); await flush();
+  const view = data.openThread("saved", nextOrdinal()); const pending = view.readWindow({ items: true }, new Cancel()); await flush();
   const rows = [
     { node_id: "empty", kind: "user", items: [], selection: { ordinal: 0 } },
     { node_id: "partial", kind: "assistant_response", items: [{ kind: "text", item_identity: "text", text: "", text_complete: false }], selection: { ordinal: 1 } },
@@ -45,7 +46,7 @@ it.each(["cancel", "pause", "close", "ABA"] as const)("rejects delayed saved res
   const t = new FakeTransport(); let n = 0;
   const data = new ShellboyData({ transport: t, newId: () => `stale-${++n}` });
   data.start(); t.open(); t.push({ t: "hello", bridge_version: "synthetic", owner: connectedWithHistory }); await flush();
-  const view = data.openThread("saved"); const pending = view.readWindow({ items: true }, new Cancel()); await flush();
+  const view = data.openThread("saved", nextOrdinal()); const pending = view.readWindow({ items: true }, new Cancel()); await flush();
   const held = t.calls("history.window").at(-1)!;
   if (action === "cancel") view.cancelReads(); else if (action === "pause") view.pause(); else if (action === "close") view.close(); else {
     t.push({ t: "owner", event: "unreachable", owner: { state: "unreachable" } });

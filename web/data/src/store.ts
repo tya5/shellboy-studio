@@ -290,13 +290,12 @@ export class ShellboyData {
   }
 
   /** Track one Thread (detail, history, live preview). Throws past MAX_WATCHED_THREADS. */
-  openThread(threadId: string, nextOrdinal?: () => number): ThreadHandle {
+  openThread(threadId: string, nextOrdinal: () => number): ThreadHandle {
     let entry = this.entries.get(threadId);
     if (!entry) {
       if (!this.hintWatchers.has(threadId) && new Set([...this.entries.keys(), ...this.hintWatchers.keys()]).size >= MAX_WATCHED_THREADS)
         throw new RangeError(`at most ${MAX_WATCHED_THREADS} Threads can be open at once`);
-      let ordinal = 0;
-      entry = new ThreadEntry(threadId, this.schedule, nextOrdinal ?? (() => ++ordinal));
+      entry = new ThreadEntry(threadId, this.schedule, nextOrdinal);
       this.entries.set(threadId, entry);
       this.scheduleWatch();
       if (this.canRead()) this.requestThread(threadId);

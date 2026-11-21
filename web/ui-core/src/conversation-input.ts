@@ -1,4 +1,4 @@
-import { emptyOwnSendLocalRegion } from "./own-send-presentation";
+import { ownSendPresentation, type OwnSendTailRow } from "./own-send-presentation";
 import type { HandoffRecord } from '../../data/src/handoff';
 import type { WorkItem } from '../../data/src/protocol';
 import type { WindowAcceptedSnapshot } from './window';
@@ -55,6 +55,7 @@ export function conversationIdentityEqual(a: ConversationIdentity, b: Conversati
 
 
 export interface ConversationSemanticInput {
+  readonly liveTail?: readonly OwnSendTailRow[];
   readonly isCurrent: () => boolean;
   readonly identity:ConversationIdentity;
   readonly canonicalInput:CanonicalHistoryInput;
@@ -72,19 +73,19 @@ export function captureConversationInput(snapshot: WindowAcceptedSnapshot, input
 }): ConversationSemanticInput {
   const canonicalInput=canonicalHistoryInput(snapshot,input.scope),canonicalProjection=canonicalInput.projection;
   const current = input.current();
-  const retained = current ? input.work.facts : [];
-  // Unsaved facts are only a suffix of a tail-complete accepted cut. An older
-  // window must not render them after an incomplete canonical prefix.
   const tailComplete = snapshot.total === 0 || snapshot.range?.last === snapshot.total - 1;
-  const live = current && tailComplete ? projectOwnedHandoffFacts(input.scope, input.records) : [];
-  const work = current && tailComplete ? scopeIssuedWorkFacts([...live, ...retained], [input.scope]) : undefined;
-  const acceptedAttempts = new Set(snapshot.rows.flatMap(row => row.kind === "assistant_response" && row.provenance?.attempt_id ? [String(row.provenance.attempt_id)] : []));
-  const remainingWork = work?.filter(item => !("domain" in item && item.domain === "live" && item.namespace === "handoff" && item.attemptId && acceptedAttempts.has(String(item.attemptId)))) ?? [];
-  const projected = work?.length ? projectSavedItems([...canonicalProjection.items.map(item => item.source), ...remainingWork]) : canonicalProjection;
-  return { isCurrent: input.current,
+  const work = current && tailComplete ? scopeIssuedWorkFacts(input.work.facts, [input.scope]) : undefined;
+  const acceptedAttempts = new Set<string | undefined>(snapshot.rows.flatMap(row => row.kind === "assistant_response" ? [row.provenance?.attempt_id] : []));
+  const liveTail: OwnSendTailRow[] = work ? input.records.flatMap(record => {
+    if (acceptedAttempts.has(record.attemptId)) return [];
+    const live = scopeIssuedWorkFacts(projectOwnedHandoffFacts(input.scope, [record]), [input.scope])!;
+    return projectSavedItems(live).items.map(item => ({ kind: "live" as const, ordinal: record.clientOrdinal, item }));
+  }) : [];
+  const projected = work?.length ? projectSavedItems([...canonicalProjection.items.map(item => item.source), ...work]) : canonicalProjection;
+  return { liveTail, isCurrent: input.current,
     identity: createConversationIdentity({ rows: snapshot.rows, revision: snapshot.revision, records: input.records,
       work: input.work, scope: input.scope, current }),
     canonicalInput, scope: input.scope, canonicalProjection, projection: projected,
-    decision: { cohortVersion: { accepted: [] }, localRegion: emptyOwnSendLocalRegion(input.scope) },
+    decision: { cohortVersion: { accepted: [] }, localRegion: ownSendPresentation(input.scope, [], snapshot.rows, liveTail) },
     coverage: work === undefined ? 'unavailable' : 'complete' };
 }
