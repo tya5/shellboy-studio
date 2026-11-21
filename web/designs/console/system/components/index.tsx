@@ -9,6 +9,7 @@ export { Field } from "./Field";
 export { Check } from "./Check";
 export { NavItem } from "./NavItem";
 export { ThreadItem } from "./ThreadItem";
+export { ThreadQuickAction } from "./ThreadQuickAction";
 export { Chip } from "./Chip";
 export { ThreadCard } from "./ThreadCard";
 export { LogBlock } from "./LogBlock";
