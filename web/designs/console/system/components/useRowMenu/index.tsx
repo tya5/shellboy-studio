@@ -28,7 +28,7 @@ export function useRowMenu(options: RowMenuOptions | undefined): { open: boolean
     rowHandlers,
     trigger: options ? <span class="row-menu-trigger"><Button variant="quiet" icon label={options.label} id={triggerId} aria-controls={menuId} aria-haspopup="menu" aria-expanded={open} onClick={(event) => {
       if (open) setOpen(false);
-      else { setOpenMethod("pointer"); setPointerPosition(null); show(event.currentTarget, event.currentTarget); }
+      else { setOpenMethod(event.detail === 0 ? "keyboard" : "pointer"); setPointerPosition(null); show(event.currentTarget, event.currentTarget); }
     }}><Icon name="more" small /></Button></span> : null,
     menu: options ? <Menu open={open} anchor={anchor} returnFocusTo={returnFocusTo} entries={options.entries} onClose={() => setOpen(false)} id={menuId} labelledBy={triggerId} openMethod={openMethod} pointerPosition={pointerPosition} /> : null,
   };

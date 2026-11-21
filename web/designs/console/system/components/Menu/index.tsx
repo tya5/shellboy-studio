@@ -12,14 +12,20 @@ export function Menu({ open, anchor, returnFocusTo, entries, onClose, id, labell
   const typeahead = useRef("");
   const typeaheadTimer = useRef<ReturnType<typeof setTimeout>>();
   useEffect(() => {
-    if (!open) return;
+    if (!open) { typeahead.current = ""; return; }
     queueMicrotask(() => (openMethod === "keyboard" ? items()[0] : menu.current)?.focus());
-    return () => { if (typeaheadTimer.current) clearTimeout(typeaheadTimer.current); };
+    return () => {
+      if (typeaheadTimer.current) clearTimeout(typeaheadTimer.current);
+      typeaheadTimer.current = undefined;
+      typeahead.current = "";
+    };
   }, [open, openMethod]);
   const items = () => [...(menu.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? [])];
-  const move = (delta: number) => { const list = items(); const index = list.indexOf(document.activeElement as HTMLElement); list[Math.max(0, Math.min(list.length - 1, index + delta))]?.focus(); };
+  const move = (delta: number) => { const list = items(); const index = list.indexOf(document.activeElement as HTMLElement); const target = index < 0 ? (delta < 0 ? list.length - 1 : 0) : Math.max(0, Math.min(list.length - 1, index + delta)); list[target]?.focus(); };
   const typeTo = (key: string) => {
-    typeahead.current += key.toLocaleLowerCase();
+    const character = key.toLocaleLowerCase();
+    const repeatedInitial = typeahead.current.length > 0 && [...typeahead.current].every((value) => value === character);
+    typeahead.current = repeatedInitial ? character : typeahead.current + character;
     if (typeaheadTimer.current) clearTimeout(typeaheadTimer.current);
     typeaheadTimer.current = setTimeout(() => { typeahead.current = ""; }, 500);
     const list = items();

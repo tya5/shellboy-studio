@@ -5,7 +5,7 @@ import { render } from "preact";
 import { act } from "preact/test-utils";
 import { expect, it } from "vitest";
 import { Menu, Popover } from "../system/components";
-import { placePanel } from "../system/components/Popover";
+import { placePanel, placePointerMenu } from "../system/components/Popover";
 
 it("outside modal dismissal consumes the click and leaves focus alone", async () => {
   const host = document.createElement("div");
@@ -41,6 +41,8 @@ it("pointer-opened menu focuses its panel; keyboard navigation clamps, jumps, ty
   const items = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')];
   const menu = document.querySelector<HTMLElement>("[role=menu]")!;
   expect(document.activeElement).toBe(menu);
+  menu.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true }));
+  expect(document.activeElement).toBe(items[1]);
   items[0]!.focus();
   items[0]!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true }));
   expect(document.activeElement).toBe(items[0]);
@@ -50,14 +52,18 @@ it("pointer-opened menu focuses its panel; keyboard navigation clamps, jumps, ty
   expect(document.activeElement).toBe(items[0]);
   items[1]!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
   expect(document.activeElement).toBe(items[1]);
-  items[1]!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
-  expect(document.activeElement).toBe(items[1]);
+  items[0]!.focus();
   items[0]!.dispatchEvent(new KeyboardEvent("keydown", { key: "t", bubbles: true }));
   expect(document.activeElement).toBe(items[1]);
   items[1]!.click();
   expect(selected).toBe("two");
   expect(document.activeElement).toBe(anchor);
   render(null, host); host.remove(); anchor.remove();
+});
+
+it("places pointer menus side-right aligned at start and flips on collisions", () => {
+  expect(placePointerMenu({ x: 123, y: 234 }, { width: 120, height: 80 }, { width: 400, height: 600 }, 12)).toEqual({ left: 123, top: 234, maxHeight: 354 });
+  expect(placePointerMenu({ x: 350, y: 580 }, { width: 120, height: 80 }, { width: 400, height: 600 }, 12)).toEqual({ left: 230, top: 500, maxHeight: 88 });
 });
 
 it("places measured panels within a narrow viewport and flips above", () => {
@@ -80,5 +86,30 @@ it("keyboard opening focuses the first menu item", async () => {
   act(() => render(<Menu open anchor={anchor} id="keyboard-menu" labelledBy="keyboard-trigger" openMethod="keyboard" onClose={() => {}} entries={[{ key: "one", label: "One" }]} />, host));
   await act(async () => { await Promise.resolve(); });
   expect(document.activeElement).toBe(document.querySelector('[role="menuitem"]'));
+  render(null, host); host.remove(); anchor.remove();
+});
+
+it("cycles repeated initials and clears typeahead when closed", async () => {
+  const host = document.createElement("div");
+  const anchor = document.createElement("button");
+  anchor.id = "cycle-trigger";
+  document.body.append(host, anchor);
+  let open = true;
+  const entries = [{ key: "a1", label: "Alpha" }, { key: "a2", label: "Another" }, { key: "b", label: "Beta" }];
+  const draw = () => render(<Menu open={open} anchor={anchor} id="cycle-menu" labelledBy="cycle-trigger" onClose={() => { open = false; draw(); }} entries={entries} />, host);
+  await act(async () => { draw(); await Promise.resolve(); });
+  const menu = document.querySelector<HTMLElement>("[role=menu]")!;
+  menu.dispatchEvent(new KeyboardEvent("keydown", { key: "a", bubbles: true }));
+  const items = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')];
+  expect(document.activeElement).toBe(items[0]);
+  items[0]!.dispatchEvent(new KeyboardEvent("keydown", { key: "a", bubbles: true }));
+  expect(document.activeElement).toBe(items[1]);
+  act(() => items[1]!.click());
+  expect(open).toBe(false);
+  open = true;
+  await act(async () => { draw(); await Promise.resolve(); });
+  const reopened = document.querySelector<HTMLElement>("[role=menu]")!;
+  reopened.dispatchEvent(new KeyboardEvent("keydown", { key: "b", bubbles: true }));
+  expect(document.activeElement).toBe(document.querySelectorAll<HTMLElement>('[role="menuitem"]')[2]);
   render(null, host); host.remove(); anchor.remove();
 });

@@ -1,8 +1,10 @@
 # useRowMenu
 
 Each row keeps local open and placement-anchor state; no shared registry or
-ref-based placement anchor is used. A button click opens at its trigger. Right-click
-opens at the pointer coordinates, while ArrowDown opens at the row and focuses the
+ref-based placement anchor is used. A pointer button click opens at its trigger; native keyboard activation (click
+`detail === 0`, including Enter/Space) uses keyboard-open focus. Right-click
+opens at the pointer coordinates, with side-right/align-start placement and collision
+flipping, while ArrowDown opens at the row and focuses the
 first menu item. Pointer opening focuses the menu panel. The trigger and menu are
 linked by `aria-controls` and `aria-labelledby`.
 

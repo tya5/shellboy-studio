@@ -83,18 +83,29 @@ describe("Thread row menu and delete", () => {
     act(() => render(treeRow("One"), host));
     const trigger = host.querySelector<HTMLButtonElement>("[aria-haspopup=menu]")!;
     expect(document.activeElement).not.toBe(trigger);
-    act(() => trigger.click());
+    act(() => { trigger.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 1 })); });
     await act(async () => { await Promise.resolve(); });
     expectVisibleMenu();
     act(() => { document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); });
     expect(document.activeElement).toBe(trigger);
     act(() => render(null, host)); host.remove();
   });
+  it("uses keyboard modality for native Enter/Space activation of the row trigger", async () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    act(() => render(treeRow("One"), host));
+    const trigger = host.querySelector<HTMLButtonElement>("[aria-haspopup=menu]")!;
+    trigger.focus();
+    act(() => { trigger.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })); trigger.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 0 })); });
+    await act(async () => { await Promise.resolve(); });
+    expect(document.activeElement).toBe(document.body.querySelector('[role="menuitem"]'));
+    act(() => render(null, host)); host.remove();
+  });
   it("opens a visible Menu from the SelectRow button", async () => {
     const host = document.createElement("div");
     document.body.append(host);
     act(() => render(selectRow("One"), host));
-    await act(async () => { host.querySelector<HTMLButtonElement>("[aria-haspopup=menu]")!.click(); await Promise.resolve(); });
+    await act(async () => { host.querySelector<HTMLButtonElement>("[aria-haspopup=menu]")!.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 1 })); await Promise.resolve(); });
     expectVisibleMenu();
     act(() => render(null, host)); host.remove();
   });
@@ -146,7 +157,7 @@ describe("Thread row menu and delete", () => {
     triggers[1]!.addEventListener("click", secondClick);
     secondRow.addEventListener("contextmenu", secondContextMenu);
 
-    await act(async () => { triggers[0]!.click(); await Promise.resolve(); });
+    await act(async () => { triggers[0]!.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 1 })); await Promise.resolve(); });
     expectVisibleMenu();
     expectModalLayerStack();
     let layer = document.body.querySelector<HTMLElement>(".popover-dismiss-layer")!;
@@ -162,7 +173,7 @@ describe("Thread row menu and delete", () => {
     expect(triggers[1]!.getAttribute("aria-expanded")).toBe("false");
     expect(document.body.querySelector(".popover-dismiss-layer")).toBeNull();
 
-    await act(async () => { triggers[0]!.click(); await Promise.resolve(); });
+    await act(async () => { triggers[0]!.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 1 })); await Promise.resolve(); });
     layer = document.body.querySelector<HTMLElement>(".popover-dismiss-layer")!;
     act(() => { layer.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true })); });
     expect(document.body.querySelector(".popover")).not.toBeNull();
@@ -190,7 +201,7 @@ describe("Thread row menu and delete", () => {
     expect(rows).toHaveLength(4);
     expect(rows.every((item) => item.querySelector(".tree-action, .srow-menu") !== null)).toBe(true);
     const triggers = [...host.querySelectorAll<HTMLButtonElement>("[aria-haspopup=menu]")];
-    act(() => triggers[0]!.click());
+    act(() => { triggers[0]!.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 1 })); });
     await act(async () => { await Promise.resolve(); });
     expect(document.body.querySelectorAll(".menu-popover")).toHaveLength(1);
     for (const trigger of triggers.slice(1)) {
@@ -201,7 +212,7 @@ describe("Thread row menu and delete", () => {
       act(() => { layer.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true })); });
       expect(trigger.getAttribute("aria-expanded")).toBe("false");
       expect(document.body.querySelectorAll(".menu-popover")).toHaveLength(0);
-      act(() => trigger.click());
+      act(() => { trigger.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 1 })); });
       await act(async () => { await Promise.resolve(); });
       expect(document.body.querySelectorAll(".menu-popover")).toHaveLength(1);
     }
