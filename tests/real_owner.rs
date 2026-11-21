@@ -11,7 +11,7 @@ use std::{
     io::{BufRead, BufReader},
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
-    sync::{Arc, Mutex},
+    sync::Arc,
     time::Duration,
 };
 use tokio_tungstenite::tungstenite::{Message, client::IntoClientRequest};
@@ -20,14 +20,14 @@ use tokio_tungstenite::tungstenite::{Message, client::IntoClientRequest};
 /// reaps the process, so a failed test never leaves an owner holding resources such as the
 /// build-slot lock inherited from the test runner.
 struct Serve {
-    child: Arc<Mutex<Child>>,
+    child: Child,
     instance: String,
 }
 
 impl Drop for Serve {
     fn drop(&mut self) {
-        let _ = self.child.lock().unwrap_or_else(|e| e.into_inner()).kill(); // no-op if exited
-        let _ = self.child.lock().unwrap_or_else(|e| e.into_inner()).wait();
+        let _ = self.child.kill(); // no-op error if it already exited
+        let _ = self.child.wait();
     }
 }
 
@@ -69,23 +69,17 @@ fn start_owner_with(bin: &Path, root: &Path, data: &Path, base_url: &str) -> Ser
             }
         }
     }
-    let child = Arc::new(Mutex::new(
-        command
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .expect("spawn shellboy serve"),
-    ));
+    let child = command
+        .stdout(Stdio::piped())
+        .stderr(Stdio::inherit())
+        .spawn()
+        .expect("spawn shellboy serve");
     let mut serve = Serve {
         child,
         instance: String::new(),
     };
-    let (stdout, stderr) = {
-        let mut child = serve.child.lock().unwrap_or_else(|e| e.into_inner());
-        (child.stdout.take().unwrap(), child.stderr.take().unwrap())
-    };
-    std::thread::spawn(move || for _ in BufReader::new(stderr).lines() {});
-    let mut lines = BufReader::new(stdout).lines();
+    // Guard from the moment of spawn: any panic below still kills the child.
+    let mut lines = BufReader::new(serve.child.stdout.take().unwrap()).lines();
     let ready: Value = loop {
         let line = lines.next().expect("serve stdout").expect("line");
         let value: Value = serde_json::from_str(&line).expect("serve prints JSON rows");
@@ -108,16 +102,8 @@ async fn stop_owner(bin: &Path, data: &Path, mut serve: Serve) {
         .await
         .expect("shutdown");
     assert!(status.success(), "shutdown request");
-    let child = serve.child.clone();
-    until("owner exit", || {
-        child
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .try_wait()
-            .unwrap()
-            .is_some()
-    })
-    .await;
+    let child = &mut serve.child;
+    until("owner exit", || child.try_wait().unwrap().is_some()).await;
 }
 
 async fn next_t(ws: &mut common_ws::Ws, t: &str) -> Value {
