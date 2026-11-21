@@ -9,7 +9,7 @@ export function MonitorPopover({ label, children, className = "", preview = fals
   useEffect(() => {
     if (!open && !hover) return;
     const press = (e: Event) => { if (!root.current?.contains(e.target as Node)) setOpen(false); };
-    const key = (e: KeyboardEvent) => { if (e.key === "Escape") { setOpen(false); setHover(false); root.current?.querySelector("button")?.focus(); } };
+    const key = (e: KeyboardEvent) => { if (e.key === "Escape") { setHover(false); if (open) { setOpen(false); root.current?.querySelector("button")?.focus(); } } };
     document.addEventListener("pointerdown", press); document.addEventListener("keydown", key);
     return () => { document.removeEventListener("pointerdown", press); document.removeEventListener("keydown", key); };
   }, [open, hover]);
