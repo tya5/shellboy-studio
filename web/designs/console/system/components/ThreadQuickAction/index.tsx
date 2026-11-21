@@ -1,4 +1,4 @@
-import { formatRoute, type AppModel } from "../../../../../ui-core/src";
+import { type AppModel } from "../../../../../ui-core/src";
 import { Button, Icon, Menu, WorkSheet, type MenuEntry } from "..";
 import { useEffect, useRef, useState } from "preact/hooks";
 import type { ThreadSummary } from "../../../../../data/src";
@@ -43,9 +43,9 @@ export function ThreadQuickAction({ model, row, status, onMove }: { model: AppMo
     { key: "archive", label: archived ? model.t.value("org.unarchive") : model.t.value("action.archive"), onSelect: () => void run(async () => { const outcome = archived ? await model.ops.threadUnarchive([row.thread_id], { descendants: false }) : await model.ops.threadArchive([row.thread_id], { descendants: false }); if (!outcome.ok) throw new Error(outcome.error.message); }) },
     { key: "stop", label: model.t.value("action.stop"), disabled: status !== "running", onSelect: () => void run(async () => { const details = await model.ops.threadGet(row.thread_id); if (!details.ok || !details.value.run_id) throw new Error(model.t.value("action.stopRefused")); const outcome = await model.ops.runStop(details.value.run_id); if (!outcome.ok) throw new Error(outcome.error.message); }) },
     { key: "retry", label: model.t.value("action.retry"), disabled: status !== "recovery", onSelect: () => void run(() => model.retry(row.thread_id)) },
+    ...(onMove ? [{ key: "move", label: model.t.value("org.move"), onSelect: onMove }] : []),
     { key: "actions-separator", separator: true },
     { key: "delete", label: model.t.value("thread.deletePreview"), destructive: true, onSelect: deletePreview },
-    ...(onMove ? [{ key: "move", label: model.t.value("org.move"), onSelect: onMove }] : []),
   ];
   return <>
     <span ref={root} class="thread-menu-anchor">
