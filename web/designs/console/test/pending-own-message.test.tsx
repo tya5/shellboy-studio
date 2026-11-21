@@ -532,3 +532,54 @@ it("mounted click joins the held old cursor read", async () => {
   expect(f.t.calls('history.get').map(call=>call.args)).toEqual([{node_id:'old-tail'},{node_id:'old-tail',cursor:'stale-next'}]);expect(f.model.bodies.peek().get(oldKey)?.text).toBe('OLD_PREFIX\nOLD_FULL\nOLD_REST');const oldMarkdown=[...host.querySelectorAll('[data-node="old-tail"] .message-markdown')].map(node=>(node.textContent??'').replace(/\s+$/,'')).join('\n');expect(oldMarkdown).toBe('OLD_PREFIX\nOLD_FULL\nOLD_REST');
  }finally{restoreResponder?.();render(null,host);host.remove();f.model.dispose();f.data.stop();}
 });
+
+it('live answer: own send stays last while waiting and becomes the saved row in place',async()=>{
+ const f=await fixtureModel({capabilities:['live.text','history.window'],route:'conversation',threadId:'lead',configure(db){db.history.lead=[];db.work.lead=[];}});
+ const host=document.createElement('div');document.body.append(host);
+ const context:DesignContext={model:f.model,prefs:signal(loadPrefs({read:()=>null,write:()=>{}},[{name:'console',themes:[{name:'light'}]}])),setPrefs:()=>{},designs:[],submitToken:async()=>false};
+ try{
+  await act(async()=>{render(<App context={context}/>,host);await settle(f.t,f.db);});
+  f.t.push({t:'live',thread_id:'lead',attempt_id:'live-answer',gap:false,deltas:[{offset:0,reasoning:false,text:'Live answer still in progress'}]});await act(async()=>{await flush(8);});
+  expect(host.textContent).toContain('Live answer still in progress');
+  const sending=f.model.send('My follow-up');await act(async()=>{await flush(8);});
+  const pending=host.querySelector('[data-pending-own-message]') as HTMLElement;
+  expect(pending).not.toBeNull();
+  const rows=()=>[...host.querySelectorAll('.conversation-items > [data-item-key], .conversation-items [data-pending-own-message]')];
+  const waitingOrder=rows();expect(waitingOrder.at(-1)).toBe(pending);
+  expect(host.textContent).toContain('Live answer still in progress');
+  const sendCall=f.t.calls('message.send').at(-1)!;f.db.answered.add(sendCall.id);f.t.ok(sendCall.id,{message_id:'my-follow-up',thread_id:'lead'});expect(await sending).toBe(true);
+  await act(async()=>{f.t.push({t:'live_end',thread_id:'lead'});await flush(8);});
+  f.db.historyRevisions.lead=2;f.db.history.lead=[{node_id:'answer',kind:'assistant_response',selection:{ordinal:0},items:[{kind:'text',item_identity:'answer',text:'Live answer still in progress',text_complete:true}],provenance:{attempt_id:'live-answer',sender:{kind:'assistant'}}}];
+  f.model.openThread('lead');
+  await act(async()=>{await settle(f.t,f.db);await flush(10);});
+  expect(host.querySelector('[data-pending-own-message]')).not.toBeNull();
+  f.db.historyRevisions.lead=3;f.db.history.lead.push({node_id:'my-follow-up',kind:'user',selection:{ordinal:1},items:[{kind:'text',item_identity:'body',text:'My follow-up',text_complete:true}],provenance:{sender:{kind:'human'}}});
+  f.model.openThread('lead');
+  await act(async()=>{await settle(f.t,f.db);await flush(10);});
+  const saved=host.querySelector('[data-node="my-follow-up"]') as HTMLElement;
+  expect(saved,JSON.stringify({rows:f.model.longReader.peek()?.acceptedView.peek().rows.map(row=>row.node_id),revision:f.model.longReader.peek()?.acceptedView.peek().revision,pending:f.model.acceptedOwnMessages.peek(),calls:f.t.calls('history.window').map(call=>call.args)})).not.toBeNull();expect(host.querySelector('[data-pending-own-message]')).toBeNull();
+  expect(rows().at(-1)).toBe(saved);expect(saved.textContent).toContain('My follow-up');
+ }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
+});
+
+it('two own sends remain in sending order at the conversation tail',async()=>{
+ const f=await fixtureModel({capabilities:['live.text','history.window'],route:'conversation',threadId:'lead',configure(db){db.history.lead=[];db.work.lead=[];}});
+ const host=document.createElement('div');document.body.append(host);
+ const context:DesignContext={model:f.model,prefs:signal(loadPrefs({read:()=>null,write:()=>{}},[{name:'console',themes:[{name:'light'}]}])),setPrefs:()=>{},designs:[],submitToken:async()=>false};
+ try{
+  await act(async()=>{render(<App context={context}/>,host);await settle(f.t,f.db);});
+  f.t.push({t:'live',thread_id:'lead',attempt_id:'live-answer-two',gap:false,deltas:[{offset:0,reasoning:false,text:'Live answer'}]});await act(async()=>{await flush(8);});
+  const first=f.model.send('First send');await act(async()=>{await flush(8);});
+  const firstCall=f.t.calls('message.send').at(-1)!;f.db.answered.add(firstCall.id);f.t.ok(firstCall.id,{message_id:'first',thread_id:'lead'});expect(await first).toBe(true);
+  const second=f.model.send('Second send');await act(async()=>{await flush(8);});
+  const pending=[...host.querySelectorAll<HTMLElement>('[data-pending-own-message]')];
+  expect(pending.map(row=>row.textContent)).toEqual(expect.arrayContaining([expect.stringContaining('First send'),expect.stringContaining('Second send')]));
+  const rowTexts=[...host.querySelectorAll('.msg .md')].map(row=>row.textContent?.trim());
+  expect(rowTexts.slice(-2)).toEqual(['First send','Second send']);
+  const secondCall=f.t.calls('message.send').at(-1)!;f.db.answered.add(secondCall.id);f.t.ok(secondCall.id,{message_id:'second',thread_id:'lead'});expect(await second).toBe(true);
+  await act(async()=>{f.t.push({t:'live_end',thread_id:'lead'});await flush(8);});
+  f.db.historyRevisions.lead=2;f.db.history.lead=[{node_id:'answer',kind:'assistant_response',selection:{ordinal:0},items:[{kind:'text',item_identity:'answer',text:'Live answer',text_complete:true}],provenance:{attempt_id:'live-answer',sender:{kind:'assistant'}}},...['first','second'].map((id,index)=>({node_id:id,kind:'user',selection:{ordinal:index+1},items:[{kind:'text',item_identity:id,text:id==='first'?'First send':'Second send',text_complete:true}],provenance:{sender:{kind:'human'}}}))];
+  await act(async()=>{f.t.push({t:'changed',thread_ids:['lead'],list:false});await settle(f.t,f.db);await flush(10);});
+  expect([...host.querySelectorAll('.msg .md')].map(row=>row.textContent?.trim()).slice(-2)).toEqual(['First send','Second send']);
+ }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
+});

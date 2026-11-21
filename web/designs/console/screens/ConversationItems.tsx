@@ -119,10 +119,8 @@ export function ConversationItems({ items, toolSummaries = [], renderItem, rende
     // Keep top-level rows as direct siblings. Nested arrays create implicit
     // unkeyed VNodes and can change an unchanged row's DOM parent on handoff.
     const directChildren = (views: readonly ComponentChildren[]): ComponentChildren[] => views.flatMap(view => Array.isArray(view) ? view : [view]);
-    const region:ComponentChildren[] = localRegion?.kind === "unqualified"
-      ? directChildren(plan.map(row => row.view))
-      : directChildren(plan.map(row => row.view));
-    return <div class="conversation-items">{region}{trailing}</div>;
+    const region:ComponentChildren[] = directChildren(rendered.map(row => row.view));
+    return <div class="conversation-items">{region}{trailing}{local?.view}</div>;
   }
   const rows: ComponentChildren[] = [];
   for (const item of items) {
