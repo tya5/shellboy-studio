@@ -104,7 +104,9 @@ describe("Thread model picker", () => {
     await act(async () => { await settle(t, db); });
     expect(el.querySelector('[role="dialog"]')?.textContent).toContain("next request");
     expect(el.querySelector<HTMLInputElement>('input[aria-label="Search models or enter an ID"]')).not.toBeNull();
-    expect(el.querySelector<HTMLInputElement>('input[aria-label="Reasoning effort (optional)"]')).not.toBeNull();
+    const other = [...el.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')].find((item) => text(item) === "Other")!;
+    act(() => other.click());
+    expect(el.querySelector<HTMLInputElement>('input[aria-label="Other"]')).not.toBeNull();
     model.dispose();
   });
 });
@@ -943,6 +945,39 @@ describe("Threads", () => {
     }
   });
 
+  it("Settings saves a preset effort immediately as one config field", async () => {
+    const made = await fixtureModel({ route: "settings", section: "general", capabilities: ["config.edit"] });
+    const before = made.db.answer;
+    const values = { default_model: "model-a", default_connection: "proxy", connections: { proxy: { default_effort: "" } } };
+    const side = { present: true, content_hash: "effort-hash", valid: true, error: null, values, redacted_fields: [] };
+    made.db.answer = (call) => call.command === "config.get"
+      ? { ok: true, result: { loaded: side, file: side, differs: false, restart: { all_fields_require_restart: false } } }
+      : call.command === "config.set"
+        ? { ok: true, result: { written: true, restart_required: true, changes: [{ field: "connections.proxy.default_effort", previous: "", value: "high", restart_required: true, applied_to_running_owner: false }] } }
+        : before(call);
+    const el = draw(made.model);
+    act(() => made.model.config.ensure());
+    await act(async () => { await settle(made.t, made.db); });
+    const high = [...el.querySelectorAll<HTMLButtonElement>("button")].find((button) => text(button) === "high")!;
+    act(() => high.click());
+    await act(async () => { await settle(made.t, made.db); });
+    expect(made.t.calls("config.set")).toHaveLength(1);
+    expect(made.t.calls("config.set")[0]!.args).toEqual({ expected_hash: "effort-hash", changes: [{ field: "connections.proxy.default_effort", value: "high" }] });
+    expect(text(el)).toContain("Applies after the owner restarts");
+  });
+
+  it("Settings groups sections and filters navigation by names and descriptions", async () => {
+    const made = await fixtureModel({ route: "settings", section: "general" });
+    const el = draw(made.model);
+    await act(async () => { await settle(made.t, made.db); });
+    expect(text(el)).toContain("Getting started");
+    expect(text(el)).toContain("Agent");
+    const search = el.querySelector<HTMLInputElement>('.secnav-search input')!;
+    act(() => { search.value = "summaries"; search.dispatchEvent(new Event("input", { bubbles: true })); });
+    expect(text(el)).toContain("Summary");
+    expect(el.querySelectorAll(".secnav-item")).toHaveLength(1);
+  });
+
   it("Settings says editing isn't available on a v0.10.0 owner, and draws no control", async () => {
     const made = await fixtureModel({ route: "settings", section: "storage" });
     const el = draw(made.model);
@@ -954,7 +989,7 @@ describe("Threads", () => {
     expect(el.querySelector(".subview-main input")).toBeNull();
   });
 
-  it("Settings reviews changes and writes only what changed", async () => {
+  it("Settings writes a changed field on blur and shows its live apply state", async () => {
     const made = await fixtureModel({ route: "settings", section: "general", capabilities: ["config.edit"] });
     const before = made.db.answer;
     const values = { default_model: "old-model", default_connection: "proxy", connections: { proxy: {} } };
@@ -969,12 +1004,12 @@ describe("Threads", () => {
     await act(async () => { await settle(made.t, made.db); });
     const input = el.querySelector<HTMLInputElement>('input[aria-label="Default model"]')!;
     act(() => { input.value = "new-model"; input.dispatchEvent(new Event("input", { bubbles: true })); });
-    const button = (name: string) => [...el.querySelectorAll<HTMLButtonElement>("button")].find((b) => text(b) === name)!;
-    act(() => button("Review changes").click());
-    await act(async () => { button("Write to file").click(); await settle(made.t, made.db); });
+    const save = [...el.querySelectorAll<HTMLButtonElement>("button")].find((button) => text(button) === "Applies now")!;
+    act(() => save.click());
+    await act(async () => { await settle(made.t, made.db); });
     expect(made.t.calls("config.set").at(-1)!.args).toEqual({ expected_hash: "h1", changes: [{ field: "default_model", value: "new-model" }] });
-    expect(text(el)).toContain("subsequent requests");
-    expect(text(el)).not.toContain("Restart required");
+    expect(text(el)).toContain("Applies now");
+    expect(text(el)).not.toContain("Review changes");
   });
 
   it("with the capability: picker, preview, then Move; a refusal shows the owner's words", async () => {
@@ -1162,7 +1197,7 @@ describe("Phone tabs", () => {
 });
 
 describe("Settings", () => {
-  const open = async (section: "connections" | "general" | "index" | "storage" | "compaction" | "studio" | "agent") => {
+  const open = async (section: "connections" | "general" | "index" | "storage" | "compaction" | "studio" | "agent" | "appearance") => {
     const { model, t, db } = await fixtureModel({ route: "settings" });
     const el = draw(model);
     await act(async () => {
@@ -1174,7 +1209,7 @@ describe("Settings", () => {
   it("lists the sections as links, and says it is read-only with no restart promise", async () => {
     const { el } = await open("connections");
     const nav = [...el.querySelectorAll(".secnav-item")].map(text);
-    expect(nav).toEqual(["General", "Connections", "Summary", "Storage & capacity", "Indexing", "Agent", "Studio"]);
+    expect(nav).toEqual(["General", "Connections", "Summary", "Indexing", "Agent", "Storage & capacity", "Appearance", "Studio"]);
     expect(el.querySelector('.secnav-item[aria-current="page"]')!.getAttribute("href")).toBe("#/settings/connections");
     expect(text(el)).toContain("Read-only");
     expect(text(el)).not.toContain("Changes take effect after owner restart");
@@ -1196,7 +1231,7 @@ describe("Settings", () => {
   });
   it("points per-thread settings to Conversation and keeps appearance choices", async () => {
     expect(text((await open("compaction")).el)).toContain("conversation screen");
-    const { el } = await open("general");
+    const { el } = await open("appearance");
     const light = [...el.querySelectorAll(".subview-main button")].find((b) => text(b) === "Light") as HTMLButtonElement;
     act(() => light.click());
     expect(light.getAttribute("aria-pressed")).toBe("true");
@@ -1372,6 +1407,8 @@ describe("Setup", () => {
       await pumpOf(t as never, db as never)();
       expect(text(el)).toContain("Add a connection");
       expect(el.querySelector('a[href="#/setup"]')).toBeTruthy();
+      model.applyRoute({ view: "settings", section: "index" });
+      await pumpOf(t as never, db as never)();
       expect(text(el)).toContain("Embedding settings");
     });
   });

@@ -197,6 +197,9 @@ export class ConfigEditor {
   readonly connectionAction: Signal<{ name: string; state: "testing" | "ok" | "failed" | "clearing" | "cleared" | "unconfirmed" } | undefined> = signal(undefined);
   readonly drafts: Signal<ReadonlyMap<string, Draft>> = signal(new Map());
   readonly stage: Signal<ConfigStage> = signal({ kind: "editing" });
+  readonly lastSaved: Signal<(SavedChange & { path: readonly string[] }) | undefined> = signal(undefined);
+  readonly fieldError: Signal<{ field: string; reason: string } | undefined> = signal(undefined);
+  readonly fieldSaving: Signal<boolean> = signal(false);
   /** Every draft that would change the file, against the file as last read. */
   readonly changes: ReadonlySignal<ConfigChangeRow[]>;
   readonly hasInvalid: ReadonlySignal<boolean>;
@@ -347,6 +350,68 @@ export class ConfigEditor {
 
   dismissResult(): void {
     this.stage.value = { kind: "editing" };
+  }
+
+  /** Save one setting immediately; the owner remains the source of the displayed value. */
+  async saveField(path: readonly string[], raw: string, kind: ConfigKind | "secret" | "secret-json", force = false): Promise<void> {
+    if (this.fieldSaving.peek()) return;
+    const facts = this.read.peek().value;
+    if (!facts || this.read.peek().error || !facts.file.valid) return;
+    const field = fieldOf(path);
+    const before = valueAt(facts.file.values, path);
+    this.edit(path, raw, kind);
+    const draft = this.drafts.peek().get(field);
+    if (!draft && force) {
+      const value = kind === "bool" ? raw === "true" : kind === "int" ? parseInt10(raw) : kind === "kinds" ? (raw ? raw.split(",").filter(Boolean) : []) : raw.trim() === "" ? undefined : raw;
+      this.drafts.value = new Map([[field, { field, path, raw, value, sensitive: false }]]);
+    }
+    const actualDraft = this.drafts.peek().get(field);
+    if (!actualDraft || actualDraft.invalid) return;
+    if ([...this.drafts.peek().keys()].some((key) => key !== field)) return;
+    this.fieldSaving.value = true;
+    this.lastSaved.value = undefined;
+    this.fieldError.value = undefined;
+    const out = await this.ops.configSet(facts.file.contentHash, actualDraft.value === undefined ? [{ field }] : [{ field, value: actualDraft.value }]);
+    if (out.ok) {
+      const saved = readSaved(out.value).find((change) => change.field === field);
+      this.lastSaved.value = { ...(saved ?? { field, previous: before, value: actualDraft.value, sensitive: actualDraft.sensitive, restartRequired: out.value.restart_required === true, appliedToRunningOwner: !facts.restartAll }), path };
+      this.drafts.value = new Map();
+      await this.refresh();
+    } else if (out.error.kind === "owner" && out.error.code === "operation_conflict") {
+      await this.refresh();
+      this.fieldError.value = { field, reason: out.error.message };
+    } else if (out.error.kind === "unconfirmed" || out.error.kind === "connection_lost") {
+      await this.refresh();
+      this.fieldError.value = { field, reason: out.error.message };
+    } else {
+      const details = out.error.kind === "owner" ? record(out.error.details) : undefined;
+      this.fieldError.value = { field, reason: out.error.message || (typeof details?.reason === "string" ? details.reason : out.error.kind) };
+      await this.refresh();
+    }
+    this.fieldSaving.value = false;
+  }
+
+  /** Remove one field without exposing its hidden prior value. */
+  async removeField(path: readonly string[]): Promise<void> {
+    const facts = this.read.peek().value;
+    if (!facts || this.fieldSaving.peek() || this.read.peek().error) return;
+    const field = fieldOf(path);
+    this.fieldSaving.value = true;
+    this.fieldError.value = undefined;
+    const out = await this.ops.configSet(facts.file.contentHash, [{ field }]);
+    if (out.ok) { this.lastSaved.value = undefined; await this.refresh(); }
+    else { this.fieldError.value = { field, reason: out.error.message }; await this.refresh(); }
+    this.fieldSaving.value = false;
+  }
+
+  /** Reapply the exact previous Core value through the same one-field operation. */
+  async undoLast(): Promise<void> {
+    const saved = this.lastSaved.peek();
+    if (!saved || this.fieldSaving.peek()) return;
+    const path = saved.path;
+    const value = saved.previous;
+    await this.saveField(path, value === undefined ? "" : typeof value === "string" ? value : JSON.stringify(value), Array.isArray(value) ? "kinds" : typeof value === "boolean" ? "bool" : typeof value === "number" ? "int" : "text", true);
+    this.lastSaved.value = undefined;
   }
 
   async save(): Promise<void> {

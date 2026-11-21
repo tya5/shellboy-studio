@@ -32,7 +32,13 @@ Consumers use semantic `IconRole` names only. Glyph names, paths, and the role-t
 | `panel.reply_needed` | Identify a request this Thread should answer. | Lucide `reply` |
 | `panel.awaiting_reply` | Identify a request awaiting another recipient. | Lucide `hourglass` |
 | `panel.information` | Open Thread information. | Lucide `info` |
-| `settings.general` | Identify the General appearance section. | `palette` |
+| `settings.category.start` | Identify the Getting started settings group. | `gear` |
+| `settings.category.agent` | Identify the Agent settings group. | `bot` |
+| `settings.category.display` | Identify the Display settings group. | `palette` |
+| `settings.category.data` | Identify the Data settings group. | `database` |
+| `settings.category.app` | Identify the This app settings group. | `apps` |
+| `settings.appearance` | Identify Appearance settings. | `palette` |
+| `settings.general` | Identify the General settings section. | `gear` |
 | `settings.connections` | Identify the Connections settings section. | `plug` |
 | `settings.compaction` | Identify the Compaction settings section. | `retry` |
 | `settings.storage` | Identify the Storage settings section. | `file` |

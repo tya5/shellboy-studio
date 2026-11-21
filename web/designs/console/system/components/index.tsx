@@ -35,7 +35,6 @@ export { Meter } from "./Meter";
 export { BarList } from "./BarList";
 export { RangeBar } from "./RangeBar";
 export { SectionNav, type SectionNavItem } from "./SectionNav";
-export { DiffList, type DiffRow } from "./DiffList";
 export { FactList, type Fact } from "./FactList";
 export { ButtonGroup } from "./ButtonGroup";
 export { ChoiceList, type Choice } from "./ChoiceList";
@@ -75,3 +74,6 @@ export { FilterChips } from "./FilterChips";
 
 export { ConversationCharacter } from "./ConversationCharacter";
 export { ShellFooter, ShellToggle } from "./ShellToggle";
+export { SettingRow } from "./SettingRow";
+
+export { EffortControl } from "./ModelPicker/EffortControl";

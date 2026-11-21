@@ -1,3 +1,6 @@
 The frame for a view split into sections, used by Settings and Analytics. Prefer panes to one long scroll when a view holds subjects read separately. Keep the selected section in the URL hash and read a section's data only when it opens. Each pane starts with a `pagehead`, so the section's name stays visible when the list collapses to a selector on a phone.
 
 Styles: style.css in this directory
+
+
+SubView supports optional grouped navigation and local search while preserving the existing ungrouped mode used by Analytics. Inspired by Orca, VS Code, and macOS System Settings. Use grouped search when a section list is long; do not add it to a small, already-scannable navigation.
