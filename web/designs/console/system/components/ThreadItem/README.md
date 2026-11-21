@@ -7,3 +7,5 @@ The row owns hover, current and focus layout while its main link remains the
 accessible navigation target.
 
 Rows expose their shared action control through `tree-action`; row context menus and ArrowDown use that same opener.
+
+The trailing menu remains in-flow and is revealed on row hover, focus, or selection; the title keeps its ellipsis rather than moving beneath the action.

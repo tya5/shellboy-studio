@@ -371,7 +371,7 @@ a{color:var(--accent)}
 .srow-act:hover{text-decoration:underline}
 .srow-status{flex:none;display:inline-grid;place-items:center;width:18px}
 .srow-text{flex:1;min-width:0;padding:var(--space-4) 0;overflow-wrap:anywhere}
-.srow-text a{color:var(--fg);text-decoration:none}
+.srow-text a{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--fg);text-decoration:none}
 .srow-text a:hover{color:var(--accent);text-decoration:underline}
 
 /* SelectionBar */

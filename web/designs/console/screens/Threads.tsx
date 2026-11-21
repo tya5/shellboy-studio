@@ -187,7 +187,8 @@ export function Threads({ model }: { model: AppModel }) {
         tagsLabel={t("org.tag.list")}
         note={notes || undefined}
         age={formatAge(s.updated_at, model.coarseNow.value)}
-        action={<ThreadQuickAction model={model} row={s} status={r.status} onMove={canMove ? () => org.pickParent(s.thread_id) : undefined} />}
+        moveAction={canMove ? <button type="button" class="srow-act" onClick={() => org.pickParent(s.thread_id)}>{t("org.move")}</button> : undefined}
+        action={<ThreadQuickAction model={model} row={s} status={r.status} />}
         drag={
           canMove
             ? {

@@ -1,7 +1,7 @@
 import type { ComponentChildren } from "preact";
 
 /** One Thread that can be chosen and opened. Its tree depth is a real parent link. */
-export function SelectRow({ title, href, status, depth, checked, checkLabel, onToggle, note, tags, tagsLabel, age, action, drag }: { title: string; href: string; status: ComponentChildren; depth: number; checked: boolean; checkLabel: string; onToggle: () => void; note?: string | undefined; tags?: readonly string[] | undefined; tagsLabel?: string | undefined; age?: string | undefined; action?: ComponentChildren; drag?: { onDragStart: () => void; onDrop: () => void; over: boolean; onOver: (over: boolean) => void } | undefined }) {
+export function SelectRow({ title, href, status, depth, checked, checkLabel, onToggle, note, tags, tagsLabel, age, action, moveAction, drag }: { title: string; href: string; status: ComponentChildren; depth: number; checked: boolean; checkLabel: string; onToggle: () => void; note?: string | undefined; tags?: readonly string[] | undefined; tagsLabel?: string | undefined; age?: string | undefined; action?: ComponentChildren; moveAction?: ComponentChildren; drag?: { onDragStart: () => void; onDrop: () => void; over: boolean; onOver: (over: boolean) => void } | undefined }) {
   const dnd = drag
     ? {
         draggable: true,
@@ -38,6 +38,7 @@ export function SelectRow({ title, href, status, depth, checked, checkLabel, onT
           </ul>
         ) : null}
       </div>
+      {moveAction}
       {action}
       {age ? <span class="mono muted caption">{age}</span> : null}
     </div>

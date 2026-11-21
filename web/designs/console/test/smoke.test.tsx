@@ -914,8 +914,7 @@ describe("Threads", () => {
     expect(el.querySelector("[draggable=true]")).toBeTruthy();
     expect(text(el)).not.toContain("isn't available: this Shellboy (v0.10.0)");
     const button = (name: string) => [...el.querySelectorAll<HTMLButtonElement>("button")].find((b) => text(b) === name);
-    act(() => el.querySelector<HTMLDivElement>(".srow")!.querySelector<HTMLButtonElement>("[aria-haspopup=menu]")!.click());
-    act(() => [...document.querySelectorAll<HTMLButtonElement>(".menu-popover [role=menuitem]")].find((item) => item.textContent === "Set parent")?.click());
+    act(() => el.querySelector<HTMLButtonElement>(".srow-act")!.click());
     expect(text(el)).toContain("New parent for");
     act(() => button("No parent (independent)")!.click());
     expect(made.t.calls("thread.set")).toHaveLength(0);
