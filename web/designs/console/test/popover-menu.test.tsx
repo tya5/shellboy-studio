@@ -7,7 +7,7 @@ import { expect, it } from "vitest";
 import { Menu, Popover } from "../system/components";
 import { placePanel } from "../system/components/Popover";
 
-it("renders Popover in the document layer and restores its anchor on outside close", async () => {
+it("outside dismissal leaves focus alone", async () => {
   const host = document.createElement("div");
   const anchor = document.createElement("button");
   document.body.append(host, anchor);
@@ -47,7 +47,7 @@ it("places measured panels within a narrow viewport and flips above", () => {
   expect(narrow.left + 280).toBeLessThanOrEqual(320 - gutter);
   expect(narrow.top).toBe(64);
   const short = placePanel({ left: 100, right: 200, top: 100, bottom: 124 }, { width: 100, height: 32 }, { width: 320, height: 768 }, gutter);
-  expect(short.left + 100).toBeLessThanOrEqual(320 - gutter);
+  expect(short.left).toBe(100);
   const flipped = placePanel({ left: 100, right: 200, top: 740, bottom: 764 }, { width: 100, height: 80 }, { width: 320, height: 768 }, gutter);
   expect(flipped.top).toBe(660);
 });
