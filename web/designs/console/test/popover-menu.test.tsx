@@ -10,13 +10,15 @@ it("renders Popover in the document layer and restores its anchor on outside clo
   document.body.append(host, anchor);
   let open = true;
   const draw = () => render(<Popover open={open} anchor={anchor} onClose={() => { open = false; draw(); }}><span>content</span></Popover>, host);
-  anchor.focus();
+  const outside = document.createElement("button");
+  document.body.append(outside);
   await act(async () => { draw(); await Promise.resolve(); });
+  outside.focus();
   expect(document.body.querySelector(".popover")).not.toBeNull();
   await act(async () => { document.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true })); await Promise.resolve(); });
   expect(document.body.querySelector(".popover")).toBeNull();
-  expect(document.activeElement).toBe(anchor);
-  render(null, host); host.remove(); anchor.remove();
+  expect(document.activeElement).toBe(outside);
+  render(null, host); host.remove(); anchor.remove(); outside.remove();
 });
 
 it("opens Menu with the first item focused and wraps keyboard navigation", async () => {

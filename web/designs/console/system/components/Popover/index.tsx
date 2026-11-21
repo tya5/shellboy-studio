@@ -23,14 +23,17 @@ export function Popover({ open, anchor, onClose, children, className = "" }: {
   anchorRef.current = anchor;
 
   useLayoutEffect(() => {
-    if (open) opener.current = anchor;
-    if (!open || !anchor) { setPoint(undefined); return; }
+    if (!open) { opener.current = null; setPoint(undefined); return; }
+    if (!opener.current) opener.current = anchor;
+    if (!anchor) { setPoint(undefined); return; }
     const place = () => {
       const rect = anchor.getBoundingClientRect();
       const margin = tokenPixels("--space-12");
       const viewportWidth = window.innerWidth;
-      const width = Math.min(panel.current?.getBoundingClientRect().width ?? tokenPixels("--size-details"), viewportWidth - 2 * margin);
-      const height = panel.current?.getBoundingClientRect().height ?? 0;
+      const panelRect = panel.current?.getBoundingClientRect();
+      if (!panelRect) return;
+      const width = panelRect.width;
+      const height = panelRect.height;
       const viewportHeight = window.innerHeight;
       const right = Math.min(viewportWidth - margin, rect.right);
       const left = Math.max(margin, right - width);
@@ -48,8 +51,8 @@ export function Popover({ open, anchor, onClose, children, className = "" }: {
   useEffect(() => {
     if (!open) return;
     const restore = () => queueMicrotask(() => opener.current?.focus());
-    const outside = (event: PointerEvent) => { if (!panel.current?.contains(event.target as Node) && !anchorRef.current?.contains(event.target as Node)) { onClose(); restore(); } };
-    const key = (event: KeyboardEvent) => { if (event.key === "Escape" || event.key === "Tab") { event.preventDefault(); onClose(); restore(); } };
+    const outside = (event: PointerEvent) => { if (!panel.current?.contains(event.target as Node) && !anchorRef.current?.contains(event.target as Node)) onClose(); };
+    const key = (event: KeyboardEvent) => { if (event.key === "Escape") { onClose(); restore(); } else if (event.key === "Tab") onClose(); };
     document.addEventListener("pointerdown", outside);
     document.addEventListener("keydown", key);
     return () => { document.removeEventListener("pointerdown", outside); document.removeEventListener("keydown", key); };
