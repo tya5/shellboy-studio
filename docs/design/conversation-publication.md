@@ -154,7 +154,7 @@ before a swap, not in a catch-all that hides a partly installed cursor.
 ## Source and Regression Links
 
 - Input validation/ownership: `web/data/src/operations.ts`,
-  `web/data/src/store.ts`, `web/data/src/public-response-refs.ts`;
+  `web/data/src/store.ts`;
   `web/data/test/operations.test.ts`, `web/ui-core/test/window-provenance-capture.test.ts`.
 - Accepted ownership/atomic swap: `web/ui-core/src/accepted-view.ts`,
   `web/ui-core/src/window.ts`; `web/ui-core/test/accepted-view.test.ts`,

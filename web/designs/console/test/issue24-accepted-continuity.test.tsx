@@ -1,5 +1,5 @@
 import type {HistoryItem} from '../../../data/src/protocol';
-import {typedSelectedCoverageWindow} from '../../../ui-core/test/typed-handoff-fixture';
+import {selectedCoverageWindow} from '../../../ui-core/test/selected-history-fixture';
 // @vitest-environment happy-dom
 // Regression probe for final bodies surviving an ordinary tail refresh.
 import '@preact/signals';
@@ -135,7 +135,7 @@ it.each([
           const args=call.args;
           if(!args||typeof args!=='object'||Array.isArray(args))throw new Error('Fixture requires an object window request');
           const path=db.history.lead??[];
-          const value=typedSelectedCoverageWindow('lead',revision,path.length,path,{
+          const value=selectedCoverageWindow('lead',revision,path.length,path,{
             node_id:'node_id' in args&&typeof args.node_id==='string'?args.node_id:undefined,
             ordinal:'ordinal' in args&&typeof args.ordinal==='number'?args.ordinal:undefined,
             before:'before' in args&&typeof args.before==='number'?args.before:undefined,
@@ -169,7 +169,7 @@ it.each([
     const fullRows = changedRevision ? [...rows, { ...rows[94], node_id: 'n95', selection: { ...rows[94]!.selection, ordinal: 95 } }] : rows;
     const targetValue = { thread_id: 'lead', revision, total: 95, items: [rows[94]] };
     expect(fullCall.args).toMatchObject({ordinal:94,before:0,after:199,expect_node_id:'n94',items:true});
-    const fullValue=typedSelectedCoverageWindow('lead',fullRevision,fullRows.length,fullRows,{ordinal:94,before:0,after:199});
+    const fullValue=selectedCoverageWindow('lead',fullRevision,fullRows.length,fullRows,{ordinal:94,before:0,after:199});
     const answerCall = (call: typeof targetCall, value: typeof fullValue|typeof targetValue) => {
       trace.push({kind:'declared-reply',args:call.args,revision:value.revision,total:value.total,nodes:value.items.map(row=>row?.node_id)});
       r.db.answered.add(call.id); r.t.ok(call.id, value);

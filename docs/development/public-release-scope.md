@@ -61,7 +61,7 @@ independent native/phone test. The Awaiting pre-push audit initially failed and
 publication erroneously continued; subsequent independent privacy clearance and
 landing gates do not turn that original failed gate into a success.
 
-C1's [validation scope](conversation-handoff-validation.md) remains limited.
+C1's [validation scope](historical-live-switch-validation.md) remains limited.
 General body readback design does not become an implemented API, release
 requirement or dependency merely because a proposal exists. Unsupported initial
 tool/non-live/mixed cases, same-thread history-delay trade-offs, and coverage

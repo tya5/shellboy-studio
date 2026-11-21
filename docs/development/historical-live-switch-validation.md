@@ -79,7 +79,7 @@ window owner only. No Core/bridge/owner/paid API/data or runtime connection.
   exact current count is reported with the candidate SHA. npm run build also runs.
 - Browser: `cd web && npx vite --config designs/console/test/browser/vite.config.mjs
   --host 127.0.0.1 --port 19572 --strictPort`, then from repository root
-  `node web/designs/console/test/browser/c1-check.mjs`. Existing installed headless
+  historical browser entrypoint (removed; its fixture source was absent). Existing installed headless
   Chrome only, no downloads/install. Desktop 1280/mobile-width 390, both existing
   themes, legacy and history.window routes: eight combinations. Every sampled
   frame after initial renderer/font readiness checks count, actual Message DOM,
@@ -119,7 +119,7 @@ Baseline: public `83dabe0ba858324ac8dd150d3fdcf97a7e23f1a8`, with S7's
 independent visible RAF fixture imported unchanged. No real owner, runtime owner
 configuration, installed asset or user data was used.
 
-- Red: `DEBUG_PORT=19683 node web/designs/console/test/browser/visible-red-check.mjs`
+- Historical red entrypoint: removed with its absent fixture source; it is not runnable from this tree.
   exited 1. Of twelve Chrome/RAF cases (legacy/windowed, 1280/390, normal/partial/
   wrong-node), four windowed partial/wrong-node cases each observed two duplicate
   frames while the body was still confirming. Missing frames and message identity
