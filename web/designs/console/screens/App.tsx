@@ -1,6 +1,6 @@
 import { BrandLogo } from "../system/components/BrandLogo";
 import { useEffect, useState } from "preact/hooks";
-import { formatRoute, statusLabel, viewShortcut, navShortcut, type DesignContext, type ViewName } from "../../../ui-core/src";
+import { formatRoute, readSidebarWidth, SIDEBAR_WIDTH_MAX, SIDEBAR_WIDTH_MIN, statusLabel, viewShortcut, navShortcut, type DesignContext, type ViewName } from "../../../ui-core/src";
 import { Button, ContextBar, Field, Icon, MoreMenu, NavItem, Notice, StatusMark, ThreadItem, type IconName } from "../system/components";
 import { formatTokens, folderName } from "../../../ui-core/src";
 import { Conversation } from "./Conversation";
@@ -27,10 +27,21 @@ export function App({ context }: { context: DesignContext }) {
   const [settings, setSettings] = useState(false);
   const [actionNotice, setActionNotice] = useState<string>();
   const [query, setQuery] = useState("");
+  const [resizeStart, setResizeStart] = useState<{ x: number; width: number }>();
+  const sidebarWidth = readSidebarWidth(context.prefs.value.sidebarWidth);
   const picker = model.modelPicker.value;
   useEffect(() => { if (picker.open && picker.thread !== model.selectedId.value) model.closeModelPicker(); }, [picker.open, picker.thread, model.selectedId.value]);
 
   useEffect(() => { model.monitorSort.value = context.prefs.value.monitorSort ?? "stable"; }, [model, context.prefs.value.monitorSort]);
+
+  useEffect(() => {
+    if (!resizeStart) return;
+    const move = (event: PointerEvent) => context.setPrefs({ sidebarWidth: readSidebarWidth(resizeStart.width + event.clientX - resizeStart.x) });
+    const end = () => setResizeStart(undefined);
+    addEventListener("pointermove", move);
+    addEventListener("pointerup", end, { once: true });
+    return () => { removeEventListener("pointermove", move); removeEventListener("pointerup", end); };
+  }, [context, resizeStart]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -75,7 +86,8 @@ export function App({ context }: { context: DesignContext }) {
 
   return (
     <div class="app">
-      <div class={context.prefs.value.navCollapsed ? "shell nav-collapsed" : "shell"}>
+      <div class={context.prefs.value.navCollapsed ? "shell nav-collapsed" : "shell"} style={{ "--size-sidebar": `${sidebarWidth}px` }}>
+        <Button class="side-resize" label={t("threads.resizeSidebar")} role="separator" aria-orientation="vertical" aria-valuemin={SIDEBAR_WIDTH_MIN} aria-valuemax={SIDEBAR_WIDTH_MAX} aria-valuenow={sidebarWidth} onPointerDown={(event) => { event.preventDefault(); setResizeStart({ x: event.clientX, width: sidebarWidth }); }} onKeyDown={(event) => { const step = event.shiftKey ? 32 : 16; if (event.key === "ArrowLeft" || event.key === "ArrowRight" || event.key === "Home" || event.key === "End") { event.preventDefault(); const next = event.key === "Home" ? SIDEBAR_WIDTH_MIN : event.key === "End" ? SIDEBAR_WIDTH_MAX : sidebarWidth + (event.key === "ArrowRight" ? step : -step); context.setPrefs({ sidebarWidth: readSidebarWidth(next) }); } }}><span aria-hidden="true" /></Button>
         <button type="button" class={drawer ? "scrim open" : "scrim"} aria-label={t("threads.close")} tabIndex={drawer ? 0 : -1} onClick={() => setDrawer(false)} />
         <aside class={drawer ? "side open" : "side"} aria-label={t("threads.title")}>
           <div class="brand">

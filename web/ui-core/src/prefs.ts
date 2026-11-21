@@ -10,6 +10,7 @@ export interface Prefs {
   theme: string;
   lang: Lang;
   navCollapsed?: boolean;
+  sidebarWidth?: number;
   guideOptOut?: boolean;
   monitorPins?: string[];
   monitorStatuses?: StatusKey[];
@@ -32,6 +33,14 @@ export interface DesignChoice {
 }
 
 /** Falls back field by field: a removed design or a damaged value never blocks startup. */
+export const SIDEBAR_WIDTH_MIN = 220;
+export const SIDEBAR_WIDTH_MAX = 420;
+export const SIDEBAR_WIDTH_DEFAULT = 260;
+
+export function readSidebarWidth(v: unknown): number {
+  return typeof v === "number" && Number.isFinite(v) ? Math.min(SIDEBAR_WIDTH_MAX, Math.max(SIDEBAR_WIDTH_MIN, v)) : SIDEBAR_WIDTH_DEFAULT;
+}
+
 const validWeight = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v) && v >= 0;
 
 export function readWeights(v: unknown): Weights {
@@ -51,7 +60,7 @@ export function loadPrefs(store: PrefStore, designs: readonly DesignChoice[]): P
   if (!design) throw new Error("no design registered");
   const theme = design.themes.find((t) => t.name === saved.theme) ?? design.themes[0];
   if (!theme) throw new Error(`design ${design.name} has no theme`);
-  return { design: design.name, theme: theme.name, lang: saved.lang === "ja" ? "ja" : "en", navCollapsed: saved.navCollapsed === true, guideOptOut: saved.guideOptOut === true, monitorPins: Array.isArray(saved.monitorPins) ? [...new Set(saved.monitorPins.filter((x): x is string => typeof x === "string" && x.length <= 256))].slice(0, 100) : [], monitorStatuses: Array.isArray(saved.monitorStatuses) ? [...new Set(saved.monitorStatuses.filter((x): x is StatusKey => STATUS_KEYS.includes(x)))] : [], monitorQuery: typeof saved.monitorQuery === "string" ? saved.monitorQuery.slice(0, 256) : "", monitorArchive: saved.monitorArchive === "include" || saved.monitorArchive === "only" ? saved.monitorArchive : "exclude", monitorView: saved.monitorView === "tiles" ? "tiles" : "cards", monitorSort: saved.monitorSort === "recent" ? "recent" : "stable", weights: readWeights(saved.weights) };
+  return { design: design.name, theme: theme.name, lang: saved.lang === "ja" ? "ja" : "en", navCollapsed: saved.navCollapsed === true, sidebarWidth: readSidebarWidth(saved.sidebarWidth), guideOptOut: saved.guideOptOut === true, monitorPins: Array.isArray(saved.monitorPins) ? [...new Set(saved.monitorPins.filter((x): x is string => typeof x === "string" && x.length <= 256))].slice(0, 100) : [], monitorStatuses: Array.isArray(saved.monitorStatuses) ? [...new Set(saved.monitorStatuses.filter((x): x is StatusKey => STATUS_KEYS.includes(x)))] : [], monitorQuery: typeof saved.monitorQuery === "string" ? saved.monitorQuery.slice(0, 256) : "", monitorArchive: saved.monitorArchive === "include" || saved.monitorArchive === "only" ? saved.monitorArchive : "exclude", monitorView: saved.monitorView === "tiles" ? "tiles" : "cards", monitorSort: saved.monitorSort === "recent" ? "recent" : "stable", weights: readWeights(saved.weights) };
 }
 
 export function savePrefs(store: PrefStore, prefs: Prefs): void {
