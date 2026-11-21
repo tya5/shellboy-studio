@@ -55,7 +55,6 @@ export function conversationIdentityEqual(a: ConversationIdentity, b: Conversati
 
 
 export interface ConversationSemanticInput {
-  readonly liveOrdinals?: ReadonlyMap<string, number>;
   readonly isCurrent: () => boolean;
   readonly identity:ConversationIdentity;
   readonly canonicalInput:CanonicalHistoryInput;
@@ -69,7 +68,6 @@ export interface ConversationSemanticInput {
 /** One current semantic recipe for both candidate publication and fixture admission. */
 export function captureConversationInput(snapshot: WindowAcceptedSnapshot, input: {
   readonly scope: string; readonly threadId: string; readonly records: readonly HandoffRecord[];
-  readonly liveOrdinals?: ReadonlyMap<string, number>;
   readonly work: WorkCaptureDescriptor; readonly current: () => boolean;
 }): ConversationSemanticInput {
   const canonicalInput=canonicalHistoryInput(snapshot,input.scope),canonicalProjection=canonicalInput.projection;
@@ -83,7 +81,7 @@ export function captureConversationInput(snapshot: WindowAcceptedSnapshot, input
   const acceptedAttempts = new Set(snapshot.rows.flatMap(row => row.kind === "assistant_response" && row.provenance?.attempt_id ? [String(row.provenance.attempt_id)] : []));
   const remainingWork = work?.filter(item => !("domain" in item && item.domain === "live" && item.namespace === "handoff" && item.attemptId && acceptedAttempts.has(String(item.attemptId)))) ?? [];
   const projected = work?.length ? projectSavedItems([...canonicalProjection.items.map(item => item.source), ...remainingWork]) : canonicalProjection;
-  return { liveOrdinals: input.liveOrdinals, isCurrent: input.current,
+  return { isCurrent: input.current,
     identity: createConversationIdentity({ rows: snapshot.rows, revision: snapshot.revision, records: input.records,
       work: input.work, scope: input.scope, current }),
     canonicalInput, scope: input.scope, canonicalProjection, projection: projected,

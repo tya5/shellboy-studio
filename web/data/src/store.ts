@@ -124,8 +124,8 @@ class ThreadEntry {
   cancel = new Cancel();
   /** Nobody is looking: no reads, and no hints from the bridge. */
   paused = false;
-  constructor(readonly id: string, schedule: Schedule) {
-    this.live = new Handoff(schedule);
+  constructor(readonly id: string, schedule: Schedule, nextOrdinal: () => number) {
+    this.live = new Handoff(schedule, nextOrdinal);
   }
   get preview(): ReadonlySignal<Preview> {
     return this.live.preview;
@@ -290,12 +290,13 @@ export class ShellboyData {
   }
 
   /** Track one Thread (detail, history, live preview). Throws past MAX_WATCHED_THREADS. */
-  openThread(threadId: string): ThreadHandle {
+  openThread(threadId: string, nextOrdinal?: () => number): ThreadHandle {
     let entry = this.entries.get(threadId);
     if (!entry) {
       if (!this.hintWatchers.has(threadId) && new Set([...this.entries.keys(), ...this.hintWatchers.keys()]).size >= MAX_WATCHED_THREADS)
         throw new RangeError(`at most ${MAX_WATCHED_THREADS} Threads can be open at once`);
-      entry = new ThreadEntry(threadId, this.schedule);
+      let ordinal = 0;
+      entry = new ThreadEntry(threadId, this.schedule, nextOrdinal ?? (() => ++ordinal));
       this.entries.set(threadId, entry);
       this.scheduleWatch();
       if (this.canRead()) this.requestThread(threadId);

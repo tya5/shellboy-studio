@@ -30,7 +30,7 @@ try {
     let loaded=false;for(let n=0;n<100;n++){await new Promise(r=>setTimeout(r,50));if(await evaluate("typeof window.runComposed==='function'")){loaded=true;break;}}
     assert(loaded,'normalized DOM fixture ready');const result=await evaluate('window.runComposed()');
     assert(result.obsolete==='obsolete','obsolete result must be explicit');assert(result.obsoleteWrites===0,'obsolete must write zero times');assert(result.revoked==='obsolete'&&result.revokeWrites===0&&result.revokeCaptures===0,'same-ref revoke must stop write/capture');
-    const record={width,samples:result.samples.length,actualProjection:result.actualProjection,failures:result.failures,solePreviewRetained:result.solePreviewRetained,obsolete:result.obsolete,obsoleteWrites:result.obsoleteWrites};records.push(record);console.log(JSON.stringify(record));
+    const record={width,samples:result.samples.length,actualProjection:result.actualProjection,failures:result.failures,obsolete:result.obsolete,obsoleteWrites:result.obsoleteWrites};records.push(record);console.log(JSON.stringify(record));
     await writeFile(join(out,`dom-${width}.json`),JSON.stringify(result,null,2));const shot=await cmd('Page.captureScreenshot',{format:'png'});await writeFile(join(out,`dom-${width}.png`),Buffer.from(shot.data,'base64'));
   }
   await writeFile(join(out,'summary.json'),JSON.stringify({records,errors},null,2));

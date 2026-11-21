@@ -9,6 +9,7 @@ export type HandoffStatus = 'streaming' | 'ended';
 export interface HandoffRecord {
   readonly key: string;
   readonly attemptId: string;
+  readonly clientOrdinal: number;
   readonly text: string;
   readonly incomplete: boolean;
   readonly status: HandoffStatus;
@@ -37,7 +38,7 @@ export class Handoff {
     const r = this.records.value.find(r => r.attemptId === this.active);
     return r ? { kind: 'live', attemptId: r.attemptId, text: r.text, incomplete: r.incomplete, ending: r.status !== 'streaming' } : { kind: 'none', ...(this.discarded.value ? { discarded: this.discarded.value } : {}) };
   });
-  constructor(private readonly schedule: Schedule) {}
+  constructor(private readonly schedule: Schedule, private readonly nextOrdinal: () => number) {}
   get epoch(): number { return this.epochState.peek(); }
   get retainedBytes(): number { return this.held.reduce((n, h) => n + bytes(h.record.text), 0); }
   advanceEpoch(): void { this.epochState.value = this.epochState.peek() + 1; }
@@ -49,7 +50,7 @@ export class Handoff {
       if (this.held.length >= MAX_HANDOFF_RECORDS || this.blockedAttempt === frame.attempt_id) { this.overflowSig.value = true; this.blockedAttempt = frame.attempt_id; return; }
       if (this.active) this.finish();
       const source = new LiveText(this.schedule);
-      const record: HandoffRecord = { key: `handoff:${frame.attempt_id}`, attemptId: frame.attempt_id, text: '', incomplete: frame.gap, status: 'streaming' };
+      const record: HandoffRecord = Object.freeze({ key: `handoff:${frame.attempt_id}`, attemptId: frame.attempt_id, clientOrdinal: this.nextOrdinal(), text: '', incomplete: frame.gap, status: 'streaming' });
       h = { admitted: 0, attemptId: frame.attempt_id, source, stop: () => {}, record };
       const held = h;
       this.held.push(h);

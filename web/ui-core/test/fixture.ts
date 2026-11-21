@@ -323,13 +323,13 @@ export function answerInsights(db: FakeOwnerDb, usage: Record<string, unknown> =
   };
 }
 
-export async function fixtureModel(options: { realPending?: boolean; pending?: PendingAdapter; replyWait?: ReplyWaitAdapter; route?: ViewName; threadId?: string; section?: Route["section"]; lang?: Lang; usage?: Record<string, unknown>; capabilities?: string[]; configure?: (db: FakeOwnerDb) => void; configureData?: (data: ShellboyData) => void } = {}) {
+export async function fixtureModel(options: { realPending?: boolean; pending?: PendingAdapter; replyWait?: ReplyWaitAdapter; route?: ViewName; threadId?: string; section?: Route["section"]; lang?: Lang; usage?: Record<string, unknown>; capabilities?: string[]; configure?: (db: FakeOwnerDb) => void; configureData?: (data: ShellboyData) => void; schedule?: (publish: () => void) => void } = {}) {
   const t = new FakeTransport();
   const db = fixtureDb();
   answerInsights(db, options.usage);
   options.configure?.(db);
   let operationSequence = 0;
-  const data = new ShellboyData({ transport: t, newId: () => `op-${++operationSequence}` });
+  const data = new ShellboyData({ transport: t, schedule: options.schedule, newId: () => `op-${++operationSequence}` });
   options.configureData?.(data);
   const model = new AppModel({ data, lang: options.lang, ...(options.realPending ? {} : { pending: options.pending ?? noPending }), ...(options.replyWait ? { replyWait: options.replyWait } : {}), nowMs: () => NOW, offsetMinutes: () => 540 });
   if (options.route === "conversation" && options.threadId) model.applyRoute({ view: "conversation", threadId: options.threadId });
@@ -346,8 +346,8 @@ export { settle };
 
 
 /** Tests declare public owner inputs; the actual model owns publication and rendering authority. */
-export function fixtureConversation(input: { nodes: readonly HistoryItem[]; work?: readonly WorkItem[]; revision?:number }) {
-  return fixtureModel({ route: 'conversation', threadId: 'lead', capabilities: ['history.window'], configure(db) {
+export function fixtureConversation(input: { nodes: readonly HistoryItem[]; work?: readonly WorkItem[]; revision?:number; schedule?: (publish: () => void) => void; lang?: Lang }) {
+  return fixtureModel({ route: 'conversation', threadId: 'lead', capabilities: ['history.window'], schedule: input.schedule, lang: input.lang, configure(db) {
     db.history.lead = [...input.nodes]; db.work.lead = (input.work ?? []).map(item => ({ ...item }));
     db.historyRevisions.lead=input.revision??1;
   } });

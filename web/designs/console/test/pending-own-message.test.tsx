@@ -10,9 +10,7 @@ import type {HistoryItem} from '../../../data/src/protocol';
 import type {DesignContext} from '../../../ui-core/src';
 import {loadPrefs} from '../../../ui-core/src/prefs';
 import {App} from '../screens/App';
-import {OrderedHistory} from '../screens/Conversation';
-import {ConversationItems, type ConversationItem} from '../screens/ConversationItems';
-import {projectionFromDisplayPlan} from '../../../ui-core/src/conversation-display-plan';
+import {OrderedHistory, SavedWindowContent} from '../screens/Conversation';
 import type {WindowAcceptedSnapshot} from '../../../ui-core/src/window';
 import {Composer} from '../system/components/Composer';
 import {canonicalAttemptId} from '../../../data/test/work-fixture';
@@ -538,55 +536,53 @@ it("mounted click joins the held old cursor read", async () => {
 
 
 
-it('keeps a saved own row measurable and mounted across successive production retire publications',async()=>{
- const saved=(id:string,ordinal:number,text:string):HistoryItem=>({node_id:id,kind:'user',selection:{ordinal},items:[{kind:'text',item_identity:id,text,text_complete:true}],provenance:{sender:{kind:'human'}}});
- const f=await fixtureConversation({nodes:[saved('H',0,'Earlier message')]});
- const host=document.createElement('div');document.body.append(host);
- const liveId=canonicalAttemptId(71);
- const drawPublication=(snapshot:WindowAcceptedSnapshot)=>{
-  const plan=snapshot.displayPlan!;const projection=projectionFromDisplayPlan(plan);
-  render(<ConversationItems items={projection.items as ConversationItem[]} sequence={projection.sequence} renderItem={item=><span>{'text' in item.source?item.source.text:item.source.nodeId??''}</span>} localRegion={{kind:'unqualified',tailRows:plan.localRegion.tailRows,ownMessageIds:plan.localRegion.ownMessageIds,renderRow:row=><span data-pending-own-message={row.operationId}>{row.text}</span>}}/>,host);
+it.each(['streaming', 'two sends', 'held'] as const)('preserves own row indices through real successive publications: %s', async scenario => {
+ const saved = (id: string, ordinal: number, attempt?: ReturnType<typeof canonicalAttemptId>): HistoryItem => ({ node_id: id,
+  kind: attempt ? 'assistant_response' : 'user', selection: {ordinal},
+  items: [{kind:'text', item_identity:id, text:id, text_complete:true}],
+  provenance: attempt ? {attempt_id:attempt, sender:{kind:'assistant'}} : {sender:{kind:'human'}} });
+ const scheduled: (() => void)[] = [];
+ const history = [saved('H', 0)];
+ const f = await fixtureConversation({nodes:history, schedule: fn => scheduled.push(fn), lang:'ja'});
+ const host = document.createElement('div'); document.body.append(host);
+ const r0 = canonicalAttemptId(71), r1 = canonicalAttemptId(72);
+ const live = (attempt_id: string, text: string) => f.t.push({t:'live', thread_id:'lead', attempt_id, gap:false, deltas:[{offset:0, reasoning:false, text}]});
+ const paint = () => render(<SavedWindowContent model={f.model} snapshot={f.model.longReader.peek()!.acceptedView.peek()}/>, host);
+ const rows = () => [...host.querySelectorAll('.conversation-items > .conversation-row')];
+ const order = () => rows().map(row => row.querySelector('.message-markdown')?.textContent?.trim());
+ const send = async (id: string, held = false) => {
+  const promise = f.model.send(id); await flush(6);
+  const call = f.t.calls('message.send').at(-1)!;
+  f.db.answered.add(call.id); f.t.ok(call.id,{message_id:id,thread_id:'lead',delivery_status:held?'held':'accepted'});
+  expect(await promise).toBe(true); await flush(8);
  };
- try{
-  const win=f.model.longReader.peek()!;
-  f.t.push({t:'live',thread_id:'lead',attempt_id:liveId,gap:false,deltas:[{offset:0,reasoning:false,text:'R is the live trailing answer'}]});await flush(10);
-  const pSent=f.model.send('P submitted');await flush(6);const pCall=f.t.calls('message.send').at(-1)!;
-  win.refreshConversationInput(win.acceptedView.peek());let publication=win.acceptedView.peek();
-  expect(publication.displayPlan?.localRegion.localRows.map(row=>row.phase)).toContain('sending');drawPublication(publication);
-  expect(host.textContent).toContain('R is the live trailing answer');expect(host.textContent).toContain('P submitted');
-  f.db.answered.add(pCall.id);f.t.ok(pCall.id,{message_id:'P',thread_id:'lead'});expect(await pSent).toBe(true);await flush(8);
-  win.refreshConversationInput(win.acceptedView.peek());publication=win.acceptedView.peek();
-  expect(publication.displayPlan?.localRegion.localRows.find(row=>row.messageId==='P')?.phase).toBe('accepted');drawPublication(publication);
-  const pendingP=host.querySelector('[data-pending-own-message]')?.closest('.conversation-row') as HTMLElement;
-  expect(pendingP).not.toBeNull();expect(pendingP.dataset.ownPresentation).toBe('');
-
-  const qSent=f.model.send('Q submitted');await flush(6);const qCall=f.t.calls('message.send').at(-1)!;f.db.answered.add(qCall.id);f.t.ok(qCall.id,{message_id:'Q',thread_id:'lead'});expect(await qSent).toBe(true);await flush(8);
-  win.refreshConversationInput(win.acceptedView.peek());publication=win.acceptedView.peek();
-  expect(publication.displayPlan?.localRegion.localRows.map(row=>row.messageId)).toEqual(['P','Q']);drawPublication(publication);
-
-  const publications:WindowAcceptedSnapshot[]=[];
-  const stop=win.acceptedView.subscribe(ref=>{if(ref.displayPlan?.localRegion.retire.length)publications.push(ref);});
-  f.db.history.lead=[saved('H',0,'Earlier message'),{node_id:'R0',kind:'assistant_response',selection:{ordinal:1},items:[{kind:'text',item_identity:'r0',text:'R is the live trailing answer',text_complete:true}],provenance:{sender:{kind:'assistant'},attempt_id:liveId}},saved('P',2,'P submitted')];f.db.historyRevisions.lead=2;
-  win.changed();await settle(f.t,f.db);await flush(16);
-  expect(publications.length).toBeGreaterThan(0);const afterP=publications.find(ref=>ref.rows.some(row=>row.node_id==='P'))!;
-  expect(afterP.displayPlan?.localRegion.retire.map(row=>row.messageId)).toEqual(['P']);
-  expect(afterP.displayPlan?.localRegion.localRows.map(row=>row.messageId)).toEqual(['Q']);
-  drawPublication(afterP);
-  const pRow=host.querySelector<HTMLElement>('[data-node="P"]')!;
-  const canonicalPKey=afterP.displayPlan!.entries.find(entry=>entry.item.source.nodeId==='P')!.item.key;
-  expect(pRow).toBeDefined();expect(pRow).toBe(pendingP);expect(pRow.dataset.itemKey).toBe(canonicalPKey);expect(pRow.dataset.key).toBe(canonicalPKey);expect(canonicalPKey).not.toBe('own:P');
-  expect(host.querySelector('[data-pending-own-message]')?.textContent).toBe('Q submitted');
-  expect(host.textContent).toContain('R is the live trailing answer');
-
-  f.db.history.lead=[saved('H',0,'Earlier message'),{node_id:'R0',kind:'assistant_response',selection:{ordinal:1},items:[{kind:'text',item_identity:'r0',text:'R is the live trailing answer',text_complete:true}],provenance:{sender:{kind:'assistant'},attempt_id:liveId}},saved('P',2,'P submitted'),saved('Q',3,'Q submitted')];f.db.historyRevisions.lead=3;
-  win.changed();await settle(f.t,f.db);await flush(16);stop();
-  const afterQ=publications.find(ref=>ref.displayPlan?.localRegion.retire.some(row=>row.messageId==='Q'))!;expect(afterQ).toBeDefined();
-  expect(afterQ.displayPlan?.localRegion.retire.map(row=>row.messageId)).toEqual(['Q']);
-  expect(afterQ.displayPlan?.localRegion.localRows).toEqual([]);
-  drawPublication(afterQ);
-  const pRowAfter=host.querySelector<HTMLElement>('[data-node="P"]')!;
-  expect(pRowAfter).toBe(pRow);
-  expect(pRowAfter.dataset.itemKey).toBe(pRow.dataset.itemKey);expect(pRowAfter.dataset.key).toBe(pRow.dataset.key);
-  expect(host.querySelector('[data-node="Q"]')).not.toBeNull();
- }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
+ const adopt = async (...savedRows: HistoryItem[]) => {
+  history.push(...savedRows); f.db.history.lead = [...history]; f.db.historyRevisions.lead!++;
+  f.model.longReader.peek()!.changed(); await settle(f.t,f.db); await flush(16); paint();
+ };
+ try {
+  if (scenario === 'streaming') { live(r0,'R0'); await flush(); expect(scheduled.length).toBeGreaterThan(0); }
+  await send('P', scenario === 'held');
+  if (scenario === 'streaming') {
+   expect(f.model.handle.peek()!.handoff.peek()).toEqual([]);
+   live(r1,'R1'); await flush(); scheduled.splice(0).forEach(publish => publish());
+  }
+  if (scenario === 'two sends') await send('Q');
+  await flush(); paint();
+  const expected = scenario === 'streaming' ? ['H','R0','P','R1'] : scenario === 'two sends' ? ['H','P','Q'] : ['H','P'];
+  expect(order()).toEqual(expected);
+  const pIndex = expected.indexOf('P');
+  if (scenario === 'held') expect(rows()[pIndex]!.textContent).toContain('送信待ち');
+  await adopt(...(scenario === 'streaming' ? [saved('R0',1,r0),saved('P',2)] : [saved('P',1)]));
+  expect(order()).toEqual(expected);
+  expect(rows()[pIndex]!.getAttribute('data-node')).toBe('P');
+  if (scenario === 'two sends') {
+   const qIndex = expected.indexOf('Q');
+   expect(rows()[qIndex]!.querySelector('[data-pending-own-message]')).not.toBeNull();
+   await adopt(saved('Q',2));
+   expect(order()).toEqual(expected);
+   expect(rows()[qIndex]!.getAttribute('data-node')).toBe('Q');
+  }
+  expect(f.model.acceptedOwnMessages.peek()).toEqual([]);
+ } finally { render(null,host);host.remove();f.model.dispose();f.data.stop(); }
 });

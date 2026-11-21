@@ -3,7 +3,8 @@ import { Handoff } from "../src/handoff";
 
 describe("accepted window live retirement", () => {
   it("keeps the ordinary live preview until explicit accepted release", () => {
-    const h = new Handoff(fn => fn());
+    let ordinal = 0;
+    const h = new Handoff(fn => fn(), () => ++ordinal);
     h.apply({ attempt_id: "live", gap: false, deltas: [{ offset: 0, reasoning: false, text: "saved body" }] });
     h.finish();
     expect(h.records.value[0]?.text).toBe("saved body");
@@ -12,7 +13,8 @@ describe("accepted window live retirement", () => {
   });
 
   it("retains long text within the bounded byte ledger", () => {
-    const h = new Handoff(fn => fn());
+    let ordinal = 0;
+    const h = new Handoff(fn => fn(), () => ++ordinal);
     const text = "x".repeat(4096);
     h.apply({ attempt_id: "long", gap: false, deltas: [{ offset: 0, reasoning: false, text }] });
     expect(h.records.value[0]?.text.length).toBeGreaterThan(0);

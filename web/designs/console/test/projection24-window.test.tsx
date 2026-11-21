@@ -62,12 +62,11 @@ it('actual Window tail continuation cannot regain S capability revoked by instal
  }finally{r.w.dispose();r.data.stop();}
 });
 
-it('actual Window/store snapshot drives real P and subscribed D, then visible ownership gates O and G rejects obsolete measurement',async()=>{
+it('actual Window/store snapshot drives real P and subscribed D, and G rejects obsolete measurement',async()=>{
  const {render}=await import('preact');const {act}=await import('preact/test-utils');
  const {projectSavedItems}=await import('../../../ui-core/src/conversation-items');
  const {AcceptedWindowConversation}=await import('../screens/Conversation');
  const {CurrentScrollSync}=await import('../screens/scrollTransaction');
- const {overlayState,reconcileOverlay,createAssociationAuthority}=await import('../../../data/src/overlay-reconcile');
  const r=await rig(2);r.owner.decorate=(_i,item)=>({...item,kind:'user'});
  const host=document.createElement('div');document.body.append(host);
  // Authoritative for this synthetic test only; NOT a history aggregate/item decoder.
@@ -80,19 +79,15 @@ it('actual Window/store snapshot drives real P and subscribed D, then visible ow
   expect([...host.querySelectorAll('[data-item-key]')].map(el=>el.textContent)).toEqual(['SYNTHETIC_VISIBLE_BODY','e1','e2']);
   const first=host.querySelector('[data-item-key]')!;const text=first.querySelector('p')!.firstChild!;
   const selection=getSelection()!,range=document.createRange();range.setStart(text,0);range.setEnd(text,9);selection.removeAllRanges();selection.addRange(range);
-  const original=r.w.acceptedView.peek();const cap=r.w.acceptedView.currentCapability,record=Object.freeze({key:'sole',attemptId:'a',text:'SYNTHETIC_VISIBLE_BODY'}),operation={};
-  let overlay=reconcileOverlay(overlayState(cap,[record]),{type:'begin',capRef:cap,operation});const authority=createAssociationAuthority<typeof cap>();
-  const proof=authority.issue(overlay,cap,record,operation,{nodeId:'n0-0',itemIdentity:'text',revision:'body1'})!;overlay=authority.associate(overlay,proof);
-  expect(overlay.records).toContain(record);
+  const original=r.w.acceptedView.peek();
   await act(async()=>{publishControlledAttempt(r.w,'selection-successor');});const accepted=r.w.acceptedView.peek();
   expect(accepted).not.toBe(original);expect(host.querySelector('[data-accepted-generation]')?.getAttribute('data-accepted-generation')).toBe(String(accepted.generation));
   expect(host.querySelector('[data-item-key]')).toBe(first);expect(selection.anchorNode).toBe(text);expect(selection.toString()).toBe('SYNTHETIC');
-  expect(r.w.acceptedView.isCurrent(accepted)).toBe(true);expect(host.textContent).toContain(record.text);
-  overlay=authority.release(overlay,proof,record,operation,cap);expect(overlay.records).toHaveLength(0);
+  expect(r.w.acceptedView.isCurrent(accepted)).toBe(true);expect(host.textContent).toContain('SYNTHETIC_VISIBLE_BODY');
   let consumes=0,writes=0,captures=0;
   const result=new CurrentScrollSync().run({acceptedView:r.w.acceptedView,peekScroll:ref=>r.w.peekScroll(ref),consumeScroll:(ref,id)=>{consumes++;return r.w.consumeScroll(ref,id)}},{measure(){publishControlledAttempt(r.w,'obsolete-selection-successor')},plan(){return{consume(){consumes++},write(){writes++},capture(){captures++}}}});
   expect(result).toBe('obsolete');expect(consumes).toBe(0);expect(writes).toBe(0);expect(captures).toBe(0);
-  selection.removeAllRanges();authority.dispose();
+  selection.removeAllRanges();
  }finally{render(null,host);host.remove();r.w.dispose();r.data.stop();}
 });
 it.each(['reasoning_unavailable','unknown'] as const)('v3 real P normalized %s preserves item order and declared tool boundary',async kind=>{

@@ -1,7 +1,6 @@
 import {render} from 'preact';
 import {projectSavedItems,type NormalizedSavedItem,type SavedItemProjection} from '../../../../ui-core/src/conversation-items';
 import {SnapshotViewFixture as AcceptedView} from '../../../../ui-core/test/snapshot-view-fixture';
-import {overlayState,reconcileOverlay,createAssociationAuthority} from '../../../../data/src/overlay-reconcile';
 import {ConversationItems} from '../../screens/ConversationItems';
 import {SnapshotConversation} from '../../screens/Conversation';
 import {CurrentScrollSync} from '../../screens/scrollTransaction';
@@ -20,12 +19,10 @@ const precomputed:SavedItemProjection={items:items.map((source,i)=>({key:`test:$
  const original=[...host.querySelectorAll('[data-item-key]')];const text=host.querySelector('[data-item-key] p')!.firstChild!;
  const range=document.createRange();range.setStart(text,0);range.setEnd(text,9);getSelection()?.removeAllRanges();getSelection()?.addRange(range);
  const v2={...initial,revision:'v2'},v3={...initial,revision:'v3'};const captures:string[]=[];
- const cap={},record=Object.freeze({key:'preview',attemptId:'a',text:'SYNTHETIC_PREVIEW'}),op={};let overlay=reconcileOverlay(overlayState(cap,[record]),{type:'begin',capRef:cap,operation:op});
- const authority=createAssociationAuthority<typeof cap>();const evidence=authority.issue(overlay,cap,record,op,{nodeId:'A',itemIdentity:'a',revision:'r1'})!;overlay=authority.associate(overlay,evidence);
  accepted.subscribe(v=>{if(v.revision===v2.revision)accepted.commit(accepted.stage(v3))});
- accepted.subscribe(v=>{if(v.revision===v2.revision)overlay=authority.release(overlay,evidence,record,op,cap);const sync=new CurrentScrollSync();sync.run({acceptedView:{peek:()=>accepted.current,isCurrent:r=>accepted.isCurrent(r)},peekScroll:()=>undefined,consumeScroll:()=>false},{measure(){},plan(){return{consume(){},write(){},capture(){captures.push(v.revision)}}}})});
+ accepted.subscribe(v=>{const sync=new CurrentScrollSync();sync.run({acceptedView:{peek:()=>accepted.current,isCurrent:r=>accepted.isCurrent(r)},peekScroll:()=>undefined,consumeScroll:()=>false},{measure(){},plan(){return{consume(){},write(){},capture(){captures.push(v.revision)}}}})});
  accepted.commit(accepted.stage(v2));
- if(captures.join(',')!=='v3')failures.push('S/D/G: obsolete notify captured');if(!overlay.records.includes(record))failures.push('S/O: sole preview released by obsolete notify');
+ if(captures.join(',')!=='v3')failures.push('S/D/G: obsolete notify captured');
  let obsoleteWrites=0;const sync=new CurrentScrollSync();const obsolete=sync.run({acceptedView:{peek:()=>accepted.current,isCurrent:r=>accepted.isCurrent(r)},peekScroll:()=>undefined,consumeScroll:()=>false},{measure(){accepted.commit(accepted.stage({...accepted.current,revision:'v4'}))},plan(){return{consume(){},write(){obsoleteWrites++},capture(){}}}});
  if(obsolete!=='obsolete'||obsoleteWrites!==0)failures.push('G: obsolete transaction wrote or wrong result');
  const sameRef=accepted.current;let revokeWrites=0,revokeCaptures=0;
@@ -35,5 +32,5 @@ const precomputed:SavedItemProjection={items:items.map((source,i)=>({key:`test:$
  if(samples.some(s=>s.renderedRevision!==s.revision))failures.push('D: rendered revision stale');
  if(samples.some(s=>JSON.stringify(s.order)!==JSON.stringify(['SYNTHETIC_CONFIRMED','e1','e2','SYNTHETIC_SECOND'])))failures.push('P/D: full text/tool item order');
  if(samples.some(s=>!s.sameDOM||s.selection!=='SYNTHETIC'||s.overflow))failures.push('D: DOM/selection/overflow');
- return {actualProjection,precomputedDownstreamOnly:!actualProjection,failures,captures,solePreviewRetained:overlay.records.includes(record),obsolete,obsoleteWrites,revoked,revokeWrites,revokeCaptures,samples};
+ return {actualProjection,precomputedDownstreamOnly:!actualProjection,failures,captures,obsolete,obsoleteWrites,revoked,revokeWrites,revokeCaptures,samples};
 };

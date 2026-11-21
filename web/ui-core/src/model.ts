@@ -322,21 +322,7 @@ export class AppModel {
   bodyState(nodeId: string, itemIdentity?: string): BodyState | undefined { return this.bodies.value.get(this.bodyCacheKey(nodeId, itemIdentity)); }
   readonly selectedStepId: Signal<string | undefined> = signal(undefined);
   readonly selectedStep: ReadonlySignal<StepRow | undefined>;
-  private readonly clientOrdinals = new Map<string, number>();
-  private readonly reconciledOwnMessageIds = new Map<string, Set<string>>();
-  private readonly liveAttemptOrdinals = new Map<string, Map<string, number>>();
-  private nextClientOrdinal(threadId: string): number {
-    const next = (this.clientOrdinals.get(threadId) ?? 0) + 1;
-    this.clientOrdinals.set(threadId, next);
-    return next;
-  }
-  private liveOrdinal(threadId: string, attemptId: string): number {
-    let ordinals = this.liveAttemptOrdinals.get(threadId);
-    if (!ordinals) { ordinals = new Map(); this.liveAttemptOrdinals.set(threadId, ordinals); }
-    let ordinal = ordinals.get(attemptId);
-    if (ordinal === undefined) { ordinal = this.nextClientOrdinal(threadId); ordinals.set(attemptId, ordinal); }
-    return ordinal;
-  }
+  private nextTailOrdinal = () => 0;
   readonly pendingOwnMessage: Signal<PendingOwnMessage | undefined> = signal(undefined);
   readonly acceptedOwnMessages: Signal<readonly PendingOwnMessage[]> = signal([]);
   readonly ownSendCapacityReason: Signal<boolean> = signal(false);
@@ -397,15 +383,6 @@ export class AppModel {
     this.disposers.push(effect(() => {
       const owner = this.data.owner.value;
       this.branches.ownerChanged(owner.state === "connected" ? owner.info.instance_id ?? undefined : undefined);
-    }));
-    this.disposers.push(effect(() => {
-      const handle = this.handle.value;
-      const records = handle?.handoff.value ?? [];
-      if (!handle) return;
-      const active = new Set(records.map(record => record.attemptId));
-      for (const attemptId of active) this.liveOrdinal(handle.threadId, attemptId);
-      const ordinals = this.liveAttemptOrdinals.get(handle.threadId);
-      if (ordinals) for (const attemptId of ordinals.keys()) if (!active.has(attemptId)) ordinals.delete(attemptId);
     }));
     this.branchCompare = new BranchCompare(this.ops, this.nowMs);
     this.disposers.push(effect(() => {
@@ -758,13 +735,7 @@ export class AppModel {
     const current = () => this.handle.peek() === handle
       && handle.liveEpoch() === lifetime && reader.acceptedView.currentCapability === capability;
     const records = handle.handoff.value;
-    const attempts = this.liveAttemptOrdinals.get(handle.threadId);
-    const ordinals = new Map(records.flatMap(record => {
-      const ordinal = attempts?.get(record.attemptId);
-      return ordinal === undefined ? [] : [[record.attemptId, ordinal] as const];
-    }));
-    const input = captureConversationInput(snapshot, { scope, threadId: handle.threadId,
-      records, liveOrdinals: ordinals, work: capturedWork, current });
+    const input = captureConversationInput(snapshot, { scope, threadId: handle.threadId, records, work: capturedWork, current });
     const accepted = this.acceptedOwnMessages.value;
     const pending = this.pendingOwnMessage.value;
     const retryCurrent = this.pendingOwnRetryCurrent;
@@ -772,15 +743,8 @@ export class AppModel {
     const cohortAccepted = eligible ? accepted.filter(row => row.scope === scope && row.threadId === handle.threadId) : [];
     const cohortPending = eligible && pending?.scope === scope && pending.threadId === handle.threadId ? pending : undefined;
     const localRows = [...cohortAccepted, ...(cohortPending ? [cohortPending] : [])];
-    const reconciledOwnIds = this.reconciledOwnMessageIds.get(handle.threadId);
-    if (reconciledOwnIds) {
-      const savedUserIds = new Set(snapshot.rows.flatMap(row => row.kind === "user" ? [row.node_id] : []));
-      for (const id of reconciledOwnIds) if (!savedUserIds.has(id)) reconciledOwnIds.delete(id);
-      if (!reconciledOwnIds.size) this.reconciledOwnMessageIds.delete(handle.threadId);
-    }
-    const decision = ownSendPresentation<unknown>({ ref: snapshot, current: current(), scope, projection: input.projection,
-      localRows, canonicalRows: snapshot.rows, liveOrdinals: input.liveOrdinals,
-      reconciledOwnMessageIds: this.reconciledOwnMessageIds.get(handle.threadId) });
+    const decision = ownSendPresentation({ current: current(), scope, projection: input.projection,
+      localRows, canonicalRows: snapshot.rows, records });
     return { ...input, identity: createConversationIdentity(input.identity, { accepted: accepted as object, pending: pending as object | undefined,
       retryCurrent: retryCurrent as (() => boolean) | undefined, eligible }),
       projection: current() ? decision.projection : input.projection,
@@ -881,7 +845,9 @@ export class AppModel {
     this.toolStepChoices.value = new Map();
     this.uncertainCancels.value = new Set();
     this.actionError.value = undefined;
-    this.handle.value = this.data.openThread(id);
+    let ordinal = 0;
+    this.nextTailOrdinal = () => ++ordinal;
+    this.handle.value = this.data.openThread(id, this.nextTailOrdinal);
   }
 
   // ---- reads on demand ----
@@ -1113,9 +1079,6 @@ export class AppModel {
       && a.threadId === b.threadId && a.scope === b.scope && a.messageId === b.messageId
       && a.phase === b.phase && a.plainMessageSend === b.plainMessageSend;
     if (rows.length !== region.cohort.length || rows.some((row, index) => !sameRow(row, region.cohort[index]!)) || !current()) return;
-    const ids = this.reconciledOwnMessageIds.get(handle.threadId) ?? new Set<string>();
-    for (const row of region.retire) if (row.messageId) ids.add(row.messageId);
-    this.reconciledOwnMessageIds.set(handle.threadId, ids);
     const retiring = new Set(region.retire.map(row => row.operationId));
     const previous = this.acceptedOwnMessages.peek(), kept = previous.filter(row => !retiring.has(row.operationId));
     if (kept.length !== previous.length) batch(() => { this.acceptedOwnMessages.value = kept; this.ownSendCapacityReason.value = false; });
@@ -1143,7 +1106,7 @@ export class AppModel {
     };
     this.pendingOwnCurrent = current;
     this.pendingOwnRetryCurrent = retryCurrent;
-    this.pendingOwnMessage.value = {threadId,scope,operationId,text,phase:"sending",plainMessageSend:true,clientOrdinal:old?.clientOrdinal ?? this.nextClientOrdinal(threadId)};
+    this.pendingOwnMessage.value = {threadId,scope,operationId,text,phase:"sending",plainMessageSend:true,clientOrdinal:old?.clientOrdinal ?? this.nextTailOrdinal()};
     this.sendState.value = { kind: "sending" };
     const originalPlainOperation=this.pendingOwnMessage.peek();
     if(current()&&originalPlainOperation?.operationId===operationId){

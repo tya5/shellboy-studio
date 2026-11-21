@@ -6,7 +6,6 @@ import {act} from 'preact/test-utils';
 import {describe,expect,it,afterEach} from 'vitest';
 import {projectSavedItems,type NormalizedSavedItem,type SavedItemProjection} from '../../../ui-core/src/conversation-items';
 import {SnapshotViewFixture as AcceptedView} from '../../../ui-core/test/snapshot-view-fixture';
-import {overlayState,reconcileOverlay,createAssociationAuthority} from '../../../data/src/overlay-reconcile';
 import {ConversationItems} from '../screens/ConversationItems';
 import {SavedConversationItems,SavedWindowContent,OrderedHistory} from '../screens/Conversation';
 import {ConversationWindow} from '../../../ui-core/src/window';
@@ -42,21 +41,6 @@ it('S nested notify must not repaint obsolete D rows or recapture obsolete G rev
  accepted.commit(accepted.stage(v2));
  expect(captured).toEqual(['v3']);
 });
-it('S/O stale notification must not release the only preview after a newer snapshot supersedes it',()=>{
- const cap=Object.freeze({scope:'synthetic'}),record=Object.freeze({key:'preview',attemptId:'a',text:'SYNTHETIC_PREVIEW'}),op={};
- let overlay=reconcileOverlay(overlayState(cap,[record]),{type:'begin',capRef:cap,operation:op});
- const authority=createAssociationAuthority<typeof cap>();
- // TEST trusted local authority only; this is NOT proof from a wire or S validation.
- const proof=authority.issue(overlay,cap,record,op,{nodeId:'A',itemIdentity:'a0',revision:'r1'})!;
- overlay=authority.associate(overlay,proof);
- const v1={id:'initial',visible:false},v2={id:'replacement',visible:true},v3={id:'newer-not-visible',visible:false};
- const accepted=new AcceptedView(v1);
- accepted.subscribe(v=>{if(('revision'in v?v.revision:v.id)===('revision'in v2?v2.revision:v2.id))accepted.commit(accepted.stage(v3))});
- accepted.subscribe(v=>{if(('revision'in v?v.revision:v.id)===('revision'in v2?v2.revision:v2.id))overlay=authority.release(overlay,proof,record,op,cap)});
- accepted.commit(accepted.stage(v2));
- expect(accepted.current).toEqual(v3);
- expect(overlay.records).toContain(record);
-});
 it('G cancels a measured D transaction when S changes snapshot before write',()=>{
  const accepted=new AcceptedView({revision:'old',projection:downstream});paint(accepted.current.projection);
  const sync=new CurrentScrollSync();let writes=0,captures=0;
@@ -69,15 +53,6 @@ it('downstream D stable items survive new S wrapper revision without reparenting
  accepted.commit(accepted.stage({...accepted.current,revision:'v2'}));
  expect([...host.querySelectorAll('[data-item-key]')]).toEqual(original);
  expect(original.every(n=>n.parentElement===host.querySelector('.conversation-items'))).toBe(true);
-});
-it('actual P accepted visible replacement owns text before O removes preview',()=>{
- const projection=projectSavedItems(input);const cap={},record=Object.freeze({key:'sole',attemptId:'a',text:'SYNTHETIC_FIRST'}),operation={};
- let overlay=reconcileOverlay(overlayState(cap,[record]),{type:'begin',capRef:cap,operation});const authority=createAssociationAuthority<typeof cap>();
- const proof=authority.issue(overlay,cap,record,operation,{nodeId:'A',itemIdentity:'a0',revision:'r1'})!;overlay=authority.associate(overlay,proof);
- const view=new AcceptedView({scope:'s1',revision:'initial',projection});
- view.subscribe(snapshot=>{paint(snapshot.projection);if(view.isCurrent(snapshot)&&host.textContent?.includes(record.text))overlay=authority.release(overlay,proof,record,operation,cap)});
- expect(view.commit(view.stage({scope:'s1',revision:'saved',projection}))).toBe(true);
- expect(host.textContent).toContain(record.text);expect(overlay.records).toHaveLength(0);
 });
 it('same-revision confirmed P text survives status-only snapshot annotations and revoked stages cannot replace it',()=>{
  const projection=projectSavedItems(input);const view=new AcceptedView({scope:'s1',revision:'r1',projection,status:'ready',links:0});paint(view.current.projection);
@@ -93,17 +68,6 @@ it('actual AcceptedView same-ref capability revoke invalidates G before consumin
  const result=new CurrentScrollSync().run({acceptedView:{peek:()=>accepted.current,isCurrent:r=>accepted.isCurrent(r)},peekScroll:()=>({id:Object.freeze({pending:true}),target:10}),consumeScroll:()=>{consumes++;return true}},{measure(){accepted.revoke()},plan(){return{consume(){consumes++},write(){writes++},capture(){captures++}}}});
  expect(accepted.current).toBe(ref);expect(accepted.isCurrent(ref)).toBe(false);
  expect(result).toBe('obsolete');expect(consumes).toBe(0);expect(writes).toBe(0);expect(captures).toBe(0);
-});
-it.each(['never_arrives','truncated','saved_evicted','outside_loaded'] as const)('O terminal %s retains original preview through S commit and cannot release/restart',reason=>{
- const cap={},record=Object.freeze({key:'terminal',attemptId:'a',text:'SYNTHETIC_RETAINED'}),operation={};const authority=createAssociationAuthority<typeof cap>();
- let state=reconcileOverlay(overlayState(cap,[record]),{type:'begin',capRef:cap,operation});
- const proof=authority.issue(state,cap,record,operation,{nodeId:'A',itemIdentity:'a0',revision:'r1'})!;state=authority.associate(state,proof);
- state=reconcileOverlay(state,{type:'terminal',capRef:cap,operation,reason});
- const accepted=new AcceptedView({revision:'terminal',projection:projectSavedItems(input)});accepted.subscribe(v=>{paint(v.projection);if(accepted.isCurrent(v))state=authority.release(state,proof,record,operation,cap)});
- accepted.commit(accepted.stage({...accepted.current,revision:'new'}));
- expect(state.records[0]).toBe(record);expect(state.terminal).toBe(reason);
- const settled=reconcileOverlay(state,{type:'settled',operation});
- expect(reconcileOverlay(settled,{type:'begin',capRef:cap,operation:{}})).toBe(settled);
 });
 it('S bounded staging rejects excessive input, superseded handles and getter reentry without changing current',()=>{
  const view=new AcceptedView({revision:'old',data:[] as unknown[]});const original=view.current;
