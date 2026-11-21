@@ -144,6 +144,21 @@ const decodeTagResult: Decoder<TagResult> = (v) =>
 const decodeRecord: Decoder<Record<string, unknown>> = (v) =>
   isObject(v) ? { ok: true, value: v } : { ok: false, reason: "expected an object result" };
 
+const decodeMemoryStatus: Decoder<Record<string, unknown>> = value => {
+  if (!isObject(value) || !isObject(value.caches) || !isObject(value.process) || !isObject(value.process.metrics))
+    return { ok: false, reason: "status --memory result lacks caches or process metrics" };
+  if (Object.values(value.caches).some(cache => !isObject(cache)))
+    return { ok: false, reason: "status --memory cache entry is not an object" };
+  return { ok: true, value };
+};
+
+export type MemoryReadIssue = "unsupported" | "invalid_response" | "disconnected";
+export function memoryReadIssue(error: import("./errors").OpError): MemoryReadIssue {
+  if (error.kind === "not_connected" || error.kind === "connection_lost") return "disconnected";
+  if (error.kind === "owner" && ["operation_not_found", "unsupported", "unsupported_operation"].includes(error.code)) return "unsupported";
+  return "invalid_response";
+}
+
 const decodeModelList: Decoder<ModelListResult> = (v) =>
   isObject(v) && typeof v.connection === "string" && Array.isArray(v.models) && v.models.every((m) => typeof m === "string" && m.length > 0 && !/[\s\x00-\x1f\x7f]/.test(m))
     ? { ok: true, value: v as unknown as ModelListResult }
@@ -284,9 +299,12 @@ export class Operations {
   indexStatus(read?: ReadOptions): Promise<Outcome<Record<string, unknown>>> {
     return this.run("index.status", {}, outcomeDecoder(decodeRecord), undefined, read);
   }
-  /** `status --memory`: owner cache accounting and process memory, taken on request. */
-  memoryStatus(read?: ReadOptions): Promise<Outcome<Record<string, unknown>>> {
-    return this.run("status", { memory: true }, outcomeDecoder(decodeRecord), undefined, read);
+  /** `status --memory`: request-scoped cache/process facts; no separate capability is advertised. */
+  async memoryStatus(read?: ReadOptions): Promise<Outcome<Record<string, unknown>>> {
+    const out = await this.run("status", { memory: true }, outcomeDecoder(decodeMemoryStatus), undefined, read);
+    if (out.ok || out.error.kind === "cancelled") return out;
+    const issue = memoryReadIssue(out.error);
+    return { ok: false, error: { kind: "resource_read", issue, message: issue } };
   }
   /** Activity status, for `receipt_budget`. One row is enough; the rows are not used. */
   handoffAttempts(threadId: string, read?: ReadOptions): Promise<Outcome<Page<WorkItem>>> {

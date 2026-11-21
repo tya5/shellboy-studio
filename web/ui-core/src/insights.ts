@@ -185,7 +185,7 @@ const readBridgeMemory = (v: Record<string, unknown>): BridgeMemory => ({
   reason: typeof v.unavailable_reason === "string" ? v.unavailable_reason : undefined,
 });
 
-const lostConnection = (e: OpError | undefined): boolean => e?.kind === "not_connected" || e?.kind === "connection_lost";
+const lostConnection = (e: OpError | undefined): boolean => e?.kind === "not_connected" || e?.kind === "connection_lost" || (e?.kind === "resource_read" && e.issue === "disconnected");
 
 export interface InsightsOptions {
   nowMs: () => number;

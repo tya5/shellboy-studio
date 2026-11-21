@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { Link } from "../src/link";
-import { Operations, type ArchiveResult } from "../src/operations";
+import { memoryReadIssue, Operations, type ArchiveResult } from "../src/operations";
 import { details, FakeTransport, flush, summary } from "./harness";
 
 function setup() {
@@ -284,6 +284,27 @@ describe("Reads for Analytics and Settings", () => {
     ]);
     expect(t.calls().every((c) => c.operation_id === undefined)).toBe(true);
   });
+  it("memory status classifies unsupported and malformed responses at the data boundary", async () => {
+    const unsupported = setup();
+    const first = unsupported.ops.memoryStatus();
+    const call = unsupported.t.calls("status")[0]!;
+    expect(call.args).toEqual({ memory: true });
+    unsupported.t.ownerError(call.id, "operation_not_found", "synthetic unsupported operation");
+    expect(await first).toEqual({ ok: false, error: { kind: "resource_read", issue: "unsupported", message: "unsupported" } });
+
+    const malformed = setup();
+    const second = malformed.ops.memoryStatus();
+    malformed.t.ok(malformed.t.calls("status")[0]!.id, {});
+    expect(await second).toEqual({ ok: false, error: { kind: "resource_read", issue: "invalid_response", message: "invalid_response" } });
+  });
+
+  it("classifies request-level connection loss separately from owner unsupported errors", () => {
+    expect(memoryReadIssue({ kind: "connection_lost", message: "synthetic" })).toBe("disconnected");
+    expect(memoryReadIssue({ kind: "not_connected", message: "synthetic" })).toBe("disconnected");
+    expect(memoryReadIssue({ kind: "invalid_response", message: "synthetic" })).toBe("invalid_response");
+    expect(memoryReadIssue({ kind: "owner", code: "operation_not_found", message: "synthetic" })).toBe("unsupported");
+  });
+
   it("model.list needs a connection and a model array", async () => {
     const { t, ops } = setup();
     const p = ops.modelList();

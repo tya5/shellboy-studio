@@ -95,6 +95,7 @@ export function MemoryPane({ model }: { model: AppModel }) {
   const memory = i.memory.value;
   const bridge = i.bridge.value;
   const missing = t("common.notReported");
+  const readIssue = memory.error?.kind === "resource_read" ? memory.error.issue : undefined;
   return (
     <>
       <Head t={t} title={t("ana.section.memory")} sub={t("ana.sub.memory")} loading={memory.loading || bridge.loading} onRefresh={() => { i.refreshRead("memory"); i.refreshRead("bridge"); }} />
@@ -103,7 +104,7 @@ export function MemoryPane({ model }: { model: AppModel }) {
         sub={memory.value?.observedAt ? t("res.memorySub", { at: formatClock(memory.value.observedAt, true) ?? "" }) : undefined}
         source={<>{t("common.source", { source: "" })}<code>status --memory</code></>}
       >
-        {memory.error ? <Notice tone="bad">{t("common.readError", { message: memory.error.message })}</Notice> : null}
+        {memory.error && memory.error.kind !== "resource_read" ? <Notice tone="bad">{t("common.readError", { message: memory.error.message })}</Notice> : null}
         {memory.value ? (
           <div class="stats">
             {memory.value.metrics.map((m) => (
@@ -113,22 +114,22 @@ export function MemoryPane({ model }: { model: AppModel }) {
         ) : null}
       </Section>
       <Section title={t("res.bridge")} sub={t("res.bridgeSub")} source={<>{t("common.source", { source: "" })}<code>bridge.memory</code></>}>
-        {bridge.error ? <Notice tone="bad">{t("common.readError", { message: bridge.error.message })}</Notice> : null}
-        {bridge.value ? (
-          <div class="stats">
-            <Stat label={t("res.bridgeRss")} value={bridge.value.rssBytes !== undefined ? formatBytes(bridge.value.rssBytes) : missing} note={bridge.value.reason} />
-          </div>
-        ) : null}
+        <div data-bridge-memory="">
+          {bridge.error ? <Notice tone="bad">{t("common.readError", { message: bridge.error.message })}</Notice> : null}
+          {bridge.value ? (
+            <div class="stats">
+              <Stat label={t("res.bridgeRss")} value={bridge.value.rssBytes !== undefined ? formatBytes(bridge.value.rssBytes) : missing} note={bridge.value.reason} />
+            </div>
+          ) : null}
+        </div>
       </Section>
-      {memory.value ? (
-        <Section title={t("res.caches")} source={<>{t("common.source", { source: "" })}<code>status --memory</code></>}>
-          <div class="meters">
-            {memory.value.caches.map((c) => (
-              <CacheMeter key={c.name} t={t} c={c} />
-            ))}
-          </div>
-        </Section>
-      ) : null}
+      <Section title={t("res.caches")} source={<>{t("common.source", { source: "" })}<code>status --memory</code></>}>
+        <div class="meters" data-memory-cache-cards="">
+          {memory.value ? memory.value.caches.map((c) => <CacheMeter key={c.name} t={t} c={c} />) : readIssue ? (
+            <Meter prose label={t("res.caches")} value={undefined} limit={undefined} text={t(`res.memory.${readIssue}` as "res.memory.unsupported")} aria={t("res.caches")} />
+          ) : null}
+        </div>
+      </Section>
     </>
   );
 }
