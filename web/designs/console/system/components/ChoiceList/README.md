@@ -1,1 +1,9 @@
-One option chosen from a list, as radio rows with an optional one-line note: a service, a model. Give it a `label` for the group, the `choices` and the chosen `value`. Rows are at least touch height on phone width, and the list scrolls inside a bounded height, so a long list (a model catalog) doesn't push the page. Use ButtonGroup for two to four short options with no notes.
+# ChoiceList
+
+A short radio group for choosing one service or model. The visible group label is its
+accessible label; the native radio `name` is generated independently for each
+instance, so same-labeled groups in one form do not share selection. Use ButtonGroup
+for two to four short options without notes.
+
+The group follows native radio semantics: options with the same `name` form one
+selection set, so never use the display label as that value.
