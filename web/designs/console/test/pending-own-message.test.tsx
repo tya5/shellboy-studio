@@ -536,7 +536,7 @@ it("mounted click joins the held old cursor read", async () => {
 
 
 
-it.each(['streaming', 'two sends', 'held', 'partial cut'] as const)('preserves own row indices through real successive publications: %s', async scenario => {
+async function witnessOwnSendPublication(scenario: 'streaming' | 'two sends' | 'held' | 'partial cut') {
  const saved = (id: string, ordinal: number, attempt?: ReturnType<typeof canonicalAttemptId>): HistoryItem => ({ node_id: id,
   kind: attempt ? 'assistant_response' : 'user', selection: {ordinal},
   items: [{kind:'text', item_identity:id, text:id, text_complete:true}],
@@ -582,9 +582,9 @@ it.each(['streaming', 'two sends', 'held', 'partial cut'] as const)('preserves o
   const pRow = rows()[pIndex];
   if (scenario === 'partial cut') {
    await adopt(saved('P',1));
-   expect(order()).toEqual(['H','P','R1']);
+   expect(order()).toEqual(['H','P','R0','R1']);
    expect(rows()[1]).toBe(pRow);
-   expect(f.model.handle.peek()!.handoff.peek().map(record => record.attemptId)).toEqual([r1]);
+   expect(f.model.handle.peek()!.handoff.peek().map(record => record.attemptId)).toEqual([r0,r1]);
    return;
   }
   if (scenario === 'held') expect(rows()[pIndex]!.textContent).toContain('送信待ち');
@@ -603,4 +603,7 @@ it.each(['streaming', 'two sends', 'held', 'partial cut'] as const)('preserves o
   }
   expect(f.model.acceptedOwnMessages.peek()).toEqual([]);
  } finally { render(null,host);host.remove();f.model.dispose();f.data.stop(); }
-});
+}
+
+it.each(['streaming', 'two sends', 'held'] as const)('preserves own row indices through real successive publications: %s', witnessOwnSendPublication);
+it('Studio #61 unresolved witness: an accepted cut without matching attempt provenance keeps the old live row', () => witnessOwnSendPublication('partial cut'));

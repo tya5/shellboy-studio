@@ -458,9 +458,8 @@ export class ConversationWindow {
       published = this.acceptedView.publish(publication, snapshot => {
         const savedAttempts = new Set<string>(snapshot.rows.flatMap(row => row.kind === "assistant_response" && row.provenance?.attempt_id ? [row.provenance.attempt_id] : []));
         afterCommit();
-        const boundary = snapshot.displayPlan!.localRegion.liveRetirementBoundary;
         for (const record of binding.handle.handoff.peek()) {
-          if (savedAttempts.has(record.attemptId) || record.clientOrdinal < boundary) binding.handle.releaseAcceptedHandoff(record.attemptId);
+          if (savedAttempts.has(record.attemptId)) binding.handle.releaseAcceptedHandoff(record.attemptId);
         }
       });
       const ref = this.acceptedView.peek();
