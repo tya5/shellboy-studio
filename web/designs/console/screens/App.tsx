@@ -50,8 +50,9 @@ export function App({ context }: { context: DesignContext }) {
     shell.current?.style.setProperty("--size-sidebar", `${sidebarWidth}px`);
   }, [sidebarWidth]);
   useEffect(() => {
-    addEventListener("resize", finishResize);
-    return () => { removeEventListener("resize", finishResize); finishResize(); };
+    const cancel = () => finishResize();
+    addEventListener("resize", cancel);
+    return () => { removeEventListener("resize", cancel); cancel(); };
   }, []);
   useEffect(() => { if (context.prefs.value.navCollapsed) finishResize(); }, [context.prefs.value.navCollapsed]);
 
