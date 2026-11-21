@@ -7,13 +7,13 @@ export type MenuEntry = MenuItem | { key: string; separator: true };
 
 function isSeparator(entry: MenuEntry): entry is { key: string; separator: true } { return "separator" in entry; }
 
-export function Menu({ open, anchor, entries, onClose }: { open: boolean; anchor: HTMLElement | null; entries: MenuEntry[]; onClose: () => void; children?: ComponentChildren }) {
+export function Menu({ open, anchor, returnFocusTo, entries, onClose }: { open: boolean; anchor: HTMLElement | null; returnFocusTo?: HTMLElement | null; entries: MenuEntry[]; onClose: () => void; children?: ComponentChildren }) {
   const menu = useRef<HTMLDivElement>(null);
   useEffect(() => { if (open) queueMicrotask(() => menu.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus()); }, [open]);
   const items = () => [...(menu.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? [])];
   const move = (delta: number) => { const list = items(); const index = list.indexOf(document.activeElement as HTMLElement); list[(index + delta + list.length) % list.length]?.focus(); };
   const available = entries.filter((entry) => isSeparator(entry) || !entry.disabled);
-  return <Popover open={open} anchor={anchor} onClose={onClose} className="menu-popover">
+  return <Popover open={open} anchor={anchor} returnFocusTo={returnFocusTo} onClose={onClose} className="menu-popover">
     <div ref={menu} role="menu" onKeyDown={(event) => {
       if (event.key === "ArrowDown") { event.preventDefault(); move(1); }
       else if (event.key === "ArrowUp") { event.preventDefault(); move(-1); }

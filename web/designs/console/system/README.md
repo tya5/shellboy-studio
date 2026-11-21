@@ -9,7 +9,7 @@ An engineer's console: dark navy surfaces, one accent, and monospace wherever th
 
 ## Visual foundations
 
-- Set surfaces with `bg`, `panel`, `raised` and `inset`. Separate regions with `line`; the anchored row menu alone uses `shadow-menu` for light elevation.
+- Set surfaces with `bg`, `panel`, `raised` and `inset`. Separate regions with `line`; the anchored row menu alone uses `shadow-popover` for light elevation.
 - Use `accent` for the running state, links, the current view and the focus ring only. A screen stays mostly neutral.
 - Chart marks use `chart-1` (uncached input), `chart-2` (cached input) and `chart-3` (output), or `muted` for one series with no such identity. These are fills and lines, never text. Each theme's three hues pass the colour-blind and contrast checks together on `panel`.
 - Text is `fg` or `muted`. On filled colours use `on-accent` and `on-wait`.
@@ -55,7 +55,7 @@ A design system is one folder under `web/designs/<name>/`. Data and screen logic
 
 This folder is the system; `../screens` builds on it. A screen uses only these tokens and components. If a screen needs something missing, add it here first, with a usage note in `components/<Name>/README.md`.
 
-- `tokens.json` is the one source of token values. `npm run tokens` writes `tokens/console.css`, `tokens/light.css` and `tokens/terminal.css`; a test fails if they drift. Elevation contains only `shadow-menu` for the anchored menu; other regions are lifted by surface tokens and separated by `line`.
+- `tokens.json` is the one source of token values. `npm run tokens` writes `tokens/console.css`, `tokens/light.css` and `tokens/terminal.css`; a test fails if they drift. Elevation contains only `shadow-popover` for the anchored menu; other regions are lifted by surface tokens and separated by `line`.
 - `components.css` holds the component styles, `layout.css` the application frame. Neither contains a literal colour.
 - `components/<Name>/` holds each component and its usage note.
 - The root attribute is `data-ds`, as `docs/design/design-system.md` specifies; the reference previews use `data-theme`.

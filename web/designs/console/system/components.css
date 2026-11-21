@@ -188,7 +188,7 @@ a{color:var(--accent)}
 .md pre code{padding:0;background:none}
 .md blockquote{padding-left:var(--space-12);border-left:2px solid var(--line-strong);color:var(--muted)}
 .md table{display:block;overflow-x:auto;border-collapse:collapse;font:var(--type-label)}
-.md th,.md td{padding:var(--space-6) var(--space-8);border:1px solid var(--line);text-align:left}
+.md th,.md td{padding:var(--space-4) var(--space-8);border:1px solid var(--line);text-align:left}
 .md .code{position:relative;margin:var(--space-8) 0;border:1px solid var(--line);border-radius:var(--radius-s);background:var(--inset)}
 .md .code pre{margin:0;padding:var(--space-8) var(--space-12);padding-right:72px;overflow-x:auto;font:var(--type-log)}
 .md .code .btn{position:absolute;top:var(--space-4);right:var(--space-4);background:var(--panel)}
@@ -268,7 +268,7 @@ a{color:var(--accent)}
 /* DataTable */
 .tbl-wrap{overflow-x:auto;min-width:0}
 .tbl{width:100%;border-collapse:collapse;font:var(--type-label)}
-.tbl th{padding:var(--space-6) var(--space-8);border-bottom:1px solid var(--line-strong);color:var(--muted);font:var(--type-caption);text-align:left;white-space:nowrap}
+.tbl th{padding:var(--space-4) var(--space-8);border-bottom:1px solid var(--line-strong);color:var(--muted);font:var(--type-caption);text-align:left;white-space:nowrap}
 .tbl td{padding:var(--space-8);border-bottom:1px solid var(--line);vertical-align:top}
 .tbl tr:last-child td{border-bottom:0}
 .tbl .cell{min-width:0;overflow-wrap:anywhere}
@@ -364,7 +364,7 @@ a{color:var(--accent)}
 .tcheck-gap{flex:none;width:8px}
 .tcheck{display:inline-grid;place-items:center;flex:none;width:32px;height:32px;cursor:pointer}
 .tcheck input{width:15px;height:15px;margin:0;accent-color:var(--accent);cursor:pointer}
-.srow{content-visibility:auto;contain-intrinsic-size:auto 40px;display:flex;align-items:center;gap:var(--space-8);padding-right:var(--space-12);min-height:40px;border-bottom:1px solid var(--line);font:var(--type-label);min-width:0}
+.srow{content-visibility:auto;contain-intrinsic-size:auto var(--size-control);display:flex;align-items:center;gap:var(--space-8);padding-right:var(--space-12);min-height:var(--size-control);border-bottom:1px solid var(--line);font:var(--type-label);min-width:0}
 .srow:last-child{border-bottom:0}
 .srow:hover{background:var(--hover)}
 .srow.on{background:var(--accent-bg)}
@@ -435,7 +435,7 @@ a{color:var(--accent)}
   .apptab-add{width:var(--size-touch);height:var(--size-touch)}
   .apptab-close{width:var(--size-touch);height:var(--size-touch);margin-right:0}
   .tcheck{width:var(--size-touch);height:var(--size-touch)}
-  .srow{min-height:var(--size-touch)}
+  .srow{min-height:var(--size-touch);contain-intrinsic-size:auto var(--size-touch)}
   .srow-act{min-height:var(--size-touch)}
   .bmark{min-height:var(--size-touch)}
   .msg-acts .quiet{opacity:1;display:inline-flex;align-items:center;min-height:var(--size-touch)}
@@ -472,7 +472,7 @@ a{color:var(--accent)}
 .output-file { color: var(--fg); font-weight: 600; }
 /* Monitor panes share edges and keep the newest activity at the bottom. */
 .monitor-tile{display:flex;flex-direction:column;min-width:0;min-height:0;background:var(--bg);color:var(--fg);font:var(--type-code);overflow:hidden}
-.tile-header{display:flex;align-items:center;gap:var(--space-8);min-width:0;padding:var(--space-6) var(--space-8);background:var(--raised);border-bottom:1px solid var(--line)}
+.tile-header{display:flex;align-items:center;gap:var(--space-8);min-width:0;padding:var(--space-4) var(--space-8);background:var(--raised);border-bottom:1px solid var(--line)}
 .tile-header>a{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--fg);text-decoration:none;font-weight:600}
 .tile-header .btn{flex:none}
 .tile-main{display:flex;flex:1;min-height:0;min-width:0;flex-direction:column;color:inherit;text-decoration:none;overflow:hidden}
@@ -481,7 +481,7 @@ a{color:var(--accent)}
 .tile-lines{display:flex;flex-direction:column;justify-content:flex-end;min-width:0;width:100%}
 .tile-lines p{flex:none;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .tile-lines strong{color:var(--fg)}
-.tile-status{display:flex;align-items:center;gap:var(--space-8);min-height:var(--size-control);padding:var(--space-6) var(--space-8);border-top:1px solid var(--line);background:var(--panel);white-space:nowrap;overflow:hidden}
+.tile-status{display:flex;align-items:center;gap:var(--space-8);min-height:var(--size-control);padding:var(--space-4) var(--space-8);border-top:1px solid var(--line);background:var(--panel);white-space:nowrap;overflow:hidden}
 .tile-status .tile-detail{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
 .app-request>label{display:flex;flex-direction:column;gap:var(--space-4);margin-bottom:var(--space-8)}
@@ -518,21 +518,19 @@ a{color:var(--accent)}
 .work-inner-line>.work-inner-content{min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 
 .tree-item .tree-link{display:flex;align-items:center;flex:1;min-width:0;gap:var(--space-8);color:inherit;text-decoration:none}
-.tree-item .tree-action{display:none;flex:none;margin-left:auto}
-.srow-menu{display:none;flex:none;margin-left:auto}
-.tree-item.current .tree-action,.tree-item.menu-open .tree-action,.srow.on .srow-menu,.srow.menu-open .srow-menu{display:flex}
+.tree-item .tree-action,.srow-menu{display:flex;flex:none;margin-left:auto;width:var(--size-row-action);visibility:hidden}
+.tree-item.current .tree-action,.tree-item.menu-open .tree-action,.srow.on .srow-menu,.srow.menu-open .srow-menu{visibility:visible}
+.tree-item:has(.tree-action) .tree-link .name,.srow:has(.srow-menu) .srow-title a{display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .srow-title{min-width:0}
 @media (hover: hover){
-  .tree-item:hover .tree-action,.tree-item:has(:focus-visible) .tree-action,.srow:hover .srow-menu,.srow:has(:focus-visible) .srow-menu{display:flex}
-  .tree-item:hover .tree-link .name,.tree-item:has(:focus-visible) .tree-link .name,.tree-item.current .tree-link .name,.tree-item.menu-open .tree-link .name,.srow:hover .srow-title a,.srow:has(:focus-visible) .srow-title a,.srow.on .srow-title a,.srow.menu-open .srow-title a{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .tree-item:hover .tree-action,.tree-item:has(:focus-visible) .tree-action,.srow:hover .srow-menu,.srow:has(:focus-visible) .srow-menu{visibility:visible}
 }
 @media (hover: none){
-  .tree-item .tree-action,.srow .srow-menu{display:flex}
-  .tree-item .tree-link .name,.srow .srow-title a{display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .tree-item .tree-action,.srow .srow-menu{width:var(--size-row-action-touch);visibility:visible}
 }
 /* Popover/Menu: portal surfaces use system tokens and escape row clipping. */
 .popover{position:fixed;z-index:var(--z-popover);max-width:min(var(--size-details),calc(100vw - 2 * var(--space-12)));box-sizing:border-box;overflow:auto;background:var(--raised);border:1px solid var(--line);border-radius:var(--radius-s);padding:var(--space-4)}
-.menu-popover{width:max-content;min-width:var(--size-menu-min);border-radius:var(--radius-m);filter:drop-shadow(var(--shadow-menu))}
+.menu-popover{width:max-content;min-width:var(--size-menu-min);border-radius:var(--radius-m);filter:drop-shadow(var(--shadow-popover))}
 .menu-item{display:flex;align-items:center;gap:var(--space-8);width:100%;min-height:var(--size-control);padding:var(--space-6) var(--space-8);border:0;background:transparent;color:var(--fg);font:var(--type-label);text-align:left;white-space:nowrap;border-radius:var(--radius-s)}
 .menu-item:hover,.menu-item:focus-visible{background:var(--hover)}
 .menu-item:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}

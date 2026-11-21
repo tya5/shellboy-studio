@@ -1,5 +1,7 @@
 // @vitest-environment happy-dom
 import "@preact/signals";
+// @ts-expect-error Node file reads are used to verify media-scoped source CSS under Vitest.
+import { readFileSync } from "node:fs";
 import "../system/tokens/console.css";
 import "../system/components.css";
 import { render } from "preact";
@@ -13,6 +15,8 @@ import type { MenuEntry } from "../system/components/Menu";
 import type { AppModel } from "../../../ui-core/src";
 import type { ThreadSummary } from "../../../data/src";
 
+const rowActionCss = readFileSync("designs/console/system/components.css", "utf8");
+const touchVisibilityRules = rowActionCss.match(/@media \(hover: none\)\s*\{([^}]*)\}/)?.[1] ?? "";
 const row = { thread_id: "t1", title: "One", cwd: "/tmp", state: "idle", activity: "idle", updated_at: "now", excerpt: "" } as ThreadSummary;
 const rowMenu = { label: "Thread row menu", entries: [{ key: "archive", label: "Archive" }] as MenuEntry[] };
 function menuModel() {
@@ -84,19 +88,39 @@ describe("Thread row menu and delete", () => {
     expectVisibleMenu();
     act(() => render(null, host)); host.remove();
   });
+  it("opens a SelectRow context menu and Escape returns focus to its trigger", async () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    act(() => render(<>{treeRow("One")}{selectRow("Two")}</>, host));
+    const threadRow = host.querySelector<HTMLElement>(".tree-item")!;
+    const listRow = host.querySelector<HTMLElement>(".srow")!;
+    const trigger = listRow.querySelector<HTMLButtonElement>("[aria-haspopup=menu]")!;
+    await act(async () => { threadRow.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true })); await Promise.resolve(); });
+    expect(document.body.querySelectorAll(".popover")).toHaveLength(1);
+    await act(async () => { listRow.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true })); await Promise.resolve(); });
+    expect(document.body.querySelectorAll(".popover")).toHaveLength(1);
+    expectVisibleMenu();
+    act(() => { document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); });
+    expect(document.activeElement).toBe(trigger);
+    expect(document.body.querySelector(".popover")).toBeNull();
+    act(() => render(null, host)); host.remove();
+  });
   it("shows every touch row trigger and only one menu at a time", async () => {
     (window as unknown as { happyDOM: { setWindowSize(size: { width: number; height: number }): void } }).happyDOM.setWindowSize({ width: 390, height: 844 });
     Object.defineProperty(navigator, "maxTouchPoints", { configurable: true, value: 1 });
     const host = document.createElement("div");
     document.body.append(host);
     act(() => render(<>{treeRow("One")}{treeRow("Two")}{selectRow("Three")}{selectRow("Four")}</>, host));
+    expect(window.matchMedia("(hover: none)").matches).toBe(true);
+    expect(window.matchMedia("(hover: hover)").matches).toBe(false);
+    expect(touchVisibilityRules).toMatch(/\.tree-item \.tree-action,.srow \.srow-menu\{[^}]*visibility:visible/);
+    expect(touchVisibilityRules).toMatch(/width:var\(--size-row-action-touch\)/);
+    expect(rowActionCss).toMatch(/\.tree-item \.tree-action,.srow-menu\{[^}]*width:var\(--size-row-action\);visibility:hidden/);
     const rows = [...host.querySelectorAll<HTMLElement>(".tree-item, .srow")];
     expect(rows).toHaveLength(4);
-    expect(rows.every((item) => getComputedStyle(item.querySelector<HTMLElement>(".tree-action, .srow-menu")!).display !== "none")).toBe(true);
+    expect(rows.every((item) => item.querySelector(".tree-action, .srow-menu") !== null)).toBe(true);
     const triggers = [...host.querySelectorAll<HTMLButtonElement>("[aria-haspopup=menu]")];
     for (const trigger of triggers) {
-      act(() => { trigger.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true })); });
-      await act(async () => { await Promise.resolve(); });
       act(() => trigger.click());
       await act(async () => { await Promise.resolve(); });
       expect(document.body.querySelectorAll(".popover")).toHaveLength(1);

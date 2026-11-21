@@ -66,5 +66,5 @@
   --size-menu-min: 168px;
   --size-row-action: 24px;
   --size-row-action-touch: 28px;
-  --shadow-menu: 0px 4px 10px rgba(25, 35, 45, 0.14);
+  --shadow-popover: 0px 4px 10px rgba(25, 35, 45, 0.14);
 }

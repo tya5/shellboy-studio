@@ -21,9 +21,10 @@ function tokenPixels(name: string): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-export function Popover({ open, anchor, onClose, children, className = "" }: {
+export function Popover({ open, anchor, returnFocusTo, onClose, children, className = "" }: {
   open: boolean;
   anchor: HTMLElement | null;
+  returnFocusTo?: HTMLElement | null;
   onClose: () => void;
   children: ComponentChildren;
   className?: string;
@@ -35,9 +36,9 @@ export function Popover({ open, anchor, onClose, children, className = "" }: {
   anchorRef.current = anchor;
 
   useEffect(() => {
-    if (open) opener.current = anchor;
+    if (open) opener.current = returnFocusTo ?? anchor;
     else opener.current = null;
-  }, [open]);
+  }, [open, anchor, returnFocusTo]);
 
   useLayoutEffect(() => {
     if (!open) { setPoint(undefined); return; }

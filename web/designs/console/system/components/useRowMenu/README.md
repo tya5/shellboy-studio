@@ -1,7 +1,8 @@
 # useRowMenu
 
-The row owns menu open state and captures the opener element in state when opened.
-The trigger click anchors to the button; row contextmenu and ArrowDown anchor to the
-row. It returns row handlers, the in-flow trigger, `menu`, and `open`; it uses no
-ref or custom DOM event. The visibility and open behavior follow shadcn/ui
-`SidebarMenuAction` (`showOnHover`) and the WAI-ARIA APG Menu Button pattern.
+The row owns its placement anchor and focus-return target in state. The trigger click
+anchors to the button; row contextmenu and ArrowDown anchor to the row while retaining
+the button as the Escape focus target. A shared active-owner decision closes any
+previous row menu synchronously without depending on outside-pointer event ordering.
+The visibility/open behavior follows shadcn/ui `SidebarMenuAction` (`showOnHover`)
+and the WAI-ARIA APG Menu Button pattern. It uses no ref for the placement anchor.
