@@ -530,7 +530,7 @@ a{color:var(--accent)}
   .tree-item .tree-action,.srow .srow-menu{width:var(--size-row-action-touch);visibility:visible}
 }
 /* Popover/Menu: portal surfaces use system tokens and escape row clipping. */
-.popover-dismiss-layer{position:fixed;inset:0;z-index:calc(var(--z-popover) - 1);background:transparent}
+.popover-dismiss-layer{position:fixed;inset:0;z-index:var(--z-popover);background:transparent}
 .popover{position:fixed;z-index:var(--z-popover);max-width:min(var(--size-details),calc(100vw - 2 * var(--space-12)));box-sizing:border-box;overflow:auto;background:var(--raised);border:1px solid var(--line);border-radius:var(--radius-s);padding:var(--space-4)}
 .menu-popover{width:max-content;min-width:var(--size-menu-min);border-radius:var(--radius-m);filter:drop-shadow(var(--shadow-popover))}
 .menu-item{display:flex;align-items:center;gap:var(--space-8);width:100%;min-height:var(--size-control);padding:var(--space-6) var(--space-8);border:0;background:transparent;color:var(--fg);font:var(--type-label);text-align:left;white-space:nowrap;border-radius:var(--radius-s)}

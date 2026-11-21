@@ -12,9 +12,10 @@ References:
 
 Each row owns local open state. The trigger click captures the trigger for placement;
 contextmenu and ArrowDown capture the row. The open Popover renders a transparent
-full-viewport modal layer beneath the panel. Its outside pointerdown dismisses the menu
-and blocks the subsequent click or contextmenu from activating content beneath it, as
-in Radix DropdownMenu; opening row B while A is open therefore only dismisses A. A trigger click returns focus to the
+full-viewport modal layer beneath the panel while the menu is open. It consumes
+outside pointerdown without closing; the following click, auxclick, or contextmenu
+closes the menu and cannot activate content beneath it, as in Radix DropdownMenu.
+Opening row B while A is open therefore only dismisses A. A trigger click returns focus to the
 trigger even if the browser did not focus it (Safari); a row contextmenu or ArrowDown
 returns focus to the element that was focused before opening. No shared open-menu
 registry or ref-based anchor is used.

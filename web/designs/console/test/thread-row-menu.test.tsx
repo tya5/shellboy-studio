@@ -17,6 +17,19 @@ import type { ThreadSummary } from "../../../data/src";
 
 const rowActionCss = readFileSync("designs/console/system/components.css", "utf8");
 const touchVisibilityRules = rowActionCss.match(/@media \(hover: none\)\s*\{([^}]*)\}/)?.[1] ?? "";
+const popoverLayerRule = rowActionCss.match(/\.popover-dismiss-layer\{([^}]*)\}/)?.[1] ?? "";
+const popoverPanelRule = rowActionCss.match(/\.popover\{([^}]*)\}/)?.[1] ?? "";
+const layoutCss = readFileSync("designs/console/system/layout.css", "utf8");
+const popoverZ = Number(readFileSync("designs/console/system/tokens/console.css", "utf8").match(/--z-popover:\s*(\d+)/)?.[1]);
+const pageZIndices = [...layoutCss.matchAll(/z-index:(\d+)/g)].map((match) => Number(match[1]));
+function expectModalLayerStack() {
+  expect(popoverLayerRule).toMatch(/position:fixed/);
+  expect(popoverLayerRule).toMatch(/inset:0/);
+  expect(popoverLayerRule).toMatch(/z-index:var\(--z-popover\)/);
+  expect(popoverPanelRule).toMatch(/z-index:var\(--z-popover\)/);
+  expect(popoverZ).toBeGreaterThan(Math.max(...pageZIndices));
+  expect([...document.body.querySelectorAll<HTMLElement>(".popover-dismiss-layer, .popover")].map((el) => el.classList.contains("popover-dismiss-layer") ? "layer" : "panel")).toEqual(["layer", "panel"]);
+}
 const row = { thread_id: "t1", title: "One", cwd: "/tmp", state: "idle", activity: "idle", updated_at: "now", excerpt: "" } as ThreadSummary;
 const rowMenu = { label: "Thread row menu", entries: [{ key: "archive", label: "Archive" }] as MenuEntry[] };
 function menuModel() {
@@ -121,11 +134,12 @@ describe("Thread row menu and delete", () => {
 
     await act(async () => { triggers[0]!.click(); await Promise.resolve(); });
     expectVisibleMenu();
+    expectModalLayerStack();
     let layer = document.body.querySelector<HTMLElement>(".popover-dismiss-layer")!;
     const clickDown = new PointerEvent("pointerdown", { bubbles: true, cancelable: true });
     act(() => { layer.dispatchEvent(clickDown); });
     expect(clickDown.defaultPrevented).toBe(true);
-    expect(document.body.querySelector(".popover")).toBeNull();
+    expect(document.body.querySelector(".popover")).not.toBeNull();
     layer = document.body.querySelector<HTMLElement>(".popover-dismiss-layer")!;
     const outsideClick = new MouseEvent("click", { bubbles: true, cancelable: true });
     act(() => { layer.dispatchEvent(outsideClick); });
@@ -137,6 +151,7 @@ describe("Thread row menu and delete", () => {
     await act(async () => { triggers[0]!.click(); await Promise.resolve(); });
     layer = document.body.querySelector<HTMLElement>(".popover-dismiss-layer")!;
     act(() => { layer.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true })); });
+    expect(document.body.querySelector(".popover")).not.toBeNull();
     layer = document.body.querySelector<HTMLElement>(".popover-dismiss-layer")!;
     const outsideMenu = new MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 2 });
     act(() => { layer.dispatchEvent(outsideMenu); });
@@ -163,18 +178,18 @@ describe("Thread row menu and delete", () => {
     const triggers = [...host.querySelectorAll<HTMLButtonElement>("[aria-haspopup=menu]")];
     act(() => triggers[0]!.click());
     await act(async () => { await Promise.resolve(); });
-    expect(document.body.querySelectorAll(".popover")).toHaveLength(1);
+    expect(document.body.querySelectorAll(".menu-popover")).toHaveLength(1);
     for (const trigger of triggers.slice(1)) {
       let layer = document.body.querySelector<HTMLElement>(".popover-dismiss-layer")!;
       act(() => { layer.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true })); });
-      expect(document.body.querySelector(".popover")).toBeNull();
+      expect(document.body.querySelector(".popover")).not.toBeNull();
       layer = document.body.querySelector<HTMLElement>(".popover-dismiss-layer")!;
       act(() => { layer.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true })); });
       expect(trigger.getAttribute("aria-expanded")).toBe("false");
-      expect(document.body.querySelectorAll(".popover")).toHaveLength(0);
+      expect(document.body.querySelectorAll(".menu-popover")).toHaveLength(0);
       act(() => trigger.click());
       await act(async () => { await Promise.resolve(); });
-      expect(document.body.querySelectorAll(".popover")).toHaveLength(1);
+      expect(document.body.querySelectorAll(".menu-popover")).toHaveLength(1);
     }
     act(() => render(null, host)); host.remove();
     Object.defineProperty(navigator, "maxTouchPoints", { configurable: true, value: 0 });
