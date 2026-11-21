@@ -70,7 +70,8 @@ pub fn access(command: &Command) -> Access {
         Command::MessageReply(..) => Access::Mutation,
         Command::ThreadDeletePreview(args) if !args.thread_id.is_empty() && !args.descendants && args.preview_marker.is_none() => Access::Read,
         Command::ThreadDelete(args) if !args.thread_id.is_empty() && !args.descendants && args.preview_marker.as_ref().is_some_and(|m| m.thread_count == 1 && m.ids_hash.len() == 64 && m.ids_hash.bytes().all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())) => Access::Mutation,
-        Command::MessageAsk(..) => Access::Denied,
+        // Core's id.resolve is CLI-only; the browser never receives this identity lookup.
+        Command::MessageAsk(..) | Command::IdResolve(..) => Access::Denied,
         // `events.wait` is bridge-internal (one shared long-poll). The rest has no UI yet.
         Command::OwnerShutdown(..)
         | Command::ThreadDelete(..)

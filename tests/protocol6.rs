@@ -1,7 +1,9 @@
 //! Owner-free, typed wire acceptance for the pinned Core protocol.
 #![cfg(feature = "next-shellboy")]
 use serde_json::json;
-use shellboy::protocol::{Command, ErrorCode, RunDetails, ThreadDetails, ThreadSummary};
+use shellboy::protocol::{
+    Command, ErrorCode, IdKind, IdResolveArgs, RunDetails, ThreadDetails, ThreadSummary,
+};
 use shellboy_studio::{
     allowlist::{Access, access},
     seam,
@@ -137,4 +139,14 @@ fn structural_tool_descriptor_survives_pinned_response_value_and_bridge_frame() 
         bridged["response"]["result"]["items"][0]["items"][0]["execution_ids"],
         json!([])
     );
+}
+
+#[test]
+fn cli_id_resolution_is_not_exposed_to_the_browser() {
+    let command = Command::IdResolve(IdResolveArgs {
+        kind: IdKind::Thread,
+        prefix: "12345678".into(),
+        include_pending_duties: false,
+    });
+    assert_eq!(access(&command), Access::Denied);
 }
