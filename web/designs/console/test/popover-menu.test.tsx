@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
-import { act, render } from "preact/test-utils";
+import { render } from "preact";
+import { act } from "preact/test-utils";
 import { expect, it } from "vitest";
 import { Menu, Popover } from "../system/components";
 
