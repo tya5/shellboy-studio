@@ -82,7 +82,7 @@ function assistantTextMembership(item: ConversationItem): AssistantTextMembershi
   return "message";
 }
 
-export function SavedConversationItems({ model, projection: suppliedProjection, displayPlan, renderBefore, trailing, nodes,localRegion }: { model: AppModel; projection: SavedItemProjection & { sequence?: readonly ({kind: "conversation"; itemKey: string} | {kind: "work"; groupKey: string})[]; workGroups?: readonly ConversationWorkGroup[] }; displayPlan?: ConversationDisplayPlan; nodes?: readonly HistoryItem[]; renderBefore?: (item: ConversationItem) => ComponentChildren; trailing?: ComponentChildren;localRegion?: { readonly kind: "unqualified"; readonly content: ComponentChildren; readonly rows?: readonly { operationId: string; messageId?: string }[]; readonly retire?: readonly { operationId: string; messageId?: string }[] } }) {
+export function SavedConversationItems({ model, projection: suppliedProjection, displayPlan, renderBefore, trailing, nodes,localRegion }: { model: AppModel; projection: SavedItemProjection & { sequence?: readonly ({kind: "conversation"; itemKey: string} | {kind: "work"; groupKey: string})[]; workGroups?: readonly ConversationWorkGroup[] }; displayPlan?: ConversationDisplayPlan; nodes?: readonly HistoryItem[]; renderBefore?: (item: ConversationItem) => ComponentChildren; trailing?: ComponentChildren;localRegion?: { readonly kind: "unqualified"; readonly content?: ComponentChildren; readonly rows?: readonly import("../../../ui-core/src/model").PendingOwnMessage[]; readonly retire?: readonly import("../../../ui-core/src/model").PendingOwnMessage[]; readonly renderRow?: (row: import("../../../ui-core/src/model").PendingOwnMessage) => ComponentChildren } }) {
   const projection = displayPlan ? projectionFromDisplayPlan(displayPlan) : suppliedProjection;
   const planEntries = displayPlan?.entries ?? [];
   const planByKey = new Map(planEntries.map(entry => [entry.item.key, entry]));
@@ -234,12 +234,10 @@ export function LiveRecordChrome({ model, record }: { model: AppModel; record: H
 
 function OwnSendContent({model,snapshot,plan,trailing}: {model:AppModel;snapshot:WindowAcceptedSnapshot;plan:ConversationDisplayPlan;trailing?:ComponentChildren}) {
   const projection=projectionFromDisplayPlan(plan),localRows=plan.localRegion.localRows;
-  const renderLocal=(messages:readonly import("../../../ui-core/src/model").PendingOwnMessage[])=> <>{messages.map(message=><div key={message.operationId} data-item-key={`own:${message.operationId}`} data-own-presentation="" data-own-placement="suffix">
-    <aside data-pending-own-message={message.operationId} data-pending-phase={message.phase}><Message bot={false} who={model.t.value("convo.you")} text={message.text} at={model.t.value(`composer.pending.${message.phase}`)} copyLabel={model.t.value("code.copy")} copiedLabel={model.t.value("code.copied")}/>
-    {message.phase==="failed"||message.phase==="unconfirmed"?<><Button variant="link" disabled={!model.canResend(message)} onClick={()=>void model.resend(message)}>{model.t.value("action.retry")}</Button>{!model.canResend(message)?<span class="caption">{model.t.value("composer.retryUnavailable")}</span>:null}</>:null}</aside>
-  </div>)}</>;
+  const renderLocal=(message:import("../../../ui-core/src/model").PendingOwnMessage)=> <aside data-pending-own-message={message.operationId} data-pending-phase={message.phase}><Message bot={false} who={model.t.value("convo.you")} text={message.text} at={model.t.value(`composer.pending.${message.phase}`)} copyLabel={model.t.value("code.copy")} copiedLabel={model.t.value("code.copied")}/>
+    {message.phase==="failed"||message.phase==="unconfirmed"?<><Button variant="link" disabled={!model.canResend(message)} onClick={()=>void model.resend(message)}>{model.t.value("action.retry")}</Button>{!model.canResend(message)?<span class="caption">{model.t.value("composer.retryUnavailable")}</span>:null}</>:null}</aside>;
   return <SavedConversationItems model={model} projection={projection} displayPlan={plan} nodes={snapshot.rows}
-    localRegion={localRows.length?{kind:"unqualified",rows:localRows,retire:plan.localRegion.retire,content:<section role="region" aria-label="Unmatched local submissions" data-own-unqualified-region="">{renderLocal(localRows)}</section>}:undefined}
+    localRegion={localRows.length||plan.localRegion.retire.length?{kind:"unqualified",rows:localRows,retire:plan.localRegion.retire,renderRow:renderLocal}:undefined}
     trailing={trailing}/>;
 }
 
