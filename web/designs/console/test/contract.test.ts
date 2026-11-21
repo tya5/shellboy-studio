@@ -166,7 +166,8 @@ describe("screens use the system only", () => {
       const body = text.replace(/<button type="button" class=\{drawer \? "scrim open" : "scrim"\}/g, "").replace(/<button type="button" class="srow-act"/g, "");
       expect(body, f).not.toMatch(/<(button|textarea|input|details|svg)\b/);
       expect(text, f).not.toMatch(/#[0-9a-fA-F]{6}\b/);
-      expect(text.replace("style={sidebarWidthStyle(savedSidebarWidth)}", ""), f).not.toMatch(/style=/);
+      const styleFree = f.endsWith("screens/App.tsx") ? text.replace(/<div class=\{context\.prefs\.value\.navCollapsed \? "shell nav-collapsed" : "shell"\} style=\{sidebarWidthStyle\(savedSidebarWidth\)\}>/, "") : text;
+      expect(styleFree, f).not.toMatch(/style=/);
     }
   });
   it("every component has a usage note", () => {

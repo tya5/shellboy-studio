@@ -30,7 +30,6 @@ export function App({ context }: { context: DesignContext }) {
   const [actionNotice, setActionNotice] = useState<string>();
   const [query, setQuery] = useState("");
   const drag = useRef<{ pointerId: number; element: HTMLElement; originX: number; startWidth: number }>();
-  const shell = useRef<HTMLDivElement>(null);
   const sidebarWidth = readSidebarWidth(context.prefs.value.sidebarWidth);
   const savedSidebarWidth = context.prefs.value.sidebarWidth;
   const finishResize = (pointerId?: number) => {
@@ -95,7 +94,7 @@ export function App({ context }: { context: DesignContext }) {
 
   return (
     <div class="app">
-      <div ref={shell} class={context.prefs.value.navCollapsed ? "shell nav-collapsed" : "shell"} style={sidebarWidthStyle(savedSidebarWidth)}>
+      <div class={context.prefs.value.navCollapsed ? "shell nav-collapsed" : "shell"} style={sidebarWidthStyle(savedSidebarWidth)}>
         <LayoutSeparator aria-label={t("threads.resizeSidebar")} role="separator" aria-orientation="vertical" aria-valuemin={SIDEBAR_WIDTH_MIN} aria-valuemax={SIDEBAR_WIDTH_MAX} aria-valuenow={sidebarWidth} tabIndex={0} onPointerDown={(event) => { if (context.prefs.value.navCollapsed || drag.current || !event.isPrimary || event.button !== 0) return; event.preventDefault(); const element = event.currentTarget; drag.current = { pointerId: event.pointerId, element, originX: event.clientX, startWidth: sidebarWidth }; element.setPointerCapture(event.pointerId); }} onPointerMove={(event) => { const current = drag.current; if (!current || current.pointerId !== event.pointerId || !event.isPrimary) return; context.setPrefs({ sidebarWidth: readSidebarWidth(current.startWidth + event.clientX - current.originX) }); }} onPointerUp={(event) => finishResize(event.pointerId)} onPointerCancel={(event) => finishResize(event.pointerId)} onLostPointerCapture={(event) => finishResize(event.pointerId)} onKeyDown={(event) => { if (context.prefs.value.navCollapsed) return; const step = event.shiftKey ? 32 : 16; if (event.key === "ArrowLeft" || event.key === "ArrowRight" || event.key === "Home" || event.key === "End") { event.preventDefault(); const next = event.key === "Home" ? SIDEBAR_WIDTH_MIN : event.key === "End" ? SIDEBAR_WIDTH_MAX : sidebarWidth + (event.key === "ArrowRight" ? step : -step); context.setPrefs({ sidebarWidth: readSidebarWidth(next) }); } }} />
         <button type="button" class={drawer ? "scrim open" : "scrim"} aria-label={t("threads.close")} tabIndex={drawer ? 0 : -1} onClick={() => setDrawer(false)} />
         <aside class={drawer ? "side open" : "side"} aria-label={t("threads.title")}>
