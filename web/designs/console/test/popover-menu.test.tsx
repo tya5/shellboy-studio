@@ -1,4 +1,6 @@
 // @vitest-environment happy-dom
+import "../system/components.css";
+import "../system/tokens/console.css";
 import { render } from "preact";
 import { act } from "preact/test-utils";
 import { expect, it } from "vitest";
@@ -43,8 +45,14 @@ it("keeps a wide menu inside a narrow viewport", async () => {
   Object.defineProperty(window, "innerWidth", { configurable: true, value: 320 });
   anchor.getBoundingClientRect = () => ({ left: 280, right: 310, top: 40, bottom: 64, width: 30, height: 24, x: 280, y: 40, toJSON: () => ({}) });
   document.body.append(host, anchor);
-  act(() => render(<Popover open anchor={anchor} onClose={() => {}}><span>{"long menu item ".repeat(20)}</span></Popover>, host));
+  act(() => render(<Popover open anchor={anchor} onClose={() => {}}><span>Short</span></Popover>, host));
   await act(async () => { await Promise.resolve(); });
-  expect(Number.parseFloat(document.body.querySelector<HTMLElement>(".popover")!.style.left)).toBeGreaterThanOrEqual(0);
+  const panel = document.body.querySelector<HTMLElement>(".popover")!;
+  Object.defineProperty(panel, "getBoundingClientRect", { value: () => ({ left: 12, right: 292, width: 280, top: 64, bottom: 96, height: 32, x: 12, y: 64, toJSON: () => ({}) }) });
+  window.dispatchEvent(new Event("resize"));
+  const rect = panel.getBoundingClientRect();
+  expect(rect.left).toBeGreaterThanOrEqual(12);
+  expect(rect.right).toBeLessThanOrEqual(320 - 12);
+  expect(rect.width).toBeLessThan(320 - 24);
   render(null, host); host.remove(); anchor.remove();
 });

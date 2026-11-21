@@ -22,9 +22,13 @@ export function Popover({ open, anchor, onClose, children, className = "" }: {
   const anchorRef = useRef(anchor);
   anchorRef.current = anchor;
 
+  useEffect(() => {
+    if (open) opener.current = anchor;
+    else opener.current = null;
+  }, [open]);
+
   useLayoutEffect(() => {
-    if (!open) { opener.current = null; setPoint(undefined); return; }
-    if (!opener.current) opener.current = anchor;
+    if (!open) { setPoint(undefined); return; }
     if (!anchor) { setPoint(undefined); return; }
     const place = () => {
       const rect = anchor.getBoundingClientRect();
@@ -50,9 +54,8 @@ export function Popover({ open, anchor, onClose, children, className = "" }: {
 
   useEffect(() => {
     if (!open) return;
-    const restore = () => queueMicrotask(() => opener.current?.focus());
     const outside = (event: PointerEvent) => { if (!panel.current?.contains(event.target as Node) && !anchorRef.current?.contains(event.target as Node)) onClose(); };
-    const key = (event: KeyboardEvent) => { if (event.key === "Escape") { onClose(); restore(); } else if (event.key === "Tab") onClose(); };
+    const key = (event: KeyboardEvent) => { if (event.key === "Escape") { const current = opener.current; onClose(); current?.focus(); } else if (event.key === "Tab") onClose(); };
     document.addEventListener("pointerdown", outside);
     document.addEventListener("keydown", key);
     return () => { document.removeEventListener("pointerdown", outside); document.removeEventListener("keydown", key); };
