@@ -12,7 +12,7 @@ it("renders the More trigger before controlled links and closes when focus leave
   const host = document.createElement("div");
   const outside = document.createElement("button");
   document.body.append(host, outside);
-  act(() => render(<MoreMenu label="More" items={[{ key: "apps", href: "#apps", icon: "apps", label: "Apps", current: false }]} />, host));
+  act(() => render(<MoreMenu label="More" items={[{ key: "apps", href: "#apps", role: "nav.apps", label: "Apps", current: false }]} />, host));
   const trigger = host.querySelector<HTMLButtonElement>(".more-tab > button")!;
   act(() => trigger.click());
   await act(async () => { await Promise.resolve(); });
@@ -43,8 +43,9 @@ it("Escape closes a hover-preview MonitorPopover", async () => {
 
 it("keeps same-labeled ChoiceList groups independent inside one form", () => {
   const host = document.createElement("div");
-  const changes = [vi.fn(), vi.fn()];
-  act(() => render(<form><ChoiceList label="Mode" choices={[{ value: "a", label: "A" }, { value: "aa", label: "AA" }]} value="a" onChange={changes[0]} /><ChoiceList label="Mode" choices={[{ value: "b", label: "B" }, { value: "bb", label: "BB" }]} value="b" onChange={changes[1]} /></form>, host));
+  const changeA = vi.fn();
+  const changeB = vi.fn();
+  act(() => render(<form><ChoiceList label="Mode" choices={[{ value: "a", label: "A" }, { value: "aa", label: "AA" }]} value="a" onChange={changeA} /><ChoiceList label="Mode" choices={[{ value: "b", label: "B" }, { value: "bb", label: "BB" }]} value="b" onChange={changeB} /></form>, host));
   const groups = [...host.querySelectorAll<HTMLElement>('[role="radiogroup"]')];
   const radios = groups.map((group) => [...group.querySelectorAll<HTMLInputElement>('input[type="radio"]')]);
   expect(radios[0]![0]!.name).not.toBe(radios[1]![0]!.name);
@@ -56,7 +57,7 @@ it("keeps same-labeled ChoiceList groups independent inside one form", () => {
   });
   expect(radios[0]![1]!.checked).toBe(true);
   expect(radios[1]![1]!.checked).toBe(true);
-  expect(changes[0]).toHaveBeenCalledWith("aa");
-  expect(changes[1]).toHaveBeenCalledWith("bb");
+  expect(changeA).toHaveBeenCalledWith("aa");
+  expect(changeB).toHaveBeenCalledWith("bb");
   render(null, host); host.remove();
 });

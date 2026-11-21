@@ -33,3 +33,6 @@ in place. The menu uses 168px minimum width, 8px corners, a fine border, the
 tokenized `shadow-popover`, and 4px inset. Items pair an optional semantic IconRole (16px muted icon) with
 text, using 6px vertical / 8px horizontal spacing and 6px corners. Glyph names and the role-to-glyph map stay module-private inside `Icon`; only semantic roles are exposed. The separator spans the panel; Delete is last
 and uses `bad` with `bad-soft` on hover/focus.
+
+On touch, the visible trigger is the primary path. Long press opens the menu only
+where the browser emits `contextmenu`; no custom long-press handler is used.
