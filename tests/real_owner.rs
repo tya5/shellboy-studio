@@ -1031,8 +1031,11 @@ async fn settings_read_and_write_the_file_and_values_stay_hidden() {
         "{listed}"
     );
     let cwds = c.ok("thread.cwds", json!({"limit":20}), None).await;
+    let expected_cwd = root.to_str().unwrap();
     assert!(
-        cwds["items"].to_string().contains(root.to_str().unwrap()),
+        cwds["items"]
+            .as_array()
+            .is_some_and(|items| { items.iter().any(|item| item.as_str() == Some(expected_cwd)) }),
         "{cwds}"
     );
     let window = c
