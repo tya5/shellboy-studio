@@ -16,8 +16,10 @@ glyph shape. The active theme owns the role-to-glyph mapping. Menu entries use `
 - The modal Popover layer consumes outside pointerdown; its click, auxclick, or
   contextmenu dismisses without activating underlying content.
 
-Use separators between distinct action groups. Disabled entries are omitted by
-application policy. Do not put settings forms or long data-entry controls in a menu.
+A selected item's callback is action-only; the owning screen computes any confirmation
+target/next-row context from its current list. Menu does not infer delete focus targets
+from its Escape return target. Use separators between distinct action groups.
+Disabled entries are omitted by application policy. Do not put settings forms or long data-entry controls in a menu.
 
 References (Radix source lines from the Reviewer audit): `dropdown-menu:119,188`
 (trigger/menu ID association), `dropdown-menu:192` (focus return), `menu:531`

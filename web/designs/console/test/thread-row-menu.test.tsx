@@ -11,7 +11,8 @@ import { describe, expect, it, vi } from "vitest";
 import { ThreadDeleteDialog } from "../system/components/ThreadDeleteDialog";
 import { ThreadItem } from "../system/components/ThreadItem";
 import { SelectRow } from "../system/components/SelectRow";
-import { captureRowFocusReturn, threadMenuEntries, type ThreadDeleteRequest } from "../system/components/thread-menu";
+import { threadMenuEntries } from "../system/components/thread-menu";
+import type { ThreadDeleteTarget } from "../system/components/ThreadDeleteDialog";
 import type { MenuEntry } from "../system/components/Menu";
 import type { AppModel } from "../../../ui-core/src";
 import type { ThreadSummary } from "../../../data/src";
@@ -51,12 +52,14 @@ function selectRow(title: string, checked = false) {
 }
 
 function DeleteFlow({ model }: { model: AppModel }) {
-  const [request, setRequest] = useState<ThreadDeleteRequest>();
-  const next = { ...row, thread_id: "t2", title: "Two" };
+  const [request, setRequest] = useState<ThreadDeleteTarget>();
+  const targetRow = { ...row, title: "B" };
+  const nextRow = { ...row, thread_id: "t2", title: "C" };
   return <>
-    {!request ? <ThreadItem href="#one" title="One" status={undefined} statusLabel="" depth={0} current={false} pending={0} menu={{ label: "One menu", entries: threadMenuEntries(model, row, undefined, (target, opener) => setRequest({ target, ...captureRowFocusReturn(opener) })) }} /> : null}
-    <ThreadItem href="#two" title="Two" status={undefined} statusLabel="" depth={0} current={false} pending={0} menu={{ label: "Two menu", entries: [{ key: "archive", label: "Archive" }] }} />
-    {request ? <ThreadDeleteDialog model={model} {...request} onClose={() => setRequest(undefined)} /> : null}
+    <ThreadItem href="#b" linkId="thread-link-test-t1" title="B" status={undefined} statusLabel="" depth={0} current={false} pending={0} menu={{ label: "B menu", entries: threadMenuEntries(model, targetRow, undefined, (target) => setRequest({ threadId: target.thread_id, nextThreadId: nextRow.thread_id })) }} />
+    <ThreadItem href="#c" linkId="thread-link-test-t2" title="C" status={undefined} statusLabel="" depth={0} current={false} pending={0} menu={{ label: "C menu", entries: [{ key: "archive", label: "Archive" }] }} />
+    <h2 id="test-thread-list-heading" tabIndex={-1}>Threads</h2>
+    {request ? <ThreadDeleteDialog model={model} target={request} returnFocusTo={document.getElementById(`thread-link-test-${request.threadId}`)} resolveFocusFallback={() => document.getElementById("test-thread-list-heading")} onClose={() => setRequest(undefined)} onDeleted={() => (request.nextThreadId ? document.getElementById(`thread-link-test-${request.nextThreadId}`) : document.getElementById("test-thread-list-heading"))?.focus()} /> : null}
   </>;
 }
 
@@ -88,7 +91,7 @@ describe("Thread row menu and delete", () => {
     const host = document.createElement("div");
     const invokingControl = document.createElement("button");
     document.body.append(host, invokingControl);
-    act(() => render(<ThreadDeleteDialog model={model} target={row} returnFocusTo={invokingControl} resolveFocusFallback={() => null} onClose={onClose} />, host));
+    act(() => render(<ThreadDeleteDialog model={model} target={{ threadId: row.thread_id }} returnFocusTo={invokingControl} resolveFocusFallback={() => null} onClose={onClose} onDeleted={() => {}} />, host));
     const dialog = host.querySelector<HTMLDialogElement>("dialog[role=alertdialog]")!;
     expect(dialog).not.toBeNull();
     expect(dialog.getAttribute("aria-labelledby")).toBeTruthy();
@@ -107,26 +110,40 @@ describe("Thread row menu and delete", () => {
     expect(model.ops.threadDelete).toHaveBeenCalledWith("t1", { thread_count: 1, ids_hash: "exact" });
     render(null, host); host.remove(); invokingControl.remove();
   });
-  it("returns focus from the real Delete menu path to the adjacent row if its opener unmounts", async () => {
+  it("returns focus by stable row ids after contextmenu Delete, Cancel, and confirmed deletion", async () => {
     const model = menuModel();
     model.ops.threadDeletePreview = vi.fn(async () => ({ ok: true, value: { deletable_now: true, preview_marker: { thread_count: 1, ids_hash: "exact" }, selection: { thread_count: 1 }, blockers: { live_run_count: 0, stopping_run_count: 0, truncated: false }, preview_marker_unavailable_reason: undefined } })) as never;
+    let resolveDelete!: (outcome: { ok: true }) => void;
+    model.ops.threadDelete = vi.fn(() => new Promise((resolve) => { resolveDelete = resolve; })) as never;
     const host = document.createElement("div");
-    document.body.append(host);
+    const elsewhere = document.createElement("button");
+    document.body.append(host, elsewhere);
     act(() => render(<DeleteFlow model={model} />, host));
-    const opener = host.querySelector<HTMLButtonElement>(".tree-item [aria-haspopup=menu]")!;
-    opener.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 1 }));
-    await act(async () => { await Promise.resolve(); });
-    const deleteItem = [...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')].find((item) => item.textContent === "thread.deletePreview")!;
-    await act(async () => { deleteItem.click(); await Promise.resolve(); });
-    await act(async () => { await Promise.resolve(); });
-    const dialog = host.querySelector<HTMLDialogElement>('dialog[role="alertdialog"]')!;
-    expect(dialog).not.toBeNull();
-    expect(opener.isConnected).toBe(false);
-    const cancel = dialog.querySelector<HTMLButtonElement>(".work-sheet-head button")!;
-    expect(document.activeElement).toBe(cancel);
-    await act(async () => { cancel.click(); await Promise.resolve(); });
-    expect(document.activeElement).toBe(host.querySelector<HTMLAnchorElement>('.tree-item a[href="#two"]'));
-    render(null, host); host.remove();
+    const rowB = host.querySelector<HTMLElement>(".tree-item")!;
+    const rowBLink = host.querySelector<HTMLAnchorElement>("#thread-link-test-t1")!;
+    const openDelete = async () => {
+      await act(async () => { rowB.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 10, clientY: 10 })); await Promise.resolve(); });
+      const deleteItem = [...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')].find((item) => item.textContent === "thread.deletePreview")!;
+      await act(async () => { deleteItem.click(); await Promise.resolve(); await Promise.resolve(); });
+    };
+
+    elsewhere.focus();
+    await openDelete();
+    let dialog = host.querySelector<HTMLDialogElement>('dialog[role="alertdialog"]')!;
+    expect(document.activeElement).toBe(dialog.querySelector(".work-sheet-head button"));
+    await act(async () => { dialog.querySelector<HTMLButtonElement>(".work-sheet-head button")!.click(); await Promise.resolve(); });
+    expect(document.activeElement).toBe(rowBLink);
+
+    elsewhere.focus();
+    await openDelete();
+    dialog = host.querySelector<HTMLDialogElement>('dialog[role="alertdialog"]')!;
+    const confirm = [...dialog.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "thread.deleteConfirm")!;
+    await act(async () => { confirm.click(); await Promise.resolve(); });
+    expect(model.ops.threadDelete).toHaveBeenCalledWith("t1", { thread_count: 1, ids_hash: "exact" });
+    expect(document.activeElement).toBe(rowBLink);
+    await act(async () => { resolveDelete({ ok: true }); await Promise.resolve(); });
+    expect(document.activeElement).toBe(host.querySelector<HTMLAnchorElement>("#thread-link-test-t2"));
+    render(null, host); host.remove(); elsewhere.remove();
   });
   it("opens a visible Menu from the ThreadItem button", async () => {
     const host = document.createElement("div");

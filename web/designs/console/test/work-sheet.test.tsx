@@ -1,8 +1,8 @@
 // @vitest-environment happy-dom
 import "../system/components.css";
-import "../system/tokens/console.css";
-// @ts-expect-error Node reads verify the production scroll-container CSS contract.
+// @ts-expect-error Node reads verify the production modal scroll-lock CSS contract.
 import { readFileSync } from "node:fs";
+import "../system/tokens/console.css";
 import { render } from "preact";
 import { act } from "preact/test-utils";
 import { expect, it, vi } from "vitest";
@@ -20,13 +20,14 @@ it("locks app scroll panes and only dismisses on a genuine primary backdrop clic
   const onClose = vi.fn(() => { open = false; draw(); });
   const fallback = vi.fn(() => null);
   const draw = () => render(<WorkSheet open={open} title="Work" closeLabel="Close" returnFocusTo={opener} resolveFocusFallback={fallback} onClose={onClose}><p>Details</p></WorkSheet>, host);
+  const showModal = vi.spyOn(HTMLDialogElement.prototype, "showModal");
   await act(async () => { draw(); await Promise.resolve(); });
   const dialog = host.querySelector<HTMLDialogElement>("dialog")!;
   const rect = { x: 100, y: 100, left: 100, top: 100, right: 400, bottom: 500, width: 300, height: 400, toJSON: () => ({}) };
   vi.spyOn(dialog, "getBoundingClientRect").mockReturnValue(rect);
   expect(dialog.open).toBe(true);
-  expect(document.documentElement.classList.contains("modal-dialog-open")).toBe(true);
-  expect(layoutCss).toMatch(/\.modal-dialog-open \.side,\.modal-dialog-open \.scroll,\.modal-dialog-open \.mon,\.modal-dialog-open \.org\{overflow:hidden\}/);
+  expect(showModal).toHaveBeenCalledTimes(1);
+  expect(layoutCss).toMatch(/html:has\(dialog:modal\)\{overflow:hidden\}/);
   expect(layoutCss).toMatch(/\.work-sheet-body\{[^}]*overflow:auto/);
   expect(document.getElementById(dialog.getAttribute("aria-labelledby")!)?.textContent).toBe("Work");
   expect(document.getElementById(dialog.getAttribute("aria-describedby")!)?.textContent).toBe("Details");
@@ -41,7 +42,6 @@ it("locks app scroll panes and only dismisses on a genuine primary backdrop clic
   const backdropClick = new MouseEvent("click", { bubbles: true, cancelable: true, button: 0, clientX: 50, clientY: 150 });
   await act(async () => { dialog.dispatchEvent(backdropClick); await Promise.resolve(); });
   expect(onClose).toHaveBeenCalledTimes(1);
-  expect(document.documentElement.classList.contains("modal-dialog-open")).toBe(false);
   expect(document.activeElement).toBe(opener);
   render(null, host); host.remove(); opener.remove();
 });

@@ -13,7 +13,7 @@ export { Check } from "./Check";
 export { NavItem } from "./NavItem";
 export { ThreadItem } from "./ThreadItem";
 export { useRowMenu } from "./useRowMenu";
-export { ThreadDeleteDialog } from "./ThreadDeleteDialog";
+export { ThreadDeleteDialog, type ThreadDeleteTarget } from "./ThreadDeleteDialog";
 export { Chip } from "./Chip";
 export { ThreadCard } from "./ThreadCard";
 export { LogBlock } from "./LogBlock";

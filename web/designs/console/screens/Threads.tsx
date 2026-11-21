@@ -1,9 +1,14 @@
 import { useEffect, useMemo, useState } from "preact/hooks";
 import { CAPABILITY_REPARENT, CAPABILITY_TAGS, formatAge, formatRoute, groupThreads, listedDescendants, OPEN_MAX, statusLabel, threadTree, THREAD_GROUPINGS, type AppModel, type MemberState, type StatusKey, type TagInvalid, type ThreadGrouping, type ThreadRow, type Translate } from "../../../ui-core/src";
-import { captureRowFocusReturn, threadMenuEntries, type ThreadDeleteRequest } from "../system/components/thread-menu";
-import { Button, ButtonGroup, EmptyState, Field, Icon, Notice, Section, SelectionBar, SelectRow, StatusMark, ThreadDeleteDialog, ThreadGroup } from "../system/components";
+import { threadMenuEntries } from "../system/components/thread-menu";
+import { Button, ButtonGroup, EmptyState, Field, Icon, Notice, Section, SelectionBar, SelectRow, StatusMark, ThreadDeleteDialog, ThreadGroup, type ThreadDeleteTarget } from "../system/components";
 
 const SEARCH_DEBOUNCE_MS = 200;
+const resolveThreadPageFocusFallback = () => document.getElementById("threads-page-heading");
+function focusThreadPageRow(threadId?: string) {
+  const target = threadId ? document.getElementById(`thread-link-page-${threadId}`) : null;
+  (target ?? document.getElementById("threads-page-heading"))?.focus();
+}
 
 const groupLabel = (t: Translate, by: ThreadGrouping, key: string): string => (by === "state" ? statusLabel(t, key as StatusKey) : by === "tree" ? t("org.allThreads") : key);
 
@@ -121,7 +126,7 @@ function TagPanel({ model }: { model: AppModel }) {
 }
 
 /** One heading's members, read on demand and paged. */
-function Members({ model, name, member, row }: { model: AppModel; name: string; member: MemberState; row: (r: ThreadRow) => preact.JSX.Element }) {
+function Members({ model, name, member, row }: { model: AppModel; name: string; member: MemberState; row: (r: ThreadRow, nextThreadId?: string) => preact.JSX.Element }) {
   const t = model.t.value;
   const org = model.org;
   const rows = useMemo(() => threadTree([...member.items]), [member.items]);
@@ -130,7 +135,7 @@ function Members({ model, name, member, row }: { model: AppModel; name: string; 
       {member.error ? <Notice tone="bad" actions={<Button onClick={() => void org.read()}>{t("common.refresh")}</Button>}>{t("org.groupError", { message: member.error.message })}</Notice> : null}
       {!member.loaded && member.loading ? <div class="muted caption">{t("org.groupLoading")}</div> : null}
       {member.loaded && member.items.length === 0 ? <div class="muted caption">{t("org.groupEmpty")}</div> : null}
-      {rows.map(row)}
+      {rows.map((r, index) => row(r, rows[index + 1]?.summary.thread_id))}
       {org.headings.canLoadMore(name) ? <span class="more"><Button disabled={member.loading} onClick={() => org.headings.loadMore(name)}>{t("threads.more")}</Button></span> : member.nextCursor ? <div class="muted caption">{t("org.groupCapped", { n: member.items.length })}</div> : null}
     </>
   );
@@ -145,7 +150,7 @@ export function Threads({ model }: { model: AppModel }) {
   const action = org.action.value;
   const descendants = org.descendants.value;
   const [query, setQuery] = useState(state.query);
-  const [deleteThread, setDeleteThread] = useState<ThreadDeleteRequest>();
+  const [deleteThread, setDeleteThread] = useState<ThreadDeleteTarget>();
   const [armed, setArmed] = useState(false);
   useEffect(() => {
     const timer = setTimeout(() => org.setQuery(query.trim()), SEARCH_DEBOUNCE_MS);
@@ -159,6 +164,7 @@ export function Threads({ model }: { model: AppModel }) {
   const heads = org.headings.headings.value;
   const open = org.headings.open.value;
   const groups = useMemo(() => (kind ? [] : groupThreads(state.items, by)), [state.items, by, kind]);
+  const groupedRows = useMemo(() => groups.flatMap((group) => group.rows), [groups]);
   const [dragging, setDragging] = useState<string | undefined>(undefined);
   const [over, setOver] = useState<string | undefined>(undefined);
   const extra = descendants ? listedDescendants(state.items, selected) : 0;
@@ -172,13 +178,14 @@ export function Threads({ model }: { model: AppModel }) {
     void org.apply();
   };
   const result = action.kind === "done" ? action.result : undefined;
-  const row = (r: ThreadRow) => {
+  const row = (r: ThreadRow, nextThreadId?: string) => {
     const s = r.summary;
     const notes = [r.depth === 0 && r.parentTitle ? t("monitor.parent", { title: r.parentTitle }) : "", by === "state" ? s.cwd : ""].filter(Boolean).join(", ");
     return (
       <SelectRow
         key={s.thread_id}
         title={s.title}
+        linkId={`thread-link-page-${s.thread_id}`}
         href={formatRoute({ view: "conversation", threadId: s.thread_id })}
         status={r.status ? <StatusMark status={r.status} label={statusLabel(t, r.status)} word={false} /> : null}
         depth={r.depth}
@@ -190,7 +197,7 @@ export function Threads({ model }: { model: AppModel }) {
         note={notes || undefined}
         age={formatAge(s.updated_at, model.coarseNow.value)}
         moveAction={canMove ? <button type="button" class="srow-act" onClick={() => org.pickParent(s.thread_id)}>{t("org.move")}</button> : undefined}
-        menu={{ label: t("thread.rowMenu"), entries: threadMenuEntries(model, s, r.status, (target, opener, placementAnchor) => setDeleteThread({ target, ...captureRowFocusReturn(opener, placementAnchor) })) }}
+        menu={{ label: t("thread.rowMenu"), entries: threadMenuEntries(model, s, r.status, (target) => setDeleteThread({ threadId: target.thread_id, nextThreadId })) }}
         drag={
           canMove
             ? {
@@ -210,11 +217,11 @@ export function Threads({ model }: { model: AppModel }) {
   };
   return (
     <>
-    {deleteThread ? <ThreadDeleteDialog key={deleteThread.target.thread_id} model={model} {...deleteThread} onClose={() => setDeleteThread(undefined)} /> : null}
+    {deleteThread ? <ThreadDeleteDialog key={deleteThread.threadId} model={model} target={deleteThread} returnFocusTo={document.getElementById(`thread-link-page-${deleteThread.threadId}`)} resolveFocusFallback={resolveThreadPageFocusFallback} onClose={() => setDeleteThread(undefined)} onDeleted={() => focusThreadPageRow(deleteThread.nextThreadId)} /> : null}
     <div class="org">
       <div class="head">
         <div class="pagehead">
-          <h1>{t("view.threads")}</h1>
+          <h1 id="threads-page-heading" tabIndex={-1}>{t("view.threads")}</h1>
           <div class="muted">{t("org.sub")}</div>
         </div>
         <div class="toolbar">
@@ -263,7 +270,7 @@ export function Threads({ model }: { model: AppModel }) {
         const label = groupLabel(t, by, g.key);
         return (
           <ThreadGroup key={g.key} label={label} mono={by === "directory"} count={t("org.count", { n: ids.length })} all={chosen === ids.length} some={chosen > 0} selectLabel={t("org.selectGroup", { group: label })} onSelect={(on) => org.setMany(ids, on)}>
-            {g.rows.map(row)}
+            {g.rows.map((memberRow) => row(memberRow, groupedRows[groupedRows.indexOf(memberRow) + 1]?.summary.thread_id))}
           </ThreadGroup>
         );
       })}

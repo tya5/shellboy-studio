@@ -1,10 +1,11 @@
 # WorkSheet
 
-A native modal sheet for the Conversation work strip. The caller passes the actual
-invoking control and a nearby-focus resolver; the sheet never guesses focus from
-mount-time activeElement or inspects row classes. `showModal()` contains modal focus.
-While open, `modal-dialog-open` prevents scrolling in the app's `.side`, `.scroll`,
-`.mon`, and `.org` scroll containers, while `.work-sheet-body` remains scrollable.
+A native modal sheet for the Conversation work strip. The caller supplies its return
+focus target and fallback resolver; the sheet never guesses focus from mount-time
+activeElement or inspects row classes. `showModal()` contains modal focus. The single
+`html:has(dialog:modal)` rule locks document scrolling while the top-layer modal
+backdrop prevents pointer/wheel input from reaching the app panes; `.work-sheet-body`
+remains scrollable.
 
 Only a primary pointer click whose coordinates are outside the dialog bounds dismisses
 the sheet. Clicks on its padding, Ctrl+primary context clicks, and right-click do not.

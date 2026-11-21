@@ -11,14 +11,10 @@ export function WorkSheet({ open, title, closeLabel, onClose, children, role = "
     const dialog = ref.current;
     if (!dialog) return;
     if (open && !dialog.open) {
-      const root = document.documentElement;
-      const alreadyLocked = root.classList.contains("modal-dialog-open");
-      root.classList.add("modal-dialog-open");
       dialog.showModal();
       if (focusCloseOnOpen) closeButton.current?.focus();
       return () => {
         if (dialog.open) dialog.close();
-        if (!alreadyLocked) root.classList.remove("modal-dialog-open");
         const target = returnFocusTo?.isConnected ? returnFocusTo : resolveFocusFallback();
         target?.focus();
       };

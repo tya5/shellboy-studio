@@ -1,8 +1,9 @@
 # ThreadDeleteDialog
 
 A modal alert dialog for the exact singleton-delete preview and confirmation. The
-row-menu selection passes the actual invoking control and a resolver for a nearby row
-control; the generic sheet does not infer its opener from activeElement or row CSS.
+screen supplies `{ threadId, nextThreadId }` computed from its own displayed row list,
+plus stable id-based focus targets. The generic sheet never infers focus from the Menu
+Escape target or searches row classes.
 It uses `role="alertdialog"`, ties the heading and concise confirmation text through
 `aria-labelledby`/`aria-describedby`, and focuses the system Button Cancel control on
 open. Outside pointer dismissal is disabled. Escape remains a cancellation path.
