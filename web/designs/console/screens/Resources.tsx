@@ -96,6 +96,7 @@ export function MemoryPane({ model }: { model: AppModel }) {
   const bridge = i.bridge.value;
   const missing = t("common.notReported");
   const readIssue = memory.error?.kind === "resource_read" ? memory.error.issue : undefined;
+  const memoryUnavailable = readIssue === "unsupported" ? t("res.memory.unsupported") : readIssue === "invalid_response" ? t("res.memory.invalid_response") : readIssue === "disconnected" ? t("res.memory.disconnected") : memory.error ? t("res.memory.readFailed") : undefined;
   return (
     <>
       <Head t={t} title={t("ana.section.memory")} sub={t("ana.sub.memory")} loading={memory.loading || bridge.loading} onRefresh={() => { i.refreshRead("memory"); i.refreshRead("bridge"); }} />
@@ -104,7 +105,7 @@ export function MemoryPane({ model }: { model: AppModel }) {
         sub={memory.value?.observedAt ? t("res.memorySub", { at: formatClock(memory.value.observedAt, true) ?? "" }) : undefined}
         source={<>{t("common.source", { source: "" })}<code>status --memory</code></>}
       >
-        {memory.error && memory.error.kind !== "resource_read" ? <Notice tone="bad">{t("common.readError", { message: memory.error.message })}</Notice> : null}
+        {memoryUnavailable ? <Notice tone="wait">{memoryUnavailable}</Notice> : null}
         {memory.value ? (
           <div class="stats">
             {memory.value.metrics.map((m) => (

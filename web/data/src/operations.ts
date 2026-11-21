@@ -153,10 +153,11 @@ const decodeMemoryStatus: Decoder<Record<string, unknown>> = value => {
 };
 
 export type MemoryReadIssue = "unsupported" | "invalid_response" | "disconnected";
-export function memoryReadIssue(error: import("./errors").OpError): MemoryReadIssue {
+export function memoryReadIssue(error: import("./errors").OpError): MemoryReadIssue | undefined {
   if (error.kind === "not_connected" || error.kind === "connection_lost") return "disconnected";
+  if (error.kind === "invalid_response") return "invalid_response";
   if (error.kind === "owner" && ["operation_not_found", "unsupported", "unsupported_operation"].includes(error.code)) return "unsupported";
-  return "invalid_response";
+  return undefined;
 }
 
 const decodeModelList: Decoder<ModelListResult> = (v) =>
@@ -304,7 +305,7 @@ export class Operations {
     const out = await this.run("status", { memory: true }, outcomeDecoder(decodeMemoryStatus), undefined, read);
     if (out.ok || out.error.kind === "cancelled") return out;
     const issue = memoryReadIssue(out.error);
-    return { ok: false, error: { kind: "resource_read", issue, message: issue } };
+    return issue ? { ok: false, error: { kind: "resource_read", issue, message: issue } } : out;
   }
   /** Activity status, for `receipt_budget`. One row is enough; the rows are not used. */
   handoffAttempts(threadId: string, read?: ReadOptions): Promise<Outcome<Page<WorkItem>>> {

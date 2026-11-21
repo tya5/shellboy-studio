@@ -298,11 +298,19 @@ describe("Reads for Analytics and Settings", () => {
     expect(await second).toEqual({ ok: false, error: { kind: "resource_read", issue: "invalid_response", message: "invalid_response" } });
   });
 
+  it("preserves unrelated memory read errors instead of calling them invalid responses", async () => {
+    const { ops } = setup();
+    (ops as unknown as { run: () => Promise<unknown> }).run = async () => ({ ok: false, error: { kind: "busy", message: "synthetic" } });
+    expect(await ops.memoryStatus()).toEqual({ ok: false, error: { kind: "busy", message: "synthetic" } });
+  });
+
   it("classifies request-level connection loss separately from owner unsupported errors", () => {
     expect(memoryReadIssue({ kind: "connection_lost", message: "synthetic" })).toBe("disconnected");
     expect(memoryReadIssue({ kind: "not_connected", message: "synthetic" })).toBe("disconnected");
     expect(memoryReadIssue({ kind: "invalid_response", message: "synthetic" })).toBe("invalid_response");
     expect(memoryReadIssue({ kind: "owner", code: "operation_not_found", message: "synthetic" })).toBe("unsupported");
+    expect(memoryReadIssue({ kind: "busy", message: "synthetic" })).toBeUndefined();
+    expect(memoryReadIssue({ kind: "owner", code: "storage_busy", message: "synthetic" })).toBeUndefined();
   });
 
   it("model.list needs a connection and a model array", async () => {

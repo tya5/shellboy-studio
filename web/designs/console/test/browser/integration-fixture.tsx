@@ -9,6 +9,11 @@ const fixtureLang = params.get('lang') === 'ja' ? 'ja' as const : 'en' as const;
 const fixtureOptions = params.get('view') === 'memory' ? { route: 'analytics' as const, section: 'memory' as const, lang: fixtureLang } : {};
 if (params.get('view') === 'memory') document.documentElement.dataset.memoryFixture = fixtureLang;
 const { model, t, db } = await fixtureModel({ ...fixtureOptions, configure(db) {
+  if (params.get('state') === 'memory-error') {
+    const answer = db.answer.bind(db);
+    db.answer = call => call.command === 'status' && (call.args as { memory?: boolean }).memory ? { ok: false, code: 'operation_not_found' } : answer(call);
+    return;
+  }
   if (params.get('state') === 'awaiting') {
     Object.assign(db.details.lead!, { parent_id: 'organization', shells_count: 1, awaiting_replies: [
       { message_id: 'human-5', recipient_kind: 'human', recipient_thread_id: 'lead', excerpt: 'P5_HUMAN_QUESTION', delivery_status: 'accepted' },

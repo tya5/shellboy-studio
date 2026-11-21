@@ -45,6 +45,26 @@ it.each(["unsupported", "invalid_response", "disconnected"] as const)("renders a
 });
 
 
+
+it.each(["en", "ja"] as const)("shows a localized failed-refresh state while retaining the previous memory facts (%s)", async lang => {
+ let failed = false;
+ const f=await fixtureModel({configure(db){const answer=db.answer.bind(db);db.answer=call=>call.command==="status"&&(call.args as {memory?:boolean}).memory&&failed?{ok:false,code:"operation_not_found"}:answer(call);}});
+ const host=document.createElement("div");document.body.append(host);
+ try {
+  f.model.lang.value=lang;
+  f.model.insights.refreshRead("memory");await settle(f.t,f.db);
+  expect(f.model.insights.memory.peek().value).toBeDefined();
+  failed=true;f.model.insights.refreshRead("memory");await settle(f.t,f.db);
+  expect(f.model.insights.memory.peek().value?.caches).toHaveLength(4);
+  expect(f.model.insights.memory.peek().error).toMatchObject({kind:"resource_read",issue:"unsupported"});
+  render(<MemoryPane model={f.model}/>,host);
+  const cacheSection=[...host.querySelectorAll("section")].find(section=>section.getAttribute("aria-label")===f.model.t.value("res.caches"))!;
+  expect(cacheSection.querySelectorAll(".meter")).toHaveLength(4);
+  expect(host.querySelector('[role="status"]')?.textContent).toBe(f.model.t.value("res.memory.unsupported"));
+  expect(cacheSection.textContent).toContain("56 KiB");
+ } finally {render(null,host);host.remove();f.model.dispose();f.data.stop();}
+});
+
 it("keeps the global owner connected when only the memory status operation is unsupported", async () => {
  const f=await fixtureModel({configure(db){const answer=db.answer.bind(db);db.answer=call=>call.command==="status"&&(call.args as {memory?:boolean}).memory?{ok:false,code:"operation_not_found"}:answer(call);}});
  try {
