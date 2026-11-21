@@ -3,11 +3,7 @@ import type { ComponentChildren } from "preact";
 import { Popover } from "../Popover";
 import { Icon, type IconRole } from "../Icon";
 
-<<<<<<< HEAD
 export type MenuItem = { key: string; label: string; icon?: IconRole; onSelect?: (focusReturn: HTMLElement | null, placementAnchor: HTMLElement | null) => void; href?: string; destructive?: boolean; disabled?: boolean };
-=======
-export type MenuItem = { key: string; label: string; onSelect?: () => void; href?: string; destructive?: boolean; disabled?: boolean };
->>>>>>> de89395 (return delete focus to stable row links)
 export type MenuEntry = MenuItem | { key: string; separator: true };
 
 function isSeparator(entry: MenuEntry): entry is { key: string; separator: true } { return "separator" in entry; }
@@ -48,15 +44,7 @@ export function Menu({ open, anchor, returnFocusTo, entries, onClose, id, labell
       else if (event.key === "Enter" || event.key === " ") { event.preventDefault(); (document.activeElement as HTMLElement)?.click(); }
       else if (event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) typeTo(event.key);
     }}>
-<<<<<<< HEAD
-<<<<<<< HEAD
-      {available.map((entry) => isSeparator(entry) ? <div key={entry.key} class="menu-separator" role="separator" /> : entry.href ? <a key={entry.key} role="menuitem" tabIndex={-1} class={entry.destructive ? "menu-item destructive" : "menu-item"} href={entry.href} onClick={() => { onClose(); document.getElementById(labelledBy)?.focus(); }}>{entry.icon ? <span class="menu-item-icon"><Icon role={entry.icon} size="menu" /></span> : null}<span>{entry.label}</span></a> : <button key={entry.key} type="button" role="menuitem" tabIndex={-1} class={entry.destructive ? "menu-item destructive" : "menu-item"} onClick={() => { entry.onSelect?.(); onClose(); document.getElementById(labelledBy)?.focus(); }}>{entry.icon ? <span class="menu-item-icon"><Icon role={entry.icon} size="menu" /></span> : null}<span>{entry.label}</span></button>)}
-=======
-      {available.map((entry) => isSeparator(entry) ? <div key={entry.key} class="menu-separator" role="separator" /> : entry.href ? <a key={entry.key} role="menuitem" tabIndex={-1} class={entry.destructive ? "menu-item destructive" : "menu-item"} href={entry.href} onClick={() => { onClose(); document.getElementById(labelledBy)?.focus(); }}>{entry.label}</a> : <button key={entry.key} type="button" role="menuitem" tabIndex={-1} class={entry.destructive ? "menu-item destructive" : "menu-item"} onClick={() => { entry.onSelect?.(returnFocusTo ?? anchor, anchor); onClose(); document.getElementById(labelledBy)?.focus(); }}>{entry.label}</button>)}
->>>>>>> 5c36f26 (pass caller focus targets to modal dialogs)
-=======
-      {available.map((entry) => isSeparator(entry) ? <div key={entry.key} class="menu-separator" role="separator" /> : entry.href ? <a key={entry.key} role="menuitem" tabIndex={-1} class={entry.destructive ? "menu-item destructive" : "menu-item"} href={entry.href} onClick={() => { onClose(); document.getElementById(labelledBy)?.focus(); }}>{entry.label}</a> : <button key={entry.key} type="button" role="menuitem" tabIndex={-1} class={entry.destructive ? "menu-item destructive" : "menu-item"} onClick={() => { entry.onSelect?.(); onClose(); document.getElementById(labelledBy)?.focus(); }}>{entry.label}</button>)}
->>>>>>> de89395 (return delete focus to stable row links)
+      {available.map((entry) => isSeparator(entry) ? <div key={entry.key} class="menu-separator" role="separator" /> : entry.href ? <a key={entry.key} role="menuitem" tabIndex={-1} class={entry.destructive ? "menu-item destructive" : "menu-item"} href={entry.href} onClick={() => { onClose(); document.getElementById(labelledBy)?.focus(); }}>{entry.icon ? <span class="menu-item-icon"><Icon role={entry.icon} size="menu" /></span> : null}<span>{entry.label}</span></a> : <button key={entry.key} type="button" role="menuitem" tabIndex={-1} class={entry.destructive ? "menu-item destructive" : "menu-item"} onClick={() => { entry.onSelect?.(returnFocusTo ?? anchor, anchor); onClose(); document.getElementById(labelledBy)?.focus(); }}>{entry.icon ? <span class="menu-item-icon"><Icon role={entry.icon} size="menu" /></span> : null}<span>{entry.label}</span></button>)}
     </div>
   </Popover>;
 }

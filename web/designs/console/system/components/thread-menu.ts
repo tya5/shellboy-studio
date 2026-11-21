@@ -14,10 +14,6 @@ export function threadMenuEntries(model: AppModel, row: ThreadSummary, status: S
     { key: "stop", icon: "action.stop", label: model.t.value("action.stop"), disabled: status !== "running", onSelect: () => void report(model.t.value("action.stop"), async () => { const details = await model.ops.threadGet(row.thread_id); if (!details.ok || !details.value.run_id) return { ok: false, error: { message: model.t.value("action.stopRefused") } }; return model.ops.runStop(details.value.run_id); }) },
     { key: "retry", icon: "action.retry", label: model.t.value("action.retry"), disabled: status !== "recovery", onSelect: () => void report(model.t.value("action.retry"), async () => { const details = await model.ops.threadGet(row.thread_id); if (!details.ok || !details.value.run_id) return { ok: false, error: { message: model.t.value("action.retry") } }; return model.ops.runRetry(details.value.run_id); }) },
     { key: "actions-separator", separator: true },
-<<<<<<< HEAD
-    { key: "delete", icon: "action.delete", label: model.t.value("thread.deletePreview"), destructive: true, onSelect: (opener, placementAnchor) => { model.actionError.value = undefined; onDelete(row, opener, placementAnchor); } },
-=======
-    { key: "delete", label: model.t.value("thread.deletePreview"), destructive: true, onSelect: () => { model.actionError.value = undefined; onDelete(row); } },
->>>>>>> de89395 (return delete focus to stable row links)
+    { key: "delete", icon: "action.delete", label: model.t.value("thread.deletePreview"), destructive: true, onSelect: () => { model.actionError.value = undefined; onDelete(row); } },
   ];
 }
