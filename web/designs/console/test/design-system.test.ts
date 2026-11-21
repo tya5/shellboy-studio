@@ -73,3 +73,16 @@ describe("design-system source boundaries", () => {
     expect(missing).toEqual([]);
   });
 });
+
+describe("application header sizing", () => {
+  it("uses the same fixed tokenized border-box height for sidebar and main headers", () => {
+    const layout = readFileSync(new URL("../system/layout.css", import.meta.url), "utf8");
+    for (const selector of ["brand", "top"]) {
+      const rule = layout.match(new RegExp(`\\.${selector}\\{([^}]*)\\}`))?.[1] ?? "";
+      expect(rule).toMatch(/height:var\(--size-header\)/);
+      expect(rule).toMatch(/box-sizing:border-box/);
+      expect(rule).toMatch(/align-items:center/);
+    }
+    expect(layout).not.toMatch(/min-height:49px/);
+  });
+});

@@ -5,7 +5,7 @@
 .shell{flex:1;min-height:0;display:grid;grid-template-columns:var(--size-sidebar) minmax(0,1fr)}
 
 .side{background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0;overflow:auto}
-.brand{display:flex;align-items:center;gap:var(--space-8);padding:var(--space-12) var(--space-16);font:var(--type-heading);border-bottom:1px solid var(--line)}
+.brand{box-sizing:border-box;flex:none;height:var(--size-header);min-height:var(--size-header);display:flex;align-items:center;gap:var(--space-8);padding:var(--space-12) var(--space-16);font:var(--type-heading);border-bottom:1px solid var(--line)}
 .brand .i{width:26px;height:26px;color:var(--accent)}
 .side>.nav{border-bottom:1px solid var(--line)}
 .sidehead{display:flex;justify-content:space-between;align-items:center;padding:var(--space-12) var(--space-16) var(--space-8)}
@@ -25,7 +25,7 @@
 .scrim{display:none}
 
 .main{min-width:0;min-height:0;display:flex;flex-direction:column;position:relative}
-.top{display:flex;align-items:center;gap:var(--space-12);padding:var(--space-8) var(--space-16);border-bottom:1px solid var(--line);background:var(--panel);min-height:49px}
+.top{box-sizing:border-box;flex:none;height:var(--size-header);min-height:var(--size-header);display:flex;align-items:center;gap:var(--space-12);padding:var(--space-8) var(--space-16);border-bottom:1px solid var(--line);background:var(--panel)}
 .top .menu{display:none}
 .crumb{min-width:0;display:flex;gap:var(--space-8);color:var(--muted);font:var(--type-label);white-space:nowrap}
 .crumb b{color:var(--fg);font-weight:500;overflow:hidden;text-overflow:ellipsis}
