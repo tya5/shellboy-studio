@@ -30,7 +30,12 @@ export function Popover({ open, anchor, returnFocusTo, onClose, children, classN
   className?: string;
 }) {
   const panel = useRef<HTMLDivElement>(null);
+  const opener = useRef<HTMLElement | null>(null);
   const [point, setPoint] = useState<PanelPlacement>();
+
+  useEffect(() => {
+    opener.current = open ? (returnFocusTo === undefined ? anchor : returnFocusTo) : null;
+  }, [open]);
 
   useLayoutEffect(() => {
     if (!open) { setPoint(undefined); return; }
@@ -51,12 +56,11 @@ export function Popover({ open, anchor, returnFocusTo, onClose, children, classN
   useEffect(() => {
     if (!open) return;
     const outside = (event: PointerEvent) => { if (!panel.current?.contains(event.target as Node) && !anchor?.contains(event.target as Node)) onClose(); };
-    const focusTarget = returnFocusTo === undefined ? anchor : returnFocusTo;
-    const key = (event: KeyboardEvent) => { if (event.key === "Escape") { onClose(); focusTarget?.focus(); } else if (event.key === "Tab") onClose(); };
+    const key = (event: KeyboardEvent) => { if (event.key === "Escape") { const target = opener.current; onClose(); target?.focus(); } else if (event.key === "Tab") onClose(); };
     document.addEventListener("pointerdown", outside);
     document.addEventListener("keydown", key);
     return () => { document.removeEventListener("pointerdown", outside); document.removeEventListener("keydown", key); };
-  }, [open, onClose, anchor, returnFocusTo]);
+  }, [open, onClose, anchor]);
 
   if (!open) return null;
   const style: JSX.CSSProperties = point ? { left: `${point.left}px`, top: `${point.top}px`, maxHeight: `${point.maxHeight}px` } : { visibility: "hidden" };

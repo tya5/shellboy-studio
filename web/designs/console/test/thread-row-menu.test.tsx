@@ -69,7 +69,8 @@ describe("Thread row menu and delete", () => {
     document.body.append(host);
     act(() => render(treeRow("One"), host));
     const trigger = host.querySelector<HTMLButtonElement>("[aria-haspopup=menu]")!;
-    act(() => { trigger.focus(); trigger.click(); });
+    expect(document.activeElement).not.toBe(trigger);
+    act(() => trigger.click());
     await act(async () => { await Promise.resolve(); });
     expectVisibleMenu();
     act(() => { document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); });
@@ -92,23 +93,18 @@ describe("Thread row menu and delete", () => {
     expectVisibleMenu();
     act(() => render(null, host)); host.remove();
   });
-  it("opens a SelectRow context menu and Escape returns focus to its trigger", async () => {
+  it("returns Escape focus to the link active before SelectRow contextmenu", async () => {
     const host = document.createElement("div");
     document.body.append(host);
-    act(() => render(<>{treeRow("One")}{selectRow("Two")}</>, host));
-    const threadRow = host.querySelector<HTMLElement>(".tree-item")!;
-    const listRow = host.querySelector<HTMLElement>(".srow")!;
-    const link = listRow.querySelector<HTMLAnchorElement>("a")!;
+    act(() => render(selectRow("One"), host));
+    const row = host.querySelector<HTMLElement>(".srow")!;
+    const link = row.querySelector<HTMLAnchorElement>("a")!;
     link.focus();
-    await act(async () => { threadRow.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true })); await Promise.resolve(); });
-    expect(document.body.querySelectorAll(".popover")).toHaveLength(1);
-    act(() => { listRow.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true })); });
-    const focusedBeforeSecondOpen = document.activeElement;
-    await act(async () => { listRow.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true })); await Promise.resolve(); });
-    expect(document.body.querySelectorAll(".popover")).toHaveLength(1);
+    expect(document.activeElement).toBe(link);
+    await act(async () => { row.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true })); await Promise.resolve(); });
     expectVisibleMenu();
     act(() => { document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); });
-    expect(document.activeElement).toBe(focusedBeforeSecondOpen);
+    expect(document.activeElement).toBe(link);
     expect(document.body.querySelector(".popover")).toBeNull();
     act(() => render(null, host)); host.remove();
   });

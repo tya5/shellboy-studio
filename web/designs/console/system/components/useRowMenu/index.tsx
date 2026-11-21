@@ -9,21 +9,21 @@ export function useRowMenu(options: RowMenuOptions | undefined): { open: boolean
   const [open, setOpen] = useState(false);
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   const [returnFocusTo, setReturnFocusTo] = useState<HTMLElement | null>(null);
-  const show = (placement: HTMLElement) => {
+  const show = (placement: HTMLElement, returnTo: HTMLElement | null) => {
     setAnchor(placement);
-    setReturnFocusTo(document.activeElement instanceof HTMLElement ? document.activeElement : null);
+    setReturnFocusTo(returnTo);
     setOpen(true);
   };
   const rowHandlers: JSX.HTMLAttributes<HTMLDivElement> = options ? {
-    onContextMenu: (event) => { event.preventDefault(); show(event.currentTarget); },
-    onKeyDown: (event) => { if (event.key === "ArrowDown") { event.preventDefault(); show(event.currentTarget); } },
+    onContextMenu: (event) => { event.preventDefault(); show(event.currentTarget, document.activeElement as HTMLElement | null); },
+    onKeyDown: (event) => { if (event.key === "ArrowDown") { event.preventDefault(); show(event.currentTarget, document.activeElement as HTMLElement | null); } },
   } : {};
   return {
     open,
     rowHandlers,
     trigger: options ? <span class="row-menu-trigger"><Button variant="quiet" icon label={options.label} aria-haspopup="menu" aria-expanded={open} onClick={(event) => {
       if (open) setOpen(false);
-      else show(event.currentTarget);
+      else show(event.currentTarget, event.currentTarget);
     }}><Icon name="more" small /></Button></span> : null,
     menu: options ? <Menu open={open} anchor={anchor} returnFocusTo={returnFocusTo} entries={options.entries} onClose={() => setOpen(false)} /> : null,
   };
