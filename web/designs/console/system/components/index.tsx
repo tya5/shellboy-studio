@@ -2,6 +2,7 @@
 export { Icon, type IconName } from "./Icon";
 export { StatusMark } from "./StatusMark";
 export { Button } from "./Button";
+export { LayoutSeparator } from "./LayoutSeparator";
 export { Field } from "./Field";
 export { Check } from "./Check";
 export { NavItem } from "./NavItem";

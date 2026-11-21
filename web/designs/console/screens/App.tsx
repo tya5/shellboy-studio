@@ -16,6 +16,7 @@ import { Settings } from "./Settings";
 import { Setup } from "./Setup";
 import { SettingsView } from "./SettingsView";
 import { AuthPrompt } from "./AuthPrompt";
+import { LayoutSeparator } from "../system/components";
 
 const SEARCH_DEBOUNCE_MS = 200;
 
@@ -27,19 +28,14 @@ export function App({ context }: { context: DesignContext }) {
   const [settings, setSettings] = useState(false);
   const [actionNotice, setActionNotice] = useState<string>();
   const [query, setQuery] = useState("");
-  const [resizeStart, setResizeStart] = useState<{ pointerId: number; x: number; width: number }>();
-  const activePointer = useRef<number | undefined>(undefined);
-  const activeElement = useRef<HTMLElement | undefined>(undefined);
+  const drag = useRef<{ pointerId: number; element: HTMLElement; originX: number; startWidth: number }>();
   const shell = useRef<HTMLDivElement>(null);
   const sidebarWidth = readSidebarWidth(context.prefs.value.sidebarWidth);
   const finishResize = (pointerId?: number) => {
-    if (pointerId !== undefined && activePointer.current !== pointerId) return;
-    const id = activePointer.current;
-    const element = activeElement.current;
-    if (id !== undefined && element?.hasPointerCapture(id)) element.releasePointerCapture(id);
-    activePointer.current = undefined;
-    activeElement.current = undefined;
-    setResizeStart(undefined);
+    const current = drag.current;
+    if (!current || (pointerId !== undefined && current.pointerId !== pointerId)) return;
+    if (current.element.hasPointerCapture(current.pointerId)) current.element.releasePointerCapture(current.pointerId);
+    drag.current = undefined;
   };
   const picker = model.modelPicker.value;
   useEffect(() => { if (picker.open && picker.thread !== model.selectedId.value) model.closeModelPicker(); }, [picker.open, picker.thread, model.selectedId.value]);
@@ -100,7 +96,7 @@ export function App({ context }: { context: DesignContext }) {
   return (
     <div class="app">
       <div ref={shell} class={context.prefs.value.navCollapsed ? "shell nav-collapsed" : "shell"}>
-        <Button class="side-resize" label={t("threads.resizeSidebar")} role="separator" aria-orientation="vertical" aria-valuemin={SIDEBAR_WIDTH_MIN} aria-valuemax={SIDEBAR_WIDTH_MAX} aria-valuenow={sidebarWidth} onPointerDown={(event) => { if (context.prefs.value.navCollapsed || activePointer.current !== undefined || !event.isPrimary || event.button !== 0) return; event.preventDefault(); activePointer.current = event.pointerId; activeElement.current = event.currentTarget; event.currentTarget.setPointerCapture(event.pointerId); setResizeStart({ pointerId: event.pointerId, x: event.clientX, width: sidebarWidth }); }} onPointerMove={(event) => { if (!resizeStart || activePointer.current !== event.pointerId || resizeStart.pointerId !== event.pointerId || !event.isPrimary) return; context.setPrefs({ sidebarWidth: readSidebarWidth(resizeStart.width + event.clientX - resizeStart.x) }); }} onPointerUp={(event) => finishResize(event.pointerId)} onPointerCancel={(event) => finishResize(event.pointerId)} onLostPointerCapture={(event) => finishResize(event.pointerId)} onKeyDown={(event) => { if (context.prefs.value.navCollapsed) return; const step = event.shiftKey ? 32 : 16; if (event.key === "ArrowLeft" || event.key === "ArrowRight" || event.key === "Home" || event.key === "End") { event.preventDefault(); const next = event.key === "Home" ? SIDEBAR_WIDTH_MIN : event.key === "End" ? SIDEBAR_WIDTH_MAX : sidebarWidth + (event.key === "ArrowRight" ? step : -step); context.setPrefs({ sidebarWidth: readSidebarWidth(next) }); } }}><span aria-hidden="true" /></Button>
+        <LayoutSeparator aria-label={t("threads.resizeSidebar")} role="separator" aria-orientation="vertical" aria-valuemin={SIDEBAR_WIDTH_MIN} aria-valuemax={SIDEBAR_WIDTH_MAX} aria-valuenow={sidebarWidth} tabIndex={0} onPointerDown={(event) => { if (context.prefs.value.navCollapsed || drag.current || !event.isPrimary || event.button !== 0) return; event.preventDefault(); const element = event.currentTarget; drag.current = { pointerId: event.pointerId, element, originX: event.clientX, startWidth: sidebarWidth }; element.setPointerCapture(event.pointerId); }} onPointerMove={(event) => { const current = drag.current; if (!current || current.pointerId !== event.pointerId || !event.isPrimary) return; context.setPrefs({ sidebarWidth: readSidebarWidth(current.startWidth + event.clientX - current.originX) }); }} onPointerUp={(event) => finishResize(event.pointerId)} onPointerCancel={(event) => finishResize(event.pointerId)} onLostPointerCapture={(event) => finishResize(event.pointerId)} onKeyDown={(event) => { if (context.prefs.value.navCollapsed) return; const step = event.shiftKey ? 32 : 16; if (event.key === "ArrowLeft" || event.key === "ArrowRight" || event.key === "Home" || event.key === "End") { event.preventDefault(); const next = event.key === "Home" ? SIDEBAR_WIDTH_MIN : event.key === "End" ? SIDEBAR_WIDTH_MAX : sidebarWidth + (event.key === "ArrowRight" ? step : -step); context.setPrefs({ sidebarWidth: readSidebarWidth(next) }); } }} />
         <button type="button" class={drawer ? "scrim open" : "scrim"} aria-label={t("threads.close")} tabIndex={drawer ? 0 : -1} onClick={() => setDrawer(false)} />
         <aside class={drawer ? "side open" : "side"} aria-label={t("threads.title")}>
           <div class="brand">
