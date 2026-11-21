@@ -2,8 +2,8 @@ import { useEffect, useRef } from "preact/hooks";
 import type { ComponentChildren } from "preact";
 import { Popover } from "../Popover";
 
-type MenuItem = { key: string; label: string; onSelect?: () => void; href?: string; destructive?: boolean; disabled?: boolean };
-type MenuEntry = MenuItem | { key: string; separator: true };
+export type MenuItem = { key: string; label: string; onSelect?: () => void; href?: string; destructive?: boolean; disabled?: boolean };
+export type MenuEntry = MenuItem | { key: string; separator: true };
 
 function isSeparator(entry: MenuEntry): entry is { key: string; separator: true } { return "separator" in entry; }
 

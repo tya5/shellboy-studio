@@ -2,3 +2,5 @@ A Thread in a list that supports choosing several. The checkbox chooses; the tit
 
 
 The optional `action` stays in the row flow after the title link, so it takes its own space rather than overlaying the title. Leave it out when the operation is unavailable; the row itself remains the checkbox-and-title interaction.
+
+The optional action slot carries the shared Thread menu; row context menus and ArrowDown open that same menu.
