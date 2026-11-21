@@ -68,8 +68,12 @@ describe("Thread row menu and delete", () => {
     const host = document.createElement("div");
     document.body.append(host);
     act(() => render(treeRow("One"), host));
-    await act(async () => { host.querySelector<HTMLButtonElement>("[aria-haspopup=menu]")!.click(); await Promise.resolve(); });
+    const trigger = host.querySelector<HTMLButtonElement>("[aria-haspopup=menu]")!;
+    act(() => { trigger.focus(); trigger.click(); });
+    await act(async () => { await Promise.resolve(); });
     expectVisibleMenu();
+    act(() => { document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); });
+    expect(document.activeElement).toBe(trigger);
     act(() => render(null, host)); host.remove();
   });
   it("opens a visible Menu from the SelectRow button", async () => {
@@ -94,14 +98,17 @@ describe("Thread row menu and delete", () => {
     act(() => render(<>{treeRow("One")}{selectRow("Two")}</>, host));
     const threadRow = host.querySelector<HTMLElement>(".tree-item")!;
     const listRow = host.querySelector<HTMLElement>(".srow")!;
-    const trigger = listRow.querySelector<HTMLButtonElement>("[aria-haspopup=menu]")!;
+    const link = listRow.querySelector<HTMLAnchorElement>("a")!;
+    link.focus();
     await act(async () => { threadRow.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true })); await Promise.resolve(); });
     expect(document.body.querySelectorAll(".popover")).toHaveLength(1);
+    act(() => { listRow.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true })); });
+    const focusedBeforeSecondOpen = document.activeElement;
     await act(async () => { listRow.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true })); await Promise.resolve(); });
     expect(document.body.querySelectorAll(".popover")).toHaveLength(1);
     expectVisibleMenu();
     act(() => { document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); });
-    expect(document.activeElement).toBe(trigger);
+    expect(document.activeElement).toBe(focusedBeforeSecondOpen);
     expect(document.body.querySelector(".popover")).toBeNull();
     act(() => render(null, host)); host.remove();
   });
@@ -121,7 +128,8 @@ describe("Thread row menu and delete", () => {
     expect(rows.every((item) => item.querySelector(".tree-action, .srow-menu") !== null)).toBe(true);
     const triggers = [...host.querySelectorAll<HTMLButtonElement>("[aria-haspopup=menu]")];
     for (const trigger of triggers) {
-      act(() => trigger.click());
+      act(() => { trigger.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true })); });
+      act(() => { trigger.focus(); trigger.click(); });
       await act(async () => { await Promise.resolve(); });
       expect(document.body.querySelectorAll(".popover")).toHaveLength(1);
     }

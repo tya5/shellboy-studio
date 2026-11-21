@@ -31,14 +31,6 @@ export function Popover({ open, anchor, returnFocusTo, onClose, children, classN
 }) {
   const panel = useRef<HTMLDivElement>(null);
   const [point, setPoint] = useState<PanelPlacement>();
-  const opener = useRef<HTMLElement | null>(null);
-  const anchorRef = useRef(anchor);
-  anchorRef.current = anchor;
-
-  useEffect(() => {
-    if (open) opener.current = returnFocusTo ?? anchor;
-    else opener.current = null;
-  }, [open, anchor, returnFocusTo]);
 
   useLayoutEffect(() => {
     if (!open) { setPoint(undefined); return; }
@@ -58,12 +50,13 @@ export function Popover({ open, anchor, returnFocusTo, onClose, children, classN
 
   useEffect(() => {
     if (!open) return;
-    const outside = (event: PointerEvent) => { if (!panel.current?.contains(event.target as Node) && !anchorRef.current?.contains(event.target as Node)) onClose(); };
-    const key = (event: KeyboardEvent) => { if (event.key === "Escape") { const current = opener.current; onClose(); current?.focus(); } else if (event.key === "Tab") onClose(); };
+    const outside = (event: PointerEvent) => { if (!panel.current?.contains(event.target as Node) && !anchor?.contains(event.target as Node)) onClose(); };
+    const focusTarget = returnFocusTo === undefined ? anchor : returnFocusTo;
+    const key = (event: KeyboardEvent) => { if (event.key === "Escape") { onClose(); focusTarget?.focus(); } else if (event.key === "Tab") onClose(); };
     document.addEventListener("pointerdown", outside);
     document.addEventListener("keydown", key);
     return () => { document.removeEventListener("pointerdown", outside); document.removeEventListener("keydown", key); };
-  }, [open, onClose]);
+  }, [open, onClose, anchor, returnFocusTo]);
 
   if (!open) return null;
   const style: JSX.CSSProperties = point ? { left: `${point.left}px`, top: `${point.top}px`, maxHeight: `${point.maxHeight}px` } : { visibility: "hidden" };
