@@ -145,10 +145,24 @@ const decodeRecord: Decoder<Record<string, unknown>> = (v) =>
   isObject(v) ? { ok: true, value: v } : { ok: false, reason: "expected an object result" };
 
 const decodeMemoryStatus: Decoder<Record<string, unknown>> = value => {
+  const numberOrNull = (v: unknown) => v === null || (typeof v === "number" && Number.isSafeInteger(v) && v >= 0);
+  const stringOrNull = (v: unknown) => v === null || typeof v === "string";
+  const fields = (record: Record<string, unknown>, requiredNumbers: readonly string[], requiredStrings: readonly string[], optionalNumbers: readonly string[] = [], optionalStrings: readonly string[] = []) =>
+    requiredNumbers.every(key => Object.hasOwn(record, key) && numberOrNull(record[key]))
+      && requiredStrings.every(key => Object.hasOwn(record, key) && stringOrNull(record[key]))
+      && optionalNumbers.every(key => !Object.hasOwn(record, key) || numberOrNull(record[key]))
+      && optionalStrings.every(key => !Object.hasOwn(record, key) || stringOrNull(record[key]));
   if (!isObject(value) || !isObject(value.caches) || !isObject(value.process) || !isObject(value.process.metrics))
     return { ok: false, reason: "status --memory result lacks caches or process metrics" };
-  if (Object.values(value.caches).some(cache => !isObject(cache)))
-    return { ok: false, reason: "status --memory cache entry is not an object" };
+  if (!Object.hasOwn(value, "accounting") || !stringOrNull(value.accounting)
+    || !fields(value.process, [], ["platform", "observed_at"]))
+    return { ok: false, reason: "status --memory metadata has an invalid type" };
+  if (Object.values(value.caches).some(cache => !isObject(cache)
+    || !fields(cache, ["retained_bytes", "limit_bytes", "entries"], ["unavailable_reason"], ["live_bytes", "live_encoded_bytes", "pinned_bytes"], ["entry_unit"])))
+    return { ok: false, reason: "status --memory cache entry has an invalid field type" };
+  if (Object.values(value.process.metrics).some(metric => !isObject(metric)
+    || !fields(metric, ["bytes"], ["unavailable_reason"])))
+    return { ok: false, reason: "status --memory process metric has an invalid field type" };
   return { ok: true, value };
 };
 

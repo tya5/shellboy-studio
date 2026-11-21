@@ -284,6 +284,23 @@ describe("Reads for Analytics and Settings", () => {
     ]);
     expect(t.calls().every((c) => c.operation_id === undefined)).toBe(true);
   });
+  it("rejects wrong types for cache limits, retained bytes, and process metrics while preserving explicit nulls", async () => {
+    const valid = () => ({ accounting: "bounded cache accounting", caches: { body: { limit_bytes: 4096, retained_bytes: null, entries: null, unavailable_reason: "Not provided" } },
+      process: { platform: "test", observed_at: "now", metrics: { private_bytes: { bytes: null, unavailable_reason: "Not provided" } } } });
+    for (const mutate of [
+      (v: ReturnType<typeof valid>) => { v.caches.body.limit_bytes = "4096" as never; },
+      (v: ReturnType<typeof valid>) => { v.caches.body.retained_bytes = "0" as never; },
+      (v: ReturnType<typeof valid>) => { v.process.metrics.private_bytes.bytes = "12" as never; },
+    ]) {
+      const { t, ops } = setup();
+      const read = ops.memoryStatus(); const value = valid(); mutate(value);
+      t.ok(t.calls("status")[0]!.id, value);
+      expect(await read).toEqual({ ok: false, error: { kind: "resource_read", issue: "invalid_response", message: "invalid_response" } });
+    }
+    const { t, ops } = setup(); const value = valid(); const read = ops.memoryStatus(); t.ok(t.calls("status")[0]!.id, value);
+    expect(await read).toEqual({ ok: true, value });
+  });
+
   it("memory status classifies unsupported and malformed responses at the data boundary", async () => {
     const unsupported = setup();
     const first = unsupported.ops.memoryStatus();

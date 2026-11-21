@@ -130,7 +130,15 @@ describe("resource facts", () => {
     expect(m.metrics.map((x) => x.name)).toEqual(["footprint", "rss"]);
     const body = m.caches.find((c) => c.name === "body")!;
     expect(body).toMatchObject({ retained: undefined, limit: 33554432, reason: "UI cache owner is not available" });
+    expect(body.retained).toBeUndefined();
     expect(m.caches.find((c) => c.name === "replay")).toMatchObject({ retained: 57373, entries: 1, unit: "thread" });
+  });
+  it("keeps explicit null with its unavailable reason as an unreported memory value", () => {
+    const metricReason = "Private memory is not exposed";
+    const memory = readMemory({ ...fixtureMemory, process: { ...fixtureMemory.process,
+      metrics: { ...fixtureMemory.process.metrics, private_bytes: { bytes: null, unavailable_reason: metricReason } } } });
+    expect(memory.caches.find(cache => cache.name === "body")).toMatchObject({ retained: undefined, reason: "UI cache owner is not available" });
+    expect(memory.metrics.find(metric => metric.name === "private_bytes")).toEqual({ name: "private_bytes", bytes: undefined, reason: metricReason });
   });
   it("storage keeps flags, categories and an absent free size", () => {
     const s = readStorage(fixtureStorage);
