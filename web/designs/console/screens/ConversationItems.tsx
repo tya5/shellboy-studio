@@ -27,6 +27,33 @@ export interface ConversationWorkGroup {
   continuationBefore?: "unknown" | "closed";
   continuationAfter?: "unknown" | "closed";
 }
+
+export type ConversationRowEntry =
+  | Readonly<{ kind: "saved"; key: string; itemKey: string }>
+  | Readonly<{ kind: "work"; key: string; groupKey: string }>
+  | Readonly<{ kind: "pending"; key: string; operationId: string }>;
+
+/** Saved sequence owns history order; unadopted sends are appended in send order. */
+export function conversationRowList(input: {
+  sequence: readonly ({ kind: "conversation"; itemKey: string } | { kind: "work"; groupKey: string })[];
+  items: readonly ConversationItem[];
+  localRows: readonly { operationId: string; messageId?: string }[];
+  retire: readonly { operationId: string; messageId?: string }[];
+}): readonly ConversationRowEntry[] {
+  const items = new Map(input.items.map(item => [item.key, item]));
+  const keyForNode = new Map(input.retire.flatMap(row => row.messageId ? [[row.messageId, `own:${row.operationId}`] as const] : []));
+  const saved: ConversationRowEntry[] = [];
+  for (const entry of input.sequence) {
+    if (entry.kind === "work") saved.push({ kind: "work", key: `work:${entry.groupKey}`, groupKey: entry.groupKey });
+    else {
+      const item = items.get(entry.itemKey);
+      if (item) saved.push({ kind: "saved", key: keyForNode.get(item.source.nodeId ?? "") ?? item.key, itemKey: item.key });
+    }
+  }
+  const pending: ConversationRowEntry[] = input.localRows.map(row => Object.freeze({ kind: "pending", key: `own:${row.operationId}`, operationId: row.operationId }));
+  return Object.freeze([...saved, ...pending]);
+}
+
 interface Props {
   sequence?: readonly ({ kind: "conversation"; itemKey: string } | { kind: "work"; groupKey: string })[];
   workGroups?: readonly ConversationWorkGroup[];
@@ -37,7 +64,7 @@ interface Props {
   renderItem: (item: ConversationItem) => ComponentChildren;
   renderBefore?: (item: ConversationItem) => ComponentChildren;
   trailing?: ComponentChildren;
-  localRegion?: { readonly kind: "unqualified"; readonly content: ComponentChildren };
+  localRegion?: { readonly kind: "unqualified"; readonly content: ComponentChildren; readonly rows?: readonly { operationId: string; messageId?: string }[]; readonly retire?: readonly { operationId: string; messageId?: string }[] };
   isItemAbsent?: (item: ConversationItem) => boolean;
   isItemHidden?: (item: ConversationItem) => boolean;
   renderHeading?: (summary: ConversationToolSummary) => ComponentChildren;
@@ -76,7 +103,12 @@ export function ConversationItems({ items, toolSummaries = [], renderItem, rende
     }
     const spans = new Map<number, { end: number; container: string }>();
     for (const [container, span] of candidates) if (!invalidContainers.has(container)) spans.set(span.start, { end: span.end, container });
-    const content = (item: ConversationItem, work: boolean, hosted = !work && !!item.presentationContainer) => <div class={`conversation-row${hosted ? " conversation-answer-child" : ""}`} key={`item:${item.key}`} data-item-key={item.key} data-key={item.key} data-node={item.source.nodeId} data-work-item-key={work ? item.key : undefined}>{renderItem(item)}</div>;
+    const rows = conversationRowList({ sequence: normalizedSequence, items, localRows: localRegion?.rows ?? [], retire: localRegion?.retire ?? [] });
+    const keyByItem = new Map(rows.flatMap(row => row.kind === "saved" ? [[row.itemKey, row.key] as const] : []));
+    const content = (item: ConversationItem, work: boolean, hosted = !work && !!item.presentationContainer) => {
+      const key = keyByItem.get(item.key) ?? item.key;
+      return <div class={`conversation-row${hosted ? " conversation-answer-child" : ""}`} key={`item:${key}`} data-item-key={key} data-key={key} data-node={item.source.nodeId} data-work-item-key={work ? item.key : undefined}>{renderItem(item)}</div>;
+    };
     const renderWork = (entry: Extract<NonNullable<Props["sequence"]>[number], { kind: "work" }>): ComponentChildren => {
       const group = groups.get(entry.groupKey);
       return group ? <div key={`work:${group.key}`} class="conversation-row steps">{normalizedRenderWorkGroup(group, group.memberKeys.map(key => {
@@ -94,33 +126,27 @@ export function ConversationItems({ items, toolSummaries = [], renderItem, rende
       }
       return output;
     };
-    const rendered: { entry: NonNullable<Props["sequence"]>[number]; view: ComponentChildren; first:number; last:number }[] = [];
+    const rendered: { entry: NonNullable<Props["sequence"]>[number]; view: ComponentChildren }[] = [];
     for (let index = 0; index < normalizedSequence.length; index++) {
       const entry = normalizedSequence[index]!;
       const span = spans.get(index);
       if (span) {
         const children: ComponentChildren[] = [];
         for (let position = index; position <= span.end; position++) children.push(...renderPosition(position, span.container));
-        rendered.push({ entry, view: <div class="conversation-row answer-container" key={`answer:${span.container}`} data-answer-container={span.container}>{children}</div>, first:index, last:span.end });
+        rendered.push({ entry, view: <div class="conversation-row answer-container" key={`answer:${span.container}`} data-answer-container={span.container}>{children}</div> });
         index = span.end;
         continue;
       }
       const unsafe = entry.kind === "conversation" && !!containerAt(index) && invalidContainers.has(containerAt(index)!);
       const nodes = renderPosition(index, unsafe ? undefined : containerAt(index));
-      if (nodes.length) rendered.push({ entry, view: nodes, first:index, last:index });
+      if (nodes.length) rendered.push({ entry, view: nodes });
     }
-    // Preserve slot-only positions when canonical sequence publication is empty;
-    // they are plan entries, not a discarded side effect of a missing anchor.
-    const unqualified = localRegion?.kind === "unqualified" ? localRegion : undefined;
-    const local = unqualified ? { view: unqualified.content, first: -1, last: -1 } : undefined;
-    // Unqualified own-send rows are the scoped unsaved suffix; never place them
-    // through an anchor or a saved-row index.
-    const plan = local ? [...rendered, local] : rendered;
+    const localTail = localRegion?.kind === "unqualified" ? localRegion.content : undefined;
     // Keep top-level rows as direct siblings. Nested arrays create implicit
     // unkeyed VNodes and can change an unchanged row's DOM parent on handoff.
     const directChildren = (views: readonly ComponentChildren[]): ComponentChildren[] => views.flatMap(view => Array.isArray(view) ? view : [view]);
     const region:ComponentChildren[] = directChildren(rendered.map(row => row.view));
-    return <div class="conversation-items">{region}{trailing}{local?.view}</div>;
+    return <div class="conversation-items">{region}{trailing}{localTail}</div>;
   }
   const rows: ComponentChildren[] = [];
   for (const item of items) {
