@@ -26,16 +26,19 @@ describe("Thread row menu and delete", () => {
   });
   it("does not delete until preview loads and confirmation is pressed", async () => {
     const model = menuModel();
-    let resolvePreview!: (result: { ok: true; value: { deletable_now: boolean; preview_marker: { thread_count: number; ids_hash: string }; selection: { thread_count: number }; blockers: {}; reasons: [] } }) => void;
+    let resolvePreview!: (result: { ok: true; value: { deletable_now: boolean; preview_marker: { thread_count: number; ids_hash: string }; selection: { thread_count: number }; blockers: { live_run_count: number; stopping_run_count: number; truncated: boolean }; preview_marker_unavailable_reason: undefined } }) => void;
     model.ops.threadDeletePreview = vi.fn(() => new Promise((resolve) => { resolvePreview = resolve; })) as never;
-    model.ops.threadDelete = vi.fn(async () => ({ ok: true })) as never;
+    model.ops.threadDelete = vi.fn(async () => { order.push("delete"); return { ok: true }; }) as never;
     const host = document.createElement("div");
-    act(() => render(<ThreadDeleteDialog model={model} target={row} onClose={vi.fn()} />, host));
+    const order: string[] = [];
+    const onClose = vi.fn(() => order.push("close"));
+    act(() => render(<ThreadDeleteDialog model={model} target={row} onClose={onClose} />, host));
     expect(model.ops.threadDelete).not.toHaveBeenCalled();
-    await act(async () => { resolvePreview({ ok: true, value: { deletable_now: true, preview_marker: { thread_count: 1, ids_hash: "exact" }, selection: { thread_count: 1 }, blockers: {}, reasons: [] } }); });
+    await act(async () => { resolvePreview({ ok: true, value: { deletable_now: true, preview_marker: { thread_count: 1, ids_hash: "exact" }, selection: { thread_count: 1 }, blockers: { live_run_count: 0, stopping_run_count: 0, truncated: false }, preview_marker_unavailable_reason: undefined } }); });
     expect(model.ops.threadDelete).not.toHaveBeenCalled();
     const confirm = [...host.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "thread.deleteConfirm")!;
-    await act(async () => { confirm.click(); });
+    act(() => confirm.click());
+    expect(order).toEqual(["close", "delete"]);
     expect(model.ops.threadDelete).toHaveBeenCalledWith("t1", { thread_count: 1, ids_hash: "exact" });
     render(null, host);
   });

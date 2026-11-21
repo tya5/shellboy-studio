@@ -167,7 +167,7 @@ export function App({ context }: { context: DesignContext }) {
           <div class="alerts">
             {conn === "authNeeded" ? <AuthPrompt context={context} /> : null}
             {conn === "ownerDown" ? <Notice tone="wait">{t("banner.ownerDown")}</Notice> : null}
-            {model.actionError.value ? <Notice tone={typeof model.actionError.value === "string" ? "bad" : model.actionError.value.kind === "error" ? "bad" : "good"}>{typeof model.actionError.value === "string" ? model.actionError.value : model.actionError.value.text}</Notice> : null}
+            {model.actionError.value ? <Notice tone={model.actionError.value.kind === "error" ? "bad" : undefined}>{model.actionError.value.text}</Notice> : null}
           </div>
           {deleteThread ? <ThreadDeleteDialog key={deleteThread.thread_id} model={model} target={deleteThread} onClose={() => setDeleteThread(undefined)} /> : null}
           <section class="view" aria-label={title}>
