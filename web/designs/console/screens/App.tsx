@@ -17,6 +17,7 @@ import { Setup } from "./Setup";
 import { SettingsView } from "./SettingsView";
 import { AuthPrompt } from "./AuthPrompt";
 import { LayoutSeparator } from "../system/components";
+import { sidebarWidthStyle } from "../system/layout";
 
 const SEARCH_DEBOUNCE_MS = 200;
 
@@ -43,10 +44,7 @@ export function App({ context }: { context: DesignContext }) {
 
   useEffect(() => { model.monitorSort.value = context.prefs.value.monitorSort ?? "stable"; }, [model, context.prefs.value.monitorSort]);
 
-  useEffect(() => {
-    if (typeof savedSidebarWidth === "number") shell.current?.style.setProperty("--size-sidebar-runtime", `${sidebarWidth}px`);
-    else shell.current?.style.removeProperty("--size-sidebar-runtime");
-  }, [savedSidebarWidth, sidebarWidth]);
+
   useEffect(() => {
     const cancel = () => finishResize();
     addEventListener("resize", cancel);
@@ -97,7 +95,7 @@ export function App({ context }: { context: DesignContext }) {
 
   return (
     <div class="app">
-      <div ref={shell} class={context.prefs.value.navCollapsed ? "shell nav-collapsed" : "shell"}>
+      <div ref={shell} class={context.prefs.value.navCollapsed ? "shell nav-collapsed" : "shell"} style={sidebarWidthStyle(savedSidebarWidth)}>
         <LayoutSeparator aria-label={t("threads.resizeSidebar")} role="separator" aria-orientation="vertical" aria-valuemin={SIDEBAR_WIDTH_MIN} aria-valuemax={SIDEBAR_WIDTH_MAX} aria-valuenow={sidebarWidth} tabIndex={0} onPointerDown={(event) => { if (context.prefs.value.navCollapsed || drag.current || !event.isPrimary || event.button !== 0) return; event.preventDefault(); const element = event.currentTarget; drag.current = { pointerId: event.pointerId, element, originX: event.clientX, startWidth: sidebarWidth }; element.setPointerCapture(event.pointerId); }} onPointerMove={(event) => { const current = drag.current; if (!current || current.pointerId !== event.pointerId || !event.isPrimary) return; context.setPrefs({ sidebarWidth: readSidebarWidth(current.startWidth + event.clientX - current.originX) }); }} onPointerUp={(event) => finishResize(event.pointerId)} onPointerCancel={(event) => finishResize(event.pointerId)} onLostPointerCapture={(event) => finishResize(event.pointerId)} onKeyDown={(event) => { if (context.prefs.value.navCollapsed) return; const step = event.shiftKey ? 32 : 16; if (event.key === "ArrowLeft" || event.key === "ArrowRight" || event.key === "Home" || event.key === "End") { event.preventDefault(); const next = event.key === "Home" ? SIDEBAR_WIDTH_MIN : event.key === "End" ? SIDEBAR_WIDTH_MAX : sidebarWidth + (event.key === "ArrowRight" ? step : -step); context.setPrefs({ sidebarWidth: readSidebarWidth(next) }); } }} />
         <button type="button" class={drawer ? "scrim open" : "scrim"} aria-label={t("threads.close")} tabIndex={drawer ? 0 : -1} onClick={() => setDrawer(false)} />
         <aside class={drawer ? "side open" : "side"} aria-label={t("threads.title")}>

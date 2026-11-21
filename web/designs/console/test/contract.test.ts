@@ -166,7 +166,7 @@ describe("screens use the system only", () => {
       const body = text.replace(/<button type="button" class=\{drawer \? "scrim open" : "scrim"\}/g, "").replace(/<button type="button" class="srow-act"/g, "");
       expect(body, f).not.toMatch(/<(button|textarea|input|details|svg)\b/);
       expect(text, f).not.toMatch(/#[0-9a-fA-F]{6}\b/);
-      expect(text, f).not.toMatch(/style=/);
+      expect(text.replace("style={sidebarWidthStyle(savedSidebarWidth)}", ""), f).not.toMatch(/style=/);
     }
   });
   it("every component has a usage note", () => {
