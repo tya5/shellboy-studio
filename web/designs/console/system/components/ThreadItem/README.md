@@ -8,6 +8,6 @@ The title truncates before the reserved action width. The menu follows shadcn/ui
 `DropdownMenu` / Radix and the WAI-ARIA APG Menu Button pattern.
 
 
-The caller's `linkId` identifies the row link for the owning list's focus policy. When
-that focused row is removed and focus falls to the body, the list advances to the next
-row link or its heading; it does nothing if focus has moved elsewhere.
+The caller's `linkId` identifies the row link for the owning list's focus claim. The
+list sets its claim on row focus and clears it when focus leaves the list. If the
+claimed row is removed, the list advances to the next link or its heading.

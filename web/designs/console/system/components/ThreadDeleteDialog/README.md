@@ -6,10 +6,10 @@ sheet invokes that getter at dismissal, after closing; Cancel therefore returns 
 the still-present row link. Delete closes synchronously before starting the request.
 The request result updates only the notice and never moves focus.
 
-When a row is removed, the list that renders it owns focus recovery: if focus has
-fallen to the body, it advances to the next remaining row link or its heading. If the
-user has moved focus elsewhere, the list leaves focus untouched. This also covers
-archive and filter removals.
+When a row is removed, the list that renders it owns focus recovery while it still
+holds a focus claim for that row. The claim is set on row focus and cleared when focus
+leaves the list; if the claimed row disappears, the list advances to the next row link
+or its heading. This also covers archive and filter removals.
 
 It uses `role="alertdialog"`, ties the heading and concise confirmation text through
 `aria-labelledby`/`aria-describedby`, and focuses the system Button Cancel control on

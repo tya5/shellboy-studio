@@ -28,10 +28,9 @@ export function App({ context }: { context: DesignContext }) {
   const sidebarRows = model.rows.value;
   useLayoutEffect(() => {
     const previous = lastSidebarFocus.current;
-    if (!previous || document.getElementById(previous.linkId)) return;
-    lastSidebarFocus.current = undefined;
-    if (document.activeElement !== document.body) return;
     const links = [...(sidebarListRef.current?.querySelectorAll<HTMLAnchorElement>('a[id^="thread-link-sidebar-"]') ?? [])];
+    if (!previous || links.some((link) => link.id === previous.linkId)) return;
+    lastSidebarFocus.current = undefined;
     (links[previous.index] ?? document.getElementById("sidebar-thread-list-heading"))?.focus();
   });
   const t = model.t.value;
@@ -136,6 +135,9 @@ export function App({ context }: { context: DesignContext }) {
             if (!link) return;
             const links = [...(sidebarListRef.current?.querySelectorAll<HTMLAnchorElement>('a[id^="thread-link-sidebar-"]') ?? [])];
             lastSidebarFocus.current = { linkId: link.id, index: links.indexOf(link) };
+          }} onFocusOut={(event) => {
+            const next = event.relatedTarget;
+            if (!(next instanceof Node) || !sidebarListRef.current?.contains(next)) lastSidebarFocus.current = undefined;
           }}>
             <div class="tree">
               {sidebarRows.map((r, index, rows) => (
@@ -187,7 +189,7 @@ export function App({ context }: { context: DesignContext }) {
             {conn === "ownerDown" ? <Notice tone="wait">{t("banner.ownerDown")}</Notice> : null}
             {model.actionError.value ? <Notice tone={model.actionError.value.kind === "error" ? "bad" : undefined}>{model.actionError.value.text}</Notice> : null}
           </div>
-          <ThreadDeleteDialog model={model} open={!!deleteThread} target={deleteThread} getReturnFocusTarget={(threadId) => document.getElementById(`thread-link-sidebar-${threadId}`)} onClose={() => setDeleteThread(undefined)} />
+          {deleteThread ? <ThreadDeleteDialog key={deleteThread.threadId} model={model} target={deleteThread} getReturnFocusTarget={(threadId) => document.getElementById(`thread-link-sidebar-${threadId}`)} onClose={() => setDeleteThread(undefined)} /> : null}
           <section class="view" aria-label={title}>
             <AppsHost context={context} />
             {route.view === "apps" ? null : route.view === "conversation" ? <Conversation model={model} /> : route.view === "monitor" ? <Monitor context={context} /> : route.view === "inbox" ? <Inbox model={model} /> : route.view === "analytics" ? <Analytics context={context} /> : route.view === "branches" ? <Branches model={model} /> : route.view === "threads" ? <Threads model={model} /> : route.view === "setup" ? <Setup context={context} /> : <SettingsView context={context} />}

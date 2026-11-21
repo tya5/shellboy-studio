@@ -1,8 +1,9 @@
 # Screen-owned thread list focus
 
-The sidebar list in `App` and the organization list in `Threads` remember the last row
-link that received focus. If that row disappears while focus has fallen to the body,
-the rendering list focuses the next row link at the same position, or its heading when
-there is no next row. If the user has moved focus elsewhere, no focus is moved. This
-policy applies to all row removals, including delete, archive, and filtering; a delete
-request's later completion never changes focus.
+The sidebar list in `App` and the organization list in `Threads` hold a focus claim only
+while focus remains inside the list. Focusin on a row records its stable row-link id
+and position; focusout clears the claim when `relatedTarget` is outside the list. If
+the claimed link disappears, that list focuses the next link at the same position, or
+its heading when no next row exists. It does not recheck document focus. This applies
+to delete, archive, filters and other row removals; delete completion never moves
+focus.

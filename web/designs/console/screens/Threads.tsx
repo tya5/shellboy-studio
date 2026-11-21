@@ -150,10 +150,9 @@ export function Threads({ model }: { model: AppModel }) {
   const lastListFocus = useRef<{ linkId: string; index: number }>();
   useLayoutEffect(() => {
     const previous = lastListFocus.current;
-    if (!previous || document.getElementById(previous.linkId)) return;
-    lastListFocus.current = undefined;
-    if (document.activeElement !== document.body) return;
     const links = [...(listRef.current?.querySelectorAll<HTMLAnchorElement>('a[id^="thread-link-page-"]') ?? [])];
+    if (!previous || links.some((link) => link.id === previous.linkId)) return;
+    lastListFocus.current = undefined;
     (links[previous.index] ?? document.getElementById("threads-page-heading"))?.focus();
   });
   const [armed, setArmed] = useState(false);
@@ -222,13 +221,16 @@ export function Threads({ model }: { model: AppModel }) {
   };
   return (
     <>
-    <ThreadDeleteDialog model={model} open={!!deleteThread} target={deleteThread} getReturnFocusTarget={(threadId) => document.getElementById(`thread-link-page-${threadId}`)} onClose={() => setDeleteThread(undefined)} />
+    {deleteThread ? <ThreadDeleteDialog key={deleteThread.threadId} model={model} target={deleteThread} getReturnFocusTarget={(threadId) => document.getElementById(`thread-link-page-${threadId}`)} onClose={() => setDeleteThread(undefined)} /> : null}
     <div class="org" ref={listRef} onFocusIn={(event) => {
       const target = event.target as HTMLElement;
       const link = target.closest<HTMLAnchorElement>('a[id^="thread-link-page-"]') ?? target.closest<HTMLElement>(".srow")?.querySelector<HTMLAnchorElement>('a[id^="thread-link-page-"]');
       if (!link) return;
       const links = [...(listRef.current?.querySelectorAll<HTMLAnchorElement>('a[id^="thread-link-page-"]') ?? [])];
       lastListFocus.current = { linkId: link.id, index: links.indexOf(link) };
+    }} onFocusOut={(event) => {
+      const next = event.relatedTarget;
+      if (!(next instanceof Node) || !listRef.current?.contains(next)) lastListFocus.current = undefined;
     }}>
       <div class="head">
         <div class="pagehead">
