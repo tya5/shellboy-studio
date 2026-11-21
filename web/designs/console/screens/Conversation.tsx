@@ -379,7 +379,7 @@ function WorkRegions({ model, place }: { model: AppModel; place: string }) {
   const state = (s: string) => s === "accepted" ? t("work.accepted") : s === "held" ? t("work.held") : s === "starting" ? t("work.starting") : s === "stopping" ? t("work.stopping") : t("work.runningState");
   return <>
     {replies.length ? <section class="work-region"><h3>{t("work.replies")}</h3>{replies.map((r) => r.recipient.kind === "human" ?
-      <QuestionCard key={r.id} id={`${place}-${r.id}`} label={t("work.replies")} waitingWord={t("status.awaiting")} question={r.question} answerLabel={t("inbox.answer")} submitLabel={t("inbox.answerResume")} error={panelOperationError(model, r.id)} busy={model.panelOperations.value.get(r.id)?.pending} onAnswer={text => { void model.runPanelOperation(r.id, { kind: "answer", text }); }} /> :
+      <QuestionCard key={r.id} id={`${place}-${r.id}`} label={t("work.replies")} waitingWord={t("status.awaiting")} question={r.question} answerLabel={t("inbox.answer")} submitLabel={t("inbox.answerResume")} error={panelOperationError(model, r.id)} busy={panelOperationBlocked(model, r.id)} onAnswer={text => { void model.runPanelOperation(r.id, { kind: "answer", text }); }} /> :
       <div class="work-row" key={r.id}><span>{r.question}</span><span>{r.state}</span>{r.recipient.kind === "thread" ? <a href={formatRoute({ view: "conversation", threadId: r.recipient.threadId })}>{r.recipient.title}</a> : null}</div>)}</section> : null}
     {work.running.length ? <section class="work-region running-region"><h3>{t("work.running")}</h3><span class="caption muted">{t("work.incomplete")}</span>{work.running.map((r) => <div class="work-row" key={r.id}><MonitorPopover className="running-label" label={r.label} preview><span>{r.label}</span>{r.command ? <code>{r.command}</code> : null}<span>{r.startedAt && parseTime(r.startedAt) !== undefined ? formatDuration(model.now.value - parseTime(r.startedAt)!) : ""}</span></MonitorPopover><span>{state(r.state)} {r.startedAt && parseTime(r.startedAt) !== undefined ? formatDuration(model.now.value - parseTime(r.startedAt)!) : ""}</span></div>)}</section> : null}
     {work.pending.length ? <section class="work-region"><h3>{t("work.pending")}</h3>{work.pending.map(r => {
@@ -407,16 +407,21 @@ function panelFocusReturn(opener?: HTMLElement): (() => void) | undefined {
   return () => { if (opener.isConnected && !opener.closest("[hidden]")) opener.focus(); };
 }
 
+function panelOperationBlocked(model: AppModel, id: string): boolean {
+  const state = model.panelOperations.value.get(id);
+  return state !== undefined && state.disposition !== "failed";
+}
+
 function panelCancel(model: AppModel, id: string, target: "pending" | "reply" = "pending") {
   return { key: "cancel", label: model.t.value("work.cancel"),
-    disabled: model.panelOperations.value.get(id)?.pending || model.connection.value !== "connected" || model.uncertainCancels.value.has(id),
+    disabled: panelOperationBlocked(model, id) || model.connection.value !== "connected",
     run: () => { void model.runPanelOperation(id, { kind: "cancel", target }); },
   };
 }
 
 function panelOperationError(model: AppModel, id: string): string | undefined {
   const state = model.panelOperations.value.get(id);
-  return state && !state.pending ? model.t.value(state.kind === "answer" ? "inbox.answerFailed" : "work.cancelFailed", { message: state.error }) : undefined;
+  return state && state.disposition !== "pending" ? model.t.value(state.kind === "answer" ? "inbox.answerFailed" : "work.cancelFailed", { message: state.error }) : undefined;
 }
 
 function PanelActivity({ model }: { model: AppModel }) {
@@ -532,7 +537,7 @@ function PanelDetail({ model, tabLabel, onBack }: { model: AppModel; tabLabel: s
   const reply = model.threadReplies.value.find(row => row.id === detail.id);
   const replyCancel = reply?.recipient.kind === "human" ? panelCancel(model, reply.id, "reply") : undefined;
   return <section class="panel-detail" data-panel-detail=""><div class="panel-detail-head">{back}<h3>{t(reply?.recipient.kind === "thread" ? "panel.tab.reply_needed" : "panel.tab.awaiting_reply")}</h3></div>
-    {reply?.recipient.kind === "human" ? <QuestionCard id={`panel-${reply.id}`} label={t("work.replies")} waitingWord={t("status.awaiting")} question={reply.question} answerLabel={t("inbox.answer")} submitLabel={t("inbox.answerResume")} error={error} busy={model.panelOperations.value.get(reply.id)?.pending} onAnswer={text => { void model.runPanelOperation(reply.id, { kind: "answer", text }); }} /> : reply ? <><p>{reply.question}</p><KeyValue rows={[{ key: t("details.status"), value: reply.state }]} />
+    {reply?.recipient.kind === "human" ? <QuestionCard id={`panel-${reply.id}`} label={t("work.replies")} waitingWord={t("status.awaiting")} question={reply.question} answerLabel={t("inbox.answer")} submitLabel={t("inbox.answerResume")} error={error} busy={panelOperationBlocked(model, reply.id)} onAnswer={text => { void model.runPanelOperation(reply.id, { kind: "answer", text }); }} /> : reply ? <><p>{reply.question}</p><KeyValue rows={[{ key: t("details.status"), value: reply.state }]} />
       {reply.recipient.kind === "thread" && reply.recipient.threadId !== model.selectedId.value ? <a href={formatRoute({ view: "conversation", threadId: reply.recipient.threadId })}>{reply.recipient.title}</a> : null}</>
       : <p class="muted caption">{t("work.textUnavailable")}</p>}
     {replyCancel ? <Button disabled={replyCancel.disabled} onClick={replyCancel.run}>{replyCancel.label}</Button> : null}

@@ -3,7 +3,7 @@ import '@preact/signals';
 import { signal } from '@preact/signals-core';
 import { render } from 'preact';
 import { act } from 'preact/test-utils';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fixtureModel } from '../../../ui-core/test/fixture';
 import { details, summary, settle, flush } from '../../../data/test/harness';
 import type { DesignContext, Prefs } from '../../../ui-core/src';
@@ -115,7 +115,7 @@ describe('right panel purpose',()=>{
    let operation: Promise<void> | undefined;
    await act(async()=>{operation=f.model.runPanelOperation('owed-human',{kind:'cancel',target:'reply'});});
    const call=f.t.calls('message.cancel')[0]!;
-   expect(f.model.panelOperations.peek().get('owed-human')?.pending).toBe(true);
+   expect(f.model.panelOperations.peek().get('owed-human')?.disposition).toBe("pending");
    await act(async()=>f.host.querySelector<HTMLButtonElement>('[data-panel-back]')!.click());
    await act(async()=>{void f.model.runPanelOperation('owed-human',{kind:'cancel',target:'reply'});});
    expect(f.t.calls('message.cancel')).toHaveLength(1);
@@ -146,7 +146,7 @@ describe('right panel purpose',()=>{
   } finally {f.model.dispose();f.data.stop();}
  });
 
- it.each(['pending','reply'] as const)('settles a successful %s cancellation only from a fresh owner read', async source => {
+ it.each([['pending','changed'],['pending','absent'],['reply','absent']] as const)('settles a successful %s cancellation on fresh %s evidence', async (source, evidence) => {
   const f=await setup();
   try {
    const id=source==='pending'?'queued':'owed-human';
@@ -158,22 +158,69 @@ describe('right panel purpose',()=>{
    let operation!: Promise<void>;
    await act(async()=>{operation=f.model.runPanelOperation(id,{kind:'cancel',target:source});await flush();});
    const call=f.t.calls('message.cancel')[0]!;
-   expect(f.model.panelOperations.peek().get(id)?.pending).toBe(true);
+   expect(f.model.panelOperations.peek().get(id)?.disposition).toBe("pending");
    const reads=()=>f.t.calls('status').length+f.t.calls('thread.get').length;
    const before=reads();
    await act(async()=>{f.db.answered.add(call.id);f.t.ok(call.id,{items:[{message_id:id,outcome:source==='reply'?'reply_cancelled':'cancelled'}]});await operation;});
-   expect(f.model.panelOperations.peek().get(id)?.pending).toBe(true);
+   expect(f.model.panelOperations.peek().get(id)?.disposition).toBe("pending");
    expect(reads()).toBe(before);
    await act(update);
-   expect(f.model.panelOperations.peek().get(id)?.pending).toBe(true);
-   if (source==='pending') f.db.work.lead!.find(row=>row.message_id===id)!.state='held';
-   else f.db.details.lead!.awaiting_replies=f.db.details.lead!.awaiting_replies!.filter(row=>row.message_id!==id);
+   expect(f.model.panelOperations.peek().get(id)?.disposition).toBe("pending");
+   if (source==='pending') {
+    const others=Array.from({length:201},(_,i)=>({kind:'shell',id:`other-${i}`,thread_id:'lead',execution_id:`other-${i}`,run_id:'run-1',state:'running'}));
+    const target=f.db.work.lead!.find(row=>row.message_id===id)!;
+    f.db.work.lead=[...others,target];
+    await act(update);
+    expect(f.model.handle.peek()?.work.peek().value?.next_cursor).toBeDefined();
+    expect(f.model.panelOperations.peek().get(id)?.disposition).toBe("pending");
+    f.db.work.lead=[target,...others];
+    await act(update);
+    expect(f.model.panelOperations.peek().get(id)?.disposition).toBe("pending");
+    await act(async()=>{await f.model.runPanelOperation(id,{kind:'cancel',target:source});});
+    expect(f.t.calls('message.cancel')).toHaveLength(1);
+    f.db.work.lead=evidence==='changed'?[{...target,state:'held'},...others]:[];
+   } else {
+    const detail=f.db.details.lead!;
+    delete detail.awaiting_replies;
+    await act(update);
+    expect(f.model.panelOperations.peek().get(id)?.disposition).toBe("pending");
+    detail.awaiting_replies=Array.from({length:128},(_,i)=>({message_id:`other-${i}`,recipient_kind:'human',recipient_thread_id:'lead',excerpt:'Other question',delivery_status:'accepted'}));
+    await act(update);
+    expect(f.model.panelOperations.peek().get(id)?.disposition).toBe("pending");
+    detail.awaiting_replies=[];
+   }
    await act(async()=>{f.t.push({t:'changed',thread_ids:['lead'],list:false});await flush();});
    expect(reads()).toBeGreaterThan(before);
-   expect(f.model.panelOperations.peek().get(id)?.pending).toBe(true);
+   expect(f.model.panelOperations.peek().get(id)?.disposition).toBe("pending");
    await act(async()=>{await settle(f.t,f.db);});
    expect(f.model.panelOperations.peek().has(id)).toBe(false);
+   if (evidence==='changed') expect(f.model.handle.peek()?.work.peek().value?.next_cursor).toBeDefined();
+   expect(f.t.calls('message.cancel')).toHaveLength(1);
   } finally {f.model.dispose();f.data.stop();}
+ });
+
+ it.each(['current','left'] as const)('publishes unconfirmed cancellation only for the %s Thread lifetime', async lifetime => {
+  const f=await setup();
+  const error = { kind: 'unconfirmed', operationId: 'original-cancel', message: 'Unconfirmed' } as const;
+  let finish!: () => void;
+  const cancel=vi.spyOn(f.model.ops,'messageCancel').mockImplementation(() => new Promise(resolve => { finish=()=>resolve({ok:false,error}); }));
+  try {
+   let operation!: Promise<void>;
+   await act(async()=>{operation=f.model.runPanelOperation('owed-human',{kind:'cancel',target:'reply'});await flush();});
+   expect(f.model.panelOperations.peek().get('owed-human')?.disposition).toBe('pending');
+   if (lifetime==='left') {
+    f.db.threads.other=summary('other'); f.db.details.other=details('other');
+    await act(async()=>{f.model.openThread('other');await settle(f.t,f.db);});
+    expect(f.model.panelOperations.peek().size).toBe(0);
+   }
+   await act(async()=>{finish();await operation;});
+   if (lifetime==='left') expect(f.model.panelOperations.peek().size).toBe(0);
+   else {
+    expect(f.model.panelOperations.peek().get('owed-human')).toMatchObject({disposition:'unconfirmed'});
+    await act(async()=>{await f.model.runPanelOperation('owed-human',{kind:'cancel',target:'reply'});});
+    expect(cancel).toHaveBeenCalledTimes(1);
+   }
+  } finally {cancel.mockRestore();f.model.dispose();f.data.stop();}
  });
 
  it('Alt+9 collapses to a counted icon rail and restores the stored state after remount',async()=>{

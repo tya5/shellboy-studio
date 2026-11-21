@@ -22,9 +22,11 @@ export const noReplyWait: ReplyWaitAdapter = {
   answer: async () => ({ ok: false, error: { kind: "bridge", code: "not_available", message: "reply waiting is not available" } }),
 };
 
+export const THREAD_REPLY_LIMIT = 128;
+
 /** Decode only protocol 5's unified bounded projection; never merge removed legacy lists. */
 export function threadReplyItems(threadId: string, raw: unknown): ReplyWait[] {
-  if (!Array.isArray(raw) || raw.length > 128) return [];
+  if (!Array.isArray(raw) || raw.length > THREAD_REPLY_LIMIT) return [];
   return raw.flatMap((value: unknown): ReplyWait[] => {
     if (!value || typeof value !== "object") return [];
     const item = value as Record<string, unknown>;

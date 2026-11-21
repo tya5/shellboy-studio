@@ -93,13 +93,16 @@ describe("bounded conversation work", () => {
     model.dispose();
   });
   it("uses the cancellation receipt's per-message outcome", async () => {
-    const { model, t } = await fixtureModel();
-    const result = model.cancelPending("m");
+    const { model, t } = await fixtureModel({configure(db) {
+      db.work.lead = [{ kind: "message", id: "m", message_id: "m", thread_id: "lead", state: "held" }];
+    }});
+    const result = model.runPanelOperation("m", { kind: "cancel", target: "pending" });
     await flush();
     const call = t.calls("message.cancel").at(-1)!;
     expect(call.args).toEqual({ message_ids: ["m"] });
     t.ok(call.id, { items: [{ message_id: "m", outcome: "already_admitted" }] });
-    expect(await result).toBe("already_admitted");
+    await result;
+    expect(model.panelOperations.peek().get("m")).toMatchObject({ disposition: "failed", error: "already_admitted" });
     model.dispose();
   });
 });

@@ -12,7 +12,7 @@ import { recentAppFolders } from "./app-templates";
 // retry and archive flows. Saved facts stay in the data layer; nothing here is optimistic.
 import { batch, computed, effect, signal, untracked, type ReadonlySignal, type Signal } from "@preact/signals-core";
 import { Cancel, type Handle, type Operations, type OpError, type ShellboyData, type ShellEntry, type ThreadDetails, type ThreadHandle } from "../../data/src";
-import { CAPABILITY_HISTORY_WINDOW, threadReplyItems, noReplyWait, type ReplyWait, type ReplyWaitAdapter } from "../../data/src";
+import { CAPABILITY_HISTORY_WINDOW, THREAD_REPLY_LIMIT, threadReplyItems, noReplyWait, type ReplyWait, type ReplyWaitAdapter } from "../../data/src";
 import { MissingPins, MonitorSelection, type MonitorArchive } from "./monitor-selection";
 import { workRegions, type WorkRegions } from "./work";
 import { ConversationWindow, type WindowAcceptedSnapshot } from "./window";
@@ -77,8 +77,9 @@ export type RightPanelTab = "work" | "reply-needed" | "awaiting-reply" | "info";
 export type RightPanelTarget = Readonly<{ kind: "step" | "message" | "reply"; id: string }>;
 export type RightPanelDetail = RightPanelTarget & Readonly<{ opener?: () => void }>;
 type PanelOperation = Readonly<{ kind: "cancel" | "answer" } & (
-  { pending: true; source: "pending" | "reply"; state: string } | { pending: false; error: string }
+  { disposition: "pending"; source: "pending" | "reply"; state: string } | { disposition: "failed" | "unconfirmed"; error: string }
 )>;
+type PanelFailure = { disposition: "failed" | "unconfirmed"; error: string };
 type PanelPreference = Readonly<{ visible: () => boolean; collapsed: () => boolean; write: (collapsed: boolean) => void }>;
 
 export interface PendingOwnMessage {
@@ -343,7 +344,6 @@ export class AppModel {
   readonly sendState: Signal<SendState> = signal({ kind: "idle" });
   readonly actionError: Signal<ActionNotice | undefined> = signal(undefined);
   readonly appRequestState: Signal<{ kind: "idle" | "sending" | "failed" | "unconfirmed"; message?: string }> = signal({ kind: "idle" });
-  readonly uncertainCancels: Signal<ReadonlySet<string>> = signal(new Set());
 
   private readonly lastThread = signal<string | undefined>(undefined);
   private readonly watchedOutputs = new Map<string, string | undefined>();
@@ -455,7 +455,7 @@ export class AppModel {
       return r.threadId ?? this.lastThread.value ?? this.rows.value[0]?.summary.thread_id;
     });
     this.threadReplies = computed(() => {
-      if (this.replyWait.supported(this.data.capabilities.value)) return this.replyWait.items.value.filter((item) => item.threadId === this.selectedId.value).slice(0, 128);
+      if (this.replyWait.supported(this.data.capabilities.value)) return this.replyWait.items.value.filter((item) => item.threadId === this.selectedId.value).slice(0, THREAD_REPLY_LIMIT);
       const detail = this.handle.value?.detail.value.value;
       return detail ? threadReplyItems(detail.thread_id, detail.awaiting_replies) : [];
     });
@@ -859,7 +859,6 @@ export class AppModel {
     this.sendState.value = { kind: "idle" };
     this.openToolGroups.value = new Set();
     this.toolStepChoices.value = new Map();
-    this.uncertainCancels.value = new Set();
     this.actionError.value = undefined;
     let ordinal = 0;
     this.nextTailOrdinal = () => ++ordinal;
@@ -1217,72 +1216,78 @@ export class AppModel {
     const work = handle?.work.value;
     const detail = handle?.detail.value;
     const adapter = this.replyWait.supported(this.data.capabilities.value);
+    const raw = detail && !detail.loading && !detail.stale && !detail.error ? detail.value?.awaiting_replies : undefined;
+    const replies = adapter ? this.replyWait.items.value.filter(row => row.threadId === handle?.threadId)
+      : Array.isArray(raw) ? this.threadReplies.value : undefined;
     return {
-      pending: work?.value && !work.loading && !work.stale && !work.error ? work.value.items : undefined,
-      reply: adapter || (detail?.value && !detail.loading && !detail.stale && !detail.error) ? this.threadReplies.value : undefined,
+      pending: work?.value && !work.loading && !work.stale && !work.error ? work.value : undefined,
+      reply: replies && { items: replies, complete: !adapter && raw !== undefined && raw.length < THREAD_REPLY_LIMIT && raw.length === replies.length },
     };
   }
 
   private settlePanelOperations(): void {
-    const facts = this.panelOperationFacts();
+    const { pending, reply } = this.panelOperationFacts();
     const current = this.panelOperations.peek();
     let next: Map<string, PanelOperation> | undefined;
     for (const [id, operation] of current) {
-      if (!operation.pending) continue;
-      const rows = facts[operation.source];
-      if (!rows) continue;
+      if (operation.disposition !== "pending") continue;
       const state = operation.source === "pending"
-        ? facts.pending?.find(row => row.kind === "message" && row.message_id === id)?.state
-        : facts.reply?.find(row => row.id === id)?.state;
-      if (state !== operation.state) (next ??= new Map(current)).delete(id);
+        ? pending?.items.find(row => row.kind === "message" && row.message_id === id)?.state
+        : reply?.items.find(row => row.id === id)?.state;
+      const complete = operation.source === "pending" ? pending !== undefined && pending.next_cursor === undefined : reply?.complete;
+      if (state === undefined ? complete : state !== operation.state) (next ??= new Map(current)).delete(id);
     }
     if (next) this.panelOperations.value = next;
   }
 
   async runPanelOperation(id: string, action: { kind: "cancel"; target: "pending" | "reply" } | { kind: "answer"; text: string }): Promise<void> {
     const next = new Map(this.panelOperations.peek());
-    if (this.connection.peek() !== "connected" || next.get(id)?.pending || this.uncertainCancels.peek().has(id)) return;
+    const previous = next.get(id);
+    const handle = this.handle.peek();
+    if (!handle || this.connection.peek() !== "connected" || (previous && previous.disposition !== "failed")) return;
     if (!next.has(id) && next.size >= CACHE_ENTRIES) {
-      const settled = [...next].find(([, state]) => !state.pending);
+      const settled = [...next].find(([, state]) => state.disposition === "failed");
       if (!settled) return;
       next.delete(settled[0]);
     }
     const source = action.kind === "answer" ? "reply" : action.target;
     const facts = this.panelOperationFacts();
     const state = source === "pending"
-      ? facts.pending?.find(row => row.kind === "message" && row.message_id === id)?.state
-      : facts.reply?.find(row => row.id === id)?.state;
+      ? facts.pending?.items.find(row => row.kind === "message" && row.message_id === id)?.state
+      : facts.reply?.items.find(row => row.id === id)?.state;
     if (state === undefined) return;
-    const pending: PanelOperation = { kind: action.kind, pending: true, source, state };
+    const pending: PanelOperation = { kind: action.kind, disposition: "pending", source, state };
     next.set(id, pending);
     this.panelOperations.value = next;
-    const error = action.kind === "cancel" ? await this.cancelPending(id, action.target) : await this.answerReply(id, action.text);
-    // Success is acknowledged by the next authoritative work or reply fact.
-    if (error === undefined || this.panelOperations.peek().get(id) !== pending) return;
-    this.panelOperations.value = new Map(this.panelOperations.peek()).set(id, { kind: action.kind, pending: false, error });
+    const result = action.kind === "cancel" ? await this.cancelPending(id, action.target) : await this.submitReply(id, action.text);
+    // Success is settled by the source, not the RPC. Late failures cannot recreate a record.
+    if (!result || this.handle.peek() !== handle || this.selectedId.peek() !== handle.threadId || this.panelOperations.peek().get(id) !== pending) return;
+    this.panelOperations.value = new Map(this.panelOperations.peek()).set(id, { kind: action.kind, ...result });
   }
 
   async answerReply(id: string, text: string): Promise<string | undefined> {
-    const item = this.threadReplies.peek().find((row) => row.id === id);
-    if (!item || item.recipient.kind !== "human") return "not available";
-    const out = this.replyWait.supported(this.data.capabilities.peek()) ? await this.replyWait.answer(id, text) : await this.ops.messageReply(id, text);
-    return out.ok ? undefined : errorMessage(out.error);
+    return (await this.submitReply(id, text))?.error;
   }
 
-  async cancelPending(messageId: string, kind: "pending" | "reply" = "pending"): Promise<string | undefined> {
+  private panelFailure(error: OpError, cancel = false): PanelFailure {
+    return error.kind === "unconfirmed" ? { disposition: "unconfirmed", error: cancel ? this.t.peek()("work.cancelUnconfirmed", { id: error.operationId }) : errorMessage(error) }
+      : { disposition: "failed", error: errorMessage(error) };
+  }
+
+  private async submitReply(id: string, text: string): Promise<PanelFailure | undefined> {
+    const item = this.threadReplies.peek().find((row) => row.id === id);
+    if (!item || item.recipient.kind !== "human") return { disposition: "failed", error: "not available" };
+    const out = this.replyWait.supported(this.data.capabilities.peek()) ? await this.replyWait.answer(id, text) : await this.ops.messageReply(id, text);
+    return out.ok ? undefined : this.panelFailure(out.error);
+  }
+
+  private async cancelPending(messageId: string, kind: "pending" | "reply"): Promise<PanelFailure | undefined> {
     const out = await this.ops.messageCancel(messageId);
-    if (!out.ok) {
-      if (out.error.kind === "unconfirmed") {
-        this.uncertainCancels.value = new Set([...this.uncertainCancels.peek(), messageId]);
-        return this.t.value("work.cancelUnconfirmed", { id: out.error.operationId });
-      }
-      return errorMessage(out.error);
-    }
+    if (!out.ok) return this.panelFailure(out.error, true);
     const items = out.value.items;
     if (!Array.isArray(items) || items.length !== 1 || items[0]?.message_id !== messageId || (items[0]?.outcome !== "cancelled" && !(kind === "reply" && items[0]?.outcome === "reply_cancelled"))) {
-      return String(Array.isArray(items) ? items[0]?.outcome ?? "invalid response" : "invalid response");
+      return { disposition: "failed", error: String(Array.isArray(items) ? items[0]?.outcome ?? "invalid response" : "invalid response") };
     }
-    return undefined;
   }
 
   async stop(): Promise<void> {
