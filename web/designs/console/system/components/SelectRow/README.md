@@ -6,3 +6,5 @@ The optional menu trigger is in-flow. It follows the shadcn/ui `SidebarMenuActio
 The caller's `linkId` is the stable id of the title link. A containing list uses it for
 a focus claim while focus remains inside the list; if the claimed row disappears, the
 list advances to the next row link or its heading.
+
+Styles are colocated in `system/components/SelectRow/style.css`.

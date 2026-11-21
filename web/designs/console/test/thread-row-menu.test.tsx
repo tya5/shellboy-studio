@@ -15,8 +15,13 @@ import type { MenuEntry } from "../system/components/Menu";
 import type { AppModel } from "../../../ui-core/src";
 import type { ThreadSummary } from "../../../data/src";
 
-const rowActionCss = readFileSync("designs/console/system/components.css", "utf8");
-const touchVisibilityRules = rowActionCss.match(/@media \(hover: none\)\s*\{([^}]*)\}/)?.[1] ?? "";
+function readSystemCss(file: string): string {
+  const text = readFileSync(`designs/console/system/${file}`, "utf8");
+  if (file !== "components.css") return text;
+  return text.replace(/@import\s+["']([^"']+)["'];/g, (_match: string, specifier: string) => readSystemCss(specifier.replace(/^\.\//, "")));
+}
+const rowActionCss = readSystemCss("components.css");
+const touchVisibilityRules = readFileSync("designs/console/system/components/ThreadItem/style.css", "utf8") + readFileSync("designs/console/system/components/SelectRow/style.css", "utf8");
 const popoverLayerRule = rowActionCss.match(/\.popover-dismiss-layer\{([^}]*)\}/)?.[1] ?? "";
 const popoverPanelRule = rowActionCss.match(/\.popover\{([^}]*)\}/)?.[1] ?? "";
 const layoutCss = readFileSync("designs/console/system/layout.css", "utf8");
@@ -215,9 +220,10 @@ describe("Thread row menu and delete", () => {
     act(() => render(<>{treeRow("One")}{treeRow("Two")}{selectRow("Three")}{selectRow("Four")}</>, host));
     expect(window.matchMedia("(hover: none)").matches).toBe(true);
     expect(window.matchMedia("(hover: hover)").matches).toBe(false);
-    expect(touchVisibilityRules).toMatch(/\.tree-item \.tree-action,.srow \.srow-menu\{[^}]*visibility:visible/);
+    expect(touchVisibilityRules).toMatch(/@media \(hover: none\)[\s\S]*?\.tree-item \.tree-action\{[^}]*visibility:visible/);
     expect(touchVisibilityRules).toMatch(/width:var\(--size-row-action-touch\)/);
-    expect(rowActionCss).toMatch(/\.tree-item \.tree-action,.srow-menu\{[^}]*width:var\(--size-row-action\);visibility:hidden/);
+    expect(rowActionCss).toMatch(/\[data-menu-open=true\] \.tree-action/);
+    expect(rowActionCss).toMatch(/\[data-menu-open=true\] \.srow-menu/);
     const rows = [...host.querySelectorAll<HTMLElement>(".tree-item, .srow")];
     expect(rows).toHaveLength(4);
     expect(rows.every((item) => item.querySelector(".tree-action, .srow-menu") !== null)).toBe(true);

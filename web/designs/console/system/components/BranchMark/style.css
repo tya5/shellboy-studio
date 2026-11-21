@@ -1,0 +1,5 @@
+.bmark{display:inline-flex;align-items:center;gap:var(--space-4);padding:0 var(--space-8);min-height:24px;border:1px solid var(--line-strong);border-radius:var(--radius-s);color:var(--muted);font:var(--type-caption);text-decoration:none;width:fit-content}
+.bmark:hover{background:var(--raised);color:var(--fg)}
+@container app (max-width:899px){
+  .bmark{min-height:var(--size-touch)}
+}

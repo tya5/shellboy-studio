@@ -1,0 +1,3 @@
+.kv{margin:0;display:grid;grid-template-columns:112px minmax(0,1fr);gap:var(--space-4) var(--space-8);font:var(--type-label)}
+.kv dt{color:var(--muted)}
+.kv dd{margin:0;overflow-wrap:anywhere}

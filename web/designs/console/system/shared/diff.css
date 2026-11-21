@@ -1,0 +1,5 @@
+.output-add { color: var(--ok); }
+.output-remove { color: var(--bad); }
+.output-hunk { color: var(--accent); }
+.output-key { color: var(--accent); }
+.output-file { color: var(--fg); font-weight: 600; }

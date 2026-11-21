@@ -82,7 +82,7 @@ function declaredClasses(css: string): string[] {
     if (selector.startsWith("@")) continue;
     for (const part of selector.split(",")) {
       const matches = [...part.matchAll(/\.([_a-zA-Z][\w-]*)/g)];
-      const target = matches.at(-1)?.[1];
+      const target = matches[0]?.[1];
       if (target) classes.push(target);
     }
   }
@@ -143,6 +143,7 @@ describe("structural component CSS ownership", () => {
     }
     const duplicateOwners = [...owners.entries()].filter(([, definitions]) => definitions.size > 1).map(([name]) => name);
     const sources = { ...screenSources, ...componentCode };
+    const sharedOwner = "shared";
     const borrowed = Object.entries(sources).flatMap(([path, source]) => {
       const component = path.match(/\/system\/components\/([^/]+)\//)?.[1];
       return classNamesInTsx(source, path).filter((name) => {

@@ -1,1 +1,3 @@
 A titled card for one subject on a settings or analytics page. `source` states which owner read the numbers come from; every section that shows owner data has one. `actions` sits at the end of the heading row. Don't nest one Section inside another.
+
+Styles are colocated in `system/components/Section/style.css`.

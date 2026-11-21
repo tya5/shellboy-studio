@@ -81,7 +81,7 @@ export function SettingsView({ context }: { context: DesignContext }) {
             {model.pairing.value.error ? <Notice tone="bad">{t("pair.error")}</Notice> : null}
             {!model.pairing.value.hosts.length ? <p>{t("pair.noHosts")}</p> : model.pairing.value.hosts.map(host => {
               const link = model.pairing.value.links[host];
-              return <div key={host}><p><code>{host}</code></p>{link ? <><PairingQr value={link.url} label={t("pair.qr")} /><p class="pairing-url"><code>{link.url}</code></p><p>{t("pair.expires", { time: new Date(link.expires).toLocaleTimeString() })}</p><Button onClick={() => void navigator.clipboard.writeText(link.url)}>{t("pair.copy")}</Button></> : null}<Button onClick={() => void model.createPairing(host)}>{t(link ? "pair.reissue" : "pair.create")}</Button></div>;
+              return <div key={host}><p><code>{host}</code></p>{link ? <><PairingQr value={link.url} label={t("pair.qr")} url={link.url} /><p>{t("pair.expires", { time: new Date(link.expires).toLocaleTimeString() })}</p><Button onClick={() => void navigator.clipboard.writeText(link.url)}>{t("pair.copy")}</Button></> : null}<Button onClick={() => void model.createPairing(host)}>{t(link ? "pair.reissue" : "pair.create")}</Button></div>;
             })}
           </Section>
           <Section title={t("studio.remote")} sub={t("studio.remoteGuide")}><FactList missing={missing} facts={[{ label: t("studio.listen"), value: model.data.listen.value, mono: true }]} /><p><code>shellboy-studio guide user</code></p><p><code>shellboy-studio --allow-host HOSTNAME</code></p><p>{t("studio.hostGuide")}</p></Section>

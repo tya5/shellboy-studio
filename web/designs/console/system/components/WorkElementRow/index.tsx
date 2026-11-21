@@ -3,7 +3,6 @@ import type { StatusKey } from "../../../../../ui-core/src/status";
 import type { ComponentChildren } from "preact";
 import { Icon, type IconRole } from "../Icon";
 import type { WorkElementDisplay } from "../../../../../ui-core/src/work-element-display";
-import "./style.css";
 
 export interface FormattedWorkElementDisplay {
   readonly source: WorkElementDisplay;

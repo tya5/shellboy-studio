@@ -40,6 +40,7 @@ export { FactList, type Fact } from "./FactList";
 export { ButtonGroup } from "./ButtonGroup";
 export { ChoiceList, type Choice } from "./ChoiceList";
 export { SubView } from "./SubView";
+export { ModelPicker } from "./ModelPicker";
 export { MoreMenu } from "./MoreMenu";
 export { BranchGraph } from "./BranchGraph";
 export { BranchList } from "./BranchList";

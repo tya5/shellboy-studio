@@ -1,0 +1,7 @@
+.msg-acts{display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-8);min-height:18px}
+.msg-acts .quiet{color:var(--muted);font:var(--type-caption);text-decoration:none;opacity:0}
+.msg-acts .quiet:focus-visible{opacity:1}
+.msg-acts .quiet:hover{color:var(--accent)}
+@container app (max-width:899px){
+  .msg-acts .quiet{opacity:1;display:inline-flex;align-items:center;min-height:var(--size-touch)}
+}

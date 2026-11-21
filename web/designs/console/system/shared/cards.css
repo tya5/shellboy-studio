@@ -1,0 +1,10 @@
+.card{content-visibility:auto;contain-intrinsic-size:auto 180px;display:flex;flex-direction:column;gap:var(--space-8);padding:var(--space-12);border:1px solid var(--line);border-radius:var(--radius);background:var(--panel);min-width:0}
+.card.lead{border-color:var(--accent);background:var(--lead-bg)}
+.card.need{border-color:var(--wait);background:var(--need-bg)}
+.card.err{border-color:var(--bad);background:var(--err-bg)}
+.card h2{margin:0;font:var(--type-heading);overflow-wrap:anywhere}
+.card .r{display:flex;align-items:center;justify-content:space-between;gap:var(--space-8)}
+.card .excerpt{margin:0;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;color:var(--muted);font:var(--type-label);overflow-wrap:anywhere}
+.card .foot{margin-top:auto;display:flex;align-items:center;gap:var(--space-8);flex-wrap:wrap;padding-top:var(--space-8);border-top:1px solid var(--line);font:var(--type-caption);color:var(--muted)}
+.card .foot .go{margin-left:auto}
+.card .foot .rel{flex:1 1 100%;display:flex;align-items:flex-start;gap:var(--space-4);min-width:0;overflow-wrap:anywhere}

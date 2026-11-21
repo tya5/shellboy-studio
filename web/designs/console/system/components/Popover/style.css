@@ -1,0 +1,2 @@
+.popover-dismiss-layer{position:fixed;inset:0;z-index:var(--z-popover);background:transparent}
+.popover{position:fixed;z-index:var(--z-popover);max-width:min(var(--size-details),calc(100vw - 2 * var(--space-12)));box-sizing:border-box;overflow:auto;background:var(--raised);border:1px solid var(--line);border-radius:var(--radius-s);padding:var(--space-4)}

@@ -1,1 +1,3 @@
 Read-only settings and resource values, label beside value. Machine values use `mono`. A value the owner has no read for shows the `missing` wording and never a dash, a guess, a default or a placeholder input. `control` is where an edit control attaches when an owner operation exists. It stacks at phone width. Unlike KeyValue, its rows may be absent on purpose and it has room for a note.
+
+Styles are colocated in `system/components/FactList/style.css`.

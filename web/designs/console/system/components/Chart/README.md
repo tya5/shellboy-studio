@@ -6,3 +6,5 @@ A small chart drawn as inline SVG at the frame's real width, so text stays its t
 - `source` is required: name the owner read behind the numbers.
 
 Y-axis labels are measured in the rendered SVG font, including after web fonts finish loading; the plot starts after the widest label. Until measurement is available a conservative text-width fallback avoids a clipped first render. `format` is shared with the table and tooltip; callers can use compact tick labels without changing the underlying data.
+
+Styles are colocated in `system/components/Chart/style.css`.

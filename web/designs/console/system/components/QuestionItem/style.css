@@ -1,0 +1,5 @@
+.qitem{display:block;width:100%;text-align:left;padding:var(--space-8) var(--space-12);border:1px solid var(--line-strong);border-radius:var(--radius);background:transparent;cursor:pointer;color:var(--fg)}
+.qitem:hover{background:var(--raised)}
+.qitem[aria-current=true]{border-color:var(--wait);background:var(--wait-bg)}
+.qitem small{display:flex;justify-content:space-between;gap:var(--space-8);color:var(--muted);font:var(--type-caption)}
+.qitem span{display:block;margin-top:2px}

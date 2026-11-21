@@ -74,3 +74,5 @@ Consumers use semantic `IconRole` names only. Glyph names, paths, and the role-t
 | `summary.details` | Expand summary details in the Conversation. | `layers` |
 | `tab.close` | Close an application tab. | `cross` |
 | `tab.add` | Add an application tab. | `plus` |
+
+Styles are colocated in `system/components/Icon/style.css`.

@@ -42,21 +42,21 @@ export function BranchGraph({ layout, selected, onPoint, tipHref, tipTitle, tipN
             const sx = x(e.fromColumn);
             const sy = y(e.fromRow);
             const ey = y(e.toRow);
-            return <path key={e.key} class={e.active ? "edge on" : "edge"} d={`M${sx} ${sy}C${sx + JOIN / 2} ${sy} ${sx + JOIN / 2} ${ey} ${sx + JOIN} ${ey}`} />;
+            return <path key={e.key} class="edge" aria-current={e.active ? "true" : undefined} d={`M${sx} ${sy}C${sx + JOIN / 2} ${sy} ${sx + JOIN / 2} ${ey} ${sx + JOIN} ${ey}`} />;
           }
           const sx = fromX(e);
           const ex = x(e.toColumn);
           const row = y(e.fromRow);
           return (
             <g key={e.key}>
-              <path class={e.active ? "edge on" : "edge"} d={`M${sx} ${row}H${ex}`} />
+              <path class="edge" aria-current={e.active ? "true" : undefined} d={`M${sx} ${row}H${ex}`} />
               {e.nodes !== undefined && e.nodes > 0 ? <text class="bg-note" x={(sx + ex) / 2} y={row + 18} text-anchor="middle">{nodesText(e.nodes)}</text> : null}
             </g>
           );
         })}
         {layout.lanes.filter((l) => !joined.has(l.item.threadId)).map((l) => (
           <g key={l.item.threadId}>
-            <circle class={l.active || layout.edges.some((e) => e.active && e.fromRow === l.row) ? "pt on" : "pt"} cx={x(0)} cy={y(l.row)} r={5} />
+            <circle class="pt" aria-current={l.active || layout.edges.some((e) => e.active && e.fromRow === l.row) ? "true" : undefined} cx={x(0)} cy={y(l.row)} r={5} />
             <text class="bg-note" x={x(0)} y={y(l.row) - 14}>{startText}</text>
           </g>
         ))}
@@ -77,13 +77,13 @@ export function BranchGraph({ layout, selected, onPoint, tipHref, tipTitle, tipN
             }}
           >
             <circle class="pt-hit" cx={x(p.column)} cy={y(p.row)} r={16} />
-            <circle class={`pt${p.active ? " on" : ""}${selected === p.key ? " sel" : ""}`} cx={x(p.column)} cy={y(p.row)} r={8} />
+            <circle class={`pt${selected === p.key ? " sel" : ""}`} aria-current={p.active ? "true" : undefined} cx={x(p.column)} cy={y(p.row)} r={8} />
             {p.request ? <text class="bg-label" x={x(p.column)} y={y(p.row) - 16} text-anchor="middle">{clip(p.request, POINT_CHARS)}</text> : null}
           </g>
         ))}
         {layout.lanes.map((l) => (
           <a key={l.item.threadId} class="bg-tip" href={tipHref(l.item)} aria-label={`${tipTitle(l.item)}. ${tipNote(l.item)}`}>
-            <rect class={l.active ? "tip on" : "tip"} x={x(layout.tipColumn)} y={y(l.row) - TIP_H / 2} width={TIP_W} height={TIP_H} rx={8} />
+            <rect class="tip" aria-current={l.active ? "true" : undefined} x={x(layout.tipColumn)} y={y(l.row) - TIP_H / 2} width={TIP_W} height={TIP_H} rx={8} />
             <text class="bg-name" x={x(layout.tipColumn) + 12} y={y(l.row) - 4}>{clip(tipTitle(l.item), NAME_CHARS)}</text>
             <text class="bg-note" x={x(layout.tipColumn) + 12} y={y(l.row) + 15}>{clip(tipNote(l.item), NAME_CHARS + 5)}</text>
           </a>

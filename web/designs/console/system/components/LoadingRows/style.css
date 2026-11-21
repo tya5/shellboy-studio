@@ -1,0 +1,6 @@
+.loadrows{display:flex;flex-direction:column;gap:var(--space-12)}
+.loadrow{display:block;height:44px;border-radius:var(--radius-s);background:var(--raised);animation:pulse var(--motion-spin) ease-in-out infinite alternate}
+.loadrow:nth-child(2n){margin-left:40px;height:64px}
+@media (prefers-reduced-motion:reduce){.loadrow{animation:none}}
+
+@keyframes pulse{from{opacity:1}to{opacity:.5}}

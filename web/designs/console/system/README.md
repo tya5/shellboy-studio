@@ -56,7 +56,7 @@ A design system is one folder under `web/designs/<name>/`. Data and screen logic
 This folder is the system; `../screens` builds on it. A screen uses only these tokens and components. If a screen needs something missing, add it here first, with a usage note in `components/<Name>/README.md`.
 
 - `tokens.json` is the one source of token values. `npm run tokens` writes `tokens/console.css`, `tokens/light.css` and `tokens/terminal.css`; a test fails if they drift. Elevation contains only `shadow-popover` for the anchored menu; other regions are lifted by surface tokens and separated by `line`.
-- `components.css` holds the component styles, `layout.css` the application frame. Neither contains a literal colour.
+- `components.css` is the single ordered stylesheet entry. Each component owns `components/<Name>/style.css`; shared semantic roles live in `shared/*.css`. `layout.css` owns the application frame. No stylesheet contains literal colours.
 - `components/<Name>/` holds each component and its usage note.
 - The root attribute is `data-ds`, as `docs/design/design-system.md` specifies; the reference previews use `data-theme`.
 - Fonts: no web font is loaded at runtime. The stacks name Inter, Noto Sans JP and JetBrains Mono first, so a machine that has them uses them, and otherwise fall back to the system faces. The reference's Google Fonts import is for its previews only.

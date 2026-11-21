@@ -1,0 +1,4 @@
+.scroll-frame{position:relative;flex:1;min-height:0;min-width:0;display:flex;flex-direction:column}
+.jump-newest{position:absolute;left:50%;bottom:var(--space-12);transform:translateX(-50%);z-index:5;width:max-content}
+.app-names{display:flex;gap:var(--space-8);flex-wrap:wrap;font:var(--type-caption)}
+.vrow{display:flow-root}

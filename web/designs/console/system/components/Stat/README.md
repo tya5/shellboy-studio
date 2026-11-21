@@ -1,1 +1,3 @@
 One measured figure with its label. Use a row of these above charts only when the figures are the point. `note` carries the unit or coverage. When the owner doesn't report the value, say so in `value` in words; never show 0 for unknown.
+
+Styles are colocated in `system/components/Stat/style.css`.

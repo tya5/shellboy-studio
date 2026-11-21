@@ -1,0 +1,2 @@
+.appframe{flex:1;min-height:0;width:100%;border:0;background:var(--bg);display:block}
+.appframe.off{display:none}

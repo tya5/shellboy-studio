@@ -11,3 +11,5 @@ The title truncates before the reserved action width. The menu follows shadcn/ui
 The caller's `linkId` identifies the row link for the owning list's focus claim. The
 list sets its claim on row focus and clears it when focus leaves the list. If the
 claimed row is removed, the list advances to the next link or its heading.
+
+Styles are colocated in `system/components/ThreadItem/style.css`.

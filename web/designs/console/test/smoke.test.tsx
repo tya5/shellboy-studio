@@ -694,7 +694,7 @@ describe("Branches", () => {
     const { el } = await open();
     expect(el.querySelectorAll(".bgraph-svg .bg-tip").length).toBe(4);
     expect(el.querySelectorAll(".bgraph-svg .bg-point").length).toBe(2);
-    expect(el.querySelector(".edge.on")).toBeTruthy();
+    expect(el.querySelector(".edge[aria-current=true]")).toBeTruthy();
     expect(text(el.querySelector(".bgraph-svg")!)).toContain("101 nodes");
     expect(text(el)).toContain("no shared prefix");
     expect(text(el)).not.toContain("thread.branches");

@@ -1,0 +1,4 @@
+.mono{font:var(--type-code);font-variant-numeric:tabular-nums}
+.muted{color:var(--muted)}
+.caption{font:var(--type-caption)}
+.sender-id { overflow-wrap: anywhere; }

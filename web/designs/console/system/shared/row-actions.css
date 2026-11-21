@@ -1,0 +1,9 @@
+.row-menu-trigger>.btn{position:relative}
+.row-menu-trigger>.btn.icon{width:var(--size-row-action);height:var(--size-row-action);min-width:var(--size-row-action);min-height:var(--size-row-action);padding:0}
+.row-menu-trigger>.btn::after{content:"";position:absolute;inset:calc(-1 * var(--space-8))}
+@container app (max-width:899px){
+  .row-menu-trigger>.btn.icon{width:var(--size-row-action-touch);height:var(--size-row-action-touch);min-width:var(--size-row-action-touch);min-height:var(--size-row-action-touch)}
+}
+.srow-menu{display:flex;flex:none;margin-left:auto;width:var(--size-row-action);visibility:hidden}
+[data-menu-open=true] .tree-action{visibility:visible}
+[data-menu-open=true] .srow-menu{visibility:visible}

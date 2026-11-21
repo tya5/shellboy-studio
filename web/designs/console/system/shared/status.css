@@ -1,0 +1,23 @@
+.st{display:inline-flex;align-items:center;gap:var(--space-8);white-space:nowrap}
+.st .mark{display:inline-grid;place-items:center;width:var(--size-icon-small);height:var(--size-icon-small);flex:none}
+.dot{display:block;width:14px;height:14px;flex:none;border-radius:50%}
+.st.run{color:var(--accent)}
+.st.run .dot{border:2.5px solid var(--accent);border-right-color:transparent;animation:spin var(--motion-spin) linear infinite}
+.st.wait{color:var(--wait)}
+.st.wait .dot{background:var(--wait)}
+.st.bad{color:var(--bad)}
+.st.bad .dot{background:var(--bad);border-radius:3px;transform:rotate(45deg) scale(.82)}
+.st.ok{color:var(--ok)}
+.st.ok .i{width:var(--size-icon-small);height:var(--size-icon-small);stroke-width:2.4}
+.st.fail{color:var(--bad)}
+.st.fail .i{width:var(--size-icon-small);height:var(--size-icon-small);stroke-width:2.4}
+.st.hold{color:var(--muted)}
+.st.hold .dot{border:2.5px solid var(--muted);background:radial-gradient(circle,var(--muted) 0 2px,transparent 2.5px)}
+.st.halt{color:var(--muted)}
+.st.halt .dot{background:var(--muted);border-radius:2px;transform:scale(.72)}
+.st.idle{color:var(--muted)}
+.st.idle .dot{border:2px dashed var(--muted)}
+@media (prefers-reduced-motion:reduce){.st.run .dot{animation:none}}
+.character-status{width:24px;height:24px;flex:none}
+
+@keyframes spin{to{transform:rotate(360deg)}}

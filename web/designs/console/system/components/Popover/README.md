@@ -15,3 +15,5 @@ shifting to the viewport gutter on collision. This follows Radix ContextMenu
 `dropdown-menu` modal dismissal and WAI-ARIA APG Menu Button focus behavior.
 
 Do not use this for dialogs, settings forms, or a surface that belongs inside a pane.
+
+Styles are colocated in `system/components/Popover/style.css`.

@@ -1,0 +1,8 @@
+.selbar{position:sticky;top:0;z-index:4;display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-8);padding:var(--space-8) var(--space-12);border:1px solid var(--accent);border-radius:var(--radius);background:var(--raised);font:var(--type-label)}
+.selbar-text{flex:1 1 200px;min-width:0}
+.selbar-acts{display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-8)}
+.selbar label{display:inline-flex;align-items:center;gap:var(--space-4);cursor:pointer}
+.selbar input{accent-color:var(--accent)}
+@container app (max-width:899px){
+  .selbar label{min-height:var(--size-touch)}
+}

@@ -7,3 +7,5 @@ for two to four short options without notes.
 
 The group follows native radio semantics: options with the same `name` form one
 selection set, so never use the display label as that value.
+
+Styles are colocated in `system/components/ChoiceList/style.css`.

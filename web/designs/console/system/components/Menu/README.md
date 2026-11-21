@@ -25,3 +25,5 @@ References (Radix source lines from the Reviewer audit): `dropdown-menu:119,188`
 (trigger/menu ID association), `dropdown-menu:192` (focus return), `menu:531`
 (keyboard-only entry focus), `menu:390,583` (non-looping movement, Page keys and
 typeahead); APG Menu Button and Menu patterns.
+
+Styles are colocated in `system/components/Menu/style.css`.
