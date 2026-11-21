@@ -139,7 +139,7 @@ describe('direct local insertion plan', () => {
     const host = document.createElement('div'); document.body.append(host);
     const items = [{ key: 'saved-a', source: input[0]! }, { key: 'saved-b', source: input[0]! }];
     render(<ConversationItems items={items} sequence={[{kind:'conversation', itemKey:'saved-a'}, {kind:'conversation', itemKey:'saved-b'}]}
-      localRegion={{kind:'unqualified', rows:[], renderRow:()=>null}}
+      localRegion={{kind:'unqualified', tailRows:[], renderRow:()=>null}}
       renderItem={item => <div class="canonical-row">{item.key}</div>} />, host);
     expect(host.querySelectorAll('.conversation-row')).toHaveLength(2);
     expect(host.querySelectorAll('[data-own-presentation]')).toHaveLength(0);

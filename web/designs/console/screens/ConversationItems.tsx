@@ -1,5 +1,6 @@
 import { Fragment, type ComponentChildren } from 'preact';
 import type { PendingOwnMessage } from '../../../ui-core/src/model';
+import { ownSendRowKey, type OwnSendTailRow } from '../../../ui-core/src/own-send-presentation';
 
 /** Internal normalized presentation input, not a Core wire DTO or a body proof. */
 export type ConversationItemSource = import("../../../ui-core/src/conversation-items").NormalizedSavedItem;
@@ -39,7 +40,7 @@ interface Props {
   renderItem: (item: ConversationItem) => ComponentChildren;
   renderBefore?: (item: ConversationItem) => ComponentChildren;
   trailing?: ComponentChildren;
-  localRegion?: { readonly kind: "unqualified"; readonly rows: readonly PendingOwnMessage[]; readonly renderRow: (row: PendingOwnMessage) => ComponentChildren };
+  localRegion?: { readonly kind: "unqualified"; readonly tailRows: readonly OwnSendTailRow[]; readonly ownMessageIds?: ReadonlySet<string>; readonly renderRow: (row: PendingOwnMessage) => ComponentChildren };
   isItemAbsent?: (item: ConversationItem) => boolean;
   isItemHidden?: (item: ConversationItem) => boolean;
   renderHeading?: (summary: ConversationToolSummary) => ComponentChildren;
@@ -78,7 +79,7 @@ export function ConversationItems({ items, toolSummaries = [], renderItem, rende
     }
     const spans = new Map<number, { end: number; container: string }>();
     for (const [container, span] of candidates) if (!invalidContainers.has(container)) spans.set(span.start, { end: span.end, container });
-    const keyForSavedItem = (item: ConversationItem) => item.source.kind === "user" && item.source.nodeId ? `own:${item.source.nodeId}` : item.key;
+    const keyForSavedItem = (item: ConversationItem) => item.source.kind === "user" && item.source.nodeId && localRegion?.kind === "unqualified" && localRegion.ownMessageIds?.has(item.source.nodeId) ? ownSendRowKey(item.source.nodeId) : item.key;
     const content = (item: ConversationItem, work: boolean, hosted = !work && !!item.presentationContainer) => {
       const key = keyForSavedItem(item);
       return <div class={`conversation-row${hosted ? " conversation-answer-child" : ""}`} key={`item:${key}`} data-item-key={item.key} data-key={item.key} data-node={item.source.nodeId} data-work-item-key={work ? item.key : undefined}>{renderItem(item)}</div>;
@@ -115,11 +116,15 @@ export function ConversationItems({ items, toolSummaries = [], renderItem, rende
       const nodes = renderPosition(index, unsafe ? undefined : containerAt(index));
       if (nodes.length) rendered.push({ entry, view: nodes });
     }
-    const localRows = localRegion?.kind === "unqualified" ? localRegion.rows : [];
+    const tailRows = localRegion?.kind === "unqualified" ? localRegion.tailRows : [];
     const pendingRows = localRegion?.kind === "unqualified"
-      ? localRows.map(row => <Fragment key={`conversation:own:${row.messageId ?? row.operationId}`}><div key={`item:own:${row.messageId ?? row.operationId}`} class="conversation-row" data-own-presentation="" data-own-placement="suffix">{localRegion.renderRow(row)}</div></Fragment>)
+      ? tailRows.map(tail => {
+        if (tail.kind === "own") return <Fragment key={`conversation:${tail.row.messageId ? ownSendRowKey(tail.row.messageId) : `own:${tail.row.operationId}`}`}><div key={`item:${tail.row.messageId ? ownSendRowKey(tail.row.messageId) : `own:${tail.row.operationId}`}`} class="conversation-row" data-own-presentation="" data-own-placement="suffix">{localRegion.renderRow(tail.row)}</div></Fragment>;
+        const item = byKey.get(tail.item.key);
+        return item ? <div key={`item:${item.key}`} class="conversation-row" data-item-key={item.key} data-key={item.key} data-node={item.source.nodeId} data-live-tail-attempt={tail.item.source.attemptId}>{renderItem(item)}</div> : null;
+      })
       : [];
-    // Pending rows share reconciliation keys with their saved message without joining saved-row measurement.
+    // Own rows share the canonical key; live responses retain their projection identity.
     const directChildren = (views: readonly ComponentChildren[]): ComponentChildren[] => views.flatMap(view => Array.isArray(view) ? view : [view]);
     const rowViews = directChildren([...rendered.map(row => row.view), trailing, ...pendingRows]);
     return <div class="conversation-items">{rowViews}</div>;

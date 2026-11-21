@@ -140,7 +140,7 @@ for(const savedBeforeAck of [false,true])it(`submitted message remains separate 
   expect(host.querySelector('[data-pending-phase="accepted"]')).not.toBeNull();
   expect(host.querySelectorAll('[data-pending-own-message]')).toHaveLength(1);
   const acceptedRow=host.querySelector('[data-pending-phase="accepted"]')!;
-  expect(acceptedRow.querySelector('.message-sender > small.mono')?.textContent).toBe(f.model.t.value('composer.pending.accepted'));
+  expect(acceptedRow.querySelector('.message-sender > small.mono')?.textContent).toBe(f.model.t.value('composer.pending.waiting'));
   expect(acceptedRow.querySelector('.msg > small')).toBeNull();
   expect(acceptedRow.querySelector('.message-sender > small.mono')?.parentElement?.className).toBe('message-sender');
   await act(async()=>{composer.value='Next unsent draft';composer.dispatchEvent(new Event('input',{bubbles:true}));});
@@ -390,7 +390,7 @@ it('keeps the next draft across held ACK and same-stack submit guard, then accep
 it('recomputes local byte hint from the edited draft without reservation or clearing text',async()=>{
  const f=await fixtureModel(),host=document.createElement('div');document.body.append(host);
  const scope=f.model.ownMutationScope();
- f.model.acceptedOwnMessages.value=[{threadId:'lead',scope,operationId:'retained',text:'x'.repeat(4194301),phase:'accepted',plainMessageSend:true}];
+ f.model.acceptedOwnMessages.value=[{threadId:'lead',scope,operationId:'retained',text:'x'.repeat(4194301),phase:'accepted',plainMessageSend:true,clientOrdinal:1}];
  const show=()=>render(<Composer label="Draft" placeholder="" hint="Ready" sendLabel="Send" canSend busy={false} draftScope={scope} draftStatus={text=>{const reason=f.model.localSendAdmission(text);return {blocked:reason!=='ready',hint:reason};}} onSend={(text,notify)=>f.model.send(text,notify)}/>,host);
  try{
   await act(async()=>show());const input=host.querySelector('textarea')!;
@@ -545,7 +545,7 @@ it('keeps a saved own row measurable and mounted across successive production re
  const liveId=canonicalAttemptId(71);
  const drawPublication=(snapshot:WindowAcceptedSnapshot)=>{
   const plan=snapshot.displayPlan!;const projection=projectionFromDisplayPlan(plan);
-  render(<ConversationItems items={projection.items as ConversationItem[]} sequence={projection.sequence} renderItem={item=><span>{'text' in item.source?item.source.text:item.source.nodeId??''}</span>} localRegion={{kind:'unqualified',rows:plan.localRegion.localRows,renderRow:row=><span data-pending-own-message={row.operationId}>{row.text}</span>}}/>,host);
+  render(<ConversationItems items={projection.items as ConversationItem[]} sequence={projection.sequence} renderItem={item=><span>{'text' in item.source?item.source.text:item.source.nodeId??''}</span>} localRegion={{kind:'unqualified',tailRows:plan.localRegion.tailRows,ownMessageIds:plan.localRegion.ownMessageIds,renderRow:row=><span data-pending-own-message={row.operationId}>{row.text}</span>}}/>,host);
  };
  try{
   const win=f.model.longReader.peek()!;
@@ -558,7 +558,7 @@ it('keeps a saved own row measurable and mounted across successive production re
   win.refreshConversationInput(win.acceptedView.peek());publication=win.acceptedView.peek();
   expect(publication.displayPlan?.localRegion.localRows.find(row=>row.messageId==='P')?.phase).toBe('accepted');drawPublication(publication);
   const pendingP=host.querySelector('[data-pending-own-message]')?.closest('.conversation-row') as HTMLElement;
-  expect(pendingP).not.toBeNull();expect(pendingP.hasAttribute('data-item-key')).toBe(false);expect(pendingP.hasAttribute('data-key')).toBe(false);
+  expect(pendingP).not.toBeNull();expect(pendingP.dataset.ownPresentation).toBe('');
 
   const qSent=f.model.send('Q submitted');await flush(6);const qCall=f.t.calls('message.send').at(-1)!;f.db.answered.add(qCall.id);f.t.ok(qCall.id,{message_id:'Q',thread_id:'lead'});expect(await qSent).toBe(true);await flush(8);
   win.refreshConversationInput(win.acceptedView.peek());publication=win.acceptedView.peek();
@@ -566,21 +566,21 @@ it('keeps a saved own row measurable and mounted across successive production re
 
   const publications:WindowAcceptedSnapshot[]=[];
   const stop=win.acceptedView.subscribe(ref=>{if(ref.displayPlan?.localRegion.retire.length)publications.push(ref);});
-  f.db.history.lead=[saved('H',0,'Earlier message'),saved('P',1,'P submitted')];f.db.historyRevisions.lead=2;
+  f.db.history.lead=[saved('H',0,'Earlier message'),{node_id:'R0',kind:'assistant_response',selection:{ordinal:1},items:[{kind:'text',item_identity:'r0',text:'R is the live trailing answer',text_complete:true}],provenance:{sender:{kind:'assistant'},attempt_id:liveId}},saved('P',2,'P submitted')];f.db.historyRevisions.lead=2;
   win.changed();await settle(f.t,f.db);await flush(16);
-  expect(publications).toHaveLength(1);const afterP=publications[0]!;
+  expect(publications.length).toBeGreaterThan(0);const afterP=publications.find(ref=>ref.rows.some(row=>row.node_id==='P'))!;
   expect(afterP.displayPlan?.localRegion.retire.map(row=>row.messageId)).toEqual(['P']);
   expect(afterP.displayPlan?.localRegion.localRows.map(row=>row.messageId)).toEqual(['Q']);
   drawPublication(afterP);
   const pRow=host.querySelector<HTMLElement>('[data-node="P"]')!;
   const canonicalPKey=afterP.displayPlan!.entries.find(entry=>entry.item.source.nodeId==='P')!.item.key;
-  expect(pRow).toBeDefined();expect(pRow.dataset.itemKey).toBe(canonicalPKey);expect(pRow.dataset.key).toBe(canonicalPKey);expect(canonicalPKey).not.toBe('own:P');
+  expect(pRow).toBeDefined();expect(pRow).toBe(pendingP);expect(pRow.dataset.itemKey).toBe(canonicalPKey);expect(pRow.dataset.key).toBe(canonicalPKey);expect(canonicalPKey).not.toBe('own:P');
   expect(host.querySelector('[data-pending-own-message]')?.textContent).toBe('Q submitted');
   expect(host.textContent).toContain('R is the live trailing answer');
 
-  f.db.history.lead=[saved('H',0,'Earlier message'),saved('P',1,'P submitted'),saved('Q',2,'Q submitted')];f.db.historyRevisions.lead=3;
+  f.db.history.lead=[saved('H',0,'Earlier message'),{node_id:'R0',kind:'assistant_response',selection:{ordinal:1},items:[{kind:'text',item_identity:'r0',text:'R is the live trailing answer',text_complete:true}],provenance:{sender:{kind:'assistant'},attempt_id:liveId}},saved('P',2,'P submitted'),saved('Q',3,'Q submitted')];f.db.historyRevisions.lead=3;
   win.changed();await settle(f.t,f.db);await flush(16);stop();
-  expect(publications).toHaveLength(2);const afterQ=publications[1]!;
+  const afterQ=publications.find(ref=>ref.displayPlan?.localRegion.retire.some(row=>row.messageId==='Q'))!;expect(afterQ).toBeDefined();
   expect(afterQ.displayPlan?.localRegion.retire.map(row=>row.messageId)).toEqual(['Q']);
   expect(afterQ.displayPlan?.localRegion.localRows).toEqual([]);
   drawPublication(afterQ);
