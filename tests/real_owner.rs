@@ -129,20 +129,31 @@ fn start_owner_with(bin: &Path, root: &Path, data: &Path, base_url: &str) -> Ser
         format!("default_connection = \"local\"\ndefault_model = \"mock\"\n[connections.local]\nbase_url = \"{base_url}\"\n"),
     )
     .unwrap();
+    let mut command = Command::new(bin);
+    command
+        .args(["serve", "--config"])
+        .arg(&config)
+        .arg("--data-dir")
+        .arg(data)
+        .env_clear()
+        .env("PATH", std::env::var_os("PATH").unwrap_or_default())
+        .env("HOME", &home)
+        .env("USERPROFILE", &home)
+        .env("XDG_CONFIG_HOME", home.join("xdg-config"))
+        .env("XDG_DATA_HOME", home.join("xdg-data"))
+        .env("APPDATA", home.join("appdata"))
+        .env("LOCALAPPDATA", home.join("localappdata"));
+    #[cfg(windows)]
+    {
+        // Winsock needs SystemRoot; pass only the OS paths the child may need, never proxies.
+        for name in ["SystemRoot", "WINDIR", "TEMP", "TMP"] {
+            if let Some(value) = std::env::var_os(name) {
+                command.env(name, value);
+            }
+        }
+    }
     let child = Arc::new(Mutex::new(
-        Command::new(bin)
-            .args(["serve", "--config"])
-            .arg(&config)
-            .arg("--data-dir")
-            .arg(data)
-            .env_clear()
-            .env("PATH", std::env::var_os("PATH").unwrap_or_default())
-            .env("HOME", &home)
-            .env("USERPROFILE", &home)
-            .env("XDG_CONFIG_HOME", home.join("xdg-config"))
-            .env("XDG_DATA_HOME", home.join("xdg-data"))
-            .env("APPDATA", home.join("appdata"))
-            .env("LOCALAPPDATA", home.join("localappdata"))
+        command
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
