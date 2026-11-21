@@ -105,8 +105,9 @@ describe("semantic icon roles", () => {
     expect(adapterSource).toMatch(/role:\s*IconRole/);
     expect(adapterSource).toMatch(/glyphForRole\(role\)/);
 
-    const glyphNames = [...glyphs].join("|");
-    const directGlyphUse = new RegExp(`(?:<Icon\\b[^>]*\\b(?:name|role)\\s*=\\s*(?:\\{\\s*["'](?:${glyphNames})["']\\s*\\}|["'](?:${glyphNames})["'])|<EmptyState\\b[^>]*\\bicon\\s*=\\s*["'](?:${glyphNames})["']|\\b(?:typeIcon|iconRole|icon)\\s*[:=]\\s*["'](?:${glyphNames})["'])`);
+    const escapedGlyphs = [...glyphs].map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
+    const rawValue = String.raw`(?:["'](?:${escapedGlyphs})["']|\{\s*["'](?:${escapedGlyphs})["']\s*\})`;
+    const directGlyphUse = new RegExp(String.raw`(?:<Icon\b[^>]*\b(?:name|role)\s*=\s*${rawValue}|<EmptyState\b[^>]*\brole\s*=\s*${rawValue}|<NavItem\b[^>]*\brole\s*=\s*${rawValue}|<SectionNav\b[^>]*\brole\s*=\s*${rawValue}|<MoreMenu\b[^>]*\brole\s*=\s*${rawValue}|\b(?:typeIcon|iconRole|icon)\s*[:=]\s*${rawValue})`);
     const privateImport = /from\s+["'][^"']*\/icons\/(?:theme|glyphs)(?:\.tsx?)?["']/;
     const sources = { ...screenSources, ...systemSources, ...sharedSources };
     const leaks = Object.entries(sources).filter(([path, source]) =>

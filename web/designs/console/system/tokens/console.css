@@ -63,7 +63,8 @@
   --size-header: 48px;
   --size-control: 32px;
   --size-touch: 44px;
-  --size-icon-small: 16px;
+  --size-menu-icon: 16px;
+  --size-icon-small: 15px;
   --size-icon: 18px;
   --size-menu-min: 168px;
   --size-row-action: 24px;

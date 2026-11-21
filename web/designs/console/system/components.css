@@ -12,7 +12,7 @@ a{color:var(--accent)}
 
 /* Icon */
 .i{width:var(--size-icon);height:var(--size-icon);flex:none;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
-.i.s{width:var(--size-icon-small);height:var(--size-icon-small)}
+.i.s{width:15px;height:15px}
 
 /* StatusMark */
 .st{display:inline-flex;align-items:center;gap:var(--space-8);white-space:nowrap}
@@ -534,7 +534,7 @@ a{color:var(--accent)}
 .popover{position:fixed;z-index:var(--z-popover);max-width:min(var(--size-details),calc(100vw - 2 * var(--space-12)));box-sizing:border-box;overflow:auto;background:var(--raised);border:1px solid var(--line);border-radius:var(--radius-s);padding:var(--space-4)}
 .menu-popover{width:max-content;min-width:var(--size-menu-min);border-radius:var(--radius-m);filter:drop-shadow(var(--shadow-popover))}
 .menu-item{display:flex;align-items:center;gap:var(--space-8);width:100%;min-height:var(--size-control);padding:var(--space-6) var(--space-8);border:0;background:transparent;color:var(--fg);font:var(--type-label);text-align:left;white-space:nowrap;border-radius:var(--radius-s)}
-.menu-item-icon{width:var(--size-icon-small);height:var(--size-icon-small);flex:none;display:grid;place-items:center;color:var(--muted)}
+.menu-item-icon{width:var(--size-menu-icon);height:var(--size-menu-icon);flex:none;display:grid;place-items:center;color:var(--muted)}
 .menu-item:hover,.menu-item:focus-visible{background:var(--hover)}
 .menu-item:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 .menu-item.destructive{color:var(--bad)}
