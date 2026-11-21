@@ -5,7 +5,7 @@ import {captureDecode,InputCaptureError} from './immutable-input';
 // Typed operations: the UX boundary for requests. Stateless wrappers over `Link.call`;
 // they never touch the store (saved facts change only by re-reading after a hint).
 import { decodeStored, decodeTest, encodeCredentialsClear, encodeCredentialsSet, encodeTest, type StoredFacts, type TestFacts, type TestTarget } from "./connection-setup";
-import { fromApiError, type Outcome } from "./errors";
+import { fromApiError, lostConnection, type Outcome } from "./errors";
 import type { Link } from "./link";
 import type { ThreadDeletePreview } from "./thread-delete";
 import type {
@@ -205,12 +205,9 @@ const decodeMemoryStatus: Decoder<MemoryFacts> = value => {
   } };
 };
 
-export function memoryConnectionLost(error: import("./errors").OpError | undefined): boolean {
-  return error?.kind === "not_connected" || error?.kind === "connection_lost" || (error?.kind === "owner" && error.code === "app_not_running");
-}
 export type MemoryReadIssue = "unsupported" | "invalid_response" | "disconnected";
 export function memoryReadIssue(error: import("./errors").OpError | undefined): MemoryReadIssue | undefined {
-  if (memoryConnectionLost(error)) return "disconnected";
+  if (lostConnection(error) || (error?.kind === "owner" && error.code === "app_not_running")) return "disconnected";
   if (!error) return undefined;
   if (error.kind === "invalid_response") return "invalid_response";
   if (error.kind !== "owner") return undefined;

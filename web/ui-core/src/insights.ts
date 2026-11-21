@@ -1,7 +1,7 @@
 // Screen logic of Analytics, Resources and Settings: which owner reads run, and when. Reads run on
 // opening a view or on request, never per render, and each has a stated bound.
 import { batch, signal, type Signal } from "@preact/signals-core";
-import { Cancel, memoryConnectionLost as lostConnection, type MemoryFacts, type ModelListResult, type Operations, type OpError, type Outcome, type ReadOptions } from "../../data/src";
+import { Cancel, lostConnection, memoryReadIssue, type MemoryFacts, type ModelListResult, type Operations, type OpError, type Outcome, type ReadOptions } from "../../data/src";
 import {
   addCoverage,
   EMPTY_COVERAGE,
@@ -351,7 +351,8 @@ export class Insights {
 
   private ensureRead(kind: ResourceRead): void {
     const s = this.resource(kind).peek();
-    if (!s.loading && s.value === undefined && (s.error === undefined || lostConnection(s.error))) this.refreshRead(kind);
+    const disconnected = kind === "memory" ? memoryReadIssue(s.error) === "disconnected" : lostConnection(s.error);
+    if (!s.loading && s.value === undefined && (s.error === undefined || disconnected)) this.refreshRead(kind);
   }
 
   private resource(kind: ResourceRead): Signal<ReadState<unknown>> {

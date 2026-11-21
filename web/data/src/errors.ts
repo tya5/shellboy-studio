@@ -18,6 +18,10 @@ export type OpError =
   | { kind: "invalid_response"; message: string }
   | { kind: "cancelled"; message: string };
 
+export function lostConnection(error: OpError | undefined): boolean {
+  return error?.kind === "not_connected" || error?.kind === "connection_lost";
+}
+
 export type Outcome<T> =
   | { ok: true; value: T; operationId?: string }
   | { ok: false; error: OpError; operationId?: string };

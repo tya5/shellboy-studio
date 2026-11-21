@@ -285,6 +285,33 @@ describe("Insights over the fake transport", () => {
     expect(model.insights.storage.value.value).toBeDefined();
   });
 
+  it("retries owner IPC loss on section reopen only for Memory", async () => {
+    const { t, db, model, data } = await fixtureModel({ configure(db) {
+      const answer = db.answer.bind(db);
+      db.answer = call => ["usage.get", "compact.list", "storage.status", "index.status", "status", "bridge.memory"].includes(call.command)
+        ? { ok: false, code: "app_not_running", message: "synthetic IPC loss" }
+        : answer(call);
+    } });
+    try {
+      const open = async (section: "tokens" | "compaction" | "storage" | "index" | "memory") => {
+        model.insights.ensureAnalytics(section, "lead");
+        await settle(t, db);
+      };
+      for (const section of ["tokens", "compaction", "storage", "index", "memory"] as const) await open(section);
+      const count = () => ({
+        tokens: t.calls("usage.get").length, compaction: t.calls("compact.list").length,
+        storage: t.calls("storage.status").length, index: t.calls("index.status").length,
+        receipts: t.calls("status").filter(call => (call.args as { limit?: number }).limit === 1).length,
+        memory: t.calls("status").filter(call => (call.args as { memory?: boolean }).memory === true).length,
+        bridge: t.calls("bridge.memory").length,
+      });
+      const before = count();
+      expect(Object.values(before).every(n => n > 0)).toBe(true);
+      for (const section of ["tokens", "compaction", "storage", "index", "memory"] as const) await open(section);
+      expect(count()).toEqual({ ...before, memory: before.memory + 1 });
+    } finally { model.dispose(); data.stop(); }
+  });
+
   it("the same section re-running doesn't cancel its own reads", async () => {
     const { t, db, model } = await fixtureModel({ route: "analytics", section: "memory" });
     await settle(t, db);
