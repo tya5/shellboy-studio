@@ -1,4 +1,4 @@
-import type { ComponentChildren, JSX } from "preact";
+import type { ComponentChildren, JSX, Ref } from "preact";
 
 type Variant = "plain" | "primary" | "warn" | "stop" | "link" | "quiet";
 
@@ -7,6 +7,7 @@ export function Button({
   icon,
   label,
   children,
+  buttonRef,
   ...rest
 }: {
   variant?: Variant;
@@ -14,10 +15,11 @@ export function Button({
   icon?: boolean;
   label?: string;
   children: ComponentChildren;
+  buttonRef?: Ref<HTMLButtonElement>;
 } & Omit<JSX.ButtonHTMLAttributes<HTMLButtonElement>, "icon" | "label">) {
   const cls = ["btn", variant !== "plain" ? variant : "", icon ? "icon" : ""].filter(Boolean).join(" ");
   return (
-    <button type="button" class={cls} aria-label={label} {...rest}>
+    <button ref={buttonRef} type="button" class={cls} aria-label={label} {...rest}>
       {children}
     </button>
   );

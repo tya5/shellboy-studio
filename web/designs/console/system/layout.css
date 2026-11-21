@@ -204,6 +204,7 @@
 .work-strip{display:none}
 .work-sheet{border:1px solid var(--line-strong);border-radius:var(--radius);background:var(--panel);color:var(--fg);width:min(100%,600px);max-height:80dvh;padding:var(--space-16)}
 .work-sheet::backdrop{background:var(--scrim)}
+.modal-dialog-open .side,.modal-dialog-open .scroll,.modal-dialog-open .mon,.modal-dialog-open .org{overflow:hidden}
 .work-sheet-head{display:flex;align-items:center;justify-content:space-between;gap:var(--space-8)}
 .work-sheet-head h2{font:var(--type-heading);margin:0}
 .work-sheet-body{display:flex;flex-direction:column;gap:var(--space-12);max-height:65dvh;overflow:auto}

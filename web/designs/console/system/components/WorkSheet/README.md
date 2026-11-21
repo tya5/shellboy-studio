@@ -1,14 +1,18 @@
 # WorkSheet
 
-A modal native-dialog sheet for the Conversation work strip. `showModal()` provides
-modal focus containment and Escape cancellation. The sheet locks document scrolling
-while open. A primary-button backdrop click dismisses it; a contextmenu/right-click
-does not. Escape follows the same caller-controlled close path. The heading ID names
-the dialog with `aria-labelledby`; the body (or supplied concise description) is
-referenced by `aria-describedby`. Closing returns focus to the element active at
-opening; if that row opener has been removed, focus moves to an adjacent row control.
+A native modal sheet for the Conversation work strip. The caller passes the actual
+invoking control and a nearby-focus resolver; the sheet never guesses focus from
+mount-time activeElement or inspects row classes. `showModal()` contains modal focus.
+While open, `modal-dialog-open` prevents scrolling in the app's `.side`, `.scroll`,
+`.mon`, and `.org` scroll containers, while `.work-sheet-body` remains scrollable.
+
+Only a primary pointer click whose coordinates are outside the dialog bounds dismisses
+the sheet. Clicks on its padding, Ctrl+primary context clicks, and right-click do not.
+Escape invokes the caller close path. The Button close action remains in the system
+Button component path. The title and body are referenced through
+`aria-labelledby`/`aria-describedby`. On close, return focus to the passed opener, or
+ask the caller's resolver when it has been removed.
 
 References from the Reviewer audit: Radix `dialog:342,348` (outside pointer,
 excluding right-click), `dialog:257` (scroll lock), shadcn/ui Sheet, and WAI-ARIA
-APG Dialog (Modal) focus return. Keep the
-sheet content scoped to compact task inspection, not a full-page workflow.
+APG Dialog (Modal) focus return.

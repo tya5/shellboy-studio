@@ -467,6 +467,7 @@ export function OrderedHistory({ model, handle, win, t }: { model: AppModel; han
 export function Conversation({ model }: { model: AppModel }) {
   const t = model.t.value;
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [sheetReturnFocus, setSheetReturnFocus] = useState<{ opener: HTMLElement; resolveFallback: () => HTMLElement | null }>();
   const handle = model.handle.value;
   const win = model.longReader.value;
   useEffect(() => { setSheetOpen(false); }, [handle]);
@@ -511,7 +512,7 @@ export function Conversation({ model }: { model: AppModel }) {
               {t("composer.unconfirmed")}{!model.canResend()?<div>{t("composer.retryUnavailable")}</div>:null}
             </Notice>
           ) : null}
-          {(model.threadReplies.value.length || model.work.value.running.length || model.work.value.pending.length || model.work.value.partial) ? <div class="work-strip"><Button onClick={() => setSheetOpen(true)}>{[model.threadReplies.value.length ? `${t("work.replies")} ${model.threadReplies.value.length}` : "", model.work.value.running.length ? t("work.runningCount", { n: model.work.value.running.length }) : "", model.work.value.pending.length ? `${t("work.pending")} ${model.work.value.pending.length}` : ""].filter(Boolean).join(", ")}{model.work.value.partial ? ` ${t("work.partial")}` : ""}</Button></div> : null}
+          {(model.threadReplies.value.length || model.work.value.running.length || model.work.value.pending.length || model.work.value.partial) ? <div class="work-strip"><Button onClick={(event) => { const opener = event.currentTarget; const fallback = opener.closest(".dock")?.querySelector<HTMLElement>("textarea"); setSheetReturnFocus({ opener, resolveFallback: () => fallback?.isConnected ? fallback : null }); setSheetOpen(true); }}>{[model.threadReplies.value.length ? `${t("work.replies")} ${model.threadReplies.value.length}` : "", model.work.value.running.length ? t("work.runningCount", { n: model.work.value.running.length }) : "", model.work.value.pending.length ? `${t("work.pending")} ${model.work.value.pending.length}` : ""].filter(Boolean).join(", ")}{model.work.value.partial ? ` ${t("work.partial")}` : ""}</Button></div> : null}
           <Composer
             label={t("composer.label")}
             placeholder={t("composer.placeholder")}
@@ -534,7 +535,7 @@ export function Conversation({ model }: { model: AppModel }) {
         </div> : null}
       </div>
       {handle ? <Details model={model} /> : null}
-      <WorkSheet open={sheetOpen} title={t("work.title")} closeLabel={t("work.close")} onClose={() => setSheetOpen(false)}><WorkRegions model={model} place="sheet" /></WorkSheet>
+      <WorkSheet open={sheetOpen} title={t("work.title")} closeLabel={t("work.close")} returnFocusTo={sheetReturnFocus?.opener ?? null} resolveFocusFallback={sheetReturnFocus?.resolveFallback ?? (() => null)} onClose={() => setSheetOpen(false)}><WorkRegions model={model} place="sheet" /></WorkSheet>
     </>
   );
 }

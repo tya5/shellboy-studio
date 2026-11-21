@@ -5,12 +5,13 @@ import { readFileSync } from "node:fs";
 import "../system/tokens/console.css";
 import "../system/components.css";
 import { render } from "preact";
+import { useState } from "preact/hooks";
 import { act } from "preact/test-utils";
 import { describe, expect, it, vi } from "vitest";
 import { ThreadDeleteDialog } from "../system/components/ThreadDeleteDialog";
-import { threadMenuEntries } from "../system/components/thread-menu";
 import { ThreadItem } from "../system/components/ThreadItem";
 import { SelectRow } from "../system/components/SelectRow";
+import { captureRowFocusReturn, threadMenuEntries, type ThreadDeleteRequest } from "../system/components/thread-menu";
 import type { MenuEntry } from "../system/components/Menu";
 import type { AppModel } from "../../../ui-core/src";
 import type { ThreadSummary } from "../../../data/src";
@@ -48,6 +49,17 @@ function treeRow(title: string, current = false) {
 function selectRow(title: string, checked = false) {
   return <SelectRow title={title} href="#" status={null} depth={0} checked={checked} checkLabel="select" onToggle={() => {}} menu={rowMenu} />;
 }
+
+function DeleteFlow({ model }: { model: AppModel }) {
+  const [request, setRequest] = useState<ThreadDeleteRequest>();
+  const next = { ...row, thread_id: "t2", title: "Two" };
+  return <>
+    {!request ? <ThreadItem href="#one" title="One" status={undefined} statusLabel="" depth={0} current={false} pending={0} menu={{ label: "One menu", entries: threadMenuEntries(model, row, undefined, (target, opener) => setRequest({ target, ...captureRowFocusReturn(opener) })) }} /> : null}
+    <ThreadItem href="#two" title="Two" status={undefined} statusLabel="" depth={0} current={false} pending={0} menu={{ label: "Two menu", entries: [{ key: "archive", label: "Archive" }] }} />
+    {request ? <ThreadDeleteDialog model={model} {...request} onClose={() => setRequest(undefined)} /> : null}
+  </>;
+}
+
 describe("Thread row menu and delete", () => {
   it("offers Stop only while running and Retry only in recovery", () => {
     const model = menuModel();
@@ -74,8 +86,9 @@ describe("Thread row menu and delete", () => {
     model.ops.threadDeletePreview = vi.fn(() => new Promise((resolve) => { resolvePreview = resolve; })) as never;
     model.ops.threadDelete = vi.fn(async () => { order.push("delete"); return { ok: true }; }) as never;
     const host = document.createElement("div");
-    document.body.append(host);
-    act(() => render(<ThreadDeleteDialog model={model} target={row} onClose={onClose} />, host));
+    const invokingControl = document.createElement("button");
+    document.body.append(host, invokingControl);
+    act(() => render(<ThreadDeleteDialog model={model} target={row} returnFocusTo={invokingControl} resolveFocusFallback={() => null} onClose={onClose} />, host));
     const dialog = host.querySelector<HTMLDialogElement>("dialog[role=alertdialog]")!;
     expect(dialog).not.toBeNull();
     expect(dialog.getAttribute("aria-labelledby")).toBeTruthy();
@@ -92,6 +105,27 @@ describe("Thread row menu and delete", () => {
     act(() => confirm.click());
     expect(order).toEqual(["close", "delete"]);
     expect(model.ops.threadDelete).toHaveBeenCalledWith("t1", { thread_count: 1, ids_hash: "exact" });
+    render(null, host); host.remove(); invokingControl.remove();
+  });
+  it("returns focus from the real Delete menu path to the adjacent row if its opener unmounts", async () => {
+    const model = menuModel();
+    model.ops.threadDeletePreview = vi.fn(async () => ({ ok: true, value: { deletable_now: true, preview_marker: { thread_count: 1, ids_hash: "exact" }, selection: { thread_count: 1 }, blockers: { live_run_count: 0, stopping_run_count: 0, truncated: false }, preview_marker_unavailable_reason: undefined } })) as never;
+    const host = document.createElement("div");
+    document.body.append(host);
+    act(() => render(<DeleteFlow model={model} />, host));
+    const opener = host.querySelector<HTMLButtonElement>(".tree-item [aria-haspopup=menu]")!;
+    opener.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 1 }));
+    await act(async () => { await Promise.resolve(); });
+    const deleteItem = [...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')].find((item) => item.textContent === "thread.deletePreview")!;
+    await act(async () => { deleteItem.click(); await Promise.resolve(); });
+    await act(async () => { await Promise.resolve(); });
+    const dialog = host.querySelector<HTMLDialogElement>('dialog[role="alertdialog"]')!;
+    expect(dialog).not.toBeNull();
+    expect(opener.isConnected).toBe(false);
+    const cancel = dialog.querySelector<HTMLButtonElement>(".work-sheet-head button")!;
+    expect(document.activeElement).toBe(cancel);
+    await act(async () => { cancel.click(); await Promise.resolve(); });
+    expect(document.activeElement).toBe(host.querySelector<HTMLAnchorElement>('.tree-item a[href="#two"]'));
     render(null, host); host.remove();
   });
   it("opens a visible Menu from the ThreadItem button", async () => {

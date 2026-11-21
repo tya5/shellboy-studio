@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "preact/hooks";
 import { CAPABILITY_REPARENT, CAPABILITY_TAGS, formatAge, formatRoute, groupThreads, listedDescendants, OPEN_MAX, statusLabel, threadTree, THREAD_GROUPINGS, type AppModel, type MemberState, type StatusKey, type TagInvalid, type ThreadGrouping, type ThreadRow, type Translate } from "../../../ui-core/src";
-import { threadMenuEntries } from "../system/components/thread-menu";
+import { captureRowFocusReturn, threadMenuEntries, type ThreadDeleteRequest } from "../system/components/thread-menu";
 import { Button, ButtonGroup, EmptyState, Field, Icon, Notice, Section, SelectionBar, SelectRow, StatusMark, ThreadDeleteDialog, ThreadGroup } from "../system/components";
 
 const SEARCH_DEBOUNCE_MS = 200;
@@ -145,7 +145,7 @@ export function Threads({ model }: { model: AppModel }) {
   const action = org.action.value;
   const descendants = org.descendants.value;
   const [query, setQuery] = useState(state.query);
-  const [deleteThread, setDeleteThread] = useState<import("../../../data/src").ThreadSummary>();
+  const [deleteThread, setDeleteThread] = useState<ThreadDeleteRequest>();
   const [armed, setArmed] = useState(false);
   useEffect(() => {
     const timer = setTimeout(() => org.setQuery(query.trim()), SEARCH_DEBOUNCE_MS);
@@ -190,7 +190,7 @@ export function Threads({ model }: { model: AppModel }) {
         note={notes || undefined}
         age={formatAge(s.updated_at, model.coarseNow.value)}
         moveAction={canMove ? <button type="button" class="srow-act" onClick={() => org.pickParent(s.thread_id)}>{t("org.move")}</button> : undefined}
-        menu={{ label: t("thread.rowMenu"), entries: threadMenuEntries(model, s, r.status, setDeleteThread) }}
+        menu={{ label: t("thread.rowMenu"), entries: threadMenuEntries(model, s, r.status, (target, opener, placementAnchor) => setDeleteThread({ target, ...captureRowFocusReturn(opener, placementAnchor) })) }}
         drag={
           canMove
             ? {
@@ -210,7 +210,7 @@ export function Threads({ model }: { model: AppModel }) {
   };
   return (
     <>
-    {deleteThread ? <ThreadDeleteDialog key={deleteThread.thread_id} model={model} target={deleteThread} onClose={() => setDeleteThread(undefined)} /> : null}
+    {deleteThread ? <ThreadDeleteDialog key={deleteThread.target.thread_id} model={model} {...deleteThread} onClose={() => setDeleteThread(undefined)} /> : null}
     <div class="org">
       <div class="head">
         <div class="pagehead">
