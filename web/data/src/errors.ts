@@ -16,7 +16,6 @@ export type OpError =
   | { kind: "owner"; code: string; message: string; hint?: string; details?: unknown }
   /** A reply the data layer cannot decode. Loud on purpose; never papered over. */
   | { kind: "invalid_response"; message: string }
-  | { kind: "resource_read"; issue: "unsupported" | "invalid_response" | "disconnected"; message: string }
   | { kind: "cancelled"; message: string };
 
 export type Outcome<T> =

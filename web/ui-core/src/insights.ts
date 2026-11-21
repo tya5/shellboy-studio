@@ -1,7 +1,7 @@
 // Screen logic of Analytics, Resources and Settings: which owner reads run, and when. Reads run on
 // opening a view or on request, never per render, and each has a stated bound.
 import { batch, signal, type Signal } from "@preact/signals-core";
-import { Cancel, type ModelListResult, type Operations, type OpError, type Outcome, type ReadOptions } from "../../data/src";
+import { Cancel, memoryConnectionLost as lostConnection, type MemoryFacts, type ModelListResult, type Operations, type OpError, type Outcome, type ReadOptions } from "../../data/src";
 import {
   addCoverage,
   EMPTY_COVERAGE,
@@ -16,7 +16,7 @@ import {
   type WalkCoverage,
 } from "./analytics";
 import type { AnalyticsSection, SettingsSection } from "./route";
-import { readIndex, readMemory, readReceipts, readStorage, readThreadSettings, type IndexFacts, type MemoryFacts, type ReceiptFacts, type StorageFacts, type ThreadSettings } from "./resources";
+import { readIndex, readReceipts, readStorage, readThreadSettings, type IndexFacts, type ReceiptFacts, type StorageFacts, type ThreadSettings } from "./resources";
 
 /**
  * Scan windows one walk reads before it stops and offers to continue. Each window is at most 10,000
@@ -153,7 +153,7 @@ const nothing: ReadState<never> = { loading: false, value: undefined, error: und
 /** The newest read of each value: a reply to an older one, cancelled or not, is dropped. */
 const latestRead = new WeakMap<object, number>();
 
-async function readInto<T>(target: Signal<ReadState<T>>, read: () => Promise<Outcome<Record<string, unknown>>>, parse: (v: Record<string, unknown>) => T): Promise<void> {
+async function readInto<T, Wire>(target: Signal<ReadState<T>>, read: () => Promise<Outcome<Wire>>, parse: (v: Wire) => T): Promise<void> {
   const me = (latestRead.get(target) ?? 0) + 1;
   latestRead.set(target, me);
   target.value = { ...target.peek(), loading: true };
@@ -185,7 +185,6 @@ const readBridgeMemory = (v: Record<string, unknown>): BridgeMemory => ({
   reason: typeof v.unavailable_reason === "string" ? v.unavailable_reason : undefined,
 });
 
-const lostConnection = (e: OpError | undefined): boolean => e?.kind === "not_connected" || e?.kind === "connection_lost" || (e?.kind === "resource_read" && e.issue === "disconnected");
 
 export interface InsightsOptions {
   nowMs: () => number;
@@ -364,7 +363,7 @@ export class Insights {
     const read: ReadOptions = { cancel: this.reads };
     switch (kind) {
       case "memory":
-        void readInto(this.memory, () => this.ops.memoryStatus(read), readMemory);
+        void readInto(this.memory, () => this.ops.memoryStatus(read), value => value);
         return;
       case "storage":
         void readInto(this.storage, () => this.ops.storageStatus(read), readStorage);

@@ -144,7 +144,33 @@ const decodeTagResult: Decoder<TagResult> = (v) =>
 const decodeRecord: Decoder<Record<string, unknown>> = (v) =>
   isObject(v) ? { ok: true, value: v } : { ok: false, reason: "expected an object result" };
 
-const decodeMemoryStatus: Decoder<Record<string, unknown>> = value => {
+export interface ProcessMetric {
+  name: string;
+  bytes: number | undefined;
+  reason: string | undefined;
+}
+
+export interface CacheFact {
+  name: string;
+  retained: number | undefined;
+  limit: number | undefined;
+  entries: number | undefined;
+  unit: string | undefined;
+  live: number | undefined;
+  pinned: number | undefined;
+  reason: string | undefined;
+}
+
+export interface MemoryFacts {
+  platform: string | undefined;
+  observedAt: string | undefined;
+  /** Metrics this platform provides; the rest carry a reason and are left out. */
+  metrics: ProcessMetric[];
+  caches: CacheFact[];
+  accounting: string | undefined;
+}
+
+const decodeMemoryStatus: Decoder<MemoryFacts> = value => {
   const numberOrNull = (v: unknown) => v === null || (typeof v === "number" && Number.isSafeInteger(v) && v >= 0);
   const stringOrNull = (v: unknown) => v === null || typeof v === "string";
   const fields = (record: Record<string, unknown>, requiredNumbers: readonly string[], requiredStrings: readonly string[], optionalNumbers: readonly string[] = [], optionalStrings: readonly string[] = []) =>
@@ -163,15 +189,31 @@ const decodeMemoryStatus: Decoder<Record<string, unknown>> = value => {
   if (Object.values(value.process.metrics).some(metric => !isObject(metric)
     || !fields(metric, ["bytes"], ["unavailable_reason"])))
     return { ok: false, reason: "status --memory process metric has an invalid field type" };
-  return { ok: true, value };
+  // The fields above are qualified once, at the wire boundary.
+  const cache = Object.entries(value.caches) as [string, Record<string, number | string | null>][];
+  const metrics = Object.entries(value.process.metrics) as [string, {bytes: number | null; unavailable_reason: string | null}][];
+  return { ok: true, value: {
+    platform: (value.process.platform as string | null) ?? undefined,
+    observedAt: (value.process.observed_at as string | null) ?? undefined,
+    accounting: (value.accounting as string | null) ?? undefined,
+    metrics: metrics.flatMap(([name, item]) => item.bytes === null && item.unavailable_reason === "Not provided on this platform" ? []
+      : [{ name, bytes: item.bytes ?? undefined, reason: item.unavailable_reason ?? undefined }]),
+    caches: cache.map(([name, c]) => ({ name, retained: (c.retained_bytes as number | null) ?? undefined,
+      limit: (c.limit_bytes as number | null) ?? undefined, entries: (c.entries as number | null) ?? undefined,
+      unit: (c.entry_unit as string | null) ?? undefined, live: ((c.live_bytes ?? c.live_encoded_bytes) as number | null) ?? undefined,
+      pinned: (c.pinned_bytes as number | null) ?? undefined, reason: (c.unavailable_reason as string | null) ?? undefined })),
+  } };
 };
 
+export function memoryConnectionLost(error: import("./errors").OpError | undefined): boolean {
+  return error?.kind === "not_connected" || error?.kind === "connection_lost" || (error?.kind === "owner" && error.code === "app_not_running");
+}
 export type MemoryReadIssue = "unsupported" | "invalid_response" | "disconnected";
-export function memoryReadIssue(error: import("./errors").OpError): MemoryReadIssue | undefined {
-  if (error.kind === "not_connected" || error.kind === "connection_lost") return "disconnected";
+export function memoryReadIssue(error: import("./errors").OpError | undefined): MemoryReadIssue | undefined {
+  if (memoryConnectionLost(error)) return "disconnected";
+  if (!error) return undefined;
   if (error.kind === "invalid_response") return "invalid_response";
   if (error.kind !== "owner") return undefined;
-  if (error.code === "app_not_running") return "disconnected";
   const details = isObject(error.details) ? error.details : undefined;
   // Protocol-6 rejects an unsupported memory field as typed invalid_argument, not a made-up operation code.
   if (error.code === "invalid_argument" && details?.reason === "unknown_field" && details.name === "memory" && details.command === "status") return "unsupported";
@@ -319,11 +361,8 @@ export class Operations {
     return this.run("index.status", {}, outcomeDecoder(decodeRecord), undefined, read);
   }
   /** `status --memory`: request-scoped cache/process facts; no separate capability is advertised. */
-  async memoryStatus(read?: ReadOptions): Promise<Outcome<Record<string, unknown>>> {
-    const out = await this.run("status", { memory: true }, outcomeDecoder(decodeMemoryStatus), undefined, read);
-    if (out.ok || out.error.kind === "cancelled") return out;
-    const issue = memoryReadIssue(out.error);
-    return issue ? { ok: false, error: { kind: "resource_read", issue, message: issue } } : out;
+  memoryStatus(read?: ReadOptions): Promise<Outcome<MemoryFacts>> {
+    return this.run("status", { memory: true }, outcomeDecoder(decodeMemoryStatus), undefined, read);
   }
   /** Activity status, for `receipt_budget`. One row is enough; the rows are not used. */
   handoffAttempts(threadId: string, read?: ReadOptions): Promise<Outcome<Page<WorkItem>>> {

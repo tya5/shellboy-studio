@@ -1,4 +1,5 @@
-import { formatBytes, formatClock, type AppModel, type CacheFact, type Translate } from "../../../ui-core/src";
+import { memoryReadIssue, type CacheFact } from "../../../data/src";
+import { formatBytes, formatClock, type AppModel, type Translate } from "../../../ui-core/src";
 import { BarList, Button, DataTable, FactList, Meter, Notice, Section, Stat } from "../system/components";
 import { Rich } from "./Rich";
 
@@ -10,7 +11,7 @@ function CacheMeter({ t, c }: { t: Translate; c: CacheFact }) {
   const limit = c.limit !== undefined ? formatBytes(c.limit) : "";
   const text =
     used === undefined
-      ? t("res.cacheUnknown", { reason: t("common.notReported"), limit })
+      ? t("res.cacheUnknown", { reason: c.reason === "UI cache owner is not available" ? t("res.memory.serveCacheUnavailable", { missing: t("common.notReported") }) : t("common.notReported"), limit })
       : c.entries !== undefined
         ? t("res.cacheEntries", { used, limit, entries: c.entries })
         : t("res.cacheText", { used, limit });
@@ -95,7 +96,7 @@ export function MemoryPane({ model }: { model: AppModel }) {
   const memory = i.memory.value;
   const bridge = i.bridge.value;
   const missing = t("common.notReported");
-  const readIssue = memory.error?.kind === "resource_read" ? memory.error.issue : undefined;
+  const readIssue = memoryReadIssue(memory.error);
   const memoryFailure = readIssue === "unsupported" ? t("res.memory.unsupported") : readIssue === "invalid_response" ? t("res.memory.invalid_response") : readIssue === "disconnected" ? t("res.memory.disconnected") : memory.error ? t("res.memory.readFailed") : undefined;
   return (
     <>

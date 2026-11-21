@@ -295,10 +295,10 @@ describe("Reads for Analytics and Settings", () => {
       const { t, ops } = setup();
       const read = ops.memoryStatus(); const value = valid(); mutate(value);
       t.ok(t.calls("status")[0]!.id, value);
-      expect(await read).toEqual({ ok: false, error: { kind: "resource_read", issue: "invalid_response", message: "invalid_response" } });
+      expect(await read).toMatchObject({ ok: false, error: { kind: "invalid_response" } });
     }
     const { t, ops } = setup(); const value = valid(); const read = ops.memoryStatus(); t.ok(t.calls("status")[0]!.id, value);
-    expect(await read).toEqual({ ok: true, value });
+    expect(await read).toMatchObject({ ok: true, value: { caches: [{ name: "body", retained: undefined, reason: "Not provided" }], metrics: [{ name: "private_bytes", bytes: undefined, reason: "Not provided" }] } });
   });
 
   it("memory status classifies unsupported and malformed responses at the data boundary", async () => {
@@ -307,17 +307,17 @@ describe("Reads for Analytics and Settings", () => {
     const call = unsupported.t.calls("status")[0]!;
     expect(call.args).toEqual({ memory: true });
     unsupported.t.ownerError(call.id, "invalid_argument", "unknown field `memory` in the arguments of `status`", { reason: "unknown_field", name: "memory", command: "status", request_may_have_been_applied: false });
-    expect(await first).toEqual({ ok: false, error: { kind: "resource_read", issue: "unsupported", message: "unsupported" } });
+    expect(await first).toMatchObject({ ok: false, error: { kind: "owner", code: "invalid_argument" } });
 
     const disconnected = setup();
     const lost = disconnected.ops.memoryStatus();
     disconnected.t.ownerError(disconnected.t.calls("status")[0]!.id, "app_not_running", "Cannot connect to the owner of this data directory");
-    expect(await lost).toEqual({ ok: false, error: { kind: "resource_read", issue: "disconnected", message: "disconnected" } });
+    expect(await lost).toMatchObject({ ok: false, error: { kind: "owner", code: "app_not_running" } });
 
     const malformed = setup();
     const second = malformed.ops.memoryStatus();
     malformed.t.ok(malformed.t.calls("status")[0]!.id, {});
-    expect(await second).toEqual({ ok: false, error: { kind: "resource_read", issue: "invalid_response", message: "invalid_response" } });
+    expect(await second).toMatchObject({ ok: false, error: { kind: "invalid_response" } });
   });
 
   it("preserves unrelated memory read errors instead of calling them invalid responses", async () => {

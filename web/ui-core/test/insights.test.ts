@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import { flush, settle } from "../../data/test/harness";
 import {
   addSum, ANALYTICS_SECTIONS, analyticsSection, cacheRate, dayFacts, effectiveTokens, formatBytes, formatRoute, loadPrefs, MAX_GROUPS, MAX_WINDOWS, meanInput, mergeGroups, niceMax, parseRoute, periodOf, periodTotals,
-  readCompactionEvent, readGroup, readIndex, readMemory, readStorage, readSum, readThreadSettings, settingsSection, SETTINGS_SECTIONS, splitParts, totalGroups, zoneOf, type Prefs,
+  readCompactionEvent, readGroup, readIndex, readStorage, readSum, readThreadSettings, settingsSection, SETTINGS_SECTIONS, splitParts, totalGroups, zoneOf, type Prefs,
 } from "../src";
-import { fixtureCompaction, fixtureIndex, fixtureMemory, fixtureModel, fixtureStorage, NOW, usageItem, usagePage } from "./fixture";
+import { fixtureCompaction, fixtureIndex, fixtureModel, fixtureStorage, NOW, usageItem, usagePage } from "./fixture";
 
 const WEIGHTS = { cached: 0.1, output: 5 };
 const parts = (input: number | null, cached: number | null, output: number | null) => readGroup(usageItem("d", { input, cached, output }))!.conversation;
@@ -125,20 +125,16 @@ describe("compaction events", () => {
 });
 
 describe("resource facts", () => {
-  it("memory leaves out what the platform doesn't provide and keeps the owner's reason for a cache", () => {
-    const m = readMemory(fixtureMemory);
+  it("memory leaves out unsupported platform metrics and keeps the cache reason", async () => {
+    const f = await fixtureModel();
+    f.model.insights.refreshRead("memory"); await settle(f.t, f.db);
+    const m = f.model.insights.memory.peek().value!;
+    f.model.dispose(); f.data.stop();
     expect(m.metrics.map((x) => x.name)).toEqual(["footprint", "rss"]);
     const body = m.caches.find((c) => c.name === "body")!;
     expect(body).toMatchObject({ retained: undefined, limit: 33554432, reason: "UI cache owner is not available" });
     expect(body.retained).toBeUndefined();
     expect(m.caches.find((c) => c.name === "replay")).toMatchObject({ retained: 57373, entries: 1, unit: "thread" });
-  });
-  it("keeps explicit null with its unavailable reason as an unreported memory value", () => {
-    const metricReason = "Private memory is not exposed";
-    const memory = readMemory({ ...fixtureMemory, process: { ...fixtureMemory.process,
-      metrics: { ...fixtureMemory.process.metrics, private_bytes: { bytes: null, unavailable_reason: metricReason } } } });
-    expect(memory.caches.find(cache => cache.name === "body")).toMatchObject({ retained: undefined, reason: "UI cache owner is not available" });
-    expect(memory.metrics.find(metric => metric.name === "private_bytes")).toEqual({ name: "private_bytes", bytes: undefined, reason: metricReason });
   });
   it("storage keeps flags, categories and an absent free size", () => {
     const s = readStorage(fixtureStorage);

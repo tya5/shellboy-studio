@@ -5,59 +5,6 @@ const obj = (v: unknown): Record<string, unknown> | undefined =>
 const num = (v: unknown): number | undefined => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
 const str = (v: unknown): string | undefined => (typeof v === "string" && v !== "" ? v : undefined);
 
-export interface ProcessMetric {
-  name: string;
-  bytes: number | undefined;
-  reason: string | undefined;
-}
-
-export interface CacheFact {
-  name: string;
-  retained: number | undefined;
-  limit: number | undefined;
-  entries: number | undefined;
-  unit: string | undefined;
-  live: number | undefined;
-  pinned: number | undefined;
-  reason: string | undefined;
-}
-
-export interface MemoryFacts {
-  platform: string | undefined;
-  observedAt: string | undefined;
-  /** Metrics this platform provides; the rest carry a reason and are left out. */
-  metrics: ProcessMetric[];
-  caches: CacheFact[];
-  accounting: string | undefined;
-}
-
-export function readMemory(v: Record<string, unknown>): MemoryFacts {
-  const process = obj(v.process) ?? {};
-  const metrics = obj(process.metrics) ?? {};
-  const caches = obj(v.caches) ?? {};
-  return {
-    platform: str(process.platform),
-    observedAt: str(process.observed_at),
-    metrics: Object.entries(metrics)
-      .map(([name, m]) => ({ name, bytes: num(obj(m)?.bytes), reason: str(obj(m)?.unavailable_reason) }))
-      .filter((m) => m.bytes !== undefined || m.reason !== "Not provided on this platform"),
-    caches: Object.entries(caches).map(([name, c]) => {
-      const o = obj(c) ?? {};
-      return {
-        name,
-        retained: num(o.retained_bytes),
-        limit: num(o.limit_bytes),
-        entries: num(o.entries),
-        unit: str(o.entry_unit),
-        live: num(o.live_bytes) ?? num(o.live_encoded_bytes),
-        pinned: num(o.pinned_bytes),
-        reason: str(o.unavailable_reason),
-      };
-    }),
-    accounting: str(v.accounting),
-  };
-}
-
 export interface StorageFacts {
   liveBytes: number | undefined;
   categories: { name: "history" | "raw" | "index" | "managed"; bytes: number | undefined }[];

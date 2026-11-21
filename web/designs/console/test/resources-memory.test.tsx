@@ -2,19 +2,19 @@
 import { render } from "preact";
 import { expect, it } from "vitest";
 import { MemoryPane } from "../screens/Resources";
-import { fixtureMemory, fixtureModel } from "../../../ui-core/test/fixture";
-import { readMemory } from "../../../ui-core/src/resources";
+import { fixtureModel } from "../../../ui-core/test/fixture";
 import { settle } from "../../../data/test/harness";
 
 it.each(["en", "ja"] as const)("renders cache absence as a localized card value without collapsing other cards (%s)", async lang => {
  const f=await fixtureModel(); const host=document.createElement("div"); document.body.append(host);
  try {
   f.model.lang.value=lang;
-  f.model.insights.memory.value={loading:false,value:readMemory(fixtureMemory),error:undefined};
+  f.model.insights.refreshRead("memory"); await settle(f.t,f.db);
   render(<MemoryPane model={f.model}/>,host);
   const text=host.textContent ?? "";
   expect(text).toContain(lang === "en" ? "Not reported" : "報告なし");
   expect(text).toContain("56 KiB");
+  expect(host.querySelector("[data-memory-cache-cards]")?.textContent).toContain(f.model.t.value("res.memory.serveCacheUnavailable", { missing: f.model.t.value("common.notReported") }));
   expect(text).not.toContain("UI cache owner is not available");
   expect(text).not.toContain("owner is not available");
   expect(host.querySelectorAll(".meter").length).toBe(4);
@@ -26,7 +26,9 @@ it.each(["unsupported", "invalid_response", "disconnected"] as const)("renders a
   const f=await fixtureModel();const host=document.createElement("div");document.body.append(host);
   try {
    f.model.lang.value=lang;
-   f.model.insights.memory.value={loading:false,value:undefined,error:{kind:"resource_read",issue} as never};
+   f.model.insights.memory.value={loading:false,value:undefined,error:issue === "unsupported"
+     ? {kind:"owner",code:"invalid_argument",message:"synthetic",details:{reason:"unknown_field",name:"memory",command:"status"}}
+     : {kind:issue === "disconnected" ? "connection_lost" : "invalid_response",message:"synthetic"}};
    f.model.insights.bridge.value={loading:false,value:{rssBytes:1024,reason:undefined},error:undefined};
    const ownerBefore=f.model.data.owner.peek();
    render(<MemoryPane model={f.model}/>,host);
@@ -56,7 +58,7 @@ it.each(["en", "ja"] as const)("shows a localized failed-refresh state while ret
   expect(f.model.insights.memory.peek().value).toBeDefined();
   failed=true;f.model.insights.refreshRead("memory");await settle(f.t,f.db);
   expect(f.model.insights.memory.peek().value?.caches).toHaveLength(4);
-  expect(f.model.insights.memory.peek().error).toMatchObject({kind:"resource_read",issue:"unsupported"});
+  expect(f.model.insights.memory.peek().error).toMatchObject({kind:"owner",code:"invalid_argument"});
   render(<MemoryPane model={f.model}/>,host);
   const cacheSection=[...host.querySelectorAll("section")].find(section=>section.getAttribute("aria-label")===f.model.t.value("res.caches"))!;
   expect(cacheSection.querySelectorAll(".meter")).toHaveLength(4);
@@ -86,7 +88,7 @@ it("keeps the global owner connected when only the memory status operation is un
  try {
   const before=f.model.data.owner.peek();expect(before.state).toBe("connected");
   f.model.insights.refreshRead("memory");await settle(f.t,f.db);
-  expect(f.model.insights.memory.peek().error).toEqual({kind:"resource_read",issue:"unsupported",message:"unsupported"});
+  expect(f.model.insights.memory.peek().error).toMatchObject({kind:"owner",code:"invalid_argument"});
   expect(f.model.data.owner.peek()).toBe(before);
  } finally {f.model.dispose();f.data.stop();}
 });
