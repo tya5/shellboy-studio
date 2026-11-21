@@ -1,5 +1,8 @@
 // The named component set. Screens use these and the tokens, nothing else.
 export { Icon, type IconName } from "./Icon";
+export { BrandLogo } from "./BrandLogo";
+export { Disclosure } from "./Disclosure";
+export { WorkElementRow } from "./WorkElementRow";
 export { StatusMark } from "./StatusMark";
 export { Button } from "./Button";
 export { Popover } from "./Popover";
