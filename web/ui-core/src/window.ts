@@ -456,10 +456,12 @@ export class ConversationWindow {
     let published = false;
     batch(() => {
       published = this.acceptedView.publish(publication, snapshot => {
-        const savedAttempts = new Set(snapshot.rows.flatMap(row => row.kind === "assistant_response" && row.provenance?.attempt_id ? [row.provenance.attempt_id] : []));
+        const savedAttempts = new Set<string>(snapshot.rows.flatMap(row => row.kind === "assistant_response" && row.provenance?.attempt_id ? [row.provenance.attempt_id] : []));
         afterCommit();
-        for (const attemptId of savedAttempts)
-          if (binding.handle.handoff.peek().some(record => record.attemptId === attemptId)) binding.handle.releaseAcceptedHandoff(attemptId);
+        const boundary = snapshot.displayPlan!.localRegion.liveRetirementBoundary;
+        for (const record of binding.handle.handoff.peek()) {
+          if (savedAttempts.has(record.attemptId) || record.clientOrdinal < boundary) binding.handle.releaseAcceptedHandoff(record.attemptId);
+        }
       });
       const ref = this.acceptedView.peek();
       if (published && ref === publication.snapshot && publication.inputIdentity) this.acceptedInput = { ref, identity: publication.inputIdentity };

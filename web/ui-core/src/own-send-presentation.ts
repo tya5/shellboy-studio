@@ -8,6 +8,7 @@ export interface OwnSendLocalRegion {
   readonly scope: string;
   readonly cohort: readonly PendingOwnMessage[];
   readonly localRows: readonly PendingOwnMessage[];
+  readonly liveRetirementBoundary: number;
   readonly retire: readonly PendingOwnMessage[];
   readonly tailRows: readonly OwnSendTailRow[];
   readonly ownMessageIds: ReadonlySet<string>;
@@ -18,7 +19,9 @@ export function ownSendPresentation(scope: string, cohort: readonly PendingOwnMe
   const retire = cohort.filter(row => row.messageId !== undefined && saved.has(row.messageId));
   const ownMessageIds = new Set(retire.map(row => row.messageId!));
   const localRows = cohort.filter(row => !ownMessageIds.has(row.messageId ?? ""));
-  const tailRows = [...live, ...localRows.map(row => ({ kind: "own" as const, ordinal: row.clientOrdinal, row }))];
+  // Core admits queued input only after each preceding attempt settles.
+  const liveRetirementBoundary = Math.max(0, ...retire.map(row => row.clientOrdinal));
+  const tailRows = [...live.filter(row => row.ordinal >= liveRetirementBoundary), ...localRows.map(row => ({ kind: "own" as const, ordinal: row.clientOrdinal, row }))];
   return Object.freeze({ scope, cohort: Object.freeze(cohort), localRows: Object.freeze(localRows),
-    retire: Object.freeze(retire), tailRows: Object.freeze(tailRows.sort((a, b) => a.ordinal - b.ordinal)), ownMessageIds });
+    retire: Object.freeze(retire), liveRetirementBoundary, tailRows: Object.freeze(tailRows.sort((a, b) => a.ordinal - b.ordinal)), ownMessageIds });
 }

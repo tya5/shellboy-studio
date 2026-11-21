@@ -582,8 +582,9 @@ it.each(['streaming', 'two sends', 'held', 'partial cut'] as const)('preserves o
   const pRow = rows()[pIndex];
   if (scenario === 'partial cut') {
    await adopt(saved('P',1));
-   expect(order()).toEqual(['H','P','R0','R1']);
-   expect(f.model.handle.peek()!.handoff.peek().some(record => record.attemptId === r0)).toBe(true);
+   expect(order()).toEqual(['H','P','R1']);
+   expect(rows()[1]).toBe(pRow);
+   expect(f.model.handle.peek()!.handoff.peek().map(record => record.attemptId)).toEqual([r1]);
    return;
   }
   if (scenario === 'held') expect(rows()[pIndex]!.textContent).toContain('送信待ち');
@@ -603,5 +604,3 @@ it.each(['streaming', 'two sends', 'held', 'partial cut'] as const)('preserves o
   expect(f.model.acceptedOwnMessages.peek()).toEqual([]);
  } finally { render(null,host);host.remove();f.model.dispose();f.data.stop(); }
 });
-
-it.todo("#29: [H, P saved] without R0 provenance must not paint ahead of R0 before its confirmed non-adopted end; awaiting Core delivery contract");
