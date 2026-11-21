@@ -30,19 +30,33 @@ it("outside modal dismissal consumes the click and leaves focus alone", async ()
   render(null, host); host.remove(); anchor.remove(); outside.remove();
 });
 
-it("opens Menu with the first item focused and wraps keyboard navigation", async () => {
+it("pointer-opened menu focuses its panel; keyboard navigation clamps, jumps, typeaheads, returns focus", async () => {
   const host = document.createElement("div");
   const anchor = document.createElement("button");
+  anchor.id = "test-trigger";
   document.body.append(host, anchor);
   let selected = "";
-  act(() => render(<Menu open anchor={anchor} onClose={() => {}} entries={[{ key: "one", label: "One", onSelect: () => { selected = "one"; } }, { key: "two", label: "Two", onSelect: () => { selected = "two"; } }]} />, host));
+  act(() => render(<Menu open anchor={anchor} id="test-menu" labelledBy="test-trigger" onClose={() => {}} entries={[{ key: "one", label: "One", onSelect: () => { selected = "one"; } }, { key: "two", label: "Two", onSelect: () => { selected = "two"; } }]} />, host));
   await act(async () => { await Promise.resolve(); });
   const items = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')];
-  expect(document.activeElement).toBe(items[0]);
+  const menu = document.querySelector<HTMLElement>("[role=menu]")!;
+  expect(document.activeElement).toBe(menu);
+  items[0]!.focus();
   items[0]!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true }));
+  expect(document.activeElement).toBe(items[0]);
+  items[0]!.dispatchEvent(new KeyboardEvent("keydown", { key: "PageDown", bubbles: true }));
+  expect(document.activeElement).toBe(items[1]);
+  items[1]!.dispatchEvent(new KeyboardEvent("keydown", { key: "PageUp", bubbles: true }));
+  expect(document.activeElement).toBe(items[0]);
+  items[1]!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
+  expect(document.activeElement).toBe(items[1]);
+  items[1]!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
+  expect(document.activeElement).toBe(items[1]);
+  items[0]!.dispatchEvent(new KeyboardEvent("keydown", { key: "t", bubbles: true }));
   expect(document.activeElement).toBe(items[1]);
   items[1]!.click();
   expect(selected).toBe("two");
+  expect(document.activeElement).toBe(anchor);
   render(null, host); host.remove(); anchor.remove();
 });
 
@@ -56,4 +70,15 @@ it("places measured panels within a narrow viewport and flips above", () => {
   expect(short.left).toBe(100);
   const flipped = placePanel({ left: 100, right: 200, top: 740, bottom: 764 }, { width: 100, height: 80 }, { width: 320, height: 768 }, gutter);
   expect(flipped.top).toBe(660);
+});
+
+it("keyboard opening focuses the first menu item", async () => {
+  const host = document.createElement("div");
+  const anchor = document.createElement("button");
+  anchor.id = "keyboard-trigger";
+  document.body.append(host, anchor);
+  act(() => render(<Menu open anchor={anchor} id="keyboard-menu" labelledBy="keyboard-trigger" openMethod="keyboard" onClose={() => {}} entries={[{ key: "one", label: "One" }]} />, host));
+  await act(async () => { await Promise.resolve(); });
+  expect(document.activeElement).toBe(document.querySelector('[role="menuitem"]'));
+  render(null, host); host.remove(); anchor.remove();
 });

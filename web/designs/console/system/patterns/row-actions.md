@@ -10,15 +10,19 @@ References:
 - https://www.w3.org/WAI/ARIA/apg/patterns/menu-button/
 - Approved user mock: https://claude.ai/artifact/3e5smaBg8ic6cMDfvnoV3n
 
-Each row owns local open state. The trigger click captures the trigger for placement;
-contextmenu and ArrowDown capture the row. The open Popover renders a transparent
-full-viewport modal layer beneath the panel while the menu is open. It consumes
-outside pointerdown without closing; the following click, auxclick, or contextmenu
-closes the menu and cannot activate content beneath it, as in Radix DropdownMenu.
-Opening row B while A is open therefore only dismisses A. A trigger click returns focus to the
-trigger even if the browser did not focus it (Safari); a row contextmenu or ArrowDown
-returns focus to the element that was focused before opening. No shared open-menu
-registry or ref-based anchor is used.
+Each row owns local open state. A button click anchors at its trigger; contextmenu
+places the panel at the pointer; ArrowDown anchors at the row. Pointer opening focuses
+the menu panel, while ArrowDown focuses its first enabled item. Selection returns
+focus to the trigger; Escape restores the captured opener and Tab closes without
+moving focus itself. Triggers and menu are linked through `aria-controls` and
+`aria-labelledby`. Arrow movement does not loop, Home/PageUp and End/PageDown jump
+between ends, and printable keys use typeahead.
+
+The open Popover renders a transparent full-viewport modal layer below the panel. It
+consumes outside pointerdown without closing; the following click, auxclick, or
+contextmenu closes the menu without activating content beneath it. Opening row B
+while A is open therefore only dismisses A. No shared open-menu registry or
+ref-based anchor is used.
 
 On hover-capable devices, show the borderless quiet trigger for row hover,
 `:focus-within`, current selection, or an open menu. Touch always shows it. The

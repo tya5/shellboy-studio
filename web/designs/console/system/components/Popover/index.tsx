@@ -21,13 +21,14 @@ function tokenPixels(name: string): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-export function Popover({ open, anchor, returnFocusTo, onClose, children, className = "" }: {
+export function Popover({ open, anchor, returnFocusTo, onClose, children, className = "", pointerPosition = null }: {
   open: boolean;
   anchor: HTMLElement | null;
   returnFocusTo?: HTMLElement | null;
   onClose: () => void;
   children: ComponentChildren;
   className?: string;
+  pointerPosition?: { x: number; y: number } | null;
 }) {
   const panel = useRef<HTMLDivElement>(null);
   const opener = useRef<HTMLElement | null>(null);
@@ -39,8 +40,17 @@ export function Popover({ open, anchor, returnFocusTo, onClose, children, classN
 
   useLayoutEffect(() => {
     if (!open) { setPoint(undefined); return; }
-    if (!anchor) { setPoint(undefined); return; }
+    if (!anchor && !pointerPosition) { setPoint(undefined); return; }
     const place = () => {
+      if (pointerPosition) {
+        const margin = tokenPixels("--space-12");
+        const panelRect = panel.current?.getBoundingClientRect();
+        if (!panelRect) return;
+        const rect = { left: pointerPosition.x, right: pointerPosition.x, top: pointerPosition.y, bottom: pointerPosition.y };
+        setPoint(placePanel(rect, panelRect, { width: window.innerWidth, height: window.innerHeight }, margin));
+        return;
+      }
+      if (!anchor) return;
       const rect = anchor.getBoundingClientRect();
       const margin = tokenPixels("--space-12");
       const panelRect = panel.current?.getBoundingClientRect();
@@ -51,7 +61,7 @@ export function Popover({ open, anchor, returnFocusTo, onClose, children, classN
     addEventListener("resize", place);
     document.addEventListener("scroll", place, true);
     return () => { removeEventListener("resize", place); document.removeEventListener("scroll", place, true); };
-  }, [open, anchor]);
+  }, [open, anchor, pointerPosition?.x, pointerPosition?.y]);
 
   useEffect(() => {
     if (!open) return;
@@ -73,6 +83,6 @@ export function Popover({ open, anchor, returnFocusTo, onClose, children, classN
   const style: JSX.CSSProperties = point ? { left: `${point.left}px`, top: `${point.top}px`, maxHeight: `${point.maxHeight}px` } : { visibility: "hidden" };
   return createPortal(<>
     <div class="popover-dismiss-layer" aria-hidden="true" onPointerDown={consumeOutsidePointerDown} onClick={consumeOutsideClick} onAuxClick={consumeOutsideClick} onContextMenu={consumeOutsideClick} />
-    {open ? <div ref={panel} class={`popover ${className}`.trim()} style={style}>{children}</div> : null}
+    {open ? <div ref={panel} tabIndex={-1} class={`popover ${className}`.trim()} style={style}>{children}</div> : null}
   </>, document.body);
 }

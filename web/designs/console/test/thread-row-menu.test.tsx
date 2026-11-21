@@ -98,6 +98,20 @@ describe("Thread row menu and delete", () => {
     expectVisibleMenu();
     act(() => render(null, host)); host.remove();
   });
+  it("links the trigger and menu and places context menus at the pointer", async () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    act(() => render(treeRow("One"), host));
+    const trigger = host.querySelector<HTMLButtonElement>("[aria-haspopup=menu]")!;
+    expect(trigger.getAttribute("aria-controls")).toBeTruthy();
+    await act(async () => { host.querySelector<HTMLElement>(".tree-item")!.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 123, clientY: 234 })); await Promise.resolve(); });
+    const menu = document.body.querySelector<HTMLElement>("[role=menu]")!;
+    expect(menu.id).toBe(trigger.getAttribute("aria-controls"));
+    expect(menu.getAttribute("aria-labelledby")).toBe(trigger.id);
+    expect(document.body.querySelector<HTMLElement>(".popover")!.style.left).toBe("123px");
+    expect(document.body.querySelector<HTMLElement>(".popover")!.style.top).toBe("234px");
+    act(() => render(null, host)); host.remove();
+  });
   it("opens the same visible Menu from row contextmenu", async () => {
     const host = document.createElement("div");
     document.body.append(host);
