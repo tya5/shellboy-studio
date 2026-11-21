@@ -950,11 +950,15 @@ describe("Threads", () => {
     const before = made.db.answer;
     const values = { default_model: "model-a", default_connection: "proxy", connections: { proxy: { default_effort: "" } } };
     const side = { present: true, content_hash: "effort-hash", valid: true, error: null, values, redacted_fields: [] };
-    made.db.answer = (call) => call.command === "config.get"
-      ? { ok: true, result: { loaded: side, file: side, differs: false, restart: { all_fields_require_restart: false } } }
-      : call.command === "config.set"
-        ? { ok: true, result: { written: true, restart_required: true, changes: [{ field: "connections.proxy.default_effort", previous: "", value: "high", restart_required: true, applied_to_running_owner: false }] } }
-        : before(call);
+    let file = side;
+    made.db.answer = (call) => {
+      if (call.command === "config.get") return { ok: true, result: { loaded: side, file, differs: file !== side, restart: { all_fields_require_restart: false } } };
+      if (call.command === "config.set") {
+        file = { ...side, content_hash: "effort-saved", values: { ...values, connections: { proxy: { default_effort: "high" } } } };
+        return { ok: true, result: { written: true, restart_required: true, changes: [{ field: "connections.proxy.default_effort", previous: "", value: "high", restart_required: true, applied_to_running_owner: false }] } };
+      }
+      return before(call);
+    };
     const el = draw(made.model);
     act(() => made.model.config.ensure());
     await act(async () => { await settle(made.t, made.db); });
@@ -963,6 +967,8 @@ describe("Threads", () => {
     await act(async () => { await settle(made.t, made.db); });
     expect(made.t.calls("config.set")).toHaveLength(1);
     expect(made.t.calls("config.set")[0]!.args).toEqual({ expected_hash: "effort-hash", changes: [{ field: "connections.proxy.default_effort", value: "high" }] });
+    expect(high.getAttribute("aria-pressed")).toBe("true");
+    expect(made.model.config.read.value.value?.file.contentHash).toBe("effort-saved");
     expect(text(el)).toContain("Applies after the owner restarts");
   });
 

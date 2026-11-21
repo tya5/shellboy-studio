@@ -23,8 +23,7 @@ export function SettingsView({ context }: { context: DesignContext }) {
     return { label, ...(value !== undefined ? { value } : {}) };
   };
   const missing = t("common.notReadable");
-  const defaultDraft = model.config.drafts.value.get("default_connection");
-  const defaultConnection = defaultDraft ? defaultDraft.value : valueAt(facts?.file.values, ["default_connection"]);
+  const defaultConnection = valueAt(facts?.file.values, ["default_connection"]);
   const effortPath = typeof defaultConnection === "string" ? ["connections", defaultConnection, "default_effort"] : undefined;
   const effortLabel = t("set.models.defaultEffort");
   const effortValue = effortPath ? valueAt(facts?.file.values, effortPath) : undefined;
@@ -37,7 +36,8 @@ export function SettingsView({ context }: { context: DesignContext }) {
       case "general":
         return <>
           <Section title={t("set.models.defaults")}><FactList missing={missing} facts={[
-            ...(editable ? [{ label: t("set.models.defaultModel"), control: <ConnectionModelRow model={model} path={["default_connection"]} modelPath={["default_model"]} effortPath={effortPath} label={t("set.models.defaultConn")} /> }] : [fileFact(t("set.models.defaultConn"), "default_connection"), fileFact(t("set.models.defaultModel"), "default_model"), effort]),
+            ...(editable ? [{ label: t("set.models.defaultModel"), control: <ConnectionModelRow model={model} path={["default_connection"]} modelPath={["default_model"]} label={t("set.models.defaultConn")} /> }] : [fileFact(t("set.models.defaultConn"), "default_connection"), fileFact(t("set.models.defaultModel"), "default_model")]),
+            effort,
             fileFact(t("settings.language"), "ui.language"),
           ]} /></Section>
         </>;

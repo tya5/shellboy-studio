@@ -1,7 +1,6 @@
 import { useState } from "preact/hooks";
 import { CAPABILITY_CONFIG, CONNECTION_FIELDS, CONNECTION_SECRETS, fieldOf, isHidden, isHiddenName, showConfigValue, valueAt, type AppModel, type ConfigChangeRow, type ConfigFacts, type ConfigFieldSpec, type Draft } from "../../../ui-core/src";
 import { Button, ButtonGroup, FactList, Field, Notice, Section, type Fact } from "../system/components";
-import { EffortControl } from "../system/components";
 import { Rich } from "./Rich";
 
 type T = AppModel["t"]["value"];
@@ -106,14 +105,13 @@ function HiddenAdd({ model, path, label, json, t, onSaved }: { model: AppModel; 
 }
 
 /** One connection/model choice; catalog requests happen only after the user asks. */
-export function ConnectionModelRow({ model, path, modelPath = ["default_model"], effortPath, label }: { model: AppModel; path: readonly string[]; modelPath?: readonly string[]; effortPath?: readonly string[]; label: string }) {
+export function ConnectionModelRow({ model, path, modelPath = ["default_model"], label }: { model: AppModel; path: readonly string[]; modelPath?: readonly string[]; label: string }) {
   const t = model.t.value;
   const facts = model.config.read.value.value;
   const values = facts?.file.values;
   const connections = values?.connections as Record<string, Record<string, unknown>> | undefined;
   const choices = Object.keys(connections ?? {});
   const connectionPath = path;
-  const effortFieldPath = effortPath ?? [...path.slice(0, -1), "default_effort"];
   const [connection, setConnection] = useState(String(valueAt(values, connectionPath) ?? choices[0] ?? ""));
   const [modelName, setModelName] = useState(String(valueAt(values, modelPath) ?? ""));
   const [catalog, setCatalog] = useState<string[]>([]);
@@ -131,14 +129,13 @@ export function ConnectionModelRow({ model, path, modelPath = ["default_model"],
   };
   const save = async () => {
     if (!connection || !modelName || model.config.fieldSaving.peek()) return;
-    void model.config.saveField(connectionPath, connection, "text");
-    await new Promise<void>((resolve) => { let stop = () => {}; stop = model.config.fieldSaving.subscribe((busy) => { if (!busy) { stop(); resolve(); } }); });
+    await model.config.saveField(connectionPath, connection, "text");
     if (!model.config.fieldError.peek()) {
       void model.config.saveField(modelPath, modelName, "text");
     }
   };
   const selectConnection = (next: string) => { setConnection(next); setCatalog([]); setCatalogError(undefined); };
-  return <div class="stack"><div class="fieldrow"><Field as="select" ariaLabel={t("set.models.defaultConn")} value={connection} options={choices.map((item) => ({ value: item, label: item }))} onSelectChange={selectConnection} /><Button disabled={!connection || catalogBusy} onClick={() => void fetchModels()}>{catalogBusy ? t("common.loading") : t("set.conn.catalog")}</Button></div><div class="fieldrow"><Field ariaLabel={t("set.models.defaultModel")} placeholder={t("set.models.defaultModel")} value={modelName} onInput={(event) => setModelName(event.currentTarget.value)} /><Button disabled={!changed || model.config.fieldSaving.value || !modelName} onClick={() => void save()}>{t("config.applyNow")}</Button></div>{catalog.length ? <Field as="select" ariaLabel={t("set.conn.catalog")} value={modelName} options={catalog.map((item) => ({ value: item, label: item }))} onSelectChange={setModelName} /> : null}{catalogError ? <Notice tone="bad">{catalogError}</Notice> : null}{error ? <Notice tone="bad">{error}</Notice> : null}<EffortControl value={String(valueAt(values, effortFieldPath) ?? "")} label={t("set.models.defaultEffort")} labels={{ default: t("model.effort.default"), low: "low", medium: "medium", high: "high", other: t("model.effort.other") }} disabled={model.config.fieldSaving.value} onSelect={(value) => void model.config.saveField(effortFieldPath, value, "text")} onCommit={(value) => void model.config.saveField(effortFieldPath, value, "text")} /><div class="muted caption">{error ?? (facts?.restartAll ? t("config.restartOwner") : t("config.applyNow"))} {model.config.lastSaved.value?.field === fieldOf(modelPath) ? <Button variant="link" onClick={() => void model.config.undoLast()}>{t("config.undo")}</Button> : null}</div></div>;
+  return <div class="stack"><div class="fieldrow"><Field as="select" ariaLabel={t("set.models.defaultConn")} value={connection} options={choices.map((item) => ({ value: item, label: item }))} onSelectChange={selectConnection} /><Button disabled={!connection || catalogBusy} onClick={() => void fetchModels()}>{catalogBusy ? t("common.loading") : t("set.conn.catalog")}</Button></div><div class="fieldrow"><Field ariaLabel={t("set.models.defaultModel")} placeholder={t("set.models.defaultModel")} value={modelName} onInput={(event) => setModelName(event.currentTarget.value)} /><Button disabled={!changed || model.config.fieldSaving.value || !modelName} onClick={() => void save()}>{t("config.applyNow")}</Button></div>{catalog.length ? <Field as="select" ariaLabel={t("set.conn.catalog")} value={modelName} options={catalog.map((item) => ({ value: item, label: item }))} onSelectChange={setModelName} /> : null}{catalogError ? <Notice tone="bad">{catalogError}</Notice> : null}{error ? <Notice tone="bad">{error}</Notice> : null}<div class="muted caption">{error ?? (facts?.restartAll ? t("config.restartOwner") : t("config.applyNow"))} {model.config.lastSaved.value?.field === fieldOf(modelPath) ? <Button variant="link" onClick={() => void model.config.undoLast()}>{t("config.undo")}</Button> : null}</div></div>;
 }
 
 /** One section per connection in the file. */
