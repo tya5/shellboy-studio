@@ -1,6 +1,6 @@
 # Icon roles
 
-Consumers use semantic `IconRole` names only. Glyph names and paths are private to `system/icons/glyphs.tsx`; `system/icons/theme.ts` maps each role to one glyph. A theme may reuse a glyph for distinct roles or assign a different glyph without changing call sites. Choose `size="default"`, `size="small"`, or `size="menu"`; the SVG dimensions come from `--size-icon`, `--size-icon-small` (15px), and `--size-icon-menu` (16px), respectively.
+Consumers use semantic `IconRole` names only. Glyph names, paths, and the role-to-glyph map are module-private in `Icon`; only the semantic role list is exported. A theme may reuse a glyph for distinct roles or assign a different glyph without changing call sites. Choose `size="default"`, `size="small"`, or `size="menu"`; the SVG dimensions come from `--size-icon`, `--size-icon-small` (15px), and `--size-icon-menu` (16px), respectively.
 
 | IconRole | Meaning and use | Current glyph |
 | --- | --- | --- |

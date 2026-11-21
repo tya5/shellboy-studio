@@ -1,11 +1,6 @@
 import { describe, expect, it } from "vitest";
-import * as ts from "typescript";
 // @ts-expect-error Node builtins are intentionally used for source and directory inspection in this Node test.
 import { existsSync, readFileSync, readdirSync } from "node:fs";
-// @ts-expect-error Node path/url helpers are used for source resolution in this Node test.
-import { dirname, resolve } from "node:path";
-// @ts-expect-error Node path/url helpers are used for source resolution in this Node test.
-import { fileURLToPath } from "node:url";
 
 const screenSources = import.meta.glob("../screens/**/*.tsx", { eager: true, query: "?raw", import: "default" }) as Record<string, string>;
 const sharedSources = import.meta.glob("../../../ui-core/src/**/*.{ts,tsx}", { eager: true, query: "?raw", import: "default" }) as Record<string, string>;
@@ -90,40 +85,5 @@ describe("application header sizing", () => {
       expect(rule).toMatch(/align-items:center/);
     }
     expect(layout).not.toMatch(/min-height:49px/);
-  });
-});
-
-function importSpecifiers(source: string, fileName: string): string[] {
-  const file = ts.createSourceFile(fileName, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
-  const specifiers: string[] = [];
-  const visit = (node: ts.Node) => {
-    if ((ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) && node.moduleSpecifier && ts.isStringLiteralLike(node.moduleSpecifier)) {
-      specifiers.push(node.moduleSpecifier.text);
-    } else if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword && node.arguments[0] && ts.isStringLiteralLike(node.arguments[0])) {
-      specifiers.push(node.arguments[0].text);
-    }
-    ts.forEachChild(node, visit);
-  };
-  visit(file);
-  return specifiers;
-}
-
-function resolvesToGlyphModule(importer: string, specifier: string): boolean {
-  const base = resolve(dirname(importer), specifier);
-  const extensions = [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"];
-  const candidates = [base, ...extensions.map((extension) => `${base}${extension}`), ...extensions.map((extension) => resolve(base, `index${extension}`))];
-  const glyphModule = resolve(dirname(fileURLToPath(import.meta.url)), "../system/icons/glyphs.tsx");
-  return candidates.includes(glyphModule);
-}
-
-describe("icon glyph privacy", () => {
-  it("does not import private glyph definitions outside system/icons", () => {
-    const sources = { ...screenSources, ...systemSources, ...sharedSources };
-    const leaks = Object.entries(sources).flatMap(([path, source]) => {
-      if (path.includes("/system/icons/")) return [];
-      const importer = resolve(dirname(fileURLToPath(import.meta.url)), path);
-      return importSpecifiers(source, importer).filter((specifier) => resolvesToGlyphModule(importer, specifier)).map(() => path);
-    });
-    expect(leaks).toEqual([]);
   });
 });
