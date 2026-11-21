@@ -80,7 +80,15 @@ const decodeThreadDeletePreview = (value: unknown): Decoded<ThreadDeletePreview>
   if (!isObject(value)) return { ok: false, reason: "delete preview must be an object" };
   const marker = isObject(value.preview_marker) && typeof value.preview_marker.thread_count === "number" && typeof value.preview_marker.ids_hash === "string" ? { thread_count: value.preview_marker.thread_count, ids_hash: value.preview_marker.ids_hash } : undefined;
   const selection = isObject(value.selection) ? { thread_count: optionalNumber(value.selection, "thread_count"), descendant_thread_count: optionalNumber(value.selection, "descendant_thread_count"), surviving_descendant_thread_count: optionalNumber(value.selection, "surviving_descendant_thread_count") } : undefined;
-  return { ok: true, value: { deletable_now: typeof value.deletable_now === "boolean" ? value.deletable_now : undefined, preview_marker: marker, selection, blockers: isObject(value.blockers) ? value.blockers : undefined } };
+  const rawBlockers = isObject(value.blockers) ? value.blockers : undefined;
+  const blockers = rawBlockers ? { live_run_count: optionalNumber(rawBlockers, "live_run_count"), stopping_run_count: optionalNumber(rawBlockers, "stopping_run_count"), truncated: typeof rawBlockers.truncated === "boolean" ? rawBlockers.truncated : undefined } : undefined;
+  const reasons: string[] = Array.isArray(value.blocker_reasons) ? value.blocker_reasons.filter((reason): reason is string => typeof reason === "string") : [];
+  if (blockers?.live_run_count !== undefined && blockers.live_run_count > 0) reasons.push("live_runs");
+  if (blockers?.stopping_run_count !== undefined && blockers.stopping_run_count > 0) reasons.push("stopping_runs");
+  if (blockers?.truncated) reasons.push("truncated_runs");
+  if (typeof value.preview_marker_unavailable_reason === "string") reasons.push(value.preview_marker_unavailable_reason);
+  if (isObject(value.observation) && value.observation.references_complete === false) reasons.push("incomplete_references");
+  return { ok: true, value: { deletable_now: typeof value.deletable_now === "boolean" ? value.deletable_now : undefined, preview_marker: marker, selection, blockers, reasons } };
 };
 
 const decodeThreadPage = pageOf<ThreadSummary>(summaryProblem);

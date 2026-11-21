@@ -66,3 +66,5 @@ Differences from the reference, each for a reason in the usage note or `docs/des
 The desktop navigation can collapse to an icon rail with the navigation button or Alt+0. The per-browser preference does not affect the phone drawer.
 
 Thread row menus use the approved vertical three-dot mark (`Icon` `more`) and keep the row as the menu state owner.
+
+The approved Thread row menu mark is the vertical three-dot `more` icon; row-owned `useRowMenu` keeps its trigger available while the menu is open.

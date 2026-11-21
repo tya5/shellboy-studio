@@ -496,7 +496,7 @@ describe("AppModel over the fake transport", () => {
     await flush();
     t.ownerError(t.calls("thread.archive")[0]!.id, "not_found", "no such thread");
     await archived;
-    expect(model.actionError.value).toBe("Archive failed: no such thread");
+    expect(model.actionError.value).toEqual({ kind: "error", text: "Archive failed: no such thread" });
   });
 
   it("recovery shows the owner's reason only in that state", async () => {

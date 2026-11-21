@@ -8,3 +8,5 @@ The optional action slot carries the shared Thread menu; row context menus and A
 The title is truncated in-flow so the checkbox, parent action, age, and row menu retain their own space.
 
 The row menu trigger is in-flow but hidden until row hover, focus-within, or selection.
+
+The in-flow menu trigger appears on hover, focus, selection, or while the menu is open. The block title truncates only while the trigger is visible.

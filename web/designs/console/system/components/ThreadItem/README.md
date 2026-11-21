@@ -11,3 +11,5 @@ Rows expose their shared action control through `tree-action`; row context menus
 The trailing menu remains in-flow and is revealed on row hover, focus, or selection; the title keeps its ellipsis rather than moving beneath the action.
 
 The approved row-menu mark is the vertical three-dot `more` icon.
+
+`useRowMenu` owns the row menu state and opener; `.menu-open` keeps the in-flow trigger visible until focus returns.

@@ -157,6 +157,7 @@ a{color:var(--accent)}
 .notice .text{flex:1 1 240px;min-width:0;overflow-wrap:anywhere}
 .notice .text strong{display:block;font:var(--type-label);font-weight:600}
 .notice.bad{border-color:var(--bad);background:var(--bad-bg)}
+.notice.good{border-color:var(--accent);background:var(--accent-bg)}
 .notice.wait{border-color:var(--wait);background:var(--wait-bg)}
 .notice code{font:var(--type-code)}
 
@@ -369,7 +370,7 @@ a{color:var(--accent)}
 .tag{padding:0 var(--space-8);border:1px solid var(--line-strong);border-radius:var(--radius-s);background:var(--inset);color:var(--fg);font:var(--type-caption);overflow-wrap:anywhere}
 .srow-act{flex:none;border:0;background:transparent;color:var(--accent);font:var(--type-caption);cursor:pointer;min-height:24px;padding:0 var(--space-4)}
 .srow-act:hover{text-decoration:underline}
-.srow-menu{display:none;flex:none;margin-left:auto}.srow:hover .srow-menu,.srow:focus-within .srow-menu,.srow.on .srow-menu{display:flex}.srow:hover .srow-text a,.srow:focus-within .srow-text a,.srow.on .srow-text a{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.srow-menu{display:none;flex:none;margin-left:auto}.srow:hover .srow-menu,.srow:focus-within .srow-menu,.srow.on .srow-menu,.srow.menu-open .srow-menu{display:flex}.srow-title{min-width:0}.srow:hover .srow-title,.srow:focus-within .srow-title,.srow.on .srow-title,.srow.menu-open .srow-title{min-width:0;overflow:hidden}.srow:hover .srow-title a,.srow:focus-within .srow-title a,.srow.on .srow-title a,.srow.menu-open .srow-title a{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .srow-status{flex:none;display:inline-grid;place-items:center;width:18px}
 .srow-text{flex:1;min-width:0;padding:var(--space-4) 0;overflow-wrap:anywhere}
 .srow-text a{color:var(--fg);text-decoration:none}
@@ -513,7 +514,7 @@ a{color:var(--accent)}
 
 .tree-item .tree-link{display:flex;align-items:center;flex:1;min-width:0;gap:var(--space-8);color:inherit;text-decoration:none}
 .tree-item .tree-action{display:none;flex:none;margin-left:auto}
-.tree-item:hover .tree-action,.tree-item:focus-within .tree-action,.tree-item.current .tree-action{display:flex}
+.tree-item:hover .tree-action,.tree-item:focus-within .tree-action,.tree-item.current .tree-action,.tree-item.menu-open .tree-action{display:flex}
 /* Popover/Menu: portal surfaces use system tokens and escape row clipping. */
 .popover{position:fixed;z-index:var(--z-popover);max-width:min(var(--size-details),calc(100vw - 2 * var(--space-12)));box-sizing:border-box;overflow:auto;background:var(--raised);border:1px solid var(--line);border-radius:var(--radius-s);padding:var(--space-4)}
 .menu-popover{min-width:var(--size-control)}

@@ -132,6 +132,8 @@ export function setBounded<V>(map: Map<string, V>, key: string, value: V): Map<s
 
 export const errorMessage = (e: OpError): string => e.message;
 
+export type ActionNotice = { kind: "error" | "success"; text: string };
+
 export class AppModel {
   readonly pairing = signal<{ hosts: string[]; links: Record<string, { url: string; expires: number }>; error?: string }>({ hosts: [], links: {} });
   async loadPairingHosts(): Promise<void> {
@@ -325,7 +327,7 @@ export class AppModel {
   private pendingOwnRetryCurrent: (() => boolean) | undefined;
   private pendingOwnCurrent: (() => boolean) | undefined;
   readonly sendState: Signal<SendState> = signal({ kind: "idle" });
-  readonly actionError: Signal<string | undefined> = signal(undefined);
+  readonly actionError: Signal<ActionNotice | undefined> = signal(undefined);
   readonly appRequestState: Signal<{ kind: "idle" | "sending" | "failed" | "unconfirmed"; message?: string }> = signal({ kind: "idle" });
   readonly uncertainCancels: Signal<ReadonlySet<string>> = signal(new Set());
 
@@ -1211,7 +1213,7 @@ export class AppModel {
 
   private report(action: "action.stop" | "action.retry" | "action.archive" | "action.new", out: { ok: true } | { ok: false; error: OpError }): void {
     this.actionError.value = out.ok
-      ? undefined
-      : this.t.value("action.failed", { action: this.t.value(action), message: errorMessage(out.error) });
+      ? { kind: "success", text: this.t.value("action.succeeded", { action: this.t.value(action) }) }
+      : { kind: "error", text: this.t.value("action.failed", { action: this.t.value(action), message: errorMessage(out.error) }) };
   }
 }

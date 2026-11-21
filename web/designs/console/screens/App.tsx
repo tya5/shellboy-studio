@@ -25,6 +25,7 @@ export function App({ context }: { context: DesignContext }) {
   const [deleteThread, setDeleteThread] = useState<import("../../../data/src").ThreadSummary>();
   const t = model.t.value;
   const route = model.route.value;
+  useEffect(() => { model.actionError.value = undefined; }, [model, route]);
   const [drawer, setDrawer] = useState(false);
   const [settings, setSettings] = useState(false);
   const [query, setQuery] = useState("");
@@ -166,9 +167,9 @@ export function App({ context }: { context: DesignContext }) {
           <div class="alerts">
             {conn === "authNeeded" ? <AuthPrompt context={context} /> : null}
             {conn === "ownerDown" ? <Notice tone="wait">{t("banner.ownerDown")}</Notice> : null}
-            {model.actionError.value ? <Notice tone="bad">{model.actionError.value}</Notice> : null}
+            {model.actionError.value ? <Notice tone={typeof model.actionError.value === "string" ? "bad" : model.actionError.value.kind === "error" ? "bad" : "good"}>{typeof model.actionError.value === "string" ? model.actionError.value : model.actionError.value.text}</Notice> : null}
           </div>
-          <ThreadDeleteDialog model={model} thread={deleteThread} onClose={() => setDeleteThread(undefined)} />
+          {deleteThread ? <ThreadDeleteDialog key={deleteThread.thread_id} model={model} target={deleteThread} onClose={() => setDeleteThread(undefined)} /> : null}
           <section class="view" aria-label={title}>
             <AppsHost context={context} />
             {route.view === "apps" ? null : route.view === "conversation" ? <Conversation model={model} /> : route.view === "monitor" ? <Monitor context={context} /> : route.view === "inbox" ? <Inbox model={model} /> : route.view === "analytics" ? <Analytics context={context} /> : route.view === "branches" ? <Branches model={model} /> : route.view === "threads" ? <Threads model={model} /> : route.view === "setup" ? <Setup context={context} /> : <SettingsView context={context} />}

@@ -210,7 +210,7 @@ export function Threads({ model }: { model: AppModel }) {
   };
   return (
     <>
-    <ThreadDeleteDialog model={model} thread={deleteThread} onClose={() => setDeleteThread(undefined)} />
+    {deleteThread ? <ThreadDeleteDialog key={deleteThread.thread_id} model={model} target={deleteThread} onClose={() => setDeleteThread(undefined)} /> : null}
     <div class="org">
       <div class="head">
         <div class="pagehead">
