@@ -96,7 +96,7 @@ export function MemoryPane({ model }: { model: AppModel }) {
   const bridge = i.bridge.value;
   const missing = t("common.notReported");
   const readIssue = memory.error?.kind === "resource_read" ? memory.error.issue : undefined;
-  const memoryUnavailable = readIssue === "unsupported" ? t("res.memory.unsupported") : readIssue === "invalid_response" ? t("res.memory.invalid_response") : readIssue === "disconnected" ? t("res.memory.disconnected") : memory.error ? t("res.memory.readFailed") : undefined;
+  const memoryFailure = readIssue === "unsupported" ? t("res.memory.unsupported") : readIssue === "invalid_response" ? t("res.memory.invalid_response") : readIssue === "disconnected" ? t("res.memory.disconnected") : memory.error ? t("res.memory.readFailed") : undefined;
   return (
     <>
       <Head t={t} title={t("ana.section.memory")} sub={t("ana.sub.memory")} loading={memory.loading || bridge.loading} onRefresh={() => { i.refreshRead("memory"); i.refreshRead("bridge"); }} />
@@ -105,7 +105,7 @@ export function MemoryPane({ model }: { model: AppModel }) {
         sub={memory.value?.observedAt ? t("res.memorySub", { at: formatClock(memory.value.observedAt, true) ?? "" }) : undefined}
         source={<>{t("common.source", { source: "" })}<code>status --memory</code></>}
       >
-        {memoryUnavailable ? <Notice tone="wait">{memoryUnavailable}</Notice> : null}
+        {memory.value && memoryFailure ? <Notice tone="wait">{memoryFailure}<div class="muted caption">{t("res.memory.readFailedStale")}</div></Notice> : null}
         {memory.value ? (
           <div class="stats">
             {memory.value.metrics.map((m) => (
@@ -115,19 +115,17 @@ export function MemoryPane({ model }: { model: AppModel }) {
         ) : null}
       </Section>
       <Section title={t("res.bridge")} sub={t("res.bridgeSub")} source={<>{t("common.source", { source: "" })}<code>bridge.memory</code></>}>
-        <div data-bridge-memory="">
-          {bridge.error ? <Notice tone="bad">{t("common.readError", { message: bridge.error.message })}</Notice> : null}
-          {bridge.value ? (
-            <div class="stats">
-              <Stat label={t("res.bridgeRss")} value={bridge.value.rssBytes !== undefined ? formatBytes(bridge.value.rssBytes) : missing} note={bridge.value.reason} />
-            </div>
-          ) : null}
-        </div>
+        {bridge.error ? <Notice tone="bad">{t("common.readError", { message: bridge.error.message })}</Notice> : null}
+        {bridge.value ? (
+          <div class="stats">
+            <Stat label={t("res.bridgeRss")} value={bridge.value.rssBytes !== undefined ? formatBytes(bridge.value.rssBytes) : missing} note={bridge.value.reason} />
+          </div>
+        ) : null}
       </Section>
       <Section title={t("res.caches")} source={<>{t("common.source", { source: "" })}<code>status --memory</code></>}>
         <div class="meters" data-memory-cache-cards="">
-          {memory.value ? memory.value.caches.map((c) => <CacheMeter key={c.name} t={t} c={c} />) : readIssue ? (
-            <Meter prose label={t("res.caches")} value={undefined} limit={undefined} text={t(`res.memory.${readIssue}` as "res.memory.unsupported")} aria={t("res.caches")} />
+          {memory.value ? memory.value.caches.map((c) => <CacheMeter key={c.name} t={t} c={c} />) : memoryFailure ? (
+            <Meter prose label={t("res.caches")} value={undefined} limit={undefined} text={memoryFailure} aria={t("res.caches")} />
           ) : null}
         </div>
       </Section>

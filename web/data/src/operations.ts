@@ -156,7 +156,11 @@ export type MemoryReadIssue = "unsupported" | "invalid_response" | "disconnected
 export function memoryReadIssue(error: import("./errors").OpError): MemoryReadIssue | undefined {
   if (error.kind === "not_connected" || error.kind === "connection_lost") return "disconnected";
   if (error.kind === "invalid_response") return "invalid_response";
-  if (error.kind === "owner" && ["operation_not_found", "unsupported", "unsupported_operation"].includes(error.code)) return "unsupported";
+  if (error.kind !== "owner") return undefined;
+  if (error.code === "app_not_running") return "disconnected";
+  const details = isObject(error.details) ? error.details : undefined;
+  // Protocol-6 rejects an unsupported memory field as typed invalid_argument, not a made-up operation code.
+  if (error.code === "invalid_argument" && details?.reason === "unknown_field" && details.name === "memory" && details.command === "status") return "unsupported";
   return undefined;
 }
 

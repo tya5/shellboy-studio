@@ -289,8 +289,13 @@ describe("Reads for Analytics and Settings", () => {
     const first = unsupported.ops.memoryStatus();
     const call = unsupported.t.calls("status")[0]!;
     expect(call.args).toEqual({ memory: true });
-    unsupported.t.ownerError(call.id, "operation_not_found", "synthetic unsupported operation");
+    unsupported.t.ownerError(call.id, "invalid_argument", "unknown field `memory` in the arguments of `status`", { reason: "unknown_field", name: "memory", command: "status", request_may_have_been_applied: false });
     expect(await first).toEqual({ ok: false, error: { kind: "resource_read", issue: "unsupported", message: "unsupported" } });
+
+    const disconnected = setup();
+    const lost = disconnected.ops.memoryStatus();
+    disconnected.t.ownerError(disconnected.t.calls("status")[0]!.id, "app_not_running", "Cannot connect to the owner of this data directory");
+    expect(await lost).toEqual({ ok: false, error: { kind: "resource_read", issue: "disconnected", message: "disconnected" } });
 
     const malformed = setup();
     const second = malformed.ops.memoryStatus();
@@ -307,10 +312,12 @@ describe("Reads for Analytics and Settings", () => {
   it("classifies request-level connection loss separately from owner unsupported errors", () => {
     expect(memoryReadIssue({ kind: "connection_lost", message: "synthetic" })).toBe("disconnected");
     expect(memoryReadIssue({ kind: "not_connected", message: "synthetic" })).toBe("disconnected");
+    expect(memoryReadIssue({ kind: "owner", code: "app_not_running", message: "synthetic" })).toBe("disconnected");
+    expect(memoryReadIssue({ kind: "owner", code: "invalid_argument", message: "synthetic", details: { reason: "unknown_field", name: "memory", command: "status" } })).toBe("unsupported");
     expect(memoryReadIssue({ kind: "invalid_response", message: "synthetic" })).toBe("invalid_response");
-    expect(memoryReadIssue({ kind: "owner", code: "operation_not_found", message: "synthetic" })).toBe("unsupported");
     expect(memoryReadIssue({ kind: "busy", message: "synthetic" })).toBeUndefined();
     expect(memoryReadIssue({ kind: "owner", code: "storage_busy", message: "synthetic" })).toBeUndefined();
+    expect(memoryReadIssue({ kind: "owner", code: "invalid_argument", message: "synthetic", details: { reason: "unknown_field", name: "other", command: "status" } })).toBeUndefined();
   });
 
   it("model.list needs a connection and a model array", async () => {

@@ -36,8 +36,8 @@ it.each(["unsupported", "invalid_response", "disconnected"] as const)("renders a
    expect(card?.querySelector('.meter-text span')?.textContent).toBe(f.model.t.value('res.caches'));
    expect(card?.querySelector('.meter-text .caption')?.textContent).toBe(f.model.t.value(`res.memory.${issue}`));
    expect(card?.querySelector('[role="meter"]')).toBeNull();
-   expect(host.querySelector('[data-bridge-memory]')).not.toBeNull();
-   expect(host.querySelector('[data-bridge-memory]')?.textContent).toContain("1 KiB");
+   const bridge=[...host.querySelectorAll('section')].find(section=>section.getAttribute('aria-label')===f.model.t.value('res.bridge'));
+   expect(bridge).not.toBeNull();expect(bridge?.textContent).toContain("1 KiB");
    expect(f.model.data.owner.peek()).toBe(ownerBefore);
    expect(host.textContent).not.toContain('owner is not available');
   } finally { render(null,host);host.remove();f.model.dispose();f.data.stop(); }
@@ -48,7 +48,7 @@ it.each(["unsupported", "invalid_response", "disconnected"] as const)("renders a
 
 it.each(["en", "ja"] as const)("shows a localized failed-refresh state while retaining the previous memory facts (%s)", async lang => {
  let failed = false;
- const f=await fixtureModel({configure(db){const answer=db.answer.bind(db);db.answer=call=>call.command==="status"&&(call.args as {memory?:boolean}).memory&&failed?{ok:false,code:"operation_not_found"}:answer(call);}});
+ const f=await fixtureModel({configure(db){const answer=db.answer.bind(db);db.answer=call=>call.command==="status"&&(call.args as {memory?:boolean}).memory&&failed?{ok:false,code:"invalid_argument",message:"unsupported memory field",details:{reason:"unknown_field",name:"memory",command:"status",request_may_have_been_applied:false}}:answer(call);}});
  const host=document.createElement("div");document.body.append(host);
  try {
   f.model.lang.value=lang;
@@ -60,13 +60,29 @@ it.each(["en", "ja"] as const)("shows a localized failed-refresh state while ret
   render(<MemoryPane model={f.model}/>,host);
   const cacheSection=[...host.querySelectorAll("section")].find(section=>section.getAttribute("aria-label")===f.model.t.value("res.caches"))!;
   expect(cacheSection.querySelectorAll(".meter")).toHaveLength(4);
-  expect(host.querySelector('[role="status"]')?.textContent).toBe(f.model.t.value("res.memory.unsupported"));
+  expect(host.querySelector('[role="status"]')?.textContent).toContain(f.model.t.value("res.memory.unsupported"));
+  expect(host.querySelector('[role="status"]')?.textContent).toContain(f.model.t.value("res.memory.readFailedStale"));
   expect(cacheSection.textContent).toContain("56 KiB");
  } finally {render(null,host);host.remove();f.model.dispose();f.data.stop();}
 });
 
+
+it("renders one localized first-failure Meter without stale-value wording or raw transport text", async () => {
+ const f=await fixtureModel();const host=document.createElement("div");document.body.append(host);
+ try {
+  f.model.lang.value="ja";
+  f.model.insights.memory.value={loading:false,value:undefined,error:{kind:"busy",message:"PRIVATE TRANSPORT DETAIL"}};
+  render(<MemoryPane model={f.model}/>,host);
+  const cards=host.querySelectorAll('.meters[data-memory-cache-cards] .meter');
+  expect(cards).toHaveLength(1);
+  expect(cards[0]?.textContent).toContain(f.model.t.value("res.memory.readFailed"));
+  expect(host.textContent).not.toContain("PRIVATE TRANSPORT DETAIL");
+  expect(host.textContent).not.toContain(f.model.t.value("res.memory.readFailedStale"));
+ } finally {render(null,host);host.remove();f.model.dispose();f.data.stop();}
+});
+
 it("keeps the global owner connected when only the memory status operation is unsupported", async () => {
- const f=await fixtureModel({configure(db){const answer=db.answer.bind(db);db.answer=call=>call.command==="status"&&(call.args as {memory?:boolean}).memory?{ok:false,code:"operation_not_found"}:answer(call);}});
+ const f=await fixtureModel({configure(db){const answer=db.answer.bind(db);db.answer=call=>call.command==="status"&&(call.args as {memory?:boolean}).memory?{ok:false,code:"invalid_argument",message:"unsupported memory field",details:{reason:"unknown_field",name:"memory",command:"status",request_may_have_been_applied:false}}:answer(call);}});
  try {
   const before=f.model.data.owner.peek();expect(before.state).toBe("connected");
   f.model.insights.refreshRead("memory");await settle(f.t,f.db);

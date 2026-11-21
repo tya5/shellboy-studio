@@ -11,7 +11,7 @@ if (params.get('view') === 'memory') document.documentElement.dataset.memoryFixt
 const { model, t, db } = await fixtureModel({ ...fixtureOptions, configure(db) {
   if (params.get('state') === 'memory-error') {
     const answer = db.answer.bind(db);
-    db.answer = call => call.command === 'status' && (call.args as { memory?: boolean }).memory ? { ok: false, code: 'operation_not_found' } : answer(call);
+    db.answer = call => call.command === 'status' && (call.args as { memory?: boolean }).memory ? { ok: false, code: 'invalid_argument', message: 'unsupported memory field', details: { reason: 'unknown_field', name: 'memory', command: 'status', request_may_have_been_applied: false } } : answer(call);
     return;
   }
   if (params.get('state') === 'awaiting') {
