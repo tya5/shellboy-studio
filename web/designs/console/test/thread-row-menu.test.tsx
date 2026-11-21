@@ -74,7 +74,17 @@ describe("Thread row menu and delete", () => {
     model.ops.threadDeletePreview = vi.fn(() => new Promise((resolve) => { resolvePreview = resolve; })) as never;
     model.ops.threadDelete = vi.fn(async () => { order.push("delete"); return { ok: true }; }) as never;
     const host = document.createElement("div");
+    document.body.append(host);
     act(() => render(<ThreadDeleteDialog model={model} target={row} onClose={onClose} />, host));
+    const dialog = host.querySelector<HTMLDialogElement>("dialog[role=alertdialog]")!;
+    expect(dialog).not.toBeNull();
+    expect(dialog.getAttribute("aria-labelledby")).toBeTruthy();
+    expect(dialog.getAttribute("aria-describedby")).toBe("thread-delete-description");
+    expect(dialog.querySelector<HTMLButtonElement>(".work-sheet-head button")).toBe(document.activeElement);
+    act(() => { dialog.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, button: 0 })); });
+    act(() => { dialog.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 2 })); });
+    expect(onClose).not.toHaveBeenCalled();
+    expect(dialog.open).toBe(true);
     expect(model.ops.threadDelete).not.toHaveBeenCalled();
     await act(async () => { resolvePreview({ ok: true, value: { deletable_now: true, preview_marker: { thread_count: 1, ids_hash: "exact" }, selection: { thread_count: 1 }, blockers: { live_run_count: 0, stopping_run_count: 0, truncated: false }, preview_marker_unavailable_reason: undefined } }); });
     expect(model.ops.threadDelete).not.toHaveBeenCalled();
@@ -82,7 +92,7 @@ describe("Thread row menu and delete", () => {
     act(() => confirm.click());
     expect(order).toEqual(["close", "delete"]);
     expect(model.ops.threadDelete).toHaveBeenCalledWith("t1", { thread_count: 1, ids_hash: "exact" });
-    render(null, host);
+    render(null, host); host.remove();
   });
   it("opens a visible Menu from the ThreadItem button", async () => {
     const host = document.createElement("div");
