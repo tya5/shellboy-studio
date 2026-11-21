@@ -29,8 +29,18 @@ export function App({ context }: { context: DesignContext }) {
   const [query, setQuery] = useState("");
   const [resizeStart, setResizeStart] = useState<{ pointerId: number; x: number; width: number }>();
   const activePointer = useRef<number | undefined>(undefined);
+  const activeElement = useRef<HTMLElement | undefined>(undefined);
   const shell = useRef<HTMLDivElement>(null);
   const sidebarWidth = readSidebarWidth(context.prefs.value.sidebarWidth);
+  const finishResize = (pointerId?: number) => {
+    if (pointerId !== undefined && activePointer.current !== pointerId) return;
+    const id = activePointer.current;
+    const element = activeElement.current;
+    if (id !== undefined && element?.hasPointerCapture(id)) element.releasePointerCapture(id);
+    activePointer.current = undefined;
+    activeElement.current = undefined;
+    setResizeStart(undefined);
+  };
   const picker = model.modelPicker.value;
   useEffect(() => { if (picker.open && picker.thread !== model.selectedId.value) model.closeModelPicker(); }, [picker.open, picker.thread, model.selectedId.value]);
 
@@ -40,10 +50,10 @@ export function App({ context }: { context: DesignContext }) {
     shell.current?.style.setProperty("--size-sidebar", `${sidebarWidth}px`);
   }, [sidebarWidth]);
   useEffect(() => {
-    const cancel = () => { activePointer.current = undefined; setResizeStart(undefined); };
-    addEventListener("resize", cancel);
-    return () => { removeEventListener("resize", cancel); cancel(); };
+    addEventListener("resize", finishResize);
+    return () => { removeEventListener("resize", finishResize); finishResize(); };
   }, []);
+  useEffect(() => { if (context.prefs.value.navCollapsed) finishResize(); }, [context.prefs.value.navCollapsed]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -89,7 +99,7 @@ export function App({ context }: { context: DesignContext }) {
   return (
     <div class="app">
       <div ref={shell} class={context.prefs.value.navCollapsed ? "shell nav-collapsed" : "shell"}>
-        <Button class="side-resize" label={t("threads.resizeSidebar")} role="separator" aria-orientation="vertical" aria-valuemin={SIDEBAR_WIDTH_MIN} aria-valuemax={SIDEBAR_WIDTH_MAX} aria-valuenow={sidebarWidth} onPointerDown={(event) => { if (context.prefs.value.navCollapsed || !event.isPrimary || event.button !== 0) return; event.preventDefault(); activePointer.current = event.pointerId; event.currentTarget.setPointerCapture(event.pointerId); setResizeStart({ pointerId: event.pointerId, x: event.clientX, width: sidebarWidth }); }} onPointerMove={(event) => { if (!resizeStart || resizeStart.pointerId !== event.pointerId || !event.isPrimary) return; context.setPrefs({ sidebarWidth: readSidebarWidth(resizeStart.width + event.clientX - resizeStart.x) }); }} onPointerUp={(event) => { if (resizeStart?.pointerId === event.pointerId) { activePointer.current = undefined; setResizeStart(undefined); } }} onPointerCancel={(event) => { if (resizeStart?.pointerId === event.pointerId) { activePointer.current = undefined; setResizeStart(undefined); } }} onLostPointerCapture={(event) => { if (activePointer.current === event.pointerId) { activePointer.current = undefined; setResizeStart(undefined); } }} onKeyDown={(event) => { if (context.prefs.value.navCollapsed) return; const step = event.shiftKey ? 32 : 16; if (event.key === "ArrowLeft" || event.key === "ArrowRight" || event.key === "Home" || event.key === "End") { event.preventDefault(); const next = event.key === "Home" ? SIDEBAR_WIDTH_MIN : event.key === "End" ? SIDEBAR_WIDTH_MAX : sidebarWidth + (event.key === "ArrowRight" ? step : -step); context.setPrefs({ sidebarWidth: readSidebarWidth(next) }); } }}><span aria-hidden="true" /></Button>
+        <Button class="side-resize" label={t("threads.resizeSidebar")} role="separator" aria-orientation="vertical" aria-valuemin={SIDEBAR_WIDTH_MIN} aria-valuemax={SIDEBAR_WIDTH_MAX} aria-valuenow={sidebarWidth} onPointerDown={(event) => { if (context.prefs.value.navCollapsed || activePointer.current !== undefined || !event.isPrimary || event.button !== 0) return; event.preventDefault(); activePointer.current = event.pointerId; activeElement.current = event.currentTarget; event.currentTarget.setPointerCapture(event.pointerId); setResizeStart({ pointerId: event.pointerId, x: event.clientX, width: sidebarWidth }); }} onPointerMove={(event) => { if (!resizeStart || activePointer.current !== event.pointerId || resizeStart.pointerId !== event.pointerId || !event.isPrimary) return; context.setPrefs({ sidebarWidth: readSidebarWidth(resizeStart.width + event.clientX - resizeStart.x) }); }} onPointerUp={(event) => finishResize(event.pointerId)} onPointerCancel={(event) => finishResize(event.pointerId)} onLostPointerCapture={(event) => finishResize(event.pointerId)} onKeyDown={(event) => { if (context.prefs.value.navCollapsed) return; const step = event.shiftKey ? 32 : 16; if (event.key === "ArrowLeft" || event.key === "ArrowRight" || event.key === "Home" || event.key === "End") { event.preventDefault(); const next = event.key === "Home" ? SIDEBAR_WIDTH_MIN : event.key === "End" ? SIDEBAR_WIDTH_MAX : sidebarWidth + (event.key === "ArrowRight" ? step : -step); context.setPrefs({ sidebarWidth: readSidebarWidth(next) }); } }}><span aria-hidden="true" /></Button>
         <button type="button" class={drawer ? "scrim open" : "scrim"} aria-label={t("threads.close")} tabIndex={drawer ? 0 : -1} onClick={() => setDrawer(false)} />
         <aside class={drawer ? "side open" : "side"} aria-label={t("threads.title")}>
           <div class="brand">
