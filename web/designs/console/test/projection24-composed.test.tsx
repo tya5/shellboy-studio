@@ -135,18 +135,17 @@ it('#13 real FakeTransport held shell.read keeps successful empty Output cache/D
 });
 
 describe('direct local insertion plan', () => {
-  ;
   it('keeps canonical rows when the exclusive unqualified local branch is empty', () => {
     const host = document.createElement('div'); document.body.append(host);
     const items = [{ key: 'saved-a', source: input[0]! }, { key: 'saved-b', source: input[0]! }];
     render(<ConversationItems items={items} sequence={[{kind:'conversation', itemKey:'saved-a'}, {kind:'conversation', itemKey:'saved-b'}]}
-      localRegion={{kind:'unqualified', content:<div data-unqualified-local=""></div>}}
+      localRegion={{kind:'unqualified', rows:[], renderRow:()=>null}}
       renderItem={item => <div class="canonical-row">{item.key}</div>} />, host);
-    expect(host.querySelectorAll('[data-unqualified-local]')).toHaveLength(1);
+    expect(host.querySelectorAll('.conversation-row')).toHaveLength(2);
+    expect(host.querySelectorAll('[data-own-presentation]')).toHaveLength(0);
     expect([...host.querySelectorAll('.canonical-row')].map(node => node.textContent)).toEqual(['saved-a', 'saved-b']);
     render(null, host); host.remove();
   });
-  ;
 });
 
 async function beginningCohort(){

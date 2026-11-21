@@ -39,7 +39,7 @@ interface Props {
   renderItem: (item: ConversationItem) => ComponentChildren;
   renderBefore?: (item: ConversationItem) => ComponentChildren;
   trailing?: ComponentChildren;
-  localRegion?: { readonly kind: "unqualified"; readonly content?: ComponentChildren; readonly rows?: readonly PendingOwnMessage[]; readonly renderRow?: (row: PendingOwnMessage) => ComponentChildren };
+  localRegion?: { readonly kind: "unqualified"; readonly rows: readonly PendingOwnMessage[]; readonly renderRow: (row: PendingOwnMessage) => ComponentChildren };
   isItemAbsent?: (item: ConversationItem) => boolean;
   isItemHidden?: (item: ConversationItem) => boolean;
   renderHeading?: (summary: ConversationToolSummary) => ComponentChildren;
@@ -81,7 +81,7 @@ export function ConversationItems({ items, toolSummaries = [], renderItem, rende
     const keyForSavedItem = (item: ConversationItem) => item.source.kind === "user" && item.source.nodeId ? `own:${item.source.nodeId}` : item.key;
     const content = (item: ConversationItem, work: boolean, hosted = !work && !!item.presentationContainer) => {
       const key = keyForSavedItem(item);
-      return <div class={`conversation-row${hosted ? " conversation-answer-child" : ""}`} key={`item:${key}`} data-item-key={key} data-key={key} data-node={item.source.nodeId} data-work-item-key={work ? item.key : undefined}>{renderItem(item)}</div>;
+      return <div class={`conversation-row${hosted ? " conversation-answer-child" : ""}`} key={`item:${key}`} data-item-key={item.key} data-key={item.key} data-node={item.source.nodeId} data-work-item-key={work ? item.key : undefined}>{renderItem(item)}</div>;
     };
     const renderWork = (entry: Extract<NonNullable<Props["sequence"]>[number], { kind: "work" }>): ComponentChildren => {
       const group = groups.get(entry.groupKey);
@@ -115,11 +115,11 @@ export function ConversationItems({ items, toolSummaries = [], renderItem, rende
       const nodes = renderPosition(index, unsafe ? undefined : containerAt(index));
       if (nodes.length) rendered.push({ entry, view: nodes });
     }
-    const localRows = localRegion?.kind === "unqualified" ? localRegion.rows ?? [] : [];
-    const pendingRows = localRows.length && localRegion?.renderRow
-      ? localRows.map(row => <Fragment key={`conversation:own:${row.messageId ?? row.operationId}`}><div key={`item:own:${row.messageId ?? row.operationId}`} class="conversation-row" data-item-key={`own:${row.messageId ?? row.operationId}`} data-key={`own:${row.messageId ?? row.operationId}`} data-own-presentation="" data-own-placement="suffix">{localRegion.renderRow!(row)}</div></Fragment>)
-      : localRegion?.kind === "unqualified" && localRegion.content ? [localRegion.content] : [];
-    // One sibling list owns both handoff forms, so a saved row reuses the pending row key.
+    const localRows = localRegion?.kind === "unqualified" ? localRegion.rows : [];
+    const pendingRows = localRegion?.kind === "unqualified"
+      ? localRows.map(row => <Fragment key={`conversation:own:${row.messageId ?? row.operationId}`}><div key={`item:own:${row.messageId ?? row.operationId}`} class="conversation-row" data-own-presentation="" data-own-placement="suffix">{localRegion.renderRow(row)}</div></Fragment>)
+      : [];
+    // Pending rows share reconciliation keys with their saved message without joining saved-row measurement.
     const directChildren = (views: readonly ComponentChildren[]): ComponentChildren[] => views.flatMap(view => Array.isArray(view) ? view : [view]);
     const rowViews = directChildren([...rendered.map(row => row.view), trailing, ...pendingRows]);
     return <div class="conversation-items">{rowViews}</div>;

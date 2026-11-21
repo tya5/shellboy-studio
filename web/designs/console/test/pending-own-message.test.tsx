@@ -4,16 +4,18 @@ import {signal} from '@preact/signals-core';
 import {render} from 'preact';
 import {act} from 'preact/test-utils';
 import {describe,expect,it} from 'vitest';
-import {fixtureModel} from '../../../ui-core/test/fixture';
+import {fixtureConversation,fixtureModel} from '../../../ui-core/test/fixture';
 import {summary,details,settle,flush, type FakeTransport, type FakeOwnerDb} from '../../../data/test/harness';
 import type {HistoryItem} from '../../../data/src/protocol';
 import type {DesignContext} from '../../../ui-core/src';
 import {loadPrefs} from '../../../ui-core/src/prefs';
 import {App} from '../screens/App';
 import {OrderedHistory} from '../screens/Conversation';
+import {ConversationItems, type ConversationItem} from '../screens/ConversationItems';
+import {projectionFromDisplayPlan} from '../../../ui-core/src/conversation-display-plan';
+import type {WindowAcceptedSnapshot} from '../../../ui-core/src/window';
 import {Composer} from '../system/components/Composer';
 import {canonicalAttemptId} from '../../../data/test/work-fixture';
-import {ConversationItems, type ConversationItem} from '../screens/ConversationItems';
 
 type HistoryGetCall = { args?: unknown };
 function requestedHistoryNode(call: HistoryGetCall): string {
@@ -536,44 +538,55 @@ it("mounted click joins the held old cursor read", async () => {
 
 
 
-describe('own-send rendered row owner',()=>{
- const item=(key:string,nodeId:string,kind:'user'|'live'|'assistant'='assistant'):ConversationItem=>({key,source:(kind==='live'?{domain:'live',scope:'scope',recordId:nodeId,kind:'text',text:nodeId}:kind==='user'?{nodeId,kind:'user',text:nodeId,textComplete:true}:{nodeId,itemIdentity:nodeId,kind:'text',text:nodeId,textComplete:true}) as never});
- const history=(...ids:string[])=>({items:ids.map(id=>item(`item:${id}`,id,id==='R'?'live':id==='P'||id==='Q'?'user':'assistant')),sequence:ids.map(id=>({kind:'conversation' as const,itemKey:`item:${id}`}))});
- const renderRows=(host:HTMLElement,saved:ReturnType<typeof history>,rows:readonly import('../../../ui-core/src/model').PendingOwnMessage[])=>render(<ConversationItems {...saved} localRegion={{kind:'unqualified',rows,renderRow:row=><span data-phase={row.phase}>{row.text}</span>}} renderItem={row=><span>{row.source.nodeId}</span>}/>,host);
- it('keeps live R then pending P at the tail and adopts P at the same rendered index and key',()=>{
-  const host=document.createElement('div');
-  try{
-   const sending={threadId:'t',scope:'history',operationId:'op-P',text:'P',phase:'sending' as const};
-   renderRows(host,history('H','R'),[sending]);
-   const beforeAcceptance=[...host.querySelectorAll<HTMLElement>('.conversation-items > [data-item-key]')];
-   expect(beforeAcceptance.map(row=>row.dataset.itemKey)).toEqual(['item:H','item:R','own:op-P']);
-   const p={...sending,messageId:'P',phase:'accepted' as const};
-   renderRows(host,history('H','R'),[p]);
-   const before=[...host.querySelectorAll<HTMLElement>('.conversation-items > [data-item-key]')];
-   expect(before.map(row=>row.dataset.itemKey)).toEqual(['item:H','item:R','own:P']);
-   expect(before[2]!.querySelector('[data-phase]')?.getAttribute('data-phase')).toBe('accepted');
-   renderRows(host,history('H','R','P'),[]);
-   const after=[...host.querySelectorAll<HTMLElement>('.conversation-items > [data-item-key]')];
-   expect(after.map(row=>row.dataset.itemKey)).toEqual(['item:H','item:R','own:P']);
-   expect(after[2]).toBe(before[2]);expect(after[2]!.dataset.node).toBe('P');expect(after[2]!.textContent).toBe('P');
-  }finally{render(null,host);host.remove();}
- });
- it('keeps a Core-held send in order through successive adoption of two sends',()=>{
-  const host=document.createElement('div');
-  try{
-   const p={threadId:'t',scope:'history',operationId:'op-P',messageId:'P',text:'P',phase:'accepted' as const},q={threadId:'t',scope:'history',operationId:'op-Q',messageId:'Q',text:'Q',phase:'accepted' as const}; // Core-accepted sends remain visible until their saved nodes arrive.
-   renderRows(host,history('H','R'),[p,q]);
-   const waiting=[...host.querySelectorAll<HTMLElement>('.conversation-items > [data-item-key]')];
-   expect(waiting.map(row=>row.dataset.itemKey)).toEqual(['item:H','item:R','own:P','own:Q']);
-   renderRows(host,history('H','R','P'),[q]);
-   const oneAdopted=[...host.querySelectorAll<HTMLElement>('.conversation-items > [data-item-key]')];
-   expect(oneAdopted.map(row=>row.dataset.itemKey)).toEqual(['item:H','item:R','own:P','own:Q']);
-   expect(oneAdopted[2]).toBe(waiting[2]);expect(oneAdopted[3]).toBe(waiting[3]);
-   renderRows(host,history('H','R','P','Q'),[]);
-   const rows=[...host.querySelectorAll<HTMLElement>('.conversation-items > [data-item-key]')];
-   expect(rows.map(row=>row.dataset.itemKey)).toEqual(['item:H','item:R','own:P','own:Q']);
-   expect(rows[2]).toBe(oneAdopted[2]);expect(rows[3]).toBe(oneAdopted[3]);
-   expect(rows.slice(-2).map(row=>row.dataset.node)).toEqual(['P','Q']);
-  }finally{render(null,host);host.remove();}
- });
+it('keeps a saved own row measurable and mounted across successive production retire publications',async()=>{
+ const saved=(id:string,ordinal:number,text:string):HistoryItem=>({node_id:id,kind:'user',selection:{ordinal},items:[{kind:'text',item_identity:id,text,text_complete:true}],provenance:{sender:{kind:'human'}}});
+ const f=await fixtureConversation({nodes:[saved('H',0,'Earlier message')]});
+ const host=document.createElement('div');document.body.append(host);
+ const liveId=canonicalAttemptId(71);
+ const drawPublication=(snapshot:WindowAcceptedSnapshot)=>{
+  const plan=snapshot.displayPlan!;const projection=projectionFromDisplayPlan(plan);
+  render(<ConversationItems items={projection.items as ConversationItem[]} sequence={projection.sequence} renderItem={item=><span>{'text' in item.source?item.source.text:item.source.nodeId??''}</span>} localRegion={{kind:'unqualified',rows:plan.localRegion.localRows,renderRow:row=><span data-pending-own-message={row.operationId}>{row.text}</span>}}/>,host);
+ };
+ try{
+  const win=f.model.longReader.peek()!;
+  f.t.push({t:'live',thread_id:'lead',attempt_id:liveId,gap:false,deltas:[{offset:0,reasoning:false,text:'R is the live trailing answer'}]});await flush(10);
+  const pSent=f.model.send('P submitted');await flush(6);const pCall=f.t.calls('message.send').at(-1)!;
+  win.refreshConversationInput(win.acceptedView.peek());let publication=win.acceptedView.peek();
+  expect(publication.displayPlan?.localRegion.localRows.map(row=>row.phase)).toContain('sending');drawPublication(publication);
+  expect(host.textContent).toContain('R is the live trailing answer');expect(host.textContent).toContain('P submitted');
+  f.db.answered.add(pCall.id);f.t.ok(pCall.id,{message_id:'P',thread_id:'lead'});expect(await pSent).toBe(true);await flush(8);
+  win.refreshConversationInput(win.acceptedView.peek());publication=win.acceptedView.peek();
+  expect(publication.displayPlan?.localRegion.localRows.find(row=>row.messageId==='P')?.phase).toBe('accepted');drawPublication(publication);
+  const pendingP=host.querySelector('[data-pending-own-message]')?.closest('.conversation-row') as HTMLElement;
+  expect(pendingP).not.toBeNull();expect(pendingP.hasAttribute('data-item-key')).toBe(false);expect(pendingP.hasAttribute('data-key')).toBe(false);
+
+  const qSent=f.model.send('Q submitted');await flush(6);const qCall=f.t.calls('message.send').at(-1)!;f.db.answered.add(qCall.id);f.t.ok(qCall.id,{message_id:'Q',thread_id:'lead'});expect(await qSent).toBe(true);await flush(8);
+  win.refreshConversationInput(win.acceptedView.peek());publication=win.acceptedView.peek();
+  expect(publication.displayPlan?.localRegion.localRows.map(row=>row.messageId)).toEqual(['P','Q']);drawPublication(publication);
+
+  const publications:WindowAcceptedSnapshot[]=[];
+  const stop=win.acceptedView.subscribe(ref=>{if(ref.displayPlan?.localRegion.retire.length)publications.push(ref);});
+  f.db.history.lead=[saved('H',0,'Earlier message'),saved('P',1,'P submitted')];f.db.historyRevisions.lead=2;
+  win.changed();await settle(f.t,f.db);await flush(16);
+  expect(publications).toHaveLength(1);const afterP=publications[0]!;
+  expect(afterP.displayPlan?.localRegion.retire.map(row=>row.messageId)).toEqual(['P']);
+  expect(afterP.displayPlan?.localRegion.localRows.map(row=>row.messageId)).toEqual(['Q']);
+  drawPublication(afterP);
+  const pRow=host.querySelector<HTMLElement>('[data-node="P"]')!;
+  const canonicalPKey=afterP.displayPlan!.entries.find(entry=>entry.item.source.nodeId==='P')!.item.key;
+  expect(pRow).toBeDefined();expect(pRow.dataset.itemKey).toBe(canonicalPKey);expect(pRow.dataset.key).toBe(canonicalPKey);expect(canonicalPKey).not.toBe('own:P');
+  expect(host.querySelector('[data-pending-own-message]')?.textContent).toBe('Q submitted');
+  expect(host.textContent).toContain('R is the live trailing answer');
+
+  f.db.history.lead=[saved('H',0,'Earlier message'),saved('P',1,'P submitted'),saved('Q',2,'Q submitted')];f.db.historyRevisions.lead=3;
+  win.changed();await settle(f.t,f.db);await flush(16);stop();
+  expect(publications).toHaveLength(2);const afterQ=publications[1]!;
+  expect(afterQ.displayPlan?.localRegion.retire.map(row=>row.messageId)).toEqual(['Q']);
+  expect(afterQ.displayPlan?.localRegion.localRows).toEqual([]);
+  drawPublication(afterQ);
+  const pRowAfter=host.querySelector<HTMLElement>('[data-node="P"]')!;
+  expect(pRowAfter).toBe(pRow);
+  expect(pRowAfter.dataset.itemKey).toBe(pRow.dataset.itemKey);expect(pRowAfter.dataset.key).toBe(pRow.dataset.key);
+  expect(host.querySelector('[data-node="Q"]')).not.toBeNull();
+ }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
 });
