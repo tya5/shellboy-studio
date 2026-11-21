@@ -1,13 +1,15 @@
 # ListRow
 
-One-line panel item with an ellipsized title, optional secondary text, selected state and row-scoped actions. Actions use the shared `useRowMenu` pattern (WAI-ARIA APG menu button). The sidebar `ThreadItem` stays unchanged.
+Shared list shell for one item with a reserved, in-flow action slot. It owns the row
+menu state, placement and keyboard handling through `useRowMenu`. Actions reveal
+on hover, row focus, selection or while open; touch always shows the action.
 
-Action spacing is reserved; reveal on hover, row focus, selection, or while open. Touch always shows the action.
+Panel items provide a title and `onSelect`, which receives the actual row button
+for focus return. A per-target error can be displayed after the row. Thread rows
+supply their native link or checkbox layout; the action stays a sibling of those
+controls. `afterActions` keeps trailing metadata in its existing position.
+Do not use for conversation message bodies.
 
-Do not use for multi-line message bodies or route navigation.
-
-References: WAI-ARIA APG Menu Button; system `useRowMenu`.
+References: WAI-ARIA APG Menu Button; shadcn/ui SidebarMenuAction; system `useRowMenu`.
 
 Styles: style.css in this directory
-
-The select callback receives the actual row button for focus return. A per-target operation error can be displayed outside the button.

@@ -21,7 +21,7 @@ function readSystemCss(file: string): string {
   return text.replace(/@import\s+["']([^"']+)["'];/g, (_match: string, specifier: string) => readSystemCss(specifier.replace(/^\.\//, "")));
 }
 const rowActionCss = readSystemCss("components.css");
-const touchVisibilityRules = readFileSync("designs/console/system/components/ThreadItem/style.css", "utf8") + readFileSync("designs/console/system/components/SelectRow/style.css", "utf8");
+const listRowCss = readFileSync("designs/console/system/components/ListRow/style.css", "utf8");
 const popoverLayerRule = rowActionCss.match(/\.popover-dismiss-layer\{([^}]*)\}/)?.[1] ?? "";
 const popoverPanelRule = rowActionCss.match(/\.popover-panel\{([^}]*)\}/)?.[1] ?? "";
 const layoutCss = readFileSync("designs/console/system/layout.css", "utf8");
@@ -263,13 +263,12 @@ describe("Thread row menu and delete", () => {
     act(() => render(<>{treeRow("One")}{treeRow("Two")}{selectRow("Three")}{selectRow("Four")}</>, host));
     expect(window.matchMedia("(hover: none)").matches).toBe(true);
     expect(window.matchMedia("(hover: hover)").matches).toBe(false);
-    expect(touchVisibilityRules).toMatch(/@media \(hover: none\)[\s\S]*?\.thread-item-root \.tree-action\{[^}]*visibility:visible/);
-    expect(touchVisibilityRules).toMatch(/width:var\(--size-row-action-touch\)/);
-    expect(rowActionCss).toMatch(/\[data-menu-open=true\] \.tree-action/);
-    expect(rowActionCss).toMatch(/\[data-menu-open=true\] \.srow-menu/);
+    expect(listRowCss).toMatch(/@media \(hover:none\)[^\n]*\.list-row-action \{[^}]*width:var\(--size-row-action-touch\); visibility:visible/);
+    expect(listRowCss).toMatch(/\[data-menu-open="true"\] > \.list-row-action \{ visibility:visible/);
+    expect(listRowCss).toMatch(/\[data-row-selected="true"\] > \.list-row-action/);
     const rows = [...host.querySelectorAll<HTMLElement>("[data-thread-row]")];
     expect(rows).toHaveLength(4);
-    expect(rows.every((item) => item.querySelector(".tree-action, .srow-menu") !== null)).toBe(true);
+    expect(rows.every((item) => item.querySelector(":scope > [data-row-action]") !== null)).toBe(true);
     const triggers = [...host.querySelectorAll<HTMLButtonElement>("[aria-haspopup=menu]")];
     act(() => { triggers[0]!.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 1 })); });
     await act(async () => { await Promise.resolve(); });

@@ -1,4 +1,4 @@
-.select-row-root{content-visibility:auto;contain-intrinsic-size:auto var(--size-control);display:flex;align-items:center;gap:var(--space-8);padding-right:var(--space-12);min-height:var(--size-control);border-bottom:1px solid var(--line);font:var(--type-label);min-width:0}
+.select-row-root{content-visibility:auto;contain-intrinsic-size:auto var(--size-control);gap:var(--space-8);padding-right:var(--space-12);min-height:var(--size-control);border-bottom:1px solid var(--line);font:var(--type-label)}
 .select-row-root:last-child{border-bottom:0}
 .select-row-root:hover{background:var(--hover)}
 .select-row-root:has(.tcheck input:checked){background:var(--accent-bg)}
@@ -15,13 +15,5 @@
   .select-row-root{min-height:var(--size-touch);contain-intrinsic-size:auto var(--size-touch)}
   .srow-text>a{display:flex;align-items:center;min-height:var(--size-touch)}
 }
-.select-row-root:has(.tcheck input:checked) .srow-menu{visibility:visible}
-.select-row-root:has(.srow-menu) .srow-title a{display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.select-row-root:has(> [data-row-action]) .srow-title a{display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .srow-title{min-width:0}
-@media (hover: hover){
-  .select-row-root:hover .srow-menu{visibility:visible}
-  .select-row-root:focus-within .srow-menu{visibility:visible}
-}
-@media (hover: none){
-  .select-row-root .srow-menu{width:var(--size-row-action-touch);visibility:visible}
-}

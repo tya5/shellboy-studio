@@ -1,13 +1,12 @@
-.panel-list-row { display:flex; align-items:center; gap:var(--space-4); min-width:0; border-radius:var(--radius); }
-.panel-list-row[aria-current="true"] { background:var(--raised); }
-.panel-list-main { display:flex; align-items:baseline; gap:var(--space-8); flex:1; min-width:0; padding:var(--space-8); color:inherit; text-align:left; background:none; border:0; cursor:pointer; }
+.list-row { display:flex; align-items:center; min-width:0; }
+.list-row[data-panel-row-id] { gap:var(--space-4); border-radius:var(--radius); }
+.list-row[data-waiting="true"] { background:var(--need-bg); }
+.list-row[data-panel-row-id][aria-current="true"] { background:var(--accent-bg); }
+.panel-list-main { display:flex; align-items:center; gap:var(--space-8); flex:1; min-width:0; min-height:var(--size-control); padding:var(--space-8); color:inherit; text-align:left; background:none; border:0; cursor:pointer; }
 .panel-list-title { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .panel-list-subtitle { margin-left:auto; color:var(--muted); font:var(--type-caption); white-space:nowrap; }
-
-.panel-list-row[data-waiting="true"] { background:var(--need-bg); }
-.panel-list-row[aria-current="true"] { background:var(--accent-bg); }
-.panel-list-main { min-height:var(--size-control); align-items:center; }
-.panel-list-actions { display:flex; flex:none; width:var(--size-row-action); visibility:hidden; }
-.panel-list-row[aria-current="true"] .panel-list-actions,.panel-list-row.panel-list-open .panel-list-actions { visibility:visible; }
-@media (hover:hover) { .panel-list-row:hover .panel-list-actions,.panel-list-row:focus-within .panel-list-actions { visibility:visible; } }
-@media (hover:none) { .panel-list-main { min-height:var(--size-touch); } .panel-list-actions { width:var(--size-row-action-touch); visibility:visible; } }
+.list-row-action { display:flex; flex:none; width:var(--size-row-action); visibility:hidden; }
+.list-row[data-thread-row] > .list-row-action { margin-left:auto; }
+.list-row[data-row-selected="true"] > .list-row-action,.list-row[data-menu-open="true"] > .list-row-action { visibility:visible; }
+@media (hover:hover) { .list-row:hover > .list-row-action,.list-row:focus-within > .list-row-action { visibility:visible; } }
+@media (hover:none) { .panel-list-main { min-height:var(--size-touch); } .list-row-action { width:var(--size-row-action-touch); visibility:visible; } }

@@ -4,6 +4,3 @@
 @container app (max-width:899px){
   .row-menu-trigger>.btn{width:var(--size-row-action-touch);height:var(--size-row-action-touch);min-width:var(--size-row-action-touch);min-height:var(--size-row-action-touch)}
 }
-.srow-menu{display:flex;flex:none;margin-left:auto;width:var(--size-row-action);visibility:hidden}
-[data-menu-open=true] .tree-action{visibility:visible}
-[data-menu-open=true] .srow-menu{visibility:visible}
