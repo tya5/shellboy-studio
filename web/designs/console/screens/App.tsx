@@ -28,7 +28,7 @@ export function App({ context }: { context: DesignContext }) {
   const [actionNotice, setActionNotice] = useState<string>();
   const [query, setQuery] = useState("");
   const [resizeStart, setResizeStart] = useState<{ pointerId: number; x: number; width: number }>();
-  const activePointer = useRef<number>();
+  const activePointer = useRef<number | undefined>(undefined);
   const shell = useRef<HTMLDivElement>(null);
   const sidebarWidth = readSidebarWidth(context.prefs.value.sidebarWidth);
   const picker = model.modelPicker.value;
