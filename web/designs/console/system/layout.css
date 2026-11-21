@@ -51,7 +51,7 @@
 .tabbar .more-panel .nav-item[aria-current=page]{background:var(--accent-bg);color:var(--fg);box-shadow:inset 0 0 0 0 var(--accent)}
 .tabbar .count{position:absolute;margin:0;top:6px;left:calc(50% + 8px)}
 
-.panel{position:absolute;top:49px;right:var(--space-16);z-index:20;width:min(320px,calc(100% - 2 * var(--space-16)));display:flex;flex-direction:column;gap:var(--space-12);padding:var(--space-16);border:1px solid var(--line-strong);border-radius:var(--radius);background:var(--panel)}
+.panel{position:absolute;top:var(--size-header);right:var(--space-16);z-index:20;width:min(320px,calc(100% - 2 * var(--space-16)));display:flex;flex-direction:column;gap:var(--space-12);padding:var(--space-16);border:1px solid var(--line-strong);border-radius:var(--radius);background:var(--panel)}
 .panel h3{margin:0;font:var(--type-label);font-weight:600}
 .panel .opts{display:flex;flex-wrap:wrap;gap:var(--space-8)}
 
