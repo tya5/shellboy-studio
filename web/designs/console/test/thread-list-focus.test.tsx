@@ -33,7 +33,7 @@ async function mount(screen: Screen): Promise<Rig> {
     render(<App context={{ model: rig.model, prefs, designs: DESIGNS, setPrefs() {}, submitToken: async () => false }} />, host);
     await settle(rig.t, rig.db);
   });
-  const list = host.querySelector<HTMLElement>(screen === "threads" ? ".org" : ".side-list");
+  const list = host.querySelector<HTMLElement>(screen === "threads" ? ".org-rows" : ".side-list");
   if (!list) throw new Error(`Missing real ${screen} thread list`);
   return { ...rig, host, list, screen };
 }
@@ -47,7 +47,7 @@ async function openDelete(rig: Rig, link: HTMLAnchorElement): Promise<HTMLDialog
   const row = link.closest<HTMLElement>(rig.screen === "threads" ? ".srow" : ".tree-item");
   if (!row) throw new Error("Expected an actual rendered thread row");
   await act(async () => {
-    row.querySelector<HTMLButtonElement>('[aria-haspopup="menu"]')?.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 1 }));
+    row.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 2, clientX: 20, clientY: 20 }));
     await Promise.resolve();
   });
   const deleteItem = document.body.querySelector<HTMLElement>(".menu-item.destructive");
@@ -101,6 +101,45 @@ describe("screen-owned thread-list focus", () => {
     } finally { await unmount(rig); }
   });
 
+  it.each(["sidebar", "threads"] as const)("Cancel returns to real row B when focus started outside the %s list", async (screen) => {
+    const rig = await mount(screen);
+    const outside = document.createElement("button");
+    document.body.append(outside);
+    try {
+      const [, rowB] = rowLinks(rig);
+      expect(rowB).toBeDefined();
+      rig.model.ops.threadDeletePreview = vi.fn(async () => preview(1, "cancel-row-b")) as never;
+      outside.focus();
+      const dialog = await openDelete(rig, rowB!);
+      const cancel = dialog.querySelector<HTMLButtonElement>(".work-sheet-head button")!;
+      await act(async () => { cancel.click(); await Promise.resolve(); });
+      expect(dialog.isConnected).toBe(false);
+      expect(document.activeElement).toBe(rowB);
+    } finally { await unmount(rig, outside); }
+  });
+
+  it.each(["sidebar", "threads"] as const)("Cancel resolves removed row B to its current position in the %s list", async (screen) => {
+    const rig = await mount(screen);
+    try {
+      const [, rowB, rowC] = rowLinks(rig);
+      expect(rowB).toBeDefined();
+      expect(rowC).toBeDefined();
+      rig.model.ops.threadDeletePreview = vi.fn(async () => preview(1, "cancel-removed-b")) as never;
+      const outside = document.createElement("button");
+      document.body.append(outside);
+      outside.focus();
+      const dialog = await openDelete(rig, rowB!);
+      const removedId = rowB!.id.replace(/^thread-link-(?:sidebar|page)-/, "");
+      await resolveListWithout(rig, removedId);
+      expect(rig.list.contains(rowB!)).toBe(false);
+      const cancel = dialog.querySelector<HTMLButtonElement>(".work-sheet-head button")!;
+      await act(async () => { cancel.click(); await Promise.resolve(); });
+      expect(dialog.isConnected).toBe(false);
+      expect(document.activeElement).toBe(rowC);
+      outside.remove();
+    } finally { await unmount(rig); }
+  });
+
   it.each(["sidebar", "threads"] as const)("clears the %s list focus claim after focus leaves the list", async (screen) => {
     const rig = await mount(screen);
     const outside = document.createElement("button");
@@ -110,9 +149,10 @@ describe("screen-owned thread-list focus", () => {
       expect(target).toBeDefined();
       await act(async () => { target!.focus(); });
       expect(document.activeElement).toBe(target);
-      outside.focus();
-      expect(document.activeElement).toBe(outside);
-      outside.remove();
+      const toolbarControl = screen === "threads" ? rig.host.querySelector<HTMLButtonElement>(".toolbar button")! : rig.host.querySelector<HTMLButtonElement>(".sidehead button")!;
+      toolbarControl.focus();
+      expect(document.activeElement).toBe(toolbarControl);
+      toolbarControl.remove();
       const afterOutsideRemoval = document.activeElement;
       const deletedId = target!.id.replace(/^thread-link-(?:sidebar|page)-/, "");
       await resolveListWithout(rig, deletedId);

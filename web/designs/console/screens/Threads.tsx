@@ -146,14 +146,29 @@ export function Threads({ model }: { model: AppModel }) {
   const descendants = org.descendants.value;
   const [query, setQuery] = useState(state.query);
   const [deleteThread, setDeleteThread] = useState<ThreadDeleteTarget>();
-  const listRef = useRef<HTMLDivElement>(null);
-  const lastListFocus = useRef<{ linkId: string; index: number }>();
+  const rowListRef = useRef<HTMLDivElement>(null);
+  const lastListFocus = useRef<string>();
+  const rowPositions = useRef(new Map<string, number>());
+  const rowLinks = () => [...(rowListRef.current?.querySelectorAll<HTMLAnchorElement>('a[id^="thread-link-page-"]') ?? [])];
+  const rememberRowPositions = (links: HTMLAnchorElement[]) => {
+    links.forEach((link, index) => rowPositions.current.set(link.id.replace("thread-link-page-", ""), index));
+  };
+  const resolveRowLink = (threadId: string) => {
+    const links = rowLinks();
+    rememberRowPositions(links);
+    const direct = links.find((link) => link.id === `thread-link-page-${threadId}`);
+    if (direct) return direct;
+    const position = rowPositions.current.get(threadId);
+    return (position !== undefined ? links[position] ?? links[Math.min(position - 1, links.length - 1)] : undefined)
+      ?? document.getElementById("threads-page-heading");
+  };
   useLayoutEffect(() => {
-    const previous = lastListFocus.current;
-    const links = [...(listRef.current?.querySelectorAll<HTMLAnchorElement>('a[id^="thread-link-page-"]') ?? [])];
-    if (!previous || links.some((link) => link.id === previous.linkId)) return;
+    const links = rowLinks();
+    rememberRowPositions(links);
+    const claimed = lastListFocus.current;
+    if (!claimed || links.some((link) => link.id === `thread-link-page-${claimed}`)) return;
     lastListFocus.current = undefined;
-    (links[previous.index] ?? document.getElementById("threads-page-heading"))?.focus();
+    resolveRowLink(claimed)?.focus();
   });
   const [armed, setArmed] = useState(false);
   useEffect(() => {
@@ -221,17 +236,8 @@ export function Threads({ model }: { model: AppModel }) {
   };
   return (
     <>
-    {deleteThread ? <ThreadDeleteDialog key={deleteThread.threadId} model={model} target={deleteThread} getReturnFocusTarget={(threadId) => document.getElementById(`thread-link-page-${threadId}`)} onClose={() => setDeleteThread(undefined)} /> : null}
-    <div class="org" ref={listRef} onFocusIn={(event) => {
-      const target = event.target as HTMLElement;
-      const link = target.closest<HTMLAnchorElement>('a[id^="thread-link-page-"]') ?? target.closest<HTMLElement>(".srow")?.querySelector<HTMLAnchorElement>('a[id^="thread-link-page-"]');
-      if (!link) return;
-      const links = [...(listRef.current?.querySelectorAll<HTMLAnchorElement>('a[id^="thread-link-page-"]') ?? [])];
-      lastListFocus.current = { linkId: link.id, index: links.indexOf(link) };
-    }} onFocusOut={(event) => {
-      const next = event.relatedTarget;
-      if (!(next instanceof Node) || !listRef.current?.contains(next)) lastListFocus.current = undefined;
-    }}>
+    {deleteThread ? <ThreadDeleteDialog key={deleteThread.threadId} model={model} target={deleteThread} getReturnFocusTarget={resolveRowLink} onClose={() => setDeleteThread(undefined)} /> : null}
+    <div class="org">
       <div class="head">
         <div class="pagehead">
           <h1 id="threads-page-heading" tabIndex={-1}>{t("view.threads")}</h1>
@@ -277,6 +283,17 @@ export function Threads({ model }: { model: AppModel }) {
       {!kind && state.loaded && state.items.length === 0 ? (
         <EmptyState role="empty.threadArchive" title={state.query ? t("threads.noMatch") : t(archiving ? "threads.empty" : "org.noArchived")} />
       ) : null}
+      <div class="org-rows" ref={rowListRef} onFocusIn={(event) => {
+        const target = event.target as HTMLElement;
+        const link = target.closest<HTMLAnchorElement>('a[id^="thread-link-page-"]') ?? target.closest<HTMLElement>(".srow")?.querySelector<HTMLAnchorElement>('a[id^="thread-link-page-"]');
+        if (!link) return;
+        const links = rowLinks();
+        rememberRowPositions(links);
+        lastListFocus.current = link.id.replace("thread-link-page-", "");
+      }} onFocusOut={(event) => {
+        const next = event.relatedTarget;
+        if (!(next instanceof Node) || !rowListRef.current?.contains(next)) lastListFocus.current = undefined;
+      }}>
       {groups.map((g) => {
         const ids = g.rows.map((r) => r.summary.thread_id);
         const chosen = ids.filter((id) => selected.has(id)).length;
@@ -318,6 +335,7 @@ export function Threads({ model }: { model: AppModel }) {
         </>
       ) : null}
       {!kind && org.canLoadMore() ? <span class="more"><Button disabled={state.loading} onClick={() => org.loadMore()}>{t("threads.more")}</Button></span> : !kind && state.nextCursor ? <div class="muted caption">{t("threads.capped")}</div> : null}
+      </div>
       <div class="muted caption">{t("org.totals")}</div>
       <div class="sect-source">{t("common.source", { source: "" })}{kind ? <code>{kind === "tag" ? "thread.tags" : "thread.cwds"}</code> : null}{kind ? " " : ""}<code>thread.list</code></div>
     </div>

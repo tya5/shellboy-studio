@@ -24,14 +24,29 @@ export function App({ context }: { context: DesignContext }) {
   const model = context.model;
   const [deleteThread, setDeleteThread] = useState<ThreadDeleteTarget>();
   const sidebarListRef = useRef<HTMLDivElement>(null);
-  const lastSidebarFocus = useRef<{ linkId: string; index: number }>();
+  const lastSidebarFocus = useRef<string>();
+  const sidebarPositions = useRef(new Map<string, number>());
   const sidebarRows = model.rows.value;
+  const sidebarLinks = () => [...(sidebarListRef.current?.querySelectorAll<HTMLAnchorElement>('a[id^="thread-link-sidebar-"]') ?? [])];
+  const rememberSidebarPositions = (links: HTMLAnchorElement[]) => {
+    links.forEach((link, index) => sidebarPositions.current.set(link.id.replace("thread-link-sidebar-", ""), index));
+  };
+  const resolveSidebarLink = (threadId: string) => {
+    const links = sidebarLinks();
+    rememberSidebarPositions(links);
+    const direct = links.find((link) => link.id === `thread-link-sidebar-${threadId}`);
+    if (direct) return direct;
+    const position = sidebarPositions.current.get(threadId);
+    return (position !== undefined ? links[position] ?? links[Math.min(position - 1, links.length - 1)] : undefined)
+      ?? document.getElementById("sidebar-thread-list-heading");
+  };
   useLayoutEffect(() => {
-    const previous = lastSidebarFocus.current;
-    const links = [...(sidebarListRef.current?.querySelectorAll<HTMLAnchorElement>('a[id^="thread-link-sidebar-"]') ?? [])];
-    if (!previous || links.some((link) => link.id === previous.linkId)) return;
+    const links = sidebarLinks();
+    rememberSidebarPositions(links);
+    const claimed = lastSidebarFocus.current;
+    if (!claimed || links.some((link) => link.id === `thread-link-sidebar-${claimed}`)) return;
     lastSidebarFocus.current = undefined;
-    (links[previous.index] ?? document.getElementById("sidebar-thread-list-heading"))?.focus();
+    resolveSidebarLink(claimed)?.focus();
   });
   const t = model.t.value;
   const route = model.route.value;
@@ -133,8 +148,9 @@ export function App({ context }: { context: DesignContext }) {
             const target = event.target as HTMLElement;
             const link = target.closest<HTMLAnchorElement>('a[id^="thread-link-sidebar-"]') ?? target.closest<HTMLElement>(".tree-item")?.querySelector<HTMLAnchorElement>('a[id^="thread-link-sidebar-"]');
             if (!link) return;
-            const links = [...(sidebarListRef.current?.querySelectorAll<HTMLAnchorElement>('a[id^="thread-link-sidebar-"]') ?? [])];
-            lastSidebarFocus.current = { linkId: link.id, index: links.indexOf(link) };
+            const links = sidebarLinks();
+            rememberSidebarPositions(links);
+            lastSidebarFocus.current = link.id.replace("thread-link-sidebar-", "");
           }} onFocusOut={(event) => {
             const next = event.relatedTarget;
             if (!(next instanceof Node) || !sidebarListRef.current?.contains(next)) lastSidebarFocus.current = undefined;
@@ -189,7 +205,7 @@ export function App({ context }: { context: DesignContext }) {
             {conn === "ownerDown" ? <Notice tone="wait">{t("banner.ownerDown")}</Notice> : null}
             {model.actionError.value ? <Notice tone={model.actionError.value.kind === "error" ? "bad" : undefined}>{model.actionError.value.text}</Notice> : null}
           </div>
-          {deleteThread ? <ThreadDeleteDialog key={deleteThread.threadId} model={model} target={deleteThread} getReturnFocusTarget={(threadId) => document.getElementById(`thread-link-sidebar-${threadId}`)} onClose={() => setDeleteThread(undefined)} /> : null}
+          {deleteThread ? <ThreadDeleteDialog key={deleteThread.threadId} model={model} target={deleteThread} getReturnFocusTarget={resolveSidebarLink} onClose={() => setDeleteThread(undefined)} /> : null}
           <section class="view" aria-label={title}>
             <AppsHost context={context} />
             {route.view === "apps" ? null : route.view === "conversation" ? <Conversation model={model} /> : route.view === "monitor" ? <Monitor context={context} /> : route.view === "inbox" ? <Inbox model={model} /> : route.view === "analytics" ? <Analytics context={context} /> : route.view === "branches" ? <Branches model={model} /> : route.view === "threads" ? <Threads model={model} /> : route.view === "setup" ? <Setup context={context} /> : <SettingsView context={context} />}
