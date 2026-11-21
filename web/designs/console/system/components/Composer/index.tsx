@@ -45,7 +45,7 @@ export function Composer(props: { label: string; placeholder: string; hint: stri
     finally { notifying = false; submitting.current = false; }
   };
   return (
-    <div class="composer">
+    <div class="composer-root">
       <textarea
         ref={textarea}
         id="composer"
@@ -61,8 +61,8 @@ export function Composer(props: { label: string; placeholder: string; hint: stri
           }
         }}
       />
-      <div class="row">
-        <span class="hint" role="status">{status?.hint??props.hint}</span>
+      <div class="composer-row">
+        <span class="composer-hint" role="status">{status?.hint??props.hint}</span>
         <div class="right">
           {props.stop}
           <Button icon label={props.sendLabel} variant="primary" disabled={!props.canSend || status?.blocked || props.busy || text.trim() === ""} onClick={() => void submit()}>

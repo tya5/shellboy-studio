@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import * as ts from "typescript";
 // @ts-expect-error Node builtins are intentionally used for source and directory inspection in this Node test.
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 
@@ -60,47 +59,15 @@ const rawColor = /#[\da-f]{3,8}\b|\b(?:rgb|hsl)a?\s*\(/i;
 const inlineUnitOrColor = /\b\d+(?:\.\d+)?\s*px\b|\$\{\s*\d+(?:\.\d+)?\s*\}\s*px\b|#[\da-f]{3,8}\b|\b(?:rgb|hsl)a?\s*\(/i;
 
 
-function classNamesInTsx(source: string, fileName: string): string[] {
-  const file = ts.createSourceFile(fileName, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
-  const names: string[] = [];
-  const bindings = new Map<string, ts.Expression[]>();
-  const collectBindings = (node: ts.Node) => {
-    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer) {
-      const values = bindings.get(node.name.text) ?? [];
-      values.push(node.initializer);
-      bindings.set(node.name.text, values);
-    }
-    ts.forEachChild(node, collectBindings);
-  };
-  collectBindings(file);
-  const collectValue = (node: ts.Node, seen: Set<string>) => {
-    if (ts.isStringLiteralLike(node) || ts.isNoSubstitutionTemplateLiteral(node)) {
-      names.push(...node.text.split(/\s+/).filter(Boolean));
-      return;
-    }
-    if (ts.isIdentifier(node) && !seen.has(node.text)) {
-      seen.add(node.text);
-      for (const initializer of bindings.get(node.text) ?? []) collectValue(initializer, seen);
-      return;
-    }
-    if (ts.isConditionalExpression(node)) {
-      collectValue(node.whenTrue, seen);
-      collectValue(node.whenFalse, seen);
-    } else if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.PlusToken) {
-      collectValue(node.left, seen);
-      collectValue(node.right, seen);
-    } else if (ts.isArrayLiteralExpression(node)) {
-      for (const element of node.elements) collectValue(element, seen);
-    }
-  };
-  const visit = (node: ts.Node) => {
-    if (ts.isJsxAttribute(node) && (node.name.getText(file) === "class" || node.name.getText(file) === "className") && node.initializer) {
-      collectValue(ts.isJsxExpression(node.initializer) && node.initializer.expression ? node.initializer.expression : node.initializer, new Set());
-    }
-    ts.forEachChild(node, visit);
-  };
-  visit(file);
-  return names;
+function stringLiteralTexts(source: string): string[] {
+  const literals = source.match(/"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`/gs) ?? [];
+  return literals.map((literal) => literal.slice(1, -1));
+}
+
+function containsWholeToken(texts: string[], name: string): boolean {
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const token = new RegExp(`(^|[^\\w-])${escaped}(?=$|[^\\w-])`);
+  return texts.some((text) => token.test(text));
 }
 
 function declaredClasses(css: string): string[] {
@@ -152,9 +119,10 @@ describe("application header sizing", () => {
 
 
 describe("structural component CSS ownership", () => {
-  it("resolves local class values and every class in compound selectors", () => {
-    expect(classNamesInTsx('const className = "borrowed"; const Example = () => <div class={className} />;', "fixture.tsx")).toContain("borrowed");
-    expect(declaredClasses(".owner .child, .other .sibling { color: red; }")).toEqual(["owner", "child", "other", "sibling"]);
+  it("scans all literal text for whole class-name tokens", () => {
+    const texts = stringLiteralTexts('const cls = "borrowed"; const value = `choice-${name}`;');
+    expect(containsWholeToken(texts, "borrowed")).toBe(true);
+    expect(containsWholeToken(texts, "choice")).toBe(false);
   });
 
   it("defines each component class in its owner file and only uses it there", () => {
@@ -177,13 +145,15 @@ describe("structural component CSS ownership", () => {
       }
     }
     const duplicateOwners = [...owners.entries()].filter(([name, definitions]) => !sharedClasses.has(name) && definitions.size > 1).map(([name]) => name);
-    const sources = { ...screenSources, ...componentCode };
-    const borrowed = Object.entries(sources).flatMap(([path, source]) => {
-      const component = path.match(/\/system\/components\/([^/]+)\//)?.[1];
-      return classNamesInTsx(source, path).filter((name) => {
-        const definitions = owners.get(name);
-        return !sharedClasses.has(name) && definitions && (!component || !definitions.has(component));
-      }).map((name) => `${path}:${name}`);
+    const otherSystemSources = Object.fromEntries(Object.entries(systemSources).filter(([path]) => /\.(?:html|js|mjs|ts|tsx)$/.test(path) && !path.includes("/components/")));
+    const sources = { ...screenSources, ...componentCode, ...otherSystemSources };
+    const literalSources = Object.entries(sources).map(([path, source]) => ({ path, component: path.match(/\/system\/components\/([^/]+)\//)?.[1], texts: stringLiteralTexts(source) }));
+    const borrowed = [...owners.entries()].flatMap(([name, definitions]) => {
+      if (sharedClasses.has(name)) return [];
+      return literalSources.flatMap(({ path, component, texts }) => {
+        if (component && definitions.has(component)) return [];
+        return containsWholeToken(texts, name) ? [`${[...definitions].join(",")}:${name} -> ${path}`] : [];
+      });
     });
     expect(duplicateOwners).toEqual([]);
     expect(borrowed).toEqual([]);

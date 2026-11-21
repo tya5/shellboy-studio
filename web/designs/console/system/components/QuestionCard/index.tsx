@@ -10,7 +10,7 @@ export function QuestionCard(props: { id: string; label: string; waitingWord: st
         <StatusMark status="awaiting" label={props.waitingWord} word={false} />
         {props.label}
       </div>
-      <div class="t">{props.question}</div>
+      <div class="question-card-text">{props.question}</div>
       <label for={`answer-${props.id}`}>{props.answerLabel}</label>
       <textarea id={`answer-${props.id}`} value={text} onInput={(e) => setText(e.currentTarget.value)} />
       {props.error ? <div role="alert">{props.error}</div> : null}

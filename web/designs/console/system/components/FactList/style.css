@@ -1,10 +1,10 @@
 .facts code{font:var(--type-code);font-size:var(--size-caption)}
 .facts{margin:0;display:flex;flex-direction:column}
-.fact{display:grid;grid-template-columns:minmax(120px,220px) minmax(0,1fr);gap:var(--space-4) var(--space-12);padding:var(--space-8) 0;border-top:1px solid var(--line);font:var(--type-label)}
-.fact:first-child{border-top:0;padding-top:0}
-.fact:last-child{padding-bottom:0}
-.fact dt{color:var(--muted)}
-.fact dd{margin:0;min-width:0;overflow-wrap:anywhere}
+.fact-list-row{display:grid;grid-template-columns:minmax(120px,220px) minmax(0,1fr);gap:var(--space-4) var(--space-12);padding:var(--space-8) 0;border-top:1px solid var(--line);font:var(--type-label)}
+.fact-list-row:first-child{border-top:0;padding-top:0}
+.fact-list-row:last-child{padding-bottom:0}
+.fact-list-row dt{color:var(--muted)}
+.fact-list-row dd{margin:0;min-width:0;overflow-wrap:anywhere}
 @container app (max-width:899px){
-  .fact{grid-template-columns:minmax(0,1fr)}
+  .fact-list-row{grid-template-columns:minmax(0,1fr)}
 }

@@ -155,7 +155,7 @@ export function Chart({
   };
 
   return (
-    <figure class="chart">
+    <figure class="chart-figure">
       <figcaption class="chart-head">
         <h3>{title}</h3>
         {sub ? <div class="muted caption">{sub}</div> : null}

@@ -160,7 +160,7 @@ async function beginningCohort(){
 it('SavedConversationItems preserves the same beginning cohort with empty accepted rows',async()=>{
  const f=await beginningCohort();
  try{await act(async()=>render(<CurrentSavedView fixture={f}/>,host));
-  expect(host.querySelectorAll('.msg')).toHaveLength(2);expect([...host.querySelectorAll('[data-pending-own-message] .md')].map(node=>node.textContent)).toEqual(['A','B']);
+  expect(host.querySelectorAll('.msg')).toHaveLength(2);expect([...host.querySelectorAll('[data-pending-own-message] .message-markdown')].map(node=>node.textContent)).toEqual(['A','B']);
   expect([...host.querySelectorAll('.msg')].every(node=>node.isConnected&&node.ownerDocument===document&&host.contains(node))).toBe(true);
  }finally{render(null,host);f.model.dispose();f.data.stop();}
 });

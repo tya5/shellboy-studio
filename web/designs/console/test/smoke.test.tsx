@@ -352,9 +352,9 @@ describe("Conversation", () => {
   it("offers Stop only with an open Run, and the composer needs a connection", async () => {
     const { model, t } = await fixtureModel();
     const el = draw(model);
-    expect(el.querySelector(".btn.stop")).toBeTruthy();
+    expect(el.querySelector(".btn-stop")).toBeTruthy();
     act(() => t.drop());
-    const send = el.querySelector<HTMLButtonElement>(".composer .btn.primary")!;
+    const send = el.querySelector<HTMLButtonElement>(".composer-root .btn-primary")!;
     expect(send.disabled).toBe(true);
   });
   it("shows recovery with the owner's words and a Retry", async () => {
@@ -365,7 +365,7 @@ describe("Conversation", () => {
       await (await import("../../../data/test/harness")).settle(t, db);
     });
     expect(text(el)).toContain("provider: connection interrupted");
-    expect(el.querySelector(".dock .btn.warn")).toBeTruthy();
+    expect(el.querySelector(".dock .btn-warn")).toBeTruthy();
   });
   it("omits the usage and context elements when the owner reports nothing", async () => {
     const { model, t, db } = await fixtureModel();
@@ -465,7 +465,7 @@ describe("Awaiting you", () => {
   it("is a designed empty state in production", async () => {
     const { model } = await fixtureModel({ route: "inbox" });
     const el = draw(model);
-    expect(el.querySelector(".empty")).toBeTruthy();
+    expect(el.querySelector(".empty-state-root")).toBeTruthy();
     expect(text(el)).toContain("Nothing is waiting for you");
     expect(el.querySelector(".count")).toBeNull();
     expect(text(el)).toContain("Other activity");
@@ -484,13 +484,13 @@ describe("Awaiting you", () => {
     const el = draw(model);
     expect(el.querySelectorAll(".qitem").length).toBe(2);
     expect(el.querySelector(".nav .count")?.textContent).toBe("2");
-    expect(el.querySelector(".q .t")?.textContent).toBe("Should this go to company A or B?");
+    expect(el.querySelector(".q .question-card-text")?.textContent).toBe("Should this go to company A or B?");
     const box = el.querySelector("textarea")!;
     act(() => {
       box.value = "Company A";
       box.dispatchEvent(new Event("input", { bubbles: true }));
     });
-    await act(async () => el.querySelector<HTMLButtonElement>(".q .btn.primary")!.click());
+    await act(async () => el.querySelector<HTMLButtonElement>(".q .btn-primary")!.click());
     expect(pending.answers).toEqual([["q1", "Company A"]]);
   });
 });
@@ -566,7 +566,7 @@ describe("Analytics", () => {
     expect([...el.querySelectorAll(".secnav-item")].map(text)).toEqual(["Overview", "Tokens", "Compaction", "By Thread", "Storage", "Memory", "Index"]);
     expect(el.querySelector('.secnav-item[aria-current="page"]')!.getAttribute("href")).toBe("#/analytics/overview");
     expect(el.querySelector(".secnav select")).toBeNull();
-    expect(el.querySelectorAll("figure.chart svg").length).toBe(1);
+    expect(el.querySelectorAll("figure.chart-figure svg").length).toBe(1);
     expect(text(el)).not.toContain("Owner memory");
     expect(text(el)).toContain("aren't prices");
   });
@@ -577,14 +577,14 @@ describe("Analytics", () => {
     expect(body).toContain("By model isn't shown");
     expect(body).not.toMatch(/\$\s?\d|USD|¥/);
     // 2026-11-05 to 11-07, three parts each. Small parts stay visible.
-    expect(el.querySelectorAll("figure.chart")[0]!.querySelectorAll("path.fill").length).toBe(9);
+    expect(el.querySelectorAll("figure.chart-figure")[0]!.querySelectorAll("path.fill").length).toBe(9);
     expect(el.querySelector(".chart-svg")!.getAttribute("role")).toBe("img");
     expect(el.querySelector(".chart-svg")!.getAttribute("aria-label")).toContain("7 days");
   });
   it("effective tokens follow the weights without a new read", async () => {
     const { el, model, t } = await open("overview");
     const before = t.calls("usage.get").length;
-    const first = () => text(el.querySelector(".stat .stat-value")!);
+    const first = () => text(el.querySelector(".stat-root .stat-value")!);
     const was = first();
     const n = el.querySelector<HTMLInputElement>('input[aria-label="Cached weight n"]')!;
     await act(async () => {
@@ -654,7 +654,7 @@ describe("Analytics", () => {
       await settle(t, db);
     });
     expect(text(el)).toContain("Reading stopped");
-    expect(el.querySelectorAll("figure.chart path.fill").length).toBeGreaterThan(0);
+    expect(el.querySelectorAll("figure.chart-figure path.fill").length).toBeGreaterThan(0);
   });
   it("says Not read until something has been read", async () => {
     const { model, t } = await fixtureModel({ route: "monitor" });
@@ -663,7 +663,7 @@ describe("Analytics", () => {
     await act(async () => {
       model.applyRoute({ view: "analytics" });
     });
-    expect(text(el.querySelector(".stat .stat-value")!)).toBe("Not read");
+    expect(text(el.querySelector(".stat-root .stat-value")!)).toBe("Not read");
   });
   it("speaks Japanese", async () => {
     const { model } = await fixtureModel({ route: "analytics" });
@@ -806,13 +806,13 @@ describe("Threads", () => {
     await go(() => mode("Tag").click());
     expect(text(el)).not.toContain("Tags aren't available");
     expect([...el.querySelectorAll(".tgroup .tgroup-name")].map(text)).toEqual(["bug hunt", "customer A"]);
-    expect(el.querySelector(".srow")).toBeNull();
+    expect(el.querySelector(".org-rows [data-thread-row]")).toBeNull();
     const show = (n: number) => el.querySelectorAll<HTMLButtonElement>(".tgroup header .btn")[n]!;
     await go(() => show(0).click());
     expect(made.t.calls("thread.list").at(-1)!.args).toMatchObject({ tags: ["bug hunt"] });
-    expect(el.querySelectorAll(".srow").length).toBe(2);
-    expect([...el.querySelectorAll(".srow .tag")].map(text)).toContain("customer A");
-    act(() => el.querySelector<HTMLInputElement>(".srow input")!.click());
+    expect(el.querySelectorAll(".org-rows [data-thread-row]").length).toBe(2);
+    expect([...el.querySelectorAll(".select-row-root .select-row-tag")].map(text)).toContain("customer A");
+    act(() => el.querySelector<HTMLInputElement>(".select-row-root input")!.click());
     const tagsButton = [...el.querySelectorAll<HTMLButtonElement>(".selbar button")].find((b) => text(b) === "Tags")!;
     act(() => tagsButton.click());
     const field = el.querySelector<HTMLInputElement>("input[aria-label='Tag to add']")!;
@@ -831,7 +831,7 @@ describe("Threads", () => {
   });
   it("archive needs a second press, states what it touches, and calls the owner", async () => {
     const { el, t, db } = await open();
-    const box = el.querySelector<HTMLInputElement>(".srow input")!;
+    const box = el.querySelector<HTMLInputElement>(".select-row-root input")!;
     act(() => box.click());
     expect(text(el.querySelector(".selbar")!)).toContain("Selected: 1");
     const archive = () => [...el.querySelectorAll<HTMLButtonElement>(".selbar button")].find((b) => /archive/i.test(text(b)))!;
@@ -852,7 +852,7 @@ describe("Threads", () => {
       [...el.querySelectorAll<HTMLButtonElement>(".org button")].find((b) => text(b) === "Archived")!.click();
       await settle(t, db);
     });
-    act(() => el.querySelector<HTMLInputElement>(".srow input")!.click());
+    act(() => el.querySelector<HTMLInputElement>(".select-row-root input")!.click());
     const go = [...el.querySelectorAll<HTMLButtonElement>(".selbar button")].find((b) => text(b) === "Unarchive")!;
     await act(async () => {
       go.click();
@@ -930,7 +930,7 @@ describe("Threads", () => {
     const { el, model } = await open();
     const group = el.querySelector<HTMLInputElement>(".tgroup header input")!;
     act(() => group.click());
-    expect(model.org.selected.value.size).toBe(el.querySelector(".tgroup")!.querySelectorAll(".srow").length);
+    expect(model.org.selected.value.size).toBe(el.querySelector(".tgroup")!.querySelectorAll("[data-thread-row]").length);
   });
 });
 
@@ -1177,8 +1177,8 @@ describe("Setup", () => {
       });
     };
     await pump();
-    expect(el.querySelectorAll(".choice")).toHaveLength(6);
-    await pump(() => click(el.querySelectorAll(".choice input")[1]));
+    expect(el.querySelectorAll(".choice-list-option")).toHaveLength(6);
+    await pump(() => click(el.querySelectorAll(".choice-list-option input")[1]));
     const field = el.querySelector<HTMLInputElement>('input[type="password"]')!;
     expect(text(el)).toContain("An API key is required");
     expect(el.querySelector('a[href="https://platform.openai.com/api-keys"]')).toBeTruthy();
@@ -1215,7 +1215,7 @@ describe("Setup", () => {
     const el = draw(model, { lang: "en" });
     await act(async () => void (await settle(t, db)));
     await act(async () => {
-      click(el.querySelectorAll(".choice input")[4]);
+      click(el.querySelectorAll(".choice-list-option input")[4]);
       await settle(t, db);
     });
     expect(el.querySelector<HTMLInputElement>('input[aria-label="Address"]')!.value).toBe("http://localhost:11434/v1");
@@ -1258,7 +1258,7 @@ describe("Setup", () => {
       const el = draw(model);
       const pump = pumpOf(t as never, db as never);
       await pump();
-      await pump(() => click(el.querySelectorAll(".choice input")[4]));
+      await pump(() => click(el.querySelectorAll(".choice-list-option input")[4]));
       await pump(() => click(button(el, "Test connection")));
       expect(text(el)).toContain("Make this the default connection and model");
       const name = el.querySelector<HTMLInputElement>('input[aria-label="Connection name"]')!;
@@ -1281,9 +1281,9 @@ describe("Setup", () => {
       expect(text(el)).toContain("starts automatic indexing of new conversation text");
       expect(text(el)).toContain("may cost money");
       expect(text(el)).toContain("only when you ask");
-      await pump(() => click([...el.querySelectorAll(".choice input")][1]));
+      await pump(() => click([...el.querySelectorAll(".choice-list-option input")][1]));
       expect(text(el)).toContain("Anthropic's API has no embeddings");
-      await pump(() => click([...el.querySelectorAll(".choice input")][0]));
+      await pump(() => click([...el.querySelectorAll(".choice-list-option input")][0]));
       expect(text(el)).not.toContain("Anthropic's API has no embeddings");
       expect(text(el)).toContain("can't tell which of them make embeddings");
       expect(t.calls().some((c) => /embed|index|rag/.test(c.command))).toBe(false);
@@ -1378,7 +1378,7 @@ it("keeps same-message Inbox DOM and draft across updates/reorder, but resets a 
     act(() => { (pending.items as Signal<typeof pending.items.value>).value = [original[1]!, { ...original[0]!, question:"Updated same message" }]; });
     // Keep the original picked message selected, rather than silently switching with order.
     expect(el.querySelector("textarea")).toBe(box); expect(box.value).toBe("synthetic draft");
-    expect(el.querySelector(".q .t")?.textContent).toBe("Updated same message");
+    expect(el.querySelector(".q .question-card-text")?.textContent).toBe("Updated same message");
     act(() => { (pending.items as Signal<typeof pending.items.value>).value = [original[1]!]; });
     expect(el.querySelector("textarea")).not.toBe(box); expect(el.querySelector<HTMLTextAreaElement>("textarea")?.value).toBe("");
   } finally { model.dispose(); }
@@ -1396,7 +1396,7 @@ it("real HumanInbox reread does not transiently unmount or lose the message draf
     const el=draw(model); const box=el.querySelector("textarea")!; expect(box).toBeTruthy();
     act(()=>{box.value="kept draft";box.dispatchEvent(new Event("input",{bubbles:true}));});
     act(()=>{(data.threadList as Signal<typeof data.threadList.value>).value={...data.threadList.value,loading:true};});
-    expect(el.querySelector("textarea")).toBe(box);expect(box.value).toBe("kept draft");expect(el.querySelector(".qdetail .empty")).toBeNull();
+    expect(el.querySelector("textarea")).toBe(box);expect(box.value).toBe("kept draft");expect(el.querySelector(".qdetail .empty-state-root")).toBeNull();
     act(()=>{(data.threadList as Signal<typeof data.threadList.value>).value={...data.threadList.value,loading:false,stale:false,loaded:true};});
     expect(el.querySelector("textarea")).toBe(box); await act(async()=>settle(t,db));
     expect(el.querySelector("textarea")).toBe(box);expect(box.value).toBe("kept draft");

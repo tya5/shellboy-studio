@@ -27,7 +27,7 @@ describe('sender facts in the existing conversation',()=>{
     const messages=[...r.host.querySelectorAll('.msg')];
     const one=messages.find(row=>row.textContent?.includes('body-one'))!;
     const two=messages.find(row=>row.textContent?.includes('body-two'))!;
-    const first=one.querySelector('.who a')!,second=two.querySelector('.who a')!;
+    const first=one.querySelector('.message-sender a')!,second=two.querySelector('.message-sender a')!;
     expect(first.textContent).toBe('<Same current title>');expect(second.textContent).toBe('<Same current title>');
     expect(first.getAttribute('href')).toContain('sender-one');expect(second.getAttribute('href')).toContain('sender-two');
     expect(first.getAttribute('href')).not.toBe(second.getAttribute('href'));
@@ -35,13 +35,13 @@ describe('sender facts in the existing conversation',()=>{
     expect(first.getAttribute('aria-label')).toContain('sender-one');expect(second.getAttribute('aria-label')).toContain('sender-two');
     expect(boxes[0]!.textContent).toContain('Self-asserted label: <img src=x onerror=alert(1)>');
     expect(boxes[1]!.textContent).not.toContain('Self-asserted label:');
-    expect(one.querySelector('.who img, .sender-fact img')).toBeNull();
-    expect(two.querySelector('.who img, .sender-fact img')).toBeNull();
+    expect(one.querySelector('.message-sender img, .sender-fact img')).toBeNull();
+    expect(two.querySelector('.message-sender img, .sender-fact img')).toBeNull();
     expect(boxes[0]!.textContent).not.toContain('<Same current title>');
   });
   it('does not call malformed model identity You or invent a sender ID for CLI/human',async()=>{
     const r=await rig();const messages=[...r.host.querySelectorAll('.msg')];const unknown=messages.find(e=>e.textContent?.includes('body-unknown'))!;
-    expect(unknown.textContent).toContain('Model sender (identity unavailable)');expect(unknown.querySelector('.who')!.textContent).not.toBe('You');
+    expect(unknown.textContent).toContain('Model sender (identity unavailable)');expect(unknown.querySelector('.message-sender')!.textContent).not.toBe('You');
     for(const id of ['human','cli'])expect(messages.find(e=>e.textContent?.includes(`body-${id}`))!.querySelector('.sender-fact')).toBeNull();
   });
 });

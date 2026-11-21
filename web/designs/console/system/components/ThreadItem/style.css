@@ -1,21 +1,21 @@
-.tree-item{content-visibility:auto;contain-intrinsic-size:auto var(--size-control);display:flex;align-items:center;gap:var(--space-8);min-height:var(--size-control);padding:0 var(--space-8);border-radius:var(--radius-s);color:var(--fg);text-decoration:none;font:var(--type-label);min-width:0}
-.tree-item span.name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.tree-item:hover{background:var(--hover)}
-.tree-item:has(> .tree-link[aria-current=true]){background:var(--accent-bg);color:var(--fg)}
-.tree-item.child{color:var(--muted)}
-.tree-item .count{min-width:18px;padding:0 5px}
+.thread-item-root{content-visibility:auto;contain-intrinsic-size:auto var(--size-control);display:flex;align-items:center;gap:var(--space-8);min-height:var(--size-control);padding:0 var(--space-8);border-radius:var(--radius-s);color:var(--fg);text-decoration:none;font:var(--type-label);min-width:0}
+.thread-item-root span.thread-item-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.thread-item-root:hover{background:var(--hover)}
+.thread-item-root:has(> .tree-link[aria-current=true]){background:var(--accent-bg);color:var(--fg)}
+.thread-item-root.thread-item-child{color:var(--muted)}
+.thread-item-root .count{min-width:18px;padding:0 5px}
 @container app (max-width:899px){
-  .tree-item{min-height:var(--size-touch)}
-  .tree-item{contain-intrinsic-size:auto var(--size-touch)}
+  .thread-item-root{min-height:var(--size-touch)}
+  .thread-item-root{contain-intrinsic-size:auto var(--size-touch)}
 }
-.tree-item .tree-link{display:flex;align-items:center;flex:1;min-width:0;gap:var(--space-8);color:inherit;text-decoration:none}
-.tree-item .tree-action{display:flex;flex:none;margin-left:auto;width:var(--size-row-action);visibility:hidden}
-.tree-item:has(> .tree-link[aria-current=true]) .tree-action{visibility:visible}
-.tree-item:has(.tree-action) .tree-link .name{display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.thread-item-root .tree-link{display:flex;align-items:center;flex:1;min-width:0;gap:var(--space-8);color:inherit;text-decoration:none}
+.thread-item-root .tree-action{display:flex;flex:none;margin-left:auto;width:var(--size-row-action);visibility:hidden}
+.thread-item-root:has(> .tree-link[aria-current=true]) .tree-action{visibility:visible}
+.thread-item-root:has(.tree-action) .tree-link .thread-item-name{display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 @media (hover: hover){
-  .tree-item:hover .tree-action{visibility:visible}
-  .tree-item:focus-within .tree-action{visibility:visible}
+  .thread-item-root:hover .tree-action{visibility:visible}
+  .thread-item-root:focus-within .tree-action{visibility:visible}
 }
 @media (hover: none){
-  .tree-item .tree-action{width:var(--size-row-action-touch);visibility:visible}
+  .thread-item-root .tree-action{width:var(--size-row-action-touch);visibility:visible}
 }

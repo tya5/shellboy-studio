@@ -1,1 +1,13 @@
 
+.btn-primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent);font-weight:600}
+.btn-primary:hover{background:var(--accent)}
+.btn-warn{border-color:var(--wait);color:var(--wait)}
+.btn-stop{border-color:var(--bad);color:var(--bad)}
+.btn-icon{width:var(--size-control);padding:0}
+.btn-link{border-color:transparent;color:var(--accent)}
+.btn-quiet{border-color:transparent;background:transparent}
+.btn-quiet:hover{background:var(--hover)}
+.btn-quiet:focus-visible{background:var(--hover)}
+@container app (max-width:899px){
+  .btn-icon{width:var(--size-touch)}
+}

@@ -66,7 +66,7 @@ async function bodyReadControlCase(partial: boolean) {
   const fresh = f.t.calls("history.get").slice(beforeClick);
   expect(fresh).toHaveLength(1);
   expect(requestedHistoryNode(fresh[0]!)).toBe("savedassistant");
-  expect(olderRow!.querySelector(".md")?.textContent).toContain(partial ? "older full" : "older deferred full");
+  expect(olderRow!.querySelector(".message-markdown")?.textContent).toContain(partial ? "older full" : "older deferred full");
  } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
 }
 
@@ -86,7 +86,7 @@ it("auto-loads one authoritative body for ordered prose leaves", async () => {
  const context:DesignContext={model:f.model,prefs:signal(loadPrefs({read:()=>null,write:()=>{}},[{name:'console',themes:[{name:'light'}]}])),setPrefs:()=>{},designs:[],submitToken:async()=>false};
  try{await act(async()=>{render(<App context={context}/>,host);await settle(f.t,f.db);});
   const reads=f.t.calls('history.get');expect(reads).toHaveLength(1);expect(requestedHistoryNode(reads[0]!)).toBe('two-prose');
-  const bodies=[...host.querySelectorAll('[data-node="two-prose"] .md')].map(node=>node.textContent?.trim());
+  const bodies=[...host.querySelectorAll('[data-node="two-prose"] .message-markdown')].map(node=>node.textContent?.trim());
   expect(bodies).toEqual(['FIRST FULL\nSECOND FULL']);
   expect(bodies.filter(text=>text?.includes('FIRST FULL'))).toHaveLength(1);
   expect(bodies.filter(text=>text?.includes('SECOND FULL'))).toHaveLength(1);
@@ -133,13 +133,13 @@ for(const savedBeforeAck of [false,true])it(`submitted message remains separate 
   }
   await act(async()=>{f.t.ok(call.id,{message_id:'canonical-own',thread_id:'t'});await flush(8);});expect(f.model.sendState.peek().kind).toBe('idle');expect(composer.value).toBe('');
   expect(host.querySelector('[data-pending-phase="sending"]')).toBeNull();
-  if(savedBeforeAck){expect(host.querySelector('[data-pending-own-message]')).toBeNull();expect(host.querySelectorAll('[data-node="canonical-own"] .md')).toHaveLength(1);return;}
+  if(savedBeforeAck){expect(host.querySelector('[data-pending-own-message]')).toBeNull();expect(host.querySelectorAll('[data-node="canonical-own"] .message-markdown')).toHaveLength(1);return;}
   expect(host.querySelector('[data-pending-phase="accepted"]')).not.toBeNull();
   expect(host.querySelectorAll('[data-pending-own-message]')).toHaveLength(1);
   const acceptedRow=host.querySelector('[data-pending-phase="accepted"]')!;
-  expect(acceptedRow.querySelector('.who > small.mono')?.textContent).toBe(f.model.t.value('composer.pending.accepted'));
+  expect(acceptedRow.querySelector('.message-sender > small.mono')?.textContent).toBe(f.model.t.value('composer.pending.accepted'));
   expect(acceptedRow.querySelector('.msg > small')).toBeNull();
-  expect(acceptedRow.querySelector('.who > small.mono')?.parentElement?.className).toBe('who');
+  expect(acceptedRow.querySelector('.message-sender > small.mono')?.parentElement?.className).toBe('message-sender');
   await act(async()=>{composer.value='Next unsent draft';composer.dispatchEvent(new Event('input',{bubbles:true}));});
   expect(composer.value).toBe('Next unsent draft');
   await act(async()=>{composer.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));await flush(4);});
@@ -157,14 +157,14 @@ for(const savedBeforeAck of [false,true])it(`submitted message remains separate 
   rows=[{...equalText,node_id:'canonical-own',selection:{ordinal:0}}];f.db.history.t=rows;
   await act(async()=>{f.t.push({t:'changed',thread_ids:['t'],list:false});await settle(f.t,f.db);});
   expect([...host.querySelectorAll('[data-pending-own-message]')].map(row=>row.textContent)).toEqual([expect.stringContaining('Next unsent draft')]);
-  expect(host.querySelectorAll('[data-node="canonical-own"] .md')).toHaveLength(1);
+  expect(host.querySelectorAll('[data-node="canonical-own"] .message-markdown')).toHaveLength(1);
   rows=[...rows,{...equalText,node_id:'second-canonical',selection:{ordinal:1},items:[{kind:'text',item_identity:'second',text:'Next unsent draft',text_complete:true}]}];f.db.history.t=rows;
   await act(async()=>{f.t.push({t:'changed',thread_ids:['t'],list:false});await settle(f.t,f.db);});
   expect(host.querySelector('[data-pending-own-message]')).toBeNull();
-  expect(host.querySelectorAll('[data-node="canonical-own"] .md')).toHaveLength(1);
-  expect(host.querySelectorAll('[data-node="second-canonical"] .md')).toHaveLength(1);
+  expect(host.querySelectorAll('[data-node="canonical-own"] .message-markdown')).toHaveLength(1);
+  expect(host.querySelectorAll('[data-node="second-canonical"] .message-markdown')).toHaveLength(1);
   await act(async()=>{composer.value='Third ready draft';composer.dispatchEvent(new Event('input',{bubbles:true}));});
-  expect(host.querySelector<HTMLButtonElement>('.composer button:last-child')?.disabled).toBe(false);
+  expect(host.querySelector<HTMLButtonElement>('.composer-root button:last-child')?.disabled).toBe(false);
  }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
 });
 it('an old acknowledgement never clears a newer draft generation',async()=>{
@@ -269,7 +269,7 @@ for (const renderMode of ['app','ordered'] as const) it(`actual own cohort diffe
   await sendAndAck('Original A','a');await sendAndAck('Original B','b');
   expect(f.model.acceptedOwnMessages.peek().map(row=>row.messageId)).toEqual(['a','b']);expect(host.querySelectorAll('[data-pending-own-message]')).toHaveLength(2);
   f.db.history.t=[node('a'),node('b','Saved B',true)];await act(paint);expect(host.querySelectorAll('[data-pending-own-message]')).toHaveLength(1);expect(host.querySelectorAll('.msg')).toHaveLength(2);
-  f.db.history.t=[node('a','Saved A',true),node('b','Saved B',true)];await act(paint);expect(host.querySelectorAll('[data-pending-own-message]')).toHaveLength(0);expect(host.querySelectorAll('.msg')).toHaveLength(2);expect([...host.querySelectorAll('.md')].map(x=>x.textContent?.trim())).toEqual(['Saved A','Saved B']);
+  f.db.history.t=[node('a','Saved A',true),node('b','Saved B',true)];await act(paint);expect(host.querySelectorAll('[data-pending-own-message]')).toHaveLength(0);expect(host.querySelectorAll('.msg')).toHaveLength(2);expect([...host.querySelectorAll('.message-markdown')].map(x=>x.textContent?.trim())).toEqual(['Saved A','Saved B']);
  }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
 });
 it('actual committed local region rejects stale cohort retirement and retires once after the echo',async()=>{
@@ -316,10 +316,10 @@ for(const withPrefix of [false,true])for(const ids of [['2'],['2','3','4','5']])
   const prefixTexts=prefixRows.flatMap(row=>row.items?.flatMap(item=>item.kind==='text'?[item.text]:[])??[]);
   const ownTexts=ids.map(id=>`Diagnostic own ${id}`),expectedBefore=[...prefixTexts,'Diagnostic assistant receipt response',...ownTexts];
   f.db.history.t=[...prefixRows,assistantRow];revision++;await act(async()=>{f.t.push({t:'changed',thread_ids:['t'],list:false});await settle(f.t,f.db);await flush(12);});
-  expect(host.querySelectorAll('[data-pending-own-message]')).toHaveLength(ids.length);expect([...host.querySelectorAll('.msg')].map(row=>row.querySelector('.md')?.textContent?.trim())).toEqual(expectedBefore);const assistant=host.querySelector('[data-node="assistant-arrival"]');
+  expect(host.querySelectorAll('[data-pending-own-message]')).toHaveLength(ids.length);expect([...host.querySelectorAll('.msg')].map(row=>row.querySelector('.message-markdown')?.textContent?.trim())).toEqual(expectedBefore);const assistant=host.querySelector('[data-node="assistant-arrival"]');
   const savedOwnRows=ids.map((id,index)=>({node_id:`own-${id}`,kind:'user' as const,selection:{ordinal:prefixRows.length+1+index},items:[{kind:'text' as const,item_identity:`body-${id}`,text:`Diagnostic own ${id}`,text_complete:true}]}));
   f.db.history.t=[...prefixRows,assistantRow,...savedOwnRows];revision+=5;await act(async()=>{f.t.push({t:'changed',thread_ids:['t'],list:false});await settle(f.t,f.db);await flush(12);});
-  expect([...host.querySelectorAll('.msg')].map(row=>row.querySelector('.md')?.textContent?.trim())).toEqual(expectedBefore);expect(host.querySelectorAll('[data-pending-own-message]')).toHaveLength(0);expect(f.model.acceptedOwnMessages.peek()).toHaveLength(0);expect(host.querySelector('[data-node="assistant-arrival"]')).toBe(assistant);
+  expect([...host.querySelectorAll('.msg')].map(row=>row.querySelector('.message-markdown')?.textContent?.trim())).toEqual(expectedBefore);expect(host.querySelectorAll('[data-pending-own-message]')).toHaveLength(0);expect(f.model.acceptedOwnMessages.peek()).toHaveLength(0);expect(host.querySelector('[data-node="assistant-arrival"]')).toBe(assistant);
  }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
 });
 it('Composer clears the reserved original immediately while ACK is held and preserves the next draft',async()=>{
@@ -480,7 +480,7 @@ it('accepted live preview retires after saved >16KiB body loads through the ordi
   await act(async()=>{(button as HTMLButtonElement).click();await settle(f.t,f.db)});
   const fresh=f.t.calls('history.get').slice(beforeClick);
   expect(fresh).toHaveLength(1);expect(requestedHistoryNode(fresh[0]!)).toBe('saved-assistant');
-  expect(olderRow!.querySelector('.md')?.textContent).toContain('FULL_BODY');
+  expect(olderRow!.querySelector('.message-markdown')?.textContent).toContain('FULL_BODY');
   expect(tuples.length).toBeGreaterThan(1);stopAccepted();stopLive();
  }finally{render(null,host);host.remove();f.data.stop()}
 });
@@ -508,7 +508,7 @@ it("mounted stale auto body refuses an old cursor after rev2/rev3 windows", asyn
   expect(f.model.longReader.peek()!.acceptedView.peek().revision,JSON.stringify(windowTrace)).toBe(3);
   expect(f.model.handle.peek()).toBe(rev2Handle);expect(f.model.longReader.peek()).toBe(rev2Reader);expect(f.model.bodyCacheKey('old-tail')).toBe(oldKey);expect(f.model.bodies.peek().get(oldKey)).toBe(rev2Body);expect(f.model.bodies.peek().get(oldKey)).toMatchObject({loading:true});expect(f.model.longReader.peek()!.acceptedView.peek().rows.map(row=>row.node_id)).toEqual(['old-tail','new-tail']);expect(host.querySelector('[data-node="new-tail"]')?.textContent).toContain('new complete');
   f.t.ok(oldCall!.id,{node_id:'old-tail',kind:'assistant_response',text:'OLD_FULL_SHOULD_NOT_RENDER',next_cursor:'stale-next'});await flush(8);
-  expect(f.t.calls('history.get')).toHaveLength(1);expect(f.model.bodies.peek().get(oldKey)).toBeUndefined();const oldMarkdown=[...host.querySelectorAll('[data-node="old-tail"] .md')].map(node=>node.textContent??'').join('\n');expect(oldMarkdown).not.toContain('OLD_FULL_SHOULD_NOT_RENDER');expect(oldMarkdown).toContain('old prefix');
+  expect(f.t.calls('history.get')).toHaveLength(1);expect(f.model.bodies.peek().get(oldKey)).toBeUndefined();const oldMarkdown=[...host.querySelectorAll('[data-node="old-tail"] .message-markdown')].map(node=>node.textContent??'').join('\n');expect(oldMarkdown).not.toContain('OLD_FULL_SHOULD_NOT_RENDER');expect(oldMarkdown).toContain('old prefix');
  }finally{restoreResponder?.();restoreReadWindow?.();render(null,host);host.remove();f.model.dispose();f.data.stop();}
 });
 
@@ -529,6 +529,6 @@ it("mounted click joins the held old cursor read", async () => {
   expect(f.model.handle.peek()).toBe(rev2Handle);expect(f.model.longReader.peek()).toBe(rev2Reader);expect(f.model.bodyCacheKey('old-tail')).toBe(oldKey);expect(f.model.bodies.peek().get(oldKey)).toBe(rev2Body);expect(f.model.bodies.peek().get(oldKey)).toMatchObject({loading:true});expect(f.model.longReader.peek()!.acceptedView.peek().rows.map(row=>row.node_id)).toEqual(['old-tail','new-tail']);expect(host.querySelector('[data-node="new-tail"]')?.textContent).toContain('new complete');
   f.t.ok(oldCall!.id,{node_id:'old-tail',kind:'assistant_response',text:'OLD_PREFIX\nOLD_FULL',next_cursor:'stale-next'});await flush(6);
   expect(f.t.calls('history.get').map(call=>call.args)).toEqual([{node_id:'old-tail'},{node_id:'old-tail',cursor:'stale-next'}]);const cursorCall=f.t.calls('history.get')[1]!;f.t.ok(cursorCall.id,{node_id:'old-tail',kind:'assistant_response',text:'\nOLD_REST'});await flush(8);
-  expect(f.t.calls('history.get').map(call=>call.args)).toEqual([{node_id:'old-tail'},{node_id:'old-tail',cursor:'stale-next'}]);expect(f.model.bodies.peek().get(oldKey)?.text).toBe('OLD_PREFIX\nOLD_FULL\nOLD_REST');const oldMarkdown=[...host.querySelectorAll('[data-node="old-tail"] .md')].map(node=>(node.textContent??'').replace(/\s+$/,'')).join('\n');expect(oldMarkdown).toBe('OLD_PREFIX\nOLD_FULL\nOLD_REST');
+  expect(f.t.calls('history.get').map(call=>call.args)).toEqual([{node_id:'old-tail'},{node_id:'old-tail',cursor:'stale-next'}]);expect(f.model.bodies.peek().get(oldKey)?.text).toBe('OLD_PREFIX\nOLD_FULL\nOLD_REST');const oldMarkdown=[...host.querySelectorAll('[data-node="old-tail"] .message-markdown')].map(node=>(node.textContent??'').replace(/\s+$/,'')).join('\n');expect(oldMarkdown).toBe('OLD_PREFIX\nOLD_FULL\nOLD_REST');
  }finally{restoreResponder?.();render(null,host);host.remove();f.model.dispose();f.data.stop();}
 });

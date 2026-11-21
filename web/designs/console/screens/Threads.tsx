@@ -285,7 +285,7 @@ export function Threads({ model }: { model: AppModel }) {
       ) : null}
       <div class="org-rows" ref={rowListRef} onFocusIn={(event) => {
         const target = event.target as HTMLElement;
-        const link = target.closest<HTMLAnchorElement>('a[id^="thread-link-page-"]') ?? target.closest<HTMLElement>(".srow")?.querySelector<HTMLAnchorElement>('a[id^="thread-link-page-"]');
+        const link = target.closest<HTMLAnchorElement>('a[id^="thread-link-page-"]') ?? target.closest<HTMLElement>("[data-thread-row]")?.querySelector<HTMLAnchorElement>('a[id^="thread-link-page-"]');
         if (!link) {
           lastListFocus.current = undefined;
           return;

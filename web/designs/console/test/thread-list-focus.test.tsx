@@ -44,7 +44,7 @@ function rowLinks(rig: Rig): HTMLAnchorElement[] {
 }
 
 async function openDelete(rig: Rig, link: HTMLAnchorElement): Promise<HTMLDialogElement> {
-  const row = link.closest<HTMLElement>(rig.screen === "threads" ? ".srow" : ".tree-item");
+  const row = link.closest<HTMLElement>(rig.screen === "threads" ? "[data-thread-row]" : "[data-thread-row]");
   if (!row) throw new Error("Expected an actual rendered thread row");
   await act(async () => {
     row.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 2, clientX: 20, clientY: 20 }));

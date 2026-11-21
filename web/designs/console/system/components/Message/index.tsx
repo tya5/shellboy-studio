@@ -23,10 +23,10 @@ export function Markdown({ text, copyLabel, copiedLabel }: { text: string; copyL
     if (!create) void loadRenderer().then((c) => setCreate(() => c));
   }, [create]);
   const html = useMemo(() => (create ? create(copyLabel)(text) : undefined), [create, copyLabel, text]);
-  if (html === undefined) return <div class="md plain">{text}</div>;
+  if (html === undefined) return <div class="message-markdown message-plain">{text}</div>;
   return (
     <div
-      class="md"
+      class="message-markdown"
       dangerouslySetInnerHTML={{ __html: html }}
       onClick={(e) => {
         const target = e.target as HTMLElement;
@@ -39,11 +39,11 @@ export function Markdown({ text, copyLabel, copiedLabel }: { text: string; copyL
 export function Message({ bot, who, at, text, copyLabel, copiedLabel, children }: { bot: boolean; who: string | {readonly label:string;readonly href:string;readonly sourceId:string;readonly role:string;readonly fallbackId?:string}; at?: string | undefined; text: string; copyLabel: string; copiedLabel: string; children?: ComponentChildren }) {
   return (
     <div class="msg">
-      <div class={bot ? "av bot" : "av"}>
+      <div class={bot ? "av message-bot" : "av"}>
         {bot ? <img class="character-avatar" src={characterAssets.neutral} alt="" /> : <Icon role="message.user" />}
       </div>
       <div>
-        <div class="who">
+        <div class="message-sender">
           {typeof who === "string" ? who : <a href={who.href} title={who.sourceId} aria-label={`${who.role}: ${who.label} (${who.sourceId})`}>{who.label}{who.fallbackId ? <> <code class="sender-id">{who.fallbackId}</code></> : null}</a>}
           {at ? <small class="mono">{at}</small> : null}
         </div>

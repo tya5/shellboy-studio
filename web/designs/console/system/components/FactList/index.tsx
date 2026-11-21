@@ -15,7 +15,7 @@ export function FactList({ facts, missing }: { facts: Fact[]; missing: string })
   return (
     <dl class="facts">
       {facts.map((f) => (
-        <div class="fact" key={f.label}>
+        <div class="fact-list-row" key={f.label}>
           <dt>{f.label}</dt>
           <dd>
             {f.control ? f.control : f.value !== undefined ? <span class={f.mono ? "mono" : undefined}>{f.value}</span> : <span class="muted">{missing}</span>}

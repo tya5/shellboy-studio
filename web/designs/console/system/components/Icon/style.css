@@ -1,3 +1,3 @@
 .i{width:var(--size-icon);height:var(--size-icon);flex:none;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
-.i.small{width:var(--size-icon-small);height:var(--size-icon-small)}
-.i.menu{width:var(--size-icon-menu);height:var(--size-icon-menu)}
+.i.icon-small{width:var(--size-icon-small);height:var(--size-icon-small)}
+.i.icon-menu{width:var(--size-icon-menu);height:var(--size-icon-menu)}

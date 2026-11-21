@@ -141,7 +141,7 @@ describe("Thread row menu and delete", () => {
     act(() => render(treeRow("One"), host));
     const trigger = host.querySelector<HTMLButtonElement>("[aria-haspopup=menu]")!;
     expect(trigger.getAttribute("aria-controls")).toBeTruthy();
-    await act(async () => { host.querySelector<HTMLElement>(".tree-item")!.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 123, clientY: 234 })); await Promise.resolve(); });
+    await act(async () => { host.querySelector<HTMLElement>("[data-thread-row]")!.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 123, clientY: 234 })); await Promise.resolve(); });
     const menu = document.body.querySelector<HTMLElement>("[role=menu]")!;
     expect(menu.id).toBe(trigger.getAttribute("aria-controls"));
     expect(menu.getAttribute("aria-labelledby")).toBe(trigger.id);
@@ -153,7 +153,7 @@ describe("Thread row menu and delete", () => {
     const host = document.createElement("div");
     document.body.append(host);
     act(() => render(treeRow("One"), host));
-    await act(async () => { host.querySelector<HTMLElement>(".tree-item")!.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true })); await Promise.resolve(); });
+    await act(async () => { host.querySelector<HTMLElement>("[data-thread-row]")!.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true })); await Promise.resolve(); });
     expectVisibleMenu();
     act(() => render(null, host)); host.remove();
   });
@@ -161,7 +161,7 @@ describe("Thread row menu and delete", () => {
     const host = document.createElement("div");
     document.body.append(host);
     act(() => render(selectRow("One"), host));
-    const row = host.querySelector<HTMLElement>(".srow")!;
+    const row = host.querySelector<HTMLElement>("[data-thread-row]")!;
     const link = row.querySelector<HTMLAnchorElement>("a")!;
     link.focus();
     expect(document.activeElement).toBe(link);
@@ -177,7 +177,7 @@ describe("Thread row menu and delete", () => {
     document.body.append(host);
     act(() => render(<>{treeRow("One")}{treeRow("Two")}</>, host));
     const triggers = [...host.querySelectorAll<HTMLButtonElement>("[aria-haspopup=menu]")];
-    const secondRow = host.querySelectorAll<HTMLElement>(".tree-item")[1]!;
+    const secondRow = host.querySelectorAll<HTMLElement>("[data-thread-row]")[1]!;
     const secondClick = vi.fn();
     const secondContextMenu = vi.fn();
     triggers[1]!.addEventListener("click", secondClick);
@@ -220,11 +220,11 @@ describe("Thread row menu and delete", () => {
     act(() => render(<>{treeRow("One")}{treeRow("Two")}{selectRow("Three")}{selectRow("Four")}</>, host));
     expect(window.matchMedia("(hover: none)").matches).toBe(true);
     expect(window.matchMedia("(hover: hover)").matches).toBe(false);
-    expect(touchVisibilityRules).toMatch(/@media \(hover: none\)[\s\S]*?\.tree-item \.tree-action\{[^}]*visibility:visible/);
+    expect(touchVisibilityRules).toMatch(/@media \(hover: none\)[\s\S]*?\.thread-item-root \.tree-action\{[^}]*visibility:visible/);
     expect(touchVisibilityRules).toMatch(/width:var\(--size-row-action-touch\)/);
     expect(rowActionCss).toMatch(/\[data-menu-open=true\] \.tree-action/);
     expect(rowActionCss).toMatch(/\[data-menu-open=true\] \.srow-menu/);
-    const rows = [...host.querySelectorAll<HTMLElement>(".tree-item, .srow")];
+    const rows = [...host.querySelectorAll<HTMLElement>("[data-thread-row]")];
     expect(rows).toHaveLength(4);
     expect(rows.every((item) => item.querySelector(".tree-action, .srow-menu") !== null)).toBe(true);
     const triggers = [...host.querySelectorAll<HTMLButtonElement>("[aria-haspopup=menu]")];

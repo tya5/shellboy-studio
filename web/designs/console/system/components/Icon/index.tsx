@@ -195,6 +195,6 @@ function glyphForRole(role: IconRole) {
 type IconSize = "default" | "small" | "menu";
 
 export function Icon({ role, size = "default" }: { role: IconRole; size?: IconSize }) {
-  const sizeClass = size === "default" ? "" : ` ${size}`;
+  const sizeClass = size === "small" ? " icon-small" : size === "menu" ? " icon-menu" : "";
   return <svg class={`i${sizeClass}`} viewBox="0 0 24 24" aria-hidden="true">{glyphForRole(role)}</svg>;
 }

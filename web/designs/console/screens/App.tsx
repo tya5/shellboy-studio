@@ -146,7 +146,7 @@ export function App({ context }: { context: DesignContext }) {
           </div>
           <div class="side-list" ref={sidebarListRef} onFocusIn={(event) => {
             const target = event.target as HTMLElement;
-            const link = target.closest<HTMLAnchorElement>('a[id^="thread-link-sidebar-"]') ?? target.closest<HTMLElement>(".tree-item")?.querySelector<HTMLAnchorElement>('a[id^="thread-link-sidebar-"]');
+            const link = target.closest<HTMLAnchorElement>('a[id^="thread-link-sidebar-"]') ?? target.closest<HTMLElement>("[data-thread-row]")?.querySelector<HTMLAnchorElement>('a[id^="thread-link-sidebar-"]');
             if (!link) return;
             const links = sidebarLinks();
             rememberSidebarPositions(links);

@@ -23,7 +23,7 @@ async function fixture() {
   const { model } = await fixtureModel({ route: "inbox", pending }); close = () => model.dispose();
   host = document.createElement("div"); document.body.append(host);
   const draw = () => act(() => render(<Inbox model={model} />, host!));
-  const frame = async () => { await act(async () => { await new Promise<void>(resolve => requestAnimationFrame(() => resolve())); }); return { empty: !!host!.querySelector(".empty"), question: host!.querySelector(".q .t")?.textContent, text: host!.textContent }; };
+  const frame = async () => { await act(async () => { await new Promise<void>(resolve => requestAnimationFrame(() => resolve())); }); return { empty: !!host!.querySelector(".empty-state-root"), question: host!.querySelector(".q .question-card-text")?.textContent, text: host!.textContent }; };
   return { items, loading, stale, error, draw, frame };
 }
 for (const state of ["loading", "stale"] as const) it(`does not paint confirmed empty while ${state} before the first question`, async () => {
@@ -83,8 +83,8 @@ it("holds the successful page across several RAFs while a real synthetic transpo
   const pending = humanPage(); expect(inbox.loading.peek()).toBe(true);
   for (let frame = 0; frame < 3; frame++) {
     await act(async () => { await new Promise<void>(resolve => requestAnimationFrame(() => resolve())); });
-    expect(host!.querySelector(".empty")).toBeNull(); expect(host!.querySelector(".q .t")?.textContent).toBe(question.question); expect(inbox.items.peek()).toBe(before);
+    expect(host!.querySelector(".empty-state-root")).toBeNull(); expect(host!.querySelector(".q .question-card-text")?.textContent).toBe(question.question); expect(inbox.items.peek()).toBe(before);
   }
   transport.ok(pending.id, { items: [] }); await act(async () => { await flush(); });
-  expect(inbox.items.peek()).toEqual([]); expect(host!.querySelector(".empty")).not.toBeNull();
+  expect(inbox.items.peek()).toEqual([]); expect(host!.querySelector(".empty-state-root")).not.toBeNull();
 });

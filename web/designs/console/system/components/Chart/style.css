@@ -1,6 +1,6 @@
-.chart h3{margin:0;font:var(--type-heading)}
-.chart{margin:0;display:flex;flex-direction:column;gap:var(--space-8);padding:var(--space-16);border:1px solid var(--line);border-radius:var(--radius);background:var(--panel);min-width:0}
-.chart>.sect-source{margin-top:auto}
+.chart-figure h3{margin:0;font:var(--type-heading)}
+.chart-figure{margin:0;display:flex;flex-direction:column;gap:var(--space-8);padding:var(--space-16);border:1px solid var(--line);border-radius:var(--radius);background:var(--panel);min-width:0}
+.chart-figure>.sect-source{margin-top:auto}
 .chart-head{display:flex;flex-direction:column;gap:var(--space-4)}
 .legend{margin:0;padding:0;list-style:none;display:flex;flex-wrap:wrap;gap:var(--space-4) var(--space-12);font:var(--type-caption);color:var(--muted)}
 .legend li{display:flex;align-items:center;gap:var(--space-8)}
@@ -47,5 +47,5 @@
 .chart-table[open] summary{margin-bottom:var(--space-8)}
 @container app (max-width:899px){
   .chart-table summary{min-height:var(--size-touch)}
-  .chart{padding:var(--space-12)}
+  .chart-figure{padding:var(--space-12)}
 }

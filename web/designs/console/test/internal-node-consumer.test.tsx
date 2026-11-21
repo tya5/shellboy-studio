@@ -33,15 +33,15 @@ it('actual shared classifier consumer: classifies internal node kinds before tex
    const items=[...host.querySelectorAll(`[data-node="${node.node_id}"]`)];expect(items).toHaveLength(1);
    expect(items[0]!.closest('[data-work-group]')).not.toBeNull();
    expect(items[0]!.querySelector('[data-internal-records]')).not.toBeNull();
-   expect(items[0]!.querySelector('.msg, .md, .who')).toBeNull();
+   expect(items[0]!.querySelector('.msg, .message-markdown, .message-sender')).toBeNull();
    expect(host.textContent).not.toContain(node.items![0]!.kind==='text'?node.items![0]!.text:'');
   }
   const human=host.querySelector('[data-node="human-mentions-event"]')!;
-  expect(human.closest('[data-work-group]')).toBeNull();expect(human.querySelector('.who')?.textContent).toContain(f.model.t.value('convo.you'));
-  expect(human.querySelector('.md')?.textContent).toContain('Please explain Shellboy event/context. Keep this human text.');
+  expect(human.closest('[data-work-group]')).toBeNull();expect(human.querySelector('.message-sender')?.textContent).toContain(f.model.t.value('convo.you'));
+  expect(human.querySelector('.message-markdown')?.textContent).toContain('Please explain Shellboy event/context. Keep this human text.');
   const received=host.querySelector('[data-node="received-user"]')!;
-  expect(received.closest('[data-work-group]')).toBeNull();expect(received.querySelector('.md')?.textContent).toContain('Legitimate received user message');
-  const sourceLink=received.querySelector('.who a')!;
+  expect(received.closest('[data-work-group]')).toBeNull();expect(received.querySelector('.message-markdown')?.textContent).toContain('Legitimate received user message');
+  const sourceLink=received.querySelector('.message-sender a')!;
   expect(sourceLink.textContent).toContain('syntheti');
   expect(sourceLink.getAttribute('href')).toContain('synthetic-sender');
   expect(sourceLink.getAttribute('title')).toBe('synthetic-sender');
@@ -87,7 +87,7 @@ it('Core302 notification descriptors reach actual App through the issued Work bu
    const row=node.querySelector('.work-element-row')!;
    expect(row.querySelector('.work-element-row__content')?.textContent).toBe(label);
    expect(row.querySelector('.work-element-row__line')?.getAttribute('aria-label')).toContain(label);
-   expect(row.querySelector('.msg, .md, textarea, button, details')).toBeNull();
+   expect(row.querySelector('.msg, .message-markdown, textarea, button, details')).toBeNull();
    if(index!==6)expect(row.getAttribute('data-state-value')).toBeNull();
   }
   const shell=host.querySelector('[data-node="notification-6"] .work-element-row')!;
@@ -101,10 +101,10 @@ it('Core302 notification descriptors reach actual App through the issued Work bu
   }
   expect(host.textContent).not.toContain('PRIVATE-');expect(host.textContent).not.toContain('invalid-exec');
   const human=host.querySelector('[data-node="human-invalid-notification"]')!;
-  expect(human.querySelector('.md')?.textContent).toContain('Human body survives invalid optional notification');expect(human.querySelector('.who')?.textContent).toContain(f.model.t.value('convo.you'));
+  expect(human.querySelector('.message-markdown')?.textContent).toContain('Human body survives invalid optional notification');expect(human.querySelector('.message-sender')?.textContent).toContain(f.model.t.value('convo.you'));
   const received=host.querySelector('[data-node="received-invalid-notification"]')!;
-  expect(received.querySelector('.md')?.textContent).toContain('Received body survives invalid optional notification');
-  expect(received.querySelector('.who a')?.getAttribute('href')).toContain('full-notification-source');expect(received.textContent).toContain('Claimed <source>');expect(received.querySelector('source')).toBeNull();
+  expect(received.querySelector('.message-markdown')?.textContent).toContain('Received body survives invalid optional notification');
+  expect(received.querySelector('.message-sender a')?.getAttribute('href')).toContain('full-notification-source');expect(received.textContent).toContain('Claimed <source>');expect(received.querySelector('source')).toBeNull();
   const before=f.t.calls().length;
   await act(async()=>{render(<App context={context}/>,host);await settle(f.t,f.db);});
   expect(f.t.calls()).toHaveLength(before);

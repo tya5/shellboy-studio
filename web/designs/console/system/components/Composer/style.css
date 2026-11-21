@@ -1,9 +1,9 @@
-.composer{border:1px solid var(--line-strong);border-radius:var(--radius);background:var(--panel)}
-.composer textarea{display:block;width:100%;min-height:52px;max-height:40vh;padding:var(--space-8) var(--space-12);border:0;background:transparent;resize:none;outline:0}
-.composer:focus-within{outline:2px solid var(--accent);outline-offset:2px}
-.composer .row{display:flex;align-items:center;gap:var(--space-8);padding:var(--space-4) var(--space-8)}
-.composer .hint{font:var(--type-caption);color:var(--muted)}
-.composer .right{margin-left:auto;display:flex;gap:var(--space-8)}
+.composer-root{border:1px solid var(--line-strong);border-radius:var(--radius);background:var(--panel)}
+.composer-root textarea{display:block;width:100%;min-height:52px;max-height:40vh;padding:var(--space-8) var(--space-12);border:0;background:transparent;resize:none;outline:0}
+.composer-root:focus-within{outline:2px solid var(--accent);outline-offset:2px}
+.composer-root .composer-row{display:flex;align-items:center;gap:var(--space-8);padding:var(--space-4) var(--space-8)}
+.composer-root .composer-hint{font:var(--type-caption);color:var(--muted)}
+.composer-root .right{margin-left:auto;display:flex;gap:var(--space-8)}
 @container app (max-width:899px){
-  .composer .hint{display:none}
+  .composer-root .composer-hint{display:none}
 }

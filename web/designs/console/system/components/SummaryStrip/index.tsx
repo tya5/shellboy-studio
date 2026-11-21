@@ -7,7 +7,7 @@ export function SummaryStrip({ label, text }: { label: string; text: string }) {
         <Icon role="summary.details" />
         {label}
       </summary>
-      <div class="body">{text}</div>
+      <div class="summary-strip-body">{text}</div>
     </details>
   );
 }

@@ -13,7 +13,7 @@ export function ChoiceList({ label, choices, value, onChange, mono }: { label: s
   return (
     <div class="choices" role="radiogroup" aria-label={label}>
       {choices.map((c) => (
-        <label key={c.value} class={c.value === value ? "choice on" : "choice"}>
+        <label key={c.value} class={c.value === value ? "choice-list-option on" : "choice-list-option"}>
           <input type="radio" name={groupName} checked={c.value === value} onChange={() => onChange(c.value)} />
           <span class="choice-text">
             <span class={mono ? "mono" : undefined}>{c.label}</span>

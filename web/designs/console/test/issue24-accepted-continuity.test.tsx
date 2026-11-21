@@ -66,7 +66,7 @@ it('keeps initially visible final bodies through live handoff and a refreshed ac
     const visible = () => [...host.querySelectorAll<HTMLElement>('[data-node]')].map(element => ({
       element,
       node: element.getAttribute('data-node'),
-      body: element.querySelector('.md')?.textContent?.trim() ?? null,
+      body: element.querySelector('.message-markdown')?.textContent?.trim() ?? null,
     }));
     const before = visible();
     expect(before.map(row => row.node)).toContain('n4');

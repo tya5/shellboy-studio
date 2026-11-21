@@ -1,21 +1,11 @@
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:var(--space-8);min-height:var(--size-control);padding:0 var(--space-8);border:1px solid var(--line-strong);border-radius:var(--radius-s);background:transparent;color:var(--fg);font:var(--type-label);cursor:pointer;text-decoration:none;white-space:nowrap}
 .btn:hover{background:var(--raised)}
 .btn:disabled{opacity:.55;cursor:not-allowed}
-.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent);font-weight:600}
-.btn.primary:hover{background:var(--accent)}
-.btn.warn{border-color:var(--wait);color:var(--wait)}
-.btn.stop{border-color:var(--bad);color:var(--bad)}
-.btn.icon{width:var(--size-control);padding:0}
-.btn.link{border-color:transparent;color:var(--accent)}
-.btn.quiet{border-color:transparent;background:transparent}
-.btn.quiet:hover{background:var(--hover)}
-.btn.quiet:focus-visible{background:var(--hover)}
 .btn[aria-pressed=true]{background:var(--accent-bg);border-color:var(--accent)}
 .srow-act{flex:none;border:0;background:transparent;color:var(--accent);font:var(--type-caption);cursor:pointer;min-height:24px;padding:0 var(--space-4)}
 .srow-act:hover{text-decoration:underline}
 @container app (max-width:899px){
   .btn{min-height:var(--size-touch)}
   .btn{min-width:var(--size-touch)}
-  .btn.icon{width:var(--size-touch)}
   .srow-act{min-height:var(--size-touch)}
 }
