@@ -148,7 +148,11 @@ describe("components name roles, never values", () => {
     for (const m of css.matchAll(/var\(--([\w-]+)/g)) expect(known.has(m[1]!), m[1]).toBe(true);
   });
   it("only the running ring and loading rows move, and both stop under reduced motion", () => {
-    expect(css.match(/animation:/g)!.length).toBeGreaterThan(0);
+    const animations = [...css.matchAll(/([^{}]+)\{([^{}]*\banimation\s*:\s*([^;}]+)[^{}]*)\}/g)]
+      .filter((match) => match[3]!.trim() !== "none")
+      .map((match) => match[1]!.trim());
+    expect(animations).toHaveLength(2);
+    expect(animations).toEqual(expect.arrayContaining([".st.run .dot", ".loadrow"]));
     expect(css).toMatch(/@media \(prefers-reduced-motion:reduce\)\{\.st\.run \.dot\{animation:none\}\}/);
     expect(css).toMatch(/prefers-reduced-motion:reduce\)\{\.loadrow\{animation:none\}/);
   });

@@ -74,3 +74,5 @@
 @import "./components/WorkElementRow/style.css";
 @import "./components/WorkSheet/style.css";
 @import "./components/useRowMenu/style.css";
+@import "./shared/screen-layout.css";
+@import "./shared/monitor.css";

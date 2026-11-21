@@ -1,0 +1,11 @@
+.top .menu{display:none}
+.top .right{margin-left:auto;display:flex;align-items:center;gap:var(--space-12)}
+.status .right{margin-left:auto;display:flex;gap:var(--space-16)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:var(--space-12)}
+.stack{display:flex;flex-direction:column;gap:var(--space-12);min-width:0}
+.fieldrow .lab{display:flex;flex-direction:column;gap:var(--space-4);font:var(--type-caption);color:var(--muted);width:120px}
+@container app (max-width:899px){
+  .top .menu{display:inline-flex}
+  .grid{grid-template-columns:minmax(0,1fr)}
+}
+.apps-host.off,.appframe.off{display:none}

@@ -22,7 +22,7 @@ export function ModelPicker({ model, details }: { model: AppModel; details: Deta
       {picker.maxTokensState.kind === "unknown" && !picker.clearMaxTokens ? <><p class="caption muted">{t("thread.outputLimitUnknown")}</p><Button disabled={picker.saving || !canEdit} onClick={() => model.clearThreadOutputLimit()}>{t("thread.clearOutputLimit")}</Button></> : <p class="caption muted">{t("thread.outputLimitNote")}</p>}
       <p class="caption muted">{t("thread.agentsTiming")}</p>
       {picker.error ? <Notice tone="bad">{picker.error}</Notice> : null}
-      <div class="row"><Button disabled={picker.saving} onClick={() => model.closeModelPicker()}>{t("model.close")}</Button><Button variant="primary" disabled={!canEdit || picker.saving || !picker.model.trim()} onClick={() => void model.saveThreadModel()}>{t("model.save")}</Button></div>
+      <div class="model-picker-actions"><Button disabled={picker.saving} onClick={() => model.closeModelPicker()}>{t("model.close")}</Button><Button variant="primary" disabled={!canEdit || picker.saving || !picker.model.trim()} onClick={() => void model.saveThreadModel()}>{t("model.save")}</Button></div>
     </div> : null}
   </div>;
 }
