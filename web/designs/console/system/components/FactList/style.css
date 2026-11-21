@@ -1,5 +1,5 @@
-.facts code{font:var(--type-code);font-size:var(--size-caption)}
-.facts{margin:0;display:flex;flex-direction:column}
+.fact-list-root code{font:var(--type-code);font-size:var(--size-caption)}
+.fact-list-root{margin:0;display:flex;flex-direction:column}
 .fact-list-row{display:grid;grid-template-columns:minmax(120px,220px) minmax(0,1fr);gap:var(--space-4) var(--space-12);padding:var(--space-8) 0;border-top:1px solid var(--line);font:var(--type-label)}
 .fact-list-row:first-child{border-top:0;padding-top:0}
 .fact-list-row:last-child{padding-bottom:0}

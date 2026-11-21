@@ -347,7 +347,7 @@ describe("Conversation", () => {
     expect(text(el)).toContain("41k / auto-summary 200k");
     expect(text(el)).not.toContain("Shellboy event v1");
     expect(el.querySelector('.st[data-status="running"]')).toBeTruthy();
-    expect(el.querySelector(".bar i")).toBeTruthy();
+    expect(el.querySelector(".context-bar-meter i")).toBeTruthy();
   });
   it("offers Stop only with an open Run, and the composer needs a connection", async () => {
     const { model, t } = await fixtureModel();
@@ -377,7 +377,7 @@ describe("Conversation", () => {
       t.push({ t: "changed", thread_ids: ["lead"], list: false });
       await (await import("../../../data/test/harness")).settle(t, db);
     });
-    expect(el.querySelector(".ctx")).toBeNull();
+    expect(el.querySelector(".context-bar-root")).toBeNull();
     expect(text(el)).not.toContain("Usage");
   });
 });
@@ -577,7 +577,7 @@ describe("Analytics", () => {
     expect(body).toContain("By model isn't shown");
     expect(body).not.toMatch(/\$\s?\d|USD|¥/);
     // 2026-11-05 to 11-07, three parts each. Small parts stay visible.
-    expect(el.querySelectorAll("figure.chart-figure")[0]!.querySelectorAll("path.fill").length).toBe(9);
+    expect(el.querySelectorAll("figure.chart-figure")[0]!.querySelectorAll("path.chart-fill").length).toBe(9);
     expect(el.querySelector(".chart-svg")!.getAttribute("role")).toBe("img");
     expect(el.querySelector(".chart-svg")!.getAttribute("aria-label")).toContain("7 days");
   });
@@ -637,7 +637,7 @@ describe("Analytics", () => {
     expect(model.route.value).toEqual({ view: "analytics", section: "compaction" });
     expect(text(el)).toContain("Compaction effect");
     expect(el.querySelector(".tbl.stack [data-label='Summary tokens']")).toBeTruthy();
-    expect(el.querySelector(".range")).toBeTruthy();
+    expect(el.querySelector(".range-bar-track")).toBeTruthy();
   });
   it("loading keeps partial values with a Stop; a failure keeps them too", async () => {
     const { model, t, db } = await fixtureModel();
@@ -654,7 +654,7 @@ describe("Analytics", () => {
       await settle(t, db);
     });
     expect(text(el)).toContain("Reading stopped");
-    expect(el.querySelectorAll("figure.chart-figure path.fill").length).toBeGreaterThan(0);
+    expect(el.querySelectorAll("figure.chart-figure path.chart-fill").length).toBeGreaterThan(0);
   });
   it("says Not read until something has been read", async () => {
     const { model, t } = await fixtureModel({ route: "monitor" });
@@ -694,7 +694,7 @@ describe("Branches", () => {
     const { el } = await open();
     expect(el.querySelectorAll(".bgraph-svg .bg-tip").length).toBe(4);
     expect(el.querySelectorAll(".bgraph-svg .bg-point").length).toBe(2);
-    expect(el.querySelector(".edge[aria-current=true]")).toBeTruthy();
+    expect(el.querySelector(".branch-graph-edge[aria-current=true]")).toBeTruthy();
     expect(text(el.querySelector(".bgraph-svg")!)).toContain("101 nodes");
     expect(text(el)).toContain("no shared prefix");
     expect(text(el)).not.toContain("thread.branches");
@@ -1153,7 +1153,7 @@ describe("Setup", () => {
     const el = draw(model);
     expect(text(el)).toContain("Setting up here needs a newer Shellboy");
     expect(text(el)).toContain("shellboy config init");
-    expect(el.querySelector(".choices")).toBeNull();
+    expect(el.querySelector(".choice-list-root")).toBeNull();
   });
 
   it("walks from nothing to saved, empties the key field when sent, and says a restart is needed", async () => {
@@ -1190,7 +1190,7 @@ describe("Setup", () => {
     expect(text(el)).toContain("The model list was fetched: 2 models (HTTP 200).");
     expect(el.querySelector('input[type="password"]')).toBeNull();
     expect(el.innerHTML).not.toContain(KEY);
-    await pump(() => click([...el.querySelectorAll(".choices")].at(-1)!.querySelector("input")));
+    await pump(() => click([...el.querySelectorAll(".choice-list-root")].at(-1)!.querySelector("input")));
     await pump(() => click(button(el, "Save and use this connection")));
     expect(text(el)).toContain("Saved");
     expect(text(el)).toContain("/temp/cfg/credentials.toml");

@@ -4,7 +4,7 @@ export function RangeBar({ from, to, max, aria }: { from: number; to: number; ma
   const high = Math.max(from, to);
   const scale = max > 0 ? 100 / max : 0;
   return (
-    <span class="range" role="img" aria-label={aria}>
+    <span class="range-bar-track" role="img" aria-label={aria}>
       <i class="range-span" style={{ left: `${low * scale}%`, width: `${(high - low) * scale}%` }} />
       <i class="range-end" style={{ left: `${to * scale}%` }} />
     </span>

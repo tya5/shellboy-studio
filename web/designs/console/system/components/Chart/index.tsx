@@ -161,7 +161,7 @@ export function Chart({
         {sub ? <div class="muted caption">{sub}</div> : null}
       </figcaption>
       {series.length > 1 ? (
-        <ul class="legend">
+        <ul class="chart-legend">
           {series.map((s) => (
             <li key={s.id}>
               <span class={`swatch t${s.tone}`} aria-hidden="true" />
@@ -204,7 +204,7 @@ export function Chart({
                         const h = Math.max(MIN_SEGMENT, natural - gap);
                         const top = cursor - gap - h;
                         cursor = Math.min(cursor - natural, top);
-                        return <path key={s.id} class={`fill t${s.tone}`} d={column(x(i) + (band - barW) / 2, top, barW, h, n === present.length - 1)} />;
+                        return <path key={s.id} class={`chart-fill t${s.tone}`} d={column(x(i) + (band - barW) / 2, top, barW, h, n === present.length - 1)} />;
                       })}
                     </g>
                   );
@@ -212,7 +212,7 @@ export function Chart({
               : series.map((s) => (
                   <g key={s.id}>
                     {line(s).map((d) => (
-                      <path key={d} class={`stroke t${s.tone}`} d={d} />
+                      <path key={d} class={`chart-stroke t${s.tone}`} d={d} />
                     ))}
                     {points.map((p, i) => {
                       const v = p.values[s.id];

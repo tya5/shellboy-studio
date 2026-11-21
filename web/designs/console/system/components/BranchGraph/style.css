@@ -1,13 +1,13 @@
 .bgraph{overflow-x:auto;min-width:0;border:1px solid var(--line);border-radius:var(--radius);background:var(--panel);padding:var(--space-8)}
 .bgraph-svg{display:block}
-.bgraph-svg .edge{fill:none;stroke:var(--line-strong);stroke-width:2;stroke-linecap:round}
-.bgraph-svg .edge[aria-current=true]{stroke:var(--accent);stroke-width:3}
+.bgraph-svg .branch-graph-edge{fill:none;stroke:var(--line-strong);stroke-width:2;stroke-linecap:round}
+.bgraph-svg .branch-graph-edge[aria-current=true]{stroke:var(--accent);stroke-width:3}
 .bgraph-svg .pt{fill:var(--panel);stroke:var(--line-strong);stroke-width:2}
 .bgraph-svg .pt[aria-current=true]{fill:var(--accent);stroke:var(--panel)}
 .bgraph-svg .pt.sel{stroke:var(--fg);stroke-width:3}
 .bgraph-svg .pt-hit{fill:transparent}
-.bgraph-svg .tip{fill:var(--raised);stroke:var(--line-strong);stroke-width:1}
-.bgraph-svg .tip[aria-current=true]{stroke:var(--accent);stroke-width:2;fill:var(--accent-bg)}
+.bgraph-svg .branch-graph-tip{fill:var(--raised);stroke:var(--line-strong);stroke-width:1}
+.bgraph-svg .branch-graph-tip[aria-current=true]{stroke:var(--accent);stroke-width:2;fill:var(--accent-bg)}
 .bgraph-svg .bg-name{fill:var(--fg);font:var(--type-label);font-weight:600}
 .bgraph-svg .bg-label{fill:var(--fg);font:var(--type-caption)}
 .bgraph-svg .bg-note{fill:var(--muted);font:var(--type-caption)}

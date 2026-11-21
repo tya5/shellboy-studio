@@ -3,11 +3,11 @@ import { describe, expect, it } from "vitest";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 
 const screenSources = import.meta.glob("../screens/**/*.tsx", { eager: true, query: "?raw", import: "default" }) as Record<string, string>;
+const productionSources = import.meta.glob("../**/*.{ts,tsx}", { eager: true, query: "?raw", import: "default" }) as Record<string, string>;
 const systemSources = {
   ...import.meta.glob("../system/*.{css,html,js,mjs,ts,tsx}", { eager: true, query: "?raw", import: "default" }),
   ...import.meta.glob("../system/**/*.{css,html,js,mjs,ts,tsx}", { eager: true, query: "?raw", import: "default" }),
 } as Record<string, string>;
-const componentCode = import.meta.glob("../system/components/**/*.{ts,tsx}", { eager: true, query: "?raw", import: "default" }) as Record<string, string>;
 const componentStyleFiles = import.meta.glob("../system/components/*/style.css", { eager: true, query: "?raw", import: "default" }) as Record<string, string>;
 const sharedStyleFiles = import.meta.glob("../system/shared/*.css", { eager: true, query: "?raw", import: "default" }) as Record<string, string>;
 for (const path of Object.keys(systemSources).filter((path) => path.endsWith(".css"))) {
@@ -59,15 +59,9 @@ const rawColor = /#[\da-f]{3,8}\b|\b(?:rgb|hsl)a?\s*\(/i;
 const inlineUnitOrColor = /\b\d+(?:\.\d+)?\s*px\b|\$\{\s*\d+(?:\.\d+)?\s*\}\s*px\b|#[\da-f]{3,8}\b|\b(?:rgb|hsl)a?\s*\(/i;
 
 
-function stringLiteralTexts(source: string): string[] {
-  const literals = source.match(/"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`/gs) ?? [];
-  return literals.map((literal) => literal.slice(1, -1));
-}
-
-function containsWholeToken(texts: string[], name: string): boolean {
+function containsWholeToken(source: string, name: string): boolean {
   const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const token = new RegExp(`(^|[^\\w-])${escaped}(?=$|[^\\w-])`);
-  return texts.some((text) => token.test(text));
+  return new RegExp(`(^|[^A-Za-z0-9_-])${escaped}($|[^A-Za-z0-9_-])`).test(source);
 }
 
 function declaredClasses(css: string): string[] {
@@ -119,10 +113,10 @@ describe("application header sizing", () => {
 
 
 describe("structural component CSS ownership", () => {
-  it("scans all literal text for whole class-name tokens", () => {
-    const texts = stringLiteralTexts('const cls = "borrowed"; const value = `choice-${name}`;');
-    expect(containsWholeToken(texts, "borrowed")).toBe(true);
-    expect(containsWholeToken(texts, "choice")).toBe(false);
+  it("checks whole-file tokens, including comments and classes anywhere in source", () => {
+    expect(containsWholeToken('// class from a comment: .button-owner', "button-owner")).toBe(true);
+    expect(containsWholeToken('const className = computedClass; class={className}', "computedClass")).toBe(true);
+    expect(containsWholeToken('const longer = "select-row-tagged";', "select-row-tag")).toBe(false);
   });
 
   it("defines each component class in its owner file and only uses it there", () => {
@@ -145,14 +139,14 @@ describe("structural component CSS ownership", () => {
       }
     }
     const duplicateOwners = [...owners.entries()].filter(([name, definitions]) => !sharedClasses.has(name) && definitions.size > 1).map(([name]) => name);
-    const otherSystemSources = Object.fromEntries(Object.entries(systemSources).filter(([path]) => /\.(?:html|js|mjs|ts|tsx)$/.test(path) && !path.includes("/components/")));
-    const sources = { ...screenSources, ...componentCode, ...otherSystemSources };
-    const literalSources = Object.entries(sources).map(([path, source]) => ({ path, component: path.match(/\/system\/components\/([^/]+)\//)?.[1], texts: stringLiteralTexts(source) }));
+    const testDirectory = new URL("./", import.meta.url).pathname;
+    const sources = Object.entries(productionSources).filter(([path]) => !new URL(path, import.meta.url).pathname.startsWith(testDirectory));
     const borrowed = [...owners.entries()].flatMap(([name, definitions]) => {
       if (sharedClasses.has(name)) return [];
-      return literalSources.flatMap(({ path, component, texts }) => {
+      return sources.flatMap(([path, source]) => {
+        const component = path.match(/\/system\/components\/([^/]+)\//)?.[1];
         if (component && definitions.has(component)) return [];
-        return containsWholeToken(texts, name) ? [`${[...definitions].join(",")}:${name} -> ${path}`] : [];
+        return containsWholeToken(source, name) ? [`${[...definitions].join(",")}:${name} -> ${path}`] : [];
       });
     });
     expect(duplicateOwners).toEqual([]);

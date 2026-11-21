@@ -42,14 +42,14 @@ export function BranchGraph({ layout, selected, onPoint, tipHref, tipTitle, tipN
             const sx = x(e.fromColumn);
             const sy = y(e.fromRow);
             const ey = y(e.toRow);
-            return <path key={e.key} class="edge" aria-current={e.active ? "true" : undefined} d={`M${sx} ${sy}C${sx + JOIN / 2} ${sy} ${sx + JOIN / 2} ${ey} ${sx + JOIN} ${ey}`} />;
+            return <path key={e.key} class="branch-graph-edge" aria-current={e.active ? "true" : undefined} d={`M${sx} ${sy}C${sx + JOIN / 2} ${sy} ${sx + JOIN / 2} ${ey} ${sx + JOIN} ${ey}`} />;
           }
           const sx = fromX(e);
           const ex = x(e.toColumn);
           const row = y(e.fromRow);
           return (
             <g key={e.key}>
-              <path class="edge" aria-current={e.active ? "true" : undefined} d={`M${sx} ${row}H${ex}`} />
+              <path class="branch-graph-edge" aria-current={e.active ? "true" : undefined} d={`M${sx} ${row}H${ex}`} />
               {e.nodes !== undefined && e.nodes > 0 ? <text class="bg-note" x={(sx + ex) / 2} y={row + 18} text-anchor="middle">{nodesText(e.nodes)}</text> : null}
             </g>
           );
@@ -83,7 +83,7 @@ export function BranchGraph({ layout, selected, onPoint, tipHref, tipTitle, tipN
         ))}
         {layout.lanes.map((l) => (
           <a key={l.item.threadId} class="bg-tip" href={tipHref(l.item)} aria-label={`${tipTitle(l.item)}. ${tipNote(l.item)}`}>
-            <rect class="tip" aria-current={l.active ? "true" : undefined} x={x(layout.tipColumn)} y={y(l.row) - TIP_H / 2} width={TIP_W} height={TIP_H} rx={8} />
+            <rect class="branch-graph-tip" aria-current={l.active ? "true" : undefined} x={x(layout.tipColumn)} y={y(l.row) - TIP_H / 2} width={TIP_W} height={TIP_H} rx={8} />
             <text class="bg-name" x={x(layout.tipColumn) + 12} y={y(l.row) - 4}>{clip(tipTitle(l.item), NAME_CHARS)}</text>
             <text class="bg-note" x={x(layout.tipColumn) + 12} y={y(l.row) + 15}>{clip(tipNote(l.item), NAME_CHARS + 5)}</text>
           </a>

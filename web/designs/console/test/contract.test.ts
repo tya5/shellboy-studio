@@ -114,12 +114,12 @@ describe("components name roles, never values", () => {
   });
   it("keeps Field chrome on its wrapper and excludes it from other input chrome", () => {
     const rules = [...css.replace(/\/\*[\s\S]*?\*\//g, "").matchAll(/([^{}]+)\{([^{}]*)\}/g)];
-    const fieldInput = rules.find((m) => m[1]!.trim() === ".field input");
+    const fieldInput = rules.find((m) => m[1]!.trim() === ".form-field-root input");
     expect(fieldInput?.[2]).toMatch(/border:0/);
     expect(fieldInput?.[2]).toMatch(/background:transparent/);
-    expect(css).toMatch(/\.field:focus-within\{/);
-    expect(css).toMatch(/\.field:has\(input:disabled\)/);
-    expect(css).toMatch(/\.field:has\(input\[aria-invalid="true"\]\)/);
+    expect(css).toMatch(/\.form-field-root:focus-within\{/);
+    expect(css).toMatch(/\.form-field-root:has\(input:disabled\)/);
+    expect(css).toMatch(/\.form-field-root:has\(input\[aria-invalid="true"\]\)/);
     for (const rule of rules) {
       if (!/\b(?:border|background)(?:-color)?:/.test(rule[2]!)) continue;
       expect(rule[1]!.trim()).not.toMatch(/\.sect\s+input\b/);

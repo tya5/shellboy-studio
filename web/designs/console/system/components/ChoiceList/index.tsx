@@ -11,7 +11,7 @@ export interface Choice {
 export function ChoiceList({ label, choices, value, onChange, mono }: { label: string; choices: readonly Choice[]; value: string | undefined; onChange: (value: string) => void; mono?: boolean }) {
   const groupName = `choice-${useId()}`;
   return (
-    <div class="choices" role="radiogroup" aria-label={label}>
+    <div class="choice-list-root" role="radiogroup" aria-label={label}>
       {choices.map((c) => (
         <label key={c.value} class={c.value === value ? "choice-list-option on" : "choice-list-option"}>
           <input type="radio" name={groupName} checked={c.value === value} onChange={() => onChange(c.value)} />

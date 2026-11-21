@@ -89,6 +89,6 @@ export function Popover({ open, anchor, returnFocusTo, onClose, children, classN
   const style: JSX.CSSProperties = point ? { left: `${point.left}px`, top: `${point.top}px`, maxHeight: `${point.maxHeight}px` } : { visibility: "hidden" };
   return createPortal(<>
     <div class="popover-dismiss-layer" aria-hidden="true" onPointerDown={consumeOutsidePointerDown} onClick={consumeOutsideClick} onAuxClick={consumeOutsideClick} onContextMenu={consumeOutsideClick} />
-    {open ? <div ref={panel} tabIndex={-1} class={`popover ${className}`.trim()} style={style}>{children}</div> : null}
+    {open ? <div ref={panel} tabIndex={-1} class={`popover-panel ${className}`.trim()} style={style}>{children}</div> : null}
   </>, document.body);
 }

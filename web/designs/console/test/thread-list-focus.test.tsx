@@ -50,7 +50,7 @@ async function openDelete(rig: Rig, link: HTMLAnchorElement): Promise<HTMLDialog
     row.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 2, clientX: 20, clientY: 20 }));
     await Promise.resolve();
   });
-  const deleteItem = document.body.querySelector<HTMLElement>(".menu-item.destructive");
+  const deleteItem = document.body.querySelector<HTMLElement>(".menu-item.menu-item-destructive");
   if (!deleteItem) throw new Error("Expected the real row menu's destructive Delete item");
   await act(async () => { deleteItem.click(); await new Promise((resolve) => setTimeout(resolve, 10)); });
   const dialog = rig.host.querySelector<HTMLDialogElement>('dialog[role="alertdialog"]');

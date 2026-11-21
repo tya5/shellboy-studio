@@ -1,9 +1,9 @@
-.field{display:flex;align-items:center;gap:var(--space-8);min-height:var(--size-control);padding:0 var(--space-8);border:1px solid var(--line-strong);border-radius:var(--radius-s);background:var(--inset);color:var(--muted)}
-.field input{flex:1;min-width:0;border:0;background:transparent;color:var(--fg);outline:0;font:var(--type-label)}
-.field input::placeholder{color:var(--muted)}
-.field:focus-within{outline:2px solid var(--accent);outline-offset:2px}
-.field:has(input:disabled){opacity:.55;cursor:not-allowed}
-.field:has(input[aria-invalid="true"]){border-color:var(--bad);background:var(--err-bg)}
+.form-field-root{display:flex;align-items:center;gap:var(--space-8);min-height:var(--size-control);padding:0 var(--space-8);border:1px solid var(--line-strong);border-radius:var(--radius-s);background:var(--inset);color:var(--muted)}
+.form-field-root input{flex:1;min-width:0;border:0;background:transparent;color:var(--fg);outline:0;font:var(--type-label)}
+.form-field-root input::placeholder{color:var(--muted)}
+.form-field-root:focus-within{outline:2px solid var(--accent);outline-offset:2px}
+.form-field-root:has(input:disabled){opacity:.55;cursor:not-allowed}
+.form-field-root:has(input[aria-invalid="true"]){border-color:var(--bad);background:var(--err-bg)}
 @container app (max-width:899px){
-  .field{min-height:var(--size-touch)}
+  .form-field-root{min-height:var(--size-touch)}
 }

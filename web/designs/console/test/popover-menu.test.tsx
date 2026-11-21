@@ -17,10 +17,10 @@ it("outside modal dismissal consumes the click and leaves focus alone", async ()
   document.body.append(outside);
   await act(async () => { draw(); await Promise.resolve(); });
   outside.focus();
-  expect(document.body.querySelector(".popover")).not.toBeNull();
+  expect(document.body.querySelector(".popover-panel")).not.toBeNull();
   const layer = document.body.querySelector<HTMLElement>(".popover-dismiss-layer")!;
   await act(async () => { layer.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true })); await Promise.resolve(); });
-  expect(document.body.querySelector(".popover")).not.toBeNull();
+  expect(document.body.querySelector(".popover-panel")).not.toBeNull();
   expect(document.body.querySelector(".popover-dismiss-layer")).not.toBeNull();
   const click = new MouseEvent("click", { bubbles: true, cancelable: true });
   await act(async () => { layer.dispatchEvent(click); await Promise.resolve(); });

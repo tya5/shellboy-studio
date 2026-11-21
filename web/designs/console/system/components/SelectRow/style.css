@@ -2,7 +2,7 @@
 .select-row-root:last-child{border-bottom:0}
 .select-row-root:hover{background:var(--hover)}
 .select-row-root:has(.tcheck input:checked){background:var(--accent-bg)}
-.select-row-root.drop{box-shadow:inset 0 0 0 2px var(--accent)}
+.select-row-root.select-row-drop{box-shadow:inset 0 0 0 2px var(--accent)}
 .select-row-root[draggable=true]{cursor:grab}
 .select-row-tags{display:flex;flex-wrap:wrap;gap:var(--space-4);margin:0;padding:0;list-style:none}
 .select-row-tag{padding:0 var(--space-8);border:1px solid var(--line-strong);border-radius:var(--radius-s);background:var(--inset);color:var(--fg);font:var(--type-caption);overflow-wrap:anywhere}

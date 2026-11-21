@@ -13,7 +13,7 @@ export interface Fact {
 
 export function FactList({ facts, missing }: { facts: Fact[]; missing: string }) {
   return (
-    <dl class="facts">
+    <dl class="fact-list-root">
       {facts.map((f) => (
         <div class="fact-list-row" key={f.label}>
           <dt>{f.label}</dt>

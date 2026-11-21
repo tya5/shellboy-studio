@@ -2,8 +2,8 @@
 .chart-figure{margin:0;display:flex;flex-direction:column;gap:var(--space-8);padding:var(--space-16);border:1px solid var(--line);border-radius:var(--radius);background:var(--panel);min-width:0}
 .chart-figure>.sect-source{margin-top:auto}
 .chart-head{display:flex;flex-direction:column;gap:var(--space-4)}
-.legend{margin:0;padding:0;list-style:none;display:flex;flex-wrap:wrap;gap:var(--space-4) var(--space-12);font:var(--type-caption);color:var(--muted)}
-.legend li{display:flex;align-items:center;gap:var(--space-8)}
+.chart-legend{margin:0;padding:0;list-style:none;display:flex;flex-wrap:wrap;gap:var(--space-4) var(--space-12);font:var(--type-caption);color:var(--muted)}
+.chart-legend li{display:flex;align-items:center;gap:var(--space-8)}
 .swatch{display:inline-block;width:10px;height:10px;border-radius:2px}
 .swatch.t1{background:var(--chart-1)}
 .tip-key.t1{background:var(--chart-1)}
@@ -18,15 +18,15 @@
 .chart-svg .grid{stroke:var(--line);stroke-width:1}
 .chart-svg .axis{stroke:var(--line-strong);stroke-width:1}
 .chart-svg .tick{fill:var(--muted);font:var(--type-caption);font-variant-numeric:tabular-nums}
-.chart-svg .fill.t1{fill:var(--chart-1)}
-.chart-svg .fill.t2{fill:var(--chart-2)}
-.chart-svg .fill.t3{fill:var(--chart-3)}
-.chart-svg .fill.tneutral{fill:var(--muted)}
-.chart-svg .stroke{fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-.chart-svg .stroke.t1{stroke:var(--chart-1)}
-.chart-svg .stroke.t2{stroke:var(--chart-2)}
-.chart-svg .stroke.t3{stroke:var(--chart-3)}
-.chart-svg .stroke.tneutral{stroke:var(--muted)}
+.chart-svg .chart-fill.t1{fill:var(--chart-1)}
+.chart-svg .chart-fill.t2{fill:var(--chart-2)}
+.chart-svg .chart-fill.t3{fill:var(--chart-3)}
+.chart-svg .chart-fill.tneutral{fill:var(--muted)}
+.chart-svg .chart-stroke{fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.chart-svg .chart-stroke.t1{stroke:var(--chart-1)}
+.chart-svg .chart-stroke.t2{stroke:var(--chart-2)}
+.chart-svg .chart-stroke.t3{stroke:var(--chart-3)}
+.chart-svg .chart-stroke.tneutral{stroke:var(--muted)}
 .chart-svg .dot{stroke:var(--panel);stroke-width:2}
 .chart-svg .dot.t1{fill:var(--chart-1)}
 .chart-svg .dot.t2{fill:var(--chart-2)}

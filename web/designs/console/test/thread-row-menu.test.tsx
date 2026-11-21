@@ -23,7 +23,7 @@ function readSystemCss(file: string): string {
 const rowActionCss = readSystemCss("components.css");
 const touchVisibilityRules = readFileSync("designs/console/system/components/ThreadItem/style.css", "utf8") + readFileSync("designs/console/system/components/SelectRow/style.css", "utf8");
 const popoverLayerRule = rowActionCss.match(/\.popover-dismiss-layer\{([^}]*)\}/)?.[1] ?? "";
-const popoverPanelRule = rowActionCss.match(/\.popover\{([^}]*)\}/)?.[1] ?? "";
+const popoverPanelRule = rowActionCss.match(/\.popover-panel\{([^}]*)\}/)?.[1] ?? "";
 const layoutCss = readFileSync("designs/console/system/layout.css", "utf8");
 const popoverZ = Number(readFileSync("designs/console/system/tokens/console.css", "utf8").match(/--z-popover:\s*(\d+)/)?.[1]);
 const pageZIndices = [...layoutCss.matchAll(/z-index:(\d+)/g)].map((match) => Number(match[1]));
@@ -33,7 +33,7 @@ function expectModalLayerStack() {
   expect(popoverLayerRule).toMatch(/z-index:var\(--z-popover\)/);
   expect(popoverPanelRule).toMatch(/z-index:var\(--z-popover\)/);
   expect(popoverZ).toBeGreaterThan(Math.max(...pageZIndices));
-  expect([...document.body.querySelectorAll<HTMLElement>(".popover-dismiss-layer, .popover")].map((el) => el.classList.contains("popover-dismiss-layer") ? "layer" : "panel")).toEqual(["layer", "panel"]);
+  expect([...document.body.querySelectorAll<HTMLElement>(".popover-dismiss-layer, .popover-panel")].map((el) => el.classList.contains("popover-dismiss-layer") ? "layer" : "panel")).toEqual(["layer", "panel"]);
 }
 const row = { thread_id: "t1", title: "One", cwd: "/tmp", state: "idle", activity: "idle", updated_at: "now", excerpt: "" } as ThreadSummary;
 const rowMenu = { label: "Thread row menu", entries: [{ key: "archive", label: "Archive" }] as MenuEntry[] };
@@ -41,7 +41,7 @@ function menuModel() {
   return { t: { value: (key: string) => key }, actionError: { value: undefined }, ops: { threadArchive: vi.fn(async () => ({ ok: true })), threadUnarchive: vi.fn(async () => ({ ok: true })) } } as unknown as AppModel;
 }
 function expectVisibleMenu() {
-  const popover = document.body.querySelector<HTMLElement>(".popover");
+  const popover = document.body.querySelector<HTMLElement>(".popover-panel");
   expect(popover).not.toBeNull();
   expect(popover!.style.visibility).not.toBe("hidden");
   expect(popover!.querySelector('[role="menu"]')).not.toBeNull();
@@ -145,8 +145,8 @@ describe("Thread row menu and delete", () => {
     const menu = document.body.querySelector<HTMLElement>("[role=menu]")!;
     expect(menu.id).toBe(trigger.getAttribute("aria-controls"));
     expect(menu.getAttribute("aria-labelledby")).toBe(trigger.id);
-    expect(document.body.querySelector<HTMLElement>(".popover")!.style.left).toBe("123px");
-    expect(document.body.querySelector<HTMLElement>(".popover")!.style.top).toBe("234px");
+    expect(document.body.querySelector<HTMLElement>(".popover-panel")!.style.left).toBe("123px");
+    expect(document.body.querySelector<HTMLElement>(".popover-panel")!.style.top).toBe("234px");
     act(() => render(null, host)); host.remove();
   });
   it("opens the same visible Menu from row contextmenu", async () => {
@@ -169,7 +169,7 @@ describe("Thread row menu and delete", () => {
     expectVisibleMenu();
     act(() => { document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); });
     expect(document.activeElement).toBe(link);
-    expect(document.body.querySelector(".popover")).toBeNull();
+    expect(document.body.querySelector(".popover-panel")).toBeNull();
     act(() => render(null, host)); host.remove();
   });
   it("outside pointer and contextmenu actions dismiss without reaching another row", async () => {
@@ -190,7 +190,7 @@ describe("Thread row menu and delete", () => {
     const clickDown = new PointerEvent("pointerdown", { bubbles: true, cancelable: true });
     act(() => { layer.dispatchEvent(clickDown); });
     expect(clickDown.defaultPrevented).toBe(true);
-    expect(document.body.querySelector(".popover")).not.toBeNull();
+    expect(document.body.querySelector(".popover-panel")).not.toBeNull();
     layer = document.body.querySelector<HTMLElement>(".popover-dismiss-layer")!;
     const outsideClick = new MouseEvent("click", { bubbles: true, cancelable: true });
     act(() => { layer.dispatchEvent(outsideClick); });
@@ -202,13 +202,13 @@ describe("Thread row menu and delete", () => {
     await act(async () => { triggers[0]!.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 1 })); await Promise.resolve(); });
     layer = document.body.querySelector<HTMLElement>(".popover-dismiss-layer")!;
     act(() => { layer.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true })); });
-    expect(document.body.querySelector(".popover")).not.toBeNull();
+    expect(document.body.querySelector(".popover-panel")).not.toBeNull();
     layer = document.body.querySelector<HTMLElement>(".popover-dismiss-layer")!;
     const outsideMenu = new MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 2 });
     act(() => { layer.dispatchEvent(outsideMenu); });
     expect(outsideMenu.defaultPrevented).toBe(true);
     expect(secondContextMenu).not.toHaveBeenCalled();
-    expect(document.body.querySelector(".popover")).toBeNull();
+    expect(document.body.querySelector(".popover-panel")).toBeNull();
     expect(triggers[1]!.getAttribute("aria-expanded")).toBe("false");
     act(() => render(null, host)); host.remove();
   });
@@ -234,7 +234,7 @@ describe("Thread row menu and delete", () => {
     for (const trigger of triggers.slice(1)) {
       let layer = document.body.querySelector<HTMLElement>(".popover-dismiss-layer")!;
       act(() => { layer.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true })); });
-      expect(document.body.querySelector(".popover")).not.toBeNull();
+      expect(document.body.querySelector(".popover-panel")).not.toBeNull();
       layer = document.body.querySelector<HTMLElement>(".popover-dismiss-layer")!;
       act(() => { layer.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true })); });
       expect(trigger.getAttribute("aria-expanded")).toBe("false");
