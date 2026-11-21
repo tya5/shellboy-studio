@@ -1,46 +1,9 @@
 import type { ComponentChildren } from "preact";
+import { useRowMenu } from "../useRowMenu";
+import type { MenuEntry } from "../Menu";
 
-/** One Thread that can be chosen and opened. Its tree depth is a real parent link. */
-export function SelectRow({ title, href, status, depth, checked, checkLabel, onToggle, note, tags, tagsLabel, age, action, moveAction, drag }: { title: string; href: string; status: ComponentChildren; depth: number; checked: boolean; checkLabel: string; onToggle: () => void; note?: string | undefined; tags?: readonly string[] | undefined; tagsLabel?: string | undefined; age?: string | undefined; action?: ComponentChildren; moveAction?: ComponentChildren; drag?: { onDragStart: () => void; onDrop: () => void; over: boolean; onOver: (over: boolean) => void } | undefined }) {
-  const dnd = drag
-    ? {
-        draggable: true,
-        onDragStart: (e: DragEvent) => {
-          e.dataTransfer?.setData("text/plain", title);
-          drag.onDragStart();
-        },
-        onDragOver: (e: DragEvent) => {
-          e.preventDefault();
-          drag.onOver(true);
-        },
-        onDragLeave: () => drag.onOver(false),
-        onDrop: (e: DragEvent) => {
-          e.preventDefault();
-          drag.onOver(false);
-          drag.onDrop();
-        },
-      }
-    : {};
-  return (
-    <div onContextMenu={(event) => { const target = event.currentTarget.querySelector<HTMLElement>(".thread-menu-anchor"); if (target) { event.preventDefault(); target.dispatchEvent(new CustomEvent("thread-menu-open", { bubbles: true, detail: { opener: event.target instanceof HTMLElement ? event.target : undefined } })); } }} onKeyDown={(event) => { if (event.key === "ArrowDown") { const target = event.currentTarget.querySelector<HTMLElement>(".thread-menu-anchor"); if (target) { event.preventDefault(); target.dispatchEvent(new CustomEvent("thread-menu-open", { bubbles: true, detail: { opener: event.target instanceof HTMLElement ? event.target : undefined } })); } } }} class={`srow${checked ? " on" : ""}${drag?.over ? " drop" : ""}`} style={depth > 0 ? { paddingLeft: `${Math.min(depth, 4) * 20}px` } : undefined} {...dnd}>
-      <label class="tcheck">
-        <input type="checkbox" aria-label={checkLabel} checked={checked} onChange={onToggle} />
-      </label>
-      <span class="srow-status">{status}</span>
-      <div class="srow-text">
-        <a href={href}>{title}</a>
-        {note ? <div class="muted caption">{note}</div> : null}
-        {tags && tags.length > 0 ? (
-          <ul class="tags" aria-label={tagsLabel}>
-            {tags.map((tag) => (
-              <li key={tag} class="tag">{tag}</li>
-            ))}
-          </ul>
-        ) : null}
-      </div>
-      {moveAction}
-      {action}
-      {age ? <span class="mono muted caption">{age}</span> : null}
-    </div>
-  );
+export function SelectRow({ title, href, status, depth, checked, checkLabel, onToggle, note, tags, tagsLabel, age, action, moveAction, menu, drag }: { title: string; href: string; status: ComponentChildren; depth: number; checked: boolean; checkLabel: string; onToggle: () => void; note?: string; tags?: readonly string[]; tagsLabel?: string; age?: string; action?: ComponentChildren; moveAction?: ComponentChildren; menu?: { label: string; entries: MenuEntry[] }; drag?: { onDragStart: () => void; onDrop: () => void; over: boolean; onOver: (over: boolean) => void } }) {
+  const rowMenu = useRowMenu(menu);
+  const dnd = drag ? { draggable: true, onDragStart: (e: DragEvent) => { e.dataTransfer?.setData("text/plain", title); drag.onDragStart(); }, onDragOver: (e: DragEvent) => { e.preventDefault(); drag.onOver(true); }, onDragLeave: () => drag.onOver(false), onDrop: (e: DragEvent) => { e.preventDefault(); drag.onOver(false); drag.onDrop(); } } : {};
+  return <div class={`srow${checked ? " on" : ""}${drag?.over ? " drop" : ""}`} style={depth > 0 ? { paddingLeft: `${Math.min(depth, 4) * 20}px` } : undefined} {...dnd} {...rowMenu.rowHandlers}><label class="tcheck"><input type="checkbox" aria-label={checkLabel} checked={checked} onChange={onToggle} /></label><span class="srow-status">{status}</span><div class="srow-text"><a href={href}>{title}</a>{note ? <div class="muted caption">{note}</div> : null}{tags && tags.length > 0 ? <ul class="tags" aria-label={tagsLabel}>{tags.map((tag) => <li key={tag} class="tag">{tag}</li>)}</ul> : null}</div>{moveAction}{action}{menu ? <span class="srow-menu">{rowMenu.trigger}</span> : null}{age ? <span class="mono muted caption">{age}</span> : null}{rowMenu.menu}</div>;
 }

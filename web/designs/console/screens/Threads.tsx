@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "preact/hooks";
 import { CAPABILITY_REPARENT, CAPABILITY_TAGS, formatAge, formatRoute, groupThreads, listedDescendants, OPEN_MAX, statusLabel, threadTree, THREAD_GROUPINGS, type AppModel, type MemberState, type StatusKey, type TagInvalid, type ThreadGrouping, type ThreadRow, type Translate } from "../../../ui-core/src";
-import { Button, ButtonGroup, EmptyState, Field, Icon, Notice, Section, SelectionBar, SelectRow, StatusMark, ThreadGroup, ThreadQuickAction } from "../system/components";
+import { threadMenuEntries } from "../system/components/thread-menu";
+import { Button, ButtonGroup, EmptyState, Field, Icon, Notice, Section, SelectionBar, SelectRow, StatusMark, ThreadDeleteDialog, ThreadGroup } from "../system/components";
 
 const SEARCH_DEBOUNCE_MS = 200;
 
@@ -144,6 +145,7 @@ export function Threads({ model }: { model: AppModel }) {
   const action = org.action.value;
   const descendants = org.descendants.value;
   const [query, setQuery] = useState(state.query);
+  const [deleteThread, setDeleteThread] = useState<import("../../../data/src").ThreadSummary>();
   const [armed, setArmed] = useState(false);
   useEffect(() => {
     const timer = setTimeout(() => org.setQuery(query.trim()), SEARCH_DEBOUNCE_MS);
@@ -188,7 +190,7 @@ export function Threads({ model }: { model: AppModel }) {
         note={notes || undefined}
         age={formatAge(s.updated_at, model.coarseNow.value)}
         moveAction={canMove ? <button type="button" class="srow-act" onClick={() => org.pickParent(s.thread_id)}>{t("org.move")}</button> : undefined}
-        action={<ThreadQuickAction model={model} row={s} status={r.status} />}
+        menu={{ label: t("thread.rowMenu"), entries: threadMenuEntries(model, s, r.status, setDeleteThread) }}
         drag={
           canMove
             ? {
@@ -207,6 +209,8 @@ export function Threads({ model }: { model: AppModel }) {
     );
   };
   return (
+    <>
+    <ThreadDeleteDialog model={model} thread={deleteThread} onClose={() => setDeleteThread(undefined)} />
     <div class="org">
       <div class="head">
         <div class="pagehead">
@@ -297,5 +301,6 @@ export function Threads({ model }: { model: AppModel }) {
       <div class="muted caption">{t("org.totals")}</div>
       <div class="sect-source">{t("common.source", { source: "" })}{kind ? <code>{kind === "tag" ? "thread.tags" : "thread.cwds"}</code> : null}{kind ? " " : ""}<code>thread.list</code></div>
     </div>
+    </>
   );
 }

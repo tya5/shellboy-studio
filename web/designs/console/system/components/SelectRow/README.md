@@ -6,3 +6,5 @@ The optional `action` stays in the row flow after the title link, so it takes it
 The optional action slot carries the shared Thread menu; row context menus and ArrowDown open that same menu.
 
 The title is truncated in-flow so the checkbox, parent action, age, and row menu retain their own space.
+
+The row menu trigger is in-flow but hidden until row hover, focus-within, or selection.

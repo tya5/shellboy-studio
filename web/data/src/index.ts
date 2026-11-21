@@ -3,6 +3,7 @@ export * from "./errors";
 export * from "./link";
 export * from "./live";
 export * from "./operations";
+export * from "./thread-delete";
 export * from "./protocol";
 export * from "./store";
 export * from "./transport";

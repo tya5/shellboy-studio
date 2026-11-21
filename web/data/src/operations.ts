@@ -7,6 +7,7 @@ import {captureDecode,InputCaptureError} from './immutable-input';
 import { decodeStored, decodeTest, encodeCredentialsClear, encodeCredentialsSet, encodeTest, type StoredFacts, type TestFacts, type TestTarget } from "./connection-setup";
 import { fromApiError, type Outcome } from "./errors";
 import type { Link } from "./link";
+import type { ThreadDeletePreview } from "./thread-delete";
 import type {
   CompactListArgs,
   HistoryBody,
@@ -73,6 +74,14 @@ const summaryProblem = (v: unknown): string | undefined =>
     : v.tags !== undefined && !(Array.isArray(v.tags) && v.tags.every((t) => typeof t === "string"))
       ? "thread summary tags is not a list of strings"
       : undefined;
+
+const optionalNumber = (v: Record<string, unknown>, key: string): number | undefined => typeof v[key] === "number" ? v[key] as number : undefined;
+const decodeThreadDeletePreview = (value: unknown): Decoded<ThreadDeletePreview> => {
+  if (!isObject(value)) return { ok: false, reason: "delete preview must be an object" };
+  const marker = isObject(value.preview_marker) && typeof value.preview_marker.thread_count === "number" && typeof value.preview_marker.ids_hash === "string" ? { thread_count: value.preview_marker.thread_count, ids_hash: value.preview_marker.ids_hash } : undefined;
+  const selection = isObject(value.selection) ? { thread_count: optionalNumber(value.selection, "thread_count"), descendant_thread_count: optionalNumber(value.selection, "descendant_thread_count"), surviving_descendant_thread_count: optionalNumber(value.selection, "surviving_descendant_thread_count") } : undefined;
+  return { ok: true, value: { deletable_now: typeof value.deletable_now === "boolean" ? value.deletable_now : undefined, preview_marker: marker, selection, blockers: isObject(value.blockers) ? value.blockers : undefined } };
+};
 
 const decodeThreadPage = pageOf<ThreadSummary>(summaryProblem);
 const decodeDetails: Decoder<ThreadDetails> = (v) =>
@@ -404,8 +413,8 @@ export class Operations {
     if (options.descendants) args.descendants = true;
     return this.run("thread.unarchive", args, outcomeDecoder(decodeRecord), { operationId });
   }
-  threadDeletePreview(threadId: string): Promise<Outcome<Record<string, unknown>>> {
-    return this.run("thread.delete_preview", { thread_id: threadId, descendants: false }, outcomeDecoder(decodeRecord));
+  threadDeletePreview(threadId: string): Promise<Outcome<ThreadDeletePreview>> {
+    return this.run("thread.delete_preview", { thread_id: threadId, descendants: false }, outcomeDecoder(decodeThreadDeletePreview));
   }
   threadDelete(threadId: string, previewMarker: { thread_count: number; ids_hash: string }, operationId = this.newId()): Promise<Outcome<Record<string, unknown>>> {
     return this.run("thread.delete", { thread_id: threadId, descendants: false, preview_marker: previewMarker }, outcomeDecoder(decodeRecord), { operationId });
