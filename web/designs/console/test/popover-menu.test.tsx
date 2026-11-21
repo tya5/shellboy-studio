@@ -7,7 +7,7 @@ import { expect, it } from "vitest";
 import { Menu, Popover } from "../system/components";
 import { placePanel } from "../system/components/Popover";
 
-it("outside dismissal leaves focus alone", async () => {
+it("outside modal dismissal consumes the click and leaves focus alone", async () => {
   const host = document.createElement("div");
   const anchor = document.createElement("button");
   document.body.append(host, anchor);
@@ -18,8 +18,14 @@ it("outside dismissal leaves focus alone", async () => {
   await act(async () => { draw(); await Promise.resolve(); });
   outside.focus();
   expect(document.body.querySelector(".popover")).not.toBeNull();
-  await act(async () => { outside.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true })); await Promise.resolve(); });
+  const layer = document.body.querySelector<HTMLElement>(".popover-dismiss-layer")!;
+  await act(async () => { layer.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true })); await Promise.resolve(); });
   expect(document.body.querySelector(".popover")).toBeNull();
+  expect(document.body.querySelector(".popover-dismiss-layer")).not.toBeNull();
+  const click = new MouseEvent("click", { bubbles: true, cancelable: true });
+  await act(async () => { layer.dispatchEvent(click); await Promise.resolve(); });
+  expect(click.defaultPrevented).toBe(true);
+  expect(document.body.querySelector(".popover-dismiss-layer")).toBeNull();
   expect(document.activeElement).toBe(outside);
   render(null, host); host.remove(); anchor.remove(); outside.remove();
 });

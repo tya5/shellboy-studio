@@ -108,6 +108,44 @@ describe("Thread row menu and delete", () => {
     expect(document.body.querySelector(".popover")).toBeNull();
     act(() => render(null, host)); host.remove();
   });
+  it("outside pointer and contextmenu actions dismiss without reaching another row", async () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    act(() => render(<>{treeRow("One")}{treeRow("Two")}</>, host));
+    const triggers = [...host.querySelectorAll<HTMLButtonElement>("[aria-haspopup=menu]")];
+    const secondRow = host.querySelectorAll<HTMLElement>(".tree-item")[1]!;
+    const secondClick = vi.fn();
+    const secondContextMenu = vi.fn();
+    triggers[1]!.addEventListener("click", secondClick);
+    secondRow.addEventListener("contextmenu", secondContextMenu);
+
+    await act(async () => { triggers[0]!.click(); await Promise.resolve(); });
+    expectVisibleMenu();
+    let layer = document.body.querySelector<HTMLElement>(".popover-dismiss-layer")!;
+    const clickDown = new PointerEvent("pointerdown", { bubbles: true, cancelable: true });
+    act(() => { layer.dispatchEvent(clickDown); });
+    expect(clickDown.defaultPrevented).toBe(true);
+    expect(document.body.querySelector(".popover")).toBeNull();
+    layer = document.body.querySelector<HTMLElement>(".popover-dismiss-layer")!;
+    const outsideClick = new MouseEvent("click", { bubbles: true, cancelable: true });
+    act(() => { layer.dispatchEvent(outsideClick); });
+    expect(outsideClick.defaultPrevented).toBe(true);
+    expect(secondClick).not.toHaveBeenCalled();
+    expect(triggers[1]!.getAttribute("aria-expanded")).toBe("false");
+    expect(document.body.querySelector(".popover-dismiss-layer")).toBeNull();
+
+    await act(async () => { triggers[0]!.click(); await Promise.resolve(); });
+    layer = document.body.querySelector<HTMLElement>(".popover-dismiss-layer")!;
+    act(() => { layer.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true })); });
+    layer = document.body.querySelector<HTMLElement>(".popover-dismiss-layer")!;
+    const outsideMenu = new MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 2 });
+    act(() => { layer.dispatchEvent(outsideMenu); });
+    expect(outsideMenu.defaultPrevented).toBe(true);
+    expect(secondContextMenu).not.toHaveBeenCalled();
+    expect(document.body.querySelector(".popover")).toBeNull();
+    expect(triggers[1]!.getAttribute("aria-expanded")).toBe("false");
+    act(() => render(null, host)); host.remove();
+  });
   it("shows every touch row trigger and only one menu at a time", async () => {
     (window as unknown as { happyDOM: { setWindowSize(size: { width: number; height: number }): void } }).happyDOM.setWindowSize({ width: 390, height: 844 });
     Object.defineProperty(navigator, "maxTouchPoints", { configurable: true, value: 1 });
@@ -123,9 +161,18 @@ describe("Thread row menu and delete", () => {
     expect(rows).toHaveLength(4);
     expect(rows.every((item) => item.querySelector(".tree-action, .srow-menu") !== null)).toBe(true);
     const triggers = [...host.querySelectorAll<HTMLButtonElement>("[aria-haspopup=menu]")];
-    for (const trigger of triggers) {
-      act(() => { trigger.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true })); });
-      act(() => { trigger.focus(); trigger.click(); });
+    act(() => triggers[0]!.click());
+    await act(async () => { await Promise.resolve(); });
+    expect(document.body.querySelectorAll(".popover")).toHaveLength(1);
+    for (const trigger of triggers.slice(1)) {
+      let layer = document.body.querySelector<HTMLElement>(".popover-dismiss-layer")!;
+      act(() => { layer.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true })); });
+      expect(document.body.querySelector(".popover")).toBeNull();
+      layer = document.body.querySelector<HTMLElement>(".popover-dismiss-layer")!;
+      act(() => { layer.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true })); });
+      expect(trigger.getAttribute("aria-expanded")).toBe("false");
+      expect(document.body.querySelectorAll(".popover")).toHaveLength(0);
+      act(() => trigger.click());
       await act(async () => { await Promise.resolve(); });
       expect(document.body.querySelectorAll(".popover")).toHaveLength(1);
     }

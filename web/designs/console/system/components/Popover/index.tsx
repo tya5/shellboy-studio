@@ -32,6 +32,7 @@ export function Popover({ open, anchor, returnFocusTo, onClose, children, classN
   const panel = useRef<HTMLDivElement>(null);
   const opener = useRef<HTMLElement | null>(null);
   const [point, setPoint] = useState<PanelPlacement>();
+  const [dismissalBarrier, setDismissalBarrier] = useState(false);
 
   useEffect(() => {
     opener.current = open ? (returnFocusTo === undefined ? anchor : returnFocusTo) : null;
@@ -55,14 +56,27 @@ export function Popover({ open, anchor, returnFocusTo, onClose, children, classN
 
   useEffect(() => {
     if (!open) return;
-    const outside = (event: PointerEvent) => { if (!panel.current?.contains(event.target as Node) && !anchor?.contains(event.target as Node)) onClose(); };
     const key = (event: KeyboardEvent) => { if (event.key === "Escape") { const target = opener.current; onClose(); target?.focus(); } else if (event.key === "Tab") onClose(); };
-    document.addEventListener("pointerdown", outside);
     document.addEventListener("keydown", key);
-    return () => { document.removeEventListener("pointerdown", outside); document.removeEventListener("keydown", key); };
-  }, [open, onClose, anchor]);
+    return () => { document.removeEventListener("keydown", key); };
+  }, [open, onClose]);
 
-  if (!open) return null;
+  const consumeOutsidePointerDown = (event: JSX.TargetedPointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setDismissalBarrier(true);
+    onClose();
+  };
+  const consumeOutsideClick = (event: JSX.TargetedMouseEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setDismissalBarrier(false);
+    onClose();
+  };
+  if (!open && !dismissalBarrier) return null;
   const style: JSX.CSSProperties = point ? { left: `${point.left}px`, top: `${point.top}px`, maxHeight: `${point.maxHeight}px` } : { visibility: "hidden" };
-  return createPortal(<div ref={panel} class={`popover ${className}`.trim()} style={style}>{children}</div>, document.body);
+  return createPortal(<>
+    <div class="popover-dismiss-layer" aria-hidden="true" onPointerDown={consumeOutsidePointerDown} onPointerCancel={() => setDismissalBarrier(false)} onClick={consumeOutsideClick} onAuxClick={consumeOutsideClick} onContextMenu={consumeOutsideClick} />
+    {open ? <div ref={panel} class={`popover ${className}`.trim()} style={style}>{children}</div> : null}
+  </>, document.body);
 }
