@@ -89,7 +89,7 @@ export function SavedConversationItems({ model, projection: suppliedProjection, 
   // Coverage describes the whole assistant/work cut, not authority for each independently
   // typed human item. Require an exact entry for every projected item, then gate bodies per entry.
   const planCurrent = !!displayPlan;
-  const planItems = planEntries.map(({ item, outerRowKey, presentationContainer }) => ({ ...item, outerRowKey, presentationContainer }));
+  const planItems = planEntries.map(({ item, presentationContainer }) => ({ ...item, presentationContainer }));
   const membership=new Map(projection.items.map(item=>{ const body=planByKey.get(item.key)?.body; return [item.key, !planCurrent || body?.kind === "unavailable" ? "content-unavailable" : assistantTextMembership(item)] as const; }));
   const t = model.t.value;
   const savedSteps = collectExecutionSteps(nodes ?? [], model.shells.value);

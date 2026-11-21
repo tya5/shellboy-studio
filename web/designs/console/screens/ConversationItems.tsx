@@ -1,4 +1,5 @@
 import { Fragment, type ComponentChildren } from 'preact';
+import { canonicalSavedItemKey } from "../../../ui-core/src/conversation-items";
 import type { PendingOwnMessage } from '../../../ui-core/src/model';
 import type { OwnSendTailRow } from '../../../ui-core/src/own-send-presentation';
 
@@ -9,7 +10,6 @@ export interface ConversationItem {
   key: string;
   source: ConversationItemSource;
   readonly presentationContainer?: string;
-  readonly outerRowKey?: string;
 }
 export interface ConversationToolSummary {
   continuationBefore?: "unknown" | "closed";
@@ -80,10 +80,9 @@ export function ConversationItems({ items, toolSummaries = [], renderItem, rende
     }
     const spans = new Map<number, { end: number; container: string }>();
     for (const [container, span] of candidates) if (!invalidContainers.has(container)) spans.set(span.start, { end: span.end, container });
-    const keyForSavedItem = (item: ConversationItem) => item.outerRowKey ?? item.key;
     const row = (key: string, children: ComponentChildren, item?: ConversationItem, work = false, hosted = false) =>
       <div class={`conversation-row${hosted ? " conversation-answer-child" : ""}`} key={`item:${key}`} data-item-key={item?.key} data-key={item?.key} data-node={item?.source.nodeId} data-work-item-key={work ? item?.key : undefined} data-own-presentation={item ? undefined : ""} data-own-placement={item ? undefined : "suffix"}>{children}</div>;
-    const content = (item: ConversationItem, work: boolean, hosted = !work && !!item.presentationContainer) => row(keyForSavedItem(item), renderItem(item), item, work, hosted);
+    const content = (item: ConversationItem, work: boolean, hosted = !work && !!item.presentationContainer) => row(item.key, renderItem(item), item, work, hosted);
     const renderWork = (entry: Extract<NonNullable<Props["sequence"]>[number], { kind: "work" }>): ComponentChildren => {
       const group = groups.get(entry.groupKey);
       return group ? <div key={`work:${group.key}`} class="conversation-row steps">{normalizedRenderWorkGroup(group, group.memberKeys.map(key => {
@@ -97,7 +96,7 @@ export function ConversationItems({ items, toolSummaries = [], renderItem, rende
         const work = renderWork(entry); if (work) output.push(work);
       } else {
         const item = byKey.get(entry.itemKey);
-        if (item && !isItemAbsent?.(item)) output.push(<Fragment key={`conversation:${keyForSavedItem(item)}`}>{renderBefore?.(item)}{content(item, false, hostedContainer !== undefined)}</Fragment>);
+        if (item && !isItemAbsent?.(item)) output.push(<Fragment key={`conversation:${item.key}`}>{renderBefore?.(item)}{content(item, false, hostedContainer !== undefined)}</Fragment>);
       }
       return output;
     };
@@ -120,11 +119,11 @@ export function ConversationItems({ items, toolSummaries = [], renderItem, rende
     const pendingRows = localRegion?.kind === "unqualified"
       ? tailRows.map(tail => {
         if (tail.kind === "live") return content(tail.item, false, false);
-        const key = tail.outerRowKey;
+        const id = tail.row.messageId;
+        const key = id === undefined ? `own:${tail.row.operationId}` : canonicalSavedItemKey(id, JSON.stringify([id, "/content/0"]));
         return <Fragment key={`conversation:${key}`}>{undefined}{row(key, localRegion.renderRow(tail.row))}</Fragment>;
       })
       : [];
-    // Use the captured row identity without changing canonical measurement keys.
     const directChildren = (views: readonly ComponentChildren[]): ComponentChildren[] => views.flatMap(view => Array.isArray(view) ? view : [view]);
     const rowViews = directChildren([...rendered.map(row => row.view), trailing, ...pendingRows]);
     return <div class="conversation-items">{rowViews}</div>;

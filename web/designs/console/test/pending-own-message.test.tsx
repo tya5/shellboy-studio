@@ -10,8 +10,7 @@ import type {HistoryItem} from '../../../data/src/protocol';
 import type {DesignContext} from '../../../ui-core/src';
 import {loadPrefs} from '../../../ui-core/src/prefs';
 import {App} from '../screens/App';
-import {OrderedHistory, SavedWindowContent} from '../screens/Conversation';
-import type {WindowAcceptedSnapshot} from '../../../ui-core/src/window';
+import {OrderedHistory} from '../screens/Conversation';
 import {Composer} from '../system/components/Composer';
 import {canonicalAttemptId} from '../../../data/test/work-fixture';
 
@@ -536,59 +535,55 @@ it("mounted click joins the held old cursor read", async () => {
 
 
 
-async function witnessOwnSendPublication(scenario: 'streaming' | 'two sends' | 'held' | 'multi-item' | 'partial cut') {
+async function witnessOwnSendPublication(scenario: 'streaming' | 'two sends' | 'held' | 'multi-item' | 'partial cut' | 'deferred') {
  const saved = (id: string, ordinal: number, attempt?: ReturnType<typeof canonicalAttemptId>): HistoryItem => ({ node_id: id,
   kind: attempt ? 'assistant_response' : 'user', selection: {ordinal},
-  items: [{kind:'text', item_identity:id, text:id, text_complete:true}],
+  items: [{kind:'text', item_identity:JSON.stringify([id, '/content/0']), text:id, text_complete:true}],
   provenance: attempt ? {attempt_id:attempt, sender:{kind:'assistant'}} : {sender:{kind:'human'}} });
  const scheduled: (() => void)[] = [];
  const history = [saved('H', 0)];
  const f = await fixtureConversation({nodes:history, schedule: fn => scheduled.push(fn), lang:'ja'});
  const host = document.createElement('div'); document.body.append(host);
+ const context: DesignContext = { model: f.model, prefs: signal(loadPrefs({ read: () => null, write: () => {} }, [{ name: 'console', themes: [{ name: 'light' }] }])), setPrefs() {}, designs: [], submitToken: async () => false };
  const r0 = canonicalAttemptId(71), r1 = canonicalAttemptId(72);
  const live = (attempt_id: string, text: string) => f.t.push({t:'live', thread_id:'lead', attempt_id, gap:false, deltas:[{offset:0, reasoning:false, text}]});
- const paint = (snapshot = f.model.longReader.peek()!.acceptedView.peek()) => render(<SavedWindowContent model={f.model} snapshot={snapshot}/>, host);
  const rows = () => [...host.querySelectorAll('.conversation-items > .conversation-row')];
  const order = () => rows().map(row => row.querySelector('.message-markdown')?.textContent?.trim());
+ const pendingRow = (id: string) => rows().find(row => row.querySelector('[data-pending-own-message]') && row.querySelector('.message-markdown')?.textContent?.trim() === id);
  const send = async (id: string, held = false) => {
-  const promise = f.model.send(id); await flush(6);
+  let promise!: Promise<boolean>;
+  await act(async () => { promise = f.model.send(id); await flush(6); });
+  const provisional = pendingRow(id);
+  expect(provisional?.textContent).toContain('送信待ち');
   const call = f.t.calls('message.send').at(-1)!;
-  f.db.answered.add(call.id); f.t.ok(call.id,{message_id:id,thread_id:'lead',delivery_status:held?'held':'accepted'});
-  expect(await promise).toBe(true); await flush(8);
+  await act(async () => {
+   f.db.answered.add(call.id); f.t.ok(call.id,{message_id:id,thread_id:'lead',delivery_status:held?'held':'accepted'});
+   expect(await promise).toBe(true); await flush(8);
+  });
+  const acknowledged = pendingRow(id);
+  expect(acknowledged?.textContent).toContain('送信待ち');
+  expect(acknowledged).not.toBe(provisional);
+  return acknowledged;
  };
  const adopt = async (...savedRows: HistoryItem[]) => {
   history.push(...savedRows); f.db.history.lead = [...history]; f.db.historyRevisions.lead!++;
-  const win = f.model.longReader.peek()!;
-  let painted = false;
-  const stop = win.acceptedView.subscribe(snapshot => {
-   if (!painted && win.acceptedView.isCurrent(snapshot) && snapshot.displayPlan?.localRegion.retire.some(row => row.messageId === savedRows.at(-1)!.node_id)) {
-    const plan = snapshot.displayPlan!;
-    const adoptedId = savedRows.at(-1)!.node_id;
-    const keyed = plan.entries.filter(entry => entry.outerRowKey !== undefined);
-    expect(keyed.map(entry => [entry.item.source.nodeId, entry.outerRowKey])).toEqual([[adoptedId, `own:${adoptedId}`]]);
-    if (scenario === 'multi-item') {
-     const items = plan.entries.filter(entry => entry.item.source.nodeId === adoptedId);
-     expect(items.map(entry => entry.item.key)).toEqual(['["P","P"]', '["P","P-extra"]']);
-     expect(items.map(entry => entry.outerRowKey)).toEqual(['own:P', undefined]);
-    }
-    paint(snapshot); painted = true;
-   }
-  });
-  try { win.changed(); await settle(f.t,f.db); await flush(16); expect(painted).toBe(true); } finally { stop(); }
+  await act(async () => { f.t.push({t:'changed',thread_ids:['lead'],list:false}); await settle(f.t,f.db); await flush(16); });
+  expect(f.model.longReader.peek()!.acceptedView.peek().rows).toEqual(expect.arrayContaining(savedRows.map(row => expect.objectContaining({node_id:row.node_id}))));
  };
  try {
-  if ((scenario === 'streaming' || scenario === 'partial cut')) { live(r0,'R0'); await flush(); expect(scheduled.length).toBeGreaterThan(0); }
-  await send('P', scenario === 'held');
-  if ((scenario === 'streaming' || scenario === 'partial cut')) {
+  await act(async () => { render(<App context={context}/>,host); await settle(f.t,f.db); });
+  const streaming = scenario === 'streaming' || scenario === 'partial cut';
+  if (streaming) await act(async () => { live(r0,'R0'); await flush(); expect(scheduled.length).toBeGreaterThan(0); });
+  const pRow = await send('P', scenario === 'held');
+  if (streaming) await act(async () => {
    expect(f.model.handle.peek()!.handoff.peek()).toEqual([]);
    live(r1,'R1'); await flush(); scheduled.splice(0).forEach(publish => publish());
-  }
-  if (scenario === 'two sends') await send('Q');
-  await flush(); paint();
-  const expected = (scenario === 'streaming' || scenario === 'partial cut') ? ['H','R0','P','R1'] : scenario === 'two sends' ? ['H','P','Q'] : ['H','P'];
+  });
+  const qRow = scenario === 'two sends' ? await send('Q') : undefined;
+  const expected = streaming ? ['H','R0','P','R1'] : scenario === 'two sends' ? ['H','P','Q'] : ['H','P'];
   expect(order()).toEqual(expected);
   const pIndex = expected.indexOf('P');
-  const pRow = rows()[pIndex];
+  expect(rows()[pIndex]).toBe(pRow);
   if (scenario === 'partial cut') {
    await adopt(saved('P',1));
    expect(order()).toEqual(['H','P','R0','R1']);
@@ -596,46 +591,34 @@ async function witnessOwnSendPublication(scenario: 'streaming' | 'two sends' | '
    expect(f.model.handle.peek()!.handoff.peek().map(record => record.attemptId)).toEqual([r0,r1]);
    return;
   }
-  if (scenario === 'held') expect(rows()[pIndex]!.textContent).toContain('送信待ち');
-  const p = saved('P', scenario === 'streaming' ? 2 : 1);
-  if (scenario === 'multi-item') p.items = [...p.items!, {kind:'text', item_identity:'P-extra', text:'extra', text_complete:true}];
-  await adopt(...(scenario === 'streaming' ? [saved('R0',1,r0), p] : [p]));
-  const adoptedOrder = scenario === 'multi-item' ? [...expected, 'extra'] : expected;
-  expect(order()).toEqual(adoptedOrder);
+  const p = saved('P', streaming ? 2 : 1);
+  if (scenario === 'deferred') {
+   await adopt({...p, items:null, items_unavailable_reason:'response_budget', excerpt:'P deferred'});
+   expect(pendingRow('P')).toBeUndefined();
+   expect(f.model.acceptedOwnMessages.peek()).toEqual([]);
+   expect(pRow?.isConnected).toBe(false);
+   return;
+  }
+  if (scenario === 'multi-item') p.items = [...p.items!, {kind:'text', item_identity:JSON.stringify(['P','/content/1']), text:'extra', text_complete:true}];
+  await adopt(...(streaming ? [saved('R0',1,r0), p] : [p]));
+  expect(order()).toEqual(scenario === 'multi-item' ? [...expected, 'extra'] : expected);
   expect(rows()[pIndex]!.getAttribute('data-node')).toBe('P');
+  expect(rows()[pIndex]!.getAttribute('data-item-key')).toBe(JSON.stringify(['P', JSON.stringify(['P','/content/0'])]));
   expect(rows()[pIndex]).toBe(pRow);
-
-  // The adoption publication uses the pending key once. Observe the canonical
-  // remount independently of position once the retired send leaves the cohort.
-  const win = f.model.longReader.peek()!;
-  const recomposed = win.acceptedView.peek();
-  expect(recomposed.displayPlan?.localRegion.retire).toEqual([]);
-  expect(recomposed.displayPlan?.entries.find(entry => entry.item.source.nodeId === 'P')?.outerRowKey).toBeUndefined();
-  paint(recomposed);
-  expect(order()).toEqual(adoptedOrder);
-  const canonicalP = rows()[pIndex];
-  expect(canonicalP).not.toBe(pRow);
-  expect(canonicalP?.getAttribute('data-node')).toBe('P');
-  expect(canonicalP?.getAttribute('data-item-key')).toBe(pRow?.getAttribute('data-item-key'));
+  expect(f.model.longReader.peek()!.acceptedView.peek().displayPlan?.localRegion.retire).toEqual([]);
   if (scenario === 'two sends') {
-   const qIndex = expected.indexOf('Q');
-   expect(rows()[qIndex]!.querySelector('[data-pending-own-message]')).not.toBeNull();
-   const qRow = rows()[qIndex];
    await adopt(saved('Q',2));
    expect(order()).toEqual(expected);
-   expect(rows()[qIndex]!.getAttribute('data-node')).toBe('Q');
-   expect(rows()[qIndex]).toBe(qRow);
+   expect(rows()[2]!.getAttribute('data-node')).toBe('Q');
+   expect(rows()[2]).toBe(qRow);
   } else {
-   history.push(saved('Z', history.length));
-   f.db.history.lead = [...history]; f.db.historyRevisions.lead!++;
-   win.changed(); await settle(f.t, f.db); await flush(16);
-   expect(win.acceptedView.peek().rows.some(row => row.node_id === 'Z')).toBe(true);
-   paint();
+   await adopt(saved('Z', history.length));
   }
-  expect(rows()[pIndex]).toBe(canonicalP);
+  expect(rows()[pIndex]).toBe(pRow);
   expect(f.model.acceptedOwnMessages.peek()).toEqual([]);
  } finally { render(null,host);host.remove();f.model.dispose();f.data.stop(); }
 }
 
-it.each(['streaming', 'two sends', 'held', 'multi-item'] as const)('preserves own row indices through real successive publications: %s', witnessOwnSendPublication);
+it.each(['streaming', 'two sends', 'held', 'multi-item'] as const)('keeps the acknowledged DOM row through mounted publications: %s', witnessOwnSendPublication);
+it('retires a deferred saved send without promising DOM continuity', () => witnessOwnSendPublication('deferred'));
 it('Studio #61 unresolved witness: an accepted cut without matching attempt provenance keeps the old live row', () => witnessOwnSendPublication('partial cut'));
