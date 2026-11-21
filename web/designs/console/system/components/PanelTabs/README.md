@@ -7,3 +7,5 @@ Do not use for route navigation or collapsible section headings.
 References: WAI-ARIA APG Tabs; VS Code Activity Bar icon rail.
 
 Styles: style.css in this directory
+
+The same linked tooltip is also used when the expanded panel uses icon-only tabs at 1180–1279px.

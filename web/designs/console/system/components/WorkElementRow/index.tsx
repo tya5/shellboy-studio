@@ -49,7 +49,7 @@ export type WorkElementRowProps = DisplayFacts & (
       detailPolicy: "actual-safe-typed" | "existing-shell-output";
       children: ComponentChildren;
       open: boolean;
-      onToggle: (next: boolean) => void;
+      onToggle: (next: boolean, opener?: HTMLElement) => void;
     }
 );
 
@@ -81,7 +81,7 @@ export function WorkElementRow(props: WorkElementRowProps) {
       open={props.open} onToggle={event => {
         const next = event.currentTarget.open;
         // Native toggle also fires after controlled open synchronization.
-        if (next !== props.open) props.onToggle(next);
+        if (next !== props.open) props.onToggle(next, event.currentTarget.querySelector<HTMLElement>("summary") ?? undefined);
       }}>
       <summary class="work-element-row__line" aria-label={accessibleLabel} title={display.typeAccessibleLabel}>{line}</summary>
       <div class="work-element-row__detail">{props.children}</div>

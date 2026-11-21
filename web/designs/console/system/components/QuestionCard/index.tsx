@@ -2,7 +2,7 @@ import { useState } from "preact/hooks";
 import { StatusMark } from "../StatusMark";
 import { Button } from "../Button";
 
-export function QuestionCard(props: { id: string; label: string; waitingWord: string; question: string; answerLabel: string; submitLabel: string; error?: string | undefined; onAnswer: (text: string) => void; extra?: preact.ComponentChildren }) {
+export function QuestionCard(props: { id: string; label: string; waitingWord: string; question: string; answerLabel: string; submitLabel: string; error?: string | undefined; busy?: boolean; onAnswer: (text: string) => void; extra?: preact.ComponentChildren }) {
   const [text, setText] = useState("");
   return (
     <section class="q">
@@ -16,7 +16,7 @@ export function QuestionCard(props: { id: string; label: string; waitingWord: st
       {props.error ? <div role="alert">{props.error}</div> : null}
       <div class="acts">
         {props.extra}
-        <Button variant="primary" disabled={text.trim() === ""} onClick={() => props.onAnswer(text)}>
+        <Button variant="primary" disabled={props.busy || text.trim() === ""} onClick={() => props.onAnswer(text)}>
           {props.submitLabel}
         </Button>
       </div>

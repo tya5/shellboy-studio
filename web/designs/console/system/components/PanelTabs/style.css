@@ -1,5 +1,5 @@
 .panel-tabs { display:flex; gap:var(--space-4); border-bottom:1px solid var(--line); min-width:0; }
-.panel-tabs button { display:flex; align-items:center; justify-content:center; gap:var(--space-4); min-width:0; padding:var(--space-4); font:var(--type-label); color:var(--muted); background:none; border:0; border-bottom:2px solid transparent; white-space:nowrap; cursor:pointer; }
+.panel-tabs button { position:relative; display:flex; align-items:center; justify-content:center; gap:var(--space-4); min-width:0; padding:var(--space-4); font:var(--type-label); color:var(--muted); background:none; border:0; border-bottom:2px solid transparent; white-space:nowrap; cursor:pointer; }
 .panel-tabs button[aria-selected="true"] { color:var(--fg); border-bottom-color:var(--accent); }
 .panel-tab-count { padding:0 var(--space-4); border-radius:999px; background:var(--raised); font:var(--type-caption); text-align:center; }
 .panel-tabs-rail { flex-direction:column; border:0; }
@@ -10,3 +10,7 @@
 
 .panel-tab-tip { display:none; position:absolute; inset-inline-end:100%; z-index:var(--z-popover); background:var(--raised); border:1px solid var(--line); color:var(--fg); padding:var(--space-4) var(--space-8); border-radius:var(--radius-s); }
 .panel-tabs-rail button:hover .panel-tab-tip,.panel-tabs-rail button:focus-visible .panel-tab-tip { display:block; }
+
+@container app (min-width:1180px) and (max-width:1279px) {
+  .panel-tabs:not(.panel-tabs-rail) button:hover .panel-tab-tip,.panel-tabs:not(.panel-tabs-rail) button:focus-visible .panel-tab-tip { display:block; inset-inline-end:auto; inset-block-start:100%; }
+}

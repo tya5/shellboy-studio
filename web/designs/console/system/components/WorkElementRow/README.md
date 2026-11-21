@@ -13,3 +13,5 @@ Execution status uses only the issuer's optional typed executionStatus, passed d
 Styles are colocated in `system/components/WorkElementRow/style.css`.
 
 Styles: style.css in this directory
+
+The toggle callback can receive its disclosure summary as the focus return target.

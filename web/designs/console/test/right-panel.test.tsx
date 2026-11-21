@@ -85,6 +85,7 @@ describe('right panel purpose',()=>{
    Object.defineProperty(f.host.querySelector('.app'), 'clientWidth', {configurable:true,value:1179});
    await act(async()=>{window.dispatchEvent(new KeyboardEvent('keydown',{key:'9',altKey:true,bubbles:true,cancelable:true}));});
    expect(f.prefs.value.panelCollapsed).toBe(false);
+   Object.defineProperty(f.host.querySelector('.app'), 'clientWidth', {configurable:true,value:1280});
    await act(async()=>f.host.querySelector<HTMLButtonElement>('[data-panel-tab="awaiting-reply"]')!.click());
    const panel=f.host.querySelector('#panel-page-awaiting-reply')!;
    const row=panel.querySelector('[data-panel-row-id="owed-human"]')!;
@@ -96,6 +97,32 @@ describe('right panel purpose',()=>{
    await act(async()=>panel.querySelector<HTMLButtonElement>('[data-panel-back]')!.click());
    expect(row.getAttribute('aria-current')).toBe('true');
    expect(document.activeElement).toBe(row.querySelector('button'));
+  } finally {f.model.dispose();f.data.stop();}
+ });
+
+ it('opens a collapsed panel via the model action and keeps one target operation across Back', async () => {
+  const f=await setup();
+  try {
+   await act(async()=>f.model.togglePanel());
+   expect(f.prefs.value.panelCollapsed).toBe(true);
+   await act(async()=>f.model.openInPanel({kind:'step',id:'shell-running'}));
+   expect(f.prefs.value.panelCollapsed).toBe(false);
+   expect(loadPrefs(f.store,DESIGNS).panelCollapsed).toBe(false);
+   expect(f.host.querySelector('#panel-page-work [data-panel-detail]')?.textContent).toContain('npm test');
+   await act(async()=>f.host.querySelector<HTMLButtonElement>('[data-panel-tab="awaiting-reply"]')!.click());
+   const row=f.host.querySelector('[data-panel-row-id="owed-human"]')!;
+   await act(async()=>row.querySelector('button')!.click());
+   let operation: Promise<void> | undefined;
+   await act(async()=>{operation=f.model.runPanelOperation('owed-human',{kind:'cancel',target:'reply'});});
+   const call=f.t.calls('message.cancel')[0]!;
+   expect(f.model.panelOperations.peek().get('owed-human')?.pending).toBe(true);
+   await act(async()=>f.host.querySelector<HTMLButtonElement>('[data-panel-back]')!.click());
+   await act(async()=>{void f.model.runPanelOperation('owed-human',{kind:'cancel',target:'reply'});});
+   expect(f.t.calls('message.cancel')).toHaveLength(1);
+   await act(async()=>{f.db.answered.add(call.id); f.t.ownerError(call.id,'synthetic','fixture cancellation failed'); await operation;});
+   expect(f.host.querySelector('#panel-page-awaiting-reply [role=alert]')?.textContent).toContain('fixture cancellation failed');
+   await act(async()=>row.querySelector('button')!.click());
+   expect(f.host.querySelector('[data-panel-detail] [role=alert]')?.textContent).toContain('fixture cancellation failed');
   } finally {f.model.dispose();f.data.stop();}
  });
 

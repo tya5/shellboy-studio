@@ -7,3 +7,5 @@ Today this renders from test fixtures only: `message ask` (Shellboy #262) isn't 
 Styles are colocated in `system/components/QuestionCard/style.css`.
 
 Styles: style.css in this directory
+
+A caller-owned in-flight operation can disable answer submission through `busy`.

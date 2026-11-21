@@ -22,6 +22,10 @@ const SEARCH_DEBOUNCE_MS = 200;
 
 export function App({ context }: { context: DesignContext }) {
   const model = context.model;
+  useLayoutEffect(() => model.bindPanelPreference({
+    collapsed: () => context.prefs.peek().panelCollapsed === true,
+    write: panelCollapsed => context.setPrefs({ panelCollapsed }),
+  }), [model, context]);
   const [deleteThread, setDeleteThread] = useState<ThreadDeleteTarget>();
   const sidebarListRef = useRef<HTMLDivElement>(null);
   const lastSidebarFocus = useRef<string>();
@@ -85,7 +89,7 @@ export function App({ context }: { context: DesignContext }) {
       }
       if (panelShortcut(e) && model.route.peek().view === "conversation" && (document.querySelector(".app")?.clientWidth ?? 0) >= 1180) {
         e.preventDefault();
-        context.setPrefs({ panelCollapsed: !context.prefs.value.panelCollapsed });
+        model.togglePanel();
         return;
       }
       const view = viewShortcut(e);
@@ -213,7 +217,7 @@ export function App({ context }: { context: DesignContext }) {
           {deleteThread ? <ThreadDeleteDialog key={deleteThread.threadId} model={model} target={deleteThread} getReturnFocusTarget={resolveSidebarLink} onClose={() => setDeleteThread(undefined)} /> : null}
           <section class="view" aria-label={title}>
             <AppsHost context={context} />
-            {route.view === "apps" ? null : route.view === "conversation" ? <Conversation model={model} panelCollapsed={context.prefs.value.panelCollapsed} onPanelCollapsedChange={panelCollapsed => context.setPrefs({ panelCollapsed })} /> : route.view === "monitor" ? <Monitor context={context} /> : route.view === "inbox" ? <Inbox model={model} /> : route.view === "analytics" ? <Analytics context={context} /> : route.view === "branches" ? <Branches model={model} /> : route.view === "threads" ? <Threads model={model} /> : route.view === "setup" ? <Setup context={context} /> : <SettingsView context={context} />}
+            {route.view === "apps" ? null : route.view === "conversation" ? <Conversation model={model} panelCollapsed={context.prefs.value.panelCollapsed} /> : route.view === "monitor" ? <Monitor context={context} /> : route.view === "inbox" ? <Inbox model={model} /> : route.view === "analytics" ? <Analytics context={context} /> : route.view === "branches" ? <Branches model={model} /> : route.view === "threads" ? <Threads model={model} /> : route.view === "setup" ? <Setup context={context} /> : <SettingsView context={context} />}
           </section>
           <footer class="status">
             <StatusMark

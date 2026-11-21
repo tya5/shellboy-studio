@@ -86,7 +86,7 @@ describe("the reader keeps Stop, recovery, marks and steps working", () => {
 
   it("the selected step is found while its window is held, and not walked for", async () => {
     const { model, goTo, t } = await open("lead");
-    model.openInPanel("step", "ex-far");
+    model.openInPanel({ kind: "step", id: "ex-far" });
     expect(model.selectedStep.value?.command).toBe("make");
     await goTo(4500);
     expect(model.selectedStep.value?.command).toBe("make"); // still held (16 windows)

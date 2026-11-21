@@ -345,7 +345,7 @@ describe("Conversation", () => {
     expect(exitedExecution?.querySelector('.work-element-row')?.getAttribute('data-exit-code')).toBe('0');
     await act(async () => {
       const row = model.conversation.value.find(row => row.type === "steps");
-      if (row?.type === "steps") model.openInPanel("step", row.steps[0]!.executionId);
+      if (row?.type === "steps") model.openInPanel({ kind: "step", id: row.steps[0]!.executionId });
     });
     expect(el.querySelector("[data-panel-detail]")?.textContent).toContain("2.4s");
     expect(text(el)).toContain("41k / auto-summary 200k");

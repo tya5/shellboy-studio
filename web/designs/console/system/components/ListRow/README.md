@@ -9,3 +9,5 @@ Do not use for multi-line message bodies or route navigation.
 References: WAI-ARIA APG Menu Button; system `useRowMenu`.
 
 Styles: style.css in this directory
+
+The select callback receives the actual row button for focus return. A per-target operation error can be displayed outside the button.

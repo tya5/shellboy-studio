@@ -74,7 +74,10 @@ export type SendState =
   | { kind: "unconfirmed"; operationId: string; text: string };
 
 export type RightPanelTab = "work" | "reply-needed" | "awaiting-reply" | "info";
-export type RightPanelDetail = Readonly<{ kind: "step" | "message" | "reply"; id: string }>;
+export type RightPanelTarget = Readonly<{ kind: "step" | "message" | "reply"; id: string }>;
+export type RightPanelDetail = RightPanelTarget & Readonly<{ opener?: () => void }>;
+type PanelOperation = Readonly<{ kind: "cancel" | "answer"; pending: boolean; error?: string }>;
+type PanelPreference = Readonly<{ collapsed: () => boolean; write: (collapsed: boolean) => void }>;
 
 export interface PendingOwnMessage {
   readonly threadId: string;
@@ -323,7 +326,9 @@ export class AppModel {
   }
   bodyState(nodeId: string, itemIdentity?: string): BodyState | undefined { return this.bodies.value.get(this.bodyCacheKey(nodeId, itemIdentity)); }
   readonly panelTab: Signal<RightPanelTab> = signal("work");
-  readonly panelOpener: Signal<Partial<Record<RightPanelTab, RightPanelDetail>>> = signal({});
+  readonly panelOpener: Signal<Partial<Record<RightPanelTab, RightPanelTarget>>> = signal({});
+  private panelPreference?: PanelPreference;
+  readonly panelOperations: Signal<ReadonlyMap<string, PanelOperation>> = signal(new Map());
   readonly panelDetail: Signal<RightPanelDetail | undefined> = signal(undefined);
   readonly selectedStepId: ReadonlySignal<string | undefined> = computed(() => this.panelDetail.value?.kind === "step" ? this.panelDetail.value.id : undefined);
   readonly selectedStep: ReadonlySignal<StepRow | undefined>;
@@ -654,6 +659,8 @@ export class AppModel {
   }
 
   dispose(): void {
+    this.panelOperations.value = new Map();
+    this.panelDetail.value = undefined;
     this.closeModelPicker();
     this.senderTitles.close();
     this.branchCompare.leave();
@@ -843,6 +850,7 @@ export class AppModel {
     this.shells.value = new Map();
     this.panelTab.value = "work";
     this.panelOpener.value = {};
+    this.panelOperations.value = new Map();
     this.panelDetail.value = undefined;
     this.watchedOutputs.clear();
     this.sendState.value = { kind: "idle" };
@@ -1168,17 +1176,53 @@ export class AppModel {
     return true;
   }
 
-  setPanelTab(tab: RightPanelTab): void {
-    batch(() => { this.panelTab.value = tab; this.panelDetail.value = undefined; });
+  bindPanelPreference(preference: PanelPreference): () => void {
+    this.panelPreference = preference;
+    return () => { if (this.panelPreference === preference) this.panelPreference = undefined; };
   }
 
-  openInPanel(kind: RightPanelDetail["kind"], id: string): void {
-    const tab: RightPanelTab = kind === "step" || kind === "message" ? "work"
-      : this.threadReplies.peek().find(row => row.id === id)?.recipient.kind === "thread" ? "reply-needed" : "awaiting-reply";
-    batch(() => { const detail = { kind, id }; this.panelTab.value = tab; this.panelOpener.value = { ...this.panelOpener.peek(), [tab]: detail }; this.panelDetail.value = detail; });
+  togglePanel(): void {
+    const preference = this.panelPreference;
+    if (preference) preference.write(!preference.collapsed());
+  }
+
+  private expandPanel(): void {
+    if (this.panelPreference?.collapsed()) this.panelPreference.write(false);
+  }
+
+  setPanelTab(tab: RightPanelTab): void {
+    batch(() => { this.panelTab.value = tab; this.panelDetail.value = undefined; this.expandPanel(); });
+  }
+
+  openInPanel(target: RightPanelTarget, opener?: () => void): void {
+    const tab: RightPanelTab = target.kind === "reply"
+      ? this.threadReplies.peek().find(row => row.id === target.id)?.recipient.kind === "thread" ? "reply-needed" : "awaiting-reply"
+      : "work";
+    batch(() => {
+      this.panelTab.value = tab;
+      this.panelOpener.value = { ...this.panelOpener.peek(), [tab]: target };
+      this.panelDetail.value = { ...target, opener };
+      this.expandPanel();
+    });
   }
 
   closePanelDetail(): void { this.panelDetail.value = undefined; }
+
+  async runPanelOperation(id: string, action: { kind: "cancel"; target: "pending" | "reply" } | { kind: "answer"; text: string }): Promise<void> {
+    const next = new Map(this.panelOperations.peek());
+    if (this.connection.peek() !== "connected" || next.get(id)?.pending || this.uncertainCancels.peek().has(id)) return;
+    if (!next.has(id) && next.size >= CACHE_ENTRIES) {
+      const settled = [...next].find(([, state]) => !state.pending);
+      if (!settled) return;
+      next.delete(settled[0]);
+    }
+    const pending: PanelOperation = { kind: action.kind, pending: true };
+    next.set(id, pending);
+    this.panelOperations.value = next;
+    const error = action.kind === "cancel" ? await this.cancelPending(id, action.target) : await this.answerReply(id, action.text);
+    if (this.panelOperations.peek().get(id) !== pending) return;
+    this.panelOperations.value = new Map(this.panelOperations.peek()).set(id, { kind: action.kind, pending: false, error });
+  }
 
   async answerReply(id: string, text: string): Promise<string | undefined> {
     const item = this.threadReplies.peek().find((row) => row.id === id);

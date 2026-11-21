@@ -314,8 +314,8 @@ export function StepView({ model, step, display, openPolicy = CANONICAL_CASES.to
   const formatted=formatWorkElementDisplay(merged);
   const shellDisplay=model.shells.value.has(step.executionId)?{...formatted,iconRole:"work.terminal" as const}:formatted;
   if(display.detailPolicy!=="actual-safe-typed"&&display.detailPolicy!=="existing-shell-output")return <WorkElementRow display={shellDisplay} anchorKey={step.executionId} detailPolicy={display.detailPolicy}/>;
-  return <WorkElementRow display={shellDisplay} anchorKey={step.executionId} detailPolicy={display.detailPolicy} open={open} onToggle={next=>{
-    if (next && !open) model.openInPanel("step", step.executionId);
+  return <WorkElementRow display={shellDisplay} anchorKey={step.executionId} detailPolicy={display.detailPolicy} open={open} onToggle={(next, opener)=>{
+    if (next && !open) model.openInPanel({ kind: "step", id: step.executionId }, panelFocusReturn(opener));
     if(next!==open)model.toolStepChoices.value=new Map(model.toolStepChoices.peek()).set(step.executionId,next);
   }}>
     {step.description ? <div class="mono muted caption">{step.command}</div> : null}
@@ -400,31 +400,29 @@ function panelElapsed(now: number, startedAt?: string): string | undefined {
   return started === undefined ? undefined : formatDuration(Math.max(0, now - started));
 }
 
-function usePanelCancel(model: AppModel) {
-  const [error, setError] = useState<string>();
-  const [busy, setBusy] = useState(false);
-  const action = (id: string, kind: "pending" | "reply" = "pending") => ({ key: "cancel", label: model.t.value("work.cancel"),
-    disabled: busy || model.connection.value !== "connected" || model.uncertainCancels.value.has(id),
-    run: () => {
-      if (busy) return;
-      setBusy(true);
-      void model.cancelPending(id, kind).then(failure => {
-        setBusy(false);
-        setError(failure ? model.t.value("work.cancelFailed", { message: failure }) : undefined);
-      });
-    },
-  });
-  return { action, error };
+function panelFocusReturn(opener?: HTMLElement): (() => void) | undefined {
+  if (!opener) return;
+  return () => { if (opener.isConnected && !opener.closest("[hidden]")) opener.focus(); };
+}
+
+function panelCancel(model: AppModel, id: string, target: "pending" | "reply" = "pending") {
+  return { key: "cancel", label: model.t.value("work.cancel"),
+    disabled: model.panelOperations.value.get(id)?.pending || model.connection.value !== "connected" || model.uncertainCancels.value.has(id),
+    run: () => { void model.runPanelOperation(id, { kind: "cancel", target }); },
+  };
+}
+
+function panelOperationError(model: AppModel, id: string): string | undefined {
+  const state = model.panelOperations.value.get(id);
+  return state?.error ? model.t.value(state.kind === "answer" ? "inbox.answerFailed" : "work.cancelFailed", { message: state.error }) : undefined;
 }
 
 function PanelActivity({ model }: { model: AppModel }) {
   const t = model.t.value;
   const work = model.work.value;
-  const cancel = usePanelCancel(model);
   const selected = model.panelOpener.value.work;
   const now = model.now.value;
   return <div class="panel-list" data-panel-list="work">
-    {cancel.error ? <div role="alert" class="caption">{cancel.error}</div> : null}
     {activitySections.map(section => {
       const rows = work[section.key];
       return rows.length ? <section key={section.key}><ListDivider label={t(section.label)} count={rows.length} />{rows.map(row => {
@@ -433,8 +431,8 @@ function PanelActivity({ model }: { model: AppModel }) {
         return <ListRow key={row.id} id={row.id} title={(section.kind === "step" ? row.command ?? row.label : row.label) || t("work.textUnavailable")}
           subtitle={section.kind === "step" ? elapsed : [state, elapsed].filter(Boolean).join(" · ")} icon={section.icon}
           selected={selected?.kind === section.kind && selected.id === row.id}
-          onSelect={() => model.openInPanel(section.kind, row.id)} menuLabel={t("panel.rowActions")}
-          actions={section.kind === "message" ? [cancel.action(row.id)] : undefined} />;
+          onSelect={opener => model.openInPanel({ kind: section.kind, id: row.id }, panelFocusReturn(opener))} menuLabel={t("panel.rowActions")}
+          actions={section.kind === "message" ? [panelCancel(model, row.id)] : undefined} error={panelOperationError(model, row.id)} />;
       })}</section> : null;
     })}
     {work.partial ? <div class="caption muted">{t("work.partial")}</div> : null}
@@ -447,9 +445,7 @@ function PanelReplies({ model, recipient }: { model: AppModel; recipient: "threa
   const t = model.t.value;
   const tab = recipient === "thread" ? "reply-needed" : "awaiting-reply";
   const rows = model.threadReplies.value.filter(reply => reply.recipient.kind === recipient);
-  const cancel = usePanelCancel(model);
   return <div class="panel-list" data-panel-list={tab}>
-    {cancel.error ? <div role="alert" class="caption">{cancel.error}</div> : null}
     {rows.map(reply => {
       const human = reply.recipient.kind === "human";
       const peer = reply.recipient.kind === "thread" ? reply.recipient.threadId : undefined;
@@ -457,10 +453,10 @@ function PanelReplies({ model, recipient }: { model: AppModel; recipient: "threa
       const target = peer && peer !== model.selectedId.value ? formatRoute({ view: "conversation", threadId: peer }) : undefined;
       const elapsed = reply.elapsedMs !== undefined ? formatDuration(reply.elapsedMs) : panelElapsed(model.now.value, reply.createdAt);
       const actions = [...(target ? [{ key: "open", label: t("panel.openThread"), href: target }] : []),
-        ...(human ? [cancel.action(reply.id, "reply")] : [])];
+        ...(human ? [panelCancel(model, reply.id, "reply")] : [])];
       return <ListRow key={reply.id} id={reply.id} title={[party, reply.question || t("work.textUnavailable")].filter(Boolean).join(" · ")}
         subtitle={elapsed} waiting={human} selected={model.panelOpener.value[tab]?.id === reply.id}
-        menuLabel={t("panel.rowActions")} actions={actions} onSelect={() => model.openInPanel("reply", reply.id)} />;
+        menuLabel={t("panel.rowActions")} actions={actions} error={panelOperationError(model, reply.id)} onSelect={opener => model.openInPanel({ kind: "reply", id: reply.id }, panelFocusReturn(opener))} />;
     })}
     {!rows.length ? <p class="muted caption">{t("panel.empty")}</p> : null}
   </div>;
@@ -495,17 +491,16 @@ function PanelDetail({ model, tabLabel, onBack }: { model: AppModel; tabLabel: s
   const running = detail?.kind === "step" ? model.work.value.running.find(row => row.id === detail.id) : undefined;
   const started = formatClock(step?.startedAt ?? running?.startedAt, true);
   const stepId = detail?.kind === "step" ? detail.id : undefined;
-  const [error, setError] = useState<string>();
   useEffect(() => stepId && (step || running) ? model.watchOutput(stepId) : undefined, [model, stepId, !!(step || running)]);
   useEffect(() => {
     if (!detail || detail.kind !== "message" || model.bodyState(detail.id)) return;
     void model.loadBody(detail.id);
   }, [model, detail]);
-  const cancel = usePanelCancel(model);
   const backRef = useRef<HTMLButtonElement>(null);
   useLayoutEffect(() => { if (backRef.current?.offsetParent) backRef.current.focus(); }, []);
   const back = <Button buttonRef={backRef} variant="link" data-panel-back onClick={onBack}><Icon role="panel.back" size="small" />{tabLabel}</Button>;
   if (!detail) return null;
+  const error = panelOperationError(model, detail.id);
   if (detail.kind === "step") {
     const command = step?.command ?? running?.command;
     const elapsed = step ? stepDuration(step, model.now.value) : undefined;
@@ -524,26 +519,25 @@ function PanelDetail({ model, tabLabel, onBack }: { model: AppModel; tabLabel: s
   }
   if (detail.kind === "message") {
     const row = model.work.value.pending.find(item => item.id === detail.id);
-    const action = row ? cancel.action(row.id) : undefined;
+    const action = row ? panelCancel(model, row.id) : undefined;
     return <section class="panel-detail" data-panel-detail=""><div class="panel-detail-head">{back}<h3>{t("work.pending")}</h3></div>
       {row ? <KeyValue rows={[{ key: t("work.pending"), value: model.bodyState(row.id)?.text ?? (row.label || t("work.textUnavailable")) }, { key: t("details.status"), value: row.state }]} /> : <p class="muted caption">{t("work.textUnavailable")}</p>}
       {action ? <Button disabled={action.disabled} onClick={action.run}>{action.label}</Button> : null}
-      {cancel.error ? <p role="alert">{cancel.error}</p> : null}
+      {error ? <p role="alert">{error}</p> : null}
       {model.bodyState(detail.id)?.loading ? <p role="status">{t("convo.loadingBody")}</p> : null}
     </section>;
   }
   const reply = model.threadReplies.value.find(row => row.id === detail.id);
-  const replyCancel = reply?.recipient.kind === "human" ? cancel.action(reply.id, "reply") : undefined;
+  const replyCancel = reply?.recipient.kind === "human" ? panelCancel(model, reply.id, "reply") : undefined;
   return <section class="panel-detail" data-panel-detail=""><div class="panel-detail-head">{back}<h3>{t(reply?.recipient.kind === "thread" ? "panel.tab.reply_needed" : "panel.tab.awaiting_reply")}</h3></div>
-    {reply?.recipient.kind === "human" ? <QuestionCard id={`panel-${reply.id}`} label={t("work.replies")} waitingWord={t("status.awaiting")} question={reply.question} answerLabel={t("inbox.answer")} submitLabel={t("inbox.answerResume")} error={error} onAnswer={text => { void model.answerReply(reply.id, text).then(failure => setError(failure ? t("inbox.answerFailed", { message: failure }) : undefined)); }} /> : reply ? <><p>{reply.question}</p><KeyValue rows={[{ key: t("details.status"), value: reply.state }]} />
+    {reply?.recipient.kind === "human" ? <QuestionCard id={`panel-${reply.id}`} label={t("work.replies")} waitingWord={t("status.awaiting")} question={reply.question} answerLabel={t("inbox.answer")} submitLabel={t("inbox.answerResume")} error={error} busy={model.panelOperations.value.get(reply.id)?.pending} onAnswer={text => { void model.runPanelOperation(reply.id, { kind: "answer", text }); }} /> : reply ? <><p>{reply.question}</p><KeyValue rows={[{ key: t("details.status"), value: reply.state }]} />
       {reply.recipient.kind === "thread" && reply.recipient.threadId !== model.selectedId.value ? <a href={formatRoute({ view: "conversation", threadId: reply.recipient.threadId })}>{reply.recipient.title}</a> : null}</>
       : <p class="muted caption">{t("work.textUnavailable")}</p>}
     {replyCancel ? <Button disabled={replyCancel.disabled} onClick={replyCancel.run}>{replyCancel.label}</Button> : null}
-    {cancel.error ? <p role="alert">{cancel.error}</p> : null}
   </section>;
 }
 
-function RightPanel({ model, panelCollapsed = false, onPanelCollapsedChange }: { model: AppModel; panelCollapsed?: boolean; onPanelCollapsedChange?: (collapsed: boolean) => void }) {
+function RightPanel({ model, panelCollapsed = false }: { model: AppModel; panelCollapsed?: boolean }) {
   const t = model.t.value;
   const tabs = [
     { id: "work", label: t("panel.tab.work"), icon: "panel.work" as const, count: model.work.value.running.length + model.work.value.pending.length },
@@ -563,17 +557,22 @@ function RightPanel({ model, panelCollapsed = false, onPanelCollapsedChange }: {
     return () => removeEventListener("keydown", onKey);
   }, [model, detail, panelCollapsed]);
   const root = useRef<HTMLElement>(null);
+  const focusAfterBack = useRef<{ tab: typeof model.panelTab.value; restore: () => void }>();
+  useLayoutEffect(() => {
+    const focus = focusAfterBack.current;
+    focusAfterBack.current = undefined;
+    if (focus && focus.tab === model.panelTab.peek() && !model.panelDetail.peek() && !panelCollapsed) focus.restore();
+  }, [detail, panelCollapsed, model]);
   const closeDetail = () => {
+    const tab = model.panelTab.peek();
+    const restore = model.panelDetail.peek()?.opener;
+    if (restore) focusAfterBack.current = { tab, restore };
     model.closePanelDetail();
-    queueMicrotask(() => {
-      const opener = [...(root.current?.querySelectorAll<HTMLElement>("[data-panel-row-id]") ?? [])].find(row => row.dataset.panelRowId === detail?.id);
-      (opener?.querySelector("button") ?? root.current?.querySelector<HTMLButtonElement>('[role="tab"][aria-selected="true"]'))?.focus();
-    });
   };
-  const select = (id: string) => { if (panelCollapsed) onPanelCollapsedChange?.(false); model.setPanelTab(id as import("../../../ui-core/src/model").RightPanelTab); };
+  const select = (id: string) => model.setPanelTab(id as import("../../../ui-core/src/model").RightPanelTab);
   return <aside ref={root} class={`details${panelCollapsed ? " details-collapsed" : ""}`} aria-label={t("panel.title")} data-panel-root="" data-panel-rail={panelCollapsed ? "" : undefined}>
     <Button icon label={t(panelCollapsed ? "panel.expand" : "panel.collapse")} title={t(panelCollapsed ? "panel.expand" : "panel.collapse")} aria-expanded={!panelCollapsed}
-      onClick={() => onPanelCollapsedChange?.(!panelCollapsed)}><Icon role={panelCollapsed ? "panel.expand" : "panel.collapse"} /></Button>
+      onClick={() => model.togglePanel()}><Icon role={panelCollapsed ? "panel.expand" : "panel.collapse"} /></Button>
     <PanelTabs label={t("panel.title")} items={tabs} selected={model.panelTab.value} rail={panelCollapsed} onSelect={select} />
     <div class="panel-pages" hidden={panelCollapsed}>
       {tabs.map(tab => {
@@ -606,7 +605,7 @@ export function OrderedHistory({ model, handle, win, t }: { model: AppModel; han
     liveBoundary={boundary?.ordinal} />;
 }
 
-export function Conversation({ model, panelCollapsed = false, onPanelCollapsedChange }: { model: AppModel; panelCollapsed?: boolean; onPanelCollapsedChange?: (collapsed: boolean) => void }) {
+export function Conversation({ model, panelCollapsed = false }: { model: AppModel; panelCollapsed?: boolean }) {
   const t = model.t.value;
   const [sheetOpen, setSheetOpen] = useState(false);
   const [sheetReturnFocus, setSheetReturnFocus] = useState<{ opener: HTMLElement; resolveFallback: () => HTMLElement | null }>();
@@ -676,7 +675,7 @@ export function Conversation({ model, panelCollapsed = false, onPanelCollapsedCh
           />
         </div> : null}
       </div>
-      {handle ? <RightPanel key={handle.threadId} model={model} panelCollapsed={panelCollapsed} onPanelCollapsedChange={onPanelCollapsedChange} /> : null}
+      {handle ? <RightPanel key={handle.threadId} model={model} panelCollapsed={panelCollapsed} /> : null}
       <WorkSheet open={sheetOpen} title={t("work.title")} closeLabel={t("work.close")} getReturnFocusTarget={() => sheetReturnFocus?.opener?.isConnected ? sheetReturnFocus.opener : sheetReturnFocus?.resolveFallback() ?? null} onClose={() => setSheetOpen(false)}><WorkRegions model={model} place="sheet" /></WorkSheet>
     </>
   );

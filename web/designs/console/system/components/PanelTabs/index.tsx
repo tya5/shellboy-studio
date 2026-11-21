@@ -25,9 +25,9 @@ export function PanelTabs(props: {
       : event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : -1;
     if (next >= 0) { event.preventDefault(); tabs[next]?.focus(); if (!props.rail) props.onSelect(props.items[next]!.id); }
   }}>
-    {props.items.map(item => <button type="button" role="tab" aria-selected={props.selected === item.id} aria-controls={`panel-page-${item.id}`} id={`panel-tab-${item.id}`} aria-label={item.count ? `${item.label} ${item.count}` : item.label} data-panel-tab={item.id} aria-describedby={props.rail ? `panel-tip-${item.id}` : undefined} onFocus={() => { if (props.rail) setRailFocus(item.id); }} tabIndex={(props.rail ? railFocus ?? props.selected : props.selected) === item.id ? 0 : -1} key={item.id} onClick={() => props.onSelect(item.id)}>
+    {props.items.map(item => <button type="button" role="tab" aria-selected={props.selected === item.id} aria-controls={`panel-page-${item.id}`} id={`panel-tab-${item.id}`} aria-label={item.count ? `${item.label} ${item.count}` : item.label} data-panel-tab={item.id} aria-describedby={`panel-tip-${item.id}`} onFocus={() => { if (props.rail) setRailFocus(item.id); }} tabIndex={(props.rail ? railFocus ?? props.selected : props.selected) === item.id ? 0 : -1} key={item.id} onClick={() => props.onSelect(item.id)}>
       <Icon role={item.icon} size="small" /><span class="panel-tab-label">{item.label}</span>{item.count ? <span class="panel-tab-count">{item.count}</span> : null}
-    {props.rail ? <span id={`panel-tip-${item.id}`} class="panel-tab-tip" role="tooltip">{item.label}</span> : null}
+    <span id={`panel-tip-${item.id}`} class="panel-tab-tip" role="tooltip">{item.label}</span>
     </button>)}
   </div>;
 }
