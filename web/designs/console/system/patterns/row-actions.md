@@ -13,8 +13,9 @@ References:
 Each row owns local open state. The trigger click captures the trigger for placement;
 contextmenu and ArrowDown capture the row. Only one menu is open because the open
 Popover dismisses on outside pointerdown before another trigger or row processes its
-click/contextmenu, as in Radix DropdownMenu. The opener stores `document.activeElement`
-when opening; Escape closes the menu and restores focus there. No shared open-menu
+click/contextmenu, as in Radix DropdownMenu. A trigger click returns focus to the
+trigger even if the browser did not focus it (Safari); a row contextmenu or ArrowDown
+returns focus to the element that was focused before opening. No shared open-menu
 registry or ref-based anchor is used.
 
 On hover-capable devices, show the borderless quiet trigger for row hover,
