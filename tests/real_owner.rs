@@ -84,9 +84,7 @@ fn start_owner_with(bin: &Path, root: &Path, data: &Path, base_url: &str) -> Ser
         let mut child = serve.child.lock().unwrap_or_else(|e| e.into_inner());
         (child.stdout.take().unwrap(), child.stderr.take().unwrap())
     };
-    std::thread::spawn(move || {
-        for _ in BufReader::new(stderr).lines() {}
-    });
+    std::thread::spawn(move || for _ in BufReader::new(stderr).lines() {});
     let mut lines = BufReader::new(stdout).lines();
     let ready: Value = loop {
         let line = lines.next().expect("serve stdout").expect("line");
