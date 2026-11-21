@@ -31,6 +31,7 @@ export function App({ context }: { context: DesignContext }) {
   const drag = useRef<{ pointerId: number; element: HTMLElement; originX: number; startWidth: number }>();
   const shell = useRef<HTMLDivElement>(null);
   const sidebarWidth = readSidebarWidth(context.prefs.value.sidebarWidth);
+  const savedSidebarWidth = context.prefs.value.sidebarWidth;
   const finishResize = (pointerId?: number) => {
     const current = drag.current;
     if (!current || (pointerId !== undefined && current.pointerId !== pointerId)) return;
@@ -43,8 +44,9 @@ export function App({ context }: { context: DesignContext }) {
   useEffect(() => { model.monitorSort.value = context.prefs.value.monitorSort ?? "stable"; }, [model, context.prefs.value.monitorSort]);
 
   useEffect(() => {
-    shell.current?.style.setProperty("--size-sidebar", `${sidebarWidth}px`);
-  }, [sidebarWidth]);
+    if (typeof savedSidebarWidth === "number") shell.current?.style.setProperty("--size-sidebar-runtime", `${sidebarWidth}px`);
+    else shell.current?.style.removeProperty("--size-sidebar-runtime");
+  }, [savedSidebarWidth, sidebarWidth]);
   useEffect(() => {
     const cancel = () => finishResize();
     addEventListener("resize", cancel);
