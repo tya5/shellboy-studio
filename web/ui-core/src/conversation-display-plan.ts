@@ -1,4 +1,4 @@
-import type { OwnSendLocalRegion } from "./own-send-presentation";
+import { ownSendOuterRowKey, type OwnSendLocalRegion } from "./own-send-presentation";
 import { captureWorkElement, type CapturedWorkElement } from "./work-element-display";
 import type { AcceptedCapability } from './accepted-view';
 import { projectHistoryWindowItems, type SavedItemProjection, type ProjectedSavedItem, type ConversationSequence, type WorkGroup } from './conversation-items';
@@ -20,6 +20,7 @@ export type DisplayLifetime = Readonly<{
 }>;
 export interface ConversationDisplayPlanEntry {
   readonly item: ProjectedSavedItem;
+  readonly outerRowKey?: string;
   readonly presentationContainer?: string;
   readonly body: DisplayBodySource;
   readonly work?: CapturedWorkElement;
@@ -97,6 +98,9 @@ export function createConversationDisplayPlan(input: AcceptedPublicationInput): 
     }
     return lifetime;
   };
+  // Spend each adoption key once, on the first eligible saved row in this publication.
+  const adopting = new Map(input.userDecision.localRegion.retire.map(row => [row.messageId, ownSendOuterRowKey(row)]));
+  const conversationKeys = new Set(input.projection.sequence?.flatMap(row => row.kind === "conversation" ? [row.itemKey] : []));
   const entries = input.projection.items.map(item => {
     const source = item.source;
     const canonical = canonicalItems.get(item.key);
@@ -110,8 +114,10 @@ export function createConversationDisplayPlan(input: AcceptedPublicationInput): 
       : source.kind === 'text'
         ? { kind: 'preview', text: source.text, cut }
         : unavailable(source.kind);
+    const outerRowKey = source.kind === "user" && source.nodeId && conversationKeys.has(item.key) ? adopting.get(source.nodeId) : undefined;
+    if (outerRowKey !== undefined) adopting.delete(source.nodeId);
     const lifetime = lifetimeFor(human ? 'canonical-human' : 'retained');
-    return Object.freeze({ item, body, lifetime, ...(work.has(item.key) ? { work: work.get(item.key) } : {}) });
+    return Object.freeze({ item, body, lifetime, ...(outerRowKey !== undefined ? { outerRowKey } : {}), ...(work.has(item.key) ? { work: work.get(item.key) } : {}) });
   });
   return Object.freeze({ acceptedGeneration: generation, revision, capability: input.capability, coverage: input.coverage, sequence: Object.freeze([...(input.projection.sequence ?? [])]), workGroups: Object.freeze([...(input.projection.workGroups ?? [])]), partitionUnknownKeys: Object.freeze([...input.projection.partitionUnknownKeys]), entries: Object.freeze(entries), cohortKey, cohortVersion: version, localRegion: input.userDecision.localRegion, scope: input.scope });
 }

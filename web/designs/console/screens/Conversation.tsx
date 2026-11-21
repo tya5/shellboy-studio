@@ -82,14 +82,14 @@ function assistantTextMembership(item: ConversationItem): AssistantTextMembershi
   return "message";
 }
 
-export function SavedConversationItems({ model, projection: suppliedProjection, displayPlan, renderBefore, trailing, nodes,localRegion }: { model: AppModel; projection: SavedItemProjection & { sequence?: readonly ({kind: "conversation"; itemKey: string} | {kind: "work"; groupKey: string})[]; workGroups?: readonly ConversationWorkGroup[] }; displayPlan?: ConversationDisplayPlan; nodes?: readonly HistoryItem[]; renderBefore?: (item: ConversationItem) => ComponentChildren; trailing?: ComponentChildren;localRegion?: { readonly kind: "unqualified"; readonly tailRows: readonly import("../../../ui-core/src/own-send-presentation").OwnSendTailRow[]; readonly ownMessageIds?: ReadonlySet<string>; readonly renderRow: (row: import("../../../ui-core/src/model").PendingOwnMessage) => ComponentChildren } }) {
+export function SavedConversationItems({ model, projection: suppliedProjection, displayPlan, renderBefore, trailing, nodes,localRegion }: { model: AppModel; projection: SavedItemProjection & { sequence?: readonly ({kind: "conversation"; itemKey: string} | {kind: "work"; groupKey: string})[]; workGroups?: readonly ConversationWorkGroup[] }; displayPlan?: ConversationDisplayPlan; nodes?: readonly HistoryItem[]; renderBefore?: (item: ConversationItem) => ComponentChildren; trailing?: ComponentChildren;localRegion?: { readonly kind: "unqualified"; readonly tailRows: readonly import("../../../ui-core/src/own-send-presentation").OwnSendTailRow[]; readonly renderRow: (row: import("../../../ui-core/src/model").PendingOwnMessage) => ComponentChildren } }) {
   const projection = displayPlan ? projectionFromDisplayPlan(displayPlan) : suppliedProjection;
   const planEntries = displayPlan?.entries ?? [];
   const planByKey = new Map(planEntries.map(entry => [entry.item.key, entry]));
   // Coverage describes the whole assistant/work cut, not authority for each independently
   // typed human item. Require an exact entry for every projected item, then gate bodies per entry.
   const planCurrent = !!displayPlan;
-  const planItems = planCurrent ? projection.items.map(item => { const entry = planByKey.get(item.key)!; return entry.presentationContainer ? { ...item, presentationContainer: entry.presentationContainer } : item; }) : [];
+  const planItems = planEntries.map(({ item, outerRowKey, presentationContainer }) => ({ ...item, outerRowKey, presentationContainer }));
   const membership=new Map(projection.items.map(item=>{ const body=planByKey.get(item.key)?.body; return [item.key, !planCurrent || body?.kind === "unavailable" ? "content-unavailable" : assistantTextMembership(item)] as const; }));
   const t = model.t.value;
   const savedSteps = collectExecutionSteps(nodes ?? [], model.shells.value);
@@ -237,7 +237,7 @@ function OwnSendContent({model,snapshot,plan,trailing}: {model:AppModel;snapshot
   const renderLocal=(message:import("../../../ui-core/src/model").PendingOwnMessage)=> <aside data-pending-own-message={message.operationId} data-pending-phase={message.phase}><Message bot={false} who={model.t.value("convo.you")} text={message.text} at={model.t.value(message.phase === "sending" || message.phase === "accepted" ? "composer.pending.waiting" : `composer.pending.${message.phase}`)} copyLabel={model.t.value("code.copy")} copiedLabel={model.t.value("code.copied")}/>
     {message.phase==="failed"||message.phase==="unconfirmed"?<><Button variant="link" disabled={!model.canResend(message)} onClick={()=>void model.resend(message)}>{model.t.value("action.retry")}</Button>{!model.canResend(message)?<span class="caption">{model.t.value("composer.retryUnavailable")}</span>:null}</>:null}</aside>;
   return <SavedConversationItems model={model} projection={projection} displayPlan={plan} nodes={snapshot.rows}
-    localRegion={plan.localRegion.tailRows.length||plan.localRegion.ownMessageIds.size?{kind:"unqualified",tailRows:plan.localRegion.tailRows,ownMessageIds:plan.localRegion.ownMessageIds,renderRow:renderLocal}:undefined}
+    localRegion={plan.localRegion.tailRows.length?{kind:"unqualified",tailRows:plan.localRegion.tailRows,renderRow:renderLocal}:undefined}
     trailing={trailing}/>;
 }
 
