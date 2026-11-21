@@ -1,1 +1,7 @@
-One Thread in the sidebar tree. Provide its state, title and depth. It uses the StatusMark without the word, since the row itself names the item. Children are indented and `muted`.
+# ThreadItem
+
+A sidebar Thread row with a navigable `tree-link` main part and an optional
+flow-positioned `tree-action` at the trailing edge. Use the action slot for the
+shared row menu; do not overlay it on the title or use it for unrelated panes.
+The row owns hover, current and focus layout while its main link remains the
+accessible navigation target.

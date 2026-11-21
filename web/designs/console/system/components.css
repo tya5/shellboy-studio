@@ -509,3 +509,7 @@ a{color:var(--accent)}
 
 .work-inner-line{display:flex;align-items:center;gap:var(--space-8);width:100%;min-width:0;box-sizing:border-box;padding:var(--space-4) var(--space-12)}
 .work-inner-line>.work-inner-content{min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+
+.tree-item .tree-link{display:flex;align-items:center;flex:1;min-width:0;gap:var(--space-8);color:inherit;text-decoration:none}
+.tree-item .tree-action{display:none;flex:none;margin-left:auto}
+.tree-item:hover .tree-action,.tree-item:focus-within .tree-action,.tree-item[aria-current=true] .tree-action{display:flex}
