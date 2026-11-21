@@ -241,5 +241,3 @@ html:has(dialog:modal){overflow:hidden}
 @media(max-width:768px){.convo > .conversation-status{padding-inline:var(--space-12)}}
 
 .org-rows{display:contents}
-
-.org-rows{display:contents}

@@ -1,9 +1,9 @@
 # Screen-owned thread list focus
 
 The sidebar's `.side-list` and the Threads screen's `.org-rows` are the row-list
-boundaries; filters, toolbars, and selection actions are outside them. Each list holds
-a row focus claim only while focus remains inside its boundary. Focusin on a row records
-its stable link id; focusout to outside clears the claim. It also retains each row's
+boundaries; filters, toolbars, and selection actions are outside them. Each list has one
+total focusin handler: focus on a row records its stable link id; focus on any other
+control inside the list clears the claim. Focusout to outside also clears it. It also retains each row's
 position in current order. If a claimed row disappears, the list focuses the row now at
 that position, or the previous row at the end, or the list heading. If the user moved
 focus outside, there is no claim to recover.

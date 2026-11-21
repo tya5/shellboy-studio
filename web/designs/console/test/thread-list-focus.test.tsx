@@ -24,8 +24,8 @@ function preview(threadCount: number, idsHash: string): PreviewResult {
   } };
 }
 
-async function mount(screen: Screen): Promise<Rig> {
-  const rig = await fixtureModel({ route: screen === "threads" ? "threads" : "conversation", threadId: "lead" });
+async function mount(screen: Screen, capabilities?: string[], configure?: (db: Awaited<ReturnType<typeof fixtureModel>>["db"]) => void): Promise<Rig> {
+  const rig = await fixtureModel({ route: screen === "threads" ? "threads" : "conversation", threadId: "lead", capabilities, configure });
   const host = document.createElement("div");
   document.body.append(host);
   const prefs = signal(loadPrefs({ read: () => null, write: () => {} }, [{ name: "console", themes: [{ name: "light" }] }]));
@@ -137,6 +137,32 @@ describe("screen-owned thread-list focus", () => {
       expect(dialog.isConnected).toBe(false);
       expect(document.activeElement).toBe(rowC);
       outside.remove();
+    } finally { await unmount(rig); }
+  });
+
+  it("clears the Threads row claim when focus enters a group fold control", async () => {
+    const rig = await mount("threads", ["thread.tags"], (db) => {
+      (db.threads.lead as { tags?: string[] }).tags = ["focus-test"];
+      (db.threads.child as { tags?: string[] }).tags = ["focus-test"];
+    });
+    try {
+      await act(async () => {
+        rig.model.org.setGrouping("tag");
+        await settle(rig.t, rig.db);
+        rig.model.org.headings.toggle("focus-test");
+        await settle(rig.t, rig.db);
+      });
+      const [target] = rowLinks(rig);
+      const fold = rig.list.querySelector<HTMLButtonElement>(".tgroup header button");
+      expect(target).toBeDefined();
+      expect(fold).toBeDefined();
+      await act(async () => { target!.focus(); });
+      expect(document.activeElement).toBe(target);
+      fold!.focus();
+      expect(document.activeElement).toBe(fold);
+      const deletedId = target!.id.replace("thread-link-page-", "");
+      await resolveListWithout(rig, deletedId);
+      expect(document.activeElement).toBe(fold);
     } finally { await unmount(rig); }
   });
 
