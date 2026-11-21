@@ -1,9 +1,9 @@
-import { Icon, type IconName } from "../Icon";
+import { Icon, type IconRole } from "../Icon";
 
 export interface SectionNavItem {
   key: string;
   href: string;
-  icon: IconName;
+  role: IconRole;
   label: string;
   current: boolean;
 }
@@ -15,7 +15,7 @@ export function SectionNav({ title, items }: { title: string; items: SectionNavI
       <div class="secnav-list">
         {items.map((i) => (
           <a key={i.key} class="secnav-item" href={i.href} aria-current={i.current ? "page" : undefined}>
-            <Icon name={i.icon} />
+            <Icon role={i.role} />
             {i.label}
           </a>
         ))}

@@ -65,7 +65,7 @@ function AppList({ context }: { context: DesignContext }) {
       {creating && apps.folders.value.error ? <Notice tone="bad">{t("apps.folderReadError", { message: apps.folders.value.error })}</Notice> : null}
       {failed ? <Notice tone="bad">{t("apps.openFailed", { name: failed.name, message: failed.message })}</Notice> : null}
       {list.error ? <Notice tone="bad">{t("common.readError", { message: list.error.message })}</Notice> : null}
-      {list.loaded && list.apps.length === 0 ? <><EmptyState icon="apps" title={t("apps.empty")} body={t("apps.emptyBody")} /><div>{t("apps.templates")}<div class="app-templates">{templates.map((item) => <Button key={item.id} onClick={() => { setDraft(item.draft); setCreating(true); }}>{item.title}</Button>)}</div></div></> : null}
+      {list.loaded && list.apps.length === 0 ? <><EmptyState role="empty.apps" title={t("apps.empty")} body={t("apps.emptyBody")} /><div>{t("apps.templates")}<div class="app-templates">{templates.map((item) => <Button key={item.id} onClick={() => { setDraft(item.draft); setCreating(true); }}>{item.title}</Button>)}</div></div></> : null}
       {list.apps.length > 0 ? (
         <div class="grid">
           {list.apps.map((a) => (

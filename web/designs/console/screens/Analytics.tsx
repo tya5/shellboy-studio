@@ -3,7 +3,7 @@ import {
   ANALYTICS_SECTIONS, analyticsSection, cacheRate, COMPACTION_ROWS, dayFacts, DEFAULT_WEIGHTS, effectiveTokens, formatClock, formatDuration, formatRoute, formatTokens, groupEffective, groupIncomplete, meanInput, periodTotals, PERIODS, readWeights, shortDay,
   splitParts, type AnalyticsSection, type AppModel, type CompactionEvent, type DayFacts, type DesignContext, type Translate, type UsageGroup, type WalkState, type Weights,
 } from "../../../ui-core/src";
-import { Button, ButtonGroup, Chart, DataTable, Field, Notice, RangeBar, Section, Stat, SubView, type ChartPoint, type ChartSeries, type IconName } from "../system/components";
+import { Button, ButtonGroup, Chart, DataTable, Field, Notice, RangeBar, Section, Stat, SubView, type ChartPoint, type ChartSeries, type IconRole } from "../system/components";
 import { IndexPane, MemoryPane, StoragePane } from "./Resources";
 
 const percent = (v: number): string => `${Math.round(v * 100)}%`;
@@ -177,7 +177,7 @@ function CompactionEffect({ model, weights }: { model: AppModel; weights: Weight
   );
 }
 
-const ICONS: Record<AnalyticsSection, IconName> = { overview: "chart", tokens: "layers", compaction: "retry", threads: "tree", storage: "database", memory: "cube", index: "search" };
+const ICONS: Record<AnalyticsSection, IconRole> = { overview: "analytics.overview", tokens: "analytics.tokens", compaction: "analytics.compaction", threads: "analytics.threads", storage: "analytics.storage", memory: "analytics.memory", index: "analytics.index" };
 
 function PeriodHead({ model, section }: { model: AppModel; section: AnalyticsSection }) {
   const t = model.t.value;
@@ -349,7 +349,7 @@ export function Analytics({ context }: { context: DesignContext }) {
   return (
     <SubView
       title={t("view.analytics")}
-      items={ANALYTICS_SECTIONS.map((s) => ({ key: s, href: formatRoute({ view: "analytics", section: s }), icon: ICONS[s], label: t(`ana.section.${s}`), current: s === section }))}
+      items={ANALYTICS_SECTIONS.map((s) => ({ key: s, href: formatRoute({ view: "analytics", section: s }), role: ICONS[s], label: t(`ana.section.${s}`), current: s === section }))}
     >
       {section === "overview" || section === "tokens" || section === "compaction" ? (
         <UsagePane context={context} section={section} />

@@ -1,11 +1,11 @@
 import { useEffect } from "preact/hooks";
 import { GuideRegistrationView } from "./GuideRegistration";
 import { CAPABILITY_CONFIG, CONFIG_FIELDS, formatRoute, settingsSection, SETTINGS_SECTIONS, valueAt, type ConfigKey, type DesignContext, type SettingsSection } from "../../../ui-core/src";
-import { Button, FactList, Notice, PairingQr, Section, SubView, type Fact, type IconName } from "../system/components";
+import { Button, FactList, Notice, PairingQr, Section, SubView, type Fact, type IconRole } from "../system/components";
 import { AppearanceChoices } from "./Appearance";
 import { ConfigConnections, ConfigControl, ConfigPanel, configRowValue } from "./SettingsConfig";
 
-const ICONS: Record<SettingsSection, IconName> = { general: "palette", connections: "plug", compaction: "retry", storage: "file", index: "database", agent: "file", studio: "gear" };
+const ICONS: Record<SettingsSection, IconRole> = { general: "settings.general", connections: "settings.connections", compaction: "settings.compaction", storage: "settings.storage", index: "settings.index", agent: "settings.agent", studio: "settings.studio" };
 
 export function SettingsView({ context }: { context: DesignContext }) {
   const model = context.model;
@@ -95,7 +95,7 @@ export function SettingsView({ context }: { context: DesignContext }) {
         ]} /></Section>;
     }
   };
-  return <SubView title={t("set.title")} items={SETTINGS_SECTIONS.map((s) => ({ key: s, href: formatRoute({ view: "settings", section: s }), icon: ICONS[s], label: t(`set.section.${s}`), current: s === section }))}>
+  return <SubView title={t("set.title")} items={SETTINGS_SECTIONS.map((s) => ({ key: s, href: formatRoute({ view: "settings", section: s }), role: ICONS[s], label: t(`set.section.${s}`), current: s === section }))}>
     <div class="pagehead"><h1>{t(`set.section.${section}`)}</h1><div class="muted">{t(`set.sub.${section}`)}</div></div>
     {section !== "studio" && section !== "agent" ? <ConfigPanel model={model} /> : null}
     {body()}

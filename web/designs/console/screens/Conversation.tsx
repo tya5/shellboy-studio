@@ -138,7 +138,7 @@ export function SavedConversationItems({ model, projection: suppliedProjection, 
         next.set(membershipKey(group), open);
         return next;
       });
-    }}><summary data-work-heading="" aria-label={`${t("work.group")}: ${label}`}><Icon name="layers" /><span class="tool-group-label">{label}</span>{status ? <StatusMark status={status} label={statusLabel(t, status)} /> : null}<span class="meta" /></summary><div class="step-group-list">{children}</div></Disclosure>;
+    }}><summary data-work-heading="" aria-label={`${t("work.group")}: ${label}`}><Icon role="work.group" /><span class="tool-group-label">{label}</span>{status ? <StatusMark status={status} label={statusLabel(t, status)} /> : null}<span class="meta" /></summary><div class="step-group-list">{children}</div></Disclosure>;
   };
   const workRow = (item: ConversationItem) => {
     const bundle=capturedWorkElementDisplay(item, planByKey.get(item.key)?.work);
@@ -315,7 +315,7 @@ export function StepView({ model, step, display, openPolicy = CANONICAL_CASES.to
   // History links carry no exit code; the shell.list fact merged into the step does.
   const merged:WorkElementDisplay=display.state&&display.state.source==="wire"&&step.exitCode!==undefined&&step.status!==undefined?{...display,state:{...display.state,executionStatus:step.status,exitCode:step.exitCode}}:display;
   const formatted=formatWorkElementDisplay(merged);
-  const shellDisplay=model.shells.value.has(step.executionId)?{...formatted,typeIcon:"term" as const}:formatted;
+  const shellDisplay=model.shells.value.has(step.executionId)?{...formatted,iconRole:"work.terminal" as const}:formatted;
   if(display.detailPolicy!=="actual-safe-typed"&&display.detailPolicy!=="existing-shell-output")return <WorkElementRow display={shellDisplay} anchorKey={step.executionId} detailPolicy={display.detailPolicy}/>;
   return <WorkElementRow display={shellDisplay} anchorKey={step.executionId} detailPolicy={display.detailPolicy} open={open} onToggle={next=>{
     if(next!==open)model.toolStepChoices.value=new Map(model.toolStepChoices.peek()).set(step.executionId,next);
@@ -412,7 +412,7 @@ function Details({ model }: { model: AppModel }) {
       <WorkRegions model={model} place="sidebar" />
       {step ? (
         <section class="detail-region"><h3>{t("details.title")}</h3>
-          <div class="cmd"><Icon name="term" /><span>{step.command}</span></div>
+          <div class="cmd"><Icon role="work.command" /><span>{step.command}</span></div>
           <KeyValue
             rows={[
               ...(step.status ? [{ key: t("details.status"), value: <StatusMark status={step.status} label={statusLabel(t, step.status)} /> }] : []),
@@ -485,7 +485,7 @@ export function Conversation({ model }: { model: AppModel }) {
           data-reason={diagnostic.reason} data-generation={diagnostic.generation}
           data-revision={diagnostic.revision ?? ""} data-owner-epoch={diagnostic.ownerEpoch} /> : null}
         {handle ? <OrderedHistory model={model} handle={handle} win={win} t={t} /> :
-          <EmptyState icon="chat" title={t("convo.noThread")} body={t("convo.noThreadBody")}>
+          <EmptyState role="empty.noThread" title={t("convo.noThread")} body={t("convo.noThreadBody")}>
             <Button variant="primary" onClick={() => void model.createThread()}>{t("action.new")}</Button>
           </EmptyState>}
         <ConversationStatus key="permanent-conversation-status" model={model} />
@@ -496,7 +496,7 @@ export function Conversation({ model }: { model: AppModel }) {
               title={t("recovery.title")}
               actions={
                 <Button variant="warn" onClick={() => void model.retry()}>
-                  <Icon name="retry" small />
+                  <Icon role="action.retry" small />
                   {t("action.retry")}
                 </Button>
               }
@@ -525,7 +525,7 @@ export function Conversation({ model }: { model: AppModel }) {
             stop={
               model.canStop.value ? (
                 <Button variant="stop" onClick={() => void model.stop()}>
-                  <Icon name="square" small />
+                  <Icon role="action.stop" small />
                   {t("composer.stop")}
                 </Button>
               ) : undefined

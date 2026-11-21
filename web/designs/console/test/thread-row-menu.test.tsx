@@ -58,6 +58,13 @@ describe("Thread row menu and delete", () => {
     expect(labels("recovery")).not.toContain("action.stop");
     expect(labels("idle")).not.toContain("action.stop");
     expect(labels("idle")).not.toContain("action.retry");
+    const entries = threadMenuEntries(model, row, "running", vi.fn());
+    expect(entries.find((entry) => entry.key === "archive")).toMatchObject({ icon: "action.archive" });
+    expect(entries.find((entry) => entry.key === "stop")).toMatchObject({ icon: "action.stop" });
+    expect(entries.find((entry) => entry.key === "retry")).toMatchObject({ icon: "action.retry" });
+    expect(entries.find((entry) => entry.key === "delete")).toMatchObject({ icon: "action.delete" });
+    const archived = { ...row, archived_at: "now" } as ThreadSummary;
+    expect(threadMenuEntries(model, archived, "idle", vi.fn()).find((entry) => entry.key === "archive")).toMatchObject({ icon: "action.unarchive" });
   });
   it("does not delete until preview loads and confirmation is pressed", async () => {
     const model = menuModel();

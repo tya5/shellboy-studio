@@ -206,7 +206,7 @@ export function WindowedScroll({ model, win, renderRow, live, liveBoundary, stat
       {range && range.last + 1 < win.total ? <LoadingRows label={t("convo.loading")} rows={1} /> : null}
       {statusLine}
       {win.total === 0 && status === "loading" ? <LoadingRows label={t("convo.loading")} rows={5} /> : null}
-      {win.total === 0 && status === "ready" ? <EmptyState icon="chat" title={t("convo.empty")} body={t("convo.emptyBody")} /> : null}
+      {win.total === 0 && status === "ready" ? <EmptyState role="empty.conversation" title={t("convo.empty")} body={t("convo.emptyBody")} /> : null}
     </div>
       {!win.following.value ? (
         <div class="jump-newest">

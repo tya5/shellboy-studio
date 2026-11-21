@@ -1,3 +1,76 @@
-A line icon at 18px, stroke 1.7, round joins, currentColor. Icons sit beside a label or carry an `aria-label` on their button; they never replace a state word on their own.
+# Icon roles
 
-The approved `more` mark is three vertically stacked dots for Thread row menus.
+Consumers use semantic `IconRole` names only. Glyph names and paths are private to `system/icons/glyphs.tsx`; `system/icons/theme.ts` maps each role to one glyph. A theme may reuse a glyph for distinct roles or assign a different glyph without changing call sites.
+
+| IconRole | Meaning and use | Current glyph |
+| --- | --- | --- |
+| `action.archive` | Archive the current Thread; row action before it is archived. | `archive` |
+| `action.unarchive` | Restore an archived Thread; archive-toggle row action. | `archiveRestore` |
+| `action.stop` | Stop the active Run; row and Conversation stop controls. | `square` |
+| `action.retry` | Retry a recoverable Run; recovery, Monitor, Analytics, and Settings compaction controls. | `retry` |
+| `action.delete` | Delete a Thread after its exact preview is confirmed; destructive last row-menu item. | `trash` |
+| `action.clearStatusFilter` | Remove one status filter chip in Monitor. | `cross` |
+| `action.clearQueryFilter` | Clear the active query filter chip in Monitor. | `cross` |
+| `action.clearArchiveFilter` | Remove the archive filter chip in Monitor. | `cross` |
+| `row.menu` | Open a row’s action menu in the sidebar or Threads list. | `more` |
+| `thread.create` | Create a new Thread from the sidebar. | `plus` |
+| `thread.search` | Find a Thread in the sidebar list. | `search` |
+| `thread.modelSettings` | Open the current Thread’s model/settings controls. | `gear` |
+| `organization.search` | Filter the Threads organization view. | `search` |
+| `nav.conversation` | Navigate to Conversation. | `chat` |
+| `nav.monitor` | Navigate to Monitor. | `monitor` |
+| `nav.inbox` | Navigate to Inbox. | `inbox` |
+| `nav.apps` | Navigate to Apps from the More menu. | `apps` |
+| `nav.branches` | Navigate to Branches from the More menu. | `branch` |
+| `nav.threads` | Navigate to Threads from the More menu. | `tree` |
+| `nav.analytics` | Navigate to Analytics from the More menu. | `chart` |
+| `nav.settings` | Navigate to Settings from the More menu. | `gear` |
+| `nav.toggleSidebar` | Expand or collapse the desktop sidebar. | `menu` |
+| `nav.openThreadList` | Open the phone Thread-list drawer. | `menu` |
+| `nav.more` | Open the phone More navigation menu. | `menu` |
+| `settings.general` | Identify the General appearance section. | `palette` |
+| `settings.connections` | Identify the Connections settings section. | `plug` |
+| `settings.compaction` | Identify the Compaction settings section. | `retry` |
+| `settings.storage` | Identify the Storage settings section. | `file` |
+| `settings.index` | Identify the Index settings section. | `database` |
+| `settings.agent` | Identify the Agent settings section. | `file` |
+| `settings.studio` | Identify the Studio settings section. | `gear` |
+| `analytics.overview` | Identify Analytics overview. | `chart` |
+| `analytics.tokens` | Identify token-usage analytics. | `layers` |
+| `analytics.compaction` | Identify compaction analytics. | `retry` |
+| `analytics.threads` | Identify Thread analytics. | `tree` |
+| `analytics.storage` | Identify storage analytics. | `database` |
+| `analytics.memory` | Identify memory analytics. | `cube` |
+| `analytics.index` | Identify index analytics. | `search` |
+| `inbox.openConversation` | Open the related Conversation from an Inbox item. | `arrow` |
+| `empty.apps` | Empty Apps catalog state. | `apps` |
+| `empty.threadArchive` | No archived Threads or archived Thread matches. | `tree` |
+| `empty.organizationItems` | No matching organization tags or directories. | `tree` |
+| `empty.inbox` | Empty Inbox state. | `inbox` |
+| `empty.noThread` | No Thread is selected for Conversation. | `chat` |
+| `empty.conversation` | The selected Conversation has no messages yet. | `chat` |
+| `empty.monitorNoMatches` | No Monitor rows match the current filters. | `monitor` |
+| `empty.monitor` | Monitor has no rows. | `monitor` |
+| `empty.branches` | No branches are available for the selected Thread. | `branch` |
+| `work.group` | Expand or identify a grouped set of work records. | `layers` |
+| `work.command` | Identify a command shown in the details pane. | `term` |
+| `work.execution` | Default mark for a generic execution/work row. | `cube` |
+| `work.notification` | Identify a notification or activity record in Conversation. | `inbox` |
+| `work.unsupported` | Identify an unsupported or unavailable work record. | `file` |
+| `work.tool` | Identify a tool call, result, or compressed tool record. | `cube` |
+| `work.reasoning` | Identify reasoning metadata without exposing its content. | `bot` |
+| `work.interruption` | Identify an interruption/problem record. | `cross` |
+| `work.terminal` | Identify a terminal command or shell work record. | `term` |
+| `monitor.childThreads` | Indicate child Threads in a Monitor card. | `tree` |
+| `monitor.parentThread` | Indicate the parent Thread in a Monitor card. | `tree` |
+| `monitor.openConversation` | Open the Monitor card's Conversation. | `arrow` |
+| `status.complete` | Completed status mark. | `check` |
+| `status.failed` | Failed status mark. | `cross` |
+| `message.user` | Identify a person as a message sender. | `user` |
+| `composer.send` | Send the composed message. | `send` |
+| `app.open` | Open an App card. | `arrow` |
+| `branch.listItem` | Identify a branch row in Branches. | `branch` |
+| `branch.mark` | Identify a branch link on a Conversation row. | `branch` |
+| `summary.details` | Expand summary details in the Conversation. | `layers` |
+| `tab.close` | Close an application tab. | `cross` |
+| `tab.add` | Add an application tab. | `plus` |

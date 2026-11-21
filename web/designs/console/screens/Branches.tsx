@@ -144,7 +144,7 @@ export function Branches({ model }: { model: AppModel }) {
   if (threadId === undefined)
     return (
       <div class="branches" data-layout="list">
-        <div class="branches-main"><EmptyState icon="branch" title={t("branches.noThread")} body={t("branches.noThreadBody")} /></div>
+        <div class="branches-main"><EmptyState role="empty.branches" title={t("branches.noThread")} body={t("branches.noThreadBody")} /></div>
       </div>
     );
   const layout = family ? branchLayout(family) : undefined;

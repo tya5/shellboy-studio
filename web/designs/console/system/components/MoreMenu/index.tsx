@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "preact/hooks";
-import { Icon, type IconName } from "../Icon";
+import { Icon, type IconRole } from "../Icon";
 
 /** The last phone tab: views that don't earn a tab of their own. */
-export function MoreMenu({ label, items }: { label: string; items: { key: string; href: string; icon: IconName; label: string; current: boolean }[] }) {
+export function MoreMenu({ label, items }: { label: string; items: { key: string; href: string; role: IconRole; label: string; current: boolean }[] }) {
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -28,14 +28,14 @@ export function MoreMenu({ label, items }: { label: string; items: { key: string
         <div class="more-panel">
           {items.map((i) => (
             <a key={i.key} class="nav-item" href={i.href} aria-current={i.current ? "page" : undefined} onClick={() => setOpen(false)}>
-              <Icon name={i.icon} />
+              <Icon role={i.role} />
               {i.label}
             </a>
           ))}
         </div>
       ) : null}
       <button type="button" class="nav-item" aria-expanded={open} aria-current={items.some((i) => i.current) ? "page" : undefined} onClick={() => setOpen(!open)}>
-        <Icon name="menu" />
+        <Icon role="nav.more" />
         {label}
       </button>
     </div>

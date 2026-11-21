@@ -5,7 +5,7 @@ import { WorkElementRow, formatWorkElementDisplay } from '../system/components/W
 import type { WorkElementDisplay } from '../../../ui-core/src/work-element-display';
 
 const base: WorkElementDisplay = {
- typeIcon:'cube', typeAccessibleLabel:'Tool', contentLabel: {text:'actual command',context:[]},
+ iconRole:'work.tool', typeAccessibleLabel:'Tool', contentLabel: {text:'actual command',context:[]},
  state:null, detailPolicy:'none',
 };
 for (const [status, css, mark] of [

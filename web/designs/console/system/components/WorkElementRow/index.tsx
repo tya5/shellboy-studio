@@ -1,7 +1,7 @@
 import { StatusMark } from "../StatusMark";
 import type { StatusKey } from "../../../../../ui-core/src/status";
 import type { ComponentChildren } from "preact";
-import { Icon, type IconName } from "../Icon";
+import { Icon, type IconRole } from "../Icon";
 import type { WorkElementDisplay } from "../../../../../ui-core/src/work-element-display";
 import "./style.css";
 
@@ -9,7 +9,7 @@ export interface FormattedWorkElementDisplay {
   readonly source: WorkElementDisplay;
   readonly context: WorkElementDisplay["contentLabel"]["context"];
   readonly visibleContext: readonly string[];
-  readonly typeIcon: IconName;
+  readonly iconRole: IconRole;
   readonly typeAccessibleLabel: string;
   readonly contentLabel: string;
   readonly state: string | null;
@@ -20,9 +20,9 @@ export interface FormattedWorkElementDisplay {
 
 /** Formatting only: retain issued facts and provenance without joins or classification. */
 export function formatWorkElementDisplay(source: WorkElementDisplay): FormattedWorkElementDisplay {
-  const typeIcon: IconName = source.typeIcon;
+  const iconRole: IconRole = source.iconRole;
   return {
-    source, context: source.contentLabel.context, typeIcon,
+    source, context: source.contentLabel.context, iconRole,
     visibleContext: source.contentLabel.context.filter(entry => entry.name === "description" || entry.name === "time").map(entry => entry.value),
     typeAccessibleLabel: source.typeAccessibleLabel,
     contentLabel: source.contentLabel.text,
@@ -62,7 +62,7 @@ export function WorkElementRow(props: WorkElementRowProps) {
   const accessibleLabel = [display.typeAccessibleLabel, display.contentLabel, ...display.visibleContext, display.stateSourceLabel, display.state].filter(value => value !== null && value !== "").join(". ");
   const line = (
     <>
-      <span class="work-element-row__icon"><Icon name={display.typeIcon} /></span>
+      <span class="work-element-row__icon"><Icon role={display.iconRole} /></span>
       <span class="work-element-row__content">{display.contentLabel}{display.visibleContext.map((value, index) => <span key={index} class="work-element-row__context"> · {value}</span>)}</span>
       {display.state !== null && <span class="work-element-row__state">{display.stateSourceLabel !== null && <span>{display.stateSourceLabel}{" "}</span>}{display.executionStatus === undefined ? display.state : <StatusMark status={display.executionStatus} label={display.state} />}</span>}
     </>

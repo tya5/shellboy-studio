@@ -1,8 +1,8 @@
 import { statusOfShell, type StatusKey } from "./status";
 import { CANONICAL_CASES, workDisplayMetadata, type NormalizedSavedItem, type WorkDisplayMetadata, type CanonicalCase, type ProjectedSavedItem } from "./conversation-items";
-export type WorkTypeIcon = NonNullable<CanonicalCase["icon"]>;
+export type WorkTypeIconRole = NonNullable<CanonicalCase["iconRole"]>;
 export interface WorkElementDisplay {
-  readonly typeIcon: WorkTypeIcon;
+  readonly iconRole: WorkTypeIconRole;
   readonly typeAccessibleLabel: string;
   readonly contentLabel: { readonly text: string; readonly context: readonly { readonly name: string; readonly value: string }[] };
   readonly state: { readonly source: "wire" | "client"; readonly value: string; readonly executionStatus?: StatusKey; readonly exitCode?: number | null } | null;
@@ -47,7 +47,7 @@ function display(item: ProjectedSavedItem, capture: CapturedWorkElement, executi
   if (facts.nodeKind) context.push({ name: "kind", value: facts.nodeKind });
   if (facts.createdAt) context.push({ name: "created_at", value: facts.createdAt });
   let text: string, label: string;
-  const icon: WorkTypeIcon = c.icon;
+  const iconRole: WorkTypeIconRole = c.iconRole;
   let state: WorkElementDisplay["state"] = facts.publicState ? { source: "wire", value: facts.publicState } : null, detail: WorkElementDisplay["detailPolicy"] = "unavailable";
   switch (c.displayPolicy) {
     case "associated-tool": {
@@ -121,5 +121,5 @@ function display(item: ProjectedSavedItem, capture: CapturedWorkElement, executi
       break;
     }
   }
-  return Object.freeze({ typeIcon: icon, typeAccessibleLabel: label, contentLabel: Object.freeze({ text, context: Object.freeze(context.map(value => Object.freeze(value))) }), state: state ? Object.freeze(state) : null, detailPolicy: detail });
+  return Object.freeze({ iconRole, typeAccessibleLabel: label, contentLabel: Object.freeze({ text, context: Object.freeze(context.map(value => Object.freeze(value))) }), state: state ? Object.freeze(state) : null, detailPolicy: detail });
 }

@@ -66,7 +66,7 @@ export function Composer(props: { label: string; placeholder: string; hint: stri
         <div class="right">
           {props.stop}
           <Button icon label={props.sendLabel} variant="primary" disabled={!props.canSend || status?.blocked || props.busy || text.trim() === ""} onClick={() => void submit()}>
-            <Icon name="send" />
+            <Icon role="composer.send" />
           </Button>
         </div>
       </div>

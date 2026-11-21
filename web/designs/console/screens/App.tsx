@@ -2,7 +2,7 @@ import { BrandLogo } from "../system/components/BrandLogo";
 import { threadMenuEntries } from "../system/components/thread-menu";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { formatRoute, readSidebarWidth, SIDEBAR_WIDTH_MAX, SIDEBAR_WIDTH_MIN, statusLabel, viewShortcut, navShortcut, type DesignContext, type ViewName } from "../../../ui-core/src";
-import { Button, ContextBar, Field, Icon, MoreMenu, NavItem, Notice, StatusMark, ThreadDeleteDialog, ThreadItem, type IconName } from "../system/components";
+import { Button, ContextBar, Field, Icon, MoreMenu, NavItem, Notice, StatusMark, ThreadDeleteDialog, ThreadItem, type IconRole } from "../system/components";
 import { formatTokens, folderName } from "../../../ui-core/src";
 import { Conversation } from "./Conversation";
 import { Inbox } from "./Inbox";
@@ -77,11 +77,11 @@ export function App({ context }: { context: DesignContext }) {
     return () => clearTimeout(timer);
   }, [model, query, route.view]);
 
-  const nav = (view: ViewName, icon: IconName, label: string, count?: number) => <NavItem key={view} href={formatRoute({ view })} icon={icon} label={label} current={route.view === view} {...(count !== undefined ? { count } : {})} />;
-  const conversationNav = nav("conversation", "chat", t("view.conversation"));
-  const monitorNav = nav("monitor", "monitor", t("view.monitor"));
-  const inboxNav = nav("inbox", "inbox", t("view.inbox"), model.pendingCount.value);
-  const moreItems = ([["apps", "apps"], ["branches", "branch"], ["threads", "tree"], ["analytics", "chart"], ["settings", "gear"]] as const).map(([view, icon]) => ({ key: view, href: formatRoute({ view }), icon, label: t(`view.${view}`), current: route.view === view }));
+  const nav = (view: ViewName, role: IconRole, label: string, count?: number) => <NavItem key={view} href={formatRoute({ view })} role={role} label={label} current={route.view === view} {...(count !== undefined ? { count } : {})} />;
+  const conversationNav = nav("conversation", "nav.conversation", t("view.conversation"));
+  const monitorNav = nav("monitor", "nav.monitor", t("view.monitor"));
+  const inboxNav = nav("inbox", "nav.inbox", t("view.inbox"), model.pendingCount.value);
+  const moreItems = ([["apps", "nav.apps"], ["branches", "nav.branches"], ["threads", "nav.threads"], ["analytics", "nav.analytics"], ["settings", "nav.settings"]] as const).map(([view, role]) => ({ key: view, href: formatRoute({ view }), role, label: t(`view.${view}`), current: route.view === view }));
 
   const list = model.data.threadList.value;
   const selected = model.selectedId.value;
@@ -102,22 +102,22 @@ export function App({ context }: { context: DesignContext }) {
             <BrandLogo />
             <span class="brand-label">{t("brand")}</span>
           </div>
-          <div class="nav-toggle"><Button icon label={context.prefs.value.navCollapsed ? t("nav.expand") : t("nav.collapse")} title={context.prefs.value.navCollapsed ? t("nav.expand") : t("nav.collapse")} aria-expanded={!context.prefs.value.navCollapsed} onClick={() => context.setPrefs({ navCollapsed: !context.prefs.value.navCollapsed })}><Icon name="menu" /></Button></div>
+          <div class="nav-toggle"><Button icon label={context.prefs.value.navCollapsed ? t("nav.expand") : t("nav.collapse")} title={context.prefs.value.navCollapsed ? t("nav.expand") : t("nav.collapse")} aria-expanded={!context.prefs.value.navCollapsed} onClick={() => context.setPrefs({ navCollapsed: !context.prefs.value.navCollapsed })}><Icon role="nav.toggleSidebar" /></Button></div>
           <nav class="nav" aria-label={t("nav.views")}>
             {conversationNav}
             {monitorNav}
             {inboxNav}
-            {moreItems.map((i) => <NavItem key={i.key} href={i.href} icon={i.icon} label={i.label} current={i.current} />)}
+            {moreItems.map((i) => <NavItem key={i.key} href={i.href} role={i.role} label={i.label} current={i.current} />)}
           </nav>
           <div class="sidehead">
             <h2>{t("threads.title")}</h2>
             <Button onClick={() => { setDrawer(false); void model.createThread(); }}>
-              <Icon name="plus" small />
+              <Icon role="thread.create" small />
               {t("threads.new")}
             </Button>
           </div>
           <div class="side-search">
-            <Field ariaLabel={t("threads.search")} placeholder={t("threads.search")} leading={<Icon name="search" small />} value={query} onInput={(e) => setQuery(e.currentTarget.value)} />
+            <Field ariaLabel={t("threads.search")} placeholder={t("threads.search")} leading={<Icon role="thread.search" small />} value={query} onInput={(e) => setQuery(e.currentTarget.value)} />
           </div>
           <div class="side-list">
             <div class="tree">
@@ -142,7 +142,7 @@ export function App({ context }: { context: DesignContext }) {
         </aside>
         <div class="main">
           <header class="top">
-            <span class="menu"><Button icon label={t("threads.open")} onClick={() => setDrawer(true)}><Icon name="menu" /></Button></span>
+            <span class="menu"><Button icon label={t("threads.open")} onClick={() => setDrawer(true)}><Icon role="nav.openThreadList" /></Button></span>
             <div class="crumb">
               {folder ? <>{folder}<span>/</span></> : null}
               <b>{title ?? ""}</b>
@@ -159,7 +159,7 @@ export function App({ context }: { context: DesignContext }) {
               {route.view === "conversation" && row?.status ? <span class="hide-n"><StatusMark status={row.status} label={statusLabel(t, row.status)} /></span> : null}
               {route.view === "conversation" && details ? <div class="model-picker-anchor"><Button aria-expanded={picker.open} aria-haspopup="dialog" onClick={() => picker.open ? model.closeModelPicker() : model.openModelPicker()}>{details.model}</Button>{picker.open ? <div class="model-picker" role="dialog" aria-label={t("model.change")} onKeyDown={(e) => { if (e.key === "Escape") model.closeModelPicker(); }}><p class="caption muted">{t("model.note")}</p><label>{t("model.connection")}<select value={picker.connection} disabled={picker.saving || !model.data.capabilities.value.includes("thread.settings")} onChange={(e) => model.chooseModelConnection(e.currentTarget.value)}>{[...new Set([picker.connection, ...Object.keys((model.config.read.value.value?.loaded.values?.connections as Record<string, unknown> | undefined) ?? {})])].filter(Boolean).map(c => <option value={c}>{c}</option>)}</select></label><Field ariaLabel={t("model.search")} value={picker.model} disabled={picker.saving || !model.data.capabilities.value.includes("thread.settings")} onInput={(e) => { model.modelPicker.value = { ...model.modelPicker.peek(), model: e.currentTarget.value }; }} /><div class="model-picker-list">{picker.loading ? <span>{t("common.loading")}</span> : picker.models.filter(m => (picker.model === details.model || m.toLowerCase().includes(picker.model.toLowerCase()))).length ? picker.models.filter(m => (picker.model === details.model || m.toLowerCase().includes(picker.model.toLowerCase()))).map(m => <Button variant="link" disabled={!model.data.capabilities.value.includes("thread.settings")} onClick={() => { model.modelPicker.value = { ...model.modelPicker.peek(), model: m }; }}>{m}</Button>) : <span>{t("model.empty")}</span>}</div><Field ariaLabel={t("model.effort")} placeholder={t("model.effort")} value={picker.effort} disabled={picker.saving || !model.data.capabilities.value.includes("thread.settings")} onInput={(e) => { model.modelPicker.value = { ...model.modelPicker.peek(), effort: e.currentTarget.value }; }} />{!model.data.capabilities.value.includes("thread.settings") ? <Notice tone="wait">{t("thread.readOnly")}</Notice> : null}<p class="caption muted">{t("thread.inherited")}</p>{([ ["autoCompactAt", "thread.auto"], ["maxTokens", "thread.maxTokens"], ["agents", "thread.agents"] ] as const).map(([key, label]) => <label>{t(label)}<Field ariaLabel={t(label)} value={picker[key]} placeholder={key !== "agents" && model.effectiveThreadSettings.value[key] !== undefined ? t("thread.effective", { value: model.effectiveThreadSettings.value[key]! }) : undefined} disabled={picker.saving || !model.data.capabilities.value.includes("thread.settings")} onInput={(e) => { if (key === "maxTokens") model.editThreadOutputLimit(e.currentTarget.value); else model.modelPicker.value = { ...model.modelPicker.peek(), [key]: e.currentTarget.value }; }} /></label>)}{picker.maxTokensState.kind === "unknown" && !picker.clearMaxTokens ? <><p class="caption muted">{t("thread.outputLimitUnknown")}</p><Button disabled={picker.saving || !model.data.capabilities.value.includes("thread.settings")} onClick={() => model.clearThreadOutputLimit()}>{t("thread.clearOutputLimit")}</Button></> : <p class="caption muted">{t("thread.outputLimitNote")}</p>}<p class="caption muted">{t("thread.agentsTiming")}</p>{picker.error ? <Notice tone="bad">{picker.error}</Notice> : null}<div class="row"><Button disabled={picker.saving} onClick={() => model.closeModelPicker()}>{t("model.close")}</Button><Button variant="primary" disabled={!model.data.capabilities.value.includes("thread.settings") || picker.saving || !picker.model.trim()} onClick={() => void model.saveThreadModel()}>{t("model.save")}</Button></div></div> : null}</div> : null}
               <Button icon label={settings ? t("settings.close") : t("settings.open")} aria-expanded={settings} data-settings-toggle onClick={() => setSettings(!settings)}>
-                <Icon name="gear" />
+                <Icon role="thread.modelSettings" />
               </Button>
             </div>
           </header>

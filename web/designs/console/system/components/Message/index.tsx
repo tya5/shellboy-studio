@@ -40,7 +40,7 @@ export function Message({ bot, who, at, text, copyLabel, copiedLabel, children }
   return (
     <div class="msg">
       <div class={bot ? "av bot" : "av"}>
-        {bot ? <img class="character-avatar" src={characterAssets.neutral} alt="" /> : <Icon name="user" />}
+        {bot ? <img class="character-avatar" src={characterAssets.neutral} alt="" /> : <Icon role="message.user" />}
       </div>
       <div>
         <div class="who">

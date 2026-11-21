@@ -54,12 +54,12 @@ export function Inbox({ model }: { model: AppModel }) {
             extra={
               <a class="btn" href={formatRoute({ view: "conversation", threadId: current.threadId })}>
                 {t("monitor.open")}
-                <Icon name="arrow" small />
+                <Icon role="inbox.openConversation" small />
               </a>
             }
           />
         ) : model.pending.error?.value || model.pending.loading?.value || model.pending.stale?.value ? null : (
-          <EmptyState icon="inbox" title={t("inbox.emptyTitle")} body={t("inbox.emptyBody")} />
+          <EmptyState role="empty.inbox" title={t("inbox.emptyTitle")} body={t("inbox.emptyBody")} />
         )}
       </div>
     </div>

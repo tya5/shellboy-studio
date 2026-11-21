@@ -204,7 +204,7 @@ it("typed user and summary preserve explicit partial/completed facts through bot
 });
 it("Work inner icon is a stored canonical display column, not renderer kind classification", async () => {
   const { CANONICAL_CASES } = await import("../src/conversation-items");
-  const expected = { toolCall: "cube", toolResult: "cube", spill: "cube", readableReasoning: "bot", reasoningMarker: "bot", event: "inbox", context: "inbox", observation: "inbox", notification: "inbox", childNotification: "inbox", shellNotification: "inbox", interruptionDetails: "cross", interruptionContext: "cross", incompleteResponse: "cross", interruptedWait: "cross", legacyUnknown: "file", unavailable: "file", unknown: "file" } as const;
-  for (const [id, icon] of Object.entries(expected)) expect(CANONICAL_CASES[id as keyof typeof expected].icon).toBe(icon);
-  expect(CANONICAL_CASES.human.icon).toBeNull();
+  const expected = { toolCall: "work.tool", toolResult: "work.tool", spill: "work.tool", readableReasoning: "work.reasoning", reasoningMarker: "work.reasoning", event: "work.notification", context: "work.notification", observation: "work.notification", notification: "work.notification", childNotification: "work.notification", shellNotification: "work.notification", interruptionDetails: "work.interruption", interruptionContext: "work.interruption", incompleteResponse: "work.interruption", interruptedWait: "work.interruption", legacyUnknown: "work.unsupported", unavailable: "work.unsupported", unknown: "work.unsupported" } as const;
+  for (const [id, role] of Object.entries(expected)) expect(CANONICAL_CASES[id as keyof typeof expected].iconRole).toBe(role);
+  expect(CANONICAL_CASES.human.iconRole).toBeNull();
 });

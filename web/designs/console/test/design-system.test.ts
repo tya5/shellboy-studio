@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 
 const screenSources = import.meta.glob("../screens/**/*.tsx", { eager: true, query: "?raw", import: "default" }) as Record<string, string>;
+const sharedSources = import.meta.glob("../../../ui-core/src/**/*.{ts,tsx}", { eager: true, query: "?raw", import: "default" }) as Record<string, string>;
 const systemSources = {
   ...import.meta.glob("../system/*.{css,html,js,mjs,ts,tsx}", { eager: true, query: "?raw", import: "default" }),
   ...import.meta.glob("../system/**/*.{css,html,js,mjs,ts,tsx}", { eager: true, query: "?raw", import: "default" }),
@@ -84,5 +85,26 @@ describe("application header sizing", () => {
       expect(rule).toMatch(/align-items:center/);
     }
     expect(layout).not.toMatch(/min-height:49px/);
+  });
+});
+
+describe("semantic icon roles", () => {
+  it("keeps glyph selection internal and maps every role to a declared glyph", () => {
+    const rolesSource = systemSources["../system/icons/roles.ts"] ?? "";
+    const themeSource = systemSources["../system/icons/theme.ts"] ?? "";
+    const glyphSource = systemSources["../system/icons/glyphs.tsx"] ?? "";
+    const roles = [...rolesSource.matchAll(/^\s+"([^"]+)",$/gm)].map((match) => match[1]!);
+    const mappings = [...themeSource.matchAll(/^\s+"([^"]+)": "([^"]+)",$/gm)].map((match) => [match[1]!, match[2]!] as const);
+    const glyphs = new Set([...glyphSource.matchAll(/^\s+([A-Za-z_$][\w$]*):/gm)].map((match) => match[1]!));
+    expect(new Set(roles).size).toBe(roles.length);
+    expect(mappings.map(([role]) => role).sort()).toEqual([...roles].sort());
+    expect(mappings.every(([, glyph]) => glyphs.has(glyph))).toBe(true);
+
+    const glyphNames = [...glyphs].join("|");
+    const directGlyphUse = new RegExp(`(?:<Icon\\b[^>]*\\bname\\s*=|<EmptyState\\b[^>]*\\bicon\\s*=|\\b(?:typeIcon|iconRole|icon)\\s*[:=])\\s*["'](?:${glyphNames})["']`);
+    const leaks = Object.entries({ ...screenSources, ...systemSources, ...sharedSources })
+      .filter(([path, source]) => !path.includes("/system/icons/") && directGlyphUse.test(source))
+      .map(([path]) => path);
+    expect(leaks).toEqual([]);
   });
 });

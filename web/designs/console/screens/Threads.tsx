@@ -235,7 +235,7 @@ export function Threads({ model }: { model: AppModel }) {
       {by === "tag" && canTag ? <div class="muted caption">{t("org.tagNote")}</div> : null}
       {by === "directory" && !kind ? <div class="muted caption">{t("org.dirsPartial")}</div> : null}
       <TagPanel model={model} />
-      <Field ariaLabel={t("org.filter")} placeholder={t("org.filter")} leading={<Icon name="search" small />} value={query} onInput={(e) => setQuery(e.currentTarget.value)} />
+      <Field ariaLabel={t("org.filter")} placeholder={t("org.filter")} leading={<Icon role="organization.search" small />} value={query} onInput={(e) => setQuery(e.currentTarget.value)} />
       {selected.size > 0 ? (
         <SelectionBar text={extra > 0 ? t("org.selectedWith", { n: selected.size, extra }) : t("org.selected", { n: selected.size })} option={{ label: t("org.descendants"), checked: descendants, onChange: (on) => (org.descendants.value = on) }}>
           <Button variant={armed ? "warn" : "plain"} disabled={action.kind === "running"} onClick={run}>
@@ -255,7 +255,7 @@ export function Threads({ model }: { model: AppModel }) {
       {!kind && state.error ? <Notice tone="bad" actions={<Button onClick={() => void org.read()}>{t("common.refresh")}</Button>}>{t("common.readError", { message: state.error.message })}</Notice> : null}
       {!kind && !state.loaded && state.loading ? <div class="muted">{t("common.loading")}</div> : null}
       {!kind && state.loaded && state.items.length === 0 ? (
-        <EmptyState icon="tree" title={state.query ? t("threads.noMatch") : t(archiving ? "threads.empty" : "org.noArchived")} />
+        <EmptyState role="empty.threadArchive" title={state.query ? t("threads.noMatch") : t(archiving ? "threads.empty" : "org.noArchived")} />
       ) : null}
       {groups.map((g) => {
         const ids = g.rows.map((r) => r.summary.thread_id);
@@ -271,7 +271,7 @@ export function Threads({ model }: { model: AppModel }) {
         <>
           {heads.error ? <Notice tone="bad" actions={<Button onClick={() => void org.read()}>{t("common.refresh")}</Button>}>{t("common.readError", { message: heads.error.message })}</Notice> : null}
           {!heads.loaded && heads.loading ? <div class="muted">{t("common.loading")}</div> : null}
-          {heads.loaded && heads.names.length === 0 ? <EmptyState icon="tree" title={t(kind === "tag" ? "org.noTags" : "org.noDirs")} /> : null}
+          {heads.loaded && heads.names.length === 0 ? <EmptyState role="empty.organizationItems" title={t(kind === "tag" ? "org.noTags" : "org.noDirs")} /> : null}
           {heads.names.map((name) => {
             const member = open.get(name);
             const rows = member?.items ?? [];

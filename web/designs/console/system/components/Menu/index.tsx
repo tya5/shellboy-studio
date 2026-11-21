@@ -1,8 +1,9 @@
 import { useEffect, useRef } from "preact/hooks";
 import type { ComponentChildren } from "preact";
 import { Popover } from "../Popover";
+import { Icon, type IconRole } from "../Icon";
 
-export type MenuItem = { key: string; label: string; onSelect?: () => void; href?: string; destructive?: boolean; disabled?: boolean };
+export type MenuItem = { key: string; label: string; icon?: IconRole; onSelect?: () => void; href?: string; destructive?: boolean; disabled?: boolean };
 export type MenuEntry = MenuItem | { key: string; separator: true };
 
 function isSeparator(entry: MenuEntry): entry is { key: string; separator: true } { return "separator" in entry; }
@@ -43,7 +44,7 @@ export function Menu({ open, anchor, returnFocusTo, entries, onClose, id, labell
       else if (event.key === "Enter" || event.key === " ") { event.preventDefault(); (document.activeElement as HTMLElement)?.click(); }
       else if (event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) typeTo(event.key);
     }}>
-      {available.map((entry) => isSeparator(entry) ? <div key={entry.key} class="menu-separator" role="separator" /> : entry.href ? <a key={entry.key} role="menuitem" tabIndex={-1} class={entry.destructive ? "menu-item destructive" : "menu-item"} href={entry.href} onClick={() => { onClose(); document.getElementById(labelledBy)?.focus(); }}>{entry.label}</a> : <button key={entry.key} type="button" role="menuitem" tabIndex={-1} class={entry.destructive ? "menu-item destructive" : "menu-item"} onClick={() => { entry.onSelect?.(); onClose(); document.getElementById(labelledBy)?.focus(); }}>{entry.label}</button>)}
+      {available.map((entry) => isSeparator(entry) ? <div key={entry.key} class="menu-separator" role="separator" /> : entry.href ? <a key={entry.key} role="menuitem" tabIndex={-1} class={entry.destructive ? "menu-item destructive" : "menu-item"} href={entry.href} onClick={() => { onClose(); document.getElementById(labelledBy)?.focus(); }}>{entry.icon ? <Icon role={entry.icon} small /> : null}<span>{entry.label}</span></a> : <button key={entry.key} type="button" role="menuitem" tabIndex={-1} class={entry.destructive ? "menu-item destructive" : "menu-item"} onClick={() => { entry.onSelect?.(); onClose(); document.getElementById(labelledBy)?.focus(); }}>{entry.icon ? <Icon role={entry.icon} small /> : null}<span>{entry.label}</span></button>)}
     </div>
   </Popover>;
 }

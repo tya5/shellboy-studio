@@ -19,24 +19,24 @@ function Card({ model, row, pinned, togglePin, outOfFilter }: { model: AppModel;
           <Button aria-pressed={pinned} onClick={togglePin}>{t(pinned ? "monitor.unpin" : "monitor.pin")}</Button>
           {row.childCount > 0 ? (
             <span class="rel">
-              <Icon name="tree" small />
+              <Icon role="monitor.childThreads" small />
               <span>{row.childCount === 1 ? t("monitor.child") : t("monitor.children", { n: row.childCount })}</span>
             </span>
           ) : row.parentTitle ? (
             <span class="rel">
-              <Icon name="tree" small />
+              <Icon role="monitor.parentThread" small />
               <span>{t("monitor.parent", { title: row.parentTitle })}</span>
             </span>
           ) : null}
           {row.status === "recovery" ? (
             <Button variant="warn" onClick={() => void model.retry(s.thread_id)}>
-              <Icon name="retry" small />
+              <Icon role="action.retry" small />
               {t("action.retry")}
             </Button>
           ) : null}
           <a class="btn link go" href={formatRoute({ view: "conversation", threadId: s.thread_id })}>
             {t("monitor.open")}
-            <Icon name="arrow" small />
+            <Icon role="monitor.openConversation" small />
           </a>
         </>
       }
@@ -157,9 +157,9 @@ export function Monitor({ context }: { context: DesignContext }) {
         </div>
         <span class="monitor-count-mobile muted caption">{t("monitor.showing", { shown: selectedRows.length, total: model.monitorStableRows.value.length })}</span>
         {filtered ? <div class="monitor-pills">
-          {filter.map((k) => <Button key={k} aria-label={t("monitor.removeFilter", { filter: statusLabel(t, k) })} onClick={() => updateStatus(k)}>{statusLabel(t, k)} <Icon name="cross" small /></Button>)}
-          {model.monitorQuery.value.trim() ? <Button aria-label={t("monitor.removeFilter", { filter: model.monitorQuery.value })} onClick={() => { model.monitorQuery.value = ""; setPrefs({ monitorQuery: "" }); }}>{model.monitorQuery.value} <Icon name="cross" small /></Button> : null}
-          {model.monitorArchive.value !== "exclude" ? <Button aria-label={t("monitor.removeFilter", { filter: archiveLabel })} onClick={() => setArchive("exclude")}>{archiveLabel} <Icon name="cross" small /></Button> : null}
+          {filter.map((k) => <Button key={k} aria-label={t("monitor.removeFilter", { filter: statusLabel(t, k) })} onClick={() => updateStatus(k)}>{statusLabel(t, k)} <Icon role="action.clearStatusFilter" small /></Button>)}
+          {model.monitorQuery.value.trim() ? <Button aria-label={t("monitor.removeFilter", { filter: model.monitorQuery.value })} onClick={() => { model.monitorQuery.value = ""; setPrefs({ monitorQuery: "" }); }}>{model.monitorQuery.value} <Icon role="action.clearQueryFilter" small /></Button> : null}
+          {model.monitorArchive.value !== "exclude" ? <Button aria-label={t("monitor.removeFilter", { filter: archiveLabel })} onClick={() => setArchive("exclude")}>{archiveLabel} <Icon role="action.clearArchiveFilter" small /></Button> : null}
           <Button onClick={clearFilters}>{t("monitor.clearAll")}</Button>
         </div> : null}
         {tiles && pages > 1 ? <ButtonGroup label={t("monitor.page", { page: currentPage + 1, pages })}>
@@ -175,11 +175,11 @@ export function Monitor({ context }: { context: DesignContext }) {
           ))}
         </div>
       ) : filtered || pinnedOnly || attention ? (
-        <EmptyState icon="monitor" title={t("monitor.noMatch")}>
+        <EmptyState role="empty.monitorNoMatches" title={t("monitor.noMatch")}>
           <Button onClick={clearFilters}>{t("monitor.clearFilters")}</Button>
         </EmptyState>
       ) : list.loaded ? (
-        <EmptyState icon="monitor" title={t("monitor.empty")} body={t("monitor.emptyBody")} />
+        <EmptyState role="empty.monitor" title={t("monitor.empty")} body={t("monitor.emptyBody")} />
       ) : null}
       {model.data.canLoadMoreThreads() ? <span class="more"><Button disabled={list.loadingMore} onClick={() => void model.data.loadMoreThreads()}>{t("threads.more")}</Button></span> : list.nextCursor ? <div class="muted caption">{t("threads.capped")}</div> : null}
     </div>

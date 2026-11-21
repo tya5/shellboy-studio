@@ -13,9 +13,9 @@ export function AppTabs({ label, allLabel, allHref, allCurrent, tabs, addLabel, 
       {tabs.map((t) => <div key={t.key} class="apptab-group">
         <div class="apptab" aria-current={t.current ? "page" : undefined}>
           <a href={t.href} aria-current={t.current ? "page" : undefined}>{t.alert ? <span class="st bad"><span class="mark"><span class="dot" /></span></span> : null}{t.title}</a>
-          <button type="button" class="apptab-close" aria-label={t.closeLabel} onClick={t.onClose}><Icon name="cross" small /></button>
+          <button type="button" class="apptab-close" aria-label={t.closeLabel} onClick={t.onClose}><Icon role="tab.close" small /></button>
         </div>
-        <button type="button" class="apptab-add" aria-label={addLabel} onClick={() => { setEditing(editing === t.key ? undefined : t.key); setValue(""); }}><Icon name="plus" small /></button>
+        <button type="button" class="apptab-add" aria-label={addLabel} onClick={() => { setEditing(editing === t.key ? undefined : t.key); setValue(""); }}><Icon role="tab.add" small /></button>
         {editing === t.key ? <form class="apptab-name" onSubmit={(event) => { event.preventDefault(); if (validName(value)) { t.onOpenNamed(value); setEditing(undefined); setValue(""); } }}>
           <input autoFocus aria-label={nameLabel} value={value} onInput={(event) => setValue(event.currentTarget.value)} />
           <button class="btn" type="submit" disabled={!validName(value)}>{openLabel}</button>

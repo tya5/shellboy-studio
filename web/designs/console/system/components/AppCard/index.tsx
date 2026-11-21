@@ -13,7 +13,7 @@ export function AppCard({ title, name, note, href, openLabel, problem, children 
         <div class="foot">
           <a class="btn link go" href={href}>
             {openLabel}
-            <Icon name="arrow" small />
+            <Icon role="app.open" small />
           </a>
         </div>
       )}
