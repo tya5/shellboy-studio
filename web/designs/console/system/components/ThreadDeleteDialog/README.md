@@ -1,15 +1,20 @@
 # ThreadDeleteDialog
 
 A modal alert dialog for the exact singleton-delete preview and confirmation. The
-screen supplies `{ threadId, nextThreadId }` computed from its own displayed row list,
-plus stable id-based focus targets. The generic sheet never infers focus from the Menu
-Escape target or searches row classes.
+screen supplies the target thread id and an id-based getter for its row link. The
+sheet invokes that getter at dismissal, after closing; Cancel therefore returns to
+the still-present row link. Delete closes synchronously before starting the request.
+The request result updates only the notice and never moves focus.
+
+When a row is removed, the list that renders it owns focus recovery: if focus has
+fallen to the body, it advances to the next remaining row link or its heading. If the
+user has moved focus elsewhere, the list leaves focus untouched. This also covers
+archive and filter removals.
+
 It uses `role="alertdialog"`, ties the heading and concise confirmation text through
 `aria-labelledby`/`aria-describedby`, and focuses the system Button Cancel control on
 open. Outside pointer dismissal is disabled. Escape remains a cancellation path.
-Modal focus is contained and app scroll boundaries are locked while open. Closing
-returns focus to the original menu trigger or caller-resolved nearby control if the
-row was removed.
+Modal focus is contained and app scroll boundaries are locked while open.
 
 Preview and confirmation policy remains fail-closed: confirmation requires
 `deletable_now` and the exact `preview_marker`, passed unchanged. This follows Radix

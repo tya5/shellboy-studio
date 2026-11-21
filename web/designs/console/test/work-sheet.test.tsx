@@ -18,8 +18,8 @@ it("locks app scroll panes and only dismisses on a genuine primary backdrop clic
   opener.focus();
   let open = true;
   const onClose = vi.fn(() => { open = false; draw(); });
-  const fallback = vi.fn(() => null);
-  const draw = () => render(<WorkSheet open={open} title="Work" closeLabel="Close" returnFocusTo={opener} resolveFocusFallback={fallback} onClose={onClose}><p>Details</p></WorkSheet>, host);
+  const returnTarget = vi.fn(() => opener);
+  const draw = () => render(<WorkSheet open={open} title="Work" closeLabel="Close" getReturnFocusTarget={returnTarget} onClose={onClose}><p>Details</p></WorkSheet>, host);
   const showModal = vi.spyOn(HTMLDialogElement.prototype, "showModal");
   await act(async () => { draw(); await Promise.resolve(); });
   const dialog = host.querySelector<HTMLDialogElement>("dialog")!;
@@ -46,24 +46,21 @@ it("locks app scroll panes and only dismisses on a genuine primary backdrop clic
   render(null, host); host.remove(); opener.remove();
 });
 
-it("uses the caller's nearby resolver when the supplied opener is removed", async () => {
+it("looks up the focus target when the sheet is dismissed", async () => {
   const host = document.createElement("div");
-  const rows = document.createElement("div");
-  const first = document.createElement("div"); first.className = "tree-item";
-  const opener = document.createElement("button"); first.append(opener);
-  const second = document.createElement("div"); second.className = "tree-item";
-  const neighbor = document.createElement("a"); neighbor.href = "#next"; neighbor.textContent = "Next"; second.append(neighbor);
-  rows.append(first, second); host.append(rows); document.body.append(host);
-  opener.focus();
+  const initial = document.createElement("button");
+  const current = document.createElement("button");
+  document.body.append(host, initial, current);
+  let returnTarget = initial;
   let open = true;
-  const resolveFocusFallback = vi.fn(() => neighbor.isConnected ? neighbor : null);
-  const draw = () => render(<WorkSheet open={open} title="Work" closeLabel="Close" returnFocusTo={opener} resolveFocusFallback={resolveFocusFallback} onClose={() => { open = false; draw(); }}><p>Details</p></WorkSheet>, host);
+  const getReturnFocusTarget = vi.fn(() => returnTarget);
+  const draw = () => render(<WorkSheet open={open} title="Work" closeLabel="Close" getReturnFocusTarget={getReturnFocusTarget} onClose={() => { open = false; draw(); }}><p>Details</p></WorkSheet>, host);
   await act(async () => { draw(); await Promise.resolve(); });
-  first.remove();
-  await act(async () => { host.querySelector<HTMLDialogElement>("dialog")!.querySelector("button")!.click(); await Promise.resolve(); });
-  expect(resolveFocusFallback).toHaveBeenCalled();
-  expect(document.activeElement).toBe(neighbor);
-  render(null, host); host.remove();
+  returnTarget = current;
+  await act(async () => { host.querySelector<HTMLButtonElement>(".work-sheet-head button")!.click(); await Promise.resolve(); });
+  expect(getReturnFocusTarget).toHaveBeenCalled();
+  expect(document.activeElement).toBe(current);
+  render(null, host); host.remove(); initial.remove(); current.remove();
 });
 
 it("allows Escape to cancel alertdialog while blocking outside dismissal", async () => {
@@ -72,7 +69,7 @@ it("allows Escape to cancel alertdialog while blocking outside dismissal", async
   document.body.append(host, opener); opener.focus();
   let open = true;
   const onClose = vi.fn(() => { open = false; draw(); });
-  const draw = () => render(<WorkSheet open={open} role="alertdialog" dismissOnOutside={false} focusCloseOnOpen title="Delete" closeLabel="Cancel" describedBy="delete-summary" returnFocusTo={opener} resolveFocusFallback={() => null} onClose={onClose}><p id="delete-summary">Confirm delete?</p></WorkSheet>, host);
+  const draw = () => render(<WorkSheet open={open} role="alertdialog" dismissOnOutside={false} focusCloseOnOpen title="Delete" closeLabel="Cancel" describedBy="delete-summary" getReturnFocusTarget={() => opener} onClose={onClose}><p id="delete-summary">Confirm delete?</p></WorkSheet>, host);
   await act(async () => { draw(); await Promise.resolve(); });
   const dialog = host.querySelector<HTMLDialogElement>("dialog")!;
   const cancel = dialog.querySelector<HTMLButtonElement>(".work-sheet-head button")!;

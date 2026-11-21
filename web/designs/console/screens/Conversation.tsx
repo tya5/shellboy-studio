@@ -535,7 +535,7 @@ export function Conversation({ model }: { model: AppModel }) {
         </div> : null}
       </div>
       {handle ? <Details model={model} /> : null}
-      <WorkSheet open={sheetOpen} title={t("work.title")} closeLabel={t("work.close")} returnFocusTo={sheetReturnFocus?.opener ?? null} resolveFocusFallback={sheetReturnFocus?.resolveFallback ?? (() => null)} onClose={() => setSheetOpen(false)}><WorkRegions model={model} place="sheet" /></WorkSheet>
+      <WorkSheet open={sheetOpen} title={t("work.title")} closeLabel={t("work.close")} getReturnFocusTarget={() => sheetReturnFocus?.opener?.isConnected ? sheetReturnFocus.opener : sheetReturnFocus?.resolveFallback() ?? null} onClose={() => setSheetOpen(false)}><WorkRegions model={model} place="sheet" /></WorkSheet>
     </>
   );
 }

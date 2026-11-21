@@ -1,6 +1,6 @@
 import { BrandLogo } from "../system/components/BrandLogo";
 import { threadMenuEntries } from "../system/components/thread-menu";
-import { useEffect, useRef, useState } from "preact/hooks";
+import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import { formatRoute, readSidebarWidth, SIDEBAR_WIDTH_MAX, SIDEBAR_WIDTH_MIN, statusLabel, viewShortcut, navShortcut, type DesignContext, type ViewName } from "../../../ui-core/src";
 import { Button, ContextBar, Field, Icon, MoreMenu, NavItem, Notice, StatusMark, ThreadDeleteDialog, ThreadItem, type IconRole, type ThreadDeleteTarget } from "../system/components";
 import { formatTokens, folderName } from "../../../ui-core/src";
@@ -19,15 +19,21 @@ import { LayoutSeparator } from "../system/components";
 import { sidebarWidthStyle } from "../system/layout";
 
 const SEARCH_DEBOUNCE_MS = 200;
-const resolveSidebarFocusFallback = () => document.getElementById("sidebar-thread-list-heading");
-function focusSidebarThread(threadId?: string) {
-  const target = threadId ? document.getElementById(`thread-link-sidebar-${threadId}`) : null;
-  (target ?? document.getElementById("sidebar-thread-list-heading"))?.focus();
-}
 
 export function App({ context }: { context: DesignContext }) {
   const model = context.model;
   const [deleteThread, setDeleteThread] = useState<ThreadDeleteTarget>();
+  const sidebarListRef = useRef<HTMLDivElement>(null);
+  const lastSidebarFocus = useRef<{ linkId: string; index: number }>();
+  const sidebarRows = model.rows.value;
+  useLayoutEffect(() => {
+    const previous = lastSidebarFocus.current;
+    if (!previous || document.getElementById(previous.linkId)) return;
+    lastSidebarFocus.current = undefined;
+    if (document.activeElement !== document.body) return;
+    const links = [...(sidebarListRef.current?.querySelectorAll<HTMLAnchorElement>('a[id^="thread-link-sidebar-"]') ?? [])];
+    (links[previous.index] ?? document.getElementById("sidebar-thread-list-heading"))?.focus();
+  });
   const t = model.t.value;
   const route = model.route.value;
   useEffect(() => { model.actionError.value = undefined; }, [model, route]);
@@ -124,9 +130,15 @@ export function App({ context }: { context: DesignContext }) {
           <div class="side-search">
             <Field ariaLabel={t("threads.search")} placeholder={t("threads.search")} leading={<Icon role="thread.search" size="small" />} value={query} onInput={(e) => setQuery(e.currentTarget.value)} />
           </div>
-          <div class="side-list">
+          <div class="side-list" ref={sidebarListRef} onFocusIn={(event) => {
+            const target = event.target as HTMLElement;
+            const link = target.closest<HTMLAnchorElement>('a[id^="thread-link-sidebar-"]') ?? target.closest<HTMLElement>(".tree-item")?.querySelector<HTMLAnchorElement>('a[id^="thread-link-sidebar-"]');
+            if (!link) return;
+            const links = [...(sidebarListRef.current?.querySelectorAll<HTMLAnchorElement>('a[id^="thread-link-sidebar-"]') ?? [])];
+            lastSidebarFocus.current = { linkId: link.id, index: links.indexOf(link) };
+          }}>
             <div class="tree">
-              {model.rows.value.map((r, index, rows) => (
+              {sidebarRows.map((r, index, rows) => (
                 <ThreadItem
                   key={r.summary.thread_id}
                   linkId={`thread-link-sidebar-${r.summary.thread_id}`}
@@ -138,7 +150,7 @@ export function App({ context }: { context: DesignContext }) {
                   current={route.view === "conversation" && r.summary.thread_id === selected}
                   pending={r.pending}
                   onSelect={() => setDrawer(false)}
-                  menu={{ label: t("thread.rowMenu"), entries: threadMenuEntries(model, r.summary, r.status, (target) => setDeleteThread({ threadId: target.thread_id, nextThreadId: rows[index + 1]?.summary.thread_id })) }}
+                  menu={{ label: t("thread.rowMenu"), entries: threadMenuEntries(model, r.summary, r.status, (target) => setDeleteThread({ threadId: target.thread_id })) }}
                 />
               ))}
             </div>
@@ -175,7 +187,7 @@ export function App({ context }: { context: DesignContext }) {
             {conn === "ownerDown" ? <Notice tone="wait">{t("banner.ownerDown")}</Notice> : null}
             {model.actionError.value ? <Notice tone={model.actionError.value.kind === "error" ? "bad" : undefined}>{model.actionError.value.text}</Notice> : null}
           </div>
-          {deleteThread ? <ThreadDeleteDialog key={deleteThread.threadId} model={model} target={deleteThread} returnFocusTo={document.getElementById(`thread-link-sidebar-${deleteThread.threadId}`)} resolveFocusFallback={resolveSidebarFocusFallback} onClose={() => setDeleteThread(undefined)} onDeleted={() => focusSidebarThread(deleteThread.nextThreadId)} /> : null}
+          <ThreadDeleteDialog model={model} open={!!deleteThread} target={deleteThread} getReturnFocusTarget={(threadId) => document.getElementById(`thread-link-sidebar-${threadId}`)} onClose={() => setDeleteThread(undefined)} />
           <section class="view" aria-label={title}>
             <AppsHost context={context} />
             {route.view === "apps" ? null : route.view === "conversation" ? <Conversation model={model} /> : route.view === "monitor" ? <Monitor context={context} /> : route.view === "inbox" ? <Inbox model={model} /> : route.view === "analytics" ? <Analytics context={context} /> : route.view === "branches" ? <Branches model={model} /> : route.view === "threads" ? <Threads model={model} /> : route.view === "setup" ? <Setup context={context} /> : <SettingsView context={context} />}

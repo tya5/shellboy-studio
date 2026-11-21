@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 import "../system/tokens/console.css";
 import "../system/components.css";
 import { render } from "preact";
-import { useState } from "preact/hooks";
+import { useLayoutEffect, useRef, useState } from "preact/hooks";
 import { act } from "preact/test-utils";
 import { describe, expect, it, vi } from "vitest";
 import { ThreadDeleteDialog } from "../system/components/ThreadDeleteDialog";
@@ -51,15 +51,32 @@ function selectRow(title: string, checked = false) {
   return <SelectRow title={title} href="#" status={null} depth={0} checked={checked} checkLabel="select" onToggle={() => {}} menu={rowMenu} />;
 }
 
+let removeThreadFromFlow = () => {};
 function DeleteFlow({ model }: { model: AppModel }) {
   const [request, setRequest] = useState<ThreadDeleteTarget>();
-  const targetRow = { ...row, title: "B" };
-  const nextRow = { ...row, thread_id: "t2", title: "C" };
+  const [ids, setIds] = useState(["t1", "t2"]);
+  const listRef = useRef<HTMLDivElement>(null);
+  const lastFocus = useRef<{ linkId: string; index: number }>();
+  removeThreadFromFlow = () => setIds((current) => current.filter((id) => id !== "t1"));
+  useLayoutEffect(() => {
+    const previous = lastFocus.current;
+    if (!previous || document.getElementById(previous.linkId)) return;
+    lastFocus.current = undefined;
+    if (document.activeElement !== document.body) return;
+    const links = [...(listRef.current?.querySelectorAll<HTMLAnchorElement>('a[id^="thread-link-test-"]') ?? [])];
+    (links[previous.index] ?? document.getElementById("test-thread-list-heading"))?.focus();
+  });
   return <>
-    <ThreadItem href="#b" linkId="thread-link-test-t1" title="B" status={undefined} statusLabel="" depth={0} current={false} pending={0} menu={{ label: "B menu", entries: threadMenuEntries(model, targetRow, undefined, (target) => setRequest({ threadId: target.thread_id, nextThreadId: nextRow.thread_id })) }} />
-    <ThreadItem href="#c" linkId="thread-link-test-t2" title="C" status={undefined} statusLabel="" depth={0} current={false} pending={0} menu={{ label: "C menu", entries: [{ key: "archive", label: "Archive" }] }} />
+    <div ref={listRef} onFocusIn={(event) => {
+      const link = (event.target as HTMLElement).closest<HTMLAnchorElement>('a[id^="thread-link-test-"]');
+      if (!link) return;
+      const links = [...(listRef.current?.querySelectorAll<HTMLAnchorElement>('a[id^="thread-link-test-"]') ?? [])];
+      lastFocus.current = { linkId: link.id, index: links.indexOf(link) };
+    }}>
+      {ids.map((id) => <ThreadItem key={id} href={`#${id}`} linkId={`thread-link-test-${id}`} title={id === "t1" ? "B" : "C"} status={undefined} statusLabel="" depth={0} current={false} pending={0} menu={{ label: "B menu", entries: threadMenuEntries(model, { ...row, thread_id: id }, undefined, (target) => setRequest({ threadId: target.thread_id })) }} />)}
+    </div>
     <h2 id="test-thread-list-heading" tabIndex={-1}>Threads</h2>
-    {request ? <ThreadDeleteDialog model={model} target={request} returnFocusTo={document.getElementById(`thread-link-test-${request.threadId}`)} resolveFocusFallback={() => document.getElementById("test-thread-list-heading")} onClose={() => setRequest(undefined)} onDeleted={() => (request.nextThreadId ? document.getElementById(`thread-link-test-${request.nextThreadId}`) : document.getElementById("test-thread-list-heading"))?.focus()} /> : null}
+    <ThreadDeleteDialog model={model} open={!!request} target={request} getReturnFocusTarget={(threadId) => document.getElementById(`thread-link-test-${threadId}`)} onClose={() => setRequest(undefined)} />
   </>;
 }
 
@@ -91,7 +108,7 @@ describe("Thread row menu and delete", () => {
     const host = document.createElement("div");
     const invokingControl = document.createElement("button");
     document.body.append(host, invokingControl);
-    act(() => render(<ThreadDeleteDialog model={model} target={{ threadId: row.thread_id }} returnFocusTo={invokingControl} resolveFocusFallback={() => null} onClose={onClose} onDeleted={() => {}} />, host));
+    act(() => render(<ThreadDeleteDialog model={model} open target={{ threadId: row.thread_id }} getReturnFocusTarget={() => invokingControl} onClose={onClose} />, host));
     const dialog = host.querySelector<HTMLDialogElement>("dialog[role=alertdialog]")!;
     expect(dialog).not.toBeNull();
     expect(dialog.getAttribute("aria-labelledby")).toBeTruthy();
@@ -110,41 +127,74 @@ describe("Thread row menu and delete", () => {
     expect(model.ops.threadDelete).toHaveBeenCalledWith("t1", { thread_count: 1, ids_hash: "exact" });
     render(null, host); host.remove(); invokingControl.remove();
   });
-  it("returns focus by stable row ids after contextmenu Delete, Cancel, and confirmed deletion", async () => {
+  it("returns Cancel to the stable row link", async () => {
     const model = menuModel();
     model.ops.threadDeletePreview = vi.fn(async () => ({ ok: true, value: { deletable_now: true, preview_marker: { thread_count: 1, ids_hash: "exact" }, selection: { thread_count: 1 }, blockers: { live_run_count: 0, stopping_run_count: 0, truncated: false }, preview_marker_unavailable_reason: undefined } })) as never;
-    let resolveDelete!: (outcome: { ok: true }) => void;
-    model.ops.threadDelete = vi.fn(() => new Promise((resolve) => { resolveDelete = resolve; })) as never;
-    const host = document.createElement("div");
-    const elsewhere = document.createElement("button");
-    document.body.append(host, elsewhere);
+    const host = document.createElement("div"); document.body.append(host);
     act(() => render(<DeleteFlow model={model} />, host));
-    const rowB = host.querySelector<HTMLElement>(".tree-item")!;
-    const rowBLink = host.querySelector<HTMLAnchorElement>("#thread-link-test-t1")!;
-    const openDelete = async () => {
-      await act(async () => { rowB.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 10, clientY: 10 })); await Promise.resolve(); });
-      const deleteItem = [...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')].find((item) => item.textContent === "thread.deletePreview")!;
-      await act(async () => { deleteItem.click(); await Promise.resolve(); await Promise.resolve(); });
-    };
-
-    elsewhere.focus();
-    await openDelete();
-    let dialog = host.querySelector<HTMLDialogElement>('dialog[role="alertdialog"]')!;
-    expect(document.activeElement).toBe(dialog.querySelector(".work-sheet-head button"));
+    const link = host.querySelector<HTMLAnchorElement>("#thread-link-test-t1")!;
+    await act(async () => { host.querySelector<HTMLElement>(".tree-item")!.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 10, clientY: 10 })); await Promise.resolve(); });
+    const deleteItem = [...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')].find((item) => item.textContent === "thread.deletePreview")!;
+    await act(async () => { deleteItem.click(); await new Promise((resolve) => setTimeout(resolve, 10)); });
+    const dialog = host.querySelector<HTMLDialogElement>('dialog[role="alertdialog"]')!;
     await act(async () => { dialog.querySelector<HTMLButtonElement>(".work-sheet-head button")!.click(); await Promise.resolve(); });
-    expect(document.activeElement).toBe(rowBLink);
+    expect(document.activeElement).toBe(link);
+    render(null, host); host.remove();
+  });
 
-    elsewhere.focus();
-    await openDelete();
+  it("list focuses the next row when the focused row is removed after delete", async () => {
+    const model = menuModel();
+    let resolveDelete!: (outcome: { ok: true }) => void;
+    let dialog!: HTMLDialogElement;
+    let rowLink!: HTMLAnchorElement;
+    model.ops.threadDeletePreview = vi.fn(async () => ({ ok: true, value: { deletable_now: true, preview_marker: { thread_count: 1, ids_hash: "exact" }, selection: { thread_count: 1 }, blockers: { live_run_count: 0, stopping_run_count: 0, truncated: false }, preview_marker_unavailable_reason: undefined } })) as never;
+    model.ops.threadDelete = vi.fn(() => new Promise((resolve) => { resolveDelete = resolve; })) as never;
+    const host = document.createElement("div"); document.body.append(host);
+    act(() => render(<DeleteFlow model={model} />, host));
+    rowLink = host.querySelector<HTMLAnchorElement>("#thread-link-test-t1")!;
+    const nextLink = host.querySelector<HTMLAnchorElement>("#thread-link-test-t2")!;
+    await act(async () => { host.querySelector<HTMLElement>(".tree-item")!.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 10, clientY: 10 })); await Promise.resolve(); });
+    const deleteItem = [...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')].find((item) => item.textContent === "thread.deletePreview")!;
+    await act(async () => { deleteItem.click(); await new Promise((resolve) => setTimeout(resolve, 10)); });
     dialog = host.querySelector<HTMLDialogElement>('dialog[role="alertdialog"]')!;
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
     const confirm = [...dialog.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "thread.deleteConfirm")!;
     await act(async () => { confirm.click(); await Promise.resolve(); });
+    expect(dialog.open).toBe(false);
+    expect(document.activeElement).toBe(rowLink);
+    expect(model.ops.threadDelete).toHaveBeenCalledTimes(1);
     expect(model.ops.threadDelete).toHaveBeenCalledWith("t1", { thread_count: 1, ids_hash: "exact" });
-    expect(document.activeElement).toBe(rowBLink);
     await act(async () => { resolveDelete({ ok: true }); await Promise.resolve(); });
-    expect(document.activeElement).toBe(host.querySelector<HTMLAnchorElement>("#thread-link-test-t2"));
+    expect(dialog.open).toBe(false);
+    expect(document.activeElement).toBe(rowLink);
+    await act(async () => { removeThreadFromFlow(); });
+    expect(document.activeElement).toBe(nextLink);
+    render(null, host); host.remove();
+  });
+
+  it("does not move focus after deletion when the user has moved elsewhere", async () => {
+    const model = menuModel();
+    let resolveDelete!: (outcome: { ok: true }) => void;
+    model.ops.threadDeletePreview = vi.fn(async () => ({ ok: true, value: { deletable_now: true, preview_marker: { thread_count: 1, ids_hash: "exact" }, selection: { thread_count: 1 }, blockers: { live_run_count: 0, stopping_run_count: 0, truncated: false }, preview_marker_unavailable_reason: undefined } })) as never;
+    model.ops.threadDelete = vi.fn(() => new Promise((resolve) => { resolveDelete = resolve; })) as never;
+    const host = document.createElement("div"); const elsewhere = document.createElement("button"); document.body.append(host, elsewhere);
+    act(() => render(<DeleteFlow model={model} />, host));
+    await act(async () => { host.querySelector<HTMLElement>(".tree-item")!.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 10, clientY: 10 })); await Promise.resolve(); });
+    const deleteItem = [...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')].find((item) => item.textContent === "thread.deletePreview")!;
+    await act(async () => { deleteItem.click(); await new Promise((resolve) => setTimeout(resolve, 10)); });
+    const dialog = host.querySelector<HTMLDialogElement>('dialog[role="alertdialog"]')!;
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    const confirm = [...dialog.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "thread.deleteConfirm")!;
+    await act(async () => { confirm.click(); await Promise.resolve(); });
+    elsewhere.focus();
+    await act(async () => { resolveDelete({ ok: true }); await Promise.resolve(); });
+    expect(dialog.open).toBe(false);
+    expect(document.activeElement).toBe(elsewhere);
+    await act(async () => { removeThreadFromFlow(); });
+    expect(document.activeElement).toBe(elsewhere);
     render(null, host); host.remove(); elsewhere.remove();
   });
+
   it("opens a visible Menu from the ThreadItem button", async () => {
     const host = document.createElement("div");
     document.body.append(host);

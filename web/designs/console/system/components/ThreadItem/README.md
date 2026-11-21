@@ -6,3 +6,8 @@ Its `useRowMenu` owns local open state and the placement anchor. Follow shadcn/u
 hover, `:focus-within`, selection, or an open menu; touch devices always show it.
 The title truncates before the reserved action width. The menu follows shadcn/ui
 `DropdownMenu` / Radix and the WAI-ARIA APG Menu Button pattern.
+
+
+The caller's `linkId` identifies the row link for the owning list's focus policy. When
+that focused row is removed and focus falls to the body, the list advances to the next
+row link or its heading; it does nothing if focus has moved elsewhere.
