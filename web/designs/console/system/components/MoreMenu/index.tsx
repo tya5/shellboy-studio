@@ -1,19 +1,21 @@
-import { useEffect, useRef, useState } from "preact/hooks";
+import { useEffect, useId, useRef, useState } from "preact/hooks";
 import { Icon, type IconRole } from "../Icon";
 
 /** The last phone tab: views that don't earn a tab of their own. */
 export function MoreMenu({ label, items }: { label: string; items: { key: string; href: string; role: IconRole; label: string; current: boolean }[] }) {
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const panelId = `more-menu-${useId()}`;
   useEffect(() => {
     if (!open) return;
-    const press = (e: Event) => {
-      if (!root.current?.contains(e.target as Node)) setOpen(false);
+    const press = (event: Event) => {
+      if (!root.current?.contains(event.target as Node)) setOpen(false);
     };
-    const key = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return;
+    const key = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
       setOpen(false);
-      root.current?.querySelector("button")?.focus();
+      trigger.current?.focus();
     };
     document.addEventListener("pointerdown", press);
     document.addEventListener("keydown", key);
@@ -23,21 +25,21 @@ export function MoreMenu({ label, items }: { label: string; items: { key: string
     };
   }, [open]);
   return (
-    <div class="more-tab" ref={root}>
+    <div class="more-tab" ref={root} onFocusOut={(event) => { if (!root.current?.contains(event.relatedTarget as Node)) setOpen(false); }}>
+      <button ref={trigger} type="button" class="nav-item" aria-controls={panelId} aria-expanded={open} aria-current={items.some((item) => item.current) ? "page" : undefined} onClick={() => setOpen(!open)}>
+        <Icon role="nav.more" />
+        {label}
+      </button>
       {open ? (
-        <div class="more-panel">
-          {items.map((i) => (
-            <a key={i.key} class="nav-item" href={i.href} aria-current={i.current ? "page" : undefined} onClick={() => setOpen(false)}>
-              <Icon role={i.role} />
-              {i.label}
+        <div id={panelId} class="more-panel">
+          {items.map((item) => (
+            <a key={item.key} class="nav-item" href={item.href} aria-current={item.current ? "page" : undefined} onClick={() => setOpen(false)}>
+              <Icon role={item.role} />
+              {item.label}
             </a>
           ))}
         </div>
       ) : null}
-      <button type="button" class="nav-item" aria-expanded={open} aria-current={items.some((i) => i.current) ? "page" : undefined} onClick={() => setOpen(!open)}>
-        <Icon role="nav.more" />
-        {label}
-      </button>
     </div>
   );
 }

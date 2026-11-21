@@ -7,11 +7,11 @@ export function MonitorPopover({ label, children, className = "", preview = fals
   const [hover, setHover] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (!open) return;
+    if (!open && !hover) return;
     const press = (e: Event) => { if (!root.current?.contains(e.target as Node)) setOpen(false); };
-    const key = (e: KeyboardEvent) => { if (e.key === "Escape") { setOpen(false); root.current?.querySelector("button")?.focus(); } };
+    const key = (e: KeyboardEvent) => { if (e.key === "Escape") { setOpen(false); setHover(false); root.current?.querySelector("button")?.focus(); } };
     document.addEventListener("pointerdown", press); document.addEventListener("keydown", key);
     return () => { document.removeEventListener("pointerdown", press); document.removeEventListener("keydown", key); };
-  }, [open]);
+  }, [open, hover]);
   return <div class={`monitor-popover ${className}`} ref={root} onMouseEnter={() => { if (preview) setHover(true); }} onMouseLeave={() => setHover(false)} onFocusIn={() => { if (preview) setHover(true); }} onFocusOut={(e) => { if (!root.current?.contains(e.relatedTarget as Node)) setHover(false); }}><Button aria-expanded={open || hover} onClick={() => setOpen(!open)}>{label}</Button>{open || hover ? <div class="monitor-popover-panel" role="group" aria-label={label}>{children}</div> : null}</div>;
 }

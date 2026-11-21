@@ -1,5 +1,10 @@
-The last tab of the phone tab bar, holding views that don't earn their own tab. Each
-link icon uses its semantic destination `IconRole`; glyph shape selection is private
-to the Icon theme. It marks itself current when one of the views is open and closes
-on Escape, a press outside it, or a choice. Keep the tab bar to four tabs; add a view
-here instead of a fifth.
+# MoreMenu
+
+The phone navigation disclosure. Keep its button before the conditional links in DOM
+order so Tab visits the disclosure control before the links. `aria-controls` points
+to the panel. Escape and focus leaving the whole disclosure close it; Escape restores
+focus to the trigger. A link selection closes the panel. Items use semantic destination
+`IconRole` values; the views remain navigation links rather than tab widgets.
+
+References: WAI-ARIA APG Disclosure Navigation example and Radix
+`navigation-menu:1028` for close-on-focus-leave behavior.
