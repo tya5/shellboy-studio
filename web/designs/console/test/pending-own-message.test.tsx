@@ -537,37 +537,41 @@ it("mounted click joins the held old cursor read", async () => {
 
 
 describe('own-send rendered row owner',()=>{
- const item=(key:string,nodeId:string,kind:'user'|'live'='user'):ConversationItem=>({key,source:(kind==='live'?{domain:'live',scope:'scope',recordId:nodeId,kind:'text',text:nodeId}:{nodeId,kind:'user',text:nodeId,textComplete:true}) as never});
- const history=(...ids:string[])=>({items:ids.map(id=>item(`item:${id}`,id,id==='R'?'live':'user')),sequence:ids.map(id=>({kind:'conversation' as const,itemKey:`item:${id}`}))});
- const renderRows=(host:HTMLElement,saved:ReturnType<typeof history>,rows:readonly import('../../../ui-core/src/model').PendingOwnMessage[],retire:readonly import('../../../ui-core/src/model').PendingOwnMessage[])=>render(<ConversationItems {...saved} localRegion={{kind:'unqualified',rows,retire,renderRow:row=><span data-phase={row.phase}>{row.text}</span>}} renderItem={row=><span>{row.source.nodeId}</span>}/>,host);
+ const item=(key:string,nodeId:string,kind:'user'|'live'|'assistant'='assistant'):ConversationItem=>({key,source:(kind==='live'?{domain:'live',scope:'scope',recordId:nodeId,kind:'text',text:nodeId}:kind==='user'?{nodeId,kind:'user',text:nodeId,textComplete:true}:{nodeId,itemIdentity:nodeId,kind:'text',text:nodeId,textComplete:true}) as never});
+ const history=(...ids:string[])=>({items:ids.map(id=>item(`item:${id}`,id,id==='R'?'live':id==='P'||id==='Q'?'user':'assistant')),sequence:ids.map(id=>({kind:'conversation' as const,itemKey:`item:${id}`}))});
+ const renderRows=(host:HTMLElement,saved:ReturnType<typeof history>,rows:readonly import('../../../ui-core/src/model').PendingOwnMessage[])=>render(<ConversationItems {...saved} localRegion={{kind:'unqualified',rows,renderRow:row=><span data-phase={row.phase}>{row.text}</span>}} renderItem={row=><span>{row.source.nodeId}</span>}/>,host);
  it('keeps live R then pending P at the tail and adopts P at the same rendered index and key',()=>{
   const host=document.createElement('div');
   try{
-   const p={threadId:'t',scope:'history',operationId:'op-P',messageId:'P',text:'P',phase:'sending' as const};
-   const sequence=history('H','R');renderRows(host,sequence,[p],[]);
+   const sending={threadId:'t',scope:'history',operationId:'op-P',text:'P',phase:'sending' as const};
+   renderRows(host,history('H','R'),[sending]);
+   const beforeAcceptance=[...host.querySelectorAll<HTMLElement>('.conversation-items > [data-item-key]')];
+   expect(beforeAcceptance.map(row=>row.dataset.itemKey)).toEqual(['item:H','item:R','own:op-P']);
+   const p={...sending,messageId:'P',phase:'accepted' as const};
+   renderRows(host,history('H','R'),[p]);
    const before=[...host.querySelectorAll<HTMLElement>('.conversation-items > [data-item-key]')];
-   expect(before.map(row=>row.dataset.itemKey)).toEqual(['item:H','item:R','own:op-P']);
-   expect(before[2]!.querySelector('[data-phase]')?.getAttribute('data-phase')).toBe('sending');
-   renderRows(host,history('H','R','P'),[],[p]);
+   expect(before.map(row=>row.dataset.itemKey)).toEqual(['item:H','item:R','own:P']);
+   expect(before[2]!.querySelector('[data-phase]')?.getAttribute('data-phase')).toBe('accepted');
+   renderRows(host,history('H','R','P'),[]);
    const after=[...host.querySelectorAll<HTMLElement>('.conversation-items > [data-item-key]')];
-   expect(after.map(row=>row.dataset.itemKey)).toEqual(['item:H','item:R','own:op-P']);
+   expect(after.map(row=>row.dataset.itemKey)).toEqual(['item:H','item:R','own:P']);
    expect(after[2]).toBe(before[2]);expect(after[2]!.dataset.node).toBe('P');expect(after[2]!.textContent).toBe('P');
   }finally{render(null,host);host.remove();}
  });
  it('keeps a Core-held send in order through successive adoption of two sends',()=>{
   const host=document.createElement('div');
   try{
-   const p={threadId:'t',scope:'history',operationId:'op-P',messageId:'P',text:'P',phase:'accepted' as const},q={threadId:'t',scope:'history',operationId:'op-Q',messageId:'Q',text:'Q',phase:'sending' as const}; // accepted means held behind the active answer until the boundary
-   renderRows(host,history('H','R'),[p,q],[]);
+   const p={threadId:'t',scope:'history',operationId:'op-P',messageId:'P',text:'P',phase:'accepted' as const},q={threadId:'t',scope:'history',operationId:'op-Q',messageId:'Q',text:'Q',phase:'accepted' as const}; // Core-accepted sends remain visible until their saved nodes arrive.
+   renderRows(host,history('H','R'),[p,q]);
    const waiting=[...host.querySelectorAll<HTMLElement>('.conversation-items > [data-item-key]')];
-   expect(waiting.map(row=>row.dataset.itemKey)).toEqual(['item:H','item:R','own:op-P','own:op-Q']);
-   renderRows(host,history('H','R','P'),[q],[p]);
+   expect(waiting.map(row=>row.dataset.itemKey)).toEqual(['item:H','item:R','own:P','own:Q']);
+   renderRows(host,history('H','R','P'),[q]);
    const oneAdopted=[...host.querySelectorAll<HTMLElement>('.conversation-items > [data-item-key]')];
-   expect(oneAdopted.map(row=>row.dataset.itemKey)).toEqual(['item:H','item:R','own:op-P','own:op-Q']);
+   expect(oneAdopted.map(row=>row.dataset.itemKey)).toEqual(['item:H','item:R','own:P','own:Q']);
    expect(oneAdopted[2]).toBe(waiting[2]);expect(oneAdopted[3]).toBe(waiting[3]);
-   renderRows(host,history('H','R','P','Q'),[],[p,q]);
+   renderRows(host,history('H','R','P','Q'),[]);
    const rows=[...host.querySelectorAll<HTMLElement>('.conversation-items > [data-item-key]')];
-   expect(rows.map(row=>row.dataset.itemKey)).toEqual(['item:H','item:R','own:op-P','own:op-Q']);
+   expect(rows.map(row=>row.dataset.itemKey)).toEqual(['item:H','item:R','own:P','own:Q']);
    expect(rows[2]).toBe(oneAdopted[2]);expect(rows[3]).toBe(oneAdopted[3]);
    expect(rows.slice(-2).map(row=>row.dataset.node)).toEqual(['P','Q']);
   }finally{render(null,host);host.remove();}
