@@ -1,17 +1,35 @@
 // @vitest-environment happy-dom
 import "@preact/signals";
+import "../system/tokens/console.css";
+import "../system/components.css";
 import { render } from "preact";
 import { act } from "preact/test-utils";
 import { describe, expect, it, vi } from "vitest";
 import { ThreadDeleteDialog } from "../system/components/ThreadDeleteDialog";
 import { threadMenuEntries } from "../system/components/thread-menu";
+import { ThreadItem } from "../system/components/ThreadItem";
+import { SelectRow } from "../system/components/SelectRow";
 import type { MenuEntry } from "../system/components/Menu";
 import type { AppModel } from "../../../ui-core/src";
 import type { ThreadSummary } from "../../../data/src";
 
 const row = { thread_id: "t1", title: "One", cwd: "/tmp", state: "idle", activity: "idle", updated_at: "now", excerpt: "" } as ThreadSummary;
+const rowMenu = { label: "Thread row menu", entries: [{ key: "archive", label: "Archive" }] as MenuEntry[] };
 function menuModel() {
   return { t: { value: (key: string) => key }, actionError: { value: undefined }, ops: { threadArchive: vi.fn(async () => ({ ok: true })), threadUnarchive: vi.fn(async () => ({ ok: true })) } } as unknown as AppModel;
+}
+function expectVisibleMenu() {
+  const popover = document.body.querySelector<HTMLElement>(".popover");
+  expect(popover).not.toBeNull();
+  expect(popover!.style.visibility).not.toBe("hidden");
+  expect(popover!.querySelector('[role="menu"]')).not.toBeNull();
+  expect(popover!.querySelector('[role="menuitem"]')?.textContent).toBe("Archive");
+}
+function treeRow(title: string, current = false) {
+  return <ThreadItem href="#" title={title} status={undefined} statusLabel="" depth={0} current={current} pending={0} menu={rowMenu} />;
+}
+function selectRow(title: string, checked = false) {
+  return <SelectRow title={title} href="#" status={null} depth={0} checked={checked} checkLabel="select" onToggle={() => {}} menu={rowMenu} />;
 }
 describe("Thread row menu and delete", () => {
   it("offers Stop only while running and Retry only in recovery", () => {
@@ -27,11 +45,11 @@ describe("Thread row menu and delete", () => {
   it("does not delete until preview loads and confirmation is pressed", async () => {
     const model = menuModel();
     let resolvePreview!: (result: { ok: true; value: { deletable_now: boolean; preview_marker: { thread_count: number; ids_hash: string }; selection: { thread_count: number }; blockers: { live_run_count: number; stopping_run_count: number; truncated: boolean }; preview_marker_unavailable_reason: undefined } }) => void;
+    const order: string[] = [];
+    const onClose = vi.fn(() => order.push("close"));
     model.ops.threadDeletePreview = vi.fn(() => new Promise((resolve) => { resolvePreview = resolve; })) as never;
     model.ops.threadDelete = vi.fn(async () => { order.push("delete"); return { ok: true }; }) as never;
     const host = document.createElement("div");
-    const order: string[] = [];
-    const onClose = vi.fn(() => order.push("close"));
     act(() => render(<ThreadDeleteDialog model={model} target={row} onClose={onClose} />, host));
     expect(model.ops.threadDelete).not.toHaveBeenCalled();
     await act(async () => { resolvePreview({ ok: true, value: { deletable_now: true, preview_marker: { thread_count: 1, ids_hash: "exact" }, selection: { thread_count: 1 }, blockers: { live_run_count: 0, stopping_run_count: 0, truncated: false }, preview_marker_unavailable_reason: undefined } }); });
@@ -41,5 +59,49 @@ describe("Thread row menu and delete", () => {
     expect(order).toEqual(["close", "delete"]);
     expect(model.ops.threadDelete).toHaveBeenCalledWith("t1", { thread_count: 1, ids_hash: "exact" });
     render(null, host);
+  });
+  it("opens a visible Menu from the ThreadItem button", async () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    act(() => render(treeRow("One"), host));
+    await act(async () => { host.querySelector<HTMLButtonElement>("[aria-haspopup=menu]")!.click(); await Promise.resolve(); });
+    expectVisibleMenu();
+    act(() => render(null, host)); host.remove();
+  });
+  it("opens a visible Menu from the SelectRow button", async () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    act(() => render(selectRow("One"), host));
+    await act(async () => { host.querySelector<HTMLButtonElement>("[aria-haspopup=menu]")!.click(); await Promise.resolve(); });
+    expectVisibleMenu();
+    act(() => render(null, host)); host.remove();
+  });
+  it("opens the same visible Menu from row contextmenu", async () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    act(() => render(treeRow("One"), host));
+    await act(async () => { host.querySelector<HTMLElement>(".tree-item")!.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true })); await Promise.resolve(); });
+    expectVisibleMenu();
+    act(() => render(null, host)); host.remove();
+  });
+  it("shows every touch row trigger and only one menu at a time", async () => {
+    (window as unknown as { happyDOM: { setWindowSize(size: { width: number; height: number }): void } }).happyDOM.setWindowSize({ width: 390, height: 844 });
+    Object.defineProperty(navigator, "maxTouchPoints", { configurable: true, value: 1 });
+    const host = document.createElement("div");
+    document.body.append(host);
+    act(() => render(<>{treeRow("One")}{treeRow("Two")}{selectRow("Three")}{selectRow("Four")}</>, host));
+    const rows = [...host.querySelectorAll<HTMLElement>(".tree-item, .srow")];
+    expect(rows).toHaveLength(4);
+    expect(rows.every((item) => getComputedStyle(item.querySelector<HTMLElement>(".tree-action, .srow-menu")!).display !== "none")).toBe(true);
+    const triggers = [...host.querySelectorAll<HTMLButtonElement>("[aria-haspopup=menu]")];
+    for (const trigger of triggers) {
+      act(() => { trigger.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true })); });
+      await act(async () => { await Promise.resolve(); });
+      act(() => trigger.click());
+      await act(async () => { await Promise.resolve(); });
+      expect(document.body.querySelectorAll(".popover")).toHaveLength(1);
+    }
+    act(() => render(null, host)); host.remove();
+    Object.defineProperty(navigator, "maxTouchPoints", { configurable: true, value: 0 });
   });
 });

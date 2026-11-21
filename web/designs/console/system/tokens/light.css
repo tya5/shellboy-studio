@@ -29,6 +29,8 @@
   --chart-3: #eb6834;
   --logo-face: #000810;
   --logo-bright: #FEF2D1;
+  --hover: #e8edf2;
+  --bad-soft: #fde8e8;
   --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   --font-sans: Inter, "Noto Sans JP", "Hiragino Sans", "Yu Gothic UI", system-ui, sans-serif;
   --type-title: 700 24px/30px var(--font-sans);
@@ -50,8 +52,10 @@
   --space-12: 12px;
   --space-16: 16px;
   --space-24: 24px;
+  --space-6: 6px;
   --radius-s: 6px;
   --radius: 10px;
+  --radius-m: 8px;
   --motion-spin: 1.6s;
   --size-sidebar: 260px;
   --z-popover: 35;
@@ -59,4 +63,8 @@
   --size-control: 32px;
   --size-touch: 44px;
   --size-icon: 18px;
+  --size-menu-min: 168px;
+  --size-row-action: 24px;
+  --size-row-action-touch: 28px;
+  --shadow-menu: 0px 4px 10px rgba(25, 35, 45, 0.14);
 }

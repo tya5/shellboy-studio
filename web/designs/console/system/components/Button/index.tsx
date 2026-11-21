@@ -1,6 +1,6 @@
 import type { ComponentChildren, JSX } from "preact";
 
-type Variant = "plain" | "primary" | "warn" | "stop" | "link";
+type Variant = "plain" | "primary" | "warn" | "stop" | "link" | "quiet";
 
 export function Button({
   variant = "plain",

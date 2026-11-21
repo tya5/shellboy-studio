@@ -24,6 +24,7 @@ export function tokenCss(tokens, themeId, isDefault) {
   for (const r of tokens.radius.tokens) add(r.name, tokens.radius[themeId]?.[r.name] ?? r.value);
   for (const m of tokens.motion.tokens) add(m.name, m.value);
   for (const l of tokens.layout.tokens) add(l.name, l.value);
+  for (const e of tokens.elevation.tokens) add(e.name, e.value[themeId] ?? e.value);
   const scheme = themeId === "light" ? "light" : "dark";
   const selector = isDefault ? `:root, :root[data-ds="${themeId}"]` : `:root[data-ds="${themeId}"]`;
   return `/* Generated from tokens.json by gen-tokens.mjs. Do not edit. */\n${selector} {\n  color-scheme: ${scheme};\n${lines.join("\n")}\n}\n`;

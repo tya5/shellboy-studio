@@ -9,8 +9,8 @@ const system = join(here, "system");
 const tokens = JSON.parse(readFileSync(join(system, "tokens.json"), "utf8"));
 const THEMES = ["console", "light", "terminal"] as const;
 
-const REQUIRED_COLOURS = ["bg", "panel", "raised", "inset", "stage", "line", "line-strong", "fg", "muted", "accent", "accent-bg", "on-accent", "ok", "wait", "on-wait", "wait-bg", "bad", "bad-bg", "note-bg", "lead-bg", "need-bg", "err-bg", "scrim", "chart-1", "chart-2", "chart-3"];
-const REQUIRED_OTHER = ["font-sans", "font-mono", "type-title", "type-heading", "type-body", "type-label", "type-caption", "type-code", "type-log", "space-4", "space-8", "space-12", "space-16", "space-24", "radius", "radius-s", "motion-spin", "size-sidebar", "size-details", "size-control", "size-touch", "size-icon"];
+const REQUIRED_COLOURS = ["bg", "panel", "raised", "inset", "stage", "line", "line-strong", "fg", "muted", "accent", "accent-bg", "on-accent", "ok", "wait", "on-wait", "wait-bg", "bad", "bad-bg", "note-bg", "lead-bg", "need-bg", "err-bg", "bad-soft", "hover", "scrim", "chart-1", "chart-2", "chart-3"];
+const REQUIRED_OTHER = ["font-sans", "font-mono", "type-title", "type-heading", "type-body", "type-label", "type-caption", "type-code", "type-log", "space-4", "space-6", "space-8", "space-12", "space-16", "space-24", "radius", "radius-s", "radius-m", "motion-spin", "size-sidebar", "size-details", "size-control", "size-touch", "size-icon", "size-row-action", "size-row-action-touch", "size-menu-min", "shadow-menu"];
 
 function parse(css: string): Map<string, string> {
   const out = new Map<string, string>();
@@ -39,7 +39,7 @@ const TEXT_PAIRS: [string, string][] = [
   ["accent", "bg"], ["accent", "panel"], ["accent", "inset"], ["accent", "lead-bg"], ["accent", "raised"],
   ["ok", "bg"], ["ok", "panel"], ["ok", "raised"], ["ok", "lead-bg"],
   ["wait", "bg"], ["wait", "panel"], ["wait", "wait-bg"], ["wait", "need-bg"], ["wait", "bad-bg"],
-  ["bad", "bg"], ["bad", "panel"], ["bad", "bad-bg"], ["bad", "err-bg"],
+  ["bad", "bg"], ["bad", "panel"], ["bad", "bad-bg"], ["bad", "bad-soft"], ["bad", "err-bg"],
 ];
 const CONTROL_PAIRS: [string, string][] = [["line-strong", "bg"], ["line-strong", "panel"], ["line-strong", "inset"], ["accent", "bg"], ["accent", "panel"], ["chart-1", "panel"], ["chart-2", "panel"], ["chart-3", "panel"], ["muted", "panel"]];
 
