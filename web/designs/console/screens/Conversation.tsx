@@ -18,7 +18,7 @@ import { MonitorPopover } from "../system/components/MonitorPopover";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
 import { collectExecutionSteps, toolLabel, activityLabel, renderOutput, formatClock, formatDuration, formatRoute, formatTokens, parseTime, statusLabel, type AppModel, type ConversationRow, type StepRow as Step } from "../../../ui-core/src";
 import { WindowedScroll } from "./WindowedScroll";
-import { BranchMark, Button, Composer, LoadingRows, EmptyState, Icon, KeyValue, LogBlock, Message, Notice, QuestionCard, StatusMark, StepRow, SummaryStrip, WorkSheet } from "../system/components";
+import { BranchMark, Button, Composer, LoadingRows, EmptyState, Icon, KeyValue, ListDivider, ListRow, LogBlock, Message, Notice, PanelTabs, QuestionCard, StatusMark, StepRow, SummaryStrip, WorkSheet } from "../system/components";
 
 /** Internal immutable publication seam; deliberately not a Core transport type. */
 export interface ConversationSnapshot {
@@ -307,7 +307,6 @@ export function StepView({ model, step, display, openPolicy = CANONICAL_CASES.to
   const open = choice ?? (openPolicy !== "closed");
   useEffect(() => {
     if (!open || (display.detailPolicy!=="actual-safe-typed"&&display.detailPolicy!=="existing-shell-output")) return;
-    model.selectedStepId.value = step.executionId;
     return model.watchOutput(step.executionId);
   }, [model, open, step.executionId, display.detailPolicy]);
   // History links carry no exit code; the shell.list fact merged into the step does.
@@ -316,6 +315,7 @@ export function StepView({ model, step, display, openPolicy = CANONICAL_CASES.to
   const shellDisplay=model.shells.value.has(step.executionId)?{...formatted,iconRole:"work.terminal" as const}:formatted;
   if(display.detailPolicy!=="actual-safe-typed"&&display.detailPolicy!=="existing-shell-output")return <WorkElementRow display={shellDisplay} anchorKey={step.executionId} detailPolicy={display.detailPolicy}/>;
   return <WorkElementRow display={shellDisplay} anchorKey={step.executionId} detailPolicy={display.detailPolicy} open={open} onToggle={next=>{
+    if (next && !open) model.openInPanel("step", step.executionId);
     if(next!==open)model.toolStepChoices.value=new Map(model.toolStepChoices.peek()).set(step.executionId,next);
   }}>
     {step.description ? <div class="mono muted caption">{step.command}</div> : null}
@@ -390,58 +390,156 @@ function WorkRegions({ model, place }: { model: AppModel; place: string }) {
   </>;
 }
 
-function Details({ model }: { model: AppModel }) {
+const activitySections = [
+  { key: "running", label: "work.running", kind: "step", icon: "work.command" },
+  { key: "pending", label: "panel.pending", kind: "message", icon: "panel.awaiting_reply" },
+] as const;
+
+function PanelActivity({ model }: { model: AppModel }) {
   const t = model.t.value;
-  const step = model.selectedStep.value;
+  const work = model.work.value;
+  const [error, setError] = useState<string>();
+  const [busy, setBusy] = useState(false);
+  const [selected, setSelected] = useState<string>();
+  const detail = model.panelDetail.value;
+  useEffect(() => { if (detail && detail.kind !== "reply") setSelected(detail.id); }, [detail]);
+  return <div class="panel-list" data-panel-list="work">
+    {error ? <div role="alert" class="caption">{error}</div> : null}
+    {activitySections.map(section => {
+      const rows = work[section.key];
+      return rows.length ? <section key={section.key}><ListDivider label={t(section.label)} count={rows.length} />{rows.map(row =>
+        <ListRow key={row.id} id={row.id} title={row.label || t("work.textUnavailable")} subtitle={row.state} icon={section.icon} selected={selected === row.id}
+          onSelect={() => model.openInPanel(section.kind, row.id)} menuLabel={t("panel.rowActions")}
+          actions={section.kind === "message" ? [{ key: "cancel", label: t("work.cancel"), disabled: busy || model.connection.value !== "connected" || model.uncertainCancels.value.has(row.id), run: () => {
+            setBusy(true); void model.cancelPending(row.id).then(failure => { setBusy(false); setError(failure ? t("work.cancelFailed", { message: failure }) : undefined); });
+          } }] : undefined} />)}</section> : null;
+    })}
+    {work.partial ? <div class="caption muted">{t("work.partial")}</div> : null}
+    {model.handle.value?.work.value.stale && (work.running.length || work.pending.length) ? <div class="caption muted">{t("work.stale")}</div> : null}
+    {!work.running.length && !work.pending.length && !work.partial ? <p class="muted caption">{t("panel.empty")}</p> : null}
+  </div>;
+}
+
+function PanelReplies({ model, recipient }: { model: AppModel; recipient: "thread" | "human" }) {
+  const t = model.t.value;
+  const tab = recipient === "thread" ? "reply-needed" : "awaiting-reply";
+  const rows = model.threadReplies.value.filter(reply => reply.recipient.kind === recipient);
+  const label = t(recipient === "thread" ? "panel.tab.reply_needed" : "panel.tab.awaiting_reply");
+  return <div class="panel-list" data-panel-list={tab}>
+    <ListDivider label={label} count={rows.length} />
+    {rows.map(reply => <ListRow key={reply.id} id={reply.id} title={reply.question || t("work.textUnavailable")} subtitle={reply.state}
+      selected={model.panelDetail.value?.kind === "reply" && model.panelDetail.value.id === reply.id}
+      onSelect={() => model.openInPanel("reply", reply.id)} />)}
+    {!rows.length ? <p class="muted caption">{t("panel.empty")}</p> : null}
+  </div>;
+}
+
+function PanelInfo({ model }: { model: AppModel }) {
+  const t = model.t.value;
   const usage = model.usage.value;
   const details = model.details.value;
-  const started = formatClock(step?.startedAt, true);
-  const measured = (m: { value: number; partial: boolean } | undefined) => (m ? formatTokens(m.value) : undefined);
-  const usageRows = usage
-    ? [
-        { key: t("usage.input"), value: measured(usage.input), mono: true },
-        { key: t("usage.output"), value: measured(usage.output), mono: true },
-        { key: t("usage.cached"), value: usage.cachedPercent !== undefined ? `${usage.cachedPercent}%` : measured(usage.cached), mono: true },
-        { key: t("usage.attempts"), value: usage.attempts, mono: true },
-      ].filter((r) => r.value !== undefined)
-    : [];
-  return (
-    <aside class="details" aria-label={t("details.title")}>
-      <WorkRegions model={model} place="sidebar" />
-      {step ? (
-        <section class="detail-region"><h3>{t("details.title")}</h3>
-          <div class="cmd"><Icon role="work.command" /><span>{step.command}</span></div>
-          <KeyValue
-            rows={[
-              ...(step.status ? [{ key: t("details.status"), value: <StatusMark status={step.status} label={statusLabel(t, step.status)} /> }] : []),
-              ...(stepDuration(step, model.now.value) ? [{ key: t("details.duration"), value: stepDuration(step, model.now.value), mono: true }] : []),
-              ...(typeof step.exitCode === "number" ? [{ key: t("details.exit"), value: step.exitCode, mono: true }] : []),
-              ...(started ? [{ key: t("details.started"), value: started, mono: true }] : []),
-              ...(step.cwd ? [{ key: t("details.directory"), value: step.cwd, mono: true }] : []),
-            ]}
-          />
-          <Output model={model} id={step.executionId} command={step.command ?? ""} complete={step.status === "completed" || step.status === "failed" || step.state === "exited"} boxed />
-      {usageRows.length > 0 ? (
-        <>
-          <h3>{t("usage.title")}</h3>
-          <KeyValue rows={usageRows} />
-          {usage?.partial ? <div class="muted caption">{t("usage.partial")}</div> : null}
-        </>
-      ) : null}
-      {details ? (
-        <>
-          <h3>{t("details.thread")}</h3>
-          <KeyValue
-            rows={[
-              { key: t("details.model"), value: details.model, mono: true },
-            ]}
-          />
-        </>
-      ) : null}
-        </section>
-      ) : <section class="detail-region"><h3>{t("details.title")}</h3><p class="muted">{t("details.choose")}</p></section>}
-    </aside>
-  );
+  const measured = (m: { value: number; partial: boolean } | undefined) => m ? formatTokens(m.value) : undefined;
+  const rows = usage ? [
+    { key: t("usage.input"), value: measured(usage.input), mono: true },
+    { key: t("usage.output"), value: measured(usage.output), mono: true },
+    { key: t("usage.cached"), value: usage.cachedPercent !== undefined ? `${usage.cachedPercent}%` : measured(usage.cached), mono: true },
+    { key: t("usage.attempts"), value: usage.attempts, mono: true },
+  ].filter(row => row.value !== undefined) : [];
+  return <div class="panel-info" data-panel-info="">
+    <ListDivider label={t("details.thread")} />
+    {details ? <KeyValue rows={[{ key: t("details.model"), value: details.model, mono: true }]} /> : null}
+    {rows.length ? <><ListDivider label={t("usage.title")} /><KeyValue rows={rows} />{usage?.partial ? <div class="muted caption">{t("usage.partial")}</div> : null}</> : null}
+  </div>;
+}
+
+function PanelDetail({ model, onBack }: { model: AppModel; onBack: () => void }) {
+  const t = model.t.value;
+  const detail = model.panelDetail.value;
+  const step = model.selectedStep.value;
+  const running = detail?.kind === "step" ? model.work.value.running.find(row => row.id === detail.id) : undefined;
+  const started = formatClock(step?.startedAt ?? running?.startedAt, true);
+  const stepId = detail?.kind === "step" ? detail.id : undefined;
+  const [error, setError] = useState<string>();
+  useEffect(() => stepId && (step || running) ? model.watchOutput(stepId) : undefined, [model, stepId, !!(step || running)]);
+  useEffect(() => {
+    if (!detail || detail.kind !== "message" || model.bodyState(detail.id)) return;
+    void model.loadBody(detail.id);
+  }, [model, detail]);
+  const backRef = useRef<HTMLButtonElement>(null);
+  useLayoutEffect(() => { if (backRef.current?.offsetParent) backRef.current.focus(); }, []);
+  const back = <Button buttonRef={backRef} variant="link" data-panel-back onClick={onBack}>{t("panel.back")}</Button>;
+  if (!detail) return null;
+  if (detail.kind === "step") {
+    const command = step?.command ?? running?.command;
+    const elapsed = step ? stepDuration(step, model.now.value) : undefined;
+    return <section class="panel-detail" data-panel-detail=""><div class="panel-detail-head">{back}<h3>{t("details.title")}</h3></div>
+      {step || running ? <><div class="cmd"><Icon role="work.command" /><span>{command ?? running?.label}</span></div>
+        <KeyValue rows={[
+          ...(step?.status ? [{ key: t("details.status"), value: <StatusMark status={step.status} label={statusLabel(t, step.status)} /> }] : []),
+          ...(elapsed ? [{ key: t("details.duration"), value: elapsed, mono: true }] : []),
+          ...(typeof step?.exitCode === "number" ? [{ key: t("details.exit"), value: step.exitCode, mono: true }] : []),
+          ...(started ? [{ key: t("details.started"), value: started, mono: true }] : []),
+          ...(step?.cwd ? [{ key: t("details.directory"), value: step.cwd, mono: true }] : []),
+        ]} />
+        <Output model={model} id={detail.id} command={command ?? ""} complete={step?.status === "completed" || step?.status === "failed" || step?.state === "exited"} boxed />
+      </> : <p class="muted caption">{t("work.textUnavailable")}</p>}
+    </section>;
+  }
+  if (detail.kind === "message") {
+    const row = model.work.value.pending.find(item => item.id === detail.id);
+    return <section class="panel-detail" data-panel-detail=""><div class="panel-detail-head">{back}<h3>{t("work.pending")}</h3></div>
+      {row ? <KeyValue rows={[{ key: t("work.pending"), value: model.bodyState(row.id)?.text ?? (row.label || t("work.textUnavailable")) }, { key: t("details.status"), value: row.state }]} /> : <p class="muted caption">{t("work.textUnavailable")}</p>}
+      {model.bodyState(detail.id)?.loading ? <p role="status">{t("convo.loadingBody")}</p> : null}
+    </section>;
+  }
+  const reply = model.threadReplies.value.find(row => row.id === detail.id);
+  return <section class="panel-detail" data-panel-detail=""><div class="panel-detail-head">{back}<h3>{t(reply?.recipient.kind === "thread" ? "panel.tab.reply_needed" : "panel.tab.awaiting_reply")}</h3></div>
+    {reply?.recipient.kind === "human" ? <QuestionCard id={`panel-${reply.id}`} label={t("work.replies")} waitingWord={t("status.awaiting")} question={reply.question} answerLabel={t("inbox.answer")} submitLabel={t("inbox.answerResume")} error={error} onAnswer={text => { void model.answerReply(reply.id, text).then(failure => setError(failure ? t("inbox.answerFailed", { message: failure }) : undefined)); }} /> : reply ? <><p>{reply.question}</p><KeyValue rows={[{ key: t("details.status"), value: reply.state }]} />
+      {reply.recipient.kind === "thread" ? <a href={formatRoute({ view: "conversation", threadId: reply.recipient.threadId })}>{reply.recipient.title}</a> : null}</>
+      : <p class="muted caption">{t("work.textUnavailable")}</p>}
+  </section>;
+}
+
+function RightPanel({ model, panelCollapsed = false, onPanelCollapsedChange }: { model: AppModel; panelCollapsed?: boolean; onPanelCollapsedChange?: (collapsed: boolean) => void }) {
+  const t = model.t.value;
+  const tabs = [
+    { id: "work", label: t("panel.tab.work"), icon: "panel.work" as const, count: model.work.value.running.length + model.work.value.pending.length },
+    { id: "reply-needed", label: t("panel.tab.reply_needed"), icon: "panel.reply_needed" as const, count: model.threadReplies.value.filter(row => row.recipient.kind === "thread").length },
+    { id: "awaiting-reply", label: t("panel.tab.awaiting_reply"), icon: "panel.awaiting_reply" as const, count: model.threadReplies.value.filter(row => row.recipient.kind === "human").length },
+    { id: "info", label: t("panel.tab.info"), icon: "panel.information" as const },
+  ];
+  const detail = model.panelDetail.value;
+  useEffect(() => {
+    if (panelCollapsed || !detail) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !event.defaultPrevented && event.target instanceof Node && root.current?.contains(event.target)) {
+        event.preventDefault(); closeDetail();
+      }
+    };
+    addEventListener("keydown", onKey);
+    return () => removeEventListener("keydown", onKey);
+  }, [model, detail, panelCollapsed]);
+  const root = useRef<HTMLElement>(null);
+  const closeDetail = () => {
+    model.closePanelDetail();
+    queueMicrotask(() => {
+      const opener = [...(root.current?.querySelectorAll<HTMLElement>("[data-panel-row-id]") ?? [])].find(row => row.dataset.panelRowId === detail?.id);
+      (opener?.querySelector("button") ?? root.current?.querySelector<HTMLButtonElement>('[role="tab"][aria-selected="true"]'))?.focus();
+    });
+  };
+  const select = (id: string) => { if (panelCollapsed) onPanelCollapsedChange?.(false); model.setPanelTab(id as import("../../../ui-core/src/model").RightPanelTab); };
+  return <aside ref={root} class={`details${panelCollapsed ? " details-collapsed" : ""}`} aria-label={t("panel.title")} data-panel-root="" data-panel-rail={panelCollapsed ? "" : undefined}>
+    <Button icon label={t(panelCollapsed ? "panel.expand" : "panel.collapse")} title={t(panelCollapsed ? "panel.expand" : "panel.collapse")} aria-expanded={!panelCollapsed}
+      onClick={() => onPanelCollapsedChange?.(!panelCollapsed)}><Icon role={panelCollapsed ? "panel.expand" : "panel.collapse"} /></Button>
+    <PanelTabs label={t("panel.title")} items={tabs} selected={model.panelTab.value} rail={panelCollapsed} onSelect={select} />
+    <div class="panel-pages" hidden={panelCollapsed || !!detail}>
+      <section role="tabpanel" id="panel-page-work" aria-labelledby="panel-tab-work" hidden={panelCollapsed || model.panelTab.value !== "work"}><PanelActivity model={model} /></section>
+      <section role="tabpanel" id="panel-page-reply-needed" aria-labelledby="panel-tab-reply-needed" hidden={panelCollapsed || model.panelTab.value !== "reply-needed"}><PanelReplies model={model} recipient="thread" /></section>
+      <section role="tabpanel" id="panel-page-awaiting-reply" aria-labelledby="panel-tab-awaiting-reply" hidden={panelCollapsed || model.panelTab.value !== "awaiting-reply"}><PanelReplies model={model} recipient="human" /></section>
+      <section role="tabpanel" id="panel-page-info" aria-labelledby="panel-tab-info" hidden={panelCollapsed || model.panelTab.value !== "info"}><PanelInfo model={model} /></section>
+    </div>
+    {!panelCollapsed && detail ? <PanelDetail key={`${detail.kind}:${detail.id}`} model={model} onBack={closeDetail} /> : null}
+  </aside>;
 }
 
 export function OrderedHistory({ model, handle, win, t }: { model: AppModel; handle: NonNullable<AppModel["handle"]["value"]>; win: AppModel["longReader"]["value"]; t: AppModel["t"]["value"] }) {
@@ -462,7 +560,7 @@ export function OrderedHistory({ model, handle, win, t }: { model: AppModel; han
     liveBoundary={boundary?.ordinal} />;
 }
 
-export function Conversation({ model }: { model: AppModel }) {
+export function Conversation({ model, panelCollapsed = false, onPanelCollapsedChange }: { model: AppModel; panelCollapsed?: boolean; onPanelCollapsedChange?: (collapsed: boolean) => void }) {
   const t = model.t.value;
   const [sheetOpen, setSheetOpen] = useState(false);
   const [sheetReturnFocus, setSheetReturnFocus] = useState<{ opener: HTMLElement; resolveFallback: () => HTMLElement | null }>();
@@ -532,7 +630,7 @@ export function Conversation({ model }: { model: AppModel }) {
           />
         </div> : null}
       </div>
-      {handle ? <Details model={model} /> : null}
+      {handle ? <RightPanel key={handle.threadId} model={model} panelCollapsed={panelCollapsed} onPanelCollapsedChange={onPanelCollapsedChange} /> : null}
       <WorkSheet open={sheetOpen} title={t("work.title")} closeLabel={t("work.close")} getReturnFocusTarget={() => sheetReturnFocus?.opener?.isConnected ? sheetReturnFocus.opener : sheetReturnFocus?.resolveFallback() ?? null} onClose={() => setSheetOpen(false)}><WorkRegions model={model} place="sheet" /></WorkSheet>
     </>
   );

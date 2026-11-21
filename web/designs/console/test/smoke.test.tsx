@@ -121,8 +121,8 @@ describe("Conversation work regions", () => {
     act(() => t.push({ t: "changed", thread_ids: ["lead"], list: false }));
     await act(async () => settle(t, db));
     const sidebar = el.querySelector(".details")!;
-    const headings = [...sidebar.querySelectorAll(".work-region h3")].map(text);
-    expect(headings).toEqual(["Running", "Pending"]);
+    const headings = [...sidebar.querySelectorAll("#panel-page-work h3 > span:first-child")].map(text);
+    expect(headings).toEqual(["Running", "Waiting for history"]);
     expect(text(sidebar)).toContain("test command");
     expect(text(sidebar)).toContain("Please review");
     expect(el.querySelector(".work-strip")?.textContent).toContain("Running at least 1");
@@ -130,7 +130,7 @@ describe("Conversation work regions", () => {
     act(() => t.push({ t: "changed", thread_ids: ["lead"], list: false }));
     await act(async () => settle(t, db));
     expect(el.querySelector(".work-strip")).toBeNull();
-    expect(el.querySelectorAll(".details .work-region")).toHaveLength(0);
+    expect(el.querySelectorAll("#panel-page-work [data-panel-row-id]")).toHaveLength(0);
     model.dispose();
   });
 });
@@ -343,7 +343,11 @@ describe("Conversation", () => {
     expect(text(el)).toContain("exited");
     const exitedExecution=[...el.querySelectorAll('[data-execution-id]')].find(row=>row.textContent?.includes('cargo test history::search'));
     expect(exitedExecution?.querySelector('.work-element-row')?.getAttribute('data-exit-code')).toBe('0');
-    expect(text(el)).toContain("2.4s");
+    await act(async () => {
+      const row = model.conversation.value.find(row => row.type === "steps");
+      if (row?.type === "steps") model.openInPanel("step", row.steps[0]!.executionId);
+    });
+    expect(el.querySelector("[data-panel-detail]")?.textContent).toContain("2.4s");
     expect(text(el)).toContain("41k / auto-summary 200k");
     expect(text(el)).not.toContain("Shellboy event v1");
     expect(el.querySelector('.st[data-status="running"]')).toBeTruthy();

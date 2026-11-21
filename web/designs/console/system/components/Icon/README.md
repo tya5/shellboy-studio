@@ -28,6 +28,12 @@ Consumers use semantic `IconRole` names only. Glyph names, paths, and the role-t
 | `nav.toggleSidebar` | Expand or collapse the desktop sidebar. | `menu` |
 | `nav.openThreadList` | Open the phone Thread-list drawer. | `menu` |
 | `nav.more` | Open the phone More navigation menu. | `menu` |
+| `panel.work` | Open conversation activity. | `term` |
+| `panel.reply_needed` | Identify a request this Thread should answer. | `arrow` |
+| `panel.awaiting_reply` | Identify a request awaiting another recipient. | `clock` |
+| `panel.information` | Open Thread information. | `file` |
+| `panel.collapse` | Collapse the desktop right panel. | `arrow-left` |
+| `panel.expand` | Expand the desktop right panel. | `arrow-right` |
 | `settings.general` | Identify the General appearance section. | `palette` |
 | `settings.connections` | Identify the Connections settings section. | `plug` |
 | `settings.compaction` | Identify the Compaction settings section. | `retry` |

@@ -73,6 +73,9 @@ export type SendState =
   | { kind: "failed"; message: string }
   | { kind: "unconfirmed"; operationId: string; text: string };
 
+export type RightPanelTab = "work" | "reply-needed" | "awaiting-reply" | "info";
+export type RightPanelDetail = Readonly<{ kind: "step" | "message" | "reply"; id: string }>;
+
 export interface PendingOwnMessage {
   readonly threadId: string;
   readonly scope: string;
@@ -319,7 +322,9 @@ export class AppModel {
     return `${this.bodyScopeKey(handle, this.longReader.value, this.route.value)}:${nodeId}:${itemIdentity ?? "manual"}`;
   }
   bodyState(nodeId: string, itemIdentity?: string): BodyState | undefined { return this.bodies.value.get(this.bodyCacheKey(nodeId, itemIdentity)); }
-  readonly selectedStepId: Signal<string | undefined> = signal(undefined);
+  readonly panelTab: Signal<RightPanelTab> = signal("work");
+  readonly panelDetail: Signal<RightPanelDetail | undefined> = signal(undefined);
+  readonly selectedStepId: ReadonlySignal<string | undefined> = computed(() => this.panelDetail.value?.kind === "step" ? this.panelDetail.value.id : undefined);
   readonly selectedStep: ReadonlySignal<StepRow | undefined>;
   private nextTailOrdinal = () => 0;
   readonly pendingOwnMessage: Signal<PendingOwnMessage | undefined> = signal(undefined);
@@ -835,7 +840,8 @@ export class AppModel {
     current?.close();
     this.lastThread.value = id;
     this.shells.value = new Map();
-    this.selectedStepId.value = undefined;
+    this.panelTab.value = "work";
+    this.panelDetail.value = undefined;
     this.watchedOutputs.clear();
     this.sendState.value = { kind: "idle" };
     this.openToolGroups.value = new Set();
@@ -1159,6 +1165,18 @@ export class AppModel {
     this.openThread(id);
     return true;
   }
+
+  setPanelTab(tab: RightPanelTab): void {
+    batch(() => { this.panelTab.value = tab; this.panelDetail.value = undefined; });
+  }
+
+  openInPanel(kind: RightPanelDetail["kind"], id: string): void {
+    const tab: RightPanelTab = kind === "step" || kind === "message" ? "work"
+      : this.threadReplies.peek().find(row => row.id === id)?.recipient.kind === "thread" ? "reply-needed" : "awaiting-reply";
+    batch(() => { this.panelTab.value = tab; this.panelDetail.value = { kind, id }; });
+  }
+
+  closePanelDetail(): void { this.panelDetail.value = undefined; }
 
   async answerReply(id: string, text: string): Promise<string | undefined> {
     const item = this.threadReplies.peek().find((row) => row.id === id);

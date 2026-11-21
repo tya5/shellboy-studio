@@ -1,0 +1,100 @@
+// @vitest-environment happy-dom
+import '@preact/signals';
+import { signal } from '@preact/signals-core';
+import { render } from 'preact';
+import { act } from 'preact/test-utils';
+import { afterEach, describe, expect, it } from 'vitest';
+import { fixtureModel } from '../../../ui-core/test/fixture';
+import { details, summary, settle } from '../../../data/test/harness';
+import type { DesignContext, Prefs } from '../../../ui-core/src';
+import { DESIGNS } from '../../registry';
+import { loadPrefs, savePrefs, type PrefStore } from '../../../ui-core/src/prefs';
+import { App } from '../screens/App';
+
+let host: HTMLElement | undefined;
+afterEach(() => { if (host) render(null, host); host?.remove(); host = undefined; });
+
+async function setup() {
+ const f=await fixtureModel({route:'conversation',threadId:'lead',lang:'ja',configure(db){
+  db.threads={lead:summary('lead')};
+  db.details.lead=details('lead',{run_id:'run-1',model:'model-a',effort:'high',awaiting_replies:[
+   {message_id:'owed-human',recipient_kind:'human',recipient_thread_id:'lead',excerpt:'Need an answer from this conversation',delivery_status:'accepted',created_at:'2026-11-21T00:00:00Z'},
+   {message_id:'asked-child',recipient_kind:'thread',recipient_thread_id:'child',excerpt:'Waiting for the child Thread',delivery_status:'applied',created_at:'2026-11-21T00:00:00Z'},
+  ]});
+  db.work.lead=[{kind:'shell',id:'shell-running',thread_id:'lead',run_id:'run-1',execution_id:'shell-running',state:'running',started_at:'2026-11-21T00:00:00Z'}];
+  db.shells.lead=[{execution_id:'shell-running',state:'running',description:'Current verification',command_excerpt:'npm test'}];
+ }});
+ const stored:{value:string|null}={value:null};
+ const store:PrefStore={read:()=>stored.value,write:value=>{stored.value=value;}};
+ const prefs=signal<Prefs>(loadPrefs(store,DESIGNS));
+ const context:DesignContext={model:f.model,prefs,setPrefs:change=>{prefs.value={...prefs.value,...change};savePrefs(store,prefs.value);f.model.lang.value=prefs.value.lang;},designs:DESIGNS,submitToken:async()=>false};
+ host=document.createElement('div');document.body.append(host);
+ Object.defineProperty(host,'clientWidth',{configurable:true,value:1280});
+ await act(async()=>{render(<App context={context}/>,host!);await settle(f.t,f.db);});
+ Object.defineProperty(host.querySelector(".app"), "clientWidth", { configurable:true, value:1280 });
+ return {...f,host,context,prefs,store,stored};
+}
+
+describe('right panel purpose',()=>{
+ it('shows four fixed tabs and splits replies by recipient kind',async()=>{
+  const f=await setup();
+  try{
+   const tabs=[...f.host.querySelectorAll<HTMLButtonElement>('[role=tab]')];
+   expect(tabs.map(tab=>tab.getAttribute('aria-label'))).toEqual(['動作 1','要返信 1','返信待ち 1','情報']);
+   await act(async()=>{tabs[0]!.focus();tabs[0]!.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true}));});
+   expect(f.model.panelTab.peek()).toBe('reply-needed');
+   expect(f.host.querySelectorAll('section[role=tabpanel]:not([hidden])')).toHaveLength(1);
+   const owed=f.host.querySelector<HTMLButtonElement>('[data-panel-tab="reply-needed"]')!;
+   await act(async()=>owed.click());
+   expect(f.host.querySelector('section[role=tabpanel]:not([hidden]) [data-panel-row-id="asked-child"]')).not.toBeNull();
+   expect(f.host.querySelector('section[role=tabpanel]:not([hidden]) [data-panel-row-id="owed-human"]')).toBeNull();
+   const waiting=f.host.querySelector<HTMLButtonElement>('[data-panel-tab="awaiting-reply"]')!;
+   await act(async()=>waiting.click());
+   expect(f.host.querySelector('section[role=tabpanel]:not([hidden]) [data-panel-row-id="owed-human"]')).not.toBeNull();
+   expect(f.host.querySelector('section[role=tabpanel]:not([hidden]) [data-panel-row-id="asked-child"]')).toBeNull();
+   await act(async()=>{tabs[3]!.click();});
+   expect(f.host.querySelector('#panel-page-info:not([hidden])')?.textContent).toContain('model-a');
+  }finally{f.model.dispose();f.data.stop();}
+ });
+
+ it('opens an action detail from its row and returns with list scroll and selection intact; Escape also returns',async()=>{
+  const f=await setup();
+  try{
+   const list=f.host.querySelector<HTMLElement>('[data-panel-list="work"]')!;expect(list).not.toBeNull();
+   list.scrollTop=84;
+   const row=f.host.querySelector<HTMLElement>('[data-panel-row-id="shell-running"]')!;expect(row).not.toBeNull();
+   await act(async()=>row.querySelector<HTMLButtonElement>('button')!.click());
+   expect(f.model.selectedStepId.peek()).toBe('shell-running');
+   expect(f.host.querySelector('[data-panel-detail]')?.textContent).toContain('npm test');
+   const back=f.host.querySelector<HTMLButtonElement>('[data-panel-back]')!;
+   await act(async()=>back.click());
+   expect(f.host.querySelector('[data-panel-list="work"]')).toBe(list);
+   expect(list.scrollTop).toBe(84);
+   expect(f.host.querySelector('section[role=tabpanel]:not([hidden]) [data-panel-row-id="shell-running"]')?.getAttribute('aria-current')).toBe('true');
+   await act(async()=>row.querySelector<HTMLButtonElement>('button')!.click());
+   await act(async()=>{f.host.querySelector('[data-panel-back]')!.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));});
+   expect(f.host.querySelector('[data-panel-detail]')).toBeNull();
+  }finally{f.model.dispose();f.data.stop();}
+ });
+
+ it('Alt+9 collapses to a counted icon rail and restores the stored state after remount',async()=>{
+  const f=await setup();
+  try{
+   await act(async()=>{window.dispatchEvent(new KeyboardEvent('keydown',{key:'9',altKey:true,bubbles:true,cancelable:true}));});
+   expect(f.prefs.value.panelCollapsed).toBe(true);
+   expect(f.host.querySelector('[data-panel-rail]')).not.toBeNull();
+   expect(f.host.querySelectorAll('[data-panel-rail] [role=tab]')).toHaveLength(4);
+   const action=f.host.querySelector<HTMLButtonElement>('[data-panel-rail] [data-panel-tab="work"]')!;
+   expect(action.getAttribute('title')).toBeTruthy();
+   const saved=f.stored.value;
+   render(null,f.host);
+   const prefs=signal<Prefs>(loadPrefs(f.store,DESIGNS));
+   const context:DesignContext={model:f.model,prefs,setPrefs:change=>{prefs.value={...prefs.value,...change};savePrefs(f.store,prefs.value);},designs:DESIGNS,submitToken:async()=>false};
+   await act(async()=>render(<App context={context}/>,f.host!));
+   expect(prefs.value.panelCollapsed).toBe(true);expect(f.stored.value).toBe(saved);
+   await act(async()=>f.host.querySelector<HTMLButtonElement>('[data-panel-rail] [data-panel-tab="awaiting-reply"]')!.click());
+   expect(prefs.value.panelCollapsed).toBe(false);
+   expect(f.model.panelTab.peek()).toBe('awaiting-reply');
+  }finally{f.model.dispose();f.data.stop();}
+ });
+});

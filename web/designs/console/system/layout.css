@@ -57,6 +57,17 @@
 .scroll>.steps,.scroll>.strip,.scroll>.scroll-mark{margin-left:0}
 .dock{display:flex;flex-direction:column;gap:var(--space-8);padding:0 var(--space-24) var(--space-16)}
 .details{width:var(--size-details);flex:none;border-left:1px solid var(--line);background:var(--panel);overflow:auto;padding:var(--space-16);display:flex;flex-direction:column;gap:var(--space-12)}
+.details[data-panel-root]{container:panel / inline-size;box-sizing:border-box}
+.details.details-collapsed{width:calc(var(--size-touch) + 2 * var(--space-8));padding:var(--space-8);gap:var(--space-8);overflow:hidden}
+.details .panel-pages:not([hidden]){flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden}
+.details .panel-pages [role=tabpanel]:not([hidden]){flex:1;min-height:0;display:flex;flex-direction:column;overflow:auto}
+.details .panel-list{display:flex;flex:1;flex-direction:column;gap:var(--space-12);min-height:0;overflow:auto}
+.details .panel-list section{min-width:0}
+.details .panel-detail{flex:1;min-height:0;overflow:auto}
+.details .panel-detail-head{display:flex;align-items:center;gap:var(--space-8);margin-bottom:var(--space-12)}
+.details .panel-detail-head h3{margin:0}
+.details [role=tablist]{flex:none}
+
 .details h3{margin:0;font:var(--type-body);font-weight:600}
 .details .cmd{display:flex;gap:var(--space-8);align-items:flex-start;font:var(--type-code);overflow-wrap:anywhere;min-width:0}
 
@@ -106,9 +117,6 @@
 
 .loading{margin:auto;color:var(--muted)}
 
-@container app (max-width:1179px){
-  .details{display:none}
-}
 /* A page of panes fills the available monitor area; only the page scrolls on phones. */
 .mon.pane-monitor{padding:0;gap:0;overflow:hidden;min-height:0}
 .pane-controls{flex:none;padding:var(--space-8) var(--space-12);display:flex;align-items:center;gap:var(--space-8);flex-wrap:wrap;border-bottom:1px solid var(--line)}
@@ -150,6 +158,9 @@
 }
 
 @container app (max-width:899px){
+  .details{display:none}
+  .work-strip{display:block}
+  .work-strip .btn{width:100%;justify-content:flex-start;min-height:var(--size-touch);overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
   .monitor-sort-wide,.monitor-tools>.monitor-count{display:none}
   .monitor-sort-narrow,.monitor-count-mobile{display:block}
   .monitor-popover-panel{position:fixed;left:var(--space-12);right:var(--space-12);top:auto;width:auto}
@@ -200,12 +211,10 @@ html:has(dialog:modal){overflow:hidden}
 .work-sheet-head h2{font:var(--type-heading);margin:0}
 .work-sheet-body{display:flex;flex-direction:column;gap:var(--space-12);max-height:65dvh;overflow:auto}
 .work-sheet-body .work-region{overflow:visible;flex:none}
-@container app (max-width:1179px){.work-strip{display:block}.work-strip .btn{width:100%;justify-content:flex-start;min-height:var(--size-touch);overflow:hidden;white-space:nowrap;text-overflow:ellipsis}}
 
 /* Padding is included in the virtual row height measured by ResizeObserver. */
 .vrow,.conversation-row{padding-bottom:var(--space-8)}
 
-.details .running-region{flex:0 0 160px;height:160px;overflow:auto}
 .running-region .work-row{flex-direction:row;align-items:center;white-space:nowrap}
 .running-label{min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 

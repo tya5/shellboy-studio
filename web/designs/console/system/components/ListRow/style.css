@@ -1,0 +1,5 @@
+.panel-list-row { display:flex; align-items:center; gap:var(--space-4); min-width:0; border-radius:var(--radius); }
+.panel-list-row[aria-current="true"] { background:var(--raised); }
+.panel-list-main { display:flex; align-items:baseline; gap:var(--space-8); flex:1; min-width:0; padding:var(--space-8); color:inherit; text-align:left; background:none; border:0; cursor:pointer; }
+.panel-list-title { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.panel-list-subtitle { margin-left:auto; color:var(--muted); font:var(--type-caption); white-space:nowrap; }

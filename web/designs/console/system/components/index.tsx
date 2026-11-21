@@ -64,3 +64,7 @@ export { MonitorTile } from "./MonitorTile";
 export { MonitorPopover } from "./MonitorPopover";
 
 export { PairingQr } from "./PairingQr";
+
+export { PanelTabs, type PanelTabItem } from "./PanelTabs";
+export { ListRow } from "./ListRow";
+export { ListDivider } from "./ListDivider";
