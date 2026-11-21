@@ -3,7 +3,7 @@ import "../system/components.css";
 import "../system/tokens/console.css";
 import { render } from "preact";
 import { act } from "preact/test-utils";
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import { MoreMenu } from "../system/components/MoreMenu";
 import { MonitorPopover } from "../system/components/MonitorPopover";
 import { ChoiceList } from "../system/components/ChoiceList";
@@ -41,11 +41,22 @@ it("Escape closes a hover-preview MonitorPopover", async () => {
   render(null, host); host.remove();
 });
 
-it("gives each ChoiceList group its own radio name even when labels match", () => {
+it("keeps same-labeled ChoiceList groups independent inside one form", () => {
   const host = document.createElement("div");
-  act(() => render(<><ChoiceList label="Mode" choices={[{ value: "a", label: "A" }]} value="a" onChange={() => {}} /><ChoiceList label="Mode" choices={[{ value: "b", label: "B" }]} value="b" onChange={() => {}} /></>, host));
+  const changes = [vi.fn(), vi.fn()];
+  act(() => render(<form><ChoiceList label="Mode" choices={[{ value: "a", label: "A" }, { value: "aa", label: "AA" }]} value="a" onChange={changes[0]} /><ChoiceList label="Mode" choices={[{ value: "b", label: "B" }, { value: "bb", label: "BB" }]} value="b" onChange={changes[1]} /></form>, host));
   const groups = [...host.querySelectorAll<HTMLElement>('[role="radiogroup"]')];
-  const names = groups.map((group) => group.querySelector<HTMLInputElement>('input[type="radio"]')!.name);
-  expect(names[0]).not.toBe(names[1]);
+  const radios = groups.map((group) => [...group.querySelectorAll<HTMLInputElement>('input[type="radio"]')]);
+  expect(radios[0]![0]!.name).not.toBe(radios[1]![0]!.name);
+  act(() => {
+    radios[0]![1]!.click();
+    radios[0]![1]!.dispatchEvent(new Event("change", { bubbles: true }));
+    radios[1]![1]!.click();
+    radios[1]![1]!.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+  expect(radios[0]![1]!.checked).toBe(true);
+  expect(radios[1]![1]!.checked).toBe(true);
+  expect(changes[0]).toHaveBeenCalledWith("aa");
+  expect(changes[1]).toHaveBeenCalledWith("bb");
   render(null, host); host.remove();
 });
