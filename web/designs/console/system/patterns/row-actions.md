@@ -30,6 +30,7 @@ On hover-capable devices, show the borderless quiet trigger for row hover,
 `:focus-within`, current selection, or an open menu. Touch always shows it. The
 32px/44px row and 24px/28px action boxes reserve their action width so titles truncate
 in place. The menu uses 168px minimum width, 8px corners, a fine border, the
-tokenized `shadow-popover`, and 4px inset. Text-only items use 6px vertical / 8px
-horizontal spacing and 6px corners. The separator spans the panel; Delete is last
+tokenized `shadow-popover`, and 4px inset. Items pair an optional semantic IconRole (16px muted icon) with
+text, using 6px vertical / 8px horizontal spacing and 6px corners. Glyph names stay
+private to `system/icons`; a theme maps each meaning to a shape. The separator spans the panel; Delete is last
 and uses `bad` with `bad-soft` on hover/focus.

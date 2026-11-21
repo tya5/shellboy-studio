@@ -15,7 +15,7 @@ Consumers use semantic `IconRole` names only. Glyph names and paths are private 
 | `row.menu` | Open a row’s action menu in the sidebar or Threads list. | `more` |
 | `thread.create` | Create a new Thread from the sidebar. | `plus` |
 | `thread.search` | Find a Thread in the sidebar list. | `search` |
-| `thread.modelSettings` | Open the current Thread’s model/settings controls. | `gear` |
+| `settings.applicationPanel` | Open or close the application Settings panel from the main header. | `gear` |
 | `organization.search` | Filter the Threads organization view. | `search` |
 | `nav.conversation` | Navigate to Conversation. | `chat` |
 | `nav.monitor` | Navigate to Monitor. | `monitor` |

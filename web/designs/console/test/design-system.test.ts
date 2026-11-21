@@ -93,18 +93,28 @@ describe("semantic icon roles", () => {
     const rolesSource = systemSources["../system/icons/roles.ts"] ?? "";
     const themeSource = systemSources["../system/icons/theme.ts"] ?? "";
     const glyphSource = systemSources["../system/icons/glyphs.tsx"] ?? "";
+    const adapterPath = "../system/components/Icon/index.tsx";
+    const adapterSource = systemSources[adapterPath] ?? "";
     const roles = [...rolesSource.matchAll(/^\s+"([^"]+)",$/gm)].map((match) => match[1]!);
     const mappings = [...themeSource.matchAll(/^\s+"([^"]+)": "([^"]+)",$/gm)].map((match) => [match[1]!, match[2]!] as const);
     const glyphs = new Set([...glyphSource.matchAll(/^\s+([A-Za-z_$][\w$]*):/gm)].map((match) => match[1]!));
     expect(new Set(roles).size).toBe(roles.length);
+    expect(mappings).toHaveLength(roles.length);
     expect(mappings.map(([role]) => role).sort()).toEqual([...roles].sort());
     expect(mappings.every(([, glyph]) => glyphs.has(glyph))).toBe(true);
+    expect(adapterSource).toMatch(/role:\s*IconRole/);
+    expect(adapterSource).toMatch(/glyphForRole\(role\)/);
 
     const glyphNames = [...glyphs].join("|");
-    const directGlyphUse = new RegExp(`(?:<Icon\\b[^>]*\\bname\\s*=|<EmptyState\\b[^>]*\\bicon\\s*=|\\b(?:typeIcon|iconRole|icon)\\s*[:=])\\s*["'](?:${glyphNames})["']`);
-    const leaks = Object.entries({ ...screenSources, ...systemSources, ...sharedSources })
-      .filter(([path, source]) => !path.includes("/system/icons/") && directGlyphUse.test(source))
+    const directGlyphUse = new RegExp(`(?:<Icon\\b[^>]*\\b(?:name|role)\\s*=\\s*(?:\\{\\s*["'](?:${glyphNames})["']\\s*\\}|["'](?:${glyphNames})["'])|<EmptyState\\b[^>]*\\bicon\\s*=\\s*["'](?:${glyphNames})["']|\\b(?:typeIcon|iconRole|icon)\\s*[:=]\\s*["'](?:${glyphNames})["'])`);
+    const privateImport = /from\s+["'][^"']*\/icons\/(?:theme|glyphs)(?:\.tsx?)?["']/;
+    const sources = { ...screenSources, ...systemSources, ...sharedSources };
+    const leaks = Object.entries(sources).filter(([path, source]) =>
+      !path.includes("/system/icons/") && (path !== adapterPath && privateImport.test(source) || directGlyphUse.test(source) || /\bIconName\b/.test(source)))
       .map(([path]) => path);
     expect(leaks).toEqual([]);
+    const publicRoleProps = ["NavItem", "SectionNav", "MoreMenu", "EmptyState"]
+      .map((name) => systemSources[`../system/components/${name}/index.tsx`] ?? "");
+    expect(publicRoleProps.every((source) => /IconRole/.test(source) && /role/.test(source))).toBe(true);
   });
 });

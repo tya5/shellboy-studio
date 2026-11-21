@@ -1,7 +1,8 @@
 # Menu
 
-A compact WAI-ARIA menu of short actions opened through `Popover`. Follow Radix
-`dropdown-menu`/`menu` and the APG Menu Button/Menu pattern:
+A compact WAI-ARIA menu of short actions opened through `Popover`. Consumers choose
+optional item icons by semantic `IconRole` (for example `action.archive`), never by
+glyph shape. The active theme owns the role-to-glyph mapping.
 
 - Pointer opening focuses the menu panel, not its first entry; keyboard opening
   (ArrowDown) moves focus to the first enabled item.

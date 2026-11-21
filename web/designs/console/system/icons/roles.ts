@@ -10,7 +10,7 @@ export const ICON_ROLES = [
   "row.menu",
   "thread.create",
   "thread.search",
-  "thread.modelSettings",
+  "settings.applicationPanel",
   "organization.search",
   "nav.conversation",
   "nav.monitor",

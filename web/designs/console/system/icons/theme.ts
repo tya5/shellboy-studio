@@ -13,7 +13,7 @@ export const iconTheme = {
   "row.menu": "more",
   "thread.create": "plus",
   "thread.search": "search",
-  "thread.modelSettings": "gear",
+  "settings.applicationPanel": "gear",
   "organization.search": "search",
   "nav.conversation": "chat",
   "nav.monitor": "monitor",
