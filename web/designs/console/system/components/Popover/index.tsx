@@ -11,7 +11,7 @@ type Viewport = { width: number; height: number };
 export function placePointerMenu(point: { x: number; y: number }, panel: Size, viewport: Viewport, gutter: number): PanelPlacement {
   const right = point.x + panel.width;
   const left = right <= viewport.width - gutter ? point.x : Math.max(gutter, point.x - panel.width);
-  const top = point.y + panel.height <= viewport.height - gutter ? point.y : Math.max(gutter, point.y - panel.height);
+  const top = Math.max(gutter, Math.min(point.y, viewport.height - gutter - panel.height));
   return { left, top, maxHeight: Math.max(1, viewport.height - top - gutter) };
 }
 
@@ -53,7 +53,6 @@ export function Popover({ open, anchor, returnFocusTo, onClose, children, classN
         const margin = tokenPixels("--space-12");
         const panelRect = panel.current?.getBoundingClientRect();
         if (!panelRect) return;
-        const rect = { left: pointerPosition.x, right: pointerPosition.x, top: pointerPosition.y, bottom: pointerPosition.y };
         setPoint(placePointerMenu(pointerPosition, panelRect, { width: window.innerWidth, height: window.innerHeight }, margin));
         return;
       }

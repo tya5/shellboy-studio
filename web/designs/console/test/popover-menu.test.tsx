@@ -50,6 +50,8 @@ it("pointer-opened menu focuses its panel; keyboard navigation clamps, jumps, ty
   expect(document.activeElement).toBe(items[1]);
   items[1]!.dispatchEvent(new KeyboardEvent("keydown", { key: "PageUp", bubbles: true }));
   expect(document.activeElement).toBe(items[0]);
+  items[0]!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
+  expect(document.activeElement).toBe(items[1]);
   items[1]!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
   expect(document.activeElement).toBe(items[1]);
   items[0]!.focus();
@@ -63,7 +65,7 @@ it("pointer-opened menu focuses its panel; keyboard navigation clamps, jumps, ty
 
 it("places pointer menus side-right aligned at start and flips on collisions", () => {
   expect(placePointerMenu({ x: 123, y: 234 }, { width: 120, height: 80 }, { width: 400, height: 600 }, 12)).toEqual({ left: 123, top: 234, maxHeight: 354 });
-  expect(placePointerMenu({ x: 350, y: 580 }, { width: 120, height: 80 }, { width: 400, height: 600 }, 12)).toEqual({ left: 230, top: 500, maxHeight: 88 });
+  expect(placePointerMenu({ x: 350, y: 580 }, { width: 120, height: 80 }, { width: 400, height: 600 }, 12)).toEqual({ left: 230, top: 508, maxHeight: 80 });
 });
 
 it("places measured panels within a narrow viewport and flips above", () => {

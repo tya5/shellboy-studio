@@ -5,13 +5,15 @@ its `showOnHover` states, shadcn/ui `DropdownMenu` / Radix for menu dismissal an
 surface, and the WAI-ARIA APG Menu Button pattern for keyboard behavior.
 
 References:
+- Radix ContextMenu pointer placement: `context-menu:254,256`; Popper alignment-axis shift: `popper:244`.
 - https://github.com/shadcn-ui/ui/blob/main/apps/v4/registry/new-york-v4/ui/sidebar.tsx
 - https://github.com/shadcn-ui/ui/blob/main/apps/v4/registry/new-york-v4/ui/dropdown-menu.tsx
 - https://www.w3.org/WAI/ARIA/apg/patterns/menu-button/
 - Approved user mock: https://claude.ai/artifact/3e5smaBg8ic6cMDfvnoV3n
 
 Each row owns local open state. A button click anchors at its trigger; contextmenu
-places the panel at the pointer; ArrowDown anchors at the row. Pointer opening focuses
+places the panel at the pointer with side-right/align-start placement and collision
+shift; ArrowDown anchors at the row. Pointer opening focuses
 the menu panel, while ArrowDown focuses its first enabled item. Selection returns
 focus to the trigger; Escape restores the captured opener and Tab closes without
 moving focus itself. Triggers and menu are linked through `aria-controls` and
