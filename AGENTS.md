@@ -9,7 +9,7 @@ not expanded automatically.
 - Read the [architecture](docs/design/architecture.md) first. It is the adopted
   baseline once the user approves it; until then it is a proposal. Resolve
   discrepancies between code and design in the design before changing code.
-- Conversation display invariants: [architecture section 2.2](docs/design/architecture.md#22-current-conversation-publication).
+- Conversation display invariants: [architecture](docs/design/architecture.md).
 - Shellboy's adopted designs at the pinned tag are the contract for everything
   the owner does (`docs/design/protocol.md`, `docs/design/events-and-external-protocol.md`
   in the Shellboy repository). Do not infer contract from Shellboy internals,
