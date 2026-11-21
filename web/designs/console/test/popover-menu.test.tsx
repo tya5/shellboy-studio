@@ -5,6 +5,7 @@ import { render } from "preact";
 import { act } from "preact/test-utils";
 import { expect, it } from "vitest";
 import { Menu, Popover } from "../system/components";
+import { placePanel } from "../system/components/Popover";
 
 it("renders Popover in the document layer and restores its anchor on outside close", async () => {
   const host = document.createElement("div");
@@ -17,7 +18,7 @@ it("renders Popover in the document layer and restores its anchor on outside clo
   await act(async () => { draw(); await Promise.resolve(); });
   outside.focus();
   expect(document.body.querySelector(".popover")).not.toBeNull();
-  await act(async () => { document.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true })); await Promise.resolve(); });
+  await act(async () => { outside.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true })); await Promise.resolve(); });
   expect(document.body.querySelector(".popover")).toBeNull();
   expect(document.activeElement).toBe(outside);
   render(null, host); host.remove(); anchor.remove(); outside.remove();
@@ -39,20 +40,14 @@ it("opens Menu with the first item focused and wraps keyboard navigation", async
   render(null, host); host.remove(); anchor.remove();
 });
 
-it("keeps a wide menu inside a narrow viewport", async () => {
-  const host = document.createElement("div");
-  const anchor = document.createElement("button");
-  Object.defineProperty(window, "innerWidth", { configurable: true, value: 320 });
-  anchor.getBoundingClientRect = () => ({ left: 280, right: 310, top: 40, bottom: 64, width: 30, height: 24, x: 280, y: 40, toJSON: () => ({}) });
-  document.body.append(host, anchor);
-  act(() => render(<Popover open anchor={anchor} onClose={() => {}}><span>Short</span></Popover>, host));
-  await act(async () => { await Promise.resolve(); });
-  const panel = document.body.querySelector<HTMLElement>(".popover")!;
-  Object.defineProperty(panel, "getBoundingClientRect", { value: () => ({ left: 12, right: 292, width: 280, top: 64, bottom: 96, height: 32, x: 12, y: 64, toJSON: () => ({}) }) });
-  window.dispatchEvent(new Event("resize"));
-  const rect = panel.getBoundingClientRect();
-  expect(rect.left).toBeGreaterThanOrEqual(12);
-  expect(rect.right).toBeLessThanOrEqual(320 - 12);
-  expect(rect.width).toBeLessThan(320 - 24);
-  render(null, host); host.remove(); anchor.remove();
+it("places measured panels within a narrow viewport and flips above", () => {
+  const gutter = 12;
+  const narrow = placePanel({ left: 280, right: 320, top: 40, bottom: 64 }, { width: 280, height: 32 }, { width: 320, height: 768 }, gutter);
+  expect(narrow.left).toBeGreaterThanOrEqual(gutter);
+  expect(narrow.left + 280).toBeLessThanOrEqual(320 - gutter);
+  expect(narrow.top).toBe(64);
+  const short = placePanel({ left: 100, right: 200, top: 100, bottom: 124 }, { width: 100, height: 32 }, { width: 320, height: 768 }, gutter);
+  expect(short.left + 100).toBeLessThanOrEqual(320 - gutter);
+  const flipped = placePanel({ left: 100, right: 200, top: 740, bottom: 764 }, { width: 100, height: 80 }, { width: 320, height: 768 }, gutter);
+  expect(flipped.top).toBe(660);
 });
