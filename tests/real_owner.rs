@@ -8,26 +8,109 @@ use futures_util::{SinkExt, StreamExt};
 use serde_json::{Value, json};
 use shellboy_studio::owner::IpcOwner;
 use std::{
+    collections::VecDeque,
     io::{BufRead, BufReader},
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
-    sync::Arc,
+    sync::{Arc, Mutex, OnceLock},
     time::Duration,
 };
 use tokio_tungstenite::tungstenite::{Message, client::IntoClientRequest};
+
+/// Failure-only, bounded diagnostics for the real owner fixture.
+struct OwnerDiagnostics {
+    child: Arc<Mutex<Child>>,
+    lines: Mutex<VecDeque<String>>,
+}
+
+impl OwnerDiagnostics {
+    fn push(&self, stream: &str, line: String) {
+        const MAX_LINE: usize = 1024;
+        let mut lines = self.lines.lock().unwrap_or_else(|e| e.into_inner());
+        let bounded = if line.len() > MAX_LINE {
+            line.chars().take(MAX_LINE).collect::<String>() + "…"
+        } else {
+            line
+        };
+        if lines.len() == 40 {
+            lines.pop_front();
+        }
+        lines.push_back(format!("{stream}: {bounded}"));
+    }
+
+    fn failure_report(&self) -> String {
+        let status = match self
+            .child
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .try_wait()
+        {
+            Ok(Some(status)) => format!("exited: {status}"),
+            Ok(None) => "still running".to_owned(),
+            Err(error) => format!("status unavailable: {error}"),
+        };
+        let tail = self
+            .lines
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .iter()
+            .cloned()
+            .collect::<Vec<_>>()
+            .join("\n");
+        format!(
+            "real-owner process {status}; last {} stdout/stderr lines:\n{tail}",
+            if tail.is_empty() {
+                0
+            } else {
+                self.lines.lock().unwrap_or_else(|e| e.into_inner()).len()
+            }
+        )
+    }
+}
+
+static OWNER_DIAGNOSTICS: OnceLock<Mutex<Vec<Arc<OwnerDiagnostics>>>> = OnceLock::new();
+static PANIC_HOOK: OnceLock<()> = OnceLock::new();
+
+fn register_failure_diagnostics(diagnostics: &Arc<OwnerDiagnostics>) {
+    PANIC_HOOK.get_or_init(|| {
+        let previous = std::panic::take_hook();
+        std::panic::set_hook(Box::new(move |info| {
+            previous(info);
+            if let Some(owners) = OWNER_DIAGNOSTICS
+                .get()
+                .and_then(|owners| owners.lock().ok())
+            {
+                for owner in owners.iter() {
+                    eprintln!("{}", owner.failure_report());
+                }
+            }
+        }));
+    });
+    OWNER_DIAGNOSTICS
+        .get_or_init(|| Mutex::new(Vec::new()))
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .push(diagnostics.clone());
+}
 
 /// Owns the `shellboy serve` child. Dropping it (normal end, failed assertion, panic) kills and
 /// reaps the process, so a failed test never leaves an owner holding resources such as the
 /// build-slot lock inherited from the test runner.
 struct Serve {
-    child: Child,
+    child: Arc<Mutex<Child>>,
     instance: String,
+    diagnostics: Arc<OwnerDiagnostics>,
 }
 
 impl Drop for Serve {
     fn drop(&mut self) {
-        let _ = self.child.kill(); // no-op error if it already exited
-        let _ = self.child.wait();
+        let _ = self.child.lock().unwrap_or_else(|e| e.into_inner()).kill(); // no-op if exited
+        let _ = self.child.lock().unwrap_or_else(|e| e.into_inner()).wait();
+        if let Some(registry) = OWNER_DIAGNOSTICS.get() {
+            if let Ok(mut registry) = registry.lock() {
+                registry.retain(|diagnostics| !Arc::ptr_eq(diagnostics, &self.diagnostics));
+            }
+        }
     }
 }
 
@@ -46,38 +129,65 @@ fn start_owner_with(bin: &Path, root: &Path, data: &Path, base_url: &str) -> Ser
         format!("default_connection = \"local\"\ndefault_model = \"mock\"\n[connections.local]\nbase_url = \"{base_url}\"\n"),
     )
     .unwrap();
-    let child = Command::new(bin)
-        .args(["serve", "--config"])
-        .arg(&config)
-        .arg("--data-dir")
-        .arg(data)
-        .env_clear()
-        .env("PATH", std::env::var_os("PATH").unwrap_or_default())
-        .env("HOME", &home)
-        .env("USERPROFILE", &home)
-        .env("XDG_CONFIG_HOME", home.join("xdg-config"))
-        .env("XDG_DATA_HOME", home.join("xdg-data"))
-        .env("APPDATA", home.join("appdata"))
-        .env("LOCALAPPDATA", home.join("localappdata"))
-        .stdout(Stdio::piped())
-        .stderr(Stdio::inherit())
-        .spawn()
-        .expect("spawn shellboy serve");
-    // Guard from the moment of spawn: any panic below still kills the child.
+    let child = Arc::new(Mutex::new(
+        Command::new(bin)
+            .args(["serve", "--config"])
+            .arg(&config)
+            .arg("--data-dir")
+            .arg(data)
+            .env_clear()
+            .env("PATH", std::env::var_os("PATH").unwrap_or_default())
+            .env("HOME", &home)
+            .env("USERPROFILE", &home)
+            .env("XDG_CONFIG_HOME", home.join("xdg-config"))
+            .env("XDG_DATA_HOME", home.join("xdg-data"))
+            .env("APPDATA", home.join("appdata"))
+            .env("LOCALAPPDATA", home.join("localappdata"))
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("spawn shellboy serve"),
+    ));
+    let diagnostics = Arc::new(OwnerDiagnostics {
+        child: child.clone(),
+        lines: Mutex::new(VecDeque::with_capacity(40)),
+    });
     let mut serve = Serve {
         child,
         instance: String::new(),
+        diagnostics: diagnostics.clone(),
     };
-    let mut lines = BufReader::new(serve.child.stdout.take().unwrap()).lines();
+    register_failure_diagnostics(&diagnostics);
+    let (stdout, stderr) = {
+        let mut child = serve.child.lock().unwrap_or_else(|e| e.into_inner());
+        (child.stdout.take().unwrap(), child.stderr.take().unwrap())
+    };
+    let stderr_diagnostics = diagnostics.clone();
+    std::thread::spawn(move || {
+        for line in BufReader::new(stderr).lines() {
+            if let Ok(line) = line {
+                stderr_diagnostics.push("stderr", line);
+            }
+        }
+    });
+    let stdout_diagnostics = diagnostics.clone();
+    let mut lines = BufReader::new(stdout).lines();
     let ready: Value = loop {
         let line = lines.next().expect("serve stdout").expect("line");
+        stdout_diagnostics.push("stdout", line.clone());
         let value: Value = serde_json::from_str(&line).expect("serve prints JSON rows");
         if value["event"] == "ready" {
             break value;
         }
     };
     // Keep draining stdout so the owner never blocks on a full pipe.
-    std::thread::spawn(move || for _ in lines {});
+    std::thread::spawn(move || {
+        for line in lines {
+            if let Ok(line) = line {
+                stdout_diagnostics.push("stdout", line);
+            }
+        }
+    });
     serve.instance = ready["instance_id"].as_str().unwrap().to_owned();
     serve
 }
@@ -91,8 +201,16 @@ async fn stop_owner(bin: &Path, data: &Path, mut serve: Serve) {
         .await
         .expect("shutdown");
     assert!(status.success(), "shutdown request");
-    let child = &mut serve.child;
-    until("owner exit", || child.try_wait().unwrap().is_some()).await;
+    let child = serve.child.clone();
+    until("owner exit", || {
+        child
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .try_wait()
+            .unwrap()
+            .is_some()
+    })
+    .await;
 }
 
 async fn next_t(ws: &mut common_ws::Ws, t: &str) -> Value {
