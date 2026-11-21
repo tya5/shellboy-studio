@@ -214,3 +214,35 @@ describe("config editing", () => {
     expect(c.drafts.value.size).toBe(1);
   });
 });
+
+describe("on-the-spot config settings", () => {
+  it("writes one field immediately and exposes an undo for the previous value", async () => {
+    const { model, t, db } = await open();
+    const editor = model.config as typeof model.config & {
+      saveField(path: readonly string[], raw: string, kind: "text"): Promise<void>;
+      undoLast(): Promise<void>;
+      lastSaved: { field: string; previous: unknown } | undefined;
+    };
+    void editor.saveField(["default_model"], "model-b", "text");
+    await settle(t, db);
+    expect(t.calls("config.set")).toHaveLength(1);
+    expect(t.calls("config.set")[0]!.args).toEqual({ expected_hash: HASH, changes: [{ field: "default_model", value: "model-b" }] });
+    expect(editor.lastSaved.peek()).toMatchObject({ field: "default_model", previous: "model-a" });
+    void editor.undoLast();
+    await settle(t, db);
+    expect(t.calls("config.set")).toHaveLength(2);
+    expect(t.calls("config.set")[1]!.args).toEqual({ expected_hash: HASH, changes: [{ field: "default_model", value: "model-a" }] });
+  });
+
+  it("keeps a refusal reason on its field and rereads Core's value", async () => {
+    const { model, t, db } = await open(() => ({ ok: false, code: "invalid_argument", message: "blocked by Core policy", details: { reason: "credential_value_refused", change_index: 0, written: false } }));
+    const editor = model.config as typeof model.config & {
+      saveField(path: readonly string[], raw: string, kind: "text"): Promise<void>;
+      fieldError: { field: string; reason: string } | undefined;
+    };
+    void editor.saveField(["default_model"], "not-allowed", "text");
+    await settle(t, db);
+    expect(editor.fieldError.peek()).toEqual({ field: "default_model", reason: "blocked by Core policy" });
+    expect(model.config.read.value.value?.file.values?.default_model).toBe("model-a");
+  });
+});

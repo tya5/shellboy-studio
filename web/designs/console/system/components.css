@@ -34,7 +34,6 @@
 @import "./components/BarList/style.css";
 @import "./components/RangeBar/style.css";
 @import "./components/SectionNav/style.css";
-@import "./components/DiffList/style.css";
 @import "./components/BranchGraph/style.css";
 @import "./components/BranchList/style.css";
 @import "./components/BranchMark/style.css";
@@ -48,7 +47,6 @@
 @import "./components/ChoiceList/style.css";
 @import "./shared/setup.css";
 @import "./components/VirtualSpace/style.css";
-@import "./shared/diff.css";
 @import "./components/MonitorTile/style.css";
 @import "./components/AppRequest/style.css";
 @import "./components/ModelPicker/style.css";
@@ -84,3 +82,4 @@
 
 @import "./components/ChildrenChip/style.css";
 @import "./components/FilterChips/style.css";
+@import "./components/SettingRow/style.css";

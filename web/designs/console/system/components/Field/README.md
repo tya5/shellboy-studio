@@ -5,3 +5,5 @@ The wrapper owns the only border and background; the input remains transparent a
 Styles are colocated in `system/components/Field/style.css`.
 
 Styles: style.css in this directory
+
+Field also renders a tokenized native select when given `as="select"` and options; use it for compact phone-width navigation where a menu would obscure the view.

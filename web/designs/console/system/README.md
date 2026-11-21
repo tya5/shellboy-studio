@@ -84,3 +84,4 @@ The shared row-action pattern and its references are recorded in `patterns/row-a
 The permanent one-line footer in Conversation uses the existing status artwork. Only its description may ellipsize; activity, the lower-bound count when two or more, elapsed time from the actual start, and actions retain their own fields. The phone WorkSheet opener does not repeat the running summary.
 
 The `ConversationCharacter` component owns running-only dot motion inside the existing artwork.
+Settings navigation and save behavior are specified in `patterns/settings.md`.

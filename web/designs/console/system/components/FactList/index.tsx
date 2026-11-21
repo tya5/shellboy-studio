@@ -1,4 +1,5 @@
 import type { ComponentChildren } from "preact";
+import { SettingRow } from "../SettingRow";
 
 export interface Fact {
   label: string;
@@ -15,12 +16,9 @@ export function FactList({ facts, missing }: { facts: Fact[]; missing: string })
   return (
     <dl class="fact-list-root">
       {facts.map((f) => (
-        <div class="fact-list-row" key={f.label}>
+        f.control ? <SettingRow key={f.label} label={f.label} description={f.note} control={f.control} /> : <div class="fact-list-row" key={f.label}>
           <dt>{f.label}</dt>
-          <dd>
-            {f.control ? f.control : f.value !== undefined ? <span class={f.mono ? "mono" : undefined}>{f.value}</span> : <span class="muted">{missing}</span>}
-            {f.note ? <div class="muted caption">{f.note}</div> : null}
-          </dd>
+          <dd>{f.value !== undefined ? <span class={f.mono ? "mono" : undefined}>{f.value}</span> : <span class="muted">{missing}</span>}{f.note ? <div class="muted caption">{f.note}</div> : null}</dd>
         </div>
       ))}
     </dl>

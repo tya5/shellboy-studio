@@ -3,3 +3,6 @@ Read-only settings and resource values, label beside value. Machine values use `
 Styles are colocated in `system/components/FactList/style.css`.
 
 Styles: style.css in this directory
+
+
+Editable facts now delegate to SettingRow; read-only facts retain the compact definition-list layout. Use SettingRow for setting interactions, not for factual metadata.

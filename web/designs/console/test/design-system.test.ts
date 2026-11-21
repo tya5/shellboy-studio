@@ -91,6 +91,13 @@ describe("design-system source boundaries", () => {
     expect(violations).toEqual([]);
   });
 
+  it("setting rows provide a desktop two-column and narrow-frame stacked layout", () => {
+    const css = readFileSync(new URL("../system/components/SettingRow/style.css", import.meta.url), "utf8");
+    expect(css).toContain("grid-template-columns:minmax(12rem,1fr) minmax(14rem,1fr)");
+    expect(css).toContain("@container (max-width: 40rem)");
+    expect(css).toContain("grid-template-columns:minmax(0,1fr)");
+  });
+
   it("documents the colocated stylesheet for every styled component", () => {
     const missing = Object.keys(componentStyleFiles).flatMap((path) => {
       const component = path.match(/\/components\/([^/]+)\/style\.css$/)?.[1];

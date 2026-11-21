@@ -3,3 +3,6 @@ A titled card for one subject on a settings or analytics page. `source` states w
 Styles are colocated in `system/components/Section/style.css`.
 
 Styles: style.css in this directory
+
+
+Section renders the card surface for one subject and contains SettingRows or read-only FactLists. It follows Orca settings, VS Code settings, and macOS System Settings. Do not nest Sections for spacing or use them to group unrelated subjects.
