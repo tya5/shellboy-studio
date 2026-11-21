@@ -16,3 +16,5 @@ Button component path. The title and body are referenced through
 References from the Reviewer audit: Radix `dialog:342,348` (outside pointer,
 excluding right-click), `dialog:257` (scroll lock), shadcn/ui Sheet, and WAI-ARIA
 APG Dialog (Modal) focus return.
+
+Styles: style.css in this directory

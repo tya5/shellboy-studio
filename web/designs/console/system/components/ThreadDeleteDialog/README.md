@@ -23,3 +23,5 @@ Preview and confirmation policy remains fail-closed: confirmation requires
 References from the Reviewer audit: Radix `alert-dialog:117` (outside dismissal
 blocked), `alert-dialog:109,115` (initial Cancel focus), and WAI-ARIA APG Alert
 Dialog pattern.
+
+Styles: style.css in this directory

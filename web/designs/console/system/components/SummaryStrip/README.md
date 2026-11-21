@@ -5,3 +5,5 @@ Provide the input size before and after, the summary's own usage and its parts. 
 Today the owner's history gives the summary text of a node but no before and after sizes in a read this view has, so the strip shows the text only and draws no bars. Add the bars when those facts are read.
 
 Styles are colocated in `system/components/SummaryStrip/style.css`.
+
+Styles: style.css in this directory

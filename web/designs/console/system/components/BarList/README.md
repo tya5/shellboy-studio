@@ -1,3 +1,5 @@
 A short ranked comparison, such as storage by category. All bars share one scale and one neutral fill; the number is always written. It isn't for values against a limit (use Meter) or over time (use Chart).
 
 Styles are colocated in `system/components/BarList/style.css`.
+
+Styles: style.css in this directory

@@ -76,3 +76,5 @@ Consumers use semantic `IconRole` names only. Glyph names, paths, and the role-t
 | `tab.add` | Add an application tab. | `plus` |
 
 Styles are colocated in `system/components/Icon/style.css`.
+
+Styles: style.css in this directory

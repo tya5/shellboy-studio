@@ -13,3 +13,5 @@ list sets its claim on row focus and clears it when focus leaves the list. If th
 claimed row is removed, the list advances to the next link or its heading.
 
 Styles are colocated in `system/components/ThreadItem/style.css`.
+
+Styles: style.css in this directory

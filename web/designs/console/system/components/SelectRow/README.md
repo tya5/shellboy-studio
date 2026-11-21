@@ -8,3 +8,5 @@ a focus claim while focus remains inside the list; if the claimed row disappears
 list advances to the next row link or its heading.
 
 Styles are colocated in `system/components/SelectRow/style.css`.
+
+Styles: style.css in this directory

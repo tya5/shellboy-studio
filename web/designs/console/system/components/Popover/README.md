@@ -17,3 +17,5 @@ shifting to the viewport gutter on collision. This follows Radix ContextMenu
 Do not use this for dialogs, settings forms, or a surface that belongs inside a pane.
 
 Styles are colocated in `system/components/Popover/style.css`.
+
+Styles: style.css in this directory

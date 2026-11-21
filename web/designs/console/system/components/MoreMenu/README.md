@@ -8,3 +8,5 @@ focus to the trigger. A link selection closes the panel. Items use semantic dest
 
 References: WAI-ARIA APG Disclosure Navigation example and Radix
 `navigation-menu:1028` for close-on-focus-leave behavior.
+
+Styles: style.css in this directory

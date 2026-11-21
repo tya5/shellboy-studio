@@ -1,3 +1,5 @@
 A message that belongs to the screen, not to one row: connection trouble, a failed action, a Thread in recovery wait. `bad` for failures, `wait` for things in progress, plain otherwise. Say what happened and what to do; put the action in it.
 
 Styles are colocated in `system/components/Notice/style.css`.
+
+Styles: style.css in this directory

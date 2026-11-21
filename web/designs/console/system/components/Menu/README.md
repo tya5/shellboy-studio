@@ -27,3 +27,5 @@ References (Radix source lines from the Reviewer audit): `dropdown-menu:119,188`
 typeahead); APG Menu Button and Menu patterns.
 
 Styles are colocated in `system/components/Menu/style.css`.
+
+Styles: style.css in this directory

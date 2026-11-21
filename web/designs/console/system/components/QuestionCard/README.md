@@ -5,3 +5,5 @@ Provide the question, the Thread and the answer and withdraw actions. Place it a
 Today this renders from test fixtures only: `message ask` (Shellboy #262) isn't on main. There is no withdraw action until the owner defines one.
 
 Styles are colocated in `system/components/QuestionCard/style.css`.
+
+Styles: style.css in this directory

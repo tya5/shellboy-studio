@@ -3,3 +3,5 @@ A single-line text input with a leading icon. Provide a label through `ariaLabel
 The wrapper owns the only border and background; the input remains transparent and borderless. Focus outlines the wrapper, disabled fields are dimmed, and `aria-invalid="true"` gives the wrapper the error treatment. Supply a descriptive error message separately.
 
 Styles are colocated in `system/components/Field/style.css`.
+
+Styles: style.css in this directory

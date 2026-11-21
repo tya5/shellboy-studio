@@ -11,3 +11,5 @@ The component alone is not a qualified runtime consumer or proof of perceived ce
 Execution status uses only the issuer's optional typed executionStatus, passed directly to the existing StatusMark primitive. Completed/failed/running/stopped therefore retain the established marks and palette at every viewport. The raw machine state and exit code remain unchanged; wire/client reasons without an issued executionStatus stay plain text. No status is inferred from labels, unknown states or a parent group's members. The parent summary is independently owned and unchanged.
 
 Styles are colocated in `system/components/WorkElementRow/style.css`.
+
+Styles: style.css in this directory

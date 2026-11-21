@@ -18,3 +18,5 @@ produce `contextmenu` for it.
 
 References: Radix `dropdown-menu`/`menu` and `context-menu` source, shadcn/ui
 `SidebarMenuAction`, and WAI-ARIA APG Menu Button/Menu patterns.
+
+Styles: style.css in this directory

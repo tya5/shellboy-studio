@@ -4,3 +4,5 @@ as `empty.inbox`), not a glyph name. The role-to-shape choice stays inside the I
 theme. Never render a bare blank region.
 
 Styles are colocated in `system/components/EmptyState/style.css`.
+
+Styles: style.css in this directory

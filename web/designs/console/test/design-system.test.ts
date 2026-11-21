@@ -91,6 +91,16 @@ describe("design-system source boundaries", () => {
     expect(violations).toEqual([]);
   });
 
+  it("documents the colocated stylesheet for every styled component", () => {
+    const missing = Object.keys(componentStyleFiles).flatMap((path) => {
+      const component = path.match(/\/components\/([^/]+)\/style\.css$/)?.[1];
+      if (!component) return [path];
+      const readme = new URL(`../system/components/${component}/README.md`, import.meta.url);
+      return existsSync(readme) && readFileSync(readme, "utf8").includes("Styles: style.css in this directory") ? [] : [component];
+    });
+    expect(missing).toEqual([]);
+  });
+
   it("every component directory has a README and a real barrel re-export", () => {
     const missing = componentDirs.filter((name) =>
       !existsSync(new URL(`../system/components/${name}/README.md`, import.meta.url)) || !barrelReExports.has(name));

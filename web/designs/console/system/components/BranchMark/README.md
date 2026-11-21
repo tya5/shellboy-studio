@@ -3,3 +3,5 @@ Sits on a conversation row where one or more branches leave the path, and links 
 Beside it, a quiet `Branch or rewind from here` link appears on hover or focus on a wide frame and stays visible at phone width.
 
 Styles are colocated in `system/components/BranchMark/style.css`.
+
+Styles: style.css in this directory

@@ -5,3 +5,5 @@ awaiting a person.
 
 In a collapsed desktop rail, the label is hidden visually; the link retains its
 accessible name and native tooltip.
+
+Styles: style.css in this directory

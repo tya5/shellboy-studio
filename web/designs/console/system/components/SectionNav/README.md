@@ -5,3 +5,5 @@ of tabs, at least 44px high, so every section stays visible and nothing scrolls
 sideways.
 
 Styles are colocated in `system/components/SectionNav/style.css`.
+
+Styles: style.css in this directory

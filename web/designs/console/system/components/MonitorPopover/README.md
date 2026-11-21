@@ -6,3 +6,5 @@ when a click-opened panel is closed, focus returns to its trigger. Outside point
 persistent panel. Use for nondestructive local settings, not confirmations.
 
 Reference: Radix `hover-card:334` handles Escape while the surface is open/hovered.
+
+Styles: style.css in this directory

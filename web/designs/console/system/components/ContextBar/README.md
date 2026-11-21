@@ -5,3 +5,5 @@ Provide the measured sizes per part and the threshold. Label it with numbers in 
 Today the owner measures one part, the input of the last request, so the bar has one segment. The track is the threshold, so the fill is drawn to the same scale as the number beside it. A value over the threshold fills the track and the number still says the true value.
 
 Styles are colocated in `system/components/ContextBar/style.css`.
+
+Styles: style.css in this directory
