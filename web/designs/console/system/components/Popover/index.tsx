@@ -4,10 +4,9 @@ import type { ComponentChildren, JSX } from "preact";
 
 type Point = { left: number; top: number; maxHeight: number };
 
-function tokenPixels(name: string, fallback: number): number {
-  const value = getComputedStyle(document.documentElement).getPropertyValue(name);
-  const parsed = Number.parseFloat(value);
-  return Number.isFinite(parsed) ? parsed : fallback;
+function tokenPixels(name: string): number {
+  const parsed = Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue(name));
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 export function Popover({ open, anchor, onClose, children, className = "" }: {
@@ -19,21 +18,26 @@ export function Popover({ open, anchor, onClose, children, className = "" }: {
 }) {
   const panel = useRef<HTMLDivElement>(null);
   const [point, setPoint] = useState<Point>();
+  const opener = useRef<HTMLElement | null>(null);
   const anchorRef = useRef(anchor);
   anchorRef.current = anchor;
 
   useLayoutEffect(() => {
+    if (open) opener.current = anchor;
     if (!open || !anchor) { setPoint(undefined); return; }
     const place = () => {
       const rect = anchor.getBoundingClientRect();
-      const margin = tokenPixels("--space-12", 12);
+      const margin = tokenPixels("--space-12");
+      const viewportWidth = window.innerWidth;
+      const width = Math.min(panel.current?.getBoundingClientRect().width ?? tokenPixels("--size-details"), viewportWidth - 2 * margin);
+      const height = panel.current?.getBoundingClientRect().height ?? 0;
       const viewportHeight = window.innerHeight;
-      const panelHeight = panel.current?.getBoundingClientRect().height ?? 0;
+      const right = Math.min(viewportWidth - margin, rect.right);
+      const left = Math.max(margin, right - width);
       const below = viewportHeight - rect.bottom - margin;
       const above = rect.top - margin;
-      const top = below >= panelHeight || below >= above ? rect.bottom : Math.max(margin, rect.top - Math.min(panelHeight, above));
-      const left = Math.max(margin, rect.right - tokenPixels("--size-details", 340));
-      setPoint({ left, top, maxHeight: Math.max(1, viewportHeight - top - margin) });
+      const top = below >= height || below >= above ? rect.bottom : Math.max(margin, rect.top - Math.min(height, above));
+      setPoint({ left: Math.min(left, viewportWidth - margin - width), top, maxHeight: Math.max(1, viewportHeight - top - margin) });
     };
     place();
     addEventListener("resize", place);
@@ -43,14 +47,15 @@ export function Popover({ open, anchor, onClose, children, className = "" }: {
 
   useEffect(() => {
     if (!open) return;
-    const outside = (event: PointerEvent) => { if (!panel.current?.contains(event.target as Node) && event.target !== anchorRef.current) onClose(); };
-    const key = (event: KeyboardEvent) => { if (event.key === "Escape" || event.key === "Tab") { onClose(); queueMicrotask(() => anchorRef.current?.focus()); } };
+    const restore = () => queueMicrotask(() => opener.current?.focus());
+    const outside = (event: PointerEvent) => { if (!panel.current?.contains(event.target as Node) && !anchorRef.current?.contains(event.target as Node)) { onClose(); restore(); } };
+    const key = (event: KeyboardEvent) => { if (event.key === "Escape" || event.key === "Tab") { event.preventDefault(); onClose(); restore(); } };
     document.addEventListener("pointerdown", outside);
     document.addEventListener("keydown", key);
     return () => { document.removeEventListener("pointerdown", outside); document.removeEventListener("keydown", key); };
   }, [open, onClose]);
 
-  if (!open || !point) return null;
-  const style: JSX.CSSProperties = { left: `${point.left}px`, top: `${point.top}px`, maxHeight: `${point.maxHeight}px` };
+  if (!open) return null;
+  const style: JSX.CSSProperties = point ? { left: `${point.left}px`, top: `${point.top}px`, maxHeight: `${point.maxHeight}px` } : { visibility: "hidden" };
   return createPortal(<div ref={panel} class={`popover ${className}`.trim()} style={style}>{children}</div>, document.body);
 }
