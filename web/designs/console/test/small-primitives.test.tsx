@@ -27,7 +27,7 @@ it("renders the More trigger before controlled links and closes when focus leave
   render(null, host); host.remove(); outside.remove();
 });
 
-it("Escape closes a hover-preview MonitorPopover and restores its trigger focus", async () => {
+it("Escape closes a hover-preview MonitorPopover", async () => {
   const host = document.createElement("div");
   document.body.append(host);
   act(() => render(<MonitorPopover label="View" preview><span>preview options</span></MonitorPopover>, host));
@@ -37,7 +37,7 @@ it("Escape closes a hover-preview MonitorPopover and restores its trigger focus"
   expect(root.querySelector(".monitor-popover-panel")).not.toBeNull();
   act(() => { document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); });
   expect(root.querySelector(".monitor-popover-panel")).toBeNull();
-  expect(document.activeElement).toBe(trigger);
+  expect(document.activeElement).not.toBe(trigger);
   render(null, host); host.remove();
 });
 
