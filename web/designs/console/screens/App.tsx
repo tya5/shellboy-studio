@@ -1,7 +1,7 @@
 import { BrandLogo } from "../system/components/BrandLogo";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { formatRoute, readSidebarWidth, SIDEBAR_WIDTH_MAX, SIDEBAR_WIDTH_MIN, statusLabel, viewShortcut, navShortcut, type DesignContext, type ViewName } from "../../../ui-core/src";
-import { Button, ContextBar, Field, Icon, MoreMenu, NavItem, Notice, StatusMark, ThreadItem, type IconName } from "../system/components";
+import { Button, ContextBar, Field, Icon, MoreMenu, NavItem, Notice, StatusMark, ThreadItem, ThreadQuickAction, type IconName } from "../system/components";
 import { formatTokens, folderName } from "../../../ui-core/src";
 import { Conversation } from "./Conversation";
 import { Inbox } from "./Inbox";
@@ -129,6 +129,7 @@ export function App({ context }: { context: DesignContext }) {
                   current={route.view === "conversation" && r.summary.thread_id === selected}
                   pending={r.pending}
                   onSelect={() => setDrawer(false)}
+                  action={<ThreadQuickAction model={model} row={r.summary} status={r.status} />}
                 />
               ))}
             </div>
