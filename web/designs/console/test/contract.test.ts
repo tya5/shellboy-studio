@@ -10,7 +10,7 @@ const tokens = JSON.parse(readFileSync(join(system, "tokens.json"), "utf8"));
 const THEMES = ["console", "light", "terminal"] as const;
 
 const REQUIRED_COLOURS = ["bg", "panel", "raised", "inset", "stage", "line", "line-strong", "fg", "muted", "accent", "accent-bg", "on-accent", "ok", "wait", "on-wait", "wait-bg", "bad", "bad-bg", "note-bg", "lead-bg", "need-bg", "err-bg", "bad-soft", "hover", "scrim", "chart-1", "chart-2", "chart-3"];
-const REQUIRED_OTHER = ["font-sans", "font-mono", "type-title", "type-heading", "type-body", "type-label", "type-caption", "type-code", "type-log", "space-4", "space-6", "space-8", "space-12", "space-16", "space-24", "radius", "radius-s", "radius-m", "motion-spin", "size-sidebar", "size-details", "size-control", "size-header", "size-touch", "size-icon", "size-icon-small", "size-menu-icon", "size-row-action", "size-row-action-touch", "size-menu-min", "shadow-popover"];
+const REQUIRED_OTHER = ["font-sans", "font-mono", "type-title", "type-heading", "type-body", "type-label", "type-caption", "type-code", "type-log", "space-4", "space-6", "space-8", "space-12", "space-16", "space-24", "radius", "radius-s", "radius-m", "motion-spin", "size-sidebar", "size-details", "size-control", "size-header", "size-touch", "size-icon", "size-icon-small", "size-icon-menu", "size-row-action", "size-row-action-touch", "size-menu-min", "shadow-popover"];
 
 function parse(css: string): Map<string, string> {
   const out = new Map<string, string>();

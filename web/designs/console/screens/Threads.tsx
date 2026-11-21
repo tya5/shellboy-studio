@@ -235,7 +235,7 @@ export function Threads({ model }: { model: AppModel }) {
       {by === "tag" && canTag ? <div class="muted caption">{t("org.tagNote")}</div> : null}
       {by === "directory" && !kind ? <div class="muted caption">{t("org.dirsPartial")}</div> : null}
       <TagPanel model={model} />
-      <Field ariaLabel={t("org.filter")} placeholder={t("org.filter")} leading={<Icon role="organization.search" small />} value={query} onInput={(e) => setQuery(e.currentTarget.value)} />
+      <Field ariaLabel={t("org.filter")} placeholder={t("org.filter")} leading={<Icon role="organization.search" size="small" />} value={query} onInput={(e) => setQuery(e.currentTarget.value)} />
       {selected.size > 0 ? (
         <SelectionBar text={extra > 0 ? t("org.selectedWith", { n: selected.size, extra }) : t("org.selected", { n: selected.size })} option={{ label: t("org.descendants"), checked: descendants, onChange: (on) => (org.descendants.value = on) }}>
           <Button variant={armed ? "warn" : "plain"} disabled={action.kind === "running"} onClick={run}>

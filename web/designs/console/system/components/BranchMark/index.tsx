@@ -4,7 +4,7 @@ import { Icon } from "../Icon";
 export function BranchMark({ href, label }: { href: string; label: string }) {
   return (
     <a class="bmark" href={href}>
-      <Icon role="branch.mark" small />
+      <Icon role="branch.mark" size="small" />
       {label}
     </a>
   );

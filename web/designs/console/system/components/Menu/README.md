@@ -2,7 +2,7 @@
 
 A compact WAI-ARIA menu of short actions opened through `Popover`. Consumers choose
 optional item icons by semantic `IconRole` (for example `action.archive`), never by
-glyph shape. The active theme owns the role-to-glyph mapping.
+glyph shape. The active theme owns the role-to-glyph mapping. Menu entries use `<Icon size="menu">`, which maps to the dedicated 16px icon token; other small icons use `size="small"` (15px).
 
 - Pointer opening focuses the menu panel, not its first entry; keyboard opening
   (ArrowDown) moves focus to the first enabled item.

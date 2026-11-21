@@ -496,7 +496,7 @@ export function Conversation({ model }: { model: AppModel }) {
               title={t("recovery.title")}
               actions={
                 <Button variant="warn" onClick={() => void model.retry()}>
-                  <Icon role="action.retry" small />
+                  <Icon role="action.retry" size="small" />
                   {t("action.retry")}
                 </Button>
               }
@@ -525,7 +525,7 @@ export function Conversation({ model }: { model: AppModel }) {
             stop={
               model.canStop.value ? (
                 <Button variant="stop" onClick={() => void model.stop()}>
-                  <Icon role="action.stop" small />
+                  <Icon role="action.stop" size="small" />
                   {t("composer.stop")}
                 </Button>
               ) : undefined

@@ -19,24 +19,24 @@ function Card({ model, row, pinned, togglePin, outOfFilter }: { model: AppModel;
           <Button aria-pressed={pinned} onClick={togglePin}>{t(pinned ? "monitor.unpin" : "monitor.pin")}</Button>
           {row.childCount > 0 ? (
             <span class="rel">
-              <Icon role="monitor.childThreads" small />
+              <Icon role="monitor.childThreads" size="small" />
               <span>{row.childCount === 1 ? t("monitor.child") : t("monitor.children", { n: row.childCount })}</span>
             </span>
           ) : row.parentTitle ? (
             <span class="rel">
-              <Icon role="monitor.parentThread" small />
+              <Icon role="monitor.parentThread" size="small" />
               <span>{t("monitor.parent", { title: row.parentTitle })}</span>
             </span>
           ) : null}
           {row.status === "recovery" ? (
             <Button variant="warn" onClick={() => void model.retry(s.thread_id)}>
-              <Icon role="action.retry" small />
+              <Icon role="action.retry" size="small" />
               {t("action.retry")}
             </Button>
           ) : null}
           <a class="btn link go" href={formatRoute({ view: "conversation", threadId: s.thread_id })}>
             {t("monitor.open")}
-            <Icon role="monitor.openConversation" small />
+            <Icon role="monitor.openConversation" size="small" />
           </a>
         </>
       }
@@ -157,9 +157,9 @@ export function Monitor({ context }: { context: DesignContext }) {
         </div>
         <span class="monitor-count-mobile muted caption">{t("monitor.showing", { shown: selectedRows.length, total: model.monitorStableRows.value.length })}</span>
         {filtered ? <div class="monitor-pills">
-          {filter.map((k) => <Button key={k} aria-label={t("monitor.removeFilter", { filter: statusLabel(t, k) })} onClick={() => updateStatus(k)}>{statusLabel(t, k)} <Icon role="action.clearStatusFilter" small /></Button>)}
-          {model.monitorQuery.value.trim() ? <Button aria-label={t("monitor.removeFilter", { filter: model.monitorQuery.value })} onClick={() => { model.monitorQuery.value = ""; setPrefs({ monitorQuery: "" }); }}>{model.monitorQuery.value} <Icon role="action.clearQueryFilter" small /></Button> : null}
-          {model.monitorArchive.value !== "exclude" ? <Button aria-label={t("monitor.removeFilter", { filter: archiveLabel })} onClick={() => setArchive("exclude")}>{archiveLabel} <Icon role="action.clearArchiveFilter" small /></Button> : null}
+          {filter.map((k) => <Button key={k} aria-label={t("monitor.removeFilter", { filter: statusLabel(t, k) })} onClick={() => updateStatus(k)}>{statusLabel(t, k)} <Icon role="action.clearStatusFilter" size="small" /></Button>)}
+          {model.monitorQuery.value.trim() ? <Button aria-label={t("monitor.removeFilter", { filter: model.monitorQuery.value })} onClick={() => { model.monitorQuery.value = ""; setPrefs({ monitorQuery: "" }); }}>{model.monitorQuery.value} <Icon role="action.clearQueryFilter" size="small" /></Button> : null}
+          {model.monitorArchive.value !== "exclude" ? <Button aria-label={t("monitor.removeFilter", { filter: archiveLabel })} onClick={() => setArchive("exclude")}>{archiveLabel} <Icon role="action.clearArchiveFilter" size="small" /></Button> : null}
           <Button onClick={clearFilters}>{t("monitor.clearAll")}</Button>
         </div> : null}
         {tiles && pages > 1 ? <ButtonGroup label={t("monitor.page", { page: currentPage + 1, pages })}>

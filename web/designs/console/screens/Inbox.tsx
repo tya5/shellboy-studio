@@ -54,7 +54,7 @@ export function Inbox({ model }: { model: AppModel }) {
             extra={
               <a class="btn" href={formatRoute({ view: "conversation", threadId: current.threadId })}>
                 {t("monitor.open")}
-                <Icon role="inbox.openConversation" small />
+                <Icon role="inbox.openConversation" size="small" />
               </a>
             }
           />

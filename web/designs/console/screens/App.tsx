@@ -112,12 +112,12 @@ export function App({ context }: { context: DesignContext }) {
           <div class="sidehead">
             <h2>{t("threads.title")}</h2>
             <Button onClick={() => { setDrawer(false); void model.createThread(); }}>
-              <Icon role="thread.create" small />
+              <Icon role="thread.create" size="small" />
               {t("threads.new")}
             </Button>
           </div>
           <div class="side-search">
-            <Field ariaLabel={t("threads.search")} placeholder={t("threads.search")} leading={<Icon role="thread.search" small />} value={query} onInput={(e) => setQuery(e.currentTarget.value)} />
+            <Field ariaLabel={t("threads.search")} placeholder={t("threads.search")} leading={<Icon role="thread.search" size="small" />} value={query} onInput={(e) => setQuery(e.currentTarget.value)} />
           </div>
           <div class="side-list">
             <div class="tree">
