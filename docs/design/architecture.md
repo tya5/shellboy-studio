@@ -841,5 +841,5 @@ single cancellable page read. A Thread change hint replaces the cursor chain
 with page one; Show more uses the opaque continuation. The section retains up
 to 200 metadata rows and drops its state on close or owner change. Paths and
 metadata are display-only; reading attachment bodies is outside this section.
-The bridge's paged feature stays off until the Core #327 pin is upgraded; the
-legacy bare-array contract is not accepted.
+The pinned Core includes #327. The bridge only accepts Thread-scoped bounded
+reads; the legacy bare-array response is not accepted.

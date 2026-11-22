@@ -61,7 +61,6 @@ pub fn access(command: &Command) -> Access {
         Command::ThreadTags(..) => Access::Read,
         #[cfg(feature = "next-tags")]
         Command::ThreadTag(..) => Access::Mutation,
-        #[cfg(feature = "next-attachment-page")]
         Command::AttachmentList(args)
             if args.thread_id.as_ref().is_some_and(|id| !id.is_empty())
                 && (1..=200).contains(&args.limit) => Access::Read,

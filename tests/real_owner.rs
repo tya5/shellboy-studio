@@ -234,6 +234,18 @@ async fn hints_and_restart_against_a_real_owner() {
         "{listed}"
     );
 
+    // The same pinned owner must return a page, even for a Thread with no attachments.
+    ws.send(Message::Text(
+        json!({"t":"call","id":30,"command":"attachment.list","args":{"thread_id":thread_id,"limit":1}})
+            .to_string().into(),
+    ))
+    .await
+    .unwrap();
+    let attachments = next_t(&mut ws, "result").await;
+    assert_eq!(attachments["response"]["ok"], true, "{attachments}");
+    assert_eq!(attachments["response"]["result"]["items"], json!([]));
+    assert!(attachments["response"]["result"]["next_cursor"].is_null());
+
     // The Analytics and Settings reads pass the allowlist and the owner decodes them: strict
     // decoding on both sides, so a wrong argument name here would fail.
     let reads = [

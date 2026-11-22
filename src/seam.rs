@@ -25,9 +25,7 @@ pub fn owner_capabilities() -> Vec<String> {
     if cfg!(feature = "next-connection-setup") {
         capabilities.push("connection.setup".to_owned());
     }
-    if cfg!(feature = "next-attachment-page") {
-        capabilities.push("attachment.list.page".to_owned());
-    }
+    capabilities.push("attachment.list.page".to_owned());
     capabilities
 }
 
