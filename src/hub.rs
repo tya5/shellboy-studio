@@ -27,6 +27,7 @@ pub struct Pending {
     pub resync: bool,
     pub threads: BTreeSet<String>,
     pub list: bool,
+    pub config_changed: bool,
     pub attempt_ends: Vec<shellboy::protocol::EventAttemptEnd>,
 }
 
@@ -210,6 +211,7 @@ impl Hub {
         ends: Vec<shellboy::protocol::EventAttemptEnd>,
         reset: bool,
         resync: bool,
+        config_changed: bool,
     ) {
         const MAX_PENDING_ENDS: usize = 256;
         let mut inner = self.lock();
@@ -223,6 +225,10 @@ impl Hub {
         }
         for session in inner.sessions.values_mut() {
             let mut touched = false;
+            if config_changed && !session.pending.config_changed {
+                session.pending.config_changed = true;
+                touched = true;
+            }
             if let Some((_, event)) = &owner {
                 session.pending.owner = Some(*event);
                 touched = true;
@@ -269,7 +275,7 @@ impl Hub {
 
     /// Slot-only input for scripted bridge fixtures.
     pub fn live_apply(&self, entries: Vec<live::Entry>, reset: bool) {
-        self.apply_events(None, [], Some(entries), Vec::new(), reset, false);
+        self.apply_events(None, [], Some(entries), Vec::new(), reset, false, false);
     }
 
     /// The owner is gone: nothing it held can be trusted. Tabs discard on the `owner` frame.
@@ -391,7 +397,7 @@ mod tests {
         hub.hint(["t1"]);
         hub.set_owner(connected(Some("i".into())), OwnerEvent::Connected);
         hub.set_owner(OwnerState::Unreachable, OwnerEvent::Unreachable);
-        hub.apply_events(None, [], None, Vec::new(), false, true);
+        hub.apply_events(None, [], None, Vec::new(), false, true, false);
         let (p, owner) = hub.take(&a);
         assert!(p.resync && p.threads.is_empty() && !p.list);
         assert_eq!(p.owner, Some(OwnerEvent::Unreachable));
@@ -435,12 +441,14 @@ mod tests {
                 .collect(),
             false,
             false,
+            false,
         );
         hub.apply_events(
             None,
             [],
             Some(vec![entry("successor")]),
             vec![end("ended".into(), 256)],
+            false,
             false,
             false,
         );

@@ -23,7 +23,7 @@ describe("the long-thread reader in the model", () => {
     await settle(t, db);
     expect(model.longReader.value).toBeUndefined();
     const sent = t.sent.length;
-    t.push({ t: "changed", thread_ids: ["lead"], list: false });
+    t.push({ t: "changed", config_changed: false, thread_ids: ["lead"], list: false });
     await flush();
     expect(t.sent.slice(sent).filter((f) => f.t === "call" && f.command === "history.window")).toHaveLength(0);
   });

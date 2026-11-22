@@ -178,7 +178,7 @@ describe("AppModel over the fake transport", () => {
     const saved = { node_id: "saved-a1", kind: "assistant_response" as const, selection: { ordinal: history.length - 1 }, items: [{ kind: "text" as const, item_identity: "answer", text: "saved matching", text_complete: true }], provenance: { sender: { kind: "assistant" as const }, attempt_id: matching } };
     db.history.lead = [...history.slice(0, -1), saved];
     db.historyRevisions.lead = 2;
-    t.push({ t: "changed", thread_ids: ["lead"], list: false });
+    t.push({ t: "changed", config_changed: false, thread_ids: ["lead"], list: false });
     await settle(t, db);
     expect(handle!.handoff.value.some(record => record.attemptId === matching)).toBe(false);
     expect(handle!.handoff.value.find(record => record.attemptId === other)).toBe(otherIdentity);
@@ -186,7 +186,7 @@ describe("AppModel over the fake transport", () => {
     expect(healthyRef.displayPlan?.entries.filter(entry => entry.item.source.nodeId === "saved-a1")).toHaveLength(1);
 
     db.historyRevisions.lead = 3;
-    t.push({ t: "changed", thread_ids: ["lead"], list: false });
+    t.push({ t: "changed", config_changed: false, thread_ids: ["lead"], list: false });
     await flush();
     const held = t.calls("history.window").find(call => !db.answered.has(call.id));
     expect(held).toBeDefined();
@@ -233,7 +233,7 @@ describe("AppModel over the fake transport", () => {
     const savedAgain = { node_id: "saved-a3", kind: "assistant_response" as const, selection: { ordinal: replacementHistory.length }, items: [{ kind: "text" as const, item_identity: "answer", text: "saved new matching", text_complete: true }], provenance: { sender: { kind: "assistant" as const }, attempt_id: newMatching } };
     db.history.lead = [...replacementHistory, savedAgain];
     db.historyRevisions.lead = 4;
-    t.push({ t: "changed", thread_ids: ["lead"], list: false });
+    t.push({ t: "changed", config_changed: false, thread_ids: ["lead"], list: false });
     await drainRequiredReplies();
     const retirementReader = model.longReader.peek()!;
     const retirementRef = retirementReader.acceptedView.peek();
@@ -368,7 +368,7 @@ describe("AppModel over the fake transport", () => {
     db.threads.lead = { ...db.threads.lead!, activity: "recovery", updated_at: "2099-01-01T00:00:00Z" };
     db.threads = Object.fromEntries(Object.entries(db.threads).reverse());
     db.threads["aaa-new"] = { ...db.threads.lead!, thread_id: "aaa-new", title: "New" };
-    t.push({ t: "changed", thread_ids: [], list: true });
+    t.push({ t: "changed", config_changed: false, thread_ids: [], list: true });
     await settle(t, db);
     expect(ids().slice(0, before.length)).toEqual(before);
     expect(ids().at(-1)).toBe("aaa-new");
@@ -392,7 +392,7 @@ describe("AppModel over the fake transport", () => {
     };
     expect(step()).toMatchObject({ status: "completed", exitCode: 0, durationMs: 2400 });
     db.shells.lead = [{ execution_id: "exec-1", state: "exited", exit_code: 3 }];
-    t.push({ t: "changed", thread_ids: ["lead"], list: false });
+    t.push({ t: "changed", config_changed: false, thread_ids: ["lead"], list: false });
     await settle(t, db);
     expect(step()).toMatchObject({ status: "failed", exitCode: 3 });
   });
@@ -400,7 +400,7 @@ describe("AppModel over the fake transport", () => {
   it("an open step re-reads output while its shell runs and once as it ends, then stops", async () => {
     const { model, t, db } = await fixtureModel();
     const hint = async () => {
-      t.push({ t: "changed", thread_ids: ["lead"], list: false });
+      t.push({ t: "changed", config_changed: false, thread_ids: ["lead"], list: false });
       await settle(t, db);
     };
     db.shells.lead = [{ execution_id: "exec-1", state: "running" }];
@@ -549,7 +549,7 @@ describe("AppModel over the fake transport", () => {
     await flush();
     expect(t.watches().at(-1)!.thread_ids).toEqual([]);
     const away = reads();
-    t.push({ t: "changed", thread_ids: ["lead"], list: false });
+    t.push({ t: "changed", config_changed: false, thread_ids: ["lead"], list: false });
     await settle(t, db);
     expect(reads()).toBe(away);
     expect(model.longReader.value).toBeUndefined(); // History is not read or retained off the Conversation route.
@@ -603,7 +603,7 @@ describe("per-thread reply duties", () => {
     db.answered.add(call.id); t.ok(call.id, {}); await answer;
     expect(model.panelOperations.peek().get("h")?.disposition).toBe("pending");
     Object.assign(db.details.lead!, { awaiting_replies: [] });
-    t.push({ t: "changed", thread_ids: ["lead"], list: false }); await settle(t, db);
+    t.push({ t: "changed", config_changed: false, thread_ids: ["lead"], list: false }); await settle(t, db);
     expect(model.threadReplies.value).toEqual([]);
     expect(model.panelOperations.peek().has("h")).toBe(false);
     expect(model.pending.items.value).toEqual([]);

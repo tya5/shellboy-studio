@@ -166,6 +166,7 @@ pub async fn run_with_guide<O: Owner>(
             result.attempt_ends.unwrap_or_default(),
             reset,
             restarted || reconnected || matches!(result.status, EventsWaitStatus::ResyncRequired),
+            result.config_changed,
         );
     }
 }

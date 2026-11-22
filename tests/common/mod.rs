@@ -28,6 +28,17 @@ pub fn ok(instance: &str, result: Value) -> Reply {
 }
 
 pub fn events(instance: &str, status: &str, cursor: &str, changes: &[&str], more: bool) -> Reply {
+    events_with_config(instance, status, cursor, changes, more, false)
+}
+
+pub fn events_with_config(
+    instance: &str,
+    status: &str,
+    cursor: &str,
+    changes: &[&str],
+    more: bool,
+    config_changed: bool,
+) -> Reply {
     let changes: Vec<Value> = changes
         .iter()
         .enumerate()
@@ -35,7 +46,7 @@ pub fn events(instance: &str, status: &str, cursor: &str, changes: &[&str], more
         .collect();
     ok(
         instance,
-        json!({"status": status, "cursor": cursor, "changes": changes, "more": more, "config_changed": false}),
+        json!({"status": status, "cursor": cursor, "changes": changes, "more": more, "config_changed": config_changed}),
     )
 }
 

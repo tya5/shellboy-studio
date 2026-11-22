@@ -168,6 +168,7 @@ export class ShellboyData {
   private entries = new Map<string, ThreadEntry>();
   private watchQueued = false;
   readonly listHint = signal(0);
+  readonly configChanged = signal(0);
   private hintWatchers = new Map<string, Set<() => void>>();
   private readonly schedule: Schedule;
   private readonly refresher: Refresher;
@@ -466,6 +467,7 @@ export class ShellboyData {
         break;
       case "changed":
         // Hints are not data: re-read the saved facts. Untracked Threads are ignored.
+        if (f.config_changed) this.configChanged.value++;
         if (f.list && this.listRefs > 0) { this.listHint.value++; void this.refresher.request("list"); }
         for (const id of f.thread_ids) {
           for (const notify of this.hintWatchers.get(id) ?? []) notify();

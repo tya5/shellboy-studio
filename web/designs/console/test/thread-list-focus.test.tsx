@@ -61,7 +61,7 @@ async function openDelete(rig: Rig, link: HTMLAnchorElement): Promise<HTMLDialog
 async function resolveListWithout(rig: Rig, threadId: string): Promise<void> {
   await act(async () => {
     delete rig.db.threads[threadId];
-    rig.t.push({ t: "changed", thread_ids: [threadId], list: true });
+    rig.t.push({ t: "changed", config_changed: false, thread_ids: [threadId], list: true });
     await settle(rig.t, rig.db);
   });
 }
