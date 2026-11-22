@@ -43,7 +43,7 @@ next-cwds = ["next-tags"]
 
 [dependencies]
 # Published owner pin; exact-pair acceptance verifies the manifest revision and lock commit.
-shellboy = { git = "https://github.com/tya5/shellboy", rev = "1c3a4adc68876052a478226292ea7efd7e0c5b38" }
+shellboy = { git = "https://github.com/tya5/shellboy", rev = "f50d1088503d439bd426dc7d6f27a790ca323cb9" }
 tokio = { version = "=1.54.1", features = ["rt-multi-thread", "macros", "sync", "time", "net", "signal", "process", "fs", "io-util"] }
 tokio-util = { version = "=0.7.20", features = ["rt"] }
 axum = { version = "=0.8.9", default-features = false, features = ["http1", "tokio", "ws", "json"] }
