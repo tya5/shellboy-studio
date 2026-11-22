@@ -49,6 +49,22 @@ const flushPromises = async () => {
 const text = (el: Element) => el.textContent ?? "";
 
 describe("Desktop navigation", () => {
+  it("renders only the normal shell footer or the standalone Settings footer", async () => {
+    const { model, t, data } = await fixtureModel({ route: "monitor" });
+    try {
+      t.push({ t: "hello", bridge_version: "0.0.1", desktop: true, data_dir: "/temp/owner-a",
+        owner: { state: "connected", info: { protocol_version: 10, instance_id: "i1", capabilities: ["history.window"] } } });
+      const el = draw(model);
+      const footers = () => el.querySelectorAll("footer.status");
+      expect(footers()).toHaveLength(1);
+      expect(footers()[0]?.querySelector("button")?.textContent).toBe(model.t.value("launcher.exit"));
+      act(() => model.applyRoute({ view: "settings", section: "general" }));
+      expect(footers()).toHaveLength(1);
+      expect(footers()[0]?.textContent).toContain("/temp/owner-a");
+      expect(footers()[0]?.querySelector("button")).toBeNull();
+    } finally { model.dispose(); data.stop(); }
+  });
+
   it("toggles the rail and keeps named, titled destinations", async () => {
     const { model } = await fixtureModel();
     const el = draw(model);

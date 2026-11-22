@@ -309,7 +309,6 @@ export function App({ context }: { context: DesignContext }) {
               {desktop ? <Button onClick={() => model.data.link.launcherAction("exit")}>{t("launcher.exit")}</Button> : null}
             </div>
           </footer>
-          {statusFooter}
           <nav class="tabbar" aria-label={t("nav.views")}>
             {inboxNav}
             {conversationNav}
