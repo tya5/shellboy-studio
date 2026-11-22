@@ -5,7 +5,7 @@ const port=19429, debugPort=19430, profile=await mkdtemp('/tmp/studio29-browser-
 const vite=spawn(process.execPath,['node_modules/vite/bin/vite.js','--host','127.0.0.1','--port',String(port),'--strictPort'],{stdio:'ignore'});
 const chrome=spawn('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',['--headless','--disable-gpu','--disable-extensions','--no-first-run',`--user-data-dir=${profile}`,`--remote-debugging-port=${debugPort}`,'--remote-allow-origins=*','about:blank'],{stdio:'ignore'});
 const delay=ms=>new Promise(r=>setTimeout(r,ms));
-async function until(fn){for(let i=0;i<120;i++){try{const v=await fn();if(v)return v;}catch{}await delay(100)}throw Error('timed out waiting for browser fixture');}
+async function until(fn){let last;for(let i=0;i<120;i++){try{const v=await fn();if(v)return v;last=v;}catch(error){last=String(error)}await delay(100)}throw Error('timed out waiting for browser fixture: '+JSON.stringify(last));}
 let ws;
 try{
  const target=await until(async()=>(await(await fetch(`http://127.0.0.1:${debugPort}/json`)).json()).find(x=>x.type==='page'));
@@ -18,7 +18,7 @@ try{
  await until(async()=>{const response=await fetch(fixtureUrl);return response.ok});
  for(const deferred of [false,true]){
   await call('Page.navigate',{url:fixtureUrl});
-  await until(async()=>{const ready=await evaluate("!!document.querySelector('#composer') && !!document.querySelector('.convo')");if(ready)return true;const state=await evaluate("({url:location.href,body:document.body.innerText.slice(0,500)})");if(state.url!==fixtureUrl)throw Error('Fixture navigation failed: '+JSON.stringify(state));return false;});
+  await until(async()=>{const ready=await evaluate("!!document.querySelector('#composer') && !!document.querySelector('.convo')");if(ready)return true;const state=await evaluate("({url:location.href,body:document.body.innerText.slice(0,500)})");if(state.url!==fixtureUrl)throw Error('Fixture navigation failed: '+JSON.stringify(state));return state;});
   await evaluate(`(()=>{const e=document.querySelector('#composer');e.value='Browser own-send witness';e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}))})()`);
   await until(()=>evaluate("!!document.querySelector('[data-pending-own-message]')"));
   const before=await evaluate("({pending:document.querySelectorAll('[data-pending-own-message]').length,phase:document.querySelector('[data-pending-phase]')?.getAttribute('data-pending-phase')})");
