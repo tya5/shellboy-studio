@@ -50,6 +50,50 @@ try{
    console.log(JSON.stringify({width,theme,state,reduced,distinctFrames:frames.size,footerHeight:frame.bar}));
   }
  }
+ for (const width of [390,768,1280]) {
+  await call('Emulation.setDeviceMetricsOverride',{width,height:900,deviceScaleFactor:2,mobile:false});
+  const url=`${base}?view=footer-lifecycle&width=${width}`;
+  await call('Page.navigate',{url});
+  await until(()=>evaluate(`location.href===${JSON.stringify(url)} && typeof window.publishFooterState==='function' && !!document.querySelector('.conversation-status')`));
+  await evaluate(`(() => {
+   const footer=document.querySelector('.conversation-status');
+   const life=window.footerLifecycle={footer,removed:false,height:footer.getBoundingClientRect().height};
+   life.observer=new MutationObserver(records=>{
+    if(records.some(record=>[...record.removedNodes].some(node=>node===footer||node.contains(footer))))life.removed=true;
+   });
+   life.observer.observe(document.getElementById('app'),{subtree:true,childList:true});
+  })()`);
+  const snapshot=()=>evaluate(`(() => {
+   const life=window.footerLifecycle, nodes=document.querySelectorAll('.conversation-status');
+   const footer=nodes[0], style=getComputedStyle(footer);
+   return {same:footer===life.footer,connected:footer.isConnected,removed:life.removed,count:nodes.length,
+    height:footer.getBoundingClientRect().height,baseline:life.height,nowrap:style.whiteSpace,flexWrap:style.flexWrap,
+    text:footer.textContent.trim(),art:!!footer.querySelector('.character-status')};
+  })()`);
+  const verified=[];
+  const check=async(stage, expectedText)=>{
+   const fact=await snapshot();
+   assert(fact.same&&fact.connected&&!fact.removed,`${width}/${stage}: footer was replaced or detached`);
+   assert.equal(fact.count,1);assert.equal(fact.height,40);assert.equal(fact.height,fact.baseline);
+   assert.equal(fact.nowrap,'nowrap');assert.equal(fact.flexWrap,'nowrap');
+   if(expectedText==='') {assert.equal(fact.text,'');assert.equal(fact.art,false);}
+   else {assert(fact.text.includes(expectedText),`${width}/${stage}: ${fact.text}`);assert(fact.art);}
+   verified.push(stage);
+  };
+  for (const [state,text] of [['not_started',''],['running','Running tools'],['completed','Completed'],['not_started','']]) {
+   assert.equal(await evaluate(`publishFooterState('${state}')`),state);
+   await check(state,text);
+  }
+  await evaluate('loadUnknownFooterThread()');
+  await until(()=>evaluate(`!!document.querySelector('.convo [aria-label="Loading conversation"]')`));
+  await check('loading','');
+  await evaluate('disconnectFooter()');
+  await until(()=>evaluate(`document.querySelector('.status')?.textContent.includes('Connecting')`));
+  await check('disconnect','');
+  await evaluate('window.footerLifecycle.observer.disconnect()');
+  console.log(JSON.stringify({width,sameFooter:true,footerHeight:40,lifecycle:verified}));
+ }
+
 }finally{
  ws?.close();for(const p of [chrome,vite])if(p.exitCode===null){const done=new Promise(resolve=>p.once('exit',resolve));p.kill('SIGTERM');await done.catch(()=>{})}await rm(profile,{recursive:true,force:true});
 }

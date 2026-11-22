@@ -39,5 +39,5 @@ it('uses the existing conversation gutter tokens without changing footer height'
  const css=readFileSync('designs/console/system/layout.css','utf8');
  expect(css).toContain('.convo > .conversation-status{padding-inline:var(--space-24)}');
  expect(css).toContain('@media(max-width:768px){.convo > .conversation-status{padding-inline:var(--space-12)}}');
- expect(css).toContain('height:calc(24px + 2 * var(--space-8))');
+ expect(css).toContain('height:calc(var(--size-conversation-character) + 2 * var(--space-8))');
 });

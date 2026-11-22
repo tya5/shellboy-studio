@@ -1,4 +1,4 @@
-.character-status{width:24px;height:24px;flex:none}
+.character-status{width:var(--size-conversation-character);height:var(--size-conversation-character);flex:none}
 @media (prefers-reduced-motion:no-preference){
   .character-status[data-running] circle{transform-box:view-box;animation:character-hop 1.2s ease-in-out infinite}
   .character-status[data-running] circle:nth-of-type(2){animation-delay:.15s}

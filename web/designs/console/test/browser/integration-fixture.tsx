@@ -8,8 +8,9 @@ import { DESIGNS } from '../../../registry';
 const params = new URLSearchParams(location.search);
 const fixtureLang = params.get('lang') === 'ja' ? 'ja' as const : 'en' as const;
 const ownSendFixture = params.get('view') === 'own-send';
+const footerFixture = params.get('view') === 'footer-lifecycle';
 const panelTabsFixture = params.get('view') === 'panel-tabs';
-const fixtureOptions = ownSendFixture ? { route: 'conversation' as const, threadId: 'lead', capabilities: ['history.window'] } : panelTabsFixture ? { route: 'conversation' as const, threadId: 'lead', lang: fixtureLang } : params.get('view') === 'memory' ? { route: 'analytics' as const, section: 'memory' as const, lang: fixtureLang } : params.get('view') === 'sidebar' ? { lang: fixtureLang, capabilities: ['thread.tags', 'thread.cwds', 'history.window'] } : {};
+const fixtureOptions = footerFixture ? { route: 'conversation' as const, threadId: 'lead' } : ownSendFixture ? { route: 'conversation' as const, threadId: 'lead', capabilities: ['history.window'] } : panelTabsFixture ? { route: 'conversation' as const, threadId: 'lead', lang: fixtureLang } : params.get('view') === 'memory' ? { route: 'analytics' as const, section: 'memory' as const, lang: fixtureLang } : params.get('view') === 'sidebar' ? { lang: fixtureLang, capabilities: ['thread.tags', 'thread.cwds', 'history.window'] } : {};
 if (params.get('view') === 'memory') document.documentElement.dataset.memoryFixture = fixtureLang;
 const { model, t, db } = await fixtureModel({ ...fixtureOptions, configure(db) {
   if (ownSendFixture) { db.history.lead = []; return; }
@@ -52,10 +53,12 @@ if (params.get('state') === 'empty') {
   await settle(t, db);
 }
 const send = t.send.bind(t);
+let footerHistoryHeld = false;
 let pendingOperationId: string | undefined;
 t.send = (frame) => {
   const ok = send(frame);
   if (ownSendFixture && frame.t === 'call' && frame.command === 'message.send') pendingOperationId = frame.operation_id;
+  else if (footerHistoryHeld && frame.t === 'call' && frame.command === 'history.window') db.answered.add(frame.id);
   else if (frame.t === 'call') queueMicrotask(() => void settle(t, db));
   return ok;
 };
@@ -88,4 +91,21 @@ if (panelTabsFixture) Object.assign(window, {
     ];
     t.push({ t: 'changed', thread_ids: ['lead'], list: false });
   },
+});
+
+if (footerFixture) Object.assign(window, {
+  async publishFooterState(state: 'not_started' | 'running' | 'completed') {
+    const activity = state === 'running' ? 'tools' : state;
+    db.threads.lead = summary('lead', { state, activity });
+    db.details.lead = details('lead', { state, activity });
+    t.push({ t: 'changed', thread_ids: ['lead'], list: true });
+    await settle(t, db);
+    return model.selectedRow.peek()?.summary.state;
+  },
+  loadUnknownFooterThread() {
+    footerHistoryHeld = true;
+    db.details['loading-fixture'] = details('loading-fixture');
+    model.applyRoute({ view: 'conversation', threadId: 'loading-fixture' });
+  },
+  disconnectFooter() { t.drop(); },
 });
