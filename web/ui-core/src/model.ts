@@ -12,7 +12,7 @@ import { recentAppFolders } from "./app-templates";
 // retry and archive flows. Saved facts stay in the data layer; nothing here is optimistic.
 import { batch, computed, effect, signal, untracked, type ReadonlySignal, type Signal } from "@preact/signals-core";
 import { Cancel, type Handle, type Operations, type OpError, type ShellboyData, type ShellEntry, type ThreadDetails, type ThreadHandle } from "../../data/src";
-import { CAPABILITY_HISTORY_WINDOW, decodeThreadReplies, type ThreadReplyProjection, noReplyWait, type ReplyWait, type ReplyWaitAdapter } from "../../data/src";
+import { CAPABILITY_HISTORY_WINDOW, decodeThreadReplies, adapterThreadReplies, type ThreadReplyProjection, noReplyWait, type ReplyWait, type ReplyWaitAdapter } from "../../data/src";
 import { MissingPins, MonitorSelection, type MonitorArchive } from "./monitor-selection";
 import { workRegions, type WorkRegions } from "./work";
 import { ConversationWindow, type WindowAcceptedSnapshot } from "./window";
@@ -456,12 +456,13 @@ export class AppModel {
       return r.threadId ?? this.lastThread.value ?? this.rows.value[0]?.summary.thread_id;
     });
     this.threadReplyProjection = computed(() => {
-      const detail = this.handle.value?.detail.value.value;
+      const handle = this.handle.value;
+      if (!handle) return undefined;
+      if (this.replyWait.supported(this.data.capabilities.value)) return adapterThreadReplies(this.replyWait, handle.threadId);
+      const detail = handle.detail.value.value;
       return detail ? decodeThreadReplies(detail.thread_id, detail.awaiting_replies) : undefined;
     });
-    this.threadReplies = computed(() => this.replyWait.supported(this.data.capabilities.value)
-      ? this.replyWait.items.value.filter(item => item.threadId === this.selectedId.value).slice(0, 128)
-      : this.threadReplyProjection.value?.items ?? []);
+    this.threadReplies = computed(() => this.threadReplyProjection.value?.items.slice(0, 128) ?? []);
     this.details = computed(() => this.handle.value?.detail.value.value);
     this.work = computed(() => {
       const resource = this.handle.value?.work.value;
@@ -1221,8 +1222,7 @@ export class AppModel {
     const adapter = this.replyWait.supported(this.data.capabilities.value);
     return {
       pending: work?.value && !work.loading && !work.stale && !work.error ? work.value : undefined,
-      reply: adapter ? { items: this.replyWait.items.value.filter(row => row.threadId === handle?.threadId), complete: false }
-        : detail && !detail.loading && !detail.stale && !detail.error ? this.threadReplyProjection.value : undefined,
+      reply: adapter || (detail && !detail.loading && !detail.stale && !detail.error) ? this.threadReplyProjection.value : undefined,
     };
   }
 
@@ -1253,9 +1253,11 @@ export class AppModel {
     }
     const source = action.kind === "answer" ? "reply" : action.target;
     const facts = this.panelOperationFacts();
+    const reply = source === "reply" ? facts.reply?.items.find(row => row.id === id) : undefined;
+    if (action.kind === "answer" && reply?.recipient.kind !== "human") return;
     const state = source === "pending"
       ? facts.pending?.items.find(row => row.kind === "message" && row.message_id === id)?.state
-      : facts.reply?.items.find(row => row.id === id)?.state;
+      : reply?.state;
     if (state === undefined) return;
     const pending: PanelOperation = { kind: action.kind, disposition: "pending", source, state };
     next.set(id, pending);
@@ -1266,18 +1268,12 @@ export class AppModel {
     this.panelOperations.value = new Map(this.panelOperations.peek()).set(id, { kind: action.kind, ...result });
   }
 
-  async answerReply(id: string, text: string): Promise<string | undefined> {
-    return (await this.submitReply(id, text))?.error;
-  }
-
   private panelFailure(error: OpError, cancel = false): PanelFailure {
     return error.kind === "unconfirmed" ? { disposition: "unconfirmed", error: cancel ? this.t.peek()("work.cancelUnconfirmed", { id: error.operationId }) : errorMessage(error) }
       : { disposition: "failed", error: errorMessage(error) };
   }
 
   private async submitReply(id: string, text: string): Promise<PanelFailure | undefined> {
-    const item = this.threadReplies.peek().find((row) => row.id === id);
-    if (!item || item.recipient.kind !== "human") return { disposition: "failed", error: "not available" };
     const out = this.replyWait.supported(this.data.capabilities.peek()) ? await this.replyWait.answer(id, text) : await this.ops.messageReply(id, text);
     return out.ok ? undefined : this.panelFailure(out.error);
   }

@@ -26,6 +26,10 @@ export const noReplyWait: ReplyWaitAdapter = {
 const MAX_PENDING_REPLY_DUTIES = 16;
 export interface ThreadReplyProjection { readonly items: readonly ReplyWait[]; readonly complete: boolean; }
 
+export function adapterThreadReplies(adapter: ReplyWaitAdapter, threadId: string): ThreadReplyProjection {
+  return { items: adapter.items.value.filter(item => item.threadId === threadId), complete: false };
+}
+
 /** Decode only protocol 5's unified bounded projection; never merge removed legacy lists. */
 export function decodeThreadReplies(threadId: string, raw: unknown): ThreadReplyProjection | undefined {
   if (!Array.isArray(raw) || raw.length > MAX_PENDING_REPLY_DUTIES + 1) return undefined;

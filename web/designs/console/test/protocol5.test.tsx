@@ -33,8 +33,9 @@ it('protocol 5 unifies human/thread duties while preserving shells and organizat
     expect(r.model.threadReplies.value.filter(x=>x.recipient.kind==='human')).toHaveLength(1);
     expect(r.model.handle.value!.detail.value.value!.shells_count).toBe(1);
     expect(r.model.handle.value!.detail.value.value!.parent_id).toBe('organization');
-    expect(await r.model.answerReply('peer','not a human answer')).toBe('not available');
-    const answer = r.model.answerReply('human','confirmed');
+    await r.model.runPanelOperation('peer',{kind:'answer',text:'not a human answer'});
+    expect(r.t.calls('message.reply')).toHaveLength(0);
+    const answer = r.model.runPanelOperation('human',{kind:'answer',text:'confirmed'});
     await act(async () => { await settle(r.t,r.db); await answer; });
     expect(r.t.calls('message.reply').at(-1)!.args).toEqual({message_id:'human',text:'confirmed'});
     Object.assign(r.db.details.lead!,{awaiting_replies:[]});
@@ -45,7 +46,7 @@ it('protocol 5 unifies human/thread duties while preserving shells and organizat
   } finally { render(null,host);host.remove();r.model.dispose();r.data.stop(); }
 });
 
-it('does not infer recipient from sender, accept unknown recipients, or exceed 128 duties',()=>{
+it('does not infer recipient from sender, accept unknown recipients, or exceed the pinned reply bound',()=>{
   const item={message_id:'x',excerpt:'q',delivery_status:'pending',recipient_kind:'thread',recipient_thread_id:'other'};
   expect(decodeThreadReplies('t',[item])!.items[0]!.recipient).toEqual({kind:'thread',threadId:'other',title:'other'});
   expect(decodeThreadReplies('t',[{...item,recipient_kind:'unknown'}])).toEqual({items:[],complete:false});

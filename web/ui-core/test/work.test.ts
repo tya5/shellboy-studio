@@ -63,13 +63,14 @@ describe("bounded conversation work", () => {
   });
   it("keeps replies capability-gated and only answers human recipients", async () => {
     const answers: string[] = [];
-    const adapter: ReplyWaitAdapter = {
-      supported: (caps) => caps.includes("test.reply"),
-      items: signal([
+    const items = signal<ReplyWaitAdapter["items"]["value"]>([
         { id: "h", threadId: "lead", question: "Human?", recipient: { kind: "human" }, state: "waiting" },
         { id: "c", threadId: "lead", question: "Child?", recipient: { kind: "thread", threadId: "child", title: "Child" }, state: "waiting" },
         { id: "x", threadId: "other", question: "Other?", recipient: { kind: "human" }, state: "waiting" },
-      ]),
+      ]);
+    const adapter: ReplyWaitAdapter = {
+      supported: (caps) => caps.includes("test.reply"),
+      items,
       answer: async (id) => { answers.push(id); return { ok: true, value: {} }; },
     };
     const old = await fixtureModel({ replyWait: adapter });
@@ -77,9 +78,14 @@ describe("bounded conversation work", () => {
     old.model.dispose();
     const current = await fixtureModel({ replyWait: adapter, capabilities: ["test.reply"] });
     expect(current.model.threadReplies.value.map((item) => item.id)).toEqual(["h", "c"]);
-    expect(await current.model.answerReply("c", "no")).toBe("not available");
-    expect(await current.model.answerReply("h", "yes")).toBeUndefined();
+    await current.model.runPanelOperation("c", { kind: "answer", text: "no" });
+    await current.model.runPanelOperation("h", { kind: "answer", text: "yes" });
     expect(answers).toEqual(["h"]);
+    const rows = items.peek();
+    items.value = rows.filter(row => row.id !== "h");
+    expect(current.model.panelOperations.peek().get("h")?.disposition).toBe("pending");
+    items.value = rows.map(row => row.id === "h" ? { ...row, state: "answered" } : row);
+    expect(current.model.panelOperations.peek().has("h")).toBe(false);
     current.model.dispose();
   });
 
