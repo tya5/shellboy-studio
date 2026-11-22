@@ -181,7 +181,7 @@ jobs:
       - name: Record archive and binary provenance (no credentials)
         run: |
           python - <<'PYTHON'
-          import hashlib, json, os, subprocess
+          import hashlib, json, os, subprocess, tomllib
           from pathlib import Path
           def git(*args):
               return subprocess.check_output(['git', *args], text=True).strip()
@@ -190,7 +190,8 @@ jobs:
           archive, = Path('dist').iterdir()
           binary = Path('target') / os.environ['RELEASE_TARGET'] / 'release' / os.environ['RELEASE_EXECUTABLE']
           lock = Path('Cargo.lock').read_text()
-          pin = __import__('tomllib').load(open('Cargo.toml'))['dependencies']['shellboy']['rev']
+          with Path('Cargo.toml').open('rb') as manifest:
+              pin = tomllib.load(manifest)['dependencies']['shellboy']['rev']
           assert pin in lock
           proof = dict(source_sha=git('rev-parse', 'HEAD'), tree=git('rev-parse', 'HEAD^{tree}'),
                        version=os.environ['CANDIDATE_VERSION'], target=os.environ['RELEASE_TARGET'],
