@@ -663,7 +663,7 @@ export class ShellboyData {
 }
 
 function listArgs(filter: ListFilter): ThreadListArgs {
-  return { ...filter, limit: PAGE_LIMIT };
+  return { ...filter, order: "created", limit: PAGE_LIMIT };
 }
 
 /**

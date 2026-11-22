@@ -11,8 +11,17 @@ use shellboy_studio::{
 };
 
 #[test]
-fn exact_protocol_nine_and_unified_thread_reply_shape() {
-    assert_eq!(shellboy::protocol::PROTOCOL_VERSION, 9);
+fn thread_list_accepts_created_order_and_cursor() {
+    use shellboy::protocol::{ThreadListArgs, ThreadListOrder};
+    let args: ThreadListArgs =
+        serde_json::from_value(json!({"order":"created","cursor":"next"})).unwrap();
+    assert_eq!(args.order, ThreadListOrder::Created);
+    assert_eq!(args.cursor.as_deref(), Some("next"));
+}
+
+#[test]
+fn exact_protocol_ten_and_unified_thread_reply_shape() {
+    assert_eq!(shellboy::protocol::PROTOCOL_VERSION, 10);
     let value = json!({"thread_id":"t", "title":"synthetic", "cwd":"/", "connection":"c",
     "model":"m", "agents_path":"AGENTS.md", "parent_id":"organization", "shells_count":1, "summarizing":false,
     "awaiting_replies":[
@@ -95,18 +104,18 @@ fn old_run_ownership_and_create_inputs_are_not_wire_aliases() {
 }
 
 #[test]
-fn protocol_eight_fails_closed_without_downgrade() {
+fn protocol_nine_fails_closed_without_downgrade() {
     let command: Command =
         serde_json::from_value(json!({"command":"thread.get","args":{"thread_id":"t"}})).unwrap();
     let mut request = shellboy::protocol::Request::new("synthetic", command);
     assert!(request.validate().is_ok());
-    request.protocol_version = 8;
+    request.protocol_version = 9;
     assert_eq!(
         request.validate().unwrap_err().code,
         ErrorCode::ProtocolMismatch
     );
     let mut response = shellboy::protocol::Response::success("synthetic", json!({}));
-    response.protocol_version = 8;
+    response.protocol_version = 9;
     assert_eq!(
         response.validate().unwrap_err().code,
         ErrorCode::ProtocolMismatch

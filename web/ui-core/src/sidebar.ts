@@ -3,7 +3,7 @@ import { threadTree, type ThreadRow } from "./threads";
 import { folderName } from "./format";
 
 export const SIDEBAR_PIN_TAG = "pin";
-export interface SidebarRow extends ThreadRow { descendants: number; awaiting: number; running: number; reveal: boolean; }
+export interface SidebarRow extends ThreadRow { descendants: number; awaiting: number; running: number; reveal: boolean; ancestors: readonly string[]; }
 export interface SidebarGroup { key: string; directory?: string; rows: SidebarRow[]; }
 
 export function sidebarGroups(items: readonly ThreadSummary[], selected?: string): SidebarGroup[] {
@@ -32,14 +32,18 @@ export function sidebarGroups(items: readonly ThreadSummary[], selected?: string
     ancestors.push(row.summary.thread_id);
   }
   const rowsFor = (group: ThreadSummary[]): SidebarRow[] => {
-    const rows = threadTree(group, pending).map(row => ({ ...row, ...totals.get(row.summary.thread_id)!, reveal: false }));
+    const byId = new Map<string, SidebarRow>();
     const parents: SidebarRow[] = [];
-    for (const row of rows) {
+    for (const row of threadTree(group, pending)) {
       parents.length = row.depth;
       if (row.summary.thread_id === selected) for (const parent of parents) parent.reveal = true;
-      parents.push(row);
+      const id = row.summary.thread_id;
+      const projected = { ...row, ...totals.get(id)!, reveal: false, ancestors: parents.map(parent => parent.summary.thread_id) };
+      byId.set(id, projected);
+      parents.push(projected);
     }
-    return rows;
+    // Tree traversal supplies ancestry, never row order.
+    return group.map(item => byId.get(item.thread_id)!);
   };
   return [...(pins.length ? [{ key: "pins", rows: rowsFor(pins) }] : []),
     ...[...dirs].sort(([a], [b]) => (folderName(a) ?? a).localeCompare(folderName(b) ?? b) || a.localeCompare(b))

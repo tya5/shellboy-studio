@@ -209,14 +209,12 @@ export function App({ context }: { context: DesignContext }) {
                 const label = group.directory === undefined ? t("sidebar.pinned") : folderName(group.directory) ?? group.directory;
                 const open = !closedGroups.includes(group.key);
                 const fold = { open, show: t("sidebar.expand"), hide: t("sidebar.collapse"), showLabel: t("sidebar.expandGroup", { name: label }), hideLabel: t("sidebar.collapseGroup", { name: label }), onToggle: () => setFold("sidebarClosedGroups", group.key, open) };
-                let hiddenBelow: number | undefined;
                 return <ThreadGroup key={group.key} label={label} count={String(group.rows.length)} leading={group.directory === undefined ? "thread.pinned" : "group.directory"} fold={fold}>
                   {open ? group.rows.map(r => {
-                    if (hiddenBelow !== undefined && r.depth > hiddenBelow) return null;
+                    if (r.ancestors.some(id => !openParents.includes(id))) return null;
                     const id = r.summary.thread_id;
                     const expanded = openParents.includes(id);
                     const unread = model.sidebarUnread(r.summary);
-                    hiddenBelow = r.childCount && !expanded ? r.depth : undefined;
                     return <ThreadItem key={id} sidebar unread={unread} linkId={`thread-link-sidebar-${id}`}
                       href={formatRoute({ view: "conversation", threadId: id })} title={r.summary.title}
                       status={r.status} statusLabel={r.status ? statusLabel(t, r.status) : ""}

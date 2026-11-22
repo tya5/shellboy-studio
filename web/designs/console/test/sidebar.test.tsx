@@ -58,6 +58,49 @@ it("keeps status updates in place, persists child folds, and moves pins only aft
   } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
 });
 
+it("keeps the owner's created order on status hints and inserts a new Thread at the head on reread", async () => {
+  const f = await fixtureModel({ route: "conversation", threadId: "lead", configure(db) {
+    const cwd = "/alpha";
+    db.threads = {
+      child: summary("child", { cwd, parent_id: "lead" }),
+      other: summary("other", { cwd }),
+      lead: summary("lead", { cwd }),
+    };
+    for (const id of Object.keys(db.threads)) db.details[id] = details(id, { cwd });
+    const answer = db.answer.bind(db);
+    db.answer = call => call.command === "thread.create"
+      ? { ok: true, result: details("new", { cwd }) }
+      : answer(call);
+  } });
+  const host = document.createElement("div");
+  document.body.append(host);
+  const prefs = signal<ReturnType<typeof loadPrefs>>({ ...loadPrefs({ read: () => null, write() {} }, DESIGNS), sidebarOpenParents: ["lead"] });
+  const order = () => [...host.querySelectorAll(".side-list [data-thread-row] a")].map(el => el.id.replace("thread-link-sidebar-", ""));
+  const hint = async (id: string) => {
+    f.t.push({ t: "changed", thread_ids: [id], list: true });
+    await settle(f.t, f.db);
+  };
+  try {
+    await act(async () => { render(<App context={{ model: f.model, prefs, designs: DESIGNS, setPrefs: change => { prefs.value = { ...prefs.peek(), ...change }; }, submitToken: async () => false }} />, host); await settle(f.t, f.db); });
+    expect(order()).toEqual(["child", "other", "lead"]);
+    Object.assign(f.db.threads.other!, { activity: "tools", updated_at: "2099-01-01T00:00:00Z" });
+    await act(() => hint("other"));
+    expect(order()).toEqual(["child", "other", "lead"]);
+    await act(async () => {
+      const creating = f.model.createThread();
+      await settle(f.t, f.db);
+      await creating;
+    });
+    expect(f.t.calls("thread.create")).toHaveLength(1);
+    expect(order()).toEqual(["child", "other", "lead"]);
+    f.db.threads = { new: summary("new", { cwd: "/alpha" }), ...f.db.threads };
+    f.db.details.new = details("new", { cwd: "/alpha" });
+    await act(() => hint("new"));
+    expect(order()).toEqual(["new", "child", "other", "lead"]);
+    expect(f.t.calls("thread.list").at(-1)?.args).toMatchObject({ order: "created" });
+  } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
+});
+
 it("renders distinct shapes for the five approved status marks", () => {
   const host = document.createElement("div");
   render(<>{(["running", "awaiting", "completed", "failed", "idle"] as const).map(status => <StatusMark key={status} status={status} label={status} />)}</>, host);

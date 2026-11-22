@@ -1,7 +1,8 @@
 # Sidebar Thread list
 
-Keep the owner's list order within sibling sets; state only changes the mark
-and child summary, not the sort. Creation order (including pins) needs Core #338.
+Read the sidebar list and its next page with `order: created`; keep the owner's
+order within each directory and in Pinned. Ancestry determines disclosure, not
+placement. Status changes only the mark and child summary, never the row order.
 Place the `pin` tag group first, then sort directory headings by name. Do not
 sort by client arrival time or keep a second order registry.
 

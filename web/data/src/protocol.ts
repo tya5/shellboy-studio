@@ -171,6 +171,7 @@ export interface ThreadSummary {
   /** Owner activity phase word, e.g. idle, tools, retrying. Not recomputed here. */
   activity: string;
   updated_at: string;
+  created_at?: string | null;
   excerpt: string;
   parent_id?: string;
   archived_at?: string;
@@ -442,6 +443,7 @@ export type ArchivedFilter = "exclude" | "include" | "only";
 export type Deliver = "next" | "now";
 
 export interface ThreadListArgs {
+  order?: "updated" | "created";
   awaiting?: "human";
   limit?: number;
   cursor?: string;

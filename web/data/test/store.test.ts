@@ -199,7 +199,7 @@ describe("paging", () => {
     await settle(t, db);
     data.setListFilter({ query: "x", archived: "only" });
     await settle(t, db);
-    expect(t.calls("thread.list").at(-1)!.args).toEqual({ limit: 50, query: "x", archived: "only" });
+    expect(t.calls("thread.list").at(-1)!.args).toEqual({ limit: 50, order: "created", query: "x", archived: "only" });
   });
 });
 
@@ -408,7 +408,8 @@ describe("the Thread list stays bounded however many Threads exist", () => {
     const answer = db.answer.bind(db);
     db.answer = (c) => {
       if (c.command !== "thread.list") return answer(c);
-      const a = (c.args ?? {}) as { cursor?: string };
+      const a = (c.args ?? {}) as { cursor?: string; order?: string };
+      expect(a.order).toBe("created");
       const start = a.cursor ? Number(a.cursor) : 0;
       const end = start + PAGE_LIMIT;
       return { ok: true, result: { items: all.slice(start, end), ...(end < all.length ? { next_cursor: String(end) } : {}) } };
