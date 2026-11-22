@@ -1,7 +1,15 @@
-Threads gathered by working directory or state. The heading names the group, in `mono` for a path, and its checkbox selects every row in it, showing mixed when only some are chosen. It holds SelectRow rows. Don't put a total here that the owner doesn't report. `fold` makes the group closable: its Show and Hide button carries the group name for assistive technology. Without `onSelect` there is no checkbox, for a group whose rows are not read yet.
+# ThreadGroup
+
+Groups Threads by owner-reported directory or state. The checkbox/bulk variant selects every listed row and shows mixed selection; do not use it for sidebar navigation.
+
+## Sidebar section band
+
+Use the sidebar variant for repeated sections in a list: a full-width, sticky, opaque `raised` band with one-line truncated name, count, and a whole-band accessible disclosure button. Place the trailing chevron in the shared `size-row-action` column (24px), aligned with the trailing row action/menu column. Do not add a separate text link. Mark only groups distinguished by meaning (for example Pinned); omit redundant directory/folder marks. Children remain in normal flow so the next sticky band displaces the previous one.
+
+Reference: iOS plain-table section headers, Material subheaders, Orca `SectionHeader`, shadcn/ui Sidebar, WAI-ARIA disclosure button; approved Studio sidebar mock v8, section 1a B1.
+
+The band is a reusable ThreadGroup variant, not screen-owned styling. Keep its dimensions and behavior here; consumers supply the group fact and toggle callback. Do not use it as a Thread row.
 
 Styles are colocated in `system/components/ThreadGroup/style.css`.
 
 Styles: style.css in this directory
-
-Sidebar headings use this component with an icon, count and left icon-only chevron disclosure button; the working-directory name is one line with ellipsis. The sidebar-only `fold` control moves left and the checkbox/bulk-select variant keeps its text link. See patterns/thread-list.md (Orca and shadcn/ui Sidebar); do not use as a Thread row.

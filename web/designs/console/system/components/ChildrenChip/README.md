@@ -10,3 +10,6 @@ References: Orca sidebar, shadcn/ui Sidebar, WAI-ARIA tree disclosure behavior.
 Styles: style.css in this directory
 
 When no child can be revealed inside the current group, the badge is a static summary with no disclosure button or Left/Right action.
+
+
+Compact chips use the shared sizing tokens: 20px height, 10px status/meaning icons, 11px tabular numbers and symmetric 7px horizontal padding. Use the highest-priority represented state for the surface: waiting-for-you amber first, running blue next, otherwise neutral. References: Orca sidebar child count/urgency treatment; approved Studio sidebar mock v8, section 1a B1.

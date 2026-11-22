@@ -300,28 +300,29 @@ it("bolds a background completion only after the list hint and clears on open or
   } finally { render(null, host); host.remove(); document.head.querySelector("#test-styles")?.remove(); f.model.dispose(); f.data.stop(); }
 });
 
-it("keeps long sidebar folder headings on one line and toggles with the left chevron", async () => {
+it("renders the approved sidebar section band, trailing column, and disclosure behavior", async () => {
   const label = "a-folder-name-that-is-far-too-long-to-fit-in-the-sidebar-without-ellipsis";
   const f = await fixtureModel({ route: "conversation", threadId: "lead", capabilities: ["thread.cwds"], configure(db) {
     db.threads = { lead: summary("lead", { cwd: `/projects/${label}` }), other: summary("other", { cwd: `/projects/${label}` }) };
   } });
   const host = document.createElement("div"); document.body.append(host);
-  const style = document.createElement("style"); style.id = "test-styles"; style.textContent = '.tgroup[data-group-heading="sidebar"] .tgroup-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;overflow-wrap:normal}.tgroup[data-group-heading="sidebar"] .tgroup-fold{min-width:var(--size-touch);min-height:var(--size-touch)}'; document.head.append(style);
   const prefs = signal(loadPrefs({ read: () => null, write() {} }, DESIGNS));
   try {
     await act(async () => { render(<App context={{ model: f.model, prefs, designs: DESIGNS, setPrefs: change => { prefs.value = { ...prefs.peek(), ...change }; }, submitToken: async () => false }} />, host); await settle(f.t, f.db); });
     const group = host.querySelector<HTMLElement>('.tgroup[data-group-heading="sidebar"]')!;
     const name = group.querySelector<HTMLElement>(".tgroup-name")!;
-    const button = group.querySelector<HTMLButtonElement>(".tgroup-fold")!;
-    const css = document.querySelector<HTMLStyleElement>("#test-styles")?.sheet?.cssRules[0]?.cssText ?? "";
-    expect(button.getAttribute("aria-expanded")).toBe("true");
-    expect(button.getAttribute("aria-label")).toBe(`Collapse ${label}`);
-    expect(button.textContent).toBe("");
-    expect(group.querySelector(".btn-link")).toBeNull();
-    expect(button.className).toContain("tgroup-fold");
-    await act(async () => button.click());
-    expect(button.getAttribute("aria-expanded")).toBe("false");
-    expect(button.getAttribute("aria-label")).toBe(`Expand ${label}`);
+    const toggle = group.querySelector<HTMLButtonElement>(".tgroup-toggle")!;
+    expect(toggle.classList.contains("btn")).toBe(true);
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    expect(toggle.getAttribute("aria-label")).toBe(`Collapse ${label}`);
+    expect(toggle.querySelector(".tgroup-chevron .i")?.getAttribute("aria-hidden")).toBe("true");
+    expect(group.querySelector(".tgroup-pin")).toBeNull();
+    expect(name.textContent).toBe(label);
+    expect(group.querySelector(".tgroup-count")?.textContent).toBe("2");
+    expect(group.querySelector(".tgroup-fold,.btn-link")).toBeNull();
+    await act(async () => toggle.click());
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(toggle.getAttribute("aria-label")).toBe(`Expand ${label}`);
     expect(host.querySelectorAll(".side-list [data-thread-row]")).toHaveLength(0);
-  } finally { render(null, host); host.remove(); document.head.querySelector("#test-styles")?.remove(); f.model.dispose(); f.data.stop(); }
+  } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
 });

@@ -21,3 +21,6 @@ Use the child disclosure only on parent rows. The link preserves Left/Right disc
 In the sidebar only, unread completion is shown by a bold title, not a badge or distinct status mark (Orca worktrees and sidebar mock 1d). The row menu offers Mark as read or Mark as unread. Do not signal child unread through the parent chip.
 
 The sidebar supplies the unread presentation from `AppModel`; clicking the link does not mark it read until the conversation route and its detail are available. Read/unread menu actions are unavailable when the list row has no answer ID.
+
+
+List row hover and selected backgrounds span the entire available list width, with square ends; nested title indentation does not narrow the highlight. Keep trailing row actions in the shared 24px `size-row-action` column. References: shadcn/ui SidebarMenuItem/SidebarMenuAction (`showOnHover`), Orca sidebar rows, and approved Studio sidebar mock v8, section 1a B1.

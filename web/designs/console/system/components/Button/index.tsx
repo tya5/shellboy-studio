@@ -8,6 +8,7 @@ export function Button({
   label,
   children,
   buttonRef,
+  class: customClass,
   ...rest
 }: {
   variant?: Variant;
@@ -17,7 +18,7 @@ export function Button({
   children: ComponentChildren;
   buttonRef?: Ref<HTMLButtonElement>;
 } & Omit<JSX.ButtonHTMLAttributes<HTMLButtonElement>, "icon" | "label">) {
-  const cls = ["btn", variant !== "plain" ? `btn-${variant}` : "", icon ? "btn-icon" : ""].filter(Boolean).join(" ");
+  const cls = ["btn", variant !== "plain" ? `btn-${variant}` : "", icon ? "btn-icon" : "", customClass].filter(Boolean).join(" ");
   return (
     <button ref={buttonRef} type="button" class={cls} aria-label={label} {...rest}>
       {children}

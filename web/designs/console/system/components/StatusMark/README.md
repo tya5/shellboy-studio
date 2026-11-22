@@ -2,8 +2,8 @@ Shows a Thread's or step's state with a shape, a colour and usually a word.
 
 Provide the state: `run`, `wait`, `bad` or `ok`. Use the word except in dense trees, where the row itself names the item. Do not add states or use colour alone.
 
-Added for shellboy-studio: the owner reports states the reference doesn't name, and they can't be merged without changing their meaning. They are `hold` (waiting on something other than a person: a ring with a centre point in `muted`), `fail` (ended by failure: a cross in `bad`), `halt` (stopped by request: a square in `muted`) and `idle` (ready for input: a dashed ring in `muted`). Each differs from the others in shape. Map states through `statusOf` in ui-core; don't choose a mark by colour.
+Added for shellboy-studio: the owner reports states the reference doesn't name, and they can't be merged without changing their meaning. They are `hold` (waiting on something other than a person: a ring with a centre point in `muted`), `fail` (ended by failure: a cross in `bad`), `halt` (stopped by request: a square in `muted`) and `idle` (ready for input: an empty circle in `muted`). Every mark uses the same outer diameter and differs by its interior shape (empty, dot, question, check, alert) as well as color; no state is communicated by color alone. Map states through `statusOf` in ui-core; don't choose a mark by colour.
 
 Styles: style.css in this directory
 
-The shared Orca sidebar state vocabulary pairs Lucide-based meaning with color so a dot color is not the only distinction. Do not use it as an unread indicator.
+References: Orca sidebar status vocabulary and Lucide circle/check/help/alert semantics. Keep the outer diameter equal across states; distinguish with interior shape and color. Do not use status marks as unread indicators.

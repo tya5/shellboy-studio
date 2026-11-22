@@ -78,6 +78,10 @@
   --size-shell-toggle-icon: 24px;
   --size-brand-mark: 24px;
   --size-shell-rail: 51px;
+--size-chip-height: 20px;
+  --size-chip-icon: 10px;
+  --size-chip-text: 11px;
+  --space-chip-inline: 7px;
   --shadow-popover: 0px 4px 10px rgba(25, 35, 45, 0.14);
 }
 @media (prefers-color-scheme: light) { :root[data-ds="auto"] {

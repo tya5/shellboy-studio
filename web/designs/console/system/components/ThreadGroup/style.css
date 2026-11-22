@@ -5,8 +5,15 @@
 .tgroup-count{white-space:nowrap}
 .tgroup[data-group-heading="sidebar"] .tgroup-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;overflow-wrap:normal}
 .tgroup-fold{flex:none}
-.tgroup[data-group-heading="sidebar"] .tgroup-fold{width:var(--size-touch);height:var(--size-touch);min-width:var(--size-touch);min-height:var(--size-touch);padding:0}
+.tgroup[data-group-heading="sidebar"]{position:relative}
+.tgroup[data-group-heading="sidebar"]>header{position:sticky;top:0;z-index:2;margin-inline:calc(-1 * var(--space-8));background:var(--raised);border-block:1px solid var(--line);padding:0}
+.tgroup-toggle{display:flex;width:100%;min-width:0;min-height:var(--size-touch);align-items:center;gap:var(--space-8);padding:0 var(--space-8);border:0;border-radius:0;background:var(--raised);color:var(--fg);text-align:left}
+.tgroup[data-group-heading="sidebar"] .tgroup-toggle:hover,.tgroup[data-group-heading="sidebar"] .tgroup-toggle:focus-visible{background:var(--raised)}
+.tgroup[data-group-heading="sidebar"] .tgroup-name{font-weight:600}
+.tgroup[data-group-heading="sidebar"] .tgroup-count{flex:none;color:var(--muted)}
+.tgroup-pin{flex:none;color:var(--muted)}
+.tgroup-chevron{display:grid;place-items:center;flex:none;width:var(--size-row-action);min-width:var(--size-row-action);height:var(--size-touch);margin-left:auto;color:var(--fg)}
 .tcheck-gap{flex:none;width:8px}
 
 .tgroup[data-group-heading="sidebar"]{border:0;background:none}
-.tgroup[data-group-heading="sidebar"]>header{border:0;color:var(--muted);padding:var(--space-4) var(--space-8)}
+.tgroup[data-group-heading="sidebar"]>header{color:var(--muted)}

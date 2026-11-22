@@ -207,3 +207,44 @@ describe("shell footer toggles", () => {
     expect(rail).not.toContain(".panel-tabs-rail .panel-tab-count { background:");
   });
 });
+
+describe("approved list section and status rules", () => {
+describe("approved list section and status rules", () => {
+  it("keeps the reusable section band and trailing action column in ThreadGroup", () => {
+    const css = componentStyleFiles["../system/components/ThreadGroup/style.css"] ?? "";
+    expect(css).toMatch(/\.tgroup\[data-group-heading="sidebar"\]>header\{[^}]*position:sticky;[^}]*background:var\(--raised\)/);
+    expect(css).toMatch(/\.tgroup-chevron\{[^}]*width:var\(--size-row-action\);min-width:var\(--size-row-action\)/);
+    expect(css).toContain("text-overflow:ellipsis;white-space:nowrap");
+    const source = systemSources["../system/components/ThreadGroup/index.tsx"] ?? "";
+    expect(source).toContain('class="tgroup-toggle"');
+    expect(source).toContain('class="tgroup-chevron"');
+  });
+
+  it("keeps full-width rows, urgency chips, and equal-diameter semantic status shapes", () => {
+    const row = componentStyleFiles["../system/components/ThreadItem/style.css"] ?? "";
+    expect(row).toContain("margin-inline:calc(-1 * var(--space-8))");
+    expect(row).toContain("border-radius:0");
+    expect(row).toContain("thread-item-depth-3");
+    const chip = componentStyleFiles["../system/components/ChildrenChip/style.css"] ?? "";
+    expect(chip).toContain("height:var(--size-chip-height)");
+    expect(chip).toContain("width:var(--size-chip-icon);height:var(--size-chip-icon)");
+    expect(chip).toContain("padding-inline:var(--space-chip-inline)");
+    expect(chip).toContain("font-size:var(--size-chip-text);font-variant-numeric:tabular-nums");
+    expect(chip).toContain("[data-urgency=\"awaiting\"]{background:var(--wait-bg);color:var(--wait)}");
+    expect(chip).toContain("[data-urgency=\"running\"]{background:var(--accent-bg);color:var(--accent)}");
+    const tokens = JSON.parse(readFileSync(new URL("../system/tokens.json", import.meta.url), "utf8")) as { layout: { tokens: { name: string; value: string }[] } };
+    expect(Object.fromEntries(tokens.layout.tokens.map(token => [token.name, token.value]))).toMatchObject({
+      "size-chip-height": "20px", "size-chip-icon": "10px", "size-chip-text": "11px", "space-chip-inline": "7px", "size-row-action": "24px",
+    });
+    const icon = systemSources["../system/components/Icon/index.tsx"] ?? "";
+    expect(icon).toContain('"status.idle": "circle"');
+    expect(icon).toContain('circle: <circle cx="12" cy="12" r="10" />');
+    expect(icon).toContain('circleCheck: <><circle cx="12" cy="12" r="10" />');
+    const mark = sharedStyleFiles["../system/shared/status.css"] ?? "";
+    expect(mark).not.toMatch(/\.st\.run \.i\{[^}]*transform:scale/);
+    expect(mark).toContain(".st.idle .i{width:var(--size-icon-small);height:var(--size-icon-small)}");
+    expect(mark).toContain(".st.hold .dot{border:2.5px solid var(--muted);background:radial-gradient(circle,var(--muted)");
+    expect(mark).toContain(".st.halt .dot{background:var(--muted);border-radius:2px");
+    expect(mark).toContain(".st.bad .dot{background:var(--bad);border-radius:3px");
+  });
+});

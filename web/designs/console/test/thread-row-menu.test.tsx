@@ -108,10 +108,10 @@ describe("Thread row menu and delete", () => {
     document.body.append(host);
     try {
       act(() => render(<ThreadItem href="#/conversation/child" linkId="thread-link-sidebar-child"
-        title="A long nested thread title" status="running" statusLabel="Running" depth={2} current pending={3} menu={rowMenu} />, host));
+        title="A long nested thread title" status="running" statusLabel="Running" depth={2} current pending={3} sidebar menu={rowMenu} />, host));
       const row = host.querySelector<HTMLElement>("[data-thread-row]")!;
       const link = row.querySelector<HTMLAnchorElement>("a")!;
-      expect(row.style.marginLeft).toBe("32px");
+      expect(row.classList.contains("thread-item-depth-2")).toBe(true);
       expect(row.querySelectorAll("a")).toHaveLength(1);
       expect(link.id).toBe("thread-link-sidebar-child");
       expect(link.getAttribute("href")).toBe("#/conversation/child");
