@@ -475,9 +475,8 @@ export class AppModel {
     this.org = new ThreadOrg(this.ops, () => this.data.capabilities.peek());
     this.config = new ConfigEditor(this.ops);
     this.disposers.push(effect(() => {
-      this.data.configChanged.value;
-      if (this.route.value.view === "settings" && this.data.capabilities.value.includes(CAPABILITY_CONFIG)) {
-        void this.config.configChanged();
+      if (this.data.configChanged.value > 0 && this.route.peek().view === "settings" && this.data.capabilities.peek().includes(CAPABILITY_CONFIG)) {
+        untracked(() => void this.config.configChanged());
       }
     }));
     this.guideRegistration = new GuideRegistration(this.ops);

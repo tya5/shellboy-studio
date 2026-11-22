@@ -88,12 +88,12 @@ it('#13 real FakeTransport held shell.read keeps successful empty Output cache/D
   const draw=()=>render(<Output model={r.model} id="transport-empty" command="synthetic" complete={false}/>,host);
   draw();const first=r.model.outputs.value.get('transport-empty');const original=host.querySelector('.log');
   expect(original?.textContent).toBe('No output.');
-  r.t.push({t:'changed',thread_ids:['lead'],list:false});await flush();
+  r.t.push({t:'changed', config_changed: false,thread_ids:['lead'],list:false});await flush();
   for(let n=0;n<8;n++){for(const call of r.t.calls().filter(c=>!r.db.answered.has(c.id)&&c.command!=='shell.read')){r.db.answered.add(call.id);const answer=r.db.answer(call);if(answer.ok)r.t.ok(call.id,answer.result);else r.t.ownerError(call.id,answer.code);}await flush();}
   const held=r.t.calls('shell.read').filter(c=>!r.db.answered.has(c.id));expect(held.length).toBeGreaterThan(0);
   draw();expect(r.model.outputs.value.get('transport-empty')).toBe(first);expect(host.querySelector('.log')).toBe(original);expect(host.textContent).not.toContain('Reading output');
   await settle(r.t,r.db);draw();expect(r.model.outputs.value.get('transport-empty')).toBe(first);expect(host.querySelector('.log')).toBe(original);
-  r.db.outputs['transport-empty']='SYNTHETIC_CHANGED_OUTPUT';r.t.push({t:'changed',thread_ids:['lead'],list:false});await settle(r.t,r.db);draw();
+  r.db.outputs['transport-empty']='SYNTHETIC_CHANGED_OUTPUT';r.t.push({t:'changed', config_changed: false,thread_ids:['lead'],list:false});await settle(r.t,r.db);draw();
   expect(host.textContent).toContain('SYNTHETIC_CHANGED_OUTPUT');
  }finally{stop?.();r.model.dispose();r.data.stop();}
 });

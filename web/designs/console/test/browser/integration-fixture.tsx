@@ -49,7 +49,7 @@ const { model, t, db } = await fixtureModel({ ...fixtureOptions, configure(db) {
 } });
 if (params.get('state') === 'empty') {
   db.history.lead = [];
-  t.push({ t: 'changed', thread_ids: ['lead'], list: false });
+  t.push({ t: 'changed', config_changed: false, thread_ids: ['lead'], list: false });
   await settle(t, db);
 }
 const send = t.send.bind(t);
@@ -68,7 +68,7 @@ if (ownSendFixture) (window as unknown as { publishSavedOwnMessage: (deferred: b
     ...(deferred ? { items: null, items_unavailable_reason: 'response_budget' as const, excerpt: 'Saved message body deferred' }
       : { items: [{ kind: 'text' as const, item_identity: 'browser-saved-own-body', text: 'Browser own-send witness', text_complete: true }] }),
     provenance: { sender: { kind: 'human' }, client_operation_id: pendingOperationId } }];
-  t.push({ t: 'changed', thread_ids: ['lead'], list: false });
+  t.push({ t: 'changed', config_changed: false, thread_ids: ['lead'], list: false });
   await settle(t, db);
 };
 const resizeStore = params.get('view') === 'splitters' ? {
@@ -89,7 +89,7 @@ if (panelTabsFixture) Object.assign(window, {
     db.details.lead!.awaiting_replies = [
       { message_id: 'panel-tab-duty', recipient_kind: 'thread', recipient_thread_id: 'child', excerpt: 'Synthetic reply duty', delivery_status: 'applied' },
     ];
-    t.push({ t: 'changed', thread_ids: ['lead'], list: false });
+    t.push({ t: 'changed', config_changed: false, thread_ids: ['lead'], list: false });
   },
 });
 

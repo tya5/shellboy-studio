@@ -52,6 +52,25 @@ describe("config editing", () => {
     expect(fieldOf(["connections", "my.other", "base_url"])).toBe('connections."my.other".base_url');
   });
 
+  it("reads the owner value once for a config mark, and ignores it outside Settings", async () => {
+    const { model, t, db, setRead } = await open();
+    const count = t.calls("config.get").length;
+    const external = { ...values, default_model: "external-model" };
+    setRead(got({ file: { ...got().file, content_hash: "b".repeat(64), values: external } }));
+    t.push({ t: "changed", thread_ids: [], list: false, config_changed: false });
+    await settle(t, db);
+    expect(t.calls("config.get")).toHaveLength(count);
+    t.push({ t: "changed", thread_ids: [], list: false, config_changed: true });
+    await settle(t, db);
+    expect(t.calls("config.get")).toHaveLength(count + 1);
+    expect(model.config.read.value.value?.file.values?.default_model).toBe("external-model");
+    model.applyRoute({ view: "conversation", threadId: "lead" });
+    await settle(t, db);
+    t.push({ t: "changed", thread_ids: [], list: false, config_changed: true });
+    await settle(t, db);
+    expect(t.calls("config.get")).toHaveLength(count + 1);
+  });
+
   it("parses each committed value without retaining a draft", async () => {
     const { model, t, db } = await open();
     const commit = async (path: string[], value: string, kind: Parameters<typeof model.config.saveField>[2]) => {

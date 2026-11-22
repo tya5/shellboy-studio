@@ -13,7 +13,7 @@ describe('product model sender provenance',()=>{
     const r=await fixtureModel({configure(db){db.history.lead=[senderNode({kind:'model',thread_id:'sender-a'})];db.threads['sender-a']={...db.threads.lead!,thread_id:'sender-a',title:'Current sender title'};}});
     await settle(r.t,r.db);expect(r.model.senderTitles.values.value.get('sender-a')).toEqual({state:'ready',title:'Current sender title'});
     const before=r.t.calls('thread.get').filter(c=>(c.args as {thread_id:string}).thread_id==='sender-a').length;
-    for(let n=0;n<20;n++){r.t.push({t:'changed',thread_ids:['lead'],list:false});await settle(r.t,r.db);}
+    for(let n=0;n<20;n++){r.t.push({t:'changed',config_changed:false,thread_ids:['lead'],list:false});await settle(r.t,r.db);}
     expect(r.t.calls('thread.get').filter(c=>(c.args as {thread_id:string}).thread_id==='sender-a')).toHaveLength(before);
     r.model.applyRoute({view:'settings'});await settle(r.t,r.db);expect(r.model.senderTitles.values.value.size).toBe(0);r.model.dispose();
   });

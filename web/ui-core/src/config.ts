@@ -207,7 +207,6 @@ export class ConfigEditor {
     const result = await this.ops.credentialsClear(name);
     const uncertain = !result.ok && (result.error.kind === "unconfirmed" || result.error.kind === "connection_lost");
     this.connectionAction.value = { name, state: result.ok ? "cleared" : uncertain ? "unconfirmed" : "failed" };
-    if (result.ok || uncertain) await this.refresh();
   }
 
   /** Settings opened or changed section: the file may have changed since. */

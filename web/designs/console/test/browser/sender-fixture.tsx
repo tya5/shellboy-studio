@@ -16,7 +16,7 @@ const prefs=signal<Prefs>({design:'console',theme:params.get('theme')==='light'?
 mount(document.getElementById('app')!,{model:r.model,prefs,designs:DESIGNS,setPrefs:change=>{prefs.value={...prefs.value,...change};},submitToken:async()=>true});
 await settle(r.t,r.db);
 (window as unknown as {senderProbe:()=>Promise<unknown>}).senderProbe=async()=>{
-  r.db.threads[ids[0]!]!.title='Renamed current title';r.t.push({t:'changed',thread_ids:[],list:true});await settle(r.t,r.db);
+  r.db.threads[ids[0]!]!.title='Renamed current title';r.t.push({t:'changed', config_changed: false,thread_ids:[],list:true});await settle(r.t,r.db);
   await new Promise<void>(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve())));
   return {facts:[...document.querySelectorAll('.sender-fact')].map(e=>({text:e.textContent,id:e.querySelector('code')?.textContent,link:e.querySelector('a')?.getAttribute('href')})),unknown:document.body.textContent?.includes('Model sender (identity unavailable)'),injected:!!document.querySelector('.sender-fact img'),overflow:document.documentElement.scrollWidth>innerWidth,attempts:r.model.senderTitles.attemptCount,candidates:r.model.senderTitles.candidateCount};
 };
