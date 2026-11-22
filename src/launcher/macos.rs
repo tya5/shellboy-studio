@@ -198,13 +198,18 @@ impl Launch {
     }
 }
 
+struct LoginEnvironment {
+    vars: Vec<(OsString, OsString)>,
+    warning: Option<String>,
+}
+
 struct ManagedOwner {
     bundled: PathBuf,
     config: PathBuf,
     cwd: PathBuf,
     log: PathBuf,
     data: PathBuf,
-    env: Option<(Vec<(OsString, OsString)>, Option<String>)>,
+    env: Option<LoginEnvironment>,
     child: Option<Child>,
 }
 
@@ -236,12 +241,12 @@ impl ManagedOwner {
         if self.env.is_none() {
             self.env = Some(login_env(self.bundled.parent().unwrap()).await);
         }
-        let (env, warning) = self.env.as_ref().unwrap();
+        let LoginEnvironment { vars, warning } = self.env.as_ref().unwrap();
         let process = || {
             let mut command = Process::new(&self.bundled);
             command
                 .env_clear()
-                .envs(env.iter().cloned())
+                .envs(vars.iter().cloned())
                 .arg("--config")
                 .arg(&self.config)
                 .current_dir(&self.cwd)
@@ -313,7 +318,7 @@ fn decode_env(bytes: &[u8], marker: &[u8]) -> Option<Vec<(OsString, OsString)>> 
     Some(env)
 }
 
-async fn login_env(bin: &Path) -> (Vec<(OsString, OsString)>, Option<String>) {
+async fn login_env(bin: &Path) -> LoginEnvironment {
     let result = async {
         let shell = std::env::var_os("SHELL")?;
         if !Path::new(&shell).is_absolute() {
@@ -367,7 +372,7 @@ async fn login_env(bin: &Path) -> (Vec<(OsString, OsString)>, Option<String>) {
     path_with_core.push(":");
     path_with_core.push(path);
     env.push(("PATH".into(), path_with_core));
-    (env, warning)
+    LoginEnvironment { vars: env, warning }
 }
 
 fn launcher_lock(dir: &Path, name: &str) -> Result<File, String> {
@@ -431,17 +436,16 @@ pub async fn open_or_start(dir: &Path) -> Result<(), String> {
     };
     let deadline = tokio::time::Instant::now() + Duration::from_secs(15);
     loop {
-        if let Some(marker) = read_marker(&dir.join("running.json"), dir) {
-            if process_start(marker.pid).await.as_deref() == Some(&marker.started)
-                && endpoint_matches(&marker).await
-            {
-                return open(marker.address, &Auth::load_or_create(dir)?).await;
-            }
+        if let Some(marker) = read_marker(&dir.join("running.json"), dir)
+            && process_start(marker.pid).await.as_deref() == Some(&marker.started)
+            && endpoint_matches(&marker).await
+        {
+            return open(marker.address, &Auth::load_or_create(dir)?).await;
         }
-        if let Some(child) = &mut child {
-            if let Some(status) = child.try_wait().map_err(io)? {
-                return Err(format!("Studio server stopped ({status}). See studio.log."));
-            }
+        if let Some(child) = &mut child
+            && let Some(status) = child.try_wait().map_err(io)?
+        {
+            return Err(format!("Studio server stopped ({status}). See studio.log."));
         }
         if tokio::time::Instant::now() >= deadline {
             return Err("Studio server could not be verified. See studio.log.".into());
