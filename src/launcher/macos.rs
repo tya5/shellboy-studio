@@ -5,7 +5,6 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 use shellboy::{
-    app::OwnerLock,
     config::{Config, PathEnvironment},
     protocol::ErrorCode,
 };
@@ -27,6 +26,8 @@ use tokio::{
     time::timeout,
 };
 use tokio_util::sync::CancellationToken;
+
+const OWNER_FAILURE: &str = "The bundled owner failed. See studio.log and owner.log.";
 
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -157,6 +158,9 @@ impl Launch {
                 result = async { match child { Some(p) => p.wait().await, None => std::future::pending().await } } => {
                     self.owner.child = None;
                     eprintln!("shellboy-studio: bundled owner exited: {result:?}");
+                    if !result.is_ok_and(|status| status.success()) {
+                        self.diagnostic.send_replace(Some(OWNER_FAILURE.into()));
+                    }
                 }
             }
         }
@@ -170,7 +174,7 @@ impl Launch {
                 Ok(warning) => warning,
                 Err(reason) => {
                     eprintln!("shellboy-studio: bundled owner start refused or failed: {reason}");
-                    Some("Could not start the bundled owner. See studio.log and owner.log.".into())
+                    Some(OWNER_FAILURE.into())
                 }
             });
     }
@@ -224,13 +228,6 @@ impl ManagedOwner {
             }
             self.child = None;
         }
-        // AppNotRunning includes transport failures. Only Core's own startup lock
-        // can refuse this launch. The preflight reserves nothing; serve takes its own lock.
-        let directory = self.data.clone();
-        tokio::task::spawn_blocking(move || OwnerLock::acquire(&directory).map(drop))
-            .await
-            .map_err(io)?
-            .map_err(|e| e.message)?;
         if self.env.is_none() {
             self.env = Some(login_env(self.bundled.parent().unwrap()).await);
         }
