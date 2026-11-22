@@ -35,13 +35,13 @@ try{
   assert.equal(measured.orientation,'vertical');
   assert(Math.abs(measured.x-measured.edge)<=1,`${side} splitter is not on the pane boundary`);
  };
- const mouse=(type,x,y,buttons)=>call('Input.dispatchMouseEvent',{type,x,y,button:type==='mouseMoved'?'none':'left',buttons,clickCount:1});
+ const mouse=(type,x,y,buttons)=>call('Input.dispatchMouseEvent',{type,x,y,button:type==='mouseMoved'&&!buttons?'none':'left',buttons,clickCount:1});
  const drag=async(side,delta)=>{
   const {x,y}=await state(side);
   await evaluate(`window.__splitterEvents=[];for(const name of ['pointerdown','pointermove','lostpointercapture'])document.addEventListener(name,e=>window.__splitterEvents.push({name,target:e.target.outerHTML.slice(0,190),primary:e.isPrimary,button:e.button,buttons:e.buttons}),{capture:true,once:true})`);
-  await mouse('mouseMoved',x,y,0);
   await mouse('mousePressed',x,y,1);
   await mouse('mouseMoved',x+delta,y,1);
+  await delay(50);
   await mouse('mouseReleased',x+delta,y,0);
   console.log(side,await evaluate('window.__splitterEvents'),await state(side));
  };
