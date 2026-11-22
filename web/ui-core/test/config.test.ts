@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { settle } from "../../data/test/harness";
+import { flush, settle } from "../../data/test/harness";
 import { fieldOf, isHidden } from "../src";
 import { fixtureModel } from "./fixture";
 
@@ -87,6 +87,38 @@ describe("config editing", () => {
     model.applyRoute({ view: "settings", section: "general" });
     await settle(t, db);
     expect(t.calls("config.get")).toHaveLength(before + 2);
+  });
+
+  it("only confirms a save from a read started after its acknowledgment", async () => {
+    const { model, t, db, setRead } = await open();
+    const mark = () => t.push({ t: "changed", thread_ids: [], list: false, config_changed: true });
+    const reads = t.calls("config.get").length;
+    const cancels = t.cancels().length;
+    mark();
+    const h0 = t.calls("config.get").at(-1)!;
+    const writing = model.config.saveField(["default_model"], "model-b", "text");
+    await flush();
+    const write = t.calls("config.set").at(-1)!;
+    db.answered.add(write.id);
+    t.ok(write.id, { written: true, content_hash: "h1" });
+    await writing;
+    expect(t.calls("config.get")).toHaveLength(reads + 1);
+    mark();
+    expect(t.calls("config.get")).toHaveLength(reads + 1);
+    db.answered.add(h0.id);
+    t.ok(h0.id, got());
+    await flush();
+    expect(model.config.read.peek().value?.file.contentHash).toBe(HASH);
+    expect(model.config.pendingField.peek()).toBe("default_model");
+    expect(model.config.changedElsewhere.peek()).toBeUndefined();
+    expect(model.config.lastSaved.peek()).toBeUndefined();
+    expect(t.calls("config.get")).toHaveLength(reads + 2);
+    expect(t.cancels().slice(cancels)).not.toContain(h0.id);
+    setRead(got({ file: { ...got().file, content_hash: "h1", values: { ...values, default_model: "model-b" } } }));
+    await settle(t, db);
+    expect(model.config.pendingField.peek()).toBeUndefined();
+    expect(model.config.lastSaved.peek()).toMatchObject({ hash: "h1", undo: [{ field: "default_model", value: "model-a" }] });
+    expect(t.calls("config.get")).toHaveLength(reads + 2);
   });
 
   it("a resync settles an acknowledged save even when the owner publishes the old hash", async () => {
