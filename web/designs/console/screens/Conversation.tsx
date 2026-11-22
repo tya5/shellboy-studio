@@ -418,7 +418,7 @@ function PanelPossessions({ model }: { model: AppModel }) {
     {state.loading ? <p role="status">{t("panel.attachmentsLoading")}</p> : null}
     {state.error ? <p role="alert">{t("panel.attachmentsFailed")}</p> : null}
     {!state.items.length && !state.loading && !state.error ? <p class="muted caption">{t("panel.empty")}</p> : null}
-    {state.cursor !== undefined && !state.capped && !state.error ? <Button disabled={state.loading} onClick={() => model.attachmentSection.more()}>{t("panel.attachmentsMore")}</Button> : null}
+    {state.cursor !== undefined ? <Button disabled={state.loading} onClick={() => model.attachmentSection.more()}>{t("panel.attachmentsMore")}</Button> : null}
     {state.capped ? <p class="muted caption">{t("panel.attachmentsCapped", { n: ATTACHMENT_RETENTION })}</p> : null}
   </div>;
 }
@@ -568,6 +568,7 @@ function PanelDetail({ model, tabLabel, onBack }: { model: AppModel; tabLabel: s
     const attachments = model.attachmentSection.state.value;
     const row = attachments.items.find(item => item.attachment_id === detail.id);
     return <section class="panel-detail" data-panel-detail=""><div class="panel-detail-head">{back}<h3>{t("panel.attachments")}</h3></div>
+      {attachments.error ? <p role="alert">{t("panel.attachmentsFailed")}</p> : null}
       {row ? <KeyValue rows={[
         { key: t("panel.attachmentPath"), value: <bdi>{row.path}</bdi> },
         { key: t("panel.attachmentKind"), value: t(row.kind === "image" ? "panel.attachmentImage" : "panel.attachmentFile") },

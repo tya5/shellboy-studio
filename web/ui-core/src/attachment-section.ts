@@ -31,8 +31,8 @@ export class AttachmentSection {
   }
 
   more(): void {
-    const { cursor, capped, loading, error } = this.stateSignal.peek();
-    if (cursor !== undefined && !capped && !loading && !error) void this.read(cursor);
+    const { cursor, loading } = this.stateSignal.peek();
+    if (cursor !== undefined && !loading) void this.read(cursor);
   }
 
   private async read(appendCursor?: string): Promise<void> {
@@ -50,19 +50,24 @@ export class AttachmentSection {
     let cursor = appendCursor;
     let capped = false;
     const pages = appendCursor === undefined ? session.pages : 1;
-    const fail = (error: string) => {
+    const fail = (error: string, invalidateCursor: boolean) => {
       session.read = undefined;
-      this.stateSignal.value = { ...previous, complete: false, loading: false, error };
+      this.stateSignal.value = { ...previous, cursor: invalidateCursor ? undefined : previous.cursor, complete: false, loading: false, error };
     };
     for (let i = 0; i < pages; i++) {
       if (cursor !== undefined) cursors.add(cursor);
       const result = await this.data.operations.attachmentList(session.threadId, cursor, { cancel });
       if (!current()) return;
-      if (!result.ok) { fail(result.error.message); return; }
+      if (!result.ok) {
+        // Once a replacement page has arrived, don't append an old continuation to the retained cut.
+        const expired = result.error.kind === "owner" && result.error.code === "cursor_expired";
+        fail(result.error.message, i > 0 || expired);
+        return;
+      }
       const page = result.value;
       cursor = page.next_cursor;
       if ((cursor !== undefined && (!page.items.length || cursors.has(cursor))) || page.items.some(row => ids.has(row.attachment_id))) {
-        fail("Invalid attachment continuation"); return;
+        fail("Invalid attachment continuation", true); return;
       }
       const remaining = ATTACHMENT_RETENTION - items.length;
       capped = page.items.length > remaining || (page.items.length === remaining && cursor !== undefined);
@@ -71,6 +76,6 @@ export class AttachmentSection {
     }
     session.read = undefined;
     if (appendCursor !== undefined) session.pages++;
-    this.stateSignal.value = { items, loading: false, cursor, capped, complete: cursor === undefined && !capped };
+    this.stateSignal.value = { items, loading: false, cursor: capped ? undefined : cursor, capped, complete: cursor === undefined && !capped };
   }
 }

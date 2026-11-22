@@ -89,6 +89,49 @@ describe('right panel purpose',()=>{
   } finally {f.model.dispose();f.data.stop();}
  });
 
+ it('keeps hint failures visible in detail and honors the section cursor', async () => {
+  const f=await setup(['attachment.list.page']);
+  const row=(id:string)=>({attachment_id:id,source_node_id:`source-${id}`,thread_id:'lead',path:`/fixture/${id}.txt`,kind:'file',delivery_status:'applied',selected:true,managed:false});
+  let mode:'initial'|'unavailable'|'partial'='initial';
+  const answer=f.db.answer.bind(f.db);
+  f.db.answer=call=>{
+   if(call.command!=='attachment.list') return answer(call);
+   const cursor=(call.args as {cursor?:string}).cursor;
+   if(mode==='unavailable'||(mode==='partial'&&cursor!==undefined)) return {ok:false,code:'busy',message:'fixture read failed'};
+   if(mode==='partial') return {ok:true,result:{items:[row('replacement')],next_cursor:'replacement-cursor'}};
+   return {ok:true,result:{items:[row(cursor?'second':'first')],next_cursor:cursor?'third-page':'second-page'}};
+  };
+  const hint=async()=>{f.t.push({t:'changed',thread_ids:['lead'],list:false});await settle(f.t,f.db);};
+  try {
+   const tab=f.host.querySelector<HTMLButtonElement>('[data-panel-tab="possessions"]')!;
+   await act(async()=>tab.click());
+   await act(async()=>{await settle(f.t,f.db);});
+   const panel=f.host.querySelector('#panel-page-possessions')!;
+   const more=()=>[...panel.querySelectorAll('button')].find(btn=>btn.textContent==='さらに表示');
+   const openFirst=()=>panel.querySelector<HTMLButtonElement>('[data-panel-row-id="first"] button')!.click();
+   const back=()=>panel.querySelector<HTMLButtonElement>('[data-panel-back]')!.click();
+   await act(async()=>openFirst());
+   mode='unavailable';
+   await act(hint);
+   expect(panel.querySelector('[data-panel-detail] [role="alert"]')?.textContent).toBe('添付を読み込めませんでした');
+   expect(panel.querySelector('[data-panel-detail]')?.textContent).toContain('/fixture/first.txt');
+   expect(f.t.calls('attachment.list')).toHaveLength(2);
+   await act(async()=>back());
+   expect(panel.querySelector('[data-panel-list] [role="alert"]')?.textContent).toBe('添付を読み込めませんでした');
+   expect(more()?.disabled).toBe(false);
+   mode='initial';
+   await act(async()=>{more()!.click();await settle(f.t,f.db);});
+   expect(f.t.calls('attachment.list').at(-1)?.args).toEqual({thread_id:'lead',limit:50,cursor:'second-page'});
+   mode='partial';
+   await act(hint);
+   expect(f.t.calls('attachment.list')).toHaveLength(5);
+   expect(f.model.attachmentSection.state.peek().cursor).toBeUndefined();
+   expect(more()).toBeUndefined();
+   expect(panel.querySelector('[data-panel-row-id="second"]')).not.toBeNull();
+   expect(panel.querySelector('[data-panel-row-id="replacement"]')).toBeNull();
+  } finally {f.model.dispose();f.data.stop();}
+ });
+
  it('rejects the legacy array and shows an attachment read error', async () => {
   const f=await setup(['attachment.list.page']);
   const answer=f.db.answer.bind(f.db);
