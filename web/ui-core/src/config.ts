@@ -137,6 +137,7 @@ export const isHidden = (value: unknown): boolean => {
 };
 
 interface SavedSetting {
+  hash: string;
   field: string;
   path: readonly string[];
   undo: ConfigWrite[];
@@ -170,8 +171,8 @@ export class ConfigEditor {
   readonly pendingField: Signal<string | undefined> = signal(undefined);
   private shown = false;
   private session = 0;
-  private changeRead = 0;
-  private confirmation?: { hash: string; after: number; saved: SavedSetting };
+  readonly changedElsewhere = signal<string | undefined>(undefined);
+  private confirmation?: { field: string; expected: string; observed?: string; saved?: SavedSetting };
 
   /** Entry point for the owner config invalidation; transport wiring waits for Core #340. */
   async configChanged(): Promise<void> {
@@ -180,9 +181,13 @@ export class ConfigEditor {
 
   private confirmWrite(): void {
     const pending = this.confirmation;
-    if (!pending || this.changeRead <= pending.after || this.read.peek().value?.file.contentHash !== pending.hash) return;
+    if (!pending?.saved || !pending.observed) return;
     this.confirmation = undefined;
-    this.lastSaved.value = pending.saved;
+    if (pending.observed === pending.saved.hash && this.read.peek().value?.file.contentHash === pending.saved.hash) {
+      this.lastSaved.value = pending.saved;
+    } else {
+      this.changedElsewhere.value = pending.field;
+    }
     this.pendingField.value = undefined;
     this.fieldSaving.value = false;
   }
@@ -221,6 +226,7 @@ export class ConfigEditor {
     this.pendingField.value = undefined;
     this.lastSaved.value = undefined;
     this.fieldError.value = undefined;
+    this.changedElsewhere.value = undefined;
     this.cancel.cancel();
     if (this.read.peek().loading) this.read.value = { ...this.read.peek(), loading: false };
   }
@@ -235,8 +241,16 @@ export class ConfigEditor {
       this.read.value = { ...this.read.peek(), loading: false, ...(out.error.kind === "cancelled" ? {} : { error: out.error }) };
       return;
     }
-    this.read.value = { loading: false, value: readConfigFacts(out.value), error: undefined };
-    if (fromChange) { this.changeRead++; this.confirmWrite(); }
+    const value = readConfigFacts(out.value);
+    const hash = value.file.contentHash;
+    this.read.value = { loading: false, value, error: undefined };
+    const saved = this.lastSaved.peek();
+    if (saved && hash !== saved.hash) this.lastSaved.value = undefined;
+    const pending = this.confirmation;
+    if (fromChange && pending && hash && hash !== pending.expected) {
+      pending.observed ??= hash;
+      this.confirmWrite();
+    }
   }
 
   /** Save a single setting using the same write/read path as a model pair. */
@@ -287,17 +301,19 @@ export class ConfigEditor {
     if (changes.some((change) => isHidden(change.value))) return;
     const undo = undoable && previous.every((change) => !isHidden(change.value)) ? previous : [];
     const session = this.session;
-    const after = this.changeRead;
+    const pending: NonNullable<ConfigEditor["confirmation"]> = { field, expected: file.contentHash };
+    this.confirmation = pending;
     this.fieldSaving.value = true;
     this.pendingField.value = field;
     this.lastSaved.value = undefined;
     this.fieldError.value = undefined;
+    this.changedElsewhere.value = undefined;
     try {
       const out = await this.ops.configSet(file.contentHash, changes);
       if (!this.shown || session !== this.session) return;
       if (!out.ok) {
         this.fieldError.value = { field, reason: out.error.message };
-        await this.refresh();
+        if (!(out.error.kind === "owner" && out.error.code === "operation_conflict")) await this.refresh();
         return;
       }
       if (out.value.written === false) return;
@@ -306,10 +322,11 @@ export class ConfigEditor {
       const changed = Array.isArray(out.value.changes) ? out.value.changes.map(record).filter((change) => changes.some(({ field }) => change?.field === field)) : [];
       const exact = changed.map((change) => change?.restart_required).filter((value): value is boolean => typeof value === "boolean");
       const restartRequired = exact.length ? exact.some(Boolean) : typeof out.value.restart_required === "boolean" ? out.value.restart_required : undefined;
-      this.confirmation = { hash, after, saved: { field, path, restartRequired, undo: changed.some((change) => change?.sensitive === true) ? [] : undo } };
+      pending.saved = { hash, field, path, restartRequired, undo: changed.some((change) => change?.sensitive === true) ? [] : undo };
       this.confirmWrite();
     } finally {
-      if (!this.confirmation) {
+      if (this.confirmation === pending && !pending.saved) {
+        this.confirmation = undefined;
         this.pendingField.value = undefined;
         this.fieldSaving.value = false;
       }

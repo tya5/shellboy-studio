@@ -8,4 +8,4 @@ Do not use drafts, multi-field saves, review/diff bands, config caches, polling,
 
 References: Orca settings (`stablyai/orca` at `a6f32d2`, `components/settings`, and `orca.dev/docs/settings`); VS Code settings; macOS System Settings.
 
-A successful write stays pending until a Core config change hint leads to a matching file hash; only then is Undo shown. Refusal or conflict instead rereads Core directly and restores rejected controls. Secret values cannot be put in Undo. Native config invalidation depends on Core #340.
+A successful write stays pending until a Core config change hint leads to a file hash different from the expected hash. Undo is shown only when the new hash is the write’s own hash; otherwise the row reports a change elsewhere. A hash conflict clears pending immediately without another read or retry. Other refusals reread Core directly and restore rejected controls. Secret values cannot be put in Undo. Native config invalidation depends on Core #340.
