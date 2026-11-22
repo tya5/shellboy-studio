@@ -25,9 +25,9 @@ export function viewShortcut(e: KeyFacts): ViewName | undefined {
   return e.altKey && !e.ctrlKey && !e.metaKey ? VIEW_KEYS[e.key] : undefined;
 }
 
-/** Alt+0 toggles the desktop navigation. */
+/** Cmd/Ctrl+B toggles the desktop navigation. */
 export function navShortcut(e: KeyFacts): boolean {
-  return e.key === "0" && !!e.altKey && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.isComposing;
+  return (e.key === "b" || e.key === "B") && !e.altKey && !e.shiftKey && (e.ctrlKey !== e.metaKey) && !e.isComposing;
 }
 
 /** Alt+9 toggles the desktop right panel. */

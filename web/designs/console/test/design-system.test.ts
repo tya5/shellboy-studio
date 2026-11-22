@@ -163,3 +163,26 @@ describe("structural component CSS ownership", () => {
     expect(borrowed).toEqual([]);
   });
 });
+
+
+describe("shell footer toggles", () => {
+  it("keeps edge-aligned icon columns and fixed 36px footer rows", () => {
+    const layout = systemSources["../system/layout.css"] ?? "";
+    const footer = componentStyleFiles["../system/components/ShellToggle/style.css"] ?? "";
+    const rail = componentStyleFiles["../system/components/PanelTabs/style.css"] ?? "";
+    expect(layout).toContain("grid-template-columns:var(--size-shell-rail) minmax(0,1fr)");
+    expect(layout).toContain(".details.details-collapsed{width:var(--size-shell-rail)");
+    const tokenSource = readFileSync(new URL("../system/tokens.json", import.meta.url), "utf8");
+    expect(tokenSource).toContain('"name": "size-shell-column"');
+    expect(tokenSource).toContain('"value": "48px"');
+    expect(tokenSource).toContain('"name": "size-shell-rail"');
+    expect(tokenSource).toContain('"value": "49px"');
+    expect(layout).toContain(".details>.shell-footer-right{margin-inline:calc(-1 * var(--space-16))}");
+    expect(layout).toContain(".nav-collapsed .nav-item{justify-content:center}");
+    expect(layout).toContain(".side-middle{flex:1;min-height:0;overflow:auto");
+    expect(footer).toContain("height:var(--size-shell-footer)");
+    expect(footer).toContain(".shell-footer-left{justify-content:flex-start}");
+    expect(rail).toContain(".panel-tabs-rail .panel-tab-count{position:absolute;top:2px;right:2px");
+    expect(rail).toContain("background:var(--raised);color:var(--fg)");
+  });
+});

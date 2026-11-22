@@ -200,9 +200,12 @@ describe("routes, prefs, commands, words", () => {
     expect(composerAction({ key: "Enter", isComposing: true })).toBe("none");
     expect(composerAction({ key: "Enter", shiftKey: true })).toBe("none");
     expect(composerAction({ key: "a" })).toBe("none");
-    expect(navShortcut({ key: "0", altKey: true })).toBe(true);
-    expect(navShortcut({ key: "0", altKey: true, shiftKey: true })).toBe(false);
-    expect(navShortcut({ key: "0", altKey: true, isComposing: true })).toBe(false);
+    expect(navShortcut({ key: "b", metaKey: true })).toBe(true);
+    expect(navShortcut({ key: "B", ctrlKey: true })).toBe(true);
+    expect(navShortcut({ key: "b", ctrlKey: true, metaKey: true })).toBe(false);
+    expect(navShortcut({ key: "b", metaKey: true, shiftKey: true })).toBe(false);
+    expect(navShortcut({ key: "b", metaKey: true, isComposing: true })).toBe(false);
+    expect(navShortcut({ key: "0", altKey: true })).toBe(false);
     expect(panelShortcut({ key: "9", altKey: true })).toBe(true);
     expect(panelShortcut({ key: "9", altKey: true, shiftKey: true })).toBe(false);
     expect(panelShortcut({ key: "9", altKey: true, isComposing: true })).toBe(false);

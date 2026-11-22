@@ -25,7 +25,6 @@ Consumers use semantic `IconRole` names only. Glyph names, paths, and the role-t
 | `nav.threads` | Navigate to Threads from the More menu. | `tree` |
 | `nav.analytics` | Navigate to Analytics from the More menu. | `chart` |
 | `nav.settings` | Navigate to Settings from the More menu. | `gear` |
-| `nav.toggleSidebar` | Expand or collapse the desktop sidebar. | `menu` |
 | `nav.openThreadList` | Open the phone Thread-list drawer. | `menu` |
 | `nav.more` | Open the phone More navigation menu. | `menu` |
 | `panel.back` | Return from panel detail to its tab list. | `arrow-left` |

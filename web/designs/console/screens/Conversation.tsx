@@ -18,9 +18,9 @@ import { ConversationCharacter } from "../system/components";
 import { effect } from "@preact/signals-core";
 import { MonitorPopover } from "../system/components/MonitorPopover";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
-import { readRightPanelWidth, RIGHT_PANEL_WIDTH_MAX, RIGHT_PANEL_WIDTH_MIN, collectExecutionSteps, toolLabel, activityLabel, renderOutput, formatClock, formatDuration, formatRoute, formatTokens, parseTime, statusLabel, type AppModel, type ConversationRow, type StepRow as Step } from "../../../ui-core/src";
+import { collectExecutionSteps, toolLabel, activityLabel, renderOutput, formatClock, formatDuration, formatRoute, formatTokens, parseTime, statusLabel, type AppModel, type ConversationRow, type StepRow as Step } from "../../../ui-core/src";
 import { WindowedScroll } from "./WindowedScroll";
-import { BranchMark, Button, Composer, LoadingRows, EmptyState, Icon, KeyValue, LayoutSeparator, ListDivider, ListRow, LogBlock, Message, Notice, PanelTabs, QuestionCard, StatusMark, StepRow, SummaryStrip, WorkSheet } from "../system/components";
+import { BranchMark, Button, Composer, LoadingRows, EmptyState, Icon, KeyValue, LayoutSeparator, ListDivider, ListRow, LogBlock, Message, Notice, PanelTabs, ShellFooter, ShellToggle, QuestionCard, StatusMark, StepRow, SummaryStrip, WorkSheet } from "../system/components";
 
 /** Internal immutable publication seam; deliberately not a Core transport type. */
 export interface ConversationSnapshot {
@@ -657,9 +657,7 @@ function RightPanel({ model, panelCollapsed = false }: { model: AppModel; panelC
     model.closePanelDetail();
   };
   const select = (id: string) => model.setPanelTab(id as import("../../../ui-core/src/model").RightPanelTab);
-  return <aside id="conversation-right-panel" ref={root} class={`details${panelCollapsed ? " details-collapsed" : ""}`} aria-label={t("panel.title")} data-panel-root="" data-panel-rail={panelCollapsed ? "" : undefined}>
-    <Button icon label={t(panelCollapsed ? "panel.expand" : "panel.collapse")} title={t(panelCollapsed ? "panel.expand" : "panel.collapse")} aria-expanded={!panelCollapsed}
-      onClick={() => model.togglePanel()}><Icon role={panelCollapsed ? "panel.expand" : "panel.collapse"} /></Button>
+  return <aside id="conversation-right-panel" ref={root} class={`details${panelCollapsed ? " details-collapsed" : ""}` aria-label={t("panel.title")} data-panel-root="" data-panel-rail={panelCollapsed ? "" : undefined}>
     <PanelTabs label={t("panel.title")} items={tabs} selected={selectedTab} rail={panelCollapsed} onSelect={select} />
     <div class="panel-pages" hidden={panelCollapsed}>
       {tabs.map(tab => {
@@ -671,6 +669,7 @@ function RightPanel({ model, panelCollapsed = false }: { model: AppModel; panelC
         </section>;
       })}
     </div>
+    <ShellFooter side="right"><ShellToggle panel expanded={!panelCollapsed} label={t(panelCollapsed ? "panel.expand" : "panel.collapse")} onClick={() => model.togglePanel()} /></ShellFooter>
   </aside>;
 }
 

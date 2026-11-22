@@ -84,3 +84,7 @@ The shared row-action pattern and its references are recorded in `patterns/row-a
 The permanent one-line footer in Conversation uses the existing status artwork. Only its description may ellipsize; activity, the lower-bound count when two or more, elapsed time from the actual start, and actions retain their own fields. The phone WorkSheet opener does not repeat the running summary.
 
 The `ConversationCharacter` component owns running-only dot motion inside the existing artwork.
+
+## Shell panels
+
+Sidebar and right-panel visibility controls live in fixed 36px `ShellFooter` rows, separated from the middle content. Headers and footers do not scroll; only each panel's middle does. `ShellToggle` uses a VS Code-style window glyph whose leading strip is filled when shown and outline-only when hidden; do not change color for state. The shared 50px `size-shell-column` fixes icon centers 25px from the left/right shell edge in both expanded and rail states; `size-shell-rail` adds only the divider width. Keep current navigation IconRoles unchanged. The right rail repeats the existing tab counts as badges on their icons. The phone drawer remains on the header menu button. References: VS Code layout sidebar actions, Orca SidebarToggleIcon, GitHub sidebar footer disclosure.

@@ -84,3 +84,5 @@
 
 @import "./components/ChildrenChip/style.css";
 @import "./components/FilterChips/style.css";
+
+@import "./components/ShellToggle/style.css";

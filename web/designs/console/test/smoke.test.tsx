@@ -52,17 +52,45 @@ describe("Desktop navigation", () => {
   it("toggles the rail and keeps named, titled destinations", async () => {
     const { model } = await fixtureModel();
     const el = draw(model);
-    const toggle = () => el.querySelector<HTMLButtonElement>(".nav-toggle button")!;
+    const toggle = () => el.querySelector<HTMLButtonElement>(".shell-footer-left .shell-toggle")!;
     expect(toggle().getAttribute("aria-expanded")).toBe("true");
+    expect(toggle().querySelector(".shell-toggle-strip")?.classList.contains("filled")).toBe(true);
+    expect(el.querySelector(".side-header .brand-logo")).not.toBeNull();
+    expect(el.querySelector(".nav-toggle")).toBeNull();
+    expect(el.querySelector(".menu")).not.toBeNull();
+    const navGlyphs = [...el.querySelectorAll(".side nav .nav-item .i")].map(icon => icon.innerHTML);
     act(() => toggle().click());
     expect(el.querySelector(".shell")?.classList.contains("nav-collapsed")).toBe(true);
     expect(toggle().getAttribute("aria-label")).toBe("Expand navigation");
+    expect(toggle().getAttribute("aria-expanded")).toBe("false");
+    expect(toggle().querySelector(".shell-toggle-strip")?.classList.contains("filled")).toBe(false);
+    expect([...el.querySelectorAll(".side nav .nav-item .i")].map(icon => icon.innerHTML)).toEqual(navGlyphs);
     for (const link of el.querySelectorAll(".side nav a")) {
       expect(link.getAttribute("aria-label")).toBeTruthy();
       expect(link.getAttribute("title")).toBe(link.getAttribute("aria-label"));
     }
     act(() => toggle().click());
     expect(el.querySelector(".shell")?.classList.contains("nav-collapsed")).toBe(false);
+    model.dispose();
+  });
+
+  it("anchors the right footer toggle to the rail tab column and keeps counts on rail icons", async () => {
+    const { model } = await fixtureModel({ route: "conversation" });
+    const el = draw(model);
+    Object.defineProperty(el.querySelector(".app"), "clientWidth", { configurable: true, value: 1300 });
+    const panel = el.querySelector<HTMLElement>(".details")!;
+    const toggle = () => panel.querySelector<HTMLButtonElement>(".shell-footer-right .shell-toggle")!;
+    expect(toggle().getAttribute("aria-expanded")).toBe("true");
+    expect(panel.querySelector(".panel-tabs-rail")).toBeNull();
+    const openCounts = [...panel.querySelectorAll(".panel-tab-count")].map(node => text(node));
+    act(() => toggle().click());
+    expect(toggle().getAttribute("aria-expanded")).toBe("false");
+    expect(panel.hasAttribute("data-panel-rail")).toBe(true);
+    expect(panel.querySelectorAll(".panel-tabs-rail").length).toBe(1);
+    expect([...panel.querySelectorAll(".panel-tab-count")].map(node => text(node))).toEqual(openCounts);
+    expect(toggle().querySelector(".shell-toggle-strip.filled")).toBeNull();
+    act(() => toggle().click());
+    expect(toggle().getAttribute("aria-expanded")).toBe("true");
     model.dispose();
   });
 });

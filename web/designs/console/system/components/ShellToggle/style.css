@@ -1,0 +1,11 @@
+.shell-toggle{display:grid;place-items:center;flex:none;width:var(--size-shell-toggle-icon);height:var(--size-shell-toggle-icon);padding:0;border:0;border-radius:var(--radius-s);background:transparent;color:var(--muted);cursor:pointer}
+.shell-toggle:hover{background:var(--raised);color:var(--fg)}
+.shell-toggle:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.shell-toggle svg{display:block;width:var(--size-shell-toggle-icon);height:var(--size-shell-toggle-icon);fill:none;stroke:currentColor;stroke-width:1.6}
+.shell-toggle-strip.filled{fill:currentColor;stroke:currentColor}
+
+.shell-footer{box-sizing:border-box;flex:none;display:flex;align-items:center;height:var(--size-shell-footer);min-height:var(--size-shell-footer);border-top:1px solid var(--line);background:var(--panel)}
+.shell-footer-left{justify-content:flex-start}
+.shell-footer-right{justify-content:flex-end}
+.shell-footer .shell-toggle{width:var(--size-shell-column);height:var(--size-shell-footer)}
+.shell-footer .shell-toggle svg{width:var(--size-shell-toggle-icon);height:var(--size-shell-toggle-icon)}

@@ -10,3 +10,5 @@ logo: external SVG cannot inherit the selected app theme. OS-dependent browser
 favicon and fixed light-accent install icons have separate asset roles.
 
 Styles: style.css in this directory
+
+In the fixed shell header, render the mark at `size-brand-mark` (24px). Keep it a brand asset, not a navigation icon.

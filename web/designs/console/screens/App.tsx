@@ -4,7 +4,7 @@ import { BrandLogo } from "../system/components/BrandLogo";
 import { threadMenuEntries } from "../system/components/thread-menu";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
 import { CAPABILITY_TAGS, CAPABILITY_CWDS, formatRoute, readSidebarWidth, SIDEBAR_WIDTH_MAX, SIDEBAR_WIDTH_MIN, statusLabel, viewShortcut, navShortcut, panelShortcut, type DesignContext, type ViewName } from "../../../ui-core/src";
-import { Button, ContextBar, Field, FilterChips, FilterMenu, Icon, ModelPicker, MoreMenu, NavItem, Notice, StatusMark, ThreadDeleteDialog, ThreadGroup, ThreadItem, type IconRole, type ThreadDeleteTarget } from "../system/components";
+import { Button, ContextBar, Field, FilterChips, FilterMenu, Icon, ModelPicker, MoreMenu, NavItem, Notice, StatusMark, ThreadDeleteDialog, ThreadGroup, ThreadItem, ShellFooter, ShellToggle, type IconRole, type ThreadDeleteTarget } from "../system/components";
 import { formatAge, formatTokens, folderName } from "../../../ui-core/src";
 import { Conversation } from "./Conversation";
 import { Inbox } from "./Inbox";
@@ -70,6 +70,7 @@ export function App({ context }: { context: DesignContext }) {
   useEffect(() => { model.monitorSort.value = context.prefs.value.monitorSort ?? "stable"; }, [model, context.prefs.value.monitorSort]);
 
 
+  useEffect(() => {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (navShortcut(e) && (document.querySelector(".app")?.clientWidth ?? 0) >= 900) {
@@ -171,18 +172,20 @@ export function App({ context }: { context: DesignContext }) {
           disabled={context.prefs.value.navCollapsed} onWidth={sidebarWidth => context.setPrefs({ sidebarWidth })} />
         <button type="button" class={drawer ? "scrim open" : "scrim"} aria-label={t("threads.close")} tabIndex={drawer ? 0 : -1} onClick={() => setDrawer(false)} />
         <aside id="thread-sidebar" class={drawer ? "side open" : "side"} aria-label={t("threads.title")}>
-          <div class="brand">
-            <BrandLogo />
-            <span class="brand-label">{t("brand")}</span>
+          <div class="side-header">
+            <div class="brand">
+              <BrandLogo />
+              <span class="brand-label">{t("brand")}</span>
+            </div>
           </div>
-          <div class="nav-toggle"><Button icon label={context.prefs.value.navCollapsed ? t("nav.expand") : t("nav.collapse")} title={context.prefs.value.navCollapsed ? t("nav.expand") : t("nav.collapse")} aria-expanded={!context.prefs.value.navCollapsed} onClick={() => context.setPrefs({ navCollapsed: !context.prefs.value.navCollapsed })}><Icon role="nav.toggleSidebar" /></Button></div>
-          <nav class="nav" aria-label={t("nav.views")}>
-            {conversationNav}
-            {monitorNav}
-            {inboxNav}
-            {moreItems.map((i) => <NavItem key={i.key} href={i.href} role={i.role} label={i.label} current={i.current} />)}
-          </nav>
-          <div class="sidehead">
+          <div class="side-middle">
+            <nav class="nav" aria-label={t("nav.views")}>
+              {conversationNav}
+              {monitorNav}
+              {inboxNav}
+              {moreItems.map((i) => <NavItem key={i.key} href={i.href} role={i.role} label={i.label} current={i.current} />)}
+            </nav>
+            <div class="sidehead">
             <h2 id="sidebar-thread-list-heading" tabIndex={-1}>{t("threads.title")}</h2>
           </div>
           <div class="side-search">
@@ -236,6 +239,8 @@ export function App({ context }: { context: DesignContext }) {
             {list.loaded && list.items.length === 0 ? <div class="side-note">{query || activeFilters.length ? t("threads.noMatch") : t("threads.empty")}</div> : null}
             {model.data.canLoadMoreThreads() ? <Button disabled={list.loadingMore} onClick={() => void model.data.loadMoreThreads()}>{t("threads.more")}</Button> : list.nextCursor ? <div class="side-note">{t("threads.capped")}</div> : null}
           </div>
+          </div>
+          <ShellFooter side="left"><ShellToggle panel={false} expanded={!context.prefs.value.navCollapsed} label={context.prefs.value.navCollapsed ? t("nav.expand") : t("nav.collapse")} title={`${context.prefs.value.navCollapsed ? t("nav.expand") : t("nav.collapse")} (Cmd/Ctrl+B)`} onClick={() => context.setPrefs({ navCollapsed: !context.prefs.value.navCollapsed })} /></ShellFooter>
         </aside>
         <div class="main">
           <header class="top">
@@ -270,7 +275,7 @@ export function App({ context }: { context: DesignContext }) {
           {deleteThread ? <ThreadDeleteDialog key={deleteThread.threadId} model={model} target={deleteThread} getReturnFocusTarget={resolveSidebarLink} onClose={() => setDeleteThread(undefined)} /> : null}
           <section class="view" aria-label={title}>
             <AppsHost context={context} />
-            {route.view === "apps" ? null : route.view === "conversation" ? <Conversation model={model} panelCollapsed={context.prefs.value.panelCollapsed} rightPanelWidth={context.prefs.value.rightPanelWidth} onPanelWidth={rightPanelWidth => context.setPrefs({ rightPanelWidth })} /> : route.view === "monitor" ? <Monitor context={context} /> : route.view === "inbox" ? <Inbox model={model} /> : route.view === "analytics" ? <Analytics context={context} /> : route.view === "branches" ? <Branches model={model} /> : route.view === "threads" ? <Threads model={model} /> : route.view === "setup" ? <Setup context={context} /> : <SettingsView context={context} />}
+            {route.view === "apps" ? null : route.view === "conversation" ? <Conversation model={model} panelCollapsed={context.prefs.value.panelCollapsed} /> : route.view === "monitor" ? <Monitor context={context} /> : route.view === "inbox" ? <Inbox model={model} /> : route.view === "analytics" ? <Analytics context={context} /> : route.view === "branches" ? <Branches model={model} /> : route.view === "threads" ? <Threads model={model} /> : route.view === "setup" ? <Setup context={context} /> : <SettingsView context={context} />}
           </section>
           <footer class="status">
             <StatusMark

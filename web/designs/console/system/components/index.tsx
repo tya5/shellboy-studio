@@ -74,3 +74,4 @@ export { FilterMenu } from "./FilterMenu";
 export { FilterChips } from "./FilterChips";
 
 export { ConversationCharacter } from "./ConversationCharacter";
+export { ShellFooter, ShellToggle } from "./ShellToggle";
