@@ -961,6 +961,44 @@ describe("Threads", () => {
     }
   });
 
+  it("opens the Conversation picker before Settings and updates its connections on a config mark", async () => {
+    let connections: Record<string, object> = { c: {}, other: {} };
+    let hash = "first";
+    const { model, t, db, data } = await fixtureModel({ route: "conversation", threadId: "lead",
+      capabilities: ["history.window", "config.edit", "thread.settings"], configure(db) {
+        const answer = db.answer.bind(db);
+        db.answer = (call) => {
+          if (call.command !== "config.get") return answer(call);
+          const side = { present: true, content_hash: hash, valid: true, values: { connections }, redacted_fields: [] };
+          return { ok: true, result: { loaded: side, file: side, differs: false, restart: { all_fields_require_restart: false } } };
+        };
+      },
+    });
+    try {
+      const el = draw(model);
+      const trigger = () => el.querySelector<HTMLButtonElement>(".model-picker-anchor > button")!;
+      const choices = () => Array.from(el.querySelectorAll<HTMLOptionElement>(".model-picker select option"), option => option.value);
+      expect(t.calls("config.get")).toHaveLength(0);
+      await act(async () => { trigger().click(); await settle(t, db); });
+      expect(t.calls("config.get")).toHaveLength(1);
+      expect(choices()).toEqual(["c", "other"]);
+      connections = { c: {}, third: {} };
+      hash = "second";
+      await act(async () => {
+        t.push({ t: "changed", thread_ids: [], list: false, config_changed: true });
+        await settle(t, db);
+      });
+      expect(t.calls("config.get")).toHaveLength(2);
+      expect(choices()).toEqual(["c", "third"]);
+      await act(async () => {
+        trigger().click();
+        t.push({ t: "changed", thread_ids: [], list: false, config_changed: true });
+        await settle(t, db);
+      });
+      expect(t.calls("config.get")).toHaveLength(2);
+    } finally { model.dispose(); data.stop(); }
+  });
+
   it("Settings saves a preset effort immediately as one config field", async () => {
     const made = await fixtureModel({ route: "settings", section: "general", capabilities: ["config.edit"] });
     const before = made.db.answer;

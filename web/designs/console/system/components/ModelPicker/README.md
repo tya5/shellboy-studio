@@ -17,3 +17,5 @@ The shared `EffortControl` offers default (unset), low, medium, high, and a free
 `ModelChooser` owns the trigger and popup placement. `ConnectionModelList` renders searchable `connection / model` entries; the caller supplies its scope and performs the selection. Settings uses the full catalog for default and embedding models. Use with `EffortControl` only for reasoning models; do not attach effort to embedding. Conversation uses the same list and effort control, with its currently selected connection scope.
 
 Conversation uses the same connection/model list and effort control with its existing selected-connection scope and explicit thread save. Settings uses the list across configured connections and writes its selected pair atomically. The effort input can reset to the committed owner value after Settings refuses an edit, even when that value did not change.
+
+The open Conversation picker shares `ConfigEditor` with Settings. Its connection choices come from the loaded owner configuration, refreshed by config marks and resync while the picker is open.

@@ -175,7 +175,7 @@ export class ConfigEditor {
   readonly changedElsewhere = signal<string | undefined>(undefined);
   private confirmation?: { field: string; expected: string; observed?: string; saved?: SavedSetting };
 
-  /** A config mark or resync invalidates the current Settings snapshot. */
+  /** A config mark or resync invalidates the shared configuration snapshot. */
   configChanged(): void {
     if (this.shown) void this.refresh();
   }
@@ -208,7 +208,7 @@ export class ConfigEditor {
     this.connectionAction.value = { name, state: result.ok ? "cleared" : uncertain ? "unconfirmed" : "failed" };
   }
 
-  /** All Settings sections share one snapshot and one read lifetime. */
+  /** Settings and the Conversation model picker share one snapshot and read lifetime. */
   ensure(): void {
     if (this.shown) return;
     this.shown = true;

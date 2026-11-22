@@ -186,21 +186,25 @@ export class AppModel {
       && session.observation.isCurrent();
   }
   openModelPicker(): void {
-    this.closeModelPicker();
     const route = this.route.peek();
     const handle = this.handle.peek();
     const owner = this.data.owner.peek();
     const observation = handle?.captureDetail();
     if (route.view !== "conversation" || !handle || !observation || owner.state !== "connected"
-      || this.selectedId.peek() !== handle.threadId || observation.value.thread_id !== handle.threadId) return;
+      || this.selectedId.peek() !== handle.threadId || observation.value.thread_id !== handle.threadId) {
+      this.closeModelPicker();
+      return;
+    }
     const d = observation.value;
     const settings = readThreadSettings(d);
     const initial = { effort: settings.effort ?? "", agents: settings.agentsPath ?? "", autoCompactAt: settings.autoCompactAt === undefined ? "" : String(settings.autoCompactAt), maxTokens: settings.maxTokensState.kind === "value" ? String(settings.maxTokensState.value) : "" };
     const session: ModelPickerSession = { route, handle, owner, observation, settings, initial };
     batch(() => {
+      this.closeModelPicker();
       this.pickerSession.value = session;
       this.modelPicker.value = { open: true, thread: d.thread_id, connection: d.connection, model: d.model, ...initial, maxTokensState: settings.maxTokensState, clearMaxTokens: false, models: [], loading: false, saving: false };
     });
+    if (this.data.capabilities.peek().includes(CAPABILITY_CONFIG)) this.config.ensure();
     this.chooseModelConnection(d.connection);
   }
   editThreadOutputLimit(value: string): void {
@@ -474,7 +478,7 @@ export class AppModel {
     this.org = new ThreadOrg(this.ops, () => this.data.capabilities.peek());
     this.config = new ConfigEditor(this.ops);
     this.disposers.push(effect(() => {
-      if (this.data.configChanged.value > 0 && this.route.peek().view === "settings" && this.data.capabilities.peek().includes(CAPABILITY_CONFIG)) {
+      if (this.data.configChanged.value > 0 && this.data.capabilities.peek().includes(CAPABILITY_CONFIG)) {
         untracked(() => void this.config.configChanged());
       }
     }));
@@ -521,7 +525,8 @@ export class AppModel {
       return owner.state === "unreachable" ? "ownerDown" : "connecting";
     });
     this.disposers.push(effect(() => {
-      if (this.route.value.view !== "settings") untracked(() => this.config.leave());
+      const settingsShown = this.route.value.view === "settings";
+      if (!settingsShown && !this.modelPicker.value.open) untracked(() => this.config.leave());
       else if (this.connection.value === "connected" && this.data.capabilities.value.includes(CAPABILITY_CONFIG)) {
         untracked(() => this.config.ensure());
       }
