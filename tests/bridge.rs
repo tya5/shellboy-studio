@@ -882,3 +882,60 @@ async fn ordinary_bridge_cannot_run_launcher_actions() {
     assert!(!state.cancel.is_cancelled());
     cancel.cancel();
 }
+
+#[tokio::test]
+async fn desktop_restart_follows_owner_transition_for_each_instance() {
+    use shellboy_studio::{launcher::Control, server::serve};
+    use tokio::sync::{mpsc, watch};
+    let (owner, tx) = mock(list_handler);
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let mut state = app_state(owner, false, addr);
+    let (_diagnostic_tx, diagnostic) = watch::channel(None);
+    let (restart, mut requests) = mpsc::channel(1);
+    std::sync::Arc::get_mut(&mut state).unwrap().launcher = Some(Control {
+        diagnostic,
+        restart,
+        marker: "test-marker".into(),
+    });
+    let cancel = state.cancel.clone();
+    let server = tokio::spawn(serve(listener, state.clone(), fast_poll(), cancel.clone()));
+    let origin = format!("http://{addr}");
+    assert_eq!(
+        status_of(connect(addr, None, Some(&origin)).await.unwrap_err()),
+        401
+    );
+    let cookie = login(addr, &state).await;
+    let mut ws = connect(addr, Some(&cookie), Some(&origin)).await.unwrap();
+    assert_eq!(next_t(&mut ws, "hello").await["desktop"], true);
+    for instance in ["attached", "spawned"] {
+        tx.send(events(instance, "baseline", "c1", &[], false))
+            .unwrap();
+        assert_eq!(
+            next_t(&mut ws, "owner").await["owner"]["state"],
+            "connected"
+        );
+        put(&mut ws, json!({"t":"launcher","action":"restart"})).await;
+        assert_eq!(
+            next_t(&mut ws, "error").await["error"]["code"],
+            "invalid_state"
+        );
+        tx.send(unreachable_owner()).unwrap();
+        let down = next_t(&mut ws, "owner").await;
+        assert_eq!(down["owner"], json!({"state":"unreachable"}));
+        put(&mut ws, json!({"t":"launcher","action":"restart"})).await;
+        assert_eq!(
+            tokio::time::timeout(Duration::from_secs(2), requests.recv())
+                .await
+                .unwrap(),
+            Some(())
+        );
+    }
+    put(&mut ws, json!({"t":"launcher","action":"exit"})).await;
+    tokio::time::timeout(Duration::from_secs(2), server)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    assert!(cancel.is_cancelled());
+}

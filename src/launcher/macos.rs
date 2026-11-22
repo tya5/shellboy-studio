@@ -1,13 +1,13 @@
-use super::{Action, Control, Status};
+use super::Control;
 use crate::{
     auth::{Auth, random_hex},
-    owner::{IpcOwner, Owner},
+    owner::{IpcOwner, startup_probe},
 };
 use serde::{Deserialize, Serialize};
 use shellboy::{
     app::OwnerLock,
     config::{Config, PathEnvironment},
-    protocol::{Command, ErrorCode, ThreadListArgs},
+    protocol::ErrorCode,
 };
 use std::{
     ffi::OsString,
@@ -47,8 +47,8 @@ pub struct Launch {
     marker: PathBuf,
     _lock: File,
     owner: ManagedOwner,
-    actions: mpsc::Receiver<Action>,
-    status: watch::Sender<Status>,
+    restart: mpsc::Receiver<()>,
+    diagnostic: watch::Sender<Option<String>>,
 }
 
 impl Drop for Launch {
@@ -115,11 +115,8 @@ impl Launch {
             let _ = fs::remove_file(&temporary);
         }
         write.map_err(io)?;
-        let (send, actions) = mpsc::channel(1);
-        let (status, receiver) = watch::channel(Status {
-            reason: None,
-            can_restart: false,
-        });
+        let (send, restart) = mpsc::channel(1);
+        let (diagnostic, receiver) = watch::channel(None);
         let owner = ManagedOwner {
             bundled,
             config,
@@ -134,15 +131,15 @@ impl Launch {
             data_dir,
             auth: Some(auth),
             control: Control {
-                status: receiver,
-                actions: send,
+                diagnostic: receiver,
+                restart: send,
                 marker: identity,
             },
             marker: marker_path,
             _lock: lock,
             owner,
-            actions,
-            status,
+            restart,
+            diagnostic,
         }))
     }
 
@@ -153,48 +150,48 @@ impl Launch {
             tokio::select! {
                 biased;
                 _ = cancel.cancelled() => break,
-                action = self.actions.recv() => match action {
-                    Some(Action::Exit) | None => break,
-                    Some(Action::Restart) if self.status.borrow().can_restart => self.start().await,
-                    Some(Action::Restart) => {},
+                restart = self.restart.recv() => {
+                    if restart.is_none() { break; }
+                    self.start().await;
                 },
                 result = async { match child { Some(p) => p.wait().await, None => std::future::pending().await } } => {
                     self.owner.child = None;
-                    let reason = match result { Ok(status) => format!("Bundled owner stopped ({status}). See owner.log."), Err(e) => format!("Owner wait failed: {e}") };
-                    self.status.send_replace(Status { reason: Some(reason), can_restart: true });
+                    eprintln!("shellboy-studio: bundled owner exited: {result:?}");
                 }
             }
         }
         cancel.cancel();
-        if let Some(mut child) = self.owner.child.take() {
-            if let Some(pid) = child.id() {
-                // The unreaped child owns this PID; never signal a PID read from a file.
-                let _ = Process::new("/bin/kill")
-                    .args(["-TERM", &pid.to_string()])
-                    .status()
-                    .await;
-            }
-            if timeout(Duration::from_secs(15), child.wait())
-                .await
-                .is_err()
-            {
-                let _ = child.kill().await;
-            }
-        }
+        stop_child(self.owner.child.take()).await;
     }
 
     async fn start(&mut self) {
-        let result = self.owner.start().await;
-        self.status.send_replace(match result {
-            Ok(reason) => Status {
-                reason,
-                can_restart: false,
-            },
-            Err(reason) => Status {
-                reason: Some(reason),
-                can_restart: true,
-            },
-        });
+        self.diagnostic
+            .send_replace(match self.owner.start().await {
+                Ok(warning) => warning,
+                Err(reason) => {
+                    eprintln!("shellboy-studio: bundled owner start refused or failed: {reason}");
+                    Some("Could not start the bundled owner. See studio.log and owner.log.".into())
+                }
+            });
+    }
+}
+
+async fn stop_child(child: Option<Child>) {
+    let Some(mut child) = child else {
+        return;
+    };
+    if let Some(pid) = child.id() {
+        // Only signal the unreaped child, never an owner identified by discovery.
+        let _ = Process::new("/bin/kill")
+            .args(["-TERM", &pid.to_string()])
+            .status()
+            .await;
+    }
+    if timeout(Duration::from_secs(15), child.wait())
+        .await
+        .is_err()
+    {
+        let _ = child.kill().await;
     }
 }
 
@@ -216,23 +213,19 @@ struct ManagedOwner {
 impl ManagedOwner {
     async fn start(&mut self) -> Result<Option<String>, String> {
         let owner = IpcOwner::new(self.data.clone());
-        let result = owner
-            .call(
-                Command::ThreadList(ThreadListArgs {
-                    limit: 1,
-                    ..Default::default()
-                }),
-                None,
-                None,
-            )
-            .await;
-        match result {
-            Ok(_) => return Ok(None),
+        match startup_probe(&owner).await {
+            Ok(()) => return Ok(None),
             Err(e) if e.code == ErrorCode::AppNotRunning => {}
             Err(e) => return Err(e.message),
         }
+        if let Some(child) = &mut self.child {
+            if child.try_wait().map_err(io)?.is_none() {
+                return Err("The existing bundled process has not exited".into());
+            }
+            self.child = None;
+        }
         // AppNotRunning includes transport failures. Only Core's own startup lock
-        // can prove there is no live writer; serve retakes it before opening data.
+        // can refuse this launch. The preflight reserves nothing; serve takes its own lock.
         let directory = self.data.clone();
         tokio::task::spawn_blocking(move || OwnerLock::acquire(&directory).map(drop))
             .await
@@ -551,6 +544,23 @@ mod tests {
         );
         assert!(decode_env(b"RANDOM_PATH=/bin", b"RANDOM_").is_none());
         assert!(decode_env(b"banner\nPATH=/bin\0", b"RANDOM_").is_none());
+    }
+
+    #[tokio::test]
+    async fn shutdown_only_signals_the_owned_child() {
+        fn sleeper() -> Child {
+            Process::new("/bin/sleep")
+                .arg("30")
+                .kill_on_drop(true)
+                .spawn()
+                .unwrap()
+        }
+        let mut unrelated = sleeper();
+        stop_child(None).await;
+        assert!(unrelated.try_wait().unwrap().is_none());
+        stop_child(Some(sleeper())).await;
+        assert!(unrelated.try_wait().unwrap().is_none());
+        unrelated.kill().await.unwrap();
     }
 
     #[tokio::test]

@@ -157,3 +157,6 @@ Leaving the view cancels its lookups and discards view-owned title entries.
 4. Use **Quit Studio** in the browser to stop Studio and the Core child it started. This leaves an owner you started separately running. Closing the browser tab does not quit Studio. A stopped bundled owner is not restarted automatically; use **Restart owner**. Diagnostic output remains in `~/Library/Application Support/shellboy-studio/owner.log`.
 
 This desktop path is macOS-only. The CLI bridge and its explicit development `--no-auth` option are unchanged.
+
+If a separately started owner stops, the same **Restart owner** action checks
+again for a running owner before it starts one. It does not restart automatically.

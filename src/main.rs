@@ -1,13 +1,10 @@
 use clap::{Parser, Subcommand, ValueEnum};
-use shellboy::{
-    config::{PathEnvironment, resolve_cli_data_dir},
-    protocol::{Command, ThreadListArgs},
-};
+use shellboy::config::{PathEnvironment, resolve_cli_data_dir};
 use shellboy_studio::{
     auth::{Auth, default_config_dir},
     events::PollConfig,
     hub::Hub,
-    owner::{IpcOwner, Owner},
+    owner::{IpcOwner, startup_probe},
     server::{AppsPaths, ServerConfig, Shared, serve},
 };
 use std::{net::SocketAddr, path::PathBuf, process::ExitCode, sync::Arc};
@@ -140,43 +137,66 @@ async fn run_bundle_server() -> Result<(), String> {
         return Ok(());
     };
     let listener = launch.listener.take().expect("prepared listener");
-    let addr = listener.local_addr().map_err(|e| e.to_string())?;
-    let data_dir = launch.data_dir.clone();
+    let config = ServerConfig {
+        listen: listener.local_addr().map_err(|e| e.to_string())?,
+        extra_hosts: Vec::new(),
+        data_dir: launch.data_dir.clone(),
+        config_dir,
+        debug: false,
+    };
     let cancel = CancellationToken::new();
-    let mut state = Shared::with_apps(
-        Arc::new(IpcOwner::new(data_dir.clone())),
-        Hub::new(),
+    let state = bridge_state(
+        config,
         launch.auth.take().expect("prepared authentication"),
-        ServerConfig {
-            listen: addr,
-            extra_hosts: Vec::new(),
-            data_dir: data_dir.clone(),
-            config_dir,
-            debug: false,
-        },
-        Some(AppsPaths {
-            dir: data_dir.join("apps"),
-        }),
+        None,
         cancel.clone(),
+        Some(launch.control.clone()),
     );
-    Arc::get_mut(&mut state).expect("new server state").launcher = Some(launch.control.clone());
-    let stop = cancel.clone();
-    let signals = tokio::spawn(async move {
-        if let Ok(mut term) =
-            tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-        {
-            tokio::select! { _ = term.recv() => {}, _ = tokio::signal::ctrl_c() => {} }
-        } else {
-            let _ = tokio::signal::ctrl_c().await;
-        }
-        stop.cancel();
-    });
+    let signals = cancel_on_signal(cancel.clone());
     let (result, ()) = tokio::join!(
         serve(listener, state, PollConfig::default(), cancel.clone()),
         launch.supervise(cancel)
     );
     signals.abort();
     result.map_err(|e| e.to_string())
+}
+
+fn bridge_state(
+    config: ServerConfig,
+    auth: Auth,
+    apps_dir: Option<PathBuf>,
+    cancel: CancellationToken,
+    launcher: Option<shellboy_studio::launcher::Control>,
+) -> shellboy_studio::server::AppState<IpcOwner> {
+    let data_dir = &config.data_dir;
+    let owner = Arc::new(IpcOwner::new(data_dir.clone()));
+    let apps = AppsPaths {
+        dir: apps_dir.unwrap_or_else(|| data_dir.join("apps")),
+    };
+    let mut state = Shared::with_apps(owner, Hub::new(), auth, config, Some(apps), cancel);
+    Arc::get_mut(&mut state).expect("new server state").launcher = launcher;
+    state
+}
+
+fn cancel_on_signal(cancel: CancellationToken) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        #[cfg(unix)]
+        async fn terminate() {
+            if let Ok(mut term) =
+                tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+            {
+                term.recv().await;
+            } else {
+                std::future::pending::<()>().await;
+            }
+        }
+        #[cfg(not(unix))]
+        async fn terminate() {
+            std::future::pending::<()>().await;
+        }
+        tokio::select! { _ = terminate() => {}, _ = tokio::signal::ctrl_c() => {} }
+        cancel.cancel();
+    })
 }
 
 async fn run(args: Args) -> Result<(), String> {
@@ -216,20 +236,6 @@ async fn run(args: Args) -> Result<(), String> {
     } else {
         Auth::load_or_create(&config_dir)?
     };
-    let owner = Arc::new(IpcOwner::new(data_dir.clone()));
-    let probe = owner
-        .call(
-            Command::ThreadList(ThreadListArgs {
-                limit: 1,
-                ..Default::default()
-            }),
-            None,
-            None,
-        )
-        .await;
-    if let Err(error) = probe {
-        eprintln!("{}", owner_problem(&data_dir, &error));
-    }
     if !args.listen.ip().is_loopback() {
         eprintln!(
             "shellboy-studio: warning: {} is not loopback; traffic is plain HTTP unless a TLS tunnel is in front. Host/Origin checks remain required; authentication depends on --no-auth.",
@@ -253,30 +259,21 @@ async fn run(args: Args) -> Result<(), String> {
         }
     }
     let cancel = CancellationToken::new();
-    let state = Shared::with_apps(
-        owner,
-        Hub::new(),
-        auth,
-        ServerConfig {
-            listen: addr,
-            extra_hosts: args.allow_host,
-            data_dir: data_dir.clone(),
-            config_dir: config_dir.clone(),
-            debug: args.debug,
-        },
-        Some(AppsPaths {
-            dir: args.apps_dir.unwrap_or_else(|| data_dir.join("apps")),
-        }),
-        cancel.clone(),
-    );
-    let stop = cancel.clone();
-    tokio::spawn(async move {
-        let _ = tokio::signal::ctrl_c().await;
-        stop.cancel();
-    });
-    serve(listener, state, PollConfig::default(), cancel)
-        .await
-        .map_err(|e| e.to_string())
+    let config = ServerConfig {
+        listen: addr,
+        extra_hosts: args.allow_host,
+        data_dir,
+        config_dir,
+        debug: args.debug,
+    };
+    let state = bridge_state(config, auth, args.apps_dir, cancel.clone(), None);
+    if let Err(error) = startup_probe(state.owner.as_ref()).await {
+        eprintln!("{}", owner_problem(&state.config.data_dir, &error));
+    }
+    let signals = cancel_on_signal(cancel.clone());
+    let result = serve(listener, state, PollConfig::default(), cancel).await;
+    signals.abort();
+    result.map_err(|e| e.to_string())
 }
 
 #[cfg(test)]

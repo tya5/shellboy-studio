@@ -101,6 +101,7 @@ pub async fn session<O: Owner>(
             .map(|apps| apps.dir.display().to_string()),
         data_dir: state.config.data_dir.display().to_string(),
         owner: owner_state,
+        desktop: state.launcher.as_ref().map(|_| true),
     };
     if !send(&mut socket, &hello).await {
         return;
@@ -108,10 +109,12 @@ pub async fn session<O: Owner>(
     let mut launcher = state
         .launcher
         .as_ref()
-        .map(|control| control.status.clone());
-    if let Some(status) = &mut launcher {
-        let status = status.borrow_and_update().clone();
-        if !send(&mut socket, &ServerFrame::Launcher { status }).await {
+        .map(|control| control.diagnostic.clone());
+    if let Some(rx) = &mut launcher {
+        let message = rx.borrow_and_update().clone();
+        if message.is_some()
+            && !send(&mut socket, &ServerFrame::LauncherDiagnostic { message }).await
+        {
             return;
         }
     }
@@ -127,8 +130,8 @@ pub async fn session<O: Owner>(
                 Some(rx) => { rx.changed().await.ok()?; Some(rx.borrow_and_update().clone()) },
                 None => std::future::pending().await,
             } } => {
-                let Some(status) = status else { break };
-                if !send(&mut socket, &ServerFrame::Launcher { status }).await { break; }
+                let Some(message) = status else { break };
+                if !send(&mut socket, &ServerFrame::LauncherDiagnostic { message }).await { break; }
             }
             incoming = socket.recv() => {
                 let Some(Ok(message)) = incoming else { break };
@@ -250,7 +253,9 @@ fn handle_frame<O: Owner>(
             }
             if matches!(action, crate::launcher::Action::Exit) {
                 state.cancel.cancel();
-            } else if control.actions.try_send(action).is_err() {
+            } else if state.hub.owner_state() != OwnerState::Unreachable {
+                return Some(error_frame("invalid_state", "owner is not down"));
+            } else if control.restart.try_send(()).is_err() {
                 return Some(error_frame("busy", "launcher action already queued"));
             }
             None

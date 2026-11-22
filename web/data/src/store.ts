@@ -1,4 +1,3 @@
-import type { LauncherStatus } from "./protocol";
 import type { HistoryWindowInput } from './history-input';
 import { Handoff, type HandoffRecord } from "./handoff";
 // The view-model: signals holding saved facts re-read through the proxy, never invented.
@@ -148,8 +147,10 @@ export class ShellboyData {
   readonly link: Link;
   readonly operations: Operations;
 
-  private readonly launcherSig = signal<LauncherStatus | undefined>(undefined);
-  readonly launcher: ReadonlySignal<LauncherStatus | undefined> = this.launcherSig;
+  private readonly desktopSig = signal(false);
+  readonly desktop: ReadonlySignal<boolean> = this.desktopSig;
+  private readonly desktopDiagnosticSig = signal<string | null>(null);
+  readonly desktopDiagnostic: ReadonlySignal<string | null> = this.desktopDiagnosticSig;
 
   private readonly ownerSig = signal<OwnerView>({ state: "unknown" });
   private readonly bridgeVersionSig = signal<string | undefined>(undefined);
@@ -415,7 +416,8 @@ export class ShellboyData {
       case "closed":
         ++this.readQualificationEpoch;
         batch(() => {
-          this.launcherSig.value = undefined;
+          this.desktopSig.value = false;
+          this.desktopDiagnosticSig.value = null;
           this.ownerSig.value = { state: "unknown" };
           this.markAllStale();
           this.discardAllPreviews("connection_closed");
@@ -433,6 +435,7 @@ export class ShellboyData {
   private onFrame(f: Extract<LinkEvent, { kind: "frame" }>["frame"]): void {
     switch (f.t) {
       case "hello":
+        this.desktopSig.value = f.desktop === true;
         this.bridgeVersionSig.value = f.bridge_version;
         this.dataDirSig.value = f.data_dir;
         this.listenSig.value = typeof f.listen === "string" ? f.listen : undefined;
@@ -440,8 +443,8 @@ export class ShellboyData {
         this.setOwner(f.owner);
         if (f.owner.state === "connected") { this.notifyHints(); void this.resyncAll(); }
         break;
-      case "launcher":
-        this.launcherSig.value = f.status;
+      case "launcher_diagnostic":
+        this.desktopDiagnosticSig.value = f.message;
         break;
       case "owner":
         batch(() => {

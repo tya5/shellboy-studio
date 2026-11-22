@@ -84,9 +84,11 @@ pub enum ServerFrame {
         apps_dir: Option<String>,
         data_dir: String,
         owner: OwnerState,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        desktop: Option<bool>,
     },
-    Launcher {
-        status: crate::launcher::Status,
+    LauncherDiagnostic {
+        message: Option<String>,
     },
     Result {
         id: u64,

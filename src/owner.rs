@@ -50,3 +50,18 @@ pub fn instance_of(response: &Response<Value>) -> Option<String> {
         .map(|(id, _)| id.to_owned())
         .filter(|id| !id.is_empty())
 }
+
+/// Explicit startup discovery, shared by CLI, bundle startup and manual Restart.
+pub async fn startup_probe(owner: &impl Owner) -> Result<(), ApiError> {
+    owner
+        .call(
+            Command::ThreadList(shellboy::protocol::ThreadListArgs {
+                limit: 1,
+                ..Default::default()
+            }),
+            None,
+            None,
+        )
+        .await
+        .map(|_| ())
+}
