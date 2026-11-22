@@ -79,7 +79,7 @@ export function captureConversationInput(snapshot: WindowAcceptedSnapshot, input
   const liveTail: OwnSendTailRow[] = work ? input.records.flatMap(record => {
     if (acceptedAttempts.has(record.attemptId)) return [];
     const live = scopeIssuedWorkFacts(projectOwnedHandoffFacts(input.scope, [record]), [input.scope])!;
-    return projectSavedItems(live).items.map(item => ({ kind: "live" as const, ordinal: record.clientOrdinal, inputThroughNodeId: record.inputThroughNodeId, item }));
+    return projectSavedItems(live).items.map(item => ({ kind: "live" as const, inputThroughNodeId: record.inputThroughNodeId, item }));
   }) : [];
   const projected = work?.length ? projectSavedItems([...canonicalProjection.items.map(item => item.source), ...work]) : canonicalProjection;
   return { liveTail, isCurrent: input.current,

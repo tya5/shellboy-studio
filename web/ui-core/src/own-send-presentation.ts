@@ -2,8 +2,8 @@ import type { HistoryItem } from "../../data/src/protocol";
 import type { ProjectedSavedItem } from "./conversation-items";
 import type { PendingOwnMessage } from "./model";
 
-export type OwnSendTailRow = Readonly<{ kind: "own"; ordinal: number; row: PendingOwnMessage }>
-  | Readonly<{ kind: "live"; ordinal: number; inputThroughNodeId?: string | null; beforeSavedNodeId?: string; item: ProjectedSavedItem }>;
+export type OwnSendTailRow = Readonly<{ kind: "own"; row: PendingOwnMessage }>
+  | Readonly<{ kind: "live"; inputThroughNodeId?: string | null; beforeSavedNodeId?: string; item: ProjectedSavedItem }>;
 export interface OwnSendLocalRegion {
   readonly scope: string;
   readonly cohort: readonly PendingOwnMessage[];
@@ -32,7 +32,7 @@ export function ownSendPresentation(scope: string, cohort: readonly PendingOwnMe
     : localRows.findIndex(own => own.messageId === row.inputThroughNodeId)]));
   const tailRows: OwnSendTailRow[] = placed.filter(row => afterOwn.get(row) === -1);
   localRows.forEach((row, index) => {
-    tailRows.push({ kind: "own", ordinal: row.clientOrdinal, row });
+    tailRows.push({ kind: "own", row });
     tailRows.push(...placed.filter(liveRow => afterOwn.get(liveRow) === index));
   });
   return Object.freeze({ scope, cohort: Object.freeze(cohort), localRows: Object.freeze(localRows),

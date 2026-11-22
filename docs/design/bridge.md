@@ -180,4 +180,4 @@ match yet.
   discarded frames while waiting for the reply. The test now takes both in either order (12 of 12
   passed after). No fault of the owner or bridge was found.
 
-For the #337 pair, `live` carries Core's nullable `input_through_node_id`. `attempt_end` carries the Core fact (`thread_id`, `attempt_id`, `outcome`, `seq`) independently of the latest text slot. `live_end` only says the slot no longer holds text. Resync or a full terminal buffer is not an outcome. The staging pin speaks protocol 7; the final #337 pin and exact-pair tests move to protocol 8 together.
+For the #337 pair, `live` carries Core's nullable `input_through_node_id`. `attempt_end` carries the Core fact (`thread_id`, `attempt_id`, `outcome`, `seq`) independently of the latest text slot. `live_end` only says the slot no longer holds text. Resync or a full terminal buffer is not an outcome. The pinned #337 candidate and exact-pair suite speak protocol 8.
