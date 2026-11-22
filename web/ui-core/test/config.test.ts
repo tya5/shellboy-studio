@@ -21,7 +21,7 @@ const got = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
-async function open(answer: (args: Record<string, unknown>) => unknown = () => ({ ok: true, result: { written: true, restart_required: true, changes: [] } })) {
+async function open(answer: (args: Record<string, unknown>) => unknown = () => ({ ok: true, result: { written: true, content_hash: HASH, restart_required: true, changes: [] } })) {
   const made = await fixtureModel({ route: "settings", section: "general", capabilities: ["config.edit"] });
   const before = made.db.answer;
   let read = got();
@@ -47,131 +47,42 @@ describe("config editing", () => {
     expect(fieldOf(["connections", "my.other", "base_url"])).toBe('connections."my.other".base_url');
   });
 
-  it("sends only the changed field, with the hash it read", async () => {
+  it("parses each committed value without retaining a draft", async () => {
     const { model, t, db } = await open();
-    const c = model.config;
-    c.edit(["default_model"], "model-b", "text");
-    c.edit(["limits", "data_max_bytes"], "1024", "int");
-    expect(c.changes.value.map((r) => r.field)).toEqual(["default_model"]);
-    c.review();
-    void c.save();
-    await settle(t, db);
-    expect(t.calls("config.set").at(-1)!.args).toEqual({ expected_hash: HASH, changes: [{ field: "default_model", value: "model-b" }] });
-    expect(c.stage.value.kind).toBe("saved");
-    expect(c.drafts.value.size).toBe(0);
+    const commit = async (path: string[], value: string, kind: Parameters<typeof model.config.saveField>[2]) => {
+      void model.config.saveField(path, value, kind);
+      await settle(t, db);
+      void model.config.configChanged();
+      await settle(t, db);
+    };
+    await commit(["limits", "data_max_bytes"], "12x", "int");
+    expect(t.calls("config.set")).toHaveLength(0);
+    await commit(["limits", "data_max_bytes"], "2048", "int");
+    await commit(["connections", "proxy", "ssl_verify"], "false", "bool");
+    await commit(["indexing", "auto_kinds"], "user,summary", "kinds");
+    await commit(["compaction", "summary_max_percent"], "2.5", "float");
+    await commit(["default_model"], "", "text");
+    expect(t.calls("config.set").map((call) => call.args)).toEqual([
+      { expected_hash: HASH, changes: [{ field: "limits.data_max_bytes", value: 2048 }] },
+      { expected_hash: HASH, changes: [{ field: "connections.proxy.ssl_verify", value: false }] },
+      { expected_hash: HASH, changes: [{ field: "indexing.auto_kinds", value: ["user", "summary"] }] },
+      { expected_hash: HASH, changes: [{ field: "compaction.summary_max_percent", value: 2.5 }] },
+      { expected_hash: HASH, changes: [{ field: "default_model" }] },
+    ]);
   });
 
-  it("types values: a number is sent as a number, and a bad one blocks the review", async () => {
+  it("never writes redaction placeholders or offers undo for a secret", async () => {
     const { model, t, db } = await open();
-    const c = model.config;
-    c.edit(["limits", "data_max_bytes"], "12x", "int");
-    expect(c.hasInvalid.value).toBe(true);
-    c.review();
-    expect(c.stage.value.kind).toBe("editing");
-    void c.save();
+    void model.config.saveField(["shell", "env", "MY_VAR"], "[redacted]", "secret");
     await settle(t, db);
     expect(t.calls("config.set")).toHaveLength(0);
-    c.edit(["limits", "data_max_bytes"], "2048", "int");
-    c.edit(["connections", "proxy", "ssl_verify"], "false", "bool");
-    void c.save();
+    void model.config.saveField(["shell", "env", "MY_VAR"], "synthetic-value", "secret");
     await settle(t, db);
-    expect(t.calls("config.set").at(-1)!.args).toMatchObject({ changes: [{ field: "limits.data_max_bytes", value: 2048 }, { field: "connections.proxy.ssl_verify", value: false }] });
-  });
-
-  it("writes indexing kinds as an array and fractional compaction percentages as numbers", async () => {
-    const { model, t, db } = await open();
-    model.config.edit(["indexing", "auto_kinds"], "user,summary", "kinds");
-    model.config.edit(["compaction", "summary_max_percent"], "2.5", "float");
-    void model.config.save();
+    void model.config.configChanged();
     await settle(t, db);
-    expect(t.calls("config.set").at(-1)!.args).toEqual({ expected_hash: HASH, changes: [
-      { field: "indexing.auto_kinds", value: ["user", "summary"] },
-      { field: "compaction.summary_max_percent", value: 2.5 },
-    ] });
-  });
-
-  it("blank removes the key, which the review says", async () => {
-    const { model, t, db } = await open();
-    const c = model.config;
-    c.edit(["default_model"], "", "text");
-    expect(c.changes.value[0]).toMatchObject({ removes: true, before: "model-a" });
-    void c.save();
-    await settle(t, db);
-    expect(t.calls("config.set").at(-1)!.args).toMatchObject({ changes: [{ field: "default_model" }] });
-    expect("value" in (t.calls("config.set").at(-1)!.args as { changes: object[] }).changes[0]!).toBe(false);
-  });
-
-  it("never posts the placeholder, and hidden values stay out of the review", async () => {
-    const { model, t, db } = await open();
-    const c = model.config;
-    expect(isHidden(values.shell.env.MY_VAR)).toBe(true);
-    c.edit(["shell", "env", "MY_VAR"], "[redacted]", "secret");
-    expect(c.hasInvalid.value).toBe(true);
-    void c.save();
-    await settle(t, db);
-    expect(t.calls("config.set")).toHaveLength(0);
-    c.edit(["shell", "env", "MY_VAR"], "real-synthetic", "secret");
-    expect(c.hasInvalid.value).toBe(false);
-    expect(JSON.stringify(c.changes.value)).not.toContain("real-synthetic");
-    expect(c.changes.value[0]).toMatchObject({ sensitive: true, before: undefined, after: undefined });
-    c.remove(["connections", "proxy", "headers", "X-Org"], true);
-    void c.save();
-    await settle(t, db);
-    expect(t.calls("config.set").at(-1)!.args).toMatchObject({
-      changes: [{ field: "shell.env.MY_VAR", value: "real-synthetic" }, { field: "connections.proxy.headers.X-Org" }],
-    });
-    expect(JSON.stringify(t.calls("config.set").at(-1)!.args)).not.toContain("[redacted");
-  });
-
-  it("a replacing draft for a hidden value doesn't vanish when it's empty, it just isn't a change", async () => {
-    const { model } = await open();
-    const c = model.config;
-    c.edit(["shell", "env", "MY_VAR"], "x", "secret");
-    c.edit(["shell", "env", "MY_VAR"], "", "secret");
-    expect(c.drafts.value.size).toBe(0);
-  });
-
-  it("a stale hash reads again, keeps the drafts and writes with the new hash", async () => {
-    let refused = false;
-    const newHash = "b".repeat(64);
-    const made = await open((): unknown => {
-      if (refused) return { ok: true, result: { written: true, restart_required: true, changes: [] } };
-      refused = true;
-      made.setRead(got({ file: { present: true, content_hash: newHash, valid: true, error: null, values, redacted_fields: [] } }));
-      return { ok: false, code: "operation_conflict", message: "changed", details: { reason: "config_changed", written: false } };
-    });
-    const c = made.model.config;
-    c.edit(["default_model"], "model-b", "text");
-    void c.save();
-    await settle(made.t, made.db);
-    expect(c.stage.value.kind).toBe("conflict");
-    expect(c.drafts.value.size).toBe(1);
-    expect(c.read.value.value?.file.contentHash).toBe(newHash);
-    void c.save();
-    await settle(made.t, made.db);
-    expect(made.t.calls("config.set").at(-1)!.args).toMatchObject({ expected_hash: newHash });
-    expect(c.stage.value.kind).toBe("saved");
-  });
-
-  it("shows the owner's refusal and names the field by index", async () => {
-    const { model, t, db } = await open(() => ({ ok: false, code: "invalid_argument", message: "looks like a credential", details: { reason: "credential_value_refused", change_index: 0, written: false } }));
-    const c = model.config;
-    c.edit(["connections", "proxy", "api_key_env"], "ghp_abc", "name");
-    void c.save();
-    await settle(t, db);
-    expect(c.stage.value).toMatchObject({ kind: "refused", reason: "credential_value_refused", field: "connections.proxy.api_key_env", message: "looks like a credential" });
-    expect(c.drafts.value.size).toBe(1);
-  });
-
-  it("passes on a warning and the restart state from the result", async () => {
-    const { model, t, db } = await open(() => ({ ok: true, result: { written: true, restart_required: true, warning: "permissions may differ", changes: [{ field: "default_model", previous: "model-a", value: "b", sensitive: false, restart_required: true }, { field: "shell.env.MY_VAR", sensitive: true, restart_required: true }] } }));
-    const c = model.config;
-    c.edit(["default_model"], "b", "text");
-    void c.save();
-    await settle(t, db);
-    expect(c.stage.value).toMatchObject({ kind: "saved", restartRequired: true, warning: "permissions may differ" });
-    const stage = c.stage.value as { changes: { sensitive: boolean; value?: unknown }[] };
-    expect(stage.changes[1]).toEqual({ field: "shell.env.MY_VAR", sensitive: true, restartRequired: true, appliedToRunningOwner: false });
+    expect(model.config.lastSaved.peek()?.undo).toEqual([]);
+    await model.config.undoLast();
+    expect(t.calls("config.set")).toHaveLength(1);
   });
 
   it("tests and clears a saved connection without sending a credential", async () => {
@@ -189,49 +100,51 @@ describe("config editing", () => {
     expect(made.model.config.connectionAction.value).toEqual({ name: "proxy", state: "cleared" });
   });
 
-  it("does not write a stale draft when a later configuration read fails", async () => {
+  it("does not write when the configuration read failed", async () => {
     const made = await open();
     const before = made.db.answer;
     made.db.answer = (c) => c.command === "config.get" ? { ok: false, code: "invalid_argument", message: "not available" } : before(c);
-    made.model.config.edit(["default_model"], "new", "text");
     void made.model.config.refresh();
     await settle(made.t, made.db);
     expect(made.model.config.read.value.error).toBeDefined();
-    void made.model.config.save();
+    void made.model.config.saveField(["default_model"], "new", "text");
     await settle(made.t, made.db);
     expect(made.t.calls("config.set")).toHaveLength(0);
   });
 
-  it("leaving Settings cancels the read and keeps the drafts", async () => {
+  it("leaving Settings cancels the read", async () => {
     const { model, t, db } = await open();
     const c = model.config;
-    c.edit(["default_model"], "model-b", "text");
     void c.refresh();
     await Promise.resolve();
     model.applyRoute({ view: "monitor" });
     await settle(t, db).catch(() => undefined);
     expect(c.read.value.loading).toBe(false);
-    expect(c.drafts.value.size).toBe(1);
   });
 });
 
 describe("on-the-spot config settings", () => {
   it("writes one field immediately and exposes an undo for the previous value", async () => {
-    const { model, t, db } = await open();
-    const editor = model.config as typeof model.config & {
-      saveField(path: readonly string[], raw: string, kind: "text"): Promise<void>;
-      undoLast(): Promise<void>;
-      lastSaved: { field: string; previous: unknown } | undefined;
-    };
+    const nextHash = "b".repeat(64);
+    const { model, t, db, setRead } = await open(() => ({ ok: true, result: { written: true, content_hash: nextHash, restart_required: true, changes: [{ field: "default_model", restart_required: false }] } }));
+    const editor = model.config;
+    const readsBefore = t.calls("config.get").length;
     void editor.saveField(["default_model"], "model-b", "text");
     await settle(t, db);
     expect(t.calls("config.set")).toHaveLength(1);
     expect(t.calls("config.set")[0]!.args).toEqual({ expected_hash: HASH, changes: [{ field: "default_model", value: "model-b" }] });
-    expect(editor.lastSaved.peek()).toMatchObject({ field: "default_model", previous: "model-a" });
+    expect(editor.lastSaved.peek()).toBeUndefined();
+    expect(editor.pendingField.peek()).toBe("default_model");
+    expect(t.calls("config.get")).toHaveLength(readsBefore);
+    expect(editor.read.value.value?.file.values?.default_model).toBe("model-a");
+    setRead(got({ file: { ...got().file, content_hash: nextHash, values: { ...values, default_model: "model-b" } } }));
+    void editor.configChanged();
+    await settle(t, db);
+    expect(editor.lastSaved.peek()).toMatchObject({ field: "default_model", restartRequired: false, undo: [{ field: "default_model", value: "model-a" }] });
     void editor.undoLast();
     await settle(t, db);
     expect(t.calls("config.set")).toHaveLength(2);
-    expect(t.calls("config.set")[1]!.args).toEqual({ expected_hash: HASH, changes: [{ field: "default_model", value: "model-a" }] });
+    expect(t.calls("config.set")[1]!.args).toEqual({ expected_hash: nextHash, changes: [{ field: "default_model", value: "model-a" }] });
   });
 
   it("keeps a refusal reason on its field and rereads Core's value", async () => {

@@ -349,7 +349,7 @@ describe("the key stays out of sight", () => {
     savePrefs(store, loadPrefs(store, [{ name: "console", themes: [{ name: "console" }] }]));
     expect(stored).not.toContain(KEY);
     expect(JSON.stringify(logs)).not.toContain(KEY);
-    for (const sig of [s.probe, s.service, s.baseUrl, s.api, s.keyDraft, s.keyHeld, s.env, s.test, s.model, s.saveState, m.model.actionError, m.model.config.read, m.model.config.drafts, m.model.config.stage])
+    for (const sig of [s.probe, s.service, s.baseUrl, s.api, s.keyDraft, s.keyHeld, s.env, s.test, s.model, s.saveState, m.model.actionError, m.model.config.read])
       expect(String(JSON.stringify(sig.value, (_k, v: unknown) => (v instanceof Map ? [...v] : v)))).not.toContain(KEY);
     // The key travelled only in the two calls that carry it.
     const carrying = m.t.calls().filter((c) => JSON.stringify(c.args ?? {}).includes(KEY)).map((c) => c.command);

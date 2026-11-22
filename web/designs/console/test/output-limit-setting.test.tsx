@@ -29,18 +29,19 @@ it.each(['responses','chat_completions','anthropic_messages'])('saves only max_t
  const extra={provider_flag:true};
  const values=()=>({connections:{proxy:{api,base_url:'https://example.invalid/v1',extra_body:extra,...(value===undefined?{}:{max_tokens:value})}}});
  const m=await fixtureModel({route:'settings',section:'connections',capabilities:['config.edit'],configure(db){const before=db.answer.bind(db);db.answer=c=>{
-  if(c.command==='config.get')return {ok:true,result:{loaded:{values:values()},file:{present:true,valid:true,content_hash:'synthetic',values:values()},differs:false}};
-  if(c.command==='config.set'){const changes=(c.args as {changes:{field:string,value?:number}[]}).changes;expect(changes).toHaveLength(1);expect(changes[0]!.field).toBe('connections.proxy.max_tokens');value=changes[0]!.value;return {ok:true,result:{written:true,restart_required:true,changes:[]}};}
+  if(c.command==='config.get')return {ok:true,result:{loaded:{values:values()},file:{present:true,valid:true,content_hash:String(value),values:values()},differs:false}};
+  if(c.command==='config.set'){const changes=(c.args as {changes:{field:string,value?:number}[]}).changes;expect(changes).toHaveLength(1);expect(changes[0]!.field).toBe('connections.proxy.max_tokens');value=changes[0]!.value;return {ok:true,result:{written:true,content_hash:String(value),restart_required:true,changes:[]}};}
   return before(c);
  }} });
  dispose=()=>m.model.dispose();await settle(m.t,m.db);
  const c=m.model.config;
- c.edit(['connections','proxy','max_tokens'],'4096','int');expect(m.t.calls('config.set')).toHaveLength(0);
- c.review();const save=c.save();await settle(m.t,m.db);await save;
+ void c.saveField(['connections','proxy','max_tokens'],'4096','int');await settle(m.t,m.db);
+ void c.configChanged();await settle(m.t,m.db);
  expect(m.t.calls('config.set')).toHaveLength(1);expect(c.read.value.value?.file.values).toEqual(values());
  m.model.navigate({view:'monitor'});m.model.navigate({view:'settings',section:'connections'});await settle(m.t,m.db);
  expect((c.read.value.value?.file.values?.connections as ReturnType<typeof values>['connections']).proxy.max_tokens).toBe(4096);
- c.edit(['connections','proxy','max_tokens'],'','int');c.review();const clear=c.save();await settle(m.t,m.db);await clear;
+ void c.saveField(['connections','proxy','max_tokens'],'','int');await settle(m.t,m.db);
+ void c.configChanged();await settle(m.t,m.db);
  expect(m.t.calls('config.set')).toHaveLength(2);expect(value).toBeUndefined();expect(values().connections.proxy.extra_body).toEqual(extra);
  expect(m.t.calls('connection.test')).toHaveLength(0);
 });
@@ -51,8 +52,8 @@ it('retains owner validation and refuses malformed integers without automatic wr
   if(c.command==='config.set')return {ok:false,code:'invalid_request',message:'Owner rejected maximum output tokens'};
   return before(c);
  }} });dispose=()=>m.model.dispose();await settle(m.t,m.db);
- const c=m.model.config;c.edit(['connections','proxy','max_tokens'],'1.5','int');c.review();await c.save();expect(m.t.calls('config.set')).toHaveLength(0);
- c.edit(['connections','proxy','max_tokens'],'32','int');c.review();const saved=c.save();await settle(m.t,m.db);await saved;
- expect(c.drafts.value.get('connections.proxy.max_tokens')?.raw).toBe('32');expect(m.t.calls('config.set')).toHaveLength(1);
+ const c=m.model.config;await c.saveField(['connections','proxy','max_tokens'],'1.5','int');expect(m.t.calls('config.set')).toHaveLength(0);
+ void c.saveField(['connections','proxy','max_tokens'],'32','int');await settle(m.t,m.db);
+ expect(c.fieldError.value?.reason).toBe('Owner rejected maximum output tokens');expect(m.t.calls('config.set')).toHaveLength(1);
  expect(m.t.calls('message.reply')).toHaveLength(0);expect(m.t.calls('thread.send')).toHaveLength(0);
 });

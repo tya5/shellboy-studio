@@ -955,7 +955,7 @@ describe("Threads", () => {
       if (call.command === "config.get") return { ok: true, result: { loaded: side, file, differs: file !== side, restart: { all_fields_require_restart: false } } };
       if (call.command === "config.set") {
         file = { ...side, content_hash: "effort-saved", values: { ...values, connections: { proxy: { default_effort: "high" } } } };
-        return { ok: true, result: { written: true, restart_required: true, changes: [{ field: "connections.proxy.default_effort", previous: "", value: "high", restart_required: true, applied_to_running_owner: false }] } };
+        return { ok: true, result: { written: true, content_hash: file.content_hash, restart_required: true, changes: [{ field: "connections.proxy.default_effort", previous: "", value: "high", restart_required: true, applied_to_running_owner: false }] } };
       }
       return before(call);
     };
@@ -965,6 +965,8 @@ describe("Threads", () => {
     const high = [...el.querySelectorAll<HTMLButtonElement>("button")].find((button) => text(button) === "high")!;
     act(() => high.click());
     await act(async () => { await settle(made.t, made.db); });
+    expect(high.getAttribute("aria-pressed")).toBe("false");
+    await act(async () => { void made.model.config.configChanged(); await settle(made.t, made.db); });
     expect(made.t.calls("config.set")).toHaveLength(1);
     expect(made.t.calls("config.set")[0]!.args).toEqual({ expected_hash: "effort-hash", changes: [{ field: "connections.proxy.default_effort", value: "high" }] });
     expect(high.getAttribute("aria-pressed")).toBe("true");
@@ -982,6 +984,51 @@ describe("Threads", () => {
     act(() => { search.value = "summaries"; search.dispatchEvent(new Event("input", { bubbles: true })); });
     expect(text(el)).toContain("Summary");
     expect(el.querySelectorAll(".secnav-item")).toHaveLength(1);
+  });
+
+  it("Settings search targets repeated connection fields by their stable path", async () => {
+    const values = { connections: { alpha: { request_timeout_ms: 10 }, "beta.prod": { request_timeout_ms: 20 } } };
+    const loaded = { values };
+    const file = { values, content_hash: "timeouts", valid: true, present: true };
+    const { model, t, db } = await fixtureModel({ route: "settings", section: "connections", capabilities: ["config.edit"], configure(db) {
+      const answer = db.answer;
+      db.answer = (call) => call.command === "config.get" ? { ok: true, result: { loaded, file } } : answer(call);
+    } });
+    const el = draw(model);
+    await act(async () => { await settle(t, db); });
+    const search = el.querySelector<HTMLInputElement>(".secnav-search input")!;
+    act(() => { search.value = "request timeout"; search.dispatchEvent(new Event("input", { bubbles: true })); });
+    const hits = [...el.querySelectorAll<HTMLAnchorElement>(".secnav-results a")];
+    expect(hits.map(text)).toEqual(["Connections / alpha / Request timeout (ms)", "Connections / beta.prod / Request timeout (ms)"]);
+    act(() => hits[1]!.click());
+    expect(el.querySelector("[data-highlighted]")?.getAttribute("data-setting-id")).toBe('connections."beta.prod".request_timeout_ms');
+  });
+
+  it("Settings restores refused text and custom effort even when Core returns the same values", async () => {
+    const values = { default_connection: "proxy", connections: { proxy: { base_url: "https://example.invalid", default_effort: "custom-original" } } };
+    const file = { values, content_hash: "unchanged", valid: true, present: true };
+    const { model, t, db } = await fixtureModel({ route: "settings", section: "connections", capabilities: ["config.edit"], configure(db) {
+      const answer = db.answer;
+      db.answer = (call) => call.command === "config.get" ? { ok: true, result: { loaded: file, file } } : call.command === "config.set" ? { ok: false, code: "invalid_argument", message: "Refused by Core" } : answer(call);
+    } });
+    const el = draw(model);
+    await act(async () => { await settle(t, db); });
+    const commit = async (input: HTMLInputElement, value: string) => {
+      act(() => { input.value = value; input.dispatchEvent(new Event("input", { bubbles: true })); });
+      act(() => { input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })); });
+      await act(async () => { await settle(t, db); });
+    };
+    const url = () => el.querySelector<HTMLInputElement>('[data-setting-id="connections.proxy.base_url"] input')!;
+    await commit(url(), "https://refused.invalid");
+    expect(url().value).toBe(values.connections.proxy.base_url);
+    expect(text(el)).toContain("Refused by Core");
+    act(() => model.applyRoute({ view: "settings", section: "general" }));
+    await act(async () => { await settle(t, db); });
+    const effort = () => el.querySelector<HTMLInputElement>('[data-setting-id="default-effort"] input')!;
+    await commit(effort(), "custom-refused");
+    expect(effort().value).toBe("custom-original");
+    expect(text(el)).toContain("Refused by Core");
+    expect(t.calls("config.set")).toHaveLength(2);
   });
 
   it("Settings says editing isn't available on a v0.10.0 owner, and draws no control", async () => {
@@ -1005,7 +1052,7 @@ describe("Threads", () => {
       if (c.command === "model.list") return { ok: true, result: { api: "responses", connection: (c.args as { connection: string }).connection, models: [(c.args as { connection: string }).connection === "second" ? "new-model" : "old-model"] } };
       if (c.command === "config.set") {
         side = side.content_hash === "h1" ? { ...side, content_hash: "h2", values: { ...values, default_connection: "second", default_model: "new-model" } } : { ...side, content_hash: "h3", values };
-        return { ok: true, result: { written: true, restart_required: false, changes: [] } };
+        return { ok: true, result: { written: true, content_hash: side.content_hash, restart_required: false, changes: [] } };
       }
       return before(c);
     };
@@ -1018,10 +1065,12 @@ describe("Threads", () => {
     act(() => button("second / new-model").click());
     await act(async () => { await settle(made.t, made.db); });
     expect(made.t.calls("config.set").map((c) => c.args)).toEqual([{ expected_hash: "h1", changes: [{ field: "default_connection", value: "second" }, { field: "default_model", value: "new-model" }] }]);
+    await act(async () => { void made.model.config.configChanged(); await settle(made.t, made.db); });
     expect(button("second / new-model")).toBeDefined();
     act(() => button("Undo").click());
     await act(async () => { await settle(made.t, made.db); });
     expect(made.t.calls("config.set").at(-1)!.args).toEqual({ expected_hash: "h2", changes: [{ field: "default_connection", value: "proxy" }, { field: "default_model", value: "old-model" }] });
+    await act(async () => { void made.model.config.configChanged(); await settle(made.t, made.db); });
     expect(button("proxy / old-model")).toBeDefined();
   });
 

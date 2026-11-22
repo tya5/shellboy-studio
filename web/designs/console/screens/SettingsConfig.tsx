@@ -1,5 +1,6 @@
-import { useCallback, useMemo, useState } from "preact/hooks";
-import { CAPABILITY_CONFIG, CONNECTION_FIELDS, CONNECTION_SECRETS, fieldOf, isHidden, isHiddenName, showConfigValue, valueAt, type AppModel, type ConfigChangeRow, type ConfigFacts, type ConfigFieldSpec, type Draft } from "../../../ui-core/src";
+import type { RegisterSetting } from "./setting-search";
+import { useCallback, useEffect, useMemo, useState } from "preact/hooks";
+import { CAPABILITY_CONFIG, CONNECTION_FIELDS, CONNECTION_SECRETS, fieldOf, isHidden, isHiddenName, showConfigValue, valueAt, type AppModel, type ConfigFacts, type ConfigFieldSpec } from "../../../ui-core/src";
 import { Button, ButtonGroup, FactList, Field, Notice, Section, type Fact } from "../system/components";
 import { ConnectionModelList, ModelChooser, modelLabel, useConnectionModels } from "../system/components/ModelPicker/ConnectionModelList";
 import { Rich } from "./Rich";
@@ -16,27 +17,23 @@ export function configRowValue(t: T, facts: ConfigFacts, path: readonly string[]
   return showConfigValue(v);
 }
 
-function DraftNote({ model, draft, t }: { model: AppModel; draft: Draft | undefined; t: T }) {
-  if (!draft) return null;
-  if (draft.invalid) return <Notice tone="bad">{t(draft.invalid === "number" ? "config.badNumber" : draft.invalid === "json" ? "config.badJson" : "config.badPlaceholder")}</Notice>;
-  return (
-    <div class="band">
-      <span class="muted caption">{t(draft.value === undefined ? "config.willRemove" : "config.changed")}</span>
-      <Button variant="link" onClick={() => model.config.undo(draft.field)}>{t("config.undo")}</Button>
-    </div>
-  );
-}
-
 /** What the running owner has, when the file says something else. */
-function RunningNote({ model, path, t }: { model: AppModel; path: readonly string[]; t: T }) {
-  const facts = model.config.read.value.value;
-  if (!facts?.differing?.includes(fieldOf(path))) return null;
-  const loaded = valueAt(facts.loaded.values, path);
-  if (isHidden(loaded)) return <div class="muted caption">{t("config.runningHidden")}</div>;
-  return <div class="muted caption">{t("config.runningWith", { value: loaded === undefined || loaded === null ? t("config.notSet") : showConfigValue(loaded) })}</div>;
+export function SettingFeedback({ model, paths }: { model: AppModel; paths: readonly (readonly string[])[] }) {
+  const t = model.t.value;
+  const config = model.config;
+  const facts = config.read.value.value;
+  const field = fieldOf(paths[0]!);
+  const saved = config.lastSaved.value?.field === field ? config.lastSaved.value : undefined;
+  const error = config.fieldError.value?.field === field ? config.fieldError.value.reason : undefined;
+  const differs = facts?.differing?.some((name) => paths.some((path) => fieldOf(path) === name));
+  const restart = saved?.restartRequired ?? (differs === true ? true : undefined);
+  const errorText = error === "number" ? t("config.badNumber") : error === "json" ? t("config.badJson") : error === "placeholder" ? t("config.badPlaceholder") : error;
+  return <div class="muted caption" role="status">
+    {config.pendingField.value === field ? t("common.loading") : errorText ?? (restart === undefined ? null : t(restart ? "config.restartOwner" : "config.applyNow"))}
+    {saved?.undo.length && !errorText ? <Button variant="link" disabled={config.fieldSaving.value} onClick={() => void config.undoLast()}>{t("config.undo")}</Button> : null}
+  </div>;
 }
 
-/** A hidden value: words, and a way to replace it without ever seeing or sending it back. */
 function HiddenControl({ model, path, label, json, t, name, onRemove }: { model: AppModel; path: readonly string[]; label: string; json: boolean; t: T; name?: string; onRemove?: () => void }) {
   const [replacing, setReplacing] = useState(false);
   const [raw, setRaw] = useState("");
@@ -52,6 +49,12 @@ function HiddenControl({ model, path, label, json, t, name, onRemove }: { model:
   return <div class="stack"><div class="band">{name ? <code>{name}</code> : null}<span>{t("config.hiddenValue")}</span>{!replacing ? <Button variant="link" onClick={() => setReplacing(true)}>{t("config.replace")}</Button> : null}{onRemove ? <Button variant="link" disabled={busy} onClick={onRemove}>{t("config.remove")}</Button> : null}</div>{replacing ? <Field ariaLabel={t("config.newValue") + ": " + label} type="password" autoComplete="new-password" placeholder={json ? t("config.enterJson") : t("config.newValue")} value={raw} disabled={busy} onInput={(e) => setRaw(e.currentTarget.value)} onKeyDown={(e) => { if (e.key === "Enter") save(); }} onBlur={save} /> : null}{error ? <Notice tone="bad">{error}</Notice> : null}</div>;
 }
 
+function RejectedTextField({ rejection, ...props }: Parameters<typeof Field>[0] & { rejection?: object }) {
+  const [revision, setRevision] = useState(0);
+  useEffect(() => { if (rejection) setRevision((previous) => previous + 1); }, [rejection]);
+  return <Field key={revision} {...props} />;
+}
+
 /** The typed control for one key of the file. */
 export function ConfigControl({ model, path, label, spec }: { model: AppModel; path: readonly string[]; label: string; spec: ConfigFieldSpec }) {
   const t = model.t.value;
@@ -60,8 +63,7 @@ export function ConfigControl({ model, path, label, spec }: { model: AppModel; p
   const field = fieldOf(path);
   const current = valueAt(facts?.file.values, path);
   const saving = config.fieldSaving.value;
-  const error = config.fieldError.value?.field === field ? config.fieldError.value.reason : undefined;
-  const saved = config.lastSaved.value?.field === field ? config.lastSaved.value : undefined;
+  const error = config.fieldError.value?.field === field ? config.fieldError.value : undefined;
   const commit = (raw: string) => { if (!saving) void config.saveField(path, raw, spec.kind); };
   const disabled = saving || !facts?.file.valid;
   let control;
@@ -75,10 +77,9 @@ export function ConfigControl({ model, path, label, spec }: { model: AppModel; p
     control = <ButtonGroup label={label}>{kinds.map((kind) => <Button key={kind} disabled={disabled} aria-pressed={selected.includes(kind)} onClick={() => commit((selected.includes(kind) ? selected.filter((v) => v !== kind) : [...selected, kind]).join(","))}>{t(`set.kind.${kind}`)}</Button>)}</ButtonGroup>;
   } else {
     const raw = current === undefined || current === null ? "" : showConfigValue(current);
-    control = <Field ariaLabel={label} class="mono" inputMode={spec.kind === "int" ? "numeric" : undefined} placeholder={t("config.notSet")} value={raw} disabled={disabled} onKeyDown={(e) => { if (e.key === "Enter") commit(e.currentTarget.value); }} onBlur={(e) => { if (e.currentTarget.value !== raw) commit(e.currentTarget.value); }} />;
+    control = <RejectedTextField rejection={error} ariaLabel={label} class="mono" inputMode={spec.kind === "int" ? "numeric" : undefined} placeholder={t("config.notSet")} value={raw} disabled={disabled} onKeyDown={(e) => { if (e.key === "Enter") commit(e.currentTarget.value); }} onBlur={(e) => { if (e.currentTarget.value !== raw) commit(e.currentTarget.value); }} />;
   }
-  const status = error ? <span role="status">{error}</span> : <>{saved ? <>{saved.restartRequired ? t("config.restartOwner") : t("config.applyNow")} {saved.undo.length ? <Button variant="link" onClick={() => void config.undoLast()}>{t("config.undo")}</Button> : null}</> : facts?.restartAll ? t("config.restartOwner") : t("config.applyNow")}</>;
-  return <div class="stack">{control}<div class="muted caption" role={error ? "alert" : undefined}>{status}</div></div>;
+  return <div class="stack">{control}<SettingFeedback model={model} paths={[path]} /></div>;
 }
 
 /** Entries whose values the owner hides: names, "set, hidden", replace, remove, add. */
@@ -115,9 +116,6 @@ export function ConnectionModelRow({ model, path, modelPath, label }: { model: A
   const names = useMemo(() => Object.keys(connections ?? {}).sort(), [connections]);
   const [open, setOpen] = useState(false);
   const choice = { connection: String(valueAt(values, path) ?? ""), model: String(valueAt(values, modelPath) ?? "") };
-  const field = fieldOf(path);
-  const saved = config.lastSaved.value?.field === field ? config.lastSaved.value : undefined;
-  const error = config.fieldError.value?.field === field ? config.fieldError.value.reason : undefined;
   const load = useCallback(async (connection: string) => {
     const result = await model.ops.modelList({ connection });
     return result.ok ? { choices: result.value.models } : { choices: [], error: result.error.message };
@@ -127,8 +125,7 @@ export function ConnectionModelRow({ model, path, modelPath, label }: { model: A
       <ModelCatalog connections={names} load={load} current={choice} t={t} onSelect={(next) => { setOpen(false); void config.saveModelPair(path, modelPath, next.connection, next.model); }} />
       <Button onClick={() => setOpen(false)}>{t("model.close")}</Button>
     </ModelChooser>
-    <div class="muted caption">{(saved?.restartRequired ?? facts?.restartAll) ? t("config.restartOwner") : t("config.applyNow")} {saved?.undo.length ? <Button disabled={config.fieldSaving.value} variant="link" onClick={() => void config.undoLast()}>{t("config.undo")}</Button> : null}</div>
-    {error ? <Notice tone="bad">{error}</Notice> : null}
+    <SettingFeedback model={model} paths={[path, modelPath]} />
   </div>;
 }
 
@@ -145,7 +142,7 @@ function ModelCatalog({ connections, load, current, t, onSelect }: {
 }
 
 /** One section per connection in the file. */
-export function ConfigConnections({ model }: { model: AppModel }) {
+export function connectionCards(model: AppModel, search: RegisterSetting) {
   const t = model.t.value;
   const facts = model.config.read.value.value;
   if (!facts) return null;
@@ -159,16 +156,16 @@ export function ConfigConnections({ model }: { model: AppModel }) {
         const rows: Fact[] = CONNECTION_FIELDS.map((field) => {
           const { key, kind } = field;
           const path = ["connections", name, key];
-          const label = t(`config.conn.${key}`);
+          const { settingId, label } = search(fieldOf(path), `config.conn.${key}`, key === "api_key_env" ? ["config.keyNote"] : key === "max_tokens" ? ["config.outputTokensNote"] : [], name);
           const env = key === "api_key_env" ? valueAt(values, path) : undefined;
           const note = key === "api_key_env" ? <>{t("config.keyNote")} {typeof env === "string" && facts.credentialSet[env] !== undefined ? t(facts.credentialSet[env] ? "config.envSet" : "config.envUnset") : null}</> : key === "max_tokens" ? t("config.outputTokensNote") : undefined;
           const value = configRowValue(t, facts, path);
-          return editable ? { label, control: <ConfigControl model={model} path={path} label={label} spec={{ kind, ...("options" in field ? { options: field.options } : {}) }} />, ...(note ? { note } : {}) } : { label, mono: true, ...(value !== undefined ? { value } : {}), ...(note ? { note } : {}) };
+          return editable ? { settingId, label, control: <ConfigControl model={model} path={path} label={label} spec={{ kind, ...("options" in field ? { options: field.options } : {}) }} />, ...(note ? { note } : {}) } : { settingId, label, mono: true, ...(value !== undefined ? { value } : {}), ...(note ? { note } : {}) };
         });
         if (editable)
           for (const { key, json } of CONNECTION_SECRETS) {
-            const label = t(`config.conn.${key}`);
-            rows.push({ label, control: <SecretEntries model={model} path={["connections", name, key]} label={label} json={json} /> });
+            const { settingId, label } = search(fieldOf(["connections", name, key]), `config.conn.${key}`, [], name);
+            rows.push({ settingId, label, control: <SecretEntries model={model} path={["connections", name, key]} label={label} json={json} /> });
           }
         return (
           <Section key={name} title={t("config.connection", { name })}>

@@ -3,6 +3,7 @@ import { SettingRow } from "../SettingRow";
 
 export interface Fact {
   label: string;
+  settingId?: string;
   /** Absent: the owner has no read for this; `missing` says so in words. */
   value?: ComponentChildren;
   mono?: boolean;
@@ -16,7 +17,7 @@ export function FactList({ facts, missing }: { facts: Fact[]; missing: string })
   return (
     <dl class="fact-list-root">
       {facts.map((f) => (
-        f.control ? <SettingRow key={f.label} label={f.label} description={f.note} control={f.control} /> : <div class="fact-list-row" key={f.label}>
+        f.control ? <SettingRow key={f.settingId ?? f.label} settingId={f.settingId} label={f.label} description={f.note} control={f.control} /> : <div class="fact-list-row" key={f.settingId ?? f.label} data-setting-id={f.settingId}>
           <dt>{f.label}</dt>
           <dd>{f.value !== undefined ? <span class={f.mono ? "mono" : undefined}>{f.value}</span> : <span class="muted">{missing}</span>}{f.note ? <div class="muted caption">{f.note}</div> : null}</dd>
         </div>
