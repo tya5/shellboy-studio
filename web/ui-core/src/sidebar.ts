@@ -17,7 +17,7 @@ export function sidebarGroups(items: readonly ThreadSummary[], selected?: string
       else dirs.set(item.cwd, [item]);
     }
   }
-  const pending = new Map(items.map(item => [item.thread_id, item.awaiting_human_count ?? 0]));
+  const pending = new Map(items.map(item => [item.thread_id, item.awaiting_named_count ?? 0]));
   const totals = new Map<string, { descendants: number; awaiting: number; running: number }>();
   const ancestors: string[] = [];
   for (const row of threadTree([...items], pending)) {

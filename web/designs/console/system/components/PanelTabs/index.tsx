@@ -5,7 +5,7 @@ export interface PanelTabItem {
   readonly id: string;
   readonly label: string;
   readonly icon: IconRole;
-  readonly count?: number;
+  readonly count?: number | `${number}+`;
 }
 
 export function PanelTabs(props: {

@@ -68,10 +68,10 @@ it("holds the successful page across several RAFs while a real synthetic transpo
   const inbox = new HumanInbox(data), list = data.trackThreadList(); data.start(); transport.open();
   transport.push({ t: "hello", bridge_version: "synthetic", data_dir: "/synthetic", owner: connected }); await flush();
   transport.ok(transport.calls("thread.list").find(c => !(c.args as { awaiting?: string }).awaiting)!.id, { items: [] }); await flush();
-  const humanPage = () => transport.calls("thread.list").filter(c => (c.args as { awaiting?: string }).awaiting).at(-1)!;
-  transport.ok(humanPage().id, { items: [summary("lead")], next_cursor: "synthetic-next" }); await flush();
-  const duty = { message_id: "synthetic-reply", recipient_kind: "human", recipient_thread_id: "lead", excerpt: question.question, delivery_status: "accepted" };
-  transport.ok(transport.calls("thread.get").at(-1)!.id, details("lead", { awaiting_replies: [duty] })); await flush();
+  const humanPage = () => transport.calls("message.list").at(-1)!;
+  const duty = { message_id: "synthetic-reply", asked_by: "lead", sender: {kind:"model",thread_id:"lead"},
+    recipient: {kind:"name",name:"human"}, excerpt: question.question, created_at: "2026-01-01T00:00:00Z" };
+  transport.ok(humanPage().id, { items: [duty], next_cursor: "synthetic-next" }); await flush();
   const { model } = await fixtureModel({ route: "inbox", pending: inbox });
   close = () => { model.dispose(); inbox.close(); list.close(); data.stop(); };
   host = document.createElement("div"); document.body.append(host); act(() => render(<Inbox model={model} />, host!));

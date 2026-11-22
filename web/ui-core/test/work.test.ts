@@ -1,6 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { signal } from "@preact/signals-core";
-import type { ReplyWaitAdapter } from "../../data/src";
 import { toolLabel, workRegions } from "../src";
 import { fixtureModel } from "./fixture";
 import { flush, settle } from "../../data/test/harness";
@@ -61,34 +59,6 @@ describe("bounded conversation work", () => {
     expect(model.work.value.pending).toEqual([]);
     await settle(t, db); expect(model.work.value.pending).toEqual([]); model.dispose();
   });
-  it("keeps replies capability-gated and only answers human recipients", async () => {
-    const answers: string[] = [];
-    const items = signal<ReplyWaitAdapter["items"]["value"]>([
-        { id: "h", threadId: "lead", question: "Human?", recipient: { kind: "human" }, state: "waiting" },
-        { id: "c", threadId: "lead", question: "Child?", recipient: { kind: "thread", threadId: "child", title: "Child" }, state: "waiting" },
-        { id: "x", threadId: "other", question: "Other?", recipient: { kind: "human" }, state: "waiting" },
-      ]);
-    const adapter: ReplyWaitAdapter = {
-      supported: (caps) => caps.includes("test.reply"),
-      items,
-      answer: async (id) => { answers.push(id); return { ok: true, value: {} }; },
-    };
-    const old = await fixtureModel({ replyWait: adapter });
-    expect(old.model.threadReplies.value).toEqual([]);
-    old.model.dispose();
-    const current = await fixtureModel({ replyWait: adapter, capabilities: ["test.reply"] });
-    expect(current.model.threadReplies.value.map((item) => item.id)).toEqual(["h", "c"]);
-    await current.model.runPanelOperation("c", { kind: "answer", text: "no" });
-    await current.model.runPanelOperation("h", { kind: "answer", text: "yes" });
-    expect(answers).toEqual(["h"]);
-    const rows = items.peek();
-    items.value = rows.filter(row => row.id !== "h");
-    expect(current.model.panelOperations.peek().get("h")?.disposition).toBe("pending");
-    items.value = rows.map(row => row.id === "h" ? { ...row, state: "answered" } : row);
-    expect(current.model.panelOperations.peek().has("h")).toBe(false);
-    current.model.dispose();
-  });
-
   it("reads no more than eight pending bodies", async () => {
     const { model, t, db } = await fixtureModel();
     db.work.lead = Array.from({ length: 12 }, (_, n) => ({ kind: "message", id: `m${n}`, message_id: `m${n}`, thread_id: "lead", state: "held" }));

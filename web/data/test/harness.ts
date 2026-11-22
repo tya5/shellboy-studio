@@ -1,4 +1,4 @@
-import type { ThreadDetails, ClientFrame, OwnerResponse, OwnerState, ServerFrame } from "../src/protocol";
+import type { PendingReply, ThreadDetails, ClientFrame, OwnerResponse, OwnerState, ServerFrame } from "../src/protocol";
 import type { Transport, TransportHandlers } from "../src/transport";
 
 export type CallFrame = Extract<ClientFrame, { t: "call" }>;
@@ -82,10 +82,16 @@ export const flush = async (n = 8): Promise<void> => {
 
 const tagsOf = (t: unknown): string[] => (t as { tags?: string[] }).tags ?? [];
 
+export function pendingReply(id: string, from: string, to: { kind: "name"; name: string } | { kind: "thread"; thread_id: string }, excerpt: string): PendingReply {
+  return { message_id: id, asked_by: from, sender: { kind: "model", thread_id: from },
+    recipient: to, excerpt, created_at: "2026-01-01T00:00:00Z" };
+}
+
 /** Saved facts held by a fake owner; reads return the current content. */
 export class FakeOwnerDb {
   threads: Record<string, ReturnType<typeof summary>> = {};
   details: Record<string, ReturnType<typeof details>> = {};
+  replies: PendingReply[] = [];
   history: Record<string, Record<string, unknown>[]> = {};
   historyRevisions: Record<string, number> = {};
   expiredCursors = new Set<string>();
@@ -108,6 +114,13 @@ export class FakeOwnerDb {
     const a = (c.args ?? {}) as Record<string, string>;
     this.reads.push(`${c.command}${a.thread_id ? ":" + a.thread_id : ""}${a.cursor ? "@" + a.cursor : ""}`);
     switch (c.command) {
+      case "message.list": {
+        const rows = this.replies.filter(reply => a.owed_by !== undefined
+          ? reply.recipient.kind === "thread" && reply.recipient.thread_id === a.owed_by
+          : a.asked_by !== undefined ? reply.asked_by === a.asked_by
+          : reply.recipient.kind === "name" && reply.recipient.name === a.to);
+        return this.page(rows, Number(a.limit), a.cursor);
+      }
       case "thread.list": {
         const f = c.args as { tags?: string[]; cwd?: string; limit?: number; cursor?: string };
         if (f.tags === undefined && f.cwd === undefined) return { ok: true, result: { items: Object.values(this.threads) } };

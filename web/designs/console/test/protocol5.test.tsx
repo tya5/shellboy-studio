@@ -6,17 +6,18 @@ import { act } from 'preact/test-utils';
 import { expect, it } from 'vitest';
 import { fixtureModel } from '../../../ui-core/test/fixture';
 import { settle } from '../../../data/test/harness';
-import { decodeThreadReplies } from '../../../data/src/replies';
 import { App } from '../screens/App';
 import { DESIGNS } from '../../registry';
 import type { Prefs } from '../../../ui-core/src';
 
-it('protocol 5 unifies human/thread duties while preserving shells and organizational parents', async () => {
+it('directional pages preserve human and Thread duties while preserving shells and organizational parents', async () => {
   const r = await fixtureModel({ configure(db) {
-    Object.assign(db.details.lead!, { parent_id:'organization', shells_count:1, awaiting_replies:[
-      { message_id:'human', recipient_kind:'human', recipient_thread_id:'lead', excerpt:'P5_HUMAN', delivery_status:'accepted' },
-      { message_id:'peer', recipient_kind:'thread', recipient_thread_id:'child', excerpt:'P5_THREAD', delivery_status:'applied' },
-    ], awaiting_human:[{message_id:'removed', excerpt:'DO_NOT_MERGE'}] });
+    Object.assign(db.details.lead!, { parent_id:'organization', shells_count:1,
+      pending_replies:{owed_by:{count:1,exact:true},asked_by:{count:1,exact:true}} });
+    db.replies = [
+      { message_id:'human', asked_by:'lead', sender:{kind:'model',thread_id:'lead'}, recipient:{kind:'name',name:'human'}, excerpt:'P5_HUMAN',created_at:'2026-01-01T00:00:00Z' },
+      { message_id:'peer', asked_by:'child', sender:{kind:'model',thread_id:'child'}, recipient:{kind:'thread',thread_id:'lead'}, excerpt:'P5_THREAD',created_at:'2026-01-01T00:00:00Z' },
+    ];
   } });
   const host = document.createElement('div'); document.body.append(host);
   const prefs = signal<Prefs>({design:'console',theme:'console',lang:'en',weights:{cached:.1,output:5}});
@@ -29,8 +30,8 @@ it('protocol 5 unifies human/thread duties while preserving shells and organizat
     r.model.lang.value='ja';
     expect(r.model.t.value('org.previewNote')).not.toContain('所有者');
     r.model.lang.value='en';
-    expect(host.querySelector('a[href="#/thread/child"]') ?? [...host.querySelectorAll('a')].find(a=>a.href.includes('child'))).toBeTruthy();
-    expect(r.model.threadReplies.value.filter(x=>x.recipient.kind==='human')).toHaveLength(1);
+    expect(r.model.replyPages.owed_by.value.items[0]?.sender).toEqual({kind:'model', thread_id:'child'});
+    expect(r.model.replyPages.asked_by.value.items).toHaveLength(1);
     expect(r.model.handle.value!.detail.value.value!.shells_count).toBe(1);
     expect(r.model.handle.value!.detail.value.value!.parent_id).toBe('organization');
     await r.model.runPanelOperation('peer',{kind:'answer',text:'not a human answer'});
@@ -38,17 +39,10 @@ it('protocol 5 unifies human/thread duties while preserving shells and organizat
     const answer = r.model.runPanelOperation('human',{kind:'answer',text:'confirmed'});
     await act(async () => { await settle(r.t,r.db); await answer; });
     expect(r.t.calls('message.reply').at(-1)!.args).toEqual({message_id:'human',text:'confirmed'});
-    Object.assign(r.db.details.lead!,{awaiting_replies:[]});
-    await act(async()=>{r.t.push({t:'changed', config_changed: false,thread_ids:['lead'],list:false});await settle(r.t,r.db);});
-    expect(r.model.threadReplies.value).toEqual([]);
+    r.db.replies = [];
+    await act(async()=>{r.t.push({t:'changed',config_changed:false,thread_ids:['lead'],list:false});await settle(r.t,r.db);});
+    expect(r.model.replyPages.asked_by.value.items).toEqual([]);
     expect(host.textContent).not.toContain('P5_HUMAN');
     expect(r.t.calls('thread.get').every(call=>!JSON.stringify(call.args).includes('owner_run'))).toBe(true);
   } finally { render(null,host);host.remove();r.model.dispose();r.data.stop(); }
-});
-
-it('does not infer recipient from sender, accept unknown recipients, or exceed the pinned reply bound',()=>{
-  const item={message_id:'x',excerpt:'q',delivery_status:'pending',recipient_kind:'thread',recipient_thread_id:'other'};
-  expect(decodeThreadReplies('t',[item])!.items[0]!.recipient).toEqual({kind:'thread',threadId:'other',title:'other'});
-  expect(decodeThreadReplies('t',[{...item,recipient_kind:'unknown'}])).toEqual({items:[],complete:false});
-  expect(decodeThreadReplies('t',Array.from({length:18},()=>item))).toBeUndefined();
 });

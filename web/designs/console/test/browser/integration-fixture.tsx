@@ -1,3 +1,4 @@
+import { pendingReply } from "../../../../data/test/harness";
 import { effect, signal } from '@preact/signals-core';
 import { loadPrefs, savePrefs, type Prefs } from '../../../../ui-core/src';
 import { summary, details } from '../../../../data/test/harness';
@@ -24,13 +25,13 @@ const { model, t, db } = await fixtureModel({ ...fixtureOptions, configure(db) {
     return;
   }
   if (ownSendFixture) { db.history.lead = []; return; }
-  if (panelTabsFixture) db.details.lead!.awaiting_replies = [];
+  if (panelTabsFixture) db.replies = [];
   if (params.get('view') === 'sidebar') {
     db.threads = {
       lead: summary('lead', {title:'Leader',cwd:'/fixture/work',activity:'tools',tags:['pin']}),
-      secretary: summary('secretary', {title:'Secretary',cwd:'/fixture/work',awaiting_human_count:1,tags:['pin','mail']}),
+      secretary: summary('secretary', {title:'Secretary',cwd:'/fixture/work',awaiting_named_count:1,tags:['pin','mail']}),
       parent: summary('parent', {title:'Core worker',cwd:'/fixture/work'}),
-      child: summary('child', {title:'Child task',cwd:'/fixture/work',parent_id:'parent',awaiting_human_count:1}),
+      child: summary('child', {title:'Child task',cwd:'/fixture/work',parent_id:'parent',awaiting_named_count:1}),
       other: summary('other', {title:'Studio worker',cwd:'/fixture/work',activity:'tools'}),
       outside: summary('outside', {title:'Architect',cwd:'/fixture/other',activity:'failed'}),
     };
@@ -50,10 +51,9 @@ const { model, t, db } = await fixtureModel({ ...fixtureOptions, configure(db) {
     return;
   }
   if (params.get('state') === 'awaiting') {
-    Object.assign(db.details.lead!, { parent_id: 'organization', shells_count: 1, awaiting_replies: [
-      { message_id: 'human-5', recipient_kind: 'human', recipient_thread_id: 'lead', excerpt: 'P5_HUMAN_QUESTION', delivery_status: 'accepted' },
-      { message_id: 'thread-5', recipient_kind: 'thread', recipient_thread_id: 'child', excerpt: 'P5_THREAD_DUTY', delivery_status: 'applied' },
-    ] });
+    Object.assign(db.details.lead!, { parent_id: 'organization', shells_count: 1 });
+    db.replies = [pendingReply('human-5', 'lead', {kind:'name',name:'human'}, 'P5_HUMAN_QUESTION'),
+      pendingReply('thread-5', 'child', {kind:'thread',thread_id:'lead'}, 'P5_THREAD_DUTY')];
   }
   if (params.get('state') === 'waiting') db.threads.lead = summary('lead', {state:'running',activity:'waiting'});
   if (params.get('state') === 'completed') db.threads.lead = summary('lead', {state:'completed',activity:'completed'});
@@ -103,10 +103,9 @@ mount(document.getElementById('app')!, { model, designs: DESIGNS, prefs, setPref
 
 if (panelTabsFixture) Object.assign(window, {
   publishPanelTabsCount() {
-    db.details.lead!.awaiting_replies = [
-      { message_id: 'panel-tab-duty', recipient_kind: 'thread', recipient_thread_id: 'child', excerpt: 'Synthetic reply duty', delivery_status: 'applied' },
-    ];
-    t.push({ t: 'changed', config_changed: false, thread_ids: ['lead'], list: false });
+    db.details.lead!.pending_replies = { owed_by: { count: 1, exact: true }, asked_by: { count: 0, exact: true } };
+    db.replies = [pendingReply('panel-tab-duty', 'child', {kind:'thread',thread_id:'lead'}, 'Synthetic reply duty')];
+    t.push({ t: 'changed', thread_ids: ['lead'], list: false, config_changed: false });
   },
 });
 

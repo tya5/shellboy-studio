@@ -1,13 +1,12 @@
-// Human inbox: one displayed keyset page, sequential detail reads, one coalesced
+// Human inbox: one displayed keyset page, one coalesced
 // refresh. Owned by AppModel; close cancels reads/subscriptions. No polling.
 import { batch, effect, signal, type ReadonlySignal } from "@preact/signals-core";
-import { Cancel } from "./operations";
+import { Cancel, REPLY_PAGE_SIZE } from "./operations";
 import { Refresher } from "./refresher";
 import type { ShellboyData } from "./store";
 import type { Outcome, OpError } from "./errors";
-import { decodeThreadReplies } from "./replies";
 
-export const HUMAN_PAGE_LIMIT = 16;
+export const HUMAN_PAGE_LIMIT = REPLY_PAGE_SIZE;
 export interface PendingItem {
   id: string;
   threadId: string;
@@ -44,7 +43,7 @@ export class HumanInbox implements PendingAdapter {
   private generation = 0;
   private stop: () => void;
   private stopSession: () => void;
-  // At most the current page's 16*128 duties. Keep only unconfirmed outcomes
+  // At most the current page's 16 duties. Keep only unconfirmed outcomes
   // across rereads; never replace their receipt with a fresh mutation identity.
   private attempts = new Map<string, { text: string; owner: string; epoch: number; operationId?: string; result?: Promise<Outcome<unknown>>; settled?: boolean }>();
   private refresher: Refresher;
@@ -62,6 +61,7 @@ export class HumanInbox implements PendingAdapter {
     this.stop = effect(() => {
       const owner = data.owner.value;
       const list = data.threadList.value;
+      data.listHint.value; // Core change hints invalidate the global message.list projection too.
       const key = owner.state === "connected" && data.connection.value === "open" ? owner.info.instance_id ?? undefined : undefined;
       if (key !== this.ownerKey) {
         this.ownerKey = key;
@@ -118,29 +118,17 @@ export class HumanInbox implements PendingAdapter {
       batch(() => { this.error.value = error; this.stale.value = true; });
     };
     try {
-      const page = await this.data.operations.threadList({ awaiting: "human", limit: HUMAN_PAGE_LIMIT, ...(cursor ? { cursor } : {}) }, read);
+      const page = await this.data.operations.messageList({ to: "human" }, cursor, read);
       if (!valid()) return;
       if (!page.ok) { fail(page.error); return; }
-      if (page.value.items.length > HUMAN_PAGE_LIMIT) { fail({ kind: "invalid_response", message: "human inbox page exceeds its bound" }); return; }
       const items: PendingItem[] = [];
-      for (const summary of page.value.items) {
-        if (!valid()) return;
-        const detail = await this.data.operations.threadGet(summary.thread_id, read);
-        if (!valid()) return;
-        if (!detail.ok) { fail(detail.error); return; }
-        const replies = decodeThreadReplies(summary.thread_id, detail.value.awaiting_replies);
-        if (!replies) {
-          fail({ kind: "invalid_response", message: "human reply projection is missing or exceeds its bound" }); return;
-        }
-        const exact = summary.awaiting_human_count_exact !== false;
-        for (const duty of replies.items) {
-          if (duty.recipient.kind !== "human") continue;
-          items.push({ id: duty.id, threadId: summary.thread_id, threadTitle: summary.title, question: duty.question,
-            askedAt: exact ? summary.awaiting_human_oldest_at ?? undefined : undefined,
-            count: summary.awaiting_human_count, countExact: exact });
-        }
+      for (const duty of page.value.items) {
+        if (!duty.asked_by) { fail({ kind: "invalid_response", message: "named reply lacks its asking Thread" }); return; }
+        const summary = this.data.threadList.peek().items.find(row => row.thread_id === duty.asked_by);
+        items.push({ id: duty.message_id, threadId: duty.asked_by, threadTitle: summary?.title ?? duty.asked_by,
+          question: duty.excerpt, askedAt: duty.created_at, count: summary?.awaiting_named_count,
+          countExact: summary?.awaiting_named_count_exact });
       }
-      if (!valid()) return;
       this.nextCursor = page.value.next_cursor;
       const ids = new Set(items.map(i => i.id));
       for (const [id, attempt] of this.attempts) if (!ids.has(id) && attempt.settled && !attempt.operationId) this.attempts.delete(id);
@@ -173,7 +161,7 @@ export class HumanInbox implements PendingAdapter {
     if (attempt?.text !== undefined && attempt.text !== text) return fail("resolve the previous reply outcome before changing its text");
     if (attempt?.result) return attempt.result;
     if (!attempt) {
-      if (this.attempts.size >= HUMAN_PAGE_LIMIT * 128) return fail("reply outcome capacity reached; inspect previous outcomes");
+      if (this.attempts.size >= HUMAN_PAGE_LIMIT) return fail("reply outcome capacity reached; inspect previous outcomes");
       if (!authorized()) return fail("human page scope changed");
       attempt = { text, owner: page!.owner, epoch: page!.epoch }; this.attempts.set(id, attempt);
     }

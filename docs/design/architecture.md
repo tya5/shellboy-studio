@@ -307,8 +307,7 @@ M1; a tunnel provides it.
   override an exact protocol-version mismatch. Before release, validate the exact
   published Core tag/lock/binary pairing separately.
 - Run ownership and duplicate Thread-get reply lists are removed. Shell ownership
-  and organizational Thread parents remain. The bounded `awaiting_replies` inbox
-  distinguishes human and Thread duties through explicit recipient fields.
+  and organizational Thread parents remain. The protocol-11 client reads directional pending pages and separate owner counts.
 - The bridge and bundled frontend are released together. The frontend observes
   the bridge's connected-owner facts; the Core IPC handshake enforces the wire
   version before that owner is published as connected.

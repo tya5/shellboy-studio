@@ -1,3 +1,4 @@
+import { pendingReply } from "../../../data/test/harness";
 // @vitest-environment happy-dom
 import '@preact/signals';
 import { signal } from '@preact/signals-core';
@@ -17,10 +18,10 @@ afterEach(() => { if (host) render(null, host); host?.remove(); host = undefined
 async function setup(capabilities?: string[]) {
  const f=await fixtureModel({route:'conversation',threadId:'lead',lang:'ja',capabilities,configure(db){
   db.threads={lead:summary('lead')};
-  db.details.lead=details('lead',{run_id:'run-1',model:'model-a',effort:'high',connection:'test-connection',cwd:'/fixture/panel',awaiting_replies:[
-   {message_id:'owed-human',recipient_kind:'human',recipient_thread_id:'lead',excerpt:'Need an answer from this conversation',delivery_status:'accepted',elapsed_ms:2400,created_at:'2026-11-21T00:00:00Z'},
-   {message_id:'asked-child',recipient_kind:'thread',recipient_thread_id:'child',excerpt:'Waiting for the child Thread',delivery_status:'applied',created_at:'2026-11-21T00:00:00Z'},
-  ]});
+  db.details.lead=details('lead',{run_id:'run-1',model:'model-a',effort:'high',connection:'test-connection',cwd:'/fixture/panel',pending_replies:{owed_by:{count:1,exact:true},asked_by:{count:1,exact:true}}});
+  db.replies = [pendingReply("owed-human", "lead", {kind:"name",name:"human"}, "Need an answer from this conversation"),
+    pendingReply("asked-child", "child", {kind:"thread",thread_id:"lead"}, "Waiting for the child Thread")];
+  db.replies[0]!.created_at = "2026-11-07T10:19:57.600Z";
   db.work.lead=[{kind:'shell',id:'shell-running',thread_id:'lead',run_id:'run-1',execution_id:'shell-running',state:'running',started_at:'2026-11-21T00:00:00Z'}];
   db.shells.lead=[{execution_id:'shell-running',state:'running',description:'Current verification',command_excerpt:'npm test'}];
  }});
@@ -68,7 +69,15 @@ describe('right panel purpose',()=>{
    await act(async()=>{f.t.push({t:'changed', config_changed: false,thread_ids:['lead'],list:false});await flush();});
    const read=f.t.calls('attachment.list').at(-1)!;
    expect(read.args).toEqual({thread_id:'lead',limit:50});
-   await act(async()=>{f.db.answered.add(read.id);f.t.ok(read.id,first);await flush();});
+   await act(async()=>{
+    f.db.answered.add(read.id); f.t.ok(read.id,first);
+    // Reply page reads share the transport budget with the attachment continuation.
+    for (const call of f.t.calls().filter(call => call.command !== 'attachment.list' && !f.db.answered.has(call.id))) {
+     f.db.answered.add(call.id); const result = f.db.answer(call);
+     if (result.ok) f.t.ok(call.id,result.result); else f.t.ownerError(call.id,result.code);
+    }
+    await flush();
+   });
    expect(f.t.calls('attachment.list').at(-1)?.args).toEqual({thread_id:'lead',limit:50,cursor:'new-cut'});
    expect(page.querySelector('[data-panel-detail]')?.textContent).toContain('notes.txt');
    expect(page.querySelector('[data-panel-row-id="a"]')).not.toBeNull();
@@ -276,7 +285,7 @@ describe('right panel purpose',()=>{
    await act(async()=>{operation=f.model.runPanelOperation(id,{kind:'cancel',target:source});await flush();});
    const call=f.t.calls('message.cancel')[0]!;
    expect(f.model.panelOperations.peek().get(id)?.disposition).toBe("pending");
-   const reads=()=>f.t.calls('status').length+f.t.calls('thread.get').length;
+   const reads=()=>f.t.calls('status').length+f.t.calls('thread.get').length+f.t.calls('message.list').length;
    const before=reads();
    await act(async()=>{f.db.answered.add(call.id);f.t.ok(call.id,{items:[{message_id:id,outcome:source==='reply'?'reply_cancelled':'cancelled'}]});await operation;});
    expect(f.model.panelOperations.peek().get(id)?.disposition).toBe("pending");
@@ -297,14 +306,10 @@ describe('right panel purpose',()=>{
     expect(f.t.calls('message.cancel')).toHaveLength(1);
     f.db.work.lead=evidence==='changed'?[{...target,state:'held'},...others]:[];
    } else {
-    const detail=f.db.details.lead!;
-    delete detail.awaiting_replies;
+    f.db.replies=Array.from({length:17},(_,i)=>pendingReply(`other-${i}`, "lead", {kind:"name",name:"human"}, "Other question"));
     await act(update);
     expect(f.model.panelOperations.peek().get(id)?.disposition).toBe("pending");
-    detail.awaiting_replies=Array.from({length:17},(_,i)=>({message_id:`other-${i}`,recipient_kind:'human',recipient_thread_id:'lead',excerpt:'Other question',delivery_status:'accepted'}));
-    await act(update);
-    expect(f.model.panelOperations.peek().get(id)?.disposition).toBe("pending");
-    detail.awaiting_replies=detail.awaiting_replies.slice(0,16);
+    f.db.replies=f.db.replies.slice(0,16);
    }
    await act(async()=>{f.t.push({t:'changed', config_changed: false,thread_ids:['lead'],list:false});await flush();});
    expect(reads()).toBeGreaterThan(before);

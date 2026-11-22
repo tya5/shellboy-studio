@@ -30,12 +30,7 @@ pin. Never restart a working owner or change its data to resolve a mismatch
 without explicit approval.
 
 Runs are independent: no Run owns another Run and organizational Thread parents
-are not Run owners. Shell ownership remains unchanged. Pending reply duties come
-from one bounded `thread.get.awaiting_replies` list (at most 128), discriminated
-by `recipient_kind` and `recipient_thread_id`. Human answers use `message.reply`;
-a Thread-directed duty is not a human question. For delegation, retain the
-accepted request's exact message ID and use an explicit reply to that message;
-progress is ordinary messaging, not automatic child-Run forwarding. A recovery
-wait is not evidence the reply duty disappeared. Unknown fields are not inferred
-from old lists. Human count 17 with `awaiting_human_count_exact=false` means
-17 or more, not an exact count.
+are not Run owners. Shell ownership remains unchanged. Studio reads bounded directional `message.list` pages and uses
+`thread.get.pending_replies` for tab counts. The sender is shown from the saved
+identity. Answer a duty with `message.reply` and its exact message ID. A count
+marked with `+` is a lower bound. A recovery wait does not clear a duty.

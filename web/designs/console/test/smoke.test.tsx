@@ -1,3 +1,4 @@
+import { pendingReply } from "../../../data/test/harness";
 import type { Signal } from "@preact/signals-core";
 // @vitest-environment happy-dom
 // One smoke test per view on the shared fixture, through the real components.
@@ -1712,10 +1713,7 @@ it("keeps same-message Inbox DOM and draft across updates/reorder, but resets a 
 it("real HumanInbox reread does not transiently unmount or lose the message draft", async () => {
   const { model, data, t, db } = await fixtureModel({ route:"inbox", realPending:true });
   try {
-    const originalAnswer = db.answer.bind(db);
-    db.answer = call => call.command === "thread.list" && (call.args as Record<string,unknown>).awaiting === "human" ? {ok:true,result:{items:[db.threads.lead!]}} : originalAnswer(call);
-    for (const detail of Object.values(db.details)) Object.assign(detail, { awaiting_replies: [] });
-    db.details.lead = { ...db.details.lead!, awaiting_replies:[{message_id:"stable-human",recipient_kind:"human",excerpt:"Stable question",delivery_status:"accepted"}] } as NonNullable<typeof db.details.lead>;
+    db.replies = [pendingReply("stable-human", "lead", {kind:"name",name:"human"}, "Stable question")];
     (data.threadList as Signal<typeof data.threadList.value>).value = { ...data.threadList.value, loaded:true, loading:false, stale:false }; await settle(t,db);
     expect(model.pending.items.value, JSON.stringify({error:model.pending.error?.value,calls:t.calls("thread.get").map(x=>x.args)})).not.toEqual([]);
     const el=draw(model); const box=el.querySelector("textarea")!; expect(box).toBeTruthy();

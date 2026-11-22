@@ -15,7 +15,7 @@ import { ThreadGroup } from "../system/components/ThreadGroup";
 
 it("keeps status updates in place, persists child folds, and moves pins only after the owner event", async () => {
   const f = await fixtureModel({ route: "conversation", threadId: "lead", capabilities: ["thread.tags", "thread.cwds"], configure(db) {
-    db.threads = { lead: summary("lead", { cwd: "/alpha" }), child: summary("child", { cwd: "/alpha", parent_id: "lead", awaiting_human_count: 1 }), other: summary("other", { cwd: "/alpha", tags: ["project"] }) };
+    db.threads = { lead: summary("lead", { cwd: "/alpha" }), child: summary("child", { cwd: "/alpha", parent_id: "lead", awaiting_named_count: 1 }), other: summary("other", { cwd: "/alpha", tags: ["project"] }) };
     for (const id of Object.keys(db.threads)) db.details[id] = details(id);
   } });
   const host = document.createElement("div"); document.body.append(host);
@@ -163,7 +163,7 @@ it("reads owner catalogs only while the filter menu is open, independently of fi
 
 it("shows cross-group child counts without a disclosure control or arrow action", async () => {
   const f=await fixtureModel({route:"conversation", threadId:"lead", configure(db){
-    db.threads={lead:summary("lead",{cwd:"/alpha"}), child:summary("child",{cwd:"/beta", parent_id:"lead", awaiting_human_count:1, tags:["pin"]})};
+    db.threads={lead:summary("lead",{cwd:"/alpha"}), child:summary("child",{cwd:"/beta", parent_id:"lead", awaiting_named_count:1, tags:["pin"]})};
   }});
   const host=document.createElement("div"); document.body.append(host);
   const prefs=signal(loadPrefs({read:()=>null,write(){}},DESIGNS));

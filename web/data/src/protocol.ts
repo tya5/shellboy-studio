@@ -180,24 +180,28 @@ export interface ThreadSummary {
   /** Latest completed answer node, from the existing list row. */
   last_end_message?: EndMessageMarker | null;
   latest_run_stop_reason?: string | null;
-  awaiting_replies?: number;
-  awaiting_human_count?: number;
+  awaiting_named_count?: number;
   /** Absent means true; false makes count 17 a lower bound, not an exact count. */
-  awaiting_human_count_exact?: boolean;
-  awaiting_human_oldest_at?: string | null;
+  awaiting_named_count_exact?: boolean;
+  awaiting_named_oldest_at?: string | null;
   awaiting_thread_count?: number;
   [extra: string]: unknown;
 }
 
-/** Protocol 5's single bounded Thread-scoped reply-duty projection. */
-export interface AwaitingReply {
+export interface ReplyCount { count: number; exact: boolean }
+export interface ReplySender {
+  kind: "model" | "external_cli" | "human" | "unknown";
+  thread_id?: string;
+  label?: string;
+}
+export type ReplyDirection = { owed_by: string } | { asked_by: string } | { to: string };
+export interface PendingReply {
   message_id: string;
-  recipient_kind: "human" | "thread";
-  recipient_thread_id: string;
+  created_at: string;
+  asked_by: string | null;
+  sender: ReplySender;
+  recipient: { kind: "name"; name: string } | { kind: "thread"; thread_id: string };
   excerpt: string;
-  delivery_status: string;
-  created_at?: string;
-  elapsed_ms?: number;
 }
 
 /** Exact owner observation returned by run.get for a management-target Run. */
@@ -244,7 +248,7 @@ export interface ThreadDetails {
   archived_at?: string;
   tags?: string[];
   shells_count: number;
-  awaiting_replies?: AwaitingReply[];
+  pending_replies?: { owed_by: ReplyCount; asked_by: ReplyCount };
   [extra: string]: unknown;
 }
 

@@ -2,7 +2,7 @@ import { effect, type ReadonlySignal, type Signal } from "@preact/signals-core";
 import { describe, expect, it } from "vitest";
 import { ShellboyData } from "../src/store";
 import { HumanInbox, HUMAN_PAGE_LIMIT } from "../src/pending";
-import { FakeTransport, connected, details, flush, summary } from "./harness";
+import { FakeTransport, connected, flush, summary } from "./harness";
 
 const writable = <T>(s: ReadonlySignal<T>): Signal<T> => s as Signal<T>;
 const ownerB = { ...connected, info: { ...(connected.state === "connected" ? connected.info : {}), instance_id: "owner-b" } } as typeof connected;
@@ -16,21 +16,38 @@ async function fixture() {
   const close = () => { inbox.close(); list.close(); data.stop(); };
   return { t, data, inbox, close };
 }
-const human = (id: string) => ({ message_id: id, recipient_kind: "human", recipient_thread_id: "a", excerpt: `Question ${id}`, delivery_status: "accepted" });
+const human = (id: string, thread = "a") => ({ message_id: id, asked_by: thread, sender: { kind: "model", thread_id: thread }, recipient: { kind: "name", name: "human" }, excerpt: `Question ${id}`, created_at: "2026-01-01T00:00:00Z" });
 async function fill(f: Awaited<ReturnType<typeof fixture>>, cursor?: string) {
-  const list = f.t.calls("thread.list").filter(c => (c.args as Record<string, unknown>).awaiting).at(-1)!;
-  expect(list.args).toEqual({ awaiting: "human", limit: HUMAN_PAGE_LIMIT, ...(cursor ? { cursor } : {}) });
-  f.t.ok(list.id, { items: [summary("a", { awaiting_human_count: 17, awaiting_human_count_exact: false })], next_cursor: "next-key" }); await flush();
-  f.t.ok(f.t.calls("thread.get").at(-1)!.id, details("a", { awaiting_replies: [human("h"), { ...human("q"), recipient_kind: "thread", recipient_thread_id: "other" }] })); await flush();
+  const list = f.t.calls("message.list").at(-1)!;
+  expect(list.args).toEqual({ to: "human", limit: HUMAN_PAGE_LIMIT, ...(cursor ? { cursor } : {}) });
+  f.t.ok(list.id, { items: [human("h")], next_cursor: "next-key" }); await flush();
 }
-describe("bounded protocol5 human inbox", () => {
-  it("reads only its page, preserves 17+/unknown oldest, filters Thread duties and keysets", async () => {
+describe("bounded named reply inbox", () => {
+  it("refreshes its global page on a list hint without Thread detail fan-out", async () => {
+    const f = await fixture();
+    await fill(f);
+    const before = f.t.calls("message.list").length;
+    f.t.push({ t: "changed", thread_ids: ["unrelated-thread"], list: true, config_changed: false });
+    await flush();
+    expect(f.t.calls("message.list").length).toBeGreaterThan(before);
+    const threadList = f.t.calls("thread.list").at(-1)!;
+    f.t.ok(threadList.id, { items: [] });
+    await flush();
+    const latest = f.t.calls("message.list").at(-1)!;
+    expect(latest.args).toEqual({ to: "human", limit: HUMAN_PAGE_LIMIT });
+    expect(f.t.calls("thread.get")).toHaveLength(0);
+    f.t.ok(latest.id, { items: [] });
+    await flush();
+    expect(f.inbox.items.value).toEqual([]);
+    f.close();
+  });
+  it("reads only its named page, preserves creation time and keysets", async () => {
     const f = await fixture(); await fill(f);
-    expect(f.inbox.items.value).toEqual([{ id: "h", threadId: "a", threadTitle: "t-a", question: "Question h", askedAt: undefined, count: 17, countExact: false }]);
-    expect(f.t.calls("thread.get").map(c => (c.args as Record<string, unknown>).thread_id)).toEqual(["a"]);
+    expect(f.inbox.items.value).toEqual([{ id: "h", threadId: "a", threadTitle: "a", question: "Question h", askedAt: "2026-01-01T00:00:00Z", count: undefined, countExact: undefined }]);
+    expect(f.t.calls("thread.get")).toHaveLength(0);
     const more = f.inbox.more(); await flush(); await fill(f, "next-key"); await more;
-    expect(f.t.calls("thread.list").filter(c => (c.args as Record<string, unknown>).awaiting)).toHaveLength(2);
-    expect(f.t.calls("thread.get")).toHaveLength(2);
+    expect(f.t.calls("message.list")).toHaveLength(2);
+    expect(f.t.calls("thread.get")).toHaveLength(0);
     f.close();
   });
   it("never sends reply for an unrelated/Thread duty, and coalesces double clicks", async () => {
@@ -39,7 +56,7 @@ describe("bounded protocol5 human inbox", () => {
     const first = f.inbox.answer("h", "answer"), duplicate = f.inbox.answer("h", "answer"); await flush();
     expect(f.t.calls("message.reply")).toHaveLength(1);
     const reply = f.t.calls("message.reply")[0]!; expect(reply.args).toEqual({ message_id: "h", text: "answer" });
-    f.t.ok(reply.id, {}); await flush(); const list = f.t.calls("thread.list").filter(c => (c.args as Record<string, unknown>).awaiting).at(-1)!; f.t.ok(list.id, { items: [] }); await flush();
+    f.t.ok(reply.id, {}); await flush(); const list = f.t.calls("message.list").at(-1)!; f.t.ok(list.id, { items: [] }); await flush();
     expect((await first).ok).toBe(true); expect((await duplicate).ok).toBe(true); expect(f.inbox.items.value).toEqual([]); f.close();
   });
   it("reuses an unconfirmed receipt and rejects changed retry text", async () => {
@@ -50,25 +67,25 @@ describe("bounded protocol5 human inbox", () => {
     const base = f.t.calls("thread.list").filter(c => !(c.args as Record<string, unknown>).awaiting).at(-1)!; f.t.ok(base.id, { items: [] }); await flush(); await fill(f);
     expect((await f.inbox.answer("h", "different")).ok).toBe(false);
     const retry = f.inbox.answer("h", "answer"); await flush(); const resent = f.t.calls("message.reply").at(-1)!;
-    expect(resent.operation_id).toBe(sent.operation_id); f.t.ok(resent.id, {}); await flush(); f.t.ok(f.t.calls("thread.list").filter(c => (c.args as Record<string, unknown>).awaiting).at(-1)!.id, { items: [] }); await retry; f.close();
+    expect(resent.operation_id).toBe(sent.operation_id); f.t.ok(resent.id, {}); await flush(); f.t.ok(f.t.calls("message.list").at(-1)!.id, { items: [] }); await retry; f.close();
   });
   it("reports expired cursors instead of silently scanning/restarting, and cancels on close", async () => {
     const f = await fixture(); await fill(f); const more = f.inbox.more(); await flush();
-    const list = f.t.calls("thread.list").filter(c => (c.args as Record<string, unknown>).awaiting).at(-1)!; f.t.ownerError(list.id, "cursor_expired"); await more;
+    const list = f.t.calls("message.list").at(-1)!; f.t.ownerError(list.id, "cursor_expired"); await more;
     expect(f.inbox.error.value).toMatchObject({ code: "cursor_expired" }); expect(f.inbox.items.value).toEqual([]); f.close();
   });
 });
 
 it("invalidates a stale read before it can publish, keeps unrelated list facts and cancels reads on shutdown", async () => {
   const f = await fixture(); const before = f.data.threadList.value;
-  const call = f.t.calls("thread.list").filter(c => (c.args as Record<string, unknown>).awaiting).at(-1)!;
+  const call = f.t.calls("message.list").at(-1)!;
   f.inbox.close(); await flush(); expect(f.t.cancels()).toContain(call.id);
   f.t.ok(call.id, { items: [summary("unrelated")] }); await flush();
   expect(f.inbox.items.value).toEqual([]); expect(f.data.threadList.value).toEqual(before); f.close();
 });
 
 it("fails loud for oversized pages without scanning detail records", async () => {
-  const f = await fixture(); const call = f.t.calls("thread.list").filter(c => (c.args as Record<string, unknown>).awaiting).at(-1)!;
+  const f = await fixture(); const call = f.t.calls("message.list").at(-1)!;
   f.t.ok(call.id, { items: Array.from({ length: HUMAN_PAGE_LIMIT + 1 }, (_, i) => summary(String(i))) }); await flush();
   expect(f.inbox.error.value?.kind).toBe("invalid_response"); expect(f.t.calls("thread.get")).toHaveLength(0); f.close();
 });
@@ -78,12 +95,12 @@ it("retains displayed questions during same-owner list invalidation and failed r
   writable(f.data.threadList).value = { ...f.data.threadList.value, loading: true };
   expect(f.inbox.items.value).toBe(previous);
   writable(f.data.threadList).value = { ...f.data.threadList.value, loading: false, stale: false, loaded: true };
-  await flush(); const call = f.t.calls("thread.list").filter(c => (c.args as Record<string,unknown>).awaiting).at(-1)!;
+  await flush(); const call = f.t.calls("message.list").at(-1)!;
   f.t.ownerError(call.id,"temporarily_unavailable"); await flush();
   expect(f.inbox.items.value).toBe(previous); expect(f.inbox.error.value).toBeDefined(); f.close();
 });
 
-const humanCalls = (f: Awaited<ReturnType<typeof fixture>>) => f.t.calls("thread.list").filter(c => (c.args as Record<string,unknown>).awaiting);
+const humanCalls = (f: Awaited<ReturnType<typeof fixture>>) => f.t.calls("message.list");
 async function reread(f: Awaited<ReturnType<typeof fixture>>) {
   writable(f.data.threadList).value = { ...f.data.threadList.value, loading: true };
   writable(f.data.threadList).value = { ...f.data.threadList.value, loading: false, stale: false, loaded: true };
@@ -92,15 +109,13 @@ async function reread(f: Awaited<ReturnType<typeof fixture>>) {
 it("replaces only a complete page, applies changed same-ID content and canonical order, accepts empty success", async () => {
   const f = await fixture(); await fill(f); const previous = f.inbox.items.value;
   const page = await reread(f); expect(f.inbox.items.value).toBe(previous); expect(f.inbox.loading.value).toBe(true);
-  f.t.ok(page.id,{ items:[summary("a")] }); await flush(); expect(f.inbox.items.value).toBe(previous);
-  f.t.ok(f.t.calls("thread.get").at(-1)!.id, details("a",{ awaiting_replies:[human("z"),{...human("h"),excerpt:"Updated h"}] })); await flush();
+  f.t.ok(page.id,{ items:[human("z"),{...human("h"),excerpt:"Updated h"}] }); await flush();
   expect(f.inbox.items.value.map(x => x.id)).toEqual(["z","h"]); expect(f.inbox.items.value[1]!.question).toBe("Updated h"); expect(f.inbox.loading.value).toBe(false);
   const empty = await reread(f); f.t.ok(empty.id,{items:[]}); await flush(); expect(f.inbox.items.value).toEqual([]); expect(f.inbox.stale.value).toBe(false); f.close();
 });
-it("detail error retains prior page and cancel is not an empty success", async () => {
+it("page error retains prior page and cancel is not an empty success", async () => {
   const f = await fixture(); await fill(f); const previous=f.inbox.items.value;
-  const call=await reread(f); f.t.ok(call.id,{items:[summary("a")]}); await flush();
-  f.t.ownerError(f.t.calls("thread.get").at(-1)!.id,"read_failed"); await flush(); expect(f.inbox.items.value).toBe(previous); expect(f.inbox.stale.value).toBe(true);
+  const call=await reread(f); f.t.ownerError(call.id,"read_failed"); await flush(); expect(f.inbox.items.value).toBe(previous); expect(f.inbox.stale.value).toBe(true);
   const next=await reread(f); writable(f.data.threadList).value={...f.data.threadList.value,stale:true}; await flush(); expect(f.t.cancels()).toContain(next.id);
   f.t.ok(next.id,{items:[]}); await flush(); expect(f.inbox.items.value).toBe(previous); f.close();
 });
@@ -123,7 +138,7 @@ it.each(["loading","success","error","finally"])("synchronous %s subscriber owne
     const count=f.t.calls("thread.get").length; const page=await reread(f);
     if(boundary==="loading"){expect(f.inbox.items.value).toEqual([]); expect(f.t.calls("thread.get")).toHaveLength(count);}
     else if(boundary==="error"){f.t.ownerError(page.id,"test_error");await flush();expect(f.inbox.items.value).toEqual([]);}
-    else {f.t.ok(page.id,{items:[summary("a")]});await flush(); f.t.ok(f.t.calls("thread.get").at(-1)!.id,details("a",{awaiting_replies:[{...human("h"),excerpt:"new"}]}));await flush(); expect(f.inbox.items.value).toEqual([]);}
+    else {f.t.ok(page.id,{items:[{...human("h"),excerpt:"new"}]});await flush(); expect(f.inbox.items.value).toEqual([]);}
     expect(once).toBe(true);
   }finally{stop();f.close();}
 });
@@ -147,7 +162,7 @@ it.each(["loading","success","error","finally"].flatMap(boundary=>["B","ABA","un
   const previous=f.inbox.items.value;const page=await reread(f);
   if(boundary!=="loading"){
    if(boundary==="error")f.t.ownerError(page.id,"test_failure");
-   else{f.t.ok(page.id,{items:[summary("a")]});await flush();f.t.ok(f.t.calls("thread.get").at(-1)!.id,details("a",{awaiting_replies:[{...human("h"),excerpt:"updated"}]}));}
+   else{f.t.ok(page.id,{items:[{...human("h"),excerpt:"updated"}]});}
   }
   await flush();expect(hit).toBe(true);
   if(transition!=="unchanged"){expect(f.inbox.items.value).toEqual([]);expect((await f.inbox.answer("h","not current")).ok).toBe(false);expect(f.t.calls("message.reply")).toHaveLength(0);}
@@ -201,14 +216,13 @@ it("cancel callback starts a fresh owner read without outer reset erasing its ne
  (f.inbox as unknown as {cancel:{add(fn:()=>void):void}}).cancel.add(()=>{f.t.push({t:"owner",event:"restarted",owner:ownerB});});
  writable(f.data.owner).value={state:"unknown"};await flush();
  writable(f.data.threadList).value={...f.data.threadList.value,loading:false,stale:false,loaded:true};await flush();
- const page=humanCalls(f).at(-1)!;f.t.ok(page.id,{items:[summary("fresh")]});await flush();
- f.t.ok(f.t.calls("thread.get").at(-1)!.id,details("fresh",{awaiting_replies:[human("new")] }));await flush();
+ const page=humanCalls(f).at(-1)!;f.t.ok(page.id,{items:[human("new", "fresh")]});await flush();
  expect(f.inbox.items.value.map(x=>x.id)).toEqual(["new"]);f.close();
 });
 
 it("page-two answer success intentionally returns to first page with a fresh read",async()=>{
- const f=await fixture();await flush();f.t.ok(humanCalls(f).at(-1)!.id,{items:[summary("a")],next_cursor:"page-two"});await flush();f.t.ok(f.t.calls("thread.get").at(-1)!.id,details("a",{awaiting_replies:[human("h")]}));await flush();const more=f.inbox.more();await flush();
- f.t.ok(humanCalls(f).at(-1)!.id,{items:[summary("second")]});await flush();f.t.ok(f.t.calls("thread.get").at(-1)!.id,details("second",{awaiting_replies:[human("second-id")]}));await more;
+ const f=await fixture();await flush();f.t.ok(humanCalls(f).at(-1)!.id,{items:[human("h", "a")],next_cursor:"page-two"});await flush();const more=f.inbox.more();await flush();
+ f.t.ok(humanCalls(f).at(-1)!.id,{items:[human("second-id", "second")]});await more;
  const before=humanCalls(f).length;const answer=f.inbox.answer("second-id","ok");f.t.ok(f.t.calls("message.reply").at(-1)!.id,{});await flush();
  expect(humanCalls(f)).toHaveLength(before+1);expect((humanCalls(f).at(-1)!.args as Record<string,unknown>).cursor).toBeUndefined();
  f.t.ok(humanCalls(f).at(-1)!.id,{items:[]});await flush();await answer;f.close();
@@ -222,8 +236,8 @@ it("explicit same-owner reconnect retry dispatches a new call with the ORIGINAL 
  f.t.ownerError(next.id,"delivery_unconfirmed");await flush();f.t.ok(humanCalls(f).at(-1)!.id,{items:[]});await flush();await retry;f.close();
 });
 it.each(["owner","query"])("page-two completion reset callback %s change cannot be recaptured as a fresh first-page intent",async transition=>{
- const f=await fixture();await flush();f.t.ok(humanCalls(f).at(-1)!.id,{items:[summary("a")],next_cursor:"p2"});await flush();f.t.ok(f.t.calls("thread.get").at(-1)!.id,details("a",{awaiting_replies:[human("h")]}));await flush();
- const more=f.inbox.more();await flush();f.t.ok(humanCalls(f).at(-1)!.id,{items:[summary("a")]});await flush();f.t.ok(f.t.calls("thread.get").at(-1)!.id,details("a",{awaiting_replies:[human("h")]}));await more;
+ const f=await fixture();await flush();f.t.ok(humanCalls(f).at(-1)!.id,{items:[human("h", "a")],next_cursor:"p2"});await flush();
+ const more=f.inbox.more();await flush();f.t.ok(humanCalls(f).at(-1)!.id,{items:[human("h", "a")]});await more;
  const answer=f.inbox.answer("h","text");const reply=f.t.calls("message.reply").at(-1)!;
  (f.inbox as unknown as {cancel:{add(fn:()=>void):void}}).cancel.add(()=>{if(transition==="owner"){writable(f.data.threadList).value={...f.data.threadList.value,stale:true};writable(f.data.owner).value=ownerB;}else(f.inbox as unknown as {resetScope():void}).resetScope();});
  const before=humanCalls(f).length;f.t.ok(reply.id,{});await flush();await answer;expect(humanCalls(f)).toHaveLength(before);expect(f.t.calls("message.reply")).toHaveLength(1);f.close();
@@ -259,10 +273,10 @@ for (const transition of ["unknown-same", "ABA"] as const) it(`confirms empty on
   expect(f.inbox.stale.peek()).toBe(false); expect(f.inbox.items.peek()).toEqual([]); expect(f.t.calls("message.reply")).toHaveLength(0); f.close();
 });
 it("new scope is unconfirmed before an old read cancellation callback can inspect it", async () => {
-  const f = await fixture(); const original = f.data.operations.threadList.bind(f.data.operations); let observed: boolean | undefined;
-  f.data.operations.threadList = (args, read) => {
-    if ((args as { awaiting?: string }).awaiting) read?.cancel?.add(() => { observed = f.inbox.stale.peek() && f.inbox.items.peek().length === 0; });
-    return original(args, read);
+  const f = await fixture(); const original = f.data.operations.messageList.bind(f.data.operations); let observed: boolean | undefined;
+  f.data.operations.messageList = (args, cursor, read) => {
+    if ("to" in args) read?.cancel?.add(() => { observed = f.inbox.stale.peek() && f.inbox.items.peek().length === 0; });
+    return original(args, cursor, read);
   };
   const page = await reread(f); f.t.push({ t: "owner", event: "restarted", owner: connected }); await flush();
   expect(observed).toBe(true); expect(f.inbox.stale.peek()).toBe(true);

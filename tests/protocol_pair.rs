@@ -20,49 +20,40 @@ fn thread_list_accepts_created_order_and_cursor() {
 }
 
 #[test]
-fn exact_protocol_ten_and_unified_thread_reply_shape() {
-    assert_eq!(shellboy::protocol::PROTOCOL_VERSION, 10);
+fn exact_protocol_eleven_has_directional_reply_counts() {
+    assert_eq!(shellboy::protocol::PROTOCOL_VERSION, 11);
     let value = json!({"thread_id":"t", "title":"synthetic", "cwd":"/", "connection":"c",
-    "model":"m", "agents_path":"AGENTS.md", "parent_id":"organization", "shells_count":1, "summarizing":false,
-    "awaiting_replies":[
-        {"message_id":"h", "recipient_kind":"human", "recipient_thread_id":"t", "excerpt":"Choose", "created_at":"2026-01-01T00:00:00Z", "elapsed_ms":0, "delivery_status":"accepted", "reminded":false},
-        {"message_id":"q", "recipient_kind":"thread", "recipient_thread_id":"child", "excerpt":"Review", "created_at":"2026-01-01T00:00:00Z", "elapsed_ms":0, "delivery_status":"applied", "reminded":false}
-    ]});
-    let details: ThreadDetails = serde_json::from_value(value.clone()).unwrap();
-    assert_eq!(details.awaiting_replies.len(), 2);
+        "model":"m", "agents_path":"AGENTS.md", "parent_id":"organization", "shells_count":1,
+        "summarizing":false, "pending_replies":{"owed_by":{"count":2,"exact":true},"asked_by":{"count":17,"exact":false}}});
+    let details: ThreadDetails = serde_json::from_value(value).unwrap();
+    assert_eq!(details.pending_replies.owed_by.count, 2);
+    assert!(!details.pending_replies.asked_by.exact);
     assert_eq!(details.shells_count, 1);
     assert_eq!(details.parent_id.as_deref(), Some("organization"));
-    for removed in [
-        "children_count",
-        "awaiting_reply",
-        "awaiting_human",
-        "awaiting_thread_replies",
-    ] {
-        let mut invalid = value.clone();
-        invalid[removed] = json!([]);
-        // Results tolerate unknown additive fields; removed fields are not re-exposed.
-        let decoded: ThreadDetails = serde_json::from_value(invalid).unwrap();
-        assert!(
-            serde_json::to_value(decoded)
-                .unwrap()
-                .get(removed)
-                .is_none()
-        );
-    }
+    assert_eq!(
+        access(&Command::MessageList(shellboy::protocol::MessageListArgs {
+            owed_by: Some("t".into()),
+            asked_by: None,
+            to: None,
+            limit: 16,
+            cursor: None,
+        })),
+        Access::Read
+    );
 }
 
 #[test]
 fn human_overflow_is_a_lower_bound_and_default_exact_is_preserved() {
     let mut value = json!({"thread_id":"t","title":"synthetic","cwd":"/","state":"idle","activity":"idle",
         "latest_run_stop_reason":null,"updated_at":"2026-01-01T00:00:00Z","excerpt":"",
-        "awaiting_human_count":16});
+        "awaiting_named_count":16});
     let exact: ThreadSummary = serde_json::from_value(value.clone()).unwrap();
-    assert!(exact.awaiting_human_count_exact);
-    value["awaiting_human_count"] = json!(17);
-    value["awaiting_human_count_exact"] = json!(false);
+    assert!(exact.awaiting_named_count_exact);
+    value["awaiting_named_count"] = json!(17);
+    value["awaiting_named_count_exact"] = json!(false);
     let lower: ThreadSummary = serde_json::from_value(value).unwrap();
-    assert!(!lower.awaiting_human_count_exact);
-    assert_eq!(lower.awaiting_human_count, 17);
+    assert!(!lower.awaiting_named_count_exact);
+    assert_eq!(lower.awaiting_named_count, 17);
 }
 
 #[test]

@@ -14,7 +14,7 @@ import { recentAppFolders } from "./app-templates";
 // retry and archive flows. Saved facts stay in the data layer; nothing here is optimistic.
 import { batch, computed, effect, signal, untracked, type ReadonlySignal, type Signal } from "@preact/signals-core";
 import { Cancel, type Handle, type Operations, type OpError, type ShellboyData, type ShellEntry, type ThreadDetails, type ThreadSummary, type ThreadHandle } from "../../data/src";
-import { CAPABILITY_HISTORY_WINDOW, decodeThreadReplies, adapterThreadReplies, type ThreadReplyProjection, noReplyWait, type ReplyWait, type ReplyWaitAdapter } from "../../data/src";
+import { CAPABILITY_HISTORY_WINDOW, ReplyPages, type ReplySide } from "../../data/src";
 import { MissingPins, MonitorSelection, type MonitorArchive } from "./monitor-selection";
 import { workRegions, type WorkRegions } from "./work";
 import { ConversationWindow, type WindowAcceptedSnapshot } from "./window";
@@ -76,10 +76,10 @@ export type SendState =
   | { kind: "unconfirmed"; operationId: string; text: string };
 
 export type RightPanelTab = "work" | "reply-needed" | "awaiting-reply" | "possessions" | "info";
-export type RightPanelTarget = Readonly<{ kind: "step" | "message" | "reply" | "attachment"; id: string }>;
+export type RightPanelTarget = Readonly<{ kind: "step" | "message" | "reply" | "attachment"; id: string; replySide?: ReplySide }>;
 export type RightPanelDetail = RightPanelTarget & Readonly<{ opener?: () => boolean }>;
 type PanelOperation = Readonly<{ kind: "cancel" | "answer" } & (
-  { disposition: "pending"; source: "pending" | "reply"; state: string } | { disposition: "failed" | "unconfirmed"; error: string }
+  { disposition: "pending"; source: "pending" | ReplySide; state: string } | { disposition: "failed" | "unconfirmed"; error: string }
 )>;
 type PanelFailure = { disposition: "failed" | "unconfirmed"; error: string };
 type PanelPreference = Readonly<{ visible: () => boolean; collapsed: () => boolean; write: (collapsed: boolean) => void }>;
@@ -130,7 +130,6 @@ export interface AppModelOptions {
   unreadPreferences?: UnreadPreferences;
   data: ShellboyData;
   pending?: PendingAdapter;
-  replyWait?: ReplyWaitAdapter;
   lang?: Lang;
   /** Current time source for ages. */
   nowMs?: () => number;
@@ -257,9 +256,7 @@ export class AppModel {
   readonly data: ShellboyData;
   readonly ops: Operations;
   readonly pending: PendingAdapter;
-  readonly replyWait: ReplyWaitAdapter;
-  private readonly threadReplyProjection: ReadonlySignal<ThreadReplyProjection | undefined>;
-  readonly threadReplies: ReadonlySignal<readonly ReplyWait[]>;
+  readonly replyPages: ReplyPages;
   readonly route: Signal<Route> = signal(START_ROUTE);
   /** Analytics, Resources and Settings reads. Nothing runs until one of those views opens. */
   readonly insights: Insights;
@@ -449,7 +446,7 @@ export class AppModel {
     this.attachmentSection = new AttachmentSection(this.data);
     this.ops = options.data.operations;
     this.pending = options.pending ?? new HumanInbox(options.data);
-    this.replyWait = options.replyWait ?? noReplyWait;
+    this.replyPages = new ReplyPages(this.data);
     this.lang = signal(options.lang ?? "en");
     this.nowMs = options.nowMs ?? (() => Date.now());
     this.now = signal(this.nowMs());
@@ -535,14 +532,6 @@ export class AppModel {
       const r = this.route.value;
       return r.threadId ?? this.lastThread.value ?? this.rows.value[0]?.summary.thread_id;
     });
-    this.threadReplyProjection = computed(() => {
-      const handle = this.handle.value;
-      if (!handle) return undefined;
-      if (this.replyWait.supported(this.data.capabilities.value)) return adapterThreadReplies(this.replyWait, handle.threadId);
-      const detail = handle.detail.value.value;
-      return detail ? decodeThreadReplies(detail.thread_id, detail.awaiting_replies) : undefined;
-    });
-    this.threadReplies = computed(() => this.threadReplyProjection.value?.items.slice(0, 128) ?? []);
     this.details = computed(() => this.handle.value?.detail.value.value);
     this.work = computed(() => {
       const resource = this.handle.value?.work.value;
@@ -585,6 +574,14 @@ export class AppModel {
     this.listHandle = this.data.trackThreadList();
     this.disposers.push(effect(() => this.syncOpenThread()));
     this.trackSidebarRead();
+    const replyThread = computed(() => this.route.value.view === "conversation" && this.details.value?.pending_replies
+      ? this.details.value.thread_id : undefined);
+    this.disposers.push(effect(() => {
+      const thread = replyThread.value;
+      const owner = this.data.owner.value;
+      if (this.data.connection.value === "open" && thread && owner.state === "connected")
+        return this.replyPages.observe(thread);
+    }));
     this.disposers.push(effect(() => this.settlePanelOperations()));
     this.disposers.push(effect(() => this.syncWindow()));
     this.disposers.push(effect(() => {
@@ -1309,7 +1306,7 @@ export class AppModel {
   openInPanel(target: RightPanelTarget, opener?: () => boolean): void {
     if (this.panelPreference && !this.panelPreference.visible()) return;
     const tab: RightPanelTab = target.kind === "attachment" ? "possessions" : target.kind === "reply"
-      ? this.threadReplies.peek().find(row => row.id === target.id)?.recipient.kind === "thread" ? "reply-needed" : "awaiting-reply"
+      ? target.replySide === "owed_by" ? "reply-needed" : "awaiting-reply"
       : "work";
     batch(() => {
       this.panelTab.value = tab;
@@ -1324,30 +1321,29 @@ export class AppModel {
   private panelOperationFacts() {
     const handle = this.handle.value;
     const work = handle?.work.value;
-    const detail = handle?.detail.value;
-    const adapter = this.replyWait.supported(this.data.capabilities.value);
     return {
       pending: work?.value && !work.loading && !work.stale && !work.error ? work.value : undefined,
-      reply: adapter || (detail && !detail.loading && !detail.stale && !detail.error) ? this.threadReplyProjection.value : undefined,
+      owed_by: this.replyPages.owed_by.value,
+      asked_by: this.replyPages.asked_by.value,
     };
   }
 
   private settlePanelOperations(): void {
-    const { pending, reply } = this.panelOperationFacts();
+    const { pending, owed_by, asked_by } = this.panelOperationFacts();
     const current = this.panelOperations.peek();
     let next: Map<string, PanelOperation> | undefined;
     for (const [id, operation] of current) {
       if (operation.disposition !== "pending") continue;
       const state = operation.source === "pending"
         ? pending?.items.find(row => row.kind === "message" && row.message_id === id)?.state
-        : reply?.items.find(row => row.id === id)?.state;
-      const complete = operation.source === "pending" ? pending !== undefined && pending.next_cursor === undefined : reply?.complete;
+        : (operation.source === "owed_by" ? owed_by : asked_by).items.some(row => row.message_id === id) ? "pending" : undefined;
+      const complete = operation.source === "pending" ? pending !== undefined && pending.next_cursor === undefined : (operation.source === "owed_by" ? owed_by : asked_by).complete;
       if (state === undefined ? complete : state !== operation.state) (next ??= new Map(current)).delete(id);
     }
     if (next) this.panelOperations.value = next;
   }
 
-  async runPanelOperation(id: string, action: { kind: "cancel"; target: "pending" | "reply" } | { kind: "answer"; text: string }): Promise<void> {
+  async runPanelOperation(id: string, action: { kind: "cancel"; target: "pending" | "reply" } | { kind: "answer"; text: string; side?: ReplySide }): Promise<void> {
     const next = new Map(this.panelOperations.peek());
     const previous = next.get(id);
     const handle = this.handle.peek();
@@ -1357,13 +1353,14 @@ export class AppModel {
       if (!settled) return;
       next.delete(settled[0]);
     }
-    const source = action.kind === "answer" ? "reply" : action.target;
     const facts = this.panelOperationFacts();
-    const reply = source === "reply" ? facts.reply?.items.find(row => row.id === id) : undefined;
-    if (action.kind === "answer" && reply?.recipient.kind !== "human") return;
+    const side = action.kind === "answer" ? action.side ?? "asked_by" : "asked_by";
+    const source = action.kind === "cancel" && action.target === "pending" ? "pending" : side;
+    const reply = source === "pending" || facts[source].loading ? undefined : facts[source].items.find(row => row.message_id === id);
+    if (action.kind === "answer" && (!reply || source !== "owed_by" && !(reply.recipient.kind === "name" && reply.recipient.name === "human"))) return;
     const state = source === "pending"
       ? facts.pending?.items.find(row => row.kind === "message" && row.message_id === id)?.state
-      : reply?.state;
+      : reply ? "pending" : undefined;
     if (state === undefined) return;
     const pending: PanelOperation = { kind: action.kind, disposition: "pending", source, state };
     next.set(id, pending);
@@ -1380,7 +1377,7 @@ export class AppModel {
   }
 
   private async submitReply(id: string, text: string): Promise<PanelFailure | undefined> {
-    const out = this.replyWait.supported(this.data.capabilities.peek()) ? await this.replyWait.answer(id, text) : await this.ops.messageReply(id, text);
+    const out = await this.ops.messageReply(id, text);
     return out.ok ? undefined : this.panelFailure(out.error);
   }
 

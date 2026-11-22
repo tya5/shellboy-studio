@@ -16,3 +16,5 @@ Horizontal tab buttons use `--space-2` for the row gap and `--space-10` for the 
 The expanded tabs and collapsed icon rail use the same amber `panel-tab-count` badge part and tokens; only its anchor differs between the label corner and the rail button corner. Do not add a second rail pill or restyle its color/shape.
 
 When the owning right panel is collapsed, the icon rail and counts remain interactive while all tabpanel content is hidden and unfocusable; the footer stays anchored in the flex middle. Do not keep active content visible in the collapsed rail.
+
+Use an owner-provided count for each reply direction. A `+` suffix marks a lower bound in the existing badge.

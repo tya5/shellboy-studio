@@ -17,6 +17,8 @@ import type {
   HistoryWindowResult,
   MessageSendArgs,
   MessageAccepted,
+  PendingReply,
+  ReplyDirection,
   AttachmentDetails,
   ModelListArgs,
   ModelListResult,
@@ -66,6 +68,35 @@ function pageOf<T>(item: (v: unknown) => string | undefined): Decoder<Page<T>> {
     const page: Page<T> = { items: v.items as T[] };
     if (typeof v.next_cursor === "string") page.next_cursor = v.next_cursor;
     return { ok: true, value: page };
+  };
+}
+
+export const REPLY_PAGE_SIZE = 16;
+
+function replyPage(direction: ReplyDirection): Decoder<Page<PendingReply>> {
+  const decode = pageOf<PendingReply>(row => {
+    if (!isObject(row) || typeof row.message_id !== "string" || !row.message_id
+      || typeof row.created_at !== "string" || typeof row.excerpt !== "string"
+      || (row.asked_by !== null && typeof row.asked_by !== "string")
+      || !isObject(row.sender) || !["model", "external_cli", "human", "unknown"].includes(String(row.sender.kind))
+      || (row.sender.label !== undefined && typeof row.sender.label !== "string")
+      || !isObject(row.recipient)) return "invalid pending reply";
+    if (row.sender.kind === "model" ? (typeof row.sender.thread_id !== "string" || row.sender.thread_id !== row.asked_by) : row.asked_by !== null)
+      return "invalid pending reply sender";
+    const recipient = row.recipient;
+    if (!(recipient.kind === "name" && typeof recipient.name === "string")
+      && !(recipient.kind === "thread" && typeof recipient.thread_id === "string")) return "invalid reply recipient";
+    if ("owed_by" in direction && !(recipient.kind === "thread" && recipient.thread_id === direction.owed_by)
+      || "asked_by" in direction && row.asked_by !== direction.asked_by
+      || "to" in direction && !(recipient.kind === "name" && recipient.name === direction.to)) return "pending reply does not match its direction";
+  });
+  return raw => {
+    if (!isObject(raw) || !Array.isArray(raw.items) || raw.items.length > REPLY_PAGE_SIZE)
+      return { ok: false, reason: "expected a bounded pending reply page" };
+    const page = decode(raw);
+    if (page.ok && new Set(page.value.items.map(row => row.message_id)).size !== page.value.items.length)
+      return { ok: false, reason: "duplicate pending reply identity" };
+    return page;
   };
 }
 
@@ -469,6 +500,9 @@ export class Operations {
   /** Sender identity (`human`, `sender_label: "web"`) is set by the bridge, not here. */
   messageSend(args: MessageSendArgs, operationId = this.newId()): Promise<Outcome<MessageAccepted>> {
     return this.run("message.send", args, outcomeDecoder(decodeMessageAccepted), { operationId });
+  }
+  messageList(direction: ReplyDirection, cursor?: string, read?: ReadOptions): Promise<Outcome<Page<PendingReply>>> {
+    return this.run("message.list", { ...direction, limit: REPLY_PAGE_SIZE, ...(cursor === undefined ? {} : { cursor }) }, outcomeDecoder(replyPage(direction)), undefined, read);
   }
   messageReply(messageId: string, text: string, operationId = this.newId()): Promise<Outcome<MutationResult>> {
     return this.run("message.reply", { message_id: messageId, text }, outcomeDecoder(decodeRecord), { operationId });

@@ -18,6 +18,7 @@ pub fn access(command: &Command) -> Access {
         | Command::RunGet(..)
         | Command::TurnGet(..)
         | Command::MessageGet(..)
+        | Command::MessageList(..)
         | Command::ShellList(..)
         | Command::ShellGet(..)
         | Command::ShellRead(..)

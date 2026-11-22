@@ -277,7 +277,7 @@ export function ConversationStatus({ model }: { model: AppModel }) {
   const t = model.t.value;
   const work = model.work.value;
   const row = model.selectedRow.value;
-  const status = model.threadReplies.value.some((r) => r.recipient.kind === "human") ? "awaiting" : row?.status;
+  const status = model.replyPages.asked_by.value.items.some(r => r.recipient.kind === "name" && r.recipient.name === "human") ? "awaiting" : row?.status;
   const running = work.running[0];
   const start = running?.startedAt ? parseTime(running.startedAt) : undefined;
   return <div key="conversation-status" class="work-row conversation-status" role="status">{status ? <><ConversationCharacter name={statusCharacter(status)} running={status === "running"} /><span>{status === "running" && row?.summary.activity ? activityLabel(model.lang.value, row.summary.activity) : statusLabel(t, status)}</span>
@@ -381,12 +381,12 @@ function ProjectedMessage({ model, row, authorizedText, relationship, bodyPartia
 function WorkRegions({ model, place }: { model: AppModel; place: string }) {
   const t = model.t.value;
   const work = model.work.value;
-  const replies = model.threadReplies.value;
+  const replies = model.replyPages.asked_by.value.items;
   const state = (s: string) => s === "accepted" ? t("work.accepted") : s === "held" ? t("work.held") : s === "starting" ? t("work.starting") : s === "stopping" ? t("work.stopping") : t("work.runningState");
   return <>
-    {replies.length ? <section class="work-region"><h3>{t("work.replies")}</h3>{replies.map((r) => r.recipient.kind === "human" ?
-      <QuestionCard key={r.id} id={`${place}-${r.id}`} label={t("work.replies")} waitingWord={t("status.awaiting")} question={r.question} answerLabel={t("inbox.answer")} submitLabel={t("inbox.answerResume")} error={panelOperationError(model, r.id)} busy={panelOperationBlocked(model, r.id)} onAnswer={text => { void model.runPanelOperation(r.id, { kind: "answer", text }); }} /> :
-      <div class="work-row" key={r.id}><span>{r.question}</span><span>{r.state}</span>{r.recipient.kind === "thread" ? <a href={formatRoute({ view: "conversation", threadId: r.recipient.threadId })}>{r.recipient.title}</a> : null}</div>)}</section> : null}
+    {replies.length ? <section class="work-region"><h3>{t("work.replies")}</h3>{replies.map((r) => r.recipient.kind === "name" && r.recipient.name === "human" ?
+      <QuestionCard key={r.message_id} id={`${place}-${r.message_id}`} label={t("work.replies")} waitingWord={t("status.awaiting")} question={r.excerpt} answerLabel={t("inbox.answer")} submitLabel={t("inbox.answerResume")} error={panelOperationError(model, r.message_id)} busy={panelOperationBlocked(model, r.message_id)} onAnswer={text => { void model.runPanelOperation(r.message_id, { kind: "answer", text }); }} /> :
+      <div class="work-row" key={r.message_id}><span>{r.excerpt}</span>{r.recipient.kind === "thread" ? <a href={formatRoute({ view: "conversation", threadId: r.recipient.thread_id })}>{r.recipient.thread_id}</a> : null}</div>)}</section> : null}
     {work.running.length ? <section class="work-region running-region"><h3>{t("work.running")}</h3><span class="caption muted">{t("work.incomplete")}</span>{work.running.map((r) => <div class="work-row" key={r.id}><MonitorPopover className="running-label" label={r.label} preview><span>{r.label}</span>{r.command ? <code>{r.command}</code> : null}<span>{r.startedAt && parseTime(r.startedAt) !== undefined ? formatDuration(model.now.value - parseTime(r.startedAt)!) : ""}</span></MonitorPopover><span>{state(r.state)} {r.startedAt && parseTime(r.startedAt) !== undefined ? formatDuration(model.now.value - parseTime(r.startedAt)!) : ""}</span></div>)}</section> : null}
     {work.pending.length ? <section class="work-region"><h3>{t("work.pending")}</h3>{work.pending.map(r => {
       const action = panelCancel(model, r.id);
@@ -482,24 +482,26 @@ function PanelActivity({ model }: { model: AppModel }) {
   </div>;
 }
 
-function PanelReplies({ model, recipient }: { model: AppModel; recipient: "thread" | "human" }) {
+function PanelReplies({ model, side }: { model: AppModel; side: "owed_by" | "asked_by" }) {
   const t = model.t.value;
-  const tab = recipient === "thread" ? "reply-needed" : "awaiting-reply";
-  const rows = model.threadReplies.value.filter(reply => reply.recipient.kind === recipient);
+  const tab = side === "owed_by" ? "reply-needed" : "awaiting-reply";
+  const page = model.replyPages[side].value;
   return <div class="panel-list" data-panel-list={tab}>
-    {rows.map(reply => {
-      const human = reply.recipient.kind === "human";
-      const peer = reply.recipient.kind === "thread" ? reply.recipient.threadId : undefined;
-      const party = human ? t("convo.you") : peer !== model.selectedId.value && peer ? (model.rowById.value.get(peer)?.summary.title || peer) : undefined;
+    {page.items.map(reply => {
+      const human = reply.recipient.kind === "name" && reply.recipient.name === "human";
+      const peer = side === "owed_by" ? reply.sender.thread_id : reply.recipient.kind === "thread" ? reply.recipient.thread_id : undefined;
+      const title = peer ? model.rowById.value.get(peer)?.summary.title || peer : undefined;
+      const party = side === "owed_by" ? title ?? reply.sender.label ?? reply.sender.kind
+        : human ? t("convo.you") : title ?? (reply.recipient.kind === "name" ? reply.recipient.name : undefined);
       const target = peer && peer !== model.selectedId.value ? formatRoute({ view: "conversation", threadId: peer }) : undefined;
-      const elapsed = reply.elapsedMs !== undefined ? formatDuration(reply.elapsedMs) : panelElapsed(model.now.value, reply.createdAt);
       const actions = [...(target ? [{ key: "open", label: t("panel.openThread"), href: target }] : []),
-        ...(human ? [panelCancel(model, reply.id, "reply")] : [])];
-      return <ListRow key={reply.id} id={reply.id} title={[party, reply.question || t("work.textUnavailable")].filter(Boolean).join(" · ")}
-        subtitle={elapsed} waiting={human} selected={model.panelOpener.value[tab]?.id === reply.id}
-        menuLabel={t("panel.rowActions")} actions={actions} error={panelOperationError(model, reply.id)} onSelect={opener => model.openInPanel({ kind: "reply", id: reply.id }, panelFocusReturn(opener))} />;
+        ...(side === "asked_by" ? [panelCancel(model, reply.message_id, "reply")] : [])];
+      return <ListRow key={reply.message_id} id={reply.message_id} title={[party, reply.excerpt || t("work.textUnavailable")].filter(Boolean).join(" · ")}
+        subtitle={panelElapsed(model.now.value, reply.created_at)} waiting={side === "asked_by" && human} selected={model.panelOpener.value[tab]?.id === reply.message_id}
+        menuLabel={t("panel.rowActions")} actions={actions} error={panelOperationError(model, reply.message_id)} onSelect={opener => model.openInPanel({ kind: "reply", id: reply.message_id, replySide: side }, panelFocusReturn(opener))} />;
     })}
-    {!rows.length ? <p class="muted caption">{t("panel.empty")}</p> : null}
+    {!page.items.length && !page.loading ? <p class="muted caption">{t("panel.empty")}</p> : null}
+    {page.cursor ? <Button disabled={page.loading} onClick={() => model.replyPages.more(side)}>{t("panel.attachmentsMore")}</Button> : null}
   </div>;
 }
 
@@ -545,7 +547,7 @@ function PanelDetail({ model, tabLabel, onBack }: { model: AppModel; tabLabel: s
   const stepId = detail?.kind === "step" ? detail.id : undefined;
   useEffect(() => stepId && (step || running) ? model.watchOutput(stepId) : undefined, [model, stepId, !!(step || running)]);
   useEffect(() => {
-    if (!detail || detail.kind !== "message" || model.bodyState(detail.id)) return;
+    if (!detail || (detail.kind !== "message" && detail.kind !== "reply") || model.bodyState(detail.id)) return;
     void model.loadBody(detail.id);
   }, [model, detail]);
   const backRef = useRef<HTMLButtonElement>(null);
@@ -594,12 +596,16 @@ function PanelDetail({ model, tabLabel, onBack }: { model: AppModel; tabLabel: s
       ]} /> : <p class="muted caption">{t(attachments.complete ? "work.textUnavailable" : "panel.attachmentOutsideCoverage")}</p>}
     </section>;
   }
-  const reply = model.threadReplies.value.find(row => row.id === detail.id);
-  const replyCancel = reply?.recipient.kind === "human" ? panelCancel(model, reply.id, "reply") : undefined;
-  return <section class="panel-detail" data-panel-detail=""><div class="panel-detail-head">{back}<h3>{t(reply?.recipient.kind === "thread" ? "panel.tab.reply_needed" : "panel.tab.awaiting_reply")}</h3></div>
-    {reply?.recipient.kind === "human" ? <QuestionCard id={`panel-${reply.id}`} label={t("work.replies")} waitingWord={t("status.awaiting")} question={reply.question} answerLabel={t("inbox.answer")} submitLabel={t("inbox.answerResume")} error={error} busy={panelOperationBlocked(model, reply.id)} onAnswer={text => { void model.runPanelOperation(reply.id, { kind: "answer", text }); }} /> : reply ? <><p>{reply.question}</p><KeyValue rows={[{ key: t("details.status"), value: reply.state }]} />
-      {reply.recipient.kind === "thread" && reply.recipient.threadId !== model.selectedId.value ? <a href={formatRoute({ view: "conversation", threadId: reply.recipient.threadId })}>{reply.recipient.title}</a> : null}</>
-      : <p class="muted caption">{t("work.textUnavailable")}</p>}
+  const side = detail.replySide ?? "asked_by";
+  const reply = model.replyPages[side].value.items.find(row => row.message_id === detail.id);
+  const body = model.bodyState(detail.id);
+  const peer = reply && (side === "owed_by" ? reply.sender.thread_id : reply.recipient.kind === "thread" ? reply.recipient.thread_id : undefined);
+  const replyCancel = reply && side === "asked_by" ? panelCancel(model, reply.message_id, "reply") : undefined;
+  const canAnswer = reply && (side === "owed_by" || reply.recipient.kind === "name" && reply.recipient.name === "human");
+  return <section class="panel-detail" data-panel-detail=""><div class="panel-detail-head">{back}<h3>{tabLabel}</h3></div>
+    {canAnswer ? <QuestionCard id={`panel-${reply.message_id}`} label={t("work.replies")} waitingWord={t("status.awaiting")} question={body?.text ?? reply.excerpt} answerLabel={t("inbox.answer")} submitLabel={t("inbox.answerResume")} error={error} busy={panelOperationBlocked(model, reply.message_id) || model.replyPages[side].value.loading} onAnswer={text => { void model.runPanelOperation(reply.message_id, { kind: "answer", text, side }); }} />
+      : <p>{body?.text ?? reply?.excerpt ?? t("work.textUnavailable")}</p>}
+    {peer && peer !== model.selectedId.value ? <a href={formatRoute({ view: "conversation", threadId: peer })}>{model.rowById.value.get(peer)?.summary.title || peer}</a> : null}
     {replyCancel ? <Button disabled={replyCancel.disabled} onClick={replyCancel.run}>{replyCancel.label}</Button> : null}
   </section>;
 }
@@ -613,10 +619,14 @@ function RightPanel({ model, panelCollapsed = false, phone }: { model: AppModel;
   useEffect(() => activeAttachments && owner.state === "connected" && threadId
     ? model.attachmentSection.observe(threadId) : undefined, [model, activeAttachments, owner, threadId]);
   const selectedTab = !supportsAttachments && model.panelTab.value === "possessions" ? "work" : model.panelTab.value;
+  const replyCount = (side: "owed_by" | "asked_by") => {
+    const count = model.details.value?.pending_replies?.[side];
+    return count?.exact === false ? `${count.count}+` as const : count?.count;
+  };
   const tabs = [
     { id: "work", label: t("panel.tab.work"), icon: "panel.work" as const, count: model.work.value.running.length + model.work.value.pending.length },
-    { id: "reply-needed", label: t("panel.tab.reply_needed"), icon: "panel.reply_needed" as const, count: model.threadReplies.value.filter(row => row.recipient.kind === "thread").length },
-    { id: "awaiting-reply", label: t("panel.tab.awaiting_reply"), icon: "panel.awaiting_reply" as const, count: model.threadReplies.value.filter(row => row.recipient.kind === "human").length },
+    { id: "reply-needed", label: t("panel.tab.reply_needed"), icon: "panel.reply_needed" as const, count: replyCount("owed_by") },
+    { id: "awaiting-reply", label: t("panel.tab.awaiting_reply"), icon: "panel.awaiting_reply" as const, count: replyCount("asked_by") },
     ...(supportsAttachments ? [{ id: "possessions", label: t("panel.tab.possessions"), icon: "panel.attachment" as const }] : []),
     { id: "info", label: t("panel.tab.info"), icon: "panel.information" as const },
   ];
@@ -664,7 +674,7 @@ function RightPanel({ model, panelCollapsed = false, phone }: { model: AppModel;
         const active = tab.id === selectedTab;
         const drilledIn = active && !panelCollapsed && detail && (selectedTab === "possessions") === (detail.kind === "attachment");
         return <section key={tab.id} role="tabpanel" id={`panel-page-${tab.id}`} aria-labelledby={`panel-tab-${tab.id}`} hidden={!active || panelCollapsed}>
-          <div class="panel-list-frame" hidden={!!drilledIn}>{tab.id === "work" ? <PanelActivity model={model} /> : tab.id === "info" ? <PanelInfo model={model} usageThread={usageThread} usageKey={usageKey} /> : tab.id === "possessions" ? <PanelPossessions model={model} /> : <PanelReplies model={model} recipient={tab.id === "reply-needed" ? "thread" : "human"} />}</div>
+          <div class="panel-list-frame" hidden={!!drilledIn}>{tab.id === "work" ? <PanelActivity model={model} /> : tab.id === "info" ? <PanelInfo model={model} usageThread={usageThread} usageKey={usageKey} /> : tab.id === "possessions" ? <PanelPossessions model={model} /> : <PanelReplies model={model} side={tab.id === "reply-needed" ? "owed_by" : "asked_by"} />}</div>
           {drilledIn ? <PanelDetail key={`${detail.kind}:${detail.id}`} model={model} tabLabel={tab.label} onBack={closeDetail} /> : null}
         </section>;
       })}
@@ -742,8 +752,8 @@ export function Conversation({ model, panelCollapsed = false, rightPanelWidth, o
               {t("composer.unconfirmed")}{!model.canResend()?<div>{t("composer.retryUnavailable")}</div>:null}
             </Notice>
           ) : null}
-          {(model.threadReplies.value.length || model.work.value.running.length || model.work.value.pending.length || model.work.value.partial) ? <div class="work-strip"><Button onClick={(event) => { const opener = event.currentTarget; const fallback = opener.closest(".dock")?.querySelector<HTMLElement>("textarea"); setSheetReturnFocus({ opener, resolveFallback: () => fallback?.isConnected ? fallback : null }); setSheetOpen(true); }}>
-            {[t("work.title"), ...(model.threadReplies.value.length ? [t("work.replies")] : []),
+          {((model.replyPages.asked_by.value.items.length || model.replyPages.owed_by.value.items.length) || model.work.value.running.length || model.work.value.pending.length || model.work.value.partial) ? <div class="work-strip"><Button onClick={(event) => { const opener = event.currentTarget; const fallback = opener.closest(".dock")?.querySelector<HTMLElement>("textarea"); setSheetReturnFocus({ opener, resolveFallback: () => fallback?.isConnected ? fallback : null }); setSheetOpen(true); }}>
+            {[t("work.title"), ...((model.replyPages.asked_by.value.items.length || model.replyPages.owed_by.value.items.length) ? [t("work.replies")] : []),
               ...(model.work.value.pending.length ? [t("work.pending")] : []),
               ...(model.work.value.partial ? [t("work.partial")] : [])].join(" · ")}
           </Button></div> : null}

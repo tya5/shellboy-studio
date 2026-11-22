@@ -1,46 +1,70 @@
-import { signal, type ReadonlySignal } from "@preact/signals-core";
-import type { Outcome } from "./errors";
+import { signal } from "@preact/signals-core";
+import { Cancel } from "./operations";
+import type { PendingReply } from "./protocol";
+import type { ShellboyData } from "./store";
 
-/** Optional cross-Thread inbox adapter; per-Thread protocol-5 duties use thread.get. */
-export interface ReplyWait {
-  id: string;
-  threadId: string;
-  question: string;
-  recipient: { kind: "human" } | { kind: "thread"; threadId: string; title: string };
-  state: string;
-  createdAt?: string;
-  elapsedMs?: number;
-}
-export interface ReplyWaitAdapter {
-  supported(capabilities: readonly string[]): boolean;
-  readonly items: ReadonlySignal<readonly ReplyWait[]>;
-  answer(id: string, text: string): Promise<Outcome<unknown>>;
-}
-export const noReplyWait: ReplyWaitAdapter = {
-  supported: () => false,
-  items: signal<readonly ReplyWait[]>([]),
-  answer: async () => ({ ok: false, error: { kind: "bridge", code: "not_available", message: "reply waiting is not available" } }),
-};
+export type ReplySide = "owed_by" | "asked_by";
+type ReplyPage = { items: PendingReply[]; cursor?: string; loading: boolean; complete: boolean };
+const empty = (): ReplyPage => ({ items: [], loading: false, complete: false });
+const MAX_RETAINED = 128;
 
-// Core 6560942 src/protocol.rs:18; src/control/reply.rs reads one overflow row.
-const MAX_PENDING_REPLY_DUTIES = 16;
-export interface ThreadReplyProjection { readonly items: readonly ReplyWait[]; readonly complete: boolean; }
+/** The selected Thread owns at most one bounded retained prefix per direction. */
+export class ReplyPages {
+  readonly owed_by = signal(empty());
+  readonly asked_by = signal(empty());
+  constructor(private readonly data: ShellboyData) {}
+  private reads: Partial<Record<ReplySide, Cancel>> = {};
+  private thread?: string;
+  private closeWatch?: () => void;
 
-export function adapterThreadReplies(adapter: ReplyWaitAdapter, threadId: string): ThreadReplyProjection {
-  return { items: adapter.items.value.filter(item => item.threadId === threadId), complete: false };
-}
+  observe(thread: string): () => void {
+    this.close();
+    this.thread = thread;
+    const watch = this.data.watchHints(thread, () => this.refresh());
+    this.closeWatch = () => watch.close();
+    this.refresh();
+    return () => this.close();
+  }
 
-/** Decode only protocol 5's unified bounded projection; never merge removed legacy lists. */
-export function decodeThreadReplies(threadId: string, raw: unknown): ThreadReplyProjection | undefined {
-  if (!Array.isArray(raw) || raw.length > MAX_PENDING_REPLY_DUTIES + 1) return undefined;
-  const items = raw.flatMap((value: unknown): ReplyWait[] => {
-    if (!value || typeof value !== "object") return [];
-    const item = value as Record<string, unknown>;
-    if (typeof item.message_id !== "string" || typeof item.excerpt !== "string" || typeof item.delivery_status !== "string") return [];
-    const recipient = item.recipient_kind === "human" ? { kind: "human" as const }
-      : item.recipient_kind === "thread" && typeof item.recipient_thread_id === "string"
-        ? { kind: "thread" as const, threadId: item.recipient_thread_id, title: item.recipient_thread_id } : undefined;
-    return recipient ? [{ id: item.message_id, threadId, question: item.excerpt, recipient, state: item.delivery_status, ...(typeof item.created_at === "string" ? { createdAt: item.created_at } : {}), ...(typeof item.elapsed_ms === "number" && Number.isFinite(item.elapsed_ms) && item.elapsed_ms >= 0 ? { elapsedMs: item.elapsed_ms } : {}) }] : [];
-  });
-  return { items, complete: raw.length <= MAX_PENDING_REPLY_DUTIES && raw.length === items.length };
+  close(): void {
+    this.closeWatch?.();
+    this.closeWatch = undefined;
+    this.thread = undefined;
+    for (const side of ["owed_by", "asked_by"] as const) {
+      this.reads[side]?.cancel();
+      this[side].value = empty();
+    }
+    this.reads = {};
+  }
+
+  private refresh(): void {
+    void this.read("owed_by");
+    void this.read("asked_by");
+  }
+
+  more(side: ReplySide): void {
+    const { cursor, loading } = this[side].peek();
+    if (cursor && !loading) void this.read(side, cursor);
+  }
+
+  private async read(side: ReplySide, cursor?: string): Promise<void> {
+    const thread = this.thread;
+    const owner = this.data.owner.peek();
+    if (!thread || owner.state !== "connected") return;
+    this.reads[side]?.cancel();
+    const cancel = new Cancel();
+    this.reads[side] = cancel;
+    const previous = this[side].peek();
+    this[side].value = { ...previous, loading: true, complete: false };
+    const out = await this.data.operations.messageList(side === "owed_by" ? { owed_by: thread } : { asked_by: thread }, cursor, { cancel });
+    if (cancel.cancelled || this.reads[side] !== cancel || this.thread !== thread || this.data.owner.peek() !== owner) return;
+    delete this.reads[side];
+    if (!out.ok) { this[side].value = empty(); return; }
+    const old = cursor ? previous.items : [];
+    const ids = new Set(old.map(item => item.message_id));
+    const items = [...old, ...out.value.items.filter(item => !ids.has(item.message_id))].slice(0, MAX_RETAINED);
+    const next = out.value.next_cursor;
+    this[side].value = { items, cursor: items.length < MAX_RETAINED && next !== cursor ? next : undefined,
+      loading: false, complete: next === undefined && items.length === old.length + out.value.items.length };
+  }
 }

@@ -586,27 +586,25 @@ describe("AppModel over the fake transport", () => {
 
 
 describe("per-thread reply duties", () => {
-  it("shows human and thread duties, answers only a human, and refreshes on a hint", async () => {
-    const { model, t, db } = await fixtureModel({ configure: (db) => {
-      Object.assign(db.details.lead!, { awaiting_replies: [
-        { message_id: "h", recipient_kind: "human", excerpt: "Choose", delivery_status: "pending" },
-        { message_id: "t", recipient_kind: "thread", recipient_thread_id: "child", excerpt: "Review", delivery_status: "applied" },
-      ] });
+  it("replies to an owed model ask and settles only after the owner hint", async () => {
+    const { model, t, db } = await fixtureModel({ configure(db) {
+      db.details.lead!.pending_replies = { owed_by: { count: 1, exact: true }, asked_by: { count: 0, exact: true } };
+      db.replies = [{ message_id: "owed", created_at: "2026-01-01T00:00:00Z", asked_by: "child",
+        sender: { kind: "model", thread_id: "child" }, recipient: { kind: "thread", thread_id: "lead" }, excerpt: "Review" }];
     } });
-    expect(model.threadReplies.value.map((r) => r.recipient.kind)).toEqual(["human", "thread"]);
-    await model.runPanelOperation("t", { kind: "answer", text: "no" });
-    expect(t.calls("message.reply")).toHaveLength(0);
-    const answer = model.runPanelOperation("h", { kind: "answer", text: "yes" });
+    expect(model.replyPages.owed_by.value.items.map(row => row.message_id)).toEqual(["owed"]);
+    expect(model.replyPages.asked_by.value.items).toEqual([]);
+    model.openInPanel({ kind: "reply", id: "owed", replySide: "owed_by" });
+    const answer = model.runPanelOperation("owed", { kind: "answer", text: "yes", side: "owed_by" });
     await flush();
     const call = t.calls("message.reply").at(-1)!;
-    expect(call.args).toEqual({ message_id: "h", text: "yes" });
+    expect(call.args).toEqual({ message_id: "owed", text: "yes" });
     db.answered.add(call.id); t.ok(call.id, {}); await answer;
-    expect(model.panelOperations.peek().get("h")?.disposition).toBe("pending");
-    Object.assign(db.details.lead!, { awaiting_replies: [] });
-    t.push({ t: "changed", config_changed: false, thread_ids: ["lead"], list: false }); await settle(t, db);
-    expect(model.threadReplies.value).toEqual([]);
-    expect(model.panelOperations.peek().has("h")).toBe(false);
-    expect(model.pending.items.value).toEqual([]);
+    expect(model.panelOperations.peek().get("owed")?.disposition).toBe("pending");
+    db.replies = [];
+    t.push({ t: "changed", thread_ids: ["lead"], list: false, config_changed: false }); await settle(t, db);
+    expect(model.replyPages.owed_by.value.items).toEqual([]);
+    expect(model.panelOperations.peek().has("owed")).toBe(false);
     model.dispose();
   });
 });
