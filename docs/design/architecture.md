@@ -837,9 +837,10 @@ wake.
 
 The Possessions tab requires the paged attachment capability. Its attachment
 section loads only while active and expanded, using the open Thread and a
-single cancellable page read. A Thread change hint replaces the cursor chain
-with page one; Show more uses the opaque continuation. The section retains up
-to 200 metadata rows and drops its state on close or owner change. Paths and
+single cancellable page read at a time. Thread change and resync hints rewalk
+the pages the user loaded and publish them together; Show more uses the opaque
+continuation. The section shares the Thread list retention bound and drops its
+state on close or owner change. Paths and
 metadata are display-only; reading attachment bodies is outside this section.
 The pinned Core includes #327. The bridge only accepts Thread-scoped bounded
 reads; the legacy bare-array response is not accepted.

@@ -39,7 +39,7 @@ describe('right panel purpose',()=>{
  it('opens the attachment section on demand, pages by cursor, and refreshes on the Thread hint', async () => {
   const f=await setup(['attachment.list.page']);
   const row=(id:string,path:string)=>({attachment_id:id,source_node_id:`source-${id}`,thread_id:'lead',path,kind:'file',delivery_status:'applied',selected:true,managed:false});
-  let first={items:[row('a','/fixture/readme.txt')],next_cursor:'opaque'};
+  let first:{items:ReturnType<typeof row>[];next_cursor?:string}={items:[row('a','/fixture/readme.txt')],next_cursor:'opaque'};
   const answer=f.db.answer.bind(f.db);
   f.db.answer=call=>call.command==='attachment.list'
    ? {ok:true,result:(call.args as {cursor?:string}).cursor ? {items:[row('b','C:\\fixture\\notes.txt')]} : first}
@@ -63,13 +63,29 @@ describe('right panel purpose',()=>{
    await act(async()=>{more.click();await settle(f.t,f.db);});
    expect(f.t.calls('attachment.list').at(-1)?.args).toEqual({thread_id:'lead',limit:50,cursor:'opaque'});
    expect([...page.querySelectorAll('[data-panel-row-id]')].map(el=>el.textContent)).toEqual(['readme.txtファイル','notes.txtファイル']);
+   await act(async()=>page.querySelector<HTMLButtonElement>('[data-panel-row-id="b"] button')!.click());
    first={items:[row('c','/fixture/new.txt')],next_cursor:'new-cut'};
-   await act(async()=>{f.t.push({t:'changed',thread_ids:['lead'],list:false});await settle(f.t,f.db);});
+   await act(async()=>{f.t.push({t:'changed',thread_ids:['lead'],list:false});await flush();});
+   const read=f.t.calls('attachment.list').at(-1)!;
+   expect(read.args).toEqual({thread_id:'lead',limit:50});
+   await act(async()=>{f.db.answered.add(read.id);f.t.ok(read.id,first);await flush();});
+   expect(f.t.calls('attachment.list').at(-1)?.args).toEqual({thread_id:'lead',limit:50,cursor:'new-cut'});
+   expect(page.querySelector('[data-panel-detail]')?.textContent).toContain('notes.txt');
+   expect(page.querySelector('[data-panel-row-id="a"]')).not.toBeNull();
+   expect(page.querySelector('[data-panel-row-id="c"]')).toBeNull();
+   await act(async()=>{await settle(f.t,f.db);});
    expect(page.querySelector('[data-panel-row-id="c"]')?.textContent).toContain('new.txt');
+   expect(page.querySelector('[data-panel-detail]')?.textContent).toContain('notes.txt');
+   first={items:[]};
+   await act(async()=>{f.t.push({t:'changed',thread_ids:['lead'],list:false});await settle(f.t,f.db);});
    expect(page.querySelector('[data-panel-row-id="b"]')).toBeNull();
+   expect(page.querySelector('h3')?.textContent).toBe('添付'); // the open detail heading, not a list divider
+   expect(page.querySelector('[data-panel-list] h3')).toBeNull();
+   await act(async()=>page.querySelector<HTMLButtonElement>('[data-panel-back]')!.click());
+   expect(document.activeElement).toBe(tabs[3]);
    await act(async()=>tabs[0]!.click());
    await act(async()=>{f.t.push({t:'changed',thread_ids:['lead'],list:false});await settle(f.t,f.db);});
-   expect(f.t.calls('attachment.list')).toHaveLength(3);
+   expect(f.t.calls('attachment.list')).toHaveLength(5);
   } finally {f.model.dispose();f.data.stop();}
  });
 

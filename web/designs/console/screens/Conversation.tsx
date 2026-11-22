@@ -1,3 +1,4 @@
+import { ATTACHMENT_RETENTION } from "../../../ui-core/src/attachment-section";
 import { CAPABILITY_ATTACHMENT_PAGE } from "../../../data/src";
 import {messageRelationship,senderHeaderDisplay} from "../../../ui-core/src/sender-display";
 import { capturedWorkElementDisplay, capturedWorkExecutionDisplay, type WorkElementDisplay } from "../../../ui-core/src/work-element-display";
@@ -406,19 +407,19 @@ function PanelPossessions({ model }: { model: AppModel }) {
   const t = model.t.value;
   const state = model.attachmentSection.state.value;
   return <div class="panel-list" data-panel-list="possessions">
-    {possessionsSections.map(section => <section key={section.kind}>
+    {state.items.length ? possessionsSections.map(section => <section key={section.kind}>
       <ListDivider label={t(section.label)} count={state.items.length} />
       {state.items.map(row => <ListRow key={row.attachment_id} id={row.attachment_id}
         title={row.path.split(/[\\/]/).filter(Boolean).at(-1) ?? row.path} icon={section.icon}
         subtitle={t(row.kind === "image" ? "panel.attachmentImage" : "panel.attachmentFile")}
         selected={model.panelOpener.value.possessions?.id === row.attachment_id}
         onSelect={opener => model.openInPanel({ kind: section.kind, id: row.attachment_id }, panelFocusReturn(opener))} />)}
-    </section>)}
+    </section>) : null}
     {state.loading ? <p role="status">{t("panel.attachmentsLoading")}</p> : null}
     {state.error ? <p role="alert">{t("panel.attachmentsFailed")}</p> : null}
     {!state.items.length && !state.loading && !state.error ? <p class="muted caption">{t("panel.empty")}</p> : null}
-    {state.cursor !== undefined ? <Button onClick={() => model.attachmentSection.more()}>{t("panel.attachmentsMore")}</Button> : null}
-    {state.capped ? <p class="muted caption">{t("panel.attachmentsCapped")}</p> : null}
+    {state.cursor !== undefined && !state.capped && !state.error ? <Button disabled={state.loading} onClick={() => model.attachmentSection.more()}>{t("panel.attachmentsMore")}</Button> : null}
+    {state.capped ? <p class="muted caption">{t("panel.attachmentsCapped", { n: ATTACHMENT_RETENTION })}</p> : null}
   </div>;
 }
 
@@ -427,9 +428,13 @@ function panelElapsed(now: number, startedAt?: string): string | undefined {
   return started === undefined ? undefined : formatDuration(Math.max(0, now - started));
 }
 
-function panelFocusReturn(opener?: HTMLElement): (() => void) | undefined {
+function panelFocusReturn(opener?: HTMLElement): (() => boolean) | undefined {
   if (!opener) return;
-  return () => { if (opener.isConnected && !opener.closest("[hidden]")) opener.focus(); };
+  return () => {
+    if (!opener.isConnected || opener.closest("[hidden]")) return false;
+    opener.focus();
+    return opener.ownerDocument.activeElement === opener;
+  };
 }
 
 function panelOperationBlocked(model: AppModel, id: string): boolean {
@@ -560,7 +565,8 @@ function PanelDetail({ model, tabLabel, onBack }: { model: AppModel; tabLabel: s
     </section>;
   }
   if (detail.kind === "attachment") {
-    const row = model.attachmentSection.state.value.items.find(item => item.attachment_id === detail.id);
+    const attachments = model.attachmentSection.state.value;
+    const row = attachments.items.find(item => item.attachment_id === detail.id);
     return <section class="panel-detail" data-panel-detail=""><div class="panel-detail-head">{back}<h3>{t("panel.attachments")}</h3></div>
       {row ? <KeyValue rows={[
         { key: t("panel.attachmentPath"), value: <bdi>{row.path}</bdi> },
@@ -569,7 +575,7 @@ function PanelDetail({ model, tabLabel, onBack }: { model: AppModel; tabLabel: s
         { key: t("panel.attachmentManaged"), value: t(row.managed ? "panel.attachmentYes" : "panel.attachmentNo") },
         { key: t("panel.attachmentSelected"), value: t(row.selected ? "panel.attachmentYes" : "panel.attachmentNo") },
         ...(row.unavailable_reason ? [{ key: t("panel.attachmentUnavailable"), value: row.unavailable_reason }] : []),
-      ]} /> : <p class="muted caption">{t("work.textUnavailable")}</p>}
+      ]} /> : <p class="muted caption">{t(attachments.complete ? "work.textUnavailable" : "panel.attachmentOutsideCoverage")}</p>}
     </section>;
   }
   const reply = model.threadReplies.value.find(row => row.id === detail.id);
@@ -610,16 +616,18 @@ function RightPanel({ model, panelCollapsed = false }: { model: AppModel; panelC
     return () => removeEventListener("keydown", onKey);
   }, [model, detail, panelCollapsed]);
   const root = useRef<HTMLElement>(null);
-  const focusAfterBack = useRef<{ tab: typeof model.panelTab.value; restore: () => void }>();
+  const focusAfterBack = useRef<{ tab: typeof model.panelTab.value; restore?: () => boolean }>();
   useLayoutEffect(() => {
     const focus = focusAfterBack.current;
     focusAfterBack.current = undefined;
-    if (focus && focus.tab === model.panelTab.peek() && !model.panelDetail.peek() && !panelCollapsed) focus.restore();
+    if (focus && focus.tab === model.panelTab.peek() && !model.panelDetail.peek() && !panelCollapsed && !focus.restore?.()) {
+      root.current?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')?.focus();
+    }
   }, [detail, panelCollapsed, model]);
   const closeDetail = () => {
     const tab = model.panelTab.peek();
     const restore = model.panelDetail.peek()?.opener;
-    if (restore) focusAfterBack.current = { tab, restore };
+    focusAfterBack.current = { tab, restore };
     model.closePanelDetail();
   };
   const select = (id: string) => model.setPanelTab(id as import("../../../ui-core/src/model").RightPanelTab);

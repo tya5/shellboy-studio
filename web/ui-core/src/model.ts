@@ -76,7 +76,7 @@ export type SendState =
 
 export type RightPanelTab = "work" | "reply-needed" | "awaiting-reply" | "possessions" | "info";
 export type RightPanelTarget = Readonly<{ kind: "step" | "message" | "reply" | "attachment"; id: string }>;
-export type RightPanelDetail = RightPanelTarget & Readonly<{ opener?: () => void }>;
+export type RightPanelDetail = RightPanelTarget & Readonly<{ opener?: () => boolean }>;
 type PanelOperation = Readonly<{ kind: "cancel" | "answer" } & (
   { disposition: "pending"; source: "pending" | "reply"; state: string } | { disposition: "failed" | "unconfirmed"; error: string }
 )>;
@@ -1204,7 +1204,7 @@ export class AppModel {
     batch(() => { this.panelTab.value = tab; this.panelDetail.value = undefined; this.expandPanel(); });
   }
 
-  openInPanel(target: RightPanelTarget, opener?: () => void): void {
+  openInPanel(target: RightPanelTarget, opener?: () => boolean): void {
     if (this.panelPreference && !this.panelPreference.visible()) return;
     const tab: RightPanelTab = target.kind === "attachment" ? "possessions" : target.kind === "reply"
       ? this.threadReplies.peek().find(row => row.id === target.id)?.recipient.kind === "thread" ? "reply-needed" : "awaiting-reply"
