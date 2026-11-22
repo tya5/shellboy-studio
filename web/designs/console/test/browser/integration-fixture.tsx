@@ -98,7 +98,7 @@ if (footerFixture) Object.assign(window, {
     const activity = state === 'running' ? 'tools' : state;
     db.threads.lead = summary('lead', { state, activity });
     db.details.lead = details('lead', { state, activity });
-    t.push({ t: 'changed', thread_ids: ['lead'], list: true });
+    t.push({ t: 'changed', config_changed: false, thread_ids: ['lead'], list: true });
     await settle(t, db);
     return model.selectedRow.peek()?.summary.state;
   },
