@@ -11,7 +11,7 @@ describe("AppModel over the fake transport", () => {
     expect(model.conversation.value.map((r) => r.type)).toEqual(["message", "note", "note", "note", "note", "steps", "note", "note"]);
     expect(model.conversation.value.filter(row => row.type === "message").some(row => row.text.includes("cargo test"))).toBe(false);
     expect(model.context.value).toEqual({ inputTokens: 41200, autoSummaryAt: 200000 });
-    expect(model.usage.value).toMatchObject({ cachedPercent: 75, attempts: 4 });
+    expect(model.usage.value).toBeUndefined();
   });
 
   it("rejects a late full-body fetch after navigation cancellation", async () => {

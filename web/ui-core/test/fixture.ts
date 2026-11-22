@@ -38,16 +38,7 @@ export function fixtureDb(): FakeOwnerDb {
     run_id: "run-1",
     effective_auto_compact_at: 200000,
     context_usage: { last_successful_attempt: { input_tokens: 41200, cached_tokens: 38000 } },
-    usage_totals: {
-      model_attempts: {
-        completed: {
-          count: 4,
-          input_tokens: { known_sum: 160000, overflow: false, unknown_count: 0 },
-          output_tokens: { known_sum: 3200, overflow: false, unknown_count: 0 },
-          cached_tokens: { known_sum: 120000, overflow: false, unknown_count: 0 },
-        },
-      },
-    },
+
   }) as FakeOwnerDb["details"][string];
   db.details.broken = details("broken", {
     title: "Check embedding endpoint",
@@ -304,6 +295,14 @@ export function answerInsights(db: FakeOwnerDb, usage: Record<string, unknown> =
         return { ok: true, result: { unarchived: a.thread_ids, already: [], not_found: [], descendants: [] } };
       case "usage.get":
         db.reads.push(`usage.get@${String(a.cursor ?? "first")}:${String(a.group_by)}`);
+        if (!a.group_by && a.thread_id === "lead") return { ok: true, result: {
+          thread_id: "lead", coverage: { scope_complete: true }, model_attempts: { completed: {
+            count: 4,
+            input_tokens: { known_sum: 160000, overflow: false, unknown_count: 0 },
+            output_tokens: { known_sum: 3200, overflow: false, unknown_count: 0 },
+            cached_tokens: { known_sum: 120000, overflow: false, unknown_count: 0 },
+          } },
+        } };
         if (a.group_by === "thread") return { ok: true, result: usagePage([usageItem("lead", { input: 3000000, cached: 2000000, output: 40000, compactions: 3, summary: [4200, 320, 500] }), usageItem("gone-thread", { input: 1000, cached: 0, output: 10 })]) };
         return { ok: true, result: usage[String(a.cursor ?? "first")] };
       case "compact.list":

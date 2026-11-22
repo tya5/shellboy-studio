@@ -310,7 +310,7 @@ export class AppModel {
   readonly selectedRow: ReadonlySignal<ThreadRow | undefined>;
   readonly conversation: ReadonlySignal<ConversationRow[]>;
   readonly context: ReadonlySignal<ContextFacts | undefined>;
-  readonly usage: ReadonlySignal<UsageFacts | undefined>;
+  readonly usage = signal<UsageFacts | undefined>(undefined);
   readonly recovery: ReadonlySignal<RecoveryFacts | undefined>;
   readonly canStop: ReadonlySignal<boolean>;
   readonly canRetry: ReadonlySignal<boolean>;
@@ -552,7 +552,6 @@ export class AppModel {
       return branchRowMarks(items, materializeHistoryPresentation(items, this.shells.value, w.acceptedView.peek().revision ?? 0).rows, this.marks.value);
     });
     this.context = computed(() => contextFacts(this.details.value));
-    this.usage = computed(() => usageFacts(this.details.value));
     this.recovery = computed(() => (this.selectedRow.value?.status === "recovery" ? recoveryFacts(this.details.value) : undefined));
     this.canStop = computed(() => this.details.value?.run_id !== undefined);
     this.canRetry = computed(() => this.details.value?.run_id !== undefined && this.selectedRow.value?.status === "recovery");
@@ -1268,6 +1267,26 @@ export class AppModel {
 
   private expandPanel(): void {
     if (this.panelPreference?.visible() && this.panelPreference.collapsed()) this.panelPreference.write(false);
+  }
+
+  observeThreadUsage(threadId: string): () => void {
+    const cancel = new Cancel();
+    let reading = false, again = false;
+    this.usage.value = undefined;
+    const refresh = async () => {
+      if (reading) { again = true; return; }
+      reading = true;
+      do {
+        again = false;
+        const out = await this.ops.usageGet({ thread_id: threadId }, { cancel });
+        if (cancel.cancelled) return;
+        this.usage.value = out.ok && out.value.thread_id === threadId ? usageFacts(out.value) : undefined;
+      } while (again);
+      reading = false;
+    };
+    const hints = this.data.watchHints(threadId, () => void refresh());
+    void refresh();
+    return () => { cancel.cancel(); hints.close(); this.usage.value = undefined; };
   }
 
   setPanelTab(tab: RightPanelTab): void {

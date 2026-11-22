@@ -373,11 +373,25 @@ describe("Conversation", () => {
     expect(text(el)).toContain("provider: connection interrupted");
     expect(el.querySelector(".dock .btn-warn")).toBeTruthy();
   });
+  it("reads Thread totals only while Info is open", async () => {
+    const { model, t, db } = await fixtureModel();
+    const el = draw(model);
+    expect(t.calls("usage.get")).toHaveLength(0);
+    act(() => model.setPanelTab("info"));
+    await act(async () => { await settle(t, db); });
+    expect(t.calls("usage.get").map(call => call.args)).toEqual([{ thread_id: "lead" }]);
+    expect(el.querySelector("[data-panel-info]")?.textContent).toContain("75%");
+    await act(async () => { t.push({ t: "changed", thread_ids: ["lead"], list: false }); await settle(t, db); });
+    expect(t.calls("usage.get")).toHaveLength(2);
+    await act(async () => { model.setPanelTab("work"); await settle(t, db); });
+    await act(async () => { t.push({ t: "resync" }); await settle(t, db); });
+    expect(t.calls("usage.get")).toHaveLength(2);
+    expect(model.usage.peek()).toBeUndefined();
+  });
   it("omits the usage and context elements when the owner reports nothing", async () => {
     const { model, t, db } = await fixtureModel();
     const lead = db.details.lead as unknown as Record<string, unknown>;
     delete lead.context_usage;
-    delete lead.usage_totals;
     const el = draw(model);
     await act(async () => {
       t.push({ t: "changed", thread_ids: ["lead"], list: false });

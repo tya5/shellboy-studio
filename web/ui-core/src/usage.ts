@@ -1,4 +1,4 @@
-// Usage facts as the owner measured them, from `thread.get`. A sum the owner doesn't know is
+// Usage facts as the owner measured them, from `usage.get`. A sum the owner doesn't know is
 // absent here; nothing is estimated. Field shapes observed on the pinned revision.
 import type { ThreadDetails } from "../../data/src";
 
@@ -42,24 +42,25 @@ function measured(v: unknown): Measured | undefined {
   const m = obj(v);
   const value = num(m?.known_sum);
   if (value === undefined) return undefined;
-  return { value, partial: (num(m?.unknown_count) ?? 0) > 0 };
+  return { value, partial: m?.overflow === true || (num(m?.unknown_count) ?? 0) > 0 };
 }
 
-export function usageFacts(d: ThreadDetails | undefined): UsageFacts | undefined {
-  const completed = obj(obj(obj(d?.usage_totals)?.model_attempts)?.completed);
+export function usageFacts(d: Record<string, unknown> | undefined): UsageFacts | undefined {
+  const completed = obj(obj(d?.model_attempts)?.completed);
   if (!completed) return undefined;
   const input = measured(completed.input_tokens);
   const output = measured(completed.output_tokens);
   const cached = measured(completed.cached_tokens);
   if (!input && !output && !cached) return undefined;
-  const complete = input && cached && !input.partial && !cached.partial && input.value > 0;
+  const incomplete = obj(d?.coverage)?.scope_complete === false;
+  const complete = !incomplete && input && cached && !input.partial && !cached.partial && input.value > 0;
   return {
     attempts: num(completed.count),
     input,
     output,
     cached,
     cachedPercent: complete ? Math.round((cached.value / input.value) * 100) : undefined,
-    partial: !!(input?.partial || output?.partial || cached?.partial),
+    partial: !!(incomplete || input?.partial || output?.partial || cached?.partial),
   };
 }
 

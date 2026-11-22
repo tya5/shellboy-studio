@@ -621,6 +621,20 @@ function RightPanel({ model, panelCollapsed = false }: { model: AppModel; panelC
     return () => removeEventListener("keydown", onKey);
   }, [model, detail, panelCollapsed]);
   const root = useRef<HTMLElement>(null);
+  const infoOpen = !panelCollapsed && selectedTab === "info" && !detail;
+  useEffect(() => {
+    const panel = root.current;
+    if (!infoOpen || !panel || !threadId || owner.state !== "connected") return;
+    let close: (() => void) | undefined;
+    const visibility = () => {
+      if (getComputedStyle(panel).display !== "none") close ??= model.observeThreadUsage(threadId);
+      else { close?.(); close = undefined; }
+    };
+    visibility();
+    const observer = typeof ResizeObserver === "undefined" ? undefined : new ResizeObserver(visibility);
+    observer?.observe(panel);
+    return () => { observer?.disconnect(); close?.(); };
+  }, [model, infoOpen, owner, threadId]);
   const focusAfterBack = useRef<{ tab: typeof model.panelTab.value; restore?: () => boolean }>();
   useLayoutEffect(() => {
     const focus = focusAfterBack.current;

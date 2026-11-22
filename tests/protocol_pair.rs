@@ -11,8 +11,13 @@ use shellboy_studio::{
 };
 
 #[test]
-fn exact_protocol_eight_and_unified_thread_reply_shape() {
-    assert_eq!(shellboy::protocol::PROTOCOL_VERSION, 8);
+<<<<<<<< HEAD:tests/protocol_pair.rs
+fn exact_protocol_nine_and_unified_thread_reply_shape() {
+    assert_eq!(shellboy::protocol::PROTOCOL_VERSION, 9);
+========
+fn exact_protocol9_and_unified_thread_reply_shape() {
+    assert_eq!(shellboy::protocol::PROTOCOL_VERSION, 9);
+>>>>>>>> 516b783b (Read Thread usage only while Info is visible):tests/protocol9.rs
     let value = json!({"thread_id":"t", "title":"synthetic", "cwd":"/", "connection":"c",
     "model":"m", "agents_path":"AGENTS.md", "parent_id":"organization", "shells_count":1, "summarizing":false,
     "awaiting_replies":[
@@ -95,18 +100,30 @@ fn old_run_ownership_and_create_inputs_are_not_wire_aliases() {
 }
 
 #[test]
-fn protocol_seven_fails_closed_without_downgrade() {
+<<<<<<<< HEAD:tests/protocol_pair.rs
+fn protocol_eight_fails_closed_without_downgrade() {
+========
+fn protocol_eight_fails_closed_without_downgrade() {
+>>>>>>>> 516b783b (Read Thread usage only while Info is visible):tests/protocol9.rs
     let command: Command =
         serde_json::from_value(json!({"command":"thread.get","args":{"thread_id":"t"}})).unwrap();
     let mut request = shellboy::protocol::Request::new("synthetic", command);
     assert!(request.validate().is_ok());
-    request.protocol_version = 7;
+<<<<<<<< HEAD:tests/protocol_pair.rs
+    request.protocol_version = 8;
+========
+    request.protocol_version = 8;
+>>>>>>>> 516b783b (Read Thread usage only while Info is visible):tests/protocol9.rs
     assert_eq!(
         request.validate().unwrap_err().code,
         ErrorCode::ProtocolMismatch
     );
     let mut response = shellboy::protocol::Response::success("synthetic", json!({}));
-    response.protocol_version = 7;
+<<<<<<<< HEAD:tests/protocol_pair.rs
+    response.protocol_version = 8;
+========
+    response.protocol_version = 8;
+>>>>>>>> 516b783b (Read Thread usage only while Info is visible):tests/protocol9.rs
     assert_eq!(
         response.validate().unwrap_err().code,
         ErrorCode::ProtocolMismatch
