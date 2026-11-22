@@ -177,8 +177,12 @@ describe("shell footer toggles", () => {
     expect(tokenSource).toContain('"value": "50px"');
     expect(tokenSource).toContain('"name": "size-shell-rail"');
     expect(tokenSource).toContain('"value": "51px"');
-    expect(layout).toContain(".nav-collapsed .nav{padding-inline:0}");
-    expect(layout).toContain(".nav-collapsed .nav-item{box-sizing:border-box;width:var(--size-shell-column);justify-content:center;padding-inline:0}");
+    const collapsedNavRule = ".nav-collapsed .nav{padding-inline:0}";
+    const collapsedItemRule = ".nav-collapsed .nav-item{box-sizing:border-box;width:var(--size-shell-column);justify-content:center;padding-inline:0}";
+    expect(layout.match(/\.nav-collapsed \.nav\{/g)).toHaveLength(1);
+    expect(layout.match(/\.nav-collapsed \.nav-item\{/g)).toHaveLength(1);
+    expect(layout.indexOf(collapsedNavRule)).toBeGreaterThan(layout.indexOf("@container app (min-width:900px){"));
+    expect(layout.indexOf(collapsedItemRule)).toBeGreaterThan(layout.indexOf("@container app (min-width:900px){"));
     expect(layout).toContain("margin-inline:calc(-1 * var(--space-16));margin-top:auto}");
     expect(layout).not.toContain("margin-bottom:var(--space-16)}");
     expect(footer).not.toContain("transform-origin");

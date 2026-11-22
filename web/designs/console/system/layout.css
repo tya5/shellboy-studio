@@ -253,5 +253,3 @@ html:has(dialog:modal){overflow:hidden}
 .details.details-collapsed{overflow:visible}
 
 .details .panel-list-frame:not([hidden]){display:flex;flex:1;min-height:0;flex-direction:column}
-.nav-collapsed .side-middle>.nav{padding-inline:0}
-.nav-collapsed .nav-item{box-sizing:border-box;width:var(--size-shell-column)}
