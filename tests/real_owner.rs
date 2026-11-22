@@ -189,9 +189,11 @@ async fn hints_and_restart_against_a_real_owner() {
     .unwrap();
     // The hint can overtake the reply (the owner answers the poll and the call independently),
     // so take both in whichever order they come.
+    // Protocol 7 can deliver a config-only changed frame independently of the list hint.
     let (mut created, mut changed) = (None, None);
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
     while created.is_none() || changed.is_none() {
-        let message = tokio::time::timeout(Duration::from_secs(30), ws.next())
+        let message = tokio::time::timeout_at(deadline, ws.next())
             .await
             .expect("result and changed in time")
             .expect("socket open")
@@ -202,7 +204,7 @@ async fn hints_and_restart_against_a_real_owner() {
         let frame: Value = serde_json::from_str(text.as_str()).unwrap();
         match frame["t"].as_str() {
             Some("result") => created = Some(frame),
-            Some("changed") => changed = Some(frame),
+            Some("changed") if frame["list"] == true => changed = Some(frame),
             _ => {}
         }
     }
