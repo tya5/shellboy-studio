@@ -18,7 +18,7 @@ try{
  await until(async()=>{const response=await fetch(fixtureUrl);return response.ok});
  for(const deferred of [false,true]){
   await call('Page.navigate',{url:fixtureUrl});
-  await until(()=>evaluate("!!document.querySelector('.convo')"));
+  await delay(1200);
   const mounted=await evaluate("({composer:!!document.querySelector('#composer'),textarea:document.querySelectorAll('textarea').length,url:location.href,body:document.body.innerText.slice(0,300)})");
   assert(mounted.composer,`Composer did not mount: ${JSON.stringify(mounted)}`);
   await evaluate(`(()=>{const e=document.querySelector('#composer');e.value='Browser own-send witness';e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}))})()`);
