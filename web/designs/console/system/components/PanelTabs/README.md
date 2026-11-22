@@ -12,4 +12,4 @@ The same linked tooltip is also used when the expanded panel uses icon-only tabs
 
 Horizontal tab rows never overlap or clip their labels; they scroll horizontally when needed, and the selected tab is moved into view with the minimal scroll. The vertical icon rail is unchanged.
 
-The tab buttons use a 2px row gap, 10px leading inset, 16px trailing inset, and 6px icon-to-label gap. Labels reserve the same badge corner whether a count is present or absent; the small amber count is overlaid at the label's top-right and never participates in tab sizing. The selected tab is bold with the accent underline; hover adds a raised tint. Keep these placements identical when adding a count or changing locale.
+The tab buttons use design-system spacing tokens for row gap, leading/trailing insets, and icon-to-label gap. Labels reserve the same badge corner whether a count is present or absent; the small amber count is overlaid at the label's top-right and never participates in tab sizing. The selected tab is bold with the accent underline; hover adds a raised tint. Keep these placements identical when adding a count or changing locale.

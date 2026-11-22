@@ -1,8 +1,9 @@
-.panel-tabs { display:flex; gap:2px; border-bottom:1px solid var(--line); min-width:0; overflow-x:auto; scrollbar-width:thin; scrollbar-color:var(--line) transparent; }
-.panel-tabs button { position:relative; display:flex; align-items:center; justify-content:center; gap:6px; flex:none; min-width:max-content; padding:var(--space-4) 16px var(--space-4) 10px; font:var(--type-label); color:var(--muted); background:none; border:0; border-bottom:2px solid transparent; white-space:nowrap; cursor:pointer; }
+.panel-tabs { display:flex; gap:var(--space-4); border-bottom:1px solid var(--line); min-width:0; }
+.panel-tabs:not(.panel-tabs-rail) { overflow-x:auto; scrollbar-width:thin; scrollbar-color:var(--line) transparent; }
+.panel-tabs button { position:relative; display:flex; align-items:center; justify-content:center; gap:var(--space-6); flex:none; min-width:max-content; padding:var(--space-4) var(--space-16) var(--space-4) var(--space-12); font:var(--type-label); color:var(--muted); background:none; border:0; border-bottom:var(--space-4) solid transparent; white-space:nowrap; cursor:pointer; }
 .panel-tabs button[aria-selected="true"] { color:var(--fg); border-bottom-color:var(--accent); font-weight:700; }
-.panel-tab-label { position:relative; display:inline-block; padding-inline-end:14px; }
-.panel-tab-count { position:absolute; inset-block-start:-5px; inset-inline-end:0; min-width:14px; height:14px; padding-inline:3px; border-radius:999px; background:var(--wait); color:var(--fg); font:var(--type-caption); font-weight:700; line-height:14px; text-align:center; }
+.panel-tab-label { position:relative; display:inline-block; padding-inline-end:var(--space-16); }
+.panel-tab-count { position:absolute; inset-block-start:calc(-1 * var(--space-4)); inset-inline-end:0; min-width:var(--size-icon-small); height:var(--size-icon-small); padding-inline:var(--space-4); border-radius:999px; background:var(--wait); color:var(--fg); font:var(--type-caption); font-weight:700; line-height:var(--size-icon-small); text-align:center; }
 .panel-tabs button:hover { background:var(--raised); }
 .panel-tabs-rail .panel-tab-count { position:static; transform:none; min-width:0; height:auto; padding:0 var(--space-4); font:var(--type-caption); line-height:normal; background:var(--raised); color:var(--fg); }
 .panel-tabs-rail { flex-direction:column; border:0; }
