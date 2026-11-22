@@ -659,7 +659,7 @@ function RightPanel({ model, panelCollapsed = false }: { model: AppModel; panelC
   const select = (id: string) => model.setPanelTab(id as import("../../../ui-core/src/model").RightPanelTab);
   return <aside id="conversation-right-panel" ref={root} class={`details${panelCollapsed ? " details-collapsed" : ""}` aria-label={t("panel.title")} data-panel-root="" data-panel-rail={panelCollapsed ? "" : undefined}>
     <PanelTabs label={t("panel.title")} items={tabs} selected={selectedTab} rail={panelCollapsed} onSelect={select} />
-    <div class="panel-pages" hidden={panelCollapsed}>
+    <div class="panel-pages">
       {tabs.map(tab => {
         const active = tab.id === selectedTab;
         const drilledIn = active && !panelCollapsed && detail && (selectedTab === "possessions") === (detail.kind === "attachment");
