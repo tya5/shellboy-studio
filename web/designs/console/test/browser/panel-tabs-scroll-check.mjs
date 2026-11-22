@@ -32,6 +32,8 @@ try{
   const selectedStyle=await evaluate(`(()=>{const b=document.querySelector('.details [aria-selected=true]');return {weight:getComputedStyle(b).fontWeight,underline:getComputedStyle(b).borderBottomColor}})()`);
   assert(Number(selectedStyle.weight)>=700,`selected tab is not bold: ${lang}/${appWidth}/${panelWidth}`);
   assert.equal(result.overflow,'auto');
+  const railOverflow=await evaluate(`(()=>{const rail=document.createElement('div');rail.className='panel-tabs panel-tabs-rail';rail.style.cssText='position:fixed;left:4px;top:4px;width:44px;height:180px';rail.innerHTML='<button><svg></svg><span class="panel-tab-label">Rail label</span><span class="panel-tab-tip">Rail tooltip</span></button>';document.body.append(rail);const overflow=getComputedStyle(rail).overflowX;rail.remove();return overflow})()`);
+  assert.equal(railOverflow,'visible',`vertical rail must not inherit horizontal scrolling at ${lang}/${appWidth}/${panelWidth}`);
   if(panelWidth<340)assert(result.scrollWidth>result.clientWidth,`expected horizontal overflow at ${lang}/${appWidth}/${panelWidth}`);
   await evaluate(`document.querySelectorAll('.details [role=tab]')[3].click()`);
   const selected=await evaluate(`(()=>{const list=document.querySelector('.details [role=tablist]'),b=list.querySelector('[aria-selected=true]'),r=b.getBoundingClientRect(),p=list.getBoundingClientRect();return {left:r.left,right:r.right,viewportLeft:p.left,viewportRight:p.right,scrollLeft:list.scrollLeft}})()`);
