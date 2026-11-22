@@ -1,7 +1,7 @@
 // Settings editing: `config.get` and `config.set` (#266). Needs an owner newer than v0.10.0, so it
 // sits behind a capability. Only fields the person changed are sent. Nothing the owner hid is ever
 // sent back: a value containing the placeholder never becomes a change, here or on the owner.
-import { batch, computed, signal, type ReadonlySignal, type Signal } from "@preact/signals-core";
+import { signal, type Signal } from "@preact/signals-core";
 import { Cancel, type OpError, type Operations } from "../../data/src";
 import type { ConfigKey } from "./resources";
 
@@ -136,47 +136,12 @@ export const isHidden = (value: unknown): boolean => {
   return JSON.stringify(value).includes(PLACEHOLDER);
 };
 
-export interface Draft {
+interface SavedSetting {
   field: string;
   path: readonly string[];
-  /** What the control holds. */
-  raw: string;
-  /** Sent to the owner. Undefined removes the key, and the default applies. */
-  value: unknown;
-  /** Written into a hidden entry, or was one: never shown in the review. */
-  sensitive: boolean;
-  invalid?: "number" | "json" | "placeholder";
+  undo: ConfigWrite[];
+  restartRequired: boolean | undefined;
 }
-
-export interface ConfigChangeRow {
-  field: string;
-  before: unknown;
-  after: unknown;
-  removes: boolean;
-  /** Absent in the file before this change. */
-  isNew: boolean;
-  sensitive: boolean;
-}
-
-export interface SavedChange {
-  field: string;
-  previous?: unknown;
-  value?: unknown;
-  sensitive: boolean;
-  restartRequired: boolean;
-  appliedToRunningOwner: boolean;
-}
-
-export type ConfigStage =
-  | { kind: "editing" }
-  | { kind: "review" }
-  | { kind: "saving" }
-  | { kind: "saved"; changes: SavedChange[]; restartRequired: boolean; warning: string | undefined }
-  /** The file changed under the review. It was read again, so the review shows the new base. */
-  | { kind: "conflict" }
-  | { kind: "refused"; reason: string | undefined; field: string | undefined; message: string; recoveryFile: string | undefined }
-  /** The reply didn't arrive. The file was read again, and whatever landed has left the drafts. */
-  | { kind: "unconfirmed"; message: string };
 
 interface ConfigRead {
   loading: boolean;
@@ -198,30 +163,31 @@ const configWrite = (field: string, value: unknown): ConfigWrite => value === un
 export class ConfigEditor {
   readonly read: Signal<ConfigRead> = signal({ loading: false, value: undefined, error: undefined });
   readonly connectionAction: Signal<{ name: string; state: "testing" | "ok" | "failed" | "clearing" | "cleared" | "unconfirmed" } | undefined> = signal(undefined);
-  readonly drafts: Signal<ReadonlyMap<string, Draft>> = signal(new Map());
-  readonly stage: Signal<ConfigStage> = signal({ kind: "editing" });
-  readonly lastSaved: Signal<(SavedChange & { path: readonly string[]; undo: ConfigWrite[] }) | undefined> = signal(undefined);
+  readonly lastSaved: Signal<SavedSetting | undefined> = signal(undefined);
   readonly fieldError: Signal<{ field: string; reason: string } | undefined> = signal(undefined);
   readonly fieldSaving: Signal<boolean> = signal(false);
-  /** Every draft that would change the file, against the file as last read. */
-  readonly changes: ReadonlySignal<ConfigChangeRow[]>;
-  readonly hasInvalid: ReadonlySignal<boolean>;
   private cancel = new Cancel();
+  readonly pendingField: Signal<string | undefined> = signal(undefined);
   private shown = false;
+  private session = 0;
+  private changeRead = 0;
+  private confirmation?: { hash: string; after: number; saved: SavedSetting };
 
-  constructor(private readonly ops: Operations) {
-    this.changes = computed(() => {
-      const values = this.read.value.value?.file.values;
-      const rows: ConfigChangeRow[] = [];
-      for (const d of this.drafts.value.values()) {
-        if (d.invalid) continue;
-        const before = valueAt(values, d.path);
-        rows.push({ field: d.field, before: d.sensitive ? undefined : before, after: d.sensitive ? undefined : d.value, removes: d.value === undefined, isNew: before === undefined, sensitive: d.sensitive });
-      }
-      return rows;
-    });
-    this.hasInvalid = computed(() => [...this.drafts.value.values()].some((d) => d.invalid !== undefined));
+  /** Entry point for the owner config invalidation; transport wiring waits for Core #340. */
+  async configChanged(): Promise<void> {
+    if (this.shown) await this.refresh(true);
   }
+
+  private confirmWrite(): void {
+    const pending = this.confirmation;
+    if (!pending || this.changeRead <= pending.after || this.read.peek().value?.file.contentHash !== pending.hash) return;
+    this.confirmation = undefined;
+    this.lastSaved.value = pending.saved;
+    this.pendingField.value = undefined;
+    this.fieldSaving.value = false;
+  }
+
+  constructor(private readonly ops: Operations) {}
 
   async testConnection(name: string): Promise<void> {
     if (["testing", "clearing"].includes(this.connectionAction.peek()?.state ?? "")) return;
@@ -245,17 +211,21 @@ export class ConfigEditor {
     void this.refresh();
   }
 
-  /** Nobody is looking: the read stops. Drafts stay, and a write already sent finishes. */
+  /** Nobody is looking: the read stops. A write already sent finishes. */
   leave(): void {
     if (!this.shown) return;
     this.shown = false;
+    this.session++;
+    if (this.confirmation) this.fieldSaving.value = false;
+    this.confirmation = undefined;
+    this.pendingField.value = undefined;
     this.lastSaved.value = undefined;
     this.fieldError.value = undefined;
     this.cancel.cancel();
     if (this.read.peek().loading) this.read.value = { ...this.read.peek(), loading: false };
   }
 
-  async refresh(): Promise<void> {
+  async refresh(fromChange = false): Promise<void> {
     this.cancel.cancel();
     const cancel = (this.cancel = new Cancel());
     this.read.value = { ...this.read.peek(), loading: true };
@@ -265,113 +235,32 @@ export class ConfigEditor {
       this.read.value = { ...this.read.peek(), loading: false, ...(out.error.kind === "cancelled" ? {} : { error: out.error }) };
       return;
     }
-    const facts = readConfigFacts(out.value);
-    batch(() => {
-      this.read.value = { loading: false, value: facts, error: undefined };
-      this.dropSettled(facts);
-    });
-  }
-
-  /** A draft the file now agrees with has nothing left to do. */
-  private dropSettled(facts: ConfigFacts): void {
-    const next = new Map(this.drafts.peek());
-    for (const [field, d] of next) {
-      if (d.invalid || d.sensitive) continue;
-      if (same(valueAt(facts.file.values, d.path), d.value)) next.delete(field);
-    }
-    if (next.size !== this.drafts.peek().size) this.drafts.value = next;
-  }
-
-  /** The value of a control changed. `kind` says how to read what's in it. */
-  edit(path: readonly string[], raw: string, kind: ConfigKind | "secret" | "secret-json"): void {
-    const field = fieldOf(path);
-    const secret = kind === "secret" || kind === "secret-json";
-    let value: unknown = raw;
-    let invalid: Draft["invalid"];
-    if (raw.includes(PLACEHOLDER)) invalid = "placeholder";
-    else if (kind === "int") {
-      if (raw.trim() === "") value = undefined;
-      else {
-        value = parseInt10(raw.trim());
-        if (value === undefined) invalid = "number";
-      }
-    } else if (kind === "float") {
-      if (raw.trim() === "") value = undefined;
-      else if (!Number.isFinite(Number(raw))) invalid = "number";
-      else value = Number(raw);
-    } else if (kind === "bool") value = raw === "true";
-    else if (kind === "kinds") value = raw ? raw.split(",").filter(Boolean) : [];
-    else if (kind === "secret-json") {
-      try {
-        value = JSON.parse(raw);
-        if (JSON.stringify(value).includes(PLACEHOLDER)) invalid = "placeholder";
-      } catch {
-        invalid = "json";
-      }
-    } else if (!secret && raw.trim() === "") value = undefined;
-    const before = valueAt(this.read.peek().value?.file.values, path);
-    const hadHidden = isHidden(before);
-    const next = new Map(this.drafts.peek());
-    if (!invalid && !secret && !hadHidden && same(before, value)) next.delete(field);
-    else if (secret && raw === "") next.delete(field);
-    else next.set(field, { field, path, raw, value, sensitive: secret || hadHidden, ...(invalid ? { invalid } : {}) });
-    batch(() => {
-      this.drafts.value = next;
-      if (this.stage.peek().kind !== "saving") this.stage.value = { kind: "editing" };
-    });
-  }
-
-  /** Take the key out of the file. Works on hidden entries, and needs no value. */
-  remove(path: readonly string[], sensitive: boolean): void {
-    const field = fieldOf(path);
-    const next = new Map(this.drafts.peek());
-    next.set(field, { field, path, raw: "", value: undefined, sensitive });
-    batch(() => {
-      this.drafts.value = next;
-      this.stage.value = { kind: "editing" };
-    });
-  }
-
-  undo(field: string): void {
-    const next = new Map(this.drafts.peek());
-    next.delete(field);
-    this.drafts.value = next;
-  }
-
-  discard(): void {
-    batch(() => {
-      this.drafts.value = new Map();
-      this.stage.value = { kind: "editing" };
-    });
-  }
-
-  review(): void {
-    if (!this.hasInvalid.peek() && this.changes.peek().length > 0) this.stage.value = { kind: "review" };
-  }
-
-  backToEditing(): void {
-    this.stage.value = { kind: "editing" };
-  }
-
-  dismissResult(): void {
-    this.stage.value = { kind: "editing" };
+    this.read.value = { loading: false, value: readConfigFacts(out.value), error: undefined };
+    if (fromChange) { this.changeRead++; this.confirmWrite(); }
   }
 
   /** Save a single setting using the same write/read path as a model pair. */
   async saveField(path: readonly string[], raw: string, kind: ConfigKind | "secret" | "secret-json"): Promise<void> {
     if (this.fieldSaving.peek()) return;
     const field = fieldOf(path);
-    this.edit(path, raw, kind);
-    const draft = this.drafts.peek().get(field);
-    const remaining = new Map(this.drafts.peek());
-    remaining.delete(field);
-    this.drafts.value = remaining;
-    if (!draft) return;
-    if (draft.invalid) {
-      this.fieldError.value = { field, reason: draft.invalid };
-      return;
-    }
-    await this.writeSetting(path, [configWrite(field, draft.value)], !draft.sensitive);
+    const sensitive = kind === "secret" || kind === "secret-json";
+    if (sensitive && !raw) return;
+    const before = valueAt(this.read.peek().value?.file.values, path);
+    let value: unknown = raw;
+    let error: string | undefined;
+    if (raw.includes(PLACEHOLDER)) error = "placeholder";
+    else if (kind === "int" || kind === "float") {
+      value = !raw.trim() ? undefined : kind === "int" ? parseInt10(raw.trim()) : Number(raw);
+      if (raw.trim() && (typeof value !== "number" || !Number.isFinite(value))) error = "number";
+    } else if (kind === "bool") value = raw === "true";
+    else if (kind === "kinds") value = raw ? raw.split(",").filter(Boolean) : [];
+    else if (kind === "secret-json") {
+      try { value = JSON.parse(raw); } catch { error = "json"; }
+      if (isHidden(value)) error = "placeholder";
+    } else if (!sensitive && !raw.trim()) value = undefined;
+    if (error) { this.fieldError.value = { field, reason: error }; return; }
+    if (!sensitive && same(before, value)) return;
+    await this.writeSetting(path, [configWrite(field, value)], !sensitive && !isHidden(before));
   }
 
   async saveModelPair(connectionPath: readonly string[], modelPath: readonly string[], connection: string, model: string): Promise<void> {
@@ -394,77 +283,39 @@ export class ConfigEditor {
     if (this.fieldSaving.peek() || read.error || !read.value?.file.valid) return;
     const field = fieldOf(path);
     const file = read.value.file;
-    const previous = valueAt(file.values, path);
-    const undo = undoable ? paths.map((key) => configWrite(fieldOf(key), valueAt(file.values, key))) : [];
+    const previous = paths.map((key) => configWrite(fieldOf(key), valueAt(file.values, key)));
     if (changes.some((change) => isHidden(change.value))) return;
+    const undo = undoable && previous.every((change) => !isHidden(change.value)) ? previous : [];
+    const session = this.session;
+    const after = this.changeRead;
     this.fieldSaving.value = true;
+    this.pendingField.value = field;
     this.lastSaved.value = undefined;
     this.fieldError.value = undefined;
     try {
       const out = await this.ops.configSet(file.contentHash, changes);
-      if (out.ok) {
-        const saved = readSaved(out.value).find((change) => change.field === field);
-        if (this.shown) this.lastSaved.value = {
-          ...saved, field, path, undo, ...(undoable ? { previous } : {}), sensitive: !undoable,
-          restartRequired: out.value.restart_required === true || saved?.restartRequired === true,
-          appliedToRunningOwner: out.value.applied_to_running_owner === true || saved?.appliedToRunningOwner === true,
-        };
-      } else if (this.shown) this.fieldError.value = { field, reason: out.error.message };
-      if (this.shown) await this.refresh();
+      if (!this.shown || session !== this.session) return;
+      if (!out.ok) {
+        this.fieldError.value = { field, reason: out.error.message };
+        await this.refresh();
+        return;
+      }
+      if (out.value.written === false) return;
+      const hash = out.value.content_hash;
+      if (typeof hash !== "string" || !hash) return;
+      const changed = Array.isArray(out.value.changes) ? out.value.changes.map(record).filter((change) => changes.some(({ field }) => change?.field === field)) : [];
+      const exact = changed.map((change) => change?.restart_required).filter((value): value is boolean => typeof value === "boolean");
+      const restartRequired = exact.length ? exact.some(Boolean) : typeof out.value.restart_required === "boolean" ? out.value.restart_required : undefined;
+      this.confirmation = { hash, after, saved: { field, path, restartRequired, undo: changed.some((change) => change?.sensitive === true) ? [] : undo } };
+      this.confirmWrite();
     } finally {
-      this.fieldSaving.value = false;
+      if (!this.confirmation) {
+        this.pendingField.value = undefined;
+        this.fieldSaving.value = false;
+      }
     }
-  }
-
-  async save(): Promise<void> {
-    const facts = this.read.peek().value;
-    if (!facts || this.read.peek().error || this.stage.peek().kind === "saving") return;
-    const drafts = [...this.drafts.peek().values()];
-    // The owner refuses this as well. It must not depend on that.
-    if (drafts.some((d) => d.invalid !== undefined || d.field.includes(PLACEHOLDER) || isHidden(d.value))) return;
-    if (drafts.length === 0) return;
-    this.stage.value = { kind: "saving" };
-    const changes = drafts.map((d) => (d.value === undefined ? { field: d.field } : { field: d.field, value: d.value }));
-    const out = await this.ops.configSet(facts.file.contentHash, changes);
-    if (out.ok) {
-      batch(() => {
-        this.drafts.value = new Map();
-        this.stage.value = { kind: "saved", changes: readSaved(out.value), restartRequired: out.value.restart_required === true, warning: typeof out.value.warning === "string" ? out.value.warning : undefined };
-      });
-      await this.refresh();
-      return;
-    }
-    const error = out.error;
-    if (error.kind === "owner" && error.code === "operation_conflict") {
-      await this.refresh();
-      this.stage.value = { kind: "conflict" };
-      return;
-    }
-    if (error.kind === "unconfirmed" || error.kind === "connection_lost") {
-      await this.refresh();
-      this.stage.value = { kind: "unconfirmed", message: error.message };
-      return;
-    }
-    const details = error.kind === "owner" ? record(error.details) : undefined;
-    const index = typeof details?.change_index === "number" ? details.change_index : undefined;
-    this.stage.value = {
-      kind: "refused",
-      reason: typeof details?.reason === "string" ? details.reason : error.kind === "owner" ? error.code : undefined,
-      field: index !== undefined ? drafts[index]?.field : undefined,
-      message: error.message,
-      recoveryFile: typeof details?.recovery_file === "string" ? details.recovery_file : undefined,
-    };
   }
 }
 
-function readSaved(result: Record<string, unknown>): SavedChange[] {
-  if (!Array.isArray(result.changes)) return [];
-  return result.changes.flatMap((c): SavedChange[] => {
-    const r = record(c);
-    if (!r || typeof r.field !== "string") return [];
-    return [{ field: r.field, ...("previous" in r ? { previous: r.previous } : {}), ...("value" in r ? { value: r.value } : {}), sensitive: r.sensitive === true, restartRequired: r.restart_required === true, appliedToRunningOwner: r.applied_to_running_owner === true }];
-  });
-}
-
-/** How a value reads in a row or the review. Hidden values never get here. */
+/** How a value reads in a row. Hidden values never get here. */
 export const showConfigValue = (v: unknown): string => (typeof v === "string" ? v : JSON.stringify(v));

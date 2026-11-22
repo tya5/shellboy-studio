@@ -7,18 +7,21 @@ export type ConnectionModel = { connection: string; model: string };
 export const modelLabel = ({ connection, model }: ConnectionModel) => `${connection} / ${model}`;
 
 /** A filtered list of complete choices, independent of the operation that uses them. */
-export function ConnectionModelList({ choices, selected, searchLabel, emptyLabel, disabled, onSelect }: {
+export function ConnectionModelList({ choices, selected, searchLabel, emptyLabel, disabled, onSelect, query: suppliedQuery, onQuery }: {
   choices: readonly ConnectionModel[];
   selected: ConnectionModel;
   searchLabel: string;
   emptyLabel: string;
   disabled?: boolean;
   onSelect: (choice: ConnectionModel) => void;
+  query?: string;
+  onQuery?: (query: string) => void;
 }) {
-  const [query, setQuery] = useState("");
+  const [localQuery, setQuery] = useState("");
+  const query = suppliedQuery ?? localQuery;
   const shown = choices.filter((choice) => modelLabel(choice).toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
   return <>
-    <Field ariaLabel={searchLabel} placeholder={searchLabel} value={query} onInput={(event) => setQuery(event.currentTarget.value)} />
+    <Field disabled={disabled} ariaLabel={searchLabel} placeholder={searchLabel} value={query} onInput={(event) => (onQuery ?? setQuery)(event.currentTarget.value)} />
     <div class="model-picker-list" role="group" aria-label={searchLabel}>
       {shown.length ? shown.map((choice) => <Button key={JSON.stringify(choice)} variant="link" disabled={disabled} aria-pressed={choice.connection === selected.connection && choice.model === selected.model} onClick={() => onSelect(choice)}>{modelLabel(choice)}</Button>) : <span role="status">{emptyLabel}</span>}
     </div>

@@ -6,3 +6,5 @@ Styles: style.css in this directory
 SubView supports optional grouped navigation and local search while preserving the existing ungrouped mode used by Analytics. Inspired by Orca, VS Code, and macOS System Settings. Use grouped search when a section list is long; do not add it to a small, already-scannable navigation.
 
 The optional close destination adds a breadcrumb and an Escape action to a dedicated view. Omit it in embedded and analytics views. Styles live in `style.css`.
+
+Search highlights the destination with a matching `data-setting-id` instead of matching translated text.

@@ -5,3 +5,5 @@ Use for editable settings inside a Section card. The name and explanation stay o
 Styles: style.css in this directory.
 
 A search jump can highlight the row briefly. The outline is static and does not require animation.
+
+Settings search may assign a stable `settingId` (for a row, use its Core key or namespaced preference ID). IDs are not display labels and must not depend on the language.

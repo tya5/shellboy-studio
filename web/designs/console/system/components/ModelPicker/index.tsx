@@ -1,5 +1,6 @@
 import type { AppModel } from "../../../../../ui-core/src";
 import { Button, Field, Notice } from "..";
+import { ConnectionModelList } from "./ConnectionModelList";
 import { EffortControl } from "./EffortControl";
 
 type Details = NonNullable<AppModel["details"]["value"]>;
@@ -14,8 +15,7 @@ export function ModelPicker({ model, details }: { model: AppModel; details: Deta
     {picker.open ? <div class="model-picker" role="dialog" aria-label={t("model.change")} onKeyDown={(event) => { if (event.key === "Escape") model.closeModelPicker(); }}>
       <p class="caption muted">{t("model.note")}</p>
       <label>{t("model.connection")}<select value={picker.connection} disabled={picker.saving || !canEdit} onChange={(event) => model.chooseModelConnection(event.currentTarget.value)}>{[...new Set([picker.connection, ...Object.keys((model.config.read.value.value?.loaded.values?.connections as Record<string, unknown> | undefined) ?? {})])].filter(Boolean).map((connection) => <option value={connection}>{connection}</option>)}</select></label>
-      <Field ariaLabel={t("model.search")} value={picker.model} disabled={picker.saving || !canEdit} onInput={(event) => { model.modelPicker.value = { ...model.modelPicker.peek(), model: event.currentTarget.value }; }} />
-      <div class="model-picker-list">{picker.loading ? <span>{t("common.loading")}</span> : picker.models.filter((item) => (picker.model === details.model || item.toLowerCase().includes(picker.model.toLowerCase()))).length ? picker.models.filter((item) => (picker.model === details.model || item.toLowerCase().includes(picker.model.toLowerCase()))).map((item) => <Button variant="link" disabled={!canEdit} onClick={() => { model.modelPicker.value = { ...model.modelPicker.peek(), model: item }; }}>{item}</Button>) : <span>{t("model.empty")}</span>}</div>
+      <ConnectionModelList choices={picker.models.map((item) => ({ connection: picker.connection, model: item }))} selected={{ connection: picker.connection, model: picker.model }} searchLabel={t("model.search")} emptyLabel={picker.loading ? t("common.loading") : t("model.empty")} disabled={picker.saving || !canEdit} query={picker.model === details.model ? "" : picker.model} onQuery={(value) => { model.modelPicker.value = { ...model.modelPicker.peek(), model: value }; }} onSelect={({ model: value }) => { model.modelPicker.value = { ...model.modelPicker.peek(), model: value }; }} />
       <EffortControl label={t("model.effort")} value={picker.effort} labels={{ default: t("model.effort.default"), low: "low", medium: "medium", high: "high", other: t("model.effort.other") }} disabled={picker.saving || !canEdit} onSelect={(effort) => { model.modelPicker.value = { ...model.modelPicker.peek(), effort }; }} onInput={(effort) => { model.modelPicker.value = { ...model.modelPicker.peek(), effort }; }} onCommit={(effort) => { model.modelPicker.value = { ...model.modelPicker.peek(), effort }; }} />
       {!canEdit ? <Notice tone="wait">{t("thread.readOnly")}</Notice> : null}
       <p class="caption muted">{t("thread.inherited")}</p>

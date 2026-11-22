@@ -6,3 +6,5 @@ Styles: style.css in this directory
 
 
 Editable facts now delegate to SettingRow; read-only facts retain the compact definition-list layout. Use SettingRow for setting interactions, not for factual metadata.
+
+Settings search may assign a stable `settingId` (for a row, use its Core key or namespaced preference ID). IDs are not display labels and must not depend on the language.

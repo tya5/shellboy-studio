@@ -6,3 +6,5 @@ Styles: style.css in this directory
 
 
 Section renders the card surface for one subject and contains SettingRows or read-only FactLists. It follows Orca settings, VS Code settings, and macOS System Settings. Do not nest Sections for spacing or use them to group unrelated subjects.
+
+Settings search may assign a stable `settingId` (for a row, use its Core key or namespaced preference ID). IDs are not display labels and must not depend on the language.
