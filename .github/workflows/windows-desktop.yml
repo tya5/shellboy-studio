@@ -1,0 +1,56 @@
+name: Windows desktop artifact (candidate only)
+on:
+  workflow_call:
+    inputs:
+      studio_ref:
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  desktop:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    env:
+      STUDIO_REF: ${{ inputs.studio_ref }}
+      TARGET: x86_64-pc-windows-msvc
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.studio_ref }}
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Verify and build the exact pair
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$STUDIO_REF"
+          core=$(python -c 'import tomllib; print(tomllib.load(open("Cargo.toml", "rb"))["dependencies"]["shellboy"]["rev"])')
+          owner="$RUNNER_TEMP/windows-owner-source"
+          git init "$owner"
+          git -C "$owner" remote add origin https://github.com/tya5/shellboy
+          git -C "$owner" fetch --depth 1 origin "$core"
+          git -C "$owner" checkout --detach "$core"
+          python tools/verify-desktop-core.py --owner "$owner"
+          rustup toolchain install 1.99.1 --profile minimal
+          (cd web && npm ci && npm run build)
+          cargo +1.99.1 build --locked --release --target "$TARGET" --features windows-desktop --bin shellboy-studio-desktop
+          cargo +1.99.1 install --locked --path "$owner" --root "$RUNNER_TEMP/windows-owner" --target "$TARGET"
+          "$RUNNER_TEMP/windows-owner/bin/shellboy.exe" --version > "$RUNNER_TEMP/windows-owner-version.txt"
+          python tools/verify-desktop-core.py --owner "$owner" --binary-version "$RUNNER_TEMP/windows-owner-version.txt"
+          python tools/package-windows.py --studio "$STUDIO_REF" --core "$core" \
+            --studio-bin "target/$TARGET/release/shellboy-studio-desktop.exe" \
+            --core-bin "$RUNNER_TEMP/windows-owner/bin/shellboy.exe" --out desktop-artifact
+      - uses: actions/upload-artifact@v4
+        with:
+          name: candidate-desktop-windows-x64
+          path: desktop-artifact/*.zip
+          if-no-files-found: error
+          compression-level: 0

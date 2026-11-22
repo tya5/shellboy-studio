@@ -14,5 +14,9 @@ pub struct Control {
     pub marker: String,
 }
 
+#[cfg(any(target_os = "macos", windows))]
+pub mod desktop;
 #[cfg(target_os = "macos")]
-pub mod macos;
+mod macos;
+#[cfg(windows)]
+pub mod windows;

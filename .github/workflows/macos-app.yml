@@ -41,7 +41,7 @@ jobs:
           git -C "$RUNNER_TEMP/macos-owner-source" fetch --depth 1 origin "$core"
           git -C "$RUNNER_TEMP/macos-owner-source" checkout --detach "$core"
           if [ "$RELEASE_APP" = true ]; then set -- --release; else set --; fi
-          python tools/verify-macos-core.py --owner "$RUNNER_TEMP/macos-owner-source" "$@"
+          python tools/verify-desktop-core.py --owner "$RUNNER_TEMP/macos-owner-source" "$@"
       - name: Build both locked binaries
         run: |
           rustup toolchain install 1.99.1 --profile minimal
@@ -49,7 +49,7 @@ jobs:
           cargo +1.99.1 build --locked --release --bin shellboy-studio --target aarch64-apple-darwin
           cargo +1.99.1 install --locked --path "$RUNNER_TEMP/macos-owner-source" --root "$RUNNER_TEMP/macos-owner" --target aarch64-apple-darwin
           "$RUNNER_TEMP/macos-owner/bin/shellboy" --version > "$RUNNER_TEMP/macos-owner-version.txt"
-          python tools/verify-macos-core.py --owner "$RUNNER_TEMP/macos-owner-source" --binary-version "$RUNNER_TEMP/macos-owner-version.txt"
+          python tools/verify-desktop-core.py --owner "$RUNNER_TEMP/macos-owner-source" --binary-version "$RUNNER_TEMP/macos-owner-version.txt"
       - name: Zip and inspect the unpacked app
         env:
           RELEASE_APP: ${{ inputs.release_app }}

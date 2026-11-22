@@ -62,6 +62,9 @@ jobs:
       - name: Owner-free Rust tests (explicit owner suite runs separately)
         if: ${{ !cancelled() }}
         run: cargo +1.99.1 test --locked
+      - name: Check Windows desktop entry point
+        if: runner.os == 'Windows'
+        run: cargo +1.99.1 clippy --locked --features windows-desktop --bin shellboy-studio-desktop -- -D warnings
       - name: Embedded frontend is present in the binary
         if: ${{ !cancelled() }}
         run: |

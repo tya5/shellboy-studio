@@ -154,8 +154,25 @@ impl Auth {
 }
 
 fn read_token(path: &Path) -> Result<Option<Auth>, String> {
-    match std::fs::read_to_string(path) {
-        Ok(text) if text.trim().len() == 64 => Ok(Some(Auth::new(text.trim().to_owned()))),
+    #[cfg(windows)]
+    let read = || {
+        use std::io::Read;
+        let mut options = std::fs::OpenOptions::new();
+        crate::launcher::windows::protect_file(options.read(true), false);
+        let file = options.open(path)?;
+        crate::launcher::windows::check_file(&file)?;
+        let mut text = String::new();
+        file.take(4097).read_to_string(&mut text)?;
+        Ok(text)
+    };
+    #[cfg(not(windows))]
+    let read = || std::fs::read_to_string(path);
+    match read() {
+        Ok(text)
+            if text.trim().len() == 64 && text.trim().bytes().all(|b| b.is_ascii_hexdigit()) =>
+        {
+            Ok(Some(Auth::new(text.trim().to_owned())))
+        }
         Ok(_) => Err(format!("{} is not a bridge token file", path.display())),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
         Err(e) => Err(format!("cannot read {}: {e}", path.display())),

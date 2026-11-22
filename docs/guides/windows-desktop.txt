@@ -1,0 +1,24 @@
+Shellboy Studio for Windows x64 (unsigned candidate)
+Real Windows device acceptance: UNVERIFIED.
+
+Extract the entire ZIP first. Keep Shellboy Studio.exe and shellboy.exe
+in the same folder. Double-click Shellboy Studio.exe; the desktop launcher
+opens your default browser and does not open a console. Follow the browser's
+connection setup if prompted, then open a conversation.
+
+Microsoft Defender SmartScreen may warn about this unsigned candidate.
+Check the source of your download. Only if you trust it, choose More info,
+then Run anyway if Windows offers it. Do not turn off SmartScreen or bypass
+your organization's policy.
+
+Double-click again to reopen the running Studio. Closing the browser tab
+doesn't stop Studio: use Exit in Studio to stop its server and any Core it
+started. A separately running Core won't be stopped. Studio uses the same
+settings and data as Core; don't start another owner for the same data while
+Studio is running its bundled Core. Restart is manual when Studio reports
+that the owner is unreachable.
+
+If Studio cannot open, check the dialog and %APPDATA%\shellboy-studio\studio.log
+(or owner.log there for bundled Core diagnostics). Do not share tokens or
+private log contents. For development flags such as --no-auth, use the separate
+console CLI artifact; double-click always uses authentication.

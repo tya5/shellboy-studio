@@ -217,6 +217,12 @@ jobs:
       studio_ref: ${{ inputs.source_sha }}
       release_app: false
 
+  windows-candidate-desktop:
+    needs: [guard, exact-owner]
+    uses: ./.github/workflows/windows-desktop.yml
+    with:
+      studio_ref: ${{ inputs.source_sha }}
+
   bundle:
     needs: build
     runs-on: ubuntu-22.04

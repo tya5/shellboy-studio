@@ -1,4 +1,4 @@
-"""Verify the macOS bundle's official Core pin and, for release, its public tag."""
+"""Verify the desktop bundle's official Core pin and, for release, its public tag."""
 import argparse
 import json
 from pathlib import Path

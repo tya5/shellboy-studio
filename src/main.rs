@@ -41,7 +41,7 @@ struct Args {
 
 #[derive(Subcommand)]
 enum CliCommand {
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", windows))]
     #[command(hide = true)]
     BundleServer,
     /// Print a bundled Studio guide without starting the bridge.
@@ -121,18 +121,41 @@ async fn entry() -> Result<(), String> {
                 .skip(1)
                 .all(|a| a.to_string_lossy().starts_with("-psn_"))
         {
-            return shellboy_studio::launcher::macos::open_or_start(&default_config_dir()?).await;
+            return shellboy_studio::launcher::desktop::open_or_start(&default_config_dir()?).await;
         }
+    }
+    #[cfg(windows)]
+    if env!("CARGO_BIN_NAME") == "shellboy-studio-desktop" {
+        // This dedicated Explorer entry point never inherits the CLI's no-auth option.
+        return match std::env::args_os().skip(1).collect::<Vec<_>>().as_slice() {
+            [] => {
+                let dir = default_config_dir();
+                let result = match &dir {
+                    Ok(dir) => shellboy_studio::launcher::desktop::open_or_start(dir).await,
+                    Err(error) => Err(error.clone()),
+                };
+                if let Err(error) = &result {
+                    shellboy_studio::launcher::windows::show_error(error, dir.as_deref().ok());
+                }
+                result
+            }
+            [arg] if arg == "bundle-server" => run_bundle_server().await,
+            _ => {
+                let error = "Open Studio without arguments, or use the separate console CLI.";
+                shellboy_studio::launcher::windows::show_error(error, None);
+                Err(error.into())
+            }
+        };
     }
     run(Args::parse()).await
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", windows))]
 async fn run_bundle_server() -> Result<(), String> {
     let config_dir = default_config_dir()?;
     let cwd = std::env::current_dir().map_err(|e| e.to_string())?;
     let Some(mut launch) =
-        shellboy_studio::launcher::macos::Launch::prepare(&config_dir, &cwd).await?
+        shellboy_studio::launcher::desktop::Launch::prepare(&config_dir, &cwd).await?
     else {
         return Ok(());
     };
@@ -200,7 +223,7 @@ fn cancel_on_signal(cancel: CancellationToken) -> tokio::task::JoinHandle<()> {
 }
 
 async fn run(args: Args) -> Result<(), String> {
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", windows))]
     if matches!(args.command, Some(CliCommand::BundleServer)) {
         return run_bundle_server().await;
     }
