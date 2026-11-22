@@ -92,13 +92,14 @@ describe('right panel purpose',()=>{
  it('keeps hint failures visible in detail and honors the section cursor', async () => {
   const f=await setup(['attachment.list.page']);
   const row=(id:string)=>({attachment_id:id,source_node_id:`source-${id}`,thread_id:'lead',path:`/fixture/${id}.txt`,kind:'file',delivery_status:'applied',selected:true,managed:false});
-  let mode:'initial'|'unavailable'|'partial'='initial';
+  let mode:'initial'|'unavailable'|'partial'|'expired'='initial';
   const answer=f.db.answer.bind(f.db);
   f.db.answer=call=>{
    if(call.command!=='attachment.list') return answer(call);
    const cursor=(call.args as {cursor?:string}).cursor;
    if(mode==='unavailable'||(mode==='partial'&&cursor!==undefined)) return {ok:false,code:'busy',message:'fixture read failed'};
-   if(mode==='partial') return {ok:true,result:{items:[row('replacement')],next_cursor:'replacement-cursor'}};
+   if(mode==='expired'&&cursor!==undefined) return {ok:false,code:'cursor_expired',message:'fixture selection revision changed'};
+   if(mode==='partial'||mode==='expired') return {ok:true,result:{items:[row('replacement')],next_cursor:'replacement-cursor'}};
    return {ok:true,result:{items:[row(cursor?'second':'first')],next_cursor:cursor?'third-page':'second-page'}};
   };
   const hint=async()=>{f.t.push({t:'changed',thread_ids:['lead'],list:false});await settle(f.t,f.db);};
@@ -125,6 +126,13 @@ describe('right panel purpose',()=>{
    mode='partial';
    await act(hint);
    expect(f.t.calls('attachment.list')).toHaveLength(5);
+   expect(f.model.attachmentSection.state.peek().cursor).toBe('third-page');
+   expect(more()?.disabled).toBe(false);
+   expect(panel.querySelector('[data-panel-row-id="second"]')).not.toBeNull();
+   expect(panel.querySelector('[data-panel-row-id="replacement"]')).toBeNull();
+   mode='expired';
+   await act(hint);
+   expect(f.t.calls('attachment.list')).toHaveLength(7);
    expect(f.model.attachmentSection.state.peek().cursor).toBeUndefined();
    expect(more()).toBeUndefined();
    expect(panel.querySelector('[data-panel-row-id="second"]')).not.toBeNull();

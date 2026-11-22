@@ -59,15 +59,15 @@ export class AttachmentSection {
       const result = await this.data.operations.attachmentList(session.threadId, cursor, { cancel });
       if (!current()) return;
       if (!result.ok) {
-        // Once a replacement page has arrived, don't append an old continuation to the retained cut.
+        // Only Core can invalidate the continuation of the retained cut.
         const expired = result.error.kind === "owner" && result.error.code === "cursor_expired";
-        fail(result.error.message, i > 0 || expired);
+        fail(result.error.message, expired);
         return;
       }
       const page = result.value;
       cursor = page.next_cursor;
       if ((cursor !== undefined && (!page.items.length || cursors.has(cursor))) || page.items.some(row => ids.has(row.attachment_id))) {
-        fail("Invalid attachment continuation", true); return;
+        fail("Invalid attachment continuation", false); return;
       }
       const remaining = ATTACHMENT_RETENTION - items.length;
       capped = page.items.length > remaining || (page.items.length === remaining && cursor !== undefined);
