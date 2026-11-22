@@ -135,6 +135,16 @@ mod tests {
             ("/assets/brand/studio-teal-192.png", "image/png", "no-cache"),
             ("/assets/brand/studio-teal-512.png", "image/png", "no-cache"),
             (
+                "/assets/brand/studio-teal-maskable-192.png",
+                "image/png",
+                "no-cache",
+            ),
+            (
+                "/assets/brand/studio-teal-maskable-512.png",
+                "image/png",
+                "no-cache",
+            ),
+            (
                 "/assets/manifest.webmanifest",
                 "application/manifest+json",
                 "no-cache",

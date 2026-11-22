@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 // Emit only the approved brand SVG/PNG/ICO files, not generator scripts or private files.
-const brandFiles = ["studio-favicon.svg", "studio-teal.ico", "studio-teal-master.svg", "studio-teal-16.svg", "studio-teal-32.svg", ...[16, 32, 48, 180, 192, 512].map(size => `studio-teal-${size}.png`)];
+const brandFiles = ["studio-favicon.svg", "studio-teal.ico", "studio-teal-master.svg", "studio-teal-16.svg", "studio-teal-32.svg", "studio-teal-maskable-192.png", "studio-teal-maskable-512.png", ...[16, 32, 48, 180, 192, 512].map(size => `studio-teal-${size}.png`)];
 const publicRoot = fileURLToPath(new URL("./app/public/", import.meta.url));
 
 // Node is needed at build time only. The output in web/dist is embedded into the bridge.
