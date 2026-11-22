@@ -1,11 +1,13 @@
 import { spawn } from 'node:child_process';
-import { writeFile } from 'node:fs/promises';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { once } from 'node:events';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 const port=Number(process.env.DEBUG_PORT ?? 19331);
 const appPort=Number(process.env.FIXTURE_PORT ?? 19330);
 const browser=process.env.CHROME_BIN ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
-const chrome=spawn(browser,['--headless','--disable-gpu','--disable-extensions','--no-first-run','--user-data-dir='+join(tmpdir(),`studio-toolbar-${process.pid}`),'--remote-debugging-port='+port,'--remote-allow-origins=*','about:blank'],{stdio:'ignore'});
+const profile=await mkdtemp(join(tmpdir(),'studio11-logo-'));
+const chrome=spawn(browser,['--headless','--disable-gpu','--disable-extensions','--no-first-run','--user-data-dir='+profile,'--remote-debugging-port='+port,'--remote-allow-origins=*','about:blank'],{stdio:'ignore'});
 try {
   let info; for(let n=0;n<100;n++){try {info=await (await fetch(`http://127.0.0.1:${port}/json`)).json();break}catch{await new Promise(r=>setTimeout(r,100))}}
   if(!info) throw Error('Chrome did not start');
@@ -15,7 +17,7 @@ try {
   const cmd=(method,params={})=>new Promise((resolve,reject)=>{const i=++id;waiting.set(i,{resolve,reject});ws.send(JSON.stringify({id:i,method,params}))});
   const evaluate=async(expression)=>{let r=await cmd('Runtime.evaluate',{expression,returnByValue:true,awaitPromise:true});if(r.exceptionDetails)throw Error(JSON.stringify(r.exceptionDetails));return r.result.value};
   await cmd('Runtime.enable');await cmd('Page.enable');
-  for(const width of [1280,390]) for(const initialTheme of ['console','light','terminal']) {
+  for(const width of [1280,390]) for(const initialTheme of ['console','light','terminal','auto']) {
     await cmd('Emulation.setDeviceMetricsOverride',{width,height:900,deviceScaleFactor:1,mobile:false});
     await cmd('Emulation.setEmulatedMedia',{features:[{name:'prefers-color-scheme',value:'light'}]});
     await cmd('Page.navigate',{url:`http://127.0.0.1:${appPort}/?theme=${initialTheme}&state=history`});
@@ -54,18 +56,26 @@ try {
       await cmd('Emulation.setEmulatedMedia',{features:[{name:'prefers-color-scheme',value:os}]});
       await evaluate("new Promise(resolve=>{let n=0;const step=()=>++n===6?resolve():requestAnimationFrame(step);requestAnimationFrame(step);})");
     }
-    for(const theme of ['light','terminal','console']) {
+    for(const theme of ['light','terminal','console','auto']) {
       await evaluate(`window.setFixtureTheme('${theme}')`);
+      await evaluate("new Promise(resolve=>{let n=0;const step=()=>++n===6?resolve():requestAnimationFrame(step);requestAnimationFrame(step);})");
+    }
+    for(const os of ['dark','light']) {
+      await cmd('Emulation.setEmulatedMedia',{features:[{name:'prefers-color-scheme',value:os}]});
       await evaluate("new Promise(resolve=>{let n=0;const step=()=>++n===6?resolve():requestAnimationFrame(step);requestAnimationFrame(step);})");
     }
     const observation=await evaluate('window.logoObservation.stop();({samples:window.logoObservation.samples,errors:window.logoObservation.errors})');
     const {samples,errors}=observation;
     const expected={console:'rgb(56, 189, 248)',light:'rgb(3, 105, 161)',terminal:'rgb(74, 222, 128)'};
     const missing=samples.filter(s=>s.missing||!s.visible||!s.loaded).length;
-    const appWrong=samples.filter(s=>s.tile!==expected[s.theme]||s.wink!==expected[s.theme]).length;
+    const appWrong=samples.filter(s=>{const palette=s.theme==='auto'?(s.dark?'console':'light'):s.theme;return s.tile!==expected[palette]||s.wink!==expected[palette];}).length;
+    const autoSchemes=new Set(samples.filter(s=>s.theme==='auto').map(s=>s.dark));
     const imageWrong=samples.filter(s=>JSON.stringify(s.svgImagePixel)!==JSON.stringify(s.dark?[56,189,248,255]:[3,105,161,255])).length;
     console.log(JSON.stringify({width,initialTheme,samples:samples.length,callbackErrors:errors,runtimeErrors,missing,appWrong,imageWrong,replaced:samples.filter(s=>!s.same).length,minFaceContrast:Math.min(...samples.map(s=>s.faceContrast)),minDetailContrast:Math.min(...samples.map(s=>s.detailContrast)),minPanelContrast:Math.min(...samples.map(s=>s.panelContrast)),trace:samples}));
-    if(runtimeErrors||errors.length||samples.some(s=>!s.same)||!samples.length||missing||appWrong||imageWrong||samples.some(s=>s.faceContrast<3||s.detailContrast<3||s.panelContrast<3))process.exitCode=2;
+    if(autoSchemes.size!==2||runtimeErrors||errors.length||samples.some(s=>!s.same)||!samples.length||missing||appWrong||imageWrong||samples.some(s=>s.faceContrast<3||s.detailContrast<3||s.panelContrast<3))process.exitCode=2;
   }
   ws.close();
-} finally {chrome.kill('SIGTERM')}
+} finally {
+  if(chrome.exitCode===null && chrome.signalCode===null){const exited=once(chrome,'exit');chrome.kill('SIGTERM');await exited;}
+  await rm(profile,{recursive:true,force:true});
+}

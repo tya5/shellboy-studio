@@ -12,7 +12,7 @@ export function AppearanceChoices({ context, showLanguage = true }: { context: D
       <ButtonGroup label={t("settings.appearance")}>
         {current?.themes.map((theme) => (
           <Button key={theme.name} aria-pressed={prefs.value.theme === theme.name} onClick={() => setPrefs({ theme: theme.name })}>
-            {theme.title}
+            {theme.name === "auto" ? t("settings.themeAuto") : theme.title}
           </Button>
         ))}
       </ButtonGroup>

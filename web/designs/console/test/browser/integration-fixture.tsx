@@ -70,12 +70,12 @@ const resizeStore = params.get('view') === 'splitters' ? {
   read: () => localStorage.getItem('splitter-fixture-prefs'),
   write: (value: string) => localStorage.setItem('splitter-fixture-prefs', value),
 } : undefined;
-const prefs = signal<Prefs>(resizeStore ? loadPrefs(resizeStore, DESIGNS) : { design: 'console', theme: params.get('theme') === 'light' ? 'light' : params.get('theme') === 'terminal' ? 'terminal' : 'console', lang: fixtureLang, monitorView: 'cards', weights: { cached: 0.1, output: 5 } });
+const prefs = signal<Prefs>(resizeStore ? loadPrefs(resizeStore, DESIGNS) : { design: 'console', theme: params.get('theme') === 'light' ? 'light' : params.get('theme') === 'terminal' ? 'terminal' : params.get('theme') === 'auto' ? 'auto' : 'console', lang: fixtureLang, monitorView: 'cards', weights: { cached: 0.1, output: 5 } });
 effect(() => { document.documentElement.dataset.ds = prefs.value.theme; });
 mount(document.getElementById('app')!, { model, designs: DESIGNS, prefs, setPrefs: (change) => { prefs.value = { ...prefs.value, ...change }; if (resizeStore) savePrefs(resizeStore, prefs.value); }, submitToken: async () => true });
 
 // Synthetic-only theme control; production App preferences still use the existing settings surface.
-(window as unknown as { setFixtureTheme: (theme: 'console' | 'light' | 'terminal') => void }).setFixtureTheme = theme => {
+(window as unknown as { setFixtureTheme: (theme: 'console' | 'light' | 'terminal' | 'auto') => void }).setFixtureTheme = theme => {
   prefs.value = { ...prefs.value, theme };
 };
 

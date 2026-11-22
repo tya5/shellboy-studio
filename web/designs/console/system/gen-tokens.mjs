@@ -27,7 +27,11 @@ export function tokenCss(tokens, themeId, isDefault) {
   for (const e of tokens.elevation.tokens) add(e.name, e.value[themeId] ?? e.value);
   const scheme = themeId === "light" ? "light" : "dark";
   const selector = isDefault ? `:root, :root[data-ds="${themeId}"]` : `:root[data-ds="${themeId}"]`;
-  return `/* Generated from tokens.json by gen-tokens.mjs. Do not edit. */\n${selector} {\n  color-scheme: ${scheme};\n${lines.join("\n")}\n}\n`;
+  // Auto starts from the default palette, switching the entire palette together in CSS.
+  const auto = themeId === "light"
+    ? `@media (prefers-color-scheme: light) { :root[data-ds="auto"] {\n  color-scheme: light;\n${lines.join("\n")}\n} }\n`
+    : "";
+  return `/* Generated from tokens.json by gen-tokens.mjs. Do not edit. */\n${selector} {\n  color-scheme: ${scheme};\n${lines.join("\n")}\n}\n${auto}`;
 }
 
 export function allTokenFiles(tokens) {

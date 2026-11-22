@@ -1133,6 +1133,10 @@ describe("Settings", () => {
     const light = [...el.querySelectorAll(".subview-main button")].find((b) => text(b) === "Light") as HTMLButtonElement;
     act(() => light.click());
     expect(light.getAttribute("aria-pressed")).toBe("true");
+    const auto = [...el.querySelectorAll<HTMLButtonElement>("button")].find((button) => text(button) === "Auto")!;
+    act(() => auto.click());
+    expect(auto.getAttribute("aria-pressed")).toBe("true");
+    expect(light.getAttribute("aria-pressed")).toBe("false");
   });
   it("the popover keeps quick choices and links to all settings", async () => {
     const { model } = await fixtureModel({ route: "monitor" });

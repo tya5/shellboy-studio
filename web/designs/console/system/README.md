@@ -72,3 +72,9 @@ The approved Thread row menu mark is the vertical three-dot `more` icon; row-own
 ## Row actions
 
 The shared row-action pattern and its references are recorded in `patterns/row-actions.md`.
+
+### Brand surfaces and theme ownership
+
+- The sidebar header (expanded or collapsed) and the phone thread drawer show the same inline `BrandLogo`. Its tile and details use the resolved palette; no separate mobile artwork, filters, or image swaps.
+- The browser tab uses the existing OS-adaptive `studio-favicon.svg`, with a fixed ICO fallback. Browser chrome owns that scheme independently of the app setting.
+- Apple touch and manifest install icons are OS-owned static assets; they retain their built-in contrast. The master SVG and remaining export sizes are source/export variants, not additional in-app placements. No artwork or size changes.

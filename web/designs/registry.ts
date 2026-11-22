@@ -14,6 +14,7 @@ export const DESIGNS: readonly RegisteredDesign[] = [
       { name: "console", title: "Console" },
       { name: "light", title: "Light" },
       { name: "terminal", title: "Terminal" },
+      { name: "auto", title: "Auto" },
     ],
     load: () => import("./console/index"),
   },
