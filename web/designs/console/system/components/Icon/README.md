@@ -98,7 +98,6 @@ Sidebar and shared state roles (Orca sidebar and Lucide semantics):
 - `status.idle`: ready for input with no active Run (empty circle, same full-size outline as other status marks).
 - `thread.pinned`: the pinned group or pin action.
 - `thread.children`: the child disclosure and count.
-- `group.directory`: a directory heading, not a navigation link.
 - `sidebar.filter`: opens list filter controls.
 `settings.close` identifies the action to leave Settings; it is rendered as `cross`.
 

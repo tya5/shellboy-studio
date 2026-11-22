@@ -1,5 +1,5 @@
 import type { ListFilter } from "../../../data/src";
-import { sidebarGroups, SIDEBAR_PIN_TAG } from "../../../ui-core/src/sidebar";
+import { sidebarGroups } from "../../../ui-core/src/sidebar";
 import { BrandLogo } from "../system/components/BrandLogo";
 import { threadMenuEntries } from "../system/components/thread-menu";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
@@ -22,6 +22,7 @@ import { LayoutSeparator } from "../system/components";
 import { layoutWidthStyle } from "../system/layout";
 
 const SEARCH_DEBOUNCE_MS = 200;
+const sidebarLinkId = (key: string) => `thread-link-sidebar-${encodeURIComponent(key)}`;
 
 export function App({ context }: { context: DesignContext }) {
   const model = context.model;
@@ -32,21 +33,22 @@ export function App({ context }: { context: DesignContext }) {
     collapsed: () => context.prefs.peek().panelCollapsed === true,
     write: panelCollapsed => context.setPrefs({ panelCollapsed }),
   }), [model, context]);
-  const [deleteThread, setDeleteThread] = useState<ThreadDeleteTarget>();
+  const [deleteThread, setDeleteThread] = useState<ThreadDeleteTarget & { rowKey: string }>();
   const sidebarListRef = useRef<HTMLDivElement>(null);
   const lastSidebarFocus = useRef<string>();
   const sidebarPositions = useRef(new Map<string, number>());
 
   const sidebarLinks = () => [...(sidebarListRef.current?.querySelectorAll<HTMLAnchorElement>('a[id^="thread-link-sidebar-"]') ?? [])];
   const rememberSidebarPositions = (links: HTMLAnchorElement[]) => {
-    links.forEach((link, index) => sidebarPositions.current.set(link.id.replace("thread-link-sidebar-", ""), index));
+    links.forEach((link, index) => sidebarPositions.current.set(link.id, index));
   };
-  const resolveSidebarLink = (threadId: string) => {
+  const resolveSidebarLink = (linkId: string, threadId?: string) => {
     const links = sidebarLinks();
     rememberSidebarPositions(links);
-    const direct = links.find((link) => link.id === `thread-link-sidebar-${threadId}`);
+    const href = threadId === undefined ? undefined : formatRoute({ view: "conversation", threadId });
+    const direct = links.find(link => link.id === linkId) ?? (href && links.find(link => link.getAttribute("href") === href));
     if (direct) return direct;
-    const position = sidebarPositions.current.get(threadId);
+    const position = sidebarPositions.current.get(linkId);
     return (position !== undefined ? links[position] ?? links[Math.min(position - 1, links.length - 1)] : undefined)
       ?? document.getElementById("sidebar-thread-list-heading");
   };
@@ -54,7 +56,7 @@ export function App({ context }: { context: DesignContext }) {
     const links = sidebarLinks();
     rememberSidebarPositions(links);
     const claimed = lastSidebarFocus.current;
-    if (!claimed || links.some((link) => link.id === `thread-link-sidebar-${claimed}`)) return;
+    if (!claimed || links.some(link => link.id === claimed)) return;
     lastSidebarFocus.current = undefined;
     resolveSidebarLink(claimed)?.focus();
   });
@@ -111,22 +113,26 @@ export function App({ context }: { context: DesignContext }) {
 
   const list = model.data.threadList.value;
   const sidebarSelected = route.view === "conversation" ? model.selectedId.value : undefined;
-  const groups = useMemo(() => sidebarGroups(list.items, sidebarSelected), [list.items, sidebarSelected]);
-  const revealGroup = groups.find(group => group.rows.some(row => row.summary.thread_id === sidebarSelected));
-  const revealParents = JSON.stringify(revealGroup?.rows.filter(row => row.reveal).map(row => row.summary.thread_id) ?? []);
-  const revealKey = revealGroup?.key;
+  const appliedFilter = model.data.listFilter.value;
+  const flat = route.view !== "monitor" && !!(appliedFilter.query || appliedFilter.cwd || appliedFilter.tags?.length
+    || appliedFilter.awaiting || (appliedFilter.archived && appliedFilter.archived !== "exclude"));
+  const groups = useMemo(() => sidebarGroups(list.items, sidebarSelected, flat), [list.items, sidebarSelected, flat]);
+  const revealGroups = JSON.stringify(groups.filter(group => group.rows.some(row => row.summary.thread_id === sidebarSelected)).map(group => group.key));
+  const revealParents = JSON.stringify(groups.flatMap(group => group.rows.filter(row => row.reveal).map(row => row.key)));
   // Selection writes the same preferences as explicit disclosure; subsequent user folds win.
   useLayoutEffect(() => {
-    if (revealKey === undefined) return;
+    const selectedGroups = JSON.parse(revealGroups) as string[];
+    if (!selectedGroups.length) return;
     const prefs = context.prefs.peek();
     const closed = prefs.sidebarClosedGroups ?? [];
     const parents = prefs.sidebarOpenParents ?? [];
     const selectedParents = JSON.parse(revealParents) as string[];
     const nextOpen = [...new Set([...parents, ...selectedParents])].slice(-1000);
-    if (closed.includes(revealKey) || nextOpen.length !== parents.length || nextOpen.some((id, i) => parents[i] !== id)) {
-      context.setPrefs({ sidebarClosedGroups: closed.filter(key => key !== revealKey), sidebarOpenParents: nextOpen });
+    const nextClosed = closed.filter(key => !selectedGroups.includes(key));
+    if (nextClosed.length !== closed.length || nextOpen.length !== parents.length || nextOpen.some((id, i) => parents[i] !== id)) {
+      context.setPrefs({ sidebarClosedGroups: nextClosed, sidebarOpenParents: nextOpen });
     }
-  }, [context, sidebarSelected, revealKey, revealParents]);
+  }, [context, sidebarSelected, revealGroups, revealParents]);
   const closedGroups = context.prefs.value.sidebarClosedGroups ?? [];
   const openParents = context.prefs.value.sidebarOpenParents ?? [];
   const setFold = (field: "sidebarClosedGroups" | "sidebarOpenParents", id: string, add: boolean) => {
@@ -223,33 +229,42 @@ export function App({ context }: { context: DesignContext }) {
             if (!link) return;
             const links = sidebarLinks();
             rememberSidebarPositions(links);
-            lastSidebarFocus.current = link.id.replace("thread-link-sidebar-", "");
+            lastSidebarFocus.current = link.id;
           }} onFocusOut={(event) => {
             const next = event.relatedTarget;
             if (!(next instanceof Node) || !sidebarListRef.current?.contains(next)) lastSidebarFocus.current = undefined;
           }}>
             <div class="tree">
               {groups.map(group => {
-                const label = group.directory === undefined ? t("sidebar.pinned") : folderName(group.directory) ?? group.directory;
+                const label = t(group.key === "pins" ? "sidebar.pinned" : "sidebar.all");
                 const open = !closedGroups.includes(group.key);
                 const fold = { open, show: t("sidebar.expand"), hide: t("sidebar.collapse"), showLabel: t("sidebar.expandGroup", { name: label }), hideLabel: t("sidebar.collapseGroup", { name: label }), onToggle: () => setFold("sidebarClosedGroups", group.key, open) };
-                return <ThreadGroup key={group.key} label={label} count={String(group.rows.length)} leading={group.directory === undefined ? "thread.pinned" : "group.directory"} fold={fold}>
-                  {open ? group.rows.map(r => {
-                    if (r.ancestors.some(id => !openParents.includes(id))) return null;
+                let hiddenBelow: number | undefined;
+                return <ThreadGroup key={group.key} label={label} count={String(group.rows.length)} {...(group.key === "pins" ? { leading: "thread.pinned" as const } : {})} fold={fold}>
+                  {open ? group.rows.map((r, index) => {
+                    if (hiddenBelow !== undefined && r.depth > hiddenBelow) return null;
                     const id = r.summary.thread_id;
-                    const expanded = openParents.includes(id);
+                    const expanded = openParents.includes(r.key);
                     const unread = model.sidebarUnread(r.summary);
-                    return <ThreadItem key={id} sidebar unread={unread} linkId={`thread-link-sidebar-${id}`}
+                    hiddenBelow = r.childCount && !expanded ? r.depth : undefined;
+                    return <ThreadItem key={r.key} sidebar unread={unread} linkId={sidebarLinkId(r.key)}
                       href={formatRoute({ view: "conversation", threadId: id })} title={r.summary.title}
                       status={r.status} statusLabel={r.status ? statusLabel(t, r.status) : ""}
                       depth={r.depth} current={id === sidebarSelected} pending={r.pending} age={formatAge(r.summary.updated_at, model.coarseNow.value)}
                       childrenFold={r.descendants ? { count: r.descendants, awaiting: r.awaiting, running: r.running, open: expanded,
                         label: t("sidebar.children", { n: r.descendants, awaiting: r.awaiting, running: r.running }),
                         awaitingLabel: t("sidebar.needsYou"), runningLabel: statusLabel(t, "running"),
-                        onToggle: r.childCount ? value => setFold("sidebarOpenParents", id, value) : undefined } : undefined}
+                        onToggle: value => {
+                          if (!value) { setFold("sidebarOpenParents", r.key, false); return; }
+                          // Open all the gates in this copy's contiguous subtree.
+                          const branch = group.rows.slice(index, index + r.descendants + 1);
+                          const keys = new Set(branch.filter(row => row.descendants > 0).map(row => row.key));
+                          const previous = context.prefs.peek().sidebarOpenParents ?? [];
+                          context.setPrefs({ sidebarOpenParents: [...previous.filter(key => !keys.has(key)), ...keys].slice(-1000) });
+                        } } : undefined}
                       onSelect={() => setDrawer(false)}
                       menu={{ label: t("thread.rowMenu"), entries: [{ key: "read-state", label: t(unread ? "sidebar.markRead" : "sidebar.markUnread"), disabled: !r.summary.last_end_message?.node_id, onSelect: () => model.markSidebarUnread(id, !unread) }, ...threadMenuEntries(model, r.summary, r.status,
-                        target => setDeleteThread({ threadId: target.thread_id }), canTag ? { onEditTags: () => editThreadTags(id, r.summary.archived_at !== undefined) } : undefined)] }} />;
+                        target => setDeleteThread({ threadId: target.thread_id, rowKey: r.key }), canTag ? { onEditTags: () => editThreadTags(id, r.summary.archived_at !== undefined) } : undefined)] }} />;
                   }) : null}
                 </ThreadGroup>;
               })}
@@ -273,7 +288,7 @@ export function App({ context }: { context: DesignContext }) {
             {desktopDiagnostic ? <Notice tone="wait">{desktopDiagnostic}</Notice> : null}
             {model.actionError.value ? <Notice tone={model.actionError.value.kind === "error" ? "bad" : undefined}>{model.actionError.value.text}</Notice> : null}
           </div>
-          {deleteThread ? <ThreadDeleteDialog key={deleteThread.threadId} model={model} target={deleteThread} getReturnFocusTarget={resolveSidebarLink} onClose={() => setDeleteThread(undefined)} /> : null}
+          {deleteThread ? <ThreadDeleteDialog key={deleteThread.threadId} model={model} target={deleteThread} getReturnFocusTarget={id => resolveSidebarLink(sidebarLinkId(deleteThread.rowKey), id)} onClose={() => setDeleteThread(undefined)} /> : null}
           <section class="view" aria-label={title}>
             <AppsHost context={context} />
             {route.view === "apps" ? null : route.view === "conversation" ? <Conversation model={model} panelCollapsed={context.prefs.value.panelCollapsed} rightPanelWidth={context.prefs.value.rightPanelWidth} onPanelWidth={rightPanelWidth => context.setPrefs({ rightPanelWidth })} phonePanel={!!selected && phonePanel === selected} onClosePhonePanel={() => setPhonePanel(undefined)} /> : route.view === "monitor" ? <Monitor context={context} /> : route.view === "inbox" ? <Inbox model={model} /> : route.view === "analytics" ? <Analytics context={context} /> : route.view === "branches" ? <Branches model={model} /> : route.view === "threads" ? <Threads model={model} /> : route.view === "setup" ? <Setup context={context} /> : <SettingsView context={context} />}

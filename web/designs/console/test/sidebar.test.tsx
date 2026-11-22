@@ -13,17 +13,17 @@ import { App } from "../screens/App";
 import { StatusMark } from "../system/components/StatusMark";
 import { ThreadGroup } from "../system/components/ThreadGroup";
 
-it("keeps status updates in place, persists child folds, and moves pins only after the owner event", async () => {
+it("keeps status updates in place, persists child folds, and adds a pinned copy only after the owner event", async () => {
   const f = await fixtureModel({ route: "conversation", threadId: "lead", capabilities: ["thread.tags", "thread.cwds"], configure(db) {
-    db.threads = { lead: summary("lead", { cwd: "/alpha" }), child: summary("child", { cwd: "/alpha", parent_id: "lead", awaiting_named_count: 1 }), other: summary("other", { cwd: "/alpha", tags: ["project"] }) };
+    db.threads = { lead: summary("lead", { cwd: "/alpha" }), child: summary("child", { cwd: "/alpha", parent_id: "lead", awaiting_human_count: 1 }), other: summary("other", { cwd: "/alpha", tags: ["project"] }) };
     for (const id of Object.keys(db.threads)) db.details[id] = details(id);
   } });
   const host = document.createElement("div"); document.body.append(host);
   const designs = DESIGNS;
   const prefs = signal(loadPrefs({ read: () => null, write() {} }, designs));
-  const link = (id: string) => host.querySelector<HTMLAnchorElement>(`#thread-link-sidebar-${id}`);
+  const link = (id: string) => host.querySelector<HTMLAnchorElement>(`.side-list a[href="#/conversation/${id}"]`);
   const sides = () => [...host.querySelectorAll(".side-list [data-thread-row] a")].map(el => el.id);
-  const hint = async () => { f.t.push({ t: "changed", config_changed: false, thread_ids: ["other"], list: true }); await settle(f.t, f.db); };
+  const hint = async () => { f.t.push({ t: "changed", thread_ids: ["other"], list: true }); await settle(f.t, f.db); };
   try {
     await act(async () => { render(<App context={{ model: f.model, prefs, designs, setPrefs: change => { prefs.value = { ...prefs.peek(), ...change }; }, submitToken: async () => false }} />, host); await settle(f.t, f.db); });
     const parent = link("lead")!;
@@ -32,7 +32,7 @@ it("keeps status updates in place, persists child folds, and moves pins only aft
     const open = (key: string) => parent.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true }));
     await act(async () => { open("ArrowRight"); });
     expect(link("child")).not.toBeNull();
-    expect(prefs.peek().sidebarOpenParents).toEqual(["lead"]);
+    expect(prefs.peek().sidebarOpenParents).toEqual([JSON.stringify(["all", "lead"])]);
     const order = sides(), other = link("other")!;
     f.db.threads.other!.activity = "running";
     await act(hint);
@@ -41,7 +41,7 @@ it("keeps status updates in place, persists child folds, and moves pins only aft
     expect(other.querySelector('[data-status="running"] svg')).not.toBeNull();
     await act(async () => { open("ArrowLeft"); });
     expect(link("child")).toBeNull();
-    await act(async () => { host.querySelector<HTMLButtonElement>('.side-list button[aria-label="Collapse alpha"]')!.click(); });
+    await act(async () => { host.querySelector<HTMLButtonElement>('.side-list button[aria-label="Collapse All"]')!.click(); });
     expect(link("lead")).toBeNull();
     await act(async () => { f.model.openThread("child"); await settle(f.t, f.db); });
     expect(link("child")?.getAttribute("aria-current")).toBe("true");
@@ -55,7 +55,8 @@ it("keeps status updates in place, persists child folds, and moves pins only aft
     expect(sides()).toEqual(order);
     expect(f.model.actionError.peek()).toBeUndefined();
     await act(hint);
-    expect(sides()[0]).toBe("thread-link-sidebar-other");
+    expect(host.querySelectorAll('.side-list a[href="#/conversation/other"]')).toHaveLength(2);
+    expect(sides().slice(1)).toEqual(order);
     expect(host.querySelector('.side-list section')?.getAttribute("aria-label")).toBe("Pinned");
   } finally { render(null, host); host.remove(); document.head.querySelector("#test-styles")?.remove(); f.model.dispose(); f.data.stop(); }
 });
@@ -79,7 +80,7 @@ it("keeps the owner's created order on status hints and inserts a new Thread at 
   const prefs = signal<ReturnType<typeof loadPrefs>>({ ...loadPrefs({ read: () => null, write() {} }, DESIGNS), sidebarOpenParents: ["lead"] });
   const order = () => [...host.querySelectorAll(".side-list [data-thread-row] a")].map(el => el.id.replace("thread-link-sidebar-", ""));
   const hint = async (id: string) => {
-    f.t.push({ t: "changed", thread_ids: [id], list: true, config_changed: false });
+    f.t.push({ t: "changed", thread_ids: [id], list: true });
     await settle(f.t, f.db);
   };
   try {
@@ -120,7 +121,7 @@ it("reads owner catalogs only while the filter menu is open, independently of fi
   const prefs=signal(loadPrefs({read:()=>null,write(){}},DESIGNS));
   const trigger=()=>host.querySelector<HTMLButtonElement>('.side-search [aria-haspopup="menu"]')!;
   const menu=()=>document.querySelector('[role="menu"]');
-  const hints=async()=>{f.t.push({t:"changed", config_changed: false,thread_ids:[],list:true});await settle(f.t,f.db);};
+  const hints=async()=>{f.t.push({t:"changed",thread_ids:[],list:true});await settle(f.t,f.db);};
   try {
     await act(async()=>{render(<App context={{model:f.model,prefs,designs:DESIGNS,setPrefs(){},submitToken:async()=>false}}/>,host);await settle(f.t,f.db);});
     expect(f.t.calls("thread.cwds")).toHaveLength(0);
@@ -161,21 +162,49 @@ it("reads owner catalogs only while the filter menu is open, independently of fi
   } finally {render(null,host);host.remove();f.model.dispose();f.data.stop();}
 });
 
-it("shows cross-group child counts without a disclosure control or arrow action", async () => {
-  const f=await fixtureModel({route:"conversation", threadId:"lead", configure(db){
-    db.threads={lead:summary("lead",{cwd:"/alpha"}), child:summary("child",{cwd:"/beta", parent_id:"lead", awaiting_named_count:1, tags:["pin"]})};
-  }});
-  const host=document.createElement("div"); document.body.append(host);
-  const prefs=signal(loadPrefs({read:()=>null,write(){}},DESIGNS));
+it("opens all ten cross-directory descendants, gives overlapping pins independent copies, and restores the trees after filtering", async () => {
+  const f = await fixtureModel({ route: "conversation", threadId: "lead", capabilities: ["thread.tags", "thread.cwds"], configure(db) {
+    db.threads = { lead: summary("lead", { cwd: "/alpha", tags: ["pin"] }) };
+    for (let n = 0; n < 10; n++) {
+      const id = `child${n}`;
+      db.threads[id] = summary(id, { cwd: "/beta", parent_id: n === 9 ? "child0" : "lead", ...(n === 0 ? { tags: ["pin"], awaiting_human_count: 1 } : {}) });
+    }
+    for (const id of Object.keys(db.threads)) db.details[id] = details(id);
+  } });
+  const host = document.createElement("div"); document.body.append(host);
+  const prefs = signal(loadPrefs({ read: () => null, write() {} }, DESIGNS));
+  const links = (band: string) => [...host.querySelectorAll<HTMLAnchorElement>(`.side-list section[aria-label="${band}"] a.tree-link`)];
+  const fold = (band: string) => links(band).find(link => link.getAttribute("href") === "#/conversation/lead")!.parentElement!.querySelector<HTMLButtonElement>("button[aria-expanded]")!;
   try {
-    await act(async()=>{render(<App context={{model:f.model,prefs,designs:DESIGNS,setPrefs:change=>{prefs.value={...prefs.peek(),...change};},submitToken:async()=>false}}/>,host);await settle(f.t,f.db);});
-    const row=host.querySelector('#thread-link-sidebar-lead')!;
-    const chip=row.parentElement!.querySelector('[data-urgency="awaiting"]')!;
-    expect(chip.querySelector('[role="img"]')?.getAttribute('aria-label')).toContain('1 children');
-    expect(chip.querySelector('button')).toBeNull();
-    for (const key of ['ArrowRight','ArrowLeft']) expect(row.dispatchEvent(new KeyboardEvent('keydown',{key,bubbles:true,cancelable:true}))).toBe(true);
-    expect(prefs.peek().sidebarOpenParents).toEqual([]);
-  } finally {render(null,host);host.remove();f.model.dispose();f.data.stop();}
+    await act(async () => { render(<App context={{ model: f.model, prefs, designs: DESIGNS, setPrefs: change => { prefs.value = { ...prefs.peek(), ...change }; }, submitToken: async () => false }} />, host); await settle(f.t, f.db); });
+    expect(fold("All").getAttribute("aria-label")).toContain("10 children");
+    expect(fold("Pinned").getAttribute("aria-label")).toContain("10 children");
+    expect(links("All")).toHaveLength(1);
+    expect(links("Pinned")).toHaveLength(2);
+    await act(async () => { fold("All").click(); });
+    expect(links("All")).toHaveLength(11);
+    expect(links("Pinned")).toHaveLength(2);
+    await act(async () => { fold("Pinned").click(); });
+    expect(links("Pinned")).toHaveLength(12);
+    expect(links("Pinned").filter(link => link.getAttribute("href") === "#/conversation/child9")).toHaveLength(1);
+    await act(async () => { f.model.openThread("child0"); await settle(f.t, f.db); });
+    const copies = [...host.querySelectorAll<HTMLAnchorElement>('.side-list a[href="#/conversation/child0"]')];
+    expect(copies).toHaveLength(3);
+    expect(new Set(copies.map(link => link.id)).size).toBe(3);
+    for (const link of copies) {
+      expect(link.getAttribute("aria-current")).toBe("true");
+      await act(async () => { link.parentElement!.querySelector<HTMLButtonElement>('[aria-haspopup="menu"]')!.click(); });
+      expect([...document.querySelectorAll('[role="menuitem"]')].some(item => item.textContent === "Unpin")).toBe(true);
+      await act(async () => { document.querySelector('[role="menu"]')!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); });
+    }
+    await act(async () => { f.data.setListFilter({ cwd: "/beta" }); await settle(f.t, f.db); });
+    expect(links("All")).toHaveLength(10);
+    expect(links("Pinned").map(link => link.getAttribute("href"))).toEqual(["#/conversation/child0"]);
+    expect(host.querySelector(".side-list .thread-item-child")).toBeNull();
+    await act(async () => { f.data.setListFilter({}); await settle(f.t, f.db); });
+    expect(links("Pinned")).toHaveLength(12);
+    expect(links("All")).toHaveLength(11);
+  } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
 });
 
 it('settles the mounted tag session while hidden and ignores late results after retargeting', async () => {
@@ -191,7 +220,7 @@ it('settles the mounted tag session while hidden and ignores late results after 
   const input = (value: string) => { field().value = value; field().dispatchEvent(new Event('input', { bubbles: true })); };
   const stage = async (value: string) => { await act(async () => input(value)); await act(async () => button('Add to list').click()); };
   const open = async (id: string) => { await act(async () => {
-    host.querySelector(`#thread-link-sidebar-${id}`)!.parentElement!.querySelector<HTMLButtonElement>('[aria-haspopup="menu"]')!.click();
+    host.querySelector(`.side-list a[href="#/conversation/${id}"]`)!.parentElement!.querySelector<HTMLButtonElement>('[aria-haspopup="menu"]')!.click();
   }); await act(async () => {
     [...document.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find(el => el.textContent === 'Edit tags…')!.click();
   }); };
@@ -216,7 +245,7 @@ it('settles the mounted tag session while hidden and ignores late results after 
     expect(f.model.org.tagDraft.peek()).toMatchObject({ add: [], action: { kind: 'idle' } });
     expect(panel()?.textContent).not.toContain('new-tag');
     Object.assign(f.db.threads.lead!, { tags: ['old', 'new-tag'] });
-    await act(async () => { f.t.push({ t: 'changed', config_changed: false, thread_ids: ['lead'], list: true }); await settle(f.t, f.db); });
+    await act(async () => { f.t.push({ t: 'changed', thread_ids: ['lead'], list: true }); await settle(f.t, f.db); });
     expect(panel()?.textContent).toContain('new-tag');
     await stage('old-request'); await act(async () => input('raw-a'));
     await act(async () => { apply().click(); await flush(); });
@@ -244,9 +273,9 @@ it("bolds a background completion only after the list hint and clears on open or
     db.details.other = details("other", { last_end_message: second });
   } });
   const host = document.createElement("div"); document.body.append(host);
-  const link = () => host.querySelector<HTMLAnchorElement>("#thread-link-sidebar-other")!;
+  const link = () => host.querySelector<HTMLAnchorElement>('.side-list a[href="#/conversation/other"]')!;
   const unread = () => !!link().querySelector("strong[data-unread]");
-  const hint = async (detail = false) => { f.t.push({ t: "changed", config_changed: false, thread_ids: detail ? ["other"] : [], list: true }); await settle(f.t, f.db); };
+  const hint = async (detail = false) => { f.t.push({ t: "changed", thread_ids: detail ? ["other"] : [], list: true }); await settle(f.t, f.db); };
   const end = (marker: typeof first) => { f.db.threads.other = summary("other", { ...f.db.threads.other, last_end_message: marker }); };
   const mark = async (label: string) => {
     await act(async () => { link().parentElement!.querySelector<HTMLButtonElement>("[aria-haspopup=menu]")!.click(); });
@@ -302,15 +331,15 @@ it("bolds a background completion only after the list hint and clears on open or
 });
 
 it("renders the approved sidebar section band, trailing column, and disclosure behavior", async () => {
-  const label = "a-folder-name-that-is-far-too-long-to-fit-in-the-sidebar-without-ellipsis";
+  const label = "All";
   const f = await fixtureModel({ route: "conversation", threadId: "lead", capabilities: ["thread.cwds"], configure(db) {
-    db.threads = { lead: summary("lead", { cwd: `/projects/${label}` }), other: summary("other", { cwd: `/projects/${label}` }) };
+    db.threads = { lead: summary("lead", { cwd: "/alpha" }), other: summary("other", { cwd: "/beta", tags: ["pin"] }) };
   } });
   const host = document.createElement("div"); document.body.append(host);
   const prefs = signal(loadPrefs({ read: () => null, write() {} }, DESIGNS));
   try {
     await act(async () => { render(<App context={{ model: f.model, prefs, designs: DESIGNS, setPrefs: change => { prefs.value = { ...prefs.peek(), ...change }; }, submitToken: async () => false }} />, host); await settle(f.t, f.db); });
-    const group = host.querySelector<HTMLElement>('.tgroup[data-group-heading="section"]')!;
+    const group = host.querySelector<HTMLElement>('.side-list .tgroup[data-group-heading="section"][aria-label="All"]')!;
     const name = group.querySelector<HTMLElement>(".tgroup-name")!;
     const toggle = group.querySelector<HTMLButtonElement>(".tgroup-toggle")!;
     expect(toggle.classList.contains("btn")).toBe(true);
@@ -318,13 +347,17 @@ it("renders the approved sidebar section band, trailing column, and disclosure b
     expect(toggle.getAttribute("aria-label")).toBe(`Collapse ${label}`);
     expect(toggle.querySelector(".tgroup-chevron .i")?.getAttribute("aria-hidden")).toBe("true");
     expect(group.querySelector(".tgroup-pin")).toBeNull();
+    const pinned = host.querySelector('.side-list .tgroup[data-group-heading="section"][aria-label="Pinned"]')!;
+    expect(pinned.querySelector(".tgroup-toggle .tgroup-pin")).not.toBeNull();
+    expect(pinned.querySelector(".tgroup-toggle .tgroup-chevron")).not.toBeNull();
     expect(name.textContent).toBe(label);
     expect(group.querySelector(".tgroup-count")?.textContent).toBe("2");
     expect(group.querySelector(".tgroup-fold,.btn-link")).toBeNull();
     await act(async () => toggle.click());
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
     expect(toggle.getAttribute("aria-label")).toBe(`Expand ${label}`);
-    expect(host.querySelectorAll(".side-list [data-thread-row]")).toHaveLength(0);
+    expect(group.querySelectorAll("[data-thread-row]")).toHaveLength(0);
+    expect(pinned.querySelectorAll("[data-thread-row]")).toHaveLength(1);
   } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
 });
 

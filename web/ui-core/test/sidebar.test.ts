@@ -2,31 +2,30 @@ import { describe, expect, it } from "vitest";
 import { summary } from "../../data/test/harness";
 import { sidebarGroups } from "../src/sidebar";
 
-describe("sidebar grouping", () => {
-  it("puts pins first, sorts directory headings, and preserves owner order within siblings across state changes", () => {
-    const rows = [summary("b",{cwd:"/beta"}),summary("z",{cwd:"/alpha"}),summary("pin2",{cwd:"/beta",tags:["pin"]}),summary("a",{cwd:"/alpha"}),summary("pin1",{cwd:"/alpha",tags:["pin"]})];
-    const shape = () => sidebarGroups(rows).map(group => [group.directory,group.rows.map(row=>row.summary.thread_id)]);
-    const expected = [[undefined,["pin2","pin1"]],["/alpha",["z","a"]],["/beta",["b"]]];
-    expect(shape()).toEqual(expected);
-    rows[1]!.activity="running";
-    Object.assign(rows[3]!,{awaiting_named_count:2});
-    expect(shape()).toEqual(expected);
+const shape = (groups: ReturnType<typeof sidebarGroups>) => groups.map(group =>
+  [group.key, group.rows.map(row => [row.summary.thread_id, row.depth])]);
+
+describe("sidebar parent trees", () => {
+  it.each([
+    [["A"], [["A", 0], ["B", 1], ["C", 2]]],
+    [["B"], [["B", 0], ["C", 1]]],
+    [["A", "B"], [["A", 0], ["B", 1], ["C", 2], ["B", 0], ["C", 1]]],
+  ])("shows each pin %j as a root with its whole subtree", (pins, expected) => {
+    const tags = (id: string) => pins.includes(id) ? ["pin"] : [];
+    const rows = [summary("A", { cwd: "/a", tags: tags("A") }), summary("B", { parent_id: "A", cwd: "/b", tags: tags("B") }), summary("C", { parent_id: "B" })];
+    const groups = sidebarGroups(rows, "C");
+    expect(shape(groups)).toEqual([["pins", expected], ["all", [["A", 0], ["B", 1], ["C", 2]]]]);
+    const copies = groups.flatMap(group => group.rows);
+    expect(new Set(copies.map(row => row.key)).size).toBe(copies.length);
+    expect(copies.filter(row => row.descendants > 0).every(row => row.reveal)).toBe(true);
+    expect(copies.filter(row => row.summary.thread_id === "B").every(row => row.descendants === 1)).toBe(true);
   });
 
-  it("summarizes listed descendants and opens the selected Thread's ancestors by default", () => {
-    const parent=summary("parent",{cwd:"/alpha"});
-    const child=summary("child",{cwd:"/alpha",parent_id:"parent",activity:"tools"});
-    const grand=summary("grand",{cwd:"/alpha",parent_id:"child",awaiting_named_count:1});
-    const [group]=sidebarGroups([parent,child,grand]);
-    expect(group!.rows[0]).toMatchObject({ descendants:2, awaiting:1, running:1 });
-    expect(sidebarGroups([parent,child,grand],"grand")[0]!.rows.map(row=>row.reveal)).toEqual([true,true,false]);
+  it("shows flat filter results in owner order, with only matching pins and no descendant counts", () => {
+    const rows = [summary("B", { parent_id: "A", tags: ["pin"] }), summary("A"), summary("D", { parent_id: "A" })];
+    const groups = sidebarGroups(rows, "B", true);
+    expect(shape(groups)).toEqual([["pins", [["B", 0]]], ["all", [["B", 0], ["A", 0], ["D", 0]]]]);
+    expect(groups.flatMap(group => group.rows).every(row => !row.childCount && !row.descendants && !row.reveal)).toBe(true);
+    expect(shape(sidebarGroups([]))).toEqual([["all", []]]);
   });
-  it("keeps ancestry facts when children move into other display groups", () => {
-    const parent = summary("parent", {cwd:"/alpha"});
-    const child = summary("child", {cwd:"/alpha",parent_id:"parent",activity:"tools",tags:["pin"]});
-    const grand = summary("grand", {cwd:"/beta",parent_id:"child",awaiting_named_count:1});
-    const rows = sidebarGroups([parent,child,grand]).flatMap(group => group.rows);
-    expect(rows.find(row => row.summary.thread_id === "parent")).toMatchObject({descendants:2,awaiting:1,running:1,childCount:0});
-  });
-
 });

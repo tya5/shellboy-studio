@@ -1,51 +1,56 @@
 import type { ThreadSummary } from "../../data/src";
 import { threadTree, type ThreadRow } from "./threads";
-import { folderName } from "./format";
 
 export const SIDEBAR_PIN_TAG = "pin";
-export interface SidebarRow extends ThreadRow { descendants: number; awaiting: number; running: number; reveal: boolean; ancestors: readonly string[]; }
-export interface SidebarGroup { key: string; directory?: string; rows: SidebarRow[]; }
+export interface SidebarRow extends ThreadRow { key: string; descendants: number; awaiting: number; running: number; reveal: boolean; }
+export interface SidebarGroup { key: "pins" | "all"; rows: SidebarRow[]; }
 
-export function sidebarGroups(items: readonly ThreadSummary[], selected?: string): SidebarGroup[] {
-  const dirs = new Map<string, ThreadSummary[]>();
-  const pins: ThreadSummary[] = [];
-  for (const item of items) {
-    if (item.tags?.includes(SIDEBAR_PIN_TAG)) pins.push(item);
-    else {
-      const group = dirs.get(item.cwd);
-      if (group) group.push(item);
-      else dirs.set(item.cwd, [item]);
-    }
-  }
+export function sidebarGroups(items: readonly ThreadSummary[], selected?: string, flat = false): SidebarGroup[] {
   const pending = new Map(items.map(item => [item.thread_id, item.awaiting_named_count ?? 0]));
-  const totals = new Map<string, { descendants: number; awaiting: number; running: number }>();
-  const ancestors: string[] = [];
-  for (const row of threadTree([...items], pending)) {
-    ancestors.length = row.depth;
-    for (const id of ancestors) {
-      const count = totals.get(id)!;
-      count.descendants++;
-      if (row.status === "awaiting") count.awaiting++;
-      if (row.status === "running") count.running++;
+  const tree = threadTree([...items], pending);
+  const byId = new Map(tree.map((row, index) => [row.summary.thread_id, index]));
+  const ends: number[] = [];
+  const totals = tree.map(() => ({ descendants: 0, awaiting: 0, running: 0 }));
+  const ancestors: number[] = [];
+  // A preorder subtree is contiguous; close it once and roll its status totals up.
+  const close = (end: number) => {
+    const index = ancestors.pop()!;
+    ends[index] = end;
+    const row = tree[index]!;
+    const total = totals[index]!;
+    total.descendants = end - index - 1;
+    const parent = ancestors.at(-1);
+    if (parent !== undefined) {
+      totals[parent]!.awaiting += total.awaiting + Number(row.status === "awaiting");
+      totals[parent]!.running += total.running + Number(row.status === "running");
     }
-    totals.set(row.summary.thread_id, { descendants: 0, awaiting: 0, running: 0 });
-    ancestors.push(row.summary.thread_id);
-  }
-  const rowsFor = (group: ThreadSummary[]): SidebarRow[] => {
-    const byId = new Map<string, SidebarRow>();
-    const parents: SidebarRow[] = [];
-    for (const row of threadTree(group, pending)) {
-      parents.length = row.depth;
-      if (row.summary.thread_id === selected) for (const parent of parents) parent.reveal = true;
-      const id = row.summary.thread_id;
-      const projected = { ...row, ...totals.get(id)!, reveal: false, ancestors: parents.map(parent => parent.summary.thread_id) };
-      byId.set(id, projected);
-      parents.push(projected);
-    }
-    // Tree traversal supplies ancestry, never row order.
-    return group.map(item => byId.get(item.thread_id)!);
   };
-  return [...(pins.length ? [{ key: "pins", rows: rowsFor(pins) }] : []),
-    ...[...dirs].sort(([a], [b]) => (folderName(a) ?? a).localeCompare(folderName(b) ?? b) || a.localeCompare(b))
-      .map(([directory, group]) => ({ key: `cwd:${directory}`, directory, rows: rowsFor(group) }))];
+  tree.forEach((row, index) => {
+    while (ancestors.length > row.depth) close(index);
+    ancestors.push(index);
+  });
+  while (ancestors.length) close(tree.length);
+
+  const project = (band: SidebarGroup["key"], start: number, end: number, baseDepth: number): SidebarRow[] => {
+    const rows: SidebarRow[] = [];
+    const path: SidebarRow[] = [];
+    for (let index = start; index < end; index++) {
+      const row = tree[index]!;
+      const depth = flat ? 0 : row.depth - baseDepth;
+      path.length = depth;
+      if (row.summary.thread_id === selected) for (const parent of path) parent.reveal = true;
+      const key = JSON.stringify([band, ...path.map(parent => parent.summary.thread_id), row.summary.thread_id]);
+      const counts = flat ? { descendants: 0, awaiting: 0, running: 0 } : totals[index]!;
+      const copy = { ...row, ...counts, childCount: flat ? 0 : row.childCount, depth, key, reveal: false };
+      rows.push(copy);
+      path.push(copy);
+    }
+    return rows;
+  };
+  const roots = items.filter(item => item.tags?.includes(SIDEBAR_PIN_TAG)).map(item => byId.get(item.thread_id)!);
+  const pins = roots.flatMap(index => project("pins", index, flat ? index + 1 : ends[index]!, tree[index]!.depth));
+  const all = flat
+    ? items.flatMap(item => { const index = byId.get(item.thread_id)!; return project("all", index, index + 1, 0); })
+    : project("all", 0, tree.length, 0);
+  return [...(pins.length ? [{ key: "pins" as const, rows: pins }] : []), { key: "all", rows: all }];
 }

@@ -43,6 +43,8 @@ function rowLinks(rig: Rig): HTMLAnchorElement[] {
   return [...rig.list.querySelectorAll<HTMLAnchorElement>("a[id]")].filter((link) => link.id.startsWith(idPrefix));
 }
 
+const threadIdOf = (link: HTMLAnchorElement) => decodeURIComponent(link.getAttribute("href")!.split("/").at(-1)!);
+
 async function openDelete(rig: Rig, link: HTMLAnchorElement): Promise<HTMLDialogElement> {
   const row = link.closest<HTMLElement>(rig.screen === "threads" ? "[data-thread-row]" : "[data-thread-row]");
   if (!row) throw new Error("Expected an actual rendered thread row");
@@ -94,10 +96,13 @@ describe("screen-owned thread-list focus", () => {
       expect(dialog.open).toBe(false);
       expect(document.activeElement).toBe(target);
       expect(rig.model.ops.threadDelete).toHaveBeenCalledTimes(1);
-      expect(rig.model.ops.threadDelete).toHaveBeenCalledWith(target!.id.replace(/^thread-link-(?:sidebar|page)-/, ""), marker);
-      const deletedId = target!.id.replace(/^thread-link-(?:sidebar|page)-/, "");
+      expect(rig.model.ops.threadDelete).toHaveBeenCalledWith(threadIdOf(target!), marker);
+      const deletedId = threadIdOf(target!);
       await resolveListWithout(rig, deletedId);
-      expect(document.activeElement).toBe(next);
+      // Removing a sidebar parent promotes its formerly hidden child into the vacated slot.
+      const expected = screen === "sidebar" ? rowLinks(rig).find(link => threadIdOf(link) === "child") : next;
+      expect(expected).toBeDefined();
+      expect(document.activeElement).toBe(expected);
     } finally { await unmount(rig); }
   });
 
@@ -129,7 +134,7 @@ describe("screen-owned thread-list focus", () => {
       document.body.append(outside);
       outside.focus();
       const dialog = await openDelete(rig, rowB!);
-      const removedId = rowB!.id.replace(/^thread-link-(?:sidebar|page)-/, "");
+      const removedId = threadIdOf(rowB!);
       await resolveListWithout(rig, removedId);
       expect(rig.list.contains(rowB!)).toBe(false);
       const cancel = dialog.querySelector<HTMLButtonElement>(".work-sheet-head button")!;
@@ -160,7 +165,7 @@ describe("screen-owned thread-list focus", () => {
       expect(document.activeElement).toBe(target);
       fold!.focus();
       expect(document.activeElement).toBe(fold);
-      const deletedId = target!.id.replace("thread-link-page-", "");
+      const deletedId = threadIdOf(target!);
       await resolveListWithout(rig, deletedId);
       expect(document.activeElement).toBe(fold);
     } finally { await unmount(rig); }
@@ -180,7 +185,7 @@ describe("screen-owned thread-list focus", () => {
       expect(document.activeElement).toBe(toolbarControl);
       toolbarControl.remove();
       const afterOutsideRemoval = document.activeElement;
-      const deletedId = target!.id.replace(/^thread-link-(?:sidebar|page)-/, "");
+      const deletedId = threadIdOf(target!);
       await resolveListWithout(rig, deletedId);
       expect(document.activeElement).toBe(afterOutsideRemoval);
       expect(rig.list.contains(document.activeElement)).toBe(false);
@@ -196,8 +201,8 @@ describe("screen-owned thread-list focus", () => {
       expect(rowB).toBeDefined();
       rig.model.ops.threadDeletePreview = vi.fn((threadId: string) => new Promise((resolve) => pending.set(threadId, resolve))) as never;
       rig.model.ops.threadDelete = vi.fn(async () => ({ ok: true, value: {} })) as never;
-      const idA = rowA!.id.replace("thread-link-sidebar-", "");
-      const idB = rowB!.id.replace("thread-link-sidebar-", "");
+      const idA = threadIdOf(rowA!);
+      const idB = threadIdOf(rowB!);
 
       const dialogA = await openDelete(rig, rowA!);
       await act(async () => { await new Promise((resolve) => setTimeout(resolve, 10)); });
