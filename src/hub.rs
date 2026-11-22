@@ -149,7 +149,10 @@ impl Hub {
             session.list = list;
             let watch = &session.watch;
             session.pending.threads.retain(|id| watch.contains(id));
-            session.pending.attempt_ends.retain(|end| watch.contains(&end.thread_id));
+            session
+                .pending
+                .attempt_ends
+                .retain(|end| watch.contains(&end.thread_id));
             session.live_seen.retain(|id, _| watch.contains(id));
             session.live_dirty.retain(|id| watch.contains(id));
             // A tab that starts watching a Thread mid-attempt is sent what is held.
@@ -224,7 +227,10 @@ impl Hub {
         const MAX_PENDING_ENDS: usize = 256;
         let mut inner = self.lock();
         for session in inner.sessions.values_mut() {
-            for end in ends.iter().filter(|end| session.watch.contains(&end.thread_id)) {
+            for end in ends
+                .iter()
+                .filter(|end| session.watch.contains(&end.thread_id))
+            {
                 if session.pending.attempt_ends.len() == MAX_PENDING_ENDS {
                     session.pending.attempt_ends.clear();
                     session.pending.resync = true;
@@ -232,7 +238,9 @@ impl Hub {
                 }
                 session.pending.attempt_ends.push(end.clone());
             }
-            if !ends.is_empty() { session.wake.notify_one(); }
+            if !ends.is_empty() {
+                session.wake.notify_one();
+            }
         }
     }
 

@@ -105,7 +105,13 @@ pub fn access(command: &Command) -> Access {
         | Command::IndexRetry(..)
         | Command::IndexRebuild(..)
         | Command::IndexProbe(..)
-        | Command::StorageCollect(..) => Access::Denied,
+        | Command::StorageCollect(..)
+        | Command::ScheduleAdd(..)
+        | Command::ScheduleList(..)
+        | Command::ScheduleSet(..)
+        | Command::ScheduleEnable(..)
+        | Command::ScheduleDisable(..)
+        | Command::ScheduleRemove(..) => Access::Denied,
         #[cfg(feature = "next-shellboy")]
         Command::IndexShrink(..) | Command::IndexRemove(..) => Access::Denied,
     }

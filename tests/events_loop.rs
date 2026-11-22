@@ -362,10 +362,15 @@ mod live_text {
             "live_text":[{"thread_id":"t1","attempt_id":"r1","input_through_node_id":"p","gap":false,"deltas":[delta(0,"next")]}]}))).unwrap();
         until("3 polls", || owner.event_args.lock().unwrap().len() == 3).await;
         let (pending, _) = hub.take(&tab);
-        assert_eq!(serde_json::to_value(&pending.attempt_ends).unwrap(), json!([
-            {"thread_id":"t1","attempt_id":"r0","outcome":"not_adopted","seq":2}
-        ]));
-        assert!(matches!(&hub.take_live(&tab)[..], [Out::Text { attempt_id, input_through_node_id: Some(p), .. }] if attempt_id == "r1" && p == "p"));
+        assert_eq!(
+            serde_json::to_value(&pending.attempt_ends).unwrap(),
+            json!([
+                {"thread_id":"t1","attempt_id":"r0","outcome":"not_adopted","seq":2}
+            ])
+        );
+        assert!(
+            matches!(&hub.take_live(&tab)[..], [Out::Text { attempt_id, input_through_node_id: Some(p), .. }] if attempt_id == "r1" && p == "p")
+        );
         cancel.cancel();
     }
 
