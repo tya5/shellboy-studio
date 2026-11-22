@@ -26,8 +26,15 @@ async fn keeps_the_cursor_drains_more_with_zero_timeout_and_fans_out_hints() {
 
     tx.send(events("inst1", "baseline", "c1", &[], false))
         .unwrap();
-    tx.send(events("inst1", "changed", "c2", &["t1", "t9"], true))
-        .unwrap();
+    tx.send(events_with_config(
+        "inst1",
+        "changed",
+        "c2",
+        &["t1", "t9"],
+        true,
+        true,
+    ))
+    .unwrap();
     tx.send(events("inst1", "timeout", "c3", &[], false))
         .unwrap();
     until("4 polls", || owner.event_args.lock().unwrap().len() == 4).await;
@@ -59,6 +66,8 @@ async fn keeps_the_cursor_drains_more_with_zero_timeout_and_fans_out_hints() {
         pending.list,
         "a tab showing the list is told about any change"
     );
+    assert!(pending.config_changed);
+    assert!(!hub.take(&tab).0.config_changed);
     assert!(!pending.resync);
     assert!(matches!(owner_state, OwnerState::Connected { .. }));
     cancel.cancel();

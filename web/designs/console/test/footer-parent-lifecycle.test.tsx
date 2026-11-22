@@ -21,7 +21,7 @@ it('retains the production footer across disconnect, loading, and reconnect pare
    await act(async()=>{
     f.db.threads.lead=summary('lead',{state,activity:state==='running'?'tools':state});
     f.db.details.lead=details('lead',{state,activity:state==='running'?'tools':state});
-    f.t.push({t:'changed',thread_ids:['lead'],list:true});await settle(f.t,f.db);
+    f.t.push({t:'changed', config_changed: false,thread_ids:['lead'],list:true});await settle(f.t,f.db);
    });
    expect(f.model.selectedRow.peek()?.summary.state).toBe(state);
    expect(host.querySelector('.conversation-status')).toBe(footer);

@@ -65,7 +65,7 @@ describe('right panel purpose',()=>{
    expect([...page.querySelectorAll('[data-panel-row-id]')].map(el=>el.textContent)).toEqual(['readme.txtファイル','notes.txtファイル']);
    await act(async()=>page.querySelector<HTMLButtonElement>('[data-panel-row-id="b"] button')!.click());
    first={items:[row('c','/fixture/new.txt')],next_cursor:'new-cut'};
-   await act(async()=>{f.t.push({t:'changed',thread_ids:['lead'],list:false});await flush();});
+   await act(async()=>{f.t.push({t:'changed', config_changed: false,thread_ids:['lead'],list:false});await flush();});
    const read=f.t.calls('attachment.list').at(-1)!;
    expect(read.args).toEqual({thread_id:'lead',limit:50});
    await act(async()=>{f.db.answered.add(read.id);f.t.ok(read.id,first);await flush();});
@@ -77,14 +77,14 @@ describe('right panel purpose',()=>{
    expect(page.querySelector('[data-panel-row-id="c"]')?.textContent).toContain('new.txt');
    expect(page.querySelector('[data-panel-detail]')?.textContent).toContain('notes.txt');
    first={items:[]};
-   await act(async()=>{f.t.push({t:'changed',thread_ids:['lead'],list:false});await settle(f.t,f.db);});
+   await act(async()=>{f.t.push({t:'changed', config_changed: false,thread_ids:['lead'],list:false});await settle(f.t,f.db);});
    expect(page.querySelector('[data-panel-row-id="b"]')).toBeNull();
    expect(page.querySelector('h3')?.textContent).toBe('添付'); // the open detail heading, not a list divider
    expect(page.querySelector('[data-panel-list] h3')).toBeNull();
    await act(async()=>page.querySelector<HTMLButtonElement>('[data-panel-back]')!.click());
    expect(document.activeElement).toBe(tabs[3]);
    await act(async()=>tabs[0]!.click());
-   await act(async()=>{f.t.push({t:'changed',thread_ids:['lead'],list:false});await settle(f.t,f.db);});
+   await act(async()=>{f.t.push({t:'changed', config_changed: false,thread_ids:['lead'],list:false});await settle(f.t,f.db);});
    expect(f.t.calls('attachment.list')).toHaveLength(5);
   } finally {f.model.dispose();f.data.stop();}
  });
@@ -102,7 +102,7 @@ describe('right panel purpose',()=>{
    if(mode==='partial'||mode==='expired') return {ok:true,result:{items:[row('replacement')],next_cursor:'replacement-cursor'}};
    return {ok:true,result:{items:[row(cursor?'second':'first')],next_cursor:cursor?'third-page':'second-page'}};
   };
-  const hint=async()=>{f.t.push({t:'changed',thread_ids:['lead'],list:false});await settle(f.t,f.db);};
+  const hint=async()=>{f.t.push({t:'changed', config_changed: false,thread_ids:['lead'],list:false});await settle(f.t,f.db);};
   try {
    const tab=f.host.querySelector<HTMLButtonElement>('[data-panel-tab="possessions"]')!;
    await act(async()=>tab.click());
@@ -267,7 +267,7 @@ describe('right panel purpose',()=>{
   const f=await setup();
   try {
    const id=source==='pending'?'queued':'owed-human';
-   const update=async()=>{f.t.push({t:'changed',thread_ids:['lead'],list:false});await settle(f.t,f.db);};
+   const update=async()=>{f.t.push({t:'changed', config_changed: false,thread_ids:['lead'],list:false});await settle(f.t,f.db);};
    if (source==='pending') {
     f.db.work.lead!.push({kind:'message',id,thread_id:'lead',message_id:id,state:'accepted',excerpt:'Queued'});
     await act(update);
@@ -306,7 +306,7 @@ describe('right panel purpose',()=>{
     expect(f.model.panelOperations.peek().get(id)?.disposition).toBe("pending");
     detail.awaiting_replies=detail.awaiting_replies.slice(0,16);
    }
-   await act(async()=>{f.t.push({t:'changed',thread_ids:['lead'],list:false});await flush();});
+   await act(async()=>{f.t.push({t:'changed', config_changed: false,thread_ids:['lead'],list:false});await flush();});
    expect(reads()).toBeGreaterThan(before);
    expect(f.model.panelOperations.peek().get(id)?.disposition).toBe("pending");
    await act(async()=>{await settle(f.t,f.db);});

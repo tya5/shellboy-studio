@@ -138,7 +138,7 @@ for(const outcome of ['ack first','late ACK','late error','lost ACK'] as const)i
   if(savedBeforeAck){
    await act(async()=>{f.t.push({t:'live',thread_id:'t',attempt_id:canonicalAttemptId(81),gap:false,deltas:[{offset:0,reasoning:false,text:'Answer in progress'}]});await flush();});
    rows=[{node_id:'canonical-own',kind:'user',selection:{ordinal:0},items:[{kind:'text',item_identity:JSON.stringify(['canonical-own','/content/0']),text:'Own submitted message',text_complete:true}],provenance:{sender:{kind:'human'},client_operation_id:call.operation_id}}];f.db.history.t=rows;
-   await act(async()=>{f.t.push({t:'changed',thread_ids:['t'],list:false});await settle(f.t,f.db);});
+   await act(async()=>{f.t.push({t:'changed', config_changed: false,thread_ids:['t'],list:false});await settle(f.t,f.db);});
   }
   if(savedBeforeAck){
    expect(f.model.pendingOwnMessage.peek()).toBeUndefined();
@@ -170,15 +170,15 @@ for(const outcome of ['ack first','late ACK','late error','lost ACK'] as const)i
   expect(composer.value).toBe('Third draft');
   const equalText:HistoryItem={node_id:'canonical-own',kind:'user',items:[{item_identity:'wrong',kind:'text',text:'Own submitted message',text_complete:true}],provenance:{sender:{kind:'human'}}};
   rows=[{...equalText,selection:{ordinal:0},provenance:{client_operation_id:next.operation_id+'-unrelated'}}];f.db.history.t=rows;
-  await act(async()=>{f.t.push({t:'changed',thread_ids:['t'],list:false});await settle(f.t,f.db);});
+  await act(async()=>{f.t.push({t:'changed', config_changed: false,thread_ids:['t'],list:false});await settle(f.t,f.db);});
   expect(host.querySelectorAll('[data-pending-own-message]')).toHaveLength(2);
   expect(f.model.acceptedOwnMessages.peek().map(row=>row.operationId)).toEqual([call.operation_id,next.operation_id]);
   rows=[{...equalText,node_id:'canonical-own',selection:{ordinal:0},provenance:{client_operation_id:call.operation_id}}];f.db.history.t=rows;
-  await act(async()=>{f.t.push({t:'changed',thread_ids:['t'],list:false});await settle(f.t,f.db);});
+  await act(async()=>{f.t.push({t:'changed', config_changed: false,thread_ids:['t'],list:false});await settle(f.t,f.db);});
   expect([...host.querySelectorAll('[data-pending-own-message]')].map(row=>row.textContent)).toEqual([expect.stringContaining('Own submitted message')]);
   expect(host.querySelectorAll('[data-node="canonical-own"] .message-markdown')).toHaveLength(1);
   rows=[...rows,{...equalText,node_id:'second-canonical',selection:{ordinal:1},provenance:{client_operation_id:next.operation_id},items:[{kind:'text',item_identity:'second',text:'Own submitted message',text_complete:true}]}];f.db.history.t=rows;
-  await act(async()=>{f.t.push({t:'changed',thread_ids:['t'],list:false});await settle(f.t,f.db);});
+  await act(async()=>{f.t.push({t:'changed', config_changed: false,thread_ids:['t'],list:false});await settle(f.t,f.db);});
   expect(host.querySelector('[data-pending-own-message]')).toBeNull();
   expect(host.querySelectorAll('[data-node="canonical-own"] .message-markdown')).toHaveLength(1);
   expect(host.querySelectorAll('[data-node="second-canonical"] .message-markdown')).toHaveLength(1);
@@ -282,7 +282,7 @@ for (const renderMode of ['app','ordered'] as const) it(`actual own cohort diffe
  const host=document.createElement('div');document.body.append(host);const context:DesignContext={model:f.model,prefs:signal(loadPrefs({read:()=>null,write:()=>{}},[{name:'console',themes:[{name:'light'}]}])),setPrefs:()=>{},designs:[],submitToken:async()=>false};
  const node=(id:string,text?:string,complete?:boolean):HistoryItem=>({node_id:id,kind:'user',selection:{ordinal:id==='a'?0:1},items:text===undefined?[]:[{kind:'text',item_identity:id,text,text_complete:complete??false}],provenance:{sender:{kind:'human'},client_operation_id:f.t.calls('message.send')[id==='a'?0:1]?.operation_id}});
  const sendAndAck=async(text:string,id:string)=>{const area=host.querySelector<HTMLTextAreaElement>('textarea');if(renderMode==='app'){area!.value=text;area!.dispatchEvent(new Event('input',{bubbles:true}));area!.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));await flush();}else{const sent=f.model.send(text);await flush();expect(f.model.pendingOwnMessage.peek()?.text).toBe(text);void sent;}const call=f.t.calls('message.send').at(-1)!;f.db.answered.add(call.id);await act(async()=>{f.t.ok(call.id,{message_id:id,thread_id:'t'});await flush(8);});};
- const paint=async()=>{f.t.push({t:'changed',thread_ids:['t'],list:false});await settle(f.t,f.db);await flush(12);};
+ const paint=async()=>{f.t.push({t:'changed', config_changed: false,thread_ids:['t'],list:false});await settle(f.t,f.db);await flush(12);};
  try{
   await act(async()=>{if(renderMode==='app')render(<App context={context}/>,host);else {await settle(f.t,f.db);const handle=f.model.handle.peek()!,win=f.model.longReader.peek()!;render(<OrderedHistory model={f.model} handle={handle} win={win} t={f.model.t.peek()}/>,host);}await settle(f.t,f.db);});
   await sendAndAck('Original A','a');await sendAndAck('Original B','b');
@@ -334,10 +334,10 @@ for(const withPrefix of [false,true])for(const ids of [['2'],['2','3','4','5']])
   const assistantRow={node_id:'assistant-arrival',kind:'assistant_response' as const,selection:{ordinal:prefixRows.length},items:[{kind:'text' as const,item_identity:'response',text:'Diagnostic assistant receipt response',text_complete:true}]};
   const prefixTexts=prefixRows.flatMap(row=>row.items?.flatMap(item=>item.kind==='text'?[item.text]:[])??[]);
   const ownTexts=ids.map(id=>`Diagnostic own ${id}`),expectedBefore=[...prefixTexts,'Diagnostic assistant receipt response',...ownTexts];
-  f.db.history.t=[...prefixRows,assistantRow];revision++;await act(async()=>{f.t.push({t:'changed',thread_ids:['t'],list:false});await settle(f.t,f.db);await flush(12);});
+  f.db.history.t=[...prefixRows,assistantRow];revision++;await act(async()=>{f.t.push({t:'changed', config_changed: false,thread_ids:['t'],list:false});await settle(f.t,f.db);await flush(12);});
   expect(host.querySelectorAll('[data-pending-own-message]')).toHaveLength(ids.length);expect([...host.querySelectorAll('.msg')].map(row=>row.querySelector('.message-markdown')?.textContent?.trim())).toEqual(expectedBefore);const assistant=host.querySelector('[data-node="assistant-arrival"]');
   const savedOwnRows=ids.map((id,index)=>({node_id:`own-${id}`,kind:'user' as const,selection:{ordinal:prefixRows.length+1+index},provenance:{client_operation_id:f.t.calls('message.send')[index]!.operation_id},items:[{kind:'text' as const,item_identity:`body-${id}`,text:`Diagnostic own ${id}`,text_complete:true}]}));
-  f.db.history.t=[...prefixRows,assistantRow,...savedOwnRows];revision+=5;await act(async()=>{f.t.push({t:'changed',thread_ids:['t'],list:false});await settle(f.t,f.db);await flush(12);});
+  f.db.history.t=[...prefixRows,assistantRow,...savedOwnRows];revision+=5;await act(async()=>{f.t.push({t:'changed', config_changed: false,thread_ids:['t'],list:false});await settle(f.t,f.db);await flush(12);});
   expect([...host.querySelectorAll('.msg')].map(row=>row.querySelector('.message-markdown')?.textContent?.trim())).toEqual(expectedBefore);expect(host.querySelectorAll('[data-pending-own-message]')).toHaveLength(0);expect(f.model.acceptedOwnMessages.peek()).toHaveLength(0);expect(host.querySelector('[data-node="assistant-arrival"]')).toBe(assistant);
  }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
 });
@@ -476,7 +476,7 @@ it('accepted live preview retires after saved >16KiB body loads through the ordi
   expect(host.textContent).toContain('live preview');expect(handle.handoff.value.some(record=>record.attemptId===attempt)).toBe(true);
   tuples.length=0;collecting=true;
   rows=[{node_id:'saved-assistant',kind:'assistant_response',selection:{ordinal:0},items:[{kind:'text',item_identity:'answer',text:excerpt,text_complete:false}],provenance:{sender:{kind:'assistant'},attempt_id:attempt}},{node_id:'newer-complete',kind:'assistant_response',selection:{ordinal:1},items:[{kind:'text',item_identity:'newer',text:'newer complete',text_complete:true}],provenance:{sender:{kind:'assistant'}}}];f.db.history.t=rows;
-  await act(async()=>{f.t.push({t:'changed',thread_ids:['t'],list:false});await settle(f.t,f.db);});
+  await act(async()=>{f.t.push({t:'changed', config_changed: false,thread_ids:['t'],list:false});await settle(f.t,f.db);});
   expect(handle.handoff.value.some(record=>record.attemptId===attempt)).toBe(false);expect(tuples.length).toBeGreaterThan(1);
   const committedRef=f.model.longReader.peek()!.acceptedView.peek(),planSources=committedRef.displayPlan!.entries.map(entry=>entry.item.source);
   expect(committedRef.rows.some(row=>row.node_id==='saved-assistant'&&row.kind==='assistant_response'&&row.provenance?.attempt_id===attempt)).toBe(true);
@@ -508,7 +508,7 @@ it("auto-loads only the newest typed prose body once", async () => {
   let rows: HistoryItem[] = [{ node_id: "new", kind: "assistant_response", selection: { ordinal: 0 }, items: [{ kind: "text", item_identity: "first", text: "Newest first", text_complete: true }, { kind: "text", item_identity: "second", text: "Newest partial", text_complete: false }] }];
   const f = await fixtureModel({ capabilities: ["history.window"], route: "conversation", threadId: "t", configure(db) { db.threads = { t: summary("t") }; db.details.t = details("t"); db.history.t = rows; const base = db.answer.bind(db); db.answer = call => call.command === "history.get" ? { ok: true, result: { node_id: "new", kind: "assistant_response", text: "Newest first\nNewest full", provenance: { sender: { kind: "assistant" } } } } : call.command === "history.window" ? { ok: true, result: { thread_id: "t", revision: 1, total: rows.length, items: rows } } : base(call); } });
   const host = document.createElement("div"); document.body.append(host);
-  try { await act(async () => { render(<App context={{ model: f.model, prefs: signal(loadPrefs({ read: () => null, write: () => {} }, [{ name: "console", themes: [{ name: "light" }] }])), designs: [], setPrefs() {}, submitToken: async () => false }} />, host); await settle(f.t, f.db); await flush(8); }); expect(f.t.calls("history.get").map(call => requestedHistoryNode(call))).toEqual(["new"]); const autoId=f.t.calls("history.get")[0]!.id; expect(host.textContent).toContain("Newest full"); f.t.push({t:"changed",thread_ids:["t"],list:false}); await settle(f.t,f.db); expect(f.t.calls("history.get")).toHaveLength(1); expect(f.t.calls("history.get")[0]!.id).toBe(autoId); } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
+  try { await act(async () => { render(<App context={{ model: f.model, prefs: signal(loadPrefs({ read: () => null, write: () => {} }, [{ name: "console", themes: [{ name: "light" }] }])), designs: [], setPrefs() {}, submitToken: async () => false }} />, host); await settle(f.t, f.db); await flush(8); }); expect(f.t.calls("history.get").map(call => requestedHistoryNode(call))).toEqual(["new"]); const autoId=f.t.calls("history.get")[0]!.id; expect(host.textContent).toContain("Newest full"); f.t.push({t:"changed", config_changed: false,thread_ids:["t"],list:false}); await settle(f.t,f.db); expect(f.t.calls("history.get")).toHaveLength(1); expect(f.t.calls("history.get")[0]!.id).toBe(autoId); } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
 });
 
 it("mounted stale auto body refuses an old cursor after rev2/rev3 windows", async () => {
@@ -588,7 +588,7 @@ async function witnessOwnSendPublication(scenario: 'streaming' | 'two sends' | '
  };
  const adopt = async (...savedRows: HistoryItem[]) => {
   history.push(...savedRows); f.db.history.lead = [...history]; f.db.historyRevisions.lead!++;
-  await act(async () => { f.t.push({t:'changed',thread_ids:['lead'],list:false}); await settle(f.t,f.db); await flush(16); });
+  await act(async () => { f.t.push({t:'changed', config_changed: false,thread_ids:['lead'],list:false}); await settle(f.t,f.db); await flush(16); });
   expect(f.model.longReader.peek()!.acceptedView.peek().rows).toEqual(expect.arrayContaining(savedRows.map(row => expect.objectContaining({node_id:row.node_id}))));
  };
  try {

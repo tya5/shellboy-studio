@@ -39,7 +39,7 @@ it('protocol 5 unifies human/thread duties while preserving shells and organizat
     await act(async () => { await settle(r.t,r.db); await answer; });
     expect(r.t.calls('message.reply').at(-1)!.args).toEqual({message_id:'human',text:'confirmed'});
     Object.assign(r.db.details.lead!,{awaiting_replies:[]});
-    await act(async()=>{r.t.push({t:'changed',thread_ids:['lead'],list:false});await settle(r.t,r.db);});
+    await act(async()=>{r.t.push({t:'changed', config_changed: false,thread_ids:['lead'],list:false});await settle(r.t,r.db);});
     expect(r.model.threadReplies.value).toEqual([]);
     expect(host.textContent).not.toContain('P5_HUMAN');
     expect(r.t.calls('thread.get').every(call=>!JSON.stringify(call.args).includes('owner_run'))).toBe(true);

@@ -118,7 +118,7 @@ it("reads owner catalogs only while the filter menu is open, independently of fi
   const prefs=signal(loadPrefs({read:()=>null,write(){}},DESIGNS));
   const trigger=()=>host.querySelector<HTMLButtonElement>('.side-search [aria-haspopup="menu"]')!;
   const menu=()=>document.querySelector('[role="menu"]');
-  const hints=async()=>{f.t.push({t:"changed",thread_ids:[],list:true});await settle(f.t,f.db);};
+  const hints=async()=>{f.t.push({t:"changed", config_changed: false,thread_ids:[],list:true});await settle(f.t,f.db);};
   try {
     await act(async()=>{render(<App context={{model:f.model,prefs,designs:DESIGNS,setPrefs(){},submitToken:async()=>false}}/>,host);await settle(f.t,f.db);});
     expect(f.t.calls("thread.cwds")).toHaveLength(0);
@@ -214,7 +214,7 @@ it('settles the mounted tag session while hidden and ignores late results after 
     expect(f.model.org.tagDraft.peek()).toMatchObject({ add: [], action: { kind: 'idle' } });
     expect(panel()?.textContent).not.toContain('new-tag');
     Object.assign(f.db.threads.lead!, { tags: ['old', 'new-tag'] });
-    await act(async () => { f.t.push({ t: 'changed', thread_ids: ['lead'], list: true }); await settle(f.t, f.db); });
+    await act(async () => { f.t.push({ t: 'changed', config_changed: false, thread_ids: ['lead'], list: true }); await settle(f.t, f.db); });
     expect(panel()?.textContent).toContain('new-tag');
     await stage('old-request'); await act(async () => input('raw-a'));
     await act(async () => { apply().click(); await flush(); });
