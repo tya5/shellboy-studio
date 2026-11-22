@@ -26,12 +26,12 @@ try{
     if(location.href!==${JSON.stringify(url)})return;
     const image=document.querySelector('.conversation-status img');
     if(!image?.complete||!image.naturalWidth)return;
-    const footer=image.parentElement, rect=image.getBoundingClientRect(), bar=footer.getBoundingClientRect();
-    return {src:image.src,x:rect.x,y:rect.y,width:rect.width,height:rect.height,bar:bar.height,
+    const footer=image.closest('.conversation-status'), rect=image.getBoundingClientRect(), bar=footer.getBoundingClientRect();
+    return {src:image.currentSrc,x:rect.x,y:rect.y,width:rect.width,height:rect.height,bar:bar.height,
      text:footer.textContent,strip:document.querySelector('.work-strip')?.textContent,
      fixedFields:[...footer.querySelectorAll('span:not([data-status-description])')].every(node=>node.getBoundingClientRect().right<=bar.right && node.scrollWidth<=node.clientWidth+1)};
    })()`));
-   assert.equal(frame.src.endsWith('#running'),state==='running');
+   assert.equal(frame.src.endsWith('#running'),state==='running'&&!reduced);
    if(state==='waiting')assert(frame.src.includes('thinking-24'));
    assert.equal(frame.width,24);assert.equal(frame.height,24);assert.equal(frame.bar,40);
    assert(frame.fixedFields,`${width}/${theme}/${state}: clipped fact`);
