@@ -193,7 +193,10 @@ describe("shell footer toggles", () => {
     const toggle = systemSources["../system/components/ShellToggle/index.tsx"] ?? "";
     expect(toggle).toContain("panel ? \"M20");
     expect(toggle).toContain("panel ? \" right\" : \"\"");
-    expect(rail).toContain(".panel-tabs-rail .panel-tab-count{position:absolute;top:2px;right:2px");
-    expect(rail).toContain("background:var(--raised);color:var(--fg)");
+    expect(rail).toContain(".panel-tab-count { display:grid; place-items:center;");
+    expect(rail).toContain("border-radius:999px; background:var(--wait); color:var(--fg)");
+    expect(rail).toContain(".panel-tabs:not(.panel-tabs-rail) .panel-tab-count { position:absolute;");
+    expect(rail).toContain(".panel-tabs-rail .panel-tab-count { position:absolute; inset-block-start:var(--space-2); inset-inline-end:var(--space-2); }");
+    expect(rail).not.toContain(".panel-tabs-rail .panel-tab-count { background:");
   });
 });
