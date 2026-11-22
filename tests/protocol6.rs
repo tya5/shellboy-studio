@@ -14,7 +14,7 @@ use shellboy_studio::{
 fn exact_protocol6_and_unified_thread_reply_shape() {
     assert_eq!(shellboy::protocol::PROTOCOL_VERSION, 6);
     let value = json!({"thread_id":"t", "title":"synthetic", "cwd":"/", "connection":"c",
-    "model":"m", "agents_path":"AGENTS.md", "parent_id":"organization", "shells_count":1,
+    "model":"m", "agents_path":"AGENTS.md", "parent_id":"organization", "shells_count":1, "summarizing":false,
     "awaiting_replies":[
         {"message_id":"h", "recipient_kind":"human", "recipient_thread_id":"t", "excerpt":"Choose", "created_at":"2026-01-01T00:00:00Z", "elapsed_ms":0, "delivery_status":"accepted", "reminded":false},
         {"message_id":"q", "recipient_kind":"thread", "recipient_thread_id":"child", "excerpt":"Review", "created_at":"2026-01-01T00:00:00Z", "elapsed_ms":0, "delivery_status":"applied", "reminded":false}
