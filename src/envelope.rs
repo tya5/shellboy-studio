@@ -100,6 +100,7 @@ pub enum ServerFrame {
     Changed {
         thread_ids: Vec<String>,
         list: bool,
+        config_changed: bool,
     },
     /// Unsaved model text since the tab was last told (events-and-external-protocol 2.5, rule 3):
     /// a gap qualifies the held text, not whether the attempt was adopted.

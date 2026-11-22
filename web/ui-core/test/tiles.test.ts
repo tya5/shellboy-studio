@@ -33,17 +33,17 @@ describe("visible tile reads", () => {
     expect(t.calls("history.list")).toHaveLength(0);
     expect(tiles.previews.value.size).toBe(20);
     expect(t.calls("history.window")[0]!.args).toMatchObject({ before: 19, after: 0, excerpt_chars: 160 });
-    t.push({ t: "changed", thread_ids: ["0"], list: false }); await answer(t);
+    t.push({ t: "changed", config_changed: false, thread_ids: ["0"], list: false }); await answer(t);
     expect(t.calls("history.window")).toHaveLength(21);
     expect(t.calls("shell.list")).toHaveLength(21);
-    tiles.hide("0"); t.push({ t: "changed", thread_ids: ["0"], list: false }); await flush();
+    tiles.hide("0"); t.push({ t: "changed", config_changed: false, thread_ids: ["0"], list: false }); await flush();
     expect(t.calls("history.window")).toHaveLength(21);
     tiles.close(); data.stop();
   });
   it("cancels superseded reads and ignores unsupported owners", async () => {
     const { t, data, tiles } = await setup();
     tiles.show("a"); await flush(); const id = t.calls("history.window")[0]!.id;
-    t.push({ t: "changed", thread_ids: ["a"], list: false }); await flush();
+    t.push({ t: "changed", config_changed: false, thread_ids: ["a"], list: false }); await flush();
     expect(t.cancels()).toContain(id);
     tiles.close(); data.stop();
     const old = await setup(false); old.tiles.show("a"); await flush();

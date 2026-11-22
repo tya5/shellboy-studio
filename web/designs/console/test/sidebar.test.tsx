@@ -21,7 +21,7 @@ it("keeps status updates in place, persists child folds, and moves pins only aft
   const prefs = signal(loadPrefs({ read: () => null, write() {} }, designs));
   const link = (id: string) => host.querySelector<HTMLAnchorElement>(`#thread-link-sidebar-${id}`);
   const sides = () => [...host.querySelectorAll(".side-list [data-thread-row] a")].map(el => el.id);
-  const hint = async () => { f.t.push({ t: "changed", thread_ids: ["other"], list: true }); await settle(f.t, f.db); };
+  const hint = async () => { f.t.push({ t: "changed", config_changed: false, thread_ids: ["other"], list: true }); await settle(f.t, f.db); };
   try {
     await act(async () => { render(<App context={{ model: f.model, prefs, designs, setPrefs: change => { prefs.value = { ...prefs.peek(), ...change }; }, submitToken: async () => false }} />, host); await settle(f.t, f.db); });
     const parent = link("lead")!;
@@ -244,7 +244,7 @@ it("bolds a background completion only after the list hint and clears on open or
   const host = document.createElement("div"); document.body.append(host);
   const link = () => host.querySelector<HTMLAnchorElement>("#thread-link-sidebar-other")!;
   const unread = () => !!link().querySelector("strong[data-unread]");
-  const hint = async (detail = false) => { f.t.push({ t: "changed", thread_ids: detail ? ["other"] : [], list: true }); await settle(f.t, f.db); };
+  const hint = async (detail = false) => { f.t.push({ t: "changed", config_changed: false, thread_ids: detail ? ["other"] : [], list: true }); await settle(f.t, f.db); };
   const end = (marker: typeof first) => { f.db.threads.other = summary("other", { ...f.db.threads.other, last_end_message: marker }); };
   const mark = async (label: string) => {
     await act(async () => { link().parentElement!.querySelector<HTMLButtonElement>("[aria-haspopup=menu]")!.click(); });

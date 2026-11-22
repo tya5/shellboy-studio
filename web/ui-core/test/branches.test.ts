@@ -267,13 +267,13 @@ describe("Branches over the fake transport", () => {
     const { t, db, model } = await branches();
     const before = t.calls("thread.branches").length;
     db.threads.fresh = { ...db.threads.lead!, thread_id: "fresh" };
-    t.push({ t: "changed", thread_ids: ["fresh"], list: true });
+    t.push({ t: "changed", config_changed: false, thread_ids: ["fresh"], list: true });
     await settle(t, db);
     const after = t.calls("thread.branches").length;
     expect(after).toBeGreaterThan(before);
     model.applyRoute({ view: "monitor" });
     db.threads.fresh2 = { ...db.threads.lead!, thread_id: "fresh2" };
-    t.push({ t: "changed", thread_ids: ["fresh2"], list: true });
+    t.push({ t: "changed", config_changed: false, thread_ids: ["fresh2"], list: true });
     await settle(t, db);
     expect(t.calls("thread.branches").length).toBe(after);
   });
@@ -281,7 +281,7 @@ describe("Branches over the fake transport", () => {
     const { t, db, model } = await branches("conversation");
     expect(t.calls("thread.branches")).toHaveLength(1);
     expect(model.marks.value.get("n100")).toBe(1);
-    t.push({ t: "changed", thread_ids: ["lead"], list: false });
+    t.push({ t: "changed", config_changed: false, thread_ids: ["lead"], list: false });
     await settle(t, db);
     expect(t.calls("thread.branches")).toHaveLength(1);
     const plain = db.answer;

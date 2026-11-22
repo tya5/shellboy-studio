@@ -474,6 +474,12 @@ export class AppModel {
     this.senderTitles = new SenderTitles(this.ops);
     this.org = new ThreadOrg(this.ops, () => this.data.capabilities.peek());
     this.config = new ConfigEditor(this.ops);
+    this.disposers.push(effect(() => {
+      this.data.configChanged.value;
+      if (this.route.value.view === "settings" && this.data.capabilities.value.includes(CAPABILITY_CONFIG)) {
+        void this.config.configChanged();
+      }
+    }));
     this.guideRegistration = new GuideRegistration(this.ops);
     this.setup = new ConnectionSetup(this.ops);
     this.embedding = new EmbeddingSetup(this.ops, this.setup);

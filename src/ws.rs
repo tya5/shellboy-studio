@@ -167,10 +167,11 @@ pub async fn session<O: Owner>(
                 }
                 // Replay precedes any result from this tab's ensuing history read.
                 if pending.resync && !send(&mut socket, &ServerFrame::Resync).await { break }
-                if (!pending.threads.is_empty() || pending.list)
+                if (!pending.threads.is_empty() || pending.list || pending.config_changed)
                     && !send(&mut socket, &ServerFrame::Changed {
                         thread_ids: pending.threads.into_iter().collect(),
                         list: pending.list,
+                        config_changed: pending.config_changed,
                     }).await { break }
                 let mut open = true;
                 for fact in pending.attempt_ends {

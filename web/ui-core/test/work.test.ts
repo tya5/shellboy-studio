@@ -31,13 +31,13 @@ describe("bounded conversation work", () => {
     const { model, t, db } = await fixtureModel();
     db.bodies.m = "Hello pending message";
     db.work.lead = [{ kind: "message", id: "m", message_id: "m", thread_id: "lead", state: "held" }];
-    t.push({ t: "changed", thread_ids: ["lead"], list: false });
+    t.push({ t: "changed", config_changed: false, thread_ids: ["lead"], list: false });
     await settle(t, db);
     expect(model.work.value.pending.map((r) => r.label)).toEqual(["Hello pending message"]);
     const calls = t.calls("status");
     expect(calls.at(-1)?.args).toMatchObject({ thread_id: "lead", limit: 200 });
     db.work.lead = [];
-    t.push({ t: "changed", thread_ids: ["lead"], list: false });
+    t.push({ t: "changed", config_changed: false, thread_ids: ["lead"], list: false });
     await settle(t, db);
     expect(model.work.value.pending).toEqual([]);
     model.dispose();
@@ -46,11 +46,11 @@ describe("bounded conversation work", () => {
     const { model, t, db } = await fixtureModel();
     db.bodies.m = "Delivered message";
     db.work.lead = [{ kind: "message", id: "m", message_id: "m", thread_id: "lead", state: "held" }];
-    t.push({ t: "changed", thread_ids: ["lead"], list: false }); await settle(t, db);
+    t.push({ t: "changed", config_changed: false, thread_ids: ["lead"], list: false }); await settle(t, db);
     expect(model.work.value.pending.map((r) => r.id)).toEqual(["m"]);
     db.work.lead = [];
     db.history.lead!.push({ node_id: "m", kind: "user", excerpt: "Delivered message", execution_count: 0 });
-    t.push({ t: "changed", thread_ids: ["lead"], list: false }); await flush();
+    t.push({ t: "changed", config_changed: false, thread_ids: ["lead"], list: false }); await flush();
     const status = t.calls("status").at(-1)!;
     for (const call of t.calls().filter((c) => !db.answered.has(c.id) && c.id !== status.id)) {
       db.answered.add(call.id); const response = db.answer(call);
@@ -92,7 +92,7 @@ describe("bounded conversation work", () => {
   it("reads no more than eight pending bodies", async () => {
     const { model, t, db } = await fixtureModel();
     db.work.lead = Array.from({ length: 12 }, (_, n) => ({ kind: "message", id: `m${n}`, message_id: `m${n}`, thread_id: "lead", state: "held" }));
-    t.push({ t: "changed", thread_ids: ["lead"], list: false });
+    t.push({ t: "changed", config_changed: false, thread_ids: ["lead"], list: false });
     await settle(t, db);
     expect(t.calls("history.get")).toHaveLength(8);
     expect(t.calls("history.get").every((call) => (call.args as {limit_bytes: number}).limit_bytes === 1024)).toBe(true);

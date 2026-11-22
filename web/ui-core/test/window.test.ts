@@ -53,7 +53,7 @@ describe("opening and measured coordinates", () => {
       lastTick = tick;
       r.w.changed();
     });
-    r.t.push({ t: "changed", thread_ids: ["t"], list: false });
+    r.t.push({ t: "changed", config_changed: false, thread_ids: ["t"], list: false });
     await r.settle();
     stopHint();
     expect(r.t.calls("history.window").length).toBeGreaterThan(1);

@@ -120,7 +120,7 @@ describe("Conversation work regions", () => {
     db.bodies.m = "Please review";
     db.shells.lead = [{ execution_id: "exec-1", state: "running", command_excerpt: "test command" }];
     const el = draw(model);
-    act(() => t.push({ t: "changed", thread_ids: ["lead"], list: false }));
+    act(() => t.push({ t: "changed", config_changed: false, thread_ids: ["lead"], list: false }));
     await act(async () => settle(t, db));
     const sidebar = el.querySelector(".details")!;
     const headings = [...sidebar.querySelectorAll("#panel-page-work h3 > span:first-child")].map(text);
@@ -130,7 +130,7 @@ describe("Conversation work regions", () => {
     expect(el.querySelector(".work-strip")?.textContent).toContain("Conversation work");
     expect(el.querySelector(".work-strip")?.textContent).not.toContain("Running at least");
     db.work.lead = [];
-    act(() => t.push({ t: "changed", thread_ids: ["lead"], list: false }));
+    act(() => t.push({ t: "changed", config_changed: false, thread_ids: ["lead"], list: false }));
     await act(async () => settle(t, db));
     expect(el.querySelector(".work-strip")).toBeNull();
     expect(el.querySelectorAll("#panel-page-work [data-panel-row-id]")).toHaveLength(0);
@@ -162,7 +162,7 @@ describe("Conversation live text", () => {
     // A bare live_end has no exact terminal receipt: keep the live text and independent saved prose.
     db.history["lead"] = [...(db.history["lead"] ?? []), { node_id: "saved-1", kind: "assistant_response", excerpt: "Final saved answer", items: [{item_identity:"text",kind:"text",text:"Final saved answer",text_complete:true}], provenance: { created_at: "2099-01-01T00:00:00+09:00", sender: { kind: "shellboy" } } }];
     act(() => {
-      t.push({ t: "changed", thread_ids: ["lead"], list: false });
+      t.push({ t: "changed", config_changed: false, thread_ids: ["lead"], list: false });
       t.push({ t: "live_end", thread_id: "lead" });
     });
     await act(async () => {
@@ -187,7 +187,7 @@ describe("Conversation live text", () => {
     act(() => t.push(liveFrame("Live answer")));
     await act(async () => flushPromises());
     db.history.lead = [...(db.history.lead ?? []), { node_id: "user-new", kind: "user", excerpt: "New human message", provenance: { sender: { kind: "human" } } }];
-    act(() => t.push({ t: "changed", thread_ids: ["lead"], list: false }));
+    act(() => t.push({ t: "changed", config_changed: false, thread_ids: ["lead"], list: false }));
     await act(async () => settle(t, db));
     expect(text(el)).toContain("Live answer");
     expect(el.querySelector('[data-node="user-new"]')).not.toBeNull();
@@ -203,7 +203,7 @@ describe("Conversation live text", () => {
     act(() => t.push({ t: "live_end", thread_id: "lead" }));
     await act(async () => settle(t, db));
     db.history.lead = [...db.history.lead, { node_id: "user-order", kind: "user", excerpt: "Later human", provenance: { sender: { kind: "human" } } }];
-    act(() => t.push({ t: "changed", thread_ids: ["lead"], list: false }));
+    act(() => t.push({ t: "changed", config_changed: false, thread_ids: ["lead"], list: false }));
     await act(async () => settle(t, db));
     expect(text(el)).toContain("Saved answer");
     expect(text(el)).toContain("Answer before save");
@@ -239,7 +239,7 @@ describe("Conversation live text", () => {
     act(() => t.push(liveFrame("Window live answer")));
     await act(async () => flushPromises());
     owner.append(1);
-    act(() => t.push({ t: "changed", thread_ids: ["lead"], list: false }));
+    act(() => t.push({ t: "changed", config_changed: false, thread_ids: ["lead"], list: false }));
     await act(async () => settle(t, db));
     expect(text(el)).toContain("Window live answer");
     expect(text(el)).toContain("Window human");
@@ -420,7 +420,7 @@ describe("Conversation", () => {
     delete lead.context_usage;
     const el = draw(model);
     await act(async () => {
-      t.push({ t: "changed", thread_ids: ["lead"], list: false });
+      t.push({ t: "changed", config_changed: false, thread_ids: ["lead"], list: false });
       await (await import("../../../data/test/harness")).settle(t, db);
     });
     expect(el.querySelector(".context-bar-root")).toBeNull();
@@ -475,7 +475,7 @@ describe("Monitor", () => {
     act(() => running.click());
     const before = [...el.querySelectorAll(".card h2")].map(text);
     db.threads.lead = { ...db.threads.lead!, activity: "completed", state: "completed" };
-    act(() => t.push({ t: "changed", thread_ids: [], list: true }));
+    act(() => t.push({ t: "changed", config_changed: false, thread_ids: [], list: true }));
     await act(async () => settle(t, db));
     expect([...el.querySelectorAll(".card h2")].map(text)).toEqual(before);
     expect(text(el)).toContain("No longer matches the filter");

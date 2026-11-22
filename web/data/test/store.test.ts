@@ -138,7 +138,7 @@ describe("resync, restart and loss", () => {
     const h = data.openThread("a", nextOrdinal());
     await settle(t, db);
     delete db.details.a;
-    t.push({ t: "changed", thread_ids: ["a"], list: false });
+    t.push({ t: "changed", config_changed: false, thread_ids: ["a"], list: false });
     await settle(t, db);
     expect(h.detail.value).toMatchObject({
       stale: true,
@@ -236,7 +236,7 @@ describe("live text preview", () => {
     f.frame();
     t.push(end());
     await settle(t, owner);
-    t.push({ t: "changed", thread_ids: ["a"], list: false });
+    t.push({ t: "changed", config_changed: false, thread_ids: ["a"], list: false });
     await settle(t, owner);
     expect(h.preview.value).toMatchObject({ kind: "live", attemptId: "a1", text: "VISIBLE_HANDOFF_BODY", ending: true });
   });
@@ -247,7 +247,7 @@ describe("live text preview", () => {
     f.frame();
     t.push(end());
     owner.history.a = [asst("unrelated", "unrelated response")];
-    t.push({ t: "changed", thread_ids: ["a"], list: false });
+    t.push({ t: "changed", config_changed: false, thread_ids: ["a"], list: false });
     await settle(t, owner);
     expect(h.preview.value).toMatchObject({ kind: "live", attemptId: "a1", text: "VISIBLE_HANDOFF_BODY" });
   });
@@ -308,7 +308,7 @@ describe("live text preview", () => {
     await settle(t, owner);
     expect(h.preview.value.kind, "no saved message yet, so the text stays").toBe("live");
     owner.history["a"] = [asst("n1", "earlier"), asst("n2", "Hello there")];
-    t.push({ t: "changed", thread_ids: ["a"], list: false });
+    t.push({ t: "changed", config_changed: false, thread_ids: ["a"], list: false });
     await settle(t, owner);
     expect(h.preview.value).toMatchObject({ kind: "live", ending: true });
   });
@@ -318,7 +318,7 @@ describe("live text preview", () => {
     t.push(live([d(0, "Hello")]));
     f.frame();
     owner.history["a"] = [asst("n1", "earlier"), asst("n2", "Hello")];
-    t.push({ t: "changed", thread_ids: ["a"], list: false });
+    t.push({ t: "changed", config_changed: false, thread_ids: ["a"], list: false });
     await settle(t, owner);
     expect(text(h), "the live text is still the attempt's own until it ends").toBe("Hello");
     t.push(end());
@@ -332,7 +332,7 @@ describe("live text preview", () => {
     t.push(end());
     await settle(t, owner);
     expect(text(h)).toBe("partial");
-    t.push({ t: "changed", thread_ids: ["a"], list: false });
+    t.push({ t: "changed", config_changed: false, thread_ids: ["a"], list: false });
     await settle(t, owner);
     expect(h.preview.value).toMatchObject({ kind: "live", ending: true });
   });
@@ -435,7 +435,7 @@ describe("the Thread list stays bounded however many Threads exist", () => {
     const before = x.t.calls("thread.list").length;
     x.all[60] = { ...x.all[60]!, title: "moved up" };
     x.all.unshift(summary("fresh"));
-    x.t.push({ t: "changed", thread_ids: ["fresh"], list: true });
+    x.t.push({ t: "changed", config_changed: false, thread_ids: ["fresh"], list: true });
     await settle(x.t, x.db);
     expect(x.t.calls("thread.list").length).toBe(before + 1);
     const items = x.data.threadList.value.items;
