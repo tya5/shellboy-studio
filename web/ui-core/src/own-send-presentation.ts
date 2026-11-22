@@ -24,7 +24,7 @@ export function ownSendPresentation(scope: string, cohort: readonly PendingOwnMe
     if (row.kind !== "live") return [];
     const position = row.inputThroughNodeId === null ? -1
       : row.inputThroughNodeId === undefined ? undefined : positions.get(row.inputThroughNodeId);
-    const before = position === undefined ? rows.find(saved => saved.kind === "user" && retire.some(own => own.operationId === saved.provenance?.client_operation_id))?.node_id
+    const before = position === undefined ? undefined
       : savedUsers.find(saved => positions.get(saved.node_id)! > position)?.node_id;
     return [before === undefined ? row : { ...row, beforeSavedNodeId: before }];
   });

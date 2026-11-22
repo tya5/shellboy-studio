@@ -11,7 +11,7 @@ use shellboy_studio::{
 };
 
 #[test]
-fn exact_staging_protocol_and_unified_thread_reply_shape() {
+fn exact_protocol_eight_and_unified_thread_reply_shape() {
     assert_eq!(shellboy::protocol::PROTOCOL_VERSION, 8);
     let value = json!({"thread_id":"t", "title":"synthetic", "cwd":"/", "connection":"c",
     "model":"m", "agents_path":"AGENTS.md", "parent_id":"organization", "shells_count":1, "summarizing":false,
@@ -95,18 +95,18 @@ fn old_run_ownership_and_create_inputs_are_not_wire_aliases() {
 }
 
 #[test]
-fn protocol_four_fails_closed_without_downgrade() {
+fn protocol_seven_fails_closed_without_downgrade() {
     let command: Command =
         serde_json::from_value(json!({"command":"thread.get","args":{"thread_id":"t"}})).unwrap();
     let mut request = shellboy::protocol::Request::new("synthetic", command);
     assert!(request.validate().is_ok());
-    request.protocol_version = 4;
+    request.protocol_version = 7;
     assert_eq!(
         request.validate().unwrap_err().code,
         ErrorCode::ProtocolMismatch
     );
     let mut response = shellboy::protocol::Response::success("synthetic", json!({}));
-    response.protocol_version = 4;
+    response.protocol_version = 7;
     assert_eq!(
         response.validate().unwrap_err().code,
         ErrorCode::ProtocolMismatch
