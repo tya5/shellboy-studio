@@ -9,3 +9,5 @@ Styles are colocated in `system/components/SectionNav/style.css`.
 Styles: style.css in this directory
 
 Grouped navigation and search can be enabled by SubView for a long section list; Analytics leaves both disabled. Settings uses visible localized names and descriptions, then a compact select at phone width. References: Orca settings, VS Code settings, and macOS System Settings. Do not use grouped search for short lists.
+
+The first search result is preselected and Enter opens it. Setting results reveal their destination row; on phones the results replace the section select.
