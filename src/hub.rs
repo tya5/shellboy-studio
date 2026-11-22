@@ -27,6 +27,7 @@ pub struct Pending {
     pub resync: bool,
     pub threads: BTreeSet<String>,
     pub list: bool,
+    pub attempt_ends: Vec<shellboy::protocol::EventAttemptEnd>,
 }
 
 impl Pending {
@@ -148,6 +149,7 @@ impl Hub {
             session.list = list;
             let watch = &session.watch;
             session.pending.threads.retain(|id| watch.contains(id));
+            session.pending.attempt_ends.retain(|end| watch.contains(&end.thread_id));
             session.live_seen.retain(|id, _| watch.contains(id));
             session.live_dirty.retain(|id| watch.contains(id));
             // A tab that starts watching a Thread mid-attempt is sent what is held.
@@ -191,6 +193,7 @@ impl Hub {
         let mut inner = self.lock();
         let Inner { sessions, live, .. } = &mut *inner;
         for session in sessions.values_mut() {
+            session.pending.attempt_ends.clear();
             session.pending.threads.clear();
             session.pending.list = false;
             session.pending.resync = true;
@@ -216,6 +219,23 @@ impl Hub {
         }
     }
 
+    /// Retain terminal facts independently of replacement of the live text slot.
+    pub fn attempt_ends(&self, ends: Vec<shellboy::protocol::EventAttemptEnd>) {
+        const MAX_PENDING_ENDS: usize = 256;
+        let mut inner = self.lock();
+        for session in inner.sessions.values_mut() {
+            for end in ends.iter().filter(|end| session.watch.contains(&end.thread_id)) {
+                if session.pending.attempt_ends.len() == MAX_PENDING_ENDS {
+                    session.pending.attempt_ends.clear();
+                    session.pending.resync = true;
+                    break;
+                }
+                session.pending.attempt_ends.push(end.clone());
+            }
+            if !ends.is_empty() { session.wake.notify_one(); }
+        }
+    }
+
     /// Live text the owner listed in one reply (`reset`: a baseline or resync, which forgets
     /// what was held). Tabs watching a changed Thread are woken.
     pub fn live_apply(&self, entries: Vec<live::Entry>, reset: bool) {
@@ -229,6 +249,7 @@ impl Hub {
         let mut inner = self.lock();
         inner.live.clear();
         for session in inner.sessions.values_mut() {
+            session.pending.attempt_ends.clear();
             session.live_seen.clear();
             session.live_dirty.clear();
         }
@@ -371,6 +392,7 @@ mod tests {
         let entry = |text: &str, offset: u64| Entry {
             thread_id: "t1".into(),
             attempt_id: "a".into(),
+            input_through_node_id: None,
             gap: false,
             deltas: vec![Delta {
                 offset,

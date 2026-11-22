@@ -10,6 +10,7 @@ export interface HandoffRecord {
   readonly key: string;
   readonly attemptId: string;
   readonly clientOrdinal: number;
+  readonly inputThroughNodeId?: string | null;
   readonly text: string;
   readonly incomplete: boolean;
   readonly status: HandoffStatus;
@@ -21,6 +22,7 @@ interface Held {
 /** One ledger per watched Thread. No queue, spill, or timer; retained bytes are bounded. */
 export class Handoff {
   private held: Held[] = [];
+  private readonly terminal = new Set<string>();
 
   private active: string | undefined;
   /** Canonical owner-lifetime epoch; the public view is read-only. */
@@ -44,13 +46,14 @@ export class Handoff {
   advanceEpoch(): void { this.epochState.value = this.epochState.peek() + 1; }
 
   apply(frame: LiveFrame): void {
+    if (this.terminal.has(frame.attempt_id)) return;
     let h = this.held.find(h => h.attemptId === frame.attempt_id);
     if (h && this.active !== h.attemptId && h.record.status !== "streaming") return;
     if (!h) {
       if (this.held.length >= MAX_HANDOFF_RECORDS || this.blockedAttempt === frame.attempt_id) { this.overflowSig.value = true; this.blockedAttempt = frame.attempt_id; return; }
       if (this.active) this.finish();
       const source = new LiveText(this.schedule);
-      const record: HandoffRecord = Object.freeze({ key: `handoff:${frame.attempt_id}`, attemptId: frame.attempt_id, clientOrdinal: this.nextOrdinal(), text: '', incomplete: frame.gap, status: 'streaming' });
+      const record: HandoffRecord = Object.freeze({ key: `handoff:${frame.attempt_id}`, attemptId: frame.attempt_id, clientOrdinal: this.nextOrdinal(), ...(frame.input_through_node_id !== undefined ? { inputThroughNodeId: frame.input_through_node_id } : {}), text: '', incomplete: frame.gap, status: 'streaming' });
       h = { admitted: 0, attemptId: frame.attempt_id, source, stop: () => {}, record };
       const held = h;
       this.held.push(h);
@@ -78,6 +81,16 @@ export class Handoff {
     h.admitted += incoming;
     h.source.apply(frame);
   }
+  end(attemptId: string, outcome: "adopted" | "not_adopted"): void {
+    if (this.terminal.has(attemptId)) return;
+    this.terminal.add(attemptId);
+    if (this.terminal.size > 256) this.terminal.delete(this.terminal.values().next().value!);
+    if (outcome === "not_adopted") {
+      if (this.active === attemptId) this.active = undefined;
+      this.releaseAccepted(attemptId);
+    } else this.held.find(h => h.attemptId === attemptId)?.source.finish();
+  }
+
   finish(): void {
     const h = this.held.find(h => h.attemptId === this.active);
     if (h) h.source.finish();
@@ -93,6 +106,11 @@ export class Handoff {
     batch(() => {
       this.advanceEpoch();
       this.discarded.value = _reason;
+      if (_reason === "resync") {
+        this.finish();
+        return;
+      }
+      this.terminal.clear();
       for (const h of this.held) { h.stop(); h.source.discard(_reason); }
       this.held = []; this.active = undefined; this.blockedAttempt = undefined;
       this.overflowSig.value = false; this.publish();

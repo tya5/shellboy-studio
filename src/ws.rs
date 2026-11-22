@@ -172,6 +172,11 @@ pub async fn session<O: Owner>(
                         list: pending.list,
                     }).await { break }
                 let mut open = true;
+                for fact in pending.attempt_ends {
+                    open = send(&mut socket, &ServerFrame::AttemptEnd { fact }).await;
+                    if !open { break }
+                }
+                if !open { break }
                 for out in state.hub.take_live(&guard) {
                     open = send(&mut socket, &out.into()).await;
                     if !open { break }
@@ -190,11 +195,13 @@ impl From<crate::live::Out> for ServerFrame {
             crate::live::Out::Text {
                 thread_id,
                 attempt_id,
+                input_through_node_id,
                 gap,
                 deltas,
             } => ServerFrame::Live {
                 thread_id,
                 attempt_id,
+                input_through_node_id,
                 gap,
                 deltas,
             },

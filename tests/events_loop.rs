@@ -350,6 +350,26 @@ mod live_text {
     }
 
     #[tokio::test]
+    async fn terminal_survives_replacement_by_next_attempt() {
+        let (owner, tx) = mock(|_| None);
+        let hub = Hub::new();
+        let (tab, _) = hub.register().unwrap();
+        hub.watch(&tab, vec!["t1".into()], false).unwrap();
+        let cancel = start_loop(owner.clone(), hub.clone());
+        tx.send(text("baseline", "b", json!([]), false)).unwrap();
+        tx.send(ok("inst1", json!({"status":"text","cursor":"c","changes":[],"more":false,
+            "attempt_ends":[{"thread_id":"t1","attempt_id":"r0","outcome":"not_adopted","seq":2}],
+            "live_text":[{"thread_id":"t1","attempt_id":"r1","input_through_node_id":"p","gap":false,"deltas":[delta(0,"next")]}]}))).unwrap();
+        until("3 polls", || owner.event_args.lock().unwrap().len() == 3).await;
+        let (pending, _) = hub.take(&tab);
+        assert_eq!(serde_json::to_value(&pending.attempt_ends).unwrap(), json!([
+            {"thread_id":"t1","attempt_id":"r0","outcome":"not_adopted","seq":2}
+        ]));
+        assert!(matches!(&hub.take_live(&tab)[..], [Out::Text { attempt_id, input_through_node_id: Some(p), .. }] if attempt_id == "r1" && p == "p"));
+        cancel.cancel();
+    }
+
+    #[tokio::test]
     async fn busy_keeps_the_text_and_the_cursor_and_an_owner_loss_drops_the_text() {
         let (owner, tx) = mock(|_| None);
         let hub = Hub::new();

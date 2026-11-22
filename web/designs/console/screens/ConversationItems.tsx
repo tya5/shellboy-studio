@@ -89,6 +89,15 @@ export function ConversationItems({ items, toolSummaries = [], renderItem, rende
         const item = byKey.get(key); return item ? content(item, true, false) : null;
       }))}</div> : null;
     };
+    const tailRows = localRegion?.tailRows ?? [];
+    const beforeNode = new Map<string, Extract<OwnSendTailRow, { kind: "live" }>[]>();
+    const placed = new Set<OwnSendTailRow>();
+    for (const tail of tailRows) {
+      if (tail.kind !== "live" || tail.beforeSavedNodeId === undefined) continue;
+      const group = beforeNode.get(tail.beforeSavedNodeId) ?? [];
+      group.push(tail);
+      beforeNode.set(tail.beforeSavedNodeId, group);
+    }
     const renderPosition = (position: number, hostedContainer?: string): ComponentChildren[] => {
       const entry = normalizedSequence[position]!;
       const output: ComponentChildren[] = [];
@@ -96,6 +105,11 @@ export function ConversationItems({ items, toolSummaries = [], renderItem, rende
         const work = renderWork(entry); if (work) output.push(work);
       } else {
         const item = byKey.get(entry.itemKey);
+        for (const tail of beforeNode.get(item?.source.nodeId ?? "") ?? []) {
+          if (placed.has(tail)) continue;
+          placed.add(tail);
+          output.push(content(tail.item, false, false));
+        }
         if (item && !isItemAbsent?.(item)) output.push(<Fragment key={`conversation:${item.key}`}>{renderBefore?.(item)}{content(item, false, hostedContainer !== undefined)}</Fragment>);
       }
       return output;
@@ -115,9 +129,8 @@ export function ConversationItems({ items, toolSummaries = [], renderItem, rende
       const nodes = renderPosition(index, unsafe ? undefined : containerAt(index));
       if (nodes.length) rendered.push({ entry, view: nodes });
     }
-    const tailRows = localRegion?.kind === "unqualified" ? localRegion.tailRows : [];
     const pendingRows = localRegion?.kind === "unqualified"
-      ? tailRows.map(tail => {
+      ? tailRows.filter(tail => !placed.has(tail)).map(tail => {
         if (tail.kind === "live") return content(tail.item, false, false);
         const id = tail.row.messageId;
         const key = id === undefined ? `own:${tail.row.operationId}` : canonicalSavedItemKey(id, JSON.stringify([id, "/content/0"]));

@@ -1,7 +1,4 @@
-//! Version-pairing seams for the protocol-5 candidate. The committed release pin is
-//! deliberately unchanged until the Core tag is public and independently validated.
-//! `next-shellboy` is checked against that candidate with an isolated CLI patch;
-//! it is not an older-owner compatibility shim. Shell ownership is unchanged.
+//! Typed seams for the pinned Core/Studio pair.
 use crate::live::Entry;
 use serde_json::Value;
 use shellboy::protocol::{EventsWaitArgs, EventsWaitResult};
@@ -61,6 +58,7 @@ fn live_entries(result: &EventsWaitResult) -> Option<Vec<Entry>> {
             .map(|e| Entry {
                 thread_id: e.thread_id.clone(),
                 attempt_id: e.attempt_id.clone(),
+                input_through_node_id: e.input_through_node_id.clone(),
                 gap: e.gap,
                 deltas: e
                     .deltas

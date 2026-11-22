@@ -11,8 +11,9 @@ use shellboy_studio::{
 };
 
 #[test]
-fn exact_protocol6_and_unified_thread_reply_shape() {
-    assert_eq!(shellboy::protocol::PROTOCOL_VERSION, 6);
+fn exact_staging_protocol_and_unified_thread_reply_shape() {
+    // The #337 staging source is protocol 7. Move this suite to 8 with the final Core pin.
+    assert_eq!(shellboy::protocol::PROTOCOL_VERSION, 7);
     let value = json!({"thread_id":"t", "title":"synthetic", "cwd":"/", "connection":"c",
     "model":"m", "agents_path":"AGENTS.md", "parent_id":"organization", "shells_count":1, "summarizing":false,
     "awaiting_replies":[

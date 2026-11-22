@@ -12,3 +12,5 @@ For dialog dismissal, the list resolves the target id at dismissal time: return 
 link if present, else the row at the retained position (or previous at the end), else
 the heading. This covers Cancel when the target row is removed while the dialog is
 open. The delete request's later completion never changes dialog or focus.
+
+ConversationItems renders live rows at the insertion point supplied by the conversation plan. It does not infer an input boundary or a terminal outcome from render order.

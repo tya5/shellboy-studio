@@ -466,6 +466,7 @@ async fn live_text_frames_reach_only_the_tab_that_watches_and_are_one_frame_per_
     let entry = |offset: u64, text: &str| Entry {
         thread_id: "t1".into(),
         attempt_id: "a1".into(),
+        input_through_node_id: None,
         gap: false,
         deltas: vec![Delta {
             offset,

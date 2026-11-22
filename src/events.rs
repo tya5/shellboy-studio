@@ -168,6 +168,9 @@ pub async fn run_with_guide<O: Owner>(
             }
             EventsWaitStatus::ResyncRequired => hub.resync(),
         }
+        if let Some(ends) = result.attempt_ends {
+            hub.attempt_ends(ends);
+        }
         if let Some(entries) = text {
             hub.live_apply(entries, reset);
         }

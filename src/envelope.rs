@@ -102,16 +102,21 @@ pub enum ServerFrame {
         list: bool,
     },
     /// Unsaved model text since the tab was last told (events-and-external-protocol 2.5, rule 3):
-    /// a new `attempt_id` or `gap: true` means discard the preview first, then append.
+    /// a gap qualifies the held text, not whether the attempt was adopted.
     Live {
         thread_id: String,
         attempt_id: String,
+        input_through_node_id: Option<String>,
         gap: bool,
         deltas: Vec<crate::live::Delta>,
     },
-    /// No text is held for the Thread any more (its attempt ended).
+    /// No text is held in the Thread slot; this does not establish an attempt outcome.
     LiveEnd {
         thread_id: String,
+    },
+    AttemptEnd {
+        #[serde(flatten)]
+        fact: shellboy::protocol::EventAttemptEnd,
     },
     Resync,
     Owner {

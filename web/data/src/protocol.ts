@@ -44,7 +44,8 @@ export type ServerFrame =
   | { t: "hello"; bridge_version: string; listen?: string; apps_dir?: string | null; data_dir?: string; owner: OwnerState; desktop?: boolean }
   | { t: "result"; id: number; response?: OwnerResponse; error?: BridgeError }
   | { t: "changed"; thread_ids: string[]; list: boolean }
-  | { t: "live"; thread_id: string; attempt_id: string; gap: boolean; deltas: { offset: number; reasoning: boolean; text: string }[] }
+  | { t: "live"; thread_id: string; attempt_id: string; input_through_node_id?: string | null; gap: boolean; deltas: { offset: number; reasoning: boolean; text: string }[] }
+  | { t: "attempt_end"; thread_id: string; attempt_id: string; outcome: "adopted" | "not_adopted"; seq: number }
   | { t: "live_end"; thread_id: string }
   | { t: "resync" }
   | { t: "owner"; event: OwnerEvent; owner: OwnerState }
@@ -106,6 +107,7 @@ export function parseServerFrame(text: string): ParsedFrame {
       if (
         typeof v.thread_id !== "string" ||
         typeof v.attempt_id !== "string" ||
+        (v.input_through_node_id != null && typeof v.input_through_node_id !== "string") ||
         typeof v.gap !== "boolean" ||
         !Array.isArray(v.deltas) ||
         !v.deltas.every(
@@ -113,6 +115,10 @@ export function parseServerFrame(text: string): ParsedFrame {
         )
       )
         return bad("bad fields");
+      return { ok: true, frame: v as unknown as ServerFrame };
+    case "attempt_end":
+      if (typeof v.thread_id !== "string" || typeof v.attempt_id !== "string"
+        || (v.outcome !== "adopted" && v.outcome !== "not_adopted") || !Number.isSafeInteger(v.seq)) return bad("bad fields");
       return { ok: true, frame: v as unknown as ServerFrame };
     case "live_end":
       if (typeof v.thread_id !== "string") return bad("bad fields");

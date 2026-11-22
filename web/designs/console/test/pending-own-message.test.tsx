@@ -566,7 +566,7 @@ async function witnessOwnSendPublication(scenario: 'streaming' | 'two sends' | '
  const host = document.createElement('div'); document.body.append(host);
  const context: DesignContext = { model: f.model, prefs: signal(loadPrefs({ read: () => null, write: () => {} }, [{ name: 'console', themes: [{ name: 'light' }] }])), setPrefs() {}, designs: [], submitToken: async () => false };
  const r0 = canonicalAttemptId(71), r1 = canonicalAttemptId(72);
- const live = (attempt_id: string, text: string) => f.t.push({t:'live', thread_id:'lead', attempt_id, gap:false, deltas:[{offset:0, reasoning:false, text}]});
+ const live = (attempt_id: string, text: string) => f.t.push({t:'live', thread_id:'lead', attempt_id, input_through_node_id: attempt_id === r0 ? 'H' : 'P', gap:false, deltas:[{offset:0, reasoning:false, text}]});
  const rows = () => [...host.querySelectorAll('.conversation-items > .conversation-row')];
  const order = () => rows().map(row => row.querySelector('.message-markdown')?.textContent?.trim());
  const pendingRow = (id: string) => rows().find(row => row.querySelector('[data-pending-own-message]') && row.querySelector('.message-markdown')?.textContent?.trim() === id);
@@ -607,10 +607,20 @@ async function witnessOwnSendPublication(scenario: 'streaming' | 'two sends' | '
   expect(rows()[pIndex]).toBe(pRow);
   if (scenario === 'partial cut') {
    await adopt(saved('P',1));
-   expect(order()).toEqual(['H','P','R0','R1']);
-   expect(rows()[1]).toBe(pRow);
+   expect(order()).toEqual(['H','R0','P','R1']);
+   expect(rows()[2]).toBe(pRow);
    expect(f.model.handle.peek()!.handoff.peek().map(record => record.attemptId)).toEqual([r0,r1]);
+   await act(async () => {
+    f.t.push({t:'attempt_end',thread_id:'lead',attempt_id:r0,outcome:'not_adopted',seq:12});
+    live(r0,'R0'); await flush(); scheduled.splice(0).forEach(publish => publish());
+   });
+   expect(order()).toEqual(['H','P','R1']);
+   expect(rows()[1]).toBe(pRow);
    return;
+  }
+  if (streaming) {
+   await act(async () => { f.t.push({t:'attempt_end',thread_id:'lead',attempt_id:r0,outcome:'adopted',seq:12}); await flush(); });
+   expect(order()).toEqual(expected);
   }
   const p = saved('P', streaming ? 2 : 1);
   if (scenario === 'deferred') {
@@ -642,4 +652,4 @@ async function witnessOwnSendPublication(scenario: 'streaming' | 'two sends' | '
 
 it.each(['streaming', 'two sends', 'held', 'multi-item'] as const)('keeps the acknowledged DOM row through mounted publications: %s', witnessOwnSendPublication);
 it('retires a deferred saved send without promising DOM continuity', () => witnessOwnSendPublication('deferred'));
-it('Studio #61 unresolved witness: an accepted cut without matching attempt provenance keeps the old live row', () => witnessOwnSendPublication('partial cut'));
+it('Studio #61: a delayed exact terminal removes only the fenced attempt after the saved send', () => witnessOwnSendPublication('partial cut'));

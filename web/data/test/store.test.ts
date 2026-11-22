@@ -344,9 +344,8 @@ describe("live text preview", () => {
     expect(h.preview.value).toEqual({ kind: "none" });
   });
 
-  it("discards on resync, restart, unreachable and socket close, and a later frame starts a marked-incomplete tail", async () => {
+  it("retains text on resync and clears on owner or socket lifetime loss", async () => {
     for (const [push, reason] of [
-      [(t: FakeTransport) => t.push({ t: "resync" }), "resync"],
       [(t: FakeTransport) => t.push({ t: "owner", event: "restarted", owner: connected }), "owner_restarted"],
       [(t: FakeTransport) => t.push({ t: "owner", event: "unreachable", owner: { state: "unreachable" } }), "owner_unreachable"],
       [(t: FakeTransport) => t.drop(), "connection_closed"],
@@ -363,7 +362,7 @@ describe("live text preview", () => {
     t.push({ t: "resync" });
     t.push(live([d(3, "def")]));
     f.frame();
-    expect(h.preview.value).toMatchObject({ text: "def", incomplete: true });
+    expect(h.preview.value).toMatchObject({ text: "abcdef", incomplete: false });
   });
 
   it("keeps the newest text past the bound and says it is incomplete", async () => {

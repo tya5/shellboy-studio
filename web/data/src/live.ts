@@ -43,6 +43,7 @@ export interface LiveDelta {
 
 export interface LiveFrame {
   attempt_id: string;
+  input_through_node_id?: string | null;
   gap: boolean;
   deltas: LiveDelta[];
 }

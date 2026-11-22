@@ -38,6 +38,7 @@ impl Delta {
 pub struct Entry {
     pub thread_id: String,
     pub attempt_id: String,
+    pub input_through_node_id: Option<String>,
     /// Text after the caller's position was lost.
     pub gap: bool,
     pub deltas: Vec<Delta>,
@@ -45,6 +46,7 @@ pub struct Entry {
 
 struct Attempt {
     id: String,
+    input_through_node_id: Option<String>,
     /// Changes whenever earlier text may no longer line up (new attempt, or a gap).
     epoch: u64,
     gap: bool,
@@ -84,6 +86,7 @@ pub enum Out {
     Text {
         thread_id: String,
         attempt_id: String,
+        input_through_node_id: Option<String>,
         gap: bool,
         deltas: Vec<Delta>,
     },
@@ -136,6 +139,7 @@ impl Store {
                     entry.thread_id.clone(),
                     Attempt {
                         id: entry.attempt_id.clone(),
+                        input_through_node_id: entry.input_through_node_id,
                         epoch: self.next_epoch,
                         gap: entry.gap,
                         deltas: VecDeque::new(),
@@ -191,6 +195,7 @@ impl Store {
         Some(Out::Text {
             thread_id: thread_id.to_owned(),
             attempt_id: attempt.id.clone(),
+            input_through_node_id: attempt.input_through_node_id.clone(),
             gap: if fresh { attempt.gap } else { lost },
             deltas,
         })
@@ -212,6 +217,7 @@ mod tests {
         Entry {
             thread_id: thread.into(),
             attempt_id: attempt.into(),
+            input_through_node_id: None,
             gap,
             deltas,
         }
