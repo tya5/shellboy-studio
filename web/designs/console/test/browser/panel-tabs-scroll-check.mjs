@@ -45,7 +45,7 @@ try{
   await call('Emulation.setDeviceMetricsOverride',{width:appWidth,height:900,deviceScaleFactor:1,mobile:false});
   await call('Page.navigate',{url});
   await until(()=>evaluate(`location.href===${JSON.stringify(url)} && typeof window.publishPanelTabsCount==='function' && !!document.querySelector('#panel-tab-info')`));
-  await evaluate(`document.querySelector('[data-panel-root]').style.setProperty('--size-details','${panelWidth+33}px')`);
+  await evaluate(`document.querySelector('[data-panel-root]').style.setProperty('--size-right-panel','${panelWidth+33}px')`);
   const initial=await measure();
   assert.equal(initial.clientWidth,panelWidth,key);
   assert.equal(initial.gap,'2px',key);

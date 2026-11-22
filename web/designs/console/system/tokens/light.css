@@ -154,5 +154,10 @@
   --size-conversation-character: 24px;
   --size-row-action: 24px;
   --size-row-action-touch: 28px;
+  --size-shell-column: 50px;
+  --size-shell-footer: 36px;
+  --size-shell-toggle-icon: 24px;
+  --size-brand-mark: 24px;
+  --size-shell-rail: 51px;
   --shadow-popover: 0px 4px 10px rgba(25, 35, 45, 0.14);
 } }
