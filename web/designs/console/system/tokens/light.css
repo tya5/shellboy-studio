@@ -61,6 +61,7 @@
   --motion-spin: 1.6s;
   --size-sidebar: 260px;
   --z-popover: 35;
+  --size-right-panel: var(--size-details);
   --size-details: 340px;
   --size-header: 48px;
   --size-control: 32px;

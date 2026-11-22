@@ -1,7 +1,8 @@
-import { SIDEBAR_WIDTH_MAX, SIDEBAR_WIDTH_MIN } from "../../../ui-core/src/prefs";
+import { readRightPanelWidth, readSidebarWidth, type Prefs } from "../../../ui-core/src/prefs";
 
-export function sidebarWidthStyle(width?: number): { "--size-sidebar": string } | undefined {
-  if (typeof width !== "number" || !Number.isFinite(width)) return undefined;
-  const clamped = Math.min(SIDEBAR_WIDTH_MAX, Math.max(SIDEBAR_WIDTH_MIN, width));
-  return { "--size-sidebar": `${clamped}px` };
+export function layoutWidthStyle({ sidebarWidth, rightPanelWidth }: Pick<Prefs, "sidebarWidth" | "rightPanelWidth">) {
+  return {
+    ...(Number.isFinite(sidebarWidth) && { "--size-sidebar": `${readSidebarWidth(sidebarWidth)}px` }),
+    ...(Number.isFinite(rightPanelWidth) && { "--size-right-panel": `${readRightPanelWidth(rightPanelWidth)}px` }),
+  };
 }

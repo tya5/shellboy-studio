@@ -1,5 +1,5 @@
 import { effect, signal } from '@preact/signals-core';
-import type { Prefs } from '../../../../ui-core/src';
+import { loadPrefs, savePrefs, type Prefs } from '../../../../ui-core/src';
 import { summary, details } from '../../../../data/test/harness';
 import { fixtureModel, settle } from '../../../../ui-core/test/fixture';
 import { mount } from '../..';
@@ -66,9 +66,13 @@ if (ownSendFixture) (window as unknown as { publishSavedOwnMessage: (deferred: b
   t.push({ t: 'changed', thread_ids: ['lead'], list: false });
   await settle(t, db);
 };
-const prefs = signal<Prefs>({ design: 'console', theme: params.get('theme') === 'light' ? 'light' : params.get('theme') === 'terminal' ? 'terminal' : 'console', lang: fixtureLang, monitorView: 'cards', weights: { cached: 0.1, output: 5 } });
+const resizeStore = params.get('view') === 'splitters' ? {
+  read: () => localStorage.getItem('splitter-fixture-prefs'),
+  write: (value: string) => localStorage.setItem('splitter-fixture-prefs', value),
+} : undefined;
+const prefs = signal<Prefs>(resizeStore ? loadPrefs(resizeStore, DESIGNS) : { design: 'console', theme: params.get('theme') === 'light' ? 'light' : params.get('theme') === 'terminal' ? 'terminal' : 'console', lang: fixtureLang, monitorView: 'cards', weights: { cached: 0.1, output: 5 } });
 effect(() => { document.documentElement.dataset.ds = prefs.value.theme; });
-mount(document.getElementById('app')!, { model, designs: DESIGNS, prefs, setPrefs: (change) => { prefs.value = { ...prefs.value, ...change }; }, submitToken: async () => true });
+mount(document.getElementById('app')!, { model, designs: DESIGNS, prefs, setPrefs: (change) => { prefs.value = { ...prefs.value, ...change }; if (resizeStore) savePrefs(resizeStore, prefs.value); }, submitToken: async () => true });
 
 // Synthetic-only theme control; production App preferences still use the existing settings surface.
 (window as unknown as { setFixtureTheme: (theme: 'console' | 'light' | 'terminal') => void }).setFixtureTheme = theme => {

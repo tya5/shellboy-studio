@@ -18,7 +18,7 @@ import { Setup } from "./Setup";
 import { SettingsView } from "./SettingsView";
 import { AuthPrompt } from "./AuthPrompt";
 import { LayoutSeparator } from "../system/components";
-import { sidebarWidthStyle } from "../system/layout";
+import { layoutWidthStyle } from "../system/layout";
 
 const SEARCH_DEBOUNCE_MS = 200;
 
@@ -64,27 +64,11 @@ export function App({ context }: { context: DesignContext }) {
   const [settings, setSettings] = useState(false);
   const [query, setQuery] = useState("");
   const [filters, setFilters] = useState<ListFilter>({});
-  const drag = useRef<{ pointerId: number; element: HTMLElement; originX: number; startWidth: number }>();
-  const sidebarWidth = readSidebarWidth(context.prefs.value.sidebarWidth);
-  const savedSidebarWidth = context.prefs.value.sidebarWidth;
-  const finishResize = (pointerId?: number) => {
-    const current = drag.current;
-    if (!current || (pointerId !== undefined && current.pointerId !== pointerId)) return;
-    if (current.element.hasPointerCapture(current.pointerId)) current.element.releasePointerCapture(current.pointerId);
-    drag.current = undefined;
-  };
   const picker = model.modelPicker.value;
   useEffect(() => { if (picker.open && picker.thread !== model.selectedId.value) model.closeModelPicker(); }, [picker.open, picker.thread, model.selectedId.value]);
 
   useEffect(() => { model.monitorSort.value = context.prefs.value.monitorSort ?? "stable"; }, [model, context.prefs.value.monitorSort]);
 
-
-  useEffect(() => {
-    const cancel = () => finishResize();
-    addEventListener("resize", cancel);
-    return () => { removeEventListener("resize", cancel); cancel(); };
-  }, []);
-  useEffect(() => { if (context.prefs.value.navCollapsed) finishResize(); }, [context.prefs.value.navCollapsed]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -181,10 +165,12 @@ export function App({ context }: { context: DesignContext }) {
 
   return (
     <div class="app" ref={appRef}>
-      <div class={context.prefs.value.navCollapsed ? "shell nav-collapsed" : "shell"} style={sidebarWidthStyle(savedSidebarWidth)}>
-        <LayoutSeparator aria-label={t("threads.resizeSidebar")} role="separator" aria-orientation="vertical" aria-valuemin={SIDEBAR_WIDTH_MIN} aria-valuemax={SIDEBAR_WIDTH_MAX} aria-valuenow={sidebarWidth} tabIndex={0} onPointerDown={(event) => { if (context.prefs.value.navCollapsed || drag.current || !event.isPrimary || event.button !== 0) return; event.preventDefault(); const element = event.currentTarget; drag.current = { pointerId: event.pointerId, element, originX: event.clientX, startWidth: sidebarWidth }; element.setPointerCapture(event.pointerId); }} onPointerMove={(event) => { const current = drag.current; if (!current || current.pointerId !== event.pointerId || !event.isPrimary) return; context.setPrefs({ sidebarWidth: readSidebarWidth(current.startWidth + event.clientX - current.originX) }); }} onPointerUp={(event) => finishResize(event.pointerId)} onPointerCancel={(event) => finishResize(event.pointerId)} onLostPointerCapture={(event) => finishResize(event.pointerId)} onKeyDown={(event) => { if (context.prefs.value.navCollapsed) return; const step = event.shiftKey ? 32 : 16; if (event.key === "ArrowLeft" || event.key === "ArrowRight" || event.key === "Home" || event.key === "End") { event.preventDefault(); const next = event.key === "Home" ? SIDEBAR_WIDTH_MIN : event.key === "End" ? SIDEBAR_WIDTH_MAX : sidebarWidth + (event.key === "ArrowRight" ? step : -step); context.setPrefs({ sidebarWidth: readSidebarWidth(next) }); } }} />
+      <div class={context.prefs.value.navCollapsed ? "shell nav-collapsed" : "shell"} style={layoutWidthStyle(context.prefs.value)}>
+        <LayoutSeparator side="left" label={t("threads.resizeSidebar")} controls="thread-sidebar"
+          width={readSidebarWidth(context.prefs.value.sidebarWidth)} min={SIDEBAR_WIDTH_MIN} max={SIDEBAR_WIDTH_MAX}
+          disabled={context.prefs.value.navCollapsed} onWidth={sidebarWidth => context.setPrefs({ sidebarWidth })} />
         <button type="button" class={drawer ? "scrim open" : "scrim"} aria-label={t("threads.close")} tabIndex={drawer ? 0 : -1} onClick={() => setDrawer(false)} />
-        <aside class={drawer ? "side open" : "side"} aria-label={t("threads.title")}>
+        <aside id="thread-sidebar" class={drawer ? "side open" : "side"} aria-label={t("threads.title")}>
           <div class="brand">
             <BrandLogo />
             <span class="brand-label">{t("brand")}</span>
@@ -286,7 +272,7 @@ export function App({ context }: { context: DesignContext }) {
           {deleteThread ? <ThreadDeleteDialog key={deleteThread.threadId} model={model} target={deleteThread} getReturnFocusTarget={resolveSidebarLink} onClose={() => setDeleteThread(undefined)} /> : null}
           <section class="view" aria-label={title}>
             <AppsHost context={context} />
-            {route.view === "apps" ? null : route.view === "conversation" ? <Conversation model={model} panelCollapsed={context.prefs.value.panelCollapsed} /> : route.view === "monitor" ? <Monitor context={context} /> : route.view === "inbox" ? <Inbox model={model} /> : route.view === "analytics" ? <Analytics context={context} /> : route.view === "branches" ? <Branches model={model} /> : route.view === "threads" ? <Threads model={model} /> : route.view === "setup" ? <Setup context={context} /> : <SettingsView context={context} />}
+            {route.view === "apps" ? null : route.view === "conversation" ? <Conversation model={model} panelCollapsed={context.prefs.value.panelCollapsed} rightPanelWidth={context.prefs.value.rightPanelWidth} onPanelWidth={rightPanelWidth => context.setPrefs({ rightPanelWidth })} /> : route.view === "monitor" ? <Monitor context={context} /> : route.view === "inbox" ? <Inbox model={model} /> : route.view === "analytics" ? <Analytics context={context} /> : route.view === "branches" ? <Branches model={model} /> : route.view === "threads" ? <Threads model={model} /> : route.view === "setup" ? <Setup context={context} /> : <SettingsView context={context} />}
           </section>
           <footer class="status">
             <StatusMark

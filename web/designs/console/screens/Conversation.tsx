@@ -18,9 +18,9 @@ import { characterAssets } from "../system/character-assets";
 import { effect } from "@preact/signals-core";
 import { MonitorPopover } from "../system/components/MonitorPopover";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
-import { collectExecutionSteps, toolLabel, activityLabel, renderOutput, formatClock, formatDuration, formatRoute, formatTokens, parseTime, statusLabel, type AppModel, type ConversationRow, type StepRow as Step } from "../../../ui-core/src";
+import { readRightPanelWidth, RIGHT_PANEL_WIDTH_MAX, RIGHT_PANEL_WIDTH_MIN, collectExecutionSteps, toolLabel, activityLabel, renderOutput, formatClock, formatDuration, formatRoute, formatTokens, parseTime, statusLabel, type AppModel, type ConversationRow, type StepRow as Step } from "../../../ui-core/src";
 import { WindowedScroll } from "./WindowedScroll";
-import { BranchMark, Button, Composer, LoadingRows, EmptyState, Icon, KeyValue, ListDivider, ListRow, LogBlock, Message, Notice, PanelTabs, QuestionCard, StatusMark, StepRow, SummaryStrip, WorkSheet } from "../system/components";
+import { BranchMark, Button, Composer, LoadingRows, EmptyState, Icon, KeyValue, LayoutSeparator, ListDivider, ListRow, LogBlock, Message, Notice, PanelTabs, QuestionCard, StatusMark, StepRow, SummaryStrip, WorkSheet } from "../system/components";
 
 /** Internal immutable publication seam; deliberately not a Core transport type. */
 export interface ConversationSnapshot {
@@ -632,7 +632,7 @@ function RightPanel({ model, panelCollapsed = false }: { model: AppModel; panelC
     model.closePanelDetail();
   };
   const select = (id: string) => model.setPanelTab(id as import("../../../ui-core/src/model").RightPanelTab);
-  return <aside ref={root} class={`details${panelCollapsed ? " details-collapsed" : ""}`} aria-label={t("panel.title")} data-panel-root="" data-panel-rail={panelCollapsed ? "" : undefined}>
+  return <aside id="conversation-right-panel" ref={root} class={`details${panelCollapsed ? " details-collapsed" : ""}`} aria-label={t("panel.title")} data-panel-root="" data-panel-rail={panelCollapsed ? "" : undefined}>
     <Button icon label={t(panelCollapsed ? "panel.expand" : "panel.collapse")} title={t(panelCollapsed ? "panel.expand" : "panel.collapse")} aria-expanded={!panelCollapsed}
       onClick={() => model.togglePanel()}><Icon role={panelCollapsed ? "panel.expand" : "panel.collapse"} /></Button>
     <PanelTabs label={t("panel.title")} items={tabs} selected={selectedTab} rail={panelCollapsed} onSelect={select} />
@@ -667,7 +667,7 @@ export function OrderedHistory({ model, handle, win, t }: { model: AppModel; han
     liveBoundary={boundary?.ordinal} />;
 }
 
-export function Conversation({ model, panelCollapsed = false }: { model: AppModel; panelCollapsed?: boolean }) {
+export function Conversation({ model, panelCollapsed = false, rightPanelWidth, onPanelWidth }: { model: AppModel; panelCollapsed?: boolean; rightPanelWidth?: number; onPanelWidth?: (width: number) => void }) {
   const t = model.t.value;
   const [sheetOpen, setSheetOpen] = useState(false);
   const [sheetReturnFocus, setSheetReturnFocus] = useState<{ opener: HTMLElement; resolveFallback: () => HTMLElement | null }>();
@@ -737,6 +737,9 @@ export function Conversation({ model, panelCollapsed = false }: { model: AppMode
           />
         </div> : null}
       </div>
+      {handle && onPanelWidth ? <LayoutSeparator side="right" label={t("panel.resize")} controls="conversation-right-panel"
+        width={readRightPanelWidth(rightPanelWidth)} min={RIGHT_PANEL_WIDTH_MIN} max={RIGHT_PANEL_WIDTH_MAX}
+        disabled={panelCollapsed} onWidth={onPanelWidth} /> : null}
       {handle ? <RightPanel key={handle.threadId} model={model} panelCollapsed={panelCollapsed} /> : null}
       <WorkSheet open={sheetOpen} title={t("work.title")} closeLabel={t("work.close")} getReturnFocusTarget={() => sheetReturnFocus?.opener?.isConnected ? sheetReturnFocus.opener : sheetReturnFocus?.resolveFallback() ?? null} onClose={() => setSheetOpen(false)}><WorkRegions model={model} place="sheet" /></WorkSheet>
     </>

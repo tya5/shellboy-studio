@@ -37,7 +37,7 @@ An engineer's console: dark navy surfaces, one accent, and monospace wherever th
 
 ## Layout parts
 
-- `LayoutSeparator` is the boundary between sidebar and content on expanded desktop only. Do not use it for the drawer, collapsed rail or other panes. `sidebarWidthStyle` is the system-owned saved-width binding; it returns no style when the browser preference is absent and clamps saved values to the existing range.
+- `LayoutSeparator` is the shared Window Splitter for the expanded desktop sidebar and conversation panel, never the drawer or a collapsed rail. `layoutWidthStyle` binds the independent saved widths to their layout variables; unspecified widths keep the design tokens.
 
 ## Themes
 
