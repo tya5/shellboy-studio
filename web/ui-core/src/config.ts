@@ -173,24 +173,11 @@ export class ConfigEditor {
   private shown = false;
   private session = 0;
   readonly changedElsewhere = signal<string | undefined>(undefined);
-  private confirmation?: { field: string; expected: string; observed?: string; saved?: SavedSetting };
+  private confirmation?: { field: string; saved?: SavedSetting };
 
   /** A config mark or resync invalidates the current Settings snapshot. */
   configChanged(): void {
     if (this.shown) void this.refresh();
-  }
-
-  private confirmWrite(): void {
-    const pending = this.confirmation;
-    if (!pending?.saved || pending.observed === undefined) return;
-    this.confirmation = undefined;
-    if (pending.observed === pending.saved.hash && this.read.peek().value?.file.contentHash === pending.saved.hash) {
-      this.lastSaved.value = pending.saved;
-    } else {
-      this.changedElsewhere.value = pending.field;
-    }
-    this.pendingField.value = undefined;
-    this.fieldSaving.value = false;
   }
 
   constructor(private readonly ops: Operations) {}
@@ -242,6 +229,8 @@ export class ConfigEditor {
     const cancel = (this.inFlight = new Cancel());
     do {
       this.readAgain = false;
+      // A read already in flight at ACK can publish, but cannot confirm that write.
+      const confirmation = this.confirmation?.saved ? this.confirmation : undefined;
       this.read.value = { ...this.read.peek(), loading: true };
       const out = await this.ops.configGet({ cancel });
       if (cancel.cancelled) return;
@@ -251,10 +240,12 @@ export class ConfigEditor {
         this.read.value = { loading: false, value, error: undefined };
         const saved = this.lastSaved.peek();
         if (saved && hash !== saved.hash) this.lastSaved.value = undefined;
-        const pending = this.confirmation;
-        if (pending && (pending.saved || hash !== pending.expected)) {
-          pending.observed = hash;
-          this.confirmWrite();
+        if (confirmation?.saved && confirmation === this.confirmation) {
+          this.confirmation = undefined;
+          if (hash === confirmation.saved.hash) this.lastSaved.value = confirmation.saved;
+          else this.changedElsewhere.value = confirmation.field;
+          this.pendingField.value = undefined;
+          this.fieldSaving.value = false;
         }
       } else {
         this.read.value = { ...this.read.peek(), loading: false, error: out.error };
@@ -311,7 +302,7 @@ export class ConfigEditor {
     if (changes.some((change) => isHidden(change.value))) return;
     const undo = undoable && previous.every((change) => !isHidden(change.value)) ? previous : [];
     const session = this.session;
-    const pending: NonNullable<ConfigEditor["confirmation"]> = { field, expected: file.contentHash };
+    const pending: NonNullable<ConfigEditor["confirmation"]> = { field };
     this.confirmation = pending;
     this.fieldSaving.value = true;
     this.pendingField.value = field;
@@ -332,7 +323,6 @@ export class ConfigEditor {
       const exact = changed.map((change) => change?.restart_required).filter((value): value is boolean => typeof value === "boolean");
       const restartRequired = exact.length ? exact.some(Boolean) : typeof out.value.restart_required === "boolean" ? out.value.restart_required : undefined;
       pending.saved = { hash, field, path, restartRequired, undo: changed.some((change) => change?.sensitive === true) ? [] : undo };
-      this.confirmWrite();
     } finally {
       if (this.confirmation === pending && !pending.saved) {
         this.confirmation = undefined;
