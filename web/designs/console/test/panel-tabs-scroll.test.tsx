@@ -12,10 +12,10 @@ const items = [
   { id: "info", label: "情報", icon: "panel.information" as const },
 ];
 
-it("minimally reveals each selected horizontal tab; the icon rail does not scroll", async () => {
+it("reveals on selection and expansion, not on a count update or collapse", async () => {
   const host = document.createElement("div");
   const scroll = vi.fn();
-  Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: true, value: scroll });
+  const spy = vi.spyOn(HTMLElement.prototype, "scrollIntoView").mockImplementation(scroll);
   try {
     await act(async () => render(<PanelTabs label="Panel" items={items} selected="work" onSelect={() => {}} />, host));
     expect(scroll).toHaveBeenCalledWith({ block: "nearest", inline: "nearest" });
@@ -25,5 +25,12 @@ it("minimally reveals each selected horizontal tab; the icon rail does not scrol
     scroll.mockClear();
     await act(async () => render(<PanelTabs label="Panel" items={items} selected="info" rail onSelect={() => {}} />, host));
     expect(scroll).not.toHaveBeenCalled();
-  } finally { render(null, host); delete (HTMLElement.prototype as { scrollIntoView?: unknown }).scrollIntoView; }
+    await act(async () => render(<PanelTabs label="Panel" items={items} selected="info" onSelect={() => {}} />, host));
+    expect(scroll).toHaveBeenCalledExactlyOnceWith({ block: "nearest", inline: "nearest" });
+    scroll.mockClear();
+    const counted = items.map(item => ({ ...item, count: 2 }));
+    await act(async () => render(<PanelTabs label="Panel" items={counted} selected="info" onSelect={() => {}} />, host));
+    expect(host.querySelector("#panel-tab-info")?.getAttribute("aria-label")).toBe("情報 2");
+    expect(scroll).not.toHaveBeenCalled();
+  } finally { render(null, host); spy.mockRestore(); }
 });

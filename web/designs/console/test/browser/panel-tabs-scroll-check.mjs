@@ -13,32 +13,91 @@ try{
  ws=new WebSocket(info.webSocketDebuggerUrl);await once(ws,'open');let seq=0;const pending=new Map();
  ws.onmessage=({data})=>{const m=JSON.parse(data);if(pending.has(m.id)){pending.get(m.id)(m.result);pending.delete(m.id)}};
  const call=(method,params={})=>new Promise(resolve=>{pending.set(++seq,resolve);ws.send(JSON.stringify({id:seq,method,params}))});
- const evaluate=async expression=>(await call('Runtime.evaluate',{expression,returnByValue:true})).result?.value;
- const base='http://127.0.0.1:19438/designs/console/test/browser/integration-fixture.html';
+ const evaluate=async expression=>{
+  const result=await call('Runtime.evaluate',{expression,returnByValue:true});
+  if(result?.exceptionDetails)throw Error(JSON.stringify(result.exceptionDetails));
+  return result.result.value;
+ };
+ const base='http://127.0.0.1:19438/designs/console/test/browser/integration-fixture.html?view=panel-tabs';
+ const list='[data-panel-root] [role=tablist]';
+ const toggle='[data-panel-root] button[aria-expanded]';
+ const measure=()=>evaluate(`(()=>{
+  const list=document.querySelector(${JSON.stringify(list)}), r=list.getBoundingClientRect();
+  const style=getComputedStyle(list);
+  return {left:r.left,right:r.right,clientWidth:list.clientWidth,scrollWidth:list.scrollWidth,scrollLeft:list.scrollLeft,
+   overflow:style.overflowX,gap:style.gap,tabs:[...list.querySelectorAll('[role=tab]')].map(tab=>{
+    const r=tab.getBoundingClientRect(), label=tab.querySelector('.panel-tab-label');
+    const text=document.createRange();text.selectNode(label.firstChild);
+    const body=text.getBoundingClientRect(), icon=tab.querySelector('svg').getBoundingClientRect();
+    return {left:r.left,right:r.right,textLeft:body.left,textRight:body.right,iconRight:icon.right,
+     label:label.firstChild.textContent,selected:tab.getAttribute('aria-selected')==='true',
+     padding:getComputedStyle(tab).paddingInlineStart};
+   })};
+ })()`);
+ function selectedVisible(geometry){
+  const selected=geometry.tabs.find(tab=>tab.selected);
+  return selected.left>=geometry.left-1 && selected.right<=geometry.right+1;
+ }
  await until(async()=>(await fetch(base)).ok);
  for(const lang of ['en','ja']) for(const appWidth of [1180,1280,1440]) for(const panelWidth of [190,250,340]){
+  const key=`${lang}/${appWidth}/${panelWidth}`;
+  const url=`${base}&lang=${lang}&width=${appWidth}&panel=${panelWidth}`;
   await call('Emulation.setDeviceMetricsOverride',{width:appWidth,height:900,deviceScaleFactor:1,mobile:false});
-  await call('Page.navigate',{url:`${base}?lang=${lang}`});
-  await until(()=>evaluate(`(()=>{const e=document.querySelector('.details [role=tablist]');return e&&e.querySelectorAll('[role=tab]').length>=4})()`));
-  const result=await evaluate(`(()=>{const list=document.querySelector('.details [role=tablist]');list.style.width='${panelWidth}px';list.style.flex='none';const tabs=[...list.querySelectorAll('[role=tab]')];return {scrollWidth:list.scrollWidth,clientWidth:list.clientWidth,left:list.getBoundingClientRect().left,right:list.getBoundingClientRect().right,overflow:getComputedStyle(list).overflowX,tabs:tabs.map(b=>{const r=b.getBoundingClientRect(),lr=b.querySelector('.panel-tab-label').getBoundingClientRect(),ir=b.querySelector('svg').getBoundingClientRect();return {left:r.left,right:r.right,labelLeft:lr.left,labelRight:lr.right,iconRight:ir.right,width:b.scrollWidth,client:b.clientWidth}})}})()`);
-  assert.equal(result.tabs.length,4);
-  assert(result.clientWidth>0,`tablist is not visible at ${lang}/${appWidth}/${panelWidth}`);
-  for(const tab of result.tabs){assert(tab.width<=tab.client,`label clipped at ${lang}/${appWidth}/${panelWidth}`);assert(tab.left>=result.left-0.5 && tab.right<=result.left+result.scrollWidth+0.5,`tab outside scroll content at ${lang}/${appWidth}/${panelWidth}`)}
-  for(let i=1;i<result.tabs.length;i++)assert(result.tabs[i-1].right<=result.tabs[i].left,`overlap at ${lang}/${appWidth}/${panelWidth}`);
-  for(const tab of result.tabs)assert(tab.iconRight+5.5<=tab.labelLeft,`icon/label gap at ${lang}/${appWidth}/${panelWidth}`);
-  const beforeBadges=await evaluate(`(()=>{const tabs=[...document.querySelectorAll('.details [role=tab]')];for(const b of tabs)b.querySelector('.panel-tab-count')?.remove();return tabs.map(b=>{const r=b.getBoundingClientRect();return [r.left,r.right]})})()`);
-  await evaluate(`document.querySelectorAll('.details .panel-tab-label').forEach(label=>{const badge=document.createElement('span');badge.className='panel-tab-count';badge.textContent='9';label.append(badge)})`);
-  assert.deepEqual(await evaluate(`(()=>[...document.querySelectorAll('.details [role=tab]')].map(b=>{const r=b.getBoundingClientRect();return [r.left,r.right]}))()`),beforeBadges,`badge changed tab positions ${lang}/${appWidth}/${panelWidth}`);
-  const selectedStyle=await evaluate(`(()=>{const b=document.querySelector('.details [aria-selected=true]');return {weight:getComputedStyle(b).fontWeight,underline:getComputedStyle(b).borderBottomColor}})()`);
-  assert(Number(selectedStyle.weight)>=700,`selected tab is not bold: ${lang}/${appWidth}/${panelWidth}`);
-  assert.equal(result.overflow,'auto');
-  const railOverflow=await evaluate(`(()=>{const rail=document.createElement('div');rail.className='panel-tabs panel-tabs-rail';rail.style.cssText='position:fixed;left:4px;top:4px;width:44px;height:180px';rail.innerHTML='<button><svg></svg><span class="panel-tab-label">Rail label</span><span class="panel-tab-tip">Rail tooltip</span></button>';document.body.append(rail);const overflow=getComputedStyle(rail).overflowX;rail.remove();return overflow})()`);
-  assert.equal(railOverflow,'visible',`vertical rail must not inherit horizontal scrolling at ${lang}/${appWidth}/${panelWidth}`);
-  if(panelWidth<340)assert(result.scrollWidth>result.clientWidth,`expected horizontal overflow at ${lang}/${appWidth}/${panelWidth}`);
-  await evaluate(`document.querySelectorAll('.details [role=tab]')[3].click()`);
-  const selected=await evaluate(`(()=>{const list=document.querySelector('.details [role=tablist]'),b=list.querySelector('[aria-selected=true]'),r=b.getBoundingClientRect(),p=list.getBoundingClientRect();return {left:r.left,right:r.right,viewportLeft:p.left,viewportRight:p.right,scrollLeft:list.scrollLeft}})()`);
-  assert(selected.left>=selected.viewportLeft-0.5 && selected.right<=selected.viewportRight+0.5,`selected tab not revealed ${lang}/${appWidth}/${panelWidth}`);
-  console.log(JSON.stringify({lang,appWidth,panelWidth,scrollWidth:result.scrollWidth,clientWidth:result.clientWidth,scrollLeft:selected.scrollLeft,selectedVisible:true}));
+  await call('Page.navigate',{url});
+  await until(()=>evaluate(`location.href===${JSON.stringify(url)} && typeof window.publishPanelTabsCount==='function' && !!document.querySelector('#panel-tab-info')`));
+  await evaluate(`document.querySelector('[data-panel-root]').style.setProperty('--size-details','${panelWidth+33}px')`);
+  const initial=await measure();
+  assert.equal(initial.clientWidth,panelWidth,key);
+  assert.equal(initial.gap,'2px',key);
+  assert.equal(initial.overflow,'auto',key);
+  assert(initial.tabs.some(tab=>tab.label===(lang==='en'?'Information':'情報')),`locale not applied: ${key}`);
+  for(const [i,tab] of initial.tabs.entries()){
+   assert.equal(tab.padding,'10px',key);
+   assert(tab.iconRight+5.5<=tab.textLeft && tab.textRight<=tab.right,`label does not fit its own tab: ${key}`);
+   if(i)assert(initial.tabs[i-1].right<=tab.left,`overlap: ${key}`);
+  }
+  if(panelWidth===190)assert(initial.scrollWidth>initial.clientWidth,`narrow row did not overflow: ${key}`);
+  assert.equal(await evaluate(`document.querySelector('#panel-tab-reply-needed .panel-tab-count')===null`),true,key);
+  await evaluate(`document.querySelector(${JSON.stringify(list)}).scrollLeft=10000`);
+  const before=await measure();
+  if(before.scrollWidth>before.clientWidth)assert(!selectedVisible(before),`manual scroll did not move away from selection: ${key}`);
+  await evaluate('window.publishPanelTabsCount()');
+  await until(()=>evaluate(`document.querySelector('#panel-tab-reply-needed .panel-tab-count')?.textContent==='1'`));
+  const counted=await measure();
+  assert.equal(counted.scrollLeft,before.scrollLeft,`count update reset manual scroll: ${key}`);
+  assert.deepEqual(counted.tabs,before.tabs,`count update moved the tabs: ${key}`);
+  await evaluate(`document.querySelector(${JSON.stringify(list)}).scrollLeft=0; document.querySelector('#panel-tab-info').click()`);
+  const selected=await measure();
+  assert(selected.tabs.at(-1).selected && selectedVisible(selected),`selection was not revealed: ${key}`);
+  assert.equal(await evaluate(`document.querySelector(${JSON.stringify(list)}).querySelector('[role=tooltip]')===null`),true,key);
+
+  await evaluate(`document.querySelector(${JSON.stringify(toggle)}).click()`);
+  const rail=await evaluate(`(()=>{
+   const list=document.querySelector('[data-panel-rail] [role=tablist]');
+   const tab=list.querySelector('#panel-tab-reply-needed'), badge=tab.querySelector('.panel-tab-count');
+   return {orientation:list.getAttribute('aria-orientation'),overflow:getComputedStyle(list).overflowX,
+    gap:getComputedStyle(list).gap,buttonGap:getComputedStyle(tab).gap,alignment:getComputedStyle(tab).alignItems,
+    badgeRadius:getComputedStyle(badge).borderRadius,badgePosition:getComputedStyle(badge).position,
+    badgeAlign:getComputedStyle(badge).textAlign};
+  })()`);
+  assert.deepEqual(rail,{orientation:'vertical',overflow:'visible',gap:'4px',buttonGap:'4px',alignment:'center',
+   badgeRadius:'999px',badgePosition:'static',badgeAlign:'center'},key);
+  const tooltipOutside=()=>evaluate(`(()=>{
+   const tab=document.querySelector('#panel-tab-info'), tip=document.getElementById(tab.getAttribute('aria-describedby'));
+   const r=tip.getBoundingClientRect(), t=tab.getBoundingClientRect();
+   return r.width>0 && r.right<=t.left+1 && document.elementFromPoint(r.left+r.width/2,r.top+r.height/2)===tip;
+  })()`);
+  // Programmatic focus follows keyboard modality after a real Tab key press.
+  await call('Input.dispatchKeyEvent',{type:'keyDown',key:'Tab',code:'Tab',windowsVirtualKeyCode:9});
+  await call('Input.dispatchKeyEvent',{type:'keyUp',key:'Tab',code:'Tab',windowsVirtualKeyCode:9});
+  await evaluate(`document.querySelector('#panel-tab-info').focus()`);
+  assert(await tooltipOutside(),`focused rail tooltip is clipped: ${key}`);
+  const point=await evaluate(`(()=>{const r=document.querySelector('#panel-tab-info').getBoundingClientRect();document.activeElement.blur();return {x:r.left+r.width/2,y:r.top+r.height/2}})()`);
+  await call('Input.dispatchMouseEvent',{type:'mouseMoved',...point});
+  await until(tooltipOutside);
+  await evaluate(`document.querySelector(${JSON.stringify(toggle)}).click()`);
+  assert(selectedVisible(await measure()),`re-expansion did not reveal the selection: ${key}`);
+  console.log(JSON.stringify({lang,appWidth,panelWidth,scrollWidth:initial.scrollWidth,manualScroll:before.scrollLeft,railTooltip:'focus and hover'}));
  }
 }finally{
  ws?.close();for(const p of [chrome,vite])if(p.exitCode===null){const done=once(p,'exit');p.kill('SIGTERM');await done.catch(()=>{})}await rm(profile,{recursive:true,force:true});

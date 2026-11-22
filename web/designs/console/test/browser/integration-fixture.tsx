@@ -8,10 +8,12 @@ import { DESIGNS } from '../../../registry';
 const params = new URLSearchParams(location.search);
 const fixtureLang = params.get('lang') === 'ja' ? 'ja' as const : 'en' as const;
 const ownSendFixture = params.get('view') === 'own-send';
-const fixtureOptions = ownSendFixture ? { route: 'conversation' as const, threadId: 'lead', capabilities: ['history.window'] } : params.get('view') === 'memory' ? { route: 'analytics' as const, section: 'memory' as const, lang: fixtureLang } : params.get('view') === 'sidebar' ? { lang: fixtureLang, capabilities: ['thread.tags', 'thread.cwds', 'history.window'] } : {};
+const panelTabsFixture = params.get('view') === 'panel-tabs';
+const fixtureOptions = ownSendFixture ? { route: 'conversation' as const, threadId: 'lead', capabilities: ['history.window'] } : panelTabsFixture ? { route: 'conversation' as const, threadId: 'lead', lang: fixtureLang } : params.get('view') === 'memory' ? { route: 'analytics' as const, section: 'memory' as const, lang: fixtureLang } : params.get('view') === 'sidebar' ? { lang: fixtureLang, capabilities: ['thread.tags', 'thread.cwds', 'history.window'] } : {};
 if (params.get('view') === 'memory') document.documentElement.dataset.memoryFixture = fixtureLang;
 const { model, t, db } = await fixtureModel({ ...fixtureOptions, configure(db) {
   if (ownSendFixture) { db.history.lead = []; return; }
+  if (panelTabsFixture) db.details.lead!.awaiting_replies = [];
   if (params.get('view') === 'sidebar') {
     db.threads = {
       lead: summary('lead', {title:'Leader',cwd:'/fixture/work',activity:'tools',tags:['pin']}),
@@ -72,3 +74,12 @@ mount(document.getElementById('app')!, { model, designs: DESIGNS, prefs, setPref
 (window as unknown as { setFixtureTheme: (theme: 'console' | 'light' | 'terminal') => void }).setFixtureTheme = theme => {
   prefs.value = { ...prefs.value, theme };
 };
+
+if (panelTabsFixture) Object.assign(window, {
+  publishPanelTabsCount() {
+    db.details.lead!.awaiting_replies = [
+      { message_id: 'panel-tab-duty', recipient_kind: 'thread', recipient_thread_id: 'child', excerpt: 'Synthetic reply duty', delivery_status: 'applied' },
+    ];
+    t.push({ t: 'changed', thread_ids: ['lead'], list: false });
+  },
+});

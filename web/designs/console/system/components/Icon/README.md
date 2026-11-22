@@ -33,6 +33,8 @@ Consumers use semantic `IconRole` names only. Glyph names, paths, and the role-t
 | `panel.reply_needed` | Identify a request this Thread should answer. | Lucide `reply` |
 | `panel.awaiting_reply` | Identify a request awaiting another recipient. | Lucide `hourglass` |
 | `panel.information` | Open Thread information. | Lucide `info` |
+| `panel.collapse` | Collapse the desktop right panel. | `arrow-left` |
+| `panel.expand` | Expand the desktop right panel. | `arrow-right` |
 | `settings.general` | Identify the General appearance section. | `palette` |
 | `settings.connections` | Identify the Connections settings section. | `plug` |
 | `settings.compaction` | Identify the Compaction settings section. | `retry` |

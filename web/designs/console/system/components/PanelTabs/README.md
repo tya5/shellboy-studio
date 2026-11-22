@@ -8,8 +8,6 @@ References: WAI-ARIA APG Tabs; VS Code Activity Bar icon rail.
 
 Styles: style.css in this directory
 
-The same linked tooltip is also used when the expanded panel uses icon-only tabs at 1180–1279px.
-
-Horizontal tab rows never overlap or clip their labels; they scroll horizontally when needed, and the selected tab is moved into view with the minimal scroll. The vertical icon rail is unchanged.
+Horizontal tab rows never overlap or clip their labels; they scroll horizontally when needed, and PanelTabs minimally reveals the selected tab on selection change or expansion. Count and other item updates preserve manual scroll. The vertical icon rail is unchanged.
 
 Horizontal tab buttons use `--space-2` for the row gap and `--space-10` for the leading inset, preserving the approved 2px and 10px values. Trailing inset and icon-to-label gap use `--space-16` and `--space-6`. Keep all horizontal-only spacing and scrolling scoped off the unchanged vertical rail. Labels reserve the same badge corner whether a count is present or absent; the small amber count is overlaid at the label's top-right and never participates in tab sizing. The selected tab is bold with the accent underline; hover adds a raised tint. Keep these placements identical when adding a count or changing locale.
