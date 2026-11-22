@@ -54,7 +54,7 @@ function TagPanel({ model }: { model: AppModel }) {
   const org = model.org;
   const draft = org.tagDraft.value;
   const action = org.tagAction.value;
-  const n = org.selected.value.size;
+  const n = draft.targets.length;
   const [text, setText] = useState("");
   const [problem, setProblem] = useState<TagInvalid | undefined>(undefined);
   if (!draft.open) return null;
@@ -260,7 +260,7 @@ export function Threads({ model }: { model: AppModel }) {
       {by === "tag" && !canTag ? <Notice>{t("org.tagsUnavailable")}</Notice> : null}
       {by === "tag" && canTag ? <div class="muted caption">{t("org.tagNote")}</div> : null}
       {by === "directory" && !kind ? <div class="muted caption">{t("org.dirsPartial")}</div> : null}
-      <TagPanel model={model} />
+      <TagPanel key={JSON.stringify(org.tagDraft.value.targets)} model={model} />
       <Field ariaLabel={t("org.filter")} placeholder={t("org.filter")} leading={<Icon role="organization.search" size="small" />} value={query} onInput={(e) => setQuery(e.currentTarget.value)} />
       {selected.size > 0 ? (
         <SelectionBar text={extra > 0 ? t("org.selectedWith", { n: selected.size, extra }) : t("org.selected", { n: selected.size })} option={{ label: t("org.descendants"), checked: descendants, onChange: (on) => (org.descendants.value = on) }}>

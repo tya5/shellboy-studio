@@ -7,3 +7,5 @@ row mutations or for navigation.
 References: Orca sidebar filters, shadcn/ui DropdownMenu, WAI-ARIA Menu Button.
 
 Catalog paging actions keep the menu open; choices are owner catalog facts, not the filtered rows.
+
+Catalog reads and their hint subscriptions live only while this menu is open. Closing or leaving the route cancels them.

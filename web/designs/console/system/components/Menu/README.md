@@ -5,7 +5,7 @@ optional item icons by semantic `IconRole` (for example `action.archive`), never
 glyph shape. The active theme owns the role-to-glyph mapping. Menu entries use `<Icon size="menu">`, which maps to the dedicated 16px icon token; other small icons use `size="small"` (15px).
 
 - Pointer opening focuses the menu panel, not its first entry; keyboard opening
-  (ArrowDown) moves focus to the first enabled item.
+  (ArrowDown, Enter, or Space on the trigger) moves focus to the first enabled item.
 - Selection closes the menu and restores focus to its trigger. Escape closes and
   restores the captured focus target; Tab closes and lets focus move naturally.
 - ArrowUp/ArrowDown stop at the ends (Radix default `loop=false`); Home/PageUp and
@@ -31,3 +31,5 @@ Styles are colocated in `system/components/Menu/style.css`.
 Styles: style.css in this directory
 
 A paging item may keep the menu open. Selection and mutation items dismiss normally.
+
+When live entries change, focus stays on the current item if it survives, or moves to the nearest surviving item (the menu panel if there are none).

@@ -567,6 +567,7 @@ export type TagAction = { kind: "idle" } | { kind: "running" } | { kind: "done";
 
 export interface TagDraft {
   open: boolean;
+  targets: readonly string[];
   add: string[];
   remove: ReadonlySet<string>;
 }
@@ -584,7 +585,7 @@ export class ThreadOrg {
   private cancel = new Cancel();
   /** Names for the Tag and Directory groupings, and their members. Used only when the owner can list them. */
   readonly headings: ThreadHeadings;
-  readonly tagDraft: Signal<TagDraft> = signal({ open: false, add: [], remove: new Set() });
+  readonly tagDraft: Signal<TagDraft> = signal({ open: false, targets: [], add: [], remove: new Set() });
   readonly tagAction: Signal<TagAction> = signal({ kind: "idle" });
 
   constructor(
@@ -797,15 +798,30 @@ export class ThreadOrg {
 
   /** Tags of the chosen Threads that have been read, sorted. Rows not read can't be named here. */
   selectedTags(): string[] {
-    const chosen = this.selected.value;
+    const chosen = new Set(this.tagDraft.value.targets);
     const all = new Set<string>();
     for (const s of this.shown()) if (chosen.has(s.thread_id)) for (const tag of s.tags ?? []) all.add(tag);
     return [...all].sort();
   }
 
   openTags(on: boolean): void {
-    this.tagDraft.value = { ...this.tagDraft.peek(), open: on };
-    if (on) this.tagAction.value = { kind: "idle" };
+    if (on) this.startTagEditing([...this.selected.peek()]);
+    else this.tagDraft.value = { ...this.tagDraft.peek(), open: false };
+  }
+
+  openTagsFor(threadId: string, archived: boolean): void {
+    this.setMode(archived ? "only" : "exclude");
+    this.startTagEditing([threadId]);
+  }
+
+  private startTagEditing(targets: string[]): void {
+    const draft = this.tagDraft.peek();
+    const same = targets.length === draft.targets.length && targets.every(id => draft.targets.includes(id));
+    if (same && draft.open) return;
+    batch(() => {
+      this.tagDraft.value = { open: true, targets, add: same ? draft.add : [], remove: same ? draft.remove : new Set() };
+      this.tagAction.value = { kind: "idle" };
+    });
   }
 
   /** Puts a tag on the list to add. Returns why it can't, or nothing. */
@@ -834,9 +850,9 @@ export class ThreadOrg {
 
   /** One `thread.tag` for the chosen Threads. Nothing is optimistic: the groups are read again after. */
   async applyTags(): Promise<void> {
-    const ids = [...this.selected.peek()];
     const draft = this.tagDraft.peek();
-    if (ids.length === 0 || (draft.add.length === 0 && draft.remove.size === 0)) return;
+    const ids = [...draft.targets];
+    if (!draft.open || this.tagAction.peek().kind === "running" || ids.length === 0 || (draft.add.length === 0 && draft.remove.size === 0)) return;
     if (ids.length > TAG_SELECTION_MAX) {
       this.tagAction.value = { kind: "selection", n: ids.length };
       return;
@@ -844,13 +860,15 @@ export class ThreadOrg {
     this.tagAction.value = { kind: "running" };
     const remove = [...draft.remove];
     const out = await this.ops.threadTag({ thread_ids: ids, ...(draft.add.length > 0 && { add: draft.add }), ...(remove.length > 0 && { remove }) });
+    const current = this.tagDraft.peek();
+    if (!current.open || current.targets !== draft.targets) return;
     if (!out.ok) {
       this.tagAction.value = { kind: "failed", limit: out.error.kind === "owner" && out.error.code === "input_limit", message: out.error.message };
       return;
     }
     batch(() => {
       this.tagAction.value = { kind: "done", result: out.value };
-      this.tagDraft.value = { ...draft, add: [], remove: new Set() };
+      if (current === draft) this.tagDraft.value = { ...draft, add: [], remove: new Set() };
     });
     await this.read();
   }

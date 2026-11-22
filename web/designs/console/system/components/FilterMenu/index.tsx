@@ -4,7 +4,7 @@ import { ThreadHeadings } from "../../../../../ui-core/src/headings";
 import { useEffect, useId, useMemo, useRef, useState } from "preact/hooks";
 import { Button } from "../Button";
 import { Icon } from "../Icon";
-import { Menu, type MenuEntry } from "../Menu";
+import { isMenuOpenKey, Menu, type MenuEntry } from "../Menu";
 
 export function FilterMenu({ label, count, data, canTag, canCwd, entries }: {
   label: string; count: number; data: ShellboyData; canTag: boolean; canCwd: boolean;
@@ -34,7 +34,11 @@ export function FilterMenu({ label, count, data, canTag, canCwd, entries }: {
   const [method, setMethod] = useState<"keyboard" | "pointer">("pointer");
   const trigger = useRef<HTMLButtonElement>(null);
   const id = useId();
-  return <><Button icon label={count ? `${label} (${count})` : label} title={label} buttonRef={trigger} id={`${id}-trigger`} aria-expanded={open} aria-haspopup="menu" aria-controls={`${id}-filters`} onClick={e => { setMethod(e.detail === 0 ? "keyboard" : "pointer"); setOpen(!open); }}>
+  return <><Button icon label={count ? `${label} (${count})` : label} title={label} buttonRef={trigger} id={`${id}-trigger`} aria-expanded={open} aria-haspopup="menu" aria-controls={`${id}-filters`} onKeyDown={event => {
+    if (!isMenuOpenKey(event.key)) return;
+    event.preventDefault();
+    if (!open) { setMethod("keyboard"); setOpen(true); }
+  }} onClick={e => { setMethod(e.detail === 0 ? "keyboard" : "pointer"); setOpen(!open); }}>
     <Icon role="sidebar.filter" size="small" />{count || null}
   </Button><Menu open={open} anchor={trigger.current} returnFocusTo={trigger.current} openMethod={method} id={`${id}-filters`} labelledBy={`${id}-trigger`} entries={items} onClose={() => setOpen(false)} /></>;
 }

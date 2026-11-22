@@ -51,6 +51,7 @@ it("keeps status updates in place, persists child folds, and moves pins only aft
     await act(async () => { pin.click(); await settle(f.t, f.db); });
     expect(f.t.calls("thread.tag").at(-1)?.args).toEqual({ thread_ids: ["other"], add: ["pin"] });
     expect(sides()).toEqual(order);
+    expect(f.model.actionError.peek()).toBeUndefined();
     await act(hint);
     expect(sides()[0]).toBe("thread-link-sidebar-other");
     expect(host.querySelector('.side-list section')?.getAttribute("aria-label")).toBe("Pinned");
@@ -78,6 +79,14 @@ it("reads owner catalogs only while the filter menu is open, independently of fi
   try {
     await act(async()=>{render(<App context={{model:f.model,prefs,designs:DESIGNS,setPrefs(){},submitToken:async()=>false}}/>,host);await settle(f.t,f.db);});
     expect(f.t.calls("thread.cwds")).toHaveLength(0);
+    for (const key of ["ArrowDown", "Enter", " "]) {
+      trigger().focus();
+      await act(async()=>{trigger().dispatchEvent(new KeyboardEvent("keydown",{key,bubbles:true,cancelable:true}));});
+      await act(async()=>{await settle(f.t,f.db);});
+      expect(document.activeElement).toBe(menu()?.querySelector('[role="menuitem"]'));
+      await act(async()=>trigger().click());
+      expect(menu()).toBeNull();
+    }
     await act(async()=>trigger().click());
     await act(async()=>{await settle(f.t,f.db);});
     expect(menu()?.textContent).toContain("Directory: /beta");

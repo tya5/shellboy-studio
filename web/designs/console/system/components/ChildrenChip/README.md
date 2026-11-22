@@ -8,3 +8,5 @@ unloaded or filtered-out Threads.
 References: Orca sidebar, shadcn/ui Sidebar, WAI-ARIA tree disclosure behavior.
 
 Styles: style.css in this directory
+
+When no child can be revealed inside the current group, the badge is a static summary with no disclosure button or Left/Right action.

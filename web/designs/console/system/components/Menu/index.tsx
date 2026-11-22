@@ -6,6 +6,8 @@ import { Icon, type IconRole } from "../Icon";
 export type MenuItem = { key: string; label: string; icon?: IconRole; onSelect?: (focusReturn: HTMLElement | null, placementAnchor: HTMLElement | null) => void; href?: string; destructive?: boolean; disabled?: boolean; keepOpen?: boolean };
 export type MenuEntry = MenuItem | { key: string; separator: true };
 
+export const isMenuOpenKey = (key: string): boolean => key === "ArrowDown" || key === "Enter" || key === " ";
+
 function isSeparator(entry: MenuEntry): entry is { key: string; separator: true } { return "separator" in entry; }
 
 export function Menu({ open, anchor, returnFocusTo, entries, onClose, id, labelledBy, openMethod = "pointer", pointerPosition }: { open: boolean; anchor: HTMLElement | null; returnFocusTo?: HTMLElement | null; entries: MenuEntry[]; onClose: () => void; id: string; labelledBy: string; openMethod?: "pointer" | "keyboard"; pointerPosition?: { x: number; y: number } | null; children?: ComponentChildren }) {

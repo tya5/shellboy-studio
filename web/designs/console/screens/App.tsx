@@ -240,8 +240,7 @@ export function App({ context }: { context: DesignContext }) {
                       menu={{ label: t("thread.rowMenu"), entries: threadMenuEntries(model, r.summary, r.status,
                         target => setDeleteThread({ threadId: target.thread_id }), canTag ? { onEditTags: () => {
                           model.showView("threads");
-                          model.org.setMode(r.summary.archived_at === undefined ? "exclude" : "only");
-                          model.org.clear(); model.org.setMany([id], true); model.org.openTags(true); setDrawer(false);
+                          model.org.openTagsFor(id, r.summary.archived_at !== undefined); setDrawer(false);
                         } } : undefined) }} />;
                   }) : null}
                 </ThreadGroup>;

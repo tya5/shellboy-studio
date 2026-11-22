@@ -151,10 +151,29 @@ describe("editing tags", () => {
     return made;
   };
 
+  it("discards an unapplied draft when the editor is opened for another target", async () => {
+    const { t, db, model } = await setup();
+    const org = model.org;
+    org.openTagsFor("lead", false);
+    org.addTag("old-draft");
+    org.toggleRemoveTag("keep");
+    org.openTagsFor("done", false);
+    expect(org.tagDraft.peek()).toMatchObject({ targets: ["done"], add: [], remove: new Set() });
+    await org.applyTags();
+    expect(t.calls("thread.tag")).toHaveLength(0);
+    org.addTag("new-draft");
+    const write = org.applyTags();
+    await settle(t, db);
+    await write;
+    expect(t.calls("thread.tag")[0]?.args).toEqual({ thread_ids: ["done"], add: ["new-draft"] });
+    model.dispose();
+  });
+
   it("adds and removes on several Threads in one call, then reads again; nothing is optimistic", async () => {
     const { t, db, model } = await setup();
     const org = model.org;
     org.setMany(["lead", "done"], true);
+    org.openTags(true);
     expect(org.selectedTags()).toEqual(["keep", "old"]);
     expect(org.addTag("  fresh ")).toBeUndefined();
     org.toggleRemoveTag("old");
@@ -177,6 +196,7 @@ describe("editing tags", () => {
     const { t, db, model } = await setup();
     const org = model.org;
     org.selected.value = new Set(["lead", "ghost"]);
+    org.openTags(true);
     org.addTag("keep");
     const running = org.applyTags();
     await settle(t, db);
@@ -193,6 +213,7 @@ describe("editing tags", () => {
     org.setGrouping("tag");
     await settle(t, db);
     org.setMany(["full"], true);
+    org.openTags(true);
     org.addTag("one-too-many");
     const running = org.applyTags();
     await settle(t, db);
@@ -206,6 +227,7 @@ describe("editing tags", () => {
     const { t, db, model } = await setup();
     const org = model.org;
     org.selected.value = new Set(Array.from({ length: TAG_SELECTION_MAX + 1 }, (_, k) => `s${k}`));
+    org.openTags(true);
     org.addTag("x");
     await org.applyTags();
     await settle(t, db);
