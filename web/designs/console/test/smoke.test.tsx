@@ -1331,6 +1331,47 @@ describe("Settings", () => {
     expect(text(el)).not.toContain("Changes take effect after owner restart");
     expect(el.querySelector(".subview-main input")).toBeNull();
   });
+  it.each(["responses", "chat_completions", "anthropic_messages"])("edits an optional maximum output token count in %s", async (api) => {
+    let maxTokens: number | undefined;
+    let hash = "before";
+    const { model, t, db } = await fixtureModel({ route: "settings", section: "connections", capabilities: ["config.edit"], configure(db) {
+      const answer = db.answer;
+      db.answer = (call) => {
+        if (call.command === "config.get") {
+          const file = { present: true, valid: true, content_hash: hash, values: { connections: { proxy: { api, ...(maxTokens === undefined ? {} : { max_tokens: maxTokens }) } } } };
+          const loaded = { ...file, values: { connections: { proxy: { api, max_tokens: 32768 } } } };
+          return { ok: true, result: { file, loaded } };
+        }
+        if (call.command === "config.set") {
+          const { changes } = call.args as { changes: { value?: number }[] };
+          maxTokens = changes[0]!.value;
+          hash = maxTokens === undefined ? "cleared" : "saved";
+          return { ok: true, result: { written: true, content_hash: hash } };
+        }
+        return answer(call);
+      };
+    } });
+    const el = draw(model);
+    const input = () => el.querySelector<HTMLInputElement>('input[aria-label="Maximum output tokens"]')!;
+    expect(input().value).toBe("");
+    expect(t.calls("config.set")).toHaveLength(0);
+    const description = el.querySelector(`[id="${input().getAttribute("aria-describedby")}"]`);
+    expect(description?.textContent).toContain("Claude and similar models may be cut short");
+    expect(description?.textContent).toContain("Anthropic Messages is recommended for Claude");
+    act(() => { input().value = "4096"; input().dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })); });
+    await act(async () => { await settle(t, db); });
+    expect(t.calls("config.set").map((call) => call.args)).toEqual([{ expected_hash: "before", changes: [{ field: "connections.proxy.max_tokens", value: 4096 }] }]);
+    await act(async () => { void model.config.configChanged(); await settle(t, db); });
+    act(() => model.applyRoute({ view: "settings", section: "general" }));
+    act(() => model.applyRoute({ view: "settings", section: "connections" }));
+    await act(async () => { await settle(t, db); });
+    expect(input().value).toBe("4096");
+    act(() => { input().value = ""; input().dispatchEvent(new FocusEvent("focusout", { bubbles: true })); });
+    await act(async () => { await settle(t, db); });
+    expect(t.calls("config.set").at(-1)!.args).toEqual({ expected_hash: "saved", changes: [{ field: "connections.proxy.max_tokens" }] });
+    await act(async () => { void model.config.configChanged(); await settle(t, db); });
+    expect(input().value).toBe("");
+  });
   it("shows indexing cost and links storage use to Analytics", async () => {
     expect(text((await open("index")).el)).toContain("may incur charges");
     const { el } = await open("storage");

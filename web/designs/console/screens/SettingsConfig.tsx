@@ -56,7 +56,7 @@ function RejectedTextField({ rejection, ...props }: Parameters<typeof Field>[0] 
 }
 
 /** The typed control for one key of the file. */
-export function ConfigControl({ model, path, label, spec }: { model: AppModel; path: readonly string[]; label: string; spec: ConfigFieldSpec }) {
+export function ConfigControl({ model, path, label, spec, describedBy }: { model: AppModel; path: readonly string[]; label: string; spec: ConfigFieldSpec; describedBy?: string }) {
   const t = model.t.value;
   const config = model.config;
   const facts = config.read.value.value;
@@ -77,7 +77,7 @@ export function ConfigControl({ model, path, label, spec }: { model: AppModel; p
     control = <ButtonGroup label={label}>{kinds.map((kind) => <Button key={kind} disabled={disabled} aria-pressed={selected.includes(kind)} onClick={() => commit((selected.includes(kind) ? selected.filter((v) => v !== kind) : [...selected, kind]).join(","))}>{t(`set.kind.${kind}`)}</Button>)}</ButtonGroup>;
   } else {
     const raw = current === undefined || current === null ? "" : showConfigValue(current);
-    control = <RejectedTextField rejection={error} ariaLabel={label} class="mono" inputMode={spec.kind === "int" ? "numeric" : undefined} placeholder={t("config.notSet")} value={raw} disabled={disabled} onKeyDown={(e) => { if (e.key === "Enter") commit(e.currentTarget.value); }} onBlur={(e) => { if (e.currentTarget.value !== raw) commit(e.currentTarget.value); }} />;
+    control = <RejectedTextField rejection={error} ariaLabel={label} aria-describedby={describedBy} class="mono" inputMode={spec.kind === "int" ? "numeric" : undefined} placeholder={t("config.notSet")} value={raw} disabled={disabled} onKeyDown={(e) => { if (e.key === "Enter") commit(e.currentTarget.value); }} onBlur={(e) => { if (e.currentTarget.value !== raw) commit(e.currentTarget.value); }} />;
   }
   return <div class="stack">{control}<SettingFeedback model={model} paths={[path]} /></div>;
 }
@@ -158,9 +158,10 @@ export function connectionCards(model: AppModel, search: RegisterSetting) {
           const path = ["connections", name, key];
           const { settingId, label } = search(fieldOf(path), `config.conn.${key}`, key === "api_key_env" ? ["config.keyNote"] : key === "max_tokens" ? ["config.outputTokensNote"] : [], name);
           const env = key === "api_key_env" ? valueAt(values, path) : undefined;
-          const note = key === "api_key_env" ? <>{t("config.keyNote")} {typeof env === "string" && facts.credentialSet[env] !== undefined ? t(facts.credentialSet[env] ? "config.envSet" : "config.envUnset") : null}</> : key === "max_tokens" ? t("config.outputTokensNote") : undefined;
+          const describedBy = key === "max_tokens" ? `connection-output-tokens-${encodeURIComponent(name)}` : undefined;
+          const note = key === "api_key_env" ? <>{t("config.keyNote")} {typeof env === "string" && facts.credentialSet[env] !== undefined ? t(facts.credentialSet[env] ? "config.envSet" : "config.envUnset") : null}</> : describedBy ? <span id={describedBy}>{t("config.outputTokensNote")}</span> : undefined;
           const value = configRowValue(t, facts, path);
-          return editable ? { settingId, label, control: <ConfigControl model={model} path={path} label={label} spec={{ kind, ...("options" in field ? { options: field.options } : {}) }} />, ...(note ? { note } : {}) } : { settingId, label, mono: true, ...(value !== undefined ? { value } : {}), ...(note ? { note } : {}) };
+          return editable ? { settingId, label, control: <ConfigControl model={model} path={path} label={label} describedBy={describedBy} spec={{ kind, ...("options" in field ? { options: field.options } : {}) }} />, ...(note ? { note } : {}) } : { settingId, label, mono: true, ...(value !== undefined ? { value } : {}), ...(note ? { note } : {}) };
         });
         if (editable)
           for (const { key, json } of CONNECTION_SECRETS) {
