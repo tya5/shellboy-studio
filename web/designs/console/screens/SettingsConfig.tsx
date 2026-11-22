@@ -29,7 +29,7 @@ export function SettingFeedback({ model, paths }: { model: AppModel; paths: read
   const restart = saved?.restartRequired ?? (differs === true ? true : undefined);
   const errorText = error === "number" ? t("config.badNumber") : error === "json" ? t("config.badJson") : error === "placeholder" ? t("config.badPlaceholder") : error;
   return <div class="muted caption" role="status">
-    {config.pendingField.value === field ? t("common.loading") : errorText ?? (restart === undefined ? null : t(restart ? "config.restartOwner" : "config.applyNow"))}
+    {config.pendingField.value === field ? t("common.loading") : errorText ?? (config.changedElsewhere.value === field ? t("config.changedElsewhere") : restart === undefined ? null : t(restart ? "config.restartOwner" : "config.applyNow"))}
     {saved?.undo.length && !errorText ? <Button variant="link" disabled={config.fieldSaving.value} onClick={() => void config.undoLast()}>{t("config.undo")}</Button> : null}
   </div>;
 }

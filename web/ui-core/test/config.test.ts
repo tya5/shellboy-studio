@@ -21,13 +21,18 @@ const got = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
-async function open(answer: (args: Record<string, unknown>) => unknown = () => ({ ok: true, result: { written: true, content_hash: HASH, restart_required: true, changes: [] } })) {
+async function open(answer?: (args: Record<string, unknown>) => unknown) {
   const made = await fixtureModel({ route: "settings", section: "general", capabilities: ["config.edit"] });
   const before = made.db.answer;
   let read = got();
   made.db.answer = (c) => {
     if (c.command === "config.get") return { ok: true, result: read };
-    if (c.command === "config.set") return answer(c.args as Record<string, unknown>) as never;
+    if (c.command === "config.set") {
+      if (answer) return answer(c.args as Record<string, unknown>) as never;
+      const hash = `${read.file.content_hash}b`;
+      read = { ...read, file: { ...read.file, content_hash: hash } };
+      return { ok: true, result: { written: true, content_hash: hash, restart_required: true, changes: [] } };
+    }
     return before(c);
   };
   made.model.config.ensure();
@@ -64,10 +69,10 @@ describe("config editing", () => {
     await commit(["default_model"], "", "text");
     expect(t.calls("config.set").map((call) => call.args)).toEqual([
       { expected_hash: HASH, changes: [{ field: "limits.data_max_bytes", value: 2048 }] },
-      { expected_hash: HASH, changes: [{ field: "connections.proxy.ssl_verify", value: false }] },
-      { expected_hash: HASH, changes: [{ field: "indexing.auto_kinds", value: ["user", "summary"] }] },
-      { expected_hash: HASH, changes: [{ field: "compaction.summary_max_percent", value: 2.5 }] },
-      { expected_hash: HASH, changes: [{ field: "default_model" }] },
+      { expected_hash: HASH + "b", changes: [{ field: "connections.proxy.ssl_verify", value: false }] },
+      { expected_hash: HASH + "bb", changes: [{ field: "indexing.auto_kinds", value: ["user", "summary"] }] },
+      { expected_hash: HASH + "bbb", changes: [{ field: "compaction.summary_max_percent", value: 2.5 }] },
+      { expected_hash: HASH + "bbbb", changes: [{ field: "default_model" }] },
     ]);
   });
 
@@ -145,6 +150,35 @@ describe("on-the-spot config settings", () => {
     await settle(t, db);
     expect(t.calls("config.set")).toHaveLength(2);
     expect(t.calls("config.set")[1]!.args).toEqual({ expected_hash: nextHash, changes: [{ field: "default_model", value: "model-a" }] });
+  });
+
+  it("settles on a newer owner file without offering stale Undo", async () => {
+    const { model, t, db, setRead } = await open(() => ({ ok: true, result: { written: true, content_hash: "ours" } }));
+    const editor = model.config;
+    void editor.saveField(["default_model"], "model-b", "text");
+    await settle(t, db);
+    void editor.configChanged();
+    await settle(t, db);
+    expect(editor.pendingField.peek()).toBe("default_model");
+    setRead(got({ file: { ...got().file, content_hash: "theirs", values: { ...values, default_model: "their-model" } } }));
+    void editor.configChanged();
+    await settle(t, db);
+    expect(editor.pendingField.peek()).toBeUndefined();
+    expect(editor.changedElsewhere.peek()).toBe("default_model");
+    expect(editor.read.peek().value?.file.values?.default_model).toBe("their-model");
+    await editor.undoLast();
+    expect(t.calls("config.set")).toHaveLength(1);
+  });
+
+  it("clears an expected-hash conflict without rereading or retrying", async () => {
+    const { model, t, db } = await open(() => ({ ok: false, code: "operation_conflict", message: "Core file changed", details: { reason: "config_changed" } }));
+    const reads = t.calls("config.get").length;
+    void model.config.saveField(["default_model"], "model-b", "text");
+    await settle(t, db);
+    expect(model.config.pendingField.peek()).toBeUndefined();
+    expect(model.config.fieldError.peek()?.reason).toBe("Core file changed");
+    expect(t.calls("config.get")).toHaveLength(reads);
+    expect(t.calls("config.set")).toHaveLength(1);
   });
 
   it("keeps a refusal reason on its field and rereads Core's value", async () => {
