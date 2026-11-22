@@ -7,9 +7,11 @@ import { DESIGNS } from '../../../registry';
 
 const params = new URLSearchParams(location.search);
 const fixtureLang = params.get('lang') === 'ja' ? 'ja' as const : 'en' as const;
-const fixtureOptions = params.get('view') === 'memory' ? { route: 'analytics' as const, section: 'memory' as const, lang: fixtureLang } : params.get('view') === 'sidebar' ? { lang: fixtureLang, capabilities: ['thread.tags', 'thread.cwds', 'history.window'] } : {};
+const ownSendFixture = params.get('view') === 'own-send';
+const fixtureOptions = ownSendFixture ? { capabilities: ['history.window'] } : params.get('view') === 'memory' ? { route: 'analytics' as const, section: 'memory' as const, lang: fixtureLang } : params.get('view') === 'sidebar' ? { lang: fixtureLang, capabilities: ['thread.tags', 'thread.cwds', 'history.window'] } : {};
 if (params.get('view') === 'memory') document.documentElement.dataset.memoryFixture = fixtureLang;
 const { model, t, db } = await fixtureModel({ ...fixtureOptions, configure(db) {
+  if (ownSendFixture) { db.history.lead = []; return; }
   if (params.get('view') === 'sidebar') {
     db.threads = {
       lead: summary('lead', {title:'Leader',cwd:'/fixture/work',activity:'tools',tags:['pin']}),
@@ -46,7 +48,22 @@ if (params.get('state') === 'empty') {
   await settle(t, db);
 }
 const send = t.send.bind(t);
-t.send = (frame) => { const ok = send(frame); if (frame.t === 'call') queueMicrotask(() => void settle(t, db)); return ok; };
+let pendingOperationId: string | undefined;
+t.send = (frame) => {
+  const ok = send(frame);
+  if (ownSendFixture && frame.t === 'call' && frame.command === 'message.send') pendingOperationId = frame.operation_id;
+  else if (frame.t === 'call') queueMicrotask(() => void settle(t, db));
+  return ok;
+};
+if (ownSendFixture) (window as unknown as { publishSavedOwnMessage: (deferred: boolean) => Promise<void> }).publishSavedOwnMessage = async deferred => {
+  if (!pendingOperationId) throw new Error('No pending message.send call');
+  db.history.lead = [{ node_id: 'browser-saved-own', kind: 'user', selection: { ordinal: 0 },
+    ...(deferred ? { items: null, items_unavailable_reason: 'response_budget' as const, excerpt: 'Saved message body deferred' }
+      : { items: [{ kind: 'text' as const, item_identity: 'browser-saved-own-body', text: 'Browser own-send witness', text_complete: true }] }),
+    provenance: { sender: { kind: 'human' }, client_operation_id: pendingOperationId } }];
+  t.push({ t: 'changed', thread_ids: ['lead'], list: false });
+  await settle(t, db);
+};
 const prefs = signal<Prefs>({ design: 'console', theme: params.get('theme') === 'light' ? 'light' : params.get('theme') === 'terminal' ? 'terminal' : 'console', lang: fixtureLang, monitorView: 'cards', weights: { cached: 0.1, output: 5 } });
 effect(() => { document.documentElement.dataset.ds = prefs.value.theme; });
 mount(document.getElementById('app')!, { model, designs: DESIGNS, prefs, setPrefs: (change) => { prefs.value = { ...prefs.value, ...change }; }, submitToken: async () => true });
