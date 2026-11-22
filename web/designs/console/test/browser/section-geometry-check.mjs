@@ -45,7 +45,18 @@ try{
    const after=await evaluate(`document.querySelector(${JSON.stringify(selector(name))}+' .tgroup-toggle').getAttribute('aria-expanded')`);
    assert.notEqual(after,before,`${width}/${name} actual mouse click at disclosure edge toggles`);
    await clickPoint(...edgePoint);
-   if(name==='sidebar'&&width===390)await evaluate("document.querySelector('.scrim.open')?.click()");
+   if(name==='sidebar'&&width===390){
+    const trigger=await evaluate(`(()=>{const b=document.querySelector(${JSON.stringify(selector(name))}+' .list-row-action button'),r=b.getBoundingClientRect();return {left:r.left,right:r.right,top:r.top,bottom:r.bottom}})()`);
+    await call('Input.dispatchMouseEvent',{type:'mouseMoved',x:(trigger.left+trigger.right)/2,y:(trigger.top+trigger.bottom)/2});await new Promise(resolve=>setTimeout(resolve,80));
+    const targetBounds=await evaluate(`(()=>{const b=document.querySelector(${JSON.stringify(selector(name))}+' .list-row-action button'),r=b.getBoundingClientRect(),cx=(r.left+r.right)/2,cy=(r.top+r.bottom)/2,hit=[];for(let y=Math.floor((cy-32)*2)/2;y<=Math.ceil((cy+32)*2)/2;y+=0.5)for(let x=Math.floor((cx-32)*2)/2;x<=Math.ceil((cx+32)*2)/2;x+=0.5)if(document.elementFromPoint(x,y)?.closest('.row-menu-trigger button')===b)hit.push([x,y]);return {left:Math.min(...hit.map(p=>p[0])),right:Math.max(...hit.map(p=>p[0])),top:Math.min(...hit.map(p=>p[1])),bottom:Math.max(...hit.map(p=>p[1]))}})()`);
+    assert(targetBounds.right-targetBounds.left+1>=44&&targetBounds.bottom-targetBounds.top+1>=44,`390/sidebar open-drawer row-menu target <44px: ${JSON.stringify(targetBounds)}`);
+    const menuPoints=[[targetBounds.left,targetBounds.top],[targetBounds.right,targetBounds.top],[targetBounds.left,targetBounds.bottom],[targetBounds.right,targetBounds.bottom],[(targetBounds.left+targetBounds.right)/2,targetBounds.top],[(targetBounds.left+targetBounds.right)/2,targetBounds.bottom],[targetBounds.left,(targetBounds.top+targetBounds.bottom)/2],[targetBounds.right,(targetBounds.top+targetBounds.bottom)/2]];
+    for(const [x,y] of menuPoints){const hitTarget=await evaluate(`(()=>{const e=document.elementFromPoint(${x},${y}),b=document.querySelector(${JSON.stringify(selector(name))}+' .list-row-action button');return {hit:e?.closest('.row-menu-trigger')===b.parentElement,target:e?.className,ancestors:[...function*(n){while(n){yield n.className||n.tagName;n=n.parentElement}}(e)].slice(0,6)}})()`);assert(hitTarget.hit,`390/sidebar open-drawer row-menu edge/corner misses at ${x},${y}: ${JSON.stringify(hitTarget)}`)}
+    await clickPoint((trigger.left+trigger.right)/2,(trigger.top+trigger.bottom)/2);
+    assert(await evaluate("!!document.querySelector('[role=menu]')"),'390/sidebar open-drawer row menu opens from target corner');
+    await call('Input.dispatchKeyEvent',{type:'keyDown',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});await call('Input.dispatchKeyEvent',{type:'keyUp',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});
+    await evaluate("document.querySelector('.scrim.open')?.click()");
+   }
   }
   const clearSelection=async()=>{await evaluate(`document.querySelector('.selbar button:last-child')?.click()`);await new Promise(resolve=>setTimeout(resolve,80))};
   if(await evaluate(`!!document.querySelector('.selbar')`))await clearSelection();
