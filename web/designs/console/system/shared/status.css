@@ -2,9 +2,8 @@
 .st .mark{display:inline-grid;place-items:center;width:var(--size-icon-small);height:var(--size-icon-small);flex:none}
 .dot{display:block;width:14px;height:14px;flex:none;border-radius:50%}
 .st.run{color:var(--accent)}
-.st.run .dot{border:2.5px solid var(--accent);border-right-color:transparent;animation:spin var(--motion-spin) linear infinite}
+.st.run .i{stroke-dasharray:56 7;animation:spin var(--motion-spin) linear infinite}
 .st.wait{color:var(--wait)}
-.st.wait .dot{background:var(--wait)}
 .st.bad{color:var(--bad)}
 .st.bad .dot{background:var(--bad);border-radius:3px;transform:rotate(45deg) scale(.82)}
 .st.ok{color:var(--ok)}
@@ -16,8 +15,7 @@
 .st.halt{color:var(--muted)}
 .st.halt .dot{background:var(--muted);border-radius:2px;transform:scale(.72)}
 .st.idle{color:var(--muted)}
-.st.idle .dot{border:2px dashed var(--muted)}
-@media (prefers-reduced-motion:reduce){.st.run .dot{animation:none}}
 .character-status{width:24px;height:24px;flex:none}
 
 @keyframes spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.st.run .i{animation:none;stroke-dasharray:none}}

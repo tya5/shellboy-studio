@@ -4,3 +4,6 @@
 .tgroup-name.mono{font-weight:400}
 .tgroup-count{white-space:nowrap}
 .tcheck-gap{flex:none;width:8px}
+
+.tgroup[data-group-heading="sidebar"]{border:0;background:none}
+.tgroup[data-group-heading="sidebar"]>header{border:0;color:var(--muted);padding:var(--space-4) var(--space-8)}

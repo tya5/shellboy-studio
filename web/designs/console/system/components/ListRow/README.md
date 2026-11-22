@@ -17,3 +17,5 @@ Styles: style.css in this directory
 The Possessions section uses these rows for attachment metadata. Its loaded list
 retains at most 1,000 rows (shared with the Thread list) to bound memory and
 change-hint refresh work. An incomplete cut reports unloaded detail as such.
+
+Sidebar rows reserve the full touch target for the in-flow action. See patterns/thread-list.md; this is not a list-level control.

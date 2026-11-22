@@ -87,3 +87,13 @@ Styles are colocated in `system/components/Icon/style.css`.
 Styles: style.css in this directory
 
 - `panel.attachment`: the Possessions tab and its attachment rows; denotes a saved attachment, not a download.
+
+Sidebar and shared state roles (Orca sidebar and Lucide semantics):
+- `status.running`: work in progress (circle dot).
+- `status.awaiting`: needs a human answer (circle help).
+- `status.complete`: completed (circle check), and `status.failed`: failed (circle alert).
+- `status.idle`: no active Run (dot).
+- `thread.pinned`: the pinned group or pin action.
+- `thread.children`: the child disclosure and count.
+- `group.directory`: a directory heading, not a navigation link.
+- `sidebar.filter`: opens list filter controls.

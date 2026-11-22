@@ -775,7 +775,7 @@ describe("Threads", () => {
   };
   it("offers four display modes; on v0.10.0 moving and tags say why they aren't there, with no fake controls", async () => {
     const { el } = await open();
-    expect(el.querySelectorAll(".tgroup").length).toBe(1);
+    expect(el.querySelectorAll(".view .tgroup").length).toBe(1);
     expect(el.querySelector("[draggable]")).toBeNull();
     expect(el.querySelector(".srow-act")).toBeNull();
     expect(text(el)).toContain("Moving a Thread under another isn't available");
@@ -784,12 +784,12 @@ describe("Threads", () => {
     expect(["Tree", "Directory", "State", "Tag"].every((m) => mode(m))).toBe(true);
     act(() => mode("Tag").click());
     expect(text(el)).toContain("Tags aren't available");
-    expect(el.querySelector(".tgroup")).toBeNull();
+    expect(el.querySelector(".view .tgroup")).toBeNull();
     act(() => mode("Directory").click());
-    expect(el.querySelectorAll(".tgroup").length).toBeGreaterThan(0);
+    expect(el.querySelectorAll(".view .tgroup").length).toBeGreaterThan(0);
     const state = mode("State");
     act(() => state.click());
-    expect(text(el.querySelector(".tgroup")!)).toContain("Recovery wait");
+    expect(text(el.querySelector(".view .tgroup")!)).toContain("Recovery wait");
   });
   it("with tags and directories on the owner: headings from the owner, members on demand, tags on rows and edited from a selection", async () => {
     const made = await fixtureModel({
@@ -810,9 +810,9 @@ describe("Threads", () => {
     const mode = (name: string) => [...el.querySelectorAll<HTMLButtonElement>(".org button")].find((b) => text(b) === name)!;
     await go(() => mode("Tag").click());
     expect(text(el)).not.toContain("Tags aren't available");
-    expect([...el.querySelectorAll(".tgroup .tgroup-name")].map(text)).toEqual(["bug hunt", "customer A"]);
+    expect([...el.querySelectorAll(".view .tgroup .tgroup-name")].map(text)).toEqual(["bug hunt", "customer A"]);
     expect(el.querySelector(".org-rows [data-thread-row]")).toBeNull();
-    const show = (n: number) => el.querySelectorAll<HTMLButtonElement>(".tgroup header .btn")[n]!;
+    const show = (n: number) => el.querySelectorAll<HTMLButtonElement>(".view .tgroup header .btn")[n]!;
     await go(() => show(0).click());
     expect(made.t.calls("thread.list").at(-1)!.args).toMatchObject({ tags: ["bug hunt"] });
     expect(el.querySelectorAll(".org-rows [data-thread-row]").length).toBe(2);
@@ -830,7 +830,7 @@ describe("Threads", () => {
     expect(made.t.calls("thread.tag")).toHaveLength(1);
     expect(text(el)).toContain("Tags changed on 1 Threads");
     await go(() => mode("Directory").click());
-    expect([...el.querySelectorAll(".tgroup .tgroup-name")].map(text)).toEqual(["/home/me/dev/rag", "/home/me/dev/shellboy"]);
+    expect([...el.querySelectorAll(".view .tgroup .tgroup-name")].map(text)).toEqual(["/home/me/dev/rag", "/home/me/dev/shellboy"]);
     act(() => { made.model.lang.value = "ja"; });
     expect(text(el)).toContain("表示");
   });
@@ -933,9 +933,9 @@ describe("Threads", () => {
   });
   it("a group's checkbox selects its rows", async () => {
     const { el, model } = await open();
-    const group = el.querySelector<HTMLInputElement>(".tgroup header input")!;
+    const group = el.querySelector<HTMLInputElement>(".view .tgroup header input")!;
     act(() => group.click());
-    expect(model.org.selected.value.size).toBe(el.querySelector(".tgroup")!.querySelectorAll("[data-thread-row]").length);
+    expect(model.org.selected.value.size).toBe(el.querySelector(".view .tgroup")!.querySelectorAll("[data-thread-row]").length);
   });
 });
 

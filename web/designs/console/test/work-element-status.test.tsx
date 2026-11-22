@@ -9,7 +9,7 @@ const base: WorkElementDisplay = {
  state:null, detailPolicy:'none',
 };
 for (const [status, css, mark] of [
- ['completed','ok','check'], ['failed','fail','cross'], ['running','run',null], ['stopped','halt',null],
+ ['completed','ok','circle-check'], ['failed','fail','circle-alert'], ['running','run','circle-dot'], ['stopped','halt',null],
 ] as const) it(`inner tool row consumes issued ${status} through existing StatusMark`, () => {
  const host=document.createElement('div');
  const source: WorkElementDisplay={...base,state:{source:'wire',value:'exact machine state',executionStatus:status,exitCode:status==='completed'?0:1}};

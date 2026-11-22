@@ -1,8 +1,10 @@
+import type { ListFilter } from "../../../data/src";
+import { sidebarGroups, SIDEBAR_PIN_TAG } from "../../../ui-core/src/sidebar";
 import { BrandLogo } from "../system/components/BrandLogo";
 import { threadMenuEntries } from "../system/components/thread-menu";
-import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
-import { formatRoute, readSidebarWidth, SIDEBAR_WIDTH_MAX, SIDEBAR_WIDTH_MIN, statusLabel, viewShortcut, navShortcut, panelShortcut, type DesignContext, type ViewName } from "../../../ui-core/src";
-import { Button, ContextBar, Field, Icon, ModelPicker, MoreMenu, NavItem, Notice, StatusMark, ThreadDeleteDialog, ThreadItem, type IconRole, type ThreadDeleteTarget } from "../system/components";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
+import { CAPABILITY_TAGS, CAPABILITY_CWDS, formatRoute, readSidebarWidth, SIDEBAR_WIDTH_MAX, SIDEBAR_WIDTH_MIN, statusLabel, viewShortcut, navShortcut, panelShortcut, type DesignContext, type ViewName } from "../../../ui-core/src";
+import { Button, ContextBar, Field, FilterChips, FilterMenu, Icon, ModelPicker, MoreMenu, NavItem, Notice, StatusMark, ThreadDeleteDialog, ThreadGroup, ThreadItem, type IconRole, type ThreadDeleteTarget } from "../system/components";
 import { formatTokens, folderName } from "../../../ui-core/src";
 import { Conversation } from "./Conversation";
 import { Inbox } from "./Inbox";
@@ -33,7 +35,7 @@ export function App({ context }: { context: DesignContext }) {
   const sidebarListRef = useRef<HTMLDivElement>(null);
   const lastSidebarFocus = useRef<string>();
   const sidebarPositions = useRef(new Map<string, number>());
-  const sidebarRows = model.rows.value;
+
   const sidebarLinks = () => [...(sidebarListRef.current?.querySelectorAll<HTMLAnchorElement>('a[id^="thread-link-sidebar-"]') ?? [])];
   const rememberSidebarPositions = (links: HTMLAnchorElement[]) => {
     links.forEach((link, index) => sidebarPositions.current.set(link.id.replace("thread-link-sidebar-", ""), index));
@@ -61,6 +63,7 @@ export function App({ context }: { context: DesignContext }) {
   const [drawer, setDrawer] = useState(false);
   const [settings, setSettings] = useState(false);
   const [query, setQuery] = useState("");
+  const [filters, setFilters] = useState<ListFilter>({});
   const drag = useRef<{ pointerId: number; element: HTMLElement; originX: number; startWidth: number }>();
   const sidebarWidth = readSidebarWidth(context.prefs.value.sidebarWidth);
   const savedSidebarWidth = context.prefs.value.sidebarWidth;
@@ -107,12 +110,13 @@ export function App({ context }: { context: DesignContext }) {
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      const next = route.view === "monitor" ? { archived: "include" as const } : query ? { query } : {};
+      const next: ListFilter = route.view === "monitor" ? { archived: "include" } : { ...filters, ...(query.trim() ? { query: query.trim() } : {}) };
       const current = model.data.listFilter.peek();
-      if (current.query !== ("query" in next ? next.query : undefined) || current.archived !== ("archived" in next ? next.archived : undefined)) model.data.setListFilter(next);
+      if (current.query !== next.query || current.archived !== next.archived || current.awaiting !== next.awaiting || current.cwd !== next.cwd
+        || JSON.stringify(current.tags) !== JSON.stringify(next.tags)) model.data.setListFilter(next);
     }, SEARCH_DEBOUNCE_MS);
     return () => clearTimeout(timer);
-  }, [model, query, route.view]);
+  }, [model, query, filters, route.view]);
 
   const nav = (view: ViewName, role: IconRole, label: string, count?: number) => <NavItem key={view} href={formatRoute({ view })} role={role} label={label} current={route.view === view} {...(count !== undefined ? { count } : {})} />;
   const conversationNav = nav("conversation", "nav.conversation", t("view.conversation"));
@@ -121,6 +125,33 @@ export function App({ context }: { context: DesignContext }) {
   const moreItems = ([["apps", "nav.apps"], ["branches", "nav.branches"], ["threads", "nav.threads"], ["analytics", "nav.analytics"], ["settings", "nav.settings"]] as const).map(([view, role]) => ({ key: view, href: formatRoute({ view }), role, label: t(`view.${view}`), current: route.view === view }));
 
   const list = model.data.threadList.value;
+  const sidebarSelected = route.view === "conversation" ? model.selectedId.value : undefined;
+  const groups = useMemo(() => sidebarGroups(list.items, sidebarSelected), [list.items, sidebarSelected]);
+  const closedGroups = context.prefs.value.sidebarClosedGroups ?? [];
+  const openParents = context.prefs.value.sidebarOpenParents ?? [];
+  const setFold = (field: "sidebarClosedGroups" | "sidebarOpenParents", id: string, add: boolean) => {
+    const keys = (context.prefs.peek()[field] ?? []).filter(key => key !== id);
+    context.setPrefs({ [field]: add ? [...keys, id].slice(-1000) : keys });
+  };
+  const canTag = model.data.capabilities.value.includes(CAPABILITY_TAGS);
+  const canCwd = model.data.capabilities.value.includes(CAPABILITY_CWDS);
+  const changeFilters = (change: ListFilter) => setFilters(value => ({ ...value, ...change }));
+  const activeFilters = [
+    ...(filters.awaiting ? [{ key: "awaiting", label: t("sidebar.needsYou"), remove: () => changeFilters({ awaiting: undefined }) }] : []),
+    ...(filters.archived ? [{ key: "archived", label: t("sidebar.archived"), remove: () => changeFilters({ archived: undefined }) }] : []),
+    ...(filters.cwd ? [{ key: "cwd", label: filters.cwd, remove: () => changeFilters({ cwd: undefined }) }] : []),
+    ...(filters.tags ?? []).map(tag => ({ key: `tag:${tag}`, label: tag, remove: () => changeFilters({ tags: filters.tags?.length === 1 ? undefined : filters.tags?.filter(value => value !== tag) }) })),
+  ];
+  const filterEntries = [
+    { key: "awaiting", label: t("sidebar.needsYou"), onSelect: () => changeFilters({ awaiting: filters.awaiting ? undefined : "human" }) },
+    { key: "archived", label: t("sidebar.archived"), onSelect: () => changeFilters({ archived: filters.archived ? undefined : "only" }) },
+    ...(canCwd ? [...new Set(list.items.map(row => row.cwd).filter(Boolean))].sort().map(cwd => ({ key: `cwd:${cwd}`, label: t("sidebar.directory", { name: cwd }), onSelect: () => changeFilters({ cwd }) })) : []),
+    ...(canTag ? [...new Set(list.items.flatMap(row => row.tags ?? []))].sort().map(tag => ({ key: `tag:${tag}`, label: t("sidebar.tag", { name: tag }), onSelect: () => {
+      const tags = filters.tags ?? [];
+      if (!tags.includes(tag) && tags.length < 64) changeFilters({ tags: [...tags, tag] });
+    } })) : []),
+  ];
+
   const selected = model.selectedId.value;
   const row = model.selectedRow.value;
   const details = model.details.value;
@@ -155,6 +186,8 @@ export function App({ context }: { context: DesignContext }) {
           </div>
           <div class="side-search">
             <Field ariaLabel={t("threads.search")} placeholder={t("threads.search")} leading={<Icon role="thread.search" size="small" />} value={query} onInput={(e) => setQuery(e.currentTarget.value)} />
+            {route.view !== "monitor" ? <><FilterMenu label={t("sidebar.filters")} count={activeFilters.length} entries={filterEntries} />
+              <FilterChips items={activeFilters.map(item => ({ ...item, removeLabel: t("sidebar.remove", { name: item.label }) }))} clearLabel={t("sidebar.clear")} onClear={() => setFilters({})} /></> : null}
           </div>
           <div class="side-list" ref={sidebarListRef} onFocusIn={(event) => {
             const target = event.target as HTMLElement;
@@ -168,23 +201,37 @@ export function App({ context }: { context: DesignContext }) {
             if (!(next instanceof Node) || !sidebarListRef.current?.contains(next)) lastSidebarFocus.current = undefined;
           }}>
             <div class="tree">
-              {sidebarRows.map((r, index, rows) => (
-                <ThreadItem
-                  key={r.summary.thread_id}
-                  linkId={`thread-link-sidebar-${r.summary.thread_id}`}
-                  href={formatRoute({ view: "conversation", threadId: r.summary.thread_id })}
-                  title={r.summary.title}
-                  status={r.status}
-                  statusLabel={r.status ? statusLabel(t, r.status) : ""}
-                  depth={r.depth}
-                  current={route.view === "conversation" && r.summary.thread_id === selected}
-                  pending={r.pending}
-                  onSelect={() => setDrawer(false)}
-                  menu={{ label: t("thread.rowMenu"), entries: threadMenuEntries(model, r.summary, r.status, (target) => setDeleteThread({ threadId: target.thread_id })) }}
-                />
-              ))}
+              {groups.map(group => {
+                const label = group.directory === undefined ? t("sidebar.pinned") : folderName(group.directory) ?? group.directory;
+                const open = !closedGroups.includes(group.key);
+                const fold = { open, show: t("sidebar.expand"), hide: t("sidebar.collapse"), showLabel: t("sidebar.expandGroup", { name: label }), hideLabel: t("sidebar.collapseGroup", { name: label }), onToggle: () => setFold("sidebarClosedGroups", group.key, open) };
+                let hiddenBelow: number | undefined;
+                return <ThreadGroup key={group.key} label={label} count={String(group.rows.length)} leading={group.directory === undefined ? "thread.pinned" : "group.directory"} fold={fold}>
+                  {open ? group.rows.map(r => {
+                    if (hiddenBelow !== undefined && r.depth > hiddenBelow) return null;
+                    const id = r.summary.thread_id;
+                    const expanded = r.reveal || openParents.includes(id);
+                    hiddenBelow = r.descendants && !expanded ? r.depth : undefined;
+                    return <ThreadItem key={id} sidebar linkId={`thread-link-sidebar-${id}`}
+                      href={formatRoute({ view: "conversation", threadId: id })} title={r.summary.title}
+                      status={r.status} statusLabel={r.status ? statusLabel(t, r.status) : ""}
+                      depth={r.depth} current={id === sidebarSelected} pending={r.pending}
+                      childrenFold={r.descendants ? { count: r.descendants, awaiting: r.awaiting, running: r.running, open: expanded,
+                        label: t("sidebar.children", { n: r.descendants, awaiting: r.awaiting, running: r.running }),
+                        awaitingLabel: t("sidebar.needsYou"), runningLabel: statusLabel(t, "running"),
+                        onToggle: value => setFold("sidebarOpenParents", id, value) } : undefined}
+                      onSelect={() => setDrawer(false)}
+                      menu={{ label: t("thread.rowMenu"), entries: threadMenuEntries(model, r.summary, r.status,
+                        target => setDeleteThread({ threadId: target.thread_id }), canTag ? { onEditTags: () => {
+                          model.showView("threads");
+                          model.org.setMode(r.summary.archived_at === undefined ? "exclude" : "only");
+                          model.org.clear(); model.org.setMany([id], true); model.org.openTags(true); setDrawer(false);
+                        } } : undefined) }} />;
+                  }) : null}
+                </ThreadGroup>;
+              })}
             </div>
-            {list.loaded && list.items.length === 0 ? <div class="side-note">{query ? t("threads.noMatch") : t("threads.empty")}</div> : null}
+            {list.loaded && list.items.length === 0 ? <div class="side-note">{query || activeFilters.length ? t("threads.noMatch") : t("threads.empty")}</div> : null}
             {model.data.canLoadMoreThreads() ? <Button disabled={list.loadingMore} onClick={() => void model.data.loadMoreThreads()}>{t("threads.more")}</Button> : list.nextCursor ? <div class="side-note">{t("threads.capped")}</div> : null}
           </div>
         </aside>

@@ -1,0 +1,4 @@
+.children-chip{flex:none;border-radius:var(--radius-s);font:var(--type-caption);color:var(--muted)}
+.children-chip[data-urgency="awaiting"]{background:var(--wait-bg);color:var(--wait)}
+.children-chip[data-urgency="running"]{background:var(--accent-bg);color:var(--accent)}
+.children-chip>.btn{color:inherit;gap:var(--space-4);padding-inline:var(--space-4)}

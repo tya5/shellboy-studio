@@ -15,3 +15,5 @@ claimed row is removed, the list advances to the next link or its heading.
 Styles are colocated in `system/components/ThreadItem/style.css`.
 
 Styles: style.css in this directory
+
+Use the child disclosure only on parent rows. The link preserves Left/Right disclosure and the separate action keeps ArrowDown. See patterns/thread-list.md (Orca, shadcn/ui Sidebar, WAI-ARIA tree).

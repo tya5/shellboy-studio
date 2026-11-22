@@ -8,12 +8,12 @@ import { Link, type ConnectionState, type LinkEvent } from "./link";
 import { microtaskSchedule, type Preview, type PreviewDiscardReason, type Schedule } from "./live";
 import { Cancel, Operations } from "./operations";
 import type {
-  ArchivedFilter,
   HistoryItem,
   HistoryWindowArgs,
   HistoryWindowResult,
   OwnerState,
   ThreadDetails,
+  ThreadListArgs,
   ThreadSummary,
   WorkItem,
   Page,
@@ -49,10 +49,7 @@ export interface PagedState<T> {
   error: OpError | undefined;
 }
 
-export interface ListFilter {
-  query?: string;
-  archived?: ArchivedFilter;
-}
+export type ListFilter = Pick<ThreadListArgs, "query" | "archived" | "awaiting" | "tags" | "cwd">;
 
 export type OwnerView = { state: "unknown" } | OwnerState;
 
@@ -644,11 +641,8 @@ export class ShellboyData {
 
 }
 
-function listArgs(filter: ListFilter) {
-  const args: { limit: number; query?: string; archived?: ArchivedFilter } = { limit: PAGE_LIMIT };
-  if (filter.query) args.query = filter.query;
-  if (filter.archived) args.archived = filter.archived;
-  return args;
+function listArgs(filter: ListFilter): ThreadListArgs {
+  return { ...filter, limit: PAGE_LIMIT };
 }
 
 /**

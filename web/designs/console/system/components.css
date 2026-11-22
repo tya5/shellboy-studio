@@ -80,3 +80,6 @@
 @import "./components/PanelTabs/style.css";
 @import "./components/ListRow/style.css";
 @import "./components/ListDivider/style.css";
+
+@import "./components/ChildrenChip/style.css";
+@import "./components/FilterChips/style.css";

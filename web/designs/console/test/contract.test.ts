@@ -152,8 +152,8 @@ describe("components name roles, never values", () => {
       .filter((match) => match[3]!.trim() !== "none")
       .map((match) => match[1]!.trim());
     expect(animations).toHaveLength(2);
-    expect(animations).toEqual(expect.arrayContaining([".st.run .dot", ".loadrow"]));
-    expect(css).toMatch(/@media \(prefers-reduced-motion:reduce\)\{\.st\.run \.dot\{animation:none\}\}/);
+    expect(animations).toEqual(expect.arrayContaining([".st.run .i", ".loadrow"]));
+    expect(css).toMatch(/@media \(prefers-reduced-motion:reduce\)\{\.st\.run \.i\{animation:none;stroke-dasharray:none\}\}/);
     expect(css).toMatch(/prefers-reduced-motion:reduce\)\{\.loadrow\{animation:none\}/);
   });
   it("phone width is driven by the container, with a tab bar and 44px controls", () => {
@@ -194,7 +194,7 @@ describe("screens use the system only", () => {
   });
   it("the status mark differs in shape between states, not only colour", () => {
     const text = readSystemCss("components.css");
-    for (const rule of [/\.st\.run \.dot\{border/, /\.st\.wait \.dot\{background/, /\.st\.bad \.dot\{[^}]*rotate\(45deg\)/, /\.st\.ok \.i\{/, /\.st\.fail \.i\{/, /\.st\.halt \.dot\{[^}]*border-radius:2px/, /\.st\.idle \.dot\{border:2px dashed/, /\.st\.hold \.dot\{/]) expect(text).toMatch(rule);
+    for (const rule of [/\.st\.run \.i\{stroke-dasharray/, /\.st\.bad \.dot\{[^}]*rotate\(45deg\)/, /\.st\.ok \.i\{/, /\.st\.fail \.i\{/, /\.st\.halt \.dot\{[^}]*border-radius:2px/, /\.st\.hold \.dot\{/]) expect(text).toMatch(rule);
   });
 });
 

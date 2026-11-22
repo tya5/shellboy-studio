@@ -4,3 +4,7 @@
 @container app (max-width:899px){
   .row-menu-trigger>.btn{width:var(--size-row-action-touch);height:var(--size-row-action-touch);min-width:var(--size-row-action-touch);min-height:var(--size-row-action-touch)}
 }
+
+@container app (max-width:899px){
+  [data-sidebar-row] .row-menu-trigger>.btn{width:var(--size-touch);height:var(--size-touch);min-width:var(--size-touch);min-height:var(--size-touch)}
+}

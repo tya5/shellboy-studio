@@ -68,3 +68,7 @@ export { PairingQr } from "./PairingQr";
 export { PanelTabs, type PanelTabItem } from "./PanelTabs";
 export { ListRow } from "./ListRow";
 export { ListDivider } from "./ListDivider";
+
+export { ChildrenChip, type ChildrenChipProps } from "./ChildrenChip";
+export { FilterMenu } from "./FilterMenu";
+export { FilterChips } from "./FilterChips";
