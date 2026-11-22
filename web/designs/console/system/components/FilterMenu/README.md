@@ -5,3 +5,5 @@ control; use FilterChips to show and remove the active filters. Do not use it fo
 row mutations or for navigation.
 
 References: Orca sidebar filters, shadcn/ui DropdownMenu, WAI-ARIA Menu Button.
+
+Catalog paging actions keep the menu open; choices are owner catalog facts, not the filtered rows.

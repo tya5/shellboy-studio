@@ -29,3 +29,5 @@ typeahead); APG Menu Button and Menu patterns.
 Styles are colocated in `system/components/Menu/style.css`.
 
 Styles: style.css in this directory
+
+A paging item may keep the menu open. Selection and mutation items dismiss normally.

@@ -11,6 +11,7 @@
 .sidehead{display:flex;justify-content:space-between;align-items:center;padding:var(--space-12) var(--space-16) var(--space-8)}
 .sidehead h2{margin:0;font:var(--type-label);font-weight:600}
 .side-search{margin:0 var(--space-12) var(--space-8)}
+.side-controls{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:var(--space-4)}
 .side-list{padding:0 var(--space-8) var(--space-12);display:flex;flex-direction:column;gap:var(--space-8)}
 .side-note{padding:var(--space-8);color:var(--muted);font:var(--type-label)}
 .nav-toggle{display:flex;justify-content:flex-end;padding:var(--space-4) var(--space-8)}

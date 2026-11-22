@@ -39,9 +39,14 @@ it("keeps status updates in place, persists child folds, and moves pins only aft
     expect(other.querySelector('[data-status="running"] svg')).not.toBeNull();
     await act(async () => { open("ArrowLeft"); });
     expect(link("child")).toBeNull();
+    await act(async () => { host.querySelector<HTMLButtonElement>('.side-list button[aria-label="Collapse alpha"]')!.click(); });
+    expect(link("lead")).toBeNull();
     await act(async () => { f.model.openThread("child"); await settle(f.t, f.db); });
     expect(link("child")?.getAttribute("aria-current")).toBe("true");
-    await act(async () => { other.parentElement!.querySelector<HTMLButtonElement>("[aria-haspopup=menu]")!.click(); });
+    await act(async () => { link("lead")!.dispatchEvent(new KeyboardEvent("keydown", { key:"ArrowLeft", bubbles:true })); });
+    expect(link("child")).toBeNull();
+    await act(async () => { link("lead")!.dispatchEvent(new KeyboardEvent("keydown", { key:"ArrowRight", bubbles:true })); });
+    await act(async () => { link("other")!.parentElement!.querySelector<HTMLButtonElement>("[aria-haspopup=menu]")!.click(); });
     const pin = [...document.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find(el => el.textContent === "Pin")!;
     await act(async () => { pin.click(); await settle(f.t, f.db); });
     expect(f.t.calls("thread.tag").at(-1)?.args).toEqual({ thread_ids: ["other"], add: ["pin"] });
@@ -59,4 +64,32 @@ it("renders distinct shapes for the five approved status marks", () => {
   expect(svg).toHaveLength(5);
   expect(new Set(svg.map(icon => icon.innerHTML)).size).toBe(5);
   render(null, host);
+});
+
+it("reads owner catalogs only while the filter menu is open, independently of filtered rows", async () => {
+  const f=await fixtureModel({route:"conversation",threadId:"lead",capabilities:["thread.tags","thread.cwds"],configure(db){
+    db.threads={lead:summary("lead",{cwd:"/alpha",tags:["first"]}),other:summary("other",{cwd:"/beta",tags:["second"]})};
+  }});
+  const host=document.createElement("div"); document.body.append(host);
+  const prefs=signal(loadPrefs({read:()=>null,write(){}},DESIGNS));
+  const trigger=()=>host.querySelector<HTMLButtonElement>('.side-search [aria-haspopup="menu"]')!;
+  const menu=()=>document.querySelector('[role="menu"]');
+  const hints=async()=>{f.t.push({t:"changed",thread_ids:[],list:true});await settle(f.t,f.db);};
+  try {
+    await act(async()=>{render(<App context={{model:f.model,prefs,designs:DESIGNS,setPrefs(){},submitToken:async()=>false}}/>,host);await settle(f.t,f.db);});
+    expect(f.t.calls("thread.cwds")).toHaveLength(0);
+    await act(async()=>trigger().click());
+    await act(async()=>{await settle(f.t,f.db);});
+    expect(menu()?.textContent).toContain("Directory: /beta");
+    await act(async()=>{f.data.setListFilter({cwd:"/missing"}); await settle(f.t,f.db);});
+    expect(f.data.threadList.peek().items).toHaveLength(0);
+    expect(menu()?.textContent).toContain("Directory: /beta");
+    f.db.threads.extra=summary("extra",{cwd:"/gamma"});
+    await act(hints);
+    expect(menu()?.textContent).toContain("Directory: /gamma");
+    const count=f.t.calls("thread.cwds").length;
+    await act(async()=>trigger().click());
+    await act(hints);
+    expect(f.t.calls("thread.cwds")).toHaveLength(count);
+  } finally {render(null,host);host.remove();f.model.dispose();f.data.stop();}
 });

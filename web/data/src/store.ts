@@ -160,6 +160,7 @@ export class ShellboyData {
   private listGen = 0;
   private entries = new Map<string, ThreadEntry>();
   private watchQueued = false;
+  readonly listHint = signal(0);
   private hintWatchers = new Map<string, Set<() => void>>();
   private readonly schedule: Schedule;
   private readonly refresher: Refresher;
@@ -442,13 +443,14 @@ export class ShellboyData {
         if (f.event === "restarted") { this.notifyHints(); void this.resyncAll(); }
         break;
       case "resync":
+        if (this.listRefs > 0) this.listHint.value++;
         this.discardAllPreviews("resync");
         this.notifyHints();
         void this.resyncAll();
         break;
       case "changed":
         // Hints are not data: re-read the saved facts. Untracked Threads are ignored.
-        if (f.list && this.listRefs > 0) void this.refresher.request("list");
+        if (f.list && this.listRefs > 0) { this.listHint.value++; void this.refresher.request("list"); }
         for (const id of f.thread_ids) {
           for (const notify of this.hintWatchers.get(id) ?? []) notify();
           this.refreshHint(id);

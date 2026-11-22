@@ -1,14 +1,27 @@
 import { effect, signal } from '@preact/signals-core';
 import type { Prefs } from '../../../../ui-core/src';
+import { summary, details } from '../../../../data/test/harness';
 import { fixtureModel, settle } from '../../../../ui-core/test/fixture';
 import { mount } from '../..';
 import { DESIGNS } from '../../../registry';
 
 const params = new URLSearchParams(location.search);
 const fixtureLang = params.get('lang') === 'ja' ? 'ja' as const : 'en' as const;
-const fixtureOptions = params.get('view') === 'memory' ? { route: 'analytics' as const, section: 'memory' as const, lang: fixtureLang } : {};
+const fixtureOptions = params.get('view') === 'memory' ? { route: 'analytics' as const, section: 'memory' as const, lang: fixtureLang } : params.get('view') === 'sidebar' ? { lang: fixtureLang, capabilities: ['thread.tags', 'thread.cwds', 'history.window'] } : {};
 if (params.get('view') === 'memory') document.documentElement.dataset.memoryFixture = fixtureLang;
 const { model, t, db } = await fixtureModel({ ...fixtureOptions, configure(db) {
+  if (params.get('view') === 'sidebar') {
+    db.threads = {
+      lead: summary('lead', {title:'Leader',cwd:'/fixture/work',activity:'tools',tags:['pin']}),
+      secretary: summary('secretary', {title:'Secretary',cwd:'/fixture/work',awaiting_human_count:1,tags:['pin','mail']}),
+      parent: summary('parent', {title:'Core worker',cwd:'/fixture/work'}),
+      child: summary('child', {title:'Child task',cwd:'/fixture/work',parent_id:'parent',awaiting_human_count:1}),
+      other: summary('other', {title:'Studio worker',cwd:'/fixture/work',activity:'tools'}),
+      outside: summary('outside', {title:'Architect',cwd:'/fixture/other',activity:'failed'}),
+    };
+    for (const id of Object.keys(db.threads)) db.details[id] = details(id);
+    return;
+  }
   if (params.get('state') === 'memory-error') {
     const answer = db.answer.bind(db);
     db.answer = call => call.command === 'status' && (call.args as { memory?: boolean }).memory ? { ok: false, code: 'invalid_argument', message: 'unsupported memory field', details: { reason: 'unknown_field', name: 'memory', command: 'status', request_may_have_been_applied: false } } : answer(call);

@@ -1,3 +1,5 @@
+import { effect } from "@preact/signals-core";
+import { ThreadHeadings } from "../../../ui-core/src/headings";
 import type { ListFilter } from "../../../data/src";
 import { sidebarGroups, SIDEBAR_PIN_TAG } from "../../../ui-core/src/sidebar";
 import { BrandLogo } from "../system/components/BrandLogo";
@@ -5,7 +7,7 @@ import { threadMenuEntries } from "../system/components/thread-menu";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
 import { CAPABILITY_TAGS, CAPABILITY_CWDS, formatRoute, readSidebarWidth, SIDEBAR_WIDTH_MAX, SIDEBAR_WIDTH_MIN, statusLabel, viewShortcut, navShortcut, panelShortcut, type DesignContext, type ViewName } from "../../../ui-core/src";
 import { Button, ContextBar, Field, FilterChips, FilterMenu, Icon, ModelPicker, MoreMenu, NavItem, Notice, StatusMark, ThreadDeleteDialog, ThreadGroup, ThreadItem, type IconRole, type ThreadDeleteTarget } from "../system/components";
-import { formatTokens, folderName } from "../../../ui-core/src";
+import { formatAge, formatTokens, folderName } from "../../../ui-core/src";
 import { Conversation } from "./Conversation";
 import { Inbox } from "./Inbox";
 import { Monitor } from "./Monitor";
@@ -127,6 +129,21 @@ export function App({ context }: { context: DesignContext }) {
   const list = model.data.threadList.value;
   const sidebarSelected = route.view === "conversation" ? model.selectedId.value : undefined;
   const groups = useMemo(() => sidebarGroups(list.items, sidebarSelected), [list.items, sidebarSelected]);
+  const revealGroup = groups.find(group => group.rows.some(row => row.summary.thread_id === sidebarSelected));
+  const revealParents = JSON.stringify(revealGroup?.rows.filter(row => row.reveal).map(row => row.summary.thread_id) ?? []);
+  const revealKey = revealGroup?.key;
+  // Selection writes the same preferences as explicit disclosure; subsequent user folds win.
+  useLayoutEffect(() => {
+    if (revealKey === undefined) return;
+    const prefs = context.prefs.peek();
+    const closed = prefs.sidebarClosedGroups ?? [];
+    const parents = prefs.sidebarOpenParents ?? [];
+    const selectedParents = JSON.parse(revealParents) as string[];
+    const nextOpen = [...new Set([...parents, ...selectedParents])].slice(-1000);
+    if (closed.includes(revealKey) || nextOpen.length !== parents.length || nextOpen.some((id, i) => parents[i] !== id)) {
+      context.setPrefs({ sidebarClosedGroups: closed.filter(key => key !== revealKey), sidebarOpenParents: nextOpen });
+    }
+  }, [context, sidebarSelected, revealKey, revealParents]);
   const closedGroups = context.prefs.value.sidebarClosedGroups ?? [];
   const openParents = context.prefs.value.sidebarOpenParents ?? [];
   const setFold = (field: "sidebarClosedGroups" | "sidebarOpenParents", id: string, add: boolean) => {
@@ -135,6 +152,21 @@ export function App({ context }: { context: DesignContext }) {
   };
   const canTag = model.data.capabilities.value.includes(CAPABILITY_TAGS);
   const canCwd = model.data.capabilities.value.includes(CAPABILITY_CWDS);
+  const [filterOpen, setFilterOpen] = useState(false);
+  const owner = model.data.owner.value;
+  const catalogs = useMemo(() => ({ tag: new ThreadHeadings(model.ops, () => ({ mode: "exclude", query: "" }), () => {}),
+    cwd: new ThreadHeadings(model.ops, () => ({ mode: "exclude", query: "" }), () => {}) }), [model, owner]);
+  useEffect(() => {
+    if (!filterOpen || route.view === "monitor" || owner.state !== "connected") return;
+    return effect(() => {
+      model.data.listHint.value;
+      if (canTag) void catalogs.tag.reload("tag");
+      if (canCwd) void catalogs.cwd.reload("cwd");
+      return () => { catalogs.tag.leave(); catalogs.cwd.leave(); };
+    });
+  }, [filterOpen, model, catalogs, owner, canTag, canCwd, route.view]);
+  const tagCatalog = catalogs.tag.headings.value;
+  const cwdCatalog = catalogs.cwd.headings.value;
   const changeFilters = (change: ListFilter) => setFilters(value => ({ ...value, ...change }));
   const activeFilters = [
     ...(filters.awaiting ? [{ key: "awaiting", label: t("sidebar.needsYou"), remove: () => changeFilters({ awaiting: undefined }) }] : []),
@@ -144,12 +176,14 @@ export function App({ context }: { context: DesignContext }) {
   ];
   const filterEntries = [
     { key: "awaiting", label: t("sidebar.needsYou"), onSelect: () => changeFilters({ awaiting: filters.awaiting ? undefined : "human" }) },
-    { key: "archived", label: t("sidebar.archived"), onSelect: () => changeFilters({ archived: filters.archived ? undefined : "only" }) },
-    ...(canCwd ? [...new Set(list.items.map(row => row.cwd).filter(Boolean))].sort().map(cwd => ({ key: `cwd:${cwd}`, label: t("sidebar.directory", { name: cwd }), onSelect: () => changeFilters({ cwd }) })) : []),
-    ...(canTag ? [...new Set(list.items.flatMap(row => row.tags ?? []))].sort().map(tag => ({ key: `tag:${tag}`, label: t("sidebar.tag", { name: tag }), onSelect: () => {
+    { key: "archived", label: t("sidebar.archived"), onSelect: () => changeFilters({ archived: filters.archived ? undefined : "include" }) },
+    ...(canCwd ? cwdCatalog.names.map(cwd => ({ key: `cwd:${cwd}`, label: t("sidebar.directory", { name: cwd }), onSelect: () => changeFilters({ cwd }) })) : []),
+    ...(canTag ? tagCatalog.names.map(tag => ({ key: `tag:${tag}`, label: t("sidebar.tag", { name: tag }), onSelect: () => {
       const tags = filters.tags ?? [];
       if (!tags.includes(tag) && tags.length < 64) changeFilters({ tags: [...tags, tag] });
     } })) : []),
+    ...(canTag && catalogs.tag.canLoadMoreNames() ? [{ key: "more-tags", label: t("org.moreTags"), keepOpen: true, onSelect: () => { if (!tagCatalog.loading) catalogs.tag.loadMoreNames(); } }] : []),
+    ...(canCwd && catalogs.cwd.canLoadMoreNames() ? [{ key: "more-cwds", label: t("org.moreDirs"), keepOpen: true, onSelect: () => { if (!cwdCatalog.loading) catalogs.cwd.loadMoreNames(); } }] : []),
   ];
 
   const selected = model.selectedId.value;
@@ -179,15 +213,14 @@ export function App({ context }: { context: DesignContext }) {
           </nav>
           <div class="sidehead">
             <h2 id="sidebar-thread-list-heading" tabIndex={-1}>{t("threads.title")}</h2>
-            <Button onClick={() => { setDrawer(false); void model.createThread(); }}>
-              <Icon role="thread.create" size="small" />
-              {t("threads.new")}
-            </Button>
           </div>
           <div class="side-search">
-            <Field ariaLabel={t("threads.search")} placeholder={t("threads.search")} leading={<Icon role="thread.search" size="small" />} value={query} onInput={(e) => setQuery(e.currentTarget.value)} />
-            {route.view !== "monitor" ? <><FilterMenu label={t("sidebar.filters")} count={activeFilters.length} entries={filterEntries} />
-              <FilterChips items={activeFilters.map(item => ({ ...item, removeLabel: t("sidebar.remove", { name: item.label }) }))} clearLabel={t("sidebar.clear")} onClear={() => setFilters({})} /></> : null}
+            <div class="side-controls">
+              <Field ariaLabel={t("threads.search")} placeholder={t("threads.search")} leading={<Icon role="thread.search" size="small" />} value={query} onInput={(e) => setQuery(e.currentTarget.value)} />
+              {route.view !== "monitor" ? <FilterMenu label={t("sidebar.filters")} count={activeFilters.length} entries={filterEntries} onOpenChange={setFilterOpen} /> : null}
+              <Button icon label={t("threads.new")} title={t("threads.new")} onClick={() => { setDrawer(false); void model.createThread(); }}><Icon role="thread.create" size="small" /></Button>
+            </div>
+            {route.view !== "monitor" ? <>              <FilterChips items={activeFilters.map(item => ({ ...item, removeLabel: t("sidebar.remove", { name: item.label }) }))} clearLabel={t("sidebar.clear")} onClear={() => setFilters({})} /></> : null}
           </div>
           <div class="side-list" ref={sidebarListRef} onFocusIn={(event) => {
             const target = event.target as HTMLElement;
@@ -210,12 +243,12 @@ export function App({ context }: { context: DesignContext }) {
                   {open ? group.rows.map(r => {
                     if (hiddenBelow !== undefined && r.depth > hiddenBelow) return null;
                     const id = r.summary.thread_id;
-                    const expanded = r.reveal || openParents.includes(id);
-                    hiddenBelow = r.descendants && !expanded ? r.depth : undefined;
+                    const expanded = openParents.includes(id);
+                    hiddenBelow = r.childCount && !expanded ? r.depth : undefined;
                     return <ThreadItem key={id} sidebar linkId={`thread-link-sidebar-${id}`}
                       href={formatRoute({ view: "conversation", threadId: id })} title={r.summary.title}
                       status={r.status} statusLabel={r.status ? statusLabel(t, r.status) : ""}
-                      depth={r.depth} current={id === sidebarSelected} pending={r.pending}
+                      depth={r.depth} current={id === sidebarSelected} pending={r.pending} age={formatAge(r.summary.updated_at, model.coarseNow.value)}
                       childrenFold={r.descendants ? { count: r.descendants, awaiting: r.awaiting, running: r.running, open: expanded,
                         label: t("sidebar.children", { n: r.descendants, awaiting: r.awaiting, running: r.running }),
                         awaitingLabel: t("sidebar.needsYou"), runningLabel: statusLabel(t, "running"),
