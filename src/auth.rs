@@ -155,7 +155,7 @@ impl Auth {
 
 fn read_token(path: &Path) -> Result<Option<Auth>, String> {
     #[cfg(windows)]
-    let read = || {
+    let read = || -> std::io::Result<String> {
         use std::io::Read;
         let mut options = std::fs::OpenOptions::new();
         crate::launcher::windows::protect_file(options.read(true), false);
