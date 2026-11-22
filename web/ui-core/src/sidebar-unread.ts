@@ -24,16 +24,16 @@ export function markUnread(records: UnreadRecord[], thread: string, end: End, ma
   return [...records.filter((item) => item.thread !== thread), next].slice(-UNREAD_LIMIT);
 }
 
-/** First appearance defaults to read without writing a device preference. */
-export function baselineUnread(base: UnreadRecord[], rows: readonly Pick<ThreadSummary, "thread_id" | "last_end_message">[]): UnreadRecord[] {
-  const known = new Set(base.map((item) => item.thread));
+/** Seed missing entries in the same bounded store as explicit and automatic reads. */
+export function seedUnreadMarkers(records: UnreadRecord[], rows: readonly Pick<ThreadSummary, "thread_id" | "last_end_message">[]): UnreadRecord[] {
+  const known = new Set(records.map((item) => item.thread));
   const added: UnreadRecord[] = [];
   for (const row of rows) {
     if (known.has(row.thread_id)) continue;
     known.add(row.thread_id);
     added.push(marker(row.thread_id, row.last_end_message, false));
   }
-  return added.length ? [...base, ...added].slice(-UNREAD_LIMIT) : base;
+  return added.length ? [...records, ...added].slice(-UNREAD_LIMIT) : records;
 }
 
 export function readUnreadRecords(value: unknown): UnreadRecord[] {

@@ -211,6 +211,9 @@ it("bolds a background completion only after the list hint and clears on open or
   try {
     await act(async () => { render(<App context={{ model: f.model, prefs, designs: DESIGNS, setPrefs: change => { prefs.value = { ...prefs.peek(), ...change }; }, submitToken: async () => false }} />, host); await settle(f.t, f.db); });
     expect(unread()).toBe(false);
+    expect(prefs.peek().sidebarUnread?.filter(r => r.thread === "other")).toEqual([
+      { thread: "other", node: "a", manual: false },
+    ]);
     f.db.threads.other!.title = "Renamed";
     await act(() => hint());
     expect(unread()).toBe(false);

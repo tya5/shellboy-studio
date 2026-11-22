@@ -1,4 +1,4 @@
-import { baselineUnread, isUnread, markUnread, type UnreadRecord } from "./sidebar-unread";
+import { seedUnreadMarkers, isUnread, markUnread, type UnreadRecord } from "./sidebar-unread";
 import { AttachmentSection } from "./attachment-section";
 import { captureConversationInput, createConversationIdentity, captureCurrentWork, type ConversationSemanticInput } from "./conversation-input";
 import { readThreadSettings, type OutputLimitReadback, type ThreadSettings } from "./resources";
@@ -388,10 +388,9 @@ export class AppModel {
   }
 
   private readonly unreadPreferences: UnreadPreferences | undefined;
-  private readonly unreadBaseline = signal<UnreadRecord[]>([]);
-  private readonly unreadMarkers = computed(() => new Map([
-    ...this.unreadBaseline.value, ...(this.unreadPreferences?.read() ?? []),
-  ].map(record => [record.thread, record])));
+  private readonly unreadMarkers = computed(() => new Map(
+    (this.unreadPreferences?.read() ?? []).map(record => [record.thread, record]),
+  ));
 
   sidebarUnread(row: ThreadSummary): boolean {
     return isUnread(this.unreadMarkers.value.get(row.thread_id), row.last_end_message);
@@ -411,12 +410,17 @@ export class AppModel {
   }
 
   private trackSidebarRead(): void {
-    if (!this.unreadPreferences) return;
+    const prefs = this.unreadPreferences;
+    if (!prefs) return;
     this.disposers.push(effect(() => {
       const list = this.data.threadList.value;
-      if (list.loaded && !list.loading && !list.stale) {
-        this.unreadBaseline.value = baselineUnread(this.unreadBaseline.peek(), list.items);
-      }
+      if (!list.loaded || list.loading || list.stale) return;
+      // Seed only on list observations; eviction itself must not trigger another write.
+      untracked(() => {
+        const old = prefs.read();
+        const next = seedUnreadMarkers(old, list.items);
+        if (next !== old) prefs.write(next);
+      });
     }));
     let opened: string | undefined;
     let lastNode: string | null | undefined;
