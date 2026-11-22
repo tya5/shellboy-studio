@@ -38,9 +38,12 @@ try{
  const mouse=(type,x,y,buttons)=>call('Input.dispatchMouseEvent',{type,x,y,button:type==='mouseMoved'?'none':'left',buttons,clickCount:1});
  const drag=async(side,delta)=>{
   const {x,y}=await state(side);
+  await evaluate(`window.__splitterEvents=[];for(const name of ['pointerdown','pointermove','lostpointercapture'])document.addEventListener(name,e=>window.__splitterEvents.push({name,target:e.target.outerHTML.slice(0,190),primary:e.isPrimary,button:e.button,buttons:e.buttons}),{capture:true,once:true})`);
+  await mouse('mouseMoved',x,y,0);
   await mouse('mousePressed',x,y,1);
   await mouse('mouseMoved',x+delta,y,1);
   await mouse('mouseReleased',x+delta,y,0);
+  console.log(side,await evaluate('window.__splitterEvents'),await state(side));
  };
  const codes={ArrowLeft:37,ArrowRight:39,Home:36,End:35};
  const key=async(side,key,shift=false)=>{
