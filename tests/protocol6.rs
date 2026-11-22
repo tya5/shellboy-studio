@@ -2,7 +2,7 @@
 #![cfg(feature = "next-shellboy")]
 use serde_json::json;
 use shellboy::protocol::{
-    Command, ErrorCode, IdKind, IdResolveArgs, RunDetails, ThreadDetails, ThreadSummary,
+    Command, ErrorCode, IdKind, IdResolveArgs, RunDetails, ThreadDetails, ThreadSummary, ThreadTarget,
 };
 use shellboy_studio::{
     allowlist::{Access, access},
@@ -148,5 +148,11 @@ fn cli_id_resolution_is_not_exposed_to_the_browser() {
         prefix: "12345678".into(),
         include_pending_duties: false,
     });
+    assert_eq!(access(&command), Access::Denied);
+}
+
+#[test]
+fn core_schedule_commands_remain_denied_without_a_studio_surface() {
+    let command = Command::ScheduleList(ThreadTarget { thread_id: Some("t".into()) });
     assert_eq!(access(&command), Access::Denied);
 }
