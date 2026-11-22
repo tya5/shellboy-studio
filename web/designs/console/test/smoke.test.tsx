@@ -125,7 +125,8 @@ describe("Conversation work regions", () => {
     expect(headings).toEqual(["Running", "Waiting for history"]);
     expect(text(sidebar)).toContain("test command");
     expect(text(sidebar)).toContain("Please review");
-    expect(el.querySelector(".work-strip")?.textContent).toContain("Running at least 1");
+    expect(el.querySelector(".work-strip")?.textContent).toContain("Conversation work");
+    expect(el.querySelector(".work-strip")?.textContent).not.toContain("Running at least");
     db.work.lead = [];
     act(() => t.push({ t: "changed", thread_ids: ["lead"], list: false }));
     await act(async () => settle(t, db));
@@ -329,7 +330,7 @@ describe("Conversation", () => {
     }});
     const el = draw(model);
     expect(text(el)).toContain("Improve history search");
-    expect(text(el)).toContain("1 tools");
+    expect(text(el)).toContain("1 tool");
     expect(text(el)).not.toContain("cargo test history::search");
     await act(async () => {
       const row=model.conversation.value.find(row=>row.type==='steps')!;

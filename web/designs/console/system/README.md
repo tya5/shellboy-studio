@@ -78,3 +78,9 @@ The shared row-action pattern and its references are recorded in `patterns/row-a
 - The sidebar header (expanded or collapsed) and the phone thread drawer show the same inline `BrandLogo`. Its tile and details use the resolved palette; no separate mobile artwork, filters, or image swaps.
 - The browser tab uses the existing OS-adaptive `studio-favicon.svg`, with a fixed ICO fallback. Browser chrome owns that scheme independently of the app setting.
 - Apple touch and manifest install icons are OS-owned static assets; they retain their built-in contrast. The master SVG and remaining export sizes are source/export variants, not additional in-app placements. No artwork or size changes.
+
+### Conversation status artwork
+
+The permanent one-line footer in Conversation uses the existing status artwork. Only its description may ellipsize; activity, the lower-bound count when two or more, elapsed time from the actual start, and actions retain their own fields. The phone WorkSheet opener does not repeat the running summary.
+
+The thinking SVG owns its animation CSS so both states reuse the same artwork rather than copying its shapes into JSX. Only running selects the `#running` fragment: the three existing dots hop in sequence (the chat typing pattern), with a 1.2s transform-only cycle, 150ms stagger, and a hop of 28/390 artwork height. With reduced motion or no running fragment, all dots remain visible and still.

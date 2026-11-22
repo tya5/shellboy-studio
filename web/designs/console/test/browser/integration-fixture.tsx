@@ -37,6 +37,8 @@ const { model, t, db } = await fixtureModel({ ...fixtureOptions, configure(db) {
       { message_id: 'thread-5', recipient_kind: 'thread', recipient_thread_id: 'child', excerpt: 'P5_THREAD_DUTY', delivery_status: 'applied' },
     ] });
   }
+  if (params.get('state') === 'waiting') db.threads.lead = summary('lead', {state:'running',activity:'waiting'});
+  if (params.get('state') === 'completed') db.threads.lead = summary('lead', {state:'completed',activity:'completed'});
   if (params.get('state') !== 'running') return;
   db.work.lead = ['verify', 'inspect'].map((id) => ({ kind: 'shell', id, thread_id: 'lead', run_id: 'run-1', execution_id: id, state: 'running', started_at: '2026-11-07T10:19:00Z' }));
   db.shells.lead = [

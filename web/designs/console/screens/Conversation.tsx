@@ -128,7 +128,7 @@ export function SavedConversationItems({ model, projection: suppliedProjection, 
     const categoryLabel = [...(["Tools","Reasoning","Notifications","Problems"] as const).flatMap(category=>{
       const n=group.categoryCounts?.[category] ?? 0;
       if(!n)return [];
-      const title=category==="Tools"?t("tools.count",{n}):t(`work.category.${category}`,{n});
+      const title=category==="Tools"?t(n === 1 ? "tools.countOne" : "tools.count", { n }):t(`work.category.${category}`,{n});
       return [title+(category==="Tools"&&failures?` (${t("work.failedCount",{n:failures})})`:"")];
     }), ...(active?[t("status.running")]:[])].join(" · ");
     const actualMemberCount = projection.items.filter(item => group.memberKeys.includes(item.key)).length;
@@ -158,7 +158,7 @@ export function SavedConversationItems({ model, projection: suppliedProjection, 
     const members = projection.items.filter(item => summary.memberKeys.includes(item.key));
     const missingExecution = members.some(item => item.source.kind !== "tool" || !(item.source.executionIds?.length || item.source.executionId)) || steps.length !== summary.executionIds.length;
     const status = active ? "running" : failed ? "failed" : summary.executionIds.length > 0 && !missingExecution ? "completed" : undefined;
-    const label = [t("tools.count", { n: summary.memberKeys.length }), ...(missingExecution ? [t("work.textUnavailable")] : []), ...((summary.continuationBefore !== "closed" || summary.continuationAfter !== "closed") ? [t("work.partial")] : []), ...(nonzero ? [t("tools.nonzero", { n: nonzero })] : []), ...(active ? [t("tools.active", { command: toolLabel(active.description, active.command) })] : [])].join(" · ");
+    const label = [t(summary.memberKeys.length === 1 ? "tools.countOne" : "tools.count", { n: summary.memberKeys.length }), ...(missingExecution ? [t("work.textUnavailable")] : []), ...((summary.continuationBefore !== "closed" || summary.continuationAfter !== "closed") ? [t("work.partial")] : []), ...(nonzero ? [t("tools.nonzero", { n: nonzero })] : []), ...(active ? [t("tools.active", { command: toolLabel(active.description, active.command) })] : [])].join(" · ");
     return <section class="steps"><StepRow group open={opened(summary)} command={label} status={status ? <StatusMark status={status} label={statusLabel(t, status)} /> : <span class="muted caption">{t("work.textUnavailable")}</span>} onToggle={open => {
       setOpenMemberships(previous => {
         const next = new Map([...previous].filter(([key]) => memberships.has(key)));
@@ -280,9 +280,13 @@ export function ConversationStatus({ model }: { model: AppModel }) {
   const status = model.threadReplies.value.some((r) => r.recipient.kind === "human") ? "awaiting" : row?.status;
   const running = work.running[0];
   const start = running?.startedAt ? parseTime(running.startedAt) : undefined;
-  return <div key="conversation-status" class="work-row conversation-status" role="status">{status ? <><img class="character-status" src={characterAssets[statusCharacter(status)]} alt="" /><span>{status === "running" && row?.summary.activity ? activityLabel(model.lang.value, row.summary.activity) : statusLabel(t, status)}</span>
-    {running ? <span>{running.label} {work.running.length > 1 ? t("work.runningCount", { n: work.running.length }) : ""} {start === undefined ? "" : formatDuration(model.now.value - start)}</span> : null}
-    {status === "recovery" ? <><span>{model.recovery.value?.message ?? model.recovery.value?.hint}</span>{model.canRetry.value ? <Button onClick={() => void model.retry()}>{t("action.retry")}</Button> : null}</> : null}
+  return <div key="conversation-status" class="work-row conversation-status" role="status">{status ? <><img class="character-status" src={status === "running" ? `${characterAssets.thinking}#running` : characterAssets[statusCharacter(status)]} alt="" /><span>{status === "running" && row?.summary.activity ? activityLabel(model.lang.value, row.summary.activity) : statusLabel(t, status)}</span>
+    {running ? <>
+      <span data-status-description>{running.label}</span>
+      {work.running.length > 1 ? <span>{t("work.runningCount", { n: work.running.length })}</span> : null}
+      {start === undefined ? null : <span>{formatDuration(model.now.value - start)}</span>}
+    </> : null}
+    {status === "recovery" ? <><span data-status-description>{model.recovery.value?.message ?? model.recovery.value?.hint}</span>{model.canRetry.value ? <Button onClick={() => void model.retry()}>{t("action.retry")}</Button> : null}</> : null}
   </> : " "}</div>;
 }
 
@@ -715,7 +719,11 @@ export function Conversation({ model, panelCollapsed = false, rightPanelWidth, o
               {t("composer.unconfirmed")}{!model.canResend()?<div>{t("composer.retryUnavailable")}</div>:null}
             </Notice>
           ) : null}
-          {(model.threadReplies.value.length || model.work.value.running.length || model.work.value.pending.length || model.work.value.partial) ? <div class="work-strip"><Button onClick={(event) => { const opener = event.currentTarget; const fallback = opener.closest(".dock")?.querySelector<HTMLElement>("textarea"); setSheetReturnFocus({ opener, resolveFallback: () => fallback?.isConnected ? fallback : null }); setSheetOpen(true); }}>{[model.threadReplies.value.length ? `${t("work.replies")} ${model.threadReplies.value.length}` : "", model.work.value.running.length ? t("work.runningCount", { n: model.work.value.running.length }) : "", model.work.value.pending.length ? `${t("work.pending")} ${model.work.value.pending.length}` : ""].filter(Boolean).join(", ")}{model.work.value.partial ? ` ${t("work.partial")}` : ""}</Button></div> : null}
+          {(model.threadReplies.value.length || model.work.value.running.length || model.work.value.pending.length || model.work.value.partial) ? <div class="work-strip"><Button onClick={(event) => { const opener = event.currentTarget; const fallback = opener.closest(".dock")?.querySelector<HTMLElement>("textarea"); setSheetReturnFocus({ opener, resolveFallback: () => fallback?.isConnected ? fallback : null }); setSheetOpen(true); }}>
+            {[t("work.title"), ...(model.threadReplies.value.length ? [t("work.replies")] : []),
+              ...(model.work.value.pending.length ? [t("work.pending")] : []),
+              ...(model.work.value.partial ? [t("work.partial")] : [])].join(" · ")}
+          </Button></div> : null}
           <Composer
             label={t("composer.label")}
             placeholder={t("composer.placeholder")}
