@@ -1,4 +1,4 @@
-import { useState } from "preact/hooks";
+import { useLayoutEffect, useRef, useState } from "preact/hooks";
 import { Icon, type IconRole } from "../Icon";
 
 export interface PanelTabItem {
@@ -16,7 +16,12 @@ export function PanelTabs(props: {
   readonly onSelect: (id: string) => void;
 }) {
   const [railFocus, setRailFocus] = useState<string>();
-  return <div class={`panel-tabs${props.rail ? " panel-tabs-rail" : ""}`} role="tablist" aria-label={props.label} aria-orientation={props.rail ? "vertical" : "horizontal"} onKeyDown={event => {
+  const tablist = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    if (props.rail) return;
+    tablist.current?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [props.selected, props.rail, props.items]);
+  return <div ref={tablist} class={`panel-tabs${props.rail ? " panel-tabs-rail" : ""}`} role="tablist" aria-label={props.label} aria-orientation={props.rail ? "vertical" : "horizontal"} onKeyDown={event => {
     const tabs = [...event.currentTarget.querySelectorAll<HTMLButtonElement>("[role=tab]")];
     const index = tabs.indexOf(event.target as HTMLButtonElement);
     if (index < 0 || tabs.length === 0) return;
@@ -26,7 +31,7 @@ export function PanelTabs(props: {
     if (next >= 0) { event.preventDefault(); tabs[next]?.focus(); if (!props.rail) props.onSelect(props.items[next]!.id); }
   }}>
     {props.items.map(item => <button type="button" role="tab" aria-selected={props.selected === item.id} aria-controls={`panel-page-${item.id}`} id={`panel-tab-${item.id}`} aria-label={item.count ? `${item.label} ${item.count}` : item.label} data-panel-tab={item.id} aria-describedby={`panel-tip-${item.id}`} onFocus={() => { if (props.rail) setRailFocus(item.id); }} tabIndex={(props.rail ? railFocus ?? props.selected : props.selected) === item.id ? 0 : -1} key={item.id} onClick={() => props.onSelect(item.id)}>
-      <Icon role={item.icon} size="small" /><span class="panel-tab-label">{item.label}</span>{item.count ? <span class="panel-tab-count">{item.count}</span> : null}
+      <Icon role={item.icon} size="small" /><span class="panel-tab-label">{item.label}{!props.rail && item.count ? <span class="panel-tab-count">{item.count}</span> : null}</span>{props.rail && item.count ? <span class="panel-tab-count">{item.count}</span> : null}
     <span id={`panel-tip-${item.id}`} class="panel-tab-tip" role="tooltip">{item.label}</span>
     </button>)}
   </div>;
