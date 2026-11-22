@@ -1353,6 +1353,8 @@ describe("Settings", () => {
     } });
     const el = draw(model);
     const input = () => el.querySelector<HTMLInputElement>('input[aria-label="Maximum output tokens"]')!;
+    const mark = () => t.push({ t: "changed", thread_ids: [], list: false, config_changed: true });
+    const reads = t.calls("config.get").length;
     expect(input().value).toBe("");
     expect(t.calls("config.set")).toHaveLength(0);
     const description = el.querySelector(`[id="${input().getAttribute("aria-describedby")}"]`);
@@ -1361,16 +1363,19 @@ describe("Settings", () => {
     act(() => { input().value = "4096"; input().dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })); });
     await act(async () => { await settle(t, db); });
     expect(t.calls("config.set").map((call) => call.args)).toEqual([{ expected_hash: "before", changes: [{ field: "connections.proxy.max_tokens", value: 4096 }] }]);
-    await act(async () => { void model.config.configChanged(); await settle(t, db); });
+    await act(async () => { mark(); await settle(t, db); });
+    expect(t.calls("config.get")).toHaveLength(reads + 1);
     act(() => model.applyRoute({ view: "settings", section: "general" }));
     act(() => model.applyRoute({ view: "settings", section: "connections" }));
     await act(async () => { await settle(t, db); });
     expect(input().value).toBe("4096");
+    expect(t.calls("config.get")).toHaveLength(reads + 1);
     act(() => { input().value = ""; input().dispatchEvent(new FocusEvent("focusout", { bubbles: true })); });
     await act(async () => { await settle(t, db); });
     expect(t.calls("config.set").at(-1)!.args).toEqual({ expected_hash: "saved", changes: [{ field: "connections.proxy.max_tokens" }] });
-    await act(async () => { void model.config.configChanged(); await settle(t, db); });
+    await act(async () => { mark(); await settle(t, db); });
     expect(input().value).toBe("");
+    expect(t.calls("config.get")).toHaveLength(reads + 2);
   });
   it("shows indexing cost and links storage use to Analytics", async () => {
     expect(text((await open("index")).el)).toContain("may incur charges");

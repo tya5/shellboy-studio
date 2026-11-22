@@ -18,9 +18,9 @@ const field=()=>document.querySelector<HTMLInputElement>('input[aria-label="Maxi
  const initial=field()?.value;
  field().value='4096';field().dispatchEvent(new Event('input',{bubbles:true}));
  const autoWrites=m.t.calls('config.set').length;
- field().dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));await settle(m.t,m.db);void m.model.config.configChanged();await settle(m.t,m.db);
+ field().dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));await settle(m.t,m.db);m.t.push({t:"changed",thread_ids:[],list:false,config_changed:true});await settle(m.t,m.db);
  m.model.navigate({view:'monitor'});m.model.navigate({view:'settings',section:'connections'});await settle(m.t,m.db);await new Promise(requestAnimationFrame);
  const reopened=field()?.value;
- field().value='';field().dispatchEvent(new Event('input',{bubbles:true}));field().dispatchEvent(new FocusEvent('focusout',{bubbles:true}));await settle(m.t,m.db);void m.model.config.configChanged();await settle(m.t,m.db);await new Promise(requestAnimationFrame);
+ field().value='';field().dispatchEvent(new Event('input',{bubbles:true}));field().dispatchEvent(new FocusEvent('focusout',{bubbles:true}));await settle(m.t,m.db);m.t.push({t:"changed",thread_ids:[],list:false,config_changed:true});await settle(m.t,m.db);await new Promise(requestAnimationFrame);
  return {api,initial,reopened,cleared:field()?.value,autoWrites,writes:m.t.calls('config.set').map(c=>c.args),calls:m.t.calls().map(c=>c.command),overflow:document.documentElement.scrollWidth>innerWidth,help:document.body.textContent?.includes('Anthropic Messages'),extra:values().connections.synthetic.extra_body};
 };
