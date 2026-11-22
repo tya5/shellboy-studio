@@ -51,6 +51,11 @@ export interface PagedState<T> {
 
 export type ListFilter = Pick<ThreadListArgs, "query" | "archived" | "awaiting" | "tags" | "cwd">;
 
+interface ThreadListState extends PagedState<ThreadSummary> {
+  /** Filter that produced the published rows and cursor, not the pending request. */
+  filter?: Readonly<ListFilter>;
+}
+
 export type OwnerView = { state: "unknown" } | OwnerState;
 
 export interface Handle {
@@ -161,7 +166,7 @@ export class ShellboyData {
   private readonly dataDirSig = signal<string | undefined>(undefined);
   private readonly invalidSig = signal<{ count: number; last: string | undefined }>({ count: 0, last: undefined });
   private readonly bridgeErrorSig = signal<{ code: string; message: string } | undefined>(undefined);
-  private readonly listSig = signal<PagedState<ThreadSummary>>(emptyPaged());
+  private readonly listSig = signal<ThreadListState>(emptyPaged());
   private readonly filterSig = signal<ListFilter>({});
   private listRefs = 0;
   private listGen = 0;
@@ -187,7 +192,7 @@ export class ShellboyData {
   readonly invalidFrames: ReadonlySignal<{ count: number; last: string | undefined }>;
   /** Last `error` frame from the bridge (e.g. an invalid watch). */
   readonly bridgeError: ReadonlySignal<{ code: string; message: string } | undefined>;
-  readonly threadList: ReadonlySignal<PagedState<ThreadSummary>>;
+  readonly threadList: ReadonlySignal<ThreadListState>;
   readonly listFilter: ReadonlySignal<ListFilter>;
 
   constructor(options: DataOptions) {
@@ -283,9 +288,9 @@ export class ShellboyData {
 
   async loadMoreThreads(): Promise<void> {
     const cur = this.listSig.value;
-    if (!cur.nextCursor || cur.loadingMore || cur.loading || cur.items.length >= MAX_LIST_ROWS) return;
+    const filter = cur.filter;
+    if (!filter || !cur.nextCursor || cur.loadingMore || cur.loading || cur.items.length >= MAX_LIST_ROWS) return;
     const gen = this.listGen;
-    const filter = this.filterSig.value;
     this.listSig.value = { ...cur, loadingMore: true };
     const out = await this.operations.threadList({ ...listArgs(filter), cursor: cur.nextCursor });
     if (gen !== this.listGen) return; // a refresh replaced the pages meanwhile
@@ -570,7 +575,6 @@ export class ShellboyData {
     entry.historyTick.value++; // notification only; positional reads own history admission
   }
 
-  private listFilterRead: ListFilter | undefined;
   private listCancel: Cancel | undefined;
 
   private async readList(onSent: () => void): Promise<void> {
@@ -588,9 +592,9 @@ export class ShellboyData {
     }
     // One call per hint, whatever was expanded: the first page is read again and rows further down are
     // kept, so a hint doesn't collapse the list. A kept row can be stale until the next full read.
-    const expanded = this.listFilterRead === filter && cur.items.length > PAGE_LIMIT;
-    this.listFilterRead = filter;
+    const expanded = cur.filter === filter && cur.items.length > PAGE_LIMIT;
     this.listSig.value = {
+      filter,
       items: expanded ? mergeRows(out.value.items, cur.items) : out.value.items,
       nextCursor: expanded ? cur.nextCursor : out.value.next_cursor,
       loaded: true,

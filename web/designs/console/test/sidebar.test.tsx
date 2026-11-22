@@ -197,11 +197,20 @@ it("opens all ten cross-directory descendants, gives overlapping pins independen
       expect([...document.querySelectorAll('[role="menuitem"]')].some(item => item.textContent === "Unpin")).toBe(true);
       await act(async () => { document.querySelector('[role="menu"]')!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); });
     }
-    await act(async () => { f.data.setListFilter({ cwd: "/beta" }); await settle(f.t, f.db); });
+    await act(async () => { f.data.setListFilter({ cwd: "/beta" }); await flush(); });
+    const filtered = f.t.calls("thread.list").at(-1)!;
+    expect(filtered.args).toMatchObject({ cwd: "/beta" });
+    expect(f.data.threadList.peek().loading).toBe(true);
+    expect(links("Pinned")).toHaveLength(12);
+    expect(links("All")).toHaveLength(11);
+    await act(async () => { await settle(f.t, f.db); });
     expect(links("All")).toHaveLength(10);
     expect(links("Pinned").map(link => link.getAttribute("href"))).toEqual(["#/conversation/child0"]);
     expect(host.querySelector(".side-list .thread-item-child")).toBeNull();
-    await act(async () => { f.data.setListFilter({}); await settle(f.t, f.db); });
+    await act(async () => { f.data.setListFilter({}); await flush(); });
+    expect(links("Pinned").map(link => link.getAttribute("href"))).toEqual(["#/conversation/child0"]);
+    expect(host.querySelector(".side-list .thread-item-child")).toBeNull();
+    await act(async () => { await settle(f.t, f.db); });
     expect(links("Pinned")).toHaveLength(12);
     expect(links("All")).toHaveLength(11);
   } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }

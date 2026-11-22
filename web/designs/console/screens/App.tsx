@@ -113,9 +113,9 @@ export function App({ context }: { context: DesignContext }) {
 
   const list = model.data.threadList.value;
   const sidebarSelected = route.view === "conversation" ? model.selectedId.value : undefined;
-  const appliedFilter = model.data.listFilter.value;
-  const flat = route.view !== "monitor" && !!(appliedFilter.query || appliedFilter.cwd || appliedFilter.tags?.length
-    || appliedFilter.awaiting || (appliedFilter.archived && appliedFilter.archived !== "exclude"));
+  const appliedFilter = list.filter;
+  const flat = !!(appliedFilter?.query || appliedFilter?.cwd || appliedFilter?.tags?.length
+    || appliedFilter?.awaiting || (appliedFilter?.archived && appliedFilter.archived !== "exclude"));
   const groups = useMemo(() => sidebarGroups(list.items, sidebarSelected, flat), [list.items, sidebarSelected, flat]);
   const revealGroups = JSON.stringify(groups.filter(group => group.rows.some(row => row.summary.thread_id === sidebarSelected)).map(group => group.key));
   const revealParents = JSON.stringify(groups.flatMap(group => group.rows.filter(row => row.reveal).map(row => row.key)));
