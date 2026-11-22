@@ -160,12 +160,11 @@ pub async fn session<O: Owner>(
                 if !send(&mut socket, &frame).await { break }
             }
             _ = guard.wake.notified() => {
-                let (pending, owner) = state.hub.take(&guard);
+                let (pending, owner, live) = state.hub.take_delivery(&guard);
                 if let Some(event) = pending.owner {
                     let frame = ServerFrame::Owner { event, owner };
                     if !send(&mut socket, &frame).await { break }
                 }
-                let live = state.hub.live_for(&guard, pending.resync);
                 // Replay precedes any result from this tab's ensuing history read.
                 if pending.resync && !send(&mut socket, &ServerFrame::Resync).await { break }
                 if (!pending.threads.is_empty() || pending.list)

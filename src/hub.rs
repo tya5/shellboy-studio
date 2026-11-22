@@ -191,18 +191,6 @@ impl Hub {
         }
     }
 
-    /// Everything a tab shows must be re-read; supersedes dirty marks.
-    pub fn resync(&self) {
-        let mut inner = self.lock();
-        for session in inner.sessions.values_mut() {
-            session.pending.attempt_ends.clear();
-            session.pending.threads.clear();
-            session.pending.list = false;
-            session.pending.resync = true;
-            session.wake.notify_one();
-        }
-    }
-
     /// Record the owner state and tell every session (the latest event wins).
     pub fn set_owner(&self, state: OwnerState, event: OwnerEvent) {
         let mut inner = self.lock();
@@ -213,37 +201,75 @@ impl Hub {
         }
     }
 
-    /// Retain terminal facts independently of replacement of the live text slot.
-    pub fn attempt_ends(&self, ends: Vec<shellboy::protocol::EventAttemptEnd>) {
+    /// Publish a single owner reply, including its slot replacement, before any tab can drain it.
+    pub fn apply_events<'a>(
+        &self,
+        owner: Option<(OwnerState, OwnerEvent)>,
+        thread_ids: impl IntoIterator<Item = &'a str> + Clone,
+        text: Option<Vec<live::Entry>>,
+        ends: Vec<shellboy::protocol::EventAttemptEnd>,
+        reset: bool,
+        resync: bool,
+    ) {
         const MAX_PENDING_ENDS: usize = 256;
         let mut inner = self.lock();
+        let changed = if reset || text.is_some() {
+            inner.live.apply(text.unwrap_or_default(), reset)
+        } else {
+            Vec::new()
+        };
+        if let Some((state, _)) = &owner {
+            inner.owner = state.clone();
+        }
         for session in inner.sessions.values_mut() {
-            if session.pending.resync {
-                continue;
+            let mut touched = false;
+            if let Some((_, event)) = &owner {
+                session.pending.owner = Some(*event);
+                touched = true;
             }
-            for end in ends
-                .iter()
-                .filter(|end| session.watch.contains(&end.thread_id))
-            {
-                if session.pending.attempt_ends.len() == MAX_PENDING_ENDS {
-                    session.pending.attempt_ends.clear();
-                    session.pending.resync = true;
-                    break;
+            if !resync && !session.pending.resync {
+                for id in thread_ids.clone() {
+                    if session.watch.contains(id) {
+                        touched |= session.pending.threads.insert(id.to_owned());
+                    }
+                    if session.list && !session.pending.list {
+                        session.pending.list = true;
+                        touched = true;
+                    }
                 }
-                session.pending.attempt_ends.push(end.clone());
+                for end in ends
+                    .iter()
+                    .filter(|end| session.watch.contains(&end.thread_id))
+                {
+                    touched = true;
+                    if session.pending.attempt_ends.len() == MAX_PENDING_ENDS {
+                        session.pending.resync = true;
+                        break;
+                    }
+                    session.pending.attempt_ends.push(end.clone());
+                }
             }
-            if !ends.is_empty() {
+            if resync || session.pending.resync {
+                session.pending.resync = true;
+                session.pending.threads.clear();
+                session.pending.list = false;
+                session.pending.attempt_ends.clear();
+                touched |= resync;
+            }
+            for id in &changed {
+                if session.watch.contains(id) {
+                    touched |= session.live_dirty.insert(id.clone());
+                }
+            }
+            if touched {
                 session.wake.notify_one();
             }
         }
     }
 
-    /// Live text the owner listed in one reply (`reset`: a baseline or resync, which forgets
-    /// what was held). Tabs watching a changed Thread are woken.
+    /// Slot-only input for scripted bridge fixtures.
     pub fn live_apply(&self, entries: Vec<live::Entry>, reset: bool) {
-        let mut inner = self.lock();
-        let changed = inner.live.apply(entries, reset);
-        Self::mark_live(&mut inner, &changed);
+        self.apply_events(None, [], Some(entries), Vec::new(), reset, false);
     }
 
     /// The owner is gone: nothing it held can be trusted. Tabs discard on the `owner` frame.
@@ -257,31 +283,16 @@ impl Hub {
         }
     }
 
-    fn mark_live(inner: &mut Inner, changed: &[String]) {
-        for session in inner.sessions.values_mut() {
-            let mut touched = false;
-            for id in changed {
-                if session.watch.contains(id) {
-                    touched |= session.live_dirty.insert(id.clone());
-                }
-            }
-            if touched {
-                session.wake.notify_one();
-            }
-        }
-    }
-
     /// Frames for the Threads whose live text changed since the session was last told.
     pub fn take_live(&self, guard: &SessionGuard) -> Vec<live::Out> {
-        self.live_for(guard, false)
-    }
-
-    pub fn live_for(&self, guard: &SessionGuard, replacement: bool) -> Vec<live::Out> {
         let mut inner = self.lock();
         let Inner { sessions, live, .. } = &mut *inner;
-        let Some(session) = sessions.get_mut(&guard.id) else {
-            return Vec::new();
-        };
+        sessions
+            .get_mut(&guard.id)
+            .map_or_else(Vec::new, |session| Self::drain_live(session, live, false))
+    }
+
+    fn drain_live(session: &mut Session, live: &live::Store, replacement: bool) -> Vec<live::Out> {
         if replacement {
             session.live_seen.clear();
             session.live_dirty = session
@@ -303,6 +314,26 @@ impl Hub {
                 out
             })
             .collect()
+    }
+
+    /// Drain the pending reply and its live replay from the same hub cut.
+    pub fn take_delivery(&self, guard: &SessionGuard) -> (Pending, OwnerState, Vec<live::Out>) {
+        let mut inner = self.lock();
+        let Inner {
+            sessions,
+            live,
+            owner,
+            ..
+        } = &mut *inner;
+        let (pending, frames) = sessions.get_mut(&guard.id).map_or_else(
+            || (Pending::default(), Vec::new()),
+            |session| {
+                let pending = std::mem::take(&mut session.pending);
+                let frames = Self::drain_live(session, live, pending.resync);
+                (pending, frames)
+            },
+        );
+        (pending, owner.clone(), frames)
     }
 
     /// Take (and clear) what the session has not been told, with the owner state to send.
@@ -360,7 +391,7 @@ mod tests {
         hub.hint(["t1"]);
         hub.set_owner(connected(Some("i".into())), OwnerEvent::Connected);
         hub.set_owner(OwnerState::Unreachable, OwnerEvent::Unreachable);
-        hub.resync();
+        hub.apply_events(None, [], None, Vec::new(), false, true);
         let (p, owner) = hub.take(&a);
         assert!(p.resync && p.threads.is_empty() && !p.list);
         assert_eq!(p.owner, Some(OwnerEvent::Unreachable));
@@ -368,44 +399,54 @@ mod tests {
     }
 
     #[test]
-    fn end_overflow_replays_already_seen_held_slot_without_terminal_facts() {
+    fn end_overflow_cannot_replay_the_attempt_ended_in_the_same_reply() {
         use crate::live::{Delta, Entry, Out};
         use shellboy::protocol::{EventAttemptEnd, EventAttemptOutcome};
         let hub = Hub::new();
         let (tab, _) = hub.register().unwrap();
         hub.watch(&tab, vec!["t1".into()], false).unwrap();
-        hub.live_apply(
-            vec![Entry {
-                thread_id: "t1".into(),
-                attempt_id: "held".into(),
-                input_through_node_id: None,
-                gap: false,
-                deltas: vec![Delta {
-                    offset: 0,
-                    reasoning: false,
-                    text: "held".into(),
-                }],
+        let entry = |id: &str| Entry {
+            thread_id: "t1".into(),
+            attempt_id: id.into(),
+            input_through_node_id: None,
+            gap: false,
+            deltas: vec![Delta {
+                offset: 0,
+                reasoning: false,
+                text: id.into(),
             }],
+        };
+        let end = |id: String, seq| EventAttemptEnd {
+            thread_id: "t1".into(),
+            attempt_id: id,
+            outcome: EventAttemptOutcome::NotAdopted,
+            seq,
+        };
+        hub.live_apply(vec![entry("ended")], false);
+        assert!(
+            matches!(&hub.take_delivery(&tab).2[..], [Out::Text { attempt_id, .. }] if attempt_id == "ended")
+        );
+        hub.apply_events(
+            None,
+            [],
+            None,
+            (0..256)
+                .map(|seq| end(format!("older-{seq}"), seq))
+                .collect(),
+            false,
             false,
         );
-        assert_eq!(hub.take_live(&tab).len(), 1);
-        assert!(hub.take_live(&tab).is_empty());
-        hub.attempt_ends(
-            (0..257)
-                .map(|seq| EventAttemptEnd {
-                    thread_id: "t1".into(),
-                    attempt_id: format!("old-{seq}"),
-                    outcome: EventAttemptOutcome::NotAdopted,
-                    seq,
-                })
-                .collect(),
+        hub.apply_events(
+            None,
+            [],
+            Some(vec![entry("successor")]),
+            vec![end("ended".into(), 256)],
+            false,
+            false,
         );
-        let (pending, _) = hub.take(&tab);
-        assert!(pending.resync);
-        assert!(pending.attempt_ends.is_empty());
-        assert!(
-            matches!(&hub.live_for(&tab, pending.resync)[..], [Out::Text { attempt_id, .. }] if attempt_id == "held")
-        );
+        let (pending, _, replay) = hub.take_delivery(&tab);
+        assert!(pending.resync && pending.attempt_ends.is_empty());
+        assert!(matches!(&replay[..], [Out::Text { attempt_id, .. }] if attempt_id == "successor"));
     }
 
     #[test]

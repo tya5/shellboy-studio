@@ -117,7 +117,7 @@ pub async fn run_with_guide<O: Owner>(
         announced_unreachable = false;
         let restarted = last_instance.is_some() && instance != last_instance;
         let reconnected = !connected_now && last_instance.is_some();
-        if !connected_now || restarted {
+        let owner_transition = if !connected_now || restarted {
             #[cfg(feature = "next-shellboy")]
             if let (Some((config_dir, data_dir)), Some(instance_id)) = (&guide, &instance) {
                 let registration = crate::guide_preference::register(
@@ -144,12 +144,10 @@ pub async fn run_with_guide<O: Owner>(
             } else {
                 OwnerEvent::Connected
             };
-            hub.set_owner(connected(instance.clone()), event);
-            // Anything may have changed while the bridge could not hear the owner.
-            if restarted || reconnected {
-                hub.resync();
-            }
-        }
+            Some((connected(instance.clone()), event))
+        } else {
+            None
+        };
         connected_now = true;
         last_instance = instance;
         cursor = Some(result.cursor);
@@ -158,25 +156,17 @@ pub async fn run_with_guide<O: Owner>(
             result.status,
             EventsWaitStatus::Baseline | EventsWaitStatus::ResyncRequired
         );
-        match result.status {
-            EventsWaitStatus::Baseline | EventsWaitStatus::Timeout => {}
-            // Only text is new; the text itself is applied below.
-            #[cfg(feature = "next-shellboy")]
-            EventsWaitStatus::Text => {}
-            EventsWaitStatus::Changed => {
-                hub.hint(result.changes.iter().map(|c| c.thread_id.as_str()));
-            }
-            EventsWaitStatus::ResyncRequired => {}
-        }
-        if let Some(ends) = result.attempt_ends {
-            hub.attempt_ends(ends);
-        }
-        if reset || text.is_some() {
-            hub.live_apply(text.unwrap_or_default(), reset);
-        }
-        if matches!(result.status, EventsWaitStatus::ResyncRequired) {
-            hub.resync();
-        }
+        let changes = matches!(result.status, EventsWaitStatus::Changed)
+            .then_some(result.changes.as_slice())
+            .unwrap_or_default();
+        hub.apply_events(
+            owner_transition,
+            changes.iter().map(|change| change.thread_id.as_str()),
+            text,
+            result.attempt_ends.unwrap_or_default(),
+            reset,
+            restarted || reconnected || matches!(result.status, EventsWaitStatus::ResyncRequired),
+        );
     }
 }
 

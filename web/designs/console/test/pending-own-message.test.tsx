@@ -656,7 +656,7 @@ it('Studio #61: a delayed exact terminal removes only the fenced attempt after t
 
 
 it.each([false, true])('applies a dropped attempt end with the resync history cut (adopted=%s)', async adopted => {
- const attempt = canonicalAttemptId(95);
+ const attempt = canonicalAttemptId(95), successor = canonicalAttemptId(96);
  const saved = (id: string, ordinal: number, text: string, assistant = false): HistoryItem => ({
   node_id:id, kind:assistant?'assistant_response':'user', selection:{ordinal},
   items:[{kind:'text',item_identity:`${id}-text`,text,text_complete:true}],
@@ -669,8 +669,11 @@ it.each([false, true])('applies a dropped attempt end with the resync history cu
   await act(async()=>{render(<App context={context}/>,host); await settle(f.t,f.db);});
   await act(async()=>{f.t.push({t:'live',thread_id:'lead',attempt_id:attempt,input_through_node_id:'base',gap:false,deltas:[{offset:0,reasoning:false,text:'old preview'}]});await flush();});
   expect(host.textContent).toContain('old preview');
-  await act(async()=>{f.t.push({t:'resync'});await flush();});
+  await act(async()=>{f.t.push({t:'resync'});
+   f.t.push({t:'live',thread_id:'lead',attempt_id:successor,input_through_node_id:'base',gap:false,deltas:[{offset:0,reasoning:false,text:'successor preview'}]});
+   await flush();});
   expect(host.textContent).toContain('old preview');
+  expect(host.textContent).not.toContain('successor preview');
   const accepted = f.model.longReader.peek()!.acceptedView;
   const handoff = f.model.handle.peek()!.handoff;
   const states: [boolean,boolean][] = [];
@@ -681,6 +684,8 @@ it.each([false, true])('applies a dropped attempt end with the resync history cu
   expect(states.at(-1)).toEqual([adopted,false]);
   if(adopted) expect(states).not.toContainEqual([false,false]);
   expect(host.textContent).not.toContain('old preview');
+  expect(host.textContent).toContain('successor preview');
+  expect(handoff.peek().map(record=>record.attemptId)).toEqual([successor]);
   if(adopted)expect(host.textContent).toContain('saved answer');
  } finally {render(null,host);host.remove();f.model.dispose();f.data.stop();}
 });
