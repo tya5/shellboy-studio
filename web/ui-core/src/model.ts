@@ -1,3 +1,4 @@
+import { baselineUnread, isUnread, markUnread, type UnreadRecord } from "./sidebar-unread";
 import { AttachmentSection } from "./attachment-section";
 import { captureConversationInput, createConversationIdentity, captureCurrentWork, type ConversationSemanticInput } from "./conversation-input";
 import { readThreadSettings, type OutputLimitReadback, type ThreadSettings } from "./resources";
@@ -12,7 +13,7 @@ import { recentAppFolders } from "./app-templates";
 // Screen logic over the data layer: which Thread is open, what the views show, the send, stop,
 // retry and archive flows. Saved facts stay in the data layer; nothing here is optimistic.
 import { batch, computed, effect, signal, untracked, type ReadonlySignal, type Signal } from "@preact/signals-core";
-import { Cancel, type Handle, type Operations, type OpError, type ShellboyData, type ShellEntry, type ThreadDetails, type ThreadHandle } from "../../data/src";
+import { Cancel, type Handle, type Operations, type OpError, type ShellboyData, type ShellEntry, type ThreadDetails, type ThreadSummary, type ThreadHandle } from "../../data/src";
 import { CAPABILITY_HISTORY_WINDOW, decodeThreadReplies, adapterThreadReplies, type ThreadReplyProjection, noReplyWait, type ReplyWait, type ReplyWaitAdapter } from "../../data/src";
 import { MissingPins, MonitorSelection, type MonitorArchive } from "./monitor-selection";
 import { workRegions, type WorkRegions } from "./work";
@@ -119,7 +120,14 @@ const COARSE_TICK_MS = 30_000;
 /** One output or body read stops after this many pages (64 KiB each by the owner's default). */
 const MAX_PAGES = 8;
 
+interface UnreadPreferences {
+  read(): UnreadRecord[];
+  write(records: UnreadRecord[]): void;
+  visible(): boolean;
+}
+
 export interface AppModelOptions {
+  unreadPreferences?: UnreadPreferences;
   data: ShellboyData;
   pending?: PendingAdapter;
   replyWait?: ReplyWaitAdapter;
@@ -379,7 +387,59 @@ export class AppModel {
     });
   }
 
+  private readonly unreadPreferences: UnreadPreferences | undefined;
+  private readonly unreadBaseline = signal<UnreadRecord[]>([]);
+  private readonly unreadMarkers = computed(() => new Map([
+    ...this.unreadBaseline.value, ...(this.unreadPreferences?.read() ?? []),
+  ].map(record => [record.thread, record])));
+
+  sidebarUnread(row: ThreadSummary): boolean {
+    return isUnread(this.unreadMarkers.value.get(row.thread_id), row.last_end_message);
+  }
+
+  markSidebarUnread(thread: string, manual: boolean): void {
+    const row = this.data.threadList.peek().items.find(item => item.thread_id === thread);
+    if (row?.last_end_message?.node_id) this.recordSidebarRead(thread, row.last_end_message, manual);
+  }
+
+  private recordSidebarRead(thread: string, end: ThreadSummary["last_end_message"], manual = false): void {
+    const prefs = this.unreadPreferences;
+    if (!prefs) return;
+    const old = prefs.read();
+    const next = markUnread(old, thread, end, manual);
+    if (next !== old) prefs.write(next);
+  }
+
+  private trackSidebarRead(): void {
+    if (!this.unreadPreferences) return;
+    this.disposers.push(effect(() => {
+      const list = this.data.threadList.value;
+      if (list.loaded && !list.loading && !list.stale) {
+        this.unreadBaseline.value = baselineUnread(this.unreadBaseline.peek(), list.items);
+      }
+    }));
+    let opened: string | undefined;
+    let lastNode: string | null | undefined;
+    this.disposers.push(effect(() => {
+      const id = this.route.value.view === "conversation" ? this.selectedId.value : undefined;
+      if (opened !== id) { opened = id; lastNode = undefined; }
+      const handle = this.handle.value;
+      if (!id || handle?.threadId !== id) return;
+      handle.detail.value;
+      const detail = handle.captureDetail()?.value;
+      if (detail?.thread_id !== id) return;
+      const node = detail.last_end_message?.node_id ?? null;
+      const first = lastNode === undefined;
+      if (node === lastNode) return;
+      lastNode = node;
+      if (first || this.unreadPreferences?.visible()) {
+        untracked(() => this.recordSidebarRead(id, detail.last_end_message));
+      }
+    }));
+  }
+
   constructor(options: AppModelOptions) {
+    this.unreadPreferences = options.unreadPreferences;
     this.data = options.data;
     this.attachmentSection = new AttachmentSection(this.data);
     this.ops = options.data.operations;
@@ -508,6 +568,7 @@ export class AppModel {
     let marksFor: string | undefined;
     this.listHandle = this.data.trackThreadList();
     this.disposers.push(effect(() => this.syncOpenThread()));
+    this.trackSidebarRead();
     this.disposers.push(effect(() => this.settlePanelOperations()));
     this.disposers.push(effect(() => this.syncWindow()));
     this.disposers.push(effect(() => {

@@ -90,14 +90,15 @@ function attachmentPage(threadId: string): Decoder<Page<AttachmentDetails>> {
   };
 }
 
+const validEndMessage = (value: unknown): boolean => value == null
+  || (isObject(value) && (value.node_id === null || typeof value.node_id === "string"));
+
 const summaryProblem = (v: unknown): string | undefined =>
   !(isObject(v) && typeof v.thread_id === "string" && typeof v.title === "string" && typeof v.state === "string")
     ? "thread summary lacks thread_id, title or state"
     : v.tags !== undefined && !(Array.isArray(v.tags) && v.tags.every((t) => typeof t === "string"))
       ? "thread summary tags is not a list of strings"
-      : v.last_end_message != null && (!isObject(v.last_end_message)
-        || (v.last_end_message.node_id !== null && typeof v.last_end_message.node_id !== "string")
-        || (v.last_end_message.at != null && typeof v.last_end_message.at !== "string"))
+      : !validEndMessage(v.last_end_message)
         ? "thread summary last_end_message is not an answer marker"
         : undefined;
 
@@ -120,7 +121,9 @@ const decodeThreadDeletePreview = (value: unknown): Decoded<ThreadDeletePreview>
 const decodeThreadPage = pageOf<ThreadSummary>(summaryProblem);
 const decodeDetails: Decoder<ThreadDetails> = (v) =>
   isObject(v) && typeof v.thread_id === "string" && typeof v.title === "string"
-    ? { ok: true, value: v as ThreadDetails }
+    ? validEndMessage(v.last_end_message)
+      ? { ok: true, value: v as ThreadDetails }
+      : { ok: false, reason: "thread detail last_end_message is not an answer marker" }
     : { ok: false, reason: "thread.get result lacks thread_id or title" };
 const runStates = new Set<RunState>(["live", "stopping", "stopped", "completed", "failed"]);
 const turnStates = new Set<TurnState>(["preparing", "running", "waiting", "recovery_wait", "completed", "stopped", "failed"]);

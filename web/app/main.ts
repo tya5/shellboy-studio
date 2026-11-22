@@ -76,6 +76,15 @@ async function main(): Promise<void> {
   const model = new AppModel({
     data,
     lang: prefs.value.lang,
+    unreadPreferences: {
+      read: () => prefs.value.sidebarUnread ?? [],
+      write: sidebarUnread => {
+        const next = { ...prefs.peek(), sidebarUnread };
+        prefs.value = next;
+        savePrefs(store, next);
+      },
+      visible: () => document.visibilityState === "visible",
+    },
     onNavigate: (hash) => {
       if (location.hash !== hash) location.hash = hash;
     },

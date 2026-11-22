@@ -187,14 +187,22 @@ it('settles the mounted tag session while hidden and ignores late results after 
 it("bolds a background completion only after the list hint and clears on open or local mark", async () => {
   const first = { node_id: "a", at: "2026-01-01T00:00:00Z" };
   const second = { node_id: "b", at: "2026-01-02T00:00:00Z" };
-  const f = await fixtureModel({ route: "conversation", threadId: "lead", configure(db) {
+  const prefs = signal(loadPrefs({ read: () => null, write() {} }, DESIGNS));
+  let visible = true;
+  const writes: unknown[] = [];
+  const f = await fixtureModel({ route: "conversation", threadId: "lead", unreadPreferences: {
+    read: () => prefs.value.sidebarUnread ?? [],
+    write: records => { writes.push(records); prefs.value = { ...prefs.peek(), sidebarUnread: records }; },
+    visible: () => visible,
+  }, configure(db) {
     db.threads = { lead: summary("lead", { cwd: "/one" }), other: summary("other", { cwd: "/one", last_end_message: first }) };
+    db.details.other = details("other", { last_end_message: second });
   } });
   const host = document.createElement("div"); document.body.append(host);
-  const prefs = signal(loadPrefs({ read: () => null, write() {} }, DESIGNS));
   const link = () => host.querySelector<HTMLAnchorElement>("#thread-link-sidebar-other")!;
   const unread = () => !!link().querySelector("strong[data-unread]");
-  const hint = async () => { f.t.push({ t: "changed", thread_ids: ["other"], list: true }); await settle(f.t, f.db); };
+  const hint = async (detail = false) => { f.t.push({ t: "changed", thread_ids: detail ? ["other"] : [], list: true }); await settle(f.t, f.db); };
+  const end = (marker: typeof first) => { f.db.threads.other = summary("other", { ...f.db.threads.other, last_end_message: marker }); };
   const mark = async (label: string) => {
     await act(async () => { link().parentElement!.querySelector<HTMLButtonElement>("[aria-haspopup=menu]")!.click(); });
     const item = [...document.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find((button) => button.textContent === label)!;
@@ -204,12 +212,12 @@ it("bolds a background completion only after the list hint and clears on open or
     await act(async () => { render(<App context={{ model: f.model, prefs, designs: DESIGNS, setPrefs: change => { prefs.value = { ...prefs.peek(), ...change }; }, submitToken: async () => false }} />, host); await settle(f.t, f.db); });
     expect(unread()).toBe(false);
     f.db.threads.other!.title = "Renamed";
-    await act(hint);
+    await act(() => hint());
     expect(unread()).toBe(false);
     f.db.threads.other = summary("other", { ...f.db.threads.other, last_end_message: second });
     expect(unread()).toBe(false);
     const reads = f.t.calls("thread.list").length;
-    await act(hint);
+    await act(() => hint());
     expect(f.t.calls("thread.list")).toHaveLength(reads + 1);
     expect(unread()).toBe(true);
     await mark("Mark as read");
@@ -219,9 +227,28 @@ it("bolds a background completion only after the list hint and clears on open or
     expect(f.t.calls("thread.list")).toHaveLength(reads + 1);
     await act(async () => { f.model.openThread("other"); await settle(f.t, f.db); });
     expect(unread()).toBe(false);
-    f.db.threads.other = summary("other", { ...f.db.threads.other, last_end_message: first });
-    await act(async () => { f.model.openThread("lead"); await settle(f.t, f.db); });
-    await act(hint);
+    expect(prefs.peek().sidebarUnread?.find(r => r.thread === "other")?.node).toBe("b");
+    end(first);
+    const writesAfterOpen = writes.length;
+    const detailReadsAfterOpen = f.t.calls("thread.get").length;
+    await act(() => hint());
+    expect(unread()).toBe(true);
+    expect(writes).toHaveLength(writesAfterOpen);
+    expect(f.t.calls("thread.get")).toHaveLength(detailReadsAfterOpen);
+    f.db.details.other = details("other", { last_end_message: first });
+    await act(() => hint(true));
+    expect(unread()).toBe(false);
+    visible = false;
+    end(second);
+    f.db.details.other = details("other", { last_end_message: second });
+    const writesBeforeHidden = writes.length;
+    await act(() => hint(true));
+    expect(unread()).toBe(true);
+    expect(writes).toHaveLength(writesBeforeHidden);
+    visible = true;
+    await act(() => hint(true)); // same detail ID is not a new visible completion
+    expect(unread()).toBe(true);
+    await act(async () => { f.model.showView("threads"); f.model.openThread("other"); await settle(f.t, f.db); });
     expect(unread()).toBe(false);
   } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
 });

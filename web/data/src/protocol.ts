@@ -166,7 +166,7 @@ export interface ThreadSummary {
   /** Sorted; absent when the Thread has none, and on an owner without tags. */
   tags?: string[];
   /** Latest completed answer node, from the existing list row. */
-  last_end_message?: { node_id: string | null; at?: string | null } | null;
+  last_end_message?: EndMessageMarker | null;
   latest_run_stop_reason?: string | null;
   awaiting_replies?: number;
   awaiting_human_count?: number;
@@ -211,7 +211,10 @@ export interface TurnDetails {
   [extra: string]: unknown;
 }
 
+export interface EndMessageMarker { node_id: string | null }
+
 export interface ThreadDetails {
+  last_end_message?: EndMessageMarker | null;
   max_tokens?: number | null;
   effective_max_tokens?: number;
   auto_compact_at?: number | null;

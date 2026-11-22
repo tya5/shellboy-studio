@@ -4,19 +4,19 @@ import { baselineUnread, isUnread, markUnread, UNREAD_LIMIT } from "../src/sideb
 const old = { node_id: "old", at: "2026-01-01T00:00:00Z" };
 const next = { node_id: "next", at: "2026-01-02T00:00:00Z" };
 
-it("starts read and only bolds a newer completion, not a rewind or metadata edit", () => {
+it("starts read and bolds a different completion, including a rewind, but not a metadata edit", () => {
   expect(isUnread(undefined, old)).toBe(false);
   const [baseline] = baselineUnread([], [{ thread_id: "t", last_end_message: old }]);
   expect(isUnread(baseline, { ...old })).toBe(false);
   expect(isUnread(baseline, next)).toBe(true);
   const [read] = markUnread([], "t", next, false);
-  expect(isUnread(read, old)).toBe(false);
+  expect(isUnread(read, old)).toBe(true);
   expect(isUnread(read, undefined)).toBe(false);
 });
 
-it("marks the current completion (or an empty Thread) manually until opened", () => {
+it("never flags an empty Thread, even when manually marked", () => {
   const unread = markUnread([], "t", undefined, true);
-  expect(isUnread(unread[0], undefined)).toBe(true);
+  expect(isUnread(unread[0], undefined)).toBe(false);
   expect(isUnread(markUnread(unread, "t", undefined, false)[0], undefined)).toBe(false);
   const [empty] = baselineUnread([], [{ thread_id: "new" }]);
   expect(isUnread(empty, next)).toBe(true);
