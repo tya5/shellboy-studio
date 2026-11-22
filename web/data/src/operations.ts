@@ -9,6 +9,10 @@ import { fromApiError, lostConnection, type Outcome } from "./errors";
 import type { Link } from "./link";
 import type { ThreadDeletePreview } from "./thread-delete";
 import type {
+  ArtifactHistory,
+  ArtifactSelected,
+  ArtifactSummary,
+  ArtifactVersionStamp,
   CompactListArgs,
   HistoryBody,
   HistoryGetArgs,
@@ -89,6 +93,32 @@ function attachmentPage(threadId: string): Decoder<Page<AttachmentDetails>> {
     return page;
   };
 }
+
+export const ARTIFACT_PAGE_SIZE = 32;
+const validVersion = (value: unknown): value is number => typeof value === "number" && Number.isSafeInteger(value) && value > 0;
+const validArtifactStamp = (raw: unknown): boolean => isObject(raw) && validVersion(raw.version) && typeof raw.created_at === "string";
+const validArtifactVersion = (raw: unknown): boolean => isObject(raw) && validArtifactStamp(raw)
+  && typeof raw.uri === "string" && typeof raw.title === "string" && (raw.mime === null || typeof raw.mime === "string");
+const validArtifactIdentity = (raw: Record<string, unknown>, thread: string): boolean => raw.thread_id === thread
+  && typeof raw.artifact_id === "string" && raw.artifact_id.length > 0
+  && typeof raw.created_at === "string" && typeof raw.updated_at === "string";
+function artifactPage<T>(raw: unknown, invalidItem: (item: unknown) => string | undefined, key: (item: T) => string | number): Decoded<Page<T>> {
+  if (!isObject(raw) || !Array.isArray(raw.items) || raw.items.length > ARTIFACT_PAGE_SIZE) return { ok: false, reason: "expected a bounded artifact page" };
+  const page = pageOf<T>(invalidItem)(raw);
+  if (page.ok && new Set(page.value.items.map(key)).size !== page.value.items.length) return { ok: false, reason: "duplicate artifact page identity" };
+  return page;
+}
+const decodeArtifactList = (thread: string): Decoder<Page<ArtifactSummary>> => (raw) => artifactPage(raw,
+  (item) => isObject(item) && validArtifactIdentity(item, thread) && validArtifactVersion(item.latest) ? undefined : "invalid artifact summary", (item) => item.artifact_id);
+const decodeArtifactHistory = (thread: string, artifact: string): Decoder<ArtifactHistory> => (raw) => {
+  if (!isObject(raw) || raw.artifact_id !== artifact || !validArtifactIdentity(raw, thread) || !validArtifactVersion(raw.latest)) return { ok: false, reason: "invalid artifact history identity" };
+  const page = artifactPage<ArtifactVersionStamp>(raw.versions, (item) => validArtifactStamp(item) ? undefined : "invalid artifact version stamp", (item) => item.version);
+  return page.ok ? { ok: true, value: { ...(raw as Omit<ArtifactHistory, "versions">), versions: page.value } } : page;
+};
+const decodeArtifactVersion = (thread: string, artifact: string, version: number): Decoder<ArtifactSelected> => (raw) =>
+  isObject(raw) && raw.artifact_id === artifact && validArtifactIdentity(raw, thread) && isObject(raw.version)
+    && raw.version.version === version && validArtifactVersion(raw.version)
+    ? { ok: true, value: raw as unknown as ArtifactSelected } : { ok: false, reason: "invalid selected artifact version identity" };
 
 const validEndMessage = (value: unknown): boolean => value == null
   || (isObject(value) && (value.node_id === null || typeof value.node_id === "string"));
@@ -352,6 +382,15 @@ export class Operations {
   }
   attachmentList(threadId: string, cursor?: string, read?: ReadOptions): Promise<Outcome<Page<AttachmentDetails>>> {
     return this.run("attachment.list", { thread_id: threadId, limit: ATTACHMENT_PAGE_SIZE, ...(cursor === undefined ? {} : { cursor }) }, outcomeDecoder(attachmentPage(threadId)), undefined, read);
+  }
+  artifactList(threadId: string, cursor?: string, read?: ReadOptions): Promise<Outcome<Page<ArtifactSummary>>> {
+    return this.run("artifact.list", { thread_id: threadId, limit: ARTIFACT_PAGE_SIZE, ...(cursor === undefined ? {} : { cursor }) }, outcomeDecoder(decodeArtifactList(threadId)), undefined, read);
+  }
+  artifactHistory(threadId: string, artifactId: string, cursor?: string, read?: ReadOptions): Promise<Outcome<ArtifactHistory>> {
+    return this.run("artifact.get", { artifact_id: artifactId, limit: ARTIFACT_PAGE_SIZE, ...(cursor === undefined ? {} : { cursor }) }, outcomeDecoder(decodeArtifactHistory(threadId, artifactId)), undefined, read);
+  }
+  artifactVersion(threadId: string, artifactId: string, version: number, read?: ReadOptions): Promise<Outcome<ArtifactSelected>> {
+    return this.run("artifact.get", { artifact_id: artifactId, version }, outcomeDecoder(decodeArtifactVersion(threadId, artifactId, version)), undefined, read);
   }
   threadGet(threadId: string, read?: ReadOptions): Promise<Outcome<ThreadDetails>> {
     return this.run("thread.get", { thread_id: threadId }, outcomeDecoder(decodeDetails), undefined, read);

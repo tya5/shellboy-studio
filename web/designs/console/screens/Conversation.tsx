@@ -1,3 +1,4 @@
+import { ArtifactDetail, ArtifactList, CAPABILITY_ARTIFACTS } from "./ArtifactPanel";
 import { ATTACHMENT_RETENTION } from "../../../ui-core/src/attachment-section";
 import { CAPABILITY_ATTACHMENT_PAGE } from "../../../data/src";
 import {messageRelationship,senderHeaderDisplay} from "../../../ui-core/src/sender-display";
@@ -411,6 +412,7 @@ function PanelPossessions({ model }: { model: AppModel }) {
   const t = model.t.value;
   const state = model.attachmentSection.state.value;
   return <div class="panel-list" data-panel-list="possessions">
+    {model.data.capabilities.value.includes(CAPABILITY_ARTIFACTS) ? <ArtifactList model={model} onSelect={(id, opener) => model.openInPanel({ kind: "artifact", id }, panelFocusReturn(opener))} /> : null}
     {state.items.length ? possessionsSections.map(section => <section key={section.kind}>
       <ListDivider label={t(section.label)} count={state.items.length} />
       {state.items.map(row => <ListRow key={row.attachment_id} id={row.attachment_id}
@@ -579,6 +581,7 @@ function PanelDetail({ model, tabLabel, onBack }: { model: AppModel; tabLabel: s
       {model.bodyState(detail.id)?.loading ? <p role="status">{t("convo.loadingBody")}</p> : null}
     </section>;
   }
+  if (detail.kind === "artifact") return <section class="panel-detail" data-panel-detail=""><div class="panel-detail-head">{back}</div><ArtifactDetail model={model} /></section>;
   if (detail.kind === "attachment") {
     const attachments = model.attachmentSection.state.value;
     const row = attachments.items.find(item => item.attachment_id === detail.id);
@@ -621,6 +624,11 @@ function RightPanel({ model, panelCollapsed = false }: { model: AppModel; panelC
     { id: "info", label: t("panel.tab.info"), icon: "panel.information" as const },
   ];
   const detail = model.panelDetail.value;
+  const artifactId = detail?.kind === "artifact" ? detail.id : undefined;
+  useEffect(() => activeAttachments && model.data.capabilities.peek().includes(CAPABILITY_ARTIFACTS) && owner.state === "connected" && threadId
+    ? model.artifacts.observeList(threadId) : undefined, [model, activeAttachments, owner, threadId]);
+  useEffect(() => activeAttachments && owner.state === "connected" && threadId && artifactId
+    ? model.artifacts.observeHistory(threadId, artifactId) : undefined, [model, activeAttachments, owner, threadId, artifactId]);
   useEffect(() => {
     if (panelCollapsed || !detail) return;
     const onKey = (event: KeyboardEvent) => {
@@ -662,7 +670,7 @@ function RightPanel({ model, panelCollapsed = false }: { model: AppModel; panelC
     <div class="panel-pages">
       {tabs.map(tab => {
         const active = tab.id === selectedTab;
-        const drilledIn = active && !panelCollapsed && detail && (selectedTab === "possessions") === (detail.kind === "attachment");
+        const drilledIn = active && !panelCollapsed && detail && (selectedTab === "possessions") === (detail.kind === "attachment" || detail.kind === "artifact");
         return <section key={tab.id} role="tabpanel" id={`panel-page-${tab.id}`} aria-labelledby={`panel-tab-${tab.id}`} hidden={!active || panelCollapsed}>
           <div class="panel-list-frame" hidden={!!drilledIn}>{tab.id === "work" ? <PanelActivity model={model} /> : tab.id === "info" ? <PanelInfo model={model} usageThread={usageThread} usageKey={usageKey} /> : tab.id === "possessions" ? <PanelPossessions model={model} /> : <PanelReplies model={model} recipient={tab.id === "reply-needed" ? "thread" : "human"} />}</div>
           {drilledIn ? <PanelDetail key={`${detail.kind}:${detail.id}`} model={model} tabLabel={tab.label} onBack={closeDetail} /> : null}

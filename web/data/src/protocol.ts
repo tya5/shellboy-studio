@@ -150,6 +150,32 @@ export interface Page<T> {
   next_cursor?: string;
 }
 
+/** Core #316 metadata. URIs are opaque here; this layer never opens them. */
+export interface ArtifactVersionStamp {
+  version: number;
+  created_at: string;
+}
+export interface ArtifactVersion extends ArtifactVersionStamp {
+  uri: string;
+  title: string;
+  mime: string | null;
+}
+interface ArtifactIdentity {
+  artifact_id: string;
+  thread_id: string;
+  created_at: string;
+  updated_at: string;
+}
+export interface ArtifactSummary extends ArtifactIdentity {
+  latest: ArtifactVersion;
+}
+export interface ArtifactHistory extends ArtifactSummary {
+  versions: Page<ArtifactVersionStamp>;
+}
+export interface ArtifactSelected extends ArtifactIdentity {
+  version: ArtifactVersion;
+}
+
 /** Core #327, selected attachment metadata; this surface never reads file bytes. */
 export interface AttachmentDetails {
   source_node_id: string;
