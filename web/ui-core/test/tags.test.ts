@@ -169,7 +169,7 @@ describe("editing tags", () => {
     model.dispose();
   });
 
-  it("adds and removes on several Threads in one call, then reads again; nothing is optimistic", async () => {
+  it("adds and removes on several Threads in one call; the ACK does not reread", async () => {
     const { t, db, model } = await setup();
     const org = model.org;
     org.setMany(["lead", "done"], true);
@@ -178,17 +178,16 @@ describe("editing tags", () => {
     expect(org.addTag("  fresh ")).toBeUndefined();
     org.toggleRemoveTag("old");
     const running = org.applyTags();
-    expect(org.tagAction.value.kind).toBe("running");
+    expect(org.tagDraft.value.action.kind).toBe("running");
     expect((db.threads.lead as { tags?: string[] }).tags).toEqual(["keep", "old"]);
     await settle(t, db);
     await running;
     const call = t.calls("thread.tag")[0]!;
     expect(call.args).toEqual({ thread_ids: ["lead", "done"], add: ["fresh"], remove: ["old"] });
     expect(call.operation_id).toBeTruthy();
-    expect(org.tagAction.value).toMatchObject({ kind: "done", result: { changed: ["lead", "done"], unchanged: [], not_found: [] } });
+    expect(org.tagDraft.value.action).toEqual({ kind: "idle" });
     expect((db.threads.lead as { tags?: string[] }).tags).toEqual(["fresh", "keep"]);
-    // Headings were read again: the open one, now empty, and the new tag.
-    expect(org.headings.headings.value.names).toEqual(["fresh", "keep"]);
+    expect(org.headings.headings.value.names).toEqual(["keep", "old"]);
     expect(org.tagDraft.value.add).toEqual([]);
   });
 
@@ -201,7 +200,8 @@ describe("editing tags", () => {
     const running = org.applyTags();
     await settle(t, db);
     await running;
-    expect(org.tagAction.value).toMatchObject({ kind: "done", result: { changed: [], unchanged: ["lead"], not_found: ["ghost"] } });
+    expect(org.tagDraft.value.action).toEqual({ kind: "missing", n: 1 });
+    expect(org.tagDraft.value.add).toEqual(["keep"]);
   });
 
   it("reports the 64-tag limit as such, changes nothing, and keeps the draft", async () => {
@@ -218,7 +218,7 @@ describe("editing tags", () => {
     const running = org.applyTags();
     await settle(t, db);
     await running;
-    expect(org.tagAction.value).toMatchObject({ kind: "failed", limit: true });
+    expect(org.tagDraft.value.action).toMatchObject({ kind: "failed", limit: true });
     expect((db.threads.full as { tags?: string[] }).tags).toHaveLength(64);
     expect(org.tagDraft.value.add).toEqual(["one-too-many"]);
   });
@@ -231,13 +231,15 @@ describe("editing tags", () => {
     org.addTag("x");
     await org.applyTags();
     await settle(t, db);
-    expect(org.tagAction.value).toEqual({ kind: "selection", n: TAG_SELECTION_MAX + 1 });
+    expect(org.tagDraft.value.action).toEqual({ kind: "selection", n: TAG_SELECTION_MAX + 1 });
     expect(t.calls("thread.tag")).toHaveLength(0);
   });
 
   it("keeps a tag out of both lists", async () => {
     const { model } = await setup();
     const org = model.org;
+    org.setMany(["lead"], true);
+    org.openTags(true);
     org.toggleRemoveTag("old");
     expect(org.addTag("old")).toBe("both");
     org.toggleRemoveTag("old");

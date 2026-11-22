@@ -1,7 +1,7 @@
 // Screen logic of the Branches and Threads views: reads when a view opens or a hint says the list changed,
 // one at a time, with one trailing read. Mutations are explicit and never optimistic.
 import { batch, signal, type Signal } from "@preact/signals-core";
-import { Cancel, type ArchiveResult, type ArchivedFilter, type Operations, type OpError, type Outcome, type TagResult, type ThreadSummary } from "../../data/src";
+import { Cancel, type ArchiveResult, type ArchivedFilter, type Operations, type OpError, type Outcome, type ThreadSummary } from "../../data/src";
 import { branchLayout, readFamily, readRewind, type BranchFamily, type RewindFacts } from "./branches";
 import { ThreadHeadings, type HeadingKind } from "./headings";
 import { CAPABILITY_CWDS, CAPABILITY_TAGS, checkTag, TAG_SELECTION_MAX, TAGS_PER_CALL, type TagInvalid, type ThreadGrouping } from "./org";
@@ -563,9 +563,11 @@ export type MoveState =
 
 export type OrgAction = { kind: "idle" } | { kind: "running" } | { kind: "done"; verb: "archive" | "unarchive"; result: ArchiveResult } | { kind: "failed"; error: OpError };
 
-export type TagAction = { kind: "idle" } | { kind: "running" } | { kind: "done"; result: TagResult } | { kind: "failed"; limit: boolean; message: string } | { kind: "selection"; n: number };
+export type TagAction = { kind: "idle" } | { kind: "running" } | { kind: "missing"; n: number } | { kind: "failed"; limit: boolean; message: string } | { kind: "selection"; n: number };
 
 export interface TagDraft {
+  id: number;
+  action: TagAction;
   open: boolean;
   targets: readonly string[];
   add: string[];
@@ -585,8 +587,7 @@ export class ThreadOrg {
   private cancel = new Cancel();
   /** Names for the Tag and Directory groupings, and their members. Used only when the owner can list them. */
   readonly headings: ThreadHeadings;
-  readonly tagDraft: Signal<TagDraft> = signal({ open: false, targets: [], add: [], remove: new Set() });
-  readonly tagAction: Signal<TagAction> = signal({ kind: "idle" });
+  readonly tagDraft: Signal<TagDraft> = signal({ id: 0, action: { kind: "idle" }, open: false, targets: [], add: [], remove: new Set() });
 
   constructor(
     private readonly ops: Operations,
@@ -800,7 +801,8 @@ export class ThreadOrg {
   selectedTags(): string[] {
     const chosen = new Set(this.tagDraft.value.targets);
     const all = new Set<string>();
-    for (const s of this.shown()) if (chosen.has(s.thread_id)) for (const tag of s.tags ?? []) all.add(tag);
+    const rows = this.headingKind() ? this.headings.members(this.headings.open.value) : this.state.value.items;
+    for (const s of rows) if (chosen.has(s.thread_id)) for (const tag of s.tags ?? []) all.add(tag);
     return [...all].sort();
   }
 
@@ -817,11 +819,8 @@ export class ThreadOrg {
   private startTagEditing(targets: string[]): void {
     const draft = this.tagDraft.peek();
     const same = targets.length === draft.targets.length && targets.every(id => draft.targets.includes(id));
-    if (same && draft.open) return;
-    batch(() => {
-      this.tagDraft.value = { open: true, targets, add: same ? draft.add : [], remove: same ? draft.remove : new Set() };
-      this.tagAction.value = { kind: "idle" };
-    });
+    this.tagDraft.value = same ? { ...draft, open: true }
+      : { id: draft.id + 1, action: { kind: "idle" }, open: true, targets, add: [], remove: new Set() };
   }
 
   /** Puts a tag on the list to add. Returns why it can't, or nothing. */
@@ -829,6 +828,7 @@ export class ThreadOrg {
     const checked = checkTag(raw);
     if (!checked.ok) return checked.invalid;
     const draft = this.tagDraft.peek();
+    if (!draft.open || draft.action.kind === "running") return;
     if (draft.remove.has(checked.tag)) return "both";
     if (draft.add.includes(checked.tag)) return undefined;
     if (draft.add.length >= TAGS_PER_CALL) return "many";
@@ -838,38 +838,38 @@ export class ThreadOrg {
 
   unaddTag(tag: string): void {
     const draft = this.tagDraft.peek();
+    if (!draft.open || draft.action.kind === "running") return;
     this.tagDraft.value = { ...draft, add: draft.add.filter((t) => t !== tag) };
   }
 
   toggleRemoveTag(tag: string): void {
     const draft = this.tagDraft.peek();
+    if (!draft.open || draft.action.kind === "running") return;
     const remove = new Set(draft.remove);
     if (!remove.delete(tag)) remove.add(tag);
     this.tagDraft.value = { ...draft, add: draft.add.filter((t) => t !== tag), remove };
   }
 
-  /** One `thread.tag` for the chosen Threads. Nothing is optimistic: the groups are read again after. */
+  /** ACK settles only the submitting session; owner hints refresh the displayed tags. */
   async applyTags(): Promise<void> {
     const draft = this.tagDraft.peek();
     const ids = [...draft.targets];
-    if (!draft.open || this.tagAction.peek().kind === "running" || ids.length === 0 || (draft.add.length === 0 && draft.remove.size === 0)) return;
+    if (!draft.open || draft.action.kind === "running" || ids.length === 0 || (draft.add.length === 0 && draft.remove.size === 0)) return;
     if (ids.length > TAG_SELECTION_MAX) {
-      this.tagAction.value = { kind: "selection", n: ids.length };
+      this.tagDraft.value = { ...draft, action: { kind: "selection", n: ids.length } };
       return;
     }
-    this.tagAction.value = { kind: "running" };
+    this.tagDraft.value = { ...draft, action: { kind: "running" } };
     const remove = [...draft.remove];
     const out = await this.ops.threadTag({ thread_ids: ids, ...(draft.add.length > 0 && { add: draft.add }), ...(remove.length > 0 && { remove }) });
     const current = this.tagDraft.peek();
-    if (!current.open || current.targets !== draft.targets) return;
+    if (current.id !== draft.id) return;
     if (!out.ok) {
-      this.tagAction.value = { kind: "failed", limit: out.error.kind === "owner" && out.error.code === "input_limit", message: out.error.message };
-      return;
+      this.tagDraft.value = { ...current, action: { kind: "failed", limit: out.error.kind === "owner" && out.error.code === "input_limit", message: out.error.message } };
+    } else if (out.value.not_found.length) {
+      this.tagDraft.value = { ...current, action: { kind: "missing", n: out.value.not_found.length } };
+    } else {
+      this.tagDraft.value = { ...current, add: [], remove: new Set(), action: { kind: "idle" } };
     }
-    batch(() => {
-      this.tagAction.value = { kind: "done", result: out.value };
-      if (current === draft) this.tagDraft.value = { ...draft, add: [], remove: new Set() };
-    });
-    await this.read();
   }
 }

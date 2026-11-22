@@ -53,7 +53,8 @@ function TagPanel({ model }: { model: AppModel }) {
   const t = model.t.value;
   const org = model.org;
   const draft = org.tagDraft.value;
-  const action = org.tagAction.value;
+  const action = draft.action;
+  const applying = action.kind === "running";
   const n = draft.targets.length;
   const [text, setText] = useState("");
   const [problem, setProblem] = useState<TagInvalid | undefined>(undefined);
@@ -62,11 +63,11 @@ function TagPanel({ model }: { model: AppModel }) {
   const names = org.headings.headings.value.kind === "tag" ? org.headings.headings.value.names : [];
   const suggestions = names.filter((name) => !draft.add.includes(name) && !draft.remove.has(name)).slice(0, 12);
   const add = (raw: string) => {
+    if (applying) return;
     const why = org.addTag(raw);
     setProblem(why);
     if (!why) setText("");
   };
-  const result = action.kind === "done" ? action.result : undefined;
   return (
     <Section title={t("org.tag.title", { n })} sub={t("org.tag.sub")} actions={<Button variant="link" onClick={() => org.openTags(false)}>{t("common.close")}</Button>}>
       <div class="band">
@@ -74,48 +75,45 @@ function TagPanel({ model }: { model: AppModel }) {
           ariaLabel={t("org.tag.add")}
           placeholder={t("org.tag.add")}
           value={text}
+          disabled={applying}
           onInput={(e) => setText(e.currentTarget.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter") add(text);
           }}
         />
-        <Button onClick={() => add(text)}>{t("org.tag.addButton")}</Button>
+        <Button disabled={applying} onClick={() => add(text)}>{t("org.tag.addButton")}</Button>
       </div>
       {problem ? <Notice tone="bad">{t(`org.tag.invalid.${problem}`)}</Notice> : null}
       {suggestions.length > 0 ? (
         <ButtonGroup label={t("org.tag.existing")}>
           {suggestions.map((name) => (
-            <Button key={name} onClick={() => add(name)}>{name}</Button>
+            <Button key={name} disabled={applying} onClick={() => add(name)}>{name}</Button>
           ))}
         </ButtonGroup>
       ) : null}
       {draft.add.length > 0 ? (
         <ButtonGroup label={t("org.tag.toAdd")}>
           {draft.add.map((tag) => (
-            <Button key={tag} aria-pressed onClick={() => org.unaddTag(tag)}>{tag}</Button>
+            <Button key={tag} disabled={applying} aria-pressed onClick={() => org.unaddTag(tag)}>{tag}</Button>
           ))}
         </ButtonGroup>
       ) : null}
       {present.length > 0 ? (
         <ButtonGroup label={t("org.tag.toRemove")}>
           {present.map((tag) => (
-            <Button key={tag} aria-pressed={draft.remove.has(tag)} onClick={() => org.toggleRemoveTag(tag)}>{tag}</Button>
+            <Button key={tag} disabled={applying} aria-pressed={draft.remove.has(tag)} onClick={() => org.toggleRemoveTag(tag)}>{tag}</Button>
           ))}
         </ButtonGroup>
       ) : (
         <div class="muted caption">{t("org.tag.noneToRemove")}</div>
       )}
       <div class="band">
-        <Button variant="primary" disabled={action.kind === "running" || (draft.add.length === 0 && draft.remove.size === 0)} onClick={() => void org.applyTags()}>{t("org.tag.apply", { n })}</Button>
+        <Button variant="primary" disabled={applying || (draft.add.length === 0 && draft.remove.size === 0)} onClick={() => void org.applyTags()}>{t("org.tag.apply", { n })}</Button>
       </div>
+      {applying ? <p role="status">{t("org.tag.applying")}</p> : null}
       {action.kind === "failed" ? <Notice tone="bad">{t(action.limit ? "org.tag.limit" : "org.tag.failed", { message: action.message })}</Notice> : null}
       {action.kind === "selection" ? <Notice tone="bad">{t("org.tag.selection", { n: action.n })}</Notice> : null}
-      {result ? (
-        <Notice>
-          {t("org.tag.done", { changed: result.changed.length, unchanged: result.unchanged.length })}
-          {result.not_found.length > 0 ? ` ${t("org.notFound", { n: result.not_found.length })}` : ""}
-        </Notice>
-      ) : null}
+      {action.kind === "missing" ? <Notice tone="bad">{t("org.notFound", { n: action.n })}</Notice> : null}
     </Section>
   );
 }
@@ -260,7 +258,7 @@ export function Threads({ model }: { model: AppModel }) {
       {by === "tag" && !canTag ? <Notice>{t("org.tagsUnavailable")}</Notice> : null}
       {by === "tag" && canTag ? <div class="muted caption">{t("org.tagNote")}</div> : null}
       {by === "directory" && !kind ? <div class="muted caption">{t("org.dirsPartial")}</div> : null}
-      <TagPanel key={JSON.stringify(org.tagDraft.value.targets)} model={model} />
+      <TagPanel key={org.tagDraft.value.id} model={model} />
       <Field ariaLabel={t("org.filter")} placeholder={t("org.filter")} leading={<Icon role="organization.search" size="small" />} value={query} onInput={(e) => setQuery(e.currentTarget.value)} />
       {selected.size > 0 ? (
         <SelectionBar text={extra > 0 ? t("org.selectedWith", { n: selected.size, extra }) : t("org.selected", { n: selected.size })} option={{ label: t("org.descendants"), checked: descendants, onChange: (on) => (org.descendants.value = on) }}>

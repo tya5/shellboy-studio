@@ -5,7 +5,7 @@ import { render } from "preact";
 import { act } from "preact/test-utils";
 import { expect, it } from "vitest";
 import { fixtureModel } from "../../../ui-core/test/fixture";
-import { summary, details, settle } from "../../../data/test/harness";
+import { summary, details, settle, flush } from "../../../data/test/harness";
 import { loadPrefs } from "../../../ui-core/src/prefs";
 import { DESIGNS } from "../../registry";
 import { App } from "../screens/App";
@@ -131,4 +131,55 @@ it("shows cross-group child counts without a disclosure control or arrow action"
     for (const key of ['ArrowRight','ArrowLeft']) expect(row.dispatchEvent(new KeyboardEvent('keydown',{key,bubbles:true,cancelable:true}))).toBe(true);
     expect(prefs.peek().sidebarOpenParents).toEqual([]);
   } finally {render(null,host);host.remove();f.model.dispose();f.data.stop();}
+});
+
+it('settles the mounted tag session while hidden and ignores late results after retargeting', async () => {
+  const f = await fixtureModel({ route: 'threads', threadId: 'lead', capabilities: ['thread.tags'], configure(db) {
+    db.threads = { lead: summary('lead', { tags: ['old'] }), other: summary('other') };
+    for (const id of Object.keys(db.threads)) db.details[id] = details(id);
+  } });
+  const host = document.createElement('div'); document.body.append(host);
+  const prefs = signal(loadPrefs({ read: () => null, write() {} }, DESIGNS));
+  const panel = () => host.querySelector<HTMLElement>('section[aria-label="Tags for 1 chosen Threads"]');
+  const button = (label: string) => [...panel()!.querySelectorAll<HTMLButtonElement>('button')].find(el => el.textContent === label)!;
+  const field = () => panel()!.querySelector<HTMLInputElement>('input[aria-label="Tag to add"]')!;
+  const input = (value: string) => { field().value = value; field().dispatchEvent(new Event('input', { bubbles: true })); };
+  const stage = async (value: string) => { await act(async () => input(value)); await act(async () => button('Add to list').click()); };
+  const open = async (id: string) => { await act(async () => {
+    host.querySelector(`#thread-link-sidebar-${id}`)!.parentElement!.querySelector<HTMLButtonElement>('[aria-haspopup="menu"]')!.click();
+  }); await act(async () => {
+    [...document.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find(el => el.textContent === 'Edit tags…')!.click();
+  }); };
+  const apply = () => button('Apply to 1 Threads');
+  const close = async () => { await act(async () => button('Close').click()); };
+  const finish = async (tag: string) => {
+    const call = f.t.calls('thread.tag').at(-1)!;
+    await act(async () => { f.db.answered.add(call.id); f.t.ok(call.id, { changed: ['lead'], unchanged: [], not_found: [], add: [tag], remove: [] }); await flush(); });
+  };
+  try {
+    await act(async () => { render(<App context={{ model: f.model, prefs, designs: DESIGNS, setPrefs() {}, submitToken: async () => false }} />, host); await settle(f.t, f.db); });
+    await open('lead'); await stage('new-tag');
+    await act(async () => { apply().click(); await flush(); });
+    await close(); await open('lead');
+    expect(apply().disabled).toBe(true); expect(field().disabled).toBe(true);
+    apply().click(); expect(f.t.calls('thread.tag')).toHaveLength(1);
+    await close();
+    const reads = f.t.calls('thread.list').length;
+    await finish('new-tag');
+    expect(f.t.calls('thread.list')).toHaveLength(reads);
+    await open('lead');
+    expect(f.model.org.tagDraft.peek()).toMatchObject({ add: [], action: { kind: 'idle' } });
+    expect(panel()?.textContent).not.toContain('new-tag');
+    Object.assign(f.db.threads.lead!, { tags: ['old', 'new-tag'] });
+    await act(async () => { f.t.push({ t: 'changed', thread_ids: ['lead'], list: true }); await settle(f.t, f.db); });
+    expect(panel()?.textContent).toContain('new-tag');
+    await stage('old-request'); await act(async () => input('raw-a'));
+    await act(async () => { apply().click(); await flush(); });
+    await open('other');
+    expect(field().value).toBe('');
+    expect(f.model.org.tagDraft.peek()).toMatchObject({ targets: ['other'], add: [], action: { kind: 'idle' } });
+    await stage('draft-b'); await finish('old-request');
+    expect(f.model.org.tagDraft.peek()).toMatchObject({ targets: ['other'], add: ['draft-b'], action: { kind: 'idle' } });
+    expect(f.t.calls('thread.tag')).toHaveLength(2);
+  } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
 });

@@ -61,9 +61,9 @@ export class ThreadHeadings {
   ) {}
 
   /** Rows of every open heading, each Thread once. */
-  members(): ThreadSummary[] {
+  members(open = this.open.peek()): ThreadSummary[] {
     const seen = new Map<string, ThreadSummary>();
-    for (const m of this.open.peek().values()) for (const s of m.items) seen.set(s.thread_id, s);
+    for (const m of open.values()) for (const s of m.items) seen.set(s.thread_id, s);
     return [...seen.values()];
   }
 

@@ -828,7 +828,7 @@ describe("Threads", () => {
     await go(() => [...el.querySelectorAll<HTMLButtonElement>(".btn")].find((b) => text(b) === "Add to list")!.click());
     await go(() => [...el.querySelectorAll<HTMLButtonElement>(".btn")].find((b) => /^Apply to 1/.test(text(b)))!.click());
     expect(made.t.calls("thread.tag")).toHaveLength(1);
-    expect(text(el)).toContain("Tags changed on 1 Threads");
+    expect(text(el)).not.toContain("Tags changed on 1 Threads");
     await go(() => mode("Directory").click());
     expect([...el.querySelectorAll(".view .tgroup .tgroup-name")].map(text)).toEqual(["/home/me/dev/rag", "/home/me/dev/shellboy"]);
     act(() => { made.model.lang.value = "ja"; });
