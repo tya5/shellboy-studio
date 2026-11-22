@@ -143,6 +143,7 @@ export function Threads({ model }: { model: AppModel }) {
   const action = org.action.value;
   const descendants = org.descendants.value;
   const [query, setQuery] = useState(state.query);
+  const [closedGroupKeys, setClosedGroupKeys] = useState<Set<string>>(() => new Set());
   const [deleteThread, setDeleteThread] = useState<ThreadDeleteTarget>();
   const rowListRef = useRef<HTMLDivElement>(null);
   const lastListFocus = useRef<string>();
@@ -299,9 +300,23 @@ export function Threads({ model }: { model: AppModel }) {
         const ids = g.rows.map((r) => r.summary.thread_id);
         const chosen = ids.filter((id) => selected.has(id)).length;
         const label = groupLabel(t, by, g.key);
+        const foldKey = `${by}:${g.key}`;
+        const groupOpen = !closedGroupKeys.has(foldKey);
+        const fold = {
+          open: groupOpen,
+          show: t("org.groupShow"),
+          hide: t("org.groupHide"),
+          showLabel: t("org.groupShowLabel", { group: label }),
+          hideLabel: t("org.groupHideLabel", { group: label }),
+          onToggle: () => setClosedGroupKeys((previous) => {
+            const next = new Set(previous);
+            if (groupOpen) next.add(foldKey); else next.delete(foldKey);
+            return next;
+          }),
+        };
         return (
-          <ThreadGroup key={g.key} label={label} mono={by === "directory"} count={t("org.count", { n: ids.length })} all={chosen === ids.length} some={chosen > 0} selectLabel={t("org.selectGroup", { group: label })} onSelect={(on) => org.setMany(ids, on)}>
-            {g.rows.map((memberRow) => row(memberRow))}
+          <ThreadGroup key={g.key} label={label} mono={by === "directory"} count={t("org.count", { n: ids.length })} all={chosen === ids.length} some={chosen > 0} selectLabel={t("org.selectGroup", { group: label })} onSelect={(on) => org.setMany(ids, on)} fold={fold}>
+            {groupOpen ? g.rows.map((memberRow) => row(memberRow)) : null}
           </ThreadGroup>
         );
       })}

@@ -875,6 +875,21 @@ describe("Threads", () => {
     const state = mode("State");
     act(() => state.click());
     expect(text(el.querySelector(".view .tgroup")!)).toContain("Recovery wait");
+    const recovery = [...el.querySelectorAll<HTMLElement>(".view .tgroup")].find(group => text(group).includes("Recovery wait"))!;
+    const checkbox = recovery.querySelector<HTMLInputElement>("input[type=checkbox]")!;
+    const disclosure = recovery.querySelector<HTMLButtonElement>(".tgroup-toggle")!;
+    expect(disclosure.getAttribute("aria-label")).toBe("Hide the Threads under Recovery wait");
+    const rowCount = recovery.querySelectorAll("[data-thread-row]").length;
+    expect(rowCount).toBeGreaterThan(0);
+    act(() => checkbox.click());
+    expect(disclosure.getAttribute("aria-expanded")).toBe("true");
+    expect(checkbox.checked).toBe(true);
+    act(() => disclosure.click());
+    expect(disclosure.getAttribute("aria-expanded")).toBe("false");
+    expect(recovery.querySelectorAll("[data-thread-row]")).toHaveLength(0);
+    act(() => disclosure.click());
+    expect(disclosure.getAttribute("aria-expanded")).toBe("true");
+    expect(recovery.querySelectorAll("[data-thread-row]")).toHaveLength(rowCount);
   });
   it("with tags and directories on the owner: headings from the owner, members on demand, tags on rows and edited from a selection", async () => {
     const made = await fixtureModel({
