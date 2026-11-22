@@ -72,6 +72,15 @@ try{
   assert.equal(await evaluate(`document.querySelector(${JSON.stringify(list)}).querySelector('[role=tooltip]')===null`),true,key);
 
   await evaluate(`document.querySelector(${JSON.stringify(toggle)}).click()`);
+  const collapsedPanel=await evaluate(`(()=>{
+   const pages=document.querySelector('.panel-pages'), active=document.querySelector('#panel-page-info');
+   const focusable=[...active.querySelectorAll('a[href],button,input,select,textarea,[tabindex]:not([tabindex="-1"])')];
+   const footer=document.querySelector('.shell-footer-right'), rail=document.querySelector('[data-panel-rail]');
+   return {activeHidden:active.hidden,pagesVisibility:getComputedStyle(pages).visibility,
+    descendantsFocusable:focusable.some(node=>node.getClientRects().length>0 && getComputedStyle(node).visibility!=='hidden'),
+    footerVisible:footer.getClientRects().length>0,railVisible:rail.getClientRects().length>0};
+  })()`);
+  assert.deepEqual(collapsedPanel,{activeHidden:true,pagesVisibility:'hidden',descendantsFocusable:false,footerVisible:true,railVisible:true},key);
   const rail=await evaluate(`(()=>{
    const list=document.querySelector('[data-panel-rail] [role=tablist]');
    const tab=list.querySelector('#panel-tab-reply-needed'), badge=tab.querySelector('.panel-tab-count');
@@ -97,6 +106,9 @@ try{
   await until(tooltipOutside);
   await evaluate(`document.querySelector(${JSON.stringify(toggle)}).click()`);
   assert(selectedVisible(await measure()),`re-expansion did not reveal the selection: ${key}`);
+  const expandedPanel=await evaluate(`(()=>({activeHidden:document.querySelector('#panel-page-info').hidden,
+   pagesVisibility:getComputedStyle(document.querySelector('.panel-pages')).visibility}))()`);
+  assert.deepEqual(expandedPanel,{activeHidden:false,pagesVisibility:'visible'},key);
   console.log(JSON.stringify({lang,appWidth,panelWidth,scrollWidth:initial.scrollWidth,manualScroll:before.scrollLeft,railTooltip:'focus and hover'}));
  }
 }finally{

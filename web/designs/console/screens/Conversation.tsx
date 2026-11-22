@@ -663,7 +663,7 @@ function RightPanel({ model, panelCollapsed = false }: { model: AppModel; panelC
       {tabs.map(tab => {
         const active = tab.id === selectedTab;
         const drilledIn = active && !panelCollapsed && detail && (selectedTab === "possessions") === (detail.kind === "attachment");
-        return <section key={tab.id} role="tabpanel" id={`panel-page-${tab.id}`} aria-labelledby={`panel-tab-${tab.id}`} hidden={!active}>
+        return <section key={tab.id} role="tabpanel" id={`panel-page-${tab.id}`} aria-labelledby={`panel-tab-${tab.id}`} hidden={!active || panelCollapsed}>
           <div class="panel-list-frame" hidden={!!drilledIn}>{tab.id === "work" ? <PanelActivity model={model} /> : tab.id === "info" ? <PanelInfo model={model} usageThread={usageThread} usageKey={usageKey} /> : tab.id === "possessions" ? <PanelPossessions model={model} /> : <PanelReplies model={model} recipient={tab.id === "reply-needed" ? "thread" : "human"} />}</div>
           {drilledIn ? <PanelDetail key={`${detail.kind}:${detail.id}`} model={model} tabLabel={tab.label} onBack={closeDetail} /> : null}
         </section>;
