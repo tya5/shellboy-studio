@@ -1498,6 +1498,10 @@ describe("Setup", () => {
     await pump(() => click(button(el, "Confirm removal")));
     expect(t.calls("credentials.clear").map(call => call.args)).toEqual([{ connection: "openai" }]);
     expect(text(el)).toContain("Stored key removed.");
+    await act(async () => {
+      t.push({ t: "changed", thread_ids: [], list: false, config_changed: true });
+      await settle(t, db);
+    });
     expect(model.config.read.value.value?.loaded.credentialSource?.openai).toBe("none");
   });
 
