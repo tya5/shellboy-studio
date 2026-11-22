@@ -8,7 +8,7 @@ import { DESIGNS } from '../../../registry';
 const params = new URLSearchParams(location.search);
 const fixtureLang = params.get('lang') === 'ja' ? 'ja' as const : 'en' as const;
 const ownSendFixture = params.get('view') === 'own-send';
-const fixtureOptions = ownSendFixture ? { capabilities: ['history.window'] } : params.get('view') === 'memory' ? { route: 'analytics' as const, section: 'memory' as const, lang: fixtureLang } : params.get('view') === 'sidebar' ? { lang: fixtureLang, capabilities: ['thread.tags', 'thread.cwds', 'history.window'] } : {};
+const fixtureOptions = ownSendFixture ? { route: 'conversation' as const, threadId: 'lead', capabilities: ['history.window'] } : params.get('view') === 'memory' ? { route: 'analytics' as const, section: 'memory' as const, lang: fixtureLang } : params.get('view') === 'sidebar' ? { lang: fixtureLang, capabilities: ['thread.tags', 'thread.cwds', 'history.window'] } : {};
 if (params.get('view') === 'memory') document.documentElement.dataset.memoryFixture = fixtureLang;
 const { model, t, db } = await fixtureModel({ ...fixtureOptions, configure(db) {
   if (ownSendFixture) { db.history.lead = []; return; }
