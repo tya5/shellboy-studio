@@ -10,7 +10,7 @@
 //! owner is unreachable the loop only retries `events.wait` with capped exponential backoff.
 use crate::{
     envelope::{OwnerEvent, OwnerState},
-    hub::{Hub, connected},
+    hub::{EventUpdate, Hub, connected},
     owner::{Owner, instance_of},
     seam,
 };
@@ -164,9 +164,13 @@ pub async fn run_with_guide<O: Owner>(
             changes.iter().map(|change| change.thread_id.as_str()),
             text,
             result.attempt_ends.unwrap_or_default(),
-            reset,
-            restarted || reconnected || matches!(result.status, EventsWaitStatus::ResyncRequired),
-            result.config_changed,
+            EventUpdate {
+                reset,
+                resync: restarted
+                    || reconnected
+                    || matches!(result.status, EventsWaitStatus::ResyncRequired),
+                config_changed: result.config_changed,
+            },
         );
     }
 }

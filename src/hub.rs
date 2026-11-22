@@ -37,6 +37,13 @@ impl Pending {
     }
 }
 
+#[derive(Default)]
+pub struct EventUpdate {
+    pub reset: bool,
+    pub resync: bool,
+    pub config_changed: bool,
+}
+
 struct Session {
     watch: HashSet<String>,
     list: bool,
@@ -209,9 +216,11 @@ impl Hub {
         thread_ids: impl IntoIterator<Item = &'a str> + Clone,
         text: Option<Vec<live::Entry>>,
         ends: Vec<shellboy::protocol::EventAttemptEnd>,
-        reset: bool,
-        resync: bool,
-        config_changed: bool,
+        EventUpdate {
+            reset,
+            resync,
+            config_changed,
+        }: EventUpdate,
     ) {
         const MAX_PENDING_ENDS: usize = 256;
         let mut inner = self.lock();
@@ -275,7 +284,16 @@ impl Hub {
 
     /// Slot-only input for scripted bridge fixtures.
     pub fn live_apply(&self, entries: Vec<live::Entry>, reset: bool) {
-        self.apply_events(None, [], Some(entries), Vec::new(), reset, false, false);
+        self.apply_events(
+            None,
+            [],
+            Some(entries),
+            Vec::new(),
+            EventUpdate {
+                reset,
+                ..EventUpdate::default()
+            },
+        );
     }
 
     /// The owner is gone: nothing it held can be trusted. Tabs discard on the `owner` frame.
@@ -397,7 +415,16 @@ mod tests {
         hub.hint(["t1"]);
         hub.set_owner(connected(Some("i".into())), OwnerEvent::Connected);
         hub.set_owner(OwnerState::Unreachable, OwnerEvent::Unreachable);
-        hub.apply_events(None, [], None, Vec::new(), false, true, false);
+        hub.apply_events(
+            None,
+            [],
+            None,
+            Vec::new(),
+            EventUpdate {
+                resync: true,
+                ..EventUpdate::default()
+            },
+        );
         let (p, owner) = hub.take(&a);
         assert!(p.resync && p.threads.is_empty() && !p.list);
         assert_eq!(p.owner, Some(OwnerEvent::Unreachable));
@@ -439,18 +466,14 @@ mod tests {
             (0..256)
                 .map(|seq| end(format!("older-{seq}"), seq))
                 .collect(),
-            false,
-            false,
-            false,
+            EventUpdate::default(),
         );
         hub.apply_events(
             None,
             [],
             Some(vec![entry("successor")]),
             vec![end("ended".into(), 256)],
-            false,
-            false,
-            false,
+            EventUpdate::default(),
         );
         let (pending, _, replay) = hub.take_delivery(&tab);
         assert!(pending.resync && pending.attempt_ends.is_empty());
