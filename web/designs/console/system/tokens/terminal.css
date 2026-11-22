@@ -73,10 +73,10 @@
   --size-conversation-character: 24px;
   --size-row-action: 24px;
   --size-row-action-touch: 28px;
-  --size-shell-column: 48px;
+  --size-shell-column: 50px;
   --size-shell-footer: 36px;
   --size-shell-toggle-icon: 24px;
   --size-brand-mark: 24px;
-  --size-shell-rail: 49px;
+  --size-shell-rail: 51px;
   --shadow-popover: 0px 0px 0px 1px rgba(255, 255, 255, 0.16);
 }

@@ -9,5 +9,3 @@
 .shell-footer-right{justify-content:flex-end}
 .shell-footer .shell-toggle{width:var(--size-shell-column);height:var(--size-shell-footer)}
 .shell-footer .shell-toggle svg{width:var(--size-shell-toggle-icon);height:var(--size-shell-toggle-icon)}
-
-.shell-toggle-strip.right{transform-origin:center}
