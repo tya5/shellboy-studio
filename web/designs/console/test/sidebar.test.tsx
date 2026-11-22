@@ -77,7 +77,7 @@ it("keeps the owner's created order on status hints and inserts a new Thread at 
   const prefs = signal<ReturnType<typeof loadPrefs>>({ ...loadPrefs({ read: () => null, write() {} }, DESIGNS), sidebarOpenParents: ["lead"] });
   const order = () => [...host.querySelectorAll(".side-list [data-thread-row] a")].map(el => el.id.replace("thread-link-sidebar-", ""));
   const hint = async (id: string) => {
-    f.t.push({ t: "changed", thread_ids: [id], list: true });
+    f.t.push({ t: "changed", thread_ids: [id], list: true, config_changed: false });
     await settle(f.t, f.db);
   };
   try {
