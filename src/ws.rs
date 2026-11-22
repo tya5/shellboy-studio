@@ -105,6 +105,16 @@ pub async fn session<O: Owner>(
     if !send(&mut socket, &hello).await {
         return;
     }
+    let mut launcher = state
+        .launcher
+        .as_ref()
+        .map(|control| control.status.clone());
+    if let Some(status) = &mut launcher {
+        let status = status.borrow_and_update().clone();
+        if !send(&mut socket, &ServerFrame::Launcher { status }).await {
+            return;
+        }
+    }
     let (results_tx, mut results_rx) = mpsc::channel::<ServerFrame>(RESULT_CHANNEL);
     let in_flight = Arc::new(Semaphore::new(SESSION_IN_FLIGHT));
     let outstanding = Arc::new(AtomicUsize::new(0));
@@ -112,6 +122,14 @@ pub async fn session<O: Owner>(
     let mut handles: HashMap<u64, AbortHandle> = HashMap::new();
     loop {
         tokio::select! {
+            _ = state.cancel.cancelled() => break,
+            status = async { match &mut launcher {
+                Some(rx) => { rx.changed().await.ok()?; Some(rx.borrow_and_update().clone()) },
+                None => std::future::pending().await,
+            } } => {
+                let Some(status) = status else { break };
+                if !send(&mut socket, &ServerFrame::Launcher { status }).await { break; }
+            }
             incoming = socket.recv() => {
                 let Some(Ok(message)) = incoming else { break };
                 let text = match message {
@@ -217,6 +235,26 @@ fn handle_frame<O: Owner>(
         }
     };
     match frame {
+        ClientFrame::Launcher { action } => {
+            let Some(control) = &state.launcher else {
+                return Some(error_frame(
+                    "not_allowed",
+                    "launcher control is not available",
+                ));
+            };
+            if state.auth.is_disabled() {
+                return Some(error_frame(
+                    "not_allowed",
+                    "launcher control requires authentication",
+                ));
+            }
+            if matches!(action, crate::launcher::Action::Exit) {
+                state.cancel.cancel();
+            } else if control.actions.try_send(action).is_err() {
+                return Some(error_frame("busy", "launcher action already queued"));
+            }
+            None
+        }
         ClientFrame::Watch { thread_ids, list } => state
             .hub
             .watch(guard, thread_ids, list)

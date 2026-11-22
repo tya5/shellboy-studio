@@ -26,7 +26,7 @@ def git(owner, *args):
     return result.stdout.strip()
 
 
-def verify(studio, owner, binary_version=None):
+def verify(studio, owner, binary_version=None, *, version=VERSION):
     dependency = tomllib.loads((studio / "Cargo.toml").read_text(encoding="utf-8"))["dependencies"]["shellboy"]
     require(dependency.get("git") == OFFICIAL and isinstance(dependency.get("rev"), str),
             "Studio must pin an official manifest revision")
@@ -43,7 +43,7 @@ def verify(studio, owner, binary_version=None):
             and parse_qs(source.query) == {"rev": [manifest_rev]}, "wrong locked owner source")
     require(re.fullmatch(r"[0-9a-f]{40}", source.fragment) is not None,
             "locked owner commit missing or malformed")
-    require(package.get("version") == VERSION, "wrong locked owner package version")
+    require(package.get("version") == version, "wrong locked owner package version")
     require(git(owner, "remote", "get-url", "origin") == OFFICIAL, "wrong owner remote")
     commit = git(owner, "rev-parse", "--verify", manifest_rev)
     require(commit == source.fragment == manifest_rev, "manifest revision differs from lock commit")
@@ -51,15 +51,15 @@ def verify(studio, owner, binary_version=None):
     require(not git(owner, "status", "--porcelain"), "owner checkout is not clean")
     manifest = tomllib.loads((owner / "Cargo.toml").read_text(encoding="utf-8"))
     require(manifest.get("package", {}).get("name") == "shellboy", "wrong owner package")
-    version = manifest["package"].get("version")
-    if version == {"workspace": True}:
-        version = manifest.get("workspace", {}).get("package", {}).get("version")
-    require(version == VERSION, "wrong source package version")
+    source_version = manifest["package"].get("version")
+    if source_version == {"workspace": True}:
+        source_version = manifest.get("workspace", {}).get("package", {}).get("version")
+    require(source_version == version, "wrong source package version")
     if binary_version is not None:
-        require(binary_version.read_text(encoding="utf-8").strip() == f"shellboy {VERSION}", "wrong binary version")
+        require(binary_version.read_text(encoding="utf-8").strip() == f"shellboy {version}", "wrong binary version")
     return {"official_repository": OFFICIAL, "manifest_revision": manifest_rev, "lock_commit": source.fragment, "owner_commit": commit,
-            "package_version": VERSION,
-            "binary_version": VERSION if binary_version is not None else "not yet checked"}
+            "package_version": version,
+            "binary_version": version if binary_version is not None else "not yet checked"}
 
 
 def main():

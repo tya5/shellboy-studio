@@ -24,7 +24,12 @@ pub enum ClientFrame {
         list: bool,
     },
     /// Drop a pending call.
-    Cancel { id: u64 },
+    Cancel {
+        id: u64,
+    },
+    Launcher {
+        action: crate::launcher::Action,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -79,6 +84,9 @@ pub enum ServerFrame {
         apps_dir: Option<String>,
         data_dir: String,
         owner: OwnerState,
+    },
+    Launcher {
+        status: crate::launcher::Status,
     },
     Result {
         id: u64,

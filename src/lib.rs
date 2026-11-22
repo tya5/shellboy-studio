@@ -14,6 +14,8 @@ pub mod auth;
 pub mod envelope;
 pub mod events;
 pub mod hub;
+pub mod launcher;
+
 pub mod live;
 pub mod owner;
 pub mod process;

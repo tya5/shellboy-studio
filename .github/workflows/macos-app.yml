@@ -1,0 +1,64 @@
+name: macOS app artifact (build only)
+on:
+  workflow_call:
+    inputs:
+      studio_ref:
+        required: true
+        type: string
+      release_app:
+        required: true
+        type: boolean
+permissions:
+  contents: read
+jobs:
+  app:
+    runs-on: macos-15
+    timeout-minutes: 60
+    env:
+      MACOSX_DEPLOYMENT_TARGET: '14.0'
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.studio_ref }}
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Verify exact Core pin and release eligibility
+        env:
+          RELEASE_APP: ${{ inputs.release_app }}
+        run: |
+          set -eu
+          core=$(python -c 'import tomllib; print(tomllib.load(open("Cargo.toml", "rb"))["dependencies"]["shellboy"]["rev"])')
+          git init "$RUNNER_TEMP/macos-owner-source"
+          git -C "$RUNNER_TEMP/macos-owner-source" remote add origin https://github.com/tya5/shellboy
+          git -C "$RUNNER_TEMP/macos-owner-source" fetch --depth 1 origin "$core"
+          git -C "$RUNNER_TEMP/macos-owner-source" checkout --detach "$core"
+          if [ "$RELEASE_APP" = true ]; then set -- --release; else set --; fi
+          python tools/verify-macos-core.py --owner "$RUNNER_TEMP/macos-owner-source" "$@"
+      - name: Build both locked binaries
+        run: |
+          rustup toolchain install 1.99.1 --profile minimal
+          (cd web && npm ci && npm run build)
+          cargo +1.99.1 build --locked --release --bin shellboy-studio --target aarch64-apple-darwin
+          cargo +1.99.1 install --locked --path "$RUNNER_TEMP/macos-owner-source" --root "$RUNNER_TEMP/macos-owner" --target aarch64-apple-darwin
+          "$RUNNER_TEMP/macos-owner/bin/shellboy" --version > "$RUNNER_TEMP/macos-owner-version.txt"
+          python tools/verify-macos-core.py --owner "$RUNNER_TEMP/macos-owner-source" --binary-version "$RUNNER_TEMP/macos-owner-version.txt"
+      - name: Zip and inspect the unpacked app
+        env:
+          RELEASE_APP: ${{ inputs.release_app }}
+        run: |
+          if [ "$RELEASE_APP" = true ]; then set -- --release; else set --; fi
+          python tools/package-macos.py --studio-bin target/aarch64-apple-darwin/release/shellboy-studio --core-bin "$RUNNER_TEMP/macos-owner/bin/shellboy" --out app-artifact "$@"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.release_app && 'release-app-macos-arm64' || 'candidate-app-macos-arm64' }}
+          path: app-artifact/*.zip
+          if-no-files-found: error
+          compression-level: 0

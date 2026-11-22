@@ -1,3 +1,4 @@
+import type { LauncherStatus } from "./protocol";
 import type { HistoryWindowInput } from './history-input';
 import { Handoff, type HandoffRecord } from "./handoff";
 // The view-model: signals holding saved facts re-read through the proxy, never invented.
@@ -146,6 +147,9 @@ function mergeRows(first: readonly ThreadSummary[], then: readonly ThreadSummary
 export class ShellboyData {
   readonly link: Link;
   readonly operations: Operations;
+
+  private readonly launcherSig = signal<LauncherStatus | undefined>(undefined);
+  readonly launcher: ReadonlySignal<LauncherStatus | undefined> = this.launcherSig;
 
   private readonly ownerSig = signal<OwnerView>({ state: "unknown" });
   private readonly bridgeVersionSig = signal<string | undefined>(undefined);
@@ -411,6 +415,7 @@ export class ShellboyData {
       case "closed":
         ++this.readQualificationEpoch;
         batch(() => {
+          this.launcherSig.value = undefined;
           this.ownerSig.value = { state: "unknown" };
           this.markAllStale();
           this.discardAllPreviews("connection_closed");
@@ -434,6 +439,9 @@ export class ShellboyData {
         this.appsDirSig.value = typeof f.apps_dir === "string" ? f.apps_dir : undefined;
         this.setOwner(f.owner);
         if (f.owner.state === "connected") { this.notifyHints(); void this.resyncAll(); }
+        break;
+      case "launcher":
+        this.launcherSig.value = f.status;
         break;
       case "owner":
         batch(() => {

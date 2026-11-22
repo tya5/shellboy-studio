@@ -174,6 +174,7 @@ export function App({ context }: { context: DesignContext }) {
   const details = model.details.value;
   const ctx = route.view === "conversation" ? model.context.value : undefined;
   const conn = model.connection.value;
+  const launcher = model.data.launcher.value;
   const title = route.view === "conversation" ? (details?.title ?? row?.summary.title) : t(`view.${route.view}`);
   const folder = route.view === "conversation" ? folderName(details?.cwd ?? row?.summary.cwd) : undefined;
 
@@ -277,7 +278,8 @@ export function App({ context }: { context: DesignContext }) {
           {settings ? <Settings context={context} onClose={() => setSettings(false)} /> : null}
           <div class="alerts">
             {conn === "authNeeded" ? <AuthPrompt context={context} /> : null}
-            {conn === "ownerDown" ? <Notice tone="wait">{t("banner.ownerDown")}</Notice> : null}
+            {conn === "ownerDown" && !launcher?.reason ? <Notice tone="wait">{t("banner.ownerDown")}</Notice> : null}
+            {launcher?.reason ? <Notice tone="wait">{launcher.reason}{launcher.can_restart ? <Button onClick={() => model.data.link.launcherAction("restart")}>{t("launcher.restart")}</Button> : null}</Notice> : null}
             {model.actionError.value ? <Notice tone={model.actionError.value.kind === "error" ? "bad" : undefined}>{model.actionError.value.text}</Notice> : null}
           </div>
           {deleteThread ? <ThreadDeleteDialog key={deleteThread.threadId} model={model} target={deleteThread} getReturnFocusTarget={resolveSidebarLink} onClose={() => setDeleteThread(undefined)} /> : null}
@@ -298,6 +300,7 @@ export function App({ context }: { context: DesignContext }) {
             {details?.cwd ? <span class="mono cwd">{details.cwd}</span> : null}
             <div class="right">
               {conn === "connected" ? <span>{t("conn.live")}</span> : null}
+              {launcher ? <Button onClick={() => model.data.link.launcherAction("exit")}>{t("launcher.exit")}</Button> : null}
             </div>
           </footer>
           <nav class="tabbar" aria-label={t("nav.views")}>

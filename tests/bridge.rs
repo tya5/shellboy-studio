@@ -864,3 +864,21 @@ impl Drop for SyntheticDir {
         let _ = std::fs::remove_dir_all(&self.0);
     }
 }
+
+#[tokio::test]
+async fn ordinary_bridge_cannot_run_launcher_actions() {
+    let owner = MockOwner::new(list_handler);
+    let (addr, state, cancel) = start(owner, false).await;
+    let cookie = login(addr, &state).await;
+    let mut ws = connect(addr, Some(&cookie), Some(&format!("http://{addr}")))
+        .await
+        .unwrap();
+    next_t(&mut ws, "hello").await;
+    put(&mut ws, json!({"t":"launcher","action":"exit"})).await;
+    assert_eq!(
+        next_t(&mut ws, "error").await["error"]["code"],
+        "not_allowed"
+    );
+    assert!(!state.cancel.is_cancelled());
+    cancel.cancel();
+}

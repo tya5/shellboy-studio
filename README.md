@@ -208,3 +208,9 @@ changes cancel reads and reject late results. Compare selection does not mutate
 archive/rewind/fork selection or receipt slots. Arbitrary-pair exact divergence,
 full-history comparison and arbitrary-age exclusive monetary cost remain unsupported.
 This source addition does not replace already-published v0.1.0 archives.
+
+## macOS desktop ZIP
+
+On Apple silicon with macOS 14 or later, unzip `shellboy-studio-desktop-vX.Y.Z-aarch64-apple-darwin.zip` and open **Shellboy Studio.app**. The app is unsigned and not notarized. If Gatekeeper blocks it, review the warning and use **Open Anyway** in System Settings > Privacy & Security only if you trust the download. See the [user guide](docs/guides/user-guide.md) for setup and shutdown.
+
+The existing CLI archives remain available. A desktop candidate ZIP names both exact commits; it is for testing and is not a release. The release desktop ZIP requires an already published Core release matching Studio's pin. CI only builds and checks the desktop ZIP; the user handles release publication.

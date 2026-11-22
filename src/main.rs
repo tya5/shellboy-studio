@@ -44,6 +44,9 @@ struct Args {
 
 #[derive(Subcommand)]
 enum CliCommand {
+    #[cfg(target_os = "macos")]
+    #[command(hide = true)]
+    BundleServer,
     /// Print a bundled Studio guide without starting the bridge.
     Guide { guide: GuideKind },
 }
@@ -94,7 +97,7 @@ fn owner_problem(data_dir: &std::path::Path, error: &shellboy::protocol::ApiErro
 
 #[tokio::main]
 async fn main() -> ExitCode {
-    match run(Args::parse()).await {
+    match entry().await {
         Ok(()) => ExitCode::SUCCESS,
         Err(message) => {
             eprintln!("shellboy-studio: {message}");
@@ -103,7 +106,84 @@ async fn main() -> ExitCode {
     }
 }
 
+async fn entry() -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+        let bundled = exe
+            .parent()
+            .and_then(std::path::Path::parent)
+            .is_some_and(|p| {
+                p.ends_with("Contents")
+                    && p.parent()
+                        .and_then(std::path::Path::extension)
+                        .is_some_and(|ext| ext == "app")
+            });
+        if bundled
+            && std::env::args_os()
+                .skip(1)
+                .all(|a| a.to_string_lossy().starts_with("-psn_"))
+        {
+            return shellboy_studio::launcher::macos::open_or_start(&default_config_dir()?).await;
+        }
+    }
+    run(Args::parse()).await
+}
+
+#[cfg(target_os = "macos")]
+async fn run_bundle_server() -> Result<(), String> {
+    let config_dir = default_config_dir()?;
+    let cwd = std::env::current_dir().map_err(|e| e.to_string())?;
+    let Some(mut launch) =
+        shellboy_studio::launcher::macos::Launch::prepare(&config_dir, &cwd).await?
+    else {
+        return Ok(());
+    };
+    let listener = launch.listener.take().expect("prepared listener");
+    let addr = listener.local_addr().map_err(|e| e.to_string())?;
+    let data_dir = launch.data_dir.clone();
+    let cancel = CancellationToken::new();
+    let mut state = Shared::with_apps(
+        Arc::new(IpcOwner::new(data_dir.clone())),
+        Hub::new(),
+        launch.auth.take().expect("prepared authentication"),
+        ServerConfig {
+            listen: addr,
+            extra_hosts: Vec::new(),
+            data_dir: data_dir.clone(),
+            config_dir,
+            debug: false,
+        },
+        Some(AppsPaths {
+            dir: data_dir.join("apps"),
+        }),
+        cancel.clone(),
+    );
+    Arc::get_mut(&mut state).expect("new server state").launcher = Some(launch.control.clone());
+    let stop = cancel.clone();
+    let signals = tokio::spawn(async move {
+        if let Ok(mut term) =
+            tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+        {
+            tokio::select! { _ = term.recv() => {}, _ = tokio::signal::ctrl_c() => {} }
+        } else {
+            let _ = tokio::signal::ctrl_c().await;
+        }
+        stop.cancel();
+    });
+    let (result, ()) = tokio::join!(
+        serve(listener, state, PollConfig::default(), cancel.clone()),
+        launch.supervise(cancel)
+    );
+    signals.abort();
+    result.map_err(|e| e.to_string())
+}
+
 async fn run(args: Args) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    if matches!(args.command, Some(CliCommand::BundleServer)) {
+        return run_bundle_server().await;
+    }
     if let Some(CliCommand::Guide { guide }) = args.command {
         print!(
             "{}",

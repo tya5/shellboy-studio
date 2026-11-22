@@ -47,6 +47,7 @@ pub struct Shared<O> {
     pub global: Arc<Semaphore>,
     pub apps: Option<Arc<Apps<O>>>,
     pub cancel: CancellationToken,
+    pub launcher: Option<crate::launcher::Control>,
 }
 
 pub type AppState<O> = Arc<Shared<O>>;
@@ -83,6 +84,7 @@ impl<O: Owner> Shared<O> {
             global,
             apps,
             cancel,
+            launcher: None,
         })
     }
 }
@@ -91,7 +93,15 @@ pub fn router<O: Owner>(state: AppState<O>) -> Router {
     let mut router = Router::new()
         .route("/", get(assets::index))
         .route("/assets/{*path}", get(assets::asset))
-        .route("/healthz", get(|| async { "ok" }))
+        .route(
+            "/healthz",
+            get(|State(state): State<AppState<O>>| async move {
+                state
+                    .launcher
+                    .as_ref()
+                    .map_or_else(|| "ok".into(), |control| control.marker.clone())
+            }),
+        )
         .route("/auth", post(auth_exchange::<O>))
         .route("/auth-mode", get(auth_mode::<O>))
         .route(

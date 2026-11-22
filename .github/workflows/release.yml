@@ -149,6 +149,13 @@ jobs:
           compression-level: 0
           retention-days: 14
 
+  macos-release-app:
+    needs: exact-owner
+    uses: ./.github/workflows/macos-app.yml
+    with:
+      studio_ref: refs/tags/${{ inputs.release_tag || github.ref_name }}
+      release_app: true
+
   draft:
     name: SHA256SUMS and draft release
     needs: build

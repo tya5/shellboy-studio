@@ -34,10 +34,13 @@ export interface OwnerResponse {
   error?: ApiError;
 }
 
+export interface LauncherStatus { reason: string | null; can_restart: boolean }
+
 export type ClientFrame =
   | { t: "call"; id: number; command: string; args?: unknown; operation_id?: string }
   | { t: "watch"; thread_ids: string[]; list: boolean }
-  | { t: "cancel"; id: number };
+  | { t: "cancel"; id: number }
+  | { t: "launcher"; action: "restart" | "exit" };
 
 export type ServerFrame =
   | { t: "hello"; bridge_version: string; listen?: string; apps_dir?: string | null; data_dir?: string; owner: OwnerState }
@@ -47,7 +50,8 @@ export type ServerFrame =
   | { t: "live_end"; thread_id: string }
   | { t: "resync" }
   | { t: "owner"; event: OwnerEvent; owner: OwnerState }
-  | { t: "error"; error: BridgeError };
+  | { t: "error"; error: BridgeError }
+  | { t: "launcher"; status: LauncherStatus };
 
 export type ParsedFrame = { ok: true; frame: ServerFrame } | { ok: false; reason: string; code?: "frame_too_large" };
 
@@ -117,6 +121,9 @@ export function parseServerFrame(text: string): ParsedFrame {
       return { ok: true, frame: v as unknown as ServerFrame };
     case "resync":
       return { ok: true, frame: { t: "resync" } };
+    case "launcher":
+      if (!isObject(v.status) || (v.status.reason !== null && typeof v.status.reason !== "string") || typeof v.status.can_restart !== "boolean") return bad("bad fields");
+      return { ok: true, frame: v as unknown as ServerFrame };
     case "owner":
       if (
         (v.event !== "connected" && v.event !== "unreachable" && v.event !== "restarted") ||
