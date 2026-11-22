@@ -43,7 +43,7 @@ struct Args {
 enum CliCommand {
     #[cfg(target_os = "macos")]
     #[command(hide = true)]
-    BundleServer,
+    BundleServer(shellboy_studio::launcher::desktop::PathArgs),
     /// Print a bundled Studio guide without starting the bridge.
     Guide { guide: GuideKind },
 }
@@ -116,47 +116,58 @@ async fn entry() -> Result<(), String> {
                         .and_then(std::path::Path::extension)
                         .is_some_and(|ext| ext == "app")
             });
-        if bundled
-            && std::env::args_os()
-                .skip(1)
-                .all(|a| a.to_string_lossy().starts_with("-psn_"))
-        {
-            return shellboy_studio::launcher::desktop::open_or_start(&default_config_dir()?).await;
+        // Finder adds -psn_; only the desktop options select the launcher over the CLI.
+        let desktop = bundled
+            .then(|| {
+                shellboy_studio::launcher::desktop::PathArgs::from_args(
+                    std::env::args_os()
+                        .skip(1)
+                        .filter(|a| !a.to_string_lossy().starts_with("-psn_")),
+                )
+                .ok()
+            })
+            .flatten();
+        if let Some(paths) = desktop {
+            return shellboy_studio::launcher::desktop::open_or_start(
+                &default_config_dir()?,
+                paths,
+            )
+            .await;
         }
     }
     #[cfg(windows)]
     if env!("CARGO_BIN_NAME") == "shellboy-studio-desktop" {
         // This dedicated Explorer entry point never inherits the CLI's no-auth option.
-        return match std::env::args_os().skip(1).collect::<Vec<_>>().as_slice() {
-            [] => {
-                let dir = default_config_dir();
-                let result = match &dir {
-                    Ok(dir) => shellboy_studio::launcher::desktop::open_or_start(dir).await,
-                    Err(error) => Err(error.clone()),
-                };
-                if let Err(error) = &result {
-                    shellboy_studio::launcher::windows::show_error(error, dir.as_deref().ok());
-                }
-                result
+        use shellboy_studio::launcher::desktop::PathArgs;
+        let args = std::env::args_os().skip(1).collect::<Vec<_>>();
+        if args.first().is_some_and(|arg| arg == "bundle-server") {
+            return run_bundle_server(PathArgs::from_args(args.into_iter().skip(1))?).await;
+        }
+        let dir = default_config_dir();
+        let result = match (&dir, PathArgs::from_args(args)) {
+            (Ok(dir), Ok(paths)) => {
+                shellboy_studio::launcher::desktop::open_or_start(dir, paths).await
             }
-            [arg] if arg == "bundle-server" => run_bundle_server().await,
-            _ => {
-                let error = "Open Studio without arguments, or use the separate console CLI.";
-                shellboy_studio::launcher::windows::show_error(error, None);
-                Err(error.into())
-            }
+            (Err(error), _) => Err(error.clone()),
+            (_, Err(error)) => Err(error),
         };
+        if let Err(error) = &result {
+            shellboy_studio::launcher::windows::show_error(error, dir.as_deref().ok());
+        }
+        return result;
     }
     run(Args::parse()).await
 }
 
 #[cfg(any(target_os = "macos", windows))]
-async fn run_bundle_server() -> Result<(), String> {
+async fn run_bundle_server(
+    paths: shellboy_studio::launcher::desktop::PathArgs,
+) -> Result<(), String> {
+    use shellboy_studio::launcher::desktop::{CorePaths, Launch};
+    let paths = CorePaths::resolved(paths)?;
     let config_dir = default_config_dir()?;
     let cwd = std::env::current_dir().map_err(|e| e.to_string())?;
-    let Some(mut launch) =
-        shellboy_studio::launcher::desktop::Launch::prepare(&config_dir, &cwd).await?
-    else {
+    let Some(mut launch) = Launch::prepare(&config_dir, &cwd, paths).await? else {
         return Ok(());
     };
     let listener = launch.listener.take().expect("prepared listener");
@@ -223,19 +234,20 @@ fn cancel_on_signal(cancel: CancellationToken) -> tokio::task::JoinHandle<()> {
 }
 
 async fn run(args: Args) -> Result<(), String> {
-    #[cfg(target_os = "macos")]
-    if matches!(args.command, Some(CliCommand::BundleServer)) {
-        return run_bundle_server().await;
-    }
-    if let Some(CliCommand::Guide { guide }) = args.command {
-        print!(
-            "{}",
-            match guide {
-                GuideKind::User => USER_GUIDE,
-                GuideKind::Agent => AGENT_GUIDE,
-            }
-        );
-        return Ok(());
+    match args.command {
+        #[cfg(target_os = "macos")]
+        Some(CliCommand::BundleServer(paths)) => return run_bundle_server(paths).await,
+        Some(CliCommand::Guide { guide }) => {
+            print!(
+                "{}",
+                match guide {
+                    GuideKind::User => USER_GUIDE,
+                    GuideKind::Agent => AGENT_GUIDE,
+                }
+            );
+            return Ok(());
+        }
+        None => {}
     }
     let cwd = std::env::current_dir().map_err(|e| e.to_string())?;
     let data_dir =

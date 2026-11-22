@@ -18,6 +18,18 @@ settings and data as Core; don't start another owner for the same data while
 Studio is running its bundled Core. Restart is manual when Studio reports
 that the owner is unreachable.
 
+To use an existing TUI's config and data folder, create a shortcut to
+Shellboy Studio.exe and set its Target to, for example:
+
+  "C:\Tools\Shellboy Studio\Shellboy Studio.exe" --config "D:\work\shellboy\config.toml" --data-dir "D:\work\shellboy\data"
+
+The options mean the same as in Core. Relative paths start from the
+shortcut's "Start in" folder. If the TUI is running on that data folder,
+Studio uses it; otherwise Studio starts its bundled Core with both paths.
+Only one Studio runs at a time: if it is already running with a different
+data folder, a dialog shows both folders and nothing changes. Use Exit in
+the running Studio first.
+
 If Studio cannot open, check the dialog and %APPDATA%\shellboy-studio\studio.log
 (or owner.log there for bundled Core diagnostics). Do not share tokens or
 private log contents. For development flags such as --no-auth, use the separate

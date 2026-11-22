@@ -9,7 +9,7 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 use shellboy::{
-    config::{Config, PathEnvironment},
+    config::{Config, PathEnvironment, resolve_config_path},
     protocol::ErrorCode,
 };
 use std::{
@@ -41,6 +41,74 @@ struct Marker {
     address: SocketAddr,
     token_file: PathBuf,
     identity: String,
+    data_dir: PathBuf,
+}
+
+/// The desktop options, with Core's meaning: `--config PATH` and `--data-dir PATH`.
+#[derive(clap::Parser, Debug, Default)]
+pub struct PathArgs {
+    #[arg(long)]
+    pub config: Option<PathBuf>,
+    #[arg(long)]
+    pub data_dir: Option<PathBuf>,
+}
+
+impl PathArgs {
+    pub fn from_args(args: impl IntoIterator<Item = OsString>) -> Result<Self, String> {
+        <Self as clap::Parser>::try_parse_from(
+            std::iter::once(OsString::from("shellboy-studio")).chain(args),
+        )
+        .map_err(|_| "Studio accepts only --config PATH and --data-dir PATH.".into())
+    }
+}
+
+/// The Core config file and owner data directory one desktop Studio uses.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CorePaths {
+    pub config: PathBuf,
+    pub data_dir: PathBuf,
+}
+
+impl CorePaths {
+    /// Core's precedence (config: argument > OS default; data directory: argument >
+    /// SHELLBOY_DATA_DIR > config `data_dir` > OS default); relative arguments resolve
+    /// against `cwd`. Reads the config file.
+    pub fn resolve(args: &PathArgs, cwd: &Path, env: &PathEnvironment) -> Result<Self, String> {
+        let unusable = |e: shellboy::config::ConfigError| {
+            format!("Cannot use the Shellboy config or data directory: {e}")
+        };
+        Ok(Self {
+            config: resolve_config_path(args.config.as_deref(), cwd, env).map_err(unusable)?,
+            data_dir: Config::load_with_overrides(
+                args.config.as_deref(),
+                args.data_dir.as_deref(),
+                cwd,
+                env,
+            )
+            .map_err(unusable)?
+            .data_dir,
+        })
+    }
+
+    /// The bundle server uses the pair its launcher resolved, as given.
+    pub fn resolved(args: PathArgs) -> Result<Self, String> {
+        match (args.config, args.data_dir) {
+            (Some(config), Some(data_dir)) if config.is_absolute() && data_dir.is_absolute() => {
+                Ok(Self { config, data_dir })
+            }
+            _ => Err("The bundle server needs absolute --config and --data-dir".into()),
+        }
+    }
+
+    fn server_args(&self) -> [OsString; 5] {
+        [
+            "bundle-server".into(),
+            "--config".into(),
+            self.config.clone().into(),
+            "--data-dir".into(),
+            self.data_dir.clone().into(),
+        ]
+    }
 }
 
 pub struct Launch {
@@ -62,7 +130,7 @@ impl Drop for Launch {
 }
 
 impl Launch {
-    pub async fn prepare(dir: &Path, cwd: &Path) -> Result<Option<Self>, String> {
+    pub async fn prepare(dir: &Path, cwd: &Path, paths: CorePaths) -> Result<Option<Self>, String> {
         fs::create_dir_all(dir).map_err(io)?;
         platform::check_directory(dir).map_err(io)?;
         let lock = launcher_lock(dir, "running.lock")?;
@@ -79,13 +147,11 @@ impl Launch {
         let listener = bind_loopback(8751).await.map_err(io)?;
         let address = listener.local_addr().map_err(io)?;
         let auth = Auth::load_or_create(dir)?;
-        let paths = PathEnvironment::current();
-        let config = paths.default_config_path().map_err(|e| e.to_string())?;
-        let data_dir = Config::load(None, cwd).map_err(|e| e.to_string())?.data_dir;
+        let CorePaths { config, data_dir } = paths;
         let pid = std::process::id();
         let identity = random_hex()?;
         let marker = Marker {
-            version: 1,
+            version: 2,
             pid,
             started: platform::process_start(pid)
                 .await
@@ -93,6 +159,7 @@ impl Launch {
             address,
             token_file: dir.join("token"),
             identity: identity.clone(),
+            data_dir: data_dir.clone(),
         };
         let temporary = dir.join(format!(".running-{identity}"));
         let write = (|| -> std::io::Result<()> {
@@ -299,15 +366,18 @@ fn launcher_lock(dir: &Path, name: &str) -> Result<File, String> {
     .map_err(io)
 }
 
-pub async fn open_or_start(dir: &Path) -> Result<(), String> {
+pub async fn open_or_start(dir: &Path, args: PathArgs) -> Result<(), String> {
+    let cwd = std::env::current_dir().map_err(io)?;
+    let paths = CorePaths::resolve(&args, &cwd, &PathEnvironment::current())?;
     open_or_start_with(
         dir,
+        &paths.data_dir,
         || {
             let log = || open_log(&dir.join("studio.log"));
             let mut command = std::process::Command::new(std::env::current_exe().map_err(io)?);
             platform::detach(&mut command);
             command
-                .arg("bundle-server")
+                .args(paths.server_args())
                 .stdin(Stdio::null())
                 .stdout(log().map_err(io)?)
                 .stderr(log().map_err(io)?);
@@ -320,6 +390,7 @@ pub async fn open_or_start(dir: &Path) -> Result<(), String> {
 
 async fn open_or_start_with<F: std::future::Future<Output = Result<(), String>>>(
     dir: &Path,
+    data_dir: &Path,
     spawn: impl FnOnce() -> Result<Option<std::process::Child>, String>,
     open: impl FnOnce(String) -> F,
 ) -> Result<(), String> {
@@ -358,6 +429,14 @@ async fn open_or_start_with<F: std::future::Future<Output = Result<(), String>>>
             && platform::process_start(marker.pid).await.as_deref() == Some(&marker.started)
             && endpoint_matches(&marker).await
         {
+            // One Studio per user: never switch a running Studio to another data directory.
+            if marker.data_dir != data_dir {
+                return Err(format!(
+                    "Studio is already running with another data directory.\n\nRunning: {}\nRequested: {}\n\nUse Exit in the running Studio, then open it again.",
+                    marker.data_dir.display(),
+                    data_dir.display()
+                ));
+            }
             let auth = Auth::load_or_create(dir)?;
             return open(format!("http://{}/#token={}", marker.address, auth.token())).await;
         }
@@ -379,8 +458,9 @@ fn read_marker(path: &Path, dir: &Path) -> Option<Marker> {
     file.take(4097).read_to_end(&mut bytes).ok()?;
     let marker: Marker = serde_json::from_slice(&bytes).ok()?;
     (bytes.len() <= 4096
-        && marker.version == 1
+        && marker.version == 2
         && marker.pid > 0
+        && marker.data_dir.is_absolute()
         && marker.address.ip().is_loopback()
         && marker.address.port() != 0
         && marker.token_file == dir.join("token")
@@ -483,15 +563,19 @@ mod tests {
                 }
             }
         }
+        // A custom (non-default) pair, as a TUI owner elsewhere would use it.
         let dir = Temp::new();
-        let config = dir.0.join("config.toml");
+        let custom = dir.0.join("work");
+        fs::create_dir_all(custom.join("data")).unwrap();
+        let config = custom.join("config.toml");
         fs::write(&config, "").unwrap();
+        let data = custom.join("data");
         let mut owner = ManagedOwner {
             bundled: dir.0.join("fixture-core"),
-            config,
+            config: config.clone(),
             cwd: dir.0.clone(),
             log: dir.0.join("owner.log"),
-            data: dir.0.clone(),
+            data: data.clone(),
             env: Some(OwnerEnvironment {
                 vars: vec![],
                 warning: None,
@@ -503,11 +587,22 @@ mod tests {
             .start_with(&Probe(true), |_| panic!("reachable owner must not spawn"))
             .await
             .unwrap();
+        assert!(owner.child.is_none(), "attached, not owned");
         platform::stop_child(owner.child.take()).await;
         assert!(external.try_wait().unwrap().is_none());
         owner
             .start_with(&Probe(false), |command| {
-                assert!(command.as_std().get_args().any(|arg| arg == "serve"));
+                let args: Vec<_> = command.as_std().get_args().collect();
+                assert_eq!(
+                    args,
+                    [
+                        "--config".as_ref(),
+                        config.as_os_str(),
+                        "serve".as_ref(),
+                        "--data-dir".as_ref(),
+                        data.as_os_str()
+                    ]
+                );
                 Ok(sleeper())
             })
             .await
@@ -541,38 +636,13 @@ mod tests {
         let listener = bind_loopback(0).await.unwrap();
         let address = listener.local_addr().unwrap();
         let listener = RefCell::new(Some(listener));
-        let pid = std::process::id();
-        let started = platform::process_start(pid).await.unwrap();
-        let identity = random_hex().unwrap();
+        let started = platform::process_start(std::process::id()).await.unwrap();
         let token = Auth::load_or_create(path).unwrap();
+        let data = path.join("data");
         let task = RefCell::new(None);
         let spawn = || {
             let listener = listener.borrow_mut().take().expect("start exactly once");
-            let lock = launcher_lock(path, "running.lock").unwrap();
-            lock.try_lock().unwrap();
-            let marker = Marker {
-                version: 1,
-                pid,
-                started: started.clone(),
-                address,
-                token_file: path.join("token"),
-                identity: identity.clone(),
-            };
-            let disk = path.join("running.json");
-            serde_json::to_writer(File::create(&disk).unwrap(), &marker).unwrap();
-            let identity = identity.clone();
-            *task.borrow_mut() = Some(tokio::spawn(async move {
-                let _lock = lock;
-                axum::serve(
-                    listener,
-                    axum::Router::new().route(
-                        "/healthz",
-                        axum::routing::get(move || async move { identity }),
-                    ),
-                )
-                .await
-                .unwrap();
-            }));
+            *task.borrow_mut() = Some(fixture_studio(path, listener, started.clone(), &data));
             Ok(None)
         };
         let opens = RefCell::new(Vec::new());
@@ -581,8 +651,8 @@ mod tests {
             std::future::ready(Ok(()))
         };
         let (first, second) = tokio::join!(
-            open_or_start_with(path, spawn, open),
-            open_or_start_with(path, spawn, open)
+            open_or_start_with(path, &data, spawn, open),
+            open_or_start_with(path, &data, spawn, open)
         );
         if let Some(task) = task.into_inner() {
             task.abort();
@@ -592,6 +662,126 @@ mod tests {
         second.unwrap();
         let expected = format!("http://{address}/#token={}", token.token());
         assert_eq!(opens.into_inner(), vec![expected.clone(), expected]);
+    }
+
+    /// A verified running Studio: holds running.lock, writes its marker, answers /healthz.
+    fn fixture_studio(
+        path: &Path,
+        listener: TcpListener,
+        started: String,
+        data_dir: &Path,
+    ) -> tokio::task::JoinHandle<()> {
+        let lock = launcher_lock(path, "running.lock").unwrap();
+        lock.try_lock().unwrap();
+        let identity = random_hex().unwrap();
+        let marker = Marker {
+            version: 2,
+            pid: std::process::id(),
+            started,
+            address: listener.local_addr().unwrap(),
+            token_file: path.join("token"),
+            identity: identity.clone(),
+            data_dir: data_dir.into(),
+        };
+        let disk = path.join("running.json");
+        serde_json::to_writer(File::create(&disk).unwrap(), &marker).unwrap();
+        tokio::spawn(async move {
+            let _lock = lock;
+            axum::serve(
+                listener,
+                axum::Router::new().route(
+                    "/healthz",
+                    axum::routing::get(move || async move { identity }),
+                ),
+            )
+            .await
+            .unwrap();
+        })
+    }
+
+    #[tokio::test]
+    async fn reopen_with_another_data_dir_is_refused_with_both_paths() {
+        let dir = Temp::new();
+        let path = &dir.0;
+        let running = path.join("running-data");
+        let requested = path.join("requested-data");
+        let started = platform::process_start(std::process::id()).await.unwrap();
+        let listener = bind_loopback(0).await.unwrap();
+        let task = fixture_studio(path, listener, started, &running);
+        let error = open_or_start_with(
+            path,
+            &requested,
+            || panic!("a running Studio must not be started again"),
+            |_: String| std::future::ready(Err("opened another data directory".into())),
+        )
+        .await
+        .unwrap_err();
+        assert!(error.contains(&running.display().to_string()), "{error}");
+        assert!(error.contains(&requested.display().to_string()), "{error}");
+        let opened = open_or_start_with(
+            path,
+            &running,
+            || panic!("a running Studio must not be started again"),
+            |url: String| async move {
+                assert!(url.contains("#token="));
+                Ok(())
+            },
+        )
+        .await;
+        task.abort();
+        let _ = task.await;
+        opened.unwrap();
+    }
+
+    #[test]
+    fn desktop_paths_follow_core_precedence_and_launch_cwd() {
+        let dir = Temp::new();
+        let cwd = dir.0.join("launch");
+        fs::create_dir_all(cwd.join("cfg")).unwrap();
+        fs::write(cwd.join("cfg/config.toml"), "data_dir = \"from-toml\"\n").unwrap();
+        let mut env = PathEnvironment::current();
+        env.home = Some(dir.0.join("home"));
+        env.xdg_config_home = None;
+        env.xdg_data_home = None;
+        env.appdata = Some(dir.0.join("appdata"));
+        env.localappdata = Some(dir.0.join("localappdata"));
+        env.data_dir = Some("env-data".into());
+        let args = |data: Option<&str>| {
+            PathArgs::from_args(
+                ["--config", "cfg/config.toml"]
+                    .into_iter()
+                    .chain(data.into_iter().flat_map(|d| ["--data-dir", d]))
+                    .map(OsString::from),
+            )
+            .unwrap()
+        };
+        let config = cwd.join("cfg/config.toml");
+        // Relative arguments resolve against the launch cwd; the argument wins.
+        let explicit = CorePaths::resolve(&args(Some("data")), &cwd, &env).unwrap();
+        assert_eq!(
+            explicit,
+            CorePaths {
+                config: config.clone(),
+                data_dir: cwd.join("data")
+            }
+        );
+        // Then SHELLBOY_DATA_DIR, then the config's data_dir (relative to the config).
+        let from_env = CorePaths::resolve(&args(None), &cwd, &env).unwrap();
+        assert_eq!(from_env.data_dir, cwd.join("env-data"));
+        env.data_dir = None;
+        let from_toml = CorePaths::resolve(&args(None), &cwd, &env).unwrap();
+        assert_eq!(from_toml.data_dir, cwd.join("cfg/from-toml"));
+        // Without arguments: Core's OS defaults.
+        let default = CorePaths::resolve(&PathArgs::default(), &cwd, &env).unwrap();
+        assert_eq!(default.config, env.default_config_path().unwrap());
+        assert_eq!(default.data_dir, env.default_data_dir().unwrap());
+        // The bundle server receives exactly the launcher's resolved pair.
+        let server = explicit.server_args();
+        assert_eq!(server[0], "bundle-server");
+        let received = PathArgs::from_args(server.into_iter().skip(1)).unwrap();
+        assert_eq!(CorePaths::resolved(received).unwrap(), explicit);
+        assert!(CorePaths::resolved(args(Some("data"))).is_err());
+        assert!(PathArgs::from_args(["--no-auth".into()]).is_err());
     }
 
     #[tokio::test]
@@ -657,6 +847,7 @@ mod tests {
             address,
             token_file: PathBuf::from("token"),
             identity: "wrong".into(),
+            data_dir: PathBuf::new(),
         };
         assert!(!endpoint_matches(&marker).await);
         marker.identity = "fixture-identity".into();

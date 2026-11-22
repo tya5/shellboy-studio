@@ -218,3 +218,11 @@ The existing CLI archives remain available. A desktop candidate ZIP names both e
 ## Windows desktop candidate ZIP
 
 Windows x64 device acceptance is **unverified**. Extract the entire candidate ZIP, keep `Shellboy Studio.exe` and `shellboy.exe` together, and double-click `Shellboy Studio.exe` to open the default browser. The bundled [Windows guide](docs/guides/windows-desktop.txt) covers SmartScreen, reopening, Exit, and startup diagnostics. This is an unsigned candidate, not a release; the separate console CLI is unchanged.
+
+To use a TUI's existing config and data directory, give the desktop launcher Core's `--config PATH` and `--data-dir PATH` (same meaning and precedence as Core; relative paths start from the launch folder). On Windows, put them in a shortcut's Target, for example:
+
+```text
+"C:\Tools\Shellboy Studio\Shellboy Studio.exe" --config "D:\work\shellboy\config.toml" --data-dir "D:\work\shellboy\data"
+```
+
+Studio attaches to a TUI owner already running on that data directory, or starts the bundled Core with both paths. Only one Studio runs per user: if it is already running with a different data directory, the launcher shows both paths and exits; use Exit in the running Studio first.
