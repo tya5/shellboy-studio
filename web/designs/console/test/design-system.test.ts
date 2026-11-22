@@ -213,9 +213,10 @@ describe("approved list section and status rules", () => {
   it("keeps the reusable section band and trailing action column in ThreadGroup", () => {
     const css = componentStyleFiles["../system/components/ThreadGroup/style.css"] ?? "";
     expect(css).toMatch(/\.tgroup\[data-group-heading="section"\]>header\{[^}]*position:sticky;[^}]*background:var\(--raised\)/);
-    expect(css).toMatch(/\.tgroup-chevron\{[^}]*width:var\(--size-row-action\);min-width:var\(--size-row-action\)/);
+    expect(css).not.toMatch(/\.tgroup\[data-group-heading="section"\]>header\{[^}]*padding/);
+    expect(css).not.toMatch(/\.tgroup-chevron[^}]*width:var\(--size-(?:row-action-touch|touch)\)/);
+    expect(css).not.toMatch(/margin-inline:|width:calc\(/);
     expect(css).toContain("text-overflow:ellipsis;white-space:nowrap");
-    expect(css).toContain(".tgroup-chevron{display:grid;place-items:center;flex:none;width:var(--size-row-action);min-width:var(--size-row-action)");
     const source = systemSources["../system/components/ThreadGroup/index.tsx"] ?? "";
     expect(source).toContain('data-group-heading={fold ? "section" : undefined}');
     expect(source).toContain('class="tgroup-toggle"');
@@ -225,9 +226,15 @@ describe("approved list section and status rules", () => {
 
   it("keeps full-width rows, urgency chips, and equal-diameter semantic status shapes", () => {
     const row = componentStyleFiles["../system/components/ThreadItem/style.css"] ?? "";
-    expect(row).toContain("margin-inline:calc(-1 * var(--space-8))");
+    expect(row).toContain("width:100%");
+    expect(row).not.toMatch(/margin-inline:|width:calc\(/);
+    expect(row).toContain("padding:0 var(--space-row-inset) 0 var(--space-8)");
     expect(row).toContain("border-radius:0");
     expect(row).toContain("thread-item-depth-3");
+    const select = componentStyleFiles["../system/components/SelectRow/style.css"] ?? "";
+    expect(select).toContain("width:100%");
+    expect(select).toContain("padding:0 var(--space-row-inset) 0 var(--space-8)");
+    expect(select).not.toMatch(/margin-inline:|width:calc\(/);
     const chip = componentStyleFiles["../system/components/ChildrenChip/style.css"] ?? "";
     expect(chip).toContain("height:var(--size-chip-height)");
     expect(chip).toContain("width:var(--size-chip-icon);height:var(--size-chip-icon)");

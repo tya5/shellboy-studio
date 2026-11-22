@@ -1,15 +1,16 @@
 .tgroup{border:1px solid var(--line);border-radius:var(--radius);background:var(--panel);min-width:0}
-.tgroup>header{display:flex;align-items:center;gap:var(--space-8);padding:var(--space-4) var(--space-12) var(--space-4) var(--space-4);border-bottom:1px solid var(--line);min-width:0}
+.tgroup>header{display:flex;align-items:center;gap:var(--space-8);border-bottom:1px solid var(--line);min-width:0}
+.tgroup:not([data-group-heading="section"])>header{padding:var(--space-4) var(--space-12) var(--space-4) var(--space-4)}
 .tgroup-name{flex:1;min-width:0;font-weight:600}
 .tgroup-name.mono{font-weight:400}
 .tgroup-count{white-space:nowrap}
 .tgroup[data-group-heading="section"] .tgroup-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;overflow-wrap:normal}
-.tgroup-fold{flex:none}
 .tgroup[data-group-heading="section"]{position:relative}
-.tgroup[data-group-heading="section"]>header{position:sticky;top:0;z-index:2;margin-inline:calc(-1 * var(--space-8));background:var(--raised);border-block:1px solid var(--line);padding:0}
-.tgroup-toggle{display:flex;flex:1;width:auto;min-width:0;min-height:var(--size-touch);align-items:center;gap:var(--space-8);padding:0 var(--space-8);border:0;border-radius:0;background:var(--raised);color:var(--fg);text-align:left}
+.tgroup[data-group-heading="section"]>header{position:sticky;top:0;z-index:2;gap:0;background:var(--raised);border-block:1px solid var(--line)}
+.tgroup[data-group-heading="section"]>header:has(> .tcheck){display:grid;grid-template-columns:var(--size-control) minmax(0,1fr);align-items:stretch;gap:0;min-height:var(--size-touch)}
+.tgroup[data-group-heading="section"]>header>.tcheck{box-sizing:border-box;width:100%;height:100%;align-self:stretch}
+.tgroup-toggle{display:flex;flex:1;width:auto;min-width:0;min-height:var(--size-touch);align-items:center;gap:var(--space-8);padding:0 var(--space-row-inset) 0 var(--space-8);border:0;border-radius:0;background:var(--raised);color:var(--fg);text-align:left}
 .tgroup[data-group-heading="section"] .tgroup-toggle:hover,.tgroup[data-group-heading="section"] .tgroup-toggle:focus-visible{background:var(--raised)}
-.tgroup[data-group-heading="section"] .tgroup-name{font-weight:600}
 .tgroup[data-group-heading="section"] .tgroup-count{flex:none;color:var(--muted)}
 .tgroup-pin{flex:none;color:var(--muted)}
 .tgroup-chevron{display:grid;place-items:center;flex:none;width:var(--size-row-action);min-width:var(--size-row-action);height:var(--size-touch);margin-left:auto;color:var(--fg)}

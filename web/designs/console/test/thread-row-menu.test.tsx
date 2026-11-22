@@ -263,7 +263,7 @@ describe("Thread row menu and delete", () => {
     act(() => render(<>{treeRow("One")}{treeRow("Two")}{selectRow("Three")}{selectRow("Four")}</>, host));
     expect(window.matchMedia("(hover: none)").matches).toBe(true);
     expect(window.matchMedia("(hover: hover)").matches).toBe(false);
-    expect(listRowCss).toMatch(/@media \(hover:none\)[^\n]*\.list-row-action \{[^}]*width:var\(--size-row-action-touch\); visibility:visible/);
+    expect(listRowCss).toMatch(/@media \(hover:none\)[^\n]*\.list-row-action \{[^}]*width:var\(--size-row-action\); visibility:visible/);
     expect(listRowCss).toMatch(/\[data-menu-open="true"\] > \.list-row-action \{ visibility:visible/);
     expect(listRowCss).toMatch(/\[data-row-selected="true"\] > \.list-row-action/);
     const rows = [...host.querySelectorAll<HTMLElement>("[data-thread-row]")];

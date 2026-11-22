@@ -2,7 +2,6 @@
 .st .mark{display:inline-grid;place-items:center;width:var(--size-icon-small);height:var(--size-icon-small);flex:none}
 .dot{display:block;width:14px;height:14px;flex:none;border-radius:50%}
 .st.run{color:var(--accent)}
-.st.run .i{stroke-dasharray:none;animation:spin var(--motion-spin) linear infinite}
 .st.wait{color:var(--wait)}
 .st.bad{color:var(--bad)}
 .st.bad .dot{background:var(--bad);border-radius:3px;transform:rotate(45deg) scale(.82)}
@@ -17,6 +16,3 @@
 .st.idle{color:var(--muted)}
 .st.idle .i{width:var(--size-icon-small);height:var(--size-icon-small)}
 .character-status{width:24px;height:24px;flex:none}
-
-@keyframes spin{to{transform:rotate(360deg)}}
-@media (prefers-reduced-motion:reduce){.st.run .i{animation:none;stroke-dasharray:none}}

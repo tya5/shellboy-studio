@@ -147,13 +147,12 @@ describe("components name roles, never values", () => {
   it("every custom property used exists", () => {
     for (const m of css.matchAll(/var\(--([\w-]+)/g)) expect(known.has(m[1]!), m[1]).toBe(true);
   });
-  it("only the running ring, loading rows and thinking dots move, with reduced motion respected", () => {
+  it("only loading rows and thinking dots move, with reduced motion respected", () => {
     const animations = [...css.matchAll(/([^{}]+)\{([^{}]*\banimation\s*:\s*([^;}]+)[^{}]*)\}/g)]
       .filter((match) => match[3]!.trim() !== "none")
       .map((match) => match[1]!.trim());
-    expect(animations).toHaveLength(3);
-    expect(animations).toEqual(expect.arrayContaining([".st.run .i", ".loadrow", ".character-status[data-running] circle"]));
-    expect(css).toMatch(/@media \(prefers-reduced-motion:reduce\)\{\.st\.run \.i\{animation:none;stroke-dasharray:none\}\}/);
+    expect(animations).toHaveLength(2);
+    expect(animations).toEqual(expect.arrayContaining([".loadrow", ".character-status[data-running] circle"]));
     expect(css).toMatch(/prefers-reduced-motion:reduce\)\{\.loadrow\{animation:none\}/);
     expect(css).toMatch(/prefers-reduced-motion:no-preference\)\{\s*\.character-status\[data-running\] circle\{[^}]*animation:character-hop/);
   });
@@ -195,7 +194,7 @@ describe("screens use the system only", () => {
   });
   it("the status mark differs in shape between states, not only colour", () => {
     const text = readSystemCss("components.css");
-    for (const rule of [/\.st\.run \.i\{stroke-dasharray/, /\.st\.bad \.dot\{[^}]*rotate\(45deg\)/, /\.st\.ok \.i\{/, /\.st\.fail \.i\{/, /\.st\.halt \.dot\{[^}]*border-radius:2px/, /\.st\.hold \.dot\{/]) expect(text).toMatch(rule);
+    for (const rule of [/\.st\.bad \.dot\{[^}]*rotate\(45deg\)/, /\.st\.ok \.i\{/, /\.st\.fail \.i\{/, /\.st\.halt \.dot\{[^}]*border-radius:2px/, /\.st\.hold \.dot\{/]) expect(text).toMatch(rule);
   });
 });
 

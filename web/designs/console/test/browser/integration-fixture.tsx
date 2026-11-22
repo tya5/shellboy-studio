@@ -10,9 +10,19 @@ const fixtureLang = params.get('lang') === 'ja' ? 'ja' as const : 'en' as const;
 const ownSendFixture = params.get('view') === 'own-send';
 const footerFixture = params.get('view') === 'footer-lifecycle';
 const panelTabsFixture = params.get('view') === 'panel-tabs';
-const fixtureOptions = footerFixture ? { route: 'conversation' as const, threadId: 'lead' } : ownSendFixture ? { route: 'conversation' as const, threadId: 'lead', capabilities: ['history.window'] } : panelTabsFixture ? { route: 'conversation' as const, threadId: 'lead', lang: fixtureLang } : params.get('view') === 'memory' ? { route: 'analytics' as const, section: 'memory' as const, lang: fixtureLang } : params.get('view') === 'sidebar' ? { lang: fixtureLang, capabilities: ['thread.tags', 'thread.cwds', 'history.window'] } : {};
+const sectionGeometryFixture = params.get('view') === 'section-geometry';
+const fixtureOptions = sectionGeometryFixture ? { route: 'threads' as const, capabilities: ['history.window', 'thread.tags', 'thread.cwds'] } : footerFixture ? { route: 'conversation' as const, threadId: 'lead' } : ownSendFixture ? { route: 'conversation' as const, threadId: 'lead', capabilities: ['history.window'] } : panelTabsFixture ? { route: 'conversation' as const, threadId: 'lead', lang: fixtureLang } : params.get('view') === 'memory' ? { route: 'analytics' as const, section: 'memory' as const, lang: fixtureLang } : params.get('view') === 'sidebar' ? { lang: fixtureLang, capabilities: ['thread.tags', 'thread.cwds', 'history.window'] } : {};
 if (params.get('view') === 'memory') document.documentElement.dataset.memoryFixture = fixtureLang;
 const { model, t, db } = await fixtureModel({ ...fixtureOptions, configure(db) {
+  if (sectionGeometryFixture) {
+    db.threads = {
+      lead: summary('lead', { title: 'Geometry lead', cwd: '/fixture/geometry', activity: 'tools' }),
+      child: summary('child', { title: 'Geometry child', cwd: '/fixture/geometry', parent_id: 'lead', awaiting_human_count: 1 }),
+      other: summary('other', { title: 'Geometry other', cwd: '/fixture/other', activity: 'failed' }),
+    };
+    for (const id of Object.keys(db.threads)) db.details[id] = details(id);
+    return;
+  }
   if (ownSendFixture) { db.history.lead = []; return; }
   if (panelTabsFixture) db.details.lead!.awaiting_replies = [];
   if (params.get('view') === 'sidebar') {

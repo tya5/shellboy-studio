@@ -1,10 +1,10 @@
 # ThreadGroup
 
-Groups Threads by owner-reported directory or state. The checkbox/bulk variant selects every listed row and shows mixed selection. When it also owns a group disclosure, it uses the exact same section-band and toggle as the sidebar variant, with only the checkbox added as the leading control; do not nest one control inside the other.
+Groups Threads by owner-reported directory or state. The checkbox/bulk variant selects every listed row and shows mixed selection. When it also owns a group disclosure, it uses the exact same section-band and toggle as the sidebar variant, with exactly two adjacent controls: the checkbox label fills the full-height leading column and the disclosure fills the remaining band with no gap. Do not nest one control inside the other or center a short checkbox label in the band.
 
 ## Sidebar section band
 
-Use the sidebar variant for repeated sections in a list: a full-width, sticky, opaque `raised` band with one-line truncated name, count, and a whole-band accessible disclosure button. Place the trailing chevron in the shared `size-row-action` column (24px), aligned with the trailing row action/menu column. Do not add a separate text link. Mark only groups distinguished by meaning (for example Pinned); omit redundant directory/folder marks. Children remain in normal flow so the next sticky band displaces the previous one.
+Use the sidebar variant for repeated sections in a list: a full-width, sticky, opaque `raised` band with one-line truncated name, count, and a whole-band accessible disclosure button. The list container has no inline padding; the band fills it. The header has no inset and the whole disclosure button owns the shared leading/trailing tokens, except for the separate checkbox. Place the chevron in the shared `size-row-action` column (24px), aligned with the trailing row action/menu column. Do not add a separate text link. Mark only groups distinguished by meaning (for example Pinned); omit redundant directory/folder marks. Children remain in normal flow so the next sticky band displaces the previous one.
 
 Reference: iOS plain-table section headers, Material subheaders, Orca `SectionHeader`, shadcn/ui Sidebar, WAI-ARIA disclosure button; approved Studio sidebar mock v8, section 1a B1.
 

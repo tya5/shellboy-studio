@@ -3,8 +3,10 @@
 .row-menu-trigger>.btn::after{content:"";position:absolute;inset:calc(-1 * var(--space-8))}
 @container app (max-width:899px){
   .row-menu-trigger>.btn{width:var(--size-row-action-touch);height:var(--size-row-action-touch);min-width:var(--size-row-action-touch);min-height:var(--size-row-action-touch)}
+  .row-menu-trigger>.btn::after{inset:calc((var(--size-row-action-touch) - var(--size-touch))/2 - var(--space-2))}
 }
 
 @container app (max-width:899px){
   [data-sidebar-row] .row-menu-trigger>.btn{width:var(--size-touch);height:var(--size-touch);min-width:var(--size-touch);min-height:var(--size-touch)}
+  [data-sidebar-row] .row-menu-trigger>.btn::after{inset:0}
 }

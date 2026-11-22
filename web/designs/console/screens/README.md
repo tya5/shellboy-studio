@@ -25,6 +25,8 @@ the owner closes it. Reopening starts without the previous observation's values.
 Conversation, other tabs, the collapsed rail, and the phone WorkSheet do not read
 Thread totals. `thread.get` still supplies bounded context facts, not totals.
 
+The sidebar `.side-list` and management `.org-rows` are zero-inline-padding row boundaries. Bands and rows fill those boundaries and own their shared-token content insets; do not bleed individual rows or headers beyond the containers.
+
 ## Resources Memory
 
 The Memory screen treats a typed capacity refusal as an owner-busy result. It reuses the existing header action for a Memory-only Retry; retry is manual and is never automatic. Ordinary Refresh keeps the existing paired Memory and bridge reads.

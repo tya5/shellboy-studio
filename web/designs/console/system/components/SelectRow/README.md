@@ -10,3 +10,6 @@ list advances to the next row link or its heading.
 Styles are colocated in `system/components/SelectRow/style.css`.
 
 Styles: style.css in this directory
+
+
+The management list container has no inline padding. Rows fill the section-band width and own their shared-token insets, with the trailing action aligned to the band chevron; title/depth content keeps its inset. References: shadcn/ui SidebarMenuAction (`showOnHover`) and Orca sidebar rows.

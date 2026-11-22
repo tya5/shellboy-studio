@@ -82,5 +82,6 @@
   --size-chip-icon: 10px;
   --size-chip-text: 11px;
   --space-chip-inline: 7px;
+  --space-row-inset: 12px;
   --shadow-popover: 0px 4px 10px rgba(0, 0, 0, 0.24);
 }

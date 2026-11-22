@@ -9,6 +9,15 @@ export function ThreadGroup({ label, mono, count, all, some, selectLabel, onSele
   useEffect(() => {
     if (box.current) box.current.indeterminate = !!some && !all;
   }, [all, some]);
+  const content = (
+    <>
+      {!onSelect && leading === "thread.pinned" ? <span class="tgroup-pin"><Icon role={leading} size="small" /></span> : null}
+      {!onSelect && leading !== "thread.pinned" ? <span class="tcheck-gap" /> : null}
+      <span class={mono ? "mono tgroup-name" : "tgroup-name"}>{label}</span>
+      <span class="tgroup-count caption muted">{count}</span>
+      {fold ? <span class="tgroup-chevron"><Icon role={fold.open ? "group.collapse" : "group.expand"} size="small" /></span> : null}
+    </>
+  );
   return (
     <section class="tgroup" aria-label={label} data-group-heading={fold ? "section" : undefined}>
       <header>
@@ -18,19 +27,8 @@ export function ThreadGroup({ label, mono, count, all, some, selectLabel, onSele
           </label>
         ) : null}
         {fold ? (
-          <Button class="tgroup-toggle" aria-expanded={fold.open} label={fold.open ? fold.hideLabel : fold.showLabel} onClick={fold.onToggle}>
-            {!onSelect && leading === "thread.pinned" ? <span class="tgroup-pin"><Icon role={leading} size="small" /></span> : null}
-            <span class={mono ? "mono tgroup-name" : "tgroup-name"}>{label}</span>
-            <span class="tgroup-count caption muted">{count}</span>
-            <span class="tgroup-chevron"><Icon role={fold.open ? "group.collapse" : "group.expand"} size="small" /></span>
-          </Button>
-        ) : (
-          <>
-            {!onSelect && leading ? <Icon role={leading} size="small" /> : !onSelect ? <span class="tcheck-gap" /> : null}
-            <span class={mono ? "mono tgroup-name" : "tgroup-name"}>{label}</span>
-            <span class="tgroup-count caption muted">{count}</span>
-          </>
-        )}
+          <Button class="tgroup-toggle" aria-expanded={fold.open} label={fold.open ? fold.hideLabel : fold.showLabel} onClick={fold.onToggle}>{content}</Button>
+        ) : content}
       </header>
       {children}
     </section>

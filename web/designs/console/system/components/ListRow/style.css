@@ -9,8 +9,12 @@
 .list-row[data-thread-row] > .list-row-action { margin-left:auto; }
 .list-row[data-row-selected="true"] > .list-row-action,.list-row[data-menu-open="true"] > .list-row-action { visibility:visible; }
 @media (hover:hover) { .list-row:hover > .list-row-action,.list-row:focus-within > .list-row-action { visibility:visible; } }
-@media (hover:none) { .panel-list-main { min-height:var(--size-touch); } .list-row-action { width:var(--size-row-action-touch); visibility:visible; } }
+@media (hover:none) { .panel-list-main { min-height:var(--size-touch); } .list-row-action { width:var(--size-row-action); visibility:visible; } }
 
 @container app (max-width:899px){
-  .list-row[data-sidebar-row] > .list-row-action{width:var(--size-touch);visibility:visible}
+  .list-row[data-sidebar-row] > .list-row-action{width:var(--size-row-action);visibility:visible}
+}
+@container app (max-width:899px){
+  .list-row-action .row-menu-trigger{margin-inline:calc((var(--size-row-action) - var(--size-row-action-touch))/2)}
+  [data-sidebar-row] .list-row-action .row-menu-trigger{margin-inline:calc((var(--size-row-action) - var(--size-touch))/2)}
 }
