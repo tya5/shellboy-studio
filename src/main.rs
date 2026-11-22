@@ -41,7 +41,7 @@ struct Args {
 
 #[derive(Subcommand)]
 enum CliCommand {
-    #[cfg(any(target_os = "macos", windows))]
+    #[cfg(target_os = "macos")]
     #[command(hide = true)]
     BundleServer,
     /// Print a bundled Studio guide without starting the bridge.
@@ -223,7 +223,7 @@ fn cancel_on_signal(cancel: CancellationToken) -> tokio::task::JoinHandle<()> {
 }
 
 async fn run(args: Args) -> Result<(), String> {
-    #[cfg(any(target_os = "macos", windows))]
+    #[cfg(target_os = "macos")]
     if matches!(args.command, Some(CliCommand::BundleServer)) {
         return run_bundle_server().await;
     }
@@ -359,6 +359,12 @@ mod no_auth_tests {
         assert!(help.contains("HTTPS proxy/VPN"));
         assert!(help.contains("NEVER expose publicly"));
         assert!(!help.contains("tailnet"));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn console_cli_rejects_desktop_dispatch() {
+        assert!(Args::try_parse_from(["studio", "bundle-server"]).is_err());
     }
 
     #[test]
