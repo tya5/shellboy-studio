@@ -39,14 +39,14 @@ export function captureCurrentWork(scope: string, value: { readonly items: reado
 }
 export interface OwnSendIdentity {
   readonly accepted: object; readonly pending: object | undefined;
-  readonly retryCurrent: (() => boolean) | undefined; readonly eligible: boolean;
+  readonly sendCurrent: (() => boolean) | undefined; readonly eligible: boolean;
 }
 export function createConversationIdentity(base: Omit<ConversationIdentity, 'own'>, own?: OwnSendIdentity): ConversationIdentity {
   return Object.freeze(own ? { ...base, own } : base);
 }
 function ownSendIdentityEqual(a: OwnSendIdentity | undefined, b: OwnSendIdentity | undefined): boolean {
   return a === b || (!!a && !!b && a.accepted === b.accepted && a.pending === b.pending
-    && a.retryCurrent === b.retryCurrent && a.eligible === b.eligible);
+    && a.sendCurrent === b.sendCurrent && a.eligible === b.eligible);
 }
 export function conversationIdentityEqual(a: ConversationIdentity, b: ConversationIdentity): boolean {
   return a.rows === b.rows && a.revision === b.revision && a.records === b.records

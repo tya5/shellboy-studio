@@ -407,8 +407,11 @@ export class ConversationWindow {
     return true;
   }
 
-  bindConversationInput(capture: (snapshot: WindowAcceptedSnapshot) => ConversationSemanticInput): boolean {
+  private conversationCommit?: (snapshot: WindowAcceptedSnapshot) => void;
+
+  bindConversationInput(capture: (snapshot: WindowAcceptedSnapshot) => ConversationSemanticInput, committed?: (snapshot: WindowAcceptedSnapshot) => void): boolean {
     if (this.disposed || this.conversationInputOwner) return false;
+    this.conversationCommit = committed;
     this.conversationInputOwner = capture;
     return true;
   }
@@ -458,6 +461,7 @@ export class ConversationWindow {
       published = this.acceptedView.publish(publication, snapshot => {
         const savedAttempts = new Set<string>(snapshot.rows.flatMap(row => row.kind === "assistant_response" && row.provenance?.attempt_id ? [row.provenance.attempt_id] : []));
         afterCommit();
+        this.conversationCommit?.(snapshot);
         for (const record of binding.handle.handoff.peek()) {
           if (savedAttempts.has(record.attemptId)) binding.handle.releaseAcceptedHandoff(record.attemptId);
         }

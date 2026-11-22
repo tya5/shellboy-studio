@@ -154,7 +154,7 @@ const decodeThreadWorkPage = (threadId: string): Decoder<Page<WorkItem>> => (v) 
 };
 const decodeBody: Decoder<HistoryBody> = (v) => {
   if (!isObject(v) || typeof v.node_id !== 'string' || typeof v.text !== 'string') return { ok: false, reason: 'history.get result lacks node_id or text' };
-  if (!validHistoryProvenance(v.provenance)) return { ok: false, reason: 'history.get has invalid provenance attempt_id' };
+  if (!validHistoryProvenance(v.provenance,v.kind)) return { ok: false, reason: 'history.get has invalid provenance identity' };
   if (Object.hasOwn(v, 'source_node_ids')) {
     const ids = v.source_node_ids;
     if (!Array.isArray(ids) || ids.length > 4096 || !ids.every(id => typeof id === 'string' && id.length > 0) || new Set(ids).size !== ids.length) return { ok: false, reason: 'history.get has invalid explicit source identities' };

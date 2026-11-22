@@ -13,10 +13,10 @@ export interface OwnSendLocalRegion {
 }
 
 export function ownSendPresentation(scope: string, cohort: readonly PendingOwnMessage[], rows: readonly HistoryItem[], live: readonly OwnSendTailRow[]): OwnSendLocalRegion {
-  const saved = new Set(rows.flatMap(row => row.kind === "user" ? [row.node_id] : []));
-  const retire = cohort.filter(row => row.messageId !== undefined && saved.has(row.messageId));
-  const ownMessageIds = new Set(retire.map(row => row.messageId!));
-  const localRows = cohort.filter(row => !ownMessageIds.has(row.messageId ?? ""));
+  const saved = new Set(rows.flatMap(row => row.kind === "user" ? [row.provenance?.client_operation_id] : []));
+  const retire = cohort.filter(row => row.plainMessageSend === true && saved.has(row.operationId));
+  const retiring = new Set(retire.map(row => row.operationId));
+  const localRows = cohort.filter(row => !retiring.has(row.operationId));
   const tailRows = [...live, ...localRows.map(row => ({ kind: "own" as const, ordinal: row.clientOrdinal, row }))];
   return Object.freeze({ scope, cohort: Object.freeze(cohort), localRows: Object.freeze(localRows),
     retire: Object.freeze(retire), tailRows: Object.freeze(tailRows.sort((a, b) => a.ordinal - b.ordinal)) });

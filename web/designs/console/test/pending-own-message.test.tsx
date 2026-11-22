@@ -109,7 +109,7 @@ it("shows mixed partial prose as unavailable without a dead body action", async 
  }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
 });
 
-for(const savedBeforeAck of [false,true])it(`submitted message remains separate until exact acceptance and saved arrival: savedFirst=${savedBeforeAck}`,async()=>{
+for(const outcome of ['ack first','late ACK','late error','lost ACK'] as const)it(`saved operation retires the mounted send: ${outcome}`,async()=>{
  let rows:HistoryItem[]=[];
  const f=await fixtureModel({capabilities:['history.window'],configure(db){
   db.threads={t:summary('t')};db.details.t=details('t');db.history.t=[];
@@ -127,11 +127,28 @@ for(const savedBeforeAck of [false,true])it(`submitted message remains separate 
   expect(host.querySelector('[data-pending-own-message]')?.textContent).toContain('Own submitted message');
   expect(host.querySelectorAll('[data-pending-own-message]')).toHaveLength(1);
   const call=f.t.calls('message.send').at(-1)!;f.db.answered.add(call.id);
+  const savedBeforeAck=outcome!=='ack first';
+  if(outcome==='lost ACK'){
+   const owner=f.data.owner.peek();
+   await act(async()=>{f.t.drop();await flush();});
+   expect(f.model.sendState.peek().kind).toBe('unconfirmed');
+   await act(async()=>{f.t.open();f.t.push({t:'hello',bridge_version:'0.0.1',data_dir:'/temp/owner-a',owner});await settle(f.t,f.db);});
+  }
   if(savedBeforeAck){
-   rows=[{node_id:'canonical-own',kind:'user',selection:{ordinal:0},items:[{kind:'text',item_identity:'accepted',text:'Own submitted message',text_complete:true}],provenance:{sender:{kind:'human'}}}];f.db.history.t=rows;
+   await act(async()=>{f.t.push({t:'live',thread_id:'t',attempt_id:canonicalAttemptId(81),gap:false,deltas:[{offset:0,reasoning:false,text:'Answer in progress'}]});await flush();});
+   rows=[{node_id:'canonical-own',kind:'user',selection:{ordinal:0},items:[{kind:'text',item_identity:JSON.stringify(['canonical-own','/content/0']),text:'Own submitted message',text_complete:true}],provenance:{sender:{kind:'human'},client_operation_id:call.operation_id}}];f.db.history.t=rows;
    await act(async()=>{f.t.push({t:'changed',thread_ids:['t'],list:false});await settle(f.t,f.db);});
   }
-  await act(async()=>{f.t.ok(call.id,{message_id:'canonical-own',thread_id:'t'});await flush(8);});expect(f.model.sendState.peek().kind).toBe('idle');expect(composer.value).toBe('');
+  if(savedBeforeAck){
+   expect(f.model.pendingOwnMessage.peek()).toBeUndefined();
+   expect(f.model.sendState.peek().kind).toBe('idle');
+   expect(host.querySelector('[data-pending-own-message]')).toBeNull();
+  }
+  await act(async()=>{
+   if(outcome==='late error') f.t.ownerError(call.id,'busy');
+   else if(outcome!=='lost ACK') f.t.ok(call.id,{message_id:'canonical-own',thread_id:'t'});
+   await flush(8);
+  });expect(f.model.sendState.peek().kind).toBe('idle');expect(composer.value).toBe('');
   expect(host.querySelector('[data-pending-phase="sending"]')).toBeNull();
   if(savedBeforeAck){expect(host.querySelector('[data-pending-own-message]')).toBeNull();expect(host.querySelectorAll('[data-node="canonical-own"] .message-markdown')).toHaveLength(1);return;}
   expect(host.querySelector('[data-pending-phase="accepted"]')).not.toBeNull();
@@ -140,25 +157,26 @@ for(const savedBeforeAck of [false,true])it(`submitted message remains separate 
   expect(acceptedRow.querySelector('.message-sender > small.mono')?.textContent).toBe(f.model.t.value('composer.pending.waiting'));
   expect(acceptedRow.querySelector('.msg > small')).toBeNull();
   expect(acceptedRow.querySelector('.message-sender > small.mono')?.parentElement?.className).toBe('message-sender');
-  await act(async()=>{composer.value='Next unsent draft';composer.dispatchEvent(new Event('input',{bubbles:true}));});
-  expect(composer.value).toBe('Next unsent draft');
+  await act(async()=>{composer.value='Own submitted message';composer.dispatchEvent(new Event('input',{bubbles:true}));});
+  expect(composer.value).toBe('Own submitted message');
   await act(async()=>{composer.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));await flush(4);});
   expect(f.t.calls('message.send')).toHaveLength(2);expect(composer.value).toBe('');
-  expect(f.model.pendingOwnMessage.peek()).toMatchObject({text:'Next unsent draft',operationId:f.t.calls('message.send').at(-1)!.operation_id});
+  expect(f.model.pendingOwnMessage.peek()).toMatchObject({text:'Own submitted message',operationId:f.t.calls('message.send').at(-1)!.operation_id});
   await act(async()=>{composer.value='Third draft';composer.dispatchEvent(new Event('input',{bubbles:true}));});
-  const next=f.t.calls('message.send').at(-1)!;f.db.answered.add(next.id);
+  const next=f.t.calls('message.send').at(-1)!;expect(next.operation_id).not.toBe(call.operation_id);f.db.answered.add(next.id);
   await act(async()=>{f.t.ok(next.id,{message_id:'second-canonical',thread_id:'t'});await flush(8);});
   expect(f.model.acceptedOwnMessages.peek()).toHaveLength(2);
   expect(composer.value).toBe('Third draft');
-  const equalText:HistoryItem={node_id:'wrong-node',kind:'user',items:[{item_identity:'wrong',kind:'text',text:'Own submitted message',text_complete:true}],provenance:{sender:{kind:'human'}}};
-  rows=[{...equalText,selection:{ordinal:0}}];f.db.history.t=rows;
+  const equalText:HistoryItem={node_id:'canonical-own',kind:'user',items:[{item_identity:'wrong',kind:'text',text:'Own submitted message',text_complete:true}],provenance:{sender:{kind:'human'}}};
+  rows=[{...equalText,selection:{ordinal:0},provenance:{client_operation_id:next.operation_id+'-unrelated'}}];f.db.history.t=rows;
   await act(async()=>{f.t.push({t:'changed',thread_ids:['t'],list:false});await settle(f.t,f.db);});
-  expect(host.querySelector('[data-pending-own-message]')).not.toBeNull();
-  rows=[{...equalText,node_id:'canonical-own',selection:{ordinal:0}}];f.db.history.t=rows;
+  expect(host.querySelectorAll('[data-pending-own-message]')).toHaveLength(2);
+  expect(f.model.acceptedOwnMessages.peek().map(row=>row.operationId)).toEqual([call.operation_id,next.operation_id]);
+  rows=[{...equalText,node_id:'canonical-own',selection:{ordinal:0},provenance:{client_operation_id:call.operation_id}}];f.db.history.t=rows;
   await act(async()=>{f.t.push({t:'changed',thread_ids:['t'],list:false});await settle(f.t,f.db);});
-  expect([...host.querySelectorAll('[data-pending-own-message]')].map(row=>row.textContent)).toEqual([expect.stringContaining('Next unsent draft')]);
+  expect([...host.querySelectorAll('[data-pending-own-message]')].map(row=>row.textContent)).toEqual([expect.stringContaining('Own submitted message')]);
   expect(host.querySelectorAll('[data-node="canonical-own"] .message-markdown')).toHaveLength(1);
-  rows=[...rows,{...equalText,node_id:'second-canonical',selection:{ordinal:1},items:[{kind:'text',item_identity:'second',text:'Next unsent draft',text_complete:true}]}];f.db.history.t=rows;
+  rows=[...rows,{...equalText,node_id:'second-canonical',selection:{ordinal:1},provenance:{client_operation_id:next.operation_id},items:[{kind:'text',item_identity:'second',text:'Own submitted message',text_complete:true}]}];f.db.history.t=rows;
   await act(async()=>{f.t.push({t:'changed',thread_ids:['t'],list:false});await settle(f.t,f.db);});
   expect(host.querySelector('[data-pending-own-message]')).toBeNull();
   expect(host.querySelectorAll('[data-node="canonical-own"] .message-markdown')).toHaveLength(1);
@@ -261,7 +279,7 @@ it('real edits, even restored text, remain a different generation; composing Ent
 for (const renderMode of ['app','ordered'] as const) it(`actual own cohort differential: ${renderMode}`,async()=>{
  const f=await fixtureModel({capabilities:['history.window'],configure(db){db.threads={t:summary('t')};db.details.t=details('t');db.history.t=[];const base=db.answer.bind(db);db.answer=call=>call.command==='history.window'?{ok:true,result:{thread_id:'t',revision:2,total:db.history.t?.length??0,items:db.history.t??[]}}:base(call);}});
  const host=document.createElement('div');document.body.append(host);const context:DesignContext={model:f.model,prefs:signal(loadPrefs({read:()=>null,write:()=>{}},[{name:'console',themes:[{name:'light'}]}])),setPrefs:()=>{},designs:[],submitToken:async()=>false};
- const node=(id:string,text?:string,complete?:boolean):HistoryItem=>({node_id:id,kind:'user',selection:{ordinal:id==='a'?0:1},items:text===undefined?[]:[{kind:'text',item_identity:id,text,text_complete:complete??false}],provenance:{sender:{kind:'human'}}});
+ const node=(id:string,text?:string,complete?:boolean):HistoryItem=>({node_id:id,kind:'user',selection:{ordinal:id==='a'?0:1},items:text===undefined?[]:[{kind:'text',item_identity:id,text,text_complete:complete??false}],provenance:{sender:{kind:'human'},client_operation_id:f.t.calls('message.send')[id==='a'?0:1]?.operation_id}});
  const sendAndAck=async(text:string,id:string)=>{const area=host.querySelector<HTMLTextAreaElement>('textarea');if(renderMode==='app'){area!.value=text;area!.dispatchEvent(new Event('input',{bubbles:true}));area!.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));await flush();}else{const sent=f.model.send(text);await flush();expect(f.model.pendingOwnMessage.peek()?.text).toBe(text);void sent;}const call=f.t.calls('message.send').at(-1)!;f.db.answered.add(call.id);await act(async()=>{f.t.ok(call.id,{message_id:id,thread_id:'t'});await flush(8);});};
  const paint=async()=>{f.t.push({t:'changed',thread_ids:['t'],list:false});await settle(f.t,f.db);await flush(12);};
  try{
@@ -278,7 +296,7 @@ it('actual committed local region rejects stale cohort retirement and retires on
   const accept=async(text:string,id:string)=>{const sent=f.model.send(text);await flush();const call=f.t.calls('message.send').at(-1)!;f.db.answered.add(call.id);f.t.ok(call.id,{message_id:id,thread_id:'lead'});expect(await sent).toBe(true);};
   await accept('A','a');
   const win=f.model.longReader.value!,old=win.acceptedView.peek();
-  const node=(id:string,ordinal:number):HistoryItem=>({node_id:id,kind:'user',selection:{ordinal},items:[{kind:'text',item_identity:id,text:id,text_complete:true}],provenance:{sender:{kind:'human'}}});
+  const node=(id:string,ordinal:number):HistoryItem=>({node_id:id,kind:'user',selection:{ordinal},items:[{kind:'text',item_identity:id,text:id,text_complete:true}],provenance:{sender:{kind:'human'},client_operation_id:f.t.calls('message.send')[id==='a'?0:1]?.operation_id}});
   f.db.history.lead=[node('a',0)];let newer:Promise<boolean>|undefined,reentered=false;
   const stop=win.acceptedView.subscribe(ref=>{
    expect(win.acceptedView.isCurrent(ref)).toBe(true);
@@ -317,7 +335,7 @@ for(const withPrefix of [false,true])for(const ids of [['2'],['2','3','4','5']])
   const ownTexts=ids.map(id=>`Diagnostic own ${id}`),expectedBefore=[...prefixTexts,'Diagnostic assistant receipt response',...ownTexts];
   f.db.history.t=[...prefixRows,assistantRow];revision++;await act(async()=>{f.t.push({t:'changed',thread_ids:['t'],list:false});await settle(f.t,f.db);await flush(12);});
   expect(host.querySelectorAll('[data-pending-own-message]')).toHaveLength(ids.length);expect([...host.querySelectorAll('.msg')].map(row=>row.querySelector('.message-markdown')?.textContent?.trim())).toEqual(expectedBefore);const assistant=host.querySelector('[data-node="assistant-arrival"]');
-  const savedOwnRows=ids.map((id,index)=>({node_id:`own-${id}`,kind:'user' as const,selection:{ordinal:prefixRows.length+1+index},items:[{kind:'text' as const,item_identity:`body-${id}`,text:`Diagnostic own ${id}`,text_complete:true}]}));
+  const savedOwnRows=ids.map((id,index)=>({node_id:`own-${id}`,kind:'user' as const,selection:{ordinal:prefixRows.length+1+index},provenance:{client_operation_id:f.t.calls('message.send')[index]!.operation_id},items:[{kind:'text' as const,item_identity:`body-${id}`,text:`Diagnostic own ${id}`,text_complete:true}]}));
   f.db.history.t=[...prefixRows,assistantRow,...savedOwnRows];revision+=5;await act(async()=>{f.t.push({t:'changed',thread_ids:['t'],list:false});await settle(f.t,f.db);await flush(12);});
   expect([...host.querySelectorAll('.msg')].map(row=>row.querySelector('.message-markdown')?.textContent?.trim())).toEqual(expectedBefore);expect(host.querySelectorAll('[data-pending-own-message]')).toHaveLength(0);expect(f.model.acceptedOwnMessages.peek()).toHaveLength(0);expect(host.querySelector('[data-node="assistant-arrival"]')).toBe(assistant);
  }finally{render(null,host);host.remove();f.model.dispose();f.data.stop();}
@@ -536,10 +554,11 @@ it("mounted click joins the held old cursor read", async () => {
 
 
 async function witnessOwnSendPublication(scenario: 'streaming' | 'two sends' | 'held' | 'multi-item' | 'partial cut' | 'deferred') {
+ const operationIds = new Map<string,string>();
  const saved = (id: string, ordinal: number, attempt?: ReturnType<typeof canonicalAttemptId>): HistoryItem => ({ node_id: id,
   kind: attempt ? 'assistant_response' : 'user', selection: {ordinal},
   items: [{kind:'text', item_identity:JSON.stringify([id, '/content/0']), text:id, text_complete:true}],
-  provenance: attempt ? {attempt_id:attempt, sender:{kind:'assistant'}} : {sender:{kind:'human'}} });
+  provenance: attempt ? {attempt_id:attempt, sender:{kind:'assistant'}} : {sender:{kind:'human'},...(operationIds.has(id)?{client_operation_id:operationIds.get(id)!}:{})} });
  const scheduled: (() => void)[] = [];
  const history = [saved('H', 0)];
  const f = await fixtureConversation({nodes:history, schedule: fn => scheduled.push(fn), lang:'ja'});
@@ -556,6 +575,7 @@ async function witnessOwnSendPublication(scenario: 'streaming' | 'two sends' | '
   const provisional = pendingRow(id);
   expect(provisional?.textContent).toContain('送信待ち');
   const call = f.t.calls('message.send').at(-1)!;
+  operationIds.set(id,call.operation_id!);
   await act(async () => {
    f.db.answered.add(call.id); f.t.ok(call.id,{message_id:id,thread_id:'lead',delivery_status:held?'held':'accepted'});
    expect(await promise).toBe(true); await flush(8);

@@ -32,7 +32,7 @@ function validToolDescriptor(value: unknown, result: boolean): value is Record<s
 export const decodeHistoryWindow: (v: unknown) => Decoded<HistoryWindowResult> = (v) => {
   const bad = (reason: string): { ok: false; reason: string } => ({ ok: false, reason });
   if (!isObject(v) || !Array.isArray(v.items) || v.items.length > 200 || !Number.isSafeInteger(v.total) || (v.total as number) < 0 || !(typeof v.revision === 'string' || typeof v.revision === 'number')) return bad('invalid history.window envelope');
-  if (v.items.some(node => isObject(node) && !validHistoryProvenance(node.provenance))) return bad('invalid history provenance attempt_id');
+  if (v.items.some(node => isObject(node) && !validHistoryProvenance(node.provenance,node.kind))) return bad('invalid history provenance identity');
   if (v.items.some(node => isObject(node) && Object.hasOwn(node, 'spill_tools') && !validSpillTools(node.spill_tools))) return bad('invalid public spill identities');
   if (!v.items.some(node => isObject(node) && (Object.hasOwn(node, 'items') || Object.hasOwn(node, 'items_unavailable_reason')))) return { ok: true, value: {...v,items:(v.items as unknown as HistoryItem[]).map(sanitizeMessageRelation)} as unknown as HistoryWindowResult };
   let bytes = 0; let deferred = false; let previous = -1;

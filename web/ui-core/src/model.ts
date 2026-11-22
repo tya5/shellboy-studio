@@ -350,8 +350,7 @@ export class AppModel {
   readonly pendingOwnMessage: Signal<PendingOwnMessage | undefined> = signal(undefined);
   readonly acceptedOwnMessages: Signal<readonly PendingOwnMessage[]> = signal([]);
   readonly ownSendCapacityReason: Signal<boolean> = signal(false);
-  private pendingOwnRetryCurrent: (() => boolean) | undefined;
-  private pendingOwnCurrent: (() => boolean) | undefined;
+  private ownSendCurrent: (() => boolean) | undefined;
   readonly sendState: Signal<SendState> = signal({ kind: "idle" });
   readonly actionError: Signal<ActionNotice | undefined> = signal(undefined);
   readonly appRequestState: Signal<{ kind: "idle" | "sending" | "failed" | "unconfirmed"; message?: string }> = signal({ kind: "idle" });
@@ -585,8 +584,8 @@ export class AppModel {
     }));
     this.disposers.push(effect(() => {
       this.route.value; this.handle.value; this.data.owner.value;
-      if (this.acceptedOwnMessages.peek().length && !this.pendingOwnRetryCurrent?.()) this.acceptedOwnMessages.value = [];
-      if (this.pendingOwnMessage.peek() && !this.pendingOwnRetryCurrent?.()) {
+      if (this.acceptedOwnMessages.peek().length && !this.ownSendCurrent?.()) this.acceptedOwnMessages.value = [];
+      if (this.pendingOwnMessage.peek() && !this.ownSendCurrent?.()) {
         this.pendingOwnMessage.value = undefined; this.ownSendCapacityReason.value = false; this.sendState.value = {kind:"idle"};
       }
     }));
@@ -801,7 +800,8 @@ export class AppModel {
       this.readerTick = h.historyTick.peek();
       const reader = new ConversationWindow({ read: (a, c) => h.readWindow(a, c) });
       reader.bindCurrentThread(h);
-      reader.bindConversationInput(snapshot => this.captureWindowConversation(reader, h, snapshot));
+      reader.bindConversationInput(snapshot => this.captureWindowConversation(reader, h, snapshot),
+        snapshot => this.applyCommittedOwnRegion(reader, h, snapshot));
       this.longReader.value = reader;
       reader.refreshConversationInput(reader.acceptedView.peek());
     }
@@ -826,14 +826,14 @@ export class AppModel {
     const input = captureConversationInput(snapshot, { scope, threadId: handle.threadId, records, work: capturedWork, current });
     const accepted = this.acceptedOwnMessages.value;
     const pending = this.pendingOwnMessage.value;
-    const retryCurrent = this.pendingOwnRetryCurrent;
-    const eligible = !!retryCurrent?.();
+    const sendCurrent = this.ownSendCurrent;
+    const eligible = !!sendCurrent?.();
     const cohortAccepted = eligible ? accepted.filter(row => row.scope === scope && row.threadId === handle.threadId) : [];
     const cohortPending = eligible && pending?.scope === scope && pending.threadId === handle.threadId ? pending : undefined;
     const localRows = [...cohortAccepted, ...(cohortPending ? [cohortPending] : [])];
     const decision = ownSendPresentation(scope, current() ? localRows : [], snapshot.rows, input.liveTail ?? []);
     return { ...input, identity: createConversationIdentity(input.identity, { accepted: accepted as object, pending: pending as object | undefined,
-      retryCurrent: retryCurrent as (() => boolean) | undefined, eligible }),
+      sendCurrent, eligible }),
       decision: { cohortVersion: { accepted: cohortAccepted, pending: cohortPending }, localRegion: decision },
       isCurrent: () => current() && handle.handoff.peek() === input.identity.records
         && (handle.work.peek().value === input.identity.work.source || handle.work.peek().value === undefined && input.identity.work.facts.length === 0) };
@@ -843,7 +843,6 @@ export class AppModel {
     const snapshot = reader.acceptedView.peek();
     if (!reader.acceptedView.isCurrent(snapshot)) return;
     reader.refreshConversationInput(snapshot);
-    this.applyCommittedOwnRegion(reader, handle, reader.acceptedView.peek());
     const currentSnapshot = reader.acceptedView.peek();
     const tailComplete = currentSnapshot.total === 0 || currentSnapshot.range?.last === currentSnapshot.total - 1;
     const candidate = tailComplete ? [...currentSnapshot.rows].reverse().find((node) => node.kind === "assistant_response") : undefined;
@@ -1130,7 +1129,7 @@ export class AppModel {
     const state = this.sendState.value;
     const threadId = this.selectedId.value;
     const pending = this.pendingOwnMessage.peek();
-    if (!pending || (original && original!==pending) || !this.pendingOwnRetryCurrent?.() || threadId !== pending.threadId || !["failed", "unconfirmed"].includes(pending.phase)) return false;
+    if (!pending || (original && original!==pending) || !this.ownSendCurrent?.() || threadId !== pending.threadId || !["failed", "unconfirmed"].includes(pending.phase)) return false;
     return this.deliver(threadId, pending.text, pending.operationId);
   }
 
@@ -1154,22 +1153,31 @@ export class AppModel {
     const accepted=this.acceptedOwnMessages.value, pending=this.pendingOwnMessage.value;
     return [...accepted,...(pending?[pending]:[])].filter(row=>row.scope===scope);
   }
-  pendingOwnIsCurrent(): boolean { return !!this.pendingOwnRetryCurrent?.(); }
+  pendingOwnIsCurrent(): boolean { return !!this.ownSendCurrent?.(); }
   private applyCommittedOwnRegion(reader: ConversationWindow, handle: ThreadHandle, snapshot: WindowAcceptedSnapshot): void {
     const plan = snapshot.displayPlan;
     const current = () => this.longReader.peek() === reader && this.handle.peek() === handle
       && reader.acceptedView.isCurrent(snapshot) && plan?.capability === reader.acceptedView.currentCapability;
     if (!plan || !current()) return;
     const region = plan.localRegion;
-    if (!region.retire.length || !this.pendingOwnRetryCurrent?.()) return;
+    if (!region.retire.length || !this.ownSendCurrent?.()) return;
     const rows = this.ownMutationRows(region.scope);
     const sameRow = (a: PendingOwnMessage, b: PendingOwnMessage) => a.operationId === b.operationId
       && a.threadId === b.threadId && a.scope === b.scope && a.messageId === b.messageId
       && a.phase === b.phase && a.plainMessageSend === b.plainMessageSend;
     if (rows.length !== region.cohort.length || rows.some((row, index) => !sameRow(row, region.cohort[index]!)) || !current()) return;
     const retiring = new Set(region.retire.map(row => row.operationId));
-    const previous = this.acceptedOwnMessages.peek(), kept = previous.filter(row => !retiring.has(row.operationId));
-    if (kept.length !== previous.length) batch(() => { this.acceptedOwnMessages.value = kept; this.ownSendCapacityReason.value = false; });
+    const previous = this.acceptedOwnMessages.peek();
+    const kept = previous.filter(row => !retiring.has(row.operationId));
+    const pending = this.pendingOwnMessage.peek();
+    batch(() => {
+      if (kept.length !== previous.length) this.acceptedOwnMessages.value = kept;
+      if (pending && retiring.has(pending.operationId)) {
+        this.pendingOwnMessage.value = undefined;
+        this.sendState.value = { kind: "idle" };
+      }
+      this.ownSendCapacityReason.value = false;
+    });
   }
 
   private async deliver(threadId: string, text: string, operationId = this.ops.mutationId(), onReserved?: () => void): Promise<boolean> {
@@ -1185,15 +1193,12 @@ export class AppModel {
     this.ownSendCapacityReason.value=false;
     const owner = this.data.owner.peek(), scope = "history";
     if (owner.state !== "connected") return false;
-    const current = () => this.handle.peek() === handle && this.route.peek() === route && this.data.owner.peek() === owner;
-    // A read-preview lifetime may end on disconnect; the mutation identity survives it.
-    const retryCurrent = () => {
+    const current = () => {
       const now = this.data.owner.peek();
       return this.handle.peek() === handle && this.route.peek() === route &&
         (now.state !== "connected" || now.info.instance_id === owner.info.instance_id);
     };
-    this.pendingOwnCurrent = current;
-    this.pendingOwnRetryCurrent = retryCurrent;
+    this.ownSendCurrent = current;
     this.pendingOwnMessage.value = {threadId,scope,operationId,text,phase:"sending",plainMessageSend:true,clientOrdinal:old?.clientOrdinal ?? this.nextTailOrdinal()};
     this.sendState.value = { kind: "sending" };
     const originalPlainOperation=this.pendingOwnMessage.peek();
@@ -1201,7 +1206,7 @@ export class AppModel {
       // A UI observer cannot orphan an already-owned send by throwing.
       try { onReserved?.(); } catch { /* The pending operation still owns the text. */ }
     }
-    if(!current()||!originalPlainOperation||this.pendingOwnMessage.peek()!==originalPlainOperation||this.sendState.peek().kind!=="sending"){
+    if(!current()||this.data.owner.peek().state!=="connected"||!originalPlainOperation||this.pendingOwnMessage.peek()!==originalPlainOperation||this.sendState.peek().kind!=="sending"){
       if(this.pendingOwnMessage.peek()===originalPlainOperation){
         this.pendingOwnMessage.value={...originalPlainOperation!,phase:"failed"};
         this.sendState.value={kind:"failed",message:"Send reservation is no longer current"};
@@ -1209,7 +1214,7 @@ export class AppModel {
       return false;
     }
     const out = await this.ops.messageSend({ thread_id: threadId, text }, operationId);
-    if ((!current() && !(!out.ok && out.error.kind === "unconfirmed" && retryCurrent())) || this.pendingOwnMessage.peek()?.operationId !== operationId) return false;
+    if (!current() || this.pendingOwnMessage.peek() !== originalPlainOperation) return false;
     if (out.ok && out.value.thread_id === threadId) {
       const accepted = originalPlainOperation;
       batch(() => {
@@ -1220,12 +1225,12 @@ export class AppModel {
       return true;
     }
     if (out.ok) {
-      this.pendingOwnMessage.value = {threadId,scope,operationId,text,phase:"failed",clientOrdinal:originalPlainOperation.clientOrdinal};
+      this.pendingOwnMessage.value = {...originalPlainOperation,phase:"failed"};
       this.sendState.value = {kind:"failed",message:"Message acceptance belongs to a different Thread"};
       return false;
     }
     const uncertain = out.error.kind === "unconfirmed";
-    this.pendingOwnMessage.value = {threadId,scope,operationId,text,phase:uncertain?"unconfirmed":"failed",clientOrdinal:originalPlainOperation.clientOrdinal};
+    this.pendingOwnMessage.value = {...originalPlainOperation,phase:uncertain?"unconfirmed":"failed"};
     this.sendState.value = uncertain
       ? { kind: "unconfirmed", operationId, text }
       : { kind: "failed", message: errorMessage(out.error) };
