@@ -399,7 +399,7 @@ describe("Conversation", () => {
     await act(async () => { await settle(t, db); });
     expect(t.calls("usage.get").map(call => call.args)).toEqual([{ thread_id: "lead" }]);
     expect(info()).toContain("75%");
-    await act(async () => { t.push({ t: "changed", thread_ids: ["lead"], list: false }); await settle(t, db); });
+    await act(async () => { t.push({ t: "changed", thread_ids: ["lead"], list: false, config_changed: false }); await settle(t, db); });
     expect(t.calls("usage.get")).toHaveLength(2);
     reveal(false);
     expect(info()).not.toContain("75%");
