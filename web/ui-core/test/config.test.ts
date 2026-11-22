@@ -35,7 +35,7 @@ async function open(answer?: (args: Record<string, unknown>) => unknown) {
     }
     return before(c);
   };
-  made.model.config.ensure();
+  made.t.push({ t: "changed", thread_ids: [], list: false, config_changed: true });
   await settle(made.t, made.db);
   return { ...made, setRead: (r: ReturnType<typeof got>) => (read = r) };
 }
@@ -69,6 +69,35 @@ describe("config editing", () => {
     t.push({ t: "changed", thread_ids: [], list: false, config_changed: true });
     await settle(t, db);
     expect(t.calls("config.get")).toHaveLength(count + 1);
+  });
+
+  it("does not cancel an active read on section change and coalesces mark and resync", async () => {
+    const { model, t, db } = await open();
+    const before = t.calls("config.get").length;
+    const cancels = t.cancels().length;
+    t.push({ t: "changed", thread_ids: [], list: false, config_changed: true });
+    const held = t.calls("config.get").at(-1)!;
+    model.applyRoute({ view: "settings", section: "connections" });
+    t.push({ t: "resync" });
+    t.push({ t: "changed", thread_ids: [], list: false, config_changed: true });
+    expect(t.calls("config.get")).toHaveLength(before + 1);
+    expect(t.cancels().slice(cancels)).not.toContain(held.id);
+    await settle(t, db);
+    expect(t.calls("config.get")).toHaveLength(before + 2);
+    model.applyRoute({ view: "settings", section: "general" });
+    await settle(t, db);
+    expect(t.calls("config.get")).toHaveLength(before + 2);
+  });
+
+  it("a resync settles an acknowledged save even when the owner publishes the old hash", async () => {
+    const { model, t, db } = await open(() => ({ ok: true, result: { written: true, content_hash: "ours" } }));
+    await Promise.all([model.config.saveField(["default_model"], "model-b", "text"), settle(t, db)]);
+    expect(model.config.pendingField.peek()).toBe("default_model");
+    t.push({ t: "resync" });
+    await settle(t, db);
+    expect(model.config.pendingField.peek()).toBeUndefined();
+    expect(model.config.changedElsewhere.peek()).toBe("default_model");
+    expect(model.config.lastSaved.peek()).toBeUndefined();
   });
 
   it("parses each committed value without retaining a draft", async () => {
@@ -128,7 +157,7 @@ describe("config editing", () => {
     const made = await open();
     const before = made.db.answer;
     made.db.answer = (c) => c.command === "config.get" ? { ok: false, code: "invalid_argument", message: "not available" } : before(c);
-    void made.model.config.refresh();
+    void made.model.config.configChanged();
     await settle(made.t, made.db);
     expect(made.model.config.read.value.error).toBeDefined();
     void made.model.config.saveField(["default_model"], "new", "text");
@@ -139,7 +168,7 @@ describe("config editing", () => {
   it("leaving Settings cancels the read", async () => {
     const { model, t, db } = await open();
     const c = model.config;
-    void c.refresh();
+    void c.configChanged();
     await Promise.resolve();
     model.applyRoute({ view: "monitor" });
     await settle(t, db).catch(() => undefined);
@@ -176,8 +205,6 @@ describe("on-the-spot config settings", () => {
     const editor = model.config;
     void editor.saveField(["default_model"], "model-b", "text");
     await settle(t, db);
-    void editor.configChanged();
-    await settle(t, db);
     expect(editor.pendingField.peek()).toBe("default_model");
     setRead(got({ file: { ...got().file, content_hash: "theirs", values: { ...values, default_model: "their-model" } } }));
     void editor.configChanged();
@@ -200,14 +227,17 @@ describe("on-the-spot config settings", () => {
     expect(t.calls("config.set")).toHaveLength(1);
   });
 
-  it("keeps a refusal reason on its field and rereads Core's value", async () => {
+  it("keeps a refusal reason and the last published owner value without a reread", async () => {
     const { model, t, db } = await open(() => ({ ok: false, code: "invalid_argument", message: "blocked by Core policy", details: { reason: "credential_value_refused", change_index: 0, written: false } }));
     const editor = model.config as typeof model.config & {
       saveField(path: readonly string[], raw: string, kind: "text"): Promise<void>;
       fieldError: { field: string; reason: string } | undefined;
     };
+    const reads = t.calls("config.get").length;
     void editor.saveField(["default_model"], "not-allowed", "text");
     await settle(t, db);
+    expect(t.calls("config.get")).toHaveLength(reads);
+    expect(editor.pendingField.peek()).toBeUndefined();
     expect(editor.fieldError.peek()).toEqual({ field: "default_model", reason: "blocked by Core policy" });
     expect(model.config.read.value.value?.file.values?.default_model).toBe("model-a");
   });

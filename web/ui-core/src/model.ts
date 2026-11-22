@@ -201,7 +201,6 @@ export class AppModel {
       this.pickerSession.value = session;
       this.modelPicker.value = { open: true, thread: d.thread_id, connection: d.connection, model: d.model, ...initial, maxTokensState: settings.maxTokensState, clearMaxTokens: false, models: [], loading: false, saving: false };
     });
-    if (this.data.capabilities.peek().includes(CAPABILITY_CONFIG)) this.config.ensure();
     this.chooseModelConnection(d.connection);
   }
   editThreadOutputLimit(value: string): void {
@@ -521,6 +520,12 @@ export class AppModel {
       if (owner.state === "connected") return "connected";
       return owner.state === "unreachable" ? "ownerDown" : "connecting";
     });
+    this.disposers.push(effect(() => {
+      if (this.route.value.view !== "settings") untracked(() => this.config.leave());
+      else if (this.connection.value === "connected" && this.data.capabilities.value.includes(CAPABILITY_CONFIG)) {
+        untracked(() => this.config.ensure());
+      }
+    }));
     this.selectedId = computed(() => {
       const r = this.route.value;
       return r.threadId ?? this.lastThread.value ?? this.rows.value[0]?.summary.thread_id;
@@ -628,7 +633,6 @@ export class AppModel {
         if (route.view !== "analytics" && route.view !== "settings") this.insights.showing(undefined);
         if (route.view !== "branches") this.branches.leave();
         if (route.view !== "threads") this.org.leave();
-        if (route.view !== "settings") this.config.leave();
         if (route.view !== "setup") {
           this.setup.leave();
           this.embedding.leave();
@@ -638,7 +642,6 @@ export class AppModel {
         if (route.view === "analytics") this.insights.ensureAnalytics(analyticsSection(route), threadId);
         else if (route.view === "settings") {
           this.insights.ensureSettings(settingsSection(route), threadId);
-          if (this.data.capabilities.value.includes(CAPABILITY_CONFIG)) this.config.ensure();
         }
       }),
     );
@@ -736,6 +739,7 @@ export class AppModel {
   }
 
   dispose(): void {
+    this.config.leave();
     this.attachmentSection.close();
     this.panelOperations.value = new Map();
     this.panelDetail.value = undefined;

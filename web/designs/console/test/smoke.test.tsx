@@ -932,7 +932,7 @@ describe("Threads", () => {
       return before(call);
     };
     const el = draw(made.model);
-    act(() => made.model.config.ensure());
+    act(() => made.t.push({ t: "changed", thread_ids: [], list: false, config_changed: true }));
     await act(async () => { await settle(made.t, made.db); });
     const high = [...el.querySelectorAll<HTMLButtonElement>("button")].find((button) => text(button) === "high")!;
     act(() => high.click());
@@ -1029,7 +1029,7 @@ describe("Threads", () => {
       return before(c);
     };
     const el = draw(made.model);
-    act(() => made.model.config.ensure());
+    act(() => made.t.push({ t: "changed", thread_ids: [], list: false, config_changed: true }));
     await act(async () => { await settle(made.t, made.db); });
     const button = (name: string) => [...el.querySelectorAll<HTMLButtonElement>(".subview-main button")].find((b) => text(b) === name)!;
     act(() => button("proxy / old-model").click());
