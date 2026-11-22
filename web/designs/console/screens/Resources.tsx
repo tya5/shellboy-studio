@@ -18,14 +18,14 @@ function CacheMeter({ t, c }: { t: Translate; c: CacheFact }) {
   return <Meter prose={used === undefined} label={name} value={c.retained} limit={c.limit} text={text} aria={t("res.cacheAria", { name, used: c.retained ?? "", limit: c.limit ?? "" })} />;
 }
 
-function Head({ t, title, sub, loading, onRefresh }: { t: Translate; title: string; sub: string; loading: boolean; onRefresh: () => void }) {
+function Head({ t, title, sub, loading, onRefresh, retry = false }: { t: Translate; title: string; sub: string; loading: boolean; onRefresh: () => void; retry?: boolean }) {
   return (
     <div class="head">
       <div class="pagehead">
         <h1>{title}</h1>
         <div class="muted">{sub}</div>
       </div>
-      <Button disabled={loading} onClick={onRefresh}>{loading ? t("common.loading") : t("common.refresh")}</Button>
+      <Button disabled={loading} onClick={onRefresh}>{loading ? t("common.loading") : t(retry ? "convo.retryLoad" : "common.refresh")}</Button>
     </div>
   );
 }
@@ -97,10 +97,11 @@ export function MemoryPane({ model }: { model: AppModel }) {
   const bridge = i.bridge.value;
   const missing = t("common.notReported");
   const readIssue = memoryReadIssue(memory.error);
-  const memoryFailure = readIssue === "unsupported" ? t("res.memory.unsupported") : readIssue === "invalid_response" ? t("res.memory.invalid_response") : readIssue === "disconnected" ? t("res.memory.disconnected") : memory.error ? t("res.memory.readFailed") : undefined;
+  const ownerBusy = readIssue === "owner_busy";
+  const memoryFailure = ownerBusy ? t("res.memory.ownerBusy") : readIssue === "unsupported" ? t("res.memory.unsupported") : readIssue === "invalid_response" ? t("res.memory.invalid_response") : readIssue === "disconnected" ? t("res.memory.disconnected") : memory.error ? t("res.memory.readFailed") : undefined;
   return (
     <>
-      <Head t={t} title={t("ana.section.memory")} sub={t("ana.sub.memory")} loading={memory.loading || bridge.loading} onRefresh={() => { i.refreshRead("memory"); i.refreshRead("bridge"); }} />
+      <Head t={t} title={t("ana.section.memory")} sub={t("ana.sub.memory")} loading={memory.loading || (!ownerBusy && bridge.loading)} retry={ownerBusy} onRefresh={() => { if (!i.memory.peek().loading) i.refreshRead("memory"); if (!ownerBusy) i.refreshRead("bridge"); }} />
       <Section
         title={t("res.memory")}
         sub={memory.value?.observedAt ? t("res.memorySub", { at: formatClock(memory.value.observedAt, true) ?? "" }) : undefined}

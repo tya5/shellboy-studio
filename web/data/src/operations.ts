@@ -234,13 +234,14 @@ const decodeMemoryStatus: Decoder<MemoryFacts> = value => {
   } };
 };
 
-export type MemoryReadIssue = "unsupported" | "invalid_response" | "disconnected";
+export type MemoryReadIssue = "unsupported" | "invalid_response" | "disconnected" | "owner_busy";
 export function memoryReadIssue(error: import("./errors").OpError | undefined): MemoryReadIssue | undefined {
   if (lostConnection(error) || (error?.kind === "owner" && error.code === "app_not_running")) return "disconnected";
   if (!error) return undefined;
   if (error.kind === "invalid_response") return "invalid_response";
   if (error.kind !== "owner") return undefined;
   const details = isObject(error.details) ? error.details : undefined;
+  if (error.code === "invalid_state" && details?.phase === "admission" && details.request_may_have_been_applied === false) return "owner_busy";
   // Protocol-6 rejects an unsupported memory field as typed invalid_argument, not a made-up operation code.
   if (error.code === "invalid_argument" && details?.reason === "unknown_field" && details.name === "memory" && details.command === "status") return "unsupported";
   return undefined;

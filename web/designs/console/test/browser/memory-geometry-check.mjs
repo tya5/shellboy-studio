@@ -32,9 +32,9 @@ try {
   const cmd=(method,params={})=>new Promise((resolve,reject)=>{const i=++id;waiters.set(i,{resolve,reject});ws.send(JSON.stringify({id:i,method,params}))});
   const evaluate=async(expression)=>{const r=await cmd('Runtime.evaluate',{expression,returnByValue:true,awaitPromise:true});if(r.exceptionDetails)throw Error(JSON.stringify(r.exceptionDetails));return r.result.value;};
   await cmd('Runtime.enable'); await cmd('Page.enable');
-  for(const width of [1280,390]) for(const lang of ['en','ja']) for(const state of ['success','memory-error']){
+  for(const width of [1280,390]) for(const lang of ['en','ja']) for(const state of ['success','memory-error','memory-busy']){
     await cmd('Emulation.setDeviceMetricsOverride',{width,height:900,deviceScaleFactor:1,mobile:width===390});
-    const navigation=await cmd('Page.navigate',{url:`http://${fixture.host}:${fixture.port}/?view=memory&lang=${lang}${state==='memory-error'?'&state=memory-error':''}`}); if(navigation.errorText) throw Error(`navigation failed ${width}/${lang}: ${navigation.errorText}`);
+    const navigation=await cmd('Page.navigate',{url:`http://${fixture.host}:${fixture.port}/?view=memory&lang=${lang}${state==='success'?'':`&state=${state}`}`}); if(navigation.errorText) throw Error(`navigation failed ${width}/${lang}: ${navigation.errorText}`);
     let ready=false;for(let i=0;i<100;i++){await new Promise(r=>setTimeout(r,100));if(await evaluate(`document.documentElement.dataset.memoryFixture===${JSON.stringify(lang)} && !!document.querySelector('[data-memory-cache-cards] .meter')`)){ready=true;break;}}
     if(!ready)throw Error(`MemoryPane did not render ${width}/${lang}`);
     const result=await evaluate(`(()=>{const section=document.querySelector('[data-memory-cache-cards]').closest('section');if(!section)throw Error('memory section missing');const cards=[...section.querySelectorAll('.meter')],root=section.getBoundingClientRect(),rects=cards.map(e=>{const r=e.getBoundingClientRect();return {left:r.left,right:r.right,top:r.top,bottom:r.bottom};});return {cardCount:cards.length,text:section.textContent??'',overflow:document.documentElement.scrollWidth>innerWidth,root:{left:root.left,right:root.right},rects}})()`);
@@ -42,6 +42,7 @@ try {
     if(result.cardCount!==(state==='success'?4:1)||result.overflow||result.root.left<0||result.root.right>width||overlap)throw Error(`memory geometry failed ${width}/${lang}: ${JSON.stringify(result)}`);
     if(state==='success'&&(!result.text.includes(lang==='ja'?'報告なし':'Not reported')||!result.text.includes('56 KiB')||result.text.includes('UI cache owner is not available')))throw Error(`memory facts failed ${width}/${lang}: ${JSON.stringify(result.text)}`);
     if(state==='memory-error'&&!result.text.includes(lang==='ja'?'メモリキャッシュ情報の読み取りに対応していません':'does not support reading memory cache details'))throw Error(`localized error card failed ${width}/${lang}: ${JSON.stringify(result.text)}`);
+    if(state==='memory-busy'&&!result.text.includes(lang==='ja'?'owner が処理中です。':'The owner is busy.'))throw Error(`localized busy card failed ${width}/${lang}: ${JSON.stringify(result.text)}`);
     console.log(JSON.stringify({width,lang,state,cardCount:result.cardCount,overflow:result.overflow,overlap}));
   }
   ws.close();

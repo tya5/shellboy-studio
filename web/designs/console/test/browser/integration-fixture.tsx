@@ -27,6 +27,13 @@ const { model, t, db } = await fixtureModel({ ...fixtureOptions, configure(db) {
     for (const id of Object.keys(db.threads)) db.details[id] = details(id);
     return;
   }
+  if (params.get('state') === 'memory-busy') {
+    const answer = db.answer.bind(db);
+    db.answer = call => call.command === 'status' && (call.args as { memory?: boolean }).memory
+      ? { ok: false, code: 'invalid_state', message: 'synthetic refusal', details: { phase: 'admission', request_may_have_been_applied: false } }
+      : answer(call);
+    return;
+  }
   if (params.get('state') === 'memory-error') {
     const answer = db.answer.bind(db);
     db.answer = call => call.command === 'status' && (call.args as { memory?: boolean }).memory ? { ok: false, code: 'invalid_argument', message: 'unsupported memory field', details: { reason: 'unknown_field', name: 'memory', command: 'status', request_may_have_been_applied: false } } : answer(call);

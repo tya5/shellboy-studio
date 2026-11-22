@@ -326,6 +326,15 @@ describe("Reads for Analytics and Settings", () => {
     expect(await ops.memoryStatus()).toEqual({ ok: false, error: { kind: "busy", message: "synthetic" } });
   });
 
+  it("recognizes only a definite owner admission refusal as owner busy", () => {
+    const error = { kind: "owner", code: "invalid_state", message: "synthetic" } as const;
+    const details = { phase: "admission", request_may_have_been_applied: false };
+    expect(memoryReadIssue({ ...error, details })).toBe("owner_busy");
+    expect(memoryReadIssue({ ...error, details: { ...details, request_may_have_been_applied: true } })).toBeUndefined();
+    expect(memoryReadIssue({ ...error, details: { phase: "admission" } })).toBeUndefined();
+    expect(memoryReadIssue({ ...error, details: { ...details, phase: "execution" } })).toBeUndefined();
+  });
+
   it("classifies request-level connection loss separately from owner unsupported errors", () => {
     expect(memoryReadIssue({ kind: "connection_lost", message: "synthetic" })).toBe("disconnected");
     expect(memoryReadIssue({ kind: "not_connected", message: "synthetic" })).toBe("disconnected");

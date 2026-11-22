@@ -92,3 +92,36 @@ it("keeps the global owner connected when only the memory status operation is un
   expect(f.model.data.owner.peek()).toBe(before);
  } finally {f.model.dispose();f.data.stop();}
 });
+
+it.each(["en", "ja"] as const)("retries an owner admission refusal only on click (%s)", async lang => {
+ let refuse = true;
+ const f = await fixtureModel({ configure(db) {
+  const answer = db.answer.bind(db);
+  db.answer = call => refuse && call.command === "status" && (call.args as { memory?: boolean }).memory
+   ? { ok: false, code: "invalid_state", message: "PRIVATE TRANSPORT DETAIL", details: { phase: "admission", request_may_have_been_applied: false } }
+   : answer(call);
+ } });
+ const host = document.createElement("div"); document.body.append(host);
+ try {
+  f.model.lang.value = lang;
+  const calls = () => f.t.calls("status").filter(call => (call.args as { memory?: boolean }).memory);
+  const ownerBefore = f.model.data.owner.peek();
+  f.model.insights.ensureAnalytics("memory", undefined); await settle(f.t, f.db);
+  render(<MemoryPane model={f.model} />, host);
+  const card = host.querySelector("[data-memory-cache-cards] .meter")!;
+  expect(card.textContent).toContain(lang === "en" ? "The owner is busy." : "owner が処理中です。");
+  expect(card.textContent).not.toContain("PRIVATE TRANSPORT DETAIL");
+  expect(f.model.data.owner.peek()).toBe(ownerBefore);
+  const before = calls().length;
+  const bridgeBefore = f.t.calls("bridge.memory").length;
+  f.model.insights.ensureAnalytics("memory", undefined); await settle(f.t, f.db);
+  expect(calls()).toHaveLength(before);
+  const retry = Array.from(host.querySelectorAll("button")).find(btn => btn.textContent === f.model.t.value("convo.retryLoad"));
+  expect(retry).toBeDefined();
+  refuse = false;
+  retry!.click(); await settle(f.t, f.db);
+  expect(calls()).toHaveLength(before + 1);
+  expect(f.t.calls("bridge.memory")).toHaveLength(bridgeBefore);
+  expect(f.model.insights.memory.peek().value?.caches).toHaveLength(4);
+ } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
+});
