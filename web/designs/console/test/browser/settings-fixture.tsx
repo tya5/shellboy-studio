@@ -4,7 +4,10 @@ import { fixtureModel, settle } from '../../../../ui-core/test/fixture';
 import { mount } from '../..';
 import { DESIGNS } from '../../../registry';
 
-const { model, t, db } = await fixtureModel({ route: 'settings', section: 'general', capabilities: ['config.edit', 'connection.setup'] });
+const params = new URLSearchParams(location.search);
+const lang = params.get('lang') === 'ja' ? 'ja' : 'en';
+const section = params.get('section') === 'compaction' ? 'compaction' : 'general';
+const { model, t, db } = await fixtureModel({ route: 'settings', section, lang, capabilities: ['config.edit', 'connection.setup'] });
 const values = {
   default_connection: 'local', default_model: 'test-model', ui: { language: 'en' },
   connections: { local: { base_url: 'http://localhost:1234/v1', default_effort: 'medium', ssl_verify: true } },
@@ -19,7 +22,7 @@ const original = db.answer.bind(db);
 db.answer = (call) => call.command === 'config.get' ? { ok: true, result: { loaded: side, file: side, differs: false } } : original(call);
 const send = t.send.bind(t);
 t.send = (frame) => { const ok = send(frame); if (frame.t === 'call') queueMicrotask(() => void settle(t, db)); return ok; };
-model.config.ensure();
+t.push({ t: "changed", thread_ids: [], list: false, config_changed: true });
 await settle(t, db);
-const prefs = signal<Prefs>({ design: 'console', theme: 'console', lang: 'en', monitorView: 'cards', weights: { cached: 0.1, output: 5 } });
+const prefs = signal<Prefs>({ design: 'console', theme: 'console', lang, monitorView: 'cards', weights: { cached: 0.1, output: 5 } });
 mount(document.getElementById('app')!, { model, designs: DESIGNS, prefs, setPrefs: (change) => { prefs.value = { ...prefs.value, ...change }; }, submitToken: async () => true });

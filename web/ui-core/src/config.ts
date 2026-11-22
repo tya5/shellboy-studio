@@ -167,21 +167,22 @@ export class ConfigEditor {
   readonly lastSaved: Signal<SavedSetting | undefined> = signal(undefined);
   readonly fieldError: Signal<{ field: string; reason: string } | undefined> = signal(undefined);
   readonly fieldSaving: Signal<boolean> = signal(false);
-  private cancel = new Cancel();
+  private inFlight?: Cancel;
+  private readAgain = false;
   readonly pendingField: Signal<string | undefined> = signal(undefined);
   private shown = false;
   private session = 0;
   readonly changedElsewhere = signal<string | undefined>(undefined);
   private confirmation?: { field: string; expected: string; observed?: string; saved?: SavedSetting };
 
-  /** Entry point for the owner config invalidation; transport wiring waits for Core #340. */
-  async configChanged(): Promise<void> {
-    if (this.shown) await this.refresh(true);
+  /** A config mark or resync invalidates the current Settings snapshot. */
+  configChanged(): void {
+    if (this.shown) void this.refresh();
   }
 
   private confirmWrite(): void {
     const pending = this.confirmation;
-    if (!pending?.saved || !pending.observed) return;
+    if (!pending?.saved || pending.observed === undefined) return;
     this.confirmation = undefined;
     if (pending.observed === pending.saved.hash && this.read.peek().value?.file.contentHash === pending.saved.hash) {
       this.lastSaved.value = pending.saved;
@@ -209,8 +210,9 @@ export class ConfigEditor {
     this.connectionAction.value = { name, state: result.ok ? "cleared" : uncertain ? "unconfirmed" : "failed" };
   }
 
-  /** Settings opened or changed section: the file may have changed since. */
+  /** All Settings sections share one snapshot and one read lifetime. */
   ensure(): void {
+    if (this.shown) return;
     this.shown = true;
     void this.refresh();
   }
@@ -226,30 +228,39 @@ export class ConfigEditor {
     this.lastSaved.value = undefined;
     this.fieldError.value = undefined;
     this.changedElsewhere.value = undefined;
-    this.cancel.cancel();
+    this.inFlight?.cancel();
+    this.inFlight = undefined;
+    this.readAgain = false;
     if (this.read.peek().loading) this.read.value = { ...this.read.peek(), loading: false };
   }
 
-  async refresh(fromChange = false): Promise<void> {
-    this.cancel.cancel();
-    const cancel = (this.cancel = new Cancel());
-    this.read.value = { ...this.read.peek(), loading: true };
-    const out = await this.ops.configGet({ cancel });
-    if (cancel.cancelled) return;
-    if (!out.ok) {
-      this.read.value = { ...this.read.peek(), loading: false, ...(out.error.kind === "cancelled" ? {} : { error: out.error }) };
+  private async refresh(): Promise<void> {
+    if (this.inFlight) {
+      this.readAgain = true;
       return;
     }
-    const value = readConfigFacts(out.value);
-    const hash = value.file.contentHash;
-    this.read.value = { loading: false, value, error: undefined };
-    const saved = this.lastSaved.peek();
-    if (saved && hash !== saved.hash) this.lastSaved.value = undefined;
-    const pending = this.confirmation;
-    if (fromChange && pending && hash && hash !== pending.expected) {
-      pending.observed ??= hash;
-      this.confirmWrite();
-    }
+    const cancel = (this.inFlight = new Cancel());
+    do {
+      this.readAgain = false;
+      this.read.value = { ...this.read.peek(), loading: true };
+      const out = await this.ops.configGet({ cancel });
+      if (cancel.cancelled) return;
+      if (out.ok) {
+        const value = readConfigFacts(out.value);
+        const hash = value.file.contentHash;
+        this.read.value = { loading: false, value, error: undefined };
+        const saved = this.lastSaved.peek();
+        if (saved && hash !== saved.hash) this.lastSaved.value = undefined;
+        const pending = this.confirmation;
+        if (pending && (pending.saved || hash !== pending.expected)) {
+          pending.observed = hash;
+          this.confirmWrite();
+        }
+      } else {
+        this.read.value = { ...this.read.peek(), loading: false, error: out.error };
+      }
+    } while (!cancel.cancelled && this.readAgain);
+    if (this.inFlight === cancel) this.inFlight = undefined;
   }
 
   /** Save a single setting using the same write/read path as a model pair. */
@@ -312,7 +323,6 @@ export class ConfigEditor {
       if (!this.shown || session !== this.session) return;
       if (!out.ok) {
         this.fieldError.value = { field, reason: out.error.message };
-        if (!(out.error.kind === "owner" && out.error.code === "operation_conflict")) await this.refresh();
         return;
       }
       if (out.value.written === false) return;

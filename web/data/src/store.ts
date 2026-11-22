@@ -460,6 +460,7 @@ export class ShellboyData {
         if (f.event === "restarted") { this.notifyHints(); void this.resyncAll(); }
         break;
       case "resync":
+        this.configChanged.value++;
         if (this.listRefs > 0) this.listHint.value++;
         this.discardAllPreviews("resync");
         this.notifyHints();
