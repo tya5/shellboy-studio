@@ -4,4 +4,4 @@ Styles are colocated in `system/components/ThreadGroup/style.css`.
 
 Styles: style.css in this directory
 
-Sidebar headings use this same component, with an icon, count and fold control instead of a group checkbox. See patterns/thread-list.md (Orca and shadcn/ui Sidebar); do not use as a Thread row.
+Sidebar headings use this component with an icon, count and left icon-only chevron disclosure button; the working-directory name is one line with ellipsis. The sidebar-only `fold` control moves left and the checkbox/bulk-select variant keeps its text link. See patterns/thread-list.md (Orca and shadcn/ui Sidebar); do not use as a Thread row.

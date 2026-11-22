@@ -1,8 +1,11 @@
 .tgroup{border:1px solid var(--line);border-radius:var(--radius);background:var(--panel);min-width:0}
 .tgroup>header{display:flex;align-items:center;gap:var(--space-8);padding:var(--space-4) var(--space-12) var(--space-4) var(--space-4);border-bottom:1px solid var(--line);min-width:0}
-.tgroup-name{flex:1;min-width:0;overflow-wrap:anywhere;font-weight:600}
+.tgroup-name{flex:1;min-width:0;font-weight:600}
 .tgroup-name.mono{font-weight:400}
 .tgroup-count{white-space:nowrap}
+.tgroup[data-group-heading="sidebar"] .tgroup-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;overflow-wrap:normal}
+.tgroup-fold{flex:none}
+.tgroup[data-group-heading="sidebar"] .tgroup-fold{width:var(--size-touch);height:var(--size-touch);min-width:var(--size-touch);min-height:var(--size-touch);padding:0}
 .tcheck-gap{flex:none;width:8px}
 
 .tgroup[data-group-heading="sidebar"]{border:0;background:none}

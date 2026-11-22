@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+
 import "@preact/signals";
 import { signal } from "@preact/signals-core";
 import { render } from "preact";
@@ -55,7 +56,7 @@ it("keeps status updates in place, persists child folds, and moves pins only aft
     await act(hint);
     expect(sides()[0]).toBe("thread-link-sidebar-other");
     expect(host.querySelector('.side-list section')?.getAttribute("aria-label")).toBe("Pinned");
-  } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
+  } finally { render(null, host); host.remove(); document.head.querySelector("#test-styles")?.remove(); f.model.dispose(); f.data.stop(); }
 });
 
 it("keeps the owner's created order on status hints and inserts a new Thread at the head on reread", async () => {
@@ -200,7 +201,7 @@ it('settles the mounted tag session while hidden and ignores late results after 
     await act(async () => { f.db.answered.add(call.id); f.t.ok(call.id, { changed: ['lead'], unchanged: [], not_found: [], add: [tag], remove: [] }); await flush(); });
   };
   try {
-    await act(async () => { render(<App context={{ model: f.model, prefs, designs: DESIGNS, setPrefs() {}, submitToken: async () => false }} />, host); await settle(f.t, f.db); });
+    await act(async () => { render(<App context={{ model: f.model, prefs, designs: DESIGNS, setPrefs: change => { prefs.value = { ...prefs.peek(), ...change }; }, submitToken: async () => false }} />, host); await settle(f.t, f.db); });
     await open('lead'); await stage('new-tag');
     await act(async () => { apply().click(); await flush(); });
     await close(); await open('lead');
@@ -224,7 +225,7 @@ it('settles the mounted tag session while hidden and ignores late results after 
     await stage('draft-b'); await finish('old-request');
     expect(f.model.org.tagDraft.peek()).toMatchObject({ targets: ['other'], add: ['draft-b'], action: { kind: 'idle' } });
     expect(f.t.calls('thread.tag')).toHaveLength(2);
-  } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
+  } finally { render(null, host); host.remove(); document.head.querySelector("#test-styles")?.remove(); f.model.dispose(); f.data.stop(); }
 });
 
 it("bolds a background completion only after the list hint and clears on open or local mark", async () => {
@@ -296,5 +297,31 @@ it("bolds a background completion only after the list hint and clears on open or
     expect(unread()).toBe(true);
     await act(async () => { f.model.showView("threads"); f.model.openThread("other"); await settle(f.t, f.db); });
     expect(unread()).toBe(false);
-  } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
+  } finally { render(null, host); host.remove(); document.head.querySelector("#test-styles")?.remove(); f.model.dispose(); f.data.stop(); }
+});
+
+it("keeps long sidebar folder headings on one line and toggles with the left chevron", async () => {
+  const label = "a-folder-name-that-is-far-too-long-to-fit-in-the-sidebar-without-ellipsis";
+  const f = await fixtureModel({ route: "conversation", threadId: "lead", capabilities: ["thread.cwds"], configure(db) {
+    db.threads = { lead: summary("lead", { cwd: `/projects/${label}` }), other: summary("other", { cwd: `/projects/${label}` }) };
+  } });
+  const host = document.createElement("div"); document.body.append(host);
+  const style = document.createElement("style"); style.id = "test-styles"; style.textContent = '.tgroup[data-group-heading="sidebar"] .tgroup-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;overflow-wrap:normal}.tgroup[data-group-heading="sidebar"] .tgroup-fold{min-width:var(--size-touch);min-height:var(--size-touch)}'; document.head.append(style);
+  const prefs = signal(loadPrefs({ read: () => null, write() {} }, DESIGNS));
+  try {
+    await act(async () => { render(<App context={{ model: f.model, prefs, designs: DESIGNS, setPrefs: change => { prefs.value = { ...prefs.peek(), ...change }; }, submitToken: async () => false }} />, host); await settle(f.t, f.db); });
+    const group = host.querySelector<HTMLElement>('.tgroup[data-group-heading="sidebar"]')!;
+    const name = group.querySelector<HTMLElement>(".tgroup-name")!;
+    const button = group.querySelector<HTMLButtonElement>(".tgroup-fold")!;
+    const css = document.querySelector<HTMLStyleElement>("#test-styles")?.sheet?.cssRules[0]?.cssText ?? "";
+    expect(button.getAttribute("aria-expanded")).toBe("true");
+    expect(button.getAttribute("aria-label")).toBe(`Collapse ${label}`);
+    expect(button.textContent).toBe("");
+    expect(group.querySelector(".btn-link")).toBeNull();
+    expect(button.className).toContain("tgroup-fold");
+    await act(async () => button.click());
+    expect(button.getAttribute("aria-expanded")).toBe("false");
+    expect(button.getAttribute("aria-label")).toBe(`Expand ${label}`);
+    expect(host.querySelectorAll(".side-list [data-thread-row]")).toHaveLength(0);
+  } finally { render(null, host); host.remove(); document.head.querySelector("#test-styles")?.remove(); f.model.dispose(); f.data.stop(); }
 });

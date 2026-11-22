@@ -19,9 +19,14 @@ export function ThreadGroup({ label, mono, count, all, some, selectLabel, onSele
         ) : (
           leading ? <Icon role={leading} size="small" /> : <span class="tcheck-gap" />
         )}
+        {fold && leading ? (
+          <Button class="tgroup-fold" icon aria-expanded={fold.open} label={fold.open ? fold.hideLabel : fold.showLabel} onClick={fold.onToggle}>
+            <Icon role={fold.open ? "group.collapse" : "group.expand"} size="small" />
+          </Button>
+        ) : null}
         <span class={mono ? "mono tgroup-name" : "tgroup-name"}>{label}</span>
         <span class="tgroup-count caption muted">{count}</span>
-        {fold ? (
+        {fold && !leading ? (
           <Button variant="link" aria-expanded={fold.open} label={fold.open ? fold.hideLabel : fold.showLabel} onClick={fold.onToggle}>
             {fold.open ? fold.hide : fold.show}
           </Button>
