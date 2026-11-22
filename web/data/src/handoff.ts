@@ -24,6 +24,7 @@ export class Handoff {
   private held: Held[] = [];
   private readonly terminal = new Set<string>();
 
+  private replacing = false;
   private active: string | undefined;
   /** Canonical owner-lifetime epoch; the public view is read-only. */
   private readonly epochState = signal(0);
@@ -37,7 +38,8 @@ export class Handoff {
   private readonly overflowSig = signal(false);
   readonly overflow: ReadonlySignal<boolean> = this.overflowSig;
   readonly preview: ReadonlySignal<Preview> = computed(() => {
-    const r = this.records.value.find(r => r.attemptId === this.active);
+    const records = this.records.value;
+    const r = records.find(r => r.attemptId === this.active) ?? (this.replacing ? records.at(-1) : undefined);
     return r ? { kind: 'live', attemptId: r.attemptId, text: r.text, incomplete: r.incomplete, ending: r.status !== 'streaming' } : { kind: 'none', ...(this.discarded.value ? { discarded: this.discarded.value } : {}) };
   });
   constructor(private readonly schedule: Schedule, private readonly nextOrdinal: () => number) {}
@@ -104,17 +106,23 @@ export class Handoff {
 
   discard(_reason: PreviewDiscardReason): void {
     batch(() => {
-      this.advanceEpoch();
+      if (_reason !== "resync") this.advanceEpoch();
       this.discarded.value = _reason;
-      if (_reason === "resync") {
-        this.finish();
-        return;
-      }
+      this.replacing = _reason === "resync" && this.sig.peek().length > 0;
       this.terminal.clear();
       for (const h of this.held) { h.stop(); h.source.discard(_reason); }
       this.held = []; this.active = undefined; this.blockedAttempt = undefined;
       this.overflowSig.value = false; this.publish();
     });
+  }
+  captureReplacement(): readonly HandoffRecord[] | undefined {
+    if (!this.replacing) return;
+    for (const held of this.held) held.source.flush();
+    return this.held.map(held => held.record);
+  }
+  commitReplacement(): void {
+    this.replacing = false;
+    this.publish();
   }
   private sameOwnRecord(a: HandoffRecord, b: HandoffRecord): boolean {
     const entries = (value: HandoffRecord) => Object.entries(value);
@@ -133,7 +141,7 @@ export class Handoff {
   }
   private publish(): void {
     this.publicationDirty = true;
-    if (this.publishing) return;
+    if (this.replacing || this.publishing) return;
     this.publishing = true;
     try {
       // Coalesce nested mutations without recursive notification or a queued task.

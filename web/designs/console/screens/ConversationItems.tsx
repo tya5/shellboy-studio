@@ -1,7 +1,7 @@
 import { Fragment, type ComponentChildren } from 'preact';
 import { canonicalSavedItemKey } from "../../../ui-core/src/conversation-items";
 import type { PendingOwnMessage } from '../../../ui-core/src/model';
-import type { OwnSendTailRow } from '../../../ui-core/src/own-send-presentation';
+import type { PositionedOwnSendRow } from '../../../ui-core/src/own-send-presentation';
 
 /** Internal normalized presentation input, not a Core wire DTO or a body proof. */
 export type ConversationItemSource = import("../../../ui-core/src/conversation-items").NormalizedSavedItem;
@@ -41,7 +41,7 @@ interface Props {
   renderItem: (item: ConversationItem) => ComponentChildren;
   renderBefore?: (item: ConversationItem) => ComponentChildren;
   trailing?: ComponentChildren;
-  localRegion?: { readonly kind: "unqualified"; readonly tailRows: readonly OwnSendTailRow[]; readonly renderRow: (row: PendingOwnMessage) => ComponentChildren };
+  localRegion?: { readonly kind: "unqualified"; readonly tailRows: readonly PositionedOwnSendRow[]; readonly renderRow: (row: PendingOwnMessage) => ComponentChildren };
   isItemAbsent?: (item: ConversationItem) => boolean;
   isItemHidden?: (item: ConversationItem) => boolean;
   renderHeading?: (summary: ConversationToolSummary) => ComponentChildren;
@@ -90,14 +90,18 @@ export function ConversationItems({ items, toolSummaries = [], renderItem, rende
       }))}</div> : null;
     };
     const tailRows = localRegion?.tailRows ?? [];
-    const beforeNode = new Map<string, Extract<OwnSendTailRow, { kind: "live" }>[]>();
-    const placed = new Set<OwnSendTailRow>();
+    const localByPosition = new Map<number, PositionedOwnSendRow[]>();
     for (const tail of tailRows) {
-      if (tail.kind !== "live" || tail.beforeSavedNodeId === undefined) continue;
-      const group = beforeNode.get(tail.beforeSavedNodeId) ?? [];
+      const group = localByPosition.get(tail.afterSequenceIndex) ?? [];
       group.push(tail);
-      beforeNode.set(tail.beforeSavedNodeId, group);
+      localByPosition.set(tail.afterSequenceIndex, group);
     }
+    const renderLocalAt = (position: number) => (localByPosition.get(position) ?? []).map(tail => {
+      if (tail.kind === "live") return content(tail.item, false, false);
+      const id = tail.row.messageId;
+      const key = id === undefined ? `own:${tail.row.operationId}` : canonicalSavedItemKey(id, JSON.stringify([id, "/content/0"]));
+      return <Fragment key={`conversation:${key}`}>{row(key, localRegion!.renderRow(tail.row))}</Fragment>;
+    });
     const renderPosition = (position: number, hostedContainer?: string): ComponentChildren[] => {
       const entry = normalizedSequence[position]!;
       const output: ComponentChildren[] = [];
@@ -105,14 +109,9 @@ export function ConversationItems({ items, toolSummaries = [], renderItem, rende
         const work = renderWork(entry); if (work) output.push(work);
       } else {
         const item = byKey.get(entry.itemKey);
-        for (const tail of beforeNode.get(item?.source.nodeId ?? "") ?? []) {
-          if (placed.has(tail)) continue;
-          placed.add(tail);
-          output.push(content(tail.item, false, false));
-        }
         if (item && !isItemAbsent?.(item)) output.push(<Fragment key={`conversation:${item.key}`}>{renderBefore?.(item)}{content(item, false, hostedContainer !== undefined)}</Fragment>);
       }
-      return output;
+      return [...output, ...renderLocalAt(position)];
     };
     const rendered: { entry: NonNullable<Props["sequence"]>[number]; view: ComponentChildren }[] = [];
     for (let index = 0; index < normalizedSequence.length; index++) {
@@ -129,16 +128,8 @@ export function ConversationItems({ items, toolSummaries = [], renderItem, rende
       const nodes = renderPosition(index, unsafe ? undefined : containerAt(index));
       if (nodes.length) rendered.push({ entry, view: nodes });
     }
-    const pendingRows = localRegion?.kind === "unqualified"
-      ? tailRows.filter(tail => !placed.has(tail)).map(tail => {
-        if (tail.kind === "live") return content(tail.item, false, false);
-        const id = tail.row.messageId;
-        const key = id === undefined ? `own:${tail.row.operationId}` : canonicalSavedItemKey(id, JSON.stringify([id, "/content/0"]));
-        return <Fragment key={`conversation:${key}`}>{undefined}{row(key, localRegion.renderRow(tail.row))}</Fragment>;
-      })
-      : [];
     const directChildren = (views: readonly ComponentChildren[]): ComponentChildren[] => views.flatMap(view => Array.isArray(view) ? view : [view]);
-    const rowViews = directChildren([...rendered.map(row => row.view), trailing, ...pendingRows]);
+    const rowViews = directChildren([...renderLocalAt(-1), ...rendered.map(row => row.view), trailing]);
     return <div class="conversation-items">{rowViews}</div>;
   }
   const rows: ComponentChildren[] = [];

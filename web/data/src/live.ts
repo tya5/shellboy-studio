@@ -139,6 +139,8 @@ export class LiveText {
     this.sig.value = { kind: "none", discarded: reason };
   }
 
+  flush(): void { if (this.queued) this.publishNow(); }
+
   private publishNow(): void {
     if (this.attempt === undefined) return;
     this.sig.value = {

@@ -344,7 +344,7 @@ describe("live text preview", () => {
     expect(h.preview.value).toEqual({ kind: "none" });
   });
 
-  it("retains text on resync and clears on owner or socket lifetime loss", async () => {
+  it("stages the full replay on resync and clears on owner or socket lifetime loss", async () => {
     for (const [push, reason] of [
       [(t: FakeTransport) => t.push({ t: "owner", event: "restarted", owner: connected }), "owner_restarted"],
       [(t: FakeTransport) => t.push({ t: "owner", event: "unreachable", owner: { state: "unreachable" } }), "owner_unreachable"],
@@ -360,8 +360,11 @@ describe("live text preview", () => {
     t.push(live([d(0, "abc")]));
     f.frame();
     t.push({ t: "resync" });
-    t.push(live([d(3, "def")]));
+    t.push(live([d(0, "abcdef")]));
     f.frame();
+    expect(h.handoff.peek()[0]?.text).toBe("abc");
+    expect(h.captureHandoffReplacement()?.[0]?.text).toBe("abcdef");
+    h.commitHandoffReplacement();
     expect(h.preview.value).toMatchObject({ text: "abcdef", incomplete: false });
   });
 

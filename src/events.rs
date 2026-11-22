@@ -166,13 +166,16 @@ pub async fn run_with_guide<O: Owner>(
             EventsWaitStatus::Changed => {
                 hub.hint(result.changes.iter().map(|c| c.thread_id.as_str()));
             }
-            EventsWaitStatus::ResyncRequired => hub.resync(),
+            EventsWaitStatus::ResyncRequired => {}
         }
         if let Some(ends) = result.attempt_ends {
             hub.attempt_ends(ends);
         }
-        if let Some(entries) = text {
-            hub.live_apply(entries, reset);
+        if reset || text.is_some() {
+            hub.live_apply(text.unwrap_or_default(), reset);
+        }
+        if matches!(result.status, EventsWaitStatus::ResyncRequired) {
+            hub.resync();
         }
     }
 }

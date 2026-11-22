@@ -800,7 +800,7 @@ export class AppModel {
       this.readerTick = h.historyTick.peek();
       const reader = new ConversationWindow({ read: (a, c) => h.readWindow(a, c) });
       reader.bindCurrentThread(h);
-      reader.bindConversationInput(snapshot => this.captureWindowConversation(reader, h, snapshot),
+      reader.bindConversationInput((snapshot, replacement) => this.captureWindowConversation(reader, h, snapshot, replacement),
         snapshot => this.applyCommittedOwnRegion(reader, h, snapshot));
       this.longReader.value = reader;
       reader.refreshConversationInput(reader.acceptedView.peek());
@@ -814,7 +814,7 @@ export class AppModel {
     if (tickChanged && this.longReader.peek() === reader && this.handle.peek() === h) reader.changed();
   }
 
-  private captureWindowConversation(reader: ConversationWindow, handle: ThreadHandle, snapshot: WindowAcceptedSnapshot) {
+  private captureWindowConversation(reader: ConversationWindow, handle: ThreadHandle, snapshot: WindowAcceptedSnapshot, replacement?: readonly import("../../data/src/handoff").HandoffRecord[]) {
     const scope = this.ownMutationScope();
     const capability = reader.acceptedView.currentCapability;
     const lifetime = handle.liveEpoch();
@@ -822,7 +822,7 @@ export class AppModel {
     const capturedWork = captureCurrentWork(handle.threadId, workValue);
     const current = () => this.handle.peek() === handle
       && handle.liveEpoch() === lifetime && reader.acceptedView.currentCapability === capability;
-    const records = handle.handoff.value;
+    const records = replacement ?? handle.handoff.value;
     const input = captureConversationInput(snapshot, { scope, threadId: handle.threadId, records, work: capturedWork, current });
     const accepted = this.acceptedOwnMessages.value;
     const pending = this.pendingOwnMessage.value;
@@ -831,11 +831,11 @@ export class AppModel {
     const cohortAccepted = eligible ? accepted.filter(row => row.scope === scope && row.threadId === handle.threadId) : [];
     const cohortPending = eligible && pending?.scope === scope && pending.threadId === handle.threadId ? pending : undefined;
     const localRows = [...cohortAccepted, ...(cohortPending ? [cohortPending] : [])];
-    const decision = ownSendPresentation(scope, current() ? localRows : [], snapshot.rows, input.liveTail ?? []);
+    const decision = ownSendPresentation(scope, current() ? localRows : [], snapshot.rows, input.liveTail ?? [], input.projection);
     return { ...input, identity: createConversationIdentity(input.identity, { accepted: accepted as object, pending: pending as object | undefined,
       sendCurrent, eligible }),
       decision: { cohortVersion: { accepted: cohortAccepted, pending: cohortPending }, localRegion: decision },
-      isCurrent: () => current() && handle.handoff.peek() === input.identity.records
+      isCurrent: () => current() && (replacement !== undefined || handle.handoff.peek() === input.identity.records)
         && (handle.work.peek().value === input.identity.work.source || handle.work.peek().value === undefined && input.identity.work.facts.length === 0) };
   }
 

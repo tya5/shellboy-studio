@@ -165,6 +165,8 @@ pub async fn session<O: Owner>(
                     let frame = ServerFrame::Owner { event, owner };
                     if !send(&mut socket, &frame).await { break }
                 }
+                let live = state.hub.live_for(&guard, pending.resync);
+                // Replay precedes any result from this tab's ensuing history read.
                 if pending.resync && !send(&mut socket, &ServerFrame::Resync).await { break }
                 if (!pending.threads.is_empty() || pending.list)
                     && !send(&mut socket, &ServerFrame::Changed {
@@ -177,7 +179,7 @@ pub async fn session<O: Owner>(
                     if !open { break }
                 }
                 if !open { break }
-                for out in state.hub.take_live(&guard) {
+                for out in live {
                     open = send(&mut socket, &out.into()).await;
                     if !open { break }
                 }

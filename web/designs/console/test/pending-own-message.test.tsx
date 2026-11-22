@@ -653,3 +653,50 @@ async function witnessOwnSendPublication(scenario: 'streaming' | 'two sends' | '
 it.each(['streaming', 'two sends', 'held', 'multi-item'] as const)('keeps the acknowledged DOM row through mounted publications: %s', witnessOwnSendPublication);
 it('retires a deferred saved send without promising DOM continuity', () => witnessOwnSendPublication('deferred'));
 it('Studio #61: a delayed exact terminal removes only the fenced attempt after the saved send', () => witnessOwnSendPublication('partial cut'));
+
+
+it.each([false, true])('applies a dropped attempt end with the resync history cut (adopted=%s)', async adopted => {
+ const attempt = canonicalAttemptId(95);
+ const saved = (id: string, ordinal: number, text: string, assistant = false): HistoryItem => ({
+  node_id:id, kind:assistant?'assistant_response':'user', selection:{ordinal},
+  items:[{kind:'text',item_identity:`${id}-text`,text,text_complete:true}],
+  ...(assistant ? {provenance:{attempt_id:attempt}} : {}),
+ });
+ const f = await fixtureConversation({nodes:[saved('base',0,'base text')]});
+ const host = document.createElement('div'); document.body.append(host);
+ const context: DesignContext = {model:f.model,prefs:signal(loadPrefs({read:()=>null,write:()=>{}},[{name:'console',themes:[{name:'light'}]}])),setPrefs(){},designs:[],submitToken:async()=>false};
+ try {
+  await act(async()=>{render(<App context={context}/>,host); await settle(f.t,f.db);});
+  await act(async()=>{f.t.push({t:'live',thread_id:'lead',attempt_id:attempt,input_through_node_id:'base',gap:false,deltas:[{offset:0,reasoning:false,text:'old preview'}]});await flush();});
+  expect(host.textContent).toContain('old preview');
+  await act(async()=>{f.t.push({t:'resync'});await flush();});
+  expect(host.textContent).toContain('old preview');
+  const accepted = f.model.longReader.peek()!.acceptedView;
+  const handoff = f.model.handle.peek()!.handoff;
+  const states: [boolean,boolean][] = [];
+  const stop = accepted.subscribe(ref=>states.push([ref.rows.some(row=>row.node_id==='saved-response'),handoff.peek().some(row=>row.attemptId===attempt)]));
+  f.db.historyRevisions.lead = 2;
+  if(adopted)f.db.history.lead!.push(saved('saved-response',1,'saved answer',true));
+  try { await act(async()=>{await settle(f.t,f.db);}); } finally { stop(); }
+  expect(states.at(-1)).toEqual([adopted,false]);
+  if(adopted) expect(states).not.toContainEqual([false,false]);
+  expect(host.textContent).not.toContain('old preview');
+  if(adopted)expect(host.textContent).toContain('saved answer');
+ } finally {render(null,host);host.remove();f.model.dispose();f.data.stop();}
+});
+
+
+it('places a live row after the preceding emitted item when its input emitted nothing', async () => {
+ const f = await fixtureConversation({nodes:[
+  {node_id:'before',kind:'user',selection:{ordinal:0},items:[{kind:'text',item_identity:'before-text',text:'preceding message',text_complete:true}]},
+  {node_id:'empty-input',kind:'assistant_response',selection:{ordinal:1},items:[{kind:'text',item_identity:'empty-text',text:'',text_complete:true}]},
+  {node_id:'later',kind:'assistant_response',selection:{ordinal:2},items:[{kind:'text',item_identity:'later-text',text:'later answer',text_complete:true}]},
+ ]});
+ const host=document.createElement('div');document.body.append(host);
+ const context: DesignContext={model:f.model,prefs:signal(loadPrefs({read:()=>null,write:()=>{}},[{name:'console',themes:[{name:'light'}]}])),setPrefs(){},designs:[],submitToken:async()=>false};
+ try {
+  await act(async()=>{render(<App context={context}/>,host);await settle(f.t,f.db);});
+  await act(async()=>{f.t.push({t:'live',thread_id:'lead',attempt_id:canonicalAttemptId(99),input_through_node_id:'empty-input',gap:false,deltas:[{offset:0,reasoning:false,text:'anchored preview'}]});await flush();});
+  expect([...host.querySelectorAll('.conversation-items .message-markdown')].map(row=>row.textContent?.trim())).toEqual(['preceding message','anchored preview','later answer']);
+ } finally { render(null,host);host.remove();f.model.dispose();f.data.stop(); }
+});

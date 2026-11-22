@@ -86,6 +86,6 @@ export function captureConversationInput(snapshot: WindowAcceptedSnapshot, input
     identity: createConversationIdentity({ rows: snapshot.rows, revision: snapshot.revision, records: input.records,
       work: input.work, scope: input.scope, current }),
     canonicalInput, scope: input.scope, canonicalProjection, projection: projected,
-    decision: { cohortVersion: { accepted: [] }, localRegion: ownSendPresentation(input.scope, [], snapshot.rows, liveTail) },
+    decision: { cohortVersion: { accepted: [] }, localRegion: ownSendPresentation(input.scope, [], snapshot.rows, liveTail, projected) },
     coverage: work === undefined ? 'unavailable' : 'complete' };
 }

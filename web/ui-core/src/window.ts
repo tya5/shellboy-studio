@@ -94,7 +94,7 @@ function revisionIsCurrentOrNewer(candidate: number, current: number | undefined
   return relation === "uninitialized" || relation === "same" || relation === "newer";
 }
 
-type PreparedConversationPublication = { publication: AcceptedPublication<WindowAcceptedSnapshot, import("./conversation-input").ConversationIdentity>; binding: { handle: ThreadHandle; threadId: string; epoch: number } };
+type PreparedConversationPublication = { replacement: boolean; publication: AcceptedPublication<WindowAcceptedSnapshot, import("./conversation-input").ConversationIdentity>; binding: { handle: ThreadHandle; threadId: string; epoch: number } };
 
 export class ConversationWindow {
   private readonly reader: WindowReader;
@@ -120,7 +120,7 @@ export class ConversationWindow {
   private scrollHandle: WindowScrollRequest | undefined;
   private acceptedGeneration = 0;
   private acceptedInput?:{ref:WindowAcceptedSnapshot;identity:ConversationSemanticInput["identity"]};
-  private conversationInputOwner: ((snapshot: WindowAcceptedSnapshot) => ConversationSemanticInput) | undefined;
+  private conversationInputOwner: ((snapshot: WindowAcceptedSnapshot, replacement?: readonly import("../../data/src/handoff").HandoffRecord[]) => ConversationSemanticInput) | undefined;
   private currentThread?: { handle: ThreadHandle; threadId: string; epoch: number };
   readonly acceptedView = new AcceptedView<WindowAcceptedSnapshot>({
     generation: 0, epoch: 0, disposed: false, rows: [], range: undefined,
@@ -409,16 +409,16 @@ export class ConversationWindow {
 
   private conversationCommit?: (snapshot: WindowAcceptedSnapshot) => void;
 
-  bindConversationInput(capture: (snapshot: WindowAcceptedSnapshot) => ConversationSemanticInput, committed?: (snapshot: WindowAcceptedSnapshot) => void): boolean {
+  bindConversationInput(capture: (snapshot: WindowAcceptedSnapshot, replacement?: readonly import("../../data/src/handoff").HandoffRecord[]) => ConversationSemanticInput, committed?: (snapshot: WindowAcceptedSnapshot) => void): boolean {
     if (this.disposed || this.conversationInputOwner) return false;
     this.conversationCommit = committed;
     this.conversationInputOwner = capture;
     return true;
   }
 
-  captureConversationInput(snapshot: WindowAcceptedSnapshot): ConversationSemanticInput {
+  captureConversationInput(snapshot: WindowAcceptedSnapshot, replacement?: readonly import("../../data/src/handoff").HandoffRecord[]): ConversationSemanticInput {
     if (!this.conversationInputOwner) throw new Error('ConversationWindow requires a typed input binding');
-    return this.conversationInputOwner(snapshot);
+    return this.conversationInputOwner(snapshot, replacement);
   }
 
   /** A semantic source change uses the same constructor as an arriving history cut. */
@@ -434,7 +434,7 @@ export class ConversationWindow {
     return staged ? this.commitAccepted(staged) : false;
   }
 
-  private prepareCaptured(snapshot: WindowAcceptedSnapshot, capability: AcceptedCapability, input: ConversationSemanticInput, reason: PublicationReason): PreparedConversationPublication | undefined {
+  private prepareCaptured(snapshot: WindowAcceptedSnapshot, capability: AcceptedCapability, input: ConversationSemanticInput, reason: PublicationReason, replacement = false): PreparedConversationPublication | undefined {
     const displayPlan = composeConversationDisplayPlan({ generation: snapshot.generation, revision: snapshot.revision,
       capability, rows: snapshot.rows, canonicalProjection: input.canonicalProjection, projection: input.projection,
       userDecision: input.decision, scope: input.scope, coverage: input.coverage }).plan;
@@ -447,19 +447,21 @@ export class ConversationWindow {
         && binding.handle.liveEpoch() === binding.epoch,
     };
     const publication = makeConversationPublication({ ...snapshot, canonicalInput: input.canonicalInput, displayPlan }, reason, lease, input.identity);
-    return { publication, binding };
+    return { publication, binding, replacement };
   }
 
-  private prepareAccepted(snapshot: WindowAcceptedSnapshot, capability: AcceptedCapability, reason: PublicationReason = "read"): PreparedConversationPublication | undefined {
-    return this.prepareCaptured(snapshot, capability, this.captureConversationInput(snapshot), reason);
+  private prepareAccepted(snapshot: WindowAcceptedSnapshot, capability: AcceptedCapability, ownerRead: boolean): PreparedConversationPublication | undefined {
+    const replacement = ownerRead ? this.currentThread?.handle.captureHandoffReplacement() : undefined;
+    return this.prepareCaptured(snapshot, capability, this.captureConversationInput(snapshot, replacement), ownerRead ? "read" : "bump", replacement !== undefined);
   }
 
   private commitAccepted(candidate: PreparedConversationPublication, afterCommit: () => void = () => {}): boolean {
-    const { publication, binding } = candidate;
+    const { publication, binding, replacement } = candidate;
     let published = false;
     batch(() => {
       published = this.acceptedView.publish(publication, snapshot => {
         const savedAttempts = new Set<string>(snapshot.rows.flatMap(row => row.kind === "assistant_response" && row.provenance?.attempt_id ? [row.provenance.attempt_id] : []));
+        if (replacement) binding.handle.commitHandoffReplacement();
         afterCommit();
         this.conversationCommit?.(snapshot);
         for (const record of binding.handle.handoff.peek()) {
@@ -490,7 +492,7 @@ export class ConversationWindow {
     return { ...selection, rows: canonicalInput?.rows ?? selection.rows, canonicalInput, disposed: false };
   }
 
-  private bump(capability: AcceptedCapability = this.acceptedView.currentCapability): void {
+  private bump(capability: AcceptedCapability = this.acceptedView.currentCapability, ownerRead = false): void {
     if (this.disposed || capability !== this.acceptedView.currentCapability) return;
     const epoch = this.epoch, generation = this.nextAcceptedGeneration();
     const accepted = this.acceptedView.peek(), rows = this.rangeItems();
@@ -499,7 +501,7 @@ export class ConversationWindow {
       ? accepted.canonicalInput : undefined;
     const snapshot = this.snapshotForSelection({ generation, epoch, rows, range: this.renderRange(),
       total: this.total, revision: this.revision, pending: this.status.peek() === 'loading' }, capability, canonicalInput);
-    const staged = this.prepareAccepted(snapshot, capability);
+    const staged = this.prepareAccepted(snapshot, capability, ownerRead);
     if (staged && !this.disposed && epoch === this.epoch && generation === this.acceptedGeneration) {
       if (staged && this.commitAccepted(staged)) this.version.value++;
     }
@@ -559,7 +561,7 @@ export class ConversationWindow {
       const generation=this.nextAcceptedGeneration();
       const snapshot=this.snapshotForSelection({generation,epoch,rows:selected,range:selected.length?{first:firstOrdinal,last:lastOrdinal}:undefined,
         total:cursor.total,revision:cursor.revision,pending:false},capability);
-      const staged=this.prepareCaptured(snapshot,capability,this.captureConversationInput(snapshot),'read');
+      const staged=this.prepareAccepted(snapshot,capability,true);
       if(!staged||!readOwnerCurrent()||generation!==this.acceptedGeneration||follow&&!this.following.peek())return;
       const replacement=new Map<number,Bucket>();
       for(const row of selected){const ordinal=row.selection!.ordinal!,index=Math.floor(ordinal/WINDOW_NODES);
@@ -704,7 +706,8 @@ export class ConversationWindow {
         void this.refreshSelection(this.revision); return;
       }
       if (out.error.kind === "owner" && out.error.code === "cursor_expired") this.reset();
-      else if (out.error.kind !== "cancelled") {
+      else if (out.error.kind === "cancelled") this.drainTailHint();
+      else {
         this.tailFailed = true;
         if (this.jumping) { this.jumping = false; this.following.value = false; }
         this.fail(out.error.message);
@@ -876,7 +879,7 @@ export class ConversationWindow {
     batch(() => {
       this.status.value = "ready";
       this.error.value = undefined;
-      this.bump(capability);
+      this.bump(capability, true);
     });
   }
 

@@ -74,6 +74,8 @@ export interface ThreadHandle extends Handle {
   readonly handoffOverflow: ReadonlySignal<boolean>;
   liveEpoch(): number;
   readonly liveEpochSignal: ReadonlySignal<number>;
+  captureHandoffReplacement(): readonly HandoffRecord[] | undefined;
+  commitHandoffReplacement(): void;
   releaseAcceptedHandoff(attemptId: string): void;
   /** Counts hints for this Thread's history while the owner has `history.window`; the window reader follows it. */
   readonly historyTick: ReadonlySignal<number>;
@@ -336,13 +338,16 @@ export class ShellboyData {
       handoffOverflow: e.live.overflow,
       liveEpoch: () => e.live.epoch,
       liveEpochSignal: e.live.epochSignal,
+      captureHandoffReplacement: () => e.live.captureReplacement(),
+      commitHandoffReplacement: () => e.live.commitReplacement(),
       releaseAcceptedHandoff: attemptId => { if (!closed && !e.closed) e.live.releaseAccepted(attemptId); },
       historyTick: e.historyTick,
       readWindow: async (args, cancel) => {
         if (e.closed || e.paused) return Promise.resolve({ ok: false, error: { kind: "cancelled", message: "thread is not being read" } });
         if (!this.capabilities.peek().includes(CAPABILITY_HISTORY_WINDOW)) return Promise.resolve({ ok: false, error: { kind: "invalid_response", message: "owner does not advertise history.window" } });
         const epoch = e.live.epoch;
-        const valid = () => !closed && !e.closed && !e.paused && !cancel.cancelled && epoch === e.live.epoch && this.canRead();
+        const readEpoch = this.readQualificationEpoch;
+        const valid = () => !closed && !e.closed && !e.paused && !cancel.cancelled && epoch === e.live.epoch && readEpoch === this.readQualificationEpoch && this.canRead();
         const out = await this.operations.historyWindow({ thread_id: threadId, ...args }, { cancel });
         if (!out.ok || !valid()) return out.ok ? { ok: false, error: { kind: "cancelled", message: "window owner changed" } } : out;
         if (out.value.thread_id !== threadId) return { ok: false, error: { kind: "cancelled", message: "window Thread mismatch" } };
@@ -514,7 +519,7 @@ export class ShellboyData {
     batch(() => {
       ++this.readQualificationEpoch;
       for (const e of this.entries.values()) {
-        e.live.advanceEpoch();
+        if (reason !== "resync") e.live.advanceEpoch();
         e.live.discard(reason);
       }
     });

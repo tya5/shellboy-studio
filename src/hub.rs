@@ -194,20 +194,11 @@ impl Hub {
     /// Everything a tab shows must be re-read; supersedes dirty marks.
     pub fn resync(&self) {
         let mut inner = self.lock();
-        let Inner { sessions, live, .. } = &mut *inner;
-        for session in sessions.values_mut() {
+        for session in inner.sessions.values_mut() {
             session.pending.attempt_ends.clear();
             session.pending.threads.clear();
             session.pending.list = false;
             session.pending.resync = true;
-            // The tab discards its previews on `resync`, so it is sent what is held again.
-            session.live_seen.clear();
-            session.live_dirty = session
-                .watch
-                .iter()
-                .filter(|id| live.holds(id))
-                .cloned()
-                .collect();
             session.wake.notify_one();
         }
     }
@@ -227,6 +218,9 @@ impl Hub {
         const MAX_PENDING_ENDS: usize = 256;
         let mut inner = self.lock();
         for session in inner.sessions.values_mut() {
+            if session.pending.resync {
+                continue;
+            }
             for end in ends
                 .iter()
                 .filter(|end| session.watch.contains(&end.thread_id))
@@ -279,11 +273,24 @@ impl Hub {
 
     /// Frames for the Threads whose live text changed since the session was last told.
     pub fn take_live(&self, guard: &SessionGuard) -> Vec<live::Out> {
+        self.live_for(guard, false)
+    }
+
+    pub fn live_for(&self, guard: &SessionGuard, replacement: bool) -> Vec<live::Out> {
         let mut inner = self.lock();
         let Inner { sessions, live, .. } = &mut *inner;
         let Some(session) = sessions.get_mut(&guard.id) else {
             return Vec::new();
         };
+        if replacement {
+            session.live_seen.clear();
+            session.live_dirty = session
+                .watch
+                .iter()
+                .filter(|id| live.holds(id))
+                .cloned()
+                .collect();
+        }
         std::mem::take(&mut session.live_dirty)
             .into_iter()
             .filter_map(|id| {
@@ -358,6 +365,47 @@ mod tests {
         assert!(p.resync && p.threads.is_empty() && !p.list);
         assert_eq!(p.owner, Some(OwnerEvent::Unreachable));
         assert_eq!(owner, OwnerState::Unreachable);
+    }
+
+    #[test]
+    fn end_overflow_replays_already_seen_held_slot_without_terminal_facts() {
+        use crate::live::{Delta, Entry, Out};
+        use shellboy::protocol::{EventAttemptEnd, EventAttemptOutcome};
+        let hub = Hub::new();
+        let (tab, _) = hub.register().unwrap();
+        hub.watch(&tab, vec!["t1".into()], false).unwrap();
+        hub.live_apply(
+            vec![Entry {
+                thread_id: "t1".into(),
+                attempt_id: "held".into(),
+                input_through_node_id: None,
+                gap: false,
+                deltas: vec![Delta {
+                    offset: 0,
+                    reasoning: false,
+                    text: "held".into(),
+                }],
+            }],
+            false,
+        );
+        assert_eq!(hub.take_live(&tab).len(), 1);
+        assert!(hub.take_live(&tab).is_empty());
+        hub.attempt_ends(
+            (0..257)
+                .map(|seq| EventAttemptEnd {
+                    thread_id: "t1".into(),
+                    attempt_id: format!("old-{seq}"),
+                    outcome: EventAttemptOutcome::NotAdopted,
+                    seq,
+                })
+                .collect(),
+        );
+        let (pending, _) = hub.take(&tab);
+        assert!(pending.resync);
+        assert!(pending.attempt_ends.is_empty());
+        assert!(
+            matches!(&hub.live_for(&tab, pending.resync)[..], [Out::Text { attempt_id, .. }] if attempt_id == "held")
+        );
     }
 
     #[test]
