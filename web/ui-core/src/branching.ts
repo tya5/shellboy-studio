@@ -563,7 +563,7 @@ export type MoveState =
 
 export type OrgAction = { kind: "idle" } | { kind: "running" } | { kind: "done"; verb: "archive" | "unarchive"; result: ArchiveResult } | { kind: "failed"; error: OpError };
 
-export type TagAction = { kind: "idle" } | { kind: "running" } | { kind: "missing"; n: number } | { kind: "failed"; limit: boolean; message: string } | { kind: "selection"; n: number };
+export type TagAction = { kind: "idle" } | { kind: "running" } | { kind: "missing"; targets: readonly string[] } | { kind: "failed"; limit: boolean; message: string } | { kind: "selection"; n: number };
 
 export interface TagDraft {
   id: number;
@@ -866,10 +866,10 @@ export class ThreadOrg {
     if (current.id !== draft.id) return;
     if (!out.ok) {
       this.tagDraft.value = { ...current, action: { kind: "failed", limit: out.error.kind === "owner" && out.error.code === "input_limit", message: out.error.message } };
-    } else if (out.value.not_found.length) {
-      this.tagDraft.value = { ...current, action: { kind: "missing", n: out.value.not_found.length } };
     } else {
-      this.tagDraft.value = { ...current, add: [], remove: new Set(), action: { kind: "idle" } };
+      const missing = out.value.not_found;
+      this.tagDraft.value = { ...current, add: [], remove: new Set(),
+        action: missing.length ? { kind: "missing", targets: missing } : { kind: "idle" } };
     }
   }
 }

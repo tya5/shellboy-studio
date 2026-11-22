@@ -113,7 +113,7 @@ function TagPanel({ model }: { model: AppModel }) {
       {applying ? <p role="status">{t("org.tag.applying")}</p> : null}
       {action.kind === "failed" ? <Notice tone="bad">{t(action.limit ? "org.tag.limit" : "org.tag.failed", { message: action.message })}</Notice> : null}
       {action.kind === "selection" ? <Notice tone="bad">{t("org.tag.selection", { n: action.n })}</Notice> : null}
-      {action.kind === "missing" ? <Notice tone="bad">{t("org.notFound", { n: action.n })}</Notice> : null}
+      {action.kind === "missing" ? <Notice tone="wait">{t("org.tag.missing", { targets: action.targets.join(", ") })}</Notice> : null}
     </Section>
   );
 }

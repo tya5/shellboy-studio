@@ -191,17 +191,20 @@ describe("editing tags", () => {
     expect(org.tagDraft.value.add).toEqual([]);
   });
 
-  it("shows a partial result: Threads the owner no longer has are reported", async () => {
+  it("consumes a partial OK once and names the missing targets", async () => {
     const { t, db, model } = await setup();
     const org = model.org;
     org.selected.value = new Set(["lead", "ghost"]);
     org.openTags(true);
-    org.addTag("keep");
+    org.addTag("fresh");
+    org.toggleRemoveTag("old");
     const running = org.applyTags();
     await settle(t, db);
     await running;
-    expect(org.tagDraft.value.action).toEqual({ kind: "missing", n: 1 });
-    expect(org.tagDraft.value.add).toEqual(["keep"]);
+    expect(org.tagDraft.value).toMatchObject({ action: { kind: "missing", targets: ["ghost"] }, add: [], remove: new Set() });
+    expect(db.threads.lead).toMatchObject({ tags: ["fresh", "keep"] });
+    await org.applyTags();
+    expect(t.calls("thread.tag")).toHaveLength(1);
   });
 
   it("reports the 64-tag limit as such, changes nothing, and keeps the draft", async () => {
