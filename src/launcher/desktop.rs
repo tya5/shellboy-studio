@@ -5,7 +5,7 @@ use super::macos as platform;
 use super::windows as platform;
 use crate::{
     auth::{Auth, random_hex},
-    owner::{IpcOwner, startup_probe},
+    owner::{IpcOwner, Owner, startup_probe},
 };
 use serde::{Deserialize, Serialize};
 use shellboy::{
@@ -191,7 +191,16 @@ struct ManagedOwner {
 impl ManagedOwner {
     async fn start(&mut self) -> Result<Option<String>, String> {
         let owner = IpcOwner::new(self.data.clone());
-        match startup_probe(&owner).await {
+        self.start_with(&owner, |mut command| command.spawn().map_err(io))
+            .await
+    }
+
+    async fn start_with(
+        &mut self,
+        owner: &impl Owner,
+        spawn: impl FnOnce(Process) -> Result<Child, String>,
+    ) -> Result<Option<String>, String> {
+        match startup_probe(owner).await {
             Ok(()) => return Ok(None),
             Err(e) if e.code == ErrorCode::AppNotRunning => {}
             Err(e) => return Err(e.message),
@@ -241,16 +250,14 @@ impl ManagedOwner {
             }
             Err(e) => return Err(io(e)),
         }
-        self.child = Some(
-            process()
-                .arg("serve")
-                .arg("--data-dir")
-                .arg(&self.data)
-                .stdout(log()?)
-                .stderr(log()?)
-                .spawn()
-                .map_err(io)?,
-        );
+        let mut command = process();
+        command
+            .arg("serve")
+            .arg("--data-dir")
+            .arg(&self.data)
+            .stdout(log()?)
+            .stderr(log()?);
+        self.child = Some(spawn(command)?);
         Ok(env.warning.clone())
     }
 }
@@ -293,6 +300,29 @@ fn launcher_lock(dir: &Path, name: &str) -> Result<File, String> {
 }
 
 pub async fn open_or_start(dir: &Path) -> Result<(), String> {
+    open_or_start_with(
+        dir,
+        || {
+            let log = || open_log(&dir.join("studio.log"));
+            let mut command = std::process::Command::new(std::env::current_exe().map_err(io)?);
+            platform::detach(&mut command);
+            command
+                .arg("bundle-server")
+                .stdin(Stdio::null())
+                .stdout(log().map_err(io)?)
+                .stderr(log().map_err(io)?);
+            command.spawn().map(Some).map_err(io)
+        },
+        |url| async move { platform::open_browser(&url).await },
+    )
+    .await
+}
+
+async fn open_or_start_with<F: std::future::Future<Output = Result<(), String>>>(
+    dir: &Path,
+    spawn: impl FnOnce() -> Result<Option<std::process::Child>, String>,
+    open: impl FnOnce(String) -> F,
+) -> Result<(), String> {
     fs::create_dir_all(dir).map_err(io)?;
     platform::check_directory(dir).map_err(io)?;
     let guard = launcher_lock(dir, "launcher.lock")?;
@@ -317,15 +347,7 @@ pub async fn open_or_start(dir: &Path) -> Result<(), String> {
                 })
                 .map_err(io)?;
             drop(running);
-            let log = || open_log(&dir.join("studio.log"));
-            let mut command = std::process::Command::new(std::env::current_exe().map_err(io)?);
-            platform::detach(&mut command);
-            command
-                .arg("bundle-server")
-                .stdin(Stdio::null())
-                .stdout(log().map_err(io)?)
-                .stderr(log().map_err(io)?);
-            Some(command.spawn().map_err(io)?)
+            spawn()?
         }
         Err(std::fs::TryLockError::WouldBlock) => None,
         Err(std::fs::TryLockError::Error(error)) => return Err(io(error)),
@@ -337,12 +359,7 @@ pub async fn open_or_start(dir: &Path) -> Result<(), String> {
             && endpoint_matches(&marker).await
         {
             let auth = Auth::load_or_create(dir)?;
-            return platform::open_browser(&format!(
-                "http://{}/#token={}",
-                marker.address,
-                auth.token()
-            ))
-            .await;
+            return open(format!("http://{}/#token={}", marker.address, auth.token())).await;
         }
         if let Some(child) = &mut child
             && let Some(status) = child.try_wait().map_err(io)?
@@ -404,22 +421,22 @@ mod tests {
         std::thread::sleep(Duration::from_secs(30));
     }
 
+    fn sleeper() -> Child {
+        Process::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "launcher::desktop::tests::child_fixture",
+                "--ignored",
+            ])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .kill_on_drop(true)
+            .spawn()
+            .unwrap()
+    }
     #[tokio::test]
     async fn shutdown_only_signals_the_owned_child() {
-        fn sleeper() -> Child {
-            Process::new(std::env::current_exe().unwrap())
-                .args([
-                    "--exact",
-                    "launcher::desktop::tests::child_fixture",
-                    "--ignored",
-                ])
-                .stdin(Stdio::null())
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .kill_on_drop(true)
-                .spawn()
-                .unwrap()
-        }
         let mut unrelated = sleeper();
         platform::stop_child(None).await;
         assert!(unrelated.try_wait().unwrap().is_none());
@@ -430,6 +447,151 @@ mod tests {
         assert!(platform::process_start(pid).await.is_none());
         assert!(unrelated.try_wait().unwrap().is_none());
         unrelated.kill().await.unwrap();
+    }
+
+    struct Temp(PathBuf);
+    impl Temp {
+        fn new() -> Self {
+            let path =
+                std::env::temp_dir().join(format!("studio-desktop-{}", random_hex().unwrap()));
+            fs::create_dir(&path).unwrap();
+            Self(path)
+        }
+    }
+    impl Drop for Temp {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[tokio::test]
+    async fn reachable_owner_is_not_owned_and_absent_owner_spawns_once() {
+        use shellboy::protocol::{ApiError, Command, Origin, Response};
+        struct Probe(bool);
+        impl Owner for Probe {
+            async fn call(
+                &self,
+                command: Command,
+                _: Option<String>,
+                _: Option<Origin>,
+            ) -> Result<Response<serde_json::Value>, ApiError> {
+                assert!(matches!(command, Command::ThreadList(_)));
+                if self.0 {
+                    Ok(Response::success("fixture", serde_json::json!({})))
+                } else {
+                    Err(ApiError::new(ErrorCode::AppNotRunning, "fixture offline"))
+                }
+            }
+        }
+        let dir = Temp::new();
+        let config = dir.0.join("config.toml");
+        fs::write(&config, "").unwrap();
+        let mut owner = ManagedOwner {
+            bundled: dir.0.join("fixture-core"),
+            config,
+            cwd: dir.0.clone(),
+            log: dir.0.join("owner.log"),
+            data: dir.0.clone(),
+            env: Some(OwnerEnvironment {
+                vars: vec![],
+                warning: None,
+            }),
+            child: None,
+        };
+        let mut external = sleeper();
+        owner
+            .start_with(&Probe(true), |_| panic!("reachable owner must not spawn"))
+            .await
+            .unwrap();
+        platform::stop_child(owner.child.take()).await;
+        assert!(external.try_wait().unwrap().is_none());
+        owner
+            .start_with(&Probe(false), |command| {
+                assert!(command.as_std().get_args().any(|arg| arg == "serve"));
+                Ok(sleeper())
+            })
+            .await
+            .unwrap();
+        let pid = owner.child.as_ref().unwrap().id().unwrap();
+        assert!(
+            owner
+                .start_with(&Probe(false), |_| panic!(
+                    "unreaped child must not spawn again"
+                ))
+                .await
+                .is_err()
+        );
+        owner
+            .start_with(&Probe(true), |_| {
+                panic!("reachable owner must not spawn again")
+            })
+            .await
+            .unwrap();
+        assert_eq!(owner.child.as_ref().unwrap().id(), Some(pid));
+        platform::stop_child(owner.child.take()).await;
+        assert!(external.try_wait().unwrap().is_none());
+        external.kill().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn concurrent_opens_reuse_one_verified_authenticated_server() {
+        use std::cell::RefCell;
+        let dir = Temp::new();
+        let path = &dir.0;
+        let listener = bind_loopback(0).await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let listener = RefCell::new(Some(listener));
+        let pid = std::process::id();
+        let started = platform::process_start(pid).await.unwrap();
+        let identity = random_hex().unwrap();
+        let token = Auth::load_or_create(path).unwrap();
+        let task = RefCell::new(None);
+        let spawn = || {
+            let listener = listener.borrow_mut().take().expect("start exactly once");
+            let lock = launcher_lock(path, "running.lock").unwrap();
+            lock.try_lock().unwrap();
+            let marker = Marker {
+                version: 1,
+                pid,
+                started: started.clone(),
+                address,
+                token_file: path.join("token"),
+                identity: identity.clone(),
+            };
+            let disk = path.join("running.json");
+            serde_json::to_writer(File::create(&disk).unwrap(), &marker).unwrap();
+            let identity = identity.clone();
+            *task.borrow_mut() = Some(tokio::spawn(async move {
+                let _lock = lock;
+                axum::serve(
+                    listener,
+                    axum::Router::new().route(
+                        "/healthz",
+                        axum::routing::get(move || async move { identity }),
+                    ),
+                )
+                .await
+                .unwrap();
+            }));
+            Ok(None)
+        };
+        let opens = RefCell::new(Vec::new());
+        let open = |url| {
+            opens.borrow_mut().push(url);
+            std::future::ready(Ok(()))
+        };
+        let (first, second) = tokio::join!(
+            open_or_start_with(path, spawn, open),
+            open_or_start_with(path, spawn, open)
+        );
+        if let Some(task) = task.into_inner() {
+            task.abort();
+            let _ = task.await;
+        }
+        first.unwrap();
+        second.unwrap();
+        let expected = format!("http://{address}/#token={}", token.token());
+        assert_eq!(opens.into_inner(), vec![expected.clone(), expected]);
     }
 
     #[tokio::test]
