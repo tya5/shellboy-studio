@@ -1,10 +1,24 @@
 import { useEffect } from "preact/hooks";
 import { GuideRegistrationView } from "./GuideRegistration";
-import { CAPABILITY_CONFIG, CONFIG_FIELDS, formatRoute, settingsSection, SETTINGS_SECTIONS, valueAt, type ConfigKey, type DesignContext, type SettingsSection } from "../../../ui-core/src";
+import { CAPABILITY_CONFIG, CONFIG_FIELDS, formatRoute, settingsSection, SETTINGS_SECTIONS, valueAt, translator, type ConfigKey, type MessageKey, type DesignContext, type SettingsSection } from "../../../ui-core/src";
 import { Button, EffortControl, FactList, Notice, PairingQr, Section, SubView, type Fact, type IconRole } from "../system/components";
 import { AppearanceChoices } from "./Appearance";
 import { ConfigConnections, ConnectionModelRow, ConfigControl, ConfigPanel, configRowValue } from "./SettingsConfig";
 
+const SEARCH_COPY: Partial<Record<SettingsSection, readonly MessageKey[]>> = {
+  general: ["set.models.defaultModel", "set.models.modelNote", "set.models.defaultEffort", "set.models.effortNote", "settings.language"],
+  connections: ["setup.add", "setup.intro"],
+  compaction: ["set.compact.autoAt", "set.compact.autoNote", "set.compact.maxChars"],
+  storage: ["set.store.warnBytes", "set.store.maxBytes", "set.store.freeBytes", "set.store.rawDays", "set.store.rawBytes", "set.store.clipDays", "set.store.clipBytes"],
+  index: ["set.embed.file", "set.embed.modelNote", "set.embed.auto", "set.index.kinds", "set.index.cost"],
+  appearance: ["settings.language"], studio: ["pair.title", "studio.remote", "studio.info"],
+};
+const SEARCH_ROWS: Partial<Record<SettingsSection, readonly [MessageKey, ...MessageKey[]][]>> = {
+  general: [["set.models.defaultModel", "set.models.modelNote"], ["set.models.defaultEffort", "set.models.effortNote"]],
+  compaction: [["set.compact.autoAt", "set.compact.autoNote"], ["set.compact.maxChars"]],
+  storage: [["set.store.warnBytes"], ["set.store.maxBytes"], ["set.store.freeBytes"], ["set.store.rawDays"], ["set.store.rawBytes"], ["set.store.clipDays"], ["set.store.clipBytes"]],
+  index: [["set.conn.model", "set.embed.modelNote"], ["set.embed.auto"], ["set.index.kinds"]],
+};
 const ICONS: Record<SettingsSection, IconRole> = { general: "settings.general", connections: "settings.connections", appearance: "settings.appearance", compaction: "settings.compaction", storage: "settings.storage", index: "settings.index", agent: "settings.agent", studio: "settings.studio" };
 
 export function SettingsView({ context }: { context: DesignContext }) {
@@ -28,7 +42,7 @@ export function SettingsView({ context }: { context: DesignContext }) {
   const effortLabel = t("set.models.defaultEffort");
   const effortValue = effortPath ? valueAt(facts?.file.values, effortPath) : undefined;
   const effort: Fact = effortPath && editable
-    ? { label: effortLabel, control: <div class="stack"><EffortControl label={effortLabel} value={typeof effortValue === "string" ? effortValue : ""} labels={{ default: t("model.effort.default"), low: "low", medium: "medium", high: "high", other: t("model.effort.other") }} disabled={model.config.fieldSaving.value} onSelect={(value) => void model.config.saveField(effortPath, value, "text")} onCommit={(value) => void model.config.saveField(effortPath, value, "text")} /><div class="muted caption">{model.config.fieldError.value?.field === effortPath.join(".") ? model.config.fieldError.value.reason : model.config.lastSaved.value?.field === effortPath.join(".") ? <>{model.config.lastSaved.value.restartRequired ? t("config.restartOwner") : t("config.applyNow")} <Button variant="link" onClick={() => void model.config.undoLast()}>{t("config.undo")}</Button></> : facts?.restartAll ? t("config.restartOwner") : t("config.applyNow")}</div></div> }
+    ? { label: effortLabel, note: t("set.models.effortNote"), control: <div class="stack"><EffortControl label={effortLabel} value={typeof effortValue === "string" ? effortValue : ""} labels={{ default: t("model.effort.default"), low: "low", medium: "medium", high: "high", other: t("model.effort.other") }} disabled={model.config.fieldSaving.value} onSelect={(value) => void model.config.saveField(effortPath, value, "text")} onCommit={(value) => void model.config.saveField(effortPath, value, "text")} /><div class="muted caption">{model.config.fieldError.value?.field === effortPath.join(".") ? model.config.fieldError.value.reason : model.config.lastSaved.value?.field === effortPath.join(".") ? <>{model.config.lastSaved.value.restartRequired ? t("config.restartOwner") : t("config.applyNow")} {model.config.lastSaved.value.undo.length ? <Button variant="link" onClick={() => void model.config.undoLast()}>{t("config.undo")}</Button> : null}</> : facts?.restartAll ? t("config.restartOwner") : t("config.applyNow")}</div></div> }
     : { label: effortLabel, ...(effortPath && facts ? { value: configRowValue(t, facts, effortPath) } : {}) };
 
   const body = () => {
@@ -36,7 +50,7 @@ export function SettingsView({ context }: { context: DesignContext }) {
       case "general":
         return <>
           <Section title={t("set.models.defaults")}><FactList missing={missing} facts={[
-            ...(editable ? [{ label: t("set.models.defaultModel"), control: <ConnectionModelRow model={model} path={["default_connection"]} modelPath={["default_model"]} label={t("set.models.defaultConn")} /> }] : [fileFact(t("set.models.defaultConn"), "default_connection"), fileFact(t("set.models.defaultModel"), "default_model")]),
+            ...(editable ? [{ label: t("set.models.defaultModel"), note: t("set.models.modelNote"), control: <ConnectionModelRow model={model} path={["default_connection"]} modelPath={["default_model"]} label={t("set.models.defaultConn")} /> }] : [fileFact(t("set.models.defaultConn"), "default_connection"), fileFact(t("set.models.defaultModel"), "default_model")]),
             effort,
             fileFact(t("settings.language"), "ui.language"),
           ]} /></Section>
@@ -48,7 +62,7 @@ export function SettingsView({ context }: { context: DesignContext }) {
         </>;
       case "compaction":
         return <Section title={t("set.compact.file")} sub={t("set.threadSettings")}><FactList missing={missing} facts={[
-          fileFact(t("set.compact.autoAt"), "compaction.auto_at_tokens"),
+          { ...fileFact(t("set.compact.autoAt"), "compaction.auto_at_tokens"), note: t("set.compact.autoNote") },
           fileFact(t("set.compact.maxChars"), "compaction.summary_max_chars"),
         ]} /></Section>;
       case "storage":
@@ -88,8 +102,7 @@ export function SettingsView({ context }: { context: DesignContext }) {
         return <>
         <Notice tone="wait">{t("set.index.cost")}</Notice>
         <Section title={t("set.embed.file")}><FactList missing={missing} facts={[
-          fileFact(t("set.models.defaultConn"), "embedding.connection"),
-          { ...fileFact(t("set.conn.model"), "embedding.model"), note: t("set.embed.modelNote") },
+          ...(editable ? [{ label: t("set.conn.model"), note: t("set.embed.modelNote"), control: <ConnectionModelRow model={model} path={["embedding", "connection"]} modelPath={["embedding", "model"]} label={t("set.conn.model")} /> }] : [fileFact(t("set.models.defaultConn"), "embedding.connection"), { ...fileFact(t("set.conn.model"), "embedding.model"), note: t("set.embed.modelNote") }]),
         ]} /></Section>
         <Section title={t("set.section.index")}><FactList missing={missing} facts={[
           fileFact(t("set.embed.auto"), "indexing.auto_history"),
@@ -99,7 +112,7 @@ export function SettingsView({ context }: { context: DesignContext }) {
     }
   };
   const groupFor = (s: SettingsSection) => s === "general" || s === "connections" ? t("set.group.start") : s === "compaction" || s === "index" || s === "agent" ? t("set.group.agent") : s === "appearance" ? t("set.group.display") : s === "storage" ? t("set.group.data") : t("set.group.app");
-  return <SubView title={t("set.title")} groupedNav searchable items={SETTINGS_SECTIONS.map((s) => ({ key: s, href: formatRoute({ view: "settings", section: s }), role: ICONS[s], label: t(`set.section.${s}`), description: t(`set.sub.${s}`), searchTerms: ({ general: ["General", "全般"], connections: ["Connections", "接続"], compaction: ["Summary", "要約"], storage: ["Storage", "保存", "Capacity", "容量"], index: ["Index", "索引"], agent: ["Agent", "エージェントの案内"], appearance: ["Appearance", "外観"], studio: ["Studio", "このアプリ"] }[s]), group: groupFor(s), groupRole: s === "general" || s === "connections" ? "settings.category.start" : s === "compaction" || s === "index" || s === "agent" ? "settings.category.agent" : s === "appearance" ? "settings.category.display" : s === "storage" ? "settings.category.data" : "settings.category.app", current: s === section }))}>
+  return <SubView title={t("set.title")} close={{ href: formatRoute({ view: "conversation", threadId: model.selectedId.value }), label: t("common.close") }} groupedNav searchable items={SETTINGS_SECTIONS.map((s) => ({ key: s, href: formatRoute({ view: "settings", section: s }), role: ICONS[s], label: t(`set.section.${s}`), description: t(`set.sub.${s}`), searchTerms: (["en", "ja"] as const).flatMap((lang) => { const translate = translator(lang); return [translate(`set.section.${s}`), translate(`set.sub.${s}`), ...(SEARCH_COPY[s] ?? []).map((key) => translate(key)), ...(SEARCH_ROWS[s] ?? []).flat().map((key) => translate(key))]; }), searchRows: (SEARCH_ROWS[s] ?? []).map(([label, ...notes]) => ({ label: t(label), terms: (["en", "ja"] as const).flatMap((lang) => [label, ...notes].map((key) => translator(lang)(key))) })), group: groupFor(s), groupRole: s === "general" || s === "connections" ? "settings.category.start" : s === "compaction" || s === "index" || s === "agent" ? "settings.category.agent" : s === "appearance" ? "settings.category.display" : s === "storage" ? "settings.category.data" : "settings.category.app", current: s === section }))}>
     <div class="pagehead"><h1>{t(`set.section.${section}`)}</h1><div class="muted">{t(`set.sub.${section}`)}</div></div>
     {section !== "studio" && section !== "agent" ? <ConfigPanel model={model} /> : null}
     {body()}

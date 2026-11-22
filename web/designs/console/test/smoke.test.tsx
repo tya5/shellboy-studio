@@ -995,27 +995,34 @@ describe("Threads", () => {
     expect(el.querySelector(".subview-main input")).toBeNull();
   });
 
-  it("Settings writes a changed field on blur and shows its live apply state", async () => {
+  it("Settings saves a connection/model choice atomically, rereads, and undoes both fields", async () => {
     const made = await fixtureModel({ route: "settings", section: "general", capabilities: ["config.edit"] });
     const before = made.db.answer;
-    const values = { default_model: "old-model", default_connection: "proxy", connections: { proxy: {} } };
-    const side = { present: true, content_hash: "h1", valid: true, error: null, values, redacted_fields: [] };
-    made.db.answer = (c) => c.command === "config.get"
-      ? { ok: true, result: { loaded: side, file: side, differs: false } }
-      : c.command === "config.set"
-        ? { ok: true, result: { written: true, restart_required: false, changes: [{ field: "default_model", previous: "old-model", value: "new-model", applied_to_running_owner: true }] } }
-        : before(c);
+    const values = { default_connection: "proxy", default_model: "old-model", connections: { proxy: {}, second: {} } };
+    let side = { present: true, content_hash: "h1", valid: true, error: null, values, redacted_fields: [] };
+    made.db.answer = (c) => {
+      if (c.command === "config.get") return { ok: true, result: { loaded: side, file: side, differs: false } };
+      if (c.command === "model.list") return { ok: true, result: { api: "responses", connection: (c.args as { connection: string }).connection, models: [(c.args as { connection: string }).connection === "second" ? "new-model" : "old-model"] } };
+      if (c.command === "config.set") {
+        side = side.content_hash === "h1" ? { ...side, content_hash: "h2", values: { ...values, default_connection: "second", default_model: "new-model" } } : { ...side, content_hash: "h3", values };
+        return { ok: true, result: { written: true, restart_required: false, changes: [] } };
+      }
+      return before(c);
+    };
     const el = draw(made.model);
     act(() => made.model.config.ensure());
     await act(async () => { await settle(made.t, made.db); });
-    const input = el.querySelector<HTMLInputElement>('input[aria-label="Default model"]')!;
-    act(() => { input.value = "new-model"; input.dispatchEvent(new Event("input", { bubbles: true })); });
-    const save = [...el.querySelectorAll<HTMLButtonElement>("button")].find((button) => text(button) === "Applies now")!;
-    act(() => save.click());
+    const button = (name: string) => [...el.querySelectorAll<HTMLButtonElement>(".subview-main button")].find((b) => text(b) === name)!;
+    act(() => button("proxy / old-model").click());
     await act(async () => { await settle(made.t, made.db); });
-    expect(made.t.calls("config.set").at(-1)!.args).toEqual({ expected_hash: "h1", changes: [{ field: "default_model", value: "new-model" }] });
-    expect(text(el)).toContain("Applies now");
-    expect(text(el)).not.toContain("Review changes");
+    act(() => button("second / new-model").click());
+    await act(async () => { await settle(made.t, made.db); });
+    expect(made.t.calls("config.set").map((c) => c.args)).toEqual([{ expected_hash: "h1", changes: [{ field: "default_connection", value: "second" }, { field: "default_model", value: "new-model" }] }]);
+    expect(button("second / new-model")).toBeDefined();
+    act(() => button("Undo").click());
+    await act(async () => { await settle(made.t, made.db); });
+    expect(made.t.calls("config.set").at(-1)!.args).toEqual({ expected_hash: "h2", changes: [{ field: "default_connection", value: "proxy" }, { field: "default_model", value: "old-model" }] });
+    expect(button("proxy / old-model")).toBeDefined();
   });
 
   it("with the capability: picker, preview, then Move; a refusal shows the owner's words", async () => {

@@ -1,6 +1,7 @@
-import { useState } from "preact/hooks";
+import { useCallback, useMemo, useState } from "preact/hooks";
 import { CAPABILITY_CONFIG, CONNECTION_FIELDS, CONNECTION_SECRETS, fieldOf, isHidden, isHiddenName, showConfigValue, valueAt, type AppModel, type ConfigChangeRow, type ConfigFacts, type ConfigFieldSpec, type Draft } from "../../../ui-core/src";
 import { Button, ButtonGroup, FactList, Field, Notice, Section, type Fact } from "../system/components";
+import { ConnectionModelList, ModelChooser, modelLabel, useConnectionModels } from "../system/components/ModelPicker/ConnectionModelList";
 import { Rich } from "./Rich";
 
 type T = AppModel["t"]["value"];
@@ -76,7 +77,7 @@ export function ConfigControl({ model, path, label, spec }: { model: AppModel; p
     const raw = current === undefined || current === null ? "" : showConfigValue(current);
     control = <Field ariaLabel={label} class="mono" inputMode={spec.kind === "int" ? "numeric" : undefined} placeholder={t("config.notSet")} value={raw} disabled={disabled} onKeyDown={(e) => { if (e.key === "Enter") commit(e.currentTarget.value); }} onBlur={(e) => { if (e.currentTarget.value !== raw) commit(e.currentTarget.value); }} />;
   }
-  const status = error ? <span role="status">{error}</span> : <>{saved ? <>{saved.restartRequired ? t("config.restartOwner") : t("config.applyNow")} <Button variant="link" onClick={() => void config.undoLast()}>{t("config.undo")}</Button></> : facts?.restartAll ? t("config.restartOwner") : t("config.applyNow")}</>;
+  const status = error ? <span role="status">{error}</span> : <>{saved ? <>{saved.restartRequired ? t("config.restartOwner") : t("config.applyNow")} {saved.undo.length ? <Button variant="link" onClick={() => void config.undoLast()}>{t("config.undo")}</Button> : null}</> : facts?.restartAll ? t("config.restartOwner") : t("config.applyNow")}</>;
   return <div class="stack">{control}<div class="muted caption" role={error ? "alert" : undefined}>{status}</div></div>;
 }
 
@@ -104,38 +105,43 @@ function HiddenAdd({ model, path, label, json, t, onSaved }: { model: AppModel; 
   return <><Field ariaLabel={`${label}: ${t("config.newValue")}`} type="password" autoComplete="new-password" placeholder={json ? t("config.enterJson") : t("config.newValue")} value={raw} onInput={(e) => setRaw(e.currentTarget.value)} onKeyDown={(e) => { if (e.key === "Enter") save(); }} onBlur={save} />{error ? <Notice tone="bad">{error}</Notice> : null}</>;
 }
 
-/** One connection/model choice; catalog requests happen only after the user asks. */
-export function ConnectionModelRow({ model, path, modelPath = ["default_model"], label }: { model: AppModel; path: readonly string[]; modelPath?: readonly string[]; label: string }) {
+/** The selected pair is always the one in the latest Core read. */
+export function ConnectionModelRow({ model, path, modelPath, label }: { model: AppModel; path: readonly string[]; modelPath: readonly string[]; label: string }) {
   const t = model.t.value;
-  const facts = model.config.read.value.value;
+  const config = model.config;
+  const facts = config.read.value.value;
   const values = facts?.file.values;
-  const connections = values?.connections as Record<string, Record<string, unknown>> | undefined;
-  const choices = Object.keys(connections ?? {});
-  const connectionPath = path;
-  const [connection, setConnection] = useState(String(valueAt(values, connectionPath) ?? choices[0] ?? ""));
-  const [modelName, setModelName] = useState(String(valueAt(values, modelPath) ?? ""));
-  const [catalog, setCatalog] = useState<string[]>([]);
-  const [catalogError, setCatalogError] = useState<string | undefined>();
-  const [catalogBusy, setCatalogBusy] = useState(false);
-  const field = fieldOf(connectionPath);
-  const error = model.config.fieldError.value?.field === field || model.config.fieldError.value?.field === fieldOf(modelPath) ? model.config.fieldError.value.reason : undefined;
-  const changed = connection !== String(valueAt(values, connectionPath) ?? "") || modelName !== String(valueAt(values, modelPath) ?? "");
-  const fetchModels = async () => {
-    setCatalogBusy(true);
-    const out = await model.ops.modelList({ connection });
-    setCatalogBusy(false);
-    if (out.ok) { setCatalog(out.value.models); setCatalogError(undefined); }
-    else setCatalogError(out.error.message);
-  };
-  const save = async () => {
-    if (!connection || !modelName || model.config.fieldSaving.peek()) return;
-    await model.config.saveField(connectionPath, connection, "text");
-    if (!model.config.fieldError.peek()) {
-      void model.config.saveField(modelPath, modelName, "text");
-    }
-  };
-  const selectConnection = (next: string) => { setConnection(next); setCatalog([]); setCatalogError(undefined); };
-  return <div class="stack"><div class="fieldrow"><Field as="select" ariaLabel={t("set.models.defaultConn")} value={connection} options={choices.map((item) => ({ value: item, label: item }))} onSelectChange={selectConnection} /><Button disabled={!connection || catalogBusy} onClick={() => void fetchModels()}>{catalogBusy ? t("common.loading") : t("set.conn.catalog")}</Button></div><div class="fieldrow"><Field ariaLabel={t("set.models.defaultModel")} placeholder={t("set.models.defaultModel")} value={modelName} onInput={(event) => setModelName(event.currentTarget.value)} /><Button disabled={!changed || model.config.fieldSaving.value || !modelName} onClick={() => void save()}>{t("config.applyNow")}</Button></div>{catalog.length ? <Field as="select" ariaLabel={t("set.conn.catalog")} value={modelName} options={catalog.map((item) => ({ value: item, label: item }))} onSelectChange={setModelName} /> : null}{catalogError ? <Notice tone="bad">{catalogError}</Notice> : null}{error ? <Notice tone="bad">{error}</Notice> : null}<div class="muted caption">{error ?? (facts?.restartAll ? t("config.restartOwner") : t("config.applyNow"))} {model.config.lastSaved.value?.field === fieldOf(modelPath) ? <Button variant="link" onClick={() => void model.config.undoLast()}>{t("config.undo")}</Button> : null}</div></div>;
+  const connections = values?.connections as Record<string, unknown> | undefined;
+  const names = useMemo(() => Object.keys(connections ?? {}).sort(), [connections]);
+  const [open, setOpen] = useState(false);
+  const choice = { connection: String(valueAt(values, path) ?? ""), model: String(valueAt(values, modelPath) ?? "") };
+  const field = fieldOf(path);
+  const saved = config.lastSaved.value?.field === field ? config.lastSaved.value : undefined;
+  const error = config.fieldError.value?.field === field ? config.fieldError.value.reason : undefined;
+  const load = useCallback(async (connection: string) => {
+    const result = await model.ops.modelList({ connection });
+    return result.ok ? { choices: result.value.models } : { choices: [], error: result.error.message };
+  }, [model]);
+  return <div class="stack">
+    <ModelChooser label={label} trigger={choice.connection && choice.model ? modelLabel(choice) : t("model.change")} open={open} disabled={config.fieldSaving.value || !names.length} onToggle={() => setOpen(!open)} onClose={() => setOpen(false)}>
+      <ModelCatalog connections={names} load={load} current={choice} t={t} onSelect={(next) => { setOpen(false); void config.saveModelPair(path, modelPath, next.connection, next.model); }} />
+      <Button onClick={() => setOpen(false)}>{t("model.close")}</Button>
+    </ModelChooser>
+    <div class="muted caption">{(saved?.restartRequired ?? facts?.restartAll) ? t("config.restartOwner") : t("config.applyNow")} {saved?.undo.length ? <Button disabled={config.fieldSaving.value} variant="link" onClick={() => void config.undoLast()}>{t("config.undo")}</Button> : null}</div>
+    {error ? <Notice tone="bad">{error}</Notice> : null}
+  </div>;
+}
+
+function ModelCatalog({ connections, load, current, t, onSelect }: {
+  connections: readonly string[]; load: Parameters<typeof useConnectionModels>[1]; current: { connection: string; model: string }; t: T;
+  onSelect: (choice: { connection: string; model: string }) => void;
+}) {
+  const catalog = useConnectionModels(connections, load);
+  const choices = current.connection && current.model && !catalog.choices.some((choice) => choice.connection === current.connection && choice.model === current.model) ? [current, ...catalog.choices] : catalog.choices;
+  return <>
+    <ConnectionModelList choices={choices} selected={current} searchLabel={t("model.search")} emptyLabel={catalog.loading ? t("common.loading") : t("model.empty")} onSelect={onSelect} />
+    {catalog.errors.map((error, index) => <Notice key={index} tone="bad">{error}</Notice>)}
+  </>;
 }
 
 /** One section per connection in the file. */

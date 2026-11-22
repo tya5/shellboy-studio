@@ -100,3 +100,4 @@ Sidebar and shared state roles (Orca sidebar and Lucide semantics):
 - `thread.children`: the child disclosure and count.
 - `group.directory`: a directory heading, not a navigation link.
 - `sidebar.filter`: opens list filter controls.
+`settings.close` identifies the action to leave Settings; it is rendered as `cross`.

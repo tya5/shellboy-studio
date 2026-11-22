@@ -192,12 +192,15 @@ const parseInt10 = (raw: string): number | undefined => {
 
 const same = (a: unknown, b: unknown): boolean => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 
+type ConfigWrite = { field: string; value?: unknown };
+const configWrite = (field: string, value: unknown): ConfigWrite => value === undefined ? { field } : { field, value };
+
 export class ConfigEditor {
   readonly read: Signal<ConfigRead> = signal({ loading: false, value: undefined, error: undefined });
   readonly connectionAction: Signal<{ name: string; state: "testing" | "ok" | "failed" | "clearing" | "cleared" | "unconfirmed" } | undefined> = signal(undefined);
   readonly drafts: Signal<ReadonlyMap<string, Draft>> = signal(new Map());
   readonly stage: Signal<ConfigStage> = signal({ kind: "editing" });
-  readonly lastSaved: Signal<(SavedChange & { path: readonly string[] }) | undefined> = signal(undefined);
+  readonly lastSaved: Signal<(SavedChange & { path: readonly string[]; undo: ConfigWrite[] }) | undefined> = signal(undefined);
   readonly fieldError: Signal<{ field: string; reason: string } | undefined> = signal(undefined);
   readonly fieldSaving: Signal<boolean> = signal(false);
   /** Every draft that would change the file, against the file as last read. */
@@ -246,6 +249,8 @@ export class ConfigEditor {
   leave(): void {
     if (!this.shown) return;
     this.shown = false;
+    this.lastSaved.value = undefined;
+    this.fieldError.value = undefined;
     this.cancel.cancel();
     if (this.read.peek().loading) this.read.value = { ...this.read.peek(), loading: false };
   }
@@ -352,66 +357,63 @@ export class ConfigEditor {
     this.stage.value = { kind: "editing" };
   }
 
-  /** Save one setting immediately; the owner remains the source of the displayed value. */
-  async saveField(path: readonly string[], raw: string, kind: ConfigKind | "secret" | "secret-json", force = false): Promise<void> {
+  /** Save a single setting using the same write/read path as a model pair. */
+  async saveField(path: readonly string[], raw: string, kind: ConfigKind | "secret" | "secret-json"): Promise<void> {
     if (this.fieldSaving.peek()) return;
-    const facts = this.read.peek().value;
-    if (!facts || this.read.peek().error || !facts.file.valid) return;
     const field = fieldOf(path);
-    const before = valueAt(facts.file.values, path);
     this.edit(path, raw, kind);
     const draft = this.drafts.peek().get(field);
-    if (!draft && force) {
-      const value = kind === "bool" ? raw === "true" : kind === "int" ? parseInt10(raw) : kind === "kinds" ? (raw ? raw.split(",").filter(Boolean) : []) : raw.trim() === "" ? undefined : raw;
-      this.drafts.value = new Map([[field, { field, path, raw, value, sensitive: false }]]);
+    const remaining = new Map(this.drafts.peek());
+    remaining.delete(field);
+    this.drafts.value = remaining;
+    if (!draft) return;
+    if (draft.invalid) {
+      this.fieldError.value = { field, reason: draft.invalid };
+      return;
     }
-    const actualDraft = this.drafts.peek().get(field);
-    if (!actualDraft || actualDraft.invalid) return;
-    if ([...this.drafts.peek().keys()].some((key) => key !== field)) return;
-    this.fieldSaving.value = true;
-    this.lastSaved.value = undefined;
-    this.fieldError.value = undefined;
-    const out = await this.ops.configSet(facts.file.contentHash, actualDraft.value === undefined ? [{ field }] : [{ field, value: actualDraft.value }]);
-    if (out.ok) {
-      const saved = readSaved(out.value).find((change) => change.field === field);
-      this.lastSaved.value = { ...(saved ?? { field, previous: before, value: actualDraft.value, sensitive: actualDraft.sensitive, restartRequired: out.value.restart_required === true, appliedToRunningOwner: !facts.restartAll }), path };
-      this.drafts.value = new Map();
-      await this.refresh();
-    } else if (out.error.kind === "owner" && out.error.code === "operation_conflict") {
-      await this.refresh();
-      this.fieldError.value = { field, reason: out.error.message };
-    } else if (out.error.kind === "unconfirmed" || out.error.kind === "connection_lost") {
-      await this.refresh();
-      this.fieldError.value = { field, reason: out.error.message };
-    } else {
-      const details = out.error.kind === "owner" ? record(out.error.details) : undefined;
-      this.fieldError.value = { field, reason: out.error.message || (typeof details?.reason === "string" ? details.reason : out.error.kind) };
-      await this.refresh();
-    }
-    this.fieldSaving.value = false;
+    await this.writeSetting(path, [configWrite(field, draft.value)], !draft.sensitive);
   }
 
-  /** Remove one field without exposing its hidden prior value. */
+  async saveModelPair(connectionPath: readonly string[], modelPath: readonly string[], connection: string, model: string): Promise<void> {
+    const values = this.read.peek().value?.file.values;
+    if (valueAt(values, connectionPath) === connection && valueAt(values, modelPath) === model) return;
+    await this.writeSetting(connectionPath, [configWrite(fieldOf(connectionPath), connection), configWrite(fieldOf(modelPath), model)], true, [connectionPath, modelPath]);
+  }
+
   async removeField(path: readonly string[]): Promise<void> {
-    const facts = this.read.peek().value;
-    if (!facts || this.fieldSaving.peek() || this.read.peek().error) return;
-    const field = fieldOf(path);
-    this.fieldSaving.value = true;
-    this.fieldError.value = undefined;
-    const out = await this.ops.configSet(facts.file.contentHash, [{ field }]);
-    if (out.ok) { this.lastSaved.value = undefined; await this.refresh(); }
-    else { this.fieldError.value = { field, reason: out.error.message }; await this.refresh(); }
-    this.fieldSaving.value = false;
+    await this.writeSetting(path, [{ field: fieldOf(path) }], false);
   }
 
-  /** Reapply the exact previous Core value through the same one-field operation. */
   async undoLast(): Promise<void> {
     const saved = this.lastSaved.peek();
-    if (!saved || this.fieldSaving.peek()) return;
-    const path = saved.path;
-    const value = saved.previous;
-    await this.saveField(path, value === undefined ? "" : typeof value === "string" ? value : JSON.stringify(value), Array.isArray(value) ? "kinds" : typeof value === "boolean" ? "bool" : typeof value === "number" ? "int" : "text", true);
+    if (saved?.undo.length) await this.writeSetting(saved.path, saved.undo, false);
+  }
+
+  private async writeSetting(path: readonly string[], changes: ConfigWrite[], undoable: boolean, paths = [path]): Promise<void> {
+    const read = this.read.peek();
+    if (this.fieldSaving.peek() || read.error || !read.value?.file.valid) return;
+    const field = fieldOf(path);
+    const file = read.value.file;
+    const previous = valueAt(file.values, path);
+    const undo = undoable ? paths.map((key) => configWrite(fieldOf(key), valueAt(file.values, key))) : [];
+    if (changes.some((change) => isHidden(change.value))) return;
+    this.fieldSaving.value = true;
     this.lastSaved.value = undefined;
+    this.fieldError.value = undefined;
+    try {
+      const out = await this.ops.configSet(file.contentHash, changes);
+      if (out.ok) {
+        const saved = readSaved(out.value).find((change) => change.field === field);
+        if (this.shown) this.lastSaved.value = {
+          ...saved, field, path, undo, ...(undoable ? { previous } : {}), sensitive: !undoable,
+          restartRequired: out.value.restart_required === true || saved?.restartRequired === true,
+          appliedToRunningOwner: out.value.applied_to_running_owner === true || saved?.appliedToRunningOwner === true,
+        };
+      } else if (this.shown) this.fieldError.value = { field, reason: out.error.message };
+      if (this.shown) await this.refresh();
+    } finally {
+      this.fieldSaving.value = false;
+    }
   }
 
   async save(): Promise<void> {

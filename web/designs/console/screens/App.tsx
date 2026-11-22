@@ -163,6 +163,23 @@ export function App({ context }: { context: DesignContext }) {
   const title = route.view === "conversation" ? (details?.title ?? row?.summary.title) : t(`view.${route.view}`);
   const folder = route.view === "conversation" ? folderName(details?.cwd ?? row?.summary.cwd) : undefined;
 
+  const statusFooter = <footer class="status">
+            <StatusMark
+              status={conn === "connected" ? "completed" : conn === "ownerDown" ? "recovery" : "waiting"}
+              label={t(conn === "connected" ? "conn.connected" : conn === "ownerDown" ? "conn.ownerDown" : "conn.connecting")}
+            />
+            {model.data.dataDir.value ? (
+              <span class="owner-dir">
+                {t("conn.ownerDir")} <span class="mono" title={model.data.dataDir.value}><bdi>{model.data.dataDir.value}</bdi></span>
+              </span>
+            ) : null}
+            {details?.cwd ? <span class="mono cwd">{details.cwd}</span> : null}
+            <div class="right">
+              {conn === "connected" ? <span>{t("conn.live")}</span> : null}
+            </div>
+          </footer>;
+  if (route.view === "settings") return <div class="app"><SettingsView context={context} />{statusFooter}</div>;
+
   return (
     <div class="app" ref={appRef}>
       <div class={context.prefs.value.navCollapsed ? "shell nav-collapsed" : "shell"} style={layoutWidthStyle(context.prefs.value)}>
@@ -292,6 +309,7 @@ export function App({ context }: { context: DesignContext }) {
               {desktop ? <Button onClick={() => model.data.link.launcherAction("exit")}>{t("launcher.exit")}</Button> : null}
             </div>
           </footer>
+          {statusFooter}
           <nav class="tabbar" aria-label={t("nav.views")}>
             {inboxNav}
             {conversationNav}
