@@ -530,7 +530,7 @@ async fn new_tabs_start_from_the_current_owner_state_and_hear_about_changes() {
     let event = next_t(&mut early, "owner").await;
     assert_eq!(event["event"], "connected");
     assert_eq!(event["owner"]["info"]["instance_id"], "inst1");
-    // What this build was made to send: nothing in a normal build, pinned to the tag.
+    // Assert the pinned bridge capability list on both connection paths.
     let mut expected = Vec::new();
     if cfg!(feature = "next-shellboy") {
         expected.extend([
@@ -550,13 +550,13 @@ async fn new_tabs_start_from_the_current_owner_state_and_hear_about_changes() {
     if cfg!(feature = "next-connection-setup") {
         expected.push("connection.setup");
     }
+    expected.push("attachment.list.page");
     let expected = json!(expected);
     assert_eq!(event["owner"]["info"]["capabilities"], expected);
     let mut late = connect(addr, Some(&cookie), Some(&origin)).await.unwrap();
-    assert_eq!(
-        next_t(&mut late, "hello").await["owner"]["state"],
-        "connected"
-    );
+    let late_hello = next_t(&mut late, "hello").await;
+    assert_eq!(late_hello["owner"]["state"], "connected");
+    assert_eq!(late_hello["owner"]["info"]["capabilities"], expected);
     tx.send(unreachable_owner()).unwrap();
     assert_eq!(next_t(&mut early, "owner").await["event"], "unreachable");
     cancel.cancel();
