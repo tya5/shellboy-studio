@@ -55,6 +55,8 @@ def main():
         for code in re.findall(r"python3? - <<'([A-Z]+)'\n(.*?)\n\s*\1(?:\n|$)", workflow, re.S):
             ast.parse(textwrap.dedent(code[1]))
     subprocess.run([sys.executable, str(ROOT / "tools/test-exact-owner.py")], check=True)
+    subprocess.run([sys.executable, str(ROOT / "tools/test-macos-package.py")], check=True)
+
     print(f"Source local links checked: {local_links(ROOT)}")
     block = release.split("      - name: Package\n", 1)[1].split("      - name:", 1)[0]
     code = textwrap.dedent(block.split("python - <<'PY'\n", 1)[1].rsplit("\n          PY", 1)[0])

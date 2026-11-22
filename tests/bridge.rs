@@ -867,7 +867,7 @@ impl Drop for SyntheticDir {
 
 #[tokio::test]
 async fn ordinary_bridge_cannot_run_launcher_actions() {
-    let owner = MockOwner::new(list_handler);
+    let (owner, _tx) = mock(list_handler);
     let (addr, state, cancel) = start(owner, false).await;
     let cookie = login(addr, &state).await;
     let mut ws = connect(addr, Some(&cookie), Some(&format!("http://{addr}")))
