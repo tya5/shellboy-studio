@@ -175,7 +175,7 @@ describe("screen-owned thread-list focus", () => {
       expect(target).toBeDefined();
       await act(async () => { target!.focus(); });
       expect(document.activeElement).toBe(target);
-      const toolbarControl = screen === "threads" ? rig.host.querySelector<HTMLButtonElement>(".toolbar button")! : rig.host.querySelector<HTMLButtonElement>(".sidehead button")!;
+      const toolbarControl = screen === "threads" ? rig.host.querySelector<HTMLButtonElement>(".toolbar button")! : rig.host.querySelector<HTMLButtonElement>(".side-controls button[title]")!;
       toolbarControl.focus();
       expect(document.activeElement).toBe(toolbarControl);
       toolbarControl.remove();
