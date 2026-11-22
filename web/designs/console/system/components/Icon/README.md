@@ -85,3 +85,5 @@ Consumers use semantic `IconRole` names only. Glyph names, paths, and the role-t
 Styles are colocated in `system/components/Icon/style.css`.
 
 Styles: style.css in this directory
+
+- `panel.attachment`: the Possessions tab and its attachment rows; denotes a saved attachment, not a download.

@@ -1,3 +1,4 @@
+import { AttachmentSection } from "./attachment-section";
 import { captureConversationInput, createConversationIdentity, captureCurrentWork, type ConversationSemanticInput } from "./conversation-input";
 import { readThreadSettings, type OutputLimitReadback, type ThreadSettings } from "./resources";
 import {localSendAdmission} from "./local-send-admission";
@@ -73,8 +74,8 @@ export type SendState =
   | { kind: "failed"; message: string }
   | { kind: "unconfirmed"; operationId: string; text: string };
 
-export type RightPanelTab = "work" | "reply-needed" | "awaiting-reply" | "info";
-export type RightPanelTarget = Readonly<{ kind: "step" | "message" | "reply"; id: string }>;
+export type RightPanelTab = "work" | "reply-needed" | "awaiting-reply" | "possessions" | "info";
+export type RightPanelTarget = Readonly<{ kind: "step" | "message" | "reply" | "attachment"; id: string }>;
 export type RightPanelDetail = RightPanelTarget & Readonly<{ opener?: () => void }>;
 type PanelOperation = Readonly<{ kind: "cancel" | "answer" } & (
   { disposition: "pending"; source: "pending" | "reply"; state: string } | { disposition: "failed" | "unconfirmed"; error: string }
@@ -329,6 +330,7 @@ export class AppModel {
     return `${this.bodyScopeKey(handle, this.longReader.value, this.route.value)}:${nodeId}:${itemIdentity ?? "manual"}`;
   }
   bodyState(nodeId: string, itemIdentity?: string): BodyState | undefined { return this.bodies.value.get(this.bodyCacheKey(nodeId, itemIdentity)); }
+  readonly attachmentSection: AttachmentSection;
   readonly panelTab: Signal<RightPanelTab> = signal("work");
   readonly panelOpener: Signal<Partial<Record<RightPanelTab, RightPanelTarget>>> = signal({});
   private panelPreference?: PanelPreference;
@@ -379,6 +381,7 @@ export class AppModel {
 
   constructor(options: AppModelOptions) {
     this.data = options.data;
+    this.attachmentSection = new AttachmentSection(this.data);
     this.ops = options.data.operations;
     this.pending = options.pending ?? new HumanInbox(options.data);
     this.replyWait = options.replyWait ?? noReplyWait;
@@ -666,6 +669,7 @@ export class AppModel {
   }
 
   dispose(): void {
+    this.attachmentSection.close();
     this.panelOperations.value = new Map();
     this.panelDetail.value = undefined;
     this.closeModelPicker();
@@ -1202,7 +1206,7 @@ export class AppModel {
 
   openInPanel(target: RightPanelTarget, opener?: () => void): void {
     if (this.panelPreference && !this.panelPreference.visible()) return;
-    const tab: RightPanelTab = target.kind === "reply"
+    const tab: RightPanelTab = target.kind === "attachment" ? "possessions" : target.kind === "reply"
       ? this.threadReplies.peek().find(row => row.id === target.id)?.recipient.kind === "thread" ? "reply-needed" : "awaiting-reply"
       : "work";
     batch(() => {

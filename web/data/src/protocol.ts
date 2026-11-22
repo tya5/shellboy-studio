@@ -139,6 +139,19 @@ export interface Page<T> {
   next_cursor?: string;
 }
 
+/** Core #327, selected attachment metadata; this surface never reads file bytes. */
+export interface AttachmentDetails {
+  source_node_id: string;
+  delivery_status: string;
+  attachment_id: string;
+  thread_id: string;
+  path: string;
+  kind: "file" | "image";
+  selected: boolean;
+  managed: boolean;
+  unavailable_reason?: string;
+}
+
 export interface ThreadSummary {
   thread_id: string;
   title: string;

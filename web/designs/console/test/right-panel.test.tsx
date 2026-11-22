@@ -14,8 +14,8 @@ import { App } from '../screens/App';
 let host: HTMLElement | undefined;
 afterEach(() => { if (host) render(null, host); host?.remove(); host = undefined; });
 
-async function setup() {
- const f=await fixtureModel({route:'conversation',threadId:'lead',lang:'ja',configure(db){
+async function setup(capabilities?: string[]) {
+ const f=await fixtureModel({route:'conversation',threadId:'lead',lang:'ja',capabilities,configure(db){
   db.threads={lead:summary('lead')};
   db.details.lead=details('lead',{run_id:'run-1',model:'model-a',effort:'high',connection:'test-connection',cwd:'/fixture/panel',awaiting_replies:[
    {message_id:'owed-human',recipient_kind:'human',recipient_thread_id:'lead',excerpt:'Need an answer from this conversation',delivery_status:'accepted',elapsed_ms:2400,created_at:'2026-11-21T00:00:00Z'},
@@ -36,6 +36,56 @@ async function setup() {
 }
 
 describe('right panel purpose',()=>{
+ it('opens the attachment section on demand, pages by cursor, and refreshes on the Thread hint', async () => {
+  const f=await setup(['attachment.list.page']);
+  const row=(id:string,path:string)=>({attachment_id:id,source_node_id:`source-${id}`,thread_id:'lead',path,kind:'file',delivery_status:'applied',selected:true,managed:false});
+  let first={items:[row('a','/fixture/readme.txt')],next_cursor:'opaque'};
+  const answer=f.db.answer.bind(f.db);
+  f.db.answer=call=>call.command==='attachment.list'
+   ? {ok:true,result:(call.args as {cursor?:string}).cursor ? {items:[row('b','C:\\fixture\\notes.txt')]} : first}
+   : answer(call);
+  try {
+   const tabs=[...f.host.querySelectorAll<HTMLButtonElement>('[role=tab]')];
+   expect(tabs.map(tab=>tab.dataset.panelTab)).toEqual(['work','reply-needed','awaiting-reply','possessions','info']);
+   expect(f.t.calls('attachment.list')).toHaveLength(0);
+   await act(async()=>{tabs[3]!.click();});
+   await act(async()=>{await settle(f.t,f.db);});
+   expect(f.t.calls('attachment.list').map(call=>call.args)).toEqual([{thread_id:'lead',limit:50}]);
+   const page=f.host.querySelector('#panel-page-possessions')!;
+   expect(page.querySelectorAll('[data-panel-row-id]')).toHaveLength(1);
+   const opener=page.querySelector<HTMLButtonElement>('[data-panel-row-id="a"] button')!;
+   expect(opener.textContent).toContain('readme.txt');
+   await act(async()=>opener.click());
+   expect(page.querySelector('[data-panel-detail]')?.textContent).toContain('/fixture/readme.txt');
+   await act(async()=>page.querySelector<HTMLButtonElement>('[data-panel-back]')!.click());
+   expect(document.activeElement).toBe(opener);
+   const more=[...page.querySelectorAll('button')].find(btn=>btn.textContent==='さらに表示')!;
+   await act(async()=>{more.click();await settle(f.t,f.db);});
+   expect(f.t.calls('attachment.list').at(-1)?.args).toEqual({thread_id:'lead',limit:50,cursor:'opaque'});
+   expect([...page.querySelectorAll('[data-panel-row-id]')].map(el=>el.textContent)).toEqual(['readme.txtファイル','notes.txtファイル']);
+   first={items:[row('c','/fixture/new.txt')],next_cursor:'new-cut'};
+   await act(async()=>{f.t.push({t:'changed',thread_ids:['lead'],list:false});await settle(f.t,f.db);});
+   expect(page.querySelector('[data-panel-row-id="c"]')?.textContent).toContain('new.txt');
+   expect(page.querySelector('[data-panel-row-id="b"]')).toBeNull();
+   await act(async()=>tabs[0]!.click());
+   await act(async()=>{f.t.push({t:'changed',thread_ids:['lead'],list:false});await settle(f.t,f.db);});
+   expect(f.t.calls('attachment.list')).toHaveLength(3);
+  } finally {f.model.dispose();f.data.stop();}
+ });
+
+ it('rejects the legacy array and shows an attachment read error', async () => {
+  const f=await setup(['attachment.list.page']);
+  const answer=f.db.answer.bind(f.db);
+  f.db.answer=call=>call.command==='attachment.list'?{ok:true,result:[]}:answer(call);
+  try {
+   await act(async()=>f.host.querySelector<HTMLButtonElement>('[data-panel-tab="possessions"]')!.click());
+   await act(async()=>{await settle(f.t,f.db);});
+   const page=f.host.querySelector('#panel-page-possessions')!;
+   expect(page.querySelector('[role="alert"]')?.textContent).toContain('添付を読み込めませんでした');
+   expect(page.querySelectorAll('[data-panel-row-id]')).toHaveLength(0);
+  } finally {f.model.dispose();f.data.stop();}
+ });
+
  it('shows four fixed tabs and splits replies by recipient kind',async()=>{
   const f=await setup();
   try{

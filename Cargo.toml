@@ -38,6 +38,8 @@ next-connection-setup = ["next-shellboy"]
 next-tags = ["next-shellboy"]
 # `thread.cwds` (the list of directories). Validate it against the published tag.
 next-cwds = ["next-tags"]
+# Enable only with the Core #327 pin: the old attachment list is not bounded.
+next-attachment-page = ["next-shellboy"]
 
 [dependencies]
 # Published owner pin; exact-pair acceptance verifies the manifest revision and lock commit.

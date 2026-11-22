@@ -1,3 +1,4 @@
+import { CAPABILITY_ATTACHMENT_PAGE } from "../../../data/src";
 import {messageRelationship,senderHeaderDisplay} from "../../../ui-core/src/sender-display";
 import { capturedWorkElementDisplay, capturedWorkExecutionDisplay, type WorkElementDisplay } from "../../../ui-core/src/work-element-display";
 import { WorkElementRow, formatWorkElementDisplay } from "../system/components/WorkElementRow";
@@ -397,6 +398,30 @@ const activitySections = [
   { key: "pending", label: "panel.pending", kind: "message", icon: "panel.awaiting_reply" },
 ] as const;
 
+const possessionsSections = [
+  { label: "panel.attachments", kind: "attachment", icon: "panel.attachment" },
+] as const;
+
+function PanelPossessions({ model }: { model: AppModel }) {
+  const t = model.t.value;
+  const state = model.attachmentSection.state.value;
+  return <div class="panel-list" data-panel-list="possessions">
+    {possessionsSections.map(section => <section key={section.kind}>
+      <ListDivider label={t(section.label)} count={state.items.length} />
+      {state.items.map(row => <ListRow key={row.attachment_id} id={row.attachment_id}
+        title={row.path.split(/[\\/]/).filter(Boolean).at(-1) ?? row.path} icon={section.icon}
+        subtitle={t(row.kind === "image" ? "panel.attachmentImage" : "panel.attachmentFile")}
+        selected={model.panelOpener.value.possessions?.id === row.attachment_id}
+        onSelect={opener => model.openInPanel({ kind: section.kind, id: row.attachment_id }, panelFocusReturn(opener))} />)}
+    </section>)}
+    {state.loading ? <p role="status">{t("panel.attachmentsLoading")}</p> : null}
+    {state.error ? <p role="alert">{t("panel.attachmentsFailed")}</p> : null}
+    {!state.items.length && !state.loading && !state.error ? <p class="muted caption">{t("panel.empty")}</p> : null}
+    {state.cursor !== undefined ? <Button onClick={() => model.attachmentSection.more()}>{t("panel.attachmentsMore")}</Button> : null}
+    {state.capped ? <p class="muted caption">{t("panel.attachmentsCapped")}</p> : null}
+  </div>;
+}
+
 function panelElapsed(now: number, startedAt?: string): string | undefined {
   const started = parseTime(startedAt);
   return started === undefined ? undefined : formatDuration(Math.max(0, now - started));
@@ -534,6 +559,19 @@ function PanelDetail({ model, tabLabel, onBack }: { model: AppModel; tabLabel: s
       {model.bodyState(detail.id)?.loading ? <p role="status">{t("convo.loadingBody")}</p> : null}
     </section>;
   }
+  if (detail.kind === "attachment") {
+    const row = model.attachmentSection.state.value.items.find(item => item.attachment_id === detail.id);
+    return <section class="panel-detail" data-panel-detail=""><div class="panel-detail-head">{back}<h3>{t("panel.attachments")}</h3></div>
+      {row ? <KeyValue rows={[
+        { key: t("panel.attachmentPath"), value: <bdi>{row.path}</bdi> },
+        { key: t("panel.attachmentKind"), value: t(row.kind === "image" ? "panel.attachmentImage" : "panel.attachmentFile") },
+        { key: t("details.status"), value: row.delivery_status },
+        { key: t("panel.attachmentManaged"), value: t(row.managed ? "panel.attachmentYes" : "panel.attachmentNo") },
+        { key: t("panel.attachmentSelected"), value: t(row.selected ? "panel.attachmentYes" : "panel.attachmentNo") },
+        ...(row.unavailable_reason ? [{ key: t("panel.attachmentUnavailable"), value: row.unavailable_reason }] : []),
+      ]} /> : <p class="muted caption">{t("work.textUnavailable")}</p>}
+    </section>;
+  }
   const reply = model.threadReplies.value.find(row => row.id === detail.id);
   const replyCancel = reply?.recipient.kind === "human" ? panelCancel(model, reply.id, "reply") : undefined;
   return <section class="panel-detail" data-panel-detail=""><div class="panel-detail-head">{back}<h3>{t(reply?.recipient.kind === "thread" ? "panel.tab.reply_needed" : "panel.tab.awaiting_reply")}</h3></div>
@@ -546,10 +584,18 @@ function PanelDetail({ model, tabLabel, onBack }: { model: AppModel; tabLabel: s
 
 function RightPanel({ model, panelCollapsed = false }: { model: AppModel; panelCollapsed?: boolean }) {
   const t = model.t.value;
+  const supportsAttachments = model.data.capabilities.value.includes(CAPABILITY_ATTACHMENT_PAGE);
+  const owner = model.data.owner.value;
+  const threadId = model.handle.value?.threadId;
+  const activeAttachments = supportsAttachments && !panelCollapsed && model.panelTab.value === "possessions";
+  useEffect(() => activeAttachments && owner.state === "connected" && threadId
+    ? model.attachmentSection.observe(threadId) : undefined, [model, activeAttachments, owner, threadId]);
+  const selectedTab = !supportsAttachments && model.panelTab.value === "possessions" ? "work" : model.panelTab.value;
   const tabs = [
     { id: "work", label: t("panel.tab.work"), icon: "panel.work" as const, count: model.work.value.running.length + model.work.value.pending.length },
     { id: "reply-needed", label: t("panel.tab.reply_needed"), icon: "panel.reply_needed" as const, count: model.threadReplies.value.filter(row => row.recipient.kind === "thread").length },
     { id: "awaiting-reply", label: t("panel.tab.awaiting_reply"), icon: "panel.awaiting_reply" as const, count: model.threadReplies.value.filter(row => row.recipient.kind === "human").length },
+    ...(supportsAttachments ? [{ id: "possessions", label: t("panel.tab.possessions"), icon: "panel.attachment" as const }] : []),
     { id: "info", label: t("panel.tab.info"), icon: "panel.information" as const },
   ];
   const detail = model.panelDetail.value;
@@ -580,13 +626,13 @@ function RightPanel({ model, panelCollapsed = false }: { model: AppModel; panelC
   return <aside ref={root} class={`details${panelCollapsed ? " details-collapsed" : ""}`} aria-label={t("panel.title")} data-panel-root="" data-panel-rail={panelCollapsed ? "" : undefined}>
     <Button icon label={t(panelCollapsed ? "panel.expand" : "panel.collapse")} title={t(panelCollapsed ? "panel.expand" : "panel.collapse")} aria-expanded={!panelCollapsed}
       onClick={() => model.togglePanel()}><Icon role={panelCollapsed ? "panel.expand" : "panel.collapse"} /></Button>
-    <PanelTabs label={t("panel.title")} items={tabs} selected={model.panelTab.value} rail={panelCollapsed} onSelect={select} />
+    <PanelTabs label={t("panel.title")} items={tabs} selected={selectedTab} rail={panelCollapsed} onSelect={select} />
     <div class="panel-pages" hidden={panelCollapsed}>
       {tabs.map(tab => {
-        const active = tab.id === model.panelTab.value;
-        const drilledIn = active && !panelCollapsed && detail;
+        const active = tab.id === selectedTab;
+        const drilledIn = active && !panelCollapsed && detail && (selectedTab === "possessions") === (detail.kind === "attachment");
         return <section key={tab.id} role="tabpanel" id={`panel-page-${tab.id}`} aria-labelledby={`panel-tab-${tab.id}`} hidden={!active}>
-          <div class="panel-list-frame" hidden={!!drilledIn}>{tab.id === "work" ? <PanelActivity model={model} /> : tab.id === "info" ? <PanelInfo model={model} /> : <PanelReplies model={model} recipient={tab.id === "reply-needed" ? "thread" : "human"} />}</div>
+          <div class="panel-list-frame" hidden={!!drilledIn}>{tab.id === "work" ? <PanelActivity model={model} /> : tab.id === "info" ? <PanelInfo model={model} /> : tab.id === "possessions" ? <PanelPossessions model={model} /> : <PanelReplies model={model} recipient={tab.id === "reply-needed" ? "thread" : "human"} />}</div>
           {drilledIn ? <PanelDetail key={`${detail.kind}:${detail.id}`} model={model} tabLabel={tab.label} onBack={closeDetail} /> : null}
         </section>;
       })}

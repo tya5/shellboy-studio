@@ -402,6 +402,34 @@ mod tests {
     }
 
     #[test]
+    fn attachment_list_requires_the_paged_pin_and_thread_scope() {
+        let scoped = build_command(
+            "attachment.list",
+            Some(json!({"thread_id":"thread", "limit":50, "cursor":"opaque"})),
+        );
+        #[cfg(feature = "next-attachment-page")]
+        {
+            let parsed = scoped.unwrap();
+            assert_eq!(access(&parsed), Access::Read);
+            let Command::AttachmentList(args) = parsed else {
+                panic!("expected attachment.list");
+            };
+            assert_eq!(args.limit, 50);
+            assert_eq!(args.cursor.as_deref(), Some("opaque"));
+            assert!(
+                build_command(
+                    "attachment.list",
+                    Some(json!({"thread_id":"thread","limit":201}))
+                )
+                .is_err()
+            );
+        }
+        #[cfg(not(feature = "next-attachment-page"))]
+        assert!(scoped.is_err());
+        assert!(build_command("attachment.list", Some(json!({"limit":50}))).is_err());
+    }
+
+    #[test]
     fn analytics_and_settings_reads_are_allowed_and_their_mutations_are_not() {
         for (command, args) in [
             (

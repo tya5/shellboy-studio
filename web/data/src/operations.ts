@@ -17,6 +17,7 @@ import type {
   HistoryWindowResult,
   MessageSendArgs,
   MessageAccepted,
+  AttachmentDetails,
   ModelListArgs,
   ModelListResult,
   OwnerResponse,
@@ -65,6 +66,27 @@ function pageOf<T>(item: (v: unknown) => string | undefined): Decoder<Page<T>> {
     const page: Page<T> = { items: v.items as T[] };
     if (typeof v.next_cursor === "string") page.next_cursor = v.next_cursor;
     return { ok: true, value: page };
+  };
+}
+
+export const ATTACHMENT_PAGE_SIZE = 50;
+export const CAPABILITY_ATTACHMENT_PAGE = "attachment.list.page";
+
+function attachmentPage(threadId: string): Decoder<Page<AttachmentDetails>> {
+  const decode = pageOf<AttachmentDetails>(row => !(isObject(row) && row.thread_id === threadId
+    && typeof row.attachment_id === "string" && row.attachment_id.length > 0
+    && typeof row.source_node_id === "string" && typeof row.delivery_status === "string"
+    && typeof row.path === "string" && (row.kind === "file" || row.kind === "image")
+    && typeof row.selected === "boolean" && typeof row.managed === "boolean"
+    && (row.unavailable_reason === undefined || typeof row.unavailable_reason === "string"))
+    ? "invalid attachment details" : undefined);
+  return raw => {
+    if (!isObject(raw) || !Array.isArray(raw.items) || raw.items.length > ATTACHMENT_PAGE_SIZE)
+      return { ok: false, reason: "expected a bounded attachment page" };
+    const page = decode(raw);
+    if (page.ok && new Set(page.value.items.map(row => row.attachment_id)).size !== page.value.items.length)
+      return { ok: false, reason: "duplicate attachment identity" };
+    return page;
   };
 }
 
@@ -320,6 +342,9 @@ export class Operations {
    */
   threadCwds(args: NamesArgs = {}, read?: ReadOptions): Promise<Outcome<Page<string>>> {
     return this.run("thread.cwds", args, outcomeDecoder(decodeNames), undefined, read);
+  }
+  attachmentList(threadId: string, cursor?: string, read?: ReadOptions): Promise<Outcome<Page<AttachmentDetails>>> {
+    return this.run("attachment.list", { thread_id: threadId, limit: ATTACHMENT_PAGE_SIZE, ...(cursor === undefined ? {} : { cursor }) }, outcomeDecoder(attachmentPage(threadId)), undefined, read);
   }
   threadGet(threadId: string, read?: ReadOptions): Promise<Outcome<ThreadDetails>> {
     return this.run("thread.get", { thread_id: threadId }, outcomeDecoder(decodeDetails), undefined, read);
