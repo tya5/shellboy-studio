@@ -1,3 +1,4 @@
+import { baselineUnread, isUnread, markUnread, type UnreadRecord } from "../../../ui-core/src/sidebar-unread";
 import type { ListFilter } from "../../../data/src";
 import { sidebarGroups, SIDEBAR_PIN_TAG } from "../../../ui-core/src/sidebar";
 import { BrandLogo } from "../system/components/BrandLogo";
@@ -126,6 +127,26 @@ export function App({ context }: { context: DesignContext }) {
 
   const list = model.data.threadList.value;
   const sidebarSelected = route.view === "conversation" ? model.selectedId.value : undefined;
+  const [unreadBaseline, setUnreadBaseline] = useState<UnreadRecord[]>([]);
+  const unreadPrefs = context.prefs.value.sidebarUnread;
+  const freshList = list.loaded && !list.loading && !list.stale;
+  useLayoutEffect(() => {
+    if (freshList) setUnreadBaseline((previous) => baselineUnread(previous, list.items));
+  }, [freshList, list.items]);
+  const seen = useMemo(() => new Map([...unreadBaseline, ...(unreadPrefs ?? [])].map((record) => [record.thread, record])), [unreadBaseline, unreadPrefs]);
+  const selectedSummary = list.items.find((item) => item.thread_id === sidebarSelected);
+  const selectedNode = selectedSummary?.last_end_message?.node_id;
+  const writeUnread = (id: string, manual: boolean) => {
+    const row = model.data.threadList.peek().items.find((item) => item.thread_id === id);
+    if (!row) return;
+    const prefs = context.prefs.peek().sidebarUnread ?? [];
+    const next = markUnread(prefs, id, row.last_end_message, manual);
+    if (prefs !== next) context.setPrefs({ sidebarUnread: next });
+  };
+  useLayoutEffect(() => {
+    if (sidebarSelected && selectedSummary && !list.stale) writeUnread(sidebarSelected, false);
+    // A manual mark does not change the selection or the owner completion.
+  }, [sidebarSelected, !!selectedSummary, selectedNode, list.stale]);
   const groups = useMemo(() => sidebarGroups(list.items, sidebarSelected), [list.items, sidebarSelected]);
   const revealGroup = groups.find(group => group.rows.some(row => row.summary.thread_id === sidebarSelected));
   const revealParents = JSON.stringify(revealGroup?.rows.filter(row => row.reveal).map(row => row.summary.thread_id) ?? []);
@@ -227,8 +248,9 @@ export function App({ context }: { context: DesignContext }) {
                     if (hiddenBelow !== undefined && r.depth > hiddenBelow) return null;
                     const id = r.summary.thread_id;
                     const expanded = openParents.includes(id);
+                    const unread = isUnread(seen.get(id), r.summary.last_end_message);
                     hiddenBelow = r.childCount && !expanded ? r.depth : undefined;
-                    return <ThreadItem key={id} sidebar linkId={`thread-link-sidebar-${id}`}
+                    return <ThreadItem key={id} sidebar unread={unread} linkId={`thread-link-sidebar-${id}`}
                       href={formatRoute({ view: "conversation", threadId: id })} title={r.summary.title}
                       status={r.status} statusLabel={r.status ? statusLabel(t, r.status) : ""}
                       depth={r.depth} current={id === sidebarSelected} pending={r.pending} age={formatAge(r.summary.updated_at, model.coarseNow.value)}
@@ -236,12 +258,15 @@ export function App({ context }: { context: DesignContext }) {
                         label: t("sidebar.children", { n: r.descendants, awaiting: r.awaiting, running: r.running }),
                         awaitingLabel: t("sidebar.needsYou"), runningLabel: statusLabel(t, "running"),
                         onToggle: r.childCount ? value => setFold("sidebarOpenParents", id, value) : undefined } : undefined}
-                      onSelect={() => setDrawer(false)}
-                      menu={{ label: t("thread.rowMenu"), entries: threadMenuEntries(model, r.summary, r.status,
+                      onSelect={(event) => {
+                        if (!event.defaultPrevented && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) writeUnread(id, false);
+                        setDrawer(false);
+                      }}
+                      menu={{ label: t("thread.rowMenu"), entries: [{ key: "read-state", label: t(unread ? "sidebar.markRead" : "sidebar.markUnread"), onSelect: () => writeUnread(id, !unread) }, ...threadMenuEntries(model, r.summary, r.status,
                         target => setDeleteThread({ threadId: target.thread_id }), canTag ? { onEditTags: () => {
                           model.showView("threads");
                           model.org.openTagsFor(id, r.summary.archived_at !== undefined); setDrawer(false);
-                        } } : undefined) }} />;
+                        } } : undefined)] }} />;
                   }) : null}
                 </ThreadGroup>;
               })}

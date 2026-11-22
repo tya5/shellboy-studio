@@ -95,7 +95,11 @@ const summaryProblem = (v: unknown): string | undefined =>
     ? "thread summary lacks thread_id, title or state"
     : v.tags !== undefined && !(Array.isArray(v.tags) && v.tags.every((t) => typeof t === "string"))
       ? "thread summary tags is not a list of strings"
-      : undefined;
+      : v.last_end_message != null && (!isObject(v.last_end_message)
+        || (v.last_end_message.node_id !== null && typeof v.last_end_message.node_id !== "string")
+        || (v.last_end_message.at != null && typeof v.last_end_message.at !== "string"))
+        ? "thread summary last_end_message is not an answer marker"
+        : undefined;
 
 const optionalNumber = (v: Record<string, unknown>, key: string): number | undefined => typeof v[key] === "number" ? v[key] as number : undefined;
 const decodeThreadDeletePreview = (value: unknown): Decoded<ThreadDeletePreview> => {

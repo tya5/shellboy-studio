@@ -26,7 +26,7 @@ async function setup(capabilities?: string[]) {
  }});
  const stored:{value:string|null}={value:null};
  const store:PrefStore={read:()=>stored.value,write:value=>{stored.value=value;}};
- const prefs=signal<Prefs>(loadPrefs(store,DESIGNS));
+ const prefs=signal<Prefs>({...loadPrefs(store,DESIGNS),lang:'ja'});
  const context:DesignContext={model:f.model,prefs,setPrefs:change=>{prefs.value={...prefs.value,...change};savePrefs(store,prefs.value);f.model.lang.value=prefs.value.lang;},designs:DESIGNS,submitToken:async()=>false};
  host=document.createElement('div');document.body.append(host);
  Object.defineProperty(host,'clientWidth',{configurable:true,value:1280});

@@ -1,5 +1,5 @@
 .thread-item-root{content-visibility:auto;contain-intrinsic-size:auto var(--size-control);gap:var(--space-8);min-height:var(--size-control);padding:0 var(--space-8);border-radius:var(--radius-s);color:var(--fg);text-decoration:none;font:var(--type-label)}
-.thread-item-root span.thread-item-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.thread-item-root .thread-item-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .thread-item-root:hover{background:var(--hover)}
 .thread-item-root:has(> .tree-link[aria-current=true]){background:var(--accent-bg);color:var(--fg)}
 .thread-item-root.thread-item-child{color:var(--muted)}

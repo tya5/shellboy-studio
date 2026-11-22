@@ -183,3 +183,45 @@ it('settles the mounted tag session while hidden and ignores late results after 
     expect(f.t.calls('thread.tag')).toHaveLength(2);
   } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
 });
+
+it("bolds a background completion only after the list hint and clears on open or local mark", async () => {
+  const first = { node_id: "a", at: "2026-01-01T00:00:00Z" };
+  const second = { node_id: "b", at: "2026-01-02T00:00:00Z" };
+  const f = await fixtureModel({ route: "conversation", threadId: "lead", configure(db) {
+    db.threads = { lead: summary("lead", { cwd: "/one" }), other: summary("other", { cwd: "/one", last_end_message: first }) };
+  } });
+  const host = document.createElement("div"); document.body.append(host);
+  const prefs = signal(loadPrefs({ read: () => null, write() {} }, DESIGNS));
+  const link = () => host.querySelector<HTMLAnchorElement>("#thread-link-sidebar-other")!;
+  const unread = () => !!link().querySelector("strong[data-unread]");
+  const hint = async () => { f.t.push({ t: "changed", thread_ids: ["other"], list: true }); await settle(f.t, f.db); };
+  const mark = async (label: string) => {
+    await act(async () => { link().parentElement!.querySelector<HTMLButtonElement>("[aria-haspopup=menu]")!.click(); });
+    const item = [...document.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find((button) => button.textContent === label)!;
+    await act(async () => { item.click(); await settle(f.t, f.db); });
+  };
+  try {
+    await act(async () => { render(<App context={{ model: f.model, prefs, designs: DESIGNS, setPrefs: change => { prefs.value = { ...prefs.peek(), ...change }; }, submitToken: async () => false }} />, host); await settle(f.t, f.db); });
+    expect(unread()).toBe(false);
+    f.db.threads.other!.title = "Renamed";
+    await act(hint);
+    expect(unread()).toBe(false);
+    f.db.threads.other = summary("other", { ...f.db.threads.other, last_end_message: second });
+    expect(unread()).toBe(false);
+    const reads = f.t.calls("thread.list").length;
+    await act(hint);
+    expect(f.t.calls("thread.list")).toHaveLength(reads + 1);
+    expect(unread()).toBe(true);
+    await mark("Mark as read");
+    expect(unread()).toBe(false);
+    await mark("Mark as unread");
+    expect(unread()).toBe(true);
+    expect(f.t.calls("thread.list")).toHaveLength(reads + 1);
+    await act(async () => { f.model.openThread("other"); await settle(f.t, f.db); });
+    expect(unread()).toBe(false);
+    f.db.threads.other = summary("other", { ...f.db.threads.other, last_end_message: first });
+    await act(async () => { f.model.openThread("lead"); await settle(f.t, f.db); });
+    await act(hint);
+    expect(unread()).toBe(false);
+  } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
+});

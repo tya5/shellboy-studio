@@ -17,3 +17,5 @@ Styles are colocated in `system/components/ThreadItem/style.css`.
 Styles: style.css in this directory
 
 Use the child disclosure only on parent rows. The link preserves Left/Right disclosure and the separate action keeps ArrowDown. See patterns/thread-list.md (Orca, shadcn/ui Sidebar, WAI-ARIA tree).
+
+In the sidebar only, unread completion is shown by a bold title, not a badge or distinct status mark (Orca worktrees and sidebar mock 1d). The row menu offers Mark as read or Mark as unread. Do not signal child unread through the parent chip.

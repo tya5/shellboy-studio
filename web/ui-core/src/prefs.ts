@@ -2,6 +2,7 @@
 import { DEFAULT_WEIGHTS, type Weights } from "./analytics";
 import { STATUS_KEYS, type StatusKey } from "./status";
 import type { MonitorArchive } from "./monitor-selection";
+import { readUnreadRecords, type UnreadRecord } from "./sidebar-unread";
 import type { Lang } from "./i18n";
 
 export interface Prefs {
@@ -14,6 +15,7 @@ export interface Prefs {
   sidebarWidth?: number;
   sidebarClosedGroups?: string[];
   sidebarOpenParents?: string[];
+  sidebarUnread?: UnreadRecord[];
   guideOptOut?: boolean;
   monitorPins?: string[];
   monitorStatuses?: StatusKey[];
@@ -64,7 +66,7 @@ export function loadPrefs(store: PrefStore, designs: readonly DesignChoice[]): P
   const theme = design.themes.find((t) => t.name === saved.theme) ?? design.themes[0];
   if (!theme) throw new Error(`design ${design.name} has no theme`);
   const sidebarKeys = (value: unknown) => Array.isArray(value) ? [...new Set(value.filter((key): key is string => typeof key === "string" && key.length <= 4096))].slice(0, 1000) : [];
-  return { design: design.name, theme: theme.name, lang: saved.lang === "ja" ? "ja" : "en", navCollapsed: saved.navCollapsed === true, panelCollapsed: saved.panelCollapsed === true, ...(typeof saved.sidebarWidth === "number" && Number.isFinite(saved.sidebarWidth) ? { sidebarWidth: readSidebarWidth(saved.sidebarWidth) } : {}), sidebarClosedGroups: sidebarKeys(saved.sidebarClosedGroups), sidebarOpenParents: sidebarKeys(saved.sidebarOpenParents), guideOptOut: saved.guideOptOut === true, monitorPins: Array.isArray(saved.monitorPins) ? [...new Set(saved.monitorPins.filter((x): x is string => typeof x === "string" && x.length <= 256))].slice(0, 100) : [], monitorStatuses: Array.isArray(saved.monitorStatuses) ? [...new Set(saved.monitorStatuses.filter((x): x is StatusKey => STATUS_KEYS.includes(x)))] : [], monitorQuery: typeof saved.monitorQuery === "string" ? saved.monitorQuery.slice(0, 256) : "", monitorArchive: saved.monitorArchive === "include" || saved.monitorArchive === "only" ? saved.monitorArchive : "exclude", monitorView: saved.monitorView === "tiles" ? "tiles" : "cards", monitorSort: saved.monitorSort === "recent" ? "recent" : "stable", weights: readWeights(saved.weights) };
+  return { design: design.name, theme: theme.name, lang: saved.lang === "ja" ? "ja" : "en", navCollapsed: saved.navCollapsed === true, panelCollapsed: saved.panelCollapsed === true, ...(typeof saved.sidebarWidth === "number" && Number.isFinite(saved.sidebarWidth) ? { sidebarWidth: readSidebarWidth(saved.sidebarWidth) } : {}), sidebarClosedGroups: sidebarKeys(saved.sidebarClosedGroups), sidebarOpenParents: sidebarKeys(saved.sidebarOpenParents), sidebarUnread: readUnreadRecords(saved.sidebarUnread), guideOptOut: saved.guideOptOut === true, monitorPins: Array.isArray(saved.monitorPins) ? [...new Set(saved.monitorPins.filter((x): x is string => typeof x === "string" && x.length <= 256))].slice(0, 100) : [], monitorStatuses: Array.isArray(saved.monitorStatuses) ? [...new Set(saved.monitorStatuses.filter((x): x is StatusKey => STATUS_KEYS.includes(x)))] : [], monitorQuery: typeof saved.monitorQuery === "string" ? saved.monitorQuery.slice(0, 256) : "", monitorArchive: saved.monitorArchive === "include" || saved.monitorArchive === "only" ? saved.monitorArchive : "exclude", monitorView: saved.monitorView === "tiles" ? "tiles" : "cards", monitorSort: saved.monitorSort === "recent" ? "recent" : "stable", weights: readWeights(saved.weights) };
 }
 
 export function savePrefs(store: PrefStore, prefs: Prefs): void {
