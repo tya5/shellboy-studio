@@ -1,0 +1,10 @@
+.character-status{width:24px;height:24px;flex:none}
+@media (prefers-reduced-motion:no-preference){
+  .character-status[data-running] circle{transform-box:view-box;animation:character-hop 1.2s ease-in-out infinite}
+  .character-status[data-running] circle:nth-of-type(2){animation-delay:.15s}
+  .character-status[data-running] circle:nth-of-type(3){animation-delay:.30s}
+}
+@keyframes character-hop{
+  0%,50%,100%{transform:translateY(0)}
+  25%{transform:translateY(-7.1794871795%)}
+}

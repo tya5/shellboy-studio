@@ -15,7 +15,6 @@
 .st.halt{color:var(--muted)}
 .st.halt .dot{background:var(--muted);border-radius:2px;transform:scale(.72)}
 .st.idle{color:var(--muted)}
-.character-status{width:24px;height:24px;flex:none}
 
 @keyframes spin{to{transform:rotate(360deg)}}
 @media (prefers-reduced-motion:reduce){.st.run .i{animation:none;stroke-dasharray:none}}

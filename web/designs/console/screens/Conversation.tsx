@@ -14,7 +14,7 @@ import { projectionFromDisplayPlan, type ConversationDisplayPlan } from "../../.
 import type { ComponentChildren } from "preact";
 import type { SavedItemProjection } from "../../../ui-core/src/conversation-items";
 import { ConversationItems, type ConversationItem, type ConversationToolSummary, type ConversationWorkGroup } from "./ConversationItems";
-import { characterAssets } from "../system/character-assets";
+import { ConversationCharacter } from "../system/components/ConversationCharacter";
 import { effect } from "@preact/signals-core";
 import { MonitorPopover } from "../system/components/MonitorPopover";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
@@ -280,10 +280,7 @@ export function ConversationStatus({ model }: { model: AppModel }) {
   const status = model.threadReplies.value.some((r) => r.recipient.kind === "human") ? "awaiting" : row?.status;
   const running = work.running[0];
   const start = running?.startedAt ? parseTime(running.startedAt) : undefined;
-  return <div key="conversation-status" class="work-row conversation-status" role="status">{status ? <><picture data-status-artwork>
-    {status === "running" ? <source media="(prefers-reduced-motion: no-preference)" srcset={`${characterAssets.thinking}#running`} /> : null}
-    <img class="character-status" src={characterAssets[statusCharacter(status)]} alt="" />
-  </picture><span>{status === "running" && row?.summary.activity ? activityLabel(model.lang.value, row.summary.activity) : statusLabel(t, status)}</span>
+  return <div key="conversation-status" class="work-row conversation-status" role="status">{status ? <><ConversationCharacter name={statusCharacter(status)} running={status === "running"} /><span>{status === "running" && row?.summary.activity ? activityLabel(model.lang.value, row.summary.activity) : statusLabel(t, status)}</span>
     {running ? <>
       <span data-status-description>{running.label}</span>
       {work.running.length > 1 ? <span>{t("work.runningCount", { n: work.running.length })}</span> : null}

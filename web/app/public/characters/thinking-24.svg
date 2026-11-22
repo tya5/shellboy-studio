@@ -6,16 +6,4 @@
   <path id="thinking-24-face" d="M126 63 H263 C315 63 354 102 354 153 V222 C354 272 324 310 274 310 H208 L155 349 C141 359 126 350 126 333 L125 310 H124 C74 310 35 271 35 221 V154 C35 104 75 63 126 63 Z" fill="#023239" />
   <path id="thinking-24-bubble" d="M126 63 H263 C315 63 354 102 354 153 V222 C354 272 324 310 274 310 H208 L155 349 C141 359 126 350 126 333 L125 310 H124 C74 310 35 271 35 221 V154 C35 104 75 63 126 63 Z M125 98 H263 C296 98 320 120 320 150 V221 C320 253 302 276 271 276 H205 C199 276 197 277 192 281 L157 309 Q152 313 152 308 V284 Q152 276 145 276 H124 C93 276 71 253 71 220 V154 C71 122 93 98 125 98 Z" fill="#FEF2D1" fill-rule="evenodd" />
   <ellipse id="thinking-24-eye" cx="246" cy="187" rx="21" ry="37" fill="#FEF2D1" />
-  <style>
-    @media (prefers-reduced-motion: no-preference) {
-      #running:target circle { transform-box: view-box; animation: hop 1.2s ease-in-out infinite; }
-      #running:target circle:nth-child(2) { animation-delay: .15s; }
-      #running:target circle:nth-child(3) { animation-delay: .30s; }
-    }
-    @keyframes hop {
-      0%, 50%, 100% { transform: translateY(0); }
-      25% { transform: translateY(-7.1794871795%); }
-    }
-  </style>
-  <g id="running"><circle cx="121" cy="188" r="9" fill="#38bdf8" id="thinking-24-symbol-0" /><circle cx="153" cy="188" r="9" fill="#38bdf8" id="thinking-24-symbol-1" /><circle cx="185" cy="188" r="9" fill="#38bdf8" id="thinking-24-symbol-2" /></g>
-</svg>
+<circle cx="121" cy="188" r="9" fill="#38bdf8" id="thinking-24-symbol-0" /><circle cx="153" cy="188" r="9" fill="#38bdf8" id="thinking-24-symbol-1" /><circle cx="185" cy="188" r="9" fill="#38bdf8" id="thinking-24-symbol-2" /></svg>

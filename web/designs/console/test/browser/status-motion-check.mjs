@@ -24,15 +24,15 @@ try{
    await call('Page.navigate',{url});
    const frame=await until(()=>evaluate(`(()=>{
     if(location.href!==${JSON.stringify(url)})return;
-    const image=document.querySelector('.conversation-status img');
-    if(!image?.complete||!image.naturalWidth||matchMedia("(prefers-reduced-motion: reduce)").matches!==${reduced})return;
+    const image=document.querySelector('.conversation-status .character-status');
+    if(!image||(image.tagName==='IMG'&&(!image.complete||!image.naturalWidth))||matchMedia("(prefers-reduced-motion: reduce)").matches!==${reduced})return;
     const footer=image.closest('.conversation-status'), rect=image.getBoundingClientRect(), bar=footer.getBoundingClientRect();
-    return {src:image.currentSrc,x:rect.x,y:rect.y,width:rect.width,height:rect.height,bar:bar.height,
+    return {running:image.hasAttribute('data-running'),dots:image.querySelectorAll('circle').length,x:rect.x,y:rect.y,width:rect.width,height:rect.height,bar:bar.height,
      text:footer.textContent,strip:document.querySelector('.work-strip')?.textContent,
      fixedFields:[...footer.querySelectorAll('span:not([data-status-description])')].every(node=>node.getBoundingClientRect().right<=bar.right && node.scrollWidth<=node.clientWidth+1)};
    })()`));
-   assert.equal(frame.src.endsWith('#running'),state==='running'&&!reduced);
-   if(state==='waiting')assert(frame.src.includes('thinking-24'));
+   assert.equal(frame.running,state==='running');
+   if(state!=='completed')assert.equal(frame.dots,3);
    assert.equal(frame.width,24);assert.equal(frame.height,24);assert.equal(frame.bar,40);
    assert(frame.fixedFields,`${width}/${theme}/${state}: clipped fact`);
    if(state==='running'){
