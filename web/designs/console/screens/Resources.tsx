@@ -101,7 +101,7 @@ export function MemoryPane({ model }: { model: AppModel }) {
   const memoryFailure = ownerBusy ? t("res.memory.ownerBusy") : readIssue === "unsupported" ? t("res.memory.unsupported") : readIssue === "invalid_response" ? t("res.memory.invalid_response") : readIssue === "disconnected" ? t("res.memory.disconnected") : memory.error ? t("res.memory.readFailed") : undefined;
   return (
     <>
-      <Head t={t} title={t("ana.section.memory")} sub={t("ana.sub.memory")} loading={memory.loading || (!ownerBusy && bridge.loading)} retry={ownerBusy} onRefresh={() => { if (!i.memory.peek().loading) i.refreshRead("memory"); if (!ownerBusy) i.refreshRead("bridge"); }} />
+      <Head t={t} title={t("ana.section.memory")} sub={t("ana.sub.memory")} loading={memory.loading || (!ownerBusy && bridge.loading)} retry={ownerBusy} onRefresh={() => { if (ownerBusy) i.refreshRead("memory"); else { i.refreshRead("memory"); i.refreshRead("bridge"); } }} />
       <Section
         title={t("res.memory")}
         sub={memory.value?.observedAt ? t("res.memorySub", { at: formatClock(memory.value.observedAt, true) ?? "" }) : undefined}
