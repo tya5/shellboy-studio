@@ -89,7 +89,7 @@ describe("config editing", () => {
     expect(t.calls("config.get")).toHaveLength(before + 2);
   });
 
-  it("only confirms a save from a read started after its acknowledgment", async () => {
+  it("keeps a save pending on a stale expected hash after acknowledgment", async () => {
     const { model, t, db, setRead } = await open();
     const mark = () => t.push({ t: "changed", thread_ids: [], list: false, config_changed: true });
     const reads = t.calls("config.get").length;
@@ -121,15 +121,26 @@ describe("config editing", () => {
     expect(t.calls("config.get")).toHaveLength(reads + 2);
   });
 
-  it("a resync settles an acknowledged save even when the owner publishes the old hash", async () => {
-    const { model, t, db } = await open(() => ({ ok: true, result: { written: true, content_hash: "ours" } }));
-    await Promise.all([model.config.saveField(["default_model"], "model-b", "text"), settle(t, db)]);
-    expect(model.config.pendingField.peek()).toBe("default_model");
-    t.push({ t: "resync" });
+  it.each([true, false])("settles at ACK from a prior mark read (matches save: %s)", async matches => {
+    const { model, t, db, setRead } = await open();
+    const reads = t.calls("config.get").length;
+    const writing = model.config.saveField(["default_model"], "model-b", "text");
+    await flush();
+    const write = t.calls("config.set").at(-1)!;
+    db.answered.add(write.id);
+    const hash = matches ? "h1" : "foreign";
+    setRead(got({ file: { ...got().file, content_hash: hash, values: { ...values, default_model: matches ? "model-b" : "model-c" } } }));
+    t.push({ t: "changed", thread_ids: [], list: false, config_changed: true });
     await settle(t, db);
+    expect(model.config.read.peek().value?.file.contentHash).toBe(hash);
+    expect(model.config.pendingField.peek()).toBe("default_model");
+    t.ok(write.id, { written: true, content_hash: "h1" });
+    await writing;
     expect(model.config.pendingField.peek()).toBeUndefined();
-    expect(model.config.changedElsewhere.peek()).toBe("default_model");
-    expect(model.config.lastSaved.peek()).toBeUndefined();
+    expect(t.calls("config.get")).toHaveLength(reads + 1);
+    if (matches) expect(model.config.lastSaved.peek()).toMatchObject({ hash, undo: [{ field: "default_model", value: "model-a" }] });
+    else expect(model.config.lastSaved.peek()).toBeUndefined();
+    expect(model.config.changedElsewhere.peek()).toBe(matches ? undefined : "default_model");
   });
 
   it("parses each committed value without retaining a draft", async () => {
