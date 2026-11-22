@@ -72,3 +72,5 @@ export { ListDivider } from "./ListDivider";
 export { ChildrenChip, type ChildrenChipProps } from "./ChildrenChip";
 export { FilterMenu } from "./FilterMenu";
 export { FilterChips } from "./FilterChips";
+
+export { ConversationCharacter } from "./ConversationCharacter";

@@ -14,7 +14,7 @@ import { projectionFromDisplayPlan, type ConversationDisplayPlan } from "../../.
 import type { ComponentChildren } from "preact";
 import type { SavedItemProjection } from "../../../ui-core/src/conversation-items";
 import { ConversationItems, type ConversationItem, type ConversationToolSummary, type ConversationWorkGroup } from "./ConversationItems";
-import { ConversationCharacter } from "../system/components/ConversationCharacter";
+import { ConversationCharacter } from "../system/components";
 import { effect } from "@preact/signals-core";
 import { MonitorPopover } from "../system/components/MonitorPopover";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";

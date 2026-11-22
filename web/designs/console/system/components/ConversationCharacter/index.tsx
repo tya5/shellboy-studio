@@ -1,4 +1,4 @@
-import thinking from '../../../../app/public/characters/thinking-24.svg?raw';
+import thinking from '../../../../../app/public/characters/thinking-24.svg?raw';
 import { characterAssets } from '../../character-assets';
 
 // The tracked asset is the only source of the approved geometry and colors.
