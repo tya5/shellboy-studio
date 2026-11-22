@@ -81,7 +81,7 @@ try{
     badgeAlign:getComputedStyle(badge).textAlign};
   })()`);
   assert.deepEqual(rail,{orientation:'vertical',overflow:'visible',gap:'4px',buttonGap:'4px',alignment:'center',
-   badgeRadius:'999px',badgePosition:'static',badgeAlign:'center'},key);
+   badgeRadius:'999px',badgePosition:'absolute',badgeAlign:'center'},key);
   const tooltipOutside=()=>evaluate(`(()=>{
    const tab=document.querySelector('#panel-tab-info'), tip=document.getElementById(tab.getAttribute('aria-describedby'));
    const r=tip.getBoundingClientRect(), t=tab.getBoundingClientRect();
