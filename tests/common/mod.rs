@@ -35,7 +35,7 @@ pub fn events(instance: &str, status: &str, cursor: &str, changes: &[&str], more
         .collect();
     ok(
         instance,
-        json!({"status": status, "cursor": cursor, "changes": changes, "more": more}),
+        json!({"status": status, "cursor": cursor, "changes": changes, "more": more, "config_changed": false}),
     )
 }
 

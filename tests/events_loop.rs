@@ -258,7 +258,7 @@ mod live_text {
     fn text(status: &str, cursor: &str, live: Value, more: bool) -> Reply {
         ok(
             "inst1",
-            json!({"status": status, "cursor": cursor, "changes": [], "more": more, "live_text": live}),
+            json!({"status": status, "cursor": cursor, "changes": [], "more": more, "config_changed": false, "live_text": live}),
         )
     }
     fn entry(thread: &str, attempt: &str, gap: bool, deltas: Value) -> Value {
@@ -357,7 +357,7 @@ mod live_text {
         hub.watch(&tab, vec!["t1".into()], false).unwrap();
         let cancel = start_loop(owner.clone(), hub.clone());
         tx.send(text("baseline", "b", json!([]), false)).unwrap();
-        tx.send(ok("inst1", json!({"status":"text","cursor":"c","changes":[],"more":false,
+        tx.send(ok("inst1", json!({"status":"text","cursor":"c","changes":[],"more":false,"config_changed":false,
             "attempt_ends":[{"thread_id":"t1","attempt_id":"r0","outcome":"not_adopted","seq":2}],
             "live_text":[{"thread_id":"t1","attempt_id":"r1","input_through_node_id":"p","gap":false,"deltas":[delta(0,"next")]}]}))).unwrap();
         until("3 polls", || owner.event_args.lock().unwrap().len() == 3).await;
