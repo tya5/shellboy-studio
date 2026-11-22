@@ -71,7 +71,6 @@ export function App({ context }: { context: DesignContext }) {
 
 
   useEffect(() => {
-  useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (navShortcut(e) && (document.querySelector(".app")?.clientWidth ?? 0) >= 900) {
         e.preventDefault();
@@ -275,7 +274,7 @@ export function App({ context }: { context: DesignContext }) {
           {deleteThread ? <ThreadDeleteDialog key={deleteThread.threadId} model={model} target={deleteThread} getReturnFocusTarget={resolveSidebarLink} onClose={() => setDeleteThread(undefined)} /> : null}
           <section class="view" aria-label={title}>
             <AppsHost context={context} />
-            {route.view === "apps" ? null : route.view === "conversation" ? <Conversation model={model} panelCollapsed={context.prefs.value.panelCollapsed} /> : route.view === "monitor" ? <Monitor context={context} /> : route.view === "inbox" ? <Inbox model={model} /> : route.view === "analytics" ? <Analytics context={context} /> : route.view === "branches" ? <Branches model={model} /> : route.view === "threads" ? <Threads model={model} /> : route.view === "setup" ? <Setup context={context} /> : <SettingsView context={context} />}
+            {route.view === "apps" ? null : route.view === "conversation" ? <Conversation model={model} panelCollapsed={context.prefs.value.panelCollapsed} rightPanelWidth={context.prefs.value.rightPanelWidth} onPanelWidth={rightPanelWidth => context.setPrefs({ rightPanelWidth })} /> : route.view === "monitor" ? <Monitor context={context} /> : route.view === "inbox" ? <Inbox model={model} /> : route.view === "analytics" ? <Analytics context={context} /> : route.view === "branches" ? <Branches model={model} /> : route.view === "threads" ? <Threads model={model} /> : route.view === "setup" ? <Setup context={context} /> : <SettingsView context={context} />}
           </section>
           <footer class="status">
             <StatusMark

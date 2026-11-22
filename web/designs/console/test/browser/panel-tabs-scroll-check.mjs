@@ -20,7 +20,7 @@ try{
  };
  const base='http://127.0.0.1:19438/designs/console/test/browser/integration-fixture.html?view=panel-tabs';
  const list='[data-panel-root] [role=tablist]';
- const toggle='[data-panel-root] button[aria-expanded]';
+ const toggle='[data-panel-root] .shell-footer-right .shell-toggle-panel';
  const measure=()=>evaluate(`(()=>{
   const list=document.querySelector(${JSON.stringify(list)}), r=list.getBoundingClientRect();
   const style=getComputedStyle(list);

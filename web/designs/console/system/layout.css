@@ -59,7 +59,7 @@
 .scroll>.steps,.scroll>.strip,.scroll>.scroll-mark{margin-left:0}
 .dock{display:flex;flex-direction:column;gap:var(--space-8);padding:0 var(--space-24) var(--space-16)}
 .details{width:var(--size-details);flex:none;border-left:1px solid var(--line);background:var(--panel);overflow:hidden;padding:var(--space-16);padding-bottom:0;display:flex;flex-direction:column;gap:var(--space-12)}
-.details[data-panel-root]{box-sizing:border-box}
+.details[data-panel-root]{box-sizing:border-box;width:var(--size-right-panel)}
 .details.details-collapsed{width:var(--size-shell-rail);padding:0;gap:0;overflow:hidden}
 .details>.shell-footer-right{margin-inline:calc(-1 * var(--space-16));margin-top:auto}
 .details.details-collapsed>.shell-footer-right{margin-inline:0}

@@ -71,14 +71,14 @@ try{
  await call('Page.reload');
  await until(async()=>await evaluate('!window.__splitterPage') && await state('right'));
  await expectWidth('left',404); await expectWidth('right',464);
- const toggle='[data-panel-root] button[aria-expanded]';
+ const toggle='[data-panel-root] .shell-footer-right .shell-toggle-panel';
  await evaluate(`document.querySelector(${JSON.stringify(toggle)}).click()`);
  assert.equal(await state('right'),null,'collapsed panel still has a splitter');
  await evaluate(`document.querySelector(${JSON.stringify(toggle)}).click()`);
  await expectWidth('right',464);
- await evaluate(`document.querySelector('.nav-toggle button').click()`);
+ await evaluate(`document.querySelector('.shell-footer-left .shell-toggle-sidebar').click()`);
  assert.equal(await state('left'),null,'collapsed sidebar still has a splitter');
- await evaluate(`document.querySelector('.nav-toggle button').click()`);
+ await evaluate(`document.querySelector('.shell-footer-left .shell-toggle-sidebar').click()`);
  await expectWidth('left',404);
  await call('Emulation.setTouchEmulationEnabled',{enabled:true,maxTouchPoints:1});
  await until(()=>evaluate(`matchMedia('(any-pointer:coarse)').matches`));

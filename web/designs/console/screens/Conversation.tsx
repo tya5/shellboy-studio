@@ -18,7 +18,7 @@ import { ConversationCharacter } from "../system/components";
 import { effect } from "@preact/signals-core";
 import { MonitorPopover } from "../system/components/MonitorPopover";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
-import { collectExecutionSteps, toolLabel, activityLabel, renderOutput, formatClock, formatDuration, formatRoute, formatTokens, parseTime, statusLabel, type AppModel, type ConversationRow, type StepRow as Step } from "../../../ui-core/src";
+import { readRightPanelWidth, RIGHT_PANEL_WIDTH_MAX, RIGHT_PANEL_WIDTH_MIN, collectExecutionSteps, toolLabel, activityLabel, renderOutput, formatClock, formatDuration, formatRoute, formatTokens, parseTime, statusLabel, type AppModel, type ConversationRow, type StepRow as Step } from "../../../ui-core/src";
 import { WindowedScroll } from "./WindowedScroll";
 import { BranchMark, Button, Composer, LoadingRows, EmptyState, Icon, KeyValue, LayoutSeparator, ListDivider, ListRow, LogBlock, Message, Notice, PanelTabs, ShellFooter, ShellToggle, QuestionCard, StatusMark, StepRow, SummaryStrip, WorkSheet } from "../system/components";
 
@@ -657,7 +657,7 @@ function RightPanel({ model, panelCollapsed = false }: { model: AppModel; panelC
     model.closePanelDetail();
   };
   const select = (id: string) => model.setPanelTab(id as import("../../../ui-core/src/model").RightPanelTab);
-  return <aside id="conversation-right-panel" ref={root} class={`details${panelCollapsed ? " details-collapsed" : ""}` aria-label={t("panel.title")} data-panel-root="" data-panel-rail={panelCollapsed ? "" : undefined}>
+  return <aside id="conversation-right-panel" ref={root} class={`details${panelCollapsed ? " details-collapsed" : ""}`} aria-label={t("panel.title")} data-panel-root="" data-panel-rail={panelCollapsed ? "" : undefined}>
     <PanelTabs label={t("panel.title")} items={tabs} selected={selectedTab} rail={panelCollapsed} onSelect={select} />
     <div class="panel-pages">
       {tabs.map(tab => {
