@@ -14,3 +14,13 @@ the heading. This covers Cancel when the target row is removed while the dialog 
 open. The delete request's later completion never changes dialog or focus.
 
 ConversationItems renders live rows at the insertion point supplied by the conversation plan. It does not infer an input boundary or a terminal outcome from render order.
+
+## Conversation Info usage
+
+Only an open, expanded Info tab in the responsive visible right panel mounts a
+Thread usage observation. The observation owns the existing ungrouped `usage.get`
+result and listens to the selected Thread's existing change/resync hints while
+mounted. Leaving Info, collapsing or hiding the panel, changing Threads, or losing
+the owner closes it. Reopening starts without the previous observation's values.
+Conversation, other tabs, the collapsed rail, and the phone WorkSheet do not read
+Thread totals. `thread.get` still supplies bounded context facts, not totals.

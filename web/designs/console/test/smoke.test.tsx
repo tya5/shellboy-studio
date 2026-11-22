@@ -373,20 +373,44 @@ describe("Conversation", () => {
     expect(text(el)).toContain("provider: connection interrupted");
     expect(el.querySelector(".dock .btn-warn")).toBeTruthy();
   });
-  it("reads Thread totals only while Info is open", async () => {
+  it("loads Thread totals only in a visible Info observation, including reopening", async () => {
+    const observers = new Map<Element, ResizeObserverCallback>();
+    vi.stubGlobal("ResizeObserver", class {
+      constructor(private readonly notify: ResizeObserverCallback) {}
+      observe(target: Element) { observers.set(target, this.notify); }
+      unobserve(target: Element) { observers.delete(target); }
+      disconnect() { for (const [target, notify] of observers) if (notify === this.notify) observers.delete(target); }
+    });
     const { model, t, db } = await fixtureModel();
     const el = draw(model);
+    const panel = el.querySelector<HTMLElement>("[data-panel-root]")!;
+    const info = () => el.querySelector("[data-panel-info]")?.textContent;
+    const reveal = (shown: boolean) => act(() => {
+      panel.style.display = shown ? "block" : "none";
+      observers.get(panel)!([], {} as ResizeObserver);
+    });
     expect(t.calls("usage.get")).toHaveLength(0);
     act(() => model.setPanelTab("info"));
+    reveal(false);
+    expect(t.calls("usage.get")).toHaveLength(0);
+    reveal(true);
     await act(async () => { await settle(t, db); });
     expect(t.calls("usage.get").map(call => call.args)).toEqual([{ thread_id: "lead" }]);
-    expect(el.querySelector("[data-panel-info]")?.textContent).toContain("75%");
+    expect(info()).toContain("75%");
     await act(async () => { t.push({ t: "changed", thread_ids: ["lead"], list: false }); await settle(t, db); });
     expect(t.calls("usage.get")).toHaveLength(2);
-    await act(async () => { model.setPanelTab("work"); await settle(t, db); });
+    reveal(false);
+    expect(info()).not.toContain("75%");
     await act(async () => { t.push({ t: "resync" }); await settle(t, db); });
     expect(t.calls("usage.get")).toHaveLength(2);
-    expect(model.usage.peek()).toBeUndefined();
+    reveal(true);
+    expect(info()).not.toContain("75%");
+    const pending = t.calls("usage.get").at(-1)!;
+    act(() => { model.setPanelTab("work"); });
+    expect(t.cancels()).toContain(pending.id);
+    await act(async () => { await settle(t, db); });
+    expect(info()).not.toContain("75%");
+    expect(t.calls("usage.get")).toHaveLength(3);
   });
   it("omits the usage and context elements when the owner reports nothing", async () => {
     const { model, t, db } = await fixtureModel();

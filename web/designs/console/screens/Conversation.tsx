@@ -503,10 +503,15 @@ function PanelReplies({ model, recipient }: { model: AppModel; recipient: "threa
   </div>;
 }
 
-function PanelInfo({ model }: { model: AppModel }) {
+function InfoUsage({ model, threadId }: { model: AppModel; threadId: string }) {
+  const [observation, setObservation] = useState<ReturnType<AppModel["observeThreadUsage"]>>();
+  useEffect(() => {
+    const next = model.observeThreadUsage(threadId);
+    setObservation(next);
+    return () => next.close();
+  }, [model, threadId]);
   const t = model.t.value;
-  const usage = model.usage.value;
-  const details = model.details.value;
+  const usage = observation?.usage.value;
   const measured = (m: { value: number; partial: boolean } | undefined) => m ? formatTokens(m.value) : undefined;
   const rows = usage ? [
     { key: t("usage.input"), value: measured(usage.input), mono: true },
@@ -514,6 +519,12 @@ function PanelInfo({ model }: { model: AppModel }) {
     { key: t("usage.cached"), value: usage.cachedPercent !== undefined ? `${usage.cachedPercent}%` : measured(usage.cached), mono: true },
     { key: t("usage.attempts"), value: usage.attempts, mono: true },
   ].filter(row => row.value !== undefined) : [];
+  return rows.length ? <><h3>{t("usage.title")}</h3><KeyValue rows={rows} />{usage?.partial ? <div class="muted caption">{t("usage.partial")}</div> : null}</> : null;
+}
+
+function PanelInfo({ model, usageThread, usageKey }: { model: AppModel; usageThread?: string; usageKey?: string }) {
+  const t = model.t.value;
+  const details = model.details.value;
   return <div class="panel-info" data-panel-info="">
     {details ? <KeyValue rows={[
       { key: t("details.model"), value: details.model, mono: true },
@@ -521,7 +532,7 @@ function PanelInfo({ model }: { model: AppModel }) {
       { key: t("model.connection"), value: details.connection },
       { key: t("details.directory"), value: details.cwd, mono: true },
     ]} /> : null}
-    {rows.length ? <><h3>{t("usage.title")}</h3><KeyValue rows={rows} />{usage?.partial ? <div class="muted caption">{t("usage.partial")}</div> : null}</> : null}
+    {usageThread ? <InfoUsage key={usageKey} model={model} threadId={usageThread} /> : null}
   </div>;
 }
 
@@ -621,20 +632,16 @@ function RightPanel({ model, panelCollapsed = false }: { model: AppModel; panelC
     return () => removeEventListener("keydown", onKey);
   }, [model, detail, panelCollapsed]);
   const root = useRef<HTMLElement>(null);
-  const infoOpen = !panelCollapsed && selectedTab === "info" && !detail;
+  const [panelVisible, setPanelVisible] = useState(false);
   useEffect(() => {
     const panel = root.current;
-    if (!infoOpen || !panel || !threadId || owner.state !== "connected") return;
-    let close: (() => void) | undefined;
-    const visibility = () => {
-      if (getComputedStyle(panel).display !== "none") close ??= model.observeThreadUsage(threadId);
-      else { close?.(); close = undefined; }
-    };
-    visibility();
-    const observer = typeof ResizeObserver === "undefined" ? undefined : new ResizeObserver(visibility);
-    observer?.observe(panel);
-    return () => { observer?.disconnect(); close?.(); };
-  }, [model, infoOpen, owner, threadId]);
+    if (!panel) return;
+    const observer = new ResizeObserver(() => setPanelVisible(getComputedStyle(panel).display !== "none"));
+    observer.observe(panel);
+    return () => observer.disconnect();
+  }, []);
+  const usageThread = panelVisible && !panelCollapsed && selectedTab === "info" && !detail && owner.state === "connected" ? threadId : undefined;
+  const usageKey = usageThread && owner.state === "connected" ? JSON.stringify([owner.info.instance_id, usageThread]) : undefined;
   const focusAfterBack = useRef<{ tab: typeof model.panelTab.value; restore?: () => boolean }>();
   useLayoutEffect(() => {
     const focus = focusAfterBack.current;
@@ -659,7 +666,7 @@ function RightPanel({ model, panelCollapsed = false }: { model: AppModel; panelC
         const active = tab.id === selectedTab;
         const drilledIn = active && !panelCollapsed && detail && (selectedTab === "possessions") === (detail.kind === "attachment");
         return <section key={tab.id} role="tabpanel" id={`panel-page-${tab.id}`} aria-labelledby={`panel-tab-${tab.id}`} hidden={!active}>
-          <div class="panel-list-frame" hidden={!!drilledIn}>{tab.id === "work" ? <PanelActivity model={model} /> : tab.id === "info" ? <PanelInfo model={model} /> : tab.id === "possessions" ? <PanelPossessions model={model} /> : <PanelReplies model={model} recipient={tab.id === "reply-needed" ? "thread" : "human"} />}</div>
+          <div class="panel-list-frame" hidden={!!drilledIn}>{tab.id === "work" ? <PanelActivity model={model} /> : tab.id === "info" ? <PanelInfo model={model} usageThread={usageThread} usageKey={usageKey} /> : tab.id === "possessions" ? <PanelPossessions model={model} /> : <PanelReplies model={model} recipient={tab.id === "reply-needed" ? "thread" : "human"} />}</div>
           {drilledIn ? <PanelDetail key={`${detail.kind}:${detail.id}`} model={model} tabLabel={tab.label} onBack={closeDetail} /> : null}
         </section>;
       })}
