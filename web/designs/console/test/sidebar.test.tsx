@@ -87,9 +87,39 @@ it("reads owner catalogs only while the filter menu is open, independently of fi
     f.db.threads.extra=summary("extra",{cwd:"/gamma"});
     await act(hints);
     expect(menu()?.textContent).toContain("Directory: /gamma");
+    const beta = [...menu()!.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(item => item.textContent === "Directory: /beta")!;
+    beta.focus();
+    delete f.db.threads.other;
+    await act(hints);
+    expect(document.activeElement?.textContent).toBe("Directory: /gamma");
     const count=f.t.calls("thread.cwds").length;
     await act(async()=>trigger().click());
     await act(hints);
     expect(f.t.calls("thread.cwds")).toHaveLength(count);
+    await act(async()=>trigger().click());
+    await act(async()=>{await settle(f.t,f.db);});
+    expect(menu()).not.toBeNull();
+    await act(async()=>{f.model.openThread("extra"); await settle(f.t,f.db);});
+    expect(menu()).toBeNull();
+    const afterNavigation = f.t.calls("thread.cwds").length;
+    await act(hints);
+    expect(f.t.calls("thread.cwds")).toHaveLength(afterNavigation);
+  } finally {render(null,host);host.remove();f.model.dispose();f.data.stop();}
+});
+
+it("shows cross-group child counts without a disclosure control or arrow action", async () => {
+  const f=await fixtureModel({route:"conversation", threadId:"lead", configure(db){
+    db.threads={lead:summary("lead",{cwd:"/alpha"}), child:summary("child",{cwd:"/beta", parent_id:"lead", awaiting_human_count:1, tags:["pin"]})};
+  }});
+  const host=document.createElement("div"); document.body.append(host);
+  const prefs=signal(loadPrefs({read:()=>null,write(){}},DESIGNS));
+  try {
+    await act(async()=>{render(<App context={{model:f.model,prefs,designs:DESIGNS,setPrefs:change=>{prefs.value={...prefs.peek(),...change};},submitToken:async()=>false}}/>,host);await settle(f.t,f.db);});
+    const row=host.querySelector('#thread-link-sidebar-lead')!;
+    const chip=row.parentElement!.querySelector('[data-urgency="awaiting"]')!;
+    expect(chip.querySelector('[role="img"]')?.getAttribute('aria-label')).toContain('1 children');
+    expect(chip.querySelector('button')).toBeNull();
+    for (const key of ['ArrowRight','ArrowLeft']) expect(row.dispatchEvent(new KeyboardEvent('keydown',{key,bubbles:true,cancelable:true}))).toBe(true);
+    expect(prefs.peek().sidebarOpenParents).toEqual([]);
   } finally {render(null,host);host.remove();f.model.dispose();f.data.stop();}
 });

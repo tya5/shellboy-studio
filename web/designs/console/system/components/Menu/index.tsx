@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "preact/hooks";
+import { useEffect, useLayoutEffect, useRef } from "preact/hooks";
 import type { ComponentChildren } from "preact";
 import { Popover } from "../Popover";
 import { Icon, type IconRole } from "../Icon";
@@ -22,6 +22,17 @@ export function Menu({ open, anchor, returnFocusTo, entries, onClose, id, labell
     };
   }, [open, openMethod]);
   const items = () => [...(menu.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? [])];
+  const focused = useRef<{ node: HTMLElement; index: number }>();
+  useLayoutEffect(() => {
+    if (!open) { focused.current = undefined; return; }
+    const claim = focused.current;
+    if (claim && !menu.current?.contains(claim.node) && document.activeElement === document.body) {
+      const list = items();
+      (list[Math.min(claim.index, list.length - 1)] ?? menu.current)?.focus();
+    } else if (claim && menu.current?.contains(claim.node)) {
+      claim.index = items().indexOf(claim.node);
+    }
+  });
   const move = (delta: number) => { const list = items(); const index = list.indexOf(document.activeElement as HTMLElement); const target = index < 0 ? (delta < 0 ? list.length - 1 : 0) : Math.max(0, Math.min(list.length - 1, index + delta)); list[target]?.focus(); };
   const typeTo = (key: string) => {
     const character = key.toLocaleLowerCase();
@@ -36,7 +47,11 @@ export function Menu({ open, anchor, returnFocusTo, entries, onClose, id, labell
   };
   const available = entries.filter((entry) => isSeparator(entry) || !entry.disabled);
   return <Popover open={open} anchor={anchor} returnFocusTo={returnFocusTo} onClose={onClose} className="menu-popover" pointerPosition={pointerPosition}>
-    <div ref={menu} id={id} role="menu" aria-labelledby={labelledBy} tabIndex={-1} onKeyDown={(event) => {
+    <div ref={menu} id={id} role="menu" aria-labelledby={labelledBy} tabIndex={-1} onFocusIn={event => {
+      const node = event.target as HTMLElement;
+      const index = items().indexOf(node);
+      focused.current = index < 0 ? undefined : { node, index };
+    }} onKeyDown={(event) => {
       if (event.key === "ArrowDown") { event.preventDefault(); move(1); }
       else if (event.key === "ArrowUp") { event.preventDefault(); move(-1); }
       else if (event.key === "Home" || event.key === "PageUp") { event.preventDefault(); items()[0]?.focus(); }

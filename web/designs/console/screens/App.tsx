@@ -1,5 +1,3 @@
-import { effect } from "@preact/signals-core";
-import { ThreadHeadings } from "../../../ui-core/src/headings";
 import type { ListFilter } from "../../../data/src";
 import { sidebarGroups, SIDEBAR_PIN_TAG } from "../../../ui-core/src/sidebar";
 import { BrandLogo } from "../system/components/BrandLogo";
@@ -152,21 +150,6 @@ export function App({ context }: { context: DesignContext }) {
   };
   const canTag = model.data.capabilities.value.includes(CAPABILITY_TAGS);
   const canCwd = model.data.capabilities.value.includes(CAPABILITY_CWDS);
-  const [filterOpen, setFilterOpen] = useState(false);
-  const owner = model.data.owner.value;
-  const catalogs = useMemo(() => ({ tag: new ThreadHeadings(model.ops, () => ({ mode: "exclude", query: "" }), () => {}),
-    cwd: new ThreadHeadings(model.ops, () => ({ mode: "exclude", query: "" }), () => {}) }), [model, owner]);
-  useEffect(() => {
-    if (!filterOpen || route.view === "monitor" || owner.state !== "connected") return;
-    return effect(() => {
-      model.data.listHint.value;
-      if (canTag) void catalogs.tag.reload("tag");
-      if (canCwd) void catalogs.cwd.reload("cwd");
-      return () => { catalogs.tag.leave(); catalogs.cwd.leave(); };
-    });
-  }, [filterOpen, model, catalogs, owner, canTag, canCwd, route.view]);
-  const tagCatalog = catalogs.tag.headings.value;
-  const cwdCatalog = catalogs.cwd.headings.value;
   const changeFilters = (change: ListFilter) => setFilters(value => ({ ...value, ...change }));
   const activeFilters = [
     ...(filters.awaiting ? [{ key: "awaiting", label: t("sidebar.needsYou"), remove: () => changeFilters({ awaiting: undefined }) }] : []),
@@ -174,16 +157,16 @@ export function App({ context }: { context: DesignContext }) {
     ...(filters.cwd ? [{ key: "cwd", label: filters.cwd, remove: () => changeFilters({ cwd: undefined }) }] : []),
     ...(filters.tags ?? []).map(tag => ({ key: `tag:${tag}`, label: tag, remove: () => changeFilters({ tags: filters.tags?.length === 1 ? undefined : filters.tags?.filter(value => value !== tag) }) })),
   ];
-  const filterEntries = [
+  const filterEntries = ({ tags, directories, moreTags, moreDirectories }: Parameters<Parameters<typeof FilterMenu>[0]["entries"]>[0]) => [
     { key: "awaiting", label: t("sidebar.needsYou"), onSelect: () => changeFilters({ awaiting: filters.awaiting ? undefined : "human" }) },
     { key: "archived", label: t("sidebar.archived"), onSelect: () => changeFilters({ archived: filters.archived ? undefined : "include" }) },
-    ...(canCwd ? cwdCatalog.names.map(cwd => ({ key: `cwd:${cwd}`, label: t("sidebar.directory", { name: cwd }), onSelect: () => changeFilters({ cwd }) })) : []),
-    ...(canTag ? tagCatalog.names.map(tag => ({ key: `tag:${tag}`, label: t("sidebar.tag", { name: tag }), onSelect: () => {
+    ...(canCwd ? directories.map(cwd => ({ key: `cwd:${cwd}`, label: t("sidebar.directory", { name: cwd }), onSelect: () => changeFilters({ cwd }) })) : []),
+    ...(canTag ? tags.map(tag => ({ key: `tag:${tag}`, label: t("sidebar.tag", { name: tag }), onSelect: () => {
       const tags = filters.tags ?? [];
       if (!tags.includes(tag) && tags.length < 64) changeFilters({ tags: [...tags, tag] });
     } })) : []),
-    ...(canTag && catalogs.tag.canLoadMoreNames() ? [{ key: "more-tags", label: t("org.moreTags"), keepOpen: true, onSelect: () => { if (!tagCatalog.loading) catalogs.tag.loadMoreNames(); } }] : []),
-    ...(canCwd && catalogs.cwd.canLoadMoreNames() ? [{ key: "more-cwds", label: t("org.moreDirs"), keepOpen: true, onSelect: () => { if (!cwdCatalog.loading) catalogs.cwd.loadMoreNames(); } }] : []),
+    ...(moreTags ? [{ key: "more-tags", label: t("org.moreTags"), keepOpen: true, onSelect: moreTags }] : []),
+    ...(moreDirectories ? [{ key: "more-cwds", label: t("org.moreDirs"), keepOpen: true, onSelect: moreDirectories }] : []),
   ];
 
   const selected = model.selectedId.value;
@@ -217,7 +200,7 @@ export function App({ context }: { context: DesignContext }) {
           <div class="side-search">
             <div class="side-controls">
               <Field ariaLabel={t("threads.search")} placeholder={t("threads.search")} leading={<Icon role="thread.search" size="small" />} value={query} onInput={(e) => setQuery(e.currentTarget.value)} />
-              {route.view !== "monitor" ? <FilterMenu label={t("sidebar.filters")} count={activeFilters.length} entries={filterEntries} onOpenChange={setFilterOpen} /> : null}
+              {route.view !== "monitor" ? <FilterMenu key={formatRoute(route)} label={t("sidebar.filters")} count={activeFilters.length} entries={filterEntries} data={model.data} canTag={canTag} canCwd={canCwd} /> : null}
               <Button icon label={t("threads.new")} title={t("threads.new")} onClick={() => { setDrawer(false); void model.createThread(); }}><Icon role="thread.create" size="small" /></Button>
             </div>
             {route.view !== "monitor" ? <>              <FilterChips items={activeFilters.map(item => ({ ...item, removeLabel: t("sidebar.remove", { name: item.label }) }))} clearLabel={t("sidebar.clear")} onClear={() => setFilters({})} /></> : null}
@@ -252,7 +235,7 @@ export function App({ context }: { context: DesignContext }) {
                       childrenFold={r.descendants ? { count: r.descendants, awaiting: r.awaiting, running: r.running, open: expanded,
                         label: t("sidebar.children", { n: r.descendants, awaiting: r.awaiting, running: r.running }),
                         awaitingLabel: t("sidebar.needsYou"), runningLabel: statusLabel(t, "running"),
-                        onToggle: value => setFold("sidebarOpenParents", id, value) } : undefined}
+                        onToggle: r.childCount ? value => setFold("sidebarOpenParents", id, value) : undefined } : undefined}
                       onSelect={() => setDrawer(false)}
                       menu={{ label: t("thread.rowMenu"), entries: threadMenuEntries(model, r.summary, r.status,
                         target => setDeleteThread({ threadId: target.thread_id }), canTag ? { onEditTags: () => {
