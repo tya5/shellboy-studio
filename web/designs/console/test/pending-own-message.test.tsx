@@ -130,6 +130,7 @@ for(const outcome of ['ack first','late ACK','late error','lost ACK'] as const)i
   const savedBeforeAck=outcome!=='ack first';
   if(outcome==='lost ACK'){
    const owner=f.data.owner.peek();
+   if(owner.state!=='connected') throw new Error('Lost ACK fixture requires a connected owner');
    await act(async()=>{f.t.drop();await flush();});
    expect(f.model.sendState.peek().kind).toBe('unconfirmed');
    await act(async()=>{f.t.open();f.t.push({t:'hello',bridge_version:'0.0.1',data_dir:'/temp/owner-a',owner});await settle(f.t,f.db);});
