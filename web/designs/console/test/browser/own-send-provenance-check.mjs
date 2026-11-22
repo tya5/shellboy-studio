@@ -14,9 +14,11 @@ try{
  const call=(method,params={})=>new Promise((resolve,reject)=>{const id=++seq;pending.set(id,{resolve,reject});ws.send(JSON.stringify({id,method,params}))});
  const evaluate=async expression=>{const r=await call('Runtime.evaluate',{expression,returnByValue:true,awaitPromise:true});if(r.exceptionDetails)throw Error(JSON.stringify(r.exceptionDetails));return r.result.value};
  await call('Runtime.enable');await call('Page.enable');
+ const fixtureUrl=`http://127.0.0.1:${port}/designs/console/test/browser/integration-fixture.html?view=own-send`;
+ await until(async()=>{const response=await fetch(fixtureUrl);return response.ok});
  for(const deferred of [false,true]){
-  await call('Page.navigate',{url:`http://127.0.0.1:${port}/designs/console/test/browser/integration-fixture.html?view=own-send`});
-  await until(()=>evaluate("!!document.querySelector('#composer') && !!document.querySelector('.convo')"));
+  await call('Page.navigate',{url:fixtureUrl});
+  await until(async()=>{const ready=await evaluate("!!document.querySelector('#composer') && !!document.querySelector('.convo')");if(ready)return true;const state=await evaluate("({url:location.href,body:document.body.innerText.slice(0,500)})");if(state.url!==fixtureUrl)throw Error('Fixture navigation failed: '+JSON.stringify(state));return false;});
   await evaluate(`(()=>{const e=document.querySelector('#composer');e.value='Browser own-send witness';e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}))})()`);
   await until(()=>evaluate("!!document.querySelector('[data-pending-own-message]')"));
   const before=await evaluate("({pending:document.querySelectorAll('[data-pending-own-message]').length,phase:document.querySelector('[data-pending-phase]')?.getAttribute('data-pending-phase')})");
