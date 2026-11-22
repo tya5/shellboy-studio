@@ -281,8 +281,8 @@ export function ConversationStatus({ model }: { model: AppModel }) {
   const running = work.running[0];
   const start = running?.startedAt ? parseTime(running.startedAt) : undefined;
   return <div key="conversation-status" class="work-row conversation-status" role="status">{status ? <><picture data-status-artwork>
-    {status === "running" ? <source media="(prefers-reduced-motion: reduce)" srcSet={characterAssets.thinking} /> : null}
-    <img class="character-status" src={status === "running" ? `${characterAssets.thinking}#running` : characterAssets[statusCharacter(status)]} alt="" />
+    {status === "running" ? <source media="(prefers-reduced-motion: no-preference)" srcset={`${characterAssets.thinking}#running`} /> : null}
+    <img class="character-status" src={characterAssets[statusCharacter(status)]} alt="" />
   </picture><span>{status === "running" && row?.summary.activity ? activityLabel(model.lang.value, row.summary.activity) : statusLabel(t, status)}</span>
     {running ? <>
       <span data-status-description>{running.label}</span>

@@ -25,7 +25,7 @@ try{
    const frame=await until(()=>evaluate(`(()=>{
     if(location.href!==${JSON.stringify(url)})return;
     const image=document.querySelector('.conversation-status img');
-    if(!image?.complete||!image.naturalWidth)return;
+    if(!image?.complete||!image.naturalWidth||matchMedia("(prefers-reduced-motion: reduce)").matches!==${reduced})return;
     const footer=image.closest('.conversation-status'), rect=image.getBoundingClientRect(), bar=footer.getBoundingClientRect();
     return {src:image.currentSrc,x:rect.x,y:rect.y,width:rect.width,height:rect.height,bar:bar.height,
      text:footer.textContent,strip:document.querySelector('.work-strip')?.textContent,
