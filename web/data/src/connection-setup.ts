@@ -82,9 +82,60 @@ export const decodeTest = (v: unknown): Decoded<TestFacts> => {
 export const encodeCredentialsSet = (connection: string, value: string): Record<string, unknown> => ({ connection, value });
 export const encodeCredentialsClear = (connection: string): Record<string, unknown> => ({ connection });
 
-export interface StoredFacts {
-  /** Where the owner says it wrote the key, when it says. */
-  path: string | undefined;
+export interface CredentialChangeOrigin {
+  instance_id: string;
+  thread_id: string;
+  run_id: string;
+  turn_id: string;
+  execution_id: string;
 }
 
-export const decodeStored = (v: unknown): Decoded<StoredFacts> => (isObject(v) ? { ok: true, value: { path: typeof v.credentials_path === "string" ? v.credentials_path : typeof v.path === "string" ? v.path : undefined } } : { ok: false, reason: "credentials result is not an object" });
+interface CredentialResult {
+  connection: string;
+  key_source: "env" | "stored" | "none";
+  credentials_path: string;
+  changed_by: CredentialChangeOrigin | null;
+}
+
+export interface CredentialsSetResult extends CredentialResult {
+  stored: boolean;
+  replaced: boolean;
+  permissions_tightened: boolean;
+  warning?: string;
+}
+
+export interface CredentialsClearResult extends CredentialResult {
+  cleared: boolean;
+}
+
+function readCredentialResult(v: Record<string, unknown>): CredentialResult | undefined {
+  const { connection, key_source, credentials_path, changed_by } = v;
+  if (typeof connection !== "string" || typeof credentials_path !== "string"
+    || (key_source !== "env" && key_source !== "stored" && key_source !== "none")) return;
+  if (changed_by === null) return { connection, key_source, credentials_path, changed_by: null };
+  if (!isObject(changed_by)) return;
+  const { instance_id, thread_id, run_id, turn_id, execution_id } = changed_by;
+  if (typeof instance_id !== "string" || typeof thread_id !== "string" || typeof run_id !== "string"
+    || typeof turn_id !== "string" || typeof execution_id !== "string") return;
+  return { connection, key_source, credentials_path, changed_by: { instance_id, thread_id, run_id, turn_id, execution_id } };
+}
+
+export function decodeCredentialsSet(v: unknown): Decoded<CredentialsSetResult> {
+  if (isObject(v)) {
+    const facts = readCredentialResult(v);
+    const { stored, replaced, permissions_tightened, warning } = v;
+    if (facts && typeof stored === "boolean" && typeof replaced === "boolean" && typeof permissions_tightened === "boolean"
+      && (warning === undefined || typeof warning === "string")) {
+      return { ok: true, value: { ...facts, stored, replaced, permissions_tightened, ...(warning !== undefined && { warning }) } };
+    }
+  }
+  return { ok: false, reason: "invalid credentials.set result" };
+}
+
+export function decodeCredentialsClear(v: unknown): Decoded<CredentialsClearResult> {
+  if (isObject(v)) {
+    const facts = readCredentialResult(v);
+    if (facts && typeof v.cleared === "boolean") return { ok: true, value: { ...facts, cleared: v.cleared } };
+  }
+  return { ok: false, reason: "invalid credentials.clear result" };
+}

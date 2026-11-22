@@ -416,7 +416,7 @@ export class ConnectionSetup {
         return;
       }
       this.keyStored = true;
-      keyPath = stored.value.path;
+      keyPath = stored.value.credentials_path;
     }
     const restart = result.value.restart_required;
     const usesStoredKey = this.keyStored;

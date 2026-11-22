@@ -185,7 +185,7 @@ describe("config editing", () => {
     const made = await open();
     const before = made.db.answer;
     made.db.answer = (c) => c.command === "connection.test" ? { ok: true, result: { ok: true, models: [] } }
-      : c.command === "credentials.clear" ? { ok: true, result: {} } : before(c);
+      : c.command === "credentials.clear" ? { ok: true, result: { connection: "proxy", cleared: true, key_source: "none", credentials_path: "/temp/cfg/credentials.toml", changed_by: null } } : before(c);
     void made.model.config.testConnection("proxy");
     await settle(made.t, made.db);
     expect(made.t.calls("connection.test").at(-1)!.args).toEqual({ connection: "proxy" });

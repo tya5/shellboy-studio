@@ -47,7 +47,7 @@ async function open(fake: Fake = {}, route: "conversation" | "setup" = "setup"):
         const args = (c.args ?? {}) as Record<string, unknown>;
         if (c.command === "config.get") return { ok: true, result: fileWith("values" in fake ? fake.values : {}) };
         if (c.command === "connection.test") return { ok: true, result: (fake.provider ?? ((a) => okTest(a, env)))(args) };
-        if (c.command === "credentials.set") return fake.credentials ? fake.credentials(args) : { ok: true, result: { path: "/temp/cfg/credentials.toml" } };
+        if (c.command === "credentials.set") return fake.credentials ? fake.credentials(args) : { ok: true, result: { connection: "openai", stored: true, replaced: false, key_source: "stored", credentials_path: "/temp/cfg/credentials.toml", permissions_tightened: false, changed_by: null } };
         if (c.command === "config.set") return fake.configSet ? fake.configSet(args) : { ok: true, result: { written: true, restart_required: true, changes: [] } };
         return before(c);
       };

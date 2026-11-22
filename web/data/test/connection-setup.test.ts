@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { decodeStored, decodeTest, encodeCredentialsClear, encodeCredentialsSet, encodeTest } from "../src";
+import { decodeTest, encodeCredentialsClear, encodeCredentialsSet, encodeTest } from "../src";
 
 describe("connection setup wire adapter", () => {
   it("encodes a saved connection or a candidate, and only the fields given", () => {
@@ -19,10 +19,5 @@ describe("connection setup wire adapter", () => {
     expect(failed).toMatchObject({ ok: true, value: { failure: { kind: "auth", message: "no" } } });
     expect(decodeTest({ failure: "brand_new" })).toMatchObject({ value: { failure: { kind: "other" } } });
     expect(decodeTest([])).toMatchObject({ ok: false });
-  });
-
-  it("never carries a value back from a store result", () => {
-    expect(decodeStored({ path: "/p/credentials.toml", value: "secret" })).toEqual({ ok: true, value: { path: "/p/credentials.toml" } });
-    expect(decodeStored(null)).toMatchObject({ ok: false });
   });
 });

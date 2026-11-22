@@ -1429,16 +1429,33 @@ describe("Setup", () => {
     expect(el.querySelector(".choice-list-root")).toBeNull();
   });
 
-  it("walks from nothing to saved, empties the key field when sent, and says a restart is needed", async () => {
+  it("sets a key through Settings connection setup and clears it from Connections", async () => {
+    let configured = false;
+    let keySource = "none";
     const { model, t, db } = await fixtureModel({
-      route: "setup",
+      route: "settings",
+      section: "connections",
       capabilities: ["config.edit", "connection.setup"],
       configure: (d) =>
         owner(d as never, (c) => {
-          if (c.command === "config.get") return { ok: true, result: config };
+          if (c.command === "config.get") {
+            if (!configured) return { ok: true, result: config };
+            const loaded = { ...config.loaded, present: true, values: { connections: { openai: { base_url: "https://example.invalid" } } }, credential_source: { openai: keySource } };
+            return { ok: true, result: { ...config, loaded, file: { ...config.file, ...loaded } } };
+          }
           if (c.command === "connection.test") return { ok: true, result: { http_status: 200, models: ["model-a", "model-b"], api_key_env: { name: "OPENAI_API_KEY", set: false } } };
-          if (c.command === "credentials.set") return { ok: true, result: { path: "/temp/cfg/credentials.toml" } };
-          if (c.command === "config.set") return { ok: true, result: { written: true, restart_required: true, changes: [] } };
+          if (c.command === "credentials.set") {
+            keySource = "stored";
+            return { ok: true, result: { connection: "openai", stored: true, replaced: false, key_source: "stored", credentials_path: "/owner-reported/credentials.toml", permissions_tightened: false, changed_by: null } };
+          }
+          if (c.command === "credentials.clear") {
+            keySource = "none";
+            return { ok: true, result: { connection: "openai", cleared: true, key_source: "none", credentials_path: "/owner-reported/credentials.toml", changed_by: null } };
+          }
+          if (c.command === "config.set") {
+            configured = true;
+            return { ok: true, result: { written: true, restart_required: true, changes: [] } };
+          }
           return undefined;
         }),
     });
@@ -1450,6 +1467,8 @@ describe("Setup", () => {
       });
     };
     await pump();
+    expect(el.querySelector('a[href="#/setup"]')).toBeTruthy();
+    await pump(() => model.applyRoute({ view: "setup" }));
     expect(el.querySelectorAll(".choice-list-option")).toHaveLength(6);
     await pump(() => click(el.querySelectorAll(".choice-list-option input")[1]));
     const field = el.querySelector<HTMLInputElement>('input[type="password"]')!;
@@ -1466,12 +1485,20 @@ describe("Setup", () => {
     await pump(() => click([...el.querySelectorAll(".choice-list-root")].at(-1)!.querySelector("input")));
     await pump(() => click(button(el, "Save and use this connection")));
     expect(text(el)).toContain("Saved");
-    expect(text(el)).toContain("/temp/cfg/credentials.toml");
+    expect(text(el)).toContain("/owner-reported/credentials.toml");
     expect(text(el)).toContain("plain-text file");
     expect(text(el)).toContain("Restart it");
     expect(el.querySelector('a[href="#/conversation"]')).toBeTruthy();
     expect(el.innerHTML).not.toContain(KEY);
     expect(JSON.stringify(Object.entries(localStorage))).not.toContain(KEY);
+    expect(t.calls("credentials.set")).toHaveLength(1);
+    await pump(() => model.applyRoute({ view: "settings", section: "connections" }));
+    await pump(() => click(button(el, "Remove stored key")));
+    expect(t.calls("credentials.clear")).toHaveLength(0);
+    await pump(() => click(button(el, "Confirm removal")));
+    expect(t.calls("credentials.clear").map(call => call.args)).toEqual([{ connection: "openai" }]);
+    expect(text(el)).toContain("Stored key removed.");
+    expect(model.config.read.value.value?.loaded.credentialSource?.openai).toBe("none");
   });
 
   it("warns beside the Local model picker about Ollama's context", async () => {

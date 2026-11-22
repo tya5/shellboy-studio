@@ -4,7 +4,7 @@ import {sanitizeMessageRelation,validHistoryProvenance} from './message-provenan
 import {captureDecode,InputCaptureError} from './immutable-input';
 // Typed operations: the UX boundary for requests. Stateless wrappers over `Link.call`;
 // they never touch the store (saved facts change only by re-reading after a hint).
-import { decodeStored, decodeTest, encodeCredentialsClear, encodeCredentialsSet, encodeTest, type StoredFacts, type TestFacts, type TestTarget } from "./connection-setup";
+import { decodeCredentialsClear, decodeCredentialsSet, decodeTest, encodeCredentialsClear, encodeCredentialsSet, encodeTest, type CredentialsClearResult, type CredentialsSetResult, type TestFacts, type TestTarget } from "./connection-setup";
 import { fromApiError, lostConnection, type Outcome } from "./errors";
 import type { Link } from "./link";
 import type { ThreadDeletePreview } from "./thread-delete";
@@ -499,11 +499,11 @@ export class Operations {
     return this.run("connection.test", encodeTest(target), outcomeDecoder(decodeTest), undefined, read);
   }
   /** Write-only. The value is sent once and never returned. */
-  credentialsSet(connection: string, value: string, operationId = this.newId()): Promise<Outcome<StoredFacts>> {
-    return this.run("credentials.set", encodeCredentialsSet(connection, value), outcomeDecoder(decodeStored), { operationId });
+  credentialsSet(connection: string, value: string, operationId = this.newId()): Promise<Outcome<CredentialsSetResult>> {
+    return this.run("credentials.set", encodeCredentialsSet(connection, value), outcomeDecoder(decodeCredentialsSet), { operationId });
   }
-  credentialsClear(connection: string, operationId = this.newId()): Promise<Outcome<StoredFacts>> {
-    return this.run("credentials.clear", encodeCredentialsClear(connection), outcomeDecoder(decodeStored), { operationId });
+  credentialsClear(connection: string, operationId = this.newId()): Promise<Outcome<CredentialsClearResult>> {
+    return this.run("credentials.clear", encodeCredentialsClear(connection), outcomeDecoder(decodeCredentialsClear), { operationId });
   }
   threadSetTitle(threadId: string, title: string, operationId = this.newId()): Promise<Outcome<ThreadDetails>> {
     return this.run("thread.set", { thread_id: threadId, title }, outcomeDecoder(decodeDetails), { operationId });
