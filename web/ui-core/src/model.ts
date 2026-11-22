@@ -12,7 +12,7 @@ import { recentAppFolders } from "./app-templates";
 // retry and archive flows. Saved facts stay in the data layer; nothing here is optimistic.
 import { batch, computed, effect, signal, untracked, type ReadonlySignal, type Signal } from "@preact/signals-core";
 import { Cancel, type Handle, type Operations, type OpError, type ShellboyData, type ShellEntry, type ThreadDetails, type ThreadHandle } from "../../data/src";
-import { CAPABILITY_HISTORY_WINDOW, THREAD_REPLY_LIMIT, threadReplyItems, noReplyWait, type ReplyWait, type ReplyWaitAdapter } from "../../data/src";
+import { CAPABILITY_HISTORY_WINDOW, decodeThreadReplies, type ThreadReplyProjection, noReplyWait, type ReplyWait, type ReplyWaitAdapter } from "../../data/src";
 import { MissingPins, MonitorSelection, type MonitorArchive } from "./monitor-selection";
 import { workRegions, type WorkRegions } from "./work";
 import { ConversationWindow, type WindowAcceptedSnapshot } from "./window";
@@ -246,6 +246,7 @@ export class AppModel {
   readonly ops: Operations;
   readonly pending: PendingAdapter;
   readonly replyWait: ReplyWaitAdapter;
+  private readonly threadReplyProjection: ReadonlySignal<ThreadReplyProjection | undefined>;
   readonly threadReplies: ReadonlySignal<readonly ReplyWait[]>;
   readonly route: Signal<Route> = signal(START_ROUTE);
   /** Analytics, Resources and Settings reads. Nothing runs until one of those views opens. */
@@ -454,11 +455,13 @@ export class AppModel {
       const r = this.route.value;
       return r.threadId ?? this.lastThread.value ?? this.rows.value[0]?.summary.thread_id;
     });
-    this.threadReplies = computed(() => {
-      if (this.replyWait.supported(this.data.capabilities.value)) return this.replyWait.items.value.filter((item) => item.threadId === this.selectedId.value).slice(0, THREAD_REPLY_LIMIT);
+    this.threadReplyProjection = computed(() => {
       const detail = this.handle.value?.detail.value.value;
-      return detail ? threadReplyItems(detail.thread_id, detail.awaiting_replies) : [];
+      return detail ? decodeThreadReplies(detail.thread_id, detail.awaiting_replies) : undefined;
     });
+    this.threadReplies = computed(() => this.replyWait.supported(this.data.capabilities.value)
+      ? this.replyWait.items.value.filter(item => item.threadId === this.selectedId.value).slice(0, 128)
+      : this.threadReplyProjection.value?.items ?? []);
     this.details = computed(() => this.handle.value?.detail.value.value);
     this.work = computed(() => {
       const resource = this.handle.value?.work.value;
@@ -1216,12 +1219,10 @@ export class AppModel {
     const work = handle?.work.value;
     const detail = handle?.detail.value;
     const adapter = this.replyWait.supported(this.data.capabilities.value);
-    const raw = detail && !detail.loading && !detail.stale && !detail.error ? detail.value?.awaiting_replies : undefined;
-    const replies = adapter ? this.replyWait.items.value.filter(row => row.threadId === handle?.threadId)
-      : Array.isArray(raw) ? this.threadReplies.value : undefined;
     return {
       pending: work?.value && !work.loading && !work.stale && !work.error ? work.value : undefined,
-      reply: replies && { items: replies, complete: !adapter && raw !== undefined && raw.length < THREAD_REPLY_LIMIT && raw.length === replies.length },
+      reply: adapter ? { items: this.replyWait.items.value.filter(row => row.threadId === handle?.threadId), complete: false }
+        : detail && !detail.loading && !detail.stale && !detail.error ? this.threadReplyProjection.value : undefined,
     };
   }
 

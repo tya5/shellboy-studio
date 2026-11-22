@@ -22,12 +22,14 @@ export const noReplyWait: ReplyWaitAdapter = {
   answer: async () => ({ ok: false, error: { kind: "bridge", code: "not_available", message: "reply waiting is not available" } }),
 };
 
-export const THREAD_REPLY_LIMIT = 128;
+// Core 6560942 src/protocol.rs:18; src/control/reply.rs reads one overflow row.
+const MAX_PENDING_REPLY_DUTIES = 16;
+export interface ThreadReplyProjection { readonly items: readonly ReplyWait[]; readonly complete: boolean; }
 
 /** Decode only protocol 5's unified bounded projection; never merge removed legacy lists. */
-export function threadReplyItems(threadId: string, raw: unknown): ReplyWait[] {
-  if (!Array.isArray(raw) || raw.length > THREAD_REPLY_LIMIT) return [];
-  return raw.flatMap((value: unknown): ReplyWait[] => {
+export function decodeThreadReplies(threadId: string, raw: unknown): ThreadReplyProjection | undefined {
+  if (!Array.isArray(raw) || raw.length > MAX_PENDING_REPLY_DUTIES + 1) return undefined;
+  const items = raw.flatMap((value: unknown): ReplyWait[] => {
     if (!value || typeof value !== "object") return [];
     const item = value as Record<string, unknown>;
     if (typeof item.message_id !== "string" || typeof item.excerpt !== "string" || typeof item.delivery_status !== "string") return [];
@@ -36,4 +38,5 @@ export function threadReplyItems(threadId: string, raw: unknown): ReplyWait[] {
         ? { kind: "thread" as const, threadId: item.recipient_thread_id, title: item.recipient_thread_id } : undefined;
     return recipient ? [{ id: item.message_id, threadId, question: item.excerpt, recipient, state: item.delivery_status, ...(typeof item.created_at === "string" ? { createdAt: item.created_at } : {}), ...(typeof item.elapsed_ms === "number" && Number.isFinite(item.elapsed_ms) && item.elapsed_ms >= 0 ? { elapsedMs: item.elapsed_ms } : {}) }] : [];
   });
+  return { items, complete: raw.length <= MAX_PENDING_REPLY_DUTIES && raw.length === items.length };
 }

@@ -6,7 +6,7 @@ import { act } from 'preact/test-utils';
 import { expect, it } from 'vitest';
 import { fixtureModel } from '../../../ui-core/test/fixture';
 import { settle } from '../../../data/test/harness';
-import { threadReplyItems } from '../../../data/src/replies';
+import { decodeThreadReplies } from '../../../data/src/replies';
 import { App } from '../screens/App';
 import { DESIGNS } from '../../registry';
 import type { Prefs } from '../../../ui-core/src';
@@ -47,7 +47,7 @@ it('protocol 5 unifies human/thread duties while preserving shells and organizat
 
 it('does not infer recipient from sender, accept unknown recipients, or exceed 128 duties',()=>{
   const item={message_id:'x',excerpt:'q',delivery_status:'pending',recipient_kind:'thread',recipient_thread_id:'other'};
-  expect(threadReplyItems('t',[item])[0]!.recipient).toEqual({kind:'thread',threadId:'other',title:'other'});
-  expect(threadReplyItems('t',[{...item,recipient_kind:'unknown'}])).toEqual([]);
-  expect(threadReplyItems('t',Array.from({length:129},()=>item))).toEqual([]);
+  expect(decodeThreadReplies('t',[item])!.items[0]!.recipient).toEqual({kind:'thread',threadId:'other',title:'other'});
+  expect(decodeThreadReplies('t',[{...item,recipient_kind:'unknown'}])).toEqual({items:[],complete:false});
+  expect(decodeThreadReplies('t',Array.from({length:18},()=>item))).toBeUndefined();
 });

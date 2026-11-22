@@ -5,7 +5,7 @@ import { Cancel } from "./operations";
 import { Refresher } from "./refresher";
 import type { ShellboyData } from "./store";
 import type { Outcome, OpError } from "./errors";
-import { threadReplyItems } from "./replies";
+import { decodeThreadReplies } from "./replies";
 
 export const HUMAN_PAGE_LIMIT = 16;
 export interface PendingItem {
@@ -128,11 +128,12 @@ export class HumanInbox implements PendingAdapter {
         const detail = await this.data.operations.threadGet(summary.thread_id, read);
         if (!valid()) return;
         if (!detail.ok) { fail(detail.error); return; }
-        if (!Array.isArray(detail.value.awaiting_replies) || detail.value.awaiting_replies.length > 128) {
+        const replies = decodeThreadReplies(summary.thread_id, detail.value.awaiting_replies);
+        if (!replies) {
           fail({ kind: "invalid_response", message: "human reply projection is missing or exceeds its bound" }); return;
         }
         const exact = summary.awaiting_human_count_exact !== false;
-        for (const duty of threadReplyItems(summary.thread_id, detail.value.awaiting_replies)) {
+        for (const duty of replies.items) {
           if (duty.recipient.kind !== "human") continue;
           items.push({ id: duty.id, threadId: summary.thread_id, threadTitle: summary.title, question: duty.question,
             askedAt: exact ? summary.awaiting_human_oldest_at ?? undefined : undefined,

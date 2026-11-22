@@ -184,10 +184,10 @@ describe('right panel purpose',()=>{
     delete detail.awaiting_replies;
     await act(update);
     expect(f.model.panelOperations.peek().get(id)?.disposition).toBe("pending");
-    detail.awaiting_replies=Array.from({length:128},(_,i)=>({message_id:`other-${i}`,recipient_kind:'human',recipient_thread_id:'lead',excerpt:'Other question',delivery_status:'accepted'}));
+    detail.awaiting_replies=Array.from({length:17},(_,i)=>({message_id:`other-${i}`,recipient_kind:'human',recipient_thread_id:'lead',excerpt:'Other question',delivery_status:'accepted'}));
     await act(update);
     expect(f.model.panelOperations.peek().get(id)?.disposition).toBe("pending");
-    detail.awaiting_replies=[];
+    detail.awaiting_replies=detail.awaiting_replies.slice(0,16);
    }
    await act(async()=>{f.t.push({t:'changed',thread_ids:['lead'],list:false});await flush();});
    expect(reads()).toBeGreaterThan(before);
