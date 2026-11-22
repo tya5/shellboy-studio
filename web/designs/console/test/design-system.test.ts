@@ -212,11 +212,14 @@ describe("approved list section and status rules", () => {
 describe("approved list section and status rules", () => {
   it("keeps the reusable section band and trailing action column in ThreadGroup", () => {
     const css = componentStyleFiles["../system/components/ThreadGroup/style.css"] ?? "";
-    expect(css).toMatch(/\.tgroup\[data-group-heading="sidebar"\]>header\{[^}]*position:sticky;[^}]*background:var\(--raised\)/);
+    expect(css).toMatch(/\.tgroup\[data-group-heading="section"\]>header\{[^}]*position:sticky;[^}]*background:var\(--raised\)/);
     expect(css).toMatch(/\.tgroup-chevron\{[^}]*width:var\(--size-row-action\);min-width:var\(--size-row-action\)/);
     expect(css).toContain("text-overflow:ellipsis;white-space:nowrap");
+    expect(css).toContain(".tgroup-chevron{display:grid;place-items:center;flex:none;width:var(--size-row-action);min-width:var(--size-row-action)");
     const source = systemSources["../system/components/ThreadGroup/index.tsx"] ?? "";
+    expect(source).toContain('data-group-heading={fold ? "section" : undefined}');
     expect(source).toContain('class="tgroup-toggle"');
+    expect(source).toContain("onSelect(e.currentTarget.checked)");
     expect(source).toContain('class="tgroup-chevron"');
   });
 

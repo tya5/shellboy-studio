@@ -11,6 +11,7 @@ import { loadPrefs } from "../../../ui-core/src/prefs";
 import { DESIGNS } from "../../registry";
 import { App } from "../screens/App";
 import { StatusMark } from "../system/components/StatusMark";
+import { ThreadGroup } from "../system/components/ThreadGroup";
 
 it("keeps status updates in place, persists child folds, and moves pins only after the owner event", async () => {
   const f = await fixtureModel({ route: "conversation", threadId: "lead", capabilities: ["thread.tags", "thread.cwds"], configure(db) {
@@ -309,7 +310,7 @@ it("renders the approved sidebar section band, trailing column, and disclosure b
   const prefs = signal(loadPrefs({ read: () => null, write() {} }, DESIGNS));
   try {
     await act(async () => { render(<App context={{ model: f.model, prefs, designs: DESIGNS, setPrefs: change => { prefs.value = { ...prefs.peek(), ...change }; }, submitToken: async () => false }} />, host); await settle(f.t, f.db); });
-    const group = host.querySelector<HTMLElement>('.tgroup[data-group-heading="sidebar"]')!;
+    const group = host.querySelector<HTMLElement>('.tgroup[data-group-heading="section"]')!;
     const name = group.querySelector<HTMLElement>(".tgroup-name")!;
     const toggle = group.querySelector<HTMLButtonElement>(".tgroup-toggle")!;
     expect(toggle.classList.contains("btn")).toBe(true);
@@ -325,4 +326,27 @@ it("renders the approved sidebar section band, trailing column, and disclosure b
     expect(toggle.getAttribute("aria-label")).toBe(`Expand ${label}`);
     expect(host.querySelectorAll(".side-list [data-thread-row]")).toHaveLength(0);
   } finally { render(null, host); host.remove(); f.model.dispose(); f.data.stop(); }
+});
+
+it("keeps the bulk checkbox separate while the rest of its heading toggles", async () => {
+  const host = document.createElement("div"); document.body.append(host);
+  const selected: boolean[] = [], toggled: boolean[] = [];
+  const fold = { open: false, show: "Open", hide: "Close", showLabel: "Open folder", hideLabel: "Close folder", onToggle: () => toggled.push(!fold.open) };
+  try {
+    await act(async () => render(<ThreadGroup label="folder" count="3" selectLabel="Select folder" onSelect={value => selected.push(value)} fold={fold} />, host));
+    const checkbox = host.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
+    const toggle = host.querySelector<HTMLButtonElement>(".tgroup-toggle")!;
+    expect(toggle.className).toBe("btn tgroup-toggle");
+    expect(host.querySelector<HTMLElement>(".tgroup")?.dataset.groupHeading).toBe("section");
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(toggle.getAttribute("aria-label")).toBe("Open folder");
+    expect(toggle.querySelector(".tgroup-chevron .i")).not.toBeNull();
+    expect(toggle.contains(checkbox)).toBe(false);
+    expect(host.querySelectorAll("button")).toHaveLength(1);
+    await act(async () => checkbox.click());
+    expect(selected).toEqual([true]);
+    expect(toggled).toEqual([]);
+    await act(async () => toggle.click());
+    expect(toggled).toEqual([true]);
+  } finally { render(null, host); host.remove(); }
 });
