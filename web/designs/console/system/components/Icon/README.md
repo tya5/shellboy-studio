@@ -40,6 +40,11 @@ Consumers use semantic `IconRole` names only. Glyph names, paths, and the role-t
 | `panel.reply_needed` | Identify a request this Thread should answer. | Lucide `reply` |
 | `panel.awaiting_reply` | Identify a request awaiting another recipient. | Lucide `hourglass` |
 | `panel.information` | Open Thread analytics. | Lucide `info` |
+| `artifact.image` | Identify an artifact with a stored image MIME. | Image |
+| `artifact.text` | Identify an artifact with a stored text MIME. | File text |
+| `artifact.pdf` | Identify an artifact with a stored PDF MIME. | PDF |
+| `artifact.unknown` | Identify an artifact without a recognized stored MIME. | File |
+| `artifact.detail` | Open artifact details in the current panel. | Chevron right |
 | `settings.appearance` | Identify Appearance settings. | `palette` |
 | `settings.general` | Identify the General settings section. | `gear` |
 | `settings.connections` | Identify the Connections settings section. | `plug` |

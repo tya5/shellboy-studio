@@ -13,6 +13,29 @@ function setup() {
 }
 
 describe("Operations", () => {
+  it("bounds artifact pages and rejects mismatched Thread and version identities", async () => {
+    const { t, ops } = setup();
+    const at = "2026-11-21T00:00:00Z";
+    const identity = { artifact_id: "report", thread_id: "a", created_at: at, updated_at: at };
+    const latest = { version: 2, title: "Report", uri: "/fixture/report.md", mime: "text/markdown", created_at: at };
+    const row = { ...identity, latest };
+    const list = ops.artifactList("a", "opaque");
+    expect(t.calls()[0]).toMatchObject({ command: "artifact.list", args: { thread_id: "a", cursor: "opaque", limit: 32 } });
+    expect(t.calls()[0]!.operation_id).toBeUndefined();
+    t.ok(t.calls()[0]!.id, { items: [row], next_cursor: null });
+    await expect(list).resolves.toEqual({ ok: true, value: { items: [row] } });
+    const duplicate = ops.artifactList("a");
+    t.ok(t.calls()[1]!.id, { items: [row, row] });
+    await expect(duplicate).resolves.toMatchObject({ ok: false, error: { kind: "invalid_response" } });
+    const history = ops.artifactHistory("a", "report");
+    t.ok(t.calls()[2]!.id, { ...row, thread_id: "b", versions: { items: [] } });
+    await expect(history).resolves.toMatchObject({ ok: false, error: { kind: "invalid_response" } });
+    const selected = ops.artifactVersion("a", "report", 1);
+    expect(t.calls()[3]).toMatchObject({ command: "artifact.get", args: { artifact_id: "report", version: 1 } });
+    t.ok(t.calls()[3]!.id, { ...identity, version: latest });
+    await expect(selected).resolves.toMatchObject({ ok: false, error: { kind: "invalid_response" } });
+  });
+
   it("preserves encoded archive/unarchive boolean descendants without narrowing unknown replies", async () => {
     // Core #292 real-producer fixture: changed/already/not_found arrays and a boolean mode.
     for (const verb of ["archive", "unarchive"] as const) {

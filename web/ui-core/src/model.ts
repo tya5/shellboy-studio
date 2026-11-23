@@ -15,7 +15,7 @@ import { recentAppFolders } from "./app-templates";
 // retry and archive flows. Saved facts stay in the data layer; nothing here is optimistic.
 import { batch, computed, effect, signal, untracked, type ReadonlySignal, type Signal } from "@preact/signals-core";
 import { Cancel, messageCancelFailure, type Handle, type Operations, type OpError, type ShellboyData, type ShellEntry, type ThreadDetails, type ThreadSummary, type ThreadHandle } from "../../data/src";
-import { CAPABILITY_HISTORY_WINDOW, ReplyPages, type ReplySide } from "../../data/src";
+import { ArtifactObservation, CAPABILITY_HISTORY_WINDOW, ReplyPages, type ReplySide } from "../../data/src";
 import { MissingPins, MonitorSelection, type MonitorArchive } from "./monitor-selection";
 import { workRegions, type WorkRegions } from "./work";
 import { ConversationWindow, type WindowAcceptedSnapshot } from "./window";
@@ -52,7 +52,7 @@ export type SendState =
   | { kind: "unconfirmed"; operationId: string; text: string };
 
 export type RightPanelTab = "work" | "reply-needed" | "awaiting-reply" | "possessions" | "info" | "settings";
-export type RightPanelTarget = Readonly<{ kind: "step" | "message" | "reply" | "attachment"; id: string; replySide?: ReplySide }>;
+export type RightPanelTarget = Readonly<{ kind: "step" | "message" | "reply" | "attachment" | "artifact"; id: string; replySide?: ReplySide }>;
 export type RightPanelDetail = RightPanelTarget & Readonly<{ opener?: () => boolean }>;
 type PanelOperation = Readonly<{ kind: "cancel" | "answer" } & (
   { disposition: "pending"; source: "pending" | ReplySide; state: string } | { disposition: "failed" | "unconfirmed"; error: string }
@@ -308,6 +308,7 @@ export class AppModel {
   }
   bodyState(nodeId: string, itemIdentity?: string): BodyState | undefined { return this.bodies.value.get(this.bodyCacheKey(nodeId, itemIdentity)); }
   readonly attachmentSection: AttachmentSection;
+  readonly artifacts: ArtifactObservation;
   readonly panelTab: Signal<RightPanelTab> = signal("work");
   readonly panelOpener: Signal<Partial<Record<RightPanelTab, RightPanelTarget>>> = signal({});
   private panelPreference?: PanelPreference;
@@ -414,6 +415,7 @@ export class AppModel {
     this.unreadPreferences = options.unreadPreferences;
     this.data = options.data;
     this.attachmentSection = new AttachmentSection(this.data);
+    this.artifacts = new ArtifactObservation(this.data);
     this.ops = options.data.operations;
     this.pending = options.pending ?? new HumanInbox(options.data);
     this.replyPages = new ReplyPages(this.data);
@@ -728,6 +730,7 @@ export class AppModel {
   dispose(): void {
     this.config.leave();
     this.attachmentSection.close();
+    this.artifacts.close();
     this.panelOperations.value = new Map();
     this.panelDetail.value = undefined;
     this.closeModelPicker();
@@ -1306,9 +1309,9 @@ export class AppModel {
     batch(() => { this.panelTab.value = tab; this.panelDetail.value = undefined; this.expandPanel(); });
   }
 
-  openInPanel(target: RightPanelTarget, opener?: () => boolean): void {
-    if (this.panelPreference && !this.panelPreference.visible()) return;
-    const tab: RightPanelTab = target.kind === "attachment" ? "possessions" : target.kind === "reply"
+  openInPanel(target: RightPanelTarget, opener?: () => boolean, fromPanel = false): void {
+    if (!fromPanel && this.panelPreference && !this.panelPreference.visible()) return;
+    const tab: RightPanelTab = (target.kind === "attachment" || target.kind === "artifact") ? "possessions" : target.kind === "reply"
       ? target.replySide === "owed_by" ? "reply-needed" : "awaiting-reply"
       : "work";
     batch(() => {

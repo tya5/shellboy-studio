@@ -94,6 +94,59 @@ describe('right panel purpose',()=>{
   } finally {f.model.dispose();f.data.stop();}
  });
 
+ it('keeps artifact owner order and refreshes both list and detail on the Thread hint', async () => {
+  const original = ResizeObserver;
+  let reveal: (() => void) | undefined;
+  vi.stubGlobal('ResizeObserver', class extends original {
+    constructor(cb: ResizeObserverCallback) { super(cb); reveal = () => cb([], this); }
+    override observe(node: Element) { if (node.matches('[data-panel-root]')) reveal?.(); }
+  });
+  const f=await setup(['attachment.list.page','artifact.list.page']);
+  const at='2026-11-21T00:00:00Z';
+  const version=(n:number,title:string)=>({version:n,title,uri:`/fixture/notes-${n}.md`,mime:'text/markdown',created_at:at});
+  const row=(id:string,n:number,title:string)=>({artifact_id:id,thread_id:'lead',created_at:at,updated_at:at,latest:version(n,title)});
+  let latest=row('z',2,'Report');
+  let failed=false;
+  const answer=f.db.answer.bind(f.db);
+  f.db.answer=call=>{
+   if(call.command==='attachment.list') return {ok:true,result:{items:[]}};
+   if(failed && (call.command==='artifact.list' || call.command==='artifact.get')) return {ok:false,code:'cursor_expired',message:'Retained cut expired'};
+   if(call.command==='artifact.list') return {ok:true,result:{items:[latest,row('a',1,'Diagram')]}};
+   if(call.command==='artifact.get') {
+    const {version:n}=call.args as {version?:number};
+    const {latest:_,...identity}=latest;
+    return n ? {ok:true,result:{...identity,version:version(n,'Draft')}}
+     : {ok:true,result:{...latest,versions:{items:[{version:latest.latest.version,created_at:at},{version:1,created_at:at}]}}};
+   }
+   return answer(call);
+  };
+  const page=f.host.querySelector('#panel-page-possessions')!;
+  const pump=async (work:()=>void)=>{ await act(async()=>work()); await act(async()=>{await settle(f.t,f.db);}); };
+  try {
+   expect(f.t.calls('artifact.list')).toHaveLength(0);
+   await pump(()=>f.host.querySelector<HTMLButtonElement>('[data-panel-tab="possessions"]')!.click());
+   expect([...page.querySelectorAll('[data-panel-row-id]')].map(el=>el.getAttribute('data-panel-row-id'))).toEqual(['z','a']);
+   expect(page.querySelector('[data-panel-row-id="z"]')?.textContent).toContain('v2');
+   expect(page.querySelector('[data-panel-row-id="a"]')?.textContent).not.toContain('v1');
+   await pump(()=>page.querySelector<HTMLButtonElement>('[data-panel-row-id="z"] button')!.click());
+   expect(page.querySelector('[data-panel-detail]')?.textContent).toContain('/fixture/notes-2.md');
+   await pump(()=>page.querySelector<HTMLButtonElement>('[data-panel-row-id="z:v1"] button')!.click());
+   expect(f.t.calls('artifact.get').at(-1)?.args).toEqual({artifact_id:'z',version:1});
+   expect(page.querySelector('[data-panel-detail]')?.textContent).toContain('/fixture/notes-1.md');
+   failed=true;
+   await pump(()=>f.t.push({t:'changed',config_changed:false,thread_ids:['lead'],list:false}));
+   expect(page.querySelector('[data-panel-row-id="z"]')?.textContent).toContain('Report');
+   expect(page.querySelector('[data-panel-detail]')?.textContent).toContain('/fixture/notes-1.md');
+   expect(f.model.artifacts.history.state.value).toMatchObject({complete:false,error:'Retained cut expired'});
+   failed=false;
+   latest=row('z',3,'New report');
+   await pump(()=>f.t.push({t:'changed',config_changed:false,thread_ids:['lead'],list:false}));
+   expect(f.t.calls('artifact.list')).toHaveLength(3);
+   expect(page.querySelector('[data-panel-detail]')?.textContent).toContain('New report');
+   expect(page.querySelector('[data-panel-detail]')?.textContent).toContain('/fixture/notes-1.md');
+  } finally {f.model.dispose();f.data.stop();vi.unstubAllGlobals();}
+ });
+
  it('opens the attachment section on demand, pages by cursor, and refreshes on the Thread hint', async () => {
   const f=await setup(['attachment.list.page']);
   const row=(id:string,path:string)=>({attachment_id:id,source_node_id:`source-${id}`,thread_id:'lead',path,kind:'file',delivery_status:'applied',selected:true,managed:false});

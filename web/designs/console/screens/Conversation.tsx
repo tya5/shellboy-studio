@@ -1,5 +1,6 @@
+import { ArtifactDetail, ArtifactList } from "./ArtifactPanel";
 import { ATTACHMENT_RETENTION } from "../../../ui-core/src/attachment-section";
-import { CAPABILITY_ATTACHMENT_PAGE } from "../../../data/src";
+import { CAPABILITY_ARTIFACTS, CAPABILITY_ATTACHMENT_PAGE } from "../../../data/src";
 import {messageRelationship} from "../../../ui-core/src/sender-display";
 import { capturedWorkElementDisplay, capturedWorkExecutionDisplay, type WorkElementDisplay } from "../../../ui-core/src/work-element-display";
 import { WorkElementRow, formatWorkElementDisplay } from "../system/components/WorkElementRow";
@@ -449,13 +450,14 @@ function PanelPossessions({ model }: { model: AppModel }) {
   const t = model.t.value;
   const state = model.attachmentSection.state.value;
   return <div class="panel-list" data-panel-list="possessions">
+    {model.data.capabilities.value.includes(CAPABILITY_ARTIFACTS) ? <ArtifactList model={model} onSelect={(id, opener) => model.openInPanel({ kind: "artifact", id }, panelFocusReturn(opener), true)} /> : null}
     {state.items.length ? possessionsSections.map(section => <section key={section.kind}>
       <ListDivider label={t(section.label)} count={state.items.length} />
       {state.items.map(row => <ListRow key={row.attachment_id} id={row.attachment_id}
         title={row.path.split(/[\\/]/).filter(Boolean).at(-1) ?? row.path} icon={section.icon}
         subtitle={t(row.kind === "image" ? "panel.attachmentImage" : "panel.attachmentFile")}
         selected={model.panelOpener.value.possessions?.id === row.attachment_id}
-        onSelect={opener => model.openInPanel({ kind: section.kind, id: row.attachment_id }, panelFocusReturn(opener))} />)}
+        onSelect={opener => model.openInPanel({ kind: section.kind, id: row.attachment_id }, panelFocusReturn(opener), true)} />)}
     </section>) : null}
     {state.loading ? <p role="status">{t("panel.attachmentsLoading")}</p> : null}
     {state.error ? <p role="alert">{t("panel.attachmentsFailed")}</p> : null}
@@ -629,6 +631,7 @@ function PanelDetail({ model, tabLabel, onBack }: { model: AppModel; tabLabel: s
       {model.bodyState(detail.id)?.loading ? <p role="status">{t("convo.loadingBody")}</p> : null}
     </section>;
   }
+  if (detail.kind === "artifact") return <section class="panel-detail" data-panel-detail=""><div class="panel-detail-head">{back}</div><ArtifactDetail model={model} /></section>;
   if (detail.kind === "attachment") {
     const attachments = model.attachmentSection.state.value;
     const row = attachments.items.find(item => item.attachment_id === detail.id);
@@ -660,13 +663,15 @@ function PanelDetail({ model, tabLabel, onBack }: { model: AppModel; tabLabel: s
 
 function RightPanel({ model, panelCollapsed = false, phone, destination, clearDestination }: { model: AppModel; panelCollapsed?: boolean; phone?: boolean; destination?: SettingsDestination | undefined; clearDestination: () => void }) {
   const t = model.t.value;
-  const supportsAttachments = model.data.capabilities.value.includes(CAPABILITY_ATTACHMENT_PAGE);
+  const caps = model.data.capabilities.value;
+  const supportsAttachments = caps.includes(CAPABILITY_ATTACHMENT_PAGE);
+  const supportsArtifacts = caps.includes(CAPABILITY_ARTIFACTS);
   const owner = model.data.owner.value;
   const threadId = model.handle.value?.threadId;
   const activeAttachments = supportsAttachments && !panelCollapsed && model.panelTab.value === "possessions";
   useEffect(() => activeAttachments && owner.state === "connected" && threadId
     ? model.attachmentSection.observe(threadId) : undefined, [model, activeAttachments, owner, threadId]);
-  const selectedTab = !supportsAttachments && model.panelTab.value === "possessions" ? "work" : model.panelTab.value;
+  const selectedTab = !(supportsAttachments || supportsArtifacts) && model.panelTab.value === "possessions" ? "work" : model.panelTab.value;
   const replyCount = (side: "owed_by" | "asked_by") => {
     const count = model.details.value?.pending_replies?.[side];
     return count?.exact === false ? `${count.count}+` as const : count?.count;
@@ -675,7 +680,7 @@ function RightPanel({ model, panelCollapsed = false, phone, destination, clearDe
     { id: "work", label: t("panel.tab.work"), icon: "panel.work" as const, count: model.work.value.running.length + model.work.value.pending.length },
     { id: "reply-needed", label: t("panel.tab.reply_needed"), icon: "panel.reply_needed" as const, count: replyCount("owed_by") },
     { id: "awaiting-reply", label: t("panel.tab.awaiting_reply"), icon: "panel.awaiting_reply" as const, count: replyCount("asked_by") },
-    ...(supportsAttachments ? [{ id: "possessions", label: t("panel.tab.possessions"), icon: "panel.attachment" as const }] : []),
+    ...((supportsAttachments || supportsArtifacts) ? [{ id: "possessions", label: t("panel.tab.possessions"), icon: "panel.attachment" as const }] : []),
     { id: "info", label: t("threadSettings.appearance"), icon: "panel.information" as const },
     { id: "settings", label: t("threadSettings.tab"), icon: "panel.threadSettings" as const },
   ];
@@ -695,10 +700,17 @@ function RightPanel({ model, panelCollapsed = false, phone, destination, clearDe
   useEffect(() => {
     const panel = root.current;
     if (!panel) return;
-    const observer = new ResizeObserver(() => setPanelVisible(getComputedStyle(panel).display !== "none"));
+    const publish = () => setPanelVisible(getComputedStyle(panel).display !== "none");
+    const observer = new ResizeObserver(publish);
     observer.observe(panel);
     return () => observer.disconnect();
   }, []);
+  const artifactId = detail?.kind === "artifact" ? detail.id : undefined;
+  const artifactsShown = supportsArtifacts && (phone || panelVisible) && !panelCollapsed && model.panelTab.value === "possessions";
+  useEffect(() => artifactsShown && owner.state === "connected" && threadId
+    ? model.artifacts.observeList(threadId) : undefined, [model, artifactsShown, owner, threadId]);
+  useEffect(() => artifactsShown && owner.state === "connected" && threadId && artifactId
+    ? model.artifacts.observeHistory(threadId, artifactId) : undefined, [model, artifactsShown, owner, threadId, artifactId]);
   const usageThread = panelVisible && !panelCollapsed && selectedTab === "info" && !detail && owner.state === "connected" ? threadId : undefined;
   const usageKey = usageThread && owner.state === "connected" ? JSON.stringify([owner.info.instance_id, usageThread]) : undefined;
   const focusAfterBack = useRef<{ tab: typeof model.panelTab.value; restore?: () => boolean }>();
@@ -721,7 +733,7 @@ function RightPanel({ model, panelCollapsed = false, phone, destination, clearDe
     <div class="panel-pages">
       {tabs.map(tab => {
         const active = tab.id === selectedTab;
-        const drilledIn = active && !panelCollapsed && detail && (selectedTab === "possessions") === (detail.kind === "attachment");
+        const drilledIn = active && !panelCollapsed && detail && (selectedTab === "possessions") === (detail.kind === "attachment" || detail.kind === "artifact");
         return <section key={tab.id} role="tabpanel" id={`panel-page-${tab.id}`} aria-labelledby={`panel-tab-${tab.id}`} hidden={!active || panelCollapsed}>
           {tab.id === "settings" ? (active && !panelCollapsed && model.details.value ? <ThreadSettingsPanel key={owner.state === "connected" ? owner.info.instance_id ?? "connected" : owner.state} model={model} details={model.details.value} destination={destination} /> : null) : <div class="panel-list-frame" hidden={!!drilledIn}>{tab.id === "work" ? <PanelActivity model={model} /> : tab.id === "info" ? (usageThread ? <ThreadAnalytics key={usageKey} model={model} threadId={usageThread} /> : null) : tab.id === "possessions" ? <PanelPossessions model={model} /> : <PanelReplies model={model} side={tab.id === "reply-needed" ? "owed_by" : "asked_by"} />}</div>}
           {drilledIn ? <PanelDetail key={`${detail.kind}:${detail.id}`} model={model} tabLabel={tab.label} onBack={closeDetail} /> : null}

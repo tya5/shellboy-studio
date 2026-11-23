@@ -19,3 +19,5 @@
   .list-row-action .row-menu-trigger{margin-inline:calc((var(--size-row-action) - var(--size-row-action-touch))/2)}
   [data-sidebar-row] .list-row-action .row-menu-trigger{margin-inline:calc((var(--size-row-action) - var(--size-touch))/2)}
 }
+
+@container app (max-width:1179px) { .list-row[data-touch-row] > .panel-list-main { min-height:var(--size-touch); } }

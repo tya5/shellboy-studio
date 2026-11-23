@@ -13,3 +13,5 @@ export * from "./replies";
 export * from "./pairing";
 
 export * from "./human-inbox";
+
+export * from "./artifacts";

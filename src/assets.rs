@@ -11,7 +11,7 @@ include!(concat!(env!("OUT_DIR"), "/assets.rs"));
 
 /// Nothing leaves the bridge's own origin: no CDN, no font host, and a model's Markdown can't
 /// load remote images. Preact sets element styles through the CSSOM, which `style-src` allows.
-const CSP: &str = "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; manifest-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; frame-src 'self'";
+const CSP: &str = "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; font-src 'self'; manifest-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; frame-src 'self'";
 
 fn find(table: &'static [(&'static str, &'static [u8])], path: &str) -> Option<&'static [u8]> {
     table

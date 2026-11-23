@@ -23,6 +23,7 @@ pub fn owner_capabilities() -> Vec<String> {
         capabilities.push("connection.setup".to_owned());
     }
     capabilities.push("attachment.list.page".to_owned());
+    capabilities.push("artifact.list.page".to_owned());
     capabilities
 }
 
