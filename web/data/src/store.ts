@@ -33,38 +33,6 @@ export const MAX_LIST_ROWS = 1000;
 export const CAPABILITY_HISTORY_WINDOW = "history.window";
 const CAPABILITY_THREAD_TAGS = "thread.tags";
 
-/** Coalesces deferred Inbox row reads; overflow requests a refresh of the current bounded page. */
-export class PendingInboxRowIds {
-  private ids = new Set<string>();
-  private resync = false;
-
-  add(ids: readonly string[]): void {
-    if (this.resync) return;
-    for (const id of ids) {
-      if (this.ids.has(id)) continue;
-      if (this.ids.size >= MAX_LIST_ROWS) {
-        this.ids.clear();
-        this.resync = true;
-        return;
-      }
-      this.ids.add(id);
-    }
-  }
-
-  drain(currentIds: readonly string[]): string[] {
-    const ids = this.resync ? [...currentIds].slice(0, MAX_LIST_ROWS) : [...this.ids];
-    this.clear();
-    return ids;
-  }
-
-  clear(): void {
-    this.ids.clear();
-    this.resync = false;
-  }
-
-  get size(): number { return this.ids.size; }
-}
-
 export interface Resource<T> {
   value: T | undefined;
   loading: boolean;
@@ -226,7 +194,6 @@ export class ShellboyData {
   private readonly pinnedMoreSig = signal(false);
   private readonly activeThreadIdsSig = signal<readonly string[]>([]);
   private readonly inboxThreadIdsSig = signal<readonly string[]>([]);
-  private readonly pendingInboxRowIds = new PendingInboxRowIds();
   private readonly filterSig = signal<ListFilter>({});
   private listRefs = 0;
   private listGen = 0;
@@ -525,7 +492,6 @@ export class ShellboyData {
           this.desktopDiagnosticSig.value = null;
           this.ownerSig.value = { state: "unknown" };
           this.markAllStale();
-          this.pendingInboxRowIds.clear();
           this.discardAllPreviews("connection_closed");
         });
         break;
@@ -614,7 +580,6 @@ export class ShellboyData {
     if (previous.state === "connected" && owner.state === "connected" && previous.info.instance_id !== owner.info.instance_id) {
       this.discardAllPreviews("owner_restarted");
       this.threadRowsSig.value = new Map(); this.pinnedThreadIdsSig.value = []; this.pinnedMoreSig.value = false; this.activeThreadIdsSig.value = []; this.inboxThreadIdsSig.value = [];
-      this.pendingInboxRowIds.clear();
     }
     this.ownerSig.value = owner;
     if (owner.state === "unreachable") {
@@ -739,14 +704,13 @@ export class ShellboyData {
     const epoch = this.readQualificationEpoch;
     const unique = [...new Set(ids)].slice(0, MAX_LIST_ROWS);
     this.inboxThreadIdsSig.value = unique;
-    this.pendingInboxRowIds.add(unique);
-    if (this.canRead()) await this.refresher.request("inbox-rows");
+    if (this.canRead()) await this.refresher.requestFresh("inbox-rows");
     if (epoch !== this.readQualificationEpoch) return;
   }
 
   private async readInboxRows(): Promise<void> {
     const epoch = this.readQualificationEpoch;
-    const ids = this.pendingInboxRowIds.drain(this.inboxThreadIdsSig.peek());
+    const ids = this.inboxThreadIdsSig.peek();
     await this.refreshActiveRows(ids, epoch);
   }
 

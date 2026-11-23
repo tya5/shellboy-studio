@@ -1,7 +1,7 @@
 const nextOrdinal = () => { let ordinal = 0; return () => ++ordinal; };
 import { describe, expect, it } from "vitest";
 import { MAX_PREVIEW_CHARS, type Preview } from "../src/live";
-import { MAX_LIST_ROWS, PAGE_LIMIT, MAX_WATCHED_THREADS, PendingInboxRowIds, ShellboyData } from "../src/store";
+import { MAX_LIST_ROWS, PAGE_LIMIT, MAX_WATCHED_THREADS, ShellboyData } from "../src/store";
 import { Cancel } from "../src/operations";
 import type { ThreadSummary } from "../src/protocol";
 
@@ -21,18 +21,33 @@ async function setup(opts: { owner?: boolean; capabilities?: string[] } = {}) {
 }
 
 describe("deferred Inbox row refresh IDs", () => {
-  it("bounds accumulated IDs and resyncs the latest bounded page on overflow", () => {
-    const pending = new PendingInboxRowIds();
-    const first = Array.from({ length: MAX_LIST_ROWS }, (_, i) => `old-${i}`);
-    pending.add(first);
-    expect(pending.size).toBe(MAX_LIST_ROWS);
-    pending.add(["overflow"]);
-    expect(pending.size).toBe(0);
-    const current = ["latest-a", "latest-b"];
-    expect(pending.drain(current)).toEqual(current);
-    expect(pending.size).toBe(0);
-    pending.add(["next"]);
-    expect(pending.drain([])).toEqual(["next"]);
+  it("coalesces an in-flight read to the latest displayed ID set", async () => {
+    const { t, data, db } = await setup();
+    db.threads.old = summary("old");
+    db.threads.latestA = summary("latestA");
+    db.threads.latestB = summary("latestB");
+
+    const first = data.readActiveRows(["old"]);
+    await flush();
+    const read = (except?: number) => t.calls("thread.list").find(call => call.id !== except && (call.args as { thread_ids?: string[] }).thread_ids);
+    const firstCall = read()!;
+    expect((firstCall.args as { thread_ids: string[] }).thread_ids).toEqual(["old"]);
+
+    const second = data.readActiveRows(["latestA", "latestB"]);
+    await flush();
+    const firstResult = db.answer(firstCall);
+    if (!firstResult.ok) throw new Error("unexpected fake owner error");
+    t.ok(firstCall.id, firstResult.result);
+    await flush();
+
+    const nextCall = read(firstCall.id)!;
+    expect((nextCall.args as { thread_ids: string[] }).thread_ids).toEqual(["latestA", "latestB"]);
+    const nextResult = db.answer(nextCall);
+    if (!nextResult.ok) throw new Error("unexpected fake owner error");
+    t.ok(nextCall.id, nextResult.result);
+    await Promise.all([first, second]);
+    expect([...data.threadRows.peek().keys()].sort()).toEqual(["latestA", "latestB", "old"]);
+    data.stop();
   });
 });
 
