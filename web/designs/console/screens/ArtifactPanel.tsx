@@ -31,7 +31,7 @@ export function ArtifactList({ model, onSelect }: { model: AppModel; onSelect: (
     {page.loading ? <p role="status">{t("artifact.loading")}</p> : null}
     {page.error ? <p role="alert">{t("artifact.failed")}</p> : null}
     {!page.items.length && !page.loading && !page.error ? <p class="muted caption">{t("artifact.empty")}</p> : null}
-    {page.cursor !== undefined ? <Button variant="quiet" disabled={page.loading} onClick={() => model.artifacts.list.more()}>{t("panel.attachmentsMore")}</Button> : null}
+    {page.cursor !== undefined ? <Button variant="ghost" disabled={page.loading} onClick={() => model.artifacts.list.more()}>{t("panel.attachmentsMore")}</Button> : null}
     {page.capped ? <p class="muted caption">{t("artifact.capped")}</p> : null}
   </section>;
 }
@@ -124,15 +124,15 @@ export function ArtifactDetail({ model }: { model: AppModel }) {
       { key: t("artifact.created"), value: time(row.created_at, lang) },
       { key: t("artifact.updated"), value: time(row.updated_at, lang) },
     ]} />
-    {selection !== undefined ? <Button variant="quiet" onClick={() => { setSelection(undefined); setLoaded(undefined); }}>{t("artifact.latest")}</Button> : null}
+    {selection !== undefined ? <Button variant="ghost" onClick={() => { setSelection(undefined); setLoaded(undefined); }}>{t("artifact.latest")}</Button> : null}
     {version ? <>
       <KeyValue rows={[{ key: `v${version.version} · URI`, value: <bdi class="mono artifact-uri">{version.uri}</bdi> }]} />
-      <Button variant="quiet" onClick={() => { setCopyFailed(false); if (!navigator.clipboard) setCopyFailed(true);
+      <Button variant="ghost" onClick={() => { setCopyFailed(false); if (!navigator.clipboard) setCopyFailed(true);
         else void navigator.clipboard.writeText(version.uri).catch(() => setCopyFailed(true)); }}>{t("code.copy")}</Button>
       {copyFailed ? <p role="status">{t("guide.copyFailed")}</p> : null}
       {action?.kind === "link" ? <a class="artifact-open-link" href={action.href} target="_blank" rel="noopener noreferrer">{t("artifact.open")}</a> : null}
       {target && action?.kind === "preview" ? <Preview key={JSON.stringify([target, action.mime])} model={model} target={target} mime={action.mime} title={version.title} /> : null}
-      {target && action?.kind === "open" ? <Button variant="quiet" onClick={() => {
+      {target && action?.kind === "open" ? <Button variant="ghost" onClick={() => {
         setOpenFailed(false);
         void artifactContent(target, "open").then(res => { if (res.status !== 200) setOpenFailed(true); }, () => setOpenFailed(true));
       }}>{t("artifact.open")}</Button> : null}
@@ -144,7 +144,7 @@ export function ArtifactDetail({ model }: { model: AppModel }) {
         title={`v${item.version}`} subtitle={time(item.created_at, lang)} selected={selection === item.version}
         onSelect={() => { if (selection !== item.version) { setLoaded(undefined); setSelection(item.version); } }} />)}
       {cut.error ? <p role="alert">{t("artifact.failed")}</p> : null}
-      {cut.cursor !== undefined ? <Button variant="quiet" disabled={cut.loading} onClick={() => model.artifacts.history.more()}>{t("panel.attachmentsMore")}</Button> : null}
+      {cut.cursor !== undefined ? <Button variant="ghost" disabled={cut.loading} onClick={() => model.artifacts.history.more()}>{t("panel.attachmentsMore")}</Button> : null}
       {cut.capped ? <p class="muted caption">{t("artifact.capped")}</p> : null}
     </Disclosure> : null}
   </>;
