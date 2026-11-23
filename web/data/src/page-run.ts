@@ -13,7 +13,7 @@ export class PageRun<T, H = never> {
   readonly state: ReadonlySignal<Section<T, H>> = this.stateSignal;
   private session?: { load: Load<T, H>; owner: ReturnType<ShellboyData["owner"]["peek"]>; watch: Handle; read?: Cancel; pages: number };
 
-  constructor(private readonly data: ShellboyData, private readonly key: (row: T) => string | number, private readonly invalidContinuation: string) {}
+  constructor(private readonly data: ShellboyData, private readonly key: (row: T) => string | number, private readonly invalidContinuation: string, private readonly rowLimit = MAX_LIST_ROWS) {}
 
   observe(threadId: string, load: Load<T, H>): () => void {
     this.close();
@@ -74,7 +74,7 @@ export class PageRun<T, H = never> {
       if ((cursor !== undefined && (!page.items.length || cursors.has(cursor))) || page.items.some(row => ids.has(this.key(row)))) {
         fail(this.invalidContinuation, false); return;
       }
-      const remaining = MAX_LIST_ROWS - items.length;
+      const remaining = this.rowLimit - items.length;
       capped = page.items.length > remaining || (page.items.length === remaining && cursor !== undefined);
       for (const row of page.items.slice(0, remaining)) { ids.add(this.key(row)); items.push(row); }
       if (cursor === undefined || capped) break;

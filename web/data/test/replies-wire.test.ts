@@ -72,16 +72,30 @@ it("refreshes every loaded reply page after a change hint without dropping the p
   stop(); data.stop();
 });
 
-it("retains loaded reply rows and exposes a page error when a hint read fails", async () => {
+it("retains loaded reply rows and disables continuation until a successful hint", async () => {
   const t = new FakeTransport(); const data = new ShellboyData({ transport: t });
   data.start(); t.open(); t.push({ t: "hello", bridge_version: "test", data_dir: "/synthetic", owner: connected });
   const pages = new ReplyPages(data); const stop = pages.observe("thread"); await flush();
   const calls = t.calls("message.list"); const item = pendingReply("kept", "sender", { kind: "thread", thread_id: "thread" }, "kept");
-  t.ok(calls[0]!.id, { items: [item] }); t.ok(calls[1]!.id, { items: [] }); await flush();
-  t.push({ t: "changed", config_changed: false, thread_ids: ["thread"], list: false }); await flush();
-  const refreshes = t.calls("message.list").slice(-2);
-  t.push({ t: "result", id: refreshes[0]!.id, response: { protocol_version: 5, operation_id: "failure", ok: false, error: { code: "unavailable", message: "read failed" } } });
-  t.ok(refreshes[1]!.id, { items: [] }); await flush();
-  expect(pages.owed_by.value).toMatchObject({ items: [item], loading: false, error: "read failed" });
+  t.ok(calls[0]!.id, { items: [item], next_cursor: "retained" });
+  t.ok(calls[1]!.id, { items: [] }); await flush();
+  const hint = async () => {
+    t.push({ t: "changed", config_changed: false, thread_ids: ["thread"], list: false }); await flush();
+    const [owed, asked] = t.calls("message.list").slice(-2);
+    t.ok(asked!.id, { items: [] });
+    return owed!;
+  };
+  const failed = await hint();
+  t.push({ t: "result", id: failed.id, response: { protocol_version: 5, operation_id: "failure", ok: false, error: { code: "unavailable", message: "read failed" } } });
+  await flush();
+  expect(pages.owed_by.value).toMatchObject({ items: [item], loading: false, complete: false, error: "read failed" });
+  expect(pages.asked_by.value.complete).toBe(true);
+  const before = t.calls("message.list").length;
+  pages.more("owed_by"); await flush();
+  expect(t.calls("message.list")).toHaveLength(before);
+  const recovered = await hint();
+  t.ok(recovered.id, { items: [item], next_cursor: "fresh" }); await flush();
+  pages.more("owed_by"); await flush();
+  expect(t.calls("message.list").at(-1)!.args).toMatchObject({ owed_by: "thread", cursor: "fresh" });
   stop(); data.stop();
 });

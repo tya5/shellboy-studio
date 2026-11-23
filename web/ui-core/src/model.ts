@@ -596,7 +596,7 @@ export class AppModel {
       const route = this.route.value;
       const connected = this.data.connection.value === "open" && owner.state === "connected" && typeof owner.info.instance_id === "string" && owner.info.instance_id !== "";
       const page = this.senderPage.value;
-      const replyCandidates = [...this.replyPages.owed_by.value.items, ...this.replyPages.asked_by.value.items]
+      const replyCandidates = this.replyPages.owed_by.value.items
         .flatMap(reply => reply.sender.kind === "model" && reply.sender.thread_id ? [reply.sender.thread_id] : []);
       const win = this.longReader.value;
       if (win) win.version.value;
@@ -1343,7 +1343,8 @@ export class AppModel {
       const state = operation.source === "pending"
         ? pending?.items.find(row => row.kind === "message" && row.message_id === id)?.state
         : (operation.source === "owed_by" ? owed_by : asked_by).items.some(row => row.message_id === id) ? "pending" : undefined;
-      const complete = operation.source === "pending" ? pending !== undefined && pending.next_cursor === undefined : (operation.source === "owed_by" ? owed_by : asked_by).complete;
+      const page = operation.source === "owed_by" ? owed_by : asked_by;
+      const complete = operation.source === "pending" ? pending !== undefined && pending.next_cursor === undefined : !page.loading && page.complete;
       if (state === undefined ? complete : state !== operation.state) (next ??= new Map(current)).delete(id);
     }
     if (next) this.panelOperations.value = next;

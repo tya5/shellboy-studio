@@ -17,6 +17,20 @@ describe('product model sender provenance',()=>{
     expect(r.t.calls('thread.get').filter(c=>(c.args as {thread_id:string}).thread_id==='sender-a')).toHaveLength(before);
     r.model.applyRoute({view:'settings'});await settle(r.t,r.db);expect(r.model.senderTitles.values.value.size).toBe(0);r.model.dispose();
   });
+  it('resolves owed reply senders without spending a sender-title slot on asked replies', async () => {
+    const r = await fixtureModel({ configure(db) {
+      db.history.lead = [];
+      db.details.lead!.pending_replies = { owed_by: { count: 1, exact: true }, asked_by: { count: 1, exact: true } };
+      db.replies = [
+        { message_id: "owed", created_at: "2026-01-01T00:00:00Z", asked_by: "reviewer", sender: { kind: "model", thread_id: "reviewer" }, recipient: { kind: "thread", thread_id: "lead" }, excerpt: "Review" },
+        { message_id: "asked", created_at: "2026-01-01T00:00:00Z", asked_by: "lead", sender: { kind: "model", thread_id: "lead" }, recipient: { kind: "thread", thread_id: "peer" }, excerpt: "Waiting" },
+      ];
+    } });
+    await settle(r.t, r.db);
+    expect(r.model.replyPages.asked_by.value.items.map(row => row.message_id)).toEqual(["asked"]);
+    expect([...r.model.senderTitles.values.value.keys()]).toEqual(["reviewer"]);
+    r.model.dispose();
+  });
   it('uses selected-page/owner/route lifetime rather than arbitrary rendering as a refill',async()=>{
     const r=await fixtureModel({configure(db){db.history.lead=[senderNode({kind:'model',thread_id:'not-listed'})];}});
     await settle(r.t,r.db);const first=r.model.senderTitles.attemptCount;expect(first).toBe(1);

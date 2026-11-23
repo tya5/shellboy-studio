@@ -550,7 +550,7 @@ function PanelReplies({ model, side }: { model: AppModel; side: "owed_by" | "ask
     })}
     {page.error ? <p role="alert">{page.error}</p> : null}
     {!page.items.length && !page.loading && !page.error ? <p class="muted caption">{t("panel.empty")}</p> : null}
-    {page.cursor ? <Button disabled={page.loading} onClick={() => model.replyPages.more(side)}>{t("panel.attachmentsMore")}</Button> : null}
+    {page.cursor ? <Button disabled={page.loading || page.error !== undefined} onClick={() => model.replyPages.more(side)}>{t("panel.attachmentsMore")}</Button> : null}
   </div>;
 }
 
