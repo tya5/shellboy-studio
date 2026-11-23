@@ -96,6 +96,14 @@ Limit: this costs some discipline, and a shared `ui-core` change can affect all 
 
 The Console system's `web/designs/console/system/README.md` is the component-level contract. Use `space-4` for tightly coupled content, `space-8` for rows and compact insets, `space-12` for component interiors and related groups, `space-16` for card interiors and section separation, and `space-24` for the desktop page perimeter (phone: `space-12`). Use the existing control and touch heights, and the title, heading, body, label, caption, code and log type roles. Align headings, sections and cards at a shared left edge. Cards contain distinct subjects; lines separate repeated rows. Hover uses `raised`, selection `accent-bg`, focus the accent outline, and disabled controls reduced opacity. Preserve semantic status marks and words. Conversation tool group layout follows the same rules; changes to that group belong to its worker.
 
+## Sidebar spacing audit (#91, 2026-11-23)
+
+- Heading inset: top `space-12`; horizontal `space-16` aligns the section title with the shell perimeter; bottom `space-8` is the compact title-to-controls row gap.
+- Search/filter/new controls: horizontal `space-12` is the component inset; internal control gap is `space-4`; bottom `space-12` separates the controls group from the Thread section bands.
+- Thread list: zero horizontal inset lets rows and full-width bands share an edge; `space-8` separates repeated bands/rows; bottom `space-12` is the list component inset.
+
+All values map to the existing Layout contract; no new spacing token or component is needed.
+
 ## Validation record (2026-11-07)
 
 Environment: macOS (Darwin 25.3, arm64), Node 25.9, Google Chrome headless driven over its DevTools protocol by a throwaway script (no browser tooling installed), bridge debug build embedding the production bundle, `shellboy serve` from Shellboy `fa7bec02c0` with temporary HOME and data directory and a local mock provider. No real API call.
