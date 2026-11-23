@@ -16,8 +16,11 @@ final G consumer commit, not these prerequisite snapshot commits.
 
 ## Consumer Ownership
 
-ReadingAnchor exports its current canonical source node/viewport-relative offset
-under the existing revision/epoch/capability qualification. WindowedScroll begins
+In this historical integration, ReadingAnchor exported its current canonical
+source node and viewport-relative offset under revision/epoch/capability
+qualification. That source accessor is absent from the current owner: see
+[Measured conversation scrolling](../design/conversation-scroll.md) for the
+current rendered-cut qualification. WindowedScroll begins
 one S-owned transition from that actual capture, including native scroll capture.
 A changed source reader can replace only its own same-revision registration; a
 target scroll must not clear the prior source-to-target transition. Unmount clears

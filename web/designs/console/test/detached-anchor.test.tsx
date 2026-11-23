@@ -48,7 +48,7 @@ async function mounted(detachInitially = true) {
     };
     const position = () => host.querySelector<HTMLElement>('[data-item-key][data-node="reading"]')!.getBoundingClientRect().top;
     if (detachInitially) { await act(async () => detach()); expect(position()).toBe(-30); }
-    return { ...f, win, host, position, close, detach };
+    return { ...f, win, host, box, position, close, detach };
   } catch (error) { close(); throw error; }
 }
 
@@ -78,4 +78,29 @@ it('keeps the same saved reading position when a new revision grows an earlier r
     expect(f.host.textContent).toContain('Grown before');
     expect(f.position()).toBe(-30);
   } finally { f.close(); }
+});
+
+
+it('keeps a user scroll made after a revision publishes but before it renders', async () => {
+  const f = await mounted(false);
+  const revision = f.win.acceptedView.peek().revision;
+  let moved = false;
+  const unsubscribe = f.win.acceptedView.subscribe(() => {
+    if (moved || f.win.acceptedView.peek().revision === revision) return;
+    expect(f.host.textContent).not.toContain('New end');
+    expect(f.position()).toBe(-30);
+    moved = true;
+    f.box.scrollTop = 155;
+    f.box.dispatchEvent(new Event('scroll', { bubbles: true }));
+  });
+  try {
+    await act(async () => {
+      const publication = f.publish({ nodes: [...rows().slice(0, 2), { ...rows()[2], excerpt: 'New end' }] });
+      f.detach();
+      await publication;
+    });
+    expect(moved).toBe(true);
+    expect(f.host.textContent).toContain('New end');
+    expect(f.position()).toBe(-55);
+  } finally { unsubscribe(); f.close(); }
 });

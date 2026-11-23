@@ -91,17 +91,17 @@ export interface ReadingContext {
   isCurrent(): boolean;
 }
 
-const localRow = '[data-anchor-local], [data-live-overlay], .live-tail';
+export const localRowSelector = '[data-anchor-local], [data-live-overlay], .live-tail';
 
 /** Resolve visible geometry from canonical identity, never retain item DOM nodes. */
 function canonicalElement(item: HTMLElement): HTMLElement | undefined {
-  if (item.closest(`${localRow}, [hidden]`)) return;
+  if (item.closest(`${localRowSelector}, [hidden]`)) return;
   const group = item.closest<HTMLElement>('[data-work-group]');
   if (!group) return item;
   let members: unknown;
   try { members = JSON.parse(group.dataset.headingMemberKeys ?? 'null'); } catch { return; }
   if (!Array.isArray(members) || members.some(key => typeof key !== 'string') || new Set(members).size !== members.length || !members.includes(item.dataset.itemKey)) return;
-  const actual = [...group.querySelectorAll<HTMLElement>('[data-item-key]')].filter(el => !el.closest(localRow));
+  const actual = [...group.querySelectorAll<HTMLElement>('[data-item-key]')].filter(el => !el.closest(localRowSelector));
   if (actual.length !== members.length || actual.some((el, index) => el.closest('[data-work-group]') !== group || el.dataset.itemKey !== members[index])) return;
   if (group.tagName !== 'DETAILS') return;
   return group.hasAttribute('open') ? item : group.querySelector<HTMLElement>(':scope > summary[data-work-heading]') ?? undefined;
@@ -111,7 +111,7 @@ function readingItems(box: HTMLElement, context: ReadingContext): HTMLElement[] 
   const items = [...box.querySelectorAll<HTMLElement>('.conversation-items [data-item-key]')];
   const nodes = new Set(context.nodes), keys = new Set<string>();
   for (const item of items) {
-    if (item.closest(localRow)) continue;
+    if (item.closest(localRowSelector)) continue;
     const { itemKey, node } = item.dataset;
     if (!itemKey || keys.has(itemKey) || !node || !nodes.has(node)) return;
     keys.add(itemKey);
@@ -126,10 +126,10 @@ export class ReadingAnchor {
   private canonical: CanonicalAnchor | undefined;
   private saved: { node: string; step?: string; members: string[]; offset: number } | undefined;
   capture(box: HTMLElement, context?: ReadingContext): void {
+    this.canonical = undefined;
     if (box.querySelector('.conversation-items')) {
       this.saved = undefined;
       if (!context?.isCurrent() || context.revision === undefined) return;
-      this.canonical = undefined;
       const items = readingItems(box, context);
       if (!items) return;
       const top = box.getBoundingClientRect().top;
@@ -151,7 +151,6 @@ export class ReadingAnchor {
       }
       return;
     }
-    this.canonical = undefined;
     const top = box.getBoundingClientRect().top;
     const row = [...box.querySelectorAll<HTMLElement>(".vrow[data-node]")]
       .find((el) => el.getBoundingClientRect().bottom > top && el.getBoundingClientRect().height > 0);
@@ -168,7 +167,7 @@ export class ReadingAnchor {
       if (!context?.isCurrent() || context.revision === undefined || context.epoch !== canonical.epoch || context.capability !== canonical.capability) return;
       const items = readingItems(box, context);
       if (!items) return;
-      const savedItems = items.filter(item => !item.closest(localRow));
+      const savedItems = items.filter(item => !item.closest(localRowSelector));
       let element: HTMLElement | undefined;
       if (canonical.kind === 'saved') {
         // Requalify the exact key and node in the current rendered cut, regardless of revision.

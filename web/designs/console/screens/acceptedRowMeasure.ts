@@ -1,3 +1,5 @@
+import { localRowSelector } from "./scrollIntent";
+
 /** Measure only the supplied loaded DOM, never the full Thread or guessed identities. */
 export function measureAcceptedRows(root: HTMLElement, rows: readonly { node_id?: string; selection?: { ordinal?: number } }[]): [number, number][] {
   const parent = root.querySelector<HTMLElement>('.conversation-items');
@@ -11,7 +13,7 @@ export function measureAcceptedRows(root: HTMLElement, rows: readonly { node_id?
   const nodes = [...parent.children] as HTMLElement[];
   const keys = new Map<string, string>();
   for (const el of parent.querySelectorAll<HTMLElement>("[data-item-key]")) {
-    if (el.closest(".live-tail, [data-live-overlay]")) continue;
+    if (el.closest(localRowSelector)) continue;
     const key = el.dataset.itemKey;
     if (!key) continue;
     if (keys.has(key) || !el.dataset.node) return [];
@@ -37,7 +39,7 @@ export function measureAcceptedRows(root: HTMLElement, rows: readonly { node_id?
       if (outside === undefined || inside === undefined || Math.abs(outside - inside) > 1e-6) return [];
       el = inner;
     }
-    if (el.matches(".live-tail, [data-live-overlay]")) continue;
+    if (el.matches(localRowSelector)) continue;
     if (el.hasAttribute("data-work-group")) {
       let members: unknown;
       try { members = JSON.parse(el.dataset.headingMemberKeys ?? 'null'); } catch { return []; }
@@ -45,7 +47,7 @@ export function measureAcceptedRows(root: HTMLElement, rows: readonly { node_id?
       const memberKeys = members as string[];
       const memberNodes = memberKeys.map(key => keys.get(key));
       if (memberNodes.some(node => node === undefined || !ordinals.has(node))) return [];
-      const actual = [...el.querySelectorAll<HTMLElement>('[data-item-key]')].filter(item => !item.closest('.live-tail, [data-live-overlay]'));
+      const actual = [...el.querySelectorAll<HTMLElement>('[data-item-key]')].filter(item => !item.closest(localRowSelector));
       if (actual.length !== memberKeys.length || actual.some(item => item.closest('[data-work-group]') !== el || !memberKeys.includes(item.dataset.itemKey!))) return [];
       const total = measuredHeight(el);
       if (total === undefined || el.tagName !== 'DETAILS') return [];
@@ -65,7 +67,7 @@ export function measureAcceptedRows(root: HTMLElement, rows: readonly { node_id?
       for (const child of list.children as HTMLCollectionOf<HTMLElement>) {
         const px = measuredHeight(child);
         if (px === undefined) return [];
-        if (child.matches('.live-tail, [data-live-overlay]')) {
+        if (child.matches(localRowSelector)) {
           // Nonzero live geometry has no saved ordinal: do not silently lose it.
           if (px !== 0) return [];
           continue;

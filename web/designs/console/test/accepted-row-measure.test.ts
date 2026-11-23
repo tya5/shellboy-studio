@@ -24,3 +24,13 @@ it('excludes explicit live overlay height from saved ordinal measurement',()=>{
   [...root.firstElementChild!.children].forEach(el=>{el.getBoundingClientRect=()=>({height:20}) as DOMRect;});
   expect(measureAcceptedRows(root,[{node_id:'n1',selection:{ordinal:0}}])).toEqual([[0,20]]);
 });
+
+
+it('keeps the saved ordinal heights when a keyed handoff preview is present', () => {
+  const root = document.createElement('div');
+  root.innerHTML = '<div class="conversation-items"><div data-item-key="saved" data-node="n1"></div><div data-item-key="preview" data-anchor-local data-handoff-attempt="attempt"><div data-live-overlay>preview</div></div><div data-item-key="next" data-node="n2"></div></div>';
+  [...root.firstElementChild!.children].forEach((row, i) => {
+    row.getBoundingClientRect = () => ({ height: [20, 90, 30][i] }) as DOMRect;
+  });
+  expect(measureAcceptedRows(root, [{ node_id: 'n1', selection: { ordinal: 3 } }, { node_id: 'n2', selection: { ordinal: 4 } }])).toEqual([[3, 20], [4, 30]]);
+});
