@@ -40,7 +40,7 @@ describe("bounded conversation work", () => {
     expect(model.work.value.pending).toEqual([]);
     model.dispose();
   });
-  it("hides stale pending messages when the saved conversation arrives before status", async () => {
+  it("keeps the last status observation when the saved conversation arrives first", async () => {
     const { model, t, db } = await fixtureModel();
     db.bodies.m = "Delivered message";
     db.work.lead = [{ kind: "message", id: "m", message_id: "m", thread_id: "lead", state: "held" }];
@@ -56,7 +56,9 @@ describe("bounded conversation work", () => {
     }
     await flush();
     expect(model.conversation.value.some((row) => row.type === "message" && row.text === "Delivered message")).toBe(true);
-    expect(model.work.value.pending).toEqual([]);
+    expect(model.work.value.pending.map((r) => r.id)).toEqual(["m"]);
+    await model.runPanelOperation("m", { kind: "cancel", target: "pending" });
+    expect(t.calls("message.cancel")).toHaveLength(0);
     await settle(t, db); expect(model.work.value.pending).toEqual([]); model.dispose();
   });
   it("reads no more than eight pending bodies", async () => {

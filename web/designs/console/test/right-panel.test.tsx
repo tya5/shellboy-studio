@@ -38,6 +38,49 @@ async function setup(capabilities?: string[]) {
 }
 
 describe('right panel purpose',()=>{
+ it('retains pending Activity rows and the tab count while status refreshes', async () => {
+  const f=await setup();
+  const hint=()=>f.t.push({t:'changed',config_changed:false,thread_ids:['lead'],list:false});
+  const row=()=>f.host.querySelector('[data-panel-list="work"] [data-panel-row-id="pending"]');
+  const count=()=>f.host.querySelector('[data-panel-tab="work"] .panel-tab-count')?.textContent;
+  const activity=()=>f.host.querySelector('[data-panel-list="work"]')?.textContent;
+  const text=f.model.t.value;
+  try {
+   f.db.bodies.pending='Pending fixture message';
+   f.db.work.lead=[{kind:'message',id:'pending',message_id:'pending',thread_id:'lead',state:'held'}];
+   await act(async()=>{hint();await settle(f.t,f.db);});
+   const retained=row();
+   expect(retained?.textContent).toContain('Pending fixture message');
+   expect(count()).toBe('1');
+   f.db.work.lead=[];
+   await act(async()=>{
+    hint();
+    // Let other reads finish without answering the new work read.
+    for (let i=0;i<10;i++) {
+     await flush(32);
+     for (const call of f.t.calls().filter(call=>call.command!=='status'&&!f.db.answered.has(call.id))) {
+      f.db.answered.add(call.id);
+      const response=f.db.answer(call);
+      if (response.ok) f.t.ok(call.id,response.result); else f.t.ownerError(call.id,response.code);
+     }
+    }
+   });
+   const refresh=f.t.calls('status').at(-1)!;
+   expect(f.db.answered.has(refresh.id)).toBe(false);
+   expect(row()).toBe(retained);
+   expect(count()).toBe('1');
+   expect(activity()).not.toContain(text('panel.empty.work'));
+   expect(activity()).toContain(text('work.stale'));
+   await act(async()=>row()!.querySelector<HTMLButtonElement>('.panel-list-main')!.click());
+   const cancel=[...f.host.querySelectorAll<HTMLButtonElement>('[data-panel-detail] button')].find(item=>item.textContent===text('work.cancel'));
+   expect(cancel?.disabled).toBe(true);
+   await act(async()=>{await settle(f.t,f.db);});
+   expect(row()).toBeNull();
+   expect(count()).toBeUndefined();
+   expect(activity()).toContain(text('panel.empty.work'));
+  } finally {f.model.dispose();f.data.stop();}
+ });
+
  it('uses the canonical unknown sender label in the reply list', async () => {
   const f=await setup();
   try {

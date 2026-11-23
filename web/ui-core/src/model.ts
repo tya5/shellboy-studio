@@ -528,12 +528,7 @@ export class AppModel {
       return r.threadId ?? this.lastThread.value ?? this.rows.value[0]?.summary.thread_id;
     });
     this.details = computed(() => this.handle.value?.detail.value.value);
-    this.work = computed(() => {
-      const resource = this.handle.value?.work.value;
-      const regions = workRegions(resource?.value, this.details.value?.run_id, this.shells.value);
-      // A hint invalidates the previous pending list while the owner is re-read.
-      return resource?.loading || resource?.stale ? { ...regions, pending: [] } : regions;
-    });
+    this.work = computed(() => workRegions(this.handle.value?.work.value.value, this.details.value?.run_id, this.shells.value));
     this.selectedRow = computed(() => {
       const id = this.selectedId.value;
       return id === undefined ? undefined : this.rowById.value.get(id);

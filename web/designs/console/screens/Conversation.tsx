@@ -490,9 +490,14 @@ function panelOperationBlocked(model: AppModel, id: string): boolean {
   return state !== undefined && state.disposition !== "failed";
 }
 
+function workRefreshing(model: AppModel): boolean {
+  const resource = model.handle.value?.work.value;
+  return !!(resource?.loading || resource?.stale);
+}
+
 function panelCancel(model: AppModel, id: string, target: "pending" | "reply" = "pending") {
   return { key: "cancel", label: model.t.value("work.cancel"),
-    disabled: panelOperationBlocked(model, id) || model.connection.value !== "connected",
+    disabled: panelOperationBlocked(model, id) || model.connection.value !== "connected" || (target === "pending" && workRefreshing(model)),
     run: () => { void model.runPanelOperation(id, { kind: "cancel", target }); },
   };
 }
@@ -524,7 +529,7 @@ function PanelActivity({ model }: { model: AppModel }) {
       })}</section> : null;
     })}
     {work.partial ? <div class="caption muted">{t("work.partial")}</div> : null}
-    {model.handle.value?.work.value.stale && (work.running.length || work.pending.length) ? <div class="caption muted">{t("work.stale")}</div> : null}
+    {workRefreshing(model) && work.running.length + work.pending.length > 0 ? <div class="caption muted">{t("work.stale")}</div> : null}
     {!work.running.length && !work.pending.length && !work.partial ? <EmptyState compact role="empty.panelActivity" title={t("panel.empty.work")} body={t("panel.empty.workBody")} /> : null}
   </div>;
 }
