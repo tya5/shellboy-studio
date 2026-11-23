@@ -3,4 +3,3 @@
 [data-setting-id][data-highlighted]{background:var(--accent-bg);outline:1px solid var(--accent);outline-offset:-1px}
 .setting-read{justify-content:space-between;flex-wrap:nowrap;align-items:center}
 .setting-read>div:first-child{min-width:0;overflow-wrap:anywhere}
-.setting-read .btn-group{flex-wrap:nowrap;gap:var(--space-4)}

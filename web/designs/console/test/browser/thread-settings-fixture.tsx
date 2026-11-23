@@ -1,5 +1,5 @@
 import { signal } from "@preact/signals-core";
-import { mount } from "../..";
+import { mount } from "../../index";
 import { DESIGNS } from "../../../registry";
 import { fixtureModel, settle } from "../../../../ui-core/test/fixture";
 import type { Prefs } from "../../../../ui-core/src";
