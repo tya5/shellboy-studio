@@ -24,10 +24,12 @@ it.each(['00000000-0000-0000-0000-000000000000','00000000-0000-4000-0000-0000000
 it('history.window preserves absent attempt association as unknown',()=>{expect(decodeHistoryWindow(windowRow()).ok).toBe(true);});
 it('history.window rejects malformed attempt association',()=>{expect(decodeHistoryWindow(windowRow({attempt_id:'not-a-uuid'})).ok).toBe(false);});
 
-it('history.window admits only the bounded saved output-limit display facts',()=>{
- const fact={stop:true,sent_max_tokens:4096};
+it('history.window admits Core output-limit provenance while rejecting malformed evidence',()=>{
+ const fact={stop:true,sent_max_tokens:4096,source:'connection',connection:'synthetic'};
+ for(const source of ['thread_override','connection','default','extra_body',null]) for(const sent_max_tokens of [4096,null])
+  expect(decodeHistoryWindow(windowRow({output_limit:{...fact,source,sent_max_tokens}})).ok).toBe(true);
  const valid=decodeHistoryWindow(windowRow({output_limit:fact}));
  expect(valid.ok).toBe(true);if(valid.ok)expect(valid.value.items[0]!.provenance?.output_limit).toEqual(fact);
- for(const output_limit of [{stop:false,sent_max_tokens:4096},{stop:true,sent_max_tokens:-1},{stop:true,sent_max_tokens:1.5},{stop:true,sent_max_tokens:4096,connection:'secret'}])
+ for(const output_limit of [{...fact,stop:false},{...fact,sent_max_tokens:-1},{...fact,sent_max_tokens:1.5},{...fact,source:'provider'},{...fact,connection:undefined}])
   expect(decodeHistoryWindow(windowRow({output_limit})).ok).toBe(false);
 });

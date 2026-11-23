@@ -17,10 +17,17 @@ fields for each API. It is not a claim that its collision policy or runtime is
 published. The explanation says Claude may produce shorter output when omitted
 and recommends Anthropic Messages, without diagnosing every short response.
 
-Typed terminal output-limit presentation is deliberately excluded. Core candidate
-`f0ffad29b3a3557c7079800eb47b7cd5018925f3` has a prospective typed error kind,
-but its public path must be confirmed before Studio uses it. No string parsing
-or metadata guessing substitutes for that contract.
+Output-limit notices are a separate, provenance-backed conversation presentation,
+not a diagnosis of arbitrary short replies. Live notices use only an adopted
+`attempt_end` output-limit fact. The pinned Core carries the same reply-specific
+mark in saved assistant-response provenance through history and reload; a
+single Studio owner reconciles live attempt evidence with saved node metadata,
+without a per-row usage lookup. The notice shows Core's sent maximum when known,
+never estimates it, and offers navigation to the Thread override when present or
+the connection setting otherwise; it does not mutate the setting. `Continue` is
+an explicit user message action. Replies saved before #355 have no mark and show
+no notice after reload: there is no migration or inference. Empty adopted replies
+with the mark show the notice without a text-unavailable placeholder.
 
 ## Author Evidence And Remaining Gates
 
@@ -120,9 +127,10 @@ timer, polling, ledger or new controller is added.
 
 Core #354's live `attempt_end` fact and Core #355's saved `assistant_response`
 provenance are two carriers for one reply-level output-limit decision. The Studio
-presentation owner accepts either carrier, validates only `stop` and
-`sent_max_tokens`, and does not copy connection identity into saved node display
-metadata. Handoff from live to saved must preserve the same notice without a
+presentation owner validates the complete Core object (`stop`, `sent_max_tokens`,
+`source`, and `connection`), copies only `stop` and `sent_max_tokens` into display
+metadata, and does not copy connection identity into saved node display metadata.
+Handoff from live to saved must preserve the same notice without a
 one-frame disappearance. The mark is retained only when the Core history reports
 it; legacy rows without provenance are not repaired or estimated. Settings focus
 is requested as owner state and consumed by the mounted Settings view or Thread

@@ -401,7 +401,9 @@ function projectHistoryNodes(input: { readonly keyScope?: readonly string[]; rea
       const extension = item && (item.kind === "tool_call" || item.kind === "tool_result") && item.descriptor && item.detail_availability
         ? { descriptor: Object.freeze({ ...item.descriptor }), detailAvailability: item.detail_availability } : {};
       const notification = issueNotification(node.provenance?.notification);
-      issueDisplayMetadata(value, Object.freeze({ ...extension, ...(notification ? { notification } : {}), ...(node.provenance?.output_limit ? { outputLimit: node.provenance.output_limit } : {}), scopeKey: JSON.stringify(value.keyScope ?? []),
+      const savedLimit = node.provenance?.output_limit;
+      const outputLimit = savedLimit ? Object.freeze({ stop: savedLimit.stop, ...(Object.hasOwn(savedLimit, "sent_max_tokens") ? { sent_max_tokens: savedLimit.sent_max_tokens } : {}) }) : undefined;
+      issueDisplayMetadata(value, Object.freeze({ ...extension, ...(notification ? { notification } : {}), ...(outputLimit ? { outputLimit } : {}), scopeKey: JSON.stringify(value.keyScope ?? []),
         ...(node.kind ? { nodeKind: node.kind } : {}), ...(node.provenance?.created_at ? { createdAt: node.provenance.created_at } : {}), shells: Object.freeze(shells) }));
       return value;
     };

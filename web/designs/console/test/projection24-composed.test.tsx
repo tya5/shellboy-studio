@@ -14,6 +14,7 @@ import {rig as windowRig} from '../../../ui-core/test/window-owner';
 import {fixtureModel} from '../../../ui-core/test/fixture';
 import {summary,details} from '../../../data/test/harness';
 import {CurrentScrollSync} from '../screens/scrollTransaction';
+import {HistoryWindowInput} from '../../../data/src/history-input';
 const input:readonly NormalizedSavedItem[]=[
  {nodeId:'A',itemIdentity:'a0',revision:'r1',kind:'text',text:'SYNTHETIC_FIRST'},
  {nodeId:'A',itemIdentity:'a1',revision:'r1',kind:'tool',executionId:'e1'},
@@ -171,12 +172,16 @@ it('does not retain a not-adopted output-limit attempt as a handoff notice', asy
 it('keeps one output-limit notice across adoption into saved history and on reload', async () => {
  const f=await publicConversationFixture({nodes:[]});
  const attempt='00000000-0000-4000-8000-000000000741' as import('../../../data/src/protocol').AttemptId;
- const saved={node_id:'assistant-limit',kind:'assistant_response',provenance:{attempt_id:attempt,output_limit:{stop:true as const,sent_max_tokens:4096}},items:[]};
+ const wireLimit={stop:true,sent_max_tokens:4096,source:'connection' as const,connection:'synthetic'};
+ const decoded=HistoryWindowInput.decode({thread_id:'lead',revision:1,total:1,items:[{node_id:'assistant-limit',kind:'assistant_response',selection:{ordinal:0},provenance:{attempt_id:attempt,output_limit:wireLimit},items:[]}]});
+ expect(decoded.ok).toBe(true);
+ if(!decoded.ok)throw new Error('Core-shaped saved output-limit history did not decode');
+ const saved=decoded.value.items[0]!;
  try {
   await act(async()=>{
    f.t.push({t:'live',thread_id:'lead',attempt_id:attempt,gap:false,deltas:[{offset:0,reasoning:false,text:'partial reply'}]});
    await flush();
-   f.t.push({t:'attempt_end',thread_id:'lead',attempt_id:attempt,outcome:'adopted',seq:1,output_limit:{stop:true,sent_max_tokens:4096,source:'connection',connection:'c'}});
+   f.t.push({t:'attempt_end',thread_id:'lead',attempt_id:attempt,outcome:'adopted',seq:1,output_limit:wireLimit});
    await flush();render(<CurrentSavedView fixture={f}/>,host);
   });
   expect(host.querySelectorAll('[role="status"].output-limit-notice')).toHaveLength(1);

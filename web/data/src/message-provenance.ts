@@ -8,8 +8,9 @@ export function validHistoryProvenance(value:unknown, kind:unknown):boolean{
  if(Object.hasOwn(value,'attempt_id')&&!admitAttemptId(value.attempt_id))return false;
  if(Object.hasOwn(value,'output_limit')) {
   const limit=value.output_limit;
-  if(!object(limit)||Object.keys(limit).some(key=>!['stop','sent_max_tokens'].includes(key))||limit.stop!==true)return false;
-  if(Object.hasOwn(limit,'sent_max_tokens')&&limit.sent_max_tokens!==null&&(!Number.isSafeInteger(limit.sent_max_tokens)||(limit.sent_max_tokens as number)<0))return false;
+  if(!object(limit)||Object.keys(limit).some(key=>!['stop','sent_max_tokens','source','connection'].includes(key))||limit.stop!==true||typeof limit.connection!=='string')return false;
+  if(!Object.hasOwn(limit,'sent_max_tokens')||limit.sent_max_tokens!==null&&(!Number.isSafeInteger(limit.sent_max_tokens)||(limit.sent_max_tokens as number)<0))return false;
+  if(!Object.hasOwn(limit,'source')||limit.source!==null&&!['thread_override','connection','default','extra_body'].includes(String(limit.source)))return false;
  }
  return !Object.hasOwn(value,'client_operation_id') || (kind==='user' && typeof value.client_operation_id==='string' && value.client_operation_id.length>0);
 }
