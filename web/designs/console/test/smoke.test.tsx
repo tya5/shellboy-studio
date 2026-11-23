@@ -913,6 +913,35 @@ describe("Recorded usage (#118)", () => {
       expect(text(el.querySelector(".stats")!)).toContain("Aggregating");
     } finally { dispose(r); }
   });
+  it("shows weighted floors but withholds ratios after a period walk with gaps", async () => {
+    for (const section of ["threads", "overview"] as const) {
+      const r = await fixtureModel({ route: "analytics", section, configure(db) {
+        const orig = db.answer.bind(db);
+        db.answer = c => c.command === "usage.get" ? { ok: true, result: {
+          ...usagePage([group("lead", 1200)]), excluded_time_count: 1,
+        } } : orig(c);
+      } });
+      try {
+        const el = draw(r.model);
+        const values = el.querySelector(section === "threads" ? "tbody tr" : ".stats")!;
+        expect(text(values)).toContain("At least 1,179");
+        expect(text(values)).toContain("Period scan incomplete");
+      } finally { dispose(r); }
+    }
+  });
+  it("shows a summary-only weighted floor when some summary counters are unknown", async () => {
+    const g = usageItem("lead", { input: 100, cached: 0, output: 0, compactions: 2, summary: [71, 16, 8] });
+    g.compaction.output_tokens.unknown_count = 1;
+    const r = await fixtureModel({ route: "analytics", section: "overview", configure(db) {
+      const orig = db.answer.bind(db);
+      db.answer = c => c.command === "usage.get" ? { ok: true, result: usagePage([g]) } : orig(c);
+    } });
+    try {
+      const stats = draw(r.model).querySelector(".stats")!;
+      expect(text(stats)).toMatch(/Summary cost\s*At least 47/);
+      expect(text(stats)).toMatch(/Effective tokens\s*At least 147/);
+    } finally { dispose(r); }
+  });
   it("ranks a heavy Thread by the same safe lower bound it displays, with independent row actions", async () => {
     const heavy = usageItem("heavy", { input: 18000, cached: null, output: 0, unknown: 1 });
     const r = await byThread([...Array.from({ length: 26 }, (_, i) => group(`thread-${i}`)), heavy]);

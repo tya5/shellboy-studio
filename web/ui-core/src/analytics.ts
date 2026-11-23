@@ -322,11 +322,6 @@ export interface DayFacts {
   inconsistent: boolean;
 }
 
-/** No request means nothing to sum, which is different from a request with no reported usage. */
-function summaryEffectiveOf(g: UsageGroup, w: Weights): number | undefined {
-  return g.summaryRequests === 0 ? 0 : effectiveTokens(g.summary, w);
-}
-
 function effectiveBound(p: TokenParts, w: Weights, requests: number, unpaired = false) {
   if (requests === 0) return { value: 0, lowerBound: false };
   const exact = unpaired ? undefined : effectiveTokens(p, w);
@@ -346,10 +341,14 @@ function combineEffective(parts: readonly ReturnType<typeof effectiveBound>[]) {
   return { value: values.length && Number.isFinite(value) ? value : undefined, lowerBound: parts.some(part => part.lowerBound) };
 }
 
+function summaryEffectiveOf(g: UsageGroup, w: Weights) {
+  return effectiveBound(g.summary, w, g.summaryRequests);
+}
+
 export function groupEffective(g: UsageGroup, w: Weights) {
   return combineEffective([
     effectiveBound(g.conversation, w, g.requests, g.unknownPairs > 0),
-    effectiveBound(g.summary, w, g.summaryRequests),
+    summaryEffectiveOf(g, w),
   ]);
 }
 
@@ -374,7 +373,7 @@ export function dayFacts(dayKeys: readonly string[], groups: ReadonlyMap<string,
       summaryOutput: s.output,
       effective: effective.value,
       effectiveLowerBound: effective.lowerBound,
-      summaryEffective: summaryEffectiveOf(g, w),
+      summaryEffective: summaryEffectiveOf(g, w).value,
       rate: cacheRate(g.conversation, g.unknownPairs),
       compactions: g.compactions,
       requests: g.requests,
@@ -388,6 +387,7 @@ export interface PeriodTotals {
   effective: number | undefined;
   effectiveLowerBound: boolean;
   summaryEffective: number | undefined;
+  summaryEffectiveLowerBound: boolean;
   rate: number | undefined;
   compactions: number;
   summaryRequests: number;
@@ -399,12 +399,14 @@ export interface PeriodTotals {
 export function periodTotals(groups: ReadonlyMap<string, UsageGroup>, w: Weights): PeriodTotals {
   const all = [...groups.values()];
   const total = totalGroups(all);
-  if (!total) return { effective: undefined, effectiveLowerBound: false, summaryEffective: undefined, rate: undefined, compactions: 0, summaryRequests: 0, requests: 0, incomplete: false, days: 0 };
+  if (!total) return { effective: undefined, effectiveLowerBound: false, summaryEffective: undefined, summaryEffectiveLowerBound: false, rate: undefined, compactions: 0, summaryRequests: 0, requests: 0, incomplete: false, days: 0 };
   const effective = combineEffective(all.map(group => groupEffective(group, w)));
+  const summary = combineEffective(all.map(group => summaryEffectiveOf(group, w)));
   return {
     effective: effective.value,
     effectiveLowerBound: effective.lowerBound,
-    summaryEffective: summaryEffectiveOf(total, w),
+    summaryEffective: summary.value,
+    summaryEffectiveLowerBound: summary.lowerBound,
     rate: cacheRate(total.conversation, total.unknownPairs),
     compactions: total.compactions,
     summaryRequests: total.summaryRequests,

@@ -4,8 +4,8 @@ import {
   splitParts, type AnalyticsSection, type AppModel, type CompactionEvent, type DayFacts, type DesignContext, type Translate, type UsageGroup, type WalkState, type Weights,
 } from "../../../ui-core/src";
 import { Button, ButtonGroup, Chart, DataTable, Field, Notice, PageHeader, RangeBar, Section, Stat, SubView, type ChartPoint, type ChartSeries, type IconRole } from "../system/components";
-import { tokenTotal } from "./usage-label";
 import { IndexPane, MemoryPane, StoragePane } from "./Resources";
+import { tokenTotal } from "./usage-label";
 
 const percent = (v: number): string => `${Math.round(v * 100)}%`;
 /** A share too small to round to 0.1% says so, rather than reading as none. */
@@ -129,7 +129,7 @@ function ByThread({ model, weights }: { model: AppModel; weights: Weights }) {
           return { key: g.key, cells: [
             <>{threadRows.has(g.key) ? <a class="nav-link" href={formatRoute({ view: "conversation", threadId: g.key })}>{nameOf(g.key)}</a> : <span class="mono">{nameOf(g.key)}</span>}
               {groupIncomplete(g) ? <div class="muted caption">{t("common.incomplete")}</div> : null}</>,
-            ...usageCells(t, g.conversation, !complete), !complete || effective.value === undefined ? placeholder : effectiveLabel(t, effective.value, effective.lowerBound), rate === undefined ? placeholder : percent(rate), summary,
+            ...usageCells(t, g.conversation, !complete), walk.status === "loading" || effective.value === undefined ? placeholder : effectiveLabel(t, effective.value, effective.lowerBound || !complete), rate === undefined ? placeholder : percent(rate), summary,
             mean !== undefined ? formatTokens(Math.round(mean)) : t("analytics.noValue"),
             g.inputMax !== undefined ? formatTokens(g.inputMax) : t("analytics.noValue"), g.compactions,
             <><Button variant="ghost" aria-pressed={selected === g.key} aria-label={`${t("usage.showModels")}: ${nameOf(g.key)}`} onClick={() => select(selected === g.key ? undefined : g.key)}>{t("usage.showModels")}</Button>
@@ -274,7 +274,7 @@ function UsagePane({ context, section }: { context: DesignContext; section: "ove
   const summaryStat = (
     <Stat
       label={t("stat.summary")}
-      value={complete && totals.summaryEffective !== undefined ? tokens(totals.summaryEffective) : periodValue}
+      value={walk.status !== "loading" && totals.summaryEffective !== undefined ? effectiveLabel(t, totals.summaryEffective, totals.summaryEffectiveLowerBound || !complete) : periodValue}
       note={complete && !totals.effectiveLowerBound && totals.summaryEffective !== undefined && totals.effective ? t("stat.summaryNote", { share: shareText(totals.summaryEffective / totals.effective), n: totals.summaryRequests.toLocaleString("en-US") }) : undefined}
     />
   );
@@ -290,7 +290,7 @@ function UsagePane({ context, section }: { context: DesignContext; section: "ove
       {section === "overview" ? (
         <>
           <div class="stats">
-            <Stat label={t("stat.effective")} value={complete && totals.effective !== undefined ? effectiveLabel(t, totals.effective, totals.effectiveLowerBound) : periodValue} note={totals.incomplete ? t("common.incomplete") : t("stat.effectiveNote")} />
+            <Stat label={t("stat.effective")} value={walk.status !== "loading" && totals.effective !== undefined ? effectiveLabel(t, totals.effective, totals.effectiveLowerBound || !complete) : periodValue} note={totals.incomplete ? t("common.incomplete") : t("stat.effectiveNote")} />
             <Stat label={t("stat.cacheRate")} value={complete && totals.rate !== undefined ? percent(totals.rate) : periodValue} note={t("stat.cacheRateNote")} />
             {summaryStat}
             {eventsStat}

@@ -530,7 +530,10 @@ describe("what the charts draw", () => {
     const none = dayFacts(["d"], new Map([["d", group("d", { input: 100, cached: 0, output: 0 })]]), WEIGHTS)[0]!;
     expect(none.summaryEffective).toBe(0);
     const raw = usageItem("d", { input: 100, cached: 0, output: 0, compactions: 1 });
-    (raw.compaction as Record<string, unknown>).input_tokens = { known_sum: null, unknown_count: 1, overflow: false };
+    for (const counter of [raw.compaction.input_tokens, raw.compaction.cached_tokens, raw.compaction.output_tokens]) {
+      counter.known_sum = null;
+      counter.unknown_count = 1;
+    }
     const unknown = dayFacts(["d"], new Map([["d", readGroup(raw)!]]), WEIGHTS)[0]!;
     expect(unknown.summaryEffective).toBeUndefined();
     expect(unknown.incomplete).toBe(true);
