@@ -39,6 +39,97 @@ An engineer's console: dark navy surfaces, one accent, and monospace wherever th
 - Use marks only when they distinguish meaning, and only on content rows: page titles, section headings, group labels and bands carry no icon. StatusMarks have equal outer diameters and distinguish state by shape as well as color (arc, question, alert, center dot, empty ring for Threads; a check remains a shell completion fact); never rely on color alone. See StatusMark and Icon READMEs.
 - Compact count chips use `size-chip-height`, `size-chip-icon`, `size-chip-text`, and `space-chip-inline`: 20px high, 10px icon, 11px tabular numerals, equal 7px horizontal padding. Urgency color follows the highest priority represented: awaiting is amber, running is blue, otherwise neutral.
 
+## Design system v2 rules
+
+Approved by the user on 2026-11-23 with the v2 sheet (shellboy-studio #97). These rules apply to every screen; the parts that carry them are named in each rule.
+
+### Common rules
+
+| Spacing | Role |
+|---|---|
+| `space-4` | Tightly related text, a label and its control, control internals |
+| `space-8` | Row to row, compact control insets, between controls |
+| `space-12` | Component insets and related groups |
+| `space-16` | Card insets and distinct sections; between two groups of choices |
+| `space-24` | Desktop page perimeter left and right (`space-12` at phone width) |
+
+| Type | Role |
+|---|---|
+| `type-title` | Desktop page name (`type-heading` at phone width), one per page |
+| `type-heading` | Section name |
+| `type-body` | Prose |
+| `type-label` | Controls, row text, field names, subheadings at 600 |
+| `type-caption` | Metadata, group labels and bands, helper text |
+| `type-code`, `type-log` | Machine text (mono) |
+
+| Size | Role |
+|---|---|
+| `size-icon` 18px, `size-icon-small` 15px, `size-icon-menu` 16px | Line icons, stroke 1.7, `currentColor` |
+| `size-control` 32px | Ordinary controls and content rows |
+| `size-touch` 44px | Minimum hit target at phone width |
+| `size-header` 48px | Header bar, including its bottom line |
+| `size-chip-height` 20px | Compact count chips and tag badges |
+| `size-row-action` 24px | Row action column (`size-row-action-touch` at phone width) |
+
+Never write raw pixel values: see the Layout contract above for the only exceptions.
+
+### Action strength (操作の強さ)
+
+A bordered or filled box means "press me", so use as few as possible. Six strengths only:
+
+| Strength | Part | Use |
+|---|---|---|
+| Primary (filled) | Button `primary` | One per region: its main action (Send, Save). `accent` / `on-accent`. |
+| Ghost (no border) | Button `ghost` | Most actions, and every icon-only button in headers, toolbars, rows and cards. A `hover` surface appears only on hover, keyboard focus and while its menu is open. |
+| Outline (border) | Button (default `outline`) | Only a secondary action beside a primary one that must look pressable. Never on its own. |
+| Text link | `a`; `.nav-link` when standalone | Navigation. Underlined in prose; standalone links are `accent` without underline, underlined on hover and focus, `size-touch` high at phone width. An action that does not navigate is never a link. |
+| Segmented | ButtonGroup | One choice out of a few (language, effort, view, state filter with counts, period). One `raised` container, only the chosen segment filled (`accent-bg` with an `accent` edge). Two groups in a row sit `space-16` apart in `.choice-row`; an independent action goes outside as ghost. Real tabs that switch panels stay PanelTabs or AppTabs. |
+| Bordered chip | `.tag-badge`, Chip (removable) | Tags and removable tokens (attachments, FilterChips) only; never actions or menu triggers. |
+
+In one region, only the primary and the outline beside it have a border or fill. Several options that can be on together are Check boxes in a `fieldset` whose `legend` is the setting name, never a ButtonGroup.
+
+### Structure levels (構造の見せ方)
+
+Four levels, each with its own look in every dimension, so the level reads at a glance. No level borrows another level's look.
+
+| Level | Type and colour | Space above and below | Icon | Surface | Interaction |
+|---|---|---|---|---|---|
+| Page title (PageHeader) | `type-title` 700 `fg` (`type-heading` at phone width) | Page perimeter `space-16` above; `space-4` to the description, `space-12` to the toolbar | None | None (page ground) | None; one per page |
+| Section heading (Section) | `type-heading` 600 `fg`, sentence case | `space-16` between sections, `space-12` below | None | The card has it (`panel`, `line`, `radius`); the heading has none | None; section actions at the end of the heading row |
+| Group label or band (`.group-label`, ListDivider, ThreadGroup) | `type-caption` 500 `muted`; uppercase with `letter-caps` in an English UI | Label: `space-16` above, `space-4` below. Band: `space-8` above, `space-4` below | None | Label: none. Band: full-width `inset` between two `line`s, `size-control` high | No row hover; a band that collapses shows only a small trailing chevron (`size-icon-small`) |
+| Content row (NavItem, ThreadItem, ListRow, Menu item) | `type-label` 400 `fg`; detail `type-caption` `muted`; machine values `type-code` | 0 to `space-4` between rows; `size-control` high (`size-touch` at phone width) | Yes: `size-icon` or a StatusMark, then `space-8` | None at rest; `hover` on hover, `accent-bg` when selected, across the list width | The whole row is pressable; row actions in the trailing `size-row-action` column |
+
+Inside a Section card, a sub-subject is an `h4` in `type-label` at 600, `space-12` above and `space-4` below; anything larger is its own Section. Heading levels follow the outline: `h1` page, `h2`/`h3` Section, `h4` sub-subject.
+
+### Group labels
+
+A group label is clearly a label, not an item: `type-caption`, `muted`, weight 500, no icon, no hover or selection surface, not clickable, and uppercase with `letter-caps` (0.06em) in an English UI (Japanese has no case: smaller, `muted` and 500 only). Its left edge is the items' icon edge. Use the shared `.group-label`, ListDivider in panels, and SectionNav's grouped mode. A long group that collapses is a ThreadGroup band instead: the same text on a full-width `inset` surface between two `line`s; the whole band is the disclosure button. Owner data used as a band name (tags, directories) is never uppercased.
+
+### Composer controls in one row
+
+The composer's control row is always one line, in every state and width:
+
+- Start: the model control as a ghost button showing the connection and model in `type-code` and the effort in `type-label` `muted`, then the hint in `type-caption` `muted`.
+- End, in this order: ContextRing (ghost), Stop (only while running), Send (`primary`, always last).
+- When space runs out: first the hint truncates, then the model name truncates; at phone width the hint is hidden. Nothing wraps.
+- A long running status goes in a status line above the composer (`type-caption` `muted`, truncated), not in the row.
+- Attachments are removable tokens (bordered, `type-code`, a `size-row-action` remove button with the `composer.removeAttachment` icon) in a row above the text area.
+- Row padding `space-4` × `space-8`, gaps `space-8`; controls `size-control` (`size-touch` at phone width).
+
+Sources: observed products ChatGPT, Claude.ai and Cursor (no official layout specification found); all keep controls in one row below the text and attachments above it.
+
+### Icons and labels
+
+An icon and its label sit in one inline-flex row with `align-items: center`. The icon box equals its size token and never sits on the text baseline. The gap follows the icon size, not the component:
+
+| Icon | Gap | Where |
+|---|---|---|
+| `size-icon` 18px | `space-8` | Navigation, bars, whole-view empty states |
+| `size-icon-menu` 16px, `size-icon-small` 15px | `space-8` | Menus, row StatusMarks, tabs, composer chips, bands |
+| `size-chip-icon` 10px | `space-4` | Compact count chips |
+
+The icon centre and the text line's centre differ by at most 1px. Sources: [Material 3 Lists specs](https://m3.material.io/components/lists/specs), [Apple HIG SF Symbols](https://developer.apple.com/design/human-interface-guidelines/sf-symbols).
+
 ## Layout parts
 
 - `LayoutSeparator` is the shared Window Splitter for the expanded desktop sidebar and conversation panel, never the drawer or a collapsed rail. `layoutWidthStyle` binds the independent saved widths to their layout variables; unspecified widths keep the design tokens.
@@ -65,7 +156,7 @@ This folder is the system; `../screens` builds on it. A screen uses only these t
 - The root attribute is `data-ds`, as `docs/design/design-system.md` specifies; the reference previews use `data-theme`.
 - Fonts: no web font is loaded at runtime. The stacks name Inter, Noto Sans JP and JetBrains Mono first, so a machine that has them uses them, and otherwise fall back to the system faces. The reference's Google Fonts import is for its previews only.
 
-Differences from the reference, each for a reason in the usage note or `docs/design/design-system.md`: five Thread categories in StatusMark, with separate shell exit facts; added tokens `scrim`, `motion-spin` and the `size-*` layout tokens; spacing inside components snaps to the `space-*` scale, where the reference has some 10px and 14px values; the Notice, Field, Chip, LogBlock, KeyValue, EmptyState, Message, Composer, ThreadItem, QuestionItem and Icon components; for Analytics and Settings, the Section, Stat, Chart, DataTable, Meter, BarList, RangeBar, SectionNav, SubView, MoreMenu, FactList and ButtonGroup components; for first-run setup, the ChoiceList component; for Branches and Threads, the BranchGraph, BranchList, BranchMark, ThreadGroup, SelectRow and SelectionBar components; for Apps, the AppTabs, AppFrame and AppCard components; and LoadingRows and the `chart-1` to `chart-3` tokens; and for the conversation inspector, `PanelTabs`, `ListRow` and `ListDivider`.
+Differences from the reference, each for a reason in the usage note or `docs/design/design-system.md`: five Thread categories in StatusMark, with separate shell exit facts; added tokens `scrim`, `motion-spin`, `letter-caps`, `size-icon-empty` and the `size-*` layout tokens; spacing inside components snaps to the `space-*` scale, where the reference has some 10px and 14px values; the Notice, Field, Chip, LogBlock, KeyValue, EmptyState, Message, Composer, ThreadItem, QuestionItem and Icon components; for Analytics and Settings, the Section, Stat, Chart, DataTable, Meter, BarList, RangeBar, SectionNav, SubView, MoreMenu, FactList and ButtonGroup components; for first-run setup, the ChoiceList component; for Branches and Threads, the BranchGraph, BranchList, BranchMark, ThreadGroup, SelectRow and SelectionBar components; for Apps, the AppTabs, AppFrame and AppCard components; and LoadingRows and the `chart-1` to `chart-3` tokens; and for the conversation inspector, `PanelTabs`, `ListRow` and `ListDivider`; and for design system v2, `PageHeader` and the shared `.group-label`, `.choice-row`, `.nav-link` and `.tag-badge`.
 
 The desktop navigation can collapse to an icon rail with the navigation button or Alt+0. The per-browser preference does not affect the phone drawer.
 

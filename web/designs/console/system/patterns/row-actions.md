@@ -26,12 +26,12 @@ contextmenu closes the menu without activating content beneath it. Opening row B
 while A is open therefore only dismisses A. No shared open-menu registry or
 ref-based anchor is used.
 
-On hover-capable devices, show the borderless quiet trigger for row hover,
+On hover-capable devices, show the borderless ghost trigger for row hover,
 `:focus-within`, current selection, or an open menu. Touch always shows it. The
 32px/44px row and 24px/28px action boxes reserve their action width so titles truncate
 in place. The menu uses 168px minimum width, 8px corners, a fine border, the
 tokenized `shadow-popover`, and 4px inset. Items pair an optional semantic IconRole (16px muted icon) with
-text, using 6px vertical / 8px horizontal spacing and 6px corners. Glyph names and the role-to-glyph map stay module-private inside `Icon`; only semantic roles are exposed. The separator spans the panel; Delete is last
+text; once any item has an icon or a check, every item reserves the icon column so labels share one left edge (design system v2), using 6px vertical / 8px horizontal spacing and 6px corners. Glyph names and the role-to-glyph map stay module-private inside `Icon`; only semantic roles are exposed. The separator spans the panel; Delete is last
 and uses `bad` with `bad-soft` on hover/focus.
 
 On touch, the visible trigger is the primary path. Long press opens the menu only

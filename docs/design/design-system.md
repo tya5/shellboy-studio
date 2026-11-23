@@ -92,9 +92,30 @@ Limit: this costs some discipline, and a shared `ui-core` change can affect all 
 
 各部品の README の先頭に、`Use for:` / `Do not use for:`（代わりに使う部品）/ `Why:` / `Source:`（リンク）の順で短く書く。既存の振る舞い、レイアウト、出典の詳細はその下に残す。出典が確認できなければ「出典なし（この Studio で決めた）」とする。
 
+## Design system v2 (#97, user approval 2026-11-23)
+
+The user approved the v2 sheet (version 2) after an audit of the running app found 71 rule violations and 17 missing patterns. The rules below are the decisions; the Console contract that carries them, with tokens per rule, is `web/designs/console/system/README.md` § "Design system v2 rules", and each component README names its use in the `Use for` / `Do not use for` / `Why` / `Source` form.
+
+- **Common rules.** Spacing roles `space-4` (tight), `space-8` (rows, between controls), `space-12` (component insets, related groups), `space-16` (cards, distinct sections, between two groups of choices), `space-24` (desktop perimeter; `space-12` at phone width). Type roles title, heading, body, label (controls, rows, field names), caption (metadata, group labels), code and log. Heights `size-control`, `size-touch`, `size-header`, `size-chip-height`, `size-row-action`. No raw pixel values outside the token files except `0`, `1px` hairlines, the `2px` focus ring and the container-query breakpoints; `npm run check` enforces this with an allowlist of the current offenders that only shrinks.
+- **Action strength (操作の強さ).** Six strengths: primary (filled, one per region), ghost (no border; most actions and every icon-only button), outline (border; only a secondary action beside a primary), text link (navigation only), segmented (one choice out of a few; ButtonGroup), bordered chip (tags and removable tokens only). In one region only the primary and the outline beside it have a box.
+- **Structure levels (構造の見せ方).** Page title → section heading → group label or band → content row. Each level differs in type, colour, spacing, icon, surface and interaction, and never borrows another level's look: only content rows carry icons and hover; a band is a group label on an `inset` surface between two lines; one page title per page.
+- **Group labels.** `type-caption` 500 `muted`, no icon, no surface, not clickable, uppercase with the new `letter-caps` token in an English UI. A collapsing group is a ThreadGroup band; the earlier sidebar band look (raised, label 600, a pin mark for Pinned, mock v8) is replaced.
+- **Composer controls in one row.** Model (ghost) and hint at the start; ContextRing, Stop and Send at the end, Send always last. Hint, then model name truncate; nothing wraps. Long running status goes above the composer, attachments above the text.
+- **Icons and labels.** One inline-flex row centred vertically; the gap follows the icon size (`space-8` for 15–18px, `space-4` for the 10px chip icon); centres within 1px.
+
+New tokens: `size-icon-empty` (28px, the whole-view EmptyState icon, which was a raw value) and `letter-caps` (0.06em). Field names move from the caption role to the label role. New IconRoles: `menu.checked`, `composer.removeAttachment`; `action.editTags` already existed.
+
+| Decision | Reason | Revisit when |
+|---|---|---|
+| Foundations land first (tokens, rules, shared parts, the raw-px check); each area owner applies them to its screens in a bundle stacked on top | one owner per shared part avoids two looks for one role; screens change only through their owners | all bundles have landed |
+| `quiet` is renamed `ghost` and the default Button variant is named `outline`, with no alias | the rule's names are the API names; an alias would be debt | never |
+| ButtonGroup is redrawn as the segmented control instead of adding a second component | one role, one part; the sheet decides the redraw | a choice needs more than a few options |
+| Group labels and the band are uppercase only for `:lang(en)`, and never for owner data (`ThreadGroup` `verbatim`, `mono`) | tags and paths must show exactly as stored | another Latin-script UI language is added |
+| The raw-px check allows the `899px`/`900px` and `1179px`/`1180px` container breakpoints | container queries cannot read custom properties | browsers support custom properties in container queries |
+
 ## Console layout rules
 
-The Console system's `web/designs/console/system/README.md` is the component-level contract. Use `space-4` for tightly coupled content, `space-8` for rows and compact insets, `space-12` for component interiors and related groups, `space-16` for card interiors and section separation, and `space-24` for the desktop page perimeter (phone: `space-12`). Use the existing control and touch heights, and the title, heading, body, label, caption, code and log type roles. Align headings, sections and cards at a shared left edge. Cards contain distinct subjects; lines separate repeated rows. Hover uses `raised`, selection `accent-bg`, focus the accent outline, and disabled controls reduced opacity. Preserve semantic status marks and words. Conversation tool group layout follows the same rules; changes to that group belong to its worker.
+The Console system's `web/designs/console/system/README.md` is the component-level contract. Use `space-4` for tightly coupled content, `space-8` for rows and compact insets, `space-12` for component interiors and related groups, `space-16` for card interiors and section separation, and `space-24` for the desktop page perimeter (phone: `space-12`). Use the existing control and touch heights, and the title, heading, body, label, caption, code and log type roles. Align headings, sections and cards at a shared left edge. Cards contain distinct subjects; lines separate repeated rows. Hover uses `hover`, selection `accent-bg`, focus the accent outline, and disabled controls reduced opacity. Preserve semantic status marks and words. Conversation tool group layout follows the same rules; changes to that group belong to its worker.
 
 ## Sidebar spacing audit (#91, 2026-11-23)
 
