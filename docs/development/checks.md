@@ -9,6 +9,32 @@ before moving `main`. A Linux review run is not batch qualification. A main push
 reuses a successful exact-SHA Checks run only if all six jobs actually passed;
 otherwise it runs all three OSes. A skip-only run is not reusable evidence.
 
+## Exact-pair owner binary cache (#119)
+
+The owner job still checks the official source checkout against Studio's manifest
+and lock on every run. It restores only the exact Core SHA, Rust target, toolchain,
+runner and build-settings key, with no fallback. On a miss it builds the locked
+release binary from that checkout. On both paths it verifies the cached or newly
+built bytes against the build receipt before executing `--version`, then checks
+that version against the verified package and runs the full integration suite.
+The receipt is a hash check, not a signature; the executable cache relies on
+GitHub's ref isolation. Only successful integrations on `main` or `land/batch`
+in the official repo save entries. A batch entry can be reused by subsequent
+batches on that same ref; review branches can use eligible default-branch entries.
+
+Historical step timings from the existing run records (build and version check /
+integration suite):
+
+| Run | Ubuntu | Windows | macOS |
+|---|---:|---:|---:|
+| [45275011488](https://github.com/tya5/shellboy-studio/actions/runs/45275011488) | 6m 54s / 5s | 16m 30s / 23s | 23m 16s / 25s |
+| [45279689684](https://github.com/tya5/shellboy-studio/actions/runs/45279689684) | 6m 23s / 4s | 17m 03s / 22s | 11m 11s / 19s |
+
+Both runs predate binary caching. On a verified cache hit the build step is
+skipped, but restore, verification and integration still take time. No existing
+post-change hit record is available; no wall-clock savings are claimed and no
+measurement run was dispatched.
+
 ## Candidate and release packaging
 
 Packaging requires proof from `ci.yml` for its exact Studio commit, not just a

@@ -54,12 +54,18 @@ def main():
     assert "--features real-owner-tests --test real_owner" in owner
     assert "SHELLBOY_BIN:" in owner and "CORE_REV=$(python3" in owner and "checkout --detach \"$CORE_REV\"" in owner
     assert "tools/exact-owner.py" in owner and "--binary-version" in owner
+    assert "actions/cache/restore@v4" in owner and "restore-keys:" not in owner
+    assert owner.index("steps.pin.outputs.core") < owner.index("actions/cache/restore@v4")
+    assert "if: steps.owner-cache.outputs.cache-hit != 'true'" in owner
+    assert owner.index("owner-binary-cache.py verify") < owner.index('"$OWNER_BIN" --version')
+    assert owner.index("--features real-owner-tests --test real_owner") < owner.index("actions/cache/save@v4")
     assert "inputs.real_owner" not in ci
     for workflow in (ci, candidate, release, owner):
         for code in re.findall(r"python3? - <<'([A-Z]+)'\n(.*?)\n\s*\1(?:\n|$)", workflow, re.S):
             ast.parse(textwrap.dedent(code[1]))
     subprocess.run([sys.executable, str(ROOT / ".github/scripts/test-packaging-proof.py")], check=True)
     subprocess.run([sys.executable, str(ROOT / "tools/test-exact-owner.py")], check=True)
+    subprocess.run([sys.executable, str(ROOT / "tools/test-owner-binary-cache.py")], check=True)
     subprocess.run([sys.executable, str(ROOT / "tools/test-macos-package.py")], check=True)
 
     print(f"Source local links checked: {local_links(ROOT)}")

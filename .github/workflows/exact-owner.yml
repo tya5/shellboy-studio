@@ -16,6 +16,8 @@ jobs:
   owner:
     runs-on: ${{ inputs.runner_os }}
     timeout-minutes: 60
+    env:
+      OWNER_RUST: 1.99.1
     defaults:
       run:
         shell: bash
@@ -31,12 +33,13 @@ jobs:
           ref: ${{ inputs.studio_ref }}
           persist-credentials: false
       - name: Install pinned Rust toolchain
-        run: rustup toolchain install 1.99.1 --profile minimal
+        run: rustup toolchain install "$OWNER_RUST" --profile minimal
       - uses: Swatinem/rust-cache@v2
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
       - name: Verify the official manifest revision against the Studio lock before build
+        id: pin
         run: |
           git init "$RUNNER_TEMP/exact-owner-source"
           git -C "$RUNNER_TEMP/exact-owner-source" remote add origin https://github.com/tya5/shellboy
@@ -48,17 +51,55 @@ jobs:
           git -C "$RUNNER_TEMP/exact-owner-source" fetch --depth 1 origin "$CORE_REV"
           git -C "$RUNNER_TEMP/exact-owner-source" checkout --detach "$CORE_REV"
           python3 tools/exact-owner.py --studio . --owner "$RUNNER_TEMP/exact-owner-source"
-      - name: Build the verified source and assert package and binary version
+          echo "core=$CORE_REV" >> "$GITHUB_OUTPUT"
+      - name: Identify the exact owner build
+        id: build-id
+        env:
+          CORE_REV: ${{ steps.pin.outputs.core }}
+          RUNNER_LABEL: ${{ inputs.runner_os }}
+        run: python3 tools/owner-binary-cache.py key --core "$CORE_REV" --toolchain "$OWNER_RUST" --runner "$RUNNER_LABEL" >> "$GITHUB_OUTPUT"
+      - name: Restore the exact owner binary
+        id: owner-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/exact-owner-bin
+          key: ${{ steps.build-id.outputs.key }}
+      - name: Build the verified source (cache miss only)
+        if: steps.owner-cache.outputs.cache-hit != 'true'
+        env:
+          CORE_REV: ${{ steps.pin.outputs.core }}
+          BUILD_KEY: ${{ steps.build-id.outputs.key }}
+          OWNER_TARGET: ${{ steps.build-id.outputs.target }}
         run: |
-          cargo +1.99.1 install --locked --path "$RUNNER_TEMP/exact-owner-source" --root "$RUNNER_TEMP/exact-owner"
-          if [ "$RUNNER_OS" = "Windows" ]; then OWNER_BIN="$RUNNER_TEMP/exact-owner/bin/shellboy.exe"; else OWNER_BIN="$RUNNER_TEMP/exact-owner/bin/shellboy"; fi
-          test -x "$OWNER_BIN" || test -f "$OWNER_BIN"
+          cargo +"$OWNER_RUST" install --locked --profile release --target "$OWNER_TARGET" --bin shellboy --path "$RUNNER_TEMP/exact-owner-source" --root "$RUNNER_TEMP/exact-owner-install"
+          mkdir "$RUNNER_TEMP/exact-owner-bin"
+          NAME=shellboy
+          if [ "$RUNNER_OS" = "Windows" ]; then NAME=shellboy.exe; fi
+          OWNER_BIN="$RUNNER_TEMP/exact-owner-bin/$NAME"
+          cp "$RUNNER_TEMP/exact-owner-install/bin/$NAME" "$OWNER_BIN"
+          python3 tools/owner-binary-cache.py record --core "$CORE_REV" --key "$BUILD_KEY" --binary "$OWNER_BIN" --receipt "$RUNNER_TEMP/exact-owner-bin/receipt.json"
+      - name: Assert binary provenance and package version (hit or miss)
+        env:
+          CORE_REV: ${{ steps.pin.outputs.core }}
+          BUILD_KEY: ${{ steps.build-id.outputs.key }}
+        run: |
+          NAME=shellboy
+          if [ "$RUNNER_OS" = "Windows" ]; then NAME=shellboy.exe; fi
+          OWNER_BIN="$RUNNER_TEMP/exact-owner-bin/$NAME"
+          python3 tools/owner-binary-cache.py verify --core "$CORE_REV" --key "$BUILD_KEY" --binary "$OWNER_BIN" --receipt "$RUNNER_TEMP/exact-owner-bin/receipt.json"
           "$OWNER_BIN" --version > "$RUNNER_TEMP/exact-owner-version.txt"
           python3 tools/exact-owner.py --studio . --owner "$RUNNER_TEMP/exact-owner-source" --binary-version "$RUNNER_TEMP/exact-owner-version.txt"
       - name: Run explicit exact-pair integration suite (temporary data and local mock)
         env:
-          SHELLBOY_BIN: ${{ runner.temp }}/exact-owner/bin/shellboy
+          SHELLBOY_BIN: ${{ runner.temp }}/exact-owner-bin/shellboy
         run: |
-          if [ "$RUNNER_OS" = "Windows" ]; then export SHELLBOY_BIN="$RUNNER_TEMP/exact-owner/bin/shellboy.exe"; fi
+          if [ "$RUNNER_OS" = "Windows" ]; then export SHELLBOY_BIN="$RUNNER_TEMP/exact-owner-bin/shellboy.exe"; fi
           test -x "$SHELLBOY_BIN" || test -f "$SHELLBOY_BIN"
           cargo +1.99.1 test --locked --features real-owner-tests --test real_owner -- --nocapture
+      # Do not publish executable caches from review branches or fork runs.
+      - name: Save the verified owner binary after integration (cache miss only)
+        if: success() && steps.owner-cache.outputs.cache-hit != 'true' && github.repository == 'tya5/shellboy-studio' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/land/batch')
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/exact-owner-bin
+          key: ${{ steps.build-id.outputs.key }}
