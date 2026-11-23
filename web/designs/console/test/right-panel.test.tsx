@@ -104,7 +104,7 @@ describe('right panel purpose',()=>{
    : answer(call);
   try {
    const tabs=[...f.host.querySelectorAll<HTMLButtonElement>('[role=tab]')];
-   expect(tabs.map(tab=>tab.dataset.panelTab)).toEqual(['work','reply-needed','awaiting-reply','possessions','info']);
+   expect(tabs.map(tab=>tab.dataset.panelTab)).toEqual(['work','reply-needed','awaiting-reply','possessions','info','settings']);
    expect(f.t.calls('attachment.list')).toHaveLength(0);
    await act(async()=>{tabs[3]!.click();});
    await act(async()=>{await settle(f.t,f.db);});
@@ -219,11 +219,11 @@ describe('right panel purpose',()=>{
   } finally {f.model.dispose();f.data.stop();}
  });
 
- it('shows four fixed tabs and splits replies by recipient kind',async()=>{
+ it('shows the fixed tabs and splits replies by recipient kind',async()=>{
   const f=await setup();
   try{
    const tabs=[...f.host.querySelectorAll<HTMLButtonElement>('[role=tab]')];
-   expect(tabs.map(tab=>tab.getAttribute('aria-label'))).toEqual(['動作 1','要返信 1','返信待ち 1','情報']);
+   expect(tabs.map(tab=>tab.getAttribute('aria-label'))).toEqual(['動作 1','要返信 1','返信待ち 1','分析','設定']);
    await act(async()=>{tabs[0]!.focus();tabs[0]!.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true}));});
    expect(f.model.panelTab.peek()).toBe('reply-needed');
    expect(f.host.querySelectorAll('section[role=tabpanel]:not([hidden])')).toHaveLength(1);
@@ -237,7 +237,11 @@ describe('right panel purpose',()=>{
    expect(f.host.querySelector('section[role=tabpanel]:not([hidden]) [data-panel-row-id="asked-child"]')).toBeNull();
    await act(async()=>{tabs[3]!.click();});
    const info=f.host.querySelector('#panel-page-info:not([hidden])')!;
-   for(const value of ['model-a','high','test-connection','/fixture/panel'])expect(info.textContent).toContain(value);
+   const values=['model-a','high','test-connection','/fixture/panel'];
+   for(const value of values) expect(info.textContent).not.toContain(value);
+   await act(async()=>{tabs[4]!.click();});
+   const settings=f.host.querySelector('#panel-page-settings:not([hidden])')!;
+   for(const value of values) expect(settings.textContent).toContain(value);
   }finally{f.model.dispose();f.data.stop();}
  });
 
@@ -408,7 +412,7 @@ describe('right panel purpose',()=>{
    await act(async()=>{window.dispatchEvent(new KeyboardEvent('keydown',{key:'9',altKey:true,bubbles:true,cancelable:true}));});
    expect(f.prefs.value.panelCollapsed).toBe(true);
    expect(f.host.querySelector('[data-panel-rail]')).not.toBeNull();
-   expect(f.host.querySelectorAll('[data-panel-rail] [role=tab]')).toHaveLength(4);
+   expect(f.host.querySelectorAll('[data-panel-rail] [role=tab]')).toHaveLength(5);
    const action=f.host.querySelector<HTMLButtonElement>('[data-panel-rail] [data-panel-tab="work"]')!;
    const tip=f.host.querySelector(`[id="${action.getAttribute('aria-describedby')}"]`);
    expect(tip?.getAttribute('role')).toBe('tooltip');

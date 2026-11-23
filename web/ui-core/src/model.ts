@@ -1,3 +1,4 @@
+import { readCompactionEvent, type CompactionEvent } from "./analytics";
 import { seedUnreadMarkers, isUnread, markUnread, type UnreadRecord } from "./sidebar-unread";
 import { AttachmentSection } from "./attachment-section";
 import { captureConversationInput, createConversationIdentity, captureCurrentWork, type ConversationSemanticInput } from "./conversation-input";
@@ -68,7 +69,7 @@ export type SendState =
   | { kind: "failed"; message: string }
   | { kind: "unconfirmed"; operationId: string; text: string };
 
-export type RightPanelTab = "work" | "reply-needed" | "awaiting-reply" | "possessions" | "info";
+export type RightPanelTab = "work" | "reply-needed" | "awaiting-reply" | "possessions" | "info" | "settings";
 export type RightPanelTarget = Readonly<{ kind: "step" | "message" | "reply" | "attachment"; id: string; replySide?: ReplySide }>;
 export type RightPanelDetail = RightPanelTarget & Readonly<{ opener?: () => boolean }>;
 type PanelOperation = Readonly<{ kind: "cancel" | "answer" } & (
@@ -1303,24 +1304,32 @@ export class AppModel {
     if (this.panelPreference?.visible() && this.panelPreference.collapsed()) this.panelPreference.write(false);
   }
 
-  observeThreadUsage(threadId: string): { readonly usage: ReadonlySignal<UsageFacts | undefined>; close(): void } {
+  observeThreadAnalytics(threadId: string) {
     const cancel = new Cancel();
     let reading = false, again = false;
     const usage = signal<UsageFacts | undefined>(undefined);
+    const compactions = signal<readonly CompactionEvent[] | undefined>(undefined);
     const refresh = async () => {
       if (reading) { again = true; return; }
       reading = true;
       do {
         again = false;
-        const out = await this.ops.usageGet({ thread_id: threadId }, { cancel });
+        const [totals, recent] = await Promise.all([
+          this.ops.usageGet({ thread_id: threadId }, { cancel }),
+          this.ops.compactList({ thread_id: threadId, limit: 3 }, { cancel }),
+        ]);
         if (cancel.cancelled) return;
-        usage.value = out.ok && out.value.thread_id === threadId ? usageFacts(out.value) : undefined;
+        batch(() => {
+          usage.value = totals.ok && totals.value.thread_id === threadId ? usageFacts(totals.value) : undefined;
+          compactions.value = recent.ok && Array.isArray(recent.value.items)
+            ? recent.value.items.slice(0, 3).flatMap(item => readCompactionEvent(item) ?? []) : undefined;
+        });
       } while (again);
       reading = false;
     };
     const hints = this.data.watchHints(threadId, () => void refresh());
     void refresh();
-    return { usage, close: () => { cancel.cancel(); hints.close(); } };
+    return { usage, compactions, close: () => { cancel.cancel(); hints.close(); } };
   }
 
   setPanelTab(tab: RightPanelTab): void {

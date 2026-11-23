@@ -50,7 +50,7 @@ try{
   assert.equal(initial.clientWidth,panelWidth,key);
   assert.equal(initial.gap,'2px',key);
   assert.equal(initial.overflow,'auto',key);
-  assert(initial.tabs.some(tab=>tab.label===(lang==='en'?'Information':'情報')),`locale not applied: ${key}`);
+  assert(initial.tabs.some(tab=>tab.label===(lang==='en'?'Analytics':'分析')),`locale not applied: ${key}`);
   for(const [i,tab] of initial.tabs.entries()){
    assert.equal(tab.padding,'10px',key);
    assert(tab.iconRight+5.5<=tab.textLeft && tab.textRight<=tab.right,`label does not fit its own tab: ${key}`);
@@ -68,7 +68,7 @@ try{
   assert.deepEqual(counted.tabs,before.tabs,`count update moved the tabs: ${key}`);
   await evaluate(`document.querySelector(${JSON.stringify(list)}).scrollLeft=0; document.querySelector('#panel-tab-info').click()`);
   const selected=await measure();
-  assert(selected.tabs.at(-1).selected && selectedVisible(selected),`selection was not revealed: ${key}`);
+  assert(selected.tabs.some(tab=>tab.selected && tab.label===(lang==='en'?'Analytics':'分析')) && selectedVisible(selected),`selection was not revealed: ${key}`);
   assert.equal(await evaluate(`document.querySelector(${JSON.stringify(list)}).querySelector('[role=tooltip]')===null`),true,key);
 
   await evaluate(`document.querySelector(${JSON.stringify(toggle)}).click()`);

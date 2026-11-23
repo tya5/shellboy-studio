@@ -12,19 +12,6 @@ export interface ContextFacts {
   threshold: number | undefined;
   state: ContextRingState;
   fill: number | undefined;
-  lastCompactionAt: number | undefined;
-}
-
-function lastCompletedCompaction(last: unknown): number | undefined {
-  const fact = obj(last);
-  const candidate = obj(fact?.bounded_candidate);
-  if (obj(fact?.coverage)?.latest_complete !== true || typeof candidate?.at !== "string") return;
-  const completed = (candidate.kind === "summary" && candidate.record_kind === "retained_replacement")
-    || ((candidate.kind === "compact" || candidate.kind === "summary") && candidate.state === "completed")
-    || (candidate.kind === "automatic_reduction" && candidate.state === "adopted");
-  if (!completed) return;
-  const at = Date.parse(candidate.at);
-  return Number.isFinite(at) ? at : undefined;
 }
 
 export function contextFacts(d: ThreadDetails | undefined): ContextFacts | undefined {
@@ -32,13 +19,12 @@ export function contextFacts(d: ThreadDetails | undefined): ContextFacts | undef
   const limit = num(d?.effective_auto_compact_at);
   const inputTokens = input !== undefined && input >= 0 ? input : undefined;
   const threshold = limit !== undefined && limit >= 0 ? limit : undefined;
-  const lastCompactionAt = lastCompletedCompaction(d?.last_compaction);
   // A current owner fact does not depend on a previous input measurement.
-  if (d?.summarizing === true) return { inputTokens, threshold, state: "summarizing", fill: undefined, lastCompactionAt };
-  if (threshold === 0) return { inputTokens, threshold, state: "disabled", fill: 0, lastCompactionAt };
+  if (d?.summarizing === true) return { inputTokens, threshold, state: "summarizing", fill: undefined };
+  if (threshold === 0) return { inputTokens, threshold, state: "disabled", fill: 0 };
   if (threshold === undefined || inputTokens === undefined) return;
   return { inputTokens, threshold, state: inputTokens >= threshold ? "threshold" : "normal",
-    fill: Math.min(100, inputTokens * 100 / threshold), lastCompactionAt };
+    fill: Math.min(100, inputTokens * 100 / threshold) };
 }
 
 export interface Measured {

@@ -254,3 +254,5 @@ html:has(dialog:modal){overflow:hidden}
 .details.details-collapsed{overflow:visible}
 
 .details .panel-list-frame:not([hidden]){display:flex;flex:1;min-height:0;flex-direction:column}
+.details .sect{container-type:inline-size}
+.details .sect .setting-row{padding-inline:0}

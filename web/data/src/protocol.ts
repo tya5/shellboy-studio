@@ -236,6 +236,12 @@ export interface ThreadDetails {
   effective_max_tokens?: number;
   auto_compact_at?: number | null;
   effective_auto_compact_at?: number;
+  auto_compact_target_percent?: number | null;
+  effective_auto_compact_target_percent?: number;
+  summary_max_chars?: number | null;
+  effective_summary_max_chars?: number;
+  spill?: boolean | null;
+  effective_spill?: boolean;
   effort?: string;
   agents_path?: string;
   thread_id: string;

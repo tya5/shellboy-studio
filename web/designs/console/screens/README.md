@@ -15,18 +15,21 @@ open. The delete request's later completion never changes dialog or focus.
 
 ConversationItems renders live rows at the insertion point supplied by the conversation plan. It does not infer an input boundary or a terminal outcome from render order.
 
-## Conversation Info usage
+## Conversation Analytics and Settings
 
-Only an open, expanded Info tab in the responsive visible right panel mounts a
-Thread usage observation. The observation owns the existing ungrouped `usage.get`
-result and listens to the selected Thread's existing change/resync hints while
-mounted. Leaving Info, collapsing or hiding the panel, changing Threads, or losing
-the owner closes it. Reopening starts without the previous observation's values.
-Conversation, other tabs, the collapsed rail, and the phone WorkSheet do not read
-Thread totals. `thread.get` still supplies bounded context facts, not totals.
+Only a visible, expanded Analytics tab observes the selected Thread's ungrouped
+`usage.get` and at most three recent `compact.list` records. One change/resync
+subscription coalesces one follow-up pair; leaving, hiding or collapsing Analytics,
+changing Threads, or losing the owner cancels both reads. The same tab works in
+the phone sheet. `thread.get` still supplies bounded context facts, not totals.
 
 The sidebar `.side-list` and management `.org-rows` are zero-inline-padding row boundaries. Bands and rows fill those boundaries and own their shared-token content insets; do not bleed individual rows or headers beyond the containers.
 
 ## Resources Memory
 
 The Memory screen treats a typed capacity refusal as an owner-busy result. It reuses the existing header action for a Memory-only Retry; retry is manual and is never automatic. Ordinary Refresh keeps the existing paired Memory and bridge reads.
+
+Thread Settings uses the selected handle’s existing `thread.get` read. A row publishes
+no mutation receipt value: it waits for the existing change/resync read, and Undo
+restores the observed raw field only while the saved value still matches. The title
+row cannot Undo because Core publishes the display title, not its raw override.

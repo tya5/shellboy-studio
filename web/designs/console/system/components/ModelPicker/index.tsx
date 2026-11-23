@@ -6,7 +6,7 @@ import { EffortControl } from "./EffortControl";
 type Details = NonNullable<AppModel["details"]["value"]>;
 
 /** The Conversation header's model and run-setting picker. */
-export function ModelPicker({ model, details }: { model: AppModel; details: Details }) {
+export function ModelPicker({ model, details, onThreadSettings }: { model: AppModel; details: Details; onThreadSettings: () => void }) {
   const t = model.t.value;
   const picker = model.modelPicker.value;
   const canEdit = model.data.capabilities.value.includes("thread.settings");
@@ -24,6 +24,7 @@ export function ModelPicker({ model, details }: { model: AppModel; details: Deta
       {([["autoCompactAt", "thread.auto"], ["maxTokens", "thread.maxTokens"], ["agents", "thread.agents"]] as const).map(([key, label]) => <label>{t(label)}<Field ariaLabel={t(label)} value={picker[key]} placeholder={key !== "agents" && model.effectiveThreadSettings.value[key] !== undefined ? t("thread.effective", { value: model.effectiveThreadSettings.value[key]! }) : undefined} disabled={picker.saving || !canEdit} onInput={(event) => { if (key === "maxTokens") model.editThreadOutputLimit(event.currentTarget.value); else model.modelPicker.value = { ...model.modelPicker.peek(), [key]: event.currentTarget.value }; }} /></label>)}
       {picker.maxTokensState.kind === "unknown" && !picker.clearMaxTokens ? <><p class="caption muted">{t("thread.outputLimitUnknown")}</p><Button disabled={picker.saving || !canEdit} onClick={() => model.clearThreadOutputLimit()}>{t("thread.clearOutputLimit")}</Button></> : <p class="caption muted">{t("thread.outputLimitNote")}</p>}
       <p class="caption muted">{t("thread.agentsTiming")}</p>
+      <Button variant="link" onClick={() => { model.closeModelPicker(); onThreadSettings(); }}>{t("threadSettings.link")}</Button>
       {picker.error ? <Notice tone="bad">{picker.error}</Notice> : null}
       <div class="model-picker-actions"><Button disabled={picker.saving} onClick={() => model.closeModelPicker()}>{t("model.close")}</Button><Button variant="primary" disabled={!canEdit || picker.saving} onClick={() => void model.saveThreadModel()}>{t("model.saveAdvanced")}</Button></div>
   </MonitorPopover>;
