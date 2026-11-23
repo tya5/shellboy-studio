@@ -1,3 +1,4 @@
+import { fixtureOrigin } from './fixture-origin.mjs';
 import { spawn } from 'node:child_process';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { once } from 'node:events';
@@ -5,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 const port=Number(process.env.DEBUG_PORT ?? 19331);
 const appPort=Number(process.env.FIXTURE_PORT ?? 19330);
+const appOrigin = await fixtureOrigin(appPort, 'brand');
 const browser=process.env.CHROME_BIN ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 const profile=await mkdtemp(join(tmpdir(),'studio11-logo-'));
 const chrome=spawn(browser,['--headless','--disable-gpu','--disable-extensions','--no-first-run','--user-data-dir='+profile,'--remote-debugging-port='+port,'--remote-allow-origins=*','about:blank'],{stdio:'ignore'});
@@ -20,7 +22,7 @@ try {
   for(const width of [1280,390]) for(const initialTheme of ['console','light','terminal','auto']) {
     await cmd('Emulation.setDeviceMetricsOverride',{width,height:900,deviceScaleFactor:1,mobile:false});
     await cmd('Emulation.setEmulatedMedia',{features:[{name:'prefers-color-scheme',value:'light'}]});
-    await cmd('Page.navigate',{url:`http://127.0.0.1:${appPort}/?theme=${initialTheme}&state=history`});
+    await cmd('Page.navigate',{url:`${appOrigin}/?theme=${initialTheme}&state=history`});
     let ready=false;for(let n=0;n<100;n++){await new Promise(r=>setTimeout(r,100));if(await evaluate("typeof window.setFixtureTheme==='function'")){ready=true;break;}}
     if(!ready)throw Error('fixture not ready');
     if(width===390)await evaluate("document.querySelector('.menu button').click()");

@@ -31,6 +31,30 @@ impl Drop for Serve {
     }
 }
 
+fn isolated_command(bin: &Path, home: &Path) -> Command {
+    let mut command = Command::new(bin.canonicalize().expect("explicit owner binary"));
+    command
+        .current_dir(home)
+        .env_clear()
+        .env("PATH", std::env::var_os("PATH").unwrap_or_default())
+        .env("HOME", home)
+        .env("USERPROFILE", home)
+        .env("XDG_CONFIG_HOME", home.join("xdg-config"))
+        .env("XDG_DATA_HOME", home.join("xdg-data"))
+        .env("APPDATA", home.join("appdata"))
+        .env("LOCALAPPDATA", home.join("localappdata"));
+    #[cfg(windows)]
+    {
+        // Winsock needs SystemRoot; pass only the OS paths the child may need, never proxies.
+        for name in ["SystemRoot", "WINDIR", "TEMP", "TMP"] {
+            if let Some(value) = std::env::var_os(name) {
+                command.env(name, value);
+            }
+        }
+    }
+    command
+}
+
 fn start_owner(bin: &Path, root: &Path, data: &Path) -> Serve {
     start_owner_with(bin, root, data, "http://127.0.0.1:9/v1")
 }
@@ -46,29 +70,19 @@ fn start_owner_with(bin: &Path, root: &Path, data: &Path, base_url: &str) -> Ser
         format!("default_connection = \"local\"\ndefault_model = \"mock\"\n[connections.local]\nbase_url = \"{base_url}\"\n"),
     )
     .unwrap();
-    let mut command = Command::new(bin);
+    assert_eq!(data, root.join("data"));
+    assert_eq!(data.parent(), Some(root));
+    assert!(!data.is_symlink());
+    assert_ne!(
+        std::env::var_os("SHELLBOY_DATA_DIR").as_deref(),
+        Some(data.as_os_str())
+    );
+    let mut command = isolated_command(bin, &home);
     command
         .args(["serve", "--config"])
         .arg(&config)
         .arg("--data-dir")
-        .arg(data)
-        .env_clear()
-        .env("PATH", std::env::var_os("PATH").unwrap_or_default())
-        .env("HOME", &home)
-        .env("USERPROFILE", &home)
-        .env("XDG_CONFIG_HOME", home.join("xdg-config"))
-        .env("XDG_DATA_HOME", home.join("xdg-data"))
-        .env("APPDATA", home.join("appdata"))
-        .env("LOCALAPPDATA", home.join("localappdata"));
-    #[cfg(windows)]
-    {
-        // Winsock needs SystemRoot; pass only the OS paths the child may need, never proxies.
-        for name in ["SystemRoot", "WINDIR", "TEMP", "TMP"] {
-            if let Some(value) = std::env::var_os(name) {
-                command.env(name, value);
-            }
-        }
-    }
+        .arg(data);
     let child = command
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit())
@@ -89,15 +103,25 @@ fn start_owner_with(bin: &Path, root: &Path, data: &Path, base_url: &str) -> Ser
     };
     // Keep draining stdout so the owner never blocks on a full pipe.
     std::thread::spawn(move || for _ in lines {});
+    assert_eq!(
+        Path::new(ready["data_dir"].as_str().expect("ready data dir"))
+            .canonicalize()
+            .unwrap(),
+        data.canonicalize().unwrap()
+    );
     serve.instance = ready["instance_id"].as_str().unwrap().to_owned();
     serve
 }
 
 async fn stop_owner(bin: &Path, data: &Path, mut serve: Serve) {
-    let status = tokio::process::Command::new(bin)
+    let root = data.parent().expect("scratch root");
+    let mut command = isolated_command(bin, &root.join("home"));
+    command
         .args(["shutdown", "--data-dir"])
         .arg(data)
-        .env_remove("SHELLBOY_DATA_DIR")
+        .arg("--config")
+        .arg(root.join("config.toml"));
+    let status = tokio::process::Command::from(command)
         .status()
         .await
         .expect("shutdown");
@@ -130,8 +154,8 @@ mod common_ws {
 
 fn temp_root() -> PathBuf {
     let root = std::env::temp_dir().join(format!("shellboy-studio-it-{}", uuid::Uuid::new_v4()));
-    std::fs::create_dir_all(&root).unwrap();
-    root
+    std::fs::create_dir(&root).unwrap();
+    root.canonicalize().unwrap()
 }
 
 #[tokio::test]

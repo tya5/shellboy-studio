@@ -11,6 +11,7 @@ const rust=await readFile(root+'/src/assets.rs','utf8');const csp=rust.match(/co
 const types={ico:'image/x-icon',png:'image/png',webmanifest:'application/manifest+json',js:'text/javascript; charset=utf-8',css:'text/css; charset=utf-8',svg:'image/svg+xml',woff2:'font/woff2'};
 const requests=[];
 const server=createServer(async(req,res)=>{
+ if (req.url === '/__studio_test_fixture') { res.end('brand'); return; }
  const path=new URL(req.url,'http://localhost').pathname;
  const file=path==='/'?'designs/console/test/browser/integration-fixture.html':/^\/assets\/(?:brand\/)?[a-zA-Z0-9_.-]+$/.test(path)?path.slice(1):undefined;
  try { if(!file)throw Error('No route');let bytes=await readFile(out+'/'+file); if(path==='/'){const head=(await readFile(root+'/web/app/index.html','utf8')).match(/<title>[\s\S]*?<\/head>/)[0].replace('</head>','');bytes=Buffer.from(bytes.toString().replace('</head>',head+'</head>'));}res.writeHead(200,{'Content-Type':path==='/'?'text/html; charset=utf-8':types[file.split('.').at(-1)]??'application/octet-stream',...(path==='/'?{'Content-Security-Policy':csp}:{}),'X-Content-Type-Options':'nosniff','Cache-Control':path==='/'||path.startsWith('/assets/brand/')||path.endsWith('.webmanifest')?'no-cache':'public, max-age=31536000, immutable'});res.end(bytes);requests.push({path,status:200}); }

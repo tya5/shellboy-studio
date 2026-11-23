@@ -66,6 +66,10 @@ cannot run on that directory, because the TUI is itself an owner today.
 
   Without `npm run build` the binary still builds, but `GET /` only says how to build the frontend.
 
+For development and visual checks, do not point Studio at your everyday owner.
+Use the [isolated owner procedure](docs/development/isolated-owner.md). Plain Vite
+(`npm run dev`) is frontend-only and does not proxy to a Core/Studio pair.
+
 ## Connecting to an owner
 
 Studio finds the owner from the Shellboy **data directory**: `--data-dir DIR`, else

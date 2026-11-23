@@ -39,6 +39,6 @@ export default defineConfig({
     sourcemap: false,
   },
   server: {
-    proxy: { "/ws": { target: "ws://127.0.0.1:8751", ws: true }, "/auth": "http://127.0.0.1:8751" },
+    host: "127.0.0.1", // Frontend only. Never proxy to an installed Studio.
   },
 });

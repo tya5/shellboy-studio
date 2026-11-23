@@ -253,6 +253,17 @@ async fn run(args: Args) -> Result<(), String> {
     let data_dir =
         resolve_cli_data_dir(args.data_dir.as_deref(), &PathEnvironment::current(), &cwd)
             .map_err(|e| format!("cannot resolve the owner data directory: {e}"))?;
+    // Core may select the forwarded socket when its inherited data-dir matches.
+    // An explicit CLI directory must use the endpoint published in that directory.
+    if args.data_dir.is_some()
+        && inherited_socket_matches(
+            &data_dir,
+            std::env::var_os("SHELLBOY_DATA_DIR").as_deref(),
+            std::env::var_os("SHELLBOY_SOCKET").as_deref(),
+        )
+    {
+        return Err("refusing an inherited SHELLBOY_SOCKET for explicit --data-dir; unset SHELLBOY_SOCKET and SHELLBOY_INSTANCE_ID".into());
+    }
     if let Err(error) = install_agent_guide(&data_dir) {
         eprintln!(
             "shellboy-studio: cannot write the agent guide in {}: {error}",
@@ -311,11 +322,42 @@ async fn run(args: Args) -> Result<(), String> {
     result.map_err(|e| e.to_string())
 }
 
+fn inherited_socket_matches(
+    data_dir: &std::path::Path,
+    inherited_data: Option<&std::ffi::OsStr>,
+    socket: Option<&std::ffi::OsStr>,
+) -> bool {
+    cfg!(unix)
+        && inherited_data == Some(data_dir.as_os_str())
+        && socket.is_some_and(|socket| !socket.is_empty())
+}
+
 #[cfg(test)]
 mod tests {
     use super::owner_problem;
     use shellboy::protocol::{ApiError, ErrorCode};
     use std::path::Path;
+
+    #[test]
+    fn explicit_directory_detects_a_forwarded_socket_only_when_core_would_use_it() {
+        use std::ffi::OsStr;
+        let dir = Path::new("/scratch/data");
+        let socket = Some(OsStr::new("/other-owner/socket"));
+        assert_eq!(
+            super::inherited_socket_matches(dir, Some(dir.as_os_str()), socket),
+            cfg!(unix)
+        );
+        assert!(!super::inherited_socket_matches(
+            dir,
+            Some(OsStr::new("/other/data")),
+            socket
+        ));
+        assert!(!super::inherited_socket_matches(
+            dir,
+            Some(dir.as_os_str()),
+            None
+        ));
+    }
 
     #[test]
     fn installed_guide_is_replaced_on_next_install() {

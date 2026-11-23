@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 const root = fileURLToPath(new URL('../../../../../', import.meta.url));
 const csp = (await readFile(root + '/src/assets.rs','utf8')).match(/const CSP: &str = "([^"]+)"/)[1];
 const server = createServer(async (req,res) => {
+ if (req.url === '/__studio_test_fixture') { res.end('no-auth'); return; }
   const url = new URL(req.url,'http://localhost');
   res.setHeader('Content-Security-Policy', csp);
   res.setHeader('Cache-Control','no-store');

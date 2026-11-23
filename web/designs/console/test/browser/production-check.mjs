@@ -1,9 +1,11 @@
+import { fixtureOrigin } from './fixture-origin.mjs';
 import { spawn } from 'node:child_process';
 import { writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 const port=Number(process.env.DEBUG_PORT ?? 19331);
 const appPort=Number(process.env.FIXTURE_PORT ?? 19330);
+const appOrigin = await fixtureOrigin(appPort, 'production');
 const browser=process.env.CHROME_BIN ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 const chrome=spawn(browser,['--headless','--disable-gpu','--disable-extensions','--no-first-run','--user-data-dir='+join(tmpdir(),`studio-toolbar-${process.pid}`),'--remote-debugging-port='+port,'--remote-allow-origins=*','about:blank'],{stdio:'ignore'});
 try {
@@ -18,7 +20,7 @@ try {
   const results = [];
   for (const width of [1280, 390]) for (const theme of ['console', 'light']) for (const state of process.env.PROTOCOL5_ONLY === '1' ? ['awaiting'] : ['history', 'empty', 'running']) {
     await cmd('Emulation.setDeviceMetricsOverride', { width, height: 900, deviceScaleFactor: 1, mobile: width === 390 });
-    await cmd('Page.navigate', { url: `http://127.0.0.1:${appPort}/?theme=${theme}&state=${state}` });
+    await cmd('Page.navigate', { url: `${appOrigin}/?theme=${theme}&state=${state}` });
     let ready = false;
     for (let n = 0; n < 100; n++) { await new Promise(r => setTimeout(r, 100)); if (await evaluate("!!document.querySelector('.convo .character-status')")) { ready = true; break; } }
     if (!ready) throw Error('Fixture not ready: ' + await evaluate('document.body.innerText'));

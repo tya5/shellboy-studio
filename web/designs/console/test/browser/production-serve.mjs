@@ -11,6 +11,7 @@ const rust=await readFile(root+'/src/assets.rs','utf8');const csp=rust.match(/co
 const types={js:'text/javascript; charset=utf-8',css:'text/css; charset=utf-8',svg:'image/svg+xml',woff2:'font/woff2'};
 const requests=[];
 const server=createServer(async(req,res)=>{
+ if (req.url === '/__studio_test_fixture') { res.end('production'); return; }
  const path=new URL(req.url,'http://localhost').pathname;
  const file=path==='/'?'designs/console/test/browser/integration-fixture.html':/^\/assets\/[a-zA-Z0-9_.-]+$/.test(path)?path.slice(1):undefined;
  try { if(!file)throw Error('No route');const bytes=await readFile(out+'/'+file);res.writeHead(200,{'Content-Type':path==='/'?'text/html; charset=utf-8':types[file.split('.').at(-1)]??'application/octet-stream','Content-Security-Policy':csp,'X-Content-Type-Options':'nosniff','Cache-Control':path==='/'?'no-cache':'public, max-age=31536000, immutable'});res.end(bytes);requests.push({path,status:200}); }

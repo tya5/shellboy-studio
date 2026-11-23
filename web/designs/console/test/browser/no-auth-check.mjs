@@ -1,9 +1,11 @@
+import { fixtureOrigin } from './fixture-origin.mjs';
 import { spawn } from 'node:child_process';
 import { writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 const port=Number(process.env.DEBUG_PORT ?? 19533);
 const appPort=Number(process.env.FIXTURE_PORT ?? 19532);
+const appOrigin = await fixtureOrigin(appPort, 'no-auth');
 const browser=process.env.CHROME_BIN ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 const chrome=spawn(browser,['--headless','--disable-gpu','--disable-extensions','--no-first-run','--user-data-dir='+join(tmpdir(),`studio-toolbar-${process.pid}`),'--remote-debugging-port='+port,'--remote-allow-origins=*','about:blank'],{stdio:'ignore'});
 try {
@@ -16,7 +18,7 @@ try {
   await cmd('Runtime.enable'); await cmd('Page.enable'); await cmd('Log.enable');
   for(const width of [1280,390]) {
     await cmd('Emulation.setDeviceMetricsOverride',{width,height:900,deviceScaleFactor:1,mobile:false});
-    await cmd('Page.navigate',{url:`http://127.0.0.1:${appPort}/`});
+    await cmd('Page.navigate',{url:`${appOrigin}/`});
     for(let n=0;n<100;n++){await new Promise(r=>setTimeout(r,100));if(await evaluate("!!document.querySelector('.studio-no-auth')&&!!document.querySelector('.app')"))break;}
     const result=await evaluate(`(()=>{const e=document.querySelector('.studio-no-auth');if(!e)return {missing:true};const r=e.getBoundingClientRect(),s=getComputedStyle(e);return {text:e.textContent,top:r.top,left:r.left,right:r.right,height:r.height,position:s.position,visible:s.visibility,overflow:document.documentElement.scrollWidth>innerWidth,rootTop:document.getElementById('root').getBoundingClientRect().top}})()`);
     console.log(width,JSON.stringify(result));

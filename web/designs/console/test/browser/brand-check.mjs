@@ -1,9 +1,11 @@
+import { fixtureOrigin } from './fixture-origin.mjs';
 import { spawn } from 'node:child_process';
 import { writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 const port=Number(process.env.DEBUG_PORT ?? 19331);
 const appPort=Number(process.env.FIXTURE_PORT ?? 19330);
+const appOrigin = await fixtureOrigin(appPort, 'brand');
 const browser=process.env.CHROME_BIN ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 const chrome=spawn(browser,['--headless','--disable-gpu','--disable-extensions','--no-first-run','--user-data-dir='+join(tmpdir(),`studio-toolbar-${process.pid}`),'--remote-debugging-port='+port,'--remote-allow-origins=*','about:blank'],{stdio:'ignore'});
 try {
@@ -19,7 +21,7 @@ try {
   for(const width of [1280,390]) for(const theme of ['console','light','terminal']) for(const osScheme of ['dark','light']) {
     await cmd('Emulation.setDeviceMetricsOverride',{width,height:900,deviceScaleFactor:1,mobile:width===390});
     await cmd('Emulation.setEmulatedMedia',{features:[{name:'prefers-color-scheme',value:osScheme}]});
-    await cmd('Page.navigate',{url:`http://127.0.0.1:${appPort}/?theme=${theme}&state=history`});
+    await cmd('Page.navigate',{url:`${appOrigin}/?theme=${theme}&state=history`});
     let ready=false;for(let n=0;n<100;n++){await new Promise(r=>setTimeout(r,100));if(await evaluate("!!document.querySelector('.brand-logo')")){ready=true;break}}
     if(!ready)throw Error('No brand logo');
     if(width===390)await evaluate("document.querySelector('.menu button').click()");
@@ -50,7 +52,7 @@ try {
   for(const osScheme of ['dark','light']) {
     await cmd('Emulation.setDeviceMetricsOverride',{width:390,height:390,deviceScaleFactor:1,mobile:false});
     await cmd('Emulation.setEmulatedMedia',{features:[{name:'prefers-color-scheme',value:osScheme}]});
-    await cmd('Page.navigate',{url:`http://127.0.0.1:${appPort}/assets/brand/studio-favicon.svg`});
+    await cmd('Page.navigate',{url:`${appOrigin}/assets/brand/studio-favicon.svg`});
     await new Promise(r=>setTimeout(r,250));
     const svg=await evaluate(`({tile:getComputedStyle(document.querySelector('.tile')).fill,wink:getComputedStyle(document.querySelector('.wink')).stroke,face:getComputedStyle(document.querySelector('.face')).fill,eye:getComputedStyle(document.querySelector('.eye')).fill,dark:matchMedia('(prefers-color-scheme:dark)').matches})`);
     const expected=osScheme==='dark'?'rgb(56, 189, 248)':'rgb(3, 105, 161)';
@@ -60,7 +62,7 @@ try {
   }
   for(const size of [192,512]) {
     await cmd('Emulation.setDeviceMetricsOverride',{width:600,height:600,deviceScaleFactor:1,mobile:false});
-    await cmd('Page.navigate',{url:`http://127.0.0.1:${appPort}/assets/brand/studio-teal-${size}.png`});
+    await cmd('Page.navigate',{url:`${appOrigin}/assets/brand/studio-teal-${size}.png`});
     await new Promise(r=>setTimeout(r,150));
     const shot=await cmd('Page.captureScreenshot',{format:'png'});await writeFile(`${base}/manifest-icon-${size}.png`,Buffer.from(shot.data,'base64'));
   }
