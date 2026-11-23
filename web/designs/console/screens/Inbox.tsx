@@ -26,8 +26,9 @@ export function Inbox({ model }: { model: AppModel }) {
   const others = STATUS_KEYS.filter((k) => k !== "awaiting" && (counts[k] ?? 0) > 0);
   return (
     <div class="inbox">
+      <div class="pagehead"><h1>{t("view.inbox")}</h1></div>
       <div class="qlist">
-        <h2>{t("view.inbox")}{items.length > 0 ? ` ${items.length}` : ""}</h2>
+        <h2>{t("inbox.questions")}{items.length > 0 ? ` ${items.length}` : ""}</h2>
         {items.map((p) => (
           <QuestionItem key={p.id} title={`${p.threadTitle}${p.count !== undefined ? ` (${p.count}${p.countExact === false ? "+" : ""})` : ""}`} age={formatAge(p.askedAt, model.now.value)} question={p.question} current={p.id === current?.id} onClick={() => setPicked(p.id)} />
         ))}
