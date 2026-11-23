@@ -95,13 +95,13 @@ function SetDeleteDialog({ target, ...sheet }: SheetProps & { target: SetTarget 
     });
   };
   return <DeleteSheet {...sheet} onClose={() => { if (!pending) onClose(); }}>
-    <div class="delete-preview">
+    <div class="delete-preview delete-preview-set">
       <p id="thread-delete-description">{t("thread.deleteSetScope", { n: ids.length })}</p>
       {error ? <p role="alert">{error}</p> : null}
       {pending ? <p role="status">{t("thread.deleteSetPending")}</p> :
         ids.length > DELETE_SET_LIMIT ? <p role="alert">{t("thread.blocker.inputLimit")}</p> : !ids.length ? null : preview ? <>
-          <ul>{preview.targets.map(row => <li key={row.thread_id}>
-            <strong>{target.titleOf(row.thread_id) ?? row.thread_id}</strong> <code>{row.thread_id}</code>
+          <ul role="list">{preview.targets.map(row => <li key={row.thread_id}>
+            <p><strong>{target.titleOf(row.thread_id) ?? row.thread_id}</strong> <code>{row.thread_id}</code></p>
             <p>{t("thread.deleteBlockerCounts", { live: row.live_run_count, stopping: row.stopping_run_count })}</p>
             {row.runs.length ? <ul>{row.runs.map(run => <li key={run.id}><code>{run.id}</code> {t(run.state === "live" ? "thread.blocker.live" : "thread.blocker.stopping")}</li>)}</ul> : null}
             {row.runs_more ? <p>{t("thread.blocker.truncated")}</p> : null}

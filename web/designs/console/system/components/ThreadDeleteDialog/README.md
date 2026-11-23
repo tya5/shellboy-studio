@@ -36,3 +36,7 @@ is pending. It re-reads the exact set when its selection or saved owner targets
 change and never commits a refreshed preview automatically. It displays the
 requested IDs, per-target blockers and scheduled stops. Cancel returns focus
 to the selection bar Delete control or the sidebar heading if it is gone.
+
+The set preview aligns with the sheet content edge, with `space-8` between
+Threads, `space-4` between related lines, and a `space-12` inset for Run and
+scheduled-execution lists. IDs use `type-code`.

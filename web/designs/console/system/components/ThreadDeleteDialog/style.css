@@ -1,1 +1,12 @@
 .delete-preview { overflow-wrap: anywhere; }
+.delete-preview-set { display: grid; gap: var(--space-12); }
+.delete-preview-set :is(ul, p) { margin: 0; padding: 0; }
+.delete-preview-set > ul { display: grid; gap: var(--space-8); list-style: none; }
+.delete-preview-set > ul > li,
+.delete-preview-set > ul > li > ul { display: grid; gap: var(--space-4); }
+.delete-preview-set > ul > li > ul {
+  padding-inline-start: var(--space-12);
+  list-style: disc inside;
+}
+.delete-preview-set code { font: var(--type-code); }
+.delete-preview-set > button { justify-self: start; }
