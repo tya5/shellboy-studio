@@ -210,12 +210,12 @@ it("Work inner icon is a stored canonical display column, not renderer kind clas
 });
 
 
-it("Protocol 11 model_context hides current context and legacy admission-notice rows", async () => {
+it("Protocol 14 model_context hides current context and legacy admission-notice rows", async () => {
   const { materializeHistoryPresentation } = await import("../src/conversation");
   const items: HistoryItem[] = [
     { node_id: "before", kind: "assistant_response", selection: { ordinal: 0 }, items: [text] },
     { node_id: "context", kind: "model_context", selection: { ordinal: 1 }, items: [] },
-    // Core projects a previously saved reply_expected notice through this metadata-only kind.
+    // Protocol 14 history may contain a previously saved reply notice through this metadata-only kind.
     { node_id: "legacy-reply-notice", kind: "model_context", selection: { ordinal: 2 }, excerpt: "legacy reply_expected notice", items: [] },
     { node_id: "deferred-context", kind: "model_context", selection: { ordinal: 3 }, items: null, items_unavailable_reason: "response_budget" },
     { node_id: "after", kind: "assistant_response", selection: { ordinal: 4 }, items: [{ ...text, item_identity: "after", text: "after context" }] },
