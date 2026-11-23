@@ -54,5 +54,5 @@ Object.assign(window, { runArtifactFixture: async (action:'list'|'detail'|'old')
  const panel = document.querySelector<HTMLElement>('[data-panel-root]')!;
  const content = panel.querySelector<HTMLElement>('[data-panel-detail]');
  const found = Array.from(panel.querySelectorAll<HTMLElement>('[data-panel-list="possessions"] [data-panel-row-id]'));
- return { width:innerWidth, panels:document.querySelectorAll('[data-panel-root]').length, sheet:!!panel.closest('dialog[open]'), bands:[...panel.querySelectorAll('[data-panel-list="possessions"] h3')].map(el=>el.textContent), rows:found.map(el=>el.dataset.panelRowId), heights:found.map(el=>el.getBoundingClientRect().height), detail:content?.textContent, preview:content?.querySelector('.artifact-preview')?.textContent, previewCalls, overflow:panel.scrollWidth>panel.clientWidth+1 };
+ return { width:innerWidth, panels:document.querySelectorAll('[data-panel-root]').length, sheet:!!panel.closest('dialog[open]'), bands:[...panel.querySelectorAll('[data-panel-list="possessions"] h3 > span:first-child')].map(el=>el.textContent), rows:found.map(el=>el.dataset.panelRowId), heights:found.map(el=>el.getBoundingClientRect().height), detail:content?.textContent, preview:content?.querySelector('.artifact-preview')?.textContent, previewCalls, overflow:panel.scrollWidth>panel.clientWidth+1 };
 }});
