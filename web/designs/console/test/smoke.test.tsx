@@ -990,7 +990,7 @@ describe("Branches", () => {
       await settle(t, db);
     });
     expect(t.calls("thread.rewind")).toHaveLength(2);
-    expect(el.querySelector(".branches-side a.btn")!.getAttribute("href")).toBe("#/conversation/kept");
+    expect(el.querySelector(".branches-side a.nav-link")!.getAttribute("href")).toBe("#/conversation/kept");
   });
   it("Fork from here reports the new Thread with a link", async () => {
     const { el, model, t, db } = await open();

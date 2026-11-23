@@ -81,14 +81,14 @@ function PointPanel({ model, target, title, request, branches, ordinal }: { mode
         <Button variant="primary" disabled={fork.kind === "forking"} onClick={() => void b.forkAt(target, prompt)}>{t("branches.fork")}</Button>
       </div>
       {fork.kind === "failed" ? <Notice tone="bad">{t("branches.forkFailed", { message: fork.error.message })}</Notice> : null}
-      {fork.kind === "done" ? <Notice actions={<a class="btn link" href={formatRoute({ view: "conversation", threadId: fork.threadId })}>{t("monitor.open")}</a>}>{t("branches.forked", { title: fork.title })}</Notice> : null}
+      {fork.kind === "done" ? <Notice actions={<a class="nav-link" href={formatRoute({ view: "conversation", threadId: fork.threadId })}>{t("monitor.open")}</a>}>{t("branches.forked", { title: fork.title })}</Notice> : null}
 
       <h3>{t("branches.rewindTitle", { title })}</h3>
       {rewind.kind === "idle" || rewind.kind === "previewing" || rewind.kind === "refused" ? (
         <>
           <div class="muted caption">{t("branches.rewindBody")}</div>
           <div class="band">
-            <Button disabled={rewind.kind === "previewing"} onClick={() => void b.previewRewind(target)}>{rewind.kind === "previewing" ? t("common.loading") : t("branches.preview")}</Button>
+            <Button variant="ghost" disabled={rewind.kind === "previewing"} onClick={() => void b.previewRewind(target)}>{rewind.kind === "previewing" ? t("common.loading") : t("branches.preview")}</Button>
           </div>
           {rewind.kind === "refused" ? <Notice tone="bad">{t("branches.refused", { message: rewind.error.message })}</Notice> : null}
         </>
@@ -101,12 +101,12 @@ function PointPanel({ model, target, title, request, branches, ordinal }: { mode
           <div class="band">
             <Field ariaLabel={t("branches.newRequest")} value={prompt} onInput={e => setPrompt(e.currentTarget.value)} />
             <Button variant="warn" disabled={rewind.kind === "rewinding"} onClick={() => void b.confirmRewind(prompt)}>{t("branches.confirm")}</Button>
-            <Button disabled={rewind.kind === "rewinding"} onClick={() => b.clearActions()}>{t("branches.cancel")}</Button>
+            <Button variant="ghost" disabled={rewind.kind === "rewinding"} onClick={() => b.clearActions()}>{t("branches.cancel")}</Button>
           </div>
         </>
       ) : null}
       {rewind.kind === "done" ? (
-        <Notice actions={rewind.facts.branchThreadId ? <a class="btn link" href={formatRoute({ view: "conversation", threadId: rewind.facts.branchThreadId })}>{t("branches.openRemoved")}</a> : undefined}>
+        <Notice actions={rewind.facts.branchThreadId ? <a class="nav-link" href={formatRoute({ view: "conversation", threadId: rewind.facts.branchThreadId })}>{t("branches.openRemoved")}</a> : undefined}>
           {t("branches.rewound", { nodes: rewind.facts.removedNodes ?? 0 })}
         </Notice>
       ) : null}
@@ -152,7 +152,7 @@ export function Branches({ model }: { model: AppModel }) {
   const pick = (p: GraphPoint) => model.navigate({ view: "branches", threadId, nodeId: p.nodeId });
   const onThread = target ? family?.items.find((i) => i.threadId === target.threadId) : undefined;
   const items = layout?.lanes.map((l) => l.item) ?? [];
-  const fromHere = (i: BranchItem) => (i.divergence && i.parentId ? <a class="btn" href={formatRoute({ view: "branches", threadId, nodeId: i.divergence.nodeId })}>{t("branches.choose")}</a> : undefined);
+  const fromHere = (i: BranchItem) => (i.divergence && i.parentId ? <a class="nav-link" href={formatRoute({ view: "branches", threadId, nodeId: i.divergence.nodeId })}>{t("branches.choose")}</a> : undefined);
   const current = family?.items.find((i) => i.threadId === family.threadId);
   return (
     <div class="branches" data-layout={b.layout.value}>
@@ -169,7 +169,7 @@ export function Branches({ model }: { model: AppModel }) {
             </ButtonGroup>
           </span>
         </div>
-        {state.error ? <Notice tone="bad" actions={<Button onClick={() => void b.read(threadId)}>{t("common.refresh")}</Button>}>{t("common.readError", { message: state.error.message })}</Notice> : null}
+        {state.error ? <Notice tone="bad" actions={<Button variant="ghost" onClick={() => void b.read(threadId)}>{t("common.refresh")}</Button>}>{t("common.readError", { message: state.error.message })}</Notice> : null}
         {!family && state.loading ? <div class="muted">{t("common.loading")}</div> : null}
         {family && layout ? (
           <>
@@ -193,7 +193,7 @@ export function Branches({ model }: { model: AppModel }) {
             <BranchList
               label={t("view.branches")}
               rows={items.slice(excerptPage * 8, (excerptPage + 1) * 8).map((i) => {
-                const action = <div class="band"><Check checked={model.branchCompare.state.value.selected.includes(i.threadId)} onChange={() => model.branchCompare.choose(i.threadId)}>{t("b3.choose")}</Check><Check checked={b.selection.value.has(i.threadId)} onChange={() => b.toggleBranch(i.threadId)}>{t("branches.select")}</Check><Field ariaLabel={t("branches.rename")} placeholder={t("branches.rename")} value={rename[i.threadId] ?? ""} onInput={e => setRename({ ...rename, [i.threadId]: e.currentTarget.value })} /><Button disabled={!(rename[i.threadId] ?? "").trim() || b.actionBusy.value} onClick={() => void b.renameBranch(i.threadId, rename[i.threadId] ?? "")}>{t("branches.rename")}</Button>{fromHere(i)}</div>;
+                const action = <div class="band"><Check checked={model.branchCompare.state.value.selected.includes(i.threadId)} onChange={() => model.branchCompare.choose(i.threadId)}>{t("b3.choose")}</Check><Check checked={b.selection.value.has(i.threadId)} onChange={() => b.toggleBranch(i.threadId)}>{t("branches.select")}</Check><Field ariaLabel={t("branches.rename")} placeholder={t("branches.rename")} value={rename[i.threadId] ?? ""} onInput={e => setRename({ ...rename, [i.threadId]: e.currentTarget.value })} /><Button variant="ghost" disabled={!(rename[i.threadId] ?? "").trim() || b.actionBusy.value} onClick={() => void b.renameBranch(i.threadId, rename[i.threadId] ?? "")}>{t("branches.rename")}</Button>{fromHere(i)}</div>;
                 return {
                   key: i.threadId,
                   depth: i.depth,
@@ -206,7 +206,7 @@ export function Branches({ model }: { model: AppModel }) {
                 };
               })}
             />
-            <ButtonGroup label={t("view.branches")}><Button disabled={excerptPage === 0} onClick={() => { b.excerptBatch.reset(); setExcerptPage(excerptPage - 1); }}>{t("branches.previousBatch")}</Button><Button disabled={(excerptPage + 1) * 8 >= items.length} onClick={() => { b.excerptBatch.reset(); setExcerptPage(excerptPage + 1); }}>{t("threads.more")}</Button></ButtonGroup>
+            <div class="band" role="group" aria-label={t("view.branches")}><Button variant="ghost" disabled={excerptPage === 0} onClick={() => { b.excerptBatch.reset(); setExcerptPage(excerptPage - 1); }}>{t("branches.previousBatch")}</Button><Button variant="ghost" disabled={(excerptPage + 1) * 8 >= items.length} onClick={() => { b.excerptBatch.reset(); setExcerptPage(excerptPage + 1); }}>{t("threads.more")}</Button></div>
             <div class="muted caption">{t("branches.hint")}</div>
 
           </>
