@@ -40,7 +40,8 @@ location, default the OS config directory plus `shellboy-studio`), `--allow-host
 | Proxied owner calls, global | 8 (`server::GLOBAL_CALLS`) | semaphore in `Shared` |
 | Proxied calls per session | 4 running + 32 waiting, then `busy` (`ws::SESSION_*`) | tasks in the session's `JoinSet`; aborted when the socket closes |
 | Browser sessions | 64 (`hub::MAX_SESSIONS`), then HTTP 503 | `Hub`; removed by `SessionGuard::drop` |
-| Watched Threads per tab | 64 | per-session set; the dirty set is a subset of it plus flags |
+| Watched Threads per tab | 64 (`hub::MAX_WATCH`) | per-session set |
+| Changed Thread IDs per list tab | at most 256 (`hub::MAX_PENDING_THREADS`) plus flags, then one `resync` | coalesced in `Hub::Pending`; overflow supersedes IDs with one resync |
 | Hints per tab | no queue: one coalesced `Pending` (dirty set, list flag, resync flag, latest owner event) | merged on every update, flushed as one `changed` frame |
 | Incoming WebSocket frame | 24 MiB, for an app's `data.write` | axum limit |
 | Session cookies in memory | 256, oldest evicted | `Auth` |
@@ -51,8 +52,10 @@ The 30 s long-poll length is the design's value, not a promise about latency.
 ## Behaviour of the shared long-poll
 
 One `events.wait{after, thread_ids: [], timeout_ms: 30000}` loop. `baseline`/`timeout`:
-keep the cursor. `changed`: mark the listed Threads dirty for tabs that watch them and set
-the list flag for tabs that show the list; `more` makes the next call use timeout 0.
+keep the cursor. `changed`: list tabs receive the listed Thread IDs (including unwatched IDs),
+while tabs without list subscription receive only IDs they watch. IDs coalesce up to
+`MAX_PENDING_THREADS` (256) per list tab; overflow replaces them with one `resync`.
+`more` makes the next call use timeout 0.
 `resync_required`: every tab gets `resync`. Any error (owner gone, shutdown, bad cursor,
 undecodable result): tabs get `owner: unreachable` once, the cursor is dropped, the loop
 retries with backoff, and the first success is `owner: connected` (or `restarted` if the
