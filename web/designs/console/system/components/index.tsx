@@ -39,6 +39,7 @@ export { FactList, type Fact } from "./FactList";
 export { ButtonGroup } from "./ButtonGroup";
 export { ChoiceList, type Choice } from "./ChoiceList";
 export { SubView } from "./SubView";
+export { PageHeader } from "./PageHeader";
 export { ModelPicker } from "./ModelPicker";
 export { MoreMenu } from "./MoreMenu";
 export { BranchGraph } from "./BranchGraph";
@@ -50,7 +51,7 @@ export { SelectionBar } from "./SelectionBar";
 export { AppTabs } from "./AppTabs";
 export { AppFrame } from "./AppFrame";
 export { AppCard } from "./AppCard";
-export { LoadingRows } from "./LoadingRows";
+export { LoadingCount, LoadingRows } from "./LoadingRows";
 export { VirtualGap, VirtualSpace } from "./VirtualSpace";
 
 export { WorkSheet } from "./WorkSheet";
