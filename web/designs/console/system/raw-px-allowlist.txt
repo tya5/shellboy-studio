@@ -14,7 +14,6 @@ components/LoadingRows/style.css height 64px
 components/Message/style.css padding-right 72px
 components/Notice/style.css flex 240px
 components/SelectRow/style.css box-shadow 2px
-components/SelectRow/style.css width 18px
 components/SelectionBar/style.css flex 200px
 components/StatusMark/style.css stroke-width 1.5px
 components/SummaryStrip/style.css min-height 38px

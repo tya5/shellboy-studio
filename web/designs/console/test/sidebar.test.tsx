@@ -353,6 +353,7 @@ it("renders the approved sidebar section band, trailing column, and disclosure b
   const prefs = signal(loadPrefs({ read: () => null, write() {} }, DESIGNS));
   try {
     await act(async () => { render(<App context={{ model: f.model, prefs, designs: DESIGNS, setPrefs: change => { prefs.value = { ...prefs.peek(), ...change }; }, submitToken: async () => false }} />, host); await settle(f.t, f.db); });
+    expect(host.querySelector("#sidebar-thread-list-heading")?.classList.contains("group-label")).toBe(true);
     const group = host.querySelector<HTMLElement>('.side-list .tgroup[data-group-heading="section"][aria-label="All"]')!;
     const name = group.querySelector<HTMLElement>(".tgroup-name")!;
     const toggle = group.querySelector<HTMLButtonElement>(".tgroup-toggle")!;
@@ -367,7 +368,8 @@ it("renders the approved sidebar section band, trailing column, and disclosure b
     expect(name.textContent).toBe(label);
     expect(toggle.firstElementChild).toBe(name);
     expect(pinned.querySelector(".tgroup-toggle")?.firstElementChild?.classList.contains("tgroup-name")).toBe(true);
-    expect(group.querySelector(".tgroup-count")?.textContent).toBe("2");
+    expect(group.querySelector(".tgroup-count")?.textContent).toBe("Threads: 2");
+    expect(group.querySelector(".tgroup-name .i,.tgroup-toggle > .i")).toBeNull();
     expect(group.querySelector(".tgroup-fold,header a")).toBeNull();
     await act(async () => toggle.click());
     expect(toggle.getAttribute("aria-expanded")).toBe("false");

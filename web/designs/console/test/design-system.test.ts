@@ -220,6 +220,21 @@ describe("approved list section and status rules", () => {
     expect(source).toContain('data-group-heading={fold ? "section" : undefined}');
     expect(source).toContain('class="tgroup-toggle"');
     expect(source).toContain("onSelect(e.currentTarget.checked)");
+    expect(source).not.toContain("labelContent");
+    expect(source).toContain("count: ComponentChildren; countLoading?: boolean");
+    expect(source).toContain("aria-busy={countLoading || undefined}");
+    const select = componentStyleFiles["../system/components/SelectRow/style.css"] ?? "";
+    expect(select).toContain(".srow-status{flex:none;display:inline-grid;place-items:center;width:var(--size-icon)}");
+    const threads = screenSources["../screens/Threads.tsx"] ?? "";
+    expect(threads).not.toContain("labelContent=");
+    expect(threads).toContain("LoadingRows label={t(\"common.loading\")}");
+    expect(threads).toContain("LoadingCount />");
+    expect(threads).toContain('leading={<Icon role="organization.search" size="small" />}');
+    expect(threads).toContain("moveAction={canMove ? <button");
+    const app = screenSources["../screens/App.tsx"] ?? "";
+    expect(app).toContain("list.loaded ? t(\"org.bandCount\"");
+    expect(app).toContain("LoadingRows label={t(\"common.loading\")}");
+    expect(app).toContain('leading={<Icon role="thread.search" size="small" />}');
     expect(source).toContain('class="tgroup-chevron"');
   });
 
@@ -230,6 +245,8 @@ describe("approved list section and status rules", () => {
     expect(row).toContain("padding:0 var(--space-row-inset) 0 var(--space-8)");
     expect(row).toContain("border-radius:0");
     expect(row).toContain("thread-item-depth-3");
+    const selectSource = systemSources["../system/components/SelectRow/index.tsx"] ?? "";
+    expect(selectSource).toContain("<div class=\"srow-title\"><a id={linkId} href={href}>{title}</a>{moveAction}</div>");
     const select = componentStyleFiles["../system/components/SelectRow/style.css"] ?? "";
     expect(select).toContain("width:100%");
     // The checkbox fills the band's leading column, so a top-level row has no leading inset.
