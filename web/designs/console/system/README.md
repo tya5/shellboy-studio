@@ -86,7 +86,7 @@ A bordered or filled box means "press me", so use as few as possible. Six streng
 | Segmented | ButtonGroup | One choice out of a few (language, effort, view, state filter with counts, period). One `raised` container, only the chosen segment filled (`accent-bg` with an `accent` edge). Two groups in a row sit `space-16` apart in `.choice-row`; an independent action goes outside as ghost. Real tabs that switch panels stay PanelTabs or AppTabs. |
 | Bordered chip | `.tag-badge`, Chip (removable) | Tags and removable tokens (attachments, FilterChips) only; never actions or menu triggers. |
 
-In one region, only the primary and the outline beside it have a border or fill. Several options that can be on together are Check boxes in a `fieldset` whose `legend` is the setting name, never a ButtonGroup.
+In one region, only the primary and the outline beside it have a border or fill. Several options that can be on together are Check boxes in a `fieldset` whose `legend` is the setting name, never a ButtonGroup. A list of values the person adds and removes (instruction files) is one list inside its Section with `line` separators, a ghost Remove in each row's action column and, below it, a Field with a visible label and a ghost Add; never nested cards or full-width buttons. Sources: [VS Code Settings editor](https://code.visualstudio.com/docs/getstarted/settings), [Apple HIG Lists and tables](https://developer.apple.com/design/human-interface-guidelines/lists-and-tables).
 
 ### Structure levels (構造の見せ方)
 
