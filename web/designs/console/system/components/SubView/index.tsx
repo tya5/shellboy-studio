@@ -7,7 +7,7 @@ import { SectionNav, type SectionNavItem } from "../SectionNav";
  * A view with a second-level menu: section list beside one pane. The pane is keyed by section,
  * so switching starts it at the top; state that must survive a switch belongs in ui-core.
  */
-export function SubView({ title, items, children, groupedNav, searchable, close }: { title: string; items: SectionNavItem[]; children: ComponentChildren; groupedNav?: boolean; searchable?: boolean; close?: { href: string; label: string } }) {
+export function SubView({ title, items, children, groupedNav, searchable, close, className }: { title: string; items: SectionNavItem[]; children: ComponentChildren; groupedNav?: boolean; searchable?: boolean; className?: string; close?: { href: string; label: string } }) {
   const pane = useRef<HTMLDivElement>(null);
   const [result, setResult] = useState<{ id: string }>();
   const section = items.find((item) => item.current)?.key;
@@ -28,7 +28,7 @@ export function SubView({ title, items, children, groupedNav, searchable, close 
     return () => document.removeEventListener("keydown", key);
   }, [close?.href]);
   return (
-    <div class={close ? "subview subview-closable" : "subview"}>
+    <div class={`subview${close ? " subview-closable" : ""}${className ? ` ${className}` : ""}`}>
       {close ? <header class="subview-heading"><span>{title} / {items.find((item) => item.current)?.label}</span><a class="btn link" href={close.href} aria-label={close.label}><Icon role="settings.close" /></a></header> : null}
       <div class="subview-nav">
         <SectionNav title={title} items={items} grouped={groupedNav} searchable={searchable} onResult={(id) => setResult(id ? { id } : undefined)} />

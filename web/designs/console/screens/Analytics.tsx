@@ -88,7 +88,7 @@ function ByThread({ model, weights }: { model: AppModel; weights: Weights }) {
               key: g.key,
               cells: [
                 <>
-                  {threadRows.has(g.key) ? <a href={formatRoute({ view: "conversation", threadId: g.key })}>{nameOf(g)}</a> : <span class="mono">{nameOf(g)}</span>}
+                  {threadRows.has(g.key) ? <a class="analytics-thread-link" href={formatRoute({ view: "conversation", threadId: g.key })}>{nameOf(g)}</a> : <span class="mono">{nameOf(g)}</span>}
                   {groupIncomplete(g) ? <div class="muted caption">{t("common.incomplete")}</div> : null}
                 </>,
                 effective !== undefined ? formatTokens(Math.round(effective)) : t("analytics.noValue"),
@@ -186,10 +186,10 @@ function PeriodHead({ model, section }: { model: AppModel; section: AnalyticsSec
   return (
     <div class="head">
       <div class="pagehead">
-        <h1>{t(`ana.section.${section}`)}</h1>
+        <h2>{t(`ana.section.${section}`)}</h2>
         <div class="muted">{t(`ana.sub.${section}`)} {t("analytics.subtitle", { zone: i.period.value.zone })}</div>
       </div>
-      <div class="band">
+      <div class="band analytics-period">
         <ButtonGroup label={t("analytics.period")}>
           {PERIODS.map((p) => (
             <Button key={p} aria-pressed={i.periodDays.value === p} onClick={() => i.setPeriod(p)}>
@@ -348,6 +348,7 @@ export function Analytics({ context }: { context: DesignContext }) {
   const section = analyticsSection(model.route.value);
   return (
     <SubView
+      className="analytics-view"
       title={t("view.analytics")}
       items={ANALYTICS_SECTIONS.map((s) => ({ key: s, href: formatRoute({ view: "analytics", section: s }), role: ICONS[s], label: t(`ana.section.${s}`), current: s === section }))}
     >
