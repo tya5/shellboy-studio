@@ -401,3 +401,26 @@ it("keeps the bulk checkbox separate while the rest of its heading toggles", asy
     expect(toggled).toEqual([true]);
   } finally { render(null, host); host.remove(); }
 });
+
+it("shows an icon-free busy sidebar band and skeleton rows during the first Thread read", async () => {
+  const f = await fixtureModel({ route: "conversation", threadId: "lead", settle: false });
+  const host = document.createElement("div");
+  document.body.append(host);
+  const prefs = signal(loadPrefs({ read: () => null, write() {} }, DESIGNS));
+  try {
+    await act(async () => {
+      render(<App context={{ model: f.model, prefs, designs: DESIGNS, setPrefs() {}, submitToken: async () => false }} />, host);
+      await flush();
+    });
+    const band = host.querySelector<HTMLElement>(".side-list .tgroup")!;
+    expect(band).toBeTruthy();
+    expect(band.querySelector(".tgroup-count")?.textContent).not.toMatch(/[0-9]/);
+    expect(band.querySelector(".tgroup-toggle")?.getAttribute("aria-busy")).toBe("true");
+    expect(host.querySelector(".side-list .loadrows")).toBeTruthy();
+  } finally {
+    render(null, host);
+    host.remove();
+    f.model.dispose();
+    f.data.stop();
+  }
+});

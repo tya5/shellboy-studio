@@ -323,7 +323,7 @@ export function answerInsights(db: FakeOwnerDb, usage: Record<string, unknown> =
   };
 }
 
-export async function fixtureModel(options: { unreadPreferences?: import("../src/model").AppModelOptions["unreadPreferences"]; realPending?: boolean; pending?: PendingAdapter; route?: ViewName; threadId?: string; section?: Route["section"]; lang?: Lang; usage?: Record<string, unknown>; capabilities?: string[]; configure?: (db: FakeOwnerDb) => void; configureData?: (data: ShellboyData) => void; schedule?: (publish: () => void) => void } = {}) {
+export async function fixtureModel(options: { unreadPreferences?: import("../src/model").AppModelOptions["unreadPreferences"]; realPending?: boolean; pending?: PendingAdapter; route?: ViewName; threadId?: string; section?: Route["section"]; lang?: Lang; usage?: Record<string, unknown>; capabilities?: string[]; configure?: (db: FakeOwnerDb) => void; configureData?: (data: ShellboyData) => void; schedule?: (publish: () => void) => void; settle?: boolean } = {}) {
   const t = new FakeTransport();
   const db = fixtureDb();
   answerInsights(db, options.usage);
@@ -338,7 +338,7 @@ export async function fixtureModel(options: { unreadPreferences?: import("../src
   t.open();
   t.push({ t: "hello", bridge_version: "0.0.1", data_dir: "/temp/owner-a", owner: { state: "connected", info: { protocol_version: 5, instance_id: "i1", capabilities: options.capabilities ?? ["history.window"] } } });
   // `settle` gives up after 50 rounds; a test that walks further keeps answering itself.
-  await settle(t, db).catch(() => undefined);
+  if (options.settle !== false) await settle(t, db).catch(() => undefined);
   return { t, db, model, data };
 }
 
