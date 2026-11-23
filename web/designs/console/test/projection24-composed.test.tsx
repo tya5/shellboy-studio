@@ -173,7 +173,7 @@ it('keeps one output-limit notice across adoption into saved history and on relo
  const f=await publicConversationFixture({nodes:[]});
  const attempt='00000000-0000-4000-8000-000000000741' as import('../../../data/src/protocol').AttemptId;
  const wireLimit={stop:true,sent_max_tokens:4096,source:'connection' as const,connection:'synthetic'};
- const decoded=HistoryWindowInput.decode({thread_id:'lead',revision:1,total:1,items:[{node_id:'assistant-limit',kind:'assistant_response',selection:{ordinal:0},provenance:{attempt_id:attempt,output_limit:wireLimit},items:[]}]});
+ const decoded=HistoryWindowInput.decode({thread_id:'lead',revision:1,total:1,items:[{node_id:'assistant-limit',kind:'assistant_response',selection:{ordinal:0},provenance:{attempt_id:attempt,kind:'assistant_response',created_at:'2026-11-23T00:00:00Z',source_revision:1,output_limit:wireLimit},items:[]}]});
  expect(decoded.ok).toBe(true);
  if(!decoded.ok)throw new Error('Core-shaped saved output-limit history did not decode');
  const saved=decoded.value.items[0]!;

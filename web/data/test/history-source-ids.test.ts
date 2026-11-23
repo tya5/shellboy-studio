@@ -26,9 +26,10 @@ it('history.window rejects malformed attempt association',()=>{expect(decodeHist
 
 it('history.window admits Core output-limit provenance while rejecting malformed evidence',()=>{
  const fact={stop:true,sent_max_tokens:4096,source:'connection',connection:'synthetic'};
+ const protocol15Provenance={kind:'assistant_response',created_at:'2026-11-23T00:00:00Z',source_revision:1,attempt_id:attemptId,output_limit:fact};
  for(const source of ['thread_override','connection','default','extra_body',null]) for(const sent_max_tokens of [4096,null])
   expect(decodeHistoryWindow(windowRow({output_limit:{...fact,source,sent_max_tokens}})).ok).toBe(true);
- const valid=decodeHistoryWindow(windowRow({output_limit:fact}));
+ const valid=decodeHistoryWindow(windowRow(protocol15Provenance));
  expect(valid.ok).toBe(true);if(valid.ok)expect(valid.value.items[0]!.provenance?.output_limit).toEqual(fact);
  for(const output_limit of [{...fact,stop:false},{...fact,sent_max_tokens:-1},{...fact,sent_max_tokens:1.5},{...fact,source:'provider'},{...fact,connection:undefined}])
   expect(decodeHistoryWindow(windowRow({output_limit})).ok).toBe(false);
