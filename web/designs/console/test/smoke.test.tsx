@@ -495,6 +495,19 @@ describe("Conversation", () => {
     act(() => button("spill", "Undo").click());
     expect(t.calls("thread.set").at(-1)?.args).toEqual({ thread_id: "lead", spill: "off" });
   });
+  it("closes an untouched title editor without writing the display title", async () => {
+    const { model, t } = await fixtureModel({ capabilities: ["thread.settings"] });
+    const el = draw(model);
+    act(() => model.setPanelTab("settings"));
+    const row = el.querySelector<HTMLElement>('[data-setting-id="thread.title"]')!;
+    const action = (name: string) => [...row.querySelectorAll("button")].find(button => button.textContent === name)!;
+    act(() => action("Change").click());
+    expect(row.querySelector("input")?.value).toBe(model.details.value?.title);
+    await act(async () => { action("Save").click(); });
+    expect(row.querySelector("input")).toBeNull();
+    expect(t.calls("thread.set")).toHaveLength(0);
+  });
+
   it("clears an unreadable output override without calling it unset or offering a guessed Undo", async () => {
     const { model, t, db } = await fixtureModel({ capabilities: ["thread.settings"], configure(db) {
       db.details.lead = { ...db.details.lead!, max_tokens: Number.MAX_SAFE_INTEGER + 1 };

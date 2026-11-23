@@ -31,7 +31,7 @@ Consumers use semantic `IconRole` names only. Glyph names, paths, and the role-t
 | `panel.work` | Open conversation activity. | `term` |
 | `panel.reply_needed` | Identify a request this Thread should answer. | Lucide `reply` |
 | `panel.awaiting_reply` | Identify a request awaiting another recipient. | Lucide `hourglass` |
-| `panel.information` | Open Thread information. | Lucide `info` |
+| `panel.information` | Open Thread analytics. | Lucide `info` |
 | `settings.category.start` | Identify the Getting started settings group. | `gear` |
 | `settings.category.agent` | Identify the Agent settings group. | `bot` |
 | `settings.category.display` | Identify the Display settings group. | `palette` |

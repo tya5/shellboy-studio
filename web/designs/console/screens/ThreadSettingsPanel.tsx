@@ -94,7 +94,7 @@ function ThreadSetting({ model, row, details, enabled, highlighted }: { model: A
   const close = () => { returnFocus.current = true; setEdit(undefined); };
   const save = async (value: string) => {
     if (!enabled || busy) return;
-    if (row.field !== "title" && row.own !== unreadable && value === wireValue(row.own)) { close(); return; }
+    if (row.own !== unreadable && value === wireValue(row.own)) { close(); return; }
     const scope = lifetime.current;
     const handle = model.handle.peek();
     const owner = model.data.owner.peek();
