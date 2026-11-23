@@ -170,8 +170,8 @@ describe("usage facts", () => {
   it("a sum with unknown records is marked partial and gives no percentage", () => {
     const make = (unknown: number) =>
       usageFacts({ model_attempts: { completed: { count: 2, input_tokens: { known_sum: 2400, unknown_count: 0 }, cached_tokens: { known_sum: 1600, unknown_count: unknown }, output_tokens: { known_sum: null, unknown_count: 2 } } } });
-    expect(make(0)).toMatchObject({ cachedPercent: 67, output: undefined, partial: false, attempts: 2 });
-    expect(make(1)).toMatchObject({ cachedPercent: undefined, partial: true });
+    expect(make(0)).toMatchObject({ cachedPercent: 67, conversation: { output: { known: undefined, unknown: 2 } }, attempts: 2 });
+    expect(make(1)).toMatchObject({ cachedPercent: undefined, conversation: { cached: { unknown: 1 } } });
   });
   it("recovery reason: JSON gives the message, plain text stays as it is", () => {
     expect(recoveryFacts(d({ recovery_reason: JSON.stringify({ message: "m", hint: "h" }) }))).toEqual({ message: "m", hint: "h" });

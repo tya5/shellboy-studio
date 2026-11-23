@@ -420,7 +420,7 @@ export interface ShellEntry {
 export interface UsageGetArgs {
   /** Saved node timestamp, inclusive; mutually exclusive with since. Not an ordinal cut. */
   since_node_id?: string;
-  group_by?: "day" | "hour" | "thread";
+  group_by?: "day" | "hour" | "thread" | "model";
   /** `local`, `UTC` or a fixed `+HH:MM`/`-HH:MM`. */
   timezone?: string;
   since?: string;

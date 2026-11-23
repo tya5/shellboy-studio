@@ -84,7 +84,7 @@ Bounds, all in `insights.ts`:
 - A walk runs when a section that shows it opens, and again for a new period or on Refresh only if such a
   section is open. Never per render, and there's no polling. Weights are applied locally with no read.
 - Stop halts after the call on the wire. `cursor_expired` keeps partial values and asks for a new read.
-- By-Thread is a second walk, read when By Thread opens. Compaction events are one `compact.list` for one Thread.
+- By Thread opens a separate walk and reveals already-read rows in batches of 25. Show models starts one scoped `usage.get group_by=model` walk for the selected Thread and period. Closing the breakdown cancels it. Core does not attribute summary usage to models. Compaction events still use `compact.list` for one Thread.
 - Each resource read runs when a section showing it opens and on Refresh. Switching sections drops nothing:
   walks live in `Insights`, not in the pane, and carry on while another section is shown.
 
@@ -93,15 +93,17 @@ Storage reads `storage.status` and `status`; Memory `status --memory`; Index `in
 the same way: `thread.get` for four of them, `index.status` for Embeddings, storage, memory and receipts for Storage.
 
 The same day can recur across windows. Counters add. Percentiles and ratios don't, so the cache rate comes from
-summed `cached_tokens / input_tokens`, the mean input is re-derived from `known_count` and `mean`, and p50/p95
-aren't shown. Conversation sums take the terminal states only (`completed`, `failed`, `incomplete`), because
-other states carry no usage and would read as unknown.
+summed `cached_tokens / input_tokens` only when inputs and cache are complete for the same requests.
+Mean input is re-derived from `known_count` and `mean`; p50/p95 aren't shown. Conversation sums take
+terminal states (`completed`, `failed`, `incomplete`) including in Thread Info, which covers retained history
+rather than the Analytics period. By Thread and Info separate summary requests and their token counts from
+conversation usage. Additive known sums with omissions are labeled as lower bounds. Unfinished period
+aggregation does not present weighted totals or shares as final.
 
 ## What isn't shown, and what core would need
 
 | Missing | Why | Core need |
 |---|---|---|
-| Daily tokens **by model** | Grouped usage keys are `hour`, `day`, `thread`. `connection_rates.by_connection` holds only 429/5xx and wait counts. A Thread's current model isn't the model of its past attempts, so deriving it would be a guess | `group_by=model` or a second key (`day,model`), with the same sums |
 | Reading a period cheaply | No start at a date | A plain `started_at` index and a seek (the design in `usage-aggregates.md` already allows proposing it with measurements) |
 | Storage warning and maximum sizes, so a meter is possible | `storage.status` returns only `warning` and `limit_reached` | Add `warning_bytes` and `limit_bytes` to `storage.status` |
 | Largest Threads by storage | Delete previews do not provide a bounded storage ranking | A bounded `storage.by_thread` or a `limit`ed list |
@@ -115,8 +117,7 @@ other states carry no usage and would read as unknown.
 `uncached + cached x n + output x m`, defaults `n = 0.1`, `m = 5`, kept per browser in the preferences. The
 page states that these aren't prices. No price is known, so no money is ever computed. `uncached` is
 `input - cached`; if a provider reports more cached than input the split isn't drawn and isn't clamped. A value
-the owner doesn't report stays absent: no bar, "No value" in the table. Days with some unknown records are
-marked as lower bounds, including in the daily tokens chart's accessible peak summary.
+the owner doesn't report stays absent: no bar, "No value" in the table. The daily tokens chart qualifies its accessible peak when records are missing; weighted totals and ratios are unavailable when their inputs cannot support the calculation.
 
 ## Charts
 
