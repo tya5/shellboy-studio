@@ -115,7 +115,7 @@ function ThreadSetting({ model, row, details, enabled, highlighted }: { model: A
     : shown === undefined || shown === "" ? t(row.field === "title" ? "threadSettings.automatic" : "config.notSet") : String(shown);
   const saved = undo && Object.is(undo.expected, row.own) ? undo : undefined;
   const undoValue = row.field !== "title" && saved && saved.previous !== unreadable && !Object.is(saved.expected, saved.previous) ? saved : undefined;
-  const feedback = busy || error || saved ? <SettingFeedbackLine text={busy ? t("common.loading") : error ?? t("config.applyNow")}
+  const feedback = busy || error || saved ? <SettingFeedbackLine text={busy ? t("common.loading") : error ?? t(row.field === "agents" ? "threadSettings.applyNextTurn" : "config.applyNow")}
     undoLabel={t("config.undo")} busy={!enabled || busy} onUndo={undoValue && !error ? () => void save(wireValue(undoValue.previous)) : undefined} /> : null;
   return <SettingRow settingId={settingId(row.field)} label={label} highlighted={highlighted} feedback={feedback}
     read={editing ? undefined : <><span class={typeof shown === "number" || row.field === "cwd" || row.field === "agents" || row.field === "model" ? "mono" : undefined}>{displayed}</span>{row.defaultable ? <div class="muted caption">{t(inherited ? "threadSettings.default" : "threadSettings.overridden")}</div> : null}</>}

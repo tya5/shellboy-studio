@@ -554,17 +554,19 @@ function ThreadAnalytics({ model, threadId }: { model: AppModel; threadId: strin
     { key: t("usage.attempts"), value: usage.attempts, mono: true },
   ] : [];
   const compactions = observation?.compactions.value;
+  const status = observation?.status.value;
+  const unavailable = (failed: boolean | undefined) => !status || status.loading ? t("common.loading") : t(failed ? "threadSettings.infoReadFailed" : "common.notReadable");
   const unreadable = t("common.notReadable");
   return <div class="stack" data-panel-info="">
     <Section title={t("ana.section.tokens")} source={<code>usage.get</code>}>
-      {rows.length ? <KeyValue rows={rows} /> : <p class="muted caption">{unreadable}</p>}
+      {rows.length ? <KeyValue rows={rows} /> : <p class="muted caption">{unavailable(status?.usageFailed)}</p>}
       {usage?.partial ? <p class="muted caption">{t("usage.partial")}</p> : null}
     </Section>
     <Section title={t("ana.section.compaction")} source={<code>compact.list</code>}>
       {compactions?.length ? <DataTable caption={t("ana.section.compaction")} flat columns={[{ label: t("compact.at") }, { label: t("compact.kind") }, { label: t("threadSettings.inputBeforeAfter") }]}
         rows={compactions.map(event => ({ key: event.id, cells: [formatClock(event.at, true) ?? unreadable, event.kind,
           t("threadSettings.inputRange", { before: event.triggerInput === undefined ? unreadable : formatTokens(event.triggerInput), after: event.afterInput === undefined ? unreadable : formatTokens(event.afterInput) })] }))} />
-        : compactions ? <EmptyState compact role="empty.panelCompactions" title={t("panel.empty.compactions")} body={t("panel.empty.compactionsBody")} /> : <p class="muted caption">{unreadable}</p>}
+        : compactions ? <EmptyState compact role="empty.panelCompactions" title={t("panel.empty.compactions")} body={t("panel.empty.compactionsBody")} /> : <p class="muted caption">{unavailable(status?.compactionsFailed)}</p>}
     </Section>
   </div>;
 }

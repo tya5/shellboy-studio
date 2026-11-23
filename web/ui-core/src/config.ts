@@ -2,7 +2,7 @@
 // sits behind a capability. Only fields the person changed are sent. Nothing the owner hid is ever
 // sent back: a value containing the placeholder never becomes a change, here or on the owner.
 import { signal, type Signal } from "@preact/signals-core";
-import { Cancel, type OpError, type Operations } from "../../data/src";
+import { Cancel, type OpError, type Operations, type TestFailureClass } from "../../data/src";
 import type { ConfigKey } from "./resources";
 import type { MessageKey } from "./i18n";
 
@@ -171,7 +171,7 @@ const configWrite = (field: string, value: unknown): ConfigWrite => value === un
 
 export class ConfigEditor {
   readonly read: Signal<ConfigRead> = signal({ loading: false, value: undefined, error: undefined });
-  readonly connectionAction: Signal<{ name: string; state: "testing" | "ok" | "failed" | "clearing" | "cleared" | "unconfirmed" } | undefined> = signal(undefined);
+  readonly connectionAction: Signal<{ name: string; state: "testing" | "ok" | "failed" | "clearing" | "cleared" | "unconfirmed" | "testUnavailable"; failure?: TestFailureClass; status?: number | undefined } | undefined> = signal(undefined);
   readonly lastSaved: Signal<SavedSetting | undefined> = signal(undefined);
   readonly fieldError: Signal<{ field: string; reason: string } | undefined> = signal(undefined);
   readonly fieldSaving: Signal<boolean> = signal(false);
@@ -205,7 +205,9 @@ export class ConfigEditor {
     if (["testing", "clearing"].includes(this.connectionAction.peek()?.state ?? "")) return;
     this.connectionAction.value = { name, state: "testing" };
     const result = await this.ops.connectionTest({ connection: name });
-    this.connectionAction.value = { name, state: result.ok && result.value.ok === true ? "ok" : "failed" };
+    this.connectionAction.value = !result.ok ? { name, state: "testUnavailable" }
+      : result.value.ok === true ? { name, state: "ok" }
+      : { name, state: "failed", failure: result.value.failure?.kind ?? "other", status: result.value.httpStatus };
   }
 
   async clearCredential(name: string): Promise<void> {

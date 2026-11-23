@@ -15,7 +15,9 @@ current connection if the matches are empty or ambiguous. Effort
 presets apply immediately; press Enter to commit Other. The chip and selection
 mark follow the existing changed/resync Thread detail readback. The link opens Thread Settings for advanced values; the picker does not edit them.
 
-Settings also uses the shared model list and effort control. Do not infer
+Settings also uses the shared model list and effort control. The Settings picker
+uses MonitorPopover with search focused on open and focus returned to the
+trigger on Escape. Do not infer
 supported effort values, or include effort for embedding models.
 
 Styles: style.css in this directory

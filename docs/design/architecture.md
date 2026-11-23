@@ -525,7 +525,7 @@ the foundation works end to end (§2.1).
 | Shellboy side: long-polls share 24 slots, one bridge long-poll; no durable change log; one protocol version with capabilities (protocol 3); models may use `events.wait`; name `events.wait`; types via git dependency, frontend via JSON Schema (2026-11-06, user decision) | smallest owner surface | measured permit pressure |
 | Port 8751; config/token in OS config dir; bridge connects to a running owner only (except the desktop app) (2026-11-06, user decision) | simple, predictable | — |
 | M1 writes: `thread.create`, `message.send`, `run.stop`, `message.cancel` (+ #246 rewind); shell output read on expand/change, live tail M2 (2026-11-06, user decision) | scope | UI for deletion exists |
-| Web sends recorded as human, `sender_label: "web"`; UI language follows Shellboy's (En/Ja) (2026-11-06, user decision) | accurate and consistent | — |
+| Web sends recorded as human, `sender_label: "web"`; Studio offers the same UI languages as Shellboy (En/Ja); Studio's selection is local to Appearance (2026-11-06, user decision) | accurate and consistent | — |
 | Release binaries are the supported install; Node at build time; built assets not committed; measure the whole-crate dependency first, split a protocol crate only if large (2026-11-06, user decision) | simple release path | measured cost |
 | Reactive state via signals with WebSocket push; responsive baseline in M1, PWA/phone polish in M2 verified on a real phone (2026-11-06, user decision) | no reload or polling | — |
 | Desktop app future: Web, then PWA, then Tauri form B (single binary, in-process owner, multicall CLI); sidecar A fallback; design-now constraints in §11 (2026-11-06, user decision) | non-server users | OS integration needed |

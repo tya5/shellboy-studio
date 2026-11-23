@@ -4,7 +4,7 @@ import type { Operations } from "../../data/src";
 
 /** One serialized writer. Re-reads the hash and preserves every unrelated path. */
 export class GuideRegistration {
-  readonly state = signal<{ supported: boolean; registered: boolean; busy: boolean; error?: string; applied?: boolean; restart?: boolean }>({ supported: false, registered: false, busy: false });
+  readonly state = signal<{ supported: boolean; registered: boolean; busy: boolean; error?: string; unreadable?: boolean; applied?: boolean; restart?: boolean }>({ supported: false, registered: false, busy: false });
   readonly files = signal<readonly string[]>([]);
   private generation = 0;
   private running = false;
@@ -16,22 +16,34 @@ export class GuideRegistration {
     this.desired = { path, enabled }; this.generation++;
     if (!this.running) void this.run();
   }
-  async edit(path: string, add: boolean): Promise<void> {
-    const read = await this.ops.configGet();
-    if (!read.ok) { this.state.value = { ...this.state.peek(), error: read.error.message }; return; }
-    const facts = readConfigFacts(read.value); const list = facts.file.values?.extra_instructions;
-    if (!facts.file.valid || !facts.file.contentHash || !Array.isArray(list) || !list.every((x) => typeof x === "string")) return;
-    const next = add ? list.includes(path) ? list : [...list, path] : list.filter((x) => x !== path);
-    const result = await this.ops.configSet(facts.file.contentHash, [{ field: "extra_instructions", value: next }]);
-    if (!result.ok) { this.state.value = { ...this.state.peek(), error: result.error.message }; return; }
-    this.files.value = next;
+  async edit(path: string, add: boolean): Promise<boolean> {
+    if (this.running) return false;
+    this.running = true;
+    this.state.value = { ...this.state.peek(), busy: true, error: undefined, unreadable: false };
+    try {
+      const read = await this.ops.configGet();
+      if (!read.ok) { this.state.value = { ...this.state.peek(), error: read.error.message }; return false; }
+      const facts = readConfigFacts(read.value); const list = facts.file.values?.extra_instructions;
+      if (!facts.file.valid || !facts.file.contentHash || !Array.isArray(list) || !list.every((x) => typeof x === "string")) {
+        this.state.value = { ...this.state.peek(), unreadable: true }; return false;
+      }
+      const next = add ? list.includes(path) ? list : [...list, path] : list.filter((x) => x !== path);
+      const result = await this.ops.configSet(facts.file.contentHash, [{ field: "extra_instructions", value: next }]);
+      if (!result.ok) { this.state.value = { ...this.state.peek(), error: result.error.message }; return false; }
+      this.files.value = next;
+      return true;
+    } finally {
+      this.running = false;
+      this.state.value = { ...this.state.peek(), busy: false };
+      if (this.desired) void this.run();
+    }
   }
   private async run(): Promise<void> {
     this.running = true;
     try {
       while (this.desired) {
         const desired = this.desired; const generation = this.generation; this.desired = undefined;
-        this.state.value = { ...this.state.peek(), busy: true, error: undefined };
+        this.state.value = { ...this.state.peek(), busy: true, error: undefined, unreadable: false };
         const read = await this.ops.configGet();
         if (generation !== this.generation) continue;
         if (!read.ok) { this.state.value = { supported: false, registered: false, busy: false }; continue; }

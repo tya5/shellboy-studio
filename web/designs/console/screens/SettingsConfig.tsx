@@ -201,7 +201,9 @@ function ConnectionActions({ model, name }: { model: AppModel; name: string }) {
       </> : <Button variant="ghost" disabled={busy} onClick={() => setConfirm(true)}>{t("config.clearKey")}</Button>}
     </div>
     {confirm ? <Notice tone="wait">{t("config.clearKeyWarning")}</Notice> : null}
-    {action?.name === name ? <Notice>{t(`config.action.${action.state}`)}</Notice> : null}
+    {action?.name === name ? <Notice tone={action.state === "failed" || action.state === "testUnavailable" ? "bad" : undefined}>
+      {action.failure ? <Rich text={t(`setup.test.fail.${action.failure}`, { status: action.status === undefined ? t("setup.status.none") : t("setup.status", { n: action.status }) })} /> : t(`config.action.${action.state}`)}
+    </Notice> : null}
   </>;
 }
 

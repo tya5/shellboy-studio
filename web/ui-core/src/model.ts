@@ -1288,6 +1288,7 @@ export class AppModel {
     let reading = false, again = false;
     const usage = signal<UsageFacts | undefined>(undefined);
     const compactions = signal<readonly CompactionEvent[] | undefined>(undefined);
+    const status = signal({ loading: true, usageFailed: false, compactionsFailed: false });
     const refresh = async () => {
       if (reading) { again = true; return; }
       reading = true;
@@ -1300,6 +1301,7 @@ export class AppModel {
         if (cancel.cancelled) return;
         batch(() => {
           usage.value = totals.ok && totals.value.thread_id === threadId ? usageFacts(totals.value) : undefined;
+          status.value = { loading: false, usageFailed: !totals.ok, compactionsFailed: !recent.ok };
           compactions.value = recent.ok && Array.isArray(recent.value.items)
             ? recent.value.items.slice(0, 3).flatMap(item => readCompactionEvent(item) ?? []) : undefined;
         });
@@ -1308,7 +1310,7 @@ export class AppModel {
     };
     const hints = this.data.watchHints(threadId, () => void refresh());
     void refresh();
-    return { usage, compactions, close: () => { cancel.cancel(); hints.close(); } };
+    return { usage, compactions, status, close: () => { cancel.cancel(); hints.close(); } };
   }
 
   setPanelTab(tab: RightPanelTab): void {

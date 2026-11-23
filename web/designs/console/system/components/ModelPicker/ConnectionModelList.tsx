@@ -1,6 +1,7 @@
 import type { ComponentChildren } from "preact";
 import { useEffect, useState } from "preact/hooks";
 import { Button } from "../Button";
+import { MonitorPopover } from "../MonitorPopover";
 import { Field } from "../Field";
 
 export type ConnectionModel = { connection: string; model: string };
@@ -55,10 +56,8 @@ export function useConnectionModels(connections: readonly string[], load: (conne
 export function ModelChooser({ label, trigger, open, disabled, onToggle, onClose, children }: {
   label: string; trigger: string; open: boolean; disabled?: boolean; onToggle: () => void; onClose: () => void; children: ComponentChildren;
 }) {
-  return <div class="model-picker-anchor">
-    <Button aria-expanded={open} aria-haspopup="dialog" disabled={disabled} onClick={onToggle}>{trigger}</Button>
-    {open ? <div class="model-picker" role="dialog" aria-label={label} onKeyDown={(event) => {
-      if (event.key === "Escape") { event.stopPropagation(); onClose(); }
-    }}>{children}</div> : null}
-  </div>;
+  return <MonitorPopover label={trigger} className="model-picker-anchor" ghost disabled={disabled}
+    controlled={{ open, toggle: onToggle, close: onClose, panelClass: "model-picker", panelLabel: label, focusSearch: true }}>
+    {children}
+  </MonitorPopover>;
 }

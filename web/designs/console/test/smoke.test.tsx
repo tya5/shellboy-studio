@@ -483,6 +483,8 @@ describe("Conversation", () => {
     reveal(false);
     expect(t.calls("usage.get")).toHaveLength(0);
     reveal(true);
+    expect(info()).toContain("Reading");
+    expect(info()).not.toContain("Owner doesn't report this");
     await act(async () => { await settle(t, db); });
     expect(t.calls("usage.get").map(call => call.args)).toEqual([{ thread_id: "lead" }]);
     expect(info()).toContain("75%");
@@ -533,6 +535,27 @@ describe("Conversation", () => {
     act(() => button("spill", "Undo").click());
     expect(t.calls("thread.set").at(-1)?.args).toEqual({ thread_id: "lead", spill: "off" });
   });
+  it("explains when an AGENTS change takes effect after readback", async () => {
+    const { model, t, db } = await fixtureModel({ capabilities: ["thread.settings"] });
+    const el = draw(model);
+    act(() => model.setPanelTab("settings"));
+    const row = el.querySelector('[data-setting-id="thread.agents"]')!;
+    const button = (label: string) => [...row.querySelectorAll("button")].find(b => b.textContent === label)!;
+    act(() => button("Change").click());
+    const input = row.querySelector("input")!;
+    act(() => { input.value = "/fixture/new-agents.md"; input.dispatchEvent(new Event("input", { bubbles: true })); });
+    act(() => button("Save").click());
+    const call = t.calls("thread.set").at(-1)!;
+    expect(call.args).toEqual({ thread_id: "lead", agents: "/fixture/new-agents.md" });
+    const saved = { ...db.details.lead!, agents_path: "/fixture/new-agents.md" };
+    db.answered.add(call.id);
+    await act(async () => { t.ok(call.id, saved); });
+    db.details.lead = saved;
+    await act(async () => { t.push({ t: "changed", thread_ids: ["lead"], list: false, config_changed: false }); await settle(t, db); });
+    expect(text(row)).toContain("Applies on the next new Turn");
+    expect(text(row)).not.toContain("Applies now");
+  });
+
   it("closes an untouched title editor without writing the display title", async () => {
     const { model, t } = await fixtureModel({ capabilities: ["thread.settings"] });
     const el = draw(model);
@@ -1324,6 +1347,53 @@ describe("Threads", () => {
     expect(add.disabled).toBe(false);
     expect(section.querySelector(".work-row")).toBeNull();
     expect(t.calls("config.set")).toHaveLength(0);
+  });
+
+  it("retains the guide path on refusal and clears it only after success", async () => {
+    const pointer = "/fixture/studio/agent-pointer.md";
+    const file = { valid: true, content_hash: "guides", values: { extra_instructions: [pointer] } };
+    let refuse = true;
+    const { model, t, db } = await fixtureModel({ route: "settings", section: "agent", configure(db) {
+      const answer = db.answer;
+      db.answer = call => call.command === "config.get" ? { ok: true, result: { file } }
+        : call.command === "config.set" ? refuse ? { ok: false, code: "operation_conflict", message: "Guide file changed" }
+          : { ok: true, result: { written: true, changes: [] } } : answer(call);
+    } });
+    const el = draw(model);
+    await act(async () => { model.guideRegistration.update("/fixture", true); await settle(t, db); });
+    const section = el.querySelector('[data-setting-id="guide.files"]')!;
+    const input = section.querySelector("input")!;
+    const add = section.querySelector<HTMLButtonElement>(".guide-file-add > button")!;
+    act(() => { input.value = "/fixture/new.md"; input.dispatchEvent(new Event("input", { bubbles: true })); });
+    await act(async () => { add.click(); await settle(t, db); });
+    expect(input.value).toBe("/fixture/new.md");
+    expect(text(section)).toContain("Guide file changed");
+    refuse = false;
+    await act(async () => { add.click(); await settle(t, db); });
+    expect(input.value).toBe("");
+    expect(text(section.querySelector("ul")!)).toContain("/fixture/new.md");
+  });
+
+  it("focuses Settings model search and restores the trigger on Escape", async () => {
+    const values = { connections: { proxy: {} }, default_connection: "proxy", default_model: "test-model" };
+    const file = { present: true, valid: true, content_hash: "models", values };
+    const { model, t, db } = await fixtureModel({ route: "settings", section: "general", capabilities: ["config.edit"], configure(db) {
+      const answer = db.answer;
+      db.answer = call => call.command === "config.get" ? { ok: true, result: { file, loaded: file } } : answer(call);
+    } });
+    const el = draw(model);
+    await act(async () => { await settle(t, db); });
+    const trigger = el.querySelector<HTMLButtonElement>('[data-setting-id="default_model"] button')!;
+    trigger.focus();
+    act(() => trigger.click());
+    const search = el.querySelector<HTMLInputElement>('.model-picker input')!;
+    expect(search).not.toBeNull();
+    expect(document.activeElement).toBe(search);
+    const escape = new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true });
+    act(() => { search.dispatchEvent(escape); });
+    expect(escape.defaultPrevented).toBe(true);
+    expect(el.querySelector('.model-picker')).toBeNull();
+    expect(document.activeElement).toBe(trigger);
   });
 
   it("mounts Content to index as a named multi-choice fieldset", async () => {

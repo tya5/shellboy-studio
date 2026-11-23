@@ -11,9 +11,10 @@ const percent = (v: number): string => `${Math.round(v * 100)}%`;
 const shareText = (fraction: number): string => (fraction > 0 && fraction < 0.001 ? "<0.1" : String(Math.round(fraction * 1000) / 10));
 const noteOf = (t: Translate, d: DayFacts): string | undefined => (d.inconsistent ? t("common.inconsistent") : d.incomplete ? t("common.incomplete") : undefined);
 
-function peakSummary(t: Translate, days: number, values: (number | undefined)[], format: (n: number) => string): string {
+function peakSummary(t: Translate, days: number, values: (number | undefined)[], format: (n: number) => string, lowerBound = false): string {
   const known = values.filter((v): v is number => v !== undefined);
-  return t("chart.ariaPeak", { days, value: known.length ? format(Math.max(...known)) : t("analytics.noValue") });
+  const value = known.length ? format(Math.max(...known)) : t("analytics.noValue");
+  return t(lowerBound && known.length ? "chart.ariaPeakLowerBound" : "chart.ariaPeak", { days, value });
 }
 
 function WalkNotice({ t, state, onStop, onContinue, onRetry }: { t: Translate; state: WalkState; onStop: () => void; onContinue: () => void; onRetry: () => void }) {
@@ -224,7 +225,9 @@ function UsagePane({ context, section }: { context: DesignContext; section: "ove
   const tokens = (n: number) => formatTokens(Math.round(n));
   const source = (read: string) => <>{t("common.source", { source: "" })}<code>{read}</code></>;
   const common = { tableLabel: t("analytics.table"), categoryLabel: t("analytics.day"), noData: notReported };
-  const dailyTotals = days.map((d) => (d.recorded ? (d.cached ?? 0) + (d.uncached ?? 0) + (d.output ?? 0) : undefined));
+  const dailyParts = days.map(d => [d.cached, d.uncached, d.output]);
+  const dailyTotals = dailyParts.map(values => values.some(v => v !== undefined) ? values.reduce<number>((sum, v) => sum + (v ?? 0), 0) : undefined);
+  const dailyLowerBound = days.some((d, index) => d.recorded && (d.incomplete || d.inconsistent || dailyParts[index]!.some(v => v === undefined)));
 
   const summaryStat = (
     <Stat
@@ -274,7 +277,7 @@ function UsagePane({ context, section }: { context: DesignContext; section: "ove
             series={parts}
             points={days.map((d) => point(d, { cached: d.cached, uncached: d.uncached, output: d.output }))}
             format={tokens}
-            ariaSummary={t("chart.dailyAria", { summary: peakSummary(t, days.length, dailyTotals, tokens) })}
+            ariaSummary={t("chart.dailyAria", { summary: peakSummary(t, days.length, dailyTotals, tokens, dailyLowerBound) })}
             source={source("usage.get group_by=day")}
             extra={<div class="muted caption">{t("chart.byModelMissing")}</div>}
             {...common}

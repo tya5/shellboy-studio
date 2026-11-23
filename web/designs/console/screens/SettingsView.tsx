@@ -66,7 +66,10 @@ export function SettingsView({ context }: { context: DesignContext }) {
           <Section title={t("set.models.defaults")}><FactList missing={missing} facts={[
             ...(editable ? [{ ...search("default_model", "set.models.defaultModel", ["set.models.modelNote"]), note: t("set.models.modelNote"), control: <ConnectionModelRow model={model} path={["default_connection"]} modelPath={["default_model"]} label={t("set.models.defaultConn")} /> }] : [fileFact("set.models.defaultConn", "default_connection"), fileFact("set.models.defaultModel", "default_model")]),
             effort,
-            fileFact("settings.language", "ui.language"),
+            {
+              ...fileFact("set.coreLanguage", "ui.language", "set.coreLanguageNote"),
+              note: <>{t("set.coreLanguageNote")} <a class="nav-link" href={formatRoute({ view: "settings", section: "appearance" })}>{t("set.section.appearance")}</a></>,
+            },
           ]} /></Section>
         </>;
       case "connections":
