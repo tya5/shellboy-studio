@@ -49,8 +49,6 @@ components/Meter/style.css border-radius 3px
 components/Notice/style.css flex 240px
 components/PanelTabs/style.css border-bottom 2px
 components/PanelTabs/style.css border-radius 999px
-components/QuestionCard/style.css min-height 64px
-components/QuestionItem/style.css margin-top 2px
 components/RangeBar/style.css min-width 96px
 components/RangeBar/style.css height 12px
 components/RangeBar/style.css top 3px

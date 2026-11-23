@@ -82,9 +82,9 @@
 .head h1{margin:0;font:var(--type-title)}
 
 .inbox{flex:1;min-width:0;min-height:0;display:grid;grid-template-columns:var(--size-details) minmax(0,1fr);grid-template-rows:auto minmax(0,1fr)}
-.inbox>.pagehead{grid-column:1/-1;padding:var(--space-16) var(--space-24) 0}
+.inbox>header{grid-column:1/-1;padding:var(--space-16) var(--space-24) 0}
 .qlist{border-right:1px solid var(--line);overflow:auto;padding:var(--space-16) var(--space-24);display:flex;flex-direction:column;gap:var(--space-8)}
-.qlist h2{margin:0;font:var(--type-heading)}
+.qlist h2{margin:0}
 .qdetail{overflow:auto;padding:var(--space-16) var(--space-24);display:flex;flex-direction:column;gap:var(--space-12);min-width:0}
 .other{display:flex;flex-direction:column;gap:var(--space-8);padding-top:var(--space-8);border-top:1px solid var(--line)}
 .other div{display:flex;justify-content:space-between;align-items:center;font:var(--type-label)}
@@ -202,7 +202,7 @@
   .pagehead h1{font:var(--type-heading)}
   .charts{grid-template-columns:minmax(0,1fr)}
   .inbox{grid-template-columns:minmax(0,1fr);grid-template-rows:none;grid-auto-rows:min-content;overflow:auto;padding:var(--space-12);gap:var(--space-16)}
-  .inbox>.pagehead{padding:0}
+  .inbox>header{padding:0}
   .qlist{border-right:0;overflow:visible;padding:0}
   .qdetail{overflow:visible;padding:0}
   .inbox .empty-state-root{margin:0;padding:0}

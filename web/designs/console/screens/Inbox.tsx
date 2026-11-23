@@ -1,6 +1,6 @@
 import { useRef, useState } from "preact/hooks";
 import { errorMessage, formatAge, formatRoute, statusLabel, STATUS_KEYS, type AppModel } from "../../../ui-core/src";
-import { Button, EmptyState, Icon, QuestionCard, QuestionItem, StatusMark } from "../system/components";
+import { Button, EmptyState, Icon, PageHeader, QuestionCard, QuestionItem, StatusMark } from "../system/components";
 
 export function Inbox({ model }: { model: AppModel }) {
   const t = model.t.value;
@@ -26,19 +26,19 @@ export function Inbox({ model }: { model: AppModel }) {
   const others = STATUS_KEYS.filter((k) => k !== "awaiting" && (counts[k] ?? 0) > 0);
   return (
     <div class="inbox">
-      <div class="pagehead"><h1>{t("view.inbox")}</h1></div>
+      <PageHeader title={t("view.inbox")} />
       <div class="qlist">
-        <h2>{t("inbox.questions")}{items.length > 0 ? ` ${items.length}` : ""}</h2>
+        <h2 class="group-label">{t("inbox.questions")}{items.length > 0 ? ` ${items.length}` : ""}</h2>
         {items.map((p) => (
           <QuestionItem key={p.id} title={`${p.threadTitle}${p.count !== undefined ? ` (${p.count}${p.countExact === false ? "+" : ""})` : ""}`} age={formatAge(p.askedAt, model.now.value)} question={p.question} current={p.id === current?.id} onClick={() => setPicked(p.id)} />
         ))}
         {model.pending.loading?.value ? <p class="muted caption" role="status">{t("common.loading")}</p> : null}
         {model.pending.stale?.value ? <p class="muted caption">{t("work.stale")}</p> : null}
         {model.pending.error?.value ? <p role="alert">{errorMessage(model.pending.error.value)}</p> : null}
-        {model.pending.hasMore?.value ? <Button onClick={() => void model.pending.more?.()}>{t("threads.more")}</Button> : null}
+        {model.pending.hasMore?.value ? <Button variant="ghost" onClick={() => void model.pending.more?.()}>{t("threads.more")}</Button> : null}
         {others.length > 0 ? (
           <div class="other">
-            <h2>{t("inbox.other")}</h2>
+            <h2 class="group-label">{t("inbox.other")}</h2>
             {others.map((k) => (
               <div key={k}>
                 <StatusMark status={k} label={statusLabel(t, k)} />
@@ -62,8 +62,8 @@ export function Inbox({ model }: { model: AppModel }) {
             busy={busy !== undefined}
             onAnswer={(text) => { void actOn(current.id, () => model.pending.answer(current.id, text), "inbox.answerFailed"); }}
             extra={<>
-              {model.pending.cancel ? <Button disabled={busy !== undefined} onClick={() => void actOn(current.id, () => model.pending.cancel!(current.id), "work.cancelFailed")}>{t("work.cancel")}</Button> : null}
-              <a class="btn" href={formatRoute({ view: "conversation", threadId: current.threadId })}>
+              {model.pending.cancel ? <Button variant="ghost" disabled={busy !== undefined} onClick={() => void actOn(current.id, () => model.pending.cancel!(current.id), "work.cancelFailed")}>{t("work.cancel")}</Button> : null}
+              <a class="nav-link" href={formatRoute({ view: "conversation", threadId: current.threadId })}>
                 {t("monitor.open")}
                 <Icon role="inbox.openConversation" size="small" />
               </a>

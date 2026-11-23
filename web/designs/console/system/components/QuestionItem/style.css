@@ -2,4 +2,4 @@
 .qitem:hover{background:var(--raised)}
 .qitem[aria-current=true]{border-color:var(--wait);background:var(--wait-bg)}
 .qitem small{display:flex;justify-content:space-between;gap:var(--space-8);color:var(--muted);font:var(--type-caption)}
-.qitem span{display:block;margin-top:2px}
+.qitem span{display:block;margin-top:var(--space-2)}
