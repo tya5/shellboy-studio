@@ -18,7 +18,7 @@
 .side-note{padding:var(--space-8);color:var(--muted);font:var(--type-label)}
 @container app (min-width:900px){
 .shell.nav-collapsed{grid-template-columns:var(--size-shell-rail) minmax(0,1fr)}
-.nav-collapsed .brand{justify-content:center;padding:var(--space-12) var(--space-8)}
+.nav-collapsed .brand{justify-content:flex-start;padding:var(--space-12) var(--space-16)}
 .nav-collapsed .brand-label,.nav-collapsed .nav-label,.nav-collapsed .nav-item .count,.nav-collapsed .sidehead,.nav-collapsed .side-search,.nav-collapsed .side-list,.nav-collapsed .side-note{display:none}
 .nav-collapsed .nav{padding-inline:0}
 .nav-collapsed .nav-item{box-sizing:border-box;width:var(--size-shell-column);justify-content:center;padding-inline:0}
