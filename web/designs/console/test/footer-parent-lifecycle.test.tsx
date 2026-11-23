@@ -37,7 +37,9 @@ it('retains the production footer across disconnect, loading, and reconnect pare
 
 it('uses the existing conversation gutter tokens without changing footer height',()=>{
  const css=readFileSync('designs/console/system/layout.css','utf8');
- expect(css).toContain('.convo > .conversation-status{padding-inline:var(--space-24)}');
+ // Equal specificity: the phone override must be the last matching declaration.
+ const gutters=[...css.matchAll(/\.convo > \.conversation-status\{padding-inline:var\(--(space-\d+)\)\}/g)];
+ expect(gutters.map(rule=>rule[1])).toEqual(['space-24','space-12']);
  expect(css).toMatch(/@container app \(max-width:899px\)\{\s*\.convo > \.conversation-status\{padding-inline:var\(--space-12\)\}/);
  expect(css).toContain('height:calc(var(--size-conversation-character) + 2 * var(--space-8))');
 });

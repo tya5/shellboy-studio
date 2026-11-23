@@ -30,7 +30,7 @@ Consumers use semantic `IconRole` names only. Glyph names, paths, and the role-t
 | `nav.monitor` | Navigate to Monitor. | `monitor` |
 | `nav.inbox` | Navigate to Inbox. | `inbox` |
 | `nav.apps` | Navigate to Apps from the More menu. | `apps` |
-| `nav.branches` | Navigate to Branches from the More menu. | `branch` |
+| `nav.branches` | Navigate to Branches from the app navigation More menu. | `branch` |
 | `nav.threads` | Navigate to Threads from the More menu. | `tree` |
 | `nav.analytics` | Navigate to Analytics from the More menu. | `chart` |
 | `nav.settings` | Navigate to Settings from the More menu. | `gear` |
