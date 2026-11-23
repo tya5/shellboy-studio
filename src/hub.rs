@@ -202,7 +202,9 @@ impl Hub {
     pub fn hint<'a>(&self, thread_ids: impl IntoIterator<Item = &'a str> + Clone) {
         let mut inner = self.lock();
         for session in inner.sessions.values_mut() {
-            if session.pending.resync { continue; }
+            if session.pending.resync {
+                continue;
+            }
             let mut touched = false;
             for id in thread_ids.clone() {
                 if session.watch.contains(id) || session.list {

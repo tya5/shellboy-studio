@@ -16,6 +16,20 @@ fn start_loop(owner: std::sync::Arc<MockOwner>, hub: std::sync::Arc<Hub>) -> Can
     cancel
 }
 
+async fn drain_initial_resync(
+    owner: &MockOwner,
+    hub: &Hub,
+    tab: &shellboy_studio::hub::SessionGuard,
+) -> shellboy_studio::hub::Pending {
+    until("initial baseline consumed", || {
+        owner.event_args.lock().unwrap().len() >= 2
+    })
+    .await;
+    let pending = hub.take(tab).0;
+    assert!(pending.resync, "initial baseline resync is delivered");
+    pending
+}
+
 #[tokio::test]
 async fn keeps_the_cursor_drains_more_with_zero_timeout_and_fans_out_hints() {
     let (owner, tx) = mock(|_| None);
@@ -26,6 +40,7 @@ async fn keeps_the_cursor_drains_more_with_zero_timeout_and_fans_out_hints() {
 
     tx.send(events("inst1", "baseline", "c1", &[], false))
         .unwrap();
+    let _ = drain_initial_resync(&owner, &hub, &tab).await;
     tx.send(events_with_config(
         "inst1",
         "changed",
@@ -59,8 +74,8 @@ async fn keeps_the_cursor_drains_more_with_zero_timeout_and_fans_out_hints() {
     let (pending, owner_state) = hub.take(&tab);
     assert_eq!(
         pending.threads,
-        BTreeSet::from(["t1".to_owned()]),
-        "only the watched Thread is marked"
+        BTreeSet::from(["t1".to_owned(), "t9".to_owned()]),
+        "watched Threads and changed IDs for list subscribers are marked"
     );
     assert!(
         pending.list,
@@ -204,6 +219,8 @@ async fn work_capacity_busy_is_a_routine_retry_with_the_same_cursor() {
     let cancel = start_loop(owner.clone(), hub.clone());
     tx.send(events("inst1", "baseline", "c1", &[], false))
         .unwrap();
+    let baseline = drain_initial_resync(&owner, &hub, &tab).await;
+    assert_eq!(baseline.owner, Some(OwnerEvent::Connected));
     let busy = || {
         Err(shellboy::protocol::ApiError::new(
             shellboy::protocol::ErrorCode::InvalidState,
@@ -226,10 +243,9 @@ async fn work_capacity_busy_is_a_routine_retry_with_the_same_cursor() {
     assert_eq!(args[3].after.as_deref(), Some("c1"));
     assert_eq!(args[4].after.as_deref(), Some("c2"));
     let (pending, state) = hub.take(&tab);
-    assert_eq!(
-        pending.owner,
-        Some(OwnerEvent::Connected),
-        "never reported as unreachable"
+    assert!(
+        pending.owner.is_none(),
+        "no later owner transition was reported"
     );
     assert!(!pending.resync);
     assert!(matches!(state, OwnerState::Connected { .. }));
@@ -309,6 +325,7 @@ mod live_text {
             false,
         ))
         .unwrap();
+        let _ = drain_initial_resync(&owner, &hub, &tab).await;
         tx.send(text(
             "text",
             "c2",
@@ -366,6 +383,7 @@ mod live_text {
         hub.watch(&tab, vec!["t1".into()], false).unwrap();
         let cancel = start_loop(owner.clone(), hub.clone());
         tx.send(text("baseline", "b", json!([]), false)).unwrap();
+        let _ = drain_initial_resync(&owner, &hub, &tab).await;
         tx.send(ok("inst1", json!({"status":"text","cursor":"c","changes":[],"more":false,"config_changed":false,
             "attempt_ends":[{"thread_id":"t1","attempt_id":"r0","outcome":"not_adopted","seq":2}],
             "live_text":[{"thread_id":"t1","attempt_id":"r1","input_through_node_id":"p","gap":false,"deltas":[delta(0,"next")]}]}))).unwrap();
@@ -397,6 +415,7 @@ mod live_text {
             false,
         ))
         .unwrap();
+        let _ = drain_initial_resync(&owner, &hub, &tab).await;
         tx.send(Err(shellboy::protocol::ApiError::new(
             shellboy::protocol::ErrorCode::InvalidState,
             "Local IPC work capacity is busy; this request was not accepted",
@@ -511,8 +530,6 @@ mod guide_startup {
         ));
         tx.send(events("instance", "baseline", "c1", &[], false))
             .unwrap();
-        tx.send(events("instance", "changed", "c2", &["t1"], false))
-            .unwrap();
         if !disabled {
             until("registration entered", || {
                 owner.entered.load(Ordering::SeqCst) == 1
@@ -526,6 +543,9 @@ mod guide_startup {
             assert!(!matches!(hub.take(&tab).1, OwnerState::Connected { .. }));
             owner.release.add_permits(1);
         }
+        let _ = drain_initial_resync(&inner, &hub, &tab).await;
+        tx.send(events("instance", "changed", "c2", &["t1"], false))
+            .unwrap();
         until("changed consumed", || {
             inner.event_args.lock().unwrap().len() == 3
         })
