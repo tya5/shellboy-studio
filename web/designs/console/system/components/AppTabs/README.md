@@ -1,5 +1,8 @@
-Tabs over the app pane: the app list first, then each open app. An app with unread errors shows the recovery diamond beside its name. Each app tab has a manual reload action that remounts its page without touching app data. Closing a tab ends that app's page; moving to another tab or view doesn't. The strip scrolls in its own frame on a phone.
+# AppTabs
 
-Styles are colocated in `system/components/AppTabs/style.css`.
+- **Use for:** Switch between the app library and open apps. Show unread errors with a recovery diamond; keep the strip scrollable on phones.
+- **Do not use for:** Use PanelTabs for fixed inspector sections and NavItem for routes.
+- **Why:** Switching preserves the mounted page; closing ends it. Explicit Reload remounts that app page without touching app data.
+- **Source:** [Studio Apps design](../../../../../../docs/design/apps.md)
 
 Styles: style.css in this directory

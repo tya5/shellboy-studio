@@ -1,7 +1,8 @@
-The message box with Send and, while a Run is active, Stop. Enter sends, Shift+Enter makes a new line, and Enter during IME conversion never sends. The text stays until the owner accepts it.
+# Composer
 
-Styles are colocated in `system/components/Composer/style.css`.
+- **Use for:** Send a Thread message or Stop an active Run; keep the model picker and context disclosure in the composer action row.
+- **Do not use for:** Use QuestionCard to answer a specific pending question; keep model and context controls out of ConversationHeader.
+- **Why:** Enter sends, Shift+Enter inserts a line, IME conversion never sends, and the draft stays until the owner accepts it.
+- **Source:** [Studio #66: composer control placement](https://github.com/tya5/shellboy-studio/issues/66)
 
 Styles: style.css in this directory
-
-Composer puts the model/effort chooser at the start of the action row and the context disclosure beside send and stop. Keep these controls out of the conversation header.

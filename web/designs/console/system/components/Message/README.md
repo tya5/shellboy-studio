@@ -1,5 +1,8 @@
-One saved message: who, when, and the text rendered from Markdown. Raw HTML in the text is not rendered and links only open http, https and mailto addresses. Code blocks have a copy button.
+# Message
 
-Styles are colocated in `system/components/Message/style.css`.
+- **Use for:** Render a saved conversation message with sender, time, Markdown and copyable code blocks.
+- **Do not use for:** Use LogBlock for machine output and QuestionCard for a pending question with an answer action.
+- **Why:** The message can preserve readable formatting without rendering raw HTML or allowing arbitrary link schemes.
+- **Source:** [Studio Console decisions](../../../../../../docs/design/design-system.md#the-console-design)
 
 Styles: style.css in this directory
