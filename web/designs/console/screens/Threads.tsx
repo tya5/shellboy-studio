@@ -315,7 +315,7 @@ export function Threads({ model }: { model: AppModel }) {
           }),
         };
         return (
-          <ThreadGroup key={g.key} label={label} mono={by === "directory"} count={t("org.count", { n: ids.length })} all={chosen === ids.length} some={chosen > 0} selectLabel={t("org.selectGroup", { group: label })} onSelect={(on) => org.setMany(ids, on)} fold={fold}>
+          <ThreadGroup key={g.key} label={label} labelContent={by === "state" && g.key === "idle" ? <StatusMark status="idle" label={label} /> : undefined} mono={by === "directory"} count={t("org.count", { n: ids.length })} all={chosen === ids.length} some={chosen > 0} selectLabel={t("org.selectGroup", { group: label })} onSelect={(on) => org.setMany(ids, on)} fold={fold}>
             {groupOpen ? g.rows.map((memberRow) => row(memberRow)) : null}
           </ThreadGroup>
         );

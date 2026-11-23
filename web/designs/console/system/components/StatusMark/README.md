@@ -11,8 +11,8 @@
 | Awaiting | A person needs to answer; `wait` ring and question mark. |
 | Error | Recovery or failed; `bad` ring and exclamation. Retry remains a separate owner-qualified action. |
 | Waiting | The Run is inside its own `shellboy wait`; muted ring and center point. |
-| No action needed | Completed, stopped, or idle; empty muted ring. |
+| No activity | Completed, stopped, or idle; empty muted ring with no visible status text. The name is for accessibility and tooltips. |
 
-Use a 15 px box. Static ring shapes use a 1.5 px non-scaling stroke. The running arc uses 2.4 in its 24-unit viewBox so the gap survives and the stroke resolves to 1.5 px in the 15 px box. The intentionally compact ChildrenChip keeps its existing sizing and row controls. Running shells share the same arc; shell completed and failed remain distinct; conversation footer wording is unchanged.
+Use a 15 px box. Static ring shapes use a 1.5 px non-scaling stroke. The running arc uses 2.4 in its 24-unit viewBox so the gap survives and the stroke resolves to 1.5 px in the 15 px box. The intentionally compact ChildrenChip keeps its existing sizing and row controls. Running shells share the same arc; shell completed and failed remain distinct; the conversation footer uses the same textless idle mark.
 
 Styles: style.css in this directory

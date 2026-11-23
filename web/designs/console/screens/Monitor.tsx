@@ -61,7 +61,7 @@ function Tile({ model, row, reader, supported, pinned, togglePin, outOfFilter }:
   const running = rows.flatMap((r) => r.type === "steps" ? r.steps : []).find((step) => step.status === "running");
   const start = parseTime(running?.startedAt);
   const detail = running ? [running.description ?? running.command, start === undefined ? "" : formatDuration(model.now.value - start)].filter(Boolean).join(" ") : "";
-  const status = <>{row.status ? <StatusMark status={row.status} label={statusLabel(t, row.status)} /> : null}<span class="tile-detail">{row.status === "awaiting" ? "" : activityLabel(model.lang.value, row.summary.activity)}{detail ? ` ${detail}` : ""}{outOfFilter ? ` ${t("monitor.outOfFilter")}` : ""}</span></>;
+  const status = <>{row.status ? <StatusMark status={row.status} label={statusLabel(t, row.status)} /> : null}<span class="tile-detail">{row.status === "awaiting" || row.status === "idle" ? "" : activityLabel(model.lang.value, row.summary.activity)}{detail ? ` ${detail}` : ""}{outOfFilter ? ` ${t("monitor.outOfFilter")}` : ""}</span></>;
   return <div ref={ref}>
     <MonitorTile href={formatRoute({ view: "conversation", threadId: id })} title={row.summary.title} headingStatus={row.status ? <StatusMark status={row.status} label={statusLabel(t, row.status)} word={false} /> : null} status={status} pin={<Button aria-pressed={pinned} onClick={togglePin}>{t(pinned ? "monitor.unpin" : "monitor.pin")}</Button>}>
       {supported ? rows.map((r) => {
@@ -157,7 +157,7 @@ export function Monitor({ context }: { context: DesignContext }) {
         </div>
         <span class="monitor-count-mobile muted caption">{t("monitor.showing", { shown: selectedRows.length, total: model.monitorStableRows.value.length })}</span>
         {filtered ? <div class="monitor-pills">
-          {filter.map((k) => <Button key={k} aria-label={t("monitor.removeFilter", { filter: statusLabel(t, k) })} onClick={() => updateStatus(k)}>{statusLabel(t, k)} <Icon role="action.clearStatusFilter" size="small" /></Button>)}
+          {filter.map((k) => <Button key={k} aria-label={t("monitor.removeFilter", { filter: statusLabel(t, k) })} onClick={() => updateStatus(k)}>{k === "idle" ? <StatusMark status={k} label={statusLabel(t, k)} /> : statusLabel(t, k)} <Icon role="action.clearStatusFilter" size="small" /></Button>)}
           {model.monitorQuery.value.trim() ? <Button aria-label={t("monitor.removeFilter", { filter: model.monitorQuery.value })} onClick={() => { model.monitorQuery.value = ""; setPrefs({ monitorQuery: "" }); }}>{model.monitorQuery.value} <Icon role="action.clearQueryFilter" size="small" /></Button> : null}
           {model.monitorArchive.value !== "exclude" ? <Button aria-label={t("monitor.removeFilter", { filter: archiveLabel })} onClick={() => setArchive("exclude")}>{archiveLabel} <Icon role="action.clearArchiveFilter" size="small" /></Button> : null}
           <Button onClick={clearFilters}>{t("monitor.clearAll")}</Button>
