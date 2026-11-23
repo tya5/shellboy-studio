@@ -2,7 +2,7 @@
 
 - **Use for:** An in-flight read whose shape is known: LoadingRows for rows and section bodies (such as not-yet-loaded spans of the conversation window), LoadingCount for a count that has not been read yet.
 - **Do not use for:** Use EmptyState for a settled empty region and Notice for failures. Never show "0" or "Showing 0 of 0" before the first read settles; "0" means a read finished and found nothing.
-- **Why:** Placeholders show the expected shape without stating a number that was never measured. They announce one loading status and respect reduced motion.
+- **Why:** Placeholders show the expected shape without stating a number that was never measured. They announce one loading status and respect reduced motion. Use `announce={false}` for an offscreen placeholder that must remain hidden from assistive technology until it becomes visible.
 - **Source:** [shadcn/ui Skeleton](https://ui.shadcn.com/docs/components/skeleton), [Material 3 Progress indicators](https://m3.material.io/components/progress-indicators/overview)
 
 `LoadingRows` draws grey bars in place of content that is on its way. A slow pulse shows it's alive, and it stops under `prefers-reduced-motion`. Use it where the shape of what's coming is known; a spinner says less. Announced once as a status, not per bar.

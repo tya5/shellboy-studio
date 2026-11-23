@@ -983,7 +983,6 @@ describe("Branches", () => {
       observe(target: Element) { observers.at(-1)!.target = target; }
       disconnect() {}
       unobserve() {}
-      trigger(target: Element) { observers.at(-1)!.callback([{ isIntersecting: true, target } as IntersectionObserverEntry], this as unknown as IntersectionObserver); }
     });
     const made = await fixtureModel({ route: "branches", configure(db) {
       db.history["fork-a"] = [
@@ -1005,13 +1004,16 @@ describe("Branches", () => {
     await act(async () => { await settle(made.t, made.db); });
     const row = [...el.querySelectorAll<HTMLElement>(".blist .brow")].find(item => item.querySelector("a")?.textContent === "last asked")!;
     await act(async () => { await flushPromises(); });
-    expect(row.querySelector(".loadrows")).not.toBeNull();
+    expect(row.querySelector(".loadrows span.loadrow")).toBeTruthy();
+    expect(row.querySelector(".loadrows")?.getAttribute("aria-hidden")).toBe("true");
     await act(async () => {
       // Happy DOM does not perform layout; explicitly witness the mounted visible row.
       const observer = observers.find(candidate => candidate.target === row.querySelector(".brow-text"))!;
       observer.callback([{ isIntersecting: true, target: row } as unknown as IntersectionObserverEntry], {} as IntersectionObserver);
-      await settle(made.t, made.db);
     });
+    expect(row.querySelector('.loadrows[role="status"]')).not.toBeNull();
+    expect(row.querySelectorAll(".loadrows span.loadrow")).toHaveLength(1);
+    await act(async () => { await settle(made.t, made.db); });
     expect(read).toBe(2);
     expect(made.t.calls("history.window")).toHaveLength(2);
     expect(new Set(made.t.calls("history.window").map(call => (call.args as { thread_id: string }).thread_id))).toEqual(new Set(["fork-a"]));

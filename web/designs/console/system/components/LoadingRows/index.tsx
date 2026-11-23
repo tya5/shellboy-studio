@@ -1,7 +1,7 @@
 /** Stands in for rows not read yet: as many as are known to be missing, at about their height. */
-export function LoadingRows({ label, rows = 3 }: { label: string; rows?: number }) {
+export function LoadingRows({ label, rows = 3, announce = true }: { label: string; rows?: number; announce?: boolean }) {
   return (
-    <div class="loadrows" role="status" aria-label={label}>
+    <div class="loadrows" {...(announce ? { role: "status", "aria-label": label } : { "aria-hidden": "true" })}>
       {Array.from({ length: rows }, (_, i) => (
         <span key={i} class="loadrow" aria-hidden="true" />
       ))}

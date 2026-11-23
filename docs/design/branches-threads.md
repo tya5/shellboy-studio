@@ -12,6 +12,7 @@ Status: implemented (2026-11-07), local only. From Shellboy `v0.10.0`: `thread b
 - `no_shared_prefix` starts apart and is never joined. `parent_continues: false` reads "extends its parent": the owner reports this for a rewind child and for a fork made at the parent's end alike, so the UI doesn't call it a rewind.
 - Paging: 200 per page, up to 4 pages (a family is at most 256 Threads). `cursor_expired` means the family changed: start over, at most 3 times, then report it. `family_truncated`, `ancestors_truncated` and `root_parent_unavailable` are shown.
 - Reads: on opening the view and when the Thread list changes; one at a time, one trailing. No polling.
+- **Branch comparison excerpts:** when `history.window` is advertised, each visible list row shows the excerpt at its split, the first user request after the split, and the first one or two lines of the latest assistant answer. A root row has only the latest answer. Reads use bounded `history.window` windows (at most two per Thread) and only for the eight rows in the displayed page; no whole histories are fetched. A one-row `LoadingRows` placeholder appears while a visible row is read; the offscreen placeholder is hidden from assistive technology. Missing or unavailable excerpts stay unknown.
 
 **Fork** is non-destructive, so it runs on one press. **Rewind** shows `dry_run` first: nodes and turns that leave, path size, shell commands, children, replies still expected and attachments unselected, that files and shell effects aren't undone, and the undo path. Confirming is a second explicit press on the same point; choosing another point withdraws the preview. A real result links `branch_thread_id`, the child holding the removed part; opening it is the undo. There is no in-place forward. The owner's refusals (a live Run, the node is already the end, an unfinished tool call) show as its message.
 
@@ -21,7 +22,6 @@ Status: implemented (2026-11-07), local only. From Shellboy `v0.10.0`: `thread b
 
 | Missing | Need |
 |---|---|
-| Side-by-side compare of two tips | Reading two Threads from a divergence is possible, but it has no UI yet (user decision: omit for now) |
 | Usage per branch since a point | `usage.get` by Thread and period exists, but not "since this node" |
 | Whether a child came from a rewind or a fork | A `kind` on the branch item |
 | Rewinding to just before a node (`exclude_node`) | Exists in the owner; left out to keep one meaning per link |

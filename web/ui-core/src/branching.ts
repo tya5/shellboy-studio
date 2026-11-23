@@ -72,7 +72,7 @@ export class ExcerptBatch {
   private epoch = 0;
   private running = false;
   private admitted = new Set<string>();
-  private visible = new Map<string, { item: import("./branches").BranchItem; cancel: Cancel; publish: (v: BranchExcerpts) => void }>();
+  private visible = new Map<string, { item: import("./branches").BranchItem; cancel: Cancel; publish: (v: BranchExcerpts, settled: boolean) => void }>();
   constructor(private readonly read: (item: import("./branches").BranchItem, cancel: Cancel) => Promise<BranchExcerpts>) {}
   /** Detach before any cross-resource callback; finish touches only this snapshot. */
   detach(): () => void {
@@ -82,23 +82,23 @@ export class ExcerptBatch {
     return () => {
       for (const row of previous) row.cancel.cancel();
       for (const row of previous) {
-        if (![...this.visible.values()].some(current => current.item.threadId === row.item.threadId || current.publish === row.publish)) row.publish({});
+        if (![...this.visible.values()].some(current => current.item.threadId === row.item.threadId || current.publish === row.publish)) row.publish({}, true);
       }
     };
   }
   reset(): void { this.detach()(); }
-  show(item: import("./branches").BranchItem, publish: (v: BranchExcerpts) => void): () => void {
+  show(item: import("./branches").BranchItem, publish: (v: BranchExcerpts, settled: boolean) => void): () => void {
     const epoch = this.epoch;
-    publish({});
+    publish({}, false);
     if (epoch !== this.epoch) return () => {};
-    if (this.admitted.has(item.threadId) || this.admitted.size >= EXCERPT_ROWS) return () => {};
+    if (this.admitted.has(item.threadId) || this.admitted.size >= EXCERPT_ROWS) { publish({}, true); return () => {}; }
     this.admitted.add(item.threadId);
     const row = { item, publish, cancel: new Cancel() };
     this.visible.set(item.threadId, row); void this.drain();
     return () => {
       if (this.visible.get(item.threadId) === row) this.visible.delete(item.threadId);
       row.cancel.cancel();
-      if (![...this.visible.values()].some(current => current.item.threadId === item.threadId || current.publish === row.publish)) row.publish({});
+      if (![...this.visible.values()].some(current => current.item.threadId === item.threadId || current.publish === row.publish)) row.publish({}, true);
     };
   }
   private async drain(): Promise<void> {
@@ -111,7 +111,7 @@ export class ExcerptBatch {
         const epoch = this.epoch;
         let facts: BranchExcerpts = {};
         try { facts = await this.read(row.item, row.cancel); } catch { /* Failed reads remain unknown. */ }
-        if (epoch === this.epoch && !row.cancel.cancelled) row.publish(facts);
+        if (epoch === this.epoch && !row.cancel.cancelled) row.publish(facts, true);
         // Retain the entry for invalidation, but never schedule it twice.
         row.cancel.cancel();
       }

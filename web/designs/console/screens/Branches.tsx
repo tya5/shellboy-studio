@@ -8,25 +8,27 @@ const tipRoute = (i: BranchItem) => formatRoute({ view: "conversation", threadId
 
 function BranchExcerpt({ model, item }: { model: AppModel; item: BranchItem }) {
   const ref = useRef<HTMLDivElement>(null);
-  const [saved, save] = useState<{ item?: BranchItem; facts: { split?: string; request?: string; answer?: string } }>({ facts: {} });
+  const [saved, save] = useState<{ item?: BranchItem; facts: { split?: string; request?: string; answer?: string }; settled: boolean }>({ facts: {}, settled: false });
+  const [intersecting, setIntersecting] = useState(false);
   const facts = saved.item === item ? saved.facts : {};
-  const loaded = saved.item === item;
+  const settled = saved.item === item && saved.settled;
   const supported = model.data.capabilities.value.includes(CAPABILITY_HISTORY_WINDOW) && model.data.owner.value.state === "connected" && !model.data.threadList.value.stale && !model.data.threadList.value.loading && !model.branches.state.value.loading && !model.branches.state.value.error;
   useEffect(() => {
     if (!supported || !ref.current) return;
     let release: (() => void) | undefined;
     const observer = new IntersectionObserver(entries => {
       if (entries[0]?.isIntersecting) {
-        if (!release) release = model.branches.excerptBatch.show(item, facts => save({ item, facts }));
-      } else { release?.(); release = undefined; save({ facts: {} }); }
+        setIntersecting(true);
+        if (!release) release = model.branches.excerptBatch.show(item, (facts, done) => save({ item, facts, settled: done }));
+      } else { setIntersecting(false); release?.(); release = undefined; save({ facts: {}, settled: false }); }
     }, { rootMargin: "0px" });
     observer.observe(ref.current.parentElement ?? ref.current);
-    return () => { release?.(); save({ facts: {} }); observer.disconnect(); };
+    return () => { release?.(); setIntersecting(false); save({ facts: {}, settled: false }); observer.disconnect(); };
   }, [model, item, supported]);
   if (!supported) return null;
   const t = model.t.value;
-  return <div ref={ref} class="branch-excerpts" aria-busy={!loaded}>
-    {!loaded ? <LoadingRows label={t("common.loading")} rows={item.divergence ? 3 : 1} /> : <>
+  return <div ref={ref} class="branch-excerpts" aria-busy={intersecting && !settled || undefined}>
+    {!settled ? <LoadingRows label={t("common.loading")} rows={1} announce={intersecting} /> : <>
       {item.divergence ? <p><b>{t("branches.splitExcerpt")}</b> {facts.split ?? t("branches.excerptUnknown")}</p> : null}
       {item.divergence ? <p><b>{t("branches.firstRequest")}</b> {facts.request ?? t("branches.excerptUnknown")}</p> : null}
       <p><b>{t("branches.latestAnswer")}</b> {facts.answer ?? t("branches.excerptUnknown")}</p>
@@ -214,6 +216,7 @@ export function Branches({ model }: { model: AppModel }) {
               })}
             />
             <div class="band" role="group" aria-label={t("view.branches")}><Button variant="ghost" disabled={excerptPage === 0} onClick={() => { b.excerptBatch.reset(); setExcerptPage(excerptPage - 1); }}>{t("branches.previousBatch")}</Button><Button variant="ghost" disabled={(excerptPage + 1) * 8 >= items.length} onClick={() => { b.excerptBatch.reset(); setExcerptPage(excerptPage + 1); }}>{t("threads.more")}</Button></div>
+            <div class="muted caption">{t("branches.hint")}</div>
           </>
         ) : null}
       </div>
