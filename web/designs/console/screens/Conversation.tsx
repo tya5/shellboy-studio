@@ -239,14 +239,13 @@ function OutputLimitNotice({ model, fact }: { model: AppModel; fact: AttemptOutp
   const t = model.t.value;
   const override = model.threadSettings.value?.maxTokensState.kind === "value";
   const openSetting = () => {
-    if (override) { model.openModelPicker(); window.setTimeout(() => document.querySelector<HTMLElement>('[data-thread-setting="maxTokens"]')?.focus(), 0); return; }
+    if (override) {
+      model.pendingSettingFocus.value = "thread.maxTokens";
+      model.openModelPicker();
+      return;
+    }
+    model.pendingSettingFocus.value = `connections.${fact.connection}.max_tokens`;
     model.navigate({ view: "settings", section: "connections" });
-    window.setTimeout(() => {
-      const id = `connections.${fact.connection}.max_tokens`;
-      const target = [...document.querySelectorAll<HTMLElement>("[data-setting-id]")].find(el => el.dataset.settingId === id);
-      target?.scrollIntoView({ block: "center" });
-      target?.querySelector<HTMLElement>("input")?.focus();
-    }, 0);
   };
   return <OutputLimitNoticeRow actions={<><Button variant="link" onClick={openSetting}>{t("convo.outputLimitAction")}</Button><Button variant="link" onClick={() => void model.send(t("convo.continue"))}>{t("convo.continue")}</Button></>}>
     <Icon role="conversation.outputLimit" size="small" /><span>{t("convo.outputLimitNotice", { limit: fact.sent_max_tokens == null ? "" : `（${fact.sent_max_tokens}）` })}</span>

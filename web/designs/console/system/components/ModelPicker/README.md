@@ -15,3 +15,8 @@ Settings also uses the shared model list and effort control. Do not infer
 supported effort values, or include effort for embedding models.
 
 Styles: style.css in this directory
+
+
+When a notice requests focus on the Thread output-limit override, the picker consumes
+`AppModel.pendingSettingFocus` after its panel mounts and clears it only after the
+field receives focus. Do not schedule focus from the caller with a timer.

@@ -17,6 +17,17 @@ export function SettingsView({ context }: { context: DesignContext }) {
   const canEdit = model.data.capabilities.value.includes(CAPABILITY_CONFIG);
   const facts = model.config.read.value.value;
   const editable = canEdit && !model.config.read.value.error && facts?.file.valid === true;
+  const pendingSettingFocus = model.pendingSettingFocus.value;
+  useEffect(() => {
+    if (section !== "connections" || !pendingSettingFocus?.startsWith("connections.")) return;
+    const target = [...document.querySelectorAll<HTMLElement>("[data-setting-id]")]
+      .find((element) => element.dataset.settingId === pendingSettingFocus);
+    const field = target?.querySelector<HTMLInputElement>("input");
+    if (!target || !field) return;
+    target.scrollIntoView({ block: "center" });
+    field.focus();
+    if (document.activeElement === field) model.pendingSettingFocus.value = undefined;
+  }, [model, section, pendingSettingFocus, facts]);
   const rows = new Map<SettingsSection, SettingSearch[]>();
   const body = (section: SettingsSection) => {
     const search = (settingId: string, key: MessageKey, notes: readonly MessageKey[] = [], scope?: string) => {

@@ -386,8 +386,6 @@ export interface ShellEntry {
 
 /** `usage.get` arguments the UI uses. The owner rejects a grouped period over 31 days. */
 export interface UsageGetArgs {
-  /** One exact persisted model attempt. */
-  attempt_id?: string;
   /** Saved node timestamp, inclusive; mutually exclusive with since. Not an ordinal cut. */
   since_node_id?: string;
   group_by?: "day" | "hour" | "thread";

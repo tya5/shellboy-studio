@@ -159,6 +159,7 @@ export class AppModel {
     } catch { this.pairing.value = { ...this.pairing.peek(), error: "pair.error" }; }
   }
 
+  readonly pendingSettingFocus = signal<string | undefined>(undefined);
   readonly modelPicker = signal<{ open: boolean; thread: string; agents: string; autoCompactAt: string; maxTokens: string; maxTokensState: OutputLimitReadback; clearMaxTokens: boolean; models: {connection: string; model: string}[]; catalogErrors: string[]; loading: boolean; saving: boolean; error?: string | undefined }>({ open: false, thread: "", agents: "", autoCompactAt: "", maxTokens: "", maxTokensState: { kind: "unset" }, clearMaxTokens: false, models: [], catalogErrors: [], loading: false, saving: false });
   private modelListCancel = new Cancel();
   private readonly pickerSession = signal<ModelPickerSession | undefined>(undefined);

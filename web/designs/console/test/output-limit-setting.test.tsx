@@ -24,6 +24,18 @@ it.each(['responses','chat_completions','anthropic_messages'])('shows unset and 
  expect(m.t.calls('config.set')).toHaveLength(0);expect(m.t.calls('connection.test')).toHaveLength(0);
 });
 
+it('focuses a pending connection setting request after SettingsView mounts its target',async()=>{
+ const values={connections:{proxy:{api:'responses',base_url:'https://example.invalid/v1',max_tokens:4096}}};
+ const m=await fixtureModel({route:'settings',section:'general',capabilities:['config.edit'],configure(db){const before=db.answer.bind(db);db.answer=c=>c.command==='config.get'?{ok:true,result:{loaded:{values},file:{present:true,valid:true,content_hash:'synthetic',values}}}:before(c);}});
+ const root=document.createElement('div');document.body.append(root);const prefs=signal<Prefs>({design:'console',theme:'console',lang:'en',monitorView:'cards',weights:{cached:0.1,output:5}});
+ const unmount=mount(root,{model:m.model,designs:DESIGNS,prefs,setPrefs:()=>{},submitToken:async()=>true});dispose=()=>{unmount();m.model.dispose();};
+ await act(async()=>settle(m.t,m.db));
+ m.model.pendingSettingFocus.value='connections.proxy.max_tokens';
+ await act(async()=>m.model.navigate({view:'settings',section:'connections'}));
+ const target=root.querySelector<HTMLInputElement>('[aria-label="Maximum output tokens"]');
+ expect(target).not.toBeNull();expect(document.activeElement).toBe(target);expect(m.model.pendingSettingFocus.value).toBeUndefined();
+});
+
 it.each(['responses','chat_completions','anthropic_messages'])('saves only max_tokens and reopens configured then unset for %s',async api=>{
  let value:number|undefined;
  const extra={provider_flag:true};
