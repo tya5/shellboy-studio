@@ -60,21 +60,37 @@
   --radius: 10px;
   --radius-m: 8px;
   --motion-spin: 1.6s;
+  /* Intrinsic size reserved for a skipped Monitor or App card. */
   --size-thread-card-estimate: 180px;
+  /* Minimum width of an Analytics stat column. */
   --size-stat-column: 170px;
+  /* Preferred minimum width of an Analytics chart. */
   --size-chart-column: 420px;
+  /* Minimum width of an Analytics meter column. */
   --size-meter-column: 220px;
+  /* Desktop bar list label width. */
   --size-bar-label: 96px;
+  /* BarList plot bar thickness. */
   --size-bar-thickness: 8px;
+  /* Minimum visible BarList fill width. */
   --size-bar-min-fill: 2px;
+  /* Reserved height for an empty Chart. */
   --size-chart-empty-height: 96px;
+  /* Chart legend square and tooltip key width. */
   --size-chart-swatch: 10px;
+  /* Chart tooltip color key thickness. */
   --size-chart-tip-key-thickness: 2px;
+  /* Meter track thickness. */
   --size-meter-track: 6px;
+  /* Minimum RangeBar track width. */
   --size-range-track-min: 96px;
+  /* RangeBar track height. */
   --size-range-track-height: 12px;
+  /* RangeBar span thickness. */
   --size-range-span: 6px;
+  /* RangeBar end mark width. */
   --size-range-end-width: 3px;
+  /* RangeBar end mark height. */
   --size-range-end-height: 10px;
   /* Minimum QuestionCard reply textarea height in Inbox and Conversation. */
   --size-question-answer-min: 64px;
@@ -94,36 +110,67 @@
   --size-tool-group-summary-min: 38px;
   /* Minimum height of WorkElementRow lines and step summaries; the SummaryStrip tool group header keeps its separate 38px token. */
   --size-tool-row-min: 40px;
+  /* Bar list label column at phone width. */
   --size-bar-label-compact: 80px;
+  /* Desktop section navigation column. */
   --size-section-nav: 230px;
+  /* Minimum label column width in a fact list. */
   --size-fact-label-min: 120px;
+  /* Maximum label column width in a fact list. */
   --size-fact-label-max: 220px;
+  /* Preferred space for the Section heading before actions wrap. */
   --size-section-heading-basis: 200px;
+  /* Sidebar width. */
   --size-sidebar: 260px;
+  /* Portal popover layer above application panes. */
   --z-popover: 35;
+  /* Conversation panel width and splitter boundary; can be overridden by the browser preference. */
   --size-right-panel: var(--size-details);
+  /* Fixed preview frame in the possessions detail. */
   --size-preview: 150px;
+  /* Execution details width. */
   --size-details: 340px;
+  /* Shared height of the sidebar and main application headers, including their bottom divider. */
   --size-header: 48px;
+  /* Button and field height on desktop. */
   --size-control: 32px;
+  /* Minimum control height at phone width, including the right-panel footer and its toggle. */
   --size-touch: 44px;
+  /* Icon footprint for actions inside row menus. */
   --size-icon-menu: 16px;
+  /* Small icons used by existing compact controls and metadata. */
   --size-icon-small: 15px;
+  /* Line icons. */
   --size-icon: 18px;
+  /* Icon of the whole-view EmptyState. */
   --size-icon-empty: 28px;
+  /* Minimum width of the shared row menu. */
   --size-menu-min: 168px;
+  /* Conversation status artwork and its permanent footer reservation. */
   --size-conversation-character: 24px;
+  /* Visual box for the desktop row action button. */
   --size-row-action: 24px;
+  /* Visual box for the touch row action button. */
   --size-row-action-touch: 28px;
+  /* 50px fixed icon column; the icon center is 25px from its corresponding window edge in expanded and rail states. */
   --size-shell-column: 50px;
+  /* Desktop shell panel toggle footer height; the phone right-panel footer uses size-touch. */
   --size-shell-footer: 36px;
+  /* VS Code-style shell panel visibility icon footprint. */
   --size-shell-toggle-icon: 24px;
+  /* Shellboy mark size in the fixed sidebar brand row. */
   --size-brand-mark: 24px;
+  /* Collapsed shell rail width: the shared 50px icon column plus its 1px divider. */
   --size-shell-rail: 51px;
+  /* Compact children chip height. */
   --size-chip-height: 20px;
+  /* Icon footprint inside a compact children chip. */
   --size-chip-icon: 10px;
+  /* Tabular number size inside a compact children chip. */
   --size-chip-text: 11px;
+  /* Equal inline padding inside a compact children chip. */
   --space-chip-inline: 7px;
+  /* Shared right inset between row/band content and the trailing action column. */
   --space-row-inset: 12px;
   --shadow-popover: 0px 4px 10px rgba(0, 0, 0, 0.24);
 }

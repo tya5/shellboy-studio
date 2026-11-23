@@ -11,7 +11,7 @@ Pass a formally issued WorkElementDisplay through formatWorkElementDisplay. Form
 
 The native details element is controlled and owned only by this component. none/unavailable policies are noninteractive; actual detail policies require caller-owned open state and an already-authorized bounded body adapter. Keep output watch, execution association, stable keys and lifecycle in the caller. Empty arrays/fragments are not proof of body availability.
 
-Reuse Studio code/caption typography, space-4/8/12, size-icon, raised hover, global focus and app-container touch sizing. The 40px minimum preserves existing StepRow compatibility; no dedicated height token exists. Work list children receive a common space-12 inset. Parent headers/counts/chevrons are caller owned. The canonical member wrapper is the only separator owner; this row has no border. No category-specific spacing or palette is introduced.
+Reuse Studio code/caption typography, space-4/8/12, size-icon, raised hover, global focus and app-container touch sizing. `size-tool-row-min` owns the 40px minimum, shared with `.step summary` in `shared/work.css`. The `SummaryStrip` header uses its own 38px `size-tool-group-summary-min`. Work list children receive a common space-12 inset. Parent headers/counts/chevrons are caller owned. The canonical member wrapper is the only separator owner; this row has no border. No category-specific spacing or palette is introduced.
 
 The component alone is not a qualified runtime consumer or proof of perceived centering, mobile layout or USER acceptance.
 

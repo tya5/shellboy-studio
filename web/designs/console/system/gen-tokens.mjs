@@ -25,7 +25,7 @@ export function tokenCss(tokens, themeId, isDefault) {
   for (const r of tokens.radius.tokens) add(r.name, tokens.radius[themeId]?.[r.name] ?? r.value);
   for (const m of tokens.motion.tokens) add(m.name, m.value);
   for (const l of tokens.layout.tokens) {
-    if (l.includeUsageInCss) lines.push(`  /* ${l.usage} */`);
+    lines.push(`  /* ${l.usage} */`);
     add(l.name, l.value);
   }
   for (const e of tokens.elevation.tokens) add(e.name, e.value[themeId] ?? e.value);
