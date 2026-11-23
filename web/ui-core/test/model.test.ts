@@ -33,11 +33,19 @@ describe("AppModel over the fake transport", () => {
       expect(model.rows.value.map(row => row.summary.thread_id)).toContain("changed");
       expect(model.counts.value.running).toBe(3);
       expect(data.activeThreadIds.value).toContain("changed");
+      db.threads.waiting = summary("waiting", { activity: "waiting" });
+      t.push({ t: "changed", thread_ids: ["waiting"], list: true, config_changed: false });
+      await settle(t, db);
+      expect(data.activeThreadIds.value).toContain("waiting");
+      expect(model.rows.value.find(row => row.summary.thread_id === "waiting")?.status).toBe("waiting");
       db.threads.changed = summary("changed", { activity: "idle" });
       t.push({ t: "changed", thread_ids: ["changed"], list: true, config_changed: false });
       await settle(t, db);
       expect(data.activeThreadIds.value).not.toContain("changed");
       expect(model.counts.value.running).toBe(2);
+      expect(model.counts.value.waiting).toBe(1);
+      expect(data.activeThreadIds.value).not.toContain("completed");
+      expect(data.activeThreadIds.value).not.toContain("stopped");
       t.push({ t: "resync" }); await settle(t, db);
       expect(model.rows.value.map(row => row.summary.thread_id)).toContain("inbox");
     } finally { model.dispose(); }
