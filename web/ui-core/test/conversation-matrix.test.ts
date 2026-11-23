@@ -208,3 +208,42 @@ it("Work inner icon is a stored canonical display column, not renderer kind clas
   for (const [id, role] of Object.entries(expected)) expect(CANONICAL_CASES[id as keyof typeof expected].iconRole).toBe(role);
   expect(CANONICAL_CASES.human.iconRole).toBeNull();
 });
+
+
+it("Protocol 14 model_context hides current context and legacy admission-notice rows", async () => {
+  const { materializeHistoryPresentation } = await import("../src/conversation");
+  const items: HistoryItem[] = [
+    { node_id: "before", kind: "assistant_response", selection: { ordinal: 0 }, items: [text] },
+    { node_id: "context", kind: "model_context", selection: { ordinal: 1 }, items: [] },
+    // Protocol 14 history may contain a previously saved reply notice through this metadata-only kind.
+    { node_id: "legacy-reply-notice", kind: "model_context", selection: { ordinal: 2 }, excerpt: "legacy reply_expected notice", items: [] },
+    { node_id: "deferred-context", kind: "model_context", selection: { ordinal: 3 }, items: null, items_unavailable_reason: "response_budget" },
+    { node_id: "after", kind: "assistant_response", selection: { ordinal: 4 }, items: [{ ...text, item_identity: "after", text: "after context" }] },
+  ];
+  const rows = materializeHistoryPresentation(items);
+  const projected = projectHistoryWindowItems({ revision: 1, nodes: items });
+  expect(rows.rows.filter(row => row.type === "message").map(row => row.text)).toEqual(["safe typed text", "after context"]);
+  expect(rows.rows.filter(row => row.type === "note").map(row => row.id)).not.toEqual(expect.arrayContaining(["context", "legacy-reply-notice", "deferred-context"]));
+  expect(rows.projection.items.some(item => item.source.nodeId === "legacy-reply-notice" || item.source.nodeId === "context" || item.source.nodeId === "deferred-context")).toBe(false);
+  expect(projected.nodes.filter(node => node.node.kind === "model_context").map(node => node.nodeId)).toEqual(["context", "legacy-reply-notice", "deferred-context"]);
+});
+
+
+
+it("Protocol 14 model_context hides current context and legacy admission-notice rows", async () => {
+  const { materializeHistoryPresentation } = await import("../src/conversation");
+  const items: HistoryItem[] = [
+    { node_id: "before", kind: "assistant_response", selection: { ordinal: 0 }, items: [text] },
+    { node_id: "context", kind: "model_context", selection: { ordinal: 1 }, items: [] },
+    // Protocol 14 history may contain a previously saved reply notice through this metadata-only kind.
+    { node_id: "legacy-reply-notice", kind: "model_context", selection: { ordinal: 2 }, excerpt: "legacy reply_expected notice", items: [] },
+    { node_id: "deferred-context", kind: "model_context", selection: { ordinal: 3 }, items: null, items_unavailable_reason: "response_budget" },
+    { node_id: "after", kind: "assistant_response", selection: { ordinal: 4 }, items: [{ ...text, item_identity: "after", text: "after context" }] },
+  ];
+  const rows = materializeHistoryPresentation(items);
+  const projected = projectHistoryWindowItems({ revision: 1, nodes: items });
+  expect(rows.rows.filter(row => row.type === "message").map(row => row.text)).toEqual(["safe typed text", "after context"]);
+  expect(rows.rows.filter(row => row.type === "note").map(row => row.id)).not.toEqual(expect.arrayContaining(["context", "legacy-reply-notice", "deferred-context"]));
+  expect(rows.projection.items.some(item => item.source.nodeId === "legacy-reply-notice" || item.source.nodeId === "context" || item.source.nodeId === "deferred-context")).toBe(false);
+  expect(projected.nodes.filter(node => node.node.kind === "model_context").map(node => node.nodeId)).toEqual(["context", "legacy-reply-notice", "deferred-context"]);
+});

@@ -4,7 +4,7 @@ Source specification: conversation-spec.md Section 2 (f883 clean bytes).
 Implementation: web/ui-core/src/conversation-items.ts classifySavedHistoryFact.
 NODE_MATRIX exhaustively covers the internal specification vocabulary; it is NOT
 a new public DTO union. ASSISTANT_ITEMS exhaustively covers HistorySavedItem.kind.
-Unknown runtime node kinds map to record. No role, phase, prefix or JSON test.
+Unknown runtime node kinds other than model_context map to record. No role, phase, prefix or JSON test.
 
 | Spec Row / Exact Named Test | Classifier Route | Test File |
 | --- | --- | --- |
@@ -32,6 +32,7 @@ Unknown runtime node kinds map to record. No role, phase, prefix or JSON test.
 | 22 unknown bookkeeping internal | record / work | conversation-matrix.test.ts |
 | 23 definitively empty ordinary | ordinaryEmpty / conversation | conversation-matrix.test.ts |
 | 24 pending accepted held INPUT is separate not Work | normalizeLiveWorkFacts excludes pending input | conversation-matrix.test.ts |
+| model_context (incl. legacy reply_expected / reply / sender_label notice ordinals) | metadata only, not shown | conversation-matrix.test.ts:213 |
 
 ## Evidence And Limits
 

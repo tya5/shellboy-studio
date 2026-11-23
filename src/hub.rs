@@ -453,6 +453,7 @@ mod tests {
             thread_id: "t1".into(),
             attempt_id: id,
             outcome: EventAttemptOutcome::NotAdopted,
+            output_limit: None,
             seq,
         };
         hub.live_apply(vec![entry("ended")], false);
