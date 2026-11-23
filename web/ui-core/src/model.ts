@@ -1356,7 +1356,7 @@ export class AppModel {
     const facts = this.panelOperationFacts();
     const side = action.kind === "answer" ? action.side ?? "asked_by" : "asked_by";
     const source = action.kind === "cancel" && action.target === "pending" ? "pending" : side;
-    const reply = source === "pending" || facts[source].loading ? undefined : facts[source].items.find(row => row.message_id === id);
+    const reply = source === "pending" ? undefined : facts[source].items.find(row => row.message_id === id);
     if (action.kind === "answer" && (!reply || source !== "owed_by" && !(reply.recipient.kind === "name" && reply.recipient.name === "human"))) return;
     const state = source === "pending"
       ? facts.pending?.items.find(row => row.kind === "message" && row.message_id === id)?.state

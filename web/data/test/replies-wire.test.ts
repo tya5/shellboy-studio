@@ -45,3 +45,43 @@ it("pages only the requested direction and ignores a late continuation after swi
   expect(pages.asked_by.value.items).toEqual([]);
   pages.close(); data.stop();
 });
+
+it("refreshes every loaded reply page after a change hint without dropping the prefix", async () => {
+  const t = new FakeTransport(); const data = new ShellboyData({ transport: t });
+  data.start(); t.open(); t.push({ t: "hello", bridge_version: "test", data_dir: "/synthetic", owner: connected });
+  const pages = new ReplyPages(data); const stop = pages.observe("thread"); await flush();
+  const initial = t.calls("message.list");
+  const item = (id: string) => pendingReply(id, "sender", { kind: "thread", thread_id: "thread" }, id);
+  t.ok(initial[0]!.id, { items: Array.from({ length: 16 }, (_, i) => item(`r${i}`)), next_cursor: "page-2" });
+  t.ok(initial[1]!.id, { items: [] }); await flush();
+  pages.more("owed_by"); await flush();
+  const second = t.calls("message.list").at(-1)!;
+  expect(second.args).toMatchObject({ cursor: "page-2" });
+  t.ok(second.id, { items: [item("r16")], next_cursor: "page-3" }); await flush();
+  t.push({ t: "changed", config_changed: false, thread_ids: ["thread"], list: false }); await flush();
+  const owed = () => t.calls("message.list").filter(call => (call.args as { owed_by?: string }).owed_by === "thread");
+  const refreshFirst = owed().at(-1)!;
+  expect((refreshFirst.args as { cursor?: string }).cursor).toBeUndefined();
+  t.ok(refreshFirst.id, { items: Array.from({ length: 16 }, (_, i) => item(`r${i}`)), next_cursor: "page-2" }); await flush();
+  const refreshSecond = owed().at(-1)!;
+  expect((refreshSecond.args as { cursor?: string }).cursor).toBe("page-2");
+  t.ok(refreshSecond.id, { items: [item("r16")], next_cursor: "page-3" });
+  const askedRefresh = t.calls("message.list").filter(call => (call.args as { asked_by?: string }).asked_by === "thread").at(-1)!;
+  t.ok(askedRefresh.id, { items: [] }); await flush();
+  expect(pages.owed_by.value.items.map(row => row.message_id)).toEqual(Array.from({ length: 17 }, (_, i) => `r${i}`));
+  stop(); data.stop();
+});
+
+it("retains loaded reply rows and exposes a page error when a hint read fails", async () => {
+  const t = new FakeTransport(); const data = new ShellboyData({ transport: t });
+  data.start(); t.open(); t.push({ t: "hello", bridge_version: "test", data_dir: "/synthetic", owner: connected });
+  const pages = new ReplyPages(data); const stop = pages.observe("thread"); await flush();
+  const calls = t.calls("message.list"); const item = pendingReply("kept", "sender", { kind: "thread", thread_id: "thread" }, "kept");
+  t.ok(calls[0]!.id, { items: [item] }); t.ok(calls[1]!.id, { items: [] }); await flush();
+  t.push({ t: "changed", config_changed: false, thread_ids: ["thread"], list: false }); await flush();
+  const refreshes = t.calls("message.list").slice(-2);
+  t.push({ t: "result", id: refreshes[0]!.id, response: { protocol_version: 5, operation_id: "failure", ok: false, error: { code: "unavailable", message: "read failed" } } });
+  t.ok(refreshes[1]!.id, { items: [] }); await flush();
+  expect(pages.owed_by.value).toMatchObject({ items: [item], loading: false, error: "read failed" });
+  stop(); data.stop();
+});

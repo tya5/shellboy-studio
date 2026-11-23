@@ -381,12 +381,14 @@ function ProjectedMessage({ model, row, authorizedText, relationship, bodyPartia
 function WorkRegions({ model, place }: { model: AppModel; place: string }) {
   const t = model.t.value;
   const work = model.work.value;
-  const replies = model.replyPages.asked_by.value.items;
+  const replies = [
+    ...model.replyPages.owed_by.value.items.map(reply => ({ reply, side: "owed_by" as const })),
+    ...model.replyPages.asked_by.value.items.map(reply => ({ reply, side: "asked_by" as const })),
+  ];
   const state = (s: string) => s === "accepted" ? t("work.accepted") : s === "held" ? t("work.held") : s === "starting" ? t("work.starting") : s === "stopping" ? t("work.stopping") : t("work.runningState");
   return <>
-    {replies.length ? <section class="work-region"><h3>{t("work.replies")}</h3>{replies.map((r) => r.recipient.kind === "name" && r.recipient.name === "human" ?
-      <QuestionCard key={r.message_id} id={`${place}-${r.message_id}`} label={t("work.replies")} waitingWord={t("status.awaiting")} question={r.excerpt} answerLabel={t("inbox.answer")} submitLabel={t("inbox.answerResume")} error={panelOperationError(model, r.message_id)} busy={panelOperationBlocked(model, r.message_id)} onAnswer={text => { void model.runPanelOperation(r.message_id, { kind: "answer", text }); }} /> :
-      <div class="work-row" key={r.message_id}><span>{r.excerpt}</span>{r.recipient.kind === "thread" ? <a href={formatRoute({ view: "conversation", threadId: r.recipient.thread_id })}>{r.recipient.thread_id}</a> : null}</div>)}</section> : null}
+    {replies.length ? <section class="work-region"><h3>{t("work.replies")}</h3>{replies.map(({ reply, side }) =>
+      <QuestionCard key={reply.message_id} id={`${place}-${reply.message_id}`} label={t("work.replies")} waitingWord={t("status.awaiting")} question={reply.excerpt} answerLabel={t("inbox.answer")} submitLabel={t("inbox.answerResume")} error={panelOperationError(model, reply.message_id)} busy={panelOperationBlocked(model, reply.message_id)} onAnswer={text => { void model.runPanelOperation(reply.message_id, { kind: "answer", text, side }); }} />)}</section> : null}
     {work.running.length ? <section class="work-region running-region"><h3>{t("work.running")}</h3><span class="caption muted">{t("work.incomplete")}</span>{work.running.map((r) => <div class="work-row" key={r.id}><MonitorPopover className="running-label" label={r.label} preview><span>{r.label}</span>{r.command ? <code>{r.command}</code> : null}<span>{r.startedAt && parseTime(r.startedAt) !== undefined ? formatDuration(model.now.value - parseTime(r.startedAt)!) : ""}</span></MonitorPopover><span>{state(r.state)} {r.startedAt && parseTime(r.startedAt) !== undefined ? formatDuration(model.now.value - parseTime(r.startedAt)!) : ""}</span></div>)}</section> : null}
     {work.pending.length ? <section class="work-region"><h3>{t("work.pending")}</h3>{work.pending.map(r => {
       const action = panelCancel(model, r.id);
@@ -491,7 +493,13 @@ function PanelReplies({ model, side }: { model: AppModel; side: "owed_by" | "ask
       const human = reply.recipient.kind === "name" && reply.recipient.name === "human";
       const peer = side === "owed_by" ? reply.sender.thread_id : reply.recipient.kind === "thread" ? reply.recipient.thread_id : undefined;
       const title = peer ? model.rowById.value.get(peer)?.summary.title || peer : undefined;
-      const party = side === "owed_by" ? title ?? reply.sender.label ?? reply.sender.kind
+      const sender = senderFact(reply.sender);
+      const senderLabel = sender.kind === "human" ? t("convo.you")
+        : sender.kind === "external_cli" ? sender.label?.trim() ? `CLI: ${sender.label}` : "CLI"
+        : sender.kind === "model" ? title ?? sender.label ?? t("convo.shellboy")
+        : sender.kind === "unknown_model" ? sender.label ?? t("convo.shellboy")
+        : sender.label ?? t("work.textUnavailable");
+      const party = side === "owed_by" ? senderLabel
         : human ? t("convo.you") : title ?? (reply.recipient.kind === "name" ? reply.recipient.name : undefined);
       const target = peer && peer !== model.selectedId.value ? formatRoute({ view: "conversation", threadId: peer }) : undefined;
       const actions = [...(target ? [{ key: "open", label: t("panel.openThread"), href: target }] : []),
@@ -500,7 +508,8 @@ function PanelReplies({ model, side }: { model: AppModel; side: "owed_by" | "ask
         subtitle={panelElapsed(model.now.value, reply.created_at)} waiting={side === "asked_by" && human} selected={model.panelOpener.value[tab]?.id === reply.message_id}
         menuLabel={t("panel.rowActions")} actions={actions} error={panelOperationError(model, reply.message_id)} onSelect={opener => model.openInPanel({ kind: "reply", id: reply.message_id, replySide: side }, panelFocusReturn(opener))} />;
     })}
-    {!page.items.length && !page.loading ? <p class="muted caption">{t("panel.empty")}</p> : null}
+    {page.error ? <p role="alert">{page.error}</p> : null}
+    {!page.items.length && !page.loading && !page.error ? <p class="muted caption">{t("panel.empty")}</p> : null}
     {page.cursor ? <Button disabled={page.loading} onClick={() => model.replyPages.more(side)}>{t("panel.attachmentsMore")}</Button> : null}
   </div>;
 }
@@ -603,7 +612,7 @@ function PanelDetail({ model, tabLabel, onBack }: { model: AppModel; tabLabel: s
   const replyCancel = reply && side === "asked_by" ? panelCancel(model, reply.message_id, "reply") : undefined;
   const canAnswer = reply && (side === "owed_by" || reply.recipient.kind === "name" && reply.recipient.name === "human");
   return <section class="panel-detail" data-panel-detail=""><div class="panel-detail-head">{back}<h3>{tabLabel}</h3></div>
-    {canAnswer ? <QuestionCard id={`panel-${reply.message_id}`} label={t("work.replies")} waitingWord={t("status.awaiting")} question={body?.text ?? reply.excerpt} answerLabel={t("inbox.answer")} submitLabel={t("inbox.answerResume")} error={error} busy={panelOperationBlocked(model, reply.message_id) || model.replyPages[side].value.loading} onAnswer={text => { void model.runPanelOperation(reply.message_id, { kind: "answer", text, side }); }} />
+    {canAnswer ? <QuestionCard id={`panel-${reply.message_id}`} label={t("work.replies")} waitingWord={t("status.awaiting")} question={body?.text ?? reply.excerpt} answerLabel={t("inbox.answer")} submitLabel={t("inbox.answerResume")} error={error} busy={panelOperationBlocked(model, reply.message_id)} onAnswer={text => { void model.runPanelOperation(reply.message_id, { kind: "answer", text, side }); }} />
       : <p>{body?.text ?? reply?.excerpt ?? t("work.textUnavailable")}</p>}
     {peer && peer !== model.selectedId.value ? <a href={formatRoute({ view: "conversation", threadId: peer })}>{model.rowById.value.get(peer)?.summary.title || peer}</a> : null}
     {replyCancel ? <Button disabled={replyCancel.disabled} onClick={replyCancel.run}>{replyCancel.label}</Button> : null}

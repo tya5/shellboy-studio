@@ -45,7 +45,7 @@ export class HumanInbox implements PendingAdapter {
   private stopSession: () => void;
   // At most the current page's 16 duties. Keep only unconfirmed outcomes
   // across rereads; never replace their receipt with a fresh mutation identity.
-  private attempts = new Map<string, { text: string; owner: string; epoch: number; operationId?: string; result?: Promise<Outcome<unknown>>; settled?: boolean }>();
+  private attempts = new Map<string, { text: string; owner: string; epoch: number; operationId?: string; result?: Promise<Outcome<unknown>>; settled?: boolean; outcomeShown?: boolean }>();
   private refresher: Refresher;
   constructor(private readonly data: ShellboyData) {
     this.refresher = new Refresher(async (_, sent) => this.read(sent));
@@ -131,7 +131,7 @@ export class HumanInbox implements PendingAdapter {
       }
       this.nextCursor = page.value.next_cursor;
       const ids = new Set(items.map(i => i.id));
-      for (const [id, attempt] of this.attempts) if (!ids.has(id) && attempt.settled && !attempt.operationId) this.attempts.delete(id);
+      for (const [id, attempt] of this.attempts) if (!ids.has(id) && attempt.settled && attempt.outcomeShown) this.attempts.delete(id);
       this.page = Object.freeze({ owner, epoch, ...(cursor && { cursor }), ids });
       // Publish a validated page together; no intermediate empty list during reread.
       batch(() => { this.error.value = undefined; this.hasMore.value = this.nextCursor !== undefined; this.stale.value = false; this.items.value = items; });
@@ -186,6 +186,7 @@ export class HumanInbox implements PendingAdapter {
         }
       }
       if (!out.ok) entry.result = undefined;
+      entry.outcomeShown = true;
       return out;
     });
     return entry.result;
