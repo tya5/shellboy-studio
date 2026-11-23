@@ -130,7 +130,7 @@ export function ArtifactDetail({ model }: { model: AppModel }) {
       <Button variant="ghost" onClick={() => { setCopyFailed(false); if (!navigator.clipboard) setCopyFailed(true);
         else void navigator.clipboard.writeText(version.uri).catch(() => setCopyFailed(true)); }}>{t("code.copy")}</Button>
       {copyFailed ? <p role="status">{t("guide.copyFailed")}</p> : null}
-      {action?.kind === "link" ? <a class="artifact-open-link" href={action.href} target="_blank" rel="noopener noreferrer">{t("artifact.open")}</a> : null}
+      {action?.kind === "link" ? <a class="nav-link" href={action.href} target="_blank" rel="noopener noreferrer">{t("artifact.open")}</a> : null}
       {target && action?.kind === "preview" ? <Preview key={JSON.stringify([target, action.mime])} model={model} target={target} mime={action.mime} title={version.title} /> : null}
       {target && action?.kind === "open" ? <Button variant="ghost" onClick={() => {
         setOpenFailed(false);

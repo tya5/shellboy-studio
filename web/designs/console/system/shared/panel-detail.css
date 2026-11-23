@@ -3,7 +3,3 @@
 .artifact-preview { box-sizing:border-box; block-size:var(--size-preview); overflow:auto; padding:var(--space-8); border:1px solid var(--line); background:var(--inset); border-radius:var(--radius-s); }
 .artifact-preview > img { display:block; margin-inline:auto; width:auto; height:auto; max-width:100%; max-height:100%; object-fit:contain; }
 .artifact-preview > pre { margin:0; font:var(--type-code); white-space:pre-wrap; overflow-wrap:anywhere; }
-
-.artifact-open-link{color:var(--accent);text-decoration:none}
-.artifact-open-link:hover,.artifact-open-link:focus-visible{text-decoration:underline}
-@container app (max-width:899px){.artifact-open-link{display:inline-flex;align-items:center;min-height:var(--size-touch)}}
