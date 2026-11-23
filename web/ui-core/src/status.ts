@@ -1,4 +1,5 @@
-import { ACTIVITY_STATUS, type ActivityStatus } from "../../data/src";
+import { ACTIVITY_STATUS, activityStatus, type ActivityStatus } from "../../data/src";
+export { activityStatus } from "../../data/src";
 
 import type { Translate } from "./i18n";
 
@@ -8,16 +9,8 @@ export type ShellStatusKey = "running" | "completed" | "failed" | "stopped";
 
 export const STATUS_KEYS: readonly StatusKey[] = ["awaiting", "error", "running", "waiting", "idle"];
 
-/** Activity status uses the canonical data-layer Monitor mapping. */
-export function activityStatus(activity: string | undefined): ActivityStatus | undefined {
-  return activity !== undefined && Object.hasOwn(ACTIVITY_STATUS, activity)
-    ? ACTIVITY_STATUS[activity as keyof typeof ACTIVITY_STATUS]
-    : undefined;
-}
 
-export function statusOfActivity(activity: string | undefined): StatusKey | undefined {
-  return activityStatus(activity);
-}
+export const statusOfActivity = activityStatus;
 
 /** Retry is an owner recovery fact, not a capability implied by an error mark. */
 export function isThreadRecovery(status: StatusKey | undefined, activity: string | undefined): boolean {

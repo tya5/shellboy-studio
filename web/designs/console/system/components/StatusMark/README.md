@@ -1,6 +1,6 @@
 # StatusMark
 
-- **Use for:** Show a Thread's attention category from `statusOfActivity`, plus the existing pending-reply projection. For shell execution use the shell variant and `statusOfShell`.
+- **Use for:** Show a Thread's attention category from `activityStatus` (the data-layer activity mapping), plus the existing pending-reply projection. For shell execution use the shell variant and `statusOfShell`.
 - **Do not use for:** Use unread title emphasis for new results and ContextRing for context use. Do not infer Retry from the error mark or infer shell outcomes from Thread marks.
 - **Why:** Five shapes make active work and attention distinct at a glance without treating every way a Run ends as a new visual category.
 - **Source:** [Approved Studio #83 decision](https://github.com/tya5/shellboy-studio/issues/83), [Conductor](https://www.conductor.build/), [Material circular indeterminate](https://mui.com/material-ui/react-progress/#circular-indeterminate), and [shadcn Spinner](https://ui.shadcn.com/docs/components/spinner).
