@@ -28,6 +28,11 @@ export function App({ context }: { context: DesignContext }) {
   const model = context.model;
   const appRef = useRef<HTMLDivElement>(null);
   const panelVisible = () => (appRef.current?.clientWidth ?? 0) >= 1180;
+  const [phonePanel, setPhonePanel] = useState<string>();
+  const togglePanelSheet = () => {
+    const thread = model.handle.peek()?.threadId;
+    if (thread) setPhonePanel(current => current === thread ? undefined : thread);
+  };
   useLayoutEffect(() => model.bindPanelPreference({
     visible: panelVisible,
     collapsed: () => context.prefs.peek().panelCollapsed === true,
@@ -80,9 +85,10 @@ export function App({ context }: { context: DesignContext }) {
         context.setPrefs({ navCollapsed: !context.prefs.value.navCollapsed });
         return;
       }
-      if (panelShortcut(e) && model.route.peek().view === "conversation" && panelVisible()) {
+      if (panelShortcut(e) && model.route.peek().view === "conversation" && model.handle.peek()) {
         e.preventDefault();
-        model.togglePanel();
+        if (!panelVisible() || phonePanel === model.handle.peek()?.threadId) togglePanelSheet();
+        else model.togglePanel();
         return;
       }
       const view = viewShortcut(e);
@@ -93,7 +99,7 @@ export function App({ context }: { context: DesignContext }) {
     };
     addEventListener("keydown", onKey);
     return () => removeEventListener("keydown", onKey);
-  }, [model, context]);
+  }, [model, context, phonePanel]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -182,7 +188,6 @@ export function App({ context }: { context: DesignContext }) {
   const desktop = model.data.desktop.value;
   const desktopDiagnostic = model.data.desktopDiagnostic.value;
   const title = route.view === "conversation" ? (details?.title ?? row?.summary.title) : t(`view.${route.view}`);
-  const [phonePanel, setPhonePanel] = useState<string>();
 
   const statusFooter = <footer class="status">
             <StatusMark feedback
@@ -303,7 +308,7 @@ export function App({ context }: { context: DesignContext }) {
           {deleteThread ? <ThreadDeleteDialog key={deleteThread.threadId} model={model} target={deleteThread} getReturnFocusTarget={id => resolveSidebarLink(sidebarLinkId(deleteThread.rowKey), id)} onClose={() => setDeleteThread(undefined)} /> : null}
           <section class="view" aria-label={title}>
             <AppsHost context={context} />
-            {route.view === "apps" ? null : route.view === "conversation" ? <Conversation model={model} panelCollapsed={context.prefs.value.panelCollapsed} rightPanelWidth={context.prefs.value.rightPanelWidth} onPanelWidth={rightPanelWidth => context.setPrefs({ rightPanelWidth })} phonePanel={!!selected && phonePanel === selected} onClosePhonePanel={() => setPhonePanel(undefined)} onOpenPhonePanel={() => setPhonePanel(selected)} /> : route.view === "monitor" ? <Monitor context={context} /> : route.view === "inbox" ? <Inbox model={model} /> : route.view === "analytics" ? <Analytics context={context} /> : route.view === "branches" ? <Branches model={model} /> : route.view === "threads" ? <Threads model={model} /> : route.view === "setup" ? <Setup context={context} /> : <SettingsView context={context} />}
+            {route.view === "apps" ? null : route.view === "conversation" ? <Conversation model={model} panelCollapsed={context.prefs.value.panelCollapsed} rightPanelWidth={context.prefs.value.rightPanelWidth} onPanelWidth={rightPanelWidth => context.setPrefs({ rightPanelWidth })} phonePanel={!!selected && phonePanel === selected} onTogglePhonePanel={togglePanelSheet} onClosePhonePanel={() => setPhonePanel(undefined)} onOpenPhonePanel={() => setPhonePanel(selected)} /> : route.view === "monitor" ? <Monitor context={context} /> : route.view === "inbox" ? <Inbox model={model} /> : route.view === "analytics" ? <Analytics context={context} /> : route.view === "branches" ? <Branches model={model} /> : route.view === "threads" ? <Threads model={model} /> : route.view === "setup" ? <Setup context={context} /> : <SettingsView context={context} />}
           </section>
           {statusFooter}
           <nav class="tabbar" aria-label={t("nav.views")}>

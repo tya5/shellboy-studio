@@ -476,13 +476,9 @@ describe('right panel purpose',()=>{
   }finally{f.model.dispose();f.data.stop();}
  });
 
- it('retains the human question opener after Back and leaves Alt+9 inactive at sheet width', async () => {
+ it('retains the human question opener after Back on desktop', async () => {
   const f=await setup();
   try {
-   Object.defineProperty(f.host.querySelector('.app'), 'clientWidth', {configurable:true,value:1179});
-   await act(async()=>{window.dispatchEvent(new KeyboardEvent('keydown',{key:'9',altKey:true,bubbles:true,cancelable:true}));});
-   expect(f.prefs.value.panelCollapsed).toBe(false);
-   Object.defineProperty(f.host.querySelector('.app'), 'clientWidth', {configurable:true,value:1280});
    await act(async()=>f.host.querySelector<HTMLButtonElement>('[data-panel-tab="awaiting-reply"]')!.click());
    const panel=f.host.querySelector('#panel-page-awaiting-reply')!;
    const row=panel.querySelector('[data-panel-row-id="owed-human"]')!;
@@ -520,6 +516,39 @@ describe('right panel purpose',()=>{
    expect(f.host.querySelector('#panel-page-awaiting-reply [role=alert]')?.textContent).toContain('fixture cancellation failed');
    await act(async()=>row.querySelector('button')!.click());
    expect(f.host.querySelector('[data-panel-detail] [role=alert]')?.textContent).toContain('fixture cancellation failed');
+  } finally {f.model.dispose();f.data.stop();}
+ });
+
+ it.each([390, 1179])('opens Activity details and shares the panel toggle with Alt+9 at %ipx', async width => {
+  const f=await setup();
+  const shortcut=()=>window.dispatchEvent(new KeyboardEvent('keydown',{key:'9',altKey:true,bubbles:true,cancelable:true}));
+  const sheet=()=>f.host.querySelector<HTMLDialogElement>('dialog.work-sheet[open]');
+  const toggle=()=>f.host.querySelector<HTMLButtonElement>('.phone-panel-footer .shell-toggle-panel')!;
+  try {
+   await act(async()=>f.model.togglePanel());
+   const stored=f.stored.value;
+   Object.defineProperty(f.host.querySelector('.app'), 'clientWidth', {configurable:true,value:width});
+   f.db.bodies.queued='Queued fixture message';
+   f.db.work.lead!.push({kind:'message',id:'queued',thread_id:'lead',message_id:'queued',state:'held'});
+   await act(async()=>{f.t.push({t:'changed',config_changed:false,thread_ids:['lead'],list:false});await settle(f.t,f.db);});
+   await act(async()=>{shortcut();});
+   expect(sheet()?.querySelector('[data-phone-panel]')).not.toBeNull();
+   for (const [id, expected] of [['shell-running','npm test'],['queued','Queued fixture message']]) {
+    const opener=sheet()!.querySelector<HTMLButtonElement>(`[data-panel-row-id="${id}"] .panel-list-main`)!;
+    await act(async()=>{opener.click();await settle(f.t,f.db);});
+    expect(sheet()?.querySelector('[data-panel-detail]')?.textContent).toContain(expected);
+    await act(async()=>sheet()!.querySelector<HTMLButtonElement>('[data-panel-back]')!.click());
+    expect(document.activeElement).toBe(opener);
+   }
+   await act(async()=>{shortcut();});
+   expect(sheet()).toBeNull();
+   expect(document.activeElement).toBe(toggle());
+   await act(async()=>toggle().click());
+   expect(sheet()).not.toBeNull();
+   await act(async()=>{shortcut();});
+   expect(sheet()).toBeNull();
+   expect(f.stored.value).toBe(stored);
+   expect(f.prefs.value.panelCollapsed).toBe(true);
   } finally {f.model.dispose();f.data.stop();}
  });
 

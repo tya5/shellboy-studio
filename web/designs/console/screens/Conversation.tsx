@@ -498,7 +498,7 @@ function PanelActivity({ model }: { model: AppModel }) {
         return <ListRow key={row.id} id={row.id} title={label} command={command?.trim() !== label ? command : undefined}
           subtitle={section.kind === "step" ? elapsed : [state, elapsed].filter(Boolean).join(" · ")} icon={section.icon}
           selected={selected?.kind === section.kind && selected.id === row.id}
-          onSelect={opener => model.openInPanel({ kind: section.kind, id: row.id }, panelFocusReturn(opener))} menuLabel={t("panel.rowActions")}
+          onSelect={opener => model.openInPanel({ kind: section.kind, id: row.id }, panelFocusReturn(opener), true)} menuLabel={t("panel.rowActions")}
           actions={section.kind === "message" ? [panelCancel(model, row.id)] : undefined} error={panelOperationError(model, row.id)} />;
       })}</section> : null;
     })}
@@ -752,7 +752,7 @@ export function OrderedHistory({ model, handle, win, t, openThreadSettings }: { 
     liveBoundary={boundary?.ordinal} />;
 }
 
-export function Conversation({ model, panelCollapsed = false, rightPanelWidth, onPanelWidth, phonePanel, onClosePhonePanel, onOpenPhonePanel }: { model: AppModel; panelCollapsed?: boolean; rightPanelWidth?: number; onPanelWidth?: (width: number) => void; phonePanel?: boolean; onClosePhonePanel?: () => void; onOpenPhonePanel?: () => void }) {
+export function Conversation({ model, panelCollapsed = false, rightPanelWidth, onPanelWidth, phonePanel, onTogglePhonePanel, onClosePhonePanel, onOpenPhonePanel }: { model: AppModel; panelCollapsed?: boolean; rightPanelWidth?: number; onPanelWidth?: (width: number) => void; phonePanel?: boolean; onTogglePhonePanel?: () => void; onClosePhonePanel?: () => void; onOpenPhonePanel?: () => void }) {
   const t = model.t.value;
   const handle = model.handle.value;
   const win = model.longReader.value;
@@ -838,7 +838,7 @@ export function Conversation({ model, panelCollapsed = false, rightPanelWidth, o
             }
           />
         </div> : null}
-        {handle ? <div class="phone-panel-footer"><ShellFooter side="right"><ShellToggle panel expanded={!!phonePanel} label={t(phonePanel ? "panel.collapse" : "panel.expand")} onClick={() => phonePanel ? onClosePhonePanel?.() : onOpenPhonePanel?.()} /></ShellFooter></div> : null}
+        {handle ? <div class="phone-panel-footer"><ShellFooter side="right"><ShellToggle panel expanded={!!phonePanel} label={t(phonePanel ? "panel.collapse" : "panel.expand")} onClick={onTogglePhonePanel} /></ShellFooter></div> : null}
       </div>
       {handle && !phonePanel && onPanelWidth ? <LayoutSeparator side="right" label={t("panel.resize")} controls="conversation-right-panel"
         width={readRightPanelWidth(rightPanelWidth)} min={RIGHT_PANEL_WIDTH_MIN} max={RIGHT_PANEL_WIDTH_MAX}
