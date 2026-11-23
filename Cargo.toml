@@ -1,6 +1,6 @@
 [package]
 name = "shellboy-studio"
-version = "0.2.7"
+version = "0.3.0"
 edition = "2024"
 rust-version = "1.99"
 publish = false
@@ -43,7 +43,7 @@ next-cwds = ["next-tags"]
 
 [dependencies]
 # Published owner pin; exact-pair acceptance verifies the manifest revision and lock commit.
-shellboy = { git = "https://github.com/tya5/shellboy", rev = "898259c5b27f7e51aa8d923da6d2f19212369970" }
+shellboy = { git = "https://github.com/tya5/shellboy", rev = "b644b3cc5fce7647a179917efe6897354dccc8ca" }
 tokio = { version = "=1.54.1", features = ["rt-multi-thread", "macros", "sync", "time", "net", "signal", "process", "fs", "io-util"] }
 tokio-util = { version = "=0.7.20", features = ["rt"] }
 axum = { version = "=0.8.9", default-features = false, features = ["http1", "tokio", "ws", "json"] }

@@ -115,9 +115,9 @@ A Claude or ChatGPT subscription is not an API key; an API key is required.
 ## Version pairing with Shellboy
 
 Studio releases are built against one Shellboy release and speak its protocol.
-This candidate (Studio 0.2.7) binds the reviewed Shellboy v0.13.1 tag and peeled commit in
-Cargo.toml and Cargo.lock. See the [0.2.7 release notes](docs/release-v0.2.7.md)
-for the pairing and validation plan. Studio v0.2.4 was paired
+Studio 0.3.0 binds the Shellboy v0.14.0 tag commit (`b644b3cc`) in Cargo.toml and
+Cargo.lock. See the [0.3.0 release notes](docs/release-v0.3.0.md). Studio 0.2.7 was
+paired with Core v0.13.1, Studio v0.2.4 was paired
 with Core v0.11.2 and Studio v0.1.0 with Core v0.11.0. For v0.1.0, hosted
 exact-pair checks and distribution builds passed for the published release; see
 the [release evidence](docs/first-release-verification.md#published-v010-outcome). See the [validation record](docs/development/protocol5-validation.md)
