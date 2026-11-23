@@ -12,9 +12,9 @@ export const STATUS_KEYS: readonly StatusKey[] = ["awaiting", "error", "running"
 
 export const statusOfActivity = activityStatus;
 
-/** Retry is an owner recovery fact, not a capability implied by an error mark. */
-export function isThreadRecovery(status: StatusKey | undefined, activity: string | undefined): boolean {
-  return status === "error" && activity === "recovery";
+/** Retry is an owner recovery fact (the activity), not a capability implied by the merged attention mark. */
+export function isThreadRecovery(activity: string | undefined): boolean {
+  return activity === "recovery";
 }
 
 export const statusLabel = (t: Translate, status: StatusKey): string => t(status === "idle" ? "status.quiet" : `status.${status}`);

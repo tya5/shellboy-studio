@@ -5,7 +5,7 @@
 - **Why:** A notice gives screen-wide conditions one clear location without misattributing them to a row. The banner is part of the layout grid, so drawers and panels start below it instead of being covered.
 - **Source:** [VS Code Workspace Trust (Restricted Mode banner)](https://code.visualstudio.com/docs/editor/workspace-trust), [WAI-ARIA APG Alert](https://www.w3.org/WAI/ARIA/apg/patterns/alert/), [shadcn/ui Alert](https://ui.shadcn.com/docs/components/alert)
 
-A message that belongs to the screen, not to one row: connection trouble, a failed action, a Thread in recovery wait. `bad` for failures, `wait` for things in progress, plain otherwise. Say what happened and what to do; put the action in it. An optional semantic `icon` leads the text at `size-icon-small`.
+A message that belongs to the screen, not to one row: connection trouble, a failed action. A Thread in recovery wait is not a Notice: its reason and the one Retry are in the conversation status line (#103). `bad` for failures, `wait` for things in progress, plain otherwise. Say what happened and what to do; put the action in it. An optional semantic `icon` leads the text at `size-icon-small`.
 
 ## Banner
 

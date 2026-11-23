@@ -100,11 +100,13 @@ describe("resync, restart and loss", () => {
     db.reads.length = 0;
     t.push({ t: "resync" });
     await settle(t, db);
-    expect(db.reads.sort()).toEqual(["status", "thread.get:a", "thread.get:b", "thread.list", "thread.list", "thread.list"]);
-    expect(t.calls("thread.list").slice(-2).map(call => call.args)).toEqual([
+    // The list page, the failed and recovery_wait discovery pages (#102) and the open Threads' rows by ID (#103).
+    expect(db.reads.sort()).toEqual(["status", "thread.get:a", "thread.get:b", "thread.list", "thread.list", "thread.list", "thread.list"]);
+    expect(t.calls("thread.list").map(call => call.args)).toEqual(expect.arrayContaining([
       { state: "failed", archived: "include", limit: PAGE_LIMIT },
       { state: "recovery_wait", archived: "include", limit: PAGE_LIMIT },
-    ]);
+      { thread_ids: ["a", "b"] },
+    ]));
   });
 
   it("restarted followed by resync (the bridge sends both) costs at most one trailing read per target", async () => {
@@ -117,7 +119,7 @@ describe("resync, restart and loss", () => {
     t.push({ t: "resync" });
     await settle(t, db);
     // the first reads were already on the wire when resync arrived, so one trailing read each
-    expect(db.reads.sort()).toEqual(["thread.get:a", "thread.get:a"]);
+    expect(db.reads.sort()).toEqual(["thread.get:a", "thread.get:a", "thread.list", "thread.list"]);
   });
 
   it("owner unreachable keeps values but marks them stale; recovery re-reads", async () => {
@@ -148,7 +150,7 @@ describe("resync, restart and loss", () => {
     t.open();
     t.push({ t: "hello", bridge_version: "0.1.0", owner: connected });
     await settle(t, db);
-    expect(db.reads.sort()).toEqual(["thread.get:a"]);
+    expect(db.reads.sort()).toEqual(["thread.get:a", "thread.list"]);
     expect(h.detail.value.stale).toBe(false);
   });
 
@@ -498,6 +500,24 @@ describe("the Thread list stays bounded however many Threads exist", () => {
     const before = x.t.calls("thread.list").length;
     await more(x);
     expect(x.t.calls("thread.list").length).toBe(before);
+  });
+  it("keeps an open Thread's row past the bound and re-reads it on its own hints (#103)", async () => {
+    const x = await listed(30);
+    x.all.push(summary("old", { activity: "recovery" }));
+    const open = x.data.openThread("old", nextOrdinal());
+    await settle(x.t, x.db);
+    expect(x.data.threadRows.value.get("old")?.activity).toBe("recovery");
+    for (let i = 0; i < 25; i++) await more(x);
+    // A list hint re-reads the 1000 loaded rows, which are then newer than the open Thread's row.
+    x.t.push({ t: "resync" });
+    await settle(x.t, x.db);
+    expect(x.data.threadRows.value.size).toBe(MAX_LIST_ROWS);
+    expect(x.data.threadRows.value.get("old")?.activity).toBe("recovery");
+    x.all[x.all.length - 1] = summary("old", { activity: "tools" });
+    x.t.push({ t: "changed", config_changed: false, thread_ids: ["old"], list: false });
+    await settle(x.t, x.db);
+    expect(x.data.threadRows.value.get("old")?.activity).toBe("tools");
+    open.close();
   });
 });
 

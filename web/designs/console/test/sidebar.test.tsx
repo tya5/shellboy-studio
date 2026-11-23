@@ -306,16 +306,18 @@ it("bolds a background completion only after the list hint and clears on open or
     expect(unread()).toBe(false);
     f.db.threads.other = summary("other", { ...f.db.threads.other, last_end_message: second });
     expect(unread()).toBe(false);
-    const reads = f.t.calls("thread.list").length;
+    // List pages only: rows read by ID (the open Thread's own row, #103) and the pinned band's read are not pages.
+    const pages = () => f.t.calls("thread.list").filter(call => { const args = call.args as { thread_ids?: string[]; tags?: string[] }; return !args.thread_ids && !args.tags; }).length;
+    const reads = pages();
     await act(() => hint());
-    expect(f.t.calls("thread.list").filter(call => (call.args as { thread_ids?: string[] }).thread_ids).length).toBeGreaterThan(0);
-    expect(f.t.calls("thread.list").filter(call => !(call.args as { thread_ids?: string[] }).thread_ids).length).toBe(reads);
+    expect(f.t.calls("thread.list").filter(call => (call.args as { thread_ids?: string[] }).thread_ids?.includes("other")).length).toBeGreaterThan(0);
+    expect(pages()).toBe(reads);
     expect(unread()).toBe(true);
     await mark("Mark as read");
     expect(unread()).toBe(false);
     await mark("Mark as unread");
     expect(unread()).toBe(true);
-    expect(f.t.calls("thread.list").filter(call => !(call.args as { thread_ids?: string[] }).thread_ids)).toHaveLength(reads);
+    expect(pages()).toBe(reads);
     await act(async () => { f.model.openThread("other"); await settle(f.t, f.db); });
     expect(unread()).toBe(false);
     expect(prefs.peek().sidebarUnread?.find(r => r.thread === "other")?.node).toBe("b");

@@ -305,6 +305,8 @@ export function ConversationStatus({ model }: { model: AppModel }) {
   const running = work.running[0];
   const start = running?.startedAt ? parseTime(running.startedAt) : undefined;
   const activity = row?.summary.activity;
+  // The one place for the recovery reason and Retry; it shows under an awaiting word too.
+  const recovery = model.recovery.value;
   const errorActivity = status === "error" && (activity === "recovery" || activity === "failed") ? activity : undefined;
   const character = errorActivity ?? status;
   const label = errorActivity ? t(`status.${errorActivity}`) : status === "running" && activity ? activityLabel(model.lang.value, activity) : status ? activityStatusLabel(t, status) : "";
@@ -314,7 +316,7 @@ export function ConversationStatus({ model }: { model: AppModel }) {
       {work.running.length > 1 ? <span>{t("work.runningCount", { n: work.running.length })}</span> : null}
       {start === undefined ? null : <span>{formatDuration(model.now.value - start)}</span>}
     </> : null}
-    {status === "error" && row?.summary.activity === "recovery" ? <><span data-status-description>{model.recovery.value?.message ?? model.recovery.value?.hint}</span>{model.canRetry.value ? <Button onClick={() => void model.retry()}>{t("action.retry")}</Button> : null}</> : null}
+    {recovery ? <><span data-status-description>{recovery.message ?? recovery.hint}</span>{model.canRetry.value ? <Button title={t("recovery.body")} onClick={() => void model.retry()}>{t("action.retry")}</Button> : null}</> : null}
   </> : " "}</div>;
 }
 
@@ -781,7 +783,6 @@ export function Conversation({ model, panelCollapsed = false, rightPanelWidth, o
   const pendingOwn = model.pendingOwnMessage.value;
   const sendBlocked = model.ownSendBlocked();
   const conn = model.connection.value;
-  const recovery = model.recovery.value;
   const diagnostic = win?.diagnostic.value;
 
   return (
@@ -796,21 +797,6 @@ export function Conversation({ model, panelCollapsed = false, rightPanelWidth, o
           </EmptyState>}
         <ConversationStatus key="permanent-conversation-status" model={model} />
         {handle ? <div class="dock">
-          {recovery ? (
-            <Notice
-              tone="bad"
-              title={t("recovery.title")}
-              actions={
-                <Button variant="warn" onClick={() => void model.retry()}>
-                  <Icon role="action.retry" size="small" />
-                  {t("action.retry")}
-                </Button>
-              }
-            >
-              <div>{recovery.message}</div>
-              <div class="muted">{t("recovery.body")}</div>
-            </Notice>
-          ) : null}
           {send.kind === "failed" ? <Notice tone="bad">{t("composer.failed", { message: send.message })}</Notice> : null}
           {send.kind === "unconfirmed" ? (
             <Notice tone="wait" actions={<Button variant="warn" disabled={!model.canResend()} onClick={() => void model.resend(pendingOwn)}>{t("composer.retry")}</Button>}>

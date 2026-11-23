@@ -157,11 +157,19 @@ function mergeRows(first: readonly ThreadSummary[], then: readonly ThreadSummary
 const isActiveSummary = (row: ThreadSummary): boolean =>
   (row.awaiting_named_count ?? 0) > 0 || isActiveThreadActivity(row.activity);
 
-function rememberRows(previous: ReadonlyMap<string, ThreadSummary>, rows: readonly ThreadSummary[]): Map<string, ThreadSummary> {
+/** Bounded at MAX_LIST_ROWS; the oldest rows go first, but never an open Thread's (at most MAX_WATCHED_THREADS). */
+function trimRows(rows: Map<string, ThreadSummary>, open: ReadonlyMap<string, unknown>): Map<string, ThreadSummary> {
+  for (const id of rows.keys()) {
+    if (rows.size <= MAX_LIST_ROWS) break;
+    if (!open.has(id)) rows.delete(id);
+  }
+  return rows;
+}
+
+function rememberRows(previous: ReadonlyMap<string, ThreadSummary>, rows: readonly ThreadSummary[], open: ReadonlyMap<string, unknown>): Map<string, ThreadSummary> {
   const next = new Map(previous);
   for (const row of rows) { next.delete(row.thread_id); next.set(row.thread_id, row); }
-  while (next.size > MAX_LIST_ROWS) next.delete(next.keys().next().value!);
-  return next;
+  return trimRows(next, open);
 }
 
 export class ShellboyData {
@@ -344,7 +352,7 @@ export class ShellboyData {
       ? { ...now, items: [...new Set([...now.items, ...out.value.items.map(row => row.thread_id)])].slice(0, MAX_LIST_ROWS), nextCursor: out.value.next_cursor, loadingMore: false, error: undefined }
       : { ...now, loadingMore: false, error: out.error };
     if (out.ok) {
-      this.threadRowsSig.value = rememberRows(this.threadRowsSig.peek(), out.value.items);
+      this.threadRowsSig.value = rememberRows(this.threadRowsSig.peek(), out.value.items, this.entries);
     }
   }
 
@@ -463,6 +471,8 @@ export class ShellboyData {
       if (this.capabilities.peek().includes(CAPABILITY_THREAD_TAGS)) jobs.push(this.refresher.request("pinned"));
     }
     for (const id of this.entries.keys()) jobs.push(this.requestThread(id));
+    // An open Thread's row is its own fact, read by ID whether or not a list page holds it.
+    if (this.entries.size) jobs.push(this.refresher.request("open-rows"));
     return Promise.all(jobs).then(() => undefined);
   }
 
@@ -539,7 +549,8 @@ export class ShellboyData {
           this.listHint.value++;
           if (this.listRefs > 0 && this.capabilities.peek().includes(CAPABILITY_THREAD_TAGS)) void this.refresher.request("pinned");
         }
-        if (f.list && f.thread_ids.length) void this.refreshThreadRows(f.thread_ids, true);
+        { const rows = f.list ? f.thread_ids : f.thread_ids.filter(id => this.entries.has(id));
+          if (rows.length) void this.refreshThreadRows(rows, f.list); }
         for (const id of f.thread_ids) {
           for (const notify of this.hintWatchers.get(id) ?? []) notify();
           if (this.entries.has(id)) void this.requestThread(id);
@@ -641,6 +652,7 @@ export class ShellboyData {
 
   private async readKey(key: string, onSent: () => void): Promise<void> {
     if (key === "inbox-rows") return this.readInboxRows();
+    if (key === "open-rows") return this.refreshActiveRows([...this.entries.keys()], this.readQualificationEpoch);
     if (key === "pinned") return this.readPinned(onSent);
     if (key === "active") return this.readActive(onSent);
     if (key.startsWith("list")) return this.readList(onSent, key === "list-shape");
@@ -732,7 +744,7 @@ export class ShellboyData {
     batch(() => {
       this.pinnedThreadIdsSig.value = rows.map(row => row.thread_id);
       this.pinnedMoreSig.value = cursor !== undefined;
-      this.threadRowsSig.value = rememberRows(this.threadRowsSig.peek(), rows);
+      this.threadRowsSig.value = rememberRows(this.threadRowsSig.peek(), rows, this.entries);
     });
   }
 
@@ -765,7 +777,7 @@ export class ShellboyData {
     }
     const published = shapeOnly && previous.filter === filter ? mergeRows(items, previous.items.flatMap(id => { const row = this.threadRowsSig.peek().get(id); return row ? [row] : []; })) : items;
     this.listSig.value = { filter, items: published.map(row => row.thread_id), nextCursor: shapeOnly ? previous.nextCursor : cursor, loaded: true, loading: false, loadingMore: false, stale: false, error: undefined };
-    this.threadRowsSig.value = rememberRows(this.threadRowsSig.peek(), items);
+    this.threadRowsSig.value = rememberRows(this.threadRowsSig.peek(), items, this.entries);
   }
 
   private async readDetail(entry: ThreadEntry, onSent: () => void): Promise<void> {
@@ -812,10 +824,11 @@ export class ShellboyData {
         || (!!filter.awaiting && old.awaiting_named_count !== current.awaiting_named_count)
         || (!!filter.tags?.length && JSON.stringify(old.tags ?? []) !== JSON.stringify(current.tags ?? []));
     });
-    const next = new Map(before);
+    // Rows another read stored meanwhile stay: start from the current cache, not from `before`.
+    const next = new Map(this.threadRowsSig.peek());
     for (const row of out.value.items) { next.delete(row.thread_id); next.set(row.thread_id, row); }
     for (const id of ids) if (!returned.has(id)) next.delete(id);
-    while (next.size > MAX_LIST_ROWS) next.delete(next.keys().next().value!);
+    trimRows(next, this.entries);
     batch(() => {
       this.threadRowsSig.value = next;
       this.activeThreadIdsSig.value = [...activeStatus];

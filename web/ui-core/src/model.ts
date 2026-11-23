@@ -545,9 +545,11 @@ export class AppModel {
       return branchRowMarks(items, materializeHistoryPresentation(items, this.shells.value, w.acceptedView.peek().revision ?? 0).rows, this.marks.value);
     });
     this.context = computed(() => contextFacts(this.details.value));
-    this.recovery = computed(() => (isThreadRecovery(this.selectedRow.value?.status, this.selectedRow.value?.summary.activity) ? recoveryFacts(this.details.value) : undefined));
+    // The open Thread's own facts: its row-cache activity (read by ID, in the list or not) and thread.get.
+    // The merged attention mark is not consulted: an open question must not hide recovery.
+    this.recovery = computed(() => (isThreadRecovery(this.selectedRow.value?.summary.activity) ? recoveryFacts(this.details.value) : undefined));
     this.canStop = computed(() => this.details.value?.run_id !== undefined);
-    this.canRetry = computed(() => this.details.value?.run_id !== undefined && isThreadRecovery(this.selectedRow.value?.status, this.selectedRow.value?.summary.activity));
+    this.canRetry = computed(() => this.details.value?.run_id !== undefined && isThreadRecovery(this.selectedRow.value?.summary.activity));
     this.selectedStep = computed(() => {
       const id = this.selectedStepId.value;
       if (!id) return undefined;
@@ -1439,7 +1441,7 @@ export class AppModel {
     const details = await this.ops.threadGet(id);
     if (!details.ok) return this.report("action.retry", details);
     const runId = details.value.run_id;
-    if (runId === undefined) return;
+    if (runId === undefined) { this.actionError.value = { kind: "error", text: this.t.value("action.retryNoRun") }; return; }
     this.report("action.retry", await this.ops.runRetry(runId));
   }
 

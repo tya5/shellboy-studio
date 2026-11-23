@@ -1,0 +1,111 @@
+// @vitest-environment happy-dom
+// #103: the open Thread's status line, recovery, Retry, header mark and menu come from that
+// Thread's own facts (thread.get and its row in the row cache), not from the loaded list.
+import "@preact/signals";
+import { signal } from "@preact/signals-core";
+import { render } from "preact";
+import { act } from "preact/test-utils";
+import { afterEach, describe, expect, it } from "vitest";
+import { fixtureModel } from "../../../ui-core/test/fixture";
+import { settle, summary, type FakeOwnerDb } from "../../../data/test/harness";
+import type { AppModel, DesignContext, Prefs } from "../../../ui-core/src";
+import { DESIGNS } from "../../registry";
+import { App } from "../screens/App";
+
+let host: HTMLElement | undefined;
+afterEach(() => {
+  if (host) render(null, host);
+  host?.remove();
+  host = undefined;
+});
+
+function draw(model: AppModel) {
+  const prefs = signal<Prefs>({ design: "console", theme: "console", lang: "en", weights: { cached: 0.1, output: 5 } });
+  const context: DesignContext = { model, designs: DESIGNS, prefs, setPrefs(change) { prefs.value = { ...prefs.value, ...change }; }, submitToken: async () => true };
+  host = document.createElement("div");
+  document.body.append(host);
+  act(() => render(<App context={context} />, host!));
+  return host;
+}
+
+/** The list pages never contain `broken`, as for a Thread older than the loaded pages. */
+function outsideList(db: FakeOwnerDb, extra: Record<string, unknown> = {}) {
+  db.threads.broken = summary("broken", { ...db.threads.broken, ...extra });
+  const base = db.answer.bind(db);
+  db.answer = call => {
+    const args = call.args as { thread_ids?: string[] };
+    if (call.command !== "thread.list" || args.thread_ids !== undefined) return base(call);
+    const answer = base(call);
+    if (!answer.ok) return answer;
+    const result = answer.result as { items: { thread_id: string }[] };
+    return { ok: true, result: { ...result, items: result.items.filter(item => item.thread_id !== "broken") } };
+  };
+}
+
+const footer = (el: HTMLElement) => el.querySelector<HTMLElement>(".conversation-status")!;
+const retryButtons = (el: HTMLElement) => [...el.querySelectorAll<HTMLButtonElement>("button")].filter(button => button.textContent?.trim() === "Retry");
+async function headerMenu(el: HTMLElement): Promise<string[]> {
+  const trigger = el.querySelector<HTMLButtonElement>("[data-conversation-header] [aria-haspopup=menu]")!;
+  await act(async () => { trigger.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 1 })); await Promise.resolve(); });
+  const items = [...document.body.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].filter(item => !item.disabled && item.getAttribute("aria-disabled") !== "true").map(item => item.textContent?.trim() ?? "");
+  act(() => { document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); });
+  return items;
+}
+
+describe("Open Thread facts (#103)", () => {
+  it("shows the recovery reason, one Retry, the header mark and the full menu for a Thread opened by link outside the list", async () => {
+    const { model, t, db } = await fixtureModel({ route: "conversation", threadId: "broken", configure: db => outsideList(db) });
+    try {
+      const el = draw(model);
+      await act(async () => { await settle(t, db); });
+      expect(model.data.listThreadIds.value).not.toContain("broken");
+      expect(footer(el).textContent).toContain("Recovery wait");
+      expect(footer(el).textContent).toContain("provider: connection interrupted");
+      expect(retryButtons(el)).toHaveLength(1);
+      expect(footer(el).contains(retryButtons(el)[0]!)).toBe(true);
+      expect(el.querySelector(".dock [data-tone=bad], .dock .btn-warn")).toBeNull();
+      expect(el.querySelector("[data-conversation-header] [data-status]")?.getAttribute("data-status")).toBe("error");
+      const entries = await headerMenu(el);
+      expect(entries).toEqual(expect.arrayContaining(["Rename Thread", "Archive", "Retry", "Review deletion"]));
+      await act(async () => { retryButtons(el)[0]!.click(); await settle(t, db); });
+      expect(t.calls("run.retry").map(call => call.args)).toEqual([expect.objectContaining({ run_id: "run-2" })]);
+    } finally { model.dispose(); }
+  });
+
+  it("keeps recovery and Retry in the status line while an open question makes the mark awaiting", async () => {
+    const { model, t, db } = await fixtureModel({ route: "conversation", threadId: "broken", configure: db => outsideList(db, { awaiting_named_count: 1 }) });
+    try {
+      const el = draw(model);
+      await act(async () => { await settle(t, db); });
+      expect(el.querySelector("[data-conversation-header] [data-status]")?.getAttribute("data-status")).toBe("awaiting");
+      expect(footer(el).textContent).toContain("provider: connection interrupted");
+      expect(retryButtons(el)).toHaveLength(1);
+      expect(footer(el).contains(retryButtons(el)[0]!)).toBe(true);
+    } finally { model.dispose(); }
+  });
+
+  it("offers no Retry without a Run, even in recovery", async () => {
+    const { model, t, db } = await fixtureModel({ route: "conversation", threadId: "broken", configure: db => { outsideList(db); delete db.details.broken!.run_id; } });
+    try {
+      const el = draw(model);
+      await act(async () => { await settle(t, db); });
+      expect(footer(el).textContent).toContain("provider: connection interrupted");
+      expect(retryButtons(el)).toHaveLength(0);
+    } finally { model.dispose(); }
+  });
+
+  it("re-reads the open Thread's row after an owner switch empties the row cache", async () => {
+    const { model, t, db } = await fixtureModel({ route: "conversation", threadId: "broken", configure: db => outsideList(db) });
+    try {
+      const el = draw(model);
+      await act(async () => { await settle(t, db); });
+      await act(async () => {
+        t.push({ t: "hello", bridge_version: "0.0.1", data_dir: "/temp/owner-a", owner: { state: "connected", info: { protocol_version: 5, instance_id: "i2", capabilities: ["history.window"] } } });
+        await settle(t, db);
+      });
+      expect(model.data.threadRows.value.has("broken")).toBe(true);
+      expect(footer(el).textContent).toContain("Recovery wait");
+      expect(el.querySelector("[data-conversation-header] [data-status]")?.getAttribute("data-status")).toBe("error");
+    } finally { model.dispose(); }
+  });
+});

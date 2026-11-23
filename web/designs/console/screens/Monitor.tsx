@@ -28,7 +28,7 @@ function Card({ model, row, pinned, togglePin, outOfFilter }: { model: AppModel;
               <span>{t("monitor.parent", { title: row.parentTitle })}</span>
             </span>
           ) : null}
-          {isThreadRecovery(row.status, s.activity) ? (
+          {isThreadRecovery(s.activity) ? (
             <Button variant="ghost" onClick={() => void model.retry(s.thread_id)}>
               <Icon role="action.retry" size="small" />
               {t("action.retry")}
