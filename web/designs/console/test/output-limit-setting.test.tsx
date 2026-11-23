@@ -9,7 +9,6 @@ import { mount } from '..';
 import { App } from '../screens/App';
 import { loadPrefs } from '../../../ui-core/src/prefs';
 import type { DesignContext } from '../../../ui-core/src';
-import { OutputLimitNotice } from '../screens/Conversation';
 import { DESIGNS } from '../../registry';
 import type { Prefs } from '../../../ui-core/src';
 
@@ -75,19 +74,23 @@ it('retains owner validation and refuses malformed integers without automatic wr
 });
 
 
-it('routes the notice Thread action to the max_tokens SettingsDestination without writing', async () => {
- const r=await fixtureModel({capabilities:['thread.settings'],configure(db){db.details.lead!.max_tokens=9007199254740992;}});
+it('opens the real Thread Settings max_tokens row from the saved output-limit notice',async()=>{
+ const r=await fixtureModel({route:'conversation',threadId:'lead',capabilities:['history.window','thread.settings'],configure(db){
+  db.details.lead!.max_tokens=4096;
+  db.history.lead=[{node_id:'saved-output-limit',kind:'assistant_response',selection:{ordinal:0},provenance:{attempt_id:'00000000-0000-4000-8000-000000000741',kind:'assistant_response',created_at:'2026-11-23T00:00:00Z',source_revision:1,output_limit:{stop:true,sent_max_tokens:4096,source:'thread_override',connection:'mock'}},items:[]}];
+ }});
  const host=document.createElement('div');document.body.append(host);
  const context:DesignContext={model:r.model,prefs:signal(loadPrefs({read:()=>null,write:()=>{}},[{name:'console',themes:[{name:'light'}]}])),setPrefs:()=>{},designs:DESIGNS,submitToken:async()=>true};
- dispose=()=>{render(null,host);r.model.dispose();r.data.stop();};
- let destination:string|undefined;
- await act(async()=>{render(<><App context={context}/><OutputLimitNotice model={r.model} fact={{stop:true,sent_max_tokens:4096,source:'thread_override',connection:'mock'}} openThreadSettings={field=>{destination=field;}}/></>,host);await settle(r.t,r.db);});
- expect(r.model.threadSettings.value?.maxTokensState.kind).toBe('unknown');
+ const unmount=mount(host,{model:r.model,designs:DESIGNS,prefs:context.prefs,setPrefs:()=>{},submitToken:async()=>true});
+ dispose=()=>{unmount();r.model.dispose();r.data.stop();};
+ await act(async()=>settle(r.t,r.db));
  const action=[...host.querySelectorAll('button')].find(button=>button.textContent==='Open output limit setting');
  expect(action).toBeDefined();
- await act(async()=>{action!.click();});
- expect(destination).toBe('max_tokens');
- expect(r.model.modelPicker.value.open).toBe(false);
- expect(r.model.threadSettings.value?.maxTokensState.kind).toBe('unknown');
+ await act(async()=>{action!.click();await settle(r.t,r.db);});
+ const row=host.querySelector<HTMLElement>('[data-setting-id="thread.max_tokens"]');
+ expect(r.model.panelTab.value).toBe('settings');
+ expect(host.querySelector('[role="tab"][aria-selected="true"]')?.textContent).toBe('Settings');
+ expect(row?.dataset.highlighted).toBe('true');
+ expect(row?.contains(document.activeElement)).toBe(true);
  expect(r.t.calls('thread.set')).toHaveLength(0);
 });

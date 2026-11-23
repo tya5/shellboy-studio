@@ -23,7 +23,8 @@ not a diagnosis of arbitrary short replies. Live notices use only an adopted
 mark in saved assistant-response provenance through history and reload; a
 single Studio owner reconciles live attempt evidence with saved node metadata,
 without a per-row usage lookup. The notice shows Core's sent maximum when known,
-never estimates it, and offers navigation to the Thread override when present or
+never estimates it, and offers navigation to the right-panel Thread Settings tab at
+`max_tokens` through `SettingsDestination` when a Thread override is present, or to
 the connection setting otherwise; it does not mutate the setting. `Continue` is
 an explicit user message action. Replies saved before #355 have no mark and show
 no notice after reload: there is no migration or inference. Empty adopted replies
@@ -133,6 +134,7 @@ presentation owner validates the complete Core object (`stop`, `sent_max_tokens`
 metadata, and does not copy connection identity into saved node display metadata.
 Handoff from live to saved must preserve the same notice without a
 one-frame disappearance. The mark is retained only when the Core history reports
-it; legacy rows without provenance are not repaired or estimated. Settings focus
-is requested as owner state and consumed by the mounted Settings view or Thread
-picker; no timer races route rendering.
+it; legacy rows without provenance are not repaired or estimated. Thread-override
+focus opens the right-panel Settings tab at `max_tokens` through `SettingsDestination`.
+Connection focus opens `connections.<id>.max_tokens` through `pendingSettingFocus` in
+`SettingsView`; no timer races route rendering.
