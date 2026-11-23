@@ -34,7 +34,7 @@ describe("usage sums", () => {
     expect(splitParts(parts(100, 75, 10))).toEqual({ uncached: 25, cached: 75, output: 10, inconsistent: false });
     expect(splitParts(parts(100, 150, 10))).toMatchObject({ uncached: undefined, inconsistent: true });
     expect(splitParts(parts(100, null, 10))).toMatchObject({ uncached: undefined, inconsistent: false });
-    expect(cacheRate(parts(100, 150, 10))).toBe(1.5);
+    expect(cacheRate(parts(100, 150, 10))).toBeUndefined();
     expect(cacheRate(parts(0, 0, 0))).toBeUndefined();
     expect(cacheRate(parts(null, 10, 0))).toBeUndefined();
   });
@@ -534,12 +534,12 @@ describe("what the charts draw", () => {
     const unknown = dayFacts(["d"], new Map([["d", readGroup(raw)!]]), WEIGHTS)[0]!;
     expect(unknown.summaryEffective).toBeUndefined();
     expect(unknown.incomplete).toBe(true);
-    expect(unknown.effective).toBe(100);
+    expect(unknown.effective).toBeUndefined();
   });
   it("marks a day whose counters have unknowns or disagree", () => {
     expect(dayFacts(["d"], new Map([["d", group("d", { input: 100, cached: 50, output: 1, unknown: 2 })]]), WEIGHTS)[0]!.incomplete).toBe(true);
     const bad = dayFacts(["d"], new Map([["d", group("d", { input: 100, cached: 150, output: 1 })]]), WEIGHTS)[0]!;
-    expect(bad).toMatchObject({ inconsistent: true, uncached: undefined, rate: 1.5 });
+    expect(bad).toMatchObject({ inconsistent: true, uncached: undefined, rate: undefined });
   });
   it("the period's rate comes from summed counters, never from an average of daily ratios", () => {
     const groups = new Map([

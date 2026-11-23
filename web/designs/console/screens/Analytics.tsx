@@ -105,10 +105,11 @@ function ByThread({ model, weights }: { model: AppModel; weights: Weights }) {
       <WalkNotice t={t} state={walk} onStop={() => i.byThread.stop()} onContinue={() => void i.byThread.continue()} onRetry={() => void i.byThread.start()} />
       <Coverage t={t} walk={walk} />
       {rows.length > 0 ? <DataTable caption={t("threads.heading")}
-        columns={[{ label: t("threads.thread") }, ...usageColumns(t), { label: t("series.cacheRate"), numeric: true }, { label: t("usage.summary") }, { label: t("threads.mean"), numeric: true }, { label: t("threads.max"), numeric: true }, { label: t("threads.events"), numeric: true }, { label: "" }]}
+        columns={[{ label: t("threads.thread") }, ...usageColumns(t), { label: t("series.effective"), numeric: true }, { label: t("series.cacheRate"), numeric: true }, { label: t("usage.summary") }, { label: t("threads.mean"), numeric: true }, { label: t("threads.max"), numeric: true }, { label: t("threads.events"), numeric: true }, { label: "" }]}
         rows={rows.map(g => {
           const rate = complete ? cacheRate(g.conversation, g.unknownPairs) : undefined;
           const mean = meanInput(g);
+          const effective = complete ? groupEffective(g, weights) : undefined;
           const count = t("usage.requests");
           const summary = g.summaryRequests || !complete ? <>
             {usageCells(t, g.summary, !complete).map((value, index) => <div key={index}>{usageColumns(t)[index]!.label}: {value}</div>)}
@@ -117,7 +118,7 @@ function ByThread({ model, weights }: { model: AppModel; weights: Weights }) {
           return { key: g.key, cells: [
             <>{threadRows.has(g.key) ? <a class="nav-link" href={formatRoute({ view: "conversation", threadId: g.key })}>{nameOf(g.key)}</a> : <span class="mono">{nameOf(g.key)}</span>}
               {groupIncomplete(g) ? <div class="muted caption">{t("common.incomplete")}</div> : null}</>,
-            ...usageCells(t, g.conversation, !complete), rate === undefined ? t("analytics.noValue") : percent(rate), summary,
+            ...usageCells(t, g.conversation, !complete), effective === undefined ? t("analytics.noValue") : formatTokens(Math.round(effective)), rate === undefined ? t("analytics.noValue") : percent(rate), summary,
             mean !== undefined ? formatTokens(Math.round(mean)) : t("analytics.noValue"),
             g.inputMax !== undefined ? formatTokens(g.inputMax) : t("analytics.noValue"), g.compactions,
             <ButtonGroup label={nameOf(g.key)}><Button variant="ghost" aria-pressed={selected === g.key} aria-label={`${t("usage.showModels")}: ${nameOf(g.key)}`} onClick={() => select(selected === g.key ? undefined : g.key)}>{t("usage.showModels")}</Button>
@@ -251,13 +252,13 @@ function UsagePane({ context, section }: { context: DesignContext; section: "ove
     { id: "uncached", label: t("series.uncached"), tone: "1" },
     { id: "output", label: t("series.output"), tone: "3" },
   ];
-  const point = (d: DayFacts, values: ChartPoint["values"]): ChartPoint => ({ key: d.key, label: shortDay(d.key), values, note: noteOf(t, d) });
+  const point = (d: DayFacts, values: ChartPoint["values"]): ChartPoint => ({ key: d.key, label: shortDay(d.key), values, note: !complete && d.recorded ? t("usage.unfinished") : noteOf(t, d) });
   const tokens = (n: number) => formatTokens(Math.round(n));
   const source = (read: string) => <>{t("common.source", { source: "" })}<code>{read}</code></>;
   const common = { tableLabel: t("analytics.table"), categoryLabel: t("analytics.day"), noData: notReported };
   const dailyParts = days.map(d => [d.cached, d.uncached, d.output]);
   const dailyTotals = dailyParts.map(values => values.some(v => v !== undefined) ? values.reduce<number>((sum, v) => sum + (v ?? 0), 0) : undefined);
-  const dailyLowerBound = days.some((d, index) => d.recorded && (d.incomplete || d.inconsistent || dailyParts[index]!.some(v => v === undefined)));
+  const dailyLowerBound = !complete || days.some((d, index) => d.recorded && (d.incomplete || d.inconsistent || dailyParts[index]!.some(v => v === undefined)));
 
   const summaryStat = (
     <Stat
@@ -316,10 +317,10 @@ function UsagePane({ context, section }: { context: DesignContext; section: "ove
             title={t("chart.cache")}
             sub={t("chart.cacheSub")}
             series={[{ id: "rate", label: t("series.cacheRate"), tone: "2" }]}
-            points={days.map((d) => point(d, { rate: d.rate }))}
+            points={days.map((d) => point(d, { rate: complete ? d.rate : undefined }))}
             format={percent}
             floorMax={1}
-            ariaSummary={t("chart.cacheAria", { summary: peakSummary(t, days.length, days.map((d) => d.rate), percent) })}
+            ariaSummary={t("chart.cacheAria", { summary: peakSummary(t, days.length, days.map((d) => complete ? d.rate : undefined), percent) })}
             source={source("usage.get group_by=day")}
             {...common}
           />
