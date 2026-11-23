@@ -276,7 +276,7 @@ describe("Conversation live text", () => {
       expect(footer()).toContain(model.t.value("status.completed"));
       expect(mark()).toBe("idle");
       for (const [activity, count, status] of [["awaiting_model", 0, "running"], ["tools", 0, "running"], ["completed", 1, "awaiting"], ["completed", 0, "idle"]] as const) {
-        db.threads.lead = { ...db.threads.lead!, activity, awaiting_named_count: count };
+        db.threads.lead = summary("lead", { ...db.threads.lead, activity, awaiting_named_count: count });
         await act(async () => { t.push({ t: "changed", thread_ids: ["lead"], list: true, config_changed: false }); await settle(t, db); });
         expect(mark()).toBe(status);
         if (status === "running") expect(footer()).not.toContain(model.t.value("status.completed"));
