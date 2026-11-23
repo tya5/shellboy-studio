@@ -19,12 +19,19 @@ async fn preview_requires_cookie_and_exact_owner_version_within_loaded_limit() {
             let _ = std::fs::remove_file(&self.0);
         }
     }
-    let _cleanup = Cleanup(fixture.clone());
+    let over = fixture.with_extension("over.md");
+    std::fs::write(&over, "# fixture!").unwrap();
+    let _cleanup = (Cleanup(fixture.clone()), Cleanup(over.clone()));
+    let missing_limit = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let config_missing = missing_limit.clone();
     let (owner, _unused) = common::mock(move |cmd| match cmd {
         Command::ArtifactGet(args) => Some(json!({
             "thread_id":"thread", "artifact_id":"artifact", "created_at":"now", "updated_at":"now",
-            "version":{"version":args.version, "uri":fixture, "title":"Report", "mime":if args.version == Some(3) { "text/html" } else { "text/markdown" }, "created_at":"now"}
+            "version":{"version":args.version, "uri":match args.version { Some(4) => json!(over), Some(6) => json!("https://example.invalid/report.md"), _ => json!(fixture) }, "title":"Report", "mime":if args.version == Some(3) { "text/html" } else { "text/markdown" }, "created_at":"now"}
         })),
+        Command::ConfigGet(_) if config_missing.load(std::sync::atomic::Ordering::Relaxed) => {
+            Some(json!({"loaded":{"values":{}}}))
+        }
         Command::ConfigGet(_) => {
             Some(json!({"loaded":{"values":{"limits":{"attachment_file_bytes":9}}}}))
         }
@@ -108,6 +115,21 @@ async fn preview_requires_cookie_and_exact_owner_version_within_loaded_limit() {
             status
         );
     }
+    for (version, missing, reason) in [
+        (4, false, "10 bytes exceeds 9"),
+        (5, true, "missing owner limit"),
+        (6, false, "HTTPS URI"),
+    ] {
+        missing_limit.store(missing, std::sync::atomic::Ordering::Relaxed);
+        let mut body = target.clone();
+        body["version"] = json!(version);
+        let response = app
+            .clone()
+            .oneshot(post("/artifact-content", origin, body, Some(&cookie)))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::NO_CONTENT, "{reason}");
+    }
     let response = app
         .oneshot(post("/artifact-content", origin, target, Some(&cookie)))
         .await
@@ -130,6 +152,6 @@ async fn preview_requires_cookie_and_exact_owner_version_within_loaded_limit() {
             .iter()
             .filter(|cmd| matches!(cmd, Command::ConfigGet(_)))
             .count(),
-        1
+        3
     );
 }

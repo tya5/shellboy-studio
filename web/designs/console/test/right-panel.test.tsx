@@ -48,9 +48,11 @@ describe('right panel purpose',()=>{
   const version=(n:number,title:string)=>({version:n,title,uri:`/fixture/notes-${n}.md`,mime:'text/markdown',created_at:at});
   const row=(id:string,n:number,title:string)=>({artifact_id:id,thread_id:'lead',created_at:at,updated_at:at,latest:version(n,title)});
   let latest=row('z',2,'Report');
+  let failed=false;
   const answer=f.db.answer.bind(f.db);
   f.db.answer=call=>{
    if(call.command==='attachment.list') return {ok:true,result:{items:[]}};
+   if(failed && (call.command==='artifact.list' || call.command==='artifact.get')) return {ok:false,code:'cursor_expired',message:'Retained cut expired'};
    if(call.command==='artifact.list') return {ok:true,result:{items:[latest,row('a',1,'Diagram')]}};
    if(call.command==='artifact.get') {
     const {version:n}=call.args as {version?:number};
@@ -73,9 +75,15 @@ describe('right panel purpose',()=>{
    await pump(()=>page.querySelector<HTMLButtonElement>('[data-panel-row-id="z:v1"] button')!.click());
    expect(f.t.calls('artifact.get').at(-1)?.args).toEqual({artifact_id:'z',version:1});
    expect(page.querySelector('[data-panel-detail]')?.textContent).toContain('/fixture/notes-1.md');
+   failed=true;
+   await pump(()=>f.t.push({t:'changed',config_changed:false,thread_ids:['lead'],list:false}));
+   expect(page.querySelector('[data-panel-row-id="z"]')?.textContent).toContain('Report');
+   expect(page.querySelector('[data-panel-detail]')?.textContent).toContain('/fixture/notes-1.md');
+   expect(f.model.artifacts.history.state.value).toMatchObject({complete:false,error:'Retained cut expired'});
+   failed=false;
    latest=row('z',3,'New report');
    await pump(()=>f.t.push({t:'changed',config_changed:false,thread_ids:['lead'],list:false}));
-   expect(f.t.calls('artifact.list')).toHaveLength(2);
+   expect(f.t.calls('artifact.list')).toHaveLength(3);
    expect(page.querySelector('[data-panel-detail]')?.textContent).toContain('New report');
    expect(page.querySelector('[data-panel-detail]')?.textContent).toContain('/fixture/notes-1.md');
   } finally {f.model.dispose();f.data.stop();vi.unstubAllGlobals();}

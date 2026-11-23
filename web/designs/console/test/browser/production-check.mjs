@@ -31,7 +31,20 @@ try {
       return { theme: document.documentElement.dataset.ds, images, statusInDock: dock.contains(status), pageOverflow: document.documentElement.scrollWidth > innerWidth, empty: !!document.querySelector('.empty-character'), avatars: document.querySelectorAll('.character-avatar').length, statusText: status.innerText };
     })()`);
     if (state === 'awaiting') {
-      const replies = await evaluate(`(() => ({human:document.body.textContent.includes('P5_HUMAN_QUESTION'),thread:document.body.textContent.includes('P5_THREAD_DUTY'),answer:!!document.querySelector('.work-region textarea'),peerLink:[...document.querySelectorAll('.work-region a')].some(a=>a.href.includes('child')),oldOwner:document.body.innerText.includes('previous owner')}))()`);
+      if (width === 390) await evaluate("document.querySelector('.work-strip button').click(); true");
+      const inspect = async (tab, id, selector) => {
+        await evaluate(`document.querySelector('[data-panel-tab="${tab}"]').click(); true`);
+        return evaluate(`(async () => {
+          await new Promise(requestAnimationFrame);
+          document.querySelector('#panel-page-${tab} [data-panel-row-id="${id}"] button').click();
+          await new Promise(requestAnimationFrame);
+          const detail = document.querySelector('#panel-page-${tab} [data-panel-detail]');
+          return { text:detail?.textContent, control:!!detail?.querySelector(${JSON.stringify(selector)}) };
+        })()`);
+      };
+      const human = await inspect('awaiting-reply', 'human-5', 'textarea');
+      const peer = await inspect('reply-needed', 'thread-5', 'a[href*="child"]');
+      const replies = {human:human.text?.includes('P5_HUMAN_QUESTION'),thread:peer.text?.includes('P5_THREAD_DUTY'),answer:human.control,peerLink:peer.control,oldOwner:await evaluate("document.body.innerText.includes('previous owner')")};
       if (!replies.human || !replies.thread || !replies.answer || !replies.peerLink || replies.oldOwner) throw Error('Protocol-5 reply display: '+JSON.stringify(replies));
       result.replies = replies;
     }
