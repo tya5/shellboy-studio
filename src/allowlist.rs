@@ -80,18 +80,7 @@ pub fn access(command: &Command) -> Access {
         // Core's id.resolve is CLI-only; the browser never receives this identity lookup.
         Command::MessageAsk(..) | Command::IdResolve(..) => Access::Denied,
         // `events.wait` is bridge-internal (one shared long-poll). The rest has no UI yet.
-        Command::ThreadImport(..)
-        | Command::ArtifactAdd(..)
-        | Command::ArtifactUpdate(..)
-        | Command::ArtifactList(..)
-        | Command::ArtifactGet(..)
-        | Command::ArtifactRemove(..)
-        | Command::ServiceAdd(..)
-        | Command::ServiceList(..)
-        | Command::ServiceStart(..)
-        | Command::ServiceStop(..)
-        | Command::ServiceRemove(..)
-        | Command::OwnerShutdown(..)
+        Command::OwnerShutdown(..)
         | Command::ThreadDelete(..)
         | Command::ThreadDeletePreview(..)
         | Command::ThreadPrune(..)
@@ -99,7 +88,6 @@ pub fn access(command: &Command) -> Access {
         | Command::Wait(..)
         | Command::EventsWait(..)
         | Command::HistorySearch(..)
-        | Command::HistoryExport(..)
         | Command::HistoryRelations(..)
         | Command::ShellWrite(..)
         | Command::ShellEof(..)
