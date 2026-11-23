@@ -427,7 +427,7 @@ describe("the Thread list stays bounded however many Threads exist", () => {
     await settle(x.t, x.db);
     await p;
   };
-  it("a hint reads one page and doesn't collapse rows shown further down", async () => {
+  it("a hint refreshes the loaded prefix without adding more pages", async () => {
     const x = await listed(4);
     await more(x);
     await more(x);
@@ -437,11 +437,27 @@ describe("the Thread list stays bounded however many Threads exist", () => {
     x.all.unshift(summary("fresh"));
     x.t.push({ t: "changed", config_changed: false, thread_ids: ["fresh"], list: true });
     await settle(x.t, x.db);
-    expect(x.t.calls("thread.list").length).toBe(before + 1);
+    expect(x.t.calls("thread.list").length).toBe(before + 3);
     const items = x.data.threadList.value.items;
     expect(items[0]!.thread_id).toBe("fresh");
-    expect(items.length).toBeGreaterThanOrEqual(150);
+    expect(items).toEqual(x.all.slice(0, 150));
     expect(new Set(items.map((i) => i.thread_id)).size).toBe(items.length);
+  });
+  it("refreshes activity and human reply facts for a changed Thread on page two", async () => {
+    const x = await listed(3);
+    x.all[60] = { ...x.all[60]!, activity: "completed" };
+    await more(x);
+    const current = () => x.data.threadList.value.items.find(row => row.thread_id === "t60");
+    expect(current()?.activity).toBe("completed");
+    const reads = x.t.calls("thread.list").length;
+    for (const [activity, count] of [["awaiting_model", 0], ["tools", 0], ["completed", 1]] as const) {
+      x.all[60] = { ...x.all[60]!, activity, awaiting_named_count: count };
+      x.t.push({ t: "changed", config_changed: false, thread_ids: ["t60"], list: true });
+      await settle(x.t, x.db);
+      expect(current()).toMatchObject({ activity, awaiting_named_count: count });
+    }
+    expect(x.t.calls("thread.list").length - reads).toBe(6);
+    expect(x.data.threadList.value.items.map(row => row.thread_id)).toEqual(x.all.slice(0, 100).map(row => row.thread_id));
   });
   it("a changed search starts over", async () => {
     const x = await listed(3);

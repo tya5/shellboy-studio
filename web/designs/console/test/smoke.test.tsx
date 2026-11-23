@@ -10,7 +10,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { WindowOwner } from "../../../ui-core/test/window-owner";
 import { fixtureModel, fixturePendingAdapter } from "../../../ui-core/test/fixture";
 import type { ServerFrame } from "../../../data/src";
-import { settle } from "../../../data/test/harness";
+import { settle, summary } from "../../../data/test/harness";
 import { type AnalyticsSection, type AppModel, type DesignContext, type Prefs } from "../../../ui-core/src";
 import { DESIGNS } from "../../registry";
 import { App } from "../screens/App";
@@ -255,6 +255,34 @@ describe("Conversation live text", () => {
     expect(text(el)).toContain("Later human");
     expect(text(el).indexOf("Saved answer")).toBeLessThan(text(el).indexOf("Later human"));
     model.dispose();
+  });
+
+  it("updates the footer and sidebar together from fresh page-two activity and reply facts", async () => {
+    const { model, t, db } = await fixtureModel({ route: "conversation", threadId: "lead", configure(db) {
+      const list = [...Array.from({ length: 50 }, (_, i) => summary(`first-${i}`)), { ...db.threads.lead!, activity: "completed" }];
+      const base = db.answer.bind(db);
+      db.answer = call => call.command === "thread.list"
+        ? ((call.args as { cursor?: string }).cursor
+          ? { ok: true, result: { items: [{ ...db.threads.lead!, activity: db.threads.lead!.activity }] } }
+          : { ok: true, result: { items: list.slice(0, 50), next_cursor: "page-two" } })
+        : base(call);
+      db.threads.lead = list[50]!;
+    } });
+    try {
+      const el = draw(model);
+      await act(async () => { const more = model.data.loadMoreThreads(); await settle(t, db); await more; });
+      const footer = () => el.querySelector(".conversation-status")?.textContent;
+      const mark = () => [...el.querySelectorAll('[data-sidebar-row]')].find(row => row.querySelector('a[href*="lead"]'))?.querySelector('[data-status]')?.getAttribute('data-status');
+      expect(footer()).toContain(model.t.value("status.completed"));
+      expect(mark()).toBe("idle");
+      for (const [activity, count, status] of [["awaiting_model", 0, "running"], ["tools", 0, "running"], ["completed", 1, "awaiting"], ["completed", 0, "idle"]] as const) {
+        db.threads.lead = { ...db.threads.lead!, activity, awaiting_named_count: count };
+        await act(async () => { t.push({ t: "changed", thread_ids: ["lead"], list: true, config_changed: false }); await settle(t, db); });
+        expect(mark()).toBe(status);
+        if (status === "running") expect(footer()).not.toContain(model.t.value("status.completed"));
+        else expect(footer()).toContain(model.t.value(status === "awaiting" ? "status.awaiting" : "status.completed"));
+      }
+    } finally { model.dispose(); }
   });
 
   it.each(['running', 'completed'] as const)('renders one authoritative conversation status in the accepted window (%s)', async status => {

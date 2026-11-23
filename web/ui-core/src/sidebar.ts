@@ -6,8 +6,7 @@ export interface SidebarRow extends ThreadRow { key: string; descendants: number
 export interface SidebarGroup { key: "pins" | "all"; rows: SidebarRow[]; }
 
 export function sidebarGroups(items: readonly ThreadSummary[], selected?: string, flat = false): SidebarGroup[] {
-  const pending = new Map(items.map(item => [item.thread_id, item.awaiting_named_count ?? 0]));
-  const tree = threadTree([...items], pending);
+  const tree = threadTree([...items]);
   const byId = new Map(tree.map((row, index) => [row.summary.thread_id, index]));
   const ends: number[] = [];
   const totals = tree.map(() => ({ descendants: 0, awaiting: 0, running: 0 }));
