@@ -308,18 +308,6 @@ describe("AppModel over the fake transport", () => {
     } finally { model.dispose(); }
   });
 
-  it("closes an unchanged advanced save without writing", async () => {
-    const { model, t, db } = await fixtureModel({ capabilities: ["thread.settings"] });
-    try {
-      model.openModelPicker();
-      await settle(t, db);
-      expect(model.modelPicker.value.open).toBe(true);
-      await model.saveThreadModel();
-      expect(model.modelPicker.value.open).toBe(false);
-      expect(t.calls("thread.set")).toHaveLength(0);
-    } finally { model.dispose(); }
-  });
-
   it("rejects a held model-picker save after owner/session ABA without dispatch", async () => {
     const { model, t, db } = await fixtureModel({ capabilities: ["thread.settings"] });
     try {
@@ -344,25 +332,14 @@ describe("AppModel over the fake transport", () => {
     } finally { model.dispose(); }
   });
 
-  it("sends changed thread summary settings and the instruction reference only", async () => {
-    const { model, t, db } = await fixtureModel({ capabilities: ["thread.settings"] });
-    model.openModelPicker();
-    await settle(t, db);
-    model.modelPicker.value = { ...model.modelPicker.value, autoCompactAt: "0", maxTokens: "4096", agents: "/tmp/AGENTS.md" };
-    const saved = model.saveThreadModel();
-    await settle(t, db);
-    await saved;
-    expect(t.calls("thread.set").at(-1)!.args).toMatchObject({ thread_id: "lead", auto_compact_at: "0", max_tokens: "4096", agents: "/tmp/AGENTS.md" });
-    model.dispose();
-  });
-
-  it("does not write thread settings without the capability", async () => {
+  it("does not quick-switch effort without the capability", async () => {
     const { model, t, db } = await fixtureModel();
-    model.openModelPicker();
-    await settle(t, db);
-    await model.saveThreadModel();
-    expect(t.calls("thread.set")).toHaveLength(0);
-    model.dispose();
+    try {
+      model.openModelPicker();
+      await settle(t, db);
+      await model.selectPickerEffort("high");
+      expect(t.calls("thread.set")).toHaveLength(0);
+    } finally { model.dispose(); }
   });
 
   it("Monitor doesn't open any Thread until asked", async () => {

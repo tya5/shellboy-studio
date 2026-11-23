@@ -50,9 +50,11 @@ try{
   await typeModel('model-a');
   await enter();
   assert.deepEqual(await evaluate('window.writes().at(-1)'),{thread_id:'lead',connection:'c',model:'model-a'});
-  assert(await click('Save advanced settings'));
+  assert(await click('This Thread’s settings…'));
   await until(()=>evaluate("!document.querySelector('.model-picker')"));
   assert.equal((await evaluate('window.writes()')).length,4);
+  await until(()=>evaluate("document.querySelector('#panel-tab-settings')?.getAttribute('aria-selected')==='true'"));
+  if(width===390) await evaluate("document.querySelector('dialog[open] .work-sheet-head button')?.click(); true");
   await evaluate("document.querySelector('.model-picker-anchor>button').click(); true");
   await until(()=>evaluate("!!document.querySelector('.model-picker')"));
   await evaluate("document.body.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true})); true");

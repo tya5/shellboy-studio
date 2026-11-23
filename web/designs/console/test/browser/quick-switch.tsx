@@ -1,10 +1,11 @@
 import { signal } from '@preact/signals-core';
-import { mount } from '../..';
+import { mount } from '../../index';
 import { DESIGNS } from '../../../registry';
 import { fixtureModel, settle } from '../../../../ui-core/test/fixture';
 import type { Prefs } from '../../../../ui-core/src';
 
 const f = await fixtureModel({ route: 'conversation', threadId: 'lead', capabilities: ['thread.settings', 'config.edit', 'history.window'], configure(db) {
+  Object.assign(db.details.lead!, { context_usage: { last_successful_attempt: { input_tokens: 1000 } }, effective_auto_compact_at: 2000 });
   const base = db.answer.bind(db);
   db.answer = call => {
     const args = call.args as { connection?: string; model?: string; effort?: string };
@@ -23,3 +24,10 @@ const f = await fixtureModel({ route: 'conversation', threadId: 'lead', capabili
 const prefs = signal<Prefs>({ design: 'console', theme: 'console', lang: 'en', weights: { cached: 0.1, output: 5 } });
 mount(document.getElementById('app')!, { model: f.model, designs: DESIGNS, prefs, setPrefs: change => { prefs.value = {...prefs.value, ...change}; }, submitToken: async () => true });
 Object.assign(window, { flushOwner: () => settle(f.t, f.db), writes: () => f.t.calls('thread.set').map(call => call.args), hint: async () => { f.t.push({ t: 'changed', thread_ids: ['lead'], list: false, config_changed: false }); await settle(f.t, f.db); } });
+
+Object.assign(window, { setRun: async (active: boolean) => {
+  const { run_id: _old, ...details } = f.db.details.lead!;
+  f.db.details.lead = active ? { ...details, run_id: 'fixture-run' } : details;
+  f.t.push({ t: 'changed', thread_ids: ['lead'], list: false, config_changed: false });
+  await settle(f.t, f.db);
+} });
