@@ -51,6 +51,7 @@ export function Composer(props: { label: string; placeholder: string; hint: stri
         id="composer"
         aria-label={props.label}
         placeholder={props.placeholder}
+        rows={2}
         value={text}
         onInput={(e) => updateDraft(e.currentTarget.value)}
         onKeyDown={(e) => {
@@ -66,10 +67,10 @@ export function Composer(props: { label: string; placeholder: string; hint: stri
         <span class="composer-hint" role="status">{status?.hint??props.hint}</span>
         <div class="right">
           {props.context}
+          {props.stop}
           <Button icon label={props.sendLabel} variant="primary" disabled={!props.canSend || status?.blocked || props.busy || text.trim() === ""} onClick={() => void submit()}>
             <Icon role="composer.send" />
           </Button>
-          <span class="composer-stop-slot">{props.stop}</span>
         </div>
       </div>
     </div>

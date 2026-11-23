@@ -1,12 +1,10 @@
 .composer-root{border:1px solid var(--line-strong);border-radius:var(--radius);background:var(--panel)}
-.composer-root textarea{display:block;width:100%;min-height:52px;max-height:40vh;padding:var(--space-8) var(--space-12);border:0;background:transparent;resize:none;outline:0}
+.composer-root textarea{display:block;width:100%;max-height:40vh;padding:var(--space-8) var(--space-12);border:0;background:transparent;resize:none;outline:0}
 .composer-root:focus-within{outline:2px solid var(--accent);outline-offset:2px}
-.composer-root .composer-row{display:flex;align-items:center;gap:var(--space-8);padding:var(--space-4) var(--space-8)}
-.composer-root .composer-hint{font:var(--type-caption);color:var(--muted)}
-.composer-root .right{margin-left:auto;display:flex;align-items:center;gap:var(--space-8);flex-shrink:0}
+/* Design system v2: one row in every state. The hint truncates first, then the model name; nothing wraps. */
+.composer-root .composer-row{display:flex;flex-wrap:nowrap;align-items:center;gap:var(--space-8);padding:var(--space-4) var(--space-8);min-width:0}
+.composer-root .composer-hint{flex:1 1 0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:var(--type-caption);color:var(--muted)}
+.composer-root .right{margin-left:auto;display:flex;align-items:center;gap:var(--space-8);flex:none}
 @container app (max-width:899px){
   .composer-root .composer-hint{display:none}
 }
-
-.composer-stop-slot{display:flex;flex:none;width:var(--size-control)}
-@container app (max-width:899px){.composer-stop-slot{width:var(--size-touch)}}

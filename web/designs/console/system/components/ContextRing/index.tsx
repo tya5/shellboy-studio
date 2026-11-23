@@ -4,7 +4,7 @@ import type { ContextRingState } from "../../../../../ui-core/src";
 export function ContextRing({ fill, state, label, stateLabel, onOpen }: {
   fill: number | undefined; state: ContextRingState; label: string; stateLabel: string; onOpen: () => void;
 }) {
-  return <Button icon label={`${label}: ${stateLabel}`} title={`${label}: ${stateLabel}`} onClick={onOpen}>
+  return <Button variant="ghost" icon label={`${label}: ${stateLabel}`} title={`${label}: ${stateLabel}`} onClick={onOpen}>
       <svg class="context-ring" viewBox="0 0 24 24" aria-hidden="true" data-context-state={state}>
         <circle class="context-ring-track" cx="12" cy="12" r="9" />
         {state === "summarizing" ? <circle class="context-ring-activity" cx="12" cy="12" r="9" pathLength="100" />

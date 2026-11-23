@@ -11,4 +11,6 @@ Styles are colocated in `system/components/Composer/style.css`.
 
 Styles: style.css in this directory
 
+Design system v2 control row: one line in every state and width. Start: the model control as a ghost button (connection and model in `type-code`, effort in `type-label` `muted`), then the hint in `type-caption` `muted`. End: ContextRing (ghost), Stop only while a Run is active, then Send (`primary`, always last). When space runs out the hint truncates first, then the model name; at phone width the hint is hidden. Long running status stays in the conversation status line above the composer. The text area starts two rows high.
+
 Composer puts the model/effort chooser at the start of the action row and the context disclosure beside send and stop. Keep these controls out of the conversation header.

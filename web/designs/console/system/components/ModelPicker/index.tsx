@@ -1,5 +1,5 @@
 import type { AppModel } from "../../../../../ui-core/src";
-import { Button, MonitorPopover, Notice } from "..";
+import { Button, Icon, MonitorPopover, Notice } from "..";
 import { ConnectionModelList, modelLabel } from "./ConnectionModelList";
 import { EffortControl } from "./EffortControl";
 
@@ -13,7 +13,9 @@ export function ModelPicker({ model, details, onThreadSettings }: { model: AppMo
   const disabled = picker.saving || !canEdit;
   const choices = picker.models.some(row => row.connection === details.connection && row.model === details.model)
     ? picker.models : [details, ...picker.models];
-  return <MonitorPopover className="model-picker-anchor" label={`${modelLabel(details)} · ${details.effort || t("model.effort.default")}`}
+  const effortText = details.effort || t("model.effort.default");
+  return <MonitorPopover className="model-picker-anchor" ghost label={`${modelLabel(details)} · ${effortText}`}
+    content={<><span class="model-picker-name">{modelLabel(details)}</span><span class="model-picker-effort">{effortText}</span><Icon role="composer.modelMenu" size="small" /></>}
     controlled={{ open: picker.open, toggle: () => picker.open ? model.closeModelPicker() : model.openModelPicker(), close: () => model.closeModelPicker(), panelClass: "model-picker", panelLabel: t("model.change") }}>
       <p class="caption muted">{t("model.note")}</p>
       <ConnectionModelList choices={choices} selected={details} searchLabel={t("model.search")} emptyLabel={picker.loading ? t("common.loading") : t("model.empty")} disabled={disabled} onSelect={choice => void model.selectPickerModel(choice)} onCommitId={(id, connection) => void model.commitPickerModelId(id, connection)} />

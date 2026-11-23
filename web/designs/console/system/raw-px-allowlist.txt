@@ -15,7 +15,6 @@ components/AppTabs/style.css height 36px
 components/AppTabs/style.css width 120px
 components/ChoiceList/style.css max-height 288px
 components/ChoiceList/style.css margin 2px
-components/Composer/style.css min-height 52px
 components/EmptyState/style.css width 128px
 components/EmptyState/style.css height 128px
 components/KeyValue/style.css grid-template-columns 112px

@@ -23,7 +23,8 @@ try{
   await call('Page.navigate',{url:`${base}?width=${width}&theme=${theme}&longModel`});
   await until(()=>evaluate("!!window.setRun && !!document.querySelector('.context-ring')"));
   await evaluate('window.setRun(false)');
-  const ringX=()=>evaluate("document.querySelector('.context-ring').getBoundingClientRect().x");
+  // Send is always last, so its position does not move when Stop appears to its left.
+  const ringX=()=>evaluate("document.querySelector('.composer-row .btn-primary').getBoundingClientRect().x");
   const idle=await ringX();
   await capture(`${width}-${theme}-idle`);
   await evaluate('window.setRun(true)');

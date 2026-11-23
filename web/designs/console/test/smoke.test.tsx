@@ -116,7 +116,7 @@ describe("Thread model picker", () => {
   it("opens from the composer model and effort chip and explains when changes apply", async () => {
     const { model, t, db } = await fixtureModel();
     const el = draw(model);
-    const button = [...el.querySelectorAll<HTMLButtonElement>(".composer-row button")].find((b) => text(b).includes("example-model ·"))!;
+    const button = [...el.querySelectorAll<HTMLButtonElement>(".composer-row button")].find((b) => text(b).includes("example-model"))!;
     act(() => button.click());
     await act(async () => { await settle(t, db); });
     expect(el.querySelector('[role="dialog"]')?.textContent).toContain("next request");

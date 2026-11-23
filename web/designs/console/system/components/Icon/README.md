@@ -20,6 +20,7 @@ Consumers use semantic `IconRole` names only. Glyph names, paths, and the role-t
 | `action.clearArchiveFilter` | Remove the archive filter chip in Monitor. | `cross` |
 | `row.menu` | Open a row’s action menu in the sidebar or Threads list. | `more` |
 | `menu.checked` | Show that a toggle item in a menu (`menuitemcheckbox`) is on. | Lucide `check` |
+| `composer.modelMenu` | Show that the composer model control opens its picker. | `chevronDown` |
 | `composer.removeAttachment` | Remove one attachment token from the composer before sending. | `cross` |
 | `thread.create` | Create a new Thread from the sidebar. | `plus` |
 | `thread.search` | Find a Thread in the sidebar list. | `search` |
