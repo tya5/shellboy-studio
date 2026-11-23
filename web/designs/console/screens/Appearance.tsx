@@ -20,7 +20,7 @@ export function AppearanceChoices({ context, showLanguage = true, searchable }: 
   const current = designs.find((d) => d.name === prefs.value.design);
   return (
     <>
-      <h3 data-setting-id={searchable ? APPEARANCE.theme.id : undefined}>{t(APPEARANCE.theme.label)}</h3>
+      <h4 class="appearance-subheading" data-setting-id={searchable ? APPEARANCE.theme.id : undefined}>{t(APPEARANCE.theme.label)}</h4>
       <ButtonGroup label={t(APPEARANCE.theme.label)}>
         {current?.themes.map((theme) => (
           <Button key={theme.name} aria-pressed={prefs.value.theme === theme.name} onClick={() => setPrefs({ theme: theme.name })}>
@@ -30,7 +30,7 @@ export function AppearanceChoices({ context, showLanguage = true, searchable }: 
       </ButtonGroup>
       {designs.length > 1 ? (
         <>
-          <h3 data-setting-id={searchable ? APPEARANCE.design.id : undefined}>{t(APPEARANCE.design.label)}</h3>
+          <h4 class="appearance-subheading" data-setting-id={searchable ? APPEARANCE.design.id : undefined}>{t(APPEARANCE.design.label)}</h4>
           <ButtonGroup label={t(APPEARANCE.design.label)}>
             {designs.map((d) => (
               <Button key={d.name} aria-pressed={prefs.value.design === d.name} onClick={() => setPrefs({ design: d.name, theme: d.themes[0]!.name })}>
@@ -40,7 +40,7 @@ export function AppearanceChoices({ context, showLanguage = true, searchable }: 
           </ButtonGroup>
         </>
       ) : null}
-      {showLanguage ? <><h3 data-setting-id={searchable ? APPEARANCE.language.id : undefined}>{t(APPEARANCE.language.label)}</h3>
+      {showLanguage ? <><h4 class="appearance-subheading" data-setting-id={searchable ? APPEARANCE.language.id : undefined}>{t(APPEARANCE.language.label)}</h4>
       <ButtonGroup label={t(APPEARANCE.language.label)}>
         {LANGS.map((lang) => (
           <Button key={lang} aria-pressed={prefs.value.lang === lang} onClick={() => setPrefs({ lang })}>

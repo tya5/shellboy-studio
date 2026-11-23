@@ -66,6 +66,10 @@
   --size-meter-column: 220px;
   --size-plot-detail: 96px;
   --size-bar-label-compact: 80px;
+  --size-section-nav: 230px;
+  --size-fact-label-min: 120px;
+  --size-fact-label-max: 220px;
+  --size-section-heading-basis: 200px;
   --size-sidebar: 260px;
   --z-popover: 35;
   --size-right-panel: var(--size-details);
@@ -160,6 +164,10 @@
   --size-meter-column: 220px;
   --size-plot-detail: 96px;
   --size-bar-label-compact: 80px;
+  --size-section-nav: 230px;
+  --size-fact-label-min: 120px;
+  --size-fact-label-max: 220px;
+  --size-section-heading-basis: 200px;
   --size-sidebar: 260px;
   --z-popover: 35;
   --size-right-panel: var(--size-details);

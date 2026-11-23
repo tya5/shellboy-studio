@@ -1,3 +1,7 @@
 .subview-closable{grid-template-rows:auto minmax(0,1fr)}
 .subview-heading{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;gap:var(--space-8);padding:var(--space-8) var(--space-16);border-bottom:1px solid var(--line);font:var(--type-label)}
 @container app (max-width:899px){.subview-closable{grid-template-rows:auto auto auto}}
+
+.subview-close{display:inline-grid;place-items:center;min-width:var(--size-control);min-height:var(--size-control);border-radius:var(--radius-s)}
+.subview-close:hover,.subview-close:focus-visible{background:var(--hover)}
+@container app (max-width:899px){.subview-close{min-width:var(--size-touch);min-height:var(--size-touch)}}

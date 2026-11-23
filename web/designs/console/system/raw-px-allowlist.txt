@@ -19,8 +19,6 @@ components/ChoiceList/style.css margin 2px
 components/Composer/style.css min-height 52px
 components/EmptyState/style.css width 128px
 components/EmptyState/style.css height 128px
-components/FactList/style.css grid-template-columns 120px
-components/FactList/style.css grid-template-columns 220px
 components/KeyValue/style.css grid-template-columns 112px
 components/LoadingRows/style.css height 44px
 components/LoadingRows/style.css margin-left 40px
@@ -34,8 +32,6 @@ components/Message/style.css padding-right 72px
 components/Notice/style.css flex 240px
 components/PanelTabs/style.css border-bottom 2px
 components/PanelTabs/style.css border-radius 999px
-components/Section/style.css flex 200px
-components/SectionNav/style.css min-height 40px
 components/SelectRow/style.css box-shadow 2px
 components/SelectRow/style.css width 18px
 components/SelectionBar/style.css flex 200px
@@ -51,8 +47,6 @@ layout.css width 200px
 layout.css top 6px
 layout.css left 8px
 layout.css width 320px
-layout.css grid-template-columns 230px
-layout.css border-bottom 2px
 layout.css width 320px
 layout.css width 600px
 shared/controls.css min-height 24px

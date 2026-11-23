@@ -22,3 +22,5 @@ The first search result is preselected and Enter opens it. Setting results revea
 Search rows supply a destination ID independent of the localized label; repeated connection fields include the connection name in result copy.
 
 Group labels use the shared `.group-label`: `type-caption` at weight 500 in `muted`, uppercase with `letter-caps` in an English UI, with no icon, surface or hover, and not clickable. Items keep their icon, `type-label`, `hover` surface and `accent-bg` selection. The label's left edge is the items' icon edge (`space-8`). Groups are `space-16` apart (the list's `space-8` gap plus `space-8`), and a label sits `space-4` above its first item.
+
+Grouped Settings navigation follows [VS Code Settings](https://code.visualstudio.com/docs/getstarted/settings), [macOS System Settings](https://support.apple.com/guide/mac-help/change-system-settings-mh15217/mac), and [shadcn/ui Sidebar group labels](https://ui.shadcn.com/docs/components/sidebar): group labels are static and iconless, with the same start edge as the item icons. Phones show the same destinations in a native select, without headings as selectable options.

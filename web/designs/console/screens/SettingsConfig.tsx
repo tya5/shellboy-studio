@@ -2,7 +2,7 @@ import type { ComponentChildren } from "preact";
 import type { RegisterSetting } from "./setting-search";
 import { useCallback, useEffect, useMemo, useState } from "preact/hooks";
 import { CAPABILITY_CONFIG, CONNECTION_FIELDS, CONNECTION_SECRETS, fieldOf, isHidden, isHiddenName, showConfigValue, valueAt, type AppModel, type ConfigFacts, type ConfigFieldSpec, type MessageKey } from "../../../ui-core/src";
-import { Button, ButtonGroup, FactList, Field, Notice, Section, type Fact } from "../system/components";
+import { Button, ButtonGroup, Check, FactList, Field, Notice, Section, type Fact } from "../system/components";
 import { ConnectionModelList, ModelChooser, modelLabel, useConnectionModels } from "../system/components/ModelPicker/ConnectionModelList";
 import { Rich } from "./Rich";
 
@@ -77,7 +77,7 @@ export function ConfigControl({ model, path, label, spec, describedBy }: { model
   } else if (spec.kind === "kinds") {
     const kinds = ["user", "summary", "assistant_response", "tool_result", "spill", "event"] as const;
     const selected = Array.isArray(current) ? current.filter((v): v is string => typeof v === "string") : [];
-    control = <ButtonGroup label={label}>{kinds.map((kind) => <Button key={kind} disabled={disabled} aria-pressed={selected.includes(kind)} onClick={() => commit((selected.includes(kind) ? selected.filter((v) => v !== kind) : [...selected, kind]).join(","))}>{t(`set.kind.${kind}`)}</Button>)}</ButtonGroup>;
+    control = <fieldset class="settings-checks" disabled={disabled}><legend>{label}</legend>{kinds.map((kind) => <Check key={kind} checked={selected.includes(kind)} onChange={(on) => commit((on ? [...selected, kind] : selected.filter((v) => v !== kind)).join(","))}>{t(`set.kind.${kind}`)}</Check>)}</fieldset>;
   } else {
     const raw = current === undefined || current === null ? "" : showConfigValue(current);
     control = <RejectedTextField rejection={error} ariaLabel={label} aria-describedby={describedBy} class="mono" inputMode={spec.kind === "int" ? "numeric" : undefined} placeholder={t("config.notSet")} value={raw} disabled={disabled} onKeyDown={(e) => { if (e.key === "Enter") commit(e.currentTarget.value); }} onBlur={(e) => { if (e.currentTarget.value !== raw) commit(e.currentTarget.value); }} />;
@@ -126,7 +126,7 @@ export function ConnectionModelRow({ model, path, modelPath, label }: { model: A
   return <div class="stack">
     <ModelChooser label={label} trigger={choice.connection && choice.model ? modelLabel(choice) : t("model.change")} open={open} disabled={config.fieldSaving.value || !names.length} onToggle={() => setOpen(!open)} onClose={() => setOpen(false)}>
       <ModelCatalog connections={names} load={load} current={choice} t={t} onSelect={(next) => { setOpen(false); void config.saveModelPair(path, modelPath, next.connection, next.model); }} />
-      <Button onClick={() => setOpen(false)}>{t("model.close")}</Button>
+      <Button variant="ghost" onClick={() => setOpen(false)}>{t("model.close")}</Button>
     </ModelChooser>
     <SettingFeedback model={model} paths={[path, modelPath]} />
   </div>;
@@ -194,11 +194,11 @@ function ConnectionActions({ model, name }: { model: AppModel; name: string }) {
   return <>
     <div class="band">
       <span>{t("config.keyState")}: {state ?? t("config.notSet")}</span>
-      <Button disabled={busy} onClick={() => void model.config.testConnection(name)}>{t("config.testConnection")}</Button>
+      <Button variant="ghost" disabled={busy} onClick={() => void model.config.testConnection(name)}>{t("config.testConnection")}</Button>
       {confirm ? <>
-        <Button disabled={busy} onClick={() => { setConfirm(false); void model.config.clearCredential(name); }}>{t("config.confirmClear")}</Button>
-        <Button disabled={busy} onClick={() => setConfirm(false)}>{t("common.close")}</Button>
-      </> : <Button disabled={busy} onClick={() => setConfirm(true)}>{t("config.clearKey")}</Button>}
+        <Button variant="ghost" disabled={busy} onClick={() => { setConfirm(false); void model.config.clearCredential(name); }}>{t("config.confirmClear")}</Button>
+        <Button variant="ghost" disabled={busy} onClick={() => setConfirm(false)}>{t("common.close")}</Button>
+      </> : <Button variant="ghost" disabled={busy} onClick={() => setConfirm(true)}>{t("config.clearKey")}</Button>}
     </div>
     {confirm ? <Notice tone="wait">{t("config.clearKeyWarning")}</Notice> : null}
     {action?.name === name ? <Notice>{t(`config.action.${action.state}`)}</Notice> : null}

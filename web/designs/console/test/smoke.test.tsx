@@ -821,7 +821,7 @@ describe("Analytics", () => {
     const before = t.calls("usage.get").length;
     const first = () => text(el.querySelector(".stat-root .stat-value")!);
     const was = first();
-    const n = el.querySelector<HTMLInputElement>('input[aria-label="Cached weight n"]')!;
+    const n = el.querySelector<HTMLLabelElement>('.form-field-label')!.control as HTMLInputElement;
     await act(async () => {
       n.value = "1";
       n.dispatchEvent(new Event("input", { bubbles: true }));
@@ -1202,7 +1202,13 @@ describe("Threads", () => {
     const el = draw(made.model);
     act(() => made.t.push({ t: "changed", thread_ids: [], list: false, config_changed: true }));
     await act(async () => { await settle(made.t, made.db); });
-    const high = [...el.querySelectorAll<HTMLButtonElement>("button")].find((button) => text(button) === "high")!;
+    const effort = el.querySelector('[data-setting-id="default-effort"]')!;
+    const other = [...effort.querySelectorAll("button")].find((button) => text(button) === "Other")!;
+    expect(effort.querySelector("input")).toBeNull();
+    act(() => other.click());
+    expect(effort.querySelector('input[aria-label="Other"]')).toBeTruthy();
+    expect(made.t.calls("config.set")).toHaveLength(0);
+    const high = [...effort.querySelectorAll("button")].find((button) => text(button) === "high")!;
     act(() => high.click());
     await act(async () => { await settle(made.t, made.db); });
     expect(high.getAttribute("aria-pressed")).toBe("false");
@@ -1210,6 +1216,7 @@ describe("Threads", () => {
     expect(made.t.calls("config.set")).toHaveLength(1);
     expect(made.t.calls("config.set")[0]!.args).toEqual({ expected_hash: "effort-hash", changes: [{ field: "connections.proxy.default_effort", value: "high" }] });
     expect(high.getAttribute("aria-pressed")).toBe("true");
+    expect(effort.querySelector("input")).toBeNull();
     expect(made.model.config.read.value.value?.file.contentHash).toBe("effort-saved");
     expect(text(el)).toContain("Applies after the owner restarts");
   });
@@ -1219,8 +1226,10 @@ describe("Threads", () => {
     const el = draw(made.model);
     await act(async () => { await settle(made.t, made.db); });
     expect(text(el)).toContain("Getting started");
-    expect(text(el)).toContain("Agent");
+    expect(el.querySelector('.secnav-group[aria-label="Agent"] h3 svg')).toBeNull();
+    expect(text(el.querySelector('a[href="#/settings/agent"]')!)).toBe("Guide registration");
     const search = el.querySelector<HTMLInputElement>('.secnav-search input')!;
+    expect(search.placeholder).toBe("Search settings");
     act(() => { search.value = "summaries"; search.dispatchEvent(new Event("input", { bubbles: true })); });
     expect(text(el)).toContain("Summary");
     expect(el.querySelectorAll(".secnav-item")).toHaveLength(1);
@@ -1511,7 +1520,7 @@ describe("Settings", () => {
   it("lists the sections as links, and says it is read-only with no restart promise", async () => {
     const { el } = await open("connections");
     const nav = [...el.querySelectorAll(".secnav-item")].map(text);
-    expect(nav).toEqual(["General", "Connections", "Summary", "Indexing", "Agent", "Storage & capacity", "Appearance", "Studio"]);
+    expect(nav).toEqual(["General", "Connections", "Summary", "Indexing", "Guide registration", "Storage & capacity", "Appearance", "Studio"]);
     expect(el.querySelector('.secnav-item[aria-current="page"]')!.getAttribute("href")).toBe("#/settings/connections");
     expect(text(el)).toContain("Read-only");
     expect(text(el)).not.toContain("Changes take effect after owner restart");

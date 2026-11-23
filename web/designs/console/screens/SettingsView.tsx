@@ -1,7 +1,7 @@
 import { useEffect } from "preact/hooks";
 import { GuideRegistrationView, guideSearchRows } from "./GuideRegistration";
 import { CAPABILITY_CONFIG, CONFIG_FIELDS, fieldOf, formatRoute, settingsSection, SETTINGS_SECTIONS, valueAt, translator, type ConfigKey, type MessageKey, type DesignContext, type SettingsSection } from "../../../ui-core/src";
-import { Button, EffortControl, FactList, Notice, PairingQr, Section, SubView, type Fact, type IconRole } from "../system/components";
+import { Button, EffortControl, FactList, Notice, PageHeader, PairingQr, Section, SubView, type Fact, type IconRole } from "../system/components";
 import { AppearanceChoices, appearanceSearchRows } from "./Appearance";
 import { connectionCards, ConnectionModelRow, ConfigControl, ConfigPanel, SettingFeedback, configRowValue } from "./SettingsConfig";
 
@@ -56,7 +56,7 @@ export function SettingsView({ context }: { context: DesignContext }) {
     const effortValue = effortPath ? valueAt(facts?.file.values, effortPath) : undefined;
     const effortProps = section === "general" ? search("default-effort", "set.models.defaultEffort", ["set.models.effortNote"]) : { label: effortLabel };
     const effort: Fact = effortPath && editable
-      ? { ...effortProps, note: t("set.models.effortNote"), control: <div class="stack"><EffortControl label={effortLabel} value={typeof effortValue === "string" ? effortValue : ""} reset={model.config.fieldError.value?.field === fieldOf(effortPath) ? model.config.fieldError.value : undefined} labels={{ default: t("model.effort.default"), low: "low", medium: "medium", high: "high", other: t("model.effort.other") }} disabled={model.config.fieldSaving.value} onSelect={(value) => void model.config.saveField(effortPath, value, "text")} onCommit={(value) => void model.config.saveField(effortPath, value, "text")} /><SettingFeedback model={model} paths={[effortPath]} /></div> }
+      ? { ...effortProps, note: t("set.models.effortNote"), control: <div class="stack"><EffortControl revealOther label={effortLabel} value={typeof effortValue === "string" ? effortValue : ""} reset={model.config.fieldError.value?.field === fieldOf(effortPath) ? model.config.fieldError.value : undefined} labels={{ default: t("model.effort.default"), low: "low", medium: "medium", high: "high", other: t("model.effort.other") }} disabled={model.config.fieldSaving.value} onSelect={(value) => void model.config.saveField(effortPath, value, "text")} onCommit={(value) => void model.config.saveField(effortPath, value, "text")} /><SettingFeedback model={model} paths={[effortPath]} /></div> }
       : { ...effortProps, ...(effortPath && facts ? { value: configRowValue(t, facts, effortPath) } : {}) };
 
     switch (section) {
@@ -70,7 +70,7 @@ export function SettingsView({ context }: { context: DesignContext }) {
         </>;
       case "connections":
         return <>
-          <Section settingId={search("connections.add", "setup.add", ["setup.intro"]).settingId} title={t("setup.open")} sub={t("setup.intro")}><div class="setup-actions"><a class="btn" href={formatRoute({ view: "setup" })} onClick={() => model.setup.beginAdd()}>{t("setup.add")}</a></div></Section>
+          <Section settingId={search("connections.add", "setup.add", ["setup.intro"]).settingId} title={t("setup.open")} sub={t("setup.intro")}><div class="setup-actions"><a class="nav-link" href={formatRoute({ view: "setup" })} onClick={() => model.setup.beginAdd()}>{t("setup.add")}</a></div></Section>
           {canEdit && facts && !model.config.read.value.error ? connectionCards(model, search) : null}
         </>;
       case "compaction":
@@ -79,7 +79,7 @@ export function SettingsView({ context }: { context: DesignContext }) {
           fileFact("set.compact.maxChars", "compaction.summary_max_chars"),
         ]} /></Section>;
       case "storage":
-        return <Section title={t("set.store.file")} sub={t("set.store.see")} actions={<a class="btn" href={formatRoute({ view: "analytics", section: "storage" })}>{t("set.store.open")}</a>}><FactList missing={missing} facts={[
+        return <Section title={t("set.store.file")} sub={t("set.store.see")} actions={<a class="nav-link" href={formatRoute({ view: "analytics", section: "storage" })}>{t("set.store.open")}</a>}><FactList missing={missing} facts={[
           fileFact("set.store.warnBytes", "limits.data_warning_bytes"),
           fileFact("set.store.maxBytes", "limits.data_max_bytes"),
           fileFact("set.store.freeBytes", "limits.disk_free_min_bytes"),
@@ -106,7 +106,7 @@ export function SettingsView({ context }: { context: DesignContext }) {
             {model.pairing.value.error ? <Notice tone="bad">{t("pair.error")}</Notice> : null}
             {!model.pairing.value.hosts.length ? <p>{t("pair.noHosts")}</p> : model.pairing.value.hosts.map(host => {
               const link = model.pairing.value.links[host];
-              return <div key={host}><p><code>{host}</code></p>{link ? <><PairingQr value={link.url} label={t("pair.qr")} url={link.url} /><p>{t("pair.expires", { time: new Date(link.expires).toLocaleTimeString() })}</p><Button onClick={() => void navigator.clipboard.writeText(link.url)}>{t("pair.copy")}</Button></> : null}<Button onClick={() => void model.createPairing(host)}>{t(link ? "pair.reissue" : "pair.create")}</Button></div>;
+              return <div key={host}><p><code>{host}</code></p>{link ? <><PairingQr value={link.url} label={t("pair.qr")} url={link.url} /><p>{t("pair.expires", { time: new Date(link.expires).toLocaleTimeString() })}</p><Button variant="ghost" onClick={() => void navigator.clipboard.writeText(link.url)}>{t("pair.copy")}</Button></> : null}<Button variant="ghost" onClick={() => void model.createPairing(host)}>{t(link ? "pair.reissue" : "pair.create")}</Button></div>;
             })}
           </Section>
           <Section settingId={search("studio.remote", "studio.remote", ["studio.remoteGuide"]).settingId} title={t("studio.remote")} sub={t("studio.remoteGuide")}><FactList missing={missing} facts={[{ ...search("studio.fact.listen", "studio.listen"), value: model.data.listen.value, mono: true }]} /><p><code>shellboy-studio guide user</code></p><p><code>shellboy-studio --allow-host HOSTNAME</code></p><p>{t("studio.hostGuide")}</p></Section>
@@ -128,8 +128,8 @@ export function SettingsView({ context }: { context: DesignContext }) {
   };
   const bodies = new Map(SETTINGS_SECTIONS.map((key) => [key, body(key)]));
   const groupFor = (s: SettingsSection) => s === "general" || s === "connections" ? t("set.group.start") : s === "compaction" || s === "index" || s === "agent" ? t("set.group.agent") : s === "appearance" ? t("set.group.display") : s === "storage" ? t("set.group.data") : t("set.group.app");
-  return <SubView title={t("set.title")} close={{ href: formatRoute({ view: "conversation", threadId: model.selectedId.value }), label: t("common.close") }} groupedNav searchable items={SETTINGS_SECTIONS.map((s) => ({ key: s, href: formatRoute({ view: "settings", section: s }), role: ICONS[s], label: t(`set.section.${s}`), description: t(`set.sub.${s}`), searchTerms: (["en", "ja"] as const).flatMap((lang) => { const translate = translator(lang); return [translate(`set.section.${s}`), translate(`set.sub.${s}`)]; }), searchRows: rows.get(s), group: groupFor(s), current: s === section }))}>
-    <div class="pagehead"><h1>{t(`set.section.${section}`)}</h1><div class="muted">{t(`set.sub.${section}`)}</div></div>
+  return <SubView title={t("set.title")} close={{ href: formatRoute({ view: "conversation", threadId: model.selectedId.value }), label: t("common.close") }} groupedNav searchLabel={t("set.search")} items={SETTINGS_SECTIONS.map((s) => ({ key: s, href: formatRoute({ view: "settings", section: s }), role: ICONS[s], label: t(`set.section.${s}`), description: t(`set.sub.${s}`), searchTerms: (["en", "ja"] as const).flatMap((lang) => { const translate = translator(lang); return [translate(`set.section.${s}`), translate(`set.sub.${s}`)]; }), searchRows: rows.get(s), group: groupFor(s), current: s === section }))}>
+    <PageHeader title={t(`set.section.${section}`)} description={t(`set.sub.${section}`)} />
     {section !== "studio" && section !== "agent" ? <ConfigPanel model={model} /> : null}
     {bodies.get(section)}
   </SubView>;
