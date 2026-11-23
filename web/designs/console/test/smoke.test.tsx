@@ -605,6 +605,26 @@ describe("Conversation", () => {
 });
 
 describe("Monitor", () => {
+  it("shows the row-cache status mark for a pinned Thread outside the list without opening details", async () => {
+    const { model, t, db } = await fixtureModel({ route: "monitor", configure(db) {
+      db.threads["outside-pin"] = summary("outside-pin", { title: "Pinned outside list", activity: "tools", state: "running" });
+      const answer = db.answer.bind(db);
+      db.answer = call => {
+        if (call.command === "thread.list" && !(call.args as { thread_ids?: string[] }).thread_ids) {
+          const result = answer(call);
+          if (result.ok) return { ...result, result: { items: (result.result as { items: typeof db.threads[keyof typeof db.threads][] }).items.filter(row => row.thread_id !== "outside-pin") } };
+        }
+        return answer(call);
+      };
+    } });
+    const el = draw(model, { monitorPins: ["outside-pin"] });
+    await act(async () => { await settle(t, db); });
+    const card = [...el.querySelectorAll(".mon .card")].find(row => row.querySelector("h2")?.textContent === "Pinned outside list")!;
+    expect(card.querySelector('.st[data-status="running"]')).not.toBeNull();
+    expect(t.calls("thread.get")).toHaveLength(0);
+    expect(t.calls("thread.list").some(call => JSON.stringify(call.args) === JSON.stringify({ thread_ids: ["outside-pin"] }))).toBe(true);
+    model.dispose();
+  });
   it("does not show counts while the first list read is outstanding", async () => {
     const t = new FakeTransport();
     const data = new ShellboyData({ transport: t });
