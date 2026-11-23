@@ -57,7 +57,6 @@ def main():
     assert "actions/cache/restore@v4" in owner and "restore-keys:" not in owner
     assert owner.index("steps.pin.outputs.core") < owner.index("actions/cache/restore@v4")
     assert "if: steps.owner-cache.outputs.cache-hit != 'true'" in owner
-    assert owner.index("owner-binary-cache.py verify") < owner.index('"$OWNER_BIN" --version')
     assert owner.index("--features real-owner-tests --test real_owner") < owner.index("actions/cache/save@v4")
     assert "inputs.real_owner" not in ci
     for workflow in (ci, candidate, release, owner):

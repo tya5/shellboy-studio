@@ -14,13 +14,12 @@ otherwise it runs all three OSes. A skip-only run is not reusable evidence.
 The owner job still checks the official source checkout against Studio's manifest
 and lock on every run. It restores only the exact Core SHA, Rust target, toolchain,
 runner and build-settings key, with no fallback. On a miss it builds the locked
-release binary from that checkout. On both paths it verifies the cached or newly
-built bytes against the build receipt before executing `--version`, then checks
-that version against the verified package and runs the full integration suite.
-The receipt is a hash check, not a signature; the executable cache relies on
-GitHub's ref isolation. Only successful integrations on `main` or `land/batch`
-in the official repo save entries. A batch entry can be reused by subsequent
-batches on that same ref; review branches can use eligible default-branch entries.
+release binary from that checkout. On a hit, the cache trusts the exact key and
+GitHub's ref isolation; the binary is not independently attested. Both paths
+verify the official source checkout, manifest and lock, check the binary's
+reported version against the verified package, and run the full integration
+suite. Only successful integrations on `main` or `land/batch` in the official
+repo save entries. A batch entry can be reused by subsequent batches on that ref.
 
 Historical step timings from the existing run records (build and version check /
 integration suite):
