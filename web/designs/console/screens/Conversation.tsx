@@ -348,11 +348,7 @@ function BodyReadButton({model,nodeId,itemIdentity,typedNode,unavailable}:{model
 
 function speakerDisplay(speaker: Speaker, model: AppModel) {
   const t = model.t.value;
-  const title = speaker.kind === "model"
-    ? model.rowById.value.get(speaker.threadId)?.summary.title
-      ? { state: "ready" as const, title: model.rowById.value.get(speaker.threadId)!.summary.title }
-      : model.senderTitles.values.value.get(speaker.threadId)
-    : undefined;
+  const title = speaker.kind === "model" ? model.senderTitles.values.value.get(speaker.threadId) : undefined;
   return projectSpeakerDisplay(speaker, title, {
     you: t("convo.you"), shellboy: t("convo.shellboy"), cli: t("convo.cli"), model: t("convo.modelSender"),
     unknownModel: t("convo.unknownModelSender"), unknown: t("convo.unknownSender"),

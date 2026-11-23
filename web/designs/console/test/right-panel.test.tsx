@@ -49,6 +49,20 @@ describe('right panel purpose',()=>{
   } finally {f.model.dispose();f.data.stop();}
  });
 
+ it('uses the sender-title resolver for an owed model Thread row', async () => {
+  const f=await setup();
+  try {
+   f.db.replies=[...f.db.replies,pendingReply("owed-model","child",{kind:"thread",thread_id:"lead"},"Question from child")];
+   await act(async()=>{f.t.push({t:"changed",config_changed:false,thread_ids:["lead"],list:false});await settle(f.t,f.db);});
+   await act(async()=>f.host.querySelector<HTMLButtonElement>('[data-panel-tab="reply-needed"]')!.click());
+   await act(async()=>f.model.senderTitles.update("fixture-owner",["child"],[summary("child",{title:"Resolved child title"})]));
+   expect(f.model.senderTitles.values.value.get("child")).toEqual({state:"ready",title:"Resolved child title"});
+   const row=f.host.querySelector('[data-panel-row-id="owed-model"]')!;
+   expect(row.textContent).toContain("Resolved child title");
+   expect(row.textContent).not.toContain(f.model.t.value("convo.modelSender"));
+  } finally {f.model.dispose();f.data.stop();}
+ });
+
  it('keeps non-human asked-by rows linked in the narrow work sheet', async () => {
   const f=await setup();
   try {
