@@ -5,4 +5,8 @@
 - **Why:** The message can preserve readable formatting without rendering raw HTML or allowing arbitrary link schemes.
 - **Source:** [Studio Console decisions](../../../../../../docs/design/design-system.md#the-console-design)
 
+One saved message: who, when, and the text rendered from Markdown. Raw HTML in the text is not rendered and links only open http, https and mailto addresses. Code blocks have a copy button.
+
+Styles are colocated in `system/components/Message/style.css`.
+
 Styles: style.css in this directory

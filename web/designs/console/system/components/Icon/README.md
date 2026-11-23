@@ -5,6 +5,8 @@
 - **Why:** The active theme can remap glyphs without changing what any caller means.
 - **Source:** [Studio iconography](../../README.md#iconography) and [Console decisions](../../../../../../docs/design/design-system.md#the-console-design)
 
+Consumers use semantic `IconRole` names only. Glyph names, paths, and the role-to-glyph map are module-private in `Icon`; only the semantic role list is exported. A theme may reuse a glyph for distinct roles or assign a different glyph without changing call sites. Choose `size="default"`, `size="small"`, or `size="menu"`; the SVG dimensions come from `--size-icon`, `--size-icon-small` (15px), and `--size-icon-menu` (16px), respectively.
+
 | IconRole | Meaning and use | Current glyph |
 | --- | --- | --- |
 | `action.archive` | Archive the current Thread; row action before it is archived. | `archive` |
@@ -108,5 +110,3 @@ Sidebar and shared state roles (Orca sidebar and Lucide semantics):
 - `group.collapse`: collapse one sidebar band (Pinned or All); down-facing chevron.
 
 | `thread.rename` | Edit a Thread title. | `pencil` |
-
-Styles: style.css in this directory
