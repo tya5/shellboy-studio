@@ -23,7 +23,7 @@ function rows(details: ThreadDetails): { section: MessageKey; entries: Row[] }[]
       { field: "connection", label: "model.connection", own: d.connection },
       { field: "model", label: "details.model", own: d.model },
       { field: "effort", label: "model.effort", own: d.effort },
-      { field: "max_tokens", label: "threadSettings.max", own: d.maxTokensState.kind === "unknown" ? unreadable : d.maxTokens, inherited: d.effectiveMaxTokens, defaultable: true },
+      { field: "max_tokens", label: "config.conn.max_tokens", own: d.maxTokensState.kind === "unknown" ? unreadable : d.maxTokens, inherited: d.effectiveMaxTokens, defaultable: true },
     ] },
     { section: "set.section.compaction", entries: [
       { field: "auto_compact_at", label: "thread.auto", own: d.autoCompactAt, inherited: d.effectiveAutoCompactAt, defaultable: true },

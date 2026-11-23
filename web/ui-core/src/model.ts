@@ -206,7 +206,6 @@ export class AppModel {
   }
   clearThreadOutputLimit(): void { this.editThreadOutputLimit(""); }
   closeModelPicker(): void {
-    if (this.pendingSettingFocus.peek() === "thread.maxTokens") this.pendingSettingFocus.value = undefined;
     this.modelListCancel.cancel();
     batch(() => {
       this.pickerSession.value = undefined;

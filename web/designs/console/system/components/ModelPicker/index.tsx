@@ -1,4 +1,3 @@
-import { useEffect } from "preact/hooks";
 import type { AppModel } from "../../../../../ui-core/src";
 import { Button, Field, MonitorPopover, Notice } from "..";
 import { ConnectionModelList, modelLabel } from "./ConnectionModelList";
@@ -12,17 +11,6 @@ export function ModelPicker({ model, details, onThreadSettings }: { model: AppMo
   const picker = model.modelPicker.value;
   const canEdit = model.data.capabilities.value.includes("thread.settings");
   const disabled = picker.saving || !canEdit;
-  const pendingFocus = model.pendingSettingFocus.value;
-  useEffect(() => {
-    if (pendingFocus !== "thread.maxTokens") return;
-    if (!picker.open) { model.pendingSettingFocus.value = undefined; return; }
-    const field = document.querySelector<HTMLInputElement>(
-      '.model-picker [data-thread-setting="maxTokens"]',
-    );
-    if (!field) { model.pendingSettingFocus.value = undefined; return; }
-    field.focus();
-    if (document.activeElement === field) model.pendingSettingFocus.value = undefined;
-  }, [model, picker.open, pendingFocus]);
   const choices = picker.models.some(row => row.connection === details.connection && row.model === details.model)
     ? picker.models : [details, ...picker.models];
   return <MonitorPopover className="model-picker-anchor" label={`${modelLabel(details)} · ${details.effort || t("model.effort.default")}`}

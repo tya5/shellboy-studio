@@ -24,6 +24,8 @@ import { ThreadSettingsPanel, type SettingsDestination } from "./ThreadSettingsP
 import { WindowedScroll } from "./WindowedScroll";
 import { BranchMark, Button, Composer, ContextRing, DataTable, Section, ModelPicker, LoadingRows, EmptyState, Icon, KeyValue, LayoutSeparator, ListDivider, ListRow, LogBlock, Message, Notice, PanelTabs, ShellFooter, ShellToggle, QuestionCard, StatusMark, StepRow, SummaryStrip, WorkSheet, OutputLimitNotice as OutputLimitNoticeRow } from "../system/components";
 
+type OpenThreadSettings = (field: SettingsDestination["field"]) => void;
+
 /** Internal immutable publication seam; deliberately not a Core transport type. */
 export interface ConversationSnapshot {
   readonly projection: SavedItemProjection;
@@ -86,7 +88,7 @@ function assistantTextMembership(item: ConversationItem): AssistantTextMembershi
   return "message";
 }
 
-export function SavedConversationItems({ model, projection: suppliedProjection, displayPlan, renderBefore, trailing, nodes,localRegion }: { model: AppModel; projection: SavedItemProjection & { sequence?: readonly ({kind: "conversation"; itemKey: string} | {kind: "work"; groupKey: string})[]; workGroups?: readonly ConversationWorkGroup[] }; displayPlan?: ConversationDisplayPlan; nodes?: readonly HistoryItem[]; renderBefore?: (item: ConversationItem) => ComponentChildren; trailing?: ComponentChildren;localRegion?: { readonly kind: "unqualified"; readonly tailRows: readonly import("../../../ui-core/src/own-send-presentation").PositionedOwnSendRow[]; readonly renderRow: (row: import("../../../ui-core/src/model").PendingOwnMessage | Extract<import("../../../ui-core/src/own-send-presentation").PositionedOwnSendRow, { kind: "live" }>) => ComponentChildren } }) {
+export function SavedConversationItems({ model, projection: suppliedProjection, displayPlan, renderBefore, trailing, nodes,localRegion, openThreadSettings }: { model: AppModel; projection: SavedItemProjection & { sequence?: readonly ({kind: "conversation"; itemKey: string} | {kind: "work"; groupKey: string})[]; workGroups?: readonly ConversationWorkGroup[] }; displayPlan?: ConversationDisplayPlan; nodes?: readonly HistoryItem[]; renderBefore?: (item: ConversationItem) => ComponentChildren; trailing?: ComponentChildren;localRegion?: { readonly kind: "unqualified"; readonly tailRows: readonly import("../../../ui-core/src/own-send-presentation").PositionedOwnSendRow[]; readonly renderRow: (row: import("../../../ui-core/src/model").PendingOwnMessage | Extract<import("../../../ui-core/src/own-send-presentation").PositionedOwnSendRow, { kind: "live" }>) => ComponentChildren }; openThreadSettings?: OpenThreadSettings }) {
   const projection = displayPlan ? projectionFromDisplayPlan(displayPlan) : suppliedProjection;
   const planEntries = displayPlan?.entries ?? [];
   const planByKey = new Map(planEntries.map(entry => [entry.item.key, entry]));
@@ -195,7 +197,7 @@ export function SavedConversationItems({ model, projection: suppliedProjection, 
           : fact.kind === "external_cli" ? (fact.label?.trim() ? { kind: "other", label: `CLI: ${fact.label}` } : { kind: "cli" })
           : { kind: "unknown", model: fact.kind === "unknown_model", label: fact.label };
         const savedLimit = item.source.kind === "text" ? outputLimitNoticeFacts(undefined, workDisplayMetadata(item)?.outputLimit) : undefined;
-        return <><ProjectedMessage model={model} relationship={messageRelationship(node.provenance?.message,node.node_id)} authorizedText={displayText ?? ""} bodyPartial={item.source.kind === "text" && item.source.textComplete === false} bodyUnavailable={!nodeAuthoritative && item.source.kind === "text" && item.source.textComplete === false} nodeAuthoritative={nodeAuthoritative} row={{ type: "message", id: node.node_id!, itemIdentity: nodeAuthoritative ? undefined : item.source.kind === "text" ? item.source.itemIdentity : undefined, speaker, text: displayText ?? "", truncated: false, at: node.provenance?.created_at }} />{savedLimit ? <OutputLimitNotice model={model} fact={savedLimit} /> : null}{(item.source.kind === "text" || item.source.kind === "user" || item.source.kind === "summary") && (displayEntry?.body.kind === "preview" || displayEntry?.body.kind === "typed-partial") && body?.text === undefined ? <div class="caption muted" data-item-partial="">{t("work.partial")}</div> : null}</>;
+        return <><ProjectedMessage model={model} relationship={messageRelationship(node.provenance?.message,node.node_id)} authorizedText={displayText ?? ""} bodyPartial={item.source.kind === "text" && item.source.textComplete === false} bodyUnavailable={!nodeAuthoritative && item.source.kind === "text" && item.source.textComplete === false} nodeAuthoritative={nodeAuthoritative} row={{ type: "message", id: node.node_id!, itemIdentity: nodeAuthoritative ? undefined : item.source.kind === "text" ? item.source.itemIdentity : undefined, speaker, text: displayText ?? "", truncated: false, at: node.provenance?.created_at }} />{savedLimit ? <OutputLimitNotice model={model} fact={savedLimit} openThreadSettings={openThreadSettings} /> : null}{(item.source.kind === "text" || item.source.kind === "user" || item.source.kind === "summary") && (displayEntry?.body.kind === "preview" || displayEntry?.body.kind === "typed-partial") && body?.text === undefined ? <div class="caption muted" data-item-partial="">{t("work.partial")}</div> : null}</>;
       }
       if (item.source.kind === "tool") {
         const ids = item.source.executionIds ?? (item.source.executionId ? [item.source.executionId] : []);
@@ -208,7 +210,7 @@ export function SavedConversationItems({ model, projection: suppliedProjection, 
           return <div key={id} data-execution-id={id}>{hidden(item) ? null : step && display ? <StepView model={model} step={step} display={display} openPolicy={item.classification!.openPolicy} /> : <div class="caption muted" data-execution-unresolved="">{workRow(item)}</div>}</div>;
         })}</div>;
       }
-      if (item.source.kind === "ordinaryEmpty") { const savedLimit = outputLimitNoticeFacts(undefined, workDisplayMetadata(item)?.outputLimit); return savedLimit ? <OutputLimitNotice model={model} fact={savedLimit} /> : <div class="caption muted" data-empty-ordinary="">{t("work.textUnavailable")}</div>; }
+      if (item.source.kind === "ordinaryEmpty") { const savedLimit = outputLimitNoticeFacts(undefined, workDisplayMetadata(item)?.outputLimit); return savedLimit ? <OutputLimitNotice model={model} fact={savedLimit} openThreadSettings={openThreadSettings} /> : <div class="caption muted" data-empty-ordinary="">{t("work.textUnavailable")}</div>; }
       if (item.source.kind === "reasoning" || item.source.kind === "reasoning_unavailable") return <div data-thinking-marker="">{workRow(item)}</div>;
       if (item.source.kind === "interruption") return workRow(item);
       if (item.source.kind === "record") return <div data-internal-records="">{workRow(item)}</div>;
@@ -237,13 +239,12 @@ export function LiveRecordChrome({ model, record }: { model: AppModel; record: H
   </div>;
 }
 
-export function OutputLimitNotice({ model, fact }: { model: AppModel; fact: { stop: true; sent_max_tokens?: number | null; source?: string; connection?: string } }) {
+export function OutputLimitNotice({ model, fact, openThreadSettings }: { model: AppModel; fact: { stop: true; sent_max_tokens?: number | null; source?: string; connection?: string }; openThreadSettings?: OpenThreadSettings }) {
   const t = model.t.value;
   const override = model.threadSettings.value?.maxTokensState.kind !== undefined && model.threadSettings.value.maxTokensState.kind !== "unset";
   const openSetting = () => {
     if (override) {
-      model.openModelPicker();
-      model.pendingSettingFocus.value = "thread.maxTokens";
+      openThreadSettings?.("max_tokens");
       return;
     }
     const connection = fact.connection ?? model.threadSettings.value?.connection;
@@ -259,22 +260,22 @@ function outputLimitNoticeFacts(live: AttemptOutputLimit | null | undefined, sav
   return fact ? { stop: true as const, ...(fact.sent_max_tokens !== undefined ? { sent_max_tokens: fact.sent_max_tokens } : {}), ...(live?.source ? { source: live.source } : {}), ...(live?.connection ? { connection: live.connection } : {}) } : undefined;
 }
 
-function OwnSendContent({model,snapshot,plan,trailing}: {model:AppModel;snapshot:WindowAcceptedSnapshot;plan:ConversationDisplayPlan;trailing?:ComponentChildren}) {
+function OwnSendContent({model,snapshot,plan,trailing,openThreadSettings}: {model:AppModel;snapshot:WindowAcceptedSnapshot;plan:ConversationDisplayPlan;trailing?:ComponentChildren;openThreadSettings?:OpenThreadSettings}) {
   const projection=projectionFromDisplayPlan(plan);
-  const renderLocal=(message:import("../../../ui-core/src/model").PendingOwnMessage | Extract<import("../../../ui-core/src/own-send-presentation").PositionedOwnSendRow,{kind:"live"}>)=> { if ("kind" in message) { const fact = outputLimitNoticeFacts(message.outputLimit); return fact ? <OutputLimitNotice model={model} fact={fact} /> : null; } return <aside data-pending-own-message={message.operationId} data-pending-phase={message.phase}><Message bot={false} who={model.t.value("convo.you")} text={message.text} at={model.t.value(message.phase === "sending" || message.phase === "accepted" ? "composer.pending.waiting" : `composer.pending.${message.phase}`)} copyLabel={model.t.value("code.copy")} copiedLabel={model.t.value("code.copied")}/>
+  const renderLocal=(message:import("../../../ui-core/src/model").PendingOwnMessage | Extract<import("../../../ui-core/src/own-send-presentation").PositionedOwnSendRow,{kind:"live"}>)=> { if ("kind" in message) { const fact = outputLimitNoticeFacts(message.outputLimit); return fact ? <OutputLimitNotice model={model} fact={fact} openThreadSettings={openThreadSettings} /> : null; } return <aside data-pending-own-message={message.operationId} data-pending-phase={message.phase}><Message bot={false} who={model.t.value("convo.you")} text={message.text} at={model.t.value(message.phase === "sending" || message.phase === "accepted" ? "composer.pending.waiting" : `composer.pending.${message.phase}`)} copyLabel={model.t.value("code.copy")} copiedLabel={model.t.value("code.copied")}/>
     {message.phase==="failed"||message.phase==="unconfirmed"?<><Button variant="link" disabled={!model.canResend(message)} onClick={()=>void model.resend(message)}>{model.t.value("action.retry")}</Button>{!model.canResend(message)?<span class="caption">{model.t.value("composer.retryUnavailable")}</span>:null}</>:null}</aside>; };
   return <SavedConversationItems model={model} projection={projection} displayPlan={plan} nodes={snapshot.rows}
     localRegion={plan.localRegion.tailRows.length?{kind:"unqualified",tailRows:plan.localRegion.tailRows,renderRow:renderLocal}:undefined}
-    trailing={trailing}/>;
+    trailing={trailing} openThreadSettings={openThreadSettings}/>;
 }
 
-export function SavedWindowContent({ model, snapshot }: { model: AppModel; snapshot: WindowAcceptedSnapshot }) {
+export function SavedWindowContent({ model, snapshot, openThreadSettings }: { model: AppModel; snapshot: WindowAcceptedSnapshot; openThreadSettings?: OpenThreadSettings }) {
   const handle = model.handle.value;
   const acceptedPlan = snapshot.displayPlan;
   const capability = model.longReader.value?.acceptedView.currentCapability;
   if (!acceptedPlan || acceptedPlan.acceptedGeneration !== snapshot.generation || acceptedPlan.revision !== snapshot.revision
     || acceptedPlan.capability !== capability || !(model.longReader.value?.acceptedView.isCurrent(snapshot) ?? false)) return null;
-  return <OwnSendContent model={model} snapshot={snapshot} plan={acceptedPlan}
+  return <OwnSendContent model={model} snapshot={snapshot} plan={acceptedPlan} openThreadSettings={openThreadSettings}
     trailing={<>{acceptedPlan.coverage==='unavailable' ? <div role="status" data-work-scope-rejected="" data-state-source="client" data-state-value="scope-qualification-rejected">CLIENT: {model.t.value('work.textUnavailable')} (scope-qualification-rejected)</div> : null}
     {handle?.handoffOverflow.value ? <div class="caption muted" data-live-overflow="">{model.t.value('convo.handoffLimit')}</div> : null}</>} />;
 }
@@ -733,7 +734,7 @@ function RightPanel({ model, panelCollapsed = false, phone, destination, clearDe
   </aside>;
 }
 
-export function OrderedHistory({ model, handle, win, t }: { model: AppModel; handle: NonNullable<AppModel["handle"]["value"]>; win: AppModel["longReader"]["value"]; t: AppModel["t"]["value"] }) {
+export function OrderedHistory({ model, handle, win, t, openThreadSettings }: { model: AppModel; handle: NonNullable<AppModel["handle"]["value"]>; win: AppModel["longReader"]["value"]; t: AppModel["t"]["value"]; openThreadSettings?: OpenThreadSettings }) {
   const [boundary, setBoundary] = useState<{ attempt: string; ordinal: number } | undefined>();
   useEffect(() => {
     let attempt: string | undefined;
@@ -747,7 +748,7 @@ export function OrderedHistory({ model, handle, win, t }: { model: AppModel; han
   if (!model.historySupported) return <Notice tone="bad" title={t("convo.unsupportedOwner")} />;
   if (!win) return <LoadingRows label={t("convo.loading")} rows={5} />;
   return <WindowedScroll model={model} win={win} live={null} renderRow={() => <></>}
-    renderAcceptedView={snapshot => <SavedWindowContent model={model} snapshot={snapshot} />}
+    renderAcceptedView={snapshot => <SavedWindowContent model={model} snapshot={snapshot} openThreadSettings={openThreadSettings} />}
     liveBoundary={boundary?.ordinal} />;
 }
 
@@ -769,9 +770,9 @@ export function Conversation({ model, panelCollapsed = false, rightPanelWidth, o
     if (settingsDestination && (settingsDestination.thread !== handle?.threadId || tab !== "settings")) clearDestination();
   }, [settingsDestination, handle, tab]);
   const destination = settingsDestination?.thread === handle?.threadId ? settingsDestination : undefined;
-  const openThreadPanel = (tab: "info" | "settings") => {
+  const openThreadPanel = (tab: "info" | "settings", field: SettingsDestination["field"] = "connection") => {
     if (tab === "settings" && handle) {
-      const request: SettingsDestination = { thread: handle.threadId, field: "connection",
+      const request: SettingsDestination = { thread: handle.threadId, field,
         consume: () => setSettingsDestination(current => current === request ? undefined : current) };
       setSettingsDestination(request);
     } else clearDestination();
@@ -792,7 +793,7 @@ export function Conversation({ model, panelCollapsed = false, rightPanelWidth, o
         {diagnostic ? <output hidden data-window-diagnostic="true"
           data-reason={diagnostic.reason} data-generation={diagnostic.generation}
           data-revision={diagnostic.revision ?? ""} data-owner-epoch={diagnostic.ownerEpoch} /> : null}
-        {handle ? <OrderedHistory model={model} handle={handle} win={win} t={t} /> :
+        {handle ? <OrderedHistory model={model} handle={handle} win={win} t={t} openThreadSettings={field => openThreadPanel("settings", field)} /> :
           <EmptyState role="empty.noThread" title={t("convo.noThread")} body={t("convo.noThreadBody")}>
             <Button variant="primary" onClick={() => void model.createThread()}>{t("action.new")}</Button>
           </EmptyState>}
