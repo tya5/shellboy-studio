@@ -100,7 +100,11 @@ describe("resync, restart and loss", () => {
     db.reads.length = 0;
     t.push({ t: "resync" });
     await settle(t, db);
-    expect(db.reads.sort()).toEqual(["status", "thread.get:a", "thread.get:b", "thread.list"]);
+    expect(db.reads.sort()).toEqual(["status", "thread.get:a", "thread.get:b", "thread.list", "thread.list", "thread.list"]);
+    expect(t.calls("thread.list").slice(-2).map(call => call.args)).toEqual([
+      { state: "failed", archived: "include", limit: PAGE_LIMIT },
+      { state: "recovery_wait", archived: "include", limit: PAGE_LIMIT },
+    ]);
   });
 
   it("restarted followed by resync (the bridge sends both) costs at most one trailing read per target", async () => {
@@ -425,7 +429,8 @@ describe("the Thread list stays bounded however many Threads exist", () => {
     const answer = db.answer.bind(db);
     db.answer = (c) => {
       if (c.command !== "thread.list") return answer(c);
-      const a = (c.args ?? {}) as { thread_ids?: string[]; cursor?: string; order?: string };
+      const a = (c.args ?? {}) as { thread_ids?: string[]; cursor?: string; order?: string; state?: string };
+      if (a.state) return answer(c);
       if (a.thread_ids) return { ok: true, result: { items: a.thread_ids.flatMap(id => all.filter(row => row.thread_id === id)) } };
       expect(a.order).toBe("created");
       const start = a.cursor ? Number(a.cursor) : 0;
@@ -536,7 +541,8 @@ describe("reads nobody needs are cancelled", () => {
     await flush();
     expect(t.cancels()).toContain(first.id);
     await settle(t, db);
-    expect((t.calls("thread.list").at(-1)!.args as { query?: string }).query).toBe("q");
+    const ordinary = t.calls("thread.list").filter(call => (call.args as { order?: string }).order === "created");
+    expect(ordinary.at(-1)?.args).toMatchObject({ query: "q" });
     expect(data.threadList.value.loaded).toBe(true);
   });
 });

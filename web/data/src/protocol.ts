@@ -504,6 +504,8 @@ export interface ThreadListArgs {
   /** Return exact summaries without paging. */
   thread_ids?: string[];
   order?: "updated" | "created";
+  /** Current derived row state; requires updated order. */
+  state?: "idle" | "live" | "stopping" | "preparing" | "running" | "waiting" | "recovery_wait" | "completed" | "stopped" | "failed";
   awaiting?: "human";
   limit?: number;
   cursor?: string;

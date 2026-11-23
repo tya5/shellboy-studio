@@ -143,13 +143,16 @@ describe("Branches over the fake transport", () => {
     return made;
   };
   it("reads nothing until the view opens; opens no history", async () => {
-    const { t } = await fixtureModel({ route: "monitor" });
-    expect(t.calls("thread.branches")).toHaveLength(0);
-    const open = await branches();
-    expect(open.t.calls("thread.branches")).toHaveLength(1);
-    expect(open.t.calls("thread.branches")[0]!.args).toMatchObject({ thread_id: "lead", limit: 200 });
-    expect(open.t.calls("history.list")).toHaveLength(0);
-    expect(open.model.branches.state.value.family?.items).toHaveLength(4);
+    const { model, t, db } = await fixtureModel({ route: "monitor" });
+    try {
+      expect(t.calls("thread.branches")).toHaveLength(0);
+      model.navigate({ view: "branches" });
+      await settle(t, db);
+      expect(t.calls("thread.branches")).toHaveLength(1);
+      expect(t.calls("thread.branches")[0]!.args).toMatchObject({ thread_id: "lead", limit: 200 });
+      expect(t.calls("history.list")).toHaveLength(0);
+      expect(model.branches.state.value.family?.items).toHaveLength(4);
+    } finally { model.dispose(); }
   });
   it("walks pages, and starts over when the cursor expires", async () => {
     const { t, db, model } = await fixtureModel({ route: "monitor" });

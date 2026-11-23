@@ -122,8 +122,9 @@ export class FakeOwnerDb {
         return this.page(rows, Number(a.limit), a.cursor);
       }
       case "thread.list": {
-        const f = c.args as { thread_ids?: string[]; tags?: string[]; cwd?: string; limit?: number; cursor?: string };
+        const f = c.args as { thread_ids?: string[]; tags?: string[]; cwd?: string; limit?: number; cursor?: string; state?: string };
         if (f.thread_ids !== undefined) return { ok: true, result: { items: f.thread_ids.flatMap(id => this.threads[id] ? [this.threads[id]] : []) } };
+        if (f.state !== undefined) return this.page(Object.values(this.threads).filter(row => row.state === f.state), f.limit, f.cursor);
         if (f.tags === undefined && f.cwd === undefined) return { ok: true, result: { items: Object.values(this.threads) } };
         // Like the owner: every tag must match (AND), the cwd is exact, a cursor continues one filter.
         const matching = Object.values(this.threads).filter((t) => (f.tags ?? []).every((tag) => tagsOf(t).includes(tag)) && (f.cwd === undefined || t.cwd === f.cwd));

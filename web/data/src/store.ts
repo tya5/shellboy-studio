@@ -657,13 +657,26 @@ export class ShellboyData {
       cursor = pages * ACTIVE_STATUS_PAGE_LIMIT < MAX_LIST_ROWS ? out.value.next_cursor : undefined;
       if (epoch !== this.readQualificationEpoch) return;
     } while (cursor);
+    for (const state of ["failed", "recovery_wait"] as const) {
+      let cursor: string | undefined;
+      for (let page = 0; page * PAGE_LIMIT < MAX_LIST_ROWS; page++) {
+        if (epoch !== this.readQualificationEpoch) return;
+        const out = await this.operations.threadList({ state, archived: "include", limit: PAGE_LIMIT, ...(cursor ? { cursor } : {}) }, { onSent });
+        if (!out.ok || epoch !== this.readQualificationEpoch) return;
+        for (const row of out.value.items) if (ids.size < MAX_LIST_ROWS) ids.add(row.thread_id);
+        cursor = out.value.next_cursor;
+        if (!cursor || ids.size >= MAX_LIST_ROWS) break;
+      }
+    }
     if (epoch !== this.readQualificationEpoch) return;
     for (const id of this.activeThreadIdsSig.peek()) {
       const row = this.threadRowsSig.peek().get(id);
-      if (row && isActiveSummary(row)) ids.add(id);
+      if (ids.size < MAX_LIST_ROWS && row && isActiveSummary(row)) ids.add(id);
     }
-    this.activeThreadIdsSig.value = [...ids];
-    await this.refreshActiveRows([...ids], epoch);
+    const nextIds = [...ids];
+    const previousIds = this.activeThreadIdsSig.peek();
+    if (nextIds.length !== previousIds.length || nextIds.some((id, i) => id !== previousIds[i])) this.activeThreadIdsSig.value = nextIds;
+    await this.refreshActiveRows(nextIds, epoch);
   }
 
   /** The Inbox contributes its currently displayed awaiting-human IDs to the same cache. */
