@@ -10,6 +10,7 @@
 @container app (max-width:899px){
   .thread-item-root{min-height:var(--size-touch)}
   .thread-item-root{contain-intrinsic-size:auto var(--size-touch)}
+  .thread-item-root .tree-link{align-self:stretch}
 }
 .thread-item-root .tree-link{display:flex;align-items:center;flex:1;min-width:0;gap:var(--space-8);color:inherit;text-decoration:none}
 .thread-item-root:has(> [data-row-action]) .tree-link .thread-item-name{display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

@@ -1,6 +1,6 @@
 import { pendingReply } from "../../../../data/test/harness";
 import { effect, signal } from '@preact/signals-core';
-import { loadPrefs, savePrefs, type Prefs } from '../../../../ui-core/src';
+import { loadPrefs, parseRoute, savePrefs, type Prefs } from '../../../../ui-core/src';
 import { summary, details } from '../../../../data/test/harness';
 import { fixtureModel, settle } from '../../../../ui-core/test/fixture';
 import { mount } from '../..';
@@ -106,6 +106,7 @@ const resizeStore = params.get('view') === 'splitters' ? {
 const prefs = signal<Prefs>(resizeStore ? loadPrefs(resizeStore, DESIGNS) : { design: 'console', theme: params.get('theme') === 'light' ? 'light' : params.get('theme') === 'terminal' ? 'terminal' : params.get('theme') === 'auto' ? 'auto' : 'console', lang: fixtureLang, monitorView: 'cards', weights: { cached: 0.1, output: 5 } });
 effect(() => { document.documentElement.dataset.ds = prefs.value.theme; });
 mount(document.getElementById('app')!, { model, designs: DESIGNS, prefs, setPrefs: (change) => { prefs.value = { ...prefs.value, ...change }; if (resizeStore) savePrefs(resizeStore, prefs.value); }, submitToken: async () => true });
+addEventListener('hashchange', () => model.applyRoute(parseRoute(location.hash)));
 
 // Synthetic-only theme control; production App preferences still use the existing settings surface.
 (window as unknown as { setFixtureTheme: (theme: 'console' | 'light' | 'terminal' | 'auto') => void }).setFixtureTheme = theme => {

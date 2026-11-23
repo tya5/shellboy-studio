@@ -5,5 +5,5 @@
 .btn-group>.btn b{font:var(--type-code);font-weight:400;font-variant-numeric:tabular-nums;color:var(--muted)}
 .btn-group>.btn[aria-pressed=true] b,.btn-group>.btn[aria-checked=true] b{color:var(--fg)}
 @container app (max-width:899px){
-  .btn-group>.btn{min-height:calc(var(--size-touch) - var(--space-4))}
+  .btn-group>.btn{min-height:var(--size-touch)}
 }

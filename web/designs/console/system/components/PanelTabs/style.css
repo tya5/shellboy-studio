@@ -17,4 +17,8 @@
 .panel-tabs:not(.panel-tabs-rail) .panel-tab-count { position:absolute; inset-block-start:calc(-1 * var(--space-4)); inset-inline-end:0; }
 .panel-tabs:not(.panel-tabs-rail) button:hover { background:var(--hover); }
 
+@container app (max-width:899px){
+  .panel-tabs:not(.panel-tabs-rail) button{min-height:var(--size-touch)}
+}
+
 .panel-tabs-rail .panel-tab-count { position:absolute; inset-block-start:var(--space-2); inset-inline-end:var(--space-2); }

@@ -13,7 +13,7 @@ References: WAI-ARIA APG Tabs; VS Code Activity Bar icon rail.
 
 Styles: style.css in this directory
 
-Horizontal tab rows never overlap or clip their labels; they scroll horizontally when needed, and PanelTabs minimally reveals the selected tab on selection change or expansion. Count and other item updates preserve manual scroll. The vertical icon rail is unchanged.
+Horizontal tab rows never overlap or clip their labels; they scroll horizontally when needed, and PanelTabs minimally reveals the selected tab on selection change or expansion. Count and other item updates preserve manual scroll. Their phone-width hit targets are at least `size-touch`; the vertical icon rail is unchanged.
 
 Horizontal tab buttons use `--space-2` for the row gap and `--space-10` for the leading inset, preserving the approved 2px and 10px values. Trailing inset uses `--space-16`; the icon-to-label gap is `--space-8`, per the design system v2 icon rule. Keep all horizontal-only spacing and scrolling scoped off the unchanged vertical rail. Labels reserve the same badge corner whether a count is present or absent; the small amber count is overlaid at the label's top-right and never participates in tab sizing. The selected tab is bold with the accent underline; hover adds the `hover` surface (design system v2: hover uses `hover`). Keep these placements identical when adding a count or changing locale.
 

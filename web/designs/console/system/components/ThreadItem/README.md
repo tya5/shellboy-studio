@@ -6,7 +6,8 @@
 - **Source:** [Studio Thread list (Orca, shadcn/ui, APG)](../../patterns/thread-list.md); [Studio row actions (shadcn/ui, Radix, APG)](../../patterns/row-actions.md)
 
 A sidebar Thread row composed on `ListRow`, with a navigable title, status, count
-and depth. `ListRow` owns the in-flow actions and menu state. Follow shadcn/ui
+and depth. At phone width its title link fills the row's touch-height area; the
+menu remains a separate trailing action. `ListRow` owns the in-flow actions and menu state. Follow shadcn/ui
 `SidebarMenuAction` (`showOnHover`): hover-capable devices reveal the action on row
 hover, `:focus-within`, selection, or an open menu; touch devices always show it.
 The title truncates before the reserved action width. The menu follows shadcn/ui
