@@ -327,7 +327,7 @@ export class AppModel {
   readonly appRequestState: Signal<{ kind: "idle" | "sending" | "failed" | "unconfirmed"; message?: string }> = signal({ kind: "idle" });
 
   private readonly lastThread = signal<string | undefined>(undefined);
-  private readonly watchedOutputs = new Map<string, string | undefined>();
+  private readonly watchedOutputs = new Map<string, { count: number; state: string | undefined }>();
   private readonly nowMs: () => number;
   private readonly onNavigate: ((hash: string) => void) | undefined;
   private listHandle: Handle | undefined;
@@ -992,11 +992,11 @@ export class AppModel {
         if (out.ok) {
           this.shells.value = new Map(out.value.items.map((s) => [s.execution_id, s]));
           // Saved output changes only while a shell runs, and once more as it ends.
-          for (const [id, lastState] of this.watchedOutputs) {
+          for (const [id, watch] of this.watchedOutputs) {
             const fact = this.shells.value.get(id);
             if (!fact || this.outputReads.has(id)) continue;
-            if (fact.state !== lastState || statusOfShell(fact.state, fact.exit_code) === "running") {
-              this.watchedOutputs.set(id, fact.state);
+            if (fact.state !== watch.state || statusOfShell(fact.state, fact.exit_code) === "running") {
+              watch.state = fact.state;
               void this.readOutput(id);
             }
           }
@@ -1009,9 +1009,18 @@ export class AppModel {
 
   /** A step was opened: read its output now and again when a hint shows it may have changed. */
   watchOutput(executionId: string): () => void {
-    this.watchedOutputs.set(executionId, this.shells.peek().get(executionId)?.state);
-    void this.readOutput(executionId);
+    let watch = this.watchedOutputs.get(executionId);
+    if (watch) watch.count++;
+    else {
+      watch = { count: 1, state: this.shells.peek().get(executionId)?.state };
+      this.watchedOutputs.set(executionId, watch);
+      void this.readOutput(executionId);
+    }
+    let released = false;
     return () => {
+      if (released || this.watchedOutputs.get(executionId) !== watch) return;
+      released = true;
+      if (--watch.count > 0) return;
       this.watchedOutputs.delete(executionId);
       const cancel = this.outputReads.get(executionId);
       this.outputReads.delete(executionId);

@@ -10,5 +10,5 @@ it("derives the three ring states only from owner input and effective threshold"
   expect(facts(100, 100)).toMatchObject({ state: "threshold", fill: 100 });
   expect(facts(101, 100)).toMatchObject({ state: "threshold", fill: 100 });
   expect(facts(101, 0)).toMatchObject({ state: "disabled", fill: 0 });
-  expect(facts(101)).toBeUndefined();
+  expect(facts(101)).toMatchObject({ state: "unknown", fill: undefined });
 });

@@ -404,7 +404,7 @@ function projectHistoryNodes(input: { readonly keyScope?: readonly string[]; rea
         ? { descriptor: Object.freeze({ ...item.descriptor }), detailAvailability: item.detail_availability } : {};
       const notification = issueNotification(node.provenance?.notification);
       const savedLimit = node.provenance?.output_limit;
-      const outputLimit = savedLimit ? Object.freeze({ stop: savedLimit.stop, ...(Object.hasOwn(savedLimit, "sent_max_tokens") ? { sent_max_tokens: savedLimit.sent_max_tokens } : {}) }) : undefined;
+      const outputLimit = savedLimit ? Object.freeze({ stop: savedLimit.stop, ...(Object.hasOwn(savedLimit, "sent_max_tokens") ? { sent_max_tokens: savedLimit.sent_max_tokens } : {}), ...(savedLimit.source ? { source: savedLimit.source } : {}), ...(savedLimit.connection ? { connection: savedLimit.connection } : {}) }) : undefined;
       issueDisplayMetadata(value, Object.freeze({ ...extension, ...(notification ? { notification } : {}), ...(outputLimit ? { outputLimit } : {}), scopeKey: JSON.stringify(value.keyScope ?? []),
         ...(node.kind ? { nodeKind: node.kind } : {}), ...(node.provenance?.created_at ? { createdAt: node.provenance.created_at } : {}), shells: Object.freeze(shells) }));
       return value;

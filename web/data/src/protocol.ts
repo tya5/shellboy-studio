@@ -433,6 +433,8 @@ export interface UsageGetArgs {
 export interface SavedOutputLimit {
   readonly stop: true;
   readonly sent_max_tokens?: number | null;
+  readonly source?: AttemptOutputLimit["source"];
+  readonly connection?: string;
 }
 
 export interface AttemptOutputLimit {

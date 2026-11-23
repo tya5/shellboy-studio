@@ -6,7 +6,6 @@ import { capturedWorkElementDisplay, capturedWorkExecutionDisplay, type WorkElem
 import { WorkElementRow, formatWorkElementDisplay } from "../system/components/WorkElementRow";
 import { Disclosure } from "../system/components/Disclosure";
 import type { HandoffRecord } from "../../../data/src/handoff";
-import { senderFact } from "../../../data/src/sender";
 import { speakerOf, speakerDisplay as projectSpeakerDisplay, type Speaker } from "../../../ui-core/src/conversation";
 import { CANONICAL_CASES, scopeIssuedWorkFacts, type CanonicalCase, projectHistoryWindowItems, projectSavedItems, withPresentationContainers, normalizeLiveWorkFacts, projectOwnedHandoffFacts, workDisplayMetadata, type NormalizedSavedItem } from "../../../ui-core/src/conversation-items";
 import type { HistoryItem, AttemptOutputLimit } from "../../../data/src/protocol";
@@ -88,6 +87,13 @@ function assistantTextMembership(item: ConversationItem): AssistantTextMembershi
   return "message";
 }
 
+function toolGroupStatus(steps: readonly Step[], completeCoverage: boolean) {
+  if (steps.some(step => step.status === "running")) return "running";
+  if (steps.some(step => step.status === "failed")) return "failed";
+  if (steps.some(step => step.status === "stopped")) return "stopped";
+  return completeCoverage && steps.length > 0 && steps.every(step => step.status === "completed") ? "completed" : undefined;
+}
+
 export function SavedConversationItems({ model, projection: suppliedProjection, displayPlan, renderBefore, trailing, nodes,localRegion, openThreadSettings }: { model: AppModel; projection: SavedItemProjection & { sequence?: readonly ({kind: "conversation"; itemKey: string} | {kind: "work"; groupKey: string})[]; workGroups?: readonly ConversationWorkGroup[] }; displayPlan?: ConversationDisplayPlan; nodes?: readonly HistoryItem[]; renderBefore?: (item: ConversationItem) => ComponentChildren; trailing?: ComponentChildren;localRegion?: { readonly kind: "unqualified"; readonly tailRows: readonly import("../../../ui-core/src/own-send-presentation").PositionedOwnSendRow[]; readonly renderRow: (row: import("../../../ui-core/src/model").PendingOwnMessage | Extract<import("../../../ui-core/src/own-send-presentation").PositionedOwnSendRow, { kind: "live" }>) => ComponentChildren }; openThreadSettings?: OpenThreadSettings }) {
   const projection = displayPlan ? projectionFromDisplayPlan(displayPlan) : suppliedProjection;
   const planEntries = displayPlan?.entries ?? [];
@@ -124,10 +130,10 @@ export function SavedConversationItems({ model, projection: suppliedProjection, 
   const renderWorkGroup = (group: ConversationWorkGroup, children: ComponentChildren) => {
     const steps = allSteps.filter(step => group.executionIds.includes(step.executionId));
     const active = steps.some(step => step.status === "running");
-    const failures = steps.filter(step => step.state === "failed" || step.status === "failed" || (typeof step.exitCode === "number" && step.exitCode !== 0)).length;
+    const failures = steps.filter(step => step.status === "failed").length;
     const unknown = group.unknownToolCount > 0 || steps.length !== group.executionIds.length;
-    const completed = group.executionIds.length > 0 && !unknown && steps.every(step => step.status === "completed");
-    const status = active ? "running" : failures ? "failed" : completed ? "completed" : undefined;
+    const status = toolGroupStatus(steps, !unknown);
+    const stateLabel = status ? activityStatusLabel(t, status) : group.executionIds.length || group.unknownToolCount ? t("common.notReadable") : undefined;
     const reasons = [...new Set(projection.items.filter(item => group.memberKeys.includes(item.key)).flatMap(item => item.source.kind === "unavailable" && item.source.reason ? [item.source.reason] : []))];
     const categoryLabel = [...(["Tools","Reasoning","Notifications","Problems"] as const).flatMap(category=>{
       const n=group.categoryCounts?.[category] ?? 0;
@@ -144,7 +150,7 @@ export function SavedConversationItems({ model, projection: suppliedProjection, 
         next.set(membershipKey(group), open);
         return next;
       });
-    }}><summary data-work-heading="" aria-label={`${t("work.group")}: ${label}`}><Icon role="work.group" /><span class="tool-group-label">{label}</span>{status ? <StatusMark shell status={status} label={activityStatusLabel(t, status)} /> : null}<span class="meta" /></summary><div class="step-group-list">{children}</div></Disclosure>;
+    }}><summary data-work-heading="" aria-label={`${t("work.group")}: ${label}${stateLabel ? ` · ${stateLabel}` : ""}`}><Icon role="work.group" /><span class="tool-group-label">{label}</span>{status ? <StatusMark shell status={status} label={activityStatusLabel(t, status)} /> : stateLabel ? <span class="muted caption">{stateLabel}</span> : null}<span class="meta" /></summary><div class="step-group-list">{children}</div></Disclosure>;
   };
   const workRow = (item: ConversationItem) => {
     const bundle=capturedWorkElementDisplay(item, planByKey.get(item.key)?.work);
@@ -158,10 +164,9 @@ export function SavedConversationItems({ model, projection: suppliedProjection, 
     const steps = allSteps.filter(step => summary.executionIds.includes(step.executionId));
     const active = steps.find(step => step.status === "running");
     const nonzero = steps.filter(step => typeof step.exitCode === "number" && step.exitCode !== 0).length;
-    const failed = steps.some(step => step.state === "failed" || (typeof step.exitCode === "number" && step.exitCode !== 0));
     const members = projection.items.filter(item => summary.memberKeys.includes(item.key));
     const missingExecution = members.some(item => item.source.kind !== "tool" || !(item.source.executionIds?.length || item.source.executionId)) || steps.length !== summary.executionIds.length;
-    const status = active ? "running" : failed ? "failed" : summary.executionIds.length > 0 && !missingExecution ? "completed" : undefined;
+    const status = toolGroupStatus(steps, !missingExecution);
     const label = [t(summary.memberKeys.length === 1 ? "tools.countOne" : "tools.count", { n: summary.memberKeys.length }), ...(missingExecution ? [t("work.textUnavailable")] : []), ...((summary.continuationBefore !== "closed" || summary.continuationAfter !== "closed") ? [t("work.partial")] : []), ...(nonzero ? [t("tools.nonzero", { n: nonzero })] : []), ...(active ? [t("tools.active", { command: toolLabel(active.description, active.command) })] : [])].join(" · ");
     return <section class="steps"><StepRow group open={opened(summary)} command={label} status={status ? <StatusMark shell status={status} label={activityStatusLabel(t, status)} /> : <span class="muted caption">{t("work.textUnavailable")}</span>} onToggle={open => {
       setOpenMemberships(previous => {
@@ -191,11 +196,7 @@ export function SavedConversationItems({ model, projection: suppliedProjection, 
         const firstProseItem = node.items?.find(item => item.kind === "text")?.item_identity;
         const body = nodeAuthoritative ? model.bodyState(node.node_id!) : undefined;
         if (nodeAuthoritative && body?.text !== undefined && item.source.kind === "text" && item.source.itemIdentity !== firstProseItem) return null;
-        const fact = senderFact(node.provenance?.sender);
-        const speaker: Extract<ConversationRow, { type: "message" }>["speaker"] = node.kind === "assistant_response" ? { kind: "shellboy" }
-          : fact.kind === "human" ? { kind: "you" } : fact.kind === "model" ? fact
-          : fact.kind === "external_cli" ? (fact.label?.trim() ? { kind: "other", label: `CLI: ${fact.label}` } : { kind: "cli" })
-          : { kind: "unknown", model: fact.kind === "unknown_model", label: fact.label };
+        const speaker = speakerOf(node);
         const savedLimit = item.source.kind === "text" ? outputLimitNoticeFacts(undefined, workDisplayMetadata(item)?.outputLimit) : undefined;
         return <><ProjectedMessage model={model} relationship={messageRelationship(node.provenance?.message,node.node_id)} authorizedText={displayText ?? ""} bodyPartial={item.source.kind === "text" && item.source.textComplete === false} bodyUnavailable={!nodeAuthoritative && item.source.kind === "text" && item.source.textComplete === false} nodeAuthoritative={nodeAuthoritative} row={{ type: "message", id: node.node_id!, itemIdentity: nodeAuthoritative ? undefined : item.source.kind === "text" ? item.source.itemIdentity : undefined, speaker, text: displayText ?? "", truncated: false, at: node.provenance?.created_at }} />{savedLimit ? <OutputLimitNotice model={model} fact={savedLimit} openThreadSettings={openThreadSettings} /> : null}{(item.source.kind === "text" || item.source.kind === "user" || item.source.kind === "summary") && (displayEntry?.body.kind === "preview" || displayEntry?.body.kind === "typed-partial") && body?.text === undefined ? <div class="caption muted" data-item-partial="">{t("work.partial")}</div> : null}</>;
       }
@@ -241,23 +242,20 @@ export function LiveRecordChrome({ model, record }: { model: AppModel; record: H
 
 export function OutputLimitNotice({ model, fact, openThreadSettings }: { model: AppModel; fact: { stop: true; sent_max_tokens?: number | null; source?: string; connection?: string }; openThreadSettings?: OpenThreadSettings }) {
   const t = model.t.value;
-  const override = model.threadSettings.value?.maxTokensState.kind !== undefined && model.threadSettings.value.maxTokensState.kind !== "unset";
-  const openSetting = () => {
-    if (override) {
-      openThreadSettings?.("max_tokens");
-      return;
-    }
-    const connection = fact.connection ?? model.threadSettings.value?.connection;
-    if (connection) model.navigateToSettingFocus({ view: "settings", section: "connections" }, `connections.${connection}.max_tokens`);
-  };
-  return <OutputLimitNoticeRow actions={<><Button variant="ghost" onClick={openSetting}>{t("convo.outputLimitAction")}</Button><Button variant="ghost" onClick={() => void model.send(t("convo.continue"))}>{t("convo.continue")}</Button></>}>
+  const connection = fact.connection;
+  const target = fact.source === "thread_override" && model.data.capabilities.value.includes("thread.settings") && openThreadSettings
+    ? () => openThreadSettings("max_tokens")
+    : fact.source === "connection" && connection && model.data.capabilities.value.includes("config.edit")
+      ? () => model.navigateToSettingFocus({ view: "settings", section: "connections" }, `connections.${connection}.max_tokens`)
+      : undefined;
+  return <OutputLimitNoticeRow actions={<>{target ? <Button variant="ghost" onClick={target}>{t("convo.outputLimitAction")}</Button> : null}<Button variant="ghost" onClick={() => void model.send(t("convo.continue"))}>{t("convo.continue")}</Button></>}>
     <Icon role="conversation.outputLimit" size="small" /><span>{t(fact.sent_max_tokens == null ? "convo.outputLimitNoticeUnknown" : "convo.outputLimitNotice", { limit: fact.sent_max_tokens == null ? "" : String(fact.sent_max_tokens) })}</span>
   </OutputLimitNoticeRow>;
 }
 
 function outputLimitNoticeFacts(live: AttemptOutputLimit | null | undefined, saved?: import("../../../data/src").SavedOutputLimit) {
   const fact = live?.stop ? live : saved?.stop ? saved : undefined;
-  return fact ? { stop: true as const, ...(fact.sent_max_tokens !== undefined ? { sent_max_tokens: fact.sent_max_tokens } : {}), ...(live?.source ? { source: live.source } : {}), ...(live?.connection ? { connection: live.connection } : {}) } : undefined;
+  return fact ? { stop: true as const, ...(fact.sent_max_tokens !== undefined ? { sent_max_tokens: fact.sent_max_tokens } : {}), ...(fact.source ? { source: fact.source } : {}), ...(fact.connection ? { connection: fact.connection } : {}) } : undefined;
 }
 
 function OwnSendContent({model,snapshot,plan,trailing,openThreadSettings}: {model:AppModel;snapshot:WindowAcceptedSnapshot;plan:ConversationDisplayPlan;trailing?:ComponentChildren;openThreadSettings?:OpenThreadSettings}) {
@@ -327,13 +325,14 @@ export function Output({ model, id, command, complete, boxed }: { model: AppMode
   const t = model.t.value;
   const out = model.outputs.value.get(id);
   if (!out || (out.loading && out.text === "")) return <div class="log muted">{t("details.outputLoading")}</div>;
-  if (out.error) return <div class="log muted">{t("details.outputError", { message: out.error })}</div>;
-  const rendered = renderOutput({ command, text: out.text, complete: complete && !out.loading && !out.cutOff });
+  if (out.error && out.text === "") return <div class="log muted">{t("details.outputError", { message: out.error })}</div>;
+  const rendered = out.error ? undefined : renderOutput({ command, text: out.text, complete: complete && !out.loading && !out.cutOff });
   return (
     <>
       <Button onClick={() => { void navigator.clipboard.writeText(rendered && !raw ? rendered.lines.map((line) => line.text).join("\n") : out.text).catch(() => {}); }}>{t("code.copy")}</Button>
       {rendered ? <Button onClick={() => setRaw(!raw)}>{raw ? t("output.formatted") : t("output.raw")}</Button> : null}
       {rendered && !raw ? <pre class={boxed ? "log boxed" : "log"} tabIndex={0}>{rendered.lines.map((line, i) => <span key={i} class={`output-${line.kind}`}>{line.text}{i < rendered.lines.length - 1 ? "\n" : ""}</span>)}</pre> : <LogBlock text={out.text === "" ? t("details.outputEmpty") : out.text} boxed={boxed ?? false} />}
+      {out.error ? <div class="caption muted">{t("details.outputError", { message: out.error })}</div> : null}
       {out.cutOff ? <div class="caption muted">{t("details.outputMore")}</div> : null}
     </>
   );
@@ -368,7 +367,14 @@ function allProseNode(node: HistoryItem): boolean {
 function BodyReadMessage({model,node,displayText}:{model:AppModel;node:HistoryItem;displayText:string|undefined}) {
   const nodeAuthoritative = allProseNode(node);
   const itemIdentity = nodeAuthoritative ? undefined : node.items?.find(item => item.kind === "text")?.item_identity;
-  return <Message bot={node.kind === "assistant_response"} who={node.kind === "assistant_response" ? model.t.value("convo.shellboy") : model.t.value("convo.you")} at={formatClock(node.provenance?.created_at)} text={model.bodyState(node.node_id!, itemIdentity)?.text ?? displayText ?? ""} copyLabel={model.t.value("code.copy")} copiedLabel={model.t.value("code.copied")}><BodyReadButton model={model} nodeId={node.node_id!} itemIdentity={itemIdentity} typedNode={nodeAuthoritative} unavailable={!nodeAuthoritative && node.items !== null} /></Message>;
+  const t = model.t.value;
+  const speaker = speakerOf(node);
+  const sender = speakerDisplay(speaker, model);
+  return <Message bot={speaker.kind === "shellboy"} who={sender.header ? { ...sender.header, role: t("convo.modelSender") } : sender.label} at={formatClock(node.provenance?.created_at)} text={model.bodyState(node.node_id!, itemIdentity)?.text ?? displayText ?? ""} copyLabel={t("code.copy")} copiedLabel={t("code.copied")}>
+    <MessageRelation relationship={messageRelationship(node.provenance?.message, node.node_id)} t={t} />
+    {sender.claim ? <div class="caption">{sender.claim}</div> : null}
+    <BodyReadButton model={model} nodeId={node.node_id!} itemIdentity={itemIdentity} typedNode={nodeAuthoritative} unavailable={!nodeAuthoritative && node.items !== null} />
+  </Message>;
 }
 
 function BodyReadButton({model,nodeId,itemIdentity,typedNode,unavailable}:{model:AppModel;nodeId:string;itemIdentity?:string;typedNode?:boolean;unavailable?:boolean}) {
@@ -387,6 +393,10 @@ function speakerDisplay(speaker: Speaker, model: AppModel) {
   });
 }
 
+function MessageRelation({ relationship, t }: { relationship: ReturnType<typeof messageRelationship>; t: AppModel["t"]["value"] }) {
+  return relationship.kind==="request" ? <div class="caption" data-message-relation="request">{t("convo.relationRequest")} · {t(`convo.relation.${relationship.state}`)}{relationship.replyId ? <> <code>{relationship.replyId}</code></> : null}</div> : relationship.kind==="reply" ? <div class="caption" data-message-relation="reply">{t("convo.relationReply")} <code>{relationship.requestId}</code></div> : null;
+}
+
 function ProjectedMessage({ model, row, authorizedText, relationship, bodyPartial, bodyUnavailable, nodeAuthoritative }: { relationship:ReturnType<typeof messageRelationship>; model: AppModel; row: Extract<ConversationRow, {type:"message"}>; authorizedText: string; bodyPartial?: boolean; bodyUnavailable?: boolean; nodeAuthoritative?: boolean }) {
   const t = model.t.value;
   const threadId = model.handle.value?.threadId;
@@ -399,7 +409,7 @@ function ProjectedMessage({ model, row, authorizedText, relationship, bodyPartia
   const renderedText = body?.text ?? authorizedText;
   return (
     <Message bot={row.speaker.kind === "shellboy"} who={header} at={formatClock(row.at)} text={renderedText} copyLabel={t("code.copy")} copiedLabel={t("code.copied")}>
-      {relationship.kind==="request" ? <div class="caption" data-message-relation="request">{t("convo.relationRequest")} · {t(`convo.relation.${relationship.state}`)}{relationship.replyId ? <> <code>{relationship.replyId}</code></> : null}</div> : relationship.kind==="reply" ? <div class="caption" data-message-relation="reply">{t("convo.relationReply")} <code>{relationship.requestId}</code></div> : null}
+      <MessageRelation relationship={relationship} t={t} />
       {row.speaker.kind === "model" ? <div class="caption sender-fact">
         {senderDisplay.claim ? <div>{senderDisplay.claim}</div> : null}
       </div> : senderDisplay.claim ? <div class="caption">{senderDisplay.claim}</div> : null}

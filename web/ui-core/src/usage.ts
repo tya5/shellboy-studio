@@ -6,7 +6,7 @@ const obj = (v: unknown): Record<string, unknown> | undefined =>
   typeof v === "object" && v !== null && !Array.isArray(v) ? (v as Record<string, unknown>) : undefined;
 const num = (v: unknown): number | undefined => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
 
-export type ContextRingState = "normal" | "threshold" | "disabled" | "summarizing";
+export type ContextRingState = "unknown" | "normal" | "threshold" | "disabled" | "summarizing";
 export interface ContextFacts {
   inputTokens: number | undefined;
   threshold: number | undefined;
@@ -15,6 +15,7 @@ export interface ContextFacts {
 }
 
 export function contextFacts(d: ThreadDetails | undefined): ContextFacts | undefined {
+  if (!d) return;
   const input = num(obj(obj(d?.context_usage)?.last_successful_attempt)?.input_tokens);
   const limit = num(d?.effective_auto_compact_at);
   const inputTokens = input !== undefined && input >= 0 ? input : undefined;
@@ -22,7 +23,7 @@ export function contextFacts(d: ThreadDetails | undefined): ContextFacts | undef
   // A current owner fact does not depend on a previous input measurement.
   if (d?.summarizing === true) return { inputTokens, threshold, state: "summarizing", fill: undefined };
   if (threshold === 0) return { inputTokens, threshold, state: "disabled", fill: 0 };
-  if (threshold === undefined || inputTokens === undefined) return;
+  if (threshold === undefined || inputTokens === undefined) return { inputTokens, threshold, state: "unknown", fill: undefined };
   return { inputTokens, threshold, state: inputTokens >= threshold ? "threshold" : "normal",
     fill: Math.min(100, inputTokens * 100 / threshold) };
 }

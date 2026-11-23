@@ -74,10 +74,10 @@ it('retains owner validation and refuses malformed integers without automatic wr
 });
 
 
-it('opens the real Thread Settings max_tokens row from the saved output-limit notice',async()=>{
+it.each([null, 'thread_override'] as const)('uses only the saved source (%s) for the output limit setting',async source=>{
  const r=await fixtureModel({route:'conversation',threadId:'lead',capabilities:['history.window','thread.settings'],configure(db){
   db.details.lead!.max_tokens=4096;
-  db.history.lead=[{node_id:'saved-output-limit',kind:'assistant_response',selection:{ordinal:0},provenance:{attempt_id:'00000000-0000-4000-8000-000000000741',kind:'assistant_response',created_at:'2026-11-23T00:00:00Z',source_revision:1,output_limit:{stop:true,sent_max_tokens:4096,source:'thread_override',connection:'mock'}},items:[]}];
+  db.history.lead=[{node_id:'saved-output-limit',kind:'assistant_response',selection:{ordinal:0},provenance:{attempt_id:'00000000-0000-4000-8000-000000000741',kind:'assistant_response',created_at:'2026-11-23T00:00:00Z',source_revision:1,output_limit:{stop:true,sent_max_tokens:4096,source,connection:'mock'}},items:[]}];
  }});
  const host=document.createElement('div');document.body.append(host);
  const context:DesignContext={model:r.model,prefs:signal(loadPrefs({read:()=>null,write:()=>{}},[{name:'console',themes:[{name:'light'}]}])),setPrefs:()=>{},designs:DESIGNS,submitToken:async()=>true};
@@ -85,12 +85,15 @@ it('opens the real Thread Settings max_tokens row from the saved output-limit no
  dispose=()=>{unmount();r.model.dispose();r.data.stop();};
  await act(async()=>settle(r.t,r.db));
  const action=[...host.querySelectorAll('button')].find(button=>button.textContent==='Open output limit setting');
- expect(action).toBeDefined();
- await act(async()=>{action!.click();await settle(r.t,r.db);});
- const row=host.querySelector<HTMLElement>('[data-setting-id="thread.max_tokens"]');
- expect(r.model.panelTab.value).toBe('settings');
- expect(host.querySelector('[role="tab"][aria-selected="true"]')?.textContent).toBe('Settings');
- expect(row?.dataset.highlighted).toBe('true');
- expect(row?.contains(document.activeElement)).toBe(true);
+ expect(host.textContent).toContain('The output reached the maximum token limit (4096).');
+ if (source === null) expect(action).toBeUndefined();
+ else {
+  expect(action).toBeDefined();
+  await act(async()=>{action!.click();await settle(r.t,r.db);});
+  const row=host.querySelector<HTMLElement>('[data-setting-id="thread.max_tokens"]');
+  expect(r.model.panelTab.value).toBe('settings');
+  expect(row?.dataset.highlighted).toBe('true');
+  expect(row?.contains(document.activeElement)).toBe(true);
+ }
  expect(r.t.calls('thread.set')).toHaveLength(0);
 });

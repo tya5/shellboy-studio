@@ -16,7 +16,7 @@ export function ModelPicker({ model, details, onThreadSettings }: { model: AppMo
   const effortText = details.effort || t("model.effort.default");
   return <MonitorPopover className="model-picker-anchor" ghost label={`${modelLabel(details)} · ${effortText}`}
     content={<><span class="model-picker-name">{modelLabel(details)}</span><span class="model-picker-effort">{effortText}</span><Icon role="composer.modelMenu" size="small" /></>}
-    controlled={{ open: picker.open, toggle: () => picker.open ? model.closeModelPicker() : model.openModelPicker(), close: () => model.closeModelPicker(), panelClass: "model-picker", panelLabel: t("model.change") }}>
+    controlled={{ open: picker.open, toggle: () => picker.open ? model.closeModelPicker() : model.openModelPicker(), close: () => model.closeModelPicker(), panelClass: "model-picker", panelLabel: t("model.change"), focusSearch: true }}>
       <p class="caption muted">{t("model.note")}</p>
       <ConnectionModelList choices={choices} selected={details} searchLabel={t("model.search")} emptyLabel={picker.loading ? t("common.loading") : t("model.empty")} disabled={disabled} onSelect={choice => void model.selectPickerModel(choice)} onCommitId={(id, connection) => void model.commitPickerModelId(id, connection)} />
       {picker.catalogErrors.map((error, index) => <Notice key={index} tone="bad">{error}</Notice>)}

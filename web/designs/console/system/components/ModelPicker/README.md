@@ -6,6 +6,7 @@
 - **Source:** [Studio Settings pattern (Orca, VS Code, macOS)](../../patterns/settings.md); [Studio #66](https://github.com/tya5/shellboy-studio/issues/66); [Studio #39](https://github.com/tya5/shellboy-studio/issues/39)
 
 The Conversation composer chip shows owner-confirmed connection, model and effort.
+Focus model search when the chooser opens and return focus to the trigger on Escape.
 Use the existing MonitorPopover for dismissal and the shared searchable
 ConnectionModelList and EffortControl. The catalog is scoped to the open picker;
 AppModel reads models for configured connections and uses Settings' ConfigEditor

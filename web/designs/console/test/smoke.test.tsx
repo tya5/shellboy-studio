@@ -114,10 +114,12 @@ describe("Desktop navigation", () => {
 
 describe("Thread model picker", () => {
   it("opens from the composer model and effort chip and explains when changes apply", async () => {
-    const { model, t, db } = await fixtureModel();
+    const { model, t, db } = await fixtureModel({ capabilities: ["history.window", "thread.settings"] });
     const el = draw(model);
     const button = [...el.querySelectorAll<HTMLButtonElement>(".composer-row button")].find((b) => text(b).includes("example-model"))!;
+    button.focus();
     act(() => button.click());
+    expect(document.activeElement).toBe(el.querySelector('input[aria-label="Search models or enter an ID"]'));
     await act(async () => { await settle(t, db); });
     expect(el.querySelector('[role="dialog"]')?.textContent).toContain("next request");
     expect(el.querySelector<HTMLInputElement>('input[aria-label="Search models or enter an ID"]')).not.toBeNull();
@@ -126,6 +128,24 @@ describe("Thread model picker", () => {
     expect(el.querySelector<HTMLInputElement>('input[aria-label="Other"]')).not.toBeNull();
     model.dispose();
   });
+});
+
+it("keeps the context disclosure before the first measurement and after summarizing", async () => {
+  const { model, t, db } = await fixtureModel({ configure(db) {
+    delete db.details.lead!.context_usage;
+    db.details.lead!.summarizing = true;
+  } });
+  const el = draw(model);
+  const ring = () => el.querySelector('.context-ring');
+  expect(ring()?.getAttribute('data-context-state')).toBe('summarizing');
+  db.details.lead = { ...db.details.lead!, summarizing: false };
+  await act(async () => { t.push({ t: 'changed', thread_ids: ['lead'], list: false, config_changed: false }); await settle(t, db); });
+  expect(ring()?.getAttribute('data-context-state')).toBe('unknown');
+  expect(ring()?.querySelectorAll('circle')).toHaveLength(1);
+  const button = ring()!.closest('button')!;
+  expect(button.getAttribute('aria-label')).toContain('unknown');
+  act(() => button.click());
+  expect(model.panelTab.value).toBe('info');
 });
 
 describe("App request and guide", () => {
@@ -613,7 +633,7 @@ describe("Conversation", () => {
     expect(row().textContent).toContain("32768Default");
     expect(row().textContent).not.toContain("Undo");
   });
-  it("omits the usage and context elements when the owner reports nothing", async () => {
+  it("keeps an unfilled context disclosure without reporting usage when the owner has no measurement", async () => {
     const { model, t, db } = await fixtureModel();
     const lead = db.details.lead as unknown as Record<string, unknown>;
     delete lead.context_usage;
@@ -622,7 +642,7 @@ describe("Conversation", () => {
       t.push({ t: "changed", config_changed: false, thread_ids: ["lead"], list: false });
       await (await import("../../../data/test/harness")).settle(t, db);
     });
-    expect(el.querySelector("[data-context-state]")).toBeNull();
+    expect(el.querySelector("[data-context-state]")?.getAttribute("data-context-state")).toBe("unknown");
     expect(text(el)).not.toContain("Usage");
   });
 });

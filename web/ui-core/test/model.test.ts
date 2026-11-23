@@ -664,6 +664,7 @@ it("output first load is loading, unchanged refresh is silent and real changes s
   expect(model.outputs.peek().get("exec-1")?.loading).toBe(true);
   let read = t.calls("shell.read").at(-1)!; db.answered.add(read.id); t.ok(read.id, { execution_id: "exec-1", text: "" }); await flush();
   const saved = model.outputs.peek().get("exec-1");
+  stop();
   const refresh = model.watchOutput("exec-1"); await flush(); expect(model.outputs.peek().get("exec-1")).toBe(saved);
   refresh(); await flush(); expect(model.outputs.peek().get("exec-1")).toBe(saved);
   const next = model.watchOutput("exec-1"); await flush(); read = t.calls("shell.read").at(-1)!; db.answered.add(read.id);

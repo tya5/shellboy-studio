@@ -10,10 +10,11 @@ import { DESIGNS } from '../../registry';
 import { App } from '../screens/App';
 let host:HTMLElement|undefined,cleanup:(()=>void)|undefined;
 afterEach(()=>{if(host)render(null,host);host?.remove();host=undefined;cleanup?.();cleanup=undefined;});
-async function rig(){
+async function rig(unavailable = false){
   const r=await fixtureModel({configure(db){
     const node=(id:string,sender:unknown)=>({node_id:id,kind:'user',excerpt:`body-${id}`,provenance:{sender:sender as {kind:string}}});
     db.history.lead=[node('one',{kind:'model',thread_id:'sender-one',label:'<img src=x onerror=alert(1)>'}),node('two',{kind:'model',thread_id:'sender-two'}),node('unknown',{kind:'model',thread_id:null,label:'Claimed'}),node('human',{kind:'human'}),node('cli',{kind:'external_cli'})];
+    if (unavailable) db.history.lead = [{ ...node('deferred', { kind: 'model', thread_id: 'sender-one' }), items: null, items_unavailable_reason: 'response_budget', provenance: { sender: { kind: 'model', thread_id: 'sender-one' }, message: { expect_reply: false, reply_to: 'original-request' } } }];
     for(const id of ['sender-one','sender-two'])db.threads[id]={...db.threads.lead!,thread_id:id,title:'<Same current title>'};
   }});
   host=document.createElement('div');document.body.append(host);cleanup=()=>r.model.dispose();
@@ -38,6 +39,14 @@ describe('sender facts in the existing conversation',()=>{
     expect(one.querySelector('.message-sender img, .sender-fact img')).toBeNull();
     expect(two.querySelector('.message-sender img, .sender-fact img')).toBeNull();
     expect(boxes[0]!.textContent).not.toContain('<Same current title>');
+  });
+  it('keeps the recorded sender when the message items are unavailable', async () => {
+    const r = await rig(true);
+    const message = r.host.querySelector('[data-items-unavailable-reason] .msg')!;
+    expect(message).not.toBeNull();
+    expect(message.querySelector('.message-sender a')?.getAttribute('href') ?? '').toContain('sender-one');
+    expect(message.querySelector('.message-sender')?.textContent).not.toBe('You');
+    expect(message.querySelector('[data-message-relation="reply"]')?.textContent).toContain('original-request');
   });
   it('does not call malformed model identity You or invent a sender ID for CLI/human',async()=>{
     const r=await rig();const messages=[...r.host.querySelectorAll('.msg')];const unknown=messages.find(e=>e.textContent?.includes('body-unknown'))!;

@@ -154,8 +154,8 @@ describe("conversation projection", () => {
 
 describe("usage facts", () => {
   it("shows measured values only", () => {
-    expect(contextFacts(d({}))).toBeUndefined();
-    expect(contextFacts(d({ context_usage: { last_successful_attempt: null } }))).toBeUndefined();
+    expect(contextFacts(d({}))).toMatchObject({ state: "unknown", fill: undefined });
+    expect(contextFacts(d({ context_usage: { last_successful_attempt: null } }))).toMatchObject({ state: "unknown", fill: undefined });
     expect(contextFacts(d({ context_usage: { last_successful_attempt: { input_tokens: 1200 } }, effective_auto_compact_at: 200000 }))).toEqual({ inputTokens: 1200, threshold: 200000, state: "normal", fill: 1200 * 100 / 200000 });
     expect(usageFacts({})).toBeUndefined();
   });

@@ -3,7 +3,7 @@ import "@preact/signals";
 import { effect } from "@preact/signals-core";
 import { render } from "preact";
 import { act } from "preact/test-utils";
-import { expect, it } from "vitest";
+import { afterEach, expect, it } from "vitest";
 import { fixtureModel } from "../../../ui-core/test/fixture";
 import { flush, settle } from "../../../data/test/harness";
 import { Conversation } from "../screens/Conversation";
@@ -21,7 +21,9 @@ for (const saved of ["", "Synthetic saved body"]) it(`keeps validated ${saved ==
   const expected = saved || model.t.peek()("details.outputEmpty");
   try {
     for (let refresh = 0; refresh < 3; refresh++) {
-      const release = model.watchOutput("exec-1"); await act(async () => { await flush(); });
+      await act(async () => { t.push({ t: "changed", thread_ids: ["lead"], list: false, config_changed: false }); await flush(); });
+      const pending = t.calls("shell.list").at(-1)!; db.answered.add(pending.id);
+      await act(async () => { t.ok(pending.id, { items: db.shells.lead }); await flush(); });
       const held = t.calls("shell.read").at(-1)!; db.answered.add(held.id);
       for (let frame = 0; frame < 3; frame++) {
         act(() => { model.now.value += 1000; });
@@ -30,8 +32,63 @@ for (const saved of ["", "Synthetic saved body"]) it(`keeps validated ${saved ==
         expect(model.outputs.peek().get("exec-1")).toBe(snapshot);
       }
       act(() => t.ok(held.id, { execution_id: "exec-1", text: saved })); await act(async () => { await flush(); });
-      expect(model.outputs.peek().get("exec-1")).toBe(snapshot); release();
+      expect(model.outputs.peek().get("exec-1")).toBe(snapshot);
     }
     expect(changes).toBe(before);
   } finally { unwatch(); render(null, host); host.remove(); model.dispose(); }
+});
+
+let cleanup: (() => void) | undefined;
+afterEach(() => { cleanup?.(); cleanup = undefined; });
+async function toolFixture(state?: string) {
+  const r = await fixtureModel({ configure(db) {
+    db.shells.lead = state ? [{ execution_id: 'exec-1', state }] : [];
+    db.outputs['exec-1'] = 'Retained fixture log';
+    db.history.lead = [{ node_id: 'tool', kind: 'assistant_response', items: [{ kind: 'tool_call', item_identity: 'call', execution_ids: ['exec-1'] }], executions: [{ execution_id: 'exec-1', kind: 'shell', ...(state ? { state } : {}) }] }];
+  } });
+  const host = document.createElement('div'); document.body.append(host);
+  cleanup = () => { render(null, host); host.remove(); r.model.dispose(); r.data.stop(); };
+  await act(async () => { render(<Conversation model={r.model} />, host); await settle(r.t, r.db); });
+  const group = host.querySelector<HTMLDetailsElement>('[data-work-group]')!;
+  const expand = async () => {
+    await act(async () => { group.open = true; group.dispatchEvent(new Event('toggle')); await settle(r.t, r.db); });
+    const row = group.querySelector<HTMLDetailsElement>('details.work-element-row')!;
+    await act(async () => { r.model.toolStepChoices.value = new Map([['exec-1', true]]); r.model.openInPanel({ kind: 'step', id: 'exec-1' }); });
+    await act(async () => { await settle(r.t, r.db); });
+    return row;
+  };
+  return { ...r, host, group, expand };
+}
+
+it.each([['stopped', 'Stopped'], [undefined, "Owner doesn't report this"]] as const)('reports a collapsed tool group with %s state without claiming completion', async (state, label) => {
+  const { group } = await toolFixture(state);
+  expect(group.open).toBe(false);
+  const heading = group.querySelector('summary')!;
+  expect(heading.querySelector('[data-status="completed"]')).toBeNull();
+  expect(heading.getAttribute('aria-label')).toContain(label);
+});
+
+it('keeps updating inline tool output after leaving its panel detail', async () => {
+  const r = await toolFixture('running');
+  const row = await r.expand();
+  expect(row.textContent).toContain('Retained fixture log');
+  expect(r.host.querySelector('[data-panel-detail]')).not.toBeNull();
+  await act(async () => { r.model.closePanelDetail(); });
+  expect(row.open).toBe(true);
+  r.db.outputs['exec-1'] = 'Final fixture log';
+  r.db.shells.lead = [{ execution_id: 'exec-1', state: 'exited', exit_code: 0 }];
+  await act(async () => { r.t.push({ t: 'changed', thread_ids: ['lead'], config_changed: false, list: false }); await settle(r.t, r.db); });
+  expect(row.textContent).toContain('Final fixture log');
+});
+
+it('keeps the last readable log alongside a refresh failure', async () => {
+  const r = await toolFixture('running');
+  const row = await r.expand();
+  expect(row.textContent).toContain('Retained fixture log');
+  const answer = r.db.answer.bind(r.db);
+  r.db.answer = call => call.command === 'shell.read' ? { ok: false, code: 'io_failed', message: 'Fixture read failed' } : answer(call);
+  r.db.shells.lead = [{ execution_id: 'exec-1', state: 'exited', exit_code: 0 }];
+  await act(async () => { r.t.push({ t: 'changed', thread_ids: ['lead'], config_changed: false, list: false }); await settle(r.t, r.db); });
+  expect(row.textContent).toContain('Fixture read failed');
+  expect(row.textContent).toContain('Retained fixture log');
 });
