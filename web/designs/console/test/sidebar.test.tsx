@@ -359,11 +359,13 @@ it("renders the approved sidebar section band, trailing column, and disclosure b
     expect(toggle.getAttribute("aria-expanded")).toBe("true");
     expect(toggle.getAttribute("aria-label")).toBe(`Collapse ${label}`);
     expect(toggle.querySelector(".tgroup-chevron .i")?.getAttribute("aria-hidden")).toBe("true");
-    expect(group.querySelector(".tgroup-pin")).toBeNull();
+    expect(group.querySelector(".tgroup-leading .i")).not.toBeNull();
     const pinned = host.querySelector('.side-list .tgroup[data-group-heading="section"][aria-label="Pinned"]')!;
-    expect(pinned.querySelector(".tgroup-toggle .tgroup-pin")).not.toBeNull();
+    expect(pinned.querySelector(".tgroup-toggle .tgroup-leading .i")).not.toBeNull();
     expect(pinned.querySelector(".tgroup-toggle .tgroup-chevron")).not.toBeNull();
     expect(name.textContent).toBe(label);
+    expect(group.querySelector(".tgroup-leading")?.nextElementSibling).toBe(name);
+    expect(pinned.querySelector(".tgroup-leading")?.nextElementSibling?.classList.contains("tgroup-name")).toBe(true);
     expect(group.querySelector(".tgroup-count")?.textContent).toBe("2");
     expect(group.querySelector(".tgroup-fold,.btn-link")).toBeNull();
     await act(async () => toggle.click());

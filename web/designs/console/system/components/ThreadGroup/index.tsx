@@ -11,8 +11,8 @@ export function ThreadGroup({ label, mono, count, all, some, selectLabel, onSele
   }, [all, some]);
   const content = (
     <>
-      {!onSelect && leading === "thread.pinned" ? <span class="tgroup-pin"><Icon role={leading} size="small" /></span> : null}
-      {!onSelect && leading !== "thread.pinned" ? <span class="tcheck-gap" /> : null}
+      {!onSelect && leading ? <span class="tgroup-leading"><Icon role={leading} size="small" /></span> : null}
+      {!onSelect && !leading ? <span class="tcheck-gap" /> : null}
       <span class={mono ? "mono tgroup-name" : "tgroup-name"}>{label}</span>
       <span class="tgroup-count caption muted">{count}</span>
       {fold ? <span class="tgroup-chevron"><Icon role={fold.open ? "group.collapse" : "group.expand"} size="small" /></span> : null}
