@@ -1,3 +1,4 @@
+import { readThreadSettings } from "./resources";
 import { readCompactionEvent, type CompactionEvent } from "./analytics";
 import { seedUnreadMarkers, isUnread, markUnread, type UnreadRecord } from "./sidebar-unread";
 import { AttachmentSection } from "./attachment-section";
@@ -141,6 +142,7 @@ export class AppModel {
     } catch { this.pairing.value = { ...this.pairing.peek(), error: "pair.error" }; }
   }
 
+  readonly threadSettings = computed(() => { const details = this.details.value; return details ? readThreadSettings(details) : undefined; });
   readonly pendingSettingFocus = signal<string | undefined>(undefined);
   readonly modelPicker = signal<{ open: boolean; thread: string; models: {connection: string; model: string}[]; catalogErrors: string[]; loading: boolean; saving: boolean; error?: string | undefined }>({ open: false, thread: "", models: [], catalogErrors: [], loading: false, saving: false });
   private modelListCancel = new Cancel();
