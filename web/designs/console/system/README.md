@@ -3,7 +3,7 @@ An engineer's console: dark navy surfaces, one accent, and monospace wherever th
 ## Content fundamentals
 
 - Write English by default; Japanese is a supported translation. Sentence case: "Awaiting you", "Open conversation".
-- Name things by what the person sees: "Recovery wait", "Retry". Address the person as "you"; Shellboy's own messages use "I".
+- Name things by what the person sees: "Awaiting you", "Retry". Address the person as "you"; Shellboy's own messages use "I".
 - Show facts, not encouragement: `2.4s`, `exit 0`, `412k`. Never show an estimated number as if measured.
 - Never use text glyphs as marks, and never emoji. Use the `StatusMark` shapes and line icons.
 
@@ -18,7 +18,7 @@ An engineer's console: dark navy surfaces, one accent, and monospace wherever th
 - Corners: `radius-s` for controls and menu items, `radius-m` for the menu panel, `radius` for cards. Terminal squares all three.
 - Spacing comes from `space-4` to `space-24`. Touch targets on phone width are at least 44px.
 - Focus is a solid 2px `accent` ring with a 2px offset on every interactive element.
-- Motion: LoadingRows pulses, the running character dots hop, and the active summary and running status arcs spin. Reduced motion stops all of these; the summary ring uses stationary dots and the running mark keeps its gap.
+- Motion: LoadingRows pulses, the running character dots hop, and the active summary arc and shared Thread/shell running arc spin. Reduced motion stops all of these; the summary ring uses stationary dots and the running mark keeps its gap.
 
 ## Layout
 
@@ -35,7 +35,7 @@ An engineer's console: dark navy surfaces, one accent, and monospace wherever th
 - Use a card (`panel`, `line`, `radius`) for a distinct subject or independent action. Use a `line` separator, not another card, between repeated rows of one subject. Avoid nested cards solely for spacing.
 - Hover uses `raised`; selection uses `accent-bg` with `fg` and existing current/pressed semantics; focus uses the 2px `accent` outline; disabled controls use reduced opacity and `not-allowed`. List row hover/selection fills span the list width, including behind nested rows.
 - A repeated section uses the `ThreadGroup` sidebar variant: a full-width, sticky, opaque raised band with a one-line name, count and trailing disclosure. The whole band is the accessible disclosure button; do not add a text link. Align its trailing chevron to the list's `size-row-action` (24px) action column. Reference: iOS plain-table section headers, Material subheaders, Orca `SectionHeader`.
-- Use marks only when they distinguish meaning; omit marks repeated on same-kind groups. StatusMarks have equal outer diameters and distinguish state by interior shape as well as color (empty, dot, question, check, alert); never rely on color alone. See StatusMark and Icon READMEs.
+- Use marks only when they distinguish meaning; omit marks repeated on same-kind groups. StatusMarks have equal outer diameters and distinguish state by shape as well as color (arc, question, alert, center dot, empty ring for Threads; a check remains a shell completion fact); never rely on color alone. See StatusMark and Icon READMEs.
 - Compact count chips use `size-chip-height`, `size-chip-icon`, `size-chip-text`, and `space-chip-inline`: 20px high, 10px icon, 11px tabular numerals, equal 7px horizontal padding. Urgency color follows the highest priority represented: awaiting is amber, running is blue, otherwise neutral.
 
 ## Layout parts
@@ -64,7 +64,7 @@ This folder is the system; `../screens` builds on it. A screen uses only these t
 - The root attribute is `data-ds`, as `docs/design/design-system.md` specifies; the reference previews use `data-theme`.
 - Fonts: no web font is loaded at runtime. The stacks name Inter, Noto Sans JP and JetBrains Mono first, so a machine that has them uses them, and otherwise fall back to the system faces. The reference's Google Fonts import is for its previews only.
 
-Differences from the reference, each for a reason in the usage note or `docs/design/design-system.md`: added states `hold`, `fail`, `halt` and `idle` on StatusMark; added tokens `scrim`, `motion-spin` and the `size-*` layout tokens; spacing inside components snaps to the `space-*` scale, where the reference has some 10px and 14px values; the Notice, Field, Chip, LogBlock, KeyValue, EmptyState, Message, Composer, ThreadItem, QuestionItem and Icon components; for Analytics and Settings, the Section, Stat, Chart, DataTable, Meter, BarList, RangeBar, SectionNav, SubView, MoreMenu, FactList and ButtonGroup components; for first-run setup, the ChoiceList component; for Branches and Threads, the BranchGraph, BranchList, BranchMark, ThreadGroup, SelectRow and SelectionBar components; for Apps, the AppTabs, AppFrame and AppCard components; and LoadingRows and the `chart-1` to `chart-3` tokens; and for the conversation inspector, `PanelTabs`, `ListRow` and `ListDivider`.
+Differences from the reference, each for a reason in the usage note or `docs/design/design-system.md`: five Thread categories in StatusMark, with separate shell exit facts; added tokens `scrim`, `motion-spin` and the `size-*` layout tokens; spacing inside components snaps to the `space-*` scale, where the reference has some 10px and 14px values; the Notice, Field, Chip, LogBlock, KeyValue, EmptyState, Message, Composer, ThreadItem, QuestionItem and Icon components; for Analytics and Settings, the Section, Stat, Chart, DataTable, Meter, BarList, RangeBar, SectionNav, SubView, MoreMenu, FactList and ButtonGroup components; for first-run setup, the ChoiceList component; for Branches and Threads, the BranchGraph, BranchList, BranchMark, ThreadGroup, SelectRow and SelectionBar components; for Apps, the AppTabs, AppFrame and AppCard components; and LoadingRows and the `chart-1` to `chart-3` tokens; and for the conversation inspector, `PanelTabs`, `ListRow` and `ListDivider`.
 
 The desktop navigation can collapse to an icon rail with the navigation button or Alt+0. The per-browser preference does not affect the phone drawer.
 

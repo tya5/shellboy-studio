@@ -22,7 +22,7 @@ A design system is data the presentation layer reads. Switching one never touche
 - Motion, honouring `prefers-reduced-motion`
 - Status vocabulary: one mark per state, differing in shape as well as colour; no text glyphs
 
-State meaning is fixed across systems: running, waiting for a person, recovery wait, completed. A system may restyle a state, not merge or rename one.
+Thread marks use five shared categories: running, awaiting a person, error, waiting, and no action needed. Shell exit facts and conversation footer wording remain separate from this visual grouping. A theme does not change these meanings.
 
 ## Switching
 
@@ -79,7 +79,7 @@ Limit: this costs some discipline, and a shared `ui-core` change can affect all 
 | No web font at runtime. System stacks that name Inter, Noto Sans JP and JetBrains Mono first | the bridge must work with no external host, and bundling the faces costs more than the rest of the app together. Text differs slightly by machine from the mock | a bundled face is measured and wanted |
 | Light and dark are separate systems, not modes of one | Console and Light differ in more than a mode flag would express cleanly, and one attribute selects either | a system needs both |
 | Icons drawn inline as line icons from the mock. No icon package | a package is a dependency for about twenty paths | many more icons are needed |
-| Status marks: four from the reference (`run`, `wait`, `bad`, `ok`) plus `hold`, `fail`, `halt`, `idle` (uncertain; the reference says not to add states) | the owner reports waiting, failed, stopped and idle as distinct states. Merging them would change their meaning, and showing them with no mark would be worse. `awaiting` comes only from the pending adapter, never from the owner's `waiting` | the user reviews these marks |
+| Thread marks (#83): running arc, awaiting question, error exclamation, waiting ring with center dot, and empty ring for no action needed | Thread recovery and failure share a mark; completed, stopped and idle share an empty ring, with existing unread emphasis for new results. Awaiting comes from the pending adapter, not owner waiting. Shells share the running arc, but preserve the distinct completed and failed exit facts. Footer wording and owner facts stay unmerged | when the approved vocabulary changes |
 | Execution details hide below a 1180px frame, earlier than the reference's 900px | a 340px panel leaves too little for the conversation with the 260px sidebar | a real layout need |
 | On phone width the thread list is a drawer from a menu button in the top bar, which the mock doesn't show | a phone needs a way to change Thread and create one | the user wants another path |
 | Archive needs a second press | the UI has no unarchive yet (`thread.unarchive` is denied) | unarchive exists |

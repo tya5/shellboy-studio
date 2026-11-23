@@ -108,6 +108,9 @@ it("keeps the owner's created order on status hints and inserts a new Thread at 
 it("renders distinct shapes for the five approved status marks", () => {
   const host = document.createElement("div");
   render(<>{(["running", "awaiting", "error", "waiting", "idle"] as const).map(status => <StatusMark key={status} status={status} label={status} />)}</>, host);
+  const arc = host.querySelector('[data-status="running"] circle');
+  expect(arc?.getAttribute("pathLength")).toBe("100");
+  expect(arc?.getAttribute("stroke-dasharray")).toBe("78 22");
   const svg = [...host.querySelectorAll("svg")];
   expect(svg).toHaveLength(5);
   expect(new Set(svg.map(icon => icon.innerHTML)).size).toBe(5);

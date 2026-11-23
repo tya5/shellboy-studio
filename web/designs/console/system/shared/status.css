@@ -6,11 +6,8 @@
 .st.bad{color:var(--bad)}
 .st.bad .dot{background:var(--bad);border-radius:3px;transform:rotate(45deg) scale(.82)}
 .st.ok{color:var(--ok)}
-.st.ok .i{width:var(--size-icon-small);height:var(--size-icon-small);stroke-width:2.4}
 .st.fail{color:var(--bad)}
-.st.fail .i{width:var(--size-icon-small);height:var(--size-icon-small);stroke-width:2.4}
 .st.hold{color:var(--muted)}
-.st.hold .dot{border:2.5px solid var(--muted);background:radial-gradient(circle,var(--muted) 0 2px,transparent 2.5px)}
 .st.halt{color:var(--muted)}
 .st.halt .dot{background:var(--muted);border-radius:2px;transform:scale(.72)}
 .st.idle{color:var(--muted)}

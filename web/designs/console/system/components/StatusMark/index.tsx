@@ -11,13 +11,12 @@ const MARK: Record<StatusKey | ShellStatusKey | FeedbackStatus, [string, IconRol
 type Props = { label: string; word?: boolean } & ({ status: StatusKey; shell?: false; feedback?: false } | { status: ShellStatusKey; shell: true; feedback?: false } | { status: FeedbackStatus; feedback: true; shell?: false });
 
 /** Shape and colour both carry the state. Without `word` the label is for screen readers only. */
-export function StatusMark({ status, label, word = true, shell, feedback }: Props) {
-  const [tone, icon] = MARK[status];
-  const role = feedback && status === "waiting" ? undefined : icon;
-  const arc = !shell && status === "running";
+export function StatusMark({ status, label, word = true }: Props) {
+  const [tone, role] = MARK[status];
+  const arc = status === "running";
   return (
     <span class={`st ${tone}`} {...(word ? {} : { role: "img", "aria-label": label, title: label })} data-status={status}>
-      <span class="mark status-shape" data-running-arc={arc || undefined}>{role ? <Icon role={shell && status === "running" ? "status.shellRunning" : role} size="small" /> : <span class="dot" />}</span>
+      <span class="mark status-shape" data-running-arc={arc || undefined}>{role ? <Icon role={role} size="small" /> : <span class="dot" />}</span>
       {word ? label : null}
     </span>
   );

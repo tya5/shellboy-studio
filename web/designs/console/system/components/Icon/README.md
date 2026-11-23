@@ -92,8 +92,7 @@ Styles: style.css in this directory
 - `panel.attachment`: the Possessions tab and its attachment rows; denotes a saved attachment, not a download.
 
 Sidebar and shared state roles (Orca sidebar and Lucide semantics):
-- `status.running`: in-progress Thread (open rotating arc; stationary when motion is reduced).
-- `status.shellRunning`: an active shell (circle-dot).
+- `status.running`: in-progress Thread or shell (open rotating arc; stationary when motion is reduced).
 - `status.error`: Thread recovery or failure (circle and exclamation).
 - `status.waiting`: a Run inside its own wait (circle and center dot).
 - `status.awaiting`: needs a human answer (circle help; same outer diameter as every StatusMark).
