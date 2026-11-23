@@ -13,6 +13,8 @@ for two to four short options without notes.
 The group follows native radio semantics: options with the same `name` form one
 selection set, so never use the display label as that value.
 
+Options keep their natural height, so a note that wraps is never clipped; the list scrolls instead of shrinking rows.
+
 Styles are colocated in `system/components/ChoiceList/style.css`.
 
 Styles: style.css in this directory
