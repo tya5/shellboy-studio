@@ -437,7 +437,7 @@ function WorkRegions({ model, place }: { model: AppModel; place: string }) {
       return <div class="work-row" key={r.id}><span>{r.label || t("work.textUnavailable")}</span><span class="mono">{r.id}</span><span>{state(r.state)}</span><Button disabled={action.disabled} onClick={action.run}>{action.label}</Button>{error ? <div role="alert">{error}</div> : null}</div>;
     })}</section> : null}
     {work.partial ? <div class="caption muted">{t("work.partial")}</div> : null}
-    {model.handle.value?.work.value.stale && (work.running.length > 0 || work.pending.length > 0) ? <div class="caption muted">{t("work.stale")}</div> : null}
+    {workRefreshing(model) && (work.running.length > 0 || work.pending.length > 0) ? <div class="caption muted">{t("work.stale")}</div> : null}
   </>;
 }
 

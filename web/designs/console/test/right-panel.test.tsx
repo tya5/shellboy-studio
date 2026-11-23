@@ -74,6 +74,13 @@ describe('right panel purpose',()=>{
    await act(async()=>row()!.querySelector<HTMLButtonElement>('.panel-list-main')!.click());
    const cancel=[...f.host.querySelectorAll<HTMLButtonElement>('[data-panel-detail] button')].find(item=>item.textContent===text('work.cancel'));
    expect(cancel?.disabled).toBe(true);
+   Object.defineProperty(f.host.querySelector('.app'), 'clientWidth', {configurable:true,value:390});
+   await act(async()=>f.host.querySelector<HTMLButtonElement>('.work-strip button')!.click());
+   const sheet=f.host.querySelector<HTMLDialogElement>('dialog.work-sheet[open]')!;
+   expect(sheet.open).toBe(true);
+   const pending=[...sheet.querySelectorAll('.work-row')].find(item=>item.textContent?.includes('Pending fixture message'));
+   expect(pending?.querySelector<HTMLButtonElement>('button')?.disabled).toBe(true);
+   expect(sheet.textContent).toContain(text('work.stale'));
    await act(async()=>{await settle(f.t,f.db);});
    expect(row()).toBeNull();
    expect(count()).toBeUndefined();
