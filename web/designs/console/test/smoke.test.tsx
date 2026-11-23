@@ -1657,7 +1657,7 @@ describe("Setup", () => {
   };
   const config = { config_path: "/temp/cfg/config.toml", loaded: { present: false, content_hash: "c".repeat(64), values: {}, redacted_fields: [] }, file: { present: false, content_hash: "c".repeat(64), valid: true, values: {}, redacted_fields: [] }, restart: { all_fields_require_restart: true } };
   const click = (el: Element | null | undefined) => act(() => void (el as HTMLElement).click());
-  const button = (el: Element, label: string) => [...el.querySelectorAll("button, a.btn")].find((b) => b.textContent?.trim() === label) as HTMLElement | undefined;
+  const button = (el: Element, label: string) => [...el.querySelectorAll("button, a.btn, a.nav-link")].find((b) => b.textContent?.trim() === label) as HTMLElement | undefined;
 
   it("on an owner without the operations, says so and gives the manual steps", async () => {
     const { model } = await fixtureModel({ route: "setup" });

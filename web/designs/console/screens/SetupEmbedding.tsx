@@ -67,7 +67,7 @@ export function SetupEmbedding({ context }: { context: DesignContext }) {
               )}
               {unsupported && chosen ? <Notice tone="bad"><Rich text={t("setup.embed.noApi", { name: chosen })} /></Notice> : null}
               <div class="setup-actions">
-                <a class="btn" href={formatRoute({ view: "setup" })} onClick={() => e.startAdd()}>{t("setup.embed.add")}</a>
+                <a class="nav-link" href={formatRoute({ view: "setup" })} onClick={() => e.startAdd()}>{t("setup.embed.add")}</a>
               </div>
             </Section>
 
@@ -93,14 +93,14 @@ export function SetupEmbedding({ context }: { context: DesignContext }) {
               {save.kind === "failed" ? <Notice tone="bad">{t("setup.embed.failed", { message: save.message })}</Notice> : null}
               <div class="setup-actions">
                 <Button variant="primary" disabled={!e.canSave.value} onClick={() => void e.save()}>{save.kind === "saving" ? t("setup.embed.saving") : t("setup.embed.on")}</Button>
-                <a class="btn link" href={formatRoute({ view: "conversation" })}>{t("setup.embed.skip")}</a>
+                <a class="nav-link" href={formatRoute({ view: "conversation" })}>{t("setup.embed.skip")}</a>
               </div>
             </Section>
 
             {current ? (
               <Section title={t("setup.embed.off")} sub={<Rich text={t("setup.embed.offNote")} />}>
                 <div class="setup-actions">
-                  <Button disabled={save.kind === "saving"} onClick={() => void e.turnOff()}>{t("setup.embed.off")}</Button>
+                  <Button variant="ghost" disabled={save.kind === "saving"} onClick={() => void e.turnOff()}>{t("setup.embed.off")}</Button>
                 </div>
               </Section>
             ) : null}

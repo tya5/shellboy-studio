@@ -1,10 +1,11 @@
 .choice-list-root{display:flex;flex-direction:column;border:1px solid var(--line-strong);border-radius:var(--radius-s);background:var(--inset)}
-.choice-list-root.choice-list-scroll{max-height:288px;overflow:auto}
+/* About nine control-high rows, then the long list scrolls. */
+.choice-list-root.choice-list-scroll{max-height:calc(9 * var(--size-control));overflow:auto}
 .choice-list-option{flex:none;display:flex;align-items:flex-start;gap:var(--space-8);min-height:var(--size-control);padding:var(--space-8) var(--space-12);border-bottom:1px solid var(--line);font:var(--type-label);cursor:pointer}
 .choice-list-option:last-child{border-bottom:0}
 .choice-list-option:hover{background:var(--raised)}
 .choice-list-option:has(input:checked){background:var(--accent-bg)}
-.choice-list-option input{margin:2px 0 0;accent-color:var(--accent)}
+.choice-list-option input{margin:var(--space-2) 0 0;accent-color:var(--accent)}
 .choice-list-option:focus-within{outline:2px solid var(--accent);outline-offset:-2px}
 .choice-text{display:flex;flex-direction:column;gap:var(--space-4);min-width:0;overflow-wrap:anywhere}
 @container app (max-width:899px){

@@ -75,10 +75,10 @@ export function Setup({ context }: { context: DesignContext }) {
           {embed.returning.value ? null : (
             <Section title={t("setup.embed.offerTitle")} sub={t("setup.embed.offerBody")}>
               <div class="setup-actions">
-                <a class="btn" href={formatRoute({ view: "setup", step: "embedding" })} onClick={() => embed.comeBack(save.connection)}>
+                <a class="nav-link" href={formatRoute({ view: "setup", step: "embedding" })} onClick={() => embed.comeBack(save.connection)}>
                   {t("setup.embed.open")}
                 </a>
-                <a class="btn link" href={formatRoute({ view: "conversation" })}>
+                <a class="nav-link" href={formatRoute({ view: "conversation" })}>
                   {t("setup.embed.skip")}
                 </a>
               </div>
@@ -127,7 +127,7 @@ export function Setup({ context }: { context: DesignContext }) {
             ) : null}
             {!s.editing.value && !(service.askUrl && service.askDialect) ? (
               <div class="setup-actions">
-                <Button onClick={() => s.editConnection()}>{t("setup.edit")}</Button>
+                <Button variant="ghost" onClick={() => s.editConnection()}>{t("setup.edit")}</Button>
               </div>
             ) : null}
             {service.needsKey ? (
@@ -146,13 +146,13 @@ export function Setup({ context }: { context: DesignContext }) {
                   </Notice>
                 ) : null}
                 {env.kind === "using" ? (
-                  <Notice actions={<Button onClick={() => s.replaceKey()}>{t("setup.env.other")}</Button>}>
+                  <Notice actions={<Button variant="ghost" onClick={() => s.replaceKey()}>{t("setup.env.other")}</Button>}>
                     <Rich text={t("setup.env.using", { name: env.name })} />
                   </Notice>
                 ) : null}
                 {env.kind !== "offered" && env.kind !== "using" && env.kind !== "checking" ? (
                   s.keyHeld.value ? (
-                    <Notice actions={<Button onClick={() => s.replaceKey()}>{t("setup.key.replace")}</Button>}>{t("setup.key.held")}</Notice>
+                    <Notice actions={<Button variant="ghost" onClick={() => s.replaceKey()}>{t("setup.key.replace")}</Button>}>{t("setup.key.held")}</Notice>
                   ) : (
                     <>
                       <Field ariaLabel={t("setup.key.label")} placeholder={t("setup.key.label")} type="password" autoComplete="off" spellcheck={false} value={s.keyDraft.value} onInput={(e) => s.setKeyDraft(e.currentTarget.value)} />
@@ -212,11 +212,11 @@ export function Setup({ context }: { context: DesignContext }) {
             ) : null}
             <div class="setup-actions">
               <Button variant="primary" disabled={!s.canSave.value} onClick={() => void s.save()}>{save.kind === "saving" ? t("setup.save.saving") : t("setup.save.run")}</Button>
-              {model.setup.needed.value ? <a class="btn link" href={formatRoute({ view: "conversation" })}>{t("setup.later")}</a> : null}
+              {model.setup.needed.value ? <a class="nav-link" href={formatRoute({ view: "conversation" })}>{t("setup.later")}</a> : null}
             </div>
           </Section>
         ) : null}
-        {service && test.kind !== "ok" && model.setup.needed.value ? <div class="setup-actions"><a class="btn link" href={formatRoute({ view: "conversation" })}>{t("setup.later")}</a></div> : null}
+        {service && test.kind !== "ok" && model.setup.needed.value ? <div class="setup-actions"><a class="nav-link" href={formatRoute({ view: "conversation" })}>{t("setup.later")}</a></div> : null}
       </div>
     </div>
   );

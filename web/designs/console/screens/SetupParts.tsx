@@ -6,7 +6,7 @@ export type T = DesignContext["model"]["t"]["value"];
 
 export function External({ href, children }: { href: string; children: string }) {
   return (
-    <a class="btn link" href={href} target="_blank" rel="noreferrer noopener">
+    <a class="nav-link" href={href} target="_blank" rel="noreferrer noopener">
       {children}
     </a>
   );
