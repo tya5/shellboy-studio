@@ -30,8 +30,14 @@ While detached, retain the first visible rendered node (or inner tool execution)
 and its viewport offset. `ReadingAnchor` retains identifiers and measured offsets,
 not DOM subtrees. It resolves the same execution after a prepend joins two tool
 groups; a collapsed group's shared execution identifiers identify its replacement
-heading. Model height compensation is the fallback when the DOM anchor no longer
-exists. A clicked tool heading takes priority during its own open/close operation.
+heading. A newer accepted revision can preserve the offset only if the same
+saved node and item key qualify in the current rendered cut, within the same
+epoch and capability. Live and local wrappers do not disqualify saved anchors.
+A live preview can hand its row offset to a unique saved assistant successor
+only when committed attempt provenance and visible text continuity both match.
+Model height compensation and path recovery are fallbacks, not preservation of
+the original rendered anchor. This remains item-level, not paragraph-level.
+A clicked tool heading takes priority during its own open/close operation.
 Following takes priority over heading anchoring, so opening a tool at the tail
 keeps the actual end in view.
 

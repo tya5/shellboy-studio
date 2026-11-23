@@ -85,58 +85,73 @@ export interface ReadingContext {
   readonly epoch: number;
   readonly capability: object;
   readonly nodes: readonly string[];
+  readonly assistantAttempts?: ReadonlyMap<string, string>;
+  readonly previewText?: (key: string, attempt: string) => string | undefined;
+  readonly savedText?: (key: string, node: string) => string | undefined;
   isCurrent(): boolean;
 }
 
+const localRow = '[data-anchor-local], [data-live-overlay], .live-tail';
+
 /** Resolve visible geometry from canonical identity, never retain item DOM nodes. */
 function canonicalElement(item: HTMLElement): HTMLElement | undefined {
-  if (item.closest('[data-live-overlay], .live-tail, [hidden]')) return;
+  if (item.closest(`${localRow}, [hidden]`)) return;
   const group = item.closest<HTMLElement>('[data-work-group]');
   if (!group) return item;
   let members: unknown;
   try { members = JSON.parse(group.dataset.headingMemberKeys ?? 'null'); } catch { return; }
   if (!Array.isArray(members) || members.some(key => typeof key !== 'string') || new Set(members).size !== members.length || !members.includes(item.dataset.itemKey)) return;
-  const actual = [...group.querySelectorAll<HTMLElement>('[data-item-key]')].filter(el => !el.closest('[data-live-overlay], .live-tail'));
+  const actual = [...group.querySelectorAll<HTMLElement>('[data-item-key]')].filter(el => !el.closest(localRow));
   if (actual.length !== members.length || actual.some((el, index) => el.closest('[data-work-group]') !== group || el.dataset.itemKey !== members[index])) return;
   if (group.tagName !== 'DETAILS') return;
   return group.hasAttribute('open') ? item : group.querySelector<HTMLElement>(':scope > summary[data-work-heading]') ?? undefined;
 }
 
-export class ReadingAnchor {
-  source(context: ReadingContext): { nodeId: string; offset: number } | undefined {
-    const saved = this.canonical;
-    if (!saved || !context.isCurrent() || saved.revision !== context.revision || saved.epoch !== context.epoch || saved.capability !== context.capability || !context.nodes.includes(saved.node)) return;
-    return { nodeId: saved.node, offset: saved.offset };
+function readingItems(box: HTMLElement, context: ReadingContext): HTMLElement[] | undefined {
+  const items = [...box.querySelectorAll<HTMLElement>('.conversation-items [data-item-key]')];
+  const nodes = new Set(context.nodes), keys = new Set<string>();
+  for (const item of items) {
+    if (item.closest(localRow)) continue;
+    const { itemKey, node } = item.dataset;
+    if (!itemKey || keys.has(itemKey) || !node || !nodes.has(node)) return;
+    keys.add(itemKey);
   }
+  return items;
+}
 
-  private canonical: { key: string; node: string; offset: number; revision: string | number | undefined; epoch: number; capability: object } | undefined;
+type CanonicalAnchor = { key: string; offset: number; epoch: number; capability: object } &
+  ({ kind: 'saved'; node: string } | { kind: 'preview'; attempt: string; text: string });
 
+export class ReadingAnchor {
+  private canonical: CanonicalAnchor | undefined;
   private saved: { node: string; step?: string; members: string[]; offset: number } | undefined;
   capture(box: HTMLElement, context?: ReadingContext): void {
-    this.canonical = undefined;
-    const parent = box.querySelector('.conversation-items');
-    if (parent) {
+    if (box.querySelector('.conversation-items')) {
       this.saved = undefined;
       if (!context?.isCurrent() || context.revision === undefined) return;
-      const items = [...parent.querySelectorAll<HTMLElement>('[data-item-key]')].filter(item => !item.closest('[data-live-overlay], .live-tail'));
-      const keys = new Set<string>();
-      for (const item of items) {
-        const key = item.dataset.itemKey;
-        if (!key || keys.has(key) || !item.dataset.node || !context.nodes.includes(item.dataset.node)) return;
-        keys.add(key);
-      }
+      this.canonical = undefined;
+      const items = readingItems(box, context);
+      if (!items) return;
       const top = box.getBoundingClientRect().top;
       for (const item of items) {
-        const element = canonicalElement(item);
+        const key = item.dataset.itemKey!;
+        const attempt = item.dataset.handoffAttempt;
+        const element = attempt && !item.closest('[hidden]') ? item : canonicalElement(item);
         if (!element) continue;
         const rect = element.getBoundingClientRect();
         if (rect.height <= 0 || rect.bottom <= top) continue;
         if (!context.isCurrent()) return;
-        this.canonical = { key: item.dataset.itemKey!, node: item.dataset.node!, offset: rect.top - top, revision: context.revision, epoch: context.epoch, capability: context.capability };
+        const anchor = { key, offset: rect.top - top, epoch: context.epoch, capability: context.capability };
+        if (attempt) {
+          const text = context.previewText?.(key, attempt);
+          if (text && items.filter(other => other.dataset.handoffAttempt === attempt).length === 1)
+            this.canonical = { ...anchor, kind: 'preview', attempt, text };
+        } else if (item.dataset.node) this.canonical = { ...anchor, kind: 'saved', node: item.dataset.node };
         return;
       }
       return;
     }
+    this.canonical = undefined;
     const top = box.getBoundingClientRect().top;
     const row = [...box.querySelectorAll<HTMLElement>(".vrow[data-node]")]
       .find((el) => el.getBoundingClientRect().bottom > top && el.getBoundingClientRect().height > 0);
@@ -150,17 +165,29 @@ export class ReadingAnchor {
   correction(box: HTMLElement, context?: ReadingContext): number | undefined {
     const canonical = this.canonical;
     if (canonical) {
-      if (!context?.isCurrent() || context.revision !== canonical.revision || context.epoch !== canonical.epoch || context.capability !== canonical.capability || !context.nodes.includes(canonical.node)) { this.canonical = undefined; return; }
-      const items = [...box.querySelectorAll<HTMLElement>('.conversation-items [data-item-key]')].filter(item => !item.closest('[data-live-overlay], .live-tail'));
-      const keys = new Set<string>();
-      for (const item of items) {
-        const key = item.dataset.itemKey;
-        if (!key || keys.has(key) || !item.dataset.node || !context.nodes.includes(item.dataset.node)) return;
-        keys.add(key);
+      if (!context?.isCurrent() || context.revision === undefined || context.epoch !== canonical.epoch || context.capability !== canonical.capability) return;
+      const items = readingItems(box, context);
+      if (!items) return;
+      const savedItems = items.filter(item => !item.closest(localRow));
+      let element: HTMLElement | undefined;
+      if (canonical.kind === 'saved') {
+        // Requalify the exact key and node in the current rendered cut, regardless of revision.
+        const match = savedItems.find(item => item.dataset.itemKey === canonical.key && item.dataset.node === canonical.node);
+        if (match) element = canonicalElement(match);
+      } else {
+        const previews = items.filter(item => item.dataset.handoffAttempt === canonical.attempt);
+        if (previews.length) {
+          const preview = previews[0]!;
+          if (previews.length === 1 && preview.dataset.itemKey === canonical.key && !preview.closest('[hidden]') && context.previewText?.(canonical.key, canonical.attempt)?.startsWith(canonical.text)) element = preview;
+        } else {
+          const provenNodes = [...(context.assistantAttempts ?? [])].filter(([, attempt]) => attempt === canonical.attempt);
+          if (provenNodes.length !== 1) return;
+          const node = provenNodes[0]![0];
+          // Text confirms continuity only after exact owner provenance proves succession.
+          const matches = savedItems.filter(item => item.dataset.node === node && context.savedText?.(item.dataset.itemKey!, node) !== undefined);
+          if (matches.length === 1 && context.savedText?.(matches[0]!.dataset.itemKey!, node)?.startsWith(canonical.text)) element = canonicalElement(matches[0]!);
+        }
       }
-      const matches = items.filter(item => item.dataset.itemKey === canonical.key);
-      if (matches.length !== 1 || matches[0]!.dataset.node !== canonical.node) return;
-      const element = canonicalElement(matches[0]!);
       if (!element) return;
       const rect = element.getBoundingClientRect();
       if (rect.height <= 0) return;

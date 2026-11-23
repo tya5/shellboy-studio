@@ -19,9 +19,8 @@ it('uses the structurally proven containing group heading when the captured item
  x.anchor.capture(x.box,x.context);x.group.open=true;x.rect(x.head,80);x.rect(x.a,100);
  expect(x.anchor.correction(x.box,x.context)).toBe(60);
 });
-it.each(['revision','epoch','capability','current','provenance','unloaded','duplicate','membership'] as const)('rejects invalid recovery authority: %s',kind=>{
+it.each(['epoch','capability','current','provenance','unloaded','duplicate','membership'] as const)('rejects invalid recovery authority: %s',kind=>{
  const x=rig();x.anchor.capture(x.box,x.context);x.rect(x.b,120);
- if(kind==='revision')x.context.revision++;
  if(kind==='epoch')x.context.epoch++;
  if(kind==='capability')x.context.capability={};
  if(kind==='current')x.context.isCurrent=()=>false;
@@ -49,4 +48,20 @@ it('recovers measured position after canonical item moves to a new structural pa
  const x=rig();x.anchor.capture(x.box,x.context);
  const parent=x.box.querySelector('.conversation-items')!;parent.append(x.b);x.rect(x.b,75);
  expect(x.anchor.correction(x.box,x.context)).toBe(55);
+});
+
+it.each([
+  { label: 'the exact attempt retained its text', attempt: 'attempt', text: 'preview continued', delta: 60 },
+  { label: 'another attempt published identical text', attempt: 'other', text: 'preview', delta: undefined },
+  { label: 'the exact attempt lost the preview text', attempt: 'attempt', text: 'missing prefix', delta: undefined },
+])('hands off the preview offset only if $label', ({ attempt, text, delta }) => {
+  const x = rig(), parent = x.box.querySelector('.conversation-items')!;
+  parent.innerHTML = '<div data-item-key="preview" data-anchor-local data-handoff-attempt="attempt">preview</div>';
+  x.rect(parent.firstElementChild!, -10);
+  x.anchor.capture(x.box, { ...x.context, previewText: () => 'preview' });
+  parent.innerHTML = '<div data-item-key="answer" data-node="n2"></div>';
+  const saved = parent.firstElementChild as HTMLElement;
+  saved.textContent = text;
+  x.rect(saved, 50);
+  expect(x.anchor.correction(x.box, { ...x.context, revision: 8, assistantAttempts: new Map([['n2', attempt]]), savedText: () => text })).toBe(delta);
 });

@@ -27,9 +27,10 @@ Current ordinary saved tool DTO has no public call ID, so an ordinary-tool to
 call-only-spill transition is NOT fabricated or claimed.
 
 These are HappyDOM controls, not real producer output or browser pixels. Presentation
-key reuse does not authorize actual-node/revision anchor transfer. Existing G
-node-change and revision-reject controls remain authoritative. Cached body,
-multipage coverage, owner ABA, explicit abort, six actual Threads and browser
+key reuse does not authorize anchor transfer to a different saved node. The
+original revision-reject witness predates #6: a newer accepted revision now
+requalifies the exact item key and actual node in the current rendered cut.
+Cached body, multipage coverage, owner ABA, explicit abort, six actual Threads and browser
 390/768/1280 checks remain separate. Existing command details, when available,
 retain their source authority; spill metadata does not manufacture missing 298
 command/description fields or mark unknown tool success.

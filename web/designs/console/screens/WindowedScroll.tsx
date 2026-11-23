@@ -16,7 +16,7 @@ export function heldRange(visible: { first: number; last: number }, total: numbe
   return range;
 }
 
-export type WindowScrollModel = Pick<AppModel,'t'|'shells'|'handle'|'senderPageSelected'>;
+export type WindowScrollModel = Pick<AppModel,'t'|'shells'|'handle'|'senderPageSelected'|'bodyState'>;
 
 export function WindowedScroll({ model, win, renderRow, live, liveBoundary, statusLine, scrollPort, renderAcceptedView }: { model: WindowScrollModel; win: ConversationWindow; renderRow: (row: ConversationRow) => VNode; live: ComponentChildren; liveBoundary?: number; statusLine?: ComponentChildren; scrollPort?: ScrollViewPort<object>; renderAcceptedView?: (ref: WindowAcceptedSnapshot) => ComponentChildren }) {
   const port: ScrollViewPort<object> = scrollPort ?? win;
@@ -41,6 +41,26 @@ export function WindowedScroll({ model, win, renderRow, live, liveBoundary, stat
   const touchY = useRef<number | undefined>(undefined);
   const readingAnchor = useRef(new ReadingAnchor());
 
+  const readingContext = (snapshot: WindowAcceptedSnapshot, isCurrent: () => boolean): ReadingContext => ({
+    revision: snapshot.revision, epoch: snapshot.epoch, capability: win.acceptedView.currentCapability,
+    nodes: snapshot.rows.flatMap(row => row.node_id ? [row.node_id] : []),
+    assistantAttempts: new Map(snapshot.rows.flatMap(row => row.kind === "assistant_response" && row.node_id && row.provenance?.attempt_id
+      ? [[row.node_id, row.provenance.attempt_id] as const] : [])),
+    previewText: (key, attempt) => {
+      const tail = snapshot.displayPlan?.localRegion.tailRows.find(row => row.kind === "live" && row.item.key === key);
+      return tail?.kind === "live" && tail.item.source.kind === "text" && tail.item.source.attemptId === attempt ? tail.item.source.text : undefined;
+    },
+    savedText: (key, node) => {
+      const entry = snapshot.displayPlan?.entries.find(entry => entry.item.key === key);
+      if (entry?.item.source.nodeId !== node || entry.item.source.kind !== "text" || entry.body.kind !== "typed-canonical") return;
+      // Do not transfer on stale plan text if a full-body result has overridden it.
+      const canonical = entry.body.text;
+      if ([model.bodyState(node)?.text, model.bodyState(node, entry.item.source.itemIdentity)?.text].some(text => text !== undefined && text !== canonical)) return;
+      return canonical;
+    },
+    isCurrent,
+  });
+
   const origin = useRef<number | undefined>(undefined);
   const rowOrigin = (box: HTMLElement): number => {
     const rows = box.querySelector<HTMLElement>(".vspace");
@@ -62,10 +82,7 @@ export function WindowedScroll({ model, win, renderRow, live, liveBoundary, stat
           if (measured.length) win.measure(measured);
         },
         plan: (_ref, request) => {
-          const snapshot = renderAcceptedView ? win.acceptedView.peek() : undefined;
-          const context: ReadingContext | undefined = snapshot ? { revision: snapshot.revision, epoch: snapshot.epoch, capability: win.acceptedView.currentCapability,
-            nodes: snapshot.rows.flatMap(row => row.node_id ? [row.node_id] : []),
-            isCurrent: () => port.acceptedView.isCurrent(_ref) && win.acceptedView.isCurrent(snapshot) } : undefined;
+          const context = accepted ? readingContext(accepted, () => port.acceptedView.isCurrent(_ref) && win.acceptedView.isCurrent(accepted)) : undefined;
 
           const heading = headingAnchor.current.peek();
           const delta = heading?.delta ?? readingAnchor.current.correction(box, context);
@@ -187,10 +204,7 @@ export function WindowedScroll({ model, win, renderRow, live, liveBoundary, stat
         if (win.status.peek() === "loading") return;
         const b = e.currentTarget;
         win.view(b.scrollTop - rowOrigin(b), b.clientHeight, intent.current.scroll(b));
-        const snapshot = renderAcceptedView ? win.acceptedView.peek() : undefined;
-        const context: ReadingContext | undefined = snapshot ? { revision: snapshot.revision, epoch: snapshot.epoch,
-          capability: win.acceptedView.currentCapability, nodes: snapshot.rows.flatMap(row => row.node_id ? [row.node_id] : []),
-          isCurrent: () => win.acceptedView.isCurrent(snapshot) } : undefined;
+        const context = accepted ? readingContext(accepted, () => win.acceptedView.isCurrent(accepted)) : undefined;
         readingAnchor.current.capture(b, context);
       }}
     >

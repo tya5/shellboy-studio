@@ -81,7 +81,10 @@ export function ConversationItems({ items, toolSummaries = [], renderItem, rende
     const spans = new Map<number, { end: number; container: string }>();
     for (const [container, span] of candidates) if (!invalidContainers.has(container)) spans.set(span.start, { end: span.end, container });
     const row = (key: string, children: ComponentChildren, item?: ConversationItem, work = false, hosted = false) =>
-      <div class={`conversation-row${hosted ? " conversation-answer-child" : ""}`} key={`item:${key}`} data-item-key={item?.key} data-key={item?.key} data-node={item?.source.nodeId} data-work-item-key={work ? item?.key : undefined} data-own-presentation={item ? undefined : ""} data-own-placement={item ? undefined : "suffix"}>{children}</div>;
+      <div class={`conversation-row${hosted ? " conversation-answer-child" : ""}`} key={`item:${key}`} data-item-key={item?.key} data-key={item?.key} data-node={item?.source.nodeId} data-work-item-key={work ? item?.key : undefined}
+        data-anchor-local={!item?.source.nodeId ? "" : undefined}
+        data-handoff-attempt={item?.source.kind === "text" && "domain" in item.source && item.source.domain === "live" && item.source.namespace === "handoff" ? item.source.attemptId : undefined}
+        data-own-presentation={item ? undefined : ""} data-own-placement={item ? undefined : "suffix"}>{children}</div>;
     const content = (item: ConversationItem, work: boolean, hosted = !work && !!item.presentationContainer) => row(item.key, renderItem(item), item, work, hosted);
     const renderWork = (entry: Extract<NonNullable<Props["sequence"]>[number], { kind: "work" }>): ComponentChildren => {
       const group = groups.get(entry.groupKey);
