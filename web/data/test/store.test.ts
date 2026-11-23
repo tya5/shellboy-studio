@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import { MAX_PREVIEW_CHARS, type Preview } from "../src/live";
 import { MAX_LIST_ROWS, PAGE_LIMIT, MAX_WATCHED_THREADS, ShellboyData } from "../src/store";
 import { Cancel } from "../src/operations";
+import type { ThreadSummary } from "../src/protocol";
+
 import { connected, details, FakeOwnerDb, FakeTransport, flush, settle, summary } from "./harness";
 
 async function setup(opts: { owner?: boolean; capabilities?: string[] } = {}) {
@@ -404,7 +406,7 @@ describe("the Thread list stays bounded however many Threads exist", () => {
   async function listed(pages: number) {
     const t = new FakeTransport();
     const db = new FakeOwnerDb();
-    const all = Array.from({ length: pages * PAGE_LIMIT }, (_, i) => summary(`t${i}`));
+    const all: ThreadSummary[] = Array.from({ length: pages * PAGE_LIMIT }, (_, i) => summary(`t${i}`));
     const answer = db.answer.bind(db);
     db.answer = (c) => {
       if (c.command !== "thread.list") return answer(c);
