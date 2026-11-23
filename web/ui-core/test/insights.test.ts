@@ -534,7 +534,8 @@ describe("what the charts draw", () => {
     const unknown = dayFacts(["d"], new Map([["d", readGroup(raw)!]]), WEIGHTS)[0]!;
     expect(unknown.summaryEffective).toBeUndefined();
     expect(unknown.incomplete).toBe(true);
-    expect(unknown.effective).toBeUndefined();
+    expect(unknown.effective).toBe(100);
+    expect(unknown.effectiveLowerBound).toBe(true);
   });
   it("marks a day whose counters have unknowns or disagree", () => {
     expect(dayFacts(["d"], new Map([["d", group("d", { input: 100, cached: 50, output: 1, unknown: 2 })]]), WEIGHTS)[0]!.incomplete).toBe(true);

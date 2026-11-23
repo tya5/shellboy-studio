@@ -1,10 +1,10 @@
-import { tokenTotal } from "./usage-label";
 import { useEffect, useMemo, useState } from "preact/hooks";
 import {
   ANALYTICS_SECTIONS, analyticsSection, cacheRate, COMPACTION_ROWS, dayFacts, DEFAULT_WEIGHTS, effectiveTokens, formatClock, formatDuration, formatRoute, formatTokens, groupEffective, groupIncomplete, meanInput, periodTotals, PERIODS, readWeights, shortDay,
   splitParts, type AnalyticsSection, type AppModel, type CompactionEvent, type DayFacts, type DesignContext, type Translate, type UsageGroup, type WalkState, type Weights,
 } from "../../../ui-core/src";
 import { Button, ButtonGroup, Chart, DataTable, Field, Notice, PageHeader, RangeBar, Section, Stat, SubView, type ChartPoint, type ChartSeries, type IconRole } from "../system/components";
+import { tokenTotal } from "./usage-label";
 import { IndexPane, MemoryPane, StoragePane } from "./Resources";
 
 const percent = (v: number): string => `${Math.round(v * 100)}%`;
@@ -62,6 +62,16 @@ function walkComplete(walk: WalkState): boolean {
   return walk.status === "done" && !c.scopeIncomplete && c.excludedTime === 0 && c.unknownTimeCompactions === 0 && c.malformedCompactions === 0;
 }
 
+function periodPlaceholder(t: Translate, walk: WalkState, complete: boolean): string {
+  if (walk.status === "loading") return t("usage.aggregating");
+  if (complete) return t("analytics.noValue");
+  return t(walk.groups.size ? "usage.unfinished" : "analytics.notRead");
+}
+
+function effectiveLabel(t: Translate, value: number, lowerBound: boolean): string {
+  return lowerBound ? t("usage.minimum", { value: Math.floor(value).toLocaleString("en-US") }) : formatTokens(Math.round(value));
+}
+
 function usageColumns(t: Translate) {
   return [{ label: t("usage.input"), numeric: true }, { label: t("usage.cached"), numeric: true }, { label: t("usage.output"), numeric: true }];
 }
@@ -95,9 +105,11 @@ function ByThread({ model, weights }: { model: AppModel; weights: Weights }) {
   const threadRows = model.rowById.value;
   const [limit, setLimit] = useState(25);
   const [selected, select] = useState<string>();
-  const rows = [...walk.groups.values()].sort((a, b) => (groupEffective(b, weights) ?? 0) - (groupEffective(a, weights) ?? 0)).slice(0, limit);
+  const rows = [...walk.groups.values()].map(g => ({ g, effective: groupEffective(g, weights) }))
+    .sort((a, b) => (b.effective.value ?? -1) - (a.effective.value ?? -1)).slice(0, limit);
   const nameOf = (key: string) => threadRows.get(key)?.summary.title ?? key.slice(0, 8);
   const complete = walkComplete(walk);
+  const placeholder = periodPlaceholder(t, walk, complete);
   return <>
     <Section title={t("threads.heading")} sub={t("threads.sub")}
       source={<>{t("common.source", { source: "" })}<code>usage.get group_by=thread</code></>}>
@@ -106,10 +118,9 @@ function ByThread({ model, weights }: { model: AppModel; weights: Weights }) {
       <Coverage t={t} walk={walk} />
       {rows.length > 0 ? <DataTable caption={t("threads.heading")}
         columns={[{ label: t("threads.thread") }, ...usageColumns(t), { label: t("series.effective"), numeric: true }, { label: t("series.cacheRate"), numeric: true }, { label: t("usage.summary") }, { label: t("threads.mean"), numeric: true }, { label: t("threads.max"), numeric: true }, { label: t("threads.events"), numeric: true }, { label: "" }]}
-        rows={rows.map(g => {
+        rows={rows.map(({ g, effective }) => {
           const rate = complete ? cacheRate(g.conversation, g.unknownPairs) : undefined;
           const mean = meanInput(g);
-          const effective = complete ? groupEffective(g, weights) : undefined;
           const count = t("usage.requests");
           const summary = g.summaryRequests || !complete ? <>
             {usageCells(t, g.summary, !complete).map((value, index) => <div key={index}>{usageColumns(t)[index]!.label}: {value}</div>)}
@@ -118,11 +129,11 @@ function ByThread({ model, weights }: { model: AppModel; weights: Weights }) {
           return { key: g.key, cells: [
             <>{threadRows.has(g.key) ? <a class="nav-link" href={formatRoute({ view: "conversation", threadId: g.key })}>{nameOf(g.key)}</a> : <span class="mono">{nameOf(g.key)}</span>}
               {groupIncomplete(g) ? <div class="muted caption">{t("common.incomplete")}</div> : null}</>,
-            ...usageCells(t, g.conversation, !complete), effective === undefined ? t("analytics.noValue") : formatTokens(Math.round(effective)), rate === undefined ? t("analytics.noValue") : percent(rate), summary,
+            ...usageCells(t, g.conversation, !complete), !complete || effective.value === undefined ? placeholder : effectiveLabel(t, effective.value, effective.lowerBound), rate === undefined ? placeholder : percent(rate), summary,
             mean !== undefined ? formatTokens(Math.round(mean)) : t("analytics.noValue"),
             g.inputMax !== undefined ? formatTokens(g.inputMax) : t("analytics.noValue"), g.compactions,
-            <ButtonGroup label={nameOf(g.key)}><Button variant="ghost" aria-pressed={selected === g.key} aria-label={`${t("usage.showModels")}: ${nameOf(g.key)}`} onClick={() => select(selected === g.key ? undefined : g.key)}>{t("usage.showModels")}</Button>
-              <Button variant="ghost" onClick={() => { void i.showCompaction(g.key); model.navigate({ view: "analytics", section: "compaction" }); }}>{t("threads.show")}</Button></ButtonGroup>,
+            <><Button variant="ghost" aria-pressed={selected === g.key} aria-label={`${t("usage.showModels")}: ${nameOf(g.key)}`} onClick={() => select(selected === g.key ? undefined : g.key)}>{t("usage.showModels")}</Button>
+              <Button variant="ghost" onClick={() => { void i.showCompaction(g.key); model.navigate({ view: "analytics", section: "compaction" }); }}>{t("threads.show")}</Button></>,
           ] };
         })} /> : walk.status === "done" ? <div class="muted">{t("threads.none")}</div> : null}
       {walk.groups.size > limit ? <Button variant="ghost" onClick={() => setLimit(limit + 25)}>{t("usage.moreRows")}</Button> : null}
@@ -246,7 +257,7 @@ function UsagePane({ context, section }: { context: DesignContext; section: "ove
   const notReported = walk.groups.size > 0 || walk.status === "done" ? t("analytics.noValue") : walk.status === "loading" ? t("common.loading") : t("analytics.notRead");
   const hasSomething = walk.groups.size > 0;
   const complete = walkComplete(walk);
-  const periodValue = walk.status === "loading" ? t("usage.aggregating") : complete || !hasSomething ? notReported : t("usage.unfinished");
+  const periodValue = periodPlaceholder(t, walk, complete);
   const parts: ChartSeries[] = [
     { id: "cached", label: t("series.cached"), tone: "2" },
     { id: "uncached", label: t("series.uncached"), tone: "1" },
@@ -264,7 +275,7 @@ function UsagePane({ context, section }: { context: DesignContext; section: "ove
     <Stat
       label={t("stat.summary")}
       value={complete && totals.summaryEffective !== undefined ? tokens(totals.summaryEffective) : periodValue}
-      note={complete && !totals.incomplete && totals.summaryEffective !== undefined && totals.effective ? t("stat.summaryNote", { share: shareText(totals.summaryEffective / totals.effective), n: totals.summaryRequests.toLocaleString("en-US") }) : undefined}
+      note={complete && !totals.effectiveLowerBound && totals.summaryEffective !== undefined && totals.effective ? t("stat.summaryNote", { share: shareText(totals.summaryEffective / totals.effective), n: totals.summaryRequests.toLocaleString("en-US") }) : undefined}
     />
   );
   const eventsStat = <Stat label={t("stat.compactions")} value={hasSomething && walk.status !== "loading" ? complete ? totals.compactions.toLocaleString("en-US") : t("usage.minimum", { value: totals.compactions.toLocaleString("en-US") }) : periodValue} note={t("stat.compactionsNote")} />;
@@ -279,7 +290,7 @@ function UsagePane({ context, section }: { context: DesignContext; section: "ove
       {section === "overview" ? (
         <>
           <div class="stats">
-            <Stat label={t("stat.effective")} value={complete && !totals.incomplete && totals.effective !== undefined ? tokens(totals.effective) : periodValue} note={totals.incomplete ? t("common.incomplete") : t("stat.effectiveNote")} />
+            <Stat label={t("stat.effective")} value={complete && totals.effective !== undefined ? effectiveLabel(t, totals.effective, totals.effectiveLowerBound) : periodValue} note={totals.incomplete ? t("common.incomplete") : t("stat.effectiveNote")} />
             <Stat label={t("stat.cacheRate")} value={complete && totals.rate !== undefined ? percent(totals.rate) : periodValue} note={t("stat.cacheRateNote")} />
             {summaryStat}
             {eventsStat}
@@ -290,9 +301,9 @@ function UsagePane({ context, section }: { context: DesignContext; section: "ove
             title={t("chart.effective")}
             sub={t("chart.effectiveSub")}
             series={[{ id: "effective", label: t("series.effective"), tone: "neutral" }]}
-            points={days.map((d) => point(d, { effective: d.effective }))}
-            format={tokens}
-            ariaSummary={t("chart.effectiveAria", { summary: peakSummary(t, days.length, days.map((d) => d.effective), tokens) })}
+            points={complete ? days.map(d => ({ ...point(d, { effective: d.effective }), note: d.effectiveLowerBound && d.effective !== undefined ? effectiveLabel(t, d.effective, true) : noteOf(t, d) })) : []}
+            format={n => Math.floor(n).toLocaleString("en-US")}
+            ariaSummary={t("chart.effectiveAria", { summary: peakSummary(t, days.length, complete ? days.map(d => d.effective) : [], n => Math.floor(n).toLocaleString("en-US"), days.some(d => d.effectiveLowerBound)) })}
             source={<>{source("usage.get group_by=day")}, {t("chart.effectiveLocal")}</>}
             {...common}
           />

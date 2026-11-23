@@ -913,6 +913,34 @@ describe("Recorded usage (#118)", () => {
       expect(text(el.querySelector(".stats")!)).toContain("Aggregating");
     } finally { dispose(r); }
   });
+  it("ranks a heavy Thread by the same safe lower bound it displays, with independent row actions", async () => {
+    const heavy = usageItem("heavy", { input: 18000, cached: null, output: 0, unknown: 1 });
+    const r = await byThread([...Array.from({ length: 26 }, (_, i) => group(`thread-${i}`)), heavy]);
+    try {
+      const row = r.el.querySelector<HTMLTableRowElement>("tbody tr")!;
+      expect(row.cells[0]?.textContent).toContain("heavy");
+      expect(row.cells[4]?.textContent).toBe("At least 1,800");
+      expect(row.querySelector(".btn-group")).toBeNull();
+      expect(row.querySelectorAll("button[aria-pressed]")).toHaveLength(1);
+    } finally { dispose(r); }
+  });
+  it("labels effective usage and cache rate while By Thread is still aggregating", async () => {
+    const r = await fixtureModel({ route: "analytics", section: "threads", settle: false, configure(db) {
+      const orig = db.answer.bind(db);
+      db.answer = c => {
+        if (c.command !== "usage.get") return orig(c);
+        if ((c.args as { cursor?: string }).cursor) throw Error("hold next page");
+        return { ok: true, result: usagePage([group("lead")], "second") };
+      };
+    } });
+    try {
+      await expect(settle(r.t, r.db)).rejects.toThrow("hold next page");
+      const el = draw(r.model);
+      const row = el.querySelector<HTMLTableRowElement>("tbody tr")!;
+      expect(row.cells[4]?.textContent).toBe("Aggregating");
+      expect(row.cells[5]?.textContent).toBe("Aggregating");
+    } finally { dispose(r); }
+  });
   it("can reveal the 26th Thread using the already-read groups", async () => {
     const r = await byThread(Array.from({ length: 26 }, (_, i) => group(`thread-${String(i).padStart(2, "0")}`, 200 - i)));
     try {
