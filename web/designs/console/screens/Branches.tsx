@@ -135,7 +135,7 @@ export function Branches({ model }: { model: AppModel }) {
     else if (i.divergence && !i.divergence.parentContinues) parts.push(t("branches.extends"));
     const status = rows.get(i.threadId)?.status;
     if (i.running) parts.push(t("status.running"));
-    else if (status) parts.push(statusLabel(t, status));
+    else if (status && status !== "idle") parts.push(statusLabel(t, status));
     if (i.prunedOriginals) parts.push(t("branches.pruned"));
     const at = i.tipAt ? `${i.tipAt.slice(5, 10)} ${formatClock(i.tipAt) ?? ""}` : undefined;
     if (at) parts.push(at);

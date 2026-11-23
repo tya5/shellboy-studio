@@ -273,14 +273,18 @@ describe("Conversation live text", () => {
       await act(async () => { const more = model.data.loadMoreThreads(); await settle(t, db); await more; });
       const footer = () => el.querySelector(".conversation-status")?.textContent;
       const mark = () => [...el.querySelectorAll('[data-sidebar-row]')].find(row => row.querySelector('a[href*="lead"]'))?.querySelector('[data-status]')?.getAttribute('data-status');
-      expect(footer()).toContain(model.t.value("status.completed"));
+      expect(footer()).toBe("");
+      expect(el.querySelector('.conversation-status [data-status="idle"]')?.getAttribute("aria-label")).toBe("No activity");
+      expect(el.querySelector('[data-conversation-header] [data-status="idle"]')?.textContent).toBe("");
       expect(mark()).toBe("idle");
       for (const [activity, count, status] of [["awaiting_model", 0, "running"], ["tools", 0, "running"], ["completed", 1, "awaiting"], ["completed", 0, "idle"]] as const) {
         db.threads.lead = summary("lead", { ...db.threads.lead, activity, awaiting_named_count: count });
         await act(async () => { t.push({ t: "changed", thread_ids: ["lead"], list: true, config_changed: false }); await settle(t, db); });
         expect(mark()).toBe(status);
         if (status === "running") expect(footer()).not.toContain(model.t.value("status.completed"));
-        else expect(footer()).toContain(model.t.value(status === "awaiting" ? "status.awaiting" : "status.completed"));
+        else if (status === "awaiting") expect(footer()).toContain(model.t.value("status.awaiting"));
+        else expect(footer()).toBe("");
+        expect(el.querySelector("[data-conversation-header] [data-status]")?.getAttribute("data-status")).toBe(status);
       }
     } finally { model.dispose(); }
   });
@@ -664,7 +668,7 @@ describe("Monitor", () => {
     expect(el.querySelector(".card.lead")).toBeTruthy();
     expect(text(el)).toContain("Parent: Improve history search");
     act(() => [...el.querySelectorAll<HTMLButtonElement>(".monitor-tools button")].find((b) => text(b) === "Filters")!.click());
-    const chip = [...el.querySelectorAll<HTMLButtonElement>(".chip")].find((c) => text(c).includes("No action needed"))!;
+    const chip = [...el.querySelectorAll<HTMLButtonElement>(".chip")].find((c) => c.querySelector('[aria-label="No activity"]') !== null)!;
     act(() => chip.click());
     expect(el.querySelectorAll(".card").length).toBe(1);
   });

@@ -19,7 +19,7 @@ import { ConversationCharacter } from "../system/components";
 import { effect } from "@preact/signals-core";
 import { MonitorPopover } from "../system/components/MonitorPopover";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
-import { readRightPanelWidth, RIGHT_PANEL_WIDTH_MAX, RIGHT_PANEL_WIDTH_MIN, collectExecutionSteps, toolLabel, activityLabel, activityStatus, activityStatusLabel, renderOutput, formatClock, formatDuration, formatRoute, formatTokens, parseTime, type AppModel, type ConversationRow, type StepRow as Step } from "../../../ui-core/src";
+import { readRightPanelWidth, RIGHT_PANEL_WIDTH_MAX, RIGHT_PANEL_WIDTH_MIN, collectExecutionSteps, toolLabel, activityLabel, activityStatus, activityStatusLabel, statusLabel, renderOutput, formatClock, formatDuration, formatRoute, formatTokens, parseTime, type AppModel, type ConversationRow, type StepRow as Step } from "../../../ui-core/src";
 import { ThreadSettingsPanel, type SettingsDestination } from "./ThreadSettingsPanel";
 import { WindowedScroll } from "./WindowedScroll";
 import { BranchMark, Button, Composer, ContextRing, DataTable, Section, ModelPicker, LoadingRows, EmptyState, Icon, KeyValue, LayoutSeparator, ListDivider, ListRow, LogBlock, Message, Notice, PanelTabs, ShellFooter, ShellToggle, QuestionCard, StatusMark, StepRow, SummaryStrip, WorkSheet, OutputLimitNotice as OutputLimitNoticeRow } from "../system/components";
@@ -306,7 +306,7 @@ export function ConversationStatus({ model }: { model: AppModel }) {
   const status = model.replyPages.asked_by.value.items.some(r => r.recipient.kind === "name" && r.recipient.name === "human") ? "awaiting" : row?.status === "awaiting" ? "awaiting" : activityStatus(row?.summary.activity);
   const running = work.running[0];
   const start = running?.startedAt ? parseTime(running.startedAt) : undefined;
-  return <div key="conversation-status" class="work-row conversation-status" role="status">{status ? <><ConversationCharacter name={statusCharacter(status)} running={status === "running"} /><span>{status === "running" && row?.summary.activity ? activityLabel(model.lang.value, row.summary.activity) : activityStatusLabel(t, status)}</span>
+  return <div key="conversation-status" class="work-row conversation-status" role="status">{status === "completed" || status === "stopped" || status === "idle" ? <StatusMark status="idle" label={statusLabel(t, "idle")} /> : status ? <><ConversationCharacter name={statusCharacter(status)} running={status === "running"} /><span>{status === "running" && row?.summary.activity ? activityLabel(model.lang.value, row.summary.activity) : activityStatusLabel(t, status)}</span>
     {running ? <>
       <span data-status-description>{running.label}</span>
       {work.running.length > 1 ? <span>{t("work.runningCount", { n: work.running.length })}</span> : null}

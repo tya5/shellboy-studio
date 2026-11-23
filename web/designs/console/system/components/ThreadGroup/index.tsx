@@ -4,7 +4,7 @@ import { Icon, type IconRole } from "../Icon";
 import { Button } from "../Button";
 
 /** A heading over rows that belong together, with one checkbox for all of them. */
-export function ThreadGroup({ label, mono, count, all, some, selectLabel, onSelect, fold, leading, children }: { label: string; mono?: boolean; count: string; all?: boolean; some?: boolean; selectLabel?: string; leading?: IconRole; onSelect?: ((on: boolean) => void) | undefined; fold?: { open: boolean; show: string; hide: string; showLabel: string; hideLabel: string; onToggle: () => void } | undefined; children?: ComponentChildren }) {
+export function ThreadGroup({ label, labelContent, mono, count, all, some, selectLabel, onSelect, fold, leading, children }: { label: string; labelContent?: ComponentChildren; mono?: boolean; count: string; all?: boolean; some?: boolean; selectLabel?: string; leading?: IconRole; onSelect?: ((on: boolean) => void) | undefined; fold?: { open: boolean; show: string; hide: string; showLabel: string; hideLabel: string; onToggle: () => void } | undefined; children?: ComponentChildren }) {
   const box = useRef<HTMLInputElement>(null);
   useEffect(() => {
     if (box.current) box.current.indeterminate = !!some && !all;
@@ -13,7 +13,7 @@ export function ThreadGroup({ label, mono, count, all, some, selectLabel, onSele
     <>
       {!onSelect && leading ? <span class="tgroup-leading"><Icon role={leading} size="small" /></span> : null}
       {!onSelect && !leading ? <span class="tcheck-gap" /> : null}
-      <span class={mono ? "mono tgroup-name" : "tgroup-name"}>{label}</span>
+      <span class={mono ? "mono tgroup-name" : "tgroup-name"}>{labelContent ?? label}</span>
       <span class="tgroup-count caption muted">{count}</span>
       {fold ? <span class="tgroup-chevron"><Icon role={fold.open ? "group.collapse" : "group.expand"} size="small" /></span> : null}
     </>
