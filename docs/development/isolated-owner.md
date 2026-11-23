@@ -32,8 +32,8 @@ Studio starts. No inherited owner environment or token is passed to either child
   shutdown, and `tests/real_owner.rs:147` and the other `IpcOwner::new` call sites
   dial from the test process itself. Startup and shutdown now share the sanitized
   cwd/env and explicit config/data; before dialing, the harness rejects a matching
-  inherited data dir and checks Core's reported data dir. `.github/workflows/exact-owner.yml:60`
-  selects an exact binary, not a long-lived owner. Bridge/app/event tests use
+  inherited data dir and checks Core's reported data dir. The [exact-owner workflow](../../.github/workflows/exact-owner.yml)
+  supplies the pinned Core binary, not a long-lived owner. Bridge/app/event tests use
   in-process synthetic owners (`tests/common/mod.rs`); protocol tests use values only.
 - Browser checks that navigate to `/` could initially load ordinary Studio when
   supplied its port: `web/designs/console/test/browser/production-check.mjs:21`,

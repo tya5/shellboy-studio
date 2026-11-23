@@ -18,11 +18,11 @@ export function configRowValue(t: T, facts: ConfigFacts, path: readonly string[]
   return showConfigValue(v);
 }
 
-/** What the running owner has, when the file says something else. */
 export function SettingFeedbackLine({ text, undoLabel, onUndo, busy }: { text: ComponentChildren; undoLabel: string; onUndo?: (() => void) | undefined; busy: boolean }) {
   return <div class="muted caption" role="status">{text}{onUndo ? <Button variant="ghost" disabled={busy} onClick={onUndo}>{undoLabel}</Button> : null}</div>;
 }
 
+/** What the running owner has, when the file says something else. */
 export function SettingFeedback({ model, paths }: { model: AppModel; paths: readonly (readonly string[])[] }) {
   const t = model.t.value;
   const config = model.config;

@@ -126,10 +126,11 @@ pairing, hosted CI, genuine artifacts and selected-tip acceptance remain open;
 
 ## Independent review corrections (v0.1.0 audit; historical)
 
-Ordinary all-target jobs run owner-free tests: `real_owner` has Cargo
-`required-features = ["real-owner-tests"]` and is not in defaults. CI calls the
-required reusable exact-owner job; release artifact builds depend on that same
-job, so its failure prevents artifacts/draft creation. This job explicitly
+In the v0.1.0 audit, ordinary all-target jobs ran owner-free tests: `real_owner`
+had Cargo `required-features = ["real-owner-tests"]` and was not in defaults.
+The audited workflow called the reusable exact-owner job and made release
+artifacts depend on it. This describes that review snapshot, not current
+packaging. The audited job explicitly
 requires the public v0.11.0 pin, matches its official peeled tag commit to the
 locked dependency commit, verifies source package version, builds that checkout
 under runner temporary storage, asserts the binary version,

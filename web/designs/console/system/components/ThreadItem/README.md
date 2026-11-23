@@ -13,7 +13,6 @@ hover, `:focus-within`, selection, or an open menu; touch devices always show it
 The title truncates before the reserved action width. The menu follows shadcn/ui
 `DropdownMenu` / Radix and the WAI-ARIA APG Menu Button pattern.
 
-
 The question count is the owner's `awaiting_named_count`; pass `pendingExact={false}` when the owner marks it inexact, and the count shows `17+`.
 
 The caller's `linkId` identifies the row link for the owning list's focus claim. The

@@ -9,7 +9,7 @@ Shared list shell for one item with a reserved, in-flow action slot. It owns the
 menu state, placement and keyboard handling through `useRowMenu`. Actions reveal
 on hover, row focus, selection or while open; touch always shows the action.
 
-Panel items provide a title and `onSelect`, which receives the actual row button
+Panel items provide a title, an optional `command` caption, and `onSelect`, which receives the actual row button
 for focus return. A per-target error can be displayed after the row. Thread rows
 supply their native link or checkbox layout; the action stays a sibling of those
 controls. `afterActions` keeps trailing metadata in its existing position.

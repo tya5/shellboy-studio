@@ -2,7 +2,8 @@
 
 - **Use for:** Open nondestructive local controls from a toolbar trigger or use the controlled form for an owner-scoped picker.
 - **Do not use for:** Use Menu for short row actions and a dialog for confirmation.
-- **Why:** Preview can close without moving focus; Escape or outside press dismisses the panel, and a persistent panel can return focus to its trigger.
+- **Why:** Preview can close without moving focus; Escape or outside press dismisses the panel, and a persistent panel can return focus to its trigger. The controlled panel
+  consumes Escape from inside its root so the parent view does not also act.
 - **Source:** [Radix Hover Card Escape behavior, as recorded in the Studio audit](https://github.com/tya5/shellboy-studio/commit/833470949af0d0ff59bc85b580fdb9c93c4e4155); [Studio #39](https://github.com/tya5/shellboy-studio/issues/39)
 
 A local toolbar popover for Monitor display controls. Click toggles its persistent

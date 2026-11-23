@@ -38,6 +38,7 @@ only when committed attempt provenance and visible text continuity both match.
 Model height compensation and path recovery are fallbacks, not preservation of
 the original rendered anchor. Inside a saved prose item, the anchor prefers the
 first visible top-level paragraph when its rendered text is unique in that body.
+If no paragraph qualifies at capture time, keep the item-level anchor.
 Reapply its offset only if the same qualified item still renders one exact
 match. Missing, changed, or ambiguous text uses model/origin fallback, not the
 item top as a substitute for the lost paragraph. This does not track individual

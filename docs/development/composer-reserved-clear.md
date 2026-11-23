@@ -41,9 +41,9 @@ No service, Core, browser, real DB/RPC, paid provider or user send in these test
 S6 conditions fixed: callback is accepted only synchronously inside this onSend
 call, once; later/replayed notification does nothing. Draft scope changes increment
 a local scope generation, so A -> B -> A cannot revive old ACK clear authority.
-Scope identity is provided by D from the original route/owner/handle lifetime,
-not a text/thread-only match. Optional scope preserves old standalone component
-callers, but the actual App wiring MUST pass the qualified original scope.
+Studio passes the Thread ID as the draft scope. The local scope generation
+guards against stale acceptance even when the same Thread is reopened; the
+model still qualifies dispatch against the original mutation scope.
 
 D must isolate notification exceptions, then recheck original mutation/route/op
 qualification before dispatch; invalidation publishes a protected failed/cancel

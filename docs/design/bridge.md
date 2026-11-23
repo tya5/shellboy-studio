@@ -41,8 +41,8 @@ location, default the OS config directory plus `shellboy-studio`), `--allow-host
 | Proxied calls per session | 4 running + 32 waiting, then `busy` (`ws::SESSION_*`) | tasks in the session's `JoinSet`; aborted when the socket closes |
 | Browser sessions | 64 (`hub::MAX_SESSIONS`), then HTTP 503 | `Hub`; removed by `SessionGuard::drop` |
 | Watched Threads per tab | 64 (`hub::MAX_WATCH`) | per-session set |
-| Changed Thread IDs per list tab | at most 256 (`hub::MAX_PENDING_THREADS`) plus flags, then one `resync` | coalesced in `Hub::Pending`; overflow supersedes IDs with one resync |
-| Hints per tab | no queue: one coalesced `Pending` (dirty set, list flag, resync flag, latest owner event) | merged on every update, flushed as one `changed` frame |
+| Changed Thread IDs per list tab | at most 256 (private `MAX_PENDING_THREADS` constant in `hub.rs`) plus flags, then one `resync` | coalesced in `Hub::Pending`; overflow supersedes IDs with one resync |
+| Hints per tab | no queue: one coalesced `Pending` (bounded changed Thread IDs, list flag, resync flag, latest owner event) | merged on every update, flushed as one `changed` frame |
 | Incoming WebSocket frame | 24 MiB, for an app's `data.write` | axum limit |
 | Session cookies in memory | 256, oldest evicted | `Auth` |
 | Poll backoff after an owner error | 250 ms doubling to 10 s, no cursor kept | `events::PollConfig` |

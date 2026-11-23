@@ -34,7 +34,7 @@ a newer hint supersedes the read in flight.
 
 | File Anchor | Effect | Immutable Fence | Tests |
 | --- | --- | --- | --- |
-| HumanInbox constructor Link closed/owner/hello callback | Clear cross-session rows/cancel | Owner key + monotonic generation before resets; restart requests a fresh page | reconnect unknownSame, ABA frame tests; R1 matrix |
+| HumanInbox constructor Link closed/owner/hello callback | Clear cross-session rows/cancel | Current scope identity + `scopeEpoch` before resets; restart requests a fresh page | reconnect unknownSame, ABA frame tests; R1 matrix |
 | constructor owner/list-hint effect | Reset scope on a new owner value, else notify the PageRun session | Scope checked after reset; sidebar loading and staleness do not drive reads | retained-page/error/cancel; owner B/ABA; finite notification reentry |
 | resetScope (scope epoch, then PageRun.close) | Clear rows/error/loading; revoke actions | Epoch increment and empty publication before the old Cancel fires | cross-owner answer rejected; R1 transitions; cancel-callback admission zero |
 | PageRun read (hint or first page) | Re-read the loaded page count of `to: human` | Session + Cancel + owner value after every await; one publication of the whole prefix | R1 loading/success/error/finally x four; two pages with 0 or 1500 known Threads; zero `thread.get` |

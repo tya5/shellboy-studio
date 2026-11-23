@@ -197,7 +197,8 @@ this unit.
 The composer owns a draft generation until the send reservation is accepted. The
 model commits acceptance through one typed pending-to-accepted transition matching
 operation, Thread, and scope; failure, retry, Stop, navigation, and a newer draft
-retain the current owner. The existing send acceptance regression remains the
+retain the current owner. An unsent draft is stored per Thread and restored on
+return. The existing send acceptance regression remains the
 producer boundary for clear-on-accept and draft retention.
 
 ## Handoff Record Transition Contract

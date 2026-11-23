@@ -23,9 +23,10 @@ not a diagnosis of arbitrary short replies. Live notices use only an adopted
 mark in saved assistant-response provenance through history and reload; a
 single Studio owner reconciles live attempt evidence with saved node metadata,
 without a per-row usage lookup. The notice shows Core's sent maximum when known,
-never estimates it, and offers navigation to the right-panel Thread Settings tab at
-`max_tokens` through `SettingsDestination` when a Thread override is present, or to
-the connection setting otherwise; it does not mutate the setting. `Continue` is
+never estimates it, and routes the settings shortcut by Core's reported source.
+A reported Thread override targets Thread Settings; a reported connection limit
+targets that connection's setting. When the destination cannot be resolved, the
+notice omits the shortcut. It does not mutate the setting. `Continue` is
 an explicit user message action. Replies saved before #355 have no mark and show
 no notice after reload: there is no migration or inference. Empty adopted replies
 with the mark show the notice without a text-unavailable placeholder.
@@ -128,8 +129,8 @@ timer, polling, ledger or new controller is added.
 Core #354's live `attempt_end` fact and Core #355's saved `assistant_response`
 provenance are two carriers for one reply-level output-limit decision. The Studio
 presentation owner validates the complete Core object (`stop`, `sent_max_tokens`,
-`source`, and `connection`), copies only `stop` and `sent_max_tokens` into display
-metadata, and does not copy connection identity into saved node display metadata.
+`source`, and `connection`) and carries the reported source and connection
+into saved display metadata along with the stop and sent limit.
 Handoff from live to saved must preserve the same notice without a
 one-frame disappearance. The mark is retained only when the Core history reports
 it; legacy rows without provenance are not repaired or estimated. Thread-override

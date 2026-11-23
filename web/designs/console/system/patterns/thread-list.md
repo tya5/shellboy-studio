@@ -17,8 +17,10 @@ A band count is Threads: pinned Threads for Pinned, listed rows for All. It
 carries `+` when Core says more exist: a list continuation for All, a pinned
 read stopped at its bound for Pinned. A row's question count carries `+` when
 the owner marks it inexact (`awaiting_named_count_exact: false`). Never show a
-lower bound as an exact number. Do not group by directory, sort by client arrival time,
-or keep a second order registry.
+lower bound as an exact number.
+
+Do not group by directory, sort by client arrival time, or keep a second order
+registry.
 
 A heading uses ThreadGroup. A row uses ThreadItem on ListRow, with a separate
 native navigation link, child disclosure, and row action button. The child count

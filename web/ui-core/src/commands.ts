@@ -30,7 +30,7 @@ export function navShortcut(e: KeyFacts): boolean {
   return (e.key === "b" || e.key === "B") && !e.altKey && !e.shiftKey && (e.ctrlKey !== e.metaKey) && !e.isComposing;
 }
 
-/** Alt+9 toggles the desktop right panel. */
+/** Alt+9 toggles the right panel, including its sheet at narrower widths. */
 export function panelShortcut(e: KeyFacts): boolean {
   return e.key === "9" && !!e.altKey && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.isComposing;
 }

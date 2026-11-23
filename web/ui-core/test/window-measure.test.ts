@@ -9,7 +9,7 @@ describe("100,000-node sustained reading", () => {
   it("reads and builds only bounded windows while scrolling and cancels the pending read on close", async () => {
     const started = performance.now();
     const total = 100_000;
-    const olderEdges = WINDOWS_HELD + 1; // Fill the store and cross its eviction boundary.
+    const olderEdges = WINDOWS_HELD + 1; // Request enough older windows to exercise eviction.
     let itemsMaterialized = 0;
     let peakRowsBuilt = 0;
     const r = await rig(total, { decorate: (_ordinal, item) => { itemsMaterialized++; return item; } });
@@ -56,7 +56,7 @@ describe("100,000-node sustained reading", () => {
       expect(r.t.sent.length).toBe(stopped);
       expect(r.t.calls("history.list")).toHaveLength(0);
       console.log("MEASURED " + JSON.stringify({ total, openCalls: 1, olderEdges, edgeCalls: beforeDrag - 1,
-        peakRowsBuilt, itemsMaterialized, dragMoves, callsDuringDrag: 0,
+        peakRowsBuilt, itemsMaterializedBeforeDrag: beforeDragItems, dragMoves, callsDuringDrag: 0,
         cancelFrames, elapsedMs: Math.round(performance.now() - started) }));
     } finally {
       r.w.dispose();
