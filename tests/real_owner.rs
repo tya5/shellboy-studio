@@ -821,7 +821,7 @@ async fn a_thread_moves_and_the_owner_refuses_a_cycle() {
         )
         .await;
     assert!(detached["parent_id"].is_null(), "{detached}");
-    // Naming is explicitly allowed for retained branches; unrelated fields remain denied.
+    // Naming and cwd each have a standalone allowlist path.
     let named = c
         .ok(
             "thread.set",
@@ -830,14 +830,28 @@ async fn a_thread_moves_and_the_owner_refuses_a_cycle() {
         )
         .await;
     assert_eq!(named["title"], "x");
-    let other = c
-        .call(
+    std::fs::create_dir(root.join("thread-workdir")).unwrap();
+    let updated = c
+        .ok(
             "thread.set",
-            json!({"thread_id": b, "cwd": cwd}),
-            op("cwd-denied"),
+            json!({"thread_id": b, "cwd": "thread-workdir"}),
+            op("cwd"),
         )
         .await;
-    assert_eq!(other["error"]["code"], "not_allowed", "{other}");
+    let updated_cwd = updated["cwd"].as_str().unwrap();
+    assert_ne!(updated_cwd, named["cwd"].as_str().unwrap());
+    assert!(Path::new(updated_cwd).ends_with("thread-workdir"));
+    let mixed = c
+        .call(
+            "thread.set",
+            json!({"thread_id": b, "cwd": cwd, "title": "must not write"}),
+            op("mixed-cwd-denied"),
+        )
+        .await;
+    assert_eq!(mixed["error"]["code"], "not_allowed", "{mixed}");
+    let saved = c.ok("thread.get", json!({"thread_id": b}), None).await;
+    assert_eq!(saved["cwd"], updated_cwd);
+    assert_eq!(saved["title"], "x");
     drop(c);
     cancel.cancel();
     drop(serve);
