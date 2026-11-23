@@ -1,7 +1,7 @@
 const nextOrdinal = () => { let ordinal = 0; return () => ++ordinal; };
 import { describe, expect, it } from "vitest";
 import { MAX_PREVIEW_CHARS, type Preview } from "../src/live";
-import { MAX_LIST_ROWS, PAGE_LIMIT, MAX_WATCHED_THREADS, ShellboyData } from "../src/store";
+import { MAX_LIST_ROWS, PAGE_LIMIT, MAX_WATCHED_THREADS, PendingInboxRowIds, ShellboyData } from "../src/store";
 import { Cancel } from "../src/operations";
 import type { ThreadSummary } from "../src/protocol";
 
@@ -19,6 +19,22 @@ async function setup(opts: { owner?: boolean; capabilities?: string[] } = {}) {
   }
   return { t, data, db };
 }
+
+describe("deferred Inbox row refresh IDs", () => {
+  it("bounds accumulated IDs and resyncs the latest bounded page on overflow", () => {
+    const pending = new PendingInboxRowIds();
+    const first = Array.from({ length: MAX_LIST_ROWS }, (_, i) => `old-${i}`);
+    pending.add(first);
+    expect(pending.size).toBe(MAX_LIST_ROWS);
+    pending.add(["overflow"]);
+    expect(pending.size).toBe(0);
+    const current = ["latest-a", "latest-b"];
+    expect(pending.drain(current)).toEqual(current);
+    expect(pending.size).toBe(0);
+    pending.add(["next"]);
+    expect(pending.drain([])).toEqual(["next"]);
+  });
+});
 
 describe("shared subscription", () => {
   it("sends one coalesced watch frame replacing the subscription as tabs of the UI come and go", async () => {

@@ -33,6 +33,38 @@ export const MAX_LIST_ROWS = 1000;
 export const CAPABILITY_HISTORY_WINDOW = "history.window";
 const CAPABILITY_THREAD_TAGS = "thread.tags";
 
+/** Coalesces deferred Inbox row reads; overflow requests a refresh of the current bounded page. */
+export class PendingInboxRowIds {
+  private ids = new Set<string>();
+  private resync = false;
+
+  add(ids: readonly string[]): void {
+    if (this.resync) return;
+    for (const id of ids) {
+      if (this.ids.has(id)) continue;
+      if (this.ids.size >= MAX_LIST_ROWS) {
+        this.ids.clear();
+        this.resync = true;
+        return;
+      }
+      this.ids.add(id);
+    }
+  }
+
+  drain(currentIds: readonly string[]): string[] {
+    const ids = this.resync ? [...currentIds].slice(0, MAX_LIST_ROWS) : [...this.ids];
+    this.clear();
+    return ids;
+  }
+
+  clear(): void {
+    this.ids.clear();
+    this.resync = false;
+  }
+
+  get size(): number { return this.ids.size; }
+}
+
 export interface Resource<T> {
   value: T | undefined;
   loading: boolean;
@@ -194,7 +226,7 @@ export class ShellboyData {
   private readonly pinnedMoreSig = signal(false);
   private readonly activeThreadIdsSig = signal<readonly string[]>([]);
   private readonly inboxThreadIdsSig = signal<readonly string[]>([]);
-  private readonly pendingInboxRowIds = new Set<string>();
+  private readonly pendingInboxRowIds = new PendingInboxRowIds();
   private readonly filterSig = signal<ListFilter>({});
   private listRefs = 0;
   private listGen = 0;
@@ -707,15 +739,14 @@ export class ShellboyData {
     const epoch = this.readQualificationEpoch;
     const unique = [...new Set(ids)].slice(0, MAX_LIST_ROWS);
     this.inboxThreadIdsSig.value = unique;
-    for (const id of unique) this.pendingInboxRowIds.add(id);
+    this.pendingInboxRowIds.add(unique);
     if (this.canRead()) await this.refresher.request("inbox-rows");
     if (epoch !== this.readQualificationEpoch) return;
   }
 
   private async readInboxRows(): Promise<void> {
     const epoch = this.readQualificationEpoch;
-    const ids = [...this.pendingInboxRowIds];
-    this.pendingInboxRowIds.clear();
+    const ids = this.pendingInboxRowIds.drain(this.inboxThreadIdsSig.peek());
     await this.refreshActiveRows(ids, epoch);
   }
 
