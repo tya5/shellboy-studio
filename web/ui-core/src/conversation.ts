@@ -4,6 +4,8 @@ import { senderFact } from "../../data/src/sender";
 import { type HistoryItem, type ShellEntry, HISTORY_WINDOW_EXCERPT_CHARS } from "../../data/src/protocol";
 import { parseTime } from "./format";
 import { statusOfShell, type StatusKey } from "./status";
+import { senderHeaderDisplay, type SenderHeaderDisplay } from "./sender-display";
+import type { SenderTitle } from "./sender-titles";
 
 export interface StepRow {
   executionId: string;
@@ -38,6 +40,19 @@ export function speakerOf(item: { readonly kind?: string; readonly provenance?: 
   if (sender.kind === "model") return sender;
   if (sender.kind === "unknown_model") return { kind: "unknown", model: true, label: sender.label };
   return { kind: "unknown", model: false, label: sender.label };
+}
+
+export function speakerDisplay(speaker: Speaker, title: SenderTitle | undefined, labels: {
+  you: string; shellboy: string; cli: string; model: string; unknownModel: string; unknown: string;
+  claimed: (label: string) => string;
+}): { readonly label: string; readonly header?: SenderHeaderDisplay; readonly claim?: string } {
+  const label = speaker.kind === "you" ? labels.you : speaker.kind === "shellboy" ? labels.shellboy
+    : speaker.kind === "cli" ? labels.cli : speaker.kind === "model" ? labels.model
+    : speaker.kind === "unknown" ? (speaker.model ? labels.unknownModel : labels.unknown) : speaker.label;
+  const header = speaker.kind === "model" ? senderHeaderDisplay(speaker.threadId, title, labels.model) : undefined;
+  const claim = (speaker.kind === "model" || speaker.kind === "unknown") && speaker.label !== undefined
+    ? labels.claimed(speaker.label) : undefined;
+  return Object.freeze({ label: header?.label ?? label, ...(header ? { header } : {}), ...(claim ? { claim } : {}) });
 }
 
 const codePoints = (s: string): number => {

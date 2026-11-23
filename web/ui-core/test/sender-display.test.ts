@@ -17,3 +17,13 @@ const relationCases: [unknown,unknown][] = [
  [{expect_reply:true,reply_state:'replied',reply_node_id:null},{kind:'unavailable'}],
 ];
 it.each(relationCases)('maps an admitted independent relation without sender reclassification %j',(input,expected)=>expect(messageRelationship(input,'self')).toEqual(expected));
+
+import {speakerDisplay} from '../src/conversation';
+it('uses the same resolved model Thread title for headers and owed-reply sender labels',()=>{
+ const shown=speakerDisplay({kind:'model',threadId:'child-thread',label:'worker'}, {state:'ready',title:'Review agent'}, {
+  you:'You',shellboy:'Shellboy',cli:'CLI',model:'Model',unknownModel:'Unknown model',unknown:'Unknown',claimed:label=>`Says ${label}`,
+ });
+ expect(shown.label).toBe('Review agent');
+ expect(shown.header).toMatchObject({label:'Review agent',sourceId:'child-thread'});
+ expect(shown.claim).toBe('Says worker');
+});

@@ -1,12 +1,12 @@
 import { ATTACHMENT_RETENTION } from "../../../ui-core/src/attachment-section";
 import { CAPABILITY_ATTACHMENT_PAGE } from "../../../data/src";
-import {messageRelationship,senderHeaderDisplay} from "../../../ui-core/src/sender-display";
+import {messageRelationship} from "../../../ui-core/src/sender-display";
 import { capturedWorkElementDisplay, capturedWorkExecutionDisplay, type WorkElementDisplay } from "../../../ui-core/src/work-element-display";
 import { WorkElementRow, formatWorkElementDisplay } from "../system/components/WorkElementRow";
 import { Disclosure } from "../system/components/Disclosure";
 import type { HandoffRecord } from "../../../data/src/handoff";
 import { senderFact } from "../../../data/src/sender";
-import { speakerOf, type Speaker } from "../../../ui-core/src/conversation";
+import { speakerOf, speakerDisplay as projectSpeakerDisplay, type Speaker } from "../../../ui-core/src/conversation";
 import { CANONICAL_CASES, scopeIssuedWorkFacts, type CanonicalCase, projectHistoryWindowItems, projectSavedItems, withPresentationContainers, normalizeLiveWorkFacts, projectOwnedHandoffFacts, type NormalizedSavedItem } from "../../../ui-core/src/conversation-items";
 import type { HistoryItem } from "../../../data/src/protocol";
 import { Markdown } from "../system/components/Message";
@@ -346,16 +346,18 @@ function BodyReadButton({model,nodeId,itemIdentity,typedNode,unavailable}:{model
   return <Button variant="link" onClick={() => void model.loadBody(nodeId, typedNode ? { kind: "typed", identity: undefined } : itemIdentity === undefined ? undefined : { kind: "typed", identity: itemIdentity })}>{body?.loading ? model.t.value("convo.loadingBody") : model.t.value("convo.fullMessage")}</Button>;
 }
 
-function speakerWho(speaker: Speaker, model: AppModel): string {
+function speakerDisplay(speaker: Speaker, model: AppModel) {
   const t = model.t.value;
-  return speaker.kind === "you" ? t("convo.you") : speaker.kind === "shellboy" ? t("convo.shellboy")
-    : speaker.kind === "cli" ? t("convo.cli") : speaker.kind === "model" ? t("convo.modelSender")
-    : speaker.kind === "unknown" ? t(speaker.model ? "convo.unknownModelSender" : "convo.unknownSender") : speaker.label;
-}
-
-function speakerClaim(speaker: Speaker, model: AppModel): string | undefined {
-  return (speaker.kind === "model" || speaker.kind === "unknown") && speaker.label !== undefined
-    ? model.t.value("convo.senderClaimedLabel", { label: speaker.label }) : undefined;
+  const title = speaker.kind === "model"
+    ? model.rowById.value.get(speaker.threadId)?.summary.title
+      ? { state: "ready" as const, title: model.rowById.value.get(speaker.threadId)!.summary.title }
+      : model.senderTitles.values.value.get(speaker.threadId)
+    : undefined;
+  return projectSpeakerDisplay(speaker, title, {
+    you: t("convo.you"), shellboy: t("convo.shellboy"), cli: t("convo.cli"), model: t("convo.modelSender"),
+    unknownModel: t("convo.unknownModelSender"), unknown: t("convo.unknownSender"),
+    claimed: label => t("convo.senderClaimedLabel", { label }),
+  });
 }
 
 function ProjectedMessage({ model, row, authorizedText, relationship, bodyPartial, bodyUnavailable, nodeAuthoritative }: { relationship:ReturnType<typeof messageRelationship>; model: AppModel; row: Extract<ConversationRow, {type:"message"}>; authorizedText: string; bodyPartial?: boolean; bodyUnavailable?: boolean; nodeAuthoritative?: boolean }) {
@@ -364,17 +366,16 @@ function ProjectedMessage({ model, row, authorizedText, relationship, bodyPartia
   const point = threadId !== undefined ? formatRoute({ view: "branches", threadId, nodeId: row.id }) : undefined;
   const found = model.rowMarks.value.get(row.id);
   const mark = found && threadId !== undefined ? <BranchMark href={formatRoute({ view: "branches", threadId, nodeId: found.nodeId })} label={found.branches === 1 ? t("branches.markOne") : t("branches.mark", { n: found.branches })} /> : null;
-  const who = speakerWho(row.speaker, model);
-  const senderHeader = row.speaker.kind === "model" ? senderHeaderDisplay(row.speaker.threadId, model.senderTitles.values.value.get(row.speaker.threadId), t("convo.modelSender")) : undefined;
-  const header = senderHeader ? {...senderHeader,role:t("convo.modelSender")} : who;
+  const senderDisplay = speakerDisplay(row.speaker, model);
+  const header = senderDisplay.header ? {...senderDisplay.header,role:t("convo.modelSender")} : senderDisplay.label;
   const body = model.bodyState(row.id, row.itemIdentity);
   const renderedText = body?.text ?? authorizedText;
   return (
     <Message bot={row.speaker.kind === "shellboy"} who={header} at={formatClock(row.at)} text={renderedText} copyLabel={t("code.copy")} copiedLabel={t("code.copied")}>
       {relationship.kind==="request" ? <div class="caption" data-message-relation="request">{t("convo.relationRequest")} · {t(`convo.relation.${relationship.state}`)}{relationship.replyId ? <> <code>{relationship.replyId}</code></> : null}</div> : relationship.kind==="reply" ? <div class="caption" data-message-relation="reply">{t("convo.relationReply")} <code>{relationship.requestId}</code></div> : null}
       {row.speaker.kind === "model" ? <div class="caption sender-fact">
-        {speakerClaim(row.speaker, model) ? <div>{speakerClaim(row.speaker, model)}</div> : null}
-      </div> : speakerClaim(row.speaker, model) ? <div class="caption">{speakerClaim(row.speaker, model)}</div> : null}
+        {senderDisplay.claim ? <div>{senderDisplay.claim}</div> : null}
+      </div> : senderDisplay.claim ? <div class="caption">{senderDisplay.claim}</div> : null}
       {(row.truncated || bodyPartial) && body?.text === undefined ? (
         <span class="more">
           {bodyUnavailable ? <span class="muted caption" data-body-unavailable="">{t("work.textUnavailable")}</span> : <Button variant="link" onClick={() => void model.loadBody(row.id, nodeAuthoritative ? { kind: "typed", identity: undefined } : row.itemIdentity === undefined ? undefined : { kind: "typed", identity: row.itemIdentity })}>
@@ -510,7 +511,8 @@ function PanelReplies({ model, side }: { model: AppModel; side: "owed_by" | "ask
       const peer = side === "owed_by" ? reply.sender.thread_id : reply.recipient.kind === "thread" ? reply.recipient.thread_id : undefined;
       const title = peer ? model.rowById.value.get(peer)?.summary.title || peer : undefined;
       const senderSpeaker = speakerOf({ kind: "message", provenance: { sender: reply.sender } });
-      const senderLabel = [speakerWho(senderSpeaker, model), speakerClaim(senderSpeaker, model)].filter(Boolean).join(" · ");
+      const senderDisplay = speakerDisplay(senderSpeaker, model);
+      const senderLabel = [senderDisplay.label, senderDisplay.claim].filter(Boolean).join(" · ");
       const party = side === "owed_by" ? senderLabel
         : human ? t("convo.you") : title ?? (reply.recipient.kind === "name" ? reply.recipient.name : undefined);
       const target = peer && peer !== model.selectedId.value ? formatRoute({ view: "conversation", threadId: peer }) : undefined;
