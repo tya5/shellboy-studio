@@ -20,7 +20,7 @@ export function configRowValue(t: T, facts: ConfigFacts, path: readonly string[]
 
 /** What the running owner has, when the file says something else. */
 export function SettingFeedbackLine({ text, undoLabel, onUndo, busy }: { text: ComponentChildren; undoLabel: string; onUndo?: (() => void) | undefined; busy: boolean }) {
-  return <div class="muted caption" role="status">{text}{onUndo ? <Button variant="link" disabled={busy} onClick={onUndo}>{undoLabel}</Button> : null}</div>;
+  return <div class="muted caption" role="status">{text}{onUndo ? <Button variant="ghost" disabled={busy} onClick={onUndo}>{undoLabel}</Button> : null}</div>;
 }
 
 export function SettingFeedback({ model, paths }: { model: AppModel; paths: readonly (readonly string[])[] }) {
@@ -49,7 +49,7 @@ function HiddenControl({ model, path, label, json, t, name, onRemove }: { model:
     void config.saveField(path, raw, json ? "secret-json" : "secret");
     setRaw(""); setReplacing(false);
   };
-  return <div class="stack"><div class="band">{name ? <code>{name}</code> : null}<span>{t("config.hiddenValue")}</span>{!replacing ? <Button variant="link" onClick={() => setReplacing(true)}>{t("config.replace")}</Button> : null}{onRemove ? <Button variant="link" disabled={busy} onClick={onRemove}>{t("config.remove")}</Button> : null}</div>{replacing ? <Field ariaLabel={t("config.newValue") + ": " + label} type="password" autoComplete="new-password" placeholder={json ? t("config.enterJson") : t("config.newValue")} value={raw} disabled={busy} onInput={(e) => setRaw(e.currentTarget.value)} onKeyDown={(e) => { if (e.key === "Enter") save(); }} onBlur={save} /> : null}{error ? <Notice tone="bad">{error}</Notice> : null}</div>;
+  return <div class="stack"><div class="band">{name ? <code>{name}</code> : null}<span>{t("config.hiddenValue")}</span>{!replacing ? <Button variant="ghost" onClick={() => setReplacing(true)}>{t("config.replace")}</Button> : null}{onRemove ? <Button variant="ghost" disabled={busy} onClick={onRemove}>{t("config.remove")}</Button> : null}</div>{replacing ? <Field ariaLabel={t("config.newValue") + ": " + label} type="password" autoComplete="new-password" placeholder={json ? t("config.enterJson") : t("config.newValue")} value={raw} disabled={busy} onInput={(e) => setRaw(e.currentTarget.value)} onKeyDown={(e) => { if (e.key === "Enter") save(); }} onBlur={save} /> : null}{error ? <Notice tone="bad">{error}</Notice> : null}</div>;
 }
 
 function RejectedTextField({ rejection, ...props }: Parameters<typeof Field>[0] & { rejection?: object }) {
@@ -98,7 +98,7 @@ export function SecretEntries({ model, path, label, json }: { model: AppModel; p
     const entry = [...path, entryName];
     if (isHiddenName(entryName)) return <div key={entryName}><code>{entryName}</code><div class="muted caption">{t("config.hiddenName")}</div></div>;
     return <HiddenControl key={entryName} model={model} path={entry} label={`${label}: ${entryName}`} json={json} t={t} name={entryName} onRemove={() => void model.config.removeField(entry)} />;
-  })}{adding ? <div class="stack"><Field ariaLabel={`${label}: ${t("config.addName")}`} placeholder={t("config.addName")} value={name} onInput={(e) => setName(e.currentTarget.value)} />{name.trim() ? <HiddenAdd model={model} path={[...path, name.trim()]} label={label} json={json} t={t} onSaved={() => { setAdding(false); setName(""); }} /> : null}<Button variant="link" onClick={() => { setAdding(false); setName(""); }}>{t("common.close")}</Button></div> : <Button variant="link" onClick={() => setAdding(true)}>{t("config.add")}</Button>}</div>;
+  })}{adding ? <div class="stack"><Field ariaLabel={`${label}: ${t("config.addName")}`} placeholder={t("config.addName")} value={name} onInput={(e) => setName(e.currentTarget.value)} />{name.trim() ? <HiddenAdd model={model} path={[...path, name.trim()]} label={label} json={json} t={t} onSaved={() => { setAdding(false); setName(""); }} /> : null}<Button variant="ghost" onClick={() => { setAdding(false); setName(""); }}>{t("common.close")}</Button></div> : <Button variant="ghost" onClick={() => setAdding(true)}>{t("config.add")}</Button>}</div>;
 }
 
 function HiddenAdd({ model, path, label, json, t, onSaved }: { model: AppModel; path: readonly string[]; label: string; json: boolean; t: T; onSaved: () => void }) {

@@ -250,7 +250,7 @@ export function OutputLimitNotice({ model, fact, openThreadSettings }: { model: 
     const connection = fact.connection ?? model.threadSettings.value?.connection;
     if (connection) model.navigateToSettingFocus({ view: "settings", section: "connections" }, `connections.${connection}.max_tokens`);
   };
-  return <OutputLimitNoticeRow actions={<><Button variant="link" onClick={openSetting}>{t("convo.outputLimitAction")}</Button><Button variant="link" onClick={() => void model.send(t("convo.continue"))}>{t("convo.continue")}</Button></>}>
+  return <OutputLimitNoticeRow actions={<><Button variant="ghost" onClick={openSetting}>{t("convo.outputLimitAction")}</Button><Button variant="ghost" onClick={() => void model.send(t("convo.continue"))}>{t("convo.continue")}</Button></>}>
     <Icon role="conversation.outputLimit" size="small" /><span>{t(fact.sent_max_tokens == null ? "convo.outputLimitNoticeUnknown" : "convo.outputLimitNotice", { limit: fact.sent_max_tokens == null ? "" : String(fact.sent_max_tokens) })}</span>
   </OutputLimitNoticeRow>;
 }
@@ -263,7 +263,7 @@ function outputLimitNoticeFacts(live: AttemptOutputLimit | null | undefined, sav
 function OwnSendContent({model,snapshot,plan,trailing,openThreadSettings}: {model:AppModel;snapshot:WindowAcceptedSnapshot;plan:ConversationDisplayPlan;trailing?:ComponentChildren;openThreadSettings?:OpenThreadSettings}) {
   const projection=projectionFromDisplayPlan(plan);
   const renderLocal=(message:import("../../../ui-core/src/model").PendingOwnMessage | Extract<import("../../../ui-core/src/own-send-presentation").PositionedOwnSendRow,{kind:"live"}>)=> { if ("kind" in message) { const fact = outputLimitNoticeFacts(message.outputLimit); return fact ? <OutputLimitNotice model={model} fact={fact} openThreadSettings={openThreadSettings} /> : null; } return <aside data-pending-own-message={message.operationId} data-pending-phase={message.phase}><Message bot={false} who={model.t.value("convo.you")} text={message.text} at={model.t.value(message.phase === "sending" || message.phase === "accepted" ? "composer.pending.waiting" : `composer.pending.${message.phase}`)} copyLabel={model.t.value("code.copy")} copiedLabel={model.t.value("code.copied")}/>
-    {message.phase==="failed"||message.phase==="unconfirmed"?<><Button variant="link" disabled={!model.canResend(message)} onClick={()=>void model.resend(message)}>{model.t.value("action.retry")}</Button>{!model.canResend(message)?<span class="caption">{model.t.value("composer.retryUnavailable")}</span>:null}</>:null}</aside>; };
+    {message.phase==="failed"||message.phase==="unconfirmed"?<><Button variant="ghost" disabled={!model.canResend(message)} onClick={()=>void model.resend(message)}>{model.t.value("action.retry")}</Button>{!model.canResend(message)?<span class="caption">{model.t.value("composer.retryUnavailable")}</span>:null}</>:null}</aside>; };
   return <SavedConversationItems model={model} projection={projection} displayPlan={plan} nodes={snapshot.rows}
     localRegion={plan.localRegion.tailRows.length?{kind:"unqualified",tailRows:plan.localRegion.tailRows,renderRow:renderLocal}:undefined}
     trailing={trailing} openThreadSettings={openThreadSettings}/>;
@@ -366,7 +366,7 @@ function BodyReadMessage({model,node,displayText}:{model:AppModel;node:HistoryIt
 function BodyReadButton({model,nodeId,itemIdentity,typedNode,unavailable}:{model:AppModel;nodeId:string;itemIdentity?:string;typedNode?:boolean;unavailable?:boolean}) {
   const body=model.bodyState(nodeId,itemIdentity);
   if (unavailable) return <span class="muted caption" data-body-unavailable="">{model.t.value("work.textUnavailable")}</span>;
-  return <Button variant="link" onClick={() => void model.loadBody(nodeId, typedNode ? { kind: "typed", identity: undefined } : itemIdentity === undefined ? undefined : { kind: "typed", identity: itemIdentity })}>{body?.loading ? model.t.value("convo.loadingBody") : model.t.value("convo.fullMessage")}</Button>;
+  return <Button variant="ghost" onClick={() => void model.loadBody(nodeId, typedNode ? { kind: "typed", identity: undefined } : itemIdentity === undefined ? undefined : { kind: "typed", identity: itemIdentity })}>{body?.loading ? model.t.value("convo.loadingBody") : model.t.value("convo.fullMessage")}</Button>;
 }
 
 function speakerDisplay(speaker: Speaker, model: AppModel) {
@@ -397,7 +397,7 @@ function ProjectedMessage({ model, row, authorizedText, relationship, bodyPartia
       </div> : senderDisplay.claim ? <div class="caption">{senderDisplay.claim}</div> : null}
       {(row.truncated || bodyPartial) && body?.text === undefined ? (
         <span class="more">
-          {bodyUnavailable ? <span class="muted caption" data-body-unavailable="">{t("work.textUnavailable")}</span> : <Button variant="link" onClick={() => void model.loadBody(row.id, nodeAuthoritative ? { kind: "typed", identity: undefined } : row.itemIdentity === undefined ? undefined : { kind: "typed", identity: row.itemIdentity })}>
+          {bodyUnavailable ? <span class="muted caption" data-body-unavailable="">{t("work.textUnavailable")}</span> : <Button variant="ghost" onClick={() => void model.loadBody(row.id, nodeAuthoritative ? { kind: "typed", identity: undefined } : row.itemIdentity === undefined ? undefined : { kind: "typed", identity: row.itemIdentity })}>
             {body?.loading ? t("convo.loadingBody") : t("convo.fullMessage")}
           </Button>}
           {body?.error ? <span class="muted caption">{body.error}</span> : null}
@@ -598,7 +598,7 @@ function PanelDetail({ model, tabLabel, onBack }: { model: AppModel; tabLabel: s
   }, [model, detail]);
   const backRef = useRef<HTMLButtonElement>(null);
   useLayoutEffect(() => { if (backRef.current?.offsetParent) backRef.current.focus(); }, []);
-  const back = <Button buttonRef={backRef} variant="link" data-panel-back onClick={onBack}><Icon role="panel.back" size="small" />{tabLabel}</Button>;
+  const back = <Button buttonRef={backRef} variant="ghost" data-panel-back onClick={onBack}><Icon role="panel.back" size="small" />{tabLabel}</Button>;
   if (!detail) return null;
   const error = panelOperationError(model, detail.id);
   if (detail.kind === "step") {

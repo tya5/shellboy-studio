@@ -129,7 +129,7 @@ function ThreadSetting({ model, row, details, enabled, highlighted }: { model: A
       <div class="band end"><Button disabled={busy} onClick={close}>{t("threadSettings.cancel")}</Button>
       <Button variant="primary" disabled={busy || !enabled} onClick={() => void save(edit)}>{t("threadSettings.save")}</Button></div>
     </div> : <ButtonGroup label={label}>
-      <Button variant="link" buttonRef={change} disabled={!enabled} aria-disabled={busy || undefined} onClick={() => { if (busy) return; setError(undefined); setEdit(wireValue(shown)); }}>{t("threadSettings.change")}</Button>
-      {row.defaultable && !inherited ? <Button variant="link" disabled={!enabled || busy} onClick={() => void save("")}>{t("threadSettings.reset")}</Button> : null}
+      <Button variant="ghost" buttonRef={change} disabled={!enabled} aria-disabled={busy || undefined} onClick={() => { if (busy) return; setError(undefined); setEdit(wireValue(shown)); }}>{t("threadSettings.change")}</Button>
+      {row.defaultable && !inherited ? <Button variant="ghost" disabled={!enabled || busy} onClick={() => void save("")}>{t("threadSettings.reset")}</Button> : null}
     </ButtonGroup>} />;
 }

@@ -20,7 +20,7 @@ export function ModelPicker({ model, details, onThreadSettings }: { model: AppMo
       {picker.catalogErrors.map((error, index) => <Notice key={index} tone="bad">{error}</Notice>)}
       <EffortControl label={t("model.effort")} value={details.effort ?? ""} labels={{ default: t("model.effort.default"), low: "low", medium: "medium", high: "high", other: t("model.effort.other") }} disabled={disabled} explicitCommit onSelect={effort => void model.selectPickerEffort(effort)} onCommit={effort => void model.selectPickerEffort(effort)} />
       {!canEdit ? <Notice tone="wait">{t("thread.readOnly")}</Notice> : null}
-      <Button variant="link" onClick={() => { model.closeModelPicker(); onThreadSettings(); }}>{t("threadSettings.link")}</Button>
+      <Button variant="ghost" onClick={() => { model.closeModelPicker(); onThreadSettings(); }}>{t("threadSettings.link")}</Button>
       {picker.error ? <Notice tone="bad">{picker.error}</Notice> : null}
   </MonitorPopover>;
 }

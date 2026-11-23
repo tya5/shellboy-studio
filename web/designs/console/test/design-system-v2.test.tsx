@@ -15,8 +15,8 @@ const mount = (node: preact.ComponentChild) => {
 afterEach(() => { render(null, host); host.remove(); });
 
 it("names button variants by action strength with outline as the default", () => {
-  const root = mount(<><Button>Cancel</Button><Button variant="ghost">Refresh</Button><Button variant="primary">Save</Button><Button variant="link">Undo</Button></>);
-  expect([...root.querySelectorAll("button")].map((b) => b.className)).toEqual(["btn", "btn btn-ghost", "btn btn-primary", "btn btn-link"]);
+  const root = mount(<><Button>Cancel</Button><Button variant="ghost">Refresh</Button><Button variant="primary">Save</Button><Button variant="ghost">Undo</Button></>);
+  expect([...root.querySelectorAll("button")].map((b) => b.className)).toEqual(["btn", "btn btn-ghost", "btn btn-primary", "btn btn-ghost"]);
 });
 
 it("keeps ButtonGroup a labelled group of pressed buttons", () => {

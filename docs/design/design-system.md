@@ -109,6 +109,7 @@ New tokens: `size-icon-empty` (28px, the whole-view EmptyState icon, which was a
 |---|---|---|
 | Foundations land first (tokens, rules, shared parts, the raw-px check); each area owner applies them to its screens in a bundle stacked on top | one owner per shared part avoids two looks for one role; screens change only through their owners | all bundles have landed |
 | `quiet` is renamed `ghost` and the default Button variant is named `outline`, with no alias | the rule's names are the API names; an alias would be debt | never |
+| The `link` Button variant is removed (coordinator decision on the #97 review); every non-navigating caller (Undo, Dismiss, Reset, Close, pressed choices) is `ghost`, and navigation is a real `a` link | a link-looking action contradicts "an action that does not navigate is never a link" | never |
 | ButtonGroup is redrawn as the segmented control instead of adding a second component | one role, one part; the sheet decides the redraw | a choice needs more than a few options |
 | Group labels and the band are uppercase only for `:lang(en)`, and never for owner data (`ThreadGroup` `verbatim`, `mono`) | tags and paths must show exactly as stored | another Latin-script UI language is added |
 | The raw-px check allows the `899px`/`900px` and `1179px`/`1180px` container breakpoints | container queries cannot read custom properties | browsers support custom properties in container queries |

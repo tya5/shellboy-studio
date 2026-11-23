@@ -18,7 +18,7 @@ function MovePanel({ model }: { model: AppModel }) {
   const titleOf = (id: string) => rows.find((r) => r.thread_id === id)?.title ?? id.slice(0, 8);
   const self = rows.find((r) => r.thread_id === move.threadId);
   const title = titleOf(move.threadId);
-  const close = <Button variant="link" onClick={() => org.cancelMove()}>{t("common.close")}</Button>;
+  const close = <Button variant="ghost" onClick={() => org.cancelMove()}>{t("common.close")}</Button>;
   if (move.kind === "picking") {
     const shown = rows.filter((r) => r.thread_id !== move.threadId && r.title.toLowerCase().includes(filter.trim().toLowerCase())).slice(0, 50);
     return (
@@ -69,7 +69,7 @@ function TagPanel({ model }: { model: AppModel }) {
     if (!why) setText("");
   };
   return (
-    <Section title={t("org.tag.title", { n })} sub={t("org.tag.sub")} actions={<Button variant="link" onClick={() => org.openTags(false)}>{t("common.close")}</Button>}>
+    <Section title={t("org.tag.title", { n })} sub={t("org.tag.sub")} actions={<Button variant="ghost" onClick={() => org.openTags(false)}>{t("common.close")}</Button>}>
       <div class="band">
         <Field
           ariaLabel={t("org.tag.add")}
@@ -267,7 +267,7 @@ export function Threads({ model }: { model: AppModel }) {
             {archiving ? t(armed ? "org.archiveConfirm" : "action.archive") : t("org.unarchive")}
           </Button>
           {canTag ? <Button aria-pressed={org.tagDraft.value.open} onClick={() => org.openTags(!org.tagDraft.value.open)}>{t("org.tag.button")}</Button> : null}
-          <Button variant="link" onClick={() => org.clear()}>{t("org.clear")}</Button>
+          <Button variant="ghost" onClick={() => org.clear()}>{t("org.clear")}</Button>
         </SelectionBar>
       ) : null}
       {action.kind === "failed" ? <Notice tone="bad">{t("org.failed", { message: action.error.message })}</Notice> : null}

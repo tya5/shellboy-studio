@@ -1,6 +1,6 @@
 import type { ComponentChildren, JSX, Ref } from "preact";
 
-type Variant = "outline" | "primary" | "ghost" | "link" | "warn" | "stop";
+type Variant = "outline" | "primary" | "ghost" | "warn" | "stop";
 
 export function Button({
   variant = "outline",

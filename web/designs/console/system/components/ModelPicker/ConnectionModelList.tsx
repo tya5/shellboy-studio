@@ -31,7 +31,7 @@ export function ConnectionModelList({ choices, selected, searchLabel, emptyLabel
       onCommitId(id, connections.length === 1 ? connections[0] : undefined);
     }} />
     <div class="model-picker-list" role="group" aria-label={searchLabel}>
-      {shown.length ? shown.map((choice) => <Button key={JSON.stringify(choice)} variant="link" disabled={disabled} aria-pressed={choice.connection === selected.connection && choice.model === selected.model} onClick={() => onSelect(choice)}>{modelLabel(choice)}</Button>) : <span role="status">{emptyLabel}</span>}
+      {shown.length ? shown.map((choice) => <Button key={JSON.stringify(choice)} variant="ghost" disabled={disabled} aria-pressed={choice.connection === selected.connection && choice.model === selected.model} onClick={() => onSelect(choice)}>{modelLabel(choice)}</Button>) : <span role="status">{emptyLabel}</span>}
     </div>
   </>;
 }

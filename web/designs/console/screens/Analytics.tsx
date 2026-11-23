@@ -96,7 +96,7 @@ function ByThread({ model, weights }: { model: AppModel; weights: Weights }) {
                 mean !== undefined ? formatTokens(Math.round(mean)) : t("analytics.noValue"),
                 g.inputMax !== undefined ? formatTokens(g.inputMax) : t("analytics.noValue"),
                 g.compactions,
-                <Button variant="link" aria-pressed={i.compaction.value.threadId === g.key} onClick={() => { void i.showCompaction(g.key); model.navigate({ view: "analytics", section: "compaction" }); }}>{t("threads.show")}</Button>,
+                <Button variant="ghost" aria-pressed={i.compaction.value.threadId === g.key} onClick={() => { void i.showCompaction(g.key); model.navigate({ view: "analytics", section: "compaction" }); }}>{t("threads.show")}</Button>,
               ],
             };
           })}

@@ -21,7 +21,7 @@ function Alerts({ model, tab }: { model: AppModel; tab: OpenApp }) {
             <>
               {tab.thread && tab.threadState !== "missing" ? <Button disabled={tab.send.kind === "sending"} onClick={() => void apps.sendErrors(tab.name, tab.instance)}>{t("apps.sendErrors")}</Button> : null}
               <Button onClick={() => void apps.reload(tab.name, tab.instance)}>{t("apps.reopen")}</Button>
-              <Button variant="link" onClick={() => apps.dismissErrors(tab.name, tab.instance)}>{t("apps.dismiss")}</Button>
+              <Button variant="ghost" onClick={() => apps.dismissErrors(tab.name, tab.instance)}>{t("apps.dismiss")}</Button>
             </>
           }
         >

@@ -367,7 +367,7 @@ it("renders the approved sidebar section band, trailing column, and disclosure b
     expect(toggle.firstElementChild).toBe(name);
     expect(pinned.querySelector(".tgroup-toggle")?.firstElementChild?.classList.contains("tgroup-name")).toBe(true);
     expect(group.querySelector(".tgroup-count")?.textContent).toBe("2");
-    expect(group.querySelector(".tgroup-fold,.btn-link")).toBeNull();
+    expect(group.querySelector(".tgroup-fold,header a")).toBeNull();
     await act(async () => toggle.click());
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
     expect(toggle.getAttribute("aria-label")).toBe(`Expand ${label}`);

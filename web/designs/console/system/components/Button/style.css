@@ -3,8 +3,6 @@
 .btn-warn{border-color:var(--wait);color:var(--wait)}
 .btn-stop{border-color:var(--bad);color:var(--bad)}
 .btn-icon{width:var(--size-control);padding:0}
-.btn-link{border-color:transparent;color:var(--accent)}
-.btn-link:hover,.btn-link:focus-visible{background:transparent;text-decoration:underline}
 .btn-ghost{border-color:transparent;background:transparent}
 .btn-ghost:hover,.btn-ghost:focus-visible,.btn-ghost[aria-haspopup][aria-expanded=true]{background:var(--hover)}
 .btn-ghost:disabled{background:transparent}
