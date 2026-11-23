@@ -81,7 +81,6 @@ layout.css grid-template-columns 220px
 layout.css border-bottom 2px
 layout.css width 320px
 layout.css width 600px
-shared/cards.css contain-intrinsic-size 180px
 shared/controls.css min-height 24px
 shared/message.css min-height 18px
 shared/navigation.css min-height 36px

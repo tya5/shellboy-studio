@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { activityLabel, formatAge, formatDuration, formatRoute, isThreadRecovery, parseTime, TilePreviews, statusLabel, STATUS_KEYS, type AppModel, type DesignContext, type ThreadRow } from "../../../ui-core/src";
-import { Button, ButtonGroup, Chip, EmptyState, LoadingRows, Notice, Field, Icon, StatusMark, ThreadCard, MonitorTile, MonitorPopover } from "../system/components";
+import { Button, ButtonGroup, Chip, EmptyState, LoadingRows, LoadingCount, PageHeader, Notice, Field, Icon, StatusMark, ThreadCard, MonitorTile, MonitorPopover } from "../system/components";
 
 function Card({ model, row, pinned, togglePin, outOfFilter }: { model: AppModel; row: ThreadRow; pinned: boolean; togglePin: () => void; outOfFilter: boolean }) {
   const t = model.t.value;
@@ -16,7 +16,7 @@ function Card({ model, row, pinned, togglePin, outOfFilter }: { model: AppModel;
       foot={
         <>
           {outOfFilter ? <span class="muted">{t("monitor.outOfFilter")}</span> : null}
-          <Button aria-pressed={pinned} onClick={togglePin}>{t(pinned ? "monitor.unpin" : "monitor.pin")}</Button>
+          <Button variant="ghost" aria-pressed={pinned} onClick={togglePin}>{t(pinned ? "monitor.unpin" : "monitor.pin")}</Button>
           {row.childCount > 0 ? (
             <span class="rel">
               <Icon role="monitor.childThreads" size="small" />
@@ -29,12 +29,12 @@ function Card({ model, row, pinned, togglePin, outOfFilter }: { model: AppModel;
             </span>
           ) : null}
           {isThreadRecovery(row.status, s.activity) ? (
-            <Button variant="warn" onClick={() => void model.retry(s.thread_id)}>
+            <Button variant="ghost" onClick={() => void model.retry(s.thread_id)}>
               <Icon role="action.retry" size="small" />
               {t("action.retry")}
             </Button>
           ) : null}
-          <a class="btn link go" href={formatRoute({ view: "conversation", threadId: s.thread_id })}>
+          <a class="nav-link go" href={formatRoute({ view: "conversation", threadId: s.thread_id })}>
             {t("monitor.open")}
             <Icon role="monitor.openConversation" size="small" />
           </a>
@@ -63,7 +63,7 @@ function Tile({ model, row, reader, supported, pinned, togglePin, outOfFilter }:
   const detail = running ? [running.description ?? running.command, start === undefined ? "" : formatDuration(model.now.value - start)].filter(Boolean).join(" ") : "";
   const status = <>{row.status ? <StatusMark status={row.status} label={statusLabel(t, row.status)} /> : null}<span class="tile-detail">{row.status === "awaiting" || row.status === "idle" ? "" : activityLabel(model.lang.value, row.summary.activity)}{detail ? ` ${detail}` : ""}{outOfFilter ? ` ${t("monitor.outOfFilter")}` : ""}</span></>;
   return <div ref={ref}>
-    <MonitorTile href={formatRoute({ view: "conversation", threadId: id })} title={row.summary.title} headingStatus={row.status ? <StatusMark status={row.status} label={statusLabel(t, row.status)} word={false} /> : null} status={status} pin={<Button aria-pressed={pinned} onClick={togglePin}>{t(pinned ? "monitor.unpin" : "monitor.pin")}</Button>}>
+    <MonitorTile href={formatRoute({ view: "conversation", threadId: id })} title={row.summary.title} headingStatus={row.status ? <StatusMark status={row.status} label={statusLabel(t, row.status)} word={false} /> : null} status={status} pin={<Button variant="ghost" aria-pressed={pinned} onClick={togglePin}>{t(pinned ? "monitor.unpin" : "monitor.pin")}</Button>}>
       {supported ? rows.map((r) => {
         if (r.type === "message") {
           const who = r.speaker.kind === "other" ? r.speaker.label : t(r.speaker.kind === "you" ? "convo.you" : r.speaker.kind === "cli" ? "convo.cli" : r.speaker.kind === "model" ? "convo.modelSender" : r.speaker.kind === "unknown" ? "convo.unknownSender" : "convo.shellboy");
@@ -122,7 +122,7 @@ export function Monitor({ context }: { context: DesignContext }) {
   const rows = tiles ? groups[currentPage] ?? [] : selectedRows;
   const togglePin = (id: string) => { const next = pins.includes(id) ? pins.filter((p) => p !== id) : [...pins, id].slice(0, 100); model.monitorPins.value = next; setPrefs({ monitorPins: next }); };
   const list = model.data.threadList.value;
-  const count = (value: number) => list.loaded ? ` ${value}` : "";
+  const count = (value: number) => list.loaded ? ` ${value}` : list.error ? null : <LoadingCount onRaised />;
   const updateStatus = (k: (typeof STATUS_KEYS)[number]) => { const next = filter.includes(k) ? filter.filter((x) => x !== k) : [...filter, k]; model.monitorFilter.value = next; setPrefs({ monitorStatuses: next }); setPage(0); };
   const setArchive = (archive: "exclude" | "include" | "only") => { model.monitorArchive.value = archive; setPrefs({ monitorArchive: archive }); setPage(0); };
   const sortControls = () => <ButtonGroup label={t("monitor.sort")}>
@@ -133,17 +133,17 @@ export function Monitor({ context }: { context: DesignContext }) {
   return (
     <div class={tiles ? "mon pane-monitor" : "mon"}>
       <div class="monitor-controls">
-        <div class="monitor-heading"><h1>{t("view.monitor")}</h1><ButtonGroup label={t("monitor.view")}>
+        <PageHeader title={t("view.monitor")} actions={<ButtonGroup label={t("monitor.view")}>
           {(["cards", "tiles"] as const).map((view) => <Button key={view} aria-pressed={(tiles ? "tiles" : "cards") === view} onClick={() => setPrefs({ monitorView: view })}>{t(view === "tiles" ? "monitor.tiles" : "monitor.cards")}</Button>)}
-        </ButtonGroup></div>
+        </ButtonGroup>} />
         <div class="monitor-tabs"><ButtonGroup label={t("monitor.scope")}>
-          <Button aria-pressed={!pinnedOnly && !attention} onClick={() => switchScope("all")}>{t("monitor.all")}{count(model.monitorStableRows.value.length)}</Button>
-          <Button aria-pressed={pinnedOnly} onClick={() => switchScope("pinned")}>{t("monitor.pinnedTab")}{count(pins.length)}</Button>
-          <Button aria-pressed={attention} onClick={() => switchScope("attention")}>{t("monitor.attention")}{count((counts.error ?? 0) + (counts.awaiting ?? 0))}</Button>
+          <Button aria-busy={!list.loaded && !list.error || undefined} aria-pressed={!pinnedOnly && !attention} onClick={() => switchScope("all")}>{t("monitor.all")}{count(model.monitorStableRows.value.length)}</Button>
+          <Button aria-busy={!list.loaded && !list.error || undefined} aria-pressed={pinnedOnly} onClick={() => switchScope("pinned")}>{t("monitor.pinnedTab")}{count(pins.length)}</Button>
+          <Button aria-busy={!list.loaded && !list.error || undefined} aria-pressed={attention} onClick={() => switchScope("attention")}>{t("monitor.attention")}{count((counts.error ?? 0) + (counts.awaiting ?? 0))}</Button>
         </ButtonGroup></div>
         <div class="monitor-tools">
           <Field leading={<Icon role="thread.search" size="small" />} ariaLabel={t("threads.search")} placeholder={t("threads.search")} value={model.monitorQuery.value} onInput={(e) => { model.monitorQuery.value = e.currentTarget.value.slice(0, 256); setPrefs({ monitorQuery: model.monitorQuery.value }); setPage(0); }} />
-          <MonitorPopover label={t("monitor.filterButton")}>
+          <MonitorPopover ghost label={t("monitor.filterButton")}>
             <div class="chips" role="group" aria-label={t("monitor.filter")}>
               {STATUS_KEYS.filter((k) => (counts[k] ?? 0) > 0 || filter.includes(k)).map((k) => <Chip key={k} status={k} label={statusLabel(t, k)} count={counts[k] ?? 0} pressed={filter.includes(k)} onClick={() => updateStatus(k)} />)}
             </div>
@@ -151,9 +151,9 @@ export function Monitor({ context }: { context: DesignContext }) {
               {(["exclude", "include", "only"] as const).map((archive) => <Button key={archive} aria-pressed={model.monitorArchive.value === archive} onClick={() => setArchive(archive)}>{t(archive === "exclude" ? "monitor.archiveExclude" : archive === "include" ? "monitor.archiveInclude" : "monitor.archiveOnly")}</Button>)}
             </ButtonGroup>
             <div class="monitor-sort-narrow">{sortControls()}</div>
-            <Button onClick={() => { model.monitorRefresh.value++; setPage(0); }}>{t("monitor.refreshSelection")}</Button>
+            <Button variant="ghost" onClick={() => { model.monitorRefresh.value++; setPage(0); }}>{t("monitor.refreshSelection")}</Button>
           </MonitorPopover>
-          <MonitorPopover className="monitor-sort-wide" label={t("monitor.sort")}>{sortControls()}</MonitorPopover>
+          <MonitorPopover ghost className="monitor-sort-wide" label={t("monitor.sort")}>{sortControls()}</MonitorPopover>
           <span class="monitor-count muted caption">{list.loaded ? t("monitor.showing", { shown: selectedRows.length, total: model.monitorStableRows.value.length }) : null}</span>
         </div>
         <span class="monitor-count-mobile muted caption">{list.loaded ? t("monitor.showing", { shown: selectedRows.length, total: model.monitorStableRows.value.length }) : null}</span>
@@ -161,13 +161,13 @@ export function Monitor({ context }: { context: DesignContext }) {
           {filter.map((k) => <Button key={k} aria-label={t("monitor.removeFilter", { filter: statusLabel(t, k) })} onClick={() => updateStatus(k)}>{k === "idle" ? <StatusMark status={k} label={statusLabel(t, k)} /> : statusLabel(t, k)} <Icon role="action.clearStatusFilter" size="small" /></Button>)}
           {model.monitorQuery.value.trim() ? <Button aria-label={t("monitor.removeFilter", { filter: model.monitorQuery.value })} onClick={() => { model.monitorQuery.value = ""; setPrefs({ monitorQuery: "" }); }}>{model.monitorQuery.value} <Icon role="action.clearQueryFilter" size="small" /></Button> : null}
           {model.monitorArchive.value !== "exclude" ? <Button aria-label={t("monitor.removeFilter", { filter: archiveLabel })} onClick={() => setArchive("exclude")}>{archiveLabel} <Icon role="action.clearArchiveFilter" size="small" /></Button> : null}
-          <Button onClick={clearFilters}>{t("monitor.clearAll")}</Button>
+          <Button variant="ghost" onClick={clearFilters}>{t("monitor.clearAll")}</Button>
         </div> : null}
-        {tiles && pages > 1 ? <ButtonGroup label={t("monitor.page", { page: currentPage + 1, pages })}>
-          <Button disabled={currentPage === 0} onClick={() => setPage(currentPage - 1)}>{t("monitor.previous")}</Button>
+        {tiles && pages > 1 ? <div class="band" role="group" aria-label={t("monitor.page", { page: currentPage + 1, pages })}>
+          <Button variant="ghost" disabled={currentPage === 0} onClick={() => setPage(currentPage - 1)}>{t("monitor.previous")}</Button>
           <span>{t("monitor.page", { page: currentPage + 1, pages })}</span>
-          <Button disabled={currentPage + 1 === pages} onClick={() => setPage(currentPage + 1)}>{t("monitor.next")}</Button>
-        </ButtonGroup> : null}
+          <Button variant="ghost" disabled={currentPage + 1 === pages} onClick={() => setPage(currentPage + 1)}>{t("monitor.next")}</Button>
+        </div> : null}
       </div>
       {!list.loaded ? (list.error ? <Notice tone="bad">{t("common.readError", { message: list.error.message })}</Notice> : <LoadingRows label={t("common.loading")} />) : rows.length > 0 ? (
         <div class={tiles ? "pane-grid" : "grid"} data-count={tiles ? rows.length : undefined}>
@@ -177,12 +177,12 @@ export function Monitor({ context }: { context: DesignContext }) {
         </div>
       ) : filtered || pinnedOnly || attention ? (
         <EmptyState role="empty.monitorNoMatches" title={t("monitor.noMatch")}>
-          <Button onClick={clearFilters}>{t("monitor.clearFilters")}</Button>
+          <Button variant="ghost" onClick={clearFilters}>{t("monitor.clearFilters")}</Button>
         </EmptyState>
       ) : list.loaded ? (
         <EmptyState role="empty.monitor" title={t("monitor.empty")} body={t("monitor.emptyBody")} />
       ) : null}
-      {model.data.canLoadMoreThreads() ? <span class="more"><Button disabled={list.loadingMore} onClick={() => void model.data.loadMoreThreads()}>{t("threads.more")}</Button></span> : list.nextCursor ? <div class="muted caption">{t("threads.capped")}</div> : null}
+      {model.data.canLoadMoreThreads() ? <span class="more"><Button variant="ghost" disabled={list.loadingMore} onClick={() => void model.data.loadMoreThreads()}>{t("threads.more")}</Button></span> : list.nextCursor ? <div class="muted caption">{t("threads.capped")}</div> : null}
     </div>
   );
 }

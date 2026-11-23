@@ -60,6 +60,7 @@
   --radius: 2px;
   --radius-m: 2px;
   --motion-spin: 1.6s;
+  --size-thread-card-estimate: 180px;
   --size-sidebar: 260px;
   --z-popover: 35;
   --size-right-panel: var(--size-details);
