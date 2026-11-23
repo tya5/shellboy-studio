@@ -18,7 +18,7 @@ An engineer's console: dark navy surfaces, one accent, and monospace wherever th
 - Corners: `radius-s` for controls and menu items, `radius-m` for the menu panel, `radius` for cards. Terminal squares all three.
 - Spacing comes from `space-4` to `space-24`. Touch targets on phone width are at least 44px.
 - Focus is a solid 2px `accent` ring with a 2px offset on every interactive element.
-- Motion: the running ring spins and LoadingRows pulses; nothing else moves. Both stop under `prefers-reduced-motion`.
+- Motion: LoadingRows pulses, the running character dots hop, and the active summary arc spins. All stop under `prefers-reduced-motion`; the summary ring then uses its approved stationary dots.
 
 ## Layout
 

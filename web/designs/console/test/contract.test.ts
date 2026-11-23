@@ -147,12 +147,12 @@ describe("components name roles, never values", () => {
   it("every custom property used exists", () => {
     for (const m of css.matchAll(/var\(--([\w-]+)/g)) expect(known.has(m[1]!), m[1]).toBe(true);
   });
-  it("only loading rows and thinking dots move, with reduced motion respected", () => {
+  it("only loading rows, thinking dots and the active summary arc move, with reduced motion respected", () => {
     const animations = [...css.matchAll(/([^{}]+)\{([^{}]*\banimation\s*:\s*([^;}]+)[^{}]*)\}/g)]
       .filter((match) => match[3]!.trim() !== "none")
       .map((match) => match[1]!.trim());
-    expect(animations).toHaveLength(2);
-    expect(animations).toEqual(expect.arrayContaining([".loadrow", ".character-status[data-running] circle"]));
+    expect(animations.sort()).toEqual([".character-status[data-running] circle", ".context-ring-activity", ".loadrow"]);
+    expect(css).toMatch(/prefers-reduced-motion:reduce\)\{\.context-ring-activity\{animation:none;stroke-dasharray:1 9\}/);
     expect(css).toMatch(/prefers-reduced-motion:reduce\)\{\.loadrow\{animation:none\}/);
     expect(css).toMatch(/prefers-reduced-motion:no-preference\)\{\s*\.character-status\[data-running\] circle\{[^}]*animation:character-hop/);
   });
