@@ -3,6 +3,7 @@ import { GuideRegistrationView, guideSearchRows } from "./GuideRegistration";
 import { CAPABILITY_CONFIG, CONFIG_FIELDS, fieldOf, formatRoute, settingsSection, SETTINGS_SECTIONS, valueAt, translator, type ConfigKey, type MessageKey, type DesignContext, type SettingsSection } from "../../../ui-core/src";
 import { Button, EffortControl, FactList, Notice, PageHeader, PairingQr, Section, SubView, type Fact, type IconRole } from "../system/components";
 import { AppearanceChoices, appearanceSearchRows } from "./Appearance";
+import { SettingsShare } from "./SettingsShare";
 import { connectionCards, ConnectionModelRow, ConfigControl, ConfigPanel, SettingFeedback, configRowValue } from "./SettingsConfig";
 
 import { settingSearch, type SettingSearch } from "./setting-search";
@@ -70,6 +71,7 @@ export function SettingsView({ context }: { context: DesignContext }) {
         </>;
       case "connections":
         return <>
+          <SettingsShare model={model} settingId={search("connections.share", "share.title", ["share.intro"]).settingId} />
           <Section settingId={search("connections.add", "setup.add", ["setup.intro"]).settingId} title={t("setup.open")} sub={t("setup.intro")}><div class="setup-actions"><a class="nav-link" href={formatRoute({ view: "setup" })} onClick={() => model.setup.beginAdd()}>{t("setup.add")}</a></div></Section>
           {canEdit && facts && !model.config.read.value.error ? connectionCards(model, search) : null}
         </>;

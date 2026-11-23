@@ -155,3 +155,10 @@ This desktop path is macOS-only. The CLI bridge and its explicit development `--
 
 If a separately started owner stops, the same **Restart owner** action checks
 again for a running owner before it starts one. Studio does not adopt, stop, or restart an owner it did not start.
+
+## Share settings with a colleague
+
+1. In **Settings > Connections > Share settings**, choose **Export file** and share the downloaded `shellboy-settings.toml` with your colleague. It contains portable connection settings (including an API-key environment variable's name, not its value), model filters and defaults. It does not include credentials, custom headers or request bodies, or local paths such as the data directory, shell executable, or guide files.
+2. On the other installation, open **Import settings** from the first connection screen. In an existing installation, use **Settings > Connections > Share settings > Change** instead. Choose the file or drop it on the file picker.
+3. Check the connection names and URLs, the same-name overwrites, and the new defaults in the preview. Choose **Apply settings**. For safety, an import cannot repoint a same-name connection that already has credentials; use a new connection name in the TOML and update its default reference if needed.
+4. Enter your own API key for each connection that needs one. Shellboy saves it separately through its credentials operation. If a server intentionally needs no key, say so in the key step. Then choose **Start a conversation** in Setup. If Studio reports settings that need a restart, restart the owner manually to activate those settings.

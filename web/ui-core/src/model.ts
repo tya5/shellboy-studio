@@ -516,7 +516,7 @@ export class AppModel {
       return owner.state === "unreachable" ? "ownerDown" : "connecting";
     });
     this.disposers.push(effect(() => {
-      const settingsShown = this.route.value.view === "settings";
+      const settingsShown = this.route.value.view === "settings" || (this.route.value.view === "setup" && this.route.value.step === "share");
       if (!settingsShown && !this.modelPicker.value.open) untracked(() => this.config.leave());
       else if (this.connection.value === "connected" && this.data.capabilities.value.includes(CAPABILITY_CONFIG)) {
         untracked(() => this.config.ensure());

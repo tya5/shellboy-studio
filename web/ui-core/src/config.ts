@@ -303,18 +303,23 @@ export class ConfigEditor {
     await this.writeSetting(path, [{ field: fieldOf(path) }], false);
   }
 
+  async applyChanges(hash: string, changes: readonly ConfigWrite[]): Promise<string | undefined> {
+    if (this.read.peek().value?.file.contentHash !== hash || !changes.length) return undefined;
+    return this.writeSetting(["connections.share"], [...changes], false);
+  }
+
   async undoLast(): Promise<void> {
     const saved = this.lastSaved.peek();
     if (saved?.undo.length) await this.writeSetting(saved.path, saved.undo, false);
   }
 
-  private async writeSetting(path: readonly string[], changes: ConfigWrite[], undoable: boolean, paths = [path]): Promise<void> {
+  private async writeSetting(path: readonly string[], changes: ConfigWrite[], undoable: boolean, paths = [path]): Promise<string | undefined> {
     const read = this.read.peek();
-    if (this.fieldSaving.peek() || read.error || !read.value?.file.valid) return;
+    if (this.fieldSaving.peek() || read.error || !read.value?.file.valid) return undefined;
     const field = fieldOf(path);
     const file = read.value.file;
     const previous = paths.map((key) => configWrite(fieldOf(key), valueAt(file.values, key)));
-    if (changes.some((change) => isHidden(change.value))) return;
+    if (changes.some((change) => isHidden(change.value))) return undefined;
     const undo = undoable && previous.every((change) => !isHidden(change.value)) ? previous : [];
     const session = this.session;
     const pending: NonNullable<ConfigEditor["confirmation"]> = { field, expected: file.contentHash };
@@ -326,19 +331,20 @@ export class ConfigEditor {
     this.changedElsewhere.value = undefined;
     try {
       const out = await this.ops.configSet(file.contentHash, changes);
-      if (!this.shown || session !== this.session) return;
+      if (!this.shown || session !== this.session) return undefined;
       if (!out.ok) {
         this.fieldError.value = { field, reason: out.error.message };
-        return;
+        return undefined;
       }
-      if (out.value.written === false) return;
+      if (out.value.written === false) return undefined;
       const hash = out.value.content_hash;
-      if (typeof hash !== "string" || !hash) return;
+      if (typeof hash !== "string" || !hash) return undefined;
       const changed = Array.isArray(out.value.changes) ? out.value.changes.map(record).filter((change) => changes.some(({ field }) => change?.field === field)) : [];
       const exact = changed.map((change) => change?.restart_required).filter((value): value is boolean => typeof value === "boolean");
       const restartRequired = exact.length ? exact.some(Boolean) : typeof out.value.restart_required === "boolean" ? out.value.restart_required : undefined;
       pending.saved = { hash, field, path, restartRequired, undo: changed.some((change) => change?.sensitive === true) ? [] : undo };
       this.confirmWrite();
+      return hash;
     } finally {
       if (this.confirmation === pending && !pending.saved) {
         this.confirmation = undefined;

@@ -4,6 +4,7 @@ import { Button, ButtonGroup, Check, ChoiceList, Field, KeyValue, Notice, Sectio
 import { Rich } from "./Rich";
 import { SetupEmbedding } from "./SetupEmbedding";
 import { External, TestResult, Unavailable } from "./SetupParts";
+import { SettingsShare } from "./SettingsShare";
 
 /** Longest model list drawn at once; the filter narrows the rest. */
 const MODELS_SHOWN = 50;
@@ -47,6 +48,7 @@ export function Setup({ context }: { context: DesignContext }) {
     );
 
   if (model.route.value.step === "embedding") return <SetupEmbedding context={context} />;
+  if (model.route.value.step === "share") return <div class="mon"><div class="setup">{head}<SettingsShare model={model} firstRun /></div></div>;
 
   if (save.kind === "saved") {
     const embed = model.embedding;
@@ -97,6 +99,9 @@ export function Setup({ context }: { context: DesignContext }) {
     <div class="mon">
       <div class="setup">
         {head}
+        <Section title={t("share.firstRunTitle")} sub={t("share.firstRunIntro")} actions={<a class="nav-link" href={formatRoute({ view: "setup", step: "share" })}>{t("share.importAction")}</a>}>
+          <p>{t("share.firstRunNote")}</p>
+        </Section>
         <Section title={t("setup.step.service")}>
           <ChoiceList
             label={t("setup.svc.label")}

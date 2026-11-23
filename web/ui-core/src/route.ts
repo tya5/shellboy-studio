@@ -15,8 +15,8 @@ export interface Route {
   appInstance?: string;
   /** Settings and Analytics. Absent means the first section. */
   section?: SettingsSection | AnalyticsSection;
-  /** Setup only: the optional embeddings step. Absent shows the connection steps. */
-  step?: "embedding";
+  /** Setup only: embeddings or settings import. Absent shows the connection steps. */
+  step?: "embedding" | "share";
 }
 
 /** The open Settings section, or the first. A section of another view isn't valid here. */
@@ -32,7 +32,7 @@ export function parseRoute(hash: string): Route {
   const parts = hash.replace(/^#\/?/, "").split("/");
   if (parts[0] === "monitor") return { view: "monitor" };
   if (parts[0] === "inbox") return { view: "inbox" };
-  if (parts[0] === "setup") return parts[1] === "embedding" ? { view: "setup", step: "embedding" } : { view: "setup" };
+  if (parts[0] === "setup") return parts[1] === "embedding" ? { view: "setup", step: "embedding" } : parts[1] === "share" ? { view: "setup", step: "share" } : { view: "setup" };
   if (parts[0] === "threads") return { view: "threads" };
   if (parts[0] === "apps") {
     try {
