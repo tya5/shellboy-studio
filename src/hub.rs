@@ -18,6 +18,7 @@ use tokio::sync::Notify;
 
 pub const MAX_SESSIONS: usize = 64;
 pub const MAX_WATCH: usize = 64;
+const MAX_PENDING_THREADS: usize = 256;
 const MAX_ID_BYTES: usize = 128;
 
 /// What a session has not been told yet.
@@ -179,14 +180,33 @@ impl Hub {
         Ok(())
     }
 
+    fn supersede_with_resync(session: &mut Session) {
+        session.pending.resync = true;
+        session.pending.threads.clear();
+        session.pending.list = false;
+        session.pending.attempt_ends.clear();
+    }
+
+    fn mark_thread_dirty(session: &mut Session, id: &str) -> bool {
+        if session.pending.resync || session.pending.threads.contains(id) {
+            return false;
+        }
+        if session.pending.threads.len() >= MAX_PENDING_THREADS {
+            Self::supersede_with_resync(session);
+            return true;
+        }
+        session.pending.threads.insert(id.to_owned())
+    }
+
     /// Hints from the long-poll: mark dirty for sessions that watch the Thread or show the list.
     pub fn hint<'a>(&self, thread_ids: impl IntoIterator<Item = &'a str> + Clone) {
         let mut inner = self.lock();
         for session in inner.sessions.values_mut() {
+            if session.pending.resync { continue; }
             let mut touched = false;
             for id in thread_ids.clone() {
-                if session.watch.contains(id) && session.pending.threads.insert(id.to_owned()) {
-                    touched = true;
+                if session.watch.contains(id) || session.list {
+                    touched |= Self::mark_thread_dirty(session, id);
                 }
                 if session.list && !session.pending.list {
                     session.pending.list = true;
@@ -244,8 +264,8 @@ impl Hub {
             }
             if !resync && !session.pending.resync {
                 for id in thread_ids.clone() {
-                    if session.watch.contains(id) {
-                        touched |= session.pending.threads.insert(id.to_owned());
+                    if session.watch.contains(id) || session.list {
+                        touched |= Self::mark_thread_dirty(session, id);
                     }
                     if session.list && !session.pending.list {
                         session.pending.list = true;
@@ -258,17 +278,15 @@ impl Hub {
                 {
                     touched = true;
                     if session.pending.attempt_ends.len() == MAX_PENDING_ENDS {
-                        session.pending.resync = true;
+                        Self::supersede_with_resync(session);
+                        touched = true;
                         break;
                     }
                     session.pending.attempt_ends.push(end.clone());
                 }
             }
             if resync || session.pending.resync {
-                session.pending.resync = true;
-                session.pending.threads.clear();
-                session.pending.list = false;
-                session.pending.attempt_ends.clear();
+                Self::supersede_with_resync(session);
                 touched |= resync;
             }
             for id in &changed {
@@ -401,9 +419,50 @@ mod tests {
         assert_eq!(pa.threads, BTreeSet::from(["t1".to_owned()]));
         assert!(!pa.list);
         let (pb, _) = hub.take(&b);
-        assert!(pb.threads.is_empty());
+        assert_eq!(
+            pb.threads,
+            BTreeSet::from(["t1".to_owned(), "t2".to_owned()])
+        );
         assert!(pb.list);
         assert!(hub.take(&a).0.is_empty());
+    }
+
+    #[test]
+    fn list_watchers_receive_changed_ids_even_when_thread_is_unwatched() {
+        let hub = Hub::new();
+        let (list_tab, _) = hub.register().unwrap();
+        hub.watch(&list_tab, vec![], true).unwrap();
+        hub.apply_events(
+            None,
+            ["unwatched"],
+            None,
+            Vec::new(),
+            EventUpdate::default(),
+        );
+        let pending = hub.take(&list_tab).0;
+        assert_eq!(pending.threads, BTreeSet::from(["unwatched".to_owned()]));
+        assert!(pending.list);
+    }
+
+    #[test]
+    fn changed_id_overflow_supersedes_with_resync() {
+        let hub = Hub::new();
+        let (list_tab, _) = hub.register().unwrap();
+        hub.watch(&list_tab, vec![], true).unwrap();
+        let ids = (0..=MAX_PENDING_THREADS)
+            .map(|i| format!("t{i}"))
+            .collect::<Vec<_>>();
+        hub.apply_events(
+            None,
+            ids.iter().map(String::as_str),
+            None,
+            Vec::new(),
+            EventUpdate::default(),
+        );
+        let pending = hub.take(&list_tab).0;
+        assert!(pending.resync);
+        assert!(pending.threads.is_empty());
+        assert!(!pending.list);
     }
 
     #[test]

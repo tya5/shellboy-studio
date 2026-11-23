@@ -29,9 +29,12 @@ export function Inbox({ model }: { model: AppModel }) {
       <PageHeader title={t("view.inbox")} />
       <div class="qlist">
         <h2 class="group-label">{t("inbox.questions")}{items.length > 0 ? ` ${items.length}` : ""}</h2>
-        {items.map((p) => (
-          <QuestionItem key={p.id} title={`${p.threadTitle}${p.count !== undefined ? ` (${p.count}${p.countExact === false ? "+" : ""})` : ""}`} age={formatAge(p.askedAt, model.now.value)} question={p.question} current={p.id === current?.id} onClick={() => setPicked(p.id)} />
-        ))}
+        {items.map((p) => {
+          const row = model.rowById.value.get(p.threadId)?.summary;
+          const count = row?.awaiting_named_count;
+          const title = `${row?.title ?? p.threadId}${count !== undefined ? ` (${count}${row?.awaiting_named_count_exact === false ? "+" : ""})` : ""}`;
+          return <QuestionItem key={p.id} title={title} age={formatAge(p.askedAt, model.now.value)} question={p.question} current={p.id === current?.id} onClick={() => setPicked(p.id)} />;
+        })}
         {model.pending.loading?.value ? <p class="muted caption" role="status">{t("common.loading")}</p> : null}
         {model.pending.stale?.value ? <p class="muted caption">{t("work.stale")}</p> : null}
         {model.pending.error?.value ? <p role="alert">{errorMessage(model.pending.error.value)}</p> : null}

@@ -15,7 +15,7 @@ import type { OpError } from "../../../data/src";
 let host: HTMLElement | undefined;
 let close: (() => void) | undefined;
 afterEach(() => { if (host) render(null, host); host?.remove(); close?.(); });
-const question: PendingItem = { id: "synthetic-reply", threadId: "lead", threadTitle: "Synthetic", question: "Synthetic question", askedAt: undefined };
+const question: PendingItem = { id: "synthetic-reply", threadId: "lead", question: "Synthetic question", askedAt: undefined };
 async function fixture() {
   const adapter = fixturePendingAdapter([]);
   const items = signal<PendingItem[]>([]), loading = signal(false), stale = signal(false), error = signal<OpError | undefined>(undefined);

@@ -64,8 +64,8 @@ export function fixtureDb(): FakeOwnerDb {
 }
 
 export const fixturePending: PendingItem[] = [
-  { id: "q1", threadId: "broken", threadTitle: "Invoice recipient", question: "Should this go to company A or B?", askedAt: at(8) },
-  { id: "q2", threadId: "hold", threadTitle: "Mail drafts", question: "I drafted 3 replies. Please review them.", askedAt: at(1) },
+  { id: "q1", threadId: "broken", question: "Should this go to company A or B?", askedAt: at(8) },
+  { id: "q2", threadId: "hold", question: "I drafted 3 replies. Please review them.", askedAt: at(1) },
 ];
 
 export const fixturePendingAdapter = (items: PendingItem[] = fixturePending): PendingAdapter & { answers: [string, string][] } => {

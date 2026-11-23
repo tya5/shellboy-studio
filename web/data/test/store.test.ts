@@ -86,7 +86,7 @@ describe("resync, restart and loss", () => {
     db.reads.length = 0;
     t.push({ t: "resync" });
     await settle(t, db);
-    expect(db.reads.sort()).toEqual(["thread.get:a", "thread.get:b", "thread.list"]);
+    expect(db.reads.sort()).toEqual(["status", "thread.get:a", "thread.get:b", "thread.list"]);
   });
 
   it("restarted followed by resync (the bridge sends both) costs at most one trailing read per target", async () => {
@@ -461,7 +461,7 @@ describe("the Thread list stays bounded however many Threads exist", () => {
       await settle(x.t, x.db);
       expect(current()).toMatchObject({ activity, awaiting_named_count: count });
     }
-    expect(x.t.calls("thread.list").length - reads).toBe(3);
+    expect(x.t.calls("thread.list").filter(call => (call.args as { thread_ids?: string[] }).thread_ids?.includes("t60")).length).toBe(3);
     expect(x.data.threadList.value.items.map(row => row.thread_id)).toEqual(x.all.slice(0, 100).map(row => row.thread_id));
   });
   it("a changed search starts over", async () => {

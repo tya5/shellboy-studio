@@ -419,14 +419,17 @@ async fn hints_reach_only_the_tabs_that_watch_and_resync_reaches_all() {
 
     tx.send(events("inst1", "baseline", "c1", &[], false))
         .unwrap();
+    for ws in [&mut list_tab, &mut thread_tab, &mut idle_tab] {
+        next_t(ws, "resync").await;
+    }
     tx.send(events("inst1", "changed", "c2", &["t1", "t2"], false))
         .unwrap();
     let on_list = next_t(&mut list_tab, "changed").await;
     assert_eq!(on_list["list"], true);
     assert_eq!(
         on_list["thread_ids"],
-        json!([]),
-        "a list tab watches no Thread ids"
+        json!(["t1", "t2"]),
+        "a list tab gets exact changed IDs even when it watches no Thread"
     );
     let on_thread = next_t(&mut thread_tab, "changed").await;
     assert_eq!(on_thread["thread_ids"], json!(["t1"]));

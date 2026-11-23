@@ -708,10 +708,12 @@ describe("Awaiting you", () => {
     expect(text(el)).toContain("Other activity");
   });
   it("renders synthetic legacy 17+ without fabricating an oldest age", async () => {
-    const pending = fixturePendingAdapter([{ id: "legacy", threadId: "lead", threadTitle: "Legacy", question: "Synthetic legacy question", askedAt: undefined, count: 17, countExact: false }]);
-    const { model } = await fixtureModel({ route: "inbox", pending });
+    const pending = fixturePendingAdapter([{ id: "legacy", threadId: "lead", question: "Synthetic legacy question", askedAt: undefined }]);
+    const { model } = await fixtureModel({ route: "inbox", pending, configure(db) {
+      db.threads.lead = summary("lead", { awaiting_named_count: 17, awaiting_named_count_exact: false });
+    } });
     const el = draw(model);
-    expect(text(el)).toContain("Legacy (17+)");
+    expect(text(el)).toContain("t-lead (17+)");
     expect(text(el)).toContain("Synthetic legacy question");
     expect(el.querySelector(".qitem")?.textContent).not.toMatch(/ago|minute|hour/);
   });
