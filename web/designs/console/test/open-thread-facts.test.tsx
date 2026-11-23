@@ -63,6 +63,12 @@ describe("Open Thread facts (#103)", () => {
       expect(footer(el).textContent).toContain("provider: connection interrupted");
       expect(retryButtons(el)).toHaveLength(1);
       expect(footer(el).contains(retryButtons(el)[0]!)).toBe(true);
+      // The charge warning is visible text beside Retry, not a hover-only title (touch never hover-only).
+      const note = footer(el).querySelector<HTMLElement>("[data-retry-note]")!;
+      expect(note.textContent).toBe(model.t.value("recovery.body"));
+      expect(note.classList.contains("muted")).toBe(true);
+      expect(note.nextElementSibling).toBe(retryButtons(el)[0]);
+      expect(retryButtons(el)[0]!.hasAttribute("title")).toBe(false);
       expect(el.querySelector(".dock [data-tone=bad], .dock .btn-warn")).toBeNull();
       expect(el.querySelector("[data-conversation-header] [data-status]")?.getAttribute("data-status")).toBe("error");
       const entries = await headerMenu(el);
@@ -91,6 +97,7 @@ describe("Open Thread facts (#103)", () => {
       await act(async () => { await settle(t, db); });
       expect(footer(el).textContent).toContain("provider: connection interrupted");
       expect(retryButtons(el)).toHaveLength(0);
+      expect(footer(el).querySelector("[data-retry-note]")).toBeNull();
     } finally { model.dispose(); }
   });
 

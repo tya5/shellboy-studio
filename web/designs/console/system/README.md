@@ -178,7 +178,7 @@ The shared row-action pattern and its references are recorded in `patterns/row-a
 
 ### Conversation status artwork
 
-The permanent one-line footer in Conversation uses the existing status artwork. Only its description may ellipsize; activity, the lower-bound count when two or more, elapsed time from the actual start, and actions retain their own fields. It is the one place for a recovery reason and Retry (Retry only when `canRetry`); no Notice above the composer repeats them. Its facts are the open Thread's own: `thread.get` and that Thread's row in the row cache, whether or not a list page holds it.
+The permanent one-line footer in Conversation uses the existing status artwork. Only its description may ellipsize; activity, the lower-bound count when two or more, elapsed time from the actual start, and actions retain their own fields. It is the one place for a recovery reason and Retry (Retry only when `canRetry`); no Notice above the composer repeats them. Before Retry, the warning that a retry may be charged again is a second, `muted` description: visible text, never a hover-only title, and like the reason it may ellipsize. Its facts are the open Thread's own: `thread.get` and that Thread's row in the row cache, whether or not a list page holds it.
 
 The `ConversationCharacter` component owns running-only dot motion inside the existing artwork.
 

@@ -316,7 +316,7 @@ export function ConversationStatus({ model }: { model: AppModel }) {
       {work.running.length > 1 ? <span>{t("work.runningCount", { n: work.running.length })}</span> : null}
       {start === undefined ? null : <span>{formatDuration(model.now.value - start)}</span>}
     </> : null}
-    {recovery ? <><span data-status-description>{recovery.message ?? recovery.hint}</span>{model.canRetry.value ? <Button title={t("recovery.body")} onClick={() => void model.retry()}>{t("action.retry")}</Button> : null}</> : null}
+    {recovery ? <><span data-status-description>{recovery.message ?? recovery.hint}</span>{model.canRetry.value ? <><span data-status-description data-retry-note class="muted">{t("recovery.body")}</span><Button onClick={() => void model.retry()}>{t("action.retry")}</Button></> : null}</> : null}
   </> : " "}</div>;
 }
 
