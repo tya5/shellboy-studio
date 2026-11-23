@@ -47,6 +47,7 @@ Approved by the user on 2026-11-23 with the v2 sheet (shellboy-studio #97). Thes
 
 | Spacing | Role |
 |---|---|
+| `space-2` | Hairline separation: panel tabs, the segmented control's inset and segment gap, the compact empty-state icon nudge |
 | `space-4` | Tightly related text, a label and its control, control internals |
 | `space-8` | Row to row, compact control insets, between controls |
 | `space-12` | Component insets and related groups |

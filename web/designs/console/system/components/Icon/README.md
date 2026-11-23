@@ -102,7 +102,7 @@ Sidebar and shared state roles (Orca sidebar and Lucide semantics):
 - `status.awaiting`: needs a human answer (circle help; same outer diameter as every StatusMark).
 - `status.complete`: completed (circle check), and `status.failed`: failed (circle alert); all use the same outer diameter.
 - `status.idle`: no Thread action needed (empty circle for completed, stopped and idle).
-- `thread.pinned`: the pinned group or pin action.
+- `thread.pinned`: the pin action.
 - `thread.children`: the child disclosure and count.
 - `sidebar.filter`: opens list filter controls.
 `settings.close` identifies the action to leave Settings; it is rendered as `cross`.
