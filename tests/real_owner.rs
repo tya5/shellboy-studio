@@ -1164,6 +1164,10 @@ async fn live_text_reaches_a_watching_tab_and_the_saved_message_follows() {
         }
     }
     let attempt = attempt.expect("initial live attempt");
+    let activity = c.ok("thread.list", json!({"order":"created"}), None).await;
+    let row = activity["items"].as_array().unwrap().iter().find(|r| r["thread_id"] == thread).unwrap();
+    println!("STUDIO94 pinned streaming owner list activity: {}", row["activity"]);
+    assert!(matches!(row["activity"].as_str(), Some("receiving" | "awaiting_model" | "running" | "tools")), "{row}");
     // Still being written: nothing is saved yet.
     let before = c
         .ok("history.list", json!({"thread_id":thread,"limit":50}), None)
