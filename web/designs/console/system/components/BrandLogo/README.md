@@ -16,4 +16,4 @@ favicon and fixed light-accent install icons have separate asset roles.
 
 Styles: style.css in this directory
 
-In the fixed shell header, render the mark at `size-brand-mark` (24px). Keep it a brand asset, not a navigation icon. Align its left edge to the collapsed rail position in both sidebar states; the brand label may move independently.
+In the fixed shell header, render the mark at `size-brand-mark` (24px). Keep it a brand asset, not a navigation icon. Center it on the `size-shell-column` icon column in both expanded and collapsed desktop states; the brand label may move independently.

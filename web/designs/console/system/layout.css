@@ -7,10 +7,10 @@
 .side{background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0;overflow:hidden}
 .side-header{flex:none}
 .side-middle{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain}
-.brand{box-sizing:border-box;flex:none;height:var(--size-header);min-height:var(--size-header);display:flex;align-items:center;gap:var(--space-8);padding:var(--space-12) var(--space-16);font:var(--type-heading);border-bottom:1px solid var(--line)}
+.brand{box-sizing:border-box;flex:none;height:var(--size-header);min-height:var(--size-header);display:flex;align-items:center;gap:var(--space-8);padding:var(--space-12) var(--space-16);padding-inline-start:calc((var(--size-shell-column) - var(--size-brand-mark)) / 2);font:var(--type-heading);border-bottom:1px solid var(--line)}
 .brand .brand-logo{width:var(--size-brand-mark);height:var(--size-brand-mark)}
 .side-middle>.nav{border-bottom:1px solid var(--line)}
-.sidehead{display:flex;justify-content:space-between;align-items:center;padding:var(--space-12) var(--space-16) var(--space-8)}
+.sidehead{display:flex;justify-content:space-between;align-items:center;padding:var(--space-12) var(--space-12) var(--space-8)}
 .sidehead h2{margin:0;font:var(--type-label);font-weight:600}
 .side-search{margin:0 var(--space-12) var(--space-12)}
 .side-controls{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:var(--space-4)}
@@ -18,7 +18,6 @@
 .side-note{padding:var(--space-8);color:var(--muted);font:var(--type-label)}
 @container app (min-width:900px){
 .shell.nav-collapsed{grid-template-columns:var(--size-shell-rail) minmax(0,1fr)}
-.nav-collapsed .brand{justify-content:flex-start;padding:var(--space-12) var(--space-16)}
 .nav-collapsed .brand-label,.nav-collapsed .nav-label,.nav-collapsed .nav-item .count,.nav-collapsed .sidehead,.nav-collapsed .side-search,.nav-collapsed .side-list,.nav-collapsed .side-note{display:none}
 .nav-collapsed .nav{padding-inline:0}
 .nav-collapsed .nav-item{box-sizing:border-box;width:var(--size-shell-column);justify-content:center;padding-inline:0}

@@ -98,11 +98,11 @@ The Console system's `web/designs/console/system/README.md` is the component-lev
 
 ## Sidebar spacing audit (#91, 2026-11-23)
 
-- Heading inset: top `space-12`; horizontal `space-16` aligns the section title with the shell perimeter; bottom `space-8` is the compact title-to-controls row gap.
-- Search/filter/new controls: horizontal `space-12` is the component inset; internal control gap is `space-4`; bottom `space-12` separates the controls group from the Thread section bands.
-- Thread list: zero horizontal inset lets rows and full-width bands share an edge; `space-8` separates repeated bands/rows; bottom `space-12` is the list component inset.
+- Heading: `space-12` top and horizontal component inset aligns its left edge with the controls; `space-8` below keeps the title close to its controls row.
+- Search/filter/new controls: `space-12` horizontal component inset; `space-4` between related controls; `space-12` below separates the controls group from Thread bands.
+- Thread list: zero horizontal inset keeps the band full-width; `space-8` separates repeated bands/rows; `space-12` below is the list component inset. Band content uses ThreadGroup's own inset.
 
-All values map to the existing Layout contract; no new spacing token or component is needed.
+The left-edge choice is resolved by the Layout contract's shared content edge: the heading aligns with the controls inset at `space-12`. No additional placement needs a new token or user decision.
 
 ## Validation record (2026-11-07)
 
