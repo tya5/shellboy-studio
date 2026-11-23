@@ -8,7 +8,6 @@ use std::{
     },
     path::{Path, PathBuf},
     ptr::null_mut,
-    time::Duration,
 };
 use tokio::process::{Child, Command as Process};
 use windows_sys::Win32::{
