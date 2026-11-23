@@ -41,7 +41,7 @@ describe('right panel purpose',()=>{
   let reveal: (() => void) | undefined;
   vi.stubGlobal('ResizeObserver', class extends original {
     constructor(cb: ResizeObserverCallback) { super(cb); reveal = () => cb([], this); }
-    observe(node: Element) { if (node.matches('[data-panel-root]')) reveal?.(); }
+    override observe(node: Element) { if (node.matches('[data-panel-root]')) reveal?.(); }
   });
   const f=await setup(['attachment.list.page','artifact.list.page']);
   const at='2026-11-21T00:00:00Z';
