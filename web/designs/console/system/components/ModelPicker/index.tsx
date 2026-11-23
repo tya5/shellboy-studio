@@ -1,5 +1,5 @@
 import type { AppModel } from "../../../../../ui-core/src";
-import { Button, Field, Notice } from "..";
+import { Button, Field, MonitorPopover, Notice } from "..";
 import { ConnectionModelList, modelLabel } from "./ConnectionModelList";
 import { EffortControl } from "./EffortControl";
 
@@ -10,20 +10,21 @@ export function ModelPicker({ model, details }: { model: AppModel; details: Deta
   const t = model.t.value;
   const picker = model.modelPicker.value;
   const canEdit = model.data.capabilities.value.includes("thread.settings");
-  return <div class="model-picker-anchor">
-    <Button aria-expanded={picker.open} aria-haspopup="dialog" onClick={() => picker.open ? model.closeModelPicker() : model.openModelPicker()}>{modelLabel(details)} · {details.effort || t("model.effort.default")}</Button>
-    {picker.open ? <div class="model-picker" role="dialog" aria-label={t("model.change")} onKeyDown={(event) => { if (event.key === "Escape") model.closeModelPicker(); }}>
+  const disabled = picker.saving || !canEdit;
+  const choices = picker.models.some(row => row.connection === details.connection && row.model === details.model)
+    ? picker.models : [details, ...picker.models];
+  return <MonitorPopover className="model-picker-anchor" label={`${modelLabel(details)} · ${details.effort || t("model.effort.default")}`}
+    controlled={{ open: picker.open, toggle: () => picker.open ? model.closeModelPicker() : model.openModelPicker(), close: () => model.closeModelPicker(), panelClass: "model-picker", panelLabel: t("model.change") }}>
       <p class="caption muted">{t("model.note")}</p>
-      <label>{t("model.connection")}<select value={picker.connection} disabled={picker.saving || !canEdit} onChange={(event) => model.chooseModelConnection(event.currentTarget.value)}>{[...new Set([picker.connection, ...Object.keys((model.config.read.value.value?.loaded.values?.connections as Record<string, unknown> | undefined) ?? {})])].filter(Boolean).map((connection) => <option value={connection}>{connection}</option>)}</select></label>
-      <ConnectionModelList choices={picker.models.map((item) => ({ connection: picker.connection, model: item }))} selected={{ connection: picker.connection, model: picker.model }} searchLabel={t("model.search")} emptyLabel={picker.loading ? t("common.loading") : t("model.empty")} disabled={picker.saving || !canEdit} query={picker.model === details.model ? "" : picker.model} onQuery={(value) => { model.modelPicker.value = { ...model.modelPicker.peek(), model: value }; }} onSelect={({ model: value }) => { model.modelPicker.value = { ...model.modelPicker.peek(), model: value }; }} />
-      <EffortControl label={t("model.effort")} value={picker.effort} labels={{ default: t("model.effort.default"), low: "low", medium: "medium", high: "high", other: t("model.effort.other") }} disabled={picker.saving || !canEdit} onSelect={(effort) => { model.modelPicker.value = { ...model.modelPicker.peek(), effort }; }} onInput={(effort) => { model.modelPicker.value = { ...model.modelPicker.peek(), effort }; }} onCommit={(effort) => { model.modelPicker.value = { ...model.modelPicker.peek(), effort }; }} />
+      <ConnectionModelList choices={choices} selected={details} searchLabel={t("model.search")} emptyLabel={picker.loading ? t("common.loading") : t("model.empty")} disabled={disabled} onSelect={choice => void model.selectPickerModel(choice)} />
+      {picker.catalogErrors.map((error, index) => <Notice key={index} tone="bad">{error}</Notice>)}
+      <EffortControl label={t("model.effort")} value={details.effort ?? ""} labels={{ default: t("model.effort.default"), low: "low", medium: "medium", high: "high", other: t("model.effort.other") }} disabled={disabled} explicitCommit onSelect={effort => void model.selectPickerEffort(effort)} onCommit={effort => void model.selectPickerEffort(effort)} />
       {!canEdit ? <Notice tone="wait">{t("thread.readOnly")}</Notice> : null}
       <p class="caption muted">{t("thread.inherited")}</p>
       {([["autoCompactAt", "thread.auto"], ["maxTokens", "thread.maxTokens"], ["agents", "thread.agents"]] as const).map(([key, label]) => <label>{t(label)}<Field ariaLabel={t(label)} value={picker[key]} placeholder={key !== "agents" && model.effectiveThreadSettings.value[key] !== undefined ? t("thread.effective", { value: model.effectiveThreadSettings.value[key]! }) : undefined} disabled={picker.saving || !canEdit} onInput={(event) => { if (key === "maxTokens") model.editThreadOutputLimit(event.currentTarget.value); else model.modelPicker.value = { ...model.modelPicker.peek(), [key]: event.currentTarget.value }; }} /></label>)}
       {picker.maxTokensState.kind === "unknown" && !picker.clearMaxTokens ? <><p class="caption muted">{t("thread.outputLimitUnknown")}</p><Button disabled={picker.saving || !canEdit} onClick={() => model.clearThreadOutputLimit()}>{t("thread.clearOutputLimit")}</Button></> : <p class="caption muted">{t("thread.outputLimitNote")}</p>}
       <p class="caption muted">{t("thread.agentsTiming")}</p>
       {picker.error ? <Notice tone="bad">{picker.error}</Notice> : null}
-      <div class="model-picker-actions"><Button disabled={picker.saving} onClick={() => model.closeModelPicker()}>{t("model.close")}</Button><Button variant="primary" disabled={!canEdit || picker.saving || !picker.model.trim()} onClick={() => void model.saveThreadModel()}>{t("model.save")}</Button></div>
-    </div> : null}
-  </div>;
+      <div class="model-picker-actions"><Button disabled={picker.saving} onClick={() => model.closeModelPicker()}>{t("model.close")}</Button><Button variant="primary" disabled={!canEdit || picker.saving} onClick={() => void model.saveThreadModel()}>{t("model.saveAdvanced")}</Button></div>
+  </MonitorPopover>;
 }

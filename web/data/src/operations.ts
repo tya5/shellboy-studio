@@ -456,7 +456,7 @@ export class Operations {
     return this.run("model.list", args, outcomeDecoder(decodeModelList), undefined, read);
   }
   /** Update only model settings for this Thread; owner validates values. */
-  setThreadModel(threadId: string, changes: { model: string; connection: string; effort?: string; agents?: string; auto_compact_at?: string; max_tokens?: string }): Promise<Outcome<ThreadDetails>> {
+  setThreadModel(threadId: string, changes: { model?: string; connection?: string; effort?: string; agents?: string; auto_compact_at?: string; max_tokens?: string }): Promise<Outcome<ThreadDetails>> {
     return this.run("thread.set", { thread_id: threadId, ...changes }, outcomeDecoder(decodeDetails), { operationId: this.newId() });
   }
   /** One page of a Thread's family: ancestors, then breadth first. */

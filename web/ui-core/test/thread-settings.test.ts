@@ -40,8 +40,9 @@ it('uses owner readback for set, reopen, explicit empty clear and inherited effe
   r.model.openModelPicker();await settle(r.t,r.db);
   expect(r.model.modelPicker.peek()).toMatchObject({maxTokens:''});
   expect(r.model.effectiveThreadSettings.peek()).toMatchObject({maxTokens:8192});
-  const unchanged=r.model.saveThreadModel();await settle(r.t,r.db);await unchanged;
-  expect(r.t.calls('thread.set').at(-1)!.args).not.toHaveProperty('max_tokens');
+  const writes=r.t.calls('thread.set').length;
+  await r.model.saveThreadModel();
+  expect(r.t.calls('thread.set')).toHaveLength(writes);
  }finally{r.model.dispose();r.data.stop();}
 });
 it('owner rejection preserves draft, observed settings and original error without retry',async()=>{
@@ -68,8 +69,7 @@ it('leaves unknown large override unchanged on unrelated save, but honors explic
  try{
   r.model.openModelPicker();await settle(r.t,r.db);
   expect(r.model.modelPicker.peek()).toMatchObject({maxTokens:'',maxTokensState:{kind:'unknown'}});
-  r.model.modelPicker.value={...r.model.modelPicker.peek(),effort:'high'};
-  const other=r.model.saveThreadModel();await settle(r.t,r.db);await other;
+  const other=r.model.selectPickerEffort('high');await settle(r.t,r.db);await other;
   expect(r.t.calls('thread.set').at(-1)!.args).not.toHaveProperty('max_tokens');
   r.model.openModelPicker();await settle(r.t,r.db);
   r.model.clearThreadOutputLimit();

@@ -997,7 +997,7 @@ describe("Threads", () => {
     try {
       const el = draw(model);
       const trigger = () => el.querySelector<HTMLButtonElement>(".model-picker-anchor > button")!;
-      const choices = () => Array.from(el.querySelectorAll<HTMLOptionElement>(".model-picker select option"), option => option.value);
+      const choices = () => [...new Set(Array.from(el.querySelectorAll(".model-picker-list button"), button => button.textContent!.split(" / ")[0]))];
       expect(t.calls("config.get")).toHaveLength(0);
       await act(async () => { trigger().click(); await settle(t, db); });
       expect(t.calls("config.get")).toHaveLength(1);

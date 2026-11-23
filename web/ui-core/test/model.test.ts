@@ -270,25 +270,20 @@ describe("AppModel over the fake transport", () => {
 
   it("lists models and sends only this Thread's model settings, retaining the saved display on failure", async () => {
     const { model, t, db } = await fixtureModel({ capabilities: ["thread.settings"] });
-    const before = model.details.value!.model;
+    const before = model.details.value!;
     model.openModelPicker();
     await settle(t, db);
-    expect(model.modelPicker.value.models).toEqual(["mock-large", "mock-small"]);
-    model.modelPicker.value = { ...model.modelPicker.value, model: "custom-id", effort: "high" };
-    const save = model.saveThreadModel();
-    await settle(t, db);
-    await save;
-    const call = t.calls("thread.set").at(-1)!;
-    expect(call.args).toEqual({ thread_id: "lead", connection: model.details.value!.connection, model: "custom-id", effort: "high" });
-    model.openModelPicker();
-    await settle(t, db);
+    const [choice, second] = model.modelPicker.value.models;
+    expect(choice).toEqual({ connection: before.connection, model: "mock-large" });
+    const save = model.selectPickerModel(choice!);
+    await settle(t, db); await save;
+    expect(t.calls("thread.set").at(-1)!.args).toEqual({ thread_id: "lead", ...choice });
+    expect(model.details.value!.model).toBe(before.model);
     const answer = db.answer.bind(db);
     db.answer = (c) => c.command === "thread.set" ? { ok: false, code: "invalid_argument", message: "Rejected" } : answer(c);
-    model.modelPicker.value = { ...model.modelPicker.value, model: "bad-id" };
-    const failed = model.saveThreadModel();
-    await settle(t, db);
-    await failed;
-    expect(model.details.value!.model).toBe(before);
+    const failed = model.selectPickerModel(second!);
+    await settle(t, db); await failed;
+    expect(model.details.value!.model).toBe(before.model);
     expect(model.modelPicker.value.error).toContain("Rejected");
     model.dispose();
   });
@@ -298,7 +293,7 @@ describe("AppModel over the fake transport", () => {
     try {
       model.openModelPicker();
       await settle(t, db);
-      model.modelPicker.value = { ...model.modelPicker.value, model: "aba-model", effort: "high" };
+      const choice = model.modelPicker.value.models[0]!;
       const owner = model.data.owner.peek();
       if (owner.state !== "connected") throw new Error("picker ABA requires connected owner");
       const ownerA = owner;
@@ -312,7 +307,7 @@ describe("AppModel over the fake transport", () => {
       const restoredOwner = model.data.owner.peek();
       expect(restoredOwner.state).toBe("connected");
       if (restoredOwner.state === "connected") expect(restoredOwner.info.instance_id).toBe(ownerA.info.instance_id);
-      await model.saveThreadModel();
+      await model.selectPickerModel(choice);
       expect(t.calls("thread.set")).toHaveLength(0);
     } finally { model.dispose(); }
   });
