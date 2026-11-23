@@ -29,6 +29,7 @@ export const PAGE_LIMIT = 50;
 export const MAX_LIST_ROWS = 1000;
 /** The owner reads `history.window` (Shellboy #268). With it, history is read by position and never walked. */
 export const CAPABILITY_HISTORY_WINDOW = "history.window";
+const CAPABILITY_THREAD_TAGS = "thread.tags";
 
 export interface Resource<T> {
   value: T | undefined;
@@ -150,6 +151,13 @@ function mergeRows(first: readonly ThreadSummary[], then: readonly ThreadSummary
   return out;
 }
 
+function rememberRows(previous: ReadonlyMap<string, ThreadSummary>, rows: readonly ThreadSummary[]): Map<string, ThreadSummary> {
+  const next = new Map(previous);
+  for (const row of rows) { next.delete(row.thread_id); next.set(row.thread_id, row); }
+  while (next.size > MAX_LIST_ROWS) next.delete(next.keys().next().value!);
+  return next;
+}
+
 export class ShellboyData {
   readonly link: Link;
   readonly operations: Operations;
@@ -167,6 +175,8 @@ export class ShellboyData {
   private readonly invalidSig = signal<{ count: number; last: string | undefined }>({ count: 0, last: undefined });
   private readonly bridgeErrorSig = signal<{ code: string; message: string } | undefined>(undefined);
   private readonly listSig = signal<ThreadListState>(emptyPaged());
+  private readonly threadRowsSig = signal<ReadonlyMap<string, ThreadSummary>>(new Map());
+  private readonly pinnedThreadsSig = signal<readonly ThreadSummary[]>([]);
   private readonly filterSig = signal<ListFilter>({});
   private listRefs = 0;
   private listGen = 0;
@@ -193,6 +203,8 @@ export class ShellboyData {
   /** Last `error` frame from the bridge (e.g. an invalid watch). */
   readonly bridgeError: ReadonlySignal<{ code: string; message: string } | undefined>;
   readonly threadList: ReadonlySignal<ThreadListState>;
+  readonly threadRows: ReadonlySignal<ReadonlyMap<string, ThreadSummary>>;
+  readonly pinnedThreads: ReadonlySignal<readonly ThreadSummary[]>;
   readonly listFilter: ReadonlySignal<ListFilter>;
 
   constructor(options: DataOptions) {
@@ -215,6 +227,8 @@ export class ShellboyData {
     this.invalidFrames = this.invalidSig;
     this.bridgeError = this.bridgeErrorSig;
     this.threadList = this.listSig;
+    this.threadRows = this.threadRowsSig;
+    this.pinnedThreads = this.pinnedThreadsSig;
     this.listFilter = this.filterSig;
     this.link.subscribe((e) => this.onEvent(e));
   }
@@ -256,7 +270,10 @@ export class ShellboyData {
     this.listRefs++;
     if (this.listRefs === 1) {
       this.scheduleWatch();
-      if (this.canRead()) void this.refresher.request("list");
+      if (this.canRead()) {
+        void this.refresher.request("list");
+        if (this.capabilities.peek().includes(CAPABILITY_THREAD_TAGS)) void this.refresher.request("pinned");
+      }
       else this.listSig.value = { ...this.listSig.value, stale: this.listSig.value.loaded };
     }
     let closed = false;
@@ -274,6 +291,7 @@ export class ShellboyData {
     this.filterSig.value = { ...filter };
     this.listCancel?.cancel();
     if (this.listRefs > 0 && this.canRead()) void this.refresher.requestFresh("list");
+    if (this.capabilities.peek().includes(CAPABILITY_THREAD_TAGS)) void this.refresher.requestFresh("pinned");
   }
 
   refreshThreadList(): Promise<void> {
@@ -298,6 +316,9 @@ export class ShellboyData {
     this.listSig.value = out.ok
       ? { ...now, items: mergeRows(now.items, out.value.items), nextCursor: out.value.next_cursor, loadingMore: false, error: undefined }
       : { ...now, loadingMore: false, error: out.error };
+    if (out.ok) {
+      this.threadRowsSig.value = rememberRows(this.threadRowsSig.peek(), out.value.items);
+    }
   }
 
   /** Track one Thread (detail, history, live preview). Throws past MAX_WATCHED_THREADS. */
@@ -309,7 +330,7 @@ export class ShellboyData {
       entry = new ThreadEntry(threadId, this.schedule, nextOrdinal);
       this.entries.set(threadId, entry);
       this.scheduleWatch();
-      if (this.canRead()) this.requestThread(threadId);
+      if (this.canRead()) { this.requestThread(threadId); void this.refreshThreadRows([threadId], false); }
       else batch(() => {
         entry!.detail.value = { ...entry!.detail.value, stale: true };
       });
@@ -409,7 +430,10 @@ export class ShellboyData {
   /** Re-read everything tracked (what `resync` and `owner: restarted` trigger). */
   resyncAll(): Promise<void> {
     const jobs: Promise<void>[] = [];
-    if (this.listRefs > 0) jobs.push(this.refresher.request("list"));
+    if (this.listRefs > 0) {
+      jobs.push(this.refresher.request("list"));
+      if (this.capabilities.peek().includes(CAPABILITY_THREAD_TAGS)) jobs.push(this.refresher.request("pinned"));
+    }
     for (const id of this.entries.keys()) jobs.push(this.requestThread(id));
     return Promise.all(jobs).then(() => undefined);
   }
@@ -431,6 +455,7 @@ export class ShellboyData {
           this.desktopDiagnosticSig.value = null;
           this.ownerSig.value = { state: "unknown" };
           this.markAllStale();
+          this.threadRowsSig.value = new Map(); this.pinnedThreadsSig.value = [];
           this.discardAllPreviews("connection_closed");
         });
         break;
@@ -474,10 +499,14 @@ export class ShellboyData {
       case "changed":
         // Hints are not data: re-read the saved facts. Untracked Threads are ignored.
         if (f.config_changed) this.configChanged.value++;
-        if (f.list) { this.listHint.value++; if (this.listRefs > 0) void this.refresher.request("list"); }
+        if (f.list) {
+          this.listHint.value++;
+          if (this.listRefs > 0 && this.capabilities.peek().includes(CAPABILITY_THREAD_TAGS)) void this.refresher.request("pinned");
+        }
+        if (f.list && f.thread_ids.length) void this.refreshThreadRows(f.thread_ids, true);
         for (const id of f.thread_ids) {
           for (const notify of this.hintWatchers.get(id) ?? []) notify();
-          this.refreshHint(id);
+          if (this.entries.has(id)) void this.requestThread(id);
         }
         break;
       case "live":
@@ -503,7 +532,11 @@ export class ShellboyData {
   private setOwner(owner: OwnerState): void {
     ++this.readQualificationEpoch;
     const previous = this.ownerSig.peek();
-    if (previous.state === "connected" && owner.state === "connected" && previous.info.instance_id !== owner.info.instance_id) this.discardAllPreviews("owner_restarted");
+    if (previous.state === "connected" && owner.state === "connected" && previous.info.instance_id !== owner.info.instance_id) {
+      this.discardAllPreviews("owner_restarted");
+      this.threadRowsSig.value = new Map(); this.pinnedThreadsSig.value = [];
+    }
+    if (owner.state === "unreachable") { this.threadRowsSig.value = new Map(); this.pinnedThreadsSig.value = []; }
     this.ownerSig.value = owner;
     if (owner.state === "unreachable") {
       this.markAllStale();
@@ -564,7 +597,8 @@ export class ShellboyData {
   }
 
   private async read(key: string, onSent: () => void): Promise<void> {
-    if (key === "list") return this.readList(onSent);
+    if (key === "pinned") return this.readPinned(onSent);
+    if (key.startsWith("list")) return this.readList(onSent, key === "list-shape");
     const sep = key.indexOf(":");
     const kind = key.slice(0, sep);
     const entry = this.entries.get(key.slice(sep + 1));
@@ -577,13 +611,23 @@ export class ShellboyData {
 
   private listCancel: Cancel | undefined;
 
-  private async readList(onSent: () => void): Promise<void> {
+  private async readPinned(onSent: () => void): Promise<void> {
+    if (this.listRefs === 0 || !this.capabilities.peek().includes(CAPABILITY_THREAD_TAGS)) return;
+    const epoch = this.readQualificationEpoch;
+    const filter = this.filterSig.value;
+    const out = await this.operations.threadList({ ...listArgs(filter), tags: [...(filter.tags ?? []), "pin"], limit: PAGE_LIMIT }, { onSent });
+    if (!out.ok || epoch !== this.readQualificationEpoch || this.listRefs === 0) return;
+    this.pinnedThreadsSig.value = out.value.items;
+    this.threadRowsSig.value = rememberRows(this.threadRowsSig.peek(), out.value.items);
+  }
+
+  private async readList(onSent: () => void, shapeOnly = false): Promise<void> {
     if (this.listRefs === 0) return;
     const gen = ++this.listGen;
     const filter = this.filterSig.value;
     const epoch = this.readQualificationEpoch;
     const previous = this.listSig.value;
-    const pages = previous.filter === filter ? Math.max(1, Math.ceil(previous.items.length / PAGE_LIMIT)) : 1;
+    const pages = shapeOnly || previous.filter !== filter ? 1 : Math.max(1, Math.ceil(previous.items.length / PAGE_LIMIT));
     this.listSig.value = { ...previous, loading: true, loadingMore: false };
     const cancel = this.listCancel = new Cancel();
     let items: ThreadSummary[] = [];
@@ -604,7 +648,9 @@ export class ShellboyData {
       cursor = out.value.next_cursor;
       if (!cursor || items.length >= MAX_LIST_ROWS) break;
     }
-    this.listSig.value = { filter, items, nextCursor: cursor, loaded: true, loading: false, loadingMore: false, stale: false, error: undefined };
+    const published = shapeOnly && previous.filter === filter ? mergeRows(items, previous.items) : items;
+    this.listSig.value = { filter, items: published, nextCursor: shapeOnly ? previous.nextCursor : cursor, loaded: true, loading: false, loadingMore: false, stale: false, error: undefined };
+    this.threadRowsSig.value = rememberRows(this.threadRowsSig.peek(), published);
   }
 
   private async readDetail(entry: ThreadEntry, onSent: () => void): Promise<void> {
@@ -624,8 +670,29 @@ export class ShellboyData {
       : { ...cur, loading: false, stale: cur.value !== undefined, error: out.error };
   }
 
-  private refreshHint(id: string): void {
-    if (this.entries.has(id)) void this.requestThread(id);
+  private async refreshThreadRows(ids: readonly string[], listChanged: boolean): Promise<void> {
+    if (!ids.length || !this.canRead()) return;
+    const epoch = this.readQualificationEpoch;
+    const before = this.threadRowsSig.peek();
+    const out = await this.operations.threadList({ thread_ids: [...new Set(ids)] });
+    if (!out.ok || epoch !== this.readQualificationEpoch) return;
+    const returned = new Map(out.value.items.map(row => [row.thread_id, row]));
+    const shapeChanged = ids.some(id => {
+      const old = before.get(id); const current = returned.get(id);
+      return !old || !current || old.parent_id !== current.parent_id;
+    });
+    const next = new Map(before);
+    for (const row of out.value.items) { next.delete(row.thread_id); next.set(row.thread_id, row); }
+    for (const id of ids) if (!returned.has(id)) next.delete(id);
+    while (next.size > MAX_LIST_ROWS) next.delete(next.keys().next().value!);
+    batch(() => {
+      this.threadRowsSig.value = next;
+      const list = this.listSig.peek();
+      if (list.loaded && list.items.some(row => ids.includes(row.thread_id))) {
+        this.listSig.value = { ...list, items: list.items.filter(row => !ids.includes(row.thread_id) || returned.has(row.thread_id)).map(row => returned.get(row.thread_id) ?? row) };
+      }
+    });
+    if (listChanged && shapeChanged && this.listRefs > 0) void this.refresher.request("list-shape");
   }
 
   /** ADR-C1: one resolver, at most eight starts until explicit retry/open. Hints never refill. */

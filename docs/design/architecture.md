@@ -218,8 +218,13 @@ Views below are data-layer view models; their layout belongs to presentation.
 
 ### 4.1 Views
 
-- **Thread list**: from `thread.list`, re-read on a `changed` with `list`.
-  Activity and state words come from the owner's fields, not recomputed.
+- **Thread list and status surfaces (#94/#96)**: list pages supply membership and
+  ordering. Every changed Thread summary is re-read by `thread.list.thread_ids`
+  and patches only that row; new, removed, or re-parented rows refresh page one.
+  The sidebar pin band uses a bounded `tags:["pin"]` list. Monitor, open-Thread
+  status, pinned tiles, and Inbox titles/counts use exact owner summaries. Activity
+  and state words come from the owner's fields, not recomputed. Resync and owner
+  transitions use the existing resync path; there are no timed refreshes.
 - **Conversation**: `history.list` pages (cursor-based, newest page first) with
   Markdown rendering of model and user text, code blocks with highlighting and
   a copy button. Tool calls render as collapsible rows (collapsed by default

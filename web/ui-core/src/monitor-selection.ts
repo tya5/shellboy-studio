@@ -67,15 +67,12 @@ export class MissingPins {
       if (!id) break;
       this.pending.delete(id);
       const cancel = new Cancel(); this.running.set(id, cancel);
-      void this.ops.threadGet(id, { cancel }).then((out) => {
+      void this.ops.threadList({ thread_ids: [id] }, { cancel }).then((out) => {
         if (cancel.cancelled || !this.wanted.has(id)) return;
-        if (!out.ok) {
-          if (out.error.kind === "owner" && out.error.code === "not_found") this.deleted.value = [...new Set([...this.deleted.peek(), id])];
-          return;
-        }
-        const d = out.value;
-        const field = (key: string) => typeof d[key] === "string" ? d[key] as string : "";
-        this.facts.set(id, { thread_id: id, title: d.title, cwd: d.cwd ?? "", state: field("state"), activity: field("activity"), updated_at: field("updated_at"), excerpt: "", ...(d.archived_at ? { archived_at: d.archived_at } : {}) });
+        if (!out.ok) return;
+        const d = out.value.items[0];
+        if (!d) { this.deleted.value = [...new Set([...this.deleted.peek(), id])]; return; }
+        this.facts.set(id, d);
         this.publish();
       }).finally(() => { this.running.delete(id); this.pump(); });
     }

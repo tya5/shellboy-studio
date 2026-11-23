@@ -116,7 +116,6 @@ pub async fn run_with_guide<O: Owner>(
         backoff = config.backoff_min;
         announced_unreachable = false;
         let restarted = last_instance.is_some() && instance != last_instance;
-        let reconnected = !connected_now && last_instance.is_some();
         let owner_transition = if !connected_now || restarted {
             #[cfg(feature = "next-shellboy")]
             if let (Some((config_dir, data_dir)), Some(instance_id)) = (&guide, &instance) {
@@ -159,6 +158,7 @@ pub async fn run_with_guide<O: Owner>(
         let changes = matches!(result.status, EventsWaitStatus::Changed)
             .then_some(result.changes.as_slice())
             .unwrap_or_default();
+        let owner_changed = owner_transition.is_some();
         hub.apply_events(
             owner_transition,
             changes.iter().map(|change| change.thread_id.as_str()),
@@ -166,9 +166,7 @@ pub async fn run_with_guide<O: Owner>(
             result.attempt_ends.unwrap_or_default(),
             EventUpdate {
                 reset,
-                resync: restarted
-                    || reconnected
-                    || matches!(result.status, EventsWaitStatus::ResyncRequired),
+                resync: owner_changed || matches!(result.status, EventsWaitStatus::ResyncRequired),
                 config_changed: result.config_changed,
             },
         );

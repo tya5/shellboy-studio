@@ -555,6 +555,7 @@ async fn new_tabs_start_from_the_current_owner_state_and_hear_about_changes() {
     expected.push("artifact.list.page");
     let expected = json!(expected);
     assert_eq!(event["owner"]["info"]["capabilities"], expected);
+    assert_eq!(next_t(&mut early, "resync").await["t"], "resync");
     let mut late = connect(addr, Some(&cookie), Some(&origin)).await.unwrap();
     let late_hello = next_t(&mut late, "hello").await;
     assert_eq!(late_hello["owner"]["state"], "connected");

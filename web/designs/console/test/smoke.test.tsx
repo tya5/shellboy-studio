@@ -262,9 +262,11 @@ describe("Conversation live text", () => {
       const list = [...Array.from({ length: 50 }, (_, i) => summary(`first-${i}`)), { ...db.threads.lead!, activity: "completed" }];
       const base = db.answer.bind(db);
       db.answer = call => call.command === "thread.list"
-        ? ((call.args as { cursor?: string }).cursor
-          ? { ok: true, result: { items: [{ ...db.threads.lead!, activity: db.threads.lead!.activity }] } }
-          : { ok: true, result: { items: list.slice(0, 50), next_cursor: "page-two" } })
+        ? ((call.args as { thread_ids?: string[]; cursor?: string }).thread_ids
+          ? { ok: true, result: { items: (call.args as { thread_ids: string[] }).thread_ids.flatMap(id => db.threads[id] ? [db.threads[id]] : []) } }
+          : (call.args as { cursor?: string }).cursor
+            ? { ok: true, result: { items: [{ ...db.threads.lead!, activity: db.threads.lead!.activity }] } }
+            : { ok: true, result: { items: list.slice(0, 50), next_cursor: "page-two" } })
         : base(call);
       db.threads.lead = list[50]!;
     } });
@@ -664,7 +666,7 @@ describe("Monitor", () => {
     act(() => running.click());
     const before = [...el.querySelectorAll(".card h2")].map(text);
     db.threads.lead = { ...db.threads.lead!, activity: "completed", state: "completed" };
-    act(() => t.push({ t: "changed", config_changed: false, thread_ids: [], list: true }));
+    act(() => t.push({ t: "changed", config_changed: false, thread_ids: ["lead"], list: true }));
     await act(async () => settle(t, db));
     expect([...el.querySelectorAll(".card h2")].map(text)).toEqual(before);
     expect(text(el)).toContain("No longer matches the filter");
