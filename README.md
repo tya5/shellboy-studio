@@ -211,9 +211,11 @@ On Apple silicon with macOS 14 or later, unzip `shellboy-studio-desktop-vX.Y.Z-a
 
 The existing CLI archives remain available. A desktop candidate ZIP names both exact commits; it is for testing and is not a release. The release desktop ZIP requires an already published Core release matching Studio's pin. CI only builds and checks the desktop ZIP; the user handles release publication.
 
-## Windows desktop candidate ZIP
+## Windows desktop ZIP
 
-Windows x64 device acceptance is **unverified**. Extract the entire candidate ZIP, keep `Shellboy Studio.exe` and `shellboy.exe` together, and double-click `Shellboy Studio.exe` to open the default browser. The bundled [Windows guide](docs/guides/windows-desktop.txt) covers SmartScreen, reopening, Exit, and startup diagnostics. This is an unsigned candidate, not a release; the separate console CLI is unchanged.
+On Windows x64, extract the entire `shellboy-studio-desktop-vX.Y.Z-x86_64-pc-windows-msvc.zip`, keep `Shellboy Studio.exe` and `shellboy.exe` together, and double-click `Shellboy Studio.exe` to open the default browser without a console. The launcher is unsigned. The bundled [Windows guide](docs/guides/windows-desktop.txt) covers SmartScreen, reopening, Exit, and startup diagnostics.
+
+The separate console CLI remains available. A desktop candidate ZIP names both exact commits; it is for testing and is not a release. The release desktop ZIP requires an already published Core release matching Studio's pin. See the release notes for which desktop packages were checked on real devices and what those checks covered.
 
 To use a TUI's existing config and data directory, give the desktop launcher Core's `--config PATH` and `--data-dir PATH` (same meaning and precedence as Core; relative paths start from the launch folder). On Windows, put them in a shortcut's Target, for example:
 
