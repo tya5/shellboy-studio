@@ -115,3 +115,36 @@ it("cycles repeated initials and clears typeahead when closed", async () => {
   expect(document.activeElement).toBe(document.querySelectorAll<HTMLElement>('[role="menuitem"]')[2]);
   render(null, host); host.remove(); anchor.remove();
 });
+
+it("reserves one icon column for every item and marks toggle items as checked menu checkboxes", async () => {
+  const host = document.createElement("div");
+  const anchor = document.createElement("button");
+  anchor.id = "column-trigger";
+  document.body.append(host, anchor);
+  act(() => render(<Menu open anchor={anchor} id="column-menu" labelledBy="column-trigger" onClose={() => {}} entries={[
+    { key: "rename", label: "Rename", icon: "thread.rename" },
+    { key: "plain", label: "No icon" },
+    { key: "awaiting", label: "Awaiting you", checked: true },
+    { key: "archived", label: "Include archived", checked: false },
+  ]} />, host));
+  await act(async () => { await Promise.resolve(); });
+  const items = [...document.body.querySelectorAll<HTMLElement>("#column-menu .menu-item")];
+  expect(items.map((item) => item.firstElementChild?.classList.contains("menu-item-icon"))).toEqual([true, true, true, true]);
+  expect(items[1]!.querySelector(".menu-item-icon .i")).toBeNull();
+  expect(items.map((item) => item.getAttribute("role"))).toEqual(["menuitem", "menuitem", "menuitemcheckbox", "menuitemcheckbox"]);
+  expect(items.map((item) => item.getAttribute("aria-checked"))).toEqual([null, null, "true", "false"]);
+  expect(items[2]!.querySelector(".menu-item-icon .i")).not.toBeNull();
+  expect(items[3]!.querySelector(".menu-item-icon .i")).toBeNull();
+  render(null, host); host.remove(); anchor.remove();
+});
+
+it("leaves menus without icons or checks without an icon column", async () => {
+  const host = document.createElement("div");
+  const anchor = document.createElement("button");
+  anchor.id = "plain-trigger";
+  document.body.append(host, anchor);
+  act(() => render(<Menu open anchor={anchor} id="plain-menu" labelledBy="plain-trigger" onClose={() => {}} entries={[{ key: "a", label: "A" }, { key: "b", label: "B" }]} />, host));
+  await act(async () => { await Promise.resolve(); });
+  expect(document.body.querySelector("#plain-menu .menu-item-icon")).toBeNull();
+  render(null, host); host.remove(); anchor.remove();
+});

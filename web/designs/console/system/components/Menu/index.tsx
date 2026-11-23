@@ -3,7 +3,7 @@ import type { ComponentChildren } from "preact";
 import { Popover } from "../Popover";
 import { Icon, type IconRole } from "../Icon";
 
-export type MenuItem = { key: string; label: string; icon?: IconRole; onSelect?: (focusReturn: HTMLElement | null, placementAnchor: HTMLElement | null) => void; href?: string; destructive?: boolean; disabled?: boolean; keepOpen?: boolean };
+export type MenuItem = { key: string; label: string; icon?: IconRole; /** Present for a toggle item (`menuitemcheckbox`); true shows the check. */ checked?: boolean; onSelect?: (focusReturn: HTMLElement | null, placementAnchor: HTMLElement | null) => void; href?: string; destructive?: boolean; disabled?: boolean; keepOpen?: boolean };
 export type MenuEntry = MenuItem | { key: string; separator: true };
 
 export const isMenuOpenKey = (key: string): boolean => key === "ArrowDown" || key === "Enter" || key === " ";
@@ -23,7 +23,7 @@ export function Menu({ open, anchor, returnFocusTo, entries, onClose, id, labell
       typeahead.current = "";
     };
   }, [open, openMethod]);
-  const items = () => [...(menu.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? [])];
+  const items = () => [...(menu.current?.querySelectorAll<HTMLElement>('[role="menuitem"],[role="menuitemcheckbox"]') ?? [])];
   const focused = useRef<{ node: HTMLElement; index: number }>();
   useLayoutEffect(() => {
     if (!open) { focused.current = undefined; return; }
@@ -48,6 +48,9 @@ export function Menu({ open, anchor, returnFocusTo, entries, onClose, id, labell
     ordered.find((item) => item.textContent?.trim().toLocaleLowerCase().startsWith(typeahead.current))?.focus();
   };
   const available = entries.filter((entry) => isSeparator(entry) || !entry.disabled);
+  // One icon column for every item as soon as any item has an icon or a check, so all labels share a left edge.
+  const column = available.some((entry) => !isSeparator(entry) && (entry.icon !== undefined || entry.checked !== undefined));
+  const lead = (entry: MenuItem) => !column ? null : <span class="menu-item-icon">{entry.checked ? <Icon role="menu.checked" size="menu" /> : entry.checked === undefined && entry.icon ? <Icon role={entry.icon} size="menu" /> : null}</span>;
   return <Popover open={open} anchor={anchor} returnFocusTo={returnFocusTo} onClose={onClose} className="menu-popover" pointerPosition={pointerPosition}>
     <div ref={menu} id={id} role="menu" aria-labelledby={labelledBy} tabIndex={-1} onFocusIn={event => {
       const node = event.target as HTMLElement;
@@ -61,7 +64,7 @@ export function Menu({ open, anchor, returnFocusTo, entries, onClose, id, labell
       else if (event.key === "Enter" || event.key === " ") { event.preventDefault(); (document.activeElement as HTMLElement)?.click(); }
       else if (event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) typeTo(event.key);
     }}>
-      {available.map((entry) => isSeparator(entry) ? <div key={entry.key} class="menu-separator" role="separator" /> : entry.href ? <a key={entry.key} role="menuitem" tabIndex={-1} class={entry.destructive ? "menu-item menu-item-destructive" : "menu-item"} href={entry.href} onClick={() => { onClose(); document.getElementById(labelledBy)?.focus(); }}>{entry.icon ? <span class="menu-item-icon"><Icon role={entry.icon} size="menu" /></span> : null}<span>{entry.label}</span></a> : <button key={entry.key} type="button" role="menuitem" tabIndex={-1} class={entry.destructive ? "menu-item menu-item-destructive" : "menu-item"} onClick={() => { entry.onSelect?.(returnFocusTo ?? anchor, anchor); if (!entry.keepOpen) { onClose(); document.getElementById(labelledBy)?.focus(); } }}>{entry.icon ? <span class="menu-item-icon"><Icon role={entry.icon} size="menu" /></span> : null}<span>{entry.label}</span></button>)}
+      {available.map((entry) => isSeparator(entry) ? <div key={entry.key} class="menu-separator" role="separator" /> : entry.href ? <a key={entry.key} role="menuitem" tabIndex={-1} class={entry.destructive ? "menu-item menu-item-destructive" : "menu-item"} href={entry.href} onClick={() => { onClose(); document.getElementById(labelledBy)?.focus(); }}>{lead(entry)}<span>{entry.label}</span></a> : <button key={entry.key} type="button" role={entry.checked === undefined ? "menuitem" : "menuitemcheckbox"} aria-checked={entry.checked} tabIndex={-1} class={entry.destructive ? "menu-item menu-item-destructive" : "menu-item"} onClick={() => { entry.onSelect?.(returnFocusTo ?? anchor, anchor); if (!entry.keepOpen) { onClose(); document.getElementById(labelledBy)?.focus(); } }}>{lead(entry)}<span>{entry.label}</span></button>)}
     </div>
   </Popover>;
 }

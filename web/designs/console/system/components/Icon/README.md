@@ -19,6 +19,8 @@ Consumers use semantic `IconRole` names only. Glyph names, paths, and the role-t
 | `action.clearQueryFilter` | Clear the active query filter chip in Monitor. | `cross` |
 | `action.clearArchiveFilter` | Remove the archive filter chip in Monitor. | `cross` |
 | `row.menu` | Open a row’s action menu in the sidebar or Threads list. | `more` |
+| `menu.checked` | Show that a toggle item in a menu (`menuitemcheckbox`) is on. | Lucide `check` |
+| `composer.removeAttachment` | Remove one attachment token from the composer before sending. | `cross` |
 | `thread.create` | Create a new Thread from the sidebar. | `plus` |
 | `thread.search` | Find a Thread in the sidebar list. | `search` |
 | `settings.applicationPanel` | Open or close the application Settings panel from the main header. | `gear` |

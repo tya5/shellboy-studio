@@ -1,9 +1,9 @@
 # Menu
 
-- **Use for:** Open short actions via Popover; use semantic entry icons and dividers between distinct groups.
-- **Do not use for:** Use SettingRow in a Section for forms and ThreadDeleteDialog for singleton deletion confirmation.
-- **Why:** Menu provides keyboard traversal, typeahead and focus return; the caller, not Menu, owns action policy.
-- **Source:** [Studio row actions (shadcn/ui, Radix, APG)](../../patterns/row-actions.md)
+- **Use for:** Short actions opened from a ghost trigger through Popover, with semantic entry icons, toggle items (`checked`) for filters, and separators between distinct groups.
+- **Do not use for:** Use MoreMenu or a link for navigation (a route such as Branches never sits among actions), SettingRow in a Section for forms, and ThreadDeleteDialog for singleton deletion confirmation.
+- **Why:** Menu provides keyboard traversal, typeahead and focus return; the caller, not Menu, owns action policy. Design system v2: one icon column for every item keeps all labels on one left edge, and a check shows a toggle's state.
+- **Source:** [Radix Dropdown Menu (CheckboxItem, ItemIndicator)](https://www.radix-ui.com/primitives/docs/components/dropdown-menu), [WAI-ARIA APG Menu and Menubar](https://www.w3.org/WAI/ARIA/apg/patterns/menubar/), [Studio row actions](../../patterns/row-actions.md)
 
 A compact WAI-ARIA menu of short actions opened through `Popover`. Consumers choose
 optional item icons by semantic `IconRole` (for example `action.archive`), never by
@@ -38,3 +38,10 @@ Styles: style.css in this directory
 A paging item may keep the menu open. Selection and mutation items dismiss normally.
 
 When live entries change, focus stays on the current item if it survives, or moves to the nearest surviving item (the menu panel if there are none).
+
+## Icon and check column (design system v2)
+
+- When any item has an `icon` or a `checked` value, every item gets a `size-icon-menu` column (`space-8` to its label), empty where the item has no icon. Labels then share one left edge. Give every action item a semantic icon where one exists, for example `action.editTags` for Edit tags.
+- An item with `checked` is a `menuitemcheckbox` with `aria-checked`; when true, its column shows the `menu.checked` mark in `fg`. Use it for filter toggles such as Awaiting you and Include archived.
+- The panel is `panel` (not `raised`), so the `hover` surface of the item under the pointer or keyboard focus is visible. Corners `radius-m`, `shadow-popover`, minimum width `size-menu-min`. Items are `size-control` high with `space-6` / `space-8` padding and `radius-s`; destructive items use `bad` and `bad-soft`.
+- The trigger is a ghost icon Button with `aria-haspopup="menu"`, which keeps its `hover` surface while the menu is open.
