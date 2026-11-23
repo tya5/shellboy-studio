@@ -538,7 +538,12 @@ export class ConversationWindow {
       for(let ordinal=first;ordinal<=last;ordinal+=2*WINDOW_NODES){
         const args:WindowReadArgs=follow?{before:WINDOW_NODES-1,after:0,excerpt_chars:HISTORY_WINDOW_EXCERPT_CHARS,items:true}:
           {ordinal,before:0,after:Math.min(2*WINDOW_NODES-1,last-ordinal),expect_node_id:expected.rows[ordinal-first]?.node_id,excerpt_chars:HISTORY_WINDOW_EXCERPT_CHARS,items:true};
-        const out=await this.reader.read(args,cancel);if(!captureResponseOwner()||!readOwnerCurrent())return;
+        const out=await this.reader.read(args,cancel);
+        if(!captureResponseOwner()||!readOwnerCurrent()){
+          // A same-lifetime publication (e.g. a Work change) superseded the start ref: the newer cut is still owed.
+          if(!this.disposed&&!cancel.cancelled&&this.tailCancel===cancel&&this.epoch===epoch&&capability===this.acceptedView.currentCapability)this.tailAgain=true;
+          return;
+        }
         if(!out.ok){if(out.error.kind!=='cancelled')this.error.value=out.error.message;return;}
         const page=out.value;
         if(page.revision<minimumRevision||revision!==undefined&&(revision!==page.revision||total!==page.total))return;

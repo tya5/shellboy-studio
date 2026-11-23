@@ -74,6 +74,20 @@ describe("history capability is required", () => {
 });
 
 describe("resync, restart and loss", () => {
+  it("bounds active Status pagination even when the owner keeps returning a cursor", async () => {
+    const { t, data, db } = await setup();
+    const answer = db.answer.bind(db);
+    db.answer = call => {
+      const args = call.args as { limit?: number; thread_id?: string };
+      if (call.command === "status" && args.limit === 200 && !args.thread_id)
+        return { ok: true, result: { items: [], next_cursor: "again" } };
+      return answer(call);
+    };
+    data.trackThreadList();
+    await settle(t, db);
+    expect(t.calls("status").filter(call => (call.args as { limit?: number }).limit === 200)).toHaveLength(Math.ceil(MAX_LIST_ROWS / 200));
+    data.stop();
+  });
   it("resync re-reads everything tracked", async () => {
     const { t, data, db } = await setup();
     db.threads.a = summary("a");

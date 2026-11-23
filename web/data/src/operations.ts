@@ -202,6 +202,8 @@ const decodeShellPage = pageOf<ShellEntry>((v) =>
     ? undefined
     : "shell entry lacks execution_id or state",
 );
+export const ACTIVE_STATUS_PAGE_LIMIT = 200;
+
 const workPage = pageOf<WorkItem>((v) =>
   isObject(v) && typeof v.kind === "string" && typeof v.id === "string" && typeof v.state === "string" && typeof v.thread_id === "string"
     ? undefined : "status item lacks kind, id, state or thread_id",
@@ -491,7 +493,7 @@ export class Operations {
     return this.run("status", { limit: 1 }, outcomeDecoder(decodeRecord), undefined, read);
   }
   activeStatus(cursor?: string, read?: ReadOptions): Promise<Outcome<Page<WorkItem>>> {
-    return this.run("status", { limit: 200, ...(cursor ? { cursor } : {}) }, outcomeDecoder(workPage), undefined, read);
+    return this.run("status", { limit: ACTIVE_STATUS_PAGE_LIMIT, ...(cursor ? { cursor } : {}) }, outcomeDecoder(workPage), undefined, read);
   }
   /** Asks the connection's endpoint for its model list (one GET). No conversation request. */
   modelList(args: ModelListArgs = {}, read?: ReadOptions): Promise<Outcome<ModelListResult>> {

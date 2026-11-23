@@ -476,7 +476,7 @@ export class AppModel {
     });
     this.rows = computed(() => {
       const exact = this.data.threadRows.value;
-      const ids = new Set([...this.data.listThreadIds.value, ...this.data.pinnedThreadIds.value, ...this.data.activeThreadIds.value]);
+      const ids = new Set([...this.data.listThreadIds.value, ...this.data.pinnedThreadIds.value, ...this.data.activeThreadIds.value, ...this.data.inboxThreadIds.value]);
       const rows = [...ids].flatMap(id => { const row = exact.get(id); return row ? [row] : []; });
       return threadTree(rows, pendingByThread.value);
     });

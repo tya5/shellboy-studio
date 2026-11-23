@@ -29,7 +29,8 @@ only browser API, behind the `Transport` interface (`transport.ts`).
   is re-read.
 - **Coalescing.** Per target (`list`, `thread:ID`, `history:ID`) at most one read runs. Requests
   made before it is written to the socket merge into it; requests made while it is on the
-  wire schedule exactly one trailing read (the running read may predate the change).
+  wire schedule exactly one trailing read (the running read may predate the change). A queued
+  read revoked by an owner change or resync runs once more.
 - **Resync.** `resync`, `owner: restarted`, and `hello` (every socket open, with the owner
   connected) re-read everything tracked. `restarted` followed by `resync` costs at most one
   trailing read per target. Socket close and `owner: unreachable` keep values, set `stale`,
