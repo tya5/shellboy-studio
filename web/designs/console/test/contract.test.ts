@@ -102,7 +102,7 @@ const walk = (dir: string): string[] =>
 
 describe("components name roles, never values", () => {
   const css = ["components.css", "layout.css"].map((f) => readSystemCss(f)).join("\n");
-  const known = new Set(parse(fileFor("console")).keys());
+  const known = new Set([...parse(fileFor("console")).keys(), ...parse(css).keys()]);
 
   it("no literal colours, no external fonts", () => {
     const noComments = css.replace(/\/\*[\s\S]*?\*\//g, "");

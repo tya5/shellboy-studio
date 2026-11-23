@@ -5,7 +5,7 @@ export function BranchList({ rows, label }: { rows: { key: string; depth: number
   return (
     <ul class="blist" aria-label={label}>
       {rows.map((r) => (
-        <li key={r.key} class="brow" data-depth={Math.min(r.depth, 4)}>
+        <li key={r.key} class="brow" style={{ "--depth": Math.min(r.depth, 4) }}>
           <Icon role="branch.listItem" size="small" />
           <div class="brow-text">
             <a href={r.href} aria-current={r.current ? "true" : undefined}>{r.title}</a>
