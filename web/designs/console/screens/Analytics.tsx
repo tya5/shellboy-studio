@@ -1,4 +1,5 @@
-import { useState } from "preact/hooks";
+import { tokenTotal } from "./usage-label";
+import { useEffect, useMemo, useState } from "preact/hooks";
 import {
   ANALYTICS_SECTIONS, analyticsSection, cacheRate, COMPACTION_ROWS, dayFacts, DEFAULT_WEIGHTS, effectiveTokens, formatClock, formatDuration, formatRoute, formatTokens, groupEffective, groupIncomplete, meanInput, periodTotals, PERIODS, readWeights, shortDay,
   splitParts, type AnalyticsSection, type AppModel, type CompactionEvent, type DayFacts, type DesignContext, type Translate, type UsageGroup, type WalkState, type Weights,
@@ -56,51 +57,77 @@ function Weighting({ context }: { context: DesignContext }) {
   );
 }
 
+function walkComplete(walk: WalkState): boolean {
+  const c = walk.coverage;
+  return walk.status === "done" && !c.scopeIncomplete && c.excludedTime === 0 && c.unknownTimeCompactions === 0 && c.malformedCompactions === 0;
+}
+
+function usageColumns(t: Translate) {
+  return [{ label: t("usage.input"), numeric: true }, { label: t("usage.cached"), numeric: true }, { label: t("usage.output"), numeric: true }];
+}
+
+function usageCells(t: Translate, parts: UsageGroup["conversation"], incomplete: boolean) {
+  return [parts.input, parts.cached, parts.output].map(sum => tokenTotal(t, sum, incomplete));
+}
+
+function ModelUsage({ model, threadId, title, onClose }: { model: AppModel; threadId: string; title: string; onClose: () => void }) {
+  const t = model.t.value;
+  const i = model.insights;
+  const period = i.period.value;
+  const walk = useMemo(() => i.modelWalk(threadId, period), [i, threadId, period]);
+  useEffect(() => { void walk.start(); return () => walk.reset(); }, [walk]);
+  const state = walk.state.value;
+  const label = t("usage.models", { thread: title });
+  return <Section title={label} sub={t("usage.modelScope")} actions={<Button variant="ghost" onClick={onClose}>{t("usage.closeModels")}</Button>} source={<code>usage.get group_by=model</code>}>
+    <WalkNotice t={t} state={state} onStop={() => walk.stop()} onContinue={() => void walk.continue()} onRetry={() => void walk.start()} />
+    <Coverage t={t} walk={state} />
+    {state.capped ? <Notice tone="wait">{t("usage.unfinished")}</Notice> : null}
+    {state.groups.size ? <DataTable caption={label} columns={[{ label: t("usage.model") }, ...usageColumns(t)]}
+      rows={[...state.groups.values()].map(g => ({ key: g.key, cells: [g.key, ...usageCells(t, g.conversation, !walkComplete(state))] }))} />
+      : state.status === "done" ? <Notice>{t("analytics.empty")}</Notice> : null}
+  </Section>;
+}
+
 function ByThread({ model, weights }: { model: AppModel; weights: Weights }) {
   const t = model.t.value;
   const i = model.insights;
   const walk = i.byThread.state.value;
   const threadRows = model.rowById.value;
-  const rows = [...walk.groups.values()].sort((a, b) => (groupEffective(b, weights) ?? 0) - (groupEffective(a, weights) ?? 0)).slice(0, 25);
-  const nameOf = (g: UsageGroup) => threadRows.get(g.key)?.summary.title ?? g.key.slice(0, 8);
-  return (
-    <Section
-      title={t("threads.heading")}
-      sub={t("threads.sub")}
-      source={<>{t("common.source", { source: "" })}<code>usage.get group_by=thread</code></>}
-    >
+  const [limit, setLimit] = useState(25);
+  const [selected, select] = useState<string>();
+  const rows = [...walk.groups.values()].sort((a, b) => (groupEffective(b, weights) ?? 0) - (groupEffective(a, weights) ?? 0)).slice(0, limit);
+  const nameOf = (key: string) => threadRows.get(key)?.summary.title ?? key.slice(0, 8);
+  const complete = walkComplete(walk);
+  return <>
+    <Section title={t("threads.heading")} sub={t("threads.sub")}
+      source={<>{t("common.source", { source: "" })}<code>usage.get group_by=thread</code></>}>
       {walk.capped ? <Notice tone="wait">{t("threads.groupsCapped")}</Notice> : null}
       <WalkNotice t={t} state={walk} onStop={() => i.byThread.stop()} onContinue={() => void i.byThread.continue()} onRetry={() => void i.byThread.start()} />
-      {rows.length > 0 ? (
-        <DataTable
-          caption={t("threads.heading")}
-          columns={[{ label: t("threads.thread") }, { label: t("series.effective"), numeric: true }, { label: t("series.cacheRate"), numeric: true }, { label: t("threads.mean"), numeric: true }, { label: t("threads.max"), numeric: true }, { label: t("threads.events"), numeric: true }, { label: "" }]}
-          rows={rows.map((g) => {
-            const effective = groupEffective(g, weights);
-            const rate = cacheRate(g.conversation);
-            const mean = meanInput(g);
-            return {
-              key: g.key,
-              cells: [
-                <>
-                  {threadRows.has(g.key) ? <a class="nav-link" href={formatRoute({ view: "conversation", threadId: g.key })}>{nameOf(g)}</a> : <span class="mono">{nameOf(g)}</span>}
-                  {groupIncomplete(g) ? <div class="muted caption">{t("common.incomplete")}</div> : null}
-                </>,
-                effective !== undefined ? formatTokens(Math.round(effective)) : t("analytics.noValue"),
-                rate !== undefined ? percent(rate) : t("analytics.noValue"),
-                mean !== undefined ? formatTokens(Math.round(mean)) : t("analytics.noValue"),
-                g.inputMax !== undefined ? formatTokens(g.inputMax) : t("analytics.noValue"),
-                g.compactions,
-                <Button variant="ghost" aria-pressed={i.compaction.value.threadId === g.key} onClick={() => { void i.showCompaction(g.key); model.navigate({ view: "analytics", section: "compaction" }); }}>{t("threads.show")}</Button>,
-              ],
-            };
-          })}
-        />
-      ) : walk.status === "done" ? (
-        <div class="muted">{t("threads.none")}</div>
-      ) : null}
+      <Coverage t={t} walk={walk} />
+      {rows.length > 0 ? <DataTable caption={t("threads.heading")}
+        columns={[{ label: t("threads.thread") }, ...usageColumns(t), { label: t("series.cacheRate"), numeric: true }, { label: t("usage.summary") }, { label: t("threads.mean"), numeric: true }, { label: t("threads.max"), numeric: true }, { label: t("threads.events"), numeric: true }, { label: "" }]}
+        rows={rows.map(g => {
+          const rate = complete ? cacheRate(g.conversation, g.unknownPairs) : undefined;
+          const mean = meanInput(g);
+          const count = t("usage.requests");
+          const summary = g.summaryRequests || !complete ? <>
+            {usageCells(t, g.summary, !complete).map((value, index) => <div key={index}>{usageColumns(t)[index]!.label}: {value}</div>)}
+            <div>{count}: {complete ? g.summaryRequests : t("usage.minimum", { value: g.summaryRequests })}</div>
+          </> : `${count}: 0`;
+          return { key: g.key, cells: [
+            <>{threadRows.has(g.key) ? <a class="nav-link" href={formatRoute({ view: "conversation", threadId: g.key })}>{nameOf(g.key)}</a> : <span class="mono">{nameOf(g.key)}</span>}
+              {groupIncomplete(g) ? <div class="muted caption">{t("common.incomplete")}</div> : null}</>,
+            ...usageCells(t, g.conversation, !complete), rate === undefined ? t("analytics.noValue") : percent(rate), summary,
+            mean !== undefined ? formatTokens(Math.round(mean)) : t("analytics.noValue"),
+            g.inputMax !== undefined ? formatTokens(g.inputMax) : t("analytics.noValue"), g.compactions,
+            <ButtonGroup label={nameOf(g.key)}><Button variant="ghost" aria-pressed={selected === g.key} aria-label={`${t("usage.showModels")}: ${nameOf(g.key)}`} onClick={() => select(selected === g.key ? undefined : g.key)}>{t("usage.showModels")}</Button>
+              <Button variant="ghost" onClick={() => { void i.showCompaction(g.key); model.navigate({ view: "analytics", section: "compaction" }); }}>{t("threads.show")}</Button></ButtonGroup>,
+          ] };
+        })} /> : walk.status === "done" ? <div class="muted">{t("threads.none")}</div> : null}
+      {walk.groups.size > limit ? <Button variant="ghost" onClick={() => setLimit(limit + 25)}>{t("usage.moreRows")}</Button> : null}
     </Section>
-  );
+    {selected ? <ModelUsage model={model} threadId={selected} title={nameOf(selected)} onClose={() => select(undefined)} /> : null}
+  </>;
 }
 
 const KIND: Record<string, Parameters<Translate>[0]> = { automatic_reduction: "compact.automatic", summary: "compact.summaryKind", spill: "compact.spill", restore: "compact.restore", compact: "compact.compactKind" };
@@ -200,6 +227,7 @@ function Coverage({ t, walk }: { t: Translate; walk: WalkState }) {
   return (
     <div class="muted caption">
       {t("analytics.covered", { windows: c.windows, ms: formatDuration(c.elapsedMs), requests: c.matchedAttempts.toLocaleString("en-US"), compactions: c.matchedCompactions.toLocaleString("en-US") })}{" "}
+      {c.scopeIncomplete ? t("usage.unfinished") : null}{" "}
       {c.excludedTime + c.unknownTimeCompactions + c.malformedCompactions > 0 ? t("analytics.excluded", { time: c.excludedTime, unknown: c.unknownTimeCompactions, malformed: c.malformedCompactions }) : null}
     </div>
   );
@@ -216,6 +244,8 @@ function UsagePane({ context, section }: { context: DesignContext; section: "ove
   // Nothing read yet isn't the same as the owner having no value.
   const notReported = walk.groups.size > 0 || walk.status === "done" ? t("analytics.noValue") : walk.status === "loading" ? t("common.loading") : t("analytics.notRead");
   const hasSomething = walk.groups.size > 0;
+  const complete = walkComplete(walk);
+  const periodValue = walk.status === "loading" ? t("usage.aggregating") : complete || !hasSomething ? notReported : t("usage.unfinished");
   const parts: ChartSeries[] = [
     { id: "cached", label: t("series.cached"), tone: "2" },
     { id: "uncached", label: t("series.uncached"), tone: "1" },
@@ -232,11 +262,11 @@ function UsagePane({ context, section }: { context: DesignContext; section: "ove
   const summaryStat = (
     <Stat
       label={t("stat.summary")}
-      value={totals.summaryEffective !== undefined ? tokens(totals.summaryEffective) : notReported}
-      note={totals.summaryEffective !== undefined && totals.effective ? t("stat.summaryNote", { share: shareText(totals.summaryEffective / totals.effective), n: totals.summaryRequests.toLocaleString("en-US") }) : undefined}
+      value={complete && totals.summaryEffective !== undefined ? tokens(totals.summaryEffective) : periodValue}
+      note={complete && !totals.incomplete && totals.summaryEffective !== undefined && totals.effective ? t("stat.summaryNote", { share: shareText(totals.summaryEffective / totals.effective), n: totals.summaryRequests.toLocaleString("en-US") }) : undefined}
     />
   );
-  const eventsStat = <Stat label={t("stat.compactions")} value={hasSomething ? totals.compactions.toLocaleString("en-US") : notReported} note={t("stat.compactionsNote")} />;
+  const eventsStat = <Stat label={t("stat.compactions")} value={hasSomething && walk.status !== "loading" ? complete ? totals.compactions.toLocaleString("en-US") : t("usage.minimum", { value: totals.compactions.toLocaleString("en-US") }) : periodValue} note={t("stat.compactionsNote")} />;
 
   return (
     <>
@@ -248,8 +278,8 @@ function UsagePane({ context, section }: { context: DesignContext; section: "ove
       {section === "overview" ? (
         <>
           <div class="stats">
-            <Stat label={t("stat.effective")} value={totals.effective !== undefined ? tokens(totals.effective) : notReported} note={totals.incomplete ? t("common.incomplete") : t("stat.effectiveNote")} />
-            <Stat label={t("stat.cacheRate")} value={totals.rate !== undefined ? percent(totals.rate) : notReported} note={t("stat.cacheRateNote")} />
+            <Stat label={t("stat.effective")} value={complete && !totals.incomplete && totals.effective !== undefined ? tokens(totals.effective) : periodValue} note={totals.incomplete ? t("common.incomplete") : t("stat.effectiveNote")} />
+            <Stat label={t("stat.cacheRate")} value={complete && totals.rate !== undefined ? percent(totals.rate) : periodValue} note={t("stat.cacheRateNote")} />
             {summaryStat}
             {eventsStat}
           </div>
@@ -279,7 +309,6 @@ function UsagePane({ context, section }: { context: DesignContext; section: "ove
             format={tokens}
             ariaSummary={t("chart.dailyAria", { summary: peakSummary(t, days.length, dailyTotals, tokens, dailyLowerBound) })}
             source={source("usage.get group_by=day")}
-            extra={<div class="muted caption">{t("chart.byModelMissing")}</div>}
             {...common}
           />
           <Chart

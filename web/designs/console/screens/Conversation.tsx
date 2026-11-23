@@ -1,3 +1,4 @@
+import { tokenTotal } from "./usage-label";
 import { ArtifactDetail, ArtifactList } from "./ArtifactPanel";
 import { ATTACHMENT_RETENTION } from "../../../ui-core/src/attachment-section";
 import { CAPABILITY_ARTIFACTS, CAPABILITY_ATTACHMENT_PAGE } from "../../../data/src";
@@ -560,23 +561,31 @@ function ThreadAnalytics({ model, threadId }: { model: AppModel; threadId: strin
   }, [model, threadId]);
   const t = model.t.value;
   const usage = observation?.usage.value;
-  const measured = (m: { value: number; partial: boolean } | undefined) => m ? formatTokens(m.value) : undefined;
   const rows = usage ? [
-    { key: t("usage.input"), value: measured(usage.input), mono: true },
-    { key: t("usage.output"), value: measured(usage.output), mono: true },
-    { key: t("usage.cached"), value: usage.cachedPercent !== undefined ? `${usage.cachedPercent}%` : measured(usage.cached), mono: true },
+    { key: t("usage.input"), value: tokenTotal(t, usage.conversation.input, usage.scopeIncomplete), mono: true },
+    { key: t("usage.output"), value: tokenTotal(t, usage.conversation.output, usage.scopeIncomplete), mono: true },
+    { key: t("usage.cached"), value: tokenTotal(t, usage.conversation.cached, usage.scopeIncomplete), mono: true },
+    { key: t("series.cacheRate"), value: usage.cachedPercent === undefined ? t("analytics.noValue") : `${usage.cachedPercent}%`, mono: true },
     { key: t("usage.attempts"), value: usage.attempts, mono: true },
   ] : [];
+  const summary = usage?.summary;
   const compactions = observation?.compactions.value;
   const status = observation?.status.value;
   const unavailable = (failed: boolean | undefined) => !status || status.loading ? t("common.loading") : t(failed ? "threadSettings.infoReadFailed" : "common.notReadable");
   const unreadable = t("common.notReadable");
   return <div class="stack" data-panel-info="">
-    <Section title={t("ana.section.tokens")} source={<code>usage.get</code>}>
+    <Section title={t("usage.conversation")} sub={t("usage.retained")} source={<code>usage.get</code>}>
       {rows.length ? <KeyValue rows={rows} /> : <p class="muted caption">{unavailable(status?.usageFailed)}</p>}
-      {usage?.partial ? <p class="muted caption">{t("usage.partial")}</p> : null}
     </Section>
-    <Section title={t("ana.section.compaction")} source={<code>compact.list</code>}>
+    <Section title={t("usage.summary")} source={<code>usage.get</code>}>
+      {summary ? <KeyValue rows={[
+        { key: t("usage.input"), value: tokenTotal(t, summary.parts.input, summary.incomplete), mono: true },
+        { key: t("usage.cached"), value: tokenTotal(t, summary.parts.cached, summary.incomplete), mono: true },
+        { key: t("usage.output"), value: tokenTotal(t, summary.parts.output, summary.incomplete), mono: true },
+        { key: t("usage.requests"), value: summary.requests === undefined ? t("analytics.noValue") : summary.incomplete ? t("usage.minimum", { value: summary.requests }) : summary.requests, mono: true },
+      ]} /> : <p class="muted caption">{unavailable(status?.usageFailed)}</p>}
+    </Section>
+    <Section title={t("usage.recentCompaction")} source={<code>compact.list</code>}>
       {compactions?.length ? <DataTable caption={t("ana.section.compaction")} flat columns={[{ label: t("compact.at") }, { label: t("compact.kind") }, { label: t("threadSettings.inputBeforeAfter") }]}
         rows={compactions.map(event => ({ key: event.id, cells: [formatClock(event.at, true) ?? unreadable, event.kind,
           t("threadSettings.inputRange", { before: event.triggerInput === undefined ? unreadable : formatTokens(event.triggerInput), after: event.afterInput === undefined ? unreadable : formatTokens(event.afterInput) })] }))} />

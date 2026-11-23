@@ -19,13 +19,15 @@ export const EMPTY_SUM: Sum = { known: undefined, unknown: 0, overflow: false };
 
 export function readSum(v: unknown): Sum {
   const m = obj(v);
-  return { known: num(m?.known_sum), unknown: num(m?.unknown_count) ?? 0, overflow: m?.overflow === true };
+  const value = num(m?.known_sum);
+  const overflow = m?.overflow === true || (value !== undefined && !Number.isSafeInteger(value));
+  return { known: overflow ? undefined : value, unknown: num(m?.unknown_count) ?? 0, overflow };
 }
 
 export function addSum(a: Sum, b: Sum): Sum {
-  const overflow = a.overflow || b.overflow;
-  const known = overflow ? undefined : a.known === undefined ? b.known : b.known === undefined ? a.known : a.known + b.known;
-  return { known, unknown: a.unknown + b.unknown, overflow };
+  const known = a.known === undefined ? b.known : b.known === undefined ? a.known : a.known + b.known;
+  const overflow = a.overflow || b.overflow || (known !== undefined && !Number.isSafeInteger(known));
+  return { known: overflow ? undefined : known, unknown: a.unknown + b.unknown, overflow };
 }
 
 /** Input includes cached input (Shellboy's normalized usage). */
@@ -68,16 +70,17 @@ export const DEFAULT_WEIGHTS: Weights = { cached: 0.1, output: 5 };
 
 /** uncached + cached x n + output x m. Undefined when a needed counter is missing. */
 export function effectiveTokens(p: TokenParts, w: Weights): number | undefined {
+  if (partsIncomplete(p)) return undefined;
   const s = splitParts(p);
   if (s.uncached === undefined) return undefined;
   return s.uncached + s.cached * w.cached + s.output * w.output;
 }
 
-/** Cached share of input as a fraction. Not clamped: a value over 1 means the provider's figures disagree. */
-export function cacheRate(p: TokenParts): number | undefined {
+/** A full-scope ratio requires complete, consistent input/cache pairs. */
+export function cacheRate(p: TokenParts, unknownPairs = 0): number | undefined {
   const input = p.input.known;
   const cached = p.cached.known;
-  return input === undefined || cached === undefined || input === 0 ? undefined : cached / input;
+  return input === undefined || cached === undefined || input <= 0 || cached < 0 || cached > input || p.input.unknown > 0 || p.cached.unknown > 0 || p.input.overflow || p.cached.overflow || unknownPairs > 0 ? undefined : cached / input;
 }
 
 export interface UsageGroup {
@@ -101,11 +104,8 @@ export interface UsageGroup {
 
 const TERMINAL = ["completed", "failed", "incomplete"];
 
-export function readGroup(item: unknown): UsageGroup | undefined {
-  const it = obj(item);
-  const key = str(it?.key);
-  if (!it || !key) return undefined;
-  const attempts = obj(it.model_attempts) ?? {};
+export function terminalUsage(value: unknown) {
+  const attempts = obj(value) ?? {};
   let conversation = EMPTY_PARTS;
   let requests = 0;
   for (const state of TERMINAL) {
@@ -114,6 +114,19 @@ export function readGroup(item: unknown): UsageGroup | undefined {
     requests += num(a.count) ?? 0;
     conversation = addParts(conversation, { input: readSum(a.input_tokens), cached: readSum(a.cached_tokens), output: readSum(a.output_tokens) });
   }
+  return { conversation, requests };
+}
+
+export function readTokenParts(value: unknown): TokenParts {
+  const p = obj(value);
+  return { input: readSum(p?.input_tokens), cached: readSum(p?.cached_tokens), output: readSum(p?.output_tokens) };
+}
+
+export function readGroup(item: unknown): UsageGroup | undefined {
+  const it = obj(item);
+  const key = str(it?.key);
+  if (!it || !key) return undefined;
+  const { conversation, requests } = terminalUsage(it.model_attempts);
   const c = obj(it.compaction) ?? {};
   const perRequest = obj(it.input_per_request) ?? {};
   const inputKnown = num(perRequest.known_count) ?? 0;
@@ -121,7 +134,7 @@ export function readGroup(item: unknown): UsageGroup | undefined {
     key,
     conversation,
     requests,
-    summary: { input: readSum(c.input_tokens), cached: readSum(c.cached_tokens), output: readSum(c.output_tokens) },
+    summary: readTokenParts(c),
     compactions: num(c.compactions) ?? 0,
     summaryRequests: num(c.requests) ?? 0,
     mapRequests: num(c.map_requests) ?? 0,
@@ -168,6 +181,7 @@ export interface WalkCoverage {
   malformedCompactions: number;
   scannedCandidates: number;
   elapsedMs: number;
+  scopeIncomplete?: boolean;
 }
 
 export const EMPTY_COVERAGE: WalkCoverage = { windows: 0, matchedAttempts: 0, matchedCompactions: 0, excludedTime: 0, unknownTimeCompactions: 0, malformedCompactions: 0, scannedCandidates: 0, elapsedMs: 0 };
@@ -175,6 +189,7 @@ export const EMPTY_COVERAGE: WalkCoverage = { windows: 0, matchedAttempts: 0, ma
 export function addCoverage(c: WalkCoverage, page: Record<string, unknown>): WalkCoverage {
   return {
     windows: c.windows + 1,
+    ...(c.scopeIncomplete || page.scope_complete === false ? { scopeIncomplete: true } : {}),
     matchedAttempts: c.matchedAttempts + (num(page.matched_attempts) ?? 0),
     matchedCompactions: c.matchedCompactions + (num(page.matched_compactions) ?? 0),
     excludedTime: c.excludedTime + (num(page.excluded_time_count) ?? 0),
@@ -314,8 +329,8 @@ function summaryEffectiveOf(g: UsageGroup, w: Weights): number | undefined {
 export function groupEffective(g: UsageGroup, w: Weights): number | undefined {
   const conversation = g.requests === 0 ? 0 : effectiveTokens(g.conversation, w);
   const summary = summaryEffectiveOf(g, w);
-  if (conversation === undefined && summary === undefined) return undefined;
-  return (conversation ?? 0) + (summary ?? 0);
+  if (conversation === undefined || summary === undefined || g.unknownPairs > 0) return undefined;
+  return conversation + summary;
 }
 
 export const groupIncomplete = (g: UsageGroup): boolean =>
@@ -338,7 +353,7 @@ export function dayFacts(dayKeys: readonly string[], groups: ReadonlyMap<string,
       summaryOutput: s.output,
       effective: groupEffective(g, w),
       summaryEffective: summaryEffectiveOf(g, w),
-      rate: cacheRate(g.conversation),
+      rate: cacheRate(g.conversation, g.unknownPairs),
       compactions: g.compactions,
       requests: g.requests,
       incomplete: groupIncomplete(g),
@@ -365,7 +380,7 @@ export function periodTotals(groups: ReadonlyMap<string, UsageGroup>, w: Weights
   return {
     effective: groupEffective(total, w),
     summaryEffective: summaryEffectiveOf(total, w),
-    rate: cacheRate(total.conversation),
+    rate: cacheRate(total.conversation, total.unknownPairs),
     compactions: total.compactions,
     summaryRequests: total.summaryRequests,
     requests: total.requests,

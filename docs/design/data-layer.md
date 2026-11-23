@@ -75,7 +75,7 @@ User requirement (2026-11-07): many Threads must not mean all data in memory, an
 | Shell facts | 200 per Thread | Thread change |
 | Branch marks | One map per open Thread; one family read per open | Thread change |
 | Live preview | 262144 UTF-16 code units per open Thread (newest kept, marked incomplete) | Discard rules in Live text |
-| Analytics walks | Days: at most 32 groups. By Thread: 2000 groups (`MAX_GROUPS`), then stops and says so; 64 windows per run | New period or Refresh |
+| Analytics walks | Days: at most 32 groups. By Thread or selected Thread by model: 2000 groups (`MAX_GROUPS`), then stops and says so; 64 windows per run | New period or Refresh |
 | Compaction events | 50 rows for one Thread | New Thread or period |
 | Awaiting you questions | 128 (`HUMAN_RETAINED`), 16 per press of Show more; past it, the screen says so | Owner change; a hint re-reads the loaded pages |
 | Resource reads | One value each | Replaced on Refresh |

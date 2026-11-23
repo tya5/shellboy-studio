@@ -1,6 +1,7 @@
 // Usage facts as the owner measured them, from `usage.get`. A sum the owner doesn't know is
 // absent here; nothing is estimated. Field shapes observed on the pinned revision.
 import type { ThreadDetails } from "../../data/src";
+import { cacheRate, readTokenParts, terminalUsage, type TokenParts } from "./analytics";
 
 const obj = (v: unknown): Record<string, unknown> | undefined =>
   typeof v === "object" && v !== null && !Array.isArray(v) ? (v as Record<string, unknown>) : undefined;
@@ -28,45 +29,26 @@ export function contextFacts(d: ThreadDetails | undefined): ContextFacts | undef
     fill: Math.min(100, inputTokens * 100 / threshold) };
 }
 
-export interface Measured {
-  value: number;
-  /** Some records had no value, so `value` is a lower bound. */
-  partial: boolean;
-}
-
 export interface UsageFacts {
-  attempts: number | undefined;
-  input: Measured | undefined;
-  output: Measured | undefined;
-  cached: Measured | undefined;
-  /** Cached share of input in percent, only when both sums are complete. */
+  attempts: number;
+  conversation: TokenParts;
   cachedPercent: number | undefined;
-  partial: boolean;
-}
-
-function measured(v: unknown): Measured | undefined {
-  const m = obj(v);
-  const value = num(m?.known_sum);
-  if (value === undefined) return undefined;
-  return { value, partial: m?.overflow === true || (num(m?.unknown_count) ?? 0) > 0 };
+  scopeIncomplete: boolean;
+  summary: { parts: TokenParts; requests: number | undefined; incomplete: boolean } | undefined;
 }
 
 export function usageFacts(d: Record<string, unknown> | undefined): UsageFacts | undefined {
-  const completed = obj(obj(d?.model_attempts)?.completed);
-  if (!completed) return undefined;
-  const input = measured(completed.input_tokens);
-  const output = measured(completed.output_tokens);
-  const cached = measured(completed.cached_tokens);
-  if (!input && !output && !cached) return undefined;
-  const incomplete = obj(d?.coverage)?.scope_complete === false;
-  const complete = !incomplete && input && cached && !input.partial && !cached.partial && input.value > 0;
+  if (!obj(d?.model_attempts) && !obj(d?.compaction)) return undefined;
+  const { conversation, requests } = terminalUsage(d?.model_attempts);
+  const scopeIncomplete = obj(d?.coverage)?.scope_complete === false;
+  const rate = scopeIncomplete ? undefined : cacheRate(conversation);
+  const summary = obj(d?.compaction);
   return {
-    attempts: num(completed.count),
-    input,
-    output,
-    cached,
-    cachedPercent: complete ? Math.round((cached.value / input.value) * 100) : undefined,
-    partial: !!(incomplete || input?.partial || output?.partial || cached?.partial),
+    attempts: requests,
+    conversation,
+    cachedPercent: rate === undefined ? undefined : Math.round(rate * 100),
+    scopeIncomplete,
+    summary: summary ? { parts: readTokenParts(summary), requests: num(summary.requests), incomplete: scopeIncomplete || (num(summary.malformed_records) ?? 0) > 0 } : undefined,
   };
 }
 

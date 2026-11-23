@@ -8,7 +8,7 @@ import { options, render } from "preact";
 import { act } from "preact/test-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { WindowOwner } from "../../../ui-core/test/window-owner";
-import { fixtureDb, fixtureModel, fixturePendingAdapter } from "../../../ui-core/test/fixture";
+import { fixtureDb, fixtureModel, fixturePendingAdapter, usageItem, usagePage } from "../../../ui-core/test/fixture";
 import { ShellboyData, type ServerFrame } from "../../../data/src";
 import { connected, FakeTransport, settle, summary } from "../../../data/test/harness";
 import { AppModel, noPending, type AnalyticsSection, type DesignContext, type Prefs } from "../../../ui-core/src";
@@ -864,6 +864,91 @@ describe("Frame", () => {
   });
 });
 
+describe("Recorded usage (#118)", () => {
+  const group = (key: string, input = 100) => usageItem(key, { input, cached: 40, output: 3, count: 1 });
+  const choose = (el: HTMLElement, label: string) => Array.from(el.querySelectorAll("button")).find(b => b.textContent === label);
+  async function byThread(items: ReturnType<typeof usageItem>[]) {
+    const r = await fixtureModel({ route: "analytics", section: "threads", configure(db) {
+      const orig = db.answer.bind(db);
+      db.answer = c => c.command === "usage.get" ? { ok: true, result: (c.args as { group_by?: string }).group_by === "model"
+        ? usagePage([group("historical-model", 100)]) : usagePage(items) } : orig(c);
+    } });
+    return { ...r, el: draw(r.model) };
+  }
+  const dispose = (r: Awaited<ReturnType<typeof fixtureModel>>) => { r.model.dispose(); r.data.stop(); };
+  it("opens a selected Thread's historical model totals with the existing owner read", async () => {
+    const r = await byThread([group("lead")]);
+    try {
+      expect(r.t.calls("usage.get").some(c => (c.args as { group_by?: string }).group_by === "model")).toBe(false);
+      expect(choose(r.el, "Show models")).toBeDefined();
+      act(() => choose(r.el, "Show models")!.click());
+      await act(async () => { await settle(r.t, r.db); });
+      expect(text(r.el)).toContain("historical-model");
+      expect(r.t.calls("usage.get").at(-1)?.args).toMatchObject({ thread_id: "lead", group_by: "model" });
+    } finally { dispose(r); }
+  });
+  async function info() {
+    const r = await fixtureModel({ configure(db) {
+      const orig = db.answer.bind(db);
+      db.answer = c => c.command === "usage.get" ? { ok: true, result: {
+        ...group("lead"), thread_id: "lead", coverage: { scope_complete: true },
+        model_attempts: { ...group("lead").model_attempts, ...usageItem("lead", { input: 23, cached: 4, output: 7, state: "failed", count: 1 }).model_attempts },
+        compaction: usageItem("lead", { input: 100, cached: 40, output: 3, compactions: 1, summary: [71, 16, 8] }).compaction,
+      } } : orig(c);
+    } });
+    let notify!: ResizeObserverCallback;
+    vi.stubGlobal("ResizeObserver", class {
+      constructor(callback: ResizeObserverCallback) { this.callback = callback; }
+      private callback: ResizeObserverCallback;
+      observe(target: Element) { if (target.hasAttribute("data-panel-root")) notify = this.callback; }
+      unobserve() {}
+      disconnect() {}
+    });
+    const el = draw(r.model);
+    await act(async () => { r.model.setPanelTab("info"); el.querySelector<HTMLElement>("[data-panel-root]")!.style.display = "block"; notify([], {} as ResizeObserver); });
+    await act(async () => { await settle(r.t, r.db); });
+    return { ...r, panel: el.querySelector("[data-panel-info]")! };
+  }
+  it("includes failed attempts in the mounted Thread Info totals", async () => {
+    const r = await info();
+    try { expect(r.panel).not.toBeNull(); expect(text(r.panel)).toContain("123"); } finally { dispose(r); }
+  });
+  it("does not claim an exact cached share across different request sets", async () => {
+    const g = group("lead", 200); g.cache.unknown_pair_count = 1; g.model_attempts.completed!.cached_tokens.unknown_count = 1;
+    const r = await byThread([g]);
+    try { const row = r.el.querySelector("tbody tr")!; expect(text(row)).not.toContain("20%"); expect(text(row)).toContain("No value"); } finally { dispose(r); }
+  });
+  it("shows separate summary tokens in both Thread Info and By Thread", async () => {
+    const r = await info();
+    try { expect(r.panel).not.toBeNull(); expect(text(r.panel)).toContain("Summary tokens"); expect(text(r.panel)).toContain("71"); } finally { dispose(r); }
+    const t = await byThread([usageItem("lead", { input: 100, cached: 40, output: 3, compactions: 1, summary: [71, 16, 8] })]);
+    try { expect(text(t.el.querySelector("tbody tr")!)).toContain("71"); } finally { dispose(t); }
+  });
+  it("labels an unfinished period total while the second page is held", async () => {
+    const r = await fixtureModel({ route: "analytics", section: "overview", settle: false });
+    try {
+      await act(async () => {
+        const orig = r.db.answer.bind(r.db);
+        r.db.answer = c => { if (c.command === "usage.get" && (c.args as { cursor?: string }).cursor) throw Error("hold next page"); return orig(c); };
+        await expect(settle(r.t, r.db)).rejects.toThrow("hold next page");
+      });
+      const el = draw(r.model);
+      expect(text(el.querySelector(".stats")!)).toContain("Aggregating");
+    } finally { dispose(r); }
+  });
+  it("can reveal the 26th Thread using the already-read groups", async () => {
+    const r = await byThread(Array.from({ length: 26 }, (_, i) => group(`thread-${String(i).padStart(2, "0")}`, 200 - i)));
+    try {
+      expect(r.el.querySelectorAll("tbody tr")).toHaveLength(25);
+      const before = r.t.calls("usage.get").length;
+      expect(choose(r.el, "Show more usage rows")).toBeDefined();
+      act(() => choose(r.el, "Show more usage rows")!.click());
+      expect(r.el.querySelectorAll("tbody tr")).toHaveLength(26);
+      expect(r.t.calls("usage.get")).toHaveLength(before);
+    } finally { dispose(r); }
+  });
+});
+
 describe("Analytics", () => {
   const open = async (section: AnalyticsSection) => {
     const made = await fixtureModel({ route: "analytics", section });
@@ -883,7 +968,7 @@ describe("Analytics", () => {
     const { el } = await open("tokens");
     const body = text(el);
     expect(body).toContain("usage.get group_by=day");
-    expect(body).toContain("By model isn't shown");
+    expect(body).not.toContain("By model isn't shown");
     expect(body).not.toMatch(/\$\s?\d|USD|¥/);
     // 2026-11-05 to 11-07, three parts each. Small parts stay visible.
     expect(el.querySelectorAll("figure.chart-figure")[0]!.querySelectorAll("path.chart-fill").length).toBe(9);

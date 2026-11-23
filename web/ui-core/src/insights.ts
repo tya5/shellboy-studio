@@ -58,8 +58,9 @@ export class UsageWalk {
 
   constructor(
     private readonly ops: Operations,
-    private readonly groupBy: "day" | "thread",
+    private readonly groupBy: "day" | "thread" | "model",
     private readonly period: () => Period,
+    private readonly threadId?: string,
   ) {}
 
   reset(): void {
@@ -109,7 +110,7 @@ export class UsageWalk {
     const p = this.period();
     this.state.value = { ...this.state.peek(), status: "loading", error: undefined, canContinue: false };
     for (let read = 0; read < MAX_WINDOWS; read++) {
-      const out = await this.ops.usageGet({ group_by: this.groupBy, timezone: p.zone, since: p.since, until: p.until, limit: GROUP_LIMIT, ...(this.cursor !== undefined && { cursor: this.cursor }) }, { cancel });
+      const out = await this.ops.usageGet({ group_by: this.groupBy, ...(this.threadId !== undefined && { thread_id: this.threadId }), timezone: p.zone, since: p.since, until: p.until, limit: GROUP_LIMIT, ...(this.cursor !== undefined && { cursor: this.cursor }) }, { cancel });
       if (generation !== this.generation) return;
       if (!out.ok) {
         // A cursor doesn't survive an owner restart: continuing can't help, only a new walk can.
@@ -288,6 +289,10 @@ export class Insights {
         this.ensureRead("index");
         return;
     }
+  }
+
+  modelWalk(threadId: string, period: Period): UsageWalk {
+    return new UsageWalk(this.ops, "model", () => period, threadId);
   }
 
   private ensureWalk(walk: UsageWalk): void {
