@@ -1,42 +1,66 @@
-// Deterministic counts and resource bounds on synthetic history, not browser timings.
+// Deterministic work and storage bounds on synthetic history, not browser timings.
 import { describe, expect, it } from "vitest";
 import { flush } from "../../data/test/harness";
+import type { HistoryWindowArgs } from "../../data/src";
 import { WINDOW_NODES, WINDOWS_HELD } from "../src/window";
 import { rig } from "./window-owner";
 
 describe("100,000-node sustained reading", () => {
-  it("bounds storage, edge reads, fling reads and shutdown", async () => {
-    const r = await rig(100_000);
-    await r.settle();
-    const paint = () => {
-      const range = r.w.renderRange()!;
-      r.w.measure(Array.from({ length: range.last - range.first + 1 }, (_, i) => [range.first + i, 120] as [number, number]));
-    };
-    paint();
-    expect(r.calls()).toHaveLength(1);
-    const mark = r.calls().length;
-    for (let k = 0; k < 100; k++) {
-      r.w.view(0, 800, false); r.pause(); await r.settle(); paint();
-      expect(r.w.windowsHeld).toBeLessThanOrEqual(WINDOWS_HELD);
-      expect(r.w.measurementsHeld).toBeLessThanOrEqual(WINDOWS_HELD * WINDOW_NODES);
+  it("reads and builds only bounded windows while scrolling and cancels the pending read on close", async () => {
+    const started = performance.now();
+    const total = 100_000;
+    const olderEdges = WINDOWS_HELD + 1; // Fill the store and cross its eviction boundary.
+    let itemsMaterialized = 0;
+    let peakRowsBuilt = 0;
+    const r = await rig(total, { decorate: (_ordinal, item) => { itemsMaterialized++; return item; } });
+    try {
+      const readAndMeasure = async () => {
+        const before = itemsMaterialized;
+        await r.settle();
+        expect(itemsMaterialized - before).toBe(WINDOW_NODES);
+        const request = r.calls().at(-1)!.args as HistoryWindowArgs;
+        expect((request.before ?? 0) + (request.after ?? 0) + 1).toBe(WINDOW_NODES);
+        const accepted = r.w.acceptedView.current;
+        expect(accepted.total).toBe(total);
+        expect(accepted.rows.length).toBeGreaterThan(0);
+        expect(accepted.rows.length).toBeLessThanOrEqual(WINDOWS_HELD * WINDOW_NODES);
+        peakRowsBuilt = Math.max(peakRowsBuilt, accepted.rows.length);
+        r.w.measure(accepted.rows.map(row => [row.selection!.ordinal!, 120] as const));
+        expect(r.w.windowsHeld).toBeLessThanOrEqual(WINDOWS_HELD);
+        expect(r.w.measurementsHeld).toBeLessThanOrEqual(WINDOWS_HELD * WINDOW_NODES);
+      };
+      await readAndMeasure();
+      expect(r.calls()).toHaveLength(1);
+      for (let k = 0; k < olderEdges; k++) {
+        r.w.view(0, 800, false); r.pause(); await readAndMeasure();
+        expect(r.calls()).toHaveLength(k + 2);
+      }
+      expect(r.w.isLoaded(total - 1)).toBe(false);
+      expect(itemsMaterialized).toBe((1 + olderEdges) * WINDOW_NODES);
+
+      const beforeDrag = r.calls().length;
+      const beforeDragItems = itemsMaterialized;
+      const height = r.w.totalHeight();
+      const dragMoves = 301;
+      for (let i = 0; i < dragMoves; i++) r.w.view((height - 800) * i / (dragMoves - 1), 800, false);
+      expect(r.calls()).toHaveLength(beforeDrag);
+      expect(itemsMaterialized).toBe(beforeDragItems);
+      r.pause(); await flush();
+      expect(r.w.readsInFlight).toBe(1);
+      const sent = r.t.sent.length;
+      r.w.dispose();
+      const cancelFrames = r.t.sent.length - sent;
+      expect(cancelFrames).toBe(1);
+      const stopped = r.t.sent.length;
+      r.w.view(0, 800, false); r.w.changed(); r.pause(); await r.settle();
+      expect(r.t.sent.length).toBe(stopped);
+      expect(r.t.calls("history.list")).toHaveLength(0);
+      console.log("MEASURED " + JSON.stringify({ total, openCalls: 1, olderEdges, edgeCalls: beforeDrag - 1,
+        peakRowsBuilt, itemsMaterialized, dragMoves, callsDuringDrag: 0,
+        cancelFrames, elapsedMs: Math.round(performance.now() - started) }));
+    } finally {
+      r.w.dispose();
+      r.data.stop();
     }
-    expect(r.calls().length - mark).toBe(100);
-    const beforeDrag = r.calls().length;
-    const height = r.w.totalHeight();
-    for (let i = 0; i <= 300; i++) r.w.view((height - 800) * i / 300, 800, false);
-    expect(r.calls().length).toBe(beforeDrag);
-    r.pause(); await flush();
-    expect(r.w.readsInFlight).toBe(1);
-    const sent = r.t.sent.length;
-    r.w.dispose();
-    const cancelFrames = r.t.sent.length - sent;
-    expect(cancelFrames).toBe(1);
-    const stopped = r.t.sent.length;
-    r.w.view(0, 800, false); r.w.changed(); r.pause(); await r.settle();
-    expect(r.t.sent.length).toBe(stopped);
-    expect(r.t.calls("history.list")).toHaveLength(0);
-    console.log("MEASURED " + JSON.stringify({ openCalls: 1, olderEdges: 100, edgeCalls: r.calls().length - mark - 1,
-      windowsHeld: r.w.windowsHeld, measurementsHeld: r.w.measurementsHeld, dragMoves: 301, callsDuringDrag: 0, cancelFrames }));
-    r.data.stop();
   });
 });
