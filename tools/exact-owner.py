@@ -12,7 +12,6 @@ import tomllib
 from urllib.parse import parse_qs, urlsplit
 
 OFFICIAL = "https://github.com/tya5/shellboy"
-# Core v0.15.0 exact release pairing.
 VERSION = "0.15.0"
 
 

@@ -305,12 +305,13 @@ M1; a tunnel provides it.
 - The bridge links the Shellboy crate at a git tag; it speaks exactly that
   tag's `PROTOCOL_VERSION`. Shellboy's owner accepts exactly one version
   (current-only, protocol.md Issue #33).
-- Current pairing: protocol 5 (#276), Core v0.12.0 with conversation schema 43. Version 4 peers fail closed;
+- Current pairing: Studio v0.4.0 with Core v0.15.0, protocol 18. Version mismatches fail closed;
   there is no downgrade, alias or payload rewrite. Handshake capabilities do not
-  override an exact protocol-version mismatch. Before release, validate the exact
-  published Core tag/lock/binary pairing separately.
+  override an exact protocol-version mismatch. Validate the exact Core commit and
+  lockfile pairing separately before release.
 - Run ownership and duplicate Thread-get reply lists are removed. Shell ownership
-  and organizational Thread parents remain. The protocol-11 client reads directional pending pages and separate owner counts.
+  and organizational Thread parents remain. The current client reads directional
+  pending pages and separate owner counts using the pinned Core protocol.
 - The bridge and bundled frontend are released together. The frontend observes
   the bridge's connected-owner facts; the Core IPC handshake enforces the wire
   version before that owner is published as connected.

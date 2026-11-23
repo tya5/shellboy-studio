@@ -26,8 +26,8 @@ fn thread_list_accepts_created_order_and_cursor() {
 }
 
 #[test]
-fn exact_protocol_sixteen_has_directional_reply_counts() {
-    assert_eq!(shellboy::protocol::PROTOCOL_VERSION, 16);
+fn exact_protocol_eighteen_has_directional_reply_counts() {
+    assert_eq!(shellboy::protocol::PROTOCOL_VERSION, 18);
     let value = json!({"thread_id":"t", "title":"synthetic", "cwd":"/", "connection":"c",
         "model":"m", "agents_path":"AGENTS.md", "parent_id":"organization", "shells_count":1,
         "summarizing":false, "pending_replies":{"owed_by":{"count":2,"exact":true},"asked_by":{"count":17,"exact":false}}});
@@ -156,6 +156,17 @@ fn cli_id_resolution_is_not_exposed_to_the_browser() {
         include_pending_duties: false,
     });
     assert_eq!(access(&command), Access::Denied);
+}
+
+#[test]
+fn core_delete_set_commands_remain_denied_without_a_studio_surface() {
+    for command in [
+        json!({"command":"thread.delete_set_preview","args":{"thread_ids":["t"]}}),
+        json!({"command":"thread.delete_set","args":{"thread_ids":["t"],"preview_marker":{"thread_count":1,"ids_hash":"0000000000000000000000000000000000000000000000000000000000000000"}}}),
+    ] {
+        let command: Command = serde_json::from_value(command).unwrap();
+        assert_eq!(access(&command), Access::Denied);
+    }
 }
 
 #[test]

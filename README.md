@@ -23,14 +23,16 @@ and [Verification and limitations](#verification-and-limitations).
 -->
 Screenshots are not bundled yet.
 
-## v0.1.0
+## Current release pairing
 
-Release pairing: published Core v0.11.0, pinned to its official tag
-and locked source commit (protocol 5, schema 39). Studio v0.1.0 is published. Older-owner feature negotiation is
-not guaranteed; use only the validated matching owner. Existing artifact targets
-remain Windows x86_64, macOS arm64 and Linux x86_64, not new physical-device
-support claims. See [release notes](docs/release-v0.1.0.md) and the
-[release readiness checklist](docs/development/release-v0.1.0-checklist.md).
+Studio v0.4.0 pairs with Core v0.15.0 at the exact commit and protocol 18 recorded
+in the [release notes](docs/release-v0.4.0.md). Install the matching Studio and
+Core together; do not pair this build with an older Core. Back up the owner data
+directory before the first Core start, which applies migration 62.
+
+The original Studio v0.1.0 release used Core v0.11.0 (protocol 5, schema 39).
+See its [historical release notes](docs/release-v0.1.0.md) and
+[readiness checklist](docs/development/release-v0.1.0-checklist.md).
 
 ## Start
 
@@ -119,7 +121,7 @@ A Claude or ChatGPT subscription is not an API key; an API key is required.
 ## Version pairing with Shellboy
 
 Studio releases are built against one Shellboy release and speak its protocol.
-This candidate (Studio 0.4.0) binds Core v0.15.0 (protocol 18) at the exact main commit in
+This build (Studio 0.4.0) binds Core v0.15.0 (protocol 18) at the exact commit in
 Cargo.toml and Cargo.lock. See the [0.4.0 release notes](docs/release-v0.4.0.md)
 for the pairing and validation plan. Studio v0.2.4 was paired
 with Core v0.11.2 and Studio v0.1.0 with Core v0.11.0. For v0.1.0, hosted
@@ -165,13 +167,13 @@ The Apps library offers prompt drafts for creating apps and an AGENTS.md guidanc
 Apps reside in the owner data directory by default; the gateway writes their README.
 Apps can run actions on the Studio host, so review their code and permissions.
 
-## Protocol 5 compatibility
+## Protocol compatibility
 
-Studio v0.1.0 follows Core's protocol 5 / schema 39 contract (#276).
-There is no protocol-4 downgrade or ownership alias. Use the exact validated
-Core release pair; the published Core tag, lockfile and installed binaries must
-be checked separately when installing or replacing binaries. The current manifest/lock establish the
-public Core v0.15.0 pin; earlier preparation checkpoints alone did not.
+Studio v0.4.0 uses Core protocol 18 and is supported only with its exact Core
+v0.15.0 pairing. There is no protocol downgrade or ownership alias. Check both
+installed versions against the [release notes](docs/release-v0.4.0.md) before
+replacing binaries. Older Studio v0.1.0 followed protocol 5; that is historical,
+not the current pairing.
 Never restart a working owner or change its data to resolve a mismatch without
 explicit approval.
 

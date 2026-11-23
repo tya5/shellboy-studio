@@ -83,6 +83,8 @@ pub fn access(command: &Command) -> Access {
         Command::OwnerShutdown(..)
         | Command::ThreadDelete(..)
         | Command::ThreadDeletePreview(..)
+        | Command::ThreadDeleteSet(..)
+        | Command::ThreadDeleteSetPreview(..)
         | Command::ThreadPrune(..)
         | Command::ThreadSet(..)
         | Command::Wait(..)

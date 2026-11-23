@@ -65,13 +65,11 @@ starting the bridge, run `shellboy-studio guide user` or
 
 ## Version and troubleshooting
 
-Studio 0.2.6 pairs with Core v0.13.0 (protocol 5, conversation schema 44);
-installing that Core over existing data upgrades schema 42 to 43, so back up the
-owner data directory first. For released Studio v0.1.0, use the validated
-matching Core v0.11.0 release (protocol 5, schema 39). A newer Studio build is not guaranteed to negotiate missing features
-with an older owner. If operations fail after a version mismatch, check both
-versions and follow the release pairing instructions; do not reset data or
-restart an owner that is running work without explicit approval.
+Studio v0.4.0 pairs with Core v0.15.0 (protocol 18); install the exact pair
+named in the [release notes](../release-v0.4.0.md), not an older owner. Studio
+does not negotiate missing features with an older owner. If operations fail
+after a version mismatch, check both versions; do not reset data or restart an
+owner that is running work without explicit approval.
 
 If another device cannot connect, confirm the allowed hostname, network access
 and HTTPS reverse-proxy/VPN endpoint status; in authenticated mode, reissue an expired pairing
@@ -109,14 +107,13 @@ their independent sandbox restrictions. `/debug`, when explicitly enabled, also
 connects without a cookie and exposes the same bridge operations: do not share it.
 Actual reverse-proxy/VPN or Serve/Funnel operation is not established by synthetic tests.
 
-## Protocol 5 compatibility
+## Protocol compatibility
 
-Studio v0.1.0 follows Core's protocol 5 / schema 39 contract (#276).
-There is no protocol-4 downgrade or ownership alias. Use the exact validated
-Core release pair; the published Core tag, lockfile and installed binaries must
-be checked separately before release. This source change does not establish that
-pin. Never restart a working owner or change its data to resolve a mismatch
-without explicit approval.
+Studio v0.4.0 uses Core protocol 18 and pairs only with Core v0.15.0 at the exact
+revision in the [release notes](../release-v0.4.0.md). There is no protocol
+downgrade or ownership alias. Check the installed versions against that pairing;
+do not restart a working owner or change its data to resolve a mismatch without
+explicit approval. Studio v0.1.0's protocol-5 pairing is historical.
 
 Runs are independent: no Run owns another Run and organizational Thread parents
 are not Run owners. Shell ownership remains unchanged. Studio reads bounded directional `message.list` pages and uses
