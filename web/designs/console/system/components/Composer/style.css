@@ -7,3 +7,6 @@
 @container app (max-width:899px){
   .composer-root .composer-hint{display:none}
 }
+
+.composer-stop-slot{display:flex;flex:none;width:var(--size-control)}
+@container app (max-width:899px){.composer-stop-slot{width:var(--size-touch)}}
