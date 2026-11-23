@@ -237,7 +237,7 @@ describe('right panel purpose',()=>{
    expect(f.host.querySelector('section[role=tabpanel]:not([hidden]) [data-panel-row-id="asked-child"]')).toBeNull();
    await act(async()=>{tabs[3]!.click();});
    const info=f.host.querySelector('#panel-page-info:not([hidden])')!;
-   const values=['model-a','high','test-connection','/fixture/path'];
+   const values=['model-a','high','test-connection','/fixture/panel'];
    for(const value of values) expect(info.textContent).not.toContain(value);
    await act(async()=>{tabs[4]!.click();});
    const settings=f.host.querySelector('#panel-page-settings:not([hidden])')!;
