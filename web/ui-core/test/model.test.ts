@@ -1,10 +1,41 @@
 import { computed } from "@preact/signals-core";
 import { describe, expect, it } from "vitest";
-import { connected, flush, settle } from "../../data/test/harness";
+import { connected, flush, settle, summary } from "../../data/test/harness";
 import { fixtureModel, fixturePendingAdapter } from "./fixture";
 import { canonicalAttemptId } from "../../data/test/work-fixture";
 
 describe("AppModel over the fake transport", () => {
+  it("keeps cold-start and changed active Threads plus Inbox-only membership in Monitor rows and counts", async () => {
+    const { model, data, t, db } = await fixtureModel({ route: "monitor", configure(owner) {
+      owner.threads = { ...owner.threads, cold: summary("cold", { activity: "tools" }), changed: summary("changed", { activity: "idle" }), inbox: summary("inbox", { activity: "idle" }) };
+      owner.work = { ...owner.work, cold: [{ kind: "run", id: "run-cold", state: "running", thread_id: "cold" }] };
+      const answer = owner.answer.bind(owner);
+      owner.answer = call => {
+        const args = call.args as { thread_id?: string; thread_ids?: string[]; limit?: number };
+        if (call.command === "status" && args.limit !== undefined && !args.thread_id)
+          return { ok: true, result: { items: owner.work.cold } };
+        if (call.command === "thread.list" && args.thread_ids === undefined)
+          return { ok: true, result: { items: [owner.threads.lead!] } };
+        return answer(call);
+      };
+    } });
+    try {
+      expect(t.calls("status").some(call => (call.args as { limit?: number }).limit === 200)).toBe(true);
+      expect(model.rows.value.map(row => row.summary.thread_id)).toContain("cold");
+      expect(model.rows.value.find(row => row.summary.thread_id === "cold")?.summary.activity).toBe("tools");
+      expect(model.counts.value.running).toBeGreaterThan(0);
+      const inboxRead = data.readActiveRows(["inbox"]);
+      await settle(t, db); await inboxRead;
+      expect(model.rows.value.map(row => row.summary.thread_id)).toContain("inbox");
+      db.threads.changed = summary("changed", { activity: "tools" });
+      t.push({ t: "changed", thread_ids: ["changed"], list: true, config_changed: false });
+      await settle(t, db);
+      expect(model.rows.value.map(row => row.summary.thread_id)).toContain("changed");
+      expect(model.counts.value.running).toBeGreaterThan(0);
+      t.push({ t: "resync" }); await settle(t, db);
+      expect(model.rows.value.map(row => row.summary.thread_id)).toContain("inbox");
+    } finally { model.dispose(); }
+  });
   it("opens the newest Thread by default and shows only conversation rows", async () => {
     const { model } = await fixtureModel();
     expect(model.selectedId.value).toBe("lead");

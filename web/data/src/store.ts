@@ -6,7 +6,7 @@ import { batch, computed, signal, type ReadonlySignal } from "@preact/signals-co
 import type { OpError, Outcome } from "./errors";
 import { Link, type ConnectionState, type LinkEvent } from "./link";
 import { microtaskSchedule, type Preview, type PreviewDiscardReason, type Schedule } from "./live";
-import { Cancel, Operations } from "./operations";
+import { ACTIVE_STATUS_PAGE_LIMIT, Cancel, Operations } from "./operations";
 import type {
   HistoryItem,
   HistoryWindowArgs,
@@ -151,6 +151,14 @@ function mergeRows(first: readonly ThreadSummary[], then: readonly ThreadSummary
   return out;
 }
 
+
+const activeActivities = new Set([
+  "awaiting", "background", "continuing", "failed", "preparing", "receiving", "recovery",
+  "reflecting", "retrying", "running", "sending", "stopping", "tools", "waiting",
+]);
+const isActiveSummary = (row: ThreadSummary): boolean =>
+  (row.awaiting_named_count ?? 0) > 0 || activeActivities.has(row.activity);
+
 function rememberRows(previous: ReadonlyMap<string, ThreadSummary>, rows: readonly ThreadSummary[]): Map<string, ThreadSummary> {
   const next = new Map(previous);
   for (const row of rows) { next.delete(row.thread_id); next.set(row.thread_id, row); }
@@ -178,6 +186,8 @@ export class ShellboyData {
   private readonly threadRowsSig = signal<ReadonlyMap<string, ThreadSummary>>(new Map());
   private readonly pinnedThreadIdsSig = signal<readonly string[]>([]);
   private readonly activeThreadIdsSig = signal<readonly string[]>([]);
+  private readonly inboxThreadIdsSig = signal<readonly string[]>([]);
+  private readonly pendingInboxRowIds = new Set<string>();
   private readonly filterSig = signal<ListFilter>({});
   private listRefs = 0;
   private listGen = 0;
@@ -210,6 +220,7 @@ export class ShellboyData {
   readonly threadListMeta: ReadonlySignal<Omit<ThreadListState, "items">>;
   readonly pinnedThreadIds: ReadonlySignal<readonly string[]>;
   readonly activeThreadIds: ReadonlySignal<readonly string[]>;
+  readonly inboxThreadIds: ReadonlySignal<readonly string[]>;
   readonly listFilter: ReadonlySignal<ListFilter>;
 
   constructor(options: DataOptions) {
@@ -238,6 +249,7 @@ export class ShellboyData {
     this.threadListMeta = computed(() => { const { items: _ids, ...meta } = this.listSig.value; return meta; });
     this.pinnedThreadIds = this.pinnedThreadIdsSig;
     this.activeThreadIds = this.activeThreadIdsSig;
+    this.inboxThreadIds = this.inboxThreadIdsSig;
     this.listFilter = this.filterSig;
     this.link.subscribe((e) => this.onEvent(e));
   }
@@ -281,6 +293,7 @@ export class ShellboyData {
       this.scheduleWatch();
       if (this.canRead()) {
         void this.refresher.request("list");
+        void this.refresher.request("active");
         if (this.capabilities.peek().includes(CAPABILITY_THREAD_TAGS)) void this.refresher.request("pinned");
       }
       else this.listSig.value = { ...this.listSig.value, stale: this.listSig.value.loaded };
@@ -465,7 +478,7 @@ export class ShellboyData {
           this.desktopDiagnosticSig.value = null;
           this.ownerSig.value = { state: "unknown" };
           this.markAllStale();
-          this.threadRowsSig.value = new Map(); this.pinnedThreadIdsSig.value = []; this.activeThreadIdsSig.value = [];
+          this.pendingInboxRowIds.clear();
           this.discardAllPreviews("connection_closed");
         });
         break;
@@ -544,9 +557,9 @@ export class ShellboyData {
     const previous = this.ownerSig.peek();
     if (previous.state === "connected" && owner.state === "connected" && previous.info.instance_id !== owner.info.instance_id) {
       this.discardAllPreviews("owner_restarted");
-      this.threadRowsSig.value = new Map(); this.pinnedThreadIdsSig.value = []; this.activeThreadIdsSig.value = [];
+      this.threadRowsSig.value = new Map(); this.pinnedThreadIdsSig.value = []; this.activeThreadIdsSig.value = []; this.inboxThreadIdsSig.value = [];
+      this.pendingInboxRowIds.clear();
     }
-    if (owner.state === "unreachable") { this.threadRowsSig.value = new Map(); this.pinnedThreadIdsSig.value = []; this.activeThreadIdsSig.value = []; }
     this.ownerSig.value = owner;
     if (owner.state === "unreachable") {
       this.markAllStale();
@@ -607,6 +620,14 @@ export class ShellboyData {
   }
 
   private async read(key: string, onSent: () => void): Promise<void> {
+    const epoch = this.readQualificationEpoch;
+    await this.readKey(key, onSent);
+    // A queued read revoked by an owner change or resync runs once more.
+    if (epoch !== this.readQualificationEpoch && this.canRead()) void this.refresher.requestFresh(key);
+  }
+
+  private async readKey(key: string, onSent: () => void): Promise<void> {
+    if (key === "inbox-rows") return this.readInboxRows();
     if (key === "pinned") return this.readPinned(onSent);
     if (key === "active") return this.readActive(onSent);
     if (key.startsWith("list")) return this.readList(onSent, key === "list-shape");
@@ -625,22 +646,47 @@ export class ShellboyData {
   private async readActive(onSent: () => void): Promise<void> {
     if (!this.canRead()) return;
     const epoch = this.readQualificationEpoch;
-    const ids = new Set<string>(); let cursor: string | undefined;
+    const ids = new Set<string>(); let cursor: string | undefined; let pages = 0;
     do {
       const out = await this.operations.activeStatus(cursor, { onSent });
       if (!out.ok || epoch !== this.readQualificationEpoch) return;
       for (const item of out.value.items) if (item.kind === "run" && ["running", "waiting", "recovery_wait"].includes(item.state)) ids.add(item.thread_id);
-      cursor = out.value.next_cursor;
+      pages++;
+      cursor = pages * ACTIVE_STATUS_PAGE_LIMIT < MAX_LIST_ROWS ? out.value.next_cursor : undefined;
+      if (epoch !== this.readQualificationEpoch) return;
     } while (cursor);
+    if (epoch !== this.readQualificationEpoch) return;
+    for (const id of this.activeThreadIdsSig.peek()) {
+      const row = this.threadRowsSig.peek().get(id);
+      if (row && isActiveSummary(row)) ids.add(id);
+    }
     this.activeThreadIdsSig.value = [...ids];
-    await this.readActiveRows([...ids]);
+    await this.refreshActiveRows([...ids], epoch);
   }
 
   /** The Inbox contributes its currently displayed awaiting-human IDs to the same cache. */
   async readActiveRows(ids: readonly string[]): Promise<void> {
-    const unique = [...new Set([...this.activeThreadIdsSig.peek(), ...ids])];
-    this.activeThreadIdsSig.value = unique;
-    for (let i = 0; i < unique.length; i += PAGE_LIMIT) await this.refreshThreadRows(unique.slice(i, i + PAGE_LIMIT), false);
+    const epoch = this.readQualificationEpoch;
+    const unique = [...new Set(ids)].slice(0, MAX_LIST_ROWS);
+    this.inboxThreadIdsSig.value = unique;
+    for (const id of unique) this.pendingInboxRowIds.add(id);
+    if (this.canRead()) await this.refresher.request("inbox-rows");
+    if (epoch !== this.readQualificationEpoch) return;
+  }
+
+  private async readInboxRows(): Promise<void> {
+    const epoch = this.readQualificationEpoch;
+    const ids = [...this.pendingInboxRowIds];
+    this.pendingInboxRowIds.clear();
+    await this.refreshActiveRows(ids, epoch);
+  }
+
+  private async refreshActiveRows(ids: readonly string[], epoch: number): Promise<void> {
+    for (let i = 0; i < ids.length && i < MAX_LIST_ROWS; i += PAGE_LIMIT) {
+      if (epoch !== this.readQualificationEpoch) return;
+      await this.refreshThreadRows(ids.slice(i, i + PAGE_LIMIT), false);
+      if (epoch !== this.readQualificationEpoch) return;
+    }
   }
 
   private async readPinned(onSent: () => void): Promise<void> {
@@ -709,6 +755,12 @@ export class ShellboyData {
     const out = await this.operations.threadList({ thread_ids: [...new Set(ids)] });
     if (!out.ok || epoch !== this.readQualificationEpoch) return;
     const returned = new Map(out.value.items.map(row => [row.thread_id, row]));
+    const activeStatus = new Set(this.activeThreadIdsSig.peek());
+    for (const row of out.value.items) {
+      if (isActiveSummary(row)) activeStatus.add(row.thread_id);
+      else activeStatus.delete(row.thread_id);
+    }
+    for (const id of ids) if (!returned.has(id)) activeStatus.delete(id);
     const shapeChanged = ids.some(id => {
       const old = before.get(id); const current = returned.get(id);
       return !old || !current || old.parent_id !== current.parent_id;
@@ -729,6 +781,7 @@ export class ShellboyData {
     while (next.size > MAX_LIST_ROWS) next.delete(next.keys().next().value!);
     batch(() => {
       this.threadRowsSig.value = next;
+      this.activeThreadIdsSig.value = [...activeStatus];
       const list = this.listSig.peek();
       if (list.loaded && list.items.some(id => ids.includes(id))) {
         this.listSig.value = { ...list, items: list.items.filter(id => !ids.includes(id) || returned.has(id)) };

@@ -9,6 +9,8 @@ const ownerB = { ...connected, info: { ...(connected.state === "connected" ? con
 
 async function fixture() {
   const t = new FakeTransport(); let seq = 0;
+  // #96 row reads (active `status`, `thread.list(thread_ids)`) are not under test here; answer them so they free their slots.
+  t.onCall = c => { if (c.command === "status" || (c.command === "thread.list" && (c.args as { thread_ids?: string[] }).thread_ids)) queueMicrotask(() => t.ok(c.id, { items: [] })); };
   const data = new ShellboyData({ transport: t, newId: () => `uuid-${++seq}` });
   const inbox = new HumanInbox(data); const list = data.trackThreadList(); data.start(); t.open();
   t.push({ t: "hello", bridge_version: "test", data_dir: "/synthetic", owner: connected });
@@ -252,6 +254,7 @@ it("page-two answer waits for a hint to return to the first page",async()=>{
 it("explicit same-owner reconnect retry dispatches a new call with the ORIGINAL operation ID",async()=>{
  const f=await fixture();await fill(f);const answer=f.inbox.answer("h","exact text");const original=f.t.calls("message.reply").at(-1)!;
  f.t.drop();await flush();await answer;f.t.open();f.t.push({t:"hello",bridge_version:"test",data_dir:"/synthetic",owner:connected});
+ await flush();await fill(f);
  const before=f.t.calls("message.reply").length;const retry=f.inbox.answer("h","exact text");await flush();
  expect(f.t.calls("message.reply")).toHaveLength(before+1);const next=f.t.calls("message.reply").at(-1)!;expect(next.id).not.toBe(original.id);expect(next.operation_id).toBe(original.operation_id);expect(next.args).toEqual(original.args);
  f.t.ownerError(next.id,"delivery_unconfirmed");await flush();f.t.ok(humanCalls(f).at(-1)!.id,{items:[]});await flush();await retry;f.close();

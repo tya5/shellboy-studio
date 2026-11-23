@@ -313,6 +313,7 @@ export function answerInsights(db: FakeOwnerDb, usage: Record<string, unknown> =
         return { ok: true, result: fixtureIndex };
       case "status":
         if (a.thread_id) return plain(c);
+        if (a.limit !== undefined) return plain(c);
         return { ok: true, result: a.memory ? fixtureMemory : { items: [], receipt_budget: { accounted_bytes: 13214, at_limit: false, limit_bytes: 268435456, result_retention_seconds: 86400 } } };
       case "model.list":
         return { ok: true, result: { api: "responses", connection: "local", models: ["mock-large", "mock-small"], unavailable_features: [] } };
