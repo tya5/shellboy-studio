@@ -23,7 +23,8 @@
 .tgroup-chevron{display:grid;place-items:center;flex:none;width:var(--size-row-action);min-width:var(--size-row-action);height:var(--size-control);margin-left:auto;color:var(--muted)}
 .tgroup-toggle:hover .tgroup-chevron{color:var(--fg)}
 @container app (max-width:899px){
-  .tgroup[data-group-heading="section"]>header:has(> .tcheck){grid-template-columns:var(--size-touch) minmax(0,1fr);min-height:var(--size-touch)}
+  .tgroup[data-group-heading="section"]>header:has(> .tcheck){grid-template-columns:var(--size-touch) minmax(0,1fr)}
+  .tgroup[data-group-heading="section"]>header:has(> .tcheck){min-height:var(--size-touch)}
   .tgroup-toggle{min-height:var(--size-touch)}
   .tgroup-chevron{height:var(--size-touch)}
 }
