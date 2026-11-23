@@ -210,7 +210,7 @@ it("Work inner icon is a stored canonical display column, not renderer kind clas
 });
 
 
-it("Protocol 11 model_context hides current context and legacy admission-notice rows", async () => {
+it("Protocol 12 model_context hides current context and legacy admission-notice rows", async () => {
   const { materializeHistoryPresentation } = await import("../src/conversation");
   const items = [
     { node_id: "before", kind: "assistant_response", selection: { ordinal: 0 }, items: [text] },
