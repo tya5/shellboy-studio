@@ -22,7 +22,7 @@ function Head({ t, title, sub, loading, onRefresh, retry = false }: { t: Transla
   return (
     <div class="head">
       <div class="pagehead">
-        <h2>{title}</h2>
+        <h2 class="analytics-section-title">{title}</h2>
         <div class="muted">{sub}</div>
       </div>
       <Button disabled={loading} onClick={onRefresh}>{t(retry ? "convo.retryLoad" : "common.refresh")}</Button>

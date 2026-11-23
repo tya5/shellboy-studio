@@ -186,7 +186,7 @@ function PeriodHead({ model, section }: { model: AppModel; section: AnalyticsSec
   return (
     <div class="head">
       <div class="pagehead">
-        <h2>{t(`ana.section.${section}`)}</h2>
+        <h2 class="analytics-section-title">{t(`ana.section.${section}`)}</h2>
         <div class="muted">{t(`ana.sub.${section}`)} {t("analytics.subtitle", { zone: i.period.value.zone })}</div>
       </div>
       <div class="band analytics-period">
@@ -348,7 +348,6 @@ export function Analytics({ context }: { context: DesignContext }) {
   const section = analyticsSection(model.route.value);
   return (
     <SubView
-      className="analytics-view"
       title={t("view.analytics")}
       items={ANALYTICS_SECTIONS.map((s) => ({ key: s, href: formatRoute({ view: "analytics", section: s }), role: ICONS[s], label: t(`ana.section.${s}`), current: s === section }))}
     >

@@ -1,7 +1,4 @@
 .sect{display:flex;flex-direction:column;gap:var(--space-12);padding:var(--space-16);border:1px solid var(--line);border-radius:var(--radius);background:var(--panel);min-width:0}
 .sect h3{margin:0;font:var(--type-heading)}
 .sect-source{font:var(--type-caption);color:var(--muted);overflow-wrap:anywhere}
-.sect-source code{font:var(--type-code);font-size:var(--size-caption)}
-@container app (max-width:899px){
-  .sect{padding:var(--space-12)}
-}
+.sect-source code{font:var(--type-code)}

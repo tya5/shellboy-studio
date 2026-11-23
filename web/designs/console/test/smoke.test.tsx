@@ -8,10 +8,10 @@ import { options, render } from "preact";
 import { act } from "preact/test-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { WindowOwner } from "../../../ui-core/test/window-owner";
-import { fixtureModel, fixturePendingAdapter } from "../../../ui-core/test/fixture";
-import type { ServerFrame } from "../../../data/src";
-import { settle, summary } from "../../../data/test/harness";
-import { type AnalyticsSection, type AppModel, type DesignContext, type Prefs } from "../../../ui-core/src";
+import { fixtureDb, fixtureModel, fixturePendingAdapter } from "../../../ui-core/test/fixture";
+import { ShellboyData, type ServerFrame } from "../../../data/src";
+import { connected, FakeTransport, settle, summary } from "../../../data/test/harness";
+import { AppModel, noPending, type AnalyticsSection, type DesignContext, type Prefs } from "../../../ui-core/src";
 import { DESIGNS } from "../../registry";
 import { App } from "../screens/App";
 import { Conversation } from "../screens/Conversation";
@@ -596,6 +596,28 @@ describe("Conversation", () => {
 });
 
 describe("Monitor", () => {
+  it("does not show counts while the first list read is outstanding", async () => {
+    const t = new FakeTransport();
+    const data = new ShellboyData({ transport: t });
+    const model = new AppModel({ data, lang: "en", pending: noPending });
+    try {
+      model.applyRoute({ view: "monitor" });
+      model.start();
+      t.open();
+      t.push({ t: "hello", bridge_version: "test", data_dir: "/temp/owner-a", owner: connected });
+      const el = draw(model);
+      const screen = el.querySelector(".mon")!;
+      expect(t.calls("thread.list")).not.toHaveLength(0);
+      expect(data.threadList.value.loaded).toBe(false);
+      expect([...screen.querySelectorAll(".monitor-tabs button")].map(text)).toEqual(["All", "Pinned in Monitor", "Needs attention"]);
+      expect(text(screen)).not.toContain("Showing");
+      expect(screen.querySelector('.loadrows[role="status"]')).toBeTruthy();
+      await act(async () => { await settle(t, fixtureDb()); });
+      expect(data.threadList.value.loaded).toBe(true);
+      expect(text(screen)).toMatch(/Showing \d+ of \d+/);
+      expect(screen.querySelector(".loadrows")).toBeNull();
+    } finally { model.dispose(); }
+  });
   it("switches to tiles, pins a thread and filters pinned tiles without old-owner history reads", async () => {
     const { model, t } = await fixtureModel({ route: "monitor" });
     const el = draw(model);
@@ -808,6 +830,30 @@ describe("Analytics", () => {
     expect(t.calls("usage.get").length).toBe(before);
     expect(model.route.value.section).toBe("overview");
   });
+  it("shows LoadingRows in both Storage sections before their first reads return", async () => {
+    const { model, t, db } = await fixtureModel({ route: "monitor" });
+    try {
+      model.applyRoute({ view: "analytics", section: "storage" });
+      const el = draw(model);
+      const sections = [...el.querySelectorAll(".subview-main section")].slice(0, 2);
+      expect(sections).toHaveLength(2);
+      for (const section of sections) expect(section.querySelector('.loadrows[role="status"]')).toBeTruthy();
+      expect(text(el.querySelector(".subview-main .head button")!)).toBe("Refresh");
+      await act(async () => { await settle(t, db); });
+      for (const section of sections) expect(section.querySelector(".loadrows")).toBeNull();
+    } finally { model.dispose(); }
+  });
+  it("renders Index read error details in a LogBlock", async () => {
+    const message = JSON.stringify({ error: "synthetic index read failure" });
+    const { model } = await fixtureModel({ route: "analytics", section: "index", configure(db) {
+      const answer = db.answer.bind(db);
+      db.answer = call => call.command === "index.status" ? { ok: false, code: "invalid_argument", message } : answer(call);
+    } });
+    try {
+      const el = draw(model);
+      expect(text(el.querySelector(".subview-main pre.log")!)).toContain(message);
+    } finally { model.dispose(); }
+  });
   it("Storage offers no destructive action, and explains why", async () => {
     const { el, t, db } = await open("storage");
     await act(async () => {
@@ -833,8 +879,10 @@ describe("Analytics", () => {
     });
     expect(text(el)).toContain("Not reported");
     expect(el.querySelector('[role="meter"]')).toBeTruthy();
-    expect(text(el)).toContain("Bridge resident memory");
-    expect(text(el)).toContain("40 MiB");
+    const facts = [...el.querySelectorAll(".subview-main section .fact-list-root")];
+    expect(facts).toHaveLength(2);
+    expect(text(facts[1]!)).toContain("Bridge resident memory");
+    expect(text(facts[1]!)).toContain("40 MiB");
   });
   it("By Thread reads on opening; Show compaction goes to its section", async () => {
     const { el, t, db, model } = await open("threads");
@@ -849,7 +897,7 @@ describe("Analytics", () => {
     });
     expect(model.route.value).toEqual({ view: "analytics", section: "compaction" });
     expect(text(el)).toContain("Compaction effect");
-    expect(el.querySelector(".tbl.stack [data-label='Summary tokens']")).toBeTruthy();
+    expect(el.querySelector(".tbl.tbl-stack [data-label='Summary tokens']")).toBeTruthy();
     expect(el.querySelector(".range-bar-track")).toBeTruthy();
   });
   it("loading keeps partial values with a Stop; a failure keeps them too", async () => {

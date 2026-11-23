@@ -9,7 +9,7 @@ export interface DataColumn {
 export function DataTable({ caption, columns, rows, flat }: { caption: string; columns: DataColumn[]; rows: { key: string; cells: ComponentChildren[] }[]; /** Keep columns on a phone: only for tables known to fit. */ flat?: boolean }) {
   return (
     <div class="tbl-wrap">
-      <table class={flat ? "tbl" : "tbl stack"}>
+      <table class={flat ? "tbl" : "tbl tbl-stack"}>
         <caption class="vh">{caption}</caption>
         <thead>
           <tr>
