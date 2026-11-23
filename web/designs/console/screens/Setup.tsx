@@ -186,7 +186,7 @@ export function Setup({ context }: { context: DesignContext }) {
               </Notice>
             ) : null}
             {test.facts.models.length > MODELS_SHOWN ? <Field ariaLabel={t("setup.model.filter")} placeholder={t("setup.model.filter")} autoComplete="off" value={filter} onInput={(e) => setFilter(e.currentTarget.value)} /> : null}
-            {shown.length > 0 ? <ChoiceList label={t("setup.model.list")} mono value={s.model.value} onChange={(m) => s.setModel(m)} choices={shown.map((m) => ({ value: m, label: m }))} /> : <div class="muted">{t("setup.model.none")}</div>}
+            {shown.length > 0 ? <ChoiceList label={t("setup.model.list")} mono scroll value={s.model.value} onChange={(m) => s.setModel(m)} choices={shown.map((m) => ({ value: m, label: m }))} /> : <div class="muted">{t("setup.model.none")}</div>}
             {matching.length > shown.length ? <div class="muted caption">{t("setup.model.shown", { n: shown.length, total: matching.length })}</div> : null}
             <Field ariaLabel={t("setup.model.type")} class="mono" placeholder={t("setup.model.type")} autoComplete="off" spellcheck={false} value={s.model.value} onInput={(e) => s.setModel(e.currentTarget.value)} />
             </> : null}

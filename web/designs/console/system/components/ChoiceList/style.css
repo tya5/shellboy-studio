@@ -1,4 +1,5 @@
-.choice-list-root{display:flex;flex-direction:column;max-height:288px;overflow:auto;border:1px solid var(--line-strong);border-radius:var(--radius-s);background:var(--inset)}
+.choice-list-root{display:flex;flex-direction:column;border:1px solid var(--line-strong);border-radius:var(--radius-s);background:var(--inset)}
+.choice-list-root.choice-list-scroll{max-height:288px;overflow:auto}
 .choice-list-option{flex:none;display:flex;align-items:flex-start;gap:var(--space-8);min-height:var(--size-control);padding:var(--space-8) var(--space-12);border-bottom:1px solid var(--line);font:var(--type-label);cursor:pointer}
 .choice-list-option:last-child{border-bottom:0}
 .choice-list-option:hover{background:var(--raised)}

@@ -77,7 +77,7 @@ export function SetupEmbedding({ context }: { context: DesignContext }) {
                 <>
                   <TestResult t={t} state={list} />
                   {e.models.value.length > 0 ? <Field ariaLabel={t("setup.model.filter")} placeholder={t("setup.model.filter")} autoComplete="off" value={filter} onInput={(ev) => setFilter(ev.currentTarget.value)} /> : null}
-                  {shown.length > 0 ? <ChoiceList label={t("setup.model.list")} mono value={e.modelDraft.value} onChange={(m) => e.setModel(m)} choices={shown.map((m) => ({ value: m, label: m }))} /> : e.models.value.length > 0 ? <div class="muted">{t("setup.model.none")}</div> : null}
+                  {shown.length > 0 ? <ChoiceList label={t("setup.model.list")} mono scroll value={e.modelDraft.value} onChange={(m) => e.setModel(m)} choices={shown.map((m) => ({ value: m, label: m }))} /> : e.models.value.length > 0 ? <div class="muted">{t("setup.model.none")}</div> : null}
                   {matching.length > shown.length ? <div class="muted caption">{t("setup.model.shown", { n: shown.length, total: matching.length })}</div> : null}
                   <Field ariaLabel={t("setup.model.type")} class="mono" placeholder={t("setup.model.type")} autoComplete="off" spellcheck={false} value={e.modelDraft.value} onInput={(ev) => e.setModel(ev.currentTarget.value)} />
                 </>

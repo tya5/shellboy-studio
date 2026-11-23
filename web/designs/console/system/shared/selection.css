@@ -1,4 +1,4 @@
-.tcheck{display:inline-grid;place-items:center;flex:none;width:32px;height:32px;cursor:pointer}
+.tcheck{display:inline-grid;place-items:center;flex:none;width:var(--size-control);height:var(--size-control);cursor:pointer}
 .tcheck input{width:15px;height:15px;margin:0;accent-color:var(--accent);cursor:pointer}
 @container app (max-width:899px){
   .tcheck{width:var(--size-touch);height:var(--size-touch)}

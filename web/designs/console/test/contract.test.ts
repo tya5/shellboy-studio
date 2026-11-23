@@ -140,6 +140,10 @@ describe("components name roles, never values", () => {
     expect(mobile).toMatch(/\.btn\{min-width:var\(--size-touch\)/);
     expect(mobile).toMatch(/\.chip\{min-width:var\(--size-touch\)/);
     expect(mobile).toMatch(/\.tcheck\{width:var\(--size-touch\);height:var\(--size-touch\)/);
+    // The row checkbox and the band checkbox column share one owner token per width.
+    expect(mobile).toMatch(/\.tcheck\{[^}]*width:var\(--size-control\);height:var\(--size-control\)/);
+    expect(mobile).toMatch(/header:has\(> \.tcheck\)\{[^}]*grid-template-columns:var\(--size-control\) minmax\(0,1fr\)/);
+    expect(mobile).toMatch(/@container app \(max-width:899px\)\{\s*\.tgroup\[data-group-heading="section"\]>header:has\(> \.tcheck\)\{grid-template-columns:var\(--size-touch\) minmax\(0,1fr\)\}/);
     expect(mobile).toMatch(/\.brow-text>a\{[^}]*min-height:var\(--size-touch\)/);
     expect(mobile).toMatch(/\.srow-title>a\{[^}]*min-height:var\(--size-touch\)/);
     expect(mobile).toMatch(/\.tile-header>a\{[^}]*min-height:var\(--size-touch\)/);
