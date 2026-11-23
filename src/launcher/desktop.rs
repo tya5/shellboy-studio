@@ -210,7 +210,7 @@ impl Launch {
     }
 
     pub async fn supervise(&mut self, cancel: CancellationToken) {
-        use crate::launcher::supervisor::{ChildExit, Decision, RestartState};
+        use crate::launcher::supervisor::{Decision, RestartState};
         let cap = OWNER_START_TIMEOUT;
         let mut restart_state = RestartState::new(cap);
         self.start().await;
@@ -262,29 +262,24 @@ impl Launch {
             }
             ready |= *self.owner.ready.borrow();
             let status = result.ok();
-            let clean = status
-                .as_ref()
-                .is_some_and(std::process::ExitStatus::success);
-            let reason = if !ready {
-                self.owner
-                    .startup_failure()
-                    .or_else(|| status.map(|s| format!("Core exited before ready with {s}")))
-                    .unwrap_or_else(|| "Core child wait failed before ready".into())
-            } else {
-                status
-                    .map(|s| format!("Core exited with {s}"))
-                    .unwrap_or_else(|| "Core child wait failed".into())
+            let status_text = match &status {
+                Some(status) if ready => format!("Core exited with {status}"),
+                Some(status) => format!("Core exited before ready with {status}"),
+                None if ready => "Core child wait failed".into(),
+                None => "Core child wait failed before ready".into(),
             };
-            let decision = restart_state.exited(
+            let startup_failure = if ready {
+                None
+            } else {
+                self.owner.startup_failure()
+            };
+            let child_exit = super::supervisor::classify(
                 ready,
-                if clean {
-                    ChildExit::Clean
-                } else if ready {
-                    ChildExit::Crash(reason)
-                } else {
-                    ChildExit::BeforeReady(reason)
-                },
+                status.as_ref().map(std::process::ExitStatus::success),
+                status_text,
+                startup_failure,
             );
+            let decision = restart_state.exited(ready, child_exit);
             match decision {
                 Decision::Stop => continue,
                 Decision::ShowFailure(reason) => {
@@ -876,7 +871,7 @@ mod tests {
 
     #[tokio::test]
     async fn fake_child_ready_crash_retries_and_pre_ready_error_stops_with_typed_reason() {
-        use crate::launcher::supervisor::{ChildExit, Decision, RestartState};
+        use crate::launcher::supervisor::{Decision, RestartState};
         let dir = Temp::new();
         let config = dir.0.join("config.toml");
         fs::write(&config, "").unwrap();
@@ -901,10 +896,13 @@ mod tests {
         assert_eq!(status.code(), Some(1));
         assert!(*crashing.ready.borrow());
         let mut state = RestartState::new(OWNER_START_TIMEOUT);
-        assert!(matches!(
-            state.exited(true, ChildExit::Crash(format!("Core exited with {status}"))),
-            Decision::Retry { .. }
-        ));
+        let crash = crate::launcher::supervisor::classify(
+            *crashing.ready.borrow(),
+            Some(status.success()),
+            format!("Core exited with {status}"),
+            None,
+        );
+        assert!(matches!(state.exited(true, crash), Decision::Retry { .. }));
 
         let mut failing = make_owner();
         let status = fake_core(&mut failing, "startup-error").await;
@@ -914,9 +912,15 @@ mod tests {
             .startup_failure()
             .expect("typed startup error from child log");
         assert_eq!(reason, "bad config repair the config");
+        let failure = crate::launcher::supervisor::classify(
+            *failing.ready.borrow(),
+            Some(status.success()),
+            format!("Core exited before ready with {status}"),
+            Some(reason),
+        );
         assert_eq!(
-            state.exited(false, ChildExit::BeforeReady(reason.clone())),
-            Decision::ShowFailure(reason)
+            state.exited(false, failure),
+            Decision::ShowFailure("bad config repair the config".into())
         );
     }
 

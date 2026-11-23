@@ -8,6 +8,21 @@ pub(super) enum ChildExit {
     Crash(String),
 }
 
+pub(super) fn classify(
+    ready: bool,
+    status_success: Option<bool>,
+    status_text: String,
+    startup_failure: Option<String>,
+) -> ChildExit {
+    if status_success == Some(true) {
+        ChildExit::Clean
+    } else if ready {
+        ChildExit::Crash(status_text)
+    } else {
+        ChildExit::BeforeReady(startup_failure.unwrap_or(status_text))
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) enum Decision {
     Stop,
