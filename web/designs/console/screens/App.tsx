@@ -5,7 +5,7 @@ import { threadMenuEntries } from "../system/components/thread-menu";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
 import { CAPABILITY_TAGS, CAPABILITY_CWDS, formatRoute, readSidebarWidth, SIDEBAR_WIDTH_MAX, SIDEBAR_WIDTH_MIN, statusLabel, viewShortcut, navShortcut, panelShortcut, type DesignContext, type ViewName } from "../../../ui-core/src";
 import { Button, Field, FilterChips, FilterMenu, Icon, MoreMenu, NavItem, Notice, StatusMark, ThreadDeleteDialog, ThreadGroup, ThreadItem, ShellFooter, ShellToggle, type IconRole, type ThreadDeleteTarget } from "../system/components";
-import { formatAge, folderName } from "../../../ui-core/src";
+import { formatAge } from "../../../ui-core/src";
 import { ThreadHeader } from "./ThreadHeader";
 import { Conversation } from "./Conversation";
 import { Inbox } from "./Inbox";
