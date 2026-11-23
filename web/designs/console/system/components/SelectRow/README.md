@@ -19,4 +19,4 @@ Styles are colocated in `system/components/SelectRow/style.css`.
 Styles: style.css in this directory
 
 
-The management list container has no inline padding. Rows fill the section-band width and own their shared-token insets, with the trailing action aligned to the band chevron; title/depth content keeps its inset. References: shadcn/ui SidebarMenuAction (`showOnHover`) and Orca sidebar rows.
+The management list container has no inline padding. Rows fill the section-band width and own their shared-token insets, with the trailing action aligned to the band chevron; title/depth content keeps its inset. A top-level row's checkbox fills the same leading column as the ThreadGroup band checkbox, so the two share one left edge; depth indents in `space-16` steps from there. At phone width the title link is at least `size-touch` high. References: shadcn/ui SidebarMenuAction (`showOnHover`) and Orca sidebar rows.

@@ -5,7 +5,7 @@
 - **Why:** The shared band aligns its chevron with row actions, separates disclosure from selection, and centers its leading mark on the same row as the label and disclosure.
 - **Source:** [Studio Thread list (Orca, shadcn/ui, APG)](../../patterns/thread-list.md)
 
-Groups Threads by owner-reported directory or state. The checkbox/bulk variant selects every listed row and shows mixed selection. When it also owns a group disclosure, it uses the exact same section-band and toggle as the sidebar variant, with exactly two adjacent controls: the checkbox label fills the full-height leading column and the disclosure fills the remaining band with no gap. Do not nest one control inside the other or center a short checkbox label in the band.
+Groups Threads by owner-reported directory or state. The checkbox/bulk variant selects every listed row and shows mixed selection. When it also owns a group disclosure, it uses the exact same section-band and toggle as the sidebar variant, with exactly two adjacent controls: the checkbox label fills the full-height leading column (`size-control` wide, `size-touch` at phone width, matching SelectRow's checkbox) and the disclosure fills the remaining band with no gap. Do not nest one control inside the other or center a short checkbox label in the band.
 
 ## Sidebar section band
 

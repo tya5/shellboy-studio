@@ -18,3 +18,6 @@
 
 .tgroup[data-group-heading="section"]{border:0;background:none}
 .tgroup[data-group-heading="section"]>header{color:var(--muted)}
+@container app (max-width:899px){
+  .tgroup[data-group-heading="section"]>header:has(> .tcheck){grid-template-columns:var(--size-touch) minmax(0,1fr)}
+}

@@ -141,7 +141,7 @@ describe("components name roles, never values", () => {
     expect(mobile).toMatch(/\.chip\{min-width:var\(--size-touch\)/);
     expect(mobile).toMatch(/\.tcheck\{width:var\(--size-touch\);height:var\(--size-touch\)/);
     expect(mobile).toMatch(/\.brow-text>a\{[^}]*min-height:var\(--size-touch\)/);
-    expect(mobile).toMatch(/\.srow-text>a\{[^}]*min-height:var\(--size-touch\)/);
+    expect(mobile).toMatch(/\.srow-title>a\{[^}]*min-height:var\(--size-touch\)/);
     expect(mobile).toMatch(/\.tile-header>a\{[^}]*min-height:var\(--size-touch\)/);
   });
   it("every custom property used exists", () => {

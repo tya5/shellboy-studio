@@ -232,7 +232,8 @@ describe("approved list section and status rules", () => {
     expect(row).toContain("thread-item-depth-3");
     const select = componentStyleFiles["../system/components/SelectRow/style.css"] ?? "";
     expect(select).toContain("width:100%");
-    expect(select).toContain("padding:0 var(--space-row-inset) 0 var(--space-8)");
+    // The checkbox fills the band's leading column, so a top-level row has no leading inset.
+    expect(select).toContain("padding:0 var(--space-row-inset) 0 0");
     expect(select).not.toMatch(/margin-inline:|width:calc\(/);
     const chip = componentStyleFiles["../system/components/ChildrenChip/style.css"] ?? "";
     expect(chip).toContain("height:var(--size-chip-height)");

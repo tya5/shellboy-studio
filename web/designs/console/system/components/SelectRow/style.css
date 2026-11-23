@@ -1,23 +1,22 @@
-.select-row-root{box-sizing:border-box;width:100%;content-visibility:auto;contain-intrinsic-size:auto var(--size-control);gap:var(--space-8);padding:0 var(--space-row-inset) 0 var(--space-8);min-height:var(--size-control);border-bottom:1px solid var(--line);font:var(--type-label)}
+.select-row-root{box-sizing:border-box;width:100%;content-visibility:auto;contain-intrinsic-size:auto var(--size-control);gap:var(--space-8);padding:0 var(--space-row-inset) 0 0;min-height:var(--size-control);border-bottom:1px solid var(--line);font:var(--type-label)}
 .select-row-root:last-child{border-bottom:0}
-.select-row-root.select-row-depth-1{padding-left:calc(var(--space-8) + var(--space-16))}
-.select-row-root.select-row-depth-2{padding-left:calc(var(--space-8) + 2 * var(--space-16))}
-.select-row-root.select-row-depth-3{padding-left:calc(var(--space-8) + 3 * var(--space-16))}
-.select-row-root.select-row-depth-4{padding-left:calc(var(--space-8) + 4 * var(--space-16))}
+.select-row-root.select-row-depth-1{padding-left:var(--space-16)}
+.select-row-root.select-row-depth-2{padding-left:calc(2 * var(--space-16))}
+.select-row-root.select-row-depth-3{padding-left:calc(3 * var(--space-16))}
+.select-row-root.select-row-depth-4{padding-left:calc(4 * var(--space-16))}
 .select-row-root:hover{background:var(--hover)}
 .select-row-root:has(.tcheck input:checked){background:var(--accent-bg)}
 .select-row-root.select-row-drop{box-shadow:inset 0 0 0 2px var(--accent)}
 .select-row-root[draggable=true]{cursor:grab}
 .select-row-tags{display:flex;flex-wrap:wrap;gap:var(--space-4);margin:0;padding:0;list-style:none}
 .select-row-tag{padding:0 var(--space-8);border:1px solid var(--line-strong);border-radius:var(--radius-s);background:var(--inset);color:var(--fg);font:var(--type-caption);overflow-wrap:anywhere}
-.srow-title{min-width:0}
+.srow-title{display:flex;align-items:center;gap:var(--space-8);min-width:0}
 .srow-status{flex:none;display:inline-grid;place-items:center;width:18px}
 .srow-text{flex:1;min-width:0;padding:var(--space-4) 0;overflow-wrap:anywhere}
 .srow-text a{color:var(--fg);text-decoration:none}
 .srow-text a:hover{color:var(--accent);text-decoration:underline}
 @container app (max-width:899px){
   .select-row-root{min-height:var(--size-touch);contain-intrinsic-size:auto var(--size-touch)}
-  .srow-text>a{display:flex;align-items:center;min-height:var(--size-touch)}
+  .srow-title>a{display:block;min-height:var(--size-touch);align-content:center}
 }
 .select-row-root:has(> [data-row-action]) .srow-title a{display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.srow-title{min-width:0}
