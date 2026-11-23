@@ -32,7 +32,8 @@ only browser API, behind the `Transport` interface (`transport.ts`).
   wire schedule exactly one trailing read (the running read may predate the change). A queued
   read revoked by an owner change or resync runs once more.
 - **Resync.** `resync`, `owner: restarted`, and `hello` (every socket open, with the owner
-  connected) re-read everything tracked, including the open Threads' rows by ID. `restarted` followed by `resync` costs at most one
+  connected) re-read everything tracked, including the open Threads' rows by
+  ID. `restarted` followed by `resync` costs at most one
   trailing read per target. Socket close and `owner: unreachable` keep values, set `stale`,
   discard live previews; the next `hello`/`resync` re-reads.
 - **Reads wait for the owner**: nothing is read until `hello` shows the owner connected.

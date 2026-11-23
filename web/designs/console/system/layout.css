@@ -161,9 +161,11 @@
 
 /* Match the permanent footer to the conversation and composer gutters. */
 .convo > .conversation-status{padding-inline:var(--space-24)}
+.convo > .conversation-retry-note{padding-inline:var(--space-24)}
 
 @container app (max-width:899px){
   .convo > .conversation-status{padding-inline:var(--space-12)}
+  .convo > .conversation-retry-note{padding-inline:var(--space-12)}
 
   .monitor-sort-wide,.monitor-tools>.monitor-count{display:none}
   .monitor-sort-narrow,.monitor-count-mobile{display:block}
@@ -235,6 +237,8 @@ html:has(dialog:modal){overflow:hidden}
 .conversation-status>span{flex:none}
 .conversation-status>[data-status-description]{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .conversation-status>.btn{flex-shrink:0}
+/* The retry charge warning is its own row under the status line and wraps in full. */
+.conversation-retry-note{padding-bottom:var(--space-8);white-space:normal;overflow-wrap:anywhere}
 
 .brand-logo{width:var(--size-icon);height:var(--size-icon);flex:none}
 

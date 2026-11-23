@@ -11,6 +11,10 @@ import { settle, summary, type FakeOwnerDb } from "../../../data/test/harness";
 import type { AppModel, DesignContext, Prefs } from "../../../ui-core/src";
 import { DESIGNS } from "../../registry";
 import { App } from "../screens/App";
+// @ts-expect-error Node file reads give happy-dom the layout rules for computed styles.
+import { readFileSync } from "node:fs";
+
+const layoutCss = readFileSync("designs/console/system/layout.css", "utf8");
 
 let host: HTMLElement | undefined;
 afterEach(() => {
@@ -63,11 +67,12 @@ describe("Open Thread facts (#103)", () => {
       expect(footer(el).textContent).toContain("provider: connection interrupted");
       expect(retryButtons(el)).toHaveLength(1);
       expect(footer(el).contains(retryButtons(el)[0]!)).toBe(true);
-      // The charge warning is visible text beside Retry, not a hover-only title (touch never hover-only).
-      const note = footer(el).querySelector<HTMLElement>("[data-retry-note]")!;
+      // The charge warning is supporting text on its own row under the status line, not a hover-only title.
+      const note = el.querySelector<HTMLElement>("[data-retry-note]")!;
+      expect(footer(el).contains(note)).toBe(false);
+      expect(footer(el).nextElementSibling).toBe(note);
       expect(note.textContent).toBe(model.t.value("recovery.body"));
-      expect(note.classList.contains("muted")).toBe(true);
-      expect(note.nextElementSibling).toBe(retryButtons(el)[0]);
+      expect(retryButtons(el)[0]!.getAttribute("aria-describedby")).toBe(note.id);
       expect(retryButtons(el)[0]!.hasAttribute("title")).toBe(false);
       expect(el.querySelector(".dock [data-tone=bad], .dock .btn-warn")).toBeNull();
       expect(el.querySelector("[data-conversation-header] [data-status]")?.getAttribute("data-status")).toBe("error");
@@ -76,6 +81,34 @@ describe("Open Thread facts (#103)", () => {
       await act(async () => { retryButtons(el)[0]!.click(); await settle(t, db); });
       expect(t.calls("run.retry").map(call => call.args)).toEqual([expect.objectContaining({ run_id: "run-2" })]);
     } finally { model.dispose(); }
+  });
+
+  it("wraps the full charge warning on its own row at phone width while the status line stays one line", async () => {
+    (window as unknown as { happyDOM: { setWindowSize(size: { width: number; height: number }): void } }).happyDOM.setWindowSize({ width: 390, height: 844 });
+    const style = document.createElement("style");
+    style.id = "retry-note-styles";
+    style.textContent = layoutCss;
+    document.head.append(style);
+    const { model, t, db } = await fixtureModel({ route: "conversation", threadId: "broken" });
+    try {
+      const el = draw(model);
+      await act(async () => { await settle(t, db); });
+      const note = el.querySelector<HTMLElement>("[data-retry-note]")!;
+      const warning = "Retrying sends the request again and may be charged again. Saved tool results are not run again.";
+      expect(note.textContent).toBe(warning);
+      const noteStyle = getComputedStyle(note);
+      expect(noteStyle.whiteSpace).toBe("normal");
+      expect(noteStyle.textOverflow).not.toBe("ellipsis");
+      expect(noteStyle.overflow).not.toBe("hidden");
+      expect(note.closest(".conversation-status")).toBeNull();
+      // The status line itself stays one line; only its reason shortens.
+      expect(getComputedStyle(footer(el)).whiteSpace).toBe("nowrap");
+      expect(getComputedStyle(footer(el).querySelector("[data-status-description]")!).textOverflow).toBe("ellipsis");
+      expect(footer(el).querySelectorAll("[data-status-description]")).toHaveLength(1);
+    } finally {
+      model.dispose(); style.remove();
+      (window as unknown as { happyDOM: { setWindowSize(size: { width: number; height: number }): void } }).happyDOM.setWindowSize({ width: 1024, height: 768 });
+    }
   });
 
   it("keeps recovery and Retry in the status line while an open question makes the mark awaiting", async () => {
@@ -97,7 +130,7 @@ describe("Open Thread facts (#103)", () => {
       await act(async () => { await settle(t, db); });
       expect(footer(el).textContent).toContain("provider: connection interrupted");
       expect(retryButtons(el)).toHaveLength(0);
-      expect(footer(el).querySelector("[data-retry-note]")).toBeNull();
+      expect(el.querySelector("[data-retry-note]")).toBeNull();
     } finally { model.dispose(); }
   });
 

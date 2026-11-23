@@ -62,6 +62,25 @@ try{
    console.log(JSON.stringify({width,theme,state,reduced,distinctFrames:frames.size,footerHeight:frame.bar}));
   }
  }
+ // #103: the retry charge warning is its own row under the one-line status and is never ellipsized.
+ for (const width of [390,768,1280]) {
+  await call('Emulation.setDeviceMetricsOverride',{width,height:900,deviceScaleFactor:2,mobile:false});
+  const url=`${base}?state=recovery&width=${width}`;
+  await call('Page.navigate',{url});
+  const note=await until(()=>evaluate(`(()=>{
+   if(location.href!==${JSON.stringify(url)})return;
+   const footer=document.querySelector('.conversation-status'), note=document.querySelector('[data-retry-note]');
+   const retry=footer&&[...footer.querySelectorAll('button')].find(b=>b.textContent.trim()==='Retry');
+   if(!footer||!note||!retry)return;
+   const bar=footer.getBoundingClientRect(), box=note.getBoundingClientRect(), button=retry.getBoundingClientRect();
+   return {text:note.textContent,bar:bar.height,below:box.top>=bar.bottom-1,fits:note.scrollWidth<=note.clientWidth+1&&box.right<=innerWidth,
+    lines:Math.round(box.height/parseFloat(getComputedStyle(note).lineHeight)),retryShown:button.right<=bar.right+1&&retry.scrollWidth<=retry.clientWidth+1};
+  })()`));
+  assert.equal(note.text,'Retrying sends the request again and may be charged again. Saved tool results are not run again.');
+  assert.equal(note.bar,40,`${width}: status line is one line`);
+  assert(note.below&&note.fits&&note.retryShown,`${width}: ${JSON.stringify(note)}`);
+  console.log(JSON.stringify({width,state:'recovery',footerHeight:note.bar,noteLines:note.lines}));
+ }
  for (const width of [390,768,1280]) {
   await call('Emulation.setDeviceMetricsOverride',{width,height:900,deviceScaleFactor:2,mobile:false});
   const url=`${base}?view=footer-lifecycle&width=${width}`;
