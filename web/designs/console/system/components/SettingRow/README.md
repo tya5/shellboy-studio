@@ -1,6 +1,6 @@
 # SettingRow
 
-Use for editable settings inside a Section card. The name and explanation stay on the left, with the control and row-local save state on the right; controls wrap beneath on narrow frames. Inspired by Orca settings, VS Code settings, and macOS System Settings. Do not use for read-only facts, repeated data tables, or controls without a setting label; keep those in FactList or DataTable.
+Use for settings inside a Section card. The name and explanation stay on the left, with the control and row-local save state on the right; controls wrap beneath on narrow frames. The left Settings use the always-editable variant because changing values is a primary task here. The right Thread Settings use the read view plus Change variant because reading inherited values is the usual state. Do not use for read-only facts, repeated data tables, or controls without a setting label; keep those in FactList or DataTable. This follows Orca settings, VS Code settings, macOS System Settings, and the approved inline-edit references recorded for Studio #80/#81.
 
 Styles: style.css in this directory.
 

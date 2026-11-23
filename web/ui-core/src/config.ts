@@ -13,6 +13,8 @@ export type ConfigKind = "text" | "int" | "float" | "bool" | "choice" | "name" |
 export interface ConfigFieldSpec {
   kind: ConfigKind;
   options?: readonly string[];
+  /** A connection override may be removed to inherit the owner's value. */
+  inherit?: boolean;
 }
 
 /** Keys that aren't per connection: their path is the key. Bounds stay with the owner, which validates. */
@@ -55,12 +57,16 @@ export const CONNECTION_FIELDS = [
   { key: "api_key_header", kind: "name" },
   { key: "default_effort", kind: "text" },
   { key: "max_tokens", kind: "int" },
+  { key: "auto_at_tokens", kind: "int" },
+  { key: "summary_max_chars", kind: "int" },
+  { key: "auto_compact_target_percent", kind: "int" },
+  { key: "spill", kind: "bool", inherit: true },
   { key: "ssl_verify", kind: "bool" },
   { key: "response_header_timeout_ms", kind: "int" },
   { key: "stream_idle_timeout_ms", kind: "int" },
   { key: "request_timeout_ms", kind: "int" },
   { key: "response_max_retries", kind: "int" },
-] as const satisfies readonly { key: string; kind: ConfigKind; options?: readonly string[] }[];
+] as const satisfies readonly { key: string; kind: ConfigKind; options?: readonly string[]; inherit?: boolean }[];
 
 /** Entries whose values the owner hides. `extra_body` values are JSON; the others are text. */
 export const CONNECTION_SECRETS = [

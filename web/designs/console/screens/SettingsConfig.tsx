@@ -67,7 +67,7 @@ export function ConfigControl({ model, path, label, spec, describedBy }: { model
   const commit = (raw: string) => { if (!saving) void config.saveField(path, raw, spec.kind); };
   const disabled = saving || !facts?.file.valid;
   let control;
-  if (spec.kind === "bool") control = <ButtonGroup label={label}><Button disabled={disabled} aria-pressed={current === true} onClick={() => commit("true")}>{t("config.on")}</Button><Button disabled={disabled} aria-pressed={current === false} onClick={() => commit("false")}>{t("config.off")}</Button></ButtonGroup>;
+  if (spec.kind === "bool") control = <ButtonGroup label={label}><Button disabled={disabled} aria-pressed={current === true} onClick={() => commit("true")}>{t("config.on")}</Button><Button disabled={disabled} aria-pressed={current === false} onClick={() => commit("false")}>{t("config.off")}</Button>{spec.inherit ? <Button disabled={disabled || current === undefined} aria-pressed={current === undefined} onClick={() => void config.removeField(path)}>{t("config.inherit")}</Button> : null}</ButtonGroup>;
   else if (spec.kind === "choice") {
     const options = spec.options ?? Object.keys((facts?.file.values?.connections as Record<string, unknown> | undefined) ?? {});
     control = <ButtonGroup label={label}>{options.map((option) => <Button key={option} disabled={disabled} aria-pressed={current === option} onClick={() => commit(option)}>{option}</Button>)}</ButtonGroup>;
@@ -156,12 +156,13 @@ export function connectionCards(model: AppModel, search: RegisterSetting) {
         const rows: Fact[] = CONNECTION_FIELDS.map((field) => {
           const { key, kind } = field;
           const path = ["connections", name, key];
-          const { settingId, label } = search(fieldOf(path), `config.conn.${key}`, key === "api_key_env" ? ["config.keyNote"] : key === "max_tokens" ? ["config.outputTokensNote"] : [], name);
+          const inherited = ["auto_at_tokens", "summary_max_chars", "auto_compact_target_percent", "spill"].includes(key);
+          const { settingId, label } = search(fieldOf(path), `config.conn.${key}`, key === "api_key_env" ? ["config.keyNote"] : key === "max_tokens" ? ["config.outputTokensNote"] : inherited ? ["config.inheritNote"] : [], name);
           const env = key === "api_key_env" ? valueAt(values, path) : undefined;
           const describedBy = key === "max_tokens" ? `connection-output-tokens-${encodeURIComponent(name)}` : undefined;
-          const note = key === "api_key_env" ? <>{t("config.keyNote")} {typeof env === "string" && facts.credentialSet[env] !== undefined ? t(facts.credentialSet[env] ? "config.envSet" : "config.envUnset") : null}</> : describedBy ? <span id={describedBy}>{t("config.outputTokensNote")}</span> : undefined;
+          const note = key === "api_key_env" ? <>{t("config.keyNote")} {typeof env === "string" && facts.credentialSet[env] !== undefined ? t(facts.credentialSet[env] ? "config.envSet" : "config.envUnset") : null}</> : describedBy ? <span id={describedBy}>{t("config.outputTokensNote")}</span> : inherited ? t("config.inheritNote") : undefined;
           const value = configRowValue(t, facts, path);
-          return editable ? { settingId, label, control: <ConfigControl model={model} path={path} label={label} describedBy={describedBy} spec={{ kind, ...("options" in field ? { options: field.options } : {}) }} />, ...(note ? { note } : {}) } : { settingId, label, mono: true, ...(value !== undefined ? { value } : {}), ...(note ? { note } : {}) };
+          return editable ? { settingId, label, control: <ConfigControl model={model} path={path} label={label} describedBy={describedBy} spec={{ kind, ...("options" in field ? { options: field.options } : {}), ...(key === "spill" ? { inherit: true } : {}) }} />, ...(note ? { note } : {}) } : { settingId, label, mono: true, ...(value !== undefined ? { value } : {}), ...(note ? { note } : {}) };
         });
         if (editable)
           for (const { key, json } of CONNECTION_SECRETS) {

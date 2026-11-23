@@ -6,11 +6,11 @@ import { DESIGNS } from '../../../registry';
 
 const params = new URLSearchParams(location.search);
 const lang = params.get('lang') === 'ja' ? 'ja' : 'en';
-const section = params.get('section') === 'compaction' ? 'compaction' : 'general';
+const section = params.get('section') === 'compaction' ? 'compaction' : 'connections';
 const { model, t, db } = await fixtureModel({ route: 'settings', section, lang, capabilities: ['config.edit', 'connection.setup'] });
 const values = {
   default_connection: 'local', default_model: 'test-model', ui: { language: 'en' },
-  connections: { local: { base_url: 'http://localhost:1234/v1', default_effort: 'medium', ssl_verify: true } },
+  connections: { local: { base_url: 'http://localhost:1234/v1', default_effort: 'medium', ssl_verify: true, auto_at_tokens: 180000, summary_max_chars: 12000, auto_compact_target_percent: 35, spill: false } },
   compaction: { auto_at_tokens: 200000, segment_chars: 64000, reduce_rounds: 4, summary_max_chars: 20000, summary_max_percent: 5, summary_map_max_requests: 128, summary_reduce_max_requests: 16 },
   embedding: { connection: 'local', model: 'test-embedding' },
   indexing: { auto_history: true, auto_kinds: ['user', 'summary', 'assistant_response'] },
