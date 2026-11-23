@@ -4,6 +4,7 @@
 import { signal, type Signal } from "@preact/signals-core";
 import { Cancel, type OpError, type Operations } from "../../data/src";
 import type { ConfigKey } from "./resources";
+import type { MessageKey } from "./i18n";
 
 export const CAPABILITY_CONFIG = "config.edit";
 const PLACEHOLDER = "[redacted";
@@ -15,6 +16,7 @@ export interface ConfigFieldSpec {
   options?: readonly string[];
   /** A connection override may be removed to inherit the owner's value. */
   inherit?: boolean;
+  inheritNote?: MessageKey;
 }
 
 /** Keys that aren't per connection: their path is the key. Bounds stay with the owner, which validates. */
@@ -57,16 +59,16 @@ export const CONNECTION_FIELDS = [
   { key: "api_key_header", kind: "name" },
   { key: "default_effort", kind: "text" },
   { key: "max_tokens", kind: "int" },
-  { key: "auto_at_tokens", kind: "int" },
-  { key: "summary_max_chars", kind: "int" },
-  { key: "auto_compact_target_percent", kind: "int" },
-  { key: "spill", kind: "bool", inherit: true },
+  { key: "auto_at_tokens", kind: "int", inheritNote: "config.inherit.autoAtTokens" },
+  { key: "summary_max_chars", kind: "int", inheritNote: "config.inherit.summaryMaxChars" },
+  { key: "auto_compact_target_percent", kind: "int", inheritNote: "config.inherit.targetPercent" },
+  { key: "spill", kind: "bool", inherit: true, inheritNote: "config.inherit.spill" },
   { key: "ssl_verify", kind: "bool" },
   { key: "response_header_timeout_ms", kind: "int" },
   { key: "stream_idle_timeout_ms", kind: "int" },
   { key: "request_timeout_ms", kind: "int" },
   { key: "response_max_retries", kind: "int" },
-] as const satisfies readonly { key: string; kind: ConfigKind; options?: readonly string[]; inherit?: boolean }[];
+] as const satisfies readonly { key: string; kind: ConfigKind; options?: readonly string[]; inherit?: boolean; inheritNote?: MessageKey }[];
 
 /** Entries whose values the owner hides. `extra_body` values are JSON; the others are text. */
 export const CONNECTION_SECRETS = [

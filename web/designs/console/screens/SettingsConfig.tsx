@@ -1,6 +1,6 @@
 import type { RegisterSetting } from "./setting-search";
 import { useCallback, useEffect, useMemo, useState } from "preact/hooks";
-import { CAPABILITY_CONFIG, CONNECTION_FIELDS, CONNECTION_SECRETS, fieldOf, isHidden, isHiddenName, showConfigValue, valueAt, type AppModel, type ConfigFacts, type ConfigFieldSpec } from "../../../ui-core/src";
+import { CAPABILITY_CONFIG, CONNECTION_FIELDS, CONNECTION_SECRETS, fieldOf, isHidden, isHiddenName, showConfigValue, valueAt, type AppModel, type ConfigFacts, type ConfigFieldSpec, type MessageKey } from "../../../ui-core/src";
 import { Button, ButtonGroup, FactList, Field, Notice, Section, type Fact } from "../system/components";
 import { ConnectionModelList, ModelChooser, modelLabel, useConnectionModels } from "../system/components/ModelPicker/ConnectionModelList";
 import { Rich } from "./Rich";
@@ -154,13 +154,13 @@ export function connectionCards(model: AppModel, search: RegisterSetting) {
     <>
       {names.map((name) => {
         const rows: Fact[] = CONNECTION_FIELDS.map((field) => {
-          const { key, kind } = field;
+          const { key, kind, inheritNote } = field as (typeof CONNECTION_FIELDS)[number] & Pick<ConfigFieldSpec, "inheritNote">;
           const path = ["connections", name, key];
-          const inherited = ["auto_at_tokens", "summary_max_chars", "auto_compact_target_percent", "spill"].includes(key);
-          const { settingId, label } = search(fieldOf(path), `config.conn.${key}`, key === "api_key_env" ? ["config.keyNote"] : key === "max_tokens" ? ["config.outputTokensNote"] : inherited ? ["config.inheritNote"] : [], name);
+          const noteKeys: MessageKey[] = key === "api_key_env" ? ["config.keyNote"] : key === "max_tokens" ? ["config.outputTokensNote"] : inheritNote ? [inheritNote] : [];
+          const { settingId, label } = search(fieldOf(path), `config.conn.${key}`, noteKeys, name);
           const env = key === "api_key_env" ? valueAt(values, path) : undefined;
           const describedBy = key === "max_tokens" ? `connection-output-tokens-${encodeURIComponent(name)}` : undefined;
-          const note = key === "api_key_env" ? <>{t("config.keyNote")} {typeof env === "string" && facts.credentialSet[env] !== undefined ? t(facts.credentialSet[env] ? "config.envSet" : "config.envUnset") : null}</> : describedBy ? <span id={describedBy}>{t("config.outputTokensNote")}</span> : inherited ? t("config.inheritNote") : undefined;
+          const note = key === "api_key_env" ? <>{t("config.keyNote")} {typeof env === "string" && facts.credentialSet[env] !== undefined ? t(facts.credentialSet[env] ? "config.envSet" : "config.envUnset") : null}</> : describedBy ? <span id={describedBy}>{t("config.outputTokensNote")}</span> : inheritNote ? t(inheritNote) : undefined;
           const value = configRowValue(t, facts, path);
           return editable ? { settingId, label, control: <ConfigControl model={model} path={path} label={label} describedBy={describedBy} spec={{ kind, ...("options" in field ? { options: field.options } : {}), ...(key === "spill" ? { inherit: true } : {}) }} />, ...(note ? { note } : {}) } : { settingId, label, mono: true, ...(value !== undefined ? { value } : {}), ...(note ? { note } : {}) };
         });
