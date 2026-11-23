@@ -612,11 +612,14 @@ export class AppModel {
       const route = this.route.value;
       const connected = this.data.connection.value === "open" && owner.state === "connected" && typeof owner.info.instance_id === "string" && owner.info.instance_id !== "";
       const page = this.senderPage.value;
+      const replyCandidates = [...this.replyPages.owed_by.value.items, ...this.replyPages.asked_by.value.items]
+        .flatMap(reply => reply.sender.kind === "model" && reply.sender.thread_id ? [reply.sender.thread_id] : []);
       const win = this.longReader.value;
       if (win) win.version.value;
       const items = win ? (win === senderOldWindow && win.version.peek() === senderOldWindowVersion ? [] : win.rangeItems()) : [];
       const ids: string[] = [];
       for (const item of items) { const fact = senderFact(item.provenance?.sender); if (fact.kind === "model") ids.push(fact.threadId); }
+      ids.push(...replyCandidates);
       const scope = connected && h && route.view === "conversation" ? JSON.stringify([senderOwnerGeneration, owner.info.instance_id, route.view, h.threadId, page]) : undefined;
       // An owner switch cannot reuse an old list merely because it is still displayed as stale data.
       const cache = !list.stale && list.items !== senderCachedList ? list.items : [];

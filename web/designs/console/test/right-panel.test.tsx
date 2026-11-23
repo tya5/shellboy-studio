@@ -18,6 +18,7 @@ afterEach(() => { if (host) render(null, host); host?.remove(); host = undefined
 async function setup(capabilities?: string[]) {
  const f=await fixtureModel({route:'conversation',threadId:'lead',lang:'ja',capabilities,configure(db){
   db.threads={lead:summary('lead')};
+  db.details.child=details("child",{title:"Child review Thread"});
   db.details.lead=details('lead',{run_id:'run-1',model:'model-a',effort:'high',connection:'test-connection',cwd:'/fixture/panel',pending_replies:{owed_by:{count:1,exact:true},asked_by:{count:1,exact:true}}});
   db.replies = [pendingReply("owed-human", "lead", {kind:"name",name:"human"}, "Need an answer from this conversation"),
     pendingReply("asked-child", "child", {kind:"thread",thread_id:"lead"}, "Waiting for the child Thread")];
@@ -49,17 +50,29 @@ describe('right panel purpose',()=>{
   } finally {f.model.dispose();f.data.stop();}
  });
 
- it('uses the sender-title resolver for an owed model Thread row', async () => {
+ it('resolves owed model sender titles from reply-page candidates and shows the header fallback id', async () => {
   const f=await setup();
   try {
-   f.db.replies=[...f.db.replies,pendingReply("owed-model","child",{kind:"thread",thread_id:"lead"},"Question from child")];
+   f.db.replies=[pendingReply("owed-model","child",{kind:"thread",thread_id:"lead"},"Question from child")];
    await act(async()=>{f.t.push({t:"changed",config_changed:false,thread_ids:["lead"],list:false});await settle(f.t,f.db);});
    await act(async()=>f.host.querySelector<HTMLButtonElement>('[data-panel-tab="reply-needed"]')!.click());
-   await act(async()=>f.model.senderTitles.update("fixture-owner",["child"],[summary("child",{title:"Resolved child title"})]));
-   expect(f.model.senderTitles.values.value.get("child")).toEqual({state:"ready",title:"Resolved child title"});
+   await act(async()=>{await settle(f.t,f.db);});
    const row=f.host.querySelector('[data-panel-row-id="owed-model"]')!;
-   expect(row.textContent).toContain("Resolved child title");
+   expect(row.textContent).toContain("Child review Thread");
    expect(row.textContent).not.toContain(f.model.t.value("convo.modelSender"));
+  } finally {f.model.dispose();f.data.stop();}
+ });
+
+ it('shows model sender short id when the sender-title resolver is unresolved', async () => {
+  const f=await setup();
+  try {
+   f.db.replies=[pendingReply("owed-model","missing-child",{kind:"thread",thread_id:"lead"},"Question from child")];
+   await act(async()=>{f.t.push({t:"changed",config_changed:false,thread_ids:["lead"],list:false});await settle(f.t,f.db);});
+   await act(async()=>f.host.querySelector<HTMLButtonElement>('[data-panel-tab="reply-needed"]')!.click());
+   await act(async()=>{await settle(f.t,f.db);});
+   const row=f.host.querySelector('[data-panel-row-id="owed-model"]')!;
+   expect(row.textContent).toContain(f.model.t.value("convo.modelSender"));
+   expect(row.textContent).toContain("missing-");
   } finally {f.model.dispose();f.data.stop();}
  });
 

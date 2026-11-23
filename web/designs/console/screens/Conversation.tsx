@@ -508,7 +508,9 @@ function PanelReplies({ model, side }: { model: AppModel; side: "owed_by" | "ask
       const title = peer ? model.rowById.value.get(peer)?.summary.title || peer : undefined;
       const senderSpeaker = speakerOf({ kind: "message", provenance: { sender: reply.sender } });
       const senderDisplay = speakerDisplay(senderSpeaker, model);
-      const senderLabel = [senderDisplay.label, senderDisplay.claim].filter(Boolean).join(" · ");
+      const senderLabel = senderDisplay.header
+        ? `${senderDisplay.header.label}${senderDisplay.header.fallbackId ? ` ${senderDisplay.header.fallbackId}` : ""}${senderDisplay.claim ? ` · ${senderDisplay.claim}` : ""}`
+        : [senderDisplay.label, senderDisplay.claim].filter(Boolean).join(" · ");
       const party = side === "owed_by" ? senderLabel
         : human ? t("convo.you") : title ?? (reply.recipient.kind === "name" ? reply.recipient.name : undefined);
       const target = peer && peer !== model.selectedId.value ? formatRoute({ view: "conversation", threadId: peer }) : undefined;
