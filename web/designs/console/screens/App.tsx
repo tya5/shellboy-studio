@@ -282,7 +282,7 @@ export function App({ context }: { context: DesignContext }) {
                           context.setPrefs({ sidebarOpenParents: [...previous.filter(key => !keys.has(key)), ...keys].slice(-1000) });
                         } } : undefined}
                       onSelect={() => setDrawer(false)}
-                      menu={{ label: t("thread.rowMenu"), entries: [{ key: "read-state", label: t(unread ? "sidebar.markRead" : "sidebar.markUnread"), disabled: !r.summary.last_end_message?.node_id, onSelect: () => model.markSidebarUnread(id, !unread) }, ...threadMenuEntries(model, r.summary, r.status,
+                      menu={{ label: t("thread.rowMenu"), entries: [{ key: "read-state", label: t(unread ? "sidebar.markRead" : "sidebar.markUnread"), disabled: !r.summary.last_end_message?.node_id, onSelect: () => model.markSidebarUnread(id, !unread) }, ...threadMenuEntries(model, r.summary,
                         target => setDeleteThread({ threadId: target.thread_id, rowKey: r.key }), canTag ? { onEditTags: () => editThreadTags(id, r.summary.archived_at !== undefined) } : undefined)] }} />;
                   }) : null}
                 </ThreadGroup>;

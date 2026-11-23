@@ -56,27 +56,46 @@ function selectRow(title: string, checked = false) {
 
 
 describe("Thread row menu and delete", () => {
-  it("offers Stop only while running and Retry only in recovery", () => {
+  it("offers Stop for any live Run and Retry only in recovery, from the activity and not the mark", () => {
     const model = menuModel();
-    const labels = (status: "running" | "error" | "idle", activity = status === "error" ? "recovery" : status) => threadMenuEntries(model, { ...row, activity }, status, vi.fn()).filter((entry): entry is Exclude<MenuEntry, { separator: true }> => !("separator" in entry)).filter((entry) => !entry.disabled).map((entry) => entry.label);
-    expect(labels("running")).toContain("action.stop");
-    expect(labels("running")).not.toContain("action.retry");
-    expect(labels("error")).toContain("action.retry");
-    expect(labels("error")).not.toContain("action.stop");
-    expect(labels("error", "failed")).not.toContain("action.retry");
+    const labels = (activity: string, awaiting = 0) => threadMenuEntries(model, { ...row, activity, awaiting_named_count: awaiting }, vi.fn()).filter((entry): entry is Exclude<MenuEntry, { separator: true }> => !("separator" in entry)).filter((entry) => !entry.disabled).map((entry) => entry.label);
+    expect(labels("tools")).toContain("action.stop");
+    expect(labels("tools")).not.toContain("action.retry");
+    // #107: a Run inside `shellboy wait`, and a running Thread whose open question shows the awaiting mark.
+    expect(labels("waiting")).toContain("action.stop");
+    expect(labels("tools", 1)).toContain("action.stop");
+    expect(labels("recovery")).toContain("action.retry");
+    expect(labels("recovery")).toContain("action.stop");
+    expect(labels("recovery", 1)).toContain("action.retry");
+    expect(labels("failed")).not.toContain("action.retry");
+    expect(labels("failed")).not.toContain("action.stop");
     expect(labels("idle")).not.toContain("action.stop");
     expect(labels("idle")).not.toContain("action.retry");
-    const entries = threadMenuEntries(model, row, "running", vi.fn());
+    expect(labels("completed", 1)).not.toContain("action.stop");
+    const entries = threadMenuEntries(model, row, vi.fn());
     expect(entries.find((entry) => entry.key === "archive")).toMatchObject({ icon: "action.archive" });
     expect(entries.find((entry) => entry.key === "stop")).toMatchObject({ icon: "action.stop" });
     expect(entries.find((entry) => entry.key === "retry")).toMatchObject({ icon: "action.retry" });
     expect(entries.find((entry) => entry.key === "delete")).toMatchObject({ icon: "action.delete" });
     const archived = { ...row, archived_at: "now" } as ThreadSummary;
-    expect(threadMenuEntries(model, archived, "idle", vi.fn()).find((entry) => entry.key === "archive")).toMatchObject({ icon: "action.unarchive" });
+    expect(threadMenuEntries(model, archived, vi.fn()).find((entry) => entry.key === "archive")).toMatchObject({ icon: "action.unarchive" });
+  });
+  it("names the reason when Retry finds no Run or cannot read the Thread", async () => {
+    const model = menuModel();
+    const retry = async (threadGet: () => Promise<unknown>) => {
+      (model as unknown as { ops: Record<string, unknown> }).ops.threadGet = vi.fn(threadGet);
+      const entry = threadMenuEntries(model, { ...row, activity: "recovery" }, vi.fn()).find((item) => item.key === "retry") as Exclude<MenuEntry, { separator: true }>;
+      entry.onSelect!(null, null);
+      await vi.waitFor(() => expect(model.actionError.value).toBeDefined());
+      return model.actionError.value;
+    };
+    expect(await retry(async () => ({ ok: true, value: { thread_id: "t1" } }))).toEqual({ kind: "error", text: "action.retryNoRun" });
+    model.actionError.value = undefined;
+    expect(await retry(async () => ({ ok: false, error: { kind: "owner", message: "thread not found" } }))).toEqual({ kind: "error", text: "thread not found" });
   });
   it("assigns the shared tag icon to Edit tags when that action is available", () => {
     const model = menuModel();
-    const entries = threadMenuEntries(model, row, "idle", vi.fn(), { onEditTags: vi.fn() });
+    const entries = threadMenuEntries(model, row, vi.fn(), { onEditTags: vi.fn() });
     expect(entries.find((entry) => entry.key === "edit-tags")).toMatchObject({ icon: "action.editTags", label: "sidebar.editTags" });
   });
   it("does not delete until preview loads and confirmation is pressed", async () => {

@@ -36,7 +36,7 @@ export function ThreadHeader({ model, settings, onSettings, onList, onDelete, on
   };
   const entries: MenuEntry[] = id ? [
     { key: "rename", icon: "thread.rename", label: t("header.rename"), onSelect: (focus) => open("title", focus) },
-    ...(row ? threadMenuEntries(model, row, status, target => onDelete(target.thread_id), model.data.capabilities.value.includes(CAPABILITY_TAGS) ? { onEditTags: () => onEditTags(row.thread_id, row.archived_at !== undefined) } : undefined) : []),
+    ...(row ? threadMenuEntries(model, row, target => onDelete(target.thread_id), model.data.capabilities.value.includes(CAPABILITY_TAGS) ? { onEditTags: () => onEditTags(row.thread_id, row.archived_at !== undefined) } : undefined) : []),
   ] : [];
   if (phone) entries.push(
     ...(cwd ? [{ key: "cwd", label: t("header.directory"), onSelect: (focus: HTMLElement | null) => open("cwd", focus) }] : []),

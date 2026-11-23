@@ -215,7 +215,7 @@ export function Threads({ model }: { model: AppModel }) {
         note={notes || undefined}
         age={formatAge(s.updated_at, model.coarseNow.value)}
         moveAction={canMove ? <button type="button" class="srow-act" onClick={() => org.pickParent(s.thread_id)}>{t("org.move")}</button> : undefined}
-        menu={{ label: t("thread.rowMenu"), entries: threadMenuEntries(model, s, r.status, (target) => setDeleteThread({ threadId: target.thread_id })) }}
+        menu={{ label: t("thread.rowMenu"), entries: threadMenuEntries(model, s, (target) => setDeleteThread({ threadId: target.thread_id })) }}
         drag={
           canMove
             ? {

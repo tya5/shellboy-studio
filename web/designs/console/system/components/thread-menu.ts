@@ -1,10 +1,13 @@
 import { SIDEBAR_PIN_TAG } from "../../../../ui-core/src/sidebar";
 import type { ThreadSummary } from "../../../../data/src";
-import { isThreadRecovery, type AppModel, type StatusKey } from "../../../../ui-core/src";
+import { isThreadRecovery, statusOfActivity, type AppModel } from "../../../../ui-core/src";
 import type { MenuEntry } from "./Menu";
 
-export function threadMenuEntries(model: AppModel, row: ThreadSummary, status: StatusKey | undefined, onDelete: (row: ThreadSummary) => void, tags?: { onEditTags: () => void }): MenuEntry[] {
+/** Stop and Retry follow the row's owner activity, not the merged attention mark (an open question shows awaiting). */
+export function threadMenuEntries(model: AppModel, row: ThreadSummary, onDelete: (row: ThreadSummary) => void, tags?: { onEditTags: () => void }): MenuEntry[] {
   const archived = row.archived_at !== undefined;
+  const activity = statusOfActivity(row.activity);
+  const liveRun = activity === "running" || activity === "waiting" || isThreadRecovery(row.activity);
   const report = async (action: string, work: () => Promise<{ ok: boolean; error?: { message: string } }>, announceSuccess = true) => {
     model.actionError.value = undefined;
     const result = await work();
@@ -21,8 +24,8 @@ export function threadMenuEntries(model: AppModel, row: ThreadSummary, status: S
       { key: "edit-tags", icon: "action.editTags" as const, label: model.t.value("sidebar.editTags"), onSelect: tags.onEditTags },
     ] : []),
     { key: "archive", icon: archived ? "action.unarchive" : "action.archive", label: archived ? model.t.value("org.unarchive") : model.t.value("action.archive"), onSelect: () => void report(archived ? model.t.value("org.unarchive") : model.t.value("action.archive"), () => archived ? model.ops.threadUnarchive([row.thread_id], { descendants: false }) : model.ops.threadArchive([row.thread_id], { descendants: false })) },
-    { key: "stop", icon: "action.stop", label: model.t.value("action.stop"), disabled: status !== "running", onSelect: () => void report(model.t.value("action.stop"), async () => { const details = await model.ops.threadGet(row.thread_id); if (!details.ok || !details.value.run_id) return { ok: false, error: { message: model.t.value("action.stopRefused") } }; return model.ops.runStop(details.value.run_id); }) },
-    { key: "retry", icon: "action.retry", label: model.t.value("action.retry"), disabled: !isThreadRecovery(row.activity), onSelect: () => void report(model.t.value("action.retry"), async () => { const details = await model.ops.threadGet(row.thread_id); if (!details.ok || !details.value.run_id) return { ok: false, error: { message: model.t.value("action.retry") } }; return model.ops.runRetry(details.value.run_id); }) },
+    { key: "stop", icon: "action.stop", label: model.t.value("action.stop"), disabled: !liveRun, onSelect: () => void report(model.t.value("action.stop"), async () => { const details = await model.ops.threadGet(row.thread_id); if (!details.ok || !details.value.run_id) return { ok: false, error: { message: model.t.value("action.stopRefused") } }; return model.ops.runStop(details.value.run_id); }) },
+    { key: "retry", icon: "action.retry", label: model.t.value("action.retry"), disabled: !isThreadRecovery(row.activity), onSelect: () => void report(model.t.value("action.retry"), async () => { const details = await model.ops.threadGet(row.thread_id); if (!details.ok) return details; if (!details.value.run_id) return { ok: false, error: { message: model.t.value("action.retryNoRun") } }; return model.ops.runRetry(details.value.run_id); }) },
     { key: "actions-separator", separator: true },
     { key: "delete", icon: "action.delete", label: model.t.value("thread.deletePreview"), destructive: true, onSelect: () => { model.actionError.value = undefined; onDelete(row); } },
   ];

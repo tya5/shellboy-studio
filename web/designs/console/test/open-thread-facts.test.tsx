@@ -66,7 +66,7 @@ describe("Open Thread facts (#103)", () => {
       expect(el.querySelector(".dock [data-tone=bad], .dock .btn-warn")).toBeNull();
       expect(el.querySelector("[data-conversation-header] [data-status]")?.getAttribute("data-status")).toBe("error");
       const entries = await headerMenu(el);
-      expect(entries).toEqual(expect.arrayContaining(["Rename Thread", "Archive", "Retry", "Review deletion"]));
+      expect(entries).toEqual(expect.arrayContaining(["Rename Thread", "Archive", "Retry", "Stop", "Review deletion"]));
       await act(async () => { retryButtons(el)[0]!.click(); await settle(t, db); });
       expect(t.calls("run.retry").map(call => call.args)).toEqual([expect.objectContaining({ run_id: "run-2" })]);
     } finally { model.dispose(); }
@@ -106,6 +106,41 @@ describe("Open Thread facts (#103)", () => {
       expect(model.data.threadRows.value.has("broken")).toBe(true);
       expect(footer(el).textContent).toContain("Recovery wait");
       expect(el.querySelector("[data-conversation-header] [data-status]")?.getAttribute("data-status")).toBe("error");
+    } finally { model.dispose(); }
+  });
+});
+
+async function rowMenu(el: HTMLElement, id: string): Promise<HTMLButtonElement[]> {
+  const row = el.querySelector<HTMLAnchorElement>(`.side-list a[href="#/conversation/${id}"]`)!.closest<HTMLElement>("[data-thread-row]")!;
+  await act(async () => { row.querySelector<HTMLButtonElement>("[aria-haspopup=menu]")!.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 1 })); await Promise.resolve(); });
+  return [...document.body.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')];
+}
+const labels = (items: HTMLButtonElement[]) => items.map(item => item.textContent?.trim() ?? "");
+
+describe("Row menu Stop and Retry (#107)", () => {
+  it("offers Stop for a waiting Thread and for a running Thread whose question shows the awaiting mark", async () => {
+    const { model, t, db } = await fixtureModel({ route: "monitor", configure: db => { db.threads.lead = summary("lead", { ...db.threads.lead, awaiting_named_count: 1 }); db.threads.done = summary("done", { ...db.threads.done, parent_id: undefined }); } });
+    try {
+      const el = draw(model);
+      await act(async () => { await settle(t, db); });
+      expect(el.querySelector('.side-list a[href="#/conversation/lead"]')?.closest("[data-thread-row]")?.querySelector("[data-status]")?.getAttribute("data-status")).toBe("awaiting");
+      for (const id of ["hold", "lead"]) {
+        expect(labels(await rowMenu(el, id))).toContain("Stop");
+        act(() => { document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); });
+      }
+      expect(labels(await rowMenu(el, "done"))).not.toContain("Stop");
+    } finally { model.dispose(); }
+  });
+
+  it("names the reason when Retry finds no Run", async () => {
+    const { model, t, db } = await fixtureModel({ route: "monitor", configure: db => { delete db.details.broken!.run_id; } });
+    try {
+      const el = draw(model);
+      await act(async () => { await settle(t, db); });
+      const retry = (await rowMenu(el, "broken")).find(item => item.textContent?.trim() === "Retry")!;
+      await act(async () => { retry.click(); await settle(t, db); });
+      expect(el.textContent).toContain("Retry is not possible: this thread has no Run now.");
+      expect(t.calls("run.retry")).toHaveLength(0);
     } finally { model.dispose(); }
   });
 });

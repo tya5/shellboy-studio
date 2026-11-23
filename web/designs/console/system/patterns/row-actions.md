@@ -37,4 +37,4 @@ and uses `bad` with `bad-soft` on hover/focus.
 On touch, the visible trigger is the primary path. Long press opens the menu only
 where the browser emits `contextmenu`; no custom long-press handler is used.
 
-The shared `threadMenuEntries` definition assigns the semantic `action.editTags` tag icon, so every Thread row menu presents Edit tags with the same icon and dimensions. Consumers do not provide per-item icon overrides.
+The shared `threadMenuEntries` definition takes the Thread's row and gates Stop and Retry on its owner activity, never on the merged attention mark: Stop for any live Run (running, waiting or recovery), Retry for recovery only. Both read `thread.get` for the `run_id` when pressed; when there is none, or the read fails, the error names that reason. It assigns the semantic `action.editTags` tag icon, so every Thread row menu presents Edit tags with the same icon and dimensions. Consumers do not provide per-item icon overrides.
