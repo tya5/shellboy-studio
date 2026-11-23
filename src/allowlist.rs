@@ -33,17 +33,6 @@ pub fn access(command: &Command) -> Access {
         // Branches view.
         | Command::ThreadBranches(..) => Access::Read,
         Command::ThreadCreate(..)
-        | Command::ThreadImport(..)
-        | Command::ArtifactAdd(..)
-        | Command::ArtifactUpdate(..)
-        | Command::ArtifactList(..)
-        | Command::ArtifactGet(..)
-        | Command::ArtifactRemove(..)
-        | Command::ServiceAdd(..)
-        | Command::ServiceList(..)
-        | Command::ServiceStart(..)
-        | Command::ServiceStop(..)
-        | Command::ServiceRemove(..)
         | Command::MessageSend(..)
         | Command::RunStop(..)
         | Command::MessageCancel(..)
@@ -89,7 +78,18 @@ pub fn access(command: &Command) -> Access {
         // Core's id.resolve is CLI-only; the browser never receives this identity lookup.
         Command::MessageAsk(..) | Command::IdResolve(..) => Access::Denied,
         // `events.wait` is bridge-internal (one shared long-poll). The rest has no UI yet.
-        Command::OwnerShutdown(..)
+        Command::ThreadImport(..)
+        | Command::ArtifactAdd(..)
+        | Command::ArtifactUpdate(..)
+        | Command::ArtifactList(..)
+        | Command::ArtifactGet(..)
+        | Command::ArtifactRemove(..)
+        | Command::ServiceAdd(..)
+        | Command::ServiceList(..)
+        | Command::ServiceStart(..)
+        | Command::ServiceStop(..)
+        | Command::ServiceRemove(..)
+        | Command::OwnerShutdown(..)
         | Command::ThreadDelete(..)
         | Command::ThreadDeletePreview(..)
         | Command::ThreadPrune(..)

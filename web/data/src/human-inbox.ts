@@ -10,11 +10,8 @@ export const HUMAN_PAGE_LIMIT = REPLY_PAGE_SIZE;
 export interface PendingItem {
   id: string;
   threadId: string;
-  threadTitle: string;
   question: string;
   askedAt: string | undefined;
-  count?: number;
-  countExact?: boolean;
 }
 export interface PendingAdapter {
   readonly items: ReadonlySignal<PendingItem[]>;
@@ -118,14 +115,10 @@ export class HumanInbox implements PendingAdapter {
       if (!valid()) return;
       if (!page.ok) { fail(page.error); return; }
       const threadIds = [...new Set(page.value.items.flatMap(duty => duty.asked_by ? [duty.asked_by] : []))];
-      const byId = new Map(this.data.threadRows.peek());
       const items: PendingItem[] = [];
       for (const duty of page.value.items) {
         if (!duty.asked_by) { fail({ kind: "invalid_response", message: "named reply lacks its asking Thread" }); return; }
-        const summary = byId.get(duty.asked_by);
-        items.push({ id: duty.message_id, threadId: duty.asked_by, threadTitle: summary?.title ?? duty.asked_by,
-          question: duty.excerpt, askedAt: duty.created_at, count: summary?.awaiting_named_count,
-          countExact: summary?.awaiting_named_count_exact });
+        items.push({ id: duty.message_id, threadId: duty.asked_by, question: duty.excerpt, askedAt: duty.created_at });
       }
       this.nextCursor = page.value.next_cursor;
       const ids = new Set(items.map(i => i.id));
@@ -133,14 +126,7 @@ export class HumanInbox implements PendingAdapter {
       this.page = Object.freeze({ owner, epoch, ...(cursor && { cursor }), ids });
       // Publish a validated page together; no intermediate empty list during reread.
       batch(() => { this.error.value = undefined; this.hasMore.value = this.nextCursor !== undefined; this.stale.value = false; this.items.value = items; });
-      if (threadIds.length) void this.data.operations.threadList({ thread_ids: threadIds }, { cancel }).then(out => {
-        if (!valid() || !out.ok) return;
-        const exact = new Map(out.value.items.map(row => [row.thread_id, row]));
-        this.items.value = this.items.peek().map(item => {
-          const row = exact.get(item.threadId);
-          return row ? { ...item, threadTitle: row.title, count: row.awaiting_named_count, countExact: row.awaiting_named_count_exact } : item;
-        });
-      });
+      if (threadIds.length) void this.data.readActiveRows(threadIds);
     } finally {
       if (valid()) this.loading.value = false;
     }
