@@ -490,6 +490,9 @@ export class Operations {
   statusSummary(read?: ReadOptions): Promise<Outcome<Record<string, unknown>>> {
     return this.run("status", { limit: 1 }, outcomeDecoder(decodeRecord), undefined, read);
   }
+  activeStatus(cursor?: string, read?: ReadOptions): Promise<Outcome<Page<WorkItem>>> {
+    return this.run("status", { limit: 200, ...(cursor ? { cursor } : {}) }, outcomeDecoder(workPage), undefined, read);
+  }
   /** Asks the connection's endpoint for its model list (one GET). No conversation request. */
   modelList(args: ModelListArgs = {}, read?: ReadOptions): Promise<Outcome<ModelListResult>> {
     return this.run("model.list", args, outcomeDecoder(decodeModelList), undefined, read);

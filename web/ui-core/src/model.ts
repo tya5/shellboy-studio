@@ -476,9 +476,8 @@ export class AppModel {
     });
     this.rows = computed(() => {
       const exact = this.data.threadRows.value;
-      const seen = new Set(this.data.threadList.value.items.map(row => row.thread_id));
-      const rows = this.data.threadList.value.items.map(row => exact.get(row.thread_id) ?? row);
-      for (const row of exact.values()) if (!seen.has(row.thread_id)) rows.push(row);
+      const ids = new Set([...this.data.listThreadIds.value, ...this.data.pinnedThreadIds.value, ...this.data.activeThreadIds.value]);
+      const rows = [...ids].flatMap(id => { const row = exact.get(id); return row ? [row] : []; });
       return threadTree(rows, pendingByThread.value);
     });
     this.rowById = computed(() => {
@@ -670,8 +669,8 @@ export class AppModel {
       effect(() => {
         const view = this.route.value.view;
         // Items, not the whole state: its loading flags change without a new list.
-        const listState = this.data.threadList.value;
-        const list = listState.items;
+        const listState = this.data.threadListMeta.value;
+        const list = this.data.listThreadIds.value;
         if (this.connection.value !== "connected" || (view === "branches" && (listState.stale || listState.loading))) {
           this.branches.excerptBatch.reset();
           return;

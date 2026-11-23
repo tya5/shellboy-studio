@@ -165,3 +165,24 @@ fn core_schedule_commands_remain_denied_without_a_studio_surface() {
     });
     assert_eq!(access(&command), Access::Denied);
 }
+
+#[test]
+fn unimplemented_core_commands_are_explicitly_denied() {
+    use shellboy::protocol::{ArtifactListArgs, ServiceTarget, ThreadImportArgs};
+    let denied = [
+        Command::ThreadImport(ThreadImportArgs {
+            document: String::new(),
+        }),
+        Command::ArtifactList(ArtifactListArgs {
+            thread_id: "t".into(),
+            cursor: None,
+            limit: 1,
+        }),
+        Command::ServiceStart(ServiceTarget {
+            service_id: "s".into(),
+        }),
+    ];
+    for command in denied {
+        assert_eq!(access(&command), Access::Denied);
+    }
+}
