@@ -2,5 +2,9 @@
 .loadrow{display:block;height:44px;border-radius:var(--radius-s);background:var(--raised);animation:pulse var(--motion-spin) ease-in-out infinite alternate}
 .loadrow:nth-child(2n){margin-left:40px;height:64px}
 @media (prefers-reduced-motion:reduce){.loadrow{animation:none}}
+.loadcount{display:inline-block;width:3ch;height:1lh;border-radius:var(--radius-s);background:var(--raised);vertical-align:middle;animation:pulse var(--motion-spin) ease-in-out infinite alternate}
+.loadcount-small{height:var(--size-chip-height)}
+.loadcount-on-raised{background:var(--line)}
+@media (prefers-reduced-motion:reduce){.loadcount{animation:none}}
 
 @keyframes pulse{from{opacity:1}to{opacity:.5}}

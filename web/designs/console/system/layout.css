@@ -54,6 +54,8 @@
 .panel .opts{display:flex;flex-wrap:wrap;gap:var(--space-8)}
 
 .convo{flex:1;min-width:0;display:flex;flex-direction:column}
+/* A whole-view empty state starts at the page perimeter; EmptyState adds no padding of its own. */
+.convo>.empty-state-root{padding:var(--space-16) var(--space-24)}
 .scroll{flex:1;min-height:0;overflow:auto;padding:var(--space-16) var(--space-24);display:flex;flex-direction:column;gap:var(--space-12)}
 .scroll>.steps,.scroll>.strip,.scroll>.scroll-mark{margin-left:0}
 .phone-panel-footer{display:none}
@@ -181,6 +183,7 @@
   .phone-panel-footer .shell-toggle{min-width:var(--size-touch)}
   .top{padding-left:var(--space-8);padding-right:var(--space-8)}
   .scroll,.mon{padding:var(--space-12)}
+  .convo>.empty-state-root{padding:var(--space-12)}
   .scroll>.steps,.scroll>.strip,.scroll>.scroll-mark{margin-left:0}
   .dock{padding:0 var(--space-12) var(--space-12)}
   .head h1,.monitor-heading h1{font:var(--type-heading)}
