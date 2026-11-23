@@ -16,7 +16,7 @@ export function ModelPicker({ model, details }: { model: AppModel; details: Deta
   return <MonitorPopover className="model-picker-anchor" label={`${modelLabel(details)} · ${details.effort || t("model.effort.default")}`}
     controlled={{ open: picker.open, toggle: () => picker.open ? model.closeModelPicker() : model.openModelPicker(), close: () => model.closeModelPicker(), panelClass: "model-picker", panelLabel: t("model.change") }}>
       <p class="caption muted">{t("model.note")}</p>
-      <ConnectionModelList choices={choices} selected={details} searchLabel={t("model.search")} emptyLabel={picker.loading ? t("common.loading") : t("model.empty")} disabled={disabled} onSelect={choice => void model.selectPickerModel(choice)} />
+      <ConnectionModelList choices={choices} selected={details} searchLabel={t("model.search")} emptyLabel={picker.loading ? t("common.loading") : t("model.empty")} disabled={disabled} onSelect={choice => void model.selectPickerModel(choice)} onCommitId={(id, connection) => void model.commitPickerModelId(id, connection)} />
       {picker.catalogErrors.map((error, index) => <Notice key={index} tone="bad">{error}</Notice>)}
       <EffortControl label={t("model.effort")} value={details.effort ?? ""} labels={{ default: t("model.effort.default"), low: "low", medium: "medium", high: "high", other: t("model.effort.other") }} disabled={disabled} explicitCommit onSelect={effort => void model.selectPickerEffort(effort)} onCommit={effort => void model.selectPickerEffort(effort)} />
       {!canEdit ? <Notice tone="wait">{t("thread.readOnly")}</Notice> : null}

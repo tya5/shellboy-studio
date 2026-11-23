@@ -97,19 +97,21 @@ are not replaced with guessed defaults.
 ### Picker Session And Accepted Mutation Authority
 
 One current edit session borrows a successful detail observation, its handle,
-owner-generation qualification and route identity. Its typed readback snapshot
-owns both initial drafts and effective placeholders. Opening/reopening creates a
-new session; close, route/handle replacement, owner/connection change or lost
+owner-generation qualification and route identity. It captures the three advanced fields and
+their effective placeholders. Opening/reopening creates a new session; close, route/handle replacement, owner/connection change or lost
 read authority retires it. Returning to the same Thread/route/owner text does not
 restore an old session. The data layer qualifies detail observations by their
 successful read's epoch and refuses stale-owner detail acceptance; this separate
 observation does not capture or overwrite the Conversation Window's read token.
 
-Model-list reads and each save completion use the same structural session. A
-save also has one current per-session attempt token. Errors, saving-state writes,
-refresh admission and completion/close require both tokens to remain current.
-Refresh uses the captured handle, never whichever handle happens to be selected
-later. A refresh already started may finish as an ordinary saved-fact read but
-cannot change a new draft or its captured effective placeholder. Retiring UI
-authority does not cancel, undo, or claim failure of a mutation already accepted
-by Core. No rollback, retry, timer, polling, ledger or new controller is added.
+Model-list reads and save completions use the same structural session. A write
+requires the current session and an idle `saving` state; `saving` prevents a second
+in-flight write. A late completion can update errors, clear `saving` or close only
+if `pickerCurrent` still holds. Choosing a catalog pair or committing a typed model
+ID with Enter sends the pair without a draft; an effort choice sends effort alone.
+Only advanced controls use the initial snapshot to compute changes, and a save
+with no advanced changes closes without writing. None of these writes starts a
+refresh. The chip and selection change only on authoritative Thread detail readback
+from existing changed/resync hints. Retiring UI authority does not cancel, undo,
+or claim failure of a mutation already accepted by Core. No rollback, retry,
+timer, polling, ledger or new controller is added.

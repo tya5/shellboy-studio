@@ -288,6 +288,38 @@ describe("AppModel over the fake transport", () => {
     model.dispose();
   });
 
+  it("commits an unlisted typed model on the current connection even when its catalog fails", async () => {
+    const { model, t, db } = await fixtureModel({ capabilities: ["thread.settings"], configure(db) {
+      const answer = db.answer.bind(db);
+      db.answer = call => call.command === "model.list" ? { ok: false, code: "io_failed", message: "Catalog unavailable" } : answer(call);
+    } });
+    try {
+      const before = model.details.value!;
+      model.openModelPicker();
+      await settle(t, db);
+      expect(model.modelPicker.value.catalogErrors).toContain(`${before.connection}: Catalog unavailable`);
+      const reads = t.calls("thread.get").length;
+      const write = model.commitPickerModelId("  provider/unlisted-v2  ");
+      await settle(t, db);
+      await write;
+      expect(t.calls("thread.set").map(call => call.args)).toEqual([{ thread_id: "lead", connection: before.connection, model: "provider/unlisted-v2" }]);
+      expect(t.calls("thread.get")).toHaveLength(reads);
+      expect(model.details.value!.model).toBe(before.model);
+    } finally { model.dispose(); }
+  });
+
+  it("closes an unchanged advanced save without writing", async () => {
+    const { model, t, db } = await fixtureModel({ capabilities: ["thread.settings"] });
+    try {
+      model.openModelPicker();
+      await settle(t, db);
+      expect(model.modelPicker.value.open).toBe(true);
+      await model.saveThreadModel();
+      expect(model.modelPicker.value.open).toBe(false);
+      expect(t.calls("thread.set")).toHaveLength(0);
+    } finally { model.dispose(); }
+  });
+
   it("rejects a held model-picker save after owner/session ABA without dispatch", async () => {
     const { model, t, db } = await fixtureModel({ capabilities: ["thread.settings"] });
     try {

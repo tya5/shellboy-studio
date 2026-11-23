@@ -7,7 +7,7 @@ export type ConnectionModel = { connection: string; model: string };
 export const modelLabel = ({ connection, model }: ConnectionModel) => `${connection} / ${model}`;
 
 /** A filtered list of complete choices, independent of the operation that uses them. */
-export function ConnectionModelList({ choices, selected, searchLabel, emptyLabel, disabled, onSelect, query: suppliedQuery, onQuery }: {
+export function ConnectionModelList({ choices, selected, searchLabel, emptyLabel, disabled, onSelect, query: suppliedQuery, onQuery, onCommitId }: {
   choices: readonly ConnectionModel[];
   selected: ConnectionModel;
   searchLabel: string;
@@ -16,12 +16,20 @@ export function ConnectionModelList({ choices, selected, searchLabel, emptyLabel
   onSelect: (choice: ConnectionModel) => void;
   query?: string;
   onQuery?: (query: string) => void;
+  onCommitId?: (id: string, connection?: string) => void;
 }) {
   const [localQuery, setQuery] = useState("");
   const query = suppliedQuery ?? localQuery;
   const shown = choices.filter((choice) => modelLabel(choice).toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
   return <>
-    <Field disabled={disabled} ariaLabel={searchLabel} placeholder={searchLabel} value={query} onInput={(event) => (onQuery ?? setQuery)(event.currentTarget.value)} />
+    <Field disabled={disabled} ariaLabel={searchLabel} placeholder={searchLabel} value={query} onInput={(event) => (onQuery ?? setQuery)(event.currentTarget.value)} onKeyDown={(event) => {
+      if (event.key !== "Enter" || event.isComposing || event.repeat || disabled || !onCommitId) return;
+      const id = event.currentTarget.value.trim();
+      if (!id) return;
+      event.preventDefault();
+      const connections = [...new Set(shown.map(choice => choice.connection))];
+      onCommitId(id, connections.length === 1 ? connections[0] : undefined);
+    }} />
     <div class="model-picker-list" role="group" aria-label={searchLabel}>
       {shown.length ? shown.map((choice) => <Button key={JSON.stringify(choice)} variant="link" disabled={disabled} aria-pressed={choice.connection === selected.connection && choice.model === selected.model} onClick={() => onSelect(choice)}>{modelLabel(choice)}</Button>) : <span role="status">{emptyLabel}</span>}
     </div>

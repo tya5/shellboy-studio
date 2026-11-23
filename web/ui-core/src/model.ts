@@ -231,14 +231,24 @@ export class AppModel {
     return this.writePickerSettings({ connection: choice.connection, model: choice.model });
   }
 
+  commitPickerModelId(id: string, filteredConnection?: string): Promise<void> {
+    const model = id.trim();
+    const connection = filteredConnection ?? this.details.peek()?.connection;
+    if (!model || !connection) return Promise.resolve();
+    return this.writePickerSettings({ connection, model });
+  }
+
   selectPickerEffort(effort: string): Promise<void> {
     return this.writePickerSettings({ effort });
   }
 
   async saveThreadModel(): Promise<void> {
     const session = this.pickerSession.peek();
-    if (!session) return;
-    await this.writePickerSettings(threadModelChanges(this.modelPicker.peek(), session.initial), true);
+    const picker = this.modelPicker.peek();
+    if (!session || !this.pickerCurrent(session) || picker.saving || !this.data.capabilities.peek().includes("thread.settings")) return;
+    const changes = threadModelChanges(picker, session.initial);
+    if (Object.keys(changes).length === 0) { this.closeModelPicker(); return; }
+    await this.writePickerSettings(changes, true);
   }
 
   private async writePickerSettings(changes: Parameters<Operations["setThreadModel"]>[1], close = false): Promise<void> {

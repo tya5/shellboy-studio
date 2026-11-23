@@ -35,6 +35,26 @@ try{
   await until(()=>evaluate("document.querySelector('.model-picker-anchor>button').textContent.includes('studio / model-b')"));
   assert(await click('high')); await evaluate('window.flushOwner()');
   assert.deepEqual(await evaluate('window.writes().at(-1)'),{thread_id:'lead',effort:'high'});
+  const typeModel = value => evaluate(`(() => {const field=document.querySelector('.model-picker input');field.focus();field.value=${JSON.stringify(value)};field.dispatchEvent(new Event('input',{bubbles:true}));return true;})()`);
+  const enter = async () => {
+   await call('Input.dispatchKeyEvent',{type:'keyDown',key:'Enter',code:'Enter',windowsVirtualKeyCode:13});
+   await call('Input.dispatchKeyEvent',{type:'keyUp',key:'Enter',code:'Enter',windowsVirtualKeyCode:13});
+   await evaluate('window.flushOwner()');
+  };
+  const confirmed = await evaluate("document.querySelector('.model-picker-anchor>button').textContent");
+  await typeModel('provider/unlisted-v2');
+  assert.equal((await evaluate('window.writes()')).length,2);
+  await enter();
+  assert.deepEqual(await evaluate('window.writes().at(-1)'),{thread_id:'lead',connection:'studio',model:'provider/unlisted-v2'});
+  assert.equal(await evaluate("document.querySelector('.model-picker-anchor>button').textContent"),confirmed);
+  await typeModel('model-a');
+  await enter();
+  assert.deepEqual(await evaluate('window.writes().at(-1)'),{thread_id:'lead',connection:'c',model:'model-a'});
+  assert(await click('Save advanced settings'));
+  await until(()=>evaluate("!document.querySelector('.model-picker')"));
+  assert.equal((await evaluate('window.writes()')).length,4);
+  await evaluate("document.querySelector('.model-picker-anchor>button').click(); true");
+  await until(()=>evaluate("!!document.querySelector('.model-picker')"));
   await evaluate("document.body.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true})); true");
   await until(()=>evaluate("!document.querySelector('.model-picker')"));
   await evaluate("document.querySelector('.model-picker-anchor>button').click(); true");
