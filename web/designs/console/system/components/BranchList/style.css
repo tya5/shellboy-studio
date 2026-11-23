@@ -4,10 +4,11 @@
 .brow>.i{color:var(--muted)}
 .brow-text{min-width:0;overflow-wrap:anywhere}
 .brow>:nth-child(n+3){grid-column:2;min-width:0}
-.brow[data-depth="1"]{margin-inline-start:var(--space-8)}
-.brow[data-depth="2"]{margin-inline-start:var(--space-12)}
-.brow[data-depth="3"]{margin-inline-start:var(--space-16)}
-.brow[data-depth="4"]{margin-inline-start:var(--space-24)}
+/* Nested-indent role: one space-16 step per level, capped at depth four. */
+.brow[data-depth="1"]{margin-inline-start:var(--space-16)}
+.brow[data-depth="2"]{margin-inline-start:calc(2 * var(--space-16))}
+.brow[data-depth="3"]{margin-inline-start:calc(3 * var(--space-16))}
+.brow[data-depth="4"]{margin-inline-start:calc(4 * var(--space-16))}
 @container app (max-width:899px){
   .brow-text>a{display:flex;align-items:center;min-height:var(--size-touch)}
 }

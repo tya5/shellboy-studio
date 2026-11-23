@@ -221,6 +221,7 @@ impl Launch {
                     _ = cancel.cancelled() => break,
                     restart = self.restart.recv() => {
                         if restart.is_none() { break; }
+                        restart_state.manual_start();
                         self.start().await;
                     }
                 }
@@ -236,6 +237,7 @@ impl Launch {
                     _ = cancel.cancelled() => break None,
                     restart = self.restart.recv() => {
                         if restart.is_none() { break None; }
+                        restart_state.manual_start();
                         self.start().await;
                     },
                     result = async { match child { Some(p) => p.wait().await, None => std::future::pending().await } } => {

@@ -30,11 +30,19 @@ pub(super) enum Decision {
 
 /// Chooses whether an unexpected post-ready exit gets one immediate restart.
 #[derive(Debug, Default)]
-pub(super) struct RestartState;
+pub(super) struct RestartState {
+    automatic_restart_available: bool,
+}
 
 impl RestartState {
     pub(super) fn new() -> Self {
-        Self
+        Self {
+            automatic_restart_available: true,
+        }
+    }
+
+    pub(super) fn manual_start(&mut self) {
+        self.automatic_restart_available = true;
     }
 
     pub(super) fn exited(&mut self, ready: bool, exit: ChildExit) -> Decision {
@@ -42,7 +50,11 @@ impl RestartState {
             ChildExit::Clean => Decision::Stop,
             ChildExit::BeforeReady(reason) => Decision::ShowFailure(reason),
             ChildExit::Crash(reason) if !ready => Decision::ShowFailure(reason),
-            ChildExit::Crash(reason) => Decision::Retry { reason },
+            ChildExit::Crash(reason) if self.automatic_restart_available => {
+                self.automatic_restart_available = false;
+                Decision::Retry { reason }
+            }
+            ChildExit::Crash(reason) => Decision::ShowFailure(reason),
         }
     }
 }
@@ -121,6 +133,18 @@ mod tests {
             state.exited(true, ChildExit::Crash("Core crashed".into())),
             Decision::Retry {
                 reason: "Core crashed".into()
+            }
+        );
+        // Readiness between exits does not replenish the launch's one-shot budget.
+        assert_eq!(
+            state.exited(true, ChildExit::Crash("again after ready".into())),
+            Decision::ShowFailure("again after ready".into())
+        );
+        state.manual_start();
+        assert_eq!(
+            state.exited(true, ChildExit::Crash("after manual Start".into())),
+            Decision::Retry {
+                reason: "after manual Start".into()
             }
         );
         assert_eq!(

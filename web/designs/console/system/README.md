@@ -54,6 +54,7 @@ Approved by the user on 2026-11-23 with the v2 sheet (shellboy-studio #97). Thes
 | `space-12` | Component insets and related groups |
 | `space-16` | Card insets and distinct sections; between two groups of choices |
 | `space-24` | Desktop page perimeter left and right (`space-12` at phone width) |
+| `space-16` × depth (cap 4) | Nested-indent role in BranchList; preserves one equal step per branch level |
 
 | Type | Role |
 |---|---|

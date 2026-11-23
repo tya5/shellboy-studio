@@ -537,7 +537,7 @@ the foundation works end to end (§2.1).
 
 ### Managed Core restart policy (#32)
 
-For the existing macOS/Windows desktop path, an unsuccessful exit after the authoritative `ready` event gets an immediate restart, with no backoff schedule. If that restarted child exits before becoming ready, Studio gives up automatic restarts, keeps the last failure visible, and waits for the user's manual Start/Restart action. A clean exit or a startup failure before any post-ready crash is also shown without an automatic retry. Readiness itself has no new deadline: slow startup is not killed by this policy. Successful readiness clears the previous failure. This portable supervisor has no Linux end-to-end caller in #32.
+For the existing macOS/Windows desktop path, each Studio launch or manual Start has a budget of one immediate automatic restart after an unsuccessful exit following the authoritative `ready` event. Readiness and elapsed time never replenish that budget. If the restarted child exits again, whether before or after ready, Studio gives up automatic restarts, keeps the last failure visible, and waits for a manual Start. A clean exit or an initial startup failure is shown without an automatic retry. Readiness itself has no new deadline: slow startup is not killed by this policy. A manual Start resets the budget. This portable supervisor has no Linux end-to-end caller in #32.
 
 ### Conversation work observation decision (2026-11-07)
 
