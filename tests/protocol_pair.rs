@@ -20,14 +20,14 @@ fn thread_list_accepts_created_order_and_cursor() {
 }
 
 #[test]
-fn exact_protocol_eleven_has_directional_reply_counts() {
-    assert_eq!(shellboy::protocol::PROTOCOL_VERSION, 11);
+fn exact_protocol_twelve_and_thread_pending_reply_counts() {
+    assert_eq!(shellboy::protocol::PROTOCOL_VERSION, 12);
     let value = json!({"thread_id":"t", "title":"synthetic", "cwd":"/", "connection":"c",
         "model":"m", "agents_path":"AGENTS.md", "parent_id":"organization", "shells_count":1,
-        "summarizing":false, "pending_replies":{"owed_by":{"count":2,"exact":true},"asked_by":{"count":17,"exact":false}}});
+        "summarizing":false, "pending_replies":{"owed_by":{"count":2,"exact":true},"asked_by":{"count":1,"exact":true}}});
     let details: ThreadDetails = serde_json::from_value(value).unwrap();
     assert_eq!(details.pending_replies.owed_by.count, 2);
-    assert!(!details.pending_replies.asked_by.exact);
+    assert_eq!(details.pending_replies.asked_by.count, 1);
     assert_eq!(details.shells_count, 1);
     assert_eq!(details.parent_id.as_deref(), Some("organization"));
     assert_eq!(
