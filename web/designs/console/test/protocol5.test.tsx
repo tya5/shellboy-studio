@@ -29,7 +29,7 @@ it('protocol 5 unifies human/thread duties while preserving shells and organizat
     r.model.lang.value='ja';
     expect(r.model.t.value('org.previewNote')).not.toContain('所有者');
     r.model.lang.value='en';
-    await act(async()=>host.querySelector<HTMLButtonElement>('#panel-page-awaiting-reply [data-panel-row-id=peer] button')!.click());
+    await act(async()=>host.querySelector<HTMLButtonElement>('#panel-page-reply-needed [data-panel-row-id=peer] button')!.click());
     expect(host.querySelector('a[href="#/thread/child"]') ?? [...host.querySelectorAll('a')].find(a=>a.href.includes('child'))).toBeTruthy();
     expect(r.model.threadReplies.value.filter(x=>x.recipient.kind==='human')).toHaveLength(1);
     expect(r.model.handle.value!.detail.value.value!.shells_count).toBe(1);
