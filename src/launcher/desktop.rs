@@ -430,7 +430,7 @@ async fn open_or_start_with<F: std::future::Future<Output = Result<(), String>>>
             && endpoint_matches(&marker).await
         {
             // One Studio per user: never switch a running Studio to another data directory.
-            if marker.data_dir != data_dir {
+            if !same_dir(&marker.data_dir, data_dir) {
                 return Err(format!(
                     "Studio is already running with another data directory.\n\nRunning: {}\nRequested: {}\n\nUse Exit in the running Studio, then open it again.",
                     marker.data_dir.display(),
@@ -450,6 +450,16 @@ async fn open_or_start_with<F: std::future::Future<Output = Result<(), String>>>
         }
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
+}
+
+/// Same directory, even when spelled differently (case, `..`, relative base).
+/// The canonical form is only compared, never stored or shown.
+fn same_dir(running: &Path, requested: &Path) -> bool {
+    running == requested
+        || matches!(
+            (fs::canonicalize(running), fs::canonicalize(requested)),
+            (Ok(a), Ok(b)) if a == b
+        )
 }
 
 fn read_marker(path: &Path, dir: &Path) -> Option<Marker> {
@@ -728,9 +738,22 @@ mod tests {
             },
         )
         .await;
+        // The running folder spelled differently is the same folder, not a refusal.
+        fs::create_dir_all(running.join("sub")).unwrap();
+        let respelled = open_or_start_with(
+            path,
+            &running.join("sub").join(".."),
+            || panic!("a running Studio must not be started again"),
+            |url: String| async move {
+                assert!(url.contains("#token="));
+                Ok(())
+            },
+        )
+        .await;
         task.abort();
         let _ = task.await;
         opened.unwrap();
+        respelled.unwrap();
     }
 
     #[test]
