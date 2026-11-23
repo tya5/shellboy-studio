@@ -75,6 +75,7 @@ User requirement (2026-11-07): many Threads must not mean all data in memory, an
 | Live preview | 262144 UTF-16 code units per open Thread (newest kept, marked incomplete) | Discard rules in Live text |
 | Analytics walks | Days: at most 32 groups. By Thread: 2000 groups (`MAX_GROUPS`), then stops and says so; 64 windows per run | New period or Refresh |
 | Compaction events | 50 rows for one Thread | New Thread or period |
+| Awaiting you questions | 128 (`HUMAN_RETAINED`), 16 per press of Show more; past it, the screen says so | Owner change; a hint re-reads the loaded pages |
 | Resource reads | One value each | Replaced on Refresh |
 | Markdown | No cache: a `useMemo` per mounted message, so bounded by the window | Unmount |
 | Apps | 64 tabs and listeners; 20 errors per tab | On close; listeners with the bridge |
@@ -250,11 +251,16 @@ until an adopted public owner projection provides the corresponding timestamp.
 
 Core owns pending receipts and the per-direction `thread.get.pending_replies`
 counts. `ReplyPages` binds one shared `PageRun` per direction for the selected
-Thread, at 16 rows per request and at most 128 retained rows per direction.
+Thread (`PageRun` takes a Thread ID for its hints, or a caller-owned hint source), at 16 rows per request and at most 128 retained rows per direction.
 On a Core hint, each run re-reads its loaded page count. A failed read keeps
-its previous rows. Only `cursor_expired` clears the continuation on failure;
-other failures leave More available for retry. A Thread or owner change cancels the reads. Only `owed_by` senders use the sender-title
+its previous rows and its typed error. Only `cursor_expired` clears the continuation on failure;
+other failures leave More available for retry. A cancelled read is not a failure: the rows and state stay as they were. A Thread or owner change cancels the reads. Only `owed_by` senders use the sender-title
 lookup budget; `asked_by` rows display the recipient.
-The sidebar HumanInbox reads a bounded `message.list` page with `to: "human"`.
-It never fans out to Thread details. AppModel owns panel selection; existing
-`history.get` and `message.reply` provide the full text and reply operation.
+The HumanInbox (Awaiting you) binds one `PageRun` to `message.list` with
+`to: "human"`, 16 rows per request and at most 128 retained rows. Its hint
+source is the list hint (`listHint`), not one Thread's hints: on a list change
+or resync it re-reads its loaded page count. A new owner value starts a new
+scope. It never fans out to Thread details; titles come from the by-ID
+summary read of the retained questions' Threads. AppModel owns panel
+selection; existing `history.get` and `message.reply` provide the full text
+and reply operation.

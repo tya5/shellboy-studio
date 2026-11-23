@@ -584,26 +584,40 @@ reads/writes use the same guarded no-auth/session decision. The UI configuration
 bit is no-store, contains no owner data and adds a persistent desktop/mobile badge.
 Default token/session authentication and restart behaviour remain unchanged.
 
-### Human Inbox Bound (#37)
+### Human Inbox Bound (#37, #105)
 
-Awaiting you owns one live keyset page of up to 16 human duties
-(`REPLY_PAGE_SIZE`) from `message.list --awaiting --to human`. There are no
-per-Thread detail reads or sidebar loading prerequisite. Already loaded Thread
-summaries can annotate titles and counts; counts are absent without a matching
-summary, and an inexact count is displayed with `+` when supplied.
+Awaiting you reads `message.list --awaiting --to human` in keyset pages of 16
+(`REPLY_PAGE_SIZE`) through the shared `PageRun` owner, the same one that
+serves reply directions, attachments and artifacts. It retains at most 128
+questions (`HUMAN_RETAINED`, = `REPLY_RETENTION`). There are no per-Thread
+detail reads or sidebar loading prerequisite. Thread titles and per-Thread
+counts come from the by-ID summary read (`readActiveRows`, `thread.list
+thread_ids`) of the retained questions' Threads, so a Thread outside the
+sidebar's page or search still shows its title; counts are absent without a
+summary, and an inexact count is displayed with `+`.
 
-Show more replaces the page using its opaque cursor. List change and resync
-hints restart from page one; a same-instance owner restart invalidates the page
-and starts a fresh read. The existing Refresher coalesces overlapping hints.
-Expired cursors and read failures are reported, not silently walked. Closing the
-inbox owner cancels its read and removes its subscriptions.
+Show more appends the next page using its opaque cursor and keeps the earlier
+questions. List change and resync hints re-read the number of pages loaded, from
+the first page, and publish them together; the displayed rows stay until that
+read succeeds, so the selected question and its half-written answer survive a
+hint. A failed read keeps the rows and reports the error; only `cursor_expired`
+drops the continuation. At the retention bound Show more stops and the screen
+says so. A new owner value (other instance, same-instance restart, reconnect)
+is a new scope: rows clear before old reads are cancelled. Closing the inbox
+owner cancels its read and removes its subscriptions.
 
-Answer and Cancel target only displayed human message IDs. The attempt ledger
-holds at most `HUMAN_PAGE_LIMIT` (16) outcomes; it refuses a new action at the
-bound rather than discarding an unresolved receipt identity. In-flight duplicate
-actions share the outcome, and unconfirmed retries keep their operation ID and,
-for answers, their exact text. Neither reply nor cancel receipts remove rows or
-trigger another read. Thread-directed duties remain in their per-Thread surface.
+The navigation badge and the Questions heading show the retained count. It is
+exact only when the last read reached the end of Core's list within the bound
+(`complete`); otherwise it is shown as `N+`. Core has no cross-Thread total of
+human duties, so no larger number is claimed.
+
+Answer and Cancel target only retained human message IDs in the current scope.
+The attempt ledger holds at most `HUMAN_RETAINED` (128) outcomes; it refuses a
+new action at the bound rather than discarding an unresolved receipt identity.
+In-flight duplicate actions share the outcome, and unconfirmed retries keep
+their operation ID and, for answers, their exact text. Neither reply nor cancel
+receipts remove rows or trigger another read. Thread-directed duties remain in
+their per-Thread surface.
 
 ### Branch Excerpt Admission
 

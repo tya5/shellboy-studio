@@ -14,7 +14,7 @@ import { recentAppFolders } from "./app-templates";
 // Screen logic over the data layer: which Thread is open, what the views show, the send, stop,
 // retry and archive flows. Saved facts stay in the data layer; nothing here is optimistic.
 import { batch, computed, effect, signal, untracked, type ReadonlySignal, type Signal } from "@preact/signals-core";
-import { Cancel, messageCancelFailure, type Handle, type Operations, type OpError, type ShellboyData, type ShellEntry, type ThreadDetails, type ThreadSummary, type ThreadHandle } from "../../data/src";
+import { Cancel, messageCancelFailure, type Handle, type Operations, type OpError, type ShellboyData, type ShellEntry, type ThreadDetails, type ThreadSummary, type ThreadHandle, type ReplyCount } from "../../data/src";
 import { ArtifactObservation, CAPABILITY_HISTORY_WINDOW, ReplyPages, type ReplySide } from "../../data/src";
 import { MissingPins, MonitorSelection, type MonitorArchive } from "./monitor-selection";
 import { workRegions, type WorkRegions } from "./work";
@@ -267,7 +267,8 @@ export class AppModel {
   readonly missingPins: MissingPins;
   readonly monitorOutOfFilter: ReadonlySignal<ReadonlySet<string>>;
   readonly monitorRows: ReadonlySignal<ThreadRow[]>;
-  readonly pendingCount: ReadonlySignal<number>;
+  /** Retained awaiting-you questions; inexact while Core has more than the loaded pages. */
+  readonly pendingCount: ReadonlySignal<ReplyCount>;
   readonly connection: ReadonlySignal<ConnectionView>;
 
   /** The Thread the conversation shows: from the route, else the last one, else the newest. */
@@ -487,7 +488,7 @@ export class AppModel {
       return rows;
     });
     this.counts = computed(() => countByStatus(this.rows.value));
-    this.pendingCount = computed(() => this.pending.items.value.length);
+    this.pendingCount = computed(() => ({ count: this.pending.items.value.length, exact: this.pending.complete?.value ?? !this.pending.hasMore?.value }));
     this.missingPins = new MissingPins(this.ops);
     const stableMonitor = new StableMonitorOrder();
     const stableRows = computed(() => stableMonitor.order([...this.rows.value, ...this.missingPins.rows.value]));

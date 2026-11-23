@@ -20,7 +20,7 @@ import { ConversationCharacter } from "../system/components";
 import { effect } from "@preact/signals-core";
 import { MonitorPopover } from "../system/components/MonitorPopover";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
-import { readRightPanelWidth, RIGHT_PANEL_WIDTH_MAX, RIGHT_PANEL_WIDTH_MIN, collectExecutionSteps, toolLabel, activityLabel, activityStatus, activityStatusLabel, statusLabel, renderOutput, formatClock, formatDuration, formatRoute, formatTokens, parseTime, type AppModel, type ConversationRow, type StepRow as Step } from "../../../ui-core/src";
+import { readRightPanelWidth, RIGHT_PANEL_WIDTH_MAX, RIGHT_PANEL_WIDTH_MIN, collectExecutionSteps, toolLabel, activityLabel, activityStatus, activityStatusLabel, statusLabel, renderOutput, formatClock, formatDuration, formatRoute, formatTokens, formatCount, errorMessage, parseTime, type AppModel, type ConversationRow, type StepRow as Step } from "../../../ui-core/src";
 import { ThreadSettingsPanel, type SettingsDestination } from "./ThreadSettingsPanel";
 import { WindowedScroll } from "./WindowedScroll";
 import { BranchMark, Button, Composer, ContextRing, DataTable, Section, ModelPicker, LoadingRows, EmptyState, Icon, KeyValue, LayoutSeparator, ListDivider, ListRow, LogBlock, Message, Notice, PanelTabs, ShellFooter, ShellToggle, QuestionCard, StatusMark, StepRow, SummaryStrip, WorkSheet, OutputLimitNotice as OutputLimitNoticeRow } from "../system/components";
@@ -552,7 +552,7 @@ function PanelReplies({ model, side }: { model: AppModel; side: "owed_by" | "ask
         subtitle={panelElapsed(model.now.value, reply.created_at)} waiting={side === "asked_by" && human} selected={model.panelOpener.value[tab]?.id === reply.message_id}
         menuLabel={t("panel.rowActions")} actions={actions} error={panelOperationError(model, reply.message_id)} onSelect={opener => model.openInPanel({ kind: "reply", id: reply.message_id, replySide: side }, panelFocusReturn(opener))} />;
     })}
-    {page.error ? <p role="alert">{page.error}</p> : null}
+    {page.error ? <p role="alert">{errorMessage(page.error)}</p> : null}
     {!page.items.length && !page.loading && !page.error ? <EmptyState compact role={side === "owed_by" ? "empty.panelReplies" : "empty.panelAwaiting"} title={t(side === "owed_by" ? "panel.empty.owed" : "panel.empty.asked")} body={t(side === "owed_by" ? "panel.empty.owedBody" : "panel.empty.askedBody")} /> : null}
     {page.cursor ? <Button disabled={page.loading} onClick={() => model.replyPages.more(side)}>{t("panel.attachmentsMore")}</Button> : null}
   </div>;
@@ -677,8 +677,7 @@ function RightPanel({ model, panelCollapsed = false, phone, destination, clearDe
     ? model.attachmentSection.observe(threadId) : undefined, [model, activeAttachments, owner, threadId]);
   const selectedTab = !(supportsAttachments || supportsArtifacts) && model.panelTab.value === "possessions" ? "work" : model.panelTab.value;
   const replyCount = (side: "owed_by" | "asked_by") => {
-    const count = model.details.value?.pending_replies?.[side];
-    return count?.exact === false ? `${count.count}+` as const : count?.count;
+    return formatCount(model.details.value?.pending_replies?.[side]);
   };
   const tabs = [
     { id: "work", label: t("panel.tab.work"), icon: "panel.work" as const, count: model.work.value.running.length + model.work.value.pending.length },

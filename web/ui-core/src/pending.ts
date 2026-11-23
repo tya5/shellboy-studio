@@ -1,5 +1,6 @@
 // Presentation-neutral inbox contract; the production adapter lives in the data layer.
 export type { PendingItem, PendingAdapter } from "../../data/src/human-inbox";
+export { HUMAN_RETAINED } from "../../data/src/human-inbox";
 import { signal } from "@preact/signals-core";
 import type { PendingAdapter } from "../../data/src/human-inbox";
 export const noPending: PendingAdapter = {

@@ -2,12 +2,14 @@ import { signal, type ReadonlySignal } from "@preact/signals-core";
 import { Cancel } from "./operations";
 import { MAX_LIST_ROWS, type ShellboyData, type Handle } from "./store";
 import type { Page } from "./protocol";
-import type { Outcome } from "./errors";
+import type { Outcome, OpError } from "./errors";
 
 type Load<T, H> = (cursor: string | undefined, cancel: Cancel) => Promise<Outcome<{ page: Page<T>; header?: H }>>;
-type Section<T, H> = { items: readonly T[]; header?: H; cursor?: string; loading: boolean; error?: string; capped?: boolean; complete?: boolean };
+type Section<T, H> = { items: readonly T[]; header?: H; cursor?: string; loading: boolean; error?: OpError; capped?: boolean; complete?: boolean; loaded?: boolean };
+/** A Thread ID (its hints), or a caller-owned hint source for a list that spans Threads. */
+export type HintSource = string | ((notify: () => void) => Handle);
 
-/** One visible Thread section. Each hint rebuilds the loaded prefix before publishing it. */
+/** One visible section. Each hint rebuilds the loaded prefix before publishing it. */
 export class PageRun<T, H = never> {
   private readonly stateSignal = signal<Section<T, H>>({ items: [], loading: false });
   readonly state: ReadonlySignal<Section<T, H>> = this.stateSignal;
@@ -15,9 +17,10 @@ export class PageRun<T, H = never> {
 
   constructor(private readonly data: ShellboyData, private readonly key: (row: T) => string | number, private readonly invalidContinuation: string, private readonly rowLimit = MAX_LIST_ROWS) {}
 
-  observe(threadId: string, load: Load<T, H>): () => void {
+  observe(hints: HintSource, load: Load<T, H>): () => void {
     this.close();
-    const watch = this.data.watchHints(threadId, () => { if (this.session === session) void this.read(); });
+    const notify = () => { if (this.session === session) void this.read(); };
+    const watch = typeof hints === "string" ? this.data.watchHints(hints, notify) : hints(notify);
     const session = { load, owner: this.data.owner.peek(), watch, pages: 1 };
     this.session = session;
     void this.read();
@@ -28,14 +31,16 @@ export class PageRun<T, H = never> {
     const session = this.session;
     if (!session) return;
     this.session = undefined;
+    // Publish the empty scope before cancellation callbacks can observe the old rows.
+    this.stateSignal.value = { items: [], loading: false };
     session.watch.close();
     session.read?.cancel();
-    this.stateSignal.value = { items: [], loading: false };
   }
 
-  more(): void {
+  /** Append the next page; resolves when that read settles. */
+  more(): Promise<void> {
     const { cursor, loading } = this.stateSignal.peek();
-    if (cursor !== undefined && !loading) void this.read(cursor);
+    return cursor !== undefined && !loading ? this.read(cursor) : Promise.resolve();
   }
 
   private async read(appendCursor?: string): Promise<void> {
@@ -54,7 +59,7 @@ export class PageRun<T, H = never> {
     let capped = false;
     let header = appendCursor === undefined ? undefined : previous.header;
     const pages = appendCursor === undefined ? session.pages : 1;
-    const fail = (error: string, invalidateCursor: boolean) => {
+    const fail = (error: OpError, invalidateCursor: boolean) => {
       session.read = undefined;
       this.stateSignal.value = { ...previous, cursor: invalidateCursor ? undefined : previous.cursor, complete: false, loading: false, error };
     };
@@ -63,16 +68,18 @@ export class PageRun<T, H = never> {
       const result = await session.load(cursor, cancel);
       if (!current()) return;
       if (!result.ok) {
+        // A cancelled read is not a failure: keep what was shown, as it was.
+        if (result.error.kind === "cancelled") { session.read = undefined; this.stateSignal.value = { ...previous, loading: false }; return; }
         // Only Core can invalidate the continuation of the retained cut.
         const expired = result.error.kind === "owner" && result.error.code === "cursor_expired";
-        fail(result.error.message, expired);
+        fail(result.error, expired);
         return;
       }
       const { page } = result.value;
       if (i === 0 && appendCursor === undefined) header = result.value.header;
       cursor = page.next_cursor;
       if ((cursor !== undefined && (!page.items.length || cursors.has(cursor))) || page.items.some(row => ids.has(this.key(row)))) {
-        fail(this.invalidContinuation, false); return;
+        fail({ kind: "invalid_response", message: this.invalidContinuation }, false); return;
       }
       const remaining = this.rowLimit - items.length;
       capped = page.items.length > remaining || (page.items.length === remaining && cursor !== undefined);
@@ -81,6 +88,6 @@ export class PageRun<T, H = never> {
     }
     session.read = undefined;
     if (appendCursor !== undefined) session.pages++;
-    this.stateSignal.value = { items, ...(header === undefined ? {} : { header }), loading: false, cursor: capped ? undefined : cursor, capped, complete: cursor === undefined && !capped };
+    this.stateSignal.value = { items, ...(header === undefined ? {} : { header }), loading: false, loaded: true, cursor: capped ? undefined : cursor, capped, complete: cursor === undefined && !capped };
   }
 }

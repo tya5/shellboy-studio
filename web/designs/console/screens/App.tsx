@@ -5,7 +5,7 @@ import { threadMenuEntries } from "../system/components/thread-menu";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
 import { CAPABILITY_TAGS, CAPABILITY_CWDS, formatRoute, readSidebarWidth, SIDEBAR_WIDTH_MAX, SIDEBAR_WIDTH_MIN, statusLabel, viewShortcut, navShortcut, panelShortcut, type DesignContext, type ViewName } from "../../../ui-core/src";
 import { Button, Field, FilterChips, FilterMenu, Icon, LoadingCount, LoadingRows, MoreMenu, NavItem, Notice, StatusMark, ThreadDeleteDialog, ThreadGroup, ThreadItem, ShellFooter, ShellToggle, type IconRole, type ThreadDeleteTarget } from "../system/components";
-import { formatAge } from "../../../ui-core/src";
+import { formatAge, formatCount } from "../../../ui-core/src";
 import { ThreadHeader } from "./ThreadHeader";
 import { Conversation } from "./Conversation";
 import { Inbox } from "./Inbox";
@@ -105,10 +105,10 @@ export function App({ context }: { context: DesignContext }) {
     return () => clearTimeout(timer);
   }, [model, query, filters, route.view]);
 
-  const nav = (view: ViewName, role: IconRole, label: string, count?: number) => <NavItem key={view} href={formatRoute({ view })} role={role} label={label} current={route.view === view} {...(count !== undefined ? { count } : {})} />;
+  const nav = (view: ViewName, role: IconRole, label: string, count?: number | `${number}+`) => <NavItem key={view} href={formatRoute({ view })} role={role} label={label} current={route.view === view} {...(count !== undefined ? { count } : {})} />;
   const conversationNav = nav("conversation", "nav.conversation", t("view.conversation"));
   const monitorNav = nav("monitor", "nav.monitor", t("view.monitor"));
-  const inboxNav = nav("inbox", "nav.inbox", t("view.inbox"), model.pendingCount.value);
+  const inboxNav = nav("inbox", "nav.inbox", t("view.inbox"), formatCount(model.pendingCount.value));
   const moreItems = ([["apps", "nav.apps"], ["branches", "nav.branches"], ["threads", "nav.threads"], ["analytics", "nav.analytics"], ["settings", "nav.settings"]] as const).map(([view, role]) => ({ key: view, href: formatRoute({ view }), role, label: t(`view.${view}`), current: route.view === view }));
 
   const list = model.data.threadList.value;

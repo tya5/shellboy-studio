@@ -88,14 +88,14 @@ it("retains reply rows and allows More after a failed hint, until Core expires t
   const failed = await hint();
   t.push({ t: "result", id: failed.id, response: { protocol_version: 5, operation_id: "failure", ok: false, error: { code: "unavailable", message: "read failed" } } });
   await flush();
-  expect(pages.owed_by.value).toMatchObject({ items: [item], loading: false, complete: false, error: "read failed" });
+  expect(pages.owed_by.value).toMatchObject({ items: [item], loading: false, complete: false, error: { message: "read failed" } });
   expect(pages.asked_by.value.complete).toBe(true);
   pages.more("owed_by"); await flush();
   const more = t.calls("message.list").at(-1)!;
   expect(more.args).toMatchObject({ owed_by: "thread", cursor: "retained" });
   t.push({ t: "result", id: more.id, response: { protocol_version: 5, operation_id: "expired", ok: false, error: { code: "cursor_expired", message: "cursor expired" } } });
   await flush();
-  expect(pages.owed_by.value).toMatchObject({ items: [item], loading: false, complete: false, error: "cursor expired" });
+  expect(pages.owed_by.value).toMatchObject({ items: [item], loading: false, complete: false, error: { code: "cursor_expired", message: "cursor expired" } });
   expect(pages.owed_by.value.cursor).toBeUndefined();
   const before = t.calls("message.list").length;
   pages.more("owed_by"); await flush();

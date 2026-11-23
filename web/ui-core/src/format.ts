@@ -23,6 +23,12 @@ export function formatDuration(ms: number): string {
   return `${Math.floor(m / 60)}h ${m % 60}m`;
 }
 
+/** A count that may be a lower bound: `17+` when not exact (zero stays zero). */
+export function formatCount(c: { count: number; exact: boolean } | undefined): number | `${number}+` | undefined {
+  if (!c) return undefined;
+  return c.exact || c.count === 0 ? c.count : `${c.count}+`;
+}
+
 /** Compact age: "45s", "12m", "3h", "2d". */
 export function formatAge(iso: string | undefined, nowMs: number): string | undefined {
   const at = parseTime(iso);

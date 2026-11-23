@@ -577,10 +577,10 @@ describe("AppModel over the fake transport", () => {
 
   it("pending items come only from the adapter and mark their Thread", async () => {
     const empty = await fixtureModel();
-    expect(empty.model.pendingCount.value).toBe(0);
+    expect(empty.model.pendingCount.value).toEqual({ count: 0, exact: true });
     expect(empty.model.counts.value.awaiting).toBeUndefined();
     const { model } = await fixtureModel({ pending: fixturePendingAdapter() });
-    expect(model.pendingCount.value).toBe(2);
+    expect(model.pendingCount.value).toEqual({ count: 2, exact: true });
     expect(model.counts.value.awaiting).toBe(2);
   });
 

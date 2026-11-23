@@ -1,6 +1,7 @@
 import { effect, type ReadonlySignal, type Signal } from "@preact/signals-core";
 import { describe, expect, it } from "vitest";
 import { ShellboyData } from "../src/store";
+import { Cancel } from "../src/operations";
 import { HumanInbox, HUMAN_PAGE_LIMIT } from "../src/human-inbox";
 import { FakeTransport, connected, flush, summary } from "./harness";
 
@@ -12,11 +13,14 @@ async function fixture() {
   // #96 row reads (active `status`, `thread.list(thread_ids)`) are not under test here; answer them so they free their slots.
   t.onCall = c => { if (c.command === "status" || (c.command === "thread.list" && (c.args as { thread_ids?: string[] }).thread_ids)) queueMicrotask(() => t.ok(c.id, { items: [] })); };
   const data = new ShellboyData({ transport: t, newId: () => `uuid-${++seq}` });
+  // The Cancel of each human-page read, as the shared page owner hands it to the operation.
+  const reads: Cancel[] = []; const messageList = data.operations.messageList.bind(data.operations);
+  data.operations.messageList = (args, cursor, read) => { if ("to" in args && read?.cancel) reads.push(read.cancel); return messageList(args, cursor, read); };
   const inbox = new HumanInbox(data); const list = data.trackThreadList(); data.start(); t.open();
   t.push({ t: "hello", bridge_version: "test", data_dir: "/synthetic", owner: connected });
   await flush(); t.ok(t.calls("thread.list").find(c => !(c.args as Record<string, unknown>).awaiting)!.id, { items: [] }); await flush();
   const close = () => { inbox.close(); list.close(); data.stop(); };
-  return { t, data, inbox, close };
+  return { t, data, inbox, close, lastRead: () => reads.at(-1)! };
 }
 const human = (id: string, thread = "a") => ({ message_id: id, asked_by: thread, sender: { kind: "model", thread_id: thread }, recipient: { kind: "name", name: "human" }, excerpt: `Question ${id}`, created_at: "2026-01-01T00:00:00Z" });
 async function fill(f: Awaited<ReturnType<typeof fixture>>, cursor?: string) {
@@ -97,10 +101,11 @@ describe("bounded named reply inbox", () => {
     const retry = f.inbox.answer("h", "answer"); await flush(); const resent = f.t.calls("message.reply").at(-1)!;
     expect(resent.operation_id).toBe(sent.operation_id); f.t.ok(resent.id, {}); await flush(); f.t.ok(f.t.calls("message.list").at(-1)!.id, { items: [] }); await retry; f.close();
   });
-  it("reports expired cursors instead of silently scanning/restarting, and cancels on close", async () => {
+  it("reports expired cursors instead of silently scanning/restarting, keeps the loaded questions, and cancels on close", async () => {
     const f = await fixture(); await fill(f); const more = f.inbox.more(); await flush();
     const list = f.t.calls("message.list").at(-1)!; f.t.ownerError(list.id, "cursor_expired"); await more;
-    expect(f.inbox.error.value).toMatchObject({ code: "cursor_expired" }); expect(f.inbox.items.value).toEqual([]); f.close();
+    expect(f.inbox.error.value).toMatchObject({ code: "cursor_expired" }); expect(f.inbox.items.value.map(i => i.id)).toEqual(["h"]);
+    expect(f.inbox.hasMore.value).toBe(false); expect(f.t.calls("message.list")).toHaveLength(2); f.close();
   });
 });
 
@@ -141,7 +146,8 @@ it("replaces only a complete page, applies changed same-ID content and canonical
 it("page error retains prior page and cancel is not an empty success", async () => {
   const f = await fixture(); await fill(f); const previous=f.inbox.items.value;
   const call=await reread(f); f.t.ownerError(call.id,"read_failed"); await flush(); expect(f.inbox.items.value).toBe(previous); expect(f.inbox.stale.value).toBe(true);
-  const next=await reread(f); (f.inbox as unknown as {invalidateRead():void}).invalidateRead(); await flush(); expect(f.t.cancels()).toContain(next.id);
+  const next=await reread(f); f.lastRead().cancel(); await flush(); expect(f.t.cancels()).toContain(next.id);
+  expect(f.inbox.loading.value).toBe(false); expect(f.inbox.error.value).toMatchObject({ code: "read_failed" });
   f.t.ok(next.id,{items:[]}); await flush(); expect(f.inbox.items.value).toBe(previous); f.close();
 });
 it.each(["B","ABA","disconnect"])("clears owner-scoped actions immediately and ignores late same-ID response after %s",async transition=>{
@@ -203,7 +209,7 @@ it("same-session refresh notification reentry is finite and does not erase curre
 
 it("revokes old-page action qualification before owner reset cancellation callbacks",async()=>{
  const f=await fixture();await fill(f);await reread(f);
- const cancel=(f.inbox as unknown as {readCancel:{add(fn:()=>void):()=>void}}).readCancel;
+ const cancel=f.lastRead();
  let answer:ReturnType<typeof f.inbox.answer>|undefined;
  cancel.add(()=>{answer=f.inbox.answer("h","old-page callback");});
  writable(f.data.owner).value=ownerB;await flush();
@@ -213,11 +219,11 @@ it("revokes old-page action qualification before owner reset cancellation callba
 it.each(["B","ABA","unknownSame","query"])("cancelcallback answer admission is zero across %s",async transition=>{
  const f=await fixture();await fill(f);await reread(f);
  let result:ReturnType<typeof f.inbox.answer>|undefined;
- (f.inbox as unknown as {readCancel:{add(fn:()=>void):void}}).readCancel.add(()=>{result=f.inbox.answer("h","old callback");expect(f.t.calls("message.reply")).toHaveLength(0);});
+ f.lastRead().add(()=>{result=f.inbox.answer("h","old callback");expect(f.t.calls("message.reply")).toHaveLength(0);});
  if(transition==="B")writable(f.data.owner).value=ownerB;
  else if(transition==="ABA"){f.t.push({t:"owner",event:"restarted",owner:ownerB});f.t.push({t:"owner",event:"restarted",owner:connected});}
  else if(transition==="unknownSame"){f.t.drop();f.t.open();f.t.push({t:"hello",bridge_version:"test",data_dir:"/synthetic",owner:connected});}
- else {const inbox=f.inbox as unknown as {loading:{value:boolean};nextCursor?:string;resetScope():void};inbox.resetScope();}
+ else {const inbox=f.inbox as unknown as {resetScope():void};inbox.resetScope();}
  await flush();expect(result).toBeDefined();expect((await result!).ok).toBe(false);expect(f.t.calls("message.reply")).toHaveLength(0);f.close();
 });
 it("same-session stale page remains authorized rather than globally disabling replies",async()=>{
@@ -238,13 +244,13 @@ it.each(["B","ABA","unknownSame","query"])("late answer retains original receipt
 });
 it("cancel callback starts a fresh owner read without outer reset erasing its new page",async()=>{
  const f=await fixture();await fill(f);await reread(f);
- (f.inbox as unknown as {readCancel:{add(fn:()=>void):void}}).readCancel.add(()=>{f.t.push({t:"owner",event:"restarted",owner:ownerB});});
+ f.lastRead().add(()=>{f.t.push({t:"owner",event:"restarted",owner:ownerB});});
  writable(f.data.owner).value={state:"unknown"};await flush();
  const page=humanCalls(f).at(-1)!;f.t.ok(page.id,{items:[human("new", "fresh")]});await flush();
  expect(f.inbox.items.value.map(x=>x.id)).toEqual(["new"]);f.close();
 });
 
-it("page-two answer waits for a hint to return to the first page",async()=>{
+it("page-two answer waits for a hint, which re-reads from the first page",async()=>{
  const f=await fixture();await flush();f.t.ok(humanCalls(f).at(-1)!.id,{items:[human("h", "a")],next_cursor:"page-two"});await flush();const more=f.inbox.more();await flush();
  f.t.ok(humanCalls(f).at(-1)!.id,{items:[human("second-id", "second")]});await more;
  const before=humanCalls(f).length;const answer=f.inbox.answer("second-id","ok");f.t.ok(f.t.calls("message.reply").at(-1)!.id,{});await flush();
@@ -263,7 +269,7 @@ it.each(["owner","query"])("page-two completion reset callback %s change cannot 
  const f=await fixture();await flush();f.t.ok(humanCalls(f).at(-1)!.id,{items:[human("h", "a")],next_cursor:"p2"});await flush();
  const more=f.inbox.more();await flush();f.t.ok(humanCalls(f).at(-1)!.id,{items:[human("h", "a")]});await more;
  const answer=f.inbox.answer("h","text");const reply=f.t.calls("message.reply").at(-1)!;
- (f.inbox as unknown as {readCancel:{add(fn:()=>void):void}}).readCancel.add(()=>{if(transition==="owner"){writable(f.data.owner).value=ownerB;}else(f.inbox as unknown as {resetScope():void}).resetScope();});
+ f.lastRead().add(()=>{if(transition==="owner"){writable(f.data.owner).value=ownerB;}else(f.inbox as unknown as {resetScope():void}).resetScope();});
  const before=humanCalls(f).length;f.t.ok(reply.id,{});await flush();await answer;expect(humanCalls(f)).toHaveLength(before);expect(f.t.calls("message.reply")).toHaveLength(1);f.close();
 });
 it("different owner cannot reuse or remint an unconfirmed original-owner receipt",async()=>{

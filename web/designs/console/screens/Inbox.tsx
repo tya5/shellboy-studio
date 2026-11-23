@@ -1,11 +1,12 @@
 import { useRef, useState } from "preact/hooks";
-import { errorMessage, formatAge, formatRoute, statusLabel, STATUS_KEYS, type AppModel } from "../../../ui-core/src";
+import { errorMessage, formatAge, formatCount, formatRoute, HUMAN_RETAINED, statusLabel, STATUS_KEYS, type AppModel } from "../../../ui-core/src";
 import { Button, EmptyState, Icon, PageHeader, QuestionCard, QuestionItem, StatusMark } from "../system/components";
 
 export function Inbox({ model }: { model: AppModel }) {
   const t = model.t.value;
   const items = model.pending.items.value;
   const counts = model.counts.value;
+  const total = formatCount(model.pendingCount.value);
   const [picked, setPicked] = useState<string | undefined>(undefined);
   const [failure, setFailure] = useState<{ id: string; message: string }>();
   const [busy, setBusy] = useState<string>();
@@ -28,7 +29,7 @@ export function Inbox({ model }: { model: AppModel }) {
     <div class="inbox">
       <PageHeader title={t("view.inbox")} />
       <div class="qlist">
-        <h2 class="group-label">{t("inbox.questions")}{items.length > 0 ? ` ${items.length}` : ""}</h2>
+        <h2 class="group-label">{t("inbox.questions")}{total ? ` ${total}` : ""}</h2>
         {items.map((p) => {
           const row = model.rowById.value.get(p.threadId)?.summary;
           const count = row?.awaiting_named_count;
@@ -38,7 +39,8 @@ export function Inbox({ model }: { model: AppModel }) {
         {model.pending.loading?.value ? <p class="muted caption" role="status">{t("common.loading")}</p> : null}
         {model.pending.stale?.value ? <p class="muted caption">{t("work.stale")}</p> : null}
         {model.pending.error?.value ? <p role="alert">{errorMessage(model.pending.error.value)}</p> : null}
-        {model.pending.hasMore?.value ? <Button variant="ghost" onClick={() => void model.pending.more?.()}>{t("threads.more")}</Button> : null}
+        {model.pending.hasMore?.value ? <Button variant="ghost" disabled={model.pending.loading?.value} onClick={() => void model.pending.more?.()}>{t("inbox.more")}</Button> : null}
+        {model.pending.capped?.value ? <p class="muted caption">{t("inbox.capped", { n: HUMAN_RETAINED })}</p> : null}
         {others.length > 0 ? (
           <div class="other">
             <h2 class="group-label">{t("inbox.other")}</h2>

@@ -137,7 +137,7 @@ describe('right panel purpose',()=>{
    await pump(()=>f.t.push({t:'changed',config_changed:false,thread_ids:['lead'],list:false}));
    expect(page.querySelector('[data-panel-row-id="z"]')?.textContent).toContain('Report');
    expect(page.querySelector('[data-panel-detail]')?.textContent).toContain('/fixture/notes-1.md');
-   expect(f.model.artifacts.history.state.value).toMatchObject({complete:false,error:'Retained cut expired'});
+   expect(f.model.artifacts.history.state.value).toMatchObject({complete:false,error:{message:'Retained cut expired'}});
    failed=false;
    latest=row('z',3,'New report');
    await pump(()=>f.t.push({t:'changed',config_changed:false,thread_ids:['lead'],list:false}));

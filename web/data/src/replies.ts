@@ -3,7 +3,8 @@ import type { PendingReply } from "./protocol";
 import type { ShellboyData } from "./store";
 
 export type ReplySide = "owed_by" | "asked_by";
-const MAX_RETAINED = 128;
+/** Rows retained per directional reply list, and for the human inbox. */
+export const REPLY_RETENTION = 128;
 
 /** Bind both directions for the selected Thread to the shared page owner. */
 export class ReplyPages {
@@ -12,7 +13,7 @@ export class ReplyPages {
   readonly asked_by: PageRun<PendingReply>["state"];
 
   constructor(private readonly data: ShellboyData) {
-    const pages = () => new PageRun(data, (row: PendingReply) => row.message_id, "Invalid reply continuation", MAX_RETAINED);
+    const pages = () => new PageRun(data, (row: PendingReply) => row.message_id, "Invalid reply continuation", REPLY_RETENTION);
     this.runs = { owed_by: pages(), asked_by: pages() };
     this.owed_by = this.runs.owed_by.state;
     this.asked_by = this.runs.asked_by.state;
