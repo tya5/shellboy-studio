@@ -1,5 +1,5 @@
 import { parse, stringify, type TomlTable } from "smol-toml";
-import { CONFIG_FIELDS, CONNECTION_FIELDS, CONNECTION_SECRETS, fieldOf, isHidden, type ConfigFacts } from "./config";
+import { CONFIG_FIELDS, CONNECTION_FIELDS, fieldOf, isHidden, type ConfigFacts } from "./config";
 
 export const SETTINGS_FILE_LIMIT = 1024 * 1024;
 type Table = Record<string, unknown>;
@@ -36,7 +36,7 @@ const valid = (key: string, value: unknown, spec: { kind: string; options?: read
 const same = (left: unknown, right: unknown) => JSON.stringify(left ?? null) === JSON.stringify(right ?? null);
 
 /** Only the portable allowlist is emitted, never raw file content or redacted fields. */
-export function exportableSettings(facts: ConfigFacts): string {
+export function exportableSettings(facts: ConfigFacts): { text: string; omitted: string[] } {
   const source = facts.file.values;
   if (!facts.file.valid || !source) throw new Error();
   const result: TomlTable = Object.create(null);
@@ -48,20 +48,32 @@ export function exportableSettings(facts: ConfigFacts): string {
   };
   for (const [key, spec] of globals) {
     const value = at(source, key);
-    if (valid(key, value, spec)) put(result, key, value);
+    if (!facts.file.redacted.includes(key) && valid(key, value, spec)) put(result, key, value);
   }
+  const omitted: string[] = [];
   for (const [name, raw] of Object.entries(table(source.connections) ?? {})) {
-    if (!validName(name)) continue;
+    if (!validName(name)) { omitted.push(name); continue; }
     const row: TomlTable = Object.create(null);
     for (const [key, spec] of connections) {
       const value = at(raw, key);
       if (!facts.file.redacted.includes(fieldOf(["connections", name, ...key.split(".")])) && valid(key, value, spec)) put(row, key, value);
     }
     // A masked or unsupported endpoint cannot produce an incomplete configuration.
-    if (!row.base_url || !row.api) throw new Error();
+    if (!row.base_url || !row.api) { omitted.push(name); continue; }
     ((result.connections ??= Object.create(null)) as TomlTable)[name] = row;
   }
-  return stringify(result);
+  // Do not export a default whose connection could not be included.
+  if (typeof result.default_connection === "string" && omitted.includes(result.default_connection)) {
+    delete result.default_connection;
+    delete result.default_model;
+  }
+  const embedding = result.embedding as TomlTable | undefined;
+  if (typeof embedding?.connection === "string" && omitted.includes(embedding.connection)) {
+    delete embedding.connection;
+    delete embedding.model;
+    if (!Object.keys(embedding).length) delete result.embedding;
+  }
+  return { text: stringify(result), omitted };
 }
 
 /** TOML parsing errors and unsupported content are deliberately not echoed to the UI. */
@@ -94,33 +106,34 @@ export function parseSharedSettings(text: string): ImportedSettings {
 export function settingsPreview(imported: ImportedSettings, facts: ConfigFacts) {
   const current = facts.file.values;
   const existing = table(current?.connections) ?? {};
-  const changes: SettingsChange[] = [];
-  const defaults: { field: string; before: unknown; value: unknown }[] = [];
+  const changes: (SettingsChange & { before: unknown })[] = [];
+  const warnings: { name: string; url: string; source: "stored" | "env" | "custom"; routing: { field: string; before: unknown; value: unknown }[] }[] = [];
   const loaded = table(facts.loaded.values?.connections) ?? {};
-  const added: string[] = [], replaced: string[] = [], blocked: string[] = [];
+  const added: string[] = [], replaced: string[] = [];
   for (const [field, value] of imported.fields) {
     const before = at(current, field);
-    if (same(before, value)) continue;
-    changes.push({ field, value });
-    defaults.push({ field, before, value });
+    if (!same(before, value)) changes.push({ field, before, value });
   }
   for (const [name, connection] of imported.connections) {
-    const prior = Object.hasOwn(existing, name) ? table(existing[name]) : undefined;
-    (prior ? replaced : added).push(name);
-    const repoints = (row: Table) => ["base_url", "api_key_header", "api"].some(field => !same(at(row, field), connection.get(field)));
-    const guarded = (row: Table | undefined, source: unknown) => row && repoints(row) && (
-      source !== "none" || facts.credentialsFile?.valid === false || CONNECTION_SECRETS.some(field => Object.hasOwn(row, field.key))
-    );
-    if (guarded(prior, at(facts.file.credentialSource, name)) || guarded(table(at(loaded, name)), at(facts.loaded.credentialSource, name))) blocked.push(name);
+    const prior = table(at(existing, name));
+    const active = table(at(loaded, name));
+    (prior || active ? replaced : added).push(name);
+    const source = at(facts.loaded.credentialSource, name) ?? at(facts.file.credentialSource, name);
+    const headers = at(active ?? prior, "headers");
+    const routing = ["base_url", "api", "api_key_header"].map(field => ({ field, before: at(active ?? prior, field), value: connection.get(field) }));
+    if ((prior || active) && routing.some(({ before, value }) => !same(before, value)) && (source === "stored" || source === "env" || isHidden(headers))) {
+      warnings.push({ name, url: connection.get("base_url") as string, source: source === "stored" || source === "env" ? source : "custom", routing });
+    }
     for (const [key, value] of connection) {
-      if (!same(at(prior, key), value)) changes.push({ field: fieldOf(["connections", name, ...key.split(".")]), value });
+      const before = at(prior, key);
+      if (!same(before, value)) changes.push({ field: fieldOf(["connections", name, ...key.split(".")]), before, value });
     }
     // Optional omitted overrides return to Core defaults. Do not touch private headers or credentials.
     for (const key of ["api_key_env", "api_key_header", "default_effort", "models.include", "models.exclude"]) {
-      const value = at(prior, key);
-      if (!connection.has(key) && value !== undefined && value !== null && (!Array.isArray(value) || value.length))
-        changes.push({ field: fieldOf(["connections", name, ...key.split(".")]) });
+      const before = at(prior, key);
+      if (!connection.has(key) && before !== undefined && before !== null && (!Array.isArray(before) || before.length))
+        changes.push({ field: fieldOf(["connections", name, ...key.split(".")]), before });
     }
   }
-  return { changes, added, replaced, blocked, defaults, hash: facts.file.contentHash };
+  return { changes, added, replaced, warnings, hash: facts.file.contentHash };
 }

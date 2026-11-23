@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import { CAPABILITY_CONFIG, formatRoute, showConfigValue, type AppModel, type MessageKey } from "../../../ui-core/src";
 import { exportableSettings, settingsPreview, parseSharedSettings, SETTINGS_FILE_LIMIT, type ImportedSettings } from "../../../ui-core/src/settings-share";
-import { Button, Field, Notice, Section, SettingRow } from "../system/components";
+import { Button, Check, FactList, Field, Notice, Section, SettingRow } from "../system/components";
 
 type ShareProps = { model: AppModel; firstRun?: boolean; settingId?: string };
 
@@ -16,6 +16,8 @@ function ShareForm({ model, firstRun = false, settingId }: ShareProps) {
   const facts = read.value;
   const [file, setFile] = useState<{ name: string; imported: ImportedSettings }>();
   const [error, setError] = useState<MessageKey>();
+  const [omitted, setOmitted] = useState<string[]>([]);
+  const [ack, setAck] = useState<string>();
   const [hash, setHash] = useState<string>();
   const [busy, setBusy] = useState(false);
   const [skipped, setSkipped] = useState<readonly string[]>([]);
@@ -26,6 +28,8 @@ function ShareForm({ model, firstRun = false, settingId }: ShareProps) {
   const supported = model.data.capabilities.value.includes(CAPABILITY_CONFIG);
   const ready = supported && model.connection.value === "connected" && !!facts?.file.valid && !!facts.file.contentHash && !read.error && !read.loading;
   const plan = file && facts ? settingsPreview(file.imported, facts) : undefined;
+  const warningIdentity = plan?.warnings.length ? JSON.stringify([plan.hash, plan.changes, plan.warnings]) : undefined;
+  const needsConfirmation = !!warningIdentity && ack !== warningIdentity;
   const confirmed = !!hash && ready && facts?.file.contentHash === hash;
   const next = confirmed && file ? [...file.imported.connections.keys()].find(name => {
     const source = facts?.file.credentialSource?.[name];
@@ -42,7 +46,7 @@ function ShareForm({ model, firstRun = false, settingId }: ShareProps) {
     catch { if (active.current) setError(failed); }
     finally { pending.current = false; if (active.current) setBusy(false); }
   };
-  const reset = () => { setFile(undefined); setHash(undefined); setError(undefined); setSkipped([]); };
+  const reset = () => { setFile(undefined); setHash(undefined); setError(undefined); setSkipped([]); setAck(undefined); };
   const readFile = (picked?: File) => {
     if (!picked || locked || !ready || !open || pending.current) return;
     reset();
@@ -55,19 +59,21 @@ function ShareForm({ model, firstRun = false, settingId }: ShareProps) {
   const download = () => {
     if (!ready || !facts) return;
     try {
-      const body = exportableSettings(facts);
+      setOmitted([]);
+      setError(undefined);
+      const { text: body, omitted } = exportableSettings(facts);
       if (new Blob([body]).size > SETTINGS_FILE_LIMIT) throw new Error();
       const url = URL.createObjectURL(new Blob([body], { type: "application/toml;charset=utf-8" }));
       try {
         const link = document.createElement("a");
-        link.href = url; link.download = "shellboy-settings.toml"; link.click();
+        link.href = url; link.download = "shellboy-settings.toml"; link.click(); setOmitted(omitted);
       } finally { URL.revokeObjectURL(url); }
     } catch { setError("share.failed"); }
   };
   const apply = () => {
-    if (!ready || !plan || plan.blocked.length || locked || hash) return;
+    if (!ready || !plan || needsConfirmation || locked || hash) return;
     void run(async () => {
-      const saved = plan.changes.length ? await model.config.applyChanges(plan.hash, plan.changes) : plan.hash;
+      const saved = plan.changes.length ? await model.config.applyChanges(plan.hash, plan.changes.map(({ field, value }) => value === undefined ? { field } : { field, value })) : plan.hash;
       if (!saved) throw new Error();
       if (active.current) setHash(saved);
     });
@@ -92,30 +98,40 @@ function ShareForm({ model, firstRun = false, settingId }: ShareProps) {
     const input = event.currentTarget;
     readFile(input.files?.[0]); input.value = "";
   }} /></div>;
-  return <Section title={t("share.title")} sub={t("share.intro")} {...(settingId ? { settingId } : {})}>
+  const transitions = (changes: readonly { field: string; before: unknown; value?: unknown }[]) => changes.map(({ field, before, value }) => ({
+    label: field, mono: true, value: `${showConfigValue(before) ?? t("share.unset")} → ${showConfigValue(value) ?? t("share.unset")}`,
+  }));
+  return <Section title={t("share.title")} sub={file && !hash ? t("share.preview", { name: file.name }) : t("share.intro")} {...(settingId ? { settingId } : {})}>
     {!firstRun ? <>
       <SettingRow label={t("share.export")} read={t("share.portable")} control={<Button variant="ghost" disabled={!ready || locked} onClick={download}>{t("share.export")}</Button>} />
       <SettingRow label={t("share.importAction")} read={file?.name ?? t("share.noFile")} control={<Button variant="ghost" aria-expanded={open} disabled={locked} onClick={() => { if (open) reset(); setOpen(!open); }}>{t("threadSettings.change")}</Button>} />
     </> : null}
     {!supported ? <Notice tone="wait">{t("config.readonlyError")}</Notice> : null}
     {error ? <Notice tone="bad">{t(error)}</Notice> : null}
+    {omitted.length ? <Notice tone="wait">{t("share.omitted", { names: omitted.join(", ") })}</Notice> : null}
     {open && !file ? pick : null}
     {open && plan && file ? <>
       {!hash ? <>
-        <p>{t("share.preview", { name: file.name })}</p>
-        <ul>
-          {plan.added.map(name => <li key={name}>{t("share.added", { names: name })} — {showConfigValue(file.imported.connections.get(name)?.get("base_url"))}</li>)}
-          {plan.replaced.map(name => <li key={name}>{t("share.replaced", { names: name })} — {showConfigValue(file.imported.connections.get(name)?.get("base_url"))}</li>)}
-          {plan.defaults.map(({ field, before, value }) => <li key={field}><code>{field}</code>: {showConfigValue(before) ?? "—"} → {showConfigValue(value)}</li>)}
-        </ul>
-        {plan.blocked.length ? <Notice tone="bad">{t("share.blocked", { names: plan.blocked.join(", ") })}</Notice> : null}
-        <div class="setup-actions"><Button variant="primary" disabled={!ready || locked || !!plan.blocked.length} onClick={apply}>{t("share.apply")}</Button><Button variant="ghost" disabled={locked} onClick={reset}>{t("share.cancel")}</Button></div>
+        <FactList missing={t("share.unset")} facts={[
+          ...plan.added.map(name => ({ label: name, value: t("share.added") })),
+          ...plan.replaced.map(name => ({ label: name, value: t("share.replaced") })),
+          ...transitions(plan.changes),
+        ]} />
+        {plan.warnings.map(warning => <div class="stack" key={warning.name}>
+          <Notice tone="wait">{t(warning.source === "stored" ? "share.savedKeyRoute" : "share.otherKeyRoute", { name: warning.name, url: warning.url })}</Notice>
+          <FactList missing={t("share.unset")} facts={transitions(warning.routing.map(row => ({ ...row, field: `${warning.name}.${row.field}` })))} />
+        </div>)}
+        {warningIdentity ? <Check checked={!needsConfirmation} onChange={checked => setAck(checked ? warningIdentity : undefined)}>{t("share.confirmRouting")}</Check> : null}
+        <div class="setup-actions"><Button variant="primary" disabled={!ready || locked || needsConfirmation} onClick={apply}>{t("share.apply")}</Button><Button variant="ghost" disabled={locked} onClick={reset}>{t("share.cancel")}</Button></div>
       </> : null}
       {hash && !confirmed ? invalidated ? <Notice tone="wait">{t("share.changed")}</Notice> : <Notice>{t("share.applying")}</Notice> : null}
       {restart ? <Notice tone="wait">{t("share.restart")}</Notice> : null}
-      {next ? <form key={next} onSubmit={event => { event.preventDefault(); saveKey(event.currentTarget.querySelector('input[type="password"]')); }}>
+      {next ? <form class="setup-key-step" key={next} onSubmit={event => {
+        event.preventDefault();
+        saveKey(event.currentTarget.querySelector('input[type="password"]'));
+      }}>
         <Field label={t("share.keyLabel", { name: next })} help={t("share.keyNote")} type="password" autoComplete="new-password" required disabled={locked} />
-        <div class="setup-actions"><Button type="submit" variant="primary" disabled={locked}>{t("share.saveKey")}</Button><Button variant="ghost" disabled={locked} onClick={() => { setSkipped([...skipped, next]); }}>{t("share.skipKey")}</Button></div>
+        <div class="setup-actions"><Button type="submit" variant="primary" disabled={locked}>{t("share.saveKey")}</Button><Button variant="ghost" disabled={locked} onClick={() => setSkipped([...skipped, next])}>{t("share.skipKey")}</Button></div>
       </form> : null}
       {confirmed && !next ? <><Notice>{t("share.done")}</Notice>{firstRun ? <a class="nav-link" href={formatRoute({ view: "conversation" })} onClick={() => model.setup.takeAutoShow()}>{t("share.start")}</a> : null}</> : null}
       {hash && (invalidated || (confirmed && !next)) ? <Button variant="ghost" disabled={locked} onClick={reset}>{t("share.cancel")}</Button> : null}
