@@ -1,17 +1,17 @@
-use super::Control;
 #[cfg(target_os = "macos")]
 use super::macos as platform;
 #[cfg(windows)]
 use super::windows as platform;
+use super::{
+    Control,
+    startup::{self, OWNER_FAILURE, Refusal},
+};
 use crate::{
     auth::{Auth, random_hex},
-    owner::{IpcOwner, Owner, startup_probe},
+    owner::{IpcOwner, Owner},
 };
 use serde::{Deserialize, Serialize};
-use shellboy::{
-    config::{Config, PathEnvironment, resolve_config_path},
-    protocol::ErrorCode,
-};
+use shellboy::config::{Config, PathEnvironment, resolve_config_path};
 use std::{
     ffi::OsString,
     fs::{self, File, OpenOptions},
@@ -29,8 +29,6 @@ use tokio::{
     time::timeout,
 };
 use tokio_util::sync::CancellationToken;
-
-const OWNER_FAILURE: &str = "The bundled owner failed. See studio.log and owner.log.";
 
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -233,8 +231,11 @@ impl Launch {
             .send_replace(match self.owner.start().await {
                 Ok(warning) => warning,
                 Err(reason) => {
-                    eprintln!("shellboy-studio: bundled owner start refused or failed: {reason}");
-                    Some(OWNER_FAILURE.into())
+                    eprintln!(
+                        "shellboy-studio: bundled owner start refused or failed: {}",
+                        reason.reason
+                    );
+                    Some(reason.message().into())
                 }
             });
     }
@@ -256,7 +257,7 @@ struct ManagedOwner {
 }
 
 impl ManagedOwner {
-    async fn start(&mut self) -> Result<Option<String>, String> {
+    async fn start(&mut self) -> Result<Option<String>, Refusal> {
         let owner = IpcOwner::new(self.data.clone());
         self.start_with(&owner, |mut command| command.spawn().map_err(io))
             .await
@@ -266,11 +267,9 @@ impl ManagedOwner {
         &mut self,
         owner: &impl Owner,
         spawn: impl FnOnce(Process) -> Result<Child, String>,
-    ) -> Result<Option<String>, String> {
-        match startup_probe(owner).await {
-            Ok(()) => return Ok(None),
-            Err(e) if e.code == ErrorCode::AppNotRunning => {}
-            Err(e) => return Err(e.message),
+    ) -> Result<Option<String>, Refusal> {
+        if startup::probe(owner).await? {
+            return Ok(None);
         }
         if let Some(child) = &mut self.child {
             if child.try_wait().map_err(io)?.is_none() {
@@ -315,7 +314,7 @@ impl ManagedOwner {
                     return Err("Core config initialization failed. See owner.log.".into());
                 }
             }
-            Err(e) => return Err(io(e)),
+            Err(e) => return Err(io(e).into()),
         }
         let mut command = process();
         command
@@ -556,7 +555,7 @@ mod tests {
 
     #[tokio::test]
     async fn reachable_owner_is_not_owned_and_absent_owner_spawns_once() {
-        use shellboy::protocol::{ApiError, Command, Origin, Response};
+        use shellboy::protocol::{ApiError, Command, ErrorCode, Origin, Response};
         struct Probe(bool);
         impl Owner for Probe {
             async fn call(
