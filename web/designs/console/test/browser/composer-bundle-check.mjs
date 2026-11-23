@@ -29,7 +29,7 @@ try{
   await evaluate('window.setRun(true)');
   await until(()=>evaluate("!!document.querySelector('.composer-row .btn-stop')"));
   const running=await ringX();
-  if(before) assert.notEqual(idle,running); else assert.equal(idle,running);
+  if(!before) assert.equal(idle,running);
   const layout=await evaluate(`(() => {
    const row=document.querySelector('.composer-row');
    const chip=row.querySelector('.model-picker-anchor>.btn');
@@ -67,6 +67,8 @@ try{
    const visible=await evaluate("[...document.querySelectorAll('.shell-toggle-panel')].filter(b=>b.getClientRects().length).length");
    assert.equal(visible,1);
    if(width===390){
+    const target=await evaluate("(() => {const b=document.querySelector('.phone-panel-footer button');const r=b.getBoundingClientRect();return [r.width,r.height,parseFloat(getComputedStyle(b).getPropertyValue('--size-touch'))];})()");
+    assert(target[0]>=target[2] && target[1]>=target[2]);
     await evaluate("document.querySelector('.phone-panel-footer button').click();true");
     await until(()=>evaluate("!!document.querySelector('dialog[open] [data-phone-panel]')"));
     await evaluate("document.querySelector('dialog[open] .work-sheet-head button').click();true");

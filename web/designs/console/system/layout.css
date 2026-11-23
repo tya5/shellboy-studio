@@ -177,6 +177,8 @@
   .status{display:none}
   .tabbar{display:grid}
   .phone-panel-footer{display:block;flex:none}
+  .phone-panel-footer .shell-footer,.phone-panel-footer .shell-toggle{height:var(--size-touch);min-height:var(--size-touch)}
+  .phone-panel-footer .shell-toggle{min-width:var(--size-touch)}
   .top{padding-left:var(--space-8);padding-right:var(--space-8)}
   .scroll,.mon{padding:var(--space-12)}
   .scroll>.steps,.scroll>.strip,.scroll>.scroll-mark{margin-left:0}
