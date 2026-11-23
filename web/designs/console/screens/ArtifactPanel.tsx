@@ -27,7 +27,7 @@ export function ArtifactList({ model, onSelect }: { model: AppModel; onSelect: (
     {page.items.map(row => <ListRow key={row.artifact_id} id={row.artifact_id} title={row.latest.title} icon={artifactIcon(row.latest.mime)}
       subtitle={`${row.latest.version > 1 ? `v${row.latest.version} · ` : ""}${time(row.updated_at, lang)}`}
       selected={model.panelOpener.value.possessions?.kind === "artifact" && model.panelOpener.value.possessions.id === row.artifact_id}
-      touchRow onSelect={opener => onSelect(row.artifact_id, opener)}><Icon role="artifact.detail" size="small" /></ListRow>)}
+      onSelect={opener => onSelect(row.artifact_id, opener)}><Icon role="artifact.detail" size="small" /></ListRow>)}
     {page.loading ? <p role="status">{t("artifact.loading")}</p> : null}
     {page.error ? <p role="alert">{t("artifact.failed")}</p> : null}
     {!page.items.length && !page.loading && !page.error ? <p class="muted caption">{t("artifact.empty")}</p> : null}
@@ -55,16 +55,20 @@ function Preview({ model, target, mime, title }: { model: AppModel; target: Arti
   const { thread_id, artifact_id, version } = target;
   useEffect(() => {
     const cancel = new AbortController();
-    let objectUrl: string | undefined;
     void (async () => {
       try {
         const response = await artifactContent({ thread_id, artifact_id, version }, "preview", cancel.signal);
         if (response.status !== 200) throw new Error("No preview");
         if (mime.startsWith("image/")) {
-          const bytes = await response.arrayBuffer();
+          const bytes = await response.blob();
           if (cancel.signal.aborted) return;
-          objectUrl = URL.createObjectURL(new Blob([bytes], { type: mime }));
-          setContent({ kind: "image", value: objectUrl });
+          const value = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(String(reader.result));
+            reader.onerror = () => reject(reader.error);
+            reader.readAsDataURL(bytes.slice(0, bytes.size, mime));
+          });
+          if (!cancel.signal.aborted) setContent({ kind: "image", value });
         } else {
           const text = await response.text();
           if (!cancel.signal.aborted) setContent({ kind: "text", value: text });
@@ -73,7 +77,7 @@ function Preview({ model, target, mime, title }: { model: AppModel; target: Arti
         if (!cancel.signal.aborted) setContent("unavailable");
       }
     })();
-    return () => { cancel.abort(); if (objectUrl) URL.revokeObjectURL(objectUrl); };
+    return () => cancel.abort();
   }, [thread_id, artifact_id, version, mime]);
   return <div class="artifact-preview" aria-label={t("artifact.preview")}>
     {content === undefined ? <p role="status">{t("artifact.loading")}</p> : content === "unavailable" ? <p role="status">{t("artifact.noPreview")}</p>
@@ -137,7 +141,7 @@ export function ArtifactDetail({ model }: { model: AppModel }) {
     {row.latest.version > 1 ? <Disclosure>
       <summary>{t("artifact.versions")} ({row.latest.version - 1})</summary>
       {cut.items.filter(item => item.version < row.latest.version).map(item => <ListRow key={item.version} id={`${row.artifact_id}:v${item.version}`}
-        title={`v${item.version}`} subtitle={time(item.created_at, lang)} selected={selection === item.version} touchRow
+        title={`v${item.version}`} subtitle={time(item.created_at, lang)} selected={selection === item.version}
         onSelect={() => { if (selection !== item.version) { setLoaded(undefined); setSelection(item.version); } }} />)}
       {cut.error ? <p role="alert">{t("artifact.failed")}</p> : null}
       {cut.cursor !== undefined ? <Button variant="quiet" disabled={cut.loading} onClick={() => model.artifacts.history.more()}>{t("panel.attachmentsMore")}</Button> : null}

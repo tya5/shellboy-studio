@@ -33,17 +33,30 @@ window.fetch = (input, options) => {
  if (input !== '/artifact-content') return originalFetch(input, options);
  const target = JSON.parse(String(options?.body));
  previewCalls.push(target);
+ if (target.artifact_id === 'diagram') return Promise.resolve(new Response('<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8"><rect width="8" height="8"/></svg>'));
  return Promise.resolve(new Response('# 週次レポート（案）\n\n- 今週の進捗\n- 次の手順', { status:200 }));
 };
 const prefs = signal<Prefs>({ design:'console', theme:'console', lang:'ja', weights:{cached:0.1,output:5} });
 mount(document.getElementById('app')!, { model:f.model, designs:DESIGNS, prefs, setPrefs:change=>{prefs.value={...prefs.value,...change};}, submitToken:async()=>true });
 await settle(f.t,f.db);
 async function flushOwner() { await new Promise(requestAnimationFrame); await settle(f.t,f.db); await new Promise(requestAnimationFrame); await settle(f.t,f.db); }
-Object.assign(window, { runArtifactFixture: async (action:'list'|'detail'|'old') => {
+Object.assign(window, { runArtifactFixture: async (action:'list'|'detail'|'old'|'image') => {
  if (action === 'list') {
   if (innerWidth < 1180) document.querySelector<HTMLButtonElement>('.phone-panel-footer .shell-toggle-panel')!.click();
   await flushOwner();
   document.querySelector<HTMLButtonElement>('[data-panel-tab="possessions"]')!.click();
+ } else if (action === 'image') {
+  const back = document.querySelector<HTMLButtonElement>('[data-panel-detail] .panel-detail-head button')!;
+  back.click();
+  await flushOwner();
+  document.querySelector<HTMLButtonElement>('[data-panel-row-id="diagram"] button')!.click();
+  await flushOwner();
+  for (let n=0; n<30; n++) {
+   const image = document.querySelector<HTMLImageElement>('.artifact-preview img');
+   if (image?.complete && image.naturalWidth) return { src: image.src, width: image.naturalWidth };
+   await flushOwner();
+  }
+  throw new Error('Artifact image did not decode');
  } else if (action === 'detail') document.querySelector<HTMLButtonElement>('[data-panel-row-id="report"] button')!.click();
  else {
   const disclosure = document.querySelector<HTMLDetailsElement>('[data-panel-detail] details')!;

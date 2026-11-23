@@ -37,7 +37,7 @@ try{
   console.log(JSON.stringify({width,list}));
   assert.equal(list.panels,1); assert.equal(list.sheet,!desktop); assert.deepEqual(list.bands,['成果物','添付']);
   assert.deepEqual(list.rows,['report','diagram','price','notes','attachment-0','attachment-1']);
-  assert(!list.overflow); if(!desktop) assert(list.heights.slice(0,4).every(h=>h===44));
+  assert(!list.overflow); if(!desktop) assert(list.heights.every(h=>h===44));
   const capturePanel=async(name)=>{
    const clip=await evaluate(`(() => {const r=document.querySelector('[data-panel-root]').getBoundingClientRect();return {x:r.x+scrollX,y:r.y+scrollY,width:r.width,height:r.height,scale:1}})()`);
    const shot=await call('Page.captureScreenshot',{format:'png',captureBeyondViewport:true,clip});
@@ -51,6 +51,9 @@ try{
   assert.deepEqual(old.previewCalls.map(p=>p.version),[3,2]);
   assert(old.previewCalls.every(p=>Object.keys(p).sort().join(',')==='action,artifact_id,thread_id,version'));
   await capturePanel('detail');
+  const image=await evaluate("window.runArtifactFixture('image')");
+  assert.match(image.src,/^data:image\/svg\+xml;base64,/);
+  assert.equal(image.width,8);
  }
 
 }finally{
