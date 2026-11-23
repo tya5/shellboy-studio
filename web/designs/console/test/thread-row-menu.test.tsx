@@ -74,6 +74,11 @@ describe("Thread row menu and delete", () => {
     const archived = { ...row, archived_at: "now" } as ThreadSummary;
     expect(threadMenuEntries(model, archived, "idle", vi.fn()).find((entry) => entry.key === "archive")).toMatchObject({ icon: "action.unarchive" });
   });
+  it("assigns the shared tag icon to Edit tags when that action is available", () => {
+    const model = menuModel();
+    const entries = threadMenuEntries(model, row, "idle", vi.fn(), { onEditTags: vi.fn() });
+    expect(entries.find((entry) => entry.key === "edit-tags")).toMatchObject({ icon: "action.editTags", label: "sidebar.editTags" });
+  });
   it("does not delete until preview loads and confirmation is pressed", async () => {
     const model = menuModel();
     let resolvePreview!: (result: { ok: true; value: { deletable_now: boolean; preview_marker: { thread_count: number; ids_hash: string }; selection: { thread_count: number }; blockers: { live_run_count: number; stopping_run_count: number; truncated: boolean }; preview_marker_unavailable_reason: undefined } }) => void;

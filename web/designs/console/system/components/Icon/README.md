@@ -14,6 +14,7 @@ Consumers use semantic `IconRole` names only. Glyph names, paths, and the role-t
 | `action.stop` | Stop the active Run; row and Conversation stop controls. | `square` |
 | `action.retry` | Retry a recoverable Run; recovery, Monitor, Analytics, and Settings compaction controls. | `retry` |
 | `action.delete` | Delete a Thread after its exact preview is confirmed; destructive last row-menu item. | `trash` |
+| `action.editTags` | Open the tag editor for a Thread from any shared row menu. | Lucide `tag` |
 | `action.clearStatusFilter` | Remove one status filter chip in Monitor. | `cross` |
 | `action.clearQueryFilter` | Clear the active query filter chip in Monitor. | `cross` |
 | `action.clearArchiveFilter` | Remove the archive filter chip in Monitor. | `cross` |
