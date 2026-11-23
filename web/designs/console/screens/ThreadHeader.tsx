@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "preact/hooks";
-import { CAPABILITY_TAGS, folderName, formatRoute, statusLabel, type AppModel } from "../../../ui-core/src";
+import { CAPABILITY_TAGS, folderName, statusLabel, type AppModel } from "../../../ui-core/src";
 import { Button, ConversationHeader, Field, Icon, Notice, StatusMark, WorkSheet } from "../system/components";
 import type { MenuEntry } from "../system/components/Menu";
 import { threadMenuEntries } from "../system/components/thread-menu";
@@ -36,7 +36,6 @@ export function ThreadHeader({ model, settings, onSettings, onList, onDelete, on
   };
   const entries: MenuEntry[] = id ? [
     { key: "rename", icon: "thread.rename", label: t("header.rename"), onSelect: (focus) => open("title", focus) },
-    { key: "branches", icon: "nav.branches", label: t("view.branches"), href: formatRoute({ view: "branches", threadId: id }) },
     ...(row ? threadMenuEntries(model, row, status, target => onDelete(target.thread_id), model.data.capabilities.value.includes(CAPABILITY_TAGS) ? { onEditTags: () => onEditTags(row.thread_id, row.archived_at !== undefined) } : undefined) : []),
   ] : [];
   if (phone) entries.push(
@@ -59,8 +58,8 @@ export function ThreadHeader({ model, settings, onSettings, onList, onDelete, on
     <ConversationHeader folder={folderName(cwd)} label={t("thread.rowMenu")} entries={entries}
       title={id ? <Button buttonRef={titleButton} variant="ghost" title={t("header.rename")} onClick={() => open("title")}>{title}</Button> : <b>{title}</b>}
       status={status ? <StatusMark status={status} label={statusLabel(t, status)} word={!phone} /> : undefined}
-      actions={<Button icon label={t(settings ? "settings.close" : "settings.open")} aria-expanded={settings} data-settings-toggle onClick={onSettings}><Icon role="settings.applicationPanel" /></Button>}>
-      <span class="menu"><Button icon label={t("threads.open")} onClick={onList}><Icon role="nav.openThreadList" /></Button></span>
+      actions={<Button variant="ghost" icon label={t(settings ? "settings.close" : "settings.open")} aria-expanded={settings} data-settings-toggle onClick={onSettings}><Icon role="settings.applicationPanel" /></Button>}>
+      <span class="menu"><Button variant="ghost" icon label={t("threads.open")} onClick={onList}><Icon role="nav.openThreadList" /></Button></span>
     </ConversationHeader>
     {editor ? <WorkSheet open title={editorLabel} closeLabel={t("common.close")} onClose={() => { if (!busy) setEditor(undefined); }} getReturnFocusTarget={() => opener.current?.isConnected ? opener.current : titleButton.current}>
       {editor === "cwd" ? <code>{cwd}</code> : <form class="stack" onSubmit={(event) => { event.preventDefault(); void submit(); }}>

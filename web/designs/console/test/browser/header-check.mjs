@@ -67,9 +67,10 @@ try{
    };
    const header=await menu('[data-conversation-header] [aria-haspopup=menu]', 'header-menu');
    const sidebar=await menu('[data-sidebar-row][data-row-selected] [aria-haspopup=menu]', 'sidebar-menu');
-   assert(header.length >= 6, JSON.stringify({header, sidebar}));
-   assert.deepEqual(header.slice(2), sidebar.filter(({label}) => !["既読にする", "未読にする"].includes(label)));
-   console.log(JSON.stringify({menuParity:header.slice(2)}));
+   assert(header.length >= 5, JSON.stringify({header, sidebar}));
+   assert(!header.some(({label}) => /Branches|ブランチ/.test(label)), JSON.stringify(header));
+   assert.deepEqual(header.slice(1), sidebar.filter(({label}) => !["既読にする", "未読にする"].includes(label)));
+   console.log(JSON.stringify({menuParity:header.slice(1)}));
   }
 
 

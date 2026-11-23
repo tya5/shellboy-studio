@@ -23,6 +23,6 @@
 .step-group-list>.step>button{margin-left:var(--space-24)}
 .step-group-list>.step>.caption{margin-left:var(--space-24)}
 .step-group-list>.step>.work-row{padding:var(--space-8) var(--space-12)}
-.steps{display:flex;flex-direction:column;gap:6px}
+.steps{display:flex;flex-direction:column;gap:var(--space-6)}
 .work-inner-line{display:flex;align-items:center;gap:var(--space-8);width:100%;min-width:0;box-sizing:border-box;padding:var(--space-4) var(--space-12)}
 .work-inner-line>.work-inner-content{min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}

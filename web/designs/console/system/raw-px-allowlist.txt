@@ -13,7 +13,6 @@ components/AppTabs/style.css height 28px
 components/AppTabs/style.css width 36px
 components/AppTabs/style.css height 36px
 components/AppTabs/style.css width 120px
-components/BranchMark/style.css min-height 24px
 components/ChoiceList/style.css max-height 288px
 components/ChoiceList/style.css margin 2px
 components/Composer/style.css min-height 52px
@@ -23,15 +22,8 @@ components/KeyValue/style.css grid-template-columns 112px
 components/LoadingRows/style.css height 44px
 components/LoadingRows/style.css margin-left 40px
 components/LoadingRows/style.css height 64px
-components/Message/style.css grid-template-columns 32px
-components/Message/style.css width 32px
-components/Message/style.css height 32px
-components/Message/style.css margin-top 2px
-components/Message/style.css border-left 2px
 components/Message/style.css padding-right 72px
 components/Notice/style.css flex 240px
-components/PanelTabs/style.css border-bottom 2px
-components/PanelTabs/style.css border-radius 999px
 components/SelectRow/style.css box-shadow 2px
 components/SelectRow/style.css width 18px
 components/SelectionBar/style.css flex 200px
@@ -40,7 +32,6 @@ components/SummaryStrip/style.css min-height 38px
 components/ThreadItem/style.css min-width 18px
 components/ThreadItem/style.css padding 5px
 components/WorkElementRow/style.css min-height 40px
-layout.css @ 768px
 layout.css min-height 56px
 layout.css box-shadow 2px
 layout.css width 200px
@@ -50,7 +41,6 @@ layout.css width 320px
 layout.css width 320px
 layout.css width 600px
 shared/controls.css min-height 24px
-shared/message.css min-height 18px
 shared/navigation.css min-height 36px
 shared/navigation.css min-width 20px
 shared/navigation.css padding 6px
@@ -67,4 +57,3 @@ shared/status.css width 24px
 shared/status.css height 24px
 shared/work.css max-height 420px
 shared/work.css min-height 40px
-shared/work.css gap 6px

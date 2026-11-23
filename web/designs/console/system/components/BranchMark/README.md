@@ -9,6 +9,8 @@ Sits on a conversation row where one or more branches leave the path, and links 
 
 Beside it, a quiet `Branch or rewind from here` link appears on hover or focus on a wide frame and stays visible at phone width.
 
+Design system v2: it is a standalone navigation link (`accent`, no underline until hover or focus, `size-row-action` high and `size-touch` at phone width), not a bordered chip; bordered chips are only for tags and removable tokens.
+
 Styles are colocated in `system/components/BranchMark/style.css`.
 
 Styles: style.css in this directory

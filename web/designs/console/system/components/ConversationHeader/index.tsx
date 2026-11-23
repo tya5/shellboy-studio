@@ -8,7 +8,7 @@ export function ConversationHeader({ folder, title, status, actions, label, entr
   const menu = useRowMenu(entries.length ? { label, entries } : undefined);
   return <header class="top conversation-header" data-conversation-header>
     {children}
-    <div class="conversation-header-title">{folder ? <span class="conversation-header-folder">{folder} /</span> : null}{title}</div>
-    <div class="right">{status}<span class="conversation-header-actions">{actions}</span>{menu.trigger}{menu.menu}</div>
+    <div class="conversation-header-title">{folder ? <span class="conversation-header-folder">{folder} /</span> : null}{title}{status ? <span class="conversation-header-status">{status}</span> : null}</div>
+    <div class="right"><span class="conversation-header-actions">{actions}</span>{menu.trigger}{menu.menu}</div>
   </header>;
 }

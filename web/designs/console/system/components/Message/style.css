@@ -1,11 +1,11 @@
-.msg{display:grid;grid-template-columns:32px minmax(0,1fr);gap:var(--space-8)}
-.av{width:32px;height:32px;border-radius:var(--radius);display:grid;place-items:center;background:var(--raised);color:var(--muted)}
+.msg{display:grid;grid-template-columns:var(--size-control) minmax(0,1fr);gap:var(--space-8)}
+.av{width:var(--size-control);height:var(--size-control);border-radius:var(--radius);display:grid;place-items:center;background:var(--raised);color:var(--muted)}
 .av.message-bot{color:var(--accent)}
 .message-sender{font-weight:600;display:flex;align-items:baseline;gap:var(--space-8)}
 .message-sender small{font:var(--type-caption);color:var(--muted)}
 .message-markdown{min-width:0;overflow-wrap:anywhere}
 .message-markdown.message-plain{white-space:pre-wrap}
-.message-markdown>:first-child{margin-top:2px}
+.message-markdown>:first-child{margin-top:var(--space-2)}
 .message-markdown>:last-child{margin-bottom:0}
 .message-markdown p{margin:var(--space-8) 0}
 .message-markdown ul{margin:var(--space-8) 0}
@@ -19,7 +19,7 @@
 .message-markdown h4{margin:var(--space-12) 0 var(--space-4);font:var(--type-heading)}
 .message-markdown code{font:var(--type-code);padding:0 var(--space-4);background:var(--raised);border-radius:var(--radius-s)}
 .message-markdown pre code{padding:0;background:none}
-.message-markdown blockquote{padding-left:var(--space-12);border-left:2px solid var(--line-strong);color:var(--muted)}
+.message-markdown blockquote{padding-left:var(--space-12);border-left:var(--space-2) solid var(--line-strong);color:var(--muted)}
 .message-markdown table{display:block;overflow-x:auto;border-collapse:collapse;font:var(--type-label)}
 .message-markdown th{padding:var(--space-4) var(--space-8);border:1px solid var(--line);text-align:left}
 .message-markdown td{padding:var(--space-4) var(--space-8);border:1px solid var(--line);text-align:left}

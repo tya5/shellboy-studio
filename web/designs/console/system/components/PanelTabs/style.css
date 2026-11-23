@@ -1,7 +1,7 @@
 .panel-tabs { display:flex; gap:var(--space-4); border-bottom:1px solid var(--line); min-width:0; }
-.panel-tabs button { position:relative; display:flex; align-items:center; justify-content:center; gap:var(--space-4); min-width:0; padding:var(--space-4); font:var(--type-label); color:var(--muted); background:none; border:0; border-bottom:2px solid transparent; white-space:nowrap; cursor:pointer; }
+.panel-tabs button { position:relative; display:flex; align-items:center; justify-content:center; gap:var(--space-4); min-width:0; padding:var(--space-4); font:var(--type-label); color:var(--muted); background:none; border:0; border-bottom:var(--space-2) solid transparent; white-space:nowrap; cursor:pointer; }
 .panel-tabs button[aria-selected="true"] { color:var(--fg); border-bottom-color:var(--accent); }
-.panel-tab-count { display:grid; place-items:center; box-sizing:border-box; min-width:var(--size-icon-small); height:var(--size-icon-small); padding-inline:var(--space-4); border-radius:999px; background:var(--wait); color:var(--fg); font:var(--type-caption); font-weight:700; line-height:var(--size-icon-small); text-align:center; }
+.panel-tab-count { display:grid; place-items:center; box-sizing:border-box; min-width:var(--size-icon-small); height:var(--size-icon-small); padding-inline:var(--space-4); border-radius:calc(var(--size-icon-small) / 2); background:var(--wait); color:var(--fg); font:var(--type-caption); font-weight:700; line-height:var(--size-icon-small); text-align:center; }
 .panel-tabs-rail { flex-direction:column; border:0; }
 .panel-tabs-rail button { position:relative; min-height:var(--size-touch); padding:var(--space-8); border:0; border-radius:var(--radius); }
 .panel-tabs-rail button[aria-selected="true"] { background:var(--raised); }
@@ -15,6 +15,6 @@
 .panel-tabs:not(.panel-tabs-rail) button[aria-selected="true"] { font-weight:700; }
 .panel-tabs:not(.panel-tabs-rail) .panel-tab-label { position:relative; display:inline-block; padding-inline-end:var(--space-16); }
 .panel-tabs:not(.panel-tabs-rail) .panel-tab-count { position:absolute; inset-block-start:calc(-1 * var(--space-4)); inset-inline-end:0; }
-.panel-tabs:not(.panel-tabs-rail) button:hover { background:var(--raised); }
+.panel-tabs:not(.panel-tabs-rail) button:hover { background:var(--hover); }
 
 .panel-tabs-rail .panel-tab-count { position:absolute; inset-block-start:var(--space-2); inset-inline-end:var(--space-2); }

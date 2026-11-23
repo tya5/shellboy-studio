@@ -1,4 +1,4 @@
-.msg-acts{display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-8);min-height:18px}
+.msg-acts{display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-8);min-height:var(--size-icon)}
 .msg-acts .quiet{color:var(--muted);font:var(--type-caption);text-decoration:none;opacity:0}
 .msg-acts .quiet:focus-visible{opacity:1}
 .msg-acts .quiet:hover{color:var(--accent)}

@@ -70,6 +70,11 @@ Consumers use semantic `IconRole` names only. Glyph names, paths, and the role-t
 | `empty.monitorNoMatches` | No Monitor rows match the current filters. | `monitor` |
 | `empty.monitor` | Monitor has no rows. | `monitor` |
 | `empty.branches` | No branches are available for the selected Thread. | `branch` |
+| `empty.panelActivity` | Compact empty state of the conversation panel's Activity tab. | `term` |
+| `empty.panelReplies` | Compact empty state of the Reply needed tab. | `reply` |
+| `empty.panelAwaiting` | Compact empty state of the Awaiting reply tab. | `hourglass` |
+| `empty.panelAttachments` | Compact empty state of the Possessions (attachments) tab. | `attachment` |
+| `empty.panelCompactions` | Compact empty state of the compaction history in the panel's information tab. | `retry` |
 | `work.group` | Expand or identify a grouped set of work records. | `layers` |
 | `work.command` | Identify a command shown in the details pane. | `term` |
 | `work.execution` | Default mark for a generic execution/work row. | `cube` |

@@ -461,7 +461,7 @@ function PanelPossessions({ model }: { model: AppModel }) {
     </section>) : null}
     {state.loading ? <p role="status">{t("panel.attachmentsLoading")}</p> : null}
     {state.error ? <p role="alert">{t("panel.attachmentsFailed")}</p> : null}
-    {!state.items.length && !state.loading && !state.error ? <p class="muted caption">{t("panel.empty")}</p> : null}
+    {!state.items.length && !state.loading && !state.error ? <EmptyState compact role="empty.panelAttachments" title={t("panel.empty.attachments")} body={t("panel.empty.attachmentsBody")} /> : null}
     {state.cursor !== undefined ? <Button disabled={state.loading} onClick={() => model.attachmentSection.more()}>{t("panel.attachmentsMore")}</Button> : null}
     {state.capped ? <p class="muted caption">{t("panel.attachmentsCapped", { n: ATTACHMENT_RETENTION })}</p> : null}
   </div>;
@@ -521,7 +521,7 @@ function PanelActivity({ model }: { model: AppModel }) {
     })}
     {work.partial ? <div class="caption muted">{t("work.partial")}</div> : null}
     {model.handle.value?.work.value.stale && (work.running.length || work.pending.length) ? <div class="caption muted">{t("work.stale")}</div> : null}
-    {!work.running.length && !work.pending.length && !work.partial ? <p class="muted caption">{t("panel.empty")}</p> : null}
+    {!work.running.length && !work.pending.length && !work.partial ? <EmptyState compact role="empty.panelActivity" title={t("panel.empty.work")} body={t("panel.empty.workBody")} /> : null}
   </div>;
 }
 
@@ -549,7 +549,7 @@ function PanelReplies({ model, side }: { model: AppModel; side: "owed_by" | "ask
         menuLabel={t("panel.rowActions")} actions={actions} error={panelOperationError(model, reply.message_id)} onSelect={opener => model.openInPanel({ kind: "reply", id: reply.message_id, replySide: side }, panelFocusReturn(opener))} />;
     })}
     {page.error ? <p role="alert">{page.error}</p> : null}
-    {!page.items.length && !page.loading && !page.error ? <p class="muted caption">{t("panel.empty")}</p> : null}
+    {!page.items.length && !page.loading && !page.error ? <EmptyState compact role={side === "owed_by" ? "empty.panelReplies" : "empty.panelAwaiting"} title={t(side === "owed_by" ? "panel.empty.owed" : "panel.empty.asked")} body={t(side === "owed_by" ? "panel.empty.owedBody" : "panel.empty.askedBody")} /> : null}
     {page.cursor ? <Button disabled={page.loading} onClick={() => model.replyPages.more(side)}>{t("panel.attachmentsMore")}</Button> : null}
   </div>;
 }
@@ -581,7 +581,7 @@ function ThreadAnalytics({ model, threadId }: { model: AppModel; threadId: strin
       {compactions?.length ? <DataTable caption={t("ana.section.compaction")} flat columns={[{ label: t("compact.at") }, { label: t("compact.kind") }, { label: t("threadSettings.inputBeforeAfter") }]}
         rows={compactions.map(event => ({ key: event.id, cells: [formatClock(event.at, true) ?? unreadable, event.kind,
           t("threadSettings.inputRange", { before: event.triggerInput === undefined ? unreadable : formatTokens(event.triggerInput), after: event.afterInput === undefined ? unreadable : formatTokens(event.afterInput) })] }))} />
-        : <p class="muted caption">{compactions ? t("panel.empty") : unreadable}</p>}
+        : compactions ? <EmptyState compact role="empty.panelCompactions" title={t("panel.empty.compactions")} body={t("panel.empty.compactionsBody")} /> : <p class="muted caption">{unreadable}</p>}
     </Section>
   </div>;
 }
