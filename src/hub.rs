@@ -2,9 +2,9 @@
 //!
 //! Bounds (all fixed, none a performance claim):
 //! - at most `MAX_SESSIONS` sessions (an upgrade beyond that is refused);
-//! - at most `MAX_WATCH` watched Thread IDs per session, so a session's dirty set is at
-//!   most `MAX_WATCH` IDs plus three flags; a slow tab gets one larger `changed` frame,
-//!   never a growing backlog;
+//! - at most `MAX_WATCH` watched Thread IDs per session; a list tab holds at most
+//!   `MAX_PENDING_THREADS` (256) changed IDs plus flags, then one `resync`; a slow tab
+//!   gets one larger `changed` frame, never a growing backlog;
 //! - no per-message queue: every update merges into the session's `Pending`.
 //!
 //! Owner of all state: the `Hub` (dropped with the server). No task is spawned here.
