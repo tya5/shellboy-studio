@@ -9,3 +9,5 @@
 .card .foot{margin-top:auto;display:flex;align-items:center;gap:var(--space-8);flex-wrap:wrap;padding-top:var(--space-8);border-top:1px solid var(--line);font:var(--type-caption);color:var(--muted)}
 .card .foot .go{margin-left:auto}
 .card .foot .rel{flex:1 1 100%;display:flex;align-items:flex-start;gap:var(--space-4);min-width:0;overflow-wrap:anywhere}
+
+.mon .card{padding:var(--space-16)}

@@ -141,9 +141,7 @@
 .monitor-heading h1{font:var(--type-title);margin:0}
  .monitor-tabs,.monitor-tools,.monitor-pills{display:flex;align-items:center;gap:var(--space-8);min-width:0}
 .monitor-tabs .btn-group{flex-wrap:wrap}
-.monitor-tabs .btn{border:0;border-radius:0;border-bottom:2px solid transparent}
-.monitor-tabs .btn[aria-current="page"]{border-bottom-color:var(--accent);color:var(--accent)}
-.monitor-tools>.field{flex:1 1 auto;min-width:0}
+.monitor-tools>.form-field-root{flex:1 1 auto;min-width:0}
 .monitor-count{white-space:nowrap;flex:none}
 .monitor-count-mobile{display:none}
 .monitor-pills{flex-wrap:wrap}
