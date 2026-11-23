@@ -1,5 +1,5 @@
 .apptabs{display:flex;height:49px;min-height:49px;border-bottom:1px solid var(--line);background:var(--panel);flex:none}
-.apptabs-all{display:flex;align-items:center;padding:0 var(--space-12);border-right:1px solid var(--line);color:var(--fg);font:var(--type-label);text-decoration:none;white-space:nowrap}
+.apptabs-all{display:flex;align-items:center;padding:0 var(--space-12) 0 var(--space-24);border-right:1px solid var(--line);color:var(--fg);font:var(--type-label);text-decoration:none;white-space:nowrap}
 .apptabs-all[aria-current=page]{color:var(--accent)}
 .apptabs-scroll{display:flex;min-width:0;overflow-x:auto}
 .apptab-group{display:flex;align-items:stretch;flex:none}
@@ -17,6 +17,7 @@
 .apptab-name input{width:120px;min-width:0}
 @container app (max-width:899px){
   .apptabs{height:calc(var(--size-touch) + 2 * var(--space-8) + 1px);min-height:calc(var(--size-touch) + 2 * var(--space-8) + 1px)}
+  .apptabs-all{padding-left:var(--space-12)}
   .apptab a{min-height:var(--size-touch)}
   .apptab-add{width:var(--size-touch);height:var(--size-touch)}
   .apptab-close{width:var(--size-touch);height:var(--size-touch);margin-right:0}

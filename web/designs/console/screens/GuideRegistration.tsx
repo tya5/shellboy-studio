@@ -20,7 +20,7 @@ export function GuideRegistrationView({ context, collapsed = false }: { context:
   const [path, setPath] = useState("");
   return <>
     {state.supported ? <Section settingId={files?.id} title={t("guide.files")}>
-      {model.guideRegistration.files.value.map((file) => <div class="work-row" key={file}><code>{file}</code><Button disabled={file.endsWith("/studio/agent-pointer.md")} onClick={() => void model.guideRegistration.edit(file, false)}>{t("guide.removeFile")}</Button></div>)}
+      {model.guideRegistration.files.value.map((file) => <div class="work-row" key={file}><code class="mono">{file}</code><Button disabled={file.endsWith("/studio/agent-pointer.md")} onClick={() => void model.guideRegistration.edit(file, false)}>{t("guide.removeFile")}</Button></div>)}
       <div class="work-row"><Field ariaLabel={t("guide.filePath")} placeholder={t("guide.filePath")} value={path} onInput={(e) => setPath(e.currentTarget.value)} /><Button disabled={!path.trim()} onClick={() => { void model.guideRegistration.edit(path.trim(), true); setPath(""); }}>{t("guide.addFile")}</Button></div>
     </Section> : null}
     {state.supported ? <Section settingId={registration?.id} title={t("guide.registration")}>

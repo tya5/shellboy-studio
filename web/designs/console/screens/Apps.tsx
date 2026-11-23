@@ -1,4 +1,5 @@
 import { GuideRegistrationView } from "./GuideRegistration";
+import { Rich } from "./Rich";
 import { appTabKey } from "../../../ui-core/src/apps";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { APP_TEMPLATES, formatRoute, readAppMessage, validAppInstance, type AppModel, type DesignContext, type OpenApp } from "../../../ui-core/src";
@@ -52,6 +53,11 @@ function AppList({ context }: { context: DesignContext }) {
   const failed = apps.openError.value;
   const [creating, setCreating] = useState(false);
   const [draft, setDraft] = useState("");
+  // A Thread without a known title is named by its id, which is machine text.
+  const boundNote = (thread: string) => {
+    const title = rows.get(thread)?.summary.title;
+    return title !== undefined ? t("apps.bound", { title }) : <Rich text={t("apps.bound", { title: `\`${thread.slice(0, 8)}\`` })} />;
+  };
   const templates = APP_TEMPLATES.map((x) => ({ id: x.id, title: x.title[model.lang.value], draft: x.draft[model.lang.value] }));
   useEffect(() => { if (creating) { void apps.loadFolders(); return () => apps.leaveFolders(); } }, [apps, creating]);
   return (
@@ -74,7 +80,7 @@ function AppList({ context }: { context: DesignContext }) {
               name={a.name}
               href={formatRoute({ view: "apps", appName: a.name })}
               openLabel={t("apps.open")}
-              note={a.thread ? t("apps.bound", { title: rows.get(a.thread)?.summary.title ?? a.thread.slice(0, 8) }) : t("apps.unbound")}
+              note={a.thread ? boundNote(a.thread) : t("apps.unbound")}
               problem={a.problem ? t("apps.broken", { problem: a.problem }) : undefined}
             >{a.problem ? null : <AppNames model={model} name={a.name} />}</AppCard>
           ))}
