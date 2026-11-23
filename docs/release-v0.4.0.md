@@ -6,7 +6,7 @@ Shellboy Core v0.15.0（protocol 18）と組み合わせて使用します。こ
 
 Studio の Thread 一覧と会話画面を見直し、Thread の状態や返信が必要な項目を追いやすくしました。Core v0.15.0 は公開済みです。Studio v0.4.0 は準備中で、**未取り込み**と記した項目は収録済みではありません。
 
-比較範囲：[Studio v0.3.0 (`d32de25`) → `origin/main` (`7c8d9da`)](https://github.com/tya5/shellboy-studio/compare/v0.3.0..7c8d9da28682cd6b3f0303f7c8af747f70ea34a0) ／ Core v0.14.0 (`b644b3c`) → v0.15.0 (`318abee`)。特記のない Issue 番号は Studio のものです。
+比較範囲：[Studio v0.3.0 → (`7c8d9da`)](https://github.com/tya5/shellboy-studio/compare/v0.3.0..7c8d9da28682cd6b3f0303f7c8af747f70ea34a0) ／ Core v0.14.0 (`b644b3c`) → v0.15.0 (`318abee`)。特記のない Issue 番号は Studio のものです。
 
 ## Thread 一覧と状態表示
 
@@ -33,6 +33,8 @@ Studio の Thread 一覧と会話画面を見直し、Thread の状態や返信�
 - Core は、出力上限に達した会話応答でも、得られたテキストや拒否応答を保存して Turn を完了できます。途切れたツール呼び出しは実行せず、自動で再試行もしません（Core #354、#355）。
 - 過去の会話を読んでいるときは、履歴の追加読み込みや、後から本文全体が届いたときにも、読んでいた位置を保ちます（#6）。
 - Branches では分岐位置と各分岐の結論を確認でき、比較時には該当箇所の抜粋を表示します（#1）。
+- 受信側の Run が停止または失敗すると、適用済みで未回答の返信義務は `ignored` となり、送信側に通知されます。復旧待ちや Core の終了では保留のままです（Core #374）。
+- TUI では、保存されている旧形式の子 Thread のライフサイクルイベントを汎用の保存済みイベントとして表示します。子 Thread の完了自体は引き続き Core が管理します（Core #302）。
 
 ## 設定の共有と Inbox
 
@@ -45,6 +47,9 @@ Studio の Thread 一覧と会話画面を見直し、Thread の状態や返信�
 - Studio のリリース用ワークフローは、CLI 版に加え macOS の `.app` を含む ZIP と Windows x64 の起動役・Core を含む ZIP を作り、`SHA256SUMS` に含めます。署名・公証や自動更新は今回の対象外です（#98）。
 - 共通の `extra_instructions` に読めないファイルがあっても、新しい Turn を止めず、そのファイルだけ読み飛ばします。パスと理由は `status` と `thread get` で確認できます（Core #377）。Studio の開発・テストでは、普段使っている Core の設定やデータに触れないよう接続先を分離しました（#101）。
 - Core CLI は、保持されている会話履歴をチェックサム付き JSONL に書き出し、検証済みのファイルを新しい Thread として読み込めます。書き出しは固定スナップショットではなく、読み込みで Run や Turn は復元しません。書き出しファイルには保存済みの推論データが含まれる場合があります（Core #344、#345）。
+- `service add/list/start/stop/remove` で Thread に属するシェルサービスを Run とは独立して管理できます。予期せず終了するとサービスが無効になり、Thread に一度だけ通知します。Core 起動時には有効な定義を再起動します（Core #348）。
+- `thread list --state STATE` で現在の一覧上の状態（`failed`、`recovery_wait` など）を絞り込めます。過去の Run や動作フェーズは対象外です（Core #378）。
+- 待機中の `wait` と `events.wait` は、通常操作とは別の 32 枠を共有します（Core #352）。
 
 ## アップグレード
 
@@ -69,7 +74,7 @@ exact pair; older Core versions are not a supported pairing.
 
 Studio makes it easier to see what your Threads are doing and what needs a reply. Core v0.15.0 is published; Studio v0.4.0 is still in preparation. Items marked **not landed** are not yet included.
 
-Compared: [Studio v0.3.0 (`d32de25`) → `origin/main` (`7c8d9da`)](https://github.com/tya5/shellboy-studio/compare/v0.3.0..7c8d9da28682cd6b3f0303f7c8af747f70ea34a0); Core v0.14.0 (`b644b3c`) → v0.15.0 (`318abee`). Issue numbers refer to Studio unless marked Core.
+Compared: [Studio v0.3.0 → (`7c8d9da`)](https://github.com/tya5/shellboy-studio/compare/v0.3.0..7c8d9da28682cd6b3f0303f7c8af747f70ea34a0); Core v0.14.0 (`b644b3c`) → v0.15.0 (`318abee`). Issue numbers refer to Studio unless marked Core.
 
 ## Thread list and status
 
@@ -96,6 +101,8 @@ Conversation, sidebar, Threads, Branches, Monitor, Inbox, Analytics, Settings, S
 - Core can finish a Conversation Turn with the available text or refusal when the provider hits its output limit. It does not execute truncated tool calls or retry the attempt automatically (Core #354, #355).
 - When you read earlier messages, the conversation preserves your reading position as older history loads or a deferred full message body arrives (#6).
 - Branches shows where branches split and what each concluded, with excerpts in comparisons (#1).
+- If the recipient Run stops or fails, applied unanswered duties settle as `ignored` and notify the sender. Recovery wait and owner shutdown leave them pending (Core #374).
+- The TUI renders retained legacy child lifecycle events as generic saved events. Child completion remains an owner-side lifecycle fact (Core #302).
 
 ## Settings sharing and Inbox
 
@@ -108,6 +115,9 @@ Conversation, sidebar, Threads, Branches, Monitor, Inbox, Analytics, Settings, S
 - Studio release automation builds a ZIP containing the macOS `.app` and a Windows x64 ZIP with the launcher and Core, alongside the CLI archives, and includes them in `SHA256SUMS`. Signing, notarization, and automatic updates are outside this change (#98).
 - An unusable common `extra_instructions` file no longer blocks new Turns. Core skips only that file and reports its path and reason in `status` and `thread get` (Core #377). Studio development and checks are isolated from the normal Core owner's settings and data (#101).
 - Core can export retained conversation history to checksummed JSONL and import a verified export as a new Thread. Export is not a fixed snapshot, import does not restore Runs or Turns, and exports may contain stored reasoning data (Core #344, #345).
+- `service add/list/start/stop/remove` manages Thread-owned shell services independently of Runs. An unexpected exit disables the service and sends one Thread notice; owner startup restarts enabled definitions (Core #348).
+- `thread list --state STATE` filters the current listed state (such as `failed` or `recovery_wait`), not past Runs or the activity phase (Core #378).
+- Parked `wait` and `events.wait` share a separate 32-permit pool (Core #352).
 
 ## Upgrading
 
