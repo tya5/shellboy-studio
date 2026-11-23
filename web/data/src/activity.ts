@@ -1,9 +1,32 @@
-/** Thread phases that represent work currently in progress, owned by the data contract. */
-const ACTIVE_THREAD_ACTIVITIES = new Set([
-  "awaiting_model", "background", "continuing", "preparing", "receiving", "reflecting",
-  "retrying", "running", "sending", "stopping", "tools",
-]);
+/** The sole owner of Thread activity-to-Monitor status meanings. */
+export const ACTIVITY_STATUS = {
+  idle: "idle",
+  sending: "running",
+  reflecting: "running",
+  preparing: "running",
+  awaiting_model: "running",
+  retrying: "running",
+  receiving: "running",
+  tools: "running",
+  running: "running",
+  background: "running",
+  continuing: "running",
+  stopping: "running",
+  waiting: "waiting",
+  recovery: "error",
+  failed: "error",
+  stopped: "idle",
+  completed: "idle",
+} as const;
+
+export type ActivityStatus = (typeof ACTIVITY_STATUS)[keyof typeof ACTIVITY_STATUS];
+export function activityStatus(activity: string | undefined): ActivityStatus | undefined {
+  return activity !== undefined && Object.hasOwn(ACTIVITY_STATUS, activity)
+    ? ACTIVITY_STATUS[activity as keyof typeof ACTIVITY_STATUS]
+    : undefined;
+}
 
 export function isActiveThreadActivity(activity: string | undefined): boolean {
-  return activity !== undefined && ACTIVE_THREAD_ACTIVITIES.has(activity);
+  const status = activityStatus(activity);
+  return status !== undefined && status !== "idle";
 }
