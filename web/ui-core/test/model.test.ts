@@ -372,7 +372,7 @@ describe("AppModel over the fake transport", () => {
     db.threads.lead = { ...db.threads.lead!, activity: "recovery", updated_at: "2099-01-01T00:00:00Z" };
     db.threads = Object.fromEntries(Object.entries(db.threads).reverse());
     db.threads["aaa-new"] = { ...db.threads.lead!, thread_id: "aaa-new", title: "New" };
-    t.push({ t: "changed", config_changed: false, thread_ids: [], list: true });
+    t.push({ t: "changed", config_changed: false, thread_ids: ["aaa-new"], list: true });
     await settle(t, db);
     expect(ids().slice(0, before.length)).toEqual(before);
     expect(ids().at(-1)).toBe("aaa-new");
@@ -380,7 +380,7 @@ describe("AppModel over the fake transport", () => {
     model.monitorFilter.value = ["error"];
     expect(ids()).toContain("lead");
     model.monitorFilter.value = [];
-    expect(t.calls("thread.list").length).toBe(reads + 1);
+    expect(t.calls("thread.list").length).toBe(reads + 2);
     model.monitorSort.value = "recent";
     expect(ids()[0]).toBe("aaa-new");
     model.monitorSort.value = "stable";

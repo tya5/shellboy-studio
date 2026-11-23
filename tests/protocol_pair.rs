@@ -17,6 +17,12 @@ fn thread_list_accepts_created_order_and_cursor() {
         serde_json::from_value(json!({"order":"created","cursor":"next"})).unwrap();
     assert_eq!(args.order, ThreadListOrder::Created);
     assert_eq!(args.cursor.as_deref(), Some("next"));
+    let targeted: ThreadListArgs =
+        serde_json::from_value(json!({"thread_ids":["t1","t2"]})).unwrap();
+    assert_eq!(
+        targeted.thread_ids.as_deref(),
+        Some(["t1".to_owned(), "t2".to_owned()].as_slice())
+    );
 }
 
 #[test]

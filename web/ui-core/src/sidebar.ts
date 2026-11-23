@@ -5,7 +5,7 @@ export const SIDEBAR_PIN_TAG = "pin";
 export interface SidebarRow extends ThreadRow { key: string; descendants: number; awaiting: number; running: number; reveal: boolean; }
 export interface SidebarGroup { key: "pins" | "all"; rows: SidebarRow[]; }
 
-export function sidebarGroups(items: readonly ThreadSummary[], selected?: string, flat = false): SidebarGroup[] {
+export function sidebarGroups(items: readonly ThreadSummary[], selected?: string, flat = false, allItems: readonly ThreadSummary[] = items): SidebarGroup[] {
   const tree = threadTree([...items]);
   const byId = new Map(tree.map((row, index) => [row.summary.thread_id, index]));
   const ends: number[] = [];
@@ -48,8 +48,9 @@ export function sidebarGroups(items: readonly ThreadSummary[], selected?: string
   };
   const roots = items.filter(item => item.tags?.includes(SIDEBAR_PIN_TAG)).map(item => byId.get(item.thread_id)!);
   const pins = roots.flatMap(index => project("pins", index, flat ? index + 1 : ends[index]!, tree[index]!.depth));
+  const allIds = new Set(allItems.map(item => item.thread_id));
   const all = flat
-    ? items.flatMap(item => { const index = byId.get(item.thread_id)!; return project("all", index, index + 1, 0); })
-    : project("all", 0, tree.length, 0);
+    ? allItems.flatMap(item => { const index = byId.get(item.thread_id); return index === undefined ? [] : project("all", index, index + 1, 0); })
+    : project("all", 0, tree.length, 0).filter(row => allIds.has(row.summary.thread_id));
   return [...(pins.length ? [{ key: "pins" as const, rows: pins }] : []), { key: "all", rows: all }];
 }

@@ -277,7 +277,7 @@ it("bolds a background completion only after the list hint and clears on open or
   const prefs = signal(loadPrefs({ read: () => null, write() {} }, DESIGNS));
   let visible = true;
   const writes: unknown[] = [];
-  const f = await fixtureModel({ route: "conversation", threadId: "lead", unreadPreferences: {
+  const f = await fixtureModel({ route: "conversation", threadId: "lead", capabilities: ["thread.tags"], unreadPreferences: {
     read: () => prefs.value.sidebarUnread ?? [],
     write: records => { writes.push(records); prefs.value = { ...prefs.peek(), sidebarUnread: records }; },
     visible: () => visible,
@@ -288,7 +288,7 @@ it("bolds a background completion only after the list hint and clears on open or
   const host = document.createElement("div"); document.body.append(host);
   const link = () => host.querySelector<HTMLAnchorElement>('.side-list a[href="#/conversation/other"]')!;
   const unread = () => !!link().querySelector("strong[data-unread]");
-  const hint = async (detail = false) => { f.t.push({ t: "changed", config_changed: false, thread_ids: detail ? ["other"] : [], list: true }); await settle(f.t, f.db); };
+  const hint = async (detail = false) => { f.t.push({ t: "changed", config_changed: false, thread_ids: ["other"], list: true }); await settle(f.t, f.db); };
   const end = (marker: typeof first) => { f.db.threads.other = summary("other", { ...f.db.threads.other, last_end_message: marker }); };
   const mark = async (label: string) => {
     await act(async () => { link().parentElement!.querySelector<HTMLButtonElement>("[aria-haspopup=menu]")!.click(); });
@@ -308,13 +308,14 @@ it("bolds a background completion only after the list hint and clears on open or
     expect(unread()).toBe(false);
     const reads = f.t.calls("thread.list").length;
     await act(() => hint());
-    expect(f.t.calls("thread.list")).toHaveLength(reads + 1);
+    expect(f.t.calls("thread.list").filter(call => (call.args as { thread_ids?: string[] }).thread_ids).length).toBeGreaterThan(0);
+    expect(f.t.calls("thread.list").filter(call => !(call.args as { thread_ids?: string[] }).thread_ids).length).toBe(reads);
     expect(unread()).toBe(true);
     await mark("Mark as read");
     expect(unread()).toBe(false);
     await mark("Mark as unread");
     expect(unread()).toBe(true);
-    expect(f.t.calls("thread.list")).toHaveLength(reads + 1);
+    expect(f.t.calls("thread.list").filter(call => !(call.args as { thread_ids?: string[] }).thread_ids)).toHaveLength(reads);
     await act(async () => { f.model.openThread("other"); await settle(f.t, f.db); });
     expect(unread()).toBe(false);
     expect(prefs.peek().sidebarUnread?.find(r => r.thread === "other")?.node).toBe("b");
@@ -324,7 +325,7 @@ it("bolds a background completion only after the list hint and clears on open or
     await act(() => hint());
     expect(unread()).toBe(true);
     expect(writes).toHaveLength(writesAfterOpen);
-    expect(f.t.calls("thread.get")).toHaveLength(detailReadsAfterOpen);
+    expect(f.t.calls("thread.get")).toHaveLength(detailReadsAfterOpen + 1);
     f.db.details.other = details("other", { last_end_message: first });
     await act(() => hint(true));
     expect(unread()).toBe(false);
@@ -345,7 +346,7 @@ it("bolds a background completion only after the list hint and clears on open or
 
 it("renders the approved sidebar section band, trailing column, and disclosure behavior", async () => {
   const label = "All";
-  const f = await fixtureModel({ route: "conversation", threadId: "lead", capabilities: ["thread.cwds"], configure(db) {
+  const f = await fixtureModel({ route: "conversation", threadId: "lead", capabilities: ["thread.cwds", "thread.tags"], configure(db) {
     db.threads = { lead: summary("lead", { cwd: "/alpha" }), other: summary("other", { cwd: "/beta", tags: ["pin"] }) };
   } });
   const host = document.createElement("div"); document.body.append(host);

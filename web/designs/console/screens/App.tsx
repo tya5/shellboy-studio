@@ -116,7 +116,14 @@ export function App({ context }: { context: DesignContext }) {
   const appliedFilter = list.filter;
   const flat = !!(appliedFilter?.query || appliedFilter?.cwd || appliedFilter?.tags?.length
     || appliedFilter?.awaiting || (appliedFilter?.archived && appliedFilter.archived !== "exclude"));
-  const groups = useMemo(() => sidebarGroups(list.items, sidebarSelected, flat), [list.items, sidebarSelected, flat]);
+  const pinned = model.data.pinnedThreads.value;
+  const sidebarRows = useMemo(() => {
+    const exact = model.data.threadRows.value;
+    const rows = new Map(list.items.map(row => [row.thread_id, exact.get(row.thread_id) ?? row]));
+    for (const row of pinned) rows.set(row.thread_id, exact.get(row.thread_id) ?? row);
+    return [...rows.values()];
+  }, [list.items, pinned, model.data.threadRows.value]);
+  const groups = useMemo(() => sidebarGroups(sidebarRows, sidebarSelected, flat, list.items.map(row => model.data.threadRows.value.get(row.thread_id) ?? row)), [sidebarRows, sidebarSelected, flat, list.items, model.data.threadRows.value]);
   const revealGroups = JSON.stringify(groups.filter(group => group.rows.some(row => row.summary.thread_id === sidebarSelected)).map(group => group.key));
   const revealParents = JSON.stringify(groups.flatMap(group => group.rows.filter(row => row.reveal).map(row => row.key)));
   // Selection writes the same preferences as explicit disclosure; subsequent user folds win.

@@ -161,14 +161,15 @@ describe("resync, restart and loss", () => {
   });
 
   it("closing a Thread drops its late read results and queued reads", async () => {
-    const { t, data, db } = await setup({ capabilities: ["history.window"] });
+    const { t, data, db } = await setup({ capabilities: ["history.window", "thread.tags"] });
     db.details.a = details("a");
     db.history.a = [];
     const h = data.openThread("a", nextOrdinal());
     const pending = t.calls("thread.get")[0]!;
     const window = h.readWindow({ before: 0, after: 0 }, new Cancel());
     await flush();
-    expect(t.calls()).toHaveLength(2);
+    expect(t.calls("thread.get")).toHaveLength(1);
+    expect(t.calls("history.window")).toHaveLength(1);
     h.close();
     t.ok(pending.id, details("a"));
     const windowCall = t.calls("history.window")[0]!;
@@ -410,7 +411,8 @@ describe("the Thread list stays bounded however many Threads exist", () => {
     const answer = db.answer.bind(db);
     db.answer = (c) => {
       if (c.command !== "thread.list") return answer(c);
-      const a = (c.args ?? {}) as { cursor?: string; order?: string };
+      const a = (c.args ?? {}) as { thread_ids?: string[]; cursor?: string; order?: string };
+      if (a.thread_ids) return { ok: true, result: { items: a.thread_ids.flatMap(id => all.filter(row => row.thread_id === id)) } };
       expect(a.order).toBe("created");
       const start = a.cursor ? Number(a.cursor) : 0;
       const end = start + PAGE_LIMIT;
@@ -439,10 +441,11 @@ describe("the Thread list stays bounded however many Threads exist", () => {
     x.all.unshift(summary("fresh"));
     x.t.push({ t: "changed", config_changed: false, thread_ids: ["fresh"], list: true });
     await settle(x.t, x.db);
-    expect(x.t.calls("thread.list").length).toBe(before + 3);
+    expect(x.t.calls("thread.list").length).toBe(before + 2);
     const items = x.data.threadList.value.items;
     expect(items[0]!.thread_id).toBe("fresh");
-    expect(items).toEqual(x.all.slice(0, 150));
+    expect(items).toHaveLength(151);
+    expect(items[61]!.title).toBe("t-t60");
     expect(new Set(items.map((i) => i.thread_id)).size).toBe(items.length);
   });
   it("refreshes activity and human reply facts for a changed Thread on page two", async () => {
@@ -458,7 +461,7 @@ describe("the Thread list stays bounded however many Threads exist", () => {
       await settle(x.t, x.db);
       expect(current()).toMatchObject({ activity, awaiting_named_count: count });
     }
-    expect(x.t.calls("thread.list").length - reads).toBe(6);
+    expect(x.t.calls("thread.list").length - reads).toBe(3);
     expect(x.data.threadList.value.items.map(row => row.thread_id)).toEqual(x.all.slice(0, 100).map(row => row.thread_id));
   });
   it("a changed search starts over", async () => {
