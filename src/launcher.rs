@@ -116,7 +116,7 @@ mod startup {
                     "owner_protocol_version": other,
                 })),
             );
-            let refusal = probe(&owner).await.err().expect("attach must be refused");
+            let refusal = probe(&owner).await.expect_err("attach must be refused");
             assert_eq!(refusal.reason, "fixture mismatch");
             let message = refusal.message();
             assert!(message.contains(&format!("protocol {PROTOCOL_VERSION} の Core")));
@@ -136,8 +136,7 @@ mod startup {
             for code in [ErrorCode::ProtocolMismatch, ErrorCode::IoFailed] {
                 let refusal = probe(&FakeOwner(ApiError::new(code, "fixture refusal")))
                     .await
-                    .err()
-                    .expect("attach must be refused");
+                    .expect_err("attach must be refused");
                 assert_eq!(refusal.message(), OWNER_FAILURE);
             }
         }

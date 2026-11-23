@@ -80,14 +80,17 @@ pub(super) async fn process_start(pid: u32) -> Option<String> {
         let mut exit = FILETIME::default();
         let mut kernel = FILETIME::default();
         let mut user = FILETIME::default();
-        (GetProcessTimes(handle, &mut creation, &mut exit, &mut kernel, &mut user) != 0).then(
-            || {
-                format!(
-                    "{:08x}{:08x}",
-                    creation.dwHighDateTime, creation.dwLowDateTime
-                )
-            },
-        )
+        // A terminated process can still have a queryable handle until the last handle closes.
+        if GetProcessTimes(handle, &mut creation, &mut exit, &mut kernel, &mut user) == 0
+            || exit.dwHighDateTime != 0
+            || exit.dwLowDateTime != 0
+        {
+            return None;
+        }
+        Some(format!(
+            "{:08x}{:08x}",
+            creation.dwHighDateTime, creation.dwLowDateTime
+        ))
     }
 }
 
