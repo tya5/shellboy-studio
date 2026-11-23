@@ -30,7 +30,7 @@ use tokio::{
 };
 use tokio_util::sync::CancellationToken;
 
-const OWNER_START_TIMEOUT: Duration = Duration::from_secs(15);
+pub(super) const OWNER_START_TIMEOUT: Duration = Duration::from_secs(15);
 
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -187,7 +187,8 @@ impl Launch {
             data: data_dir.clone(),
             env: None,
             child: None,
-            ready: watch::channel(false).1,
+            ready: watch::channel(None).1,
+            instance_id: None,
             output: None,
             start_log_offset: 0,
         };
@@ -211,8 +212,7 @@ impl Launch {
 
     pub async fn supervise(&mut self, cancel: CancellationToken) {
         use crate::launcher::supervisor::{Decision, RestartState};
-        let cap = OWNER_START_TIMEOUT;
-        let mut restart_state = RestartState::new(cap);
+        let mut restart_state = RestartState::new();
         self.start().await;
         loop {
             if self.owner.child.is_none() {
@@ -244,8 +244,9 @@ impl Launch {
                     },
                     changed = ready_signal.changed(), if !ready && !ready_closed => {
                         if changed.is_ok() {
-                            if *ready_signal.borrow_and_update() {
+                            if let Some(instance_id) = ready_signal.borrow_and_update().clone() {
                                 ready = true;
+                                self.owner.instance_id = Some(instance_id);
                                 self.crashes.clear();
                                 let warning = self.owner.env.as_ref().and_then(|env| env.warning.clone());
                                 self.diagnostic.send_replace(warning);
@@ -260,7 +261,10 @@ impl Launch {
             if let Some(output) = self.owner.output.take() {
                 let _ = output.await;
             }
-            ready |= *self.owner.ready.borrow();
+            if let Some(instance_id) = self.owner.ready.borrow().clone() {
+                ready = true;
+                self.owner.instance_id = Some(instance_id);
+            }
             let status = result.ok();
             let status_text = match &status {
                 Some(status) if ready => format!("Core exited with {status}"),
@@ -286,24 +290,20 @@ impl Launch {
                     self.publish_crash(reason);
                     continue;
                 }
-                Decision::Retry { reason, after } => {
+                Decision::Retry { reason } => {
                     self.publish_crash(format!(
-                        "Core crashed after ready ({reason}); restarting in {}s",
-                        after.as_secs()
+                        "Core crashed after ready ({reason}); restarting now"
                     ));
-                    tokio::select! {
-                        biased;
-                        _ = cancel.cancelled() => break,
-                        restart = self.restart.recv() => {
-                            if restart.is_none() { break; }
-                        },
-                        _ = tokio::time::sleep(after) => {}
-                    }
                     self.start().await;
                 }
             }
         }
-        platform::stop_child(self.owner.child.take()).await;
+        platform::stop_child(
+            self.owner.child.take(),
+            &self.owner.data,
+            self.owner.instance_id.as_deref(),
+        )
+        .await;
         if let Some(output) = self.owner.output.take() {
             let _ = output.await;
         }
@@ -350,7 +350,8 @@ struct ManagedOwner {
     data: PathBuf,
     env: Option<OwnerEnvironment>,
     child: Option<Child>,
-    ready: watch::Receiver<bool>,
+    ready: watch::Receiver<Option<String>>,
+    instance_id: Option<String>,
     output: Option<tokio::task::JoinHandle<()>>,
     start_log_offset: u64,
 }
@@ -444,8 +445,9 @@ impl ManagedOwner {
             .map(|metadata| metadata.len())
             .unwrap_or(0);
         let mut child = spawn(command)?;
-        let (ready_tx, ready_rx) = watch::channel(false);
+        let (ready_tx, ready_rx) = watch::channel(None);
         self.ready = ready_rx;
+        self.instance_id = None;
         self.output = child.stdout.take().map(|stdout| {
             let log_path = self.log.clone();
             tokio::spawn(async move {
@@ -471,8 +473,11 @@ impl ManagedOwner {
                     }
                     for byte in &chunk[..count] {
                         if *byte == b'\n' {
-                            if !oversized && super::supervisor::is_ready_line(&line) {
-                                ready_tx.send_replace(true);
+                            if !oversized
+                                && let Some(instance_id) =
+                                    super::supervisor::ready_instance_line(&line)
+                            {
+                                ready_tx.send_replace(Some(instance_id));
                             }
                             line.clear();
                             oversized = false;
@@ -496,6 +501,23 @@ impl ManagedOwner {
 
 pub(super) fn io(error: impl std::fmt::Display) -> String {
     error.to_string()
+}
+
+#[cfg(any(windows, test))]
+pub(super) async fn stop_owned_child(
+    mut child: Child,
+    shutdown: impl std::future::Future<Output = bool>,
+    grace: Duration,
+) -> bool {
+    if shutdown.await
+        && timeout(grace, child.wait())
+            .await
+            .is_ok_and(|result| result.is_ok())
+    {
+        return false;
+    }
+    let _ = child.kill().await;
+    true
 }
 
 async fn bind_loopback(port: u16) -> std::io::Result<TcpListener> {
@@ -678,10 +700,20 @@ mod tests {
 
     #[test]
     #[ignore = "subprocess fixture only"]
+    fn graceful_child_fixture() {
+        use std::io::Read;
+        let mut input = std::io::stdin();
+        let mut bytes = Vec::new();
+        let _ = input.read_to_end(&mut bytes);
+    }
+
+    #[test]
+    #[ignore = "subprocess fixture only"]
     fn fake_core_child() {
         match std::env::var("STUDIO_FAKE_CORE_MODE").as_deref() {
             Ok("ready-crash") => {
-                println!(r#"{{"event":"ready","state":"ready"}}"#);
+                println!();
+                println!(r#"{{"event":"ready","state":"ready","instance_id":"fixture-instance"}}"#);
                 std::io::stdout().flush().unwrap();
                 std::process::exit(1);
             }
@@ -754,14 +786,54 @@ mod tests {
             .unwrap()
     }
     #[tokio::test]
+    async fn graceful_shutdown_is_requested_before_force_termination() {
+        let child = Process::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "launcher::desktop::tests::graceful_child_fixture",
+                "--ignored",
+            ])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .kill_on_drop(true)
+            .spawn()
+            .unwrap();
+        let mut child = child;
+        let stdin = child.stdin.take().unwrap();
+        let forced = stop_owned_child(
+            child,
+            async move {
+                drop(stdin);
+                true
+            },
+            Duration::from_secs(1),
+        )
+        .await;
+        assert!(
+            !forced,
+            "a successful graceful shutdown must not force-kill"
+        );
+
+        let child = sleeper();
+        let pid = child.id().unwrap();
+        let forced = stop_owned_child(child, async { false }, Duration::from_secs(1)).await;
+        assert!(
+            forced,
+            "a failed shutdown request must force-terminate the owned child"
+        );
+        assert!(platform::process_start(pid).await.is_none());
+    }
+
+    #[tokio::test]
     async fn shutdown_only_signals_the_owned_child() {
         let mut unrelated = sleeper();
-        platform::stop_child(None).await;
+        platform::stop_child(None, Path::new("unused"), None).await;
         assert!(unrelated.try_wait().unwrap().is_none());
         let owned = sleeper();
         let pid = owned.id().unwrap();
         assert!(platform::process_start(pid).await.is_some());
-        platform::stop_child(Some(owned)).await;
+        platform::stop_child(Some(owned), Path::new("unused"), None).await;
         assert!(platform::process_start(pid).await.is_none());
         assert!(unrelated.try_wait().unwrap().is_none());
         unrelated.kill().await.unwrap();
@@ -819,7 +891,8 @@ mod tests {
                 warning: None,
             }),
             child: None,
-            ready: watch::channel(false).1,
+            ready: watch::channel(None).1,
+            instance_id: None,
             output: None,
             start_log_offset: 0,
         };
@@ -829,7 +902,12 @@ mod tests {
             .await
             .unwrap();
         assert!(owner.child.is_none(), "attached, not owned");
-        platform::stop_child(owner.child.take()).await;
+        platform::stop_child(
+            owner.child.take(),
+            &owner.data,
+            owner.instance_id.as_deref(),
+        )
+        .await;
         assert!(external.try_wait().unwrap().is_none());
         owner
             .start_with(&Probe(false), |command| {
@@ -864,7 +942,12 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(owner.child.as_ref().unwrap().id(), Some(pid));
-        platform::stop_child(owner.child.take()).await;
+        platform::stop_child(
+            owner.child.take(),
+            &owner.data,
+            owner.instance_id.as_deref(),
+        )
+        .await;
         assert!(external.try_wait().unwrap().is_none());
         external.kill().await.unwrap();
     }
@@ -886,7 +969,8 @@ mod tests {
                 warning: None,
             }),
             child: None,
-            ready: watch::channel(false).1,
+            ready: watch::channel(None).1,
+            instance_id: None,
             output: None,
             start_log_offset: 0,
         };
@@ -894,10 +978,10 @@ mod tests {
         let mut crashing = make_owner();
         let status = fake_core(&mut crashing, "ready-crash").await;
         assert_eq!(status.code(), Some(1));
-        assert!(*crashing.ready.borrow());
-        let mut state = RestartState::new(OWNER_START_TIMEOUT);
+        assert_eq!(crashing.ready.borrow().as_deref(), Some("fixture-instance"));
+        let mut state = RestartState::new();
         let crash = crate::launcher::supervisor::classify(
-            *crashing.ready.borrow(),
+            crashing.ready.borrow().is_some(),
             Some(status.success()),
             format!("Core exited with {status}"),
             None,
@@ -907,13 +991,13 @@ mod tests {
         let mut failing = make_owner();
         let status = fake_core(&mut failing, "startup-error").await;
         assert_eq!(status.code(), Some(1));
-        assert!(!*failing.ready.borrow());
+        assert!(failing.ready.borrow().is_none());
         let reason = failing
             .startup_failure()
             .expect("typed startup error from child log");
         assert_eq!(reason, "bad config repair the config");
         let failure = crate::launcher::supervisor::classify(
-            *failing.ready.borrow(),
+            failing.ready.borrow().is_some(),
             Some(status.success()),
             format!("Core exited before ready with {status}"),
             Some(reason),

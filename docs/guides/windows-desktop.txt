@@ -12,12 +12,15 @@ then Run anyway if Windows offers it. Do not turn off SmartScreen or bypass
 your organization's policy.
 
 Double-click again to reopen the running Studio. Closing the browser tab
-doesn't stop Studio: use Exit in Studio to stop its server and any Core it
-started. A separately running Core won't be stopped. Studio uses the same
+doesn't stop Studio: use Exit in Studio to stop its server and request normal
+shutdown of any Core it started. Studio force-terminates that child only if the
+request fails or it does not exit within the grace period. A separately running
+Core won't be stopped. Studio uses the same
 settings and data as Core; don't start another owner for the same data while
-Studio is running its bundled Core. Studio automatically retries an unexpected
-Core crash with increasing delays capped at the owner-start timeout. A clean exit
-or startup failure is not retried; use Restart after correcting a startup problem.
+Studio is running its bundled Core. Studio immediately retries an unexpected Core crash. If that restarted Core
+fails before becoming ready, Studio stops retrying, shows the last failure, and
+waits for you to choose Restart. A clean exit or an initial startup failure is
+not retried; use Restart after correcting a startup problem.
 A separately started owner is never adopted, stopped, or automatically restarted.
 
 To use an existing TUI's config and data folder, create a shortcut to

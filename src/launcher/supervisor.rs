@@ -1,5 +1,3 @@
-use std::time::Duration;
-
 /// Decisions from one child lifetime; bridge reachability is deliberately absent.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) enum ChildExit {
@@ -27,22 +25,16 @@ pub(super) fn classify(
 pub(super) enum Decision {
     Stop,
     ShowFailure(String),
-    Retry { reason: String, after: Duration },
+    Retry { reason: String },
 }
 
-/// Per-launcher retry progression, bounded by the existing owner-start deadline.
-#[derive(Debug)]
-pub(super) struct RestartState {
-    delay: Duration,
-    cap: Duration,
-}
+/// Chooses whether an unexpected post-ready exit gets one immediate restart.
+#[derive(Debug, Default)]
+pub(super) struct RestartState;
 
 impl RestartState {
-    pub(super) fn new(cap: Duration) -> Self {
-        Self {
-            delay: Duration::from_secs(1),
-            cap,
-        }
+    pub(super) fn new() -> Self {
+        Self
     }
 
     pub(super) fn exited(&mut self, ready: bool, exit: ChildExit) -> Decision {
@@ -50,19 +42,15 @@ impl RestartState {
             ChildExit::Clean => Decision::Stop,
             ChildExit::BeforeReady(reason) => Decision::ShowFailure(reason),
             ChildExit::Crash(reason) if !ready => Decision::ShowFailure(reason),
-            ChildExit::Crash(reason) => {
-                let after = self.delay.min(self.cap);
-                self.delay = self.delay.saturating_mul(2).min(self.cap);
-                Decision::Retry { reason, after }
-            }
+            ChildExit::Crash(reason) => Decision::Retry { reason },
         }
     }
 }
 
-pub(super) fn is_ready_line(line: &[u8]) -> bool {
-    serde_json::from_slice::<serde_json::Value>(line)
-        .ok()
-        .is_some_and(|value| value.get("event").and_then(|event| event.as_str()) == Some("ready"))
+pub(super) fn ready_instance_line(line: &[u8]) -> Option<String> {
+    let value = serde_json::from_slice::<serde_json::Value>(line).ok()?;
+    (value.get("event")?.as_str()? == "ready")
+        .then(|| value.get("instance_id")?.as_str().map(str::to_owned))?
 }
 
 pub(super) fn startup_error_line(line: &[u8]) -> Option<String> {
@@ -107,9 +95,16 @@ mod tests {
 
     #[test]
     fn recognizes_only_core_ready_records_and_preserves_typed_startup_reason() {
-        assert!(is_ready_line(br#"{"event":"ready","state":"ready"}"#));
-        assert!(!is_ready_line(br#"{"event":"stopped","state":"stopped"}"#));
-        assert!(!is_ready_line(b"not json"));
+        assert_eq!(
+            ready_instance_line(br#"{"event":"ready","state":"ready","instance_id":"owned"}"#)
+                .as_deref(),
+            Some("owned")
+        );
+        assert_eq!(
+            ready_instance_line(br#"{"event":"stopped","state":"stopped","instance_id":"owned"}"#),
+            None
+        );
+        assert_eq!(ready_instance_line(b"not json"), None);
         assert_eq!(
             startup_error_line(
                 br#"{"ok":false,"error":{"message":"bad config","hint":"check config"}}"#
@@ -120,55 +115,23 @@ mod tests {
     }
 
     #[test]
-    fn retries_only_post_ready_crashes_with_growing_capped_delay() {
-        let mut state = RestartState::new(Duration::from_secs(15));
+    fn post_ready_crash_retries_immediately_then_pre_ready_failure_stops_with_reason() {
+        let mut state = RestartState::new();
         assert_eq!(
-            state.exited(true, ChildExit::Crash("first".into())),
+            state.exited(true, ChildExit::Crash("Core crashed".into())),
             Decision::Retry {
-                reason: "first".into(),
-                after: Duration::from_secs(1)
+                reason: "Core crashed".into()
             }
         );
         assert_eq!(
-            state.exited(true, ChildExit::Crash("second".into())),
-            Decision::Retry {
-                reason: "second".into(),
-                after: Duration::from_secs(2)
-            }
-        );
-        assert_eq!(
-            state.exited(true, ChildExit::Crash("third".into())),
-            Decision::Retry {
-                reason: "third".into(),
-                after: Duration::from_secs(4)
-            }
-        );
-        assert_eq!(
-            state.exited(true, ChildExit::Crash("fourth".into())),
-            Decision::Retry {
-                reason: "fourth".into(),
-                after: Duration::from_secs(8)
-            }
-        );
-        assert_eq!(
-            state.exited(true, ChildExit::Crash("fifth".into())),
-            Decision::Retry {
-                reason: "fifth".into(),
-                after: Duration::from_secs(15)
-            }
-        );
-        assert_eq!(
-            state.exited(true, ChildExit::Crash("sixth".into())),
-            Decision::Retry {
-                reason: "sixth".into(),
-                after: Duration::from_secs(15)
-            }
+            state.exited(false, ChildExit::BeforeReady("bad config".into())),
+            Decision::ShowFailure("bad config".into())
         );
     }
 
     #[test]
     fn pre_ready_failure_and_clean_exit_do_not_retry() {
-        let mut state = RestartState::new(Duration::from_secs(15));
+        let mut state = RestartState::new();
         assert_eq!(
             state.exited(false, ChildExit::Crash("startup".into())),
             Decision::ShowFailure("startup".into())
@@ -178,31 +141,5 @@ mod tests {
             Decision::ShowFailure("typed reason".into())
         );
         assert_eq!(state.exited(true, ChildExit::Clean), Decision::Stop);
-    }
-
-    #[test]
-    fn backoff_keeps_growing_across_successful_ready_periods() {
-        let mut state = RestartState::new(Duration::from_secs(15));
-        assert_eq!(
-            state.exited(true, ChildExit::Crash("one".into())),
-            Decision::Retry {
-                reason: "one".into(),
-                after: Duration::from_secs(1)
-            }
-        );
-        assert_eq!(
-            state.exited(true, ChildExit::Crash("two".into())),
-            Decision::Retry {
-                reason: "two".into(),
-                after: Duration::from_secs(2)
-            }
-        );
-        assert_eq!(
-            state.exited(true, ChildExit::Crash("again".into())),
-            Decision::Retry {
-                reason: "again".into(),
-                after: Duration::from_secs(4)
-            }
-        );
     }
 }

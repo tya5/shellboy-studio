@@ -8,6 +8,7 @@ use std::{
     },
     path::{Path, PathBuf},
     ptr::null_mut,
+    time::Duration,
 };
 use tokio::process::{Child, Command as Process};
 use windows_sys::Win32::{
@@ -94,11 +95,32 @@ pub(super) async fn process_start(pid: u32) -> Option<String> {
     }
 }
 
-pub(super) async fn stop_child(child: Option<Child>) {
-    if let Some(mut child) = child {
-        // Tokio terminates through the owned Windows process handle, never a discovered PID.
-        let _ = child.kill().await;
-    }
+pub(super) async fn stop_child(child: Option<Child>, data_dir: &Path, instance_id: Option<&str>) {
+    let Some(child) = child else { return };
+    let shutdown = if let Some(instance_id) = instance_id {
+        use shellboy::protocol::{Command, OwnerShutdownArgs};
+        tokio::time::timeout(
+            super::desktop::OWNER_START_TIMEOUT,
+            shellboy::ipc::call(
+                data_dir,
+                Command::OwnerShutdown(OwnerShutdownArgs {
+                    instance_id: instance_id.to_owned(),
+                }),
+                None,
+                None,
+            ),
+        )
+        .await
+        .is_ok_and(|result| result.is_ok())
+    } else {
+        false
+    };
+    super::desktop::stop_owned_child(
+        child,
+        async move { shutdown },
+        super::desktop::OWNER_START_TIMEOUT,
+    )
+    .await;
 }
 
 fn wide(text: &str) -> Vec<u16> {

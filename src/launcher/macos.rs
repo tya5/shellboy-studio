@@ -119,7 +119,7 @@ pub(super) async fn owner_environment(bin: &Path) -> Result<OwnerEnvironment, St
     Ok(OwnerEnvironment { vars: env, warning })
 }
 
-pub(super) async fn stop_child(child: Option<Child>) {
+pub(super) async fn stop_child(child: Option<Child>, _data_dir: &Path, _instance_id: Option<&str>) {
     let Some(mut child) = child else {
         return;
     };
