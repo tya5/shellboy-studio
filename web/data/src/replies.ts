@@ -31,7 +31,5 @@ export class ReplyPages {
 
   close(): void { this.runs.owed_by.close(); this.runs.asked_by.close(); }
 
-  more(side: ReplySide): void {
-    if (this[side].peek().error === undefined) this.runs[side].more();
-  }
+  more(side: ReplySide): void { this.runs[side].more(); }
 }

@@ -72,7 +72,7 @@ it("refreshes every loaded reply page after a change hint without dropping the p
   stop(); data.stop();
 });
 
-it("retains loaded reply rows and disables continuation until a successful hint", async () => {
+it("retains reply rows and allows More after a failed hint, until Core expires the cursor", async () => {
   const t = new FakeTransport(); const data = new ShellboyData({ transport: t });
   data.start(); t.open(); t.push({ t: "hello", bridge_version: "test", data_dir: "/synthetic", owner: connected });
   const pages = new ReplyPages(data); const stop = pages.observe("thread"); await flush();
@@ -90,12 +90,15 @@ it("retains loaded reply rows and disables continuation until a successful hint"
   await flush();
   expect(pages.owed_by.value).toMatchObject({ items: [item], loading: false, complete: false, error: "read failed" });
   expect(pages.asked_by.value.complete).toBe(true);
+  pages.more("owed_by"); await flush();
+  const more = t.calls("message.list").at(-1)!;
+  expect(more.args).toMatchObject({ owed_by: "thread", cursor: "retained" });
+  t.push({ t: "result", id: more.id, response: { protocol_version: 5, operation_id: "expired", ok: false, error: { code: "cursor_expired", message: "cursor expired" } } });
+  await flush();
+  expect(pages.owed_by.value).toMatchObject({ items: [item], loading: false, complete: false, error: "cursor expired" });
+  expect(pages.owed_by.value.cursor).toBeUndefined();
   const before = t.calls("message.list").length;
   pages.more("owed_by"); await flush();
   expect(t.calls("message.list")).toHaveLength(before);
-  const recovered = await hint();
-  t.ok(recovered.id, { items: [item], next_cursor: "fresh" }); await flush();
-  pages.more("owed_by"); await flush();
-  expect(t.calls("message.list").at(-1)!.args).toMatchObject({ owed_by: "thread", cursor: "fresh" });
   stop(); data.stop();
 });

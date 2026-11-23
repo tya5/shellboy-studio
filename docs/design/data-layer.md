@@ -250,8 +250,8 @@ Core owns pending receipts and the per-direction `thread.get.pending_replies`
 counts. `ReplyPages` binds one shared `PageRun` per direction for the selected
 Thread, at 16 rows per request and at most 128 retained rows per direction.
 On a Core hint, each run re-reads its loaded page count. A failed read keeps
-its previous rows and disables More until a successful refresh. A Thread or
-owner change cancels the reads. Only `owed_by` senders use the sender-title
+its previous rows. Only `cursor_expired` clears the continuation on failure;
+other failures leave More available for retry. A Thread or owner change cancels the reads. Only `owed_by` senders use the sender-title
 lookup budget; `asked_by` rows display the recipient.
 The sidebar HumanInbox reads a bounded `message.list` page with `to: "human"`.
 It never fans out to Thread details. AppModel owns panel selection; existing
