@@ -51,6 +51,9 @@ Object.assign(window, { runArtifactFixture: async (action:'list'|'detail'|'old')
   disclosure.querySelector<HTMLButtonElement>('[data-panel-row-id="report:v2"] button')!.click();
  }
  await flushOwner();
+ if (action !== 'list') {
+  for (let n=0; n<30 && !document.querySelector('.artifact-preview')?.textContent?.includes('次の手順'); n++) await flushOwner();
+ }
  const panel = document.querySelector<HTMLElement>('[data-panel-root]')!;
  const content = panel.querySelector<HTMLElement>('[data-panel-detail]');
  const found = Array.from(panel.querySelectorAll<HTMLElement>('[data-panel-list="possessions"] [data-panel-row-id]'));
