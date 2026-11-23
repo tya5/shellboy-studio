@@ -4,7 +4,7 @@ use super::macos as platform;
 use super::windows as platform;
 use super::{
     Control,
-    startup::{self, OWNER_FAILURE, Refusal},
+    startup::{self, Refusal},
 };
 use crate::{
     auth::{Auth, random_hex},
@@ -29,6 +29,8 @@ use tokio::{
     time::timeout,
 };
 use tokio_util::sync::CancellationToken;
+
+const OWNER_START_TIMEOUT: Duration = Duration::from_secs(15);
 
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -119,6 +121,7 @@ pub struct Launch {
     owner: ManagedOwner,
     restart: mpsc::Receiver<()>,
     diagnostic: watch::Sender<Option<String>>,
+    crashes: std::collections::VecDeque<String>,
 }
 
 impl Drop for Launch {
@@ -184,6 +187,9 @@ impl Launch {
             data: data_dir.clone(),
             env: None,
             child: None,
+            ready: watch::channel(false).1,
+            output: None,
+            start_log_offset: 0,
         };
         Ok(Some(Self {
             listener: Some(listener),
@@ -199,45 +205,142 @@ impl Launch {
             owner,
             restart,
             diagnostic,
+            crashes: std::collections::VecDeque::new(),
         }))
     }
 
     pub async fn supervise(&mut self, cancel: CancellationToken) {
+        use super::supervisor::{ChildExit, Decision, RestartState};
+        let cap = OWNER_START_TIMEOUT;
+        let mut restart_state = RestartState::new(cap);
         self.start().await;
         loop {
-            let child = &mut self.owner.child;
-            tokio::select! {
-                biased;
-                _ = cancel.cancelled() => break,
-                restart = self.restart.recv() => {
-                    if restart.is_none() { break; }
-                    self.start().await;
-                },
-                result = async { match child { Some(p) => p.wait().await, None => std::future::pending().await } } => {
-                    self.owner.child = None;
-                    eprintln!("shellboy-studio: bundled owner exited: {result:?}");
-                    if !result.is_ok_and(|status| status.success()) {
-                        self.diagnostic.send_replace(Some(OWNER_FAILURE.into()));
+            if self.owner.child.is_none() {
+                tokio::select! {
+                    biased;
+                    _ = cancel.cancelled() => break,
+                    restart = self.restart.recv() => {
+                        if restart.is_none() { break; }
+                        self.start().await;
                     }
+                }
+                continue;
+            }
+            let deadline = tokio::time::Instant::now() + cap;
+            let mut ready = false;
+            let mut ready_closed = false;
+            let exit = loop {
+                let child = &mut self.owner.child;
+                let ready_signal = &mut self.owner.ready;
+                tokio::select! {
+                    biased;
+                    _ = cancel.cancelled() => break None,
+                    restart = self.restart.recv() => {
+                        if restart.is_none() { break None; }
+                    },
+                    result = async { match child { Some(p) => p.wait().await, None => std::future::pending().await } } => {
+                        self.owner.child = None;
+                        break Some(result);
+                    },
+                    changed = ready_signal.changed(), if !ready && !ready_closed => {
+                        if changed.is_ok() {
+                            if *ready_signal.borrow_and_update() {
+                                ready = true;
+                            }
+                        } else {
+                            ready_closed = true;
+                        }
+                    },
+                    _ = tokio::time::sleep_until(deadline), if !ready => {
+                        self.publish_crash("Core did not become ready before the owner-start timeout".into());
+                        platform::stop_child(self.owner.child.take()).await;
+                        break Some(Err(std::io::Error::other("Core startup timed out")));
+                    }
+                }
+            };
+            let Some(result) = exit else { break };
+            if let Some(output) = self.owner.output.take() {
+                let _ = output.await;
+            }
+            ready |= *self.owner.ready.borrow();
+            let status = result.ok();
+            let clean = status
+                .as_ref()
+                .is_some_and(std::process::ExitStatus::success);
+            let reason = if !ready {
+                self.owner
+                    .startup_failure()
+                    .or_else(|| status.map(|s| format!("Core exited before ready with {s}")))
+                    .unwrap_or_else(|| "Core child wait failed before ready".into())
+            } else {
+                status
+                    .map(|s| format!("Core exited with {s}"))
+                    .unwrap_or_else(|| "Core child wait failed".into())
+            };
+            let decision = restart_state.exited(
+                ready,
+                if clean {
+                    ChildExit::Clean
+                } else if ready {
+                    ChildExit::Crash(reason)
+                } else {
+                    ChildExit::BeforeReady(reason)
+                },
+            );
+            match decision {
+                Decision::Stop => continue,
+                Decision::ShowFailure(reason) => {
+                    self.publish_crash(reason);
+                    continue;
+                }
+                Decision::Retry { reason, after } => {
+                    self.publish_crash(format!(
+                        "Core crashed after ready ({reason}); restarting in {}s",
+                        after.as_secs()
+                    ));
+                    tokio::select! {
+                        biased;
+                        _ = cancel.cancelled() => break,
+                        restart = self.restart.recv() => {
+                            if restart.is_none() { break; }
+                        },
+                        _ = tokio::time::sleep(after) => {}
+                    }
+                    self.start().await;
                 }
             }
         }
-        cancel.cancel();
         platform::stop_child(self.owner.child.take()).await;
+        if let Some(output) = self.owner.output.take() {
+            let _ = output.await;
+        }
+    }
+
+    fn publish_crash(&mut self, message: String) {
+        const HISTORY: usize = 20;
+        self.crashes.push_back(message);
+        if self.crashes.len() > HISTORY {
+            self.crashes.pop_front();
+        }
+        self.diagnostic.send_replace(Some(
+            self.crashes.iter().cloned().collect::<Vec<_>>().join("\n"),
+        ));
     }
 
     async fn start(&mut self) {
-        self.diagnostic
-            .send_replace(match self.owner.start().await {
-                Ok(warning) => warning,
-                Err(reason) => {
-                    eprintln!(
-                        "shellboy-studio: bundled owner start refused or failed: {}",
-                        reason.reason
-                    );
-                    Some(reason.message().into())
-                }
-            });
+        match self.owner.start().await {
+            Ok(warning) if self.crashes.is_empty() => {
+                self.diagnostic.send_replace(warning);
+            }
+            Ok(_) => {}
+            Err(reason) => {
+                eprintln!(
+                    "shellboy-studio: bundled owner start refused or failed: {}",
+                    reason.reason
+                );
+                self.publish_crash(reason.message().into());
+            }
+        }
     }
 }
 
@@ -254,9 +357,30 @@ struct ManagedOwner {
     data: PathBuf,
     env: Option<OwnerEnvironment>,
     child: Option<Child>,
+    ready: watch::Receiver<bool>,
+    output: Option<tokio::task::JoinHandle<()>>,
+    start_log_offset: u64,
 }
 
 impl ManagedOwner {
+    fn startup_failure(&self) -> Option<String> {
+        use std::io::{Read, Seek, SeekFrom};
+        let mut file = File::open(&self.log).ok()?;
+        let length = file.metadata().ok()?.len();
+        const TAIL: u64 = 16 * 1024;
+        let start = self
+            .start_log_offset
+            .min(length)
+            .max(length.saturating_sub(TAIL));
+        file.seek(SeekFrom::Start(start)).ok()?;
+        let mut bytes = Vec::with_capacity((length - start) as usize);
+        file.take(length - start).read_to_end(&mut bytes).ok()?;
+        bytes
+            .split(|byte| *byte == b'\n')
+            .rev()
+            .find_map(super::supervisor::startup_error_line)
+    }
+
     async fn start(&mut self) -> Result<Option<String>, Refusal> {
         let owner = IpcOwner::new(self.data.clone());
         self.start_with(&owner, |mut command| command.spawn().map_err(io))
@@ -321,9 +445,58 @@ impl ManagedOwner {
             .arg("serve")
             .arg("--data-dir")
             .arg(&self.data)
-            .stdout(log()?)
+            .stdout(Stdio::piped())
             .stderr(log()?);
-        self.child = Some(spawn(command)?);
+        self.start_log_offset = fs::metadata(&self.log)
+            .map(|metadata| metadata.len())
+            .unwrap_or(0);
+        let mut child = spawn(command)?;
+        let (ready_tx, ready_rx) = watch::channel(false);
+        self.ready = ready_rx;
+        self.output = child.stdout.take().map(|stdout| {
+            let log_path = self.log.clone();
+            tokio::spawn(async move {
+                use tokio::io::AsyncWriteExt;
+                let Ok(mut log) = tokio::fs::OpenOptions::new()
+                    .append(true)
+                    .open(log_path)
+                    .await
+                else {
+                    return;
+                };
+                let mut source = stdout;
+                let mut chunk = [0_u8; 4096];
+                let mut line = Vec::with_capacity(1024);
+                let mut oversized = false;
+                loop {
+                    let count = match source.read(&mut chunk).await {
+                        Ok(0) | Err(_) => break,
+                        Ok(count) => count,
+                    };
+                    if log.write_all(&chunk[..count]).await.is_err() {
+                        break;
+                    }
+                    for byte in &chunk[..count] {
+                        if *byte == b'\n' {
+                            if !oversized && super::supervisor::is_ready_line(&line) {
+                                ready_tx.send_replace(true);
+                            }
+                            line.clear();
+                            oversized = false;
+                        } else if !oversized {
+                            if line.len() < 8192 {
+                                line.push(*byte);
+                            } else {
+                                line.clear();
+                                oversized = true;
+                            }
+                        }
+                    }
+                }
+                let _ = log.flush().await;
+            })
+        });
+        self.child = Some(child);
         Ok(env.warning.clone())
     }
 }
@@ -422,7 +595,7 @@ async fn open_or_start_with<F: std::future::Future<Output = Result<(), String>>>
         Err(std::fs::TryLockError::WouldBlock) => None,
         Err(std::fs::TryLockError::Error(error)) => return Err(io(error)),
     };
-    let deadline = tokio::time::Instant::now() + Duration::from_secs(15);
+    let deadline = tokio::time::Instant::now() + OWNER_START_TIMEOUT;
     loop {
         if let Some(marker) = read_marker(&dir.join("running.json"), dir)
             && platform::process_start(marker.pid).await.as_deref() == Some(&marker.started)
@@ -590,6 +763,9 @@ mod tests {
                 warning: None,
             }),
             child: None,
+            ready: watch::channel(false).1,
+            output: None,
+            start_log_offset: 0,
         };
         let mut external = sleeper();
         owner

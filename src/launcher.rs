@@ -22,6 +22,9 @@ mod macos;
 pub mod windows;
 
 #[cfg(any(test, target_os = "macos", windows))]
+mod supervisor;
+
+#[cfg(any(test, target_os = "macos", windows))]
 mod startup {
     use crate::owner::{Owner, startup_probe};
     use shellboy::protocol::{ApiError, ErrorCode, PROTOCOL_VERSION};
