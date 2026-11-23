@@ -20,3 +20,12 @@ Styles: style.css in this directory
 
 
 The management list container has no inline padding. Rows fill the section-band width and own their shared-token insets, with the trailing action aligned to the band chevron; title/depth content keeps its inset. A top-level row's checkbox fills the same leading column as the ThreadGroup band checkbox, so the two share one left edge; depth indents in `space-16` steps from there. At phone width the title link is at least `size-touch` high. References: shadcn/ui SidebarMenuAction (`showOnHover`) and Orca sidebar rows.
+
+## Tag badge
+
+- **Use for:** An owner tag on a row (`.tag-badge`, shared), shown exactly as stored, lowercase included.
+- **Do not use for:** Use Chip's removable variant inside FilterChips when the tag can be removed, and ButtonGroup or Button for anything you can press.
+- **Why:** Design system v2: a tag is non-interactive owner data, so it uses the compact count-chip size, the mono face and neutral colour instead of a control-like box.
+- **Source:** [shadcn/ui Badge](https://ui.shadcn.com/docs/components/badge), [Material 3 Chips (input chips for removable tags)](https://m3.material.io/components/chips/overview)
+
+`size-chip-height` high, `space-chip-inline` padding, `type-code` face at `size-chip-text`, `muted` text, `line` border, `radius-s`. Badges sit `space-4` apart and `space-4` from the title.

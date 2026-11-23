@@ -1039,7 +1039,7 @@ describe("Threads", () => {
     await go(() => show(0).click());
     expect(made.t.calls("thread.list").at(-1)!.args).toMatchObject({ tags: ["bug hunt"] });
     expect(el.querySelectorAll(".org-rows [data-thread-row]").length).toBe(2);
-    expect([...el.querySelectorAll(".select-row-root .select-row-tag")].map(text)).toContain("customer A");
+    expect([...el.querySelectorAll(".select-row-root .tag-badge")].map(text)).toContain("customer A");
     act(() => el.querySelector<HTMLInputElement>(".select-row-root input")!.click());
     const tagsButton = [...el.querySelectorAll<HTMLButtonElement>(".selbar button")].find((b) => text(b) === "Tags")!;
     act(() => tagsButton.click());

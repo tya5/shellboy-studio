@@ -5,3 +5,7 @@
 .notice.wait{border-color:var(--wait);background:var(--wait-bg)}
 .notice code{font:var(--type-code)}
 .notice code{font:var(--type-code);font-size:var(--size-caption)}
+.notice.notice-banner{flex-wrap:nowrap;gap:var(--space-8);padding:var(--space-4) var(--space-12);border:0;border-bottom:1px solid var(--line);border-radius:0;color:var(--fg);font:var(--type-caption)}
+.notice.notice-banner>.i{color:var(--wait)}
+.notice.notice-banner.bad>.i{color:var(--bad)}
+.notice.notice-banner .notice-text{flex:1 1 auto}

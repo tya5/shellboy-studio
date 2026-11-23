@@ -9,7 +9,6 @@
 .select-row-root.select-row-drop{box-shadow:inset 0 0 0 2px var(--accent)}
 .select-row-root[draggable=true]{cursor:grab}
 .select-row-tags{display:flex;flex-wrap:wrap;gap:var(--space-4);margin:0;padding:0;list-style:none}
-.select-row-tag{padding:0 var(--space-8);border:1px solid var(--line-strong);border-radius:var(--radius-s);background:var(--inset);color:var(--fg);font:var(--type-caption);overflow-wrap:anywhere}
 .srow-title{display:flex;align-items:center;gap:var(--space-8);min-width:0}
 .srow-status{flex:none;display:inline-grid;place-items:center;width:18px}
 .srow-text{flex:1;min-width:0;padding:var(--space-4) 0;overflow-wrap:anywhere}
