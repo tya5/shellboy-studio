@@ -7,5 +7,5 @@
 .card .excerpt{margin:0;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;color:var(--muted);font:var(--type-label);overflow-wrap:anywhere}
 .card .excerpt code{font:var(--type-code)}
 .card .foot{margin-top:auto;display:flex;align-items:center;gap:var(--space-8);flex-wrap:wrap;padding-top:var(--space-8);border-top:1px solid var(--line);font:var(--type-caption);color:var(--muted)}
-.card .foot .go{margin-left:auto}
+.card .foot .go{margin-left:auto;display:inline-flex;align-items:center;gap:var(--space-8)}
 .card .foot .rel{flex:1 1 100%;display:flex;align-items:flex-start;gap:var(--space-4);min-width:0;overflow-wrap:anywhere}

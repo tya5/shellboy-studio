@@ -7,6 +7,8 @@
 
 An explicit review step shows the exact request and working folder before a Thread is created. Inputs remain editable; changing either requires reviewing again. The caller owns submission and error state.
 
+Design system v2: Review and Create are the form's one primary action at each step; templates and the manual-folder switch are ghost. The text areas start four rows high.
+
 Styles are colocated in `system/components/AppRequest/style.css`.
 
 Styles: style.css in this directory

@@ -9,15 +9,15 @@ export function AppRequest({ title, requestLabel, cwdLabel, reviewLabel, preview
   const [review, setReview] = useState(false);
   const full = `${prompt}\n\n${request}`;
   return <section class="sect app-request"><h3>{title}</h3>
-    <label>{requestLabel}<textarea value={request} onInput={(e) => { setRequest(e.currentTarget.value); setReview(false); }} /></label>
-    <div>{templatesLabel}<div class="app-templates">{templates.map((item) => <Button key={item.id} onClick={() => { setRequest(item.draft); setReview(false); }}>{item.title}</Button>)}</div></div>
+    <label>{requestLabel}<textarea rows={4} value={request} onInput={(e) => { setRequest(e.currentTarget.value); setReview(false); }} /></label>
+    <div>{templatesLabel}<div class="app-templates">{templates.map((item) => <Button key={item.id} variant="ghost" onClick={() => { setRequest(item.draft); setReview(false); }}>{item.title}</Button>)}</div></div>
     <fieldset><legend>{cwdLabel}</legend>
       <label>{filterLabel}<input value={filter} onInput={(e) => setFilter(e.currentTarget.value)} /></label>
       <label>{listLabel}<select value={manual ? "" : cwd} onChange={(e) => { setCwd(e.currentTarget.value); setManual(false); setReview(false); }}><option value="">{listLabel}</option>{[...new Set([...(defaultCwd ? [defaultCwd] : []), ...folders])].filter((folder) => folder.toLowerCase().includes(filter.toLowerCase())).map((folder) => <option key={folder} value={folder}>{folder}</option>)}</select></label>
-      <Button onClick={() => { setManual(true); setCwd(""); setReview(false); }}>{manualLabel}</Button>
+      <Button variant="ghost" onClick={() => { setManual(true); setCwd(""); setReview(false); }}>{manualLabel}</Button>
       {manual ? <label>{cwdLabel}<input value={cwd} onInput={(e) => { setCwd(e.currentTarget.value); setReview(false); }} /></label> : null}
     </fieldset>
-    {review ? <><label>{previewLabel}<textarea readOnly value={full} /></label><Button disabled={disabled || busy} onClick={() => void onSend(full, cwd)}>{sendLabel}</Button></> : <Button disabled={disabled || busy || !request.trim() || !cwd.trim()} onClick={() => setReview(true)}>{reviewLabel}</Button>}
+    {review ? <><label>{previewLabel}<textarea rows={4} readOnly value={full} /></label><Button variant="primary" disabled={disabled || busy} onClick={() => void onSend(full, cwd)}>{sendLabel}</Button></> : <Button variant="primary" disabled={disabled || busy || !request.trim() || !cwd.trim()} onClick={() => setReview(true)}>{reviewLabel}</Button>}
     {error ? <div role="alert">{error}</div> : null}
   </section>;
 }

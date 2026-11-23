@@ -11,7 +11,7 @@ export function AppCard({ title, name, note, href, openLabel, problem, children 
       {problem ? null : children}
       {problem ? null : (
         <div class="foot">
-          <a class="btn link go" href={href}>
+          <a class="nav-link go" href={href}>
             {openLabel}
             <Icon role="app.open" size="small" />
           </a>

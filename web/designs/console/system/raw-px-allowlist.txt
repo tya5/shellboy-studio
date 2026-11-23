@@ -3,15 +3,7 @@
 # The check (check-raw-px.mjs, run by npm run check) fails on any value not listed and on any listed value that is gone.
 # Format: <file under system/> <property, or @ for a query prelude> <value>, one line per occurrence.
 
-components/AppRequest/style.css min-height 100px
-components/AppTabs/style.css height 49px
-components/AppTabs/style.css min-height 49px
 components/AppTabs/style.css max-width 240px
-components/AppTabs/style.css box-shadow 2px
-components/AppTabs/style.css width 28px
-components/AppTabs/style.css height 28px
-components/AppTabs/style.css width 36px
-components/AppTabs/style.css height 36px
 components/AppTabs/style.css width 120px
 components/ChoiceList/style.css max-height 288px
 components/ChoiceList/style.css margin 2px

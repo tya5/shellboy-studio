@@ -1,4 +1,5 @@
 import { useState } from "preact/hooks";
+import { Button } from "../Button";
 import { Icon } from "../Icon";
 
 type Tab = { key: string; title: string; href: string; current: boolean; alert?: boolean; closeLabel: string; onClose: () => void; onOpenNamed: (name: string) => void };
@@ -18,7 +19,7 @@ export function AppTabs({ label, allLabel, allHref, allCurrent, tabs, addLabel, 
         <button type="button" class="apptab-add" aria-label={addLabel} onClick={() => { setEditing(editing === t.key ? undefined : t.key); setValue(""); }}><Icon role="tab.add" size="small" /></button>
         {editing === t.key ? <form class="apptab-name" onSubmit={(event) => { event.preventDefault(); if (validName(value)) { t.onOpenNamed(value); setEditing(undefined); setValue(""); } }}>
           <input autoFocus aria-label={nameLabel} value={value} onInput={(event) => setValue(event.currentTarget.value)} />
-          <button class="btn" type="submit" disabled={!validName(value)}>{openLabel}</button>
+          <Button variant="ghost" type="submit" disabled={!validName(value)}>{openLabel}</Button>
         </form> : null}
       </div>)}
     </div>

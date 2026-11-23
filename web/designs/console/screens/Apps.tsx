@@ -19,8 +19,8 @@ function Alerts({ model, tab }: { model: AppModel; tab: OpenApp }) {
           title={t("apps.errors", { n: count })}
           actions={
             <>
-              {tab.thread && tab.threadState !== "missing" ? <Button disabled={tab.send.kind === "sending"} onClick={() => void apps.sendErrors(tab.name, tab.instance)}>{t("apps.sendErrors")}</Button> : null}
-              <Button onClick={() => void apps.reload(tab.name, tab.instance)}>{t("apps.reopen")}</Button>
+              {tab.thread && tab.threadState !== "missing" ? <Button variant="ghost" disabled={tab.send.kind === "sending"} onClick={() => void apps.sendErrors(tab.name, tab.instance)}>{t("apps.sendErrors")}</Button> : null}
+              <Button variant="ghost" onClick={() => void apps.reload(tab.name, tab.instance)}>{t("apps.reopen")}</Button>
               <Button variant="ghost" onClick={() => apps.dismissErrors(tab.name, tab.instance)}>{t("apps.dismiss")}</Button>
             </>
           }
@@ -41,7 +41,7 @@ function AppNames({ model, name }: { model: AppModel; name: string }) {
   const apps = model.apps;
   useEffect(() => { void apps.loadInstances(name); }, [apps, name]);
   const names = apps.instances.value[name] ?? [];
-  return names.length ? <div class="app-names">{names.map((value) => <a key={value} href={formatRoute({ view: "apps", appName: name, appInstance: value })}>{value}</a>)}</div> : null;
+  return names.length ? <div class="app-names">{names.map((value) => <a key={value} class="nav-link" href={formatRoute({ view: "apps", appName: name, appInstance: value })}>{value}</a>)}</div> : null;
 }
 
 function AppList({ context }: { context: DesignContext }) {
@@ -64,14 +64,14 @@ function AppList({ context }: { context: DesignContext }) {
     <div class="apps-list">
       <div class="head">
         <h1>{t("view.apps")}</h1>
-        <div class="app-list-actions"><Button onClick={() => { setDraft(""); setCreating(!creating); }}>{t("apps.new")}</Button><Button disabled={list.loading} onClick={() => void apps.refresh()}>{t("common.refresh")}</Button></div>
+        <div class="app-list-actions"><Button variant="ghost" disabled={list.loading} onClick={() => void apps.refresh()}>{t("common.refresh")}</Button><Button variant="primary" aria-pressed={creating} onClick={() => { setDraft(""); setCreating(!creating); }}>{t("apps.new")}</Button></div>
       </div>
       {creating ? <AppRequest key={draft} title={t("apps.createTitle")} requestLabel={t("apps.request")} cwdLabel={t("apps.cwd")} reviewLabel={t("apps.preview")} previewLabel={t("apps.previewLabel")} sendLabel={t("apps.createSend")} prompt={t("apps.prompt")} busy={model.appRequestState.value.kind === "sending"} disabled={model.connection.value !== "connected" || model.appRequestState.value.kind === "unconfirmed"} error={model.appRequestState.value.message ? t("apps.createError", { message: model.appRequestState.value.message }) : undefined} folders={model.appFolders.value} defaultCwd={model.selectedRow.value?.summary.cwd ?? ""} templates={templates} templatesLabel={t("apps.templates")} filterLabel={t("apps.folderFilter")} listLabel={t("apps.folderList")} manualLabel={t("apps.folderManual")} initialDraft={draft} onSend={(text, cwd) => model.createAppRequest(text, cwd)} /> : null}
       {creating && apps.folders.value.truncated ? <Notice>{t("apps.folderTruncated")}</Notice> : null}
       {creating && apps.folders.value.error ? <Notice tone="bad">{t("apps.folderReadError", { message: apps.folders.value.error })}</Notice> : null}
       {failed ? <Notice tone="bad">{t("apps.openFailed", { name: failed.name, message: failed.message })}</Notice> : null}
       {list.error ? <Notice tone="bad">{t("common.readError", { message: list.error.message })}</Notice> : null}
-      {list.loaded && list.apps.length === 0 ? <><EmptyState role="empty.apps" title={t("apps.empty")} body={t("apps.emptyBody")} /><div>{t("apps.templates")}<div class="app-templates">{templates.map((item) => <Button key={item.id} onClick={() => { setDraft(item.draft); setCreating(true); }}>{item.title}</Button>)}</div></div></> : null}
+      {list.loaded && list.apps.length === 0 ? <><EmptyState role="empty.apps" title={t("apps.empty")} body={t("apps.emptyBody")} /><div>{t("apps.templates")}<div class="app-templates">{templates.map((item) => <Button key={item.id} variant="ghost" onClick={() => { setDraft(item.draft); setCreating(true); }}>{item.title}</Button>)}</div></div></> : null}
       {list.apps.length > 0 ? (
         <div class="grid">
           {list.apps.map((a) => (
@@ -162,7 +162,7 @@ export function AppsHost({ context }: { context: DesignContext }) {
           }))}
       />
       {open && apps.openError.value?.name === open.name ? <Notice tone="bad">{t("apps.openFailed", { name: open.name, message: apps.openError.value.message })}</Notice> : null}
-      {open ? <div class="apps-toolbar"><strong>{open.instance ? `${open.title}: ${open.instance}` : open.title}</strong><Button label={t("apps.reloadTab", { name: open.title })} onClick={() => void apps.reload(open.name, open.instance)}>{t("apps.reloadTab", { name: open.title })}</Button></div> : null}
+      {open ? <div class="apps-toolbar"><strong>{open.instance ? `${open.title}: ${open.instance}` : open.title}</strong><Button variant="ghost" label={t("apps.reloadTab", { name: open.title })} onClick={() => void apps.reload(open.name, open.instance)}>{t("apps.reloadTab", { name: open.title })}</Button></div> : null}
       {open ? <Alerts model={model} tab={open} /> : null}
       {current === undefined || !open ? <AppList context={context} /> : null}
       {tabs.map((tab) => (
