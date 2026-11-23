@@ -56,7 +56,6 @@ shared/navigation.css min-width 20px
 shared/navigation.css padding 6px
 shared/navigation.css border-radius 10px
 shared/screen-layout.css grid-template-columns 280px
-shared/screen-layout.css width 120px
 shared/selection.css width 15px
 shared/selection.css height 15px
 shared/setup.css max-width 760px

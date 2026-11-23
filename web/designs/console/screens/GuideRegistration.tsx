@@ -20,8 +20,8 @@ export function GuideRegistrationView({ context, collapsed = false }: { context:
   const [path, setPath] = useState("");
   return <>
     {state.supported ? <Section settingId={files?.id} title={t("guide.files")}>
-      <ul class="guide-file-list">{model.guideRegistration.files.value.map((file) => <li class="work-row" key={file}><code class="mono">{file}</code><Button variant="ghost" disabled={file.endsWith("/studio/agent-pointer.md")} onClick={() => void model.guideRegistration.edit(file, false)}>{t("guide.removeFile")}</Button></li>)}</ul>
-      <div class="work-row"><Field label={t("guide.filePath")} value={path} onInput={(e) => setPath(e.currentTarget.value)} /><Button variant="ghost" disabled={!path.trim()} onClick={() => { void model.guideRegistration.edit(path.trim(), true); setPath(""); }}>{t("guide.addFile")}</Button></div>
+      <ul class="guide-file-list">{model.guideRegistration.files.value.map((file) => <li key={file}><code class="mono">{file}</code><Button variant="ghost" disabled={file.endsWith("/studio/agent-pointer.md")} onClick={() => void model.guideRegistration.edit(file, false)}>{t("guide.removeFile")}</Button></li>)}</ul>
+      <div class="guide-file-add"><Field label={t("guide.filePath")} value={path} onInput={(e) => setPath(e.currentTarget.value)} /><Button variant="ghost" disabled={!path.trim()} onClick={() => { void model.guideRegistration.edit(path.trim(), true); setPath(""); }}>{t("guide.addFile")}</Button></div>
     </Section> : null}
     {state.supported ? <Section settingId={registration?.id} title={t("guide.registration")}>
       <Button variant="ghost" aria-pressed={!prefs.value.guideOptOut} disabled={state.busy} onClick={() => setPrefs({ guideOptOut: !prefs.value.guideOptOut })}>{t(prefs.value.guideOptOut ? "guide.enable" : "guide.disable")}</Button>

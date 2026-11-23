@@ -46,7 +46,7 @@ Consumers use semantic `IconRole` names only. Glyph names, paths, and the role-t
 | `settings.compaction` | Identify the Compaction settings section. | `retry` |
 | `settings.storage` | Identify the Storage settings section. | `file` |
 | `settings.index` | Identify the Index settings section. | `database` |
-| `settings.agent` | Identify the Agent settings section. | `file` |
+| `settings.agent` | Identify the Guide registration section. | `file` |
 | `settings.studio` | Identify the Studio settings section. | `gear` |
 | `analytics.overview` | Identify Analytics overview. | `chart` |
 | `analytics.tokens` | Identify token-usage analytics. | `layers` |

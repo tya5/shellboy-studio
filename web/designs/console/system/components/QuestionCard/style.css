@@ -2,5 +2,5 @@
 .q .lab{display:flex;align-items:center;gap:var(--space-8);font:var(--type-caption);font-weight:600;color:var(--wait)}
 .q .question-card-text{font:var(--type-heading);font-weight:500;overflow-wrap:anywhere}
 .q label{font:var(--type-caption);color:var(--muted)}
-.q textarea{width:100%;min-height:calc(2 * var(--size-control));padding:var(--space-8);border:1px solid var(--line-strong);border-radius:var(--radius-s);background:var(--inset);color:var(--fg);resize:vertical}
+.q textarea{width:100%;min-height:var(--size-question-answer-min);padding:var(--space-8);border:1px solid var(--line-strong);border-radius:var(--radius-s);background:var(--inset);color:var(--fg);resize:vertical}
 .q .acts{display:flex;justify-content:flex-end;flex-wrap:wrap;gap:var(--space-8)}

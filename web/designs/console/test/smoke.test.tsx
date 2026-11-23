@@ -1221,6 +1221,49 @@ describe("Threads", () => {
     expect(text(el)).toContain("Applies after the owner restarts");
   });
 
+  it("mounts guide paths in one list with row actions and one labelled add row", async () => {
+    const pointer = "/fixture/studio/agent-pointer.md";
+    const guide = "/fixture/team-guide.md";
+    const file = { valid: true, content_hash: "guides", values: { extra_instructions: [guide, pointer] } };
+    const { model, t, db } = await fixtureModel({ route: "settings", section: "agent", configure(db) {
+      const answer = db.answer;
+      db.answer = call => call.command === "config.get" ? { ok: true, result: { file } } : answer(call);
+    } });
+    const el = draw(model);
+    await act(async () => { model.guideRegistration.update("/fixture", true); await settle(t, db); });
+    const section = el.querySelector('[data-setting-id="guide.files"]')!;
+    const list = section.querySelector("ul.guide-file-list")!;
+    expect([...list.children].map(row => row.querySelector("code")?.textContent)).toEqual([guide, pointer]);
+    const removes = [...list.querySelectorAll<HTMLButtonElement>("li > button.btn-ghost")];
+    expect(removes.map(button => [text(button), button.disabled])).toEqual([["Remove file", false], ["Remove file", true]]);
+    const addRow = section.querySelector(".guide-file-add")!;
+    const input = addRow.querySelector("input")!;
+    const add = addRow.querySelector<HTMLButtonElement>(":scope > button.btn-ghost")!;
+    expect(addRow.querySelector("label[for]")?.getAttribute("for")).toBe(input.id);
+    expect(add.disabled).toBe(true);
+    act(() => { input.value = "/fixture/new.md"; input.dispatchEvent(new Event("input", { bubbles: true })); });
+    expect(add.disabled).toBe(false);
+    expect(section.querySelector(".work-row")).toBeNull();
+    expect(t.calls("config.set")).toHaveLength(0);
+  });
+
+  it("mounts Content to index as a named multi-choice fieldset", async () => {
+    const values = { indexing: { auto_kinds: ["user", "summary"] } };
+    const file = { valid: true, content_hash: "index-kinds", present: true, values };
+    const { model, t, db } = await fixtureModel({ route: "settings", section: "index", capabilities: ["config.edit"], configure(db) {
+      const answer = db.answer;
+      db.answer = call => call.command === "config.get" ? { ok: true, result: { loaded: file, file } } : answer(call);
+    } });
+    const el = draw(model);
+    await act(async () => { await settle(t, db); });
+    const group = el.querySelector<HTMLFieldSetElement>("fieldset.settings-checks")!;
+    expect(text(group.querySelector("legend")!)).toBe("Content to index");
+    expect(group.disabled).toBe(false);
+    const choices = [...group.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')];
+    expect(choices.map(choice => choice.checked)).toEqual([true, true, false, false, false, false]);
+    expect(t.calls("config.set")).toHaveLength(0);
+  });
+
   it("Settings groups sections and filters navigation by names and descriptions", async () => {
     const made = await fixtureModel({ route: "settings", section: "general" });
     const el = draw(made.model);
