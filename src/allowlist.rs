@@ -113,7 +113,15 @@ pub fn access(command: &Command) -> Access {
         | Command::IndexProbe(..)
         | Command::StorageCollect(..) => Access::Denied,
         #[cfg(feature = "next-shellboy")]
-        Command::IndexShrink(..) | Command::IndexRemove(..) => Access::Denied,
+        Command::IndexShrink(..)
+        | Command::IndexRemove(..)
+        | Command::ThreadImport(..)
+        | Command::HistoryExport(..)
+        | Command::ServiceAdd(..)
+        | Command::ServiceList(..)
+        | Command::ServiceStart(..)
+        | Command::ServiceStop(..)
+        | Command::ServiceRemove(..) => Access::Denied,
     }
 }
 
