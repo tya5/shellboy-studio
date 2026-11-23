@@ -76,7 +76,24 @@
   --size-range-span: 6px;
   --size-range-end-width: 3px;
   --size-range-end-height: 10px;
+  /* Minimum QuestionCard reply textarea height in Inbox and Conversation. */
   --size-question-answer-min: 64px;
+  /* Maximum width of an Apps tab. */
+  --size-app-tab-max: 240px;
+  /* Width of the Apps instance-name input. */
+  --size-app-instance-name: 120px;
+  /* Right inset reserved for the Copy button in message code blocks. */
+  --size-code-copy-room: 72px;
+  /* Maximum width of the WorkSheet. */
+  --size-work-sheet-width: 600px;
+  /* Maximum height of the scrollable work log. */
+  --size-log-max-height: 420px;
+  /* Maximum width of the setup column. */
+  --size-setup-column-width: 760px;
+  /* Minimum height of the SummaryStrip tool group header; WorkElementRow and step summaries use the separate 40px tool row token. */
+  --size-tool-group-summary-min: 38px;
+  /* Minimum height of WorkElementRow lines and step summaries; the SummaryStrip tool group header keeps its separate 38px token. */
+  --size-tool-row-min: 40px;
   --size-bar-label-compact: 80px;
   --size-section-nav: 230px;
   --size-fact-label-min: 120px;
@@ -187,7 +204,24 @@
   --size-range-span: 6px;
   --size-range-end-width: 3px;
   --size-range-end-height: 10px;
+  /* Minimum QuestionCard reply textarea height in Inbox and Conversation. */
   --size-question-answer-min: 64px;
+  /* Maximum width of an Apps tab. */
+  --size-app-tab-max: 240px;
+  /* Width of the Apps instance-name input. */
+  --size-app-instance-name: 120px;
+  /* Right inset reserved for the Copy button in message code blocks. */
+  --size-code-copy-room: 72px;
+  /* Maximum width of the WorkSheet. */
+  --size-work-sheet-width: 600px;
+  /* Maximum height of the scrollable work log. */
+  --size-log-max-height: 420px;
+  /* Maximum width of the setup column. */
+  --size-setup-column-width: 760px;
+  /* Minimum height of the SummaryStrip tool group header; WorkElementRow and step summaries use the separate 40px tool row token. */
+  --size-tool-group-summary-min: 38px;
+  /* Minimum height of WorkElementRow lines and step summaries; the SummaryStrip tool group header keeps its separate 38px token. */
+  --size-tool-row-min: 40px;
   --size-bar-label-compact: 80px;
   --size-section-nav: 230px;
   --size-fact-label-min: 120px;

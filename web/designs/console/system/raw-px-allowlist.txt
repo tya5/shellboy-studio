@@ -3,24 +3,19 @@
 # The check (check-raw-px.mjs, run by npm run check) fails on any value not listed and on any listed value that is gone.
 # Format: <file under system/> <property, or @ for a query prelude> <value>, one line per occurrence.
 
-components/AppTabs/style.css max-width 240px
-components/AppTabs/style.css width 120px
 components/EmptyState/style.css width 128px
 components/EmptyState/style.css height 128px
 components/KeyValue/style.css grid-template-columns 112px
 components/LoadingRows/style.css height 44px
 components/LoadingRows/style.css margin-left 40px
 components/LoadingRows/style.css height 64px
-components/Message/style.css padding-right 72px
 components/Notice/style.css flex 240px
 components/SelectRow/style.css box-shadow 2px
 components/SelectRow/style.css width 18px
 components/SelectionBar/style.css flex 200px
 components/StatusMark/style.css stroke-width 1.5px
-components/SummaryStrip/style.css min-height 38px
 components/ThreadItem/style.css min-width 18px
 components/ThreadItem/style.css padding 5px
-components/WorkElementRow/style.css min-height 40px
 layout.css min-height 56px
 layout.css box-shadow 2px
 layout.css width 200px
@@ -28,7 +23,6 @@ layout.css top 6px
 layout.css left 8px
 layout.css width 320px
 layout.css width 320px
-layout.css width 600px
 shared/controls.css min-height 24px
 shared/navigation.css min-height 36px
 shared/navigation.css min-width 20px
@@ -37,12 +31,9 @@ shared/navigation.css border-radius 10px
 shared/screen-layout.css grid-template-columns 280px
 shared/selection.css width 15px
 shared/selection.css height 15px
-shared/setup.css max-width 760px
 shared/status.css width 14px
 shared/status.css height 14px
 shared/status.css border-radius 3px
 shared/status.css border-radius 2px
 shared/status.css width 24px
 shared/status.css height 24px
-shared/work.css max-height 420px
-shared/work.css min-height 40px

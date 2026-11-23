@@ -225,6 +225,6 @@ it("Work container owns the v0.1 separator while inner tool rows retain the flat
 });
 it('common Work row uses existing DS metrics, one borderless chrome and touch exception',()=>{
  const css=readFileSync(join(system,'components/WorkElementRow/style.css'),'utf8');
- for(const rule of ['border:0','border-radius:0','gap:var(--space-8)','padding:var(--space-4) var(--space-12)','min-height:40px','font:var(--type-code)','inline-size:var(--size-icon)','justify-content:center','text-overflow:ellipsis','min-height:var(--size-touch)'])expect(css).toContain(rule);
+ for(const rule of ['border:0','border-radius:0','gap:var(--space-8)','padding:var(--space-4) var(--space-12)','min-height:var(--size-tool-row-min)','font:var(--type-code)','inline-size:var(--size-icon)','justify-content:center','text-overflow:ellipsis','min-height:var(--size-touch)'])expect(css).toContain(rule);
  expect(css).not.toMatch(/reasoning|notification|problem|tool-kind/);
 });

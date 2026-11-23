@@ -1,4 +1,4 @@
-.setup{display:flex;flex-direction:column;gap:var(--space-16);max-width:760px;width:100%;margin:0}
+.setup{display:flex;flex-direction:column;gap:var(--space-16);max-width:var(--size-setup-column-width);width:100%;margin:0}
 .check{display:flex;align-items:flex-start;gap:var(--space-8);min-height:var(--size-control);cursor:pointer;font:var(--type-label)}
 .check input{margin-top:var(--space-4);accent-color:var(--accent);flex:none}
 .check-text{display:flex;flex-direction:column;gap:var(--space-4);min-width:0}
