@@ -28,7 +28,7 @@ const BY_ACTIVITY: Record<string, ActivityStatus> = {
   completed: "completed",
 };
 
-/** The unmerged activity label/artwork in the conversation footer is not a Thread mark. */
+/** The active conversation footer uses unmerged activity wording and artwork. */
 export function activityStatus(activity: string | undefined): ActivityStatus | undefined {
   return activity !== undefined && Object.hasOwn(BY_ACTIVITY, activity) ? BY_ACTIVITY[activity] : undefined;
 }
@@ -48,7 +48,7 @@ export function isThreadRecovery(status: StatusKey | undefined, activity: string
 }
 
 export const statusLabel = (t: Translate, status: StatusKey): string => t(status === "idle" ? "status.quiet" : `status.${status}`);
-export const activityStatusLabel = (t: Translate, status: ActivityStatus): string => t(`status.${status}`);
+export const activityStatusLabel = (t: Translate, status: Exclude<ActivityStatus, "idle">): string => t(`status.${status}`);
 
 /** Saved native shell state plus exit code. Exit code 0 is the only exit that counts as completed. */
 export function statusOfShell(state: string | undefined, exitCode: number | null | undefined): ShellStatusKey | undefined {

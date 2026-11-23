@@ -24,15 +24,28 @@ try{
    await call('Page.navigate',{url});
    const frame=await until(()=>evaluate(`(()=>{
     if(location.href!==${JSON.stringify(url)})return;
-    const image=document.querySelector('.conversation-status .character-status');
-    if(!image||(image.tagName==='IMG'&&(!image.complete||!image.naturalWidth))||matchMedia("(prefers-reduced-motion: reduce)").matches!==${reduced})return;
-    const footer=image.closest('.conversation-status'), rect=image.getBoundingClientRect(), bar=footer.getBoundingClientRect();
+    const footer=document.querySelector('.conversation-status');
+    if(!footer||matchMedia("(prefers-reduced-motion: reduce)").matches!==${reduced})return;
+    const image=footer.querySelector('.character-status');
+    const idle=footer.querySelector('[data-status="idle"]');
+    const bar=footer.getBoundingClientRect();
+    if(${state==='completed'}) {
+     if(!idle)return;
+     return {idle:idle.getAttribute('aria-label'),tooltip:idle.title,art:!!image,text:footer.textContent.trim(),bar:bar.height};
+    }
+    if(!image||(image.tagName==='IMG'&&(!image.complete||!image.naturalWidth)))return;
+    const rect=image.getBoundingClientRect();
     return {running:image.hasAttribute('data-running'),dots:image.querySelectorAll('circle').length,x:rect.x,y:rect.y,width:rect.width,height:rect.height,bar:bar.height,
      text:footer.textContent,strip:document.querySelector('.work-strip')?.textContent,
      fixedFields:[...footer.querySelectorAll('span:not([data-status-description])')].every(node=>node.getBoundingClientRect().right<=bar.right && node.scrollWidth<=node.clientWidth+1)};
    })()`));
+   if(state==='completed'){
+    assert.deepEqual(frame,{idle:'No activity',tooltip:'No activity',art:false,text:'',bar:40});
+    console.log(JSON.stringify({width,theme,state,footerHeight:frame.bar,idle:frame.idle}));
+    continue;
+   }
    assert.equal(frame.running,state==='running');
-   if(state!=='completed')assert.equal(frame.dots,3);
+   assert.equal(frame.dots,3);
    assert.equal(frame.width,24);assert.equal(frame.height,24);assert.equal(frame.bar,40);
    assert(frame.fixedFields,`${width}/${theme}/${state}: clipped fact`);
    if(state==='running'){
@@ -68,7 +81,7 @@ try{
    const footer=nodes[0], style=getComputedStyle(footer);
    return {same:footer===life.footer,connected:footer.isConnected,removed:life.removed,count:nodes.length,
     height:footer.getBoundingClientRect().height,baseline:life.height,nowrap:style.whiteSpace,flexWrap:style.flexWrap,
-    text:footer.textContent.trim(),art:!!footer.querySelector('.character-status')};
+    text:footer.textContent.trim(),art:!!footer.querySelector('.character-status'),idle:footer.querySelector('[data-status=idle]')?.getAttribute('aria-label')};
   })()`);
   const verified=[];
   const check=async(stage, expectedText)=>{
@@ -78,9 +91,10 @@ try{
    assert.equal(fact.nowrap,'nowrap');assert.equal(fact.flexWrap,'nowrap');
    if(expectedText==='') {assert.equal(fact.text,'');assert.equal(fact.art,false);}
    else {assert(fact.text.includes(expectedText),`${width}/${stage}: ${fact.text}`);assert(fact.art);}
+   assert.equal(fact.idle,stage==='completed'?'No activity':undefined);
    verified.push(stage);
   };
-  for (const [state,text] of [['not_started',''],['running','Running tools'],['completed','Completed'],['not_started','']]) {
+  for (const [state,text] of [['not_started',''],['running','Running tools'],['completed',''],['not_started','']]) {
    assert.equal(await evaluate(`publishFooterState('${state}')`),state);
    await check(state,text);
   }

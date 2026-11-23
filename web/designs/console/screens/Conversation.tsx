@@ -292,8 +292,6 @@ export function statusCharacter(status: string): string {
   switch (status) {
     case "awaiting": return "ask";
     case "recovery": case "failed": return "error";
-    case "completed": return "complete-check";
-    case "stopped": case "idle": return "rest";
     case "running": case "waiting": return "thinking";
     default: return "neutral";
   }
