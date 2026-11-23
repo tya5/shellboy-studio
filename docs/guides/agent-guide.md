@@ -20,14 +20,12 @@ conversations or API credentials into app files, logs, screenshots or Git.
 The bridge talks to the Shellboy owner; apps must use their documented APIs,
 not the owner database or data-directory internals.
 
-## Protocol 5 compatibility
+## Protocol compatibility
 
-The v0.1.0 candidate follows Core's protocol 5 / schema 39 contract (#276).
-There is no protocol-4 downgrade or ownership alias. Use the exact validated
-Core release pair; the published Core tag, lockfile and installed binaries must
-be checked separately before release. This source change does not establish that
-pin. Never restart a working owner or change its data to resolve a mismatch
-without explicit approval.
+Studio v0.4.0 pairs with Core v0.15.0 using protocol 18; use the exact pairing
+in the [release notes](../release-v0.4.0.md). There is no protocol downgrade or
+ownership alias. Never restart a working owner or change its data to resolve a
+version mismatch without explicit approval.
 
 Runs are independent: no Run owns another Run and organizational Thread parents
 are not Run owners. Shell ownership remains unchanged. Studio reads bounded directional `message.list` pages and uses
