@@ -12,9 +12,16 @@ const ownSendFixture = params.get('view') === 'own-send';
 const footerFixture = params.get('view') === 'footer-lifecycle';
 const panelTabsFixture = params.get('view') === 'panel-tabs';
 const sectionGeometryFixture = params.get('view') === 'section-geometry';
-const fixtureOptions = sectionGeometryFixture ? { route: 'threads' as const, capabilities: ['history.window', 'thread.tags', 'thread.cwds'] } : footerFixture ? { route: 'conversation' as const, threadId: 'lead' } : ownSendFixture ? { route: 'conversation' as const, threadId: 'lead', capabilities: ['history.window'] } : panelTabsFixture ? { route: 'conversation' as const, threadId: 'lead', lang: fixtureLang } : params.get('view') === 'memory' ? { route: 'analytics' as const, section: 'memory' as const, lang: fixtureLang } : params.get('view') === 'sidebar' ? { lang: fixtureLang, capabilities: ['thread.tags', 'thread.cwds', 'history.window'] } : {};
+const fixtureOptions = sectionGeometryFixture ? { route: 'threads' as const, capabilities: ['history.window', 'thread.tags', 'thread.cwds'] } : footerFixture ? { route: 'conversation' as const, threadId: 'lead' } : ownSendFixture ? { route: 'conversation' as const, threadId: 'lead', capabilities: ['history.window'] } : panelTabsFixture ? { route: 'conversation' as const, threadId: 'lead', lang: fixtureLang } : params.get('view') === 'memory' ? { route: 'analytics' as const, section: 'memory' as const, lang: fixtureLang } : params.get('view') === 'sidebar' ? { lang: fixtureLang, ...(params.get('state') === 'running' ? { realPending: true } : {}), capabilities: ['thread.tags', 'thread.cwds', 'history.window'] } : {};
 if (params.get('view') === 'memory') document.documentElement.dataset.memoryFixture = fixtureLang;
 const { model, t, db } = await fixtureModel({ ...fixtureOptions, configure(db) {
+  if (params.get('view') === 'sidebar' && params.get('state') === 'running') {
+    db.threads.lead = { ...db.threads.lead!, title: 'Running — verify indexes' };
+    db.threads.broken = { ...db.threads.broken!, title: 'Error — check endpoint' };
+    db.threads.hold = { ...db.threads.hold!, title: 'Waiting — next review window' };
+    db.threads.done = { ...db.threads.done!, title: 'Completed — inspect storage' };
+    db.replies = [pendingReply('mark-question', 'child', {kind:'name',name:'human'}, 'Review query path?')];
+  }
   if (sectionGeometryFixture) {
     db.threads = {
       lead: summary('lead', { title: 'Geometry lead', cwd: '/fixture/geometry', activity: 'tools' }),

@@ -1,19 +1,13 @@
-// Status meaning, shared by every design. A design may restyle a state, not merge or rename one.
-// The owner's `activity` word is the source; nothing here recomputes lifecycle.
+import type { Translate } from "./i18n";
 
-/**
- * - running: work is in progress
- * - awaiting: a person must answer (only from the pending adapter, never from `activity`)
- * - waiting: paused on something other than a person (a child, a timer)
- * - recovery: stopped on a failure, can be retried
- * - failed, stopped, completed: ended
- * - idle: no Run yet, ready for input
- */
-export type StatusKey = "running" | "awaiting" | "waiting" | "recovery" | "failed" | "stopped" | "completed" | "idle";
+/** Thread marks group owner activities by what needs attention. Awaiting is supplied by the pending adapter. */
+export type StatusKey = "running" | "awaiting" | "error" | "waiting" | "idle";
+export type ShellStatusKey = "running" | "completed" | "failed" | "stopped";
+type ActivityStatus = Exclude<StatusKey, "error"> | ShellStatusKey | "recovery";
 
-export const STATUS_KEYS: readonly StatusKey[] = ["awaiting", "recovery", "failed", "running", "waiting", "stopped", "completed", "idle"];
+export const STATUS_KEYS: readonly StatusKey[] = ["awaiting", "error", "running", "waiting", "idle"];
 
-const BY_ACTIVITY: Record<string, StatusKey> = {
+const BY_ACTIVITY: Record<string, ActivityStatus> = {
   idle: "idle",
   sending: "running",
   reflecting: "running",
@@ -26,6 +20,7 @@ const BY_ACTIVITY: Record<string, StatusKey> = {
   background: "running",
   continuing: "running",
   stopping: "running",
+  // The Run is inside its own shellboy wait (reply, shell end, Thread settling, or time).
   waiting: "waiting",
   recovery: "recovery",
   failed: "failed",
@@ -33,12 +28,30 @@ const BY_ACTIVITY: Record<string, StatusKey> = {
   completed: "completed",
 };
 
-export function statusOfActivity(activity: string | undefined): StatusKey | undefined {
-  return activity === undefined ? undefined : BY_ACTIVITY[activity];
+/** The unmerged activity label/artwork in the conversation footer is not a Thread mark. */
+export function activityStatus(activity: string | undefined): ActivityStatus | undefined {
+  return activity !== undefined && Object.hasOwn(BY_ACTIVITY, activity) ? BY_ACTIVITY[activity] : undefined;
 }
 
+export function statusOfActivity(activity: string | undefined): StatusKey | undefined {
+  const status = activityStatus(activity);
+  switch (status) {
+    case "recovery": case "failed": return "error";
+    case "completed": case "stopped": return "idle";
+    default: return status;
+  }
+}
+
+/** Retry is an owner recovery fact, not a capability implied by an error mark. */
+export function isThreadRecovery(status: StatusKey | undefined, activity: string | undefined): boolean {
+  return status === "error" && activityStatus(activity) === "recovery";
+}
+
+export const statusLabel = (t: Translate, status: StatusKey): string => t(status === "idle" ? "status.quiet" : `status.${status}`);
+export const activityStatusLabel = (t: Translate, status: ActivityStatus): string => t(`status.${status}`);
+
 /** Saved native shell state plus exit code. Exit code 0 is the only exit that counts as completed. */
-export function statusOfShell(state: string | undefined, exitCode: number | null | undefined): StatusKey | undefined {
+export function statusOfShell(state: string | undefined, exitCode: number | null | undefined): ShellStatusKey | undefined {
   switch (state) {
     case "starting":
     case "running":

@@ -23,7 +23,7 @@ export class MonitorSelection {
       if (c.pinnedOnly) { if (pins.has(id)) { this.held.add(id); return true; } return false; }
       const archived = !!row.summary.archived_at;
       if ((c.archive === "exclude" && archived) || (c.archive === "only" && !archived)) return false;
-      const matches = (c.statuses.length === 0 || (row.status !== undefined && c.statuses.includes(row.status))) && (!c.attention || row.status === "recovery" || row.status === "awaiting");
+      const matches = (c.statuses.length === 0 || (row.status !== undefined && c.statuses.includes(row.status))) && (!c.attention || row.status === "error" || row.status === "awaiting");
       if (matches) { this.held.add(id); return true; }
       if (this.held.has(id)) { mismatch.add(id); return true; }
       return false;

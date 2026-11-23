@@ -31,7 +31,7 @@ import { CAPABILITY_CONNECTION_SETUP, ConnectionSetup } from "./setup";
 import { type PendingAdapter } from "./pending";
 import { HumanInbox } from "../../data/src";
 import { analyticsSection, formatRoute, settingsSection, START_ROUTE, type Route, type ViewName } from "./route";
-import { statusOfShell, type StatusKey } from "./status";
+import { isThreadRecovery, statusOfShell, type StatusKey } from "./status";
 import { StableMonitorOrder, countByStatus, threadTree, type StatusCounts, type ThreadRow } from "./threads";
 import { contextFacts, recoveryFacts, usageFacts, type ContextFacts, type RecoveryFacts, type UsageFacts } from "./usage";
 
@@ -555,9 +555,9 @@ export class AppModel {
       return branchRowMarks(items, materializeHistoryPresentation(items, this.shells.value, w.acceptedView.peek().revision ?? 0).rows, this.marks.value);
     });
     this.context = computed(() => contextFacts(this.details.value));
-    this.recovery = computed(() => (this.selectedRow.value?.status === "recovery" ? recoveryFacts(this.details.value) : undefined));
+    this.recovery = computed(() => (isThreadRecovery(this.selectedRow.value?.status, this.selectedRow.value?.summary.activity) ? recoveryFacts(this.details.value) : undefined));
     this.canStop = computed(() => this.details.value?.run_id !== undefined);
-    this.canRetry = computed(() => this.details.value?.run_id !== undefined && this.selectedRow.value?.status === "recovery");
+    this.canRetry = computed(() => this.details.value?.run_id !== undefined && isThreadRecovery(this.selectedRow.value?.status, this.selectedRow.value?.summary.activity));
     this.selectedStep = computed(() => {
       const id = this.selectedStepId.value;
       if (!id) return undefined;

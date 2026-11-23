@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
-import { activityLabel, formatAge, formatDuration, formatRoute, parseTime, TilePreviews, statusLabel, STATUS_KEYS, type AppModel, type DesignContext, type ThreadRow } from "../../../ui-core/src";
+import { activityLabel, formatAge, formatDuration, formatRoute, isThreadRecovery, parseTime, TilePreviews, statusLabel, STATUS_KEYS, type AppModel, type DesignContext, type ThreadRow } from "../../../ui-core/src";
 import { Button, ButtonGroup, Chip, EmptyState, Field, Icon, StatusMark, ThreadCard, MonitorTile, MonitorPopover } from "../system/components";
 
 function Card({ model, row, pinned, togglePin, outOfFilter }: { model: AppModel; row: ThreadRow; pinned: boolean; togglePin: () => void; outOfFilter: boolean }) {
   const t = model.t.value;
   const s = row.summary;
-  const tone = row.status === "awaiting" ? "need" : row.status === "recovery" ? "err" : row.childCount > 0 ? "lead" : undefined;
+  const tone = row.status === "awaiting" ? "need" : row.status === "error" ? "err" : row.childCount > 0 ? "lead" : undefined;
   const age = formatAge(s.updated_at, model.coarseNow.value);
   return (
     <ThreadCard
@@ -28,7 +28,7 @@ function Card({ model, row, pinned, togglePin, outOfFilter }: { model: AppModel;
               <span>{t("monitor.parent", { title: row.parentTitle })}</span>
             </span>
           ) : null}
-          {row.status === "recovery" ? (
+          {isThreadRecovery(row.status, s.activity) ? (
             <Button variant="warn" onClick={() => void model.retry(s.thread_id)}>
               <Icon role="action.retry" size="small" />
               {t("action.retry")}
@@ -138,7 +138,7 @@ export function Monitor({ context }: { context: DesignContext }) {
         <div class="monitor-tabs"><ButtonGroup label={t("monitor.scope")}>
           <Button aria-current={!pinnedOnly && !attention ? "page" : undefined} onClick={() => switchScope("all")}>{t("monitor.all")} {model.monitorStableRows.value.length}</Button>
           <Button aria-current={pinnedOnly ? "page" : undefined} onClick={() => switchScope("pinned")}>{t("monitor.pinnedTab")} {pins.length}</Button>
-          <Button aria-current={attention ? "page" : undefined} onClick={() => switchScope("attention")}>{t("monitor.attention")} {(counts.recovery ?? 0) + (counts.awaiting ?? 0)}</Button>
+          <Button aria-current={attention ? "page" : undefined} onClick={() => switchScope("attention")}>{t("monitor.attention")} {(counts.error ?? 0) + (counts.awaiting ?? 0)}</Button>
         </ButtonGroup></div>
         <div class="monitor-tools">
           <Field ariaLabel={t("threads.search")} placeholder={t("threads.search")} value={model.monitorQuery.value} onInput={(e) => { model.monitorQuery.value = e.currentTarget.value.slice(0, 256); setPrefs({ monitorQuery: model.monitorQuery.value }); setPage(0); }} />

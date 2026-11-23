@@ -550,7 +550,7 @@ describe("Monitor", () => {
     expect(el.querySelector(".card.lead")).toBeTruthy();
     expect(text(el)).toContain("Parent: Improve history search");
     act(() => [...el.querySelectorAll<HTMLButtonElement>(".monitor-tools button")].find((b) => text(b) === "Filters")!.click());
-    const chip = [...el.querySelectorAll<HTMLButtonElement>(".chip")].find((c) => text(c).includes("Completed"))!;
+    const chip = [...el.querySelectorAll<HTMLButtonElement>(".chip")].find((c) => text(c).includes("No action needed"))!;
     act(() => chip.click());
     expect(el.querySelectorAll(".card").length).toBe(1);
   });
@@ -879,11 +879,11 @@ describe("Threads", () => {
     expect(el.querySelectorAll(".view .tgroup").length).toBeGreaterThan(0);
     const state = mode("State");
     act(() => state.click());
-    expect(text(el.querySelector(".view .tgroup")!)).toContain("Recovery wait");
-    const recovery = [...el.querySelectorAll<HTMLElement>(".view .tgroup")].find(group => text(group).includes("Recovery wait"))!;
+    expect(text(el.querySelector(".view .tgroup")!)).toContain("Error");
+    const recovery = [...el.querySelectorAll<HTMLElement>(".view .tgroup")].find(group => text(group).includes("Error"))!;
     const checkbox = recovery.querySelector<HTMLInputElement>("input[type=checkbox]")!;
     const disclosure = recovery.querySelector<HTMLButtonElement>(".tgroup-toggle")!;
-    expect(disclosure.getAttribute("aria-label")).toBe("Hide the Threads under Recovery wait");
+    expect(disclosure.getAttribute("aria-label")).toBe("Hide the Threads under Error");
     const rowCount = recovery.querySelectorAll("[data-thread-row]").length;
     expect(rowCount).toBeGreaterThan(0);
     act(() => checkbox.click());

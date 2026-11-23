@@ -28,14 +28,14 @@ describe("monitor selection", () => {
   });
   it("applies attention without overwriting saved filters", () => {
     const s = new MonitorSelection();
-    const c = { ...defaults(), statuses: ["running", "completed"] as const, archive: "include" as const, attention: true };
+    const c = { ...defaults(), statuses: ["running", "idle"] as const, archive: "include" as const, attention: true };
     expect(ids(s.select(rows(), c))).toEqual([]);
     expect(ids(s.select(rows("recovery"), { ...c, statuses: [] }))).toEqual(["a"]);
     expect(ids(s.select(rows(), { ...c, attention: false }))).toEqual(["a", "b", "c"]);
   });
   it("supports multiple statuses and archive scopes", () => {
     const s = new MonitorSelection();
-    expect(ids(s.select(rows(), { ...defaults(), statuses: ["running", "completed"], archive: "include" }))).toEqual(["a", "b", "c"]);
+    expect(ids(s.select(rows(), { ...defaults(), statuses: ["running", "idle"], archive: "include" }))).toEqual(["a", "b", "c"]);
     expect(ids(s.select(rows(), { ...defaults(), archive: "only" }))).toEqual(["c"]);
   });
 });

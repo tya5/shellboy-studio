@@ -13,12 +13,12 @@ An engineer's console: dark navy surfaces, one accent, and monospace wherever th
 - Use `accent` for the running state, links, the current view and the focus ring only. A screen stays mostly neutral.
 - Chart marks use `chart-1` (uncached input), `chart-2` (cached input) and `chart-3` (output), or `muted` for one series with no such identity. These are fills and lines, never text. Each theme's three hues pass the colour-blind and contrast checks together on `panel`.
 - Text is `fg` or `muted`. On filled colours use `on-accent` and `on-wait`.
-- State meaning is fixed and carried by shape as well as colour: running is an open ring in `accent`; awaiting a person is a solid disc in `wait`; recovery wait is a diamond in `bad`; completed is a check in `ok`. A theme may restyle a state, never merge or rename one.
+- Thread marks use five attention categories, defined in StatusMark. Shell results, raw owner activity, and the conversation footer keep their distinct facts. A theme does not change these meanings.
 - Put commands, paths, numbers, model names and logs in `font-mono` (`code`, `log`). Everything else is `font-sans` (`title`, `heading`, `body`, `label`, `caption`).
 - Corners: `radius-s` for controls and menu items, `radius-m` for the menu panel, `radius` for cards. Terminal squares all three.
 - Spacing comes from `space-4` to `space-24`. Touch targets on phone width are at least 44px.
 - Focus is a solid 2px `accent` ring with a 2px offset on every interactive element.
-- Motion: the running ring spins and LoadingRows pulses; nothing else moves. Both stop under `prefers-reduced-motion`.
+- Motion: the Thread running arc spins, the running character dots hop, and LoadingRows pulses. Reduced motion stops all three; the Thread arc retains its gap.
 
 ## Layout
 
