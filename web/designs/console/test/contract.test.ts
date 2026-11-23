@@ -196,7 +196,8 @@ describe("screens use the system only", () => {
   it("no money in a screen, and no chart library in the bundle", () => {
     for (const f of screens) expect(readFileSync(f, "utf8"), f).not.toMatch(/USD|JPY|¥|€|£/);
     const pkg = JSON.parse(readFileSync(join(here, "..", "..", "package.json"), "utf8"));
-    expect(Object.keys(pkg.dependencies).sort()).toEqual(["@preact/signals", "@preact/signals-core", "markdown-it", "preact", "qrcode-generator"]);
+    // smol-toml reads and writes Core settings files; the dependency list remains exact.
+    expect(Object.keys(pkg.dependencies).sort()).toEqual(["@preact/signals", "@preact/signals-core", "markdown-it", "preact", "qrcode-generator", "smol-toml"]);
   });
   it("the status mark differs in shape between states, not only colour", () => {
     const text = readSystemCss("components.css");
