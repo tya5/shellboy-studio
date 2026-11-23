@@ -347,7 +347,7 @@ replaceable.
 | Choice | Reason | Rejected |
 |---|---|---|
 | **Preact** (+ `@preact/signals`) | ≈4 KB runtime, React's component model (familiar to most contributors and to coding agents), JSX compiled by TypeScript/esbuild with no extra language; signals give fine-grained updates needed for M2 token streaming without re-rendering the whole transcript | React (larger, no benefit at this size); Svelte/Solid (good, but own compiler/language or smaller ecosystem; less familiar); vanilla DOM (state handling for list + transcript + streaming becomes the framework we would write) |
-| **Vite** | dev server with proxy to the bridge, production build with hashed assets, TS out of the box; one tool | webpack (heavier); plain esbuild (no dev server/HMR, would need scripts) |
+| **Vite** | frontend-only dev server, production build with hashed assets, and TypeScript support; live testing uses `tools/isolated-owner.py` | webpack (heavier); plain esbuild (no dev server/HMR, would need scripts) |
 | **npm** with committed `package-lock.json`, exact versions, `npm ci` | no extra package manager to install | pnpm/yarn (another tool) |
 | **TypeScript strict** (`tsc --noEmit`) | type gate in CI | — |
 | **markdown-it** with `html: false` | mature CommonMark + GFM tables; raw HTML disabled, so model output cannot inject markup and no sanitizer dependency is needed; link rendering limited to `http(s)`/`mailto` | marked (needs DOMPurify for safety); remark/unified (many packages) |

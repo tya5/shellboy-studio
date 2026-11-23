@@ -47,14 +47,24 @@ Studio starts. No inherited owner environment or token is passed to either child
 
 ## November 19 procedure
 
-The local November 19 Core/Studio isolated-morning handoff (`core-studio-isolated-morning-handoff-20261119.md:41`)
-created `/tmp/shellboy-morning.*` and seeded `visual/data` at line 43. The
-corresponding unattended `core-studio-morning-smoke-driver.py:219` selected those
-same paths, and lines 257-259 copied the parent environment and overwrote only
-`SHELLBOY_DATA_DIR` and the runtime parent. Line 330 launched Studio with that
-environment. The two explicit directory flags did not protect against a forwarded
-socket: Core v0.13.0 `src/ipc.rs` selects `SHELLBOY_SOCKET` and
-`SHELLBOY_INSTANCE_ID` when the inherited data-dir spelling matches the request.
+The November 19 Core/Studio isolated-morning procedure created its scratch root
+with `mktemp -d /tmp/shellboy-morning.XXXXXXXX`, seeded `$TRIAL/visual/data`,
+and used that data directory for both binaries. Its unattended smoke driver
+passed the following environment to Studio even with explicit `--data-dir` and
+`--config-dir`:
+
+```python
+env = os.environ.copy()
+env["XDG_RUNTIME_DIR"] = str(runtime)
+env["SHELLBOY_DATA_DIR"] = str(data)
+```
+
+The copied environment retained any `SHELLBOY_SOCKET` and `SHELLBOY_INSTANCE_ID`.
+Core v0.13.0 `src/ipc.rs` uses those variables when the inherited data directory
+compares equal as a path to the requested directory; a trailing slash does not
+make the paths distinct. Provenance: `core-studio-isolated-morning-handoff-20261119.md`
+and `core-studio-morning-smoke-driver.py`.
+
 That combination can advertise the fixture path in Studio's Hello while dialing a
 different owner. `web/app/main.ts:151` automatically registers the advertised
 path after the browser observes a connected owner with config editing; the writer

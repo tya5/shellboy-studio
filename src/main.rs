@@ -328,7 +328,7 @@ fn inherited_socket_matches(
     socket: Option<&std::ffi::OsStr>,
 ) -> bool {
     cfg!(unix)
-        && inherited_data == Some(data_dir.as_os_str())
+        && inherited_data.map(std::path::Path::new) == Some(data_dir)
         && socket.is_some_and(|socket| !socket.is_empty())
 }
 
@@ -343,10 +343,18 @@ mod tests {
         use std::ffi::OsStr;
         let dir = Path::new("/scratch/data");
         let socket = Some(OsStr::new("/other-owner/socket"));
-        assert_eq!(
-            super::inherited_socket_matches(dir, Some(dir.as_os_str()), socket),
-            cfg!(unix)
-        );
+        for spelling in [
+            "/scratch/data",
+            "/scratch/data/",
+            "/scratch//data",
+            "/scratch/./data",
+        ] {
+            assert_eq!(
+                super::inherited_socket_matches(dir, Some(OsStr::new(spelling)), socket),
+                cfg!(unix),
+                "{spelling}"
+            );
+        }
         assert!(!super::inherited_socket_matches(
             dir,
             Some(OsStr::new("/other/data")),
