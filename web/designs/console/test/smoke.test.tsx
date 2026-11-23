@@ -508,6 +508,25 @@ describe("Conversation", () => {
     expect(t.calls("thread.set")).toHaveLength(0);
   });
 
+  it("closes untouched inherited threshold and spill editors without creating overrides", async () => {
+    const { model, t } = await fixtureModel({ capabilities: ["thread.settings"], configure(db) {
+      db.details.lead = { ...db.details.lead!, auto_compact_at: null, effective_auto_compact_at: 200000,
+        spill: null, effective_spill: true };
+    } });
+    const el = draw(model);
+    act(() => model.setPanelTab("settings"));
+    for (const [key, prefill] of [["auto_compact_at", "200000"], ["spill", "on"]] as const) {
+      const row = el.querySelector<HTMLElement>(`[data-setting-id="thread.${key}"]`)!;
+      const action = (name: string) => [...row.querySelectorAll("button")].find(button => button.textContent === name)!;
+      act(() => action("Change").click());
+      expect(row.querySelector("input, select")?.value).toBe(prefill);
+      await act(async () => { action("Save").click(); });
+      expect(row.querySelector("input, select")).toBeNull();
+      expect(row.textContent).toContain("Default");
+    }
+    expect(t.calls("thread.set")).toHaveLength(0);
+  });
+
   it("clears an unreadable output override without calling it unset or offering a guessed Undo", async () => {
     const { model, t, db } = await fixtureModel({ capabilities: ["thread.settings"], configure(db) {
       db.details.lead = { ...db.details.lead!, max_tokens: Number.MAX_SAFE_INTEGER + 1 };

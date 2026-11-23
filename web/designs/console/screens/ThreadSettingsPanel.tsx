@@ -92,9 +92,11 @@ function ThreadSetting({ model, row, details, enabled, highlighted }: { model: A
   }, [undo, row.own]);
   const busy = saving || settle !== undefined;
   const close = () => { returnFocus.current = true; setEdit(undefined); };
+  const inherited = row.defaultable && row.own === undefined;
+  const shown = inherited ? row.inherited : row.own;
   const save = async (value: string) => {
     if (!enabled || busy) return;
-    if (row.own !== unreadable && value === wireValue(row.own)) { close(); return; }
+    if (row.own !== unreadable && value === wireValue(shown)) { close(); return; }
     const scope = lifetime.current;
     const handle = model.handle.peek();
     const owner = model.data.owner.peek();
@@ -109,16 +111,14 @@ function ThreadSetting({ model, row, details, enabled, highlighted }: { model: A
     setSettle({ expected: result?.own, previous: row.own, before: details });
     close();
   };
-  const inherited = row.defaultable && row.own === undefined;
-  const value = inherited ? row.inherited : row.own;
-  const displayed = value === unreadable ? t("common.notReadable") : typeof value === "boolean" ? t(value ? "config.on" : "config.off")
-    : value === undefined || value === "" ? t(row.field === "title" ? "threadSettings.automatic" : "config.notSet") : String(value);
+  const displayed = shown === unreadable ? t("common.notReadable") : typeof shown === "boolean" ? t(shown ? "config.on" : "config.off")
+    : shown === undefined || shown === "" ? t(row.field === "title" ? "threadSettings.automatic" : "config.notSet") : String(shown);
   const saved = undo && Object.is(undo.expected, row.own) ? undo : undefined;
   const undoValue = row.field !== "title" && saved && saved.previous !== unreadable && !Object.is(saved.expected, saved.previous) ? saved : undefined;
   const feedback = busy || error || saved ? <SettingFeedbackLine text={busy ? t("common.loading") : error ?? t("config.applyNow")}
     undoLabel={t("config.undo")} busy={!enabled || busy} onUndo={undoValue && !error ? () => void save(wireValue(undoValue.previous)) : undefined} /> : null;
   return <SettingRow settingId={settingId(row.field)} label={label} highlighted={highlighted} feedback={feedback}
-    read={editing ? undefined : <><span class={typeof value === "number" || row.field === "cwd" || row.field === "agents" || row.field === "model" ? "mono" : undefined}>{displayed}</span>{row.defaultable ? <div class="muted caption">{t(inherited ? "threadSettings.default" : "threadSettings.overridden")}</div> : null}</>}
+    read={editing ? undefined : <><span class={typeof shown === "number" || row.field === "cwd" || row.field === "agents" || row.field === "model" ? "mono" : undefined}>{displayed}</span>{row.defaultable ? <div class="muted caption">{t(inherited ? "threadSettings.default" : "threadSettings.overridden")}</div> : null}</>}
     control={editing ? <div class="stack" ref={editor} onKeyDown={event => {
       if (event.isComposing || busy) return;
       if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); close(); }
@@ -129,7 +129,7 @@ function ThreadSetting({ model, row, details, enabled, highlighted }: { model: A
       <div class="band end"><Button disabled={busy} onClick={close}>{t("threadSettings.cancel")}</Button>
       <Button variant="primary" disabled={busy || !enabled} onClick={() => void save(edit)}>{t("threadSettings.save")}</Button></div>
     </div> : <ButtonGroup label={label}>
-      <Button variant="link" buttonRef={change} disabled={!enabled} aria-disabled={busy || undefined} onClick={() => { if (busy) return; setError(undefined); setEdit(wireValue(value)); }}>{t("threadSettings.change")}</Button>
+      <Button variant="link" buttonRef={change} disabled={!enabled} aria-disabled={busy || undefined} onClick={() => { if (busy) return; setError(undefined); setEdit(wireValue(shown)); }}>{t("threadSettings.change")}</Button>
       {row.defaultable && !inherited ? <Button variant="link" disabled={!enabled || busy} onClick={() => void save("")}>{t("threadSettings.reset")}</Button> : null}
     </ButtonGroup>} />;
 }
