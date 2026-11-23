@@ -15,9 +15,17 @@ export function MonitorPopover({ label, children, className = "", preview = fals
   useLayoutEffect(() => {
     if (!open && !hover) return;
     const press = (e: Event) => { if (!root.current?.contains(e.target as Node)) { if (close) close(); else setOpen(false); } };
-    const key = (e: KeyboardEvent) => { if (e.key === "Escape") { setHover(false); if (open) { if (focusSearch) e.preventDefault(); if (close) close(); else setOpen(false); root.current?.querySelector("button")?.focus(); } } };
+    const key = (e: KeyboardEvent) => { if (e.key === "Escape") { setHover(false); if (open) { if (close) close(); else setOpen(false); root.current?.querySelector("button")?.focus(); } } };
     document.addEventListener("pointerdown", press); document.addEventListener("keydown", key);
     return () => { document.removeEventListener("pointerdown", press); document.removeEventListener("keydown", key); };
-  }, [open, hover, close, focusSearch]);
-  return <div class={`monitor-popover ${className}`} ref={root} onMouseEnter={() => { if (preview) setHover(true); }} onMouseLeave={() => setHover(false)} onFocusIn={() => { if (preview) setHover(true); }} onFocusOut={(e) => { if (!root.current?.contains(e.relatedTarget as Node)) setHover(false); }}><Button disabled={disabled} variant={ghost ? "ghost" : undefined} aria-expanded={open || hover} aria-haspopup={controlled ? "dialog" : undefined} onClick={() => controlled ? controlled.toggle() : setOpen(!open)}>{content ?? <span>{label}</span>}</Button>{open || hover ? <div class={controlled?.panelClass ?? "monitor-popover-panel"} role={controlled ? "dialog" : "group"} aria-label={controlled?.panelLabel ?? label}>{children}</div> : null}</div>;
+  }, [open, hover, close]);
+  return <div class={`monitor-popover ${className}`} ref={root} onKeyDown={event => {
+    if (!controlled?.open || event.key !== "Escape" || event.defaultPrevented) return;
+    // Consume Escape before a parent view's document listener can close the view.
+    event.preventDefault();
+    event.stopPropagation();
+    setHover(false);
+    controlled.close();
+    root.current?.querySelector("button")?.focus();
+  }} onMouseEnter={() => { if (preview) setHover(true); }} onMouseLeave={() => setHover(false)} onFocusIn={() => { if (preview) setHover(true); }} onFocusOut={(e) => { if (!root.current?.contains(e.relatedTarget as Node)) setHover(false); }}><Button disabled={disabled} variant={ghost ? "ghost" : undefined} aria-expanded={open || hover} aria-haspopup={controlled ? "dialog" : undefined} onClick={() => controlled ? controlled.toggle() : setOpen(!open)}>{content ?? <span>{label}</span>}</Button>{open || hover ? <div class={controlled?.panelClass ?? "monitor-popover-panel"} role={controlled ? "dialog" : "group"} aria-label={controlled?.panelLabel ?? label}>{children}</div> : null}</div>;
 }

@@ -1384,16 +1384,29 @@ describe("Threads", () => {
     const el = draw(model);
     await act(async () => { await settle(t, db); });
     const trigger = el.querySelector<HTMLButtonElement>('[data-setting-id="default_model"] button')!;
-    trigger.focus();
-    act(() => trigger.click());
-    const search = el.querySelector<HTMLInputElement>('.model-picker input')!;
-    expect(search).not.toBeNull();
-    expect(document.activeElement).toBe(search);
-    const escape = new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true });
-    act(() => { search.dispatchEvent(escape); });
-    expect(escape.defaultPrevented).toBe(true);
-    expect(el.querySelector('.model-picker')).toBeNull();
-    expect(document.activeElement).toBe(trigger);
+    const originalUrl = window.location.href;
+    const settingsHash = "#/settings/general";
+    window.history.replaceState(null, "", settingsHash);
+    try {
+      for (const target of ["search", "trigger"]) {
+        trigger.focus();
+        act(() => trigger.click());
+        const search = el.querySelector<HTMLInputElement>(".model-picker input")!;
+        expect(search).not.toBeNull();
+        expect(document.activeElement).toBe(search);
+        const recipient = target === "search" ? search : trigger;
+        recipient.focus();
+        const escape = new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true });
+        act(() => { recipient.dispatchEvent(escape); });
+        expect(window.location.hash).toBe(settingsHash);
+        expect(model.route.peek().view).toBe("settings");
+        expect(escape.defaultPrevented).toBe(true);
+        expect(el.querySelector(".model-picker")).toBeNull();
+        expect(document.activeElement).toBe(trigger);
+      }
+    } finally {
+      window.history.replaceState(null, "", originalUrl);
+    }
   });
 
   it("mounts Content to index as a named multi-choice fieldset", async () => {
