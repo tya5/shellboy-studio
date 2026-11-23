@@ -184,3 +184,24 @@ describe("Row menu Stop and Retry (#107)", () => {
     } finally { model.dispose(); }
   });
 });
+
+describe("Open Thread's own hint (#103, defect seen on main in #111)", () => {
+  it("moves the sidebar, header and status line from idle to running on a Thread-only hint (list: false)", async () => {
+    const { model, t, db } = await fixtureModel({ route: "conversation", threadId: "lead", configure: db => { db.threads.lead = summary("lead", { ...db.threads.lead, state: "idle", activity: "idle" }); } });
+    try {
+      const el = draw(model);
+      await act(async () => { await settle(t, db); });
+      const sidebar = () => el.querySelector('.side-list a[href="#/conversation/lead"]')?.closest("[data-thread-row]")?.querySelector("[data-status]")?.getAttribute("data-status");
+      const header = () => el.querySelector("[data-conversation-header] [data-status]")?.getAttribute("data-status");
+      expect([sidebar(), header()]).toEqual(["idle", "idle"]);
+      expect(footer(el).querySelector('[data-status="idle"]')).not.toBeNull();
+      const rowReads = t.calls("thread.list").length;
+      db.threads.lead = summary("lead", { ...db.threads.lead, state: "running", activity: "tools" });
+      await act(async () => { t.push({ t: "changed", thread_ids: ["lead"], list: false, config_changed: false }); await settle(t, db); });
+      expect(t.calls("thread.list").slice(rowReads).map(call => call.args)).toEqual([{ thread_ids: ["lead"] }]);
+      expect([sidebar(), header()]).toEqual(["running", "running"]);
+      expect(footer(el).querySelector('[data-status="idle"]')).toBeNull();
+      expect(footer(el).querySelector(".character-status")?.hasAttribute("data-running")).toBe(true);
+    } finally { model.dispose(); }
+  });
+});
