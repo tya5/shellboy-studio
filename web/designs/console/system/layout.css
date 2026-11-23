@@ -104,7 +104,7 @@
 .branches{flex:1;min-width:0;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) var(--size-details)}
 .branches-main{overflow:auto;padding:var(--space-16) var(--space-24);display:flex;flex-direction:column;gap:var(--space-12);min-width:0}
 .branches-side{border-left:1px solid var(--line);background:var(--panel);overflow:auto;padding:var(--space-16);display:flex;flex-direction:column;gap:var(--space-12);min-width:0}
-.branches-side h3{margin:0;font:var(--type-heading)}
+.branches-main h3,.branches-side h3{margin:0;font:var(--type-heading)}
 
 .branches[data-layout=list] .bgraph{display:none}
 .apps-host{flex:1;min-width:0;min-height:0;display:flex;flex-direction:column}

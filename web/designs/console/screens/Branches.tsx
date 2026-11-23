@@ -3,7 +3,6 @@ import { useEffect, useRef, useState } from "preact/hooks";
 import { CAPABILITY_HISTORY_WINDOW } from "../../../data/src";
 import { branchLayout, branchTitle, formatClock, formatRoute, statusLabel, type AppModel, type BranchFamily, type BranchItem, type BranchTarget, type GraphPoint, type RewindFacts, type Translate } from "../../../ui-core/src";
 import { BranchGraph, BranchList, Button, ButtonGroup, Check, EmptyState, Field, KeyValue, Notice } from "../system/components";
-import { Rich } from "./Rich";
 
 const tipRoute = (i: BranchItem) => formatRoute({ view: "conversation", threadId: i.threadId });
 
@@ -217,7 +216,7 @@ export function Branches({ model }: { model: AppModel }) {
         {target ? (
           <PointPanel model={model} target={target} title={onThread ? title(onThread) : (rows.get(target.threadId)?.summary.title ?? target.threadId.slice(0, 8))} request={point?.request} branches={point?.branches} ordinal={point?.ordinal} />
         ) : (
-          <div class="muted caption"><Rich text={t("branches.pick")} /></div>
+          <div class="muted caption">{t("branches.pick")}</div>
         )}
       </aside>
     </div>

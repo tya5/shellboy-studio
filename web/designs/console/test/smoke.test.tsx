@@ -1795,9 +1795,9 @@ describe("limited Branches comparison UI", () => {
     try {
       model.navigate({ view: "branches", threadId: "lead" }); await settle(t, db);
       const el = draw(model); await act(flushPromises);
-      expect(text(el)).toContain("Limited two-tip comparison");
-      expect(text(el)).toContain("Not an exact LCA");
-      expect(text(el)).toContain("Recorded creation kind");
+      expect(text(el)).toContain("Compare two branches");
+      expect(text(el)).toContain("may not be where they split");
+      expect(text(el)).toContain("Origin");
       const comparison = [...el.querySelectorAll("label")].find(x => x.textContent?.includes("Compare (up to two)"));
       expect(comparison).toBeDefined();
       const input = comparison!.querySelector("input")!;
