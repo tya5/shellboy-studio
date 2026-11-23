@@ -68,7 +68,7 @@ try{
   assert.deepEqual(counted.tabs,before.tabs,`count update moved the tabs: ${key}`);
   await evaluate(`document.querySelector(${JSON.stringify(list)}).scrollLeft=0; document.querySelector('#panel-tab-info').click()`);
   const selected=await measure();
-  assert(selected.tabs.at(-1).selected && selectedVisible(selected),`selection was not revealed: ${key}`);
+  assert(selected.tabs.some(tab=>tab.selected && tab.label===(lang==='en'?'Analytics':'分析')) && selectedVisible(selected),`selection was not revealed: ${key}`);
   assert.equal(await evaluate(`document.querySelector(${JSON.stringify(list)}).querySelector('[role=tooltip]')===null`),true,key);
 
   await evaluate(`document.querySelector(${JSON.stringify(toggle)}).click()`);
