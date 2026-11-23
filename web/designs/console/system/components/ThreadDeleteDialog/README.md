@@ -1,5 +1,10 @@
 # ThreadDeleteDialog
 
+- **Use for:** Confirm a single exact delete preview in a modal alert dialog with Cancel initially focused.
+- **Do not use for:** Use Menu for the action trigger; do not reuse this for bulk deletion or generic notices.
+- **Why:** The preview and unchanged marker fail closed; preventing outside dismissal and restoring the row focus keeps the destructive action deliberate.
+- **Source:** [WAI-ARIA APG Alert Dialog](https://www.w3.org/WAI/ARIA/apg/patterns/alertdialog/); [Radix Alert Dialog](https://www.radix-ui.com/primitives/docs/components/alert-dialog)
+
 A modal alert dialog for the exact singleton-delete preview and confirmation. The
 screen supplies the target thread id and an id-based getter for its row link. The
 sheet invokes that getter at dismissal, after closing; Cancel therefore returns to

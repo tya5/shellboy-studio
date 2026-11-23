@@ -1,5 +1,10 @@
 # useRowMenu
 
+- **Use for:** Give each actionable row its own Menu state, trigger and pointer or keyboard anchor.
+- **Do not use for:** Use MonitorPopover for toolbar controls and ThreadDeleteDialog for confirmation; don't introduce a shared row-menu registry.
+- **Why:** Local ownership keeps placement and focus return tied to the row and routes dismissal through one Popover layer.
+- **Source:** [Studio row actions (shadcn/ui, Radix, APG)](../../patterns/row-actions.md)
+
 Each row keeps local open and placement-anchor state; no shared registry or
 ref-based placement anchor is used. A pointer button click opens at its trigger; native keyboard activation (click
 `detail === 0`, including Enter/Space) uses keyboard-open focus. Right-click

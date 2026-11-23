@@ -1,5 +1,10 @@
 # Icon roles
 
+- **Use for:** Render semantic `IconRole` names with default, small or menu size tokens; see the role catalog below.
+- **Do not use for:** Use StatusMark for state marks and BrandLogo for branding. Never pass glyph names or paths from callers.
+- **Why:** The active theme can remap glyphs without changing what any caller means.
+- **Source:** [Studio iconography](../../README.md#iconography) and [Console decisions](../../../../../../docs/design/design-system.md#the-console-design)
+
 Consumers use semantic `IconRole` names only. Glyph names, paths, and the role-to-glyph map are module-private in `Icon`; only the semantic role list is exported. A theme may reuse a glyph for distinct roles or assign a different glyph without changing call sites. Choose `size="default"`, `size="small"`, or `size="menu"`; the SVG dimensions come from `--size-icon`, `--size-icon-small` (15px), and `--size-icon-menu` (16px), respectively.
 
 | IconRole | Meaning and use | Current glyph |

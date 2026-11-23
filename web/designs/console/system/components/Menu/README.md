@@ -1,5 +1,10 @@
 # Menu
 
+- **Use for:** Open short actions via Popover; use semantic entry icons and dividers between distinct groups.
+- **Do not use for:** Use SettingRow in a Section for forms and ThreadDeleteDialog for singleton deletion confirmation.
+- **Why:** Menu provides keyboard traversal, typeahead and focus return; the caller, not Menu, owns action policy.
+- **Source:** [Studio row actions (shadcn/ui, Radix, APG)](../../patterns/row-actions.md)
+
 A compact WAI-ARIA menu of short actions opened through `Popover`. Consumers choose
 optional item icons by semantic `IconRole` (for example `action.archive`), never by
 glyph shape. The active theme owns the role-to-glyph mapping. Menu entries use `<Icon size="menu">`, which maps to the dedicated 16px icon token; other small icons use `size="small"` (15px).

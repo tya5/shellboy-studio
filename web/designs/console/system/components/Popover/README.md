@@ -1,5 +1,10 @@
 # Popover
 
+- **Use for:** Anchor short controls or menus above clipping boundaries with independent placement and focus return.
+- **Do not use for:** Use ThreadDeleteDialog or WorkSheet for modal flows and Section for forms that belong in a pane.
+- **Why:** A portal escapes clipping; its outside layer dismisses without activating underlying controls.
+- **Source:** [Studio row actions (shadcn/ui, Radix, APG)](../../patterns/row-actions.md)
+
 A portal-rendered anchored surface for short controls or menus that must escape row
 and scroll-container clipping. It stores a separate optional focus-return target
 when opened; placement anchor and Escape target need not be the same element. Escape

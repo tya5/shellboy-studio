@@ -84,6 +84,14 @@ Limit: this costs some discipline, and a shared `ui-core` change can affect all 
 | On phone width the thread list is a drawer from a menu button in the top bar, which the mock doesn't show | a phone needs a way to change Thread and create one | the user wants another path |
 | Archive needs a second press | the UI has no unarchive yet (`thread.unarchive` is denied) | unarchive exists |
 
+## 部品の選び方
+
+1. 新しい形を考える前に、誰が、どの画面で、何をしようとしているかを言葉にする。たとえば、設定を変えるための画面と、ふだんは既定のままで値を読む画面とでは、必要な操作の見せ方が違う。
+2. 既存の部品で足りるかを先に確かめる。足りなければ、似たツールの同じ場面と、設計の決まり（デザインシステムやアクセシビリティのパターンなど）を調べ、どの判断を何に基づいて選んだかを出典へのリンクとともに残す。記録で確認できない出典は推測しない。
+3. 同じ役目の部品で、場面によって適した形が違うなら、別部品を増やさず一つの部品の型（variant）にする。各型をどの場面で選ぶかを部品の README に書く。見た目が変わる新しい形には、これまでどおり見本と利用者の承認が必要。
+
+各部品の README の先頭に、`Use for:` / `Do not use for:`（代わりに使う部品）/ `Why:` / `Source:`（リンク）の順で短く書く。既存の振る舞い、レイアウト、出典の詳細はその下に残す。出典が確認できなければ「出典なし（この Studio で決めた）」とする。
+
 ## Console layout rules
 
 The Console system's `web/designs/console/system/README.md` is the component-level contract. Use `space-4` for tightly coupled content, `space-8` for rows and compact insets, `space-12` for component interiors and related groups, `space-16` for card interiors and section separation, and `space-24` for the desktop page perimeter (phone: `space-12`). Use the existing control and touch heights, and the title, heading, body, label, caption, code and log type roles. Align headings, sections and cards at a shared left edge. Cards contain distinct subjects; lines separate repeated rows. Hover uses `raised`, selection `accent-bg`, focus the accent outline, and disabled controls reduced opacity. Preserve semantic status marks and words. Conversation tool group layout follows the same rules; changes to that group belong to its worker.

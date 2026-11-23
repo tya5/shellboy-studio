@@ -1,5 +1,10 @@
 # BrandLogo
 
+- **Use for:** Render the approved decorative inline mark in the shell/sidebar and phone Thread drawer, paired with an accessible name from adjacent text.
+- **Do not use for:** Use Icon for navigation; keep browser favicon and install assets separate. Do not substitute an external SVG URL for the in-app mark.
+- **Why:** Inline SVG inherits the resolved theme tokens, including Auto, without swapping artwork. Use `size-brand-mark` in the fixed shell header.
+- **Source:** [Studio brand surfaces and theme ownership](../../README.md#brand-surfaces-and-theme-ownership)
+
 Decorative approved silhouette at the existing sidebar brand position; adjacent
 text supplies the accessible name. Inline SVG reads the existing generated
 accent/logo-face/logo-bright CSS tokens. Light and Console (dark) use their

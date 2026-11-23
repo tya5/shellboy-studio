@@ -1,3 +1,10 @@
+# Chart
+
+- **Use for:** Plot measured series as stacked columns or a line over time. Name the owner read and give exact values in a table.
+- **Do not use for:** Use BarList for a short ranked comparison or DataTable when exact values matter more than the shape.
+- **Why:** One scale aligns ticks and marks; legend and table retain series meaning and distinguish missing values from zero.
+- **Source:** [Studio Analytics chart decisions](../../../../../../docs/design/analytics-settings.md#charts)
+
 A small chart drawn as inline SVG at the frame's real width, so text stays its true size on a phone. `columns` stacks series from one baseline; `line` plots change over time. One axis only. Ticks come from the same scale as the marks. A value above zero is at least 2px tall, so a small part of a stack stays visible; the table has the exact number.
 
 - Series use `chart-1` to `chart-3`, with a fixed meaning: uncached input, cached input, output. A single series with no such identity uses `neutral`. Text never takes a series colour.

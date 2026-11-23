@@ -1,5 +1,10 @@
 # ThreadItem
 
+- **Use for:** Render a sidebar Thread as a link with its status, depth, descendant summary and in-flow actions.
+- **Do not use for:** Use SelectRow when multi-selection is the main task and ThreadGroup for group headings.
+- **Why:** A reserved trailing action slot keeps the title stable; bold title, not an extra status mark, denotes unread completion.
+- **Source:** [Studio Thread list (Orca, shadcn/ui, APG)](../../patterns/thread-list.md); [Studio row actions (shadcn/ui, Radix, APG)](../../patterns/row-actions.md)
+
 A sidebar Thread row composed on `ListRow`, with a navigable title, status, count
 and depth. `ListRow` owns the in-flow actions and menu state. Follow shadcn/ui
 `SidebarMenuAction` (`showOnHover`): hover-capable devices reveal the action on row

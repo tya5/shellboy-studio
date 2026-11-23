@@ -1,5 +1,10 @@
 # PanelTabs
 
+- **Use for:** Switch among fixed Conversation inspector sections; retain counts, selected state and keyboard focus on the collapsed rail.
+- **Do not use for:** Use NavItem for routes, Disclosure for headings and WorkSheet for the phone surface.
+- **Why:** Tabs give local sections a selected state, while the icon rail stays usable without exposing hidden panel content.
+- **Source:** [WAI-ARIA APG Tabs](https://www.w3.org/WAI/ARIA/apg/patterns/tabs/); [VS Code Activity Bar](https://code.visualstudio.com/docs/getstarted/userinterface#_activity-bar)
+
 Use for the fixed conversation-panel sections, including Analytics and Settings. Follows the WAI-ARIA APG Tabs pattern and the VS Code icon-rail principle: the selected tab is explicit, and a collapsed rail shows icon, count and a focus/hover tooltip linked by `aria-describedby`. Rail arrow keys move focus without opening the panel; activation opens the selected tab. The conversation-panel WorkSheet uses the same tabs at phone width.
 
 Do not use for route navigation or collapsible section headings.

@@ -1,3 +1,10 @@
+# WorkElementRow
+
+- **Use for:** Render an issued Work member for a tool, reasoning, notification or problem; use the caller's authorized detail body when present.
+- **Do not use for:** Use StepRow for ordinary conversation tool rows and ListDivider for category headings; never infer a body or execution status.
+- **Why:** Shared member chrome keeps kind metadata out of visible text and reuses only the issuer's actual status.
+- **Source:** [Studio issued Work member contract](https://github.com/tya5/shellboy-studio/commit/20a911ad66068d0bc15ecc3965eb689447b0f6f9)
+
 Shared Work member chrome for tools, reasoning, notifications and problems.
 
 Pass a formally issued WorkElementDisplay through formatWorkElementDisplay. Formatting retains the source and context references, exact state reason, wire/client provenance and exit code. Only issued description and time context values are selected for visible/accessible presentation; kind and identity metadata never become visible prefixes. Missing content must be stated honestly by the issuer, not replaced with a type label. Type labels appear in aria and native title only; touch tooltip behavior is not qualified.
