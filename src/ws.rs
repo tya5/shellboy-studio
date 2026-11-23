@@ -521,6 +521,11 @@ mod tests {
     fn thread_model_changes_allow_only_selected_fields() {
         for args in [
             json!({"thread_id":"t","model":"m"}),
+            json!({"thread_id":"t","cwd":"/tmp"}),
+            json!({"thread_id":"t","max_tokens":"1000"}),
+            json!({"thread_id":"t","auto_compact_target_percent":"25"}),
+            json!({"thread_id":"t","summary_max_chars":"500"}),
+            json!({"thread_id":"t","spill":"off"}),
             json!({"thread_id":"t","connection":"c","effort":""}),
             json!({"thread_id":"t","auto_compact_at":"0","agents":"/tmp/AGENTS.md"}),
         ] {
@@ -532,6 +537,8 @@ mod tests {
         for args in [
             json!({"model":"m"}),
             json!({"thread_id":"t","model":"m","cwd":"/tmp"}),
+            json!({"thread_id":"t","cwd":"/tmp","spill":"on"}),
+            json!({"thread_id":"t","cwd":"/tmp","title":"x"}),
             json!({"thread_id":"t","agents":"/tmp/AGENTS.md","title":"bad"}),
             json!({"thread_id":"t","model":"m","parent_id":"p"}),
         ] {

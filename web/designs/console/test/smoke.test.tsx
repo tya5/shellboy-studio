@@ -401,8 +401,8 @@ describe("Conversation", () => {
     const ring = el.querySelector<HTMLButtonElement>('.composer-row button[aria-label="Context: Below threshold"]')!;
     expect(ring).not.toBeNull();
     act(() => ring.click());
-    expect(document.body.textContent).toContain("Input tokens41k");
-    expect(document.body.textContent).toContain("Summary threshold200k");
+    expect(el.querySelector('[role="tab"][aria-selected="true"]')?.textContent).toContain("Analytics");
+    expect(el.querySelector('#panel-page-info:not([hidden])')).not.toBeNull();
     expect(text(el)).not.toContain("Shellboy event v1");
     expect(el.querySelector('.st[data-status="running"]')).toBeTruthy();
   });
@@ -424,7 +424,7 @@ describe("Conversation", () => {
     expect(text(el)).toContain("provider: connection interrupted");
     expect(el.querySelector(".dock .btn-warn")).toBeTruthy();
   });
-  it("loads Thread totals only in a visible Info observation, including reopening", async () => {
+  it("loads Thread totals only in a visible Analytics observation, including reopening", async () => {
     const observers = new Map<Element, ResizeObserverCallback>();
     vi.stubGlobal("ResizeObserver", class {
       constructor(private readonly notify: ResizeObserverCallback) {}
@@ -435,7 +435,7 @@ describe("Conversation", () => {
     const { model, t, db } = await fixtureModel();
     const el = draw(model);
     const panel = el.querySelector<HTMLElement>("[data-panel-root]")!;
-    const info = () => el.querySelector("[data-panel-info]")?.textContent;
+    const info = () => el.querySelector("[data-panel-info]")?.textContent ?? "";
     const reveal = (shown: boolean) => act(() => {
       panel.style.display = shown ? "block" : "none";
       observers.get(panel)!([], {} as ResizeObserver);
@@ -462,6 +462,38 @@ describe("Conversation", () => {
     await act(async () => { await settle(t, db); });
     expect(info()).not.toContain("75%");
     expect(t.calls("usage.get")).toHaveLength(3);
+  });
+  it("edits and resets only the selected Thread setting, then waits for hint readback before Undo", async () => {
+    const { model, t, db } = await fixtureModel({ capabilities: ["thread.settings"], configure(db) {
+      Object.assign(db.details.lead!, { spill: false, effective_spill: false, auto_compact_at: null, effective_auto_compact_at: 200000 });
+    } });
+    const el = draw(model);
+    act(() => model.setPanelTab("settings"));
+    const row = (key: string) => el.querySelector<HTMLElement>(`[data-setting-id="thread.${key}"]`)!;
+    const button = (key: string, label: string) => [...row(key).querySelectorAll("button")].find(x => x.textContent === label)!;
+    expect(row("auto_compact_at").textContent).toContain("200000Default");
+    expect(row("cwd").textContent).not.toContain("Default");
+    expect(row("spill").textContent).toContain("OffSet for this Thread");
+    act(() => button("cwd", "Change").click());
+    const input = row("cwd").querySelector("input")!;
+    expect(document.activeElement).toBe(input);
+    act(() => { input.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); });
+    expect(document.activeElement).toBe(button("cwd", "Change"));
+    expect(t.calls("thread.set")).toHaveLength(0);
+    act(() => button("spill", "Reset to default").click());
+    const call = t.calls("thread.set").at(-1)!;
+    expect(call.args).toEqual({ thread_id: "lead", spill: "" });
+    const reads = t.calls("thread.get").length;
+    await act(async () => { t.ok(call.id, { ...db.details.lead, spill: null, effective_spill: true }); });
+    expect(row("spill").textContent).toContain("OffSet for this Thread");
+    expect(button("spill", "Undo")).toBeUndefined();
+    expect(t.calls("thread.get")).toHaveLength(reads);
+    db.answered.add(call.id);
+    db.details.lead = { ...db.details.lead!, spill: null, effective_spill: true };
+    await act(async () => { t.push({ t: "changed", thread_ids: ["lead"], list: false, config_changed: false }); await settle(t, db); });
+    expect(row("spill").textContent).toContain("OnDefault");
+    act(() => button("spill", "Undo").click());
+    expect(t.calls("thread.set").at(-1)?.args).toEqual({ thread_id: "lead", spill: "off" });
   });
   it("omits the usage and context elements when the owner reports nothing", async () => {
     const { model, t, db } = await fixtureModel();

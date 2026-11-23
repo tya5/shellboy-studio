@@ -1,3 +1,4 @@
+import type { ComponentChildren } from "preact";
 import type { RegisterSetting } from "./setting-search";
 import { useCallback, useEffect, useMemo, useState } from "preact/hooks";
 import { CAPABILITY_CONFIG, CONNECTION_FIELDS, CONNECTION_SECRETS, fieldOf, isHidden, isHiddenName, showConfigValue, valueAt, type AppModel, type ConfigFacts, type ConfigFieldSpec } from "../../../ui-core/src";
@@ -18,6 +19,10 @@ export function configRowValue(t: T, facts: ConfigFacts, path: readonly string[]
 }
 
 /** What the running owner has, when the file says something else. */
+export function SettingFeedbackLine({ text, undoLabel, onUndo, busy }: { text: ComponentChildren; undoLabel: string; onUndo?: (() => void) | undefined; busy: boolean }) {
+  return <div class="muted caption" role="status">{text}{onUndo ? <Button variant="link" disabled={busy} onClick={onUndo}>{undoLabel}</Button> : null}</div>;
+}
+
 export function SettingFeedback({ model, paths }: { model: AppModel; paths: readonly (readonly string[])[] }) {
   const t = model.t.value;
   const config = model.config;
@@ -28,10 +33,8 @@ export function SettingFeedback({ model, paths }: { model: AppModel; paths: read
   const differs = facts?.differing?.some((name) => paths.some((path) => fieldOf(path) === name));
   const restart = saved?.restartRequired ?? (differs === true ? true : undefined);
   const errorText = error === "number" ? t("config.badNumber") : error === "json" ? t("config.badJson") : error === "placeholder" ? t("config.badPlaceholder") : error;
-  return <div class="muted caption" role="status">
-    {config.pendingField.value === field ? t("common.loading") : errorText ?? (config.changedElsewhere.value === field ? t("config.changedElsewhere") : restart === undefined ? null : t(restart ? "config.restartOwner" : "config.applyNow"))}
-    {saved?.undo.length && !errorText ? <Button variant="link" disabled={config.fieldSaving.value} onClick={() => void config.undoLast()}>{t("config.undo")}</Button> : null}
-  </div>;
+  const text = config.pendingField.value === field ? t("common.loading") : errorText ?? (config.changedElsewhere.value === field ? t("config.changedElsewhere") : restart === undefined ? null : t(restart ? "config.restartOwner" : "config.applyNow"));
+  return <SettingFeedbackLine text={text} undoLabel={t("config.undo")} busy={config.fieldSaving.value} onUndo={saved?.undo.length && !errorText ? () => void config.undoLast() : undefined} />;
 }
 
 function HiddenControl({ model, path, label, json, t, name, onRemove }: { model: AppModel; path: readonly string[]; label: string; json: boolean; t: T; name?: string; onRemove?: () => void }) {

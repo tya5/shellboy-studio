@@ -117,6 +117,12 @@ export interface ThreadSettings {
   /** This Thread's own value; undefined when it follows the connection or `[compaction]`. */
   autoCompactAt: number | undefined;
   effectiveAutoCompactAt: number | undefined;
+  autoCompactTargetPercent: number | undefined;
+  effectiveAutoCompactTargetPercent: number | undefined;
+  summaryMaxChars: number | undefined;
+  effectiveSummaryMaxChars: number | undefined;
+  spill: boolean | undefined;
+  effectiveSpill: boolean | undefined;
   maxTokensState: OutputLimitReadback;
   effectiveMaxTokensState: OutputLimitReadback;
   maxTokens: number | undefined;
@@ -139,6 +145,12 @@ export function readThreadSettings(d: Record<string, unknown>): ThreadSettings {
     agentsPath: str(d.agents_path),
     autoCompactAt: num(d.auto_compact_at),
     effectiveAutoCompactAt: num(d.effective_auto_compact_at),
+    autoCompactTargetPercent: num(d.auto_compact_target_percent),
+    effectiveAutoCompactTargetPercent: num(d.effective_auto_compact_target_percent),
+    summaryMaxChars: num(d.summary_max_chars),
+    effectiveSummaryMaxChars: num(d.effective_summary_max_chars),
+    spill: typeof d.spill === "boolean" ? d.spill : undefined,
+    effectiveSpill: typeof d.effective_spill === "boolean" ? d.effective_spill : undefined,
     maxTokensState: own,
     effectiveMaxTokensState: effective,
     maxTokens: own.kind === "value" ? own.value : undefined,

@@ -105,3 +105,5 @@ Sidebar and shared state roles (Orca sidebar and Lucide semantics):
 - `group.collapse`: collapse one sidebar band (Pinned or All); down-facing chevron.
 
 | `thread.rename` | Edit a Thread title. | `pencil` |
+
+- `panel.threadSettings`: the editable settings for the selected Thread, not application settings.

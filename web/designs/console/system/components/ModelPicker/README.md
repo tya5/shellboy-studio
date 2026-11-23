@@ -15,3 +15,5 @@ Settings also uses the shared model list and effort control. Do not infer
 supported effort values, or include effort for embedding models.
 
 Styles: style.css in this directory
+
+The Conversation footer link opens this Thread’s Settings at the Connection section. It does not write or own settings.

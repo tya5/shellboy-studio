@@ -455,6 +455,10 @@ export class Operations {
   modelList(args: ModelListArgs = {}, read?: ReadOptions): Promise<Outcome<ModelListResult>> {
     return this.run("model.list", args, outcomeDecoder(decodeModelList), undefined, read);
   }
+  /** One field at a time. In particular, cwd and title must be standalone owner calls. */
+  setThreadSetting(threadId: string, field: "title" | "cwd" | "agents" | "connection" | "model" | "effort" | "max_tokens" | "auto_compact_at" | "auto_compact_target_percent" | "summary_max_chars" | "spill", value: string): Promise<Outcome<ThreadDetails>> {
+    return this.run("thread.set", { thread_id: threadId, [field]: value }, outcomeDecoder(decodeDetails), { operationId: this.newId() });
+  }
   /** Update only model settings for this Thread; owner validates values. */
   setThreadModel(threadId: string, changes: { model?: string; connection?: string; effort?: string; agents?: string; auto_compact_at?: string; max_tokens?: string }): Promise<Outcome<ThreadDetails>> {
     return this.run("thread.set", { thread_id: threadId, ...changes }, outcomeDecoder(decodeDetails), { operationId: this.newId() });

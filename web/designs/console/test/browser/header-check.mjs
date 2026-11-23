@@ -44,11 +44,12 @@ try{
   const shot=await call('Page.captureScreenshot',{format:'png'});
   await writeFile(`${process.env.SHOTS}/studio-${width}.png`,Buffer.from(shot.data,'base64'));
   await evaluate("document.querySelector('.context-ring').closest('button').click(); true");
-  await until(()=>evaluate("!!document.querySelector('.context-ring-popover')"));
-  assert.equal(await evaluate("document.querySelector('.context-ring-popover').textContent.includes('最後の圧縮')"),false);
-  await evaluate('window.setCompactionCoverage(true)');
-  await until(()=>evaluate("document.querySelector('.context-ring-popover')?.textContent.includes('最後の圧縮')"));
-  await evaluate("document.querySelector('.context-ring').closest('button').click(); true");
+  await until(()=>evaluate("document.querySelector('#panel-tab-info')?.getAttribute('aria-selected') === 'true'"));
+  if (!desktop) {
+   await until(()=>evaluate("!!document.querySelector('dialog[open] #panel-page-info')"));
+   await call('Input.dispatchKeyEvent',{type:'keyDown',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});
+   await call('Input.dispatchKeyEvent',{type:'keyUp',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});
+  }
   if (desktop) {
    const menu = async (selector, name) => {
     const id=await evaluate(`(() => { const trigger=document.querySelector(${JSON.stringify(selector)}); trigger.click(); return trigger.getAttribute('aria-controls'); })()`);
