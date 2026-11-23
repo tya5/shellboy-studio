@@ -242,7 +242,7 @@ export function Threads({ model }: { model: AppModel }) {
           <h1 id="threads-page-heading" tabIndex={-1}>{t("view.threads")}</h1>
           <div class="muted">{t("org.sub")}</div>
         </div>
-        <div class="toolbar">
+        <div class="choice-row">
           <ButtonGroup label={t("org.groupBy")}>
             {THREAD_GROUPINGS.map((g) => (
               <Button key={g} aria-pressed={by === g} onClick={() => org.setGrouping(g)}>{t(`org.by.${g}`)}</Button>
@@ -323,7 +323,7 @@ export function Threads({ model }: { model: AppModel }) {
       {kind ? (
         <>
           {heads.error ? <Notice tone="bad" actions={<Button onClick={() => void org.read()}>{t("common.refresh")}</Button>}>{t("common.readError", { message: heads.error.message })}</Notice> : null}
-          {!heads.loaded && heads.loading ? <div class="muted">{t("common.loading")}</div> : null}
+          {!heads.loaded && heads.loading ? <LoadingRows label={t("common.loading")} rows={3} /> : null}
           {heads.loaded && heads.names.length === 0 ? <EmptyState role="empty.organizationItems" title={t(kind === "tag" ? "org.noTags" : "org.noDirs")} /> : null}
           {heads.names.map((name) => {
             const member = open.get(name);

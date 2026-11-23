@@ -180,7 +180,7 @@ describe("screen-owned thread-list focus", () => {
       expect(target).toBeDefined();
       await act(async () => { target!.focus(); });
       expect(document.activeElement).toBe(target);
-      const toolbarControl = screen === "threads" ? rig.host.querySelector<HTMLButtonElement>(".toolbar button")! : rig.host.querySelector<HTMLButtonElement>(".side-controls button[title]")!;
+      const toolbarControl = screen === "threads" ? rig.host.querySelector<HTMLButtonElement>(".choice-row button")! : rig.host.querySelector<HTMLButtonElement>(".side-controls button[title]")!;
       toolbarControl.focus();
       expect(document.activeElement).toBe(toolbarControl);
       toolbarControl.remove();
@@ -228,4 +228,33 @@ describe("screen-owned thread-list focus", () => {
       expect(rig.model.ops.threadDelete).toHaveBeenCalledWith(idB, { thread_count: 22, ids_hash: "marker-B" });
     } finally { await unmount(rig); }
   });
+});
+
+it("shows LoadingRows inside a Threads member band while its first member read is pending", async () => {
+  const f = await fixtureModel({ route: "threads", capabilities: ["thread.cwds"] });
+  const host = document.createElement("div");
+  document.body.append(host);
+  const prefs = signal(loadPrefs({ read: () => null, write() {} }, DESIGNS));
+  const cwd = "/home/me/dev/shellboy";
+  f.model.org.groupBy.value = "directory";
+  f.model.org.headings.headings.value = { kind: "cwd", names: [cwd], nextCursor: undefined, pages: 1, loading: false, loaded: true, error: undefined };
+  try {
+    await act(async () => {
+      render(<App context={{ model: f.model, prefs, designs: DESIGNS, setPrefs() {}, submitToken: async () => false }} />, host);
+    });
+    await act(async () => {
+      f.model.org.headings.toggle(cwd);
+    });
+    const band = host.querySelector<HTMLElement>(`.org .tgroup[aria-label="${cwd}"]`)!;
+    expect(band).toBeTruthy();
+    expect(band.querySelector(".tgroup-count")?.textContent).not.toMatch(/[0-9]/);
+    expect(band.querySelector(".tgroup-toggle")?.getAttribute("aria-busy")).toBe("true");
+    expect(band.querySelector(".loadrows")).toBeTruthy();
+    expect(f.t.calls("thread.list").some(call => (call.args as { cwd?: string }).cwd === cwd)).toBe(true);
+  } finally {
+    render(null, host);
+    host.remove();
+    f.model.dispose();
+    f.data.stop();
+  }
 });
