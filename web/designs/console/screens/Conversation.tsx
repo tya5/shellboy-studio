@@ -621,7 +621,6 @@ function RightPanel({ model, panelCollapsed = false, sheet = false }: { model: A
     const panel = root.current;
     if (!panel) return;
     const publish = () => setPanelVisible(getComputedStyle(panel).display !== "none");
-    publish();
     const observer = new ResizeObserver(publish);
     observer.observe(panel);
     return () => observer.disconnect();
@@ -632,7 +631,7 @@ function RightPanel({ model, panelCollapsed = false, sheet = false }: { model: A
     ? model.artifacts.observeList(threadId) : undefined, [model, artifactsShown, owner, threadId]);
   useEffect(() => artifactsShown && owner.state === "connected" && threadId && artifactId
     ? model.artifacts.observeHistory(threadId, artifactId) : undefined, [model, artifactsShown, owner, threadId, artifactId]);
-  const usageThread = panelVisible && !panelCollapsed && selectedTab === "info" && !detail && owner.state === "connected" ? threadId : undefined;
+  const usageThread = panelVisible && !sheet && !panelCollapsed && selectedTab === "info" && !detail && owner.state === "connected" ? threadId : undefined;
   const usageKey = usageThread && owner.state === "connected" ? JSON.stringify([owner.info.instance_id, usageThread]) : undefined;
   const focusAfterBack = useRef<{ tab: typeof model.panelTab.value; restore?: () => boolean }>();
   useLayoutEffect(() => {

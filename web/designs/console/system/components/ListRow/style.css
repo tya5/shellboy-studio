@@ -15,4 +15,4 @@
   .list-row[data-sidebar-row] > .list-row-action{width:var(--size-touch);visibility:visible}
 }
 
-@media (max-width: 760px) { .list-row[data-touch-row] > .panel-list-main { min-height:var(--size-touch); } }
+@container app (max-width:1179px) { .list-row[data-touch-row] > .panel-list-main { min-height:var(--size-touch); } }

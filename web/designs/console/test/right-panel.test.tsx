@@ -37,6 +37,12 @@ async function setup(capabilities?: string[]) {
 
 describe('right panel purpose',()=>{
  it('keeps artifact owner order and refreshes both list and detail on the Thread hint', async () => {
+  const original = ResizeObserver;
+  let reveal: (() => void) | undefined;
+  vi.stubGlobal('ResizeObserver', class extends original {
+    constructor(cb: ResizeObserverCallback) { super(cb); reveal = () => cb([], this); }
+    observe(node: Element) { if (node.matches('[data-panel-root]')) reveal?.(); }
+  });
   const f=await setup(['attachment.list.page','artifact.list.page']);
   const at='2026-11-21T00:00:00Z';
   const version=(n:number,title:string)=>({version:n,title,uri:`/fixture/notes-${n}.md`,mime:'text/markdown',created_at:at});
@@ -72,7 +78,7 @@ describe('right panel purpose',()=>{
    expect(f.t.calls('artifact.list')).toHaveLength(2);
    expect(page.querySelector('[data-panel-detail]')?.textContent).toContain('New report');
    expect(page.querySelector('[data-panel-detail]')?.textContent).toContain('/fixture/notes-1.md');
-  } finally {f.model.dispose();f.data.stop();}
+  } finally {f.model.dispose();f.data.stop();vi.unstubAllGlobals();}
  });
 
  it('opens the attachment section on demand, pages by cursor, and refreshes on the Thread hint', async () => {

@@ -155,7 +155,7 @@ describe("App request and guide", () => {
 });
 
 describe("Conversation work regions", () => {
-  it("shows nonempty regions in the sidebar and one compact strip; removes them on a hint", async () => {
+  it("clears work on a hint and leaves one reachable phone panel opener", async () => {
     const { model, t, db } = await fixtureModel();
     db.work.lead = [
       { kind: "shell", id: "exec-1", execution_id: "exec-1", thread_id: "lead", run_id: "run-1", state: "running" },
@@ -176,7 +176,7 @@ describe("Conversation work regions", () => {
     db.work.lead = [];
     act(() => t.push({ t: "changed", config_changed: false, thread_ids: ["lead"], list: false }));
     await act(async () => settle(t, db));
-    expect(el.querySelector(".work-strip")).toBeNull();
+    expect(el.querySelector(".work-strip button")?.textContent).toBe("Conversation work");
     expect(el.querySelectorAll("#panel-page-work [data-panel-row-id]")).toHaveLength(0);
     model.dispose();
   });
