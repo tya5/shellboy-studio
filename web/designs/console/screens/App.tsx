@@ -4,7 +4,7 @@ import { BrandLogo } from "../system/components/BrandLogo";
 import { threadMenuEntries } from "../system/components/thread-menu";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
 import { CAPABILITY_TAGS, CAPABILITY_CWDS, formatRoute, readSidebarWidth, SIDEBAR_WIDTH_MAX, SIDEBAR_WIDTH_MIN, statusLabel, viewShortcut, navShortcut, panelShortcut, type DesignContext, type ViewName } from "../../../ui-core/src";
-import { Button, Field, FilterChips, FilterMenu, Icon, MoreMenu, NavItem, Notice, StatusMark, ThreadDeleteDialog, ThreadGroup, ThreadItem, ShellFooter, ShellToggle, type IconRole, type ThreadDeleteTarget } from "../system/components";
+import { Button, Field, FilterChips, FilterMenu, Icon, LoadingCount, LoadingRows, MoreMenu, NavItem, Notice, StatusMark, ThreadDeleteDialog, ThreadGroup, ThreadItem, ShellFooter, ShellToggle, type IconRole, type ThreadDeleteTarget } from "../system/components";
 import { formatAge } from "../../../ui-core/src";
 import { ThreadHeader } from "./ThreadHeader";
 import { Conversation } from "./Conversation";
@@ -220,7 +220,7 @@ export function App({ context }: { context: DesignContext }) {
               {moreItems.map((i) => <NavItem key={i.key} href={i.href} role={i.role} label={i.label} current={i.current} />)}
             </nav>
             <div class="sidehead">
-            <h2 id="sidebar-thread-list-heading" tabIndex={-1}>{t("threads.title")}</h2>
+            <h2 id="sidebar-thread-list-heading" class="group-label" tabIndex={-1}>{t("threads.title")}</h2>
           </div>
           <div class="side-search">
             <div class="side-controls">
@@ -247,7 +247,7 @@ export function App({ context }: { context: DesignContext }) {
                 const open = !closedGroups.includes(group.key);
                 const fold = { open, show: t("sidebar.expand"), hide: t("sidebar.collapse"), showLabel: t("sidebar.expandGroup", { name: label }), hideLabel: t("sidebar.collapseGroup", { name: label }), onToggle: () => setFold("sidebarClosedGroups", group.key, open) };
                 let hiddenBelow: number | undefined;
-                return <ThreadGroup key={group.key} label={label} count={String(group.rows.length)} fold={fold}>
+                return <ThreadGroup key={group.key} label={label} count={list.loaded ? t("org.bandCount", { n: group.rows.length }) : list.loading ? <LoadingCount /> : ""} countLoading={!list.loaded && list.loading} fold={fold}>
                   {open ? group.rows.map((r, index) => {
                     if (hiddenBelow !== undefined && r.depth > hiddenBelow) return null;
                     const id = r.summary.thread_id;
@@ -276,6 +276,7 @@ export function App({ context }: { context: DesignContext }) {
                 </ThreadGroup>;
               })}
             </div>
+            {!list.loaded && list.loading ? <LoadingRows label={t("common.loading")} rows={2} /> : null}
             {list.loaded && list.items.length === 0 ? <div class="side-note">{query || activeFilters.length ? t("threads.noMatch") : t("threads.empty")}</div> : null}
             {model.data.canLoadMoreThreads() ? <Button disabled={list.loadingMore} onClick={() => void model.data.loadMoreThreads()}>{t("threads.more")}</Button> : list.nextCursor ? <div class="side-note">{t("threads.capped")}</div> : null}
           </div>

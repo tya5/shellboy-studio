@@ -15,7 +15,7 @@ A full-width, sticky, opaque band: `inset` surface, a `line` above and below, he
 - Spacing: `space-8` above a band that follows another group, `space-4` between the band and its first row. The first band has no top line.
 - Pass `verbatim` when the name is owner data (a tag), and `mono` when it is machine text (a directory). Neither is uppercased.
 
-The list container has no inline padding; the band fills it. Children remain in normal flow so the next sticky band displaces the previous one.
+The component accepts text-only labels (no icon slot), as bands carry no icon. The list container has no inline padding; the band fills it. Children remain in normal flow so the next sticky band displaces the previous one. The count uses the same localized "Threads: {n}" wording on every surface; while its owner read is in flight, use the existing LoadingCount in this slot, never a provisional zero, and mark the band `aria-busy` until the read settles.
 
 ## Checkbox variant
 

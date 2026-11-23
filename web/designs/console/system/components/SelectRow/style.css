@@ -10,7 +10,7 @@
 .select-row-root[draggable=true]{cursor:grab}
 .select-row-tags{display:flex;flex-wrap:wrap;gap:var(--space-4);margin:0;padding:0;list-style:none}
 .srow-title{display:flex;align-items:center;gap:var(--space-8);min-width:0}
-.srow-status{flex:none;display:inline-grid;place-items:center;width:18px}
+.srow-status{flex:none;display:inline-grid;place-items:center;width:var(--size-icon)}
 .srow-text{flex:1;min-width:0;padding:var(--space-4) 0;overflow-wrap:anywhere}
 .srow-text a{color:var(--fg);text-decoration:none}
 .srow-text a:hover{color:var(--accent);text-decoration:underline}

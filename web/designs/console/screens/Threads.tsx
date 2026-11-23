@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
 import { CAPABILITY_REPARENT, CAPABILITY_TAGS, formatAge, formatRoute, groupThreads, listedDescendants, OPEN_MAX, statusLabel, threadTree, THREAD_GROUPINGS, type AppModel, type MemberState, type StatusKey, type TagInvalid, type ThreadGrouping, type ThreadRow, type Translate } from "../../../ui-core/src";
 import { threadMenuEntries } from "../system/components/thread-menu";
-import { Button, ButtonGroup, EmptyState, Field, Icon, Notice, Section, SelectionBar, SelectRow, StatusMark, ThreadDeleteDialog, ThreadGroup, type ThreadDeleteTarget } from "../system/components";
+import { Button, ButtonGroup, EmptyState, Field, Icon, LoadingCount, LoadingRows, Notice, Section, SelectionBar, SelectRow, StatusMark, ThreadDeleteDialog, ThreadGroup, type ThreadDeleteTarget } from "../system/components";
 
 const SEARCH_DEBOUNCE_MS = 200;
 
@@ -126,7 +126,7 @@ function Members({ model, name, member, row }: { model: AppModel; name: string; 
   return (
     <>
       {member.error ? <Notice tone="bad" actions={<Button onClick={() => void org.read()}>{t("common.refresh")}</Button>}>{t("org.groupError", { message: member.error.message })}</Notice> : null}
-      {!member.loaded && member.loading ? <div class="muted caption">{t("org.groupLoading")}</div> : null}
+      {!member.loaded && member.loading ? <LoadingRows label={t("org.groupLoading")} rows={2} /> : null}
       {member.loaded && member.items.length === 0 ? <div class="muted caption">{t("org.groupEmpty")}</div> : null}
       {rows.map((r) => row(r))}
       {org.headings.canLoadMore(name) ? <span class="more"><Button disabled={member.loading} onClick={() => org.headings.loadMore(name)}>{t("threads.more")}</Button></span> : member.nextCursor ? <div class="muted caption">{t("org.groupCapped", { n: member.items.length })}</div> : null}
@@ -278,7 +278,7 @@ export function Threads({ model }: { model: AppModel }) {
         </Notice>
       ) : null}
       {!kind && state.error ? <Notice tone="bad" actions={<Button onClick={() => void org.read()}>{t("common.refresh")}</Button>}>{t("common.readError", { message: state.error.message })}</Notice> : null}
-      {!kind && !state.loaded && state.loading ? <div class="muted">{t("common.loading")}</div> : null}
+      {!kind && !state.loaded && state.loading ? <LoadingRows label={t("common.loading")} rows={3} /> : null}
       {!kind && state.loaded && state.items.length === 0 ? (
         <EmptyState role="empty.threadArchive" title={state.query ? t("threads.noMatch") : t(archiving ? "threads.empty" : "org.noArchived")} />
       ) : null}
@@ -315,7 +315,7 @@ export function Threads({ model }: { model: AppModel }) {
           }),
         };
         return (
-          <ThreadGroup key={g.key} label={label} labelContent={by === "state" && g.key === "idle" ? <StatusMark status="idle" label={label} /> : undefined} mono={by === "directory"} verbatim={by === "tag"} count={String(ids.length)} all={chosen === ids.length} some={chosen > 0} selectLabel={t("org.selectGroup", { group: label })} onSelect={(on) => org.setMany(ids, on)} fold={fold}>
+          <ThreadGroup key={g.key} label={label} mono={by === "directory"} verbatim={by === "tag"} count={t("org.bandCount", { n: ids.length })} all={chosen === ids.length} some={chosen > 0} selectLabel={t("org.selectGroup", { group: label })} onSelect={(on) => org.setMany(ids, on)} fold={fold}>
             {groupOpen ? g.rows.map((memberRow) => row(memberRow)) : null}
           </ThreadGroup>
         );
@@ -336,7 +336,8 @@ export function Threads({ model }: { model: AppModel }) {
                 label={name}
                 mono={kind === "cwd"}
                 verbatim
-                count={member?.loaded ? String(ids.length) : ""}
+                count={member?.loaded ? t("org.bandCount", { n: ids.length }) : member?.loading ? <LoadingCount /> : ""}
+                countLoading={!member?.loaded && !!member?.loading}
                 all={ids.length > 0 && chosen === ids.length}
                 some={chosen > 0}
                 selectLabel={t("org.selectGroup", { group: name })}
