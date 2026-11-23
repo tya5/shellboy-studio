@@ -1,5 +1,6 @@
 .model-picker-anchor{position:relative;min-width:0;flex:0 1 auto}
-.model-picker-anchor>.btn{max-width:min(100%,var(--size-details));overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.model-picker-anchor>.btn{max-width:min(100%,var(--size-details))}
+.model-picker-anchor>.btn>span{min-width:0;overflow:hidden;text-overflow:ellipsis}
 .model-picker{box-sizing:border-box;max-height:calc(100dvh - 3 * var(--space-24));overflow-y:auto;position:absolute;left:0;bottom:100%;z-index:20;width:min(var(--size-details),calc(100vw - 2 * var(--space-24)));padding:var(--space-16);display:flex;flex-direction:column;gap:var(--space-8);background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);}
 .model-picker p{margin:0}
 .model-picker>label{display:flex;flex-direction:column;gap:var(--space-4)}

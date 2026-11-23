@@ -18,19 +18,50 @@ try{
  await until(async()=>(await fetch(base)).ok);
  const before=process.env.BASELINE==='1';
  const capture=async name=>{const shot=await call('Page.captureScreenshot',{format:'png'});await writeFile(`${process.env.SHOTS}/${before?'before':'after'}-${name}.png`,Buffer.from(shot.data,'base64'));};
- for(const width of [1280,390]){
+ for(const width of [1280,390]) for(const theme of ['console','light']){
   await call('Emulation.setDeviceMetricsOverride',{width,height:900,deviceScaleFactor:1,mobile:false});
-  await call('Page.navigate',{url:`${base}?width=${width}`});
+  await call('Page.navigate',{url:`${base}?width=${width}&theme=${theme}&longModel`});
   await until(()=>evaluate("!!window.setRun && !!document.querySelector('.context-ring')"));
   await evaluate('window.setRun(false)');
   const ringX=()=>evaluate("document.querySelector('.context-ring').getBoundingClientRect().x");
   const idle=await ringX();
-  await capture(`${width}-idle`);
+  await capture(`${width}-${theme}-idle`);
   await evaluate('window.setRun(true)');
   await until(()=>evaluate("!!document.querySelector('.composer-row .btn-stop')"));
   const running=await ringX();
   if(before) assert.notEqual(idle,running); else assert.equal(idle,running);
-  await capture(`${width}-running`);
+  const layout=await evaluate(`(() => {
+   const row=document.querySelector('.composer-row');
+   const chip=row.querySelector('.model-picker-anchor>.btn');
+   const actions=[...row.querySelectorAll('.right button')];
+   const buttons=[chip,...actions];
+   const token=getComputedStyle(row);
+   const box=el=>el.getBoundingClientRect();
+   const center=el=>box(el).y+box(el).height/2;
+   const style=getComputedStyle(chip);
+   const label=chip.firstElementChild;
+   const labelProbe=document.createElement('span');
+   labelProbe.style.font='var(--type-label)';row.append(labelProbe);
+   const role=getComputedStyle(labelProbe);
+   const labelType=style.fontSize===role.fontSize && style.lineHeight===role.lineHeight && style.fontWeight===role.fontWeight;
+   labelProbe.remove();
+   return {theme:document.documentElement.dataset.ds,labelType,
+    inset:parseFloat(style.paddingInlineStart),end:parseFloat(style.paddingInlineEnd),space:parseFloat(token.getPropertyValue('--space-8')),
+    min:parseFloat(token.getPropertyValue(innerWidth<900?'--size-touch':'--size-control')),
+    heights:buttons.map(el=>box(el).height),centers:buttons.map(center),
+    gaps:actions.slice(1).map((el,i)=>box(el).left-box(actions[i]).right),
+    usableLabel:!label || (label.clientWidth>0 && getComputedStyle(label).textOverflow==='ellipsis'),
+    overflow:row.scrollWidth>row.clientWidth+1};
+  })()`);
+  assert.equal(layout.theme,theme);
+  if(!before){
+   assert(layout.labelType && layout.usableLabel && !layout.overflow,JSON.stringify(layout));
+   assert.equal(layout.inset,layout.space); assert.equal(layout.end,layout.space);
+   assert(layout.heights.every(h=>h>=layout.min));
+   assert(layout.centers.every(y=>Math.abs(y-layout.centers[0])<0.5));
+   assert(layout.gaps.every(g=>Math.abs(g-layout.space)<0.5));
+  }
+  await capture(`${width}-${theme}-running`);
   if(!before){
    assert.equal(await evaluate("document.querySelectorAll('[data-conversation-header] .shell-toggle-panel').length"),0);
    const visible=await evaluate("[...document.querySelectorAll('.shell-toggle-panel')].filter(b=>b.getClientRects().length).length");
@@ -45,8 +76,8 @@ try{
   await evaluate("document.querySelector('.model-picker-anchor>button').click();true");
   await until(()=>evaluate("(async()=>{await window.flushOwner();return !!document.querySelector('.model-picker-list button');})()"));
   assert.equal(await evaluate("[...document.querySelectorAll('.model-picker input')].some(input=>input.getAttribute('aria-label')?.includes('Thread override'))"),before);
-  await capture(`${width}-picker`);
-  console.log(JSON.stringify({width,idle,running,before}));
+  await capture(`${width}-${theme}-picker`);
+  console.log(JSON.stringify({width,theme,idle,running,before,layout}));
  }
 
 }finally{

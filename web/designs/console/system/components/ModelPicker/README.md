@@ -25,3 +25,7 @@ The Conversation footer link opens this Thread’s Settings at the Connection se
 The picker does not own Thread setting destinations. Use its Settings link to open
 the right-panel Thread Settings; callers that target a specific row provide the
 existing `SettingsDestination` to that panel.
+
+The composer trigger uses the shared Button label type, `space-8` inline inset,
+and `size-control` / `size-touch` minimum height. Only the label truncates; the
+button inset and full accessible name remain intact when space is tight.

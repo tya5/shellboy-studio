@@ -6,6 +6,7 @@ import type { Prefs } from '../../../../ui-core/src';
 
 const f = await fixtureModel({ route: 'conversation', threadId: 'lead', capabilities: ['thread.settings', 'config.edit', 'history.window'], configure(db) {
   Object.assign(db.details.lead!, { context_usage: { last_successful_attempt: { input_tokens: 1000 } }, effective_auto_compact_at: 2000 });
+  if (new URLSearchParams(location.search).has('longModel')) db.details.lead!.model = 'provider/model-with-a-long-identifier-to-check-chip-padding';
   const base = db.answer.bind(db);
   db.answer = call => {
     const args = call.args as { connection?: string; model?: string; effort?: string };
@@ -21,7 +22,9 @@ const f = await fixtureModel({ route: 'conversation', threadId: 'lead', capabili
     return base(call);
   };
 } });
-const prefs = signal<Prefs>({ design: 'console', theme: 'console', lang: 'en', weights: { cached: 0.1, output: 5 } });
+const theme = new URLSearchParams(location.search).get('theme') === 'light' ? 'light' : 'console';
+document.documentElement.dataset.ds = theme;
+const prefs = signal<Prefs>({ design: 'console', theme, lang: 'en', weights: { cached: 0.1, output: 5 } });
 mount(document.getElementById('app')!, { model: f.model, designs: DESIGNS, prefs, setPrefs: change => { prefs.value = {...prefs.value, ...change}; }, submitToken: async () => true });
 Object.assign(window, { flushOwner: () => settle(f.t, f.db), writes: () => f.t.calls('thread.set').map(call => call.args), hint: async () => { f.t.push({ t: 'changed', thread_ids: ['lead'], list: false, config_changed: false }); await settle(f.t, f.db); } });
 
