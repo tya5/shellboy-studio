@@ -2,7 +2,7 @@
 
 - **Use for:** Separate Thread groups with sticky disclosure bands, including Pinned and All; use the checkbox variant only where the group is selectable.
 - **Do not use for:** Use ThreadItem or SelectRow for a Thread, and ListDivider for a noninteractive Activity heading.
-- **Why:** The shared band aligns its chevron with row actions, separates disclosure from selection, and marks Pinned without adding a redundant mark to All.
+- **Why:** The shared band aligns its chevron with row actions, separates disclosure from selection, and centers its leading mark on the same row as the label and disclosure.
 - **Source:** [Studio Thread list (Orca, shadcn/ui, APG)](../../patterns/thread-list.md)
 
 Groups Threads by owner-reported directory or state. The checkbox/bulk variant selects every listed row and shows mixed selection. When it also owns a group disclosure, it uses the exact same section-band and toggle as the sidebar variant, with exactly two adjacent controls: the checkbox label fills the full-height leading column and the disclosure fills the remaining band with no gap. Do not nest one control inside the other or center a short checkbox label in the band.

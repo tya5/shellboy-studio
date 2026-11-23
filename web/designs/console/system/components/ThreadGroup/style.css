@@ -12,7 +12,7 @@
 .tgroup-toggle{display:flex;flex:1;width:auto;min-width:0;min-height:var(--size-touch);align-items:center;gap:var(--space-8);padding:0 var(--space-row-inset) 0 var(--space-8);border:0;border-radius:0;background:var(--raised);color:var(--fg);text-align:left}
 .tgroup[data-group-heading="section"] .tgroup-toggle:hover,.tgroup[data-group-heading="section"] .tgroup-toggle:focus-visible{background:var(--raised)}
 .tgroup[data-group-heading="section"] .tgroup-count{flex:none;color:var(--muted)}
-.tgroup-pin{flex:none;color:var(--muted)}
+.tgroup-pin{display:flex;flex:none;align-items:center;justify-content:center;color:var(--muted)}
 .tgroup-chevron{display:grid;place-items:center;flex:none;width:var(--size-row-action);min-width:var(--size-row-action);height:var(--size-touch);margin-left:auto;color:var(--fg)}
 .tcheck-gap{flex:none;width:8px}
 
