@@ -1,20 +1,26 @@
 # ThreadGroup
 
-- **Use for:** Separate Thread groups with sticky disclosure bands, including Pinned and All; use the checkbox variant only where the group is selectable.
-- **Do not use for:** Use ThreadItem or SelectRow for a Thread, and ListDivider for a noninteractive Activity heading.
-- **Why:** The shared band aligns its chevron with row actions, separates disclosure from selection, and centers its leading mark on the same row as the label and disclosure.
-- **Source:** [Studio Thread list (Orca, shadcn/ui, APG)](../../patterns/thread-list.md)
+- **Use for:** A band over a long group of Threads that can collapse: the sidebar Pinned and All bands, and the Threads page groups; use the checkbox variant only where the group is selectable.
+- **Do not use for:** Use ThreadItem or SelectRow for a Thread, ListDivider (`.group-label`) for a static group label that does not collapse, and Section for a subject card.
+- **Why:** Design system v2 structure levels: a band is a group label with a surface. The inset surface between two lines shows where a group starts without looking like a row, and the whole band is one disclosure button.
+- **Source:** [Apple HIG Lists and tables (section headers)](https://developer.apple.com/design/human-interface-guidelines/lists-and-tables), [Material 3 Lists](https://m3.material.io/components/lists/overview), [Material 3 Divider](https://m3.material.io/components/divider/overview), [shadcn/ui Sidebar (SidebarGroupLabel)](https://ui.shadcn.com/docs/components/sidebar), [WAI-ARIA APG Disclosure](https://www.w3.org/WAI/ARIA/apg/patterns/disclosure/), [Studio Thread list](../../patterns/thread-list.md)
 
-Groups Threads by owner-reported directory or state. The checkbox/bulk variant selects every listed row and shows mixed selection. When it also owns a group disclosure, it uses the exact same section-band and toggle as the sidebar variant, with exactly two adjacent controls: the checkbox label fills the full-height leading column (`size-control` wide, `size-touch` at phone width, matching SelectRow's checkbox) and the disclosure fills the remaining band with no gap. Do not nest one control inside the other or center a short checkbox label in the band.
+## Band
 
-## Sidebar section band
+A full-width, sticky, opaque band: `inset` surface, a `line` above and below, height `size-control` (`size-touch` at phone width). Its text is the group-label role: `type-caption` at weight 500 in `muted`, uppercase with `letter-caps` in an English UI. The count is `type-code` at caption size. The name is one line and truncates.
 
-Use the sidebar variant for repeated sections in a list: a full-width, sticky, opaque `raised` band with one-line truncated name, count, and a whole-band accessible disclosure button. The list container has no inline padding; the band fills it. The header has no inset and the whole disclosure button owns the shared leading/trailing tokens, except for the separate checkbox. Place the chevron in the shared `size-row-action` column (24px), aligned with the trailing row action/menu column. Do not add a separate text link. For sidebar bands, provide a leading semantic mark in every group so names align; use the list mark for All and the pin mark for Pinned. Other ThreadGroup uses may omit marks. Children remain in normal flow so the next sticky band displaces the previous one.
+- No leading mark: bands carry no icon (the earlier Pinned pin mark and All list mark are gone). Rows carry the marks.
+- No hover surface: the whole band is the accessible disclosure button (`aria-expanded`), and only its small trailing chevron (`size-icon-small`, `muted`, `fg` on hover) shows that it opens. Do not add a separate text link.
+- The chevron sits in the list's `size-row-action` column, aligned with the trailing row action. The band's left inset is `space-8`, the same as the row marks; its right inset is `space-row-inset`.
+- Spacing: `space-8` above a band that follows another group, `space-4` between the band and its first row. The first band has no top line.
+- Pass `verbatim` when the name is owner data (a tag), and `mono` when it is machine text (a directory). Neither is uppercased.
 
-Reference: iOS plain-table section headers, Material subheaders, Orca `SectionHeader`, shadcn/ui Sidebar, WAI-ARIA disclosure button; approved Studio sidebar mock v8, section 1a B1 (band shape only; its directory grouping is void).
+The list container has no inline padding; the band fills it. Children remain in normal flow so the next sticky band displaces the previous one.
 
-The section band is one reusable ThreadGroup part with checkbox and no-checkbox variants, not screen-owned styling. Keep its dimensions and behavior here; consumers supply the group fact and toggle callback. Do not use it as a Thread row.
+## Checkbox variant
 
-Styles are colocated in `system/components/ThreadGroup/style.css`.
+The checkbox/bulk variant selects every listed row and shows mixed selection. With a disclosure it uses the same band, with exactly two adjacent controls: the checkbox label fills the full-height leading column (`size-control` wide, `size-touch` at phone width, matching SelectRow's checkbox) and the disclosure fills the rest of the band with no gap. Do not nest one control inside the other or center a short checkbox label in the band.
+
+The band is one reusable ThreadGroup part, not screen-owned styling. Consumers supply the group fact and toggle callback. Do not use it as a Thread row.
 
 Styles: style.css in this directory

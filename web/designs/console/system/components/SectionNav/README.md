@@ -1,9 +1,9 @@
 # SectionNav
 
-- **Use for:** Navigate between sections inside a SubView; use grouped search only for long Settings lists.
+- **Use for:** Navigate between sections inside a SubView; use grouped navigation with group labels and search only for long Settings lists.
 - **Do not use for:** Use NavItem for top-level routes and PanelTabs for inspector panels. Keep short lists ungrouped.
-- **Why:** URL-backed destinations persist selection; narrow layouts retain accessible navigation without sideways page scrolling.
-- **Source:** [Studio Settings pattern (Orca, VS Code, macOS)](../../patterns/settings.md)
+- **Why:** URL-backed destinations persist selection; narrow layouts retain accessible navigation without sideways page scrolling. Design system v2: group labels are clearly labels, not items.
+- **Source:** [Studio Settings pattern (Orca, VS Code, macOS)](../../patterns/settings.md), [shadcn/ui Sidebar (SidebarGroupLabel)](https://ui.shadcn.com/docs/components/sidebar), [Apple HIG Sidebars](https://developer.apple.com/design/human-interface-guidelines/sidebars)
 
 The sections inside one view, such as Settings or Analytics. Use it through SubView.
 Each item supplies a semantic `IconRole` for its destination, not a glyph name. The
@@ -20,3 +20,5 @@ Grouped navigation and search can be enabled by SubView for a long section list;
 The first search result is preselected and Enter opens it. Setting results reveal their destination row; on phones the results replace the section select.
 
 Search rows supply a destination ID independent of the localized label; repeated connection fields include the connection name in result copy.
+
+Group labels use the shared `.group-label`: `type-caption` at weight 500 in `muted`, uppercase with `letter-caps` in an English UI, with no icon, surface or hover, and not clickable. Items keep their icon, `type-label`, `hover` surface and `accent-bg` selection. The label's left edge is the items' icon edge (`space-8`). Groups are `space-16` apart (the list's `space-8` gap plus `space-8`), and a label sits `space-4` above its first item.

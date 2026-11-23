@@ -1,6 +1,6 @@
 .nav{display:flex;flex-direction:column;gap:var(--space-4);padding:var(--space-8)}
 .nav-item{display:flex;align-items:center;gap:var(--space-8);min-height:36px;padding:0 var(--space-8);border-radius:var(--radius-s);color:var(--muted);text-decoration:none}
-.nav-item:hover{background:var(--raised)}
+.nav-item:hover{background:var(--hover)}
 .nav-item[aria-current=page]{background:var(--accent-bg);color:var(--fg)}
 .count{margin-left:auto;min-width:20px;padding:0 6px;border-radius:10px;background:var(--wait);color:var(--on-wait);font:var(--type-caption);font-weight:600;text-align:center}
 .tree{display:flex;flex-direction:column;gap:1px}
@@ -8,3 +8,5 @@
 @container app (max-width:899px){
   .nav-item{min-height:var(--size-touch)}
 }
+.group-label{margin:var(--space-16) 0 var(--space-4);font:var(--type-caption);font-weight:500;color:var(--muted)}
+:lang(en) .group-label{text-transform:uppercase;letter-spacing:var(--letter-caps)}

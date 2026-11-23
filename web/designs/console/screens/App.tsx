@@ -240,7 +240,7 @@ export function App({ context }: { context: DesignContext }) {
                 const open = !closedGroups.includes(group.key);
                 const fold = { open, show: t("sidebar.expand"), hide: t("sidebar.collapse"), showLabel: t("sidebar.expandGroup", { name: label }), hideLabel: t("sidebar.collapseGroup", { name: label }), onToggle: () => setFold("sidebarClosedGroups", group.key, open) };
                 let hiddenBelow: number | undefined;
-                return <ThreadGroup key={group.key} label={label} count={String(group.rows.length)} leading={group.key === "pins" ? "thread.pinned" : "group.all"} fold={fold}>
+                return <ThreadGroup key={group.key} label={label} count={String(group.rows.length)} fold={fold}>
                   {open ? group.rows.map((r, index) => {
                     if (hiddenBelow !== undefined && r.depth > hiddenBelow) return null;
                     const id = r.summary.thread_id;

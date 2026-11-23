@@ -4,20 +4,26 @@
 .tgroup-name{flex:1;min-width:0;font-weight:600}
 .tgroup-name.mono{font-weight:400}
 .tgroup-count{white-space:nowrap}
-.tgroup[data-group-heading="section"] .tgroup-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;overflow-wrap:normal}
-.tgroup[data-group-heading="section"]{position:relative}
-.tgroup[data-group-heading="section"]>header{position:sticky;top:0;z-index:2;gap:0;background:var(--raised);border-block:1px solid var(--line)}
-.tgroup[data-group-heading="section"]>header:has(> .tcheck){display:grid;grid-template-columns:var(--size-control) minmax(0,1fr);align-items:stretch;gap:0;min-height:var(--size-touch)}
-.tgroup[data-group-heading="section"]>header>.tcheck{box-sizing:border-box;width:100%;height:100%;align-self:stretch}
-.tgroup-toggle{display:flex;flex:1;width:auto;min-width:0;min-height:var(--size-touch);align-items:center;gap:var(--space-8);padding:0 var(--space-row-inset) 0 var(--space-8);border:0;border-radius:0;background:var(--raised);color:var(--fg);text-align:left}
-.tgroup[data-group-heading="section"] .tgroup-toggle:hover,.tgroup[data-group-heading="section"] .tgroup-toggle:focus-visible{background:var(--raised)}
-.tgroup[data-group-heading="section"] .tgroup-count{flex:none;color:var(--muted)}
-.tgroup-leading{display:flex;flex:none;align-items:center;justify-content:center;color:var(--muted)}
-.tgroup-chevron{display:grid;place-items:center;flex:none;width:var(--size-row-action);min-width:var(--size-row-action);height:var(--size-touch);margin-left:auto;color:var(--fg)}
-.tcheck-gap{flex:none;width:8px}
+.tcheck-gap{flex:none;width:var(--space-8)}
 
-.tgroup[data-group-heading="section"]{border:0;background:none}
-.tgroup[data-group-heading="section"]>header{color:var(--muted)}
+/* The band (design system v2): a full-width inset surface between two lines, caption text at 500 in muted, no mark, no hover surface. */
+.tgroup[data-group-heading="section"]{position:relative;border:0;background:none}
+.tgroup[data-group-heading="section"]+.tgroup[data-group-heading="section"]{margin-top:var(--space-8)}
+.tgroup[data-group-heading="section"]>header{position:sticky;top:0;z-index:2;gap:0;background:var(--inset);border-block:1px solid var(--line);color:var(--muted)}
+.tgroup[data-group-heading="section"]:first-child>header{border-top-color:transparent}
+.tgroup[data-group-heading="section"]>header{margin-bottom:var(--space-4)}
+.tgroup[data-group-heading="section"]>header:has(> .tcheck){display:grid;grid-template-columns:var(--size-control) minmax(0,1fr);align-items:stretch;gap:0;min-height:var(--size-control)}
+.tgroup[data-group-heading="section"]>header>.tcheck{box-sizing:border-box;width:100%;height:100%;align-self:stretch}
+.tgroup-toggle{display:flex;flex:1;width:auto;min-width:0;min-height:var(--size-control);align-items:center;gap:var(--space-8);padding:0 var(--space-row-inset) 0 var(--space-8);border:0;border-radius:0;background:var(--inset);color:var(--muted);font:var(--type-caption);font-weight:500;text-align:left}
+.tgroup[data-group-heading="section"] .tgroup-toggle:hover,.tgroup[data-group-heading="section"] .tgroup-toggle:focus-visible{background:var(--inset)}
+.tgroup[data-group-heading="section"] .tgroup-toggle:focus-visible{outline-offset:-2px}
+.tgroup[data-group-heading="section"] .tgroup-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;overflow-wrap:normal;font-weight:500}
+:lang(en) .tgroup[data-group-heading="section"] .tgroup-name:not(.mono):not(.tgroup-name-verbatim){text-transform:uppercase;letter-spacing:var(--letter-caps)}
+.tgroup[data-group-heading="section"] .tgroup-count{flex:none;color:var(--muted);font:var(--type-code);font-size:var(--size-caption);font-variant-numeric:tabular-nums}
+.tgroup-chevron{display:grid;place-items:center;flex:none;width:var(--size-row-action);min-width:var(--size-row-action);height:var(--size-control);margin-left:auto;color:var(--muted)}
+.tgroup-toggle:hover .tgroup-chevron{color:var(--fg)}
 @container app (max-width:899px){
-  .tgroup[data-group-heading="section"]>header:has(> .tcheck){grid-template-columns:var(--size-touch) minmax(0,1fr)}
+  .tgroup[data-group-heading="section"]>header:has(> .tcheck){grid-template-columns:var(--size-touch) minmax(0,1fr);min-height:var(--size-touch)}
+  .tgroup-toggle{min-height:var(--size-touch)}
+  .tgroup-chevron{height:var(--size-touch)}
 }

@@ -19,7 +19,6 @@ Consumers use semantic `IconRole` names only. Glyph names, paths, and the role-t
 | `action.clearQueryFilter` | Clear the active query filter chip in Monitor. | `cross` |
 | `action.clearArchiveFilter` | Remove the archive filter chip in Monitor. | `cross` |
 | `row.menu` | Open a row’s action menu in the sidebar or Threads list. | `more` |
-| `group.all` | Align the All sidebar section label with other bands. | Lucide `list` |
 | `thread.create` | Create a new Thread from the sidebar. | `plus` |
 | `thread.search` | Find a Thread in the sidebar list. | `search` |
 | `settings.applicationPanel` | Open or close the application Settings panel from the main header. | `gear` |
@@ -39,11 +38,6 @@ Consumers use semantic `IconRole` names only. Glyph names, paths, and the role-t
 | `panel.reply_needed` | Identify a request this Thread should answer. | Lucide `reply` |
 | `panel.awaiting_reply` | Identify a request awaiting another recipient. | Lucide `hourglass` |
 | `panel.information` | Open Thread analytics. | Lucide `info` |
-| `settings.category.start` | Identify the Getting started settings group. | `gear` |
-| `settings.category.agent` | Identify the Agent settings group. | `bot` |
-| `settings.category.display` | Identify the Display settings group. | `palette` |
-| `settings.category.data` | Identify the Data settings group. | `database` |
-| `settings.category.app` | Identify the This app settings group. | `apps` |
 | `settings.appearance` | Identify Appearance settings. | `palette` |
 | `settings.general` | Identify the General settings section. | `gear` |
 | `settings.connections` | Identify the Connections settings section. | `plug` |

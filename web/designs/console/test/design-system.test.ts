@@ -211,7 +211,7 @@ describe("shell footer toggles", () => {
 describe("approved list section and status rules", () => {
   it("keeps the reusable section band and trailing action column in ThreadGroup", () => {
     const css = componentStyleFiles["../system/components/ThreadGroup/style.css"] ?? "";
-    expect(css).toMatch(/\.tgroup\[data-group-heading="section"\]>header\{[^}]*position:sticky;[^}]*background:var\(--raised\)/);
+    expect(css).toMatch(/\.tgroup\[data-group-heading="section"\]>header\{[^}]*position:sticky;[^}]*background:var\(--inset\)/);
     expect(css).not.toMatch(/\.tgroup\[data-group-heading="section"\]>header\{[^}]*padding/);
     expect(css).not.toMatch(/\.tgroup-chevron[^}]*width:var\(--size-(?:row-action-touch|touch)\)/);
     expect(css).not.toMatch(/margin-inline:|width:calc\(/);

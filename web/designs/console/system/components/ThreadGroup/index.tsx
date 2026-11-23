@@ -1,19 +1,18 @@
 import type { ComponentChildren } from "preact";
 import { useEffect, useRef } from "preact/hooks";
-import { Icon, type IconRole } from "../Icon";
+import { Icon } from "../Icon";
 import { Button } from "../Button";
 
 /** A heading over rows that belong together, with one checkbox for all of them. */
-export function ThreadGroup({ label, labelContent, mono, count, all, some, selectLabel, onSelect, fold, leading, children }: { label: string; labelContent?: ComponentChildren; mono?: boolean; count: string; all?: boolean; some?: boolean; selectLabel?: string; leading?: IconRole; onSelect?: ((on: boolean) => void) | undefined; fold?: { open: boolean; show: string; hide: string; showLabel: string; hideLabel: string; onToggle: () => void } | undefined; children?: ComponentChildren }) {
+export function ThreadGroup({ label, labelContent, mono, verbatim, count, all, some, selectLabel, onSelect, fold, children }: { label: string; labelContent?: ComponentChildren; mono?: boolean; verbatim?: boolean; count: string; all?: boolean; some?: boolean; selectLabel?: string; onSelect?: ((on: boolean) => void) | undefined; fold?: { open: boolean; show: string; hide: string; showLabel: string; hideLabel: string; onToggle: () => void } | undefined; children?: ComponentChildren }) {
   const box = useRef<HTMLInputElement>(null);
   useEffect(() => {
     if (box.current) box.current.indeterminate = !!some && !all;
   }, [all, some]);
   const content = (
     <>
-      {!onSelect && leading ? <span class="tgroup-leading"><Icon role={leading} size="small" /></span> : null}
-      {!onSelect && !leading ? <span class="tcheck-gap" /> : null}
-      <span class={mono ? "mono tgroup-name" : "tgroup-name"}>{labelContent ?? label}</span>
+      {!onSelect && !fold ? <span class="tcheck-gap" /> : null}
+      <span class={mono ? "mono tgroup-name" : verbatim ? "tgroup-name tgroup-name-verbatim" : "tgroup-name"}>{labelContent ?? label}</span>
       <span class="tgroup-count caption muted">{count}</span>
       {fold ? <span class="tgroup-chevron"><Icon role={fold.open ? "group.collapse" : "group.expand"} size="small" /></span> : null}
     </>
