@@ -308,10 +308,6 @@ M1; a tunnel provides it.
   published Core tag/lock/binary pairing separately.
 - Run ownership and duplicate Thread-get reply lists are removed. Shell ownership
   and organizational Thread parents remain. The protocol-11 client reads directional pending pages and separate owner counts.
-- The human inbox (#37) owns one `message.list --awaiting --to human` page.
-  Sidebar Thread pages are not prerequisites; loaded Thread titles and counts
-  only annotate displayed duties. List change/resync hints refresh the owner
-  page. Reply and cancel receipts never remove rows or trigger another read.
 - The bridge and bundled frontend are released together. The frontend observes
   the bridge's connected-owner facts; the Core IPC handshake enforces the wire
   version before that owner is published as connected.
@@ -580,22 +576,26 @@ reads/writes use the same guarded no-auth/session decision. The UI configuration
 bit is no-store, contains no owner data and adds a persistent desktop/mobile badge.
 Default token/session authentication and restart behaviour remain unchanged.
 
-### Protocol 5 Human Inbox Bound
+### Human Inbox Bound (#37)
 
-The existing Awaiting you surface uses the public human-only live keyset list,
-not a full Thread scan. Its data-layer adapter owns one displayed page of 16
-Threads, at most 128 duties per Thread, sequential detail reads, one existing
-Refresher key (one running/one coalesced follow-up), and no timer/worker/queue.
-The existing Show more control replaces the displayed page using its opaque
-keyset cursor; hints restart from the first page because this is not a snapshot.
-Expired cursors/errors are reported, not silently walked. Shutdown cancels the
-current read and disposes its signal subscription. Replies use only displayed
-human message IDs. In-flight duplicate submissions share one outcome; uncertain
-retries retain the exact operation ID and text. Retained uncertain outcomes are
-bounded by 16*128; reaching the bound refuses new replies rather than dropping
-an uncertain identity. Thread-directed duties remain open-only in their existing
-per-Thread surface. Count 17 with exact=false renders 17+, with no oldest age.
-No next-reply/live feature is enabled. Revisit page size only with measured need.
+Awaiting you owns one live keyset page of up to 16 human duties
+(`REPLY_PAGE_SIZE`) from `message.list --awaiting --to human`. There are no
+per-Thread detail reads or sidebar loading prerequisite. Already loaded Thread
+summaries can annotate titles and counts; counts are absent without a matching
+summary, and an inexact count is displayed with `+` when supplied.
+
+Show more replaces the page using its opaque cursor. List change and resync
+hints restart from page one; a same-instance owner restart invalidates the page
+and starts a fresh read. The existing Refresher coalesces overlapping hints.
+Expired cursors and read failures are reported, not silently walked. Closing the
+inbox owner cancels its read and removes its subscriptions.
+
+Answer and Cancel target only displayed human message IDs. The attempt ledger
+holds at most `HUMAN_PAGE_LIMIT` (16) outcomes; it refuses a new action at the
+bound rather than discarding an unresolved receipt identity. In-flight duplicate
+actions share the outcome, and unconfirmed retries keep their operation ID and,
+for answers, their exact text. Neither reply nor cancel receipts remove rows or
+trigger another read. Thread-directed duties remain in their per-Thread surface.
 
 ### Branch Excerpt Admission
 

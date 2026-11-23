@@ -181,6 +181,8 @@ remain separate gates.
 
 ### Human Inbox Adapter Acceptance
 
+Studio #37 superseded this adapter with the cross-Thread human duty list.
+
 The production `noPending` gap is a separate product defect, not a fixture
 failure. The data-layer HumanInbox now uses only `thread.list(awaiting:human)`
 with one displayed keyset page of 16 Threads and sequential detail reads only
