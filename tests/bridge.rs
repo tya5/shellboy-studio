@@ -552,6 +552,7 @@ async fn new_tabs_start_from_the_current_owner_state_and_hear_about_changes() {
         expected.push("connection.setup");
     }
     expected.push("attachment.list.page");
+    expected.push("artifact.list.page");
     let expected = json!(expected);
     assert_eq!(event["owner"]["info"]["capabilities"], expected);
     let mut late = connect(addr, Some(&cookie), Some(&origin)).await.unwrap();
