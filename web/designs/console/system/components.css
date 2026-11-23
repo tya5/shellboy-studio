@@ -15,7 +15,6 @@
 @import "./components/QuestionCard/style.css";
 @import "./components/QuestionItem/style.css";
 @import "./components/SummaryStrip/style.css";
-@import "./components/ContextBar/style.css";
 @import "./components/KeyValue/style.css";
 @import "./components/Notice/style.css";
 @import "./components/EmptyState/style.css";
@@ -85,3 +84,6 @@
 
 @import "./components/ShellToggle/style.css";
 @import "./components/SettingRow/style.css";
+
+@import "./components/ContextRing/style.css";
+@import "./components/ConversationHeader/style.css";

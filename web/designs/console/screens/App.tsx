@@ -4,8 +4,9 @@ import { BrandLogo } from "../system/components/BrandLogo";
 import { threadMenuEntries } from "../system/components/thread-menu";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
 import { CAPABILITY_TAGS, CAPABILITY_CWDS, formatRoute, readSidebarWidth, SIDEBAR_WIDTH_MAX, SIDEBAR_WIDTH_MIN, statusLabel, viewShortcut, navShortcut, panelShortcut, type DesignContext, type ViewName } from "../../../ui-core/src";
-import { Button, ContextBar, Field, FilterChips, FilterMenu, Icon, ModelPicker, MoreMenu, NavItem, Notice, StatusMark, ThreadDeleteDialog, ThreadGroup, ThreadItem, ShellFooter, ShellToggle, type IconRole, type ThreadDeleteTarget } from "../system/components";
-import { formatAge, formatTokens, folderName } from "../../../ui-core/src";
+import { Button, Field, FilterChips, FilterMenu, Icon, MoreMenu, NavItem, Notice, StatusMark, ThreadDeleteDialog, ThreadGroup, ThreadItem, ShellFooter, ShellToggle, type IconRole, type ThreadDeleteTarget } from "../system/components";
+import { formatAge, folderName } from "../../../ui-core/src";
+import { ThreadHeader } from "./ThreadHeader";
 import { Conversation } from "./Conversation";
 import { Inbox } from "./Inbox";
 import { Monitor } from "./Monitor";
@@ -132,6 +133,11 @@ export function App({ context }: { context: DesignContext }) {
     const keys = (context.prefs.peek()[field] ?? []).filter(key => key !== id);
     context.setPrefs({ [field]: add ? [...keys, id].slice(-1000) : keys });
   };
+  const editThreadTags = (id: string, archived: boolean) => {
+    model.showView("threads");
+    model.org.openTagsFor(id, archived);
+    setDrawer(false);
+  };
   const canTag = model.data.capabilities.value.includes(CAPABILITY_TAGS);
   const canCwd = model.data.capabilities.value.includes(CAPABILITY_CWDS);
   const changeFilters = (change: ListFilter) => setFilters(value => ({ ...value, ...change }));
@@ -156,12 +162,11 @@ export function App({ context }: { context: DesignContext }) {
   const selected = model.selectedId.value;
   const row = model.selectedRow.value;
   const details = model.details.value;
-  const ctx = route.view === "conversation" ? model.context.value : undefined;
   const conn = model.connection.value;
   const desktop = model.data.desktop.value;
   const desktopDiagnostic = model.data.desktopDiagnostic.value;
   const title = route.view === "conversation" ? (details?.title ?? row?.summary.title) : t(`view.${route.view}`);
-  const folder = route.view === "conversation" ? folderName(details?.cwd ?? row?.summary.cwd) : undefined;
+  const [phonePanel, setPhonePanel] = useState<string>();
 
   const statusFooter = <footer class="status">
             <StatusMark
@@ -244,10 +249,7 @@ export function App({ context }: { context: DesignContext }) {
                         onToggle: r.childCount ? value => setFold("sidebarOpenParents", id, value) : undefined } : undefined}
                       onSelect={() => setDrawer(false)}
                       menu={{ label: t("thread.rowMenu"), entries: [{ key: "read-state", label: t(unread ? "sidebar.markRead" : "sidebar.markUnread"), disabled: !r.summary.last_end_message?.node_id, onSelect: () => model.markSidebarUnread(id, !unread) }, ...threadMenuEntries(model, r.summary, r.status,
-                        target => setDeleteThread({ threadId: target.thread_id }), canTag ? { onEditTags: () => {
-                          model.showView("threads");
-                          model.org.openTagsFor(id, r.summary.archived_at !== undefined); setDrawer(false);
-                        } } : undefined)] }} />;
+                        target => setDeleteThread({ threadId: target.thread_id }), canTag ? { onEditTags: () => editThreadTags(id, r.summary.archived_at !== undefined) } : undefined)] }} />;
                   }) : null}
                 </ThreadGroup>;
               })}
@@ -259,28 +261,11 @@ export function App({ context }: { context: DesignContext }) {
           <ShellFooter side="left"><ShellToggle panel={false} expanded={!context.prefs.value.navCollapsed} label={context.prefs.value.navCollapsed ? t("nav.expand") : t("nav.collapse")} title={`${context.prefs.value.navCollapsed ? t("nav.expand") : t("nav.collapse")} (Cmd/Ctrl+B)`} onClick={() => context.setPrefs({ navCollapsed: !context.prefs.value.navCollapsed })} /></ShellFooter>
         </aside>
         <div class="main">
-          <header class="top">
+          {route.view === "conversation" ? <ThreadHeader key={selected} model={model} collapsed={context.prefs.value.panelCollapsed === true} settings={settings} onSettings={() => setSettings(!settings)} onList={() => setDrawer(true)} onPhonePanel={() => setPhonePanel(selected)} onDelete={(threadId) => setDeleteThread({ threadId })} onEditTags={editThreadTags} /> : <header class="top">
             <span class="menu"><Button icon label={t("threads.open")} onClick={() => setDrawer(true)}><Icon role="nav.openThreadList" /></Button></span>
-            <div class="crumb">
-              {folder ? <>{folder}<span>/</span></> : null}
-              <b>{title ?? ""}</b>
-            </div>
-            <div class="right">
-              {ctx ? (
-                <ContextBar
-                  value={ctx.inputTokens}
-                  limit={ctx.autoSummaryAt}
-                  text={ctx.autoSummaryAt !== undefined ? t("context.summary", { input: formatTokens(ctx.inputTokens), limit: formatTokens(ctx.autoSummaryAt) }) : formatTokens(ctx.inputTokens)}
-                  aria={t("context.aria", { input: ctx.inputTokens, limit: ctx.autoSummaryAt ?? "" })}
-                />
-              ) : null}
-              {route.view === "conversation" && row?.status ? <span class="hide-n"><StatusMark status={row.status} label={statusLabel(t, row.status)} /></span> : null}
-              {route.view === "conversation" && details ? <ModelPicker model={model} details={details} /> : null}
-              <Button icon label={settings ? t("settings.close") : t("settings.open")} aria-expanded={settings} data-settings-toggle onClick={() => setSettings(!settings)}>
-                <Icon role="settings.applicationPanel" />
-              </Button>
-            </div>
-          </header>
+            <div class="crumb"><b>{title ?? ""}</b></div>
+            <div class="right"><Button icon label={settings ? t("settings.close") : t("settings.open")} aria-expanded={settings} data-settings-toggle onClick={() => setSettings(!settings)}><Icon role="settings.applicationPanel" /></Button></div>
+          </header>}
           {settings ? <Settings context={context} onClose={() => setSettings(false)} /> : null}
           <div class="alerts">
             {conn === "authNeeded" ? <AuthPrompt context={context} /> : null}
@@ -291,7 +276,7 @@ export function App({ context }: { context: DesignContext }) {
           {deleteThread ? <ThreadDeleteDialog key={deleteThread.threadId} model={model} target={deleteThread} getReturnFocusTarget={resolveSidebarLink} onClose={() => setDeleteThread(undefined)} /> : null}
           <section class="view" aria-label={title}>
             <AppsHost context={context} />
-            {route.view === "apps" ? null : route.view === "conversation" ? <Conversation model={model} panelCollapsed={context.prefs.value.panelCollapsed} rightPanelWidth={context.prefs.value.rightPanelWidth} onPanelWidth={rightPanelWidth => context.setPrefs({ rightPanelWidth })} /> : route.view === "monitor" ? <Monitor context={context} /> : route.view === "inbox" ? <Inbox model={model} /> : route.view === "analytics" ? <Analytics context={context} /> : route.view === "branches" ? <Branches model={model} /> : route.view === "threads" ? <Threads model={model} /> : route.view === "setup" ? <Setup context={context} /> : <SettingsView context={context} />}
+            {route.view === "apps" ? null : route.view === "conversation" ? <Conversation model={model} panelCollapsed={context.prefs.value.panelCollapsed} rightPanelWidth={context.prefs.value.rightPanelWidth} onPanelWidth={rightPanelWidth => context.setPrefs({ rightPanelWidth })} phonePanel={!!selected && phonePanel === selected} onClosePhonePanel={() => setPhonePanel(undefined)} /> : route.view === "monitor" ? <Monitor context={context} /> : route.view === "inbox" ? <Inbox model={model} /> : route.view === "analytics" ? <Analytics context={context} /> : route.view === "branches" ? <Branches model={model} /> : route.view === "threads" ? <Threads model={model} /> : route.view === "setup" ? <Setup context={context} /> : <SettingsView context={context} />}
           </section>
           <footer class="status">
             <StatusMark

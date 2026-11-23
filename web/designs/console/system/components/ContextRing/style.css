@@ -1,0 +1,5 @@
+.context-ring{width:var(--space-24);height:var(--space-24);color:var(--accent);fill:none;stroke:currentColor;stroke-width:2}
+.context-ring-track{stroke:var(--line-strong)}
+.context-ring[data-context-state=threshold]{color:var(--wait)}
+.context-ring[data-context-state=disabled]{color:var(--muted)}
+.context-ring-popover{padding:var(--space-12)}

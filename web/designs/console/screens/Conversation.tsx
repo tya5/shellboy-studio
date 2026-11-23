@@ -20,7 +20,7 @@ import { MonitorPopover } from "../system/components/MonitorPopover";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
 import { readRightPanelWidth, RIGHT_PANEL_WIDTH_MAX, RIGHT_PANEL_WIDTH_MIN, collectExecutionSteps, toolLabel, activityLabel, renderOutput, formatClock, formatDuration, formatRoute, formatTokens, parseTime, statusLabel, type AppModel, type ConversationRow, type StepRow as Step } from "../../../ui-core/src";
 import { WindowedScroll } from "./WindowedScroll";
-import { BranchMark, Button, Composer, LoadingRows, EmptyState, Icon, KeyValue, LayoutSeparator, ListDivider, ListRow, LogBlock, Message, Notice, PanelTabs, ShellFooter, ShellToggle, QuestionCard, StatusMark, StepRow, SummaryStrip, WorkSheet } from "../system/components";
+import { BranchMark, Button, Composer, ContextRing, ModelPicker, LoadingRows, EmptyState, Icon, KeyValue, LayoutSeparator, ListDivider, ListRow, LogBlock, Message, Notice, PanelTabs, ShellFooter, ShellToggle, QuestionCard, StatusMark, StepRow, SummaryStrip, WorkSheet } from "../system/components";
 
 /** Internal immutable publication seam; deliberately not a Core transport type. */
 export interface ConversationSnapshot {
@@ -604,7 +604,7 @@ function PanelDetail({ model, tabLabel, onBack }: { model: AppModel; tabLabel: s
   </section>;
 }
 
-function RightPanel({ model, panelCollapsed = false }: { model: AppModel; panelCollapsed?: boolean }) {
+function RightPanel({ model, panelCollapsed = false, phone }: { model: AppModel; panelCollapsed?: boolean; phone?: boolean }) {
   const t = model.t.value;
   const supportsAttachments = model.data.capabilities.value.includes(CAPABILITY_ATTACHMENT_PAGE);
   const owner = model.data.owner.value;
@@ -657,7 +657,7 @@ function RightPanel({ model, panelCollapsed = false }: { model: AppModel; panelC
     model.closePanelDetail();
   };
   const select = (id: string) => model.setPanelTab(id as import("../../../ui-core/src/model").RightPanelTab);
-  return <aside id="conversation-right-panel" ref={root} class={`details${panelCollapsed ? " details-collapsed" : ""}`} aria-label={t("panel.title")} data-panel-root="" data-panel-rail={panelCollapsed ? "" : undefined}>
+  return <aside id="conversation-right-panel" ref={root} class={`details${panelCollapsed ? " details-collapsed" : ""}`} aria-label={t("panel.title")} data-panel-root="" data-phone-panel={phone || undefined} data-panel-rail={panelCollapsed ? "" : undefined}>
     <PanelTabs label={t("panel.title")} items={tabs} selected={selectedTab} rail={panelCollapsed} onSelect={select} />
     <div class="panel-pages">
       {tabs.map(tab => {
@@ -669,7 +669,7 @@ function RightPanel({ model, panelCollapsed = false }: { model: AppModel; panelC
         </section>;
       })}
     </div>
-    <ShellFooter side="right"><ShellToggle panel expanded={!panelCollapsed} label={t(panelCollapsed ? "panel.expand" : "panel.collapse")} onClick={() => model.togglePanel()} /></ShellFooter>
+    {!phone ? <ShellFooter side="right"><ShellToggle panel expanded={!panelCollapsed} label={t(panelCollapsed ? "panel.expand" : "panel.collapse")} onClick={() => model.togglePanel()} /></ShellFooter> : null}
   </aside>;
 }
 
@@ -691,7 +691,7 @@ export function OrderedHistory({ model, handle, win, t }: { model: AppModel; han
     liveBoundary={boundary?.ordinal} />;
 }
 
-export function Conversation({ model, panelCollapsed = false, rightPanelWidth, onPanelWidth }: { model: AppModel; panelCollapsed?: boolean; rightPanelWidth?: number; onPanelWidth?: (width: number) => void }) {
+export function Conversation({ model, panelCollapsed = false, rightPanelWidth, onPanelWidth, phonePanel, onClosePhonePanel }: { model: AppModel; panelCollapsed?: boolean; rightPanelWidth?: number; onPanelWidth?: (width: number) => void; phonePanel?: boolean; onClosePhonePanel?: () => void }) {
   const t = model.t.value;
   const [sheetOpen, setSheetOpen] = useState(false);
   const [sheetReturnFocus, setSheetReturnFocus] = useState<{ opener: HTMLElement; resolveFallback: () => HTMLElement | null }>();
@@ -699,6 +699,9 @@ export function Conversation({ model, panelCollapsed = false, rightPanelWidth, o
   const win = model.longReader.value;
   useEffect(() => { setSheetOpen(false); }, [handle]);
 
+  const details = model.details.value;
+  const context = model.context.value;
+  const unknown = t("common.notReadable");
   const send = model.sendState.value;
   const pendingOwn = model.pendingOwnMessage.value;
   const sendBlocked = model.ownSendBlocked();
@@ -749,6 +752,13 @@ export function Conversation({ model, panelCollapsed = false, rightPanelWidth, o
             placeholder={t("composer.placeholder")}
             hint={pendingOwn ? t(`composer.pending.${pendingOwn.phase}`) : t("composer.hint")}
             draftStatus={text=>{const admission=model.localSendAdmission(text);return {blocked:admission!=="ready",hint:admission==="slotsfull"?t("composer.pending.slotsfull"):admission==="bytesfull"?t("composer.pending.bytesfull"):pendingOwn?t(`composer.pending.${pendingOwn.phase}`):t("composer.hint")};}}
+            start={details ? <ModelPicker model={model} details={details} /> : undefined}
+            context={context ? <ContextRing fill={context.fill} state={context.state} label={t("context.title")} stateLabel={t(`context.state.${context.state}`)} rows={[
+              { key: t("context.input"), value: context.inputTokens === undefined ? unknown : formatTokens(context.inputTokens) },
+              { key: t("context.threshold"), value: context.threshold === 0 ? t("context.state.disabled") : formatTokens(context.threshold) },
+              { key: t("context.status"), value: t(`context.state.${context.state}`) },
+              ...(context.lastCompactionAt !== undefined ? [{ key: t("context.last"), value: new Date(context.lastCompactionAt).toLocaleString() }] : []),
+            ]} /> : undefined}
             sendLabel={t("composer.send")}
             canSend={conn === "connected" && !sendBlocked}
             busy={send.kind === "sending"}
@@ -756,19 +766,19 @@ export function Conversation({ model, panelCollapsed = false, rightPanelWidth, o
             onSend={(text,onReserved) => model.send(text,onReserved)}
             stop={
               model.canStop.value ? (
-                <Button variant="stop" onClick={() => void model.stop()}>
+                <Button icon label={t("composer.stop")} title={t("composer.stop")} variant="stop" onClick={() => void model.stop()}>
                   <Icon role="action.stop" size="small" />
-                  {t("composer.stop")}
                 </Button>
               ) : undefined
             }
           />
         </div> : null}
       </div>
-      {handle && onPanelWidth ? <LayoutSeparator side="right" label={t("panel.resize")} controls="conversation-right-panel"
+      {handle && !phonePanel && onPanelWidth ? <LayoutSeparator side="right" label={t("panel.resize")} controls="conversation-right-panel"
         width={readRightPanelWidth(rightPanelWidth)} min={RIGHT_PANEL_WIDTH_MIN} max={RIGHT_PANEL_WIDTH_MAX}
         disabled={panelCollapsed} onWidth={onPanelWidth} /> : null}
-      {handle ? <RightPanel key={handle.threadId} model={model} panelCollapsed={panelCollapsed} /> : null}
+      {handle && !phonePanel ? <RightPanel key={handle.threadId} model={model} panelCollapsed={panelCollapsed} /> : null}
+      {handle && phonePanel ? <WorkSheet open title={t("panel.title")} closeLabel={t("common.close")} onClose={() => onClosePhonePanel?.()} getReturnFocusTarget={() => document.querySelector<HTMLElement>("[data-conversation-header] [aria-haspopup=menu]")}><RightPanel key={handle.threadId} model={model} phone /></WorkSheet> : null}
       <WorkSheet open={sheetOpen} title={t("work.title")} closeLabel={t("work.close")} getReturnFocusTarget={() => sheetReturnFocus?.opener?.isConnected ? sheetReturnFocus.opener : sheetReturnFocus?.resolveFallback() ?? null} onClose={() => setSheetOpen(false)}><WorkRegions model={model} place="sheet" /></WorkSheet>
     </>
   );

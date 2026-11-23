@@ -1,0 +1,7 @@
+.conversation-header .conversation-header-title{min-width:0;display:flex;align-items:center;gap:var(--space-4)}
+.conversation-header .conversation-header-title>.btn,.conversation-header-folder{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block}
+.conversation-header .right{flex-shrink:0;gap:var(--space-4)}
+.conversation-header-actions{display:flex;gap:var(--space-4)}
+@container app (max-width:899px){
+  .conversation-header-folder,.conversation-header-actions{display:none}
+}

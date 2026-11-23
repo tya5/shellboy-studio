@@ -1,6 +1,6 @@
 import type { AppModel } from "../../../../../ui-core/src";
 import { Button, Field, Notice } from "..";
-import { ConnectionModelList } from "./ConnectionModelList";
+import { ConnectionModelList, modelLabel } from "./ConnectionModelList";
 import { EffortControl } from "./EffortControl";
 
 type Details = NonNullable<AppModel["details"]["value"]>;
@@ -11,7 +11,7 @@ export function ModelPicker({ model, details }: { model: AppModel; details: Deta
   const picker = model.modelPicker.value;
   const canEdit = model.data.capabilities.value.includes("thread.settings");
   return <div class="model-picker-anchor">
-    <Button aria-expanded={picker.open} aria-haspopup="dialog" onClick={() => picker.open ? model.closeModelPicker() : model.openModelPicker()}>{details.model}</Button>
+    <Button aria-expanded={picker.open} aria-haspopup="dialog" onClick={() => picker.open ? model.closeModelPicker() : model.openModelPicker()}>{modelLabel(details)} · {details.effort || t("model.effort.default")}</Button>
     {picker.open ? <div class="model-picker" role="dialog" aria-label={t("model.change")} onKeyDown={(event) => { if (event.key === "Escape") model.closeModelPicker(); }}>
       <p class="caption muted">{t("model.note")}</p>
       <label>{t("model.connection")}<select value={picker.connection} disabled={picker.saving || !canEdit} onChange={(event) => model.chooseModelConnection(event.currentTarget.value)}>{[...new Set([picker.connection, ...Object.keys((model.config.read.value.value?.loaded.values?.connections as Record<string, unknown> | undefined) ?? {})])].filter(Boolean).map((connection) => <option value={connection}>{connection}</option>)}</select></label>

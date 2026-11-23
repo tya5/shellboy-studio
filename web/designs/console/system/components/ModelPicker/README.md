@@ -19,3 +19,5 @@ The shared `EffortControl` offers default (unset), low, medium, high, and a free
 Conversation uses the same connection/model list and effort control with its existing selected-connection scope and explicit thread save. Settings uses the list across configured connections and writes its selected pair atomically. The effort input can reset to the committed owner value after Settings refuses an edit, even when that value did not change.
 
 The open Conversation picker shares `ConfigEditor` with Settings. Its connection choices come from the loaded owner configuration, refreshed by config marks and resync while the picker is open.
+
+The Conversation trigger lives in the composer and shows connection, model and effort. Open the existing shared list above the composer, not below the viewport edge.

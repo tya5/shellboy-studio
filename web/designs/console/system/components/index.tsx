@@ -21,7 +21,6 @@ export { StepRow } from "./StepRow";
 export { QuestionCard } from "./QuestionCard";
 export { QuestionItem } from "./QuestionItem";
 export { SummaryStrip } from "./SummaryStrip";
-export { ContextBar } from "./ContextBar";
 export { KeyValue } from "./KeyValue";
 export { Notice } from "./Notice";
 export { EmptyState } from "./EmptyState";
@@ -77,3 +76,6 @@ export { ShellFooter, ShellToggle } from "./ShellToggle";
 export { SettingRow } from "./SettingRow";
 
 export { EffortControl } from "./ModelPicker/EffortControl";
+
+export { ContextRing } from "./ContextRing";
+export { ConversationHeader } from "./ConversationHeader";

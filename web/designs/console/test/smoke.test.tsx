@@ -112,10 +112,10 @@ describe("Desktop navigation", () => {
 });
 
 describe("Thread model picker", () => {
-  it("opens from the model name and explains when changes apply", async () => {
+  it("opens from the composer model and effort chip and explains when changes apply", async () => {
     const { model, t, db } = await fixtureModel();
     const el = draw(model);
-    const button = [...el.querySelectorAll<HTMLButtonElement>(".top button")].find((b) => text(b) === "example-model")!;
+    const button = [...el.querySelectorAll<HTMLButtonElement>(".composer-row button")].find((b) => text(b).includes("example-model ·"))!;
     act(() => button.click());
     await act(async () => { await settle(t, db); });
     expect(el.querySelector('[role="dialog"]')?.textContent).toContain("next request");
@@ -396,10 +396,14 @@ describe("Conversation", () => {
       if (row?.type === "steps") model.openInPanel({ kind: "step", id: row.steps[0]!.executionId });
     });
     expect(el.querySelector("[data-panel-detail]")?.textContent).toContain("2.4s");
-    expect(text(el)).toContain("41k / auto-summary 200k");
+    expect(el.querySelector(".top [data-context-state]")).toBeNull();
+    const ring = el.querySelector<HTMLButtonElement>('.composer-row button[aria-label="Context: Below threshold"]')!;
+    expect(ring).not.toBeNull();
+    act(() => ring.click());
+    expect(document.body.textContent).toContain("Input tokens41k");
+    expect(document.body.textContent).toContain("Summary threshold200k");
     expect(text(el)).not.toContain("Shellboy event v1");
     expect(el.querySelector('.st[data-status="running"]')).toBeTruthy();
-    expect(el.querySelector(".context-bar-meter i")).toBeTruthy();
   });
   it("offers Stop only with an open Run, and the composer needs a connection", async () => {
     const { model, t } = await fixtureModel();
@@ -467,7 +471,7 @@ describe("Conversation", () => {
       t.push({ t: "changed", config_changed: false, thread_ids: ["lead"], list: false });
       await (await import("../../../data/test/harness")).settle(t, db);
     });
-    expect(el.querySelector(".context-bar-root")).toBeNull();
+    expect(el.querySelector("[data-context-state]")).toBeNull();
     expect(text(el)).not.toContain("Usage");
   });
 });

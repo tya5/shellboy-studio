@@ -185,7 +185,7 @@ describe("screens use the system only", () => {
   });
   it("every component has a usage note", () => {
     for (const c of components) expect(statSync(join(system, "components", c, "README.md")).size, c).toBeGreaterThan(0);
-    expect(components).toEqual(expect.arrayContaining(["StatusMark", "Button", "NavItem", "ThreadCard", "StepRow", "QuestionCard", "SummaryStrip", "ContextBar", "LogBlock", "Chip", "Field"]));
+    expect(components).toEqual(expect.arrayContaining(["StatusMark", "Button", "NavItem", "ThreadCard", "StepRow", "QuestionCard", "SummaryStrip", "LogBlock", "Chip", "Field"]));
   });
   it("no money in a screen, and no chart library in the bundle", () => {
     for (const f of screens) expect(readFileSync(f, "utf8"), f).not.toMatch(/USD|JPY|¥|€|£/);

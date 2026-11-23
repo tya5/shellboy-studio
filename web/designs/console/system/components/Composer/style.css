@@ -3,7 +3,7 @@
 .composer-root:focus-within{outline:2px solid var(--accent);outline-offset:2px}
 .composer-root .composer-row{display:flex;align-items:center;gap:var(--space-8);padding:var(--space-4) var(--space-8)}
 .composer-root .composer-hint{font:var(--type-caption);color:var(--muted)}
-.composer-root .right{margin-left:auto;display:flex;gap:var(--space-8)}
+.composer-root .right{margin-left:auto;display:flex;align-items:center;gap:var(--space-8);flex-shrink:0}
 @container app (max-width:899px){
   .composer-root .composer-hint{display:none}
 }

@@ -6,20 +6,37 @@ const obj = (v: unknown): Record<string, unknown> | undefined =>
   typeof v === "object" && v !== null && !Array.isArray(v) ? (v as Record<string, unknown>) : undefined;
 const num = (v: unknown): number | undefined => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
 
+export type ContextRingState = "normal" | "threshold" | "disabled";
 export interface ContextFacts {
-  /** Input tokens of the last successful model request. */
-  inputTokens: number;
-  /** Where automatic summary starts for this Thread. Absent if the owner doesn't report it. */
-  autoSummaryAt: number | undefined;
+  inputTokens: number | undefined;
+  threshold: number;
+  state: ContextRingState;
+  fill: number;
+  lastCompactionAt: number | undefined;
+}
+
+function lastCompletedCompaction(last: unknown): number | undefined {
+  const fact = obj(last);
+  const candidate = obj(fact?.bounded_candidate);
+  if (obj(fact?.coverage)?.latest_complete !== true || typeof candidate?.at !== "string") return;
+  const completed = (candidate.kind === "summary" && candidate.record_kind === "retained_replacement")
+    || ((candidate.kind === "compact" || candidate.kind === "summary") && candidate.state === "completed")
+    || (candidate.kind === "automatic_reduction" && candidate.state === "adopted");
+  if (!completed) return;
+  const at = Date.parse(candidate.at);
+  return Number.isFinite(at) ? at : undefined;
 }
 
 export function contextFacts(d: ThreadDetails | undefined): ContextFacts | undefined {
-  const attempt = obj(obj(d?.context_usage)?.last_successful_attempt);
-  const inputTokens = num(attempt?.input_tokens);
-  if (inputTokens === undefined) return undefined;
-  // 0 means proactive compaction is off for this Thread: there is no threshold to show.
-  const at = num(d?.effective_auto_compact_at);
-  return { inputTokens, autoSummaryAt: at === 0 ? undefined : at };
+  const inputTokens = num(obj(obj(d?.context_usage)?.last_successful_attempt)?.input_tokens);
+  const threshold = num(d?.effective_auto_compact_at);
+  if (threshold === undefined || threshold < 0 || (threshold > 0 && (inputTokens === undefined || inputTokens < 0))) return;
+  return {
+    inputTokens, threshold,
+    state: threshold === 0 ? "disabled" : inputTokens! >= threshold ? "threshold" : "normal",
+    fill: threshold === 0 ? 0 : Math.min(100, inputTokens! * 100 / threshold),
+    lastCompactionAt: lastCompletedCompaction(d?.last_compaction),
+  };
 }
 
 export interface Measured {

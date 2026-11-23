@@ -1,4 +1,0 @@
-.context-bar-root{display:flex;align-items:center;gap:var(--space-8);font:var(--type-caption);color:var(--muted)}
-.context-bar-root .mono{font-size:var(--size-caption)}
-.context-bar-meter{display:flex;gap:2px;width:128px;height:8px;border-radius:4px;overflow:hidden;background:var(--line)}
-.context-bar-meter i{display:block;height:100%;background:var(--accent)}

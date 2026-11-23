@@ -4,7 +4,7 @@ import { composerAction } from "../../../../../ui-core/src";
 import { Icon } from "../Icon";
 import { Button } from "../Button";
 
-export function Composer(props: { label: string; placeholder: string; hint: string; sendLabel: string; canSend: boolean; busy: boolean; draftStatus?: (text:string)=>{blocked:boolean;hint:string}; draftScope?: string; stop?: ComponentChildren; onSend: (text: string, onReserved?: () => void) => Promise<boolean> }) {
+export function Composer(props: { label: string; placeholder: string; hint: string; sendLabel: string; canSend: boolean; busy: boolean; draftStatus?: (text:string)=>{blocked:boolean;hint:string}; draftScope?: string; start?: ComponentChildren; context?: ComponentChildren; stop?: ComponentChildren; onSend: (text: string, onReserved?: () => void) => Promise<boolean> }) {
   const [text, setText] = useState("");
   const draft = useRef("");
   const textarea = useRef<HTMLTextAreaElement>(null);
@@ -62,8 +62,10 @@ export function Composer(props: { label: string; placeholder: string; hint: stri
         }}
       />
       <div class="composer-row">
+        {props.start}
         <span class="composer-hint" role="status">{status?.hint??props.hint}</span>
         <div class="right">
+          {props.context}
           {props.stop}
           <Button icon label={props.sendLabel} variant="primary" disabled={!props.canSend || status?.blocked || props.busy || text.trim() === ""} onClick={() => void submit()}>
             <Icon role="composer.send" />
