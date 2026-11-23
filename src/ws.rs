@@ -626,6 +626,32 @@ mod tests {
         }
     }
 
+    #[test]
+    fn exact_delete_set_authorizes_preview_and_guarded_commit_only() {
+        let ids = json!(["a", "b"]);
+        let preview = build_command(
+            "thread.delete_set_preview",
+            Some(json!({"thread_ids": ids})),
+        )
+        .unwrap();
+        assert_eq!(access(&preview), Access::Read);
+        let marker = json!({"thread_count": 2, "ids_hash": "a".repeat(64)});
+        let commit = build_command(
+            "thread.delete_set",
+            Some(json!({"thread_ids": ids, "preview_marker": marker})),
+        )
+        .unwrap();
+        assert_eq!(access(&commit), Access::Mutation);
+        assert!(build_command("thread.delete_set", Some(json!({"thread_ids": ids}))).is_err());
+        assert!(
+            build_command(
+                "thread.delete_set",
+                Some(json!({"thread_ids": ["a"], "preview_marker": marker}))
+            )
+            .is_err()
+        );
+    }
+
     #[cfg(feature = "next-tags")]
     #[test]
     fn tag_calls_and_list_filters_are_allowed_with_the_feature() {

@@ -258,3 +258,127 @@ it("shows LoadingRows inside a Threads member band while its first member read i
     f.data.stop();
   }
 });
+
+describe("sidebar exact-set delete", () => {
+  const marker = { thread_count: 2, ids_hash: "a".repeat(64) };
+  async function setup() {
+    let blocker = false;
+    let refusal: "preview_stale" | "invalid_state" | undefined;
+    let wrongSet = false;
+    const rig = await mount("sidebar", undefined, db => {
+      const answer = db.answer.bind(db);
+      db.answer = call => {
+        if (call.command === "thread.delete_set_preview") {
+          const ids = wrongSet ? ["broken", "child"] : (call.args as { thread_ids: string[] }).thread_ids;
+          return { ok: true, result: { thread_ids: ids, preview_marker: { ...marker, thread_count: ids.length }, deletable_now: !blocker, targets: ids.map(id => {
+            const blocked = blocker && id === "lead";
+            return { thread_id: id, live_run_count: 0, stopping_run_count: +blocked, runs: blocked ? [{ id: "synthetic-run", state: "stopping" }] : [], runs_more: false,
+              scheduled_execution_count: 0, scheduled_execution_ids: [], scheduled_executions_more: false };
+          }) } };
+        }
+        if (call.command === "thread.delete_set") {
+          expect(call.args).toEqual({ thread_ids: ["broken", "lead"], preview_marker: marker });
+          if (refusal) return { ok: false, code: refusal };
+          delete db.threads.broken;
+          delete db.threads.lead;
+          return { ok: true, result: { accepted: true } };
+        }
+        return answer(call);
+      };
+    });
+    const button = (text: string) => [...rig.host.querySelectorAll<HTMLButtonElement>("button")].find(b => b.textContent === text);
+    const click = async (element: HTMLElement) => { await act(async () => { element.click(); }); await act(async () => { await settle(rig.t, rig.db); }); };
+    const select = (title: string) => rig.list.querySelector<HTMLInputElement>(`input[aria-label="Select ${title}"]`)!;
+    const open = async () => {
+      await click(button("Select Threads")!);
+      await click(select("Improve history search"));
+      await click(select("Check embedding endpoint"));
+      await click(button("Delete")!);
+      expect(rig.t.calls("thread.delete_set_preview").map(c => c.args)).toEqual([{ thread_ids: ["broken", "lead"] }]);
+    };
+    const hint = async (id: string) => { await act(async () => {
+      rig.t.push({ t: "changed", config_changed: false, thread_ids: [id], list: true });
+      await settle(rig.t, rig.db);
+    }); };
+    return { rig, open, button, click, hint, select, block: () => { blocker = true; }, wrongSet: () => { wrongSet = true; }, refuse: (code: typeof refusal) => { refusal = code; } };
+  }
+
+  it("does not mutate on preview or Cancel, then sends one exact commit on explicit confirmation", async () => {
+    const { rig, open, button, click, hint } = await setup();
+    try {
+      await open();
+      expect(rig.host.querySelector(".delete-preview")?.textContent).toContain("Unselected descendants will remain");
+      expect(rig.host.querySelector(".delete-preview")?.textContent).toContain("Improve history search");
+      expect(rig.t.calls("thread.delete_set")).toHaveLength(0);
+      await click(button("Cancel")!);
+      expect(rig.db.threads).toHaveProperty("lead");
+      expect(rig.db.threads).toHaveProperty("broken");
+      expect(rig.t.calls("thread.delete_set")).toHaveLength(0);
+      await click(button("Delete")!);
+      await click(button("Delete selected Threads")!);
+      expect(rig.t.calls("thread.delete_set")).toHaveLength(1);
+      expect(rig.t.calls("thread.delete")).toHaveLength(0);
+      expect(rig.db.threads).not.toHaveProperty("lead");
+      expect(rig.db.threads).not.toHaveProperty("broken");
+      expect(rig.db.threads).toHaveProperty("child");
+      expect(rig.list.textContent).toContain("Improve history search");
+      await hint("lead");
+      expect(rig.list.textContent).not.toContain("Improve history search");
+    } finally { await unmount(rig); }
+  });
+
+  it.each(["preview_stale", "invalid_state"] as const)("keeps both Threads and requests a new preview after %s", async code => {
+    const { rig, open, button, click, refuse } = await setup();
+    try {
+      await open();
+      refuse(code);
+      await click(button("Delete selected Threads")!);
+      expect(rig.t.calls("thread.delete_set")).toHaveLength(1);
+      expect(rig.t.calls("thread.delete")).toHaveLength(0);
+      expect(rig.db.threads).toHaveProperty("lead");
+      expect(rig.db.threads).toHaveProperty("broken");
+      expect(rig.t.calls("thread.delete_set_preview")).toHaveLength(2);
+      expect(button("Delete selected Threads")).toBeDefined();
+    } finally { await unmount(rig); }
+  });
+
+  it("re-previews a changed target and prevents confirmation when one Thread has a stopping Run", async () => {
+    const { rig, open, hint, block, button } = await setup();
+    try {
+      await open();
+      await hint("child");
+      expect(rig.t.calls("thread.delete_set_preview")).toHaveLength(1);
+      block();
+      await hint("lead");
+      expect(rig.t.calls("thread.delete_set_preview")).toHaveLength(2);
+      expect(rig.host.querySelector(".delete-preview")?.textContent).toContain("synthetic-run");
+      expect(button("Delete selected Threads")).toBeUndefined();
+      expect(rig.t.calls("thread.delete_set")).toHaveLength(0);
+    } finally { await unmount(rig); }
+  });
+
+  it("discards the old scope and requires explicit confirmation after selection changes", async () => {
+    const { rig, open, click, button, select } = await setup();
+    try {
+      await open();
+      await click(select("Improve history search"));
+      expect(rig.t.calls("thread.delete_set_preview").map(c => c.args)).toEqual([
+        { thread_ids: ["broken", "lead"] }, { thread_ids: ["broken"] },
+      ]);
+      expect(rig.host.querySelector(".delete-preview")?.textContent).not.toContain("Improve history search");
+      expect(button("Delete selected Threads")).toBeDefined();
+      expect(rig.t.calls("thread.delete_set")).toHaveLength(0);
+    } finally { await unmount(rig); }
+  });
+
+  it("rejects a response that substitutes an unselected descendant", async () => {
+    const { rig, open, wrongSet, button } = await setup();
+    try {
+      wrongSet();
+      await open();
+      expect(rig.host.querySelector(".delete-preview")?.textContent).toContain("mismatched exact-set deletion preview");
+      expect(button("Delete selected Threads")).toBeUndefined();
+      expect(rig.t.calls("thread.delete_set")).toHaveLength(0);
+    } finally { await unmount(rig); }
+  });
+});

@@ -1,10 +1,10 @@
-import type { ListFilter } from "../../../data/src";
+import { DELETE_SET_LIMIT, type ListFilter } from "../../../data/src";
 import { sidebarGroups } from "../../../ui-core/src/sidebar";
 import { BrandLogo } from "../system/components/BrandLogo";
 import { threadMenuEntries } from "../system/components/thread-menu";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
 import { CAPABILITY_TAGS, CAPABILITY_CWDS, formatRoute, readSidebarWidth, SIDEBAR_WIDTH_MAX, SIDEBAR_WIDTH_MIN, statusLabel, viewShortcut, navShortcut, panelShortcut, type DesignContext, type ViewName } from "../../../ui-core/src";
-import { Button, Field, FilterChips, FilterMenu, Icon, LoadingCount, LoadingRows, MoreMenu, NavItem, Notice, StatusMark, ThreadDeleteDialog, ThreadGroup, ThreadItem, ShellFooter, ShellToggle, type IconRole, type ThreadDeleteTarget } from "../system/components";
+import { Button, Field, FilterChips, FilterMenu, Icon, LoadingCount, LoadingRows, MoreMenu, NavItem, Notice, SelectionBar, StatusMark, ThreadDeleteDialog, ThreadGroup, ThreadItem, ShellFooter, ShellToggle, type IconRole, type ThreadDeleteTarget } from "../system/components";
 import { formatAge, formatCount } from "../../../ui-core/src";
 import { ThreadHeader } from "./ThreadHeader";
 import { Conversation } from "./Conversation";
@@ -38,6 +38,20 @@ export function App({ context }: { context: DesignContext }) {
     collapsed: () => context.prefs.peek().panelCollapsed === true,
     write: panelCollapsed => context.setPrefs({ panelCollapsed }),
   }), [model, context]);
+  const [selectingThreads, setSelectingThreads] = useState(false);
+  const [reviewingSet, setReviewingSet] = useState(false);
+  const [deleteSelection, setDeleteSelection] = useState<Map<string, string>>(() => new Map());
+  const selectionRef = useRef(deleteSelection);
+  const selectForDeletion = (next: Map<string, string>) => { selectionRef.current = next; setDeleteSelection(next); };
+  const toggleDeleteSelection = (id: string, title: string) => {
+    const next = new Map(selectionRef.current);
+    if (!next.delete(id)) {
+      if (next.size >= DELETE_SET_LIMIT) return;
+      next.set(id, title);
+    }
+    selectForDeletion(next);
+  };
+  const deleteOpener = useRef<HTMLButtonElement>(null);
   const [deleteThread, setDeleteThread] = useState<ThreadDeleteTarget & { rowKey: string }>();
   const sidebarListRef = useRef<HTMLDivElement>(null);
   const lastSidebarFocus = useRef<string>();
@@ -228,8 +242,9 @@ export function App({ context }: { context: DesignContext }) {
               {inboxNav}
               {moreItems.map((i) => <NavItem key={i.key} href={i.href} role={i.role} label={i.label} current={i.current} />)}
             </nav>
-            <div class="sidehead">
+          <div class="sidehead">
             <h2 id="sidebar-thread-list-heading" class="group-label" tabIndex={-1}>{t("threads.title")}</h2>
+            {!selectingThreads ? <Button variant="ghost" onClick={() => setSelectingThreads(true)}>{t("thread.deleteSetSelect")}</Button> : null}
           </div>
           <div class="side-search">
             <div class="side-controls">
@@ -238,6 +253,10 @@ export function App({ context }: { context: DesignContext }) {
               <Button icon label={t("threads.new")} title={t("threads.new")} onClick={() => { setDrawer(false); void model.createThread(); }}><Icon role="thread.create" size="small" /></Button>
             </div>
             {route.view !== "monitor" ? <>              <FilterChips items={activeFilters.map(item => ({ ...item, removeLabel: t("sidebar.remove", { name: item.label }) }))} clearLabel={t("sidebar.clear")} onClear={() => setFilters({})} /></> : null}
+            {selectingThreads ? <SelectionBar text={t("org.selected", { n: deleteSelection.size })}>
+              <Button variant="ghost" buttonRef={deleteOpener} disabled={!deleteSelection.size} onClick={() => setReviewingSet(true)}>{t("thread.deleteSetAction")}</Button>
+              <Button variant="ghost" onClick={() => { selectForDeletion(new Map()); setSelectingThreads(false); }}>{t("common.close")}</Button>
+            </SelectionBar> : null}
           </div>
           <div class="side-list" ref={sidebarListRef} onFocusIn={(event) => {
             const target = event.target as HTMLElement;
@@ -263,7 +282,7 @@ export function App({ context }: { context: DesignContext }) {
                     const expanded = openParents.includes(r.key);
                     const unread = model.sidebarUnread(r.summary);
                     hiddenBelow = r.childCount && !expanded ? r.depth : undefined;
-                    return <ThreadItem key={r.key} sidebar unread={unread} linkId={sidebarLinkId(r.key)}
+                    return <ThreadItem key={r.key} sidebar unread={unread} selection={selectingThreads ? { checked: deleteSelection.has(id), label: t("org.selectOne", { title: r.summary.title }), disabled: deleteSelection.size >= DELETE_SET_LIMIT && !deleteSelection.has(id), onToggle: () => toggleDeleteSelection(id, r.summary.title) } : undefined} linkId={sidebarLinkId(r.key)}
                       href={formatRoute({ view: "conversation", threadId: id })} title={r.summary.title}
                       status={r.status} statusLabel={r.status ? statusLabel(t, r.status) : ""}
                       depth={r.depth} current={id === sidebarSelected} pending={r.pending} pendingExact={r.pendingExact} age={formatAge(r.summary.updated_at, model.coarseNow.value)}
@@ -305,6 +324,18 @@ export function App({ context }: { context: DesignContext }) {
             {desktopDiagnostic ? <Notice tone="wait">{desktopDiagnostic}</Notice> : null}
             {model.actionError.value ? <Notice tone={model.actionError.value.kind === "error" ? "bad" : undefined}>{model.actionError.value.text}</Notice> : null}
           </div>
+          {reviewingSet ? <ThreadDeleteDialog model={model} target={{
+            threadIds: [...deleteSelection.keys()],
+            readSelection: () => [...selectionRef.current.keys()],
+            titleOf: id => sidebarRows.find(row => row.thread_id === id)?.title ?? deleteSelection.get(id),
+            onAccepted: ids => {
+              const next = new Map(selectionRef.current);
+              for (const id of ids) next.delete(id);
+              selectForDeletion(next);
+              if (!next.size) setSelectingThreads(false);
+              model.onThreadSetDeleted(ids);
+            },
+          }} getReturnFocusTarget={() => deleteOpener.current && !deleteOpener.current.disabled ? deleteOpener.current : document.getElementById("sidebar-thread-list-heading")} onClose={() => setReviewingSet(false)} /> : null}
           {deleteThread ? <ThreadDeleteDialog key={deleteThread.threadId} model={model} target={deleteThread} getReturnFocusTarget={id => resolveSidebarLink(sidebarLinkId(deleteThread.rowKey), id)} onClose={() => setDeleteThread(undefined)} /> : null}
           <section class="view" aria-label={title}>
             <AppsHost context={context} />

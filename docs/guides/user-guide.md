@@ -79,6 +79,19 @@ paste token URLs, QR contents or credentials into reports.
 Phone, Safari/Firefox and physical Windows/Linux validation remain unverified
 unless the final release notes explicitly record those checks.
 
+## Delete selected Threads
+
+In the sidebar, choose **Select Threads**, check the Threads you want, then
+choose **Delete**. Review the exact names and IDs. Live or stopping Runs block
+the entire deletion. The review also lists active scheduled executions the
+owner will stop. Unselected descendants stay; archive and its descendant option
+are separate actions.
+
+Only **Delete selected Threads** sends a deletion request. If the selection or
+its targets change, review the new preview and confirm again. The owner deletes
+all selected Threads or none; saved list changes arrive from the owner. This
+flow supports up to 256 selected Threads on the matching Core build.
+
 ## Explicit Development Authentication Opt-Out
 
 `--no-auth` skips token and session checks only when explicitly specified. The

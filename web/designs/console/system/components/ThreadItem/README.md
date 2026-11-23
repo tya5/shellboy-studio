@@ -31,3 +31,7 @@ The sidebar supplies the unread presentation from `AppModel`; clicking the link 
 
 
 List containers have no inline padding. Row hover and selected backgrounds fill their container width, with square ends; rows own their shared-token insets and nested title indentation does not narrow the highlight. Keep trailing row actions in the shared 24px `size-row-action` column; phone hit areas are centered on this column without widening it. References: shadcn/ui SidebarMenuItem/SidebarMenuAction (`showOnHover`), Orca sidebar rows, and approved Studio sidebar mock v8, section 1a B1.
+
+In sidebar selection mode (#36), place the shared RowCheckbox before the link.
+The checkbox toggles inclusion without navigating; pinned and ordinary copies
+reflect the same Thread ID. Do not show it outside selection mode.

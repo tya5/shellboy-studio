@@ -104,7 +104,7 @@ other states carry no usage and would read as unknown.
 | Daily tokens **by model** | Grouped usage keys are `hour`, `day`, `thread`. `connection_rates.by_connection` holds only 429/5xx and wait counts. A Thread's current model isn't the model of its past attempts, so deriving it would be a guess | `group_by=model` or a second key (`day,model`), with the same sums |
 | Reading a period cheaply | No start at a date | A plain `started_at` index and a seek (the design in `usage-aggregates.md` already allows proposing it with measurements) |
 | Storage warning and maximum sizes, so a meter is possible | `storage.status` returns only `warning` and `limit_reached` | Add `warning_bytes` and `limit_bytes` to `storage.status` |
-| Largest Threads by storage | `thread.delete_preview` answers one Thread at a time | A bounded `storage.by_thread` or a `limit`ed list |
+| Largest Threads by storage | Delete previews do not provide a bounded storage ranking | A bounded `storage.by_thread` or a `limit`ed list |
 | Preview for `storage.collect` | `StorageArgs` has only `category`; there is no dry run. So collection isn't offered | `storage.collect {dry_run:true}` reporting what would go |
 | Deleting an index | Waits for Shellboy #253's explicit command; recreating costs money, and the UI says so | #253 |
 | Compaction events across Threads | `compact.list` is per Thread | A bounded list without `thread_id` |

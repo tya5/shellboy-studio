@@ -7,7 +7,7 @@ import {captureDecode,InputCaptureError} from './immutable-input';
 import { decodeCredentialsClear, decodeCredentialsSet, decodeTest, encodeCredentialsClear, encodeCredentialsSet, encodeTest, type CredentialsClearResult, type CredentialsSetResult, type TestFacts, type TestTarget } from "./connection-setup";
 import { fromApiError, lostConnection, type Outcome } from "./errors";
 import type { Link } from "./link";
-import type { ThreadDeletePreview } from "./thread-delete";
+import type { DeleteMarker, ThreadDeletePreview, ThreadDeleteSetPreview } from "./thread-delete";
 import type {
   ArtifactHistory,
   ArtifactSelected,
@@ -177,6 +177,29 @@ const decodeThreadDeletePreview = (value: unknown): Decoded<ThreadDeletePreview>
     preview_marker: marker,
     preview_marker_unavailable_reason: typeof value.preview_marker_unavailable_reason === "string" ? value.preview_marker_unavailable_reason : undefined,
   } };
+};
+
+const decodeDeleteSetPreview = (ids: readonly string[]): Decoder<ThreadDeleteSetPreview> => (v) => {
+  const requested = new Set(ids);
+  const sameIds = (actual: unknown[]) => actual.length === ids.length && new Set(actual).size === ids.length
+    && actual.every(id => typeof id === "string" && requested.has(id));
+  const count = (x: unknown): x is number => typeof x === "number" && Number.isSafeInteger(x) && x >= 0;
+  const target = (x: unknown) => {
+    if (!isObject(x) || !count(x.live_run_count) || !count(x.stopping_run_count) || !count(x.scheduled_execution_count)) return false;
+    const total = x.live_run_count + x.stopping_run_count;
+    return Array.isArray(x.runs) && x.runs.length === Math.min(total, 50)
+      && x.runs.every(r => isObject(r) && typeof r.id === "string" && (r.state === "live" || r.state === "stopping"))
+      && x.runs_more === (total > 50)
+      && Array.isArray(x.scheduled_execution_ids) && x.scheduled_execution_ids.length === Math.min(x.scheduled_execution_count, 50)
+      && x.scheduled_execution_ids.every(id => typeof id === "string") && x.scheduled_executions_more === (x.scheduled_execution_count > 50);
+  };
+  if (!isObject(v) || !ids.length || !Array.isArray(v.thread_ids) || !sameIds(v.thread_ids)
+    || !Array.isArray(v.targets) || !v.targets.every(target) || !sameIds(v.targets.map(x => x.thread_id))
+    || !isObject(v.preview_marker) || v.preview_marker.thread_count !== ids.length
+    || typeof v.preview_marker.ids_hash !== "string" || !/^[0-9a-f]{64}$/.test(v.preview_marker.ids_hash)
+    || v.deletable_now !== v.targets.every(x => x.live_run_count === 0 && x.stopping_run_count === 0))
+    return { ok: false, reason: "incomplete or mismatched exact-set deletion preview" };
+  return { ok: true, value: v as unknown as ThreadDeleteSetPreview };
 };
 
 const decodeThreadPage = pageOf<ThreadSummary>(summaryProblem);
@@ -618,6 +641,13 @@ export class Operations {
     const args: Record<string, unknown> = { thread_ids: threadIds };
     if (options.descendants) args.descendants = true;
     return this.run("thread.unarchive", args, outcomeDecoder(decodeRecord), { operationId });
+  }
+  threadDeleteSetPreview(threadIds: readonly string[]): Promise<Outcome<ThreadDeleteSetPreview>> {
+    return this.run("thread.delete_set_preview", { thread_ids: threadIds }, outcomeDecoder(decodeDeleteSetPreview(threadIds)));
+  }
+  threadDeleteSet(threadIds: readonly string[], marker: DeleteMarker, operationId = this.newId()): Promise<Outcome<{ accepted: true }>> {
+    return this.run("thread.delete_set", { thread_ids: threadIds, preview_marker: marker }, outcomeDecoder(raw =>
+      isObject(raw) && raw.accepted === true ? { ok: true, value: { accepted: true as const } } : { ok: false, reason: "missing delete acceptance" }), { operationId });
   }
   threadDeletePreview(threadId: string): Promise<Outcome<ThreadDeletePreview>> {
     return this.run("thread.delete_preview", { thread_id: threadId, descendants: false }, outcomeDecoder(decodeThreadDeletePreview));

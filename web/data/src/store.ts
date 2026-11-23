@@ -192,6 +192,9 @@ export class ShellboyData {
   private listGen = 0;
   private entries = new Map<string, ThreadEntry>();
   private watchQueued = false;
+  private readonly deletionHint = signal<{ ids?: readonly string[] }>({});
+  /** A hint without IDs invalidates every open deletion preview. */
+  readonly deletePreviewHint: ReadonlySignal<{ ids?: readonly string[] }> = this.deletionHint;
   readonly listHint = signal(0);
   readonly configChanged = signal(0);
   private hintWatchers = new Map<string, Set<() => void>>();
@@ -493,9 +496,14 @@ export class ShellboyData {
     }
   }
 
+  private invalidateDeletePreviews(): void {
+    this.deletionHint.value = {};
+  }
+
   private onFrame(f: Extract<LinkEvent, { kind: "frame" }>["frame"]): void {
     switch (f.t) {
       case "hello":
+        this.invalidateDeletePreviews();
         this.desktopSig.value = f.desktop === true;
         this.bridgeVersionSig.value = f.bridge_version;
         this.dataDirSig.value = f.data_dir;
@@ -508,6 +516,7 @@ export class ShellboyData {
         this.desktopDiagnosticSig.value = f.message;
         break;
       case "owner":
+        this.invalidateDeletePreviews();
         batch(() => {
           this.setOwner(f.owner);
           if (f.event === "restarted") this.discardAllPreviews("owner_restarted");
@@ -515,6 +524,7 @@ export class ShellboyData {
         if (f.event === "restarted") { this.notifyHints(); void this.resyncAll(); }
         break;
       case "resync":
+        this.invalidateDeletePreviews();
         this.configChanged.value++;
         this.listHint.value++;
         this.discardAllPreviews("resync");
@@ -522,6 +532,7 @@ export class ShellboyData {
         void this.resyncAll();
         break;
       case "changed":
+        if (f.thread_ids.length) this.deletionHint.value = { ids: f.thread_ids };
         // Hints are not data: re-read the saved facts. Untracked Threads are ignored.
         if (f.config_changed) this.configChanged.value++;
         if (f.list) {

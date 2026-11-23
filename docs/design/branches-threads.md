@@ -30,6 +30,18 @@ Status: implemented (2026-11-07), local only. From Shellboy `v0.10.0`: `thread b
 
 `thread.list` in `exclude` or `only` mode, `query` sent to the owner, up to 200 per page. Grouped by directory or state, with the tree from real `parent_id`s; a parent in another group is named. Multi-select archive and unarchive call the real operations, with `descendants` on by default (the owner's bound applies: 200 IDs, 256 in a subtree, refused as `input_limit`). Archive needs a second press, as in Monitor, and states that nothing is deleted. Unarchive is one press. Nothing is optimistic: the list is read again afterwards.
 
+**Sidebar bulk delete (#36).** Selection is separate from archive/tag operations
+on the Threads page. The sidebar uses row checkboxes and ghost actions in the
+selection bar. The destructive confirmation shows the exact IDs and titles,
+per-Thread live/stopping Run blockers and scheduled executions to be stopped.
+It uses `thread.delete_set_preview`, then a single `thread.delete_set` with the
+same IDs and owner marker. The limit is 256 distinct IDs, with no implicit
+descendants and no fallback to repeated single deletes. A changed selection,
+a target change hint, or a stale owner refusal invalidates confirmation. The
+list updates through normal owner events; accepted IDs leave the selection.
+The source candidate pins Core `3a9bb7e48d1856c43fd7a6a2625e34b2908c5abd`
+(protocol 18); this is not a released pairing.
+
 Display modes: tree (the default, real parents across directories), by directory, by state, by tag (the last two headings-first when the owner has the capability, below). Per-directory token totals are omitted: no bounded read gives them, since by-Thread usage is a walk of all history.
 
 **Moving a Thread.** `thread set --parent` is on Shellboy main (`5806aa77`), not in v0.10.0, whose strict decoding would refuse the field, and protocol 2 has no way to ask an owner what it can do. So the capability `thread.reparent` says what this bridge was built to send (`seam::owner_capabilities`), and the UI reads only that:

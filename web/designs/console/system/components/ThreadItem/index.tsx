@@ -1,12 +1,13 @@
 import type { StatusKey } from "../../../../../ui-core/src";
 import { StatusMark } from "../StatusMark";
 import { ChildrenChip, type ChildrenChipProps } from "../ChildrenChip";
+import { RowCheckbox, type RowCheckboxProps } from "../SelectRow";
 import { ListRow } from "../ListRow";
 import type { MenuEntry } from "../Menu";
 
-export function ThreadItem(props: { href: string; linkId?: string; title: string; status: StatusKey | undefined; statusLabel: string; depth: number; current: boolean; pending: number; pendingExact?: boolean; childrenFold?: ChildrenChipProps; sidebar?: boolean; unread?: boolean; age?: string; onSelect?: () => void; menu?: { label: string; entries: MenuEntry[] } }) {
+export function ThreadItem(props: { href: string; linkId?: string; title: string; status: StatusKey | undefined; statusLabel: string; depth: number; current: boolean; pending: number; pendingExact?: boolean; childrenFold?: ChildrenChipProps; sidebar?: boolean; selection?: RowCheckboxProps; unread?: boolean; age?: string; onSelect?: () => void; menu?: { label: string; entries: MenuEntry[] } }) {
   const depthClass = props.sidebar && props.depth > 0 ? ` thread-item-depth-${Math.min(props.depth, 3)}` : "";
-  return <ListRow rowProps={{ class: `thread-item-root${props.depth > 0 ? " thread-item-child" : ""}${props.current ? " current" : ""}${depthClass}` }} sidebar={props.sidebar} selected={props.current} menu={props.menu}><a id={props.linkId} class="tree-link" href={props.href} aria-current={props.current ? "true" : undefined} onClick={props.onSelect} onKeyDown={event => {
+  return <ListRow rowProps={{ class: `thread-item-root${props.depth > 0 ? " thread-item-child" : ""}${props.current ? " current" : ""}${depthClass}` }} sidebar={props.sidebar} selected={props.current} menu={props.menu}>{props.selection ? <RowCheckbox {...props.selection} /> : null}<a id={props.linkId} class="tree-link" href={props.href} aria-current={props.current ? "true" : undefined} onClick={props.onSelect} onKeyDown={event => {
     const fold = props.childrenFold;
     if (!fold?.onToggle || (event.key !== "ArrowLeft" && event.key !== "ArrowRight")) return;
     event.preventDefault(); fold.onToggle(event.key === "ArrowRight");

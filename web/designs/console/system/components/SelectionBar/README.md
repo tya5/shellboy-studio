@@ -10,3 +10,6 @@ Stays at the top of the list while something is chosen, and states how many, inc
 Styles are colocated in `system/components/SelectionBar/style.css`.
 
 Styles: style.css in this directory
+
+For sidebar deletion (#36), show the explicit count and ghost Delete/Close actions
+in selection mode. There is no descendant option; Delete opens ThreadDeleteDialog.

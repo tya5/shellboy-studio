@@ -772,6 +772,29 @@ export class AppModel {
     this.route.value = route;
   }
 
+  /** An accepted exact set can retire local conversation state, but only owner events refresh the list. */
+  onThreadSetDeleted(ids: readonly string[]): void {
+    const deleted = new Set(ids);
+    const active = this.selectedId.peek();
+    const route = this.route.peek();
+    const accepted = this.acceptedOwnMessages.peek();
+    if (accepted.some(message => deleted.has(message.threadId))) {
+      this.acceptedOwnMessages.value = accepted.filter(message => !deleted.has(message.threadId));
+    }
+    const pending = this.pendingOwnMessage.peek();
+    if (pending && deleted.has(pending.threadId)) {
+      this.pendingOwnMessage.value = undefined;
+      this.ownSendCapacityReason.value = false;
+      this.sendState.value = { kind: "idle" };
+    }
+    if (!active || !deleted.has(active)) return;
+    const fallback = this.rows.peek().find(row => !deleted.has(row.summary.thread_id))?.summary.thread_id;
+    this.lastThread.value = fallback;
+    if (route.threadId === active || route.view === "conversation") {
+      this.navigate(fallback ? { view: "conversation", threadId: fallback } : { view: "threads" });
+    }
+  }
+
   navigate(route: Route): void {
     if (formatRoute(this.route.peek()) !== formatRoute(route)) this.pendingSettingFocus.value = undefined;
     this.route.value = route;

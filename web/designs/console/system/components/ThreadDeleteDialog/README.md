@@ -1,7 +1,7 @@
 # ThreadDeleteDialog
 
-- **Use for:** Confirm a single exact delete preview in a modal alert dialog with Cancel initially focused.
-- **Do not use for:** Use Menu for the action trigger; do not reuse this for bulk deletion or generic notices.
+- **Use for:** Confirm an exact single-Thread or selected-set delete preview in a modal alert dialog with Cancel initially focused.
+- **Do not use for:** Use Menu for the action trigger; use a ghost action in SelectionBar for a selected set; do not use this for generic notices.
 - **Why:** The preview and unchanged marker fail closed; preventing outside dismissal and restoring the row focus keeps the destructive action deliberate.
 - **Source:** [WAI-ARIA APG Alert Dialog](https://www.w3.org/WAI/ARIA/apg/patterns/alertdialog/); [Radix Alert Dialog](https://www.radix-ui.com/primitives/docs/components/alert-dialog)
 
@@ -30,3 +30,9 @@ blocked), `alert-dialog:109,115` (initial Cancel focus), and WAI-ARIA APG Alert
 Dialog pattern.
 
 Styles: style.css in this directory
+
+For a selected set (#36), the sheet retains focus while a single atomic request
+is pending. It re-reads the exact set when its selection or saved owner targets
+change and never commits a refreshed preview automatically. It displays the
+requested IDs, per-target blockers and scheduled stops. Cancel returns focus
+to the selection bar Delete control or the sidebar heading if it is gone.

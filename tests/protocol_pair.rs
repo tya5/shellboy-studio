@@ -159,17 +159,6 @@ fn cli_id_resolution_is_not_exposed_to_the_browser() {
 }
 
 #[test]
-fn core_delete_set_commands_remain_denied_without_a_studio_surface() {
-    for command in [
-        json!({"command":"thread.delete_set_preview","args":{"thread_ids":["t"]}}),
-        json!({"command":"thread.delete_set","args":{"thread_ids":["t"],"preview_marker":{"thread_count":1,"ids_hash":"0000000000000000000000000000000000000000000000000000000000000000"}}}),
-    ] {
-        let command: Command = serde_json::from_value(command).unwrap();
-        assert_eq!(access(&command), Access::Denied);
-    }
-}
-
-#[test]
 fn core_schedule_commands_remain_denied_without_a_studio_surface() {
     let command = Command::ScheduleList(ThreadTarget {
         thread_id: Some("t".into()),
