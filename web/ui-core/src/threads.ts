@@ -32,7 +32,7 @@ export function threadTree(items: ThreadSummary[], pending: ReadonlyMap<string, 
     if (seen.has(s.thread_id)) return;
     seen.add(s.thread_id);
     const kids = children.get(s.thread_id) ?? [];
-    const count = pending.get(s.thread_id) ?? 0;
+    const count = s.awaiting_named_count ?? pending.get(s.thread_id) ?? 0;
     out.push({
       summary: s,
       status: statusOf(s, count),

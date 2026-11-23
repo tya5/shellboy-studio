@@ -581,28 +581,30 @@ export class ShellboyData {
     if (this.listRefs === 0) return;
     const gen = ++this.listGen;
     const filter = this.filterSig.value;
-    this.listSig.value = { ...this.listSig.value, loading: true, loadingMore: false };
-    this.listCancel = new Cancel();
-    const out = await this.operations.threadList(listArgs(filter), { onSent, cancel: this.listCancel });
-    if (gen !== this.listGen || filter !== this.filterSig.value) return; // superseded; a newer read follows
-    const cur = this.listSig.value;
-    if (!out.ok) {
-      this.listSig.value = { ...cur, loading: false, stale: cur.loaded, error: out.error };
-      return;
+    const epoch = this.readQualificationEpoch;
+    const previous = this.listSig.value;
+    const pages = previous.filter === filter ? Math.max(1, Math.ceil(previous.items.length / PAGE_LIMIT)) : 1;
+    this.listSig.value = { ...previous, loading: true, loadingMore: false };
+    const cancel = this.listCancel = new Cancel();
+    let items: ThreadSummary[] = [];
+    let cursor: string | undefined;
+    // Rebuild the already loaded prefix from fresh cursors; do not publish an old tail as current.
+    for (let page = 0; page < pages; page++) {
+      const out = await this.operations.threadList({ ...listArgs(filter), ...(cursor ? { cursor } : {}) }, { onSent, cancel });
+      if (gen !== this.listGen || filter !== this.filterSig.value || cancel.cancelled) return;
+      if (epoch !== this.readQualificationEpoch) {
+        this.listSig.value = { ...this.listSig.value, loading: false, stale: previous.loaded };
+        return;
+      }
+      if (!out.ok) {
+        this.listSig.value = { ...previous, loading: false, loadingMore: false, stale: previous.loaded, error: out.error };
+        return;
+      }
+      items = mergeRows(items, out.value.items);
+      cursor = out.value.next_cursor;
+      if (!cursor || items.length >= MAX_LIST_ROWS) break;
     }
-    // One call per hint, whatever was expanded: the first page is read again and rows further down are
-    // kept, so a hint doesn't collapse the list. A kept row can be stale until the next full read.
-    const expanded = cur.filter === filter && cur.items.length > PAGE_LIMIT;
-    this.listSig.value = {
-      filter,
-      items: expanded ? mergeRows(out.value.items, cur.items) : out.value.items,
-      nextCursor: expanded ? cur.nextCursor : out.value.next_cursor,
-      loaded: true,
-      loading: false,
-      loadingMore: false,
-      stale: false,
-      error: undefined,
-    };
+    this.listSig.value = { filter, items, nextCursor: cursor, loaded: true, loading: false, loadingMore: false, stale: false, error: undefined };
   }
 
   private async readDetail(entry: ThreadEntry, onSent: () => void): Promise<void> {
