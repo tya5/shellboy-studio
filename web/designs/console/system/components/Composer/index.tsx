@@ -5,30 +5,34 @@ import { Icon } from "../Icon";
 import { Button } from "../Button";
 
 export function Composer(props: { label: string; placeholder: string; hint: string; sendLabel: string; canSend: boolean; busy: boolean; draftStatus?: (text:string)=>{blocked:boolean;hint:string}; draftScope?: string; start?: ComponentChildren; context?: ComponentChildren; stop?: ComponentChildren; onSend: (text: string, onReserved?: () => void) => Promise<boolean> }) {
-  const [text, setText] = useState("");
-  const draft = useRef("");
+  const [, renderDraft] = useState(0);
+  const drafts = useRef(new Map<string | undefined, string>());
   const textarea = useRef<HTMLTextAreaElement>(null);
   const generation = useRef(0);
-  const updateDraft = (value: string) => {
-    if (draft.current !== value) { draft.current = value; generation.current++; }
-    setText(value);
-  };
   const latestScope = useRef(props.draftScope);
   const scopeGeneration = useRef(0);
   if (latestScope.current !== props.draftScope) { latestScope.current = props.draftScope; scopeGeneration.current++; }
+  const text = drafts.current.get(props.draftScope) ?? "";
+  const updateDraft = (value: string) => {
+    const scope = props.draftScope;
+    if ((drafts.current.get(scope) ?? "") === value) return;
+    drafts.current.delete(scope);
+    if (value !== "") drafts.current.set(scope, value);
+    if (drafts.current.size > 16) drafts.current.delete(drafts.current.keys().next().value);
+    renderDraft(++generation.current);
+  };
   const status=props.draftStatus?.(text);
   const submitting = useRef(false);
   const submit = async () => {
-    if (submitting.current || !props.canSend || props.draftStatus?.(draft.current).blocked || props.busy || draft.current.trim() === "") return;
-    const submittedGeneration = generation.current;
     const submittedScope = props.draftScope;
+    const submittedText = drafts.current.get(submittedScope) ?? "";
+    if (submitting.current || !props.canSend || props.draftStatus?.(submittedText).blocked || props.busy || submittedText.trim() === "") return;
+    const submittedGeneration = generation.current;
     const submittedScopeGeneration = scopeGeneration.current;
-    const submittedText = draft.current;
     const clearOriginal = () => {
       if (generation.current !== submittedGeneration || latestScope.current !== submittedScope || scopeGeneration.current !== submittedScopeGeneration) return;
-      generation.current++; draft.current = "";
+      updateDraft("");
       if (textarea.current) textarea.current.value = "";
-      setText("");
     };
     submitting.current = true;
     let notifying = true, reserved = false;

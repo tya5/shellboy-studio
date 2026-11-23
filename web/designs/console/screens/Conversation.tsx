@@ -848,7 +848,7 @@ export function Conversation({ model, panelCollapsed = false, rightPanelWidth, o
             sendLabel={t("composer.send")}
             canSend={conn === "connected" && !sendBlocked}
             busy={send.kind === "sending"}
-            draftScope="history"
+            draftScope={handle.threadId}
             onSend={(text,onReserved) => model.send(text,onReserved)}
             stop={
               model.canStop.value ? (

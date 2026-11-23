@@ -361,7 +361,8 @@ for(const outcome of [false,true])it(`Composer old reservation and ACK cannot er
  await act(async()=>{area.value='Original';area.dispatchEvent(new Event('input',{bubbles:true}));area.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));});
  expect(area.value).toBe('Original');
  await act(async()=>{render(<Composer {...props} draftScope="owner/thread/B" onSend={onSend}/>,host);});
- await act(async()=>{reserve!();finish(outcome);await flush();});expect(area.value).toBe('Original');
+ expect(area.value).toBe('');
+ await act(async()=>{area.value='Other draft';area.dispatchEvent(new Event('input',{bubbles:true}));reserve!();finish(outcome);await flush();});expect(area.value).toBe('Other draft');
  }finally{render(null,host);host.remove();}
 });
 it('Composer failed reserved send preserves the next draft without automatic restoration',async()=>{
