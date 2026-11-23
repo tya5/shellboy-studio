@@ -5,6 +5,9 @@ on:
       studio_ref:
         required: true
         type: string
+      expected_sha:
+        required: true
+        type: string
       release_app:
         required: true
         type: boolean
@@ -16,12 +19,16 @@ jobs:
     timeout-minutes: 60
     env:
       MACOSX_DEPLOYMENT_TARGET: '14.0'
+      EXPECTED_SHA: ${{ inputs.expected_sha }}
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.studio_ref }}
           persist-credentials: false
+      - name: Verify exact Studio checkout
+        shell: bash
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -31,6 +38,7 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
       - name: Verify exact Core pin and release eligibility
+        id: core
         env:
           RELEASE_APP: ${{ inputs.release_app }}
         run: |
@@ -42,12 +50,18 @@ jobs:
           git -C "$RUNNER_TEMP/macos-owner-source" checkout --detach "$core"
           if [ "$RELEASE_APP" = true ]; then set -- --release; else set --; fi
           python tools/verify-desktop-core.py --owner "$RUNNER_TEMP/macos-owner-source" "$@"
+          echo "pin=$core" >> "$GITHUB_OUTPUT"
+      - name: Install pinned Rust toolchain
+        run: rustup toolchain install 1.99.1 --profile minimal
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: packaging-desktop-macos-15-aarch64-apple-darwin-rust1.99.1-macos14-${{ steps.core.outputs.pin }}-${{ hashFiles('Cargo.lock') }}
+          cache-workspace-crates: false
       - name: Build both locked binaries
         run: |
-          rustup toolchain install 1.99.1 --profile minimal
           (cd web && npm ci && npm run build)
           cargo +1.99.1 build --locked --release --bin shellboy-studio --target aarch64-apple-darwin
-          cargo +1.99.1 install --locked --path "$RUNNER_TEMP/macos-owner-source" --root "$RUNNER_TEMP/macos-owner" --target aarch64-apple-darwin
+          cargo +1.99.1 install --target-dir "$GITHUB_WORKSPACE/target" --locked --path "$RUNNER_TEMP/macos-owner-source" --root "$RUNNER_TEMP/macos-owner" --target aarch64-apple-darwin
           "$RUNNER_TEMP/macos-owner/bin/shellboy" --version > "$RUNNER_TEMP/macos-owner-version.txt"
           python tools/verify-desktop-core.py --owner "$RUNNER_TEMP/macos-owner-source" --binary-version "$RUNNER_TEMP/macos-owner-version.txt"
       - name: Zip and inspect the unpacked app

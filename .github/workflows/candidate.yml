@@ -24,46 +24,23 @@ jobs:
     env:
       SOURCE_SHA: ${{ inputs.source_sha }}
       WORKFLOW_SHA: ${{ github.workflow_sha }}
-      EVENT_SHA: ${{ github.sha }}
       CANDIDATE_VERSION: ${{ inputs.version }}
       GH_TOKEN: ${{ github.token }}
+      REPOSITORY_ID: ${{ github.repository_id }}
+    outputs:
+      core_pin: ${{ steps.proof.outputs.core_pin }}
     steps:
-      - name: Require exact workflow source and successful same-SHA full CI
-        run: |
-          python3 - <<'PYTHON'
-          import json, os, re, subprocess
-          sha = os.environ['SOURCE_SHA']
-          assert re.fullmatch('[0-9a-f]{40}', sha)
-          assert sha == os.environ['WORKFLOW_SHA'] == os.environ['EVENT_SHA']
-          assert re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+', os.environ['CANDIDATE_VERSION'])
-          url = f"repos/{os.environ['GITHUB_REPOSITORY']}/actions/workflows/ci.yml/runs?head_sha={sha}&status=success&per_page=100"
-          runs = json.loads(subprocess.check_output(['gh', 'api', url]))['workflow_runs']
-          eligible = [r for r in runs if r['head_sha'] == sha and r['conclusion'] == 'success' and r['event'] == 'workflow_dispatch']
-          required = {
-              'Checks on ubuntu-22.04',
-              'Checks on macos-15',
-              'Checks on windows-latest',
-              'Required exact-pair owner acceptance (ubuntu-22.04) / owner',
-              'Required exact-pair owner acceptance (macos-15) / owner',
-              'Required exact-pair owner acceptance (windows-latest) / owner',
-          }
-          verified = False
-          for r in eligible:
-              jobs = json.loads(subprocess.check_output(['gh', 'api', f"repos/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{r['id']}/jobs?per_page=100"]))['jobs']
-              passed = {j['name'] for j in jobs if j['conclusion'] == 'success'}
-              if required <= passed:
-                  verified = True
-                  break
-          assert verified, 'Successful same-SHA dispatched three-OS CI and required owner gate are required'
-          PYTHON
-  exact-owner:
-    needs: guard
-    name: Required exact-pair owner acceptance before artifacts
-    uses: ./.github/workflows/exact-owner.yml
-    with:
-      studio_ref: ${{ inputs.source_sha }}
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Require successful exact-SHA Checks and owner proof
+        id: proof
+        run: python3 .github/scripts/packaging-proof.py --candidate
   build:
-    needs: [guard, exact-owner]
+    needs: guard
     name: Build ${{ matrix.target }}
     strategy:
       fail-fast: false
@@ -111,8 +88,8 @@ jobs:
         run: rustup toolchain install 1.99.1 --profile minimal --component rustfmt --component clippy
       - uses: Swatinem/rust-cache@v2
         with:
-          shared-key: candidate-v1
-          cache-on-failure: true
+          shared-key: packaging-cli-${{ matrix.os }}-${{ matrix.target }}-rust1.99.1-macos14-${{ needs.guard.outputs.core_pin }}-${{ hashFiles('Cargo.lock') }}
+          cache-workspace-crates: false
       - name: Candidate version must match the exact Cargo version
         run: |
           python - <<'PY'
@@ -211,17 +188,19 @@ jobs:
           retention-days: 90
 
   macos-candidate-app:
-    needs: [guard, exact-owner]
+    needs: guard
     uses: ./.github/workflows/macos-app.yml
     with:
       studio_ref: ${{ inputs.source_sha }}
+      expected_sha: ${{ inputs.source_sha }}
       release_app: false
 
   windows-candidate-desktop:
-    needs: [guard, exact-owner]
+    needs: guard
     uses: ./.github/workflows/windows-desktop.yml
     with:
       studio_ref: ${{ inputs.source_sha }}
+      expected_sha: ${{ inputs.source_sha }}
       release_app: false
 
   bundle:

@@ -124,7 +124,7 @@ pairing, hosted CI, genuine artifacts and selected-tip acceptance remain open;
 #279/S5 is conditional under the #262 cutoff, not an unconditional blocker.
 
 
-## Independent review corrections
+## Independent review corrections (v0.1.0 audit; historical)
 
 Ordinary all-target jobs run owner-free tests: `real_owner` has Cargo
 `required-features = ["real-owner-tests"]` and is not in defaults. CI calls the

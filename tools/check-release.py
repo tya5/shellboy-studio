@@ -44,17 +44,21 @@ def main():
     assert "SKIPPED" not in tests
     ci = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
     release = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+    candidate = (ROOT / ".github/workflows/candidate.yml").read_text(encoding="utf-8")
     owner = (ROOT / ".github/workflows/exact-owner.yml").read_text(encoding="utf-8")
     assert "uses: ./.github/workflows/exact-owner.yml" in ci
-    assert "needs: exact-owner" in release
-    assert "needs: [build, macos-release-app, windows-release-desktop]" in release
+    for workflow in (candidate, release):
+        assert "needs: guard" in workflow and ".github/scripts/packaging-proof.py" in workflow
+        assert "uses: ./.github/workflows/exact-owner.yml" not in workflow
+    assert "needs: [guard, build, macos-release-app, windows-release-desktop]" in release
     assert "--features real-owner-tests --test real_owner" in owner
     assert "SHELLBOY_BIN:" in owner and "CORE_REV=$(python3" in owner and "checkout --detach \"$CORE_REV\"" in owner
     assert "tools/exact-owner.py" in owner and "--binary-version" in owner
     assert "inputs.real_owner" not in ci
-    for workflow in (ci, release, owner):
+    for workflow in (ci, candidate, release, owner):
         for code in re.findall(r"python3? - <<'([A-Z]+)'\n(.*?)\n\s*\1(?:\n|$)", workflow, re.S):
             ast.parse(textwrap.dedent(code[1]))
+    subprocess.run([sys.executable, str(ROOT / ".github/scripts/test-packaging-proof.py")], check=True)
     subprocess.run([sys.executable, str(ROOT / "tools/test-exact-owner.py")], check=True)
     subprocess.run([sys.executable, str(ROOT / "tools/test-macos-package.py")], check=True)
 

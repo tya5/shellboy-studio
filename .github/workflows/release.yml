@@ -11,17 +11,39 @@ on:
         type: string
 permissions:
   contents: read
+  actions: read
 concurrency:
   group: release-${{ inputs.release_tag || github.ref_name }}
   cancel-in-progress: false
 jobs:
-  exact-owner:
-    name: Required exact-pair owner acceptance before artifacts
-    uses: ./.github/workflows/exact-owner.yml
-    with:
-      studio_ref: refs/tags/${{ inputs.release_tag || github.ref_name }}
+  guard:
+    runs-on: ubuntu-22.04
+    env:
+      RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
+      REPOSITORY_ID: ${{ github.repository_id }}
+    outputs:
+      source_sha: ${{ steps.proof.outputs.source_sha }}
+      core_pin: ${{ steps.proof.outputs.core_pin }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Validate tag syntax
+        run: '[[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]'
+      - uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ inputs.release_tag || github.ref_name }}
+          path: release-source
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Require successful exact-SHA Checks and owner proof
+        id: proof
+        run: python3 .github/scripts/packaging-proof.py --source release-source
   build:
-    needs: exact-owner
+    needs: guard
     name: Build ${{ matrix.target }}
     strategy:
       fail-fast: false
@@ -46,6 +68,7 @@ jobs:
         shell: bash
     env:
       RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
+      SOURCE_SHA: ${{ needs.guard.outputs.source_sha }}
       RELEASE_TARGET: ${{ matrix.target }}
       RELEASE_EXECUTABLE: ${{ matrix.executable }}
       RELEASE_ARCHIVE: ${{ matrix.archive }}
@@ -59,8 +82,10 @@ jobs:
           PYTHON
       - uses: actions/checkout@v4
         with:
-          ref: refs/tags/${{ inputs.release_tag || github.ref_name }}
+          ref: ${{ needs.guard.outputs.source_sha }}
           persist-credentials: false
+      - name: Verify immutable checkout
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -73,8 +98,8 @@ jobs:
         run: rustup toolchain install 1.99.1 --profile minimal --component rustfmt --component clippy
       - uses: Swatinem/rust-cache@v2
         with:
-          shared-key: release-v1
-          cache-on-failure: true
+          shared-key: packaging-cli-${{ matrix.os }}-${{ matrix.target }}-rust1.99.1-macos14-${{ needs.guard.outputs.core_pin }}-${{ hashFiles('Cargo.lock') }}
+          cache-workspace-crates: false
       - name: Tag must be vX.Y.Z and match the Cargo version
         run: |
           python - <<'PY'
@@ -149,22 +174,24 @@ jobs:
           retention-days: 14
 
   macos-release-app:
-    needs: exact-owner
+    needs: guard
     uses: ./.github/workflows/macos-app.yml
     with:
       studio_ref: refs/tags/${{ inputs.release_tag || github.ref_name }}
+      expected_sha: ${{ needs.guard.outputs.source_sha }}
       release_app: true
 
   windows-release-desktop:
-    needs: exact-owner
+    needs: guard
     uses: ./.github/workflows/windows-desktop.yml
     with:
       studio_ref: refs/tags/${{ inputs.release_tag || github.ref_name }}
+      expected_sha: ${{ needs.guard.outputs.source_sha }}
       release_app: true
 
   draft:
     name: SHA256SUMS and draft release
-    needs: [build, macos-release-app, windows-release-desktop]
+    needs: [guard, build, macos-release-app, windows-release-desktop]
     runs-on: ubuntu-22.04
     timeout-minutes: 15
     permissions:
@@ -173,6 +200,15 @@ jobs:
       RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
       GH_TOKEN: ${{ github.token }}
     steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ inputs.release_tag || github.ref_name }}
+          path: release-tag
+          persist-credentials: false
+      - name: Confirm the tag still points to the verified source
+        env:
+          SOURCE_SHA: ${{ needs.guard.outputs.source_sha }}
+        run: test "$(git -C release-tag rev-parse HEAD)" = "$SOURCE_SHA"
       - uses: actions/download-artifact@v4
         with:
           pattern: release-*
