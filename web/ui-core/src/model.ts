@@ -1309,8 +1309,8 @@ export class AppModel {
     batch(() => { this.panelTab.value = tab; this.panelDetail.value = undefined; this.expandPanel(); });
   }
 
-  openInPanel(target: RightPanelTarget, opener?: () => boolean): void {
-    if (this.panelPreference && !this.panelPreference.visible()) return;
+  openInPanel(target: RightPanelTarget, opener?: () => boolean, fromPanel = false): void {
+    if (!fromPanel && this.panelPreference && !this.panelPreference.visible()) return;
     const tab: RightPanelTab = (target.kind === "attachment" || target.kind === "artifact") ? "possessions" : target.kind === "reply"
       ? this.threadReplies.peek().find(row => row.id === target.id)?.recipient.kind === "thread" ? "reply-needed" : "awaiting-reply"
       : "work";

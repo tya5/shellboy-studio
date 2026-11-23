@@ -18,3 +18,5 @@ excluding right-click), `dialog:257` (scroll lock), shadcn/ui Sheet, and WAI-ARI
 APG Dialog (Modal) focus return.
 
 Styles: style.css in this directory
+
+On narrow Conversation views the existing work-strip opener is available even when idle. The sheet hosts the same right-panel tabs and drill-in as the wide view; do not mount a second panel.

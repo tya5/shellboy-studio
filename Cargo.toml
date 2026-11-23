@@ -43,9 +43,9 @@ next-cwds = ["next-tags"]
 
 [dependencies]
 # Published owner pin; exact-pair acceptance verifies the manifest revision and lock commit.
-shellboy = { git = "https://github.com/tya5/shellboy", rev = "3890360f7d46fbab7171ffed5231858fd52b74b0" }
+shellboy = { git = "https://github.com/tya5/shellboy", rev = "9e560cc26169bb9bc95854c94f1ade090b412c3e" }
 tokio = { version = "=1.54.1", features = ["rt-multi-thread", "macros", "sync", "time", "net", "signal", "process", "fs", "io-util"] }
-tokio-util = { version = "=0.7.20", features = ["rt"] }
+tokio-util = { version = "=0.7.20", features = ["rt", "io"] }
 axum = { version = "=0.8.9", default-features = false, features = ["http1", "tokio", "ws", "json"] }
 serde = { version = "=1.0.229", features = ["derive"] }
 serde_json = "=1.0.154"
@@ -54,6 +54,12 @@ clap = { version = "=4.6.7", features = ["derive"] }
 getrandom = "=0.3.4"
 # Apps: the hash on data files. Same version as Shellboy, so nothing new is compiled.
 sha2 = "=0.11.1"
+# Decode only local file URLs using the owner dependency already in the lock.
+url = "=2.5.8"
+
+[target.'cfg(unix)'.dependencies]
+# Nonblocking open prevents a raced FIFO from stalling a preview.
+libc = "=0.2.191"
 
 [dev-dependencies]
 tokio-tungstenite = "=0.28.0"

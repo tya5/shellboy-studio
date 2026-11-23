@@ -1,11 +1,10 @@
-import type { ArtifactSelected } from "../../../data/src";
-import { Cancel } from "../../../data/src";
+import { artifactContent, Cancel, type ArtifactContentTarget, type ArtifactSelected, type ArtifactVersion } from "../../../data/src";
 import { parseTime, type AppModel } from "../../../ui-core/src";
 import { useEffect, useState } from "preact/hooks";
 import { Button, Disclosure, Icon, KeyValue, ListDivider, ListRow } from "../system/components";
 import type { IconRole } from "../system/components/Icon";
 
-export const CAPABILITY_ARTIFACTS = "artifact.list.page";
+import { Markdown } from "../system/components/Message";
 
 const media = (mime: string | null) => mime?.split(";", 1)[0]?.trim().toLowerCase();
 function artifactIcon(mime: string | null): IconRole {
@@ -37,12 +36,51 @@ export function ArtifactList({ model, onSelect }: { model: AppModel; onSelect: (
   </section>;
 }
 
-function webUrl(uri: string, mime: string | null): string | undefined {
-  if (!media(mime)) return;
+function artifactAction(version: ArtifactVersion, desktop: boolean) {
+  const mime = media(version.mime);
+  if (!mime) return;
   try {
-    const url = new URL(uri);
-    if (url.protocol === "https:" || url.protocol === "http:") return url.href;
-  } catch { /* An opaque URI is still available to copy. */ }
+    const url = new URL(version.uri);
+    if (url.protocol === "https:" || url.protocol === "http:") return { kind: "link", href: url.href } as const;
+  } catch { /* Plain absolute paths are not URLs. */ }
+  const local = /^(?:file:|\/|[a-z]:[\\/])/i.test(version.uri);
+  if (!local) return;
+  if (mime.startsWith("image/") || mime.startsWith("text/") && mime !== "text/html") return { kind: "preview", mime } as const;
+  if (desktop && (mime === "application/pdf" || mime === "text/html")) return { kind: "open" } as const;
+}
+
+function Preview({ model, target, mime, title }: { model: AppModel; target: ArtifactContentTarget; mime: string; title: string }) {
+  const t = model.t.value;
+  const [content, setContent] = useState<{ kind: "image" | "text"; value: string } | "unavailable">();
+  const { thread_id, artifact_id, version } = target;
+  useEffect(() => {
+    const cancel = new AbortController();
+    let objectUrl: string | undefined;
+    void (async () => {
+      try {
+        const response = await artifactContent({ thread_id, artifact_id, version }, "preview", cancel.signal);
+        if (response.status !== 200) throw new Error("No preview");
+        if (mime.startsWith("image/")) {
+          const bytes = await response.arrayBuffer();
+          if (cancel.signal.aborted) return;
+          objectUrl = URL.createObjectURL(new Blob([bytes], { type: mime }));
+          setContent({ kind: "image", value: objectUrl });
+        } else {
+          const text = await response.text();
+          if (!cancel.signal.aborted) setContent({ kind: "text", value: text });
+        }
+      } catch {
+        if (!cancel.signal.aborted) setContent("unavailable");
+      }
+    })();
+    return () => { cancel.abort(); if (objectUrl) URL.revokeObjectURL(objectUrl); };
+  }, [thread_id, artifact_id, version, mime]);
+  return <div class="artifact-preview" aria-label={t("artifact.preview")}>
+    {content === undefined ? <p role="status">{t("artifact.loading")}</p> : content === "unavailable" ? <p role="status">{t("artifact.noPreview")}</p>
+      : content.kind === "image" ? <img src={content.value} alt={title} />
+      : mime === "text/markdown" ? <Markdown text={content.value} copyLabel={t("code.copy")} copiedLabel={t("code.copied")} />
+      : <pre>{content.value}</pre>}
+  </div>;
 }
 
 export function ArtifactDetail({ model }: { model: AppModel }) {
@@ -54,6 +92,7 @@ export function ArtifactDetail({ model }: { model: AppModel }) {
   const [loaded, setLoaded] = useState<ArtifactSelected>();
   const [failure, setFailure] = useState<number>();
   const [copyFailed, setCopyFailed] = useState(false);
+  const [openFailed, setOpenFailed] = useState(false);
   const thread = row?.thread_id;
   const artifact = row?.artifact_id;
   const owner = model.data.owner.value;
@@ -70,7 +109,9 @@ export function ArtifactDetail({ model }: { model: AppModel }) {
   }, [model, owner, thread, artifact, selection]);
   const version = selection === undefined ? row?.latest
     : loaded?.artifact_id === artifact && loaded?.thread_id === thread && loaded?.version.version === selection ? loaded.version : undefined;
-  const url = version ? webUrl(version.uri, version.mime) : undefined;
+  const desktop = model.data.desktop.value;
+  const action = version ? artifactAction(version, desktop) : undefined;
+  const target = thread && artifact && version ? { thread_id: thread, artifact_id: artifact, version: version.version } : undefined;
   if (!row) return <p role={cut.error ? "alert" : "status"}>{t(cut.error ? "artifact.failed" : "artifact.loading")}</p>;
   return <>
     <h3>{row.latest.title}</h3>
@@ -81,10 +122,17 @@ export function ArtifactDetail({ model }: { model: AppModel }) {
     ]} />
     {selection !== undefined ? <Button onClick={() => { setSelection(undefined); setLoaded(undefined); }}>{t("artifact.latest")}</Button> : null}
     {version ? <>
-      <KeyValue rows={[{ key: `v${version.version} · URI`, value: <bdi class="mono">{version.uri}</bdi> }]} />
-      <Button onClick={() => { setCopyFailed(false); void navigator.clipboard.writeText(version.uri).catch(() => setCopyFailed(true)); }}>{t("code.copy")}</Button>
+      <KeyValue rows={[{ key: `v${version.version} · URI`, value: <bdi class="mono artifact-uri">{version.uri}</bdi> }]} />
+      <Button onClick={() => { setCopyFailed(false); if (!navigator.clipboard) setCopyFailed(true);
+        else void navigator.clipboard.writeText(version.uri).catch(() => setCopyFailed(true)); }}>{t("code.copy")}</Button>
       {copyFailed ? <p role="status">{t("guide.copyFailed")}</p> : null}
-      {url ? <Button onClick={() => window.open(url, "_blank", "noopener,noreferrer")}>{t("artifact.open")}</Button> : null}
+      {action?.kind === "link" ? <Button onClick={() => window.open(action.href, "_blank", "noopener,noreferrer")}>{t("artifact.open")}</Button> : null}
+      {target && action?.kind === "preview" ? <Preview key={JSON.stringify([target, action.mime])} model={model} target={target} mime={action.mime} title={version.title} /> : null}
+      {target && action?.kind === "open" ? <Button onClick={() => {
+        setOpenFailed(false);
+        void artifactContent(target, "open").then(res => { if (res.status !== 200) setOpenFailed(true); }, () => setOpenFailed(true));
+      }}>{t("artifact.open")}</Button> : null}
+      {openFailed ? <p role="alert">{t("artifact.openFailed")}</p> : null}
     </> : <p role={selection === failure ? "alert" : "status"}>{t(selection === failure ? "artifact.failed" : "artifact.loading")}</p>}
     {row.latest.version > 1 ? <Disclosure>
       <summary>{t("artifact.versions")} ({row.latest.version - 1})</summary>

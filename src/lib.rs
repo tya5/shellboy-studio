@@ -9,6 +9,7 @@
 
 pub mod allowlist;
 pub mod apps;
+mod artifact_content;
 pub mod assets;
 pub mod auth;
 pub mod envelope;

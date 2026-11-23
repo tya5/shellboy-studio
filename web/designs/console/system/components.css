@@ -12,6 +12,7 @@
 @import "./components/Chip/style.css";
 @import "./shared/cards.css";
 @import "./shared/work.css";
+@import "./shared/panel-detail.css";
 @import "./components/QuestionCard/style.css";
 @import "./components/QuestionItem/style.css";
 @import "./components/SummaryStrip/style.css";

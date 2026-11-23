@@ -115,3 +115,15 @@ export class ArtifactObservation {
 
   close(): void { this.list.close(); this.history.close(); }
 }
+
+export const CAPABILITY_ARTIFACTS = "artifact.list.page";
+
+export interface ArtifactContentTarget { thread_id: string; artifact_id: string; version: number }
+
+/** The bridge resolves this key against the owner; this call never accepts a path. */
+export function artifactContent(target: ArtifactContentTarget, action: "preview" | "open", signal?: AbortSignal): Promise<Response> {
+  return fetch("/artifact-content", {
+    method: "POST", credentials: "same-origin", cache: "no-store", signal,
+    headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...target, action }),
+  });
+}

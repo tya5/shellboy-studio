@@ -110,6 +110,10 @@ pub fn router<O: Owner>(state: AppState<O>) -> Router {
         )
         .route("/pairing", get(pairing_hosts::<O>).post(pairing_issue::<O>))
         .route("/pairing/exchange", post(pairing_exchange::<O>))
+        .route(
+            "/artifact-content",
+            post(crate::artifact_content::content::<O>),
+        )
         .route("/ws", get(ws_upgrade::<O>));
     if state.config.debug {
         router = router.route("/debug", get(debug_page));
@@ -218,7 +222,7 @@ async fn auth_exchange<O: Owner>(
     }
 }
 
-fn authorized<O: Owner>(state: &AppState<O>, headers: &HeaderMap) -> bool {
+pub(crate) fn authorized<O: Owner>(state: &AppState<O>, headers: &HeaderMap) -> bool {
     origin_ok(headers)
         && (state.auth.is_disabled()
             || state.auth.cookie_valid(

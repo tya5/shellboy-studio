@@ -2977,7 +2977,7 @@ dependencies = [
 [[package]]
 name = "shellboy"
 version = "0.13.1"
-source = "git+https://github.com/tya5/shellboy?rev=3890360f7d46fbab7171ffed5231858fd52b74b0#3890360f7d46fbab7171ffed5231858fd52b74b0"
+source = "git+https://github.com/tya5/shellboy?rev=9e560cc26169bb9bc95854c94f1ade090b412c3e#9e560cc26169bb9bc95854c94f1ade090b412c3e"
 dependencies = [
  "arboard",
  "base64 0.23.1",
@@ -3022,6 +3022,7 @@ dependencies = [
  "clap",
  "futures-util",
  "getrandom 0.3.4",
+ "libc",
  "serde",
  "serde_json",
  "sha2 0.11.1",
@@ -3030,6 +3031,7 @@ dependencies = [
  "tokio-tungstenite 0.28.0",
  "tokio-util",
  "tower",
+ "url",
  "uuid",
  "windows-sys 0.61.2",
 ]

@@ -1,6 +1,6 @@
-import { ArtifactDetail, ArtifactList, CAPABILITY_ARTIFACTS } from "./ArtifactPanel";
+import { ArtifactDetail, ArtifactList } from "./ArtifactPanel";
 import { ATTACHMENT_RETENTION } from "../../../ui-core/src/attachment-section";
-import { CAPABILITY_ATTACHMENT_PAGE } from "../../../data/src";
+import { CAPABILITY_ARTIFACTS, CAPABILITY_ATTACHMENT_PAGE } from "../../../data/src";
 import {messageRelationship,senderHeaderDisplay} from "../../../ui-core/src/sender-display";
 import { capturedWorkElementDisplay, capturedWorkExecutionDisplay, type WorkElementDisplay } from "../../../ui-core/src/work-element-display";
 import { WorkElementRow, formatWorkElementDisplay } from "../system/components/WorkElementRow";
@@ -17,7 +17,6 @@ import type { SavedItemProjection } from "../../../ui-core/src/conversation-item
 import { ConversationItems, type ConversationItem, type ConversationToolSummary, type ConversationWorkGroup } from "./ConversationItems";
 import { ConversationCharacter } from "../system/components";
 import { effect } from "@preact/signals-core";
-import { MonitorPopover } from "../system/components/MonitorPopover";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
 import { readRightPanelWidth, RIGHT_PANEL_WIDTH_MAX, RIGHT_PANEL_WIDTH_MIN, collectExecutionSteps, toolLabel, activityLabel, renderOutput, formatClock, formatDuration, formatRoute, formatTokens, parseTime, statusLabel, type AppModel, type ConversationRow, type StepRow as Step } from "../../../ui-core/src";
 import { WindowedScroll } from "./WindowedScroll";
@@ -379,26 +378,6 @@ function ProjectedMessage({ model, row, authorizedText, relationship, bodyPartia
   );
 }
 
-function WorkRegions({ model, place }: { model: AppModel; place: string }) {
-  const t = model.t.value;
-  const work = model.work.value;
-  const replies = model.threadReplies.value;
-  const state = (s: string) => s === "accepted" ? t("work.accepted") : s === "held" ? t("work.held") : s === "starting" ? t("work.starting") : s === "stopping" ? t("work.stopping") : t("work.runningState");
-  return <>
-    {replies.length ? <section class="work-region"><h3>{t("work.replies")}</h3>{replies.map((r) => r.recipient.kind === "human" ?
-      <QuestionCard key={r.id} id={`${place}-${r.id}`} label={t("work.replies")} waitingWord={t("status.awaiting")} question={r.question} answerLabel={t("inbox.answer")} submitLabel={t("inbox.answerResume")} error={panelOperationError(model, r.id)} busy={panelOperationBlocked(model, r.id)} onAnswer={text => { void model.runPanelOperation(r.id, { kind: "answer", text }); }} /> :
-      <div class="work-row" key={r.id}><span>{r.question}</span><span>{r.state}</span>{r.recipient.kind === "thread" ? <a href={formatRoute({ view: "conversation", threadId: r.recipient.threadId })}>{r.recipient.title}</a> : null}</div>)}</section> : null}
-    {work.running.length ? <section class="work-region running-region"><h3>{t("work.running")}</h3><span class="caption muted">{t("work.incomplete")}</span>{work.running.map((r) => <div class="work-row" key={r.id}><MonitorPopover className="running-label" label={r.label} preview><span>{r.label}</span>{r.command ? <code>{r.command}</code> : null}<span>{r.startedAt && parseTime(r.startedAt) !== undefined ? formatDuration(model.now.value - parseTime(r.startedAt)!) : ""}</span></MonitorPopover><span>{state(r.state)} {r.startedAt && parseTime(r.startedAt) !== undefined ? formatDuration(model.now.value - parseTime(r.startedAt)!) : ""}</span></div>)}</section> : null}
-    {work.pending.length ? <section class="work-region"><h3>{t("work.pending")}</h3>{work.pending.map(r => {
-      const action = panelCancel(model, r.id);
-      const error = panelOperationError(model, r.id);
-      return <div class="work-row" key={r.id}><span>{r.label || t("work.textUnavailable")}</span><span class="mono">{r.id}</span><span>{state(r.state)}</span><Button disabled={action.disabled} onClick={action.run}>{action.label}</Button>{error ? <div role="alert">{error}</div> : null}</div>;
-    })}</section> : null}
-    {work.partial ? <div class="caption muted">{t("work.partial")}</div> : null}
-    {model.handle.value?.work.value.stale && (work.running.length > 0 || work.pending.length > 0) ? <div class="caption muted">{t("work.stale")}</div> : null}
-  </>;
-}
-
 const activitySections = [
   { key: "running", label: "work.running", kind: "step", icon: "work.command" },
   { key: "pending", label: "panel.pending", kind: "message", icon: "panel.awaiting_reply" },
@@ -412,14 +391,14 @@ function PanelPossessions({ model }: { model: AppModel }) {
   const t = model.t.value;
   const state = model.attachmentSection.state.value;
   return <div class="panel-list" data-panel-list="possessions">
-    {model.data.capabilities.value.includes(CAPABILITY_ARTIFACTS) ? <ArtifactList model={model} onSelect={(id, opener) => model.openInPanel({ kind: "artifact", id }, panelFocusReturn(opener))} /> : null}
+    {model.data.capabilities.value.includes(CAPABILITY_ARTIFACTS) ? <ArtifactList model={model} onSelect={(id, opener) => model.openInPanel({ kind: "artifact", id }, panelFocusReturn(opener), true)} /> : null}
     {state.items.length ? possessionsSections.map(section => <section key={section.kind}>
       <ListDivider label={t(section.label)} count={state.items.length} />
       {state.items.map(row => <ListRow key={row.attachment_id} id={row.attachment_id}
         title={row.path.split(/[\\/]/).filter(Boolean).at(-1) ?? row.path} icon={section.icon}
         subtitle={t(row.kind === "image" ? "panel.attachmentImage" : "panel.attachmentFile")}
         selected={model.panelOpener.value.possessions?.id === row.attachment_id}
-        onSelect={opener => model.openInPanel({ kind: section.kind, id: row.attachment_id }, panelFocusReturn(opener))} />)}
+        onSelect={opener => model.openInPanel({ kind: section.kind, id: row.attachment_id }, panelFocusReturn(opener), true)} />)}
     </section>) : null}
     {state.loading ? <p role="status">{t("panel.attachmentsLoading")}</p> : null}
     {state.error ? <p role="alert">{t("panel.attachmentsFailed")}</p> : null}
@@ -474,7 +453,7 @@ function PanelActivity({ model }: { model: AppModel }) {
         return <ListRow key={row.id} id={row.id} title={(section.kind === "step" ? row.command ?? row.label : row.label) || t("work.textUnavailable")}
           subtitle={section.kind === "step" ? elapsed : [state, elapsed].filter(Boolean).join(" · ")} icon={section.icon}
           selected={selected?.kind === section.kind && selected.id === row.id}
-          onSelect={opener => model.openInPanel({ kind: section.kind, id: row.id }, panelFocusReturn(opener))} menuLabel={t("panel.rowActions")}
+          onSelect={opener => model.openInPanel({ kind: section.kind, id: row.id }, panelFocusReturn(opener), true)} menuLabel={t("panel.rowActions")}
           actions={section.kind === "message" ? [panelCancel(model, row.id)] : undefined} error={panelOperationError(model, row.id)} />;
       })}</section> : null;
     })}
@@ -499,7 +478,7 @@ function PanelReplies({ model, recipient }: { model: AppModel; recipient: "threa
         ...(human ? [panelCancel(model, reply.id, "reply")] : [])];
       return <ListRow key={reply.id} id={reply.id} title={[party, reply.question || t("work.textUnavailable")].filter(Boolean).join(" · ")}
         subtitle={elapsed} waiting={human} selected={model.panelOpener.value[tab]?.id === reply.id}
-        menuLabel={t("panel.rowActions")} actions={actions} error={panelOperationError(model, reply.id)} onSelect={opener => model.openInPanel({ kind: "reply", id: reply.id }, panelFocusReturn(opener))} />;
+        menuLabel={t("panel.rowActions")} actions={actions} error={panelOperationError(model, reply.id)} onSelect={opener => model.openInPanel({ kind: "reply", id: reply.id }, panelFocusReturn(opener), true)} />;
     })}
     {!rows.length ? <p class="muted caption">{t("panel.empty")}</p> : null}
   </div>;
@@ -607,9 +586,11 @@ function PanelDetail({ model, tabLabel, onBack }: { model: AppModel; tabLabel: s
   </section>;
 }
 
-function RightPanel({ model, panelCollapsed = false }: { model: AppModel; panelCollapsed?: boolean }) {
+function RightPanel({ model, panelCollapsed = false, sheet = false }: { model: AppModel; panelCollapsed?: boolean; sheet?: boolean }) {
   const t = model.t.value;
-  const supportsAttachments = model.data.capabilities.value.includes(CAPABILITY_ATTACHMENT_PAGE);
+  const caps = model.data.capabilities.value;
+  const supportsAttachments = caps.includes(CAPABILITY_ATTACHMENT_PAGE);
+  const supportsArtifacts = caps.includes(CAPABILITY_ARTIFACTS);
   const owner = model.data.owner.value;
   const threadId = model.handle.value?.threadId;
   const activeAttachments = supportsAttachments && !panelCollapsed && model.panelTab.value === "possessions";
@@ -624,11 +605,6 @@ function RightPanel({ model, panelCollapsed = false }: { model: AppModel; panelC
     { id: "info", label: t("panel.tab.info"), icon: "panel.information" as const },
   ];
   const detail = model.panelDetail.value;
-  const artifactId = detail?.kind === "artifact" ? detail.id : undefined;
-  useEffect(() => activeAttachments && model.data.capabilities.peek().includes(CAPABILITY_ARTIFACTS) && owner.state === "connected" && threadId
-    ? model.artifacts.observeList(threadId) : undefined, [model, activeAttachments, owner, threadId]);
-  useEffect(() => activeAttachments && owner.state === "connected" && threadId && artifactId
-    ? model.artifacts.observeHistory(threadId, artifactId) : undefined, [model, activeAttachments, owner, threadId, artifactId]);
   useEffect(() => {
     if (panelCollapsed || !detail) return;
     const onKey = (event: KeyboardEvent) => {
@@ -644,10 +620,18 @@ function RightPanel({ model, panelCollapsed = false }: { model: AppModel; panelC
   useEffect(() => {
     const panel = root.current;
     if (!panel) return;
-    const observer = new ResizeObserver(() => setPanelVisible(getComputedStyle(panel).display !== "none"));
+    const publish = () => setPanelVisible(getComputedStyle(panel).display !== "none");
+    publish();
+    const observer = new ResizeObserver(publish);
     observer.observe(panel);
     return () => observer.disconnect();
   }, []);
+  const artifactId = detail?.kind === "artifact" ? detail.id : undefined;
+  const artifactsShown = supportsArtifacts && (sheet || panelVisible) && !panelCollapsed && model.panelTab.value === "possessions";
+  useEffect(() => artifactsShown && owner.state === "connected" && threadId
+    ? model.artifacts.observeList(threadId) : undefined, [model, artifactsShown, owner, threadId]);
+  useEffect(() => artifactsShown && owner.state === "connected" && threadId && artifactId
+    ? model.artifacts.observeHistory(threadId, artifactId) : undefined, [model, artifactsShown, owner, threadId, artifactId]);
   const usageThread = panelVisible && !panelCollapsed && selectedTab === "info" && !detail && owner.state === "connected" ? threadId : undefined;
   const usageKey = usageThread && owner.state === "connected" ? JSON.stringify([owner.info.instance_id, usageThread]) : undefined;
   const focusAfterBack = useRef<{ tab: typeof model.panelTab.value; restore?: () => boolean }>();
@@ -665,7 +649,7 @@ function RightPanel({ model, panelCollapsed = false }: { model: AppModel; panelC
     model.closePanelDetail();
   };
   const select = (id: string) => model.setPanelTab(id as import("../../../ui-core/src/model").RightPanelTab);
-  return <aside id="conversation-right-panel" ref={root} class={`details${panelCollapsed ? " details-collapsed" : ""}`} aria-label={t("panel.title")} data-panel-root="" data-panel-rail={panelCollapsed ? "" : undefined}>
+  return <aside id="conversation-right-panel" ref={root} class={`details${panelCollapsed ? " details-collapsed" : ""}`} aria-label={t("panel.title")} data-panel-root="" data-panel-sheet={sheet || undefined} data-panel-rail={panelCollapsed ? "" : undefined}>
     <PanelTabs label={t("panel.title")} items={tabs} selected={selectedTab} rail={panelCollapsed} onSelect={select} />
     <div class="panel-pages">
       {tabs.map(tab => {
@@ -677,7 +661,7 @@ function RightPanel({ model, panelCollapsed = false }: { model: AppModel; panelC
         </section>;
       })}
     </div>
-    <ShellFooter side="right"><ShellToggle panel expanded={!panelCollapsed} label={t(panelCollapsed ? "panel.expand" : "panel.collapse")} onClick={() => model.togglePanel()} /></ShellFooter>
+    {!sheet ? <ShellFooter side="right"><ShellToggle panel expanded={!panelCollapsed} label={t(panelCollapsed ? "panel.expand" : "panel.collapse")} onClick={() => model.togglePanel()} /></ShellFooter> : null}
   </aside>;
 }
 
@@ -747,11 +731,11 @@ export function Conversation({ model, panelCollapsed = false, rightPanelWidth, o
               {t("composer.unconfirmed")}{!model.canResend()?<div>{t("composer.retryUnavailable")}</div>:null}
             </Notice>
           ) : null}
-          {(model.threadReplies.value.length || model.work.value.running.length || model.work.value.pending.length || model.work.value.partial) ? <div class="work-strip"><Button onClick={(event) => { const opener = event.currentTarget; const fallback = opener.closest(".dock")?.querySelector<HTMLElement>("textarea"); setSheetReturnFocus({ opener, resolveFallback: () => fallback?.isConnected ? fallback : null }); setSheetOpen(true); }}>
+          <div class="work-strip"><Button onClick={(event) => { const opener = event.currentTarget; const fallback = opener.closest(".dock")?.querySelector<HTMLElement>("textarea"); setSheetReturnFocus({ opener, resolveFallback: () => fallback?.isConnected ? fallback : null }); setSheetOpen(true); }}>
             {[t("work.title"), ...(model.threadReplies.value.length ? [t("work.replies")] : []),
               ...(model.work.value.pending.length ? [t("work.pending")] : []),
               ...(model.work.value.partial ? [t("work.partial")] : [])].join(" · ")}
-          </Button></div> : null}
+          </Button></div>
           <Composer
             label={t("composer.label")}
             placeholder={t("composer.placeholder")}
@@ -773,11 +757,11 @@ export function Conversation({ model, panelCollapsed = false, rightPanelWidth, o
           />
         </div> : null}
       </div>
-      {handle && onPanelWidth ? <LayoutSeparator side="right" label={t("panel.resize")} controls="conversation-right-panel"
+      {handle && !sheetOpen && onPanelWidth ? <LayoutSeparator side="right" label={t("panel.resize")} controls="conversation-right-panel"
         width={readRightPanelWidth(rightPanelWidth)} min={RIGHT_PANEL_WIDTH_MIN} max={RIGHT_PANEL_WIDTH_MAX}
         disabled={panelCollapsed} onWidth={onPanelWidth} /> : null}
-      {handle ? <RightPanel key={handle.threadId} model={model} panelCollapsed={panelCollapsed} /> : null}
-      <WorkSheet open={sheetOpen} title={t("work.title")} closeLabel={t("work.close")} getReturnFocusTarget={() => sheetReturnFocus?.opener?.isConnected ? sheetReturnFocus.opener : sheetReturnFocus?.resolveFallback() ?? null} onClose={() => setSheetOpen(false)}><WorkRegions model={model} place="sheet" /></WorkSheet>
+      {handle && !sheetOpen ? <RightPanel key={handle.threadId} model={model} panelCollapsed={panelCollapsed} /> : null}
+      <WorkSheet open={sheetOpen} title={t("work.title")} closeLabel={t("work.close")} getReturnFocusTarget={() => sheetReturnFocus?.opener?.isConnected ? sheetReturnFocus.opener : sheetReturnFocus?.resolveFallback() ?? null} onClose={() => setSheetOpen(false)}>{handle && sheetOpen ? <RightPanel key={handle.threadId} model={model} sheet /> : null}</WorkSheet>
     </>
   );
 }

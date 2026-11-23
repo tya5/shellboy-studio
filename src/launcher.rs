@@ -20,3 +20,20 @@ pub mod desktop;
 mod macos;
 #[cfg(windows)]
 pub mod windows;
+
+/// Only called after resolving a locally registered, regular artifact version.
+#[cfg(any(target_os = "macos", windows))]
+pub(crate) async fn open_artifact_file(path: &std::path::Path) -> Result<(), String> {
+    let path = path
+        .to_str()
+        .ok_or_else(|| "Invalid artifact path".to_owned())?;
+    #[cfg(target_os = "macos")]
+    return macos::open_browser(path).await;
+    #[cfg(windows)]
+    return windows::open_browser(path).await;
+}
+
+#[cfg(not(any(target_os = "macos", windows)))]
+pub(crate) async fn open_artifact_file(_path: &std::path::Path) -> Result<(), String> {
+    Err("Desktop launcher unavailable".into())
+}

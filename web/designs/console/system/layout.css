@@ -207,7 +207,7 @@
 .work-row{display:flex;flex-direction:column;gap:var(--space-4);overflow-wrap:anywhere;padding:var(--space-8);background:var(--inset);border-radius:var(--radius-s)}
 .work-strip{display:none}
 @container app (max-width:1179px){
-  .details{display:none}
+  .details:not([data-panel-sheet]){display:none}
   .work-strip{display:block}
   .work-strip .btn{width:100%;justify-content:flex-start;min-height:var(--size-touch);overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 }
@@ -217,7 +217,8 @@ html:has(dialog:modal){overflow:hidden}
 .work-sheet-head{display:flex;align-items:center;justify-content:space-between;gap:var(--space-8)}
 .work-sheet-head h2{font:var(--type-heading);margin:0}
 .work-sheet-body{display:flex;flex-direction:column;gap:var(--space-12);max-height:65dvh;overflow:auto}
-.work-sheet-body .work-region{overflow:visible;flex:none}
+.work-sheet-body .details[data-panel-sheet]{width:100%;min-width:0;border:0;padding:var(--space-8) 0 0;overflow:visible}
+.work-sheet-body .details[data-panel-sheet] .panel-pages:not([hidden]){overflow:visible}
 
 /* Padding is included in the virtual row height measured by ResizeObserver. */
 .vrow,.conversation-row{padding-bottom:var(--space-8)}
