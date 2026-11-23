@@ -288,6 +288,13 @@ describe("Conversation live text", () => {
         else expect(footer()).toBe("");
         expect(el.querySelector("[data-conversation-header] [data-status]")?.getAttribute("data-status")).toBe(status);
       }
+      for (const [activity, label] of [["recovery", "Recovery wait"], ["failed", "Failed"]] as const) {
+        db.threads.lead = summary("lead", { ...db.threads.lead, activity, awaiting_named_count: 0 });
+        await act(async () => { t.push({ t: "changed", thread_ids: ["lead"], list: true, config_changed: false }); await settle(t, db); });
+        const status = el.querySelector(".conversation-status")!;
+        expect(status.textContent).toContain(label);
+        expect(status.querySelector(".character-status")?.getAttribute("src")).toBe(characterAssets.error);
+      }
     } finally { model.dispose(); }
   });
 
