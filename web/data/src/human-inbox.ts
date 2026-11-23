@@ -1,6 +1,6 @@
 // Human inbox: one displayed keyset page, one coalesced
 // refresh. Owned by AppModel; close cancels reads/subscriptions. No polling.
-import { batch, effect, signal, type ReadonlySignal } from "@preact/signals-core";
+import { batch, effect, signal, untracked, type ReadonlySignal } from "@preact/signals-core";
 import { Cancel, REPLY_PAGE_SIZE } from "./operations";
 import { Refresher } from "./refresher";
 import type { ShellboyData } from "./store";
@@ -24,6 +24,7 @@ export interface PendingAdapter {
   readonly hasMore?: ReadonlySignal<boolean>;
   more?(): Promise<void>;
   answer(id: string, text: string): Promise<Outcome<unknown>>;
+  cancel?(id: string): Promise<Outcome<unknown>>;
   close?(): void;
 }
 
@@ -38,14 +39,14 @@ export class HumanInbox implements PendingAdapter {
   private page: { owner: string; epoch: number; cursor?: string; ids: ReadonlySet<string> } | undefined;
   private cursor: string | undefined;
   private nextCursor: string | undefined;
-  private cancel = new Cancel();
+  private readCancel = new Cancel();
   private closed = false;
   private generation = 0;
   private stop: () => void;
   private stopSession: () => void;
   // At most the current page's 16 duties. Keep only unconfirmed outcomes
   // across rereads; never replace their receipt with a fresh mutation identity.
-  private attempts = new Map<string, { text: string; owner: string; epoch: number; operationId?: string; result?: Promise<Outcome<unknown>>; settled?: boolean; outcomeShown?: boolean }>();
+  private attempts = new Map<string, { text: string | undefined; owner: string; epoch: number; operationId?: string; result?: Promise<Outcome<unknown>>; settled?: boolean; outcomeShown?: boolean }>();
   private refresher: Refresher;
   constructor(private readonly data: ShellboyData) {
     this.refresher = new Refresher(async (_, sent) => this.read(sent));
@@ -55,40 +56,35 @@ export class HumanInbox implements PendingAdapter {
       if (event.kind === "frame" && (event.frame.t === "owner" || event.frame.t === "hello")) {
         const owner = event.frame.owner;
         const key = owner.state === "connected" ? owner.info.instance_id ?? undefined : undefined;
-        if (key !== this.ownerKey || event.frame.t === "owner" && event.frame.event === "restarted") { this.ownerKey = key; this.resetScope(); }
+        const restarted = event.frame.t === "owner" && event.frame.event === "restarted";
+        if (key !== this.ownerKey || restarted) {
+          this.ownerKey = key;
+          this.resetScope();
+        }
+        const current = data.owner.peek();
+        if (restarted && key && this.ownerKey === key && current.state === "connected" && current.info.instance_id === key) {
+          void this.refresher.requestFresh("human");
+        }
       }
     });
     this.stop = effect(() => {
       const owner = data.owner.value;
-      const list = data.threadList.value;
-      data.listHint.value; // Core change hints invalidate the global message.list projection too.
-      const key = owner.state === "connected" && data.connection.value === "open" ? owner.info.instance_id ?? undefined : undefined;
-      if (key !== this.ownerKey) {
-        this.ownerKey = key;
-        this.resetScope();
-      }
-      if (key !== this.ownerKey || this.closed) return;
-      if (!key || list.loading || list.stale) {
-        batch(() => {
-          this.loading.value = false; this.stale.value = true;
-          this.invalidateRead();
-        });
-        return;
-      }
-      if (list.loaded) {
-        if (this.cursor !== undefined) {
-          const generation = this.generation + 1;
+      const connected = data.connection.value === "open";
+      const key = owner.state === "connected" && connected ? owner.info.instance_id ?? undefined : undefined;
+      data.listHint.value;
+      untracked(() => {
+        if (key !== this.ownerKey || this.cursor !== undefined) {
+          this.ownerKey = key;
           this.resetScope();
-          if (generation !== this.generation || key !== this.ownerKey || this.closed) return;
         }
-        this.cursor = undefined; // live keysets must restart on invalidation
-        void this.refresher.requestFresh("human");
-      }
+        if (key && key === this.ownerKey && !this.closed) void this.refresher.request("human");
+      });
     });
   }
+
   private invalidateRead(): number {
     const generation = ++this.generation;
-    const previous = this.cancel; this.cancel = new Cancel();
+    const previous = this.readCancel; this.readCancel = new Cancel();
     previous.cancel();
     return generation;
   }
@@ -96,7 +92,7 @@ export class HumanInbox implements PendingAdapter {
     // Revoke actions before cancellation can run a subscriber against displayed old rows.
     this.page = undefined; ++this.scopeEpoch;
     ++this.generation;
-    const previous = this.cancel; this.cancel = new Cancel();
+    const previous = this.readCancel; this.readCancel = new Cancel();
     this.cursor = undefined; this.nextCursor = undefined;
     batch(() => {
       this.items.value = []; this.error.value = undefined; this.hasMore.value = false;
@@ -107,10 +103,10 @@ export class HumanInbox implements PendingAdapter {
   private async read(sent: () => void): Promise<void> {
     if (this.closed || !this.ownerKey) return;
     const owner = this.ownerKey; const cursor = this.cursor; const epoch = this.scopeEpoch;
-    const generation = this.invalidateRead(); const cancel = this.cancel;
-    const valid = () => epoch === this.scopeEpoch && !this.closed && this.data.connection.peek() === "open" && this.data.owner.peek().state === "connected" && generation === this.generation && owner === this.ownerKey && cancel === this.cancel && !cancel.cancelled;
+    const generation = this.invalidateRead(); const cancel = this.readCancel;
+    const valid = () => epoch === this.scopeEpoch && !this.closed && this.data.connection.peek() === "open" && this.data.owner.peek().state === "connected" && generation === this.generation && owner === this.ownerKey && cancel === this.readCancel && !cancel.cancelled;
     if (!valid()) return;
-    batch(() => { this.loading.value = true; this.stale.value = this.items.peek().length > 0; });
+    batch(() => { this.loading.value = true; this.stale.value = true; });
     if (!valid()) return;
     const read = { cancel, onSent: sent };
     const fail = (error: OpError) => {
@@ -148,7 +144,10 @@ export class HumanInbox implements PendingAdapter {
     this.cursor = next;
     await this.refresher.requestFresh("human");
   }
-  async answer(id: string, text: string): Promise<Outcome<unknown>> {
+  answer(id: string, text: string): Promise<Outcome<unknown>> { return this.mutate(id, text); }
+  cancel(id: string): Promise<Outcome<unknown>> { return this.mutate(id, undefined); }
+
+  private async mutate(id: string, text: string | undefined): Promise<Outcome<unknown>> {
     const fail = (message: string): Outcome<unknown> => ({ ok: false, error: { kind: "bridge", code: "not_available", message } });
     const page = this.page;
     const authorized = () => {
@@ -158,7 +157,7 @@ export class HumanInbox implements PendingAdapter {
     if (!authorized()) return fail("question is no longer in the displayed human inbox");
     let attempt = this.attempts.get(id);
     if (attempt && (attempt.owner !== page!.owner)) return fail("inspect the original owner reply outcome before retrying");
-    if (attempt?.text !== undefined && attempt.text !== text) return fail("resolve the previous reply outcome before changing its text");
+    if (attempt && attempt.text !== text) return fail("resolve the previous question action before changing it");
     if (attempt?.result) return attempt.result;
     if (!attempt) {
       if (this.attempts.size >= HUMAN_PAGE_LIMIT) return fail("reply outcome capacity reached; inspect previous outcomes");
@@ -167,29 +166,26 @@ export class HumanInbox implements PendingAdapter {
     }
     const entry = attempt;
     if (!authorized()) return fail("human page scope changed");
-    entry.result = this.data.operations.messageReply(id, text, entry.operationId).then(async out => {
+    const operation = text === undefined ? this.data.operations.messageCancel(id, entry.operationId)
+      : this.data.operations.messageReply(id, text, entry.operationId);
+    entry.result = operation.then(out => {
       entry.settled = true;
       if (!out.ok && out.error.kind === "unconfirmed") entry.operationId = out.error.operationId;
       else if (!out.ok && (out.error.kind === "owner" || out.error.kind === "invalid_response")) entry.operationId = out.operationId ?? entry.operationId;
       else if (!out.ok) this.attempts.delete(id);
-      // Keep the original canonical receipt fact, but never refresh a different scope.
-      if (authorized()) {
-        const owner = page!.owner;
-        const epoch = this.scopeEpoch + (this.cursor !== undefined ? 1 : 0);
-        const generation = this.generation + (this.cursor !== undefined ? 1 : 0);
-        if (this.cursor !== undefined) this.resetScope();
-        // This token describes our intended first-page transition, not whatever a callback installed.
-        const current = this.data.owner.peek();
-        if (epoch === this.scopeEpoch && generation === this.generation && owner === this.ownerKey && !this.closed && this.data.connection.peek() === "open" && current.state === "connected" && current.info.instance_id === owner) {
-          this.cursor = undefined;
-          await this.refresher.requestFresh("human");
+      // A receipt does not change the list; Core's next hint does.
+      if (!out.ok) entry.result = undefined;
+      if (out.ok && text === undefined) {
+        const items = out.value.items;
+        if (!Array.isArray(items) || items.length !== 1 || items[0]?.message_id !== id || items[0]?.outcome !== "reply_cancelled") {
+          entry.outcomeShown = true;
+          return fail("Core did not cancel this question");
         }
       }
-      if (!out.ok) entry.result = undefined;
       entry.outcomeShown = true;
       return out;
     });
     return entry.result;
   }
-  close(): void { this.page = undefined; ++this.scopeEpoch; this.closed = true; ++this.generation; this.cancel.cancel(); this.stop(); this.stopSession(); this.items.value = []; this.attempts.clear(); }
+  close(): void { this.page = undefined; ++this.scopeEpoch; this.closed = true; ++this.generation; this.readCancel.cancel(); this.stop(); this.stopSession(); this.items.value = []; this.attempts.clear(); }
 }

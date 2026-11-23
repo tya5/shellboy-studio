@@ -308,6 +308,10 @@ M1; a tunnel provides it.
   published Core tag/lock/binary pairing separately.
 - Run ownership and duplicate Thread-get reply lists are removed. Shell ownership
   and organizational Thread parents remain. The protocol-11 client reads directional pending pages and separate owner counts.
+- The human inbox (#37) owns one `message.list --awaiting --to human` page.
+  Sidebar Thread pages are not prerequisites; loaded Thread titles and counts
+  only annotate displayed duties. List change/resync hints refresh the owner
+  page. Reply and cancel receipts never remove rows or trigger another read.
 - The bridge and bundled frontend are released together. The frontend observes
   the bridge's connected-owner facts; the Core IPC handshake enforces the wire
   version before that owner is published as connected.

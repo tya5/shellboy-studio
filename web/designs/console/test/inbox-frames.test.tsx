@@ -6,10 +6,10 @@ import { act } from "preact/test-utils";
 import { afterEach, expect, it } from "vitest";
 import { fixtureModel, fixturePendingAdapter } from "../../../ui-core/test/fixture";
 import { ShellboyData } from "../../../data/src/store";
-import { HumanInbox } from "../../../data/src/pending";
+import { HumanInbox } from "../../../data/src/human-inbox";
 import { FakeTransport, connected, summary, details, flush } from "../../../data/test/harness";
 import { Inbox } from "../screens/Inbox";
-import type { PendingItem } from "../../../data/src/pending";
+import type { PendingItem } from "../../../data/src/human-inbox";
 import type { OpError } from "../../../data/src";
 
 let host: HTMLElement | undefined;
@@ -76,10 +76,7 @@ it("holds the successful page across several RAFs while a real synthetic transpo
   close = () => { model.dispose(); inbox.close(); list.close(); data.stop(); };
   host = document.createElement("div"); document.body.append(host); act(() => render(<Inbox model={model} />, host!));
   const before = inbox.items.peek();
-  // requestFresh is driven by the real adapter's existing thread-list invalidation.
-  const refresh = data.refreshThreadList(); await flush();
-  const basePage = transport.calls("thread.list").filter(c => !(c.args as { awaiting?: string }).awaiting).at(-1)!;
-  transport.ok(basePage.id, { items: [] }); await refresh; await flush();
+  transport.push({ t: "changed", thread_ids: [], list: true, config_changed: false }); await flush();
   const pending = humanPage(); expect(inbox.loading.peek()).toBe(true);
   for (let frame = 0; frame < 3; frame++) {
     await act(async () => { await new Promise<void>(resolve => requestAnimationFrame(() => resolve())); });

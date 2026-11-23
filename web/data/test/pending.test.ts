@@ -1,7 +1,7 @@
 import { effect, type ReadonlySignal, type Signal } from "@preact/signals-core";
 import { describe, expect, it } from "vitest";
 import { ShellboyData } from "../src/store";
-import { HumanInbox, HUMAN_PAGE_LIMIT } from "../src/pending";
+import { HumanInbox, HUMAN_PAGE_LIMIT } from "../src/human-inbox";
 import { FakeTransport, connected, flush, summary } from "./harness";
 
 const writable = <T>(s: ReadonlySignal<T>): Signal<T> => s as Signal<T>;
@@ -41,6 +41,33 @@ describe("bounded named reply inbox", () => {
     expect(f.inbox.items.value).toEqual([]);
     f.close();
   });
+  it.each([0, 1500])("reads two cross-Thread pages and no Thread details with %i known Threads", async count => {
+    const f = await fixture();
+    try {
+      writable(f.data.threadList).value = { ...f.data.threadList.value, items: Array.from({ length: count }, (_, i) => summary(`thread-${i}`)), loading: true };
+      await fill(f);
+      const more = f.inbox.more(); await flush(); await fill(f, "next-key"); await more;
+      expect(f.t.calls("message.list")).toHaveLength(2);
+      expect(f.t.calls("thread.get")).toHaveLength(0);
+    } finally { f.close(); }
+  });
+  it("cancels one displayed human question and removes it only on the next owner hint", async () => {
+    const f = await fixture();
+    try {
+      await fill(f);
+      expect((await f.inbox.cancel("other")).ok).toBe(false);
+      const canceled = f.inbox.cancel("h");
+      const call = f.t.calls("message.cancel")[0]!;
+      expect(call.args).toEqual({ message_ids: ["h"] });
+      f.t.ok(call.id, { items: [{ message_id: "h", outcome: "reply_cancelled" }] });
+      expect((await canceled).ok).toBe(true);
+      expect(f.inbox.items.value.map(row => row.id)).toEqual(["h"]);
+      expect(f.t.calls("message.list")).toHaveLength(1);
+      const refresh = await reread(f);
+      f.t.ok(refresh.id, { items: [] }); await flush();
+      expect(f.inbox.items.value).toEqual([]);
+    } finally { f.close(); }
+  });
   it("reads only its named page, preserves creation time and keysets", async () => {
     const f = await fixture(); await fill(f);
     expect(f.inbox.items.value).toEqual([{ id: "h", threadId: "a", threadTitle: "a", question: "Question h", askedAt: "2026-01-01T00:00:00Z", count: undefined, countExact: undefined }]);
@@ -56,7 +83,7 @@ describe("bounded named reply inbox", () => {
     const first = f.inbox.answer("h", "answer"), duplicate = f.inbox.answer("h", "answer"); await flush();
     expect(f.t.calls("message.reply")).toHaveLength(1);
     const reply = f.t.calls("message.reply")[0]!; expect(reply.args).toEqual({ message_id: "h", text: "answer" });
-    f.t.ok(reply.id, {}); await flush(); const list = f.t.calls("message.list").at(-1)!; f.t.ok(list.id, { items: [] }); await flush();
+    f.t.ok(reply.id, {}); await first; expect(f.t.calls("message.list")).toHaveLength(1); const list = await reread(f); f.t.ok(list.id, { items: [] }); await flush();
     expect((await first).ok).toBe(true); expect((await duplicate).ok).toBe(true); expect(f.inbox.items.value).toEqual([]); f.close();
   });
   it("reuses an unconfirmed receipt and rejects changed retry text", async () => {
@@ -95,15 +122,14 @@ it("retains displayed questions during same-owner list invalidation and failed r
   writable(f.data.threadList).value = { ...f.data.threadList.value, loading: true };
   expect(f.inbox.items.value).toBe(previous);
   writable(f.data.threadList).value = { ...f.data.threadList.value, loading: false, stale: false, loaded: true };
-  await flush(); const call = f.t.calls("message.list").at(-1)!;
+  const call = await reread(f);
   f.t.ownerError(call.id,"temporarily_unavailable"); await flush();
   expect(f.inbox.items.value).toBe(previous); expect(f.inbox.error.value).toBeDefined(); f.close();
 });
 
 const humanCalls = (f: Awaited<ReturnType<typeof fixture>>) => f.t.calls("message.list");
 async function reread(f: Awaited<ReturnType<typeof fixture>>) {
-  writable(f.data.threadList).value = { ...f.data.threadList.value, loading: true };
-  writable(f.data.threadList).value = { ...f.data.threadList.value, loading: false, stale: false, loaded: true };
+  f.t.push({ t: "changed", thread_ids: [], list: true, config_changed: false });
   await flush(); return humanCalls(f).at(-1)!;
 }
 it("replaces only a complete page, applies changed same-ID content and canonical order, accepts empty success", async () => {
@@ -116,7 +142,7 @@ it("replaces only a complete page, applies changed same-ID content and canonical
 it("page error retains prior page and cancel is not an empty success", async () => {
   const f = await fixture(); await fill(f); const previous=f.inbox.items.value;
   const call=await reread(f); f.t.ownerError(call.id,"read_failed"); await flush(); expect(f.inbox.items.value).toBe(previous); expect(f.inbox.stale.value).toBe(true);
-  const next=await reread(f); writable(f.data.threadList).value={...f.data.threadList.value,stale:true}; await flush(); expect(f.t.cancels()).toContain(next.id);
+  const next=await reread(f); (f.inbox as unknown as {invalidateRead():void}).invalidateRead(); await flush(); expect(f.t.cancels()).toContain(next.id);
   f.t.ok(next.id,{items:[]}); await flush(); expect(f.inbox.items.value).toBe(previous); f.close();
 });
 it.each(["B","ABA","disconnect"])("clears owner-scoped actions immediately and ignores late same-ID response after %s",async transition=>{
@@ -178,7 +204,7 @@ it("same-session refresh notification reentry is finite and does not erase curre
 
 it("revokes old-page action qualification before owner reset cancellation callbacks",async()=>{
  const f=await fixture();await fill(f);await reread(f);
- const cancel=(f.inbox as unknown as {cancel:{add(fn:()=>void):()=>void}}).cancel;
+ const cancel=(f.inbox as unknown as {readCancel:{add(fn:()=>void):()=>void}}).readCancel;
  let answer:ReturnType<typeof f.inbox.answer>|undefined;
  cancel.add(()=>{answer=f.inbox.answer("h","old-page callback");});
  writable(f.data.owner).value=ownerB;await flush();
@@ -188,7 +214,7 @@ it("revokes old-page action qualification before owner reset cancellation callba
 it.each(["B","ABA","unknownSame","query"])("cancelcallback answer admission is zero across %s",async transition=>{
  const f=await fixture();await fill(f);await reread(f);
  let result:ReturnType<typeof f.inbox.answer>|undefined;
- (f.inbox as unknown as {cancel:{add(fn:()=>void):void}}).cancel.add(()=>{result=f.inbox.answer("h","old callback");expect(f.t.calls("message.reply")).toHaveLength(0);});
+ (f.inbox as unknown as {readCancel:{add(fn:()=>void):void}}).readCancel.add(()=>{result=f.inbox.answer("h","old callback");expect(f.t.calls("message.reply")).toHaveLength(0);});
  if(transition==="B")writable(f.data.owner).value=ownerB;
  else if(transition==="ABA"){f.t.push({t:"owner",event:"restarted",owner:ownerB});f.t.push({t:"owner",event:"restarted",owner:connected});}
  else if(transition==="unknownSame"){f.t.drop();f.t.open();f.t.push({t:"hello",bridge_version:"test",data_dir:"/synthetic",owner:connected});}
@@ -213,18 +239,18 @@ it.each(["B","ABA","unknownSame","query"])("late answer retains original receipt
 });
 it("cancel callback starts a fresh owner read without outer reset erasing its new page",async()=>{
  const f=await fixture();await fill(f);await reread(f);
- (f.inbox as unknown as {cancel:{add(fn:()=>void):void}}).cancel.add(()=>{f.t.push({t:"owner",event:"restarted",owner:ownerB});});
+ (f.inbox as unknown as {readCancel:{add(fn:()=>void):void}}).readCancel.add(()=>{f.t.push({t:"owner",event:"restarted",owner:ownerB});});
  writable(f.data.owner).value={state:"unknown"};await flush();
  writable(f.data.threadList).value={...f.data.threadList.value,loading:false,stale:false,loaded:true};await flush();
  const page=humanCalls(f).at(-1)!;f.t.ok(page.id,{items:[human("new", "fresh")]});await flush();
  expect(f.inbox.items.value.map(x=>x.id)).toEqual(["new"]);f.close();
 });
 
-it("page-two answer success intentionally returns to first page with a fresh read",async()=>{
+it("page-two answer waits for a hint to return to the first page",async()=>{
  const f=await fixture();await flush();f.t.ok(humanCalls(f).at(-1)!.id,{items:[human("h", "a")],next_cursor:"page-two"});await flush();const more=f.inbox.more();await flush();
  f.t.ok(humanCalls(f).at(-1)!.id,{items:[human("second-id", "second")]});await more;
  const before=humanCalls(f).length;const answer=f.inbox.answer("second-id","ok");f.t.ok(f.t.calls("message.reply").at(-1)!.id,{});await flush();
- expect(humanCalls(f)).toHaveLength(before+1);expect((humanCalls(f).at(-1)!.args as Record<string,unknown>).cursor).toBeUndefined();
+ expect(humanCalls(f)).toHaveLength(before); await reread(f); expect(humanCalls(f)).toHaveLength(before+1);expect((humanCalls(f).at(-1)!.args as Record<string,unknown>).cursor).toBeUndefined();
  f.t.ok(humanCalls(f).at(-1)!.id,{items:[]});await flush();await answer;f.close();
 });
 it("explicit same-owner reconnect retry dispatches a new call with the ORIGINAL operation ID",async()=>{
@@ -239,7 +265,7 @@ it.each(["owner","query"])("page-two completion reset callback %s change cannot 
  const f=await fixture();await flush();f.t.ok(humanCalls(f).at(-1)!.id,{items:[human("h", "a")],next_cursor:"p2"});await flush();
  const more=f.inbox.more();await flush();f.t.ok(humanCalls(f).at(-1)!.id,{items:[human("h", "a")]});await more;
  const answer=f.inbox.answer("h","text");const reply=f.t.calls("message.reply").at(-1)!;
- (f.inbox as unknown as {cancel:{add(fn:()=>void):void}}).cancel.add(()=>{if(transition==="owner"){writable(f.data.threadList).value={...f.data.threadList.value,stale:true};writable(f.data.owner).value=ownerB;}else(f.inbox as unknown as {resetScope():void}).resetScope();});
+ (f.inbox as unknown as {readCancel:{add(fn:()=>void):void}}).readCancel.add(()=>{if(transition==="owner"){writable(f.data.threadList).value={...f.data.threadList.value,stale:true};writable(f.data.owner).value=ownerB;}else(f.inbox as unknown as {resetScope():void}).resetScope();});
  const before=humanCalls(f).length;f.t.ok(reply.id,{});await flush();await answer;expect(humanCalls(f)).toHaveLength(before);expect(f.t.calls("message.reply")).toHaveLength(1);f.close();
 });
 it("different owner cannot reuse or remint an unconfirmed original-owner receipt",async()=>{
@@ -256,7 +282,7 @@ it("keeps empty status unconfirmed after owner restart until a new validated pag
   expect(f.inbox.loading.peek() || f.inbox.stale.peek()).toBe(true);
   expect((await f.inbox.answer("h", "must not send")).ok).toBe(false);
   expect(f.t.calls("message.reply")).toHaveLength(0);
-  const page = await reread(f); f.t.ok(page.id, { items: [] }); await flush();
+  const page = humanCalls(f).at(-1)!; f.t.ok(page.id, { items: [] }); await flush();
   expect(f.inbox.items.peek()).toEqual([]); expect(f.inbox.loading.peek()).toBe(false); expect(f.inbox.stale.peek()).toBe(false);
   f.close();
 });
@@ -267,13 +293,13 @@ for (const transition of ["unknown-same", "ABA"] as const) it(`confirms empty on
   else f.t.push({ t: "owner", event: "restarted", owner: ownerB });
   f.t.push({ t: "owner", event: "restarted", owner: connected }); await flush();
   expect(f.inbox.items.peek()).toEqual([]); expect(f.inbox.stale.peek() || f.inbox.loading.peek()).toBe(true);
-  const failed = await reread(f); f.t.ownerError(failed.id, "temporarily_unavailable"); await flush();
+  const failed = humanCalls(f).at(-1)!; f.t.ownerError(failed.id, "temporarily_unavailable"); await flush();
   expect(f.inbox.stale.peek()).toBe(true); expect((await f.inbox.answer("h", "no")).ok).toBe(false);
   const page = await reread(f); f.t.ok(page.id, { items: [] }); await flush();
   expect(f.inbox.stale.peek()).toBe(false); expect(f.inbox.items.peek()).toEqual([]); expect(f.t.calls("message.reply")).toHaveLength(0); f.close();
 });
 it("new scope is unconfirmed before an old read cancellation callback can inspect it", async () => {
-  const f = await fixture(); const original = f.data.operations.messageList.bind(f.data.operations); let observed: boolean | undefined;
+  const f = await fixture(); await fill(f); const original = f.data.operations.messageList.bind(f.data.operations); let observed: boolean | undefined;
   f.data.operations.messageList = (args, cursor, read) => {
     if ("to" in args) read?.cancel?.add(() => { observed = f.inbox.stale.peek() && f.inbox.items.peek().length === 0; });
     return original(args, cursor, read);

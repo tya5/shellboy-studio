@@ -1711,16 +1711,17 @@ it("keeps same-message Inbox DOM and draft across updates/reorder, but resets a 
 });
 
 it("real HumanInbox reread does not transiently unmount or lose the message draft", async () => {
-  const { model, data, t, db } = await fixtureModel({ route:"inbox", realPending:true });
+  const { model, t, db } = await fixtureModel({ route:"inbox", realPending:true });
   try {
-    db.replies = [pendingReply("stable-human", "lead", {kind:"name",name:"human"}, "Stable question")];
-    (data.threadList as Signal<typeof data.threadList.value>).value = { ...data.threadList.value, loaded:true, loading:false, stale:false }; await settle(t,db);
+    db.replies = [pendingReply("stable-human", "lead", {kind:"name",name:"human"}, "Stable question"), pendingReply("claude-only", "lead", {kind:"name",name:"claude"}, "Claude-only question")];
+    t.push({ t: "changed", thread_ids: [], list: true, config_changed: false }); await settle(t,db);
     expect(model.pending.items.value, JSON.stringify({error:model.pending.error?.value,calls:t.calls("thread.get").map(x=>x.args)})).not.toEqual([]);
+    expect(model.pending.items.value.map(row => row.id)).toEqual(["stable-human"]);
     const el=draw(model); const box=el.querySelector("textarea")!; expect(box).toBeTruthy();
+    expect(el.textContent).not.toContain("Claude-only question");
     act(()=>{box.value="kept draft";box.dispatchEvent(new Event("input",{bubbles:true}));});
-    act(()=>{(data.threadList as Signal<typeof data.threadList.value>).value={...data.threadList.value,loading:true};});
+    act(()=>{t.push({ t: "changed", thread_ids: [], list: true, config_changed: false });});
     expect(el.querySelector("textarea")).toBe(box);expect(box.value).toBe("kept draft");expect(el.querySelector(".qdetail .empty-state-root")).toBeNull();
-    act(()=>{(data.threadList as Signal<typeof data.threadList.value>).value={...data.threadList.value,loading:false,stale:false,loaded:true};});
     expect(el.querySelector("textarea")).toBe(box); await act(async()=>settle(t,db));
     expect(el.querySelector("textarea")).toBe(box);expect(box.value).toBe("kept draft");
   } finally {model.dispose();}

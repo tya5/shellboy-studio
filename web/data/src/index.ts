@@ -12,4 +12,4 @@ export * from "./replies";
 
 export * from "./pairing";
 
-export * from "./pending";
+export * from "./human-inbox";

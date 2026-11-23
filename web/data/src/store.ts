@@ -461,7 +461,7 @@ export class ShellboyData {
         break;
       case "resync":
         this.configChanged.value++;
-        if (this.listRefs > 0) this.listHint.value++;
+        this.listHint.value++;
         this.discardAllPreviews("resync");
         this.notifyHints();
         void this.resyncAll();
@@ -469,7 +469,7 @@ export class ShellboyData {
       case "changed":
         // Hints are not data: re-read the saved facts. Untracked Threads are ignored.
         if (f.config_changed) this.configChanged.value++;
-        if (f.list && this.listRefs > 0) { this.listHint.value++; void this.refresher.request("list"); }
+        if (f.list) { this.listHint.value++; if (this.listRefs > 0) void this.refresher.request("list"); }
         for (const id of f.thread_ids) {
           for (const notify of this.hintWatchers.get(id) ?? []) notify();
           this.refreshHint(id);

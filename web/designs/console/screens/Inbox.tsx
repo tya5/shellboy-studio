@@ -7,10 +7,22 @@ export function Inbox({ model }: { model: AppModel }) {
   const items = model.pending.items.value;
   const counts = model.counts.value;
   const [picked, setPicked] = useState<string | undefined>(undefined);
-  const [error, setError] = useState<string | undefined>(undefined);
+  const [failure, setFailure] = useState<{ id: string; message: string }>();
+  const [busy, setBusy] = useState<string>();
+  const running = useRef<string | undefined>(undefined);
   const previous = useRef<string | undefined>(undefined);
   const current = items.find((p) => p.id === picked) ?? items.find(p => p.id === previous.current) ?? items[0];
   previous.current = current?.id;
+  const actOn = async (id: string, operation: () => ReturnType<typeof model.pending.answer>, kind: "inbox.answerFailed" | "work.cancelFailed") => {
+    if (running.current !== undefined) return;
+    running.current = id;
+    setBusy(id);
+    setFailure(undefined);
+    try {
+      const out = await operation();
+      if (!out.ok) setFailure({ id, message: t(kind, { message: errorMessage(out.error) }) });
+    } finally { running.current = undefined; setBusy(undefined); }
+  };
   const others = STATUS_KEYS.filter((k) => k !== "awaiting" && (counts[k] ?? 0) > 0);
   return (
     <div class="inbox">
@@ -45,18 +57,16 @@ export function Inbox({ model }: { model: AppModel }) {
             question={current.question}
             answerLabel={t("inbox.answer")}
             submitLabel={t("inbox.answerResume")}
-            error={error}
-            onAnswer={(text) => {
-              void model.pending.answer(current.id, text).then((out) => {
-                setError(out.ok ? undefined : t("inbox.answerFailed", { message: errorMessage(out.error) }));
-              });
-            }}
-            extra={
+            error={failure?.id === current.id ? failure.message : undefined}
+            busy={busy !== undefined}
+            onAnswer={(text) => { void actOn(current.id, () => model.pending.answer(current.id, text), "inbox.answerFailed"); }}
+            extra={<>
+              {model.pending.cancel ? <Button disabled={busy !== undefined} onClick={() => void actOn(current.id, () => model.pending.cancel!(current.id), "work.cancelFailed")}>{t("work.cancel")}</Button> : null}
               <a class="btn" href={formatRoute({ view: "conversation", threadId: current.threadId })}>
                 {t("monitor.open")}
                 <Icon role="inbox.openConversation" size="small" />
               </a>
-            }
+            </>}
           />
         ) : model.pending.error?.value || model.pending.loading?.value || model.pending.stale?.value ? null : (
           <EmptyState role="empty.inbox" title={t("inbox.emptyTitle")} body={t("inbox.emptyBody")} />
