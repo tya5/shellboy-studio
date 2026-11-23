@@ -15,8 +15,10 @@ Double-click again to reopen the running Studio. Closing the browser tab
 doesn't stop Studio: use Exit in Studio to stop its server and any Core it
 started. A separately running Core won't be stopped. Studio uses the same
 settings and data as Core; don't start another owner for the same data while
-Studio is running its bundled Core. Restart is manual when Studio reports
-that the owner is unreachable.
+Studio is running its bundled Core. Studio automatically retries an unexpected
+Core crash with increasing delays capped at the owner-start timeout. A clean exit
+or startup failure is not retried; use Restart after correcting a startup problem.
+A separately started owner is never adopted, stopped, or automatically restarted.
 
 To use an existing TUI's config and data folder, create a shortcut to
 Shellboy Studio.exe and set its Target to, for example:

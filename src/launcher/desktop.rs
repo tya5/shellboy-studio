@@ -210,7 +210,7 @@ impl Launch {
     }
 
     pub async fn supervise(&mut self, cancel: CancellationToken) {
-        use super::supervisor::{ChildExit, Decision, RestartState};
+        use crate::launcher::supervisor::{ChildExit, Decision, RestartState};
         let cap = OWNER_START_TIMEOUT;
         let mut restart_state = RestartState::new(cap);
         self.start().await;
@@ -226,7 +226,6 @@ impl Launch {
                 }
                 continue;
             }
-            let deadline = tokio::time::Instant::now() + cap;
             let mut ready = false;
             let mut ready_closed = false;
             let exit = loop {
@@ -237,6 +236,7 @@ impl Launch {
                     _ = cancel.cancelled() => break None,
                     restart = self.restart.recv() => {
                         if restart.is_none() { break None; }
+                        self.start().await;
                     },
                     result = async { match child { Some(p) => p.wait().await, None => std::future::pending().await } } => {
                         self.owner.child = None;
@@ -246,16 +246,14 @@ impl Launch {
                         if changed.is_ok() {
                             if *ready_signal.borrow_and_update() {
                                 ready = true;
+                                self.crashes.clear();
+                                let warning = self.owner.env.as_ref().and_then(|env| env.warning.clone());
+                                self.diagnostic.send_replace(warning);
                             }
                         } else {
                             ready_closed = true;
                         }
                     },
-                    _ = tokio::time::sleep_until(deadline), if !ready => {
-                        self.publish_crash("Core did not become ready before the owner-start timeout".into());
-                        platform::stop_child(self.owner.child.take()).await;
-                        break Some(Err(std::io::Error::other("Core startup timed out")));
-                    }
                 }
             };
             let Some(result) = exit else { break };
@@ -329,10 +327,10 @@ impl Launch {
 
     async fn start(&mut self) {
         match self.owner.start().await {
-            Ok(warning) if self.crashes.is_empty() => {
+            Ok(warning) => {
+                self.crashes.clear();
                 self.diagnostic.send_replace(warning);
             }
-            Ok(_) => {}
             Err(reason) => {
                 eprintln!(
                     "shellboy-studio: bundled owner start refused or failed: {}",
@@ -683,6 +681,69 @@ mod tests {
         std::thread::sleep(Duration::from_secs(30));
     }
 
+    #[test]
+    #[ignore = "subprocess fixture only"]
+    fn fake_core_child() {
+        match std::env::var("STUDIO_FAKE_CORE_MODE").as_deref() {
+            Ok("ready-crash") => {
+                println!(r#"{{"event":"ready","state":"ready"}}"#);
+                std::io::stdout().flush().unwrap();
+                std::process::exit(1);
+            }
+            Ok("startup-error") => {
+                eprintln!(
+                    r#"{{"ok":false,"error":{{"message":"bad config","hint":"repair the config"}}}}"#
+                );
+                std::process::exit(1);
+            }
+            mode => panic!("unexpected fake child mode: {mode:?}"),
+        }
+    }
+
+    async fn fake_core(owner: &mut ManagedOwner, mode: &str) -> std::process::ExitStatus {
+        use shellboy::protocol::{ApiError, Command, ErrorCode, Origin, Response};
+        struct Probe;
+        impl Owner for Probe {
+            async fn call(
+                &self,
+                _: Command,
+                _: Option<String>,
+                _: Option<Origin>,
+            ) -> Result<Response<serde_json::Value>, ApiError> {
+                Err(ApiError::new(ErrorCode::AppNotRunning, "fixture offline"))
+            }
+        }
+        let log_path = owner.log.clone();
+        owner
+            .start_with(&Probe, move |_| {
+                let stderr = OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(&log_path)
+                    .unwrap();
+                let mut command = Process::new(std::env::current_exe().unwrap());
+                command
+                    .args([
+                        "--exact",
+                        "launcher::desktop::tests::fake_core_child",
+                        "--ignored",
+                        "--nocapture",
+                    ])
+                    .env("STUDIO_FAKE_CORE_MODE", mode)
+                    .stdin(Stdio::null())
+                    .stdout(Stdio::piped());
+                command.as_std_mut().stderr(Stdio::from(stderr));
+                command.spawn().map_err(io)
+            })
+            .await
+            .unwrap();
+        let status = owner.child.as_mut().unwrap().wait().await.unwrap();
+        if let Some(output) = owner.output.take() {
+            output.await.unwrap();
+        }
+        status
+    }
+
     fn sleeper() -> Child {
         Process::new(std::env::current_exe().unwrap())
             .args([
@@ -811,6 +872,52 @@ mod tests {
         platform::stop_child(owner.child.take()).await;
         assert!(external.try_wait().unwrap().is_none());
         external.kill().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn fake_child_ready_crash_retries_and_pre_ready_error_stops_with_typed_reason() {
+        use crate::launcher::supervisor::{ChildExit, Decision, RestartState};
+        let dir = Temp::new();
+        let config = dir.0.join("config.toml");
+        fs::write(&config, "").unwrap();
+        let make_owner = || ManagedOwner {
+            bundled: dir.0.join("bin/shellboy"),
+            config: config.clone(),
+            cwd: dir.0.clone(),
+            log: dir.0.join("owner.log"),
+            data: dir.0.join("data"),
+            env: Some(OwnerEnvironment {
+                vars: vec![],
+                warning: None,
+            }),
+            child: None,
+            ready: watch::channel(false).1,
+            output: None,
+            start_log_offset: 0,
+        };
+
+        let mut crashing = make_owner();
+        let status = fake_core(&mut crashing, "ready-crash").await;
+        assert_eq!(status.code(), Some(1));
+        assert!(*crashing.ready.borrow());
+        let mut state = RestartState::new(OWNER_START_TIMEOUT);
+        assert!(matches!(
+            state.exited(true, ChildExit::Crash(format!("Core exited with {status}"))),
+            Decision::Retry { .. }
+        ));
+
+        let mut failing = make_owner();
+        let status = fake_core(&mut failing, "startup-error").await;
+        assert_eq!(status.code(), Some(1));
+        assert!(!*failing.ready.borrow());
+        let reason = failing
+            .startup_failure()
+            .expect("typed startup error from child log");
+        assert_eq!(reason, "bad config repair the config");
+        assert_eq!(
+            state.exited(false, ChildExit::BeforeReady(reason.clone())),
+            Decision::ShowFailure(reason)
+        );
     }
 
     #[tokio::test]

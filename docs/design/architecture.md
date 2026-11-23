@@ -530,6 +530,11 @@ the foundation works end to end (§2.1).
 | `run.retry` and `thread.archive` join the allowlist with the data layer's operations (2026-11-07) | the data layer exposes them as typed operations (`docs/design/data-layer.md`); `thread.unarchive` stays denied until a UI offers it | a UI for unarchive exists |
 | First-run connection setup screen behind capability `connection.setup`, Cargo feature `next-connection-setup`; `connection.test` is a read, `credentials.set` and `credentials.clear` are mutations (2026-11-07) | #269's operations are on a branch; one screen from nothing to a first message (`connection-setup.md`) | the operations are in a Shellboy release |
 
+
+### Managed Core restart policy (#32)
+
+For the existing macOS/Windows desktop path, a child that exits unsuccessfully after its authoritative `ready` event is retried with exponential delays beginning at one second and capped by the existing owner-start timeout. One second is the initial backoff decision: it gives the first retry a short pause while ensuring subsequent failures spread out; the cap reuses the established start bound. Readiness itself has no new deadline: slow startup is not killed by this policy. Clean exits and failures before ready remain stopped and visible until the user explicitly restarts. Diagnostics retain crash history only while down/waiting and clear when a new start succeeds or the child becomes ready. This portable supervisor has no Linux end-to-end caller in #32.
+
 ### Conversation work observation decision (2026-11-07)
 
 | Decision | Reason and impact | Revisit when |

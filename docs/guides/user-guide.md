@@ -149,9 +149,9 @@ Leaving the view cancels its lookups and discards view-owned title entries.
 1. Unzip the Apple silicon desktop download and double-click **Shellboy Studio.app**. If Gatekeeper blocks it, review the warning and, only for a trusted download, use **Open Anyway** in System Settings > Privacy & Security.
 2. Studio opens in your default browser and signs you in locally. If Core has no connection yet, follow Connection Setup to choose the provider or proxy, paste an API key, and continue to Conversation. A Claude subscription login is not an API key. Studio does not look for API keys in environment variables.
 3. Double-click the app again to reopen the running Studio in your browser. Studio shares Core's usual configuration and data directory with the TUI. It attaches to an already running owner. If Studio started its own owner, leave the TUI closed while Studio is running.
-4. Use **Quit Studio** in the browser to stop Studio and the Core child it started. This leaves an owner you started separately running. Closing the browser tab does not quit Studio. A stopped bundled owner is not restarted automatically; use **Restart owner**. Diagnostic output remains in `~/Library/Application Support/shellboy-studio/owner.log`.
+4. Use **Quit Studio** in the browser to stop Studio and the Core child it started. This leaves an owner you started separately running. Closing the browser tab does not quit Studio. An unexpected crash of a bundled owner is restarted automatically with increasing delays capped at the owner-start timeout. A clean exit or startup failure is not retried; use **Restart owner** after correcting a startup problem. Diagnostic output remains in `~/Library/Application Support/shellboy-studio/owner.log`.
 
 This desktop path is macOS-only. The CLI bridge and its explicit development `--no-auth` option are unchanged.
 
 If a separately started owner stops, the same **Restart owner** action checks
-again for a running owner before it starts one. It does not restart automatically.
+again for a running owner before it starts one. Studio does not adopt, stop, or restart an owner it did not start.
