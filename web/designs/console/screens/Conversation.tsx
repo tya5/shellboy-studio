@@ -838,7 +838,7 @@ export function Conversation({ model, panelCollapsed = false, rightPanelWidth, o
             }
           />
         </div> : null}
-        {handle ? <div class="phone-panel-footer"><ShellFooter side="right"><ShellToggle panel expanded={!!phonePanel} label={t(phonePanel ? "panel.collapse" : "panel.expand")} onClick={onTogglePhonePanel} /></ShellFooter></div> : null}
+        {handle ? <div class="phone-panel-footer"><ShellFooter side="right"><ShellToggle panel expanded={!!phonePanel} label={t(phonePanel ? "panel.collapse" : "panel.expand")} onClick={() => onTogglePhonePanel?.()} /></ShellFooter></div> : null}
       </div>
       {handle && !phonePanel && onPanelWidth ? <LayoutSeparator side="right" label={t("panel.resize")} controls="conversation-right-panel"
         width={readRightPanelWidth(rightPanelWidth)} min={RIGHT_PANEL_WIDTH_MIN} max={RIGHT_PANEL_WIDTH_MAX}
