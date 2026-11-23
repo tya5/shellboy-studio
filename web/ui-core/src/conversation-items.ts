@@ -372,6 +372,8 @@ function projectHistoryNodes(input: { readonly keyScope?: readonly string[]; rea
     const ordinal = node.selection?.ordinal;
     const state = node.items === undefined ? "legacy" : node.items === null ? "deferred" : "items";
     nodes.push(Object.freeze({ nodeId: node.node_id, ...(ordinal !== undefined ? { ordinal } : {}), node, state, emptyOrdinary: state === "items" && !node.items!.length && classifySavedHistoryCase(node.kind, "empty").normalizedKind === "ordinaryEmpty", ...(node.items_unavailable_reason ? { reason: node.items_unavailable_reason } : {}) }));
+    // Core retains retired admission-notice ordinals as metadata only; never classify them as Work.
+    if (node.kind === "model_context") continue;
     if (node.kind === "spill" && node.spill_tools) {
       // Public spill-local IDs only. No payload/args hydration or original-node join.
       const metadata = node.spill_tools;
