@@ -290,6 +290,16 @@ const decodeMessageAccepted: Decoder<MessageAccepted> = value =>
     : { ok: false, reason: "expected MessageAccepted with nonempty message_id and thread_id" };
 
 export type MutationResult = Record<string, unknown>;
+
+/** Validate the singleton result of message.cancel for the requested target. */
+export function messageCancelFailure(result: MutationResult, id: string, kind: "pending" | "reply"): string | undefined {
+  const { items } = result;
+  if (!Array.isArray(items) || items.length !== 1 || items[0]?.message_id !== id) return "invalid response";
+  const outcome: unknown = items[0].outcome;
+  if (outcome === "cancelled" || (kind === "reply" && outcome === "reply_cancelled")) return;
+  return typeof outcome === "string" ? outcome : "invalid response";
+}
+
 export interface ArchiveResult {
   archived?: string[];
   already?: string[];

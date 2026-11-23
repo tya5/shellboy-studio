@@ -13,7 +13,7 @@ import { recentAppFolders } from "./app-templates";
 // Screen logic over the data layer: which Thread is open, what the views show, the send, stop,
 // retry and archive flows. Saved facts stay in the data layer; nothing here is optimistic.
 import { batch, computed, effect, signal, untracked, type ReadonlySignal, type Signal } from "@preact/signals-core";
-import { Cancel, type Handle, type Operations, type OpError, type ShellboyData, type ShellEntry, type ThreadDetails, type ThreadSummary, type ThreadHandle } from "../../data/src";
+import { Cancel, messageCancelFailure, type Handle, type Operations, type OpError, type ShellboyData, type ShellEntry, type ThreadDetails, type ThreadSummary, type ThreadHandle } from "../../data/src";
 import { CAPABILITY_HISTORY_WINDOW, ReplyPages, type ReplySide } from "../../data/src";
 import { MissingPins, MonitorSelection, type MonitorArchive } from "./monitor-selection";
 import { workRegions, type WorkRegions } from "./work";
@@ -1387,10 +1387,8 @@ export class AppModel {
   private async cancelPending(messageId: string, kind: "pending" | "reply"): Promise<PanelFailure | undefined> {
     const out = await this.ops.messageCancel(messageId);
     if (!out.ok) return this.panelFailure(out.error, true);
-    const items = out.value.items;
-    if (!Array.isArray(items) || items.length !== 1 || items[0]?.message_id !== messageId || (items[0]?.outcome !== "cancelled" && !(kind === "reply" && items[0]?.outcome === "reply_cancelled"))) {
-      return { disposition: "failed", error: String(Array.isArray(items) ? items[0]?.outcome ?? "invalid response" : "invalid response") };
-    }
+    const failure = messageCancelFailure(out.value, messageId, kind);
+    if (failure !== undefined) return { disposition: "failed", error: failure };
   }
 
   async stop(): Promise<void> {

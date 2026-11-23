@@ -1,7 +1,7 @@
 // Human inbox: one displayed keyset page, one coalesced
 // refresh. Owned by AppModel; close cancels reads/subscriptions. No polling.
 import { batch, effect, signal, untracked, type ReadonlySignal } from "@preact/signals-core";
-import { Cancel, REPLY_PAGE_SIZE } from "./operations";
+import { Cancel, messageCancelFailure, REPLY_PAGE_SIZE } from "./operations";
 import { Refresher } from "./refresher";
 import type { ShellboyData } from "./store";
 import type { Outcome, OpError } from "./errors";
@@ -175,14 +175,16 @@ export class HumanInbox implements PendingAdapter {
       else if (!out.ok) this.attempts.delete(id);
       // A receipt does not change the list; Core's next hint does.
       if (!out.ok) entry.result = undefined;
+      entry.outcomeShown = true;
       if (out.ok && text === undefined) {
-        const items = out.value.items;
-        if (!Array.isArray(items) || items.length !== 1 || items[0]?.message_id !== id || items[0]?.outcome !== "reply_cancelled") {
-          entry.outcomeShown = true;
-          return fail("Core did not cancel this question");
+        const failure = messageCancelFailure(out.value, id, "reply");
+        if (failure !== undefined) {
+          entry.result = undefined;
+          // A definitive refusal must not replay the same mutation receipt on retry.
+          this.attempts.delete(id);
+          return fail(failure);
         }
       }
-      entry.outcomeShown = true;
       return out;
     });
     return entry.result;

@@ -85,3 +85,60 @@ it("holds the successful page across several RAFs while a real synthetic transpo
   transport.ok(pending.id, { items: [] }); await act(async () => { await flush(); });
   expect(inbox.items.peek()).toEqual([]); expect(host!.querySelector(".empty-state-root")).not.toBeNull();
 });
+
+it("cancels the selected human question and waits for the owner hint to remove it", async () => {
+  const transport = new FakeTransport(); let sequence = 0;
+  const data = new ShellboyData({ transport, newId: () => `cancel-${++sequence}` });
+  const inbox = new HumanInbox(data);
+  close = () => { inbox.close(); data.stop(); };
+  data.start(); transport.open();
+  transport.push({ t: "hello", bridge_version: "synthetic", data_dir: "/synthetic", owner: connected });
+  await flush();
+  const page = () => transport.calls("message.list").at(-1)!;
+  const duty = (id: string, excerpt: string) => ({ message_id: id, asked_by: "lead", sender: {kind: "model", thread_id: "lead"},
+    recipient: {kind: "name", name: "human"}, excerpt, created_at: "2026-01-01T00:00:00Z" });
+  const first = duty("first", "First question"), second = duty("second", "Second question");
+  transport.ok(page().id, { items: [first, second] }); await flush();
+  const { model } = await fixtureModel({ route: "inbox", pending: inbox });
+  close = () => { model.dispose(); inbox.close(); data.stop(); };
+  host = document.createElement("div"); document.body.append(host);
+  act(() => render(<Inbox model={model} />, host!));
+  const row = (text: string) => [...host!.querySelectorAll<HTMLButtonElement>(".qitem")].find(button => button.textContent?.includes(text));
+  const detailButton = (key: "work.cancel" | "inbox.answerResume") => [...host!.querySelectorAll<HTMLButtonElement>(".qdetail button")].find(button => button.textContent === model.t.value(key))!;
+  const alert = () => host!.querySelector(".qdetail [role=alert]");
+  act(() => {
+    row(second.excerpt)!.click();
+  });
+  act(() => {
+    const box = host!.querySelector("textarea")!;
+    box.value = "Draft";
+    box.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  expect(detailButton("inbox.answerResume").disabled).toBe(false);
+  await act(async () => { detailButton("work.cancel").click(); await flush(); });
+  expect(detailButton("work.cancel").disabled).toBe(true);
+  expect(detailButton("inbox.answerResume").disabled).toBe(true);
+  const refused = transport.calls("message.cancel")[0]!;
+  expect(refused.args).toEqual({ message_ids: ["second"] });
+  await act(async () => { transport.ok(refused.id, { items: [{ message_id: "second", outcome: "forbidden" }] }); await flush(); });
+  expect(alert()?.textContent).toBe(model.t.value("work.cancelFailed", { message: "forbidden" }));
+  act(() => row(first.excerpt)!.click());
+  expect(alert()).toBeNull();
+  act(() => row(second.excerpt)!.click());
+  expect(alert()?.textContent).toContain("forbidden");
+  await act(async () => { detailButton("work.cancel").click(); await flush(); });
+  expect(transport.calls("message.cancel")).toHaveLength(2);
+  const retry = transport.calls("message.cancel")[1]!;
+  expect(retry.args).toEqual(refused.args);
+  expect(retry.operation_id).not.toBe(refused.operation_id);
+  await act(async () => { transport.ok(retry.id, { items: [{ message_id: "second", outcome: "cancelled", archive_draft_id: "archive-second" }] }); await flush(); });
+  expect(alert()).toBeNull();
+  expect(row(second.excerpt)).toBeDefined();
+  expect(transport.calls("message.list")).toHaveLength(1);
+  await act(async () => { transport.push({ t: "changed", thread_ids: ["lead"], list: true, config_changed: false }); await flush(); });
+  expect(row(second.excerpt)).toBeDefined();
+  await act(async () => { transport.ok(page().id, { items: [first] }); await flush(); });
+  expect(row(second.excerpt)).toBeUndefined();
+  expect(row(first.excerpt)).toBeDefined();
+  expect(alert()).toBeNull();
+});

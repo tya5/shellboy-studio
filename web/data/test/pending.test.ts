@@ -59,7 +59,7 @@ describe("bounded named reply inbox", () => {
       const canceled = f.inbox.cancel("h");
       const call = f.t.calls("message.cancel")[0]!;
       expect(call.args).toEqual({ message_ids: ["h"] });
-      f.t.ok(call.id, { items: [{ message_id: "h", outcome: "reply_cancelled" }] });
+      f.t.ok(call.id, { items: [{ message_id: "h", outcome: "cancelled", archive_draft_id: "archive-h" }] });
       expect((await canceled).ok).toBe(true);
       expect(f.inbox.items.value.map(row => row.id)).toEqual(["h"]);
       expect(f.t.calls("message.list")).toHaveLength(1);
