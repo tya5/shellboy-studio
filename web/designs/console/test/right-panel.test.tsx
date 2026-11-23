@@ -245,6 +245,26 @@ describe('right panel purpose',()=>{
   }finally{f.model.dispose();f.data.stop();}
  });
 
+ it('puts the issued description before the command and falls back to command alone',async()=>{
+  const f=await setup();
+  try {
+   const row=()=>f.host.querySelector('[data-panel-row-id="shell-running"]')!;
+   const titles=()=>[...row().querySelectorAll('.panel-list-title')].map(node=>node.textContent);
+   const heading=()=>f.host.querySelector('[data-panel-detail] .cmd')!;
+   expect(titles()).toEqual(['Current verification','npm test']);
+   await act(async()=>row().querySelector('button')!.click());
+   expect(heading().textContent).toBe('Current verificationnpm test');
+   expect(heading().querySelector('.mono.caption')?.textContent).toBe('npm test');
+   await act(async()=>f.host.querySelector<HTMLButtonElement>('[data-panel-back]')!.click());
+   f.db.shells.lead=[{execution_id:'shell-running',state:'running',command_excerpt:'npm test'}];
+   await act(async()=>{f.t.push({t:'changed',thread_ids:['lead'],list:false,config_changed:false});await settle(f.t,f.db);});
+   expect(titles()).toEqual(['npm test']);
+   await act(async()=>row().querySelector('button')!.click());
+   expect(heading().textContent).toBe('npm test');
+   expect(heading().querySelector('.mono.caption')).toBeNull();
+  }finally{f.model.dispose();f.data.stop();}
+ });
+
  it('opens an action detail from its row and returns with list scroll and selection intact; Escape also returns',async()=>{
   const f=await setup();
   try{

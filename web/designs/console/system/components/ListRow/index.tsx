@@ -7,6 +7,7 @@ type PanelRow = {
   readonly id: string;
   readonly title: string;
   readonly subtitle?: string;
+  readonly command?: string | undefined;
   readonly icon?: IconRole;
   readonly waiting?: boolean;
   readonly menuLabel?: string;
@@ -29,7 +30,7 @@ export function ListRow(props: (PanelRow | ThreadRow) & { readonly selected?: bo
   const menu = useRowMenu(options);
   const root = thread?.rowProps;
   return <><div {...root} class={root?.class ? `list-row ${root.class}` : "list-row"} data-thread-row={thread ? true : undefined} data-sidebar-row={thread?.sidebar || undefined} data-panel-row-id={panel?.id} data-waiting={panel?.waiting || undefined} data-row-selected={props.selected || undefined} data-menu-open={menu.open || undefined} aria-current={panel && props.selected ? "true" : undefined} {...menu.rowHandlers}>
-    {panel ? <button class="panel-list-main" type="button" onClick={event => panel.onSelect(event.currentTarget)}>{panel.icon ? <Icon role={panel.icon} size="small" /> : null}<span class="panel-list-title">{panel.title}</span>{panel.subtitle ? <span class="panel-list-subtitle">{panel.subtitle}</span> : null}{props.children}</button> : props.children}
+    {panel ? <button class="panel-list-main" type="button" onClick={event => panel.onSelect(event.currentTarget)}>{panel.icon ? <Icon role={panel.icon} size="small" /> : null}{panel.command ? <span class="panel-list-copy"><span class="panel-list-title">{panel.title}</span><span class="panel-list-title mono muted caption">{panel.command}</span></span> : <span class="panel-list-title">{panel.title}</span>}{panel.subtitle ? <span class="panel-list-subtitle">{panel.subtitle}</span> : null}{props.children}</button> : props.children}
     {options ? <span class="list-row-action" data-row-action="">{menu.trigger}</span> : null}
     {thread?.afterActions}{menu.menu}
   </div>{panel?.error ? <div role="alert">{panel.error}</div> : null}</>;

@@ -485,7 +485,10 @@ function PanelActivity({ model }: { model: AppModel }) {
       return rows.length ? <section key={section.key}><ListDivider label={t(section.label)} count={rows.length} />{rows.map(row => {
         const elapsed = panelElapsed(now, row.startedAt);
         const state = row.state === "accepted" ? t("work.accepted") : t("work.held");
-        return <ListRow key={row.id} id={row.id} title={(section.kind === "step" ? row.command ?? row.label : row.label) || t("work.textUnavailable")}
+        const command = section.kind === "step" ? row.command : undefined;
+        // The Work projection already uses toolLabel for the owner description.
+        const label = toolLabel(row.label, command, t("work.textUnavailable"));
+        return <ListRow key={row.id} id={row.id} title={label} command={command?.trim() !== label ? command : undefined}
           subtitle={section.kind === "step" ? elapsed : [state, elapsed].filter(Boolean).join(" · ")} icon={section.icon}
           selected={selected?.kind === section.kind && selected.id === row.id}
           onSelect={opener => model.openInPanel({ kind: section.kind, id: row.id }, panelFocusReturn(opener))} menuLabel={t("panel.rowActions")}
@@ -578,9 +581,11 @@ function PanelDetail({ model, tabLabel, onBack }: { model: AppModel; tabLabel: s
   const error = panelOperationError(model, detail.id);
   if (detail.kind === "step") {
     const command = step?.command ?? running?.command;
+    const description = step?.description?.trim() || (running?.label !== running?.command?.trim() ? running?.label : undefined);
+    const label = toolLabel(description, command, t("work.textUnavailable"));
     const elapsed = step ? stepDuration(step, model.now.value) : undefined;
     return <section class="panel-detail" data-panel-detail=""><div class="panel-detail-head">{back}<h3>{t("details.title")}</h3></div>
-      {step || running ? <><div class="cmd"><Icon role="work.command" /><span>{command ?? running?.label}</span></div>
+      {step || running ? <><div class="cmd"><Icon role="work.command" />{description ? <span class="stack"><span>{label}</span>{command && command.trim() !== label ? <span class="mono muted caption">{command}</span> : null}</span> : <span>{label}</span>}</div>
         <KeyValue rows={[
           ...(step?.status ? [{ key: t("details.status"), value: <StatusMark shell status={step.status} label={activityStatusLabel(t, step.status)} /> }] : []),
           ...(elapsed ? [{ key: t("details.duration"), value: elapsed, mono: true }] : []),
