@@ -2,9 +2,14 @@
 import "@preact/signals";
 import { afterEach, expect, it } from 'vitest';
 import { act } from 'preact/test-utils';
+import { render } from 'preact';
 import { signal } from '@preact/signals-core';
 import { fixtureModel, settle } from '../../../ui-core/test/fixture';
 import { mount } from '..';
+import { App } from '../screens/App';
+import { loadPrefs } from '../../../ui-core/src/prefs';
+import type { DesignContext } from '../../../ui-core/src';
+import { OutputLimitNotice } from '../screens/Conversation';
 import { DESIGNS } from '../../registry';
 import type { Prefs } from '../../../ui-core/src';
 
@@ -22,6 +27,17 @@ it.each(['responses','chat_completions','anthropic_messages'])('shows unset and 
  expect(inputs).toHaveLength(2);expect(inputs.map(x=>x.value)).toEqual(['','4096']);
  expect(root.textContent).toContain('Anthropic Messages');
  expect(m.t.calls('config.set')).toHaveLength(0);expect(m.t.calls('connection.test')).toHaveLength(0);
+});
+
+it('focuses a pending connection setting request after SettingsView mounts its target',async()=>{
+ const values={connections:{proxy:{api:'responses',base_url:'https://example.invalid/v1',max_tokens:4096}}};
+ const m=await fixtureModel({route:'settings',section:'general',capabilities:['config.edit'],configure(db){const before=db.answer.bind(db);db.answer=c=>c.command==='config.get'?{ok:true,result:{loaded:{values},file:{present:true,valid:true,content_hash:'synthetic',values}}}:before(c);}});
+ const root=document.createElement('div');document.body.append(root);const prefs=signal<Prefs>({design:'console',theme:'console',lang:'en',monitorView:'cards',weights:{cached:0.1,output:5}});
+ const unmount=mount(root,{model:m.model,designs:DESIGNS,prefs,setPrefs:()=>{},submitToken:async()=>true});dispose=()=>{unmount();m.model.dispose();};
+ await act(async()=>settle(m.t,m.db));
+ await act(async()=>m.model.navigateToSettingFocus({view:'settings',section:'connections'},'connections.proxy.max_tokens'));
+ const target=root.querySelector<HTMLInputElement>('[aria-label="Maximum output tokens"]');
+ expect(target).not.toBeNull();expect(document.activeElement).toBe(target);expect(m.model.pendingSettingFocus.value).toBeUndefined();
 });
 
 it.each(['responses','chat_completions','anthropic_messages'])('saves only max_tokens and reopens configured then unset for %s',async api=>{
@@ -56,4 +72,21 @@ it('retains owner validation and refuses malformed integers without automatic wr
  void c.saveField(['connections','proxy','max_tokens'],'32','int');await settle(m.t,m.db);
  expect(c.fieldError.value?.reason).toBe('Owner rejected maximum output tokens');expect(m.t.calls('config.set')).toHaveLength(1);
  expect(m.t.calls('message.reply')).toHaveLength(0);expect(m.t.calls('thread.send')).toHaveLength(0);
+});
+
+
+it('opens Thread override picker from the notice and focuses its unchanged field', async () => {
+ const r=await fixtureModel({capabilities:['thread.settings'],configure(db){db.details.lead!.max_tokens=9007199254740992;}});
+ const host=document.createElement('div');document.body.append(host);
+ const context:DesignContext={model:r.model,prefs:signal(loadPrefs({read:()=>null,write:()=>{}},[{name:'console',themes:[{name:'light'}]}])),setPrefs:()=>{},designs:DESIGNS,submitToken:async()=>true};
+ dispose=()=>{render(null,host);r.model.dispose();r.data.stop();};
+ await act(async()=>{render(<><App context={context}/><OutputLimitNotice model={r.model} fact={{stop:true,sent_max_tokens:4096,source:'thread_override',connection:'mock'}}/></>,host);await settle(r.t,r.db);});
+ expect(r.model.threadSettings.value?.maxTokensState.kind).toBe('unknown');
+ const action=[...host.querySelectorAll('button')].find(button=>button.textContent==='Open output limit setting');
+ expect(action).toBeDefined();
+ await act(async()=>{action!.click();await settle(r.t,r.db);});
+ const input=host.querySelector<HTMLInputElement>('[role="dialog"] input[aria-label="Maximum output tokens"]');
+ expect(input).not.toBeNull();expect(document.activeElement).toBe(input);expect(input!.value).toBe('');
+ expect(r.model.threadSettings.value?.maxTokensState.kind).toBe('unknown');
+ expect(r.t.calls('thread.set')).toHaveLength(0);
 });

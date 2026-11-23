@@ -71,6 +71,7 @@ Consumers use semantic `IconRole` names only. Glyph names, paths, and the role-t
 | `work.command` | Identify a command shown in the details pane. | `term` |
 | `work.execution` | Default mark for a generic execution/work row. | `cube` |
 | `work.notification` | Identify a notification or activity record in Conversation. | `inbox` |
+| `conversation.outputLimit` | Identify a provider output-limit stop notice in Conversation. | Lucide `info` |
 | `work.unsupported` | Identify an unsupported or unavailable work record. | `file` |
 | `work.tool` | Identify a tool call, result, or compressed tool record. | `cube` |
 | `work.reasoning` | Identify reasoning metadata without exposing its content. | `bot` |

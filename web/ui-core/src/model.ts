@@ -160,6 +160,7 @@ export class AppModel {
     } catch { this.pairing.value = { ...this.pairing.peek(), error: "pair.error" }; }
   }
 
+  readonly pendingSettingFocus = signal<string | undefined>(undefined);
   readonly modelPicker = signal<{ open: boolean; thread: string; agents: string; autoCompactAt: string; maxTokens: string; maxTokensState: OutputLimitReadback; clearMaxTokens: boolean; models: {connection: string; model: string}[]; catalogErrors: string[]; loading: boolean; saving: boolean; error?: string | undefined }>({ open: false, thread: "", agents: "", autoCompactAt: "", maxTokens: "", maxTokensState: { kind: "unset" }, clearMaxTokens: false, models: [], catalogErrors: [], loading: false, saving: false });
   private modelListCancel = new Cancel();
   private readonly pickerSession = signal<ModelPickerSession | undefined>(undefined);
@@ -205,6 +206,7 @@ export class AppModel {
   }
   clearThreadOutputLimit(): void { this.editThreadOutputLimit(""); }
   closeModelPicker(): void {
+    if (this.pendingSettingFocus.peek() === "thread.maxTokens") this.pendingSettingFocus.value = undefined;
     this.modelListCancel.cancel();
     batch(() => {
       this.pickerSession.value = undefined;
@@ -799,12 +801,22 @@ export class AppModel {
 
   /** The location changed from outside (a link, the back button). */
   applyRoute(route: Route): void {
+    if (formatRoute(this.route.peek()) !== formatRoute(route)) this.pendingSettingFocus.value = undefined;
     this.route.value = route;
   }
 
   navigate(route: Route): void {
+    if (formatRoute(this.route.peek()) !== formatRoute(route)) this.pendingSettingFocus.value = undefined;
     this.route.value = route;
     this.onNavigate?.(formatRoute(route));
+  }
+
+  navigateToSettingFocus(route: Route, settingId: string): void {
+    batch(() => {
+      this.pendingSettingFocus.value = settingId;
+      this.route.value = route;
+      this.onNavigate?.(formatRoute(route));
+    });
   }
 
   showView(view: ViewName): void {

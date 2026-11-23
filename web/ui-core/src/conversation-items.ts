@@ -1,5 +1,5 @@
 import type { HandoffRecord } from "../../data/src/handoff";
-import type { HistoryItem, HistorySavedItem, HistoryItemsUnavailableReason, WorkItem, ToolDescriptor, ToolDetailAvailability, NotificationDescriptor } from "../../data/src/protocol";
+import type { SavedOutputLimit, HistoryItem, HistorySavedItem, HistoryItemsUnavailableReason, WorkItem, ToolDescriptor, ToolDetailAvailability, NotificationDescriptor } from "../../data/src/protocol";
 /** Internal normalized contract only. Not a Core wire type or a body adapter. */
 export type WorkCategory = "Tools" | "Reasoning" | "Notifications" | "Problems";
 export const CANONICAL_CASES = {
@@ -48,6 +48,7 @@ function issueNotification(value: NotificationDescriptor | undefined): IssuedNot
 }
 export interface WorkDisplayMetadata {
   readonly notification?: IssuedNotification;
+  readonly outputLimit?: SavedOutputLimit;
   readonly descriptor?: ToolDescriptor;
   readonly detailAvailability?: ToolDetailAvailability;
   readonly scopeKey: string;
@@ -400,7 +401,9 @@ function projectHistoryNodes(input: { readonly keyScope?: readonly string[]; rea
       const extension = item && (item.kind === "tool_call" || item.kind === "tool_result") && item.descriptor && item.detail_availability
         ? { descriptor: Object.freeze({ ...item.descriptor }), detailAvailability: item.detail_availability } : {};
       const notification = issueNotification(node.provenance?.notification);
-      issueDisplayMetadata(value, Object.freeze({ ...extension, ...(notification ? { notification } : {}), scopeKey: JSON.stringify(value.keyScope ?? []),
+      const savedLimit = node.provenance?.output_limit;
+      const outputLimit = savedLimit ? Object.freeze({ stop: savedLimit.stop, ...(Object.hasOwn(savedLimit, "sent_max_tokens") ? { sent_max_tokens: savedLimit.sent_max_tokens } : {}) }) : undefined;
+      issueDisplayMetadata(value, Object.freeze({ ...extension, ...(notification ? { notification } : {}), ...(outputLimit ? { outputLimit } : {}), scopeKey: JSON.stringify(value.keyScope ?? []),
         ...(node.kind ? { nodeKind: node.kind } : {}), ...(node.provenance?.created_at ? { createdAt: node.provenance.created_at } : {}), shells: Object.freeze(shells) }));
       return value;
     };

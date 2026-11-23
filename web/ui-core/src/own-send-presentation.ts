@@ -3,7 +3,7 @@ import type { ProjectedSavedItem, SavedItemProjection } from "./conversation-ite
 import type { PendingOwnMessage } from "./model";
 
 export type OwnSendTailRow = Readonly<{ kind: "own"; row: PendingOwnMessage }>
-  | Readonly<{ kind: "live"; inputThroughNodeId?: string | null; item: ProjectedSavedItem }>;
+  | Readonly<{ kind: "live"; inputThroughNodeId?: string | null; item: ProjectedSavedItem; outputLimit?: import("../../data/src/protocol").AttemptOutputLimit }>;
 export type PositionedOwnSendRow = OwnSendTailRow & { readonly afterSequenceIndex: number };
 export interface OwnSendLocalRegion {
   readonly scope: string;

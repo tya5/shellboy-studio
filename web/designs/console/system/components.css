@@ -17,6 +17,7 @@
 @import "./components/SummaryStrip/style.css";
 @import "./components/KeyValue/style.css";
 @import "./components/Notice/style.css";
+@import "./components/OutputLimitNotice/style.css";
 @import "./components/EmptyState/style.css";
 @import "./components/Message/style.css";
 @import "./shared/layout.css";

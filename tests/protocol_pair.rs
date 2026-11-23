@@ -21,7 +21,7 @@ fn thread_list_accepts_created_order_and_cursor() {
 
 #[test]
 fn exact_protocol_eleven_has_directional_reply_counts() {
-    assert_eq!(shellboy::protocol::PROTOCOL_VERSION, 11);
+    assert_eq!(shellboy::protocol::PROTOCOL_VERSION, 13);
     let value = json!({"thread_id":"t", "title":"synthetic", "cwd":"/", "connection":"c",
         "model":"m", "agents_path":"AGENTS.md", "parent_id":"organization", "shells_count":1,
         "summarizing":false, "pending_replies":{"owed_by":{"count":2,"exact":true},"asked_by":{"count":17,"exact":false}}});

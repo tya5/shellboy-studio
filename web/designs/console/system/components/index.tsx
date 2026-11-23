@@ -23,6 +23,7 @@ export { QuestionItem } from "./QuestionItem";
 export { SummaryStrip } from "./SummaryStrip";
 export { KeyValue } from "./KeyValue";
 export { Notice } from "./Notice";
+export { OutputLimitNotice } from "./OutputLimitNotice";
 export { EmptyState } from "./EmptyState";
 export { Message } from "./Message";
 export { Composer } from "./Composer";
