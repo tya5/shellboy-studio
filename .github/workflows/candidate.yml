@@ -222,6 +222,7 @@ jobs:
     uses: ./.github/workflows/windows-desktop.yml
     with:
       studio_ref: ${{ inputs.source_sha }}
+      release_app: false
 
   bundle:
     needs: build

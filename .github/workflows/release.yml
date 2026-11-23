@@ -1,4 +1,3 @@
-# UNTESTED: written before the first push; it has not run on GitHub. Validated only as YAML.
 # Never publishes by itself: it builds, and leaves a DRAFT release for the owner to inspect and publish.
 name: Release binaries
 on:
@@ -156,9 +155,16 @@ jobs:
       studio_ref: refs/tags/${{ inputs.release_tag || github.ref_name }}
       release_app: true
 
+  windows-release-desktop:
+    needs: exact-owner
+    uses: ./.github/workflows/windows-desktop.yml
+    with:
+      studio_ref: refs/tags/${{ inputs.release_tag || github.ref_name }}
+      release_app: true
+
   draft:
     name: SHA256SUMS and draft release
-    needs: build
+    needs: [build, macos-release-app, windows-release-desktop]
     runs-on: ubuntu-22.04
     timeout-minutes: 15
     permissions:
@@ -175,12 +181,24 @@ jobs:
       - name: Checksums
         run: |
           cd dist
-          ls -l
-          test "$(ls | wc -l)" -eq 3
-          sha256sum * > SHA256SUMS
+          assets=(
+            "shellboy-studio-$RELEASE_TAG-aarch64-apple-darwin.tar.gz"
+            "shellboy-studio-$RELEASE_TAG-x86_64-pc-windows-msvc.zip"
+            "shellboy-studio-$RELEASE_TAG-x86_64-unknown-linux-gnu.tar.gz"
+            "shellboy-studio-desktop-$RELEASE_TAG-aarch64-apple-darwin.zip"
+            "shellboy-studio-desktop-$RELEASE_TAG-x86_64-pc-windows-msvc.zip"
+          )
+          files=(*)
+          test "${#files[@]}" -eq "${#assets[@]}"
+          for asset in "${assets[@]}"; do test -f "$asset" && test -s "$asset" || exit 1; done
+          sha256sum "${assets[@]}" > SHA256SUMS
           sha256sum --check SHA256SUMS
           cat SHA256SUMS
       - name: Create a draft release (the owner publishes it by hand)
         run: |
           gh release create "$RELEASE_TAG" dist/* --repo "$GITHUB_REPOSITORY" --draft --verify-tag \
-            --title "$RELEASE_TAG" --notes "Draft. Built from tag $RELEASE_TAG; see SHA256SUMS. Pairing with Shellboy: see README."
+            --title "$RELEASE_TAG" --notes-file - <<NOTES
+          Draft. Built from tag $RELEASE_TAG; see SHA256SUMS. Pairing with Shellboy: see README.
+
+          Desktop packages checked on real devices: not recorded (before publishing, list each package checked, the OS/device and scope; mark the others as not checked).
+          NOTES

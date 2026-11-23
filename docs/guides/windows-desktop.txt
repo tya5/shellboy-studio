@@ -1,12 +1,12 @@
-Shellboy Studio for Windows x64 (unsigned candidate)
-Real Windows device acceptance: UNVERIFIED.
+Shellboy Studio for Windows x64 (unsigned)
+See the release notes or candidate handoff for real-device check status.
 
 Extract the entire ZIP first. Keep Shellboy Studio.exe and shellboy.exe
 in the same folder. Double-click Shellboy Studio.exe; the desktop launcher
 opens your default browser and does not open a console. Follow the browser's
 connection setup if prompted, then open a conversation.
 
-Microsoft Defender SmartScreen may warn about this unsigned candidate.
+Microsoft Defender SmartScreen may warn about this unsigned package.
 Check the source of your download. Only if you trust it, choose More info,
 then Run anyway if Windows offers it. Do not turn off SmartScreen or bypass
 your organization's policy.

@@ -46,7 +46,8 @@ def main():
     release = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
     owner = (ROOT / ".github/workflows/exact-owner.yml").read_text(encoding="utf-8")
     assert "uses: ./.github/workflows/exact-owner.yml" in ci
-    assert "needs: exact-owner" in release and "needs: build" in release
+    assert "needs: exact-owner" in release
+    assert "needs: [build, macos-release-app, windows-release-desktop]" in release
     assert "--features real-owner-tests --test real_owner" in owner
     assert "SHELLBOY_BIN:" in owner and "CORE_REV=$(python3" in owner and "checkout --detach \"$CORE_REV\"" in owner
     assert "tools/exact-owner.py" in owner and "--binary-version" in owner

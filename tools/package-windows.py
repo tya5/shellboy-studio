@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build and inspect a candidate-only Windows x64 desktop ZIP."""
+"""Build and inspect a Windows x64 desktop ZIP."""
 import argparse
 from pathlib import Path
 import re
@@ -23,13 +23,17 @@ def main():
         parser.add_argument(f"--{ref}", required=True)
     for path in ("studio-bin", "core-bin", "out"):
         parser.add_argument(f"--{path}", required=True, type=Path)
+    parser.add_argument("--release-tag")
     args = parser.parse_args()
     if not all(re.fullmatch("[0-9a-f]{40}", ref) for ref in (args.studio, args.core)):
         parser.error("exact Studio and Core SHAs are required")
+    if args.release_tag is not None and not re.fullmatch(r"v[0-9]+\.[0-9]+\.[0-9]+", args.release_tag):
+        parser.error("expected stable Studio version tag")
     entries = {"Shellboy Studio.exe": args.studio_bin, "shellboy.exe": args.core_bin,
                "README.txt": Path("docs/guides/windows-desktop.txt")}
     args.out.mkdir(parents=True, exist_ok=True)
-    path = args.out / f"shellboy-studio-desktop-candidate-{args.studio}-core-{args.core}-x86_64-pc-windows-msvc.zip"
+    build = args.release_tag or f"candidate-{args.studio}-core-{args.core}"
+    path = args.out / f"shellboy-studio-desktop-{build}-x86_64-pc-windows-msvc.zip"
     with ZipFile(path, "x", ZIP_DEFLATED) as archive:
         for name, source in entries.items():
             archive.write(source, name)
