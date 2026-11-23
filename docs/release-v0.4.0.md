@@ -4,9 +4,9 @@ Studio 0.4.0 は、commit `318abee0609eeb3b15a3a21b74b85f816c7d3ea0` の
 Shellboy Core v0.15.0（protocol 18）と組み合わせて使用します。この正確な組み合わせを
 導入してください。これより古い Core はサポート対象外です。
 
-Studio の Thread 一覧と会話画面を見直し、Thread の状態や返信が必要な項目を追いやすくしました。Core v0.15.0 は公開済みです。Studio v0.4.0 は準備中で、**未取り込み**と記した項目は収録済みではありません。
+Studio の Thread 一覧と会話画面を見直し、Thread の状態や返信が必要な項目を追いやすくしました。Core v0.15.0 は公開済みです。
 
-比較範囲：[Studio v0.3.0 → (`7c8d9da`)](https://github.com/tya5/shellboy-studio/compare/v0.3.0..7c8d9da28682cd6b3f0303f7c8af747f70ea34a0) ／ Core v0.14.0 (`b644b3c`) → v0.15.0 (`318abee`)。特記のない Issue 番号は Studio のものです。
+比較範囲：[Studio v0.3.0 → `dd04181`](https://github.com/tya5/shellboy-studio/compare/v0.3.0..dd041811be677bb203a2b956ece5bbc0d9ddd187) ／ Core v0.14.0 (`b644b3c`) → v0.15.0 (`318abee`)。特記のない Issue 番号は Studio のものです。
 
 ## Thread 一覧と状態表示
 
@@ -15,7 +15,7 @@ Studio の Thread 一覧と会話画面を見直し、Thread の状態や返信�
 - 最後の Run が失敗した古い Thread や復旧待ちの Thread も、初回表示時に現在の状態をもとに件数とモニターに反映します（#102、Core #378）。
 - 「動作」の更新中も保留中の行と件数を残し、空表示のちらつきを抑えます（#108）。
 - サイドバーで選択した複数の Thread を一括削除できます。削除対象をプレビューで確認してから、選択した Thread を一度の操作でまとめて削除します（#36）。
-- **未取り込み・公開条件：** 開いている Thread が検索結果や読み込み範囲の外でも、その Thread 自身の情報から状態・エラー・再試行を表示し、エラー通知を一か所にまとめる修正（#103、#107）。
+- 開いている Thread が一覧の読み込み範囲外でも、その Thread 自身の情報から状態を表示します。復旧理由と再試行は会話の状態欄にまとめ、再試行には追加の利用量が発生し得ることを明示します（#103）。実行中、待機中、復旧中の Run は行メニューから停止でき、再試行できない場合は理由を表示します（#107）。
 
 ## 全画面のデザインシステム v2
 
@@ -33,6 +33,8 @@ Studio の Thread 一覧と会話画面を見直し、Thread の状態や返信�
 - Core は、出力上限に達した会話応答でも、得られたテキストや拒否応答を保存して Turn を完了できます。途切れたツール呼び出しは実行せず、自動で再試行もしません（Core #354、#355）。
 - 過去の会話を読んでいるときは、履歴の追加読み込みや、後から本文全体が届いたときにも、読んでいた位置を保ちます（#6）。
 - Branches では分岐位置と各分岐の結論を確認でき、比較時には該当箇所の抜粋を表示します（#1）。
+- 折りたたんだツールグループは、すべての実行の完了が確認できた場合にだけ完了と表示します。本文を読めないメッセージでも実際の送信者と質問・返信の関係を保ち、初回計測前もコンテキストリングと情報画面への入口を表示します（#116）。
+- 出力上限の設定ショートカットは記録された接続先・モデルを参照します。ログの更新に失敗しても取得済みの出力とコピー操作を残し、同じ出力を複数箇所で開いても監視を共有します。会話のモデル選択を開くと検索欄にフォーカスします（#116）。
 - 受信側の Run が停止または失敗すると、適用済みで未回答の返信義務は `ignored` となり、送信側に通知されます。復旧待ちや Core の終了では保留のままです（Core #374）。
 - TUI では、保存されている旧形式の子 Thread のライフサイクルイベントを汎用の保存済みイベントとして表示します。子 Thread の完了自体は引き続き Core が管理します（Core #302）。
 
@@ -61,8 +63,8 @@ Studio の Thread 一覧と会話画面を見直し、Thread の状態や返信�
 
 ## 検証済み／未検証
 
-- **検証済み（CI のみ）：** Core v0.15.0 の [Rust checks](https://github.com/tya5/shellboy/actions/runs/45258958394) と [Release binaries](https://github.com/tya5/shellboy/actions/runs/45259022310)。Studio の以前の main スナップショット `ced0503` は [Checks](https://github.com/tya5/shellboy-studio/actions/runs/45275011488) で macOS・Windows・Linux のチェックと、固定した Core との組み合わせテストを通過しました。
-- **未検証：** [公開条件 #111](https://github.com/tya5/shellboy-studio/issues/111) の #103（#107 を含む）の取り込みは未完了です。最終ペアの候補 CI と端末確認も未実施です。Mac 実機での APFS コピーを使った移行、差し替え後の状態表示、配布 ZIP からの起動は未確認です。**Windows 実機は未確認です。** 根拠：[Core の更新差分メモ](https://github.com/tya5/shellboy-studio/issues/111#issuecomment-7113603358)。
+- **検証済み（CI のみ）：** Core v0.15.0 の [Rust checks](https://github.com/tya5/shellboy/actions/runs/45258958394) と [Release binaries](https://github.com/tya5/shellboy/actions/runs/45259022310)。比較先の Studio main `dd04181` は [Checks](https://github.com/tya5/shellboy-studio/actions/runs/45285190743) で macOS・Windows・Linux のチェックと、固定した Core との組み合わせテストを通過しました。
+- **未検証：** 最終リリースの候補ビルドと端末確認はこれからです。上記 CI は比較先コミットの結果であり、最終リリース候補の検証ではありません。Mac 実機での APFS コピーを使った移行、差し替え後の状態表示、配布 ZIP からの起動は未確認です。**Windows 実機は未確認です。** 根拠：[Core の更新差分メモ](https://github.com/tya5/shellboy-studio/issues/111#issuecomment-7113603358)。
 
 ---
 
@@ -72,9 +74,9 @@ Studio 0.4.0 is paired with Shellboy Core v0.15.0 at commit
 `318abee0609eeb3b15a3a21b74b85f816c7d3ea0`, using protocol 18. Install this
 exact pair; older Core versions are not a supported pairing.
 
-Studio makes it easier to see what your Threads are doing and what needs a reply. Core v0.15.0 is published; Studio v0.4.0 is still in preparation. Items marked **not landed** are not yet included.
+Studio makes it easier to see what your Threads are doing and what needs a reply. Core v0.15.0 is published.
 
-Compared: [Studio v0.3.0 → (`7c8d9da`)](https://github.com/tya5/shellboy-studio/compare/v0.3.0..7c8d9da28682cd6b3f0303f7c8af747f70ea34a0); Core v0.14.0 (`b644b3c`) → v0.15.0 (`318abee`). Issue numbers refer to Studio unless marked Core.
+Compared: [Studio v0.3.0 → `dd04181`](https://github.com/tya5/shellboy-studio/compare/v0.3.0..dd041811be677bb203a2b956ece5bbc0d9ddd187); Core v0.14.0 (`b644b3c`) → v0.15.0 (`318abee`). Issue numbers refer to Studio unless marked Core.
 
 ## Thread list and status
 
@@ -83,7 +85,7 @@ Compared: [Studio v0.3.0 → (`7c8d9da`)](https://github.com/tya5/shellboy-studi
 - Initial counts and Monitor include older Threads whose latest Run failed or that are waiting for recovery, based on their current state (#102, Core #378).
 - Activity keeps pending rows and counts visible during refresh instead of flashing an empty state (#108).
 - Select multiple Threads in the sidebar, preview what will be deleted, then confirm a single atomic deletion (#36).
-- **Not landed; release gate:** Show an open Thread’s own state, error, and retry controls even when it is absent from the list, and show the error in one place (#103, #107).
+- An open Thread shows its own status even outside the loaded list. The conversation status line shows the recovery reason and Retry in one place, with a visible warning about potential additional usage (#103). Row menus offer Stop for running, waiting, or recovering Runs and explain when Retry cannot proceed (#107).
 
 ## Design system v2 across Studio
 
@@ -101,6 +103,8 @@ Conversation, sidebar, Threads, Branches, Monitor, Inbox, Analytics, Settings, S
 - Core can finish a Conversation Turn with the available text or refusal when the provider hits its output limit. It does not execute truncated tool calls or retry the attempt automatically (Core #354, #355).
 - When you read earlier messages, the conversation preserves your reading position as older history loads or a deferred full message body arrives (#6).
 - Branches shows where branches split and what each concluded, with excerpts in comparisons (#1).
+- Collapsed tool groups show as complete only when every execution is known to have completed. Messages whose bodies cannot be read still show the real sender and the ask/reply relationship. The context ring and Info entry are available before the first measurement, without implying a measured value (#116).
+- The output-limit settings shortcut uses the recorded connection and model. A refresh failure leaves the existing log readable and copyable, and multiple views share the same output watch. Opening the conversation model picker focuses its search field (#116).
 - If the recipient Run stops or fails, applied unanswered duties settle as `ignored` and notify the sender. Recovery wait and owner shutdown leave them pending (Core #374).
 - The TUI renders retained legacy child lifecycle events as generic saved events. Child completion remains an owner-side lifecycle fact (Core #302).
 
@@ -129,5 +133,5 @@ Conversation, sidebar, Threads, Branches, Monitor, Inbox, Analytics, Settings, S
 
 ## Verified / not verified
 
-- **Verified in CI only:** Core v0.15.0 [Rust checks](https://github.com/tya5/shellboy/actions/runs/45258958394) and [Release binaries](https://github.com/tya5/shellboy/actions/runs/45259022310). The earlier Studio main snapshot `ced0503` passed [Checks](https://github.com/tya5/shellboy-studio/actions/runs/45275011488) and exact-pair owner acceptance on macOS, Windows, and Linux.
-- **Pending:** [Release gates #111](https://github.com/tya5/shellboy-studio/issues/111) #103 (including #107) has not landed. Final-pair candidate CI and device checks remain pending. The Mac test on an APFS copy, status checks after replacement, and launching the packaged desktop build have not been verified on a real device. **Windows has not been checked on a real device.** See the [Core upgrade audit](https://github.com/tya5/shellboy-studio/issues/111#issuecomment-7113603358).
+- **Verified in CI only:** Core v0.15.0 [Rust checks](https://github.com/tya5/shellboy/actions/runs/45258958394) and [Release binaries](https://github.com/tya5/shellboy/actions/runs/45259022310). The Studio comparison tip `dd04181` passed [Checks](https://github.com/tya5/shellboy-studio/actions/runs/45285190743) and exact-pair owner acceptance on macOS, Windows, and Linux.
+- **Pending:** Final release candidate and device checks are still pending. The CI above applies to the comparison commit, not the final release candidate. The Mac test on an APFS copy, status checks after replacement, and launching the packaged desktop build have not been verified on a real device. **Windows has not been checked on a real device.** See the [Core upgrade audit](https://github.com/tya5/shellboy-studio/issues/111#issuecomment-7113603358).
