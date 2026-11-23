@@ -81,6 +81,31 @@ mod tests {
     use super::*;
 
     #[test]
+    fn classifies_success_crash_and_typed_pre_ready_failure() {
+        assert_eq!(
+            classify(true, Some(true), "clean".into(), None),
+            ChildExit::Clean
+        );
+        assert_eq!(
+            classify(true, Some(false), "exit 1".into(), None),
+            ChildExit::Crash("exit 1".into())
+        );
+        assert_eq!(
+            classify(
+                false,
+                Some(false),
+                "exit 1".into(),
+                Some("bad config".into())
+            ),
+            ChildExit::BeforeReady("bad config".into())
+        );
+        assert_eq!(
+            classify(false, None, "wait failed".into(), None),
+            ChildExit::BeforeReady("wait failed".into())
+        );
+    }
+
+    #[test]
     fn recognizes_only_core_ready_records_and_preserves_typed_startup_reason() {
         assert!(is_ready_line(br#"{"event":"ready","state":"ready"}"#));
         assert!(!is_ready_line(br#"{"event":"stopped","state":"stopped"}"#));
