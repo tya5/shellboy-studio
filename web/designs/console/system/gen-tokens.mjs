@@ -21,6 +21,7 @@ export function tokenCss(tokens, themeId, isDefault) {
       add(`size-${s.name}`, s.fontSize);
     }
   for (const s of tokens.spacing.tokens) add(s.name, s.value);
+  for (const l of tokens.letter.tokens) add(l.name, l.value);
   for (const r of tokens.radius.tokens) add(r.name, tokens.radius[themeId]?.[r.name] ?? r.value);
   for (const m of tokens.motion.tokens) add(m.name, m.value);
   for (const l of tokens.layout.tokens) add(l.name, l.value);
