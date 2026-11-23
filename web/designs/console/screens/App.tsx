@@ -276,7 +276,7 @@ export function App({ context }: { context: DesignContext }) {
           <ShellFooter side="left"><ShellToggle panel={false} expanded={!context.prefs.value.navCollapsed} label={context.prefs.value.navCollapsed ? t("nav.expand") : t("nav.collapse")} title={`${context.prefs.value.navCollapsed ? t("nav.expand") : t("nav.collapse")} (Cmd/Ctrl+B)`} onClick={() => context.setPrefs({ navCollapsed: !context.prefs.value.navCollapsed })} /></ShellFooter>
         </aside>
         <div class="main">
-          {route.view === "conversation" ? <ThreadHeader key={selected} model={model} collapsed={context.prefs.value.panelCollapsed === true} settings={settings} onSettings={() => setSettings(!settings)} onList={() => setDrawer(true)} onPhonePanel={() => setPhonePanel(selected)} onDelete={(threadId) => setDeleteThread({ threadId })} onEditTags={editThreadTags} /> : <header class="top">
+          {route.view === "conversation" ? <ThreadHeader key={selected} model={model} collapsed={context.prefs.value.panelCollapsed === true} settings={settings} onSettings={() => setSettings(!settings)} onList={() => setDrawer(true)} onPhonePanel={() => setPhonePanel(selected)} onDelete={(threadId) => setDeleteThread({ threadId, rowKey: threadId })} onEditTags={editThreadTags} /> : <header class="top">
             <span class="menu"><Button icon label={t("threads.open")} onClick={() => setDrawer(true)}><Icon role="nav.openThreadList" /></Button></span>
             <div class="crumb"><b>{title ?? ""}</b></div>
             <div class="right"><Button icon label={settings ? t("settings.close") : t("settings.open")} aria-expanded={settings} data-settings-toggle onClick={() => setSettings(!settings)}><Icon role="settings.applicationPanel" /></Button></div>

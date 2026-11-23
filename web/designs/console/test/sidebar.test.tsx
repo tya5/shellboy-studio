@@ -15,7 +15,7 @@ import { ThreadGroup } from "../system/components/ThreadGroup";
 
 it("keeps status updates in place, persists child folds, and adds a pinned copy only after the owner event", async () => {
   const f = await fixtureModel({ route: "conversation", threadId: "lead", capabilities: ["thread.tags", "thread.cwds"], configure(db) {
-    db.threads = { lead: summary("lead", { cwd: "/alpha" }), child: summary("child", { cwd: "/alpha", parent_id: "lead", awaiting_human_count: 1 }), other: summary("other", { cwd: "/alpha", tags: ["project"] }) };
+    db.threads = { lead: summary("lead", { cwd: "/alpha" }), child: summary("child", { cwd: "/beta", parent_id: "lead", awaiting_named_count: 1 }), other: summary("other", { cwd: "/alpha", tags: ["project"] }) };
     for (const id of Object.keys(db.threads)) db.details[id] = details(id);
   } });
   const host = document.createElement("div"); document.body.append(host);
@@ -23,12 +23,13 @@ it("keeps status updates in place, persists child folds, and adds a pinned copy 
   const prefs = signal(loadPrefs({ read: () => null, write() {} }, designs));
   const link = (id: string) => host.querySelector<HTMLAnchorElement>(`.side-list a[href="#/conversation/${id}"]`);
   const sides = () => [...host.querySelectorAll(".side-list [data-thread-row] a")].map(el => el.id);
-  const hint = async () => { f.t.push({ t: "changed", thread_ids: ["other"], list: true }); await settle(f.t, f.db); };
+  const hint = async () => { f.t.push({ t: "changed", config_changed: false, thread_ids: ["other"], list: true }); await settle(f.t, f.db); };
   try {
     await act(async () => { render(<App context={{ model: f.model, prefs, designs, setPrefs: change => { prefs.value = { ...prefs.peek(), ...change }; }, submitToken: async () => false }} />, host); await settle(f.t, f.db); });
     const parent = link("lead")!;
     expect(link("child")).toBeNull();
-    expect(parent.parentElement?.querySelector('[data-urgency="awaiting"] button')?.getAttribute("aria-expanded")).toBe("false");
+    expect(parent.closest("[data-thread-row]")?.querySelector('.children-chip[data-urgency="awaiting"] button')?.getAttribute("aria-expanded")).toBe("false");
+    expect(parent.closest("[data-thread-row]")?.querySelector('.children-chip[data-urgency="awaiting"] button')?.getAttribute("aria-label")).toContain("1 children");
     const open = (key: string) => parent.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true }));
     await act(async () => { open("ArrowRight"); });
     expect(link("child")).not.toBeNull();
@@ -80,7 +81,7 @@ it("keeps the owner's created order on status hints and inserts a new Thread at 
   const prefs = signal<ReturnType<typeof loadPrefs>>({ ...loadPrefs({ read: () => null, write() {} }, DESIGNS), sidebarOpenParents: [JSON.stringify(["all", "lead"]) ] });
   const order = () => [...host.querySelectorAll<HTMLAnchorElement>(".side-list [data-thread-row] a")].map(el => el.href.split("/").at(-1));
   const hint = async (id: string) => {
-    f.t.push({ t: "changed", thread_ids: [id], list: true });
+    f.t.push({ t: "changed", config_changed: false, thread_ids: [id], list: true });
     await settle(f.t, f.db);
   };
   try {
@@ -121,7 +122,7 @@ it("reads owner catalogs only while the filter menu is open, independently of fi
   const prefs=signal(loadPrefs({read:()=>null,write(){}},DESIGNS));
   const trigger=()=>host.querySelector<HTMLButtonElement>('.side-search [aria-haspopup="menu"]')!;
   const menu=()=>document.querySelector('[role="menu"]');
-  const hints=async()=>{f.t.push({t:"changed",thread_ids:[],list:true});await settle(f.t,f.db);};
+  const hints=async()=>{f.t.push({t:"changed",config_changed:false,thread_ids:[],list:true});await settle(f.t,f.db);};
   try {
     await act(async()=>{render(<App context={{model:f.model,prefs,designs:DESIGNS,setPrefs(){},submitToken:async()=>false}}/>,host);await settle(f.t,f.db);});
     expect(f.t.calls("thread.cwds")).toHaveLength(0);
@@ -167,7 +168,7 @@ it("opens all ten cross-directory descendants, gives overlapping pins independen
     db.threads = { lead: summary("lead", { cwd: "/alpha", tags: ["pin"] }) };
     for (let n = 0; n < 10; n++) {
       const id = `child${n}`;
-      db.threads[id] = summary(id, { cwd: "/beta", parent_id: n === 9 ? "child0" : "lead", ...(n === 0 ? { tags: ["pin"], awaiting_human_count: 1 } : {}) });
+      db.threads[id] = summary(id, { cwd: "/beta", parent_id: n === 9 ? "child0" : "lead", ...(n === 0 ? { tags: ["pin"], awaiting_named_count: 1 } : {}) });
     }
     for (const id of Object.keys(db.threads)) db.details[id] = details(id);
   } });
@@ -254,7 +255,7 @@ it('settles the mounted tag session while hidden and ignores late results after 
     expect(f.model.org.tagDraft.peek()).toMatchObject({ add: [], action: { kind: 'idle' } });
     expect(panel()?.textContent).not.toContain('new-tag');
     Object.assign(f.db.threads.lead!, { tags: ['old', 'new-tag'] });
-    await act(async () => { f.t.push({ t: 'changed', thread_ids: ['lead'], list: true }); await settle(f.t, f.db); });
+    await act(async () => { f.t.push({ t: 'changed', config_changed: false, thread_ids: ['lead'], list: true }); await settle(f.t, f.db); });
     expect(panel()?.textContent).toContain('new-tag');
     await stage('old-request'); await act(async () => input('raw-a'));
     await act(async () => { apply().click(); await flush(); });
@@ -284,7 +285,7 @@ it("bolds a background completion only after the list hint and clears on open or
   const host = document.createElement("div"); document.body.append(host);
   const link = () => host.querySelector<HTMLAnchorElement>('.side-list a[href="#/conversation/other"]')!;
   const unread = () => !!link().querySelector("strong[data-unread]");
-  const hint = async (detail = false) => { f.t.push({ t: "changed", thread_ids: detail ? ["other"] : [], list: true }); await settle(f.t, f.db); };
+  const hint = async (detail = false) => { f.t.push({ t: "changed", config_changed: false, thread_ids: detail ? ["other"] : [], list: true }); await settle(f.t, f.db); };
   const end = (marker: typeof first) => { f.db.threads.other = summary("other", { ...f.db.threads.other, last_end_message: marker }); };
   const mark = async (label: string) => {
     await act(async () => { link().parentElement!.querySelector<HTMLButtonElement>("[aria-haspopup=menu]")!.click(); });
