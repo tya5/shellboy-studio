@@ -4,7 +4,7 @@
 .chart-head{display:flex;flex-direction:column;gap:var(--space-4)}
 .chart-legend{margin:0;padding:0;list-style:none;display:flex;flex-wrap:wrap;gap:var(--space-4) var(--space-12);font:var(--type-caption);color:var(--muted)}
 .chart-legend li{display:flex;align-items:center;gap:var(--space-8)}
-.swatch{display:inline-block;width:10px;height:10px;border-radius:2px}
+.swatch{display:inline-block;width:var(--space-10);height:var(--space-10);border-radius:var(--space-2)}
 .swatch.t1{background:var(--chart-1)}
 .tip-key.t1{background:var(--chart-1)}
 .swatch.t2{background:var(--chart-2)}
@@ -35,15 +35,15 @@
 .chart-svg .chart-band{fill:var(--raised)}
 .chart-svg .chart-hit{fill:transparent}
 .chart-svg:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-.chart-empty{display:grid;place-items:center;height:96px;font:var(--type-label);text-align:center}
+.chart-empty{display:grid;place-items:center;height:var(--size-plot-detail);font:var(--type-label);text-align:center}
 .chart-tip{position:absolute;top:0;z-index:5;max-width:100%;display:flex;flex-direction:column;gap:var(--space-4);padding:var(--space-8);border:1px solid var(--line-strong);border-radius:var(--radius-s);background:var(--raised);font:var(--type-caption);pointer-events:none}
 .tip-head{color:var(--muted);font-variant-numeric:tabular-nums}
 .tip-row{display:flex;align-items:center;gap:var(--space-8)}
 .tip-row b{font-weight:600;font-variant-numeric:tabular-nums}
 .tip-row span:last-child{color:var(--muted);min-width:0}
-.tip-key{flex:none;width:10px;height:2px}
+.tip-key{flex:none;width:var(--space-10);height:var(--space-2)}
 .tip-note{color:var(--muted)}
-.chart-table summary{cursor:pointer;font:var(--type-caption);color:var(--muted);min-height:24px;display:flex;align-items:center}
+.chart-table summary{cursor:pointer;font:var(--type-caption);color:var(--muted);min-height:var(--size-row-action);display:flex;align-items:center}
 .chart-table[open] summary{margin-bottom:var(--space-8)}
 @container app (max-width:899px){
   .chart-table summary{min-height:var(--size-touch)}

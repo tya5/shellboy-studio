@@ -1,7 +1,7 @@
 .meter{display:flex;flex-direction:column;gap:var(--space-4);min-width:0}
 .meter-text{display:flex;flex-wrap:wrap;justify-content:space-between;gap:var(--space-4) var(--space-8);font:var(--type-label)}
-.meter-text .mono{font-size:var(--size-caption)}
-.meter-track{display:block;height:6px;border-radius:3px;overflow:hidden;background:var(--line)}
+.meter-text .mono{font:var(--type-code)}
+.meter-track{display:block;height:var(--space-6);border-radius:calc(var(--space-6) / 2);overflow:hidden;background:var(--line)}
 .meter-track i{display:block;height:100%;background:var(--muted)}
 .meter-track.wait i{background:var(--wait)}
 .meter-track.bad i{background:var(--bad)}

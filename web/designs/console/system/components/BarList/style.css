@@ -1,8 +1,8 @@
 .barlist{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:var(--space-8);font:var(--type-label)}
-.barlist li{display:grid;grid-template-columns:96px minmax(0,1fr) auto;align-items:center;gap:var(--space-8)}
-.bar-track{display:block;height:8px}
-.bar-track i{display:block;height:100%;min-width:2px;border-radius:0 4px 4px 0;background:var(--muted)}
+.barlist li{display:grid;grid-template-columns:var(--size-plot-detail) minmax(0,1fr) auto;align-items:center;gap:var(--space-8)}
+.bar-track{display:block;height:var(--space-8)}
+.bar-track i{display:block;height:100%;min-width:var(--space-2);border-radius:0 var(--space-4) var(--space-4) 0;background:var(--muted)}
 .bar-value{font-size:var(--size-caption);white-space:nowrap}
 @container app (max-width:899px){
-  .barlist li{grid-template-columns:80px minmax(0,1fr) auto}
+  .barlist li{grid-template-columns:var(--size-bar-label-compact) minmax(0,1fr) auto}
 }

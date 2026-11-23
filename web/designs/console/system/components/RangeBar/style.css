@@ -1,3 +1,3 @@
-.range-bar-track{position:relative;display:block;width:100%;min-width:96px;height:12px;margin-top:var(--space-4);border-bottom:1px solid var(--line)}
-.range-span{position:absolute;top:3px;height:6px;background:var(--line-strong)}
-.range-end{position:absolute;top:1px;width:3px;height:10px;margin-left:-1px;background:var(--fg);border-radius:1px}
+.range-bar-track{position:relative;display:block;width:100%;min-width:var(--size-plot-detail);height:var(--space-12);margin-top:var(--space-4);border-bottom:1px solid var(--line)}
+.range-span{position:absolute;top:calc(var(--space-6) / 2);height:var(--space-6);background:var(--line-strong)}
+.range-end{position:absolute;top:1px;width:calc(var(--space-6) / 2);height:var(--space-10);margin-left:-1px;background:var(--fg);border-radius:1px}

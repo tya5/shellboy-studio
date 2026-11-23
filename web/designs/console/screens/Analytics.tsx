@@ -3,7 +3,7 @@ import {
   ANALYTICS_SECTIONS, analyticsSection, cacheRate, COMPACTION_ROWS, dayFacts, DEFAULT_WEIGHTS, effectiveTokens, formatClock, formatDuration, formatRoute, formatTokens, groupEffective, groupIncomplete, meanInput, periodTotals, PERIODS, readWeights, shortDay,
   splitParts, type AnalyticsSection, type AppModel, type CompactionEvent, type DayFacts, type DesignContext, type Translate, type UsageGroup, type WalkState, type Weights,
 } from "../../../ui-core/src";
-import { Button, ButtonGroup, Chart, DataTable, Field, Notice, RangeBar, Section, Stat, SubView, type ChartPoint, type ChartSeries, type IconRole } from "../system/components";
+import { Button, ButtonGroup, Chart, DataTable, Field, Notice, PageHeader, RangeBar, Section, Stat, SubView, type ChartPoint, type ChartSeries, type IconRole } from "../system/components";
 import { IndexPane, MemoryPane, StoragePane } from "./Resources";
 
 const percent = (v: number): string => `${Math.round(v * 100)}%`;
@@ -19,11 +19,11 @@ function peakSummary(t: Translate, days: number, values: (number | undefined)[],
 function WalkNotice({ t, state, onStop, onContinue, onRetry }: { t: Translate; state: WalkState; onStop: () => void; onContinue: () => void; onRetry: () => void }) {
   const c = state.coverage;
   if (state.status === "loading")
-    return <Notice actions={<Button onClick={onStop}>{t("analytics.stop")}</Button>}>{t("analytics.walking", { n: c.windows + 1 })}</Notice>;
+    return <Notice actions={<Button variant="ghost" onClick={onStop}>{t("analytics.stop")}</Button>}>{t("analytics.walking", { n: c.windows + 1 })}</Notice>;
   if (state.status === "stopped")
-    return <Notice tone="wait" actions={state.canContinue ? <Button onClick={onContinue}>{t("analytics.continue")}</Button> : undefined}>{t("analytics.stopped", { n: c.windows })}</Notice>;
+    return <Notice tone="wait" actions={state.canContinue ? <Button variant="ghost" onClick={onContinue}>{t("analytics.continue")}</Button> : undefined}>{t("analytics.stopped", { n: c.windows })}</Notice>;
   if (state.status === "failed")
-    return <Notice tone="bad" actions={state.canContinue ? <Button onClick={onContinue}>{t("analytics.continue")}</Button> : <Button onClick={onRetry}>{t("common.refresh")}</Button>}>{t("analytics.failed", { message: state.error?.message ?? "" })}</Notice>;
+    return <Notice tone="bad" actions={state.canContinue ? <Button variant="ghost" onClick={onContinue}>{t("analytics.continue")}</Button> : <Button variant="ghost" onClick={onRetry}>{t("common.refresh")}</Button>}>{t("analytics.failed", { message: state.error?.message ?? "" })}</Notice>;
   return null;
 }
 
@@ -45,15 +45,9 @@ function Weighting({ context }: { context: DesignContext }) {
   return (
     <Section title={t("weights.title")} sub={<span class="mono">{t("weights.formula")}</span>}>
       <div class="fieldrow">
-        <div class="lab">
-          {t("weights.n")}
-          <Field ariaLabel={t("weights.n")} type="number" min="0" step="0.05" inputMode="decimal" value={draft.n} onInput={(e) => change({ ...draft, n: e.currentTarget.value })} />
-        </div>
-        <div class="lab">
-          {t("weights.m")}
-          <Field ariaLabel={t("weights.m")} type="number" min="0" step="0.5" inputMode="decimal" value={draft.m} onInput={(e) => change({ ...draft, m: e.currentTarget.value })} />
-        </div>
-        <Button onClick={() => { setDraft({ n: String(DEFAULT_WEIGHTS.cached), m: String(DEFAULT_WEIGHTS.output) }); context.setPrefs({ weights: DEFAULT_WEIGHTS }); }}>{t("weights.reset")}</Button>
+        <Field label={t("weights.n")} type="number" min="0" step="0.05" inputMode="decimal" value={draft.n} onInput={(e) => change({ ...draft, n: e.currentTarget.value })} />
+        <Field label={t("weights.m")} type="number" min="0" step="0.5" inputMode="decimal" value={draft.m} onInput={(e) => change({ ...draft, m: e.currentTarget.value })} />
+        <Button variant="ghost" onClick={() => { setDraft({ n: String(DEFAULT_WEIGHTS.cached), m: String(DEFAULT_WEIGHTS.output) }); context.setPrefs({ weights: DEFAULT_WEIGHTS }); }}>{t("weights.reset")}</Button>
       </div>
       {invalid ? <Notice tone="wait">{t("weights.invalid")}</Notice> : null}
       <div class="muted caption">{t("weights.note")}</div>
@@ -88,7 +82,7 @@ function ByThread({ model, weights }: { model: AppModel; weights: Weights }) {
               key: g.key,
               cells: [
                 <>
-                  {threadRows.has(g.key) ? <a class="analytics-thread-link" href={formatRoute({ view: "conversation", threadId: g.key })}>{nameOf(g)}</a> : <span class="mono">{nameOf(g)}</span>}
+                  {threadRows.has(g.key) ? <a class="nav-link" href={formatRoute({ view: "conversation", threadId: g.key })}>{nameOf(g)}</a> : <span class="mono">{nameOf(g)}</span>}
                   {groupIncomplete(g) ? <div class="muted caption">{t("common.incomplete")}</div> : null}
                 </>,
                 effective !== undefined ? formatTokens(Math.round(effective)) : t("analytics.noValue"),
@@ -135,7 +129,7 @@ function CompactionEffect({ model, weights }: { model: AppModel; weights: Weight
   const attempts = new Map<string, number>();
   for (const e of c.events) if (e.afterAttempt) attempts.set(e.afterAttempt, (attempts.get(e.afterAttempt) ?? 0) + 1);
   return (
-    <Section title={t("compact.heading")} sub={c.threadId ? t("compact.sub", { thread: name, n: COMPACTION_ROWS }) : t("compact.noThread")} actions={<a class="btn" href={formatRoute({ view: "analytics", section: "threads" })}>{t("compact.other")}</a>} source={<>{t("common.source", { source: "" })}<code>compact.list</code></>}>
+    <Section title={t("compact.heading")} sub={c.threadId ? t("compact.sub", { thread: name, n: COMPACTION_ROWS }) : t("compact.noThread")} actions={<a class="nav-link" href={formatRoute({ view: "analytics", section: "threads" })}>{t("compact.other")}</a>} source={<>{t("common.source", { source: "" })}<code>compact.list</code></>}>
       {c.error ? <Notice tone="bad">{t("common.readError", { message: c.error.message })}</Notice> : null}
       {c.loading ? <div class="muted">{t("common.loading")}</div> : null}
       {c.threadId && !c.loading && !c.error && c.events.length === 0 ? <div class="muted">{t("compact.none")}</div> : null}
@@ -184,12 +178,8 @@ function PeriodHead({ model, section }: { model: AppModel; section: AnalyticsSec
   const i = model.insights;
   const walk = section === "threads" ? i.byThread.state.value : i.daily.state.value;
   return (
-    <div class="head">
-      <div class="pagehead">
-        <h2 class="analytics-section-title">{t(`ana.section.${section}`)}</h2>
-        <div class="muted">{t(`ana.sub.${section}`)} {t("analytics.subtitle", { zone: i.period.value.zone })}</div>
-      </div>
-      <div class="band analytics-period">
+    <PageHeader title={t(`ana.section.${section}`)} description={`${t(`ana.sub.${section}`)} ${t("analytics.subtitle", { zone: i.period.value.zone })}`} toolbar={
+      <div class="choice-row">
         <ButtonGroup label={t("analytics.period")}>
           {PERIODS.map((p) => (
             <Button key={p} aria-pressed={i.periodDays.value === p} onClick={() => i.setPeriod(p)}>
@@ -197,9 +187,9 @@ function PeriodHead({ model, section }: { model: AppModel; section: AnalyticsSec
             </Button>
           ))}
         </ButtonGroup>
-        <Button disabled={walk.status === "loading"} onClick={() => i.refreshUsage()}>{t("common.refresh")}</Button>
+        <Button variant="ghost" disabled={walk.status === "loading"} onClick={() => i.refreshUsage()}>{t("common.refresh")}</Button>
       </div>
-    </div>
+    } />
   );
 }
 

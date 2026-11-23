@@ -1,6 +1,6 @@
 import { memoryReadIssue, type CacheFact } from "../../../data/src";
 import { formatBytes, formatClock, type AppModel, type Translate } from "../../../ui-core/src";
-import { BarList, Button, DataTable, FactList, LoadingRows, LogBlock, Meter, Notice, Section, Stat } from "../system/components";
+import { BarList, Button, DataTable, FactList, LoadingRows, LogBlock, Meter, Notice, PageHeader, Section, Stat } from "../system/components";
 import { Rich } from "./Rich";
 
 const cacheName = (t: Translate, name: string): string => (["body", "layout", "attachment", "replay"].includes(name) ? t(`res.cache.${name}` as "res.cache.body") : name);
@@ -20,13 +20,7 @@ function CacheMeter({ t, c }: { t: Translate; c: CacheFact }) {
 
 function Head({ t, title, sub, loading, onRefresh, retry = false }: { t: Translate; title: string; sub: string; loading: boolean; onRefresh: () => void; retry?: boolean }) {
   return (
-    <div class="head">
-      <div class="pagehead">
-        <h2 class="analytics-section-title">{title}</h2>
-        <div class="muted">{sub}</div>
-      </div>
-      <Button disabled={loading} onClick={onRefresh}>{t(retry ? "convo.retryLoad" : "common.refresh")}</Button>
-    </div>
+    <PageHeader title={title} description={sub} actions={<><Button variant="ghost" disabled={loading} onClick={onRefresh}>{t(retry ? "convo.retryLoad" : "common.refresh")}</Button>{loading ? <span class="muted caption" role="status">{t("common.loading")}</span> : null}</>} />
   );
 }
 
@@ -83,9 +77,9 @@ export function StoragePane({ model }: { model: AppModel }) {
 
       <Section title={t("res.actions")} sub={t("res.actionsSub")}>
         <ul class="steps-list">
-          <li><strong>{t("res.collectTitle")}</strong><span class="muted"><Rich text={t("res.collectBody")} /></span></li>
-          <li><strong>{t("res.vacuumTitle")}</strong><span class="muted"><Rich text={t("res.vacuumBody")} /></span></li>
-          <li><strong>{t("res.pruneTitle")}</strong><span class="muted"><Rich text={t("res.pruneBody")} /></span></li>
+          <li><h4>{t("res.collectTitle")}</h4><span class="muted"><Rich text={t("res.collectBody")} /></span></li>
+          <li><h4>{t("res.vacuumTitle")}</h4><span class="muted"><Rich text={t("res.vacuumBody")} /></span></li>
+          <li><h4>{t("res.pruneTitle")}</h4><span class="muted"><Rich text={t("res.pruneBody")} /></span></li>
         </ul>
       </Section>
     </>
@@ -152,7 +146,7 @@ export function IndexPane({ model }: { model: AppModel }) {
             rows={index.value.spaces.map((sp) => ({
               key: sp.id,
               cells: [
-                <span class="mono">{sp.connection ?? ""} / {sp.model ?? ""}</span>,
+                <code>{sp.connection ?? ""} / {sp.model ?? ""}</code>,
                 <>{sp.state ?? ""}{sp.selected ? <div class="muted caption">{t("res.space.selected")}</div> : null}</>,
                 sp.dimension ?? missing,
                 sp.segments?.toLocaleString("en-US") ?? missing,

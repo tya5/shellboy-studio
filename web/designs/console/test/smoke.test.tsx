@@ -838,7 +838,7 @@ describe("Analytics", () => {
       const sections = [...el.querySelectorAll(".subview-main section")].slice(0, 2);
       expect(sections).toHaveLength(2);
       for (const section of sections) expect(section.querySelector('.loadrows[role="status"]')).toBeTruthy();
-      expect(text(el.querySelector(".subview-main .head button")!)).toBe("Refresh");
+      expect(text(el.querySelector(".subview-main header button")!)).toBe("Refresh");
       await act(async () => { await settle(t, db); });
       for (const section of sections) expect(section.querySelector(".loadrows")).toBeNull();
     } finally { model.dispose(); }
